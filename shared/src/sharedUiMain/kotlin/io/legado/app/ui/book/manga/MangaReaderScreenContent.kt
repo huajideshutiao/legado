@@ -33,13 +33,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.style.TextAlign
@@ -48,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.book.manga.render.MangaRenderState
 import io.legado.app.ui.book.manga.render.webtoonGestures
+import io.legado.app.ui.compose.platform.handleReadPageKeys
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import kotlinx.coroutines.isActive
@@ -104,29 +103,24 @@ fun MangaReaderScreenContent(
     onOpenChangeSource: () -> Unit = {},
     imageSlot: @Composable (String, Modifier, Boolean) -> Unit,
 ) {
+    // 键盘事件焦点: onPreviewKeyEvent 需节点持有焦点才触发, 进入即取焦点
+    // (对照 desktop VideoPlayerScreen 焦点接线)
+    val keyFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        runCatching { keyFocusRequester.requestFocus() }
+    }
     Box(
         Modifier
             .fillMaxSize()
             .background(Color(0xFF1A1A1A))
-            // 键盘翻页/返回 (对照 desktop ReaderScreen 行为)
-            .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                when (event.key) {
-                    Key.DirectionLeft, Key.DirectionUp, Key.PageUp -> {
-                        onPrevPage?.invoke() ?: onPrevChapter()
-                        true
-                    }
-                    Key.DirectionRight, Key.DirectionDown, Key.PageDown, Key.Spacebar -> {
-                        onNextPage?.invoke() ?: onNextChapter()
-                        true
-                    }
-                    Key.Escape, Key.Backspace -> {
-                        onBack()
-                        true
-                    }
-                    else -> false
-                }
-            },
+            // 键盘翻页/返回: 消费共享 handleReadPageKeys (方向/PageUp/PageDown/空格/Esc)
+            .handleReadPageKeys(
+                onPrevPage = { onPrevPage?.invoke() ?: onPrevChapter() },
+                onNextPage = { onNextPage?.invoke() ?: onNextChapter() },
+                onBack = onBack,
+            )
+            .focusRequester(keyFocusRequester)
+            .focusable(),
     ) {
         Column(Modifier.fillMaxSize()) {
             MangaTitleBar(

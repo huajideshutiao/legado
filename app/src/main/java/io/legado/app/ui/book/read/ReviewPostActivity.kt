@@ -24,7 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Text
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -214,7 +214,7 @@ class ReviewPostActivity : AppCompatActivity() {
                         .padding(bottom = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // 保留 BasicTextField: 自定义 decorationBox 实现 18dp 圆角气泡式聊天输入, Md2TextField outlined 边框不匹配
+                    // 保留 BasicTextField: 自定义 decorationBox 实现 18dp 圆角气泡式聊天输入, AppTextField outlined 边框不匹配
                     BasicTextField(
                         value = text,
                         onValueChange = { text = it },

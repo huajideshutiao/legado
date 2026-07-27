@@ -84,10 +84,9 @@ Legado 项目的 KMP 全平台化任务 (KP4) 需要让鸿蒙 target (linuxArm64
 ### 4.1 编译 KMP 共享库 (.so)
 
 ```bash
-# Windows 上 Kotlin/Native linuxArm64 不可编译 (需 Linux/Mac)
-# 在 Linux 环境下执行:
-./gradlew :modules:shared:assembleLinuxArm64Debug -PenableOhosTarget=true
-# 产物: modules/shared/build/bin/linuxArm64/debugDefault/liblegado_shared.so
+# 鸿蒙 target 已切换为 ohosArm64 (支付宝 fork 工具链), 默认关闭需显式启用:
+./gradlew :shared:linkDebugSharedOhosArm64 -PenableOhosTarget=true
+# 产物: shared/build/bin/ohosArm64/debugShared/liblegado_shared.so
 ```
 
 ### 4.2 编译鸿蒙 HAP

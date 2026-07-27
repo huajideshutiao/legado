@@ -54,6 +54,7 @@
 //
 
 import SwiftUI
+import shared  // Kotlin Multiplatform shared framework (deep link 入口)
 
 /// SwiftUI App 入口 (iOS 14+ 生命周期)。
 ///
@@ -65,6 +66,12 @@ struct iOSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                // legado:// / yuedu:// deep link (Info.plist CFBundleURLTypes 注册, 见 project.yml):
+                // 转发给 shared framework 的 Kotlin 共享解析器 (commonMain LegadoDeepLinkHandler),
+                // 对照 app 端 AssociationActivity 一键导入书源/替换规则/主题等
+                .onOpenURL { url in
+                    _ = LegadoDeepLinkIosKt.handleLegadoDeepLink(url: url.absoluteString)
+                }
         }
     }
 }

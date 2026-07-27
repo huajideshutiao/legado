@@ -1,11 +1,14 @@
 package io.legado.app.help.toast
 
+import kotlin.concurrent.Volatile
+
 /**
  * Toast 提示抽象 (shared commonMain)。
  *
  * # 背景
  * 安卓端 `Context.toastOnUi` 依赖 `android.widget.Toast` + `appCtx`, 不能下沉
- * commonMain。桌面 JVM 端用 `java.awt.SystemTray` 显示通知, iOS/鸿蒙暂留 stub。
+ * commonMain。桌面 JVM 端用 `java.awt.SystemTray` 显示通知, iOS 端用 UIAlertController,
+ * 鸿蒙端经 napi 桥接 `promptAction.showToast`。
  * 通过本接口在 commonMain 解耦, 各端注册 actual 实现。
  *
  * # 设计

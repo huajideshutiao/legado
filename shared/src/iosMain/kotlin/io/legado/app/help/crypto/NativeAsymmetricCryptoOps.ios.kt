@@ -17,21 +17,16 @@ import platform.Security.kSecKeyAlgorithmRSAEncryptionOAEPSHA512
 import platform.Security.kSecKeyAlgorithmRSAEncryptionPKCS1
 
 /**
- * iOS actual: 非对称加解密, 基于 Security.framework (SecKeyCreateEncryptedData/DecryptedData)。
+ * iOS actual: 非对称加解密。主实现 mbedTLS [MbedTlsRsa] (v1.5/OAEP + 私钥加密/公钥解密反向 +
+ * hutool 同款分块), 任意异常回落既有 Security.framework 路径 (仅公钥加密/私钥解密单向)。
+ * 原 "iOS 私钥加密向 Security 无解" 的缺口由 mbedTLS 主实现补上。
  *
- * 算法映射 (对齐 jvmAndAndroid JCA Cipher transformation):
+ * 回落路径算法映射 (对齐 jvmAndAndroid JCA Cipher transformation):
  * - RSA / RSA/ECB/PKCS1Padding(默认) → kSecKeyAlgorithmRSAEncryptionPKCS1;
- * - RSA/ECB/OAEPWithSHA-1AndMGF1Padding → kSecKeyAlgorithmRSAEncryptionOAEPSHA1;
- * - RSA/ECB/OAEPWithSHA-224/256/384/512AndMGF1Padding → 对应 OAEPSHA224/256/384/512;
+ * - RSA/ECB/OAEPWithSHA-1/224/256/384/512AndMGF1Padding → 对应 OAEPSHA*;
  * - 其他 (RSA/ECB/NoPadding, ECIES, 非 RSA) 抛 UnsupportedOperationException。
  *
- * usePublicKey 语义 (对齐 jvmAndAndroid getKeyType):
- * - encrypt(usePublicKey=true) → 公钥加密 (SecKeyCreateEncryptedData 需公钥);
- * - decrypt(usePublicKey=false/null) → 私钥解密 (SecKeyCreateDecryptedData 需私钥);
- * - 私钥加密/公钥解密: Security.framework 不支持 (SecKeyCreateEncrypted/Decrypted 仅单向), 抛异常。
- *
- * 密钥格式: 私钥 PKCS#8 DER / 公钥 X.509 DER (SecKeyCreateWithData 直接接受, 与 jvmAndAndroid
- * KeyUtil.generate*Key 一致, 无需 ASN.1 解析)。
+ * 密钥格式: 私钥 PKCS#8/PKCS#1 DER 或 PEM (mbedTLS pk_parse 自动识别; Security 回落仅 DER)。
  */
 @OptIn(ExperimentalForeignApi::class)
 actual object NativeAsymmetricCryptoOps {
@@ -42,8 +37,29 @@ actual object NativeAsymmetricCryptoOps {
         privateKey: ByteArray?,
         publicKey: ByteArray?,
         data: ByteArray
+    ): ByteArray = mbedTlsOrFallback(
+        { MbedTlsRsa.encrypt(algorithm, usePublicKey, privateKey, publicKey, data) },
+        { legacyEncrypt(algorithm, usePublicKey, publicKey, data) }
+    )
+
+    actual fun decrypt(
+        algorithm: String,
+        usePublicKey: Boolean,
+        privateKey: ByteArray?,
+        publicKey: ByteArray?,
+        data: ByteArray
+    ): ByteArray = mbedTlsOrFallback(
+        { MbedTlsRsa.decrypt(algorithm, usePublicKey, privateKey, publicKey, data) },
+        { legacyDecrypt(algorithm, usePublicKey, privateKey, data) }
+    )
+
+    /** Security.framework 回落: 仅公钥加密 (SecKeyCreateEncryptedData 需公钥)。 */
+    private fun legacyEncrypt(
+        algorithm: String,
+        usePublicKey: Boolean,
+        publicKey: ByteArray?,
+        data: ByteArray
     ): ByteArray {
-        // 仅支持公钥加密 (SecKeyCreateEncryptedData 需公钥); 私钥加密抛异常
         if (!usePublicKey) {
             throw UnsupportedOperationException(
                 "iOS AsymmetricCrypto.encrypt with privateKey is not supported " +
@@ -78,14 +94,13 @@ actual object NativeAsymmetricCryptoOps {
         }
     }
 
-    actual fun decrypt(
+    /** Security.framework 回落: 仅私钥解密 (SecKeyCreateDecryptedData 需私钥)。 */
+    private fun legacyDecrypt(
         algorithm: String,
         usePublicKey: Boolean,
         privateKey: ByteArray?,
-        publicKey: ByteArray?,
         data: ByteArray
     ): ByteArray {
-        // 仅支持私钥解密 (SecKeyCreateDecryptedData 需私钥); 公钥解密抛异常
         if (usePublicKey) {
             throw UnsupportedOperationException(
                 "iOS AsymmetricCrypto.decrypt with publicKey is not supported " +

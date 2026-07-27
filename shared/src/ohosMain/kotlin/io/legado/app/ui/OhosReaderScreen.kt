@@ -2,6 +2,8 @@ package io.legado.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,14 +19,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Text
+import androidx.compose.material.Button
+import androidx.compose.material.ButtonDefaults
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Slider
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,8 +35,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,6 +48,11 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.platform.handleReadPageKeys
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.dict.OhosDictDialog
+import io.legado.app.ui.reader.OhosTextSelectionDialog
 import kotlinx.coroutines.launch
 
 /**
@@ -52,7 +61,7 @@ import kotlinx.coroutines.launch
  * 顶栏 (返回 + 书名 + 章节序号 + 菜单) + 正文区 (Text 16sp 行高 28) + 底部翻页按钮 (上一章/Slider/下一章)
  * + 左侧章节目录抽屉 (70% 面板 + 30% 遮罩)。
  *
- * 现状: 顶栏/抽屉/翻页按钮均用 Compose 实现 (对齐 Material3 TopAppBar/ModalDrawer/Button)。
+ * 现状: 顶栏/抽屉/翻页按钮均用 Compose material (MD2) 自绘实现, 非 material3 构件。
  *
  * 数据源:
  * - `AppDbProviders.get().bookChapterDao.getChapterList(bookUrl)` 取章节目录 (替代 napi chapterList)
@@ -76,8 +85,31 @@ fun OhosReaderScreen(
     var readChapters by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var drawerVisible by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
+    // 长按正文文字选择 + 查词对话框状态 (对照 IosReaderScreen 的 showTextSelectionDialog/showDict/dictWord)
+    var showTextSelection by remember { mutableStateOf(false) }
+    var showDict by remember { mutableStateOf(false) }
+    var dictWord by remember { mutableStateOf("") }
     var sliderValue by remember { mutableStateOf(initialChapterIndex.toFloat()) }
     val coroutineScope = rememberCoroutineScope()
+
+    // 跳章 (翻页按钮 / 外接键盘共用): 更新索引 + Slider 回显 + 异步载正文
+    val goToChapter: (Int) -> Unit = { target ->
+        chapterIndex = target
+        sliderValue = target.toFloat()
+        coroutineScope.launch {
+            loadChapterContent(bookUrl, target) { content ->
+                chapterContent = content
+                readChapters = readChapters + target
+            }
+        }
+    }
+
+    // 外接键盘事件焦点: onPreviewKeyEvent 需节点持有焦点才触发, 进入即取焦点
+    // (对照 desktop ReaderScreen 焦点接线)
+    val keyFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        runCatching { keyFocusRequester.requestFocus() }
+    }
 
     // 加载章节目录 + 起始章节正文 (对齐 Reader.ets aboutToAppear)
     LaunchedEffect(bookUrl) {
@@ -90,11 +122,29 @@ fun OhosReaderScreen(
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            // 外接键盘翻页: 消费共享 handleReadPageKeys (方向/PageUp/PageDown/空格/Esc)
+            // 本屏无分页排版, 上/下翻页即上/下一章; 抽屉或菜单展开时不拦截翻页键
+            .handleReadPageKeys(
+                onPrevPage = { if (chapterIndex > 0) goToChapter(chapterIndex - 1) },
+                onNextPage = {
+                    val hasNext = chapterList.isEmpty() || chapterIndex < chapterList.size - 1
+                    if (hasNext) goToChapter(chapterIndex + 1)
+                },
+                onBack = {
+                    if (drawerVisible) drawerVisible = false else onBack()
+                },
+                menuVisible = { drawerVisible || menuExpanded },
+            )
+            .focusRequester(keyFocusRequester)
+            .focusable(),
+    ) {
         Column(Modifier.fillMaxSize()) {
             // 顶部标题栏 (对齐 Reader.ets 顶部 Row)
             Row(
-                Modifier.fillMaxWidth().height(56.dp).background(ArcoBlue6).padding(horizontal = 16.dp),
+                Modifier.fillMaxWidth().height(56.dp).background(DesignTokens.arcoBlue6).padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -128,28 +178,30 @@ fun OhosReaderScreen(
                             .padding(start = 12.dp)
                             .clickable { menuExpanded = true },
                     )
-                    DropdownMenu(
+                    AppDropdownMenu(
                         expanded = menuExpanded,
                         onDismissRequest = { menuExpanded = false },
                     ) {
                         DropdownMenuItem(
-                            text = { Text("目录") },
                             onClick = {
                                 menuExpanded = false
                                 drawerVisible = true
                             },
-                        )
+                        ) {
+                            Text("目录")
+                        }
                         DropdownMenuItem(
-                            text = { Text("设置") },
                             onClick = { menuExpanded = false },
-                        )
+                        ) {
+                            Text("设置")
+                        }
                         DropdownMenuItem(
-                            text = { Text("朗读") },
                             onClick = { menuExpanded = false },
-                        )
+                        ) {
+                            Text("朗读")
+                        }
                         // 章节换源 (对齐 app 端 ReadMenuAction.CHAPTER_CHANGE_SOURCE, 传递 book/index/title 触发路由切换)
                         DropdownMenuItem(
-                            text = { Text("章节换源") },
                             onClick = {
                                 menuExpanded = false
                                 coroutineScope.launch {
@@ -158,10 +210,11 @@ fun OhosReaderScreen(
                                     onChapterChangeSource(book, chapter.index, chapter.title)
                                 }
                             },
-                        )
+                        ) {
+                            Text("章节换源")
+                        }
                         // 书内全文搜索 (对齐 app 端 ReadMenuAction.SEARCH_CONTENT, 传递 book 触发路由切换)
                         DropdownMenuItem(
-                            text = { Text("全文搜索") },
                             onClick = {
                                 menuExpanded = false
                                 coroutineScope.launch {
@@ -169,18 +222,24 @@ fun OhosReaderScreen(
                                     onSearchContentClick(book)
                                 }
                             },
-                        )
+                        ) {
+                            Text("全文搜索")
+                        }
                     }
                 }
             }
 
             // 正文区域 (对齐 Reader.ets Scroll + Text, 16sp 行高 28, padding 20)
+            // 长按正文弹文字选择对话框 (对照 IosReaderScreen onLongClick; 正文已在内存, 无需异步加载)
             Column(
                 Modifier
                     .fillMaxWidth()
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
                     .background(Color.White)
+                    .pointerInput(Unit) {
+                        detectTapGestures(onLongPress = { showTextSelection = true })
+                    }
                     .padding(20.dp),
             ) {
                 Text(
@@ -203,22 +262,10 @@ fun OhosReaderScreen(
             ) {
                 // 上一章按钮 (◀ 44x44, app_background 底, primary 字色, chapterIndex>0 时启用)
                 Button(
-                    onClick = {
-                        if (chapterIndex > 0) {
-                            val target = chapterIndex - 1
-                            chapterIndex = target
-                            sliderValue = target.toFloat()
-                            coroutineScope.launch {
-                                loadChapterContent(bookUrl, target) { content ->
-                                    chapterContent = content
-                                    readChapters = readChapters + target
-                                }
-                            }
-                        }
-                    },
+                    onClick = { if (chapterIndex > 0) goToChapter(chapterIndex - 1) },
                     enabled = chapterIndex > 0,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = AppBackground,
+                        backgroundColor = AppBackground,
                         contentColor = TextPrimary,
                     ),
                     modifier = Modifier.size(44.dp),
@@ -234,15 +281,7 @@ fun OhosReaderScreen(
                     onValueChange = { sliderValue = it },
                     onValueChangeFinished = {
                         val target = sliderValue.toInt()
-                        if (target != chapterIndex) {
-                            chapterIndex = target
-                            coroutineScope.launch {
-                                loadChapterContent(bookUrl, target) { content ->
-                                    chapterContent = content
-                                    readChapters = readChapters + target
-                                }
-                            }
-                        }
+                        if (target != chapterIndex) goToChapter(target)
                     },
                     valueRange = 0f..maxIndex.toFloat(),
                     steps = if (maxIndex > 0) maxIndex - 1 else 0,
@@ -252,20 +291,10 @@ fun OhosReaderScreen(
                 // 下一章按钮 (▶ 44x44, ArcoBlue6 底, 白字, 非末章时启用)
                 val hasNext = chapterList.isEmpty() || chapterIndex < chapterList.size - 1
                 Button(
-                    onClick = {
-                        val target = chapterIndex + 1
-                        chapterIndex = target
-                        sliderValue = target.toFloat()
-                        coroutineScope.launch {
-                            loadChapterContent(bookUrl, target) { content ->
-                                chapterContent = content
-                                readChapters = readChapters + target
-                            }
-                        }
-                    },
+                    onClick = { goToChapter(chapterIndex + 1) },
                     enabled = hasNext,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = ArcoBlue6,
+                        backgroundColor = DesignTokens.arcoBlue6,
                         contentColor = Color.White,
                     ),
                     modifier = Modifier.size(44.dp),
@@ -316,15 +345,8 @@ fun OhosReaderScreen(
                                         .fillMaxWidth()
                                         .background(if (isSelected) AppBackground else Color.White)
                                         .clickable {
-                                            chapterIndex = ch.index
-                                            sliderValue = ch.index.toFloat()
                                             drawerVisible = false
-                                            coroutineScope.launch {
-                                                loadChapterContent(bookUrl, ch.index) { content ->
-                                                    chapterContent = content
-                                                    readChapters = readChapters + ch.index
-                                                }
-                                            }
+                                            goToChapter(ch.index)
                                         }
                                         .padding(horizontal = 16.dp, vertical = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -333,13 +355,13 @@ fun OhosReaderScreen(
                                     // 已读标记 (● 8sp primary, 10dp 宽, 未读留空对齐)
                                     Text(
                                         if (isRead) "●" else "",
-                                        color = ArcoBlue6,
+                                        color = DesignTokens.arcoBlue6,
                                         fontSize = 8.sp,
                                         modifier = Modifier.width(10.dp),
                                     )
                                     Text(
                                         ch.title,
-                                        color = if (isSelected) ArcoBlue6 else TextPrimary,
+                                        color = if (isSelected) DesignTokens.arcoBlue6 else TextPrimary,
                                         fontSize = 14.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                         maxLines = 1,
@@ -360,6 +382,26 @@ fun OhosReaderScreen(
                         .clickable { drawerVisible = false },
                 )
             }
+        }
+
+        // 长按正文弹文字选择 Dialog, 其"查词"按钮读剪贴板取词后弹 OhosDictDialog (对照 IosReaderScreen)
+        if (showTextSelection) {
+            OhosTextSelectionDialog(
+                chapterName = chapterList.getOrNull(chapterIndex)?.title.orEmpty(),
+                content = chapterContent,
+                onDismiss = { showTextSelection = false },
+                onDict = { word ->
+                    dictWord = word
+                    showDict = true
+                },
+            )
+        }
+        // 查词对话框 (包装 shared DictDialogContent; onDismiss 后保留 dictWord, 下次触发时覆盖)
+        if (showDict) {
+            OhosDictDialog(
+                word = dictWord,
+                onDismiss = { showDict = false },
+            )
         }
     }
 }

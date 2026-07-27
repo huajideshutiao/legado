@@ -20,7 +20,7 @@ import io.legado.app.ui.dialog.NumberPickerDialog
  * 鸿蒙端其它设置页入口 (包装 shared/sharedUiMain 的 [OtherConfigScreen])。
  *
  * 实现模式参考 iOS 端 [IosOtherConfigScreen]: 复用 sharedUiMain 跨平台 Composable,
- * 避免复制代码; material3 原生组件 (TopAppBar 等) 接入待 API 明确后逐步替换顶栏。
+ * 避免复制代码; 顶栏用 sharedUiMain 的 [AppTitleBar] (项目锁 MD2 视觉, 不用 material3 TopAppBar)。
  *
  * 阻塞点: bookTreeUri 需 SAF 文档选取器 (鸿蒙端 stub)。
  *
@@ -49,10 +49,10 @@ fun OhosOtherConfigScreen(
     // 4 个 NumberPicker 当前值 + 显隐状态 (mutableIntStateOf 让 summary 重组)
     val prefs = remember { PreferenceProviders.get() }
     var bitmapCacheSize by remember {
-        mutableIntStateOf(prefs.getInt(PreferKey.bitmapCacheSize, 100))
+        mutableIntStateOf(prefs.getInt(PreferKey.bitmapCacheSize, 50))
     }
     var preDownloadNum by remember {
-        mutableIntStateOf(prefs.getInt(PreferKey.preDownloadNum, 5))
+        mutableIntStateOf(prefs.getInt(PreferKey.preDownloadNum, 10))
     }
     var webPort by remember { mutableIntStateOf(prefs.getInt(PreferKey.webPort, 1122)) }
     var threadCount by remember { mutableIntStateOf(prefs.getInt(PreferKey.threadCount, 16)) }
@@ -111,7 +111,7 @@ fun OhosOtherConfigScreen(
         )
     }
 
-    // bitmapCacheSize NumberPicker (范围 10..500 MB, 默认 100)
+    // bitmapCacheSize NumberPicker (范围 10..500 MB, 默认对齐 app AppConfig = 50)
     if (showBitmapCacheDialog) {
         NumberPickerDialog(
             title = bitmapCacheSizeLabel,
@@ -125,7 +125,7 @@ fun OhosOtherConfigScreen(
             onDismiss = { showBitmapCacheDialog = false },
         )
     }
-    // preDownloadNum NumberPicker (范围 1..20, 默认 5)
+    // preDownloadNum NumberPicker (范围 1..20, 默认对齐 app AppConfig = 10)
     if (showPreDownloadDialog) {
         NumberPickerDialog(
             title = preDownloadLabel,

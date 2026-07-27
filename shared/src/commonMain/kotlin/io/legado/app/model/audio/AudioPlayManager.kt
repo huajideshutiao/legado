@@ -14,7 +14,10 @@ import io.legado.app.model.analyzeRule.AnalyzeRuleCore
 import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.postEvent
+import kotlin.concurrent.Volatile
 import kotlin.coroutines.CoroutineContext
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -72,6 +75,7 @@ class AudioPlayManager(
 
     /** 正在加载的章节下标, 防止并发加载。 */
     private val loadingChapters = mutableListOf<Int>()
+    private val loadingLock = SynchronizedObject()
 
     /** 进度上报协程。 */
     private var upPlayProgressJob: Job? = null
@@ -197,13 +201,13 @@ class AudioPlayManager(
     // region 章节数据加载
 
     /** 同一章节不允许并发加载, 失败时也要 remove。 */
-    private fun addLoading(index: Int): Boolean = synchronized(loadingChapters) {
+    private fun addLoading(index: Int): Boolean = synchronized(loadingLock) {
         if (loadingChapters.contains(index)) return false
         loadingChapters.add(index)
         true
     }
 
-    private fun removeLoading(index: Int) = synchronized(loadingChapters) {
+    private fun removeLoading(index: Int) = synchronized(loadingLock) {
         loadingChapters.remove(index)
     }
 

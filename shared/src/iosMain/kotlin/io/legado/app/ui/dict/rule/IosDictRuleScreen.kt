@@ -1,11 +1,5 @@
 package io.legado.app.ui.dict.rule
 
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import io.legado.app.ui.compose.component.Md2TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -13,19 +7,24 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
+import androidx.compose.ui.window.Dialog
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.DictRule
 import io.legado.app.help.copyToClipboard
+import io.legado.app.help.file.exportFile
 import io.legado.app.help.file.pickDocumentContent
 import io.legado.app.help.file.pickDocuments
-import io.legado.app.help.openURL
 import io.legado.app.help.readFromClipboard
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.association.ImportDictRuleItemsVm
 import io.legado.app.ui.association.ImportDictRuleViewModelShared
+import io.legado.app.ui.association.ImportItemsDialog
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.widget.dialog.HelpDialog
+import io.legado.app.ui.widget.dialog.OnlineImportUrlDialog
 import io.legado.app.utils.GSON
+import io.legado.app.utils.formatNative
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flowOn
@@ -45,8 +44,9 @@ import kotlinx.coroutines.withContext
  * - **VM**: [DictRuleViewModelShared] (commonMain, scope + importDefaultRules lambda);
  * - **编辑对话框**: 复用 shared/sharedUiMain 的 [DictRuleEditDialog];
  * - **导入**: [ImportDictRuleViewModelShared] 处理解析, 本地走 [pickDocuments], 在线走 AlertDialog;
- * - **导出**: 选中项序列化为 JSON 复制到剪贴板 (iOS 端无文件保存面板);
- * - **帮助**: 调 [openURL] 跳转字典规则帮助页;
+ * - **导出**: 选中项序列化为 JSON, [exportFile] 弹系统保存器写真文件 (对照 app 端
+ *   HandleFileContract.EXPORT "exportDictRule.json"); 保存失败/取消降级复制到剪贴板;
+ * - **帮助**: HelpDialog 渲染 dictRuleHelp.md (对照 app 端 showHelp);
  * - **导入默认规则**: iOS 端无 DefaultData, lambda 内 toast 提示暂不支持。
  *
  * @param onBack 返回回调 (切回调用方路由, 由 IosNavHost 注入)
@@ -84,23 +84,30 @@ fun IosDictRuleScreen(
     var showEditDialog by remember { mutableStateOf(false) }
     // 在线导入 URL 输入 Dialog 状态
     var showImportOnlineDialog by remember { mutableStateOf(false) }
-    var importOnlineUrlText by remember { mutableStateOf("") }
+    // 帮助文档对话框状态 (onHelp 触发)
+    var showHelpDialog by remember { mutableStateOf(false) }
 
-    val importVm = remember(scope) { ImportDictRuleViewModelShared(scope) }
+    // 导入 VM: 每次导入新建 (与 app 端每次弹窗新建 VM 一致), 避免列表跨次导入累积错位
+    var importVm by remember { mutableStateOf<ImportDictRuleViewModelShared?>(null) }
+    var showImportDialog by remember { mutableStateOf(false) }
     // 文案模板 (LaunchedEffect / onExportSelection lambda 非 @Composable, 预先 remember 模板)
     val importCompleteTemplate = rememberString("import_complete")
     val copiedRulesTemplate = rememberString("copied_rules_to_clipboard_count")
+    val wrongFormatText = rememberString("wrong_format")
+    val exportSuccessText = rememberString("export_success")
 
-    // 收集导入成功/失败信号
+    // 解析成功 → 弹勾选对话框 (对照 app 端 ImportDictRuleDialog); 失败 → toast
     LaunchedEffect(importVm) {
-        importVm.successState.collectLatest { count ->
-            if (count != null) {
-                importVm.importSelect { Toasters.get().toast(String.format(importCompleteTemplate, count)) }
+        val vm = importVm ?: return@LaunchedEffect
+        launch {
+            vm.successState.collectLatest { count ->
+                if (count != null) {
+                    if (count > 0) showImportDialog = true
+                    else Toasters.get().toast(wrongFormatText)
+                }
             }
         }
-    }
-    LaunchedEffect(importVm) {
-        importVm.errorState.collectLatest { err ->
+        vm.errorState.collectLatest { err ->
             if (err != null) Toasters.get().toast(err.substringAfter("ImportError:"))
         }
     }
@@ -128,16 +135,17 @@ fun IosDictRuleScreen(
                     val firstUrl = urls.firstOrNull() ?: return@launch
                     val bytes = withContext(Dispatchers.Default) { pickDocumentContent(firstUrl) }
                         ?: return@launch
-                    importVm.importSource(bytes.toString(Charsets.UTF_8).trim())
+                    val text = bytes.decodeToString().trim()
+                    importVm = ImportDictRuleViewModelShared(scope).also { it.importSource(text) }
                 }
             }
             override fun onImportOnline() {
-                importOnlineUrlText = ""
                 showImportOnlineDialog = true
             }
             override fun onImportDefault() = viewModel.importDefault()
             override fun onHelp() {
-                openURL("https://github.com/gedoor/legado/wiki/字典规则")
+                // 对应 app 端 showHelp("dictRuleHelp")
+                showHelpDialog = true
             }
             override fun onToggleSelected(item: DictRule, checked: Boolean) {
                 selected = if (checked) selected + item.name else selected - item.name
@@ -174,55 +182,73 @@ fun IosDictRuleScreen(
             }
             override fun onExportSelection() {
                 val rules = dictRules.filter { it.name in selected }
-                copyToClipboard(GSON.toJson(rules))
-                Toasters.get().toast(String.format(copiedRulesTemplate, rules.size))
+                scope.launch {
+                    val json = GSON.toJson(rules)
+                    // 真文件导出: 系统保存器 (文件名对照 app 端 HandleFileContract.EXPORT)
+                    val saved = exportFile("exportDictRule.json", json.encodeToByteArray())
+                    if (saved) {
+                        Toasters.get().toast(exportSuccessText)
+                    } else {
+                        // 保存失败/用户取消: 降级复制 JSON 到剪贴板
+                        copyToClipboard(json)
+                        Toasters.get().toast(copiedRulesTemplate.formatNative(rules.size))
+                    }
+                }
             }
         },
     )
 
-    // 编辑对话框 (复用 shared/sharedUiMain 的 DictRuleEditDialog)
+    // 编辑对话框 (复用 shared/sharedUiMain 的 DictRuleEditDialog, Dialog 外壳补遮罩/居中)
     if (showEditDialog) {
-        DictRuleEditDialog(
-            rule = editTarget,
-            onConfirm = { rule ->
-                // 保存 (新增 insert / 编辑 update; DictRuleEditViewModelShared 内部 delete 旧 + insert 新)
-                editTarget = null
-                showEditDialog = false
-            },
+        Dialog(onDismissRequest = {
+            editTarget = null
+            showEditDialog = false
+        }) {
+            DictRuleEditDialog(
+                rule = editTarget,
+                onConfirm = { rule ->
+                    // 保存 (新增 insert / 编辑 update; DictRuleEditViewModelShared 内部 delete 旧 + insert 新)
+                    editTarget = null
+                    showEditDialog = false
+                },
+                onDismiss = {
+                    editTarget = null
+                    showEditDialog = false
+                },
+                clipTextProvider = { readFromClipboard() },
+                clipTextSink = { text -> copyToClipboard(text) },
+            )
+        }
+    }
+
+    // 导入勾选对话框 (确认后仅入库勾选项)
+    if (showImportDialog) importVm?.let { vm ->
+        ImportItemsDialog(
+            title = rememberString("import_dict_rule"),
+            vm = remember(vm) { ImportDictRuleItemsVm(vm) },
             onDismiss = {
-                editTarget = null
-                showEditDialog = false
+                showImportDialog = false
+                importVm = null
             },
-            clipTextProvider = { readFromClipboard() },
-            clipTextSink = { text -> copyToClipboard(text) },
+            onImported = { count ->
+                Toasters.get().toast(importCompleteTemplate.formatNative(count))
+            },
         )
     }
 
-    // 在线导入 URL 输入 Dialog
+    // 在线导入 URL 输入 Dialog (带历史下拉, 对照 app 端 DictRuleActivity.showImportDialog)
     if (showImportOnlineDialog) {
-        AlertDialog(
-            onDismissRequest = { showImportOnlineDialog = false },
-            title = { Text(rememberString("import_on_line")) },
-            text = {
-                Md2TextField(
-                    value = importOnlineUrlText,
-                    onValueChange = { importOnlineUrlText = it },
-                    label = "URL",
-                    modifier = Modifier.fillMaxWidth(),
-                )
+        OnlineImportUrlDialog(
+            recordKey = "dictRuleUrls",
+            onConfirm = { url ->
+                importVm = ImportDictRuleViewModelShared(scope).also { it.importSource(url) }
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    val url = importOnlineUrlText.trim()
-                    if (url.isNotEmpty()) importVm.importSource(url)
-                    showImportOnlineDialog = false
-                }) { Text(rememberString("ok")) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showImportOnlineDialog = false }) {
-                    Text(rememberString("cancel"))
-                }
-            },
+            onDismiss = { showImportOnlineDialog = false },
         )
+    }
+
+    // 帮助文档对话框 (onHelp 触发, 渲染 dictRuleHelp.md)
+    if (showHelpDialog) {
+        HelpDialog(fileName = "dictRuleHelp", onDismiss = { showHelpDialog = false })
     }
 }

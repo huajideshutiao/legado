@@ -1,13 +1,9 @@
 package io.legado.app.utils
 
-import android.annotation.SuppressLint
-import android.icu.text.Collator
-import android.icu.util.ULocale
 import android.net.Uri
 import android.text.Editable
 import androidx.core.net.toUri
 import java.io.File
-import java.util.Locale
 
 /**
  * String 扩展的安卓绑定面。纯 JVM 扩展 (isAbsUrl/isJsonObject/isJsonArray/isTrue/isHex/
@@ -16,7 +12,8 @@ import java.util.Locale
  * (见 modules/shared/src/jvmAndAndroidMain/kotlin/io/legado/app/utils/StringExtensions.shared.kt),
  * 跨模块同包名同签名扩展自动合并, 消费方 import 零改动。
  *
- * 本文件仅保留安卓绑定方法 (toEditable/parseToUri/cnCompare/isUri)。
+ * cnCompare 已下沉 shared commonMain (StringCnCompare.kt, expect/actual 分派 ICU),
+ * 本文件仅保留安卓绑定方法 (toEditable/parseToUri/isUri)。
  */
 
 fun String.toEditable(): Editable = Editable.Factory.getInstance().newEditable(this)
@@ -30,13 +27,4 @@ fun String.parseToUri(): Uri {
 fun String?.isUri(): Boolean {
     this ?: return false
     return this.startsWith("file://", true) || isContentScheme()
-}
-
-@SuppressLint("ObsoleteSdkInt")
-fun String.cnCompare(other: String): Int {
-    return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-        Collator.getInstance(ULocale.SIMPLIFIED_CHINESE).compare(this, other)
-    } else {
-        java.text.Collator.getInstance(Locale.CHINA).compare(this, other)
-    }
 }

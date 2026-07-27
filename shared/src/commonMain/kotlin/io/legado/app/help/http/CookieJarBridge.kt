@@ -1,5 +1,7 @@
 package io.legado.app.help.http
 
+import kotlin.concurrent.Volatile
+
 /**
  * ObsoleteUrlFactory 下沉 shared (jvmAndAndroidMain) 后, 无法直接引用 app 端 CookieManager object
  * (CookieManager 依赖 appDb/CacheManager/android.webkit, 整体下沉成本过大)。
@@ -10,7 +12,7 @@ package io.legado.app.help.http
  *
  * KP4 OkHttp 跨平台修复: 原直接 `import okhttp3.Request/Response`,
  * iOS/鸿蒙 target 无 OkHttp 变体编译失败; 现改用 [KmpRequest]/[KmpResponse] 跨平台抽象
- * (jvmAndAndroidMain 经 typealias 等价 okhttp3.*; iOS/鸿蒙 stub)。
+ * (jvmAndAndroidMain 经 typealias 等价 okhttp3.*; iOS/鸿蒙 由 nativeMain 用 Ktor 包装实现)。
  */
 interface CookieJarBridge {
     /** 对应 app 端 CookieManager.loadRequest */

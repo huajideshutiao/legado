@@ -7,11 +7,11 @@ import io.legado.app.data.entities.HomeTab
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.HomeTabHelpShared
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.WebBook.getBookListAwait
 import io.legado.app.model.webBook.parseExploreOptionsFromUrl
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -138,7 +138,7 @@ class HomeViewModelShared(
     // ─── 加载入口 ────────────────────────────────────────────────────────
 
     fun initTabs() {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             _tabsFlow.value = HomeTabHelpShared.getTabs()
         }
     }
@@ -308,7 +308,7 @@ class HomeViewModelShared(
     fun onTabsChanged(rename: Pair<String, String>? = null, removed: String? = null) {
         rename?.let { (old, new) -> tabStates.remove(old)?.let { tabStates[new] = it } }
         removed?.let { tabStates.remove(it) }
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             _tabsFlow.value = HomeTabHelpShared.getTabs()
         }
     }

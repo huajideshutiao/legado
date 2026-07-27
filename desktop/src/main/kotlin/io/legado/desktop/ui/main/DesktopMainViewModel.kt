@@ -141,7 +141,7 @@ class DesktopMainViewModel {
      * app 端检查 httpTTSDao.count() == 0 时插入 DefaultData.httpTTS
      * (从 assets/defaultData/httpTTS.json 加载, 依赖 Android assets 目录);
      * 桌面端通过 [DefaultDataShared.importDefaultHttpTTS] 加载, 资源从
-     * shared/commonMain/resources/defaultData/httpTTS.json 经
+     * commonMain/composeResources/files/defaultData/httpTTS.json 经
      * [io.legado.desktop.help.DesktopDefaultDataResourceProvider] 读取 (Main.kt 已注册),
      * 跨端单一数据源。同样检查 count() == 0 才插入, 避免重置用户已修改的默认项。
      *
@@ -273,7 +273,7 @@ object DesktopStartupTasks {
         // 1. 默认 HttpTTS 加载 (对照 app 端 MainViewModel.postLoad)
         //    首次启动 httpTTSDao.count() == 0 时, 调 DefaultDataShared.importDefaultHttpTTS
         //    插入默认 HttpTTS 列表 (资源经 DesktopDefaultDataResourceProvider 从
-        //    shared/commonMain/resources/defaultData/httpTTS.json 读取, Main.kt 已注册)
+        //    commonMain/composeResources/files/defaultData/httpTTS.json 读取, Main.kt 已注册)
         scope.launch(Dispatchers.Default) {
             val appDb = AppDbProviders.get()
             if (appDb.httpTTSDao.count() == 0) {

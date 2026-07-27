@@ -4,6 +4,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -90,7 +91,7 @@ class ReplaceRuleListViewModel {
             }
             flow.catch {
                 AppLog.put("替换规则管理界面更新数据出错", it)
-            }.flowOn(Dispatchers.IO).conflate().collect { list ->
+            }.flowOn(IoDispatcher).conflate().collect { list ->
                 _rules.value = list
                 // 选中集与最新数据求交, 移除已不存在的 id (对齐 app 端 intersect 语义)
                 val ids = list.map { it.id }.toSet()

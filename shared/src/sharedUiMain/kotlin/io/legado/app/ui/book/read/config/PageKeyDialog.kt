@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,9 +31,7 @@ import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
-
-/** Arco Design arco_radius_lg = 16dp, 用于对话框圆角。 */
-private val ArcoRadiusLg = 16.dp
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 自定义翻页按键对话框 (KMP 共享, app + desktop 复用)。
@@ -99,7 +96,7 @@ fun PageKeyDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
-            shape = RoundedCornerShape(ArcoRadiusLg),
+            shape = DesignTokens.dialogShape,
             color = colors.background,
             modifier = Modifier.fillMaxWidth().padding(16.dp),
         ) {

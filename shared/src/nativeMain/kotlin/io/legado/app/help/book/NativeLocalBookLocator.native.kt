@@ -2,7 +2,7 @@ package io.legado.app.help.book
 
 import io.legado.app.data.entities.Book
 import kotlin.concurrent.Volatile
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * [LocalBookLocator] iOS/鸿蒙 (Native target) 共用真实实现 (基于 [kotlin.io.File])。

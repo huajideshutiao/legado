@@ -1,11 +1,14 @@
 package io.legado.app.help.file
 
+import kotlin.concurrent.Volatile
+
 /**
  * 应用文件目录抽象 (shared commonMain)。
  *
  * # 背景
  * 安卓端 `Context.filesDir` / `cacheDir` / `getExternalFilesDir(null)` 依赖 Android
- * Context。桌面 JVM 端用 `~/.legado/files` / `~/.legado/cache`; iOS/鸿蒙暂留 stub。
+ * Context。桌面 JVM 端用 `~/.legado/files` / `~/.legado/cache`; iOS 用沙盒 Documents/Caches,
+ * 鸿蒙经 napi 桥接取 `context.filesDir`/`cacheDir`。
  *
  * # 设计
  * - 所有路径用 String 而非 File, 避免 commonMain 引入 JDK 类型

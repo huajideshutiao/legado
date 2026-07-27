@@ -11,10 +11,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -25,6 +24,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Book
+import io.legado.app.ui.compose.theme.AppTheme
 
 /**
  * 鸿蒙端 RSS 源列表 Screen (包装 commonMain 的 [RssSourcesViewModelShared])。
@@ -37,7 +37,7 @@ import io.legado.app.data.entities.Book
  * - 点击触发 [onRssSourceClick] 切到 RSS_ARTICLES 路由 (携带 Book)
  *
  * 历史上 ohosMain 曾不继承 sharedUiMain, 本 Screen 未复用 AppTitleBar/rememberPainter 等 sharedUiMain 组件,
- * 用标准 Compose + material3 原生组件实现等价 UI。
+ * 用标准 Compose + material 组件实现等价 UI。
  *
  * @param onBack 返回回调 (由 OhosNavHost 注入)
  * @param onRssSourceClick 点击 RSS 源回调 (切到 RSS_ARTICLES 路由, 携带 Book)
@@ -61,7 +61,7 @@ fun OhosRssSourcesScreen(
             ) {
                 Text(
                     text = "暂无 RSS 源",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = AppTheme.colors.secondaryText,
                     fontSize = 14.sp,
                 )
             }
@@ -88,7 +88,7 @@ private fun RssSourceRow(book: Book, onClick: () -> Unit) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = book.name,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = AppTheme.colors.primaryText,
                 fontSize = 16.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -97,7 +97,7 @@ private fun RssSourceRow(book: Book, onClick: () -> Unit) {
             val feedUrl = book.tocUrl.ifBlank { book.bookUrl }
             Text(
                 text = feedUrl,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = AppTheme.colors.secondaryText,
                 fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -118,7 +118,7 @@ internal fun OhosRssTopBar(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
+        color = AppTheme.colors.background,
     ) {
         Row(
             modifier = Modifier
@@ -134,7 +134,7 @@ internal fun OhosRssTopBar(
             Text(
                 text = title,
                 fontSize = 20.sp,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = AppTheme.colors.primaryText,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

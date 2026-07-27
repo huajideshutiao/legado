@@ -13,6 +13,7 @@ import kotlinx.serialization.Serializable
  * 原 getConfigJsonObject() 依赖 org.json.JSONObject (Android 平台特有),
  * 已抽取到 androidMain/ServerExt.kt 作为扩展函数, commonMain 只保留纯数据模型。
  */
+@Serializable
 @Entity(tableName = "servers")
 data class Server(
     @PrimaryKey

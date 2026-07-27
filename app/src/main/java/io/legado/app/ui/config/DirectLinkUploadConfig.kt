@@ -8,8 +8,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -82,20 +82,16 @@ class DirectLinkUploadConfig : BaseComposeDialogFragment() {
                 actions = {
                     OverflowMenu { dismissMenu ->
                         DropdownMenuItem(
-                            text = {
-                                Text(stringResource(R.string.copy_rule), color = colors.primaryText)
-                            },
                             onClick = {
                                 dismissMenu()
                                 getRule()?.let { rule ->
                                     requireContext().sendToClip(GSON.toJson(rule))
                                 }
                             },
-                        )
+                        ) {
+                            Text(stringResource(R.string.copy_rule), color = colors.primaryText)
+                        }
                         DropdownMenuItem(
-                            text = {
-                                Text(stringResource(R.string.paste_rule), color = colors.primaryText)
-                            },
                             onClick = {
                                 dismissMenu()
                                 runCatching {
@@ -108,16 +104,17 @@ class DirectLinkUploadConfig : BaseComposeDialogFragment() {
                                     toastOnUi("剪贴板为空或格式不对")
                                 }
                             },
-                        )
+                        ) {
+                            Text(stringResource(R.string.paste_rule), color = colors.primaryText)
+                        }
                         DropdownMenuItem(
-                            text = {
-                                Text(
-                                    stringResource(R.string.import_default_rule),
-                                    color = colors.primaryText
-                                )
-                            },
                             onClick = { dismissMenu(); importDefault() },
-                        )
+                        ) {
+                            Text(
+                                stringResource(R.string.import_default_rule),
+                                color = colors.primaryText
+                            )
+                        }
                     }
                 },
             )

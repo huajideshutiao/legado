@@ -6,7 +6,7 @@
  * - **主调方向**：业务层（AnalyzeRule / BaseSource / AnalyzeUrl / SharedJsScope / JsActivity）
  *   通过 [JsEngine.eval] / [JsEngine.getRuntimeScope] 等方法执行 JS。
  * - **被调方向**：JS 回调 Kotlin 对象方法（如 `image.decode(...)`）由 `@JsApi` 注解 +
- *   KSP 生成的 `JsApiDispatcher` 静态分派表处理（见 `modules/js-dispatch`），与本抽象正交。
+ *   KSP 生成的 `JsApiDispatcher` 静态分派表处理（注解见 `modules/js-api`，分派表见 `modules/quickjs`），与本抽象正交。
  * - **平台注入**：[JsBindings] 构造时统一注入 `platform` / `image` 两个常量/单例引用，
  *   由 [JsBindingInjector] 在宿主启动时注册（provider 模式，非 expect/actual）。
  * - **引擎绑定留 app**：`QuickJsJsEngine` / `RhinoJsEngine` 及各自 `SharedJsScopeProvider`

@@ -2,6 +2,7 @@ package io.legado.app.help.service
 
 import io.legado.app.constant.EventBus
 import io.legado.app.help.file.FileDownloaders
+import io.legado.app.help.file.desktopAppRootDir
 import io.legado.app.model.CacheBookShared
 import io.legado.app.utils.postEvent
 import kotlinx.coroutines.CoroutineScope
@@ -26,7 +27,7 @@ import java.nio.file.Paths
  * - **startUpdateBookService / stopUpdateBookService**: UpdateBook 编排暂未下沉,
  *   当前仅记录日志, TODO: KP3 后续把 UpdateBook 协程化下沉到 commonMain 后接入
  * - **startDownloadService**: 真实下载, 用 [FileDownloaders] 写文件到
- *   `~/legado/downloads/fileName`
+ *   `{desktopAppRootDir}/downloads/fileName`
  *
  * 模式参考 `registerAndroidMediaNotificationProvider`。
  *
@@ -89,10 +90,9 @@ class DesktopServiceLauncher(
     }
 
     override fun startDownloadService(url: String, fileName: String) {
-        // 真实下载: 用 FileDownloader 写文件到 ~/legado/downloads/fileName
+        // 真实下载: 用 FileDownloader 写文件到 {desktopAppRootDir}/downloads/fileName
         scope.launch {
-            val home = System.getProperty("user.home")
-            val destPath = Paths.get(home, ".legado", "downloads").toString()
+            val destPath = Paths.get(desktopAppRootDir(), "downloads").toString()
             val ok = FileDownloaders.get().download(url, destPath, fileName)
             if (!ok) {
                 System.err.println("[DesktopServiceLauncher] download failed: url=$url fileName=$fileName")

@@ -31,10 +31,12 @@ import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.MaterialTheme
+import androidx.compose.foundation.focusable
 import androidx.compose.material.RadioButton
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,15 +45,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -61,21 +60,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.platform.handleMediaKeys
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlin.math.abs
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 /**
  * 视频播放页主体内容 (标题栏 + 渲染槽 + 章节控制栏)。
  *
- * 平台渲染层通过 [videoRenderSlot] 注入: desktop 传 SwingPanel(vlcj) 叠加 [VideoControlsOverlay] /
- * [LoadingOverlay] / [ErrorOverlay]; app 传 AndroidView(PlayerView) + 自有控件层。槽内自管
+ * 平台渲染层通过 [videoRenderSlot] 注入: desktop 传 SwingPanel(AWT Canvas, mpv --wid 嵌入,
+ * 控制层用 mpv 内建 OSC); app 传 AndroidView(PlayerView) + 自有控件层。槽内自管
  * 渲染面 + 控件叠加 + 加载/错误态, 复用本文件导出的 Composable。
  *
- * 键盘事件: Escape/Spacebar/←/→ 挂在最外层 Box 的 onPreviewKeyEvent, 回调由调用方注入
+ * 键盘事件: 最外层 Box 消费共享 handleMediaKeys (空格/←/→/↑/↓/Esc), 回调由调用方注入
  * (与 [VideoControlsOverlay] 按钮共用同一 lambda)。新参数均带默认值, 保持 desktop 现有调用不报错。
  *
  * @param bookName 书名
@@ -129,81 +127,31 @@ fun VideoPlayerScreenContent(
     containerColor: Color = Color(0xFF000000),
 ) {
     val scope = rememberCoroutineScope()
-    // 长按右方向键倍速 timer (400ms 阈值)
-    var speedJob by remember { mutableStateOf<Job?>(null) }
-    // KeyEventType 无 KeyRepeat, 用按下标记自管首次 KeyDown
-    var rightKeyHeld by remember { mutableStateOf(false) }
-    var spaceHeld by remember { mutableStateOf(false) }
+    // 键盘事件焦点: onPreviewKeyEvent 需焦点路径上有节点持焦才触发, 进入即取焦点
+    // (desktop 端渲染槽另有 focusRequester, 后取焦者生效, 根节点 handler 均在焦点路径上)
+    val keyFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        runCatching { keyFocusRequester.requestFocus() }
+    }
 
     Box(
         Modifier
             .fillMaxSize()
             .background(containerColor)
-            .onPreviewKeyEvent { event ->
-                when (event.key) {
-                    Key.Escape -> {
-                        // 控制层可见先收控制层, 否则返回
-                        if (event.type == KeyEventType.KeyDown) {
-                            if (controlsVisible) onToggleControls() else onBack()
-                            true
-                        } else false
-                    }
-                    Key.Spacebar -> {
-                        // 播放/暂停 (KeyRepeat 期间不重复触发)
-                        when (event.type) {
-                            KeyEventType.KeyDown -> {
-                                if (!spaceHeld) {
-                                    spaceHeld = true
-                                    onPlayPause()
-                                }
-                                true
-                            }
-                            KeyEventType.KeyUp -> {
-                                spaceHeld = false
-                                true
-                            }
-                            else -> false
-                        }
-                    }
-                    Key.DirectionLeft -> {
-                        // 控制层可见时 seek -10s, 否则不消费 (让其他处理)
-                        if (event.type == KeyEventType.KeyDown && controlsVisible) {
-                            onSeekDelta(-10000L)
-                            true
-                        } else false
-                    }
-                    Key.DirectionRight -> {
-                        // 控制层可见: 单击 seek +10s, 长按 400ms 切 2x 倍速, 松开恢复 1x
-                        when (event.type) {
-                            KeyEventType.KeyDown -> {
-                                if (controlsVisible) {
-                                    if (!rightKeyHeld) {
-                                        rightKeyHeld = true
-                                        onSeekDelta(10000L)
-                                        speedJob?.cancel()
-                                        speedJob = scope.launch {
-                                            delay(400L)
-                                            onSpeedChange(2.0f)
-                                        }
-                                    }
-                                    true
-                                } else false
-                            }
-                            KeyEventType.KeyUp -> {
-                                if (rightKeyHeld) {
-                                    rightKeyHeld = false
-                                    speedJob?.cancel()
-                                    speedJob = null
-                                    onSpeedChange(1.0f)
-                                    true
-                                } else false
-                            }
-                            else -> false
-                        }
-                    }
-                    else -> false
-                }
-            }
+            // 键盘快捷键: 消费共享 handleMediaKeys
+            // (Space=播放/暂停, ←/→=seek ∓10s, 长按 →=2x 倍速, ↑/↓=上/下一章;
+            //  Esc/Backspace 控制层可见先收控制层, 否则返回)
+            .handleMediaKeys(
+                onTogglePlayPause = onPlayPause,
+                onSeekDelta = onSeekDelta,
+                onPrev = onPrevChapter,
+                onNext = onNextChapter,
+                onSpeedChange = onSpeedChange,
+                onBack = { if (controlsVisible) onToggleControls() else onBack() },
+                scope = scope,
+            )
+            .focusRequester(keyFocusRequester)
+            .focusable()
     ) {
         Column(Modifier.fillMaxSize()) {
             if (topBarSlot != null) {
@@ -648,7 +596,7 @@ fun SpeedButton(
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier
-                .clip(RoundedCornerShape(4.dp))
+                .clip(DesignTokens.shapeSm)
                 .clickable { expanded = true }
                 .padding(12.dp),
         )
@@ -694,7 +642,7 @@ fun ResolutionButton(
         fontSize = 14.sp,
         fontWeight = FontWeight.Bold,
         modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
+            .clip(DesignTokens.shapeSm)
             .clickable { showDialog = true }
             .padding(12.dp),
     )

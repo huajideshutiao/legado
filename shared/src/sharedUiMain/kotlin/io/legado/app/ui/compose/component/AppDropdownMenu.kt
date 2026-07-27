@@ -2,13 +2,13 @@ package io.legado.app.ui.compose.component
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.DropdownMenu
-import androidx.compose.material.Surface
+import androidx.compose.material.LocalContentColor
+import androidx.compose.material.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.DpOffset
-import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.theme.AppTheme
 
 /**
@@ -24,20 +24,19 @@ fun AppDropdownMenu(
     offset: DpOffset = DpOffset.Zero,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    // MD2 DropdownMenu 不支持 shape/containerColor/shadowElevation，用 Surface 包裹 content 复刻视觉
-    DropdownMenu(
-        expanded = expanded,
-        onDismissRequest = onDismissRequest,
-        modifier = modifier,
-        offset = offset,
-    ) {
-        Surface(
-            shape = RoundedCornerShape(8.dp),
-            color = AppTheme.colors.bottomBackground,
-            elevation = 8.dp,
+    // 覆盖 MD2 DropdownMenu 外层 Surface 的 surface 色，避免顶部/底部 8dp padding 区域漏底色
+    // MaterialTheme 必须在 DropdownMenu 外层，Surface 的 color 在 content lambda 调用前就已求值
+    MaterialTheme(colors = MaterialTheme.colors.copy(surface = AppTheme.colors.bottomBackground)) {
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = onDismissRequest,
+            modifier = modifier,
+            offset = offset,
         ) {
-            Column {
-                content()
+            CompositionLocalProvider(LocalContentColor provides AppTheme.colors.menuText) {
+                Column {
+                    content()
+                }
             }
         }
     }

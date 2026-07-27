@@ -21,8 +21,8 @@ import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Text
+import androidx.compose.material.CircularProgressIndicator
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -284,7 +284,7 @@ private fun LazyItemScope.MangaPageCell(state: MangaRenderState, item: MangaPage
                     CircularProgressIndicator(
                         color = Color.White,
                         strokeWidth = 4.dp,
-                        trackColor = Color.Transparent,
+                        backgroundColor = Color.Transparent,
                         modifier = Modifier.size(48.dp),
                     )
                     Text(text = progress, color = Color.White)

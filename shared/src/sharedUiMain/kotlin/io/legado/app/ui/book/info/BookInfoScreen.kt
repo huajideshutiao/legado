@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -26,7 +27,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.text.selection.DisableSelection
@@ -75,6 +75,7 @@ import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.splitNotBlank
 
@@ -268,12 +269,13 @@ private fun PortraitLayout(
     introImageSlot: @Composable (String, () -> Unit) -> Unit,
 ) {
     val pullState = rememberPullToRefreshState()
+    val isRefreshing = state.tocText == null
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier
                 .fillMaxSize()
                 .pullToRefresh(
-                    isRefreshing = false,
+                    isRefreshing = isRefreshing,
                     state = pullState,
                     onRefresh = { actions.onRefresh() },
                 ),
@@ -310,7 +312,7 @@ private fun PortraitLayout(
             }
             PullToRefreshDefaults.Indicator(
                 state = pullState,
-                isRefreshing = false,
+                isRefreshing = isRefreshing,
                 modifier = Modifier.align(Alignment.TopCenter),
                 color = AppTheme.colors.accent,
             )
@@ -352,6 +354,7 @@ private fun LandscapeLayout(
         }
         // 右半:下拉刷新 + 动作行/分类/简介 + 底部按钮
         val pullState = rememberPullToRefreshState()
+        val isRefreshing = state.tocText == null
         Box(
             Modifier
                 .weight(1f)
@@ -361,7 +364,7 @@ private fun LandscapeLayout(
                 Modifier
                     .fillMaxSize()
                     .pullToRefresh(
-                        isRefreshing = false,
+                        isRefreshing = isRefreshing,
                         state = pullState,
                         onRefresh = { actions.onRefresh() },
                     ),
@@ -381,7 +384,7 @@ private fun LandscapeLayout(
                 }
                 PullToRefreshDefaults.Indicator(
                     state = pullState,
-                    isRefreshing = false,
+                    isRefreshing = isRefreshing,
                     modifier = Modifier.align(Alignment.TopCenter),
                     color = AppTheme.colors.accent,
                 )
@@ -645,7 +648,7 @@ private fun InfoCover(
         state.book,
         modifier
             .height(144.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(DesignTokens.shapeDefault)
             .then(
                 if (cardBg) Modifier.background(AppTheme.colors.bottomBackground)
                 else Modifier
@@ -740,6 +743,8 @@ private fun ActionCell(
     onLongClick: (() -> Unit)? = null,
 ) {
     val summary = AppTheme.colors.secondaryText
+    // 两行最小高度, 复刻原 XML lines=2 + gravity=center 的文本垂直居中
+    val twoLineHeight = with(LocalDensity.current) { (14.sp * 1.5f * 2).toDp() }
     Column(
         modifier
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
@@ -747,18 +752,22 @@ private fun ActionCell(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(rememberPainter(iconKey), null, tint = summary, modifier = Modifier.size(24.dp))
-        Text(
-            text = text,
-            color = summary,
-            fontSize = 14.sp,
-            textAlign = TextAlign.Center,
-            minLines = 2,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 2.dp),
-        )
+                .padding(top = 2.dp)
+                .heightIn(min = twoLineHeight),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = text,
+                color = summary,
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -831,7 +840,7 @@ private fun KindChip(
     Box(
         Modifier
             .padding(4.dp) // selector inset
-            .clip(RoundedCornerShape(8.dp))
+            .clip(DesignTokens.shapeDefault)
             .background(bg)
             .then(
                 if (onClick != null) Modifier.combinedClickable(
@@ -971,7 +980,7 @@ private fun IntroRichText(part: IntroTextPart, onAction: (String) -> Unit) {
                     Modifier
                         .fillMaxSize()
                         .padding(4.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(DesignTokens.shapeDefault)
                         .background(bg)
                         .clickable(
                             interactionSource = interaction,
@@ -1025,7 +1034,7 @@ private fun BottomButtons(
         ArcoSolidButton(
             text = rememberString("reading"),
             bg = colors.accent,
-            textColor = Color.White,
+            textColor = if (ColorUtils.isColorLight(AppTheme.colors.accent.toArgb())) Color.Black else Color.White,
             modifier = Modifier
                 .weight(1f)
                 .padding(end = 16.dp),
@@ -1047,7 +1056,7 @@ private fun ArcoSolidButton(
     Box(
         modifier
             .height(48.dp) // arco_view_height_xl
-            .clip(RoundedCornerShape(8.dp))
+            .clip(DesignTokens.shapeDefault)
             .background(realBg)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,

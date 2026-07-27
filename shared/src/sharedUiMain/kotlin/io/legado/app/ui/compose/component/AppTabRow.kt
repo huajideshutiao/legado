@@ -28,7 +28,7 @@ private data class TabPos(val x: Float = 0f, val w: Float = 0f)
 
 /**
  * 复刻 TabLayout MODE_SCROLLABLE(view_tab_layout_min)：tab 宽度随内容
- * (M3 ScrollableTabRow 硬编码 90dp 最小 tab 宽，会拉大 tab 间距，不可用)。
+ * (material 的 ScrollableTabRow — M2/M3 同样 — 硬编码 90dp 最小 tab 宽，会拉大 tab 间距，不可用)。
  * 2dp 指示条画在行底随选中平移，选中项滚至可视区居中；E-Ink 均不动画。
  */
 @Composable

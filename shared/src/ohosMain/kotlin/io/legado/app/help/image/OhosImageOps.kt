@@ -70,7 +70,7 @@ object OhosImageOps : ImageOps {
             return OhosImageRef(bytes)
         }
         // 桥接就绪: 通过 napi 调 ArkTS image.createImageSource + createPixelMap
-        val payload = KS_JSON.encodeToString(DecodePayload(bytes = Base64.encodeToString(bytes)))
+        val payload = KS_JSON.encodeToString(DecodePayload(bytes = Base64.encode(bytes)))
         val result = OhosNativeBridge.invokeImageSync("decode", payload)
         if (result == null) {
             // 桥接调用失败 (tsfn 异常 / 超时): 降级为字节持有

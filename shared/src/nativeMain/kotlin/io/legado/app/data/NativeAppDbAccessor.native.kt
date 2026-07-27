@@ -6,6 +6,7 @@ import io.legado.app.data.dao.BookGroupDao
 import io.legado.app.data.dao.BookmarkDao
 import io.legado.app.data.dao.BookSourceDao
 import io.legado.app.data.dao.CacheDao
+import io.legado.app.data.dao.CookieDao
 import io.legado.app.data.dao.DictRuleDao
 import io.legado.app.data.dao.HttpTTSDao
 import io.legado.app.data.dao.ReadRecordDao
@@ -64,6 +65,7 @@ class NativeAppDbAccessor : AppDbAccessor {
     override val sourceFilterRuleDao: SourceFilterRuleDao get() = appDb.sourceFilterRuleDao
     override val httpTTSDao: HttpTTSDao get() = appDb.httpTTSDao
     override val cacheDao: CacheDao get() = appDb.cacheDao
+    override val cookieDao: CookieDao get() = appDb.cookieDao
     // RuleSubViewModelShared 用 (规则订阅 CRUD)
     override val ruleSubDao: RuleSubDao get() = appDb.ruleSubDao
     // AllBookmarkViewModelShared / TocViewModel.saveBookmark 用 (书签导出/保存)

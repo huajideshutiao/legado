@@ -10,6 +10,7 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.lib.webdav.Authorization
 import io.legado.app.lib.webdav.WebDav
@@ -18,7 +19,6 @@ import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.remote.RemoteBook
 import io.legado.app.utils.AlphanumComparator
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -100,7 +100,7 @@ class RemoteBookViewModelShared(
      * @param onSuccess 初始化成功回调 (调用方通常 [upPath] 拉取根目录列表)
      */
     fun initData(onSuccess: () -> Unit) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             try {
                 isDefaultWebdav = false
                 val serverId = AppConfigProviders.get().remoteServerId
@@ -121,8 +121,8 @@ class RemoteBookViewModelShared(
                 }
                 onSuccess()
             } catch (e: Throwable) {
-                AppLog.put("初始化webDav出错\n${e.localizedMessage}", e)
-                Toasters.get().toast("初始化webDav出错:${e.localizedMessage}")
+                AppLog.put("初始化webDav出错\n${e.message}", e)
+                Toasters.get().toast("初始化webDav出错:${e.message}")
             }
         }
     }
@@ -163,7 +163,7 @@ class RemoteBookViewModelShared(
         }
         val targetPath = path ?: rootUrl
         lastLoadedPath = targetPath
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             try {
                 _isLoading.value = true
                 _error.value = null
@@ -178,9 +178,9 @@ class RemoteBookViewModelShared(
                     .map { RemoteBook.create(it) }
                 _items.value = sortItems(remoteBooks)
             } catch (e: Throwable) {
-                AppLog.put("获取webDav书籍出错\n${e.localizedMessage}", e)
-                Toasters.get().toast("获取webDav书籍出错\n${e.localizedMessage}")
-                _error.value = e.localizedMessage
+                AppLog.put("获取webDav书籍出错\n${e.message}", e)
+                Toasters.get().toast("获取webDav书籍出错\n${e.message}")
+                _error.value = e.message
             } finally {
                 _isLoading.value = false
             }
@@ -217,7 +217,7 @@ class RemoteBookViewModelShared(
             finally()
             return
         }
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             try {
                 selection.forEach { remoteBook ->
                     val webDav = WebDav(remoteBook.path, auth)
@@ -233,7 +233,7 @@ class RemoteBookViewModelShared(
                     remoteBook.isOnBookShelf = true
                 }
             } catch (e: Throwable) {
-                AppLog.put("导入出错\n${e.localizedMessage}", e, true)
+                AppLog.put("导入出错\n${e.message}", e, true)
             } finally {
                 finally()
             }
@@ -256,7 +256,7 @@ class RemoteBookViewModelShared(
             // TODO: 压缩包格式阅读依赖平台专属 (app: SAF + FileDoc; desktop: 暂未实现)
             return
         }
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             val book = appDb.bookDao.getBookByFileName(filename)
             if (book != null) {
                 onStartRead(book)

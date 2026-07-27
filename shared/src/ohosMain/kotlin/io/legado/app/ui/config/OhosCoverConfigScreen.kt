@@ -20,7 +20,7 @@ import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.utils.MD5Utils
-import kotlin.io.File
+import io.legado.app.utils.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -29,7 +29,7 @@ import kotlinx.coroutines.withContext
  * 鸿蒙端封面设置页入口 (包装 shared/sharedUiMain 的 [CoverConfigScreen])。
  *
  * 实现模式参考 iOS 端 [IosCoverConfigScreen]: 复用 sharedUiMain 跨平台 Composable,
- * 避免复制代码; material3 原生组件 (TopAppBar 等) 接入待 API 明确后逐步替换顶栏。
+ * 避免复制代码; 顶栏用 sharedUiMain 的 [AppTitleBar] (项目锁 MD2 视觉, 不用 material3 TopAppBar)。
  *
  * @param onBack 返回回调
  */

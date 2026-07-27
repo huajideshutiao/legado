@@ -175,7 +175,7 @@ class BookSourceEditViewModelShared(
      * - `appDb.bookSourceDao.insert(source)` 写入;
      * - `bookSource = source` 更新当前引用;
      * - 成功回调 [success] (参数为保存的 source, 与 app 端 `source` 返回值一致);
-     * - 失败 `Toasters.get().toast(it.localizedMessage)` (替代 `context.toastOnUi(...)`,
+     * - 失败 `Toasters.get().toast(it.message)` (替代 `context.toastOnUi(...)`,
      *   注意原 app 端 save 的 onError 无 `?: "Error"` fallback, 保持一致) + `it.printOnDebug()`。
      *
      * 业务在 IO 跑 (DAO 写入必须 IO), 回调在 mainDispatcher 跑
@@ -214,8 +214,8 @@ class BookSourceEditViewModelShared(
             success?.invoke(it)
         }.onError {
             // 替代 context.toastOnUi(msg), Toasters.get() 已下沉 commonMain
-            // 注意: 原 app 端 save 的 onError 无 ?: "Error" fallback, 保持一致
-            Toasters.get().toast(it.localizedMessage)
+            // 原 app 端 save 的 onError 直接 toast localizedMessage; toast 需非空, 空时给空串
+            Toasters.get().toast(it.message ?: "")
             it.printOnDebug()
         }
     }
@@ -228,7 +228,7 @@ class BookSourceEditViewModelShared(
      * - 调 [clipTextProvider]() 取剪贴板文本 (替代 app 端 `getClipText()`);
      * - 空文本抛 `NoStackTraceException("剪贴板为空")`;
      * - 非空调 [importSource] (非 suspend 版, text + finally 回调) 解析;
-     * - 失败 `Toasters.get().toast(it.localizedMessage ?: "Error")`
+     * - 失败 `Toasters.get().toast(it.message ?: "Error")`
      *   (替代 `context.toastOnUi(...)`) + `it.printOnDebug()`。
      *
      * 业务在 IO 跑, 回调在 mainDispatcher 跑 (与 BaseViewModel.execute 默认值一致;
@@ -250,7 +250,7 @@ class BookSourceEditViewModelShared(
             }
         }.onError {
             // 替代 context.toastOnUi(msg), Toasters.get() 已下沉 commonMain
-            Toasters.get().toast(it.localizedMessage ?: "Error")
+            Toasters.get().toast(it.message ?: "Error")
             it.printOnDebug()
         }
     }
@@ -262,7 +262,7 @@ class BookSourceEditViewModelShared(
      *
      * - 调 [importSource] (suspend 版) 解析文本;
      * - 成功回调 [finally] (参数为解析出的 BookSource);
-     * - 失败 `Toasters.get().toast(it.localizedMessage ?: "Error")`
+     * - 失败 `Toasters.get().toast(it.message ?: "Error")`
      *   (替代 `context.toastOnUi(...)`) + `it.printOnDebug()`。
      *
      * 业务在 IO 跑, 回调在 mainDispatcher 跑 (与 BaseViewModel.execute 默认值一致)。
@@ -277,7 +277,7 @@ class BookSourceEditViewModelShared(
             finally.invoke(it)
         }.onError {
             // 替代 context.toastOnUi(msg), Toasters.get() 已下沉 commonMain
-            Toasters.get().toast(it.localizedMessage ?: "Error")
+            Toasters.get().toast(it.message ?: "Error")
             it.printOnDebug()
         }
     }

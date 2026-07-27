@@ -5,6 +5,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.utils.splitNotBlank
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 

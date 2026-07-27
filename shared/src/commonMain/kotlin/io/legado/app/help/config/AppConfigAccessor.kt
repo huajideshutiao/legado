@@ -1,5 +1,7 @@
 package io.legado.app.help.config
 
+import kotlin.concurrent.Volatile
+
 /**
  * AppConfig 跨模块只读访问接口。
  *
@@ -17,6 +19,9 @@ interface AppConfigAccessor {
 
     /** 目录页是否统计字数 (原 AppConfig.tocCountWords)。 */
     val tocCountWords: Boolean
+
+    /** 目录界面是否使用替换规则 (原 AppConfig.tocUiUseReplace), 默认 false。 */
+    val tocUiUseReplace: Boolean
 
     /** 简繁转换类型 (原 AppConfig.chineseConverterType): 0=不转换, 1=t2s, 2=s2t。 */
     var chineseConverterType: Int
@@ -58,7 +63,7 @@ interface AppConfigAccessor {
     /** 书架固定宽度模式 (原 AppConfig.bookshelfFixedWidthMode), 默认 false。 */
     val bookshelfFixedWidthMode: Boolean
 
-    /** 书架列表是否显示最后更新时间 (原 AppConfig.showLastUpdateTime), 默认 true。 */
+    /** 书架列表是否显示最后更新时间 (原 AppConfig.showLastUpdateTime), 默认 false。 */
     val showLastUpdateTime: Boolean
 
     /** 保存 Tab 位置 (原 AppConfig.saveTabPosition), 默认 0。 */
@@ -101,11 +106,10 @@ interface AppConfigAccessor {
     /**
      * 持久化 precisionSearch (原 `AppConfig.precisionSearch = value`)。
      *
-     * 默认 no-op: 端未实现持久化时 (桌面/iOS/鸿蒙现状与原 val 只读一致)。
-     * 需持久化的端 (Android) override 此方法写回 PreferenceStore。
-     * 保留 `val precisionSearch` 只读以避免扩散 4 端 impl 改 var。
+     * 无默认实现: SearchViewModel 切换开关依赖写回, 各端必须实现
+     * (Android 写 AppConfig, 桌面/iOS/鸿蒙写 PreferenceProvider)。
      */
-    fun setPrecisionSearch(value: Boolean) {}
+    fun setPrecisionSearch(value: Boolean)
 
     // ---- 缓存业务 ----
     /** 导出字符集 (原 AppConfig.exportCharset), 默认 "UTF-8"。 */
@@ -194,6 +198,32 @@ interface AppConfigAccessor {
 
     /** 批量换源延迟毫秒 (原 AppConfig.batchChangeSourceDelay), BookshelfManageViewModel.changeSource 用。 */
     val batchChangeSourceDelay: Int
+
+    // ---- Web 服务 / 其他 ----
+    /** Web 服务端口 (原 AppConfig.webPort), 默认 1122。合法区间校验在 WebServerManager.getPort。 */
+    val webPort: Int
+
+    /** 图片缓存大小 MB (原 AppConfig.bitmapCacheSize), 默认 50。 */
+    val bitmapCacheSize: Int
+
+    /** 源编辑最大行数 (原 AppConfig.sourceEditMaxLine): 存储值 <10 视为不限制, 返回 Int.MAX_VALUE。 */
+    val sourceEditMaxLine: Int
+
+    /** 欢迎页展示时长毫秒 (原 AppConfig.welcomeShowTime), 默认 600, 范围 0..3000。 */
+    val welcomeShowTime: Int
+}
+
+/**
+ * app 端 AppConfig intPref 区间钳制表 (语义权威), 各端 Accessor 读取时 coerceIn。
+ * Android 端由 AppConfig.intPref 自带钳制, 无需引用。
+ */
+object AppConfigRanges {
+    val bookshelfListIntroLines = 1..3
+    val bookshelfCoverHeight = 90..220
+    val bottomBarHeight = 36..80
+    val bottomBarIconSize = 18..36
+    val bottomBarLabelMode = 0..3
+    val welcomeShowTime = 0..3000
 }
 
 /**

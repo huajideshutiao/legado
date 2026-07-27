@@ -1,14 +1,5 @@
 package io.legado.desktop.ui.bookinfo
 
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -18,11 +9,6 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.toComposeImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
@@ -31,9 +17,12 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.help.book.addType
+import io.legado.app.help.AppWebDavShared
+import io.legado.app.help.book.getRemoteUrl
+import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.book.removeType
 import io.legado.app.help.toast.Toasters
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.book.changecover.ChangeCoverViewModelShared
@@ -45,8 +34,9 @@ import io.legado.app.ui.book.info.BookInfoUiActions
 import io.legado.app.ui.book.info.BookInfoUiState
 import io.legado.app.ui.book.info.BookInfoViewModelShared
 import io.legado.app.ui.book.source.SourceLoginDialog
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.jvmGetString
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
@@ -54,17 +44,13 @@ import io.legado.app.utils.browseUrl
 import io.legado.app.utils.decodeStringMapOrNull
 import io.legado.app.utils.encodeStringMap
 import io.legado.desktop.ui.component.DesktopBookCover
+import io.legado.desktop.ui.component.DesktopPhotoDialog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
-import javax.imageio.ImageIO
-import java.io.ByteArrayInputStream
-import java.io.File
-import okhttp3.Request
-import io.legado.app.help.http.OkHttpClientProviders
 
 /**
  * 桌面端书籍详情 Screen 入口 (包装 shared/sharedUiMain 的 [SharedBookInfoScreen])。
@@ -80,8 +66,8 @@ import io.legado.app.help.http.OkHttpClientProviders
  *   命中则 loadedBook=dao.getBook(bookUrl) 复用本地完整数据
  * - **UI state**: 构造 [BookInfoUiState], 桌面端固定竖屏布局 (isLandscape=false),
  *   关闭 dev 布局 (useDevFeat=false) / 关闭暗色判定 (isDarkTheme=false 由宿主主题决定)
- * - **actions**: 实现 [BookInfoUiActions] 30 个方法, 核心动作 (onBack/onReadClick/onShelfClick/
- *   onCopyBookUrl/onCopyTocUrl) 接入真实路由, 其余暂为 no-op + TODO 注释 (依赖未下沉 Dialog)
+ * - **actions**: 实现 [BookInfoUiActions] 30 个方法, 全部接入真实路由/Dialog
+ *   (详见 [DesktopBookInfoActions] KDoc)
  * - **slots**: 桌面端封面/插图加载, 不引入 Glide/Coil, 用 [DesktopBookCover]
  *   (JDK ImageIO + 项目已注册 OkHttp, 详见 [io.legado.desktop.ui.component.DesktopBookCover])
  *   - blurCoverBgSlot: 封面模糊背景 (加载失败回退纯色占位)
@@ -91,7 +77,6 @@ import io.legado.app.help.http.OkHttpClientProviders
  * # 简化项
  *
  * - 不接入下拉刷新图片封面 (桌面端无下拉手势)
- * - 不实现 onEdit/onShare/onLogin 等需 Android 专属 Dialog 的动作 (留 TODO)
  * - onRefresh 仅刷新书源名 (调 shared.refreshBookSourceName), 不重新拉网络详情
  *
  * @param book 详情页书籍 (SearchBook/Book), 由 DesktopApp 注入
@@ -104,6 +89,8 @@ import io.legado.app.help.http.OkHttpClientProviders
  *   对照 app 端 BookInfoActivity.search 启动 SearchActivity (putExtra key/submit)
  * @param onExplore 发现结果回调 (author/kind 含 "::" 时切到 EXPLORE_SHOW 路由,
  *   对照 app 端 search 内 tmp.size > 1 分支启动 ExploreShowActivity)
+ * @param onOpenReviewList 书评列表回调 (菜单"书评"触发, 切到 REVIEW_LIST 路由;
+ *   对照 app 端 openCommentDialog → ReviewListDialog(book, null, -1))
  */
 @Composable
 fun BookInfoScreen(
@@ -115,6 +102,7 @@ fun BookInfoScreen(
     onTocClick: (Book) -> Unit = {},
     onSearch: (String, Boolean) -> Unit = { _, _ -> },
     onExplore: (BookSource, String, String) -> Unit = { _, _, _ -> },
+    onOpenReviewList: (Book) -> Unit = {},
 ) {
     // SearchBook → Book 转换 (Book 直接用, 其他类型暂无, 兜底 null)
     val displayBook: Book? = remember(book) {
@@ -141,9 +129,8 @@ fun BookInfoScreen(
 
     val scope = rememberCoroutineScope()
 
-    // 复用 shared commonMain 的 BookInfoViewModelShared, 让 onTopBook 等无 Android 依赖的
-    // 业务方法真正工作 (替代原 TODO no-op)。其余 actions 仍保留 TODO, 因依赖未下沉的
-    // Dialog/Activity 路由 (onEdit/onShare/onLogin/onSetSourceVariable/...)。
+    // 复用 shared commonMain 的 BookInfoViewModelShared, 让 onTopBook/upWaitDialog 等
+    // 无 Android 依赖的业务方法真正工作。
     //
     // effectiveBook 同步到 shared, 让 shared.topBook() 等方法能读到当前 book;
     // 桌面端不订阅 shared.bookData/waitDialogData/actionLive (无对应 UI 入口),
@@ -192,11 +179,36 @@ fun BookInfoScreen(
     // 图片大图查看对话框状态 (null=隐藏, 非空=显示; onCoverClick/onShowPhoto 触发,
     // 末尾 AlertDialog 渲染分支读取, 对照 app 端 BookInfoActivity 弹 PhotoDialog)
     var photoSrc by remember { mutableStateOf<String?>(null) }
+    // 上传覆盖确认对话框状态 (onUploadBook 触发, 仅当 book 已有远程 URL 时显示;
+    // 对照 app 端 BookInfoActivity.uploadBook 的 alert(R.string.draw, R.string.sure_upload))
+    var showUploadConfirmDialog by remember { mutableStateOf(false) }
     val groups by produceState<List<BookGroup>>(emptyList()) {
         AppDbProviders.get().bookGroupDao.flowAll().collect { value = it }
     }
+    // 当前书源 (供菜单显隐, 对照 app 端 vm.curBookSource)
+    val curSource by produceState<BookSource?>(null, effectiveBook?.origin) {
+        value = effectiveBook?.origin?.let { AppDbProviders.get().bookSourceDao.getBookSource(it) }
+    }
 
-    val state = remember(effectiveBook, inBookshelf, coverTickState.value, bookTickState.value) {
+    // 上传书籍协程 (供 onUploadBook 直接调用 + 确认对话框 OK 按钮调用)
+    // 对照 app 端 BookInfoViewModel.uploadBook: upWaitDialog(true) + upload + save,
+    // onSuccess toast "上传成功", onError toast 异常, onFinally upWaitDialog(false)
+    val launchUpload: () -> Unit = {
+        scope.launch {
+            val b = effectiveBook ?: return@launch
+            try {
+                shared.upWaitDialog(true)
+                AppWebDavShared.uploadBook(b)
+                Toasters.get().toast(jvmGetString("upload_success"))
+            } catch (e: Throwable) {
+                Toasters.get().toast(e.localizedMessage ?: jvmGetString("upload_failed"))
+            } finally {
+                shared.upWaitDialog(false)
+            }
+        }
+    }
+
+    val state = remember(effectiveBook, inBookshelf, coverTickState.value, bookTickState.value, curSource) {
         BookInfoUiState(
             book = effectiveBook,
             // bookTick 绑定 bookTickState.value: onToggleCanUpdate/onToggleSplitLongChapter
@@ -213,16 +225,17 @@ fun BookInfoScreen(
             isLandscape = false,
             useDevFeat = false,
             isDarkTheme = false,
+            // 菜单项显隐逐项对照 app 端 BookInfoActivity 第 201-211 行的 BookInfoMenuState 构造
             menuState = BookInfoMenuState(
-                isLocal = false,
-                isWebDav = false,
-                hasSource = false,
-                sourceHasLogin = false,
-                sourceHasReviewRule = false,
+                isLocal = effectiveBook?.origin == BookType.localTag,
+                isWebDav = effectiveBook?.origin?.startsWith(BookType.webDavTag) == true,
+                hasSource = curSource != null,
+                sourceHasLogin = curSource?.hasLogin() == true,
+                sourceHasReviewRule = curSource?.reviewRule?.reviewUrl?.isNotBlank() == true,
                 // canUpdate / splitLongChapter 从 book 字段读取, onToggle 后菜单状态正确反映
                 // (对照 app 端 onMenuPaused 内联求值 book?.canUpdate / book?.config.splitLongChapter)
                 canUpdate = effectiveBook?.canUpdate ?: true,
-                isLocalTxt = false,
+                isLocalTxt = effectiveBook?.isLocalTxt == true,
                 splitLongChapter = effectiveBook?.config?.splitLongChapter ?: false,
                 bookUrl = effectiveBook?.bookUrl,
                 tocUrl = effectiveBook?.tocUrl,
@@ -230,7 +243,7 @@ fun BookInfoScreen(
         )
     }
 
-    val actions = remember(effectiveBook, inBookshelf, onBack, onReadClick, onEditClick, onOriginClick, onTocClick, onSearch, onExplore, shared, scope) {
+    val actions = remember(effectiveBook, inBookshelf, onBack, onReadClick, onEditClick, onOriginClick, onTocClick, onSearch, onExplore, onOpenReviewList, shared, scope) {
         DesktopBookInfoActions(
             book = effectiveBook,
             inBookshelf = inBookshelf,
@@ -269,6 +282,15 @@ fun BookInfoScreen(
             onCoverLongClickCb = { showChangeCoverDialog = true },
             // onCoverClick/onShowPhoto 触发图片大图查看对话框显示 (对照 app 端弹 PhotoDialog)
             onShowPhotoCb = { src -> photoSrc = src },
+            // 菜单"书评"触发 (对照 app 端 openCommentDialog → ReviewListDialog(book, null, -1))
+            onOpenReviewListCb = { effectiveBook?.let(onOpenReviewList) },
+            // 上传书籍触发 (对照 app 端 BookInfoActivity.uploadBook:
+            // 已有远程 URL 则弹覆盖确认对话框, 否则直接上传)
+            onUploadBookCb = {
+                effectiveBook?.let { b ->
+                    if (b.getRemoteUrl() != null) showUploadConfirmDialog = true else launchUpload()
+                }
+            },
         )
     }
 
@@ -397,10 +419,22 @@ fun BookInfoScreen(
     }
 
     // ---- 图片大图查看对话框 (onCoverClick/onShowPhoto 触发, 对照 app 端 PhotoDialog) ----
-    // desktop 无 PhotoDialog, 用 AlertDialog + Image 简易实现: produceState 异步加载图片为
-    // ImageBitmap (本地路径用 ImageIO, 网络路径用 OkHttp 下载后 ImageIO 解码, 与 DesktopBookCover 一致)
+    // 复用 desktop component 的 DesktopPhotoDialog (OkHttp + ImageIO, 与段评查看大图共用)
     photoSrc?.let { src ->
         DesktopPhotoDialog(src = src, onDismiss = { photoSrc = null })
+    }
+
+    // ---- 上传覆盖确认对话框 (onUploadBook 触发, 仅当 book 已有远程 URL 时显示) ----
+    // 对照 app 端 BookInfoActivity.uploadBook: alert(R.string.draw, R.string.sure_upload)
+    // { okButton { viewModel.uploadBook(book) }; cancelButton() } (与 iOS 端同款接法)
+    if (showUploadConfirmDialog) {
+        AppAlertDialog(
+            onDismissRequest = { showUploadConfirmDialog = false },
+            title = jvmGetString("draw"),
+            message = jvmGetString("sure_upload"),
+            okButton = AlertButton(text = jvmGetString("ok")) { launchUpload() },
+            cancelButton = AlertButton(text = jvmGetString("cancel")),
+        )
     }
 }
 
@@ -412,8 +446,9 @@ fun BookInfoScreen(
  *   / [onTopBook] (复用 [BookInfoViewModelShared]) / [onToggleCanUpdate] / [onToggleSplitLongChapter]
  *   / [onSearchAuthor] / [onSearchKind] / [onNameClick] / [onDispatchIntroAction] / [onShare]
  *   / [onCoverClick] / [onShowPhoto] / [onOriginLongClick]
- * - 保留 TODO: [onUploadBook] / [onDownloadToLocal] (依赖未下沉的 RemoteBookWebDav /
- *   DesktopFileBookAccessor.downloadRemoteBook) / [onOpenCommentDialog] (依赖 ReviewListDialog)
+ *   / [onOpenCommentDialog] (切 REVIEW_LIST 路由, 对照 app 端 ReviewListDialog(book, null, -1))
+ *   / [onUploadBook] (AppWebDavShared.uploadBook, 已有远程 URL 先弹覆盖确认)
+ *   / [onDownloadToLocal] (FileBook.downloadRemoteBook, DesktopFileBookAccessor 实现)
  *
  * @param book 当前展示的 Book (可能为 null, onShelfClick 等动作内做 null 安全)
  * @param inBookshelf 当前书架状态 (onShelfClick/onToggleCanUpdate 用)
@@ -451,6 +486,10 @@ private class DesktopBookInfoActions(
     // onCoverClick/onShowPhoto 触发回调: 由 BookInfoScreen 注入, 弹图片大图查看 Dialog
     // (对照 app 端 BookInfoActivity.onCoverClick/onShowPhoto → showDialogFragment(PhotoDialog))
     private val onShowPhotoCb: (String) -> Unit,
+    // 菜单"书评"触发回调: 由 BookInfoScreen 注入, 切 REVIEW_LIST 路由
+    private val onOpenReviewListCb: () -> Unit,
+    // 上传书籍触发回调: 由 BookInfoScreen 注入, 按有无远程 URL 决定弹确认对话框或直接上传
+    private val onUploadBookCb: () -> Unit,
 ) : BookInfoUiActions {
 
     override fun onBack() = onBack.invoke()
@@ -495,16 +534,26 @@ private class DesktopBookInfoActions(
     }
 
     override fun onUploadBook() {
-        // TODO: 依赖 AppWebDav.defaultBookWebDav (RemoteBookWebDav) 上传整本书到远程,
-        //   该类依赖 Android 专属组件 (withNetworkCheck/Uri), 未下沉 shared;
-        //   AppWebDavShared 仅有 uploadBookProgress (进度同步), 无 upload(book) 整本上传
-        Toasters.get().toast(jvmGetString("desktop_upload_not_supported"))
+        // 上传本地书到 WebDav (对照 app 端 BookInfoActivity.uploadBook)
+        // 外层 Composable 按 getRemoteUrl 决定弹覆盖确认对话框或直接上传
+        onUploadBookCb.invoke()
     }
 
     override fun onDownloadToLocal() {
-        // TODO: 依赖 DesktopFileBookAccessor.downloadRemoteBook (当前抛 UnsupportedOperationException)
-        //   或 app 端 FileBook.downloadRemoteBook (依赖 Android Uri), 桌面端未实现
-        Toasters.get().toast(jvmGetString("desktop_download_local_not_supported"))
+        // 下载远程书籍到本地 (对照 app 端 BookInfoViewModel.downloadToLocal:
+        // execute { FileBook.downloadRemoteBook(book) }.onSuccess { toast("下载成功"); upBook }
+        //   .onError { AppLog.put("下载远程书籍<name>失败", e, true) })
+        // FileBook 走 DesktopFileBookAccessor.downloadRemoteBook (saveBookFile + 归档解压 + dao.update)
+        val b = book ?: return
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { FileBook.downloadRemoteBook(b) }
+                Toasters.get().toast(jvmGetString("download_success"))
+                shared.upBook(b)
+            } catch (e: Throwable) {
+                AppLog.put(jvmGetString("download_remote_book_failed_log", b.name), e, true)
+            }
+        }
     }
 
     override fun onTopBook() {
@@ -526,7 +575,8 @@ private class DesktopBookInfoActions(
     }
 
     override fun onOpenCommentDialog() {
-        // TODO: 依赖书源评论规则 + 评论列表 Dialog, 桌面端未下沉
+        // 书籍级书评列表 (对照 app 端 openCommentDialog → ReviewListDialog(book, null, -1))
+        onOpenReviewListCb.invoke()
     }
 
     override fun onSetSourceVariable() {
@@ -737,53 +787,3 @@ private class DesktopBookInfoActions(
     }
 }
 
-/**
- * 桌面端图片大图查看 Dialog (替代 app 端 PhotoDialog)。
- *
- * 用 [produceState] 异步加载图片为 [ImageBitmap] (本地路径用 [ImageIO.read], 网络路径用
- * OkHttp 下载后 [ImageIO.read]), 在 [AlertDialog] 内 [Image] 显示。
- * 加载策略与 [DesktopBookCover] 一致 (JDK ImageIO + OkHttp, 不引入 Glide)。
- *
- * @param src 图片路径 (本地路径 / file:// / http(s)://)
- * @param onDismiss 关闭回调
- */
-@Composable
-private fun DesktopPhotoDialog(src: String, onDismiss: () -> Unit) {
-    val bitmap by produceState<ImageBitmap?>(null, src) {
-        value = withContext(Dispatchers.IO) {
-            runCatching {
-                val input: java.io.InputStream = when {
-                    src.startsWith("http", true) -> {
-                        val client = OkHttpClientProviders.get().okHttpClient
-                        val response = client.newCall(Request.Builder().url(src).build()).execute()
-                        ByteArrayInputStream(response.body?.bytes() ?: ByteArray(0))
-                    }
-                    src.startsWith("file:") -> {
-                        val path = java.net.URI(src).path ?: src.removePrefix("file:")
-                        File(path).inputStream()
-                    }
-                    else -> File(src).inputStream()
-                }
-                ImageIO.read(input)?.toComposeImageBitmap()
-            }.getOrNull()
-        }
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            androidx.compose.material3.TextButton(onClick = onDismiss) {
-                Text(rememberString("close"))
-            }
-        },
-        text = {
-            bitmap?.let { b ->
-                Image(
-                    bitmap = b,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxWidth().fillMaxHeight(0.8f),
-                    contentScale = ContentScale.Fit,
-                )
-            } ?: Text(rememberString("loading"))
-        },
-    )
-}

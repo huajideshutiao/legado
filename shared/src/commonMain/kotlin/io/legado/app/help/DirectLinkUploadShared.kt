@@ -3,6 +3,7 @@ package io.legado.app.help
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.toJson
+import kotlin.concurrent.Volatile
 import kotlinx.serialization.Serializable
 
 /**

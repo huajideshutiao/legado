@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
@@ -35,6 +34,7 @@ import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 
 /**
@@ -289,7 +289,7 @@ fun DefaultBookCoverPlaceholder(book: Book) {
         Modifier
             .fillMaxWidth()
             .height(160.dp)
-            .clip(RoundedCornerShape(4.dp))
+            .clip(DesignTokens.shapeSm)
             .background(accent),
         contentAlignment = Alignment.Center,
     ) {

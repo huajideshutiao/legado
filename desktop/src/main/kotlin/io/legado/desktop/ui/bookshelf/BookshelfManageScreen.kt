@@ -1,10 +1,9 @@
 package io.legado.desktop.ui.bookshelf
 
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -15,6 +14,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDatabaseProviders
@@ -37,6 +38,8 @@ import io.legado.app.ui.book.manage.BookshelfManageCallbacks
 import io.legado.app.ui.book.manage.BookshelfManageScreen as SharedBookshelfManageScreen
 import io.legado.app.ui.book.manage.BookshelfManageState
 import io.legado.app.ui.book.manage.SourcePickerDialog
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.dragSelectable
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
@@ -48,12 +51,18 @@ import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.help.file.desktopAppRootDir
 import io.legado.app.utils.GSON
+import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.cnCompare
 import io.legado.app.utils.toJson
 import io.legado.desktop.ui.component.DesktopBookCover
+import io.legado.desktop.ui.component.FileDialogs
 import java.awt.FileDialog
 import java.awt.Frame
+import java.io.ByteArrayInputStream
 import java.io.File
+import java.nio.file.Paths
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -90,8 +99,6 @@ import kotlinx.coroutines.withContext
  *
  * # 简化项 (依赖未下沉功能, 用 no-op + TODO 注释)
  *
- * - **下载/缓存**: app 端 `CacheBook` 未下沉, onToggleDownload / onDownloadAfter / onDownloadAll /
- *   isItemDownloading / onCacheInfo / downloadRunning 全部 no-op (false / null)
  * - **导出**: app 端导出依赖 `ExportBookService` + `HandleFileContract` + `ACache`, 未下沉,
  *   onExportAllUseBookSource / onSelectExportFolderMenu / onShowExportConfig no-op;
  *   exportUseReplace / enableCustomExport / exportToWebDav 三档开关读写 [PreferenceProviders]
@@ -104,8 +111,6 @@ import kotlinx.coroutines.withContext
  *   onSelectActions 中"清缓存"项 no-op
  * - **打开书籍详情**: 桌面端 BookInfo 路由未注入, onOpenBook no-op
  * - **日志页**: app 端 `AppLogDialog` 未下沉, onShowLog no-op
- * - **cnCompare**: app 端中文拼音排序 (StringExtensions) 未下沉, sort==2(书名) 改用
- *   [String.compareTo] (按 Unicode 序), 与 [BookshelfViewModel] 的简化一致
  *
  * # 已实现的核心功能
  *
@@ -305,7 +310,7 @@ private fun BookshelfManageContent(onBack: () -> Unit) {
                 // 对齐 app 端 upBookDataByGroupId 的排序分支
                 when (bookSort) {
                     1 -> list.sortedByDescending { it.latestChapterTime }
-                    2 -> list.sortedWith { o1, o2 -> o1.name.compareTo(o2.name) } // cnCompare 未下沉, 用 compareTo
+                    2 -> list.sortedWith { o1, o2 -> o1.name.cnCompare(o2.name) }
                     3 -> list.sortedBy { it.order }
                     4 -> list.sortedByDescending { maxOf(it.latestChapterTime, it.durChapterTime) }
                     else -> list.sortedByDescending { it.durChapterTime }
@@ -465,7 +470,6 @@ private fun BookshelfManageContent(onBack: () -> Unit) {
                 // TODO: 桌面端 BookInfo 路由未注入, 后续由宿主注入 onOpenBook 回调后接入
             },
             onToggleDownload = {
-                // TODO: 依赖 CacheBook (app 端缓存服务), 未下沉
             },
             isItemDownloading = { false },
             onOriginText = { book ->
@@ -494,10 +498,8 @@ private fun BookshelfManageContent(onBack: () -> Unit) {
                 requestSelectGroup(GroupSelectTarget.Replace(listOf(book)))
             },
             onDownloadAfter = {
-                // TODO: 依赖 CacheBook, 未下沉
             },
             onDownloadAll = {
-                // TODO: 依赖 CacheBook, 未下沉
             },
             onShowGroupManage = {
                 // 触发 GroupManageDialog 显示 (末尾渲染分支读取 showGroupManage)
@@ -577,88 +579,76 @@ private fun BookshelfManageContent(onBack: () -> Unit) {
 
     // ---- 选分组对话框 (mainAction / onEditGroup / addToGroup 共用) ----
     groupSelectTarget?.let { target ->
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { groupSelectTarget = null },
-            title = { Text(groupLabel) },
-            text = {
-                // 列出用户分组 (groupId > 0); 点击即选中并关闭
-                androidx.compose.foundation.layout.Column {
-                    groupList.filter { it.groupId > 0 }.forEach { group ->
-                        TextButton(onClick = {
-                            groupSelectTarget = null
-                            val selectedGroupId = group.groupId
-                            scope.launch {
-                                withContext(Dispatchers.IO) {
-                                    val array = when (target) {
-                                        is GroupSelectTarget.Replace -> Array(target.books.size) { i ->
-                                            target.books[i].copy(group = selectedGroupId)
-                                        }
-                                        is GroupSelectTarget.Merge -> Array(target.books.size) { i ->
-                                            val b = target.books[i]
-                                            b.copy(group = b.group or selectedGroupId)
-                                        }
+            title = groupLabel,
+            cancelButton = AlertButton(text = cancelLabel),
+        ) {
+            // 列出用户分组 (groupId > 0); 点击即选中并关闭
+            androidx.compose.foundation.layout.Column(Modifier.padding(horizontal = 24.dp)) {
+                groupList.filter { it.groupId > 0 }.forEach { group ->
+                    TextButton(onClick = {
+                        groupSelectTarget = null
+                        val selectedGroupId = group.groupId
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                val array = when (target) {
+                                    is GroupSelectTarget.Replace -> Array(target.books.size) { i ->
+                                        target.books[i].copy(group = selectedGroupId)
                                     }
-                                    AppDbProviders.get().bookDao.update(*array)
+                                    is GroupSelectTarget.Merge -> Array(target.books.size) { i ->
+                                        val b = target.books[i]
+                                        b.copy(group = b.group or selectedGroupId)
+                                    }
                                 }
+                                AppDbProviders.get().bookDao.update(*array)
                             }
-                        }) {
-                            Text(group.groupName)
                         }
-                    }
-                    if (groupList.none { it.groupId > 0 }) {
-                        Text(groupManageLabel)
+                    }) {
+                        Text(group.groupName)
                     }
                 }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { groupSelectTarget = null }) {
-                    Text(cancelLabel)
+                if (groupList.none { it.groupId > 0 }) {
+                    Text(groupManageLabel)
                 }
-            },
-        )
+            }
+        }
     }
 
     // ---- 删除确认对话框 (onDeleteBook 单项 / selectActions 批量删除共用) ----
     deleteTarget?.let { books ->
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { deleteTarget = null },
-            title = { Text(deleteLabel) },
-            text = { Text(sureDelLabel) },
-            confirmButton = {
-                TextButton(onClick = {
-                    deleteTarget = null
-                    scope.launch {
-                        withContext(Dispatchers.IO) {
-                            AppDbProviders.get().bookDao.delete(*books.toTypedArray())
-                            // 本地书删除源文件 (对照 app 端 BookshelfManageViewModel.deleteBook
-                            // → FileBook.deleteBook(book, deleteOriginal))
-                            // 桌面端用 LocalBookLocators.get().deleteBook (JvmLocalBookLocator)
-                            books.forEach { book ->
-                                if (book.isLocal) {
-                                    runCatching {
-                                        io.legado.app.help.book.LocalBookLocators.get().deleteBook(book)
-                                    }.onFailure {
-                                        AppLog.put(jvmGetString("delete_local_book_file_failed", book.name, it.localizedMessage), it)
-                                    }
+            title = deleteLabel,
+            message = sureDelLabel,
+            okButton = AlertButton(text = okLabel, dismissOnClick = false) {
+                deleteTarget = null
+                scope.launch {
+                    withContext(Dispatchers.IO) {
+                        AppDbProviders.get().bookDao.delete(*books.toTypedArray())
+                        // 本地书删除源文件 (对照 app 端 BookshelfManageViewModel.deleteBook
+                        // → FileBook.deleteBook(book, deleteOriginal))
+                        // 桌面端用 LocalBookLocators.get().deleteBook (JvmLocalBookLocator)
+                        books.forEach { book ->
+                            if (book.isLocal) {
+                                runCatching {
+                                    io.legado.app.help.book.LocalBookLocators.get().deleteBook(book)
+                                }.onFailure {
+                                    AppLog.put(jvmGetString("delete_local_book_file_failed", book.name, it.localizedMessage), it)
                                 }
                             }
                         }
-                        // 同步清理选中集
-                        val removed = books.map { it.bookUrl }.toSet()
-                        state.value = state.value.copy(
-                            selected = state.value.selected - removed
-                        )
                     }
-                }) { Text(okLabel) }
-            },
-            dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) {
-                    Text(cancelLabel)
+                    // 同步清理选中集
+                    val removed = books.map { it.bookUrl }.toSet()
+                    state.value = state.value.copy(
+                        selected = state.value.selected - removed
+                    )
                 }
             },
+            cancelButton = AlertButton(text = cancelLabel),
         )
     }
 
@@ -689,29 +679,37 @@ private fun BookshelfManageContent(onBack: () -> Unit) {
     // onConfirm: 用 BookGroup 字段调 groupVm.addGroup (groupName/bookSort/enableRefresh/cover),
     //   替代原 onAddGroup 直接 addGroup(name, bookSort=-1, enableRefresh=true, cover=null)
     if (showAddGroupDialog) {
-        GroupEditDialog(
-            group = null,
-            onConfirm = { g ->
-                groupVm.addGroup(
-                    groupName = g.groupName,
-                    bookSort = g.bookSort,
-                    enableRefresh = g.enableRefresh,
-                    cover = g.cover,
-                ) {}
-            },
-            onDismiss = { showAddGroupDialog = false },
-        )
+        Dialog(onDismissRequest = { showAddGroupDialog = false }) {
+            GroupEditDialog(
+                group = null,
+                onConfirm = { g ->
+                    groupVm.addGroup(
+                        groupName = g.groupName,
+                        bookSort = g.bookSort,
+                        enableRefresh = g.enableRefresh,
+                        cover = g.cover,
+                    ) {}
+                },
+                onDismiss = { showAddGroupDialog = false },
+                coverSlot = { path, m -> GroupCoverPreview(path, m) },
+                onPickCover = ::pickGroupCoverPath,
+            )
+        }
     }
 
     // ---- 编辑/删除分组对话框 (GroupManageDialog.onDeleteGroup 触发, GroupEditDialog(group=editingGroup)) ----
     // onDelete: GroupEditDialog 内删除按钮二次确认后回调, 调 groupVm.delGroup 连带 bookDao.removeGroup
     editingGroup?.let { g ->
-        GroupEditDialog(
-            group = g,
-            onConfirm = { updated -> groupVm.upGroup(updated) },
-            onDismiss = { editingGroup = null },
-            onDelete = { del -> groupVm.delGroup(del) {} },
-        )
+        Dialog(onDismissRequest = { editingGroup = null }) {
+            GroupEditDialog(
+                group = g,
+                onConfirm = { updated -> groupVm.upGroup(updated) },
+                onDismiss = { editingGroup = null },
+                onDelete = { del -> groupVm.delGroup(del) {} },
+                coverSlot = { path, m -> GroupCoverPreview(path, m) },
+                onPickCover = ::pickGroupCoverPath,
+            )
+        }
     }
 
     // ---- 批量改源对话框 (onSelectActions "批量改源" 触发, 调用 shared/sharedUiMain 下沉的 SourcePickerDialog) ----
@@ -747,5 +745,35 @@ private fun BookshelfManageContent(onBack: () -> Unit) {
                 onDismiss = { showSourcePicker = false },
             )
         }
+    }
+}
+
+/**
+ * 分组封面预览 (GroupEditDialog coverSlot): 复用 [DesktopBookCover.InfoCover],
+ * path 为空时走其占位视觉。
+ */
+@Composable
+private fun GroupCoverPreview(path: String?, modifier: Modifier) {
+    val book = remember(path) { Book(coverUrl = path) }
+    DesktopBookCover.InfoCover(book, modifier)
+}
+
+/**
+ * 分组封面选图落盘 (GroupEditDialog onPickCover): FileDialog 选图 →
+ * 写入 {desktopAppRootDir}/covers/{md5}.{后缀} (对照 app 端 externalFiles/covers/{md5}.{后缀}),
+ * 返回绝对路径; 取消或失败返回 null。
+ */
+private suspend fun pickGroupCoverPath(): String? {
+    val picked = withContext(Dispatchers.IO) { FileDialogs.pickImageFile() } ?: return null
+    val (bytes, name) = picked
+    return withContext(Dispatchers.IO) {
+        runCatching {
+            val dir = Paths.get(desktopAppRootDir(), "covers").toFile()
+            if (!dir.exists()) dir.mkdirs()
+            val suffix = name.substringAfterLast('.', "png")
+            val out = File(dir, MD5Utils.md5Encode(ByteArrayInputStream(bytes)) + ".$suffix")
+            if (!out.exists()) out.writeBytes(bytes)
+            out.absolutePath
+        }.getOrNull()
     }
 }

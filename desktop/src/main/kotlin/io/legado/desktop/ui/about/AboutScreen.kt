@@ -6,12 +6,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -30,6 +27,8 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.about.AboutScreen as SharedAboutScreen
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.compose.MarkdownContentSelectable
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
@@ -42,6 +41,7 @@ import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.browseUrl
 import io.legado.desktop.constant.DesktopAppInfo
 import io.legado.desktop.help.DesktopAppUpdate
@@ -63,12 +63,12 @@ import kotlinx.coroutines.withContext
  * - 在 [SharedAboutScreen] 之上加 [AppTitleBar] (标题"关于" + 返回按钮)
  * - 注入 4 个 DesktopXxxProvider 供 commonMain 的 [AppTheme] / [SharedAboutScreen]
  *   内部 [io.legado.app.ui.compose.preference.PreferenceScreen] 通过 LocalXxx 取依赖
- * - 装配 9 个回调 + updateLogSummary, 与 app 端 AboutActivity 逐条对齐
+ * - 装配 10 个回调 + updateLogSummary, 与 app 端 AboutActivity 逐条对齐
  *
  * # shared 端签名说明
  *
  * shared/sharedUiMain 的 [SharedAboutScreen] 为 stateless 列表页, 直接接收 10 个参数
- * (updateLogSummary + 9 个 onXxx 回调), 无 UiState 数据类 / UiActions 接口 / slot 参数,
+ * (updateLogSummary + 10 个 onXxx 回调), 无 UiState 数据类 / UiActions 接口 / slot 参数,
  * 故桌面端无需 DesktopAboutActions 类与 AboutContent state 拆分, 仅在 [AboutContent] 内
  * 构造 updateLogSummary 与各回调后位置传参调用。
  *
@@ -147,6 +147,7 @@ private fun AboutContent() {
     var showLogDialog by remember { mutableStateOf(false) }
     var showLicense by remember { mutableStateOf(false) }
     var showDisclaimer by remember { mutableStateOf(false) }
+    var privacyPolicyText by remember { mutableStateOf<String?>(null) }
 
     val licenseText = remember {
         try {
@@ -162,6 +163,7 @@ private fun AboutContent() {
     // 文案标签 (rememberString 是 @Composable, 顶层缓存; key 对齐 shared AboutScreen)
     val licenseTitle = rememberString("license")
     val disclaimerTitle = rememberString("disclaimer")
+    val privacyPolicyTitle = rememberString("privacy_policy")
 
     SharedAboutScreen(
         updateLogSummary = updateLogSummary,
@@ -235,6 +237,19 @@ private fun AboutContent() {
                 }
             }
         },
+        onPrivacyPolicy = {
+            runCatching {
+                {}::class.java.getResourceAsStream("/privacyPolicy.md")
+                    ?.bufferedReader()
+                    ?.use { it.readText() }
+                    ?: error("privacyPolicy.md not found on classpath")
+            }.onSuccess {
+                privacyPolicyText = it
+            }.onFailure {
+                AppLog.put("Failed to load privacyPolicy.md\n${it.localizedMessage}", it)
+                Toasters.get().toast(it.localizedMessage ?: jvmGetString("can_not_open"))
+            }
+        },
         onLicense = {
             // 显示开源许可 MD 对话框 (从 classpath 读 LICENSE.md)
             showLicense = true
@@ -250,68 +265,77 @@ private fun AboutContent() {
         AppLogDialog(onDismiss = { showLogDialog = false })
     }
 
+    privacyPolicyText?.let { content ->
+        AppAlertDialog(
+            onDismissRequest = { privacyPolicyText = null },
+            title = privacyPolicyTitle,
+            okButton = AlertButton(rememberString("ok")),
+        ) {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp)
+            ) {
+                MarkdownContentSelectable(content = content)
+            }
+        }
+    }
+
     // ---- 开源许可对话框 (onLicense 触发) ----
     if (showLicense) {
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { showLicense = false },
-            title = { Text(licenseTitle) },
-            text = {
-                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                    MarkdownContentSelectable(content = licenseText)
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showLicense = false }) { Text(rememberString("ok")) }
-            },
-        )
+            title = licenseTitle,
+            okButton = AlertButton(rememberString("ok")),
+        ) {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp)
+            ) {
+                MarkdownContentSelectable(content = licenseText)
+            }
+        }
     }
 
     // ---- 免责声明对话框 (onDisclaimer 触发) ----
     if (showDisclaimer) {
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { showDisclaimer = false },
-            title = { Text(disclaimerTitle) },
-            text = {
-                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                    MarkdownContentSelectable(content = disclaimerText)
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showDisclaimer = false }) { Text(rememberString("ok")) }
-            },
-        )
+            title = disclaimerTitle,
+            okButton = AlertButton(rememberString("ok")),
+        ) {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp)
+            ) {
+                MarkdownContentSelectable(content = disclaimerText)
+            }
+        }
     }
 
     // ---- 检查更新对话框 (onCheckUpdate 触发, DesktopAppUpdate.check 回调有新版本时显示) ----
     // 对照 app 端 AppUpdate.check 弹更新对话框 + 自动下载; 桌面端无 Intent, 仅 browse 打开下载 URL
     updateInfo?.let { info ->
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { updateInfo = null },
-            title = { Text(rememberString("found_new_version")) },
-            text = {
-                Text(
-                    buildString {
-                        append(jvmGetString("latest_version") + ": " + info.latestVersion)
-                        if (info.releaseNotes.isNotBlank()) {
-                            append("\n\n")
-                            append(info.releaseNotes)
-                        }
-                    }
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    updateInfo = null
-                    // 打开下载 URL (Windows MSI 直链); 无 MSI 资源时回落到 releases 页面
-                    val url = info.downloadUrl.ifBlank { RELEASES_PAGE_URL }
-                    browseUrl(url)
-                }) { Text(rememberString("download_now")) }
-            },
-            dismissButton = {
-                TextButton(onClick = { updateInfo = null }) {
-                    Text(rememberString("cancel"))
+            title = rememberString("found_new_version"),
+            message = buildString {
+                append(jvmGetString("latest_version") + ": " + info.latestVersion)
+                if (info.releaseNotes.isNotBlank()) {
+                    appendLine()
+                    appendLine()
+                    append(info.releaseNotes)
                 }
             },
+            okButton = AlertButton(rememberString("download_now"), dismissOnClick = false) {
+                updateInfo = null
+                // 打开下载 URL (Windows MSI 直链); 无 MSI 资源时回落到 releases 页面
+                val url = info.downloadUrl.ifBlank { RELEASES_PAGE_URL }
+                browseUrl(url)
+            },
+            cancelButton = AlertButton(rememberString("cancel")),
         )
     }
 }
@@ -322,7 +346,7 @@ private fun AboutContent() {
  * 与 app 端差异:
  * - stringResource(R.string.xxx) → rememberString("xxx") (桌面端无 Android resources,
  *   registerDesktopAppStringProvider 兜底返回 key 名; 待桌面端引入 ResourceBundle 后自动生效)
- * - 圆角 8dp = Arco Design arco_radius_default (与 app 端 RoundedCornerShape(8.dp) 一致)
+ * - 圆角 8dp = Arco Design arco_radius_default (与 app 端 DesignTokens.shapeDefault 一致)
  * - 无 elevation (Arco Design 规范)
  */
 @Composable
@@ -332,7 +356,7 @@ private fun AboutHeaderCard() {
         Modifier
             .fillMaxWidth()
             .padding(16.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(DesignTokens.shapeDefault)
             .background(colors.bottomBackground)
             .padding(16.dp),
     ) {

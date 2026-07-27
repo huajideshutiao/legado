@@ -1,9 +1,5 @@
 package io.legado.desktop.ui.book.import.remote
 
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -17,6 +13,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.constant.AppConst.DEFAULT_WEBDAV_ID
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
@@ -303,57 +301,41 @@ private fun RemoteBookContent(onBack: () -> Unit, onStartRead: (Book) -> Unit) {
         )
     }
 
-    // ---- AlertDialog 渲染 (帮助/日志未实现提示) ----
+    // ---- 对话框渲染 (帮助/日志未实现提示) ----
     if (showWebDavHelpDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { showWebDavHelpDialog = false },
-            title = { Text(helpLabel) },
-            text = { Text(webDavHelpNotImplementedLabel) },
-            confirmButton = {
-                TextButton(onClick = { showWebDavHelpDialog = false }) {
-                    Text(okLabel)
-                }
-            },
+            title = helpLabel,
+            message = webDavHelpNotImplementedLabel,
+            okButton = AlertButton(okLabel),
         )
     }
     if (showLogDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { showLogDialog = false },
-            title = { Text(logLabel) },
-            text = { Text(logViewNotImplementedLabel) },
-            confirmButton = {
-                TextButton(onClick = { showLogDialog = false }) {
-                    Text(okLabel)
-                }
-            },
+            title = logLabel,
+            message = logViewNotImplementedLabel,
+            okButton = AlertButton(okLabel),
         )
     }
     // 重新加入书架确认对话框 (对照 app 端 addToBookShelfAgain: alert(sure, "是否重新加入书架？"))
     if (showReAddDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { showReAddDialog = false },
-            title = { Text(sureLabel) },
-            text = { Text("是否重新加入书架？") },
-            confirmButton = {
-                TextButton(onClick = {
-                    reAddItem?.let { item ->
-                        remoteBookShared.addSelectionToBookshelf(setOf(item)) {
-                            refreshTick++
-                        }
+            title = sureLabel,
+            message = "是否重新加入书架？",
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                reAddItem?.let { item ->
+                    remoteBookShared.addSelectionToBookshelf(setOf(item)) {
+                        refreshTick++
                     }
-                    showReAddDialog = false
-                }) {
-                    Text(okLabel)
                 }
+                showReAddDialog = false
             },
-            dismissButton = {
-                TextButton(onClick = { showReAddDialog = false }) {
-                    Text(cancelLabel)
-                }
-            },
+            cancelButton = AlertButton(cancelLabel),
         )
     }
 }

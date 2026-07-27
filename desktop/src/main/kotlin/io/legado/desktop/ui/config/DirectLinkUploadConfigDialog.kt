@@ -1,6 +1,7 @@
 package io.legado.desktop.ui.config
 
 import androidx.compose.foundation.layout.widthIn
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.desktop.ui.component.DialogSizes
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,11 +10,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -145,7 +145,7 @@ fun DirectLinkUploadConfigDialog(onDismiss: () -> Unit) {
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(16.dp),
+            shape = DesignTokens.dialogShape,
             color = colors.background,
             modifier = Modifier.fillMaxWidth().widthIn(max = DialogSizes.dialogMaxWidth()),
         ) {
@@ -157,9 +157,6 @@ fun DirectLinkUploadConfigDialog(onDismiss: () -> Unit) {
                     actions = {
                         OverflowMenu { dismissMenu ->
                             DropdownMenuItem(
-                                text = {
-                                    Text(copyRuleText, color = colors.primaryText)
-                                },
                                 onClick = {
                                     dismissMenu()
                                     getRule()?.let { rule ->
@@ -172,11 +169,10 @@ fun DirectLinkUploadConfigDialog(onDismiss: () -> Unit) {
                                         }.onFailure { AppLog.put(jvmGetString("copy_rule_failed"), it) }
                                     }
                                 },
-                            )
+                            ) {
+                                Text(copyRuleText, color = colors.primaryText)
+                            }
                             DropdownMenuItem(
-                                text = {
-                                    Text(pasteRuleText, color = colors.primaryText)
-                                },
                                 onClick = {
                                     dismissMenu()
                                     // 读剪贴板可能在 AWT 主线程阻塞, 切 IO (替代 app 端 getClipText)
@@ -201,16 +197,14 @@ fun DirectLinkUploadConfigDialog(onDismiss: () -> Unit) {
                                             }
                                     }
                                 },
-                            )
+                            ) {
+                                Text(pasteRuleText, color = colors.primaryText)
+                            }
                             DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        importDefaultRuleText,
-                                        color = colors.primaryText
-                                    )
-                                },
                                 onClick = { dismissMenu(); showImportSelector = true },
-                            )
+                            ) {
+                                Text(importDefaultRuleText, color = colors.primaryText)
+                            }
                         }
                     },
                 )

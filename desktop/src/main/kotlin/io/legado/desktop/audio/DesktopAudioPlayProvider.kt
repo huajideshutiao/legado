@@ -18,6 +18,7 @@ import io.legado.app.model.AudioPlayShared
 import io.legado.app.model.LrcParser
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
+import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.utils.postEvent
@@ -329,9 +330,8 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
      * 用 [LrcParser.parse] 解析为 (timeMs, text) 列表, 写入 [AudioPlayShared.durLrcData]
      * 并 postEvent(AUDIO_LRC) / (AUDIO_LRCPROGRESS=0) 触发 UI 刷新。
      *
-     * 复用 shared commonMain 的 [AnalyzeRuleCore] (与 shared Debug.subContentDebug 一致),
-     * 不依赖 app 端 AnalyzeRule 的 android-only JsExtensions; JS 引擎 / 网络 (ajax) 经
-     * desktop Main.kt 已注册的 JsEngines / SourceNetworkProviders 走通。
+     * 经 [AnalyzeRuleFactories] 创建规则实例 (desktop 端拿到 DesktopAnalyzeRule, JS 扩展面完整);
+     * JS 引擎 / 网络 (ajax) 经 desktop Main.kt 已注册的 JsEngines / SourceNetworkProviders 走通。
      */
     private suspend fun loadLrcData(
         bookSource: BookSource,
@@ -341,7 +341,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
         try {
             val subContent = bookSource.contentRule.subContent
             if (subContent.isNullOrBlank()) return
-            val rule = AnalyzeRuleCore(book, bookSource)
+            val rule = AnalyzeRuleFactories.create(book, bookSource)
             rule.coroutineContext = currentCoroutineContext()
             rule.setBaseUrl(chapter.url)
             rule.chapter = chapter

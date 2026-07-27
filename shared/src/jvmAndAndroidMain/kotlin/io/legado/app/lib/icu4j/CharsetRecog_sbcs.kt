@@ -507,7 +507,7 @@ internal abstract class CharsetRecog_sbcs : CharsetRecognizer() {
             var bestConfidenceSoFar = -1
             var lang: String? = null
             for (ngl in ngrams_8859_1) {
-                val confidence = match(det, ngl!!.fNGrams, byteMap)
+                val confidence = match(det, ngl.fNGrams, byteMap)
                 if (confidence > bestConfidenceSoFar) {
                     bestConfidenceSoFar = confidence
                     lang = ngl.fLang
@@ -1500,7 +1500,7 @@ internal abstract class CharsetRecog_sbcs : CharsetRecognizer() {
             var bestConfidenceSoFar = -1
             var lang: String? = null
             for (ngl in ngrams_8859_2) {
-                val confidence = match(det, ngl!!.fNGrams, byteMap)
+                val confidence = match(det, ngl.fNGrams, byteMap)
                 if (confidence > bestConfidenceSoFar) {
                     bestConfidenceSoFar = confidence
                     lang = ngl.fLang

@@ -13,9 +13,7 @@ import kotlin.time.Duration
  *
  * 本文件把 commonMain 中用到的 okhttp3.* 类型抽象为 Kmp* 命名:
  * - jvmAndAndroidMain: 用 `actual typealias Kmp* = okhttp3.*` (行为零 diff, 类型完全等价);
- * - iOS/鸿蒙: stub 实现 (运行时抛 UnsupportedOperationException, 与 [OkHttpUtilsExt] iOS/鸿蒙
- *   actual 处理方式一致; AnalyzeUrlCore 在 iOS/鸿蒙端的实际运行需后续重构为 [HttpClient] 抽象,
- *   该抽象已有 Ktor 实现, 不在本次 KP4 修复范围内)。
+ * - iOS/鸿蒙: nativeMain 用 Ktor CIO engine 包装的真实实现 (运行时可用)。
  *
  * ## 命名约定
  * - 接口类: `KmpInterceptor` / `KmpInterceptorChain` / `KmpCallback` (OkHttp 对应 interface);
@@ -36,7 +34,7 @@ import kotlin.time.Duration
  * 跨平台 Interceptor 接口 (对应 `okhttp3.Interceptor`)。
  *
  * jvmAndAndroidMain: `actual typealias KmpInterceptor = okhttp3.Interceptor`;
- * iOS/鸿蒙: 普通 interface (供 commonMain 中 object 实现, 运行时 stub)。
+ * iOS/鸿蒙: 普通 interface (nativeMain 走 Ktor, 不使用 Interceptor 链, 仅作编译占位)。
  */
 expect interface KmpInterceptor {
     fun intercept(chain: KmpInterceptorChain): KmpResponse
@@ -239,7 +237,7 @@ expect class KmpFormBodyBuilder() {
  * [KmpFormBodyBuilder] 构造 [KmpRequestBody] 的扩展函数 (替代原 `build()` 成员)。
  *
  * jvmAndAndroidMain: 委托 `FormBody.Builder.build()` (返回 FormBody, 多态赋给 RequestBody);
- * iOS/鸿蒙: 抛 UnsupportedOperationException (与 KmpFormBodyBuilder 其他成员一致)。
+ * iOS/鸿蒙: nativeMain 用 Ktor 表单编码构造等价 body。
  */
 expect fun KmpFormBodyBuilder.buildKmpRequestBody(): KmpRequestBody
 

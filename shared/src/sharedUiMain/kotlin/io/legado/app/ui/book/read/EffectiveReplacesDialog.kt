@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Surface
@@ -39,9 +38,7 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
-
-/** Arco Design arco_radius_lg = 16dp, 用于对话框圆角。 */
-private val ArcoRadiusLg = 16.dp
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 净化替换临时生效对话框 (KMP 共享, app + desktop 复用)。
@@ -104,7 +101,7 @@ fun EffectiveReplacesDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
-            shape = RoundedCornerShape(ArcoRadiusLg),
+            shape = DesignTokens.dialogShape,
             color = colors.background,
             modifier = Modifier.fillMaxWidth().padding(16.dp),
         ) {

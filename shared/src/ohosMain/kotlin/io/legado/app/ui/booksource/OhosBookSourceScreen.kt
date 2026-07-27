@@ -2,12 +2,12 @@ package io.legado.app.ui.booksource
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import io.legado.app.ui.compose.component.Md2TextField
+import androidx.compose.material.Surface
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.legado.app.constant.AppLog
@@ -28,6 +29,7 @@ import io.legado.app.help.file.pickDocumentContent
 import io.legado.app.help.file.pickDocuments
 import io.legado.app.help.openURL
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.association.ImportBookSourceItemsDialog
 import io.legado.app.ui.association.ImportBookSourceViewModelShared
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.source.BookSourceListCallbacks
@@ -39,6 +41,7 @@ import io.legado.app.ui.book.source.SourceFilter
 import io.legado.app.ui.book.source.SourceLoginDialog
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.utils.formatNative
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -86,8 +89,11 @@ fun OhosBookSourceScreen(
     var showImportOnlineDialog by remember { mutableStateOf(false) }
     var importOnlineUrlText by remember { mutableStateOf("") }
 
-    val importVm = remember(scope) { ImportBookSourceViewModelShared(scope) }
+    // 书源导入 VM: 每次导入新建 (与 app 端每次弹窗新建 VM 一致), 避免列表跨次导入累积错位
+    var importVm by remember { mutableStateOf<ImportBookSourceViewModelShared?>(null) }
+    var showImportDialog by remember { mutableStateOf(false) }
     val importCompleteTemplate = rememberString("import_complete")
+    val wrongFormatText = rememberString("wrong_format")
 
     // 过滤关键字 label
     val enabledLabel = rememberString("enabled")
@@ -133,16 +139,18 @@ fun OhosBookSourceScreen(
         }
     }
 
-    // 导入书源: 解析成功 → 自动 importSelect 入库
+    // 导入书源: 解析成功 → 弹勾选对话框 (对照 app 端 ImportBookSourceDialog); 失败 → toast
     LaunchedEffect(importVm) {
-        importVm.successState.collectLatest { count ->
-            if (count != null) {
-                importVm.importSelect { Toasters.get().toast(String.format(importCompleteTemplate, count)) }
+        val vm = importVm ?: return@LaunchedEffect
+        launch {
+            vm.successState.collectLatest { count ->
+                if (count != null) {
+                    if (count > 0) showImportDialog = true
+                    else Toasters.get().toast(wrongFormatText)
+                }
             }
         }
-    }
-    LaunchedEffect(importVm) {
-        importVm.errorState.collectLatest { err ->
+        vm.errorState.collectLatest { err ->
             if (err != null) Toasters.get().toast(err.substringAfter("ImportError:"))
         }
     }
@@ -248,7 +256,7 @@ fun OhosBookSourceScreen(
                         bookSourceUrl = "new_${systemCurrentTimeMillis()}",
                     )
                     dao.insert(source)
-                    AppLog.put(String.format(newBookSourceAddedLogTemplate, source.bookSourceUrl))
+                    AppLog.put(newBookSourceAddedLogTemplate.formatNative(source.bookSourceUrl))
                 }
             },
             onImportLocal = {
@@ -260,8 +268,8 @@ fun OhosBookSourceScreen(
                     ) ?: return@launch
                     val firstUrl = urls.firstOrNull() ?: return@launch
                     val bytes = pickDocumentContent(firstUrl) ?: return@launch
-                    val text = bytes.toString(Charsets.UTF_8)
-                    importVm.importSource(text)
+                    val text = bytes.decodeToString()
+                    importVm = ImportBookSourceViewModelShared(scope).also { it.importSource(text) }
                 }
             },
             onImportOnline = {
@@ -327,23 +335,19 @@ fun OhosBookSourceScreen(
 
     // 删除选中确认对话框
     if (showDeleteConfirm) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text(deleteLabel) },
-            text = { Text(sureDelLabel) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDeleteConfirm = false
-                    val selection = state.value.sources.filter { state.value.selected.contains(it.bookSourceUrl) }
-                    viewModel.del(selection)
-                    state.value = state.value.copy(selected = emptySet())
-                }) { Text(okLabel) }
+            title = deleteLabel,
+            message = sureDelLabel,
+            widthFraction = 0.8f,
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                showDeleteConfirm = false
+                val selection = state.value.sources.filter { state.value.selected.contains(it.bookSourceUrl) }
+                viewModel.del(selection)
+                state.value = state.value.copy(selected = emptySet())
             },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text(cancelLabel)
-                }
+            cancelButton = AlertButton(cancelLabel, dismissOnClick = false) {
+                showDeleteConfirm = false
             },
         )
     }
@@ -368,36 +372,46 @@ fun OhosBookSourceScreen(
         }
     }
 
-    // 网络导入 URL 输入对话框
-    if (showImportOnlineDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
-            onDismissRequest = { showImportOnlineDialog = false },
-            title = { Text(netImportBookSourceLabel) },
-            text = {
-                Md2TextField(
-                    value = importOnlineUrlText,
-                    onValueChange = { importOnlineUrlText = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = inputBookSourceUrlLabel,
-                    singleLine = true,
-                )
+    // 导入勾选对话框 (确认后仅入库勾选项, 含 选中新增源/选中更新源 菜单)
+    if (showImportDialog) importVm?.let { vm ->
+        ImportBookSourceItemsDialog(
+            vm = vm,
+            onDismiss = {
+                showImportDialog = false
+                importVm = null
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    val url = importOnlineUrlText
-                    showImportOnlineDialog = false
-                    if (url.isNotBlank()) {
-                        importVm.importSource(url)
-                    }
-                }) { Text(okLabel) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showImportOnlineDialog = false }) {
-                    Text(cancelLabel)
-                }
+            onImported = { count ->
+                Toasters.get().toast(importCompleteTemplate.formatNative(count))
             },
         )
+    }
+
+    // 网络导入 URL 输入对话框
+    if (showImportOnlineDialog) {
+        AppAlertDialog(
+            onDismissRequest = { showImportOnlineDialog = false },
+            title = netImportBookSourceLabel,
+            widthFraction = 0.8f,
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                val url = importOnlineUrlText
+                showImportOnlineDialog = false
+                if (url.isNotBlank()) {
+                    importVm = ImportBookSourceViewModelShared(scope).also { it.importSource(url) }
+                }
+            },
+            cancelButton = AlertButton(cancelLabel, dismissOnClick = false) {
+                showImportOnlineDialog = false
+            },
+        ) {
+            // 24dp 水平边距对齐 AppAlertDialog title/message 槽的内边距
+            AppTextField(
+                value = importOnlineUrlText,
+                onValueChange = { importOnlineUrlText = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                label = inputBookSourceUrlLabel,
+                singleLine = true,
+            )
+        }
     }
 }
 

@@ -1,7 +1,7 @@
 package io.legado.desktop.ui.book.read.config
 
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Surface
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -31,7 +31,6 @@ import io.legado.app.ui.compose.theme.AppTheme
  *   (原为对话框正文, 桌面端无 Dialog 宿主, 升格为全屏页面, DialogTitleBar 的 onBack
  *   即页面 onBack)
  * - 装配一个桌面版 [TipConfigController] (内部 state 持有, 写不持久化, 加 TODO)
- * - 装配 onPostConfig 回调 (no-op, 加 TODO; 桌面端 ReadBookEvents 未下沉)
  * - 注入 4 个 DesktopXxxProvider 供 commonMain 的 [AppTheme] /
  *   [SharedTipConfigScreen] 通过 LocalXxx 取依赖
  *
@@ -41,8 +40,6 @@ import io.legado.app.ui.compose.theme.AppTheme
  *   (持久化到 SharedPreferences), 桌面端 ReadBookConfig / ReadTipConfig 未下沉,
  *   用 [DesktopTipConfigController] (内部 state 持有, 写不持久化, 重进页面状态丢失);
  *   后续接入 KMP 化后改为真实持久化
- * - onPostConfig: app 端调用 ReadBookEvents.postConfig(...) 刷新阅读页渲染,
- *   桌面端 ReadBookEvents 未下沉, 暂 no-op
  *
  * @param onBack 返回回调 (切回 SETTINGS 路由, 由 DesktopApp 注入)
  */
@@ -77,7 +74,6 @@ fun TipConfigScreen(onBack: () -> Unit) {
 private fun TipConfigContent(onBack: () -> Unit) {
     val controller = remember { DesktopTipConfigController() }
     val onPostConfig: (List<ReadConfigChange>) -> Unit = {
-        // TODO: 桌面端 ReadBookEvents.postConfig 未下沉, 暂不刷新阅读页渲染
     }
 
     SharedTipConfigScreen(

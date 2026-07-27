@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
@@ -35,6 +34,7 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 // ===== state / actions =====
 
@@ -233,7 +233,7 @@ private fun TypeBadge(text: String) {
         color = if (accent.luminance() > 0.5f) Color.Black else Color.White,
         fontSize = 12.sp,
         modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
+            .clip(DesignTokens.shapeSm)
             .background(accent)
             .padding(horizontal = 4.dp, vertical = 1.dp),
     )

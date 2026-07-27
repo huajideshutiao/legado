@@ -24,6 +24,7 @@ import io.legado.app.ui.compose.platform.rememberString
  * @param onBookmark 跳书签 (由 IosNavHost 注入切到 BOOKMARK 路由)
  * @param onReadRecord 跳阅读记录 (由 IosNavHost 注入切到 READ_RECORD 路由)
  * @param onAbout 跳关于 (由 IosNavHost 注入切到 ABOUT 路由)
+ * @param onRssSources 跳 RSS 源列表 (由 IosNavHost 注入切到 RSS_SOURCES 路由, 对照 desktop MyScreen)
  */
 @Composable
 fun IosMyConfigScreen(
@@ -40,6 +41,7 @@ fun IosMyConfigScreen(
     onBookmark: () -> Unit = {},
     onReadRecord: () -> Unit = {},
     onAbout: () -> Unit = {},
+    onRssSources: () -> Unit = {},
 ) {
     // KP-iOS: webService 开关 iOS 端未实现, 恒 false
     val webServiceSummary = rememberString("web_service")
@@ -76,8 +78,9 @@ fun IosMyConfigScreen(
             onBookmark = onBookmark,
             onReadRecord = onReadRecord,
             onAbout = onAbout,
-            showRssEntry = false,
-            onRssSources = {},
+            // RSS 入口: iOS 无底部订阅 tab, 与 desktop 一致走"我的"页 preference 项
+            showRssEntry = true,
+            onRssSources = onRssSources,
         )
     }
 }

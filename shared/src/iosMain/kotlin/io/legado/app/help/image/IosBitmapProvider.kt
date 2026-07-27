@@ -23,7 +23,7 @@ object IosBitmapProvider : BitmapProvider {
         if (bytes.isEmpty()) return false
         val ref = IosImageOps.decode(bytes)
         val jpeg = IosImageOps.encode(ref, "jpg", quality)
-        val target = kotlin.io.File(outFile.path)
+        val target = File(outFile.path)
         target.parentFile?.mkdirs()
         target.writeBytes(jpeg)
         true

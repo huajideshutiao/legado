@@ -332,7 +332,7 @@ actual abstract class KmpResponseBody : Closeable {
     actual fun bytes(): ByteArray = (this as OhosKmpResponseBody).bytesValue
     actual fun byteStream(): InputStream = (this as OhosKmpResponseBody).bytesValue.toInputStream()
     actual abstract fun contentType(): KmpMediaType?
-    actual fun string(): String = bytes().toString(Charsets.UTF_8)
+    actual fun string(): String = bytes().decodeToString()
     actual override fun close() {
         // 内存字节数组, 无需关闭
     }
@@ -450,7 +450,7 @@ actual class KmpFormBodyBuilder() {
             sb.append(urlEncodeForm(k)).append('=').append(urlEncodeForm(v))
         }
         return OhosKmpRequestBody(
-            sb.toString().toByteArray(Charsets.UTF_8),
+            sb.toString().encodeToByteArray(),
             OhosKmpMediaType("application/x-www-form-urlencoded")
         )
     }
@@ -566,7 +566,7 @@ actual fun String.toKmpHttpUrl(): KmpHttpUrl = KmpHttpUrl(this)
 actual fun String.toKmpMediaType(): KmpMediaType = OhosKmpMediaType(this)
 
 actual fun String.toKmpRequestBody(contentType: KmpMediaType?): KmpRequestBody =
-    OhosKmpRequestBody(this.toByteArray(Charsets.UTF_8), contentType)
+    OhosKmpRequestBody(this.encodeToByteArray(), contentType)
 
 actual fun ByteArray.toKmpRequestBody(contentType: KmpMediaType?): KmpRequestBody =
     OhosKmpRequestBody(this, contentType)
@@ -587,13 +587,13 @@ internal class OhosKmpMediaType(value: String) : KmpMediaType(value)
 // form-urlencoded 编码 (与 OkHttp FormBody 编码对齐): 空格 '+', 其他 %XX
 private fun urlEncodeForm(s: String): String {
     val sb = StringBuilder(s.length)
-    for (b in s.toByteArray(Charsets.UTF_8)) {
+    for (b in s.encodeToByteArray()) {
         val u = b.toInt() and 0xFF
         when {
             u in 'a'.code..'z'.code || u in 'A'.code..'Z'.code || u in '0'.code..'9'.code -> sb.append(u.toChar())
             u == ' '.code -> sb.append('+')
             u == '-'.code || u == '_'.code || u == '.'.code || u == '*'.code -> sb.append(u.toChar())
-            else -> sb.append('%').append("%02X".format(u))
+            else -> sb.append('%').append(u.toString(16).uppercase().padStart(2, '0'))
         }
     }
     return sb.toString()
@@ -602,12 +602,12 @@ private fun urlEncodeForm(s: String): String {
 // query 参数编码 (与 OkHttp HttpUrl.Builder.addQueryParameter 对齐): 空格 %20
 private fun urlEncodeQuery(s: String): String {
     val sb = StringBuilder(s.length)
-    for (b in s.toByteArray(Charsets.UTF_8)) {
+    for (b in s.encodeToByteArray()) {
         val u = b.toInt() and 0xFF
         when {
             u in 'a'.code..'z'.code || u in 'A'.code..'Z'.code || u in '0'.code..'9'.code -> sb.append(u.toChar())
             u == '-'.code || u == '_'.code || u == '.'.code || u == '~'.code -> sb.append(u.toChar())
-            else -> sb.append('%').append("%02X".format(u))
+            else -> sb.append('%').append(u.toString(16).uppercase().padStart(2, '0'))
         }
     }
     return sb.toString()

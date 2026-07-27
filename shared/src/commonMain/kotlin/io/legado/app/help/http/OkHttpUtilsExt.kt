@@ -15,10 +15,8 @@ package io.legado.app.help.http
  * 但 OkHttp 5.3.2 不发布 iosArm64/linuxArm64 变体, iOS/鸿蒙 target 编译会失败。
  * 现改用 [KmpHttpClient] / [KmpRequestBuilder] / [KmpResponseBody] 跨平台抽象:
  * - jvmAndAndroidMain actual 经 typealias 等价 okhttp3.*, 行为与原实现完全一致 (零 diff, 无 cast);
- * - iOS/鸿蒙 actual 抛 UnsupportedOperationException (OkHttp 在这些平台不可用, 永不执行)。
- *
- * 注: iOS/鸿蒙端 AnalyzeUrlCore 的实际运行需后续重构为 HttpClient 抽象 (已有 Ktor 实现),
- * 不在本次 KP4 修复范围内。
+ * - iOS/鸿蒙 actual 见 nativeMain/OkHttpUtilsExt.native.kt, 基于 Ktor 真实实现
+ *   (已知降级: [decompressed] 无 zip 库直接返回原 body; charset 仅支持 Kotlin 内置的 6 种)。
  */
 expect suspend fun KmpHttpClient.newCallStrResponse(
     retry: Int = 0,

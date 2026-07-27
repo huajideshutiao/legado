@@ -1,5 +1,6 @@
 package io.legado.app.ui.compose.component
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -11,16 +12,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * alert DSL 的按钮槽：文案 + 点击回调。dismissOnClick=false 时点击不关闭对话框
@@ -29,6 +31,8 @@ import io.legado.app.ui.compose.theme.AppTheme
 data class AlertButton(
     val text: String,
     val dismissOnClick: Boolean = true,
+    // false 时按钮置灰不可点（复刻 getButton().isEnabled = false，如输入未填完时的确定键）
+    val enabled: Boolean = true,
     val onClick: (() -> Unit)? = null,
 )
 
@@ -85,7 +89,7 @@ fun AppAlertDialogContent(
     val colors = AppTheme.colors
     Surface(
         modifier = Modifier.fillMaxWidth(widthFraction),
-        shape = RoundedCornerShape(8.dp),
+        shape = DesignTokens.shapeDefault,
         color = colors.fillet,
     ) {
         Column(Modifier.padding(vertical = 16.dp)) {
@@ -109,11 +113,18 @@ fun AppAlertDialogContent(
                         .padding(horizontal = 24.dp, vertical = 8.dp)
                 )
             }
-            content?.let { Column(Modifier.weight(1f, fill = false)) { it() } }
+            content?.let {
+                Column(
+                    Modifier
+                        .weight(1f, fill = false)
+                        .clipToBounds()
+                ) { it() }
+            }
             if (okButton != null || cancelButton != null || neutralButton != null) {
                 Row(
                     Modifier
                         .fillMaxWidth()
+                        .background(colors.fillet)
                         .padding(horizontal = 12.dp),
                     horizontalArrangement = Arrangement.End
                 ) {
@@ -173,7 +184,7 @@ fun AppSelectorList(items: List<String>, onItemClick: (index: Int) -> Unit) {
 
 @Composable
 private fun AlertTextButton(button: AlertButton, onDismissRequest: () -> Unit) {
-    AppTextButton(text = button.text) {
+    AppTextButton(text = button.text, enabled = button.enabled) {
         button.onClick?.invoke()
         if (button.dismissOnClick) onDismissRequest()
     }

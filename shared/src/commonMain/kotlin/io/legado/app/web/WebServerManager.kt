@@ -1,9 +1,9 @@
 package io.legado.app.web
 
 import io.legado.app.constant.EventBus
-import io.legado.app.constant.PreferKey
-import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.utils.postEvent
+import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 
@@ -43,10 +43,10 @@ object WebServerManager {
 
     /**
      * 端口校验 (原 WebService.getPort):
-     * 读 PreferKey.webPort, 不在 1024..65530 则回退 1122。
+     * 读 AppConfigAccessor.webPort, 不在 1024..65530 则回退 1122。
      */
     fun getPort(): Int {
-        val port = PreferenceProviders.get().getInt(PreferKey.webPort, 1122)
+        val port = AppConfigProviders.get().webPort
         return if (port in 1024..65530) port else 1122
     }
 

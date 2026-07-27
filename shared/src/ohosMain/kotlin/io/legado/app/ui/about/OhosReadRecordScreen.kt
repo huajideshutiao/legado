@@ -1,8 +1,8 @@
 package io.legado.app.ui.about
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.AlertDialog
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
@@ -26,8 +26,11 @@ import io.legado.app.data.entities.ReadRecordShow
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.toast.Toasters
+import androidx.compose.ui.layout.ContentScale
+import io.legado.app.ui.bookshelf.rememberOhosCoverBitmap
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -46,14 +49,14 @@ import kotlinx.coroutines.withContext
  *   按 sortMode 在 IO 重组为 [ReadRecordShow] 列表 + 计算 summary 统计;
  * - **summary 统计**: 今日 / 本周 / 本月 / 总 / 已读书籍数 / 平均每本时长, 全部在 IO 计算;
  * - **热力图 slot**: 鸿蒙端暂用占位 [Box] (MonthHeatMapView 是 Android 专属 View, 未下沉);
- * - **封面 slot**: 鸿蒙端暂用占位 [Box] (ShelfCover 依赖 Android Coil, 未下沉);
+ * - **封面 slot**: [rememberOhosCoverBitmap] 真实加载, 失败回退原占位色块;
  * - **打开书籍**: 通过 [onOpenBook] 回调切到 READER 路由 (异步查 book → 携带 book 跳转);
  * - **删除确认**: 用 [AlertDialog] (替代 app 端 alert 扩展);
  * - **清空全部**: 用 [AlertDialog] 二次确认。
  *
  * # 简化项 (鸿蒙端 KP5 阶段)
  *
- * - 热力图 / 封面 用占位 Box (Android 专属组件未下沉, KP6+ 接入 CMP 等价组件)
+ * - 热力图用占位 Box (MonthHeatMapView 未下沉, KP6+ 接入 CMP 等价组件)
  * - 日期分段逻辑简化: perDayMode 按 (bookName, day) 拆行展示, 跨书同天不合并 (与 app 端一致)
  *
  * @param onBack 返回回调 (切回调用方路由, 由 OhosNavHost 注入)
@@ -289,18 +292,27 @@ fun OhosReadRecordScreen(
         heatmapSlot = { modifier ->
             Box(
                 modifier
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(DesignTokens.shapeSm)
                     .background(AppTheme.colors.bottomBackground)
             )
         },
-        // 封面 slot: 鸿蒙端暂用占位 Box (ShelfCover 依赖 Android Coil, 未下沉)
-        // TODO: KP6+ 接入 CMP 图片加载后回填
-        coverSlot = { _, _, modifier ->
-            Box(
-                modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(AppTheme.colors.bottomBackground)
-            )
+        // 封面 slot: OhosBookCover 真实加载; 无书/加载失败回退原占位色块
+        coverSlot = { _, book, modifier ->
+            val bitmap = rememberOhosCoverBitmap(book?.getDisplayCover(), book)
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = book?.name,
+                    modifier = modifier.clip(DesignTokens.shapeSm),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Box(
+                    modifier
+                        .clip(DesignTokens.shapeSm)
+                        .background(AppTheme.colors.bottomBackground)
+                )
+            }
         },
     )
 

@@ -11,6 +11,7 @@ import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.registerOhosProviders
+import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.book.manga.OhosMangaImageExtractor
 import io.legado.app.ui.explore.ExploreViewModelShared
 import io.legado.app.utils.ChineseUtils
@@ -516,6 +517,32 @@ object LegadoNativeExports {
         OhosNativeBridge.registerCacheDirFn(path.toKString())
     }
 
+    // ===== legado:// deep link 投递 (ArkTS → Kotlin, 被动接收无回调) =====
+
+    /**
+     * 投递 legado:// / yuedu:// deep link (ArkTS EntryAbility.onCreate/onNewWant 调用)。
+     *
+     * 调用链: `ArkTS EntryAbility.handleDeepLink(want)` → `legado.handleDeepLink(want.uri)` →
+     * napi (legado_napi.cpp HandleDeepLink) → dlsym("legado_handle_deep_link") →
+     * 本函数 → [LegadoDeepLinkHandler.handle] → 解析后写入 `pending` (StateFlow)。
+     *
+     * 消费侧是 [io.legado.app.ui.OhosNavHost] 尾部的
+     * [io.legado.app.ui.association.DeepLinkImportHost], 弹勾选对话框后入库。
+     *
+     * # 时机
+     * pending 是 StateFlow, 冷启动 (onCreate) 早于 Compose 组合投递也不丢, 组合起来即消费。
+     *
+     * # 跨语言传递
+     * 单一 URL 字符串直接传 (同 [registerFileDir], 无需 JSON 包装)。
+     * 无回调: ArkTS 只需知道是否已识别, 同步返回即可。
+     *
+     * @param url deep link URL (UTF-8 C 字符串, 如 `legado://import/bookSource?src=https://...`)
+     * @return 1=已识别并记录待导入; 0=非 legado/yuedu scheme 或缺 src 参数 (ArkTS 可透传其他处理)
+     */
+    @CName("legado_handle_deep_link")
+    fun handleDeepLink(url: CPointer<ByteVar>): Int =
+        if (LegadoDeepLinkHandler.handle(url.toKString())) 1 else 0
+
     // ===== Toast/Notification tsfn 注入 (KP7+, C++ → Kotlin dispatch 函数指针注入) =====
 
     /**
@@ -841,5 +868,70 @@ object LegadoNativeExports {
     @CName("legado_file_picker_callback")
     fun filePickerCallback(requestId: Long, result: CPointer<ByteVar>) {
         OhosNativeBridge.onFilePickerResult(requestId, result.toKString())
+    }
+
+    // ===== Pasteboard tsfn 注入 + ArkTS → Kotlin 结果回调 (同 FilePicker 模式) =====
+
+    /**
+     * 注入 pasteboard dispatch 函数指针 (由 legado_napi.cpp RegisterPasteboardCallback 调用)。
+     *
+     * 注入到 [OhosNativeBridge.pasteboardTsfn], 使 KMP [OhosNativeBridge.invokePasteboardSync]
+     * 能跨线程 dispatch 剪贴板读写请求到 ArkTS。ArkTS PasteboardBridgeHandler 处理完成后
+     * 通过 [pasteboardCallback] (@CName legado_pasteboard_callback) 回送结果。
+     *
+     * @param dispatch C++ tsfn dispatch 入口 (`ohos_pasteboard_dispatch`), 类型 `void(*)(const char*)`
+     */
+    @CName("legado_register_pasteboard_fn")
+    fun registerPasteboardFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>) -> Unit>>) {
+        OhosNativeBridge.registerPasteboardFn { json ->
+            memScoped {
+                dispatch(json.cstr.getPointer(this))
+            }
+        }
+    }
+
+    /**
+     * ArkTS → Kotlin pasteboard 操作结果回调 (由 legado_napi.cpp PasteboardCallback 调用)。
+     *
+     * @param requestId 请求 ID (与 invokePasteboardSync 生成的 requestId 对应)
+     * @param result 结果 JSON: read 成功 `{ ok: true, text: "..." }`, write 成功 `{ ok: true }`,
+     *   失败 `{ ok: false, error: "..." }`
+     */
+    @CName("legado_pasteboard_callback")
+    fun pasteboardCallback(requestId: Long, result: CPointer<ByteVar>) {
+        OhosNativeBridge.onPasteboardResult(requestId, result.toKString())
+    }
+
+    // ===== TextCodec tsfn 注入 + ArkTS → Kotlin 结果回调 (同 Crypto/Pasteboard 模式) =====
+
+    /**
+     * 注入 textCodec dispatch 函数指针 (由 legado_napi.cpp RegisterTextCodecCallback 调用)。
+     *
+     * 注入到 [OhosNativeBridge.textCodecTsfn], 使 KMP [OhosNativeBridge.invokeTextCodecSync]
+     * 能跨线程 dispatch GB18030/Big5 编解码请求到 ArkTS (TXT 分章解析用)。
+     * ArkTS TextCodecBridgeHandler (@ohos.util TextDecoder/TextEncoder) 处理完成后
+     * 通过 [textCodecCallback] (@CName legado_text_codec_callback) 回送结果。
+     *
+     * @param dispatch C++ tsfn dispatch 入口 (`ohos_text_codec_dispatch`), 类型 `void(*)(const char*)`
+     */
+    @CName("legado_register_text_codec_fn")
+    fun registerTextCodecFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>) -> Unit>>) {
+        OhosNativeBridge.registerTextCodecFn { json ->
+            memScoped {
+                dispatch(json.cstr.getPointer(this))
+            }
+        }
+    }
+
+    /**
+     * ArkTS → Kotlin textCodec 操作结果回调 (由 legado_napi.cpp TextCodecCallback 调用)。
+     *
+     * @param requestId 请求 ID (与 invokeTextCodecSync 生成的 requestId 对应)
+     * @param result 结果 JSON: decode 成功 `{ ok: true, text: "..." }`,
+     *   encode 成功 `{ ok: true, data: "<base64>" }`, 失败 `{ ok: false, error: "..." }`
+     */
+    @CName("legado_text_codec_callback")
+    fun textCodecCallback(requestId: Long, result: CPointer<ByteVar>) {
+        OhosNativeBridge.onTextCodecResult(requestId, result.toKString())
     }
 }

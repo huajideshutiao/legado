@@ -1,6 +1,7 @@
 package io.legado.app.help.coroutine
 
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import java.util.concurrent.Executors
 
@@ -13,6 +14,9 @@ import java.util.concurrent.Executors
  */
 actual fun newFixedThreadPoolDispatcher(size: Int): CoroutineDispatcher =
     Executors.newFixedThreadPool(size).asCoroutineDispatcher()
+
+/** JVM/Android actual: 直接转发 [Dispatchers.IO]。 */
+actual val IoDispatcher: CoroutineDispatcher get() = Dispatchers.IO
 
 /**
  * JVM/Android actual: 强转 [java.lang.AutoCloseable] 后 close()。

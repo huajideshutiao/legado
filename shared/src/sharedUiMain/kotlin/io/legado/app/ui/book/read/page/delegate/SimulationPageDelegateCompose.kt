@@ -219,13 +219,13 @@ class SimulationPageDelegateCompose(
         // mPath0: 当前页未翻起部分（与 app 端 drawCurrentPageArea 内 mPath0.reset + moveTo/quadTo/lineTo 对应）
         mPath0.reset()
         mPath0.moveTo(mBezierStart1.x, mBezierStart1.y)
-        mPath0.quadraticBezierTo(
+        mPath0.quadraticTo(
             mBezierControl1.x, mBezierControl1.y,
             mBezierEnd1.x, mBezierEnd1.y,
         )
         mPath0.lineTo(mTouchX, mTouchY)
         mPath0.lineTo(mBezierEnd2.x, mBezierEnd2.y)
-        mPath0.quadraticBezierTo(
+        mPath0.quadraticTo(
             mBezierControl2.x, mBezierControl2.y,
             mBezierStart2.x, mBezierStart2.y,
         )
@@ -415,7 +415,6 @@ class SimulationPageDelegateCompose(
                     curContent()
                 }
             }
-            else -> curContent()
         }
     }
 

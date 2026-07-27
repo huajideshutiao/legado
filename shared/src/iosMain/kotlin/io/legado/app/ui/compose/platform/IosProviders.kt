@@ -87,6 +87,8 @@ class IosAppConfigProvider(
 ) : AppConfigProvider {
     override val isEInkMode: Boolean
         get() = defaults.stringForKey(PreferKey.themeMode) == "3"
+    override val isNightTheme: Boolean
+        get() = defaults.stringForKey(PreferKey.themeMode) == "2"
 }
 
 /**

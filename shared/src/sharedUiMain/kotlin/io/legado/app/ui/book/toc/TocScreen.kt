@@ -313,7 +313,17 @@ private fun ChapterListPage(state: TocUiState, actions: TocUiActions) {
                 .fillMaxWidth(),
         ) {
             items(display, key = { it.index }) { item ->
-                ChapterItem(state, actions, item)
+                // 参数瘦身: 只传本项派生值(全稳定), state 任一无关字段变化时本项可跳过重组
+                ChapterItem(
+                    item = item,
+                    title = state.displayTitleMap[item.title] ?: item.title,
+                    isDur = state.durChapterIndex == item.index,
+                    cached = state.isLocalBook || item.isVolume ||
+                            state.cacheFileNames.contains(item.getFileName()),
+                    collapsed = item.index in state.collapsedVolumes,
+                    countWords = state.countWords,
+                    actions = actions,
+                )
             }
         }
         ChapterInfoBar(state, actions, listState, display.size)
@@ -321,12 +331,16 @@ private fun ChapterListPage(state: TocUiState, actions: TocUiActions) {
 }
 
 @Composable
-private fun ChapterItem(state: TocUiState, actions: TocUiActions, item: BookChapter) {
+private fun ChapterItem(
+    item: BookChapter,
+    title: String,
+    isDur: Boolean,
+    cached: Boolean,
+    collapsed: Boolean,
+    countWords: Boolean,
+    actions: TocUiActions,
+) {
     val colors = AppTheme.colors
-    val isDur = state.durChapterIndex == item.index
-    val cached = state.isLocalBook || item.isVolume ||
-            state.cacheFileNames.contains(item.getFileName())
-    val title = state.displayTitleMap[item.title] ?: item.title
     Row(
         Modifier
             .fillMaxWidth()
@@ -362,7 +376,7 @@ private fun ChapterItem(state: TocUiState, actions: TocUiActions, item: BookChap
                 overflow = TextOverflow.Ellipsis,
             )
             val showWordCount =
-                state.countWords && !item.wordCount.isNullOrEmpty() && !item.isVolume
+                countWords && !item.wordCount.isNullOrEmpty() && !item.isVolume
             val showTag = !item.tag.isNullOrEmpty() && !item.isVolume
             if (showWordCount || showTag) {
                 Row {
@@ -397,8 +411,7 @@ private fun ChapterItem(state: TocUiState, actions: TocUiActions, item: BookChap
             when {
                 item.isVolume -> Icon(
                     painter = rememberPainter(
-                        if (item.index in state.collapsedVolumes) "ic_expand_more"
-                        else "ic_expand_less"
+                        if (collapsed) "ic_expand_more" else "ic_expand_less"
                     ),
                     contentDescription = null,
                     tint = colors.secondaryText,
@@ -530,14 +543,14 @@ private fun BookmarkPage(state: TocUiState, actions: TocUiActions) {
         ),
     ) {
         itemsIndexed(bookmarks, key = { _, item -> item.time }) { index, item ->
-            BookmarkItem(state, actions, item, index)
+            BookmarkItem(actions, item, index)
         }
     }
 }
 
+// state 参数已移除: 本项不读 TocUiState, 避免无关状态变化触发重组
 @Composable
 private fun BookmarkItem(
-    state: TocUiState,
     actions: TocUiActions,
     item: Bookmark,
     pos: Int,
@@ -619,7 +632,7 @@ private fun CheckItem(text: String, checked: Boolean, onClick: () -> Unit) {
  * 桌面端阅读页章节目录侧栏内容（KMP 版，替代原 ChapterListDrawer）。
  *
  * 内部维护 D 过渡实现的 4 个增强能力：
- * - **搜索框**：顶部 [AppSearchField]，`chapterList.filter { it.title?.contains(query, ignoreCase = true) == true }`
+ * - **搜索框**：顶部 [AppSearchField]，`chapterList.filter { it.title.contains(query, ignoreCase = true) }`
  * - **反转按钮**：标题栏右侧 IconButton，`displayList.reversed()`
  * - **卷折叠**：[mutableStateMapOf] 记录卷展开状态，卷名行点击切换
  * - **字数显示**：章节项右侧 `StringUtils.wordCountFormat(chapter.wordCount)`
@@ -661,7 +674,7 @@ fun TocDrawerContent(
     // 1. 搜索过滤
     val filtered = remember(chapterList, searchQuery) {
         if (searchQuery.isBlank()) chapterList
-        else chapterList.filter { it.title?.contains(searchQuery, ignoreCase = true) == true }
+        else chapterList.filter { it.title.contains(searchQuery, ignoreCase = true) }
     }
     // 2. 反转
     val ordered = remember(filtered, reversed) { if (reversed) filtered.reversed() else filtered }

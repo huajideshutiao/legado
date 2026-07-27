@@ -1,13 +1,9 @@
 package io.legado.desktop.ui.book.video
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,26 +12,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.CircularProgressIndicator
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.LinearProgressIndicator
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -44,20 +33,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.sun.jna.Native
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.VideoResolution
-import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.ui.book.video.ResolutionButton
 import io.legado.app.ui.book.video.VideoPlayViewModelShared
+import io.legado.app.ui.book.video.VideoPlayerScreenContent
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
 import io.legado.app.ui.compose.platform.DesktopPreferenceStoreProvider
@@ -67,17 +57,22 @@ import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.PreferenceStoreProvider
+import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.desktop.help.video.MpvDetector
+import io.legado.desktop.help.video.MpvDownloader
+import io.legado.desktop.help.video.MpvPlayer
+import java.awt.Canvas
+import java.awt.Desktop
 import java.io.File
+import java.net.URI
 import java.util.UUID
-import uk.co.caprica.vlcj.player.base.MediaPlayer
-import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter
-import uk.co.caprica.vlcj.player.component.EmbeddedMediaPlayerComponent
-import javax.swing.JPanel
-import kotlin.math.abs
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 桌面端视频播放 Screen 入口 (对照 app 端 [io.legado.app.ui.book.video.VideoPlayActivity]
@@ -87,37 +82,29 @@ import kotlin.math.abs
  *
  * - 包装 [VideoPlayViewModelShared] 持有章节视频 URL 列表状态
  * - 注入 desktop 平台 Provider (与 [io.legado.desktop.ui.about.AboutScreen] 一致 4 个 Provider)
- * - 顶部标题栏 (返回 + 书名 + 章节名 + 目录 + 换源, 对照 app 端 VideoPlayActivity 标题栏)
- * - 中间视频播放区 (vlcj [EmbeddedMediaPlayerComponent] 经 [SwingPanel] 嵌入 AWT 渲染视频)
- * - 播放控制层 (播放/暂停 + 进度条 + 倍速 + 分辨率切换 + 单击显隐, 对照 app 端 VideoControlsOverlay)
- * - 底部章节控制栏 (上一章 / 进度 / 下一章, 对照 app 端 VideoPlayActivity 底部控制)
- * - 加载/错误覆盖层 (对照 app 端 ReadVideoActivity LoadingOverlay)
+ * - 骨架 (标题栏 / 章节控制栏 / 加载错误条) 复用 sharedUiMain [VideoPlayerScreenContent],
+ *   本文件只提供 mpv 渲染层与状态接线
  *
- * # 与 app 端差异
+ * # 播放方案 (all-in mpv)
  *
- * - **播放器**: app 端用 ExoPlayer (androidx.media3) 渲染视频 + 控制层 (Player.Listener
- *   回喂 isPlaying/playbackState/playbackSpeed); desktop 端 JVM 用 vlcj (VLC 官方 Java
- *   绑定, JNA → libvlc), 经 [SwingPanel] 嵌入 AWT 渲染视频, 通过
- *   [MediaPlayerEventAdapter] 回喂 isPlaying/position/duration
- * - **手势**: app 端 VideoGestureHandler 处理单击(显隐控制层)/双击(播放暂停)/长按(2X 倍速)/
- *   水平拖动(进度)/左侧垂直拖动(亮度)/右侧垂直拖动(音量); desktop 端用鼠标交互, 仅实现
- *   单击显隐控制层 + 进度条拖动 seek (桌面端无亮度/音量手势概念, 倍速走按钮)
- * - **分辨率切换**: app 端用 TrackSelectionDialogBuilder / singleChoiceItems 弹窗;
- *   desktop 端用 [AlertDialog] + 单选 (对照 app 端 [io.legado.app.ui.book.video.VideoPlayActivity.showResolutionDialog])
- * - **全屏**: app 端按横竖屏互切 + toggleSystemBar; desktop 端窗口模式无横竖屏概念,
- *   全屏由窗口管理控制 (不在本 Screen 职责内)
- * - **进度持久化**: app 端 saveRead(position) 写 book.durChapterPos; desktop 端用
- *   [PreferenceStoreProvider] 存 `video_progress_{bookUrl}` (内存 Map, 进程级),
- *   打开时 vlcj `:start-time=` 恢复, 退出 / 切章时落存 (与 [VideoPlayViewModelShared.saveVideoProgress] 一致)
- * - **VLC native 库**: vlcj 运行时需用户机器已安装 VLC media player, 通过 NativeDiscovery
- *   自动查找 libvlc.{dll|so|dylib}; 不引入 native 库打包配置 (VLC 太大 ~200MB),
- *   后续可走 jpackage appResourcesRootDir 模式纳入本地 VLC 副本 (标 TODO)
+ * - **渲染/控制**: mpv 外部进程经 `--wid` 嵌入 AWT Canvas (SwingPanel), 控制层用 mpv
+ *   内建 OSC (播放/暂停/进度/音量); SwingPanel 是重量级 AWT, Compose 无法叠加其上,
+ *   故加载/错误状态以细条形式显示在底部章节栏上方而非覆盖层
+ * - **IPC 桥**: [MpvPlayer] 经 JSON IPC 观察 time-pos/duration 做进度回写, 监听
+ *   end-file(eof) 自动切下一章, 并把 Compose 侧键盘快捷键 (空格/←/→) 转发为 mpv 命令;
+ *   IPC 失败仅丢这些增强, 播放本身不受影响
+ * - **防盗链**: [io.legado.app.model.analyzeRule.AnalyzeUrlCore.headerMap] 全量透传
+ *   (含 Cookie), 由 [MpvPlayer.start] 拼装 mpv 选项 (UA/Referer 专属选项达 HLS 分片)
+ * - **未安装 mpv**: 显示引导安装占位 (官网/包管理器 + 自定义路径 [MpvDetector.PREF_KEY_MPV_PATH]
+ *   + 重新检测 + 浏览器直接打开流的兜底)
+ * - **macOS**: AWT 拿不到可 --wid 嵌入的 NSView 句柄, 降级为独立 mpv 窗口播放
+ * - **进度持久化**: 退出/进程结束时把 IPC 最后观测位置经
+ *   [VideoPlayViewModelShared.saveVideoProgressOnExit] 落存, 打开时 `--start=` 恢复
  *
  * # 路由接入
  *
  * 由 [io.legado.desktop.ui.DesktopApp] 的 `DesktopRoute.VIDEO_PLAYER` 分支消费,
- * 触发点: 书架/详情/目录点击 `book.isVideo` 类型书籍 (与 `book.isAudio`/`book.isImage`
- * 平级分流)。
+ * 触发点: 书架/详情/目录点击 `book.isVideo` 类型书籍。
  *
  * @param book 待播放的视频书 (book.type 含 [io.legado.app.constant.BookType.video] 位)
  * @param chapterIndex 初始章节序号 (默认 0, 取 book.durChapterIndex)
@@ -133,8 +120,7 @@ fun VideoPlayerScreen(
     onOpenToc: (Book) -> Unit = {},
     onOpenChangeSource: (Book) -> Unit = {},
 ) {
-    // 注入 desktop 平台 Provider (参照 MangaReaderScreen 第 123-134 行 CompositionLocalProvider 模式)
-    // 供 AppTheme / rememberString / PreferenceScreen 等通过 LocalXxx 取依赖
+    // 注入 desktop 平台 Provider (参照 MangaReaderScreen CompositionLocalProvider 模式)
     val themeStore = remember { DesktopThemeStoreProvider() }
     val appConfig = remember { DesktopAppConfigProvider() }
     val eventBus = remember { DesktopEventBusProvider() }
@@ -159,10 +145,10 @@ fun VideoPlayerScreen(
 }
 
 /**
- * 视频播放主体内容 (对照 app 端 VideoPlayActivity.Content + VideoPlayScreen)。
+ * 视频播放主体内容: 持有 VM + mpv 进程状态, 骨架委托 [VideoPlayerScreenContent]。
  *
  * 注: 拆出顶层 Composable 是为在 [CompositionLocalProvider] + [AppTheme] 包裹后消费
- * LocalXxx (如 [LocalPreferenceStoreProvider] 当前实例), 与 MangaReaderScreen 一致。
+ * LocalXxx, 与 MangaReaderScreen 一致。
  */
 @Composable
 private fun VideoPlayerContent(
@@ -173,15 +159,11 @@ private fun VideoPlayerContent(
     onOpenToc: (Book) -> Unit,
     onOpenChangeSource: (Book) -> Unit,
 ) {
-    // VM 记忆 (避免重组重建, 与 MangaReaderScreen 中 MangaReaderViewModelShared remember 一致)
-    // scope 由 rememberCoroutineScope 注入, Composable 离开组合时自动取消
-    // (对照 MangaReaderScreen 第 163-165 行, 不用 MainScope 避免手动管理生命周期)
     val scope = rememberCoroutineScope()
     val viewModel = remember { VideoPlayViewModelShared(scope, prefStore) }
 
-    // 收集 VM 状态 (Compose 经 collectAsState 订阅, StateFlow 有初始值故无需传默认值)
+    // 收集 VM 状态
     val videoUrl by viewModel.videoUrl.collectAsState()
-    val videoSource by viewModel.videoSource.collectAsState()
     val resolutions by viewModel.resolutions.collectAsState()
     val curChapterIndex by viewModel.curChapterIndex.collectAsState()
     val chapterSize by viewModel.chapterSize.collectAsState()
@@ -190,278 +172,59 @@ private fun VideoPlayerContent(
     val error by viewModel.error.collectAsState()
 
     // 上次播放位置 (对照 app 端 initData: position = curBook.durChapterPos)
-    // remember(book.bookUrl): 换书重读; 进程内切章不重读 (切章已由 VM 重置为 0, 由退出时落存覆盖)
     val initialPositionMs = remember(book.bookUrl) { viewModel.getSavedVideoProgress(book.bookUrl) }
 
-    // 初始化数据 (装载书 + 章节列表 + 加载首章, 对照 app 端 VideoPlayActivity.onActivityCreated -> initData)
+    // 初始化数据 (装载书 + 章节列表 + 加载首章)
     LaunchedEffect(book.bookUrl) {
         viewModel.initData(book, chapterIndex)
     }
-    // 注: 不需要 DisposableEffect 取消 scope, rememberCoroutineScope 离开组合时自动取消
-    // (VideoPlayViewModelShared 无独立 downloadScope, 所有 launch 派生于注入的 scope)
 
-    Box(Modifier.fillMaxSize().background(Color(0xFF000000))) {
-        Column(Modifier.fillMaxSize()) {
-            // 顶部标题栏 (返回 + 书名/章节名 + 目录 + 换源, 对照 app 端 VideoPlayActivity 标题栏)
-            VideoTitleBar(
-                bookName = book.name,
-                chapterTitle = curChapterTitle,
-                onBack = onBack,
-                onOpenToc = { onOpenToc(book) },
-                onOpenChangeSource = { onOpenChangeSource(book) },
-            )
-            // 中间视频播放区 (vlcj 渲染面 + 控制层, 对照 app 端 VideoPlayScreen Box 渲染区)
-            Box(Modifier.fillMaxSize().weight(1f)) {
-                VideoRenderArea(
-                    videoUrl = videoUrl,
-                    hasMultiResolution = videoSource != null && resolutions.size > 1,
-                    resolutions = resolutions,
-                    currentResolutionIndex = viewModel.currentResolutionIndex,
-                    loading = loading,
-                    error = error,
-                    initialPositionMs = initialPositionMs,
-                    onRetry = { viewModel.refreshChapter() },
-                    onPlayError = { viewModel.retryOnPlayError() },
-                    onSwitchResolution = { idx -> viewModel.switchResolution(idx) },
-                    onNextChapter = { viewModel.moveToNextChapter() },
-                    onSaveProgressOnExit = { pos, dur -> viewModel.saveVideoProgressOnExit(pos, dur) },
-                )
-            }
-            // 底部章节控制栏 (上一章 / 进度 / 下一章, 对照 app 端 VideoPlayActivity 底部控制)
-            VideoControlBar(
-                curIndex = curChapterIndex,
-                size = chapterSize,
-                onPrev = { viewModel.moveToPrevChapter() },
-                onNext = { viewModel.moveToNextChapter() },
-            )
-        }
+    // ---- mpv 检测 (进程试探属阻塞 IO, 移出组合线程) ----
+
+    var mpvPath by remember { mutableStateOf<String?>(null) }
+    var mpvDetectDone by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        mpvPath = withContext(Dispatchers.IO) { MpvDetector.detect() }
+        mpvDetectDone = true
     }
-}
+    // macOS 拿不到 NSView 句柄, 降级独立窗口
+    val embeddable = !MpvDetector.isMac
 
-// ---- 顶部标题栏 (对照 app 端 VideoPlayActivity 标题栏 + MangaReaderScreen.MangaTitleBar 风格) ----
+    // ---- mpv 进程状态 ----
 
-/**
- * 视频标题栏 (56dp 高, 返回 + 书名/章节名 + 目录 + 换源)。
- *
- * 黑底白字, 与 [io.legado.desktop.ui.book.manga.MangaReaderScreen] 的 MangaTitleBar
- * 视觉一致 (视频 Screen 全屏黑底, AppTitleBar Surface 风格不匹配)。
- */
-@Composable
-private fun VideoTitleBar(
-    bookName: String,
-    chapterTitle: String,
-    onBack: () -> Unit,
-    onOpenToc: () -> Unit,
-    onOpenChangeSource: () -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconButton(onClick = onBack) {
-            Icon(
-                painter = rememberPainter("ic_arrow_back"),
-                contentDescription = rememberString("back"),
-                tint = Color.White,
-            )
-        }
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = bookName,
-                color = Color.White,
-                fontSize = 18.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (chapterTitle.isNotEmpty()) {
-                Text(
-                    text = chapterTitle,
-                    color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        IconButton(onClick = onOpenToc) {
-            Icon(
-                painter = rememberPainter("ic_toc"),
-                contentDescription = rememberString("chapter_list"),
-                tint = Color.White,
-            )
-        }
-        IconButton(onClick = onOpenChangeSource) {
-            Icon(
-                painter = rememberPainter("ic_exchange"),
-                contentDescription = rememberString("change_source"),
-                tint = Color.White,
-            )
-        }
-    }
-}
-
-// ---- 渲染区 (对照 app 端 VideoPlayScreen 渲染面 + VideoSurface + VideoControlsOverlay) ----
-
-/**
- * 视频渲染区: vlcj [EmbeddedMediaPlayerComponent] 经 [SwingPanel] 嵌入 AWT 渲染视频,
- * 上叠手势层(单击显隐控制层) + 控制层(播放/暂停/进度/倍速/分辨率)。
- *
- * # vlcj 集成
- *
- * - **创建**: [SwingPanel] factory 在 AWT EDT 上 new [EmbeddedMediaPlayerComponent],
- *   成功后写入 `playerComponent` State 触发重组; 失败 (VLC native 库未安装) 写入
- *   `vlcInitError` 显示安装提示
- * - **事件**: [DisposableEffect](playerComponent) 在组件就绪后挂 [MediaPlayerEventAdapter],
- *   回喂 isPlaying/position/duration/finished/error 到 Compose State; onDispose 移除监听
- * - **加载**: [LaunchedEffect](videoUrl, playerComponent) 在 URL 就绪且播放器就绪后调
- *   `mediaPlayer.media().play(url, *options)`, options 包含 HTTP 头部 + network-caching
- *   + 首次加载 `:start-time=<秒>` 恢复上次播放位置 (对照 app 端 `player.seekTo(position)`)
- * - **释放**: [DisposableEffect](Unit).onDispose 先落存当前位置 (对照 app 端 onPause
- *   `viewModel.saveRead(position)`), 再 stop + release (Screen 退出时)
- *
- * # 内存 m3u8 支持
- *
- * vlcj 不能直接播放 m3u8 字符串内容 (需要 URL 或文件路径)。app 端用 ByteArrayDataSource
- * 加载内存 m3u8; desktop 端写临时文件 + vlcj 播放文件路径实现等价效果, 临时文件在
- * onDispose 中清理。
- *
- * @param videoUrl 当前播放视频源 (含 URL + header), null = 加载中或失败
- * @param hasMultiResolution 是否多分辨率源 (控制分辨率按钮显隐)
- * @param resolutions 分辨率列表
- * @param currentResolutionIndex 当前分辨率索引
- * @param loading 加载中标记
- * @param error 加载失败消息
- * @param initialPositionMs 打开视频时恢复的播放位置 (毫秒, 0=从头播; 仅首次加载生效)
- * @param onRetry 重试回调 (ErrorOverlay 用户手动重试用)
- * @param onPlayError 播放器错误重试回调 (返回 true 已重试, false 已重试过)
- * @param onSwitchResolution 切换分辨率回调 (索引)
- * @param onNextChapter 播放结束切下一章回调
- * @param onSaveProgressOnExit 退出时保存进度回调 (片尾归零由 shared VM 处理)
- */
-@Composable
-private fun VideoRenderArea(
-    videoUrl: AnalyzeUrlCore?,
-    hasMultiResolution: Boolean,
-    resolutions: List<VideoResolution>,
-    currentResolutionIndex: Int,
-    loading: Boolean,
-    error: String?,
-    initialPositionMs: Long,
-    onRetry: () -> Unit,
-    onPlayError: () -> Boolean,
-    onSwitchResolution: (Int) -> Unit,
-    onNextChapter: () -> Unit,
-    onSaveProgressOnExit: (Long, Long) -> Unit,
-) {
-    // vlcj 播放器实例 (在 AWT EDT 创建, 写入 State 触发重组挂监听)
-    var playerComponent by remember { mutableStateOf<EmbeddedMediaPlayerComponent?>(null) }
-    // VLC native 库初始化错误 (用户未装 VLC 时显示安装提示)
-    var vlcInitError by remember { mutableStateOf<String?>(null) }
-    // 内存 m3u8 临时文件 (vlcj 4.x 无 ByteArrayDataSource 等价 API, 临时文件是最简方案)
-    // cache 目录 + shutdown hook 兜底清理 (防异常退出残留)
+    // 嵌入句柄 (SwingPanel Canvas addNotify 后回填; 独立窗口模式恒 null)
+    var canvasWid by remember { mutableStateOf<Long?>(null) }
+    var player by remember { mutableStateOf<MpvPlayer?>(null) }
+    // mpv 自身错误 (启动失败/播放失败重试后仍失败), 与 VM error 一起走底部状态条
+    var mpvError by remember { mutableStateOf<String?>(null) }
+    // 首次加载是否已恢复播放位置 (切章不再恢复)
+    var hasRestoredInitialPosition by remember { mutableStateOf(false) }
+    // 内存 m3u8 临时文件 (mpv 播放本地 .m3u8; cache 目录 + shutdown hook 兜底清理)
     val tempCacheDir = remember {
-        val dir = File(System.getProperty("java.io.tmpdir"), "legado_video")
-        if (!dir.exists()) dir.mkdirs()
-        dir
+        File(System.getProperty("java.io.tmpdir"), "legado_video").apply { if (!exists()) mkdirs() }
     }
     var tempFile by remember { mutableStateOf<File?>(null) }
+    // 键盘事件焦点: 共享件 onPreviewKeyEvent 挂根 Box, 渲染槽 (其后代) 持有焦点才触发
+    val focusRequester = remember { FocusRequester() }
 
-    // ---- 播放控制状态 (vlcj 事件回喂 + UI 订阅, 对照 app 端 Player.Listener 回喂) ----
-    var isPlaying by remember { mutableStateOf(false) }
-    var positionMs by remember { mutableLongStateOf(0L) }
-    var durationMs by remember { mutableLongStateOf(0L) }
-    var playbackSpeed by remember { mutableFloatStateOf(1f) }
-    // 控制层显隐 (对照 app 端 controlsVisible, 默认显示)
-    var controlsVisible by remember { mutableStateOf(true) }
-    // 首次加载是否已恢复播放位置 (避免切章时误 seek 到旧位置; 对照 app 端 initData 一次性读 position)
-    var hasRestoredInitialPosition by remember { mutableStateOf(false) }
-
-    // URL 变化时重置播放进度 (对照 app 端 refreshPlayer 切换 media source)
-    LaunchedEffect(videoUrl) {
-        positionMs = 0L
-        durationMs = 0L
-        isPlaying = false
-    }
-
-    // Screen 退出时落存播放进度 + 释放 vlcj 资源 (对照 app 端 onPause: saveRead(position) + onDestroy: release)
-    DisposableEffect(Unit) {
-        onDispose {
-            // 片尾归零 + 落存进度委托 shared VM
-            onSaveProgressOnExit(positionMs, durationMs)
-            // 清理内存 m3u8 临时文件
-            tempFile?.delete()
-            try {
-                playerComponent?.mediaPlayer()?.controls()?.stop()
-                playerComponent?.release()
-            } catch (e: Throwable) {
-                AppLog.put(jvmGetString("video_release_vlcj_error_log", e.message), e)
-            }
+    // URL / 句柄 / mpv 路径就绪后 (重新) 启动 mpv 进程
+    LaunchedEffect(videoUrl, canvasWid, mpvPath) {
+        val mpv = mpvPath ?: return@LaunchedEffect
+        val url = videoUrl
+        if (url == null) {
+            // 章节切换清场 (loadChapter 先置 null): 旧进程退出且不落存
+            // (切章进度重置为 0 已由 VM moveToNext/PrevChapter 落存)
+            player?.quit(discardProgress = true)
+            player = null
+            return@LaunchedEffect
         }
-    }
-
-    // 挂 vlcj 事件监听 (playerComponent 创建后挂一次, onDispose 移除; 对照 app 端 uiListener)
-    DisposableEffect(playerComponent) {
-        val pc = playerComponent
-        var listener: MediaPlayerEventAdapter? = null
-        if (pc != null) {
-            listener = object : MediaPlayerEventAdapter() {
-                override fun playing(mediaPlayer: MediaPlayer) {
-                    isPlaying = true
-                }
-
-                override fun paused(mediaPlayer: MediaPlayer) {
-                    isPlaying = false
-                }
-
-                override fun stopped(mediaPlayer: MediaPlayer) {
-                    isPlaying = false
-                }
-
-                override fun finished(mediaPlayer: MediaPlayer) {
-                    // 播放结束: 切下一章 (对照 app 端 onPlaybackStateChanged STATE_ENDED)
-                    isPlaying = false
-                    onNextChapter()
-                }
-
-                override fun timeChanged(mediaPlayer: MediaPlayer, newTime: Long) {
-                    positionMs = newTime.coerceAtLeast(0L)
-                }
-
-                override fun lengthChanged(mediaPlayer: MediaPlayer, newLength: Long) {
-                    durationMs = newLength.coerceAtLeast(0L)
-                }
-
-                override fun error(mediaPlayer: MediaPlayer) {
-                    // 错误重试委托 shared VM (首次重试一次)
-                    val retried = onPlayError()
-                    if (!retried) {
-                        AppLog.put(jvmGetString("video_play_error_vlcj_event"), toast = true)
-                    }
-                }
-            }
-            pc.mediaPlayer().events().addMediaPlayerEventListener(listener)
-        }
-        onDispose {
-            listener?.let { pc?.mediaPlayer()?.events()?.removeMediaPlayerEventListener(it) }
-        }
-    }
-
-    // URL 变化时加载新视频 (对照 app 端 refreshPlayer: setMediaSource + prepare + play)
-    LaunchedEffect(videoUrl, playerComponent) {
-        val pc = playerComponent ?: return@LaunchedEffect
-        val url = videoUrl ?: return@LaunchedEffect
-        if (vlcInitError != null) return@LaunchedEffect
-        // 构造 VLC media options: HTTP 头部 (User-Agent / Referer / Cookie 等)
-        // VLC 选项格式: ":http-header=Key: Value\nKey2: Value2" (\n 分隔多个 header)
-        // :network-caching=3000: 网络缓存 3 秒, 避免 HLS 切片加载抖动
-        val headerStr = url.headerMap.entries
-            .filter { it.key.isNotBlank() && it.value.isNotBlank() }
-            .joinToString("\n") { "${it.key}: ${it.value}" }
-        // 首次加载恢复上次播放位置 (对照 app 端 setPlayerMediaSource 后 `if (position != 0L) seekTo`)
-        // vlcj 用 `:start-time=<秒>` 选项 (浮点秒), 仅首次加载生效 (切章不恢复)
-        val needRestore = !hasRestoredInitialPosition && initialPositionMs > 0
-        // 内存 m3u8 (url.url 非 http 开头): 写临时文件供 vlcj 播放 (vlcj 4.x 无 ByteArrayDataSource 等价 API)
-        // http(s) 直链: 直接 play url; 本地文件场景 http-header 无意义, 省略
+        if (embeddable && canvasWid == null) return@LaunchedEffect // 等 Canvas 句柄
+        // 分辨率切换 (videoUrl 直接换新值, 无 null 间隔): 记住旧位置续播
+        val resumeMs = player?.lastPosMs ?: 0L
+        player?.quit(discardProgress = true)
+        player = null
+        mpvError = null
+        // 内存 m3u8 (url.url 非 http 开头) 落地临时文件 (mpv 需要 URL 或文件路径)
         val isMemoryM3u8 = !url.url.startsWith("http")
         val playPath = if (isMemoryM3u8) {
             tempFile?.delete()
@@ -474,496 +237,396 @@ private fun VideoRenderArea(
         } else {
             url.url
         }
-        val options = buildList {
-            if (!isMemoryM3u8 && headerStr.isNotEmpty()) add(":http-header=$headerStr")
-            add(":network-caching=3000")
-            if (needRestore) add(":start-time=${initialPositionMs / 1000.0}")
+        val startMs = when {
+            resumeMs > 0 -> resumeMs
+            !hasRestoredInitialPosition && initialPositionMs > 0 -> {
+                hasRestoredInitialPosition = true
+                initialPositionMs
+            }
+
+            else -> 0L
         }
+        // header 全量透传 (含 Cookie); 内存 m3u8 场景同样透传 (分片请求仍需 Referer 等)
+        val headers = url.headerMap.filterKeys { it.isNotBlank() }.filterValues { it.isNotBlank() }
+        val p = MpvPlayer(
+            mpvPath = mpv,
+            onEof = {
+                // 自然播完 → 切下一章 (对照 app 端 STATE_ENDED; IPC 线程回调, VM 内部线程安全)
+                viewModel.moveToNextChapter()
+            },
+            onPlayError = { msg ->
+                // 首次错误重试一次 (重拉章节内容), 重试过则状态条 + toast
+                if (!viewModel.retryOnPlayError()) {
+                    val text = jvmGetString("video_play_error_mpv", msg)
+                    mpvError = text
+                    AppLog.put(text, toast = true)
+                }
+            },
+            onProcessExit = { posMs, durMs ->
+                // 片尾归零 + 落存委托 shared VM (仅播放过才触发, MpvPlayer 内部已挡未播先退)
+                viewModel.saveVideoProgressOnExit(posMs, durMs)
+            },
+        )
         runCatching {
-            pc.mediaPlayer().media().play(playPath, *options.toTypedArray())
-            // play 成功后标记已恢复, 避免切章时再次 seek 到旧位置
-            if (needRestore) hasRestoredInitialPosition = true
+            p.start(
+                playPath = playPath,
+                headers = headers,
+                startMs = startMs,
+                wid = canvasWid.takeIf { embeddable },
+                windowTitle = book.name,
+                mediaTitle = "${book.name} $curChapterTitle".trim(),
+                unsafeLocalPlaylist = isMemoryM3u8,
+            )
+            player = p
         }.onFailure {
-            AppLog.put(jvmGetString("video_load_error_log", it.message), it)
+            val text = jvmGetString("video_mpv_launch_error_log", it.message)
+            mpvError = text
+            AppLog.put(text, it, toast = true)
         }
     }
 
-    Box(
-        Modifier.fillMaxSize().background(Color(0xFF000000)),
-        contentAlignment = Alignment.Center,
-    ) {
-        // vlcj 渲染面 (SwingPanel 嵌入 AWT, factory 在 EDT 创建; 仅在 videoUrl 就绪 + 无错时显示)
-        if (videoUrl != null && error == null && vlcInitError == null) {
-            SwingPanel(
-                factory = {
-                    try {
-                        EmbeddedMediaPlayerComponent().also { pc ->
-                            playerComponent = pc
-                        }
-                    } catch (e: Throwable) {
-                        // VLC native 库未安装 / 加载失败, 显示安装提示 (不抛出避免 Screen 崩溃)
-                        vlcInitError = jvmGetString(
-                            "vlc_init_failed",
-                            e.message ?: e.javaClass.simpleName,
-                        )
-                        AppLog.put(jvmGetString("video_vlcj_init_failed_log", e.message), e, true)
-                        JPanel() // 空面板避免 SwingPanel factory 返回 null
+    // Screen 退出: 退出 mpv (waiter 线程落存最后位置) + 清临时文件
+    DisposableEffect(Unit) {
+        onDispose {
+            player?.quit(discardProgress = false)
+            tempFile?.delete()
+        }
+    }
+
+    // 渲染槽就绪后取焦点, 让共享件根 Box 的 onPreviewKeyEvent 位于焦点路径上
+    LaunchedEffect(Unit) {
+        runCatching { focusRequester.requestFocus() }
+    }
+
+    // 骨架 (标题栏 + 视频区 + 状态条/章节控制栏 + 键盘快捷键) 走 sharedUiMain 共享件
+    VideoPlayerScreenContent(
+        bookName = book.name,
+        chapterTitle = curChapterTitle,
+        curChapterIndex = curChapterIndex,
+        chapterSize = chapterSize,
+        onBack = onBack,
+        onOpenToc = { onOpenToc(book) },
+        onOpenChangeSource = { onOpenChangeSource(book) },
+        onPrevChapter = { viewModel.moveToPrevChapter() },
+        onNextChapter = { viewModel.moveToNextChapter() },
+        videoRenderSlot = { slotModifier ->
+            MpvVideoRenderSlot(
+                modifier = slotModifier
+                    .focusRequester(focusRequester)
+                    .focusable(),
+                detectDone = mpvDetectDone,
+                mpvPath = mpvPath,
+                embeddable = embeddable,
+                streamUrl = videoUrl?.url?.takeIf { it.startsWith("http") },
+                onWid = { canvasWid = it },
+                onRedetect = {
+                    scope.launch {
+                        mpvPath = withContext(Dispatchers.IO) { MpvDetector.detect(forceRefresh = true) }
                     }
                 },
-                modifier = Modifier.fillMaxSize(),
-            )
-
-            // 手势层: 单击显隐控制层 (透明 Box 盖在 SwingPanel 上方, 拦截鼠标事件)
-            // 对照 app 端 VideoGestureOverlay.onSingleTap -> controlsVisible = !controlsVisible
-            // 注: vlcj Canvas 不需要鼠标交互 (视频播放控制全在控制层), 故 Compose 拦截无副作用
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectTapGestures(onTap = { controlsVisible = !controlsVisible })
+                // 应用内下载完成: 强制刷新探测 (下载器已落存 mpvPath 设置项), 直接进入播放
+                onInstalled = {
+                    scope.launch {
+                        mpvPath = withContext(Dispatchers.IO) { MpvDetector.detect(forceRefresh = true) }
                     }
+                },
             )
-
-            // 控制层 (播放/暂停/进度/倍速/分辨率, 对照 app 端 VideoControlsOverlay)
-            VideoControlsOverlay(
-                visible = controlsVisible,
-                isPlaying = isPlaying,
-                positionMs = positionMs,
-                durationMs = durationMs,
-                playbackSpeed = playbackSpeed,
-                hasMultiResolution = hasMultiResolution,
+        },
+        // 键盘快捷键 → mpv IPC 命令 (空格播放暂停 / ←→ seek ±10s / 长按 → 2X)
+        onPlayPause = { player?.command("cycle", "pause") },
+        onSeekDelta = { deltaMs -> player?.command("seek", deltaMs / 1000.0, "relative") },
+        onSpeedChange = { speed -> player?.command("set_property", "speed", speed) },
+        // 视觉控制层由 mpv OSC 接管, Compose 侧无控制层可收:
+        // controlsVisible 常开让 ←/→ 快捷键直达, Escape 的"收控制层"分支重定向为返回
+        controlsVisible = true,
+        onToggleControls = onBack,
+        bottomBarSlot = {
+            // SwingPanel 为重量级 AWT, Compose 无法在视频区上叠加载/错误覆盖层,
+            // 改为细状态条显示在章节栏上方
+            MpvStatusStrip(
+                error = error ?: mpvError,
+                loading = loading,
+                onRetry = {
+                    mpvError = null
+                    viewModel.refreshChapter()
+                },
+            )
+            MpvChapterBar(
+                curIndex = curChapterIndex,
+                size = chapterSize,
+                onPrev = { viewModel.moveToPrevChapter() },
+                onNext = { viewModel.moveToNextChapter() },
                 resolutions = resolutions,
-                currentResolutionIndex = currentResolutionIndex,
-                onPlayPause = {
-                    playerComponent?.let { pc ->
-                        runCatching {
-                            if (pc.mediaPlayer().status().isPlaying()) {
-                                pc.mediaPlayer().controls().pause()
-                            } else {
-                                pc.mediaPlayer().controls().play()
-                            }
-                        }.onFailure {
-                            AppLog.put(jvmGetString("video_play_pause_error_log", it.message), it)
-                        }
-                    }
-                },
-                onSeek = { timeMs ->
-                    playerComponent?.let { pc ->
-                        runCatching { pc.mediaPlayer().controls().setTime(timeMs) }
-                            .onFailure {
-                                AppLog.put(jvmGetString("video_seek_error_log", it.message), it)
-                            }
-                    }
-                },
-                onSpeedChange = { speed ->
-                    playerComponent?.let { pc ->
-                        runCatching {
-                            pc.mediaPlayer().controls().setRate(speed)
-                            playbackSpeed = speed
-                        }.onFailure {
-                            AppLog.put(jvmGetString("video_speed_error_log", it.message), it)
-                        }
-                    }
-                },
-                onSwitchResolution = onSwitchResolution,
+                currentResolutionIndex = viewModel.currentResolutionIndex,
+                onSwitchResolution = { idx -> viewModel.switchResolution(idx) },
             )
-        }
-
-        // 加载/错误覆盖层 (顶层, 不被控制层遮挡; 对照 app 端 LoadingOverlay + retryVisible)
-        when {
-            vlcInitError != null -> ErrorOverlay(error = vlcInitError!!, onRetry = onRetry)
-            error != null && !loading -> ErrorOverlay(error = error, onRetry = onRetry)
-            loading -> LoadingOverlay()
-            videoUrl == null -> LoadingOverlay() // 初始态 (initData 未完成)
-        }
-    }
-}
-
-// ---- 播放控制层 (对照 app 端 VideoControlsOverlay) ----
-
-/**
- * 视频控制层: 中央播放/暂停钮 + 底部进度条/倍速/分辨率 (对照 app 端 VideoControlsOverlay)。
- *
- * @param visible 控制层显隐 (单击视频区切换)
- * @param isPlaying 播放中标记 (回显播放/暂停钮图标)
- * @param positionMs 当前位置 ms
- * @param durationMs 总时长 ms
- * @param playbackSpeed 倍速 (回显倍速钮文字)
- * @param hasMultiResolution 是否多分辨率源 (控制分辨率钮显隐)
- * @param resolutions 分辨率列表
- * @param currentResolutionIndex 当前分辨率索引
- * @param onPlayPause 播放/暂停回调
- * @param onSeek 进度跳转回调 (ms)
- * @param onSpeedChange 倍速变更回调
- * @param onSwitchResolution 切换分辨率回调 (索引)
- */
-@Composable
-private fun VideoControlsOverlay(
-    visible: Boolean,
-    isPlaying: Boolean,
-    positionMs: Long,
-    durationMs: Long,
-    playbackSpeed: Float,
-    hasMultiResolution: Boolean,
-    resolutions: List<VideoResolution>,
-    currentResolutionIndex: Int,
-    onPlayPause: () -> Unit,
-    onSeek: (Long) -> Unit,
-    onSpeedChange: (Float) -> Unit,
-    onSwitchResolution: (Int) -> Unit,
-) {
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(),
-        exit = fadeOut(),
-    ) {
-        // 整层压暗 (对照 app 端 exo_controls_background: exo_black_opacity_60 = 0x98000000)
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Color(0x98000000))
-        ) {
-            // 中央播放/暂停钮 (对照 app 端 CenterControls.PlayPauseButton)
-            PlayPauseButton(
-                isPlaying = isPlaying,
-                onClick = onPlayPause,
-                modifier = Modifier.align(Alignment.Center),
-            )
-            // 底部进度条 + 倍速 + 分辨率 (对照 app 端 VideoControlsOverlay 底部 Row)
-            Column(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-            ) {
-                VideoSeekBar(
-                    value = positionMs,
-                    max = durationMs,
-                    activeColor = MaterialTheme.colorScheme.primary,
-                    onSeek = onSeek,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp)
-                        .height(25.dp),
-                )
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, end = 4.dp, bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // 当前位置 / 总时长 (对照 app 端 "%s / %s".format(...))
-                    Text(
-                        text = "%s / %s".format(
-                            positionMs.toDurationTime(),
-                            durationMs.toDurationTime(),
-                        ),
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        modifier = Modifier.weight(1f),
-                    )
-                    // 倍速钮 (对照 app 端 SpeedButton)
-                    SpeedButton(
-                        currentSpeed = playbackSpeed,
-                        onSpeedChange = onSpeedChange,
-                    )
-                    // 分辨率钮 (对照 app 端 resolutionText, 多分辨率时显示当前分辨率名)
-                    if (hasMultiResolution) {
-                        ResolutionButton(
-                            resolutions = resolutions,
-                            currentResolutionIndex = currentResolutionIndex,
-                            onSwitchResolution = onSwitchResolution,
-                        )
-                    }
-                }
-            }
-        }
-    }
+        },
+    )
 }
 
 /**
- * 中央播放/暂停钮 (对照 app 端 PlayPauseButton: 64dp 圆形白底 + 黑色图标)。
- *
- * 播放中显示 ic_pause_24dp, 暂停/未播放显示 ic_play_24dp (资源对齐 AudioPlayScreen)。
+ * mpv 渲染槽:
+ * - 已找到 mpv + 可嵌入 → [SwingPanel] 挂 AWT [Canvas], addNotify 后经 JNA 取原生句柄
+ *   ([Native.getComponentID], Windows HWND / X11 XID) 回填给调用方供 `--wid` 嵌入
+ * - 已找到 mpv + 不可嵌入 (macOS) → 提示独立窗口播放中
+ * - 未找到 mpv → [MpvInstallGuide] 引导安装占位
  */
 @Composable
-private fun PlayPauseButton(
-    isPlaying: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
+private fun MpvVideoRenderSlot(
+    modifier: Modifier,
+    detectDone: Boolean,
+    mpvPath: String?,
+    embeddable: Boolean,
+    streamUrl: String?,
+    onWid: (Long?) -> Unit,
+    onRedetect: () -> Unit,
+    onInstalled: (String) -> Unit,
 ) {
     Box(
-        modifier
-            .size(64.dp)
-            .clip(CircleShape)
-            .background(Color.White)
-            .clickable { onClick() },
+        modifier.background(Color(0xFF000000)),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            painter = rememberPainter(if (isPlaying) "ic_pause_24dp" else "ic_play_24dp"),
-            contentDescription = if (isPlaying) rememberString("pause") else rememberString("play"),
-            tint = Color.Black,
-            modifier = Modifier.size(36.dp),
-        )
-    }
-}
-
-/**
- * 自绘视频进度条 (对照 app 端 VideoSeekBar: 背景 + 已播层 + thumb, 支持点击/拖动 seek)。
- *
- * 桌面端简化: 不显示缓冲层 (vlcj 缓冲进度获取需要额外 API, 暂不实现); 鼠标点击/拖动跳转。
- *
- * @param value 当前位置 ms
- * @param max 总时长 ms
- * @param activeColor 已播层 + thumb 颜色
- * @param onSeek seek 回调 (ms), 拖动结束 + 点击时触发
- */
-@Composable
-private fun VideoSeekBar(
-    value: Long,
-    max: Long,
-    activeColor: Color,
-    onSeek: (Long) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val range = max.coerceAtLeast(1L)
-
-    // 拖动中的预览值 (拖动期间不回显 vlcj 事件进度, 对照 app 端 dragMs)
-    var dragValue by remember { mutableStateOf<Long?>(null) }
-    val displayValue = dragValue ?: value
-
-    fun fractionToValue(fraction: Float): Long =
-        (fraction * range).toLong().coerceIn(0L, range)
-
-    Box(
-        modifier
-            .pointerInput(max) {
-                detectTapGestures(onTap = { pos ->
-                    val target = fractionToValue(pos.x / size.width)
-                    onSeek(target)
-                })
-            }
-            .pointerInput(max) {
-                detectHorizontalDragGestures(
-                    onDragEnd = {
-                        dragValue?.let { onSeek(it) }
-                        dragValue = null
-                    },
-                    onDragCancel = { dragValue = null },
-                ) { change, _ ->
-                    change.consume()
-                    dragValue = fractionToValue(change.position.x / size.width)
-                }
-            },
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Canvas(Modifier.fillMaxSize()) {
-            val thumbR = 8.dp.toPx()
-            val trackH = 2.dp.toPx()
-            val cy = size.height / 2
-            val startX = thumbR
-            val endX = size.width - thumbR
-            val playFrac = (displayValue.toFloat() / range).coerceIn(0f, 1f)
-            val playX = startX + (endX - startX) * playFrac
-            // 进度背景 (对照 app 端 0xB3FFFFFF)
-            drawLine(Color(0xB3FFFFFF), Offset(startX, cy), Offset(endX, cy), trackH, StrokeCap.Round)
-            // 已播层
-            drawLine(activeColor, Offset(startX, cy), Offset(playX, cy), trackH, StrokeCap.Round)
-            // thumb
-            drawCircle(activeColor, thumbR, Offset(playX, cy))
-        }
-    }
-}
-
-/**
- * 倍速钮 (对照 app 端 SpeedButton: 文字 + DropdownMenu, 0.5x/1x/1.5x/2x 选项)。
- *
- * 注: 桌面端用 [DropdownMenu] 替代 app 端 AlertDialog (桌面交互更轻量); 选项集对照
- * 任务要求 0.5x/1x/1.5x/2x (app 端是 0.25~2x 7 档, 桌面端按任务要求简化为 4 档)。
- */
-@Composable
-private fun SpeedButton(
-    currentSpeed: Float,
-    onSpeedChange: (Float) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        Text(
-            text = speedLabel(currentSpeed),
-            color = Color.White,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier
-                .clip(RoundedCornerShape(4.dp))
-                .clickable { expanded = true }
-                .padding(12.dp),
-        )
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            listOf(0.5f, 1f, 1.5f, 2f).forEach { speed ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            speedLabel(speed),
-                            color = if (abs(speed - currentSpeed) < 0.01f) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            },
-                        )
-                    },
-                    onClick = {
-                        expanded = false
-                        onSpeedChange(speed)
-                    },
-                )
-            }
-        }
-    }
-}
-
-/**
- * 分辨率钮 (对照 app 端 [io.legado.app.ui.book.video.VideoPlayActivity.showResolutionDialog])。
- *
- * 显示当前分辨率名, 点击弹 [AlertDialog] 单选; 切换分辨率后由 VM 更新 [videoUrl] 触发重载。
- */
-@Composable
-private fun ResolutionButton(
-    resolutions: List<VideoResolution>,
-    currentResolutionIndex: Int,
-    onSwitchResolution: (Int) -> Unit,
-) {
-    var showDialog by remember { mutableStateOf(false) }
-    val currentName = resolutions.getOrNull(currentResolutionIndex)?.name ?: rememberString("resolution")
-    Text(
-        text = currentName,
-        color = Color.White,
-        fontSize = 14.sp,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .clickable { showDialog = true }
-            .padding(12.dp),
-    )
-    if (showDialog) {
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            title = { Text(rememberString("resolution")) },
-            text = {
-                Column {
-                    resolutions.forEachIndexed { index, resolution ->
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    showDialog = false
-                                    if (index != currentResolutionIndex) {
-                                        onSwitchResolution(index)
-                                    }
-                                }
-                                .padding(vertical = 8.dp, horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(
-                                selected = index == currentResolutionIndex,
-                                onClick = {
-                                    showDialog = false
-                                    if (index != currentResolutionIndex) {
-                                        onSwitchResolution(index)
-                                    }
-                                },
-                            )
-                            Text(
-                                text = resolution.name,
-                                modifier = Modifier.padding(start = 8.dp),
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showDialog = false }) {
-                    Text(rememberString("cancel"))
-                }
-            },
-        )
-    }
-}
-
-/** 倍速文字格式 (对照 app 端 speedLabel: 去尾零 + "X", 如 1X / 1.5X / 0.5X)。 */
-private fun speedLabel(speed: Float): String =
-    speed.toBigDecimal().stripTrailingZeros().toPlainString() + "X"
-
-/** 毫秒 → mm:ss / h:mm:ss 时长格式 (对照 app 端 [io.legado.app.utils.toDurationTime])。 */
-private fun Long.toDurationTime(): String {
-    val totalSeconds = (this / 1000).coerceAtLeast(0L).toInt()
-    val hours = totalSeconds / 3600
-    val minutes = (totalSeconds % 3600) / 60
-    val seconds = totalSeconds % 60
-    return if (hours > 0) {
-        "%d:%02d:%02d".format(hours, minutes, seconds)
-    } else {
-        "%02d:%02d".format(minutes, seconds)
-    }
-}
-
-// ---- 加载/错误覆盖层 (对照 app 端 VideoPlayActivity LoadingOverlay + MangaReaderScreen) ----
-
-@Composable
-private fun LoadingOverlay() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(
+        when {
+            !detectDone -> CircularProgressIndicator(
                 color = Color.White,
                 strokeWidth = 4.dp,
                 modifier = Modifier.size(48.dp),
             )
-            Text(
-                text = rememberString("loading"),
-                color = Color.White,
-                modifier = Modifier.padding(top = 12.dp),
+
+            mpvPath == null -> MpvInstallGuide(
+                streamUrl = streamUrl,
+                onRedetect = onRedetect,
+                onInstalled = onInstalled,
+            )
+
+            embeddable -> SwingPanel(
+                factory = {
+                    object : Canvas() {
+                        override fun addNotify() {
+                            super.addNotify()
+                            onWid(runCatching { Native.getComponentID(this) }.getOrNull())
+                        }
+
+                        override fun removeNotify() {
+                            onWid(null)
+                            super.removeNotify()
+                        }
+                    }.apply { background = java.awt.Color.BLACK }
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            else -> Text(
+                text = rememberString("mpv_detached_playing"),
+                color = Color.White.copy(alpha = 0.7f),
+                textAlign = TextAlign.Center,
             )
         }
     }
 }
 
+/**
+ * 引导安装占位: mpv 未检测到时的安装指引 + 自动下载 + 重新检测 + 浏览器直开兜底。
+ *
+ * Windows 上额外给"下载便携版"按钮 (见 [MpvDownloader]), 下载中显示进度条并禁用其他动作,
+ * 装好后经 [onInstalled] 让上层刷新检测直接进入播放; 非 Windows 只显示包管理器文案。
+ */
 @Composable
-private fun ErrorOverlay(error: String, onRetry: () -> Unit) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = error, color = Color.White, textAlign = TextAlign.Center)
+private fun MpvInstallGuide(
+    streamUrl: String?,
+    onRedetect: () -> Unit,
+    onInstalled: (String) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    // null = 未在下载; -1f = 进度未知 (解压/无 Content-Length); 0f..1f = 下载百分比
+    var progress by remember { mutableStateOf<Float?>(null) }
+    var downloadError by remember { mutableStateOf<String?>(null) }
+    val downloading = progress != null
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = rememberString("mpv_not_found"),
+            color = Color.White,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = rememberString("mpv_install_guide"),
+            color = Color.White.copy(alpha = 0.7f),
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 32.dp, vertical = 12.dp),
+        )
+        if (downloading) {
+            MpvDownloadProgress(progress = progress ?: -1f)
+        } else {
+            downloadError?.let {
+                Text(
+                    text = it,
+                    color = Color(0xFFFF6B6B),
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 32.dp).padding(bottom = 8.dp),
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (MpvDownloader.isSupported) {
+                    GuideActionText(rememberString("mpv_auto_download")) {
+                        downloadError = null
+                        progress = -1f
+                        scope.launch {
+                            runCatching {
+                                MpvDownloader.downloadAndInstall { p -> progress = p }
+                            }.onSuccess { path ->
+                                progress = null
+                                onInstalled(path)
+                            }.onFailure {
+                                progress = null
+                                // 取消 (用户离开 Screen) 不算错误, 无需提示
+                                if (it is CancellationException) return@onFailure
+                                downloadError = jvmGetString("mpv_download_failed", it.message)
+                                AppLog.put(jvmGetString("mpv_download_failed", it.message), it)
+                            }
+                        }
+                    }
+                }
+                GuideActionText(rememberString("mpv_open_website")) {
+                    browse("https://mpv.io/installation/")
+                }
+                GuideActionText(rememberString("mpv_redetect"), onClick = onRedetect)
+                if (streamUrl != null) {
+                    // 兜底: 系统默认程序直开流 URL (无防盗链请求头, 部分源可能拒绝)
+                    GuideActionText(rememberString("mpv_open_in_browser")) {
+                        browse(streamUrl)
+                        AppLog.put(jvmGetString("mpv_open_in_browser_warn"), toast = true)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 下载进度条 (确定进度显示百分比; [progress] < 0 时走不确定动画, 用于解压等无长度阶段) */
+@Composable
+private fun MpvDownloadProgress(progress: Float) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.padding(horizontal = 32.dp),
+    ) {
+        if (progress < 0f) {
+            LinearProgressIndicator(
+                color = Color(0xFF165DFF),
+                backgroundColor = Color.White.copy(alpha = 0.2f),
+                modifier = Modifier.width(240.dp),
+            )
+        } else {
+            LinearProgressIndicator(
+                progress = progress,
+                color = Color(0xFF165DFF),
+                backgroundColor = Color.White.copy(alpha = 0.2f),
+                modifier = Modifier.width(240.dp),
+            )
+        }
+        Text(
+            text = if (progress < 0f) {
+                rememberString("mpv_downloading")
+            } else {
+                jvmGetString("mpv_downloading_percent", (progress * 100).toInt().toString())
+            },
+            color = Color.White.copy(alpha = 0.7f),
+            fontSize = 13.sp,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+    }
+}
+
+/** 引导占位的动作按钮 (蓝字 + 圆角点击域, 与 ErrorOverlay reload 按钮同风格) */
+@Composable
+private fun GuideActionText(text: String, onClick: () -> Unit) {
+    Text(
+        text = text,
+        color = Color(0xFF165DFF),
+        fontSize = 15.sp,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    )
+}
+
+/** 加载/错误细状态条 (黑底, 置于章节控制栏上方; 错误优先于加载显示) */
+@Composable
+private fun MpvStatusStrip(
+    error: String?,
+    loading: Boolean,
+    onRetry: () -> Unit,
+) {
+    when {
+        error != null -> Row(
+            Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF000000))
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = error,
+                color = Color(0xFFFF6B6B),
+                fontSize = 13.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
             Text(
                 text = rememberString("reload"),
                 color = Color(0xFF165DFF),
-                fontSize = 18.sp,
+                fontSize = 14.sp,
                 modifier = Modifier
-                    .padding(16.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .clickable { onRetry() }
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
+
+        loading -> Row(
+            Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF000000))
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(
+                color = Color.White,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                text = rememberString("loading"),
+                color = Color.White.copy(alpha = 0.7f),
+                fontSize = 13.sp,
+                modifier = Modifier.padding(start = 8.dp),
             )
         }
     }
 }
 
-// ---- 底部章节控制栏 (对照 app 端 VideoPlayActivity 底部控制 + MangaReaderScreen.MangaControlBar) ----
-
 /**
- * 底部章节控制栏: 上一章 / 进度 / 下一章。
+ * 底部章节控制栏: 上一章 / 进度 / [ResolutionButton] (多分辨率时) / 下一章。
  *
- * 黑底白字, 与标题栏风格一致; 进度文本格式 "当前章/总章" (对照 app 端 exo_prev/next + 章节信息)。
- *
- * 注: 播放控制 (播放/暂停/进度条/倍速/分辨率) 在 [VideoControlsOverlay] (视频区上方叠加),
- * 此处仅章节级控制 (与 app 端 VideoPlayActivity 底部 exo_prev/next 一致)。
+ * 对照 shared [io.legado.app.ui.book.video.VideoControlBar] 布局, 因 mpv OSC 接管了
+ * 原 Compose 控制层, 分辨率切换入口从控制层迁到本栏。
  */
 @Composable
-private fun VideoControlBar(
+private fun MpvChapterBar(
     curIndex: Int,
     size: Int,
     onPrev: () -> Unit,
     onNext: () -> Unit,
+    resolutions: List<VideoResolution>,
+    currentResolutionIndex: Int,
+    onSwitchResolution: (Int) -> Unit,
 ) {
     Row(
         Modifier
@@ -973,7 +636,6 @@ private fun VideoControlBar(
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 上一章 (对照 app 端 exo_prev: playPrevChapter)
         IconButton(onClick = onPrev, enabled = curIndex > 0) {
             Icon(
                 painter = rememberPainter("ic_skip_previous"),
@@ -982,13 +644,19 @@ private fun VideoControlBar(
             )
         }
         Text(
-            text = "${curIndex + 1}/${size}",
+            text = "${curIndex + 1}/$size",
             color = Color.White,
             fontSize = 16.sp,
             textAlign = TextAlign.Center,
             modifier = Modifier.weight(1f),
         )
-        // 下一章 (对照 app 端 exo_next: playNextChapter)
+        if (resolutions.size > 1) {
+            ResolutionButton(
+                resolutions = resolutions,
+                currentResolutionIndex = currentResolutionIndex,
+                onSwitchResolution = onSwitchResolution,
+            )
+        }
         IconButton(onClick = onNext, enabled = curIndex < size - 1) {
             Icon(
                 painter = rememberPainter("ic_skip_next"),
@@ -999,14 +667,15 @@ private fun VideoControlBar(
     }
 }
 
-// ---- 调试用: 捕获未处理异常 (对照 app 端 AppLog.put) ----
-
-/**
- * 记录未处理异常到 AppLog (供调试 vlcj 接入时的异常排查)。
- *
- * 注: 此函数当前未被调用, 预留给 vlcj 接入后的播放器错误回调使用。
- */
-@Suppress("unused")
-private fun logPlayerError(message: String, throwable: Throwable? = null) {
-    AppLog.put(jvmGetString("video_play_error_log", message), throwable, true)
+/** 系统默认程序打开 URL (Desktop.browse; 无图形环境时回退控制台打印) */
+private fun browse(url: String) {
+    runCatching {
+        if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+            Desktop.getDesktop().browse(URI(url))
+            return
+        }
+        println("[OpenUrl] $url")
+    }.onFailure {
+        AppLog.put("打开链接失败: $url\n${it.message}", it)
+    }
 }

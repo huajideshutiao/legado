@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.BottomNavTag
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.launch
 
 /**
@@ -29,12 +30,14 @@ import kotlinx.coroutines.launch
  * 4 个 tab (home/bookshelf/discovery/my) + 自定义底栏 (对齐 app 端 MainScreen + MainBottomBar)。
  * 选中色 ARCO_BLUE_6 (#165DFF), 未选中 ARCO_GRAY_3 (#86909C), 底栏高度 56dp 无阴影。
  *
- * Material3 等价: 自定义 Row 底栏可替换为 NavigationBar (视觉一致)。
+ * 底栏为自定义 Row 自绘, 项目锁 MD2 视觉, 不引入 material3 NavigationBar。
  */
 @Composable
 fun OhosIndexScreen(
     onOpenReader: (bookUrl: String, bookName: String, chapterIndex: Int) -> Unit,
     onOpenExplore: (sourceUrl: String) -> Unit,
+    onBookshelfSearch: () -> Unit,
+    onOpenBookshelfManage: () -> Unit,
     onMyItemClick: (String) -> Unit,
 ) {
     val visibleTags = listOf(
@@ -57,7 +60,11 @@ fun OhosIndexScreen(
         ) { page ->
             when (visibleTags[page]) {
                 BottomNavTag.HOME -> OhosHomePlaceholder()
-                BottomNavTag.BOOKSHELF -> OhosBookshelfTab(onOpenReader = onOpenReader)
+                BottomNavTag.BOOKSHELF -> OhosBookshelfTab(
+                    onOpenReader = onOpenReader,
+                    onSearchClick = onBookshelfSearch,
+                    onOpenBookshelfManage = onOpenBookshelfManage,
+                )
                 BottomNavTag.DISCOVERY -> OhosExploreTab(onOpenExplore = onOpenExplore)
                 else -> OhosMyTab(onItemClick = onMyItemClick)
             }
@@ -88,7 +95,7 @@ private fun OhosBottomBar(
     ) {
         tags.forEachIndexed { index, tag ->
             val selected = index == selectedIndex
-            val color = if (selected) ArcoBlue6 else ArcoGray3
+            val color = if (selected) DesignTokens.arcoBlue6 else ArcoGray3
             Column(
                 Modifier
                     .height(56.dp)
@@ -126,8 +133,6 @@ private fun OhosHomePlaceholder() {
     }
 }
 
-// Arco Design 主题色 (对齐 Index.ets ARCO_BLUE_6/ARCO_GRAY_3/ARCO_BG_WHITE)
-internal val ArcoBlue6 = Color(0xFF165DFF)
 internal val ArcoGray3 = Color(0xFF86909C)
 internal val ArcoBgWhite = Color(0xFFFFFFFF)
 internal val AppBackground = Color(0xFFF5F5F5)

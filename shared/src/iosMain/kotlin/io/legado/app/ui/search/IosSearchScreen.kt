@@ -1,9 +1,5 @@
 package io.legado.app.ui.search
 
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -11,7 +7,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.BookGroup
@@ -20,6 +15,9 @@ import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.search.SearchNavCallbacks
 import io.legado.app.ui.book.search.SearchScreen as SharedSearchScreen
 import io.legado.app.ui.book.search.SearchViewModel
+import io.legado.app.ui.bookshelf.IosInfoCover
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.flow.collect
@@ -47,7 +45,7 @@ import kotlinx.coroutines.flow.collect
  * - [onManageBookSources]: 调用 [onManageBookSources] 切到书源管理路由
  * - [onAlertSearchScope]: 弹 [SearchScopeDialog] (shared/sharedUiMain 已下沉, iOS 端直接复用)
  * - [onShowAppLog]: 弹 [AppLogDialog] (shared/sharedUiMain 已下沉, iOS 端直接复用)
- * - [onClearHistory]: 弹 [AlertDialog] 二次确认后调 viewModel.clearHistory()
+ * - [onClearHistory]: 弹 [AppAlertDialog] 二次确认后调 viewModel.clearHistory()
  *   (对齐 app 端 alert + R.string.sure_clear_search_history; 与 desktop SearchScreen line 105-123 一致)
  * - [onShowSourceFilterRule]: TODO (书源过滤规则 Dialog 未下沉, no-op)
  *
@@ -92,24 +90,29 @@ fun IosSearchScreen(
             onShowAppLogCb = { showLogDialog = true },
             onAlertSearchScopeCb = { showSearchScopeDialog = true },
         ),
+        // 封面注入: 复用书架/详情页同一套 IosInfoCover (共享 LRU 缓存)。
+        // modifier 由 shared 端按占位原尺寸构造, IosInfoCover 只在其上加圆角, 不改尺寸。
+        coverSlot = { searchBook, modifier, _ ->
+            val book = remember(searchBook) { searchBook.toBook() }
+            IosInfoCover(book, modifier)
+        },
+        shelfCoverSlot = { book, modifier, _ ->
+            IosInfoCover(book, modifier)
+        },
     )
 
     // ---- 清空搜索历史二次确认对话框 (对照 desktop SearchScreen line 106-123) ----
     if (showClearHistoryDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
             onDismissRequest = { showClearHistoryDialog = false },
-            title = { Text(sureClearSearchHistoryLabel) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showClearHistoryDialog = false
-                    viewModel.clearHistory()
-                }) { Text(okLabel) }
+            title = sureClearSearchHistoryLabel,
+            widthFraction = 0.8f,
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                showClearHistoryDialog = false
+                viewModel.clearHistory()
             },
-            dismissButton = {
-                TextButton(onClick = { showClearHistoryDialog = false }) {
-                    Text(cancelLabel)
-                }
+            cancelButton = AlertButton(cancelLabel, dismissOnClick = false) {
+                showClearHistoryDialog = false
             },
         )
     }

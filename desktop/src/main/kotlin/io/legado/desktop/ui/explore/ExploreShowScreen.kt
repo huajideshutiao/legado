@@ -14,15 +14,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +32,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -72,6 +69,7 @@ import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.ui.explore.ExploreShowViewModelShared
 import io.legado.app.utils.FlowBus
@@ -282,34 +280,25 @@ private fun ExploreShowContent(
         },
     )
 
-    // ---- AlertDialog 渲染 (替换原 javax.swing.JOptionPane.showOptionDialog) ----
+    // ---- 对话框渲染 (替换原 javax.swing.JOptionPane.showOptionDialog) ----
     // onFooterClick 错误详情+重试对话框 (state.footerErrorDialog 触发, errorMsg 已是 state 字段;
     //   重试按钮调 state.retryFooterLoad() 复刻原 choice==0 分支,
     //   关闭按钮/外部 dismiss 仅关闭对话框, 复刻原 choice==1 / 关闭分支)
     if (state.footerErrorDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { state.footerErrorDialog = false },
-            title = { Text(loadingErrorLabel) },
-            text = {
-                // 错误详情可能较长 (stackTrace), 用 verticalScroll 包裹防止溢出
-                Text(
-                    text = state.errorMsg,
-                    modifier = Modifier.verticalScroll(rememberScrollState()),
-                )
+            title = loadingErrorLabel,
+            // 错误详情可能较长 (stackTrace), message 槽内置滚动防止溢出
+            message = state.errorMsg,
+            // 重试 (原 choice==0): 调 retryFooterLoad() 触发 hasMoreLoad + explore
+            okButton = AlertButton(retryLabel, dismissOnClick = false) {
+                state.footerErrorDialog = false
+                state.retryFooterLoad()
             },
-            confirmButton = {
-                // 重试 (原 choice==0): 调 retryFooterLoad() 触发 hasMoreLoad + explore
-                TextButton(onClick = {
-                    state.footerErrorDialog = false
-                    state.retryFooterLoad()
-                }) { Text(retryLabel) }
-            },
-            dismissButton = {
-                // 关闭 (原 choice==1): 仅关闭对话框
-                TextButton(onClick = { state.footerErrorDialog = false }) {
-                    Text(closeLabel)
-                }
+            // 关闭 (原 choice==1): 仅关闭对话框
+            cancelButton = AlertButton(closeLabel, dismissOnClick = false) {
+                state.footerErrorDialog = false
             },
         )
     }
@@ -636,19 +625,21 @@ private fun DesktopSourceFilterRuleListDialog(
 
     // 编辑/新增对话框 (复用 shared SourceFilterEditDialog, 内部仅校验+组装, 落库由调用方负责)
     if (showEditDialog) {
-        SourceFilterEditDialog(
-            rule = editingRule,
-            onConfirm = { newRule ->
-                scope.launch {
-                    withContext(Dispatchers.IO) {
-                        // editingRule==null 新增走 insert, 非空编辑走 update (SearchBookFilter.save 内部判断)
-                        SearchBookFilter.save(newRule, isNew = editingRule == null)
+        Dialog(onDismissRequest = { showEditDialog = false }) {
+            SourceFilterEditDialog(
+                rule = editingRule,
+                onConfirm = { newRule ->
+                    scope.launch {
+                        withContext(Dispatchers.IO) {
+                            // editingRule==null 新增走 insert, 非空编辑走 update (SearchBookFilter.save 内部判断)
+                            SearchBookFilter.save(newRule, isNew = editingRule == null)
+                        }
+                        version++
                     }
-                    version++
-                }
-            },
-            onDismiss = { showEditDialog = false },
-        )
+                },
+                onDismiss = { showEditDialog = false },
+            )
+        }
     }
 
     // 删除确认对话框 (对齐 app 端 confirmDelete alert)
@@ -723,9 +714,10 @@ private fun SourceFilterRuleRow(
             }
             AppDropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                 DropdownMenuItem(
-                    text = { Text(rememberString("delete"), color = colors.primaryText) },
                     onClick = { showMenu = false; onDelete() },
-                )
+                ) {
+                    Text(rememberString("delete"), color = colors.primaryText)
+                }
             }
         }
     }
@@ -759,7 +751,7 @@ private fun DesktopVideoItemPlaceholder(
         Box(
             Modifier
                 .size(width = 72.dp, height = 96.dp)
-                .clip(RoundedCornerShape(4.dp))
+                .clip(DesignTokens.shapeSm)
                 .background(Color(0xFF165DFF)),
             contentAlignment = Alignment.Center,
         ) {

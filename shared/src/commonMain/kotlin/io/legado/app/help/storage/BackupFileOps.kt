@@ -12,7 +12,7 @@ package io.legado.app.help.storage
  * 自行调用平台 SDK。
  *
  * - jvmAndAndroidMain actual: 委托 `FileUtilsBase` + `ZipUtils` (JDK 实现, 行为零变化)
- * - iosMain / ohosMain actual: stub, 抛 [UnsupportedOperationException], 待 Ktor 接入后补
+ * - nativeMain actual (iOS/鸿蒙共用): `kotlin.io.File` + `NativeZipCodec` 真实实现
  *
  * # 路径约定
  * - 所有路径用 String (与 [io.legado.app.help.file.AppFilesDir] 一致), 不暴露 File 类型
@@ -22,7 +22,7 @@ package io.legado.app.help.storage
  */
 expect object BackupFileOps {
 
-    /** 路径分隔符 (jvm = `File.separator`, ios/ohos stub 返回 "/"). */
+    /** 路径分隔符 (jvm = `File.separator`, iOS/鸿蒙 = "/"). */
     val separator: String
 
     /** 删除文件或目录 (递归删除子项)。目录不存在视为成功。 */

@@ -57,6 +57,7 @@ class DesktopAppDbAccessor : AppDbAccessor {
     override val sourceFilterRuleDao get() = appDb.sourceFilterRuleDao
     override val httpTTSDao get() = appDb.httpTTSDao
     override val cacheDao get() = appDb.cacheDao
+    override val cookieDao get() = appDb.cookieDao
     // RuleSubViewModelShared 用 (规则订阅 CRUD)
     override val ruleSubDao get() = appDb.ruleSubDao
     // AllBookmarkViewModelShared / TocViewModel.saveBookmark 用 (书签导出/保存)

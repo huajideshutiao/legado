@@ -19,21 +19,28 @@ package io.legado.app.utils
  * KP4 OkHttp 跨平台修复: [byteStreamAsInput] 原签名引用 okhttp3.ResponseBody,
  * 但 OkHttp 5.3.2 不发布 iosArm64/linuxArm64 变体, iOS/鸿蒙 target 编译会失败。
  * 现改用 [Any] 类型擦除: jvmAndAndroidMain actual 内部 cast 回 okhttp3.ResponseBody;
- * iOS/鸿蒙 actual 抛 UnsupportedOperationException (OkHttp 在这些平台不可用, 永不执行)。
- * 调用方 AnalyzeUrlCore.getInputStreamAwait 在 iOS/鸿蒙 target 仍编译失败 (引用 okhttp3.Response),
- * 该问题需后续用 Ktor 替代 OkHttp 解决, 不在 KP4 范围内。
+ * iOS/鸿蒙 actual 恒抛 UnsupportedOperationException (KmpResponseBody 的 byteStream()
+ * 尚未在此委托) — AnalyzeUrlCore 经 byteStreamAsInput 的流式路径在 iOS/鸿蒙暂不可用。
  */
 expect class URL(url: String)
 
 // java.io.InputStream 是 abstract class, expect class 默认 final 会与 actual typealias 冲突,
 // 需用 abstract 修饰 (build.gradle 已配置 -Xexpect-actual-classes).
-expect abstract class InputStream
+// TextFileCore 下沉 commonMain 后补声明 read/skip/available/close 成员 (签名对齐 java.io.InputStream,
+// jvm 端 typealias 自动匹配; native actual 补默认实现, ByteArrayInputStream 按 JVM 语义 override)。
+expect abstract class InputStream {
+    open fun read(b: ByteArray): Int
+    open fun read(b: ByteArray, off: Int, len: Int): Int
+    open fun skip(n: Long): Long
+    open fun available(): Int
+    open fun close()
+}
 
 // java.io.File 桥接: commonMain 仅作类型签名占位 (如 BitmapProvider.decodeStreamAndCompressToJpeg
 // 的 outFile 参数), 不在 commonMain 构造或调用 File 方法。显式声明 (path: String) 构造器以匹配
 // java.io.File(String) (java.io.File 无无参构造器, 隐式 no-arg expect 会与 typealias 冲突)。
-// jvmAndAndroidMain actual typealias 到 java.io.File (带出全部构造器); iOS/鸿蒙 actual 为纯
-// Kotlin stub (BitmapProvider 暂未实现, stub 仅满足编译)。
+// jvmAndAndroidMain actual typealias 到 java.io.File (带出全部构造器); iOS/鸿蒙 actual 仅持有
+// path 字段 (Ios/OhosBitmapProvider 经 path 转 kotlin.io.File 做真实文件写入, 此类型不需文件操作)。
 expect class File(path: String)
 
 expect interface Closeable {
@@ -54,3 +61,9 @@ internal expect fun ByteArray.toInputStream(): InputStream
  * jvmAndAndroidMain actual 内部 cast 回 okhttp3.ResponseBody。
  */
 internal expect fun Any.byteStreamAsInput(): InputStream
+
+/** java.lang.SecurityException 判定 (native 无此类型, actual 恒 false)。 */
+expect fun Throwable.isSecurityException(): Boolean
+
+/** String.intern() 门面 (JVM 驻留常量池省内存; native actual 原样返回)。 */
+expect fun String.platformIntern(): String

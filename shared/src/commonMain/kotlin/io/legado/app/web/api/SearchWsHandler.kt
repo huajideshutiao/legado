@@ -2,6 +2,7 @@ package io.legado.app.web.api
 
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.SearchModel
 import io.legado.app.ui.book.search.SearchScope
@@ -11,7 +12,6 @@ import io.legado.app.utils.isJson
 import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.app.utils.toJson
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -35,7 +35,7 @@ class SearchWsHandler(
     private val searchFinish = "Search finish"
 
     override fun onMessage(text: String) {
-        launch(IO) {
+        launch(IoDispatcher) {
             kotlin.runCatching {
                 if (!text.isJson()) {
                     session.send("数据必须为Json格式")

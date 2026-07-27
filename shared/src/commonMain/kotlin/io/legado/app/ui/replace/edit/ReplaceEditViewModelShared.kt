@@ -158,7 +158,7 @@ class ReplaceEditViewModelShared(
      * - 用 `GSON.fromJsonObject<ReplaceRule>(text)` 解析, 失败抛
      *   `NoStackTraceException("格式不对")` (与 app 端完全一致);
      * - 成功回调 [success];
-     * - 失败 `Toasters.get().toast(it.localizedMessage ?: "Error")`
+     * - 失败 `Toasters.get().toast(it.message ?: "Error")`
      *   (替代 `context.toastOnUi(...)`) + `it.printOnDebug()` (保留原错误日志)。
      *
      * 业务在 IO 跑, 回调在 mainDispatcher 跑 (与 BaseViewModel.execute 默认值一致;
@@ -181,7 +181,7 @@ class ReplaceEditViewModelShared(
             success.invoke(it)
         }.onError {
             // 替代 context.toastOnUi(msg), Toasters.get() 已下沉 commonMain
-            Toasters.get().toast(it.localizedMessage ?: "Error")
+            Toasters.get().toast(it.message ?: "Error")
             it.printOnDebug()
         }
     }
@@ -195,7 +195,7 @@ class ReplaceEditViewModelShared(
      * - 新规则 (order==Int.MIN_VALUE) 自动取 `maxOrder() + 1`;
      * - `appDb.replaceRuleDao.insert(rule)` 写入;
      * - 成功回调 [success];
-     * - 失败 `Toasters.get().toast("save error, ${it.localizedMessage}")`
+     * - 失败 `Toasters.get().toast("save error, ${it.message}")`
      *   (替代 `context.toastOnUi(...)`)。
      *
      * 业务在 IO 跑 (DAO 写入必须 IO), 回调在 mainDispatcher 跑
@@ -215,7 +215,7 @@ class ReplaceEditViewModelShared(
             success()
         }.onError {
             // 替代 context.toastOnUi(msg), Toasters.get() 已下沉 commonMain
-            Toasters.get().toast("save error, ${it.localizedMessage}")
+            Toasters.get().toast("save error, ${it.message}")
         }
     }
 }

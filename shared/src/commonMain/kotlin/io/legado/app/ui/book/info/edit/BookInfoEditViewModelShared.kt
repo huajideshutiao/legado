@@ -4,6 +4,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.help.IntentData
+import io.legado.app.help.coroutine.IoDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -116,7 +117,7 @@ class BookInfoEditViewModelShared(
      * @param success 保存成功回调 (app 端 setResult + finish, 在 Main 调度器执行)
      */
     fun saveBook(book: Book, bookUrl: String?, success: (() -> Unit)?) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             try {
                 // 1. 同步 ReadBook 单例 (app 端 lambda 内含 bookUrl 相等判断)
                 readBookUpdater.invoke(book)

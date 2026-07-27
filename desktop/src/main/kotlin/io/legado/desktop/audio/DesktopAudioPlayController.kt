@@ -4,6 +4,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
+import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.audio.AudioPlayAnalyzeRuleFactory
 import io.legado.app.model.audio.AudioPlayController
 import io.legado.app.model.audio.AudioPlayControllerListener
@@ -67,9 +68,9 @@ class DesktopAudioPlayController(private val player: DesktopAudioPlayer) : Audio
 /**
  * [AudioPlayAnalyzeRuleFactory] 的 desktop 实现。
  *
- * 直接创建 commonMain [AnalyzeRuleCore] (与 desktop 原 loadLrcData 一致),
- * 不依赖 app 端 AnalyzeRule 的 android-only JsExtensions; JS 引擎 / 网络 (ajax) 经
- * desktop Main.kt 已注册的 JsEngines / SourceNetworkProviders 走通。
+ * 经 [AnalyzeRuleFactories] 创建 [AnalyzeRuleCore] 实例 (desktop 端注册的是 DesktopAnalyzeRule,
+ * 具备完整 JS 扩展面); JS 引擎 / 网络 (ajax) 经 desktop Main.kt 已注册的 JsEngines /
+ * SourceNetworkProviders 走通。
  *
  * 供 shared [io.legado.app.model.audio.AudioPlayManager] 的 loadCoverUrl / loadLrcData
  * 经工厂创建 AnalyzeRuleCore, 与 app 端 AudioPlayAnalyzeRuleFactoryImpl 行为对齐。
@@ -82,7 +83,7 @@ object DesktopAudioPlayAnalyzeRuleFactory : AudioPlayAnalyzeRuleFactory {
         chapter: BookChapter,
         coroutineContext: CoroutineContext,
     ): AnalyzeRuleCore {
-        return AnalyzeRuleCore(book, bookSource).apply {
+        return AnalyzeRuleFactories.create(book, bookSource).apply {
             this.coroutineContext = coroutineContext
             setBaseUrl(chapter.url)
             this.chapter = chapter

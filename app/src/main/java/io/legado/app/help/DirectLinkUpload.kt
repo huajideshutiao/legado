@@ -25,7 +25,7 @@ import java.io.File
  * shared/commonMain (见 [DirectLinkUploadShared])。本 object 保留 Android 专属实现:
  * - [upLoad]: 依赖 java.io.File / ZipUtils / FileUtils / appCtx.externalCache / AnalyzeUrl(app 端子类)
  * - [getConfig] / [putConfig]: 依赖 ACache (Android 文件缓存)
- * - [defaultRules]: 依赖 appCtx.assets (Android assets)
+ * - [defaultRules]: 依赖 appCtx.assets (composeResources 打进 assets 的 defaultData)
  *
  * 本 object 实现 [DirectLinkUploadStoreProvider] + [DirectLinkUploadDefaultsProvider],
  * 宿主启动早期通过 `registerAndroidDirectLinkUploadProviders()` 注册到 shared,
@@ -96,8 +96,9 @@ object DirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUploadDefault
 
     // 命名为 defaultRulesCache 避免与 override fun getDefaultRules() 的 JVM 签名 (getDefaultRules()) 冲突
     private val defaultRulesCache: List<DirectLinkUploadRule> by lazy {
+        // 单一数据源在 shared/commonMain/composeResources/files/defaultData/ (打进 assets, 前缀含模块限定名)
         val json = String(
-            appCtx.assets.open("defaultData${File.separator}directLinkUpload.json")
+            appCtx.assets.open("${DEFAULT_DATA_ASSET_PREFIX}directLinkUpload.json")
                 .readBytes()
         )
         GSON.fromJsonArray<DirectLinkUploadRule>(json).getOrThrow()

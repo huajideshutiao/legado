@@ -22,6 +22,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ColorUtils
 
 /**
@@ -33,7 +34,7 @@ fun StrokeTextChip(
     text: String,
     modifier: Modifier = Modifier,
     textColor: Color = AppTheme.colors.secondaryText,
-    cornerRadius: androidx.compose.ui.unit.Dp = 4.dp,
+    cornerRadius: androidx.compose.ui.unit.Dp = DesignTokens.radiusSm,
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
@@ -50,7 +51,7 @@ fun StrokeTextChip(
         modifier = modifier
             .clip(shape)
             .background(if (pressed) Color(0x30000000) else Color.Transparent)
-            .border(1.dp, textColor, shape)
+            .border(DesignTokens.strokeThin, textColor, shape)
             .combinedClickable(
                 interactionSource = interaction,
                 indication = null,
@@ -85,7 +86,7 @@ fun RadioChip(
         modifier = modifier
             .clip(shape)
             .background(if (checked) accent else Color.Transparent)
-            .border(2.dp, if (checked) accent else textColor, shape)
+            .border(DesignTokens.strokeMedium, if (checked) accent else textColor, shape)
             .clickable(role = Role.RadioButton, onClick = onClick)
             .padding(4.dp),
     )

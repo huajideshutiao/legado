@@ -10,9 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -24,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.theme.AppTheme
 
 /**
  * 鸿蒙端关联导入 Screen 入口 (对照 app 端 `AssociationActivity` + `FileAssociationFragment`)。
@@ -41,7 +41,9 @@ import io.legado.app.ui.compose.platform.rememberString
  *
  * - 实际导入对话框 (ImportBookSourceDialog 等) 依赖 Android Fragment, 未下沉到 shared,
  *   选择项目暂 toast 提示待接入
- * - 外部 Intent / deep link 派发逻辑未接入 (依赖鸿蒙 Want 桥接, 后续 KP)
+ * - 外部 Intent 派发 (打开文件/分享文本) 未接入 (依赖鸿蒙 Want 桥接, 后续 KP);
+ *   legado:// deep link 一路已接: EntryAbility onCreate/onNewWant → napi handleDeepLink →
+ *   LegadoDeepLinkHandler → OhosNavHost 尾部 [DeepLinkImportHost] 弹勾选对话框, 不走本 Screen
  *
  * @param type 关联类型 ([AssociationType]), 区分书源/订阅源/替换规则等
  * @param onBack 返回回调 (由 OhosNavHost 注入)
@@ -87,9 +89,9 @@ private fun AssociationItemRow(
     onClick: () -> Unit,
 ) {
     val bg = if (selected) {
-        MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+        AppTheme.colors.accent.copy(alpha = 0.08f)
     } else {
-        MaterialTheme.colorScheme.surface
+        AppTheme.colors.background
     }
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -104,7 +106,7 @@ private fun AssociationItemRow(
         ) {
             Text(
                 text = name,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = AppTheme.colors.primaryText,
                 fontSize = 16.sp,
                 fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
                 maxLines = 1,
@@ -115,7 +117,7 @@ private fun AssociationItemRow(
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = "✓",
-                    color = MaterialTheme.colorScheme.primary,
+                    color = AppTheme.colors.accent,
                     fontSize = 16.sp,
                 )
             }

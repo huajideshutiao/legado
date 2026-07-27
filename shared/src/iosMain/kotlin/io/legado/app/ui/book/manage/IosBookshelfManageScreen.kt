@@ -1,10 +1,7 @@
 package io.legado.app.ui.book.manage
 
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -14,6 +11,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.AppDbProviders
@@ -27,14 +26,23 @@ import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.file.pickDocumentContent
+import io.legado.app.help.file.pickDocuments
 import io.legado.app.ui.book.group.GroupEditDialog
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.group.GroupViewModelShared
 import io.legado.app.ui.book.manage.BookshelfManageScreen as SharedBookshelfManageScreen
 import io.legado.app.ui.bookshelf.IosInfoCover
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.dragSelectable
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.utils.File
+import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.formatNative
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
@@ -43,6 +51,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import io.legado.app.utils.cnCompare
 
 /**
  * iOS 端书架管理 Screen 入口 (包装 shared/sharedUiMain 的 [SharedBookshelfManageScreen])。
@@ -156,7 +165,7 @@ fun IosBookshelfManageScreen(
     // 收集全部分组
     LaunchedEffect(Unit) {
         AppDatabaseProviders.get().appDb.bookGroupDao.flowAll()
-            .catch { AppLog.put(String.format(bookshelfManageLoadGroupFailedTemplate, it.localizedMessage), it) }
+            .catch { AppLog.put(bookshelfManageLoadGroupFailedTemplate.formatNative(it.localizedMessage), it) }
             .flowOn(Dispatchers.IO)
             .conflate()
             .collectLatest { groups ->
@@ -173,13 +182,13 @@ fun IosBookshelfManageScreen(
             .map { list ->
                 when (bookSort) {
                     1 -> list.sortedByDescending { it.latestChapterTime }
-                    2 -> list.sortedWith { o1, o2 -> o1.name.compareTo(o2.name) }
+                    2 -> list.sortedWith { o1, o2 -> o1.name.cnCompare(o2.name) }
                     3 -> list.sortedBy { it.order }
                     4 -> list.sortedByDescending { maxOf(it.latestChapterTime, it.durChapterTime) }
                     else -> list.sortedByDescending { it.durChapterTime }
                 }
             }
-            .catch { AppLog.put(String.format(bookshelfManageLoadBookFailedTemplate, it.localizedMessage), it) }
+            .catch { AppLog.put(bookshelfManageLoadBookFailedTemplate.formatNative(it.localizedMessage), it) }
             .flowOn(Dispatchers.IO)
             .conflate()
             .collectLatest { books ->
@@ -342,60 +351,61 @@ fun IosBookshelfManageScreen(
 
     // 选分组对话框
     groupSelectTarget?.let { target ->
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
             onDismissRequest = { groupSelectTarget = null },
-            title = { Text(groupLabel) },
-            text = {
-                androidx.compose.foundation.layout.Column {
-                    groupList.filter { it.groupId > 0 }.forEach { group ->
-                        TextButton(onClick = {
-                            groupSelectTarget = null
-                            val selectedGroupId = group.groupId
-                            scope.launch {
-                                withContext(Dispatchers.IO) {
-                                    val array = when (target) {
-                                        is GroupSelectTarget.Replace -> Array(target.books.size) { i ->
-                                            target.books[i].copy(group = selectedGroupId)
-                                        }
-                                        is GroupSelectTarget.Merge -> Array(target.books.size) { i ->
-                                            val b = target.books[i]
-                                            b.copy(group = b.group or selectedGroupId)
-                                        }
-                                    }
-                                    AppDbProviders.get().bookDao.update(*array)
-                                }
-                            }
-                        }) { Text(group.groupName) }
-                    }
-                    if (groupList.none { it.groupId > 0 }) Text(groupManageLabel)
-                }
+            title = groupLabel,
+            widthFraction = 0.8f,
+            cancelButton = AlertButton(cancelLabel, dismissOnClick = false) {
+                groupSelectTarget = null
             },
-            confirmButton = {},
-            dismissButton = { TextButton(onClick = { groupSelectTarget = null }) { Text(cancelLabel) } },
-        )
+        ) {
+            androidx.compose.foundation.layout.Column {
+                groupList.filter { it.groupId > 0 }.forEach { group ->
+                    AppTextButton(text = group.groupName) {
+                        groupSelectTarget = null
+                        val selectedGroupId = group.groupId
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                val array = when (target) {
+                                    is GroupSelectTarget.Replace -> Array(target.books.size) { i ->
+                                        target.books[i].copy(group = selectedGroupId)
+                                    }
+                                    is GroupSelectTarget.Merge -> Array(target.books.size) { i ->
+                                        val b = target.books[i]
+                                        b.copy(group = b.group or selectedGroupId)
+                                    }
+                                }
+                                AppDbProviders.get().bookDao.update(*array)
+                            }
+                        }
+                    }
+                }
+                // fontSize 显式 16.sp: 原 M3 Text 默认 bodyLarge 16sp, M2 LocalTextStyle 已压 14sp
+                if (groupList.none { it.groupId > 0 }) Text(groupManageLabel, fontSize = 16.sp)
+            }
+        }
     }
 
     // 删除确认对话框
     deleteTarget?.let { books ->
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text(deleteLabel) },
-            text = { Text(sureDelLabel) },
-            confirmButton = {
-                TextButton(onClick = {
-                    deleteTarget = null
-                    scope.launch {
-                        withContext(Dispatchers.IO) {
-                            AppDbProviders.get().bookDao.delete(*books.toTypedArray())
-                        }
-                        val removed = books.map { it.bookUrl }.toSet()
-                        state.value = state.value.copy(selected = state.value.selected - removed)
+            title = deleteLabel,
+            message = sureDelLabel,
+            widthFraction = 0.8f,
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                deleteTarget = null
+                scope.launch {
+                    withContext(Dispatchers.IO) {
+                        AppDbProviders.get().bookDao.delete(*books.toTypedArray())
                     }
-                }) { Text(okLabel) }
+                    val removed = books.map { it.bookUrl }.toSet()
+                    state.value = state.value.copy(selected = state.value.selected - removed)
+                }
             },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(cancelLabel) } },
+            cancelButton = AlertButton(cancelLabel, dismissOnClick = false) {
+                deleteTarget = null
+            },
         )
     }
 
@@ -417,22 +427,30 @@ fun IosBookshelfManageScreen(
     }
 
     if (showAddGroupDialog) {
-        GroupEditDialog(
-            group = null,
-            onConfirm = { g ->
-                groupVm.addGroup(g.groupName, g.bookSort, g.enableRefresh, g.cover) {}
-            },
-            onDismiss = { showAddGroupDialog = false },
-        )
+        Dialog(onDismissRequest = { showAddGroupDialog = false }) {
+            GroupEditDialog(
+                group = null,
+                onConfirm = { g ->
+                    groupVm.addGroup(g.groupName, g.bookSort, g.enableRefresh, g.cover) {}
+                },
+                onDismiss = { showAddGroupDialog = false },
+                coverSlot = { path, m -> IosInfoCover(remember(path) { Book(coverUrl = path) }, m) },
+                onPickCover = ::pickIosGroupCoverPath,
+            )
+        }
     }
 
     editingGroup?.let { g ->
-        GroupEditDialog(
-            group = g,
-            onConfirm = { updated -> groupVm.upGroup(updated) },
-            onDismiss = { editingGroup = null },
-            onDelete = { del -> groupVm.delGroup(del) {} },
-        )
+        Dialog(onDismissRequest = { editingGroup = null }) {
+            GroupEditDialog(
+                group = g,
+                onConfirm = { updated -> groupVm.upGroup(updated) },
+                onDismiss = { editingGroup = null },
+                onDelete = { del -> groupVm.delGroup(del) {} },
+                coverSlot = { path, m -> IosInfoCover(remember(path) { Book(coverUrl = path) }, m) },
+                onPickCover = ::pickIosGroupCoverPath,
+            )
+        }
     }
 
     // 应用日志对话框
@@ -446,4 +464,25 @@ private sealed class GroupSelectTarget {
     abstract val books: List<Book>
     class Replace(override val books: List<Book>) : GroupSelectTarget()
     class Merge(override val books: List<Book>) : GroupSelectTarget()
+}
+
+/**
+ * 分组封面选图落盘 (GroupEditDialog onPickCover): 文档选择器选图 →
+ * 写入 {filesDir}/covers/{md5}.png (对照 OhosCoverConfigScreen 落盘模式), 返回路径。
+ */
+private suspend fun pickIosGroupCoverPath(): String? {
+    val urls = pickDocuments(contentTypes = listOf("public.image"), allowsMultiple = false)
+        ?: return null
+    val firstUrl = urls.firstOrNull() ?: return null
+    val bytes = pickDocumentContent(firstUrl) ?: return null
+    val filesDir = AppFilesDirs.get().filesDir
+    val coversDirPath = if (filesDir.endsWith("/")) "${filesDir}covers" else "$filesDir/covers"
+    val key = firstUrl.absoluteString ?: firstUrl.path ?: return null
+    val coverPath = "$coversDirPath/${MD5Utils.md5Encode(key)}.png"
+    return runCatching {
+        val dir = File(coversDirPath)
+        if (!dir.exists()) dir.mkdirs()
+        File(coverPath).writeBytes(bytes)
+        coverPath
+    }.getOrNull()
 }

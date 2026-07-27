@@ -779,7 +779,7 @@ class TextChapterLayout(
             ReviewColumn(absStartX + xStart, absStartX + xEnd, currentParagraphIndex, cnt)
         }
         imgList != null && char == ChapterProvider.srcReplaceChar -> {
-            val img = imgList.removeFirst()
+            val img = imgList.removeAt(0)
             // 严禁在此处同步下载图片，下载由 init 中的后台协程统一管理
             ImageColumn(absStartX + xStart, absStartX + xEnd, img.src, img.onclick)
         }

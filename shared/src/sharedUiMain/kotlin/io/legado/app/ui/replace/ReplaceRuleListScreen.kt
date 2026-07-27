@@ -287,10 +287,12 @@ private fun RuleItemScope.ReplaceRuleItem(
 ) {
     val colors = AppTheme.colors
     var showMenu by remember { mutableStateOf(false) }
+    // 按压整行触发切换选中, 子按钮 (Switch/Edit/More) 自身消费点击不冒泡
     Row(
         Modifier
             .fillMaxWidth()
             .longPressDraggableHandle(onDragStopped = { viewModel.persistOrder() })
+            .clickable { viewModel.toggleSelected(item.id, !checked) }
             .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -303,9 +305,7 @@ private fun RuleItemScope.ReplaceRuleItem(
             color = colors.primaryText,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .weight(1f)
-                .clickable { viewModel.toggleSelected(item.id, !checked) },
+            modifier = Modifier.weight(1f),
         )
         AppSwitch(
             checked = item.isEnabled,

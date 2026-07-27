@@ -44,7 +44,7 @@ object BookNameAuthorAnalyzer {
                 name = bookMess?.get("name") ?: ""
                 author = bookMess?.get("author")?.takeIf { it.length != tempFileName.length } ?: ""
             } catch (e: Exception) {
-                AppLog.put("执行导入文件名规则出错\n${e.localizedMessage}", e)
+                AppLog.put("执行导入文件名规则出错\n${e.message}", e)
             }
         }
         if (name.isBlank()) {

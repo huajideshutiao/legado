@@ -576,7 +576,7 @@ class VideoPlayActivity : BaseComposeActivity() {
 
     private fun updateResolutionText() {
         val resolutions = viewModel.resolutions.value
-        resolutionText = if (!resolutions.isNullOrEmpty() && resolutions.size > 1) {
+        resolutionText = if (resolutions != null && resolutions.size > 1) {
             resolutions.getOrNull(viewModel.currentResolutionIndex)?.name
         } else {
             null

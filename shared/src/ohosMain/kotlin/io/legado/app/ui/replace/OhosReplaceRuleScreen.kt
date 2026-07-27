@@ -1,10 +1,5 @@
 package io.legado.app.ui.replace
 
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material.AlertDialog
-import androidx.compose.material.OutlinedTextField
-import androidx.compose.material.Text
-import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -14,18 +9,23 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
+import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.help.copyToClipboard
 import io.legado.app.help.file.pickDocumentContent
 import io.legado.app.help.file.pickDocuments
-import io.legado.app.help.openURL
+import io.legado.app.help.file.saveDocument
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.association.ImportItemsDialog
+import io.legado.app.ui.association.ImportReplaceRuleItemsVm
 import io.legado.app.ui.association.ImportReplaceRuleViewModelShared
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.widget.dialog.HelpDialog
+import io.legado.app.ui.widget.dialog.OnlineImportUrlDialog
 import io.legado.app.utils.GSON
+import io.legado.app.utils.formatNative
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -42,13 +42,11 @@ import kotlinx.coroutines.withContext
  *   退出时 `DisposableEffect.onDispose { viewModel.onCleared() }` 取消内部协程;
  * - **编辑规则**: onAddRule/onEditRule 回调委托 OhosNavHost 切到 REPLACE_EDIT 路由;
  * - **导入**: 本地导入走 [pickDocuments] 选 JSON →
- *   [ImportReplaceRuleViewModelShared.import] 解析; 在线导入用 [AlertDialog] 输入 URL;
+ *   [ImportReplaceRuleViewModelShared.import] 解析; 在线导入用 [OnlineImportUrlDialog] (带历史);
  * - **分组管理**: 复用 shared/sharedUiMain 的 [GroupManageDialog];
- * - **帮助**: 调 [openURL] 跳转正则教程;
- * - **导出**: 选中项序列化为 JSON 复制到剪贴板。
- *
- * 平台专属对话框/输入/文本/按钮改用 MD3 组件
- * ([AlertDialog]/[OutlinedTextField]/[Text]/[TextButton])。
+ * - **帮助**: HelpDialog 渲染 replaceRuleHelp.md (对照 app 端 showHelp);
+ * - **导出**: 选中项序列化为 JSON, [saveDocument] 弹系统保存器写真文件 (对照 app 端
+ *   HandleFileContract.EXPORT "exportReplaceRule.json"); 桥未就绪/保存失败/取消降级复制到剪贴板。
  *
  * @param onBack 返回回调 (切回调用方路由)
  * @param onAddRule 新建规则回调 (切到 REPLACE_EDIT 路由, ruleId=-1)
@@ -70,24 +68,31 @@ fun OhosReplaceRuleScreen(
     var showGroupManage by remember { mutableStateOf(false) }
     // 在线导入 URL 输入 Dialog 状态
     var showImportOnlineDialog by remember { mutableStateOf(false) }
-    var importOnlineUrlText by remember { mutableStateOf("") }
+    // 帮助文档对话框状态 (onHelp 触发)
+    var showHelpDialog by remember { mutableStateOf(false) }
 
-    val importVm = remember(scope) { ImportReplaceRuleViewModelShared(scope) }
+    // 导入 VM: 每次导入新建 (与 app 端每次弹窗新建 VM 一致), 避免列表跨次导入累积错位
+    var importVm by remember { mutableStateOf<ImportReplaceRuleViewModelShared?>(null) }
+    var showImportDialog by remember { mutableStateOf(false) }
 
     // 文案模板 (LaunchedEffect / lambda 非 @Composable, 预先 remember 模板)
     val importCompleteTemplate = rememberString("import_complete")
     val copiedRulesTemplate = rememberString("copied_rules_to_clipboard_count")
+    val wrongFormatText = rememberString("wrong_format")
+    val exportSuccessText = rememberString("export_success")
 
-    // 收集导入成功/失败信号
+    // 解析成功 → 弹勾选对话框 (对照 app 端 ImportReplaceRuleDialog); 失败 → toast
     LaunchedEffect(importVm) {
-        importVm.successState.collectLatest { count ->
-            if (count != null) {
-                importVm.importSelect { Toasters.get().toast(String.format(importCompleteTemplate, count)) }
+        val vm = importVm ?: return@LaunchedEffect
+        launch {
+            vm.successState.collectLatest { count ->
+                if (count != null) {
+                    if (count > 0) showImportDialog = true
+                    else Toasters.get().toast(wrongFormatText)
+                }
             }
         }
-    }
-    LaunchedEffect(importVm) {
-        importVm.errorState.collectLatest { err ->
+        vm.errorState.collectLatest { err ->
             if (err != null) Toasters.get().toast(err.substringAfter("ImportError:"))
         }
     }
@@ -114,22 +119,35 @@ fun OhosReplaceRuleScreen(
                 val firstUrl = urls.firstOrNull() ?: return@launch
                 val bytes = withContext(Dispatchers.Default) { pickDocumentContent(firstUrl) }
                     ?: return@launch
-                val text = bytes.toString(Charsets.UTF_8).trim()
-                importVm.import(text)
+                val text = bytes.decodeToString().trim()
+                importVm = ImportReplaceRuleViewModelShared(scope).also { it.import(text) }
             }
         },
         onImportOnline = {
-            importOnlineUrlText = ""
             showImportOnlineDialog = true
         },
         onHelp = {
-            openURL("https://www.runoob.com/regexp/regexp-tutorial.html")
+            // 对应 app 端 showHelp("replaceRuleHelp")
+            showHelpDialog = true
         },
         onGroupManage = { showGroupManage = true },
         onExport = { rules ->
-            val json = GSON.toJson(rules)
-            copyToClipboard(json)
-            Toasters.get().toast(String.format(copiedRulesTemplate, rules.size))
+            scope.launch {
+                val json = GSON.toJson(rules)
+                // 真文件导出: DocumentViewPicker.save (文件名对照 app 端 HandleFileContract.EXPORT);
+                // saveDocument 桥未就绪/保存失败抛异常, 与用户取消一并降级复制到剪贴板
+                val saved = withContext(Dispatchers.Default) {
+                    runCatching { saveDocument("exportReplaceRule.json", json.encodeToByteArray()) }
+                        .onFailure { AppLog.put("导出替换规则失败", it) }
+                        .getOrDefault(false)
+                }
+                if (saved) {
+                    Toasters.get().toast(exportSuccessText)
+                } else {
+                    copyToClipboard(json)
+                    Toasters.get().toast(copiedRulesTemplate.formatNative(rules.size))
+                }
+            }
         },
     )
 
@@ -152,33 +170,34 @@ fun OhosReplaceRuleScreen(
         )
     }
 
-    // 在线导入 URL 输入 Dialog (MD3 AlertDialog + OutlinedTextField)
-    if (showImportOnlineDialog) {
-        AlertDialog(
-            onDismissRequest = { showImportOnlineDialog = false },
-            title = { Text(rememberString("import_on_line")) },
-            text = {
-                OutlinedTextField(
-                    value = importOnlineUrlText,
-                    onValueChange = { importOnlineUrlText = it },
-                    label = { Text("URL") },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+    // 导入勾选对话框 (确认后仅入库勾选项)
+    if (showImportDialog) importVm?.let { vm ->
+        ImportItemsDialog(
+            title = rememberString("import_replace_rule"),
+            vm = remember(vm) { ImportReplaceRuleItemsVm(vm) },
+            onDismiss = {
+                showImportDialog = false
+                importVm = null
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    val url = importOnlineUrlText.trim()
-                    if (url.isNotEmpty()) {
-                        importVm.import(url)
-                    }
-                    showImportOnlineDialog = false
-                }) { Text(rememberString("ok")) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showImportOnlineDialog = false }) {
-                    Text(rememberString("cancel"))
-                }
+            onImported = { count ->
+                Toasters.get().toast(importCompleteTemplate.formatNative(count))
             },
         )
+    }
+
+    // 在线导入 URL 输入 Dialog (带历史下拉, 对照 app 端 ReplaceRuleActivity.showImportDialog)
+    if (showImportOnlineDialog) {
+        OnlineImportUrlDialog(
+            recordKey = "replaceRuleRecordKey",
+            onConfirm = { url ->
+                importVm = ImportReplaceRuleViewModelShared(scope).also { it.import(url) }
+            },
+            onDismiss = { showImportOnlineDialog = false },
+        )
+    }
+
+    // 帮助文档对话框 (onHelp 触发, 渲染 replaceRuleHelp.md)
+    if (showHelpDialog) {
+        HelpDialog(fileName = "replaceRuleHelp", onDismiss = { showHelpDialog = false })
     }
 }

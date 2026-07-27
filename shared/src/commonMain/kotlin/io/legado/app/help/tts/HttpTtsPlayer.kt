@@ -1,6 +1,5 @@
 package io.legado.app.help.tts
 
-import com.script.quickjs.ScriptException
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
@@ -11,6 +10,7 @@ import io.legado.app.help.coroutine.printOnDebug
 import io.legado.app.help.http.KmpResponse
 import io.legado.app.help.http.header
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.model.script.JsEngines
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.isRetryableNetworkError
@@ -297,20 +297,20 @@ class HttpTtsDownloadScheduler(
             } catch (e: Exception) {
                 when {
                     e is CancellationException -> throw e
-                    e is ScriptException -> {
-                        AppLog.put("js错误\n${e.localizedMessage}", e, true)
+                    JsEngines.isJsException(e) -> {
+                        AppLog.put("js错误\n${e.message}", e, true)
                         e.printOnDebug()
                         throw e
                     }
                     isRetryableNetworkError(e) -> {
                         if (downloadErrorBreaker.record()) {
-                            AppLog.put("tts超时或连接错误超过5次\n${e.localizedMessage}", e, true)
+                            AppLog.put("tts超时或连接错误超过5次\n${e.message}", e, true)
                             throw e
                         }
                     }
                     else -> {
                         val exceeded = downloadErrorBreaker.record()
-                        AppLog.put("tts下载错误\n${e.localizedMessage}", e)
+                        AppLog.put("tts下载错误\n${e.message}", e)
                         e.printOnDebug()
                         if (exceeded) {
                             AppLog.put("TTS服务器连续5次错误，已暂停阅读。", e, true)

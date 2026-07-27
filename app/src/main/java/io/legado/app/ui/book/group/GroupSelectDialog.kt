@@ -7,9 +7,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,10 +30,10 @@ import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.showDialogFragment
 import kotlinx.coroutines.flow.conflate
-import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 
 class GroupSelectDialog() : BaseComposeDialogFragment() {
@@ -110,13 +110,16 @@ class GroupSelectDialog() : BaseComposeDialogFragment() {
     }
 
     @Composable
-    private fun ReorderableCollectionItemScope.GroupItem(item: BookGroup) {
+    private fun RuleItemScope.GroupItem(item: BookGroup) {
         val colors = AppTheme.colors
         val checked = (groupId and item.groupId) > 0
         Row(
             Modifier
                 .fillMaxWidth()
                 .longPressDraggableHandle(onDragStopped = { persistOrder() })
+                .clickable {
+                    groupId = if (checked) groupId - item.groupId else groupId + item.groupId
+                }
                 .padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -131,11 +134,7 @@ class GroupSelectDialog() : BaseComposeDialogFragment() {
                 color = colors.primaryText,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable {
-                        groupId = if (checked) groupId - item.groupId else groupId + item.groupId
-                    },
+                modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(8.dp))
             Text(

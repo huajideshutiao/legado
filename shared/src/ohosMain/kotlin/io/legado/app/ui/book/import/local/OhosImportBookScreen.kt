@@ -2,7 +2,6 @@ package io.legado.app.ui.book.import.local
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.AlertDialog
-import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
@@ -23,12 +22,14 @@ import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.import.local.ImportBookScreen as SharedImportBookScreen
 import io.legado.app.ui.book.import.local.ImportBookUiActions
 import io.legado.app.ui.book.import.local.ImportBookUiState
+import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.platform.sharedStringTable
+import io.legado.app.utils.formatNative
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * 鸿蒙端导入本地书籍 Screen 入口 (包装 shared/sharedUiMain 的 [SharedImportBookScreen])。
@@ -60,7 +61,7 @@ import kotlin.io.File
  *   epub 走 nativeMain EpubFile 真实解析, txt/pdf/cbz 未下沉抛明确异常记日志跳过
  * - **打开书籍**: app 端 `startReadBook` / `onArchiveFileClick` 依赖
  *   `startActivityForBook` + `ArchiveUtils`, 未下沉, onItemClick/onItemLongClick no-op
- * - **文件名导入 js**: app 端 `alert` 弹窗, 鸿蒙端用 [AlertDialog] + [OutlinedTextField] 替代
+ * - **文件名导入 js**: app 端 `alert` 弹窗, 鸿蒙端用 [AlertDialog] + [AppOutlinedTextField] 替代
  *   (与 desktop 一致; 暂不持久化到 AppConfig, 因 AppConfig.bookImportFileName 是 Android 扩展)
  *
  * @param onBack 返回回调 (由 OhosNavHost 注入, 切回 BOOKSHELF 路由)
@@ -394,7 +395,7 @@ private fun OhosImportBookContent(onBack: () -> Unit) {
     )
     SharedImportBookScreen(state, actions)
 
-    // ---- AlertDialog 渲染 (与 desktop/iOS 一致; MD2 → MD3 OutlinedTextField, 鸿蒙端无 MD2) ----
+    // ---- AlertDialog 渲染 (与 desktop/iOS 一致; 输入统一走 AppOutlinedTextField) ----
     // 文件名导入 js 输入对话框 (alertImportFileName 触发 showImportFileNameDialog=true;
     //   确认按钮调 AppLog.put 记录输入, 复刻原 `js ?: return` + AppLog.put 语义)
     if (showImportFileNameDialog) {
@@ -403,10 +404,10 @@ private fun OhosImportBookContent(onBack: () -> Unit) {
             onDismissRequest = { showImportFileNameDialog = false },
             title = { Text(filenameImportJsTitleLabel) },
             text = {
-                OutlinedTextField(
+                AppOutlinedTextField(
                     value = importFileNameJsText,
                     onValueChange = { importFileNameJsText = it },
-                    label = { Text(filenameImportJsSummaryLabel) },
+                    label = filenameImportJsSummaryLabel,
                 )
             },
             confirmButton = {
@@ -415,7 +416,7 @@ private fun OhosImportBookContent(onBack: () -> Unit) {
                     showImportFileNameDialog = false
                     // TODO: app 端写 AppConfig.bookImportFileName, 鸿蒙端 AppConfig 是 Android 扩展,
                     //  暂不持久化; 后续接入鸿蒙端 PreferenceStore 后补全
-                    AppLog.put(sharedStringTable["ohos_filename_import_js_input_log"]!!.format(js.take(50)))
+                    AppLog.put(sharedStringTable["ohos_filename_import_js_input_log"]!!.formatNative(js.take(50)))
                 }) { Text(okLabel) }
             },
             dismissButton = {

@@ -20,6 +20,7 @@ import io.legado.app.help.http.cookieJarHeader
 import io.legado.app.help.media.SleepTimer
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
+import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.audio.AudioPlayAnalyzeRuleFactory
 import io.legado.app.model.audio.AudioPlayController
@@ -31,12 +32,14 @@ import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlin.coroutines.CoroutineContext
-import kotlin.io.File
+import io.legado.app.utils.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -46,9 +49,10 @@ import kotlinx.serialization.Serializable
  * 鸿蒙端 AudioPlay 平台 provider (对标 app 端 AudioPlayService + AudioPlayProvidersImpl)。
  *
  * 编排层复用 commonMain [AudioPlayManager], 播放原语经 napi Media 桥
- * (MediaBridgeHandler.ets 的 AVPlayer) 执行。桥仅支持本地 fd 源, 网络直链先经
- * Ktor 整段下载到缓存再播 (与 OhosHttpTtsPlayer 同策略, 非流式为已知差异)。
- * 桥未就绪时置 STOP + toast 报错, 不做静默假播放。
+ * (MediaBridgeHandler.ets 的 AVPlayer) 执行, 固定 playerId "audioBook" 独占一个实例,
+ * 与网络朗读 (OhosHttpTtsPlayer, "httpTts") 可同时播放。
+ * 网络直链默认走桥侧 setSourceUrl 流播 (MediaSource 可带请求头); 桥侧不支持该 action 时
+ * 自动退回 Ktor 整段下载到缓存再播。桥未就绪时置 STOP + toast 报错, 不做静默假播放。
  */
 class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
     AudioPlayControllerListener, AudioPlayManagerListener {
@@ -80,6 +84,20 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
 
     /** 当前章节的下载缓存文件, 换章/销毁时删除 */
     @Volatile private var cacheFile: File? = null
+
+    /** 本次播放已解析出的直链与请求头 (流播失败回退预下载时复用, 免重复解析) */
+    @Volatile private var resolvedUrl: String? = null
+
+    @Volatile private var resolvedHeaders: Map<String, String> = emptyMap()
+
+    /** 当前是否处于流播尝试中 (onReady 前出错或超时则回退预下载) */
+    @Volatile private var streaming = false
+
+    /** 本章节是否已回退过预下载 (只退一次, 避免死循环) */
+    @Volatile private var streamingFellBack = false
+
+    /** 流播 prepare 看门狗: 桥侧不认识 setSourceUrl 时不会有任何事件, 靠超时回退 */
+    private var streamWatchdog: Job? = null
 
     init {
         controller.listener = this
@@ -193,6 +211,7 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
         manager.onDestroy()
         controller.release()
         deleteCacheFile()
+        clearStreamingState()
         url = ""
         pause = true
         AudioPlayShared.status = Status.STOP
@@ -206,13 +225,17 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
         ) return
         controller.stop()
         manager.cancelProgressJobs()
+        clearStreamingState()
         pause = false
         position = if (playNew) 0 else AudioPlayShared.book?.durChapterPos ?: 0
         url = AudioPlayShared.durPlayUrl
         playMedia()
     }
 
-    /** 对应 AudioPlayService.play(): 置 LOADING → 解析直链 headers → 下载缓存 → setSource+seek+prepare */
+    /**
+     * 对应 AudioPlayService.play(): 置 LOADING → 解析直链 headers → 优先流播,
+     * 桥侧无响应/出错时回退整段预下载 (见 [fallbackToDownload])。
+     */
     private suspend fun playMedia() {
         try {
             AudioPlayShared.status = Status.LOADING
@@ -230,15 +253,63 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
                 currentCoroutineContext(),
             )
             val (mediaUrl, headers) = analyzeUrl.resolveMedia()
-            val file = downloadToCache(mediaUrl, headers)
-            swapCacheFile(file)
-            controller.playWhenReady = true
-            controller.setSource(file.path, position.toLong())
-            controller.prepare()
+            resolvedUrl = mediaUrl
+            resolvedHeaders = headers
+            streamingFellBack = false
+            startStreaming(mediaUrl, headers)
         } catch (e: Exception) {
             AppLog.put("播放出错\n${e.message}", e)
             toast("$url ${e.message}")
             destroySelf()
+        }
+    }
+
+    /** 流播: 直链 + 请求头交桥侧 MediaSource, 免整段预下载 */
+    private fun startStreaming(mediaUrl: String, headers: Map<String, String>) {
+        streaming = true
+        controller.playWhenReady = true
+        controller.setStreamSource(mediaUrl, headers, position.toLong())
+        controller.prepare()
+        // 旧版桥不认识 setSourceUrl 时既无 onReady 也无 onError, 靠超时回退
+        streamWatchdog?.cancel()
+        streamWatchdog = scope.launch {
+            delay(STREAM_PREPARE_TIMEOUT_MS)
+            if (streaming) fallbackToDownload("流播准备超时")
+        }
+    }
+
+    /** 清理流播相关状态 (换章/销毁时调用) */
+    private fun clearStreamingState() {
+        streaming = false
+        streamingFellBack = false
+        streamWatchdog?.cancel()
+        streamWatchdog = null
+        resolvedUrl = null
+        resolvedHeaders = emptyMap()
+    }
+
+    /** 回退整段预下载后本地起播 (对应旧实现的唯一路径) */
+    private fun fallbackToDownload(reason: String) {
+        if (streamingFellBack) return
+        val mediaUrl = resolvedUrl ?: return
+        streamingFellBack = true
+        streaming = false
+        streamWatchdog?.cancel()
+        streamWatchdog = null
+        AppLog.put("音频流播回退预下载: $reason")
+        scope.launch {
+            try {
+                controller.stop()
+                val file = downloadToCache(mediaUrl, resolvedHeaders)
+                swapCacheFile(file)
+                controller.playWhenReady = true
+                controller.setSource(file.path, position.toLong())
+                controller.prepare()
+            } catch (e: Exception) {
+                AppLog.put("播放出错\n${e.message}", e)
+                toast("$url ${e.message}")
+                destroySelf()
+            }
         }
     }
 
@@ -298,6 +369,10 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
 
             AudioPlayController.STATE_READY -> {
                 hasRefreshedOnPlayError = false
+                // 流播已就绪, 撤看门狗
+                streaming = false
+                streamWatchdog?.cancel()
+                streamWatchdog = null
                 postEvent(EventBus.AUDIO_LOADING, false)
                 AudioPlayShared.status =
                     if (controller.playWhenReady) Status.PLAY else Status.PAUSE
@@ -321,6 +396,11 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
     }
 
     override fun onPlayerError(error: Throwable) {
+        // 流播阶段出错: 先退回预下载, 不惊动重试/报错链路
+        if (streaming) {
+            fallbackToDownload(error.message ?: "流播失败")
+            return
+        }
         if (!hasRefreshedOnPlayError) {
             // 首次出错清 resourceUrl 重试 (对应 app 端 refreshChapter)
             hasRefreshedOnPlayError = true
@@ -433,6 +513,9 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
     private companion object {
         /** 音频缓存子目录 (位于 NativeBookStorage.defaultRootPath 下) */
         private const val AUDIO_CACHE_DIR = "audio_play_cache"
+
+        /** 流播 prepare 看门狗超时: 超时未 onReady/onError 视为桥不支持 setSourceUrl, 回退预下载 */
+        private const val STREAM_PREPARE_TIMEOUT_MS = 15_000L
     }
 }
 
@@ -440,8 +523,9 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
  * [AudioPlayController] 的鸿蒙实现: 命令经 napi 桥 (tsfn) 发给 MediaBridgeHandler.ets 的
  * AVPlayer, 状态由 @CName legado_media_event 事件回推并缓存 (同 OhosHttpTtsPlayer 模式)。
  *
- * 注意: OhosNativeBridge.mediaEventListener 是单槽位, 与 OhosHttpTtsPlayer 互斥,
- * 音频书与网络朗读不可同时播放 (协议缺口, 见注册函数注释)。
+ * 命令/事件均带固定 playerId "audioBook", 桥侧按 id 独占 AVPlayer 实例,
+ * 与 OhosHttpTtsPlayer ("httpTts") 可同时播放。
+ * 源支持两种: [setStreamSource] 网络流播 (setSourceUrl) / [setSource] 本地缓存 (setSource)。
  */
 private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.MediaEventListener {
 
@@ -466,8 +550,14 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
     /** prepare 就绪后再应用的起播位置 (对应 app 端 setMediaItem 后的 seekTo(position)) */
     @Volatile private var pendingSeekMs = 0L
 
-    /** 待 prepare 的本地缓存文件路径 */
+    /** 待 prepare 的本地缓存文件路径 (与 [sourceUrl] 互斥) */
     @Volatile private var sourcePath: String? = null
+
+    /** 待 prepare 的网络流地址 (与 [sourcePath] 互斥) */
+    @Volatile private var sourceUrl: String? = null
+
+    /** 流播请求头 (setSourceUrl 时随命令下发) */
+    @Volatile private var sourceHeaders: Map<String, String> = emptyMap()
 
     @Volatile private var listenerRegistered = false
 
@@ -486,12 +576,30 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
 
     /** 设置本地缓存源, startPosMs 就绪后生效 */
     fun setSource(localPath: String, startPosMs: Long) {
-        // 单槽位事件监听, setSource 时抢注 (与 OhosHttpTtsPlayer 互斥, 见类注释)
+        ensureListener()
+        sourcePath = localPath
+        sourceUrl = null
+        sourceHeaders = emptyMap()
+        resetPlaybackCache(startPosMs)
+    }
+
+    /** 设置网络流播源 (直链 + 请求头), startPosMs 就绪后生效 */
+    fun setStreamSource(url: String, headers: Map<String, String>, startPosMs: Long) {
+        ensureListener()
+        sourceUrl = url
+        sourceHeaders = headers
+        sourcePath = null
+        resetPlaybackCache(startPosMs)
+    }
+
+    private fun ensureListener() {
         if (!listenerRegistered) {
-            OhosNativeBridge.setMediaEventListener(this)
+            OhosNativeBridge.setMediaEventListener(OhosNativeBridge.PLAYER_ID_AUDIO_BOOK, this)
             listenerRegistered = true
         }
-        sourcePath = localPath
+    }
+
+    private fun resetPlaybackCache(startPosMs: Long) {
         pendingSeekMs = startPosMs
         playing = false
         cachedDuration = 0L
@@ -501,9 +609,21 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
     }
 
     override fun prepare() {
+        // ets 侧 setSource/setSourceUrl 内部完成 设源 + 创建 AVPlayer + prepare, 就绪回推 onReady
+        val url = sourceUrl
+        if (url != null) {
+            state = AudioPlayController.STATE_BUFFERING
+            sendCommand(
+                MediaCommand(
+                    action = "setSourceUrl",
+                    url = url,
+                    headers = sourceHeaders.takeIf { it.isNotEmpty() },
+                )
+            )
+            return
+        }
         val path = sourcePath ?: return
         state = AudioPlayController.STATE_BUFFERING
-        // ets 侧 setSource 内部完成 打开 fd + 创建 AVPlayer + prepare, 就绪回推 onReady
         sendCommand(MediaCommand(action = "setSource", path = path))
     }
 
@@ -541,10 +661,12 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
     override fun release() {
         sendCommand(MediaCommand(action = "release"))
         if (listenerRegistered) {
-            OhosNativeBridge.setMediaEventListener(null)
+            OhosNativeBridge.setMediaEventListener(OhosNativeBridge.PLAYER_ID_AUDIO_BOOK, null)
             listenerRegistered = false
         }
         sourcePath = null
+        sourceUrl = null
+        sourceHeaders = emptyMap()
         pendingSeekMs = 0L
         playing = false
         cachedDuration = 0L
@@ -601,15 +723,24 @@ private class OhosAvAudioPlayController : AudioPlayController, OhosNativeBridge.
         }
     }
 
+    /** 统一盖上固定 playerId 后经 tsfn 下发 (集中处理, 各命令构造处无需重复传) */
     private fun sendCommand(cmd: MediaCommand) {
-        OhosNativeBridge.sendMediaCommand(KS_JSON.encodeToString(MediaCommand.serializer(), cmd))
+        val stamped = cmd.copy(playerId = OhosNativeBridge.PLAYER_ID_AUDIO_BOOK)
+        OhosNativeBridge.sendMediaCommand(KS_JSON.encodeToString(MediaCommand.serializer(), stamped))
     }
 
-    /** media 命令 (Kotlin → ArkTS, 与 MediaBridgeHandler.ets 协议对齐) */
+    /**
+     * media 命令 (Kotlin → ArkTS, 与 MediaBridgeHandler.ets 协议对齐)。
+     * playerId 默认空串仅为构造便利, [sendCommand] 必改写为 PLAYER_ID_AUDIO_BOOK
+     * (非默认值, 不受 KS_JSON encodeDefaults=false 影响, 必然编码)。
+     */
     @Serializable
     private data class MediaCommand(
         val action: String,
+        val playerId: String = "",
         val path: String? = null,
+        val url: String? = null,
+        val headers: Map<String, String>? = null,
         val position: Long? = null,
         val speed: Float? = null,
     )
@@ -647,7 +778,7 @@ private class MediaAnalyzeUrl(
     }
 }
 
-/** [AudioPlayAnalyzeRuleFactory] 的鸿蒙实现: 直接用 commonMain AnalyzeRuleCore (同 desktop) */
+/** [AudioPlayAnalyzeRuleFactory] 的鸿蒙实现: 经 [AnalyzeRuleFactories] 创建 (同 desktop) */
 private object OhosAudioPlayAnalyzeRuleFactory : AudioPlayAnalyzeRuleFactory {
 
     override fun create(
@@ -656,7 +787,7 @@ private object OhosAudioPlayAnalyzeRuleFactory : AudioPlayAnalyzeRuleFactory {
         chapter: BookChapter,
         coroutineContext: CoroutineContext,
     ): AnalyzeRuleCore {
-        return AnalyzeRuleCore(book, bookSource).apply {
+        return AnalyzeRuleFactories.create(book, bookSource).apply {
             this.coroutineContext = coroutineContext
             setBaseUrl(chapter.url)
             this.chapter = chapter
@@ -667,7 +798,7 @@ private object OhosAudioPlayAnalyzeRuleFactory : AudioPlayAnalyzeRuleFactory {
 /**
  * 鸿蒙宿主启动早期注册 AudioPlay 平台 provider (对标 registerDesktopAudioPlayProviders)。
  * 须在 AppDbProviders / JsEngines / 网络 provider 注册之后调用。
- * 已知缺口: Media 桥单实例单监听, 与 OhosHttpTtsPlayer (网络朗读) 互斥。
+ * Media 桥已按 playerId 多实例, 与 OhosHttpTtsPlayer (网络朗读) 可同时播放。
  */
 fun registerOhosAudioPlayCommanders() {
     val impl = OhosAudioPlayCommander()

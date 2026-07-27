@@ -2,10 +2,9 @@ package io.legado.app.ui.booksource
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import io.legado.app.ui.compose.component.Md2TextField
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -641,7 +640,7 @@ private fun BookSourceEditContent(
         callbacks = callbacks,
         editEntities = { tab -> editEntities(tab) },
         codeEditorSlot = { entity, modifier ->
-            Md2TextField(
+            AppTextField(
                 value = entity.value.orEmpty(),
                 onValueChange = { entity.value = it },
                 modifier = modifier.fillMaxWidth(),
@@ -656,34 +655,30 @@ private fun BookSourceEditContent(
         },
     )
 
-    // ---- AlertDialog 渲染 ----
+    // ---- AppAlertDialog 渲染 ----
 
     // saveSource 校验失败: URL/Name 为空
     if (emptyUrlNameDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
             onDismissRequest = { emptyUrlNameDialog = false },
-            title = { Text(saveFailedLabel) },
-            text = { Text(nonNullNameUrlLabel) },
-            confirmButton = {
-                TextButton(onClick = { emptyUrlNameDialog = false }) {
-                    Text(okLabel)
-                }
+            title = saveFailedLabel,
+            message = nonNullNameUrlLabel,
+            widthFraction = 0.8f,
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                emptyUrlNameDialog = false
             },
         )
     }
 
     // saveSource catch: 保存异常
     saveErrorDialog?.let { errorMsg ->
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
             onDismissRequest = { saveErrorDialog = null },
-            title = { Text(saveSourceErrorLabel) },
-            text = { Text(errorMsg) },
-            confirmButton = {
-                TextButton(onClick = { saveErrorDialog = null }) {
-                    Text(okLabel)
-                }
+            title = saveSourceErrorLabel,
+            message = errorMsg,
+            widthFraction = 0.8f,
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                saveErrorDialog = null
             },
         )
     }

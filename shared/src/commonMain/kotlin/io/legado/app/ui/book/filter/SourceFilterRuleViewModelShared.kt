@@ -2,10 +2,10 @@ package io.legado.app.ui.book.filter
 
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.SourceFilterRule
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.printOnDebug
 import io.legado.app.help.source.SearchBookFilter
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
@@ -72,7 +72,7 @@ class SourceFilterRuleViewModelShared(
      * 见类注释中的对照说明。catch 块仅 [printOnDebug], 与原 [Coroutine] 默认行为一致。
      */
     private fun mutate(block: suspend CoroutineScope.() -> Unit) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             try {
                 block()
                 SearchBookFilter.reload()

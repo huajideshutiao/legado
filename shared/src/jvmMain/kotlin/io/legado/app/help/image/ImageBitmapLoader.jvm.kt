@@ -28,9 +28,10 @@ import javax.imageio.ImageIO
  *   - 网络书: [AnalyzeUrlCore] 发请求, 自动带书源 header / cookie / charset / JS
  *     (对照 app 端 `AnalyzeUrl(imageUrl, source=bookSource).getByteArrayAwait()`)
  * - `cbz://`: [CbzFile.getImage] 读取 zip 内嵌条目图片流
- * - GIF: JDK [ImageIO] 不支持动图, 仅取静态首帧 (任务约束, app 端用 Glide 支持动图)
+ * - GIF: [ImageIO] 不支持动图, [loadBitmap] 仅取静态首帧; 需要动图的消费点改用 [loadBytes]
+ *   取裸字节走 [rememberAnimatedImageBitmap] (skiko Codec 逐帧解码)
  */
-actual class ImageBitmapLoader {
+actual class ImageBitmapLoader actual constructor() {
 
     actual suspend fun loadBitmap(url: String, book: Book?, bookSource: BookSource?): ImageBitmap? =
         withContext(Dispatchers.IO) {
@@ -52,13 +53,33 @@ actual class ImageBitmapLoader {
                     }
                     bytes?.let { ImageIO.read(ByteArrayInputStream(it)) }
                 }
-                else -> null
+                // Windows 盘符 (C:\...) / 相对路径: 对照原 DesktopPhotoDialog else 分支 File(src) 直读
+                else -> File(url).takeIf { it.isFile }?.let { ImageIO.read(it) }
             }
             image?.toComposeImageBitmap()
         }
 
-    /** 简单 OkHttp GET 取字节流 (本地书 / 无书源用)。 */
-    private fun downloadBytesSimple(url: String): ByteArray? {
+    actual suspend fun loadBytes(url: String, book: Book?, bookSource: BookSource?): ByteArray? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                when {
+                    url.startsWith("cbz://") && book != null ->
+                        CbzFile.getImage(book, url.removePrefix("cbz://"))?.use { it.readBytes() }
+                    url.startsWith("file://") -> File(url.removePrefix("file://")).readBytes()
+                    url.startsWith("/") -> File(url).readBytes()
+                    url.startsWith("http://") || url.startsWith("https://") ->
+                        if (bookSource == null || book?.isLocal == true) {
+                            downloadBytesSimple(url)
+                        } else {
+                            downloadBytesWithSource(url, bookSource)
+                        }
+                    // Windows 盘符 / 相对路径: 与 loadBitmap else 分支同规则
+                    else -> File(url).takeIf { it.isFile }?.readBytes()
+                }
+            }.getOrNull()
+        }
+
+    /** 简单 OkHttp GET 取字节流 (本地书 / 无书源用)。 */    private fun downloadBytesSimple(url: String): ByteArray? {
         val client = OkHttpClientProviders.get().okHttpClient
         val request = Request.Builder().url(url).build()
         return runCatching {

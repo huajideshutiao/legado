@@ -13,8 +13,8 @@ package io.legado.app.help.http
  * - [promisesBody]: 返回 false (默认无 body, 与原 iOS/鸿蒙 stub 行为对齐)
  * - [decompressBody]: 返回 null (无解压, 与原 iOS/鸿蒙 stub 行为对齐)
  *
- * iOS/鸿蒙 target 上 DecompressInterceptor 本身就引用 okhttp3.Interceptor (commonMain),
- * 在 iOS/鸿蒙 target 编译失败, 这些函数永不执行, 返回默认值仅作为编译期占位。
+ * iOS/鸿蒙 target 上 [DecompressInterceptor] 可正常执行 (KmpInterceptor 在 nativeMain 是真实接口),
+ * 但因这两个函数返回默认值, 拦截器不会做实际解压 —— 依赖 Ktor 自身的内容编码处理。
  */
 internal actual fun Any.promisesBody(): Boolean = false
 

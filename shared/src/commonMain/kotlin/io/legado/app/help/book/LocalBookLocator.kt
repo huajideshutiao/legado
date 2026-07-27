@@ -1,6 +1,7 @@
 package io.legado.app.help.book
 
 import io.legado.app.data.entities.Book
+import kotlin.concurrent.Volatile
 
 /**
  * 本地书文件定位跨平台抽象。
@@ -15,7 +16,8 @@ import io.legado.app.data.entities.Book
  *   [io.legado.app.help.book.BookHelp] 的实现 (本任务不涉及, 后续任务做)。
  * - 桌面 JVM: desktop 模块启动时注入 [io.legado.app.help.book.JvmLocalBookLocator]
  *   (java.nio.file.Path 实现)。
- * - iOS / 鸿蒙: 暂未实现 (stub), 后续 KP3 / KP4 补。
+ * - iOS / 鸿蒙: 共用 nativeMain [io.legado.app.help.book.NativeLocalBookLocator]
+ *   (`kotlin.io.File` 实现)。
  *
  * 模式参考 [BookStorageProviders] / [io.legado.app.help.book.BookHelpProviders]。
  */

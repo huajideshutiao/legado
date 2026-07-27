@@ -1,10 +1,9 @@
 package io.legado.app.ui.book.filter
 
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import io.legado.app.ui.compose.component.Md2TextField
+import androidx.compose.material.AlertDialog
+import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -13,15 +12,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.window.Dialog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.help.copyToClipboard
 import io.legado.app.help.file.pickDocumentContent
 import io.legado.app.help.file.pickDocuments
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.association.ImportItemsDialog
+import io.legado.app.ui.association.ImportSourceFilterRuleItemsVm
 import io.legado.app.ui.association.ImportSourceFilterRuleViewModelShared
+import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.utils.GSON
+import io.legado.app.utils.formatNative
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flowOn
@@ -74,21 +78,26 @@ fun IosSourceFilterRuleScreen(
     var showImportOnlineDialog by remember { mutableStateOf(false) }
     var importOnlineUrlText by remember { mutableStateOf("") }
 
-    val importVm = remember(scope) { ImportSourceFilterRuleViewModelShared(scope) }
+    // 导入 VM: 每次导入新建 (与 app 端每次弹窗新建 VM 一致), 避免列表跨次导入累积错位
+    var importVm by remember { mutableStateOf<ImportSourceFilterRuleViewModelShared?>(null) }
+    var showImportDialog by remember { mutableStateOf(false) }
     // 文案模板 (LaunchedEffect / onExportSelection lambda 非 @Composable, 预先 remember 模板)
     val importCompleteTemplate = rememberString("import_complete")
     val copiedRulesTemplate = rememberString("copied_rules_to_clipboard_count")
+    val wrongFormatText = rememberString("wrong_format")
 
-    // 收集导入成功/失败信号 (与 IosDictRuleScreen 模式一致)
+    // 解析成功 → 弹勾选对话框 (对照 app 端 ImportSourceFilterRuleDialog); 失败 → toast
     LaunchedEffect(importVm) {
-        importVm.successState.collectLatest { count ->
-            if (count != null) {
-                importVm.importSelect { Toasters.get().toast(String.format(importCompleteTemplate, count)) }
+        val vm = importVm ?: return@LaunchedEffect
+        launch {
+            vm.successState.collectLatest { count ->
+                if (count != null) {
+                    if (count > 0) showImportDialog = true
+                    else Toasters.get().toast(wrongFormatText)
+                }
             }
         }
-    }
-    LaunchedEffect(importVm) {
-        importVm.errorState.collectLatest { err ->
+        vm.errorState.collectLatest { err ->
             if (err != null) Toasters.get().toast(err.substringAfter("ImportError:"))
         }
     }
@@ -146,7 +155,7 @@ fun IosSourceFilterRuleScreen(
             override fun onExportSelection() {
                 val sel = rules.filter { it.id in selected }
                 copyToClipboard(GSON.toJson(sel))
-                Toasters.get().toast(String.format(copiedRulesTemplate, sel.size))
+                Toasters.get().toast(copiedRulesTemplate.formatNative(sel.size))
             }
             override fun onEditRule(rule: SourceFilterRule) {
                 editTarget = rule
@@ -170,7 +179,8 @@ fun IosSourceFilterRuleScreen(
                     val firstUrl = urls.firstOrNull() ?: return@launch
                     val bytes = withContext(Dispatchers.Default) { pickDocumentContent(firstUrl) }
                         ?: return@launch
-                    importVm.import(bytes.toString(Charsets.UTF_8).trim())
+                    val text = bytes.decodeToString().trim()
+                    importVm = ImportSourceFilterRuleViewModelShared(scope).also { it.import(text) }
                 }
             }
             override fun onImportOnline() {
@@ -182,19 +192,36 @@ fun IosSourceFilterRuleScreen(
 
     // 编辑对话框 (复用 shared/sharedUiMain 的 SourceFilterEditDialog)
     if (showEditDialog) {
-        SourceFilterEditDialog(
-            rule = editTarget,
-            onConfirm = { rule ->
-                // 新增 insert / 编辑 update; VM 层均走 update (REPLACE 冲突策略等价)
-                scope.launch(Dispatchers.Default) {
-                    AppDbProviders.get().sourceFilterRuleDao.insert(rule)
-                }
-                editTarget = null
-                showEditDialog = false
-            },
+        Dialog(onDismissRequest = { editTarget = null; showEditDialog = false }) {
+            SourceFilterEditDialog(
+                rule = editTarget,
+                onConfirm = { rule ->
+                    // 新增 insert / 编辑 update; VM 层均走 update (REPLACE 冲突策略等价)
+                    scope.launch(Dispatchers.Default) {
+                        AppDbProviders.get().sourceFilterRuleDao.insert(rule)
+                    }
+                    editTarget = null
+                    showEditDialog = false
+                },
+                onDismiss = {
+                    editTarget = null
+                    showEditDialog = false
+                },
+            )
+        }
+    }
+
+    // 导入勾选对话框 (确认后仅入库勾选项)
+    if (showImportDialog) importVm?.let { vm ->
+        ImportItemsDialog(
+            title = rememberString("import_source_filter_rule"),
+            vm = remember(vm) { ImportSourceFilterRuleItemsVm(vm) },
             onDismiss = {
-                editTarget = null
-                showEditDialog = false
+                showImportDialog = false
+                importVm = null
+            },
+            onImported = { count ->
+                Toasters.get().toast(importCompleteTemplate.formatNative(count))
             },
         )
     }
@@ -205,7 +232,7 @@ fun IosSourceFilterRuleScreen(
             onDismissRequest = { showImportOnlineDialog = false },
             title = { Text(rememberString("import_on_line")) },
             text = {
-                Md2TextField(
+                AppTextField(
                     value = importOnlineUrlText,
                     onValueChange = { importOnlineUrlText = it },
                     label = "URL",
@@ -215,7 +242,9 @@ fun IosSourceFilterRuleScreen(
             confirmButton = {
                 TextButton(onClick = {
                     val url = importOnlineUrlText.trim()
-                    if (url.isNotEmpty()) importVm.import(url)
+                    if (url.isNotEmpty()) {
+                        importVm = ImportSourceFilterRuleViewModelShared(scope).also { it.import(url) }
+                    }
                     showImportOnlineDialog = false
                 }) { Text(rememberString("ok")) }
             },

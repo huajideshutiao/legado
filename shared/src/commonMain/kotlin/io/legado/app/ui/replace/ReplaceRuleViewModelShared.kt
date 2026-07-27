@@ -2,9 +2,9 @@ package io.legado.app.ui.replace
 
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.ReplaceRule
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
@@ -62,26 +62,26 @@ class ReplaceRuleViewModelShared(
     private val appDb get() = AppDbProviders.get()
 
     fun update(vararg rule: ReplaceRule) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             appDb.replaceRuleDao.update(*rule)
         }
     }
 
     fun delete(rule: ReplaceRule) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             appDb.replaceRuleDao.delete(rule)
         }
     }
 
     fun toTop(rule: ReplaceRule) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             rule.order = appDb.replaceRuleDao.minOrder() - 1
             appDb.replaceRuleDao.update(rule)
         }
     }
 
     fun topSelect(rules: List<ReplaceRule>) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             var minOrder = appDb.replaceRuleDao.minOrder() - rules.size
             rules.forEach {
                 it.order = ++minOrder
@@ -91,14 +91,14 @@ class ReplaceRuleViewModelShared(
     }
 
     fun toBottom(rule: ReplaceRule) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             rule.order = appDb.replaceRuleDao.maxOrder() + 1
             appDb.replaceRuleDao.update(rule)
         }
     }
 
     fun bottomSelect(rules: List<ReplaceRule>) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             var maxOrder = appDb.replaceRuleDao.maxOrder()
             rules.forEach {
                 it.order = maxOrder++
@@ -108,7 +108,7 @@ class ReplaceRuleViewModelShared(
     }
 
     fun upOrder() {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             val rules = appDb.replaceRuleDao.all()
             for ((index, rule) in rules.withIndex()) {
                 rule.order = index + 1
@@ -118,7 +118,7 @@ class ReplaceRuleViewModelShared(
     }
 
     fun enableSelection(rules: List<ReplaceRule>) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             val array = Array(rules.size) {
                 rules[it].copy(isEnabled = true)
             }
@@ -127,7 +127,7 @@ class ReplaceRuleViewModelShared(
     }
 
     fun disableSelection(rules: List<ReplaceRule>) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             val array = Array(rules.size) {
                 rules[it].copy(isEnabled = false)
             }
@@ -136,13 +136,13 @@ class ReplaceRuleViewModelShared(
     }
 
     fun delSelection(rules: List<ReplaceRule>) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             appDb.replaceRuleDao.delete(*rules.toTypedArray())
         }
     }
 
     fun addGroup(group: String) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             val sources = appDb.replaceRuleDao.noGroup()
             sources.forEach { source ->
                 source.group = group
@@ -152,7 +152,7 @@ class ReplaceRuleViewModelShared(
     }
 
     fun upGroup(oldGroup: String, newGroup: String?) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             val sources = appDb.replaceRuleDao.getByGroup(oldGroup)
             sources.forEach { source ->
                 source.group?.splitNotBlank(",")?.toHashSet()?.let {
@@ -169,8 +169,8 @@ class ReplaceRuleViewModelShared(
 
     fun delGroup(group: String) {
         // 保持原 app 端嵌套 execute 结构 (外层 launch 包装内层 launch, 行为等价于单层)
-        scope.launch(Dispatchers.IO) {
-            scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
+            scope.launch(IoDispatcher) {
                 val sources = appDb.replaceRuleDao.getByGroup(group)
                 sources.forEach { source ->
                     source.group?.splitNotBlank(",")?.toHashSet()?.let {

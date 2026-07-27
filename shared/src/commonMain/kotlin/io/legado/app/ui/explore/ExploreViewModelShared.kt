@@ -2,9 +2,9 @@ package io.legado.app.ui.explore
 
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.source.SourceHelp
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
@@ -51,7 +51,7 @@ class ExploreViewModelShared(
      * @param bookSource 待置顶的书源 (修改其 customOrder 字段为最小序号 - 1)
      */
     fun topSource(bookSource: BookSourcePart) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             val minXh = appDb.bookSourceDao.minOrder()
             bookSource.customOrder = minXh - 1
             appDb.bookSourceDao.upOrder(bookSource)
@@ -67,7 +67,7 @@ class ExploreViewModelShared(
      * @param source 待删除的书源 (按 bookSourceUrl 删除)
      */
     fun deleteSource(source: BookSourcePart) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             SourceHelp.deleteBookSource(source.bookSourceUrl)
         }
     }

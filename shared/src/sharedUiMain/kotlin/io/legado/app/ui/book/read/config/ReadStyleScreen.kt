@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
 import androidx.compose.material.Text
@@ -47,6 +46,7 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.platform.rememberStringArray
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 阅读样式配置控制器：把 app 端 `ReadBookConfig` 的样式字段读写抽象为接口，
@@ -494,7 +494,7 @@ private fun SegmentChip(
             addStyle(SpanStyle(color = accent), start, end)
         }
     }
-    val shape = RoundedCornerShape(4.dp)
+    val shape = DesignTokens.shapeSm
     Text(
         text = text,
         color = textColor,
@@ -502,7 +502,7 @@ private fun SegmentChip(
         maxLines = 1,
         modifier = Modifier
             .clip(shape)
-            .border(1.dp, textColor, shape)
+            .border(DesignTokens.strokeThin, textColor, shape)
             .combinedClickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 4.dp),
     )
@@ -521,7 +521,7 @@ private fun AddStyleItem(textColor: Color, onClick: () -> Unit) {
             .size(48.dp)
             .padding(6.dp)
             .clip(CircleShape)
-            .border(1.dp, textColor, CircleShape)
+            .border(DesignTokens.strokeThin, textColor, CircleShape)
             .combinedClickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {

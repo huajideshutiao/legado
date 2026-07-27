@@ -74,7 +74,7 @@ import kotlinx.coroutines.flow.asStateFlow
  *   newCallResponseBody / decompressed / text 均为 commonMain 扩展)。
  * - **context.getString(R.string.wrong_format)**: commonMain 无 R.string 资源,
  *   改为直接抛 `NoStackTraceException("格式不对")` (与 shared 端其他下沉 VM
- *   文案一致, 错误经 `_errorState.value = "ImportError:${it.localizedMessage}"` 推送)。
+ *   文案一致, 错误经 `_errorState.value = "ImportError:${it.message}"` 推送)。
  * - **androidx.lifecycle.MutableLiveData**: 不可 KMP, 改为 [MutableStateFlow] + [asStateFlow]
  *   (对照 [ImportBookSourceViewModelShared] 的 2 个 StateFlow 模式)。
  *
@@ -198,8 +198,8 @@ class ImportThemeViewModelShared(
         Coroutine.async(scope = scope) {
             importSourceAwait(text.trim())
         }.onError {
-            _errorState.value = "ImportError:${it.localizedMessage}"
-            AppLog.put("ImportError:${it.localizedMessage}", it)
+            _errorState.value = "ImportError:${it.message}"
+            AppLog.put("ImportError:${it.message}", it)
         }.onSuccess {
             comparisonSource()
         }

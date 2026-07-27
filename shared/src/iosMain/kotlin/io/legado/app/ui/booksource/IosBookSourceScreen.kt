@@ -3,11 +3,11 @@ package io.legado.app.ui.booksource
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import io.legado.app.ui.compose.component.Md2TextField
+import androidx.compose.material.AlertDialog
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
+import androidx.compose.material.TextButton
+import io.legado.app.ui.compose.component.AppTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,10 +24,13 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.help.copyToClipboard
+import io.legado.app.help.file.exportFile
 import io.legado.app.help.file.pickDocumentContent
 import io.legado.app.help.file.pickDocuments
 import io.legado.app.help.openURL
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.association.ImportBookSourceItemsDialog
 import io.legado.app.ui.association.ImportBookSourceViewModelShared
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.source.BookSourceListCallbacks
@@ -39,6 +42,9 @@ import io.legado.app.ui.book.source.SourceFilter
 import io.legado.app.ui.book.source.SourceLoginDialog
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.utils.GSON
+import io.legado.app.utils.NetworkUtils
+import io.legado.app.utils.formatNative
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import platform.Foundation.NSDate
@@ -66,8 +72,8 @@ import platform.Foundation.NSDate
  *
  * - 不接入书源校验 (CheckSourceShared): 依赖较重 (并发协程 + NotificationProgresses + Debug),
  *   iOS 端暂未接入 (后续 KP5+)
- * - 不接入本地/网络导入 (ImportBookSourceViewModelShared + DesktopImportDialog):
- *   依赖 iOS 文件选择器 (UIDocumentPickerViewController) 桥接, 后续 KP5+ 接入
+ * - 本地/网络导入已接入: pickDocuments/URL → ImportBookSourceViewModelShared 解析 →
+ *   ImportBookSourceItemsDialog 勾选 → importSelect 入库
  * - 不接入书源编辑/调试/登录子路由: iOS 端暂未接入对应子路由
  * - 不接入导出/分享: 依赖 iOS 文件保存/分享面板 (UIActivityViewController), 后续 KP5+ 接入
  * - 不接入分组管理 Dialog: shared/sharedUiMain 已下沉 GroupManageDialog, 但 iOS 端简化暂不接入
@@ -104,10 +110,12 @@ fun IosBookSourceScreen(
     var showImportOnlineDialog by remember { mutableStateOf(false) }
     var importOnlineUrlText by remember { mutableStateOf("") }
 
-    // 书源导入 VM (KP6: pickDocuments → importSource → importSelect 自动导入)
-    val importVm = remember(scope) { ImportBookSourceViewModelShared(scope) }
+    // 书源导入 VM: 每次导入新建 (与 app 端每次弹窗新建 VM 一致), 避免列表跨次导入累积错位
+    var importVm by remember { mutableStateOf<ImportBookSourceViewModelShared?>(null) }
+    var showImportDialog by remember { mutableStateOf(false) }
     // 文案模板 (importVm LaunchedEffect lambda 非 @Composable, 预先 remember 模板)
     val importCompleteTemplate = rememberString("import_complete")
+    val wrongFormatText = rememberString("wrong_format")
 
     // 过滤关键字 label (rememberString 是 @Composable, 顶层 remember 一次;
     // parseFilter 局部函数非 @Composable, 需预先缓存 label 后捕获)
@@ -157,17 +165,18 @@ fun IosBookSourceScreen(
         }
     }
 
-    // 导入书源: 解析成功 → 自动 importSelect 入库; 失败 → toast 错误
-    // (KP6: 后续接入 ImportDialog 后改为用户勾选比对再 importSelect)
+    // 导入书源: 解析成功 → 弹勾选对话框 (对照 app 端 ImportBookSourceDialog); 失败 → toast
     LaunchedEffect(importVm) {
-        importVm.successState.collectLatest { count ->
-            if (count != null) {
-                importVm.importSelect { Toasters.get().toast(String.format(importCompleteTemplate, count)) }
+        val vm = importVm ?: return@LaunchedEffect
+        launch {
+            vm.successState.collectLatest { count ->
+                if (count != null) {
+                    if (count > 0) showImportDialog = true
+                    else Toasters.get().toast(wrongFormatText)
+                }
             }
         }
-    }
-    LaunchedEffect(importVm) {
-        importVm.errorState.collectLatest { err ->
+        vm.errorState.collectLatest { err ->
             if (err != null) Toasters.get().toast(err.substringAfter("ImportError:"))
         }
     }
@@ -180,6 +189,8 @@ fun IosBookSourceScreen(
     val disableExploreLabel = rememberString("disable_explore")
     val selectionToTopLabel = rememberString("selection_to_top")
     val selectionToBottomLabel = rememberString("selection_to_bottom")
+    val exportSelectionLabel = rememberString("export_selection")
+    val shareSelectedSourceLabel = rememberString("share_selected_source")
     // KP5 新增文案标签 (onDelSelection AlertDialog / onAddBookSource BookSource 构造用)
     val deleteLabel = rememberString("delete")
     val sureDelLabel = rememberString("sure_del")
@@ -243,7 +254,8 @@ fun IosBookSourceScreen(
                 viewModel.upOrder(items)
             },
             onEdit = { item ->
-                // TODO: 切到书源编辑子路由 (iOS 端暂未接入 BOOK_SOURCE_EDIT, 后续 KP5+)
+                // 弹书源编辑 Dialog (末尾 editTargetUrl 渲染分支包装 IosBookSourceEditScreen)
+                editTargetUrl = item.bookSourceUrl
             },
             onEnable = { enable, item -> viewModel.enable(enable, listOf(item)) },
             onEnableExplore = { enable, item -> viewModel.enableExplore(enable, listOf(item)) },
@@ -255,7 +267,8 @@ fun IosBookSourceScreen(
             },
             onSearchBook = onSearchBook,
             onDebug = { item ->
-                // TODO: 切到书源调试子路由 (iOS 端暂未接入 BOOK_SOURCE_DEBUG, 后续 KP5+)
+                // 弹书源调试 Dialog (末尾 debugTargetUrl 渲染分支包装 IosBookSourceDebugScreen)
+                debugTargetUrl = item.bookSourceUrl
             },
             onLogin = { item ->
                 // 异步按 url 查 BookSource 完整记录 (BookSourcePart 是 DatabaseView 不含 header/loginUrl),
@@ -284,7 +297,7 @@ fun IosBookSourceScreen(
                         bookSourceUrl = "new_${NSDate().timeIntervalSince1970().toLong()}",
                     )
                     dao.insert(source)
-                    AppLog.put(String.format(newBookSourceAddedLogTemplate, source.bookSourceUrl))
+                    AppLog.put(newBookSourceAddedLogTemplate.formatNative(source.bookSourceUrl))
                 }
             },
             onImportLocal = {
@@ -296,13 +309,12 @@ fun IosBookSourceScreen(
                     ) ?: return@launch
                     val firstUrl = urls.firstOrNull() ?: return@launch
                     val bytes = pickDocumentContent(firstUrl) ?: return@launch
-                    val text = bytes.toString(Charsets.UTF_8)
-                    importVm.importSource(text)
+                    val text = bytes.decodeToString()
+                    importVm = ImportBookSourceViewModelShared(scope).also { it.importSource(text) }
                 }
             },
             onImportOnline = {
-                // 弹 AlertDialog URL 输入 → 确认后 importVm.importSource(url) 触发下载/解析/比对,
-                // 末尾 LaunchedEffect(importVm) 自动 importSelect 入库 (与 desktop onImportOnline 一致)
+                // 弹 AlertDialog URL 输入 → 确认后触发下载/解析/比对, 成功后弹勾选对话框
                 importOnlineUrlText = ""
                 showImportOnlineDialog = true
             },
@@ -317,7 +329,7 @@ fun IosBookSourceScreen(
             },
             onSelectActions = {
                 // 顺序对齐 app 端 BookSourceActivity.selectActions() (避免"入口位置变了"),
-                // iOS 端 KP4 阶段接入 6 项核心批量操作, 其余 (加入/移出分组/导出/分享/校验) 留 TODO
+                // iOS 端接入导出/分享, 加入/移出分组/校验留 TODO
                 val selection = state.value.sources.filter { state.value.selected.contains(it.bookSourceUrl) }
                 listOf(
                     SelectAction(enableSelectionLabel) { viewModel.enableSelection(selection) },
@@ -326,6 +338,16 @@ fun IosBookSourceScreen(
                     SelectAction(disableExploreLabel) { viewModel.disableSelectExplore(selection) },
                     SelectAction(selectionToTopLabel) { viewModel.topSource(*selection.toTypedArray()) },
                     SelectAction(selectionToBottomLabel) { viewModel.bottomSource(*selection.toTypedArray()) },
+                    SelectAction(exportSelectionLabel) {
+                        scope.launch {
+                            exportFile("exportBookSource.json", GSON.toJson(selection).encodeToByteArray())
+                        }
+                    },
+                    SelectAction(shareSelectedSourceLabel) {
+                        scope.launch {
+                            copyToClipboard(GSON.toJson(selection))
+                        }
+                    },
                 )
             },
             getSourceHost = ::getSourceHost,
@@ -436,16 +458,29 @@ fun IosBookSourceScreen(
         }
     }
 
+    // ---- 导入勾选对话框 (确认后仅入库勾选项, 含 选中新增源/选中更新源 菜单) ----
+    if (showImportDialog) importVm?.let { vm ->
+        ImportBookSourceItemsDialog(
+            vm = vm,
+            onDismiss = {
+                showImportDialog = false
+                importVm = null
+            },
+            onImported = { count ->
+                Toasters.get().toast(importCompleteTemplate.formatNative(count))
+            },
+        )
+    }
+
     // ---- 网络导入 URL 输入对话框 (onImportOnline 触发, 对照 desktop showImportOnlineDialog) ----
-    // 用户确认后调 importVm.importSource(url) 触发下载 → 解析 → 比对,
-    // 末尾 LaunchedEffect(importVm) 监听 success/error 自动 importSelect 入库 + toast
+    // 用户确认后调 importVm.importSource(url) 触发下载 → 解析 → 比对, 成功后弹勾选对话框
     if (showImportOnlineDialog) {
         AlertDialog(
             modifier = Modifier.fillMaxWidth(0.8f),
             onDismissRequest = { showImportOnlineDialog = false },
             title = { Text(netImportBookSourceLabel) },
             text = {
-                Md2TextField(
+                AppTextField(
                     value = importOnlineUrlText,
                     onValueChange = { importOnlineUrlText = it },
                     modifier = Modifier.fillMaxWidth(),
@@ -458,7 +493,7 @@ fun IosBookSourceScreen(
                     val url = importOnlineUrlText
                     showImportOnlineDialog = false
                     if (url.isNotBlank()) {
-                        importVm.importSource(url)
+                        importVm = ImportBookSourceViewModelShared(scope).also { it.importSource(url) }
                     }
                 }) { Text(okLabel) }
             },
@@ -472,24 +507,9 @@ fun IosBookSourceScreen(
 }
 
 /**
- * 从 URL 提取主域名 (倒数第二段 + 顶级域), 如 `https://www.example.com/path` -> `example.com`;
- * 解析失败返回 `"#"`, 与 app 端 fallback 一致 (用于按域名分组时排在最后)。
- *
- * iOS 端不依赖 java.net.URL (Kotlin/Native 不可用), 用 Kotlin 标准库做简化解析:
- * 1. 去掉 scheme (`://` 之前部分)
- * 2. 取第一个 `/` 之前部分作为 host
- * 3. 取倒数两段拼成主域名 (与 desktop `getSourceHost` 行为一致)
- *
- * 与 desktop `BookSourceScreen.kt` 的 `getSourceHost` 等价 (仅解析实现不同, 输出一致)。
+ * 域名提取 (对齐 app 端 BookSourceActivity.getSourceHost):
+ * commonMain [NetworkUtils.getSubDomainOrNull], 失败返回 `"#"` (按域名分组时排在最后)。
  */
 private fun getSourceHost(origin: String): String {
-    return try {
-        // 简化实现: 取 scheme:// 后到第一个 / 之间的部分作为 host (跨平台, 不依赖 java.net.URL)
-        val afterScheme = origin.substringAfter("://", origin)
-        val host = afterScheme.substringBefore("/")
-        val parts = host.split(".")
-        if (parts.size >= 2) parts.takeLast(2).joinToString(".") else host
-    } catch (_: Exception) {
-        "#"
-    }
+    return NetworkUtils.getSubDomainOrNull(origin) ?: "#"
 }

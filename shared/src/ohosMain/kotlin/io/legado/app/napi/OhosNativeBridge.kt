@@ -278,22 +278,34 @@ object OhosNativeBridge {
     fun isImageBridgeReady(): Boolean = synchronized(lock) { imageTsfn != null }
 
     // ===== Media 事件桥 (tsfn fire-and-forget + @CName event callback, KP8+) =====
-    // HttpTtsPlayer 的 play/pause/stop/seekTo 是 fire-and-forget 命令 (无返回值),
-    // 用 tsfn dispatch 到 ArkTS 主线程操作 AVPlayer;
+    // HttpTtsPlayer / OhosAudioPlayCommander 的 play/pause/stop/seekTo 是 fire-and-forget 命令
+    // (无返回值), 用 tsfn dispatch 到 ArkTS 主线程操作 AVPlayer;
     // AVPlayer 事件 (onReady/onEndOfMedia/onError/onBufferingUpdate/duration/position)
     // 由 ArkTS 通过 @CName legado_media_event 回调推送, Kotlin 侧 [MediaEventListener] 接收。
+    //
+    // 多实例: 音频书与 HttpTTS 朗读需各持一个 AVPlayer, 命令/事件均带 playerId,
+    // 监听器按 playerId 注册到 [mediaEventListeners]; 无 playerId 的旧消息按
+    // [DEFAULT_PLAYER_ID] 处理。
+
+    /** 缺省 playerId (无 playerId 字段的旧协议消息落到这里)。 */
+    const val DEFAULT_PLAYER_ID: String = "default"
+
+    /** 音频书播放实例 id (OhosAudioPlayCommander 使用)。 */
+    const val PLAYER_ID_AUDIO_BOOK: String = "audioBook"
+
+    /** HttpTTS 朗读播放实例 id (OhosHttpTtsPlayer 使用)。 */
+    const val PLAYER_ID_HTTP_TTS: String = "httpTts"
 
     /** media threadsafe_function 引用 (Kotlin → ArkTS 发送播放器命令)。 */
     @Volatile
     private var mediaTsfn: TsfnCallback? = null
 
-    /** media 事件监听器 (由 [OhosHttpTtsPlayer] 设置, 接收 ArkTS 推送的 AVPlayer 事件)。 */
-    @Volatile
-    private var mediaEventListener: MediaEventListener? = null
+    /** media 事件监听器 Map<playerId, listener> (由各播放器按固定 id 注册)。 */
+    private val mediaEventListeners = mutableMapOf<String, MediaEventListener>()
 
     /**
      * media 事件监听器接口 (ArkTS → Kotlin 推送 AVPlayer 事件)。
-     * OhosHttpTtsPlayer 实现此接口, 把事件转换为 [HttpTtsPlayerListener] 回调。
+     * OhosHttpTtsPlayer / OhosAudioPlayCommander 实现此接口, 把事件转换为各自的回调。
      */
     fun interface MediaEventListener {
         fun onMediaEvent(eventJson: String)
@@ -306,16 +318,33 @@ object OhosNativeBridge {
         }
     }
 
-    /** 设置 media 事件监听器 (由 OhosHttpTtsPlayer 设置/清除)。 */
+    /**
+     * 按 playerId 设置 media 事件监听器 (由各播放器设置/清除)。
+     *
+     * @param playerId 播放实例 id, 如 [PLAYER_ID_AUDIO_BOOK] / [PLAYER_ID_HTTP_TTS]
+     * @param listener null 表示注销
+     */
+    fun setMediaEventListener(playerId: String, listener: MediaEventListener?) {
+        synchronized(lock) {
+            if (listener == null) {
+                mediaEventListeners.remove(playerId)
+            } else {
+                mediaEventListeners[playerId] = listener
+            }
+        }
+    }
+
+    /** 兼容旧签名: 未指定 playerId 时注册到 [DEFAULT_PLAYER_ID]。 */
     fun setMediaEventListener(listener: MediaEventListener?) {
-        mediaEventListener = listener
+        setMediaEventListener(DEFAULT_PLAYER_ID, listener)
     }
 
     /**
      * 发送 media 命令到 ArkTS (fire-and-forget, 无返回值)。
-     * 命令类型: "setUrl" / "play" / "pause" / "stop" / "seekTo" / "release"。
+     * 命令类型: "setSource" / "setSourceUrl" / "play" / "pause" / "stop" / "seekTo" /
+     * "setSpeed" / "release"。
      *
-     * @param commandJson 命令 JSON (含 action + data, 由 OhosHttpTtsPlayer 序列化)
+     * @param commandJson 命令 JSON (含 playerId + action + data, 由调用方序列化)
      */
     fun sendMediaCommand(commandJson: String) {
         val tsfn = synchronized(lock) { mediaTsfn }
@@ -332,17 +361,38 @@ object OhosNativeBridge {
     /**
      * media 事件回调 (由 ArkTS 侧调 @CName legado_media_event 触发)。
      * ArkTS AVPlayer 状态变化 / 播放结束 / 错误 / 缓冲进度等事件通过 napi 回调推送给 Kotlin,
-     * 转发给 [mediaEventListener] (即 OhosHttpTtsPlayer)。
+     * 按 playerId 转发给对应的 [MediaEventListener]。
      *
-     * @param eventJson 事件 JSON (含 event + data, 如 `{"event":"onReady"}`)
+     * @param eventJson 事件 JSON (含 playerId + event, 如 `{"playerId":"httpTts","event":"onReady"}`)
      */
     fun onMediaEvent(eventJson: String) {
-        mediaEventListener?.onMediaEvent(eventJson)
+        val playerId = parsePlayerId(eventJson)
+        val listener = synchronized(lock) { mediaEventListeners[playerId] }
+        listener?.onMediaEvent(eventJson)
+    }
+
+    /**
+     * 从事件 JSON 提取 playerId (缺失时返回 [DEFAULT_PLAYER_ID])。
+     * 事件由 ArkTS 侧 JSON.stringify 生成, 字段名固定, 用轻量字符串扫描避开反序列化开销
+     * (timeUpdate 事件高频推送, 每次全量反序列化不划算)。
+     */
+    private fun parsePlayerId(eventJson: String): String {
+        val key = "\"playerId\""
+        val keyIndex = eventJson.indexOf(key)
+        if (keyIndex < 0) return DEFAULT_PLAYER_ID
+        val colon = eventJson.indexOf(':', keyIndex + key.length)
+        if (colon < 0) return DEFAULT_PLAYER_ID
+        val start = eventJson.indexOf('"', colon + 1)
+        if (start < 0) return DEFAULT_PLAYER_ID
+        val end = eventJson.indexOf('"', start + 1)
+        if (end < 0) return DEFAULT_PLAYER_ID
+        val id = eventJson.substring(start + 1, end)
+        return id.ifEmpty { DEFAULT_PLAYER_ID }
     }
 
     /**
      * 检查 media 桥是否已就绪 (tsfn 已注入)。
-     * OhosHttpTtsPlayer 据此判断走真实 AVPlayer 实现还是降级占位。
+     * OhosHttpTtsPlayer / OhosAudioPlayCommander 据此判断走真实 AVPlayer 实现还是降级占位。
      */
     fun isMediaBridgeReady(): Boolean = synchronized(lock) { mediaTsfn != null }
 
@@ -374,9 +424,29 @@ object OhosNativeBridge {
         }
     }
 
-    /** 设置 tts 事件监听器 (由 OhosSystemTtsEngine 设置/清除)。 */
-    fun setTtsEventListener(listener: TtsEventListener?) {
-        ttsEventListener = listener
+    /** 设置 tts 事件监听器 (由 OhosSystemTtsEngine 设置)。 */
+    fun setTtsEventListener(listener: TtsEventListener) {
+        synchronized(lock) {
+            ttsEventListener = listener
+        }
+    }
+
+    /** 当前监听器仍是 [listener] 时才清除并发送 shutdown，避免旧引擎释放新引擎。 */
+    fun shutdownTtsIfListener(listener: TtsEventListener): Boolean {
+        val commandJson = KS_JSON.encodeToString(TtsCommand(action = "shutdown"))
+        return synchronized(lock) {
+            if (ttsEventListener !== listener) return@synchronized false
+            ttsEventListener = null
+            val tsfn = ttsTsfn
+            if (tsfn != null) {
+                runCatching { tsfn(commandJson) }.onFailure {
+                    println("[ohos-tts] tsfn call failed: $commandJson")
+                }
+            } else {
+                println("[ohos-tts] tsfn not registered: $commandJson")
+            }
+            true
+        }
     }
 
     /**
@@ -420,7 +490,8 @@ object OhosNativeBridge {
      * @param eventJson 事件 JSON (含 event + utteranceId, 如 `{"event":"onStart"}`)
      */
     fun onTtsEvent(eventJson: String) {
-        ttsEventListener?.onTtsEvent(eventJson)
+        val listener = synchronized(lock) { ttsEventListener }
+        listener?.onTtsEvent(eventJson)
     }
 
     /**
@@ -738,6 +809,167 @@ object OhosNativeBridge {
      */
     fun isFilePickerBridgeReady(): Boolean = synchronized(lock) { filePickerTsfn != null }
 
+    // ===== Pasteboard 同步桥 (tsfn + callback, 同 Image/Crypto/Http/FilePicker 模式) =====
+    // 剪贴板读写走 ArkTS @ohos.pasteboard.getSystemPasteboard(), 无 NDK C 接口。
+    // readFromClipboard 需返回值, 故读写统一走同步请求/响应模式 (写也回 ok 以便调用方感知失败)。
+    //
+    // 调用链 (以 read 为例):
+    // KMP OhosPlatformOps.readFromClipboard()
+    //   → invokePasteboardSync("read", "{}")
+    //   → 生成 requestId, 存入 pasteboardPendingRequests (CompletableDeferred)
+    //   → pasteboardTsfn(requestJson)  (fire-and-forget, dispatch 到 ArkTS 主线程)
+    //   → runBlocking { deferred.await() }  (阻塞等待结果)
+    //   → [ArkTS 主线程] PasteboardBridgeHandler.handlePasteboardRequest
+    //   → pasteboard.getSystemPasteboard().getData() → getPrimaryText()
+    //   → legado.pasteboardCallback(requestId, resultJson)  (napi → @CName legado_pasteboard_callback)
+    //   → onPasteboardResult(requestId, resultJson) → deferred.complete(resultJson)
+
+    /** pasteboard threadsafe_function 引用 (Kotlin → ArkTS 发送剪贴板请求)。 */
+    @Volatile
+    private var pasteboardTsfn: TsfnCallback? = null
+
+    /** 待响应的 pasteboard 同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
+    private val pasteboardPendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
+
+    /** pasteboard 请求自增 ID (原子性由 [lock] 保护)。 */
+    private var pasteboardRequestCounter = 0L
+
+    /** 注入 pasteboard tsfn (由 legado_napi.cpp RegisterPasteboardCallback 调用)。 */
+    fun registerPasteboardFn(tsfn: TsfnCallback) {
+        synchronized(lock) {
+            pasteboardTsfn = tsfn
+        }
+    }
+
+    /**
+     * pasteboard 操作结果回调 (由 ArkTS 侧调 @CName legado_pasteboard_callback 触发)。
+     *
+     * @param requestId 对应 [invokePasteboardSync] 生成的请求 ID
+     * @param resultJson ArkTS 返回的结果 JSON (含 ok/text 或 ok/error 字段)
+     */
+    fun onPasteboardResult(requestId: Long, resultJson: String) {
+        val deferred = synchronized(lock) { pasteboardPendingRequests.remove(requestId) }
+        deferred?.complete(resultJson)
+    }
+
+    /**
+     * 同步调用剪贴板操作 (阻塞等待 ArkTS 返回结果)。
+     *
+     * @param action 操作类型: "read" / "write"
+     * @param payloadJson 操作参数 JSON (write 时为 `{"text":"..."}`, read 为 `{}`)
+     * @param timeoutMs 超时毫秒 (默认 5s, 剪贴板操作应当极快)
+     * @return ArkTS 返回的结果 JSON; tsfn 未注册或超时返回 null (调用方降级处理)
+     */
+    fun invokePasteboardSync(action: String, payloadJson: String, timeoutMs: Long = 5000L): String? {
+        val requestId = synchronized(lock) { ++pasteboardRequestCounter }
+        val deferred = CompletableDeferred<String>()
+        synchronized(lock) { pasteboardPendingRequests[requestId] = deferred }
+
+        val requestJson = KS_JSON.encodeToString(
+            PasteboardBridgeRequest(requestId = requestId, action = action, payload = payloadJson)
+        )
+        val tsfn = synchronized(lock) { pasteboardTsfn }
+        if (tsfn == null) {
+            synchronized(lock) { pasteboardPendingRequests.remove(requestId) }
+            return null
+        }
+        runCatching { tsfn(requestJson) }.onFailure {
+            synchronized(lock) { pasteboardPendingRequests.remove(requestId) }
+            return null
+        }
+
+        val result = runBlocking { withTimeoutOrNull(timeoutMs) { deferred.await() } }
+        synchronized(lock) { pasteboardPendingRequests.remove(requestId) }
+        return result
+    }
+
+    /**
+     * 检查 pasteboard 桥是否已就绪 (tsfn 已注入)。
+     * OhosPlatformOps 据此判断走真实 SystemPasteboard 还是降级 println/null。
+     */
+    fun isPasteboardBridgeReady(): Boolean = synchronized(lock) { pasteboardTsfn != null }
+
+    // ===== TextCodec 同步桥 (tsfn + callback, 同 Crypto/Pasteboard 模式) =====
+    // TXT 解析的 GB18030/Big5 编解码走 ArkTS @ohos.util.TextDecoder/TextEncoder
+    // (支持 gbk/gb18030/big5), 无 NDK C 接口, 需 tsfn 桥接。
+    //
+    // 调用链 (以 decode 为例):
+    // KMP platformDecodeCjk (TextCharsetCodec.ohos.kt)
+    //   → invokeTextCodecSync("decode", {charset, data(Base64)})
+    //   → 生成 requestId, 存入 textCodecPendingRequests (CompletableDeferred)
+    //   → textCodecTsfn(requestJson)  (fire-and-forget, dispatch 到 ArkTS 主线程)
+    //   → runBlocking { deferred.await() }  (阻塞等待结果)
+    //   → [ArkTS 主线程] TextCodecBridgeHandler.handleTextCodecRequest
+    //   → new util.TextDecoder(charset).decodeToString(bytes) / new util.TextEncoder(charset).encodeInto(text)
+    //   → legado.textCodecCallback(requestId, resultJson)  (napi → @CName legado_text_codec_callback)
+    //   → onTextCodecResult(requestId, resultJson) → deferred.complete(resultJson)
+
+    /** textCodec threadsafe_function 引用 (Kotlin → ArkTS 发送编解码请求)。 */
+    @Volatile
+    private var textCodecTsfn: TsfnCallback? = null
+
+    /** 待响应的 textCodec 同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
+    private val textCodecPendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
+
+    /** textCodec 请求自增 ID (原子性由 [lock] 保护)。 */
+    private var textCodecRequestCounter = 0L
+
+    /** 注入 textCodec tsfn (由 legado_napi.cpp RegisterTextCodecCallback 调用)。 */
+    fun registerTextCodecFn(tsfn: TsfnCallback) {
+        synchronized(lock) {
+            textCodecTsfn = tsfn
+        }
+    }
+
+    /**
+     * textCodec 操作结果回调 (由 ArkTS 侧调 @CName legado_text_codec_callback 触发)。
+     *
+     * @param requestId 对应 [invokeTextCodecSync] 生成的请求 ID
+     * @param resultJson ArkTS 返回的结果 JSON (含 ok/text 或 ok/data 或 ok/error 字段)
+     */
+    fun onTextCodecResult(requestId: Long, resultJson: String) {
+        val deferred = synchronized(lock) { textCodecPendingRequests.remove(requestId) }
+        deferred?.complete(resultJson)
+    }
+
+    /**
+     * 同步调用文本编解码 (阻塞等待 ArkTS 返回结果)。
+     *
+     * @param action 操作类型: "decode" (字节→字符串) / "encode" (字符串→字节)
+     * @param payloadJson 操作参数 JSON (decode: `{charset, data(Base64)}`, encode: `{charset, text}`)
+     * @param timeoutMs 超时毫秒 (默认 15s: TXT 分章单块最大 512KB, Base64+跨线程往返留裕量)
+     * @return ArkTS 返回的结果 JSON; tsfn 未注册或超时返回 null (调用方按"平台不支持"降级)
+     */
+    fun invokeTextCodecSync(action: String, payloadJson: String, timeoutMs: Long = 15000L): String? {
+        val requestId = synchronized(lock) { ++textCodecRequestCounter }
+        val deferred = CompletableDeferred<String>()
+        synchronized(lock) { textCodecPendingRequests[requestId] = deferred }
+
+        val requestJson = KS_JSON.encodeToString(
+            TextCodecBridgeRequest(requestId = requestId, action = action, payload = payloadJson)
+        )
+        val tsfn = synchronized(lock) { textCodecTsfn }
+        if (tsfn == null) {
+            synchronized(lock) { textCodecPendingRequests.remove(requestId) }
+            return null
+        }
+        runCatching { tsfn(requestJson) }.onFailure {
+            synchronized(lock) { textCodecPendingRequests.remove(requestId) }
+            return null
+        }
+
+        // 阻塞等待 ArkTS 回调 (业务线程阻塞, ArkTS 主线程回调 complete, 不同线程无死锁)
+        val result = runBlocking { withTimeoutOrNull(timeoutMs) { deferred.await() } }
+        synchronized(lock) { textCodecPendingRequests.remove(requestId) }
+        return result
+    }
+
+    /**
+     * 检查 textCodec 桥是否已就绪 (tsfn 已注入)。
+     * TextCharsetCodec.ohos.kt 据此判断走真实 TextDecoder/TextEncoder 还是保持"暂不支持请转码"。
+     */
+    fun isTextCodecBridgeReady(): Boolean = synchronized(lock) { textCodecTsfn != null }
+
     /** toast 跨语言传递 payload (序列化为 JSON 给 ArkTS)。 */
     @Serializable
     private data class ToastPayload(
@@ -787,6 +1019,22 @@ object OhosNativeBridge {
     /** filePicker 桥请求 payload (Kotlin → ArkTS, 同 ImageBridgeRequest 结构, action=pickDocuments/pickDocumentContent)。 */
     @Serializable
     private data class FilePickerBridgeRequest(
+        val requestId: Long,
+        val action: String,
+        val payload: String,
+    )
+
+    /** pasteboard 桥请求 payload (Kotlin → ArkTS, 同 ImageBridgeRequest 结构, action=read/write)。 */
+    @Serializable
+    private data class PasteboardBridgeRequest(
+        val requestId: Long,
+        val action: String,
+        val payload: String,
+    )
+
+    /** textCodec 桥请求 payload (Kotlin → ArkTS, 同 ImageBridgeRequest 结构, action=decode/encode)。 */
+    @Serializable
+    private data class TextCodecBridgeRequest(
         val requestId: Long,
         val action: String,
         val payload: String,

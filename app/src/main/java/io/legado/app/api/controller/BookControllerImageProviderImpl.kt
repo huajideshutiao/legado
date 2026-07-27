@@ -39,10 +39,9 @@ import kotlin.time.Duration.Companion.seconds
  * - [getImg]: 按 bookUrl 缓存 book/bookSource, ImageProvider.cacheImage + getImage,
  *   返回 PNG 字节流, 与原 app 端逐字等价。
  *
- * # 错误处理差异
- * 原 app 端 getImg 在 bookUrl 不对时返回 "bookUrl不对" 错误消息;
- * shared 端 [BookController.getImg] 在本实现返回 null 时统一返回 "getImg error"。
- * 接口约束下无法区分错误类型, 行为差异可接受 (均为获取失败语义)。
+ * # 错误处理
+ * shared 端 [BookController.getImg] 已按原版口径先查库校验 bookUrl (查无返回 "bookUrl不对"),
+ * 本实现返回 null 时对应取图失败 ("getImg error"), 与原 app 端行为一致。
  *
  * 注册时机: App.onCreate 经 [registerAndroidWebBookProviders]。
  * 模式参考 [io.legado.app.model.webBook.WebBookProvidersImpl]。

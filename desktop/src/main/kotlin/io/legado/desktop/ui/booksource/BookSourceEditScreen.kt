@@ -2,9 +2,7 @@ package io.legado.desktop.ui.booksource
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -17,7 +15,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.sp
-import io.legado.app.ui.compose.component.Md2TextField
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookSourceType
 import io.legado.app.data.AppDbProviders
@@ -87,7 +87,7 @@ import java.awt.datatransfer.StringSelection
  *   - 调试: 调 [onDebugSource] 路由回调 (由 DesktopApp 注入, 切到 BOOK_SOURCE_DEBUG)
  *   - 登录/源变量: 调 shared 下沉的 SourceLoginDialog / VariableDialog
  *   - 搜索: 先保存 → 写全局 searchScope → onSearchSource 切搜索路由
- *   - Cookie: CookieStoreProviders.get()?.removeCookie (桌面端已注册 JvmCookieStoreProvider)
+ *   - Cookie: CookieStoreProviders.get()?.removeCookie (桌面端注册的是 SharedCookieStore, Room 持久化)
  *   - 自动缩进: CodeView (Android 专属), 桌面端无对应能力, no-op
  *   - 帮助: 用 [Desktop.browse] 打开浏览器 (对应 app 端 showHelp)
  * - **codeEditorSlot**: 用 [OutlinedTextField] 替代 app 端 `AndroidView { CodeView }`
@@ -868,7 +868,7 @@ private fun BookSourceEditContent(
             onSearch = { searchSource() },
             onClearCookie = {
                 // 清除当前源 URL 的 Cookie (对照 app 端 viewModel.clearCookie(url) → CookieStore.removeCookie)
-                // 桌面端已注册 JvmCookieStoreProvider, 通过 CookieStoreProviders 统一访问
+                // 桌面端注册的是 commonMain SharedCookieStore (Room 持久化), 走 CookieStoreProviders 统一访问
                 CookieStoreProviders.get()?.removeCookie(getSource().bookSourceUrl)
             },
             onCopySource = { copySource() },
@@ -903,7 +903,7 @@ private fun BookSourceEditContent(
         codeEditorSlot = { entity, modifier ->
             // 桌面端用 OutlinedTextField 替代 CodeView (Android 专属语法高亮控件)
             // entity.value 双向同步: 初始化时读, 输入时写回 (对照 app 端 createEditField)
-            Md2TextField(
+            AppTextField(
                 value = entity.value.orEmpty(),
                 onValueChange = { entity.value = it },
                 modifier = modifier.fillMaxWidth(),
@@ -919,67 +919,51 @@ private fun BookSourceEditContent(
         },
     )
 
-    // ---- AlertDialog 渲染 (替换原 javax.swing.JOptionPane) ----
+    // ---- 对话框渲染 (替换原 javax.swing.JOptionPane) ----
 
     // 1. saveSource 校验失败: URL/Name 为空 (替换原 JOptionPane.showMessageDialog WARNING_MESSAGE)
     if (emptyUrlNameDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { emptyUrlNameDialog = false },
-            title = { Text(saveFailedLabel) },
-            text = { Text(nonNullNameUrlLabel) },
-            confirmButton = {
-                TextButton(onClick = { emptyUrlNameDialog = false }) {
-                    Text(okLabel)
-                }
-            },
+            title = saveFailedLabel,
+            message = nonNullNameUrlLabel,
+            okButton = AlertButton(okLabel),
         )
     }
 
     // 2. saveSource catch: 保存异常 (替换原 JOptionPane.showMessageDialog ERROR_MESSAGE;
     //    payload = e.localizedMessage ?: saveFailedLabel, 在 catch 内写入 saveErrorDialog)
     saveErrorDialog?.let { errorMsg ->
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { saveErrorDialog = null },
-            title = { Text(saveSourceErrorLabel) },
-            text = { Text(errorMsg) },
-            confirmButton = {
-                TextButton(onClick = { saveErrorDialog = null }) {
-                    Text(okLabel)
-                }
-            },
+            title = saveSourceErrorLabel,
+            message = errorMsg,
+            okButton = AlertButton(okLabel),
         )
     }
 
     // 3. pasteSource 剪贴板空 (替换原 JOptionPane.showMessageDialog WARNING_MESSAGE)
     if (clipboardEmptyDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { clipboardEmptyDialog = false },
-            title = { Text(pasteSourceLabel) },
-            text = { Text(clipboardEmptyLabel) },
-            confirmButton = {
-                TextButton(onClick = { clipboardEmptyDialog = false }) {
-                    Text(okLabel)
-                }
-            },
+            title = pasteSourceLabel,
+            message = clipboardEmptyLabel,
+            okButton = AlertButton(okLabel),
         )
     }
 
     // 4. pasteSource catch: 粘贴异常 (替换原 JOptionPane.showMessageDialog ERROR_MESSAGE;
     //    payload = e.localizedMessage ?: wrongFormatLabel, 在 catch 内写入 pasteErrorDialog)
     pasteErrorDialog?.let { errorMsg ->
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { pasteErrorDialog = null },
-            title = { Text(pasteSourceErrorLabel) },
-            text = { Text(errorMsg) },
-            confirmButton = {
-                TextButton(onClick = { pasteErrorDialog = null }) {
-                    Text(okLabel)
-                }
-            },
+            title = pasteSourceErrorLabel,
+            message = errorMsg,
+            okButton = AlertButton(okLabel),
         )
     }
 
@@ -988,54 +972,42 @@ private fun BookSourceEditContent(
     //    取消 (NO) → 关闭对话框 + 回退 editState.enableDangerousApi = false,
     //    复刻原 `if (result != YES_OPTION) editState.enableDangerousApi = false` 语义)
     if (enableDangerousApiConfirm) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = {
                 // 点外部 / 返回键取消: 视为 NO, 回退开关
                 enableDangerousApiConfirm = false
                 editState.enableDangerousApi = false
             },
-            title = { Text(enableDangerousApiLabel) },
-            text = { Text(enableDangerousApiWarnLabel) },
-            confirmButton = {
-                // YES: 保留 isChecked=true (啥都不做), 仅关闭
-                TextButton(onClick = { enableDangerousApiConfirm = false }) {
-                    Text(okLabel)
-                }
+            title = enableDangerousApiLabel,
+            message = enableDangerousApiWarnLabel,
+            // YES: 保留 isChecked=true (啥都不做), 仅关闭
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                enableDangerousApiConfirm = false
             },
-            dismissButton = {
-                // NO: 回退 editState.enableDangerousApi = false
-                TextButton(onClick = {
-                    enableDangerousApiConfirm = false
-                    editState.enableDangerousApi = false
-                }) {
-                    Text(cancelLabel)
-                }
+            // NO: 回退 editState.enableDangerousApi = false
+            cancelButton = AlertButton(cancelLabel, dismissOnClick = false) {
+                enableDangerousApiConfirm = false
+                editState.enableDangerousApi = false
             },
         )
     }
 
     // 6. 退出未保存确认 (对照 app 端 Activity.finish 弹窗; 是=继续编辑, 否=放弃保存退出)
     if (showExitConfirmDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { showExitConfirmDialog = false },
-            title = { Text(exitLabel) },
-            text = { Text(exitNoSaveLabel) },
-            confirmButton = {
-                // 是: 继续编辑 (仅关闭对话框, 对照 app 端 positiveButton 默认 dismiss)
-                TextButton(onClick = { showExitConfirmDialog = false }) {
-                    Text(yesLabel)
-                }
+            title = exitLabel,
+            message = exitNoSaveLabel,
+            // 是: 继续编辑 (仅关闭对话框, 对照 app 端 positiveButton 默认 dismiss)
+            okButton = AlertButton(yesLabel, dismissOnClick = false) {
+                showExitConfirmDialog = false
             },
-            dismissButton = {
-                // 否: 放弃保存退出 (对照 app 端 negativeButton { super.finish() })
-                TextButton(onClick = {
-                    showExitConfirmDialog = false
-                    onBackCallback()
-                }) {
-                    Text(noLabel)
-                }
+            // 否: 放弃保存退出 (对照 app 端 negativeButton { super.finish() })
+            cancelButton = AlertButton(noLabel, dismissOnClick = false) {
+                showExitConfirmDialog = false
+                onBackCallback()
             },
         )
     }

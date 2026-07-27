@@ -1,5 +1,7 @@
 package io.legado.app.help.http
 
+import kotlin.concurrent.Volatile
+
 /**
  * Cookie 业务层 Provider 跨平台抽象 (KMP)。
  *

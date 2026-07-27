@@ -1,5 +1,7 @@
 package io.legado.app.utils
 
+import kotlin.concurrent.Volatile
+
 /**
  * 正则替换超时/异常的平台错误处理注入点。
  *

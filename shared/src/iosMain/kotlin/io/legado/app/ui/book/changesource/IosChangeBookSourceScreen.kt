@@ -7,10 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,7 +28,10 @@ import io.legado.app.help.book.primaryStr
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.booksource.IosBookSourceEditScreen
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.utils.formatNative
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.drop
@@ -95,6 +95,8 @@ fun IosChangeBookSourceScreen(
     var items by remember { mutableStateOf(emptyList<SearchBook>()) }
     var searching by remember { mutableStateOf(false) }
     var groups by remember { mutableStateOf(emptyList<String>()) }
+    // 分组二级菜单独立 Dialog 状态：避免嵌套 Popup 位置错乱
+    var showGroupPicker by remember { mutableStateOf(false) }
     var searchMode by remember { mutableStateOf(false) }
     var screenKey by remember { mutableStateOf("") }
     var checkAuthor by remember { mutableStateOf(platform.changeSourceCheckAuthor) }
@@ -136,7 +138,7 @@ fun IosChangeBookSourceScreen(
     // 收集换源进度
     LaunchedEffect(Unit) {
         viewModel.changeSourceProgress.drop(1).collect { (count, name) ->
-            durText = searchedCountProgressTemplate.format(items.size, count, viewModel.totalSourceCount, name)
+            durText = searchedCountProgressTemplate.formatNative(items.size, count, viewModel.totalSourceCount, name)
             delay(500)
         }
     }
@@ -199,18 +201,8 @@ fun IosChangeBookSourceScreen(
             }
             GroupMenuItem(
                 title = if (searchGroup.isEmpty()) groupLabel else "$groupLabel($searchGroup)",
-                groups = groups,
-                selectedGroup = searchGroup,
                 dismissParent = dismiss,
-                onSelect = { group ->
-                    platform.searchGroup = group
-                    scope.launch {
-                        viewModel.stopSearch()
-                        if (viewModel.refresh()) {
-                            viewModel.startSearch()
-                        }
-                    }
-                },
+                onShowGroupPicker = { showGroupPicker = true },
             )
             TextMenuItem(closeLabel) {
                 dismiss(); onBack()
@@ -250,7 +242,7 @@ fun IosChangeBookSourceScreen(
                                         onError = { e ->
                                             waitDialogBookName = null
                                             tocCoroutine = null
-                                            AppLog.put(String.format(changeSourceTocFailedTemplate, e), e)
+                                            AppLog.put(changeSourceTocFailedTemplate.formatNative(e), e)
                                             Toasters.get().toast(e.localizedMessage ?: loadTocFailedText)
                                         },
                                     )
@@ -284,24 +276,40 @@ fun IosChangeBookSourceScreen(
         }
     }
 
+    // 分组选择独立 Dialog：弹出时居中显示，避免原嵌套 Popup 错位
+    if (showGroupPicker) {
+        GroupPickerDialog(
+            groups = groups,
+            selectedGroup = searchGroup,
+            onDismiss = { showGroupPicker = false },
+            onSelect = { group ->
+                showGroupPicker = false
+                platform.searchGroup = group
+                scope.launch {
+                    viewModel.stopSearch()
+                    if (viewModel.refresh()) {
+                        viewModel.startSearch()
+                    }
+                }
+            },
+        )
+    }
+
     // 加载目录中等待对话框 (对照 app 端 waitDialog: getToc 时显示, 成功/失败/取消时隐藏)
     waitDialogBookName?.let { name ->
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
             onDismissRequest = {
                 tocCoroutine?.cancel()
                 tocCoroutine = null
                 waitDialogBookName = null
             },
-            title = { Text(loadTocLabel) },
-            text = { Text(name) },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = {
-                    tocCoroutine?.cancel()
-                    tocCoroutine = null
-                    waitDialogBookName = null
-                }) { Text(cancelLabel) }
+            title = loadTocLabel,
+            message = name,
+            widthFraction = 0.8f,
+            cancelButton = AlertButton(cancelLabel, dismissOnClick = false) {
+                tocCoroutine?.cancel()
+                tocCoroutine = null
+                waitDialogBookName = null
             },
         )
     }

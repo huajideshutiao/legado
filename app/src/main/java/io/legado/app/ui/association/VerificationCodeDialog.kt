@@ -11,10 +11,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import io.legado.app.ui.compose.component.AppDropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -107,15 +107,13 @@ object VerificationCodeDialog {
                             }
                             AppDropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                                 DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.disable_source)) },
                                     onClick = {
                                         showMenu = false
                                         sourceOrigin?.let { Coroutine.async { SourceHelp.enableSource(it, sourceType, false) } }
                                         dialog.dismiss()
                                     },
-                                )
+                                ) { Text(stringResource(R.string.disable_source)) }
                                 DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.delete_source)) },
                                     onClick = {
                                         showMenu = false
                                         activity.alert(R.string.draw) {
@@ -127,7 +125,7 @@ object VerificationCodeDialog {
                                             }
                                         }
                                     },
-                                )
+                                ) { Text(stringResource(R.string.delete_source)) }
                             }
                         }
                     }

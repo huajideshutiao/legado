@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * 跨平台视频播放器抽象。
  *
- * 由各平台 actual 实现 (Android = ExoPlayer, Desktop = vlcj, iOS/鸿蒙后续)。
+ * 由各平台 actual 实现 (Android = ExoPlayer, Desktop = mpv 外部进程, iOS/鸿蒙后续)。
  * 状态语义对齐 androidx.media3.common.Player。
  */
 interface PlatformPlayer {
@@ -35,7 +35,7 @@ interface PlatformPlayer {
 }
 
 /**
- * 平台播放器事件回调, 由各平台 actual 监听器 (ExoPlayer.Listener / vlcj MediaPlayerEventAdapter) 转发。
+ * 平台播放器事件回调, 由各平台 actual 监听器 (ExoPlayer.Listener / mpv IPC 事件流) 转发。
  */
 interface PlatformPlayerEventListener {
     fun onPlayingChanged(isPlaying: Boolean)

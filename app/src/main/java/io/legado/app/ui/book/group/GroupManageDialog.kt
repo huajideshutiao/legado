@@ -6,9 +6,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,6 +32,7 @@ import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
@@ -40,7 +41,6 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.runBlocking
-import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * 书籍分组管理
@@ -101,7 +101,7 @@ class GroupManageDialog : BaseComposeDialogFragment() {
     }
 
     @Composable
-    private fun ReorderableCollectionItemScope.GroupItem(item: BookGroup) {
+    private fun RuleItemScope.GroupItem(item: BookGroup) {
         val colors = AppTheme.colors
         Row(
             Modifier

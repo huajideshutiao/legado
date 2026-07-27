@@ -7,15 +7,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isVideo
 import io.legado.app.ui.about.IosAboutScreen
 import io.legado.app.ui.about.IosReadRecordScreen
+import io.legado.app.ui.association.DeepLinkImportHost
 import io.legado.app.ui.association.IosRuleSubScreen
 import io.legado.app.ui.book.audio.IosAudioPlayScreen
 import io.legado.app.ui.book.bookmark.IosBookmarkScreen
+import io.legado.app.ui.book.changesource.IosChangeBookSourceScreen
 import io.legado.app.ui.book.explore.IosExploreShowScreen
 import io.legado.app.ui.book.filter.IosSourceFilterRuleScreen
 import io.legado.app.ui.book.import.local.IosImportBookScreen
@@ -36,6 +39,7 @@ import io.legado.app.ui.config.IosOtherConfigScreen
 import io.legado.app.ui.config.IosThemeConfigScreen
 import io.legado.app.ui.config.IosWelcomeConfigScreen
 import io.legado.app.ui.dict.rule.IosDictRuleScreen
+import io.legado.app.ui.main.explore.IosExploreScreen
 import io.legado.app.ui.main.my.IosMyConfigScreen
 import io.legado.app.ui.reader.IosReaderScreen
 import io.legado.app.ui.replace.IosReplaceEditScreen
@@ -52,8 +56,8 @@ import io.legado.app.ui.search.IosSearchScreen
  *
  * KP3 阶段 [io.legado.app.MainViewController] 仅渲染书架 Screen (IosBookshelfScreen),
  * 路由跳转回调全部 no-op; KP4 接入阅读流 4 个核心子路由; KP5 扩展至全部 30 个路由,
- * KP6 追加 RSS 3 个共 33 个路由, 覆盖配置/规则/书架管理/导入/目录/媒体播放/发现结果/RSS
- * 等全部 sharedUiMain + commonMain Screen 包装。
+ * KP6 追加 RSS 3 个, KP7 追加发现列表共 34 个路由, 覆盖配置/规则/书架管理/导入/目录/
+ * 媒体播放/发现/RSS 等全部 sharedUiMain + commonMain Screen 包装。
  *
  * # 路由状态
  *
@@ -65,7 +69,8 @@ import io.legado.app.ui.search.IosSearchScreen
  * - [videoBook]: VIDEO_PLAYER 路由消费, 详情 onReadClick (视频书) 触发
  * - [tocBook]: TOC 路由消费, 详情 onTocClick 触发
  * - [bookInfoEditUrl]: BOOK_INFO_EDIT 路由消费, 详情 onEditClick 触发
- * - [exploreShowSource]/[exploreShowTitle]/[exploreShowUrl]: EXPLORE_SHOW 路由消费
+ * - [exploreShowSource]/[exploreShowTitle]/[exploreShowUrl]: EXPLORE_SHOW 路由消费,
+ *   EXPLORE 路由 (IosExploreScreen) 点击分类/收藏项触发赋值
  *
  * 子路由返回逻辑: 子页 onBack 回到调用方路由
  * (BOOK_INFO → BOOKSHELF, SEARCH → BOOKSHELF, READER → BOOKSHELF, etc.)
@@ -79,7 +84,8 @@ import io.legado.app.ui.search.IosSearchScreen
  * - IosSearchContentScreen (IosReaderScreen 内 overlay)
  * - IosChangeBookSourceScreen (IosReaderScreen 内 overlay)
  * - IosChangeChapterSourceScreen (IosReaderScreen 内 overlay)
- * - IosHomeScreen / IosExploreScreen / IosMainScreen (tab 容器, 当前 iOS 端用扁平路由不接入)
+ * - IosHomeScreen / IosMainScreen (tab 容器, 当前 iOS 端用扁平路由不接入;
+ *   发现页已改走 EXPLORE 全屏路由, 入口为书架溢出菜单"发现")
  *
  * # macOS 编译命令 (Windows 无法编译 iOS target)
  *
@@ -104,13 +110,16 @@ fun IosNavHost() {
     // 目录页状态 (由 BOOK_INFO onTocClick 触发)
     var tocBook by remember { mutableStateOf<Book?>(null) }
 
+    // 整书换源状态 (由 BOOK_INFO onOriginClick 触发)
+    var changeSourceBook by remember { mutableStateOf<Book?>(null) }
+
     // 书籍信息编辑状态 (由 BOOK_INFO onEditClick 触发)
     var bookInfoEditUrl by remember { mutableStateOf("") }
 
     // 替换规则编辑状态 (由 REPLACE_RULE onAddRule/onEditRule 触发, -1 = 新增)
     var editRuleId by remember { mutableStateOf(-1L) }
 
-    // 发现结果页状态 (由 EXPLORE tab 触发, 当前 EXPLORE 是 stub)
+    // 发现结果页状态 (EXPLORE 路由点击分类/收藏项触发)
     var exploreShowSource by remember { mutableStateOf<BookSource?>(null) }
     var exploreShowTitle by remember { mutableStateOf("") }
     var exploreShowUrl by remember { mutableStateOf<String?>(null) }
@@ -135,6 +144,8 @@ fun IosNavHost() {
             onAddLocalBook = { currentRoute = IosRoute.IMPORT_BOOK },
             onAddRemoteBook = { currentRoute = IosRoute.REMOTE_BOOK },
             onOpenBookshelfManage = { currentRoute = IosRoute.BOOKSHELF_MANAGE },
+            onOpenMyConfig = { currentRoute = IosRoute.MY_CONFIG },
+            onOpenExplore = { currentRoute = IosRoute.EXPLORE },
         )
 
         IosRoute.READER -> readerBook?.let { book ->
@@ -194,6 +205,10 @@ fun IosNavHost() {
                     bookInfoEditUrl = url
                     currentRoute = IosRoute.BOOK_INFO_EDIT
                 },
+                onOriginClick = { originBook ->
+                    changeSourceBook = originBook
+                    currentRoute = IosRoute.CHANGE_SOURCE
+                },
                 onTocClick = { tocBookArg ->
                     tocBook = tocBookArg
                     currentRoute = IosRoute.TOC
@@ -222,6 +237,7 @@ fun IosNavHost() {
             onBookmark = { currentRoute = IosRoute.BOOKMARK },
             onReadRecord = { currentRoute = IosRoute.READ_RECORD },
             onAbout = { currentRoute = IosRoute.ABOUT },
+            onRssSources = { currentRoute = IosRoute.RSS_SOURCES },
         )
 
         IosRoute.THEME_CONFIG -> IosThemeConfigScreen(
@@ -359,27 +375,55 @@ fun IosNavHost() {
 
         IosRoute.AUDIO_PLAY -> audioBook?.let { book ->
             IosAudioPlayScreen(
+                book = book,
                 onBack = {
                     audioBook = null
-                    currentRoute = IosRoute.BOOK_INFO
+                    currentRoute = IosRoute.BOOKSHELF
                 },
+                onOpenToc = { tocBook = book; currentRoute = IosRoute.TOC },
+                onOpenChangeSource = { changeSourceBook = book; currentRoute = IosRoute.CHANGE_SOURCE },
             )
         }
 
         IosRoute.MANGA_READER -> mangaBook?.let { book ->
             IosMangaReaderScreen(
+                book = book,
                 onBack = {
                     mangaBook = null
-                    currentRoute = IosRoute.BOOK_INFO
+                    currentRoute = IosRoute.BOOKSHELF
                 },
+                onOpenToc = { tocBook = book; currentRoute = IosRoute.TOC },
+                onOpenChangeSource = { changeSourceBook = book; currentRoute = IosRoute.CHANGE_SOURCE },
             )
         }
 
         IosRoute.VIDEO_PLAYER -> videoBook?.let { book ->
             IosVideoPlayerScreen(
+                book = book,
                 onBack = {
                     videoBook = null
-                    currentRoute = IosRoute.BOOK_INFO
+                    currentRoute = IosRoute.BOOKSHELF
+                },
+                onOpenToc = { tocBook = book; currentRoute = IosRoute.TOC },
+                onOpenChangeSource = { changeSourceBook = book; currentRoute = IosRoute.CHANGE_SOURCE },
+            )
+        }
+
+        // ===== 整书换源 (BOOK_INFO onOriginClick 触发, 对照 OhosNavHost CHANGE_SOURCE) =====
+
+        IosRoute.CHANGE_SOURCE -> changeSourceBook?.let { book ->
+            IosChangeBookSourceScreen(
+                book = book,
+                onBack = {
+                    changeSourceBook = null
+                    infoBook?.let { currentRoute = IosRoute.BOOK_INFO }
+                        ?: run { currentRoute = IosRoute.BOOKSHELF }
+                },
+                onChangeSource = { _, _, _ ->
+                    // 换源执行后返回详情页 (迁移逻辑后续接入)
+                    changeSourceBook = null
+                    infoBook?.let { currentRoute = IosRoute.BOOK_INFO }
+                        ?: run { currentRoute = IosRoute.BOOKSHELF }
                 },
             )
         }
@@ -388,7 +432,18 @@ fun IosNavHost() {
             onBack = { currentRoute = IosRoute.READER },
         )
 
-        // ===== 发现结果 (1 个, 由 EXPLORE tab 触发, 当前 stub) =====
+        // ===== 发现 (2 个: 发现列表 + 发现结果) =====
+
+        IosRoute.EXPLORE -> IosExploreScreen(
+            onBack = { currentRoute = IosRoute.BOOKSHELF },
+            onOpenExplore = { source, title, exploreUrl ->
+                exploreShowSource = source
+                exploreShowTitle = title
+                exploreShowUrl = exploreUrl
+                currentRoute = IosRoute.EXPLORE_SHOW
+            },
+            onSearchBook = { currentRoute = IosRoute.SEARCH },
+        )
 
         IosRoute.EXPLORE_SHOW -> exploreShowSource?.let { source ->
             IosExploreShowScreen(
@@ -399,7 +454,7 @@ fun IosNavHost() {
                     exploreShowSource = null
                     exploreShowTitle = ""
                     exploreShowUrl = null
-                    currentRoute = IosRoute.BOOKSHELF
+                    currentRoute = IosRoute.EXPLORE
                 },
                 onBookClick = { searchBook ->
                     infoBook = searchBook
@@ -408,10 +463,10 @@ fun IosNavHost() {
             )
         }
 
-        // ===== RSS (3 个, 由 RSS_SOURCES 入口, 当前入口待 Bookshelf 添加) =====
+        // ===== RSS (3 个, 由 MY_CONFIG 的 onRssSources 入口, 对照 desktop DesktopApp RSS_SOURCES) =====
 
         IosRoute.RSS_SOURCES -> IosRssSourcesScreen(
-            onBack = { currentRoute = IosRoute.BOOKSHELF },
+            onBack = { currentRoute = IosRoute.MY_CONFIG },
             onRssSourceClick = { book ->
                 rssSourceBook = book
                 currentRoute = IosRoute.RSS_ARTICLES
@@ -440,10 +495,14 @@ fun IosNavHost() {
             )
         }
     }
+
+    // legado:// deep link 导入宿主 (与路由 when 平级, 覆盖在任意路由之上弹对话框)
+    // 投递侧: iOSApp.swift onOpenURL → handleLegadoDeepLink → LegadoDeepLinkHandler.pending
+    DeepLinkImportHost()
 }
 
 /**
- * iOS 端子路由枚举 (KP5: 30 路由, KP6: +3 RSS = 33 路由, 对照 desktop `DesktopRoute` 子集)。
+ * iOS 端子路由枚举 (KP5: 30 路由, KP6: +3 RSS, KP7: +发现列表 = 34 路由, 对照 desktop `DesktopRoute` 子集)。
  *
  * Dialog/overlay 包装 (IosEffectiveReplacesScreen / IosBookSourceDebugScreen /
  * IosBookSourceEditScreen / IosSearchContentScreen / IosChangeBookSourceScreen /
@@ -461,7 +520,7 @@ enum class IosRoute {
     /** 书源管理页 (KP4: 包装 shared BookSourceListScreen) */
     BOOK_SOURCE,
 
-    /** 我的设置页 (KP5: 包装 shared MyConfigScreen, 入口待 Bookshelf 添加) */
+    /** 我的设置页 (KP5: 包装 shared MyConfigScreen, 入口为书架溢出菜单"我的") */
     MY_CONFIG,
     /** 主题设置 (KP5: 包装 shared ThemeConfigScreen) */
     THEME_CONFIG,
@@ -504,6 +563,8 @@ enum class IosRoute {
     BOOK_INFO_EDIT,
     /** 目录页 (KP5: 包装 shared TocScreen) */
     TOC,
+    /** 整书换源 (包装 IosChangeBookSourceScreen, 详情 onOriginClick 触发) */
+    CHANGE_SOURCE,
 
     /** 音频播放 (KP5: 包装 shared AudioPlayScreenContent) */
     AUDIO_PLAY,
@@ -514,7 +575,9 @@ enum class IosRoute {
     /** 朗读设置 (KP5: 包装 shared ReadAloudConfigScreen) */
     READ_ALOUD_CONFIG,
 
-    /** 发现结果 (KP5: 包装 shared ExploreShowScreen, 入口待 EXPLORE tab 实现) */
+    /** 发现列表 (KP7: 包装 shared ExploreScreen, 入口为书架溢出菜单"发现") */
+    EXPLORE,
+    /** 发现结果 (KP5: 包装 shared ExploreShowScreen, 由 EXPLORE 点击分类/收藏项进入) */
     EXPLORE_SHOW,
 
     /** RSS 源列表 (KP6: 包装 shared/commonMain RssSourcesViewModelShared) */

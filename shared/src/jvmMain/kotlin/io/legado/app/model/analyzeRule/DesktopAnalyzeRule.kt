@@ -1,8 +1,10 @@
 package io.legado.app.model.analyzeRule
 
 import cn.hutool.crypto.symmetric.SymmetricCrypto
+import io.legado.app.constant.AppConst
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapterLike
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.JsEncodeUtilsDefaults
 import io.legado.app.help.crypto.AsymmetricCrypto
@@ -15,6 +17,8 @@ import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.URL
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 
 /**
  * 桌面端 AnalyzeRule 薄子类: 补齐 app 端 AnalyzeRule JS 面中跨端可用的部分
@@ -83,9 +87,74 @@ class DesktopAnalyzeRule(
     }
 }
 
-/** 桌面端 main 入口注册: shared webBook 编排层创建 AnalyzeRule 改走本子类。 */
+/**
+ * 桌面端 AnalyzeUrl 薄子类: 与 [DesktopAnalyzeRule] 同理, 补齐 url 内 `<js>` 的
+ * java 绑定 JS 面中跨端可用的加解密工厂 (复用 shared jvmAndAndroidMain 实现物)。
+ */
+@Suppress("unused")
+class DesktopAnalyzeUrl(
+    rawUrl: String,
+    baseUrl: String = "",
+    source: BaseSource? = null,
+    ruleData: RuleDataInterface? = null,
+    chapter: BookChapterLike? = null,
+    readTimeout: Long? = null,
+    callTimeout: Long? = null,
+    coroutineContext: CoroutineContext = EmptyCoroutineContext,
+    headerMapF: Map<String, String>? = null,
+    hasLoginHeader: Boolean = true,
+    selectedOptions: Map<String, String>? = null,
+    variables: Map<AppConst.JsVarName, Any>? = null
+) : AnalyzeUrlCore(
+    rawUrl, baseUrl, source, ruleData, chapter, readTimeout, callTimeout,
+    coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables
+), JsEncodeUtilsDefaults {
+
+    // 加解密工厂与 DesktopAnalyzeRule 完全同映射 (实现类均在 shared jvmAndAndroidMain)
+
+    fun createSymmetricCrypto(
+        transformation: String,
+        key: ByteArray?,
+        iv: ByteArray?
+    ): SymmetricCrypto {
+        val symmetricCrypto = SymmetricCryptoAndroid(transformation, key)
+        return if (iv != null && iv.isNotEmpty()) symmetricCrypto.setIv(iv) else symmetricCrypto
+    }
+
+    fun createSymmetricCrypto(transformation: String, key: ByteArray): SymmetricCrypto {
+        return createSymmetricCrypto(transformation, key, null)
+    }
+
+    fun createSymmetricCrypto(transformation: String, key: String): SymmetricCrypto {
+        return createSymmetricCrypto(transformation, key, null)
+    }
+
+    fun createSymmetricCrypto(transformation: String, key: String, iv: String?): SymmetricCrypto {
+        return createSymmetricCrypto(
+            transformation, key.encodeToByteArray(), iv?.encodeToByteArray()
+        )
+    }
+
+    fun createAsymmetricCrypto(transformation: String): AsymmetricCrypto {
+        return AsymmetricCryptoAndroid(transformation)
+    }
+
+    fun createSign(algorithm: String): Sign {
+        return SignAndroid(algorithm)
+    }
+}
+
+/** 桌面端 main 入口注册: shared 编排层创建 AnalyzeRule/AnalyzeUrl 改走桌面薄子类。 */
 fun registerDesktopAnalyzeRuleFactory() {
     AnalyzeRuleFactories.register { ruleData, source, preUpdateJs ->
         DesktopAnalyzeRule(ruleData, source, preUpdateJs)
+    }
+    AnalyzeUrlFactories.register {
+            rawUrl, baseUrl, source, ruleData, chapter, readTimeout, callTimeout,
+            coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables ->
+        DesktopAnalyzeUrl(
+            rawUrl, baseUrl, source, ruleData, chapter, readTimeout, callTimeout,
+            coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables
+        )
     }
 }

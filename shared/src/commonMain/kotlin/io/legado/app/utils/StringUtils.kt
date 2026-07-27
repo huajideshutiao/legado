@@ -56,7 +56,7 @@ object StringUtils {
 
             if (c[i].code in 65281..65374) c[i] = (c[i].code - 65248).toChar()
         }
-        return String(c)
+        return c.concatToString()
     }
 
     /**
@@ -74,7 +74,7 @@ object StringUtils {
                 cn[i] = (48 + ChnMap[cn[i]]!!).toChar()
             }
             // Integer.parseInt(String) 与 String.toInt() 在 JVM actual 同源, commonMain 用 toInt()
-            return String(cn).toInt()
+            return cn.concatToString().toInt()
         }
 
         // "一千零二十五", "一千二" 形式

@@ -13,7 +13,15 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.printOnDebug
 import splitties.init.appCtx
-import java.io.File
+
+/**
+ * composeResources 打进 assets 的 defaultData 目录前缀 (含模块限定名, 由插件按模块生成)。
+ *
+ * 单一数据源在 shared/commonMain/composeResources/files/defaultData/, 前缀不能省
+ * (同 [io.legado.app.web.utils.AndroidWebAssetSource] 读 files/web/ 的方式)。
+ */
+internal const val DEFAULT_DATA_ASSET_PREFIX =
+    "composeResources/legado.shared.generated.resources/files/defaultData/"
 
 /**
  * 默认数据加载入口 (app 端薄壳)。
@@ -32,8 +40,7 @@ import java.io.File
  * # 资源读取
  *
  * [DefaultDataShared] 通过 [DefaultDataResourceProvider] 接口读取资源, app 端在
- * `App.onCreate` 早期注册实现 (用 `appCtx.assets.open` 读取 app/src/main/assets/defaultData/),
- * 行为与原 DefaultData 完全一致。
+ * `App.onCreate` 早期注册实现 (读 composeResources 打进 assets 的 [DEFAULT_DATA_ASSET_PREFIX] 下资源)。
  *
  * 模式参考 [io.legado.app.help.source.SourceHelp] (shared 下沉 + app 薄壳)。
  */
@@ -60,12 +67,13 @@ object DefaultData {
     /**
      * 默认阅读配置列表 (读 readConfig.json)。
      *
-     * 依赖 app 端 [ReadBookConfig.Config] data class, 未下沉 commonMain。
-     * 资源读取仍走 `appCtx.assets.open` (app 端 assets), 不经 DefaultDataResourceProvider。
+     * 依赖 app 端 [ReadBookConfig.Config] data class, 未下沉 commonMain,
+     * 故直读 assets 而不经 DefaultDataResourceProvider。
      */
     val readConfigs: List<ReadBookConfig.Config> by lazy {
         val json = String(
-            appCtx.assets.open("defaultData${File.separator}${ReadBookConfig.configFileName}")
+            appCtx.assets
+                .open("$DEFAULT_DATA_ASSET_PREFIX${ReadBookConfig.configFileName}")
                 .readBytes()
         )
         GSON.fromJsonArray<ReadBookConfig.Config>(json).getOrNull()

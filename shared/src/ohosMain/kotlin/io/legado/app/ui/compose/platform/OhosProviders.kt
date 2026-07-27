@@ -77,6 +77,8 @@ class OhosThemeStoreProvider : ThemeStoreProvider {
 class OhosAppConfigProvider : AppConfigProvider {
     override val isEInkMode: Boolean
         get() = PreferenceProviders.get().getString(PreferKey.themeMode) == "3"
+    override val isNightTheme: Boolean
+        get() = PreferenceProviders.get().getString(PreferKey.themeMode) == "2"
 }
 
 /**

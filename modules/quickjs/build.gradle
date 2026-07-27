@@ -33,6 +33,9 @@ kotlin {
                 implementation(libs.kotlin.stdlib)
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.okhttp)
+                // @JsApi 注解已抽到全 target 微型模块 (shared/commonMain 需在 iOS/鸿蒙下可见);
+                // api 让依赖 quickjs 的模块 (app/desktop) 仍能直接 import com.script.jsdispatch.JsApi
+                api project(':modules:js-api')
             }
         }
 

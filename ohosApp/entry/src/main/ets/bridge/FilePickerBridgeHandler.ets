@@ -97,6 +97,11 @@ interface PickDirectoryPayload {
   // 无参数 (maxSelectNumber 固定为 1)
 }
 
+interface SaveDocumentPayload {
+  fileName: string;
+  data: string; // base64 编码的文件内容
+}
+
 // ===== UTI → MIME 映射表 (对照 iOS UTI 常用值) =====
 // 鸿蒙 DocumentSelectOptions.fileMimeTypeFilters 接受 MIME type 字符串数组,
 // 未知 UTI 返回 null 表示不限制 (显示所有文件)。
@@ -146,6 +151,7 @@ async function handleAction(req: FilePickerBridgeRequest): Promise<FilePickerRes
     case 'pickDocumentContent': return await handlePickDocumentContent(req.payload);
     case 'pickImages': return await handlePickImages(req.payload);
     case 'pickDirectory': return await handlePickDirectory(req.payload);
+    case 'saveDocument': return await handleSaveDocument(req.payload);
     default: return { ok: false, error: 'unknown action: ' + req.action };
   }
 }
@@ -293,6 +299,53 @@ async function handlePickDirectory(payload: string): Promise<FilePickerResponse>
     }
     const err = e as BusinessError;
     return { ok: false, error: err.message ?? String(e) };
+  }
+}
+
+// ===== saveDocument: 调 DocumentViewPicker.save 弹系统保存器, fs.write 写入内容 =====
+async function handleSaveDocument(payload: string): Promise<FilePickerResponse> {
+  const p = JSON.parse(payload) as SaveDocumentPayload;
+
+  // 1. 弹系统保存器 (newFileNames 为建议文件名, 用户可改名/选目录)
+  const documentSaveOptions = new picker.DocumentSaveOptions();
+  documentSaveOptions.newFileNames = [p.fileName];
+  const documentViewPicker = new picker.DocumentViewPicker();
+  let uris: string[];
+  try {
+    uris = await documentViewPicker.save(documentSaveOptions);
+  } catch (e) {
+    // 用户取消: 与 handlePickDocuments 一致, 识别取消码返回 cancelled: true
+    if (isUserCancelled(e)) {
+      return { ok: true, cancelled: true };
+    }
+    const err = e as BusinessError;
+    return { ok: false, error: err.message ?? String(e) };
+  }
+  if (uris == null || uris.length === 0) {
+    return { ok: true, cancelled: true };
+  }
+
+  // 2. 写内容: base64 → 独立 ArrayBuffer (与 CryptoBridgeHandler.base64ToUint8 同模式) → fs.write
+  //    (save 返回的 URI 已授予写权限, 文件由系统创建为空文件, TRUNC 覆盖写)
+  let file: fs.File | undefined;
+  try {
+    const buf = buffer.from(p.data, 'base64');
+    const ab = new ArrayBuffer(buf.byteLength);
+    new Uint8Array(ab).set(new Uint8Array(buf.buffer, 0, buf.byteLength));
+    file = fs.openSync(uris[0], fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
+    fs.writeSync(file.fd, ab);
+    return { ok: true, uris: [uris[0]] };
+  } catch (e) {
+    const err = e as BusinessError;
+    return { ok: false, error: err.message ?? String(e) };
+  } finally {
+    if (file != null) {
+      try {
+        fs.closeSync(file);
+      } catch (e) {
+        console.warn('[FilePickerBridge] closeSync failed: ' + JSON.stringify(e));
+      }
+    }
   }
 }
 

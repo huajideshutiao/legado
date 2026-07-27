@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
@@ -29,7 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.SourceFilterRule
@@ -40,14 +38,7 @@ import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
-
-/**
- * Arco Design 主色 arcoblue-6 (#165DFF)。
- *
- * 用作对话框底部确认按钮的强调色。
- * 不复用 AppTheme.accent, 避免不同主题下颜色漂移导致与原 app 端 arco 规范不一致。
- */
-private val ArcoBlue6 = Color(0xFF165DFF)
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 书源屏蔽规则编辑对话框 (KMP 共享, app + desktop 复用)。
@@ -144,7 +135,7 @@ fun SourceFilterEditDialog(
     }
 
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = DesignTokens.dialogShape,
         color = colors.background,
         modifier = Modifier.fillMaxWidth().padding(8.dp),
     ) {
@@ -205,7 +196,7 @@ fun SourceFilterEditDialog(
                 Spacer(Modifier.width(4.dp))
                 AppTextButton(
                     text = okText,
-                    color = ArcoBlue6,
+                    color = DesignTokens.arcoBlue6,
                 ) { confirm() }
             }
         }

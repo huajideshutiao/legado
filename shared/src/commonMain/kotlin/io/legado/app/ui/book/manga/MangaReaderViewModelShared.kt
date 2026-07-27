@@ -17,6 +17,7 @@ import io.legado.app.help.book.isSameNameAuthor
 import io.legado.app.help.book.readSimulating
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.manga.entities.BaseMangaPage
@@ -26,9 +27,10 @@ import io.legado.app.ui.book.manga.entities.MangaPage
 import io.legado.app.ui.book.manga.entities.ReaderLoading
 import io.legado.app.utils.mapIndexed
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
@@ -154,10 +156,13 @@ class MangaReaderViewModelShared(
     private var curMangaChapter: MangaChapter? = null
     private var nextMangaChapter: MangaChapter? = null
     private val loadingChapters = mutableSetOf<Int>()
+
+    // 替代原 @Synchronized/synchronized(this) 的 this 监视器 (kotlin.jvm.Synchronized 无 common 变体且 native 无效)
+    private val syncLock = SynchronizedObject()
     private var preDownloadTask: Job? = null
     private val downloadedChapters = mutableSetOf<Int>()
     private val downloadFailChapters = mutableMapOf<Int, Int>()
-    private val downloadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val downloadScope = CoroutineScope(SupervisorJob() + IoDispatcher)
     private val preDownloadSemaphore = Semaphore(2)
     val hasNextChapter: Boolean get() = _durChapterIndex.value < simulatedChapterSize - 1
     // endregion
@@ -199,7 +204,7 @@ class MangaReaderViewModelShared(
             }.onSuccess {
                 success()
             }.onFailure {
-                AppLog.put("初始化数据失败\n${it.localizedMessage}", it)
+                AppLog.put("初始化数据失败\n${it.message}", it)
             }
         }
     }
@@ -252,7 +257,7 @@ class MangaReaderViewModelShared(
         }
         val chapterList = prefetchedList ?: _chapterList.value
         chapterSize = chapterList?.size
-            ?: withContext(Dispatchers.IO) { AppDbProviders.get().bookChapterDao.getChapterCount(book.bookUrl) }
+            ?: withContext(IoDispatcher) { AppDbProviders.get().bookChapterDao.getChapterCount(book.bookUrl) }
         simulatedChapterSize = if (book.readSimulating()) book.simulatedTotalChapterNum()
         else chapterSize
         if (isDiffBook || _durChapterIndex.value != book.durChapterIndex) {
@@ -265,7 +270,7 @@ class MangaReaderViewModelShared(
             _durChapterIndex.value = 0
             _durChapterPos.value = 0
         }
-        synchronized(this) {
+        synchronized(syncLock) {
             loadingChapters.clear()
             downloadedChapters.clear()
             downloadFailChapters.clear()
@@ -302,16 +307,16 @@ class MangaReaderViewModelShared(
         nextMangaChapter = null
     }
 
-    @Synchronized
-    private fun addLoading(index: Int): Boolean {
+    private fun addLoading(index: Int): Boolean = synchronized(syncLock) {
         if (loadingChapters.contains(index)) return false
         loadingChapters.add(index)
-        return true
+        true
     }
 
-    @Synchronized
     fun removeLoading(index: Int) {
-        loadingChapters.remove(index)
+        synchronized(syncLock) {
+            loadingChapters.remove(index)
+        }
     }
 
     /**
@@ -359,7 +364,7 @@ class MangaReaderViewModelShared(
                     }
                 }
             }.onFailure {
-                AppLog.put("加载正文出错\n${it.localizedMessage}")
+                AppLog.put("加载正文出错\n${it.message}")
             }
         }
     }
@@ -706,39 +711,40 @@ class MangaReaderViewModelShared(
      * 拉取最新章节列表, 若章节增多则更新 DB + 刷新 _chapterList + 加载下一章。
      * force=false 时受 canUpdate / 章节余量 / lastCheckTime 限制。
      */
-    @Synchronized
     fun upToc(force: Boolean = false) {
-        val bookSource = _bookSource.value ?: return
-        val book = _book.value ?: return
-        if (!force) {
-            if (!book.canUpdate) return
-            if (chapterSize - _durChapterIndex.value - 1 >= 3) return
-            if (systemCurrentTimeMillis() - book.lastCheckTime < 600000) return
-        }
-        book.lastCheckTime = systemCurrentTimeMillis()
-        val oldBook = book.copy()
-        scope.launch {
-            runCatching {
-                WebBook.getChapterListAwait(bookSource, book).getOrThrow()
-            }.onSuccess { cList ->
-                ensureActive()
-                if (cList.size > chapterSize) {
-                    if (oldBook.bookUrl == book.bookUrl) {
-                        AppDbProviders.get().bookDao.update(book)
-                    } else {
-                        AppDbProviders.get().bookDao.replace(oldBook, book)
-                        BookStorageProviders.get().updateCacheFolder(oldBook, book)
+        synchronized(syncLock) {
+            val bookSource = _bookSource.value ?: return
+            val book = _book.value ?: return
+            if (!force) {
+                if (!book.canUpdate) return
+                if (chapterSize - _durChapterIndex.value - 1 >= 3) return
+                if (systemCurrentTimeMillis() - book.lastCheckTime < 600000) return
+            }
+            book.lastCheckTime = systemCurrentTimeMillis()
+            val oldBook = book.copy()
+            scope.launch {
+                runCatching {
+                    WebBook.getChapterListAwait(bookSource, book).getOrThrow()
+                }.onSuccess { cList ->
+                    ensureActive()
+                    if (cList.size > chapterSize) {
+                        if (oldBook.bookUrl == book.bookUrl) {
+                            AppDbProviders.get().bookDao.update(book)
+                        } else {
+                            AppDbProviders.get().bookDao.replace(oldBook, book)
+                            BookStorageProviders.get().updateCacheFolder(oldBook, book)
+                        }
+                        if (!oldBook.isNotShelf) {
+                            AppDbProviders.get().bookChapterDao.delByBook(oldBook.bookUrl)
+                            AppDbProviders.get().bookChapterDao.insert(*cList.toTypedArray())
+                        }
+                        _chapterList.value = cList
+                        onChapterListUpdated(book, false)
+                        if (nextMangaChapter == null) loadContent(_durChapterIndex.value + 1)
                     }
-                    if (!oldBook.isNotShelf) {
-                        AppDbProviders.get().bookChapterDao.delByBook(oldBook.bookUrl)
-                        AppDbProviders.get().bookChapterDao.insert(*cList.toTypedArray())
-                    }
-                    _chapterList.value = cList
-                    onChapterListUpdated(book, false)
-                    if (nextMangaChapter == null) loadContent(_durChapterIndex.value + 1)
+                }.onFailure {
+                    _error.value = "目录加载失败" to true
                 }
-            }.onFailure {
-                _error.value = "目录加载失败" to true
             }
         }
     }

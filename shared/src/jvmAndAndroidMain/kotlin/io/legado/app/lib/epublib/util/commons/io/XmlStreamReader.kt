@@ -229,7 +229,7 @@ class XmlStreamReader : Reader {
      * the URL.
      */
     @Suppress("unused")
-    constructor(url: URL?) : this(Objects.requireNonNull<URL?>(url, "url").openConnection(), null)
+    constructor(url: URL?) : this(Objects.requireNonNull<URL>(url, "url").openConnection(), null)
 
     /**
      * Creates a Reader using the InputStream of a URLConnection.
@@ -806,7 +806,7 @@ class XmlStreamReader : Reader {
                     }
                     val m: Matcher = ENCODING_PATTERN.matcher(prolog)
                     if (m.find()) {
-                        encoding = Objects.requireNonNull<String?>(m.group(1)).uppercase()
+                        encoding = Objects.requireNonNull<String>(m.group(1)).uppercase()
                         encoding = encoding.substring(1, encoding.length - 1)
                     }
                 }

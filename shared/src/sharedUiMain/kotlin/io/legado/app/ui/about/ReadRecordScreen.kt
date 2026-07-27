@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
@@ -55,6 +54,7 @@ import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 // ===== state / actions =====
 
@@ -388,7 +388,7 @@ private fun SummaryCard(state: ReadRecordUiState) {
         Modifier
             .fillMaxWidth()
             .padding(12.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(DesignTokens.shapeDefault)
             .background(colors.bottomBackground)
             .padding(vertical = 16.dp),
     ) {
@@ -457,7 +457,7 @@ private fun HeatMapCard(
         Modifier
             .fillMaxWidth()
             .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(DesignTokens.shapeDefault)
             .background(colors.bottomBackground)
             .padding(12.dp),
     ) {

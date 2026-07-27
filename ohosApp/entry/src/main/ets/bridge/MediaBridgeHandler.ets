@@ -8,17 +8,28 @@ import fs from '@ohos.file.fs';
  * 调用 @ohos.multimedia.media AVPlayer 执行真实音频播放,
  * AVPlayer 事件通过 legado.mediaEvent(eventJson) 回送给 Kotlin。
  *
- * # JSON 协议 (与 HttpTtsPlayer.ohos.kt / OhosNativeBridge.kt 对齐)
+ * # 多实例 (playerId)
+ * 音频书 (audioBook) 与 HttpTTS 朗读 (httpTts) 需同时各持一个 AVPlayer, 故按 playerId
+ * 维护 Map<playerId, PlayerSlot>。命令与事件均带 playerId; 缺省时按 DEFAULT_PLAYER_ID
+ * 处理 (向后兼容旧协议 / ArkTS UI 页面直驱)。
+ *
+ * # JSON 协议 (与 HttpTtsPlayer.ohos.kt / OhosAudioPlayCommander.ohos.kt / OhosNativeBridge.kt 对齐)
  *
  * ## 命令 (Kotlin → ArkTS, fire-and-forget)
  * {
- *   "action": "setSource" | "play" | "pause" | "stop" | "seekTo" | "release",
+ *   "playerId": "<string?>",   // 缺省 = "default"
+ *   "action": "setSource" | "setSourceUrl" | "play" | "pause" | "stop" |
+ *             "seekTo" | "setSpeed" | "release",
  *   "path": "<string?>",       // setSource 时为本地文件路径
- *   "position": <number?>      // seekTo 时为跳转位置 (毫秒)
+ *   "url": "<string?>",        // setSourceUrl 时为网络流地址
+ *   "headers": <Record?>,      // setSourceUrl 时为请求头
+ *   "position": <number?>,     // seekTo 时为跳转位置 (毫秒)
+ *   "speed": <number?>         // setSpeed 时为浮点倍速
  * }
  *
  * ## 事件 (ArkTS → Kotlin, via legado.mediaEvent)
  * {
+ *   "playerId": "<string>",    // 必带, 与命令的 playerId 对应
  *   "event": "onReady" | "onEndOfMedia" | "onError" | "onBufferingUpdate" |
  *            "onDuration" | "onPosition" | "onPlaying" | "onPaused",
  *   "message": "<string?>",    // onError 时含错误信息
@@ -28,11 +39,11 @@ import fs from '@ohos.file.fs';
  * }
  *
  * # AVPlayer 状态机
- * idle → (设 url) → initialized → (prepare) → prepared → (play) → playing ↔ paused
+ * idle → (设源) → initialized → (prepare) → prepared → (play) → playing ↔ paused
  *   → (stop) → stopped → (reset) → idle → ... → (release) → released
  *
  * 完整事件链:
- * - setSource 命令 → 打开文件 → 设 url → prepare() → stateChange('prepared') → 发 onReady
+ * - setSource/setSourceUrl 命令 → 设源 → prepare() → stateChange('prepared') → 发 onReady
  * - play 命令 → avPlayer.play() → stateChange('playing') → 发 onPlaying
  * - pause 命令 → avPlayer.pause() → stateChange('paused') → 发 onPaused
  * - 播放结束 → stateChange('completed') → 发 onEndOfMedia
@@ -44,44 +55,77 @@ import fs from '@ohos.file.fs';
 // Media 事件回调类型 (由 EntryAbility 注入, 内部调 legado.mediaEvent)
 export type MediaEventCallback = (eventJson: string) => void;
 
-// 当前 AVPlayer 实例 (同一时间仅一个 player 活跃, 与 Kotlin 侧单 listener 模型一致)
-let avPlayer: media.AVPlayer | null = null;
+/** 缺省 playerId: 无 playerId 字段的旧协议消息落到这里。 */
+export const DEFAULT_PLAYER_ID: string = 'default';
 
-// 当前打开的文件 fd (setSource 时打开, release/reset 时关闭)
-let currentFd: number | null = null;
+/** 音频书播放实例 (Kotlin OhosAudioPlayCommander + ArkTS AudioPlay 页共用)。 */
+export const PLAYER_ID_AUDIO_BOOK: string = 'audioBook';
+
+/** HttpTTS 朗读播放实例 (Kotlin OhosHttpTtsPlayer 专用)。 */
+export const PLAYER_ID_HTTP_TTS: string = 'httpTts';
+
+/** 视频播放实例 (预留, 待 surface 绑定 napi)。 */
+export const PLAYER_ID_VIDEO: string = 'video';
+
+/** 单个播放实例的状态 (AVPlayer + 其打开的本地文件 fd)。 */
+class PlayerSlot {
+  player: media.AVPlayer | null = null;
+  fd: number | null = null;
+}
+
+// playerId → 播放实例
+let players: Map<string, PlayerSlot> = new Map<string, PlayerSlot>();
 
 // Media 事件回调 (由 EntryAbility 注入)
 let eventCallback: MediaEventCallback | null = null;
 
+/** 本地事件监听项: listener + 关注的 playerId (null = 全收)。 */
+class LocalListenerEntry {
+  listener: (eventJson: string) => void;
+  playerId: string | null;
+
+  constructor(listener: (eventJson: string) => void, playerId: string | null) {
+    this.listener = listener;
+    this.playerId = playerId;
+  }
+}
+
 // 本地 media 事件监听器 (ArkTS UI 页面订阅 AVPlayer 事件用于状态更新, 与 KMP 回调并行)
-let localListeners: Array<(eventJson: string) => void> = [];
+let localListeners: Array<LocalListenerEntry> = [];
 
 /**
  * 注册本地 media 事件监听 (UI 页面 aboutToAppear 调用)。
  * 与 eventCallback (→ KMP) 并行触发, 互不影响。
+ *
+ * @param playerId 只接收该 playerId 的事件; 省略则接收全部 (旧行为)
  */
-export function addMediaEventListener(listener: (eventJson: string) => void): void {
-  localListeners.push(listener);
+export function addMediaEventListener(listener: (eventJson: string) => void, playerId?: string): void {
+  localListeners.push(new LocalListenerEntry(listener, playerId ?? null));
 }
 
 /** 注销本地 media 事件监听 (UI 页面 aboutToDisappear 调用)。 */
 export function removeMediaEventListener(listener: (eventJson: string) => void): void {
-  const idx = localListeners.indexOf(listener);
-  if (idx >= 0) {
-    localListeners.splice(idx, 1);
+  for (let i = localListeners.length - 1; i >= 0; i--) {
+    if (localListeners[i].listener === listener) {
+      localListeners.splice(i, 1);
+    }
   }
 }
 
 // ===== 命令接口定义 (与 Kotlin 侧 JSON 协议对齐) =====
 
 interface MediaCommand {
+  playerId?: string;
   action: string;
   path?: string;
+  url?: string;
+  headers?: Record<string, string>;
   position?: number;
   speed?: number;
 }
 
 interface MediaEventPayload {
+  playerId?: string;
   event: string;
   message?: string;
   percent?: number;
@@ -101,7 +145,7 @@ export function initMediaBridge(callback: MediaEventCallback): void {
 /**
  * 处理来自 Kotlin 的 media 命令 (由 EntryAbility 注册的 tsfn 回调调用)。
  *
- * @param commandJson 命令 JSON 字符串 (含 action/path/position)
+ * @param commandJson 命令 JSON 字符串 (含 playerId/action/path/url/position)
  */
 export function handleMediaCommand(commandJson: string): void {
   let cmd: MediaCommand;
@@ -112,29 +156,36 @@ export function handleMediaCommand(commandJson: string): void {
     return;
   }
 
+  const id: string = cmd.playerId ?? DEFAULT_PLAYER_ID;
+
   switch (cmd.action) {
     case 'setSource':
-      handleSetSource(cmd.path ?? '').catch((err: Error) => {
-        emitEvent({ event: 'onError', message: 'setSource failed: ' + (err.message ?? String(err)) });
+      handleSetSource(id, cmd.path ?? '').catch((err: Error) => {
+        emitEvent(id, { event: 'onError', message: 'setSource failed: ' + (err.message ?? String(err)) });
+      });
+      break;
+    case 'setSourceUrl':
+      handleSetSourceUrl(id, cmd.url ?? '', cmd.headers).catch((err: Error) => {
+        emitEvent(id, { event: 'onError', message: 'setSourceUrl failed: ' + (err.message ?? String(err)) });
       });
       break;
     case 'play':
-      handlePlay();
+      handlePlay(id);
       break;
     case 'pause':
-      handlePause();
+      handlePause(id);
       break;
     case 'stop':
-      handleStop();
+      handleStop(id);
       break;
     case 'seekTo':
-      handleSeekTo(cmd.position ?? 0);
+      handleSeekTo(id, cmd.position ?? 0);
       break;
     case 'setSpeed':
-      handleSetSpeed(cmd.speed ?? 1);
+      handleSetSpeed(id, cmd.speed ?? 1);
       break;
     case 'release':
-      handleRelease();
+      handleRelease(id);
       break;
     default:
       console.warn('[MediaBridge] unknown action: ' + cmd.action);
@@ -142,79 +193,113 @@ export function handleMediaCommand(commandJson: string): void {
 }
 
 // ===== setSource: 打开文件 → 创建 AVPlayer → 设源 → prepare =====
-async function handleSetSource(path: string): Promise<void> {
+async function handleSetSource(id: string, path: string): Promise<void> {
   if (path.length === 0) {
-    emitEvent({ event: 'onError', message: 'setSource: path is empty' });
+    emitEvent(id, { event: 'onError', message: 'setSource: path is empty' });
     return;
   }
 
   // 释放旧 player + 关闭旧 fd
-  await releasePlayer();
+  await releasePlayer(id);
+
+  const slot = new PlayerSlot();
+  players.set(id, slot);
 
   // 打开本地文件
   const file = fs.openSync(path, fs.OpenMode.READ_ONLY);
-  currentFd = file.fd;
+  slot.fd = file.fd;
 
   // 创建 AVPlayer 并注册事件监听
-  avPlayer = await media.createAVPlayer();
-  registerPlayerEvents(avPlayer);
+  const player = await media.createAVPlayer();
+  slot.player = player;
+  registerPlayerEvents(id, player);
 
   // 设源: 用 fd:// 协议指向本地文件
-  avPlayer.url = 'fd://' + file.fd;
-  console.info('[MediaBridge] setSource: path=' + path + ' fd=' + file.fd);
+  player.url = 'fd://' + file.fd;
+  console.info('[MediaBridge] setSource: id=' + id + ' path=' + path + ' fd=' + file.fd);
 
   // 异步 prepare, 就绪后 stateChange('prepared') 触发 onReady 事件
-  await avPlayer.prepare();
+  await player.prepare();
+}
+
+// ===== setSourceUrl: 网络流播 (免预下载), 带请求头 (API 12+) =====
+async function handleSetSourceUrl(id: string, url: string, headers?: Record<string, string>): Promise<void> {
+  if (url.length === 0) {
+    emitEvent(id, { event: 'onError', message: 'setSourceUrl: url is empty' });
+    return;
+  }
+
+  await releasePlayer(id);
+
+  const slot = new PlayerSlot();
+  players.set(id, slot);
+
+  const player = await media.createAVPlayer();
+  slot.player = player;
+  registerPlayerEvents(id, player);
+
+  // MediaSource 支持自定义请求头 (Referer/User-Agent/Cookie), 直接设 url 属性做不到
+  const source: media.MediaSource = media.createMediaSourceWithUrl(url, headers);
+  await player.setMediaSource(source);
+  console.info('[MediaBridge] setSourceUrl: id=' + id + ' url=' + url);
+
+  // setMediaSource 完成即进入 initialized, 仍需 prepare 才 ready
+  await player.prepare();
 }
 
 // ===== play =====
-function handlePlay(): void {
-  if (avPlayer != null) {
-    avPlayer.play().catch((err: Error) => {
-      emitEvent({ event: 'onError', message: 'play failed: ' + (err.message ?? String(err)) });
+function handlePlay(id: string): void {
+  const player = playerOf(id);
+  if (player != null) {
+    player.play().catch((err: Error) => {
+      emitEvent(id, { event: 'onError', message: 'play failed: ' + (err.message ?? String(err)) });
     });
   } else {
-    console.warn('[MediaBridge] play: avPlayer is null');
+    console.warn('[MediaBridge] play: avPlayer is null, id=' + id);
   }
 }
 
 // ===== pause =====
-function handlePause(): void {
-  if (avPlayer != null) {
-    avPlayer.pause().catch((err: Error) => {
-      emitEvent({ event: 'onError', message: 'pause failed: ' + (err.message ?? String(err)) });
+function handlePause(id: string): void {
+  const player = playerOf(id);
+  if (player != null) {
+    player.pause().catch((err: Error) => {
+      emitEvent(id, { event: 'onError', message: 'pause failed: ' + (err.message ?? String(err)) });
     });
   } else {
-    console.warn('[MediaBridge] pause: avPlayer is null');
+    console.warn('[MediaBridge] pause: avPlayer is null, id=' + id);
   }
 }
 
 // ===== stop =====
-function handleStop(): void {
-  if (avPlayer != null) {
-    avPlayer.stop().catch((err: Error) => {
-      emitEvent({ event: 'onError', message: 'stop failed: ' + (err.message ?? String(err)) });
+function handleStop(id: string): void {
+  const player = playerOf(id);
+  if (player != null) {
+    player.stop().catch((err: Error) => {
+      emitEvent(id, { event: 'onError', message: 'stop failed: ' + (err.message ?? String(err)) });
     });
   } else {
-    console.warn('[MediaBridge] stop: avPlayer is null');
+    console.warn('[MediaBridge] stop: avPlayer is null, id=' + id);
   }
 }
 
 // ===== seekTo =====
-function handleSeekTo(position: number): void {
-  if (avPlayer != null) {
-    avPlayer.seek(position);
+function handleSeekTo(id: string, position: number): void {
+  const player = playerOf(id);
+  if (player != null) {
+    player.seek(position);
   } else {
-    console.warn('[MediaBridge] seekTo: avPlayer is null');
+    console.warn('[MediaBridge] seekTo: avPlayer is null, id=' + id);
   }
 }
 
 // ===== setSpeed (倍速, 浮点 → PlaybackSpeed 枚举档位) =====
-function handleSetSpeed(speed: number): void {
-  if (avPlayer != null) {
-    avPlayer.setSpeed(mapSpeed(speed));
+function handleSetSpeed(id: string, speed: number): void {
+  const player = playerOf(id);
+  if (player != null) {
+    player.setSpeed(mapSpeed(speed));
   } else {
-    console.warn('[MediaBridge] setSpeed: avPlayer is null');
+    console.warn('[MediaBridge] setSpeed: avPlayer is null, id=' + id);
   }
 }
 
@@ -228,34 +313,34 @@ function mapSpeed(rate: number): media.PlaybackSpeed {
 }
 
 // ===== release =====
-function handleRelease(): void {
-  releasePlayer().catch((err: Error) => {
+function handleRelease(id: string): void {
+  releasePlayer(id).catch((err: Error) => {
     console.error('[MediaBridge] release failed: ' + (err.message ?? String(err)));
   });
 }
 
 // ===== AVPlayer 事件注册 =====
-function registerPlayerEvents(player: media.AVPlayer): void {
+function registerPlayerEvents(id: string, player: media.AVPlayer): void {
   // 状态变化 → 转换为 Kotlin 侧事件
   player.on('stateChange', (state: string, reason: media.StateChangeReason) => {
-    console.info('[MediaBridge] stateChange: state=' + state + ' reason=' + reason);
+    console.info('[MediaBridge] stateChange: id=' + id + ' state=' + state + ' reason=' + reason);
     switch (state) {
       case 'prepared':
         // 准备就绪 → 发 onReady (Kotlin 侧据此触发段落推进)
-        emitEvent({ event: 'onReady' });
+        emitEvent(id, { event: 'onReady' });
         break;
       case 'playing':
-        emitEvent({ event: 'onPlaying' });
+        emitEvent(id, { event: 'onPlaying' });
         break;
       case 'paused':
-        emitEvent({ event: 'onPaused' });
+        emitEvent(id, { event: 'onPaused' });
         break;
       case 'completed':
         // 播放结束 → 发 onEndOfMedia (Kotlin 侧据此推进到下一段)
-        emitEvent({ event: 'onEndOfMedia' });
+        emitEvent(id, { event: 'onEndOfMedia' });
         break;
       case 'error':
-        emitEvent({ event: 'onError', message: 'AVPlayer entered error state, reason=' + reason });
+        emitEvent(id, { event: 'onError', message: 'AVPlayer entered error state, reason=' + reason });
         break;
       default:
         // idle / initialized / stopped / released 等状态不转发
@@ -265,50 +350,62 @@ function registerPlayerEvents(player: media.AVPlayer): void {
 
   // 错误事件 → 发 onError
   player.on('error', (err: Error) => {
-    emitEvent({ event: 'onError', message: err.message ?? String(err) });
+    emitEvent(id, { event: 'onError', message: err.message ?? String(err) });
   });
 
   // 时长更新 → 发 onDuration (供 Kotlin 缓存 duration getter)
   player.on('durationUpdate', (duration: number) => {
-    emitEvent({ event: 'onDuration', duration: duration });
+    emitEvent(id, { event: 'onDuration', duration: duration });
   });
 
   // 播放位置更新 → 发 onPosition (供 Kotlin 缓存 currentPosition getter)
   player.on('timeUpdate', (time: number) => {
-    emitEvent({ event: 'onPosition', position: time });
+    emitEvent(id, { event: 'onPosition', position: time });
   });
 
   // 缓冲更新 → 发 onBufferingUpdate
   player.on('bufferingUpdate', (info: media.BufferingInfoType) => {
     // BufferingInfoType 含 percent 字段, 表示缓冲百分比
-    emitEvent({ event: 'onBufferingUpdate', percent: info.percent });
+    emitEvent(id, { event: 'onBufferingUpdate', percent: info.percent });
   });
 }
 
 // ===== 内部工具函数 =====
 
-/** 释放当前 AVPlayer 并关闭文件 fd */
-async function releasePlayer(): Promise<void> {
-  if (avPlayer != null) {
+/** 取指定 playerId 的 AVPlayer (不存在返回 null)。 */
+function playerOf(id: string): media.AVPlayer | null {
+  const slot = players.get(id);
+  return slot != null ? slot.player : null;
+}
+
+/** 释放指定 playerId 的 AVPlayer 并关闭文件 fd */
+async function releasePlayer(id: string): Promise<void> {
+  const slot = players.get(id);
+  if (slot == null) {
+    return;
+  }
+  players.delete(id);
+  if (slot.player != null) {
     try {
-      avPlayer.release();
+      slot.player.release();
     } catch (e) {
       console.error('[MediaBridge] release AVPlayer error: ' + (e as Error).message);
     }
-    avPlayer = null;
+    slot.player = null;
   }
-  if (currentFd != null) {
+  if (slot.fd != null) {
     try {
-      fs.closeSync(currentFd);
+      fs.closeSync(slot.fd);
     } catch (e) {
       console.error('[MediaBridge] close fd error: ' + (e as Error).message);
     }
-    currentFd = null;
+    slot.fd = null;
   }
 }
 
 /** 发送事件到 Kotlin (通过 EntryAbility 注入的 legado.mediaEvent 回调) + 本地 UI 监听器 */
-function emitEvent(event: MediaEventPayload): void {
+function emitEvent(id: string, event: MediaEventPayload): void {
+  event.playerId = id;
   const json = JSON.stringify(event);
   if (eventCallback != null) {
     eventCallback(json);
@@ -317,8 +414,12 @@ function emitEvent(event: MediaEventPayload): void {
   }
   // 并行推送给本地 UI 监听器 (AudioPlay 页面据此更新进度/状态)
   for (let i = 0; i < localListeners.length; i++) {
+    const entry = localListeners[i];
+    if (entry.playerId != null && entry.playerId !== id) {
+      continue;
+    }
     try {
-      localListeners[i](json);
+      entry.listener(json);
     } catch (e) {
       console.error('[MediaBridge] local listener error: ' + (e as Error).message);
     }

@@ -42,17 +42,21 @@ object EncoderUtils {
         return tmp.toString()
     }
 
-    @JvmOverloads
+    // 短参显式重载: 补回原 @JvmOverloads 生成的 JVM 签名 (commonMain 无该注解), 书源 JS 按 arity 匹配
+    fun base64Decode(str: String): String = base64Decode(str, 0)
+
     fun base64Decode(str: String, flags: Int = 0): String {
-        return String(base64DecodeToByteArray(str, flags))
+        return base64DecodeToByteArray(str, flags).decodeToString()
     }
 
-    @JvmOverloads
+    fun base64Encode(str: String): String? = base64Encode(str, NO_WRAP)
+
     fun base64Encode(str: String, flags: Int = NO_WRAP): String? {
-        return base64Encode(str.toByteArray(), flags)
+        return base64Encode(str.encodeToByteArray(), flags)
     }
 
-    @JvmOverloads
+    fun base64Encode(bytes: ByteArray): String = base64Encode(bytes, NO_WRAP)
+
     fun base64Encode(bytes: ByteArray, flags: Int = NO_WRAP): String {
         val encoder = if (flags and URL_SAFE != 0) Base64.UrlSafe else Base64.Default
         val encoded = encoder.encode(bytes)
@@ -64,7 +68,8 @@ object EncoderUtils {
         return finalEncoded.chunked(76).joinToString(sep, postfix = sep)
     }
 
-    @JvmOverloads
+    fun base64DecodeToByteArray(str: String): ByteArray = base64DecodeToByteArray(str, 0)
+
     fun base64DecodeToByteArray(str: String, flags: Int = 0): ByteArray {
         // android 解码跳过字母表外字符(含换行): 标准表 MIME 解码器同款宽松;
         // kotlin.io.encoding.Base64 解码对非字母表字符抛异常, 手动 filter 复刻原 skip 语义;

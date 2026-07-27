@@ -1,6 +1,7 @@
 package io.legado.desktop.ui.dict
 
 import androidx.compose.foundation.layout.widthIn
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.desktop.ui.component.DialogSizes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -10,16 +11,15 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
-import androidx.compose.material3.Text
+import androidx.compose.material.CircularProgressIndicator
+import androidx.compose.material.Surface
+import androidx.compose.material.Tab
+import androidx.compose.material.TabRow
+import androidx.compose.material.TabRowDefaults
+import androidx.compose.material.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -100,7 +100,7 @@ fun DictDialog(word: String, onDismiss: () -> Unit) {
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(16.dp), // Arco Design arco_radius_lg = 16dp
+            shape = DesignTokens.dialogShape,
             color = colors.background,
             modifier = Modifier.widthIn(max = DialogSizes.dialogMaxWidth()),
         ) {
@@ -129,9 +129,9 @@ fun DictDialog(word: String, onDismiss: () -> Unit) {
                     if (dictRules.size <= 4) {
                         TabRow(
                             selectedTabIndex = selected,
-                            containerColor = colors.bottomBackground,
+                            backgroundColor = colors.bottomBackground,
                             indicator = { positions ->
-                                TabRowDefaults.SecondaryIndicator(
+                                TabRowDefaults.Indicator(
                                     Modifier.tabIndicatorOffset(positions[selected]),
                                     color = colors.accent,
                                 )

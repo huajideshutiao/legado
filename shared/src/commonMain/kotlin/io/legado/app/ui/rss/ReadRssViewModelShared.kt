@@ -1,10 +1,10 @@
 package io.legado.app.ui.rss
 
 import io.legado.app.data.entities.Book
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.rss.RssContentResult
 import io.legado.app.model.rss.RssHelp
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -80,7 +80,7 @@ class ReadRssViewModelShared(
     fun loadContent(book: Book, chapterIndex: Int) {
         _state.value = ReadRssUiState.Loading
         scope.launch {
-            withContext(Dispatchers.IO) {
+            withContext(IoDispatcher) {
                 val result = RssHelp.loadRssContent(book, chapterIndex)
                 _state.value = when (result) {
                     is RssContentResult.Content -> ReadRssUiState.Content(

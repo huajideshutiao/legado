@@ -5,7 +5,7 @@ import androidx.media3.common.MediaItem
 import com.script.jsdispatch.JsApi
 import io.legado.app.constant.AppConst
 import io.legado.app.data.entities.BaseSource
-import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookChapterLike
 import io.legado.app.help.JsExtensions
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import kotlin.coroutines.CoroutineContext
@@ -28,7 +28,7 @@ class AnalyzeUrl(
     baseUrl: String = "",
     source: BaseSource? = null,
     ruleData: RuleDataInterface? = null,
-    chapter: BookChapter? = null,
+    chapter: BookChapterLike? = null,
     readTimeout: Long? = null,
     callTimeout: Long? = null,
     coroutineContext: CoroutineContext = EmptyCoroutineContext,

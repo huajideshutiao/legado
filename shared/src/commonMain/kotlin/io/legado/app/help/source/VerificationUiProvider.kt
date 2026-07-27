@@ -1,6 +1,7 @@
 package io.legado.app.help.source
 
 import io.legado.app.data.entities.BaseSource
+import kotlin.concurrent.Volatile
 
 /**
  * 源验证 UI 能力 provider (跨平台抽象)。

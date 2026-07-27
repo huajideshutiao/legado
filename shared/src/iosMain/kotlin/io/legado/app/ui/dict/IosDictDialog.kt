@@ -2,8 +2,7 @@ package io.legado.app.ui.dict
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Surface
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -12,6 +11,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * iOS 端"查词"对话框 (对照 desktop 端 DictDialog)。
@@ -50,7 +50,7 @@ fun IosDictDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(16.dp), // Arco Design arco_radius_lg = 16dp, 与 IosTextSelectionDialog 一致
+            shape = DesignTokens.dialogShape,
             color = colors.background,
             modifier = Modifier.fillMaxWidth(0.8f),
         ) {

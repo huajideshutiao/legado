@@ -5,8 +5,8 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.RuleBigDataProviders
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.utils.MD5Utils
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.min
 
@@ -54,7 +54,7 @@ object BookHelpShared {
      * (此处对 `BookFolder` 内联派生, 因 `BookFolder` 非 `Book`, 无法直接调 `getFolderNameNoCache`)。
      */
     suspend fun clearInvalidCache() {
-        withContext(Dispatchers.IO) {
+        withContext(IoDispatcher) {
             val appDb = AppDbProviders.get()
             val allBookFolderNames = appDb.bookDao.allBookUrlsWithName()
 

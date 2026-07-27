@@ -171,7 +171,8 @@ android {
         // arg("room.generateKotlin", "false")
         //arg("room.schemaLocation", "$projectDir/schemas")
         // BaseSource 已下沉 shared，@JsApi 分派表仍由 app 侧 KSP 从 classpath 解析生成
-        arg("jsapi.extraClasses", "io.legado.app.data.entities.BaseSource")
+        // CacheManager 同标 @JsApi 却缺席名单, JS 调 cache.get/put 一直走反射兜底; 补入生成分派表
+        arg("jsapi.extraClasses", "io.legado.app.data.entities.BaseSource,io.legado.app.help.CacheManager")
     }
 
     compileOptions {
@@ -232,6 +233,8 @@ dependencies {
     //compose：BOM 统一版本，platform 引入
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.material3)
+    // MD2 迁移: AppTheme 基于 M2 MaterialTheme, 界面组件统一 material(M2), material3 仅剩存量待清
+    implementation(libs.compose.material)
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.activity)

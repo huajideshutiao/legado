@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
@@ -35,9 +34,7 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
-
-/** Arco Design arco_radius_lg = 16dp。 */
-private val ArcoRadiusLg = 16.dp
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 代码查看/编辑对话框内容 (KMP 共享, desktop / iOS 复用)。
@@ -162,7 +159,7 @@ fun CodeDialog(
         ),
     ) {
         Surface(
-            shape = RoundedCornerShape(ArcoRadiusLg),
+            shape = DesignTokens.dialogShape,
             color = AppTheme.colors.background,
         ) {
             CodeDialogContent(

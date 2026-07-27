@@ -9,12 +9,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Slider
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -26,8 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.tts.ReadAloudQueue
-import io.legado.app.model.ReadBookShared
 import io.legado.app.service.DefaultReadAloudNavigator
 import io.legado.app.service.ReadAloudChapterNavigator
 import io.legado.app.service.ReadAloudControllerShared
@@ -35,6 +34,9 @@ import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.compose.platform.DesktopPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.theme.AppTheme
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.sp
 
 /**
  * 桌面端 TTS 控制 UI 入口 (KP2-D P0-10)。
@@ -133,6 +135,13 @@ fun rememberReadAloudController(viewModel: ReadBookViewModelShared): ReadAloudCo
         ReadAloudControllerShared(
             navigator = DesktopReadAloudNavigator(viewModel),
             // engineProvider 默认走 TtsEngineProvider, Main.kt 已注册 DesktopSystemTtsEngine
+            // KP2-D P0-9: ttsEngineConfigProvider 注入 Book.ttsEngine 优先, 否则 AppConfig.ttsEngine
+            ttsEngineConfigProvider = {
+                // Book.ttsEngine 优先, 否则 AppConfig.ttsEngine
+                viewModel.book.value?.config?.ttsEngine?.takeIf { it.isNotBlank() }
+                    ?: runCatching { AppConfigProviders.get().ttsEngine }.getOrNull()
+                        ?.takeIf { it.isNotBlank() }
+            },
         )
     }
 
@@ -235,7 +244,7 @@ fun TtsControlPanel(
         modifier = modifier
             .fillMaxWidth()
             .wrapContentHeight(),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+        color = AppTheme.colors.background.copy(alpha = 0.95f),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -256,7 +265,7 @@ fun TtsControlPanel(
                     Icon(
                         painter = rememberPainter("ic_arrow_back"),
                         contentDescription = previousSegmentLabel,
-                        tint = MaterialTheme.colorScheme.onSurface,
+                        tint = AppTheme.colors.primaryText,
                     )
                 }
 
@@ -285,7 +294,7 @@ fun TtsControlPanel(
                             rememberPainter("ic_play_24dp")
                         },
                         contentDescription = if (isPlaying) pauseLabel else playLabel,
-                        tint = MaterialTheme.colorScheme.onSurface,
+                        tint = AppTheme.colors.primaryText,
                     )
                 }
 
@@ -298,7 +307,7 @@ fun TtsControlPanel(
                     Icon(
                         painter = rememberPainter("ic_stop_black_24dp"),
                         contentDescription = stopLabel,
-                        tint = MaterialTheme.colorScheme.onSurface,
+                        tint = AppTheme.colors.primaryText,
                     )
                 }
 
@@ -311,7 +320,7 @@ fun TtsControlPanel(
                     Icon(
                         painter = rememberPainter("ic_arrow_forward"),
                         contentDescription = nextSegmentLabel,
-                        tint = MaterialTheme.colorScheme.onSurface,
+                        tint = AppTheme.colors.primaryText,
                     )
                 }
 
@@ -327,7 +336,7 @@ fun TtsControlPanel(
                     Icon(
                         painter = rememberPainter("ic_skip_previous"),
                         contentDescription = previousChapterLabel,
-                        tint = MaterialTheme.colorScheme.onSurface,
+                        tint = AppTheme.colors.primaryText,
                     )
                 }
                 IconButton(
@@ -339,7 +348,7 @@ fun TtsControlPanel(
                     Icon(
                         painter = rememberPainter("ic_skip_next"),
                         contentDescription = nextChapterLabel,
-                        tint = MaterialTheme.colorScheme.onSurface,
+                        tint = AppTheme.colors.primaryText,
                     )
                 }
 
@@ -352,8 +361,8 @@ fun TtsControlPanel(
                         readingNotStartedLabel, readingProgressFormatLabel,
                         pausedLabel, stoppedLabel, readingCompletedLabel, readingErrorLabel,
                     ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.secondaryText,
+                    style = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.4.sp),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -370,20 +379,20 @@ fun TtsControlPanel(
                         painter = rememberPainter("ic_volume_up"),
                         contentDescription = null,
                         tint = if (lastError != null) {
-                            MaterialTheme.colorScheme.error
+                            AppTheme.DesignTokens.arcoDanger
                         } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                            AppTheme.colors.secondaryText
                         },
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = displayText,
                         color = if (lastError != null) {
-                            MaterialTheme.colorScheme.error
+                            AppTheme.DesignTokens.arcoDanger
                         } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                            AppTheme.colors.secondaryText
                         },
-                        style = MaterialTheme.typography.bodySmall,
+                        style = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.4.sp),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -401,12 +410,12 @@ fun TtsControlPanel(
                 Icon(
                     painter = rememberPainter("ic_speed"),
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = AppTheme.colors.secondaryText,
                 )
                 Text(
                     text = speechRateLabel,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.secondaryText,
+                    style = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.4.sp),
                 )
                 // Material3 Slider: steps = 中间离散点数
                 // 0.5..2.0 step 0.1 → 16 个值, steps = 16 - 2 = 14
@@ -420,8 +429,8 @@ fun TtsControlPanel(
                 // 显示当前语速值 (如 "1.0x"), 固定宽度避免拖动时宽度跳动
                 Text(
                     text = "%.1fx".format(speechRate),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
+                    color = AppTheme.colors.secondaryText,
+                    style = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.4.sp),
                     maxLines = 1,
                 )
             }

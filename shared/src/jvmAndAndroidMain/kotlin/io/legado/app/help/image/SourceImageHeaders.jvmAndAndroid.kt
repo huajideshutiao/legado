@@ -22,11 +22,14 @@ import io.legado.app.utils.NetworkUtils
 val SourceOriginKey = Extras.Key<String?>(default = null)
 
 /**
- * 按 [sourceOrigin] (书源 bookUrl) 解析防盗链 header, 转 Coil3 [NetworkHeaders]。
+ * 按 [sourceOrigin] (书源 bookUrl) 解析防盗链 header。
  *
  * 对齐原版 `AnalyzeUrl.getGlideUrl()`: source header + [SourceNetworkProviders] 中的 cookie,
  * 缺 cookie 会让需登录站点的封面 403/裂图。[imageUrl] 用于 source key 非 http 时的 domain 兜底,
  * 与原版 `AnalyzeUrl.domain` 取值一致。
+ *
+ * 返回裸 Map 而非 Coil3 [NetworkHeaders]: desktop 模块只依赖 shared 的 api 面,
+ * coil3-network 是 implementation 依赖不可见; 裸 OkHttp 消费点也直接用 Map。
  *
  * [SourceHelp.getSource] 为 suspend (调 DB/书源缓存), 调用方需在协程内。
  * 无书源/最终无 header 时返回 null。
@@ -34,7 +37,7 @@ val SourceOriginKey = Extras.Key<String?>(default = null)
 suspend fun resolveSourceHeaders(
     sourceOrigin: String?,
     imageUrl: String? = null
-): NetworkHeaders? {
+): Map<String, String>? {
     if (sourceOrigin.isNullOrEmpty()) return null
     val source: BaseSource = SourceHelp.getSource(sourceOrigin) ?: return null
     val headerMap = LinkedHashMap(source.getHeaderMap())
@@ -53,9 +56,7 @@ suspend fun resolveSourceHeaders(
     else headerMap.remove(cookieJarHeader)
 
     if (headerMap.isEmpty()) return null
-    return NetworkHeaders.Builder().apply {
-        headerMap.forEach { (k, v) -> add(k, v) }
-    }.build()
+    return headerMap
 }
 
 /**
@@ -76,8 +77,11 @@ class SourceOriginHeaderInterceptor : Interceptor {
         }
         val headers = resolveSourceHeaders(sourceOrigin, request.data as? String)
             ?: return chain.proceed()
+        val networkHeaders = NetworkHeaders.Builder().apply {
+            headers.forEach { (k, v) -> add(k, v) }
+        }.build()
         val newRequest = request.newBuilder()
-            .httpHeaders(headers)
+            .httpHeaders(networkHeaders)
             .build()
         return chain.withRequest(newRequest).proceed()
     }

@@ -6,10 +6,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -79,9 +79,8 @@ class HttpTtsEditDialog() : BaseComposeDialogFragment() {
                         @Composable
                         fun item(textRes: Int, onClick: () -> Unit) {
                             DropdownMenuItem(
-                                text = { Text(stringResource(textRes), color = colors.primaryText) },
                                 onClick = { dismissMenu(); onClick() },
-                            )
+                            ) { Text(stringResource(textRes), color = colors.primaryText) }
                         }
                         item(R.string.login) { login() }
                         item(R.string.show_login_header) { showLoginHeader() }

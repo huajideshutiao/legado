@@ -85,7 +85,7 @@ import java.util.Arrays
  * 
  * @since 2.0
  */
-class BOMInputStream(delegate: InputStream?, include: Boolean, vararg boms: ByteOrderMark?) :
+class BOMInputStream(delegate: InputStream?, include: Boolean, vararg boms: ByteOrderMark) :
     ProxyInputStream(delegate) {
     private val include: Boolean
 
@@ -128,7 +128,7 @@ class BOMInputStream(delegate: InputStream?, include: Boolean, vararg boms: Byte
      * @param boms     The BOMs to detect and exclude
      */
     @Suppress("unused")
-    constructor(delegate: InputStream?, vararg boms: ByteOrderMark?) : this(delegate, false, *boms)
+    constructor(delegate: InputStream?, vararg boms: ByteOrderMark) : this(delegate, false, *boms)
 
     /**
      * Constructs a new BOM InputStream that detects the specified BOMs and optionally includes them.
@@ -140,7 +140,7 @@ class BOMInputStream(delegate: InputStream?, include: Boolean, vararg boms: Byte
     init {
         require(boms.isNotEmpty()) { "No BOMs specified" }
         this.include = include
-        val list = Arrays.asList<ByteOrderMark?>(*boms)
+        val list = Arrays.asList<ByteOrderMark>(*boms)
         // Sort the BOMs to match the longest BOM first because some BOMs have the same starting two bytes.
         // minSdk 26 >= N(24), SDK_INT 检查已无必要
         list.sortWith(ByteOrderMarkLengthComparator)
@@ -290,41 +290,41 @@ class BOMInputStream(delegate: InputStream?, include: Boolean, vararg boms: Byte
     /**
      * Invokes the delegate's `read(byte[], int, int)` method, detecting and optionally skipping BOM.
      * 
-     * @param buf the buffer to read the bytes into
+     * @param bts the buffer to read the bytes into
      * @param off The start offset
      * @param len The number of bytes to read (excluding BOM)
      * @return the number of bytes read or -1 if the end of stream
      * @throws IOException if an I/O error occurs
      */
     @Throws(IOException::class)
-    override fun read(buf: ByteArray?, off: Int, len: Int): Int {
+    override fun read(bts: ByteArray?, off: Int, len: Int): Int {
         var off = off
         var len = len
-        if (buf == null) return `in`.read(null, off, len)
+        if (bts == null) return `in`.read(null, off, len)
         var firstCount = 0
         var b = 0
         while (len > 0 && b >= 0) {
             b = readFirstBytes()
             if (b >= 0) {
-                buf[off++] = (b and 0xFF).toByte()
+                bts[off++] = (b and 0xFF).toByte()
                 len--
                 firstCount++
             }
         }
-        val secondCount = `in`.read(buf, off, len)
+        val secondCount = `in`.read(bts, off, len)
         return if (secondCount < 0) if (firstCount > 0) firstCount else EOF else firstCount + secondCount
     }
 
     /**
      * Invokes the delegate's `read(byte[])` method, detecting and optionally skipping BOM.
      * 
-     * @param buf the buffer to read the bytes into
+     * @param bts the buffer to read the bytes into
      * @return the number of bytes read (excluding BOM) or -1 if the end of stream
      * @throws IOException if an I/O error occurs
      */
     @Throws(IOException::class)
-    override fun read(buf: ByteArray?): Int {
-        return read(buf, 0, buf?.size ?: 0)
+    override fun read(bts: ByteArray?): Int {
+        return read(bts, 0, bts?.size ?: 0)
     }
 
     /**
@@ -358,17 +358,17 @@ class BOMInputStream(delegate: InputStream?, include: Boolean, vararg boms: Byte
     /**
      * Invokes the delegate's `skip(long)` method, detecting and optionally skipping BOM.
      * 
-     * @param n the number of bytes to skip
+     * @param ln the number of bytes to skip
      * @return the number of bytes to skipped or -1 if the end of stream
      * @throws IOException if an I/O error occurs
      */
     @Throws(IOException::class)
-    override fun skip(n: Long): Long {
+    override fun skip(ln: Long): Long {
         var skipped = 0
-        while ((n > skipped) && (readFirstBytes() >= 0)) {
+        while ((ln > skipped) && (readFirstBytes() >= 0)) {
             skipped++
         }
-        return `in`.skip(n - skipped) + skipped
+        return `in`.skip(ln - skipped) + skipped
     }
 
     companion object {

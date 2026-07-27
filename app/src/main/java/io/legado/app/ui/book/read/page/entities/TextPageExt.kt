@@ -7,8 +7,9 @@ package io.legado.app.ui.book.read.page.entities
  * （TextChapter 不下沉 commonMain，故 commonMain 不能返回 TextChapter 类型）。
  * 本扩展函数沿用原实现，调用方代码不变（仍走 `page.getTextChapter()` 扩展函数语法）。
  *
- * 字段 `textChapter` 类型为 `TextChapterRef?`，app 端 TextChapter 实现 TextChapterRef，
- * 这里强转回 TextChapter。空字符串页（loadingTextPage）的 textChapter 为 null，
- * 调用方需自行判空。
+ * 字段 `textChapter` 类型为 `TextChapterRef?`，app 端 TextChapter 实现 TextChapterRef。
+ * 原版声明为 `var textChapter = emptyTextChapter`（哨兵兜底、从不为 null），下沉版默认
+ * null——这里 null 回落 [TextChapter.emptyTextChapter]，对齐原版 loading 页语义。
  */
-fun TextPage.getTextChapter(): TextChapter = textChapter as TextChapter
+fun TextPage.getTextChapter(): TextChapter =
+    textChapter as? TextChapter ?: TextChapter.emptyTextChapter

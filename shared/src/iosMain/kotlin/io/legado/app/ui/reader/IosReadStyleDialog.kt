@@ -9,10 +9,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,6 +54,7 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.TransType
@@ -117,9 +117,14 @@ fun IosReadStyleDialog(
             onShowChineseConverter = { showChineseConverterDialog = true },
         )
     }
+    // 对齐 app 端 ReadStyleDialog.onDismiss: 关闭时落盘 configList / shareConfig
+    val dismissAndSave = {
+        readBookConfig.save()
+        onDismiss()
+    }
 
     AppAlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = dismissAndSave,
         title = rememberString("read_style"),
         content = {
             SharedReadStyleScreen(
@@ -130,7 +135,7 @@ fun IosReadStyleDialog(
                 },
             )
         },
-        okButton = AlertButton(rememberString("close")) { onDismiss() },
+        okButton = AlertButton(rememberString("close")) { dismissAndSave() },
     )
 
     // 子 Dialog: 背景文字配置 (ReadStyleScreen 内长按样式项触发)
@@ -263,8 +268,8 @@ private class IosReadStyleController(
         set(value) { readBookConfig.paragraphSpacing = value }
 
     override var styleSelect: Int
-        get() = readBookConfig.readStyleSelect
-        set(value) { readBookConfig.readStyleSelect = value }
+        get() = readBookConfig.styleSelect
+        set(value) { readBookConfig.styleSelect = value }
 
     override var paragraphIndent: String
         get() = readBookConfig.paragraphIndent
@@ -284,7 +289,7 @@ private class IosReadStyleController(
     }
 
     override fun save() {
-        // prefs 自动持久化, 无需显式 save
+        readBookConfig.save()
     }
 }
 
@@ -333,7 +338,7 @@ private fun IosStylePreview(
 ) {
     val colors = AppTheme.colors
     val borderColor = if (selected) colors.accent else colors.secondaryText
-    val borderWidth = if (selected) 2.dp else 1.dp
+    val borderWidth = if (selected) DesignTokens.strokeMedium else DesignTokens.strokeThin
     // 背景色 (从 bgStr 解析, 失败回退到 colors.background)
     val bgColor = remember(config.bgStr) {
         runCatching { Color(ColorUtils.parseColor(config.bgStr)) }
@@ -351,9 +356,9 @@ private fun IosStylePreview(
         modifier = Modifier
             .padding(horizontal = 4.dp)
             .size(width = 60.dp, height = 90.dp)
-            .clip(RoundedCornerShape(4.dp))
+            .clip(DesignTokens.shapeSm)
             .background(bgColor)
-            .border(borderWidth, borderColor, RoundedCornerShape(4.dp))
+            .border(borderWidth, borderColor, DesignTokens.shapeSm)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(6.dp),
         contentAlignment = Alignment.Center,
@@ -389,9 +394,14 @@ private fun IosBgTextConfigDialog(
     val actions = remember(readBookConfig, scope) { IosBgTextConfigActions(readBookConfig, scope) }
     // iOS 端无 assets 预设背景图, bgImageList 为空 (与桌面端一致)
     val bgImageList: List<BgImageItem> = remember { emptyList() }
+    // 对齐 app 端 BgTextConfigDialog.onDismiss: 关闭时落盘 configList / shareConfig
+    val dismissAndSave = {
+        readBookConfig.save()
+        onDismiss()
+    }
 
     AppAlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = dismissAndSave,
         title = rememberString("text_bg_style"),
         content = {
             SharedBgTextConfigScreen(
@@ -404,7 +414,7 @@ private fun IosBgTextConfigDialog(
                 },
             )
         },
-        okButton = AlertButton(rememberString("close")) { onDismiss() },
+        okButton = AlertButton(rememberString("close")) { dismissAndSave() },
     )
 }
 
@@ -465,7 +475,7 @@ private class IosBgTextConfigController(
     override fun deleteDur(): Boolean = readBookConfig.deleteDur()
 
     override fun save() {
-        // prefs 自动持久化, 无需显式 save
+        readBookConfig.save()
     }
 
     override fun restorePresetNames(): List<String> = listOf("Default")
@@ -550,8 +560,8 @@ private fun IosBgImagePreview(item: BgImageItem, onClick: () -> Unit) {
     Column(
         modifier = Modifier
             .size(66.dp, 88.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .border(1.dp, colors.secondaryText, RoundedCornerShape(4.dp))
+            .clip(DesignTokens.shapeSm)
+            .border(DesignTokens.strokeThin, colors.secondaryText, DesignTokens.shapeSm)
             .clickable(onClick = onClick)
             .padding(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,

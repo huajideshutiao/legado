@@ -6,35 +6,45 @@ import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
 
 /**
- * 鸿蒙 actual: 签名/验签, 基于 @ohos.security.cryptoFramework napi 桥接。
+ * 鸿蒙 actual: 签名/验签。主实现 mbedTLS [MbedTlsSign] (RSA v1.5 含 MD5withRSA、PSS、NONEwithRSA,
+ * 无 UI 线程往返), 任意异常回落既有 @ohos.security.cryptoFramework napi 桥接;
+ * ECDSA 在 mbedTLS 裁剪外 (无 ECP), 主实现点名抛异常后由 napi 回落承接。
  *
- * # 调用链
- * KMP [sign]/[verify] → [OhosNativeBridge.invokeCryptoSync] (tsfn 发请求 + @CName 回调返回结果) →
+ * # napi 回落调用链
+ * KMP → [OhosNativeBridge.invokeCryptoSync] (tsfn 发请求 + @CName 回调返回结果) →
  * ArkTS [CryptoBridgeHandler.handleCryptoRequest] →
  * `cryptoFramework.createSign`/`createVerify` + `convertKey` + `init` + `sign`/`verify` →
  * `legado.cryptoCallback(requestId, resultJson)` 回送结果 → KMP 解析返回 ByteArray/Boolean。
  *
- * # 算法映射
- * JCA Signature algorithm → cryptoFramework Sign/Verify spec 由 ArkTS 侧
- * [CryptoBridgeHandler.mapSignSpec] 完成:
+ * # 算法映射 (回落侧, ArkTS [CryptoBridgeHandler.mapSignSpec])
  * - RSA: "MD5withRSA" / "SHA<N>withRSA" → `RSA<size>|PKCS1|<MD5|SHA<N>>`
  * - RSA PSS: "SHA<N>WithRSA/PSS" → `RSA<size>|PSS|SHA<N>|MGF1|SHA<N>`
  * - ECDSA: "SHA<N>withECDSA" → `ECC<size>|SHA<N>`
- * RSA/ECC keysize 由 ArkTS 侧 convertKey 探测 (RSA: 1024/2048/3072/4096/8192; ECC: 256/384/521)。
  *
  * # 密钥格式
- * privateKey: PKCS#8 DER (sign 用); publicKey: X.509 DER (verify 用)。
+ * privateKey: PKCS#8 DER (sign 用); publicKey: X.509 DER (verify 用); mbedTLS 另兼容 PKCS#1/PEM。
  *
  * # 失败处理
- * 桥接未就绪 / ArkTS 运算失败 / 超时 → 抛异常 (与 iOS actual / jvmAndAndroid hutool 失败抛异常一致)。
- * verify 区分: ArkTS 运算异常 (如 key 格式错误) → 抛异常; 签名不匹配 → 返回 false (不抛异常,
- * 对齐 JCA Signature.verify 语义, 由 ArkTS 侧 verifyData 返回 boolean 透传)。
- *
- * napi 桥接模式参考 [NativeAsymmetricCryptoOps] / [io.legado.app.help.image.OhosImageOps]。
+ * verify 区分: 运算/密钥错误 → 抛异常; 签名不匹配 → 返回 false (对齐 JCA Signature.verify)。
  */
 actual object NativeSignOps {
 
-    actual fun sign(algorithm: String, privateKey: ByteArray?, data: ByteArray): ByteArray {
+    actual fun sign(algorithm: String, privateKey: ByteArray?, data: ByteArray): ByteArray = mbedTlsOrFallback(
+        { MbedTlsSign.sign(algorithm, privateKey, data) },
+        { napiSign(algorithm, privateKey, data) }
+    )
+
+    actual fun verify(
+        algorithm: String,
+        publicKey: ByteArray?,
+        data: ByteArray,
+        signature: ByteArray
+    ): Boolean = mbedTlsOrFallback(
+        { MbedTlsSign.verify(algorithm, publicKey, data, signature) },
+        { napiVerify(algorithm, publicKey, data, signature) }
+    )
+
+    private fun napiSign(algorithm: String, privateKey: ByteArray?, data: ByteArray): ByteArray {
         if (privateKey == null) {
             throw IllegalArgumentException("Sign.sign: privateKey not set")
         }
@@ -46,8 +56,8 @@ actual object NativeSignOps {
         val payload = KS_JSON.encodeToString(
             SignPayload(
                 algorithm = algorithm,
-                privateKey = Base64.encodeToString(privateKey),
-                data = Base64.encodeToString(data)
+                privateKey = Base64.encode(privateKey),
+                data = Base64.encode(data)
             )
         )
         val result = OhosNativeBridge.invokeCryptoSync("sign", payload)
@@ -66,7 +76,7 @@ actual object NativeSignOps {
         return Base64.decode(resp.data)
     }
 
-    actual fun verify(
+    private fun napiVerify(
         algorithm: String,
         publicKey: ByteArray?,
         data: ByteArray,
@@ -83,9 +93,9 @@ actual object NativeSignOps {
         val payload = KS_JSON.encodeToString(
             VerifyPayload(
                 algorithm = algorithm,
-                publicKey = Base64.encodeToString(publicKey),
-                data = Base64.encodeToString(data),
-                signature = Base64.encodeToString(signature)
+                publicKey = Base64.encode(publicKey),
+                data = Base64.encode(data),
+                signature = Base64.encode(signature)
             )
         )
         val result = OhosNativeBridge.invokeCryptoSync("verify", payload)

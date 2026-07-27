@@ -13,7 +13,7 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * [BookImageStorage] iOS/鸿蒙 (Native target) 共用真实实现

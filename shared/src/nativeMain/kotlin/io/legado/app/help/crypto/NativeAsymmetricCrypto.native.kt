@@ -8,7 +8,7 @@ import io.legado.app.utils.toHexLower
  * nativeMain: 非对称加解密门面 [AsymmetricCrypto] 实现 (iOS / 鸿蒙 两端共用壳)。
  *
  * 本类只做 data/key 归一 + Base64/Hex 编码, 真实加解密下沉到 [NativeAsymmetricCryptoOps]
- * (expect object): iOS 端 Security.framework actual, 鸿蒙端 napi actual。
+ * (expect object): 两端 actual 均 mbedTLS 主实现, 异常回落 Security.framework/napi。
  *
  * 行为字节级对齐 jvmAndAndroidMain (hutool AsymmetricEncryptor/Decryptor):
  * - setPrivateKey/setPublicKey(String) → encodeToByteArray (UTF-8) 视为 DER (私钥 PKCS#8, 公钥 X.509),
@@ -18,8 +18,8 @@ import io.legado.app.utils.toHexLower
  * - encryptHex/encryptBase64 = encrypt 后 toHexLower/encodeBase64Standard (对齐 hutool HexUtil/Base64)。
  *
  * usePublicKey 语义 (对齐 jvmAndAndroid getKeyType): true→公钥, false/null→私钥。
- * RSA 标准场景: encrypt(usePublicKey=true) 公钥加密 + decrypt(usePublicKey=false) 私钥解密, 两端 actual 均支持;
- * 私钥加密/公钥解密为罕见场景, iOS Security.framework 不直接支持, 各端 actual 按需抛异常。
+ * RSA 四向 (公钥加密/私钥解密/私钥加密/公钥解密) 均由 mbedTLS 主实现支持 (v1.5;
+ * 反向仅 v1.5, OAEP 无反向定义); 仅当回落到 iOS Security.framework 时反向不可用。
  */
 class NativeAsymmetricCrypto(
     private val algorithm: String,
@@ -94,11 +94,11 @@ class NativeAsymmetricCrypto(
 /**
  * native 端非对称加解密真实实现下沉点 (expect object)。
  *
- * - iOS actual: Security.framework (SecKeyCreateEncryptedData/DecryptedData + SecKeyCreateWithData);
- * - 鸿蒙 actual: ohos.security.cryptoAsymCipher napi (或 stub 抛异常 + TODO)。
+ * 两端 actual 均为 mbedTLS 主实现 (MbedTlsRsa: v1.5/OAEP + 私钥加密/公钥解密反向 + hutool 同款分块),
+ * 任意异常回落既有实现: iOS Security.framework (仅公钥加密/私钥解密单向), 鸿蒙 cryptoFramework napi。
  *
  * usePublicKey: true→用公钥, false/null→用私钥 (对齐 jvmAndAndroid KeyType)。
- * privateKey/publicKey: DER 字节 (私钥 PKCS#8, 公钥 X.509)。
+ * privateKey/publicKey: DER 字节 (私钥 PKCS#8, 公钥 X.509); mbedTLS 主实现另兼容 PKCS#1/PEM。
  */
 expect object NativeAsymmetricCryptoOps {
     fun encrypt(

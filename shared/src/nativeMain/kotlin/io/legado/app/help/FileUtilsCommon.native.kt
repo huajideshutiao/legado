@@ -1,7 +1,7 @@
 package io.legado.app.help
 
 import io.legado.app.help.file.AppFilesDirs
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * FileUtilsCommon 的 nativeMain actual (iOS / 鸿蒙 共用)。

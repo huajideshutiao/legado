@@ -13,8 +13,8 @@ import kotlinx.coroutines.CoroutineDispatcher
  * - **jvmAndAndroidMain**: `Executors.newFixedThreadPool(size).asCoroutineDispatcher()`
  *   (与 app 端 MainViewModel.upTocPool 一致, 真实线程池, 大小可控)
  * - **nativeMain** (iOS/鸿蒙): `Dispatchers.Default` (Kotlin/Native 无 java.util.concurrent,
- *   用 Default dispatcher 兜底; Native 端目前 UpdateBookShared 为 stub 调度, 实际并发由
- *   CoroutineScope 控制而非池大小)
+ *   用 Default dispatcher 兜底; 调度真实可用, 但 size 入参被忽略 —— 固定池大小的
+ *   限流语义在 Native 端丢失, 并发上限由 Default dispatcher 自身线程数决定)
  *
  * # 关闭
  * 返回的 [CoroutineDispatcher] 在 JVM 端是 ExecutorCoroutineDispatcher, 调用方需在
@@ -24,6 +24,14 @@ import kotlinx.coroutines.CoroutineDispatcher
  * @param size 线程池大小 (调用方应限制上限, 如 `min(threadCount, AppConst.MAX_THREAD)`)
  */
 expect fun newFixedThreadPoolDispatcher(size: Int): CoroutineDispatcher
+
+/**
+ * IO 调度器门面 (expect, 各端 actual 均为 `Dispatchers.IO`)。
+ *
+ * `Dispatchers.IO` 定义在 kotlinx-coroutines 的 concurrent 源集, commonMain
+ * metadata 编译不可见 (平台编译可见), 故经 expect 转发供 commonMain 使用。
+ */
+expect val IoDispatcher: CoroutineDispatcher
 
 /**
  * 安全关闭 [CoroutineDispatcher] (expect, 各平台 actual 提供)。

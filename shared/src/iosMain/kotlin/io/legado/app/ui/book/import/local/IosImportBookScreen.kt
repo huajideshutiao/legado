@@ -1,9 +1,9 @@
 package io.legado.app.ui.book.import.local
 
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.AlertDialog
+import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -24,14 +24,15 @@ import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.import.local.ImportBookScreen as SharedImportBookScreen
 import io.legado.app.ui.book.import.local.ImportBookUiActions
 import io.legado.app.ui.book.import.local.ImportBookUiState
-import io.legado.app.ui.compose.component.Md2TextField
+import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.platform.sharedStringTable
+import io.legado.app.utils.formatNative
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import platform.Foundation.NSURL
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * iOS 端导入本地书籍 Screen 入口 (包装 shared/sharedUiMain 的 [SharedImportBookScreen])。
@@ -65,7 +66,7 @@ import kotlin.io.File
  *  epub 走 nativeMain EpubFile 真实解析, txt/pdf/cbz 未下沉抛明确异常记日志跳过
  * - **打开书籍**: app 端 `startReadBook` / `onArchiveFileClick` 依赖
  *  `startActivityForBook` + `ArchiveUtils`, 未下沉, onItemClick/onItemLongClick no-op
- * - **文件名导入 js**: app 端 `alert` 弹窗, iOS 端用 [AlertDialog] + [Md2TextField] 替代
+ * - **文件名导入 js**: app 端 `alert` 弹窗, iOS 端用 [AlertDialog] + [AppTextField] 替代
  *  (与 desktop 一致; 暂不持久化到 AppConfig, 因 AppConfig.bookImportFileName 是 Android 扩展)
  *
  * @param onBack 返回回调 (由 IosNavHost 注入, 切回 BOOKSHELF 路由)
@@ -470,7 +471,7 @@ private fun IosImportBookContent(onBack: () -> Unit) {
             onDismissRequest = { showImportFileNameDialog = false },
             title = { Text(filenameImportJsTitleLabel) },
             text = {
-                Md2TextField(
+                AppTextField(
                     value = importFileNameJsText,
                     onValueChange = { importFileNameJsText = it },
                     label = filenameImportJsSummaryLabel,
@@ -482,7 +483,7 @@ private fun IosImportBookContent(onBack: () -> Unit) {
                     showImportFileNameDialog = false
                     // TODO: app 端写 AppConfig.bookImportFileName, iOS 端 AppConfig 是 Android 扩展,
                     //  暂不持久化; 后续接入 iOS 端 PreferenceStore 后补全
-                    AppLog.put(sharedStringTable["ios_filename_import_js_input_log"]!!.format(js.take(50)))
+                    AppLog.put(sharedStringTable["ios_filename_import_js_input_log"]!!.formatNative(js.take(50)))
                 }) { Text(okLabel) }
             },
             dismissButton = {

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
@@ -21,7 +20,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -31,12 +29,7 @@ import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
-
-/** Arco Design arcoblue-6 主色 (#165DFF)。 */
-private val ArcoBlue6 = Color(0xFF165DFF)
-
-/** Arco Design arco_radius_lg = 16dp。 */
-private val ArcoRadiusLg = 16.dp
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 书签编辑对话框 (KMP 共享, app + desktop 复用)。
@@ -74,7 +67,7 @@ fun BookmarkDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(ArcoRadiusLg),
+            shape = DesignTokens.dialogShape,
             color = colors.background,
             modifier = Modifier.fillMaxWidth(),
         ) {
@@ -125,11 +118,11 @@ fun BookmarkDialog(
                         .padding(horizontal = 12.dp),
                 ) {
                     if (showDelete && onDelete != null) {
-                        AppTextButton(text = deleteText, color = ArcoBlue6) { onDelete() }
+                        AppTextButton(text = deleteText, color = DesignTokens.arcoBlue6) { onDelete() }
                     }
                     Spacer(Modifier.weight(1f))
                     AppTextButton(text = cancelText, color = colors.secondaryText) { onDismiss() }
-                    AppTextButton(text = okText, color = ArcoBlue6) {
+                    AppTextButton(text = okText, color = DesignTokens.arcoBlue6) {
                         // 对齐 app 端: 直接修改 bookmark 的 bookText/content 字段后回传
                         bookmark.bookText = bookText
                         bookmark.content = content

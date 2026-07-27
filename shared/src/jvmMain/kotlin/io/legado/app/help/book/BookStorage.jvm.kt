@@ -12,9 +12,9 @@ import java.util.stream.Collectors
 /**
  * [BookStorage] 桌面 JVM 实现。
  *
- * 章节缓存目录结构: `~/.legado/book_cache/{bookFolderName}/{chapterFileName}`
- * - `~` 解析为 `System.getProperty("user.home")`, 与桌面端数据库路径
- *   (`~/.legado/legado.db`, 见 [io.legado.app.data.BundledDatabaseDriver]) 同源
+ * 章节缓存目录结构: `{desktopAppRootDir}/book_cache/{bookFolderName}/{chapterFileName}`
+ * - 与桌面端数据库路径 (`{desktopAppRootDir}/legado.db`,
+ *   见 [io.legado.app.data.BundledDatabaseDriver]) 同源
  * - 文件名格式由 [BookChapter.getFileName] 派生 (`00001-{titleMD5}.nb`)
  *
  * 对应 Android 端 [io.legado.app.help.book.BookHelp] 的 saveText / getContent /
@@ -168,9 +168,7 @@ class JvmBookStorage(
         /**
          * 默认章节缓存根路径: `{desktopAppRootDir}/book_cache`。
          *
-         * - 便携模式 (jpackage 打包后): 跟随 exe 同级 `data/book_cache` (Main.kt 设 legado.portable.root)
-         * - 开发模式: `~/.legado/book_cache` (避免污染项目源码树)
-         * - 与桌面端数据库路径同源, 集中在应用根目录下管理
+         * 便携/安装模式的根目录解析见 [desktopAppRootDir]; 与桌面端数据库路径同源。
          */
         fun defaultRootPath(): String {
             return Paths.get(desktopAppRootDir(), "book_cache").toString()

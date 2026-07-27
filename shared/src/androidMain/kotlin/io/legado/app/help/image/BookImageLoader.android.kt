@@ -53,8 +53,7 @@ class AndroidBookImageLoader(
                     .build()
                 val result = imageLoader.execute(request)
                 if (result is SuccessResult) {
-                    val bitmap = result.image?.toBitmap()
-                        ?: error("Coil3 SuccessResult.image 为 null")
+                    val bitmap = result.image.toBitmap()
                     onSuccess(bitmap.asImageBitmap())
                 } else {
                     error("Coil3 加载失败: $result")
@@ -89,6 +88,11 @@ fun buildBookImageLoader(context: Context): ImageLoader {
     val sharedClient = OkHttpClientProviders.get().okHttpClient as OkHttpClient
     return ImageLoader.Builder(context as PlatformContext)
         .components {
+            // 失败 url 跳过 + coverDecodeJs 解密: 复刻原 Glide OkHttpStreamFetcher 语义
+            add(FailedUrlSkipInterceptor())
+            add(CoverDecodeInterceptor())
+            add(DecodedCoverKeyer(), DecodedCoverBytes::class)
+            add(DecodedCoverFetcher.Factory(), DecodedCoverBytes::class)
             add(SourceOriginHeaderInterceptor())
             add(OkHttpNetworkFetcherFactory(callFactory = { sharedClient }))
             // GIF: API 28+ 用 AnimatedImageDecoder(还支持 animated WebP/HEIF), 低版本用 GifDecoder(Movie)

@@ -14,10 +14,13 @@ import io.legado.app.data.entities.BookSource
  * 后续实现参照 [JvmImageBitmapLoader] 逻辑, 将 ImageIO.read 换为 BitmapFactory.decodeStream,
  * toComposeImageBitmap 换为 asImageBitmap。
  */
-actual class ImageBitmapLoader {
+actual class ImageBitmapLoader actual constructor() {
 
     actual suspend fun loadBitmap(url: String, book: Book?, bookSource: BookSource?): ImageBitmap? {
         // TODO: Android 端用 BitmapFactory + asImageBitmap 实现 (对照 JvmImageBitmapLoader)
         return null
     }
+
+    /** 同 [loadBitmap], Android 端暂无消费点; 动图另由 coil3-gif 承担, 不经本路径。 */
+    actual suspend fun loadBytes(url: String, book: Book?, bookSource: BookSource?): ByteArray? = null
 }

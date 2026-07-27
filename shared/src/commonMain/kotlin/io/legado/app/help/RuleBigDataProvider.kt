@@ -1,5 +1,7 @@
 package io.legado.app.help
 
+import kotlin.concurrent.Volatile
+
 /**
  * RuleBigDataHelp 的注入接口 (K5-c Phase 4: 已从 jvmAndAndroidMain 下沉 commonMain)。
  *

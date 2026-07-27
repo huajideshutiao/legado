@@ -3,9 +3,9 @@ package io.legado.app.ui.dict.rule
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.DictRule
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
@@ -57,11 +57,11 @@ class DictRuleViewModelShared(
     private val appDb get() = AppDbProviders.get()
 
     fun update(vararg dictRule: DictRule) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             try {
                 appDb.dictRuleDao.update(*dictRule)
             } catch (e: Throwable) {
-                val msg = "更新字典规则出错\n${e.localizedMessage}"
+                val msg = "更新字典规则出错\n${e.message}"
                 AppLog.put(msg, e)
                 // 替代 context.toastOnUi(msg), Toasters.get() 已下沉 commonMain
                 Toasters.get().toast(msg)
@@ -70,11 +70,11 @@ class DictRuleViewModelShared(
     }
 
     fun delete(vararg dictRule: DictRule) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             try {
                 appDb.dictRuleDao.delete(*dictRule)
             } catch (e: Throwable) {
-                val msg = "删除字典规则出错\n${e.localizedMessage}"
+                val msg = "删除字典规则出错\n${e.message}"
                 AppLog.put(msg, e)
                 // 替代 context.toastOnUi(msg), Toasters.get() 已下沉 commonMain
                 Toasters.get().toast(msg)
@@ -83,7 +83,7 @@ class DictRuleViewModelShared(
     }
 
     fun upSortNumber() {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             val rules = appDb.dictRuleDao.all()
             for ((index, rule) in rules.withIndex()) {
                 rule.sortNumber = index + 1
@@ -93,21 +93,21 @@ class DictRuleViewModelShared(
     }
 
     fun enableSelection(vararg dictRule: DictRule) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             val array = dictRule.map { it.copy(enabled = true) }.toTypedArray()
             appDb.dictRuleDao.insert(*array)
         }
     }
 
     fun disableSelection(vararg dictRule: DictRule) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             val array = dictRule.map { it.copy(enabled = false) }.toTypedArray()
             appDb.dictRuleDao.insert(*array)
         }
     }
 
     fun importDefault() {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             importDefaultRules.invoke()
         }
     }

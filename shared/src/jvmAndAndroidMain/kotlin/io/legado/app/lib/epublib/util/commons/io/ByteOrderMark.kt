@@ -50,8 +50,8 @@ class ByteOrderMark(charsetName: String, vararg bytes: Int) : Serializable {
      * length
      */
     init {
-        require(!(charsetName == null || charsetName.isEmpty())) { "No charsetName specified" }
-        require(!(bytes == null || bytes.size == 0)) { "No bytes specified" }
+        require(charsetName.isNotEmpty()) { "No charsetName specified" }
+        require(bytes.isNotEmpty()) { "No bytes specified" }
         this.charsetName = charsetName
         this.bytes = IntArray(bytes.size)
         System.arraycopy(bytes, 0, this.bytes, 0, bytes.size)
@@ -92,15 +92,15 @@ class ByteOrderMark(charsetName: String, vararg bytes: Int) : Serializable {
     /**
      * Indicates if this BOM's bytes equals another.
      * 
-     * @param obj The object to compare to
+     * @param other The object to compare to
      * @return true if the bom's bytes are equal, otherwise
      * false
      */
-    override fun equals(obj: Any?): Boolean {
-        if (obj !is ByteOrderMark) {
+    override fun equals(other: Any?): Boolean {
+        if (other !is ByteOrderMark) {
             return false
         }
-        val bom = obj
+        val bom = other
         if (bytes.size != bom.length()) {
             return false
         }

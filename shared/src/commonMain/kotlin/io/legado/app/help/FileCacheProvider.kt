@@ -1,5 +1,7 @@
 package io.legado.app.help
 
+import kotlin.concurrent.Volatile
+
 /**
  * 文件缓存抽象层。
  *

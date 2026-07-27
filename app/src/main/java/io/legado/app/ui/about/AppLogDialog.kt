@@ -12,6 +12,7 @@ import io.legado.app.base.BaseComposeDialogFragment
  */
 class AppLogDialog : BaseComposeDialogFragment() {
 
+    override val isFullHeight: Boolean = true
 
     @Composable
     override fun Content() {

@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,6 +29,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import kotlin.time.Instant
 import kotlinx.coroutines.flow.first
 
 /**
@@ -38,7 +39,7 @@ import kotlinx.coroutines.flow.first
  * 顶栏 (56dp, ArcoBlue6 底, 白字, 刷新/菜单图标) + 发现源列表 (源名 / URL / 最后更新时间)。
  * 点击 → onOpenExplore 回调; 长按留作扩展 (编辑/置顶/删除, napi 桥接待扩展)。
  *
- * Material3 等价: 顶栏可用 TopAppBar, 列表项可用 ListItem。
+ * 顶栏/列表项均为 Compose material (MD2) 自绘, 项目锁 MD2 视觉, 不引入 material3 构件。
  *
  * 数据源: AppDbProviders.get().bookSourceDao.flowExplore().first() (替代 .ets 的 napi
  * legado.exploreList() 桥接, napi C++ 侧未实现该函数, 改直接调 KMP DAO)。
@@ -80,7 +81,7 @@ fun OhosExploreTab(
 @Composable
 private fun ExploreTitleBar(onRefresh: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().height(56.dp).background(ArcoBlue6).padding(horizontal = 16.dp),
+        Modifier.fillMaxWidth().height(56.dp).background(DesignTokens.arcoBlue6).padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -111,7 +112,7 @@ private fun ExploreSourceItem(
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(DesignTokens.shapeDefault)
             .background(Color.White)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -149,7 +150,7 @@ private fun ExploreSourceItem(
 /** 时间戳格式化 (对齐 DiscoverTab.ets formatTime: yyyy-MM-dd, 0 显示未知)。 */
 private fun formatTime(millis: Long): String {
     if (millis <= 0) return "未知"
-    // KMP 无 java.text.SimpleDateFormat, 用 kotlinx-datetime 跨平台实现 (ohosMain 已声明依赖)
+    // KMP 无 java.text.SimpleDateFormat, 用 kotlin.time.Instant (标准库) 取 ISO 串的日期段
     val instant = Instant.fromEpochMilliseconds(millis)
     val local = instant.toString().substringBefore('T').ifBlank { "未知" }
     return local

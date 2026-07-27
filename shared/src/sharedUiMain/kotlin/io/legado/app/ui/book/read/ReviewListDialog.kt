@@ -51,7 +51,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -62,6 +61,7 @@ import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 评论列表对话框内容 (KMP 共享, app + desktop 复用)。
@@ -272,7 +272,8 @@ private fun ListHeader(
                 Icon(
                     painter = rememberPainter("ic_arrow_drop_down"),
                     contentDescription = null,
-                    tint = Color.Unspecified,
+                    // 跟随夜间主题: 与相邻排序文本同色
+                    tint = rememberColor("secondaryText"),
                 )
             }
             AppDropdownMenu(
@@ -398,7 +399,8 @@ private fun ReviewItem(
                         Icon(
                             painter = rememberPainter("ic_more_vert"),
                             contentDescription = rememberString("menu"),
-                            tint = Color.Unspecified,
+                            // 跟随夜间主题: 与相邻昵称/extra 同色
+                            tint = rememberColor("secondaryText"),
                             modifier = Modifier
                                 .height(28.dp)
                                 .clickable { menuOpen = true },
@@ -480,7 +482,8 @@ private fun ReviewItem(
                         if (isVoted) "ic_review_thumb_up_filled" else "ic_review_thumb_up"
                     ),
                     contentDescription = rememberString("vote_up"),
-                    tint = Color.Unspecified,
+                    // 跟随夜间主题: 已点赞=review_voted(与计数文本同色), 未点赞=secondaryText
+                    tint = if (isVoted) rememberColor("review_voted") else rememberColor("secondaryText"),
                     modifier = Modifier
                         .size(20.dp)
                         .clickable { onVoteUp(item) },
@@ -507,7 +510,8 @@ private fun ReviewItem(
                         if (isVotedDown) "ic_review_thumb_down_filled" else "ic_review_thumb_down"
                     ),
                     contentDescription = rememberString("vote_down"),
-                    tint = Color.Unspecified,
+                    // 跟随夜间主题: 已点踩=review_voted(与计数文本同色), 未点踩=secondaryText
+                    tint = if (isVotedDown) rememberColor("review_voted") else rememberColor("secondaryText"),
                     modifier = Modifier
                         .padding(end = 8.dp)
                         .size(20.dp)
@@ -520,7 +524,7 @@ private fun ReviewItem(
                         .fillMaxWidth()
                         .padding(top = 8.dp)
                         .height(40.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(DesignTokens.shapeDefault)
                         .background(rememberColor("btn_bg"))
                         .clickable { onOpenReplies(item) }
                         .padding(start = 16.dp),

@@ -1,5 +1,7 @@
 package io.legado.app.help
 
+import kotlin.concurrent.Volatile
+
 /**
  * IntentData 跨模块只读访问接口。
  *

@@ -6,13 +6,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.Slider
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -33,6 +31,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
@@ -140,7 +141,7 @@ fun AudioPlayScreen(
         playMode = playMode,
         prevEnabled = AudioPlayShared.durChapterIndex > 0,
         nextEnabled = AudioPlayShared.durChapterIndex < AudioPlayShared.simulatedChapterSize - 1,
-        accentColor = MaterialTheme.colorScheme.primary,
+        accentColor = AppTheme.colors.accent,
         onBack = onBack,
         onOpenChangeSource = { onOpenChangeSource(book) },
         onCoverClick = { coverVisible = false },
@@ -294,26 +295,23 @@ private fun TimerDialog(
     onDismiss: () -> Unit,
 ) {
     var value by remember { mutableIntStateOf(initial) }
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(rememberString("set_timer")) },
-        text = {
-            Column {
-                Text(rememberString("timer_m", value))
-                Slider(
-                    value = value.toFloat(),
-                    onValueChange = {
-                        value = it.toInt()
-                        onProgressChanged(value)
-                    },
-                    valueRange = 0f..180f,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text(rememberString("ok")) }
-        },
-    )
+        title = rememberString("set_timer"),
+        okButton = AlertButton(rememberString("ok")),
+    ) {
+        Column(Modifier.padding(horizontal = 24.dp)) {
+            Text(rememberString("timer_m", value))
+            Slider(
+                value = value.toFloat(),
+                onValueChange = {
+                    value = it.toInt()
+                    onProgressChanged(value)
+                },
+                valueRange = 0f..180f,
+            )
+        }
+    }
 }
 
 @Composable
@@ -323,28 +321,25 @@ private fun SpeedDialog(
     onDismiss: () -> Unit,
 ) {
     var value by remember { mutableStateOf(initial) }
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(rememberString("speed")) },
-        text = {
-            Column {
-                Text("%.1fX".format(value))
-                // 0.5..3.0 step 0.1 → 26 个值, steps = 26 - 2 = 24
-                Slider(
-                    value = value,
-                    onValueChange = {
-                        value = it
-                        onProgressChanged(it)
-                    },
-                    valueRange = 0.5f..3.0f,
-                    steps = 24,
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text(rememberString("ok")) }
-        },
-    )
+        title = rememberString("speed"),
+        okButton = AlertButton(rememberString("ok")),
+    ) {
+        Column(Modifier.padding(horizontal = 24.dp)) {
+            Text("%.1fX".format(value))
+            // 0.5..3.0 step 0.1 → 26 个值, steps = 26 - 2 = 24
+            Slider(
+                value = value,
+                onValueChange = {
+                    value = it
+                    onProgressChanged(it)
+                },
+                valueRange = 0.5f..3.0f,
+                steps = 24,
+            )
+        }
+    }
 }
 
 // ---- 辅助: sticky 事件订阅为 Compose State (对照 app 端 observeEventSticky) ----
@@ -386,7 +381,7 @@ private suspend fun loadAudioCover(src: String): ImageBitmap? = withContext(Disp
                 val req = Request.Builder().url(src).build()
                 client.newCall(req).execute().use { resp ->
                     if (!resp.isSuccessful) null
-                    else resp.body?.bytes()?.let { ImageIO.read(ByteArrayInputStream(it)) }
+                    else resp.body.bytes().let { ImageIO.read(ByteArrayInputStream(it)) }
                 }
             }
             else -> null

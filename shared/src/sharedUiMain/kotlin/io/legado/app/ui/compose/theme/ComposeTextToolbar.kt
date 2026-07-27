@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -36,6 +35,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlin.math.roundToInt
 
 /**
@@ -102,9 +102,11 @@ class ComposeTextToolbar : TextToolbar {
             TextToolbarPositionProvider(p.rect, gapPx, marginPx)
         }
         // focusable=false：不抢文本框焦点/选区，显隐交由框架回调驱动
+        // onDismissRequest 空实现：鼠标微动会触发系统 dismiss 回调清空选区菜单，
+        // 改由框架 hide() 在选区真正清除时统一隐藏
         Popup(
             popupPositionProvider = positionProvider,
-            onDismissRequest = { params = null },
+            onDismissRequest = {},
             properties = PopupProperties(focusable = false, clippingEnabled = false),
         ) {
             ToolbarCard(eInk) {
@@ -119,16 +121,14 @@ class ComposeTextToolbar : TextToolbar {
     }
 }
 
-private val cardShape = RoundedCornerShape(8.dp)
-
 @Composable
 private fun ToolbarCard(eInk: Boolean, content: @Composable () -> Unit) {
     Box(
         Modifier
-            .then(if (eInk) Modifier else Modifier.shadow(6.dp, cardShape))
-            .clip(cardShape)
+            .then(if (eInk) Modifier else Modifier.shadow(6.dp, DesignTokens.cardShape))
+            .clip(DesignTokens.cardShape)
             .background(AppTheme.colors.background)
-            .then(if (eInk) Modifier.border(1.dp, AppTheme.colors.primaryText, cardShape) else Modifier)
+            .then(if (eInk) Modifier.border(DesignTokens.strokeThin, AppTheme.colors.primaryText, DesignTokens.cardShape) else Modifier)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) { content() }
     }

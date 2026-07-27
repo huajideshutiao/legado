@@ -96,6 +96,19 @@ export interface LegadoNativeBridge {
    */
   registerCacheDir(path: string): void;
 
+  // ===== legado:// deep link 投递 (ArkTS → Kotlin 同步推送) =====
+  /**
+   * 投递 legado:// / yuedu:// 一键导入链接 (EntryAbility.onCreate / onNewWant 调用)。
+   *
+   * Kotlin 侧 LegadoDeepLinkHandler 解析 URL 后写入 pending (StateFlow),
+   * Compose 侧 DeepLinkImportHost 消费并弹勾选导入对话框 (书源/替换规则/目录规则/字典/语音/主题)。
+   * 冷启动 (onCreate) 先于 UI 组合投递也不丢。
+   *
+   * @param uri deep link URL, 如 legado://import/bookSource?src=https://...
+   * @return true=已识别并记录待导入; false=非 legado/yuedu scheme 或缺 src 参数 (调用方可自行处理)
+   */
+  handleDeepLink(uri: string): boolean;
+
   // ===== Toast / Notification tsfn 回调注册 (KP7+ 新增, KMP → ArkTS 跨线程 dispatch) =====
   /**
    * 注册 Toast 回调 (KMP → ArkTS 跨线程 dispatch)。
@@ -153,12 +166,15 @@ export interface LegadoNativeBridge {
    * OhosNativeBridge.sendMediaCommand 时, JSON 命令跨线程 dispatch 到此 [callback],
    * 由 ArkTS 调 @ohos.multimedia.media AVPlayer。AVPlayer 事件通过 [mediaEvent] 回送。
    *
-   * @param callback 接收 JSON 命令 `{ action, path?, position? }`:
-   *   - action='setSource': path=文件路径 → 创建 AVPlayer + 设源 + prepare
+   * @param callback 接收 JSON 命令 `{ playerId?, action, path?, url?, headers?, position?, speed? }`:
+   *   - playerId:            播放实例 id ("audioBook"/"httpTts"/"video"), 缺省 = "default"
+   *   - action='setSource':    path=本地文件路径 → 创建 AVPlayer + fd:// 设源 + prepare
+   *   - action='setSourceUrl': url=网络流地址, headers=请求头 → createMediaSourceWithUrl + setMediaSource + prepare
    *   - action='play':      AVPlayer.play()
    *   - action='pause':     AVPlayer.pause()
    *   - action='stop':      AVPlayer.stop()
    *   - action='seekTo':    position=毫秒 → AVPlayer.seek()
+   *   - action='setSpeed':  speed=浮点倍速 → AVPlayer.setSpeed(枚举档位)
    *   - action='release':   释放 AVPlayer
    */
   registerMediaCallback(callback: (json: string) => void): void;
@@ -178,13 +194,14 @@ export interface LegadoNativeBridge {
    * Media 事件回调 (ArkTS → Kotlin)。
    *
    * ArkTS AVPlayer 状态变化 / 播放结束 / 错误 / 缓冲进度等事件通过此方法推送给 Kotlin,
-   * 转发给 OhosNativeBridge.MediaEventListener (即 OhosHttpTtsPlayer)。
+   * 由 OhosNativeBridge 按 playerId 转发给对应的 MediaEventListener
+   * (OhosHttpTtsPlayer / OhosAudioPlayCommander)。
    *
-   * @param event 事件 JSON, 如:
-   *   `{ event: 'onReady' }` / `{ event: 'onEndOfMedia' }` /
-   *   `{ event: 'onError', message: '...' }` / `{ event: 'onBufferingUpdate', percent: 50 }` /
-   *   `{ event: 'onDuration', duration: 30000 }` / `{ event: 'onPosition', position: 5000 }` /
-   *   `{ event: 'onPlaying' }` / `{ event: 'onPaused' }`
+   * @param event 事件 JSON (必带 playerId), 如:
+   *   `{ playerId: 'httpTts', event: 'onReady' }` / `{ playerId: 'audioBook', event: 'onEndOfMedia' }` /
+   *   `{ playerId: '...', event: 'onError', message: '...' }` / `{ ..., event: 'onBufferingUpdate', percent: 50 }` /
+   *   `{ ..., event: 'onDuration', duration: 30000 }` / `{ ..., event: 'onPosition', position: 5000 }` /
+   *   `{ ..., event: 'onPlaying' }` / `{ ..., event: 'onPaused' }`
    */
   mediaEvent(event: string): void;
 
@@ -332,6 +349,65 @@ export interface LegadoNativeBridge {
    *   - 失败: `{ ok: false, error: '<string>' }`
    */
   filePickerCallback(requestId: number, result: string): void;
+
+  // ===== Pasteboard tsfn 回调注册 + ArkTS → Kotlin 回调 (同 FilePicker 模式) =====
+
+  /**
+   * 注册 Pasteboard 回调 (KMP → ArkTS 跨线程 dispatch, 剪贴板读写请求)。
+   *
+   * C++ 侧创建 napi_threadsafe_function 包装 [callback], 并通过 @CName legado_register_pasteboard_fn
+   * 把 dispatch 函数指针注入 Kotlin OhosNativeBridge.pasteboardTsfn。此后 KMP 调用
+   * OhosNativeBridge.invokePasteboardSync 时, JSON 请求跨线程 dispatch 到此 [callback],
+   * 由 ArkTS 调 @ohos.pasteboard.getSystemPasteboard() getData/setData。
+   * 处理完成后通过 [pasteboardCallback] 回送结果给 Kotlin。
+   *
+   * @param callback 接收 JSON 请求 `{ requestId, action, payload }`:
+   *   - action='read':  payload=`{}` → getData().getPrimaryText(), 回送 `{ ok: true, text: '...' }`
+   *   - action='write': payload=`{ text }` → createData(MIMETYPE_TEXT_PLAIN).setData(), 回送 `{ ok: true }`
+   */
+  registerPasteboardCallback(callback: (json: string) => void): void;
+
+  /**
+   * Pasteboard 操作结果回调 (ArkTS → Kotlin)。
+   *
+   * @param requestId 请求 ID (与 invokePasteboardSync 生成的 requestId 对应)
+   * @param result 结果 JSON:
+   *   - read 成功:  `{ ok: true, text: '<剪贴板纯文本, 空剪贴板为空串>' }`
+   *   - write 成功: `{ ok: true }`
+   *   - 失败:       `{ ok: false, error: '<string>' }`
+   */
+  pasteboardCallback(requestId: number, result: string): void;
+
+  // ===== TextCodec tsfn 回调注册 + ArkTS → Kotlin 回调 (同 Pasteboard 模式, decode/encode) =====
+
+  /**
+   * 注册 TextCodec 回调 (KMP → ArkTS 跨线程 dispatch, 文本编解码请求)。
+   *
+   * C++ 侧创建 napi_threadsafe_function 包装 [callback], 并通过 @CName legado_register_text_codec_fn
+   * 把 dispatch 函数指针注入 Kotlin OhosNativeBridge.textCodecTsfn。此后 KMP 调用
+   * OhosNativeBridge.invokeTextCodecSync 时, JSON 请求跨线程 dispatch 到此 [callback],
+   * 由 ArkTS 调 @ohos.util.TextDecoder/TextEncoder 完成 GB18030/Big5 等非 UTF-8 字符集编解码
+   * (TXT 分章场景, Kotlin/Native 侧无原生 ICU 转换能力)。处理完成后通过 [textCodecCallback] 回送结果给 Kotlin。
+   *
+   * @param callback 接收 JSON 请求 `{ requestId, action, payload }`:
+   *   - action='decode': payload=`{ charset: 'gb18030'|'big5'|..., data: '<base64>' }` → 回送 `{ ok, text }`
+   *   - action='encode': payload=`{ charset: 'gb18030'|'big5'|..., text: '<string>' }` → 回送 `{ ok, data: '<base64>' }`
+   */
+  registerTextCodecCallback(callback: (json: string) => void): void;
+
+  /**
+   * TextCodec 操作结果回调 (ArkTS → Kotlin)。
+   *
+   * ArkTS 侧处理完 decode/encode 后, 通过此方法把结果 JSON
+   * 回送给 Kotlin, 唤醒 OhosNativeBridge.invokeTextCodecSync 中阻塞的 CompletableDeferred。
+   *
+   * @param requestId 请求 ID (与 invokeTextCodecSync 生成的 requestId 对应)
+   * @param result 结果 JSON:
+   *   - decode 成功: `{ ok: true, text: '<解码后的字符串>' }`
+   *   - encode 成功: `{ ok: true, data: '<base64>' }`
+   *   - 失败:       `{ ok: false, error: '<string>' }`
+   */
+  textCodecCallback(requestId: number, result: string): void;
 
   // ===== 发现页 (DiscoverTab) 桥接函数 =====
   // C++ 侧已实现 (KP5+):

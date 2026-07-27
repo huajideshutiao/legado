@@ -21,26 +21,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.help.openURL
 import io.legado.app.help.source.clearExploreKindsCache
+import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.Debug
 import io.legado.app.ui.book.source.debug.BookSourceDebugScreen as SharedBookSourceDebugScreen
 import io.legado.app.ui.book.source.debug.BookSourceDebugUiActions
 import io.legado.app.ui.book.source.debug.BookSourceDebugUiState
 import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.utils.GSON
-import io.legado.app.utils.fromJsonArray
-import io.legado.app.utils.isJsonArray
 import kotlinx.coroutines.launch
 
 /**
@@ -132,17 +128,10 @@ fun OhosBookSourceDebugScreen(
 
     // ---- 调试辅助函数 ----
 
-    // 解析发现分类 (对齐 app 端 initExploreKinds, 简化: 仅解析 JSON 数组格式)
+    // 解析发现分类 (对齐 app 端 initExploreKinds): commonMain 完整版 exploreKinds (含 JS 求值 + 磁盘缓存)
     suspend fun initExploreKinds(source: BookSource) {
         try {
-            val json = source.exploreKindsJson()
-            val kinds = if (json.isJsonArray()) {
-                runCatching {
-                    GSON.fromJsonArray<ExploreKind>(json).getOrDefault(emptyList())
-                }.getOrDefault(emptyList())
-            } else {
-                emptyList()
-            }.filter { !it.url.isNullOrBlank() }
+            val kinds = source.exploreKinds().filter { !it.url.isNullOrBlank() }
             exploreKinds = kinds
             kinds.firstOrNull()?.let {
                 textFx = "${it.title}::${it.url}"
@@ -373,13 +362,8 @@ private fun linkifyText(text: String, linkColor: Color): AnnotatedString {
         urlRegex.findAll(text).forEach { match ->
             append(text.substring(last, match.range.first))
             val url = match.value
-            val href = if (url.contains("://")) url else "http://$url"
-            withLink(
-                LinkAnnotation.Url(
-                    href,
-                    TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)),
-                )
-            ) {
+            // 仅保留链接视觉样式，不注册点击以避免拦截 SelectionContainer 长按选择
+            withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) {
                 append(url)
             }
             last = match.range.last + 1

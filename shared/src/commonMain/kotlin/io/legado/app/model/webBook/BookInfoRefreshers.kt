@@ -1,6 +1,7 @@
 package io.legado.app.model.webBook
 
 import io.legado.app.data.entities.BaseSource
+import kotlin.concurrent.Volatile
 
 /**
  * 书籍信息刷新 provider。

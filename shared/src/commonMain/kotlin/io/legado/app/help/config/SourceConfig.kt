@@ -7,13 +7,13 @@ package io.legado.app.help.config
  * - `origin` (书源 URL) → 源累计评分
  * - `${origin}_${name}_${author}` → 单本书在某源的评分
  *
- * 下沉后改走 [PreferenceProviders.get] (Android 端走 "legado_config" SP 文件,
+ * 下沉后改走 [PreferenceProviders.get] (Android 端走 defaultSharedPreferences,
  * desktop 端走 java.util.prefs.Preferences, iOS 端走 NSUserDefaults, 鸿蒙端走 OHOS Prefs)。
  *
  * # 保真说明
  *
  * 原 app 端 "SourceConfig" SP 文件中已累积的评分数据, 下沉后不会自动迁移到
- * PreferenceProviders 后端存储 (Android 端 "legado_config" 文件等), 评分会从 0 重新累积。
+ * PreferenceProviders 后端存储 (Android 端 defaultSharedPreferences), 评分会从 0 重新累积。
  * 评分数据为非关键运行时数据 (仅用于换源列表排序参考), 影响可控。
  *
  * # 跨模块合并

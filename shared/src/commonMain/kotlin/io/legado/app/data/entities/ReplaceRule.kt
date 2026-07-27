@@ -10,6 +10,7 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlin.jvm.Transient
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -92,7 +93,7 @@ data class ReplaceRule(
                 // commonMain 不能引用 java.util.regex.PatternSyntaxException，故 catch Exception
                 pattern.toRegex()
             } catch (ex: Exception) {
-                AppLog.put("正则语法错误或不支持：${ex.localizedMessage}", ex)
+                AppLog.put("正则语法错误或不支持：${ex.message}", ex)
                 return false
             }
             // Pattern.compile测试通过，但是部分情况下会替换超时，报错，一般发生在修改表达式时漏删了

@@ -3,6 +3,7 @@ package io.legado.app.data.entities
 import io.legado.app.constant.BookType
 import io.legado.app.utils.decodeStringMapOrNull
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlin.jvm.Transient
 import kotlinx.serialization.Serializable
 
 @Serializable

@@ -283,10 +283,12 @@ private fun RuleItemScope.DictRuleItem(
 ) {
     val colors = AppTheme.colors
     var showMenu by remember { mutableStateOf(false) }
+    // 按压整行触发切换选中, 子按钮 (Switch/Edit/More) 自身消费点击不冒泡
     Row(
         Modifier
             .fillMaxWidth()
             .longPressDraggableHandle(onDragStopped = { actions.onPersistOrder() })
+            .clickable { actions.onToggleSelected(item, !checked) }
             .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -299,9 +301,7 @@ private fun RuleItemScope.DictRuleItem(
             color = colors.primaryText,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .weight(1f)
-                .clickable { actions.onToggleSelected(item, !checked) },
+            modifier = Modifier.weight(1f),
         )
         AppSwitch(
             checked = item.enabled,

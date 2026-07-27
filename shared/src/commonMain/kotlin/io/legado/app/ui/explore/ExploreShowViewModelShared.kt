@@ -11,6 +11,7 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.printOnDebug
 import io.legado.app.help.source.SearchBookFilter
 import io.legado.app.help.toast.Toasters
@@ -21,7 +22,6 @@ import io.legado.app.model.webBook.parseExploreOptionsFromUrl
 import io.legado.app.utils.concurrent.newConcurrentSet
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -178,7 +178,7 @@ class ExploreShowViewModelShared(
                 }
                 keys
             }.catch {
-                AppLog.put("发现列表界面获取书籍数据失败\n${it.localizedMessage}", it)
+                AppLog.put("发现列表界面获取书籍数据失败\n${it.message}", it)
             }.collect {
                 bookshelf.clear()
                 bookshelf.addAll(it)
@@ -207,7 +207,7 @@ class ExploreShowViewModelShared(
      *   为 null 时用此查 DAO; null 时直接返回 (与原 `return@execute` 一致)
      */
     fun initData(exploreName: String?, exploreUrl: String?, sourceUrl: String?) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             rawExploreUrl = exploreUrl
             this@ExploreShowViewModelShared.exploreName = exploreName
             if (bookSource == null) {
@@ -236,7 +236,7 @@ class ExploreShowViewModelShared(
      * @param exploreUrl 发现 URL
      */
     fun initData(source: BookSource, exploreName: String?, exploreUrl: String?) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             rawExploreUrl = exploreUrl
             this@ExploreShowViewModelShared.exploreName = exploreName
             bookSource = source
@@ -348,7 +348,7 @@ class ExploreShowViewModelShared(
                 },
                 selectedOptions = selectedOptions,
             )
-        }.timeout(timeLimit).onSuccess(Dispatchers.IO) { pageResult ->
+        }.timeout(timeLimit).onSuccess(IoDispatcher) { pageResult ->
             val prevSize = books.size
             val (items, filteredCount) = SearchBookFilter.apply(pageResult.books)
             if (filteredCount > 0) {
@@ -389,7 +389,7 @@ class ExploreShowViewModelShared(
         bookSource?.let {
             it.exploreStyle = if (BookSource.exploreStyleIsVideo(it.exploreStyle)) 0
             else BookSource.EXPLORE_STYLE_VIDEO_FLAG
-            scope.launch(Dispatchers.IO) {
+            scope.launch(IoDispatcher) {
                 appDb.bookSourceDao.update(it)
             }
         }
@@ -407,7 +407,7 @@ class ExploreShowViewModelShared(
         bookSource?.let {
             val flag = it.exploreStyle and BookSource.EXPLORE_STYLE_VIDEO_FLAG
             it.exploreStyle = flag or cols.coerceIn(0, 6)
-            scope.launch(Dispatchers.IO) {
+            scope.launch(IoDispatcher) {
                 appDb.bookSourceDao.update(it)
             }
         }

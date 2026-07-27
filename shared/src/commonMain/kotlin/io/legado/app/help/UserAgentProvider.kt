@@ -1,6 +1,7 @@
 package io.legado.app.help
 
 import io.legado.app.constant.AppConst
+import kotlin.concurrent.Volatile
 
 object UserAgentProviders {
     @Volatile var impl: UserAgentProvider? = null

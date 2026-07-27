@@ -79,7 +79,8 @@ jobs:
       - name: Build Release (原包名)
         run: |
           echo "统一版本号"
-          sed "/def version/c def version = \"${{ env.VERSIONL }}\"" $GITHUB_WORKSPACE/app/build.gradle  -i
+          # app/build.gradle 已迁移为 build.gradle.kts, 锚定 kts 声明行 val version = "3.${releaseTime()}"
+          sed "/^val version = /c val version = \"${{ env.VERSIONL }}\"" $GITHUB_WORKSPACE/app/build.gradle.kts  -i
           echo "开始${{ env.product }}原包名构建"
           chmod +x gradlew
           ./gradlew assemble${{ env.product }}release --build-cache --parallel --daemon --warning-mode all
@@ -144,7 +145,8 @@ jobs:
       - name: Build ReleaseA (共存)
         run: |
           echo "修改applicationIdSuffix为共存版"
-          sed "s/'.release'/'.releaseA'/" $GITHUB_WORKSPACE/app/build.gradle  -i
+          # kts 双引号赋值; 精确锚整句, 避免误伤 if (applicationIdSuffix == ".releaseA") 判断行与 ".debug" 赋值
+          sed 's|applicationIdSuffix = ".release"|applicationIdSuffix = ".releaseA"|' $GITHUB_WORKSPACE/app/build.gradle.kts  -i
           echo "开始${{ env.product }}共存构建"
           ./gradlew assemble${{ env.product }}release --build-cache --parallel --daemon --warning-mode all
           echo "收集共存版APK"
@@ -301,9 +303,9 @@ jobs:
             ${{ github.workspace }}/linux/*.rpm
           if-no-files-found: ignore
 
-  # ===== macOS DMG + iOS debug framework 验证 (与 Android build 并行) =====
+  # ===== macOS DMG + iOS 编译验证 (与 Android build 并行) =====
   # macOS DMG: macOS runner 上 jpackage 打包
-  # iOS framework: 仅验证 shared iOS target 能编过 (只编不导 ipa, ipa 完整流程见 release.yml)
+  # iOS: 仅验证 shared iOS target 能编过 (klib), 不做 link/archive
   macos-build:
     needs: prepare
     runs-on: macos-latest
@@ -341,21 +343,25 @@ jobs:
           name: desktop.dmg
           path: ${{ github.workspace }}/dmg/*.dmg
           if-no-files-found: ignore
-      - name: Build iOS debug framework (验证编译, 不导 ipa)
-        # 仅验证 shared iOS target (iosArm64) 能编过, 不做 xcodebuild archive/export
-        # 完整 IPA 流程见 release.yml 的 ios-build job
-        run: ./gradlew :shared:linkDebugFrameworkIosArm64 --warning-mode all
-      - name: Upload iOS debug framework Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios.framework.debug
-          path: ${{ github.workspace }}/shared/build/bin/iosArm64/debugFramework/shared.framework
-          if-no-files-found: ignore
+      - name: Compile iOS klib (验证编译, 不导 ipa)
+        # 仅验证 shared iOS target (iosArm64) 能编过, 不做 link/xcodebuild archive/export
+        # shared/build.gradle.kts 已声明 binaries.framework (baseName "shared", isStatic=false),
+        # linkDebugFrameworkIosArm64 任务存在, 但此处刻意仍用 compileKotlinIosArm64 (klib):
+        #   link 阶段要把 quickjs/mbedtls cinterop 的 C 符号真正解析掉, 而 cinterop 只编 .def 内的
+        #   wrapper, 不编 src/cinterop/quickjs-ng/ 与 src/cinterop/mbedtls/ 的 C 源, 缺 iosArm64 .a
+        #   → link 必然未定义符号失败。
+        # 升回 linkDebugFrameworkIosArm64 的条件 (三选一, 满足后改本步 run 并加 framework 产物上传):
+        #   1. 加一步在 macOS runner 上用 Xcode clang 把 quickjs-ng/mbedtls C 源编成 iosArm64 静态库,
+        #      再在 def 里 staticLibraries + libraryPaths 引入; 或
+        #   2. 改用 cmake/CocoaPods 预构建 .a 并提交/缓存; 或
+        #   3. 把 quickjs/mbedtls C 源纳入 cinterop 的 compilerOpts 直编 (需拆分编译单元)。
+        run: ./gradlew :shared:compileKotlinIosArm64 --warning-mode all
 
   # ===== 鸿蒙 .so (debug) (与 Android build 并行) =====
-  # 鸿蒙 HAP 需自托管 runner (见下面注释块 ohos-hap), 这里只编译 shared linuxArm64 .so
-  # 鸿蒙 ABI 与 linuxArm64 一致, 复用 Kotlin/Native linuxArm64 目标
-  # 产物供鸿蒙 DevEco Studio 本地打包 HAP 时链接
+  # 鸿蒙 HAP 需自托管 runner (见下面注释块 ohos-hap), 这里只编译 shared ohosArm64 .so
+  # 鸿蒙 target 已从 linuxArm64 切换为 ohosArm64 (支付宝 fork Kotlin 2.3.0.1-alipay 工具链);
+  # fork 构件从 settings.gradle.kts 内嵌凭证的阿里云云效公网 maven 解析, CI 无需额外 secret
+  # 产物 liblegado_shared.so 供鸿蒙 DevEco Studio 本地打包 HAP 时链接
   ohos-build:
     needs: prepare
     runs-on: ubuntu-latest
@@ -374,11 +380,13 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
       - name: Build HarmonyOS .so (debug)
         # 鸿蒙 target 默认禁用, 必须加 -PenableOhosTarget=true
-        run: ./gradlew :shared:assembleLinuxArm64Debug -PenableOhosTarget=true --warning-mode all
+        # sharedLib binary (baseName legado_shared, 无 namePrefix) → link 任务名 linkDebugSharedOhosArm64
+        run: ./gradlew :shared:linkDebugSharedOhosArm64 -PenableOhosTarget=true --warning-mode all
       - name: Collect HarmonyOS .so
+        # 输出目录规则 build/bin/<target>/<binaryName>: ohosArm64 sharedLib debug → debugShared
         run: |
           mkdir -p ${{ github.workspace }}/ohos/
-          find ${{ github.workspace }}/shared/build/bin/linuxArm64/debugDefault -name "*.so" -exec mv {} ${{ github.workspace }}/ohos/ \;
+          find ${{ github.workspace }}/shared/build/bin/ohosArm64/debugShared -name "*.so" -exec mv {} ${{ github.workspace }}/ohos/ \;
       - name: Upload HarmonyOS .so Artifact
         uses: actions/upload-artifact@v4
         with:

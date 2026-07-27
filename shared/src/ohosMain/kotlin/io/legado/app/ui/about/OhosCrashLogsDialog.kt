@@ -13,13 +13,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -36,10 +34,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.toast.Toasters
-import kotlin.io.File
-
-/** Arco Design arco_radius_lg = 16dp (对齐 sharedUiMain CrashLogsDialog 圆角)。 */
-private val ArcoRadiusLg = 16.dp
+import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.utils.File
 
 /** 超长崩溃日志截断阈值, 对齐 TextDialog 的 32KB 上限。 */
 private const val MAX_TEXT_LENGTH = 32 * 1024
@@ -74,9 +71,10 @@ fun OhosCrashLogsDialog(
     }
 
     Dialog(onDismissRequest = onDismiss) {
+        // 圆角对齐 BaseComposeDialogFragment.filletBackground + alert DSL AppAlertDialogContent
         Surface(
-            shape = RoundedCornerShape(ArcoRadiusLg),
-            color = MaterialTheme.colorScheme.surface,
+            shape = DesignTokens.shapeDefault,
+            color = AppTheme.colors.fillet,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -95,7 +93,7 @@ fun OhosCrashLogsDialog(
                     Text(
                         text = "崩溃日志",
                         fontSize = 18.sp,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = AppTheme.colors.primaryText,
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -147,7 +145,7 @@ private fun CrashLogRow(
 ) {
     Text(
         text = fileName,
-        color = MaterialTheme.colorScheme.onSurface,
+        color = AppTheme.colors.primaryText,
         fontSize = 15.sp,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
@@ -182,9 +180,10 @@ private fun CrashLogViewDialog(
     }
 
     Dialog(onDismissRequest = onDismiss) {
+        // 圆角对齐 BaseComposeDialogFragment.filletBackground + alert DSL AppAlertDialogContent
         Surface(
-            shape = RoundedCornerShape(ArcoRadiusLg),
-            color = MaterialTheme.colorScheme.surface,
+            shape = DesignTokens.shapeDefault,
+            color = AppTheme.colors.fillet,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -203,7 +202,7 @@ private fun CrashLogViewDialog(
                     Text(
                         text = title,
                         fontSize = 16.sp,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = AppTheme.colors.primaryText,
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -213,7 +212,7 @@ private fun CrashLogViewDialog(
                 SelectionContainer {
                     Text(
                         text = displayText,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = AppTheme.colors.secondaryText,
                         fontSize = 15.sp,
                         modifier = Modifier
                             .fillMaxWidth()

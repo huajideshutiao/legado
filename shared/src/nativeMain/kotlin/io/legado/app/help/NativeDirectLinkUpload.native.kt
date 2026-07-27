@@ -4,7 +4,7 @@ import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.toJson
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * nativeMain: 直链上传配置的 iOS/鸿蒙共用实现 (对照 desktop DesktopDirectLinkUpload)。
@@ -31,7 +31,7 @@ object NativeDirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUploadD
     override fun putConfig(rule: DirectLinkUploadRule) {
         val file = File(configPath)
         file.parentFile?.takeIf { !it.exists() }?.mkdirs()
-        file.writeText(GSON.toJson(rule), Charsets.UTF_8)
+        file.writeText(GSON.toJson(rule))
     }
 
     override fun getDefaultRules(): List<DirectLinkUploadRule> = defaultRulesCache

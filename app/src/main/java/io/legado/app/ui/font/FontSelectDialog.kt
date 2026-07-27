@@ -13,12 +13,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import io.legado.app.ui.compose.component.AppDropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
-import androidx.compose.material3.Text
+import io.legado.app.ui.compose.component.AppRadioButton
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -149,17 +148,16 @@ class FontSelectDialog : BaseComposeDialogFragment() {
                         onDismissRequest = { showOverflow = false }
                     ) {
                         DropdownMenuItem(
-                            text = {
-                                Text(
-                                    stringResource(R.string.other_folder),
-                                    color = colors.primaryText
-                                )
-                            },
                             onClick = {
                                 showOverflow = false
                                 openFolder()
                             }
-                        )
+                        ) {
+                            Text(
+                                stringResource(R.string.other_folder),
+                                color = colors.primaryText
+                            )
+                        }
                     }
                 }
             }
@@ -176,13 +174,9 @@ class FontSelectDialog : BaseComposeDialogFragment() {
                             .padding(horizontal = 16.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        RadioButton(
+                        AppRadioButton(
                             selected = item.name == curName,
                             onClick = { onFontSelect(item) },
-                            colors = RadioButtonDefaults.colors(
-                                selectedColor = colors.accent,
-                                unselectedColor = colors.secondaryText
-                            )
                         )
                         Text(
                             text = item.name,

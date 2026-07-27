@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import io.legado.app.data.entities.Book
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.rememberString
@@ -28,6 +29,7 @@ import io.legado.app.ui.compose.platform.rememberString
  */
 @Composable
 fun OhosVideoPlayerScreen(
+    book: Book,
     onBack: () -> Unit,
     onOpenToc: () -> Unit = {},
     onOpenChangeSource: () -> Unit = {},

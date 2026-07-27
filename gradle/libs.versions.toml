@@ -194,14 +194,18 @@ quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjsKt"
 # Compose：BOM 统一版本，activity-compose/lifecycle-runtime-compose 跟随现有 activity/lifecycle ref
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
 compose-material3 = { module = "androidx.compose.material3:material3" }
+# MD2 组件库: AppTheme 基于 M2 MaterialTheme, app 端 Compose 界面与 shared 统一走 material(M2)
+compose-material = { module = "androidx.compose.material:material" }
 compose-ui = { module = "androidx.compose.ui:ui" }
 # Coil3 KMP 图片加载 (替代 Glide, 适配 Compose + 跨端)
 # artifact 名校验 (search.maven.org g:io.coil-kt.coil3): coil-compose / coil-network-okhttp 均 3.2.0
 # coil3-core 原写法 io.coil-kt.coil3:coil3 不存在 (Maven 404), 正确聚合 artifact 为 io.coil-kt.coil3:coil
 # 变体覆盖: coil-compose 发 iosArm64 (klib) 可放 sharedUiMain; coil-network-okhttp 仅 jvm/android (无 iosArm64/linuxArm64), 必须放 jvmAndAndroidMain
+# coil-network-ktor3 发 iosArm64/iosSimulatorArm64 klib (repo1.maven.org 已核), pom 依赖 ktor-client-core 3.1.0 与项目 ktor 版本一致, 放 iosMain 专属
 coil3-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil3" }
 coil3-gif = { module = "io.coil-kt.coil3:coil-gif", version.ref = "coil3" }
 coil3-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil3" }
+coil3-network-ktor3 = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil3" }
 coil3-core = { module = "io.coil-kt.coil3:coil", version.ref = "coil3" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 compose-activity = { module = "androidx.activity:activity-compose", version.ref = "activity" }

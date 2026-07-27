@@ -1,11 +1,8 @@
 package io.legado.desktop.ui.book.filter
 
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -15,7 +12,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import io.legado.app.ui.compose.component.Md2TextField
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.SourceFilterRule
@@ -38,8 +39,7 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
 import io.legado.desktop.ui.association.DesktopImportDialog
-import io.legado.desktop.ui.association.ImportListScaffoldVm
-import io.legado.desktop.ui.association.ImportSourceFilterRuleVmAdapter
+import io.legado.desktop.ui.association.DesktopImportVm
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
@@ -108,14 +108,14 @@ private fun SourceFilterRuleContent(onBack: () -> Unit) {
     var editingRule by remember { mutableStateOf<SourceFilterRule?>(null) }
 
     // 网络导入 URL 输入对话框状态 (onImportOnline 触发显示, 末尾 AlertDialog 渲染分支读取,
-    // 确认按钮新建 ImportSourceFilterRuleVmAdapter + 设置 importVm 触发 DesktopImportDialog)
+    // 确认按钮新建 DesktopImportVm.sourceFilterRule + 设置 importVm 触发 DesktopImportDialog)
     var showImportOnlineDialog by remember { mutableStateOf(false) }
     var importOnlineUrlText by remember { mutableStateOf("") }
     // 导入 VM 适配器 (null=无导入任务, 非 null=渲染 DesktopImportDialog 让用户勾选比对);
     // 本地/网络导入均走 ImportSourceFilterRuleViewModelShared.import 路径 (URL 下载/JSON 解析/
     // comparisonSource 比对), 成功后弹 DesktopImportDialog 让用户勾选"新增/更新/已有"项再 importSelect 入库,
     // 与 app 端 ImportSourceFilterRuleDialog 流程等价
-    var importVm by remember { mutableStateOf<ImportListScaffoldVm?>(null) }
+    var importVm by remember { mutableStateOf<DesktopImportVm?>(null) }
     // 导入初始文本 (URL 或 JSON), DesktopImportDialog 的 LaunchedEffect 用它调 vm.startImport
     var importInitialText by remember { mutableStateOf("") }
 
@@ -326,14 +326,14 @@ private fun SourceFilterRuleContent(onBack: () -> Unit) {
                 // (与 app 端 ImportSourceFilterRuleDialog 完整流程等价)
                 scope.launch {
                     val json = importSourceFilterRulesFromLocalFile(selectJsonFileLabel) ?: return@launch
-                    val vm = ImportSourceFilterRuleVmAdapter(ImportSourceFilterRuleViewModelShared(scope))
+                    val vm = DesktopImportVm.sourceFilterRule(ImportSourceFilterRuleViewModelShared(scope))
                     importInitialText = json
                     importVm = vm
                 }
             }
 
             override fun onImportOnline() {
-                // 弹 AlertDialog URL 输入 → 用户确认后新建 ImportSourceFilterRuleVmAdapter +
+                // 弹 AlertDialog URL 输入 → 用户确认后新建 DesktopImportVm.sourceFilterRule +
                 // 设置 importInitialText/importVm, DesktopImportDialog 的 LaunchedEffect 调
                 // vm.startImport(url) 触发下载 → JSON 解析 → comparisonSource 比对
                 importOnlineUrlText = ""
@@ -348,56 +348,52 @@ private fun SourceFilterRuleContent(onBack: () -> Unit) {
     // onConfirm 落库: 新增 (editingRule=null) 走 dao.insert, 编辑走 dao.update
     // (SourceFilterEditDialog 内部仅校验+组装, 不落库, 由调用方负责)
     if (showEditDialog) {
-        SourceFilterEditDialog(
-            rule = editingRule,
-            onConfirm = { newRule ->
-                scope.launch {
-                    withContext(Dispatchers.IO) {
-                        if (editingRule == null) dao.insert(newRule) else dao.update(newRule)
+        Dialog(onDismissRequest = { showEditDialog = false }) {
+            SourceFilterEditDialog(
+                rule = editingRule,
+                onConfirm = { newRule ->
+                    scope.launch {
+                        withContext(Dispatchers.IO) {
+                            if (editingRule == null) dao.insert(newRule) else dao.update(newRule)
+                        }
                     }
-                }
-            },
-            onDismiss = { showEditDialog = false },
-        )
+                },
+                onDismiss = { showEditDialog = false },
+            )
+        }
     }
 
     // ---- 网络导入 URL 输入对话框 (onImportOnline 触发 showImportOnlineDialog=true;
-    //   确认按钮新建 ImportSourceFilterRuleVmAdapter + 设置 importVm 触发 DesktopImportDialog
+    //   确认按钮新建 DesktopImportVm.sourceFilterRule + 设置 importVm 触发 DesktopImportDialog
     //   完成下载+解析+比对+入库, 与 app 端 ImportSourceFilterRuleDialog 流程等价) ----
     if (showImportOnlineDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { showImportOnlineDialog = false },
-            title = { Text(importOnlineTitleLabel) },
-            text = {
-                Md2TextField(
-                    value = importOnlineUrlText,
-                    onValueChange = { importOnlineUrlText = it },
-                    label = importOnlineTitleLabel,
-                    singleLine = true,
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val url = importOnlineUrlText
-                    showImportOnlineDialog = false
-                    if (url.isNotBlank()) {
-                        // 新建适配器 (包装 ImportSourceFilterRuleViewModelShared), 设置 importInitialText
-                        // + importVm 触发 DesktopImportDialog 渲染; Dialog 的 LaunchedEffect(vm) 调
-                        // vm.startImport(url) 触发下载 → JSON 解析 → comparisonSource 比对,
-                        // 成功后让用户勾选"新增/更新/已有"项再 importSelect 入库
-                        val vm = ImportSourceFilterRuleVmAdapter(ImportSourceFilterRuleViewModelShared(scope))
-                        importInitialText = url
-                        importVm = vm
-                    }
-                }) { Text(okLabel) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showImportOnlineDialog = false }) {
-                    Text(cancelLabel)
+            title = importOnlineTitleLabel,
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                val url = importOnlineUrlText
+                showImportOnlineDialog = false
+                if (url.isNotBlank()) {
+                    // 新建适配器 (包装 ImportSourceFilterRuleViewModelShared), 设置 importInitialText
+                    // + importVm 触发 DesktopImportDialog 渲染; Dialog 的 LaunchedEffect(vm) 调
+                    // vm.startImport(url) 触发下载 → JSON 解析 → comparisonSource 比对,
+                    // 成功后让用户勾选"新增/更新/已有"项再 importSelect 入库
+                    val vm = DesktopImportVm.sourceFilterRule(ImportSourceFilterRuleViewModelShared(scope))
+                    importInitialText = url
+                    importVm = vm
                 }
             },
-        )
+            cancelButton = AlertButton(cancelLabel),
+        ) {
+            AppTextField(
+                value = importOnlineUrlText,
+                onValueChange = { importOnlineUrlText = it },
+                label = importOnlineTitleLabel,
+                singleLine = true,
+                modifier = Modifier.padding(horizontal = 24.dp),
+            )
+        }
     }
 
     // ---- 导入对话框 (本地/网络导入共用, importVm 非 null 时渲染 DesktopImportDialog

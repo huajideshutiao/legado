@@ -8,7 +8,7 @@ import io.ktor.http.isSuccess
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * [FileDownloader] 的 nativeMain 真实实现。

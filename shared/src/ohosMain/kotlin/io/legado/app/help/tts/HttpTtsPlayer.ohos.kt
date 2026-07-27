@@ -19,7 +19,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * [HttpTtsPlayer] 的鸿蒙 (OHOS) 真实实现 (KP8+)。
@@ -30,6 +30,8 @@ import kotlin.io.File
  * 通过 [OhosNativeBridge] napi 桥接实现真实 HTTP TTS 播放:
  *
  * ## 命令链 (Kotlin → ArkTS, fire-and-forget via tsfn)
+ * 所有命令带固定 `playerId = "httpTts"`, ArkTS 侧按此 id 独占一个 AVPlayer 实例,
+ * 与音频书 (`"audioBook"`) 互不抢占。
  * - [setUrl]: 存储 url/headers, 不立即下载 (与 iOS AVPlayer.playerWithURL 对齐)
  * - [prepare]: 后台下载音频到临时文件 (Ktor CIO, 处理 headers), 下载完成后通过 tsfn
  *   发 "setSource" 命令把文件路径推给 ArkTS; ArkTS 创建 AVPlayer + 设源 + prepare,
@@ -131,10 +133,9 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
         this.cachedPosition = 0L
 
         // 注册 media 事件监听器 (桥接就绪时, 接收 ArkTS AVPlayer 事件)
-        // 注: OhosNativeBridge.mediaEventListener 是单例, 同一时间仅一个 player 可接收事件
-        // (当前使用场景: ReadAloudController 同时仅一个 HttpTtsPlayer 活跃, 无冲突)
+        // 按固定 playerId 注册, 与音频书 (PLAYER_ID_AUDIO_BOOK) 各持一个 AVPlayer 实例, 互不抢占
         if (OhosNativeBridge.isMediaBridgeReady() && !listenerRegistered) {
-            OhosNativeBridge.setMediaEventListener(this)
+            OhosNativeBridge.setMediaEventListener(OhosNativeBridge.PLAYER_ID_HTTP_TTS, this)
             listenerRegistered = true
         }
 
@@ -164,10 +165,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
                 if (OhosNativeBridge.isMediaBridgeReady()) {
                     // 桥接就绪: 发 "setSource" 命令, ArkTS 创建 AVPlayer + prepare
                     // onReady 由 ArkTS AVPlayer 'stateChange' 事件 (state='prepared') 回推
-                    val cmd = KS_JSON.encodeToString(
-                        MediaCommand(action = "setSource", path = file.path)
-                    )
-                    OhosNativeBridge.sendMediaCommand(cmd)
+                    sendMedia("setSource", path = file.path)
                 } else {
                     // 降级: 直接 onReady (占位播放, 让调用方状态机推进)
                     listener?.onReady()
@@ -185,8 +183,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
         if (OhosNativeBridge.isMediaBridgeReady()) {
             // 桥接就绪: 发 "play" 命令, ArkTS 调 AVPlayer.play()
             // playing 标志由 ArkTS "onPlaying" 事件更新
-            val cmd = KS_JSON.encodeToString(MediaCommand(action = "play"))
-            OhosNativeBridge.sendMediaCommand(cmd)
+            sendMedia("play")
         } else {
             // 降级: 维护 playing 标志
             playing = true
@@ -201,8 +198,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
 
     override fun pause() {
         if (OhosNativeBridge.isMediaBridgeReady()) {
-            val cmd = KS_JSON.encodeToString(MediaCommand(action = "pause"))
-            OhosNativeBridge.sendMediaCommand(cmd)
+            sendMedia("pause")
         } else {
             playing = false
             println("[ohos-httts] pause (placeholder)")
@@ -211,8 +207,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
 
     override fun stop() {
         if (OhosNativeBridge.isMediaBridgeReady()) {
-            val cmd = KS_JSON.encodeToString(MediaCommand(action = "stop"))
-            OhosNativeBridge.sendMediaCommand(cmd)
+            sendMedia("stop")
         } else {
             playing = false
             println("[ohos-httts] stop (placeholder)")
@@ -223,12 +218,11 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
     override fun release() {
         if (OhosNativeBridge.isMediaBridgeReady()) {
             // 发 "release" 命令释放 ArkTS 侧 AVPlayer
-            val cmd = KS_JSON.encodeToString(MediaCommand(action = "release"))
-            OhosNativeBridge.sendMediaCommand(cmd)
+            sendMedia("release")
         }
         // 注销 media 事件监听器
         if (listenerRegistered) {
-            OhosNativeBridge.setMediaEventListener(null)
+            OhosNativeBridge.setMediaEventListener(OhosNativeBridge.PLAYER_ID_HTTP_TTS, null)
             listenerRegistered = false
         }
         playing = false
@@ -245,8 +239,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
 
     override fun seekTo(position: Long) {
         if (OhosNativeBridge.isMediaBridgeReady()) {
-            val cmd = KS_JSON.encodeToString(MediaCommand(action = "seekTo", position = position))
-            OhosNativeBridge.sendMediaCommand(cmd)
+            sendMedia("seekTo", position = position)
         } else {
             println("[ohos-httts] seekTo (placeholder): position=$position")
         }
@@ -373,18 +366,30 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
     /** 释放 ArkTS 侧 AVPlayer (发 "release" 命令, 桥接未就绪时 no-op)。 */
     private fun releaseArkTsPlayer() {
         if (OhosNativeBridge.isMediaBridgeReady()) {
-            runCatching {
-                val cmd = KS_JSON.encodeToString(MediaCommand(action = "release"))
-                OhosNativeBridge.sendMediaCommand(cmd)
-            }
+            runCatching { sendMedia("release") }
         }
+    }
+
+    /** 发 media 命令, 统一带上本播放器的固定 playerId。 */
+    private fun sendMedia(action: String, path: String? = null, position: Long? = null) {
+        val cmd = MediaCommand(
+            playerId = OhosNativeBridge.PLAYER_ID_HTTP_TTS,
+            action = action,
+            path = path,
+            position = position,
+        )
+        OhosNativeBridge.sendMediaCommand(KS_JSON.encodeToString(MediaCommand.serializer(), cmd))
     }
 
     // ===== 桥接 JSON 数据类 (与 ArkTS 侧协议对齐) =====
 
-    /** media 命令 (Kotlin → ArkTS, fire-and-forget via tsfn)。 */
+    /**
+     * media 命令 (Kotlin → ArkTS, fire-and-forget via tsfn)。
+     * playerId 无 Kotlin 默认值: KS_JSON 的 encodeDefaults=false 会把默认值字段整个省掉。
+     */
     @Serializable
     private data class MediaCommand(
+        val playerId: String,
         val action: String,
         val path: String? = null,
         val position: Long? = null,

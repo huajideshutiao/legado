@@ -24,23 +24,27 @@ class CommonLruCache<K, V>(
 ) {
     private val lock = SynchronizedObject()
 
-    // accessOrder=true: 访问后移到末尾, 迭代顺序为 LRU(最久未使用) -> MRU(最近使用)
-    private val map = LinkedHashMap<K, V>(16, 0.75f, true)
+    // JVM 三参 accessOrder=true 构造器非 common API; get/put 手动 remove+重插移到末尾,
+    // 迭代顺序仍为 LRU(最久未使用) -> MRU(最近使用)
+    private val map = LinkedHashMap<K, V>(16, 0.75f)
     private var size = 0
 
     fun put(key: K, value: V): V? = synchronized(lock) {
-        val oldValue = map.put(key, value)
+        val oldValue = map.remove(key)
         if (oldValue != null) {
             size -= sizeOf(key, oldValue)
         }
+        map[key] = value
         size += sizeOf(key, value)
         trimToSize()
         oldValue
     }
 
     operator fun get(key: K): V? = synchronized(lock) {
-        // LinkedHashMap accessOrder=true 时, get 会将 entry 移到末尾 (LRU 更新)
-        map[key]
+        // remove+重插将 entry 移到末尾 (LRU 更新, 等价 JVM accessOrder=true 的 get)
+        val value = map.remove(key) ?: return null
+        map[key] = value
+        value
     }
 
     fun remove(key: K): V? = synchronized(lock) {

@@ -22,8 +22,8 @@ import io.legado.app.utils.toHexLower
  * 默认实现移至 [JsEncodeUtilsDefaults] interface, 由调用方多继承注入。
  *
  * - md5Encode / md5Encode16: 复用 commonMain [MD5Utils] (expect object, 纯 Kotlin 实现)。
- * - digestHex / digestBase64Str: [NativeDigestOps] 提供 MD5/SHA-1/SHA-256/SHA-512, 与 jvmAndAndroidMain
- *   的 hutool DigestUtil 字节级一致 (标准 FIPS 180-4 / RFC 1321 算法)。
+ * - digestHex / digestBase64Str: [NativeDigestOps] 提供 MD5/SHA-1/SHA-224/SHA-256/SHA-384/SHA-512/RIPEMD160,
+ *   与 jvmAndAndroidMain 的 hutool DigestUtil 字节级一致 (标准 FIPS 180-4 / RFC 1321 算法)。
  * - HMacHex / HMacBase64: [NativeHmacOps] HMAC, 与 jvmAndAndroidMain 的 hutool HMac 字节级一致 (RFC 2104)。
  * - Base64 编码: [encodeBase64Standard] (标准字母表 + padding + 不换行, 对齐 java.util.Base64.getEncoder())。
  * - 摘要/HMAC 输出小写 hex (hutool DigestUtil.digestHex 默认小写, [toHexLower] 对齐)。
@@ -57,7 +57,7 @@ actual interface JsEncodeUtils {
  * KMP 限制: actual interface 成员 modality 必须与 expect 一致 (abstract), 不能带方法体;
  * 故将默认实现下沉到独立的 Defaults interface, 由调用方多继承注入。
  *
- * digest/HMAC 委托 [NativeDigestOps]/[NativeHmacOps] (expect object): iOS krypto actual, 鸿蒙 napi actual。
+ * digest/HMAC 委托 [NativeDigestOps]/[NativeHmacOps] (expect object): mbedTLS 主实现, 异常回落 krypto/napi。
  */
 @Suppress("unused")
 interface JsEncodeUtilsDefaults : JsEncodeUtils {
@@ -91,11 +91,10 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
     //******************对称加密解密工厂************************//
 
     /**
-     * native 端工厂: 创建 [NativeSymmetricCrypto] (krypto AES/ECB/PKCS5)。
+     * native 端工厂: 创建 [NativeSymmetricCrypto] (iOS krypto AES 全模式 / 鸿蒙 napi AES-ECB)。
      *
-     * 与 app 端 [io.legado.app.help.JsEncodeUtilsAndroid.createSymmetricCrypto] 签名对齐, 行为差异:
-     * - iv 参数忽略 (krypto 仅支持 ECB, 不支持 CBC/IV);
-     * - algorithm 非 AES/ECB/PKCS5 变体时, [NativeSymmetricCrypto] 构造抛 UnsupportedOperationException 降级。
+     * 与 app 端 [io.legado.app.help.JsEncodeUtilsAndroid.createSymmetricCrypto] 签名与行为对齐:
+     * key==null 用随机密钥, iv 非空时 setIv; 不支持的算法/模式由 [NativeSymmetricCrypto] 构造抛异常降级。
      *
      * 返回类型为 commonMain [SymmetricCrypto] interface (跨端引用透明兼容),
      * 非 app 端 hutool `cn.hutool.crypto.symmetric.SymmetricCrypto` (native 无 hutool)。
@@ -103,15 +102,17 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
      * JS 中调用方式:
      * java.createSymmetricCrypto(transformation, key, iv).decrypt(data)
      * java.createSymmetricCrypto(transformation, key, iv).decryptStr(data)
+     * java.createSymmetricCrypto(transformation, key, iv).encrypt(data)
      * java.createSymmetricCrypto(transformation, key, iv).encryptBase64(data)
+     * java.createSymmetricCrypto(transformation, key, iv).encryptHex(data)
      */
     fun createSymmetricCrypto(
         transformation: String,
         key: ByteArray?,
         iv: ByteArray?
     ): SymmetricCrypto {
-        // iv 在 native 端不支持 (krypto AES ECB only), 忽略; algorithm 降级由 NativeSymmetricCrypto 内部判定
-        return NativeSymmetricCrypto(transformation, key)
+        val crypto = NativeSymmetricCrypto(transformation, key)
+        return if (iv != null && iv.isNotEmpty()) crypto.setIv(iv) else crypto
     }
 
     fun createSymmetricCrypto(

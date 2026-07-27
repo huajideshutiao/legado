@@ -2,10 +2,6 @@ package io.legado.app.ui.about
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -25,9 +21,12 @@ import io.legado.app.data.entities.ReadRecord
 import io.legado.app.data.entities.ReadRecordShow
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -48,8 +47,8 @@ import kotlinx.coroutines.withContext
  * - **热力图 slot**: iOS 端暂用占位 [Box] (MonthHeatMapView 是 Android 专属 View, 未下沉);
  * - **封面 slot**: iOS 端暂用占位 [Box] (ShelfCover 依赖 Android Coil, 未下沉);
  * - **打开书籍**: 通过 [onOpenBook] 回调切到 READER 路由 (异步查 book → 携带 book 跳转);
- * - **删除确认**: 用 [AlertDialog] (替代 app 端 alert 扩展);
- * - **清空全部**: 用 [AlertDialog] 二次确认。
+ * - **删除确认**: 用 [AppAlertDialog] (替代 app 端 alert 扩展);
+ * - **清空全部**: 用 [AppAlertDialog] 二次确认。
  *
  * # 简化项 (iOS 端 KP5 阶段)
  *
@@ -291,7 +290,7 @@ fun IosReadRecordScreen(
         heatmapSlot = { modifier ->
             Box(
                 modifier
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(DesignTokens.shapeSm)
                     .background(AppTheme.colors.bottomBackground)
             )
         },
@@ -300,7 +299,7 @@ fun IosReadRecordScreen(
         coverSlot = { _, _, modifier ->
             Box(
                 modifier
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(DesignTokens.shapeSm)
                     .background(AppTheme.colors.bottomBackground)
             )
         },
@@ -308,44 +307,36 @@ fun IosReadRecordScreen(
 
     // 单条删除确认 Dialog (长按记录行触发)
     pendingDelete?.let { item ->
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text(deleteText) },
-            text = { Text("$sureDelText\n${item.bookName}") },
-            confirmButton = {
-                TextButton(onClick = {
-                    scope.launch(Dispatchers.Default) {
-                        AppDbProviders.get().readRecordDao.deleteByName(item.bookName)
-                    }
-                    pendingDelete = null
-                }) { Text(okText) }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) {
-                    Text(cancelText)
+            title = deleteText,
+            message = "$sureDelText\n${item.bookName}",
+            okButton = AlertButton(okText, dismissOnClick = false) {
+                scope.launch(Dispatchers.Default) {
+                    AppDbProviders.get().readRecordDao.deleteByName(item.bookName)
                 }
+                pendingDelete = null
+            },
+            cancelButton = AlertButton(cancelText, dismissOnClick = false) {
+                pendingDelete = null
             },
         )
     }
 
     // 清空全部确认 Dialog
     if (showClearAllConfirm) {
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { showClearAllConfirm = false },
-            title = { Text(deleteAllText) },
-            text = { Text(sureDelText) },
-            confirmButton = {
-                TextButton(onClick = {
-                    scope.launch(Dispatchers.Default) {
-                        AppDbProviders.get().readRecordDao.clear()
-                    }
-                    showClearAllConfirm = false
-                }) { Text(okText) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showClearAllConfirm = false }) {
-                    Text(cancelText)
+            title = deleteAllText,
+            message = sureDelText,
+            okButton = AlertButton(okText, dismissOnClick = false) {
+                scope.launch(Dispatchers.Default) {
+                    AppDbProviders.get().readRecordDao.clear()
                 }
+                showClearAllConfirm = false
+            },
+            cancelButton = AlertButton(cancelText, dismissOnClick = false) {
+                showClearAllConfirm = false
             },
         )
     }

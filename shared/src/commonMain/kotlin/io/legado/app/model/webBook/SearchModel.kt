@@ -8,12 +8,12 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.releaseHtmlData
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.source.SearchBookFilter
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.utils.mapParallelSafe
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -56,7 +56,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
     private fun initSearchPool(): kotlinx.coroutines.CoroutineDispatcher {
         // 用 limitedParallelism 替代原 Executors.newFixedThreadPool(N).asCoroutineDispatcher()
         // 行为等价: 限制并发到 N, 复用 Dispatchers.IO 线程池, 无需手动 close
-        return Dispatchers.IO.limitedParallelism(min(threadCount, AppConst.MAX_THREAD))
+        return IoDispatcher.limitedParallelism(min(threadCount, AppConst.MAX_THREAD))
     }
 
     suspend fun search(searchId: Long, key: String) {
@@ -138,7 +138,7 @@ class SearchModel(private val scope: CoroutineScope, private val callBack: CallB
             }.onCompletion {
                 if (it == null) callBack.onSearchFinish(searchBooks.isEmpty(), hasMore)
             }.catch {
-                AppLog.put("书源搜索出错\n${it.localizedMessage}", it)
+                AppLog.put("书源搜索出错\n${it.message}", it)
                 callBack.onSearchCancel(it)
             }.collect()
         }

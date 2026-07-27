@@ -3,6 +3,7 @@ package io.legado.app.help.book
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.ReplaceRule
+import kotlin.concurrent.Volatile
 
 /**
  * ContentProcessor 跨模块只读访问接口。

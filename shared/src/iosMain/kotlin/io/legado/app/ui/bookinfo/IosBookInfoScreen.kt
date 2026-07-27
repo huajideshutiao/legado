@@ -28,6 +28,8 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.book.changecover.ChangeCoverDialog
+import io.legado.app.ui.book.changecover.ChangeCoverViewModelShared
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.group.GroupViewModelShared
 import io.legado.app.ui.book.info.BookInfoMenuState
@@ -43,9 +45,11 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.platform.sharedStringTable
+import io.legado.app.ui.widget.dialog.PhotoViewDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.utils.decodeStringMapOrNull
 import io.legado.app.utils.encodeStringMap
+import io.legado.app.utils.formatNative
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -79,9 +83,7 @@ import kotlinx.coroutines.launch
  *
  * # 简化项 (与 desktop 差异)
  *
- * - 不接入 [io.legado.app.ui.book.changecover.ChangeCoverDialog]: 依赖 [io.legado.app.ui.book.changecover.ChangeCoverPlatform]
- *   actual 实现, iOS 端暂未提供 (后续 KP5+ 接入); onCoverLongClick 暂为 no-op + TODO
- * - 不接入 onCoverClick/onShowPhoto 等: 依赖 iOS 文件选择器或未下沉 Dialog
+ * - 不接入 onClearCache/onOriginLongClick 等: 依赖未下沉能力 (BookHelp.clearCache / 书源长按菜单)
  *
  * @param book 详情页书籍 (SearchBook/Book), 由 IosNavHost 注入
  * @param onBack 返回回调 (切回书架路由)
@@ -134,6 +136,17 @@ fun IosBookInfoScreen(
         shared.upBook(effectiveBook)
     }
 
+    // 换封面 ViewModel (KMP 共享核心, IosChangeCoverPlatform 注入, 对照 desktop/ohos BookInfoScreen)
+    val changeCoverVm = remember(scope) {
+        ChangeCoverViewModelShared(scope, IosChangeCoverPlatform())
+    }
+    LaunchedEffect(effectiveBook) {
+        val b = effectiveBook ?: return@LaunchedEffect
+        changeCoverVm.initData(b.name, b.author)
+    }
+    // 换封面对话框状态 (onCoverLongClick 触发, 末尾 ChangeCoverDialog 渲染分支读取)
+    var showChangeCoverDialog by remember { mutableStateOf(false) }
+
     // 分组管理 ViewModel (shared commonMain GroupViewModelShared, 供 GroupManageDialog 增删改分组)
     val groupVm = remember(scope) { GroupViewModelShared(scope) }
     // 全部分组 (订阅 bookGroupDao.flowAll(), 供 GroupManageDialog 展示分组列表)
@@ -155,6 +168,9 @@ fun IosBookInfoScreen(
     // 上传确认对话框状态 (false=隐藏, true=显示; onUploadBook 触发, 仅当 book 已有远程 URL 时弹出)
     // 对照 app 端 BookInfoActivity.uploadBook: alert(R.string.draw, R.string.sure_upload)
     var showUploadConfirmDialog by remember { mutableStateOf(false) }
+    // 图片大图查看对话框状态 (null=隐藏, 非空=显示; onCoverClick/onShowPhoto 触发,
+    // 末尾 PhotoViewDialog 渲染分支读取, 对照 app 端 BookInfoActivity 弹 PhotoDialog)
+    var photoSrc by remember { mutableStateOf<String?>(null) }
 
     // ---- state 加载: groupName / tocText / bookSource / bookTick (对照 app 端 BookInfoActivity) ----
     // bookTick: book 原地可变对象 (canUpdate/config 等), 修改后递增驱动 state 重组
@@ -195,7 +211,7 @@ fun IosBookInfoScreen(
                         dao.insert(*chapters.toTypedArray())
                     }
                 } catch (e: Throwable) {
-                    AppLog.put(String.format(getTocFailedTemplate, e.localizedMessage), e)
+                    AppLog.put(getTocFailedTemplate.formatNative(e.localizedMessage), e)
                 }
             }
         }
@@ -328,6 +344,9 @@ fun IosBookInfoScreen(
                     }
                 }
             },
+            onCoverLongClickCb = { showChangeCoverDialog = true },
+            // onCoverClick/onShowPhoto 触发图片大图查看对话框显示 (对照 app 端弹 PhotoDialog)
+            onShowPhotoCb = { src -> photoSrc = src },
         )
     }
 
@@ -385,6 +404,28 @@ fun IosBookInfoScreen(
         AppLogDialog(onDismiss = { showLogDialog = false })
     }
 
+    // ---- 换封面对话框 (onCoverLongClick 触发, KMP 共享核心; 语义对照 ohos/desktop BookInfoScreen) ----
+    if (showChangeCoverDialog) {
+        ChangeCoverDialog(
+            viewModel = changeCoverVm,
+            onCoverSelected = { coverUrl ->
+                effectiveBook?.let { b ->
+                    b.customCoverUrl = coverUrl
+                    bookTick++
+                    if (inBookshelf) {
+                        scope.launch {
+                            AppDbProviders.get().bookDao.update(b)
+                        }
+                    }
+                }
+            },
+            onDismiss = { showChangeCoverDialog = false },
+            coverSlot = { searchBook, modifier ->
+                IosInfoCover(searchBook.toBook(), modifier)
+            },
+        )
+    }
+
     // ---- 变量编辑对话框 (onSetSourceVariable/onSetBookVariable 触发) ----
     // KMP 共享 VariableDialog: 两个 Tab (源变量/书籍变量) 一次编辑
     // sourceVariables 从 variableSource.getVariable() 解析 (decodeStringMapOrNull 容错)
@@ -419,6 +460,18 @@ fun IosBookInfoScreen(
         }
     }
 
+    // ---- 图片大图查看对话框 (onCoverClick/onShowPhoto 触发, 对照 app 端 PhotoDialog) ----
+    // 消费 sharedUiMain PhotoViewDialog (ImageBitmapLoader iOS actual=Coil3 + 共享 zoomable 手势;
+    // 传 book/bookSource 让网络图带书源防盗链 header, 对照 app 端 PhotoDialog sourceOrigin)
+    photoSrc?.let { src ->
+        PhotoViewDialog(
+            src = src,
+            onDismiss = { photoSrc = null },
+            book = effectiveBook,
+            bookSource = bookSource,
+        )
+    }
+
     // ---- 上传书籍确认对话框 (onUploadBook 触发, 仅当 book 已有远程 URL 时显示) ----
     // 对照 app 端 BookInfoActivity.uploadBook: alert(R.string.draw, R.string.sure_upload) { okButton { ... }; cancelButton() }
     if (showUploadConfirmDialog) {
@@ -442,7 +495,8 @@ fun IosBookInfoScreen(
  *   (弹 shared/sharedUiMain 下沉的 Dialog) / [onEdit] (路由回调) /
  *   [onSearchAuthor] / [onSearchKind] / [onNameClick] (路由回调) /
  *   [onToggleCanUpdate] / [onToggleSplitLongChapter] (原地修改 + bookTick++) /
- *   [onDispatchIntroAction] (evalJS via [bookSource])
+ *   [onDispatchIntroAction] (evalJS via [bookSource]) /
+ *   [onCoverClick] / [onShowPhoto] (弹 sharedUiMain PhotoViewDialog 查看大图)
  * - no-op + TODO: 其余依赖未下沉 Dialog 或 iOS 平台 actual 的动作
  *
  * @param book 当前展示的 Book (可能为 null, onShelfClick 等动作内做 null 安全)
@@ -464,6 +518,7 @@ fun IosBookInfoScreen(
  * @param onShowLogCb 由本文件注入, 弹 AppLogDialog
  * @param onVariableCb 由本文件注入, 弹 VariableDialog (异步查 BookSource 后回传)
  * @param onUploadBookCb 由本文件注入, 上传书籍到 WebDav (检查远程 URL 决定弹确认/直接上传)
+ * @param onShowPhotoCb 由本文件注入, 弹 PhotoViewDialog 查看大图 (onCoverClick/onShowPhoto 触发)
  */
 private class IosBookInfoActions(
     private val book: Book?,
@@ -485,6 +540,8 @@ private class IosBookInfoActions(
     private val onShowLogCb: () -> Unit,
     private val onVariableCb: (BookSource) -> Unit,
     private val onUploadBookCb: () -> Unit,
+    private val onCoverLongClickCb: () -> Unit,
+    private val onShowPhotoCb: (String) -> Unit,
 ) : BookInfoUiActions {
 
     override fun onBack() = onBack.invoke()
@@ -526,7 +583,7 @@ private class IosBookInfoActions(
                 Toasters.get().toast(sharedStringTable["download_success"]!!)
                 shared.upBook(b)
             } catch (e: Throwable) {
-                AppLog.put(sharedStringTable["download_remote_book_failed_log"]!!.format(b.name), e, true)
+                AppLog.put(sharedStringTable["download_remote_book_failed_log"]!!.formatNative(b.name), e, true)
             }
         }
     }
@@ -614,13 +671,13 @@ private class IosBookInfoActions(
     }
 
     override fun onCoverClick() {
-        // TODO: 选择自定义封面 (依赖 iOS 文件选择器 + BookHelp.saveCover), 暂未实现
+        // 查看封面大图 (对照 app 端 BookInfoActivity.onCoverClick → PhotoDialog(getDisplayCover))
+        book?.getDisplayCover()?.let { onShowPhotoCb.invoke(it) }
     }
 
     override fun onCoverLongClick() {
-        // TODO: 弹 ChangeCoverDialog (书源搜索换封面, KMP 共享核心)
-        // 依赖 ChangeCoverPlatform actual 实现 (threadCount + cleanAuthor), iOS 端暂未提供,
-        // 后续 KP5+ 接入 IosChangeCoverPlatform 后启用 (对照 desktop BookInfoScreen.onCoverLongClick)
+        // 弹 ChangeCoverDialog (书源搜索换封面, IosChangeCoverPlatform 注入)
+        onCoverLongClickCb.invoke()
     }
 
     override fun onOriginClick() {
@@ -675,11 +732,12 @@ private class IosBookInfoActions(
                 this["book"] = book
             }
         } catch (e: Exception) {
-            AppLog.put(sharedStringTable["intro_action_failed_log"]!!.format(e.localizedMessage), e)
+            AppLog.put(sharedStringTable["intro_action_failed_log"]!!.formatNative(e.localizedMessage), e)
         }
     }
 
     override fun onShowPhoto(src: String) {
-        // TODO: 简介内 <img src="..."> 点击查看大图, iOS 端无大图查看器
+        // 简介内 <img src="..."> 点击查看大图 (对照 app 端 onShowPhoto → PhotoDialog(src))
+        onShowPhotoCb.invoke(src)
     }
 }

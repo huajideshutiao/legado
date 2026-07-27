@@ -5,12 +5,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material.DrawerValue
 import androidx.compose.material.ModalDrawer
 import androidx.compose.material.rememberDrawerState
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -24,11 +22,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
@@ -37,6 +34,7 @@ import io.legado.app.constant.PageAnim
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.getUseReplaceRule
@@ -50,6 +48,7 @@ import io.legado.app.service.ReadAloudControllerShared
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.read.ContentEditDialog
+import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.ReadMenuAction
 import io.legado.app.ui.book.read.ReadMenuOverlay
@@ -67,11 +66,15 @@ import io.legado.app.ui.book.read.page.delegate.SimulationPageDelegateCompose
 import io.legado.app.ui.book.read.page.delegate.SlidePageDelegateCompose
 import io.legado.app.ui.book.searchContent.SearchResult
 import io.legado.app.ui.book.toc.TocDrawerContent
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
 import io.legado.app.ui.compose.platform.DesktopPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.handleReadPageKeys
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.browseUrl
 import io.legado.desktop.ui.book.changesource.ChangeChapterSourceScreen
 import io.legado.desktop.ui.book.read.DesktopSearchMenuState
@@ -108,7 +111,8 @@ import kotlinx.coroutines.withContext
  *
  * 桌面端在本文件仅做平台适配：
  * - **VM 生命周期**: `remember { ReadBookViewModelShared(...) }` 持有，退出时
- *   `DisposableEffect.onDispose { pageDelegate?.onDestroy() }` 释放翻页动画资源
+ *   `DisposableEffect.onDispose { viewModel.onCleared(); pageDelegate?.onDestroy() }`
+ *   落库 + WebDav 上传进度 + 释放翻页动画资源
  * - **章节装载**: `LaunchedEffect(book.bookUrl)` 内调 `readBook.loadBook(book)`
  *   + `viewModel.loadChapter(book.durChapterIndex)`
  * - **配置注入**: [DesktopReadConfigProviders] 包装 [DesktopPreferenceStoreProvider]
@@ -202,12 +206,11 @@ fun ReaderScreen(
             }
         }
 
-        // 退出时持久化阅读进度 + 释放翻页动画资源
-        // KP2-D P0-C：调 viewModel.saveProgress() 把 durChapterIndex / durChapterPos / 标题
-        // PATCH 进 books 表（pageDelegate 默认 null，无副作用）
+        // 退出时持久化阅读进度（含 WebDav 上传，走 VM 内部独立作用域不受本 scope 取消影响）
+        // + 释放翻页动画资源（对照 app 端 ReadBookActivity.onPause 的 saveRead + uploadProgress）
         DisposableEffect(viewModel) {
             onDispose {
-                viewModel.saveProgress()
+                viewModel.onCleared()
                 viewModel.pageDelegate?.onDestroy()
             }
         }
@@ -215,6 +218,12 @@ fun ReaderScreen(
         val curTextPage by viewModel.curTextPage.collectAsState()
         val chapterList by viewModel.chapterList.collectAsState()
         val durChapterIndex by viewModel.durChapterIndex.collectAsState()
+
+        // 云端进度确认弹窗状态 (对照 app 端 sureNewProgress alert; 事件 replay=1, 重建期漏发由 VM dismiss/confirm 清缓存)
+        var newCloudProgress by remember { mutableStateOf<BookProgress?>(null) }
+        LaunchedEffect(viewModel) {
+            ReadBookEvents.newProgressConfirm.collect { newCloudProgress = it }
+        }
 
         // KP2-D P1: 阅读配置面板弹窗状态 (顶栏 Settings 按钮触发, AlertDialog 形式弹出)
         var showConfigDialog by remember { mutableStateOf(false) }
@@ -278,10 +287,12 @@ fun ReaderScreen(
         // (桌面端 ThemeStore 用 mutableStateOf 持有 isDark, toggleDark 触发 Compose 重组,
         //  ReadMenuOverlay 内部按 isDark 走 AppTheme.colors 分支刷新色彩)
         val themeStore = LocalThemeStoreProvider.current
+        val isNightTheme = (themeStore as? DesktopThemeStoreProvider)?.isDark ?: false
         val readMenuState = remember(viewModel, book, onBack, onOpenBookInfo, onOpenSearchContent, onOpenReplaceRule, onOpenMoreConfig, onOpenPaddingConfig, onOpenTipConfig, onOpenReviewList, onOpenChangeSource) {
             DesktopReadMenuState(
                 viewModel = viewModel,
                 book = book,
+                isNightTheme = isNightTheme,
                 onBack = onBack,
                 openCatalog = { scope.launch { drawerState.open() } },
                 showConfigDialog = { showConfigDialog = true },
@@ -369,6 +380,7 @@ fun ReaderScreen(
                 },
             )
         }
+        readMenuState.isNightTheme = isNightTheme
 
         // 同步 curTextPage / 章节索引 / 章节总数到 readMenuState（顶栏标题 + 底栏进度条 + 上一/下一章可用性）
         // 对照 app 端 ReadMenu.upBookView（由 ReadBook.callBack.upMenuView 触发）
@@ -447,36 +459,35 @@ fun ReaderScreen(
                 )
             },
         ) {
+            // 键盘事件焦点: onPreviewKeyEvent 需节点持有焦点才触发, 进入即取焦点
+            // (对照 VideoPlayerScreen 焦点接线)
+            val keyFocusRequester = remember { FocusRequester() }
+            LaunchedEffect(Unit) {
+                runCatching { keyFocusRequester.requestFocus() }
+            }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surface)
-                    // 键盘翻页 (对照 app 端 ReadBookKeyHandler.onKeyDown: PageUp/PageDown/Space/方向键)
-                    // 菜单可见时不拦截 (与 app 端 menuLayoutIsVisible 判断一致), Escape 收菜单
-                    .onPreviewKeyEvent { event ->
-                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        when (event.key) {
-                            Key.Escape -> {
-                                if (readMenuState.isVisible) {
-                                    readMenuState.runMenuOut()
-                                    true
-                                } else false
-                            }
-                            Key.Spacebar, Key.PageDown, Key.DirectionDown, Key.DirectionRight -> {
-                                if (readMenuState.isVisible) return@onPreviewKeyEvent false
-                                // 翻下一页, 已到末页则切下一章 (与 app 端 keyPage(NEXT) 对应)
-                                if (!viewModel.nextPage()) viewModel.moveToNextChapter()
-                                true
-                            }
-                            Key.PageUp, Key.DirectionUp, Key.DirectionLeft -> {
-                                if (readMenuState.isVisible) return@onPreviewKeyEvent false
-                                // 翻上一页, 已到首页则切上一章 (与 app 端 keyPage(PREV) 对应)
-                                if (!viewModel.prevPage()) viewModel.moveToPrevChapter()
-                                true
-                            }
-                            else -> false
-                        }
-                    },
+                    .background(AppTheme.colors.background)
+                    // 键盘翻页: 消费共享 handleReadPageKeys (方向/PageUp/PageDown/空格/Esc)
+                    // 菜单可见时不拦截翻页键 (与 app 端 menuLayoutIsVisible 判断一致);
+                    // Esc/Backspace 菜单可见先收菜单, 否则返回书架
+                    .handleReadPageKeys(
+                        onPrevPage = {
+                            // 翻上一页, 已到首页则切上一章 (与 app 端 keyPage(PREV) 对应)
+                            if (!viewModel.prevPage()) viewModel.moveToPrevChapter()
+                        },
+                        onNextPage = {
+                            // 翻下一页, 已到末页则切下一章 (与 app 端 keyPage(NEXT) 对应)
+                            if (!viewModel.nextPage()) viewModel.moveToNextChapter()
+                        },
+                        onBack = {
+                            if (readMenuState.isVisible) readMenuState.runMenuOut() else onBack()
+                        },
+                        menuVisible = { readMenuState.isVisible },
+                    )
+                    .focusRequester(keyFocusRequester)
+                    .focusable(),
             ) {
                 // 主内容：阅读视图
                 // 点击中心区域 → 切菜单显隐（与 app 端 showActionMenu 一致；翻页由 pageDelegate.onTap 自己处理）
@@ -711,37 +722,62 @@ fun ReaderScreen(
             // 内容编辑对话框 (顶栏 EDIT_CONTENT 触发), 编辑当前章节正文
             // onReset 不接入 (WebBook 重新获取正文依赖较重, 桌面端未下沉)
             if (showContentEditDialog) {
-                ContentEditDialog(
-                    chapterName = contentEditChapterName,
-                    content = contentEditContent,
-                    onSubmit = { text ->
-                        val curBook = viewModel.book.value
-                        val chapter = viewModel.chapterList.value.getOrNull(viewModel.durChapterIndex.value)
-                        if (curBook != null && chapter != null) {
-                            scope.launch {
-                                withContext(Dispatchers.IO) {
-                                    BookStorageProviders.get().saveText(curBook, chapter, text)
+                Dialog(onDismissRequest = { showContentEditDialog = false }) {
+                    ContentEditDialog(
+                        chapterName = contentEditChapterName,
+                        content = contentEditContent,
+                        onSubmit = { text ->
+                            val curBook = viewModel.book.value
+                            val chapter = viewModel.chapterList.value.getOrNull(viewModel.durChapterIndex.value)
+                            if (curBook != null && chapter != null) {
+                                scope.launch {
+                                    withContext(Dispatchers.IO) {
+                                        BookStorageProviders.get().saveText(curBook, chapter, text)
+                                    }
+                                    // 保存后重载章节刷新阅读视图
+                                    viewModel.loadChapter(viewModel.durChapterIndex.value)
                                 }
-                                // 保存后重载章节刷新阅读视图
-                                viewModel.loadChapter(viewModel.durChapterIndex.value)
                             }
-                        }
+                        },
+                        onDismiss = { showContentEditDialog = false },
+                        clipTextSink = { text ->
+                            Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
+                        },
+                    )
+                }
+            }
+
+            // 云端进度确认弹窗 (对照 app 端 ReadBookActivity.sureNewProgress:
+            // alert(R.string.sync_book_progress_t) + cloud_progress_exceeds_current, ok → setProgress)
+            newCloudProgress?.let { progress ->
+                AppAlertDialog(
+                    onDismissRequest = {
+                        viewModel.dismissSyncProgress()
+                        newCloudProgress = null
                     },
-                    onDismiss = { showContentEditDialog = false },
-                    clipTextSink = { text ->
-                        Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
+                    title = rememberString("sync_book_progress_t"),
+                    // R.string.cloud_progress_exceeds_current (SharedStringTable 暂无该 key, 先用中文文案)
+                    message = "云端进度超过当前进度，是否同步？",
+                    okButton = AlertButton(rememberString("ok"), dismissOnClick = false) {
+                        viewModel.confirmSyncProgress(progress)
+                        newCloudProgress = null
                     },
+                    cancelButton = AlertButton(rememberString("cancel"), dismissOnClick = false) {
+                        viewModel.dismissSyncProgress()
+                        newCloudProgress = null
+                    },
+                    // 桌面端窗口宽, 对话框占 0.8 窗口宽 (与备份相关对话框同约定)
+                    widthFraction = 0.8f,
                 )
             }
 
             // 长按正文: 加载章节正文时弹 loading AlertDialog (与原 AlertDialog 立即弹出体验对齐)
             // 加载完成后切换为 TextSelectionDialog (SelectionContainer + ComposeTextToolbar)
             if (loadingTextSelection) {
-                AlertDialog(
+                AppAlertDialog(
                     onDismissRequest = { loadingTextSelection = false },
-                    title = { Text(textSelectionChapterName.ifBlank { rememberString("text_action") }) },
-                    text = { Text(rememberString("loading_chapter_content")) },
-                    confirmButton = {},
+                    title = textSelectionChapterName.ifBlank { rememberString("text_action") },
+                    message = rememberString("loading_chapter_content"),
                 )
             }
 
@@ -865,6 +901,7 @@ fun ReaderScreen(
 private class DesktopReadMenuState(
     private val viewModel: ReadBookViewModelShared,
     private val book: Book,
+    isNightTheme: Boolean,
     private val onBack: () -> Unit,
     private val openCatalog: () -> Unit,
     private val showConfigDialog: () -> Unit,
@@ -948,6 +985,7 @@ private class DesktopReadMenuState(
     override var nextEnabled by mutableStateOf(false)
         private set
     override var autoPage by mutableStateOf(false)
+    override var isNightTheme by mutableStateOf(isNightTheme)
 
     // ---- 内部辅助方法 ----
 

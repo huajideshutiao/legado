@@ -9,13 +9,13 @@ import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.data.entities.rule.FlexChildStyle
 import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.help.ExploreKindsCacheProviders
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.printOnDebug
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.isJsonArray
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -84,7 +84,7 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
     mutex.withLock {
         exploreKindsMap[exploreKindsKey]?.let { return it }
         val kinds = arrayListOf<ExploreKind>()
-        withContext(Dispatchers.IO) {
+        withContext(IoDispatcher) {
             kotlin.runCatching {
                 var ruleStr = exploreUrl
                 if (exploreUrl.startsWith("<js>", true)
@@ -136,7 +136,7 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
                     }
                 }
             }.onFailure {
-                kinds.add(ExploreKind("ERROR:${it.localizedMessage}", url = it.stackTraceToString()))
+                kinds.add(ExploreKind("ERROR:${it.message}", url = it.stackTraceToString()))
                 it.printOnDebug()
             }
         }
@@ -153,7 +153,7 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
  * provider 下发 remove 指令清理磁盘缓存 (app 端 impl 转发到 ACache), 行为与原完全一致。
  */
 suspend fun BookSource.clearExploreKindsCache() {
-    withContext(Dispatchers.IO) {
+    withContext(IoDispatcher) {
         val exploreKindsKey = getExploreKindsKey()
         exploreKindsMap.remove(exploreKindsKey)
         ExploreKindsCacheProviders.impl?.remove(exploreKindsKey)

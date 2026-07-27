@@ -51,11 +51,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 
 /**
- * 风格锁定 MD2 的 M3 组件包装件（plan §1.8）：中和 pill 形状/tonal 染色，
- * 界面代码一律经此使用，禁止裸用默认形状的 M3 组件。
+ * MD2 风格组件包装件（plan §1.8）：包装 androidx.compose.material (M2) 组件并
+ * 统一 Arco 配色/形状，界面代码一律经此使用，禁止裸用默认样式的 material 组件。
  */
 
 /** 描边按钮：复刻 Widget.Arco.Button.Outline(accent 描边 + accent 字，8dp 圆角)，禁用时置灰 */
@@ -71,8 +72,8 @@ fun AppOutlinedButton(
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
-        shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(1.dp, if (enabled) colors.accent else colors.secondaryText.copy(alpha = 0.3f)),
+        shape = DesignTokens.buttonShape,
+        border = BorderStroke(DesignTokens.strokeThin, if (enabled) colors.accent else colors.secondaryText.copy(alpha = 0.3f)),
         colors = ButtonDefaults.outlinedButtonColors(
             contentColor = colors.accent,
             disabledContentColor = colors.secondaryText.copy(alpha = 0.5f),
@@ -114,7 +115,7 @@ fun AppFilletTextButton(
     Box(
         modifier
             .padding(4.dp) // inset 4dp
-            .clip(RoundedCornerShape(8.dp)) // arco_radius_default
+            .clip(DesignTokens.shapeDefault)
             .background(if (pressed) pressedBg else normalBg)
             .combinedClickable(
                 interactionSource = interaction,
@@ -147,7 +148,7 @@ fun AppTextButton(
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
-        shape = RoundedCornerShape(8.dp),
+        shape = DesignTokens.buttonShape,
         colors = ButtonDefaults.textButtonColors(contentColor = color),
     ) {
         Text(text)
@@ -309,24 +310,26 @@ fun AppMenuCheckbox(
     }
 }
 
-/** 输入框：MD2 视觉 (委托 [Md2TextField])，accent 聚焦色 + 4dp 圆角，对齐 TextInputLayout 主题行为 */
+/** 输入框：MD2 下划线形态 (委托 [AppTextField])，accent 聚焦下划线+浮动 label，对齐 TextInputLayout(boxBackgroundMode=none) 行为 */
 @Composable
 fun AppOutlinedTextField(
     value: String,
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
     label: String? = null,
+    placeholder: String? = null,
     readOnly: Boolean = false,
     singleLine: Boolean = false,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailingIcon: @Composable (() -> Unit)? = null,
 ) {
-    Md2TextField(
+    AppTextField(
         value = value,
         onValueChange = onValueChange,
         modifier = modifier,
         readOnly = readOnly,
         label = label,
+        placeholder = placeholder,
         singleLine = singleLine,
         visualTransformation = visualTransformation,
         trailingIcon = trailingIcon,

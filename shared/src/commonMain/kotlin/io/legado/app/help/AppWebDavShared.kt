@@ -131,15 +131,16 @@ object AppWebDavShared {
         if (account.isEmpty() || password.isEmpty()) return
         val mAuthorization = Authorization(account, password)
         checkAuthorization(mAuthorization)
-        kotlin.runCatching {
+        try {
             WebDav(rootWebDavUrl, mAuthorization).makeAsDir()
             WebDav(bookProgressUrl, mAuthorization).makeAsDir()
             WebDav(exportsWebDavUrl, mAuthorization).makeAsDir()
             WebDav(bgWebDavUrl, mAuthorization).makeAsDir()
             authorization = mAuthorization
-        }.onFailure {
+        } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
-            AppLog.put("WebDav upConfig 失败\n${it.localizedMessage}", it)
+            AppLog.put("WebDav upConfig 失败\n${e.message}", e)
+            throw e
         }
     }
 
@@ -226,7 +227,7 @@ object AppWebDavShared {
      */
     @Throws(Exception::class)
     suspend fun backUpWebDav(fileName: String) {
-        val auth = authorization ?: return
+        val auth = authorization ?: throw NoStackTraceException("webDav没有配置")
         val putUrl = "$rootWebDavUrl$fileName"
         WebDav(putUrl, auth).upload(BackupShared.zipFilePath)
     }
@@ -272,12 +273,12 @@ object AppWebDavShared {
             val bookProgress = BookProgress(book)
             val json = GSON.toJson(bookProgress)
             val url = getProgressUrl(book.name, book.author)
-            WebDav(url, auth).upload(json.toByteArray(), "application/json")
+            WebDav(url, auth).upload(json.encodeToByteArray(), "application/json")
             book.syncTime = systemCurrentTimeMillis()
             onSuccess?.invoke()
         } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
-            AppLog.put("上传进度失败\n${e.localizedMessage}", e, toast)
+            AppLog.put("上传进度失败\n${e.message}", e, toast)
         }
     }
 
@@ -290,11 +291,11 @@ object AppWebDavShared {
             if (!AppConfigProviders.get().syncBookProgress) return
             val json = GSON.toJson(bookProgress)
             val url = getProgressUrl(bookProgress.name, bookProgress.author)
-            WebDav(url, auth).upload(json.toByteArray(), "application/json")
+            WebDav(url, auth).upload(json.encodeToByteArray(), "application/json")
             onSuccess?.invoke()
         } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
-            AppLog.put("上传进度失败\n${e.localizedMessage}", e)
+            AppLog.put("上传进度失败\n${e.message}", e)
         }
     }
 
@@ -318,14 +319,14 @@ object AppWebDavShared {
         kotlin.runCatching {
             val auth = authorization ?: return null
             WebDav(url, auth).download().let { byteArray ->
-                val json = String(byteArray)
+                val json = byteArray.decodeToString()
                 if (json.isJson()) {
                     return GSON.fromJsonObject<BookProgress>(json).getOrNull()
                 }
             }
         }.onFailure {
             currentCoroutineContext().ensureActive()
-            AppLog.put("获取书籍进度失败\n${it.localizedMessage}", it)
+            AppLog.put("获取书籍进度失败\n${it.message}", it)
         }
         return null
     }

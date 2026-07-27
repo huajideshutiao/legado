@@ -11,12 +11,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import io.legado.app.ui.compose.component.AppDropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,11 +36,13 @@ import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.association.ImportTxtTocRuleDialog
+import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
@@ -55,7 +55,6 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
-import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * txt目录规则选择器：单选 tocRegex + 长按拖拽排序 + 单项启停/编辑/删除，OK 回传选中规则。
@@ -137,7 +136,7 @@ class TxtTocRuleDialog() : BaseComposeDialogFragment(), TxtTocRuleEditDialog.Cal
     }
 
     @Composable
-    private fun ReorderableCollectionItemScope.TocRuleItem(item: TxtTocRule) {
+    private fun RuleItemScope.TocRuleItem(item: TxtTocRule) {
         val colors = AppTheme.colors
         Column(
             Modifier
@@ -146,13 +145,9 @@ class TxtTocRuleDialog() : BaseComposeDialogFragment(), TxtTocRuleEditDialog.Cal
                 .padding(16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(
+                AppRadioButton(
                     selected = item.name == selectedName,
                     onClick = { selectedName = item.name },
-                    colors = RadioButtonDefaults.colors(
-                        selectedColor = colors.accent,
-                        unselectedColor = colors.secondaryText,
-                    ),
                 )
                 Text(
                     text = item.name,
@@ -199,9 +194,8 @@ class TxtTocRuleDialog() : BaseComposeDialogFragment(), TxtTocRuleEditDialog.Cal
             @Composable
             fun item(textRes: Int, onClick: () -> Unit) {
                 DropdownMenuItem(
-                    text = { Text(stringResource(textRes), color = colors.primaryText) },
                     onClick = { onDismiss(); onClick() },
-                )
+                ) { Text(stringResource(textRes), color = colors.primaryText) }
             }
             item(R.string.create) { showDialogFragment(TxtTocRuleEditDialog()) }
             item(R.string.import_local) {

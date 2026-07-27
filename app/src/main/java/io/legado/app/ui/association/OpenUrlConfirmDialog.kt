@@ -10,10 +10,10 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import io.legado.app.ui.compose.component.AppDropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -132,19 +132,17 @@ object OpenUrlConfirmDialog {
             }
             AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                 DropdownMenuItem(
-                    text = { Text(stringResource(R.string.disable_source)) },
                     onClick = {
                         expanded = false
                         onDisableSource()
                     },
-                )
+                ) { Text(stringResource(R.string.disable_source)) }
                 DropdownMenuItem(
-                    text = { Text(stringResource(R.string.delete_source)) },
                     onClick = {
                         expanded = false
                         onDeleteSource()
                     },
-                )
+                ) { Text(stringResource(R.string.delete_source)) }
             }
         }
     }

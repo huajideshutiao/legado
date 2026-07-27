@@ -14,7 +14,7 @@ fun AppNumberField(
     label: String? = null,
     maxLength: Int = 5,
 ) {
-    Md2TextField(
+    AppTextField(
         value = value,
         onValueChange = { input ->
             onValueChange(input.filter { it.isDigit() }.take(maxLength))

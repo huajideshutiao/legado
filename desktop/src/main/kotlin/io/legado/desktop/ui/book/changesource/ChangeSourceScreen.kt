@@ -6,9 +6,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -18,6 +15,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
@@ -33,6 +32,7 @@ import io.legado.app.ui.book.changesource.ChangeSourceRefreshBar
 import io.legado.app.ui.book.changesource.ChangeSourceTitleBar
 import io.legado.app.ui.book.changesource.CheckMenuItem
 import io.legado.app.ui.book.changesource.GroupMenuItem
+import io.legado.app.ui.book.changesource.GroupPickerDialog
 import io.legado.app.ui.book.changesource.SearchBookItem
 import io.legado.app.ui.book.changesource.TextMenuItem
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
@@ -63,8 +63,6 @@ import kotlinx.coroutines.launch
  * - 搜索 / 排序 / 筛选 / 启停 / 进度: 全部走 shared VM, 与 app 端逻辑一致;
  * - 置顶 / 置底 / 禁用 / 删除: 转发到 shared VM (内部走 AppDbProviders / SourceHelp);
  * - 评分: 桌面端走 commonMain 的 SourceConfig (经 PreferenceProviders 持久化到 java.util.prefs);
- * - 字数加载: 桌面端默认关闭 (changeSourceLoadWordCount=false), 开启后 processContent
- *   直接返回原文 (ContentProcessor 未下沉);
  * - getDurChapter: 桌面端取末章 (BookHelp.getDurChapter 未下沉);
  * - toastOnUi: 用 println 替代。
  *
@@ -124,6 +122,8 @@ private fun ChangeSourceContent(
     var items by remember { mutableStateOf(emptyList<SearchBook>()) }
     var searching by remember { mutableStateOf(false) }
     var groups by remember { mutableStateOf(emptyList<String>()) }
+    // 分组二级菜单独立 Dialog 状态：避免嵌套 Popup 位置错乱
+    var showGroupPicker by remember { mutableStateOf(false) }
     var searchMode by remember { mutableStateOf(false) }
     var screenKey by remember { mutableStateOf("") }
     var checkAuthor by remember { mutableStateOf(platform.changeSourceCheckAuthor) }
@@ -216,19 +216,11 @@ private fun ChangeSourceContent(
             }
             CheckMenuItem(loadWordCountLabel, loadWordCount) {
                 dismiss()
-                // TODO: 字数加载依赖 ContentProcessor (未下沉), 桌面端暂不支持切换
-                // viewModel.onLoadWordCountChecked(!loadWordCount)
             }
             GroupMenuItem(
                 title = if (searchGroup.isEmpty()) groupLabel else "$groupLabel($searchGroup)",
-                groups = groups,
-                selectedGroup = searchGroup,
                 dismissParent = dismiss,
-                onSelect = { group ->
-                    // TODO: 分组筛选需写回 platform.searchGroup 并重启搜索
-                    // 桌面端 platform.searchGroup setter 已写回 PreferenceProviders
-                    // 但 remember 缓存的 platform 实例需刷新, 暂不实现
-                },
+                onShowGroupPicker = { showGroupPicker = true },
             )
             TextMenuItem(closeLabel) {
                 dismiss(); onBack()
@@ -305,26 +297,38 @@ private fun ChangeSourceContent(
         )
     }
 
+    // 分组选择独立 Dialog：弹出时居中显示，避免原嵌套 Popup 错位
+    if (showGroupPicker) {
+        GroupPickerDialog(
+            groups = groups,
+            selectedGroup = searchGroup,
+            onDismiss = { showGroupPicker = false },
+            onSelect = { group ->
+                showGroupPicker = false
+                // TODO: 分组筛选需写回 platform.searchGroup 并重启搜索
+                // 桌面端 platform.searchGroup setter 已写回 PreferenceProviders
+                // 但 remember 缓存的 platform 实例需刷新, 暂不实现
+            },
+        )
+    }
+
     // 加载目录中等待对话框 (对照 app 端 waitDialog: getToc 时显示, 成功/失败/取消时隐藏)
     // 用户点击外部或取消按钮: cancel 协程 + 隐藏对话框
     // (对照 app 端 waitDialog.onCancelListener = { coroutine.cancel() })
     waitDialogBookName?.let { name ->
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = {
                 tocCoroutine?.cancel()
                 tocCoroutine = null
                 waitDialogBookName = null
             },
-            title = { Text(loadTocLabel) },
-            text = { Text(name) },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = {
-                    tocCoroutine?.cancel()
-                    tocCoroutine = null
-                    waitDialogBookName = null
-                }) { Text(cancelLabel) }
+            title = loadTocLabel,
+            message = name,
+            cancelButton = AlertButton(cancelLabel, dismissOnClick = false) {
+                tocCoroutine?.cancel()
+                tocCoroutine = null
+                waitDialogBookName = null
             },
         )
     }

@@ -1,6 +1,7 @@
 package io.legado.desktop.ui.config
 
 import androidx.compose.foundation.layout.widthIn
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.desktop.ui.component.DialogSizes
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
@@ -11,13 +12,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,7 +32,7 @@ import io.legado.app.help.config.ThemeConfigData
 import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.association.ImportThemeViewModelShared
-import io.legado.app.ui.compose.component.Md2TextField
+import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.DialogTitleBar
@@ -158,7 +156,7 @@ fun ThemeListDialog(onDismiss: () -> Unit) {
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(16.dp),
+            shape = DesignTokens.dialogShape,
             color = colors.background,
             modifier = Modifier.widthIn(max = DialogSizes.dialogMaxWidth()).heightIn(max = DialogSizes.dialogFullHeight()),
         ) {
@@ -279,40 +277,34 @@ fun ThemeListDialog(onDismiss: () -> Unit) {
     }
 
     // ---- URL 导入对话框 (输入订阅 URL, 确认后触发 ImportThemeViewModelShared.importSource) ----
-    // app 端无主题 URL 导入, 桌面端补充; AlertDialog 模式与 BookSourceScreen/ReplaceRuleScreen
+    // app 端无主题 URL 导入, 桌面端补充; 对话框模式与 BookSourceScreen/ReplaceRuleScreen
     //   网络导入 URL 输入一致 (替换原 javax.swing.JOptionPane.showInputDialog 同步阻塞)
     if (showUrlImportDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { showUrlImportDialog = false },
-            title = { Text(rememberString("net_import_theme")) },
-            text = {
-                Md2TextField(
-                    value = urlImportText,
-                    onValueChange = { urlImportText = it },
-                    label = rememberString("input_theme_url"),
-                    singleLine = true,
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val url = urlImportText
-                    showUrlImportDialog = false
-                    if (url.isNotBlank()) {
-                        // 新建 ImportThemeViewModelShared, 调 importSource(url) 触发下载+解析+比对,
-                        // LaunchedEffect(urlImportVm) 收集 successState/errorState 后写入 ThemeConfigProviders
-                        val vm = ImportThemeViewModelShared(scope)
-                        urlImportVm = vm
-                        vm.importSource(url)
-                    }
-                }) { Text(okLabel) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showUrlImportDialog = false }) {
-                    Text(cancelLabel)
+            title = rememberString("net_import_theme"),
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                val url = urlImportText
+                showUrlImportDialog = false
+                if (url.isNotBlank()) {
+                    // 新建 ImportThemeViewModelShared, 调 importSource(url) 触发下载+解析+比对,
+                    // LaunchedEffect(urlImportVm) 收集 successState/errorState 后写入 ThemeConfigProviders
+                    val vm = ImportThemeViewModelShared(scope)
+                    urlImportVm = vm
+                    vm.importSource(url)
                 }
             },
-        )
+            cancelButton = AlertButton(cancelLabel),
+        ) {
+            AppTextField(
+                value = urlImportText,
+                onValueChange = { urlImportText = it },
+                label = rememberString("input_theme_url"),
+                singleLine = true,
+                modifier = Modifier.padding(horizontal = 24.dp),
+            )
+        }
     }
 
     // ---- URL 导入 VM 状态收集 (successState/errorState) ----

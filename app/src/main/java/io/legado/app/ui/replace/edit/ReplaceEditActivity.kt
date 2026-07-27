@@ -22,10 +22,10 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.R
 import io.legado.app.base.BaseComposeActivity
 import io.legado.app.data.entities.ReplaceRule
-import io.legado.app.ui.compose.component.Md2TextField
+import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
@@ -223,26 +223,24 @@ class ReplaceEditActivity : BaseComposeActivity() {
         }
         OverflowMenu { dismiss ->
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.copy_rule), color = colors.primaryText) },
                 onClick = {
                     dismiss()
                     sendToClip(GSON.toJson(getReplaceRule()))
                 },
-            )
+            ) { Text(stringResource(R.string.copy_rule), color = colors.primaryText) }
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.paste_rule), color = colors.primaryText) },
                 onClick = {
                     dismiss()
                     viewModel.pasteRule { upReplaceView(it) }
                 },
-            )
+            ) { Text(stringResource(R.string.paste_rule), color = colors.primaryText) }
         }
     }
 
     /** 对照 TextInputLayout+EditText：label 浮动提示，聚焦时登记为辅助键目标 */
     @Composable
     private fun FormField(field: FieldState, label: String, number: Boolean = false) {
-        Md2TextField(
+        AppTextField(
             value = field.value,
             onValueChange = { new ->
                 if (number) {

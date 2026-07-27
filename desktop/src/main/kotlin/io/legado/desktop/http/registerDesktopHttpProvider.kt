@@ -17,8 +17,8 @@ import io.legado.app.help.http.registerDefaultJvmCookieStoreProvider
  *    (供 shared 中跨平台 HttpClient 抽象层使用);
  * 3. 注册 [DesktopCookieJarBridge] 到 [CookieJarBridgeHolder]
  *    (供 OkHttp 头注入拦截器在请求头带 cookieJarHeader 时自动加载/保存 cookie);
- * 4. 注册 [io.legado.app.help.http.JvmCookieStoreProvider] 到 [io.legado.app.help.http.CookieStoreProviders]
- *    (供 shared 业务层跨平台调用 cookie 读写 API, 基于 java.net.CookieManager)。
+ * 4. 注册 [io.legado.app.help.http.SharedCookieStore] 到 [io.legado.app.help.http.CookieStoreProviders]
+ *    (供 shared 业务层跨平台调用 cookie 读写 API, Room cookieDao 持久化)。
  *
  * 对应 Android 端在 App.onCreate 中调用的 registerAndroidWebBookProviders / registerAndroidJsEngines。
  */
@@ -28,6 +28,6 @@ fun registerDesktopHttpProvider() {
     OkHttpProxyClientProviders.impl = provider
     HttpClients.register(OkHttpHttpClient(provider.okHttpClient))
     CookieJarBridgeHolder.register(DesktopCookieJarBridge())
-    // 注册业务层 CookieStoreProvider (基于 java.net.CookieManager), 让 shared 业务层能跨平台读写 cookie
+    // 注册业务层 CookieStoreProvider (commonMain SharedCookieStore, Room cookieDao 持久化)
     registerDefaultJvmCookieStoreProvider()
 }

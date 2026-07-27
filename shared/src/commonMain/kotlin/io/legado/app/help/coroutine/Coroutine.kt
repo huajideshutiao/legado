@@ -4,7 +4,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.DisposableHandle
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -24,7 +23,7 @@ import kotlin.coroutines.CoroutineContext
 @Suppress("unused")
 class Coroutine<T>(
     private val scope: CoroutineScope,
-    context: CoroutineContext = Dispatchers.IO,
+    context: CoroutineContext = IoDispatcher,
     private val startOption: CoroutineStart = CoroutineStart.DEFAULT,
     private val executeContext: CoroutineContext = mainDispatcher,
     private val semaphore: Semaphore? = null,
@@ -37,7 +36,7 @@ class Coroutine<T>(
 
         fun <T> async(
             scope: CoroutineScope = DEFAULT,
-            context: CoroutineContext = Dispatchers.IO,
+            context: CoroutineContext = IoDispatcher,
             start: CoroutineStart = CoroutineStart.DEFAULT,
             executeContext: CoroutineContext = mainDispatcher,
             semaphore: Semaphore? = null,

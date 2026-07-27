@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
@@ -29,24 +28,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.Md2TextField
+import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
-
-/**
- * Arco Design 主色 arcoblue-6 (#165DFF)。
- *
- * 用作对话框标题栏保存图标 + 底部确认按钮的强调色。
- * 不复用 AppTheme.accent, 避免不同主题下颜色漂移导致与原 app 端 arco 规范不一致。
- */
-private val ArcoBlue6 = Color(0xFF165DFF)
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 章节正文编辑对话框 (KMP 共享, app + desktop 复用)。
@@ -124,7 +115,7 @@ fun ContentEditDialog(
     }
 
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = DesignTokens.dialogShape,
         color = colors.background,
         modifier = Modifier.fillMaxWidth().padding(8.dp),
     ) {
@@ -137,7 +128,7 @@ fun ContentEditDialog(
                         Icon(
                             painter = rememberPainter("ic_save"),
                             contentDescription = saveDescText,
-                            tint = ArcoBlue6,
+                            tint = DesignTokens.arcoBlue6,
                         )
                     }
                     OverflowMenu { dismissMenu ->
@@ -175,9 +166,9 @@ fun ContentEditDialog(
                     .fillMaxWidth()
                     .padding(16.dp),
             ) {
-                // 多行输入, maxLines = 10 (任务硬要求); 走 Md2TextField 统一 MD2 视觉
+                // 多行输入, maxLines = 10 (任务硬要求); 走 AppTextField 统一 MD2 视觉
                 // maxLines=10 时 TextField 内部自动滚动, 无需外层 verticalScroll
-                Md2TextField(
+                AppTextField(
                     value = contentState,
                     onValueChange = { contentState = it },
                     modifier = Modifier.fillMaxWidth(),
@@ -201,7 +192,7 @@ fun ContentEditDialog(
                 }
                 Spacer(Modifier.width(4.dp))
                 TextButton(onClick = { save() }) {
-                    Text(okText, color = ArcoBlue6)
+                    Text(okText, color = DesignTokens.arcoBlue6)
                 }
             }
         }

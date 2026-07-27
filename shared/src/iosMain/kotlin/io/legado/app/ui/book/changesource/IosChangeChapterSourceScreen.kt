@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Surface
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -28,6 +28,7 @@ import io.legado.app.help.book.primaryStr
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.booksource.IosBookSourceEditScreen
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.utils.formatNative
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.drop
@@ -83,6 +84,8 @@ fun IosChangeChapterSourceScreen(
     var items by remember { mutableStateOf(emptyList<SearchBook>()) }
     var searching by remember { mutableStateOf(false) }
     var groups by remember { mutableStateOf(emptyList<String>()) }
+    // 分组二级菜单独立 Dialog 状态：避免嵌套 Popup 位置错乱
+    var showGroupPicker by remember { mutableStateOf(false) }
     var searchMode by remember { mutableStateOf(false) }
     var screenKey by remember { mutableStateOf("") }
     var checkAuthor by remember { mutableStateOf(platform.changeSourceCheckAuthor) }
@@ -126,7 +129,7 @@ fun IosChangeChapterSourceScreen(
     // 收集换源进度
     LaunchedEffect(Unit) {
         viewModel.changeSourceProgress.drop(1).collect { (count, name) ->
-            durText = searchedCountProgressTemplate.format(items.size, count, viewModel.totalSourceCount, name)
+            durText = searchedCountProgressTemplate.formatNative(items.size, count, viewModel.totalSourceCount, name)
             delay(500)
         }
     }
@@ -192,18 +195,8 @@ fun IosChangeChapterSourceScreen(
             }
             GroupMenuItem(
                 title = if (searchGroup.isEmpty()) groupLabel else "$groupLabel($searchGroup)",
-                groups = groups,
-                selectedGroup = searchGroup,
                 dismissParent = dismiss,
-                onSelect = { group ->
-                    platform.searchGroup = group
-                    scope.launch {
-                        viewModel.stopSearch()
-                        if (viewModel.refresh()) {
-                            viewModel.startSearch()
-                        }
-                    }
-                },
+                onShowGroupPicker = { showGroupPicker = true },
             )
         }
         Box(Modifier.weight(1f)) {
@@ -239,7 +232,7 @@ fun IosChangeChapterSourceScreen(
                                     onError = { e ->
                                         tocVisible = false
                                         tocLoading = false
-                                        AppLog.put(String.format(changeChapterSourceTocFailedTemplate, e), e)
+                                        AppLog.put(changeChapterSourceTocFailedTemplate.formatNative(e), e)
                                         Toasters.get().toast(e.localizedMessage ?: loadTocFailedText)
                                     },
                                 )
@@ -301,6 +294,25 @@ fun IosChangeChapterSourceScreen(
                 )
             }
         }
+    }
+
+    // 分组选择独立 Dialog：弹出时居中显示，避免原嵌套 Popup 错位
+    if (showGroupPicker) {
+        GroupPickerDialog(
+            groups = groups,
+            selectedGroup = searchGroup,
+            onDismiss = { showGroupPicker = false },
+            onSelect = { group ->
+                showGroupPicker = false
+                platform.searchGroup = group
+                scope.launch {
+                    viewModel.stopSearch()
+                    if (viewModel.refresh()) {
+                        viewModel.startSearch()
+                    }
+                }
+            },
+        )
     }
 
     // 书源编辑覆盖层 (对照 app 端 editSourceResult: launch BookSourceEditActivity)

@@ -1,9 +1,5 @@
 package io.legado.desktop.ui.search
 
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -13,6 +9,8 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.BookGroup
@@ -24,6 +22,7 @@ import io.legado.app.ui.book.search.SearchScreen as SharedSearchScreen
 import io.legado.app.ui.book.search.SearchViewModel
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.utils.splitNotBlank
+import io.legado.desktop.ui.component.DesktopBookCover
 import kotlinx.coroutines.flow.collect
 
 /**
@@ -112,25 +111,28 @@ fun SearchScreen(
             onShowAppLogCb = { showLogDialog = true },
             onAlertSearchScopeCb = { showSearchScopeDialog = true },
         ),
+        // 封面注入: 复用书架/详情页同一套 DesktopBookCover (共享 LRU 缓存 getOrLoadCover)。
+        // modifier 由 shared 端按占位原尺寸构造, InfoCover 只在其上加圆角, 不改尺寸。
+        coverSlot = { searchBook, modifier, _ ->
+            val book = remember(searchBook) { searchBook.toBook() }
+            DesktopBookCover.InfoCover(book, modifier)
+        },
+        shelfCoverSlot = { book, modifier, _ ->
+            DesktopBookCover.InfoCover(book, modifier)
+        },
     )
 
-    // ---- AlertDialog 渲染 (替换原 javax.swing.JOptionPane.showConfirmDialog) ----
+    // ---- 对话框渲染 (替换原 javax.swing.JOptionPane.showConfirmDialog) ----
     if (showClearHistoryDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { showClearHistoryDialog = false },
-            title = { Text(sureClearSearchHistoryLabel) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showClearHistoryDialog = false
-                    viewModel.clearHistory()
-                }) { Text(okLabel) }
+            title = sureClearSearchHistoryLabel,
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                showClearHistoryDialog = false
+                viewModel.clearHistory()
             },
-            dismissButton = {
-                TextButton(onClick = { showClearHistoryDialog = false }) {
-                    Text(cancelLabel)
-                }
-            },
+            cancelButton = AlertButton(cancelLabel),
         )
     }
     // ---- 应用日志对话框 (onShowAppLog 触发, 调用 shared/sharedUiMain 下沉的 AppLogDialog) ----

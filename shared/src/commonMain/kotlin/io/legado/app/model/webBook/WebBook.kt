@@ -15,6 +15,7 @@ import io.legado.app.help.source.SourceDebugLoggers
 import io.legado.app.help.http.StrResponse
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.analyzeRule.RuleData
 import io.legado.app.model.webBook.replaceExploreOptionsInUrl
 import io.legado.app.help.book.getAbsoluteURL
@@ -62,7 +63,7 @@ object WebBook {
             if (isSearch) put(AppConst.JsVarName.KEY, key)
             if (page != null) put(AppConst.JsVarName.PAGE, page)
         }
-        val analyzeUrl = AnalyzeUrlCore(
+        val analyzeUrl = AnalyzeUrlFactories.create(
             rawUrl = url,
             baseUrl = bookSource.bookSourceUrl,
             source = bookSource,
@@ -104,7 +105,7 @@ object WebBook {
                 canReName = canReName
             )
         } else {
-            val analyzeUrl = AnalyzeUrlCore(
+            val analyzeUrl = AnalyzeUrlFactories.create(
                 rawUrl = book.bookUrl,
                 baseUrl = bookSource.bookSourceUrl,
                 source = bookSource,
@@ -191,7 +192,7 @@ object WebBook {
                     body = book.tocHtml
                 )
             } else {
-                val analyzeUrl = AnalyzeUrlCore(
+                val analyzeUrl = AnalyzeUrlFactories.create(
                     rawUrl = book.tocUrl,
                     baseUrl = book.bookUrl,
                     source = bookSource,
@@ -244,7 +245,7 @@ object WebBook {
                 needSave = needSave
             )
         } else {
-            val analyzeUrl = AnalyzeUrlCore(
+            val analyzeUrl = AnalyzeUrlFactories.create(
                 rawUrl = chapterUrl,
                 baseUrl = book.tocUrl,
                 source = bookSource,
@@ -327,7 +328,7 @@ object WebBook {
         val (rawUrl, missingMsg) = urlRuleSelector(reviewRule)
         if (rawUrl.isNullOrBlank()) throw NoStackTraceException(missingMsg)
         val baseUrl = bookChapter?.getAbsoluteURL(book) ?: book.bookUrl
-        val analyzeUrl = AnalyzeUrlCore(
+        val analyzeUrl = AnalyzeUrlFactories.create(
             rawUrl = rawUrl,
             baseUrl = baseUrl,
             source = bookSource,

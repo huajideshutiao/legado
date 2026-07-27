@@ -196,7 +196,7 @@ class AndroidZipFile : ZipConstants, AndroidZipFileReader {
         if (PfdHelper.skipBytes(
                 pfd,
                 ZipConstants.Companion.ENDTOT - ZipConstants.Companion.ENDNRD
-            ) !== ZipConstants.Companion.ENDTOT - ZipConstants.Companion.ENDNRD
+            ) != ZipConstants.Companion.ENDTOT - ZipConstants.Companion.ENDNRD
         ) throw EOFException(name)
         //int count = readLeShort(raf, ebs);
         val count = readLeShort(pfd, ebs)

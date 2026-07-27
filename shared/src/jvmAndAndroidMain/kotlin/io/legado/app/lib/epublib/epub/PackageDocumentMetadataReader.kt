@@ -240,7 +240,7 @@ internal object PackageDocumentMetadataReader : PackageDocumentBase() {
             if (identifierValue.isNullOrBlank()) {
                 continue
             }
-            val identifier: Identifier = Identifier(schemeName ?: "", identifierValue ?: "")
+            val identifier: Identifier = Identifier(schemeName ?: "", identifierValue)
             if (identifierElement.getAttribute("id") == bookIdId) {
                 identifier.isBookId = true
             }

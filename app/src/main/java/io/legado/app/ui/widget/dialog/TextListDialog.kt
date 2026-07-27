@@ -8,16 +8,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material3.Text
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.ui.compose.component.DialogTitleBar
@@ -66,7 +64,13 @@ class TextListDialog() : BaseComposeDialogFragment() {
     }
 }
 
-/** 复刻 Linkify.WEB_URLS：把纯文本中的网址片段标注为可点击链接。 */
+/**
+ * 复刻 Linkify.WEB_URLS：把纯文本中的网址片段标注为链接样式。
+ *
+ * 仅保留视觉样式（颜色 + 下划线），不使用 withLink/LinkAnnotation。
+ * 在 SelectionContainer 中可点击链接会拦截长按手势导致无法选中文本，
+ * 去掉点击行为以保证链接区域同样可长按选择。
+ */
 internal fun autoLinkText(text: String, linkColor: androidx.compose.ui.graphics.Color): AnnotatedString =
     buildAnnotatedString {
         val matcher = android.util.Patterns.WEB_URL.matcher(text)
@@ -74,13 +78,8 @@ internal fun autoLinkText(text: String, linkColor: androidx.compose.ui.graphics.
         while (matcher.find()) {
             append(text.substring(last, matcher.start()))
             val url = matcher.group()
-            val href = if (url.contains("://")) url else "http://$url"
-            withLink(
-                LinkAnnotation.Url(
-                    href,
-                    TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)),
-                )
-            ) {
+            // 仅保留链接视觉样式，不注册点击以避免拦截 SelectionContainer 长按选择
+            withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) {
                 append(url)
             }
             last = matcher.end()

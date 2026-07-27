@@ -19,7 +19,7 @@ import java.io.File
  *
  * # 实现要点
  * - **驱动**: [BundledSQLiteDriver] (androidx.sqlite:sqlite-bundled 跨平台 SQLite, 内嵌原生库)
- * - **数据库路径**: 默认 `~/.legado/legado.db`, 可通过构造参数覆盖 (测试场景)
+ * - **数据库路径**: 默认 `{desktopAppRootDir}/legado.db`, 可通过构造参数覆盖 (测试场景)
  * - **查询协程上下文**: [Dispatchers.IO], suspend DAO 方法在 IO 线程执行
  * - **迁移策略**: 桌面端首启动即此版本 (86), 无历史迁移; 若 schema 与文件不匹配,
  *   `fallbackToDestructiveMigration` 兜底重建 (桌面端无 Android 端的 autoMigrations 历史数据需保)
@@ -34,7 +34,7 @@ import java.io.File
  * [appDatabase] lazy 单例, 同一实例供 [AppDatabaseProviders] + [DatabaseDriverProviders] 共享
  * (避免重复构造, 见 [DesktopAppDatabaseProvider])。
  *
- * @param dbPath 数据库文件绝对路径, 默认 `~/.legado/legado.db`
+ * @param dbPath 数据库文件绝对路径, 默认 `{desktopAppRootDir}/legado.db`
  */
 class BundledDatabaseDriver(
     dbPath: String = defaultDbPath()
@@ -96,9 +96,9 @@ class BundledDatabaseDriver(
         /**
          * 默认数据库路径: `{desktopAppRootDir}/legado.db`。
          *
-         * - 便携模式 (jpackage 打包后): 跟随 exe 同级 `data/` 目录 (Main.kt 设 legado.portable.root)
-         * - 开发模式 (`:desktop:run`): `~/.legado/legado.db` (避免污染项目源码树)
-         * - 跨平台: Win / Linux / macOS 均支持 (Java System.property)
+         * - 便携模式: 跟随 exe 同级 `data/` 目录 (portable.txt 标记 / legado.portable.root)
+         * - 安装/开发模式: 系统数据目录 (%APPDATA%/XDG_DATA_HOME/Application Support)/legado,
+         *   旧 ~/.legado 有数据时沿用 (见 desktopAppRootDir)
          */
         fun defaultDbPath(): String {
             return File(desktopAppRootDir(), DATABASE_NAME).absolutePath

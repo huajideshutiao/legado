@@ -109,18 +109,30 @@ data class BookSource(
     @ColumnInfo(defaultValue = "0")
     var exploreStyle: Int = 0,
     // 发现规则
+    // rule JSON 值可能是对象, 需原样转字符串
+    @Serializable(with = RawJsonStringSerializer::class)
     var ruleExplore: String? = null,
     // 搜索url
     override var searchUrl: String? = null,
     // 搜索规则
+    // rule JSON 值可能是对象, 需原样转字符串
+    @Serializable(with = RawJsonStringSerializer::class)
     var ruleSearch: String? = null,
     // 书籍信息页规则
+    // rule JSON 值可能是对象, 需原样转字符串
+    @Serializable(with = RawJsonStringSerializer::class)
     var ruleBookInfo: String? = null,
     // 目录页规则
+    // rule JSON 值可能是对象, 需原样转字符串
+    @Serializable(with = RawJsonStringSerializer::class)
     var ruleToc: String? = null,
     // 正文页规则
+    // rule JSON 值可能是对象, 需原样转字符串
+    @Serializable(with = RawJsonStringSerializer::class)
     var ruleContent: String? = null,
     // 段评规则
+    // rule JSON 值可能是对象, 需原样转字符串
+    @Serializable(with = RawJsonStringSerializer::class)
     override var ruleReview: String? = null
 ) : BaseSource, IBookSource {
 
@@ -322,7 +334,7 @@ data class BookSource(
 
     fun addErrorComment(e: Throwable) {
         bookSourceComment =
-            "// Error: ${e.localizedMessage}" + if (bookSourceComment.isNullOrBlank())
+            "// Error: ${e.message}" + if (bookSourceComment.isNullOrBlank())
                 "" else "\n\n${bookSourceComment}"
     }
 

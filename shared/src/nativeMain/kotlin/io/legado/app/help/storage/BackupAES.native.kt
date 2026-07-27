@@ -9,7 +9,7 @@ import io.legado.app.utils.encodeBase64Standard
 /**
  * nativeMain actual: 备份加解密 AES/ECB/PKCS5Padding (iOS / 鸿蒙 两端共用壳)。
  *
- * 真实加解密下沉到 [NativeAesOps] (expect object): iOS 端 krypto actual, 鸿蒙端 napi actual。
+ * 真实加解密下沉到 [NativeAesOps] (expect object): 两端 actual 均 mbedTLS 主实现, 异常回落 krypto/napi。
  *
  * - 算法与 jvmAndAndroidMain 的 javax.crypto.Cipher("AES/ECB/PKCS5Padding") 字节级互通,
  *   旧备份 (jvmAndAndroid 生成) 可在 iOS/鸿蒙端解密, 反之亦然。

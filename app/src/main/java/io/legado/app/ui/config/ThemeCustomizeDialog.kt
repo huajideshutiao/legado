@@ -18,9 +18,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -50,6 +50,7 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.preference.ColorPickerDialogContent
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.ColorUtils
@@ -376,7 +377,7 @@ class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
                 Modifier
                     .size(30.dp)
                     .background(Color(color), CircleShape)
-                    .border(1.dp, Color(0xFF6E6E6E), CircleShape),
+                    .border(DesignTokens.strokeThin, Color(0xFF6E6E6E), CircleShape),
             )
         }
     }

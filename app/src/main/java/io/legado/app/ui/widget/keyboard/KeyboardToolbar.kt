@@ -15,9 +15,9 @@ import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -258,9 +258,8 @@ private fun FindReplacePanel(
                         showMore = false; state.matchCase = !state.matchCase; triggerFind(false)
                     }
                     DropdownMenuItem(
-                        text = { Text("关闭", color = colors.primaryText) },
                         onClick = { showMore = false; state.findPanelVisible = false },
-                    )
+                    ) { Text("关闭", color = colors.primaryText) }
                 }
             }
         }
@@ -270,11 +269,14 @@ private fun FindReplacePanel(
 @Composable
 private fun FindOption(text: String, checked: Boolean, onClick: () -> Unit) {
     val colors = AppTheme.colors
-    DropdownMenuItem(
-        text = { Text(text, color = colors.primaryText) },
-        trailingIcon = { AppMenuCheckbox(checked = checked) },
-        onClick = onClick,
-    )
+    DropdownMenuItem(onClick = onClick) {
+        Text(
+            text,
+            color = colors.primaryText,
+            modifier = Modifier.weight(1f).padding(end = 12.dp),
+        )
+        AppMenuCheckbox(checked = checked)
+    }
 }
 
 @Composable
@@ -296,7 +298,7 @@ private fun PanelInput(
     ) {
         Text(stringResource(labelRes), color = colors.primaryText)
         val lineColor = if (focused) colors.accent else colors.secondaryText.copy(alpha = 0.4f)
-        // 保留 BasicTextField: IME 工具栏自绘 drawBehind 底线复刻 EditText, Md2TextField outlined 边框语义不符
+        // 保留 BasicTextField: IME 工具栏自绘 drawBehind 底线复刻 EditText, 无需 AppTextField 的浮动 label/最小高度
         BasicTextField(
             value = value,
             onValueChange = onValueChange,

@@ -139,7 +139,7 @@ interface HomeUiActions {
     fun openManageSection()
     /** 打开"管理分组"对话框 */
     fun openManageTab()
-    /** 下拉刷新该 tab (对照 SwipeRefreshLayout 立即 isRefreshing=false) */
+    /** 下拉刷新该 tab */
     fun refreshTab(tabTitle: String)
     /** 触底加载更多 (对照原 onScrolled 距末 4 项) */
     fun loadInfinite(tabTitle: String)
@@ -313,8 +313,7 @@ private fun HomeTabItem(title: String, selected: Boolean, onClick: () -> Unit) {
 /**
  * 单个 tab 内容: 整页 2 列网格 (对照原 GridLayoutManager+spanSizeLookup)。
  * 非无限流展示项各占整行 (full span); 无限流的标题/参数行占整行、书籍占单列、底部
- * LoadMore 占整行。下拉刷新即时触发 refreshTab (对照 SwipeRefreshLayout 立即
- * isRefreshing=false)。
+ * LoadMore 占整行。下拉刷新触发 refreshTab，指示器跟随该次任务的 sectionLoading。
  */
 @Composable
 private fun HomeTabPage(
@@ -351,11 +350,14 @@ private fun HomeTabPage(
         }
     }
     val pullState = rememberPullToRefreshState()
+    val isRefreshing = sections.any { section ->
+        state.sectionLoading[homeSectionKey(tabTitle, section.id)] == true
+    }
     Box(
         Modifier
             .fillMaxSize()
             .pullToRefresh(
-                isRefreshing = false,
+                isRefreshing = isRefreshing,
                 state = pullState,
                 onRefresh = { actions.refreshTab(tabTitle) },
             ),
@@ -392,7 +394,7 @@ private fun HomeTabPage(
         }
         PullToRefreshDefaults.Indicator(
             state = pullState,
-            isRefreshing = false,
+            isRefreshing = isRefreshing,
             modifier = Modifier.align(Alignment.TopCenter),
             color = colors.accent,
         )

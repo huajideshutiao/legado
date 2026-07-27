@@ -1,11 +1,7 @@
 package io.legado.desktop.ui.replace
 
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -16,7 +12,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import io.legado.app.ui.compose.component.Md2TextField
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookGroup
@@ -36,12 +31,12 @@ import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.replace.ReplaceRuleListScreen
 import io.legado.app.ui.replace.ReplaceRuleListViewModel
+import io.legado.app.ui.widget.dialog.HelpDialog
+import io.legado.app.ui.widget.dialog.OnlineImportUrlDialog
 import io.legado.app.utils.GSON
-import io.legado.app.utils.browseUrl
 import io.legado.app.utils.toJson
 import io.legado.desktop.ui.association.DesktopImportDialog
-import io.legado.desktop.ui.association.ImportListScaffoldVm
-import io.legado.desktop.ui.association.ImportReplaceRuleVmAdapter
+import io.legado.desktop.ui.association.DesktopImportVm
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -63,9 +58,9 @@ import java.io.File
  * - [onEditRule]: 切到 REPLACE_EDIT 路由 (ruleId = id, 编辑)
  *
  * # 平台适配回调 (本文件内实现)
- * - onImportLocal: 弹 [FileDialog] (LOAD 模式) 读 JSON 文本 → 新建 [ImportReplaceRuleVmAdapter]
+ * - onImportLocal: 弹 [FileDialog] (LOAD 模式) 读 JSON 文本 → 新建 [DesktopImportVm.replaceRule]
  *   → DesktopImportDialog 让用户勾选"新增/更新/已有"项后 importSelect 入库
- * - onImportOnline: 弹 [AlertDialog] 输入 URL → 新建 [ImportReplaceRuleVmAdapter] +
+ * - onImportOnline: 弹 [AlertDialog] 输入 URL → 新建 [DesktopImportVm.replaceRule] +
  *   设置 importVm → DesktopImportDialog 的 LaunchedEffect 调 vm.startImport(url) 触发
  *   OkHttp 下载 + ReplaceAnalyzer 解析 + comparisonSource 比对, 用户勾选后 importSelect 入库
  * - onExport: 弹 [FileDialog] (SAVE 模式) → [GSON.toJson] 选中规则 → 写文件
@@ -94,13 +89,9 @@ fun ReplaceRuleScreen(
     val eventBus = remember { DesktopEventBusProvider() }
     val prefStore = remember { DesktopPreferenceStoreProvider() }
     val scope = rememberCoroutineScope()
-    // 文案标签 (rememberString 是 @Composable, 顶层缓存后供 AlertDialog / suspend FileDialog 函数引用)
-    val replaceRuleNetImportTitleLabel = rememberString("replace_rule_net_import_title")
-    val replaceRuleInputUrlLabel = rememberString("replace_rule_input_url")
+    // 文案标签 (rememberString 是 @Composable, 顶层缓存后供 suspend FileDialog 函数引用)
     val replaceRuleSelectJsonFileLabel = rememberString("replace_rule_select_json_file")
     val replaceRuleSaveJsonFileLabel = rememberString("replace_rule_save_json_file")
-    val okLabel = rememberString("ok")
-    val cancelLabel = rememberString("cancel")
     // 导入对话框标题 (ImportListScaffold.title, 对照 app 端 getString(R.string.import_replace_rule))
     val importReplaceRuleLabel = rememberString("import_replace_rule")
     // VM 在 Composable 作用域内 remember, 窗口关闭时 onCleared (DisposableEffect)
@@ -109,16 +100,15 @@ fun ReplaceRuleScreen(
         onDispose { viewModel.onCleared() }
     }
 
-    // 网络导入 URL 输入对话框状态 (替换原 javax.swing.JOptionPane.showInputDialog 同步阻塞,
-    // 与 BookSourceEditScreen emptyUrlNameDialog 模式一致; onImportOnline 触发显示,
-    // 末尾 AlertDialog 渲染分支读取, 确认按钮新建 ImportReplaceRuleVmAdapter + 设置 importVm)
+    // 网络导入 URL 输入对话框状态 (onImportOnline 触发, 末尾 OnlineImportUrlDialog 渲染分支读取)
     var showImportOnlineDialog by remember { mutableStateOf(false) }
-    var importOnlineUrlText by remember { mutableStateOf("") }
+    // 帮助文档对话框状态 (onHelp 触发)
+    var showHelpDialog by remember { mutableStateOf(false) }
     // 导入 VM 适配器 (null=无导入任务, 非 null=渲染 DesktopImportDialog 让用户勾选比对);
     // 本地/网络导入均走 ImportReplaceRuleViewModelShared.import 路径 (URL 下载/ReplaceAnalyzer 解析/
     // comparisonSource 比对), 成功后弹 DesktopImportDialog 让用户勾选"新增/更新/已有"项再 importSelect 入库,
     // 与 app 端 ImportReplaceRuleDialog 流程等价 (不再简化为 ReplaceAnalyzer.jsonToReplaceRules 直接入库)
-    var importVm by remember { mutableStateOf<ImportListScaffoldVm?>(null) }
+    var importVm by remember { mutableStateOf<DesktopImportVm?>(null) }
     // 导入初始文本 (URL 或 JSON), DesktopImportDialog 的 LaunchedEffect 用它调 vm.startImport
     var importInitialText by remember { mutableStateOf("") }
 
@@ -155,22 +145,18 @@ fun ReplaceRuleScreen(
                         //  ReplaceAnalyzer.jsonToReplaceRules 直接入库)
                         scope.launch {
                             val json = importReplaceRulesFromLocalFile(replaceRuleSelectJsonFileLabel) ?: return@launch
-                            val vm = ImportReplaceRuleVmAdapter(ImportReplaceRuleViewModelShared(scope))
+                            val vm = DesktopImportVm.replaceRule(ImportReplaceRuleViewModelShared(scope))
                             importInitialText = json
                             importVm = vm
                         }
                     },
                     onImportOnline = {
-                        // 弹 AlertDialog URL 输入 → 用户确认后新建 ImportReplaceRuleVmAdapter +
-                        // 设置 importInitialText/importVm, DesktopImportDialog 的 LaunchedEffect 调
-                        // vm.startImport(url) 触发下载 → ReplaceAnalyzer 解析 → comparisonSource 比对
-                        // (替换原 javax.swing.JOptionPane.showInputDialog 同步阻塞 + 直接入库)
-                        importOnlineUrlText = ""
+                        // 弹 OnlineImportUrlDialog (带 URL 历史) → 确认后走 DesktopImportDialog 勾选入库
                         showImportOnlineDialog = true
                     },
                     onHelp = {
-                        // 打开浏览器跳转正则帮助页 (对应 app 端 showHelp("regexHelp"))
-                        browseUrl("https://www.runoob.com/regexp/regexp-tutorial.html")
+                        // 对应 app 端 showHelp("replaceRuleHelp")
+                        showHelpDialog = true
                     },
                     onGroupManage = {
                         // 触发 GroupManageDialog 显示 (末尾渲染分支读取 showGroupManage)
@@ -183,45 +169,23 @@ fun ReplaceRuleScreen(
                 )
             }
 
-            // ---- AlertDialog 渲染 (替换原 javax.swing.JOptionPane.showInputDialog) ----
-            // 网络导入替换规则 URL 输入对话框 (onImportOnline 触发 showImportOnlineDialog=true;
-            //   确认按钮新建 ImportReplaceRuleVmAdapter + 设置 importVm 触发 DesktopImportDialog
-            //   完成下载+解析+比对+入库, 保留原中文字面量因 ResourceProvider.jvm.kt 无对应 key)
+            // ---- 网络导入 URL 输入对话框 (带历史下拉, 对照 app 端 ReplaceRuleActivity.showImportDialog;
+            //   确认后新建 DesktopImportVm.replaceRule 触发 DesktopImportDialog 完成下载+解析+比对+入库) ----
             if (showImportOnlineDialog) {
-                AlertDialog(
-                    modifier = Modifier.fillMaxWidth(0.8f),
-                    onDismissRequest = { showImportOnlineDialog = false },
-                    title = { Text(replaceRuleNetImportTitleLabel) },
-                    text = {
-                        Md2TextField(
-                            value = importOnlineUrlText,
-                            onValueChange = { importOnlineUrlText = it },
-                            label = replaceRuleInputUrlLabel,
-                            singleLine = true,
-                        )
+                OnlineImportUrlDialog(
+                    recordKey = "replaceRuleRecordKey",
+                    onConfirm = { url ->
+                        val vm = DesktopImportVm.replaceRule(ImportReplaceRuleViewModelShared(scope))
+                        importInitialText = url
+                        importVm = vm
                     },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            val url = importOnlineUrlText
-                            showImportOnlineDialog = false
-                            if (url.isNotBlank()) {
-                                // 新建适配器 (包装 ImportReplaceRuleViewModelShared), 设置 importInitialText
-                                // + importVm 触发 DesktopImportDialog 渲染; Dialog 的 LaunchedEffect(vm) 调
-                                // vm.startImport(url) 触发下载 → ReplaceAnalyzer 解析 → comparisonSource 比对,
-                                // 成功后让用户勾选"新增/更新/已有"项再 importSelect 入库
-                                // (与 app 端 ImportReplaceRuleDialog 流程等价, 不再简化为直接入库)
-                                val vm = ImportReplaceRuleVmAdapter(ImportReplaceRuleViewModelShared(scope))
-                                importInitialText = url
-                                importVm = vm
-                            }
-                        }) { Text(okLabel) }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showImportOnlineDialog = false }) {
-                            Text(cancelLabel)
-                        }
-                    },
+                    onDismiss = { showImportOnlineDialog = false },
                 )
+            }
+
+            // ---- 帮助文档对话框 (onHelp 触发, 渲染 replaceRuleHelp.md) ----
+            if (showHelpDialog) {
+                HelpDialog(fileName = "replaceRuleHelp", onDismiss = { showHelpDialog = false })
             }
 
             // ---- 导入对话框 (本地/网络导入共用, importVm 非 null 时渲染 DesktopImportDialog
@@ -295,7 +259,7 @@ private suspend fun importReplaceRulesFromLocalFile(dialogTitle: String): String
  * 流程 (KP-Replace 改造后):
  * 1. URL 输入已改为 Compose AlertDialog (ReplaceRuleScreen 末尾渲染分支,
  *    替换原 [javax.swing.JOptionPane.showInputDialog])
- * 2. 用户确认后新建 [ImportReplaceRuleVmAdapter] (包装 [ImportReplaceRuleViewModelShared]),
+ * 2. 用户确认后新建 [DesktopImportVm.replaceRule] (包装 [ImportReplaceRuleViewModelShared]),
  *    设置 importInitialText/importVm 触发 [DesktopImportDialog] 渲染
  * 3. DesktopImportDialog 的 LaunchedEffect 调 vm.startImport(url) 触发
  *    OkHttp 下载 → ReplaceAnalyzer 解析 → comparisonSource 比对

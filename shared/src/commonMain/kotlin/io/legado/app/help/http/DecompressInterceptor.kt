@@ -11,7 +11,7 @@ package io.legado.app.help.http
  *
  * KP4 OkHttp 跨平台修复: 原直接 `import okhttp3.Interceptor/Response/ResponseBody`,
  * iOS/鸿蒙 target 无 OkHttp 变体编译失败; 现改用 [KmpInterceptor]/[KmpResponse]/[KmpResponseBody]
- * 跨平台抽象 (jvmAndAndroidMain 经 typealias 等价 okhttp3.*; iOS/鸿蒙 stub)。
+ * 跨平台抽象 (jvmAndAndroidMain 经 typealias 等价 okhttp3.*; iOS/鸿蒙 由 nativeMain 用 Ktor 包装实现)。
  * jvm/android 行为与原实现完全一致 (零 diff)。
  */
 object DecompressInterceptor : KmpInterceptor {

@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.sqlite.driver.SupportSQLiteConnection
+import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.DefaultData
 import org.intellij.lang.annotations.Language
@@ -116,12 +117,16 @@ val dbCallback = object : androidx.room.RoomDatabase.Callback() {
         }
 
         // 预置键盘助手（insert or replace 与旧 ContentValues+CONFLICT_REPLACE 等价）
+        // 资源读取/解析失败时记日志用空列表兜底, 别让首装建库崩死
+        val keyboardAssists = runCatching { DefaultData.keyboardAssists }
+            .onFailure { AppLog.put("读取默认键盘助手失败", it) }
+            .getOrDefault(emptyList())
         @Language("sql")
         val insertAssistSql =
             "insert or replace into keyboardAssists(type, `key`, value, serialNo) " +
                 "values(?, ?, ?, ?)"
         connection.prepare(insertAssistSql).use { stmt ->
-            DefaultData.keyboardAssists.forEach { keyboardAssist ->
+            keyboardAssists.forEach { keyboardAssist ->
                 stmt.bindInt(1, keyboardAssist.type)
                 stmt.bindText(2, keyboardAssist.key)
                 stmt.bindText(3, keyboardAssist.value)

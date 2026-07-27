@@ -3,12 +3,10 @@ package io.legado.desktop.ui.booksource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -22,18 +20,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.help.source.clearExploreKindsCache
+import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.Debug
 import io.legado.app.ui.book.source.debug.BookSourceDebugScreen as SharedBookSourceDebugScreen
 import io.legado.app.ui.book.source.debug.BookSourceDebugUiActions
@@ -47,10 +46,7 @@ import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.utils.GSON
-import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.browseUrl
-import io.legado.app.utils.isJsonArray
 import kotlinx.coroutines.launch
 
 /**
@@ -71,11 +67,10 @@ import kotlinx.coroutines.launch
  *
  * 简化项 (与 app 端 [io.legado.app.ui.book.source.debug.BookSourceDebugActivity] 对比):
  * - 书源加载: 直接查 [AppDbProviders.get].bookSourceDao (app 端优先用 IntentData)
- * - 发现分类: 用 [BookSource.exploreKindsJson] + GSON 解析 (app 端 exploreKinds() 依赖
- *   ACache + JS 执行, desktop 端不支持 JS 生成的发现 URL)
- * - selector / 源码查看 / 错误提示: 用 androidx.compose.material3.AlertDialog (替换原 javax.swing.JOptionPane,
+ * - 发现分类: commonMain 完整版 exploreKinds() (含 JS 求值 + 磁盘缓存, 与 app 端同一路径)
+ * - selector / 源码查看 / 错误提示: 用 sharedUiMain AppAlertDialog (替换原 javax.swing.JOptionPane,
  *   与 BookSourceScreen deleteSelectionTarget 模式一致; 在 Composable 顶层 remember 持有 dialog state,
- *   末尾渲染 AlertDialog 分支, 用户确认后通过回调继续业务流程)
+ *   末尾渲染对话框分支, 用户确认后通过回调继续业务流程)
  * - 帮助页: 打开 GitHub wiki (app 端读 assets/web/help/md/debugHelp.md)
  *
  * @param sourceUrl 书源 URL (对应 app 端 intent extra "key")
@@ -182,21 +177,12 @@ private fun BookSourceDebugContent(sourceUrl: String, onBackCallback: () -> Unit
     // 注意: Kotlin 局部函数不能前向引用, 故所有辅助函数定义在调用方 (LaunchedEffect / actions) 之前
 
     /**
-     * 解析发现分类 (对齐 app 端 initExploreKinds, 简化: 仅解析 JSON 数组格式, 不执行 JS)。
-     *
-     * app 端 [BookSource.exploreKinds] 依赖 ACache + runScriptWithContext (evalJS),
-     * desktop 端无 JS 执行环境, 仅用 [BookSource.exploreKindsJson] 取缓存/原始 JSON 解析。
+     * 解析发现分类 (对齐 app 端 initExploreKinds): commonMain 完整版 [exploreKinds]
+     * (含 JS 求值 + 磁盘缓存, desktop 已注册 QuickJsJsEngine 与 ExploreKindsCacheProvider)。
      */
     suspend fun initExploreKinds(source: BookSource) {
         try {
-            val json = source.exploreKindsJson()
-            val kinds = if (json.isJsonArray()) {
-                runCatching {
-                    GSON.fromJsonArray<ExploreKind>(json).getOrDefault(emptyList())
-                }.getOrDefault(emptyList())
-            } else {
-                emptyList()
-            }.filter { !it.url.isNullOrBlank() }
+            val kinds = source.exploreKinds().filter { !it.url.isNullOrBlank() }
             exploreKinds = kinds
             kinds.firstOrNull()?.let {
                 textFx = "${it.title}::${it.url}"
@@ -368,81 +354,64 @@ private fun BookSourceDebugContent(sourceUrl: String, onBackCallback: () -> Unit
         linkifyText(text, linkColor)
     }
 
-    // ---- AlertDialog 渲染 (替换原 javax.swing.JOptionPane) ----
+    // ---- 对话框渲染 (替换原 javax.swing.JOptionPane) ----
 
     // 1. 书源未获取到错误提示 (startSearch 触发; 替换原 JOptionPane.showMessageDialog WARNING_MESSAGE)
     if (noSourceDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { noSourceDialog = false },
-            title = { Text(debugErrorLabel) },
-            text = { Text(noSourceFoundLabel) },
-            confirmButton = {
-                TextButton(onClick = { noSourceDialog = false }) {
-                    Text(okLabel)
-                }
-            },
+            title = debugErrorLabel,
+            message = noSourceFoundLabel,
+            okButton = AlertButton(okLabel),
         )
     }
 
     // 2. 选择发现分类 (onChipFxLongClick 触发; 替换原 JOptionPane.showInputDialog 列表选择,
     //    用户点击列表项 = 选中分类, 复刻原 selected = titles[index] 后 setQuery 语义;
-    //    AlertDialog 文本槽用 Column 列出 kinds, 每项 TextButton 点击后回填 textFx + setQuery)
+    //    content 槽用 Column 列出 kinds, 每项 TextButton 点击后回填 textFx + setQuery)
     if (exploreKindPicker) {
         val kinds = exploreKinds
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { exploreKindPicker = false },
-            title = { Text(selectExploreKindLabel) },
-            text = {
-                Column {
-                    Text(selectExploreLabel)
-                    Spacer(Modifier.height(8.dp))
-                    kinds.forEachIndexed { index, kind ->
-                        TextButton(onClick = {
-                            exploreKindPicker = false
-                            val explore = kinds[index]
-                            textFx = "${explore.title}::${explore.url}"
-                            setQuery(textFx, true)
-                        }) { Text(kind.title) }
-                    }
+            title = selectExploreKindLabel,
+            cancelButton = AlertButton(cancelLabel),
+        ) {
+            Column(Modifier.padding(horizontal = 24.dp)) {
+                Text(selectExploreLabel)
+                Spacer(Modifier.height(8.dp))
+                kinds.forEachIndexed { index, kind ->
+                    TextButton(onClick = {
+                        exploreKindPicker = false
+                        val explore = kinds[index]
+                        textFx = "${explore.title}::${explore.url}"
+                        setQuery(textFx, true)
+                    }) { Text(kind.title) }
                 }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { exploreKindPicker = false }) {
-                    Text(cancelLabel)
-                }
-            },
-        )
+            }
+        }
     }
 
     // 3. 源码查看 (onShowXxxSrc → showSrcDialog 触发; 替换原 JOptionPane + JScrollPane + JTextArea,
-    //    Pair<title, content> 渲染, content 走 verticalScroll 处理长源码)
+    //    Pair<title, content> 渲染, content 走 message 槽内置滚动处理长源码)
     srcDialog?.let { (title, content) ->
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { srcDialog = null },
-            title = { Text(title) },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Text(content)
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { srcDialog = null }) {
-                    Text(okLabel)
-                }
-            },
+            title = title,
+            message = content,
+            okButton = AlertButton(okLabel),
         )
     }
 }
 
 /**
- * URL 自动链接 (替代 app 端 autoLinkText, 后者依赖 android.util.Patterns.WEB_URL)。
+ * URL 自动链接样式 (替代 app 端 autoLinkText, 后者依赖 android.util.Patterns.WEB_URL)。
  *
- * 用正则匹配 http/https URL, 用 [LinkAnnotation.Url] + [SpanStyle] 添加链接样式
+ * 用正则匹配 http/https URL, 用 [SpanStyle] 添加链接视觉样式
  * (下划线 + 传入的 linkColor); 非 URL 部分原样追加。
+ * 不使用 withLink 以避免在 SelectionContainer 中拦截长按选择。
  *
  * 简化实现: 正则 `https?://\S+` 匹配到非空白字符结尾, 对调试日志场景足够。
  */
@@ -453,13 +422,8 @@ private fun linkifyText(text: String, linkColor: Color): AnnotatedString {
         urlRegex.findAll(text).forEach { match ->
             append(text.substring(last, match.range.first))
             val url = match.value
-            val href = if (url.contains("://")) url else "http://$url"
-            withLink(
-                LinkAnnotation.Url(
-                    href,
-                    TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)),
-                )
-            ) {
+            // 仅保留链接视觉样式，不注册点击以避免拦截 SelectionContainer 长按选择
+            withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) {
                 append(url)
             }
             last = match.range.last + 1

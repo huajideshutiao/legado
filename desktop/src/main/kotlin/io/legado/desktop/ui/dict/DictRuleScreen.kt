@@ -1,11 +1,7 @@
 package io.legado.desktop.ui.dict
 
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -15,7 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import io.legado.app.ui.compose.component.Md2TextField
+import androidx.compose.ui.window.Dialog
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.entities.DictRule
@@ -36,11 +32,12 @@ import io.legado.app.ui.dict.rule.DictRuleEditDialog
 import io.legado.app.ui.dict.rule.DictRuleScreen as SharedDictRuleScreen
 import io.legado.app.ui.dict.rule.DictRuleUiActions
 import io.legado.app.ui.dict.rule.DictRuleUiState
+import io.legado.app.ui.widget.dialog.HelpDialog
+import io.legado.app.ui.widget.dialog.OnlineImportUrlDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
 import io.legado.desktop.ui.association.DesktopImportDialog
-import io.legado.desktop.ui.association.ImportDictRuleVmAdapter
-import io.legado.desktop.ui.association.ImportListScaffoldVm
+import io.legado.desktop.ui.association.DesktopImportVm
 import java.awt.FileDialog
 import java.awt.Frame
 import java.awt.Toolkit
@@ -67,8 +64,7 @@ import kotlinx.coroutines.withContext
  * - [onBack]: 切回上一路由
  *
  * # 简化项 (依赖未下沉功能, 用 no-op + TODO 注释)
- * - 新建/编辑规则 (依赖 DictRuleEditDialog, 未下沉): onAddRule/onEditRule no-op
- * - 帮助页跳转 (依赖 showHelp, 未下沉): no-op
+ * - 无 (编辑对话框/帮助文档均已接入)
  *
  * # 已实现的核心功能
  * - 列表加载 (flowAll 订阅)
@@ -113,26 +109,22 @@ private fun DictRuleContent(onBack: () -> Unit) {
     // 编辑对话框状态 (showEditDialog=false 隐藏, true 显示; editingRule=null 新增, 非空 编辑)
     var showEditDialog by remember { mutableStateOf(false) }
     var editingRule by remember { mutableStateOf<DictRule?>(null) }
+    // 帮助文档对话框状态 (onHelp 触发)
+    var showHelpDialog by remember { mutableStateOf(false) }
 
     // 文案标签 (rememberString 是 @Composable, 顶层缓存后供 AlertDialog / suspend FileDialog 函数引用;
     // 桌面端 rememberString 对未识别 key 返回 key 本身, 接入桌面 i18n 资源后即恢复正常显示)
-    val dictRuleNetImportTitleLabel = rememberString("import_on_line")
-    val dictRuleInputUrlLabel = rememberString("input_url")
     val dictRuleSelectJsonFileLabel = rememberString("select_json_file")
     val dictRuleSaveJsonFileLabel = rememberString("dict_rule_save_json_file")
     val importDictRuleLabel = rememberString("import_dict_rule")
-    val okLabel = rememberString("ok")
-    val cancelLabel = rememberString("cancel")
 
-    // 网络导入 URL 输入对话框状态 (onImportOnline 触发显示, 末尾 AlertDialog 渲染分支读取,
-    // 确认按钮新建 ImportDictRuleVmAdapter + 设置 importVm; 对照 ReplaceRuleScreen 同名状态)
+    // 网络导入 URL 输入对话框状态 (onImportOnline 触发显示, 末尾 OnlineImportUrlDialog 渲染分支读取)
     var showImportOnlineDialog by remember { mutableStateOf(false) }
-    var importOnlineUrlText by remember { mutableStateOf("") }
     // 导入 VM 适配器 (null=无导入任务, 非 null=渲染 DesktopImportDialog 让用户勾选比对);
     // 本地/网络导入均走 ImportDictRuleViewModelShared.import 路径 (URL 下载/JSON 解析/
     // comparisonSource 比对), 成功后弹 DesktopImportDialog 让用户勾选"新增/已有"项再 importSelect 入库,
     // 与 app 端 ImportDictRuleDialog 流程等价
-    var importVm by remember { mutableStateOf<ImportListScaffoldVm?>(null) }
+    var importVm by remember { mutableStateOf<DesktopImportVm?>(null) }
     // 导入初始文本 (URL 或 JSON), DesktopImportDialog 的 LaunchedEffect 用它调 vm.startImport
     var importInitialText by remember { mutableStateOf("") }
 
@@ -170,17 +162,14 @@ private fun DictRuleContent(onBack: () -> Unit) {
                 // (与 app 端 ImportDictRuleDialog 完整流程等价, 不再简化为直接入库)
                 scope.launch {
                     val json = importDictRulesFromLocalFile(dictRuleSelectJsonFileLabel) ?: return@launch
-                    val vm = ImportDictRuleVmAdapter(ImportDictRuleViewModelShared(scope))
+                    val vm = DesktopImportVm.dictRule(ImportDictRuleViewModelShared(scope))
                     importInitialText = json
                     importVm = vm
                 }
             }
 
             override fun onImportOnline() {
-                // 弹 AlertDialog URL 输入 → 用户确认后新建 ImportDictRuleVmAdapter +
-                // 设置 importInitialText/importVm, DesktopImportDialog 的 LaunchedEffect 调
-                // vm.startImport(url) 触发下载 → JSON 解析 → comparisonSource 比对
-                importOnlineUrlText = ""
+                // 弹 OnlineImportUrlDialog (带 URL 历史) → 确认后走 DesktopImportDialog 勾选入库
                 showImportOnlineDialog = true
             }
 
@@ -199,7 +188,8 @@ private fun DictRuleContent(onBack: () -> Unit) {
             }
 
             override fun onHelp() {
-                // TODO: 依赖 showHelp("dictRuleHelp"), 桌面端浏览器跳转待后续接入
+                // 对应 app 端 showHelp("dictRuleHelp")
+                showHelpDialog = true
             }
 
             override fun onToggleSelected(item: DictRule, checked: Boolean) {
@@ -307,60 +297,44 @@ private fun DictRuleContent(onBack: () -> Unit) {
     // onConfirm 空操作: DictRuleEditViewModelShared.save 内部已 delete+insert 落库,
     // flowAll 自动刷新列表, 无需调用方额外处理
     if (showEditDialog) {
-        DictRuleEditDialog(
-            rule = editingRule,
-            onConfirm = {
-                // Dialog 内部 save 已落库, flowAll 自动刷新
+        // Dialog 外壳补遮罩/居中 (DictRuleEditDialog 根是裸 Surface)
+        Dialog(onDismissRequest = { showEditDialog = false }) {
+            DictRuleEditDialog(
+                rule = editingRule,
+                onConfirm = {
+                    // Dialog 内部 save 已落库, flowAll 自动刷新
+                },
+                onDismiss = { showEditDialog = false },
+                clipTextProvider = {
+                    runCatching {
+                        Toolkit.getDefaultToolkit().systemClipboard.getData(DataFlavor.stringFlavor) as? String
+                    }.getOrNull()
+                },
+                clipTextSink = { text ->
+                    Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
+                },
+            )
+        }
+    }
+
+    // ---- 网络导入 URL 输入对话框 (onImportOnline 触发, 带历史下拉, 对照 app 端 showImportDialog) ----
+    // 确认后新建 DesktopImportVm.dictRule + 设置 importVm 触发 DesktopImportDialog
+    // 完成下载+解析+比对+入库 (对照 ReplaceRuleScreen 同名分支)
+    if (showImportOnlineDialog) {
+        OnlineImportUrlDialog(
+            recordKey = "dictRuleUrls",
+            onConfirm = { url ->
+                val vm = DesktopImportVm.dictRule(ImportDictRuleViewModelShared(scope))
+                importInitialText = url
+                importVm = vm
             },
-            onDismiss = { showEditDialog = false },
-            clipTextProvider = {
-                runCatching {
-                    Toolkit.getDefaultToolkit().systemClipboard.getData(DataFlavor.stringFlavor) as? String
-                }.getOrNull()
-            },
-            clipTextSink = { text ->
-                Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
-            },
+            onDismiss = { showImportOnlineDialog = false },
         )
     }
 
-    // ---- AlertDialog 渲染 (网络导入 URL 输入对话框, onImportOnline 触发) ----
-    // 确认按钮新建 ImportDictRuleVmAdapter + 设置 importVm 触发 DesktopImportDialog
-    // 完成下载+解析+比对+入库 (对照 ReplaceRuleScreen 同名分支)
-    if (showImportOnlineDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
-            onDismissRequest = { showImportOnlineDialog = false },
-            title = { Text(dictRuleNetImportTitleLabel) },
-            text = {
-                Md2TextField(
-                    value = importOnlineUrlText,
-                    onValueChange = { importOnlineUrlText = it },
-                    label = dictRuleInputUrlLabel,
-                    singleLine = true,
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val url = importOnlineUrlText
-                    showImportOnlineDialog = false
-                    if (url.isNotBlank()) {
-                        // 新建适配器 (包装 ImportDictRuleViewModelShared), 设置 importInitialText
-                        // + importVm 触发 DesktopImportDialog 渲染; Dialog 的 LaunchedEffect(vm) 调
-                        // vm.startImport(url) 触发下载 → JSON 解析 → comparisonSource 比对,
-                        // 成功后让用户勾选"新增/已有"项再 importSelect 入库
-                        val vm = ImportDictRuleVmAdapter(ImportDictRuleViewModelShared(scope))
-                        importInitialText = url
-                        importVm = vm
-                    }
-                }) { Text(okLabel) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showImportOnlineDialog = false }) {
-                    Text(cancelLabel)
-                }
-            },
-        )
+    // ---- 帮助文档对话框 (onHelp 触发, 渲染 dictRuleHelp.md) ----
+    if (showHelpDialog) {
+        HelpDialog(fileName = "dictRuleHelp", onDismiss = { showHelpDialog = false })
     }
 
     // ---- 导入对话框 (本地/网络导入共用, importVm 非 null 时渲染 DesktopImportDialog

@@ -1,10 +1,8 @@
 package io.legado.desktop.ui.booksource
 
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -15,6 +13,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
@@ -35,7 +36,7 @@ import io.legado.app.ui.book.source.BookSourceListViewModel
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.SourceFilter
 import io.legado.app.ui.book.source.SourceLoginDialog
-import io.legado.app.ui.compose.component.Md2TextField
+import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
@@ -52,8 +53,7 @@ import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toJson
 import io.legado.desktop.ui.association.DesktopImportDialog
-import io.legado.desktop.ui.association.ImportBookSourceVmAdapter
-import io.legado.desktop.ui.association.ImportListScaffoldVm
+import io.legado.desktop.ui.association.DesktopImportVm
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -74,7 +74,7 @@ import java.awt.Frame
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.io.File
-import java.net.URL
+import io.legado.app.utils.NetworkUtils
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import io.legado.desktop.ui.component.FileDialogs
@@ -219,7 +219,7 @@ private fun BookSourceListContent(
     // (URL 下载/JSON 解析/comparisonSource 比对), 成功后弹 DesktopImportDialog 让用户勾选
     // 选中项再 importSelect 入库 (含 keepName/Group/Enable 还原 + adjustSortNumber +
     // ContentProcessorProviders.upReplaceRules), 与 app 端 ImportBookSourceDialog 流程等价
-    var importVm by remember { mutableStateOf<ImportListScaffoldVm?>(null) }
+    var importVm by remember { mutableStateOf<DesktopImportVm?>(null) }
     // 导入初始文本 (URL 或 JSON), DesktopImportDialog 的 LaunchedEffect 用它调 vm.startImport
     var importInitialText by remember { mutableStateOf("") }
     // 导入对话框标题 (ImportListScaffold.title, 对照 app 端 getString(R.string.import_book_source))
@@ -369,7 +369,7 @@ private fun BookSourceListContent(
                 //  local JSON 走 vm.importSource 路径以获得"新增/更新/已有"比对, 与网络导入一致)
                 scope.launch {
                     val json = importBookSourcesFromLocalFile(selectBookSourceJsonLabel) ?: return@launch
-                    val vm = ImportBookSourceVmAdapter(ImportBookSourceViewModelShared(scope))
+                    val vm = DesktopImportVm.bookSource(ImportBookSourceViewModelShared(scope))
                     importInitialText = json
                     importVm = vm
                     // startImport 由 DesktopImportDialog 的 LaunchedEffect(vm) 触发
@@ -479,22 +479,16 @@ private fun BookSourceListContent(
 
     // ---- 删除选中确认对话框 (onDelSelection 触发, 替换原 JOptionPane.showConfirmDialog) ----
     if (deleteSelectionTarget) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { deleteSelectionTarget = false },
-            title = { Text(deleteLabel) },
-            text = { Text(sureDelLabel) },
-            confirmButton = {
-                TextButton(onClick = {
-                    deleteSelectionTarget = false
-                    viewModel.del(state.value.sources.filter { state.value.selected.contains(it.bookSourceUrl) })
-                }) { Text(okLabel) }
+            title = deleteLabel,
+            message = sureDelLabel,
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                deleteSelectionTarget = false
+                viewModel.del(state.value.sources.filter { state.value.selected.contains(it.bookSourceUrl) })
             },
-            dismissButton = {
-                TextButton(onClick = { deleteSelectionTarget = false }) {
-                    Text(cancelLabel)
-                }
-            },
+            cancelButton = AlertButton(cancelLabel),
         )
     }
 
@@ -504,43 +498,36 @@ private fun BookSourceListContent(
     // 末尾 LaunchedEffect 监听 success/error, 自动 importSelect 全部入库 (与 app 端完整流程等价);
     // inputBookSourceUrlLabel 用作 OutlinedTextField label, netImportBookSourceLabel 用作 title
     if (showImportOnlineDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { showImportOnlineDialog = false },
-            title = { Text(netImportBookSourceLabel) },
-            text = {
-                Md2TextField(
-                    value = importOnlineUrlText,
-                    onValueChange = { importOnlineUrlText = it },
-                    // fillMaxWidth 让输入框占满对话框宽度 (修复用户反馈"输入框无法自动跟到窗口宽度, 会被截断");
-                    // 不加的话 OutlinedTextField 默认 widthIn(min=280dp), 在 0.8 窗口宽度的对话框中只占左侧一部分
-                    modifier = Modifier.fillMaxWidth(),
-                    label = inputBookSourceUrlLabel,
-                    singleLine = true,
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val url = importOnlineUrlText
-                    showImportOnlineDialog = false
-                    if (url.isNotBlank()) {
-                        // 新建适配器 (包装 ImportBookSourceViewModelShared, 避免 success/error state 残留);
-                        // 设置 importInitialText + importVm 触发 DesktopImportDialog 渲染,
-                        // Dialog 的 LaunchedEffect(vm) 会调 vm.startImport(url) 触发下载 → 解析 →
-                        // comparisonSource 比对, 成功后让用户勾选"新增/更新/已有"项再 importSelect 入库
-                        // (与 app 端 ImportBookSourceDialog 流程等价, 不再自动 importSelect 全部入库)
-                        val vm = ImportBookSourceVmAdapter(ImportBookSourceViewModelShared(scope))
-                        importInitialText = url
-                        importVm = vm
-                    }
-                }) { Text(okLabel) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showImportOnlineDialog = false }) {
-                    Text(cancelLabel)
+            title = netImportBookSourceLabel,
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                val url = importOnlineUrlText
+                showImportOnlineDialog = false
+                if (url.isNotBlank()) {
+                    // 新建适配器 (包装 ImportBookSourceViewModelShared, 避免 success/error state 残留);
+                    // 设置 importInitialText + importVm 触发 DesktopImportDialog 渲染,
+                    // Dialog 的 LaunchedEffect(vm) 会调 vm.startImport(url) 触发下载 → 解析 →
+                    // comparisonSource 比对, 成功后让用户勾选"新增/更新/已有"项再 importSelect 入库
+                    // (与 app 端 ImportBookSourceDialog 流程等价, 不再自动 importSelect 全部入库)
+                    val vm = DesktopImportVm.bookSource(ImportBookSourceViewModelShared(scope))
+                    importInitialText = url
+                    importVm = vm
                 }
             },
-        )
+            cancelButton = AlertButton(cancelLabel),
+        ) {
+            AppTextField(
+                value = importOnlineUrlText,
+                onValueChange = { importOnlineUrlText = it },
+                // fillMaxWidth 让输入框占满对话框宽度 (修复用户反馈"输入框无法自动跟到窗口宽度, 会被截断");
+                // 不加的话 OutlinedTextField 默认 widthIn(min=280dp), 在 0.8 窗口宽度的对话框中只占左侧一部分
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                label = inputBookSourceUrlLabel,
+                singleLine = true,
+            )
+        }
     }
 
     // ---- 书源登录对话框 (onLogin 触发, 调用 shared/commonMain 下沉的 SourceLoginDialog) ----
@@ -581,40 +568,33 @@ private fun BookSourceListContent(
     // 确认后调 viewModel.selectionAddToGroups/selectionRemoveFromGroups(selection, groupName)
     groupActionMode?.let { mode ->
         val selection = state.value.sources.filter { state.value.selected.contains(it.bookSourceUrl) }
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { groupActionMode = null },
-            title = { Text(if (mode == "add") addGroupLabel else removeGroupLabel) },
-            text = {
-                Md2TextField(
-                    value = groupActionText,
-                    onValueChange = { groupActionText = it },
-                    // fillMaxWidth 让输入框占满对话框宽度 (修复用户反馈"输入框无法自动跟到窗口宽度, 会被截断");
-                    // 与 showImportOnlineDialog 的 URL 输入框保持一致
-                    modifier = Modifier.fillMaxWidth(),
-                    label = groupNameLabel,
-                    singleLine = true,
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val groupName = groupActionText
-                    groupActionMode = null
-                    if (groupName.isNotEmpty()) {
-                        if (mode == "add") {
-                            viewModel.selectionAddToGroups(selection, groupName)
-                        } else {
-                            viewModel.selectionRemoveFromGroups(selection, groupName)
-                        }
+            title = if (mode == "add") addGroupLabel else removeGroupLabel,
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                val groupName = groupActionText
+                groupActionMode = null
+                if (groupName.isNotEmpty()) {
+                    if (mode == "add") {
+                        viewModel.selectionAddToGroups(selection, groupName)
+                    } else {
+                        viewModel.selectionRemoveFromGroups(selection, groupName)
                     }
-                }) { Text(okLabel) }
-            },
-            dismissButton = {
-                TextButton(onClick = { groupActionMode = null }) {
-                    Text(cancelLabel)
                 }
             },
-        )
+            cancelButton = AlertButton(cancelLabel),
+        ) {
+            AppTextField(
+                value = groupActionText,
+                onValueChange = { groupActionText = it },
+                // fillMaxWidth 让输入框占满对话框宽度 (修复用户反馈"输入框无法自动跟到窗口宽度, 会被截断");
+                // 与 showImportOnlineDialog 的 URL 输入框保持一致
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                label = groupNameLabel,
+                singleLine = true,
+            )
+        }
     }
 
     // ---- 书源校验关键词输入对话框 (checkSelectSourceLabel SelectAction 触发,
@@ -624,42 +604,35 @@ private fun BookSourceListContent(
     // 关键词非空时回写 CheckSourceShared.keyword (与 app 端 getText().let { if (it.isNotEmpty()) CheckSource.keyword = it } 一致),
     // 空则用默认 keyword (CheckSourceShared.keyword 当前值), 与 app 端空串不覆盖行为一致
     if (showCheckSourceDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { showCheckSourceDialog = false },
-            title = { Text(searchBookKeyLabel) },
-            text = {
-                Md2TextField(
-                    value = checkKeywordText,
-                    onValueChange = { checkKeywordText = it },
-                    // fillMaxWidth 让输入框占满对话框宽度 (与 showImportOnlineDialog / groupActionMode 对话框一致)
-                    modifier = Modifier.fillMaxWidth(),
-                    label = searchBookKeyLabel,
-                    singleLine = true,
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val keyword = checkKeywordText
-                    showCheckSourceDialog = false
-                    if (keyword.isNotEmpty()) {
-                        CheckSourceShared.keyword = keyword
-                    }
-                    val selection = state.value.sources.filter { state.value.selected.contains(it.bookSourceUrl) }
-                    if (selection.isNotEmpty()) {
-                        // checker.startCheckSource 是 BookSourceChecker 的方法, checker 通过
-                        // onMsg/onVisible/onTick 回调修改 checkSourceMsg/checkSourceVisible/checkTick
-                        // 这些 state (delegated property 的 setter 反映到外部)
-                        checker.startCheckSource(selection)
-                    }
-                }) { Text(okLabel) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showCheckSourceDialog = false }) {
-                    Text(cancelLabel)
+            title = searchBookKeyLabel,
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                val keyword = checkKeywordText
+                showCheckSourceDialog = false
+                if (keyword.isNotEmpty()) {
+                    CheckSourceShared.keyword = keyword
+                }
+                val selection = state.value.sources.filter { state.value.selected.contains(it.bookSourceUrl) }
+                if (selection.isNotEmpty()) {
+                    // checker.startCheckSource 是 BookSourceChecker 的方法, checker 通过
+                    // onMsg/onVisible/onTick 回调修改 checkSourceMsg/checkSourceVisible/checkTick
+                    // 这些 state (delegated property 的 setter 反映到外部)
+                    checker.startCheckSource(selection)
                 }
             },
-        )
+            cancelButton = AlertButton(cancelLabel),
+        ) {
+            AppTextField(
+                value = checkKeywordText,
+                onValueChange = { checkKeywordText = it },
+                // fillMaxWidth 让输入框占满对话框宽度 (与 showImportOnlineDialog / groupActionMode 对话框一致)
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                label = searchBookKeyLabel,
+                singleLine = true,
+            )
+        }
     }
 }
 
@@ -762,19 +735,11 @@ private class BookSourceChecker(
 }
 
 /**
- * 简化版域名提取 (对应 app 端 NetworkUtils.getSubDomainOrNull)。
- *
- * 从 URL 提取主域名 (倒数第二段 + 顶级域), 如 `https://www.example.com/path` -> `example.com`;
- * 解析失败返回 `"#"`, 与 app 端 fallback 一致 (用于按域名分组时排在最后)。
+ * 域名提取 (对齐 app 端 BookSourceActivity.getSourceHost):
+ * commonMain [NetworkUtils.getSubDomainOrNull], 失败返回 `"#"` (按域名分组时排在最后)。
  */
 private fun getSourceHost(origin: String): String {
-    return try {
-        val host = URL(origin).host
-        val parts = host.split(".")
-        if (parts.size >= 2) parts.takeLast(2).joinToString(".") else host
-    } catch (_: Exception) {
-        "#"
-    }
+    return NetworkUtils.getSubDomainOrNull(origin) ?: "#"
 }
 
 /**

@@ -130,7 +130,7 @@ class EpubFile(var book: Book) {
                     // 本地路径: LocalBookLocators 解析 → readBytes → EpubParser.parse
                     val path = LocalBookLocators.get().getLocalPath(book)
                         ?: book.bookUrl.removePrefix("file://")
-                    val bytes = kotlin.io.File(path).readBytes()
+                    val bytes = File(path).readBytes()
                     EpubParser.parse(bytes)
                 }
             }
@@ -164,7 +164,7 @@ class EpubFile(var book: Book) {
             }
         }
         val cachePath = getEpubCachePath(book.bookUrl)
-        val cacheFile = kotlin.io.File(cachePath)
+        val cacheFile = File(cachePath)
         // 缓存文件不存在时下载 (downloadTo 内部先全量下载再写文件, 失败不产生残缺文件)
         if (!cacheFile.exists()) {
             cacheFile.parentFile?.mkdirs()
@@ -229,7 +229,7 @@ class EpubFile(var book: Book) {
 
     private fun getBody(res: EpubResource, startFragmentId: String?, endFragmentId: String?): Element {
         // Ksoup 可能会修复不规范的 xhtml 文件, 解析处理后再获取
-        var bodyElement = Ksoup.parse(String(res.data, Charsets.UTF_8)).body()
+        var bodyElement = Ksoup.parse(res.data.decodeToString()).body()
         bodyElement.children().run {
             select("script").remove()
             select("style").remove()
@@ -305,7 +305,7 @@ class EpubFile(var book: Book) {
                     // 封面路径统一走 FileBook 门面 (md5Encode16, 与 app/desktop 端一致)
                     book.coverUrl = FileBook.getCoverPath(book.bookUrl)
                 }
-                if (fastCheck && kotlin.io.File(book.coverUrl!!).exists()) {
+                if (fastCheck && File(book.coverUrl!!).exists()) {
                     return
                 }
                 // 封面图片资源 → BitmapProviders 解码压缩为 JPEG 写入文件
@@ -315,7 +315,7 @@ class EpubFile(var book: Book) {
                         return
                     }
                     val input = bytes.toInputStream()
-                    val coverFile = kotlin.io.File(book.coverUrl!!)
+                    val coverFile = File(book.coverUrl!!)
                     coverFile.parentFile?.mkdirs()
                     val outFile = File(book.coverUrl!!)
                     BitmapProviders.get().decodeStreamAndCompressToJpeg(input, outFile, 90)
@@ -393,7 +393,7 @@ class EpubFile(var book: Book) {
     /** 从 xhtml 资源的 <title> 标签提取标题。 */
     private fun extractTitleFromResource(resource: EpubResource): String {
         return runCatching {
-            val doc = Ksoup.parse(String(resource.data, Charsets.UTF_8))
+            val doc = Ksoup.parse(resource.data.decodeToString())
             val elements = doc.getElementsByTag("title")
             if (elements.isNotEmpty()) elements[0].text() else ""
         }.getOrDefault("")

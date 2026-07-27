@@ -4,10 +4,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -19,11 +18,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.unit.dp
-import io.legado.app.ui.compose.component.Md2TextField
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
@@ -32,6 +34,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.http.newCallResponseBody
+import io.legado.app.help.image.resolveSourceHeaders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.about.AppLogDialog
@@ -46,6 +49,7 @@ import io.legado.app.ui.bookshelf.BookshelfViewModel
 import io.legado.app.ui.bookshelf.DefaultBookCoverPlaceholder
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.desktop.help.book.DesktopBookshelfManagePlatform
@@ -245,196 +249,193 @@ fun BookshelfScreen(
     // onConfirm: 用 BookGroup 字段调 groupVm.addGroup (groupName/bookSort/enableRefresh/cover),
     //   替代原 onAddGroup 直接 addGroup(name, bookSort=-1, enableRefresh=true, cover=null)
     if (showAddGroupDialog) {
-        GroupEditDialog(
-            group = null,
-            onConfirm = { g ->
-                groupVm.addGroup(
-                    groupName = g.groupName,
-                    bookSort = g.bookSort,
-                    enableRefresh = g.enableRefresh,
-                    cover = g.cover,
-                ) {}
-            },
-            onDismiss = { showAddGroupDialog = false },
-        )
+        Dialog(onDismissRequest = { showAddGroupDialog = false }) {
+            GroupEditDialog(
+                group = null,
+                onConfirm = { g ->
+                    groupVm.addGroup(
+                        groupName = g.groupName,
+                        bookSort = g.bookSort,
+                        enableRefresh = g.enableRefresh,
+                        cover = g.cover,
+                    ) {}
+                },
+                onDismiss = { showAddGroupDialog = false },
+            )
+        }
     }
 
     // ---- 编辑/删除分组对话框 (GroupManageDialog.onDeleteGroup 触发, GroupEditDialog(group=editingGroup)) ----
     // onDelete: GroupEditDialog 内删除按钮二次确认后回调, 调 groupVm.delGroup 连带 bookDao.removeGroup
     editingGroup?.let { g ->
-        GroupEditDialog(
-            group = g,
-            onConfirm = { updated -> groupVm.upGroup(updated) },
-            onDismiss = { editingGroup = null },
-            onDelete = { del -> groupVm.delGroup(del) {} },
-        )
+        Dialog(onDismissRequest = { editingGroup = null }) {
+            GroupEditDialog(
+                group = g,
+                onConfirm = { updated -> groupVm.upGroup(updated) },
+                onDismiss = { editingGroup = null },
+                onDelete = { del -> groupVm.delGroup(del) {} },
+            )
+        }
     }
 
     // ---- URL 添加书籍对话框 (onShowAddBookByUrlAlert 触发) ----
     // 对照 app 端 showAddBookByUrlAlert: alert + editTextView + okButton/cancelButton
-    // 桌面端用 AlertDialog + OutlinedTextField 替代 alert DSL
     if (showAddBookByUrlDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { if (!addingBook) showAddBookByUrlDialog = false },
-            title = { Text(addBookUrlLabel) },
-            text = {
-                Md2TextField(
-                    value = addBookUrlText,
-                    onValueChange = { addBookUrlText = it },
-                    label = "url",
-                    singleLine = false,
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = !addingBook && addBookUrlText.isNotBlank(),
-                    onClick = {
-                        // 添加书籍: 遍历 url 列表, 对每个 url 调 getBookInfoByUrlAwait +
-                        // getChapterListAwait + migrateBook + insert (对照 app 端 addBookByUrl)
-                        addingBook = true
-                        val urls = addBookUrlText.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-                        scope.launch {
-                            var successCount = 0
-                            withContext(Dispatchers.IO) {
-                                for (url in urls) {
-                                    runCatching {
-                                        val book = WebBook.getBookInfoByUrlAwait(url)
-                                        val source = AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
-                                            ?: throw NoStackTraceException(jvmGetString("no_book_source"))
-                                        val toc = WebBook.getChapterListAwait(source, book).getOrThrow()
-                                        val dbBook = AppDbProviders.get().bookDao.getBook(book.name, book.author)
-                                        if (dbBook != null) {
-                                            // 已存在同名书: 迁移阅读进度 (对照 app 端 dbBook.migrateTo(it, toc))
-                                            DesktopBookshelfManagePlatform().migrateBook(dbBook, book, toc)
-                                        } else {
-                                            // 新书: 设置 order 为最小 order - 1 (对照 app 端 it.order = minOrder() - 1)
-                                            book.order = AppDbProviders.get().bookDao.minOrder() - 1
-                                        }
-                                        AppDbProviders.get().bookDao.insert(book)
-                                        AppDbProviders.get().bookChapterDao.insert(*toc.toTypedArray())
-                                        successCount++
-                                    }.onFailure { e ->
-                                        AppLog.put(jvmGetString("add_book_url_failed", url, e.localizedMessage), e)
-                                    }
+            title = addBookUrlLabel,
+            okButton = AlertButton(
+                text = if (addingBook) rememberString("adding_book") else okLabel,
+                dismissOnClick = false,
+                enabled = !addingBook && addBookUrlText.isNotBlank(),
+            ) {
+                // 添加书籍: 遍历 url 列表, 对每个 url 调 getBookInfoByUrlAwait +
+                // getChapterListAwait + migrateBook + insert (对照 app 端 addBookByUrl)
+                addingBook = true
+                val urls = addBookUrlText.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+                scope.launch {
+                    var successCount = 0
+                    withContext(Dispatchers.IO) {
+                        for (url in urls) {
+                            runCatching {
+                                val book = WebBook.getBookInfoByUrlAwait(url)
+                                val source = AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
+                                    ?: throw NoStackTraceException(jvmGetString("no_book_source"))
+                                val toc = WebBook.getChapterListAwait(source, book).getOrThrow()
+                                val dbBook = AppDbProviders.get().bookDao.getBook(book.name, book.author)
+                                if (dbBook != null) {
+                                    // 已存在同名书: 迁移阅读进度 (对照 app 端 dbBook.migrateTo(it, toc))
+                                    DesktopBookshelfManagePlatform().migrateBook(dbBook, book, toc)
+                                } else {
+                                    // 新书: 设置 order 为最小 order - 1 (对照 app 端 it.order = minOrder() - 1)
+                                    book.order = AppDbProviders.get().bookDao.minOrder() - 1
                                 }
+                                AppDbProviders.get().bookDao.insert(book)
+                                AppDbProviders.get().bookChapterDao.insert(*toc.toTypedArray())
+                                successCount++
+                            }.onFailure { e ->
+                                AppLog.put(jvmGetString("add_book_url_failed", url, e.localizedMessage), e)
                             }
-                            addingBook = false
-                            showAddBookByUrlDialog = false
-                            addBookUrlText = ""
-                            Toasters.get().toast(
-                                if (successCount > 0) jvmGetString("add_book_url_success", successCount, urls.size) else jvmGetString("add_book_url_all_failed")
-                            )
                         }
-                    },
-                ) { Text(if (addingBook) rememberString("adding_book") else okLabel) }
+                    }
+                    addingBook = false
+                    showAddBookByUrlDialog = false
+                    addBookUrlText = ""
+                    Toasters.get().toast(
+                        if (successCount > 0) jvmGetString("add_book_url_success", successCount, urls.size) else jvmGetString("add_book_url_all_failed")
+                    )
+                }
             },
-            dismissButton = {
-                TextButton(
-                    enabled = !addingBook,
-                    onClick = { showAddBookByUrlDialog = false },
-                ) { Text(cancelLabel) }
-            },
-        )
+            cancelButton = AlertButton(
+                text = cancelLabel,
+                dismissOnClick = false,
+                enabled = !addingBook,
+            ) { showAddBookByUrlDialog = false },
+        ) {
+            AppTextField(
+                value = addBookUrlText,
+                onValueChange = { addBookUrlText = it },
+                label = "url",
+                singleLine = false,
+                modifier = Modifier.padding(horizontal = 24.dp),
+            )
+        }
     }
 
     // ---- 导入书架对话框 (onImportBookshelf 触发) ----
     // 对照 app 端 importBookshelfAlert: alert + editTextView(hint="url/json") + okButton + neutralButton(选文件)
-    // 桌面端用 AlertDialog + OutlinedTextField + "选择文件"按钮 替代
     // 简化: 仅支持 JSON 文本/文件, 不支持 URL 下载 (okHttpClient.newCallResponseBody 未在 commonMain 暴露)
     if (showImportBookshelfDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { if (!importing) showImportBookshelfDialog = false },
-            title = { Text(importBookshelfLabel) },
-            text = {
-                Column {
-                    Md2TextField(
-                        value = importBookshelfText,
-                        onValueChange = { importBookshelfText = it },
-                        label = "url/json",
-                        singleLine = false,
-                    )
-                    TextButton(onClick = {
-                        // 选文件: FileDialog 选 .txt/.json, 读取内容到 importBookshelfText
-                        // (对照 app 端 neutralButton + importBookshelfLauncher 选文件)
-                        val selected = FileDialogs.pickOpenFile(extensions = listOf("txt", "json"))
-                        if (selected != null) {
-                            runCatching { selected.readText() }
-                                .onSuccess { importBookshelfText = it }
-                                .onFailure { Toasters.get().toast(it.localizedMessage ?: jvmGetString("read_file_failed")) }
+            title = importBookshelfLabel,
+            okButton = AlertButton(
+                text = if (importing) rememberString("importing_book") else okLabel,
+                dismissOnClick = false,
+                enabled = !importing && importBookshelfText.isNotBlank(),
+            ) {
+                // 导入书架: 解析 JSON 数组, 遍历 bookInfo 列表 insert
+                // (对照 app 端 importBookshelf + importBookshelfByJsonAwait)
+                // 简化: 仅处理 origin+bookUrl 都有的情况 (走 getBookInfoAwait 刷新),
+                // 不处理精确搜索 (preciseSearchAwait 依赖较多, 保留 TODO)
+                importing = true
+                scope.launch {
+                    runCatching {
+                        val text = importBookshelfText.trim()
+                        if (!text.startsWith("[")) {
+                            throw NoStackTraceException(jvmGetString("wrong_format"))
                         }
-                    }) { Text(selectFileLabel) }
+                        withContext(Dispatchers.IO) {
+                            val bookInfoList = GSON.fromJsonArray<Map<String, Any>>(text).getOrThrow()
+                            var successCount = 0
+                            for (bookInfo in bookInfoList) {
+                                val name = bookInfo["name"] as? String ?: continue
+                                val author = bookInfo["author"] as? String ?: continue
+                                val origin = bookInfo["origin"] as? String
+                                val bookUrl = bookInfo["bookUrl"] as? String
+                                if (name.isEmpty() || AppDbProviders.get().bookDao.has(name, author)) continue
+                                if (origin == null || bookUrl == null) continue
+                                runCatching {
+                                    val book = Book(bookUrl).apply {
+                                        this.name = name
+                                        this.author = author
+                                        (bookInfo["kind"] as? String)?.let { this.kind = it }
+                                        (bookInfo["coverUrl"] as? String)?.let { this.coverUrl = it }
+                                        (bookInfo["intro"] as? String)?.let { this.intro = it }
+                                        (bookInfo["tocUrl"] as? String)?.let { this.tocUrl = it }
+                                    }
+                                    val source = AppDbProviders.get().bookSourceDao.getBookSource(origin)
+                                        ?: return@runCatching
+                                    WebBook.getBookInfoAwait(source, book)
+                                    book.originName = source.bookSourceName
+                                    book.order = AppDbProviders.get().bookDao.minOrder() - 1
+                                    AppDbProviders.get().bookDao.insert(book)
+                                    successCount++
+                                }.onFailure { e ->
+                                    AppLog.put(jvmGetString("import_book_failed", name, e.localizedMessage), e)
+                                }
+                            }
+                            successCount
+                        }
+                    }.onSuccess { count ->
+                        importing = false
+                        showImportBookshelfDialog = false
+                        importBookshelfText = ""
+                        Toasters.get().toast(jvmGetString("import_complete", count))
+                    }.onFailure { e ->
+                        importing = false
+                        AppLog.put(jvmGetString("import_bookshelf_failed", e.localizedMessage), e)
+                        Toasters.get().toast(e.localizedMessage ?: "ERROR")
+                    }
                 }
             },
-            confirmButton = {
-                TextButton(
-                    enabled = !importing && importBookshelfText.isNotBlank(),
-                    onClick = {
-                        // 导入书架: 解析 JSON 数组, 遍历 bookInfo 列表 insert
-                        // (对照 app 端 importBookshelf + importBookshelfByJsonAwait)
-                        // 简化: 仅处理 origin+bookUrl 都有的情况 (走 getBookInfoAwait 刷新),
-                        // 不处理精确搜索 (preciseSearchAwait 依赖较多, 保留 TODO)
-                        importing = true
-                        scope.launch {
-                            runCatching {
-                                val text = importBookshelfText.trim()
-                                if (!text.startsWith("[")) {
-                                    throw NoStackTraceException(jvmGetString("wrong_format"))
-                                }
-                                withContext(Dispatchers.IO) {
-                                    val bookInfoList = GSON.fromJsonArray<Map<String, Any>>(text).getOrThrow()
-                                    var successCount = 0
-                                    for (bookInfo in bookInfoList) {
-                                        val name = bookInfo["name"] as? String ?: continue
-                                        val author = bookInfo["author"] as? String ?: continue
-                                        val origin = bookInfo["origin"] as? String
-                                        val bookUrl = bookInfo["bookUrl"] as? String
-                                        if (name.isEmpty() || AppDbProviders.get().bookDao.has(name, author)) continue
-                                        if (origin == null || bookUrl == null) continue
-                                        runCatching {
-                                            val book = Book(bookUrl).apply {
-                                                this.name = name
-                                                this.author = author
-                                                (bookInfo["kind"] as? String)?.let { this.kind = it }
-                                                (bookInfo["coverUrl"] as? String)?.let { this.coverUrl = it }
-                                                (bookInfo["intro"] as? String)?.let { this.intro = it }
-                                                (bookInfo["tocUrl"] as? String)?.let { this.tocUrl = it }
-                                            }
-                                            val source = AppDbProviders.get().bookSourceDao.getBookSource(origin)
-                                                ?: return@runCatching
-                                            WebBook.getBookInfoAwait(source, book)
-                                            book.originName = source.bookSourceName
-                                            book.order = AppDbProviders.get().bookDao.minOrder() - 1
-                                            AppDbProviders.get().bookDao.insert(book)
-                                            successCount++
-                                        }.onFailure { e ->
-                                            AppLog.put(jvmGetString("import_book_failed", name, e.localizedMessage), e)
-                                        }
-                                    }
-                                    successCount
-                                }
-                            }.onSuccess { count ->
-                                importing = false
-                                showImportBookshelfDialog = false
-                                importBookshelfText = ""
-                                Toasters.get().toast(jvmGetString("import_complete", count))
-                            }.onFailure { e ->
-                                importing = false
-                                AppLog.put(jvmGetString("import_bookshelf_failed", e.localizedMessage), e)
-                                Toasters.get().toast(e.localizedMessage ?: "ERROR")
-                            }
-                        }
-                    },
-                ) { Text(if (importing) rememberString("importing_book") else okLabel) }
-            },
-            dismissButton = {
-                TextButton(
-                    enabled = !importing,
-                    onClick = { showImportBookshelfDialog = false },
-                ) { Text(cancelLabel) }
-            },
-        )
+            cancelButton = AlertButton(
+                text = cancelLabel,
+                dismissOnClick = false,
+                enabled = !importing,
+            ) { showImportBookshelfDialog = false },
+        ) {
+            Column(Modifier.padding(horizontal = 24.dp)) {
+                AppTextField(
+                    value = importBookshelfText,
+                    onValueChange = { importBookshelfText = it },
+                    label = "url/json",
+                    singleLine = false,
+                )
+                TextButton(onClick = {
+                    // 选文件: FileDialog 选 .txt/.json, 读取内容到 importBookshelfText
+                    // (对照 app 端 neutralButton + importBookshelfLauncher 选文件)
+                    val selected = FileDialogs.pickOpenFile(extensions = listOf("txt", "json"))
+                    if (selected != null) {
+                        runCatching { selected.readText() }
+                            .onSuccess { importBookshelfText = it }
+                            .onFailure { Toasters.get().toast(it.localizedMessage ?: jvmGetString("read_file_failed")) }
+                    }
+                }) { Text(selectFileLabel) }
+            }
+        }
     }
 }
 
@@ -460,8 +461,9 @@ private fun DesktopBookCover(book: Book) {
     }
     // 异步加载: 本地用 ImageIO (阻塞 IO 在 IO dispatcher 跑), 网络用 OkHttp suspend 下载
     // 缓存命中/写入由 loadCoverBitmap -> getOrLoadCover 统一处理
+    val origin = book.origin
     val bitmap by produceState<ImageBitmap?>(null, coverPath) {
-        value = loadCoverBitmap(coverPath)
+        value = loadCoverBitmap(coverPath, origin)
     }
     val bmp = bitmap
     if (bmp != null) {
@@ -471,7 +473,7 @@ private fun DesktopBookCover(book: Book) {
             modifier = Modifier
                 .fillMaxWidth()
                 .height(160.dp)
-                .clip(RoundedCornerShape(4.dp)),
+                .clip(DesignTokens.shapeSm),
         )
     } else {
         // 兜底: 走 shared 的默认占位 (书名首字 + accent 底)
@@ -492,9 +494,13 @@ private fun DesktopBookCover(book: Book) {
  * 本地文件读取是阻塞 IO, 用 [withContext] 切到 [Dispatchers.IO]; 网络下载走
  * [newCallResponseBody] (内部已 suspend), 同样在 IO dispatcher 跑。
  */
-private suspend fun loadCoverBitmap(path: String?): ImageBitmap? {
+private suspend fun loadCoverBitmap(path: String?, sourceOrigin: String? = null): ImageBitmap? {
     if (path == null) return null
     return getOrLoadCover(path) {
+        // 书源防盗链 header (修需登录站点 403, 与 DesktopBookCover.downloadAndDecode 一致)
+        val headers = if (path.startsWith("http")) {
+            resolveSourceHeaders(sourceOrigin, path)
+        } else null
         runCatching {
             withContext(Dispatchers.IO) {
                 when {
@@ -510,7 +516,12 @@ private suspend fun loadCoverBitmap(path: String?): ImageBitmap? {
                     }
                     path.startsWith("http://") || path.startsWith("https://") -> {
                         // 网络封面: OkHttp 下载字节流 → ImageIO 解码 (对照 app 端 Glide 网络加载)
-                        val body = OkHttpClientProviders.get().okHttpClient.newCallResponseBody { url(path) }
+                        val body = OkHttpClientProviders.get().okHttpClient.newCallResponseBody {
+                            url(path)
+                            headers?.forEach { (name, value) ->
+                                addHeader(name, value)
+                            }
+                        }
                         body.use { ImageIO.read(ByteArrayInputStream(it.bytes())) }
                     }
                     else -> return@withContext null

@@ -4,6 +4,7 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.utils.InputStream
+import kotlin.concurrent.Volatile
 
 /**
  * FileBook / BaseFileBook 跨平台只读访问接口。

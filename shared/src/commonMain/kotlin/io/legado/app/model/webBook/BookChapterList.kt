@@ -17,6 +17,7 @@ import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.utils.isTrue
 import io.legado.app.utils.mapAsync
 import io.legado.app.utils.systemCurrentTimeMillis
@@ -73,7 +74,7 @@ object BookChapterList {
                 var nextUrl = chapterData.second[0]
                 while (nextUrl.isNotEmpty() && !nextUrlList.contains(nextUrl)) {
                     nextUrlList.add(nextUrl)
-                    val analyzeUrl = AnalyzeUrlCore(
+                    val analyzeUrl = AnalyzeUrlFactories.create(
                         rawUrl = nextUrl,
                         source = bookSource,
                         ruleData = book,
@@ -102,7 +103,7 @@ object BookChapterList {
                         emit(urlStr)
                     }
                 }.mapAsync(AppConfigProviders.get().threadCount) { urlStr ->
-                    val analyzeUrl = AnalyzeUrlCore(
+                    val analyzeUrl = AnalyzeUrlFactories.create(
                         rawUrl = urlStr,
                         source = bookSource,
                         ruleData = book,

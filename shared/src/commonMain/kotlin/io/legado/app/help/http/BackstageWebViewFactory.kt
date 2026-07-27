@@ -1,5 +1,7 @@
 package io.legado.app.help.http
 
+import kotlin.concurrent.Volatile
+
 /**
  * 后台 WebView 工厂。原 app 端 [BackstageWebView] 重度依赖 android.webkit.WebView,
  * 不能下沉 shared, 抽象为工厂接口 + provider 注入。

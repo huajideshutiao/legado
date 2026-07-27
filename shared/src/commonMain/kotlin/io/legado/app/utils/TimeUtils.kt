@@ -47,8 +47,8 @@ fun Int.toDurationTime(): String {
     val seconds = totalSeconds % 60
 
     return if (hours > 0) {
-        "%d:%02d:%02d".format(hours, minutes, seconds)
+        "$hours:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
     } else {
-        "%02d:%02d".format(minutes, seconds)
+        "${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}"
     }
 }

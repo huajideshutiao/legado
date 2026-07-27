@@ -1,7 +1,7 @@
 package io.legado.app.ui.book.source
 
 import io.legado.app.data.AppDbProviders
-import io.legado.app.data.cnCompareGroups
+import io.legado.app.utils.cnCompare
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.coroutine.Coroutine
@@ -21,8 +21,8 @@ import kotlinx.coroutines.flow.map
  *   替代 `BaseViewModel.execute`
  * - DAO 访问走 [AppDbProviders] 间接 (替代 `appDb.bookSourceDao`), 行为与 app 端一致
  * - 不实现 `saveToFile` (依赖 Android File/Context/GSON 输出流), 留 app 端
- * - 中文字符串排序走 `cnCompareGroups` (commonMain internal expect, 同模块可见), 与 app 端
- *   `String.cnCompare` 行为对齐 (androidMain 走 android.icu, jvmMain 走 java.text.Collator)
+ * - 中文字符串排序走已下沉的 `String.cnCompare` (commonMain expect/actual,
+ *   androidMain 走 android.icu, jvmMain 走 java.text.Collator, native 退化码点序)
  *
  * @param scope 调用方提供的协程作用域 (Android: `lifecycleScope` / desktop: application scope)
  */
@@ -70,7 +70,7 @@ class BookSourceListViewModel(
                 val tmp = when (sort) {
                     BookSourceSort.Weight -> data.sortedBy { it.weight }
                     BookSourceSort.Name -> data.sortedWith { o1, o2 ->
-                        o1.bookSourceName.cnCompareGroups(o2.bookSourceName)
+                        o1.bookSourceName.cnCompare(o2.bookSourceName)
                     }
                     BookSourceSort.Url -> data.sortedBy { it.bookSourceUrl }
                     BookSourceSort.Update -> data.sortedByDescending { it.lastUpdateTime }
@@ -78,7 +78,7 @@ class BookSourceListViewModel(
                     BookSourceSort.Enable -> data.sortedWith { o1, o2 ->
                         var sortNum = -o1.enabled.compareTo(o2.enabled)
                         if (sortNum == 0) {
-                            sortNum = o1.bookSourceName.cnCompareGroups(o2.bookSourceName)
+                            sortNum = o1.bookSourceName.cnCompare(o2.bookSourceName)
                         }
                         sortNum
                     }

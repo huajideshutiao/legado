@@ -6,7 +6,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * [PreferenceProvider] 的鸿蒙 (OHOS) 文件持久化 stub 实现。

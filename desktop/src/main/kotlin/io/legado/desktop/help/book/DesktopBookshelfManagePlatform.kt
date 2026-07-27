@@ -15,7 +15,7 @@ import io.legado.app.ui.compose.platform.jvmGetString
  * - **migrateBook**: app 端委托 `Book.migrateTo(newBook, toc)` (内部走 BookHelp.getDurChapter +
  *   ContentProcessor.getTitleReplaceRules + getUseReplaceRule)。
  *   桌面端 [migrateBook] 走 [BookHelpChapterLocator.getDurChapter] (与 app 端同一份算法),
- *   不走 ContentProcessor 标题替换规则 (ContentProcessor 未下沉, 属平台差异),
+ *   不走 ContentProcessor 标题替换规则,
  *   直接取 toc[newIndex].title 作为新章节标题。
  * - **clearCache**: 委托 [BookStorageProviders.get].clearCache(book) (JvmBookStorage 实现)。
  * - **getChapterFiles**: 委托 [BookStorageProviders.get].getChapterFiles(book).toHashSet()。
@@ -36,8 +36,7 @@ class DesktopBookshelfManagePlatform : BookshelfManagePlatform {
      * 迁移旧书信息到新书 (对照 `Book.migrateTo(newBook, toc)`)。
      *
      * 1. 用 [BookHelpChapterLocator.getDurChapter] 章节名相似度匹配定位新书当前章节索引;
-     * 2. 取 toc[newIndex].title 作为新 durChapterTitle (不走 ContentProcessor 标题替换规则,
-     *    ContentProcessor 未下沉, 属平台差异);
+     * 2. 取 toc[newIndex].title 作为新 durChapterTitle (不走 ContentProcessor 标题替换规则);
      * 3. 复制 durChapterPos / durChapterTime / group / order / customCoverUrl / customIntro /
      *    customTag / canUpdate / readConfig 等字段 (与 app 端 Book.migrateTo 一致)。
      */
@@ -49,8 +48,8 @@ class DesktopBookshelfManagePlatform : BookshelfManagePlatform {
             oldChapterListSize = oldBook.totalChapterNum,
         )
         newBook.durChapterIndex = newIndex
-        // 桌面端简化: 不走 ContentProcessor.getTitleReplaceRules + getUseReplaceRule
-        // (ContentProcessor 未下沉), 直接取 toc[newIndex].title;
+        // 桌面端简化: 不走 ContentProcessor.getTitleReplaceRules + getUseReplaceRule,
+        // 直接取 toc[newIndex].title;
         // app 端用 toc[newIndex].getDisplayTitle(titleReplaceRules, useReplaceRules),
         // 此处差异不影响阅读功能 (仅章节标题展示, 不影响正文)
         newBook.durChapterTitle = toc.getOrNull(newIndex)?.title ?: oldBook.durChapterTitle

@@ -29,12 +29,13 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.http.withCharset
+import io.ktor.utils.io.charsets.Charsets
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.EmptyCoroutineContext
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * WebDav 客户端 nativeMain actual 实现。
@@ -161,7 +162,9 @@ actual open class WebDav actual constructor(
         val requestPropsStr: String = if (requestProps.toString().isEmpty()) {
             DIR.replace("%s", "")
         } else {
-            String.format(DIR, requestProps.toString() + "\n")
+            // Native 无 String.format; DIR 仅含 1 个 %s 占位, replace 与 format 等价
+            // (与上一分支同一写法; 属性名由 propsList 拼出, 不含 % 转义序列)
+            DIR.replace("%s", requestProps.toString() + "\n")
         }
         val url = httpUrl ?: return null
         return kotlin.runCatching {
@@ -616,7 +619,7 @@ actual open class WebDav actual constructor(
         for (j in result.indices) {
             bytes[j] = result[j].code.toByte()
         }
-        return String(bytes, Charsets.UTF_8)
+        return bytes.decodeToString()
     }
 
     private fun hexDigit(c: Char): Int = when (c) {

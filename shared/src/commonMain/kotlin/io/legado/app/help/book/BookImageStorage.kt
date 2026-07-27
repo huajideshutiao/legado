@@ -2,6 +2,7 @@ package io.legado.app.help.book
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import kotlin.concurrent.Volatile
 
 /**
  * 书籍图片缓存 I/O 跨平台抽象。
@@ -16,7 +17,8 @@ import io.legado.app.data.entities.BookChapter
  *   [io.legado.app.help.book.BookHelp] 的实现 (本任务不涉及, 后续任务做)。
  * - 桌面 JVM: desktop 模块启动时注入 [io.legado.app.help.book.JvmBookImageStorage]
  *   (java.nio.file.Path + OkHttp 实现)。
- * - iOS / 鸿蒙: 暂未实现 (stub), 后续 KP3 / KP4 补。
+ * - iOS / 鸿蒙: 共用 nativeMain [io.legado.app.help.book.NativeBookImageStorage]
+ *   (`kotlin.io.File` 实现)。
  *
  * 模式参考 [BookStorageProviders] / [io.legado.app.help.book.BookHelpProviders]。
  */

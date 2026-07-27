@@ -2,7 +2,8 @@ import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
 import { KeyCode } from '@ohos.multimodalInput.keyCode';
 import legado from 'liblegado_napi.so';
-import { handleMediaCommand, addMediaEventListener, removeMediaEventListener } from '../bridge/MediaBridgeHandler';
+import { handleMediaCommand, addMediaEventListener, removeMediaEventListener,
+  PLAYER_ID_AUDIO_BOOK } from '../bridge/MediaBridgeHandler';
 
 /**
  * 音频播放页 (ArkTS UI)。
@@ -74,9 +75,9 @@ struct AudioPlay {
 
     this.loadChapterList();
 
-    // 注册 media 事件监听, AVPlayer 事件 → UI 状态
+    // 注册 media 事件监听 (只收音频书实例的事件, 避免与 HttpTTS 朗读串扰)
     this.mediaListener = (eventJson: string): void => this.onMediaEvent(eventJson);
-    addMediaEventListener(this.mediaListener);
+    addMediaEventListener(this.mediaListener, PLAYER_ID_AUDIO_BOOK);
 
     // 设源并准备 (audioPath 由调用方传入; 无则等待后续章节源 napi)
     if (this.audioPath.length > 0) {
@@ -107,9 +108,10 @@ struct AudioPlay {
     }
   }
 
-  // 发送 media 命令到 AVPlayer
+  // 发送 media 命令到 AVPlayer (统一打上音频书 playerId)
   private sendMedia(cmd: Record<string, Object>): void {
     try {
+      cmd.playerId = PLAYER_ID_AUDIO_BOOK;
       handleMediaCommand(JSON.stringify(cmd));
     } catch (e) {
       promptAction.showToast({ message: '播放控制失败', duration: 1500 });
@@ -520,6 +522,7 @@ struct AudioPlay {
  * media 事件载荷 (与 MediaBridgeHandler MediaEventPayload 对齐)。
  */
 interface MediaEventPayload {
+  playerId?: string;
   event: string;
   message?: string;
   percent?: number;

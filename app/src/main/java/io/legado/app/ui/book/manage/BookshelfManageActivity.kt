@@ -11,11 +11,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,7 +53,9 @@ import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.ui.compose.component.AppAutoCompleteField
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.model.CacheBook
 import io.legado.app.service.ExportBookService
@@ -797,10 +797,9 @@ class BookshelfManageActivity : BaseComposeActivity(),
                                 .padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            RadioButton(
+                            AppRadioButton(
                                 selected = !isEpub.value,
                                 onClick = null,
-                                colors = RadioButtonDefaults.colors(selectedColor = AppTheme.colors.accent),
                             )
                             Text("txt", color = AppTheme.colors.primaryText)
                         }
@@ -810,10 +809,9 @@ class BookshelfManageActivity : BaseComposeActivity(),
                                 .padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            RadioButton(
+                            AppRadioButton(
                                 selected = isEpub.value,
                                 onClick = null,
-                                colors = RadioButtonDefaults.colors(selectedColor = AppTheme.colors.accent),
                             )
                             Text("epub", color = AppTheme.colors.primaryText)
                         }

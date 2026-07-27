@@ -5,9 +5,9 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.Review
 import io.legado.app.data.entities.rule.ReviewRule
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.webBook.WebBook
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -157,7 +157,7 @@ class ReviewViewModelShared(
         }
         _loading.value = true
         isLoading = true
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             try {
                 val source = appDb.bookSourceDao.getBookSource(b.origin)
                     ?: throw IllegalStateException(platform.noSource())
@@ -185,7 +185,7 @@ class ReviewViewModelShared(
                 }
             } catch (e: Exception) {
                 if (append) currentPage -= 1
-                platform.toastOnUi(platform.loadFailed(e.localizedMessage))
+                platform.toastOnUi(platform.loadFailed(e.message))
                 if (!append) _reviews.value = emptyList()
                 _hasMore.value = true
             } finally {
@@ -285,7 +285,7 @@ class ReviewViewModelShared(
         onError: (() -> Unit)? = null,
     ) {
         val b = book ?: return
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             try {
                 val source = appDb.bookSourceDao.getBookSource(b.origin) ?: return@launch
                 if (source.ruleReview.isNullOrEmpty()) return@launch
@@ -310,7 +310,7 @@ class ReviewViewModelShared(
                 if (reloadOnSuccess) load()
                 onSuccess?.invoke(result)
             } catch (e: Exception) {
-                platform.toastOnUi(platform.operationFailed(e.localizedMessage))
+                platform.toastOnUi(platform.operationFailed(e.message))
                 onError?.invoke()
             }
         }

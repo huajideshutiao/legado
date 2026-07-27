@@ -7,9 +7,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -115,7 +115,7 @@ private fun RuleSubContent(onBack: () -> Unit) {
     // importVm: null=无导入任务, 非 null=渲染 DesktopImportDialog 让用户勾选比对后入库;
     // importInitialText: 订阅 URL, DesktopImportDialog 的 LaunchedEffect 调 vm.startImport(url);
     // importTitle: 导入对话框标题 (随 type 变化, 对照 app 端 ImportXxxDialog 的 R.string.import_xxx)
-    val importVm = remember { mutableStateOf<ImportListScaffoldVm?>(null) }
+    val importVm = remember { mutableStateOf<DesktopImportVm?>(null) }
     val importInitialText = remember { mutableStateOf("") }
     val importTitle = remember { mutableStateOf("") }
     // 导入对话框标题文案 (rememberString 是 @Composable, 顶层 remember 后供 onOpenSubscription lambda 引用;
@@ -177,27 +177,27 @@ private fun RuleSubContent(onBack: () -> Unit) {
                     0, 1 -> {
                         importTitle.value = importBookSourceLabel
                         importInitialText.value = ruleSub.url
-                        importVm.value = ImportBookSourceVmAdapter(ImportBookSourceViewModelShared(scope))
+                        importVm.value = DesktopImportVm.bookSource(ImportBookSourceViewModelShared(scope))
                     }
                     2 -> {
                         importTitle.value = importReplaceRuleLabel
                         importInitialText.value = ruleSub.url
-                        importVm.value = ImportReplaceRuleVmAdapter(ImportReplaceRuleViewModelShared(scope))
+                        importVm.value = DesktopImportVm.replaceRule(ImportReplaceRuleViewModelShared(scope))
                     }
                     3 -> {
                         importTitle.value = importTxtTocRuleLabel
                         importInitialText.value = ruleSub.url
-                        importVm.value = ImportTxtTocRuleVmAdapter(ImportTxtTocRuleViewModelShared(scope))
+                        importVm.value = DesktopImportVm.txtTocRule(ImportTxtTocRuleViewModelShared(scope))
                     }
                     4 -> {
                         importTitle.value = importDictRuleLabel
                         importInitialText.value = ruleSub.url
-                        importVm.value = ImportDictRuleVmAdapter(ImportDictRuleViewModelShared(scope))
+                        importVm.value = DesktopImportVm.dictRule(ImportDictRuleViewModelShared(scope))
                     }
                     5 -> {
                         importTitle.value = importHttpTtsLabel
                         importInitialText.value = ruleSub.url
-                        importVm.value = ImportHttpTtsVmAdapter(ImportHttpTtsViewModelShared(scope))
+                        importVm.value = DesktopImportVm.httpTts(ImportHttpTtsViewModelShared(scope))
                     }
                     else -> {
                         Toasters.get().toast("error")
@@ -345,9 +345,10 @@ private fun DesktopRuleSubEditDialog(
                         AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                             (0..5).forEach { t ->
                                 DropdownMenuItem(
-                                    text = { Text(typeName(t), color = AppTheme.colors.primaryText) },
                                     onClick = { type = t; expanded = false },
-                                )
+                                ) {
+                                    Text(typeName(t), color = AppTheme.colors.primaryText)
+                                }
                             }
                         }
                     }

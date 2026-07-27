@@ -32,7 +32,7 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.component.Md2TextField
+import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
@@ -232,7 +232,7 @@ private fun FormField(
     number: Boolean = false,
     onFocusChanged: (FieldState?) -> Unit,
 ) {
-    Md2TextField(
+    AppTextField(
         value = field.value,
         onValueChange = { new ->
             field.onChange(

@@ -90,6 +90,7 @@ object WebBookProvidersImpl :
     override val sourceFilterRuleDao get() = appDb.sourceFilterRuleDao
     override val httpTTSDao get() = appDb.httpTTSDao
     override val cacheDao get() = appDb.cacheDao
+    override val cookieDao get() = appDb.cookieDao
     // RuleSubViewModelShared 用 (规则订阅 CRUD)
     override val ruleSubDao get() = appDb.ruleSubDao
     // AllBookmarkViewModelShared / TocViewModel.saveBookmark 用 (书签导出/保存)
@@ -116,6 +117,7 @@ object WebBookProvidersImpl :
     // ---- AppConfigAccessor ----
     override val threadCount: Int get() = AppConfig.threadCount
     override val tocCountWords: Boolean get() = AppConfig.tocCountWords
+    override val tocUiUseReplace: Boolean get() = AppConfig.tocUiUseReplace
     override var chineseConverterType: Int
         get() = AppConfig.chineseConverterType
         set(value) { AppConfig.chineseConverterType = value }
@@ -191,8 +193,8 @@ object WebBookProvidersImpl :
     override val showDiscovery: Boolean get() = AppConfig.showDiscovery
     // AppConfig.bottomNavItemOrder 类型 String? (stringPref), 接口要求非空, 用 ?: "" 兜底
     override val bottomNavItemOrder: String get() = AppConfig.bottomNavItemOrder ?: ""
-    // AppConfig.defaultHomePage 类型 String? (stringPref), 接口要求非空, 用 ?: "" 兜底
-    override val defaultHomePage: String get() = AppConfig.defaultHomePage ?: ""
+    // AppConfig.defaultHomePage 类型 String? (stringPref 默认 "bookshelf"), 兜底同默认值
+    override val defaultHomePage: String get() = AppConfig.defaultHomePage ?: "bookshelf"
 
     // ---- 导入业务 (ImportBookSourceViewModelShared / ImportBookViewModelShared 用) ----
     override val importKeepName: Boolean get() = AppConfig.importKeepName
@@ -203,6 +205,12 @@ object WebBookProvidersImpl :
     // ---- 远程服务 / 批量管理 ----
     override val remoteServerId: Long get() = AppConfig.remoteServerId
     override val batchChangeSourceDelay: Int get() = AppConfig.batchChangeSourceDelay
+
+    // ---- Web 服务 / 其他 ----
+    override val webPort: Int get() = AppConfig.webPort
+    override val bitmapCacheSize: Int get() = AppConfig.bitmapCacheSize
+    override val sourceEditMaxLine: Int get() = AppConfig.sourceEditMaxLine
+    override val welcomeShowTime: Int get() = AppConfig.welcomeShowTime
 
     // ---- ContentProcessorAccessor ----
     override fun getTitleReplaceRules(

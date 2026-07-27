@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
@@ -21,6 +20,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 加载等待对话框内容 (KMP 共享, app + desktop + iOS 复用)。
@@ -90,7 +90,7 @@ fun WaitDialog(
             dismissOnClickOutside = false,
         ),
     ) {
-        Surface(shape = RoundedCornerShape(16.dp)) {
+        Surface(shape = DesignTokens.dialogShape) {
             WaitDialogContent(message = message)
         }
     }

@@ -1,12 +1,15 @@
 package io.legado.app.web
 
+import kotlin.concurrent.Volatile
+
 /**
  * Web 服务 (HttpServer + WebSocketServer) 平台实现抽象 (shared commonMain)。
  *
  * # 背景
  * app 端 [io.legado.app.service.WebService] 是 Android Service, 持有 HttpServer(NanoHTTPD) +
  * WebSocketServer(NanoWSD); 桌面端无 Service 概念, 复用同一套 NanoHTTPD 壳直接起服务。
- * iOS/鸿蒙暂不支持 web 服务。启停/端口/状态 (isRun/hostAddress) 等纯逻辑上移至
+ * iOS/鸿蒙共用 nativeMain [KtorWebServerPlatform] (Ktor embeddedServer CIO)。
+ * 启停/端口/状态 (isRun/hostAddress) 等纯逻辑上移至
  * [WebServerManager], 本接口只承接平台相关的「起/停服务器 + 枚举本机 IP + keepalive」三件事。
  *
  * # 设计
@@ -40,7 +43,7 @@ interface WebServerPlatform {
  * 下沉后 shared 不能 toast, 故把失败原因回传给平台壳 (Android WebService) 提示用户。
  *
  * @param addresses 本机可访问 URL 列表 (空=启动失败或无可用 IP)
- * @param errorMsg 启动异常信息 (对齐原版 e.localizedMessage); null 表示非异常失败 (如无 IP)
+ * @param errorMsg 启动异常信息 (对齐原版 e.message); null 表示非异常失败 (如无 IP)
  */
 data class WebServerStartResult(
     val addresses: List<String> = emptyList(),

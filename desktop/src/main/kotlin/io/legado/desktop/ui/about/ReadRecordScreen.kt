@@ -6,9 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,23 +37,21 @@ import io.legado.app.ui.about.ReadRecordUiActions
 import io.legado.app.ui.about.ReadRecordUiState
 import io.legado.app.ui.about.formatDayKey
 import io.legado.app.ui.about.rememberFormatDuring
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.utils.cnCompare
 import io.legado.desktop.ui.component.DesktopBookCover
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.Collator
 import java.util.Calendar
-import java.util.Locale
 
 private const val SEARCH_DEBOUNCE_MS = 300L
-
-/** 桌面端中文拼音排序 Collator (app 端 StringExtensions.cnCompare 依赖 android.icu 未下沉) */
-private val cnCollator: Collator = Collator.getInstance(Locale.CHINA)
 
 /**
  * 桌面端阅读记录 Screen 入口 (包装 shared/sharedUiMain 的 [SharedReadRecordScreen])。
@@ -78,8 +74,6 @@ private val cnCollator: Collator = Collator.getInstance(Locale.CHINA)
  *   - coverSlot: [DesktopBookCover.InfoCover] (复用详情页封面加载组件)
  *
  * 简化项:
- * - 排序 [String] 比较用 [Collator] (Locale.CHINA) 替代 app 端 cnCompare
- *   (app 端 StringExtensions.cnCompare 依赖 android.icu, 未下沉; java.text.Collator 等价)
  * - 热力图点击改为显示当日阅读时长 (app 端 onDayClick 切 filterDay 筛选, desktop 不筛选);
  *   长按接入 confirmDeleteDay (对齐 app 端 onDayLongClick)
  *
@@ -288,9 +282,7 @@ fun ReadRecordScreen(
                     1 -> itemsList.apply { sortByDescending { it.readTime } }
                     2 -> itemsList.apply { sortByDescending { it.lastRead } }
                     else -> itemsList.apply {
-                        // app 端 cnCompare 依赖 android.icu 未下沉, 用 java.text.Collator
-                        // (Locale.CHINA) 等价实现中文拼音排序
-                        sortWith { o1, o2 -> cnCollator.compare(o1.bookName, o2.bookName) }
+                        sortWith { o1, o2 -> o1.bookName.cnCompare(o2.bookName) }
                     }
                 }
                 val names =
@@ -510,91 +502,73 @@ fun ReadRecordScreen(
         // 顶部统计卡与热力图卡同行/堆叠由 shared ReadRecordScreen 按宽度自适应 (>=1000dp 同行)
     )
 
-    // ---- 确认弹窗 (material3 AlertDialog, desktop 端无 shared alert) ----
+    // ---- 确认弹窗 (AppAlertDialog) ----
 
     if (clearAllDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { clearAllDialog = false },
-            title = { Text(rememberString("delete")) },
-            text = { Text(rememberString("sure_del")) },
-            confirmButton = {
-                TextButton(onClick = {
-                    clearAllDialog = false
-                    scope.launch {
-                        withContext(Dispatchers.IO) {
-                            AppDbProviders.get().readRecordDao.clear()
-                        }
-                        // 直接清空内存缓存, initData 会基于空列表算出全 0 summary
-                        allRecords = emptyList()
-                        refreshHeatmap()
-                        initData()
+            title = rememberString("delete"),
+            message = rememberString("sure_del"),
+            okButton = AlertButton(rememberString("ok"), dismissOnClick = false) {
+                clearAllDialog = false
+                scope.launch {
+                    withContext(Dispatchers.IO) {
+                        AppDbProviders.get().readRecordDao.clear()
                     }
-                }) { Text(rememberString("ok")) }
-            },
-            dismissButton = {
-                TextButton(onClick = { clearAllDialog = false }) {
-                    Text(rememberString("cancel"))
+                    // 直接清空内存缓存, initData 会基于空列表算出全 0 summary
+                    allRecords = emptyList()
+                    refreshHeatmap()
+                    initData()
                 }
             },
+            cancelButton = AlertButton(rememberString("cancel")),
         )
     }
 
     delBookItem?.let { item ->
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { delBookItem = null },
-            title = { Text(rememberString("delete")) },
-            text = { Text(rememberString("sure_del_any", item.bookName)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    delBookItem = null
-                    val name = item.bookName
-                    scope.launch {
-                        withContext(Dispatchers.IO) {
-                            AppDbProviders.get().readRecordDao.deleteByName(name)
-                        }
-                        // 内存缓存同步删除, 避免重新查 DAO.all
-                        allRecords = allRecords?.filterNot { it.bookName == name }
-                        refreshHeatmap()
-                        initData()
+            title = rememberString("delete"),
+            message = rememberString("sure_del_any", item.bookName),
+            okButton = AlertButton(rememberString("ok"), dismissOnClick = false) {
+                delBookItem = null
+                val name = item.bookName
+                scope.launch {
+                    withContext(Dispatchers.IO) {
+                        AppDbProviders.get().readRecordDao.deleteByName(name)
                     }
-                }) { Text(rememberString("ok")) }
-            },
-            dismissButton = {
-                TextButton(onClick = { delBookItem = null }) {
-                    Text(rememberString("cancel"))
+                    // 内存缓存同步删除, 避免重新查 DAO.all
+                    allRecords = allRecords?.filterNot { it.bookName == name }
+                    refreshHeatmap()
+                    initData()
                 }
             },
+            cancelButton = AlertButton(rememberString("cancel")),
         )
     }
 
     // 删除某天阅读记录确认弹窗 (热力图长按日触发, 对齐 app 端 confirmDeleteDay)
     delDayKey?.let { dayKey ->
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { delDayKey = null },
-            title = { Text(rememberString("delete")) },
-            text = { Text(rememberString("sure_del_any", formatDayKey(dayKey))) },
-            confirmButton = {
-                TextButton(onClick = {
-                    delDayKey = null
-                    scope.launch {
-                        withContext(Dispatchers.IO) {
-                            AppDbProviders.get().readRecordDao.deleteByDay(dayKey)
-                        }
-                        // 内存缓存同步删除, 避免重新查 DAO.all
-                        allRecords = allRecords?.filterNot { it.day == dayKey }
-                        refreshHeatmap()
-                        initData()
+            title = rememberString("delete"),
+            message = rememberString("sure_del_any", formatDayKey(dayKey)),
+            okButton = AlertButton(rememberString("ok"), dismissOnClick = false) {
+                delDayKey = null
+                scope.launch {
+                    withContext(Dispatchers.IO) {
+                        AppDbProviders.get().readRecordDao.deleteByDay(dayKey)
                     }
-                }) { Text(rememberString("ok")) }
-            },
-            dismissButton = {
-                TextButton(onClick = { delDayKey = null }) {
-                    Text(rememberString("cancel"))
+                    // 内存缓存同步删除, 避免重新查 DAO.all
+                    allRecords = allRecords?.filterNot { it.day == dayKey }
+                    refreshHeatmap()
+                    initData()
                 }
             },
+            cancelButton = AlertButton(rememberString("cancel")),
         )
     }
 }

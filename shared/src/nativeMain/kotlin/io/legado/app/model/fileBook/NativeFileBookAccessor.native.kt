@@ -14,6 +14,8 @@ import io.legado.app.help.book.archiveName
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isArchive
 import io.legado.app.help.book.isEpub
+import io.legado.app.help.book.isImage
+import io.legado.app.help.book.isPdf
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.lib.webdav.WebDav
@@ -22,17 +24,18 @@ import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.ui.compose.platform.sharedStringTable
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.formatNative
 import io.legado.app.utils.toInputStream
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * native 端 (iOS/鸿蒙) [FileBookAccessor] 实现, 对照 desktop DesktopFileBookAccessor。
  *
  * # 与 desktop 端差异
- * - EPUB 走 nativeMain [EpubFile] (纯 Kotlin EpubParser); TXT/PDF/CBZ 解析器未下沉
- *   (TextFile/CbzFile 在 jvmAndAndroidMain), 走 [UnsupportedFileBook] 抛明确异常, 不静默空返回
+ * - EPUB 走 nativeMain [EpubFile] (纯 Kotlin EpubParser); TXT 走 nativeMain [TextFile]
+ *   (commonMain TextFileCore); PDF/CBZ 解析器未下沉, 走 [UnsupportedFileBook] 抛明确异常, 不静默空返回
  * - zip 解析用 commonMain [RemoteZipCore] + [ZipEntryReader] (无 java.util.zip)
  * - bookUrl 用 `file://` + 绝对路径 (与 NativeLocalBookLocator.parseLocalPath 对齐)
  * - saveBookFile(str) 网络路径用 AnalyzeUrlCore.getByteArrayAwait (native 端
@@ -56,10 +59,12 @@ class NativeFileBookAccessor : FileBookAccessor {
     }
 
     override fun getHandler(book: Book): BaseFileBook {
-        // EPUB 走 nativeMain EpubFile; 其余格式 (txt/pdf/cbz) 解析器未下沉, 抛明确异常
+        // 对齐 app 端 FileBook 分派: EPUB→EpubFile, TXT(else 兜底)→TextFile(TextFileCore);
+        // pdf/cbz 解析器未下沉, 仍抛明确异常
         return when {
             book.isEpub -> EpubFile
-            else -> UnsupportedFileBook
+            book.isPdf || book.isImage -> UnsupportedFileBook
+            else -> TextFile
         }
     }
 
@@ -402,7 +407,7 @@ class NativeFileBookAccessor : FileBookAccessor {
 }
 
 /**
- * TXT/PDF/CBZ 等未下沉格式的占位解析器: 抛明确"此端暂不支持"异常, 不静默空返回。
+ * PDF/CBZ 等未下沉格式的占位解析器: 抛明确"此端暂不支持"异常, 不静默空返回。
  *
  * 文案走 sharedStringTable key (未收录时用内置简中兜底, 与 iOS/鸿蒙端 i18n 现状一致)。
  */
@@ -421,8 +426,8 @@ private object UnsupportedFileBook : BaseFileBook {
 private fun unsupportedFormatException(fileName: String): NoStackTraceException {
     val suffix = fileName.substringAfterLast('.', "").ifEmpty { fileName }
     val template = sharedStringTable["native_book_format_not_supported"]
-        ?: "iOS/鸿蒙端暂不支持解析 %s 格式本地书 (txt/pdf/cbz 解析器未下沉)"
-    return NoStackTraceException(template.format(suffix))
+        ?: "iOS/鸿蒙端暂不支持解析 %s 格式本地书 (pdf/cbz 解析器未下沉)"
+    return NoStackTraceException(template.formatNative(suffix))
 }
 
 /**

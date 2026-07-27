@@ -175,7 +175,7 @@ interface BaseSource : JsExtensionsCommon {
                     }
                 }
             } catch (e: Exception) {
-                "执行请求头规则出错\n${e.localizedMessage}".let { msg ->
+                "执行请求头规则出错\n${e.message}".let { msg ->
                     AppLog.put(msg, e)
                     SourceDebugLoggers.impl?.log(getKey(), msg, state = -1)
                 }

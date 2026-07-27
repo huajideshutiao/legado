@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -348,7 +348,7 @@ private fun downloadBytesSimple(url: String): ByteArray? {
     val request = Request.Builder().url(url).build()
     return runCatching {
         client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) null else response.body?.bytes()
+            if (!response.isSuccessful) null else response.body.bytes()
         }
     }.getOrNull()
 }

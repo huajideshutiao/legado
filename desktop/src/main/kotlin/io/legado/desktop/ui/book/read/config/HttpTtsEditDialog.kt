@@ -1,6 +1,7 @@
 package io.legado.desktop.ui.book.read.config
 
 import androidx.compose.foundation.layout.widthIn
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.desktop.ui.component.DialogSizes
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -8,13 +9,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -45,9 +45,6 @@ import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
 import kotlinx.coroutines.launch
-
-/** Arco Design arco_radius_lg = 16dp, 用于对话框圆角 (与 SpeakEngineDialog 对齐)。 */
-private val ArcoRadiusLg = 16.dp
 
 /**
  * HTTP TTS 引擎编辑对话框 (桌面端 Composable)。
@@ -96,14 +93,14 @@ private val ArcoRadiusLg = 16.dp
  *
  * - desktop [io.legado.desktop.ui.replace.ReplaceEditScreen]: VM 生命周期 + 剪贴板桥接模式;
  * - shared/sharedUiMain `TxtTocRuleEditDialog`: Dialog + Surface + 标题栏 + 表单布局;
- * - shared/sharedUiMain `SpeakEngineDialog`: ArcoRadiusLg + DialogProperties + 标题栏 actions.
+ * - shared/sharedUiMain `SpeakEngineDialog`: DesignTokens.dialogShape + DialogProperties + 标题栏 actions.
  *
  * @param httpTTS 待编辑的 HttpTTS (null=新增, 非空=编辑已有引擎); 由 SpeakEngineDialog 的
  *   onEditEngines 回调传入 (null 对应"+"按钮新增, 非空对应行"编辑"按钮)
  * @param onDismiss 关闭回调 (用户取消 / 保存成功 / 删除成功后触发)
  * @param onImportLocal 本地导入回调 (null=不显示菜单项, 非空=在 OverflowMenu 显示"本地导入"项);
  *   点击时先关闭 EditDialog 再触发回调, 由调用方 (ReadAloudConfigScreen) 弹 FileDialog 选 JSON
- *   → 新建 ImportHttpTtsVmAdapter → 渲染 DesktopImportDialog 完成比对+入库 (与 app 端
+ *   → 新建 DesktopImportVm.httpTts → 渲染 DesktopImportDialog 完成比对+入库 (与 app 端
  *   SpeakEngineDialog OverflowMenu 的 import_local 项流程等价, 因桌面端 SpeakEngineDialog 在
  *   shared 中 actions 仅"+"按钮不可改, 导入入口下放到本 EditDialog)
  * @param onImportOnline 网络导入回调 (null=不显示菜单项, 非空=在 OverflowMenu 显示"网络导入"项);
@@ -270,7 +267,7 @@ fun HttpTtsEditDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
-            shape = RoundedCornerShape(ArcoRadiusLg),
+            shape = DesignTokens.dialogShape,
             color = colors.background,
             modifier = Modifier.fillMaxWidth().widthIn(max = DialogSizes.dialogMaxWidth()).padding(16.dp),
         ) {
@@ -289,17 +286,20 @@ fun HttpTtsEditDialog(
                         }
                         OverflowMenu { dismissMenu ->
                             DropdownMenuItem(
-                                text = { Text(testConnectionText, color = colors.primaryText) },
                                 onClick = { dismissMenu(); testConnection() },
-                            )
+                            ) {
+                                Text(testConnectionText, color = colors.primaryText)
+                            }
                             DropdownMenuItem(
-                                text = { Text(copySourceText, color = colors.primaryText) },
                                 onClick = { dismissMenu(); copySource() },
-                            )
+                            ) {
+                                Text(copySourceText, color = colors.primaryText)
+                            }
                             DropdownMenuItem(
-                                text = { Text(pasteSourceText, color = colors.primaryText) },
                                 onClick = { dismissMenu(); pasteSource() },
-                            )
+                            ) {
+                                Text(pasteSourceText, color = colors.primaryText)
+                            }
                             // 导入入口 (onImportLocal/onImportOnline 非 null 时显示)
                             // 因桌面端 SpeakEngineDialog 在 shared 中 actions 仅"+"按钮不可改,
                             // 导入入口下放到本 EditDialog; 点击时先 dismiss EditDialog 再触发回调,
@@ -307,27 +307,31 @@ fun HttpTtsEditDialog(
                             // OverflowMenu 的 import_local/import_on_line 项流程等价)
                             if (onImportLocal != null) {
                                 DropdownMenuItem(
-                                    text = { Text(importLocalText, color = colors.primaryText) },
                                     onClick = { dismissMenu(); onDismiss(); onImportLocal() },
-                                )
+                                ) {
+                                    Text(importLocalText, color = colors.primaryText)
+                                }
                             }
                             if (onImportOnline != null) {
                                 DropdownMenuItem(
-                                    text = { Text(importOnlineText, color = colors.primaryText) },
                                     onClick = { dismissMenu(); onDismiss(); onImportOnline() },
-                                )
+                                ) {
+                                    Text(importOnlineText, color = colors.primaryText)
+                                }
                             }
                             // 仅编辑已有引擎时显示删除按钮 (新增场景不显示)
                             if (httpTTS != null) {
                                 DropdownMenuItem(
-                                    text = { Text(deleteText, color = colors.primaryText) },
                                     onClick = { dismissMenu(); deleteAndDismiss() },
-                                )
+                                ) {
+                                    Text(deleteText, color = colors.primaryText)
+                                }
                             }
                             DropdownMenuItem(
-                                text = { Text(helpText, color = colors.primaryText) },
                                 onClick = { dismissMenu(); openHelp() },
-                            )
+                            ) {
+                                Text(helpText, color = colors.primaryText)
+                            }
                         }
                     },
                 )

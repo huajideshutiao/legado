@@ -13,9 +13,11 @@ import io.legado.app.help.book.registerNativeContentProcessorAccessor
 import io.legado.app.help.file.registerIosAppFilesDir
 import io.legado.app.help.file.registerNativeFileDownloader
 import io.legado.app.help.image.IosBitmapProvider
+import io.legado.app.help.image.registerIosBookImageLoader
 import io.legado.app.help.http.registerDefaultIosCookieStoreProvider
 import io.legado.app.help.http.registerIosHttpProvider
 import io.legado.app.help.notification.registerIosNotificationProgress
+import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.registerNativeDefaultDataResourceProvider
 import io.legado.app.help.registerNativeDirectLinkUploadProviders
 import io.legado.app.help.registerNativeExploreKindsCacheProvider
@@ -27,6 +29,8 @@ import io.legado.app.help.source.registerNativeSourceHelpAccessor
 import io.legado.app.help.source.registerNativeSourceProviders
 import io.legado.app.help.source.registerNativeVerificationUiProvider
 import io.legado.app.help.toast.registerIosToaster
+import io.legado.app.help.tts.IosHttpTtsPlayer
+import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.help.tts.registerIosSystemTtsEngine
 import io.legado.app.help.ui.registerIosOpenUrlProvider
 import io.legado.app.help.ui.registerIosToastProvider
@@ -37,6 +41,7 @@ import io.legado.app.model.registerIosAudioPlayCommanders
 import io.legado.app.model.registerNativeCacheBookCallback
 import io.legado.app.model.script.registerIosJsEngines
 import io.legado.app.model.webBook.registerNativeWebBookProviders
+import io.legado.app.ui.compose.platform.IosPreferenceStoreProvider
 import io.legado.app.web.registerNativeWebServerPlatform
 import io.legado.app.web.utils.registerNativeWebAssetSource
 import io.legado.app.web.utils.registerNativeWebStrings
@@ -124,8 +129,15 @@ fun registerIosProviders() {
     // 2.4 备份密码 provider (读 PreferenceProviders "password", 与 app 端 LocalConfig.password 同 key)
     registerNativePasswordProvider()
 
+    // 2.45 发现页收藏 prefs 注入 (NSUserDefaults.standardUserDefaults, 对齐 app 端 App.kt
+    // 的 PinnedExploreHelp.prefs 注入; 未注入时 getPinnedExplores 抛 lateinit 异常)
+    PinnedExploreHelp.prefs = IosPreferenceStoreProvider()
+
     // 2.5 主题配置 provider (文件持久化 themeConfig.json, 与 app 端 ThemeConfig 同格式; 替换原内存版)
     ThemeConfigProviders.register(FileThemeConfigProvider())
+
+    // 2.5.1 阅读配置 provider (readConfig.json / shareReadConfig.json, 供 BackupShared 备份/恢复)
+    ReadBookConfigProviders.register(ReadBookConfigShared(IosPreferenceStoreProvider()))
 
     // 2.6 默认数据 provider (composeResources files/defaultData, 供 DefaultDataShared 装载默认规则)
     registerNativeDefaultDataResourceProvider()
@@ -138,9 +150,14 @@ fun registerIosProviders() {
     // 必须在数据库/书籍缓存之前: BookImageStorage/FileDownloader/IosBookCover 取 OkHttpClient,
     // AnalyzeUrlCore 取 OkHttpProxyClient; 未注册时这些调用抛 IllegalStateException
     registerIosHttpProvider()
-    // 注册业务层 CookieStoreProvider (真实实现: NSHTTPCookieStorage.sharedHTTPCookieStorage)
+    // 注册业务层 CookieStoreProvider (commonMain SharedCookieStore, Room cookieDao 持久化)
     // 与 desktop registerDefaultJvmCookieStoreProvider / app registerAndroidCookieStoreProvider 对齐
     registerDefaultIosCookieStoreProvider()
+
+    // 3.5 Coil3 图片加载 (BookImageLoaders + SingletonImageLoader, 对齐 app 端 App.onCreate 的
+    // registerAndroidBookImageLoader + setSafe): 网络后端复用 IosHttpProvider 的 Ktor client,
+    // 磁盘缓存 {cacheDir}/image_cache; ImageLoader lazy 构建, 注册本身不触发网络栈/文件系统读取
+    registerIosBookImageLoader()
 
     // 4. 数据库 provider (DatabaseDriverProviders + AppDatabaseProviders, 依赖 AppFilesDirs)
     registerIosDatabaseDriver()
@@ -199,6 +216,8 @@ fun registerIosProviders() {
     // 8. TTS 引擎 provider (AVSpeechSynthesizer), 供 ReadAloudControllerShared 用
     // (对齐 desktop Main.kt 中 TtsEngineProvider.register 在 registerDesktopJsEngines 之后)
     registerIosSystemTtsEngine()
+    // 8b. HttpTTS 播放器工厂 (KP2-D P0-9: 三端朗读 HttpTTS 路径, AVPlayer actual)
+    TtsEngineProvider.registerHttpTtsPlayerFactory { IosHttpTtsPlayer() }
 
     // 9. 其余业务 provider (顺序无关)
     registerNativeFileDownloader()

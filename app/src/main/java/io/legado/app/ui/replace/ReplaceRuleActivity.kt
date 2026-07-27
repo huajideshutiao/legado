@@ -14,10 +14,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
 import io.legado.app.ui.compose.component.AppDropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +50,7 @@ import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.component.dragSelectable
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
@@ -68,7 +69,6 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
-import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * 替换规则管理
@@ -211,31 +211,26 @@ class ReplaceRuleActivity : BaseComposeActivity() {
             }
             AppDropdownMenu(expanded = showGroup, onDismissRequest = { showGroup = false }) {
                 DropdownMenuItem(
-                    text = { Text(stringResource(R.string.group_manage), color = colors.primaryText) },
                     onClick = { showGroup = false; showDialogFragment<GroupManageDialog>() },
-                )
+                ) { Text(stringResource(R.string.group_manage), color = colors.primaryText) }
                 DropdownMenuItem(
-                    text = { Text(stringResource(R.string.no_group), color = colors.primaryText) },
                     onClick = { showGroup = false; setQuery(getString(R.string.no_group)) },
-                )
+                ) { Text(stringResource(R.string.no_group), color = colors.primaryText) }
                 groups.forEach { group ->
                     DropdownMenuItem(
-                        text = { Text(group, color = colors.primaryText) },
                         onClick = { showGroup = false; setQuery("group:$group") },
-                    )
+                    ) { Text(group, color = colors.primaryText) }
                 }
             }
         }
         OverflowMenu { dismiss ->
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.add_replace_rule), color = colors.primaryText) },
                 onClick = {
                     dismiss()
                     editActivity.launch(ReplaceEditActivity.startIntent(this@ReplaceRuleActivity))
                 },
-            )
+            ) { Text(stringResource(R.string.add_replace_rule), color = colors.primaryText) }
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.import_local), color = colors.primaryText) },
                 onClick = {
                     dismiss()
                     importDoc.launch {
@@ -243,20 +238,18 @@ class ReplaceRuleActivity : BaseComposeActivity() {
                         allowExtensions = arrayOf("txt", "json")
                     }
                 },
-            )
+            ) { Text(stringResource(R.string.import_local), color = colors.primaryText) }
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.import_on_line), color = colors.primaryText) },
                 onClick = { dismiss(); showImportDialog() },
-            )
+            ) { Text(stringResource(R.string.import_on_line), color = colors.primaryText) }
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.help), color = colors.primaryText) },
                 onClick = { dismiss(); showHelp("replaceRuleHelp") },
-            )
+            ) { Text(stringResource(R.string.help), color = colors.primaryText) }
         }
     }
 
     @Composable
-    private fun ReorderableCollectionItemScope.ReplaceRuleItem(
+    private fun RuleItemScope.ReplaceRuleItem(
         item: ReplaceRule,
         checked: Boolean,
     ) {
@@ -305,17 +298,14 @@ class ReplaceRuleActivity : BaseComposeActivity() {
                 }
                 AppDropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                     DropdownMenuItem(
-                        text = { Text(stringResource(R.string.to_top), color = colors.primaryText) },
                         onClick = { showMenu = false; viewModel.toTop(item); setResult(RESULT_OK) },
-                    )
+                    ) { Text(stringResource(R.string.to_top), color = colors.primaryText) }
                     DropdownMenuItem(
-                        text = { Text(stringResource(R.string.to_bottom), color = colors.primaryText) },
                         onClick = { showMenu = false; viewModel.toBottom(item); setResult(RESULT_OK) },
-                    )
+                    ) { Text(stringResource(R.string.to_bottom), color = colors.primaryText) }
                     DropdownMenuItem(
-                        text = { Text(stringResource(R.string.delete), color = colors.primaryText) },
                         onClick = { showMenu = false; delete(item) },
-                    )
+                    ) { Text(stringResource(R.string.delete), color = colors.primaryText) }
                 }
             }
         }

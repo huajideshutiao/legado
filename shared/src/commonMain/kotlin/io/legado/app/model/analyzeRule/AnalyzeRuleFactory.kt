@@ -1,6 +1,7 @@
 package io.legado.app.model.analyzeRule
 
 import io.legado.app.data.entities.BaseSource
+import kotlin.concurrent.Volatile
 
 /**
  * AnalyzeRule 实例工厂: shared webBook 编排层直接 new [AnalyzeRuleCore] 会缺失平台端 JS 扩展面

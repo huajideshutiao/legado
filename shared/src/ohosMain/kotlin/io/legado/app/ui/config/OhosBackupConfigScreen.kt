@@ -12,7 +12,7 @@ import io.legado.app.ui.compose.platform.rememberString
  * 鸿蒙端备份设置页入口 (包装 shared/sharedUiMain 的 [BackupConfigScreen])。
  *
  * 实现模式参考 iOS 端 [IosBackupConfigScreen]: 复用 sharedUiMain 跨平台 Composable,
- * 避免复制代码; material3 原生组件 (TopAppBar 等) 接入待 API 明确后逐步替换顶栏。
+ * 避免复制代码; 顶栏用 sharedUiMain 的 [AppTitleBar] (项目锁 MD2 视觉, 不用 material3 TopAppBar)。
  *
  * 阻塞点: SAF/文件选择 (onBackupPath) 与 WebDav 备份/恢复动作均 stub,
  * 待后续接入鸿蒙平台文档选取器与 WebDav 客户端。

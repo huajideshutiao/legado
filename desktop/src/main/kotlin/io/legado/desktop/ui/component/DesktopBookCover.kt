@@ -6,57 +6,52 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.PlatformContext
+import coil3.compose.AsyncImagePainter
+import coil3.compose.rememberAsyncImagePainter
+import coil3.request.ImageRequest
+import coil3.size.Size
 import io.legado.app.data.entities.Book
-import io.legado.app.help.http.OkHttpClientProviders
+import io.legado.app.help.image.sourceOrigin
 import io.legado.app.ui.compose.platform.rememberString
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import okhttp3.Request
-import java.io.ByteArrayInputStream
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import java.io.File
-import javax.imageio.ImageIO
 
 /**
- * 桌面端 BookCover 加载组件 (替代 BookInfoScreen 中的占位实现)。
+ * 桌面端 BookCover 加载组件 (Coil3 实现)。
  *
  * # 加载策略
  *
- * - **本地路径** (`file://` 或绝对路径 `/...`): 用 [ImageIO.read] 加载为 [ImageBitmap]
- *   (与 [io.legado.desktop.ui.bookshelf.BookshelfScreen] 的 loadLocalImageBitmap 思路一致,
- *   零外部依赖; 桌面端 epub/pdf 等本地书籍封面经 FileBook.getCoverPath 提取后由此读取)
- * - **网络路径** (`http://`/`https://`): 用项目已注册的 OkHttp (经 [OkHttpClientProviders])
- *   下载字节流后 ImageIO 解码 (参照 shared 端 JvmBookImageStorage.saveImages 的下载逻辑,
- *   不引入 Glide/Coil 等新库)
- * - **内存缓存**: 走 [getOrLoadCover] 共享 LRU 缓存 (与书架共用同一份),
- *   命中零开销 (BlurCoverBg 与 InfoCover 共享同一 Book 的封面)
- * - **加载失败/进行中**: 走原占位视觉 (保持与替换前一致的兜底样式)
+ * - 加载走进程级共享 Coil3 ImageLoader (shared BookImageLoader.jvm.kt 装配):
+ *   内存/磁盘缓存 + 防盗链 header/封面解密/失败 url 跳过拦截器全套
+ * - 本地路径 (`file://` / 绝对路径) 转 [File] model (Coil3 FileMapper/FileUriFetcher 解码)
+ * - 网络路径 (`http(s)://`) String model, memoryCacheKey 按 url
+ * - 加载失败/进行中: 走原占位视觉 (保持与替换前一致的兜底样式)
  *
  * # 提供的 Composable
  *
- * - [DesktopBlurCoverBg]: 详情页顶部模糊封面背景 (替代 app 端 Glide + BookInfoBgTransformation)
- * - [DesktopInfoCover]: 详情页封面图 (替代 app 端 AndroidView + CoverImageView + Glide)
- * - [DesktopIntroImage]: 简介内整宽插图 (替代 app 端 Glide + CustomTarget<Bitmap>)
+ * - [DesktopBookCover.BlurCoverBg]: 详情页顶部模糊封面背景
+ * - [DesktopBookCover.InfoCover]: 详情页封面图
+ * - [DesktopBookCover.IntroImage]: 简介内整宽插图
+ * - [rememberCoverPainter]: 供其他桌面消费点 (ReviewListScreen 等) 复用的 painter 入口
  *
  * # 约束
  *
- * - 不引入 Glide/Coil 等新库, 仅用 JDK ImageIO + 项目已有 OkHttp
  * - 不修改 shared 模块 slot 契约
  * - 不擅自修改 ui 样式 (宽高边距与原占位保持一致)
  */
@@ -66,7 +61,6 @@ object DesktopBookCover {
      * 详情页顶部模糊封面背景。
      *
      * - 加载成功: 封面图 [ContentScale.Crop] 铺满 + [blur] 模糊 + accent 半透明遮罩
-     *   (与 app 端 BookInfoBgTransformation 的模糊+降饱和视觉效果接近)
      * - 加载中/失败: 回退到原纯色占位 `Color(0xFF165DFF).copy(alpha = 0.15f)`
      *
      * @param book 当前书籍 (可能为 null, 取 [Book.getDisplayCover] 得封面 URL)
@@ -74,27 +68,20 @@ object DesktopBookCover {
      */
     @Composable
     fun BlurCoverBg(book: Book?, modifier: Modifier = Modifier) {
-        val coverUrl = book?.getDisplayCover()
-        val bitmap by produceState<ImageBitmap?>(null, coverUrl) {
-            if (coverUrl.isNullOrEmpty()) return@produceState
-            value = loadCoverBitmap(coverUrl)
-        }
+        val painter = rememberCoverPainter(book?.getDisplayCover(), book?.origin)
+        val state by painter.state.collectAsState()
         Box(modifier) {
-            val bmp = bitmap
-            if (bmp != null) {
+            if (state is AsyncImagePainter.State.Success) {
                 // 模糊封面铺满背景区域
                 Image(
-                    bitmap = bmp,
+                    painter = painter,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize().blur(24.dp),
                     contentScale = ContentScale.Crop,
                 )
-                // accent 半透明遮罩, 降低封面饱和度使其作为背景不抢眼
-                Box(Modifier.fillMaxSize().background(Color(0xFF165DFF).copy(alpha = 0.15f)))
-            } else {
-                // 加载中/失败: 原占位色 (与替换前 DesktopBlurCoverBg 视觉一致)
-                Box(Modifier.fillMaxSize().background(Color(0xFF165DFF).copy(alpha = 0.15f)))
             }
+            // accent 半透明遮罩 (加载中/失败时即原纯色占位, 与替换前视觉一致)
+            Box(Modifier.fillMaxSize().background(Color(0xFF165DFF).copy(alpha = 0.15f)))
         }
     }
 
@@ -109,24 +96,20 @@ object DesktopBookCover {
      */
     @Composable
     fun InfoCover(book: Book?, modifier: Modifier = Modifier) {
-        val coverUrl = book?.getDisplayCover()
-        val bitmap by produceState<ImageBitmap?>(null, coverUrl) {
-            if (coverUrl.isNullOrEmpty()) return@produceState
-            value = loadCoverBitmap(coverUrl)
-        }
-        val bmp = bitmap
-        if (bmp != null) {
+        val painter = rememberCoverPainter(book?.getDisplayCover(), book?.origin)
+        val state by painter.state.collectAsState()
+        if (state is AsyncImagePainter.State.Success) {
             Image(
-                bitmap = bmp,
+                painter = painter,
                 contentDescription = book?.name,
-                modifier = modifier.clip(RoundedCornerShape(4.dp)),
+                modifier = modifier.clip(DesignTokens.shapeSm),
                 contentScale = ContentScale.Crop,
             )
         } else {
             // 兜底: 原占位 (Box + 书名首字 + accent 底, 保持替换前视觉)
             Box(
                 modifier
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(DesignTokens.shapeSm)
                     .background(Color(0xFF165DFF)),
                 contentAlignment = Alignment.Center,
             ) {
@@ -154,18 +137,15 @@ object DesktopBookCover {
     @Composable
     fun IntroImage(src: String, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
         val imageLabelTemplate = rememberString("image_label_with_src")
-        val bitmap by produceState<ImageBitmap?>(null, src) {
-            if (src.isBlank()) return@produceState
-            value = loadCoverBitmap(src)
-        }
+        val painter = rememberCoverPainter(src)
+        val state by painter.state.collectAsState()
         val baseModifier = modifier
             .fillMaxWidth()
             .height(120.dp)
-            .clip(RoundedCornerShape(4.dp))
-        val bmp = bitmap
-        if (bmp != null) {
+            .clip(DesignTokens.shapeSm)
+        if (state is AsyncImagePainter.State.Success) {
             Image(
-                bitmap = bmp,
+                painter = painter,
                 contentDescription = null,
                 modifier = baseModifier,
                 contentScale = ContentScale.Crop,
@@ -191,51 +171,36 @@ object DesktopBookCover {
 }
 
 /**
- * 加载封面为 [ImageBitmap] (本地路径或网络 URL), 命中全局 LRU 缓存直接返回。
+ * 图片 painter (Coil3, 走共享 SingletonImageLoader), 桌面封面/头像/配图统一入口。
  *
- * - `file://` / 绝对路径 `/...`: [ImageIO.read] 读文件
- * - `http://` / `https://`: [OkHttpClientProviders] 下载字节流后 [ImageIO.read] 解码
- * - 相对路径/未知协议: 返回 null (调用方走占位)
- * - 任意步骤异常 (IO/解码/网络): 返回 null (调用方走占位)
+ * - `http(s)://`: String model + memoryCacheKey 按 url (缓存键随 url 隔离);
+ *   [sourceOrigin] 非空时由 SourceOriginHeaderInterceptor 注入书源防盗链 header
+ * - `file://` / 绝对路径 (含 Windows 盘符): [File] model (默认 key 含 mtime, 封面文件更新可感知)
+ * - 相对路径/未知协议/空白: model 置 null, painter 走 Error 态 (调用方显示占位)
+ * - size ORIGINAL: 原图解码一次全消费点共享 (对齐替换前 LRU 行为, 模糊背景与封面同 Bitmap)
  *
- * 缓存: 走 [getOrLoadCover] (书架 + 详情页共享 LRU, 含失败 null 避免重试)。
+ * 调用方按 `painter.state` 是否 Success 决定绘制图片还是原占位。
  */
-private suspend fun loadCoverBitmap(src: String): ImageBitmap? =
-    getOrLoadCover(src) {
-        withContext(Dispatchers.IO) {
-            runCatching {
-                when {
-                    src.startsWith("file://") -> {
-                        val file = File(src.removePrefix("file://"))
-                        if (!file.exists()) null else ImageIO.read(file)?.toComposeImageBitmap()
-                    }
-                    src.startsWith("/") -> {
-                        val file = File(src)
-                        if (!file.exists()) null else ImageIO.read(file)?.toComposeImageBitmap()
-                    }
-                    src.startsWith("http://") || src.startsWith("https://") -> {
-                        downloadAndDecode(src)
-                    }
-                    else -> null // 相对路径/未知协议, 走占位
-                }
-            }.getOrNull()
-        }
+@Composable
+fun rememberCoverPainter(src: String?, sourceOrigin: String? = null): AsyncImagePainter {
+    val model = remember(src, sourceOrigin) {
+        val data = src?.takeIf { it.isNotBlank() }?.let { coverModel(it) }
+        ImageRequest.Builder(PlatformContext.INSTANCE)
+            .data(data)
+            .sourceOrigin(sourceOrigin)
+            .apply { if (data is String) memoryCacheKey(data) }
+            .size(Size.ORIGINAL)
+            .build()
     }
+    return rememberAsyncImagePainter(model)
+}
 
 /**
- * 网络封面下载 + 解码 (参照 JvmBookImageStorage.saveImages 的下载逻辑)。
- *
- * 用项目已注册的 [OkHttpClientProviders] 取 OkHttpClient 同步 GET, 拿到字节流后
- * [ImageIO.read] 解码为 [ImageBitmap]; 失败返回 null (调用方走占位)。
+ * src → Coil3 model: 网络 url 原样 String, 本地路径转 [File], 其余 null (走占位)。
+ * [File.isAbsolute] 判定兼容 Windows 盘符路径 (原实现只认 `/` 前缀会漏)。
  */
-private fun downloadAndDecode(url: String): ImageBitmap? {
-    val client = OkHttpClientProviders.get().okHttpClient
-    val request = Request.Builder().url(url).build()
-    return runCatching {
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return@use null
-            val bytes = response.body?.bytes() ?: return@use null
-            ImageIO.read(ByteArrayInputStream(bytes))?.toComposeImageBitmap()
-        }
-    }.getOrNull()
+private fun coverModel(src: String): Any? = when {
+    src.startsWith("http://") || src.startsWith("https://") -> src
+    src.startsWith("file://") -> File(src.removePrefix("file://"))
+    else -> File(src).takeIf { it.isAbsolute }
 }

@@ -1,7 +1,7 @@
 package io.legado.desktop.ui.book.read
 
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Surface
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -36,8 +36,6 @@ import io.legado.app.ui.compose.theme.AppTheme
  *   暂传空列表, 后续接入当前阅读上下文后补全
  * - onAddRule: app 端启动 ReplaceEditActivity (新增针对当前书籍的替换规则),
  *   桌面端虽有 ReplaceEditScreen 路由, 但缺少"当前书籍上下文"参数桥接, 暂 no-op
- * - onItemClick: app 端启动 ReplaceEditActivity (编辑) 或 ChineseConvert alert,
- *   桌面端 ChineseConvert 未下沉, 暂 no-op
  * - onManageAll: app 端启动 ReplaceRuleActivity (全局替换规则管理),
  *   桌面端 ReplaceRuleScreen 在侧栏 REPLACE 路由, 不便从此处跳转, 暂 no-op
  *
@@ -82,7 +80,6 @@ private fun EffectiveReplacesContent(onBack: () -> Unit) {
             // TODO: 桌面端 ReplaceEditScreen 缺少"当前书籍上下文"参数桥接, 暂不接入
         },
         onItemClick = { _ ->
-            // TODO: 依赖 ReplaceEditActivity / ChineseConvert alert, 桌面端未下沉
         },
         onManageAll = {
             // TODO: 全局替换规则管理在侧栏 REPLACE 路由, 此处暂不跳转

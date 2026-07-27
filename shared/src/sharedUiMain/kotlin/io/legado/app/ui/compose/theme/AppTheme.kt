@@ -13,7 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -62,15 +62,31 @@ object AppTheme {
         val radiusDefault: Dp = 8.dp
         val radiusLg: Dp = 16.dp
 
+        // 预建形状三档, 调用方直接复用, 不再各处 new RoundedCornerShape
+        val shapeSm: RoundedCornerShape = RoundedCornerShape(radiusSm)
+        val shapeDefault: RoundedCornerShape = RoundedCornerShape(radiusDefault)
+        val shapeLg: RoundedCornerShape = RoundedCornerShape(radiusLg)
+
+        // 语义别名: 整屏对话框 16dp / 卡片弹层 8dp / 按钮 8dp / 输入框 4dp
+        val dialogShape: RoundedCornerShape = shapeLg
+        val cardShape: RoundedCornerShape = shapeDefault
+        val buttonShape: RoundedCornerShape = shapeDefault
+        val inputShape: RoundedCornerShape = shapeSm
+
+        // Arco 描边: thin/medium 对齐 arco_stroke_width_*, hairline 为极细描边
+        val strokeHairline: Dp = 0.5.dp
+        val strokeThin: Dp = 1.dp
+        val strokeMedium: Dp = 2.dp
+
         // Arco arcoblue-6 主色 (#165DFF), 仅作无主题色场景的兜底强调色
         val arcoBlue6: Color = Color(0xFF165DFF)
 
-        // 通用卡片圆角形状 (radiusDefault), 供文本工具栏卡片等共性场景复用
-        val cardShape: RoundedCornerShape = RoundedCornerShape(radiusDefault)
+        // Arco red-6 危险色 (= app @color/arco_danger)
+        val arcoDanger: Color = Color(0xFFF53F3F)
 
         /**
-         * 默认文本对齐 View TextView: 14sp/零字距。压制 M3 bodyLarge 的隐式默认
-         * (16sp/24sp 行高/0.5 字距)——它会把所有只设 fontSize 的 Text 撑高。
+         * 默认文本对齐 View TextView: 14sp/零字距。压制 MaterialTheme body 默认
+         * (16sp/行高/0.5 字距)——它会把所有只设 fontSize 的 Text 撑高。
          * includeFontPadding=false 同原 XML 各处显式声明。
          *
          * platformStyle 走 [platformTextStyleNoFontPadding] expect/actual。
@@ -85,9 +101,9 @@ object AppTheme {
          * 调用方应使用 [AppTheme.DesignTokens.shapes] 而非自行 new Shapes。
          */
         val shapes: Shapes = Shapes(
-            small = RoundedCornerShape(radiusSm),
-            medium = RoundedCornerShape(radiusDefault),
-            large = RoundedCornerShape(radiusDefault),
+            small = shapeSm,
+            medium = shapeDefault,
+            large = shapeDefault,
         )
     }
 }
@@ -107,10 +123,17 @@ private fun readAppColors(themeStore: ThemeStoreProvider): AppColors {
         accent = themeStore.accentColor,
         background = bg,
         bottomBackground = bottomBg,
-        // 对齐 md_light_primary_text(#DE000000)/md_dark_primary_text(#FFFFFFFF)
-        primaryText = if (bgIsLight) Color(0xDE000000) else Color(0xFFFFFFFF),
-        // 对齐 md_light_secondary(#8A000000)/getSecondaryTextColor 深底分支(白)
-        secondaryText = if (bgIsLight) Color(0x8A000000) else Color(0xFFFFFFFF),
+        // 对齐 origin/quickjs arco_text_1: light #212121 / dark #F8F8F8
+        primaryText = if (bgIsLight) Color(0xFF212121) else Color(0xFFF8F8F8),
+        // 对齐 origin/quickjs arco_text_2: light #595959 / dark #CDCDCD
+        secondaryText = if (bgIsLight) Color(0xFF595959) else Color(0xFFCDCDCD),
+        // 主要菜单正文沿用 primaryText；摘要对齐 tv_text_summary/arco_text_3
+        menuText = if (bgIsLight) Color(0xFF212121) else Color(0xFFF8F8F8),
+        summaryText = Color(0xFF909090),
+        // 对齐 ate_control_normal_light(#8A000000)/dark(#B3FFFFFF)
+        controlNormal = if (bgIsLight) Color(0x8A000000) else Color(0xB3FFFFFF),
+        // 对齐 ate_text_disabled_light(#61000000)/dark(#4DFFFFFF)
+        textDisabled = if (bgIsLight) Color(0x61000000) else Color(0x4DFFFFFF),
         statusBar = themeStore.statusBarColor,
         navigationBar = themeStore.navigationBarColor,
         fillet = bottomBg,
@@ -148,13 +171,15 @@ fun AppTheme(content: @Composable () -> Unit) {
     val appConfig = LocalAppConfigProvider.current
     val eventBus = LocalEventBusProvider.current
 
-    var colors by remember(themeStore) { mutableStateOf(readAppColors(themeStore)) }
-    // 观察 recreateEvent：发射时重读 ThemeStore 刷新 colors，触发重组
+    var recreateTick by remember(themeStore, eventBus) { mutableIntStateOf(0) }
+    // Native providers 从持久层读取普通值，事件到达时触发重组；Desktop 的 State getter 可直接触发。
     LaunchedEffect(themeStore, eventBus) {
         eventBus.recreateEvent.collect {
-            colors = readAppColors(themeStore)
+            recreateTick++
         }
     }
+    recreateTick
+    val colors = readAppColors(themeStore)
     val textToolbar = remember { ComposeTextToolbar() }
     CompositionLocalProvider(
         LocalAppColors provides colors,
@@ -163,10 +188,10 @@ fun AppTheme(content: @Composable () -> Unit) {
     ) {
         MaterialTheme(
             colors = colors.toColors(),
-            shapes = appShapes,
+            shapes = AppTheme.DesignTokens.shapes,
         ) {
-            // 直接 provides 整体替换(ProvideTextStyle 是 merge, 压不掉 bodyLarge 的行高/字距)
-            CompositionLocalProvider(LocalTextStyle provides defaultTextStyle) {
+            // 直接 provides 整体替换(ProvideTextStyle 是 merge, 压不掉默认 body 样式的行高/字距)
+            CompositionLocalProvider(LocalTextStyle provides AppTheme.DesignTokens.defaultTextStyle) {
                 content()
                 // 自绘文本选择菜单宿主：全局接管系统 ActionMode，逐界面零改动
                 textToolbar.Host()

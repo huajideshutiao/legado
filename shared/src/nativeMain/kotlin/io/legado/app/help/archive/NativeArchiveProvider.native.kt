@@ -6,7 +6,7 @@ import io.legado.app.help.storage.NativeZipCodec
 import io.legado.app.model.fileBook.RangedSource
 import io.legado.app.model.fileBook.RemoteZipCore
 import io.legado.app.utils.MD5Utils
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * native (iOS/鸿蒙) [ArchiveProvider]: 复用项目已有纯 Kotlin ZIP 能力

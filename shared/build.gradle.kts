@@ -22,6 +22,14 @@ room {
     schemaDirectory("$projectDir/schemas")
 }
 
+// Res 类生成开关: Auto 模式靠"依赖图里出现 compose.components.resources 访问器坐标"来判定,
+// 而本模块为绕开 fork 未发布 jvm 变体的问题改用显式坐标声明 (见 commonMain 依赖处注释),
+// Auto 探测不到会 SKIP 掉 generateResourceAccessors*, 导致 legado.shared.generated.resources.Res 无法解析。
+// always 直接放行生成, 与 Auto 命中时行为一致。
+compose.resources {
+    generateResClass = always
+}
+
 kotlin {
     jvmToolchain(17)
 
@@ -43,15 +51,8 @@ kotlin {
     jvm()
 
     // KMP 跨端 target (iOS/鸿蒙) 按 gradle 属性条件启用:
-    // - KP3: iOS target 默认启用 (actual 已就绪), Windows 上 Kotlin/Native iOS 编译会失败属预期,
-    //   但 gradle 配置需正确, macOS 环境可直接 ./gradlew :shared:compileKotlinIosArm64
-    // - 关闭: -PenableIosTarget=false (Windows 本地开发 jvm/android 时建议关闭以加速)
-    // - 鸿蒙启用: ./gradlew :shared:compileKotlinOhosArm64 -PenableOhosTarget=true
-    // iosMain/ohosMain 源集代码已就绪, 启用 target 时参与编译验证; 不启用时被忽略, 不影响 jvm/android 构建
-    // KP4: 鸿蒙 target 默认关闭 (需通过 -PenableOhosTarget=true 显式启用)
-    // KP5: sharedUiMain 源集分离完成, Compose UI 代码已从 commonMain 迁出, linuxArm64 启用阻塞解除
-    // 原阻塞原因: Compose Multiplatform 不发布 linuxArm64 变体, commonMain 含 Compose UI 代码会导致 KMP 依赖解析失败
-    // 现状: Compose UI 隔离到 sharedUiMain, ohosMain 直接继承 sharedUiMain, 鸿蒙端复用全部 Compose UI 代码
+    val isIdea = System.getProperty("idea.active") == "true"
+    val officialVersion = "1.8.2"
     val enableIosTarget = (project.findProperty("enableIosTarget") ?: "true").toString() == "true"
     val enableOhosTarget = (project.findProperty("enableOhosTarget") ?: "false").toString() == "true"
 
@@ -65,16 +66,39 @@ kotlin {
         // (iOS / 鸿蒙 linuxArm64 共用同一份, 升级 quickjs-ng 时只需更新 src/cinterop/ 一处)
         // 两个 target 共用同一份 .def 和 C 源码 (iosArm64 真机 / iosSimulatorArm64 模拟器 ABI 不同,
         // 但 C 源码相同, cinterop 各自编译为对应 ABI 的框架)
-        val configureQuickjsCinterop: KotlinNativeTarget.() -> Unit = {
+        // mbedTLS 3.6 LTS cinterop 与 quickjs 同模式: C 源单一数据源 src/cinterop/mbedtls/,
+        // 三 target (iosArm64/iosSimulatorArm64/ohosArm64) 共用, 供 native 加解密 actual (第二阶段接业务)
+        // includeDirs: include/ 是 -I 根 (mbedtls/xxx.h), mbedtls/ 根目录让 MBEDTLS_CONFIG_FILE 可被找到
+        val configureNativeCinterops: KotlinNativeTarget.() -> Unit = {
+            // iosApp/project.yml 集成 shared.framework: baseName "shared" 对应 OTHER_LDFLAGS "-framework shared"
+            // 与 FRAMEWORK_SEARCH_PATHS 的 build/bin/ios*/debugFramework 路径
+            // isStatic = false: project.yml 的 dependencies 用 embed: true + codeSign: true, 且
+            // LD_RUNPATH_SEARCH_PATHS 含 @executable_path/Frameworks — 均为动态 framework 集成方式
+            // (静态 framework 已链入可执行文件, 不能 embed/codeSign)
+            // 注: link 任务当前在 mac 上仍会因 quickjs/mbedtls 缺预编译 .a 而未定义符号失败
+            // (cinterop 只编 def 内 wrapper, 不编 quickjs-ng/ 与 mbedtls/ 的 C 源), 属已知前置
+            binaries {
+                framework {
+                    baseName = "shared"
+                    isStatic = false
+                }
+            }
             compilations.getByName("main").cinterops {
                 create("quickjs") {
                     defFile(file("src/cinterop/quickjs.def"))
                     includeDirs(file("${projectDir}/src/cinterop/quickjs-ng"))
                 }
+                create("mbedtls") {
+                    defFile(file("src/cinterop/mbedtls.def"))
+                    includeDirs(
+                        file("${projectDir}/src/cinterop/mbedtls/include"),
+                        file("${projectDir}/src/cinterop/mbedtls"),
+                    )
+                }
             }
         }
-        iosArm64(configureQuickjsCinterop)
-        iosSimulatorArm64(configureQuickjsCinterop)
+        iosArm64(configureNativeCinterops)
+        iosSimulatorArm64(configureNativeCinterops)
     }
     if (enableOhosTarget) {
         // 鸿蒙端 Compose 支持 (fork 版 compose-multiplatform 提供 ohosArm64 target)
@@ -105,6 +129,16 @@ kotlin {
                     defFile(file("src/cinterop/quickjs.def"))
                     includeDirs(file("${projectDir}/src/cinterop/quickjs-ng"))
                 }
+                // mbedTLS cinterop (与 iOS 端同一份 def/C 源, 见上方 configureNativeCinterops 注释)
+                // .c 编译进 liblegado_napi.so (ohosApp/entry/src/main/cpp/CMakeLists.txt),
+                // liblegado_shared.so 的未定义符号在 napi 模块 dlopen 组内解析
+                create("mbedtls") {
+                    defFile(file("src/cinterop/mbedtls.def"))
+                    includeDirs(
+                        file("${projectDir}/src/cinterop/mbedtls/include"),
+                        file("${projectDir}/src/cinterop/mbedtls"),
+                    )
+                }
                 // 鸿蒙端 Compose 渲染框架桥接 cinterop (libmykmp_framework.so, 参考 mykmp-antui/common/build.gradle.kts)
                 // 头文件 antui_framework.h 声明 GetArkTsEnv / PostTaskByUVLooper 等 C ABI,
                 // 链接 libmykmp_framework.so (从 ohosApp/antui_framework/src/main/cpp/ C++ 源码用 OHOS NDK + CMake 构建)
@@ -119,10 +153,15 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(libs.kotlin.stdlib)
+            // @JsApi 注解 (BaseSource/CacheManager 等 JS 面标注), 全 target 微型模块
+            // api: 注解出现在 shared 公开类型上, app 端 KSP 需解析到该注解才能生成分派表
+            api(project(":modules:js-api"))
             // PageAnim.kt @IntDef 注解需要; androidx.annotation 1.10.0 已 KMP 发布
             implementation(libs.androidx.annotation)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.atomicfu)
+            // okio 已 KMP 发布; commonMain 用 okio.IOException (KmpCallback.onFailure 公开签名引用, 故 api)
+            api(libs.okio)
             // data/entities Room 注解（@Entity/@PrimaryKey/@ColumnInfo/@Index）；room-common 已 KMP 发布
             // K5-c Phase 5: @Database 下沉 commonMain, 需要 room-runtime (RoomDatabase 基类)
             // room-ktx (协程支持) Android 专属, 不在 commonMain 暴露, 移到 androidMain
@@ -145,27 +184,49 @@ kotlin {
             // (OkHttp 5.x 不发布 iosArm64/linuxArm64 等 Kotlin/Native 变体, 留 commonMain 会 KMP 依赖解析失败)
             // KMP UI 共享: Compose Multiplatform UI 依赖隔离到 sharedUiMain 源集 (UI 代码与业务逻辑分离)
             // 历史: Compose Multiplatform 曾不发布 linuxArm64 变体, 现已切换 ohosArm64 (fork 提供), 分离保留作架构隔离
-            // 例外: compose.components.resources (资源加载, 非 UI 代码) 放 commonMain, 触发 generateComposeResClass
-            // task 生成 Res 类 (task onlyIf 判定基于 commonMain 依赖图); ohos target 默认关闭 (-PenableOhosTarget=false),
-            // 启用时需引入 composeMain 中间源集隔离 Compose 资源依赖 (参考 sharedUiMain 模式)
+            // 例外: components-resources (资源加载, 非 UI 代码) 放 commonMain, 供 Res 类生成与运行时加载
+            // ohos target 默认关闭 (-PenableOhosTarget=false), 启用时需引入 composeMain 中间源集隔离
             // 官方文档: https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-multiplatform-resources-setup.html
-            api(compose.components.resources)
+            //
+            // 用显式坐标而非 compose.components.resources 访问器: 访问器解析出 fork 插件版本 1.8.2.99-alipay,
+            // 而该 fork 只发布 root pom/module + -android/-ohosarm64, 无 -jvm/-desktop 变体。
+            // KGP 的 IdeBinaryDependencyResolver 为中间源集 (jvmAndAndroidMain/sharedUiMain/nonOhosUiMain)
+            // 建 detachedConfiguration 解析依赖, 而 detached 不属于 project.configurations 容器,
+            // settings.gradle.kts 的 configurations.all { eachDependency/force } 对其完全不生效
+            // → IDE sync 报 "Could not resolve components-resources:1.8.2.99-alipay"。
+            // 声明期钉版是唯一能覆盖 detachedConfiguration 的位置 (从源头就不产生 -alipay 坐标)。
+            api("org.jetbrains.compose.components:components-resources:1.8.2")
         }
         // sharedUiMain: Compose UI 共享源集, android/jvm/ios/ohos 均继承
         // 不含 reorderable/coil3/multiplatformMarkdown/ui-tooling-preview/material-icons-extended 依赖
-        // (五库未发布 ohosArm64 变体) 使用这些库的代码通过 expect/actual 抽离, actual 实现在 nonOhosUiMain
+        // (五库未发布 ohosArm64 变体) 使用 these 库的代码通过 expect/actual 抽离, actual 实现在 nonOhosUiMain
         // ohosMain 提供 stub actual (Compose 原生/降级实现)
         val sharedUiMain by creating {
             dependsOn(commonMain.get())
             dependencies {
-                implementation(compose.runtime)
-                implementation(compose.foundation)
-                implementation(compose.material3)
-                // MD2: Md2TextField 用 MD2 OutlinedTextField 标签浮动样式 (md3 形态不同)
-                implementation(compose.material)
-                implementation(compose.ui)
-                // @Preview 注解依赖 (compose.uiTooling 含多平台渲染支持)
-                implementation(compose.uiTooling)
+                // runtime/foundation/material/ui 保持使用 compose.* 访问器 (fork 版): ohosArm64 需要 fork 的
+                // -ohosarm64 变体。但在 IDE 环境下, DetachedConfiguration 会无视 settings.gradle.kts
+                // 的 force 规则尝试解析 -alipay 版的 jvm 变体(不存在), 导致 IDE 报红。
+                // 解决方案: IDE 环境下硬钉官方版本, 编译环境下(如鸿蒙打包)保持访问器。
+                if (isIdea) {
+                    implementation("org.jetbrains.compose.runtime:runtime:$officialVersion")
+                    implementation("org.jetbrains.compose.foundation:foundation:$officialVersion")
+                    implementation("org.jetbrains.compose.material:material:$officialVersion")
+                    implementation("org.jetbrains.compose.ui:ui:$officialVersion")
+                } else {
+                    implementation(compose.runtime)
+                    implementation(compose.foundation)
+                    implementation(compose.material)
+                    implementation(compose.ui)
+                }
+
+                // material3/ui-tooling 用显式官方坐标而非 compose.material3/compose.uiTooling 访问器:
+                // 二者在 settings.gradle.kts 已被全局 force 到官方版 (fork 未发布对应制品), 声明期直接钉版
+                // 语义等价, 且能覆盖 KGP IdeBinaryDependencyResolver 的 detachedConfiguration
+                // (绕过 settings 规则, 详见 commonMain 的 components-resources 注释)
+                implementation("org.jetbrains.compose.material3:material3:1.8.2")
+                // @Preview 注解依赖 (ui-tooling 含多平台渲染支持)
+                implementation("org.jetbrains.compose.ui:ui-tooling:1.8.2")
                 // ui-tooling-preview / material-icons-extended 移到 nonOhosUiMain (fork 未发布 ohosArm64 变体)
             }
         }
@@ -187,6 +248,14 @@ kotlin {
                 // material-icons-extended 含 ~5000 图标 (fork 未发布 ohosArm64 变体, 仅 android/jvm/ios 使用)
                 implementation(compose.materialIconsExtended)
             }
+        }
+        // skikoUiMain: desktop (jvm) 与鸿蒙共用的 skia 直调源集。
+        // 两端 Compose 均由 skiko 渲染, org.jetbrains.skia.* 包名/签名一致, 故 Codec 逐帧
+        // 动图解码等实现只写一份; 不放 sharedUiMain 是因 androidMain 也继承它, 而 Android 端
+        // Compose 映射 androidx.compose (无 skiko), 会找不到 org.jetbrains.skia 符号。
+        // iosMain 同样坐在 skiko 上但不继承: iOS 走 Coil3 管线自带动图与缓存 (见 ios actual 注释)。
+        val skikoUiMain by creating {
+            dependsOn(sharedUiMain)
         }
         // android 与桌面 jvm 共享 java.* 实现与测试（附录 J：桌面=JVM）
         val jvmAndAndroidMain by creating {
@@ -239,6 +308,9 @@ kotlin {
             dependsOn(jvmAndAndroidMain)
             // jvmMain 继承 nonOhosUiMain (间接继承 sharedUiMain), 获取 reorderable/coil3/markdown actual
             dependsOn(nonOhosUiMain)
+            // skiko 直调 (Codec 逐帧动图解码): 与鸿蒙共用 skikoUiMain 一份实现
+            // skiko 由 compose desktop 变体传递引入 (ui-graphics-desktop → org.jetbrains.skiko:skiko), 无需显式声明
+            dependsOn(skikoUiMain)
             dependencies {
                 // 桌面端 ResourceProvider.jvm 用 Icons.Filled.* 替代 painterResource(R.drawable.*)
                 // material-icons-extended 含 ~5000 图标; core 只有 ~30, 不含 Search/MoreVert 等
@@ -269,6 +341,10 @@ kotlin {
                 // iOS 加密 (AES/MD5/SHA/HMAC): krypto 4.0.10 纯 Kotlin KMP 实现
                 // 替代 jvmAndAndroidMain 的 hutool; 字节级与 javax.crypto.Cipher 对拍
                 implementation(libs.krypto)
+                // Coil3 Ktor3 网络后端: 发布 iosArm64/iosSimulatorArm64 klib (Maven Central 已核),
+                // pom 依赖 ktor-client-core 3.1.0 与本源集 Ktor 版本一致; 桥接 IosHttpProvider 的 Ktor HttpClient
+                // (desktop/android 走 jvmAndAndroidMain 的 coil-network-okhttp 后端, 故本依赖 iosMain 专属不放 nonOhosUiMain)
+                implementation(libs.coil3.network.ktor3)
                 // iOS Compose material-icons: ResourceProvider.ios.kt 用 Icons.Filled.Help 占位
                 // commonMain 的 compose.material3 不传递 material-icons, 需 iOS source set 显式声明
                 // Compose Multiplatform compose 对象无 materialIconsCore 属性, 用 materialIconsExtended 替代
@@ -300,6 +376,9 @@ kotlin {
             // reorderable/coil3/multiplatformMarkdown 三个库未发布 ohosArm64 变体,
             // 通过 expect/actual 抽离使用点, ohosMain 提供 actual 实现 (Compose 原生/stub)
             dependsOn(sharedUiMain)
+            // skiko 直调 (Codec 逐帧动图解码): 与 desktop 共用 skikoUiMain 一份实现
+            // (本源集下方已显式声明 libs.skiko 依赖)
+            dependsOn(skikoUiMain)
             dependencies {
                 // skiko 0.9.4.2.40-alipay (鸿蒙端 Compose 渲染后端, 提供 ohosArm64 变体)
                 implementation(libs.skiko)

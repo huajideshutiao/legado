@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -55,7 +56,6 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import java.util.Locale
 
 /**
  * 音频播放
@@ -72,7 +72,7 @@ class AudioPlayActivity : BaseComposeActivity(toolBarTheme = Theme.Dark),
     var durationMs by mutableIntStateOf(0)
     var progressMs by mutableIntStateOf(0)
     var bufferMs by mutableIntStateOf(0)
-    var speedText by mutableStateOf<String?>(null)
+    var speed by mutableFloatStateOf(AudioPlayService.playSpeed)
     var timerMinute by mutableIntStateOf(0)
     var loading by mutableStateOf(false)
     var lrcData by mutableStateOf<List<Pair<Int, String>>?>(null)
@@ -313,7 +313,7 @@ class AudioPlayActivity : BaseComposeActivity(toolBarTheme = Theme.Dark),
             bufferMs = it
         }
         observeEventSticky<Float>(EventBus.AUDIO_SPEED) {
-            speedText = String.format(Locale.ROOT, "%.1fX", it)
+            speed = it
         }
         observeEventSticky<Int>(EventBus.AUDIO_DS) {
             timerMinute = it

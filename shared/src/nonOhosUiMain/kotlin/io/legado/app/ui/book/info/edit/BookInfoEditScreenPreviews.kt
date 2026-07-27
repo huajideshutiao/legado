@@ -3,12 +3,12 @@ package io.legado.app.ui.book.info.edit
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.preview.AppPreview
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Book
@@ -62,7 +62,7 @@ private val coverSlot: @Composable (Book?, Modifier) -> Unit = { book, modifier 
     Box(
         modifier
             .width(110.dp)
-            .background(Color(0xFF888888), RoundedCornerShape(4.dp)),
+            .background(Color(0xFF888888), DesignTokens.shapeSm),
         contentAlignment = Alignment.Center,
     ) {
         Text(book?.name?.take(2).orEmpty(), color = Color.White)

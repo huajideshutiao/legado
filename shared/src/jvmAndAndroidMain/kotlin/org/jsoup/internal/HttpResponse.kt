@@ -57,7 +57,7 @@ class HttpResponse(
     override fun charset(): String? {
         overrideCharset?.let { return it }
         // OkHttp 5.x ResponseBody.charset() 私有,改用 MediaType.charset()
-        raw.body?.contentType()?.charset()?.name()?.let { return it }
+        raw.body.contentType()?.charset()?.name()?.let { return it }
         // 兜底:从 content-type 头解析 charset
         contentType()?.let { ct ->
             val idx = ct.indexOf("charset=", ignoreCase = true)
@@ -180,7 +180,7 @@ class HttpResponse(
     private fun ensureBuffered() {
         if (bodyBytes != null) return
         val bytes = try {
-            val rawBytes = raw.body?.bytes() ?: ByteArray(0)
+            val rawBytes = raw.body.bytes()
             when (raw.header("Content-Encoding")?.lowercase()) {
                 "gzip" -> GZIPInputStream(rawBytes.inputStream()).use { it.readBytes() }
                 "deflate" -> InflaterInputStream(rawBytes.inputStream(), Inflater(true))
@@ -204,7 +204,7 @@ class HttpResponse(
                 ?: StandardCharsets.UTF_8
         }
         // OkHttp 5.x ResponseBody.charset() 私有,改用 MediaType.charset()
-        raw.body?.contentType()?.charset()?.let { return it }
+        raw.body.contentType()?.charset()?.let { return it }
         // 检测 HTML meta charset
         if (bytes.size > 4) {
             val head = String(bytes, 0, minOf(bytes.size, 2048), StandardCharsets.ISO_8859_1)

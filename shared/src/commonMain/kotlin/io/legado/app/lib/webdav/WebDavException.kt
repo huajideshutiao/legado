@@ -1,11 +1,6 @@
 package io.legado.app.lib.webdav
 
-open class WebDavException(msg: String) : Exception(msg) {
-
-    override fun fillInStackTrace(): Throwable {
-        return this
-    }
-
-}
+// expect/actual: fillInStackTrace 抑制栈捕获是 JVM-only override, native actual 为普通类
+expect open class WebDavException(msg: String) : Exception
 
 class ObjectNotFoundException(msg: String) : WebDavException(msg)

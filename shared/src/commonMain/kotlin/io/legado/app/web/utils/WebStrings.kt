@@ -1,5 +1,7 @@
 package io.legado.app.web.utils
 
+import kotlin.concurrent.Volatile
+
 /**
  * Web 模块本地化文案抽象 (shared commonMain)。
  *

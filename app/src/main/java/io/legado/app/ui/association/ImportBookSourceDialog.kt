@@ -9,10 +9,10 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import io.legado.app.ui.compose.component.AppDropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -141,19 +141,17 @@ class ImportBookSourceDialog() : BaseComposeDialogFragment(), CodeDialog.Callbac
             }
             AppDropdownMenu(expanded = showOverflow, onDismissRequest = { showOverflow = false }) {
                 DropdownMenuItem(
-                    text = { Text(getString(R.string.select_new_source)) },
                     onClick = {
                         showOverflow = false
                         selectNew()
                     },
-                )
+                ) { Text(getString(R.string.select_new_source)) }
                 DropdownMenuItem(
-                    text = { Text(getString(R.string.select_update_source)) },
                     onClick = {
                         showOverflow = false
                         selectUpdate()
                     },
-                )
+                ) { Text(getString(R.string.select_update_source)) }
                 CheckableMenuItem(getString(R.string.keep_original_name), AppConfig.importKeepName) {
                     AppConfig.importKeepName = it
                     version++
@@ -172,11 +170,10 @@ class ImportBookSourceDialog() : BaseComposeDialogFragment(), CodeDialog.Callbac
 
     @Composable
     private fun CheckableMenuItem(text: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
-        DropdownMenuItem(
-            text = { Text(text) },
-            trailingIcon = { AppMenuCheckbox(checked = checked) },
-            onClick = { onToggle(!checked) },
-        )
+        DropdownMenuItem(onClick = { onToggle(!checked) }) {
+            Text(text, Modifier.weight(1f).padding(end = 12.dp))
+            AppMenuCheckbox(checked = checked)
+        }
     }
 
     private fun alertCustomGroup() {

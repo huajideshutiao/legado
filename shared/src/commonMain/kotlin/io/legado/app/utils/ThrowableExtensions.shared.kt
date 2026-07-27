@@ -5,7 +5,7 @@ import okio.IOException
 /**
  * Throwable 纯 Kotlin 扩展（commonMain）。
  *
- * - [stackTraceStr] 走 [Throwable.stackTraceToString] / [Throwable.localizedMessage],
+ * - [stackTraceStr] 走 [Throwable.stackTraceToString] / [Throwable.message],
  *   两者均为 common 期望成员, JVM actual 委托 java.lang.Throwable, 行为与原 JVM 实现一致。
  * - [asIOException] 走 [okio.IOException] (okhttp/okio 3.x KMP 库 commonMain expect class,
  *   JVM actual = java.io.IOException), 用构造函数 `IOException(message, cause)` 替代
@@ -16,7 +16,7 @@ import okio.IOException
 val Throwable.stackTraceStr: String
     get() {
         val stackTrace = stackTraceToString()
-        val lMsg = this.localizedMessage ?: "noErrorMsg"
+        val lMsg = this.message ?: "noErrorMsg"
         return when {
             stackTrace.isNotEmpty() -> stackTrace
             else -> lMsg

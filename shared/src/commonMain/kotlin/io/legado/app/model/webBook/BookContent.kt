@@ -18,6 +18,7 @@ import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.mapAsync
@@ -78,7 +79,7 @@ object BookContent {
             val title = analyzeRule.runCatching {
                 getString(titleRule)
             }.onFailure {
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "获取标题出错, ${it.localizedMessage}")
+                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "获取标题出错, ${it.message}")
             }.getOrNull()
             if (!title.isNullOrBlank()) {
                 bookChapter.title = title
@@ -103,7 +104,7 @@ object BookContent {
                 ) break
                 nextUrlList.add(nextUrl)
                 currentCoroutineContext().ensureActive()
-                val analyzeUrl = AnalyzeUrlCore(
+                val analyzeUrl = AnalyzeUrlFactories.create(
                     rawUrl = nextUrl,
                     source = bookSource,
                     ruleData = book,
@@ -134,7 +135,7 @@ object BookContent {
                     emit(urlStr)
                 }
             }.mapAsync(AppConfigProviders.get().threadCount) { urlStr ->
-                val analyzeUrl = AnalyzeUrlCore(
+                val analyzeUrl = AnalyzeUrlFactories.create(
                     rawUrl = urlStr,
                     source = bookSource,
                     ruleData = book,

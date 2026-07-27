@@ -26,15 +26,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 鸿蒙端"我的" Tab Composable (替代 MyTab.ets)。
  *
  * 顶部应用信息 (图标/名称/版本号) + 中部功能入口列表 + 底部 WebDav 同步状态。
  *
- * Material3 等价: 列表项可用 ListItem, 圆形图标可用 IconButton (圆角变体)。
+ * 列表项/圆形图标均为 Compose material (MD2) 自绘, 项目锁 MD2 视觉, 不引入 material3 构件。
  *
- * 各入口 bridge 跳转未实现, 点击 → onItemClick(title) 由宿主端路由。
+ * 各入口通过 onItemClick(title) 交由宿主端路由。
  */
 
 private data class MyTabItem(
@@ -51,6 +52,11 @@ private val myTabItems = listOf(
     MyTabItem("备份/恢复", "WebDav 与本地备份", "备"),
     MyTabItem("主题设置", "主题色/字号/行距", "主"),
     MyTabItem("其他设置", "阅读/翻页/服务", "其"),
+    MyTabItem("书源过滤规则", "筛选书源与内容", "筛"),
+    MyTabItem("TXT 目录规则", "管理 TXT 目录识别规则", "目"),
+    MyTabItem("字典规则", "管理词典查询规则", "词"),
+    MyTabItem("规则订阅", "订阅与更新规则", "订"),
+    MyTabItem("书签", "查看全部书签", "签"),
     MyTabItem("阅读记录", "阅读时长统计", "记"),
     MyTabItem("关于", "版本/帮助/源码", "关"),
 )
@@ -68,7 +74,7 @@ fun OhosMyTab(
         ) {
             // 应用图标占位: 72x72, 40sp 白字, ArcoBlue6 底, 16dp 圆角
             Box(
-                Modifier.size(72.dp).clip(RoundedCornerShape(16.dp)).background(ArcoBlue6),
+                Modifier.size(72.dp).clip(DesignTokens.shapeLg).background(DesignTokens.arcoBlue6),
                 contentAlignment = Alignment.Center,
             ) {
                 Text("阅", color = Color.White, fontSize = 40.sp, textAlign = TextAlign.Center)
@@ -116,7 +122,7 @@ private fun MyItemRow(item: MyTabItem, onClick: () -> Unit) {
     ) {
         // 圆形图标占位: 40x40, 18sp 白字, ArcoBlue6 底, 20dp 圆角 (对齐 MyTab.ets)
         Box(
-            Modifier.size(40.dp).clip(RoundedCornerShape(20.dp)).background(ArcoBlue6),
+            Modifier.size(40.dp).clip(RoundedCornerShape(20.dp)).background(DesignTokens.arcoBlue6),
             contentAlignment = Alignment.Center,
         ) {
             Text(item.icon, color = Color.White, fontSize = 18.sp, textAlign = TextAlign.Center)

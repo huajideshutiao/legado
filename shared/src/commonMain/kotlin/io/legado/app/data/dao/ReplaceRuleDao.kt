@@ -8,7 +8,7 @@ import androidx.room.Query
 import androidx.room.Update
 import io.legado.app.data.dealGroups
 import io.legado.app.data.entities.ReplaceRule
-import kotlinx.coroutines.Dispatchers.IO
+import io.legado.app.help.coroutine.IoDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -95,6 +95,6 @@ interface ReplaceRuleDao {
     fun flowGroups(): Flow<List<String>> {
         return flowGroupsUnProcessed().map { list ->
             dealGroups(list)
-        }.flowOn(IO)
+        }.flowOn(IoDispatcher)
     }
 }

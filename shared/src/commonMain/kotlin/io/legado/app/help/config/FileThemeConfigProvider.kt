@@ -31,25 +31,25 @@ class FileThemeConfigProvider : ThemeConfigProvider {
         get() = AppFilesDirs.get().filesDir + BackupFileOps.separator + CONFIG_FILE_NAME
 
     /** 存档库: 仅存储用户自定义/导入的主题 (对照原版 configList lazy 读盘) */
-    private val configList: MutableList<ThemeConfigData> by lazy {
+    private val configs: MutableList<ThemeConfigData> by lazy {
         loadFromDisk().toMutableList()
     }
 
-    override fun getConfigList(): List<ThemeConfigData> = configList.toList()
+    override fun getConfigList(): List<ThemeConfigData> = configs.toList()
 
     /** 对照原版 addConfig: 校验色值 + 按 themeName 同名覆盖/追加 + save */
     override fun addConfig(config: ThemeConfigData) {
         if (!validateConfig(config)) return
-        val index = configList.indexOfFirst { it.themeName == config.themeName }
-        if (index >= 0) configList[index] = config else configList.add(config)
+        val index = configs.indexOfFirst { it.themeName == config.themeName }
+        if (index >= 0) configs[index] = config else configs.add(config)
         // 原版仅追加分支 save (覆盖依赖进程内存); 桌面/iOS 常重启, 覆盖也落盘避免恢复数据丢失
         save()
     }
 
     /** 对照原版 delConfig: removeAt + save (applyTheme 不改当前色, 非 Android 端省略) */
     override fun delConfig(index: Int) {
-        if (index !in configList.indices) return
-        configList.removeAt(index)
+        if (index !in configs.indices) return
+        configs.removeAt(index)
         save()
     }
 
@@ -132,7 +132,7 @@ class FileThemeConfigProvider : ThemeConfigProvider {
     /** 对照原版 save: configList 序列化覆盖写 themeConfig.json */
     override fun save() {
         runCatching {
-            BackupFileOps.writeText(configFilePath, GSON.toJson(configList))
+            BackupFileOps.writeText(configFilePath, GSON.toJson(configs))
         }.onFailure { e ->
             AppLog.put("保存 themeConfig.json 出错\n${e.message}", e)
         }

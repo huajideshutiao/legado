@@ -44,6 +44,9 @@ dependencyResolutionManagement {
 rootProject.name = "legado"
 
 include(":app")
+// @JsApi 注解独立微型 KMP 模块 (全 target): shared/commonMain 的 BaseSource/CacheManager 需在
+// iOS/鸿蒙 metadata 编译下可见, 而 modules:quickjs 仅 jvm/android target
+include(":modules:js-api")
 include(":modules:quickjs")
 include(":modules:quickjs-processor")
 include(":shared")

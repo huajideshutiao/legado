@@ -87,7 +87,7 @@ class ReplaceEditViewModel {
         }.onSuccess {
             success(it)
         }.onError {
-            error(it.localizedMessage ?: "Error")
+            error(it.message ?: "Error")
         }
     }
 
@@ -107,7 +107,7 @@ class ReplaceEditViewModel {
         }.onSuccess {
             success()
         }.onError {
-            error("save error, ${it.localizedMessage}")
+            error("save error, ${it.message}")
         }
     }
 

@@ -8,6 +8,8 @@ package io.legado.app.help.crypto
  * 提供完整能力；iOS / 鸿蒙 半区可提供 actual 实现或抛 UnsupportedOperationException 降级。
  *
  * 接口签名对齐 jvmAndAndroidMain 既有 public 方法中跨平台可用的子集：
+ * - `encrypt(ByteArray)` / `encrypt(String)`（String 按 UTF-8，对齐 hutool encrypt(String)）
+ * - `encryptHex(ByteArray)` / `encryptHex(String)`（小写 hex，对齐 hutool HexUtil.encodeHexStr）
  * - `encryptBase64(ByteArray)` / `encryptBase64(String)` / `encryptBase64(String, charsetName?)`
  * - `decrypt(String)`（兼容 hex 与 base64 密文形态）
  *
@@ -23,6 +25,14 @@ package io.legado.app.help.crypto
  * 由 jvmAndAndroidMain 实现类保留原 `charset: String? = null` 默认值。
  */
 interface SymmetricCrypto {
+
+    fun encrypt(data: ByteArray): ByteArray
+
+    fun encrypt(data: String): ByteArray
+
+    fun encryptHex(data: ByteArray): String
+
+    fun encryptHex(data: String): String
 
     fun encryptBase64(data: ByteArray): String
 

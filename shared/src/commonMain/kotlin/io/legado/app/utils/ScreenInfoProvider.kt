@@ -1,5 +1,7 @@
 package io.legado.app.utils
 
+import kotlin.concurrent.Volatile
+
 /**
  * 跨平台屏幕尺寸 Provider 接口。
  *

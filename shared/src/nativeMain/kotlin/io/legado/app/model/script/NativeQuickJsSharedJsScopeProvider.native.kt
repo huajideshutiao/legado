@@ -6,6 +6,7 @@ import io.legado.app.help.http.newCallStrResponse
 import io.legado.app.ui.compose.platform.sharedStringTable
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.formatNative
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonObject
 import kotlinx.coroutines.runBlocking
@@ -121,7 +122,7 @@ object NativeQuickJsSharedJsScopeProvider : SharedJsScopeProvider {
                         }.body
                     } ?: throw NoStackTraceException(
                         (sharedStringTable["download_jslib_failed"] ?: "下载jsLib-%s失败")
-                            .format(value)
+                            .formatNative(value)
                     )
                     if (cached == null) {
                         synchronized(sourceLock) { jsLibContentCache[fileName] = js }

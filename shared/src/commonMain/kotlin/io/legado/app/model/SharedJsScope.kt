@@ -4,6 +4,7 @@ import io.legado.app.model.script.JsEngineType
 import io.legado.app.model.script.JsEngines
 import io.legado.app.model.script.JsScope
 import io.legado.app.model.script.SharedJsScopeProvider
+import kotlin.concurrent.Volatile
 import kotlin.coroutines.CoroutineContext
 
 /**

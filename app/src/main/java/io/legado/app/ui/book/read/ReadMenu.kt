@@ -107,6 +107,8 @@ class ReadMenu(internal val activity: ReadBookActivity) : ReadMenuState {
     override var nextEnabled by mutableStateOf(false)
         private set
     override var autoPage by mutableStateOf(false)
+    override var isNightTheme by mutableStateOf(AppConfig.isNightTheme)
+        private set
 
     private var confirmSkipToChapter = false
 
@@ -133,6 +135,7 @@ class ReadMenu(internal val activity: ReadBookActivity) : ReadMenuState {
 
     fun reset() {
         upColorConfig()
+        isNightTheme = AppConfig.isNightTheme
         titleBarAdditionVisible = AppConfig.showReadTitleBarAddition
     }
 
@@ -344,6 +347,7 @@ class ReadMenu(internal val activity: ReadBookActivity) : ReadMenuState {
 
     override fun clickNightTheme() {
         AppConfig.isNightTheme = !AppConfig.isNightTheme
+        isNightTheme = AppConfig.isNightTheme
         ThemeConfig.applyDayNight(context)
     }
 

@@ -1,7 +1,7 @@
 package io.legado.app.help.file
 
 import io.legado.app.napi.OhosNativeBridge
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * [AppFilesDir] 的鸿蒙 (OHOS) 真实实现。

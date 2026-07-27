@@ -7,10 +7,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.Surface
@@ -20,10 +22,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.BookGroup
@@ -37,12 +39,8 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
-
-/** Arco Design arcoblue-6 主色 (#165DFF)。 */
-private val ArcoBlue6 = Color(0xFF165DFF)
-
-/** Arco Design arco_radius_lg = 16dp。 */
-private val ArcoRadiusLg = 16.dp
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import kotlinx.coroutines.launch
 
 /**
  * 分组编辑对话框 (KMP 共享, app + desktop 复用)。
@@ -60,9 +58,9 @@ private val ArcoRadiusLg = 16.dp
  *
  * # KMP 化取舍
  *
- * - 封面选择 (原 registerHandleFile + ShelfCover) 依赖 Android Activity Result API 与
- *   app 模块 ShelfCover/BookCover, 无法 KMP 化, 按任务规范"移除"; cover 字段保留原值
- *   (编辑态) 或 null (新增态), 由调用方在 DB 持久化时一并写入
+ * - 封面选择: 原 registerHandleFile + ShelfCover 依赖 Android API, 改由 [coverSlot]
+ *   (封面渲染) + [onPickCover] (选图落盘返回路径) 注入; 两者均缺省 null 时不显示封面区
+ *   (兼容未接入的调用方), cover 字段保留原值
  * - 排序选项原用 stringArrayResource(R.array.book_sort), 该数组未在 rememberStringArray
  *   注册且不能修改 ResourceProvider.jvm.kt, 在文件内用 7 个新 key 硬编码 (值与 app 端
  *   values-zh/strings.xml 对齐)
@@ -78,6 +76,8 @@ private val ArcoRadiusLg = 16.dp
  * @param onConfirm 用户点击确定按钮, 参数为更新后的 group (新增态为 new BookGroup())
  * @param onDismiss 用户取消 (返回按钮 / 取消按钮)
  * @param onDelete 可选, 删除回调; 编辑态且 groupId 合法时显示删除按钮, 二次确认后调用
+ * @param coverSlot 可选, 分组封面渲染槽 (path 可空; 对照 app 端 ShelfCover 110dp NOVEL 比例)
+ * @param onPickCover 可选, 选图回调 (平台自行弹选择器+落盘, 返回封面路径, 取消返回 null)
  */
 @Composable
 fun GroupEditDialog(
@@ -85,13 +85,17 @@ fun GroupEditDialog(
     onConfirm: (BookGroup) -> Unit,
     onDismiss: () -> Unit,
     onDelete: ((BookGroup) -> Unit)? = null,
+    coverSlot: (@Composable (path: String?, modifier: Modifier) -> Unit)? = null,
+    onPickCover: (suspend () -> String?)? = null,
 ) {
     val colors = AppTheme.colors
     val isNew = group == null
     // 编辑态直接复用传入引用 (与原版 bookGroup?.let { it.groupName = name; ... } 一致);
     // 新增态用默认 BookGroup() (groupId=1, bookSort=-1, enableRefresh=true)
     val editingGroup = remember(group) { group ?: BookGroup() }
+    val scope = rememberCoroutineScope()
 
+    var cover by remember(group) { mutableStateOf(editingGroup.cover) }
     var groupName by remember(group) { mutableStateOf(editingGroup.groupName) }
     // 越界排序值回落 -1 (对齐原 spinner count 校验: bookSort + 1 in 0..6)
     var bookSort by remember(group) {
@@ -113,7 +117,7 @@ fun GroupEditDialog(
     )
 
     Surface(
-        shape = RoundedCornerShape(ArcoRadiusLg),
+        shape = DesignTokens.dialogShape,
         color = colors.background,
         modifier = Modifier.fillMaxWidth().padding(8.dp),
     ) {
@@ -122,39 +126,60 @@ fun GroupEditDialog(
                 title = rememberString(titleKey),
                 onBack = onDismiss,
             )
-            Column(
+            Row(
                 Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
             ) {
-                AppOutlinedTextField(
-                    value = groupName,
-                    onValueChange = { groupName = it },
-                    label = rememberString("group_name"),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                SortRow(
-                    bookSort = bookSort,
-                    sortEntries = sortEntries,
-                    onSortSelected = { bookSort = it },
-                )
-                Row(
+                // 分组封面 (对照 app 端 GroupEditDialog: 110dp 宽 NOVEL 3:4, 点击选图)
+                if (coverSlot != null) {
+                    Box(
+                        Modifier
+                            .width(110.dp)
+                            .aspectRatio(3f / 4f)
+                            .let { m ->
+                                if (onPickCover == null) m else m.clickable {
+                                    scope.launch { onPickCover()?.let { cover = it } }
+                                }
+                            },
+                    ) {
+                        coverSlot(cover, Modifier.fillMaxSize())
+                    }
+                }
+                Column(
                     Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp)
-                        .clickable { enableRefresh = !enableRefresh },
-                    verticalAlignment = Alignment.CenterVertically,
+                        .weight(1f)
+                        .let { if (coverSlot != null) it.padding(start = 8.dp) else it }
                 ) {
-                    AppCheckbox(
-                        checked = enableRefresh,
-                        onCheckedChange = { enableRefresh = it },
+                    AppOutlinedTextField(
+                        value = groupName,
+                        onValueChange = { groupName = it },
+                        label = rememberString("group_name"),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                    Text(
-                        text = rememberString("allow_drop_down_refresh"),
-                        color = colors.primaryText,
-                        fontSize = 14.sp,
+                    SortRow(
+                        bookSort = bookSort,
+                        sortEntries = sortEntries,
+                        onSortSelected = { bookSort = it },
                     )
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .clickable { enableRefresh = !enableRefresh },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AppCheckbox(
+                            checked = enableRefresh,
+                            onCheckedChange = { enableRefresh = it },
+                        )
+                        Text(
+                            text = rememberString("allow_drop_down_refresh"),
+                            color = colors.primaryText,
+                            fontSize = 14.sp,
+                        )
+                    }
                 }
             }
             // 底部按钮栏 (与 SourceLoginDialog 下沉版结构一致: bottomBackground + 删除靠左 + 取消/确定靠右)
@@ -178,14 +203,14 @@ fun GroupEditDialog(
                 AppTextButton(text = rememberString("cancel")) { onDismiss() }
                 AppTextButton(
                     text = rememberString("ok"),
-                    color = ArcoBlue6,
+                    color = DesignTokens.arcoBlue6,
                 ) {
                     // 原版 toastOnUi("分组名称不能为空"); KMP 版无 toast, 静默阻止关闭
                     if (groupName.isNotEmpty()) {
                         editingGroup.groupName = groupName
                         editingGroup.bookSort = bookSort
                         editingGroup.enableRefresh = enableRefresh
-                        // cover 字段保留原值 (封面选择依赖 Android Activity Result API, KMP 版移除)
+                        editingGroup.cover = cover
                         onConfirm(editingGroup)
                     }
                 }

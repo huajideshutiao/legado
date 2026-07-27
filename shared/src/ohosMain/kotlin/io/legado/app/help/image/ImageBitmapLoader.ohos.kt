@@ -8,7 +8,9 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.http.KmpRequestBuilder
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
-import kotlin.io.File
+import io.legado.app.model.script.runScriptWithContext
+import io.legado.app.utils.ImageUtils
+import io.legado.app.utils.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
@@ -27,37 +29,55 @@ import org.jetbrains.skia.Image as SkiaImage
  *     (鸿蒙端 KmpHttpClient 经 napi 桥接 @ohos.net.http, API 与 OkHttp 一致;
  *     okhttp3.Request 在 ohosMain 不可用, 改用 [KmpRequestBuilder])
  *   - 网络书: [AnalyzeUrlCore] 发请求, 自动带书源 header / cookie / charset / JS
- * - `cbz://`: 返回 null (CbzFile 未下沉到 ohosMain, 后续补)
- * - GIF: Skia 解码仅取静态首帧 (与 JVM 端 ImageIO 行为一致)
+ * - `cbz://`: [loadCbzEntryBytes] 经 ArchiveProviders 抽压缩包条目字节后 Skia 解码
+ *   (支持 `cbz://{entry}` + Book 与 `cbz://{path}#{entry}` 自含两种形式)
+ * - GIF: [loadBitmap] 的 Skia 解码仅取静态首帧; 需要动图的消费点改用 [loadBytes] 取裸字节走
+ *   [rememberAnimatedImageBitmap] (skiko Codec 逐帧解码, 与 desktop 共用 skikoUiMain 实现)
  */
-actual class ImageBitmapLoader {
+actual class ImageBitmapLoader actual constructor() {
 
     actual suspend fun loadBitmap(url: String, book: Book?, bookSource: BookSource?): ImageBitmap? =
         withContext(Dispatchers.IO) {
-            val bytes = when {
-                url.startsWith("cbz://") -> return@withContext null
-                url.startsWith("file://") -> runCatching {
-                    File(url.removePrefix("file://")).readBytes()
-                }.getOrNull()
-                url.startsWith("/") -> runCatching {
-                    File(url).readBytes()
-                }.getOrNull()
-                url.startsWith("http://") || url.startsWith("https://") -> {
-                    if (bookSource == null || book?.isLocal == true) {
-                        // 本地书 / 无书源: 直接 KmpHttpClient GET
-                        downloadBytesSimple(url)
-                    } else {
-                        // 网络书: AnalyzeUrlCore 带书源 header/cookie/charset/JS
-                        downloadBytesWithSource(url, bookSource)
-                    }
-                }
-                else -> null
-            }
-            bytes?.let { decodeBytes(it) }
+            ohosLoadImageBytes(url, book, bookSource)?.let { ohosDecodeImageBytes(it) }
         }
 
-    /** 简单 GET 取字节流 (本地书 / 无书源用, 参照 iOS IosBookCover.downloadAndDecode)。 */
-    private fun downloadBytesSimple(url: String): ByteArray? {
+    actual suspend fun loadBytes(url: String, book: Book?, bookSource: BookSource?): ByteArray? =
+        withContext(Dispatchers.IO) {
+            ohosLoadImageBytes(url, book, bookSource)
+        }
+}
+
+/** 按 scheme 取图片原始字节 ([ImageBitmapLoader] 的解码前一步, 动图路径直接复用)。 */
+private suspend fun ohosLoadImageBytes(
+    url: String,
+    book: Book?,
+    bookSource: BookSource?,
+): ByteArray? = when {
+    url.startsWith("cbz://") -> loadCbzEntryBytes(url, book?.bookUrl)
+    url.startsWith("file://") -> runCatching {
+        File(url.removePrefix("file://")).readBytes()
+    }.getOrNull()
+    url.startsWith("/") -> runCatching {
+        File(url).readBytes()
+    }.getOrNull()
+    url.startsWith("http://") || url.startsWith("https://") ->
+        ohosDownloadImageBytes(url, book, bookSource)
+    else -> null
+}
+
+/**
+ * 网络图片取字节流 (鸿蒙端共用, [ImageBitmapLoader] 与 OhosBookCover 磁盘缓存都走这里)。
+ * 本地书 / 无书源直接 KmpHttpClient GET; 网络书用 [AnalyzeUrlCore] 带书源 header/cookie/charset/JS (防盗链),
+ * 下载后过共享 [ImageUtils.decode] 解密 ([isCover] 选 coverDecodeJs / imageDecode 规则; 无规则原样返回,
+ * 解密失败返回 null 走占位, 对齐 app 端语义)。
+ */
+internal suspend fun ohosDownloadImageBytes(
+    url: String,
+    book: Book?,
+    bookSource: BookSource?,
+    isCover: Boolean = false,
+): ByteArray? {
+    if (bookSource == null || book?.isLocal == true) {
         val client = OkHttpClientProviders.get().okHttpClient
         val request = KmpRequestBuilder().url(url).get().build()
         return runCatching {
@@ -69,25 +89,23 @@ actual class ImageBitmapLoader {
             }
         }.getOrNull()
     }
+    return runCatching {
+        val analyzeUrl = AnalyzeUrlCore(
+            rawUrl = url,
+            source = bookSource,
+            coroutineContext = currentCoroutineContext(),
+        )
+        val raw = analyzeUrl.getByteArrayAwait()
+        runScriptWithContext {
+            ImageUtils.decode(url, raw, isCover, bookSource, book)
+        }
+    }.getOrNull()
+}
 
-    /** 用 [AnalyzeUrlCore] 发请求带书源 header/cookie/charset/JS (网络书用)。 */
-    private suspend fun downloadBytesWithSource(url: String, bookSource: BookSource?): ByteArray? {
-        if (bookSource == null) return downloadBytesSimple(url)
-        return runCatching {
-            val analyzeUrl = AnalyzeUrlCore(
-                rawUrl = url,
-                source = bookSource,
-                coroutineContext = currentCoroutineContext(),
-            )
-            analyzeUrl.getByteArrayAwait()
-        }.getOrNull()
-    }
-
-    /** Skia 解码字节数组为 [ImageBitmap] (与 iOS 端 IosBookCover uiImageToBitmap 解码路径一致)。 */
-    private fun decodeBytes(bytes: ByteArray): ImageBitmap? {
-        if (bytes.isEmpty()) return null
-        return runCatching {
-            SkiaImage.makeFromEncoded(bytes).toComposeImageBitmap()
-        }.getOrNull()
-    }
+/** Skia 解码字节数组为 [ImageBitmap] (与 iOS 端 IosBookCover uiImageToBitmap 解码路径一致)。 */
+internal fun ohosDecodeImageBytes(bytes: ByteArray): ImageBitmap? {
+    if (bytes.isEmpty()) return null
+    return runCatching {
+        SkiaImage.makeFromEncoded(bytes).toComposeImageBitmap()
+    }.getOrNull()
 }

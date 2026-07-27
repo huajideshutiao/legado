@@ -2,10 +2,13 @@ package io.legado.desktop
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.window.Window
+import javax.imageio.ImageIO
 import androidx.compose.ui.window.application
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.AppDatabaseProviders
@@ -38,6 +41,8 @@ import io.legado.app.help.source.SourceHelpAccessors
 import io.legado.app.help.toast.registerDesktopToaster
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.model.script.JsEngines
+import io.legado.app.ui.association.LegadoDeepLink
+import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
 import io.legado.app.ui.compose.platform.DesktopPreferenceStoreProvider
@@ -57,6 +62,7 @@ import io.legado.desktop.help.book.DesktopBookHelpAccessor
 import io.legado.desktop.help.book.DesktopZipFileWrapperFactory
 import io.legado.desktop.help.config.registerDesktopPasswordProvider
 import io.legado.desktop.help.DesktopDefaultDataResourceProvider
+import io.legado.desktop.help.SingleInstanceGuard
 import io.legado.desktop.help.http.registerDesktopBackstageWebView
 import io.legado.desktop.help.registerDesktopArchiveProvider
 import io.legado.desktop.help.registerDesktopFileCacheProvider
@@ -77,9 +83,11 @@ import io.legado.desktop.js.registerDesktopJsEngines
 import io.legado.desktop.model.DesktopCacheBook
 import io.legado.desktop.model.fileBook.registerDesktopFileBookAccessor
 import io.legado.desktop.model.webBook.registerDesktopWebBookProviders
+import io.legado.desktop.tts.DesktopHttpTtsPlayer
 import io.legado.desktop.tts.DesktopSystemTtsEngine
 import io.legado.desktop.ui.DesktopApp
 import io.legado.desktop.ui.SourceUiEventBridgeHost
+import io.legado.desktop.ui.association.DesktopDeepLinkImportHost
 import io.legado.desktop.ui.main.DesktopStartupTasks
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -87,6 +95,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import org.jsoup.Jsoup
+import java.awt.Desktop
 import java.io.File
 
 // Debug 日志开关: -Dlegado.desktop.debug=true 开启 stdout 调试输出
@@ -118,16 +127,64 @@ private fun debugLog(msg: String) {
  * 冒烟测试 (testDesktopHttp/testDesktopDatabase/testDesktopJsEngine) 改为 debug 模式才执行
  * (通过 -Dlegado.desktop.smokeTest=true 开启), 生产环境不执行, 避免启动期阻塞
  */
+fun main(args: Array<String>) {
+    // KP6: 便携模式检测 + native 库加载。必须最先执行 (早于 SingleInstanceGuard):
+    // 它设置的 legado.portable.root 决定 desktopAppRootDir() 的解析结果, 而后者进程内 lazy
+    // 只解析一次 —— 单实例守卫要在数据目录写 instance.lock, 提前读会把便携模式的根目录定位歪。
+    initDesktopRuntimeEnvironment()
+    // 单实例守卫: 已有实例存活时把 args 转发过去 + 前置其窗口, 本进程 exitProcess(0) 不返回
+    // (对照 app 端 AssociationActivity singleTask)。必须在 handleDeepLinkArgs 与任何
+    // provider/数据库初始化之前, 否则二次启动进程会先碰同一个 SQLite 库再退出。
+    SingleInstanceGuard.ensureSingleInstance(args)
+    // legado:// deep link 启动参数处理 (对照 app 端 AssociationActivity intent-filter):
+    // 系统级 URL protocol 注册 (注册表/.desktop/Info.plist) 属安装器配置, 见 handleDeepLinkArgs KDoc
+    handleDeepLinkArgs(args)
+    // macOS: legado:// 经 Apple Event (OpenURIHandler) 送达而非 argv, 注册 handler 承接;
+    // Windows/Linux 的 Desktop.Action.APP_OPEN_URI isSupported=false, 静默跳过
+    runCatching {
+        if (Desktop.isDesktopSupported() &&
+            Desktop.getDesktop().isSupported(Desktop.Action.APP_OPEN_URI)
+        ) {
+            Desktop.getDesktop().setOpenURIHandler { event ->
+                LegadoDeepLinkHandler.handle(event.uri.toString())
+            }
+        }
+    }
+    runDesktopApp()
+}
+
+/**
+ * 解析启动参数中的 legado://`/`yuedu:// deep link, 经 [LegadoDeepLinkHandler] 记录,
+ * 待 [io.legado.desktop.ui.association.DesktopDeepLinkImportHost] 在窗口内消费弹导入对话框。
+ *
+ * # 各 OS 系统级 URL protocol 注册方法 (安装器/打包配置, 本函数只管进程启动参数)
+ *
+ * - **Windows**: 注册表 `HKEY_CLASSES_ROOT\legado` 键下建空字符串值 `URL Protocol` +
+ *   子键 `shell\open\command` 默认值 `"C:\path\legado.exe" "%1"`; jpackage 安装器可在
+ *   post-install 脚本写入, MSIX 打包则用 manifest `uap:Protocol Name="legado"`。yuedu 同理。
+ * - **Linux**: .desktop 文件加 `MimeType=x-scheme-handler/legado;x-scheme-handler/yuedu;`
+ *   且 `Exec=legado %u`, 安装后执行
+ *   `xdg-mime default legado.desktop x-scheme-handler/legado x-scheme-handler/yuedu`。
+ * - **macOS**: app bundle Info.plist 加 `CFBundleURLTypes` (CFBundleURLSchemes=[legado,yuedu]),
+ *   jpackage 17+ 可用 `--mac-url-scheme legado --mac-url-scheme yuedu` 生成;
+ *   运行时回调走 Apple Event, 由 main() 里的 Desktop.setOpenURIHandler 承接 (非 argv)。
+ */
+private fun handleDeepLinkArgs(args: Array<String>) {
+    val url = args.firstOrNull { LegadoDeepLink.isDeepLink(it) } ?: return
+    if (!LegadoDeepLinkHandler.handle(url)) {
+        debugLog("[legado-desktop] deep link 解析失败 (缺 src 参数): $url")
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
-fun main() = application {
+private fun runDesktopApp() = application {
     // ==================== 阶段1: 首屏必需 provider 同步注册 (窗口显示前) ====================
     // 目标: 只注册首屏 (BookshelfScreen) 渲染依赖的 provider, 让窗口尽快显示。
     // 其余 provider 延迟到窗口显示后异步注册 (见阶段3 registerSecondaryProviders)。
 
-    // KP6: 便携模式检测 + native 库加载 (必须在所有 provider 注册前执行,
-    // 因 DesktopAppFilesDir / BundledDatabaseDriver / JvmBookStorage 构造时读
-    // legado.portable.root, QuickJsJsEngine 首次 eval 读 legado.quickjs.lib)
-    initDesktopRuntimeEnvironment()
+    // KP6: 便携模式检测 + native 库加载已提前到 main() 首行执行 (单实例守卫要先读数据目录),
+    // 此处不再重复调用; 其结果 (legado.portable.root / legado.quickjs.lib 系统属性) 对
+    // 下方所有 provider 注册依然有效。
     // 注册桌面端 Host 类 provider (启动期最早, 让 shared commonMain 调用 AppLog/appString 时有输出)
     // - AppLogHost: 桥接到 println, 未注册时 AppLog 副作用 (write/toast/debugPrint) 静默 no-op
     // - AppStringProvider: 返回 key.name 兜底, 未注册时 appString 同样 fallback 到 key.name
@@ -162,6 +219,11 @@ fun main() = application {
     PinnedExploreHelp.prefs = preferenceStoreProvider
     // KP1.4 补: 注册桌面端 AppFilesDir (~/.legado/files), 供 BackupShared/RestoreShared 用
     registerDesktopAppFilesDir()
+    // Coil3 图片栈: 注册 BookImageLoader + SingletonImageLoader.setSafe (共享 ImageLoader,
+    // 拦截器/diskCache 装配见 shared BookImageLoader.jvm.kt)。必须在阶段1:
+    // setSafe 晚于首个 rememberAsyncImagePainter/AsyncImage 的 get 会抛 IllegalStateException。
+    // 注册零开销 (ImageLoader lazy, OkHttpClient 惰性到首次网络 fetch, 无启动期网络栈初始化)
+    registerJvmBookImageLoader()
     // 注册桌面端 DefaultDataResourceProvider (actual 实现由另一子代理处理, 这里只负责 register)
     // 必须在 AppDatabaseProviders.register 之前注册 (首次建库 dbCallback.onCreate →
     // DefaultData.keyboardAssists → DefaultDataResourceProviders.get().readResource("keyboardAssists.json")),
@@ -192,11 +254,25 @@ fun main() = application {
     // 窗口标题走 rememberString("app_name"); application{} 顶层是 @Composable 上下文,
     // 在 Window 调用前求值后传给 title (Window.title 接收 String 而非 @Composable)
     val appName = rememberString("app_name")
+    // classpath 资源加载: 弃用的 painterResource(String) 改为手动 ImageIO 解码 + BitmapPainter
+    val iconPainter = remember {
+        runCatching {
+            Thread.currentThread().contextClassLoader
+                ?.getResourceAsStream("icon.png")?.use { ImageIO.read(it) }
+                ?.toComposeImageBitmap()?.let { BitmapPainter(it) }
+        }.getOrNull()
+    }
     Window(
         onCloseRequest = ::exitApplication,
         title = appName,
-        icon = painterResource("icon.png"),
+        icon = iconPainter,
     ) {
+        // 单实例守卫绑定主窗口: 二次启动转发到达时前置本窗口 (取消最小化 + toFront + 请求焦点);
+        // DisposableEffect 保证窗口销毁后解绑, 不让守卫持有已 dispose 的 AWT Window
+        DisposableEffect(window) {
+            SingleInstanceGuard.bindWindow(window)
+            onDispose { SingleInstanceGuard.bindWindow(null) }
+        }
         // ==================== 阶段3: 后台异步注册非首屏 provider ====================
         // 用 LaunchedEffect 在窗口显示后立即启动协程注册, 不阻塞首屏渲染
         // 用 withContext(Dispatchers.Default) 在后台线程执行, 避免阻塞 UI 线程
@@ -219,6 +295,9 @@ fun main() = application {
                 // 改用 Composable 宿主订阅 FlowBus(SOURCE_UI_REQUEST) 弹 Compose Dialog
                 // (实现见 SourceUiEventBridgeDesktop.kt)
                 SourceUiEventBridgeHost()
+                // legado:// deep link 导入对话框宿主: 消费 main(args)/OpenURIHandler 经
+                // LegadoDeepLinkHandler 记录的待导入请求 (对照 app 端 AssociationActivity 分发)
+                DesktopDeepLinkImportHost()
                 DesktopApp()
             }
         }
@@ -267,9 +346,7 @@ private suspend fun registerSecondaryProviders() {
         //     供 shared commonMain webBook 编排层通过 BookImageStorageProviders.get() 间接调用;
         //     saveImages 运行时依赖 OkHttpClientProviders (第2步已注册), 注册顺序无强约束
         BookImageStorageProviders.register(JvmBookImageStorage())
-        // 5c. Coil3 BookImageLoader (Compose 图片加载, 替代 Glide 迁移批 1 共享面接线)
-        //     ImageLoader lazy 构建, 运行时依赖 OkHttpClientProviders (第2步已注册)
-        registerJvmBookImageLoader()
+        // 注: Coil3 BookImageLoader/SingletonImageLoader 已提前到阶段1 注册 (setSafe 时机约束)
         // 6. EpubFile 相关 (依赖 AppDbProviders, 已同步注册)
         registerDesktopFileBookAccessor()
         // 7. SourceHelp (独立, 供 shared SourceHelp.saveSource/deleteBookSource 调用)
@@ -310,6 +387,8 @@ private suspend fun registerSecondaryProviders() {
         registerDesktopAudioPlayProviders()
         // 14. TTS 引擎 (独立, Windows SAPI / Linux espeak / macOS say)
         TtsEngineProvider.register(DesktopSystemTtsEngine())
+        // 14b. HttpTTS 播放器工厂 (KP2-D P0-9: 三端朗读 HttpTTS 路径)
+        TtsEngineProvider.registerHttpTtsPlayerFactory { DesktopHttpTtsPlayer() }
 
         // 15. 启动期异步任务 (对照 app 端 App.kt onCreate 的 Coroutine.async 块)
         // adjustSortNumber: 调整书源排序序号 (依赖 AppDbProviders, 已注册)
@@ -470,10 +549,11 @@ private fun testDesktopDatabase() {
  * (用户裁决: 嗅探目录在用户安装到非指定目录时会误判)。
  *
  * portable 模式: 经 `compose.application.resources.dir` 定位 exe 所在目录, 在其同级
- * 创建 `data/` 作为便携配置根 (数据库/缓存/配置全部跟随 exe, 拷贝即迁移, 卸载即清空),
+ * 创建 `data/` 作为便携配置根 (数据库/配置跟随 exe, 拷贝即迁移, 卸载即清空),
  * 设置 `legado.portable.root` 系统属性供下游读取。
  *
- * installed/dev 模式: 不设置系统属性, 下游走默认 `~/.legado` (用户目录)。
+ * installed/dev 模式: 不设置系统属性, 下游 DesktopAppPaths 走 portable.txt 标记检测
+ * (便携 zip 内置) / 系统数据目录 (%APPDATA%、XDG_DATA_HOME、Application Support)。
  *
  * 开发期默认 dev (build.gradle.kts 默认值), 保护项目源码树不被污染。
  *
@@ -501,7 +581,8 @@ private fun initDesktopRuntimeEnvironment() {
     //    其 parentFile = jpackage package root (exe 所在目录的同级)。
     //    portable 模式: 数据存 exe 同级 dataDir (设置 legado.portable.root 系统属性,
     //      下游 DesktopAppFilesDir/JvmBookStorage 读此属性定位配置根)。
-    //    installed/dev 模式: 不设置系统属性, 下游走默认 ~/.legado (用户目录)。
+    //    installed/dev 模式: 不设置系统属性, 下游 DesktopAppPaths 走 portable.txt
+    //      标记检测 / 系统数据目录 (含 ~/.legado 旧目录迁移兼容)。
     if (InstallType.IS_PORTABLE) {
         val exeDir = resDirFile.parentFile?.parentFile ?: resDirFile.parentFile
         val dataDir = File(exeDir, "data")

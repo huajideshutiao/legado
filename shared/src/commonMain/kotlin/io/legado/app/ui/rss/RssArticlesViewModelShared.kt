@@ -2,9 +2,9 @@ package io.legado.app.ui.rss
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.rss.RssHelp
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -67,7 +67,7 @@ class RssArticlesViewModelShared(
     fun loadArticles(book: Book) {
         // 缓存为空时显示 Loading; 有缓存时保持当前 Data, 联网期间不闪烁
         scope.launch {
-            withContext(Dispatchers.IO) {
+            withContext(IoDispatcher) {
                 // 先用本地缓存快速填充, 避免联网期间空白
                 val cached = RssHelp.getCachedArticles(book)
                 if (cached.isNotEmpty()) {
@@ -84,7 +84,7 @@ class RssArticlesViewModelShared(
                         // 失败时回退本地缓存
                         val fallback = RssHelp.getCachedArticles(book)
                         _state.value = if (fallback.isEmpty()) {
-                            ArticlesUiState.Error(e.localizedMessage ?: "加载失败")
+                            ArticlesUiState.Error(e.message ?: "加载失败")
                         } else {
                             ArticlesUiState.Data(fallback)
                         }

@@ -9,6 +9,7 @@ import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.utils.fastSum
+import kotlin.concurrent.Volatile
 
 /**
  * 解析后的段落（文本 + 内嵌图片），供 [SimpleChapterLayout.layout] 图片排版路径使用。

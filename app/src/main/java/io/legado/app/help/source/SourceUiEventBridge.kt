@@ -4,6 +4,7 @@ import androidx.appcompat.app.AppCompatActivity
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.SourceUiRequest
 import io.legado.app.help.LifecycleHelp
+import io.legado.app.ui.association.VerificationCodeDialog
 import io.legado.app.ui.login.showLoginDialog
 import io.legado.app.ui.widget.dialog.showSourceVariableDialog
 import io.legado.app.utils.FlowBus
@@ -26,6 +27,12 @@ object SourceUiEventBridge {
                 when (event) {
                     is SourceUiRequest.Login -> event.source.showLoginDialog(activity)
                     is SourceUiRequest.SourceVariable -> event.source.showSourceVariableDialog(activity)
+                    // Android 端验证码不经事件总线 (VerificationUiProviderImpl 直调
+                    // VerificationCodeDialog.display), 此分支仅保证 sealed when 穷尽
+                    is SourceUiRequest.VerificationCode -> VerificationCodeDialog.display(
+                        event.url, event.source.getKey(), event.source.getTag(),
+                        event.source.getSourceType()
+                    )
                 }
             }
         }

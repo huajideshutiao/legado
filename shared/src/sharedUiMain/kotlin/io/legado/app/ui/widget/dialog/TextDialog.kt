@@ -9,28 +9,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.AlertDialog
-import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
-
-/** Arco Design arcoblue-6 主色 (#165DFF)。 */
-private val ArcoBlue6 = Color(0xFF165DFF)
-
-/** Arco Design arco_radius_lg = 16dp。 */
-private val ArcoRadiusLg = 16.dp
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /** 超长文本截断阈值, 对齐 app 端原 TextDialog 的 32KB 上限。 */
 private const val MAX_TEXT_LENGTH = 32 * 1024
@@ -100,7 +92,7 @@ fun TextDialog(
         },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text(text = okText, color = ArcoBlue6)
+                Text(text = okText, color = DesignTokens.arcoBlue6)
             }
         },
         dismissButton = {
@@ -108,7 +100,7 @@ fun TextDialog(
                 // 中性按钮 (可选, 靠左)
                 if (neutralButtonText != null && onNeutral != null) {
                     TextButton(onClick = onNeutral) {
-                        Text(text = neutralButtonText, color = ArcoBlue6)
+                        Text(text = neutralButtonText, color = DesignTokens.arcoBlue6)
                     }
                     Spacer(Modifier.width(4.dp))
                 }
@@ -116,7 +108,7 @@ fun TextDialog(
                 TextButton(onClick = {
                     clipboard.setText(AnnotatedString(content))
                 }) {
-                    Text(text = copyText, color = ArcoBlue6)
+                    Text(text = copyText, color = DesignTokens.arcoBlue6)
                 }
                 Spacer(Modifier.width(4.dp))
                 TextButton(onClick = onDismiss) {
@@ -124,7 +116,8 @@ fun TextDialog(
                 }
             }
         },
-        shape = RoundedCornerShape(ArcoRadiusLg),
-        backgroundColor = MaterialTheme.colors.surface,
+        // 圆角/底色对齐 BaseComposeDialogFragment.filletBackground + alert DSL AppAlertDialogContent
+        shape = DesignTokens.shapeDefault,
+        backgroundColor = colors.fillet,
     )
 }

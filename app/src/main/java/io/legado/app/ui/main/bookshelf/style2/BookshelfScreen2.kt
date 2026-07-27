@@ -5,7 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -172,6 +172,7 @@ fun BookshelfScreen2(state: BookshelfState2) {
                     ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL,
                     reloadKey = state.coverReloadTick,
                     modifier = modifier,
+                    loadOnlyWifi = AppConfig.loadCoverOnlyWifi,
                 )
             },
             groupCoverSlot = { groupItem, modifier, isVideoCover ->

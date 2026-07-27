@@ -5,6 +5,7 @@ import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
+import kotlin.concurrent.Volatile
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 
@@ -184,8 +185,8 @@ interface ThemeConfigProvider {
     /**
      * 返回内置主题配置列表 (对照 `ThemeConfig.getBuiltinConfigs(context: Context): List<Config>`)。
      *
-     * app 端返回 2 项 (默认日间 + 默认夜间, isBuiltin=true); 桌面/iOS/鸿蒙 actual
-     * 返回空列表 (Dialog 下沉后在 sharedUiMain 用 @Composable fun + rememberString 计算 BuiltinThemes)。
+     * app 端与桌面/iOS/鸿蒙 ([FileThemeConfigProvider]) 均返回 2 项
+     * (默认日间 + 默认夜间, isBuiltin=true)。
      *
      * @return 内置主题配置列表 (每项 isBuiltin=true)
      */
@@ -195,7 +196,7 @@ interface ThemeConfigProvider {
      * 持久化 configList 到磁盘 (对照 `ThemeConfig.save()`)。
      *
      * app 端实现内部: `GSON.toJson(configList)` → 写 themeConfig.json;
-     * 桌面/iOS/鸿蒙 actual: no-op (内存版) 或持久化到 PreferenceStoreProvider。
+     * 桌面/iOS/鸿蒙 ([FileThemeConfigProvider]) 同样写 `{filesDir}/themeConfig.json` (格式互通)。
      */
     fun save()
 
@@ -212,8 +213,8 @@ interface ThemeConfigProvider {
      *   (含 `bgDrawableCache = null` / `bgCacheKey = null` Drawable 缓存清空);
      *   app 端 `App.kt` 仍调原 `ThemeConfig.clearBg()` (object 方法), 不经此 default 实现
      * - 桌面端: 用 default 实现, 走 [AppFilesDirs] + [BackupFileOps] 跨平台抽象;
-     *   桌面端 externalFilesDir 为 null, 回退到 filesDir (~/.legado/files)
-     * - 桌面端主题背景图片功能未实现, 目录通常不存在, 清理为 no-op
+     *   桌面端 externalFilesDir 为 null, 回退到 filesDir (~/.legado/files);
+     *   无背景图导入 UI 时目录为空, 清理即空转
      */
     fun clearBg() {
         val filesBase = AppFilesDirs.get().externalFilesDir ?: AppFilesDirs.get().filesDir

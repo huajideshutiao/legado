@@ -15,9 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -42,10 +40,13 @@ import io.legado.app.help.book.addType
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.ui.book.explore.ExploreShowScreen as SharedExploreShowScreen
 import io.legado.app.ui.bookshelf.IosInfoCover
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.RadioChip
 import io.legado.app.ui.compose.component.StrokeTextChip
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.CoroutineScope
@@ -170,18 +171,16 @@ fun IosExploreShowScreen(
 
     // 错误详情+重试对话框
     if (state.footerErrorDialog) {
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { state.footerErrorDialog = false },
-            title = { Text(loadingErrorLabel) },
-            text = { Text(state.errorMsg) },
-            confirmButton = {
-                TextButton(onClick = {
-                    state.footerErrorDialog = false
-                    state.retryFooterLoad()
-                }) { Text(retryLabel) }
+            title = loadingErrorLabel,
+            message = state.errorMsg,
+            okButton = AlertButton(retryLabel, dismissOnClick = false) {
+                state.footerErrorDialog = false
+                state.retryFooterLoad()
             },
-            dismissButton = {
-                TextButton(onClick = { state.footerErrorDialog = false }) { Text(closeLabel) }
+            cancelButton = AlertButton(closeLabel, dismissOnClick = false) {
+                state.footerErrorDialog = false
             },
         )
     }
@@ -202,14 +201,12 @@ fun IosExploreShowScreen(
 
     // 源过滤规则对话框 (暂用提示, 后续接入完整 Dialog)
     if (state.showSourceFilterRuleDialog) {
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { state.dismissSourceFilterRuleDialog() },
-            title = { Text(rememberString("source_filter_rule")) },
-            text = { Text(rememberString("source_filter_rule_no_match")) },
-            confirmButton = {
-                TextButton(onClick = { state.dismissSourceFilterRuleDialog() }) {
-                    Text(closeLabel)
-                }
+            title = rememberString("source_filter_rule"),
+            message = rememberString("source_filter_rule_no_match"),
+            okButton = AlertButton(closeLabel, dismissOnClick = false) {
+                state.dismissSourceFilterRuleDialog()
             },
         )
     }
@@ -296,7 +293,7 @@ private fun IosVideoItemPlaceholder(
         Box(
             Modifier
                 .size(width = 72.dp, height = 96.dp)
-                .clip(RoundedCornerShape(4.dp))
+                .clip(DesignTokens.shapeSm)
                 .background(Color(0xFF165DFF)),
             contentAlignment = Alignment.Center,
         ) {

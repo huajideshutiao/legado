@@ -88,15 +88,20 @@ dependencies {
     // shared/jvmAndAndroidMain 已 api(project(':modules:quickjs')), 桌面端通过 shared 传递依赖可见;
     // 显式 implementation 确保 :desktop:run 之前 :modules:quickjs:jvmJar (含 buildJvmNativeLib) 被触发
     implementation(project(":modules:quickjs"))
+    // Coil3 图片栈 (DesktopBookCover/ReviewListScreen 直接用 rememberAsyncImagePainter/ImageRequest):
+    // shared 对 coil3 是 implementation 不外泄, desktop 显式声明; coil-compose 传递 api 出
+    // coil(SingletonImageLoader)/coil-core(ImageRequest/DiskCache)/coil-compose-core(painter)
+    implementation(libs.coil3.compose)
     // 桌面端 MP3 音频播放: jlayer 解码 MP3 → PCM, javax.sound.sampled.SourceDataLine 输出
     // javax.sound.sampled 是 JDK 内置, 无需额外依赖; jlayer 在 toml 单独声明
     implementation(libs.jlayer)
-    // 桌面端视频播放: vlcj 是 VLC 官方 Java 绑定 (JNA → libvlc), 支持任意 VLC 能播的格式
-    // (mp4/mkv/hls m3u8/rtmp 等)。运行时需用户机器已安装 VLC media player, vlcj 通过
-    // NativeDiscovery 自动从 PATH / 注册表 / 标准安装路径查找 libvlc.dll/libvlc.so/libvlc.dylib。
-    // 不引入 native 库打包配置: VLC 太大 (~200MB) 且跨平台变种多, 由用户自行安装更合理;
-    // 后续若需开箱即用, 可走 jpackage appResourcesRootDir 模式纳入本地 VLC 副本。
-    implementation("uk.co.caprica:vlcj:4.8.3")
+    // 桌面端视频播放: all-in mpv 外部进程 (--wid 子窗口嵌入 + 内建 OSC + JSON IPC 桥),
+    // 见 help/video/MpvPlayer.kt / MpvDetector.kt。选 mpv 而非 vlcj 的根因: libvlc 无
+    // 全量 HTTP header 透传选项 (Cookie 防盗链无解), mpv --http-header-fields-append 直达
+    // HLS 分片。运行时需用户机器已安装 mpv (winget/scoop/官网), MpvDetector 按
+    // 设置项(mpvPath)/PATH/常见安装路径探测, 未装时 VideoPlayerScreen 显示引导安装占位。
+    // jna 仅用于取 AWT Canvas 原生窗口句柄 (Native.getComponentID) 供 mpv --wid 嵌入。
+    implementation("net.java.dev.jna:jna:5.6.0")
     // KP2-D: 桌面端 Room 事务支持
     // room-ktx 2.8.4 不发布 jvm 变体 (Android 专属), 桌面端改用 room-runtime 的 useWriterTransaction
     // shared.commonMain 已 api(libs.room.runtime), 桌面端通过传递依赖可见, 无需显式声明
@@ -259,8 +264,8 @@ afterEvaluate {
 // ============================================================
 // 背景: jpackage 默认产物是 MSI/Exe 安装包 (需安装), 无法满足"拷贝即用"便携场景。
 // 本 task 在 createDistributable (jpackage app-image) 后, 把 legado.exe + runtime/ + app/ + data/
-// 打成 zip, 用户解压即用, 数据存 exe 同级 data/ 目录 (便携模式 InstallType=PORTABLE)。
-// CI 通过 -Plegado.installType=portable 触发, 确保打包的 app image 用便携 InstallType 编译。
+// + portable.txt 打成 zip, 用户解压即用; 便携模式由运行时检测 portable.txt 标记启用
+// (DesktopAppPaths), 不依赖编译期 -Plegado.installType (CI 与 MSI 共享同一 app image)。
 
 // data/ 目录占位 (空目录无法直接打 zip, 用 README 占位)
 val portableDataPlaceholderDir = file("build/generated/portable-data-placeholder/")
@@ -274,6 +279,19 @@ val generatePortableDataPlaceholder by tasks.registering {
     }
 }
 
+// 便携标记文件: 运行时 DesktopAppPaths 检测到程序目录存在 portable.txt 即启用便携模式
+// (数据存 exe 同级 data/); MSI/DEB/DMG 安装版无此文件, 走系统数据目录
+val portableMarkerDir = file("build/generated/portable-marker/")
+val generatePortableMarker by tasks.registering {
+    outputs.dir(portableMarkerDir)
+    doLast {
+        portableMarkerDir.mkdirs()
+        file("${portableMarkerDir.path}/portable.txt").writeText(
+            "便携版标记文件: 应用检测到本文件后数据存放于同目录 data/ 下; 删除本文件则改用系统数据目录\n"
+        )
+    }
+}
+
 val packagePortableZip by tasks.registering(Zip::class) {
     description = "Windows 便携版 zip 打包: jpackage app image + data/ 占位 → zip"
     group = "compose desktop distribution"
@@ -282,7 +300,7 @@ val packagePortableZip by tasks.registering(Zip::class) {
     onlyIf { OperatingSystem.current().isWindows }
 
     // 依赖 jpackage app image 生成 task (createDistributable 是 packageMsi/Exe 的上游, 产物含 legado.exe + runtime/ + app/)
-    dependsOn("createDistributable", generatePortableDataPlaceholder)
+    dependsOn("createDistributable", generatePortableDataPlaceholder, generatePortableMarker)
 
     // app image 输出路径 (compose desktop createDistributable 产物, 路径: build/compose/binaries/main/app/{packageName}/)
     val appImageDir = file("build/compose/binaries/main/app/legado")
@@ -303,6 +321,8 @@ val packagePortableZip by tasks.registering(Zip::class) {
         exclude("data/**")
     }
     from(portableDataPlaceholderDir) { into("legado-portable-windows-x64/data") }
+    // 便携标记落 zip 根 (exe 同级), 运行时据此启用便携模式 (无需编译期 -Plegado.installType)
+    from(portableMarkerDir) { into("legado-portable-windows-x64") }
 
     // 从 nativeDistributions 读 packageVersion (CI 用 sed 注入实际版本号), 拼到 zip 文件名
     val version = compose.desktop.application.nativeDistributions.packageVersion ?: "1.0.0"

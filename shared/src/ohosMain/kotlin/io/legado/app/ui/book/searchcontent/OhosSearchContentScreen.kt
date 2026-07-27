@@ -17,6 +17,7 @@ import io.legado.app.ui.book.searchContent.SearchContentViewModelShared
 import io.legado.app.ui.book.searchContent.SearchResult
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.utils.ChineseUtils
+import io.legado.app.utils.formatNative
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -109,7 +110,7 @@ fun OhosSearchContentScreen(
                         }
                     }
                 }.onFailure {
-                    AppLog.put(String.format(searchInBookFailedTemplate, it.localizedMessage), it)
+                    AppLog.put(searchInBookFailedTemplate.formatNative(it.localizedMessage), it)
                 }
                 searching = false
                 searchJob = null

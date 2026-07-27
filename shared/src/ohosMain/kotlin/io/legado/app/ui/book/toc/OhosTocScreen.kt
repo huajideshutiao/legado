@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.window.Dialog
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.AppDbProviders
@@ -18,6 +19,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.copyToClipboard
+import io.legado.app.help.file.saveDocument
 import io.legado.app.help.readFromClipboard
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.about.AppLogDialog
@@ -27,6 +29,7 @@ import io.legado.app.ui.book.toc.rule.TxtTocRuleEditDialog
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.platform.sharedStringTable
 import io.legado.app.utils.GSON
+import io.legado.app.utils.formatNative
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -47,8 +50,8 @@ import kotlinx.coroutines.withContext
  *   - `useReplace` 默认 false
  *   - `countWords` 初始化自 [AppConfigProviders.get].tocCountWords
  * - **actions**: 实现 [TocUiActions] 15 个方法, 核心动作接入真实逻辑,
- *   exportBookmark/exportBookmarkMd 简化为复制 JSON/Markdown 到剪贴板 (鸿蒙端无文件保存面板,
- *   与 iOS 端一致)
+ *   exportBookmark/exportBookmarkMd 走 [saveDocument] 弹系统保存器写真文件
+ *   (桥未就绪/失败/取消降级剪贴板, 与 iOS 端一致)
  * - **路由**: [onBack] / [onChapterClick] 由 OhosNavHost 注入,
  *   章节点击 → 切到 READER 路由 (携带 Book + chapterIndex)
  *
@@ -110,10 +113,10 @@ fun OhosTocScreen(
         durChapterIndex = b.durChapterIndex
         runCatching { loadChapterList(b, "") }
             .onSuccess { setChapterListInternal(it, bookState, chaptersState, collapsedVolumesState, chapterScrollState) }
-            .onFailure { AppLog.put(String.format(tocLoadChapterFailedTemplate, it.localizedMessage), it) }
+            .onFailure { AppLog.put(tocLoadChapterFailedTemplate.formatNative(it.localizedMessage), it) }
         runCatching { loadBookmarks(b, "") }
             .onSuccess { setBookmarksInternal(it, bookState, bookmarksState, bookmarkScrollState) }
-            .onFailure { AppLog.put(String.format(tocLoadBookmarkFailedTemplate, it.localizedMessage), it) }
+            .onFailure { AppLog.put(tocLoadBookmarkFailedTemplate.formatNative(it.localizedMessage), it) }
     }
 
     val actions = remember(onBack, onChapterClick, scope) {
@@ -161,15 +164,17 @@ fun OhosTocScreen(
 
     // TXT 目录规则编辑对话框 (与 iOS IosTocScreen 一致, 复用 shared/sharedUiMain TxtTocRuleEditDialog)
     if (showTocRegexDialog) {
-        TxtTocRuleEditDialog(
-            rule = null,
-            onConfirm = { r ->
-                scope.launch { AppDbProviders.get().txtTocRuleDao.insert(r) }
-            },
-            onDismiss = { showTocRegexDialog = false },
-            clipTextProvider = { readFromClipboard() },
-            clipTextSink = { text -> copyToClipboard(text) },
-        )
+        Dialog(onDismissRequest = { showTocRegexDialog = false }) {
+            TxtTocRuleEditDialog(
+                rule = null,
+                onConfirm = { r ->
+                    scope.launch { AppDbProviders.get().txtTocRuleDao.insert(r) }
+                },
+                onDismiss = { showTocRegexDialog = false },
+                clipTextProvider = { readFromClipboard() },
+                clipTextSink = { text -> copyToClipboard(text) },
+            )
+        }
     }
     // 应用日志对话框
     if (showLogDialog) {
@@ -266,15 +271,15 @@ private suspend fun reloadBookmarks(
     val b = book ?: return
     runCatching { loadBookmarks(b, searchKey) }
         .onSuccess { setBookmarksInternal(it, bookState, bookmarksState, bookmarkScrollState) }
-        .onFailure { AppLog.put(sharedStringTable["toc_reload_bookmark_failed_log"]!!.format(it.localizedMessage), it) }
+        .onFailure { AppLog.put(sharedStringTable["toc_reload_bookmark_failed_log"]!!.formatNative(it.localizedMessage), it) }
 }
 
 /**
  * 鸿蒙端 [TocUiActions] 实现 (对照 iOS `IosTocActions` / desktop)。
  *
- * 15 个回调中, exportBookmark/exportBookmarkMd 简化为复制到剪贴板 (鸿蒙端无文件保存面板,
- * 与 iOS 端一致), toggleSplitLongChapter 暂为 no-op (依赖 FileBook, 鸿蒙端未下沉),
- * 其余与 iOS / desktop 一致。
+ * 15 个回调中, exportBookmark/exportBookmarkMd 走 [saveDocument] 弹系统保存器写真文件
+ * (桥未就绪/失败/取消降级剪贴板), toggleSplitLongChapter 暂为 no-op (依赖 FileBook,
+ * 鸿蒙端未下沉), 其余与 iOS / desktop 一致。
  */
 private class OhosTocActions(
     private val bookState: MutableState<Book?>,
@@ -308,10 +313,10 @@ private class OhosTocActions(
             val book = bookState.value ?: return@launch
             runCatching { loadChapterList(book, query) }
                 .onSuccess { setChapterListInternal(it, bookState, chaptersState, collapsedVolumesState, chapterScrollState) }
-                .onFailure { AppLog.put(sharedStringTable["toc_load_chapter_failed_log"]!!.format(it.localizedMessage), it) }
+                .onFailure { AppLog.put(sharedStringTable["toc_load_chapter_failed_log"]!!.formatNative(it.localizedMessage), it) }
             runCatching { loadBookmarks(book, query) }
                 .onSuccess { setBookmarksInternal(it, bookState, bookmarksState, bookmarkScrollState) }
-                .onFailure { AppLog.put(sharedStringTable["toc_load_bookmark_failed_log"]!!.format(it.localizedMessage), it) }
+                .onFailure { AppLog.put(sharedStringTable["toc_load_bookmark_failed_log"]!!.formatNative(it.localizedMessage), it) }
         }
     }
 
@@ -336,19 +341,29 @@ private class OhosTocActions(
     override fun showTocRegexDialog() = onShowTocRegexDialog.invoke()
 
     override fun exportBookmark() {
-        // 鸿蒙端无文件保存面板, 简化为复制 JSON 到剪贴板 (与 iOS 端一致)
+        // 真文件导出: DocumentViewPicker.save (文件名对照 desktop TocScreen); 桥未就绪/失败/取消降级剪贴板
         scope.launch {
             val book = bookState.value ?: return@launch
             val bookmarks = withContext(Dispatchers.Default) {
                 AppDatabaseProviders.get().appDb.bookmarkDao.getByBook(book.name, book.author)
             }
-            copyToClipboard(GSON.toJson(bookmarks))
-            Toasters.get().toast(sharedStringTable["copied_bookmarks_to_clipboard_count"]!!.format(bookmarks.size))
+            val json = GSON.toJson(bookmarks)
+            val saved = withContext(Dispatchers.Default) {
+                runCatching { saveDocument("bookmark-${book.name} ${book.author}.json", json.encodeToByteArray()) }
+                    .onFailure { AppLog.put("导出书签失败", it) }
+                    .getOrDefault(false)
+            }
+            if (saved) {
+                Toasters.get().toast(sharedStringTable["export_success"]!!)
+            } else {
+                copyToClipboard(json)
+                Toasters.get().toast(sharedStringTable["copied_bookmarks_to_clipboard_count"]!!.formatNative(bookmarks.size))
+            }
         }
     }
 
     override fun exportBookmarkMd() {
-        // 鸿蒙端无文件保存面板, 简化为复制 Markdown 到剪贴板 (与 iOS 端一致)
+        // 真文件导出: DocumentViewPicker.save (文件名对照 desktop TocScreen); 桥未就绪/失败/取消降级剪贴板
         scope.launch {
             val book = bookState.value ?: return@launch
             val bookmarks = withContext(Dispatchers.Default) {
@@ -361,8 +376,18 @@ private class OhosTocActions(
                 sb.append("###### 原文\n ${it.bookText}\n\n")
                 sb.append("###### 摘要\n ${it.content}\n\n")
             }
-            copyToClipboard(sb.toString())
-            Toasters.get().toast(sharedStringTable["copied_markdown_to_clipboard"]!!)
+            val md = sb.toString()
+            val saved = withContext(Dispatchers.Default) {
+                runCatching { saveDocument("bookmark-${book.name} ${book.author}.md", md.encodeToByteArray()) }
+                    .onFailure { AppLog.put("导出书签失败", it) }
+                    .getOrDefault(false)
+            }
+            if (saved) {
+                Toasters.get().toast(sharedStringTable["export_success"]!!)
+            } else {
+                copyToClipboard(md)
+                Toasters.get().toast(sharedStringTable["copied_markdown_to_clipboard"]!!)
+            }
         }
     }
 

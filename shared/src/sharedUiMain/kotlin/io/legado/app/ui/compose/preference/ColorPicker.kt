@@ -46,6 +46,7 @@ import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ColorUtils
 import androidx.compose.foundation.lazy.LazyListScope
 
@@ -82,7 +83,7 @@ fun LazyListScope.colorPreference(
                     .size(30.dp)
                     .clip(CircleShape)
                     .background(Color(color))
-                    .border(1.dp, AppTheme.colors.secondaryText, CircleShape),
+                    .border(DesignTokens.strokeThin, AppTheme.colors.secondaryText, CircleShape),
             )
         },
     )
@@ -176,7 +177,7 @@ fun ColorPickerDialogContent(
                 Modifier
                     .fillMaxWidth()
                     .aspectRatio(1.3f)
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(DesignTokens.shapeSm)
                     .pointerInput(hue) {
                         detectTapGestures { pos ->
                             sat = (pos.x / size.width).coerceIn(0f, 1f)
@@ -253,7 +254,7 @@ fun ColorPickerDialogContent(
                             .size(36.dp)
                             .clip(CircleShape)
                             .background(Color(preset))
-                            .border(if (selected) 2.dp else 1.dp, colors.secondaryText, CircleShape)
+                            .border(if (selected) DesignTokens.strokeMedium else DesignTokens.strokeThin, colors.secondaryText, CircleShape)
                             .clickable {
                                 val out = FloatArray(3)
                                 ColorUtils.colorToHSV(preset, out)
@@ -313,7 +314,7 @@ private fun GradientSlider(
                     .size(20.dp)
                     .clip(CircleShape)
                     .background(Color.White)
-                    .border(1.dp, Color.Gray, CircleShape),
+                    .border(DesignTokens.strokeThin, Color.Gray, CircleShape),
             )
         }
     }

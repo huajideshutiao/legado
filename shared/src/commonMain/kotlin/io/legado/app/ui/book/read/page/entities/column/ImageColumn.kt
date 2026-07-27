@@ -2,6 +2,7 @@ package io.legado.app.ui.book.read.page.entities.column
 
 import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextLine.Companion.emptyTextLine
+import kotlin.jvm.JvmField
 
 /**
  * 图片列 - 数据部分（已下沉 shared commonMain）。

@@ -3,7 +3,7 @@ package io.legado.app.api.controller
 import io.legado.app.api.ReturnData
 import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
-import io.legado.app.data.cnCompareGroups
+import io.legado.app.utils.cnCompare
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.help.AppWebDavShared
@@ -20,8 +20,10 @@ import io.legado.app.model.fileBook.FileBookProviders
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.isSecurityException
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 
@@ -47,7 +49,7 @@ import kotlinx.coroutines.flow.first
  *   (FileBookAccessor 新增 saveBookFileFromPath 重载, commonMain 无法直接 File.inputStream())
  * - `WebBook.getBookInfoAwait` / `getChapterListAwait` / `getContentAwait` → 直接调用 (已下沉)
  * - `CacheManager.put/delete/get` → 直接调用 (已下沉)
- * - `String.cnCompare` → `String.cnCompareGroups` (commonMain internal expect, 同模块可见)
+ * - `String.cnCompare` → 直接调用 (已下沉 commonMain, expect/actual 分派 ICU)
  * - `book.save()` / `book.delete()` 扩展 (app 端 BookExtensions.kt, 依赖 appDb/ReadBook)
  *   → 内联展开为 AppDbProviders.get().bookDao 操作 + ReadBookStateProvider (ReadBook 单例未下沉)
  * - `ReadBook.book` / `ReadBook.webBookProgress` → [ReadBookStateProvider] 注入
@@ -78,7 +80,7 @@ object BookController {
             val data = when (AppConfigProviders.get().bookshelfSort) {
                 1 -> books.sortedByDescending { it.latestChapterTime }
                 2 -> books.sortedWith { o1, o2 ->
-                    o1.name.cnCompareGroups(o2.name)
+                    o1.name.cnCompare(o2.name)
                 }
 
                 3 -> books.sortedBy { it.order }
@@ -169,7 +171,7 @@ object BookController {
                 return returnData.setData(toc)
             }
         } catch (e: Exception) {
-            return returnData.setErrorMsg(e.localizedMessage ?: "refresh toc error")
+            return returnData.setErrorMsg(e.message ?: "refresh toc error")
         }
     }
 
@@ -326,9 +328,9 @@ object BookController {
             val uri = FileBookProviders.get().saveBookFileFromPath(fileData, fileName)
             FileBook.importLocalFile(uri)
         }.onFailure {
-            return when (it) {
-                is SecurityException -> returnData.setErrorMsg("需重新设置书籍保存位置!")
-                else -> returnData.setErrorMsg("保存书籍错误\n${it.localizedMessage}")
+            return when {
+                it.isSecurityException() -> returnData.setErrorMsg("需重新设置书籍保存位置!")
+                else -> returnData.setErrorMsg("保存书籍错误\n${it.message}")
             }
         }
         return returnData.setData(true)

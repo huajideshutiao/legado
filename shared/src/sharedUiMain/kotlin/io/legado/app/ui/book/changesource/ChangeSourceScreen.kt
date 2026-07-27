@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.CircularProgressIndicator
@@ -26,6 +27,7 @@ import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.LinearProgressIndicator
+import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -40,21 +42,25 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSearchField
+import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
+import io.legado.app.utils.ScreenInfoProviders
 
 /**
  * 换源标题栏：复刻 dialog_title_bar + change_source 菜单
@@ -173,44 +179,27 @@ fun CheckMenuItem(text: String, checked: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** 分组子菜单：全部书源 + 各分组单选，对照 menu_group 嵌套菜单 */
+/** 分组菜单项：点击关闭父菜单并触发独立分组选择对话框（替代嵌套 Popup） */
 @Composable
 fun GroupMenuItem(
     title: String,
-    groups: List<String>,
-    selectedGroup: String,
     dismissParent: () -> Unit,
-    onSelect: (String) -> Unit,
+    onShowGroupPicker: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    var open by remember { mutableStateOf(false) }
-    Box {
-        DropdownMenuItem(
-            onClick = { open = true },
-        ) {
-            Text(title, color = colors.primaryText)
-            Spacer(Modifier.weight(1f))
-            Icon(
-                painter = rememberPainter("ic_arrow_right"),
-                contentDescription = null,
-                tint = colors.secondaryText,
-            )
-        }
-        AppDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            val hasSelected = selectedGroup.isNotEmpty() && groups.contains(selectedGroup)
-            RadioMenuItem(rememberString("all_source"), !hasSelected) {
-                open = false
-                dismissParent()
-                onSelect("")
-            }
-            groups.forEach { group ->
-                RadioMenuItem(group, group == selectedGroup) {
-                    open = false
-                    dismissParent()
-                    onSelect(group)
-                }
-            }
-        }
+    DropdownMenuItem(
+        onClick = {
+            dismissParent()
+            onShowGroupPicker()
+        },
+    ) {
+        Text(title, color = colors.primaryText)
+        Spacer(Modifier.weight(1f))
+        Icon(
+            painter = rememberPainter("ic_arrow_right"),
+            contentDescription = null,
+            tint = colors.secondaryText,
+        )
     }
 }
 
@@ -554,6 +543,50 @@ private fun TocItemRow(chapter: BookChapter, isDur: Boolean, onClick: () -> Unit
                     tint = colors.secondaryText,
                     modifier = Modifier.size(16.dp),
                 )
+            }
+        }
+    }
+}
+
+/**
+ * 分组选择对话框：独立 Dialog 替代原 GroupMenuItem 的嵌套 AppDropdownMenu，
+ * 解决 Compose 嵌套 Popup 位置错乱问题。宽度对齐项目对话框规范 0.9 屏宽 / 上限 800dp。
+ */
+@Composable
+fun GroupPickerDialog(
+    groups: List<String>,
+    selectedGroup: String,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit,
+) {
+    val colors = AppTheme.colors
+    val dialogWidth = with(LocalDensity.current) {
+        (ScreenInfoProviders.get().screenWidthPx * 0.9f).toDp().coerceAtMost(800.dp)
+    }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = AppTheme.DesignTokens.dialogShape,
+            color = colors.background,
+            modifier = Modifier.width(dialogWidth),
+        ) {
+            Column(Modifier.fillMaxWidth()) {
+                DialogTitleBar(
+                    title = rememberString("group"),
+                    onBack = onDismiss,
+                )
+                LazyColumn(Modifier.fillMaxWidth()) {
+                    val hasSelected = selectedGroup.isNotEmpty() && groups.contains(selectedGroup)
+                    item {
+                        RadioMenuItem(rememberString("all_source"), !hasSelected) {
+                            onSelect("")
+                        }
+                    }
+                    items(groups) { group ->
+                        RadioMenuItem(group, group == selectedGroup) {
+                            onSelect(group)
+                        }
+                    }
+                }
             }
         }
     }

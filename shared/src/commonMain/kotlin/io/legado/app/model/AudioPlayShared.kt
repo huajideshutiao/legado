@@ -14,10 +14,10 @@ import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.readSimulating
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.utils.postEvent
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
@@ -170,7 +170,7 @@ object AudioPlayShared {
         if (chapterList?.firstOrNull()?.bookUrl != book.bookUrl) {
             chapterList = null
         }
-        chapterSize = chapterList?.size ?: withContext(Dispatchers.IO) {
+        chapterSize = chapterList?.size ?: withContext(IoDispatcher) {
             AppDbProviders.get().bookChapterDao.getChapterCount(book.bookUrl)
         }
         simulatedChapterSize =
@@ -186,7 +186,7 @@ object AudioPlayShared {
 
     suspend fun upDurChapter() {
         val book = book ?: return
-        durChapter = chapterList?.get(durChapterIndex) ?: withContext(Dispatchers.IO) {
+        durChapter = chapterList?.get(durChapterIndex) ?: withContext(IoDispatcher) {
             AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, durChapterIndex)
         }
         durAudioSize = durChapter?.end?.toInt() ?: 0

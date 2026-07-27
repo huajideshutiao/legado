@@ -20,6 +20,7 @@ import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.search.SearchNavCallbacks
 import io.legado.app.ui.book.search.SearchScreen as SharedSearchScreen
 import io.legado.app.ui.book.search.SearchViewModel
+import io.legado.app.ui.bookshelf.OhosInfoCover
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.flow.collect
@@ -89,6 +90,15 @@ fun OhosSearchScreen(
             onShowAppLogCb = { showLogDialog = true },
             onAlertSearchScopeCb = { showSearchScopeDialog = true },
         ),
+        // 封面注入: 复用书架/详情页同一套 OhosInfoCover (共享 LRU + 磁盘缓存)。
+        // modifier 由 shared 端按占位原尺寸构造, OhosInfoCover 只在其上加圆角, 不改尺寸。
+        coverSlot = { searchBook, modifier, _ ->
+            val book = remember(searchBook) { searchBook.toBook() }
+            OhosInfoCover(book, modifier)
+        },
+        shelfCoverSlot = { book, modifier, _ ->
+            OhosInfoCover(book, modifier)
+        },
     )
 
     // ---- 清空搜索历史二次确认对话框 (对照 iOS IosSearchScreen / desktop SearchScreen) ----

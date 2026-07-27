@@ -61,7 +61,7 @@ object EpubParser {
             ?: throw IllegalStateException("EpubParser: META-INF/container.xml missing or no rootfile")
         val opfBytes = entries[opfPath]
             ?: throw IllegalStateException("EpubParser: OPF not found at $opfPath")
-        val opfDoc = Ksoup.parse(String(opfBytes, Charsets.UTF_8), parser = Parser.xmlParser())
+        val opfDoc = Ksoup.parse(opfBytes.decodeToString(), parser = Parser.xmlParser())
 
         val version = opfDoc.getElementsByTag("package").firstOrNull()
             ?.attr("version") ?: "2.0"
@@ -90,7 +90,7 @@ object EpubParser {
     /** 解析 `META-INF/container.xml` 找到 OPF 路径 (rootfile@full-path)。 */
     private fun findOpfPath(entries: Map<String, ByteArray>): String? {
         val containerBytes = entries["META-INF/container.xml"] ?: return null
-        val doc = Ksoup.parse(String(containerBytes, Charsets.UTF_8), parser = Parser.xmlParser())
+        val doc = Ksoup.parse(containerBytes.decodeToString(), parser = Parser.xmlParser())
         // <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
         val rootFile = doc.getElementsByTag("rootfile").firstOrNull() ?: return null
         val fullPath = rootFile.attr("full-path").ifBlank { return null }
@@ -230,7 +230,7 @@ object EpubParser {
     private fun readToc(
         tocResource: EpubResource, resources: Map<String, EpubResource>, version: String
     ): List<EpubChapter> {
-        val xml = String(tocResource.data, Charsets.UTF_8)
+        val xml = tocResource.data.decodeToString()
         val doc = Ksoup.parse(xml, parser = Parser.xmlParser())
         return if (version.startsWith("3.")) {
             readNavToc(doc, tocResource.href, resources)

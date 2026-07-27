@@ -12,11 +12,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LocalMinimumInteractiveComponentSize
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -24,7 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.R
@@ -174,33 +171,31 @@ class SourceFilterEditDialog() : BaseComposeDialogFragment(),
         }
     }
 
-    /** 五个字段勾选平铺一行, 去掉 M3 48dp 触摸目标撑高(对齐原 40dp CheckBox 行) */
+    /** 五个字段勾选平铺一行, 行高固定 40dp (M2 组件 48dp 触摸目标被行高钳制) */
     @Composable
     private fun FieldChecks() {
         val colors = AppTheme.colors
-        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .height(40.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                fieldLabels.forEach { (field, labelRes) ->
-                    Row(
-                        Modifier
-                            .weight(1f)
-                            .clickable { toggleField(field) },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        AppCheckbox(checked = field in fields, onCheckedChange = null)
-                        Text(
-                            text = stringResource(labelRes),
-                            color = colors.primaryText,
-                            fontSize = 13.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(40.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            fieldLabels.forEach { (field, labelRes) ->
+                Row(
+                    Modifier
+                        .weight(1f)
+                        .clickable { toggleField(field) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AppCheckbox(checked = field in fields, onCheckedChange = null)
+                    Text(
+                        text = stringResource(labelRes),
+                        color = colors.primaryText,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }

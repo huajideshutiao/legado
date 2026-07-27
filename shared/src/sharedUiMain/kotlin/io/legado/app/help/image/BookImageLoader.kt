@@ -17,7 +17,8 @@ import androidx.compose.ui.graphics.ImageBitmap
  * - Android: app 端 App.onCreate 早期调用 [BookImageLoaders.register] 注入
  *   AndroidBookImageLoader (基于 Coil3 ImageLoader + AsyncImage)。
  * - 桌面 JVM: desktop Main.kt 注入 JvmBookImageLoader。
- * - iOS / 鸿蒙: 暂未实现 (后续批补 Ktor 后端)。
+ * - iOS: registerIosProviders 注入 IosBookImageLoader (Coil3 + Ktor3 网络后端)。
+ * - 鸿蒙: 暂未实现 (coil3 无 ohosArm64 变体, 走 OhosBookCover 自绘链路)。
  *
  * 模式参考 [io.legado.app.help.book.BookImageStorageProviders]。
  */

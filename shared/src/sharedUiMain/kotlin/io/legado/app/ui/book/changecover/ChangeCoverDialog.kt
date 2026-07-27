@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.LinearProgressIndicator
@@ -43,11 +42,9 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
-
-/** Arco Design arco_radius_lg = 16dp, 用于对话框圆角 (与 SpeakEngineDialog 一致)。 */
-private val ArcoRadiusLg = 16.dp
 
 /**
  * 换封面搜索对话框 (KMP 共享, app + desktop 复用)。
@@ -132,7 +129,7 @@ fun ChangeCoverDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
-            shape = RoundedCornerShape(ArcoRadiusLg),
+            shape = DesignTokens.dialogShape,
             color = colors.background,
             // 原版 isFullHeight=true 全屏; 下沉版用 fillMaxSize 让 Dialog 内容自适应窗口
             // (桌面端非全屏更合理, 与 SpeakEngineDialog 模式一致)

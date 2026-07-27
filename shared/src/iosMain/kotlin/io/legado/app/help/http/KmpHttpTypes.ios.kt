@@ -408,7 +408,7 @@ actual abstract class KmpResponseBody : Closeable {
     actual fun bytes(): ByteArray = (this as NativeKmpResponseBody).bytesValue
     actual fun byteStream(): InputStream = (this as NativeKmpResponseBody).bytesValue.toInputStream()
     actual abstract fun contentType(): KmpMediaType?
-    actual fun string(): String = bytes().toString(Charsets.UTF_8)
+    actual fun string(): String = bytes().decodeToString()
     actual override fun close() {
         // 内存字节数组, 无需关闭
     }
@@ -524,7 +524,7 @@ actual class KmpFormBodyBuilder() {
             sb.append(urlEncodeForm(k)).append('=').append(urlEncodeForm(v))
         }
         return NativeKmpRequestBody(
-            sb.toString().toByteArray(Charsets.UTF_8),
+            sb.toString().encodeToByteArray(),
             NativeKmpMediaType("application/x-www-form-urlencoded")
         )
     }
@@ -651,7 +651,7 @@ actual fun String.toKmpHttpUrl(): KmpHttpUrl = KmpHttpUrl(this)
 actual fun String.toKmpMediaType(): KmpMediaType = NativeKmpMediaType(this)
 
 actual fun String.toKmpRequestBody(contentType: KmpMediaType?): KmpRequestBody =
-    NativeKmpRequestBody(this.toByteArray(Charsets.UTF_8), contentType)
+    NativeKmpRequestBody(this.encodeToByteArray(), contentType)
 
 actual fun ByteArray.toKmpRequestBody(contentType: KmpMediaType?): KmpRequestBody =
     NativeKmpRequestBody(this, contentType)
@@ -717,13 +717,13 @@ private fun KmpRequest.toKtorHttpRequestBuilder(): HttpRequestBuilder {
  */
 private fun urlEncodeForm(s: String): String {
     val sb = StringBuilder(s.length)
-    for (b in s.toByteArray(Charsets.UTF_8)) {
+    for (b in s.encodeToByteArray()) {
         val u = b.toInt() and 0xFF
         when {
             u in 'a'.code..'z'.code || u in 'A'.code..'Z'.code || u in '0'.code..'9'.code -> sb.append(u.toChar())
             u == ' '.code -> sb.append('+')
             u == '-'.code || u == '_'.code || u == '.'.code || u == '*'.code -> sb.append(u.toChar())
-            else -> sb.append('%').append("%02X".format(u))
+            else -> sb.append('%').append(u.toString(16).uppercase().padStart(2, '0'))
         }
     }
     return sb.toString()
@@ -736,12 +736,12 @@ private fun urlEncodeForm(s: String): String {
  */
 private fun urlEncodeQuery(s: String): String {
     val sb = StringBuilder(s.length)
-    for (b in s.toByteArray(Charsets.UTF_8)) {
+    for (b in s.encodeToByteArray()) {
         val u = b.toInt() and 0xFF
         when {
             u in 'a'.code..'z'.code || u in 'A'.code..'Z'.code || u in '0'.code..'9'.code -> sb.append(u.toChar())
             u == '-'.code || u == '_'.code || u == '.'.code || u == '~'.code -> sb.append(u.toChar())
-            else -> sb.append('%').append("%02X".format(u))
+            else -> sb.append('%').append(u.toString(16).uppercase().padStart(2, '0'))
         }
     }
     return sb.toString()

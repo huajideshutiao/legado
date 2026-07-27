@@ -6,6 +6,7 @@ import io.legado.app.data.dao.BookGroupDao
 import io.legado.app.data.dao.BookmarkDao
 import io.legado.app.data.dao.BookSourceDao
 import io.legado.app.data.dao.CacheDao
+import io.legado.app.data.dao.CookieDao
 import io.legado.app.data.dao.DictRuleDao
 import io.legado.app.data.dao.HttpTTSDao
 import io.legado.app.data.dao.ReadRecordDao
@@ -14,6 +15,7 @@ import io.legado.app.data.dao.RuleSubDao
 import io.legado.app.data.dao.ServerDao
 import io.legado.app.data.dao.SourceFilterRuleDao
 import io.legado.app.data.dao.TxtTocRuleDao
+import kotlin.concurrent.Volatile
 
 /**
  * appDb 跨模块只读访问接口。
@@ -59,6 +61,9 @@ interface AppDbAccessor {
 
     /** 缓存 DAO (SourceHelp.deleteBookSource* 清理 source 变量用)。 */
     val cacheDao: CacheDao
+
+    // SharedCookieStore 用 (cookie 持久化)
+    val cookieDao: CookieDao
 
     /** 规则订阅 DAO (RuleSubViewModelShared 用: save/delete/upOrder/toTop/toBottom)。 */
     val ruleSubDao: RuleSubDao

@@ -123,6 +123,10 @@ class DesktopThemeStoreProvider : ThemeStoreProvider {
 class DesktopAppConfigProvider : AppConfigProvider {
     override var isEInkMode: Boolean by mutableStateOf(false)
         private set
+    override val isNightTheme: Boolean
+        get() = runCatching {
+            PreferenceProviders.get().getString(PreferKey.themeMode, "0") == "2"
+        }.getOrDefault(false)
 
     /** 桌面端可手动切换 E-Ink 模式用于调试组件去动画/黑白化 */
     fun updateEInk(value: Boolean) {

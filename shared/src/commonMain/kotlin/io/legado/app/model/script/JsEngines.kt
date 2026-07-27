@@ -1,5 +1,6 @@
 package io.legado.app.model.script
 
+import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlin.coroutines.CoroutineContext

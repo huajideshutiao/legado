@@ -28,7 +28,7 @@ import kotlinx.coroutines.CoroutineScope
  * - 原 `android.text.TextUtils.join(",", set)` 下沉后用 Kotlin stdlib
  *   `set.joinToString(",")` 替代 (无 Android 依赖, 行为等价)。
  * - 原 `String.cnCompare(String)` (app 端 Android ICU 扩展) 仅在 saveToFile/getBookSources
- *   内使用, 该方法留 app 端不下沉, 故本类无需使用 `cnCompare`/`cnCompareGroups`。
+ *   内使用 (该扩展现已下沉 commonMain utils/StringCnCompare.kt), 本类无排序需求不使用。
  *
  * # Android 专属依赖 (留 app 端)
  *

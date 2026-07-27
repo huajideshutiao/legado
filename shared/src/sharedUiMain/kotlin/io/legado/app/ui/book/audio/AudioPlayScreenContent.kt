@@ -21,30 +21,29 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,9 +51,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.model.AudioPlayShared
+import io.legado.app.ui.compose.platform.handleMediaKeys
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.toDurationTime
 
 /**
@@ -160,24 +161,30 @@ fun AudioPlayScreenContent(
     playModeIconPadding: Dp = 4.dp,
     modifier: Modifier = Modifier,
 ) {
+    val keyScope = rememberCoroutineScope()
+    // 键盘事件焦点: onPreviewKeyEvent 需节点持有焦点才触发, 进入即取焦点
+    // (对照 desktop VideoPlayerScreen 焦点接线)
+    val keyFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        runCatching { keyFocusRequester.requestFocus() }
+    }
     Box(
         modifier
             .fillMaxSize()
-            .onPreviewKeyEvent { event ->
-                // 键盘快捷键: Space=播放/暂停, ←=进度后退10s, →=进度前进10s, Esc/Backspace=返回
-                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                when (event.key) {
-                    Key.Spacebar -> { onTogglePlay(); true }
-                    Key.DirectionLeft -> {
-                        onSeek((progressMs - 10000).coerceAtLeast(0)); true
-                    }
-                    Key.DirectionRight -> {
-                        onSeek((progressMs + 10000).coerceAtMost(durationMs)); true
-                    }
-                    Key.Escape, Key.Backspace -> { onBack(); true }
-                    else -> false
-                }
-            },
+            // 键盘快捷键: 消费共享 handleMediaKeys
+            // (Space=播放/暂停, ←/→=进度∓10s, ↑/↓=上/下一章, Esc/Backspace=返回)
+            .handleMediaKeys(
+                onTogglePlayPause = onTogglePlay,
+                onSeekDelta = { delta ->
+                    onSeek((progressMs + delta.toInt()).coerceIn(0, durationMs))
+                },
+                onPrev = { if (prevEnabled) onPrev() },
+                onNext = { if (nextEnabled) onNext() },
+                onBack = onBack,
+                scope = keyScope,
+            )
+            .focusRequester(keyFocusRequester)
+            .focusable(),
     ) {
         // 模糊封面背景 (平台 blurBgSlot 加载; null 时复用 coverSlot)
         val bgSlot = blurBgSlot ?: coverSlot
@@ -342,7 +349,7 @@ private fun CoverImage(
             .padding(top = 16.dp)
             .size(200.dp)
             .clip(CircleShape)
-            .border(2.dp, accentColor, CircleShape)
+            .border(DesignTokens.strokeMedium, accentColor, CircleShape)
             .clickable(onClick = onClick),
     )
 }
@@ -358,7 +365,7 @@ private fun FilletLabel(
 ) {
     Row(
         modifier
-            .background(bgColor, RoundedCornerShape(8.dp))
+            .background(bgColor, DesignTokens.shapeDefault)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

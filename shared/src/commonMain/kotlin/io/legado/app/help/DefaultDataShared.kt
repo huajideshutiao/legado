@@ -1,5 +1,6 @@
 package io.legado.app.help
 
+import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.DictRule
 import io.legado.app.data.entities.HttpTTS
@@ -31,14 +32,13 @@ import io.legado.app.utils.fromJsonArray
  *
  * # 资源读取
  *
- * 通过 [DefaultDataResourceProvider] 接口抽象, app 端注册实现用 `appCtx.assets.open`
- * 读取 app/src/main/assets/defaultData/ 下的 JSON, 行为与原 DefaultData 完全一致。
- * 桌面端可注册 classpath 读取实现 (前提: 资源迁移到 shared/commonMain/resources)。
+ * 通过 [DefaultDataResourceProvider] 接口抽象, 单一数据源在
+ * `commonMain/composeResources/files/defaultData/`, 各端实现见接口 KDoc。
  *
  * # 容错行为保持
  *
  * - `httpTTS`: `KS_JSON.decodeFromString` 失败返回 `emptyList()` (与原 `runCatching ... getOrElse`)
- * - `txtTocRules`: `GSON.fromJsonArray` 失败返回 `emptyList()` (与原 `getOrNull() ?: emptyList()`)
+ * - `txtTocRules`: `GSON.fromJsonArray` 失败记 AppLog 后返回 `emptyList()`
  * - `dictRules`: `GSON.fromJsonArray` 失败抛异常 (与原 `getOrThrow()`)
  * - `keyboardAssists`: `GSON.fromJsonArray` 失败抛异常 (与原 `getOrThrow()`)
  *
@@ -56,10 +56,12 @@ object DefaultDataShared {
         }
     }
 
-    /** 默认 TxtToc 规则列表 (读 txtTocRule.json, 失败返回空列表)。 */
+    /** 默认 TxtToc 规则列表 (读 txtTocRule.json, 失败记日志返回空列表)。 */
     val txtTocRules: List<TxtTocRule> by lazy {
         val json = DefaultDataResourceProviders.get().readResource("txtTocRule.json")
-        GSON.fromJsonArray<TxtTocRule>(json).getOrNull() ?: emptyList()
+        GSON.fromJsonArray<TxtTocRule>(json)
+            .onFailure { AppLog.put("解析默认 txtTocRule.json 失败", it) }
+            .getOrNull() ?: emptyList()
     }
 
     /** 默认字典规则列表 (读 dictRules.json, 失败抛异常, 与原 getOrThrow 一致)。 */

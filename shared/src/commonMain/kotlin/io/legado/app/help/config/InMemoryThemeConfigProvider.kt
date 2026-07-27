@@ -10,17 +10,17 @@ package io.legado.app.help.config
  */
 open class InMemoryThemeConfigProvider : ThemeConfigProvider {
 
-    protected val configList: MutableList<ThemeConfigData> = mutableListOf()
+    protected val configs: MutableList<ThemeConfigData> = mutableListOf()
 
-    override fun getConfigList(): List<ThemeConfigData> = configList.toList()
+    override fun getConfigList(): List<ThemeConfigData> = configs.toList()
 
     override fun addConfig(config: ThemeConfigData) {
-        val index = configList.indexOfFirst { it.themeName == config.themeName }
-        if (index >= 0) configList[index] = config else configList.add(config)
+        val index = configs.indexOfFirst { it.themeName == config.themeName }
+        if (index >= 0) configs[index] = config else configs.add(config)
     }
 
     override fun delConfig(index: Int) {
-        if (index in configList.indices) configList.removeAt(index)
+        if (index in configs.indices) configs.removeAt(index)
     }
 
     override fun applyBuiltin(isNight: Boolean) { /* no-op */ }

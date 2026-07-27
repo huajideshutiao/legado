@@ -95,10 +95,12 @@ object AppCacheManager {
 @Suppress("unused")
 object CacheManager {
 
+    // 短参显式重载: 补回原 @JvmOverloads 生成的 JVM 签名 (commonMain 无该注解), 书源 JS 按 arity 匹配
+    fun put(key: String, value: Any) = put(key, value, 0)
+
     /**
      * saveTime 单位为秒
      */
-    @JvmOverloads
     fun put(key: String, value: Any, saveTime: Int = 0) {
         val deadline =
             if (saveTime == 0) 0L else systemCurrentTimeMillis() + saveTime * 1000
@@ -154,7 +156,8 @@ object CacheManager {
         return FileCacheProviders.impl?.getAsBinary(key)
     }
 
-    @JvmOverloads
+    fun putFile(key: String, value: String) = putFile(key, value, 0)
+
     fun putFile(key: String, value: String, saveTime: Int = 0) {
         FileCacheProviders.impl?.put(key, value, saveTime)
     }

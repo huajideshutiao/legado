@@ -1,6 +1,6 @@
 package io.legado.app.help.storage
 
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * [BackupFileOps] nativeMain 真实文件操作实现 (含 zip 压缩/解压)。
@@ -74,8 +74,8 @@ actual object BackupFileOps {
         val file = File(path)
         // 父目录不存在则递归创建 (与 jvmAndAndroidMain FileUtilsBase.createFileIfNotExist 行为对齐)
         file.parentFile?.mkdirs()
-        // 直接 writeText (UTF-8) (kotlin.io.File 无原子写 API, 与 JVM Files.write 行为一致)
-        file.writeText(text, Charsets.UTF_8)
+        // 直接 writeText (默认 UTF-8) (kotlin.io.File 无原子写 API, 与 JVM Files.write 行为一致)
+        file.writeText(text)
     }
 
     actual fun readText(path: String): String {
@@ -83,7 +83,7 @@ actual object BackupFileOps {
         if (!file.exists()) {
             throw IllegalStateException("BackupFileOps.readText: file not found: $path")
         }
-        return file.readText(Charsets.UTF_8)
+        return file.readText()
     }
 
     actual fun listFiles(path: String): List<String>? {

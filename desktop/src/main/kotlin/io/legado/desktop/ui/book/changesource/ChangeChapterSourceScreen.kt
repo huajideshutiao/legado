@@ -31,6 +31,7 @@ import io.legado.app.ui.book.changesource.ChangeSourceTitleBar
 import io.legado.app.ui.book.changesource.ChapterTocPanel
 import io.legado.app.ui.book.changesource.CheckMenuItem
 import io.legado.app.ui.book.changesource.GroupMenuItem
+import io.legado.app.ui.book.changesource.GroupPickerDialog
 import io.legado.app.ui.book.changesource.SearchBookItem
 import io.legado.app.ui.book.changesource.TextMenuItem
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
@@ -140,6 +141,8 @@ private fun ChangeChapterSourceContent(
     var items by remember { mutableStateOf(emptyList<SearchBook>()) }
     var searching by remember { mutableStateOf(false) }
     var groups by remember { mutableStateOf(emptyList<String>()) }
+    // 分组二级菜单独立 Dialog 状态：避免嵌套 Popup 位置错乱
+    var showGroupPicker by remember { mutableStateOf(false) }
     var searchMode by remember { mutableStateOf(false) }
     var screenKey by remember { mutableStateOf("") }
     var checkAuthor by remember { mutableStateOf(platform.changeSourceCheckAuthor) }
@@ -248,20 +251,8 @@ private fun ChangeChapterSourceContent(
             }
             GroupMenuItem(
                 title = if (searchGroup.isEmpty()) groupLabel else "$groupLabel($searchGroup)",
-                groups = groups,
-                selectedGroup = searchGroup,
                 dismissParent = dismiss,
-                onSelect = { group ->
-                    // 分组切换: 写回 platform.searchGroup + 停搜索 + 刷新 + 重启搜索
-                    // (对照 app 端 ChangeChapterSourceDialog.onGroupSelected)
-                    platform.searchGroup = group
-                    scope.launch {
-                        viewModel.stopSearch()
-                        if (viewModel.refresh()) {
-                            viewModel.startSearch()
-                        }
-                    }
-                },
+                onShowGroupPicker = { showGroupPicker = true },
             )
         }
         Box(Modifier.weight(1f)) {
@@ -361,6 +352,27 @@ private fun ChangeChapterSourceContent(
                 )
             }
         }
+    }
+
+    // 分组选择独立 Dialog：弹出时居中显示，避免原嵌套 Popup 错位
+    if (showGroupPicker) {
+        GroupPickerDialog(
+            groups = groups,
+            selectedGroup = searchGroup,
+            onDismiss = { showGroupPicker = false },
+            onSelect = { group ->
+                showGroupPicker = false
+                // 分组切换: 写回 platform.searchGroup + 停搜索 + 刷新 + 重启搜索
+                // (对照 app 端 ChangeChapterSourceDialog.onGroupSelected)
+                platform.searchGroup = group
+                scope.launch {
+                    viewModel.stopSearch()
+                    if (viewModel.refresh()) {
+                        viewModel.startSearch()
+                    }
+                }
+            },
+        )
     }
 }
 

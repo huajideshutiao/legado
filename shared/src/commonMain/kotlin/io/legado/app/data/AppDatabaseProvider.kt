@@ -1,5 +1,7 @@
 package io.legado.app.data
 
+import kotlin.concurrent.Volatile
+
 /**
  * [AppDatabase] 单例注入接口 (shared commonMain)。
  *

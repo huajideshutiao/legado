@@ -171,8 +171,8 @@ class ImportSourceFilterRuleViewModelShared(
         Coroutine.async(scope = scope) {
             importAwait(text.trim())
         }.onError {
-            _errorState.value = "ImportError:${it.localizedMessage}"
-            AppLog.put("ImportError:${it.localizedMessage}", it)
+            _errorState.value = "ImportError:${it.message}"
+            AppLog.put("ImportError:${it.message}", it)
         }.onSuccess {
             comparisonSource()
         }

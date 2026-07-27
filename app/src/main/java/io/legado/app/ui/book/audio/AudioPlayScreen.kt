@@ -8,11 +8,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -43,12 +42,12 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.blurConfig
 import io.legado.app.model.coverConfig
-import io.legado.app.service.AudioPlayService
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.widget.LrcView
 import io.legado.app.utils.dpToPx
 import java.util.Locale
@@ -76,7 +75,7 @@ fun AudioPlayScreen(activity: AudioPlayActivity) {
         coverUrl = activity.coverUrl,
         coverVisible = activity.coverVisible,
         timerMinute = activity.timerMinute,
-        speed = AudioPlayService.playSpeed,
+        speed = activity.speed,
         progressMs = activity.progressMs,
         durationMs = activity.durationMs,
         bufferMs = activity.bufferMs,
@@ -171,18 +170,14 @@ private fun AudioOverflowMenu(activity: AudioPlayActivity) {
             AudioMenuItem(R.string.set_source_variable) { dismiss(); activity.showSourceVariable() }
             AudioMenuItem(R.string.set_book_variable) { dismiss(); activity.showBookVariable() }
             AudioMenuItem(R.string.edit_book_source) { dismiss(); activity.editSource() }
-            DropdownMenuItem(
-                text = {
-                    Text(
-                        stringResource(R.string.audio_play_wake_lock),
-                        color = colors.primaryText,
-                    )
-                },
-                trailingIcon = {
-                    AppMenuCheckbox(checked = AppConfig.audioPlayUseWakeLock)
-                },
-                onClick = { dismiss(); activity.toggleWakeLock() },
-            )
+            DropdownMenuItem(onClick = { dismiss(); activity.toggleWakeLock() }) {
+                Text(
+                    stringResource(R.string.audio_play_wake_lock),
+                    color = colors.primaryText,
+                    modifier = Modifier.weight(1f).padding(end = 12.dp),
+                )
+                AppMenuCheckbox(checked = AppConfig.audioPlayUseWakeLock)
+            }
             AudioMenuItem(R.string.bookmark_add) { dismiss(); activity.addBookmark() }
             AudioMenuItem(R.string.log) { dismiss(); activity.showAppLog() }
         }
@@ -191,10 +186,9 @@ private fun AudioOverflowMenu(activity: AudioPlayActivity) {
 
 @Composable
 private fun AudioMenuItem(textRes: Int, onClick: () -> Unit) {
-    DropdownMenuItem(
-        text = { Text(stringResource(textRes), color = AppTheme.colors.primaryText) },
-        onClick = onClick,
-    )
+    DropdownMenuItem(onClick = onClick) {
+        Text(stringResource(textRes), color = AppTheme.colors.primaryText)
+    }
 }
 
 // ---- 平台 coverSlot: 圆形封面 (Coil + AndroidView + coverConfig + placeholder) ----
@@ -334,7 +328,7 @@ private fun SliderPopupCard(
         Column(
             Modifier
                 .fillMaxWidth()
-                .background(colorResource(R.color.background_card), RoundedCornerShape(8.dp))
+                .background(colorResource(R.color.background_card), DesignTokens.shapeDefault)
                 .padding(8.dp),
             horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
         ) {

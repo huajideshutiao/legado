@@ -6,7 +6,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.help.openURL
 import io.legado.app.help.toast.Toasters
@@ -76,6 +78,7 @@ import kotlinx.coroutines.launch
  * @param onChapterPay 章节购买回调 (桥接 `SourceAction.CHAPTER_PAY`, 打开浏览器)
  * @param showVariableDialog 变量编辑回调 (桥接 `SourceAction.SET_SOURCE_VARIABLE` / `SET_BOOK_VARIABLE`, 弹 VariableDialog)
  * @param openSourceEdit 编辑书源回调 (桥接 `SourceAction.EDIT_SOURCE`, 跳转 BookSourceEdit)
+ * @param getBookSource 当前书源提供者 (供 sourceActionText / sourceLoginVisible / sourcePayVisible, 对照 app 端 ReadBook.bookSource)
  * @param autoPageScope 自动翻页协程作用域 (桥接 `clickAutoPage` 启动定时翻页 job)
  * @param showAutoReadDialog 显示自动翻页配置 Dialog 回调 (桥接 `toggleMenu` 在 autoPage=true 时)
  * @param readBookConfig 阅读配置 (供 `clickAutoPage` 读取 autoReadSpeed 决定翻页间隔)
@@ -100,6 +103,7 @@ class IosReadMenuState(
     private val onChapterPay: () -> Unit,
     private val showVariableDialog: () -> Unit,
     private val openSourceEdit: () -> Unit,
+    private val getBookSource: () -> BookSource?,
     private val autoPageScope: CoroutineScope,
     private val showAutoReadDialog: () -> Unit,
     private val readBookConfig: ReadBookConfigShared,
@@ -156,6 +160,8 @@ class IosReadMenuState(
     override var nextEnabled by mutableStateOf(false)
         private set
     override var autoPage by mutableStateOf(false)
+    override var isNightTheme by mutableStateOf(AppConfigProviders.get().isNightTheme)
+        private set
 
     // ---- 内部辅助方法 ----
 
@@ -194,6 +200,10 @@ class IosReadMenuState(
 
     /** 显示菜单 (与 app 端 ReadMenu.runMenuIn 对应, 简化出场动画收尾) */
     fun runMenuIn() {
+        // 书源操作按钮 (对照 app 端 runMenuIn: 源名文案 + 非本地书可见)
+        sourceActionText = getBookSource()?.bookSourceName
+            ?: sharedStringTable["book_source"]!!
+        sourceActionVisible = !book.isLocal
         canShowMenu = true
         visibleState.targetState = true
     }
@@ -232,9 +242,10 @@ class IosReadMenuState(
         // iOS 端这两个菜单项的可见性由 TopMenuState 默认值控制 (reviewVisible=false)
     }
 
-    override fun sourceLoginVisible(): Boolean = false
+    // 登录/购买菜单项可见性 (对照 app 端 ReadMenu.sourceLoginVisible/sourcePayVisible: bookSource.hasLogin())
+    override fun sourceLoginVisible(): Boolean = getBookSource()?.hasLogin() == true
 
-    override fun sourcePayVisible(): Boolean = false
+    override fun sourcePayVisible(): Boolean = getBookSource()?.hasLogin() == true
 
     override fun onSourceAction(action: SourceAction) {
         // 对照 app 端 ReadMenu.onSourceAction → ReadBookActivity 各回调
@@ -351,9 +362,8 @@ class IosReadMenuState(
     }
 
     override fun clickNightTheme() {
-        // 切换夜间主题: 调用方注入 onToggleNightTheme, 内部写 NSUserDefaults themeMode +
-        // emitRecreate 触发 AppTheme 重组 (与桌面端 DesktopThemeStoreProvider.toggleDark 对应)
         onToggleNightTheme()
+        isNightTheme = AppConfigProviders.get().isNightTheme
     }
 
     override fun clickPre() {

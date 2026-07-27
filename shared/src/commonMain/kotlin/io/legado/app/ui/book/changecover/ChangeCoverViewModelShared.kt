@@ -7,6 +7,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.closeIfCloseable
 import io.legado.app.help.coroutine.newFixedThreadPoolDispatcher
 import io.legado.app.model.webBook.WebBook
@@ -14,7 +15,6 @@ import io.legado.app.utils.concurrent.newSynchronizedList
 import io.legado.app.utils.mapParallelSafe
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -190,7 +190,7 @@ class ChangeCoverViewModelShared(
             searchSuccess = null
             upAdapter = null
         }
-    }.flowOn(Dispatchers.IO)
+    }.flowOn(IoDispatcher)
 
     /**
      * 初始化数据 (对照原 `initData(arguments: Bundle?)`)。
@@ -268,7 +268,7 @@ class ChangeCoverViewModelShared(
             }.onCompletion {
                 _searchState.value = false
             }.catch {
-                AppLog.put("封面换源搜索出错\n${it.localizedMessage}", it)
+                AppLog.put("封面换源搜索出错\n${it.message}", it)
             }.collect()
         }
     }

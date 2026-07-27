@@ -25,7 +25,7 @@ object OhosBitmapProvider : BitmapProvider {
         if (bytes.isEmpty()) return false
         val ref = OhosImageOps.decode(bytes)
         val jpeg = OhosImageOps.encode(ref, "jpg", quality)
-        val target = kotlin.io.File(outFile.path)
+        val target = File(outFile.path)
         target.parentFile?.mkdirs()
         target.writeBytes(jpeg)
         true

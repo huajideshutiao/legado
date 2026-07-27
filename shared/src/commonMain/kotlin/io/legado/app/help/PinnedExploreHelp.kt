@@ -7,6 +7,7 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toJson
+import kotlin.concurrent.Volatile
 
 /**
  * 发现页置顶条目管理。
@@ -16,11 +17,9 @@ import io.legado.app.utils.toJson
  * 行为完全一致 (Android 端 [AndroidPreferenceStoreProvider] 包装同一
  * defaultSharedPreferences, 保证 backup/restore 与原数据兼容)。
  *
- * 注: 早期下沉误用 [io.legado.app.help.config.PreferenceProviders], 其 Android 端
- * actual ([io.legado.app.help.config.AndroidPreferenceProvider]) 写入独立的
- * `legado_config` SP 文件, 与原 defaultSharedPreferences 不同, 导致老用户
- * exploreFavorites 数据孤立 + 不被 Backup.kt 备份。改回 [PreferenceStoreProvider]
- * 修复该破坏性变更。
+ * 注: Android 端 [io.legado.app.help.config.PreferenceProviders] 现也委托
+ * defaultSharedPreferences (旧 legado_config 已并入), 两条通路存储后端相同;
+ * 本类沿用 [PreferenceStoreProvider] 即可, 无迁移必要。
  */
 object PinnedExploreHelp {
     private const val PREF_KEY = "exploreFavorites"

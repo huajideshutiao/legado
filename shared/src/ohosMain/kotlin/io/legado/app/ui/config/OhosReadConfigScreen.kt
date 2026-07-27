@@ -17,7 +17,7 @@ import io.legado.app.ui.compose.platform.rememberString
  *
  * 说明: 原 ArkTS ReadConfig.ets 已废弃无法读取原功能; iOS 端无独立 ReadConfigScreen,
  * 朗读设置 (ReadAloudConfigScreen) 为阅读相关设置的核心组成, 故本页面包装之。
- * material3 原生组件 (TopAppBar 等) 接入待 API 明确后逐步替换顶栏。
+ * 顶栏用 sharedUiMain 的 [AppTitleBar] (项目锁 MD2 视觉, 不用 material3 TopAppBar)。
  *
  * 阻塞点: TTS 引擎选择 (onTtsEngine) 与系统 TTS 配置 (onSysTtsConfig) 均依赖鸿蒙平台 TTS 框架,
  * 本入口仅做 stub 让编译通过, 后续接入鸿蒙 TTS 服务。

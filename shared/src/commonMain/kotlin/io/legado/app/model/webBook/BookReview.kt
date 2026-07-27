@@ -221,7 +221,7 @@ object BookReview {
             }
             result
         }.onFailure {
-            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "段评数解析失败:${it.localizedMessage}")
+            SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "段评数解析失败:${it.message}")
         }.getOrDefault(emptyMap())
     }
 

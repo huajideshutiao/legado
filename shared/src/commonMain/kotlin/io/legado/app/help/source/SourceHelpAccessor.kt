@@ -1,6 +1,7 @@
 package io.legado.app.help.source
 
 import io.legado.app.data.entities.BookSource
+import kotlin.concurrent.Volatile
 
 /**
  * SourceHelp 跨平台访问 app 端单例的 provider 接口。

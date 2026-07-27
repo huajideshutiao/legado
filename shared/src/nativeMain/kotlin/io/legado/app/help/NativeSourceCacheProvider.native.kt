@@ -1,7 +1,7 @@
 package io.legado.app.help
 
 import io.legado.app.help.file.AppFilesDirs
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * nativeMain: [SourceCacheProvider] 的 iOS / 鸿蒙 两端共用真实实现
@@ -76,7 +76,7 @@ class NativeSourceCacheProvider : SourceCacheProvider {
         if (!file.exists()) return null
         val bytes = file.readBytes()
         if (bytes.isEmpty()) return null
-        return String(bytes, Charsets.UTF_8)
+        return bytes.decodeToString()
     }
 
     override fun put(key: String, value: String) {
@@ -86,8 +86,8 @@ class NativeSourceCacheProvider : SourceCacheProvider {
         if (parent != null && !parent.exists()) {
             parent.mkdirs()
         }
-        // writeText 默认 UTF-8 (与 toByteArray(Charsets.UTF_8) 行为等价)
-        file.writeText(value, Charsets.UTF_8)
+        // writeText 默认 UTF-8 (与 encodeToByteArray() 行为等价)
+        file.writeText(value)
     }
 
     override fun delete(key: String) {

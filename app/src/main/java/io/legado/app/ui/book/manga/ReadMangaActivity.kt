@@ -17,8 +17,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Text
+import androidx.compose.material.CircularProgressIndicator
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -217,7 +217,7 @@ class ReadMangaActivity : BaseComposeActivity(), IBottomDialog,
                         CircularProgressIndicator(
                             color = Color.White,
                             strokeWidth = 4.dp,
-                            trackColor = Color.Transparent,
+                            backgroundColor = Color.Transparent,
                             modifier = Modifier.size(48.dp),
                         )
                     }

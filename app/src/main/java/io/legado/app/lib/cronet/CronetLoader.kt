@@ -10,7 +10,6 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.Cronet
 import io.legado.app.lib.webdav.Authorization
 import io.legado.app.lib.webdav.WebDav
-import io.legado.app.model.fileBook.RangedSource
 import io.legado.app.model.fileBook.RemoteZipWrapper
 import io.legado.app.utils.LogUtils
 import okhttp3.Request
@@ -28,7 +27,7 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
     private const val soVersion = BuildConfig.Cronet_Version
     private const val aarUrl =
         "https://maven.aliyun.com/repository/google/org/chromium/net/cronet-embedded/$soVersion/cronet-embedded-$soVersion.aar"
-    private val soName = "libcronet.$soVersion.so"
+    private const val soName = "libcronet.$soVersion.so"
     private val soFile: File
     private var cpuAbi: String? = null
     var download = false
@@ -105,7 +104,7 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
                     val fileSize = response.header("Content-Length")?.toLong() ?: -1L
                     if (fileSize <= 0) throw IOException("Failed to get file size")
                     val remoteZip = RemoteZipWrapper(
-                        RangedSource { offset, length, fs -> webDav.readRange(offset, length, fs) },
+                        { offset, length, fs -> webDav.readRange(offset, length, fs) },
                         "cronet.aar", fileSize
                     )
                     val entry = remoteZip.entries().asSequence().find {
@@ -115,7 +114,7 @@ object CronetLoader : CronetEngine.Builder.LibraryLoader(), Cronet.LoaderInterfa
                     } ?: throw IOException("SO entry not found for ${getCpuAbi(appCtx)}")
 
                     downloadFileTmp.parentFile?.mkdirs()
-                    remoteZip.getInputStream(entry)?.use { input ->
+                    remoteZip.getInputStream(entry).use { input ->
                         downloadFileTmp.outputStream().use { output ->
                             input.copyTo(output)
                         }

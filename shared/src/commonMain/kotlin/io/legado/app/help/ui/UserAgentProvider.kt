@@ -1,5 +1,7 @@
 package io.legado.app.help.ui
 
+import kotlin.concurrent.Volatile
+
 /**
  * WebView UserAgent 获取能力 provider (跨平台抽象)。
  *

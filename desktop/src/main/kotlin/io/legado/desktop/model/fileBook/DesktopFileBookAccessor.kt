@@ -18,6 +18,7 @@ import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isPdf
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.file.desktopAppCacheDir
 import io.legado.app.help.file.desktopAppRootDir
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
@@ -122,7 +123,7 @@ class DesktopFileBookAccessor : FileBookAccessor {
     }
 
     /**
-     * 解压到 `{desktopAppRootDir}/ArchiveTemp/{md5_16(uri)}` 并返回解出的文件。
+     * 解压到 `{desktopAppCacheDir}/ArchiveTemp/{md5_16(uri)}` 并返回解出的文件。
      *
      * 对齐 app 端 `ArchiveUtils.deCompress` + `LibArchiveUtils.unArchive` 语义
      * (md5(uri) 命名工作目录 / 路径穿越校验 / filter 过滤条目), 但用 JDK [ZipFile]
@@ -136,7 +137,7 @@ class DesktopFileBookAccessor : FileBookAccessor {
         val name = archiveFile.name
         checkArchive(name)
         val destDir = Paths.get(
-            desktopAppRootDir(), archiveTempFolderName, MD5Utils.md5Encode16(archiveUri)
+            desktopAppCacheDir(), archiveTempFolderName, MD5Utils.md5Encode16(archiveUri)
         ).toFile().apply { mkdirs() }
         val destCanonical = destDir.canonicalPath
         val files = mutableListOf<File>()
@@ -383,7 +384,7 @@ class DesktopFileBookAccessor : FileBookAccessor {
                         hasBookFile -> {
                             val entry = entries.first { !it.isDirectory && FileBook.isBookFile(it.name) }
                             val uriStr = saveBookFile(
-                                remoteZip.getInputStream(entry) ?: throw NoStackTraceException("获取流失败"),
+                                remoteZip.getInputStream(entry),
                                 entry.name
                             )
                             importLocalFile(uriStr).apply {

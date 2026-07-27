@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.AlertDialog
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
@@ -23,19 +22,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
-
-/** Arco Design arcoblue-6 主色 (#165DFF)。 */
-private val ArcoBlue6 = Color(0xFF165DFF)
-
-/** Arco Design arco_radius_lg = 16dp。 */
-private val ArcoRadiusLg = 16.dp
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 数字选择对话框 (Compose Multiplatform / sharedUiMain)。
@@ -111,7 +104,7 @@ fun NumberPickerDialog(
                 // 当前值居中显示 (大字体 + arcoblue-6 主色, 便于确认)
                 Text(
                     text = currentValue.toString(),
-                    color = ArcoBlue6,
+                    color = DesignTokens.arcoBlue6,
                     fontSize = 32.sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
@@ -130,9 +123,9 @@ fun NumberPickerDialog(
                     },
                     valueRange = range.first.toFloat()..range.last.toFloat(),
                     colors = SliderDefaults.colors(
-                        thumbColor = ArcoBlue6,
-                        activeTrackColor = ArcoBlue6,
-                        inactiveTrackColor = ArcoBlue6.copy(alpha = 0.2f),
+                        thumbColor = DesignTokens.arcoBlue6,
+                        activeTrackColor = DesignTokens.arcoBlue6,
+                        inactiveTrackColor = DesignTokens.arcoBlue6.copy(alpha = 0.2f),
                     ),
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -154,7 +147,7 @@ fun NumberPickerDialog(
                         Icon(
                             painter = rememberPainter("ic_reduce"),
                             contentDescription = rememberString("reduce"),
-                            tint = ArcoBlue6,
+                            tint = DesignTokens.arcoBlue6,
                         )
                     }
                     Spacer(modifier = Modifier.width(16.dp))
@@ -170,7 +163,7 @@ fun NumberPickerDialog(
                         Icon(
                             painter = rememberPainter("ic_add"),
                             contentDescription = rememberString("plus"),
-                            tint = ArcoBlue6,
+                            tint = DesignTokens.arcoBlue6,
                         )
                     }
                 }
@@ -180,7 +173,7 @@ fun NumberPickerDialog(
             TextButton(onClick = { onConfirm(currentValue) }) {
                 Text(
                     text = rememberString("ok"),
-                    color = ArcoBlue6,
+                    color = DesignTokens.arcoBlue6,
                 )
             }
         },
@@ -191,7 +184,7 @@ fun NumberPickerDialog(
                     TextButton(onClick = onNeutral) {
                         Text(
                             text = neutralButtonText,
-                            color = ArcoBlue6,
+                            color = DesignTokens.arcoBlue6,
                         )
                     }
                     Spacer(modifier = Modifier.width(4.dp))
@@ -199,13 +192,13 @@ fun NumberPickerDialog(
                 TextButton(onClick = onDismiss) {
                     Text(
                         text = rememberString("cancel"),
-                        color = ArcoBlue6,
+                        color = DesignTokens.arcoBlue6,
                     )
                 }
             }
         },
-        shape = RoundedCornerShape(ArcoRadiusLg),
-        // 显式容器色, 避免 Material3 AlertDialog 默认色与项目其他对话框 (8dp 圆角) 视觉割裂
+        shape = DesignTokens.dialogShape,
+        // 显式容器色, 避免默认色与项目其他对话框 (8dp 圆角) 视觉割裂
         backgroundColor = MaterialTheme.colors.surface,
     )
 }

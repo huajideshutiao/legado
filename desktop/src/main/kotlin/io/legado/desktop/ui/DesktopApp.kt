@@ -1,8 +1,8 @@
 package io.legado.desktop.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.PermanentNavigationDrawer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -98,7 +98,7 @@ enum class DesktopRoute {
     // 漫画书阅读路由 (P2-5: 由书架/详情点击 image 类型书籍触发, 与 READER 平级, 走 MangaReaderScreen)
     MANGA_READER,
     // 视频书播放路由 (由书架/详情点击 video 类型书籍触发, 与 READER 平级, 走 VideoPlayerScreen)
-    // 注: 已接入 vlcj (EmbeddedMediaPlayerComponent 经 SwingPanel 嵌入 AWT 渲染)
+    // 注: 已接入 mpv (外部进程经 --wid 嵌入 SwingPanel AWT Canvas 渲染)
     VIDEO_PLAYER,
     BOOK_INFO, REPLACE_EDIT, OTHER_CONFIG, THEME_CONFIG,
     READ_RECORD, BOOK_INFO_EDIT, BOOK_SOURCE_DEBUG,
@@ -110,7 +110,7 @@ enum class DesktopRoute {
     BACKUP_CONFIG, SEARCH_CONTENT, WELCOME_CONFIG, COVER_CONFIG,
     // 阅读配置类子路由 (由 MY 入口触发, 包装 shared/sharedUiMain 阅读 config Screen)
     EFFECTIVE_REPLACES, PADDING_CONFIG, TIP_CONFIG, READ_ALOUD_CONFIG, MORE_CONFIG,
-    // 段评列表页 (由 ReaderScreen 段评气泡点击触发, 包装 desktop ReviewListScreen, onBack 回 READER)
+    // 段评/书评列表页 (阅读页气泡/菜单或详情页"书评"触发, onBack 按入口返回 READER/BOOK_INFO)
     REVIEW_LIST,
     // 导入书籍子路由 (由书架顶栏溢出菜单触发, 包装 shared ImportBookScreen / RemoteBookScreen)
     IMPORT_BOOK, REMOTE_BOOK,
@@ -128,7 +128,7 @@ enum class DesktopRoute {
  * 已注入 4 个 DesktopXxxProvider，此处可直接消费 LocalXxx 取依赖。
  *
  * 结构：
- * - 侧边栏 (常驻)：[PermanentNavigationDrawer] + [DesktopSideBar] 渲染 4 个一级导航项
+ * - 侧边栏 (常驻)：Row 布局 + [DesktopSideBar] 渲染 4 个一级导航项
  *   (HOME/BOOKSHELF/DISCOVERY/MY)
  * - 右侧主区域：根据 [currentRoute] 显示对应 Screen
  * - 顶部菜单栏：暂未实现，预留扩展位
@@ -160,6 +160,8 @@ fun DesktopApp() {
     // KP2-D: 当前正在阅读的书籍，由书架 onBookClick 触发后写入，READER 路由分支消费
     // 退出阅读时置回 null，避免 ReaderScreen 在 readerBook=null 时被重组
     var readerBook by remember { mutableStateOf<Book?>(null) }
+    // 段评/书评列表返回路由: READER(阅读页) 或 BOOK_INFO(详情页书评) 入口进入, onBack 按入口返回
+    var reviewReturnRoute by remember { mutableStateOf(DesktopRoute.READER) }
     // KP2: 当前正在播放的音频书, 由书架/详情 onBookClick (BookType.audio) 触发后写入,
     // AUDIO_PLAYER 路由分支消费; 退出时置回 null 避免下次进入残留
     var audioBook by remember { mutableStateOf<Book?>(null) }
@@ -168,7 +170,7 @@ fun DesktopApp() {
     var mangaBook by remember { mutableStateOf<Book?>(null) }
     // 当前正在播放的视频书, 由书架/详情 onBookClick (BookType.video) 触发后写入,
     // VIDEO_PLAYER 路由分支消费; 退出时置回 null 避免下次进入残留
-    // 注: 已接入 vlcj (VideoPlayerScreen 内部用 EmbeddedMediaPlayerComponent 渲染)
+    // 注: 已接入 mpv (VideoPlayerScreen 内部经 --wid 嵌入外部 mpv 进程渲染)
     var videoBook by remember { mutableStateOf<Book?>(null) }
     // 详情页书籍: 搜索/书架长按点击后写入, BOOK_INFO 路由消费
     // 用 BaseBook? 统一持有 SearchBook / Book (BookInfoScreen 内部转 Book 使用)
@@ -215,17 +217,14 @@ fun DesktopApp() {
     // 桌面端协程作用域: CHANGE_SOURCE 等路由分支内异步写回 DB 用
     val scope = rememberCoroutineScope()
 
-    // 侧边栏常驻显示
-    PermanentNavigationDrawer(
-        drawerContent = {
-            DesktopSideBar(
-                currentRoute = currentRoute,
-                onRouteChange = {
-                    currentRoute = it
-                },
-            )
-        },
-    ) {
+    // 侧边栏常驻显示 (原 M3 PermanentNavigationDrawer 即 Row { drawerContent; Box { content } }，原样内联)
+    Row(Modifier.fillMaxSize()) {
+        DesktopSideBar(
+            currentRoute = currentRoute,
+            onRouteChange = {
+                currentRoute = it
+            },
+        )
         // 主区域：根据路由切换 Screen
         Box(
             modifier = Modifier
@@ -384,6 +383,7 @@ fun DesktopApp() {
                             IntentData.put("reviewBookKey", book)
                             IntentData.put("reviewChapterKey", chapter)
                             IntentData.put("reviewParagraphIndex", paragraphIndex)
+                            reviewReturnRoute = DesktopRoute.READER
                             currentRoute = DesktopRoute.REVIEW_LIST
                         },
                         // 整书换源: 切到 CHANGE_SOURCE 路由 (对照 app 端 ChangeBookSourceDialog)
@@ -451,8 +451,8 @@ fun DesktopApp() {
                     )
                 }
                 // 视频书播放路由 (由书架/详情/目录点击 video 类型书籍触发, 与 READER 平级)
-                // 包装 desktop 端 VideoPlayerScreen, 内部用 VideoPlayerViewModel 管理章节视频 URL
-                // 注: 已接入 vlcj (EmbeddedMediaPlayerComponent 经 SwingPanel 嵌入 AWT 渲染)
+                // 包装 desktop 端 VideoPlayerScreen, 内部用 VideoPlayViewModelShared 管理章节视频 URL
+                // 注: 已接入 mpv (外部进程经 --wid 嵌入 SwingPanel AWT Canvas 渲染)
                 DesktopRoute.VIDEO_PLAYER -> videoBook?.let { book ->
                     VideoPlayerScreen(
                         book = book,
@@ -546,6 +546,13 @@ fun DesktopApp() {
                             infoBook = null
                             currentRoute = DesktopRoute.EXPLORE_SHOW
                         },
+                        onOpenReviewList = { reviewBook ->
+                            // 书籍级书评 (对照 app 端 openCommentDialog: ReviewListDialog(book, null, -1))
+                            IntentData.put("reviewBookKey", reviewBook)
+                            IntentData.put("reviewParagraphIndex", -1)
+                            reviewReturnRoute = DesktopRoute.BOOK_INFO
+                            currentRoute = DesktopRoute.REVIEW_LIST
+                        },
                     )
                 }
                 DesktopRoute.REPLACE_EDIT -> ReplaceEditScreen(
@@ -631,7 +638,7 @@ fun DesktopApp() {
                             // P2-5: 漫画书目录点击 → 切到 MANGA_READER (MangaReaderScreen 按
                             //  book.durChapterIndex 调 MangaReaderViewModelShared.initData 加载该章节)
                             // 视频书目录点击 → 切到 VIDEO_PLAYER (VideoPlayerScreen 按
-                            //  book.durChapterIndex 调 VideoPlayerViewModel.initData 加载该章节)
+                            //  book.durChapterIndex 调 VideoPlayViewModelShared.initData 加载该章节)
                             book.durChapterIndex = chapterIndex
                             if (book.type and BookType.audio != 0) {
                                 audioBook = book
@@ -805,10 +812,10 @@ fun DesktopApp() {
                 DesktopRoute.MORE_CONFIG -> MoreConfigScreen(
                     onBack = { currentRoute = DesktopRoute.MY },
                 )
-                // 段评列表页 (由 ReaderScreen 段评气泡点击触发, 包装 desktop ReviewListScreen)
-                // onBack 回 READER 路由 (readerBook 仍保留, ReaderScreen 重新装载恢复阅读)
+                // 段评/书评列表页 (阅读页气泡/菜单或详情页"书评"触发, 包装 desktop ReviewListScreen)
+                // onBack 按入口返回 READER 或 BOOK_INFO (readerBook/infoBook 均保留)
                 DesktopRoute.REVIEW_LIST -> ReviewListScreen(
-                    onBack = { currentRoute = DesktopRoute.READER },
+                    onBack = { currentRoute = reviewReturnRoute },
                 )
                 // RSS 源列表 (由 MY 入口 onRssSources 触发, 订阅 bookDao.flowAll 过滤 isRss)
                 DesktopRoute.RSS_SOURCES -> RssSourcesScreen(

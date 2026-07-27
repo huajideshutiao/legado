@@ -6,8 +6,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +30,7 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ColorUtils
 
 /**
@@ -46,12 +46,10 @@ import io.legado.app.utils.ColorUtils
  * # 简化项（依赖未下沉的功能用 TODO 注释 + no-op）
  *
  * - showFontSelect: 弹 [FontSelectDialog]（叠加在 ReadStyleDialog 之上，与 BgTextConfigDialog 模式一致）
- * - showChineseConverter: 桌面端无 ChineseUtils，暂 no-op（TODO）
  * - showPaddingConfig: 切到 PADDING_CONFIG 路由（由 ReaderScreen 注入回调，与现有路由切换模式一致）
  * - showTipConfig: 切到 TIP_CONFIG 路由
  * - showBgTextConfig: ReaderScreen 内部弹 [BgTextConfigDialog]（保持阅读上下文）
  * - onUpPageAnim: 销毁旧 delegate + 创建新 delegate（由 ReaderScreen 注入回调）
- * - onPostConfig: 桌面端 ReadBookEvents 未下沉，暂 no-op（TODO）
  *
  * # chineseType 字段
  *
@@ -76,9 +74,14 @@ fun ReadStyleDialog(
     val actions = remember(callbacks) {
         DesktopReadStyleActions(callbacks) { showFontSelectDialog = true }
     }
+    // 对齐 app 端 ReadStyleDialog.onDismiss：关闭时落盘 configList / shareConfig
+    val dismissAndSave = {
+        readBookConfig.save()
+        onDismiss()
+    }
 
     AppAlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = dismissAndSave,
         title = rememberString("read_style"),
         widthFraction = 0.8f,
         content = {
@@ -90,7 +93,7 @@ fun ReadStyleDialog(
                 },
             )
         },
-        okButton = AlertButton(text = rememberString("close")) { onDismiss() },
+        okButton = AlertButton(text = rememberString("close")) { dismissAndSave() },
     )
 
     // 字体选择对话框（叠加在 ReadStyleDialog 之上，与 BgTextConfigDialog 叠加模式一致）
@@ -99,7 +102,7 @@ fun ReadStyleDialog(
             readBookConfig = readBookConfig,
             onDismiss = { showFontSelectDialog = false },
             onPostConfig = {
-                // 桥接到 actions.onPostConfig（desktop 端 ReadBookEvents.postConfig 未下沉，实际 no-op）
+                // 桥接到 actions.onPostConfig（desktop 端 no-op）
                 // 用 CHAPTER_STYLE + LOAD_CONTENT（对齐 ReadStyleScreen 中字号/行距等排版变更语义）
                 actions.onPostConfig(
                     listOf(
@@ -146,7 +149,7 @@ private fun DesktopStylePreview(
 ) {
     val colors = AppTheme.colors
     val borderColor = if (selected) colors.accent else colors.secondaryText
-    val borderWidth = if (selected) 2.dp else 1.dp
+    val borderWidth = if (selected) DesignTokens.strokeMedium else DesignTokens.strokeThin
     // 背景色（从 bgStr 解析，失败回退到 colors.background）
     val bgColor = remember(config.bgStr) {
         runCatching { Color(ColorUtils.parseColor(config.bgStr)) }
@@ -164,9 +167,9 @@ private fun DesktopStylePreview(
         modifier = Modifier
             .padding(horizontal = 4.dp)
             .size(width = 60.dp, height = 90.dp)
-            .clip(RoundedCornerShape(4.dp))
+            .clip(DesignTokens.shapeSm)
             .background(bgColor)
-            .border(borderWidth, borderColor, RoundedCornerShape(4.dp))
+            .border(borderWidth, borderColor, DesignTokens.shapeSm)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(6.dp),
         contentAlignment = Alignment.Center,
@@ -193,12 +196,12 @@ private fun DesktopStylePreview(
  * - `ReadBookConfig.letterSpacing` → [ReadBookConfigShared.letterSpacing]
  * - `ReadBookConfig.lineSpacingExtra` → [ReadBookConfigShared.lineSpacingExtra]
  * - `ReadBookConfig.paragraphSpacing` → [ReadBookConfigShared.paragraphSpacing]
- * - `ReadBookConfig.styleSelect` → [ReadBookConfigShared.readStyleSelect]
+ * - `ReadBookConfig.styleSelect` → [ReadBookConfigShared.styleSelect]（按 isComic 分派到 comic/read 槽位）
  * - `ReadBookConfig.paragraphIndent` → [ReadBookConfigShared.paragraphIndent]
  * - `ReadBookConfig.configList` → [ReadBookConfigShared.configList]
  * - `durConfig.curTextColor()` → 解析 durConfig.textColor / textColorStr
  * - `ReadBookConfig.configList.add(Config())` → [ReadBookConfigShared.configList].add([ReadStyleConfig])
- * - `ReadBookConfig.save()` → no-op（prefs 自动持久化）
+ * - `ReadBookConfig.save()` → [ReadBookConfigShared.save]（写 readConfig.json / shareReadConfig.json）
  */
 private class DesktopReadStyleController(
     private val readBookConfig: ReadBookConfigShared,
@@ -241,8 +244,8 @@ private class DesktopReadStyleController(
         set(value) { readBookConfig.paragraphSpacing = value }
 
     override var styleSelect: Int
-        get() = readBookConfig.readStyleSelect
-        set(value) { readBookConfig.readStyleSelect = value }
+        get() = readBookConfig.styleSelect
+        set(value) { readBookConfig.styleSelect = value }
 
     override var paragraphIndent: String
         get() = readBookConfig.paragraphIndent
@@ -262,7 +265,7 @@ private class DesktopReadStyleController(
     }
 
     override fun save() {
-        // prefs 自动持久化，无需显式 save
+        readBookConfig.save()
     }
 }
 
@@ -272,8 +275,6 @@ private class DesktopReadStyleController(
  * # 简化项
  *
  * - showFontSelect: 触发 [onShowFontSelect] 弹出 [FontSelectDialog]（由 [ReadStyleDialog] 持有状态）
- * - showChineseConverter: 桌面端无 ChineseUtils，暂 no-op（TODO）
- * - onPostConfig: 桌面端 ReadBookEvents 未下沉，暂 no-op（TODO）
  */
 private class DesktopReadStyleActions(
     private val callbacks: ReadStyleDialogCallbacks,
@@ -286,7 +287,6 @@ private class DesktopReadStyleActions(
     }
 
     override fun showChineseConverter() {
-        // TODO: 桌面端无 ChineseUtils，暂 no-op
     }
 
     override fun showPaddingConfig() = callbacks.showPaddingConfig()
@@ -295,6 +295,5 @@ private class DesktopReadStyleActions(
     override fun onUpPageAnim() = callbacks.onUpPageAnim()
 
     override fun onPostConfig(changes: List<ReadConfigChange>) {
-        // TODO: 桌面端 ReadBookEvents.postConfig 未下沉，暂不刷新阅读页渲染
     }
 }

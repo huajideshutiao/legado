@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
@@ -33,7 +32,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,12 +43,7 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
-
-/** Arco Design arcoblue-6 主色 (#165DFF)。 */
-private val ArcoBlue6 = Color(0xFF165DFF)
-
-/** Arco Design arco_radius_lg = 16dp。 */
-private val ArcoRadiusLg = 16.dp
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 变量编辑对话框 (KMP 共享, app + desktop 复用)。
@@ -96,7 +89,7 @@ fun VariableDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(ArcoRadiusLg),
+            shape = DesignTokens.dialogShape,
             color = colors.background,
             modifier = Modifier.fillMaxWidth(),
         ) {
@@ -110,7 +103,7 @@ fun VariableDialog(
                 AppScrollTabRow(
                     tabCount = 2,
                     selectedIndex = selectedTab,
-                    indicatorColor = ArcoBlue6,
+                    indicatorColor = DesignTokens.arcoBlue6,
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(colors.bottomBackground),
@@ -118,7 +111,7 @@ fun VariableDialog(
                     val tabText = if (index == 0) sourceTabText else bookTabText
                     Text(
                         text = tabText,
-                        color = if (index == selectedTab) ArcoBlue6 else colors.secondaryText,
+                        color = if (index == selectedTab) DesignTokens.arcoBlue6 else colors.secondaryText,
                         fontSize = 14.sp,
                         fontWeight = if (index == selectedTab) FontWeight.Medium else FontWeight.Normal,
                         modifier = Modifier
@@ -146,7 +139,7 @@ fun VariableDialog(
                     horizontalArrangement = Arrangement.End,
                 ) {
                     AppTextButton(text = cancelText, color = colors.secondaryText) { onDismiss() }
-                    AppTextButton(text = okText, color = ArcoBlue6) {
+                    AppTextButton(text = okText, color = DesignTokens.arcoBlue6) {
                         onConfirm(
                             sourceVars.toMap(),
                             bookVars.toMap(),
@@ -269,7 +262,7 @@ private fun VariableTabContent(
                 Icon(
                     painter = rememberPainter("ic_add"),
                     contentDescription = addText,
-                    tint = ArcoBlue6,
+                    tint = DesignTokens.arcoBlue6,
                 )
             }
         }

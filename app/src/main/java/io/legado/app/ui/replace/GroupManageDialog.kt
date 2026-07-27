@@ -6,9 +6,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,10 +29,10 @@ import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.requestInputMethod
 import kotlinx.coroutines.flow.conflate
-import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * 替换规则分组管理:纯分组列表(无排序/多选),支持新增/改名/删除。
@@ -77,7 +77,7 @@ class GroupManageDialog : BaseComposeDialogFragment() {
     }
 
     @Composable
-    private fun ReorderableCollectionItemScope.GroupItem(item: String) {
+    private fun RuleItemScope.GroupItem(item: String) {
         val colors = AppTheme.colors
         Row(
             Modifier.fillMaxWidth().padding(8.dp),

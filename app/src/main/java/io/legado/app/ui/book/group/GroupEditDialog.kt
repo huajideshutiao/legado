@@ -10,9 +10,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -230,9 +230,8 @@ class GroupEditDialog() : BaseComposeDialogFragment() {
                 AppDropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
                     sortEntries.forEachIndexed { index, entry ->
                         DropdownMenuItem(
-                            text = { Text(entry, color = colors.primaryText) },
                             onClick = { sortMenu = false; bookSort = index - 1 },
-                        )
+                        ) { Text(entry, color = colors.primaryText) }
                     }
                 }
             }

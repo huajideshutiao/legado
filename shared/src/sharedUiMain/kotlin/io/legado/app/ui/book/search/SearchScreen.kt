@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -29,6 +31,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
@@ -39,9 +42,12 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -52,22 +58,35 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.BaseBook
+import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.model.webBook.ExploreOption
+import io.legado.app.ui.bookshelf.KindLabels
 import io.legado.app.ui.bookshelf.ShelfGridItem
 import io.legado.app.ui.bookshelf.ShelfLastUpdateText
 import io.legado.app.ui.bookshelf.ShelfListItem
+import io.legado.app.ui.bookshelf.ShelfRowIcon
+import io.legado.app.ui.bookshelf.ShelfVideoItem
+import io.legado.app.ui.bookshelf.UnreadBadge
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.component.RadioChip
+import io.legado.app.ui.compose.component.StrokeTextChip
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
@@ -138,19 +157,27 @@ object NoOpSearchNavCallbacks : SearchNavCallbacks {
  * - `painterResource(R.drawable.xxx)` → [rememberPainter]("xxx")
  * - `colorResource(R.color.xxx)` → [AppTheme.colors] 语义色
  * - `WindowInsets.navigationBars.asPaddingValues()` → `rememberNavigationBarPaddingValues()` (跨平台导航栏 padding)
- * - `ShelfCover` (app 专属, 走 Glide) → 简化文本项 (跨平台无 Glide, KMP 封面留后续 KP3)
+ * - `ShelfCover` (app 专属, 走 Glide) → [coverSlot] / [shelfCoverSlot] 注入, 未注入时走占位
  * - `KindLabels` / `UnreadBadge` (app 专属) → 简化为多源计数文字
  * - `AndroidView { LinearLayout + setUpExploreOptions }` (单源搜索选项 chip) → 暂未实现 (KMP 无桥接)
  * - `AndroidView { ItemExploreVideoBinding }` (视频卡) → 暂未实现 (KMP 无 ViewBinding)
  *
  * @param viewModel KMP 版 [SearchViewModel]
  * @param navCallbacks 路由回调, 默认 [NoOpSearchNavCallbacks]
+ * @param coverSlot 搜索结果封面注入 (list/grid 两档条目共用)。null 走内置
+ *   [SearchCoverPlaceholder] 占位; 非 null 时接收与占位完全一致的尺寸 Modifier,
+ *   由各端用自己的封面实现渲染 (app=ShelfCover, desktop=DesktopBookCover,
+ *   iOS=IosInfoCover, 鸿蒙=OhosInfoCover)。签名与书架 `bookCoverSlot` 一致,
+ *   isVideoCover 供各端选封面比例 (对照 CoverRatio: false=NOVEL, true=VIDEO)
+ * @param shelfCoverSlot 输入帮助区书架命中项封面注入, 契约同 [coverSlot] (条目类型为 Book)
  */
 @Composable
 fun SearchScreen(
     viewModel: SearchViewModel,
     navCallbacks: SearchNavCallbacks = NoOpSearchNavCallbacks,
     modifier: Modifier = Modifier,
+    coverSlot: (@Composable (SearchBook, Modifier, isVideoCover: Boolean) -> Unit)? = null,
+    shelfCoverSlot: (@Composable (Book, Modifier, isVideoCover: Boolean) -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
 
@@ -167,6 +194,7 @@ fun SearchScreen(
     val bookshelfVersion by viewModel.bookshelfVersion.collectAsState()
     val precisionSearch by viewModel.precisionSearch.collectAsState()
     val searchFinishEmpty by viewModel.searchFinishEmpty.collectAsState()
+    val searchOptionsVersion by viewModel.searchOptionsVersion.collectAsState()
 
     // 搜索布局: 低 4 位=列数 (0/1 单列; 2..6 N 列网格), bit 4 (0x10)=视频标志
     val searchStyle = AppConfigProviders.get().searchLayout
@@ -245,8 +273,14 @@ fun SearchScreen(
                         styleIsVideo = styleIsVideo,
                         styleCols = styleCols,
                         bookshelfVersion = bookshelfVersion,
+                        shelfCoverSlot = shelfCoverSlot,
                     )
                 } else {
+                    SearchOptionsRow(
+                        options = viewModel.searchOptions,
+                        version = searchOptionsVersion,
+                        onOptionChanged = { viewModel.search(viewModel.searchKey, resetOptions = false) },
+                    )
                     ResultArea(
                         viewModel = viewModel,
                         navCallbacks = navCallbacks,
@@ -257,6 +291,7 @@ fun SearchScreen(
                         styleIsVideo = styleIsVideo,
                         styleCols = styleCols,
                         bookshelfVersion = bookshelfVersion,
+                        coverSlot = coverSlot,
                     )
                 }
             }
@@ -387,6 +422,7 @@ private fun ColumnScope.InputHelp(
     styleIsVideo: Boolean,
     styleCols: Int,
     bookshelfVersion: Int,
+    shelfCoverSlot: (@Composable (Book, Modifier, isVideoCover: Boolean) -> Unit)?,
 ) {
     val colors = AppTheme.colors
     val navPad = rememberNavigationBarPaddingValues()
@@ -399,26 +435,72 @@ private fun ColumnScope.InputHelp(
                 .fillMaxWidth()
                 .padding(8.dp),
         )
-        // 书架命中区 (单列展示, KMP 简化版无 ShelfCover)
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-        ) {
-            items(bookshelfBooks, key = { it.bookUrl }) { book ->
-                // 复用 ShelfListItem (BookshelfComposablesShared), 与书架列表项一致
-                ShelfListItem(
-                    book = book,
-                    isVideoStyle = styleCols == 0 && styleIsVideo,
-                    coverReloadTick = bookshelfVersion,
-                    refreshingUrls = emptySet(),
-                    showLastUpdateTime = true,
-                    showKindIntro = true,
-                    onClick = { navCallbacks.onBookClick(book) },
-                    onLongClick = { navCallbacks.onBookClick(book, true) },
-                    coverSlot = { b, modifier, isVideoCover -> SearchCoverPlaceholder(b, modifier, isVideoCover) },
-                    lastUpdateTextSlot = { ShelfLastUpdateText(book.latestChapterTime, remember { mutableIntStateOf(0) }) },
-                )
+        if (styleCols == 0 || (styleCols == 1 && !styleIsVideo)) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+            ) {
+                items(bookshelfBooks, key = { it.bookUrl }) { book ->
+                    ShelfListItem(
+                        book = book,
+                        isVideoStyle = styleCols == 0 && styleIsVideo,
+                        coverReloadTick = bookshelfVersion,
+                        refreshingUrls = emptySet(),
+                        showLastUpdateTime = true,
+                        showKindIntro = true,
+                        onClick = { navCallbacks.onBookClick(book) },
+                        onLongClick = { navCallbacks.onBookClick(book, true) },
+                        coverSlot = { b, modifier, isVideoCover ->
+                            if (shelfCoverSlot != null) {
+                                shelfCoverSlot(b, modifier, isVideoCover)
+                            } else {
+                                SearchCoverPlaceholder(b, modifier, isVideoCover)
+                            }
+                        },
+                        lastUpdateTextSlot = {
+                            ShelfLastUpdateText(
+                                book.durChapterTime,
+                                remember { mutableIntStateOf(0) },
+                            )
+                        },
+                    )
+                }
+            }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(spanCount),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+            ) {
+                items(bookshelfBooks, key = { it.bookUrl }) { book ->
+                    val cover: @Composable (Book, Modifier, Boolean) -> Unit = { b, modifier, isVideoCover ->
+                        if (shelfCoverSlot != null) {
+                            shelfCoverSlot(b, modifier, isVideoCover)
+                        } else {
+                            SearchCoverPlaceholder(b, modifier, isVideoCover)
+                        }
+                    }
+                    if (styleIsVideo) {
+                        ShelfVideoItem(
+                            book = book,
+                            coverReloadTick = bookshelfVersion,
+                            onClick = { navCallbacks.onBookClick(book) },
+                            onLongClick = { navCallbacks.onBookClick(book, true) },
+                            coverSlot = cover,
+                        )
+                    } else {
+                        ShelfGridItem(
+                            book = book,
+                            coverReloadTick = bookshelfVersion,
+                            refreshingUrls = emptySet(),
+                            onClick = { navCallbacks.onBookClick(book) },
+                            onLongClick = { navCallbacks.onBookClick(book, true) },
+                            coverSlot = cover,
+                        )
+                    }
+                }
             }
         }
     } else {
@@ -463,6 +545,169 @@ private fun ColumnScope.InputHelp(
     }
 }
 
+// ===== 单源搜索选项 =====
+
+@Composable
+private fun SearchOptionsRow(
+    options: List<ExploreOption>,
+    version: Int,
+    onOptionChanged: () -> Unit,
+) {
+    if (options.isEmpty()) return
+    var localVersion by remember { mutableIntStateOf(0) }
+    var dialogOptionName by remember { mutableStateOf<String?>(null) }
+    @Suppress("UNUSED_EXPRESSION") version
+    localVersion
+    Column(Modifier.fillMaxWidth()) {
+        options.forEach { option ->
+            key(option.name) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .then(
+                            if (option.multiSelect) {
+                                Modifier.clickable { dialogOptionName = option.name }
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (option.multiSelect) {
+                        StrokeTextChip(
+                            text = option.name,
+                            textColor = AppTheme.colors.primaryText,
+                        ) { dialogOptionName = option.name }
+                        option.options.forEach { (label, value) ->
+                            if (value in option.selectedValues) {
+                                Spacer(Modifier.width(4.dp))
+                                StrokeTextChip(
+                                    text = label,
+                                    textColor = AppTheme.colors.primaryText,
+                                ) { dialogOptionName = option.name }
+                            }
+                        }
+                    } else {
+                        StrokeTextChip(
+                            text = option.name,
+                            textColor = AppTheme.colors.primaryText,
+                        ) {
+                            if (option.resetToDefault()) {
+                                localVersion++
+                                onOptionChanged()
+                            }
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        option.options.forEach { (label, value) ->
+                            RadioChip(
+                                text = label,
+                                checked = option.selectedValue == value,
+                            ) {
+                                val changed = if (option.selectedValue == value) false else {
+                                    option.selectedValue = value
+                                    true
+                                }
+                                if (changed) {
+                                    localVersion++
+                                    onOptionChanged()
+                                }
+                            }
+                            Spacer(Modifier.width(4.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+    options.firstOrNull { it.multiSelect && it.name == dialogOptionName }?.let { option ->
+        MultiSelectOptionDialog(
+            option = option,
+            onDismiss = { dialogOptionName = null },
+            onConfirm = { selectedValues ->
+                if (selectedValues != option.selectedValues) {
+                    option.selectedValues.clear()
+                    option.selectedValues.addAll(selectedValues)
+                    localVersion++
+                    onOptionChanged()
+                }
+                dialogOptionName = null
+            },
+        )
+    }
+}
+
+@Composable
+private fun MultiSelectOptionDialog(
+    option: ExploreOption,
+    onDismiss: () -> Unit,
+    onConfirm: (Set<String>) -> Unit,
+) {
+    var query by remember(option) { mutableStateOf("") }
+    var working by remember(option) { mutableStateOf(option.selectedValues.toSet()) }
+    val visibleOptions = remember(option, query) {
+        val filter = query.trim()
+        if (filter.isEmpty()) {
+            option.options
+        } else {
+            option.options.filter { (label, value) ->
+                label.contains(filter, ignoreCase = true) ||
+                    value.contains(filter, ignoreCase = true)
+            }
+        }
+    }
+    AppAlertDialog(
+        onDismissRequest = onDismiss,
+        title = option.name,
+        neutralButton = AlertButton(rememberString("clear"), dismissOnClick = false) {
+            working = emptySet()
+        },
+        cancelButton = AlertButton(rememberString("cancel")),
+        okButton = AlertButton(
+            text = rememberString("ok"),
+            dismissOnClick = false,
+            onClick = { onConfirm(working) },
+        ),
+    ) {
+        AppSearchField(
+            value = query,
+            onValueChange = { query = it },
+            hint = rememberString("search"),
+            modifier = Modifier.padding(start = 24.dp, top = 8.dp, bottom = 4.dp),
+        )
+        LazyColumn(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = 400.dp),
+        ) {
+            items(visibleOptions) { (label, value) ->
+                val checked = value in working
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .toggleable(
+                            value = checked,
+                            role = Role.Checkbox,
+                        ) { selected ->
+                            working = if (selected) working + value else working - value
+                        }
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AppCheckbox(checked = checked, onCheckedChange = null)
+                    Text(
+                        text = label,
+                        color = AppTheme.colors.primaryText,
+                        fontSize = 15.sp,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
 // ===== 结果列表 =====
 
 @Composable
@@ -476,9 +721,10 @@ private fun ColumnScope.ResultArea(
     styleIsVideo: Boolean,
     styleCols: Int,
     bookshelfVersion: Int,
+    coverSlot: (@Composable (SearchBook, Modifier, isVideoCover: Boolean) -> Unit)?,
 ) {
     @Suppress("UNUSED_EXPRESSION") bookshelfVersion // 书架增删时重组刷新绿点
-    if (spanCount == 1) {
+    if (styleCols == 0 || (styleCols == 1 && !styleIsVideo)) {
         val state = rememberLazyListState()
         // 新批次插到头部时回顶 (对齐原 AdapterDataObserver 的 positionStart==0)
         val firstKey = books.firstOrNull()?.let { "${it.name}|${it.author}" }
@@ -498,16 +744,20 @@ private fun ColumnScope.ResultArea(
                 .weight(1f),
         ) {
             items(books, key = { "${it.name}|${it.author}" }) { book ->
+                val isVideoStyle = styleCols == 0 && styleIsVideo
                 SearchListItem(
                     book = book,
                     coverPath = book.coverUrl,
-                    isVideoStyle = styleCols == 0 && styleIsVideo,
+                    isVideoStyle = isVideoStyle,
                     inBookshelf = viewModel.isInBookShelf(book),
                     showShelfDot = true,
                     originCount = book.origins.size,
                     intro = book.intro,
                     onClick = { navCallbacks.onBookClick(book) },
                     onLongClick = { navCallbacks.onBookClick(book, true) },
+                    coverSlot = coverSlot?.let { slot ->
+                        { modifier -> slot(book, modifier, isVideoStyle) }
+                    },
                 )
             }
         }
@@ -530,22 +780,38 @@ private fun ColumnScope.ResultArea(
                 .weight(1f),
         ) {
             items(books, key = { "${it.name}|${it.author}" }) { book ->
-                // 复用 ShelfGridItem (BookshelfComposablesShared), SearchBook 经 toBook() 适配
                 val displayBook = remember(book) { book.toBook() }
-                ShelfGridItem(
-                    book = displayBook,
-                    coverReloadTick = 0,
-                    refreshingUrls = emptySet(),
-                    onClick = { navCallbacks.onBookClick(book) },
-                    onLongClick = { navCallbacks.onBookClick(book, true) },
-                    coverSlot = { _, modifier, isVideoCover -> SearchCoverPlaceholder(book, modifier, isVideoCover) },
-                )
+                val cover: @Composable (Book, Modifier, Boolean) -> Unit = { _, modifier, isVideoCover ->
+                    if (coverSlot != null) {
+                        coverSlot(book, modifier, isVideoCover)
+                    } else {
+                        SearchCoverPlaceholder(book, modifier, isVideoCover)
+                    }
+                }
+                if (styleIsVideo) {
+                    ShelfVideoItem(
+                        book = displayBook,
+                        coverReloadTick = 0,
+                        onClick = { navCallbacks.onBookClick(book) },
+                        onLongClick = { navCallbacks.onBookClick(book, true) },
+                        coverSlot = cover,
+                    )
+                } else {
+                    ShelfGridItem(
+                        book = displayBook,
+                        coverReloadTick = 0,
+                        refreshingUrls = emptySet(),
+                        onClick = { navCallbacks.onBookClick(book) },
+                        onLongClick = { navCallbacks.onBookClick(book, true) },
+                        coverSlot = cover,
+                    )
+                }
             }
         }
     }
 }
 
-// ===== 条目 (List tier, KMP 简化版: 无 ShelfCover/KindLabels/UnreadBadge) =====
+// ===== 条目 (List tier, KMP 简化版: 无 KindLabels/UnreadBadge) =====
 
 @Composable
 private fun SearchListItem(
@@ -560,6 +826,7 @@ private fun SearchListItem(
     onLongClick: () -> Unit,
     readTitle: String? = null,
     timeAgo: String? = null,
+    coverSlot: (@Composable (Modifier) -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
     Row(
@@ -568,23 +835,26 @@ private fun SearchListItem(
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(8.dp),
     ) {
-        // KMP 简化版封面: 用纯色 Box 占位 (ShelfCover 走 Glide 未下沉, KP3 再补)
-        // 0.75f: 16:9 视频封面按 3/4 高度收窄, 对齐 applyCoverHeight
+        // 视频列表按原 applyCoverHeight 收窄高度，宽度始终由封面比例反算。
         val coverHeight = AppConfigProviders.get().bookshelfCoverHeight
             .let { if (isVideoStyle) (it * 0.75f).toInt() else it }
-        Box(
-            Modifier
-                .size(width = (coverHeight * 0.75f).dp, height = coverHeight.dp)
-                .background(colors.bottomBackground),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (!coverPath.isNullOrBlank()) {
-                Text(
-                    text = book.name.take(2),
-                    color = colors.secondaryText,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                )
+        val coverWidth = coverHeight * coverAspectRatio(isVideoStyle)
+        val coverModifier = Modifier.size(width = coverWidth.dp, height = coverHeight.dp)
+        if (coverSlot != null) {
+            coverSlot(coverModifier)
+        } else {
+            Box(
+                coverModifier.background(colors.bottomBackground),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (!coverPath.isNullOrBlank()) {
+                    Text(
+                        text = book.name.take(2),
+                        color = colors.secondaryText,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                    )
+                }
             }
         }
         Column(
@@ -679,15 +949,16 @@ private fun SearchListItem(
     }
 }
 
+/** 封面宽高比 (对照 CoverRatio: NOVEL=3:4 → 0.75, VIDEO=16:9) */
+private fun coverAspectRatio(isVideoCover: Boolean): Float = if (isVideoCover) 16f / 9f else 0.75f
+
 /** 搜索项占位封面 (KMP 无 ShelfCover, 用纯色 Box + 书名首字占位, 与原 SearchListItem 封面一致) */
 @Composable
 private fun SearchCoverPlaceholder(book: BaseBook, modifier: Modifier, isVideoCover: Boolean) {
     val colors = AppTheme.colors
-    // 对照 CoverRatio: NOVEL=3:4 (0.75), VIDEO=16:9
-    val ratio = if (isVideoCover) 16f / 9f else 0.75f
     Box(
         modifier
-            .aspectRatio(ratio)
+            .aspectRatio(coverAspectRatio(isVideoCover))
             .background(colors.bottomBackground),
         contentAlignment = Alignment.Center,
     ) {

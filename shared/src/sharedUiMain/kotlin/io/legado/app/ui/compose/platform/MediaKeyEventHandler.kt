@@ -11,12 +11,14 @@ import androidx.compose.ui.input.key.type
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
  * 通用媒体键处理 (视频/音频/漫画播放器复用)。
  * 捕获阶段拦截, 桌面端无系统媒体键, 键盘等价替代。
+ *
+ * 空格/上/下/右带按住防抖 (KeyEventType 无 KeyRepeat, 用 heldKeys 自管, 一次按压只触发一次);
+ * 左方向键不防抖, 按住连续后退 seek 是预期行为。
  *
  * @param onTogglePlayPause 空格触发播放/暂停切换
  * @param onSeekDelta 视频用, 左右方向键 seek (传入 ±10000ms); null 时方向键降级为上/下一章
@@ -39,24 +41,24 @@ fun Modifier.handleMediaKeys(
     onNextChapter: (() -> Unit)? = null,
     scope: CoroutineScope,
 ): Modifier = composed {
-    // 长按倍速 timer 状态 (Job + 是否已触发倍速), remember 保证跨重组持久化
+    // 长按倍速 timer + 按住防抖状态, remember 保证跨重组持久化
     val state = remember { MediaKeyState() }
     onPreviewKeyEvent { event ->
         when (event.key) {
             Key.DirectionRight -> {
                 when (event.type) {
                     KeyEventType.KeyDown -> {
-                        // 短按立即触发 seek/next (长按则由 timer 接管倍速)
-                        if (onSeekDelta != null) onSeekDelta(10_000L) else onNext()
-                        // 启动长按倍速 timer (400ms 阈值, KeyEventType 无 KeyRepeat 故自管 timer)
-                        state.speedJob?.cancel()
-                        state.longPressActive = false
-                        state.speedJob = scope.launch {
-                            delay(400)
-                            state.longPressActive = true
-                            onSpeedChange(2.0f)
-                            while (isActive) {
-                                delay(80)
+                        // 自动重复的 KeyDown 只消费不重复触发
+                        // (否则重复 seek + 重启 timer, 长按倍速永远到不了 400ms 阈值)
+                        if (state.heldKeys.add(Key.DirectionRight)) {
+                            // 短按立即触发 seek/next (长按则由 timer 接管倍速)
+                            if (onSeekDelta != null) onSeekDelta(10_000L) else onNext()
+                            // 启动长按倍速 timer (400ms 阈值)
+                            state.speedJob?.cancel()
+                            state.longPressActive = false
+                            state.speedJob = scope.launch {
+                                delay(400)
+                                state.longPressActive = true
                                 onSpeedChange(2.0f)
                             }
                         }
@@ -64,6 +66,7 @@ fun Modifier.handleMediaKeys(
                     }
                     KeyEventType.KeyUp -> {
                         // 取消长按 timer, 若已触发倍速则恢复正常
+                        state.heldKeys.remove(Key.DirectionRight)
                         state.speedJob?.cancel()
                         state.speedJob = null
                         if (state.longPressActive) {
@@ -80,20 +83,38 @@ fun Modifier.handleMediaKeys(
                 if (onSeekDelta != null) onSeekDelta(-10_000L) else onPrev()
                 true
             }
-            Key.DirectionUp -> {
-                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                onPrev()
-                true
+            Key.DirectionUp -> when (event.type) {
+                KeyEventType.KeyDown -> {
+                    if (state.heldKeys.add(Key.DirectionUp)) onPrev()
+                    true
+                }
+                KeyEventType.KeyUp -> {
+                    state.heldKeys.remove(Key.DirectionUp)
+                    false
+                }
+                else -> false
             }
-            Key.DirectionDown -> {
-                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                onNext()
-                true
+            Key.DirectionDown -> when (event.type) {
+                KeyEventType.KeyDown -> {
+                    if (state.heldKeys.add(Key.DirectionDown)) onNext()
+                    true
+                }
+                KeyEventType.KeyUp -> {
+                    state.heldKeys.remove(Key.DirectionDown)
+                    false
+                }
+                else -> false
             }
-            Key.Spacebar -> {
-                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                onTogglePlayPause()
-                true
+            Key.Spacebar -> when (event.type) {
+                KeyEventType.KeyDown -> {
+                    if (state.heldKeys.add(Key.Spacebar)) onTogglePlayPause()
+                    true
+                }
+                KeyEventType.KeyUp -> {
+                    state.heldKeys.remove(Key.Spacebar)
+                    false
+                }
+                else -> false
             }
             Key.Escape, Key.Backspace -> {
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
@@ -105,8 +126,11 @@ fun Modifier.handleMediaKeys(
     }
 }
 
-// 长按倍速 timer 状态
+// 长按倍速 timer 状态 + 按住键防抖标记
 private class MediaKeyState {
     var speedJob: Job? = null
     var longPressActive: Boolean = false
+
+    /** 当前按住未松开的键 (吞掉自动重复 KeyDown, 一次按压只触发一次动作) */
+    val heldKeys = mutableSetOf<Key>()
 }

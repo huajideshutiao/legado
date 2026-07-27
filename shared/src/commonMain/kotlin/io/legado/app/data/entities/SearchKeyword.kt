@@ -4,8 +4,10 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import kotlin.time.Clock
+import kotlinx.serialization.Serializable
 
 
+@Serializable
 @Entity(tableName = "search_keywords", indices = [(Index(value = ["word"], unique = true))])
 data class SearchKeyword(
     /** 搜索关键词 */

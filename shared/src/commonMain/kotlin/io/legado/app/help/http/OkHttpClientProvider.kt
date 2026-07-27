@@ -1,11 +1,13 @@
 package io.legado.app.help.http
 
+import kotlin.concurrent.Volatile
+
 /**
  * OkHttpClient 单例注入接口（shared commonMain）。
  *
  * KP4 OkHttp 跨平台修复: 原直接 `import okhttp3.OkHttpClient`,
  * iOS/鸿蒙 target 无 OkHttp 变体编译失败; 现改用 [KmpHttpClient] 跨平台抽象
- * (jvmAndAndroidMain 经 typealias 等价 okhttp3.OkHttpClient; iOS/鸿蒙 stub)。
+ * (jvmAndAndroidMain 经 typealias 等价 okhttp3.OkHttpClient; iOS/鸿蒙 由 nativeMain 用 Ktor 包装实现)。
  *
  * `okHttpClient` 单例实现依赖 app-only 模块 (AppConfig/Cronet/CookieManager/
  * ProgressManager/SSLHelper 等), 故通过 provider 注入解耦。

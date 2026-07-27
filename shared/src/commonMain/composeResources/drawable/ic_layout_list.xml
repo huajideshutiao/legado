@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 来源: app/src/main/res/drawable/ic_layout_list.xml (列表布局: 方块+横线; 原 @color/primaryText, 由 Compose tint 着色, 这里用黑色) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M2,4h6v6h-6z M10,5h12v2h-12z M10,8h8v2h-8z"
+        android:fillColor="#FF000000" />
+    <path
+        android:pathData="M2,14h6v6h-6z M10,15h12v2h-12z M10,18h8v2h-8z"
+        android:fillColor="#FF000000" />
+</vector>

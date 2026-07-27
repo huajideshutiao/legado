@@ -4,6 +4,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelpChapterLocator
+import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.SourceConfig
 import io.legado.app.ui.book.changesource.ChangeBookSourcePlatform
@@ -14,11 +15,7 @@ import io.legado.app.ui.book.changesource.ChangeBookSourcePlatform
  * 桌面端换源功能简化版, 与 app 端 [io.legado.app.ui.book.changesource.ChangeBookSourceViewModel]
  * 内部的 AndroidChangeBookSourcePlatform 区别:
  *
- * # 简化项 (依赖未下沉的 app 端组件)
- *
  * - **getDurChapter**: 走 [BookHelpChapterLocator.getDurChapter] (已下沉 commonMain, 与 app 端同算法);
- * - **processContent**: 直接返回 content, 不走替换规则/简繁/重排段
- *   (ContentProcessor 依赖 appDb.replaceRuleDao / BookHelp / Pattern, 未下沉);
  * - **toastOnUi**: 用 println 替代 (桌面端无 Android Toast, 后续可接桌面通知系统)。
  *
  * # 已实现项 (从 PreferenceProviders 读)
@@ -55,7 +52,7 @@ class DesktopChangeBookSourcePlatform : ChangeBookSourcePlatform {
     // 桌面端默认值与 app 端 AppConfig 对齐 (AppConfig 中 4 个 changeSource* 默认值)
     // var: UI 切换开关时需写回 PreferenceProviders 持久化
     override var changeSourceCheckAuthor: Boolean
-        get() = prefs.getBoolean(PreferKey.changeSourceCheckAuthor, true)
+        get() = prefs.getBoolean(PreferKey.changeSourceCheckAuthor, false)
         set(value) {
             prefs.putBoolean(PreferKey.changeSourceCheckAuthor, value)
         }
@@ -88,16 +85,14 @@ class DesktopChangeBookSourcePlatform : ChangeBookSourcePlatform {
     // ---- ContentProcessor 相关 ----
 
     /**
-     * 桌面端简化: 直接返回 content, 不走替换规则/简繁/重排段。
+     * 走 [ContentProcessorProviders.get].getContent 完成正文处理 (替换规则/简繁/重排段/去重标题)。
      *
-     * ContentProcessor 依赖 appDb.replaceRuleDao / BookHelp / Pattern, 未下沉。
-     * 桌面端换源默认 changeSourceLoadWordCount=false, 不会触发此方法
-     * (仅 loadBookWordCount 调用), 但保留 no-op 实现以防用户开启字数加载。
+     * 桌面端换源默认 changeSourceLoadWordCount=false, 不会触发此方法 (仅 loadBookWordCount 调用)。
      */
     override fun processContent(
         oldBook: Book, chapter: BookChapter, content: String, includeTitle: Boolean
     ): CharSequence {
-        return content
+        return ContentProcessorProviders.get().getContent(oldBook, chapter, content, includeTitle, useReplace = true)
     }
 
     // ---- SourceConfig 评分相关 ----

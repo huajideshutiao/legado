@@ -2,6 +2,7 @@ package io.legado.app.model
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
+import kotlin.concurrent.Volatile
 
 /**
  * 音频播放 Service 派发抽象 (shared commonMain)。

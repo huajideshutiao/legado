@@ -10,7 +10,7 @@ import androidx.room.Update
 import io.legado.app.data.dealGroups
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
-import kotlinx.coroutines.Dispatchers.IO
+import io.legado.app.help.coroutine.IoDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -309,18 +309,18 @@ fun flowSearch(searchKey: String, enabled: Boolean? = null): Flow<List<BookSourc
     suspend fun flowGroups(): Flow<List<String>> {
         return flowGroupsUnProcessed().map { list ->
             dealGroups(list)
-        }.flowOn(IO)
+        }.flowOn(IoDispatcher)
     }
 
     suspend fun flowExploreGroups(): Flow<List<String>> {
         return flowExploreGroupsUnProcessed().map { list ->
             dealGroups(list)
-        }.flowOn(IO)
+        }.flowOn(IoDispatcher)
     }
 
     suspend fun flowEnabledGroups(): Flow<List<String>> {
         return flowEnabledGroupsUnProcessed().map { list ->
             dealGroups(list)
-        }.flowOn(IO)
+        }.flowOn(IoDispatcher)
     }
 }

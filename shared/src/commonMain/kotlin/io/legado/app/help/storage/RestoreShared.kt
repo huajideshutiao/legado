@@ -23,6 +23,8 @@ import io.legado.app.help.DirectLinkUploadStoreProviders
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.upType
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.config.ReadBookConfigProviders
+import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.help.parseDirectLinkUploadRule
 import io.legado.app.help.ruleFileName
 import io.legado.app.model.fileBook.FileBook
@@ -197,45 +199,39 @@ object RestoreShared {
                 }
             }
         }.onFailure {
-            AppLog.put("RestoreShared 恢复服务器配置出错\n${it.localizedMessage}", it)
+            AppLog.put("RestoreShared 恢复服务器配置出错\n${it.message}", it)
         }
 
         currentCoroutineContext().ensureActive()
 
         // 2.1 app 端独有配置文件恢复 (与 app 端 Restore.kt:180-217 同语义)
-        // readConfig.json: 解析 JSON → 填充 ReadBookConfigShared.configList
-        // shareReadConfig.json: 解析 JSON → 填充 ReadBookConfigShared.shareConfig
+        // readConfig.json / shareReadConfig.json: 复制回 filesDir 后重载入 (落盘, 非仅内存)
         // themeConfig.json: 解析 JSON → 通过 ThemeConfigProvider.addConfig 逐个写入
         // directLinkUploadRule.json: 桌面端无 DirectLinkUpload, 跳过
-        runCatching {
-            // 与 app 端 Restore.kt 一致: 备份忽略项勾选「阅读界面」时不恢复阅读界面配置
-            if (!BackupConfigShared.ignoreReadConfig) {
-                val readConfigFile = path + sep + "readConfig.json"
+        // 与 app 端 Restore.kt 一致: 备份忽略项勾选「阅读界面」时不恢复阅读界面配置
+        if (!BackupConfigShared.ignoreReadConfig) {
+            runCatching {
+                val readConfigFile = path + sep + ReadBookConfigShared.configFileName
                 if (BackupFileOps.exists(readConfigFile)) {
-                    val json = BackupFileOps.readText(readConfigFile)
-                    GSON.fromJsonArray<io.legado.app.help.config.ReadStyleConfig>(json)
-                        .getOrNull()?.let { configs ->
-                            val readBookConfig = io.legado.app.help.config.ReadBookConfigProviders.get()
-                            readBookConfig.configList.clear()
-                            if (configs.isNotEmpty()) {
-                                readBookConfig.configList.addAll(configs)
-                            } else {
-                                readBookConfig.configList.add(io.legado.app.help.config.ReadStyleConfig())
-                            }
-                        }
+                    val readBookConfig = ReadBookConfigProviders.get()
+                    BackupFileOps.delete(readBookConfig.configFilePath)
+                    BackupFileOps.copyFile(readConfigFile, readBookConfig.configFilePath)
+                    readBookConfig.initConfigs()
                 }
-                val shareConfigFile = path + sep + "shareReadConfig.json"
-                if (BackupFileOps.exists(shareConfigFile)) {
-                    val json = BackupFileOps.readText(shareConfigFile)
-                    runCatching {
-                        io.legado.app.utils.KS_JSON.decodeFromString<io.legado.app.help.config.ReadStyleConfig>(json)
-                    }.getOrNull()?.let { config ->
-                        io.legado.app.help.config.ReadBookConfigProviders.get().shareConfig = config
-                    }
-                }
+            }.onFailure {
+                AppLog.put("RestoreShared 恢复阅读界面出错\n${it.message}", it)
             }
-        }.onFailure {
-            AppLog.put("RestoreShared 恢复 readConfig 出错\n${it.localizedMessage}", it)
+            runCatching {
+                val shareConfigFile = path + sep + ReadBookConfigShared.shareConfigFileName
+                if (BackupFileOps.exists(shareConfigFile)) {
+                    val readBookConfig = ReadBookConfigProviders.get()
+                    BackupFileOps.delete(readBookConfig.shareConfigFilePath)
+                    BackupFileOps.copyFile(shareConfigFile, readBookConfig.shareConfigFilePath)
+                    readBookConfig.initShareConfig()
+                }
+            }.onFailure {
+                AppLog.put("RestoreShared 恢复阅读界面出错\n${it.message}", it)
+            }
         }
         runCatching {
             val themeConfigFile = path + sep + "themeConfig.json"
@@ -248,7 +244,7 @@ object RestoreShared {
                     }
             }
         }.onFailure {
-            AppLog.put("RestoreShared 恢复 themeConfig 出错\n${it.localizedMessage}", it)
+            AppLog.put("RestoreShared 恢复 themeConfig 出错\n${it.message}", it)
         }
         // directLinkUploadRule.json (与 app 端 Restore.kt ACache.put(ruleFileName, json) 同语义)
         // 解析 JSON → DirectLinkUploadRule, 通过 DirectLinkUploadStoreProviders.putConfig 写回
@@ -261,7 +257,7 @@ object RestoreShared {
                 }
             }
         }.onFailure {
-            AppLog.put("RestoreShared 恢复 directLinkUploadRule 出错\n${it.localizedMessage}", it)
+            AppLog.put("RestoreShared 恢复 directLinkUploadRule 出错\n${it.message}", it)
         }
 
         currentCoroutineContext().ensureActive()
@@ -292,7 +288,7 @@ object RestoreShared {
                 }
             }
         }.onFailure {
-            AppLog.put("RestoreShared 恢复 config.json 出错\n${it.localizedMessage}", it)
+            AppLog.put("RestoreShared 恢复 config.json 出错\n${it.message}", it)
         }
 
         currentCoroutineContext().ensureActive()
@@ -372,7 +368,7 @@ object RestoreShared {
             val json = BackupFileOps.readText(file)
             GSON.fromJsonArray<T>(json).getOrThrow()
         }.onFailure {
-            AppLog.put("$fileName\n读取解析出错\n${it.localizedMessage}", it)
+            AppLog.put("$fileName\n读取解析出错\n${it.message}", it)
         }.getOrNull()
     }
 

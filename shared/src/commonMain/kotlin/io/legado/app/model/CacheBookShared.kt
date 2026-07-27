@@ -16,6 +16,7 @@ import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.utils.concurrent.newConcurrentMap
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
+import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
@@ -366,7 +367,7 @@ object CacheBookShared {
                 waitDownloadSet.add(chapter.index)
             } else {
                 AppLog.put(
-                    "下载${book.name}-${chapter.title}失败\n${error.localizedMessage}",
+                    "下载${book.name}-${chapter.title}失败\n${error.message}",
                     error
                 )
             }
@@ -386,7 +387,7 @@ object CacheBookShared {
                 waitDownloadSet.add(chapter.index)
             } else {
                 AppLog.put(
-                    "下载${book.name}-${chapter.title}失败\n${error.localizedMessage}",
+                    "下载${book.name}-${chapter.title}失败\n${error.message}",
                     error
                 )
             }
@@ -510,7 +511,7 @@ object CacheBookShared {
                         //出现错误等待一秒后重新加入待下载列表
                         delay(1000)
                         onPostError(chapter, it)
-                        downloadFinish(chapter, "获取正文失败\n${it.localizedMessage}")
+                        downloadFinish(chapter, "获取正文失败\n${it.message}")
                     }.onCancel {
                         onCancel(chapterIndex)
                     }.onFinally {
@@ -552,7 +553,7 @@ object CacheBookShared {
                 }
                 onError(chapter, e)
                 callback.markDownloadFailed(chapter.index)
-                return "获取正文失败\n${e.localizedMessage}"
+                return "获取正文失败\n${e.message}"
             } finally {
                 postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
             }
@@ -597,7 +598,7 @@ object CacheBookShared {
                 }.onError {
                     onError(chapter, it)
                     callback.markDownloadFailed(chapter.index)
-                    downloadFinish(chapter, "获取正文失败\n${it.localizedMessage}", resetPageOffset)
+                    downloadFinish(chapter, "获取正文失败\n${it.message}", resetPageOffset)
                 }.onCancel {
                     onCancel(chapter.index)
                     downloadFinish(chapter, "download canceled", resetPageOffset, true)

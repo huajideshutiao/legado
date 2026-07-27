@@ -1,5 +1,6 @@
 package io.legado.app.constant
 
+import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 

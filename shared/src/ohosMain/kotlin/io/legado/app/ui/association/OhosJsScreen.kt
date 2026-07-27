@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.component.Md2TextField
+import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.platform.rememberString
 
 /**
@@ -44,7 +44,7 @@ import io.legado.app.ui.compose.platform.rememberString
  *
  * # 简化项
  *
- * - 代码编辑区用 [Md2TextField] 替代 CodeView (与 [OhosBookSourceEditScreen] 一致,
+ * - 代码编辑区用 [AppTextField] 替代 CodeView (与 [OhosBookSourceEditScreen] 一致,
  *   CodeView 是 app 端 Android 专属控件, KMP 版已移除)
  * - JS 运行暂 toast 提示待接入: 实际执行需 `JsEngines` + `JsFn` + `runWithAuth` 授权上下文
  *   (依赖 `IntentData`/`JsScope` 桥接, 后续 KP)
@@ -78,8 +78,8 @@ fun OhosJsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // 代码编辑区 (对照 OhosBookSourceEditScreen.codeEditorSlot 的 Md2TextField 用法)
-            Md2TextField(
+            // 代码编辑区 (对照 OhosBookSourceEditScreen.codeEditorSlot 的 AppTextField 用法)
+            AppTextField(
                 value = code,
                 onValueChange = { code = it },
                 modifier = Modifier.fillMaxWidth(),

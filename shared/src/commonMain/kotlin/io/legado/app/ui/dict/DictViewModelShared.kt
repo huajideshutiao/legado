@@ -85,7 +85,7 @@ class DictViewModelShared(
      * - 先 `dictJob?.cancel()` 取消上次查询 (与 app 端完全一致);
      * - 调 `dictRule.search(word)` 执行查询 (扩展函数已下沉 commonMain);
      * - 成功回调 `onFinally.invoke(it)` 传查询结果;
-     * - 失败回调 `onFinally.invoke(it.localizedMessage ?: "ERROR")` 传错误信息
+     * - 失败回调 `onFinally.invoke(it.message ?: "ERROR")` 传错误信息
      *   (与 app 端 onError 完全一致, 不"偷懒"合并回调签名);
      * - 保存返回的 Coroutine 到 [dictJob], 供下次调用 cancel。
      *
@@ -106,7 +106,7 @@ class DictViewModelShared(
         }.onSuccess {
             onFinally.invoke(it)
         }.onError {
-            onFinally.invoke(it.localizedMessage ?: "ERROR")
+            onFinally.invoke(it.message ?: "ERROR")
         }
     }
 }

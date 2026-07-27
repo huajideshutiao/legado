@@ -56,6 +56,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import splitties.init.appCtx
@@ -370,6 +371,7 @@ object Restore {
      * 2. v82 格式：有 day，readTime 毫秒，lastRead 毫秒
      * 3. 新格式：有 startSec/endSec（秒）
      */
+    @Serializable
     private data class ReadRecordBackup(
         val bookName: String = "",
         val day: Int = 0,

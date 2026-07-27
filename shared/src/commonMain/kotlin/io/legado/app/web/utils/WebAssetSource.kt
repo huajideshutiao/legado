@@ -1,5 +1,7 @@
 package io.legado.app.web.utils
 
+import kotlin.concurrent.Volatile
+
 /**
  * Web 静态资源 (web/index.html 等) 读取抽象 (shared commonMain)。
  *

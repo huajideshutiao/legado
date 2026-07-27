@@ -2,6 +2,7 @@ package io.legado.app.model.script
 
 import io.legado.app.constant.AppConst
 import io.legado.app.help.image.ImageOps
+import kotlin.concurrent.Volatile
 
 /**
  * JsBindings 的平台注入点：`platform` 名 + `image` 实现（附录 J KJ1-a/b）。

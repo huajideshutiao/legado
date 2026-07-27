@@ -1,5 +1,7 @@
 package io.legado.app.help.i18n
 
+import kotlin.concurrent.Volatile
+
 /**
  * 非 UI 层字符串通道 (KJ3 方案 b)。model/help 的异常/报错文案统一走 appString 取本地化字符串,
  * key 与 R.string 资源名一一对应; 本文件零 Android 依赖, 已下沉 commonMain。

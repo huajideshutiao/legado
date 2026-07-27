@@ -1,5 +1,7 @@
 package io.legado.app.help.config
 
+import kotlin.concurrent.Volatile
+
 /**
  * 备份密码 Provider 接口。
  *

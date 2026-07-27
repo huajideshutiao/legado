@@ -1,5 +1,7 @@
 package io.legado.app.help.source
 
+import kotlin.concurrent.Volatile
+
 object SourceNetworkProviders {
     @Volatile var impl: SourceNetworkProvider? = null
 }

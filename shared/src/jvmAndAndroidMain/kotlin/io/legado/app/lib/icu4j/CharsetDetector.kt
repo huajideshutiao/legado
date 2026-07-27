@@ -179,7 +179,7 @@ class CharsetDetector  //   Question: Should we have getters corresponding to th
 //          working.
         val matches = detectAll()
 
-        if (matches == null || matches.size == 0) {
+        if (matches.size == 0) {
             return null
         }
 
@@ -600,7 +600,7 @@ class CharsetDetector  //   Question: Should we have getters corresponding to th
             list.add(CSRecognizerInfo(CharsetRecog_IBM420_ar_rtl(), false))
             list.add(CSRecognizerInfo(CharsetRecog_IBM420_ar_ltr(), false))
 
-            ALL_CS_RECOGNIZERS = Collections.unmodifiableList<CSRecognizerInfo?>(list)
+            ALL_CS_RECOGNIZERS = Collections.unmodifiableList<CSRecognizerInfo>(list)
         }
     }
 }

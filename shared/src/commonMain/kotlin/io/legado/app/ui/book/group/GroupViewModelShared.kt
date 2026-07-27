@@ -2,10 +2,10 @@ package io.legado.app.ui.book.group
 
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookGroup
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.mainDispatcher
 import io.legado.app.help.coroutine.printOnDebug
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -84,7 +84,7 @@ class GroupViewModelShared(
      * @param finally 完成回调 (成功 / 失败均触发), 典型为 `dismiss()`; null 表示无回调
      */
     fun upGroup(vararg bookGroup: BookGroup, finally: (() -> Unit)? = null) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             try {
                 appDb.bookGroupDao.update(*bookGroup)
             } catch (e: Throwable) {
@@ -115,7 +115,7 @@ class GroupViewModelShared(
         cover: String?,
         finally: () -> Unit
     ) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             try {
                 val groupId = appDb.bookGroupDao.getUnusedId()
                 val bookGroup = BookGroup(
@@ -147,7 +147,7 @@ class GroupViewModelShared(
      * @param finally 完成回调 (成功 / 失败均触发), 典型为 `dismiss()`
      */
     fun delGroup(bookGroup: BookGroup, finally: () -> Unit) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             try {
                 appDb.bookGroupDao.delete(bookGroup)
                 appDb.bookDao.removeGroup(bookGroup.groupId)

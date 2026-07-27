@@ -2,8 +2,8 @@ package io.legado.app.ui.association
 
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.RuleSub
+import io.legado.app.help.coroutine.IoDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
@@ -48,7 +48,7 @@ class RuleSubViewModelShared(
     private val appDb get() = AppDbProviders.get()
 
     fun save(ruleSub: RuleSub) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             if (ruleSub.customOrder == 0) {
                 ruleSub.customOrder =
                     (appDb.ruleSubDao.all().maxOfOrNull { it.customOrder } ?: 0) + 1
@@ -58,13 +58,13 @@ class RuleSubViewModelShared(
     }
 
     fun delete(ruleSub: RuleSub) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             appDb.ruleSubDao.delete(ruleSub)
         }
     }
 
     fun upOrder(items: List<RuleSub>) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             val array = items.mapIndexed { index, ruleSub ->
                 ruleSub.copy(customOrder = index + 1)
             }.toTypedArray()
@@ -73,7 +73,7 @@ class RuleSubViewModelShared(
     }
 
     fun toTop(ruleSub: RuleSub) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             val minOrder = (appDb.ruleSubDao.all().minOfOrNull { it.customOrder } ?: 0) - 1
             ruleSub.customOrder = minOrder
             appDb.ruleSubDao.update(ruleSub)
@@ -81,7 +81,7 @@ class RuleSubViewModelShared(
     }
 
     fun toBottom(ruleSub: RuleSub) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             val maxOrder = (appDb.ruleSubDao.all().maxOfOrNull { it.customOrder } ?: 0) + 1
             ruleSub.customOrder = maxOrder
             appDb.ruleSubDao.update(ruleSub)

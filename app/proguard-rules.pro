@@ -41,6 +41,8 @@
 # @Keep 通用规则（项目内大量类已使用 @Keep，简化重复 -keep）
 ############################
 -keep,allowoptimization @androidx.annotation.Keep class * { *; }
+# AnalyzeRuleCore 下沉 commonMain 后无法用 androidx @Keep (无 common 变体), 按类名 keep (JS 反射调用其方法)
+-keep,allowoptimization class io.legado.app.model.analyzeRule.AnalyzeRuleCore { *; }
 -keepclassmembers,allowoptimization class * {
     @androidx.annotation.Keep <methods>;
     @androidx.annotation.Keep <fields>;

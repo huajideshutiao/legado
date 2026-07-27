@@ -2,7 +2,7 @@ package io.legado.desktop.ui.book.read.config
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Surface
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -33,17 +33,14 @@ import io.legado.app.ui.compose.theme.AppTheme
  *
  * - 在 [SharedPaddingConfigScreen] 之上加 [AppTitleBar] (标题"边距配置" + 返回按钮)
  * - 装配一个桌面版 [PaddingConfigController] (内部 state 持有, 写不持久化, 加 TODO)
- * - 装配 onPostConfig 回调 (no-op, 加 TODO; 桌面端 ReadBookEvents 未下沉)
  * - 注入 4 个 DesktopXxxProvider 供 commonMain 的 [AppTheme] /
  *   [SharedPaddingConfigScreen] 通过 LocalXxx 取依赖
  *
  * # 简化项 (依赖未下沉的功能用 TODO 注释 + no-op)
  *
  * - controller: app 端 thin wrapper 桥接到 ReadBookConfig (持久化到 SharedPreferences),
- *   桌面端 ReadBookConfig 未下沉, 用 [DesktopPaddingConfigController] (内部 state 持有,
+ *   用 [DesktopPaddingConfigController] (内部 state 持有,
  *   写不持久化, 重进页面状态丢失); 后续接入 ReadBookConfig KMP 化后改为真实持久化
- * - onPostConfig: app 端调用 ReadBookEvents.postConfig(...) 刷新阅读页渲染,
- *   桌面端 ReadBookEvents 未下沉, 暂 no-op
  *
  * @param onBack 返回回调 (切回 SETTINGS 路由, 由 DesktopApp 注入)
  */
@@ -84,7 +81,6 @@ fun PaddingConfigScreen(onBack: () -> Unit) {
 private fun PaddingConfigContent() {
     val controller = remember { DesktopPaddingConfigController() }
     val onPostConfig: (List<ReadConfigChange>) -> Unit = {
-        // TODO: 桌面端 ReadBookEvents.postConfig 未下沉, 暂不刷新阅读页渲染
     }
 
     SharedPaddingConfigScreen(

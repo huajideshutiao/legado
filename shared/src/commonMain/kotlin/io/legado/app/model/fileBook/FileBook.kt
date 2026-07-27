@@ -74,7 +74,7 @@ object FileBook : BaseFileBook {
         return try {
             book.getHandler().getContent(book, chapter)
         } catch (e: Exception) {
-            "获取本地书籍内容失败\n${e.localizedMessage}".also { AppLog.put(it, e) }
+            "获取本地书籍内容失败\n${e.message}".also { AppLog.put(it, e) }
         }
     }
 

@@ -6,6 +6,8 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.utils.cnCompare
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -50,9 +52,7 @@ enum class BookshelfTier { LIST, GRID }
  *   桌面端无该需求; 后续如需可通过 EventBusProvider 扩展
  * - 不实现 addBookByUrl/importBookshelf 等添加流程 (依赖 WebBook/okHttpClient/IntentData),
  *   这些下沉到 shared 需更大改造, 留待后续任务
- * - 排序时 `cnCompare` 依赖 `java.text.Collator`+`android.os.Build` (Android-specific),
- *   commonMain 改用 [String.compareTo] (按 Unicode 序), 中文排序结果与 app 端略有差异,
- *   但 sort=2(书名)/5(作者) 两种排序语义对桌面端足够
+ * - 排序走已下沉的 [String.cnCompare] (commonMain expect/actual), 与 app 端拼音序一致
  *
  * 修改数据要 copy, 直接修改 entity 字段会导致 Compose 不刷新 (data class equals 按 id)。
  */
@@ -119,7 +119,7 @@ class BookshelfViewModel {
             // 过滤内容相同的重复 emit, 避免无关 DAO 触发重排与重组
             bookDao.flowByGroup(groupId).distinctUntilChanged().catch {
                 AppLog.put("书架书籍数据加载出错 groupId=$groupId", it)
-            }.flowOn(Dispatchers.IO).conflate().collect { list ->
+            }.flowOn(IoDispatcher).conflate().collect { list ->
                 _books.value = sortBooks(list, sortOf(groupId))
             }
         }
@@ -141,17 +141,17 @@ class BookshelfViewModel {
      * sort:
      * - 0: 阅读时间 (durChapterTime 倒序)
      * - 1: 更新时间 (latestChapterTime 倒序)
-     * - 2: 书名 (String.compareTo, 简化自 cnCompare)
+     * - 2: 书名 (cnCompare 拼音序)
      * - 3: 手动 (order 正序)
      * - 4: 综合时间 (max(latestChapterTime, durChapterTime) 倒序)
-     * - 5: 作者 (String.compareTo, 简化自 cnCompare)
+     * - 5: 作者 (cnCompare 拼音序)
      */
     private fun sortBooks(list: List<Book>, sort: Int): List<Book> = when (sort) {
         1 -> list.sortedByDescending { it.latestChapterTime }
-        2 -> list.sortedWith { a, b -> a.name.compareTo(b.name) }
+        2 -> list.sortedWith { a, b -> a.name.cnCompare(b.name) }
         3 -> list.sortedBy { it.order }
         4 -> list.sortedByDescending { maxOf(it.latestChapterTime, it.durChapterTime) }
-        5 -> list.sortedWith { a, b -> a.author.compareTo(b.author) }
+        5 -> list.sortedWith { a, b -> a.author.cnCompare(b.author) }
         else -> list.sortedByDescending { it.durChapterTime }
     }
 

@@ -1,6 +1,7 @@
 package io.legado.app.help
 
 import io.legado.app.data.entities.BaseSource
+import kotlin.concurrent.Volatile
 
 /**
  * F2: BookSource/HttpTTS 实体下沉解除 JsExtensions 继承依赖。

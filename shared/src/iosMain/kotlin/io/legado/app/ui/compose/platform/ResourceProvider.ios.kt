@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import io.legado.app.ui.compose.theme.LocalAppColors
+import io.legado.app.utils.formatNative
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.ic_add
 import legado.shared.generated.resources.ic_arrow_back
@@ -259,7 +260,7 @@ actual fun rememberPainter(key: String): Painter {
 @Composable
 actual fun rememberString(key: String, vararg formatArgs: Any): String {
     val raw = sharedStringTable[key] ?: key
-    return if (formatArgs.isEmpty()) raw else String.format(raw, *formatArgs)
+    return if (formatArgs.isEmpty()) raw else raw.formatNative(*formatArgs)
 }
 
 @Composable

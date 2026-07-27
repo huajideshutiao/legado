@@ -2,6 +2,7 @@ package io.legado.app.model.fileBook
 
 import io.legado.app.utils.File
 import io.legado.app.utils.InputStream
+import kotlin.concurrent.Volatile
 
 /**
  * Bitmap 解码压缩跨平台接口 (commonMain)。
@@ -15,7 +16,8 @@ import io.legado.app.utils.InputStream
  *   在 `App.onCreate` 经 [BitmapProviders.register] 注入。
  * - **Desktop (desktop)**: `DesktopBitmapProvider` 用 `javax.imageio.ImageIO`
  *   实现, 在 `Main.kt` 注入。
- * - **iOS / 鸿蒙**: 暂未实现 (stub), 后续补。
+ * - **iOS / 鸿蒙**: `IosBitmapProvider` (UIImage) / `OhosBitmapProvider`,
+ *   在各自 ProviderRegistry 注册。
  *
  * 模式参考 [io.legado.app.help.book.BookHelpProviders] /
  * [io.legado.app.help.book.BookStorageProviders]。

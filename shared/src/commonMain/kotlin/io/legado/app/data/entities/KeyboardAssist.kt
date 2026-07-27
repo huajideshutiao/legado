@@ -2,8 +2,10 @@ package io.legado.app.data.entities
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import kotlinx.serialization.Serializable
 
 
+@Serializable
 @Entity(tableName = "keyboardAssists", primaryKeys = ["type", "key"])
 data class KeyboardAssist(
     @ColumnInfo(defaultValue = "0")

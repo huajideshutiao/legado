@@ -1,0 +1,77 @@
+package = io.legado.app.nativecrypto.mbedtls
+headers = mbedtls/build_info.h mbedtls/platform.h mbedtls/platform_util.h mbedtls/error.h \
+    mbedtls/md.h mbedtls/md5.h mbedtls/ripemd160.h mbedtls/sha1.h mbedtls/sha256.h mbedtls/sha512.h \
+    mbedtls/aes.h mbedtls/des.h mbedtls/cipher.h mbedtls/gcm.h mbedtls/ccm.h \
+    mbedtls/bignum.h mbedtls/rsa.h mbedtls/oid.h mbedtls/asn1.h mbedtls/asn1write.h \
+    mbedtls/pk.h mbedtls/pem.h mbedtls/base64.h mbedtls/entropy.h mbedtls/ctr_drbg.h
+headerFilter = mbedtls/*
+compilerOpts = -DMBEDTLS_CONFIG_FILE="legado_mbedtls_config.h"
+
+---
+
+#include "mbedtls/pk.h"
+#include "mbedtls/rsa.h"
+#include "mbedtls/entropy.h"
+#include "mbedtls/ctr_drbg.h"
+#include "mbedtls/cipher.h"
+#include "mbedtls/gcm.h"
+#include "mbedtls/md.h"
+
+// ============ C wrapper for static inline ============
+// 与 quickjs.def 同模式: cinterop 对依赖 MBEDTLS_PRIVATE 宏的 static inline 不保证可绑定,
+// 提供 extern wrapper (前缀 lg_ 避免符号冲突)。头文件与 C 源单一数据源在 src/cinterop/mbedtls/,
+// iOS (iosArm64/iosSimulatorArm64) 与鸿蒙 (ohosArm64) 三 target 共用, 升级只改该目录。
+
+// pk.h 的 mbedtls_pk_rsa 按值收 context, 此处转指针版; 非 RSA key 返回 NULL
+mbedtls_rsa_context *lg_pk_rsa(const mbedtls_pk_context *pk) {
+    return mbedtls_pk_rsa(*pk);
+}
+
+// entropy+ctr_drbg 一体 seed: f_entropy 回调指针在 C 侧取, 规避 K/N staticCFunction 对 size_t 别名的签名脆弱性
+int lg_ctr_drbg_seed(mbedtls_ctr_drbg_context *drbg, mbedtls_entropy_context *entropy,
+                     const unsigned char *custom, size_t custom_len) {
+    return mbedtls_ctr_drbg_seed(drbg, mbedtls_entropy_func, entropy, custom, custom_len);
+}
+
+// f_rng 族包装: p_rng 固定 CTR_DRBG, 互斥由 Kotlin 层 MbedTlsRng 锁保证 (THREADING_C 未开)
+int lg_pk_encrypt(mbedtls_pk_context *pk, const unsigned char *input, size_t ilen,
+                  unsigned char *output, size_t *olen, size_t osize, mbedtls_ctr_drbg_context *drbg) {
+    return mbedtls_pk_encrypt(pk, input, ilen, output, olen, osize, mbedtls_ctr_drbg_random, drbg);
+}
+
+int lg_pk_decrypt(mbedtls_pk_context *pk, const unsigned char *input, size_t ilen,
+                  unsigned char *output, size_t *olen, size_t osize, mbedtls_ctr_drbg_context *drbg) {
+    return mbedtls_pk_decrypt(pk, input, ilen, output, olen, osize, mbedtls_ctr_drbg_random, drbg);
+}
+
+int lg_pk_sign(mbedtls_pk_context *pk, mbedtls_md_type_t md_alg,
+               const unsigned char *hash, size_t hash_len,
+               unsigned char *sig, size_t sig_size, size_t *sig_len,
+               mbedtls_ctr_drbg_context *drbg) {
+    return mbedtls_pk_sign(pk, md_alg, hash, hash_len, sig, sig_size, sig_len,
+                           mbedtls_ctr_drbg_random, drbg);
+}
+
+// RSA 裸原语 (私钥加密/公钥解密向的手工 type-01 padding 配套), f_rng 供盲化
+int lg_rsa_private(mbedtls_rsa_context *rsa, mbedtls_ctr_drbg_context *drbg,
+                   const unsigned char *input, unsigned char *output) {
+    return mbedtls_rsa_private(rsa, mbedtls_ctr_drbg_random, drbg, input, output);
+}
+
+// 枚举以函数/包装导出, 规避 cinterop 对 C enum 表示 (Kotlin enum vs 整型常量) 的不确定性
+mbedtls_md_type_t lg_md_none(void) {
+    return MBEDTLS_MD_NONE;
+}
+
+int lg_cipher_setkey(mbedtls_cipher_context_t *ctx, const unsigned char *key,
+                     int key_bitlen, int encrypt) {
+    return mbedtls_cipher_setkey(ctx, key, key_bitlen, encrypt ? MBEDTLS_ENCRYPT : MBEDTLS_DECRYPT);
+}
+
+int lg_cipher_set_padding_none(mbedtls_cipher_context_t *ctx) {
+    return mbedtls_cipher_set_padding_mode(ctx, MBEDTLS_PADDING_NONE);
+}
+
+int lg_gcm_setkey_aes(mbedtls_gcm_context *ctx, const unsigned char *key, unsigned int keybits) {
+    return mbedtls_gcm_setkey(ctx, MBEDTLS_CIPHER_ID_AES, key, keybits);
+}

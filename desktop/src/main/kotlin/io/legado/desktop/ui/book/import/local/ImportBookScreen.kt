@@ -1,9 +1,6 @@
 package io.legado.desktop.ui.book.import.local
 
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -14,7 +11,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import io.legado.app.ui.compose.component.Md2TextField
+import androidx.compose.ui.unit.dp
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern.archiveFileRegex
 import io.legado.app.constant.AppPattern.bookFileRegex
@@ -450,36 +450,30 @@ private fun ImportBookContent(onBack: () -> Unit) {
     )
     SharedImportBookScreen(state, actions)
 
-    // ---- AlertDialog 渲染 (替换原 javax.swing.JOptionPane.showInputDialog) ----
+    // ---- 对话框渲染 (替换原 javax.swing.JOptionPane.showInputDialog) ----
     // 文件名导入 js 输入对话框 (alertImportFileName 触发 showImportFileNameDialog=true;
     //   确认按钮调 AppLog.put 记录输入, 复刻原 `js ?: return` + AppLog.put 语义;
-    //   filenameImportJsTitleLabel 用作 title, filenameImportJsSummaryLabel 用作 OutlinedTextField label)
+    //   filenameImportJsTitleLabel 用作 title, filenameImportJsSummaryLabel 用作输入框 label)
     if (showImportFileNameDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { showImportFileNameDialog = false },
-            title = { Text(filenameImportJsTitleLabel) },
-            text = {
-                Md2TextField(
-                    value = importFileNameJsText,
-                    onValueChange = { importFileNameJsText = it },
-                    label = filenameImportJsSummaryLabel,
-                )
+            title = filenameImportJsTitleLabel,
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                val js = importFileNameJsText
+                showImportFileNameDialog = false
+                // TODO: app 端写 AppConfig.bookImportFileName, 桌面端 AppConfig 是 Android 扩展,
+                //  暂不持久化; 后续接入桌面端 PreferenceStore 后补全
+                AppLog.put(jvmGetString("filename_import_js_input_log", js.take(50)))
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    val js = importFileNameJsText
-                    showImportFileNameDialog = false
-                    // TODO: app 端写 AppConfig.bookImportFileName, 桌面端 AppConfig 是 Android 扩展,
-                    //  暂不持久化; 后续接入桌面端 PreferenceStore 后补全
-                    AppLog.put(jvmGetString("filename_import_js_input_log", js.take(50)))
-                }) { Text(okLabel) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showImportFileNameDialog = false }) {
-                    Text(cancelLabel)
-                }
-            },
-        )
+            cancelButton = AlertButton(cancelLabel),
+        ) {
+            AppTextField(
+                value = importFileNameJsText,
+                onValueChange = { importFileNameJsText = it },
+                label = filenameImportJsSummaryLabel,
+                modifier = Modifier.padding(horizontal = 24.dp),
+            )
+        }
     }
 }

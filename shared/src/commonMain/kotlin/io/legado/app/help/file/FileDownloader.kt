@@ -1,11 +1,14 @@
 package io.legado.app.help.file
 
+import kotlin.concurrent.Volatile
+
 /**
  * 文件下载抽象 (shared commonMain)。
  *
  * # 背景
  * 安卓端 `DownloadService` 走系统 `android.app.DownloadManager`, 依赖 Android Context。
- * 桌面 JVM 端用 OkHttp 同步下载到 `java.nio.file.Path`; iOS/鸿蒙暂留 stub。
+ * 桌面 JVM 端用 OkHttp 同步下载到 `java.nio.file.Path`; iOS/鸿蒙共用 nativeMain 实现
+ * (Ktor CIO + `kotlin.io.File`)。
  *
  * # 设计
  * - suspend 函数: 桌面端协程内同步下载, 安卓端可走 DownloadManager 异步队列

@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.CircularProgressIndicator
@@ -45,6 +44,7 @@ import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 // ===== state / actions =====
 
@@ -307,7 +307,7 @@ private fun FilletChip(text: String, onLongClick: (() -> Unit)? = null, onClick:
     Box(
         Modifier
             .padding(4.dp) // drawable inset 4dp
-            .clip(RoundedCornerShape(8.dp))
+            .clip(DesignTokens.shapeDefault)
             .background(if (pressed) pressedBg else normalBg)
             .combinedClickable(
                 interactionSource = interaction,

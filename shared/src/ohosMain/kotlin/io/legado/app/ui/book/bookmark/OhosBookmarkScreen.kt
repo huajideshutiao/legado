@@ -11,9 +11,14 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.help.copyToClipboard
+import io.legado.app.help.file.saveDocument
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.utils.GSON
+import io.legado.app.utils.formatNative
+import io.legado.app.utils.systemCurrentTimeMillis
+import io.legado.app.utils.yearMonthDayFromMillis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
@@ -33,14 +38,10 @@ import kotlinx.coroutines.withContext
  * - **actions 实现**: 实现 [AllBookmarkUiActions] 接口, 平台依赖
  *   (导出/跳转阅读/编辑对话框) 通过回调桥接;
  * - **编辑对话框**: 复用 shared/sharedUiMain 的 [BookmarkDialog];
- * - **导出**: 鸿蒙端无文件保存面板, 简化为复制 JSON/Markdown 到剪贴板 (与 iOS 一致);
+ * - **导出**: [saveDocument] 弹系统保存器写真文件 (文件名对照 app 端 AllBookmarkViewModel
+ *   "bookmark-<时间戳>.json/.md"); 桥未就绪/保存失败/取消降级复制到剪贴板;
  * - **跳转阅读**: 通过 [onOpenBookmark] 回调由 OhosNavHost 切到 READER 路由
  *   (异步查 book → 携带 chapterIndex/pos 跳转, 对照 app 端 openBookmark)。
- *
- * # 简化项
- *
- * - **剪贴板**: 鸿蒙端 [ohosCopyToClipboard] 当前为 stub (println 占位), 真实实现需接入
- *   `ohos.pasteboard.SystemPasteboard` (tsfn 桥接), 后续补全
  *
  * @param onBack 返回回调 (切回调用方路由, 由 OhosNavHost 注入)
  * @param onOpenBookmark 点击书签跳转阅读回调 (携带 Book + chapterIndex + chapterPos),
@@ -58,11 +59,12 @@ fun OhosBookmarkScreen(
     val copiedBookmarksTemplate = rememberString("copied_bookmarks_to_clipboard_count")
     val copiedMarkdownText = rememberString("copied_markdown_to_clipboard")
     val noBookLabel = rememberString("no_book")
+    val exportSuccessText = rememberString("export_success")
 
     // 订阅全量书签数据 (对照 AllBookmarkActivity.onActivityCreated 的 flowAll 订阅)
     val bookmarks by produceState<List<Bookmark>>(emptyList()) {
         AppDbProviders.get().bookmarkDao.flowAll().catch {
-            AppLog.put(String.format(bookmarkLoadFailedTemplate, it.localizedMessage), it)
+            AppLog.put(bookmarkLoadFailedTemplate.formatNative(it.localizedMessage), it)
         }.flowOn(Dispatchers.Default).collect { value = it }
     }
 
@@ -75,13 +77,27 @@ fun OhosBookmarkScreen(
             override fun onBack() = onBack()
 
             override fun export() {
-                // 鸿蒙端无文件保存面板, 简化为复制 JSON 到剪贴板 (与 iOS 一致)
-                ohosCopyToClipboard(GSON.toJson(bookmarks))
-                Toasters.get().toast(String.format(copiedBookmarksTemplate, bookmarks.size))
+                // 真文件导出: DocumentViewPicker.save (文件名对照 app 端 AllBookmarkViewModel.exportBookmark);
+                // saveDocument 桥未就绪/保存失败抛异常, 与用户取消一并降级复制到剪贴板
+                scope.launch {
+                    val json = GSON.toJson(bookmarks)
+                    val saved = withContext(Dispatchers.Default) {
+                        runCatching { saveDocument("bookmark-${exportTimestamp()}.json", json.encodeToByteArray()) }
+                            .onFailure { AppLog.put("导出书签失败", it) }
+                            .getOrDefault(false)
+                    }
+                    if (saved) {
+                        Toasters.get().toast(exportSuccessText)
+                    } else {
+                        copyToClipboard(json)
+                        Toasters.get().toast(copiedBookmarksTemplate.formatNative(bookmarks.size))
+                    }
+                }
             }
 
             override fun exportMd() {
-                // 鸿蒙端无文件保存面板, 简化为复制 Markdown 到剪贴板 (与 iOS 一致)
+                // 真文件导出: DocumentViewPicker.save (文件名对照 app 端 AllBookmarkViewModel.exportBookmarkMd);
+                // saveDocument 桥未就绪/保存失败抛异常, 与用户取消一并降级复制到剪贴板
                 val md = bookmarks.joinToString("\n\n") { bm ->
                     buildString {
                         append("## ").append(bm.bookName).append("\n")
@@ -90,8 +106,19 @@ fun OhosBookmarkScreen(
                         if (bm.content.isNotEmpty()) append(bm.content).append("\n")
                     }
                 }
-                ohosCopyToClipboard(md)
-                Toasters.get().toast(copiedMarkdownText)
+                scope.launch {
+                    val saved = withContext(Dispatchers.Default) {
+                        runCatching { saveDocument("bookmark-${exportTimestamp()}.md", md.encodeToByteArray()) }
+                            .onFailure { AppLog.put("导出书签失败", it) }
+                            .getOrDefault(false)
+                    }
+                    if (saved) {
+                        Toasters.get().toast(exportSuccessText)
+                    } else {
+                        copyToClipboard(md)
+                        Toasters.get().toast(copiedMarkdownText)
+                    }
+                }
             }
 
             override fun openBookmark(bookmark: Bookmark) {
@@ -139,12 +166,13 @@ fun OhosBookmarkScreen(
 }
 
 /**
- * 鸿蒙端剪贴板写入 (替代 iOS 端 `copyToClipboard` 用 UIPasteboard)。
- *
- * TODO: 接入 `ohos.pasteboard.SystemPasteboard` (通过 tsfn 桥接 ArkTS),
- *  当前为 println 占位 (与 OpenUrlProvider 鸿蒙 stub 一致), 保证导出链路不崩;
- *  真实实现需在 EntryAbility 注册 pasteboard tsfn 回调, Kotlin 侧调 setTextData。
+ * 时间戳文件名后缀 (对照 app 端 SimpleDateFormat("yyMMddHHmmss"))。
+ * 复用 TimeUtils 纯 Kotlin 换算 (native 端 UTC 简化, 与 yearMonthDayFromMillis 一致)。
  */
-private fun ohosCopyToClipboard(text: String) {
-    println("[Clipboard] ${text.take(50)}")
+private fun exportTimestamp(): String {
+    val ms = systemCurrentTimeMillis()
+    val (y, mo, d) = yearMonthDayFromMillis(ms)
+    val secOfDay = ((ms / 1000) % 86400).toInt()
+    fun p2(v: Int) = v.toString().padStart(2, '0')
+    return p2(y % 100) + p2(mo) + p2(d) + p2(secOfDay / 3600) + p2(secOfDay % 3600 / 60) + p2(secOfDay % 60)
 }

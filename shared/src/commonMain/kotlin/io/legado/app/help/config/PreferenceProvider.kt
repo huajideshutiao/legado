@@ -1,11 +1,14 @@
 package io.legado.app.help.config
 
+import kotlin.concurrent.Volatile
+
 /**
  * 跨平台 SharedPreferences 抽象（KP1.4）。
  *
  * 安卓端 SharedPreferences 依赖 `android.content.Context`, 不能下沉 shared commonMain。
  * 桌面端需要读写配置（书源线程数、简繁转换类型等 AppConfig 项），通过本接口注入
- * 平台实现解耦。安卓端实现委托 `appCtx.getSharedPreferences("legado_config", MODE_PRIVATE)`,
+ * 平台实现解耦。安卓端实现委托 `appCtx.defaultSharedPreferences`
+ * (与设置界面同一文件, 旧 `legado_config` 文件已一次性并入),
  * 桌面端实现委托 `java.util.prefs.Preferences`。
  *
  * 注：[AppConfig] 主体仍直接用 SharedPreferences, 不强制改走 PreferenceProvider（保真红线）。

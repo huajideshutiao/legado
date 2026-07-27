@@ -12,8 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -315,6 +315,10 @@ class ThemeConfigHost(activity: ConfigActivity) : ConfigHost(activity),
                     }
                     androidx.compose.ui.viewinterop.AndroidView(
                         factory = { binding.root },
+                        update = { root ->
+                            // 主题变更/重组时重新着色, 防 AndroidView attach 后 tintList 被重置回落到 Material 默认色
+                            root.applyThemeTree()
+                        },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -460,6 +464,10 @@ class ThemeConfigHost(activity: ConfigActivity) : ConfigHost(activity),
             customView {
                 androidx.compose.ui.viewinterop.AndroidView(
                     factory = { alertBinding.root },
+                    update = { root ->
+                        // 主题变更/重组时重新着色, 防 AndroidView attach 后 tintList 被重置回落到 Material 默认色
+                        root.applyThemeTree()
+                    },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -548,6 +556,10 @@ class ThemeConfigHost(activity: ConfigActivity) : ConfigHost(activity),
             customView {
                 androidx.compose.ui.viewinterop.AndroidView(
                     factory = { alertBinding.root },
+                    update = { root ->
+                        // 主题变更/重组时重新着色, 防 AndroidView attach 后 tintList 被重置回落到 Material 默认色
+                        root.applyThemeTree()
+                    },
                     modifier = Modifier.fillMaxWidth(),
                 )
             }

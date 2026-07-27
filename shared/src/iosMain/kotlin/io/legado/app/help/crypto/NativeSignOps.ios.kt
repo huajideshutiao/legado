@@ -24,24 +24,39 @@ import platform.Security.kSecKeyAlgorithmRSASignatureMessagePSSSHA384
 import platform.Security.kSecKeyAlgorithmRSASignatureMessagePSSSHA512
 
 /**
- * iOS actual: 签名/验签, 基于 Security.framework (SecKeyCreateSignature/SecKeyVerifySignature)。
+ * iOS actual: 签名/验签。主实现 mbedTLS [MbedTlsSign] (RSA v1.5 含 MD5withRSA/RIPEMD160withRSA、
+ * PSS、NONEwithRSA), 任意异常回落既有 Security.framework 路径; ECDSA 在 mbedTLS 裁剪外
+ * (无 ECP) 主实现点名抛异常后由本回落承接 (Security 支持 ECDSA)。
  *
- * 算法映射 (对齐 jvmAndAndroid JCA Signature algorithm):
- * - RSA PKCS1 v1.5: SHA1withRSA/SHA256withRSA/SHA384withRSA/SHA512withRSA → kSecKeyAlgorithmRSASignatureMessagePKCS1v15SHA1/256/384/512;
- *   MD5withRSA: iOS 不支持 (无 MD5 签名算法), 抛 UnsupportedOperationException;
- * - RSA PSS: SHA1WithRSA/PSS, SHA256/384/512WithRSA/PSS → kSecKeyAlgorithmRSASignatureMessagePSSSHA1/256/384/512;
- * - ECDSA: SHA1/256/384/512withECDSA → kSecKeyAlgorithmECDSASignatureMessageX962SHA1/256/384/512。
+ * 原 "iOS 无 MD5withRSA/NONEwithRSA" 的缺口由 mbedTLS 主实现补上。
  *
- * 算法名归一化: 大小写/连字符不敏感, with 前后空格容忍 (与 jvmAndAndroid getAlgorithmAfterWith 对齐)。
+ * 回落路径算法映射 (对齐 jvmAndAndroid JCA Signature algorithm):
+ * - RSA PKCS1 v1.5: SHA1/256/384/512withRSA → kSecKeyAlgorithmRSASignatureMessagePKCS1v15SHA*;
+ * - RSA PSS: SHA1/256/384/512WithRSA/PSS → kSecKeyAlgorithmRSASignatureMessagePSSSHA*;
+ * - ECDSA: SHA1/256/384/512withECDSA → kSecKeyAlgorithmECDSASignatureMessageX962SHA*。
  *
- * sign 用私钥 (PKCS#8 DER), verify 用公钥 (X.509 DER); SecKeyCreateWithData 直接接受, 无需 ASN.1 解析。
- *
- * 注: 用 *Message* 变体 (直接对原始消息签名, 内部做 hash), 对齐 JCA Signature.update(data).sign()。
+ * sign 用私钥 (PKCS#8 DER), verify 用公钥 (X.509 DER); mbedTLS 主实现另兼容 PEM/PKCS#1。
  */
 @OptIn(ExperimentalForeignApi::class)
 actual object NativeSignOps {
 
-    actual fun sign(algorithm: String, privateKey: ByteArray?, data: ByteArray): ByteArray {
+    actual fun sign(algorithm: String, privateKey: ByteArray?, data: ByteArray): ByteArray = mbedTlsOrFallback(
+        { MbedTlsSign.sign(algorithm, privateKey, data) },
+        { legacySign(algorithm, privateKey, data) }
+    )
+
+    actual fun verify(
+        algorithm: String,
+        publicKey: ByteArray?,
+        data: ByteArray,
+        signature: ByteArray
+    ): Boolean = mbedTlsOrFallback(
+        { MbedTlsSign.verify(algorithm, publicKey, data, signature) },
+        { legacyVerify(algorithm, publicKey, data, signature) }
+    )
+
+    /** Security.framework 回落签名 (ECDSA 等 mbedTLS 裁剪外算法)。 */
+    private fun legacySign(algorithm: String, privateKey: ByteArray?, data: ByteArray): ByteArray {
         val (keyType, alg) = resolveSignAlgorithm(algorithm)
         val secKey = IosCryptoNative.secKeyFromDer(
             privateKey ?: throw IllegalArgumentException("Sign.sign: privateKey not set"),
@@ -70,7 +85,8 @@ actual object NativeSignOps {
         }
     }
 
-    actual fun verify(
+    /** Security.framework 回落验签。 */
+    private fun legacyVerify(
         algorithm: String,
         publicKey: ByteArray?,
         data: ByteArray,

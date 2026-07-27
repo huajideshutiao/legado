@@ -1,27 +1,19 @@
 package io.legado.app.help
 
+import kotlin.concurrent.Volatile
+
 /**
  * DefaultData 默认数据资源读取抽象 (shared commonMain)。
  *
- * # 背景
- *
- * app 端 [io.legado.app.help.DefaultData] 原通过 `appCtx.assets.open("defaultData/xxx.json")`
- * 读取 app/src/main/assets/defaultData/ 下的 JSON 文件。assets 读取依赖 Android Context,
- * 无法下沉 commonMain, 故抽象为接口, 由各端注册实现:
- *
- * - **Android 端** (app 模块): 用 `appCtx.assets.open("defaultData/$name")` 读取
- *   app/src/main/assets/defaultData/ 下的资源, 行为与原 DefaultData 完全一致。
- * - **桌面 jvm 端** (desktop 模块): 可从 classpath 读取
- *   `getResourceAsStream("/defaultData/$name")` (参考 shared/commonMain/resources 下
- *   LICENSE.md 在 desktop AboutScreen 的读取方式), 前提是资源已迁移到
- *   shared/src/commonMain/resources/defaultData/。
- *
  * # 资源单一数据源
  *
- * 当前资源保留在 app/src/main/assets/defaultData/ (Android 端通过 assets 读取)。
- * 后续如需迁移到 shared/src/commonMain/resources/defaultData/ 以实现跨端单一数据源,
- * 只需调整各端 [DefaultDataResourceProvider] 实现的读取方式 (Android 改用 classpath,
- * desktop 仍用 classpath), [io.legado.app.help.DefaultDataShared] 逻辑不变。
+ * 默认数据 JSON 唯一数据源在 `shared/src/commonMain/composeResources/files/defaultData/`,
+ * 由 compose 资源插件分发到各端产物, 各端注册实现读取:
+ *
+ * - **Android 端** (app 模块): assets 内 `composeResources/legado.shared.generated.resources/files/defaultData/`
+ *   (见 app 端 registerAndroidJsEngines 内注册)。
+ * - **桌面 jvm 端** (desktop 模块): classpath 内同前缀路径 (DesktopDefaultDataResourceProvider)。
+ * - **iOS/鸿蒙 native 端**: 生成类 `Res.readBytes` (NativeDefaultDataResourceProvider)。
  *
  * 模式参考 [io.legado.app.help.source.SourceCacheProvider] / [io.legado.app.data.AppDatabaseProvider]。
  */
@@ -31,10 +23,10 @@ interface DefaultDataResourceProvider {
      * 读取 defaultData 目录下的资源文件内容 (UTF-8 字符串)。
      *
      * @param name 文件名 (如 "httpTTS.json", "txtTocRule.json"), 不含目录前缀。
-     *   实现内部负责拼接 "defaultData/$name" 或对应的 classpath 路径。
+     *   实现内部负责拼接各端资源路径前缀。
      * @return 文件内容字符串。
-     * @throws Exception 读取失败时抛出 (与原 `appCtx.assets.open` 行为一致,
-     *   由 [io.legado.app.help.DefaultDataShared] 内 runCatching / getOrThrow 处理)。
+     * @throws Exception 读取失败时抛出, 由 [io.legado.app.help.DefaultDataShared] 内
+     *   runCatching / getOrThrow 处理。
      */
     fun readResource(name: String): String
 }

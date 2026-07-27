@@ -25,9 +25,9 @@ import io.legado.app.utils.GSON
  * - **帮助**: [openURL] 跳转正则教程;
  * - **保存**: 调 VM.save 触发落库 + onSaved 回调切回列表路由。
  *
- * 代码编辑器: shared/sharedUiMain 的 [ReplaceEditScreen] 内部用 Md2TextField 承载
- * 正则/替换文本编辑 (KMP 共享, 非平台 CodeView), 鸿蒙端直接复用, 不需要单独的
- * material3 TextField 替换 (CodeView 是 app 端 Android 专属控件, KMP 版已移除)。
+ * 代码编辑器: shared/sharedUiMain 的 [ReplaceEditScreen] 内部用 AppTextField 承载
+ * 正则/替换文本编辑 (KMP 共享, 非平台 CodeView), 鸿蒙端直接复用
+ * (CodeView 是 app 端 Android 专属控件, KMP 版已移除)。
  *
  * @param ruleId 编辑规则 id (-1 = 新增, >0 = 编辑现有规则)
  * @param onBack 返回回调 (切回 REPLACE_RULE 路由, 不保存)

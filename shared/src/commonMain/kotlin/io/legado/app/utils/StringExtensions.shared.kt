@@ -147,10 +147,10 @@ fun CharSequence.toStringArray(): Array<String> {
 }
 
 /**
- * URI 编码: 走 [PercentCodec.QUERY] (RFC3986 query), 字节化用 [String.toByteArray]
+ * URI 编码: 走 [PercentCodec.QUERY] (RFC3986 query), 字节化用 [String.encodeToByteArray]
  * (默认 UTF_8, kotlin.text 标准 API, commonMain 可用)。
  *
  * 与原 jvmAndAndroidMain 端 `PercentCodec.QUERY.encode(this, Charsets.UTF_8)` 行为一致
  * (后者 actual 内部亦委托 `it.toByteArray(charset)`, charset = UTF_8 时与默认参数等价)。
  */
-fun String.encodeURI(): String = PercentCodec.QUERY.encode(this) { it.toByteArray() }
+fun String.encodeURI(): String = PercentCodec.QUERY.encode(this) { it.encodeToByteArray() }

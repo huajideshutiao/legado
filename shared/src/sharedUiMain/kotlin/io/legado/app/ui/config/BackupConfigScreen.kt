@@ -40,6 +40,7 @@ fun BackupConfigScreen(
     onWebDavRestore: () -> Unit,
     onWebDavRestoreLong: () -> Unit,
     onRestoreIgnore: () -> Unit,
+    editDialogWidthFraction: Float = 1f,
 ) {
     // syncBookProgress -> syncBookProgressPlus 依赖联动（复刻 android:dependency）
     // AppConfigProviders.get().syncBookProgress 替代原 AppConfig.syncBookProgress (跨平台 provider 注入)
@@ -73,26 +74,25 @@ fun BackupConfigScreen(
     AppTheme {
         PreferenceScreen {
             preferenceCategory(titleWebDavSet)
-            // 备份相关编辑对话框宽度 0.8 窗口宽度 (对齐用户反馈: 桌面端窗口宽, 占满难看;
-            // app 端手机屏幕窄, 0.8 两侧留 10% 边距, 与 AlertDialog 默认视觉一致, 不破坏样式)
+            // Android 保持 AlertDialog 基准宽度；桌面宿主可显式传 0.8f。
             editTextPreference(
                 prefKey = PreferKey.webDavUrl,
                 title = titleWebDavUrl,
                 summary = webDavUrlSummary,
-                widthFraction = 0.8f,
+                widthFraction = editDialogWidthFraction,
             )
             editTextPreference(
                 prefKey = PreferKey.webDavAccount,
                 title = titleWebDavAccount,
                 summary = webDavAccountSummary,
-                widthFraction = 0.8f,
+                widthFraction = editDialogWidthFraction,
             )
             editTextPreference(
                 prefKey = PreferKey.webDavPassword,
                 title = titleWebDavPw,
                 summary = webDavPasswordSummary,
                 isPassword = true,
-                widthFraction = 0.8f,
+                widthFraction = editDialogWidthFraction,
             )
             editTextPreference(
                 prefKey = PreferKey.webDavDir,
@@ -100,7 +100,7 @@ fun BackupConfigScreen(
                 summary = webDavDirSummary,
                 // 复刻 setOnBindEditTextListener 预填 AppConfig.webDavDir（默认 "legado"）
                 defaultValue = AppConfigProviders.get().webDavDir,
-                widthFraction = 0.8f,
+                widthFraction = editDialogWidthFraction,
             )
             editTextPreference(
                 prefKey = PreferKey.webDavDeviceName,
@@ -108,7 +108,7 @@ fun BackupConfigScreen(
                 summary = webDavDeviceNameSummary,
                 // 复刻预填 AppConfig.webDavDeviceName（app 端默认 Build.MODEL, 其他平台默认空串）
                 defaultValue = AppConfigProviders.get().webDavDeviceName,
-                widthFraction = 0.8f,
+                widthFraction = editDialogWidthFraction,
             )
             switchPreference(
                 prefKey = PreferKey.syncBookProgress,

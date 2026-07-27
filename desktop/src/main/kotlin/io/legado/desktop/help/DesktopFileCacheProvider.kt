@@ -15,8 +15,8 @@ import java.io.File
  * CacheManager 文件层调用静默 no-op (背景所述 P0 问题)。
  *
  * # 存储
- * - 根目录: `{AppFilesDirs.cacheDir}/file_cache/` (cacheDir 桌面端为 ~/.legado/cache,
- *   再隔离 file_cache 子目录避免与其他 cache 使用方冲突, 与 app 端 ACache 独立目录语义对齐)
+ * - 根目录: `{AppFilesDirs.cacheDir}/file_cache/` (cacheDir 桌面端为系统临时目录
+ *   {java.io.tmpdir}/legado/cache, 隔离 file_cache 子目录避免与其他 cache 使用方冲突)
  * - 文件名: `key.hashCode()` (与 app 端 ACache.ACacheManager.newFile 一致, key 可含任意字符)
  *
  * # TTL

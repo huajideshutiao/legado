@@ -304,8 +304,9 @@ java.toNumChapter(s: String?): String? //如 第一千零三章 -> 第1003章
 
 ### [js加解密类](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/help/JsEncodeUtils.kt) 部分函数
 
-> 提供在JavaScript环境中快捷调用crypto算法的函数，由[hutool-crypto](https://www.hutool.cn/docs/#/crypto/概述)实现  
+> 提供在JavaScript环境中快捷调用crypto算法的函数，android/jvm 由[hutool-crypto](https://www.hutool.cn/docs/#/crypto/概述)实现  
 > 由于兼容性问题，hutool-crypto当前版本为5.8.22  
+> ios/ohos 为各平台原生等价实现，支持算法为 hutool 的子集，明细见下方"platform 变量"一节的能力差异表  
 
 > 注意：如果输入的参数不是Utf8String 可先调用`java.hexDecodeToByteArray java.base64DecodeToByteArray`转成ByteArray
 * 对称加密
@@ -545,17 +546,34 @@ cache.deleteMemory(key: String)
 
 | 能力                                        | android | ios/ohos      |
 |-------------------------------------------|---------|---------------|
-| hutool-crypto（createSymmetricCrypto/Sign/digestHex 等） | 可用      | 不提供           |
+| crypto 系列（createSymmetricCrypto/Sign/digestHex 等） | 可用（hutool） | 大部分可用（mbedTLS 统一后端 + 平台回落，见下表） |
 | java.* 反射调用 Android/JVM 类                  | 可用      | 不可用           |
 | image 对象（图片解密）                             | 可用      | 可用（各平台原生实现）   |
 | webView 系列（java.webView 等）                 | 可用      | 以各平台实现为准      |
 
-示例——hutool 缺失时降级：
+crypto 系列各算法明细（android 为 hutool/JCA 全量，ios/ohos 统一走 mbedTLS 后端，异常回落平台实现）：
+
+| 算法                                          | ios | ohos |
+|---------------------------------------------|-----|------|
+| 摘要/HMac：MD5/SHA-1/SHA-224/SHA-256/SHA-384/SHA-512/RIPEMD160 | 可用  | 可用   |
+| AES/ECB（NoPadding/PKCS5\|PKCS7Padding）       | 可用  | 可用   |
+| AES/CBC、CFB、OFB、CTR（支持 iv；padding 另支持 ANSIX923/ISO10126/Zero） | 可用  | 可用   |
+| AES/PCBC（mbedTLS 无此模式，iOS 走 krypto 回落）        | 可用  | 不可用  |
+| AES/GCM/NoPadding（密文=cipher+tag16，须 setIv）    | 可用  | 可用   |
+| DES/DESede（ECB/CBC）                          | 可用  | 可用   |
+| RC4/SM2/SM3/SM4                             | 不可用 | 不可用  |
+| RSA 非对称（encrypt/decrypt/decryptStr/encryptHex/encryptBase64；PKCS1 v1.5/OAEP；含私钥加密/公钥解密反向，反向仅 v1.5） | 可用  | 可用   |
+| Sign 签名/验签（sign/signHex/verify；MD5/SHA-1/224/256/384/512withRSA、SHA*withRSA/PSS、NONEwithRSA、ECDSA） | 可用  | 可用   |
+
+> 对称加密 key 为 null 时各端均使用随机密钥（AES 128 位/DES 8 字节/DESede 24 字节，对齐 hutool KeyUtil）；
+> 不支持的算法/模式会抛出点名异常，便于书源降级判断。
+
+示例——算法超出 ios/ohos 支持面时降级：
 
 ```js
 if (platform == 'android' || platform == 'jvm') {
-    // hutool-crypto 仅 android/jvm 提供
-    result = java.createSymmetricCrypto('AES/CBC/PKCS5Padding', key, iv).decryptStr(result);
+    // SM2/SM3/SM4/RC4 等仅 android/jvm (hutool) 提供
+    result = java.createSymmetricCrypto('SM4/ECB/PKCS5Padding', key).decryptStr(result);
 } else {
     // 其他平台走纯 JS 实现或提示不支持
     throw '本源的解密仅支持 android';

@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Button
-import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -17,9 +16,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Book
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.theme.AppTheme
 
 /**
  * 鸿蒙端书评/段评发布 Screen 入口 (对照 app 端 [io.legado.app.ui.book.read.ReviewPostActivity])。
@@ -36,13 +35,13 @@ import io.legado.app.ui.compose.theme.AppTheme
  * # Stub 内容
  *
  * - 顶部 TitleBar 显示 "发布书评"
- * - 中间 OutlinedTextField 多行编辑区 (占位文案 "想说点什么？")
+ * - 中间 [AppOutlinedTextField] 多行编辑区 (占位文案 "想说点什么？")
  * - 底部 Button 发布按钮 (启用条件: 文本非空)
  *
  * # 与 app 端差异
  *
  * - **UI 形态**: app 端是 BottomSheet 风格输入面板 (BasicTextField + 圆角气泡 decorationBox);
- *   鸿蒙端是独立全屏路由 (OutlinedTextField 多行编辑区)
+ *   鸿蒙端是独立全屏路由 ([AppOutlinedTextField] 多行编辑区)
  * - **提交链路**: app 端通过 Intent result 返回文本给 ReviewListDialog; 鸿蒙端无 ReviewListDialog
  *   包装, onPosted 仅切回原路由, 真实提交 (reviewRule.replyRule JS) 待后续接入
  * - **回复场景**: app 端支持 replyPreview 占位文案 (回复某条段评); 鸿蒙端暂未接入
@@ -74,20 +73,15 @@ fun OhosReviewPostScreen(
             title = publishTitle,
             onBack = onBack,
         )
-        // 内容编辑区 (多行)
-        OutlinedTextField(
+        // 内容编辑区 (多行; AppOutlinedTextField placeholder 自带 secondaryText 配色)
+        AppOutlinedTextField(
             value = reviewText,
             onValueChange = { reviewText = it },
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .padding(16.dp),
-            placeholder = {
-                Text(
-                    text = hintText,
-                    color = AppTheme.colors.secondaryText,
-                )
-            },
+            placeholder = hintText,
         )
         // 底部发布按钮
         Button(

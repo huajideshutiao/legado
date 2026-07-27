@@ -104,6 +104,38 @@ fun pickImages(
 }
 
 /**
+ * 保存文档 (对照 iOS exportFile / app 端 HandleFileContract.EXPORT / desktop FileDialog SAVE)。
+ *
+ * ArkTS 侧 FilePickerBridgeHandler 调 DocumentViewPicker.save (弹系统保存器, [fileName] 为建议文件名)
+ * 拿到目标 URI 后用 @ohos.file.fs 写入 [bytes] (base64 传输, 与 pickDocumentContent 反向同协议)。
+ *
+ * 与 pick 系列"降级返回 null"不同, 保存失败必须让调用方感知 (降级到剪贴板并提示),
+ * 故桥未就绪/调用失败/ArkTS 报错时抛 [IllegalStateException] (带明确文案); 用户取消返回 false。
+ *
+ * @param fileName 建议文件名 (含扩展名, 如 "exportTxtTocRule.json", 与 app 端 FileData.fileName 一致)
+ * @param bytes 待写出的字节内容
+ * @return true=保存成功; false=用户取消
+ * @throws IllegalStateException 桥未就绪 / 桥调用超时 / ArkTS 侧保存失败
+ */
+@OptIn(ExperimentalEncodingApi::class)
+fun saveDocument(fileName: String, bytes: ByteArray): Boolean {
+    check(OhosNativeBridge.isFilePickerBridgeReady()) {
+        "鸿蒙文件保存桥未就绪: napi filePicker tsfn 未注册 (EntryAbility.registerFilePickerCallback 未执行)"
+    }
+    val payload = KS_JSON.encodeToString(
+        SaveDocumentPayload(fileName = fileName, data = Base64.encode(bytes))
+    )
+    val resultJson = OhosNativeBridge.invokeFilePickerSync("saveDocument", payload)
+        ?: error("鸿蒙文件保存桥调用失败: invokeFilePickerSync 超时或 tsfn 调用异常")
+    val resp = runCatching { KS_JSON.decodeFromString(FilePickerResponse.serializer(), resultJson) }.getOrNull()
+        ?: error("鸿蒙文件保存响应解析失败: $resultJson")
+    if (!resp.ok) error("鸿蒙文件保存失败: ${resp.error ?: "未知错误"}")
+    // 用户取消: 返回 false (与 iOS exportFile 取消语义一致, 调用方降级处理)
+    if (resp.cancelled == true) return false
+    return true
+}
+
+/**
  * 选择目录 (对照 iOS pickDirectory / desktop FileDialogs.pickDirectory)。
  *
  * 鸿蒙端用 DocumentViewPicker 选目录 (maxSelectNumber=1), 返回目录 URI;
@@ -147,6 +179,13 @@ private data class PickImagesPayload(
     val allowsMultiple: Boolean,
 )
 
+/** saveDocument 请求 payload (Kotlin → ArkTS, data 为 base64 编码文件内容)。 */
+@Serializable
+private data class SaveDocumentPayload(
+    val fileName: String,
+    val data: String,
+)
+
 /** pickDirectory 请求 payload (Kotlin → ArkTS, 无参数)。 */
 @Serializable
 private data class PickDirectoryPayload
@@ -161,6 +200,8 @@ private data class PickDirectoryPayload
  * - pickImages 用户取消: [ok]=true, [cancelled]=true
  * - pickDirectory 成功: [ok]=true, [uris]=[单个目录 URI]
  * - pickDirectory 用户取消: [ok]=true, [cancelled]=true
+ * - saveDocument 成功: [ok]=true, [uris]=[目标文件 URI]
+ * - saveDocument 用户取消: [ok]=true, [cancelled]=true
  * - 失败: [ok]=false, [error]=错误信息
  */
 @Serializable

@@ -65,7 +65,10 @@ internal actual object JsExtensionsPlatform {
     actual fun sha256Hex(bytes: ByteArray): String {
         // NativeDigestOps.digest 返回原始摘要字节, 转 lowercase hex
         // (与 jvmAndAndroid MessageDigest.getInstance("SHA-256") 输出一致)
-        return NativeDigestOps.digest("SHA-256", bytes).joinToString("") { "%02x".format(it) }
+        // 纯 Kotlin 等价 "%02x".format(byte) (Native 无 String.format): 必须先 and 0xFF —
+        // JVM Formatter 对负 Byte 按无符号处理 (-1 → "ff"), 直接 toString(16) 会得 "-1"
+        return NativeDigestOps.digest("SHA-256", bytes)
+            .joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
     }
 
     actual fun isMainThread(): Boolean = false

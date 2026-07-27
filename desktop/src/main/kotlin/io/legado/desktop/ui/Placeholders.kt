@@ -2,11 +2,12 @@ package io.legado.desktop.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.platform.rememberString
 
 /**
@@ -28,7 +29,7 @@ fun SettingsScreenPlaceholder() {
 }
 
 /**
- * 占位 Composable 通用实现：居中显示 [text]，使用 MaterialTheme headlineMedium 字号。
+ * 占位 Composable 通用实现：居中显示 [text]，28sp/36sp 对应原 M3 headlineMedium 字号。
  */
 @Composable
 private fun PlaceholderBox(text: String) {
@@ -38,7 +39,7 @@ private fun PlaceholderBox(text: String) {
     ) {
         Text(
             text = text,
-            style = MaterialTheme.typography.headlineMedium,
+            style = TextStyle(fontSize = 28.sp, lineHeight = 36.sp),
         )
     }
 }

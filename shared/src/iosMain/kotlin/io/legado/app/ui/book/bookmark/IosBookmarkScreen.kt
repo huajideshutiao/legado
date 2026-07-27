@@ -13,9 +13,13 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.copyToClipboard
+import io.legado.app.help.file.exportFile
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.utils.GSON
+import io.legado.app.utils.formatNative
+import io.legado.app.utils.systemCurrentTimeMillis
+import io.legado.app.utils.yearMonthDayFromMillis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
@@ -35,7 +39,8 @@ import kotlinx.coroutines.withContext
  * - **actions 实现**: 实现 [AllBookmarkUiActions] 接口, 平台依赖
  *   (导出/跳转阅读/编辑对话框) 通过回调桥接;
  * - **编辑对话框**: 复用 shared/sharedUiMain 的 [BookmarkDialog];
- * - **导出**: iOS 端无文件保存面板, 简化为复制 JSON/Markdown 到剪贴板;
+ * - **导出**: [exportFile] 弹系统保存器写真文件 (文件名对照 app 端 AllBookmarkViewModel
+ *   "bookmark-<时间戳>.json/.md"); 保存失败/取消降级复制到剪贴板;
  * - **跳转阅读**: 通过 [onOpenBookmark] 回调由 IosNavHost 切到 READER 路由
  *   (异步查 book → 携带 chapterIndex/pos 跳转, 对照 app 端 openBookmark)。
  *
@@ -55,11 +60,12 @@ fun IosBookmarkScreen(
     val copiedBookmarksTemplate = rememberString("copied_bookmarks_to_clipboard_count")
     val copiedMarkdownText = rememberString("copied_markdown_to_clipboard")
     val noBookLabel = rememberString("no_book")
+    val exportSuccessText = rememberString("export_success")
 
     // 订阅全量书签数据 (对照 AllBookmarkActivity.onActivityCreated 的 flowAll 订阅)
     val bookmarks by produceState<List<Bookmark>>(emptyList()) {
         AppDbProviders.get().bookmarkDao.flowAll().catch {
-            AppLog.put(String.format(bookmarkLoadFailedTemplate, it.localizedMessage), it)
+            AppLog.put(bookmarkLoadFailedTemplate.formatNative(it.localizedMessage), it)
         }.flowOn(Dispatchers.Default).collect { value = it }
     }
 
@@ -72,13 +78,23 @@ fun IosBookmarkScreen(
             override fun onBack() = onBack()
 
             override fun export() {
-                // iOS 端无文件保存面板, 简化为复制 JSON 到剪贴板
-                copyToClipboard(GSON.toJson(bookmarks))
-                Toasters.get().toast(String.format(copiedBookmarksTemplate, bookmarks.size))
+                // 真文件导出: 系统保存器 (文件名对照 app 端 AllBookmarkViewModel.exportBookmark);
+                // 保存失败/取消降级复制 JSON 到剪贴板
+                scope.launch {
+                    val json = GSON.toJson(bookmarks)
+                    val saved = exportFile("bookmark-${exportTimestamp()}.json", json.encodeToByteArray())
+                    if (saved) {
+                        Toasters.get().toast(exportSuccessText)
+                    } else {
+                        copyToClipboard(json)
+                        Toasters.get().toast(copiedBookmarksTemplate.formatNative(bookmarks.size))
+                    }
+                }
             }
 
             override fun exportMd() {
-                // iOS 端无文件保存面板, 简化为复制 Markdown 到剪贴板
+                // 真文件导出: 系统保存器 (文件名对照 app 端 AllBookmarkViewModel.exportBookmarkMd);
+                // 保存失败/取消降级复制 Markdown 到剪贴板
                 val md = bookmarks.joinToString("\n\n") { bm ->
                     buildString {
                         append("## ").append(bm.bookName).append("\n")
@@ -87,8 +103,15 @@ fun IosBookmarkScreen(
                         if (bm.content.isNotEmpty()) append(bm.content).append("\n")
                     }
                 }
-                copyToClipboard(md)
-                Toasters.get().toast(copiedMarkdownText)
+                scope.launch {
+                    val saved = exportFile("bookmark-${exportTimestamp()}.md", md.encodeToByteArray())
+                    if (saved) {
+                        Toasters.get().toast(exportSuccessText)
+                    } else {
+                        copyToClipboard(md)
+                        Toasters.get().toast(copiedMarkdownText)
+                    }
+                }
             }
 
             override fun openBookmark(bookmark: Bookmark) {
@@ -133,4 +156,16 @@ fun IosBookmarkScreen(
             },
         )
     }
+}
+
+/**
+ * 时间戳文件名后缀 (对照 app 端 SimpleDateFormat("yyMMddHHmmss"))。
+ * 复用 TimeUtils 纯 Kotlin 换算 (native 端 UTC 简化, 与 yearMonthDayFromMillis 一致)。
+ */
+private fun exportTimestamp(): String {
+    val ms = systemCurrentTimeMillis()
+    val (y, mo, d) = yearMonthDayFromMillis(ms)
+    val secOfDay = ((ms / 1000) % 86400).toInt()
+    fun p2(v: Int) = v.toString().padStart(2, '0')
+    return p2(y % 100) + p2(mo) + p2(d) + p2(secOfDay / 3600) + p2(secOfDay % 3600 / 60) + p2(secOfDay % 60)
 }

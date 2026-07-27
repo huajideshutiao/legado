@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Surface
@@ -37,10 +36,8 @@ import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ScreenInfoProviders
-
-/** Arco Design arco_radius_lg = 16dp。 */
-private val ArcoRadiusLg = 16.dp
 
 /** 超长崩溃日志截断阈值, 对齐 TextDialog 的 32KB 上限。 */
 private const val MAX_TEXT_LENGTH = 32 * 1024
@@ -87,7 +84,11 @@ fun CrashLogsDialogContent(
                 AppTextButton(text = rememberString("clear")) { onClear() }
             },
         )
-        LazyColumn(Modifier.weight(1f, fill = false)) {
+        LazyColumn(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+        ) {
             items(logs, key = { it.name }) { item ->
                 Text(
                     text = item.name,
@@ -149,9 +150,10 @@ private fun CrashLogViewDialog(
     }
 
     Dialog(onDismissRequest = onDismiss) {
+        // 圆角/底色对齐 BaseComposeDialogFragment.filletBackground + alert DSL AppAlertDialogContent
         Surface(
-            shape = RoundedCornerShape(ArcoRadiusLg),
-            color = colors.background,
+            shape = DesignTokens.shapeDefault,
+            color = colors.fillet,
             modifier = Modifier.width(dialogWidth),
         ) {
             Column(Modifier.fillMaxWidth()) {
@@ -208,9 +210,10 @@ fun CrashLogsDialog(
 ) {
     val colors = AppTheme.colors
     Dialog(onDismissRequest = onDismiss) {
+        // 圆角/底色对齐 BaseComposeDialogFragment.filletBackground + alert DSL AppAlertDialogContent
         Surface(
-            shape = RoundedCornerShape(ArcoRadiusLg),
-            color = colors.background,
+            shape = DesignTokens.shapeDefault,
+            color = colors.fillet,
             modifier = Modifier.fillMaxWidth(),
         ) {
             CrashLogsDialogContent(logs, onDismiss, onClear, onReadFile, onShare)

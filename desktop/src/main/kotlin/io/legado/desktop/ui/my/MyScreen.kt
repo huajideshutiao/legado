@@ -1,11 +1,6 @@
 package io.legado.desktop.ui.my
 
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -14,9 +9,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import io.legado.app.constant.EventBus
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.jvmGetString
@@ -163,30 +159,25 @@ fun MyScreen(
     // Web 服务长按菜单 (复制地址 / 浏览器打开), 对齐 app 端 context.selector
     if (showWebServiceMenu) {
         val currentUrl = WebServerManager.hostAddress
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { showWebServiceMenu = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    // 复制地址到系统剪贴板 (java.awt Toolkit, 桌面端跨平台)
-                    runCatching {
-                        val clipboard = Toolkit.getDefaultToolkit().systemClipboard
-                        clipboard.setContents(StringSelection(currentUrl), null)
-                    }
-                    Toasters.get().toast(jvmGetString("address_copied"))
-                    showWebServiceMenu = false
-                }) { Text(rememberString("copy_address")) }
+            title = rememberString("web_service"),
+            message = currentUrl,
+            okButton = AlertButton(rememberString("copy_address"), dismissOnClick = false) {
+                // 复制地址到系统剪贴板 (java.awt Toolkit, 桌面端跨平台)
+                runCatching {
+                    val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+                    clipboard.setContents(StringSelection(currentUrl), null)
+                }
+                Toasters.get().toast(jvmGetString("address_copied"))
+                showWebServiceMenu = false
             },
-            dismissButton = {
-                TextButton(onClick = {
-                    // 浏览器打开 (shared jvmMain browseUrl, 用 java.awt.Desktop.browse)
-                    runCatching { browseUrl(currentUrl) }
-                        .onFailure { Toasters.get().toast(jvmGetString("open_failed", it.localizedMessage)) }
-                    showWebServiceMenu = false
-                }) { Text(rememberString("open_in_browser")) }
+            cancelButton = AlertButton(rememberString("open_in_browser"), dismissOnClick = false) {
+                // 浏览器打开 (shared jvmMain browseUrl, 用 java.awt.Desktop.browse)
+                runCatching { browseUrl(currentUrl) }
+                    .onFailure { Toasters.get().toast(jvmGetString("open_failed", it.localizedMessage)) }
+                showWebServiceMenu = false
             },
-            title = { Text(rememberString("web_service")) },
-            text = { Text(currentUrl) },
-            modifier = Modifier.width(360.dp).padding(16.dp).fillMaxWidth(),
         )
     }
 }

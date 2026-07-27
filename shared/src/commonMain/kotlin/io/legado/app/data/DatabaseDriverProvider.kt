@@ -1,5 +1,7 @@
 package io.legado.app.data
 
+import kotlin.concurrent.Volatile
+
 /**
  * 跨平台 SQLite 数据库驱动提供者接口。
  *

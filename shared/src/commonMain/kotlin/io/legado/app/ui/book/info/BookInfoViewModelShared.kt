@@ -5,9 +5,9 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.IntentData
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -166,12 +166,12 @@ class BookInfoViewModelShared(
      * @param success 成功回调, 入参为分组名拼接字符串 (无分组时为空串)
      */
     fun loadGroup(groupId: Long, success: (String?) -> Unit) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             try {
                 val names = appDb.bookGroupDao.getGroupNames(groupId).joinToString(",")
                 success.invoke(names)
             } catch (e: Throwable) {
-                AppLog.put("加载分组名失败\n${e.localizedMessage}", e)
+                AppLog.put("加载分组名失败\n${e.message}", e)
             }
         }
     }
@@ -190,7 +190,7 @@ class BookInfoViewModelShared(
      */
     fun topBook() {
         val book = _bookData.value ?: return
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             book.order = appDb.bookDao.minOrder() - 1
             book.durChapterTime = systemCurrentTimeMillis()
             appDb.bookDao.update(book)

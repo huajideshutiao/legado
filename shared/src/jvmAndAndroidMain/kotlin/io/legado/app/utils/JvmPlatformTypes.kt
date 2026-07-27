@@ -25,3 +25,7 @@ actual typealias Closeable = java.io.Closeable
 internal actual fun ByteArray.toInputStream(): InputStream = inputStream()
 
 internal actual fun Any.byteStreamAsInput(): InputStream = (this as ResponseBody).byteStream()
+
+actual fun Throwable.isSecurityException(): Boolean = this is SecurityException
+
+actual fun String.platformIntern(): String = intern()

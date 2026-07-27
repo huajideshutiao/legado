@@ -1,7 +1,7 @@
 package io.legado.app.help
 
 import io.legado.app.help.file.AppFilesDirs
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * nativeMain: [ExploreKindsCacheProvider] 的 iOS/鸿蒙共用文件缓存实现
@@ -22,13 +22,13 @@ class NativeExploreKindsCacheProvider : ExploreKindsCacheProvider {
     override fun getAsString(key: String): String? {
         val file = File(resolvePath(key))
         if (!file.exists()) return null
-        return file.readBytes().takeIf { it.isNotEmpty() }?.let { String(it, Charsets.UTF_8) }
+        return file.readBytes().takeIf { it.isNotEmpty() }?.decodeToString()
     }
 
     override fun put(key: String, value: String) {
         val file = File(resolvePath(key))
         file.parentFile?.takeIf { !it.exists() }?.mkdirs()
-        file.writeText(value, Charsets.UTF_8)
+        file.writeText(value)
     }
 
     override fun remove(key: String) {

@@ -9,6 +9,7 @@ import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.help.book.BookFilter
 import io.legado.app.help.book.incrementalFilter
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.SearchModel
@@ -165,7 +166,7 @@ class SearchViewModel(
         override fun onSearchCancel(exception: Throwable?) {
             _isSearching.value = false
             exception?.let {
-                runCatching { Toasters.get().toast(it.localizedMessage ?: "") }
+                runCatching { Toasters.get().toast(it.message ?: "") }
             }
         }
 
@@ -203,7 +204,7 @@ class SearchViewModel(
                 }
                 keys
             }.catch {
-                AppLog.put("搜索界面获取书籍列表失败\n${it.localizedMessage}", it)
+                AppLog.put("搜索界面获取书籍列表失败\n${it.message}", it)
             }.collect {
                 bookshelf.clear()
                 bookshelf.addAll(it)
@@ -231,7 +232,7 @@ class SearchViewModel(
 
             combine(dbFlow, keysFlow) { list, keys -> list to keys }
                 .incrementalFilter(skipFirst = true)
-                .flowOn(Dispatchers.IO).conflate().collect { books ->
+                .flowOn(IoDispatcher).conflate().collect { books ->
                     _bookshelfBooks.value = books
                 }
         }
@@ -314,21 +315,21 @@ class SearchViewModel(
 
     /** 删除单条历史记录。 */
     fun deleteHistory(searchKeyword: SearchKeyword) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             AppDatabaseProviders.get().appDb.searchKeywordDao.delete(searchKeyword)
         }
     }
 
     /** 清空所有搜索历史。 */
     fun clearHistory() {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             AppDatabaseProviders.get().appDb.searchKeywordDao.deleteAll()
         }
     }
 
     /** 保存搜索关键字 (usage +1 / lastUseTime 更新)。 */
     fun saveSearchKey(key: String) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             val dao = AppDatabaseProviders.get().appDb.searchKeywordDao
             dao.get(key)?.let {
                 it.usage += 1
@@ -453,8 +454,8 @@ class SearchViewModel(
             val dao = AppDatabaseProviders.get().appDb.searchKeywordDao
             (if (key.isNullOrBlank()) dao.flowByTime()
             else dao.flowSearch(key)).catch {
-                AppLog.put("搜索界面获取本地数据失败\n${it.localizedMessage}", it)
-            }.flowOn(Dispatchers.IO).conflate().collect {
+                AppLog.put("搜索界面获取本地数据失败\n${it.message}", it)
+            }.flowOn(IoDispatcher).conflate().collect {
                 _historyKeys.value = it
             }
         }

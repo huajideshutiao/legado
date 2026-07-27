@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.model.ReadBookShared
 import io.legado.app.service.DefaultReadAloudNavigator
 import io.legado.app.service.ReadAloudControllerShared
 import io.legado.app.ui.book.read.ReadBookViewModelShared
@@ -48,6 +50,12 @@ fun rememberIosReadAloudController(viewModel: ReadBookViewModelShared): ReadAlou
         ReadAloudControllerShared(
             navigator = DefaultReadAloudNavigator(viewModel),
             // engineProvider 默认走 TtsEngineProvider, IosProviderRegistry 已注册 IosSystemTtsEngine
+            // KP2-D P0-9: ttsEngineConfigProvider 注入 Book.ttsEngine 优先, 否则 AppConfig.ttsEngine
+            ttsEngineConfigProvider = {
+                ReadBookShared.book.value?.config?.ttsEngine?.takeIf { it.isNotBlank() }
+                    ?: runCatching { AppConfigProviders.get().ttsEngine }.getOrNull()
+                        ?.takeIf { it.isNotBlank() }
+            },
         )
     }
 
@@ -65,8 +73,8 @@ fun rememberIosReadAloudController(viewModel: ReadBookViewModelShared): ReadAlou
     // 退出 IosReaderScreen 时持久化朗读配置 + 停止朗读 (清理 AVSpeechSynthesizer 资源)
     DisposableEffect(controller) {
         onDispose {
-            // 保存语速 ("%.2f".format 避免精度损失, 如 1.5 -> "1.50")
-            prefs.putString(KEY_IOS_TTS_SPEECH_RATE, "%.2f".format(controller.speechRate.value))
+            // 保存语速 (2 位小数避免精度损失, 如 1.5 -> "1.50")
+            prefs.putString(KEY_IOS_TTS_SPEECH_RATE, formatRate2(controller.speechRate.value))
             // 保存上次朗读章节索引 (controller.chapterIndex.value, -1 = 未朗读)
             prefs.putInt(KEY_IOS_TTS_LAST_CHAPTER_INDEX, controller.chapterIndex.value)
             // 停止朗读 (清理 AVSpeechSynthesizer 播放队列)
@@ -85,3 +93,15 @@ fun rememberIosReadAloudController(viewModel: ReadBookViewModelShared): ReadAlou
  */
 private const val KEY_IOS_TTS_SPEECH_RATE = "ios_tts_speech_rate"
 private const val KEY_IOS_TTS_LAST_CHAPTER_INDEX = "ios_tts_last_chapter_index"
+
+/**
+ * 纯 Kotlin 等价 `"%.2f".format(value)` (Kotlin/Native 无 String.format)。
+ *
+ * 语速定义域 0.5..2.0 恒为正, 故只做 HALF_UP 四舍五入 + 定点拼接:
+ * 放大 100 倍取整后拆整数/小数部分, 小数左补零到 2 位 (1.5 -> "1.50", 1.005 -> "1.01")。
+ * 结果仅供 [String.toFloatOrNull] 读回, 与 JVM 在 HALF_EVEN 边界的差异不影响业务。
+ */
+private fun formatRate2(value: Float): String {
+    val scaled = kotlin.math.round(value.toDouble() * 100.0).toLong()
+    return "${scaled / 100}.${(scaled % 100).toString().padStart(2, '0')}"
+}

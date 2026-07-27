@@ -95,6 +95,7 @@
     <string name="screen_portrait">Portrait</string>
     <string name="screen_unspecified">Follow system</string>
     <string name="disclaimer">Disclaimer</string>
+    <string name="privacy_policy">User Privacy and Agreement</string>
     <string name="interface_setting">Interface</string>
     <string name="chapter_list">Chapters</string>
     <string name="next_chapter">Next</string>
@@ -113,6 +114,9 @@
     <string name="pause">Pause</string>
     <string name="resume">Resume</string>
     <string name="set_timer">Timer</string>
+    <string name="back">Back</string>
+    <string name="speed">Speed</string>
+    <string name="play_mode">Play mode</string>
     <string name="read_aloud_pause">Speak Paused</string>
     <string name="read_aloud_timer">Speaking(%d min left)</string>
     <string name="playing_timer">Playing(%d min left)</string>

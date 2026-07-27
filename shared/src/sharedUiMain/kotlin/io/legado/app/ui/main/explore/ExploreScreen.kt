@@ -32,7 +32,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
@@ -65,6 +64,7 @@ import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 
 /*
@@ -195,11 +195,13 @@ interface ExploreUiActions {
  *
  * @param state  发现 tab 展示状态
  * @param actions 发现 tab 交互回调
+ * @param onBack 非空时顶栏左侧显示返回箭头 (全屏路由包装平台注入, 如 iOS; tab 场景保持 null 无变化)
  */
 @Composable
 fun ExploreScreen(
     state: ExploreUiState,
     actions: ExploreUiActions,
+    onBack: (() -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
     Column(Modifier.fillMaxSize().background(colors.background)) {
@@ -208,6 +210,7 @@ fun ExploreScreen(
             onSearch = actions::onSearch,
             groups = state.groups,
             onGroup = { actions.onGroup(it) },
+            onBack = onBack,
         )
         Box(Modifier.fillMaxSize()) {
             val sources = state.sources
@@ -292,7 +295,7 @@ private fun ExploreSourceItem(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(DesignTokens.shapeDefault)
                     .background(transparent10())
                     .combinedClickable(
                         onClick = { actions.onToggleExpand(item) },
@@ -434,13 +437,14 @@ private fun ExploreItemMenu(
     }
 }
 
-/** 发现顶栏: 无返回箭头 (tab 页), 搜索框占标题区, 右侧分组溢出菜单。 */
+/** 发现顶栏: 搜索框占标题区 + 右侧分组溢出菜单; tab 页无返回箭头, onBack 非空时左侧加返回箭头。 */
 @Composable
 private fun ExploreTitleBar(
     searchKey: String,
     onSearch: (String) -> Unit,
     groups: List<String>,
     onGroup: (String) -> Unit,
+    onBack: (() -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
     val eInk = LocalEInk.current
@@ -458,9 +462,20 @@ private fun ExploreTitleBar(
     }
     Box(Modifier.fillMaxWidth().background(bg).then(insetsModifier)) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 12.dp),
+            // 有返回箭头时 IconButton 自带 48dp 宽度, 去掉 12dp 起始留白
+            Modifier.fillMaxWidth().heightIn(min = 56.dp)
+                .padding(start = if (onBack == null) 12.dp else 0.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (onBack != null) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        painter = rememberPainter("ic_arrow_back"),
+                        contentDescription = null,
+                        tint = colors.primaryText,
+                    )
+                }
+            }
             AppSearchField(
                 value = searchKey,
                 onValueChange = onSearch,
@@ -528,7 +543,7 @@ private fun FilletTag(
     Box(
         modifier
             .padding(4.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(DesignTokens.shapeDefault)
             .background(if (pressed) pressedBg else normalBg)
             .combinedClickable(
                 interactionSource = interaction,

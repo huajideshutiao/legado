@@ -1,5 +1,7 @@
 package io.legado.app.help.config
 
+import kotlin.concurrent.Volatile
+
 /**
  * [ReadBookConfigShared] 全局注册器 (模式参考 [ThemeConfigProviders])。
  *

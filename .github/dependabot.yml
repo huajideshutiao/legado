@@ -32,8 +32,36 @@ updates:
     groups:
       kotlin_KSP:
         patterns:
+          # org.jetbrains.kotlin:* 已被下方 ignore 全量忽略, 本组实际只剩 KSP
+          # (KSP 2.x 版本号与 Kotlin 解耦, 可独立升级)
           - "org.jetbrains.kotlin:*"
           - "com.google.devtools.ksp"
+    # ===== fork 钉版依赖: 禁止上游升级 PR =====
+    # 鸿蒙 (ohosArm64) target 依赖支付宝 fork 工具链, gradle/libs.versions.toml 中版本号带 -alipay 后缀:
+    #   kotlin 2.3.0.1-alipay / compose-multiplatform 1.8.2.99-alipay / skiko 0.9.4.2.40-alipay /
+    #   kotlinx-coroutines 1.10.2-alipay / kotlinx-serialization-json 1.9.1-alipay /
+    #   atomicfu 0.30.0-beta-alipay / kotlinx-datetime 0.6.1-alipay
+    # 这些坐标从内嵌凭证的阿里云云效 maven 解析 (见 settings.gradle.kts), 上游 Maven Central 只有
+    # 无 -alipay 后缀的官方版, 且不提供 ohosArm64 变体。dependabot 若提"升级到上游最新版"的 PR,
+    # 合并即破坏 fork 对齐 (KMP 依赖解析失败 / 鸿蒙 target 直接编不过)。
+    # 整个 fork 工具链必须整组同步升级, 由人工在 fork 发布新版时手动对齐, 故全家 ignore。
+    ignore:
+      # Kotlin 全家 (stdlib / kotlin-* 库) + Kotlin gradle 插件
+      # (插件坐标形如 org.jetbrains.kotlin.multiplatform:org.jetbrains.kotlin.multiplatform.gradle.plugin)
+      - dependency-name: "org.jetbrains.kotlin:*"
+      - dependency-name: "org.jetbrains.kotlin.*:*"
+      # kotlinx 全家: coroutines / serialization / atomicfu / datetime 均为 -alipay 钉版
+      - dependency-name: "org.jetbrains.kotlinx:*"
+      # Compose Multiplatform 插件与运行时构件 (org.jetbrains.compose.* / compose-gradle-plugin)
+      - dependency-name: "org.jetbrains.compose:*"
+      - dependency-name: "org.jetbrains.compose.*:*"
+      # skiko: 鸿蒙端 Compose 渲染后端, 只有 fork 版发布 ohosArm64 变体
+      - dependency-name: "org.jetbrains.skiko:*"
+      # androidx.compose 全家 (含 compose-bom): 运行时版本须与 fork 版 compose 编译器插件
+      # (org.jetbrains.kotlin.plugin.compose 2.3.0.1-alipay) 保持兼容, 单独升 BOM 会踩运行时/编译器错配,
+      # 故与 Kotlin fork 同步人工升级
+      - dependency-name: "androidx.compose:compose-bom"
+      - dependency-name: "androidx.compose.*:*"
   # Maintain dependencies for GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"

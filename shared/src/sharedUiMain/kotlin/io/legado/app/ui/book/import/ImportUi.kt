@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.LinearProgressIndicator
@@ -37,6 +36,7 @@ import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.ConvertUtils
@@ -198,7 +198,7 @@ fun ImportFileRow(
                         maxLines = 1,
                         modifier = Modifier
                             .widthIn(max = 50.dp)
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(DesignTokens.shapeSm)
                             .background(colors.accent)
                             .padding(horizontal = 4.dp),
                     )

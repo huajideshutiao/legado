@@ -7,7 +7,7 @@ import io.legado.app.data.AppDatabase.Companion.DATABASE_NAME
 import io.legado.app.help.file.AppFilesDirs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * 鸿蒙 (OHOS) 端 [DatabaseDriverProvider] 实现: **Room KMP + BundledSQLiteDriver 真实数据库**。

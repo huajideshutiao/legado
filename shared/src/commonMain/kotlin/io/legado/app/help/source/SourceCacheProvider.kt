@@ -1,5 +1,7 @@
 package io.legado.app.help.source
 
+import kotlin.concurrent.Volatile
+
 object SourceCacheProviders {
     @Volatile var impl: SourceCacheProvider? = null
 }

@@ -26,6 +26,10 @@
  * - registerFileDir(path: string): void     → legado_register_file_dir(const char*) (注入 filesDir)
  * - registerCacheDir(path: string): void    → legado_register_cache_dir(const char*) (注入 cacheDir)
  *
+ * legado:// deep link 投递 (ArkTS → Kotlin 同步推送, 无回调):
+ * - handleDeepLink(uri: string): boolean    → legado_handle_deep_link(const char*) -> int
+ *                                            (Kotlin LegadoDeepLinkHandler 解析后写 pending, Compose 侧消费)
+ *
  * Toast/Notification tsfn 回调注册 (KP7+ 新增, KMP → ArkTS 跨线程 dispatch):
  * - registerToastCallback(cb): void         → C++ 创建 tsfn 包装 cb, 通过 legado_register_toast_fn
  *                                            注入 ohos_toast_dispatch 函数指针到 Kotlin OhosNativeBridge.toastTsfn
@@ -52,6 +56,10 @@
  * FilePicker tsfn 回调注册 + ArkTS → Kotlin 回调 (KP8+ 新增, 同 Image/Crypto/Http 模式: pickDocuments/pickDocumentContent):
  * - registerFilePickerCallback(cb): void    → 同 Image, 注入 ohos_file_picker_dispatch 到 filePickerTsfn
  * - filePickerCallback(requestId, result): void → ArkTS → Kotlin filePicker 结果 (dlsym legado_file_picker_callback)
+ *
+ * Pasteboard tsfn 回调注册 + ArkTS → Kotlin 回调 (同 FilePicker 模式: read/write 纯文本):
+ * - registerPasteboardCallback(cb): void    → 注入 ohos_pasteboard_dispatch 到 pasteboardTsfn
+ * - pasteboardCallback(requestId, result): void → ArkTS → Kotlin pasteboard 结果 (dlsym legado_pasteboard_callback)
  *
  * 详细方案见 ohosApp/INTEROP.md。
  *
@@ -108,6 +116,9 @@ static legado_cstr_void_fn g_delete_explore_source = nullptr;    // (sourceUrl) 
 static legado_cstr_void_fn g_register_file_dir = nullptr;
 static legado_cstr_void_fn g_register_cache_dir = nullptr;
 
+// dlsym 加载的函数指针 - legado:// deep link 投递 (ArkTS → Kotlin 同步推送, 返回是否已识别)
+static legado_str_int_fn g_handle_deep_link = nullptr;
+
 // dlsym 加载的函数指针 - Toast/Notification tsfn 注入 (KP7+ 新增, C++ → Kotlin @CName 注入 dispatch 函数指针)
 // Kotlin 侧 legado_register_toast_fn / legado_register_notification_fn 接收一个 C 函数指针,
 // 包成 (String) -> Unit lambda 存入 OhosNativeBridge.toastTsfn / notificationTsfn;
@@ -146,7 +157,15 @@ static legado_register_dispatch_fn g_register_open_url_fn = nullptr;
 static legado_register_dispatch_fn g_register_file_picker_fn = nullptr;
 static legado_int64_cstr_void_fn g_file_picker_callback = nullptr;
 
-// Toast/Notification/Image/Media/TTS/Crypto/Http/OpenUrl/FilePicker threadsafe_function 引用 (C++ 侧持有, ArkTS registerXxxCallback 时创建)
+// dlsym 加载的函数指针 - Pasteboard tsfn 注入 + ArkTS → Kotlin 回调 (同 FilePicker 模式, read/write)
+static legado_register_dispatch_fn g_register_pasteboard_fn = nullptr;
+static legado_int64_cstr_void_fn g_pasteboard_callback = nullptr;
+
+// dlsym 加载的函数指针 - TextCodec tsfn 注入 + ArkTS → Kotlin 回调 (同 Pasteboard 模式, decode/encode)
+static legado_register_dispatch_fn g_register_text_codec_fn = nullptr;
+static legado_int64_cstr_void_fn g_text_codec_callback = nullptr;
+
+// Toast/Notification/Image/Media/TTS/Crypto/Http/OpenUrl/FilePicker/Pasteboard threadsafe_function 引用 (C++ 侧持有, ArkTS registerXxxCallback 时创建)
 static napi_threadsafe_function g_toast_tsfn = nullptr;
 static napi_threadsafe_function g_notification_tsfn = nullptr;
 static napi_threadsafe_function g_image_tsfn = nullptr;
@@ -156,6 +175,8 @@ static napi_threadsafe_function g_crypto_tsfn = nullptr;
 static napi_threadsafe_function g_http_tsfn = nullptr;
 static napi_threadsafe_function g_open_url_tsfn = nullptr;
 static napi_threadsafe_function g_file_picker_tsfn = nullptr;
+static napi_threadsafe_function g_pasteboard_tsfn = nullptr;
+static napi_threadsafe_function g_text_codec_tsfn = nullptr;
 
 // liblegado_shared.so 句柄
 static void* g_legado_so = nullptr;
@@ -198,6 +219,9 @@ static bool load_legado_shared() {
     g_register_file_dir = (legado_cstr_void_fn)dlsym(g_legado_so, "legado_register_file_dir");
     g_register_cache_dir = (legado_cstr_void_fn)dlsym(g_legado_so, "legado_register_cache_dir");
 
+    // 解析 @CName 导出符号 - legado:// deep link 投递
+    g_handle_deep_link = (legado_str_int_fn)dlsym(g_legado_so, "legado_handle_deep_link");
+
     // 解析 @CName 导出符号 - Toast/Notification tsfn 注入 (KP7+ 新增)
     g_register_toast_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_toast_fn");
     g_register_notification_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_notification_fn");
@@ -227,7 +251,15 @@ static bool load_legado_shared() {
     g_register_file_picker_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_file_picker_fn");
     g_file_picker_callback = (legado_int64_cstr_void_fn)dlsym(g_legado_so, "legado_file_picker_callback");
 
-    OH_LOG_INFO(LOG_APP, "liblegado_shared.so loaded, symbols resolved (KP5: + bookshelfList/searchBook/loadChapter/chapterList/importBookSource; KP5+: + loadMangaChapter/exploreList/openExplore/editExploreSource/topExploreSource/deleteExploreSource; KP7+: + registerFileDir/registerCacheDir/registerToastFn/registerNotificationFn; KP8+: + registerImageFn/registerMediaFn/imageCallback/mediaEvent/registerTtsFn/ttsEvent/registerCryptoFn/cryptoCallback/registerHttpFn/httpCallback/registerOpenUrlFn/registerFilePickerFn/filePickerCallback)");
+    // 解析 @CName 导出符号 - Pasteboard tsfn 注入 + ArkTS → Kotlin 回调 (同 FilePicker 模式)
+    g_register_pasteboard_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_pasteboard_fn");
+    g_pasteboard_callback = (legado_int64_cstr_void_fn)dlsym(g_legado_so, "legado_pasteboard_callback");
+
+    // 解析 @CName 导出符号 - TextCodec tsfn 注入 + ArkTS → Kotlin 回调 (同 Pasteboard 模式)
+    g_register_text_codec_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_text_codec_fn");
+    g_text_codec_callback = (legado_int64_cstr_void_fn)dlsym(g_legado_so, "legado_text_codec_callback");
+
+    OH_LOG_INFO(LOG_APP, "liblegado_shared.so loaded, symbols resolved (KP5: + bookshelfList/searchBook/loadChapter/chapterList/importBookSource; KP5+: + loadMangaChapter/exploreList/openExplore/editExploreSource/topExploreSource/deleteExploreSource; KP7+: + registerFileDir/registerCacheDir/registerToastFn/registerNotificationFn; KP8+: + registerImageFn/registerMediaFn/imageCallback/mediaEvent/registerTtsFn/ttsEvent/registerCryptoFn/cryptoCallback/registerHttpFn/httpCallback/registerOpenUrlFn/registerFilePickerFn/filePickerCallback/registerPasteboardFn/pasteboardCallback/registerTextCodecFn/textCodecCallback)");
     return true;
 }
 
@@ -625,6 +657,33 @@ static napi_value RegisterCacheDir(napi_env env, napi_callback_info info) {
 
     napi_value ret;
     napi_get_undefined(env, &ret);
+    return ret;
+}
+
+// ============ legado:// deep link 投递 napi 包装 ============
+
+// napi 包装: handleDeepLink(uri: string): boolean  投递 legado://|yuedu:// 一键导入链接
+// 调用方: EntryAbility.onCreate / onNewWant (want.uri), 由 Kotlin LegadoDeepLinkHandler 解析后
+// 写入 pending (StateFlow), Compose 侧 DeepLinkImportHost 消费弹勾选对话框。
+// 同步返回 (不走 tsfn): Kotlin 侧被动接收无回调, 仅需告知 ArkTS 是否已识别。
+static napi_value HandleDeepLink(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    size_t str_len = 0;
+    napi_get_value_string_utf8(env, args[0], nullptr, 0, &str_len);
+    char* buf = new char[str_len + 1];
+    napi_get_value_string_utf8(env, args[0], buf, str_len + 1, &str_len);
+
+    int handled = 0;  // 兜底 0 (so 未加载/符号缺失/非 legado scheme)
+    if (load_legado_shared() && g_handle_deep_link != nullptr) {
+        handled = g_handle_deep_link(buf);
+    }
+    delete[] buf;
+
+    napi_value ret;
+    napi_get_boolean(env, handled != 0, &ret);
     return ret;
 }
 
@@ -1430,6 +1489,204 @@ static napi_value FilePickerCallback(napi_env env, napi_callback_info info) {
     return ret;
 }
 
+// ============ Pasteboard tsfn 接线 (同 FilePicker 模式: tsfn 发请求 + @CName 回调返回结果) ============
+// - KMP 通过 OhosNativeBridge.invokePasteboardSync 发 read/write 请求
+// - 请求经 C++ ohos_pasteboard_dispatch → napi_call_threadsafe_function → ArkTS 主线程回调
+// - ArkTS PasteboardBridgeHandler 调 @ohos.pasteboard.getSystemPasteboard 读写纯文本
+// - 完成后通过 pasteboardCallback(requestId, resultJson) (napi → @CName) 回送结果给 Kotlin
+
+// C++ dispatch 入口: 由 Kotlin lambda (注入到 OhosNativeBridge.pasteboardTsfn) 调用
+extern "C" void ohos_pasteboard_dispatch(const char* json) {
+    if (g_pasteboard_tsfn == nullptr || json == nullptr) return;
+    size_t len = strlen(json) + 1;
+    char* json_dup = (char*)malloc(len);
+    if (json_dup == nullptr) return;
+    memcpy(json_dup, json, len);
+    napi_status status = napi_call_threadsafe_function(g_pasteboard_tsfn, json_dup, napi_tsfn_nonblocking);
+    if (status != napi_ok) {
+        free(json_dup);
+    }
+}
+
+// tsfn call-js 回调: 在 ArkTS 主线程执行, 把 data (JSON 串) 包成 napi string 后调用 ArkTS 回调
+static void PasteboardCallJs(napi_env env, napi_value js_cb, void* /*context*/, void* data) {
+    if (js_cb == nullptr || data == nullptr) return;
+    char* json = static_cast<char*>(data);
+    napi_value json_arg;
+    napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
+    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
+    free(json);
+}
+
+// napi 包装: registerPasteboardCallback(callback: (json: string) => void): void
+// ArkTS 注册 pasteboard 回调; C++ 创建 tsfn, 通过 legado_register_pasteboard_fn 注入 ohos_pasteboard_dispatch 到 Kotlin
+static napi_value RegisterPasteboardCallback(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) {
+        napi_throw_type_error(env, nullptr, "registerPasteboardCallback requires 1 argument (callback)");
+        napi_value ret;
+        napi_get_undefined(env, &ret);
+        return ret;
+    }
+
+    if (g_pasteboard_tsfn != nullptr) {
+        napi_release_threadsafe_function(g_pasteboard_tsfn, napi_tsfn_abort);
+        g_pasteboard_tsfn = nullptr;
+    }
+
+    napi_value work_name;
+    napi_create_string_utf8(env, "LegadoPasteboardTsfn", NAPI_AUTO_LENGTH, &work_name);
+    napi_threadsafe_function tsfn;
+    napi_status status = napi_create_threadsafe_function(
+        env, args[0], work_name, nullptr, 0, 1,
+        nullptr, nullptr, nullptr, nullptr, PasteboardCallJs, &tsfn);
+    if (status != napi_ok) {
+        OH_LOG_ERROR(LOG_APP, "registerPasteboardCallback: napi_create_threadsafe_function failed: %{public}d", status);
+        napi_value ret;
+        napi_get_undefined(env, &ret);
+        return ret;
+    }
+    g_pasteboard_tsfn = tsfn;
+
+    if (load_legado_shared() && g_register_pasteboard_fn != nullptr) {
+        g_register_pasteboard_fn(&ohos_pasteboard_dispatch);
+    } else {
+        OH_LOG_WARN(LOG_APP, "registerPasteboardCallback: legado_register_pasteboard_fn not resolved (KMP invokePasteboardSync 将降级)");
+    }
+
+    napi_value ret;
+    napi_get_undefined(env, &ret);
+    return ret;
+}
+
+// napi 包装: pasteboardCallback(requestId: number, result: string): void
+// ArkTS → Kotlin pasteboard 操作结果回调 (read/write 完成后调用)
+static napi_value PasteboardCallback(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    // args[0]: requestId (number, int64)
+    int64_t request_id = 0;
+    napi_get_value_int64(env, args[0], &request_id);
+
+    // args[1]: resultJson (string)
+    size_t str_len = 0;
+    napi_get_value_string_utf8(env, args[1], nullptr, 0, &str_len);
+    char* buf = new char[str_len + 1];
+    napi_get_value_string_utf8(env, args[1], buf, str_len + 1, &str_len);
+
+    if (load_legado_shared() && g_pasteboard_callback != nullptr) {
+        g_pasteboard_callback(request_id, buf);
+    }
+    delete[] buf;
+
+    napi_value ret;
+    napi_get_undefined(env, &ret);
+    return ret;
+}
+
+// ============ TextCodec tsfn 接线 (同 Pasteboard 模式: tsfn 发请求 + @CName 回调返回结果) ============
+// - KMP 通过 OhosNativeBridge.invokeTextCodecSync 发 decode/encode 请求
+// - 请求经 C++ ohos_text_codec_dispatch → napi_call_threadsafe_function → ArkTS 主线程回调
+// - ArkTS TextCodecBridgeHandler 调 @ohos.util.TextDecoder/TextEncoder 完成 GB18030/Big5 等字符集编解码
+// - 完成后通过 textCodecCallback(requestId, resultJson) (napi → @CName) 回送结果给 Kotlin
+
+// C++ dispatch 入口: 由 Kotlin lambda (注入到 OhosNativeBridge.textCodecTsfn) 调用
+extern "C" void ohos_text_codec_dispatch(const char* json) {
+    if (g_text_codec_tsfn == nullptr || json == nullptr) return;
+    size_t len = strlen(json) + 1;
+    char* json_dup = (char*)malloc(len);
+    if (json_dup == nullptr) return;
+    memcpy(json_dup, json, len);
+    napi_status status = napi_call_threadsafe_function(g_text_codec_tsfn, json_dup, napi_tsfn_nonblocking);
+    if (status != napi_ok) {
+        free(json_dup);
+    }
+}
+
+// tsfn call-js 回调: 在 ArkTS 主线程执行, 把 data (JSON 串) 包成 napi string 后调用 ArkTS 回调
+static void TextCodecCallJs(napi_env env, napi_value js_cb, void* /*context*/, void* data) {
+    if (js_cb == nullptr || data == nullptr) return;
+    char* json = static_cast<char*>(data);
+    napi_value json_arg;
+    napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
+    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
+    free(json);
+}
+
+// napi 包装: registerTextCodecCallback(callback: (json: string) => void): void
+// ArkTS 注册 textCodec 回调; C++ 创建 tsfn, 通过 legado_register_text_codec_fn 注入 ohos_text_codec_dispatch 到 Kotlin
+static napi_value RegisterTextCodecCallback(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) {
+        napi_throw_type_error(env, nullptr, "registerTextCodecCallback requires 1 argument (callback)");
+        napi_value ret;
+        napi_get_undefined(env, &ret);
+        return ret;
+    }
+
+    if (g_text_codec_tsfn != nullptr) {
+        napi_release_threadsafe_function(g_text_codec_tsfn, napi_tsfn_abort);
+        g_text_codec_tsfn = nullptr;
+    }
+
+    napi_value work_name;
+    napi_create_string_utf8(env, "LegadoTextCodecTsfn", NAPI_AUTO_LENGTH, &work_name);
+    napi_threadsafe_function tsfn;
+    napi_status status = napi_create_threadsafe_function(
+        env, args[0], work_name, nullptr, 0, 1,
+        nullptr, nullptr, nullptr, nullptr, TextCodecCallJs, &tsfn);
+    if (status != napi_ok) {
+        OH_LOG_ERROR(LOG_APP, "registerTextCodecCallback: napi_create_threadsafe_function failed: %{public}d", status);
+        napi_value ret;
+        napi_get_undefined(env, &ret);
+        return ret;
+    }
+    g_text_codec_tsfn = tsfn;
+
+    if (load_legado_shared() && g_register_text_codec_fn != nullptr) {
+        g_register_text_codec_fn(&ohos_text_codec_dispatch);
+    } else {
+        OH_LOG_WARN(LOG_APP, "registerTextCodecCallback: legado_register_text_codec_fn not resolved (KMP invokeTextCodecSync 将降级)");
+    }
+
+    napi_value ret;
+    napi_get_undefined(env, &ret);
+    return ret;
+}
+
+// napi 包装: textCodecCallback(requestId: number, result: string): void
+// ArkTS → Kotlin textCodec 操作结果回调 (decode/encode 完成后调用)
+static napi_value TextCodecCallback(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    // args[0]: requestId (number, int64)
+    int64_t request_id = 0;
+    napi_get_value_int64(env, args[0], &request_id);
+
+    // args[1]: resultJson (string)
+    size_t str_len = 0;
+    napi_get_value_string_utf8(env, args[1], nullptr, 0, &str_len);
+    char* buf = new char[str_len + 1];
+    napi_get_value_string_utf8(env, args[1], buf, str_len + 1, &str_len);
+
+    if (load_legado_shared() && g_text_codec_callback != nullptr) {
+        g_text_codec_callback(request_id, buf);
+    }
+    delete[] buf;
+
+    napi_value ret;
+    napi_get_undefined(env, &ret);
+    return ret;
+}
+
 // napi module 初始化: 注册所有方法
 EXTERN_C_START
 static napi_value Init(napi_env env, napi_value exports) {
@@ -1457,6 +1714,8 @@ static napi_value Init(napi_env env, napi_value exports) {
         // FileDir/CacheDir 路径注入 (KP7+ 新增, ArkTS → Kotlin 同步推送)
         {"registerFileDir", nullptr, RegisterFileDir, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"registerCacheDir", nullptr, RegisterCacheDir, nullptr, nullptr, nullptr, napi_default, nullptr},
+        // legado:// deep link 投递 (ArkTS → Kotlin 同步推送, 返回是否已识别)
+        {"handleDeepLink", nullptr, HandleDeepLink, nullptr, nullptr, nullptr, napi_default, nullptr},
         // Toast/Notification tsfn 回调注册 (KP7+ 新增, KMP → ArkTS 跨线程 dispatch)
         {"registerToastCallback", nullptr, RegisterToastCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"registerNotificationCallback", nullptr, RegisterNotificationCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -1481,6 +1740,12 @@ static napi_value Init(napi_env env, napi_value exports) {
         // FilePicker tsfn 回调注册 + ArkTS → Kotlin 回调 (KP8+ 新增, 同 Image/Crypto/Http 模式)
         {"registerFilePickerCallback", nullptr, RegisterFilePickerCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"filePickerCallback", nullptr, FilePickerCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
+        // Pasteboard tsfn 回调注册 + ArkTS → Kotlin 回调 (同 FilePicker 模式, read/write)
+        {"registerPasteboardCallback", nullptr, RegisterPasteboardCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"pasteboardCallback", nullptr, PasteboardCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
+        // TextCodec tsfn 回调注册 + ArkTS → Kotlin 回调 (同 Pasteboard 模式, decode/encode)
+        {"registerTextCodecCallback", nullptr, RegisterTextCodecCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"textCodecCallback", nullptr, TextCodecCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
     return exports;

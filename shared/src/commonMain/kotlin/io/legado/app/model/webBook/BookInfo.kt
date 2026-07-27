@@ -98,7 +98,7 @@ object BookInfo {
                 } ?: SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└")
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
+                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.message}")
                 AppLog.put("获取分类出错", e)
             }
         }
@@ -113,7 +113,7 @@ object BookInfo {
                 }
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
+                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.message}")
                 AppLog.put("获取字数出错", e)
             }
         }
@@ -127,7 +127,7 @@ object BookInfo {
                 }
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
+                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.message}")
                 AppLog.put("获取最新章节出错", e)
             }
         }
@@ -141,7 +141,7 @@ object BookInfo {
                 }
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
+                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.message}")
                 AppLog.put("获取简介出错", e)
             }
         }
@@ -157,7 +157,7 @@ object BookInfo {
                 }
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.localizedMessage}")
+                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.message}")
                 AppLog.put("获取封面出错", e)
             }
         }

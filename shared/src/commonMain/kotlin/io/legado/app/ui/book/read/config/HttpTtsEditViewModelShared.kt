@@ -46,7 +46,7 @@ import kotlinx.coroutines.CoroutineScope
  *   app 端实现见 `HttpTtsEditViewModel.lastSavedTts` 字段)。
  * - **Toast 提示**: 原 `context.toastOnUi(msg)` → [Toasters.get].toast(msg)
  *   (Toaster 接口已下沉 commonMain, androidMain 注册的实现内部切主线程,
- *   与 `context.toastOnUi` 行为等价; 原 `context.toastOnUi(it.localizedMessage)`
+ *   与 `context.toastOnUi` 行为等价; 原 `context.toastOnUi(it.message)`
  *   在 localizedMessage 为 null 时下沉惯例回落到 "Error", 与 ReplaceEditViewModelShared /
  *   TxtTocRuleEditViewModelShared 一致)。
  *
@@ -195,8 +195,8 @@ class HttpTtsEditViewModelShared(
      *   (与 app 端一致, 取数组首个元素);
      * - 其他格式: 抛 `NoStackTraceException("格式不对")` (与 app 端完全一致);
      * - 成功回调 [onSuccess];
-     * - 失败 `Toasters.get().toast(it.localizedMessage ?: "Error")`
-     *   (替代 `context.toastOnUi(it.localizedMessage)`, 下沉惯例 null 回落 "Error")。
+     * - 失败 `Toasters.get().toast(it.message ?: "Error")`
+     *   (替代 `context.toastOnUi(it.message)`, 下沉惯例 null 回落 "Error")。
      *
      * 业务在 IO 跑 (JSON 解析可重), 回调在 mainDispatcher 跑
      * (与 BaseViewModel.execute 默认值一致)。
@@ -221,8 +221,8 @@ class HttpTtsEditViewModelShared(
         }.onSuccess {
             onSuccess.invoke(it)
         }.onError {
-            // 替代 context.toastOnUi(it.localizedMessage), Toasters.get() 已下沉 commonMain
-            Toasters.get().toast(it.localizedMessage ?: "Error")
+            // 替代 context.toastOnUi(it.message), Toasters.get() 已下沉 commonMain
+            Toasters.get().toast(it.message ?: "Error")
         }
     }
 }

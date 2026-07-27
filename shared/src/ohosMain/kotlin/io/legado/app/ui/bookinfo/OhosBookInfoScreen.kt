@@ -1,7 +1,5 @@
 package io.legado.app.ui.bookinfo
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -10,7 +8,6 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
@@ -41,13 +38,18 @@ import io.legado.app.ui.book.info.BookInfoUiActions
 import io.legado.app.ui.book.info.BookInfoUiState
 import io.legado.app.ui.book.info.BookInfoViewModelShared
 import io.legado.app.ui.book.source.SourceLoginDialog
+import io.legado.app.ui.bookshelf.OhosBlurCoverBg
+import io.legado.app.ui.bookshelf.OhosInfoCover
+import io.legado.app.ui.bookshelf.OhosIntroImage
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.platform.sharedStringTable
+import io.legado.app.ui.widget.dialog.PhotoViewDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.utils.decodeStringMapOrNull
 import io.legado.app.utils.encodeStringMap
+import io.legado.app.utils.formatNative
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -67,12 +69,11 @@ import kotlinx.coroutines.launch
  *   onLogin/onGroupClick/onSetSourceVariable/onSetBookVariable/onShowLog 弹 shared/sharedUiMain
  *   下沉的 Dialog; onEdit/onNameClick/onSearchAuthor/onSearchKind 接入路由回调;
  *   onToggleCanUpdate/onToggleSplitLongChapter 原地修改 Book + bookTick++ + 落库
- * - **slots**: 鸿蒙端封面/插图加载用 stub (后续接入 Coil3 KMP)
+ * - **slots**: 封面/插图注入 [io.legado.app.ui.bookshelf.OhosBookCover] 系列组件 (真实加载)
  *
  * # 简化项 (与 iOS / desktop 差异)
  *
- * - 不接入 onCoverClick/onShowPhoto: 依赖鸿蒙文件选择器或未下沉 Dialog
- * - 封面/插图渲染为 stub Box (后续接入 Coil3 KMP 图片加载)
+ * - 不接入 onClearCache/onOriginLongClick 等: 依赖未下沉能力 (BookHelp.clearCache / 书源长按菜单)
  *
  * @param book 详情页书籍 (SearchBook/Book), 由 OhosNavHost 注入
  * @param onBack 返回回调 (切回书架路由)
@@ -152,6 +153,9 @@ fun OhosBookInfoScreen(
     // 换封面对话框状态 (false=隐藏, true=显示; onCoverLongClick 触发,
     // 末尾 ChangeCoverDialog 渲染分支读取)
     var showChangeCoverDialog by remember { mutableStateOf(false) }
+    // 图片大图查看对话框状态 (null=隐藏, 非空=显示; onCoverClick/onShowPhoto 触发,
+    // 末尾 PhotoViewDialog 渲染分支读取, 对照 app 端 BookInfoActivity 弹 PhotoDialog)
+    var photoSrc by remember { mutableStateOf<String?>(null) }
 
     // state 加载: groupName / tocText / bookSource / bookTick
     var bookTick by remember { mutableStateOf(0) }
@@ -182,7 +186,7 @@ fun OhosBookInfoScreen(
                         dao.insert(*chapters.toTypedArray())
                     }
                 } catch (e: Throwable) {
-                    AppLog.put(String.format(getTocFailedTemplate, e.localizedMessage), e)
+                    AppLog.put(getTocFailedTemplate.formatNative(e.localizedMessage), e)
                 }
             }
         }
@@ -312,6 +316,8 @@ fun OhosBookInfoScreen(
             },
             // onCoverLongClick 触发换封面对话框显示 (对照 desktop BookInfoScreen.onCoverLongClickCb)
             onCoverLongClickCb = { showChangeCoverDialog = true },
+            // onCoverClick/onShowPhoto 触发图片大图查看对话框显示 (对照 app 端弹 PhotoDialog)
+            onShowPhotoCb = { src -> photoSrc = src },
         )
     }
 
@@ -393,6 +399,18 @@ fun OhosBookInfoScreen(
         }
     }
 
+    // ---- 图片大图查看对话框 (onCoverClick/onShowPhoto 触发, 对照 app 端 PhotoDialog) ----
+    // 消费 sharedUiMain PhotoViewDialog (ImageBitmapLoader 鸿蒙 actual=Skia 解码 + 共享 zoomable 手势;
+    // 传 book/bookSource 让网络图带书源防盗链 header, 对照 app 端 PhotoDialog sourceOrigin)
+    photoSrc?.let { src ->
+        PhotoViewDialog(
+            src = src,
+            onDismiss = { photoSrc = null },
+            book = effectiveBook,
+            bookSource = bookSource,
+        )
+    }
+
     // 上传书籍确认对话框
     if (showUploadConfirmDialog) {
         AppAlertDialog(
@@ -437,7 +455,8 @@ fun OhosBookInfoScreen(
  * - 真实实现: onBack / onReadClick / onShelfClick / onOriginClick / onTocClick / onTopBook
  *   (复用 BookInfoViewModelShared) / onRefresh / onLogin / onGroupClick / onSetSourceVariable /
  *   onSetBookVariable / onShowLog / onEdit / onSearchAuthor / onSearchKind / onNameClick /
- *   onToggleCanUpdate / onToggleSplitLongChapter / onDispatchIntroAction
+ *   onToggleCanUpdate / onToggleSplitLongChapter / onDispatchIntroAction /
+ *   onCoverClick / onShowPhoto (弹 sharedUiMain PhotoViewDialog 查看大图)
  * - no-op + TODO: 其余依赖未下沉 Dialog 或鸿蒙平台 actual 的动作
  */
 private class OhosBookInfoActions(
@@ -464,6 +483,9 @@ private class OhosBookInfoActions(
     // onCoverLongClick 触发回调: 由 OhosBookInfoScreen 注入, 弹 ChangeCoverDialog
     // (对照 desktop BookInfoScreen.onCoverLongClickCb)
     private val onCoverLongClickCb: () -> Unit,
+    // onCoverClick/onShowPhoto 触发回调: 由 OhosBookInfoScreen 注入, 弹 PhotoViewDialog 查看大图
+    // (对照 app 端 BookInfoActivity.onCoverClick/onShowPhoto → showDialogFragment(PhotoDialog))
+    private val onShowPhotoCb: (String) -> Unit,
 ) : BookInfoUiActions {
 
     override fun onBack() = onBack.invoke()
@@ -497,7 +519,7 @@ private class OhosBookInfoActions(
                 Toasters.get().toast(sharedStringTable["download_success"]!!)
                 shared.upBook(b)
             } catch (e: Throwable) {
-                AppLog.put(sharedStringTable["download_remote_book_failed_log"]!!.format(b.name), e, true)
+                AppLog.put(sharedStringTable["download_remote_book_failed_log"]!!.formatNative(b.name), e, true)
             }
         }
     }
@@ -573,7 +595,8 @@ private class OhosBookInfoActions(
     }
 
     override fun onCoverClick() {
-        // TODO: 选择自定义封面 (依赖鸿蒙文件选择器 + BookHelp.saveCover), 暂未实现
+        // 查看封面大图 (对照 app 端 BookInfoActivity.onCoverClick → PhotoDialog(getDisplayCover))
+        book?.getDisplayCover()?.let { onShowPhotoCb.invoke(it) }
     }
 
     override fun onCoverLongClick() {
@@ -624,31 +647,13 @@ private class OhosBookInfoActions(
                 this["book"] = book
             }
         } catch (e: Exception) {
-            AppLog.put(sharedStringTable["intro_action_failed_log"]!!.format(e.localizedMessage), e)
+            AppLog.put(sharedStringTable["intro_action_failed_log"]!!.formatNative(e.localizedMessage), e)
         }
     }
 
     override fun onShowPhoto(src: String) {
-        // TODO: 简介内 <img src="..."> 点击查看大图, 鸿蒙端无大图查看器
+        // 简介内 <img src="..."> 点击查看大图 (对照 app 端 onShowPhoto → PhotoDialog(src))
+        onShowPhotoCb.invoke(src)
     }
 }
 
-// ---- 鸿蒙端封面/插图 stub (对照 OhosBookshelfManageScreen.OhosInfoCover, 后续接入 Coil3 KMP) ----
-
-/** 模糊封面背景 (stub, 后续接入 Coil3 KMP 图片加载) */
-@Composable
-private fun OhosBlurCoverBg(book: Book?, modifier: Modifier = Modifier) {
-    Box(modifier)
-}
-
-/** 书籍封面 (stub, 后续接入 Coil3 KMP 图片加载) */
-@Composable
-private fun OhosInfoCover(book: Book?, modifier: Modifier = Modifier) {
-    Box(modifier)
-}
-
-/** 简介内整宽图 (stub, 后续接入 Coil3 KMP 图片加载) */
-@Composable
-private fun OhosIntroImage(src: String, onClick: () -> Unit) {
-    Box(Modifier.fillMaxSize())
-}

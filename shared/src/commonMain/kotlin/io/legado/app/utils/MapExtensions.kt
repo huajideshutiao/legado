@@ -9,7 +9,8 @@ fun HashMap<String, *>.has(key: String, ignoreCase: Boolean = false): Boolean {
     return false
 }
 
-fun <T> HashMap<String, T>.get(key: String, ignoreCase: Boolean = false): T? {
+// 接收者用 Map 而非 HashMap: common 中 LinkedHashMap 不是 HashMap 子类 (JVM 中是), AnalyzeUrlCore.headerMap 等需要
+fun <T> Map<String, T>.get(key: String, ignoreCase: Boolean = false): T? {
     for (item in this) {
         if (key.equals(item.key, ignoreCase)) {
             return item.value

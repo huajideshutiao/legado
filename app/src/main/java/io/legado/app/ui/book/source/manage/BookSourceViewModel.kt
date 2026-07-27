@@ -31,8 +31,8 @@ import kotlinx.coroutines.runBlocking
  * - **saveToFile (2 个重载) / getBookSources**: 依赖 `context.filesDir` +
  *   `FileUtils.createFileWithReplace` + `GSON.writeToOutputStream` + 文件流 +
  *   `List<BookSourcePart>.toBookSource()` app 端扩展 (该扩展内部 runBlocking 调
- *   appDb.bookSourceDao.getBookSourcesFix) + `String.cnCompare` Android ICU 扩展,
- *   不能下沉 commonMain, 留本类实现;
+ *   appDb.bookSourceDao.getBookSourcesFix), 不能下沉 commonMain, 留本类实现
+ *   (`String.cnCompare` 已另行下沉 shared commonMain);
  * - **scope 注入**: `viewModelScope` (BaseViewModel 来自 AndroidViewModel) 传入 [shared]。
  *
  * # 行为等价性
@@ -193,8 +193,8 @@ class BookSourceViewModel(application: Application) : BaseViewModel(application)
     /**
      * 取排序后的书源列表, 留 app 端。
      *
-     * 依赖 `appDb.bookSourceDao.getBookSourcesFix` (runBlocking) +
-     * `String.cnCompare` Android ICU 扩展, 不能下沉 commonMain。
+     * 依赖 `appDb.bookSourceDao.getBookSourcesFix` (runBlocking), 不能下沉 commonMain
+     * (`String.cnCompare` 已另行下沉 shared commonMain)。
      *
      * @param selection 选中的书源 (BookSourcePart, 仅取 bookSourceUrl 用于查询)
      * @param sortAscending 是否升序

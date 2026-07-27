@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,6 +40,8 @@ import io.legado.app.help.book.addType
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.ui.book.explore.ExploreShowScreen as SharedExploreShowScreen
+import io.legado.app.ui.bookshelf.OhosInfoCover
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.explore.ExploreShowViewModelShared
 import io.legado.app.ui.compose.component.RadioChip
 import io.legado.app.ui.compose.component.StrokeTextChip
@@ -63,7 +66,7 @@ import kotlinx.coroutines.launch
  *   switchLayout/setColumnCount/isInBookShelf, 内部已订阅 bookDao.flowAll 维护 bookshelf
  * - **状态**: [OhosExploreShowStateHolder] 实现 [ExploreShowUiActions], 持有 books/footer/error
  *   等 mutableStateOf 字段, 收集 shared 的 StateFlow 桥接到 Compose state
- * - **封面槽**: 占位 Box (KP-ohos: 后续接入 Coil3 KMP 图片加载, 对照 OhosInfoCover)
+ * - **封面槽**: [OhosExploreCover] (比例定高 + [OhosInfoCover] 真实加载)
  * - **视频卡**: 占位 Row (L3 ItemExploreVideoBinding 未下沉)
  * - **参数 chip 行**: 内联 [OhosExploreOptionsRow] (Compose chip, 替代 L3 LinearLayout)
  * - **列数选择**: 复用 shared [NumberPickerDialog]
@@ -148,9 +151,8 @@ fun OhosExploreShowScreen(
             // 视频卡占位 (L3 ItemExploreVideoBinding 未下沉)
             OhosVideoItemPlaceholder(book, inBookshelf, onClick, onLongClick)
         },
-        { book, _, _, modifier ->
-            // 封面占位 (KP-ohos: 后续接入 Coil3 KMP 图片加载)
-            OhosExploreCover(book.toBook(), modifier)
+        { book, _, isVideoStyle, modifier ->
+            OhosExploreCover(book.toBook(), modifier, isVideoStyle)
         },
     )
 
@@ -286,7 +288,7 @@ private fun OhosVideoItemPlaceholder(
         Box(
             Modifier
                 .size(width = 72.dp, height = 96.dp)
-                .clip(RoundedCornerShape(4.dp))
+                .clip(DesignTokens.shapeSm)
                 .background(Color(0xFF165DFF)),
             contentAlignment = Alignment.Center,
         ) {
@@ -316,15 +318,16 @@ private fun OhosVideoItemPlaceholder(
 }
 
 /**
- * 鸿蒙端发现页封面占位 (KP-ohos: 后续接入 Coil3 KMP 图片加载)。
- *
- * 对照 [OhosInfoCover] / iOS [IosInfoCover], 当前仅占位让 shared ExploreShowScreen 的
- * coverSlot 编译通过。
+ * 鸿蒙端发现页封面: 比例定高 (NOVEL 3:4 / VIDEO 16:9, 对照 CoverRatio) 内嵌 [OhosInfoCover]。
  */
 @Composable
-private fun OhosExploreCover(book: io.legado.app.data.entities.Book?, modifier: Modifier = Modifier) {
-    // KP-ohos: stub, 后续接入 Coil3 KMP 图片加载
-    Box(modifier)
+private fun OhosExploreCover(
+    book: io.legado.app.data.entities.Book?,
+    modifier: Modifier = Modifier,
+    isVideoStyle: Boolean = false,
+) {
+    val ratio = if (isVideoStyle) 16f / 9f else 0.75f
+    OhosInfoCover(book, modifier.aspectRatio(ratio))
 }
 
 /**

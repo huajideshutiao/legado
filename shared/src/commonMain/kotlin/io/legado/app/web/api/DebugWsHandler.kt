@@ -1,13 +1,13 @@
 package io.legado.app.web.api
 
 import io.legado.app.data.AppDatabaseProviders
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.Debug
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isJson
 import io.legado.app.help.coroutine.printOnDebug
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -29,7 +29,7 @@ class DebugWsHandler(
     private val notPrintState = arrayOf(10, 20, 30, 40)
 
     override fun onMessage(text: String) {
-        launch(IO) {
+        launch(IoDispatcher) {
             kotlin.runCatching {
                 if (!text.isJson()) {
                     session.send("数据必须为Json格式")
@@ -73,7 +73,7 @@ class DebugWsHandler(
             return
         }
         // 原 app 端 runOnIO { ... } (CoroutineScope 扩展) 等价替换为 launch(IO) { ... }
-        launch(IO) {
+        launch(IoDispatcher) {
             runCatching {
                 session.send(msg)
                 if (state == -1 || state == 1000) {

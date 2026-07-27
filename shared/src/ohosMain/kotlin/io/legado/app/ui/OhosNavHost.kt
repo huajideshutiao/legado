@@ -8,8 +8,12 @@ import androidx.compose.runtime.setValue
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
+import io.legado.app.help.book.isAudio
+import io.legado.app.help.book.isImage
+import io.legado.app.help.book.isVideo
 import io.legado.app.ui.about.OhosAboutScreen
 import io.legado.app.ui.about.OhosReadRecordScreen
+import io.legado.app.ui.association.DeepLinkImportHost
 import io.legado.app.ui.association.OhosAssociationScreen
 import io.legado.app.ui.association.OhosJsScreen
 import io.legado.app.ui.association.OhosRuleSubScreen
@@ -103,6 +107,11 @@ fun OhosNavHost() {
     // CHANGE_SOURCE 路由状态 (详情 onOriginClick 触发)
     var changeSourceBook by remember { mutableStateOf<Book?>(null) }
 
+    // 媒体播放路由状态 (BOOK_INFO onReadClick 按书类型分流触发)
+    var audioBook by remember { mutableStateOf<Book?>(null) }
+    var videoBook by remember { mutableStateOf<Book?>(null) }
+    var mangaBook by remember { mutableStateOf<Book?>(null) }
+
     // CHANGE_CHAPTER_SOURCE 路由状态 (阅读页 CHAPTER_CHANGE_SOURCE 触发)
     var changeChapterSourceBook by remember { mutableStateOf<Book?>(null) }
     var changeChapterSourceIndex by remember { mutableStateOf(0) }
@@ -155,6 +164,8 @@ fun OhosNavHost() {
                 exploreShowSourceUrl = sourceUrl
                 currentRoute = OhosRoute.EXPLORE_SHOW
             },
+            onBookshelfSearch = { currentRoute = OhosRoute.SEARCH },
+            onOpenBookshelfManage = { currentRoute = OhosRoute.BOOKSHELF_MANAGE },
             onMyItemClick = { title -> currentRoute = myItemRoute(title) ?: return@OhosIndexScreen },
         )
 
@@ -165,6 +176,8 @@ fun OhosNavHost() {
                 readerChapterIndex = chapterIndex
                 currentRoute = OhosRoute.READER
             },
+            onSearchClick = { currentRoute = OhosRoute.SEARCH },
+            onOpenBookshelfManage = { currentRoute = OhosRoute.BOOKSHELF_MANAGE },
         )
 
         OhosRoute.EXPLORE -> OhosExploreTab(
@@ -207,10 +220,18 @@ fun OhosNavHost() {
                 },
                 onReadClick = { readBook ->
                     infoBook = null
-                    readerBookUrl = readBook.bookUrl
-                    readerBookName = readBook.name
-                    readerChapterIndex = readBook.durChapterIndex
-                    currentRoute = OhosRoute.READER
+                    // 按书类型分流到对应媒体播放路由
+                    when {
+                        readBook.isAudio -> { audioBook = readBook; currentRoute = OhosRoute.AUDIO_PLAY }
+                        readBook.isImage -> { mangaBook = readBook; currentRoute = OhosRoute.MANGA_READER }
+                        readBook.isVideo -> { videoBook = readBook; currentRoute = OhosRoute.VIDEO_PLAYER }
+                        else -> {
+                            readerBookUrl = readBook.bookUrl
+                            readerBookName = readBook.name
+                            readerChapterIndex = readBook.durChapterIndex
+                            currentRoute = OhosRoute.READER
+                        }
+                    }
                 },
                 onEditClick = { bookUrl ->
                     editBookUrl = bookUrl
@@ -340,17 +361,32 @@ fun OhosNavHost() {
 
         // ===== 媒体播放 (stub, 暂不由 BOOK_INFO 分流触发) =====
 
-        OhosRoute.AUDIO_PLAY -> OhosAudioPlayScreen(
-            onBack = { currentRoute = OhosRoute.INDEX },
-        )
+        OhosRoute.AUDIO_PLAY -> audioBook?.let { book ->
+            OhosAudioPlayScreen(
+                book = book,
+                onBack = { audioBook = null; currentRoute = OhosRoute.INDEX },
+                onOpenToc = { tocBook = book; currentRoute = OhosRoute.TOC },
+                onOpenChangeSource = { changeSourceBook = book; currentRoute = OhosRoute.CHANGE_SOURCE },
+            )
+        }
 
-        OhosRoute.VIDEO_PLAYER -> OhosVideoPlayerScreen(
-            onBack = { currentRoute = OhosRoute.INDEX },
-        )
+        OhosRoute.VIDEO_PLAYER -> videoBook?.let { book ->
+            OhosVideoPlayerScreen(
+                book = book,
+                onBack = { videoBook = null; currentRoute = OhosRoute.INDEX },
+                onOpenToc = { tocBook = book; currentRoute = OhosRoute.TOC },
+                onOpenChangeSource = { changeSourceBook = book; currentRoute = OhosRoute.CHANGE_SOURCE },
+            )
+        }
 
-        OhosRoute.MANGA_READER -> OhosMangaReaderScreen(
-            onBack = { currentRoute = OhosRoute.INDEX },
-        )
+        OhosRoute.MANGA_READER -> mangaBook?.let { book ->
+            OhosMangaReaderScreen(
+                book = book,
+                onBack = { mangaBook = null; currentRoute = OhosRoute.INDEX },
+                onOpenToc = { tocBook = book; currentRoute = OhosRoute.TOC },
+                onOpenChangeSource = { changeSourceBook = book; currentRoute = OhosRoute.CHANGE_SOURCE },
+            )
+        }
 
         // ===== 书架子页 =====
 
@@ -599,6 +635,10 @@ fun OhosNavHost() {
             },
         )
     }
+
+    // legado:// deep link 导入宿主 (与路由 when 平级, 覆盖在任意路由之上弹对话框)
+    // 投递侧: EntryAbility onCreate/onNewWant → napi handleDeepLink → LegadoDeepLinkHandler.pending
+    DeepLinkImportHost()
 }
 
 /**
@@ -715,6 +755,11 @@ private fun myItemRoute(title: String): OhosRoute? = when (title) {
     "备份/恢复" -> OhosRoute.BACKUP_CONFIG
     "主题设置" -> OhosRoute.THEME_CONFIG
     "其他设置" -> OhosRoute.OTHER_CONFIG
+    "书源过滤规则" -> OhosRoute.SOURCE_FILTER_RULE
+    "TXT 目录规则" -> OhosRoute.TXT_TOC_RULE
+    "字典规则" -> OhosRoute.DICT_RULE
+    "规则订阅" -> OhosRoute.RULE_SUB
+    "书签" -> OhosRoute.BOOKMARK
     "阅读记录" -> OhosRoute.READ_RECORD
     "关于" -> OhosRoute.ABOUT
     else -> null

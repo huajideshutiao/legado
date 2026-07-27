@@ -8,9 +8,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,11 +30,12 @@ import io.legado.app.help.HomeTabHelp
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
+import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.showDialogFragment
-import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * 主页分组管理(Compose)：item 点击进入该分组的展示项管理；编辑改标题/删除；+ 添加分组；长按拖动排序。
@@ -80,7 +81,7 @@ class HomeTabManageDialog : BaseComposeDialogFragment() {
     }
 
     @Composable
-    private fun ReorderableCollectionItemScope.TabItem(item: HomeTab) {
+    private fun RuleItemScope.TabItem(item: HomeTab) {
         val colors = AppTheme.colors
         Row(
             Modifier

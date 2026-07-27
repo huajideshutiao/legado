@@ -71,7 +71,7 @@ object PackageDocumentReader : PackageDocumentBase() {
         )
 
         resources = readManifest(
-            packageDocument, packageHref, packagePath!!, epubReader,
+            packageDocument, packageHref, packagePath, epubReader,
             resources, idMapping
         )
         book.resources = resources
@@ -297,7 +297,7 @@ object PackageDocumentReader : PackageDocumentBase() {
                 continue  // cover is handled elsewhere
             }
             val reference: GuideReference = GuideReference(
-                resource, type ?: "", title,
+                resource, type, title,
                 resourceHref.substringAfter(Constants.FRAGMENT_SEPARATOR_CHAR, "")
             )
             guide.addReference(reference)
@@ -394,7 +394,7 @@ object PackageDocumentReader : PackageDocumentBase() {
                 id = itemref
             }
 
-            val resource: Resource? = resources.getByIdOrHref(id ?: "")
+            val resource: Resource? = resources.getByIdOrHref(id)
             if (resource == null) {
                 AppLog.put("resource with id '" + id + "' not found")
                 continue
@@ -463,7 +463,7 @@ object PackageDocumentReader : PackageDocumentBase() {
         }
 
         if (!tocResourceId.isNullOrBlank()) {
-            tocResource = resources.getByIdOrHref(tocResourceId ?: "")
+            tocResource = resources.getByIdOrHref(tocResourceId)
         }
 
         if (tocResource != null) {
@@ -480,7 +480,7 @@ object PackageDocumentReader : PackageDocumentBase() {
                     break
                 }
                 tocResource = resources
-                    .getByIdOrHref(possibleNcxItemId!!.uppercase())
+                    .getByIdOrHref(possibleNcxItemId.uppercase())
                 if (tocResource != null) {
                     break
                 }
@@ -521,7 +521,7 @@ object PackageDocumentReader : PackageDocumentBase() {
         if (!coverResourceId.isNullOrBlank()) {
             val coverHref = DOMUtil.getFindAttributeValue(
                 packageDocument, PackageDocumentBase.Companion.NAMESPACE_OPF,
-                OPFTags.Companion.item, OPFAttributes.Companion.id, coverResourceId ?: "",
+                OPFTags.Companion.item, OPFAttributes.Companion.id, coverResourceId,
                 OPFAttributes.Companion.href
             )
             if (!coverHref.isNullOrBlank()) {

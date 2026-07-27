@@ -254,6 +254,9 @@ actual fun rememberPainter(key: String): Painter {
 actual fun rememberString(key: String, vararg formatArgs: Any): String {
     val context = LocalContext.current
     val id = resolveResourceId(context, key, "string")
+    // 资源缺失兜底: getIdentifier 找不到返回 0, stringResource(0) 会抛 NotFoundException;
+    // 与 jvmMain/iosMain 的 sharedStringTable[key] ?: key 兜底行为对齐
+    if (id == 0) return key
     // formatArgs 为空时走 stringResource(id) 不格式化, 与原 app 端 stringResource 行为一致;
     // 非空时走 stringResource(id, *formatArgs), 由 Android Formatter 填充占位符
     return if (formatArgs.isEmpty()) stringResource(id) else stringResource(id, *formatArgs)
@@ -263,6 +266,8 @@ actual fun rememberString(key: String, vararg formatArgs: Any): String {
 actual fun rememberStringArray(key: String): List<String> {
     val context = LocalContext.current
     val id = resolveResourceId(context, key, "array")
+    // 资源缺失兜底: getIdentifier 返回 0 时 stringArrayResource(0) 会抛 NotFoundException
+    if (id == 0) return emptyList()
     return stringArrayResource(id).toList()
 }
 

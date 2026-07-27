@@ -259,19 +259,19 @@ class BookshelfManageViewModelShared(
                 if (book.origin == source.bookSourceUrl) return@forEachIndexed
                 val newBook = WebBook.preciseSearchAwait(source, book.name, book.author)
                     .onFailure {
-                        AppLog.put("搜索书籍出错\n${it.localizedMessage}", it, true)
+                        AppLog.put("搜索书籍出错\n${it.message}", it, true)
                     }.getOrNull() ?: return@forEachIndexed
                 kotlin.runCatching {
                     if (newBook.tocUrl.isEmpty()) {
                         WebBook.getBookInfoAwait(source, newBook)
                     }
                 }.onFailure {
-                    AppLog.put("获取书籍详情出错\n${it.localizedMessage}", it, true)
+                    AppLog.put("获取书籍详情出错\n${it.message}", it, true)
                     return@forEachIndexed
                 }
                 WebBook.getChapterListAwait(source, newBook)
                     .onFailure {
-                        AppLog.put("获取目录出错\n${it.localizedMessage}", it, true)
+                        AppLog.put("获取目录出错\n${it.message}", it, true)
                     }.getOrNull()?.let { toc ->
                         platform.migrateBook(book, newBook, toc)
                         book.removeType(BookType.updateError)

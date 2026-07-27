@@ -1,6 +1,7 @@
 package io.legado.desktop.ui.config
 
 import androidx.compose.foundation.layout.widthIn
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.desktop.ui.component.DialogSizes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,10 +18,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -256,7 +256,7 @@ fun ThemeCustomizeDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(16.dp),
+            shape = DesignTokens.dialogShape,
             color = colors.background,
             modifier = Modifier.fillMaxWidth().widthIn(max = DialogSizes.dialogMaxWidth()),
         ) {
@@ -389,7 +389,7 @@ private fun ColorRow(label: String, color: Int, onClick: () -> Unit) {
             Modifier
                 .size(30.dp)
                 .background(Color(color), CircleShape)
-                .border(1.dp, Color(0xFF6E6E6E), CircleShape),
+                .border(DesignTokens.strokeThin, Color(0xFF6E6E6E), CircleShape),
         )
     }
 }

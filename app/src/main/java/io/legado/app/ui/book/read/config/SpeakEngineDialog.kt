@@ -11,10 +11,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -116,11 +116,9 @@ class SpeakEngineDialog : BaseComposeDialogFragment() {
                     }
                     OverflowMenu { dismiss ->
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.import_default_rule)) },
                             onClick = { dismiss(); viewModel.importDefault() },
-                        )
+                        ) { Text(stringResource(R.string.import_default_rule)) }
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.import_local)) },
                             onClick = {
                                 dismiss()
                                 importDocResult.launch {
@@ -128,13 +126,11 @@ class SpeakEngineDialog : BaseComposeDialogFragment() {
                                     allowExtensions = arrayOf("txt", "json")
                                 }
                             },
-                        )
+                        ) { Text(stringResource(R.string.import_local)) }
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.import_on_line)) },
                             onClick = { dismiss(); importAlert() },
-                        )
+                        ) { Text(stringResource(R.string.import_on_line)) }
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.export)) },
                             onClick = {
                                 dismiss()
                                 exportDirResult.launch {
@@ -146,7 +142,7 @@ class SpeakEngineDialog : BaseComposeDialogFragment() {
                                     )
                                 }
                             },
-                        )
+                        ) { Text(stringResource(R.string.export)) }
                     }
                 },
             )

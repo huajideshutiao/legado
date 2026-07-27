@@ -8,12 +8,13 @@ import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.data.entities.VideoSource
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.compose.platform.PreferenceStoreProvider
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -96,7 +97,7 @@ class VideoPlayViewModelShared(
     /**
      * 当前播放视频的 [AnalyzeUrlCore] (含 URL + header / cookie / charset / JS 解析)。
      *
-     * null = 加载中或加载失败; UI 层订阅此状态后, 调用底层播放库 (vlcj / ExoPlayer /
+     * null = 加载中或加载失败; UI 层订阅此状态后, 调用底层播放器 (mpv / ExoPlayer /
      * AVPlayer 等) 加载 [AnalyzeUrlCore.url] 并带 [AnalyzeUrlCore.headerMap] 发请求。
      */
     val videoUrl: StateFlow<AnalyzeUrlCore?> = _videoUrl.asStateFlow()
@@ -136,7 +137,7 @@ class VideoPlayViewModelShared(
     suspend fun initData(book: Book, initialChapterIndex: Int = book.durChapterIndex) {
         curBook = book
         // 查书源
-        curBookSource = withContext(Dispatchers.IO) {
+        curBookSource = withContext(IoDispatcher) {
             AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
         }
         // 拉章节列表
@@ -148,8 +149,8 @@ class VideoPlayViewModelShared(
         chapterList = runCatching {
             WebBook.getChapterListAwait(source, book).getOrThrow()
         }.onFailure {
-            AppLog.put("加载章节列表出错\n${it.localizedMessage}", it)
-            _error.value = "加载章节列表失败: ${it.localizedMessage}"
+            AppLog.put("加载章节列表出错\n${it.message}", it)
+            _error.value = "加载章节列表失败: ${it.message}"
         }.getOrNull()
         _chapterSize.value = chapterList?.size ?: 0
         // 加载初始章节
@@ -229,8 +230,8 @@ class VideoPlayViewModelShared(
                 val content = runCatching {
                     WebBook.getContentAwait(source, book, chapter, nextChapterUrl, needSave = false)
                 }.onFailure {
-                    AppLog.put("加载章节内容出错\n${it.localizedMessage}", it)
-                    _error.value = "加载失败: ${it.localizedMessage}"
+                    AppLog.put("加载章节内容出错\n${it.message}", it)
+                    _error.value = "加载失败: ${it.message}"
                 }.getOrNull()
                 if (content == null) {
                     return@launch
@@ -249,8 +250,8 @@ class VideoPlayViewModelShared(
                 // 新章节加载成功, 重置错误重试标记
                 hasRetriedOnError = false
             } catch (e: Exception) {
-                AppLog.put("加载章节出错\n${e.localizedMessage}", e)
-                _error.value = "加载出错: ${e.localizedMessage}"
+                AppLog.put("加载章节出错\n${e.message}", e)
+                _error.value = "加载出错: ${e.message}"
             }
         }
     }
@@ -284,7 +285,7 @@ class VideoPlayViewModelShared(
             currentResolutionIndex = videoSource.defaultIndex
             val resolution = videoSource.getResolution()
             if (resolution != null) {
-                _videoUrl.value = AnalyzeUrlCore(
+                _videoUrl.value = AnalyzeUrlFactories.create(
                     rawUrl = resolution.url,
                     source = source,
                     headerMapF = videoSource.headers,
@@ -297,11 +298,11 @@ class VideoPlayViewModelShared(
             currentResolutionIndex = 0
             _videoUrl.value = if (content.startsWith("http")) {
                 // http 直链: 用 AnalyzeUrlCore 包装 (带书源 header / cookie / charset)
-                AnalyzeUrlCore(rawUrl = content, source = source)
+                AnalyzeUrlFactories.create(rawUrl = content, source = source)
             } else {
                 // 内存 m3u8: 保留 fakeUrl + Referer 语义, 供 UI 层播放库接入时复用
                 val (videoUrl, fakeUrl) = extractVideoUrlAndReferer(content)
-                AnalyzeUrlCore("").apply {
+                AnalyzeUrlFactories.create("").apply {
                     url = videoUrl
                     headerMap["Referer"] = fakeUrl
                 }
@@ -324,7 +325,7 @@ class VideoPlayViewModelShared(
         val resolution = source.getResolution(index) ?: return
         val bookSource = curBookSource ?: return
         currentResolutionIndex = index
-        _videoUrl.value = AnalyzeUrlCore(
+        _videoUrl.value = AnalyzeUrlFactories.create(
             rawUrl = resolution.url,
             source = bookSource,
             headerMapF = source.headers,
@@ -347,7 +348,7 @@ class VideoPlayViewModelShared(
     /**
      * 播放器错误统一重试策略 (仅首次重试)。
      *
-     * 供 app 端 onPlayerError / desktop 端 vlcj error 事件复用, 消除两端重复实现。
+     * 供 app 端 onPlayerError / desktop 端 mpv 播放失败事件复用, 消除两端重复实现。
      * 未重试过则置标记并刷新章节 (重新拉取章节内容), 已重试过返回 false 由调用方自行处理。
      * 新章节加载成功后由 [loadChapter] 重置标记, 允许下次出错再次重试。
      *
@@ -417,7 +418,7 @@ class VideoPlayViewModelShared(
                 durChapterTitle = chapter.title,
             )
         }.onFailure {
-            AppLog.put("保存阅读进度出错\n${it.localizedMessage}", it)
+            AppLog.put("保存阅读进度出错\n${it.message}", it)
         }
     }
 
@@ -438,7 +439,7 @@ class VideoPlayViewModelShared(
         runCatching {
             prefStore.putString("video_progress_$bookUrl", positionMs.coerceAtLeast(0L).toString())
         }.onFailure {
-            AppLog.put("保存播放位置出错\n${it.localizedMessage}", it)
+            AppLog.put("保存播放位置出错\n${it.message}", it)
         }
     }
 

@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.window.Dialog
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.AppDbProviders
@@ -60,10 +61,10 @@ import kotlinx.coroutines.withContext
  * - **数据加载**: [LaunchedEffect] 异步查 [AppDbProviders.get].bookDao.getBook(bookUrl)
  *   加载本地完整 Book (含 durChapterIndex 等); 再异步加载章节列表 + 书签列表
  * - **UI state**: 构造 [TocUiState], 桌面端简化项:
- *   - `displayTitleMap` 留空 (净标题异步计算依赖 ContentProcessor, 桌面端未下沉)
+ *   - `displayTitleMap` 留空 (净标题异步计算未接入)
  *   - `cacheFileNames` 留空 (依赖 BookHelp.getChapterFiles, 桌面端 BookHelpAccessor 未暴露)
- *   - `useReplace` 默认 false (PreferKey.tocUiUseReplace 未在 AppConfigAccessor 暴露)
- *   - `countWords` 初始化自 [AppConfigProviders.get].tocCountWords
+ *   - `useReplace` / `countWords` 初始化自 [AppConfigProviders.get]
+ *     (tocUiUseReplace / tocCountWords)
  * - **actions**: 实现 [TocUiActions] 15 个方法, 核心动作 (onBack/openChapter/openBookmark/
  *   setSearchMode/setQuery/toggleVolume/reverseChapterList/toggleUseReplace/toggleCountWords)
  *   接入真实逻辑, 其余暂为 no-op + TODO 注释 (依赖未下沉 Dialog/文件选择器)
@@ -137,8 +138,8 @@ private fun TocScreenContent(
     var collapsedVolumes by collapsedVolumesState
     // 桌面端简化: 不接入 BookHelp.getChapterFiles, cacheFileNames 留空
     val cacheFileNamesState = remember { mutableStateOf<Set<String>>(emptySet()) }
-    // useReplace 默认 false (PreferKey.tocUiUseReplace 未在 AppConfigAccessor 暴露)
-    val useReplaceState = remember { mutableStateOf(false) }
+    // useReplace 初始化自 AppConfigProviders (tocUiUseReplace 已在 AppConfigAccessor 暴露)
+    val useReplaceState = remember { mutableStateOf(AppConfigProviders.get().tocUiUseReplace) }
     var useReplace by useReplaceState
     // countWords 初始化自 AppConfigProviders (桌面端 DesktopAppConfigAccessor 已实现)
     val countWordsState = remember { mutableStateOf(AppConfigProviders.get().tocCountWords) }
@@ -232,21 +233,23 @@ private fun TocScreenContent(
     // - clipTextSink: 写系统剪贴板文本 (供"复制规则"菜单项用)
     // onConfirm: 调 txtTocRuleDao.insert(r) 落库 (AppDbProviders.get().txtTocRuleDao 已下沉)
     if (showTocRegexDialog) {
-        TxtTocRuleEditDialog(
-            rule = null,
-            onConfirm = { r ->
-                scope.launch { AppDbProviders.get().txtTocRuleDao.insert(r) }
-            },
-            onDismiss = { showTocRegexDialog = false },
-            clipTextProvider = {
-                runCatching {
-                    Toolkit.getDefaultToolkit().systemClipboard.getData(DataFlavor.stringFlavor) as? String
-                }.getOrNull()
-            },
-            clipTextSink = { text ->
-                Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
-            },
-        )
+        Dialog(onDismissRequest = { showTocRegexDialog = false }) {
+            TxtTocRuleEditDialog(
+                rule = null,
+                onConfirm = { r ->
+                    scope.launch { AppDbProviders.get().txtTocRuleDao.insert(r) }
+                },
+                onDismiss = { showTocRegexDialog = false },
+                clipTextProvider = {
+                    runCatching {
+                        Toolkit.getDefaultToolkit().systemClipboard.getData(DataFlavor.stringFlavor) as? String
+                    }.getOrNull()
+                },
+                clipTextSink = { text ->
+                    Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
+                },
+            )
+        }
     }
     // ---- 应用日志对话框 (showLog 触发, 调用 shared/sharedUiMain 下沉的 AppLogDialog) ----
     if (showLogDialog) {

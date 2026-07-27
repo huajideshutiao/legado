@@ -8,8 +8,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -172,9 +172,8 @@ class RuleSubActivity : BaseComposeActivity(), RuleSubUiActions {
                             AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                                 (0..5).forEach { t ->
                                     DropdownMenuItem(
-                                        text = { Text(typeName(t), color = AppTheme.colors.primaryText) },
                                         onClick = { type.value = t; expanded = false },
-                                    )
+                                    ) { Text(typeName(t), color = AppTheme.colors.primaryText) }
                                 }
                             }
                         }

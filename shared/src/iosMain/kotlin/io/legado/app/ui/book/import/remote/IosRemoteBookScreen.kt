@@ -1,9 +1,5 @@
 package io.legado.app.ui.book.import.remote
 
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -14,7 +10,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import io.legado.app.constant.AppConst.DEFAULT_WEBDAV_ID
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
@@ -27,6 +22,8 @@ import io.legado.app.ui.book.import.remote.RemoteBookScreen as SharedRemoteBookS
 import io.legado.app.ui.book.import.remote.RemoteBookSort
 import io.legado.app.ui.book.import.remote.RemoteBookUiActions
 import io.legado.app.ui.book.import.remote.RemoteBookUiState
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.rememberString
 
 /**
@@ -53,7 +50,7 @@ import io.legado.app.ui.compose.platform.rememberString
  *   增删改查全链路打通 (ServersViewModelShared / ServerConfigViewModelShared + AppDbProviders);
  *   切换服务器后写 PreferKey.remoteServerId, 待 RemoteBookViewModelShared 接入后刷新书籍列表
  * - **帮助/日志**: app 端 `showHelp` / `AppLogDialog` 依赖 Activity, 未下沉,
- *   onShowWebDavHelp / onShowLogDialog 改用 [AlertDialog] 显示未实现提示 (与 desktop 一致)
+ *   onShowWebDavHelp / onShowLogDialog 改用 [AppAlertDialog] 显示未实现提示 (与 desktop 一致)
  * - **打开书籍/压缩包**: app 端 `startRead` 依赖 `startActivityForBook` + `ArchiveUtils`,
  *   未下沉, onItemClick / onItemLongClick no-op
  * - **排序**: 排序状态 [sortKeyState] 持有 + 切换已实现, 但因 items 为空无实际效果
@@ -339,30 +336,26 @@ private fun IosRemoteBookContent(onBack: () -> Unit) {
         )
     }
 
-    // ---- AlertDialog 渲染 (剩余两个未实现提示, 帮助/日志依赖未下沉) ----
+    // ---- AppAlertDialog 渲染 (剩余两个未实现提示, 帮助/日志依赖未下沉) ----
     if (showWebDavHelpDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
             onDismissRequest = { showWebDavHelpDialog = false },
-            title = { Text(helpLabel) },
-            text = { Text(webDavHelpNotImplementedLabel) },
-            confirmButton = {
-                TextButton(onClick = { showWebDavHelpDialog = false }) {
-                    Text(okLabel)
-                }
+            title = helpLabel,
+            message = webDavHelpNotImplementedLabel,
+            widthFraction = 0.8f,
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                showWebDavHelpDialog = false
             },
         )
     }
     if (showLogDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
             onDismissRequest = { showLogDialog = false },
-            title = { Text(logLabel) },
-            text = { Text(logViewNotImplementedLabel) },
-            confirmButton = {
-                TextButton(onClick = { showLogDialog = false }) {
-                    Text(okLabel)
-                }
+            title = logLabel,
+            message = logViewNotImplementedLabel,
+            widthFraction = 0.8f,
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                showLogDialog = false
             },
         )
     }

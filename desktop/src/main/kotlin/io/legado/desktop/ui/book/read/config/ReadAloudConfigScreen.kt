@@ -2,11 +2,8 @@ package io.legado.desktop.ui.book.read.config
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -16,6 +13,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
@@ -26,7 +26,7 @@ import io.legado.app.ui.association.ImportHttpTtsViewModelShared
 import io.legado.app.ui.book.read.config.ReadAloudConfigScreen as SharedReadAloudConfigScreen
 import io.legado.app.ui.book.read.config.ReadAloudDialog
 import io.legado.app.ui.book.read.config.SpeakEngineDialog
-import io.legado.app.ui.compose.component.Md2TextField
+import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
@@ -40,8 +40,7 @@ import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.desktop.ui.association.DesktopImportDialog
-import io.legado.desktop.ui.association.ImportHttpTtsVmAdapter
-import io.legado.desktop.ui.association.ImportListScaffoldVm
+import io.legado.desktop.ui.association.DesktopImportVm
 import java.awt.FileDialog
 import java.awt.Frame
 import kotlinx.coroutines.Dispatchers
@@ -155,13 +154,13 @@ private fun ReadAloudConfigContent() {
     // 因桌面端 SpeakEngineDialog (shared/sharedUiMain) 的标题栏 actions 仅"+"按钮不可改,
     // HttpTts 列表导入入口下放到 HttpTtsEditDialog 的 OverflowMenu (onImportLocal/onImportOnline
     // 非 null 时显示"本地导入/网络导入"项); 用户点击后先关闭 EditDialog 再触发外部回调,
-    // 由本 Composable 弹 FileDialog/AlertDialog → 新建 ImportHttpTtsVmAdapter → 渲染
+    // 由本 Composable 弹 FileDialog/AlertDialog → 新建 DesktopImportVm.httpTts → 渲染
     // DesktopImportDialog 完成下载+解析+比对+入库 (与 app 端 SpeakEngineDialog OverflowMenu 流程等价)
     // 网络导入 URL 输入对话框开关 (onImportOnline 触发, 末尾 AlertDialog 渲染分支读取)
     var showImportOnlineDialog by remember { mutableStateOf(false) }
     var importOnlineUrlText by remember { mutableStateOf("") }
     // 导入 VM 适配器 (null=无导入任务, 非 null=渲染 DesktopImportDialog 让用户勾选比对)
-    var importVm by remember { mutableStateOf<ImportListScaffoldVm?>(null) }
+    var importVm by remember { mutableStateOf<DesktopImportVm?>(null) }
     // 导入初始文本 (URL 或 JSON), DesktopImportDialog 的 LaunchedEffect 用它调 vm.startImport
     var importInitialText by remember { mutableStateOf("") }
 
@@ -213,25 +212,25 @@ private fun ReadAloudConfigContent() {
     // 注入 onImportLocal/onImportOnline: 因桌面端 SpeakEngineDialog (shared) 的标题栏 actions
     // 仅"+"按钮不可改, HttpTts 列表导入入口下放到 EditDialog 的 OverflowMenu; 用户点击导入项后
     // EditDialog 已先自行 dismiss (HttpTtsEditDialog 内部 onClick 顺序: dismissMenu → onDismiss → 回调),
-    // 本 Composable 接收回调后弹 FileDialog/AlertDialog → 新建 ImportHttpTtsVmAdapter → 设置 importVm
+    // 本 Composable 接收回调后弹 FileDialog/AlertDialog → 新建 DesktopImportVm.httpTts → 设置 importVm
     // → 末尾 DesktopImportDialog 渲染分支接管比对+入库 (与 ReplaceRuleScreen onImportLocal/Online 等价)
     if (showHttpTtsEditDialog) {
         HttpTtsEditDialog(
             httpTTS = editingTts,
             onDismiss = { showHttpTtsEditDialog = false },
             onImportLocal = {
-                // 弹 FileDialog 选 JSON 文件 → 读文本 → 新建 ImportHttpTtsVmAdapter
+                // 弹 FileDialog 选 JSON 文件 → 读文本 → 新建 DesktopImportVm.httpTts
                 // → 设置 importVm + importInitialText 触发 DesktopImportDialog 渲染
                 // (与 ReplaceRuleScreen onImportLocal 流程一致)
                 scope.launch {
                     val json = importHttpTtsFromLocalFile(httpTtsSelectJsonFileLabel) ?: return@launch
-                    val vm = ImportHttpTtsVmAdapter(ImportHttpTtsViewModelShared(scope))
+                    val vm = DesktopImportVm.httpTts(ImportHttpTtsViewModelShared(scope))
                     importInitialText = json
                     importVm = vm
                 }
             },
             onImportOnline = {
-                // 弹 AlertDialog 输入 URL → 用户确认后新建 ImportHttpTtsVmAdapter + 设置
+                // 弹 AlertDialog 输入 URL → 用户确认后新建 DesktopImportVm.httpTts + 设置
                 // importInitialText/importVm, DesktopImportDialog 的 LaunchedEffect 调
                 // vm.startImport(url) 触发下载 → 解析 → comparisonSource 比对 → 用户勾选入库
                 // (与 ReplaceRuleScreen onImportOnline 流程一致, 替代原 javax.swing.JOptionPane)
@@ -272,45 +271,39 @@ private fun ReadAloudConfigContent() {
         )
     }
 
-    // ---- AlertDialog 渲染 (替换原 javax.swing.JOptionPane.showInputDialog) ----
+    // ---- 对话框渲染 (替换原 javax.swing.JOptionPane.showInputDialog) ----
     // 网络导入 HttpTts URL 输入对话框 (onImportOnline 触发 showImportOnlineDialog=true;
-    //   确认按钮新建 ImportHttpTtsVmAdapter + 设置 importVm 触发 DesktopImportDialog
-    //   完成下载+解析+比对+入库, 与 ReplaceRuleScreen 末尾 AlertDialog 渲染分支模式一致)
+    //   确认按钮新建 DesktopImportVm.httpTts + 设置 importVm 触发 DesktopImportDialog
+    //   完成下载+解析+比对+入库, 与 ReplaceRuleScreen 末尾对话框渲染分支模式一致)
     if (showImportOnlineDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { showImportOnlineDialog = false },
-            title = { Text(httpTtsNetImportTitleLabel) },
-            text = {
-                Md2TextField(
-                    value = importOnlineUrlText,
-                    onValueChange = { importOnlineUrlText = it },
-                    label = httpTtsInputUrlLabel,
-                    singleLine = true,
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val url = importOnlineUrlText
-                    showImportOnlineDialog = false
-                    if (url.isNotBlank()) {
-                        // 新建适配器 (包装 ImportHttpTtsViewModelShared), 设置 importInitialText
-                        // + importVm 触发 DesktopImportDialog 渲染; Dialog 的 LaunchedEffect(vm) 调
-                        // vm.startImport(url) 触发下载 → 解析 → comparisonSource 比对,
-                        // 成功后让用户勾选"新增/更新/已有"项再 importSelect 入库
-                        // (与 app 端 ImportHttpTtsDialog 流程等价)
-                        val vm = ImportHttpTtsVmAdapter(ImportHttpTtsViewModelShared(scope))
-                        importInitialText = url
-                        importVm = vm
-                    }
-                }) { Text(okLabel) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showImportOnlineDialog = false }) {
-                    Text(cancelLabel)
+            title = httpTtsNetImportTitleLabel,
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                val url = importOnlineUrlText
+                showImportOnlineDialog = false
+                if (url.isNotBlank()) {
+                    // 新建适配器 (包装 ImportHttpTtsViewModelShared), 设置 importInitialText
+                    // + importVm 触发 DesktopImportDialog 渲染; Dialog 的 LaunchedEffect(vm) 调
+                    // vm.startImport(url) 触发下载 → 解析 → comparisonSource 比对,
+                    // 成功后让用户勾选"新增/更新/已有"项再 importSelect 入库
+                    // (与 app 端 ImportHttpTtsDialog 流程等价)
+                    val vm = DesktopImportVm.httpTts(ImportHttpTtsViewModelShared(scope))
+                    importInitialText = url
+                    importVm = vm
                 }
             },
-        )
+            cancelButton = AlertButton(cancelLabel),
+        ) {
+            AppTextField(
+                value = importOnlineUrlText,
+                onValueChange = { importOnlineUrlText = it },
+                label = httpTtsInputUrlLabel,
+                singleLine = true,
+                modifier = Modifier.padding(horizontal = 24.dp),
+            )
+        }
     }
 
     // ---- 导入对话框 (本地/网络导入共用, importVm 非 null 时渲染 DesktopImportDialog

@@ -49,6 +49,7 @@ private class PreviewReadMenuState(
     override val prevEnabled: Boolean = true,
     override val nextEnabled: Boolean = true,
     override val autoPage: Boolean = false,
+    override val isNightTheme: Boolean = false,
 ) : ReadMenuState {
     override fun onTransitionIdle(shown: Boolean) {}
     override fun onBgClick() {}
@@ -90,6 +91,7 @@ fun ReadMenuOverlayDarkPreview() = LegadoThemePreview(dark = true) {
     ReadMenuOverlay(state = PreviewReadMenuState(
         bgColor = 0xFF17191C.toInt(),
         textColor = 0xFFF8F8F8.toInt(),
+        isNightTheme = true,
     ))
 }
 

@@ -20,7 +20,7 @@ import io.legado.app.ui.dialog.NumberPickerDialog
  * 鸿蒙端主题设置页入口 (包装 shared/sharedUiMain 的 [ThemeConfigScreen])。
  *
  * 实现模式参考 iOS 端 [IosThemeConfigScreen]: 复用 sharedUiMain 跨平台 Composable,
- * 避免复制代码; material3 原生组件 (TopAppBar 等) 接入待 API 明确后逐步替换顶栏。
+ * 避免复制代码; 顶栏用 sharedUiMain 的 [AppTitleBar] (项目锁 MD2 视觉, 不用 material3 TopAppBar)。
  *
  * @param onBack 返回回调
  * @param onCoverConfig 跳转封面设置
@@ -102,12 +102,12 @@ fun OhosThemeConfigScreen(
             onDismiss = { showFontScaleDialog = false },
         )
     }
-    // sourceEditMaxLine NumberPicker (范围 1..20, 默认 10)
+    // sourceEditMaxLine NumberPicker (下限对齐 app min=10, <10 会被 AppConfig 语义视为不限制)
     if (showSourceEditMaxLineDialog) {
         NumberPickerDialog(
             title = sourceEditMaxLineLabel,
             value = sourceEditMaxLine,
-            range = 1..20,
+            range = 10..20,
             onConfirm = {
                 sourceEditMaxLine = it
                 prefs.putInt(PreferKey.sourceEditMaxLine, it)

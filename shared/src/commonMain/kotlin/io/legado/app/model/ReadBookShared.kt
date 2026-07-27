@@ -4,7 +4,9 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
-import io.legado.app.ui.book.read.page.entities.TextChapterRef
+import io.legado.app.help.book.readSimulating
+import io.legado.app.help.book.simulatedTotalChapterNum
+import io.legado.app.ui.book.read.page.entities.TextChapterShared
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,14 +21,14 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * 字段与 app 端 `ReadBook` 单例保持一一对应 (除 Android 专属 callBack 接口下沉为 [ReadBookCallback]):
  * book / bookSource / chapterList / durChapterIndex / durChapterPos / durPageIndex /
- * curTextChapter / inBookshelf / webBookProgress。
+ * prevTextChapter / curTextChapter / nextTextChapter (三章滑窗) / inBookshelf / webBookProgress。
  *
  * 注: 任务描述里的 `WebBookProgress` 实际类型为 [BookProgress]
  * (app 端 `ReadBook.webBookProgress: BookProgress?`, shared/commonMain 未单独定义 WebBookProgress 类,
  * 直接复用 [BookProgress])。
  *
- * 核心方法 (loadBook/loadChapter/nextPage/prevPage) 在 commonMain 仅提供方法签名与简单状态维护,
- * 涉及 BookHelp/CacheBook/WebBook/ReadBookConfig 等 app 依赖的具体逻辑由 actual 平台实现补充。
+ * nextPage/prevPage 基于 [TextChapterShared] 的分页位移已按原版 ReadBook.moveToNextPage/moveToPrevPage
+ * 下沉; 章节内容 IO/排版编排由 ReadBookViewModelShared 驱动。
  */
 class ReadBookShared {
 
@@ -49,8 +51,14 @@ class ReadBookShared {
     private val _durPageIndex = MutableStateFlow(0)
     val durPageIndex: StateFlow<Int> = _durPageIndex.asStateFlow()
 
-    private val _curTextChapter = MutableStateFlow<TextChapterRef?>(null)
-    val curTextChapter: StateFlow<TextChapterRef?> = _curTextChapter.asStateFlow()
+    private val _prevTextChapter = MutableStateFlow<TextChapterShared?>(null)
+    val prevTextChapter: StateFlow<TextChapterShared?> = _prevTextChapter.asStateFlow()
+
+    private val _curTextChapter = MutableStateFlow<TextChapterShared?>(null)
+    val curTextChapter: StateFlow<TextChapterShared?> = _curTextChapter.asStateFlow()
+
+    private val _nextTextChapter = MutableStateFlow<TextChapterShared?>(null)
+    val nextTextChapter: StateFlow<TextChapterShared?> = _nextTextChapter.asStateFlow()
 
     private val _inBookshelf = MutableStateFlow(false)
     val inBookshelf: StateFlow<Boolean> = _inBookshelf.asStateFlow()
@@ -86,11 +94,15 @@ class ReadBookShared {
             _chapterList.value = emptyList()
             chapterSize = 0
             simulatedChapterSize = 0
-            _curTextChapter.value = null
+            clearTextChapter()
             _webBookProgress.value = null
         }
-        _durChapterIndex.value = book.durChapterIndex
-        _durChapterPos.value = book.durChapterPos
+        if (isDiffBook || _durChapterIndex.value != book.durChapterIndex) {
+            _durChapterIndex.value = book.durChapterIndex
+            // 负 durChapterPos 是「停在章末」的编码, 归一为正 (原版 ReadBook.initData:119)
+            _durChapterPos.value = book.durChapterPos * (if (book.durChapterPos < 0) -1 else 1)
+            clearTextChapter()
+        }
         callback?.onBookChanged(book)
     }
 
@@ -104,18 +116,40 @@ class ReadBookShared {
         callback?.onChapterChanged(index)
     }
 
-    /** 下一页。返回 true 表示成功翻页, false 表示已到章节末尾需 actual 触发 moveToNextChapter。 */
+    /** 当前页序号, 由 durChapterPos 反算 (对照 app 端 ReadBook.durPageIndex 计算属性)。 */
+    val durPageIndexValue: Int
+        get() = _curTextChapter.value?.getPageIndexByCharIndex(_durChapterPos.value)
+            ?: _durChapterPos.value
+
+    /** 下一页: durChapterPos 位移到下一页首字符 (对照 app 端 ReadBook.moveToNextPage)。false=已到章末需切章。 */
     fun nextPage(): Boolean {
-        // TODO: actual 平台补全 curTextChapter.getNextPageLength 逻辑 (app 端 ReadBook.moveToNextPage)
-        callback?.onPageChanged()
-        return false
+        var hasNextPage = false
+        _curTextChapter.value?.let {
+            val nextPagePos = it.getNextPageLength(_durChapterPos.value)
+            if (nextPagePos >= 0) {
+                hasNextPage = true
+                it.getPage(durPageIndexValue)?.removePageAloudSpan()
+                _durChapterPos.value = nextPagePos
+                _durPageIndex.value = durPageIndexValue
+                callback?.onPageChanged()
+            }
+        }
+        return hasNextPage
     }
 
-    /** 上一页。返回 true 表示成功翻页, false 表示已到章节首页需 actual 触发 moveToPrevChapter。 */
+    /** 上一页 (对照 app 端 ReadBook.moveToPrevPage)。false=已到章首需切章。 */
     fun prevPage(): Boolean {
-        // TODO: actual 平台补全 curTextChapter.getPrevPageLength 逻辑 (app 端 ReadBook.moveToPrevPage)
-        callback?.onPageChanged()
-        return false
+        var hasPrevPage = false
+        _curTextChapter.value?.let {
+            val prevPagePos = it.getPrevPageLength(_durChapterPos.value)
+            if (prevPagePos >= 0) {
+                hasPrevPage = true
+                _durChapterPos.value = prevPagePos
+                _durPageIndex.value = durPageIndexValue
+                callback?.onPageChanged()
+            }
+        }
+        return hasPrevPage
     }
     // endregion
 
@@ -124,19 +158,62 @@ class ReadBookShared {
     fun updateChapterList(list: List<BookChapter>) {
         _chapterList.value = list
         chapterSize = list.size
-        simulatedChapterSize = list.size
+        // 模拟阅读进度时按日解锁章节数 (原版 ReadBook.initData:114-115)
+        simulatedChapterSize = _book.value?.takeIf { it.readSimulating() }
+            ?.simulatedTotalChapterNum() ?: list.size
         callback?.onChapterListChanged(list)
     }
 
     /** actual 端加载完 TextChapter 后调用 */
-    fun updateCurTextChapter(textChapter: TextChapterRef?) {
-        _curTextChapter.value = textChapter
+    fun updateCurTextChapter(textChapter: TextChapterShared?) {
+        updateTextChapter(0, textChapter)
+    }
+
+    /** 排版完成按滑窗位归位 (对照原版 contentLoadFinish 的 offset -1/0/+1 三分支) */
+    fun updateTextChapter(offset: Int, textChapter: TextChapterShared?) {
+        when (offset) {
+            -1 -> _prevTextChapter.value = textChapter
+            0 -> {
+                _curTextChapter.value = textChapter
+                _durPageIndex.value = durPageIndexValue
+                callback?.onContentChanged()
+            }
+            1 -> _nextTextChapter.value = textChapter
+        }
+    }
+
+    /** 滑窗前移: prev=cur, cur=next, next=null (对照原版 moveToNextChapter 的窗口平移段) */
+    fun slideTextChaptersNext() {
+        _prevTextChapter.value = _curTextChapter.value
+        _curTextChapter.value = _nextTextChapter.value
+        _nextTextChapter.value = null
         callback?.onContentChanged()
+    }
+
+    /** 滑窗后移: next=cur, cur=prev, prev=null (对照原版 moveToPrevChapter 的窗口平移段) */
+    fun slideTextChaptersPrev() {
+        _nextTextChapter.value = _curTextChapter.value
+        _curTextChapter.value = _prevTextChapter.value
+        _prevTextChapter.value = null
+        callback?.onContentChanged()
+    }
+
+    /** 清空三章滑窗 (对照原版 ReadBook.clearTextChapter) */
+    fun clearTextChapter() {
+        _prevTextChapter.value = null
+        _curTextChapter.value = null
+        _nextTextChapter.value = null
+    }
+
+    /** actual 端解析到书源后调用 (对照原版 ReadBook.upWebBook 的 bookSource 赋值, 本地书传 null) */
+    fun updateBookSource(source: BookSource?) {
+        _bookSource.value = source
     }
 
     /** actual 端切页时调用 (durChapterPos 变化) */
     fun updateDurChapterPos(pos: Int) {
         _durChapterPos.value = pos
+        _durPageIndex.value = durPageIndexValue
         callback?.onPageChanged()
     }
 

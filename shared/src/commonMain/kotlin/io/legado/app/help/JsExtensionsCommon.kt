@@ -9,6 +9,7 @@ import io.legado.app.constant.dateFormat
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.BackstageWebViewProviders
 import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.help.http.StrResponse
@@ -18,6 +19,7 @@ import io.legado.app.help.ui.ToastProviders
 import io.legado.app.help.ui.UserAgentProviders
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.model.analyzeRule.QueryTTF
 import io.legado.app.model.script.jsContext
@@ -38,7 +40,6 @@ import io.legado.app.utils.postEvent
 import io.legado.app.utils.randomUUIDString
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.toStringArray
-import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.toList
@@ -59,9 +60,8 @@ import kotlin.coroutines.EmptyCoroutineContext
  * (标注 `@JsApi`) 暴露给 JS 引擎 (QuickJS), JS 调用是同步的, 不能 suspend。故这四个方法无法改为
  * suspend, 内部 `runBlocking` 保留 (把 [BackstageWebViewProviders] 的 suspend 调用 / Flow 收集包装为同步返回)。
  * - JVM 端 (Android/desktop): runBlocking 安全, JS 引擎在 IO 线程同步调用 (与 [CacheManager] 同策略)。
- * - Native 端 (iOS/鸿蒙): JS 引擎暂未启用, 这些方法不会被触发, 不会执行 runBlocking;
- *   后续 Native 启用 JS 引擎时, 需为这两条路径提供 suspend 替代方案或改用 async/await 桥接
- *   (属大型重构, 不在当前范围)。
+ * - Native 端 (iOS/鸿蒙): JS 引擎已启用 (nativeMain QuickJS cinterop), 但
+ *   [BackstageWebViewProviders] 未注册实现, 这四个方法调用会抛错而非执行 runBlocking。
  * - 同策略参考: [CacheManager] (object 级 `@JsApi`, runBlocking 保留) /
  *   AnalyzeUrlCore (经 [runBlockingInScope] expect 门面委托, 行为等价)。
  * - KMP 兼容替代: 可改为 [runBlockingInScope] (commonMain expect, 各端 actual), 行为零变化,
@@ -110,7 +110,7 @@ interface JsExtensionsCommon {
 
     /* utf8 编码为hexString */
     @OptIn(ExperimentalStdlibApi::class)
-    fun hexEncodeToString(utf8: String): String? = utf8.toByteArray().toHexString()
+    fun hexEncodeToString(utf8: String): String? = utf8.encodeToByteArray().toHexString()
 
     /**
      * 格式化时间
@@ -319,7 +319,7 @@ interface JsExtensionsCommon {
             url.toString()
         }
         // 用 AnalyzeUrlCore 替代 app 端 AnalyzeUrl (AnalyzeUrlCore 已下沉 commonMain, 行为等价)
-        val analyzeUrl = AnalyzeUrlCore(
+        val analyzeUrl = AnalyzeUrlFactories.create(
             urlStr,
             source = getSource(),
             coroutineContext = jsContext.coroutineContext ?: EmptyCoroutineContext
@@ -328,7 +328,7 @@ interface JsExtensionsCommon {
             analyzeUrl.getStrResponse().body
         }.onFailure {
             jsContext.ensureActive()
-            AppLog.put("ajax(${urlStr}) error\n${it.localizedMessage}", it)
+            AppLog.put("ajax(${urlStr}) error\n${it.message}", it)
         }.getOrElse {
             it.stackTraceStr
         }
@@ -342,13 +342,13 @@ interface JsExtensionsCommon {
         // @JsApi 同步调用约束: JS 引擎不能调 suspend, runBlocking 不可避免; 详见接口级 KDoc
         return runBlocking(jsContext.coroutineContext ?: EmptyCoroutineContext) {
             urlList.asFlow().mapAsync(AppConfigProviders.get().threadCount) { url ->
-                val analyzeUrl = AnalyzeUrlCore(
+                val analyzeUrl = AnalyzeUrlFactories.create(
                     url,
                     source = getSource(),
                     coroutineContext = coroutineContext
                 )
                 analyzeUrl.getStrResponseAwait()
-            }.flowOn(IO).toList().toTypedArray()
+            }.flowOn(IoDispatcher).toList().toTypedArray()
         }
     }
 
@@ -356,7 +356,7 @@ interface JsExtensionsCommon {
      * 访问网络,返回Response<String>
      */
     fun connect(urlStr: String): StrResponse {
-        val analyzeUrl = AnalyzeUrlCore(
+        val analyzeUrl = AnalyzeUrlFactories.create(
             urlStr,
             source = getSource(),
             coroutineContext = jsContext.coroutineContext ?: EmptyCoroutineContext
@@ -365,7 +365,7 @@ interface JsExtensionsCommon {
             analyzeUrl.getStrResponse()
         }.onFailure {
             jsContext.ensureActive()
-            AppLog.put("connect(${urlStr}) error\n${it.localizedMessage}", it)
+            AppLog.put("connect(${urlStr}) error\n${it.message}", it)
         }.getOrElse {
             StrResponse(analyzeUrl.url, it.stackTraceStr)
         }
@@ -376,7 +376,7 @@ interface JsExtensionsCommon {
      */
     fun connect(urlStr: String, header: String?): StrResponse {
         val headerMap = GSON.fromJsonObject<Map<String, String>>(header).getOrNull()
-        val analyzeUrl = AnalyzeUrlCore(
+        val analyzeUrl = AnalyzeUrlFactories.create(
             urlStr,
             headerMapF = headerMap,
             source = getSource(),
@@ -386,7 +386,7 @@ interface JsExtensionsCommon {
             analyzeUrl.getStrResponse()
         }.onFailure {
             jsContext.ensureActive()
-            AppLog.put("ajax($urlStr,$header) error\n${it.localizedMessage}", it)
+            AppLog.put("ajax($urlStr,$header) error\n${it.message}", it)
         }.getOrElse {
             StrResponse(analyzeUrl.url, it.stackTraceStr)
         }
@@ -508,13 +508,13 @@ interface JsExtensionsCommon {
                 is String -> {
                     if (useCache) {
                         // 替代 java.security.MessageDigest SHA-256 hex (JVM 专属), 走 JsExtensionsPlatform 门面
-                        key = JsExtensionsPlatform.sha256Hex(data.toByteArray())
+                        key = JsExtensionsPlatform.sha256Hex(data.encodeToByteArray())
                         qTTF = AppCacheManager.getQueryTTF(key)
                         qTTF?.let { return it }
                     }
                     val font: ByteArray? = when {
                         // AnalyzeUrl → AnalyzeUrlCore (已下沉 commonMain, 行为等价)
-                        data.isAbsUrl() -> AnalyzeUrlCore(
+                        data.isAbsUrl() -> AnalyzeUrlFactories.create(
                             data,
                             source = getSource(),
                             coroutineContext = jsContext.coroutineContext ?: EmptyCoroutineContext
@@ -681,7 +681,7 @@ interface JsExtensionsCommon {
      */
     fun getZipByteArrayContent(url: String, path: String): ByteArray? {
         val bytes = if (url.isAbsUrl()) {
-            AnalyzeUrlCore(
+            AnalyzeUrlFactories.create(
                 url, source = getSource(),
                 coroutineContext = jsContext.coroutineContext ?: EmptyCoroutineContext
             ).getByteArray()
@@ -699,7 +699,7 @@ interface JsExtensionsCommon {
      */
     fun getRarByteArrayContent(url: String, path: String): ByteArray? {
         val bytes = if (url.isAbsUrl()) {
-            AnalyzeUrlCore(
+            AnalyzeUrlFactories.create(
                 url, source = getSource(),
                 coroutineContext = jsContext.coroutineContext ?: EmptyCoroutineContext
             ).getByteArray()
@@ -717,7 +717,7 @@ interface JsExtensionsCommon {
      */
     fun get7zByteArrayContent(url: String, path: String): ByteArray? {
         val bytes = if (url.isAbsUrl()) {
-            AnalyzeUrlCore(
+            AnalyzeUrlFactories.create(
                 url, source = getSource(),
                 coroutineContext = jsContext.coroutineContext ?: EmptyCoroutineContext
             ).getByteArray()
@@ -865,7 +865,7 @@ interface JsExtensionsCommon {
                 .append("\n")
         }
         if (contents.isNotEmpty()) {
-            contents.deleteCharAt(contents.length - 1)
+            contents.deleteAt(contents.length - 1)
         }
         FileUtilsCommon.delete(absPath, true)
         return contents.toString()
@@ -878,7 +878,7 @@ interface JsExtensionsCommon {
      */
     fun downloadFile(url: String): String {
         jsContext.ensureActive()
-        val analyzeUrl = AnalyzeUrlCore(
+        val analyzeUrl = AnalyzeUrlFactories.create(
             url,
             source = getSource(),
             coroutineContext = jsContext.coroutineContext ?: EmptyCoroutineContext
@@ -911,7 +911,7 @@ interface JsExtensionsCommon {
     )
     fun downloadFile(content: String, url: String): String {
         jsContext.ensureActive()
-        val type = AnalyzeUrlCore(
+        val type = AnalyzeUrlFactories.create(
             url,
             source = getSource(),
             coroutineContext = jsContext.coroutineContext ?: EmptyCoroutineContext
@@ -1001,12 +1001,12 @@ private fun String.firstCodePoint(): Int {
  */
 private fun codePointToString(code: Int): String {
     return if (code < 0x10000) {
-        String(charArrayOf(code.toChar()))
+        charArrayOf(code.toChar()).concatToString()
     } else {
         val normalized = code - 0x10000
         val high = 0xD800 + (normalized shr 10)
         val low = 0xDC00 + (normalized and 0x3FF)
-        String(charArrayOf(high.toChar(), low.toChar()))
+        charArrayOf(high.toChar(), low.toChar()).concatToString()
     }
 }
 

@@ -64,6 +64,8 @@ class AndroidThemeStoreProvider : ThemeStoreProvider {
 class AndroidAppConfigProvider : AppConfigProvider {
     override val isEInkMode: Boolean
         get() = AppConfig.isEInkMode
+    override val isNightTheme: Boolean
+        get() = AppConfig.isNightTheme
 }
 
 /** 包装 [FlowBus.with]`[EventBus.RECREATE]`，把 SharedFlow<Any> 投影为 Flow<Unit> */

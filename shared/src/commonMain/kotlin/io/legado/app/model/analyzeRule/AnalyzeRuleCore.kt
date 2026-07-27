@@ -1,6 +1,5 @@
 package io.legado.app.model.analyzeRule
 
-import androidx.annotation.Keep
 import com.fleeksoft.ksoup.nodes.Node
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppPattern.JS_PATTERN
@@ -50,7 +49,7 @@ import kotlin.coroutines.EmptyCoroutineContext
  * - Pattern → kotlin.text.Regex (commonMain 原生), matcher 循环改 findAll/find, 行为等价。
  * - String.format(Locale.ROOT, "%.0f", value) → formatDoubleNoDecimal (expect/actual 包装)。
  */
-@Keep
+// 原 @Keep (androidx.annotation.Keep 无 common 变体), 改由 app/proguard-rules.pro 按类名 keep
 @Suppress("unused", "RegExpRedundantEscape")
 open class AnalyzeRuleCore(
     var ruleData: RuleDataInterface? = null,
@@ -84,7 +83,10 @@ open class AnalyzeRuleCore(
 
     private var loggedNonStandardJSON = false
 
-    @JvmOverloads
+    // 下述短参显式重载: 补回原 @JvmOverloads 生成的 JVM 签名 (commonMain 无该注解),
+    // 书源 JS 经 KSP 分派表/反射按 arity 匹配, 缺短签名会报"找不到 setContent(String) 方法"
+    fun setContent(content: Any?): AnalyzeRuleCore = setContent(content, null)
+
     fun setContent(content: Any?, baseUrl: String? = null): AnalyzeRuleCore {
         if (content == null) throw AssertionError("内容不可空（Content cannot be null）")
         this.content = content
@@ -113,7 +115,7 @@ open class AnalyzeRuleCore(
         try {
             redirectUrl = URL(url)
         } catch (e: Exception) {
-            SourceDebugLoggers.impl?.log("URL($url) error\n${e.localizedMessage}")
+            SourceDebugLoggers.impl?.log("URL($url) error\n${e.message}")
         }
         return redirectUrl
     }
@@ -171,14 +173,23 @@ open class AnalyzeRuleCore(
     /**
      * 获取文本列表
      */
-    @JvmOverloads
+    fun getStringList(rule: String?): List<String>? = getStringList(rule, null, false)
+
+    fun getStringList(rule: String?, mContent: Any?): List<String>? =
+        getStringList(rule, mContent, false)
+
     fun getStringList(rule: String?, mContent: Any? = null, isUrl: Boolean = false): List<String>? {
         if (rule.isNullOrEmpty()) return null
         val ruleList = splitSourceRuleCacheString(rule)
         return getStringList(ruleList, mContent, isUrl)
     }
 
-    @JvmOverloads
+    fun getStringList(ruleList: List<SourceRule>): List<String>? =
+        getStringList(ruleList, null, false)
+
+    fun getStringList(ruleList: List<SourceRule>, mContent: Any?): List<String>? =
+        getStringList(ruleList, mContent, false)
+
     fun getStringList(
         ruleList: List<SourceRule>,
         mContent: Any? = null,
@@ -261,7 +272,10 @@ open class AnalyzeRuleCore(
     /**
      * 获取文本
      */
-    @JvmOverloads
+    fun getString(ruleStr: String?): String = getString(ruleStr, null, false)
+
+    fun getString(ruleStr: String?, mContent: Any?): String = getString(ruleStr, mContent, false)
+
     fun getString(ruleStr: String?, mContent: Any? = null, isUrl: Boolean = false): String {
         if (ruleStr.isNullOrEmpty()) return ""
         val ruleList = splitSourceRuleCacheString(ruleStr)
@@ -274,7 +288,14 @@ open class AnalyzeRuleCore(
         return getString(ruleList, unescape = unescape)
     }
 
-    @JvmOverloads
+    fun getString(ruleList: List<SourceRule>): String = getString(ruleList, null, false, true)
+
+    fun getString(ruleList: List<SourceRule>, mContent: Any?): String =
+        getString(ruleList, mContent, false, true)
+
+    fun getString(ruleList: List<SourceRule>, mContent: Any?, isUrl: Boolean): String =
+        getString(ruleList, mContent, isUrl, true)
+
     fun getString(
         ruleList: List<SourceRule>,
         mContent: Any? = null,
@@ -880,7 +901,7 @@ open class AnalyzeRuleCore(
         } else {
             url.toString()
         }
-        val analyzeUrl = AnalyzeUrlCore(
+        val analyzeUrl = AnalyzeUrlFactories.create(
             urlStr,
             source = source,
             ruleData = ruleData,

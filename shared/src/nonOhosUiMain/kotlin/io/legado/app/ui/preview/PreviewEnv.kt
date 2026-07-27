@@ -67,8 +67,9 @@ private class DarkThemeStore : ThemeStoreProvider {
 }
 
 /** 非 E-Ink 模式 stub。 */
-private class StubAppConfig : AppConfigProvider {
+private class StubAppConfig(private val isDark: Boolean) : AppConfigProvider {
     override val isEInkMode: Boolean = false
+    override val isNightTheme: Boolean = isDark
 }
 
 /** 空事件流 stub (无主题刷新事件)。 */
@@ -105,6 +106,7 @@ private class StubPreferenceStore : PreferenceStoreProvider {
 private class StubAppConfigAccessor : AppConfigAccessor {
     override val threadCount: Int = 8
     override val tocCountWords: Boolean = false
+    override val tocUiUseReplace: Boolean = false
     override var chineseConverterType: Int = 0
     override val replaceEnableDefault: Boolean = true
     override val enableReadRecord: Boolean = true
@@ -166,6 +168,11 @@ private class StubAppConfigAccessor : AppConfigAccessor {
 
     override val remoteServerId: Long = 0L
     override val batchChangeSourceDelay: Int = 0
+
+    override val webPort: Int = 1122
+    override val bitmapCacheSize: Int = 50
+    override val sourceEditMaxLine: Int = Int.MAX_VALUE
+    override val welcomeShowTime: Int = 600
 }
 
 /** Preview 期一次性注册 stub AppConfigAccessor (幂等)。 */
@@ -191,7 +198,7 @@ fun LegadoThemePreview(
     androidx.compose.runtime.SideEffect { registerStubAppConfig() }
     CompositionLocalProvider(
         LocalThemeStoreProvider provides themeStore,
-        LocalAppConfigProvider provides StubAppConfig(),
+        LocalAppConfigProvider provides StubAppConfig(dark),
         LocalEventBusProvider provides StubEventBus(),
         LocalPreferenceStoreProvider provides StubPreferenceStore(),
     ) {

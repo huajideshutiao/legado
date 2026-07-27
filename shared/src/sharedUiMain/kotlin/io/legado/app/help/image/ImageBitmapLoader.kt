@@ -10,7 +10,8 @@ import io.legado.app.data.entities.BookSource
  * 加载策略:
  * - `file://` / 绝对路径 `/...`: 直接读文件解码
  * - `http://` / `https://`: OkHttp 下载字节流后解码 (网络书带书源 header/cookie/charset/JS)
- * - `cbz://`: 从 cbz/zip 内嵌条目读取图片流 (需 [book] 非 null)
+ * - `cbz://`: 从 cbz/zip 内嵌条目读取图片流 (`cbz://{entry}` 需 [book] 非 null;
+ *   native 端另支持 `cbz://{archivePath}#{entry}` 自含形式)
  * - 不支持的 scheme / 解码失败: 返回 null
  *
  * 网络请求与磁盘 IO 在 [kotlinx.coroutines.Dispatchers.IO] 执行 (actual 实现内部 withContext)。
@@ -18,12 +19,14 @@ import io.legado.app.data.entities.BookSource
  *
  * 平台实现:
  * - jvmMain (desktop): ImageIO + OkHttp + AnalyzeUrlCore + CbzFile (对照 app 端 ImageLoader.loadManga)
- * - androidMain / iosMain: 暂 stub (返回 null, 后续补 BitmapFactory / UIKit)
- * - ohosMain: 不参与 (鸿蒙 UI 用 ArkTS, 不继承 sharedUiMain)
+ * - androidMain: 暂 stub (返回 null; app 端消费点走 Coil3, 按需再补 BitmapFactory)
+ * - iosMain: Coil3 共享管线 (防盗链 Interceptor + Ktor3 + 缓存); cbz:// 前置直解
+ *   (ArchiveProviders 抽条目字节 + Skia 解码)
+ * - ohosMain: Skia 解码 + KmpHttpClient/AnalyzeUrlCore; cbz:// 同走 ArchiveProviders
  *
  * 不放 commonMain: [ImageBitmap] 需 Compose UI 依赖, 仅 sharedUiMain 有 (ohos/linuxArm64 约束)。
  */
-expect class ImageBitmapLoader {
+expect class ImageBitmapLoader() {
 
     /**
      * 加载图片为 [ImageBitmap]。
@@ -34,4 +37,15 @@ expect class ImageBitmapLoader {
      * @return 已解码 [ImageBitmap], 失败或不支持的 scheme 返回 null
      */
     suspend fun loadBitmap(url: String, book: Book?, bookSource: BookSource?): ImageBitmap?
+
+    /**
+     * 取图片原始字节 (不解码), 供动图逐帧解码等需要裸字节的场景 (见 [decodeAnimatedFrames])。
+     *
+     * scheme 支持范围与 [loadBitmap] 一致; 网络图同样带书源防盗链 header/cookie/charset/JS。
+     * 与 [loadBitmap] 相互独立: 调用方若两者都要 (静态兜底 + 动图), 会各取一次字节
+     * (desktop/鸿蒙 走 HTTP 缓存, iOS 走 Coil3 磁盘缓存, 实际不会双倍下载)。
+     *
+     * @return 原始字节; 不支持的 scheme / 取字节失败返回 null
+     */
+    suspend fun loadBytes(url: String, book: Book?, bookSource: BookSource?): ByteArray?
 }

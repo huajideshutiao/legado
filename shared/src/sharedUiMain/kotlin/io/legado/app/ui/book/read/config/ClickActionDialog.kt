@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Icon
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
@@ -41,7 +40,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -52,12 +50,7 @@ import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
-
-/** Arco Design 主色 arcoblue-6 (#165DFF), 用于格子文字强调与圆角描边。 */
-private val ArcoBlue6 = Color(0xFF165DFF)
-
-/** Arco Design arco_radius_lg = 16dp, 用于对话框与格子圆角。 */
-private val ArcoRadiusLg = 16.dp
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 点击区域动作配置 (9 个区域 × 单击动作)。
@@ -164,7 +157,7 @@ fun ClickActionDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
-            shape = RoundedCornerShape(ArcoRadiusLg),
+            shape = DesignTokens.dialogShape,
             color = colors.background,
             modifier = Modifier.fillMaxWidth().padding(16.dp),
         ) {
@@ -221,7 +214,7 @@ fun ClickActionDialog(
                                         .aspectRatio(1f)
                                         .background(
                                             color = colors.bottomBackground,
-                                            shape = RoundedCornerShape(8.dp),
+                                            shape = DesignTokens.shapeDefault,
                                         )
                                         .clickable {
                                             // 点击格子弹出动作选择 (与原版 context.selector 对齐)
@@ -231,7 +224,7 @@ fun ClickActionDialog(
                                 ) {
                                     Text(
                                         text = actionMap[value].orEmpty(),
-                                        color = ArcoBlue6,
+                                        color = DesignTokens.arcoBlue6,
                                         fontSize = 14.sp,
                                         textAlign = TextAlign.Center,
                                         fontWeight = FontWeight.Medium,

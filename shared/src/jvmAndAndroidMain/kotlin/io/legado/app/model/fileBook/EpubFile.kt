@@ -477,7 +477,7 @@ class EpubFile(var book: Book) {
                         "--卷首--"
             }
             chapter.bookUrl = book.bookUrl
-            chapter.title = title ?: ""
+            chapter.title = title
             chapter.url = content.getHref()
             chapter.startFragmentId =
                 if (content.getHref().substringAfter("#") == content.getHref()) null

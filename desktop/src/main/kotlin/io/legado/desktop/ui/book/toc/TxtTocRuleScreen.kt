@@ -1,11 +1,7 @@
 package io.legado.desktop.ui.book.toc
 
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -15,7 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import io.legado.app.ui.compose.component.Md2TextField
+import androidx.compose.ui.window.Dialog
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.entities.TxtTocRule
@@ -25,6 +21,8 @@ import io.legado.app.ui.book.toc.rule.TxtTocRuleEditDialog
 import io.legado.app.ui.book.toc.rule.TxtTocRuleScreen as SharedTxtTocRuleScreen
 import io.legado.app.ui.book.toc.rule.TxtTocRuleUiActions
 import io.legado.app.ui.book.toc.rule.TxtTocRuleUiState
+import io.legado.app.ui.widget.dialog.HelpDialog
+import io.legado.app.ui.widget.dialog.OnlineImportUrlDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
@@ -39,8 +37,7 @@ import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.desktop.ui.association.DesktopImportDialog
-import io.legado.desktop.ui.association.ImportListScaffoldVm
-import io.legado.desktop.ui.association.ImportTxtTocRuleVmAdapter
+import io.legado.desktop.ui.association.DesktopImportVm
 import java.awt.FileDialog
 import java.awt.Frame
 import java.awt.Toolkit
@@ -72,8 +69,8 @@ import kotlinx.coroutines.withContext
  *
  * # 已实现的核心功能
  * - 列表加载 (observeAll 订阅)
- * - 本地导入 (FileDialog 选 JSON → ImportTxtTocRuleVmAdapter → DesktopImportDialog 比对入库)
- * - 网络导入 (AlertDialog 输入 URL → ImportTxtTocRuleVmAdapter → DesktopImportDialog 比对入库)
+ * - 本地导入 (FileDialog 选 JSON → DesktopImportVm.txtTocRule → DesktopImportDialog 比对入库)
+ * - 网络导入 (AlertDialog 输入 URL → DesktopImportVm.txtTocRule → DesktopImportDialog 比对入库)
  * - 默认导入 (直接调用 DefaultDataShared.importDefaultTocRules, 与 app 端行为等价)
  * - 选中 / 全选 / 反选
  * - 单条删除 / 批量删除 (Screen 内 AppAlertDialog 确认后回调)
@@ -118,22 +115,18 @@ private fun TxtTocRuleContent(onBack: () -> Unit) {
     // ---- 导入相关状态 (参照 ReplaceRuleScreen/BookSourceScreen 模式) ----
     // 文案标签 (rememberString 是 @Composable, 顶层缓存后供 AlertDialog / suspend FileDialog 函数引用;
     //   未识别的 key 返回 key 本身, 与 ReplaceRuleScreen 保留原中文字面量策略一致)
-    val netImportTxtTocRuleLabel = rememberString("net_import_txt_toc_rule")
-    val txtTocRuleInputUrlLabel = rememberString("txt_toc_rule_input_url")
     val txtTocRuleSelectJsonFileLabel = rememberString("txt_toc_rule_select_json_file")
     val txtTocRuleSaveJsonFileLabel = rememberString("txt_toc_rule_save_json_file")
     val importTxtTocRuleLabel = rememberString("import_txt_toc_rule")
-    val okLabel = rememberString("ok")
-    val cancelLabel = rememberString("cancel")
-    // 网络导入 URL 输入对话框状态 (onImportOnline 触发 showImportOnlineDialog=true;
-    //   末尾 AlertDialog 渲染分支读取, 确认按钮新建 ImportTxtTocRuleVmAdapter + 设置 importVm)
+    // 网络导入 URL 输入对话框状态 (onImportOnline 触发, 末尾 OnlineImportUrlDialog 渲染分支读取)
     var showImportOnlineDialog by remember { mutableStateOf(false) }
-    var importOnlineUrlText by remember { mutableStateOf("") }
+    // 帮助文档对话框状态 (onHelp 触发)
+    var showHelpDialog by remember { mutableStateOf(false) }
     // 导入 VM 适配器 (null=无导入任务, 非 null=渲染 DesktopImportDialog 让用户勾选比对);
     // 本地/网络导入均走 ImportTxtTocRuleViewModelShared.importSource 路径 (URL 下载/JSON 解析/
     // comparisonSource 比对), 成功后弹 DesktopImportDialog 让用户勾选"新增/更新/已有"项再 importSelect 入库,
     // 与 app 端 ImportTxtTocRuleDialog 流程等价
-    var importVm by remember { mutableStateOf<ImportListScaffoldVm?>(null) }
+    var importVm by remember { mutableStateOf<DesktopImportVm?>(null) }
     // 导入初始文本 (URL 或 JSON), DesktopImportDialog 的 LaunchedEffect 用它调 vm.startImport
     var importInitialText by remember { mutableStateOf("") }
 
@@ -172,7 +165,7 @@ private fun TxtTocRuleContent(onBack: () -> Unit) {
                 //  local JSON 走 vm.importSource 路径以获得"新增/更新/已有"比对, 与网络导入一致)
                 scope.launch {
                     val json = importTxtTocRulesFromLocalFile(txtTocRuleSelectJsonFileLabel) ?: return@launch
-                    val vm = ImportTxtTocRuleVmAdapter(ImportTxtTocRuleViewModelShared(scope))
+                    val vm = DesktopImportVm.txtTocRule(ImportTxtTocRuleViewModelShared(scope))
                     importInitialText = json
                     importVm = vm
                     // startImport 由 DesktopImportDialog 的 LaunchedEffect(vm) 触发
@@ -180,11 +173,7 @@ private fun TxtTocRuleContent(onBack: () -> Unit) {
             }
 
             override fun onImportOnline() {
-                // 弹 AlertDialog URL 输入 → 用户确认后新建 ImportTxtTocRuleVmAdapter +
-                // 设置 importInitialText/importVm, DesktopImportDialog 的 LaunchedEffect 调
-                // vm.startImport(url) 触发下载 → 解析 → comparisonSource 比对
-                // (替换原 javax.swing.JOptionPane.showInputDialog 同步阻塞 + 直接入库)
-                importOnlineUrlText = ""
+                // 弹 OnlineImportUrlDialog (带 URL 历史) → 确认后走 DesktopImportDialog 勾选入库
                 showImportOnlineDialog = true
             }
 
@@ -201,7 +190,8 @@ private fun TxtTocRuleContent(onBack: () -> Unit) {
             }
 
             override fun onHelp() {
-                // TODO: 依赖 showHelp("txtTocRuleHelp"), 桌面端浏览器跳转待后续接入
+                // 对应 app 端 showHelp("txtTocRuleHelp")
+                showHelpDialog = true
             }
 
             override fun onToggleSelect(item: TxtTocRule, checked: Boolean) {
@@ -324,47 +314,27 @@ private fun TxtTocRuleContent(onBack: () -> Unit) {
     }
 
     // ---- 网络导入 URL 输入对话框 (onImportOnline 触发, 替换原 javax.swing.JOptionPane.showInputDialog) ----
-    // 用户确认后新建 ImportTxtTocRuleVmAdapter + 设置 importVm 触发 DesktopImportDialog 渲染,
+    // 用户确认后新建 DesktopImportVm.txtTocRule + 设置 importVm 触发 DesktopImportDialog 渲染,
     // Dialog 的 LaunchedEffect(vm) 调 vm.startImport(url) 触发下载 → 解析 → comparisonSource 比对,
     // 成功后让用户勾选"新增/更新/已有"项再 importSelect 入库 (与 app 端 ImportTxtTocRuleDialog 流程等价)
+    // 网络导入 URL 输入对话框 (带历史下拉, 对照 app 端 TxtTocRuleActivity.showImportDialog:
+    // 默认 URL 不在历史时插首位; 确认后新建 DesktopImportVm.txtTocRule 触发 DesktopImportDialog 勾选入库)
     if (showImportOnlineDialog) {
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
-            onDismissRequest = { showImportOnlineDialog = false },
-            title = { Text(netImportTxtTocRuleLabel) },
-            text = {
-                Md2TextField(
-                    value = importOnlineUrlText,
-                    onValueChange = { importOnlineUrlText = it },
-                    // fillMaxWidth 让输入框占满对话框宽度 (与 BookSourceScreen showImportOnlineDialog 一致,
-                    // 不加的话 OutlinedTextField 默认 widthIn(min=280dp) 在 0.8 窗口宽度的对话框中只占左侧一部分)
-                    modifier = Modifier.fillMaxWidth(),
-                    label = txtTocRuleInputUrlLabel,
-                    singleLine = true,
-                )
+        OnlineImportUrlDialog(
+            recordKey = "tocRuleUrl",
+            defaultUrl = "https://gitee.com/fisher52/YueDuJson/raw/master/myTxtChapterRule.json",
+            onConfirm = { url ->
+                val vm = DesktopImportVm.txtTocRule(ImportTxtTocRuleViewModelShared(scope))
+                importInitialText = url
+                importVm = vm
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    val url = importOnlineUrlText
-                    showImportOnlineDialog = false
-                    if (url.isNotBlank()) {
-                        // 新建适配器 (包装 ImportTxtTocRuleViewModelShared), 设置 importInitialText
-                        // + importVm 触发 DesktopImportDialog 渲染; Dialog 的 LaunchedEffect(vm) 调
-                        // vm.startImport(url) 触发下载 → 解析 → comparisonSource 比对,
-                        // 成功后让用户勾选"新增/更新/已有"项再 importSelect 入库
-                        // (与 app 端 ImportTxtTocRuleDialog 流程等价, 不再简化为直接入库)
-                        val vm = ImportTxtTocRuleVmAdapter(ImportTxtTocRuleViewModelShared(scope))
-                        importInitialText = url
-                        importVm = vm
-                    }
-                }) { Text(okLabel) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showImportOnlineDialog = false }) {
-                    Text(cancelLabel)
-                }
-            },
+            onDismiss = { showImportOnlineDialog = false },
         )
+    }
+
+    // ---- 帮助文档对话框 (onHelp 触发, 渲染 txtTocRuleHelp.md) ----
+    if (showHelpDialog) {
+        HelpDialog(fileName = "txtTocRuleHelp", onDismiss = { showHelpDialog = false })
     }
 
     // ---- TXT 目录规则编辑对话框 (onAddRule/onEditRule 触发) ----
@@ -374,26 +344,29 @@ private fun TxtTocRuleContent(onBack: () -> Unit) {
     // onConfirm 落库: 新增 (editingRule=null) 走 dao.insert, 编辑走 dao.update
     // (TxtTocRuleEditDialog 内部仅校验+组装, 不落库, 由调用方负责)
     if (showEditDialog) {
-        TxtTocRuleEditDialog(
-            rule = editingRule,
-            onConfirm = { newRule ->
-                scope.launch {
-                    withContext(Dispatchers.IO) {
-                        val txtDao = AppDatabaseProviders.get().appDb.txtTocRuleDao
-                        if (editingRule == null) txtDao.insert(newRule) else txtDao.update(newRule)
+        // Dialog 外壳补遮罩/居中 (TxtTocRuleEditDialog 根是裸 Surface)
+        Dialog(onDismissRequest = { showEditDialog = false }) {
+            TxtTocRuleEditDialog(
+                rule = editingRule,
+                onConfirm = { newRule ->
+                    scope.launch {
+                        withContext(Dispatchers.IO) {
+                            val txtDao = AppDatabaseProviders.get().appDb.txtTocRuleDao
+                            if (editingRule == null) txtDao.insert(newRule) else txtDao.update(newRule)
+                        }
                     }
-                }
-            },
-            onDismiss = { showEditDialog = false },
-            clipTextProvider = {
-                runCatching {
-                    Toolkit.getDefaultToolkit().systemClipboard.getData(DataFlavor.stringFlavor) as? String
-                }.getOrNull()
-            },
-            clipTextSink = { text ->
-                Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
-            },
-        )
+                },
+                onDismiss = { showEditDialog = false },
+                clipTextProvider = {
+                    runCatching {
+                        Toolkit.getDefaultToolkit().systemClipboard.getData(DataFlavor.stringFlavor) as? String
+                    }.getOrNull()
+                },
+                clipTextSink = { text ->
+                    Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
+                },
+            )
+        }
     }
 }
 

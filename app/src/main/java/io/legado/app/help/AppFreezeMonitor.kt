@@ -24,40 +24,51 @@ object AppFreezeMonitor {
     }
 
     private var registeredReceiver = false
+    private var monitorRunnable: Runnable? = null
 
     @SuppressLint("UnspecifiedRegisterReceiverFlag")
     fun init(context: Context) {
-        if (!AppConfig.recordLog) {
-            if (registeredReceiver) {
-                registeredReceiver = false
-                context.unregisterReceiver(screenStatusReceiver)
-            }
-            return
-        }
-
-        if (!registeredReceiver) {
-            registeredReceiver = true
-            context.registerReceiver(screenStatusReceiver, screenStatusReceiver.filter)
-        }
-
-        var previous = SystemClock.uptimeMillis()
-
-        val runnable = object : Runnable {
-            override fun run() {
-                val current = SystemClock.uptimeMillis()
-                val elapsed = current - previous
-                val extra = elapsed - 3000
-
-                if (extra > 300) {
-                    LogUtils.d(TAG, "检测到应用被系统冻结，时长：$extra 毫秒")
+        val recordLog = AppConfig.recordLog
+        handler.post {
+            if (!recordLog) {
+                monitorRunnable?.let(handler::removeCallbacks)
+                monitorRunnable = null
+                if (registeredReceiver) {
+                    registeredReceiver = false
+                    context.unregisterReceiver(screenStatusReceiver)
                 }
+                return@post
+            }
 
-                if (AppConfig.recordLog) {
+            if (!registeredReceiver) {
+                registeredReceiver = true
+                context.registerReceiver(screenStatusReceiver, screenStatusReceiver.filter)
+            }
+
+            if (monitorRunnable != null) {
+                return@post
+            }
+
+            var previous = SystemClock.uptimeMillis()
+            val runnable = object : Runnable {
+                override fun run() {
+                    if (monitorRunnable !== this) return
+
+                    val current = SystemClock.uptimeMillis()
+                    val elapsed = current - previous
+                    previous = current
+                    val extra = elapsed - 3000
+
+                    if (extra > 300) {
+                        LogUtils.d(TAG, "检测到应用被系统冻结，时长：$extra 毫秒")
+                    }
+
                     handler.postDelayed(this, 3000)
                 }
             }
+            monitorRunnable = runnable
+            handler.postDelayed(runnable, 3000)
         }
-        handler.postDelayed(runnable, 3000)
     }
 
     class ScreenStatusReceiver : BroadcastReceiver() {

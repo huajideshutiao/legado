@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,7 +24,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Icon
 import androidx.compose.material.RadioButton
 import androidx.compose.material.RadioButtonDefaults
@@ -35,10 +35,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -49,10 +52,10 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
-import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ColorUtils
 
 /**
@@ -331,6 +334,7 @@ internal fun PreferenceRow(
     val (titleColor, summaryColor) = prefTextColors(isBottomBackground)
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    val focused by interaction.collectIsFocusedAsState()
     // bg_prefs_color: 按压/聚焦态 btn_bg，否则透明
     val pressBg = if (AppTheme.colors.isDark) Color(0x14e0e0e0) else Color(0x100e0e0e)
     val clickModifier = if ((onClick != null || onLongClick != null) && enabled) {
@@ -345,7 +349,12 @@ internal fun PreferenceRow(
         Modifier
             .fillMaxWidth()
             .then(clickModifier)
-            .background(if (pressed) pressBg else Color.Transparent)
+            .background(if (pressed || focused) pressBg else Color.Transparent)
+            .then(
+                if (enabled) Modifier else Modifier
+                    .alpha(0.38f)
+                    .semantics { disabled() }
+            )
             .heightIn(min = 60.dp)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -383,7 +392,7 @@ private fun FilletText(text: String, isBottomBackground: Boolean) {
         Modifier
             // 复刻 selector_fillet_btn_bg 的 4dp inset：底色内缩，外围留白不变
             .padding(4.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(DesignTokens.shapeDefault)
             .background(btnBg)
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
@@ -433,12 +442,9 @@ private fun SingleChoiceDialog(
 }
 
 /**
- * 文本颜色：普通项直读 primaryText/tv_text_summary（与 View 层同资源、同 night 解析）；
- * isBottomBackground 复刻 getPrimaryTextColor/getSecondaryTextColor（由底栏色亮度反推）。
- *
- * 下沉 commonMain 后, 替代 colorResource(R.color.primaryText/tv_text_summary):
- * 走 [rememberColor] expect/actual, Android 端走 colorResource + Resources.getIdentifier,
- * 桌面/iOS/鸿蒙端用字面量 Color (与 app 端 values/values-night 资源限定符对齐)。
+ * 文本颜色：普通项使用 AppTheme 的 primaryText/summaryText 语义色，值对齐
+ * origin/quickjs 的 primaryText/tv_text_summary；isBottomBackground 复刻
+ * getPrimaryTextColor/getSecondaryTextColor（由底栏色亮度反推）。
  */
 @Composable
 internal fun prefTextColors(isBottomBackground: Boolean): Pair<Color, Color> {
@@ -448,8 +454,6 @@ internal fun prefTextColors(isBottomBackground: Boolean): Pair<Color, Color> {
         val summary = if (light) Color(0x8A000000) else Color.White
         title to summary
     } else {
-        // 替代 colorResource(R.color.primaryText/tv_text_summary):
-        // commonMain 走 rememberColor expect/actual, 与 View 层 R.color.* 完全等价
-        rememberColor("primaryText") to rememberColor("tv_text_summary")
+        AppTheme.colors.primaryText to AppTheme.colors.summaryText
     }
 }

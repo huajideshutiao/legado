@@ -15,6 +15,8 @@ import { initTtsBridge, handleTtsCommand } from '../bridge/TtsBridgeHandler';
 import { handleCryptoRequest } from '../bridge/CryptoBridgeHandler';
 import { handleHttpRequest } from '../bridge/HttpBridgeHandler';
 import { handleFilePickerRequest } from '../bridge/FilePickerBridgeHandler';
+import { handlePasteboardRequest } from '../bridge/PasteboardBridgeHandler';
+import { handleTextCodecRequest } from '../bridge/TextCodecBridgeHandler';
 // KP8+ System 桥接处理器 (ArkTS 侧 promptAction.showToast + context.startAbility 真实实现)
 import { initSystemBridge, handleShowToast, handleOpenUrl } from '../bridge/SystemBridgeHandler';
 
@@ -161,6 +163,38 @@ export default class EntryAbility extends UIAbility {
       console.error('[Legado] registerFilePickerCallback failed: ' + JSON.stringify(e));
     }
 
+    // Pasteboard tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 同 FilePicker 模式)
+    // KMP OhosPlatformOps.copyToClipboard / readFromClipboard → OhosNativeBridge.invokePasteboardSync
+    // 发 read/write 请求, ArkTS 侧 PasteboardBridgeHandler 调 @ohos.pasteboard.getSystemPasteboard
+    // 读写纯文本, 完成后调 legado.pasteboardCallback(requestId, resultJson) 回送结果
+    // 唤醒 KMP 侧 CompletableDeferred。未注册时 KMP 侧降级 println / 返回 null。
+    try {
+      legado.registerPasteboardCallback((json: string): void => {
+        handlePasteboardRequest(json, (requestId: number, resultJson: string): void => {
+          legado.pasteboardCallback(requestId, resultJson);
+        });
+      });
+      console.info('[Legado] pasteboard tsfn callback registered via napi');
+    } catch (e) {
+      console.error('[Legado] registerPasteboardCallback failed: ' + JSON.stringify(e));
+    }
+
+    // TextCodec tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 同 Pasteboard 模式)
+    // KMP OhosNativeBridge.invokeTextCodecSync 发 decode/encode 请求 (TXT 分章 GB18030/Big5 等编解码),
+    // ArkTS 侧 TextCodecBridgeHandler 调 @ohos.util.TextDecoder/TextEncoder 完成真实转换,
+    // 完成后调 legado.textCodecCallback(requestId, resultJson) 回送结果
+    // 唤醒 KMP 侧 CompletableDeferred。未注册时 KMP 侧降级。
+    try {
+      legado.registerTextCodecCallback((json: string): void => {
+        handleTextCodecRequest(json, (requestId: number, resultJson: string): void => {
+          legado.textCodecCallback(requestId, resultJson);
+        });
+      });
+      console.info('[Legado] textCodec tsfn callback registered via napi');
+    } catch (e) {
+      console.error('[Legado] registerTextCodecCallback failed: ' + JSON.stringify(e));
+    }
+
     // KP8+: 注册 Image/Media tsfn 回调 (KMP → ArkTS 跨线程 dispatch)。
     // Image: KMP OhosNativeBridge.invokeImageSync 发图片操作请求 (decode/encode/size/crop/split/stitch),
     //        ArkTS 侧 ImageBridgeHandler 调 @ohos.multimedia.image 执行真实像素操作,
@@ -238,6 +272,42 @@ export default class EntryAbility extends UIAbility {
       console.info('[Legado] http tsfn callback registered via napi');
     } catch (e) {
       console.error('[Legado] registerHttpCallback failed: ' + JSON.stringify(e));
+    }
+
+    // legado:// deep link 冷启动投递 (放 onCreate 最尾: 须在 registerOhosProviders 之后,
+    // 否则 LegadoDeepLinkHandler 下游导入 VM 取 AppDbProviders 会未注册)。
+    this.handleDeepLink(want);
+  }
+
+  /**
+   * 热启动 deep link 投递 (应用已在后台, 系统复用实例时走本回调而非 onCreate)。
+   *
+   * 对应 Android 端 AssociationActivity 的 singleTask onNewIntent 语义。
+   */
+  onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    console.info('[Legado] EntryAbility.onNewWant');
+    this.handleDeepLink(want);
+  }
+
+  /**
+   * 投递 legado:// / yuedu:// 一键导入链接给 KMP 侧 (onCreate 冷启动 / onNewWant 热启动共用)。
+   *
+   * 链路: want.uri → napi legado.handleDeepLink → @CName legado_handle_deep_link →
+   * Kotlin LegadoDeepLinkHandler.handle 解析写 pending (StateFlow) →
+   * Compose 侧 DeepLinkImportHost 消费弹勾选导入对话框。
+   *
+   * 非 legado/yuedu scheme 直接忽略 (普通启动 want.uri 为空)。
+   */
+  private handleDeepLink(want: Want): void {
+    const uri: string = want.uri ?? '';
+    if (!uri.startsWith('legado://') && !uri.startsWith('yuedu://')) {
+      return;
+    }
+    try {
+      const handled: boolean = legado.handleDeepLink(uri);
+      console.info('[Legado] deep link dispatched: handled=' + handled + ', uri=' + uri);
+    } catch (e) {
+      console.error('[Legado] handleDeepLink failed: ' + JSON.stringify(e) + ', uri=' + uri);
     }
   }
 

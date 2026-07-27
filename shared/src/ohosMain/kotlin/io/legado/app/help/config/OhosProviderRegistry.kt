@@ -28,6 +28,8 @@ import io.legado.app.help.source.registerNativeSourceHelpAccessor
 import io.legado.app.help.source.registerNativeSourceProviders
 import io.legado.app.help.source.registerNativeVerificationUiProvider
 import io.legado.app.help.toast.registerOhosToaster
+import io.legado.app.help.tts.OhosHttpTtsPlayer
+import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.help.tts.registerOhosSystemTtsEngine
 import io.legado.app.help.ui.registerOhosOpenUrlProvider
 import io.legado.app.help.ui.registerOhosToastProvider
@@ -39,6 +41,7 @@ import io.legado.app.model.registerOhosAudioPlayCommanders
 import io.legado.app.model.script.registerOhosJsEngines
 import io.legado.app.model.webBook.registerNativeWebBookProviders
 import io.legado.app.napi.registerOhosNativeBridge
+import io.legado.app.ui.compose.platform.OhosPreferenceStoreProvider
 import io.legado.app.web.registerNativeWebServerPlatform
 import io.legado.app.web.utils.registerNativeWebAssetSource
 import io.legado.app.web.utils.registerNativeWebStrings
@@ -111,6 +114,9 @@ fun registerOhosProviders() {
     // 2.3 主题配置 provider (文件持久化 themeConfig.json, 与 app 端 ThemeConfig 同格式; 替换原内存版)
     ThemeConfigProviders.register(FileThemeConfigProvider())
 
+    // 2.3.1 阅读配置 provider (readConfig.json / shareReadConfig.json, 供 BackupShared 备份/恢复)
+    ReadBookConfigProviders.register(ReadBookConfigShared(OhosPreferenceStoreProvider()))
+
     // 2.4 默认数据 provider (composeResources files/defaultData, 供 DefaultDataShared 装载默认规则)
     registerNativeDefaultDataResourceProvider()
 
@@ -181,6 +187,8 @@ fun registerOhosProviders() {
     // 7. TTS 引擎 provider (OhosSystemTtsEngine 占位), 在 JsEngines 之后
     // (与 desktop Main.kt 中 `TtsEngineProvider.register(DesktopSystemTtsEngine())` 位置一致)
     registerOhosSystemTtsEngine()
+    // 7b. HttpTTS 播放器工厂 (KP2-D P0-9: 三端朗读 HttpTTS 路径, 鸿蒙 AVPlayer napi 桥接 actual)
+    TtsEngineProvider.registerHttpTtsPlayerFactory { OhosHttpTtsPlayer() }
 
     // 8. 其余业务 provider (顺序无关)
     registerNativeFileDownloader()
@@ -197,7 +205,7 @@ fun registerOhosProviders() {
     // CacheBook callback 须在 ServiceLauncher 之前 (缓存流程未注册时 CacheBookCallbacks.get() 直接 error)
     registerNativeCacheBookCallback()
     registerOhosServiceLauncher()
-    // 注册业务层 CookieStoreProvider (stub, 后续接入 @ohos.net.http CookieManager 后替换)
+    // 注册业务层 CookieStoreProvider (commonMain SharedCookieStore, Room cookieDao 持久化)
     // 与 desktop registerDefaultJvmCookieStoreProvider / app registerAndroidCookieStoreProvider
     // / iOS registerDefaultIosCookieStoreProvider 对齐
     registerDefaultOhosCookieStoreProvider()

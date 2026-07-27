@@ -7,10 +7,11 @@ package io.legado.app.ui.about
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
@@ -20,17 +21,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import io.legado.app.constant.AppLog
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.widget.dialog.TextDialog
-
-/** Arco Design arco_radius_lg = 16dp。 */
-private val ArcoRadiusLg = 16.dp
+import io.legado.app.utils.ScreenInfoProviders
 
 /**
  * 应用日志对话框内容 (KMP 共享, app + desktop 复用)。
@@ -65,7 +67,11 @@ fun AppLogDialogContent(
                 }
             },
         )
-        LazyColumn(Modifier.weight(1f, fill = false)) {
+        LazyColumn(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+        ) {
             itemsIndexed(logs) { _, item ->
                 LogItem(item) { stackTraceItem = item }
             }
@@ -124,11 +130,26 @@ fun AppLogDialog(
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    Dialog(onDismissRequest = onDismiss) {
+    // 对齐 BaseComposeDialogFragment 宽度: 0.9 屏宽, 上限 800dp; 高度: 0.8 屏高
+    val dialogWidth = with(LocalDensity.current) {
+        (ScreenInfoProviders.get().screenWidthPx * 0.9f).toDp().coerceAtMost(800.dp)
+    }
+    val dialogHeight = with(LocalDensity.current) {
+        (ScreenInfoProviders.get().screenHeightPx * 0.8f).toDp()
+    }
+    // usePlatformDefaultWidth=false: 让 Dialog 窗口宽度跟随 Surface 固定宽度,
+    // 避免平台默认宽度与 Surface 宽度冲突导致滚动时窗口反复重测、越滚越高
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        // 圆角/底色对齐 BaseComposeDialogFragment.filletBackground + alert DSL AppAlertDialogContent
         Surface(
-            shape = RoundedCornerShape(ArcoRadiusLg),
-            color = colors.background,
-            modifier = Modifier.fillMaxWidth(),
+            shape = DesignTokens.shapeDefault,
+            color = colors.fillet,
+            modifier = Modifier
+                .width(dialogWidth)
+                .height(dialogHeight),
         ) {
             AppLogDialogContent(onDismiss)
         }

@@ -43,6 +43,12 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     private var primaryPopup: PopupWindow? = null
     private var overflowPopup: PopupWindow? = null
 
+    // 主菜单锚点与位置缓存：溢出菜单"先收起再展开"时复用定位
+    private var anchorView: View? = null
+    private var viewLoc = IntArray(2)
+    // suppressPrimaryRestore：dismiss() 全量关闭时阻止溢出菜单 dismiss 监听恢复主菜单
+    private var suppressPrimaryRestore = false
+
     private data class MenuAction(
         val id: Int,
         val title: CharSequence,
@@ -98,6 +104,15 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         // 主题/日夜可能变化，每次重建以取动态色
         dismiss()
 
+        anchorView = view
+        view.getLocationInWindow(viewLoc)
+        createAndShowPrimary(view, viewLoc)
+    }
+
+    /**
+     * 创建并显示主菜单 Popup（show 与溢出菜单关闭后恢复共用）。
+     */
+    private fun createAndShowPrimary(view: View, loc: IntArray) {
         val eInk = AppConfig.isEInkMode
         val bar = buildBar(eInk)
         val popup = PopupWindow(
@@ -120,8 +135,6 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
         val menuW = bar.measuredWidth
         val menuH = bar.measuredHeight
 
-        val loc = IntArray(2)
-        view.getLocationInWindow(loc)
         val margin = 8.dpToPx()
         val gap = 8.dpToPx()
 
@@ -139,9 +152,12 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
     }
 
     fun dismiss() {
+        // 全量关闭：阻止溢出菜单 dismiss 监听恢复主菜单
+        suppressPrimaryRestore = true
         dismissOverflow()
         primaryPopup?.dismiss()
         primaryPopup = null
+        suppressPrimaryRestore = false
     }
 
     private fun dismissOverflow() {
@@ -204,12 +220,38 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             dismissOverflow()
             return
         }
+        val view = anchorView ?: return
+        // 先收起主菜单（外观上"先收起再展开"，非直接 dropdown 展开）
+        suppressPrimaryRestore = true
+        primaryPopup?.dismiss()
+        primaryPopup = null
+        suppressPrimaryRestore = false
+
         val eInk = AppConfig.isEInkMode
         val textColor = context.primaryTextColor
         val list = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
         }
         overflowActions.forEach { list.addView(overflowItemView(it, textColor)) }
+
+        // 复用主菜单定位：水平居中于选区，垂直优先上方放不下翻下方
+        val dm = context.resources.displayMetrics
+        list.measure(
+            View.MeasureSpec.makeMeasureSpec(dm.widthPixels, View.MeasureSpec.AT_MOST),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
+        val menuW = list.measuredWidth
+        val menuH = list.measuredHeight
+        val margin = 8.dpToPx()
+        val gap = 8.dpToPx()
+        var x = viewLoc[0] + (contentRect.left + contentRect.right) / 2 - menuW / 2
+        x = x.coerceIn(margin, (dm.widthPixels - menuW - margin).coerceAtLeast(margin))
+        var y = viewLoc[1] + contentRect.top - menuH - gap
+        if (y < margin) {
+            y = viewLoc[1] + contentRect.bottom + gap
+        }
+        y = y.coerceAtMost((dm.heightPixels - menuH - margin).coerceAtLeast(margin))
+
         overflowPopup = PopupWindow(
             list,
             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -219,7 +261,14 @@ class TextActionMenu(private val context: Context, private val callBack: CallBac
             isOutsideTouchable = true
             setBackgroundDrawable(cardBackground(eInk))
             if (!eInk) elevation = 6.dpToPx().toFloat()
-            showAsDropDown(anchor)
+            showAtLocation(view, Gravity.NO_GRAVITY, x, y)
+        }
+        // 溢出菜单被外部触摸/返回键关闭时恢复主菜单；dismiss() 全量关闭时抑制恢复
+        overflowPopup?.setOnDismissListener {
+            overflowPopup = null
+            if (!suppressPrimaryRestore) {
+                createAndShowPrimary(view, viewLoc)
+            }
         }
     }
 

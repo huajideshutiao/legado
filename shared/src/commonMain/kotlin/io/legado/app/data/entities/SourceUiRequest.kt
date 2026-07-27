@@ -10,4 +10,10 @@ sealed class SourceUiRequest {
     data class Login(override val source: BaseSource) : SourceUiRequest()
 
     data class SourceVariable(override val source: BaseSource) : SourceUiRequest()
+
+    /**
+     * 图片验证码请求 (desktop/iOS/鸿蒙 VerificationUiProvider 发出, 各端 SourceUiEventBridge
+     * 弹 sharedUiMain VerificationCodeDialog; Android 端不经事件走 VerificationCodeDialog.display)。
+     */
+    data class VerificationCode(override val source: BaseSource, val url: String) : SourceUiRequest()
 }

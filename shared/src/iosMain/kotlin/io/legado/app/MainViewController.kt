@@ -4,7 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.material3.Surface
+import androidx.compose.material.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -55,7 +55,7 @@ import platform.UIKit.UIViewController
  * - Provider 注入链路 (4 个 iOS stub Provider + registerIosProviders)
  * - AppTheme 主题包装 (ThemeStoreProvider + AppConfigProvider + EventBusProvider)
  * - 真实业务 UI: [io.legado.app.ui.bookshelf.IosBookshelfScreen] (书架网格列表 + 封面加载 + 顶栏溢出菜单)
- * - 封面加载: [io.legado.app.ui.bookshelf.IosBookCover] (本地图 UIImage + 网络图 KmpHttpClient + Skia)
+ * - 封面加载: [io.legado.app.ui.bookshelf.IosBookCover] (Coil3 + Ktor3 网络后端 + Skia 解码)
  * - JS 引擎: [io.legado.app.model.script.IosJsEngine] (quickjs cinterop 编译 C 源码, 与 Android/Desktop 端 quickjs 统一)
  * - HTTP 层: [io.legado.app.help.http.IosHttpProvider] (Ktor CIO 包装 KmpHttpClient)
  * - 数据库: [io.legado.app.data.IosDatabaseDriver] (Room KMP + BundledSQLiteDriver)

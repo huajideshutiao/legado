@@ -1,5 +1,7 @@
 package io.legado.app.utils
 
+import kotlin.concurrent.Volatile
+
 /**
  * 带超时的正则替换 provider 接口。
  *

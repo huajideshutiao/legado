@@ -5,7 +5,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.AlertDialog
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
-import io.legado.app.ui.compose.component.Md2TextField
+import io.legado.app.ui.compose.component.AppTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,7 +57,7 @@ import kotlinx.coroutines.launch
  *
  * - 复制/粘贴/分享: 鸿蒙端剪贴板为 stub, 暂留 no-op + TODO
  * - 自动缩进: 依赖 CodeView (Android 专属), no-op
- * - codeEditorSlot: 用 [Md2TextField] 替代 CodeView (与 iOS 端一致, 鸿蒙端无 AndroidView)
+ * - codeEditorSlot: 用 [AppTextField] 替代 CodeView (与 iOS 端一致, 鸿蒙端无 AndroidView)
  * - bottomBar: 鸿蒙端无 KeyboardToolbar, 留空
  *
  * @param sourceUrl 书源 URL (空串视为新建)
@@ -613,7 +613,7 @@ private fun BookSourceEditContent(
                 // TODO: 鸿蒙端剪贴板为 stub, 后续接入 ohos pasteboard
             },
             onAutoIndent = {
-                // TODO: 依赖 CodeView (Android 专属), 鸿蒙端 Md2TextField 无对应能力
+                // TODO: 依赖 CodeView (Android 专属), 鸿蒙端 AppTextField 无对应能力
             },
             onSetSourceVariable = {
                 showVariableDialog = true
@@ -640,7 +640,7 @@ private fun BookSourceEditContent(
         callbacks = callbacks,
         editEntities = { tab -> editEntities(tab) },
         codeEditorSlot = { entity, modifier ->
-            Md2TextField(
+            AppTextField(
                 value = entity.value.orEmpty(),
                 onValueChange = { entity.value = it },
                 modifier = modifier.fillMaxWidth(),

@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.read.config
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,8 +29,7 @@ val fontFileRegex: Regex = Regex("(?i).*\\.[ot]tf")
 /**
  * 字体项：绝对路径 + 文件名（显示用）。
  *
- * 下沉到 shared/sharedUiMain 供 iOS / 桌面端复用（桌面端当前保留私有 FontItem，
- * 后续迁移可统一引用本类）。
+ * 下沉到 shared/sharedUiMain 供 iOS / 桌面端复用。
  */
 data class FontItem(val path: String, val name: String)
 
@@ -42,12 +42,13 @@ data class FontItem(val path: String, val name: String)
  * - "默认字体"按钮：触发 [onSelectDefault] + dismiss
  *   （对齐 app 端 `onDefaultFontChange` → `callBack.selectFont("")`）
  *
- * # 简化项（与 app 端差异，平台特殊行为不入 sharedUiMain）
+ * # 简化项（与 app 端差异，平台特殊行为经槽位注入，不入 sharedUiMain）
  *
  * - 字体扫描由调用方注入（[fontItems]）：app 端用 DocumentFile + externalFiles/font，
  *   iOS 端用 NSFileManager + Documents/font，桌面端用 java.io.File + 系统字体目录
- * - 不含"其它目录"按钮（iOS 端 PHPicker 不支持选文件夹；桌面端 JFileChooser 属平台特殊行为）
- * - 不含字体预览（FontFamily(Font(file=...)) 属 JVM 桌面特殊行为）
+ * - "其它目录"按钮走 [topBarTrailing] 槽（iOS 端 PHPicker 不支持选文件夹不注入；
+ *   桌面端注入 JFileChooser 入口）
+ * - 字体预览走 [fontPreview] 槽（FontFamily(Font(file=...)) 属 JVM 桌面特殊行为，桌面端注入）
  * - 不含"系统内置字体样式"选择器（app 端 R.array.system_typefaces + AppConfig.systemTypefaces 未下沉）
  *
  * @param fontItems 字体文件列表（由调用方扫描后注入）
@@ -56,6 +57,10 @@ data class FontItem(val path: String, val name: String)
  * @param onSelectFont 选定字体回调（传入字体文件绝对路径）
  * @param onSelectDefault 默认字体回调（传入空串，对齐 app 端 selectFont("")）
  * @param onDismiss 关闭回调
+ * @param widthFraction 对话框宽度占比（透传 AppAlertDialog；桌面端传 0.8f 避免占满）
+ * @param topBarTrailing 顶部按钮行尾部槽（桌面端注入"其它目录"按钮）
+ * @param extraTopContent 顶部按钮行与列表之间的附加内容槽（桌面端注入扫描失败提示）
+ * @param fontPreview 字体行预览槽（桌面端注入 FontFamily(Font(file)) 预览文本）
  */
 @Composable
 fun FontSelectDialog(
@@ -65,12 +70,17 @@ fun FontSelectDialog(
     onSelectFont: (String) -> Unit,
     onSelectDefault: () -> Unit,
     onDismiss: () -> Unit,
+    widthFraction: Float = 1f,
+    topBarTrailing: (@Composable () -> Unit)? = null,
+    extraTopContent: (@Composable () -> Unit)? = null,
+    fontPreview: (@Composable (FontItem) -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
 
     AppAlertDialog(
         onDismissRequest = onDismiss,
         title = rememberString("select_font"),
+        widthFraction = widthFraction,
         content = {
             // 顶部"默认字体"按钮（对齐 app 端 dialog_title_bar 的默认字体按钮）
             Row(
@@ -92,7 +102,10 @@ fun FontSelectDialog(
                         .padding(vertical = 8.dp, horizontal = 12.dp),
                 )
                 Spacer(Modifier.weight(1f))
+                topBarTrailing?.invoke()
             }
+
+            extraTopContent?.invoke()
 
             // 字体列表（LazyColumn 限高，避免列表过长撑爆对话框）
             LazyColumn(
@@ -109,6 +122,7 @@ fun FontSelectDialog(
                             }
                             onDismiss()
                         },
+                        preview = fontPreview,
                     )
                 }
             }
@@ -118,18 +132,23 @@ fun FontSelectDialog(
 }
 
 /**
- * 字体列表行：[RadioButton] + 字体文件名。
+ * 字体列表行：[RadioButton] + 字体文件名 + 可选预览槽。
  *
- * 不含字体预览（FontFamily 属 JVM 桌面特殊行为，各端按需在调用方扩展）。
+ * 预览渲染经 [preview] 槽注入（FontFamily 属 JVM 桌面特殊行为，桌面端注入）。
  */
 @Composable
-private fun FontRow(item: FontItem, selected: Boolean, onClick: () -> Unit) {
+private fun FontRow(
+    item: FontItem,
+    selected: Boolean,
+    onClick: () -> Unit,
+    preview: (@Composable (FontItem) -> Unit)? = null,
+) {
     val colors = AppTheme.colors
     Row(
         Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = if (preview != null) 4.dp else 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RadioButton(
@@ -140,11 +159,13 @@ private fun FontRow(item: FontItem, selected: Boolean, onClick: () -> Unit) {
                 unselectedColor = colors.secondaryText,
             ),
         )
-        Text(
-            text = item.name,
-            color = colors.primaryText,
-            fontSize = 16.sp,
-            modifier = Modifier.padding(start = 8.dp),
-        )
+        Column(Modifier.padding(start = 8.dp)) {
+            Text(
+                text = item.name,
+                color = colors.primaryText,
+                fontSize = 16.sp,
+            )
+            preview?.invoke(item)
+        }
     }
 }

@@ -15,6 +15,7 @@ import io.legado.app.help.http.cookieJarHeader
 import io.legado.app.help.media.SleepTimer
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
+import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.audio.AudioPlayAnalyzeRuleFactory
 import io.legado.app.model.audio.AudioPlayController
@@ -598,7 +599,7 @@ private class MediaAnalyzeUrl(
     }
 }
 
-/** [AudioPlayAnalyzeRuleFactory] 的 iOS 实现: 直接用 commonMain AnalyzeRuleCore (同 desktop) */
+/** [AudioPlayAnalyzeRuleFactory] 的 iOS 实现: 经 [AnalyzeRuleFactories] 创建 (同 desktop) */
 private object IosAudioPlayAnalyzeRuleFactory : AudioPlayAnalyzeRuleFactory {
 
     override fun create(
@@ -607,7 +608,7 @@ private object IosAudioPlayAnalyzeRuleFactory : AudioPlayAnalyzeRuleFactory {
         chapter: BookChapter,
         coroutineContext: CoroutineContext,
     ): AnalyzeRuleCore {
-        return AnalyzeRuleCore(book, bookSource).apply {
+        return AnalyzeRuleFactories.create(book, bookSource).apply {
             this.coroutineContext = coroutineContext
             setBaseUrl(chapter.url)
             this.chapter = chapter

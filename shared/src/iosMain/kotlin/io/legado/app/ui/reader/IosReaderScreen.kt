@@ -1,14 +1,15 @@
 package io.legado.app.ui.reader
 
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.AlertDialog
 import androidx.compose.material.DrawerValue
 import androidx.compose.material.ModalDrawer
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
 import androidx.compose.material.rememberDrawerState
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -21,6 +22,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.legado.app.constant.AppLog
@@ -30,6 +33,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookGroup
+import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.ReplaceRule
@@ -38,11 +42,17 @@ import io.legado.app.help.book.isImage
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.copyToClipboard
+import io.legado.app.help.file.exportFile
+import io.legado.app.help.file.pickDocumentContent
+import io.legado.app.help.file.pickDocuments
 import io.legado.app.help.openURL
 import io.legado.app.help.readFromClipboard
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.ReadBookShared
 import io.legado.app.service.ReadAloudControllerShared
+import io.legado.app.ui.association.ImportItemsDialog
+import io.legado.app.ui.association.ImportReplaceRuleItemsVm
+import io.legado.app.ui.association.ImportReplaceRuleViewModelShared
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.changesource.IosChangeBookSourceScreen
 import io.legado.app.ui.book.changesource.IosChangeChapterSourceScreen
@@ -50,10 +60,12 @@ import io.legado.app.ui.book.changesource.findChapterIndex
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.read.ContentEditDialog
 import io.legado.app.ui.book.read.EffectiveReplacesDialog
+import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.ReadMenuOverlay
 import io.legado.app.ui.book.read.config.ClickActionConfig
 import io.legado.app.ui.book.read.config.ClickActionDialog
+import io.legado.app.ui.book.read.config.IosReadAloudConfigScreen
 import io.legado.app.ui.book.read.config.MoreConfigScreen
 import io.legado.app.ui.book.read.config.ReadAloudDialog
 import io.legado.app.ui.book.read.page.ReadViewComposable
@@ -64,11 +76,15 @@ import io.legado.app.ui.book.read.page.delegate.SimulationPageDelegateCompose
 import io.legado.app.ui.book.read.page.delegate.SlidePageDelegateCompose
 import io.legado.app.ui.book.source.SourceLoginDialog
 import io.legado.app.ui.book.toc.TocDrawerContent
+import io.legado.app.ui.booksource.IosBookSourceEditScreen
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.IosEventBusProvider
 import io.legado.app.ui.compose.platform.IosPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
+import io.legado.app.ui.compose.platform.handleReadPageKeys
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.dict.IosDictDialog
 import io.legado.app.ui.dialog.NumberPickerDialog
@@ -76,13 +92,16 @@ import io.legado.app.ui.replace.ReplaceEditScreen
 import io.legado.app.ui.replace.ReplaceRuleListScreen
 import io.legado.app.ui.replace.ReplaceRuleListViewModel
 import io.legado.app.ui.replace.edit.ReplaceEditViewModelShared
+import io.legado.app.ui.widget.dialog.OnlineImportUrlDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.decodeStringMapOrNull
 import io.legado.app.utils.encodeStringMap
+import io.legado.app.utils.formatNative
 import io.legado.app.utils.toJson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -96,8 +115,8 @@ import kotlinx.coroutines.withContext
  *
  * 本文件仅做 iOS 平台适配, 正文排版 / 翻页编排 / 菜单层下沉到 shared:
  * - **VM 生命周期**: `remember { ReadBookViewModelShared(...) }` 持有, 退出时
- *   `DisposableEffect.onDispose { viewModel.saveProgress(); viewModel.pageDelegate?.onDestroy() }`
- *   持久化阅读进度 + 释放翻页动画资源 (对照 desktop ReaderScreen line 179-184)
+ *   `DisposableEffect.onDispose { viewModel.onCleared(); viewModel.pageDelegate?.onDestroy() }`
+ *   落库 + WebDav 上传进度 + 释放翻页动画资源 (对照 desktop ReaderScreen 同款)
  * - **章节装载**: `LaunchedEffect(book.bookUrl)` 内调 `readBook.loadBook(book)`
  *   + `viewModel.loadChapter(book.durChapterIndex)` (对照 desktop ReaderScreen line 162-165)
  * - **配置注入**: 用 [IosPreferenceStoreProvider] (NSUserDefaults) 构造 [ReadConfigProviders]
@@ -159,10 +178,11 @@ fun IosReaderScreen(
         }
 
         // 退出时持久化阅读进度 + 释放翻页动画资源
-        // (KP2-D P0-C: 调 viewModel.saveProgress() 把 durChapterIndex/durChapterPos/标题 PATCH 进 books 表)
+        // (退出时落库 + WebDav 上传进度, 走 VM 内部独立作用域不受本 scope 取消影响,
+        //  对照 app 端 ReadBookActivity.onPause 的 saveRead + uploadProgress)
         DisposableEffect(viewModel) {
             onDispose {
-                viewModel.saveProgress()
+                viewModel.onCleared()
                 viewModel.pageDelegate?.onDestroy()
             }
         }
@@ -170,6 +190,32 @@ fun IosReaderScreen(
         val curTextPage by viewModel.curTextPage.collectAsState()
         val chapterList by viewModel.chapterList.collectAsState()
         val durChapterIndex by viewModel.durChapterIndex.collectAsState()
+
+        // 云端进度确认弹窗 (对照 app 端 ReadBookActivity.sureNewProgress:
+        // alert(R.string.sync_book_progress_t) + cloud_progress_exceeds_current, ok → setProgress)
+        var newCloudProgress by remember { mutableStateOf<BookProgress?>(null) }
+        LaunchedEffect(viewModel) {
+            ReadBookEvents.newProgressConfirm.collect { newCloudProgress = it }
+        }
+        newCloudProgress?.let { progress ->
+            AppAlertDialog(
+                onDismissRequest = {
+                    viewModel.dismissSyncProgress()
+                    newCloudProgress = null
+                },
+                title = rememberString("sync_book_progress_t"),
+                // R.string.cloud_progress_exceeds_current (SharedStringTable 暂无该 key, 先用中文文案)
+                message = "云端进度超过当前进度，是否同步？",
+                okButton = AlertButton(rememberString("ok"), dismissOnClick = false) {
+                    viewModel.confirmSyncProgress(progress)
+                    newCloudProgress = null
+                },
+                cancelButton = AlertButton(rememberString("cancel"), dismissOnClick = false) {
+                    viewModel.dismissSyncProgress()
+                    newCloudProgress = null
+                },
+            )
+        }
 
         // KP5: 创建 TTS 朗读控制器 (绑定 viewModel 生命周期)
         // IosProviderRegistry 已注册 IosSystemTtsEngine (AVSpeechSynthesizer), 控制器通过 provider 取引擎
@@ -234,6 +280,10 @@ fun IosReaderScreen(
         var loginTarget by remember { mutableStateOf<BookSource?>(null) }
         // 变量编辑 Dialog (SourceAction.SET_SOURCE_VARIABLE / SET_BOOK_VARIABLE 触发)
         var showVariableDialog by remember { mutableStateOf(false) }
+        // 书源编辑 Dialog (SourceAction.EDIT_SOURCE 触发, 包装 IosBookSourceEditScreen 全屏展示)
+        var sourceEditUrl by remember { mutableStateOf<String?>(null) }
+        // 朗读设置 Dialog (ReadAloudDialog onOpenSettings 触发, 包装 IosReadAloudConfigScreen)
+        var showReadAloudConfig by remember { mutableStateOf(false) }
 
         // 夜间主题切换: 取外层 MainViewController 注入的 LocalPreferenceStoreProvider +
         // LocalEventBusProvider, 写 PreferKey.themeMode 后 emitRecreate 触发 AppTheme 重组
@@ -324,9 +374,10 @@ fun IosReaderScreen(
                     showVariableDialog = true
                 },
                 openSourceEdit = {
-                    // 编辑书源: iOS 端暂无 BOOK_SOURCE_EDIT 路由 + IosBookSourceEditScreen wrapper, 留 TODO
-                    Toasters.get().toast(editBookSourceText)
+                    // 编辑书源: 弹 IosBookSourceEditScreen 全屏 Dialog (对照 app 端 openSourceEditActivity)
+                    readBook.bookSource.value?.let { src -> sourceEditUrl = src.bookSourceUrl }
                 },
+                getBookSource = { readBook.bookSource.value },
                 autoPageScope = scope,
                 showAutoReadDialog = { showAutoReadDialog = true },
                 readBookConfig = readConfigProviders.readBookConfig,
@@ -361,12 +412,37 @@ fun IosReaderScreen(
                 )
             },
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
+            // 外接键盘 (iPad 蓝牙键盘) 事件焦点: onPreviewKeyEvent 需节点持有焦点才触发, 进入即取焦点
+            // (对照 desktop ReaderScreen 焦点接线)
+            val keyFocusRequester = remember { FocusRequester() }
+            LaunchedEffect(Unit) {
+                runCatching { keyFocusRequester.requestFocus() }
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    // 外接键盘翻页: 消费共享 handleReadPageKeys (方向/PageUp/PageDown/空格/Esc)
+                    // 菜单可见时不拦截翻页键; Esc/Backspace 菜单可见先收菜单, 否则返回
+                    .handleReadPageKeys(
+                        onPrevPage = {
+                            // 翻上一页, 已到首页则切上一章 (与 app 端 keyPage(PREV) 对应)
+                            if (!viewModel.prevPage()) viewModel.moveToPrevChapter()
+                        },
+                        onNextPage = {
+                            // 翻下一页, 已到末页则切下一章 (与 app 端 keyPage(NEXT) 对应)
+                            if (!viewModel.nextPage()) viewModel.moveToNextChapter()
+                        },
+                        onBack = {
+                            if (readMenuState.isVisible) readMenuState.runMenuOut() else onBack()
+                        },
+                        menuVisible = { readMenuState.isVisible },
+                    )
+                    .focusRequester(keyFocusRequester)
+                    .focusable(),
+            ) {
                 // 主内容: 阅读视图
                 // 点击中心区域 → 切菜单显隐 (与 app 端 showActionMenu 一致; 翻页由 pageDelegate.onTap 自己处理)
                 // 长按正文 → 异步加载正文弹 IosTextSelectionDialog (文字选择)
-                // iOS 端待接入提示文案 (回调 lambda 非 @Composable, 需预先缓存)
-                val editBookSourceText = rememberString("ios_edit_book_source_not_implemented")
                 // 文案 (onFailure lambda 非 @Composable, 预先 remember)
                 val loadChapterContentFailedText = rememberString("load_chapter_content_failed")
                 ReadViewComposable(
@@ -491,7 +567,7 @@ fun IosReaderScreen(
         // onNextParagraph 走 controller; onSetTimer/onFollowSysChange/onBackstage 暂 no-op
         // (iOS 端无睡眠定时 / 跟随系统语速 / 转后台语义)
         // onOpenChapterList 桥接目录侧栏; onShowMenuBar 桥接菜单显隐 + dismiss;
-        // onOpenSettings 暂 no-op (ReadAloudConfig 路由由 MoreConfig 入口, 此处不重复)
+        // onOpenSettings 弹 IosReadAloudConfigScreen 朗读设置 Dialog
         if (showReadAloudDialog) {
             ReadAloudDialog(
                 isPlaying = readAloudController.state.value == ReadAloudControllerShared.ReadAloudState.PLAYING,
@@ -523,7 +599,8 @@ fun IosReaderScreen(
                     showReadAloudDialog = false
                 },
                 onBackstage = { /* iOS 端无转后台语义 */ },
-                onOpenSettings = { /* ReadAloudConfig 路由由 MoreConfig 入口, 此处不重复 */ },
+                // 朗读设置: 弹 IosReadAloudConfigScreen 全屏 Dialog (对照 app 端 ReadAloudConfigDialog)
+                onOpenSettings = { showReadAloudConfig = true },
                 onDismiss = { showReadAloudDialog = false },
             )
         }
@@ -671,10 +748,34 @@ fun IosReaderScreen(
             // 分组管理对话框状态 (onGroupManage 触发, 与 desktop ReplaceRuleScreen 一致:
             // ReplaceRule 分组是 String, GroupManageDialog 期望 List<BookGroup>, 用 groupEntities 适配)
             var showGroupManage by remember { mutableStateOf(false) }
+            // 导入 VM + 在线导入 Dialog 状态 (onImportLocal/onImportOnline 触发)
+            var importVm by remember { mutableStateOf<ImportReplaceRuleViewModelShared?>(null) }
+            var showImportDialog by remember { mutableStateOf(false) }
+            var showImportOnlineDialog by remember { mutableStateOf(false) }
+            // 文案模板 (lambda 非 @Composable, 预先 remember 模板)
+            val importCompleteTemplate = rememberString("import_complete")
+            val wrongFormatText = rememberString("wrong_format")
+            val exportSuccessText = rememberString("export_success")
+            val copiedRulesTemplate = rememberString("copied_rules_to_clipboard_count")
             val groupNames by listViewModel.groups.collectAsState()
             val groupEntities = remember(groupNames) {
                 groupNames.mapIndexed { index, name ->
                     BookGroup(groupId = (index + 1).toLong(), groupName = name)
+                }
+            }
+            // 解析成功 → 弹勾选对话框; 失败 → toast (对照 IosReplaceRuleScreen)
+            LaunchedEffect(importVm) {
+                val vm = importVm ?: return@LaunchedEffect
+                launch {
+                    vm.successState.collectLatest { count ->
+                        if (count != null) {
+                            if (count > 0) showImportDialog = true
+                            else Toasters.get().toast(wrongFormatText)
+                        }
+                    }
+                }
+                vm.errorState.collectLatest { err ->
+                    if (err != null) Toasters.get().toast(err.substringAfter("ImportError:"))
                 }
             }
             Dialog(
@@ -698,17 +799,40 @@ fun IosReaderScreen(
                             showReplaceEditDialog = true
                         },
                         onImportLocal = {
-                            // TODO: iOS 文件选择器未接入, 暂不实现本地导入
+                            // 本地导入: pickDocuments 选 JSON/文本 → 解析 → 弹勾选对话框
+                            scope.launch {
+                                val urls = pickDocuments(
+                                    contentTypes = listOf("public.json", "public.text"),
+                                    allowsMultiple = false,
+                                ) ?: return@launch
+                                val firstUrl = urls.firstOrNull() ?: return@launch
+                                val bytes = withContext(Dispatchers.Default) {
+                                    pickDocumentContent(firstUrl)
+                                } ?: return@launch
+                                val text = bytes.decodeToString().trim()
+                                importVm = ImportReplaceRuleViewModelShared(scope).also { it.import(text) }
+                            }
                         },
                         onImportOnline = {
-                            // TODO: iOS 网络导入 URL 输入对话框未接入, 暂不实现
+                            // 弹在线导入 URL 输入对话框 (带历史)
+                            showImportOnlineDialog = true
                         },
                         onHelp = {
                             openURL("https://www.runoob.com/regexp/regexp-tutorial.html")
                         },
                         onGroupManage = { showGroupManage = true },
-                        onExport = { _ ->
-                            // TODO: iOS 文件保存未接入, 暂不实现导出
+                        onExport = { rules ->
+                            // 导出选中规则到 JSON 文件, 失败降级复制到剪贴板
+                            scope.launch {
+                                val json = GSON.toJson(rules)
+                                val saved = exportFile("exportReplaceRule.json", json.encodeToByteArray())
+                                if (saved) {
+                                    Toasters.get().toast(exportSuccessText)
+                                } else {
+                                    copyToClipboard(json)
+                                    Toasters.get().toast(copiedRulesTemplate.formatNative(rules.size))
+                                }
+                            }
                         },
                     )
                 }
@@ -729,6 +853,30 @@ fun IosReaderScreen(
                         }
                     },
                     onDismiss = { showGroupManage = false },
+                )
+            }
+            // 导入勾选对话框 (确认后仅入库勾选项, 对照 IosReplaceRuleScreen)
+            if (showImportDialog) importVm?.let { vm ->
+                ImportItemsDialog(
+                    title = rememberString("import_replace_rule"),
+                    vm = remember(vm) { ImportReplaceRuleItemsVm(vm) },
+                    onDismiss = {
+                        showImportDialog = false
+                        importVm = null
+                    },
+                    onImported = { count ->
+                        Toasters.get().toast(importCompleteTemplate.formatNative(count))
+                    },
+                )
+            }
+            // 在线导入 URL 输入对话框 (带历史下拉, 对照 IosReplaceRuleScreen)
+            if (showImportOnlineDialog) {
+                OnlineImportUrlDialog(
+                    recordKey = "replaceRuleRecordKey",
+                    onConfirm = { url ->
+                        importVm = ImportReplaceRuleViewModelShared(scope).also { it.import(url) }
+                    },
+                    onDismiss = { showImportOnlineDialog = false },
                 )
             }
         }
@@ -833,25 +981,27 @@ fun IosReaderScreen(
         // 章节正文编辑 Dialog (顶栏 EDIT_CONTENT 触发), 编辑当前章节正文
         // onReset 不接入 (WebBook 重新获取正文依赖较重, iOS 端未下沉)
         if (showContentEditDialog) {
-            ContentEditDialog(
-                chapterName = contentEditChapterName,
-                content = contentEditContent,
-                onSubmit = { text ->
-                    val curBook = viewModel.book.value
-                    val chapter = viewModel.chapterList.value.getOrNull(viewModel.durChapterIndex.value)
-                    if (curBook != null && chapter != null) {
-                        scope.launch {
-                            withContext(Dispatchers.IO) {
-                                BookStorageProviders.get().saveText(curBook, chapter, text)
+            Dialog(onDismissRequest = { showContentEditDialog = false }) {
+                ContentEditDialog(
+                    chapterName = contentEditChapterName,
+                    content = contentEditContent,
+                    onSubmit = { text ->
+                        val curBook = viewModel.book.value
+                        val chapter = viewModel.chapterList.value.getOrNull(viewModel.durChapterIndex.value)
+                        if (curBook != null && chapter != null) {
+                            scope.launch {
+                                withContext(Dispatchers.IO) {
+                                    BookStorageProviders.get().saveText(curBook, chapter, text)
+                                }
+                                // 保存后重载章节刷新阅读视图
+                                viewModel.loadChapter(viewModel.durChapterIndex.value)
                             }
-                            // 保存后重载章节刷新阅读视图
-                            viewModel.loadChapter(viewModel.durChapterIndex.value)
                         }
-                    }
-                },
-                onDismiss = { showContentEditDialog = false },
-                clipTextSink = { text -> copyToClipboard(text) },
-            )
+                    },
+                    onDismiss = { showContentEditDialog = false },
+                    clipTextSink = { text -> copyToClipboard(text) },
+                )
+            }
         }
 
         // 添加书签 Dialog (顶栏 ADD_BOOKMARK 触发, 包装 shared/sharedUiMain 的 BookmarkDialog)
@@ -956,6 +1106,34 @@ fun IosReaderScreen(
                 },
                 onDismiss = { showVariableDialog = false },
             )
+        }
+
+        // 书源编辑 Dialog (SourceAction.EDIT_SOURCE 触发, 对照 IosBookSourceScreen 的 editTargetUrl 分支)
+        sourceEditUrl?.let { url ->
+            Dialog(
+                onDismissRequest = { sourceEditUrl = null },
+                properties = DialogProperties(usePlatformDefaultWidth = false),
+            ) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    IosBookSourceEditScreen(
+                        sourceUrl = url,
+                        onBack = { sourceEditUrl = null },
+                        onSaved = { _ -> sourceEditUrl = null },
+                    )
+                }
+            }
+        }
+
+        // 朗读设置 Dialog (ReadAloudDialog onOpenSettings 触发, 对照 app 端 ReadAloudConfigDialog)
+        if (showReadAloudConfig) {
+            Dialog(
+                onDismissRequest = { showReadAloudConfig = false },
+                properties = DialogProperties(usePlatformDefaultWidth = false),
+            ) {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    IosReadAloudConfigScreen(onBack = { showReadAloudConfig = false })
+                }
+            }
         }
     }
 }

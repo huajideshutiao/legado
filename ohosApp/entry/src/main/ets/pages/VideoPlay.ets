@@ -3,7 +3,7 @@ import promptAction from '@ohos.promptAction';
 import media from '@ohos.multimedia.media';
 import { KeyCode } from '@ohos.multimodalInput.keyCode';
 import legado from 'liblegado_napi.so';
-import { addMediaEventListener, removeMediaEventListener } from '../bridge/MediaBridgeHandler';
+import { addMediaEventListener, removeMediaEventListener, PLAYER_ID_VIDEO } from '../bridge/MediaBridgeHandler';
 
 /**
  * 视频播放页 (ArkTS UI)。
@@ -74,7 +74,7 @@ struct VideoPlay {
 
     // 注册 media 事件监听 (为后续 surface 绑定 napi 预留)
     this.mediaListener = (eventJson: string): void => this.onMediaEvent(eventJson);
-    addMediaEventListener(this.mediaListener);
+    addMediaEventListener(this.mediaListener, PLAYER_ID_VIDEO);
 
     // 有源则等待 Video onPrepared 完成 (加载态覆盖层显示到 onPrepared/onError)
     this.loading = this.videoPath.length > 0;
@@ -555,6 +555,7 @@ struct VideoPlay {
  * media 事件载荷 (与 MediaBridgeHandler MediaEventPayload 对齐)。
  */
 interface MediaEventPayload {
+  playerId?: string;
   event: string;
   message?: string;
   percent?: number;

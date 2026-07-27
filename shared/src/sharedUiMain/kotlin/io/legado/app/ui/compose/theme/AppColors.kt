@@ -17,6 +17,12 @@ data class AppColors(
     val bottomBackground: Color,
     val primaryText: Color,
     val secondaryText: Color,
+    val menuText: Color,
+    val summaryText: Color,
+    // 对齐 ate_control_normal_light/dark: 用于 TextField unfocused 下划线/label/placeholder
+    val controlNormal: Color,
+    // 对齐 ate_text_disabled_light/dark: 用于 TextField disabled 状态文字/下划线/label/placeholder
+    val textDisabled: Color,
     val statusBar: Color,
     val navigationBar: Color,
     val fillet: Color,

@@ -3,6 +3,8 @@ package io.legado.app.help.tts
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
+import kotlin.concurrent.Volatile
 
 /**
  * 朗读控制器（KMP 版,替代 app 端 `BaseReadAloudService` 的协调层职责）。
@@ -167,7 +169,7 @@ class ReadAloudController(
         }
         val speakText = text.replace(AppPattern.notReadAloudRegex, "")
         runCatching {
-            AnalyzeUrlCore(
+            AnalyzeUrlFactories.create(
                 config.url,
                 source = config,
                 readTimeout = HttpTtsRequest.READ_TIMEOUT_MS,

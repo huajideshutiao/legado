@@ -1,7 +1,6 @@
 package io.legado.app.utils
 
 import androidx.annotation.IntDef
-import io.legado.app.data.cnCompareGroups
 import io.legado.app.help.coroutine.printOnDebug
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
@@ -681,9 +680,8 @@ object FileUtilsBase {
                     val s1 = f1.name
                     val s2 = f2.name
                     if (caseSensitive) {
-                        // 复用 shared io.legado.app.data.cnCompareGroups (internal expect/actual,
-                        // androidMain 走 android.icu, jvmMain 走 java.text.Collator, 行为与 app 端 cnCompare 对齐)
-                        s1.cnCompareGroups(s2)
+                        // 复用已下沉的 String.cnCompare (commonMain expect/actual, 同包免 import)
+                        s1.cnCompare(s2)
                     } else {
                         s1.compareTo(s2, ignoreCase = true)
                     }

@@ -1,5 +1,8 @@
 package io.legado.app.help.tts
 
+import io.legado.app.data.entities.HttpTTS
+import kotlin.concurrent.Volatile
+
 /**
  * 系统 TTS 引擎的进程级 Provider（KMP commonMain 版）。
  *
@@ -8,8 +11,8 @@ package io.legado.app.help.tts
  * [SystemTtsEngine] 接口的具体实现由各平台 actual 提供:
  * - app (Android): `TextToSpeechEngine` (基于 android.speech.tts.TextToSpeech)
  * - desktop (JVM): `DesktopSystemTtsEngine` (Windows SAPI / Linux espeak / macOS say)
- * - ios: AVSpeechSynthesizer 封装 (待补)
- * - ohos: 鸿蒙 @ohos.textToSpeech 封装 (待补)
+ * - ios: `IosSystemTtsEngine` (AVSpeechSynthesizer)
+ * - ohos: `OhosSystemTtsEngine` (napi 桥接 @ohos.textToSpeech)
  *
  * commonMain 中的 [ReadAloudControllerShared] 需要拿到当前平台的 [SystemTtsEngine]
  * 实例来驱动朗读, 但不能直接 new 平台实现 (会引入平台依赖)。采用 Provider 模式:
@@ -77,4 +80,40 @@ object TtsEngineProvider {
     fun unregister() {
         implField = null
     }
+
+    // region HttpTtsPlayer 工厂注册点 (KP2-D P0-9 新增, 三端朗读 HttpTTS 路径)
+
+    /**
+     * 当前平台注册的 [HttpTtsPlayer] 工厂。
+     *
+     * - 工厂模式而非单例: HttpTTS 播放器实例每次开始朗读重新创建 (与 app 端
+     *   ExoPlayer 重建语义对齐, 避免上一次播放的 player 状态残留)
+     * - null: 未注册 (平台不支持 HttpTTS 或未启动时)
+     */
+    @Volatile
+    private var httpTtsPlayerFactoryField: ((HttpTTS) -> HttpTtsPlayer)? = null
+
+    /**
+     * 注册 [HttpTtsPlayer] 工厂。
+     *
+     * @param factory 接收 [HttpTTS] 源配置, 返回平台 actual 实例
+     *                 (如 desktop `DesktopHttpTtsPlayer` / iOS `IosHttpTtsPlayer`)
+     */
+    fun registerHttpTtsPlayerFactory(factory: (HttpTTS) -> HttpTtsPlayer) {
+        httpTtsPlayerFactoryField = factory
+    }
+
+    /**
+     * 取已注册工厂创建 [HttpTtsPlayer] 实例, 未注册返回 null。
+     *
+     * @param httpTTS TTS 源配置 (工厂可能用其初始化播放器)
+     */
+    fun getHttpTtsPlayer(httpTTS: HttpTTS): HttpTtsPlayer? =
+        httpTtsPlayerFactoryField?.invoke(httpTTS)
+
+    /** 注销 [HttpTtsPlayer] 工厂 (用于应用退出)。 */
+    fun unregisterHttpTtsPlayerFactory() {
+        httpTtsPlayerFactoryField = null
+    }
+    // endregion
 }

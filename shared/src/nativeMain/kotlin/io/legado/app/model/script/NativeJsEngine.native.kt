@@ -850,7 +850,9 @@ object NativeJsEngine : JsEngine {
                 '\u000C' -> sb.append("\\f")  // \f (U+000C)
                 else -> {
                     if (c.code < 0x20) {
-                        sb.append("\\u%04x".format(c.code))
+                        // 纯 Kotlin 等价 "\\u%04x".format(c.code) (Native 无 String.format);
+                        // c.code < 0x20 恒为正, 小写 hex 左补零到 4 位
+                        sb.append("\\u").append(c.code.toString(16).padStart(4, '0'))
                     } else {
                         sb.append(c)
                     }

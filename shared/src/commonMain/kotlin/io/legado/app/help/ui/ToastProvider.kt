@@ -1,5 +1,7 @@
 package io.legado.app.help.ui
 
+import kotlin.concurrent.Volatile
+
 /**
  * Toast 提示能力 provider (跨平台抽象)。
  *

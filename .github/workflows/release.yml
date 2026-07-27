@@ -63,7 +63,8 @@ jobs:
       - name: Unify Version Name
         run: |
           echo "统一版本号"
-          sed "/def version/c def version = \"${{ env.VERSION }}\"" $GITHUB_WORKSPACE/app/build.gradle  -i
+          # app/build.gradle 已迁移为 build.gradle.kts, 锚定 kts 声明行 val version = "3.${releaseTime()}"
+          sed "/^val version = /c val version = \"${{ env.VERSION }}\"" $GITHUB_WORKSPACE/app/build.gradle.kts  -i
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -80,7 +81,8 @@ jobs:
         continue-on-error: true
         run: |
           echo "修改applicationIdSuffix为共存版"
-          sed "s/'.release'/'.releaseA'/" $GITHUB_WORKSPACE/app/build.gradle -i
+          # kts 双引号赋值; 精确锚整句, 避免误伤 if (applicationIdSuffix == ".releaseA") 判断行与 ".debug" 赋值
+          sed 's|applicationIdSuffix = ".release"|applicationIdSuffix = ".releaseA"|' $GITHUB_WORKSPACE/app/build.gradle.kts -i
           echo "开始app共存构建"
           ./gradlew assembleapprelease --build-cache --parallel --daemon --warning-mode all
           find ${{ github.workspace }}/app/build/outputs/apk -name "*.apk" -exec mv {} ${{ github.workspace }}/apk/ \;
@@ -331,9 +333,18 @@ jobs:
           java-version: 17
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-      - name: Build shared iOS framework (release)
-        # 1. 编译 shared.framework (iosArm64 release), 供 Xcode archive 链接
-        run: ./gradlew :shared:linkReleaseFrameworkIosArm64 --warning-mode all
+      - name: Compile shared iOS klib (验证编译)
+        # 1. shared/build.gradle.kts 已声明 binaries.framework (baseName "shared", isStatic=false),
+        #    linkReleaseFrameworkIosArm64 任务存在, 但此处刻意仍用 compileKotlinIosArm64 (klib):
+        #    link 要解析 quickjs/mbedtls cinterop 的 C 符号, 而 cinterop 只编 .def 内 wrapper,
+        #    不编 src/cinterop/quickjs-ng/ 与 src/cinterop/mbedtls/ 的 C 源, 缺 iosArm64 .a → link 必失败。
+        #    故此处只保证 Kotlin 侧编译无回归; 缺 shared.framework 时后续 archive 会失败 (已 continue-on-error)。
+        #    升回 linkReleaseFrameworkIosArm64 (从而打通完整 IPA 流程) 的条件 (三选一):
+        #      a. macOS runner 上用 Xcode clang 预编 quickjs-ng/mbedtls 为 iosArm64 静态库,
+        #         .def 里 staticLibraries + libraryPaths 引入; 或
+        #      b. cmake/CocoaPods 预构建 .a 并提交/缓存; 或
+        #      c. 把 C 源纳入 cinterop compilerOpts 直编 (需拆分编译单元)。
+        run: ./gradlew :shared:compileKotlinIosArm64 --warning-mode all
       - name: Install XcodeGen
         # 2. 用 xcodegen 从 project.yml 生成 .xcodeproj (避免二进制工程文件冲突)
         run: brew install xcodegen
@@ -372,9 +383,10 @@ jobs:
             CODE_SIGNING_ALLOWED=NO
         continue-on-error: true
       - name: Collect IPA
+        # archive/export 失败时 build/ipa 目录不存在, find 会非零退出; 兜底不让整个 job 失败
         run: |
           mkdir -p ${{ github.workspace }}/ipa/
-          find ${{ github.workspace }}/iosApp/build/ipa -name "*.ipa" -exec mv {} ${{ github.workspace }}/ipa/ \;
+          find ${{ github.workspace }}/iosApp/build/ipa -name "*.ipa" -exec mv {} ${{ github.workspace }}/ipa/ \; 2>/dev/null || true
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -390,7 +402,9 @@ jobs:
           allowUpdates: true
           artifacts: ${{ github.workspace }}/ipa/*.ipa
 
-  # 鸿蒙 .so (release): Ubuntu runner 上编译 shared linuxArm64 .so, 追加到 Release
+  # 鸿蒙 .so (release): Ubuntu runner 上编译 shared ohosArm64 .so, 追加到 Release
+  # 鸿蒙 target 已从 linuxArm64 切换为 ohosArm64 (支付宝 fork Kotlin 2.3.0.1-alipay 工具链);
+  # fork 构件从 settings.gradle.kts 内嵌凭证的阿里云云效公网 maven 解析, CI 无需额外 secret
   # 鸿蒙 HAP 需自托管 runner (见下面 ohos-build), 这里只产出 .so 供鸿蒙 DevEco 本地打包链接
   ohos-so:
     needs: [ prepare, build ]
@@ -412,12 +426,13 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
       - name: Build HarmonyOS .so (release)
         # 鸿蒙 target 默认禁用, 必须加 -PenableOhosTarget=true
-        # 鸿蒙 ABI 与 linuxArm64 一致, 复用 Kotlin/Native linuxArm64 目标
-        run: ./gradlew :shared:assembleLinuxArm64Release -PenableOhosTarget=true --warning-mode all
+        # sharedLib binary (baseName legado_shared, 无 namePrefix) → link 任务名 linkReleaseSharedOhosArm64
+        run: ./gradlew :shared:linkReleaseSharedOhosArm64 -PenableOhosTarget=true --warning-mode all
       - name: Collect HarmonyOS .so
+        # 输出目录规则 build/bin/<target>/<binaryName>: ohosArm64 sharedLib release → releaseShared
         run: |
           mkdir -p ${{ github.workspace }}/ohos/
-          find ${{ github.workspace }}/shared/build/bin/linuxArm64/releaseDefault -name "*.so" -exec mv {} ${{ github.workspace }}/ohos/ \;
+          find ${{ github.workspace }}/shared/build/bin/ohosArm64/releaseShared -name "*.so" -exec mv {} ${{ github.workspace }}/ohos/ \;
       - name: Upload HarmonyOS .so Artifact
         uses: actions/upload-artifact@v4
         with:

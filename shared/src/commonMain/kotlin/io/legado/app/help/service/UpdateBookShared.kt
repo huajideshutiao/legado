@@ -24,6 +24,7 @@ import io.legado.app.utils.FlowBus
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.AtomicInt
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -96,7 +97,8 @@ import kotlin.math.min
  * - **不依赖 Android 通知栏**: 进度通知通过 [UpdateBookCallback.onProgressUpdate] /
  *   [UpdateBookCallback.onProgressCancel] 抽象, 由各端 callback 实现桥接
  *   (app 端 NotificationManagerCompat + startService<UpdateBookService>,
- *   桌面端 NotificationProgresses + StateFlow, iOS/鸿蒙 stub 或后续接平台通知)
+ *   桌面端 NotificationProgresses + StateFlow, iOS/鸿蒙 NativeUpdateBookCallback
+ *   桥接 NotificationProgresses + Toasters)
  * - **不依赖 ReadBook 单例**: app 端 `ReadBook.onChapterListUpdated(book)` 通过
  *   postEvent(EventBus.UP_BOOKSHELF, bookUrl) 替代 (与桌面端一致, 阅读流 Composable
  *   监听自行重载, 语义等价仅少一次内存缓存同步)
@@ -371,7 +373,7 @@ class UpdateBookShared(
                     postEvent(EventBus.UP_BOOKSHELF, book.bookUrl)
                 } catch (e: Throwable) {
                     currentCoroutineContext().ensureActive()
-                    AppLog.put("${book.name} 强制刷新失败\n${e.localizedMessage}", e)
+                    AppLog.put("${book.name} 强制刷新失败\n${e.message}", e)
                 }
                 refreshCount.incrementAndGet()
                 updateProgress()
@@ -385,7 +387,7 @@ class UpdateBookShared(
                     callback.toastForceRefreshDone()
                 }
             }.catch {
-                AppLog.put("强制刷新书籍出错\n${it.localizedMessage}", it)
+                AppLog.put("强制刷新书籍出错\n${it.message}", it)
             }.collect { }
     }
 
@@ -526,7 +528,7 @@ class UpdateBookShared(
                     cacheBook()
                 }
             }.catch {
-                AppLog.put("更新目录出错\n${it.localizedMessage}", it)
+                AppLog.put("更新目录出错\n${it.message}", it)
             }.collect { }
         }
     }
@@ -594,7 +596,7 @@ class UpdateBookShared(
             postEvent(EventBus.UP_BOOKSHELF, book.bookUrl)
         } catch (e: Throwable) {
             currentCoroutineContext().ensureActive()
-            AppLog.put("${book.name} 更新目录失败\n${e.localizedMessage}", e)
+            AppLog.put("${book.name} 更新目录失败\n${e.message}", e)
             // 这里可能因为时间太长书籍信息已经更改, 所以重新获取
             appDb.bookDao.getBook(book.bookUrl)?.let { latest ->
                 latest.addType(BookType.updateError)
@@ -738,7 +740,7 @@ class UpdateBookShared(
      *   (NotificationCompat.Builder 设置进度, 与原 updateUpdateNotification 一致)
      * - 桌面端 callback 实现: NotificationProgresses.get().showProgress (SystemTray 文本通知) +
      *   StateFlow 暴露给 UI
-     * - iOS/鸿蒙 callback 实现: stub (println) 或后续接平台通知 API
+     * - iOS/鸿蒙 callback 实现: NativeUpdateBookCallback 桥接 NotificationProgresses + Toasters
      *
      * 两个 job 任一在跑时显示对应文案 + isRefreshing=true, 都空闲时清空 + 取消通知。
      */
@@ -809,13 +811,14 @@ class UpdateBookShared(
  * `startService<UpdateBookService>` 显示通知栏进度, `context.toastOnUi(R.string.xxx)` 显示 toast;
  * 桌面端 `DesktopMainViewModel.updateProgress` 用 `NotificationProgresses` (SystemTray 文本通知) +
  * StateFlow 暴露给 UI, `Toasters.get().toast(msg)` 显示 toast;
- * iOS/鸿蒙端无 Android 通知栏 / SystemTray, 后续接平台通知 API 或 stub。
+ * iOS/鸿蒙端经各自已注册的 NotificationProgress / Toaster 真实实现桥接。
  *
  * 本接口把上述差异抽象出来, 由各端 actual 自行实现注册:
  * - Android: app 端 `MainViewModel` 持有 callback 实现, 桥接 `NotificationManagerCompat` +
  *   `startService<UpdateBookService>` + `context.toastOnUi`
  * - 桌面: `DesktopMainViewModel` 持有 callback 实现, 桥接 `NotificationProgresses` + `Toasters`
- * - iOS/鸿蒙: `NativeServiceLauncher` 持有 callback 实现, 当前 stub (println), 后续接平台通知
+ * - iOS/鸿蒙: `NativeServiceLauncher` 持有 `NativeUpdateBookCallback`,
+ *   同样桥接 `NotificationProgresses` + `Toasters`
  *
  * 模式参考 [io.legado.app.model.CacheBookCallback] / [io.legado.app.help.book.BookHelpAccessor]。
  */
@@ -870,8 +873,8 @@ interface UpdateBookCallback {
  * [UpdateBookCallback] 容器 (provider 注入模式, 可选)。
  *
  * 与 [io.legado.app.model.CacheBookCallbacks] 模式一致, 用于 Native (iOS/鸿蒙) 端
- * 在 NativeServiceLauncher 内注册默认 callback (stub), 让 UpdateBookShared 在
- * Native target 也能构造 (无 callback 须由调用方传入时)。
+ * 注册 NativeUpdateBookCallback (桥接 NotificationProgresses + Toasters), 让
+ * UpdateBookShared 在 Native target 也能构造 (无 callback 须由调用方传入时)。
  *
  * app / 桌面端 VM 直接通过构造参数注入 callback (不经本 provider), 与
  * [io.legado.app.model.CacheBookCallback] 注册模式对齐。

@@ -124,6 +124,8 @@ class ChangeBookSourceDialog() : BaseComposeDialogFragment() {
         var loadInfo by remember { mutableStateOf(AppConfig.changeSourceLoadInfo) }
         var loadToc by remember { mutableStateOf(AppConfig.changeSourceLoadToc) }
         var loadWordCount by remember { mutableStateOf(AppConfig.changeSourceLoadWordCount) }
+        // 分组二级菜单独立 Dialog 状态：避免嵌套 Popup 位置错乱
+        var showGroupPicker by remember { mutableStateOf(false) }
         val listState = rememberLazyListState()
         val scope = rememberCoroutineScope()
         val density = LocalDensity.current
@@ -210,10 +212,8 @@ class ChangeBookSourceDialog() : BaseComposeDialogFragment() {
                     } else {
                         stringResource(R.string.group) + "($searchGroup)"
                     },
-                    groups = groups,
-                    selectedGroup = searchGroup,
                     dismissParent = dismiss,
-                    onSelect = ::onGroupSelected,
+                    onShowGroupPicker = { showGroupPicker = true },
                 )
                 TextMenuItem(stringResource(R.string.close)) {
                     dismiss(); dismissAllowingStateLoss()
@@ -253,6 +253,18 @@ class ChangeBookSourceDialog() : BaseComposeDialogFragment() {
                 onTop = { scope.launch { listState.scrollToItem(0) } },
                 onBottom = {
                     scope.launch { if (items.isNotEmpty()) listState.scrollToItem(items.lastIndex) }
+                },
+            )
+        }
+        // 分组选择独立 Dialog：弹出时居中显示，避免原嵌套 Popup 错位
+        if (showGroupPicker) {
+            GroupPickerDialog(
+                groups = groups,
+                selectedGroup = searchGroup,
+                onDismiss = { showGroupPicker = false },
+                onSelect = { group ->
+                    showGroupPicker = false
+                    onGroupSelected(group)
                 },
             )
         }

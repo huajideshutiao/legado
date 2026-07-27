@@ -12,6 +12,7 @@ import io.legado.app.help.source.SourceCacheProvider
 import io.legado.app.help.source.SourceCacheProviders
 import io.legado.app.help.source.SourceDebugLogger
 import io.legado.app.help.source.SourceDebugLoggers
+import io.legado.app.help.http.SharedCookieStore
 import io.legado.app.help.source.SourceNetworkProvider
 import io.legado.app.help.source.SourceNetworkProviders
 import io.legado.app.help.UserAgentProvider
@@ -32,7 +33,7 @@ import java.util.concurrent.ConcurrentHashMap
  * - [SourceDebugLoggers]: 桥接 shared commonMain 的 [Debug] 单例 (已下沉, 直接调用)
  * - [RuleBigDataProviders]: in-memory nested Map (bookUrl/chapterUrl → key → value)
  * - [SourceCacheProviders]: in-memory Map + asBinding 返回自身
- * - [SourceNetworkProviders]: in-memory cookie Map (与 DesktopCookieJarBridge 独立, 互不干扰)
+ * - [SourceNetworkProviders]: 桥接 commonMain SharedCookieStore (Room 持久化, 与 CookieJar 同源)
  * - [ExploreKindsCacheProviders]: in-memory Map (替代 ACache.get("explore"))
  * - [JsExtProviders]: wrap 直接返回 source (不补 JsExtensions 面, JS 调用 source.ajax 会失败)
  * - [UserAgentProviders]: 返回 AppConst.UA_NAME (与未注册时 fallback 一致, 显式注册保持一致语义)
@@ -163,25 +164,17 @@ private object DesktopSourceCacheProvider : SourceCacheProvider {
 }
 
 /**
- * 桌面端 [SourceNetworkProvider] 实现: in-memory cookie Map。
- *
- * app 端 [io.legado.app.help.http.CookieStore] 持久化到 appDb.cacheDao,
- * 桌面端简化为进程内 Map (与 [io.legado.desktop.http.DesktopCookieJarBridge] 独立,
- * 互不干扰; DesktopCookieJarBridge 处理 OkHttp 拦截器层的 cookie 自动加载/保存,
- * 本 provider 处理 JS 调用 source.getCookie/replaceCookie/removeCookie 的主动读写)。
- *
- * 未注册时 SourceNetworkProviders.impl 为 null, shared 中 SourceNetworkProvider 调用方
- * (BaseSourceJsExt.getCookie 等 JS API) 会 NPE 被 runCatching 吞掉。
+ * 桌面端 [SourceNetworkProvider]: 桥接 commonMain [SharedCookieStore]
+ * (对照 app 端 JsEnginesAndroid 中桥接 CookieStore 单例; 原 in-memory Map 版与
+ * DesktopCookieJarBridge/业务层三份存储互相隔离, 现统一为 Room 持久化同一份)。
  */
 private object DesktopSourceNetworkProvider : SourceNetworkProvider {
+    override fun getCookie(tag: String): String = SharedCookieStore.getCookie(tag)
+    override fun replaceCookie(tag: String, cookie: String) =
+        SharedCookieStore.replaceCookie(tag, cookie)
 
-    // tag → cookie 字符串
-    private val cookieStore: ConcurrentHashMap<String, String> = ConcurrentHashMap()
-
-    override fun getCookie(tag: String): String = cookieStore[tag] ?: ""
-    override fun replaceCookie(tag: String, cookie: String) { cookieStore[tag] = cookie }
-    override fun removeCookie(tag: String) { cookieStore.remove(tag) }
-    override fun asBinding(): Any = this
+    override fun removeCookie(tag: String) = SharedCookieStore.removeCookie(tag)
+    override fun asBinding(): Any = SharedCookieStore
 }
 
 /**

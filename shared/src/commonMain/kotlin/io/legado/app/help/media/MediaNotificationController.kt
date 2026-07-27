@@ -1,5 +1,7 @@
 package io.legado.app.help.media
 
+import kotlin.concurrent.Volatile
+
 /**
  * 跨平台媒体通知控制接口。
  *

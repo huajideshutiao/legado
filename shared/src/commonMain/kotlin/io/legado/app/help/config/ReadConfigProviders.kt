@@ -6,12 +6,12 @@ import io.legado.app.ui.compose.platform.PreferenceStoreProvider
  * 阅读配置 Provider 容器接口（KMP 共用）。
  *
  * 包装 [ReadBookConfigShared] 和 [ReadTipConfigShared] 两个实例，供 Compose UI
- * 通过 [LocalReadConfigProviders] 一次性注入。各平台 actual 实现负责构造：
- * - Android: 后续 app 端迁移到 Shared 版时，由 `App.onCreate` 用
- *   `AndroidPreferenceStoreProvider` 包装 defaultSharedPreferences 构造。
+ * 通过 [LocalReadConfigProviders] 一次性注入。各平台实现负责构造：
+ * - Android: `App.onCreate` 用 [AndroidReadConfigProviders] +
+ *   `AndroidPreferenceStoreProvider` (包装 defaultSharedPreferences) 构造。
  * - 桌面 jvm: [io.legado.app.help.config.DesktopReadConfigProviders] 用
  *   `DesktopPreferenceStoreProvider` 构造。
- * - iOS/鸿蒙: stub 实现（后续 KP3/KP4 替换）。
+ * - iOS: `IosReaderScreen` 用工厂函数 + `IosPreferenceStoreProvider` (NSUserDefaults) 构造。
  *
  * 模式参考 `AppConfigProviders` / `ThemeStoreProvider` / `PreferenceStoreProvider`，
  * 用 interface 而非 expect/actual，避免 shared androidMain 反向依赖 app 模块。

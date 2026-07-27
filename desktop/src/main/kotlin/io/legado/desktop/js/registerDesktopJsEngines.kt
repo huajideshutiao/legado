@@ -1,6 +1,6 @@
 package io.legado.desktop.js
 
-import io.legado.app.help.file.desktopAppRootDir
+import io.legado.app.help.file.desktopAppCacheDir
 import io.legado.app.model.SharedJsScope
 import io.legado.app.model.script.JsBindingInjector
 import io.legado.app.model.script.JsEngineType
@@ -30,7 +30,7 @@ import java.nio.file.Paths
  *    与 app 端 [io.legado.app.model.script.quickjs.QuickJsSharedJsScopeProvider] 行为一致,
  *    仅 jsLib URL 下载内容缓存从 ACache 改为 in-memory Map);
  * 4. 注册 [ChineseUtils.pathProvider] 为 [DesktopTcDictCachePathProvider]
- *    (简繁词典缓存文件定位器, 指向 `~/.legado/cache/tc_cache/` 目录;
+ *    (简繁词典缓存文件定位器, 指向 `{java.io.tmpdir}/legado/cache/tc_cache/` 目录;
  *    桌面端不实现后台拉取, 文件不存在时 ChineseUtils.loadDict 会 fallback 到
  *    quick-transfer 自带默认词典, 行为可用但不持久化)。
  *
@@ -74,7 +74,7 @@ fun registerDesktopJsEngines() {
 /**
  * 桌面端简繁词典缓存文件定位器。
  *
- * 指向 `~/.legado/cache/tc_cache/` 目录 (便携模式跟随 exe 的 `data/cache/tc_cache/`),
+ * 指向 `{java.io.tmpdir}/legado/cache/tc_cache/` 目录,
  * 与 [io.legado.app.help.file.DesktopAppFilesDir] 的 cacheDir 同根。
  *
  * # 与 app 端 [io.legado.app.utils.TcDictCachePathProvider] (ChineseUtilsUi.kt) 区别
@@ -88,8 +88,8 @@ fun registerDesktopJsEngines() {
  * 当前简化实现满足"功能可用"底线, 词典加载略慢 (每次启动重新加载默认词典)。
  */
 private val DesktopTcDictCachePathProvider = TcDictCachePathProvider { fileName ->
-    // 与 DesktopAppFilesDir.cacheDir 同根: 便携模式 = data/cache, 开发模式 = ~/.legado/cache
-    val cacheRoot = Paths.get(desktopAppRootDir(), "cache", "tc_cache")
+    // 与 DesktopAppFilesDir.cacheDir 同根: 系统临时目录 {java.io.tmpdir}/legado/cache
+    val cacheRoot = Paths.get(desktopAppCacheDir(), "tc_cache")
     Files.createDirectories(cacheRoot)
     File(cacheRoot.toFile(), fileName)
 }

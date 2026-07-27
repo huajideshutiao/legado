@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -40,6 +39,7 @@ import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 
 /**
@@ -143,8 +143,8 @@ fun AppSearchField(
             .fillMaxWidth()
             .padding(end = 8.dp)
             .height(32.dp) // arco_view_height_default
-            .clip(RoundedCornerShape(8.dp))
-            .border(0.5.dp, fillStroke, RoundedCornerShape(8.dp))
+            .clip(DesignTokens.shapeDefault)
+            .border(DesignTokens.strokeHairline, fillStroke, DesignTokens.shapeDefault)
             .background(fillStroke)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -159,7 +159,7 @@ fun AppSearchField(
             if (value.isEmpty()) {
                 Text(hint, color = colors.secondaryText, fontSize = 14.sp, maxLines = 1)
             }
-            // 保留 BasicTextField: 外层 Row 已自绘圆角描边/背景/搜索图标/清除按钮, Md2TextField 强制 outlined 边框会重复描边
+            // 保留 BasicTextField: 外层 Row 已自绘圆角描边/背景/搜索图标/清除按钮, AppTextField 自带下划线/浮动 label 语义不符
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,

@@ -1,5 +1,7 @@
 package io.legado.app.help.http
 
+import kotlin.concurrent.Volatile
+
 /**
  * 跨平台 HTTP 客户端抽象层（commonMain）。
  *

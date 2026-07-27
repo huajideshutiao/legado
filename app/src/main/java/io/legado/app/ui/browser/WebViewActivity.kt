@@ -22,10 +22,10 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -203,42 +203,35 @@ class WebViewActivity : BaseComposeActivity() {
         }
         OverflowMenu { dismiss ->
             DropdownMenuItem(
-                text = {
-                    Text(stringResource(R.string.open_in_browser), color = colors.primaryText)
-                },
                 onClick = {
                     dismiss()
                     openUrl(webView.url ?: viewModel.baseUrl)
                 },
-            )
+            ) {
+                Text(stringResource(R.string.open_in_browser), color = colors.primaryText)
+            }
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.copy_url), color = colors.primaryText) },
                 onClick = {
                     dismiss()
                     sendToClip(webView.url ?: viewModel.baseUrl)
                 },
-            )
+            ) { Text(stringResource(R.string.copy_url), color = colors.primaryText) }
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.full_screen), color = colors.primaryText) },
                 onClick = {
                     dismiss()
                     toggleFullScreen()
                 },
-            )
+            ) { Text(stringResource(R.string.full_screen), color = colors.primaryText) }
             if (sourceMenuVisible) {
                 DropdownMenuItem(
-                    text = {
-                        Text(stringResource(R.string.disable_source), color = colors.primaryText)
-                    },
                     onClick = {
                         dismiss()
                         viewModel.disableSource { finish() }
                     },
-                )
+                ) {
+                    Text(stringResource(R.string.disable_source), color = colors.primaryText)
+                }
                 DropdownMenuItem(
-                    text = {
-                        Text(stringResource(R.string.delete_source), color = colors.primaryText)
-                    },
                     onClick = {
                         dismiss()
                         alert(R.string.draw) {
@@ -249,7 +242,9 @@ class WebViewActivity : BaseComposeActivity() {
                             }
                         }
                     },
-                )
+                ) {
+                    Text(stringResource(R.string.delete_source), color = colors.primaryText)
+                }
             }
         }
     }

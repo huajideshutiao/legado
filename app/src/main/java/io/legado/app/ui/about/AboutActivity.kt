@@ -6,10 +6,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +31,7 @@ import io.legado.app.help.update.AppUpdate
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.compress.ZipUtils
@@ -87,6 +87,9 @@ class AboutActivity : BaseComposeActivity() {
                 onCrashLog = { showDialogFragment<CrashLogsDialog>() },
                 onSaveLog = ::saveLog,
                 onCreateHeapDump = ::createHeapDump,
+                onPrivacyPolicy = {
+                    showMdFile(getString(R.string.privacy_policy), "privacyPolicy.md")
+                },
                 onLicense = { showMdFile(getString(R.string.license), "LICENSE.md") },
                 onDisclaimer = { showMdFile(getString(R.string.disclaimer), "disclaimer.md") },
             )
@@ -101,7 +104,7 @@ class AboutActivity : BaseComposeActivity() {
             Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(DesignTokens.shapeDefault)
                 .background(colors.bottomBackground)
                 .padding(16.dp),
         ) {
@@ -125,8 +128,19 @@ class AboutActivity : BaseComposeActivity() {
      * 显示md文件
      */
     private fun showMdFile(title: String, fileName: String) {
-        val mdText = String(assets.open(fileName).readBytes())
-        showDialogFragment(TextDialog(title, mdText, TextDialog.Mode.MD))
+        val mdText = runCatching {
+            assets.open(fileName).bufferedReader().use { it.readText() }
+        }.getOrNull() ?: javaClass.classLoader
+            ?.getResourceAsStream(fileName)
+            ?.bufferedReader()
+            ?.use { it.readText() }
+
+        if (mdText != null) {
+            showDialogFragment(TextDialog(title, mdText, TextDialog.Mode.MD))
+        } else {
+            val path = if (fileName == "LICENSE.md") "LICENSE" else "app/src/main/assets/$fileName"
+            openUrl("https://github.com/huajideshutiao/legado/blob/master/$path")
+        }
     }
 
     private fun saveLog() {

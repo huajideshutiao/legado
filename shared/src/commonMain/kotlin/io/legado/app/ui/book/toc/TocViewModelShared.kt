@@ -4,8 +4,8 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.IntentData
+import io.legado.app.help.coroutine.IoDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -119,7 +119,7 @@ class TocViewModelShared(
      * @param complete 完成回调, 入参 null 表示成功, 否则为捕获的异常
      */
     fun upBookTocRule(book: Book, complete: (Throwable?) -> Unit) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             try {
                 appDb.bookDao.update(book)
                 val chapters = localChapterListProvider(book)
@@ -150,7 +150,7 @@ class TocViewModelShared(
     fun reverseToc(newToc: List<BookChapter>) {
         if (newToc.isEmpty()) return
         val book = _bookData.value ?: return
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             book.config.reverseToc = !book.config.reverseToc
             // 非书架书可能没有 books 行, FK 约束会让 INSERT 抛异常,
             // 尽力持久化即可, UI 已由调用方直接反转。

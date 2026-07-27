@@ -1,4 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-    <!-- 来源: app/src/main/res/drawable/ic_review_close.xml (下箭头/收起按钮; 原 @color/primaryText tint, 由 Compose tint 着色, 这里用黑色) -->
-    <path fill="#000000" d="M7.41,8.59L12,13.17l4.59,-4.58L18,10l-6,6 -6,-6z" />
-</svg>

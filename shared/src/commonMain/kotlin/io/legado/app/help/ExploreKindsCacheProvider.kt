@@ -1,5 +1,7 @@
 package io.legado.app.help
 
+import kotlin.concurrent.Volatile
+
 /**
  * F2: BookSource 下沉解除对 app 端 ACache 的直接依赖。
  *

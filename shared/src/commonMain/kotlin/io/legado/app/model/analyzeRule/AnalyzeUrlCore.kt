@@ -422,7 +422,14 @@ open class AnalyzeUrlCore(
         else postJson(body)
     }
 
-    @JvmOverloads
+    // 短参显式重载: 补回原 @JvmOverloads 生成的 JVM 签名 (commonMain 无该注解), 书源 JS 按 arity 匹配
+    fun getStrResponse(): StrResponse = getStrResponse(null, null, true)
+
+    fun getStrResponse(jsStr: String?): StrResponse = getStrResponse(jsStr, null, true)
+
+    fun getStrResponse(jsStr: String?, sourceRegex: String?): StrResponse =
+        getStrResponse(jsStr, sourceRegex, true)
+
     fun getStrResponse(
         jsStr: String? = null,
         sourceRegex: String? = null,

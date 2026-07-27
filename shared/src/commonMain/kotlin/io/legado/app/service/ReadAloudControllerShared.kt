@@ -1,14 +1,24 @@
 package io.legado.app.service
 
+import io.legado.app.constant.AppPattern
+import io.legado.app.data.AppDbProviders
+import io.legado.app.data.entities.HttpTTS
+import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.tts.HttpTtsPlayer
+import io.legado.app.help.tts.HttpTtsPlayerListener
+import io.legado.app.help.tts.HttpTtsRequest
 import io.legado.app.help.tts.ReadAloudQueue
 import io.legado.app.help.tts.SystemTtsEngine
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.help.tts.TtsProgressListener
+import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
+import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.runBlocking
 
 /**
  * 跨平台朗读控制器（KMP commonMain 版, KP2-D P0-8 新增）。
@@ -88,10 +98,17 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * @param navigator 章节导航器, 由调用方桥接到 ViewModel
  * @param engineProvider TTS 引擎提供者, 默认查 [TtsEngineProvider]; 测试时可注入 mock
+ * @param httpTtsPlayerFactory HttpTTS 播放器工厂, 默认查 [TtsEngineProvider.getHttpTtsPlayer]
+ * @param ttsEngineConfigProvider TTS 引擎配置 (Book.ttsEngine 优先, 否则 AppConfig.ttsEngine),
+ *                                 返回数字串表示 HttpTTS id, 空/非数字走系统 TTS
+ * @param httpTtsConfigLoader HttpTTS 源配置加载器, 用 id 从 DAO 查 [HttpTTS]
  */
 class ReadAloudControllerShared(
     private val navigator: ReadAloudChapterNavigator,
     private val engineProvider: () -> SystemTtsEngine? = { TtsEngineProvider.get() },
+    private val httpTtsPlayerFactory: (HttpTTS) -> HttpTtsPlayer? = { TtsEngineProvider.getHttpTtsPlayer(it) },
+    private val ttsEngineConfigProvider: () -> String? = { null },
+    private val httpTtsConfigLoader: suspend (Long) -> HttpTTS? = { AppDbProviders.get().httpTTSDao.get(it) },
 ) {
 
     /** 朗读队列 (段级状态机), 与 [io.legado.app.help.tts.ReadAloudController] 共用。 */
@@ -99,6 +116,25 @@ class ReadAloudControllerShared(
 
     // atomicfu 锁对象 (Native target 必须用 SynchronizedObject, 不能用普通类实例当锁)
     private val queueLock = SynchronizedObject()
+
+    // region HttpTTS 路由状态 (KP2-D P0-9 新增)
+
+    /** 本次朗读是否走 HttpTTS; start 时由 [resolveEngine] 决定。 */
+    @Volatile
+    private var useHttpTts: Boolean = false
+
+    /** 当前 HttpTTS 源配置, 由 [resolveEngine] 加载; null 表示未走 HttpTTS。 */
+    @Volatile
+    private var httpTtsConfig: HttpTTS? = null
+
+    /** 当前 HttpTTS 播放器实例, 由 [resolveEngine] 创建; 切章/start 重建, stop 释放。 */
+    @Volatile
+    private var httpTtsPlayer: HttpTtsPlayer? = null
+
+    /** HttpTTS speakSpeed 变量值 (Int, 对标原版 AppConfig.ttsSpeechRate)。 */
+    @Volatile
+    private var httpTtsSpeechRate: Int = 0
+    // endregion
 
     // region 状态流: 外部只读 StateFlow (适配 Compose 重组)
 
@@ -185,26 +221,55 @@ class ReadAloudControllerShared(
     }
 
     /**
+     * HttpTTS 播放器回调桥接器 (KP2-D P0-9 新增)。
+     *
+     * 对标 [io.legado.app.help.tts.ReadAloudController] 的 init 块 listener:
+     * - onReady: prepare 完成 → play (仅当当前 state 为 PLAYING, 与系统 TTS onDone 用同一判断对齐)
+     * - onEndOfMedia: 本段播完 → [onParagraphDone] (复用系统 TTS 的段级推进逻辑)
+     * - onError: 错误信息写入 [_lastError] + state 置 [ReadAloudState.ERROR]
+     */
+    private val httpTtsProgressListener = object : HttpTtsPlayerListener {
+        override fun onReady() {
+            if (_state.value == ReadAloudState.PLAYING) httpTtsPlayer?.play()
+        }
+
+        override fun onEndOfMedia() = onParagraphDone()
+
+        override fun onError(message: String) {
+            _lastError.value = "HttpTTS 播放出错: $message"
+            _state.value = ReadAloudState.ERROR
+        }
+
+        override fun onBufferingUpdate(percent: Int) = Unit
+    }
+
+    /**
      * 开始朗读指定章节。
      *
      * @param chapterIndex 章节序号 (0-based); 越界时 state 置 ERROR
      */
     fun start(chapterIndex: Int) {
-        val engine = engineProvider()
-        if (engine == null) {
-            _lastError.value = "未注册 TTS 引擎, 无法朗读"
-            _state.value = ReadAloudState.ERROR
-            return
-        }
+        // KP2-D P0-9: 决定本次走 HttpTTS 还是系统 TTS (基于 ttsEngineConfigProvider)
+        useHttpTts = resolveEngine()
+
         // 切章前先停掉当前朗读 (避免 onDone 触发推进与新章节竞态)
         stopInternal(clearState = false)
 
-        // 注入 progressListener (幂等, 引擎实例可能复用)
-        engine.progressListener = progressListener
-
-        // KP2-D P1: 同步朗读语速到引擎 (start 路径, 每次开始朗读都把当前 speechRate 灌进去)
-        // engine.speechRate 是 var, 由本类 _speechRate 作为 source of truth 同步
-        engine.speechRate = _speechRate.value
+        if (useHttpTts) {
+            // HttpTTS 路径: 注入 player listener (player 由 resolveEngine 创建)
+            httpTtsPlayer?.listener = httpTtsProgressListener
+        } else {
+            // 系统 TTS 路径: 注入 progressListener (幂等, 引擎实例可能复用)
+            val engine = engineProvider()
+            if (engine == null) {
+                _lastError.value = "未注册 TTS 引擎, 无法朗读"
+                _state.value = ReadAloudState.ERROR
+                return
+            }
+            engine.progressListener = progressListener
+            // KP2-D P1: 同步朗读语速到引擎 (start 路径, 每次开始朗读都把当前 speechRate 灌进去)
+            engine.speechRate = _speechRate.value
+        }
 
         // 通知 navigator 切到目标章节 (调用方会触发 viewModel.loadChapter)
         navigator.moveToChapter(chapterIndex)
@@ -239,6 +304,39 @@ class ReadAloudControllerShared(
     }
 
     /**
+     * 决定本次朗读走 HttpTTS 还是系统 TTS (KP2-D P0-9 新增)。
+     *
+     * 读 [ttsEngineConfigProvider] 取配置 (Book.ttsEngine 优先, 否则 AppConfig.ttsEngine),
+     * isNumeric → 用 [httpTtsConfigLoader] 查 DAO 拿 [HttpTTS] → 用 [httpTtsPlayerFactory] 造 player。
+     * 任何环节失败 (配置缺失/DAO 查不到/工厂未注册) 都降级走系统 TTS。
+     *
+     * @return true 表示走 HttpTTS, false 表示走系统 TTS
+     */
+    private fun resolveEngine(): Boolean {
+        // 释放上次 HttpTTS player (避免状态残留, 与 app 端 HttpReadAloudService 重建 player 对齐)
+        releaseHttpTtsPlayer()
+        httpTtsConfig = null
+
+        val ttsEngine = ttsEngineConfigProvider()?.takeIf { it.isNotBlank() } ?: return false
+        // isNumeric 判断 (替代 StringUtils.isNumeric, 不引入 apache commons 依赖)
+        if (ttsEngine.any { !it.isDigit() }) return false
+
+        val id = ttsEngine.toLong()
+        val config = runCatching {
+            runBlocking { httpTtsConfigLoader(id) }
+        }.getOrNull() ?: return false
+        if (config == null) return false
+
+        val player = httpTtsPlayerFactory(config) ?: return false
+
+        httpTtsConfig = config
+        httpTtsPlayer = player
+        // HttpTTS speakSpeed (Int, 对标原版 AppConfig.ttsSpeechRate); runCatching 兜底未注册场景
+        httpTtsSpeechRate = runCatching { AppConfigProviders.get().ttsSpeechRate }.getOrDefault(0)
+        return true
+    }
+
+    /**
      * 暂停朗读。
      *
      * 桌面命令行 TTS (SAPI/espeak/say) 无真暂停能力, 实际等于 stop;
@@ -248,9 +346,14 @@ class ReadAloudControllerShared(
      */
     fun pause() {
         if (_state.value != ReadAloudState.PLAYING) return
-        engineProvider()?.pause()
-        // 桌面命令行 TTS 不支持真暂停, 这里调 stop 让后台朗读线程退出
-        engineProvider()?.stop()
+        if (useHttpTts) {
+            // HttpTTS 路径: 真暂停 (各平台 actual 支持)
+            httpTtsPlayer?.pause()
+        } else {
+            engineProvider()?.pause()
+            // 桌面命令行 TTS 不支持真暂停, 这里调 stop 让后台朗读线程退出
+            engineProvider()?.stop()
+        }
         _state.value = ReadAloudState.PAUSED
     }
 
@@ -261,10 +364,16 @@ class ReadAloudControllerShared(
      */
     fun resume() {
         if (_state.value != ReadAloudState.PAUSED) return
-        // KP2-D P1: 恢复时同步语速到引擎 (用户在 pause 期间拖了滑杆, resume 后生效新速度)
-        engineProvider()?.speechRate = _speechRate.value
-        _state.value = ReadAloudState.PLAYING
-        playCurrent()
+        if (useHttpTts) {
+            // HttpTTS 路径: 直接 play (player 持有当前 url, 不重新求值)
+            _state.value = ReadAloudState.PLAYING
+            httpTtsPlayer?.play()
+        } else {
+            // KP2-D P1: 恢复时同步语速到引擎 (用户在 pause 期间拖了滑杆, resume 后生效新速度)
+            engineProvider()?.speechRate = _speechRate.value
+            _state.value = ReadAloudState.PLAYING
+            playCurrent()
+        }
     }
 
     /**
@@ -319,7 +428,7 @@ class ReadAloudControllerShared(
      */
     fun nextParagraph() {
         if (_state.value == ReadAloudState.IDLE) return
-        engineProvider()?.stop()
+        stopEngine()
         synchronized(queueLock) {
             if (!queue.stepNextOrEnd()) {
                 // 末段, 切下一章
@@ -337,7 +446,7 @@ class ReadAloudControllerShared(
      */
     fun prevParagraph() {
         if (_state.value == ReadAloudState.IDLE) return
-        engineProvider()?.stop()
+        stopEngine()
         synchronized(queueLock) {
             if (queue.nowSpeak <= 0) {
                 // 首段, 切上一章 (navigator 自行决定是否跳到末段)
@@ -359,7 +468,7 @@ class ReadAloudControllerShared(
         if (cur < 0) return
         if (cur + 1 >= navigator.chapterCount) {
             // 已是末章
-            engineProvider()?.stop()
+            stopEngine()
             _state.value = ReadAloudState.COMPLETED
             return
         }
@@ -384,22 +493,78 @@ class ReadAloudControllerShared(
     // region 内部实现
 
     /**
-     * 播放当前段落 (调用引擎 speak, 立即返回; 朗读完毕后由 [progressListener.onDone] 推进)。
+     * 停止当前播放引擎 (HttpTTS 或系统 TTS), 不清队列 (切段/切章前调用)。
+     */
+    private fun stopEngine() {
+        if (useHttpTts) {
+            httpTtsPlayer?.stop()
+        } else {
+            engineProvider()?.stop()
+        }
+    }
+
+    /**
+     * 播放当前段落 (调用引擎 speak 或 HttpTTS setUrl+prepare, 立即返回)。
+     *
+     * 朗读完毕后由 [progressListener.onDone] (系统 TTS) 或
+     * [HttpTtsPlayerListener.onEndOfMedia] (HttpTTS) 推进。
      */
     private fun playCurrent() {
-        val engine = engineProvider() ?: run {
-            _lastError.value = "未注册 TTS 引擎"
-            _state.value = ReadAloudState.ERROR
-            return
-        }
         val text: String = synchronized(queueLock) {
             val t = queue.contentList.getOrNull(queue.nowSpeak) ?: return
             _paragraphIndex.value = queue.nowSpeak
             _currentText.value = t
             t
         }
-        // utteranceId 用段下标字符串 (与 app 端 AppConst.APP_TAG + i 简化版一致)
-        engine.speak(text, _paragraphIndex.value.toString())
+        if (useHttpTts) {
+            playHttpTtsCurrent(text)
+        } else {
+            val engine = engineProvider() ?: run {
+                _lastError.value = "未注册 TTS 引擎"
+                _state.value = ReadAloudState.ERROR
+                return
+            }
+            // utteranceId 用段下标字符串 (与 app 端 AppConst.APP_TAG + i 简化版一致)
+            engine.speak(text, _paragraphIndex.value.toString())
+        }
+    }
+
+    /**
+     * HttpTTS 路径播放当前段 (KP2-D P0-9 新增)。
+     *
+     * 对标 [io.legado.app.help.tts.ReadAloudController.playHttpTts]:
+     * [AnalyzeUrlFactories.create] 求值源 url 模板 (注入 speakText/speakSpeed 变量,
+     * 含源级 headers/cookie) 得到 url+headers → setUrl → prepare, onReady 后经
+     * [httpTtsProgressListener] 触发 play。
+     *
+     * POST/body 型源首版接受降级 (只支持 GET 流式, 由各平台 actual 兜底)。
+     */
+    private fun playHttpTtsCurrent(text: String) {
+        val player = httpTtsPlayer ?: run {
+            _lastError.value = "未注册 HttpTTS 播放器"
+            _state.value = ReadAloudState.ERROR
+            return
+        }
+        val config = httpTtsConfig ?: run {
+            _lastError.value = "未设置 HttpTTS 源配置"
+            _state.value = ReadAloudState.ERROR
+            return
+        }
+        val speakText = text.replace(AppPattern.notReadAloudRegex, "")
+        runCatching {
+            AnalyzeUrlFactories.create(
+                config.url,
+                source = config,
+                readTimeout = HttpTtsRequest.READ_TIMEOUT_MS,
+                variables = HttpTtsRequest.speakVariables(speakText, httpTtsSpeechRate),
+            )
+        }.onSuccess { analyzeUrl ->
+            player.setUrl(analyzeUrl.url, analyzeUrl.headerMap)
+            player.prepare()
+        }.onFailure {
+            _lastError.value = "HttpTTS url 求值失败: ${it.message}"
+            _state.value = ReadAloudState.ERROR
+        }
     }
 
     /**
@@ -432,8 +597,9 @@ class ReadAloudControllerShared(
      * @param clearState true=完全清空 (调用方 stop); false=保留状态供切章续读
      */
     private fun stopInternal(clearState: Boolean) {
-        engineProvider()?.stop()
+        stopEngine()
         if (clearState) {
+            releaseHttpTtsPlayer()
             synchronized(queueLock) {
                 queue.contentList = emptyList()
                 queue.nowSpeak = 0
@@ -444,6 +610,20 @@ class ReadAloudControllerShared(
             _paragraphIndex.value = -1
             _currentText.value = ""
         }
+    }
+
+    /**
+     * 释放 HttpTTS 播放器资源 (KP2-D P0-9 新增)。
+     *
+     * stop + release + 清空字段; 切章 (start 重建) 与退出 ReaderScreen (stop) 时调用。
+     */
+    private fun releaseHttpTtsPlayer() {
+        httpTtsPlayer?.let {
+            it.stop()
+            it.release()
+        }
+        httpTtsPlayer = null
+        httpTtsConfig = null
     }
     // endregion
 

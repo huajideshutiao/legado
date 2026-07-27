@@ -1,6 +1,6 @@
 package io.legado.app.help.storage
 
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * nativeMain 纯 Kotlin ZIP 编解码器 (无外部依赖)。
@@ -82,7 +82,7 @@ internal object NativeZipCodec {
                 for ((entryName, data) in entries) {
                     val crc = crc32(data)
                     val localHeaderOffset = out.size()
-                    val nameBytes = entryName.toByteArray(Charsets.UTF_8)
+                    val nameBytes = entryName.encodeToByteArray()
 
                     // 本地文件头 (Local File Header)
                     writeU32LE(out, LFH_SIGNATURE)
@@ -191,7 +191,7 @@ internal object NativeZipCodec {
             val extraLen = readU16LE(data, pos + 30)
             val commentLen = readU16LE(data, pos + 32)
             val localHeaderOffset = readU32LE(data, pos + 42)
-            val entryName = String(data, pos + 46, nameLen, Charsets.UTF_8)
+            val entryName = data.decodeToString(pos + 46, pos + 46 + nameLen)
             pos += 46 + nameLen + extraLen + commentLen
 
             // 路径穿越防护 (对齐 JVM 端 canonicalPath.startsWith 检查)

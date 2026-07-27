@@ -1,5 +1,7 @@
 package io.legado.app.help.archive
 
+import kotlin.concurrent.Volatile
+
 /**
  * 压缩文件解压跨平台接口 (commonMain)。
  *
@@ -10,8 +12,9 @@ package io.legado.app.help.archive
  * # 实现注册
  * - **Android (app)**: AndroidArchiveProvider 委托 ArchiveUtils/LibArchiveUtils (libarchive 全格式),
  *   在 App.onCreate 经 [ArchiveProviders.register] 注入。
- * - **Desktop**: 暂未实现 (zip 可用 JDK ZipInputStream, rar/7z 无 native 库)。
- * - **iOS / 鸿蒙**: 暂未实现 (stub, 后续按需接平台库)。
+ * - **Desktop**: `DesktopArchiveProvider` (zip 走 JDK ZipInputStream; rar/7z 无 native 库仍缺)。
+ * - **iOS / 鸿蒙**: 共用 nativeMain `NativeArchiveProvider` (zip/cbz 走 NativeZipCodec;
+ *   rar/7z 抛明确异常)。
  *
  * 模式参考 [io.legado.app.model.fileBook.BitmapProviders]。
  */

@@ -1,27 +1,21 @@
 package io.legado.desktop.help.source
 
+import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.BaseSource
+import io.legado.app.data.entities.SourceUiRequest
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.http.OkHttpClientProviders
-import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.source.VerificationUiProvider
 import io.legado.app.help.source.VerificationUiProviders
 import io.legado.app.help.ui.ToastProviders
+import io.legado.app.utils.FlowBus
 import io.legado.app.utils.browseUrl
-import okhttp3.Request
-import java.io.ByteArrayInputStream
-import javax.imageio.ImageIO
-import javax.swing.ImageIcon
-import javax.swing.JLabel
-import javax.swing.JOptionPane
-import javax.swing.SwingUtilities
 
 /**
  * [VerificationUiProvider] 桌面端实现。
  *
- * app 端走 VerificationCodeDialog + WebViewActivity, 桌面端二者均无对应下沉实现:
- * - 图片验证码: 用 Swing 模态输入框 (内嵌验证码图片) 采集, 直接回填
- *   [SourceVerificationHelpShared.setResult], 等待方随即取到结果;
+ * - 图片验证码: 发 [SourceUiRequest.VerificationCode] 事件, 由 SourceUiEventBridgeHost
+ *   弹 sharedUiMain 的 Compose VerificationCodeDialog 采集并回填结果
+ *   (原 Swing JOptionPane 自实现已收敛为共享件消费);
  * - 网页验证 (需回传网页源码, `saveResult == true`): 桌面端无内置 WebView 取不到源码,
  *   给明确文案后抛 [NoStackTraceException], 避免未注册时的 IllegalStateException 裸抛;
  * - 纯打开链接 (`saveResult != true`): 走系统默认浏览器, 与 app 端"仅打开"语义一致。
@@ -29,26 +23,10 @@ import javax.swing.SwingUtilities
 object DesktopVerificationUiProvider : VerificationUiProvider {
 
     override fun showVerificationCodeDialog(url: String, source: BaseSource) {
-        val icon = runCatching { loadCaptchaIcon(url) }.getOrNull()
-        val message: Array<Any> = if (icon != null) {
-            arrayOf(JLabel(icon), "请输入验证码")
-        } else {
-            arrayOf("无法加载验证码图片, 请手动打开:", url, "请输入验证码")
-        }
-        val input = runCatching {
-            var answer: String? = null
-            SwingUtilities.invokeAndWait {
-                answer = JOptionPane.showInputDialog(
-                    null,
-                    message,
-                    "${source.getTag()} 验证码",
-                    JOptionPane.QUESTION_MESSAGE
-                )
-            }
-            answer
-        }.getOrNull()
-        // 结果先落缓存: 调用方 registerWaitingThread 后的轮询会立即取到, 取消则回空串走"验证结果为空"
-        SourceVerificationHelpShared.setResult(source.getKey(), input ?: "")
+        // 与 BaseSource.showLoginDialog 同总线; 调用方随后 registerWaitingThread 轮询等待,
+        // UI 确认/关闭时经 SourceVerificationHelpShared.setResult + notifyResultArrived 唤醒
+        FlowBus.with(EventBus.SOURCE_UI_REQUEST)
+            .tryEmit(SourceUiRequest.VerificationCode(source, url))
     }
 
     override fun startBrowser(
@@ -64,17 +42,6 @@ object DesktopVerificationUiProvider : VerificationUiProvider {
             throw NoStackTraceException(msg)
         }
         browseUrl(url)
-    }
-
-    /** 用宿主共享 OkHttpClient 拉验证码图片, 继承 CookieJar/UA, 否则多数站点会下发新的验证码。 */
-    private fun loadCaptchaIcon(url: String): ImageIcon? {
-        val client = OkHttpClientProviders.get().okHttpClient
-        val bytes = client.newCall(Request.Builder().url(url).build()).execute().use {
-            if (!it.isSuccessful) return null
-            it.body.bytes()
-        }
-        val image = ImageIO.read(ByteArrayInputStream(bytes)) ?: return null
-        return ImageIcon(image)
     }
 }
 

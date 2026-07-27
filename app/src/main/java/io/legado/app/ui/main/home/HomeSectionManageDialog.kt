@@ -9,9 +9,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,11 +32,11 @@ import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.showDialogFragment
-import sh.calvin.reorderable.ReorderableCollectionItemScope
 
 /**
  * 管理某个分组(tabTitle)下的展示项(Compose)。列表、长按拖序、增删全部限定在该 tab 内。
@@ -89,7 +89,7 @@ class HomeSectionManageDialog : BaseComposeDialogFragment() {
     }
 
     @Composable
-    private fun ReorderableCollectionItemScope.SectionItem(item: HomeSection) {
+    private fun RuleItemScope.SectionItem(item: HomeSection) {
         val colors = AppTheme.colors
         Row(
             Modifier

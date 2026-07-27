@@ -6,36 +6,27 @@ import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
 
 /**
- * 鸿蒙 actual: 非对称加解密, 基于 @ohos.security.cryptoFramework napi 桥接。
+ * 鸿蒙 actual: 非对称加解密。主实现 mbedTLS [MbedTlsRsa] (v1.5/OAEP + 私钥加密/公钥解密反向 +
+ * hutool 同款分块, 无 UI 线程往返), 任意异常回落既有 @ohos.security.cryptoFramework napi 桥接。
  *
- * # 调用链
- * KMP [encrypt]/[decrypt] → [OhosNativeBridge.invokeCryptoSync] (tsfn 发请求 + @CName 回调返回结果) →
+ * # napi 回落调用链
+ * KMP → [OhosNativeBridge.invokeCryptoSync] (tsfn 发请求 + @CName 回调返回结果) →
  * ArkTS [CryptoBridgeHandler.handleCryptoRequest] →
  * `cryptoFramework.createCipher` + `convertKey` + `init` + `doFinal` →
  * `legado.cryptoCallback(requestId, resultJson)` 回送结果 → KMP 解析 base64 返回 ByteArray。
  *
- * # 算法映射
- * JCA transformation → cryptoFramework Cipher spec 由 ArkTS 侧 [CryptoBridgeHandler.mapAsyCodecSpec] 完成:
+ * # 算法映射 (回落侧)
+ * JCA transformation → cryptoFramework Cipher spec 由 ArkTS [CryptoBridgeHandler.mapAsyCodecSpec] 完成:
  * - "RSA" / "RSA/ECB/PKCS1Padding" → `RSA<size>|PKCS1`
  * - "RSA/ECB/OAEPWithSHA-<N>AndMGF1Padding" → `RSA<size>|PKCS1_OAEP|SHA<N>|MGF1_SHA<N>`
- * - "RSA/ECB/NoPadding" → `RSA<size>|NoPadding` (cryptoFramework 可能不支持, 错误透传)
  * RSA keysize 由 ArkTS 侧 convertKey 探测 (1024/2048/3072/4096/8192)。
  *
- * # usePublicKey 语义 (对齐 jvmAndAndroid getKeyType / iOS actual)
- * - encrypt(usePublicKey=true) → 公钥加密; encrypt(usePublicKey=false) → 私钥加密
- * - decrypt(usePublicKey=false) → 私钥解密; decrypt(usePublicKey=true) → 公钥解密
- * cryptoFramework Cipher 支持公钥/私钥双向加解密 (init 时传入对应 key), 故全场景可用,
- * 与 iOS Security.framework 仅单向支持不同。
+ * # usePublicKey 语义 (对齐 jvmAndAndroid getKeyType)
+ * encrypt(true)=公钥加密 / encrypt(false)=私钥加密 / decrypt(false)=私钥解密 / decrypt(true)=公钥解密,
+ * mbedTLS 主实现与 cryptoFramework 回落均支持全向。
  *
  * # 密钥格式
- * privateKey: PKCS#8 DER (ArkTS 侧 convertKey type='PKCS#8');
- * publicKey: X.509 DER (ArkTS 侧 convertKey type='X.509')。
- *
- * # 失败处理
- * 桥接未就绪 / ArkTS 运算失败 / 超时 → 抛异常 (与 iOS actual / jvmAndAndroid hutool 失败抛异常一致,
- * 调用方 NativeAsymmetricCrypto.encrypt/decrypt 不捕获, 让 JS 引擎收到错误)。
- *
- * napi 桥接模式参考 [io.legado.app.help.image.OhosImageOps] (tsfn + @CName 回调同步等待)。
+ * privateKey: PKCS#8 DER (mbedTLS 另兼容 PKCS#1/PEM); publicKey: X.509 DER (mbedTLS 另兼容 PKCS#1/PEM)。
  */
 actual object NativeAsymmetricCryptoOps {
 
@@ -45,7 +36,10 @@ actual object NativeAsymmetricCryptoOps {
         privateKey: ByteArray?,
         publicKey: ByteArray?,
         data: ByteArray
-    ): ByteArray = invokeAsyCrypto("encrypt", algorithm, usePublicKey, privateKey, publicKey, data)
+    ): ByteArray = mbedTlsOrFallback(
+        { MbedTlsRsa.encrypt(algorithm, usePublicKey, privateKey, publicKey, data) },
+        { invokeAsyCrypto("encrypt", algorithm, usePublicKey, privateKey, publicKey, data) }
+    )
 
     actual fun decrypt(
         algorithm: String,
@@ -53,10 +47,13 @@ actual object NativeAsymmetricCryptoOps {
         privateKey: ByteArray?,
         publicKey: ByteArray?,
         data: ByteArray
-    ): ByteArray = invokeAsyCrypto("decrypt", algorithm, usePublicKey, privateKey, publicKey, data)
+    ): ByteArray = mbedTlsOrFallback(
+        { MbedTlsRsa.decrypt(algorithm, usePublicKey, privateKey, publicKey, data) },
+        { invokeAsyCrypto("decrypt", algorithm, usePublicKey, privateKey, publicKey, data) }
+    )
 
     /**
-     * encrypt/decrypt 共用逻辑: 序列化 payload → invokeCryptoSync → 解析响应 base64 → ByteArray。
+     * napi 回落共用逻辑: 序列化 payload → invokeCryptoSync → 解析响应 base64 → ByteArray。
      *
      * @param action "encrypt" 或 "decrypt"
      */
@@ -77,9 +74,9 @@ actual object NativeAsymmetricCryptoOps {
             AsyCryptoPayload(
                 algorithm = algorithm,
                 usePublicKey = usePublicKey,
-                privateKey = privateKey?.let { Base64.encodeToString(it) },
-                publicKey = publicKey?.let { Base64.encodeToString(it) },
-                data = Base64.encodeToString(data)
+                privateKey = privateKey?.let { Base64.encode(it) },
+                publicKey = publicKey?.let { Base64.encode(it) },
+                data = Base64.encode(data)
             )
         )
         val result = OhosNativeBridge.invokeCryptoSync(action, payload)

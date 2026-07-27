@@ -14,14 +14,15 @@ package io.legado.app.help.http
  * 但 OkHttp 5.3.2 不发布 iosArm64/linuxArm64 变体, iOS/鸿蒙 target 编译会失败。
  * 现改用 [Any] 类型擦除:
  * - jvmAndAndroidMain actual 内部 cast 回 okhttp3.* / okio.* 类型, 行为与原实现完全一致;
- * - iOS/鸿蒙 actual 返回默认值 (OkHttp 在这些平台不可用, 永不执行)。
+ * - iOS/鸿蒙 actual 返回默认值 (promisesBody 恒 false → 拦截器不做透明解压,
+ *   依赖 Ktor 自身的内容编码处理)。
  */
 internal expect fun Any.promisesBody(): Boolean
 
 /**
  * 按 Content-Encoding 解压 [body] 字节流。
  *
- * @param body 待解压的响应体 (jvmAndAndroid: okhttp3.ResponseBody; iOS/鸿蒙: 永不调用)
+ * @param body 待解压的响应体 (jvmAndAndroid: okhttp3.ResponseBody; iOS/鸿蒙: promisesBody 恒 false 早返回, 不会走到此调用)
  * @param encoding Content-Encoding 值 (已 lowercase, 可能为 null): "gzip" / "deflate"
  * @return 解压后的源 (jvmAndAndroid: okio.BufferedSource; iOS/鸿蒙: null); encoding 为 null 或不匹配返回 null
  */

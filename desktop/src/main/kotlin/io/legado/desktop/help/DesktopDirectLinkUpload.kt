@@ -1,13 +1,14 @@
 package io.legado.desktop.help
 
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.DefaultDataResourceProviders
 import io.legado.app.help.DirectLinkUploadDefaultsProvider
 import io.legado.app.help.DirectLinkUploadDefaultsProviders
 import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.DirectLinkUploadStoreProvider
 import io.legado.app.help.DirectLinkUploadStoreProviders
 import io.legado.app.help.ruleFileName
-import io.legado.app.model.analyzeRule.AnalyzeRuleCore
+import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.utils.GSON
@@ -32,9 +33,8 @@ import java.util.prefs.Preferences
  * - [getConfig] / [putConfig]: 不依赖 Android ACache, 改用 [java.util.prefs.Preferences]
  *   (参考 [io.legado.desktop.config.DesktopPreferenceProvider]), 配置落用户注册表 (Win) /
  *   ~/.java/.userPrefs (Linux/macOS), 重启仍可读。
- * - [defaultRulesCache]: 不依赖 appCtx.assets, 改从 classpath 读取
- *   `shared/src/commonMain/resources/defaultData/directLinkUpload.json`
- *   (参考 [io.legado.desktop.ui.about.AboutScreen] 读 /LICENSE.md 的模式)。
+ * - [defaultRulesCache]: 不依赖 appCtx.assets, 走 [DefaultDataResourceProviders] 读
+ *   composeResources 单一数据源 (`commonMain/composeResources/files/defaultData/`)。
  *
  * 本 object 实现两个 provider 接口, 宿主启动早期通过 [registerDesktopDirectLinkUploadProviders]
  * 注册到 shared, 供 shared 端 (如 BackupShared/RestoreShared) 跨平台访问直链上传配置。
@@ -105,7 +105,7 @@ object DesktopDirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUpload
         if (mFile is File) {
             mFile.delete()
         }
-        val analyzeRule = AnalyzeRuleCore().apply {
+        val analyzeRule = AnalyzeRuleFactories.create().apply {
             setContent(res.body, res.url)
             coroutineContext = currentCoroutineContext()
         }
@@ -121,11 +121,9 @@ object DesktopDirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUpload
     // 命名为 defaultRulesCache 避免与 override fun getDefaultRules() 的 JVM 签名冲突
     // (与 app 端命名一致)
     private val defaultRulesCache: List<DirectLinkUploadRule> by lazy {
-        // 从 classpath 读 shared/commonMain/resources/defaultData/directLinkUpload.json
-        // (参考 AboutScreen 读 /LICENSE.md 的模式)
-        val json = DesktopDirectLinkUpload::class.java.getResourceAsStream("/defaultData/directLinkUpload.json")
-            ?.bufferedReader()?.use { it.readText() }
-            ?: error("default directLinkUpload.json not found on classpath")
+        // 走 DefaultDataResourceProviders 单一数据源
+        // (composeResources/files/defaultData/directLinkUpload.json, Main.kt 已注册桌面实现)
+        val json = DefaultDataResourceProviders.get().readResource("directLinkUpload.json")
         GSON.fromJsonArray<DirectLinkUploadRule>(json).getOrThrow()
     }
 

@@ -10,4 +10,7 @@ package io.legado.app.ui.compose.platform
 interface AppConfigProvider {
     /** 对应 AppConfig.isEInkMode (themeMode == "3") */
     val isEInkMode: Boolean
+
+    /** 对应 AppConfig.isNightTheme，不根据背景色亮度推断。 */
+    val isNightTheme: Boolean
 }

@@ -9,6 +9,7 @@ import io.legado.app.help.book.isWebFile
 import io.legado.app.help.coroutine.CompositeCoroutine
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
+import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.model.webBook.WebBook.getBookInfoAwait
 import io.legado.app.model.webBook.WebBook.getChapterListAwait
@@ -376,7 +377,7 @@ object Debug {
                 subContentDebug(scope, bookSource, book, bookChapter)
             }
         }.onError {
-            log(debugSource, "段评解析出错:${it.localizedMessage}")
+            log(debugSource, "段评解析出错:${it.message}")
             subContentDebug(scope, bookSource, book, bookChapter)
         }
         tasks.add(task)
@@ -401,7 +402,7 @@ object Debug {
             log(debugSource, showTime = false)
             subContentDebug(scope, bookSource, book, bookChapter)
         }.onError {
-            log(debugSource, "段评回复解析出错:${it.localizedMessage}")
+            log(debugSource, "段评回复解析出错:${it.message}")
             subContentDebug(scope, bookSource, book, bookChapter)
         }
         tasks.add(task)
@@ -420,7 +421,7 @@ object Debug {
         }
         log(debugSource, "︾开始解析附加内容规则")
         val task = Coroutine.async(scope) {
-            val rule = AnalyzeRuleCore(book, bookSource)
+            val rule = AnalyzeRuleFactories.create(book, bookSource)
             rule.coroutineContext = currentCoroutineContext()
             rule.setBaseUrl(bookChapter.url)
             rule.chapter = bookChapter
@@ -441,7 +442,7 @@ object Debug {
             log(debugSource, showTime = false)
             musicCoverDebug(scope, bookSource, book, bookChapter)
         }.onError {
-            log(debugSource, "附加内容解析出错:${it.localizedMessage}")
+            log(debugSource, "附加内容解析出错:${it.message}")
             musicCoverDebug(scope, bookSource, book, bookChapter)
         }
         tasks.add(task)
@@ -460,7 +461,7 @@ object Debug {
         }
         log(debugSource, "︾开始解析音乐封面规则")
         val task = Coroutine.async(scope) {
-            val rule = AnalyzeRuleCore(book, bookSource)
+            val rule = AnalyzeRuleFactories.create(book, bookSource)
             rule.coroutineContext = currentCoroutineContext()
             rule.setBaseUrl(bookChapter.url)
             rule.chapter = bookChapter
@@ -469,7 +470,7 @@ object Debug {
             log(debugSource, "≡音乐封面 URL:$url")
             log(debugSource, "︽音乐封面解析完成", state = 1000)
         }.onError {
-            log(debugSource, "音乐封面解析出错:${it.localizedMessage}", state = -1)
+            log(debugSource, "音乐封面解析出错:${it.message}", state = -1)
         }
         tasks.add(task)
     }

@@ -16,9 +16,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -41,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.TransType
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
@@ -309,7 +309,7 @@ class ReadStyleDialog : BaseReadBottomComposeDialog(), FontSelectDialog.CallBack
                 addStyle(SpanStyle(color = accent), start, end)
             }
         }
-        val shape = RoundedCornerShape(4.dp)
+        val shape = DesignTokens.shapeSm
         Text(
             text = text,
             color = textColor,
@@ -317,7 +317,7 @@ class ReadStyleDialog : BaseReadBottomComposeDialog(), FontSelectDialog.CallBack
             maxLines = 1,
             modifier = Modifier
                 .clip(shape)
-                .border(1.dp, textColor, shape)
+                .border(DesignTokens.strokeThin, textColor, shape)
                 .combinedClickable(onClick = onClick)
                 .padding(horizontal = 8.dp, vertical = 4.dp),
         )
@@ -352,7 +352,7 @@ class ReadStyleDialog : BaseReadBottomComposeDialog(), FontSelectDialog.CallBack
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .matchParentSize()
-                    .border(1.dp, if (selected) accent else textColor, CircleShape),
+                    .border(DesignTokens.strokeThin, if (selected) accent else textColor, CircleShape),
             )
             Text(
                 text = name,
@@ -373,7 +373,7 @@ class ReadStyleDialog : BaseReadBottomComposeDialog(), FontSelectDialog.CallBack
                 .size(48.dp)
                 .padding(6.dp)
                 .clip(CircleShape)
-                .border(1.dp, textColor, CircleShape)
+                .border(DesignTokens.strokeThin, textColor, CircleShape)
                 .combinedClickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {

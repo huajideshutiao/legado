@@ -1,22 +1,44 @@
 package io.legado.app.ui.book.read
 
+import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookProgress
+import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.book.ContentProcessorProviders
+import io.legado.app.help.book.getDisplayTitle
+import io.legado.app.help.book.getUseReplaceRule
+import io.legado.app.help.book.isLocal
+import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.model.CacheBookShared
 import io.legado.app.model.ReadBookShared
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.app.ui.book.read.page.PageDelegateShared
+import io.legado.app.ui.book.read.page.entities.TextChapterShared
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.provider.SimpleChapterLayout
 import io.legado.app.ui.book.read.page.provider.SimpleTextMeasurer
 import io.legado.app.ui.book.searchContent.SearchResult
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlin.math.min
 
 /**
  * KMP 版阅读 ViewModel：用 Compose 状态流替代 app 端 `ReadBookActivity` 持有的
@@ -26,8 +48,8 @@ import kotlinx.coroutines.launch
  * - [curTextPage] / [prevTextPage] / [nextTextPage] 对应 app 端
  *   `pageFactory.curPage/prevPage/nextPage`，KMP 版改为 `StateFlow<TextPage?>` 适配 Compose 重组。
  * - [loadChapter] / [nextPage] / [prevPage] 对应 app 端 `ReadBook.loadContent` / `moveToNextPage` /
- *   `moveToPrevPage`。KP2-D 起 [loadChapter] 已接入 [SimpleChapterLayout] 真实排版，
- *   [nextPage] / [prevPage] 仍为简化状态切换，待 actual 平台补全翻页动画。
+ *   `moveToPrevPage`：正文经 ContentProcessor 完整处理链后由 [SimpleChapterLayout] 排版，
+ *   三章滑窗（prev/cur/next TextChapterShared）与 durChapterPos 位移均已按原版语义下沉。
  * - 用 [AppDbProviders.get].bookChapterDao 读章节列表，与 app 端 `appDb.bookChapterDao` 等价。
  * - 用 [BookStorageProviders.get].getContent 读本地章节缓存正文，与 app 端
  *   `BookHelp.getContent` 等价；桌面端需在 Main.kt 注册 `JvmBookStorage`。
@@ -92,6 +114,18 @@ class ReadBookViewModelShared(
      */
     var pageDelegate: PageDelegateShared? = null
 
+    // region 预下载状态 (对照 app 端 ReadBook 同名字段)
+    private val loadingChapters = arrayListOf<Int>()
+
+    // 替代原 @Synchronized 的 this 监视器 (kotlin.jvm.Synchronized 无 common 变体且 native 无效)
+    private val syncLock = SynchronizedObject()
+    private var preDownloadTask: Job? = null
+    private val downloadedChapters = mutableSetOf<Int>()
+    private val downloadFailChapters = mutableMapOf<Int, Int>()
+    private val downloadScope = CoroutineScope(SupervisorJob() + IoDispatcher)
+    private val preDownloadSemaphore = Semaphore(2)
+    // endregion
+
     // region readBook 状态对外暴露 (readBook 私有, 桌面端 TTS Navigator 等外部消费者通过本区域访问)
     /**
      * 当前书籍 (委托 [readBook.book])。桌面端 TTS Navigator 用其取 bookUrl 查本地缓存。
@@ -119,175 +153,187 @@ class ReadBookViewModelShared(
     // endregion
 
     /**
-     * 加载指定章节内容。
-     *
-     * KP2-D 实现流程（对照 app 端 `ReadBook.loadContent` → `ChapterProvider.getTextChapterAsync`
-     * → `TextChapterLayout.getTextChapter`）：
-     * 1. `readBook.loadChapter(index)` 同步 shared 状态（durChapterIndex / callback 通知）
-     * 2. 从 [AppDbProviders] 取 `bookChapterDao.getBookChapterList` 读章节列表
-     * 3. `readBook.updateChapterList(chapterList)` 同步 chapterSize
-     * 4. 通过 [BookStorageProviders.get].getContent 读本地缓存正文
-     *    （对应 app 端 `BookHelp.getContent`；桌面端需注册 `JvmBookStorage`）
-     * 5. 正文按 `\n` 切段，调 [SimpleChapterLayout.layout] 排版产出 [TextPage] 列表
-     * 6. 取首页写入 [_curTextPage]，次页写入 [_nextTextPage]，末页前一章暂不预取
-     *
-     * 简化项：
-     * - KP2-D P0-B 已接入 `WebBook.getContentAwait` 联网拉取正文（缓存未命中时触发，
-     *   对应 app 端 `CacheBook.getChapterContent` 编排）
-     * - 不预取上一章 / 下一章（app 端 `prevChapter` / `nextChapter` 排版留 actual）
-     * - 不做图片 / 段评 / 替换规则处理（[SimpleChapterLayout] 简化）
-     * - 缓存未注册 / 文件不存在时写入"加载失败"占位页（保持 UI 可用）
+     * 打开章节（对照 app 端 `ReadBook.openChapter` + `loadContent(resetPageOffset)`）：
+     * 读章节列表 / 解析书源，跳章时清三章滑窗并重置进度，随后装载当前章并异步预载前后章。
+     * 正文经 ContentProcessor 完整处理链后排版，详见 [contentLoadFinish]。
      */
     fun loadChapter(index: Int) {
         scope.launch {
-            // 1. 同步 shared 状态字段（durChapterIndex、callback 通知）
+            // 1. 同步 shared 状态字段（callback 通知）
             readBook.loadChapter(index)
 
             // 2. 读章节列表（与 app 端 `appDb.bookChapterDao.getChapterList` 等价简化版）
-            // BookChapterDao 仅暴露 getChapterList(bookUrl)，无 app 端的 getBookChapterList 别名
             val book = readBook.book.value ?: return@launch
             val chapterList: List<BookChapter> = runCatching {
                 AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
             }.getOrDefault(emptyList())
             readBook.updateChapterList(chapterList)
 
-            val chapter = chapterList.getOrNull(index)
-            if (chapter == null) {
+            // 3. 书源解析缓存（对照 app 端 ReadBook.upWebBook，本地书为 null；upToc/预下载复用）
+            if (book.isLocal) {
+                readBook.updateBookSource(null)
+            } else if (readBook.bookSource.value?.bookSourceUrl != book.origin) {
+                readBook.updateBookSource(
+                    runCatching {
+                        AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
+                    }.getOrNull()
+                )
+            }
+
+            if (chapterList.getOrNull(index) == null) {
                 // 章节序号越界：显示占位页
-                updatePages(listOf(placeholderPage("无章节内容", index, chapterList.size)))
+                showMessageChapter("无章节内容", index, chapterList.size)
                 return@launch
             }
 
-            // 3. 读本地缓存正文（与 app 端 BookHelp.getContent 等价）
-            var content: String? = runCatching {
-                BookStorageProviders.get().getContent(book, chapter)
-            }.getOrNull()
-
-            if (content.isNullOrBlank()) {
-                // 缓存未命中：联网拉取正文（与 app 端 CacheBook.getChapterContent →
-                // WebBook.getContentAwait 编排一致，KP2-D P0-B 接入）
-                val bookSource = runCatching {
-                    AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
-                }.getOrNull()
-                if (bookSource == null) {
-                    updatePages(
-                        listOf(
-                            placeholderPage(
-                                "未找到书源（${book.origin}），无法联网拉取正文",
-                                index,
-                                chapterList.size,
-                                chapter.title,
-                            ),
-                        ),
-                    )
-                    return@launch
-                }
-
-                // 下一章 URL（app 端 CacheBook 同样取 index+1 章节链接作 nextChapterUrl
-                // 供正文规则正逆向截断用；越界时为 null）
-                val nextChapterUrl = runCatching {
-                    AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index + 1)?.url
-                }.getOrNull()
-
-                val fetchedContent = runCatching {
-                    WebBook.getContentAwait(
-                        bookSource = bookSource,
-                        book = book,
-                        bookChapter = chapter,
-                        nextChapterUrl = nextChapterUrl,
-                        needSave = true,
-                    )
-                }.getOrNull()
-                if (fetchedContent.isNullOrBlank()) {
-                    updatePages(
-                        listOf(
-                            placeholderPage(
-                                "联网拉取正文失败\n\n（请检查书源 / 网络后重试）",
-                                index,
-                                chapterList.size,
-                                chapter.title,
-                            ),
-                        ),
-                    )
-                    return@launch
-                }
-                content = fetchedContent
+            // 3.5 打开书首次装载时拉云进度（对照 app 端 initBook 的 syncProgress，每本书只触发一次）
+            if (cloudSyncedBookUrl != book.bookUrl) {
+                cloudSyncedBookUrl = book.bookUrl
+                pullCloudProgress(book)
             }
 
-            // 4. 按 \n 切段，过滤空行，调 SimpleChapterLayout 排版
-            // 此处 content 必非空（缓存命中或联网拉取成功，否则上方已 return@launch）
-            val paragraphs = content!!.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-            val layout = buildLayout()
-            val pages = layout.layout(
-                displayTitle = chapter.title ?: "",
-                contents = paragraphs,
-                chapterIndex = index,
-                chapterSize = chapterList.size,
-            )
+            // 4. 跳章（对照 app 端 openChapter）：清滑窗 + 进度归零；同章重载保留 durChapterPos 恢复进度
+            if (index != readBook.durChapterIndex.value) {
+                readBook.clearTextChapter()
+                readBook.updateDurChapterIndex(index)
+                readBook.updateDurChapterPos(0)
+                // 落库 + WebDav 上传（上传时机 shared 折中为章节切换，见 uploadProgress KDoc）
+                uploadProgress()
+            }
 
-            // 5. 写入 pageList + 当前页 / 下一页状态流
-            updatePages(pages)
+            // 5. 当前章优先装载，前后章异步预载（对照 app 端 loadContent 三章同载）
+            loadContent(index)
+            launch { loadContent(index + 1) }
+            launch { loadContent(index - 1) }
         }
     }
 
     /**
-     * 翻到下一页。
-     *
-     * 简化实现：从 [pageList] 取下一页写入 [_curTextPage]；
-     * 已到本章节末页时返回 false（需 actual 触发 moveToNextChapter）。
-     *
-     * 与 app 端 `ReadBook.moveToNextPage` / `TextPageFactory.moveToNext` 的差异：
-     * - 不调 `readBook.nextPage()`（shared 状态在 [pageIndex] 变化时同步）
-     * - 不预取下一章（app 端 `nextChapter` 排版留 actual）
+     * 装载单章正文并按滑窗归位（对照 app 端 `ReadBook.loadContentAwait`）：
+     * 缓存未命中经 [downloadAwait] 联网，失败文案与原版一致作为正文排版展示。
+     */
+    private suspend fun loadContent(index: Int) {
+        if (index < 0 || index >= readBook.chapterSize) return
+        if (index !in readBook.durChapterIndex.value - 1..readBook.durChapterIndex.value + 1) return
+        if (!addLoading(index)) return
+        try {
+            val book = readBook.book.value ?: return
+            val chapter = readBook.chapterList.value.getOrNull(index)
+                ?: runCatching {
+                    AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)
+                }.getOrNull()
+                ?: return
+            val cached = runCatching {
+                BookStorageProviders.get().getContent(book, chapter)
+            }.getOrNull()
+            val content = if (cached.isNullOrBlank()) downloadAwait(book, chapter) else cached
+            contentLoadFinish(book, chapter, content)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AppLog.put("加载正文出错\n${e.message}", e)
+        } finally {
+            removeLoading(index)
+        }
+    }
+
+    /** 联网拉取正文（对照 app 端 ReadBook.downloadAwait，只经 CacheBookShared 公开 API） */
+    private suspend fun downloadAwait(book: Book, chapter: BookChapter): String {
+        val bookSource = readBook.bookSource.value
+        return if (bookSource != null) {
+            val cacheBook = CacheBookShared.getOrCreate(bookSource, book)
+            if (cacheBook.chapterList == null) {
+                cacheBook.chapterList = readBook.chapterList.value
+            }
+            cacheBook.downloadAwait(chapter)
+        } else {
+            val msg = if (book.isLocal) "无内容" else "没有书源"
+            "加载正文失败\n$msg"
+        }
+    }
+
+    /**
+     * 排版并按滑窗 offset 归位（对照 app 端 `contentLoadFinish` + `processContent`：
+     * ContentProcessor 替换净化 / 简繁转换 / 重新分段 / 去重复标题 → 排版 → offset -1/0/+1 三分支）。
+     */
+    private suspend fun contentLoadFinish(book: Book, chapter: BookChapter, content: String) {
+        if (chapter.index !in readBook.durChapterIndex.value - 1..readBook.durChapterIndex.value + 1) {
+            return
+        }
+        val processor = runCatching { ContentProcessorProviders.get() }.getOrNull()
+        val displayTitle = runCatching {
+            chapter.getDisplayTitle(processor?.getTitleReplaceRules(book), book.getUseReplaceRule())
+        }.getOrDefault(chapter.title)
+        val processedContent = processor?.let {
+            runCatching {
+                it.getContent(book, chapter, content, includeTitle = false, useReplace = true).toString()
+            }.getOrNull()
+        } ?: content
+
+        val paragraphs = processedContent.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+        val pages = buildLayout().layout(
+            displayTitle = displayTitle,
+            contents = paragraphs,
+            chapterIndex = chapter.index,
+            chapterSize = readBook.chapterSize,
+        )
+        val textChapter = TextChapterShared(chapter.index, pages)
+        pages.forEach { it.textChapter = textChapter }
+        // 排版期间可能已切章，以最新 durChapterIndex 归位滑窗（原版 when(offset) 三分支，超窗丢弃）
+        when (val offset = chapter.index - readBook.durChapterIndex.value) {
+            0 -> {
+                readBook.updateTextChapter(offset, textChapter)
+                applyCurChapterPages(textChapter)
+            }
+            -1, 1 -> readBook.updateTextChapter(offset, textChapter)
+        }
+    }
+
+    /**
+     * 翻到下一页（委托 [ReadBookShared.nextPage] 做 durChapterPos 位移，对照 app 端 moveToNextPage）。
+     * 已到章末返回 false，由调用方触发 [moveToNextChapter]。
      */
     fun nextPage(): Boolean {
-        if (pageIndex + 1 >= pageList.size) return false
-        pageIndex++
-        val cur = pageList[pageIndex]
-        _curTextPage.value = cur
-        _prevTextPage.value = pageList.getOrNull(pageIndex - 1)
-        _nextTextPage.value = pageList.getOrNull(pageIndex + 1)
-        readBook.updateDurChapterPos(cur.chapterPosition)
+        if (!readBook.nextPage()) return false
+        syncPageFlows()
+        // 对照 app 端 setPageIndex → curPageChanged → preDownload
+        preDownload()
         return true
     }
 
-    /**
-     * 翻到上一页。
-     *
-     * 简化实现：从 [pageList] 取上一页写入 [_curTextPage]；
-     * 已到本章节首页时返回 false（需 actual 触发 moveToPrevChapter）。
-     */
+    /** 翻到上一页；已到章首返回 false，由调用方触发 [moveToPrevChapter]。 */
     fun prevPage(): Boolean {
-        if (pageIndex - 1 < 0) return false
-        pageIndex--
-        val cur = pageList[pageIndex]
-        _curTextPage.value = cur
-        _prevTextPage.value = pageList.getOrNull(pageIndex - 1)
-        _nextTextPage.value = pageList.getOrNull(pageIndex + 1)
-        readBook.updateDurChapterPos(cur.chapterPosition)
+        if (!readBook.prevPage()) return false
+        syncPageFlows()
+        preDownload()
         return true
     }
 
     /**
-     * 切到下一章。
-     *
-     * 与 app 端 `ReadBook.moveToNextChapter` 对应：
-     * 1. 校验 `durChapterIndex + 1 < chapterSize`，越界返回 false
-     * 2. 调 [ReadBookShared.updateDurChapterIndex] 同步 shared 状态（callback 通知）
-     * 3. 调 [loadChapter] 拉取并排版新章节
-     *
-     * KP2-D P0-A：桌面端 [ReaderScreen] 下一章按钮直接调用本方法。
-     * KP2-D P0-5：[io.legado.app.ui.book.read.page.delegate.PageDelegate.onAnimStop]
-     * 翻到章节末页时也调用本方法切章。
+     * 切到下一章（对照 app 端 `ReadBook.moveToNextChapter`）：三章滑窗前移，
+     * 命中已排版的 next 章直接展示，未命中再装载；并预载新的下一章。
      *
      * @return true 表示已触发切章；false 表示已到末章
      */
     fun moveToNextChapter(): Boolean {
-        val cur = readBook.durChapterIndex.value
-        if (cur + 1 >= readBook.chapterSize) return false
-        readBook.updateDurChapterIndex(cur + 1)
-        loadChapter(cur + 1)
-        return true
+        val curIndex = readBook.durChapterIndex.value
+        if (curIndex < readBook.simulatedChapterSize - 1) {
+            readBook.updateDurChapterPos(0)
+            readBook.updateDurChapterIndex(curIndex + 1)
+            readBook.slideTextChaptersNext()
+            val newCur = readBook.curTextChapter.value
+            if (newCur != null) {
+                applyCurChapterPages(newCur)
+            }
+            scope.launch {
+                if (newCur == null) loadContent(curIndex + 1)
+                loadContent(curIndex + 2)
+            }
+            // 落库 + WebDav 上传（上传时机 shared 折中为章节切换，见 uploadProgress KDoc）
+            uploadProgress()
+            return true
+        }
+        return false
     }
 
     /**
@@ -299,7 +345,7 @@ class ReadBookViewModelShared(
      */
     fun canMoveToNextChapter(): Boolean {
         val cur = readBook.durChapterIndex.value
-        return cur + 1 < readBook.chapterSize
+        return cur + 1 < readBook.simulatedChapterSize
     }
 
     /**
@@ -315,23 +361,36 @@ class ReadBookViewModelShared(
     }
 
     /**
-     * 切到上一章。
+     * 切到上一章（对照 app 端 `ReadBook.moveToPrevChapter`）：三章滑窗后移。
      *
-     * 与 app 端 `ReadBook.moveToPrevChapter` 对应：
-     * 1. 校验 `durChapterIndex - 1 >= 0`，越界返回 false
-     * 2. 调 [ReadBookShared.updateDurChapterIndex] 同步 shared 状态（callback 通知）
-     * 3. 调 [loadChapter] 拉取并排版新章节
-     *
-     * KP2-D P0-A：桌面端 [ReaderScreen] 上一章按钮直接调用本方法。
-     *
-     * @return true 表示已触发切章；false 表示已到首页
+     * @param toLast true=落到上一章末页（durChapterPos = prev.lastReadLength，
+     *   未预载时用 Int.MAX_VALUE 编码，排版后自然落到 pages.lastIndex；原版默认值）
+     * @return true 表示已触发切章；false 表示已到首章
      */
-    fun moveToPrevChapter(): Boolean {
-        val cur = readBook.durChapterIndex.value
-        if (cur - 1 < 0) return false
-        readBook.updateDurChapterIndex(cur - 1)
-        loadChapter(cur - 1)
-        return true
+    fun moveToPrevChapter(toLast: Boolean = true): Boolean {
+        val curIndex = readBook.durChapterIndex.value
+        if (curIndex > 0) {
+            val prevPos = if (toLast) {
+                readBook.prevTextChapter.value?.lastReadLength ?: Int.MAX_VALUE
+            } else {
+                0
+            }
+            readBook.updateDurChapterPos(prevPos)
+            readBook.updateDurChapterIndex(curIndex - 1)
+            readBook.slideTextChaptersPrev()
+            val newCur = readBook.curTextChapter.value
+            if (newCur != null) {
+                applyCurChapterPages(newCur)
+            }
+            scope.launch {
+                if (newCur == null) loadContent(curIndex - 1)
+                loadContent(curIndex - 2)
+            }
+            // 落库 + WebDav 上传（上传时机 shared 折中为章节切换，见 uploadProgress KDoc）
+            uploadProgress()
+            return true
+        }
+        return false
     }
 
     /**
@@ -341,23 +400,155 @@ class ReadBookViewModelShared(
      * 取 [ReadBookShared] 当前 durChapterIndex / durChapterPos / 章节标题，PATCH 进
      * books 表（避免整行 update 冲掉后台 updateToc/refreshBookInfo 写入的最新元数据）。
      *
-     * KP2-D P0-C：桌面端 [ReaderScreen] `DisposableEffect.onDispose` 调用本方法。
+     * 平台侧退出阅读时经 [onCleared] 间接触发（落库 + WebDav 上传）。
      */
     fun saveProgress() {
+        scope.launch { saveProgressAwait() }
+    }
+
+    /** [saveProgress] 的 suspend 核心，供进度上传前"先落库再上传"复用（原版 onPause 先 saveRead 再 uploadProgress）。 */
+    private suspend fun saveProgressAwait() {
         val book = readBook.book.value ?: return
-        scope.launch {
-            runCatching {
-                AppDbProviders.get().bookDao.updateProgress(
-                    bookUrl = book.bookUrl,
-                    durChapterIndex = readBook.durChapterIndex.value,
-                    durChapterPos = readBook.durChapterPos.value,
-                    durChapterTime = systemCurrentTimeMillis(),
-                    durChapterTitle = readBook.chapterList.value
-                        .getOrNull(readBook.durChapterIndex.value)?.title,
-                )
+        runCatching {
+            val durChapterIndex = readBook.durChapterIndex.value
+            val textChapter = readBook.curTextChapter.value
+            // 末页停留时 durChapterPos 取负编码「停在章末」（原版 ReadBook.saveRead:904），
+            // 重进时由 ReadBookShared.loadBook 归一还原
+            val durChapterPos = readBook.durChapterPos.value *
+                (if (textChapter != null && textChapter.isLastIndex(readBook.durPageIndexValue)) -1 else 1)
+            // durChapterTitle 过 titleReplaceRules（原版 ReadBook.saveRead:905-910）
+            val chapter = runCatching {
+                AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, durChapterIndex)
+            }.getOrNull()
+            val durChapterTitle = chapter?.let { c ->
+                runCatching {
+                    c.getDisplayTitle(
+                        ContentProcessorProviders.get().getTitleReplaceRules(book),
+                        book.getUseReplaceRule(),
+                    )
+                }.getOrDefault(c.title)
+            } ?: book.durChapterTitle
+            AppDbProviders.get().bookDao.updateProgress(
+                bookUrl = book.bookUrl,
+                durChapterIndex = durChapterIndex,
+                durChapterPos = durChapterPos,
+                durChapterTime = systemCurrentTimeMillis(),
+                durChapterTitle = durChapterTitle,
+            )
+        }.onFailure {
+            AppLog.put("保存书籍阅读进度信息出错\n$it", it)
+        }
+    }
+
+    // region WebDav 进度同步（对照 app 端 BaseReadViewModel.syncProgress/uploadProgress + ReadBookViewModel.initBook）
+    /** 已触发过云进度拉取的 bookUrl：每本书打开只拉一次（原版 initBook 仅入口同步一次）。 */
+    private var cloudSyncedBookUrl: String? = null
+
+    /**
+     * 进度同步专用作用域：不随 UI scope 取消。
+     * 原版 uploadProgress 走进程级 MainScope（Coroutine.async），退出阅读时 VM 已 cleared 上传也不被打断；
+     * shared 版等价用独立 SupervisorJob + IO 作用域（[scope] 桌面端为 rememberCoroutineScope，dispose 即取消）。
+     */
+    private val progressSyncScope = CoroutineScope(SupervisorJob() + IoDispatcher)
+
+    /**
+     * 打开书时拉取云进度并三路比对（原版 BaseReadViewModel.syncProgress，syncBookProgressPlus 路径）：
+     * - 云端无进度或本地较新 → 上传本地进度
+     * - 云端较新 → 发 [ReadBookEvents.newProgressConfirm] 确认事件（replay=1），
+     *   UI 弹窗后由 [confirmSyncProgress] / [dismissSyncProgress] 收尾
+     * - 相等 → 无操作（原版 syncSuccessAction 仅手动菜单路径使用）
+     *
+     * 网络/解析失败 [AppWebDavShared.getBookProgress] 内部已捕获返回 null（与当前 app 端
+     * AppWebDav.getBookProgress 委托实现同语义），走上传分支由上传自身的失败捕获兜底。
+     */
+    private fun pullCloudProgress(book: Book) {
+        if (!runCatching { AppConfigProviders.get().syncBookProgress }.getOrDefault(false)) return
+        progressSyncScope.launch {
+            val progress = AppWebDavShared.getBookProgress(book)
+            if (progress == null || progress.durChapterIndex < book.durChapterIndex ||
+                (progress.durChapterIndex == book.durChapterIndex
+                    && progress.durChapterPos < book.durChapterPos)
+            ) {
+                uploadProgressAwait(book.bookUrl)
+            } else if (progress.durChapterIndex > book.durChapterIndex ||
+                progress.durChapterPos > book.durChapterPos
+            ) {
+                ReadBookEvents.postConfirmNewProgress(progress)
             }
         }
     }
+
+    /**
+     * 用户确认同步云端进度（原版 ReadBookActivity.sureNewProgress okButton → ReadBook.setProgress）：
+     * 越界守卫 + index/pos 未变则跳过，跳转后重载当前章并落库。
+     */
+    fun confirmSyncProgress(progress: BookProgress) {
+        ReadBookEvents.clearNewProgressConfirm()
+        if (progress.durChapterIndex >= readBook.chapterSize) return
+        if (readBook.durChapterIndex.value == progress.durChapterIndex &&
+            readBook.durChapterPos.value == progress.durChapterPos
+        ) return
+        // 原版 setProgress：赋 index/pos + clearTextChapter + loadContent(resetPageOffset=true)。
+        // 先置 index 再 loadChapter，避免 loadChapter 的跳章分支把 durChapterPos 清零
+        readBook.clearTextChapter()
+        readBook.updateDurChapterIndex(progress.durChapterIndex)
+        readBook.updateDurChapterPos(progress.durChapterPos)
+        loadChapter(progress.durChapterIndex)
+        saveProgress()
+    }
+
+    /** 用户取消同步云端进度：仅清事件 replay 缓存，避免 UI 重建时重复弹窗。 */
+    fun dismissSyncProgress() {
+        ReadBookEvents.clearNewProgressConfirm()
+    }
+
+    /**
+     * 落库并上传当前阅读进度（原版 BaseReadViewModel.uploadProgress）。
+     *
+     * 上传时机与原版差异：app 在 ReadBookActivity.onPause 统一上传；shared 无 onPause 等价
+     * 生命周期，折中为「章节切换 + [onCleared]」两处触发。
+     */
+    fun uploadProgress() {
+        val bookUrl = readBook.book.value?.bookUrl ?: return
+        progressSyncScope.launch {
+            uploadProgressAwait(bookUrl)
+        }
+    }
+
+    /**
+     * 上传核心：先 [saveProgressAwait] 落库（原版 onPause 先 saveRead 再 uploadProgress），
+     * 再读 DB 最新行构造 BookProgress 上传（[saveProgress] 只 PATCH DB 不回写内存 book 实体，
+     * 直接用 readBook.book.value 会带旧 index/pos）。
+     * 上传成功后持久化 syncTime（原版 book.update()；这里 update 的是刚读出的短窗口快照行，
+     * 避免长持有实体整行冲写并发修改）。
+     */
+    private suspend fun uploadProgressAwait(bookUrl: String) {
+        saveProgressAwait()
+        if (!runCatching { AppConfigProviders.get().syncBookProgress }.getOrDefault(false)) return
+        runCatching {
+            val fresh = AppDbProviders.get().bookDao.getBook(bookUrl) ?: return
+            val syncTimeBefore = fresh.syncTime
+            // 内部已守卫 syncBookProgress/authorization，成功时写 fresh.syncTime
+            AppWebDavShared.uploadBookProgress(fresh)
+            currentCoroutineContext().ensureActive()
+            if (fresh.syncTime != syncTimeBefore) {
+                AppDbProviders.get().bookDao.update(fresh)
+            }
+        }.onFailure {
+            currentCoroutineContext().ensureActive()
+            AppLog.put("上传阅读进度失败\n${it.message}", it)
+        }
+    }
+
+    /**
+     * 退出阅读界面时调用（平台侧 DisposableEffect.onDispose / VM onCleared）：
+     * 落库 + 上传进度（原版 ReadBookActivity.onPause 的 saveRead + uploadProgress）。
+     * 走 [progressSyncScope]，UI scope 取消不影响本次落库/上传。
+     */
+    fun onCleared() {
+        uploadProgress()
+    }
+    // endregion
 
     /**
      * 禁用当前书源 (对照 app 端 ReadBookViewModel.disableSource)。
@@ -407,20 +598,173 @@ class ReadBookViewModelShared(
         )
     }
 
-    /**
-     * 用 [pages] 替换 [pageList]，重置 [pageIndex]=0，刷新三个状态流。
-     *
-     * 与 app 端 `TextChapterLayout` 排版完成后 `textPages.clear() + addAll(pages)`
-     * + `ReadBook.callBack.contentLoadFinish()` 行为对齐。
-     */
-    private fun updatePages(pages: List<TextPage>) {
-        pageList.clear()
-        pageList.addAll(pages)
-        pageIndex = 0
-        _curTextPage.value = pageList.getOrNull(0)
-        _prevTextPage.value = null
-        _nextTextPage.value = pageList.getOrNull(1)
+    /** 章节加载互斥（对照 app 端 ReadBook.addLoading / removeLoading） */
+    private fun addLoading(index: Int): Boolean = synchronized(syncLock) {
+        if (loadingChapters.contains(index)) return false
+        loadingChapters.add(index)
+        true
     }
+
+    private fun removeLoading(index: Int) {
+        synchronized(syncLock) {
+            loadingChapters.remove(index)
+        }
+    }
+
+    /**
+     * 当前章排版结果写入页状态流并按 durChapterPos 归位页码
+     * （对照 app 端 contentLoadFinish 的 containPos 定位；toLast 时自然落到 pages.lastIndex）。
+     */
+    private fun applyCurChapterPages(textChapter: TextChapterShared) {
+        pageList.clear()
+        pageList.addAll(textChapter.pages)
+        // toLast 且上一章未预载时的 Int.MAX_VALUE 哨兵：落到末页后归一为该页页首
+        if (readBook.durChapterPos.value == Int.MAX_VALUE) {
+            readBook.updateDurChapterPos(textChapter.lastReadLength)
+        }
+        syncPageFlows()
+        // 对照 app 端 contentLoadFinish → curPageChanged → preDownload
+        preDownload()
+    }
+
+    /** 按 durChapterPos 反算 pageIndex 并刷新三个页面状态流 */
+    private fun syncPageFlows() {
+        pageIndex = readBook.durPageIndexValue.coerceIn(0, (pageList.size - 1).coerceAtLeast(0))
+        _curTextPage.value = pageList.getOrNull(pageIndex)
+        _prevTextPage.value = pageList.getOrNull(pageIndex - 1)
+        _nextTextPage.value = pageList.getOrNull(pageIndex + 1)
+    }
+
+    /** 展示占位提示章（原版错误文案同样经 contentLoadFinish 成章展示） */
+    private fun showMessageChapter(
+        msg: String,
+        chapterIndex: Int,
+        chapterSize: Int,
+        title: String? = "提示",
+    ) {
+        val page = placeholderPage(msg, chapterIndex, chapterSize, title)
+        val textChapter = TextChapterShared(chapterIndex, listOf(page))
+        page.textChapter = textChapter
+        readBook.updateTextChapter(0, textChapter)
+        applyCurChapterPages(textChapter)
+    }
+
+    // region 预下载 / 目录自动更新（对照 app 端 ReadBook.preDownload / upToc）
+    /**
+     * 预下载前后章节（原版 ReadBook.preDownload：Semaphore(2) 限流 + 失败 3 次跳过 +
+     * 反向预载 min(5, preDownloadNum) 章；preDownloadNum < 2 时仅做 upToc）。
+     */
+    private fun preDownload() {
+        if (readBook.book.value?.isLocal == true) return
+        scope.launch {
+            val preDownloadNum = runCatching {
+                AppConfigProviders.get().preDownloadNum
+            }.getOrDefault(10)
+            if (preDownloadNum < 2) {
+                upToc()
+                return@launch
+            }
+            preDownloadTask?.cancel()
+            preDownloadTask = downloadScope.launch {
+                val durIndex = readBook.durChapterIndex.value
+                //预下载
+                launch {
+                    val maxChapterIndex = min(durIndex + preDownloadNum, readBook.chapterSize)
+                    for (i in durIndex.plus(2)..maxChapterIndex) {
+                        if (downloadedChapters.contains(i)) continue
+                        if ((downloadFailChapters[i] ?: 0) >= 3) continue
+                        downloadIndex(i)
+                    }
+                }
+                //反向预载 min(5, preDownloadNum) 章
+                launch {
+                    val minChapterIndex = durIndex - min(5, preDownloadNum)
+                    for (i in durIndex.minus(2) downTo minChapterIndex) {
+                        if (downloadedChapters.contains(i)) continue
+                        if ((downloadFailChapters[i] ?: 0) >= 3) continue
+                        downloadIndex(i)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 预下载单章（对照 app 端 ReadBook.downloadIndex）：已缓存记账，未缓存经
+     * CacheBookShared 限流下载（并发去重由其 onDownloadSet 内部保证，不占 loading 标记）。
+     */
+    private suspend fun downloadIndex(index: Int) {
+        if (index < 0) return
+        if (index > readBook.chapterSize - 1) return
+        val book = readBook.book.value ?: return
+        val chapter = readBook.chapterList.value.getOrNull(index)
+            ?: runCatching {
+                AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)
+            }.getOrNull()
+            ?: return
+        if (runCatching { BookStorageProviders.get().hasContent(book, chapter) }.getOrDefault(false)) {
+            downloadedChapters.add(chapter.index)
+        } else {
+            // 失败计数同步自 CacheBookShared.errorDownloadMap（原版经 CacheBook 回调写 ReadBook.downloadFailChapters）
+            CacheBookShared.errorDownloadMap[chapter.primaryStr()]?.let {
+                downloadFailChapters[index] = it
+            }
+            if ((downloadFailChapters[index] ?: 0) >= 3) return
+            delay(1000)
+            val bookSource = readBook.bookSource.value ?: return
+            val cacheBook = CacheBookShared.getOrCreate(bookSource, book)
+            if (cacheBook.chapterList == null) {
+                cacheBook.chapterList = readBook.chapterList.value
+            }
+            cacheBook.download(downloadScope, chapter, preDownloadSemaphore)
+        }
+    }
+
+    /** 取消预下载（对照 app 端 ReadBook.cancelPreDownloadTask，正文加载完成后由平台侧调用） */
+    fun cancelPreDownloadTask() {
+        if (readBook.curTextChapter.value != null) {
+            preDownloadTask?.cancel()
+            downloadScope.coroutineContext.cancelChildren()
+        }
+    }
+
+    /**
+     * 阅读中自动更新目录（对照 app 端 ReadBook.upToc：canUpdate 判定 + 剩余章节 >=3 守卫 +
+     * 600000ms 节流；目录增长时落库并补载下一章）。
+     */
+    fun upToc() {
+        synchronized(syncLock) {
+            val bookSource = readBook.bookSource.value ?: return
+            val book = readBook.book.value ?: return
+            if (!book.canUpdate) return
+            if (readBook.chapterSize - readBook.durChapterIndex.value - 1 >= 3) return
+            if (systemCurrentTimeMillis() - book.lastCheckTime < 600000) return
+            book.lastCheckTime = systemCurrentTimeMillis()
+            val oldBook = book.copy()
+            scope.launch {
+                runCatching {
+                    WebBook.getChapterListAwait(bookSource, book).getOrThrow()
+                }.onSuccess { cList ->
+                    ensureActive()
+                    if (cList.size > readBook.chapterSize) {
+                        if (oldBook.bookUrl == book.bookUrl) {
+                            AppDbProviders.get().bookDao.update(book)
+                        } else {
+                            AppDbProviders.get().bookDao.replace(oldBook, book)
+                            BookStorageProviders.get().updateCacheFolder(oldBook, book)
+                        }
+                        AppDbProviders.get().bookChapterDao.delByBook(oldBook.bookUrl)
+                        AppDbProviders.get().bookChapterDao.insert(*cList.toTypedArray())
+                        readBook.updateChapterList(cList)
+                        if (readBook.nextTextChapter.value == null) {
+                            loadContent(readBook.durChapterIndex.value + 1)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // endregion
 
     /**
      * 构造占位 [TextPage]（章节越界 / 缓存未命中的兜底页）。

@@ -10,6 +10,7 @@ import androidx.collection.LruCache
 import androidx.core.graphics.drawable.toBitmap
 import androidx.core.graphics.drawable.toDrawable
 import coil3.PlatformContext
+import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.transformations
@@ -29,6 +30,7 @@ import io.legado.app.utils.centerCrop
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.getPrefString
+import io.legado.app.utils.isWifiConnect
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.topCrop
 import kotlinx.coroutines.CoroutineScope
@@ -303,15 +305,20 @@ object BookCover {
  * 封面加载配置: 调用方 `imageView.load(path) { coverConfig(...) }`。
  * useDefaultCover 由调用方自行判断后 load 默认 Drawable(走默认封面 9-patch 路径)。
  * 封面缓存按 path 默认隔离(Coil3 默认 key 策略), 调用方无需手动设置 cache key。
- * loadOnlyWifi 暂未下沉到 Coil3(需 Extras.Key+Interceptor, 另批处理), 此处 no-op。
+ * loadOnlyWifi: 非 wifi 时禁网络仅走缓存, 对齐原 Glide OkHttpStreamFetcher"只在wifi加载图片"
+ * (Glide 同样只拦 fetch, 磁盘缓存命中仍显示)。
  */
 fun ImageRequest.Builder.coverConfig(
     seed: String? = null,
     ratio: CoverRatio = CoverRatio.NOVEL,
     sourceOrigin: String? = null,
+    loadOnlyWifi: Boolean = false,
     onLoadFinish: (() -> Unit)? = null,
 ): ImageRequest.Builder = apply {
     sourceOrigin(sourceOrigin)
+    if (loadOnlyWifi && !appCtx.isWifiConnect) {
+        networkCachePolicy(CachePolicy.DISABLED)
+    }
     if (onLoadFinish != null) {
         listener(
             onSuccess = { _, _ -> onLoadFinish() },

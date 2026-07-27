@@ -34,6 +34,9 @@ class NativeAppConfigAccessor(
     override val tocCountWords: Boolean
         get() = prefs.getBoolean(PreferKey.tocCountWords, true)
 
+    override val tocUiUseReplace: Boolean
+        get() = prefs.getBoolean(PreferKey.tocUiUseReplace, false)
+
     override var chineseConverterType: Int
         get() = prefs.getInt(PreferKey.chineseConverterType, 0)
         set(value) = prefs.putInt(PreferKey.chineseConverterType, value)
@@ -52,7 +55,8 @@ class NativeAppConfigAccessor(
         get() = prefs.getInt(PreferKey.bookshelfLayout, 0)
 
     override val bookshelfCoverHeight: Int
-        get() = prefs.getInt(PreferKey.bookshelfCoverHeight, 120).coerceIn(90, 220)
+        get() = prefs.getInt(PreferKey.bookshelfCoverHeight, 120)
+            .coerceIn(AppConfigRanges.bookshelfCoverHeight)
 
     override val bookshelfGridWidth: Int
         get() = prefs.getInt(PreferKey.bookshelfGridWidth, 120)
@@ -67,7 +71,8 @@ class NativeAppConfigAccessor(
         get() = prefs.getBoolean(PreferKey.bookshelfListShowIntro, false)
 
     override val bookshelfListIntroLines: Int
-        get() = prefs.getInt(PreferKey.bookshelfListIntroLines, 2).coerceIn(1, 3)
+        get() = prefs.getInt(PreferKey.bookshelfListIntroLines, 2)
+            .coerceIn(AppConfigRanges.bookshelfListIntroLines)
 
     override val bookshelfShowGroupCount: Boolean
         get() = prefs.getBoolean(PreferKey.bookshelfShowGroupCount, true)
@@ -110,6 +115,10 @@ class NativeAppConfigAccessor(
 
     override val precisionSearch: Boolean
         get() = prefs.getBoolean(PreferKey.precisionSearch, false)
+
+    override fun setPrecisionSearch(value: Boolean) {
+        prefs.putBoolean(PreferKey.precisionSearch, value)
+    }
 
     // ---- 缓存业务 ----
     override val exportCharset: String
@@ -164,12 +173,15 @@ class NativeAppConfigAccessor(
     // 默认值与 app 端 AppConfig.BOTTOM_BAR_* 常量一致
     override val bottomBarHeight: Int
         get() = prefs.getInt(PreferKey.bottomBarHeight, 50)
+            .coerceIn(AppConfigRanges.bottomBarHeight)
 
     override val bottomBarIconSize: Int
         get() = prefs.getInt(PreferKey.bottomBarIconSize, 24)
+            .coerceIn(AppConfigRanges.bottomBarIconSize)
 
     override val bottomBarLabelMode: Int
         get() = prefs.getInt(PreferKey.bottomBarLabelMode, 0)
+            .coerceIn(AppConfigRanges.bottomBarLabelMode)
 
     override val showHome: Boolean
         get() = prefs.getBoolean(PreferKey.showHome, true)
@@ -202,6 +214,24 @@ class NativeAppConfigAccessor(
 
     override val batchChangeSourceDelay: Int
         get() = prefs.getInt(PreferKey.batchChangeSourceDelay, 0)
+
+    // ---- Web 服务 / 其他 ----
+    override val webPort: Int
+        get() = prefs.getInt(PreferKey.webPort, 1122)
+
+    override val bitmapCacheSize: Int
+        get() = prefs.getInt(PreferKey.bitmapCacheSize, 50)
+
+    // 与 app 端 AppConfig.sourceEditMaxLine 语义一致: <10 视为不限制
+    override val sourceEditMaxLine: Int
+        get() {
+            val maxLine = prefs.getInt(PreferKey.sourceEditMaxLine, Int.MAX_VALUE)
+            return if (maxLine < 10) Int.MAX_VALUE else maxLine
+        }
+
+    override val welcomeShowTime: Int
+        get() = prefs.getInt(PreferKey.welcomeShowTime, 600)
+            .coerceIn(AppConfigRanges.welcomeShowTime)
 }
 
 /**

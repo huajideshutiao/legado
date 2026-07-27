@@ -199,7 +199,7 @@ object CheckSourceShared {
                 !is NoStackTraceException -> source.addGroup("网站失效")
             }
             source.addErrorComment(it)
-            Debug.updateFinalMessage(source.bookSourceUrl, "校验失败:${it.localizedMessage}")
+            Debug.updateFinalMessage(source.bookSourceUrl, "校验失败:${it.message}")
         }
         source.respondTime = Debug.getRespondTime(source.bookSourceUrl)
     }

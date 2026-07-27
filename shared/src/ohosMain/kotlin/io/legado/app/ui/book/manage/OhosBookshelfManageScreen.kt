@@ -1,6 +1,5 @@
 package io.legado.app.ui.book.manage
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.AlertDialog
@@ -15,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.window.Dialog
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.AppDbProviders
@@ -28,13 +28,20 @@ import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.file.pickDocumentContent
+import io.legado.app.help.file.pickDocuments
 import io.legado.app.ui.book.group.GroupEditDialog
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.group.GroupViewModelShared
 import io.legado.app.ui.book.manage.BookshelfManageScreen as SharedBookshelfManageScreen
+import io.legado.app.ui.bookshelf.OhosInfoCover
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.dragSelectable
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.File
+import io.legado.app.utils.formatNative
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
@@ -43,6 +50,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import io.legado.app.utils.cnCompare
 
 /**
  * 鸿蒙端书架管理 Screen 入口 (包装 shared/sharedUiMain 的 [SharedBookshelfManageScreen])。
@@ -57,7 +65,7 @@ import kotlinx.coroutines.withContext
  *   callbacks 用 [remember] 持有稳定实例避免重组
  * - **拖选**: [Modifier.dragSelectable] (下沉到 shared/sharedUiMain) 注入 listModifier,
  *   复刻 app 端边缘拖选批量勾选语义
- * - **封面槽**: 注入 [OhosInfoCover] (stub, 后续接入 Coil3)
+ * - **封面槽**: 注入 [OhosInfoCover] (真实封面加载)
  *
  * # 简化项 (依赖未下沉功能, 用 no-op + TODO 注释, 与 iOS 端一致)
  *
@@ -95,7 +103,7 @@ fun OhosBookshelfManageScreen(
     // 导出三档开关 (PreferenceProviders 持久化)
     val prefs = remember { PreferenceProviders.get() }
     var exportUseReplace by remember {
-        mutableStateOf(prefs.getBoolean(PreferKey.exportUseReplace, false))
+        mutableStateOf(prefs.getBoolean(PreferKey.exportUseReplace, true))
     }
     var enableCustomExport by remember {
         mutableStateOf(prefs.getBoolean(PreferKey.enableCustomExport, false))
@@ -154,7 +162,7 @@ fun OhosBookshelfManageScreen(
     // 收集全部分组
     LaunchedEffect(Unit) {
         AppDatabaseProviders.get().appDb.bookGroupDao.flowAll()
-            .catch { AppLog.put(String.format(bookshelfManageLoadGroupFailedTemplate, it.localizedMessage), it) }
+            .catch { AppLog.put(bookshelfManageLoadGroupFailedTemplate.formatNative(it.localizedMessage), it) }
             .flowOn(Dispatchers.IO)
             .conflate()
             .collectLatest { groups ->
@@ -171,13 +179,13 @@ fun OhosBookshelfManageScreen(
             .map { list ->
                 when (bookSort) {
                     1 -> list.sortedByDescending { it.latestChapterTime }
-                    2 -> list.sortedWith { o1, o2 -> o1.name.compareTo(o2.name) }
+                    2 -> list.sortedWith { o1, o2 -> o1.name.cnCompare(o2.name) }
                     3 -> list.sortedBy { it.order }
                     4 -> list.sortedByDescending { maxOf(it.latestChapterTime, it.durChapterTime) }
                     else -> list.sortedByDescending { it.durChapterTime }
                 }
             }
-            .catch { AppLog.put(String.format(bookshelfManageLoadBookFailedTemplate, it.localizedMessage), it) }
+            .catch { AppLog.put(bookshelfManageLoadBookFailedTemplate.formatNative(it.localizedMessage), it) }
             .flowOn(Dispatchers.IO)
             .conflate()
             .collectLatest { books ->
@@ -415,22 +423,30 @@ fun OhosBookshelfManageScreen(
     }
 
     if (showAddGroupDialog) {
-        GroupEditDialog(
-            group = null,
-            onConfirm = { g ->
-                groupVm.addGroup(g.groupName, g.bookSort, g.enableRefresh, g.cover) {}
-            },
-            onDismiss = { showAddGroupDialog = false },
-        )
+        Dialog(onDismissRequest = { showAddGroupDialog = false }) {
+            GroupEditDialog(
+                group = null,
+                onConfirm = { g ->
+                    groupVm.addGroup(g.groupName, g.bookSort, g.enableRefresh, g.cover) {}
+                },
+                onDismiss = { showAddGroupDialog = false },
+                coverSlot = { path, m -> OhosInfoCover(remember(path) { Book(coverUrl = path) }, m) },
+                onPickCover = ::pickOhosGroupCoverPath,
+            )
+        }
     }
 
     editingGroup?.let { g ->
-        GroupEditDialog(
-            group = g,
-            onConfirm = { updated -> groupVm.upGroup(updated) },
-            onDismiss = { editingGroup = null },
-            onDelete = { del -> groupVm.delGroup(del) {} },
-        )
+        Dialog(onDismissRequest = { editingGroup = null }) {
+            GroupEditDialog(
+                group = g,
+                onConfirm = { updated -> groupVm.upGroup(updated) },
+                onDismiss = { editingGroup = null },
+                onDelete = { del -> groupVm.delGroup(del) {} },
+                coverSlot = { path, m -> OhosInfoCover(remember(path) { Book(coverUrl = path) }, m) },
+                onPickCover = ::pickOhosGroupCoverPath,
+            )
+        }
     }
 
     // 应用日志对话框
@@ -439,24 +455,31 @@ fun OhosBookshelfManageScreen(
     }
 }
 
-/**
- * 鸿蒙端书籍封面渲染 (stub)。
- *
- * 对照 iOS 端 [io.legado.app.ui.bookshelf.IosInfoCover], 后续接入 Coil3 KMP
- * 图片加载后替换为真实实现。当前仅占位让 shared BookshelfManageScreen 的 coverSlot 编译通过。
- *
- * @param book 书籍 (含封面 URL)
- * @param modifier 外部约束
- */
-@Composable
-private fun OhosInfoCover(book: Book?, modifier: Modifier = Modifier) {
-    // KP-ohos: stub, 后续接入 Coil3 KMP 图片加载
-    Box(modifier)
-}
-
 // 选分组对话框目标 (Replace 替换分组 / Merge 并入分组)
 private sealed class GroupSelectTarget {
     abstract val books: List<Book>
     class Replace(override val books: List<Book>) : GroupSelectTarget()
     class Merge(override val books: List<Book>) : GroupSelectTarget()
+}
+
+/**
+ * 分组封面选图落盘 (GroupEditDialog onPickCover): DocumentViewPicker 选图 →
+ * 写入 {filesDir}/covers/{md5}.png (对照 OhosCoverConfigScreen 落盘模式), 返回路径。
+ */
+private suspend fun pickOhosGroupCoverPath(): String? {
+    val uris = pickDocuments(
+        contentTypes = listOf("public.image"),
+        allowsMultiple = false,
+    ) ?: return null
+    val firstUri = uris.firstOrNull() ?: return null
+    val bytes = withContext(Dispatchers.Default) { pickDocumentContent(firstUri) } ?: return null
+    val filesDir = AppFilesDirs.get().filesDir
+    val coversDirPath = if (filesDir.endsWith("/")) "${filesDir}covers" else "$filesDir/covers"
+    val coverPath = "$coversDirPath/${MD5Utils.md5Encode(firstUri)}.png"
+    return runCatching {
+        val coversDir = File(coversDirPath)
+        if (!coversDir.exists()) coversDir.mkdirs()
+        File(coverPath).writeBytes(bytes)
+        coverPath
+    }.getOrNull()
 }

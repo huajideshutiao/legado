@@ -1,5 +1,6 @@
 package io.legado.desktop.ui.book.read
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -7,26 +8,28 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.Icon
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import coil3.compose.AsyncImagePainter
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.Review
@@ -35,7 +38,9 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.read.ReviewListDialog
 import io.legado.app.ui.book.read.ReviewPlatform
 import io.legado.app.ui.book.read.ReviewViewModelShared
-import io.legado.app.ui.compose.component.Md2TextField
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
 import io.legado.app.ui.compose.platform.DesktopPreferenceStoreProvider
@@ -48,6 +53,9 @@ import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.desktop.ui.component.DesktopPhotoDialog
+import io.legado.desktop.ui.component.rememberCoverPainter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -62,17 +70,17 @@ import kotlinx.coroutines.withContext
  * - 复用 shared/commonMain 的 [ReviewViewModelShared] (拉取/翻页/回复/点赞/点踩/删除/规则执行),
  *   desktop 端不再持有独立 VM 复制实现 (消除重复代码)
  * - 复用 shared/sharedUiMain 的 [ReviewListDialog] Composable (列表头/回复头/评论项/Footer/输入栏),
- *   desktop 端注入平台 slot: 头像/配图占位 (无网络图片加载), lazyListModifier (无 nestedScroll)
+ *   desktop 端注入平台 slot: 头像/配图 Coil3 painter 加载 (失败回退占位), lazyListModifier (无 nestedScroll)
  * - 保留 desktop 专属行为: [ReviewInputDialog] 替代 app 端 ReviewPostActivity (与其他桌面对话框风格一致),
  *   长按复制走 java.awt.datatransfer (无 sendToClip 扩展)
  *
  * # 与 app 端差异
  *
  * - 宿主: app 端 BottomSheetDialogFragment → 桌面端全屏 Surface
- * - 图片加载: app 端用 Coil3 (AndroidView); 桌面端无网络图片加载, 用 Icon/占位 Box
- * - 输入面板: app 端启动 ReviewPostActivity (独立 Activity); 桌面端用 [Dialog] + [Md2TextField]
- * - 查看大图: app 端 PhotoDialog; 桌面端 no-op (无图片查看器)
- * - 查看回复: app 端嵌套 showDialogFragment(ReviewListDialog); 桌面端 no-op (路由不支持嵌套, 后续由 DesktopApp 接管)
+ * - 图片加载: 两端同走 Coil3 (桌面端 rememberCoverPainter, 共享 SingletonImageLoader 内存/磁盘缓存)
+ * - 输入面板: app 端启动 ReviewPostActivity (独立 Activity); 桌面端用 [Dialog] + [AppTextField]
+ * - 查看大图: app 端 PhotoDialog; 桌面端 [DesktopPhotoDialog]
+ * - 查看回复: app 端嵌套 showDialogFragment(ReviewListDialog); 桌面端同屏嵌套栈覆盖层 (下层状态保留)
  *
  * # IntentData key 约定 (与 DesktopApp 路由切换处设置一致)
  *
@@ -97,20 +105,52 @@ fun ReviewListScreen(onBack: () -> Unit) {
         AppTheme {
             // color 与 shared ReviewListDialog 内 background 一致, 避免顶部圆角缺口露色
             Surface(modifier = Modifier.fillMaxSize(), color = AppTheme.colors.background) {
-                ReviewListContent(onBack = onBack)
+                // 从 IntentData 取参数 (一次性, 与 app 端 arguments 取值对应)
+                val book = remember { IntentData.get<Book>("reviewBookKey") }
+                val chapter = remember { IntentData.get<BookChapter>("reviewChapterKey") }
+                val paragraphIndex = remember { IntentData.get<Int>("reviewParagraphIndex") ?: 0 }
+                val rootParent = remember { IntentData.get<Review>("reviewParentReviewKey") }
+                // 嵌套回复栈 (对照 app 端叠加 showDialogFragment(ReviewListDialog), 覆盖层保留下层状态)
+                var replyStack by remember { mutableStateOf<List<Review>>(emptyList()) }
+                Box(Modifier.fillMaxSize()) {
+                    ReviewListContent(
+                        book = book,
+                        chapter = chapter,
+                        paragraphIndex = paragraphIndex,
+                        parentReview = rootParent,
+                        onDismiss = onBack,
+                        onOpenReplies = { replyStack = replyStack + it },
+                    )
+                    replyStack.forEachIndexed { i, parent ->
+                        key(parent.id ?: "#$i") {
+                            // 每层包一个不透明 Surface, 完整盖住下层 (含圆角缺口)
+                            Surface(Modifier.fillMaxSize(), color = AppTheme.colors.background) {
+                                ReviewListContent(
+                                    book = book,
+                                    chapter = chapter,
+                                    paragraphIndex = paragraphIndex,
+                                    parentReview = parent,
+                                    onDismiss = { replyStack = replyStack.take(i) },
+                                    onOpenReplies = { replyStack = replyStack.take(i + 1) + it },
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun ReviewListContent(onBack: () -> Unit) {
-    // 从 IntentData 取参数 (与 app 端 arguments 取值对应)
-    val book = remember { IntentData.get<Book>("reviewBookKey") }
-    val chapter = remember { IntentData.get<BookChapter>("reviewChapterKey") }
-    val paragraphIndex = remember { IntentData.get<Int>("reviewParagraphIndex") ?: 0 }
-    val parentReview = remember { IntentData.get<Review>("reviewParentReviewKey") }
-
+private fun ReviewListContent(
+    book: Book?,
+    chapter: BookChapter?,
+    paragraphIndex: Int,
+    parentReview: Review?,
+    onDismiss: () -> Unit,
+    onOpenReplies: (Review) -> Unit,
+) {
     val scope = rememberCoroutineScope()
     val platform = remember { DesktopReviewPlatform() }
     val vm = remember(book?.bookUrl, paragraphIndex, parentReview?.id) {
@@ -141,6 +181,10 @@ private fun ReviewListContent(onBack: () -> Unit) {
     // 回复输入对话框 (替代 app 端 ReviewPostActivity)
     var showInputDialog by remember { mutableStateOf(false) }
     var pendingReplyTo by remember { mutableStateOf<Review?>(null) }
+    // 删除确认对话框 (对照 app 端 confirmDelete alert)
+    var pendingDelete by remember { mutableStateOf<Review?>(null) }
+    // 查看大图 (对照 app 端 PhotoDialog)
+    var photoSrc by remember { mutableStateOf<String?>(null) }
 
     // 标题/提示初始化 (对照 app 端 onViewCreated)
     LaunchedEffect(parentReview, paragraphIndex) {
@@ -169,7 +213,7 @@ private fun ReviewListContent(onBack: () -> Unit) {
     // 首次加载 (对照 app 端 onViewCreated 的 viewModel.load())
     LaunchedEffect(book?.bookUrl) {
         if (book == null) {
-            onBack()
+            onDismiss()
             return@LaunchedEffect
         }
         vm.load()
@@ -193,6 +237,25 @@ private fun ReviewListContent(onBack: () -> Unit) {
         )
     }
 
+    // 删除确认对话框 (对照 app 端 alert(R.string.delete, R.string.confirm_delete_review))
+    pendingDelete?.let { review ->
+        AppAlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = rememberString("delete"),
+            message = rememberString("confirm_delete_review"),
+            okButton = AlertButton(rememberString("ok"), onClick = {
+                // shared VM.delete 内部已自动从 reviews 过滤, 回调仅供额外 UI 副作用
+                vm.delete(review) { _ -> }
+            }),
+            cancelButton = AlertButton(rememberString("cancel")),
+        )
+    }
+
+    // 查看大图对话框 (对照 app 端 showDialogFragment(PhotoDialog))
+    photoSrc?.let { src ->
+        DesktopPhotoDialog(src = src, onDismiss = { photoSrc = null })
+    }
+
     // 委托 shared ReviewListDialog (列表头/回复头/评论项/Footer/输入栏全在 shared 内)
     ReviewListDialog(
         title = titleText,
@@ -207,7 +270,7 @@ private fun ReviewListContent(onBack: () -> Unit) {
         expandedKeys = expandedKeys,
         votedIds = votedIds,
         votedDownIds = votedDownIds,
-        onDismiss = onBack,
+        onDismiss = onDismiss,
         onLoadMore = { vm.loadMore() },
         onChangeSort = { vm.changeSort(it) },
         onReviewClick = { item ->
@@ -227,43 +290,67 @@ private fun ReviewListContent(onBack: () -> Unit) {
         onToggleExpand = { key -> vm.toggleExpand(key) },
         onVoteUp = { item -> vm.voteUp(item) },
         onVoteDown = { item -> vm.voteDown(item) },
-        onDeleteClick = { item ->
-            // shared VM.delete 内部已自动从 reviews 过滤, 回调仅供额外 UI 副作用;
-            // 桌面端无删除确认对话框 (与原 desktop 实现一致), 直接执行
-            vm.delete(item) { _ -> /* no-op: VM 已自动从 reviews 过滤 */ }
-        },
-        onOpenReplies = {
-            // 桌面端路由不支持嵌套 (currentRoute 单层), 暂 no-op;
-            // TODO: 由 DesktopApp 接管 onOpenReplies, 切到嵌套 REVIEW_LIST 路由
+        onDeleteClick = { item -> pendingDelete = item },
+        onOpenReplies = { item ->
+            // 对照 app 端 openReplies: id 为空不进回复页
+            if (!item.id.isNullOrBlank()) onOpenReplies(item)
         },
         onPostClick = {
             pendingReplyTo = parentReview
             showInputDialog = true
         },
-        onAvatarClick = { /* 桌面端无图片查看大图, no-op */ },
-        onImageClick = { /* 桌面端无图片查看大图, no-op */ },
-        avatarSlot = { _, modifier ->
-            // 桌面端无网络图片加载, 用 Icon 占位 (与原实现一致)
-            Icon(
-                painter = rememberPainter("ic_bottom_person_s"),
-                contentDescription = null,
-                tint = AppTheme.colors.secondaryText,
-                modifier = modifier,
-            )
-        },
-        imageSlot = { _, modifier ->
-            // 桌面端无网络图片加载, 用占位 Box 显示数量 (与原实现一致)
-            Box(modifier, contentAlignment = Alignment.Center) {
-                Text(
-                    text = rememberString("image_style"),
-                    color = AppTheme.colors.secondaryText,
-                    fontSize = 12.sp,
-                )
-            }
-        },
+        onAvatarClick = { url -> url?.let { photoSrc = it } },
+        onImageClick = { photoSrc = it },
+        avatarSlot = { url, modifier -> ReviewAvatar(url, modifier) },
+        imageSlot = { url, modifier -> ReviewCommentImage(url, modifier) },
         lazyListModifier = Modifier, // 桌面端无 nestedScroll
         modifier = Modifier.fillMaxSize(),
     )
+}
+
+/** 头像: 加载成功 Crop 显示 (modifier 已带圆形裁剪), 加载中/失败回退占位 Icon (对照 app 端 Coil placeholder) */
+@Composable
+private fun ReviewAvatar(url: String?, modifier: Modifier) {
+    val painter = rememberCoverPainter(url)
+    val state by painter.state.collectAsState()
+    if (state is AsyncImagePainter.State.Success) {
+        Image(
+            painter = painter,
+            contentDescription = null,
+            modifier = modifier,
+            contentScale = ContentScale.Crop,
+        )
+    } else {
+        Icon(
+            painter = rememberPainter("ic_bottom_person_s"),
+            contentDescription = null,
+            tint = AppTheme.colors.secondaryText,
+            modifier = modifier,
+        )
+    }
+}
+
+/** 评论配图: 加载成功 Fit 显示 (对照 app 端 FIT_CENTER), 加载中/失败回退占位 Box */
+@Composable
+private fun ReviewCommentImage(url: String, modifier: Modifier) {
+    val painter = rememberCoverPainter(url)
+    val state by painter.state.collectAsState()
+    if (state is AsyncImagePainter.State.Success) {
+        Image(
+            painter = painter,
+            contentDescription = null,
+            modifier = modifier,
+            contentScale = ContentScale.Fit,
+        )
+    } else {
+        Box(modifier, contentAlignment = Alignment.Center) {
+            Text(
+                text = rememberString("image_style"),
+                color = AppTheme.colors.secondaryText,
+                fontSize = 12.sp,
+            )
+        }
+    }
 }
 
 /** 回复/发表输入对话框 (替代 app 端 ReviewPostActivity) */
@@ -277,7 +364,7 @@ private fun ReviewInputDialog(
     var text by remember { mutableStateOf("") }
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(8.dp),
+            shape = DesignTokens.shapeDefault,
             color = AppTheme.colors.background,
         ) {
             Column(Modifier.padding(16.dp)) {
@@ -296,7 +383,7 @@ private fun ReviewInputDialog(
                         modifier = Modifier.padding(top = 4.dp),
                     )
                 }
-                Md2TextField(
+                AppTextField(
                     value = text,
                     onValueChange = { text = it },
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
@@ -326,10 +413,8 @@ private fun ReviewInputDialog(
 /**
  * 桌面端 [ReviewPlatform] 实现 (消费 shared commonMain 接口, 不修改 shared)。
  *
- * - [toastOnUi] 走 [Toasters.get].toast (调用线程不限, 桌面端 AWT 内部线程安全)
- * - 文案: 复用 SharedStringTable 已有的 review_no_current_book / review_no_source / review_load_failed;
- *   operationFailed / noActionRule 在 SharedStringTable 无对应 key, 硬编码中文
- *   (与 ReviewViewModelShared 注释 "actual 平台提供实现, 硬编码中文" 对齐, 也与 app 端文案一致)
+ * [toastOnUi] 走 [Toasters.get].toast (调用线程不限, 桌面端 AWT 内部线程安全);
+ * 文案全部走 SharedStringTable, 与 app 端硬编码中文语义一一对应。
  */
 private class DesktopReviewPlatform : ReviewPlatform {
     override fun toastOnUi(msg: String) {
@@ -339,6 +424,6 @@ private class DesktopReviewPlatform : ReviewPlatform {
     override fun noCurrentBook(): String = jvmGetString("review_no_current_book")
     override fun noSource(): String = jvmGetString("review_no_source")
     override fun loadFailed(cause: String?): String = jvmGetString("review_load_failed", cause)
-    override fun operationFailed(cause: String?): String = "操作失败: $cause"
-    override fun noActionRule(): String = "书源未配置此操作规则"
+    override fun operationFailed(cause: String?): String = jvmGetString("review_operation_failed", cause)
+    override fun noActionRule(): String = jvmGetString("review_no_action_rule")
 }

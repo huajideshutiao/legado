@@ -15,11 +15,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.utils.ColorUtils
 
 @Composable
 fun VideoChapterGrid(
@@ -70,7 +72,7 @@ fun VideoChapterItem(
     ) {
         Text(
             text = title,
-            color = if (isCurrent) Color.White else colors.primaryText,
+            color = if (isCurrent) (if (ColorUtils.isColorLight(AppTheme.colors.accent.toArgb())) Color.Black else Color.White) else colors.primaryText,
             fontSize = 14.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

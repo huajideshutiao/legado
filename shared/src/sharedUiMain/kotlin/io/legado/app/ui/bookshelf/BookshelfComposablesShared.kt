@@ -59,10 +59,12 @@ import io.legado.app.help.book.getUnreadChapterNum
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.toTimeAgo
 import kotlinx.coroutines.delay
@@ -234,6 +236,9 @@ fun ShelfBooksContent(
 ) {
     val colors = AppTheme.colors
     val pullState = rememberPullToRefreshState()
+    val isRefreshing = items.any { item ->
+        item is Book && item.bookUrl in refreshingUrls
+    }
     // 锁定 refreshingUrls 引用, 避免子项无谓重组
     val refreshingUrlsSet = remember(refreshingUrls) { refreshingUrls }
     val appConfig = remember { AppConfigProviders.get() }
@@ -262,7 +267,7 @@ fun ShelfBooksContent(
         modifier
             .fillMaxSize()
             .pullToRefresh(
-                isRefreshing = false,
+                isRefreshing = isRefreshing,
                 state = pullState,
                 enabled = refreshEnabled,
                 onRefresh = onRefresh,
@@ -280,7 +285,9 @@ fun ShelfBooksContent(
                     val itemModifier = if (eInk) Modifier else Modifier.animateItem()
                     when (item) {
                         is Book -> ShelfListItem(
-                            item, spec.isVideoList, coverReloadTick, refreshingUrlsSet,
+                            // 逐项窄化: 非刷新项恒拿 emptySet 单例, 集合变化时可跳过重组
+                            item, spec.isVideoList, coverReloadTick,
+                            if (item.bookUrl in refreshingUrlsSet) refreshingUrlsSet else emptySet(),
                             showLastUpdateTime, showKindIntro,
                             onClick = { onBookClick(item) },
                             onLongClick = { onBookLongClick(item) },
@@ -310,7 +317,9 @@ fun ShelfBooksContent(
                     val itemModifier = if (eInk) Modifier else Modifier.animateItem()
                     when (item) {
                         is Book -> ShelfGridItem(
-                            item, coverReloadTick, refreshingUrlsSet,
+                            // 逐项窄化: 同 LIST 分支, 避免刷新集合每次变化重组全部可见项
+                            item, coverReloadTick,
+                            if (item.bookUrl in refreshingUrlsSet) refreshingUrlsSet else emptySet(),
                             onClick = { onBookClick(item) },
                             onLongClick = { onBookLongClick(item) },
                             modifier = itemModifier,
@@ -366,7 +375,7 @@ fun ShelfBooksContent(
         }
         PullToRefreshDefaults.Indicator(
             state = pullState,
-            isRefreshing = false,
+            isRefreshing = isRefreshing,
             modifier = Modifier.align(Alignment.TopCenter),
             color = colors.accent,
         )
@@ -438,6 +447,14 @@ fun BookshelfActions(callbacks: BookshelfActionsCallbacks) {
         ShelfMenuItem("group_manage") { dismiss(); callbacks.onShowGroupManage() }
         ShelfMenuItem("import_bookshelf") { dismiss(); callbacks.onImportBookshelf() }
         ShelfMenuItem("log") { dismiss(); callbacks.onShowAppLog() }
+        // "发现"入口 (仅注入方传入回调时渲染; iOS 端无底部 tab, 由此进入发现页)
+        callbacks.onOpenExplore?.let { open ->
+            ShelfMenuItem("discovery") { dismiss(); open() }
+        }
+        // "我的"入口 (仅注入方传入回调时渲染; iOS 端无底部 tab, 由此进入设置/RSS, 对照 ohos My tab)
+        callbacks.onOpenMyConfig?.let { open ->
+            ShelfMenuItem("my") { dismiss(); open() }
+        }
     }
 }
 
@@ -452,6 +469,10 @@ data class BookshelfActionsCallbacks(
     val onShowGroupManage: () -> Unit = {},
     val onImportBookshelf: () -> Unit = {},
     val onShowAppLog: () -> Unit = {},
+    /** "我的"入口 (null 不渲染菜单项; 无底部 tab 的平台注入, 如 iOS) */
+    val onOpenMyConfig: (() -> Unit)? = null,
+    /** "发现"入口 (null 不渲染菜单项; 无底部 tab 的平台注入, 如 iOS) */
+    val onOpenExplore: (() -> Unit)? = null,
 )
 
 @Composable
@@ -471,12 +492,11 @@ fun UnreadBadge(count: Int, highlight: Boolean, modifier: Modifier = Modifier) {
     if (count <= 0) return
     val colors = AppTheme.colors
     val bg = if (highlight) colors.accent else Color(0xAAAAAAAA)
-    // shared 版本: 内联亮度计算替代 ColorUtils.isColorLight (避免依赖 app 端工具类)
-    val textColor = if (isColorLight(bg.toArgb())) Color.Black else Color.White
+    val textColor = if (LocalAppConfigProvider.current.isNightTheme) Color.White else Color.Black
     Box(
         modifier
             .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
-            .background(bg, RoundedCornerShape(8.dp))
+            .background(bg, DesignTokens.shapeDefault)
             .padding(horizontal = 5.dp, vertical = 1.dp),
         contentAlignment = Alignment.Center,
     ) {
@@ -506,7 +526,7 @@ fun KindLabels(kinds: List<String>) {
 }
 
 @Composable
-private fun ShelfRowIcon(painterKey: String) {
+fun ShelfRowIcon(painterKey: String) {
     Icon(
         painter = rememberPainter(painterKey),
         contentDescription = null,
@@ -668,12 +688,14 @@ fun ShelfGridItem(
     Box(modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
         Column(Modifier.fillMaxWidth()) {
             // 封面 Box: 宽度填满 (减 12dp 左右内边距), 对照原 XML iv_cover match_parent + 12dp margin
-            Box(
-                Modifier.fillMaxWidth().padding(start = 12.dp, top = 12.dp, end = 12.dp),
-                contentAlignment = Alignment.TopCenter,
-            ) {
-                // 对照原 bindGridCard: ivCover.coverRatio = NOVEL (恒)
-                coverSlot(book, Modifier.fillMaxWidth(), false)
+            if (!book.getDisplayCover().isNullOrBlank()) {
+                Box(
+                    Modifier.fillMaxWidth().padding(start = 12.dp, top = 12.dp, end = 12.dp),
+                    contentAlignment = Alignment.TopCenter,
+                ) {
+                    // 对照原 bindGridCard: ivCover.coverRatio = NOVEL (恒)
+                    coverSlot(book, Modifier.fillMaxWidth(), false)
+                }
             }
             Text(
                 text = book.name,
@@ -719,9 +741,11 @@ fun ShelfVideoItem(
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(8.dp),
     ) {
-        Box(Modifier.fillMaxWidth()) {
-            // 对照原 bindVideoCard: ivCover.coverRatio = VIDEO (恒)
-            coverSlot(book, Modifier.fillMaxWidth(), true)
+        if (!book.getDisplayCover().isNullOrBlank()) {
+            Box(Modifier.fillMaxWidth()) {
+                // 对照原 bindVideoCard: ivCover.coverRatio = VIDEO (恒)
+                coverSlot(book, Modifier.fillMaxWidth(), true)
+            }
         }
         Text(
             text = book.name,

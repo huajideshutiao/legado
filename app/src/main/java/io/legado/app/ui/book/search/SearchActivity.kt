@@ -53,9 +53,22 @@ class SearchActivity : BaseComposeActivity(), SearchScopeDialog.Callback, Search
     /** shared 端 SearchViewModel (StateFlow 驱动), 注入 lifecycleScope 绑定生命周期。 */
     private lateinit var sharedVm: SearchViewModel
 
+    /**
+     * 封面 slot 注入 Android 实现 (见 `SearchAndroidSlots.kt`), 对照书架 bookCoverSlot 先例。
+     * modifier 由 shared 端按占位原尺寸构造, 此处只透传。
+     */
     @Composable
     override fun Content() {
-        SearchScreen(viewModel = sharedVm, navCallbacks = this)
+        SearchScreen(
+            viewModel = sharedVm,
+            navCallbacks = this,
+            coverSlot = { book, modifier, isVideoCover ->
+                SearchResultCover(book, modifier, isVideoCover, sharedVm.isInBookShelf(book))
+            },
+            shelfCoverSlot = { book, modifier, isVideoCover ->
+                SearchShelfCover(book, modifier, isVideoCover)
+            },
+        )
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {

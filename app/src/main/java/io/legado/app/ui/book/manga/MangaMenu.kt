@@ -26,10 +26,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -370,18 +370,20 @@ private fun MangaOverflowMenu(state: MangaMenu, tint: Color) {
 @Composable
 private fun OverflowItem(text: String, onClick: () -> Unit) {
     DropdownMenuItem(
-        text = { Text(text, color = AppTheme.colors.primaryText) },
         onClick = onClick,
-    )
+    ) { Text(text, color = AppTheme.colors.primaryText) }
 }
 
 @Composable
 private fun OverflowCheckItem(text: String, checked: Boolean, onClick: () -> Unit) {
-    DropdownMenuItem(
-        text = { Text(text, color = AppTheme.colors.primaryText) },
-        trailingIcon = { AppMenuCheckbox(checked = checked) },
-        onClick = onClick,
-    )
+    DropdownMenuItem(onClick = onClick) {
+        Text(
+            text,
+            color = AppTheme.colors.primaryText,
+            modifier = Modifier.weight(1f).padding(end = 12.dp),
+        )
+        AppMenuCheckbox(checked = checked)
+    }
 }
 
 @Composable

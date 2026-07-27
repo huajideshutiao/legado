@@ -2,7 +2,7 @@ package io.legado.desktop.ui.book.read.config
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Surface
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -48,7 +48,7 @@ import io.legado.app.ui.dialog.NumberPickerDialog
  *   getString(R.string.page_touch_slop_summary, slopSquare), 桌面端无 Android
  *   ViewConfiguration, 直接显示 prefs 数值
  * - onPageTouchSlop: 范围 0..9999 (app 端原 max=9999, min=0), 写 prefs.pageTouchSlop 后
- *   不发 ReadBookEvents.postConfig(ReadConfigChange.PAGE_SLOP) (桌面端阅读页直接读 prefs)
+ *   桌面端阅读页直接读 prefs 生效
  * - onClickRegionalConfig: app 端 ReadBookActivity.showClickRegionalConfig()
  *   (点击区域配置 Dialog), 桌面端弹 shared 共享 [ClickActionDialog], 直接读写 prefs
  *   (AppConfigAccessor 接口未暴露 clickActionXX 字段, 走 PreferenceProvider)

@@ -6,6 +6,7 @@ import androidx.room.PrimaryKey
 import io.legado.app.utils.randomUUIDString
 import io.legado.app.utils.splitNotBlank
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.serialization.Serializable
 
 /**
  * 搜索 / 发现共用的结果过滤规则。
@@ -14,6 +15,7 @@ import io.legado.app.utils.systemCurrentTimeMillis
  * - scope：作用范围，沿用 SearchScope 字符串协议：
  *   空 → 全部书源；"g1,g2" → 分组；"name::url" 或 "n1::u1|n2::u2" → 单/多书源。
  */
+@Serializable
 @Entity(tableName = "source_filter_rules")
 data class SourceFilterRule(
     @PrimaryKey

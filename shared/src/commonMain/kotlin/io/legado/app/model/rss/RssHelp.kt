@@ -1,10 +1,13 @@
 package io.legado.app.model.rss
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.book.addType
 import io.legado.app.help.book.isRss
+import io.legado.app.help.book.removeType
 import io.legado.app.model.webBook.WebBook
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -101,6 +104,38 @@ object RssHelp {
         appDb.bookChapterDao.getChapterList(book.bookUrl)
 
     /**
+     * 收藏 RSS 源 (对照 app 端 BaseReadViewModel.addToBookshelf):
+     * order 置底 + 继承同名书阅读进度 + 清 notShelf 标记后落库。
+     * 文章章节已由 [loadRssArticles] 落库, 无需像 app 端再插 chapterListData。
+     */
+    suspend fun addToBookshelf(book: Book) {
+        if (book.order == 0) {
+            book.order = appDb.bookDao.minOrder() - 1
+        }
+        appDb.bookDao.getBook(book.name, book.author)?.let {
+            book.durChapterIndex = it.durChapterIndex
+            book.durChapterPos = it.durChapterPos
+            book.durChapterTitle = it.durChapterTitle
+        }
+        // 对照 app 端 Book.save(): removeType(notShelf) + insert-or-update
+        book.removeType(BookType.notShelf)
+        if (appDb.bookDao.has(book.bookUrl)) {
+            appDb.bookDao.update(book)
+        } else {
+            appDb.bookDao.insert(book)
+        }
+    }
+
+    /**
+     * 取消收藏 (对照 app 端 BaseReadViewModel.delBook: 删章节 + 删书 + 标记 notShelf)。
+     */
+    suspend fun removeFromBookshelf(book: Book) {
+        appDb.bookChapterDao.delByBook(book.bookUrl)
+        appDb.bookDao.delete(book)
+        book.addType(BookType.notShelf)
+    }
+
+    /**
      * 拉取 RSS 文章正文。
      *
      * 分支 (对照桌面端 ReadRssScreen.loadContent + app 端 ReadRssViewModel.initData):
@@ -140,8 +175,8 @@ object RssHelp {
         } catch (e: Throwable) {
             // 协程取消需向上抛出, 不被 catch 吞掉
             if (e is kotlinx.coroutines.CancellationException) throw e
-            AppLog.put("RSS 正文加载失败\n${e.localizedMessage}", e)
-            RssContentResult.Error(e.localizedMessage ?: "加载失败", null)
+            AppLog.put("RSS 正文加载失败\n${e.message}", e)
+            RssContentResult.Error(e.message ?: "加载失败", null)
         }
     }
 }

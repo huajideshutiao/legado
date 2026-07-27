@@ -2,9 +2,9 @@ package io.legado.app.ui.book.import.remote
 
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Server
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
@@ -63,7 +63,7 @@ class ServerConfigViewModelShared(
     fun init(id: Long?, onSuccess: () -> Unit) {
         // mServer 不为空可能是旋转屏幕界面重新创建, 不用更新数据
         if (mServer != null) return
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             mServer = if (id != null) {
                 appDb.serverDao.get(id)
             } else {
@@ -74,7 +74,7 @@ class ServerConfigViewModelShared(
     }
 
     fun save(server: Server, onSuccess: () -> Unit) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             try {
                 mServer?.let {
                     appDb.serverDao.delete(it)
@@ -83,9 +83,9 @@ class ServerConfigViewModelShared(
                 appDb.serverDao.insert(server)
                 onSuccess.invoke()
             } catch (e: Throwable) {
-                // 替代 context.toastOnUi("保存出错\n${it.localizedMessage}"),
+                // 替代 context.toastOnUi("保存出错\n${it.message}"),
                 // Toasters.get() 已下沉 commonMain, androidMain 注册的实现内部切主线程
-                Toasters.get().toast("保存出错\n${e.localizedMessage}")
+                Toasters.get().toast("保存出错\n${e.message}")
             }
         }
     }

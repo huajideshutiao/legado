@@ -1,6 +1,5 @@
 package io.legado.app.ui.bookinfo
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -9,7 +8,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
@@ -23,6 +21,9 @@ import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.file.pickDocuments
+import io.legado.app.ui.book.changecover.ChangeCoverDialog
+import io.legado.app.ui.bookshelf.OhosInfoCover
+import io.legado.app.ui.book.changecover.ChangeCoverViewModelShared
 import io.legado.app.ui.book.info.edit.BookInfoEditScreen as SharedBookInfoEditScreen
 import io.legado.app.ui.book.info.edit.BookInfoEditUiActions
 import io.legado.app.ui.book.info.edit.BookInfoEditUiState
@@ -41,19 +42,16 @@ import kotlinx.coroutines.launch
  * - **编辑态**: 持有 name/author/typeIndex/coverUrl/intro/bookUrl/coverTick 各 mutableStateOf
  * - **actions**: 实现 [BookInfoEditUiActions] 12 个方法, 桥接鸿蒙平台依赖:
  *   - onSelectCover: 调 [pickDocuments] (ohos stub, 后续接入 ohos.file.picker)
- *   - onChangeCoverSource: no-op + TODO (依赖 ChangeCoverPlatform actual, 鸿蒙端暂未提供)
+ *   - onChangeCoverSource: 弹 ChangeCoverDialog (OhosChangeCoverPlatform 注入)
  *   - onRefreshCover: 写入 customCoverUrl + 递增 coverTick
  *   - onSave: 字段修改 + updateCacheFolder + shared.saveBook 落库
- * - **coverSlot**: 用 stub Box (后续接入 Coil3 KMP 图片加载)
+ * - **coverSlot**: 注入 [OhosInfoCover] (真实封面加载)
  *
  * readBookUpdater 传 `{}` no-op (鸿蒙阅读流未与编辑流联动, ReadBook 单例未下沉)。
  *
  * # 简化项 (与 iOS / desktop 差异)
  *
- * - 不接入 ChangeCoverDialog: 依赖 ChangeCoverPlatform actual 实现, 鸿蒙端暂未提供
- *   (对照 OhosBookInfoScreen 的 OhosBookInfoActions.onCoverLongClick TODO)
  * - onSelectCover 调 [pickDocuments] ohos stub (当前返回 null, 后续接入 DocumentViewPicker)
- * - 封面渲染为 stub Box (后续接入 Coil3 KMP 图片加载)
  *
  * @param bookUrl 待编辑书籍的 bookUrl (由 OhosNavHost 注入)
  * @param onBack 返回回调 (切回 BOOK_INFO 路由)
@@ -114,6 +112,15 @@ fun OhosBookInfoEditScreen(
     val shared = remember(scope) {
         BookInfoEditViewModelShared(scope = scope, readBookUpdater = {})
     }
+    // 换封面 VM (KMP 共享核心, OhosChangeCoverPlatform 注入, 对照 iOS IosBookInfoEditScreen)
+    val changeCoverVm = remember(scope) {
+        ChangeCoverViewModelShared(scope, OhosChangeCoverPlatform())
+    }
+    LaunchedEffect(book) {
+        val b = book ?: return@LaunchedEffect
+        changeCoverVm.initData(b.name, b.author)
+    }
+    var showChangeCoverDialog by remember { mutableStateOf(false) }
 
     val actions = remember(onBack, onSaved, scope, shared) {
         OhosBookInfoEditActions(
@@ -129,6 +136,7 @@ fun OhosBookInfoEditScreen(
             shared = shared,
             onBack = onBack,
             onSaved = onSaved,
+            onShowChangeCoverDialog = { showChangeCoverDialog = true },
         )
     }
 
@@ -137,6 +145,25 @@ fun OhosBookInfoEditScreen(
         actions = actions,
         coverSlot = { b, modifier -> OhosInfoCover(b, modifier) },
     )
+
+    // 换封面对话框 (KMP 共享核心, 语义对照 iOS IosBookInfoEditScreen)
+    if (showChangeCoverDialog) {
+        ChangeCoverDialog(
+            viewModel = changeCoverVm,
+            onCoverSelected = { coverUrl ->
+                if (coverUrl == "use_default_cover") {
+                    book?.let { b -> coverUrlState.value = b.coverUrl ?: "" }
+                } else if (coverUrl.isNotBlank()) {
+                    coverUrlState.value = coverUrl
+                }
+                coverTickState.value++
+            },
+            onDismiss = { showChangeCoverDialog = false },
+            coverSlot = { searchBook, modifier ->
+                OhosInfoCover(searchBook.toBook(), modifier)
+            },
+        )
+    }
 }
 
 /**
@@ -158,6 +185,7 @@ private class OhosBookInfoEditActions(
     private val shared: BookInfoEditViewModelShared,
     private val onBack: () -> Unit,
     private val onSaved: () -> Unit,
+    private val onShowChangeCoverDialog: () -> Unit,
 ) : BookInfoEditUiActions {
 
     override fun onBack() = onBack.invoke()
@@ -212,8 +240,8 @@ private class OhosBookInfoEditActions(
     }
 
     override fun onChangeCoverSource() {
-        // TODO: 弹 ChangeCoverDialog (书源搜索换封面), 依赖 ChangeCoverPlatform actual, 鸿蒙端暂未提供
-        // 对照 OhosBookInfoScreen 的 OhosBookInfoActions.onCoverLongClick TODO
+        // 弹 ChangeCoverDialog (书源搜索换封面, OhosChangeCoverPlatform 注入)
+        onShowChangeCoverDialog.invoke()
     }
 
     override fun onRefreshCover() {
@@ -230,10 +258,3 @@ private class OhosBookInfoEditActions(
     override fun onBookUrlChange(value: String) { bookUrlState.value = value }
 }
 
-// ---- 鸿蒙端封面 stub (对照 OhosBookInfoScreen.OhosInfoCover / OhosBookshelfManageScreen.OhosInfoCover, 后续接入 Coil3 KMP) ----
-
-/** 书籍封面 (stub, 后续接入 Coil3 KMP 图片加载) */
-@Composable
-private fun OhosInfoCover(book: Book?, modifier: Modifier = Modifier) {
-    Box(modifier)
-}

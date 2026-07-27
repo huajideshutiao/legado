@@ -35,7 +35,7 @@ fun OhosWelcomeConfigScreen(
     // welcomeShowTime 当前值 + 显隐状态 (mutableIntStateOf 让 summary 重组)
     val prefs = remember { PreferenceProviders.get() }
     var welcomeShowTime by remember {
-        mutableIntStateOf(prefs.getInt(PreferKey.welcomeShowTime, 3000))
+        mutableIntStateOf(prefs.getInt(PreferKey.welcomeShowTime, 600))
     }
     var showTimeDialog by remember { mutableStateOf(false) }
     val showTimeSummary = welcomeShowTime.toString() + " " + msSuffix
@@ -58,12 +58,12 @@ fun OhosWelcomeConfigScreen(
         )
     }
 
-    // welcomeShowTime NumberPicker (范围 0..10000 ms, 默认 3000)
+    // welcomeShowTime NumberPicker (范围/默认对齐 app AppConfig: 0..3000 ms, 默认 600)
     if (showTimeDialog) {
         NumberPickerDialog(
             title = welcomeShowTimeLabel,
             value = welcomeShowTime,
-            range = 0..10000,
+            range = 0..3000,
             onConfirm = {
                 welcomeShowTime = it
                 prefs.putInt(PreferKey.welcomeShowTime, it)

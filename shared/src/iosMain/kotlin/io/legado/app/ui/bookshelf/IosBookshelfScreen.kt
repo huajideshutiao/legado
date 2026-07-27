@@ -4,11 +4,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import io.legado.app.ui.compose.component.Md2TextField
+import androidx.compose.material.AlertDialog
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
+import androidx.compose.material.TextButton
+import io.legado.app.ui.compose.component.AppTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +41,7 @@ import io.legado.app.ui.book.manage.BookshelfManageScreen as SharedBookshelfMana
 import io.legado.app.ui.book.manage.BookshelfManageState
 import io.legado.app.ui.bookshelf.BookshelfScreen as SharedBookshelfScreen
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.utils.formatNative
 import io.legado.app.utils.parseJsonElement
 import io.legado.app.utils.readString
 import kotlinx.coroutines.Dispatchers
@@ -80,6 +81,8 @@ import platform.Foundation.NSURL
  * @param onAddLocalBook 顶栏溢出菜单"添加本地书籍" → 导入本地书籍路由, 默认 no-op 容错
  * @param onAddRemoteBook 顶栏溢出菜单"添加远程书籍" → 远程书籍路由, 默认 no-op 容错
  * @param onOpenBookshelfManage 顶栏溢出菜单"书架管理" → 书架管理路由, 默认 no-op 容错
+ * @param onOpenMyConfig 顶栏溢出菜单"我的" → 我的设置路由 (iOS 无底部 tab, 设置/RSS 由此进入), 默认 no-op 容错
+ * @param onOpenExplore 顶栏溢出菜单"发现" → 发现页路由 (iOS 无底部 tab, 发现由此进入), 默认 no-op 容错
  *
  * 模式参考 desktop `BookshelfScreen.kt` (desktop/src/main/kotlin/io/legado/desktop/ui/bookshelf/BookshelfScreen.kt)。
  */
@@ -91,6 +94,8 @@ fun IosBookshelfScreen(
     onAddLocalBook: () -> Unit = {},
     onAddRemoteBook: () -> Unit = {},
     onOpenBookshelfManage: () -> Unit = {},
+    onOpenMyConfig: () -> Unit = {},
+    onOpenExplore: () -> Unit = {},
 ) {
     val viewModel = remember { BookshelfViewModel() }
     DisposableEffect(viewModel) {
@@ -176,11 +181,11 @@ fun IosBookshelfScreen(
                                         success++
                                     }.onFailure { e ->
                                         fail++
-                                        AppLog.put(String.format(importLocalBookFailedTemplate, e.localizedMessage), e)
+                                        AppLog.put(importLocalBookFailedTemplate.formatNative(e.localizedMessage), e)
                                     }
                                 }
                             }
-                            Toasters.get().toast(String.format(importCompleteWithFailTemplate, success, fail))
+                            Toasters.get().toast(importCompleteWithFailTemplate.formatNative(success, fail))
                         }
                     },
                     // KP7: iOS 端无 RemoteBookWebDav, 简化为 URL 输入对话框下载导入
@@ -206,7 +211,7 @@ fun IosBookshelfScreen(
                             ) ?: return@launch
                             val firstUrl = urls.firstOrNull() ?: return@launch
                             val bytes = pickDocumentContent(firstUrl) ?: return@launch
-                            val text = bytes.toString(Charsets.UTF_8).trim()
+                            val text = bytes.decodeToString().trim()
                             if (!text.startsWith("[")) {
                                 Toasters.get().toast(formatInvalidText)
                                 return@launch
@@ -243,20 +248,24 @@ fun IosBookshelfScreen(
                                         AppDbProviders.get().bookDao.insert(book)
                                         successCount++
                                     }.onFailure { e ->
-                                        AppLog.put(String.format(importBookFailedTemplate, name, e.localizedMessage), e)
+                                        AppLog.put(importBookFailedTemplate.formatNative(name, e.localizedMessage), e)
                                     }
                                 }
                                 successCount
                             }.onSuccess { count ->
-                                Toasters.get().toast(String.format(importCompleteTemplate, count))
+                                Toasters.get().toast(importCompleteTemplate.formatNative(count))
                             }.onFailure { e ->
-                                AppLog.put(String.format(importBookshelfFailedTemplate, e.localizedMessage), e)
+                                AppLog.put(importBookshelfFailedTemplate.formatNative(e.localizedMessage), e)
                                 Toasters.get().toast(e.localizedMessage ?: "ERROR")
                             }
                         }
                     },
                     // KP5: 接入下沉的 AppLogDialog (shared/sharedUiMain), 末尾渲染分支读取 showLogDialog
                     onShowAppLog = { showLogDialog = true },
+                    // "我的"入口: 切 MY_CONFIG 路由 (设置/规则/RSS 均由该页进入, 对照 ohos My tab)
+                    onOpenMyConfig = onOpenMyConfig,
+                    // "发现"入口: 切 EXPLORE 路由 (iOS 无底部 tab, 发现由书架菜单进入)
+                    onOpenExplore = onOpenExplore,
                 )
             )
         },
@@ -307,7 +316,7 @@ fun IosBookshelfScreen(
             onDismissRequest = { if (!importingRemoteBook) showAddRemoteBookDialog = false },
             title = { Text(rememberString("add_book_url")) },
             text = {
-                Md2TextField(
+                AppTextField(
                     value = remoteBookUrlText,
                     onValueChange = { remoteBookUrlText = it },
                     label = "url",
@@ -347,7 +356,7 @@ fun IosBookshelfScreen(
                                         AppDbProviders.get().bookChapterDao.insert(*toc.toTypedArray())
                                         successCount++
                                     }.onFailure { e ->
-                                        AppLog.put(String.format(addBookUrlFailedTemplate, url, e.localizedMessage), e)
+                                        AppLog.put(addBookUrlFailedTemplate.formatNative(url, e.localizedMessage), e)
                                     }
                                 }
                             }
@@ -355,7 +364,7 @@ fun IosBookshelfScreen(
                             showAddRemoteBookDialog = false
                             remoteBookUrlText = ""
                             Toasters.get().toast(
-                                if (successCount > 0) String.format(addBookUrlSuccessTemplate, successCount, urls.size) else addBookUrlAllFailedText
+                                if (successCount > 0) addBookUrlSuccessTemplate.formatNative(successCount, urls.size) else addBookUrlAllFailedText
                             )
                         }
                     },

@@ -49,17 +49,14 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
     /** 是否已 shutdown, shutdown 后所有操作 no-op。 */
     @Volatile private var shutdown: Boolean = false
 
-    /** napi 桥接是否就绪 (init 时检查, 决定走真实实现还是降级占位)。 */
-    @Volatile private var bridgeReady: Boolean = false
-
     init {
-        bridgeReady = OhosNativeBridge.isTtsBridgeReady()
-        if (bridgeReady) {
-            OhosNativeBridge.setTtsEventListener(this)
+        OhosNativeBridge.setTtsEventListener(this)
+        // 桥接就绪时尝试 createEngine; 未就绪则跳过 (tsfn 为 null 时 sendTtsCommand 本就是 no-op),
+        // 不缓存就绪状态, 后续方法每次运行时检查
+        if (OhosNativeBridge.isTtsBridgeReady()) {
             OhosNativeBridge.sendTtsCommand(action = "createEngine", lang = "zh-CN", rate = rateMultiplier)
             println("[ohos-stts] init: bridge ready, createEngine sent")
         } else {
-            ready = false
             println("[ohos-stts] init: bridge not ready, speak will report error")
         }
     }
@@ -98,7 +95,7 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
      */
     override fun speak(text: String, utteranceId: String) {
         if (shutdown) return
-        if (bridgeReady) {
+        if (OhosNativeBridge.isTtsBridgeReady()) {
             speaking = true
             paused = false
             OhosNativeBridge.sendTtsCommand(
@@ -133,7 +130,7 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
     override fun pause() {
         if (shutdown) return
         paused = true
-        if (bridgeReady) {
+        if (OhosNativeBridge.isTtsBridgeReady()) {
             OhosNativeBridge.sendTtsCommand(action = "pause")
         } else {
             println("[ohos-stts] pause (placeholder)")
@@ -144,7 +141,7 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
     override fun resume() {
         if (shutdown) return
         paused = false
-        if (bridgeReady) {
+        if (OhosNativeBridge.isTtsBridgeReady()) {
             OhosNativeBridge.sendTtsCommand(action = "resume")
         } else {
             println("[ohos-stts] resume (placeholder)")
@@ -154,7 +151,7 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
     /** 停止当前朗读并清空状态 (保留引擎实例, 后续可再 speak)。 */
     override fun stop() {
         if (shutdown) return
-        if (bridgeReady) {
+        if (OhosNativeBridge.isTtsBridgeReady()) {
             OhosNativeBridge.sendTtsCommand(action = "stop")
         } else {
             println("[ohos-stts] stop (placeholder)")
@@ -166,13 +163,8 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
     /** 释放引擎资源。桥接就绪时发 "shutdown" 命令并注销事件监听。 */
     override fun shutdown() {
         if (shutdown) return
-        if (bridgeReady) {
-            OhosNativeBridge.sendTtsCommand(action = "shutdown")
-            OhosNativeBridge.setTtsEventListener(null)
-        } else {
-            println("[ohos-stts] shutdown (placeholder)")
-        }
         shutdown = true
+        OhosNativeBridge.shutdownTtsIfListener(this)
         speaking = false
         paused = false
     }
@@ -184,6 +176,7 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
      * 解析事件 JSON, 更新 speaking 状态 + 转发给 [TtsProgressListener]。
      */
     override fun onTtsEvent(eventJson: String) {
+        if (shutdown) return
         val event = runCatching {
             KS_JSON.decodeFromString(TtsEvent.serializer(), eventJson)
         }.getOrNull() ?: return
@@ -231,6 +224,11 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
  * `TtsEngineProvider.register(DesktopSystemTtsEngine())` 位置一致),
  * 见 [io.legado.app.help.config.OhosProviderRegistry]。
  */
+private val ttsRegistrationLock = Any()
+
 fun registerOhosSystemTtsEngine() {
-    TtsEngineProvider.register(OhosSystemTtsEngine())
+    synchronized(ttsRegistrationLock) {
+        if (TtsEngineProvider.get() is OhosSystemTtsEngine) return
+        TtsEngineProvider.register(OhosSystemTtsEngine())
+    }
 }

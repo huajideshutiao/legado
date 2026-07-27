@@ -16,8 +16,8 @@ import com.fleeksoft.ksoup.Ksoup
 object EncodingDetect {
 
     private val headTagRegex = "(?i)<head>[\\s\\S]*?</head>".toRegex()
-    private val headOpenBytes = "<head>".toByteArray()
-    private val headCloseBytes = "</head>".toByteArray()
+    private val headOpenBytes = "<head>".encodeToByteArray()
+    private val headCloseBytes = "</head>".encodeToByteArray()
 
     fun getHtmlEncode(bytes: ByteArray): String {
         try {
@@ -26,10 +26,10 @@ object EncodingDetect {
             if (startIndex > -1) {
                 val endIndex = bytes.indexOf(headCloseBytes, startIndex)
                 if (endIndex > -1) {
-                    head = String(bytes.copyOfRange(startIndex, endIndex + headCloseBytes.size))
+                    head = bytes.copyOfRange(startIndex, endIndex + headCloseBytes.size).decodeToString()
                 }
             }
-            val doc = Ksoup.parseBodyFragment(head ?: headTagRegex.find(String(bytes))!!.value)
+            val doc = Ksoup.parseBodyFragment(head ?: headTagRegex.find(bytes.decodeToString())!!.value)
             val metaTags = doc.getElementsByTag("meta")
             var charsetStr: String
             for (metaTag in metaTags) {

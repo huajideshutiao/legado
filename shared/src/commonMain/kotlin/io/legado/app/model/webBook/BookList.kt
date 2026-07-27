@@ -238,7 +238,7 @@ object BookList {
                 SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${searchBook.kind ?: ""}", log)
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.localizedMessage}", log)
+                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.message}", log)
             }
             currentCoroutineContext().ensureActive()
             SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取字数", log)
@@ -248,7 +248,7 @@ object BookList {
                 SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${searchBook.wordCount}", log)
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.localizedMessage}", log)
+                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.message}", log)
             }
             currentCoroutineContext().ensureActive()
             SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取最新章节", log)
@@ -257,7 +257,7 @@ object BookList {
                 SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${searchBook.latestChapterTitle}", log)
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.localizedMessage}", log)
+                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.message}", log)
             }
             currentCoroutineContext().ensureActive()
             SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取简介", log)
@@ -266,7 +266,7 @@ object BookList {
                 SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${searchBook.intro}", log)
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.localizedMessage}", log)
+                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.message}", log)
             }
             currentCoroutineContext().ensureActive()
             SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取封面链接", log)
@@ -279,7 +279,7 @@ object BookList {
                 SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${searchBook.coverUrl ?: ""}", log)
             } catch (e: Exception) {
                 currentCoroutineContext().ensureActive()
-                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.localizedMessage}", log)
+                SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "└${e.message}", log)
             }
             currentCoroutineContext().ensureActive()
             SourceDebugLoggers.impl?.log(bookSource.bookSourceUrl, "┌获取详情页链接", log)

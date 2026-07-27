@@ -2,8 +2,8 @@ package io.legado.app.ui.book.import.remote
 
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Server
+import io.legado.app.help.coroutine.IoDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
@@ -41,7 +41,7 @@ class ServersViewModelShared(
     private val appDb get() = AppDbProviders.get()
 
     fun delete(server: Server) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             appDb.serverDao.delete(server)
         }
     }

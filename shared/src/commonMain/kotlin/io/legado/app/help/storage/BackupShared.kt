@@ -128,11 +128,22 @@ object BackupShared {
      * - 通过 [PreferenceProviders.get].getAll dump 配置
      * - 完成后调用 [AppWebDavShared.backUpWebDav] 上传到云端
      *
-     * @param uploadToWebDav 是否上传到 WebDav (false 仅生成本地 zip, 测试用)
+     * @param destinationPath 本地备份目录。为空时回退到应用 externalFilesDir/filesDir。
+     * @param uploadToWebDav 是否上传到 WebDav
+     * @return 已保留在本地的备份 zip 绝对路径
      */
-    suspend fun backupLocked(uploadToWebDav: Boolean = true) {
-        mutex.withLock {
-            backup(uploadToWebDav)
+    suspend fun backupLocked(
+        destinationPath: String? = null,
+        uploadToWebDav: Boolean = true,
+    ): String {
+        return mutex.withLock {
+            try {
+                backup(destinationPath, uploadToWebDav)
+            } finally {
+                BackupFileOps.delete(backupPath)
+                BackupFileOps.delete(zipFilePath)
+                currentCoroutineContext().ensureActive()
+            }
         }
     }
 
@@ -144,11 +155,14 @@ object BackupShared {
      * 2. 逐个 DAO 导出为 JSON 写入 backupPath
      * 3. dump PreferenceProviders 全量配置 → config.json
      * 4. zip 所有 JSON 文件为 zipFilePath
-     * 5. 上传到 WebDav (若 [uploadToWebDav] = true)
-     * 6. 清理临时文件
+     * 5. 复制 zip 到本地备份目录
+     * 6. 上传到 WebDav (若 [uploadToWebDav] = true)
+     * 7. 清理临时文件
      */
-    private suspend fun backup(uploadToWebDav: Boolean) {
-        AppLog.put("BackupShared 开始备份 uploadToWebDav=$uploadToWebDav")
+    private suspend fun backup(destinationPath: String?, uploadToWebDav: Boolean): String {
+        AppLog.put(
+            "BackupShared 开始备份 destinationPath=$destinationPath uploadToWebDav=$uploadToWebDav"
+        )
         val aes = BackupAES()
         BackupFileOps.delete(backupPath)
         BackupFileOps.createFolderIfNotExist(backupPath)
@@ -194,7 +208,7 @@ object BackupShared {
                 GSON.toJson(readBookConfig.shareConfig)
             )
         }.onFailure {
-            AppLog.put("BackupShared 备份 readConfig 出错\n${it.localizedMessage}", it)
+            AppLog.put("BackupShared 备份 readConfig 出错\n${it.message}", it)
         }
         runCatching {
             BackupFileOps.writeText(
@@ -202,7 +216,7 @@ object BackupShared {
                 GSON.toJson(ThemeConfigProviders.get().getConfigList())
             )
         }.onFailure {
-            AppLog.put("BackupShared 备份 themeConfig 出错\n${it.localizedMessage}", it)
+            AppLog.put("BackupShared 备份 themeConfig 出错\n${it.message}", it)
         }
         // directLinkUploadRule.json (与 app 端 Backup.kt DirectLinkUpload.getConfig() 备份同语义)
         runCatching {
@@ -213,7 +227,7 @@ object BackupShared {
                 )
             }
         }.onFailure {
-            AppLog.put("BackupShared 备份 directLinkUploadRule 出错\n${it.localizedMessage}", it)
+            AppLog.put("BackupShared 备份 directLinkUploadRule 出错\n${it.message}", it)
         }
 
         currentCoroutineContext().ensureActive()
@@ -249,25 +263,34 @@ object BackupShared {
         }
         BackupFileOps.delete(zipFilePath)
         BackupFileOps.delete(zipFilePath.replace("tmp_", ""))
-        // WebDav 始终传带日期的文件名 (与 app 端一致); onlyLatestBackup 仅影响本地副本, 本 KMP 版无本地副本
+        // WebDav 始终使用带日期的文件名；onlyLatestBackup 仅控制本地副本名称。
         val zipFileName = getNowZipFileName()
-        if (BackupFileOps.zipFiles(paths, zipFilePath)) {
-            // 5. 上传到 WebDav
-            if (uploadToWebDav) {
-                try {
-                    AppWebDavShared.backUpWebDav(zipFileName)
-                } catch (e: Exception) {
-                    AppLog.put("BackupShared 上传至 WebDav 失败\n${e.localizedMessage}", e)
-                }
-            }
+        val localFileName = if (
+            PreferenceProviders.get().getBoolean(PreferKey.onlyLatestBackup, true)
+        ) {
+            "backup.zip"
         } else {
-            AppLog.put("BackupShared zip 打包失败")
+            zipFileName
         }
+        val localDirectory = destinationPath?.takeIf { it.isNotBlank() }
+            ?: AppFilesDirs.get().externalFilesDir
+            ?: AppFilesDirs.get().filesDir
+        require(localDirectory.trimEnd('/', '\\') != backupPath.trimEnd('/', '\\')) {
+            "备份目标目录不能是临时工作目录"
+        }
+        val localZipPath = localDirectory.trimEnd('/', '\\') +
+            BackupFileOps.separator + localFileName
 
-        // 6. 清理临时文件
-        BackupFileOps.delete(backupPath)
-        BackupFileOps.delete(zipFilePath)
-        currentCoroutineContext().ensureActive()
+        check(BackupFileOps.zipFiles(paths, zipFilePath)) {
+            "BackupShared zip 打包失败"
+        }
+        BackupFileOps.createFolderIfNotExist(localDirectory)
+        BackupFileOps.copyFile(zipFilePath, localZipPath)
+
+        if (uploadToWebDav) {
+            AppWebDavShared.backUpWebDav(zipFileName)
+        }
+        return localZipPath
     }
 
     /** 写入 List<Any> 为 JSON 到 [backupPath]/[fileName]。空列表跳过。 */

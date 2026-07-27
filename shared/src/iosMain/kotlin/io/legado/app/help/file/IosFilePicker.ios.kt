@@ -6,6 +6,7 @@ import io.legado.app.help.topMostViewController
 import kotlinx.cinterop.readBytes
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSData
+import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSURL
 import platform.Foundation.dataWithContentsOfURL
 import platform.UIKit.UIDocumentPickerDelegateProtocol
@@ -16,6 +17,7 @@ import platform.darwin.NSObject
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 import kotlin.coroutines.resume
+import io.legado.app.utils.File
 
 /**
  * iOS 端文件选择器桥接: 用 [UIDocumentPickerViewController] 选文件, suspend 封装回调。
@@ -164,6 +166,74 @@ suspend fun pickDirectory(): NSURL? = suspendCancellableCoroutine { block ->
 }
 
 /**
+ * 导出字节到用户选择的位置 (对照 app 端 [HandleFileContract.EXPORT] / desktop `FileDialog(SAVE)`)。
+ *
+ * 两步: 先把 [bytes] 写进沙盒临时目录 (`NSTemporaryDirectory()/legado-export/<fileName>`),
+ * 再弹 `UIDocumentPickerViewController(forExportingURLs:)` 让用户挑目标位置 (iOS "文件" app,
+ * 含 iCloud Drive / 本机 / 第三方网盘)。系统把临时文件**拷贝**到目标位置, 临时文件仍归我们管,
+ * 弹窗关闭后即刻删除。
+ *
+ * 与 [pickDocuments] 的结构差异:
+ * - **模式**: `forExportingURLs:` 专用构造器 (非 documentTypes/inMode), 无需声明 UTI;
+ * - **回调语义**: 用户完成保存时 `didPickDocumentsAtURLs` 带回目标 URL (视为成功),
+ *   取消时 `documentPickerDidCancel` (视为失败, 调用方降级到剪贴板)。
+ *
+ * @param fileName 建议文件名 (含扩展名, 如 "exportTxtTocRule.json"; 与 app 端 FileData.fileName 一致)
+ * @param bytes 待写出的字节内容
+ * @return true=用户完成保存; false=用户取消 / 临时文件写入失败 / 拿不到 root vc
+ */
+suspend fun exportFile(fileName: String, bytes: ByteArray): Boolean {
+    // 1. 写沙盒临时文件 (kotlin.io.File 走 POSIX fs, 与 nativeMain FileDownloader 同模式)
+    val tmpDir = File(NSTemporaryDirectory().trimEnd('/') + "/legado-export")
+    val tmpFile = File(tmpDir.path + "/" + fileName)
+    val prepared = runCatching {
+        tmpDir.mkdirs()
+        tmpFile.writeBytes(bytes)
+    }.isSuccess
+    if (!prepared) return false
+
+    // 2. 弹系统保存器 (结构照抄 pickDocuments: 主线程 present + activeDelegates 强引用 + 取消 dismiss)
+    val saved = suspendCancellableCoroutine<Boolean> { block ->
+        var pickerRef: UIDocumentPickerViewController? = null
+        dispatch_async(dispatch_get_main_queue()) {
+            val vc = topMostViewController()
+            if (vc == null) {
+                block.resume(false)
+                return@dispatch_async
+            }
+            val srcUrl = NSURL.fileURLWithPath(tmpFile.path)
+            val picker = UIDocumentPickerViewController(forExportingURLs = listOf(srcUrl))
+            pickerRef = picker
+            val holder = mutableListOf<Any?>()
+            val delegate = DocumentPickerDelegate(
+                // 导出完成: 系统回传目标 URL, 内容不再关心, 只取"成功"语义
+                onPick = {
+                    holder.firstOrNull()?.let { activeDelegates.remove(it) }
+                    block.resume(true)
+                },
+                onCancel = {
+                    holder.firstOrNull()?.let { activeDelegates.remove(it) }
+                    block.resume(false)
+                },
+            )
+            holder.add(delegate)
+            activeDelegates.add(delegate)
+            picker.delegate = delegate
+            vc.presentViewController(picker, animated = true, completion = null)
+        }
+        block.invokeOnCancellation {
+            dispatch_async(dispatch_get_main_queue()) {
+                pickerRef?.dismissViewControllerAnimated(true, completion = null)
+            }
+        }
+    }
+
+    // 3. 清临时文件 (系统已把内容拷到目标位置, 临时副本无保留价值; 删除失败不影响导出结果)
+    runCatching { tmpFile.delete() }
+    return saved
+}
+
+/**
  * [UIDocumentPickerDelegate] 实现: 桥接 UIKit 回调到 suspend continuation。
  *
  * Kotlin/Native 实现 ObjC 协议用 `NSObject() + Protocol` 形式,
@@ -182,7 +252,7 @@ private class DocumentPickerDelegate(
         onPick(didPickDocumentsAtURLs as List<NSURL>)
     }
 
-    override fun documentPickerDidCancel(controller: UIDocumentPickerViewController) {
+    override fun documentPickerWasCancelled(controller: UIDocumentPickerViewController) {
         onCancel()
     }
 }

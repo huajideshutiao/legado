@@ -3,6 +3,7 @@ package io.legado.desktop.ui.webdav
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,19 +11,21 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material.CircularProgressIndicator
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppLog
@@ -30,7 +33,6 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.storage.BackupConfigShared
-import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.storage.BackupShared
 import io.legado.app.help.storage.RestoreShared
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
@@ -42,6 +44,7 @@ import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.PreferenceStoreProvider
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
@@ -115,7 +118,7 @@ fun WebDavConfigScreen() {
     val themeStore = remember { DesktopThemeStoreProvider() }
     val appConfig = remember { DesktopAppConfigProvider() }
     val eventBus = remember { DesktopEventBusProvider() }
-    val prefStore = remember { DesktopPreferenceStoreProvider() }
+    val prefStore = remember { RefreshingPreferenceStoreProvider() }
     CompositionLocalProvider(
         LocalThemeStoreProvider provides themeStore,
         LocalAppConfigProvider provides appConfig,
@@ -138,6 +141,9 @@ private fun BackupConfigScreenContent() {
     // 取薄壳外层注入的 LocalPreferenceStoreProvider 实例 (与 BackupConfigScreen 内部
     // editTextPreference/switchPreference 写值的同一对象), 用于 syncLocalToRegistry()
     val prefStore = LocalPreferenceStoreProvider.current
+    val refreshingPrefStore = prefStore as? RefreshingPreferenceStoreProvider
+    val preferenceRevision = refreshingPrefStore?.revision ?: 0
+    val changedPreferenceKey = refreshingPrefStore?.lastChangedKey
 
     // 文案标签 (rememberString 是 @Composable, 顶层缓存后供各 lambda / 状态机引用,
     // 避免 statusText / 异常消息硬编码中文)
@@ -156,24 +162,22 @@ private fun BackupConfigScreenContent() {
     val cancelLabel = rememberString("cancel")
     // 备份忽略对话框标题 (对齐 app 端 R.string.restore_ignore = "恢复忽略列表")
     val restoreIgnoreLabel = rememberString("restore_ignore")
+    val webDavUrlEmptyLabel = rememberString("web_dav_url_s")
+    val webDavAccountEmptyLabel = rememberString("web_dav_account_s")
+    val webDavPasswordEmptyLabel = rememberString("web_dav_pw_s")
+    val selectBackupPathLabel = rememberString("select_backup_path")
+    val loadingLabel = rememberString("loading")
     // app 端 BackupConfigHost.restore() 硬编码 message "WebDav无备份文件\n将从本地备份恢复。"
     // 桌面端前半句走 i18n (webDavNoBackupLabel), 后半句走 i18n (restore_from_local_prompt)
     val restoreFromLocalPromptLabel = webDavNoBackupLabel + "\n" + rememberString("restore_from_local_prompt")
 
-    // # 已知架构局限 + 临时 sync
+    // # 存储后端已统一 + 冗余 sync
     //
-    // BackupConfigScreen 内部 editTextPreference/switchPreference 写到
-    // LocalPreferenceStoreProvider (桌面端 DesktopPreferenceStoreProvider, 内存 Map);
-    // 而 BackupShared.backupLocked / AppWebDavShared.upConfig 通过 AppConfigProviders
-    // 走 PreferenceProviders (桌面端 DesktopPreferenceProvider, java.util.prefs 注册表)。
-    // 两者底层不共享, 用户在 UI 输入的 WebDav URL/账户/密码不会被 BackupShared 读到。
-    //
-    // 临时方案: 在执行备份 / 恢复前, 把 5 个 WebDav string key 从 prefStore
-    // 同步到 PreferenceProviders (注册表)。
-    //
-    // 正确修复: 让 DesktopPreferenceStoreProvider (shared/src/jvmMain/.../DesktopProviders.kt)
-    // 内部委托 java.util.prefs.Preferences (与 DesktopPreferenceProvider 同源), 保证两者
-    // 底层一致; 但这超出本 task 范围 (task: 修复 WebDavConfigScreen 重写问题)。
+    // DesktopPreferenceStoreProvider 现已内部委托 PreferenceProviders
+    // (java.util.prefs 注册表), 与 BackupShared.backupLocked / AppWebDavShared.upConfig
+    // 走的后端同源, UI 输入的 WebDav 配置 BackupShared 可直接读到。
+    // 本函数把 5 个 WebDav string key 从 prefStore 复写到 prefs, 二者同一存储,
+    // 属历史遗留的无害冗余。
     fun syncLocalToRegistry() {
         listOf(
             PreferKey.webDavUrl,
@@ -189,20 +193,17 @@ private fun BackupConfigScreenContent() {
         }
     }
 
-    // BackupShared.backupPath 是计算属性 (访问时创建 ~/.legado/files/backup), 用 remember 只算一次
-    val defaultBackupPath = remember { BackupShared.backupPath }
-
     // 6 个 summary: 从 prefs 读当前值, 空值用 string key 占位 (与 app 端 BackupConfigHost.urlSummary 对齐)
     // rememberString 在 desktop 端对未注册 key 返回 key 本身, 故直接传 key 串即可
     var webDavUrlSummary by remember {
-        mutableStateOf(prefs.getString(PreferKey.webDavUrl).ifBlank { "web_dav_url_s" })
+        mutableStateOf(prefs.getString(PreferKey.webDavUrl).ifBlank { webDavUrlEmptyLabel })
     }
     var webDavAccountSummary by remember {
-        mutableStateOf(prefs.getString(PreferKey.webDavAccount).ifBlank { "web_dav_account_s" })
+        mutableStateOf(prefs.getString(PreferKey.webDavAccount).ifBlank { webDavAccountEmptyLabel })
     }
     var webDavPasswordSummary by remember {
         val pw = prefs.getString(PreferKey.webDavPassword)
-        mutableStateOf(if (pw.isBlank()) "web_dav_pw_s" else "*".repeat(pw.length))
+        mutableStateOf(if (pw.isBlank()) webDavPasswordEmptyLabel else "*".repeat(pw.length))
     }
     var webDavDirSummary by remember {
         mutableStateOf(prefs.getString(PreferKey.webDavDir, "legado"))
@@ -211,7 +212,7 @@ private fun BackupConfigScreenContent() {
         mutableStateOf(prefs.getString(PreferKey.webDavDeviceName, ""))
     }
     var backupPathSummary by remember {
-        mutableStateOf(prefs.getString(PreferKey.backupPath, defaultBackupPath))
+        mutableStateOf(prefs.getString(PreferKey.backupPath).ifBlank { selectBackupPathLabel })
     }
 
     // 状态文本 (备份/恢复操作进度消息, 底部状态行展示, 对齐 app 端 WaitDialog 语义)
@@ -236,13 +237,67 @@ private fun BackupConfigScreenContent() {
 
     // 操作完成后重新读 prefs 刷 summary (桌面端 java.util.prefs 无 listener, 手动刷新)
     fun refreshSummaries() {
-        webDavUrlSummary = prefs.getString(PreferKey.webDavUrl).ifBlank { "web_dav_url_s" }
-        webDavAccountSummary = prefs.getString(PreferKey.webDavAccount).ifBlank { "web_dav_account_s" }
+        webDavUrlSummary = prefs.getString(PreferKey.webDavUrl).ifBlank { webDavUrlEmptyLabel }
+        webDavAccountSummary = prefs.getString(PreferKey.webDavAccount).ifBlank { webDavAccountEmptyLabel }
         val pw = prefs.getString(PreferKey.webDavPassword)
-        webDavPasswordSummary = if (pw.isBlank()) "web_dav_pw_s" else "*".repeat(pw.length)
+        webDavPasswordSummary = if (pw.isBlank()) webDavPasswordEmptyLabel else "*".repeat(pw.length)
         webDavDirSummary = prefs.getString(PreferKey.webDavDir, "legado")
         webDavDeviceNameSummary = prefs.getString(PreferKey.webDavDeviceName, "")
-        backupPathSummary = prefs.getString(PreferKey.backupPath, defaultBackupPath)
+        backupPathSummary = prefs.getString(PreferKey.backupPath).ifBlank { selectBackupPathLabel }
+    }
+
+    // java.util.prefs 没有 Compose listener；由注入的 provider 在每次设置写入后递增 revision。
+    LaunchedEffect(preferenceRevision) {
+        refreshSummaries()
+        if (changedPreferenceKey in webDavConfigKeys) {
+            runCatching { AppWebDavShared.upConfig() }
+                .onFailure {
+                    refreshSummaries()
+                    AppLog.put("WebDav config failed\n${it.localizedMessage}", it)
+                }
+        }
+    }
+
+    fun backup(uploadToWebDav: Boolean) {
+        if (isLoading) return
+        scope.launch {
+            var destinationPath = prefs.getString(PreferKey.backupPath).takeIf { it.isNotBlank() }
+            if (destinationPath == null) {
+                destinationPath = withContext(Dispatchers.IO) { pickDirectory() }?.absolutePath
+                if (destinationPath == null) return@launch
+                prefs.putString(PreferKey.backupPath, destinationPath)
+                refreshSummaries()
+            }
+
+            isLoading = true
+            statusText = pendingOperationLabel
+            syncLocalToRegistry()
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    if (uploadToWebDav) AppWebDavShared.upConfig()
+                    BackupShared.backupLocked(destinationPath, uploadToWebDav)
+                }
+            }.onSuccess { localZipPath ->
+                statusText = if (uploadToWebDav) {
+                    "$backupSuccessUploadedLabel: $localZipPath"
+                } else {
+                    "$localBackupSuccessLabel: $localZipPath"
+                }
+            }.onFailure {
+                statusText = if (uploadToWebDav) {
+                    backupFailedLabel.format(it.localizedMessage)
+                } else {
+                    localBackupFailedLabel.format(it.localizedMessage)
+                }
+                val logKey = if (uploadToWebDav) {
+                    "webdav_backup_failed"
+                } else {
+                    "webdav_local_backup_failed"
+                }
+                AppLog.put(jvmGetString(logKey) + "\n" + it.localizedMessage, it)
+            }
+            isLoading = false
+        }
     }
 
     // 本地恢复: 弹 JFileChooser 选 zip → 解压到 backupPath → RestoreShared.restoreLocked
@@ -276,104 +331,70 @@ private fun BackupConfigScreenContent() {
 
     Column(modifier = Modifier.fillMaxSize()) {
         // shared BackupConfigScreen (UI 全部交给 shared, 薄壳只装配 summary + callbacks)
-        BackupConfigScreen(
-            webDavUrlSummary = webDavUrlSummary,
-            webDavAccountSummary = webDavAccountSummary,
-            webDavPasswordSummary = webDavPasswordSummary,
-            webDavDirSummary = webDavDirSummary,
-            webDavDeviceNameSummary = webDavDeviceNameSummary,
-            backupPathSummary = backupPathSummary,
-            // 备份路径选择: 弹 JFileChooser 选目录 (对齐 app 端 selectBackupPath.launch)
-            onBackupPath = {
-                if (isLoading) return@BackupConfigScreen
-                scope.launch {
-                    val selectedDir = withContext(Dispatchers.IO) {
-                        pickDirectory()
+        Box(Modifier.weight(1f)) {
+            BackupConfigScreen(
+                webDavUrlSummary = webDavUrlSummary,
+                webDavAccountSummary = webDavAccountSummary,
+                webDavPasswordSummary = webDavPasswordSummary,
+                webDavDirSummary = webDavDirSummary,
+                webDavDeviceNameSummary = webDavDeviceNameSummary,
+                backupPathSummary = backupPathSummary,
+                editDialogWidthFraction = 0.8f,
+                // 备份路径选择: 弹 JFileChooser 选目录 (对齐 app 端 selectBackupPath.launch)
+                onBackupPath = {
+                    if (isLoading) return@BackupConfigScreen
+                    scope.launch {
+                        val selectedDir = withContext(Dispatchers.IO) {
+                            pickDirectory()
+                        }
+                        if (selectedDir != null) {
+                            prefs.putString(PreferKey.backupPath, selectedDir.absolutePath)
+                            refreshSummaries()
+                        }
                     }
-                    if (selectedDir != null) {
-                        prefs.putString(PreferKey.backupPath, selectedDir.absolutePath)
-                        refreshSummaries()
+                },
+                onWebDavBackup = { backup(uploadToWebDav = true) },
+                // 长按备份按钮: 只备份到本地, 不上传到 WebDav
+                onWebDavBackupLong = { backup(uploadToWebDav = false) },
+                onWebDavRestore = {
+                    if (isLoading) return@BackupConfigScreen
+                    syncLocalToRegistry()
+                    isLoading = true
+                    statusText = loadingLabel
+                    scope.launch {
+                        val namesResult = runCatching {
+                            withContext(Dispatchers.IO) {
+                                AppWebDavShared.upConfig()
+                                AppWebDavShared.getBackupNames()
+                            }
+                        }.onFailure {
+                            statusText = restoreFailedLabel.format(it.localizedMessage)
+                            AppLog.put(jvmGetString("get_webdav_backup_list_failed") + "\n" + it.localizedMessage, it)
+                        }
+                        val names = namesResult.getOrNull().orEmpty()
+                        if (names.isNotEmpty()) {
+                            restoreNames = names
+                            showRestoreSelector = true
+                            statusText = pendingOperationLabel
+                        } else {
+                            showRestoreFromLocalDialog = true
+                            if (namesResult.isSuccess) statusText = webDavNoBackupLabel
+                        }
+                        isLoading = false
                     }
-                }
-            },
-            onWebDavBackup = {
-                if (isLoading) return@BackupConfigScreen
-                isLoading = true
-                statusText = pendingOperationLabel
-                // sync UI 输入 → 注册表, 让 BackupShared.backupLocked 读到最新 WebDav 配置
-                syncLocalToRegistry()
-                scope.launch {
-                    runCatching { BackupShared.backupLocked(uploadToWebDav = true) }
-                        .onSuccess {
-                            statusText = backupSuccessUploadedLabel
-                        }
-                        .onFailure {
-                            statusText = backupFailedLabel.format(it.localizedMessage)
-                            AppLog.put(jvmGetString("webdav_backup_failed") + "\n" + it.localizedMessage, it)
-                        }
-                    isLoading = false
-                }
-            },
-            // 长按备份按钮: 只备份到本地, 不上传到 WebDav (与 app 端 BackupConfigHost.onWebDavBackupLong 一致)
-            onWebDavBackupLong = {
-                if (isLoading) return@BackupConfigScreen
-                isLoading = true
-                statusText = pendingOperationLabel
-                // sync UI 输入 → 注册表 (即使仅本地备份, BackupShared 也读 AppConfigProviders.webDav* 系列配置)
-                syncLocalToRegistry()
-                scope.launch {
-                    runCatching { BackupShared.backupLocked(uploadToWebDav = false) }
-                        .onSuccess {
-                            statusText = localBackupSuccessLabel
-                        }
-                        .onFailure {
-                            statusText = localBackupFailedLabel.format(it.localizedMessage)
-                            AppLog.put(jvmGetString("webdav_local_backup_failed") + "\n" + it.localizedMessage, it)
-                        }
-                    isLoading = false
-                }
-            },
-            onWebDavRestore = {
-                if (isLoading) return@BackupConfigScreen
-                // sync UI 输入 → 注册表, 让 AppWebDavShared.upConfig/getBackupNames 用最新配置
-                syncLocalToRegistry()
-                // 对齐 app 端 BackupConfigHost.restore() + ConfigViewModel.loadBackupNames():
-                // getBackupNames 成功 → names; 失败 → 视作空列表 (loadBackupNames.onError 调 onSuccess(emptyList())),
-                // 再由 names 是否为空决定弹选择列表 or "从本地恢复"确认对话框
-                scope.launch {
-                    val names = runCatching {
-                        AppWebDavShared.upConfig()
-                        AppWebDavShared.getBackupNames()
-                    }.onFailure {
-                        // 对齐 app 端 loadBackupNames.onError: AppLog.put (桌面端无 toastOnUi, 仅日志)
-                        AppLog.put(jvmGetString("get_webdav_backup_list_failed") + "\n" + it.localizedMessage, it)
-                    }.getOrNull() ?: emptyList()
-                    if (names.isNotEmpty()) {
-                        // 有备份 → 弹选择列表 (对齐 app 端 selector)
-                        restoreNames = names
-                        showRestoreSelector = true
-                    } else {
-                        // 无备份或获取失败 → 弹"从本地恢复"确认对话框 (对齐 app 端 restore() else 分支)
-                        showRestoreFromLocalDialog = true
+                },
+                onWebDavRestoreLong = {
+                    if (isLoading) return@BackupConfigScreen
+                    restoreFromLocal()
+                },
+                onRestoreIgnore = {
+                    ignoreChecked = BackupConfigShared.ignoreKeys.map {
+                        BackupConfigShared.ignoreConfig[it] ?: false
                     }
-                }
-            },
-            // 长按恢复按钮: 从本地 zip 恢复 (对应 app 端 BackupConfigHost.restoreFromLocal)
-            // 复用 restoreFromLocal() (与"无备份时确认对话框 okButton"共用同一逻辑)
-            onWebDavRestoreLong = {
-                if (isLoading) return@BackupConfigScreen
-                restoreFromLocal()
-            },
-            // 备份忽略设置: 弹对话框让用户勾选忽略项 (对齐 app 端 BackupConfigHost.backupIgnore
-            // 的 alert + multiChoiceItems(BackupConfig.ignoreTitle, checkedItems))
-            // 打开前刷新 ignoreChecked 与 ignoreConfig 最新值 (与 app 端每次新建 BooleanArray 对齐)
-            onRestoreIgnore = {
-                ignoreChecked = BackupConfigShared.ignoreKeys.map {
-                    BackupConfigShared.ignoreConfig[it] ?: false
-                }
-                showIgnoreDialog = true
-            },
-        )
+                    showIgnoreDialog = true
+                },
+            )
+        }
 
         // 底部状态行 (对齐 app 端 WaitDialog 语义, 显示备份/恢复进度消息 + loading 圈)
         Row(
@@ -385,7 +406,8 @@ private fun BackupConfigScreenContent() {
         ) {
             Text(
                 text = statusText,
-                style = MaterialTheme.typography.bodyMedium,
+                // 14sp/20sp/0.25 对应原 M3 bodyMedium
+                style = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 0.25.sp),
             )
             if (isLoading) {
                 CircularProgressIndicator(
@@ -519,3 +541,45 @@ private fun pickDirectory(): File? = FileDialogs.pickDirectory()
  */
 private fun pickZipFile(): File? =
     FileDialogs.pickOpenFile(extensions = listOf("zip"), extensionDesc = "ZIP (*.zip)")
+
+private class RefreshingPreferenceStoreProvider : PreferenceStoreProvider {
+    private val delegate = DesktopPreferenceStoreProvider()
+
+    var revision by mutableIntStateOf(0)
+        private set
+    var lastChangedKey by mutableStateOf<String?>(null)
+        private set
+
+    override fun getBoolean(key: String, defValue: Boolean): Boolean =
+        delegate.getBoolean(key, defValue)
+
+    override fun putBoolean(key: String, value: Boolean) {
+        delegate.putBoolean(key, value)
+        lastChangedKey = key
+        revision++
+    }
+
+    override fun getInt(key: String, defValue: Int): Int = delegate.getInt(key, defValue)
+
+    override fun putInt(key: String, value: Int) {
+        delegate.putInt(key, value)
+        lastChangedKey = key
+        revision++
+    }
+
+    override fun getString(key: String, defValue: String?): String? =
+        delegate.getString(key, defValue)
+
+    override fun putString(key: String, value: String?) {
+        delegate.putString(key, value)
+        lastChangedKey = key
+        revision++
+    }
+}
+
+private val webDavConfigKeys = setOf(
+    PreferKey.webDavUrl,
+    PreferKey.webDavAccount,
+    PreferKey.webDavPassword,
+    PreferKey.webDavDir,
+)

@@ -2,12 +2,6 @@ package io.legado.desktop.ui.explore
 
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -18,6 +12,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
@@ -25,10 +21,9 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.PinnedExplore
 import io.legado.app.data.entities.rule.ExploreKind
-import io.legado.app.data.entities.rule.FlexChildStyle
-import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.source.clearExploreKindsCache
+import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.ui.book.source.SourceLoginDialog
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
@@ -45,10 +40,7 @@ import io.legado.app.ui.main.explore.ExploreScreen as SharedExploreScreen
 import io.legado.app.ui.main.explore.ExploreUiActions
 import io.legado.app.ui.main.explore.ExploreUiState
 import io.legado.app.utils.FlowBus
-import io.legado.app.utils.GSON
 import io.legado.app.utils.browseUrl
-import io.legado.app.utils.fromJsonArray
-import io.legado.app.utils.isJsonArray
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
@@ -197,70 +189,52 @@ private fun ExploreContent(
     )
     SharedExploreScreen(uiState, state)
 
-    // ---- AlertDialog 渲染 (替换原 javax.swing.JOptionPane) ----
+    // ---- 对话框渲染 (替换原 javax.swing.JOptionPane) ----
 
     // 1. onRemovePinned 二次确认 (替换原 JOptionPane.showConfirmDialog YES_NO_OPTION;
     //    ExploreStateHolder.onRemovePinned 设置 removePinnedTarget, 此处读取渲染)
     state.removePinnedTarget?.let { pin ->
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { state.removePinnedTarget = null },
-            title = { Text(dialogTitleLabel) },
-            text = { Text(sureDelExploreFavoriteLabel) },
-            confirmButton = {
-                TextButton(onClick = {
-                    state.removePinnedTarget = null
-                    PinnedExploreHelp.removePinnedExplore(pin)
-                }) { Text(okLabel) }
+            title = dialogTitleLabel,
+            message = sureDelExploreFavoriteLabel,
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                state.removePinnedTarget = null
+                PinnedExploreHelp.removePinnedExplore(pin)
             },
-            dismissButton = {
-                TextButton(onClick = { state.removePinnedTarget = null }) {
-                    Text(cancelLabel)
-                }
-            },
+            cancelButton = AlertButton(cancelLabel),
         )
     }
 
     // 2. onShowKindError 错误详情 (替换原 JOptionPane.showMessageDialog WARNING_MESSAGE;
-    //    错误详情可能较长, 用 verticalScroll 包裹 Text 防止溢出)
+    //    错误详情可能较长, message 槽内置滚动防止溢出)
     state.kindError?.let { kind ->
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { state.kindError = null },
-            title = { Text(exploreCategoryErrorLabel) },
-            text = {
-                Text(
-                    text = kind.url.orEmpty(),
-                    modifier = Modifier.verticalScroll(rememberScrollState()),
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { state.kindError = null }) { Text(okLabel) }
-            },
+            title = exploreCategoryErrorLabel,
+            // 错误详情走 message 槽 (内置 weight+verticalScroll, 长文本可滚)
+            message = kind.url.orEmpty(),
+            okButton = AlertButton(okLabel),
         )
     }
 
     // 3. onDeleteSource 二次确认 (替换原 JOptionPane.showConfirmDialog YES_NO_OPTION;
     //    ExploreStateHolder.onDeleteSource 设置 deleteSourceTarget, 此处读取渲染)
     state.deleteSourceTarget?.let { part ->
-        AlertDialog(
-            modifier = Modifier.fillMaxWidth(0.8f),
+        AppAlertDialog(
+            widthFraction = 0.8f,
             onDismissRequest = { state.deleteSourceTarget = null },
-            title = { Text(dialogTitleLabel) },
-            text = { Text(sureDelSourceLabel) },
-            confirmButton = {
-                TextButton(onClick = {
-                    state.deleteSourceTarget = null
-                    // 复用 shared commonMain 的 ExploreViewModelShared.deleteSource
-                    // (内部 launch 协程调 SourceHelp.deleteBookSource, 无需外层 scope.launch)
-                    exploreShared.deleteSource(part)
-                }) { Text(okLabel) }
+            title = dialogTitleLabel,
+            message = sureDelSourceLabel,
+            okButton = AlertButton(okLabel, dismissOnClick = false) {
+                state.deleteSourceTarget = null
+                // 复用 shared commonMain 的 ExploreViewModelShared.deleteSource
+                // (内部 launch 协程调 SourceHelp.deleteBookSource, 无需外层 scope.launch)
+                exploreShared.deleteSource(part)
             },
-            dismissButton = {
-                TextButton(onClick = { state.deleteSourceTarget = null }) {
-                    Text(cancelLabel)
-                }
-            },
+            cancelButton = AlertButton(cancelLabel),
         )
     }
 
@@ -281,7 +255,8 @@ private fun ExploreContent(
  *
  * 对照 app 端 `ExploreTabState`: snapshot state + 交互回调。差异:
  * - 无 Lifecycle 依赖 (桌面端无 androidx.lifecycle), flow 直接 collect
- * - kinds 异步加载走桌面端简化版 [exploreKindsDesktop] (不执行 JS)
+ * - kinds 异步加载走 commonMain 完整版 [exploreKinds] (含 JS 求值 + 磁盘缓存,
+ *   desktop 已注册 QuickJsJsEngine 与 ExploreKindsCacheProvider)
  * - 路由跳转改为回调注入 (onOpenExplore/onEditSource/onSearchBook)
  * - 删除收藏项/书源弹 AlertDialog 二次确认 (与 BookSourceScreen 风格统一,
  *   ExploreContent 末尾渲染分支读取 state.removePinnedTarget / deleteSourceTarget)
@@ -384,7 +359,7 @@ private class ExploreStateHolder(
                 val result = runCatching {
                     withContext(Dispatchers.IO) {
                         val source = AppDbProviders.get().bookSourceDao.getBookSource(url)
-                        val kinds = source?.exploreKindsDesktop() ?: emptyList()
+                        val kinds = source?.exploreKinds() ?: emptyList()
                         source to kinds
                     }
                 }.getOrDefault(null to emptyList())
@@ -495,74 +470,3 @@ private class ExploreStateHolder(
     }
 }
 
-/**
- * 桌面端简化版 exploreKinds (对齐 app 端 `BookSource.exploreKinds()` 扩展)。
- *
- * app 端依赖 ACache + runScriptWithContext (evalJS) + exploreKindsMap 内存缓存,
- * 桌面端:
- * - 走 [BookSource.exploreKindsJson] 取 JSON (已下沉, 走 ExploreKindsCacheProviders;
- *   桌面端未注册 ExploreKindsCacheProvider.impl, 故仅 exploreUrl 本身为 JSON 数组时能解析)
- * - JSON 数组用 [GSON.fromJsonArray] 解析为 `List<ExploreKind>`
- * - 非 JSON 走 [parseTextKinds] 文本格式解析 (split by && 或 \n, :: 分隔)
- * - 不执行 JS (若 exploreUrl 以 `<js>` / `@js:` 开头, exploreKindsJson 返回空字符串,
- *   走文本解析会得到单个 ERROR 项, 用户长按可看详情)
- *
- * 内存缓存 (对应 app 端 exploreKindsMap) 暂未实现, 每次重新解析;
- * 若性能成问题可后续补 ConcurrentHashMap 缓存。
- */
-private suspend fun BookSource.exploreKindsDesktop(): List<ExploreKind> {
-    return withContext(Dispatchers.IO) {
-        runCatching {
-            val json = exploreKindsJson()
-            if (json.isJsonArray()) {
-                GSON.fromJsonArray<ExploreKind>(json).getOrDefault(emptyList())
-            } else {
-                val ruleStr = exploreUrl
-                if (ruleStr.isNullOrBlank()) {
-                    emptyList()
-                } else {
-                    parseTextKinds(ruleStr)
-                }
-            }
-        }.getOrElse {
-            listOf(ExploreKind("ERROR:${it.localizedMessage}", url = it.stackTraceToString()))
-        }
-    }
-}
-
-/**
- * 文本格式发现分类解析 (复刻 app 端 `BookSourceExtensions.exploreKinds` 文本分支)。
- *
- * 格式: `title::url` 多行, 用 `&&` 或 `\n` 分隔;
- *       前缀 `BUTTON:` / `TITLE:` 切换 type (对应 [RowUi.Type.button] / [RowUi.Type.title]);
- *       `TITLE:` 默认占整行 (cols = 1)。
- */
-private fun parseTextKinds(ruleStr: String): List<ExploreKind> {
-    val kinds = arrayListOf<ExploreKind>()
-    ruleStr.split("(&&|\n)+".toRegex()).forEach { kindStr ->
-        val kindCfg = kindStr.split("::")
-        var title = kindCfg.first()
-        var type = RowUi.Type.text
-        var cols: Int? = null
-        when {
-            title.startsWith("BUTTON:") -> {
-                title = title.substring(7)
-                type = RowUi.Type.button
-            }
-            title.startsWith("TITLE:") -> {
-                title = title.substring(6)
-                type = RowUi.Type.title
-                cols = 1
-            }
-        }
-        kinds.add(
-            ExploreKind(
-                title = title,
-                type = type,
-                url = kindCfg.getOrNull(1),
-                style = cols?.let { FlexChildStyle(cols = it) },
-            ),
-        )
-    }
-    return kinds
-}

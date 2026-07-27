@@ -42,7 +42,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.Slider
@@ -68,12 +67,7 @@ import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
-
-/** Arco Design 主色 arcoblue-6 (#165DFF), 用于 Slider 与图标强调色。 */
-private val ArcoBlue6 = Color(0xFF165DFF)
-
-/** Arco Design arco_radius_lg = 16dp, 用于对话框圆角。 */
-private val ArcoRadiusLg = 16.dp
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 朗读控制面板对话框 (KMP 共享, app + desktop 复用)。
@@ -184,7 +178,7 @@ fun ReadAloudDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
-            shape = RoundedCornerShape(ArcoRadiusLg),
+            shape = DesignTokens.dialogShape,
             color = colors.background,
             modifier = Modifier.fillMaxWidth().padding(16.dp),
         ) {
@@ -272,9 +266,9 @@ fun ReadAloudDialog(
                         },
                         valueRange = 0f..180f,
                         colors = SliderDefaults.colors(
-                            thumbColor = ArcoBlue6,
-                            activeTrackColor = ArcoBlue6,
-                            inactiveTrackColor = ArcoBlue6.copy(alpha = 0.2f),
+                            thumbColor = DesignTokens.arcoBlue6,
+                            activeTrackColor = DesignTokens.arcoBlue6,
+                            inactiveTrackColor = DesignTokens.arcoBlue6.copy(alpha = 0.2f),
                         ),
                         modifier = Modifier.weight(1f),
                     )
@@ -373,9 +367,9 @@ fun ReadAloudDialog(
                         valueRange = 0f..45f,
                         enabled = !followSys,
                         colors = SliderDefaults.colors(
-                            thumbColor = ArcoBlue6,
-                            activeTrackColor = ArcoBlue6,
-                            inactiveTrackColor = ArcoBlue6.copy(alpha = 0.2f),
+                            thumbColor = DesignTokens.arcoBlue6,
+                            activeTrackColor = DesignTokens.arcoBlue6,
+                            inactiveTrackColor = DesignTokens.arcoBlue6.copy(alpha = 0.2f),
                         ),
                         modifier = Modifier.weight(1f),
                     )

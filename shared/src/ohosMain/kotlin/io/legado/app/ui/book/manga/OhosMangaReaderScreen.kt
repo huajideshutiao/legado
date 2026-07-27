@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import io.legado.app.data.entities.Book
 import io.legado.app.ui.book.manga.entities.MangaPage
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.rememberString
@@ -25,16 +26,13 @@ import io.legado.app.ui.compose.platform.rememberString
  *
  * # 阻塞点
  *
- * - **imageSlot** 依赖平台图片加载 (鸿蒙端原 ArkTS 用 ArkUI Image 组件直接加载 URL,
- *   Compose 侧未接入 Coil3 等图片加载框架), 本入口仅做 stub 让编译通过,
- *   后续接入鸿蒙平台图片加载。
  * - **路由参数**: 鸿蒙 OhosNavHost 当前不向 MANGA_READER 注入 Book (与 iOS 差异),
  *   故 initData 调用时 IntentData.book 可能为空, VM 会写入 "没有找到书" 错误,
  *   后续 NavHost 接入 Book 参数后自然生效。
  *
  * 原 ArkTS MangaReader.ets 通过 napi loadMangaChapter(bookUrl, chapterIndex) 取图片 URL 列表,
- * Scroll + Column + Image 实现上下滑动浏览; Compose 化后 imageSlot 需在 ohosMain 侧实现
- * (后续 KP, 用 Coil3 KMP)。
+ * Scroll + Column + Image 实现上下滑动浏览; Compose 化后 imageSlot 由 [OhosMangaImage] 实现
+ * (ImageBitmapLoader 鸿蒙实现: Skia 解码 + 书源防盗链 header + cbz:// 条目, 含内存 LRU 与邻页预取)。
  *
  * @param onBack 返回回调
  * @param onOpenToc 跳转目录 (由 OhosNavHost 注入)
@@ -42,6 +40,7 @@ import io.legado.app.ui.compose.platform.rememberString
  */
 @Composable
 fun OhosMangaReaderScreen(
+    book: Book,
     onBack: () -> Unit,
     onOpenToc: () -> Unit = {},
     onOpenChangeSource: () -> Unit = {},
@@ -59,6 +58,7 @@ fun OhosMangaReaderScreen(
 
     // 收集 shared VM 状态 (StateFlow 经 collectAsState 订阅, 对照 desktop 第 150-155 行)
     val book by viewModel.book.collectAsState()
+    val bookSource by viewModel.bookSource.collectAsState()
     val durChapterIndex by viewModel.durChapterIndex.collectAsState()
     val durChapter by viewModel.durChapter.collectAsState()
     val mangaContent by viewModel.mangaContent.collectAsState()
@@ -116,8 +116,17 @@ fun OhosMangaReaderScreen(
             onRetry = { viewModel.loadContent() },
             onOpenToc = onOpenToc,
             onOpenChangeSource = onOpenChangeSource,
-            // KP-ohos: imageSlot 依赖平台图片加载 (Coil3), stub 空 Box
-            imageSlot = { _, _, _ -> Box(Modifier) },
+            // 平台图片渲染: ImageBitmapLoader 鸿蒙实现 + 内存 LRU + 邻页预取 (见 OhosMangaImage)
+            imageSlot = { url, modifier, horizontal ->
+                OhosMangaImage(
+                    url = url,
+                    images = images,
+                    book = book,
+                    bookSource = bookSource,
+                    modifier = modifier,
+                    horizontal = horizontal,
+                )
+            },
         )
     }
 }

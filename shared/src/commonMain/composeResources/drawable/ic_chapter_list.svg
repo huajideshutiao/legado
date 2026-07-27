@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-    <!-- 来源: app/src/main/res/drawable/ic_chapter_list.xml (章节列表: 四条横线) -->
-    <path fill="#595757" d="M20,7.046H4V5.522h16V7.046z"/>
-    <path fill="#595757" d="M20,10.855H4V9.334h16V10.855z"/>
-    <path fill="#595757" d="M20,14.666H4v-1.521h16V14.666z"/>
-    <path fill="#595757" d="M20,18.477H4v-1.523h16V18.477z"/>
-</svg>

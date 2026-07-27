@@ -83,7 +83,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
@@ -100,6 +99,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -111,6 +111,7 @@ import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ColorUtils
 import kotlin.math.PI
@@ -196,6 +197,7 @@ interface ReadMenuState {
     val prevEnabled: Boolean
     val nextEnabled: Boolean
     val autoPage: Boolean
+    val isNightTheme: Boolean
 
     // ---- 动画生命周期回调 ----
     fun onTransitionIdle(shown: Boolean)
@@ -573,9 +575,9 @@ private fun SourceActionButton(state: ReadMenuState) {
         Box(
             Modifier
                 .padding(end = 16.dp)
-                .height(28.dp)
+                .heightIn(min = 32.dp)
                 .widthIn(max = 120.dp)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(DesignTokens.shapeDefault)
                 .background(AppTheme.colors.accent)
                 .clickable {
                     loginVisible = state.sourceLoginVisible()
@@ -587,7 +589,7 @@ private fun SourceActionButton(state: ReadMenuState) {
         ) {
             Text(
                 text = state.sourceActionText,
-                color = Color.White,
+                color = if (ColorUtils.isColorLight(AppTheme.colors.accent.toArgb())) Color.Black else Color.White,
                 fontSize = 14.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -653,7 +655,7 @@ private fun ReadMenuBottom(state: ReadMenuState) {
             ) { state.clickReplaceRule() }
             Spacer(Modifier.weight(1f))
             ReadMenuFab(
-                iconKey = "ic_brightness",
+                iconKey = if (state.isNightTheme) "ic_daytime" else "ic_brightness",
                 contentDescription = rememberString("dark_theme"),
                 bg = bg, pressedBg = pressedBg, tint = text,
             ) { state.clickNightTheme() }

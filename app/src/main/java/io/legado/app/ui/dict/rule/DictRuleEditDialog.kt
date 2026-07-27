@@ -6,10 +6,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -70,19 +70,17 @@ class DictRuleEditDialog() : BaseComposeDialogFragment() {
                     }
                     OverflowMenu { dismissMenu ->
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.copy_rule), color = colors.primaryText) },
                             onClick = {
                                 dismissMenu()
                                 viewModel.copyRule(getDictRule())
                             },
-                        )
+                        ) { Text(stringResource(R.string.copy_rule), color = colors.primaryText) }
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.paste_rule), color = colors.primaryText) },
                             onClick = {
                                 dismissMenu()
                                 viewModel.pasteRule { upRuleView(it) }
                             },
-                        )
+                        ) { Text(stringResource(R.string.paste_rule), color = colors.primaryText) }
                     }
                 },
             )

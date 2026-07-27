@@ -64,6 +64,7 @@ import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceUiEventBridge
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.registerAndroidPasswordProvider
+import io.legado.app.help.toast.registerAndroidToaster
 import io.legado.app.help.ui.registerAndroidOpenUrlProvider
 import io.legado.app.help.ui.registerAndroidToastProvider
 import io.legado.app.help.ui.registerAndroidUserAgentProvider
@@ -99,6 +100,8 @@ class App : Application() {
         super.onCreate()
         // 注册 shared 模块的 ApplicationContext, 供 commonMain 的 stringRes(resId) 使用
         registerSharedAppContext(this)
+        // 注册 commonMain 的 Toasters actual (AndroidToaster), 供下沉业务调用 Toasters.get().toast()
+        registerAndroidToaster(this)
         // 注册 EpubFile androidMain 的 ApplicationContext, 供 LocalEpubResource android actual
         // 打开 content scheme 本地书籍 (contentResolver.openFileDescriptor); 未注册时
         // content scheme 路径返回 null (PFD 获取失败, EpubFile 记录错误日志)

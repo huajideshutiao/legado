@@ -2,6 +2,7 @@ package io.legado.app.ui.book.read
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -9,7 +10,8 @@ import kotlinx.coroutines.flow.SharedFlow
 // ReadConfigChange enum 已在 shared/commonMain (本文件同包)。
 
 /**
- * read/ 内部事件枢纽。行为对齐 FlowBus：非粘性、缓冲 64、DROP_OLDEST、无订阅者时丢弃。
+ * read/ 内部事件枢纽。行为对齐 FlowBus：默认非粘性、缓冲 64、DROP_OLDEST、无订阅者时丢弃；
+ * 原版同步直调的回调类事件（menuRefresh/loadChapterList/newProgressConfirm）用 replay=1 防漏发。
  * 外部 EventBus 广播（服务/接收器/搜索页）由 ReadBookActivity 单一入口桥接转发到此。
  *
  * 从 app 端下沉到 shared/commonMain：object 本体仅依赖 kotlinx.coroutines.flow + commonMain
@@ -44,12 +46,12 @@ object ReadBookEvents {
     private val _menuRefresh = eventFlow<Unit>(replay = 1)
     val menuRefresh: SharedFlow<Unit> get() = _menuRefresh
 
-    /** 请求重载目录（原 ReadBook.CallBack.loadChapterList） */
-    private val _loadChapterList = eventFlow<Book>()
+    /** 请求重载目录（原 ReadBook.CallBack.loadChapterList 同步直调，replay=1 兜底无订阅期漏发） */
+    private val _loadChapterList = eventFlow<Book>(replay = 1)
     val loadChapterList: SharedFlow<Book> get() = _loadChapterList
 
-    /** 云端进度更新确认（原 ReadBook.CallBack.sureNewProgress） */
-    private val _newProgressConfirm = eventFlow<BookProgress>()
+    /** 云端进度更新确认（原 ReadBook.CallBack.sureNewProgress 同步直调，replay=1 兜底无订阅期漏发） */
+    private val _newProgressConfirm = eventFlow<BookProgress>(replay = 1)
     val newProgressConfirm: SharedFlow<BookProgress> get() = _newProgressConfirm
 
     /** 朗读状态（EventBus.ALOUD_STATE 桥接，ReadAloudDialog 消费） */
@@ -90,6 +92,15 @@ object ReadBookEvents {
 
     fun postConfirmNewProgress(progress: BookProgress) {
         _newProgressConfirm.tryEmit(progress)
+    }
+
+    /**
+     * 清掉 [newProgressConfirm] 的 replay 缓存。用户确认/取消云进度弹窗后调用，
+     * 避免 replay=1 在 UI 重建时把已处理过的确认事件再弹一次。
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun clearNewProgressConfirm() {
+        _newProgressConfirm.resetReplayCache()
     }
 
     fun postAloudState(state: Int) {

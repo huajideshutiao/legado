@@ -20,6 +20,16 @@ class SymmetricCryptoAndroid(
     key: ByteArray?,
 ) : SymmetricCrypto(algorithm, key), io.legado.app.help.crypto.SymmetricCrypto {
 
+    // 新接口方法 encrypt/encryptHex: hutool 父类已有同签名实现 (encrypt(byte[]) 具体方法,
+    // 其余 SymmetricEncryptor default 方法), 一行 super 直通仅作 override 标记。
+    override fun encrypt(data: ByteArray): ByteArray = super.encrypt(data)
+
+    override fun encrypt(data: String): ByteArray = super.encrypt(data)
+
+    override fun encryptHex(data: ByteArray): String = super.encryptHex(data)
+
+    override fun encryptHex(data: String): String = super.encryptHex(data)
+
     override fun encryptBase64(data: ByteArray): String {
         return EncoderUtils.base64Encode(encrypt(data))
     }

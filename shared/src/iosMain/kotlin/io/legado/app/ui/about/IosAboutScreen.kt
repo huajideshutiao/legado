@@ -4,11 +4,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import io.legado.app.constant.AppLog
+import io.legado.app.help.copyToClipboard
+import io.legado.app.help.file.exportFile
 import io.legado.app.help.openURL
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.rememberString
+import kotlinx.coroutines.launch
 
 /**
  * iOS 端"关于"页 Screen 入口 (包装 shared/sharedUiMain 的 [AboutScreen])。
@@ -44,8 +49,10 @@ fun IosAboutScreen(
     // iOS 端待接入提示文案 (回调 lambda 非 @Composable, 需预先缓存)
     val checkUpdateText = rememberString("ios_check_update_not_implemented")
     val crashLogText = rememberString("ios_crash_log_not_implemented")
-    val saveLogText = rememberString("ios_save_log_not_implemented")
     val heapDumpText = rememberString("ios_heap_dump_not_supported")
+    val exportSuccessText = rememberString("export_success")
+    val copiedToClipboardText = rememberString("copied_to_clipboard")
+    val scope = rememberCoroutineScope()
 
     Column(Modifier.fillMaxSize()) {
         AppTitleBar(
@@ -69,8 +76,22 @@ fun IosAboutScreen(
                 Toasters.get().toast(crashLogText)
             },
             onSaveLog = {
-                // TODO: iOS 端保存日志 (依赖日志采集框架), KP6+ 接入
-                Toasters.get().toast(saveLogText)
+                // 导出 AppLog 日志到文件, 失败降级复制到剪贴板
+                scope.launch {
+                    val text = AppLog.logs.joinToString("\n\n") { (time, msg, throwable) ->
+                        buildString {
+                            append("[$time] $msg")
+                            throwable?.let { append("\n${it.stackTraceToString()}") }
+                        }
+                    }
+                    val saved = exportFile("legado_log.txt", text.encodeToByteArray())
+                    if (saved) {
+                        Toasters.get().toast(exportSuccessText)
+                    } else {
+                        copyToClipboard(text)
+                        Toasters.get().toast(copiedToClipboardText)
+                    }
+                }
             },
             onCreateHeapDump = {
                 // iOS 端无 JVM 堆转储概念, 永久 no-op (与 desktop JVM 端差异)

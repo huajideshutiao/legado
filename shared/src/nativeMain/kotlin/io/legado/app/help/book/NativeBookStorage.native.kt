@@ -3,7 +3,7 @@ package io.legado.app.help.book
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.file.AppFilesDirs
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * [BookStorage] iOS/鸿蒙 (Native target) 共用真实实现 (基于 [kotlin.io.File])。
@@ -59,15 +59,15 @@ class NativeBookStorage(
         val file = File(resolveChapterFile(book, chapter))
         // 父目录不存在则递归创建 (与 Android FileUtils.createFileIfNotExist / iOS createDirectoryAtPath 行为对齐)
         file.parentFile?.mkdirs()
-        // 直接 writeText (UTF-8) (kotlin.io.File 无原子写 API, 与 JVM Files.write 行为一致)
-        file.writeText(text, Charsets.UTF_8)
+        // 直接 writeText (默认 UTF-8) (kotlin.io.File 无原子写 API, 与 JVM Files.write 行为一致)
+        file.writeText(text)
     }
 
     override fun getContent(book: Book, chapter: BookChapter): String? {
         val file = File(resolveChapterFile(book, chapter))
         if (!file.exists()) return null
         // readText (UTF-8) (与 JVM Files.readAllBytes + UTF-8 解码 / iOS NSData→String 行为等价)
-        val text = runCatching { file.readText(Charsets.UTF_8) }.getOrNull() ?: return null
+        val text = runCatching { file.readText() }.getOrNull() ?: return null
         // 与 Android BookHelp.getContent 行为对齐: 空字符串视为无内容
         return text.ifEmpty { null }
     }

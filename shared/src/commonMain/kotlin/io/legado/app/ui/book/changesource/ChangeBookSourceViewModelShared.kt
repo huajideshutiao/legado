@@ -12,6 +12,7 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.primaryStr
 import io.legado.app.help.book.releaseHtmlData
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.closeIfCloseable
 import io.legado.app.help.coroutine.newFixedThreadPoolDispatcher
 import io.legado.app.help.source.SourceHelp
@@ -26,7 +27,6 @@ import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.coroutineScope
@@ -293,9 +293,9 @@ class ChangeBookSourceViewModelShared(
             }
             searchBooks.sortedWith(comparator)
         }.onFailure {
-            AppLog.put("换源排序出错\n${it.localizedMessage}", it)
+            AppLog.put("换源排序出错\n${it.message}", it)
         }.getOrDefault(searchBooks)
-    }.flowOn(Dispatchers.IO)
+    }.flowOn(IoDispatcher)
 
     /**
      * 初始化数据 (对照原 `initData(arguments: Bundle?, book: Book?, fromReadBookActivity: Boolean)`)。
@@ -425,7 +425,7 @@ class ChangeBookSourceViewModelShared(
             bookMap.clear()
             tocMapChapterCount = 0
             bookSources.add(appDb.bookSourceDao.getBookSource(origin)!!)
-            searchBooks.removeIf { it.origin == origin }
+            searchBooks.removeAll { it.origin == origin }
             initSearchPool()
             search()
         }
@@ -467,7 +467,7 @@ class ChangeBookSourceViewModelShared(
                 _searchState.value = false
                 searchFinishCallback?.invoke(searchBooks.isEmpty())
             }.catch {
-                AppLog.put("换源搜索出错\n${it.localizedMessage}", it)
+                AppLog.put("换源搜索出错\n${it.message}", it)
             }.collect()
         }
     }
@@ -581,7 +581,7 @@ class ChangeBookSourceViewModelShared(
             len to "[${chapterIndex + 1}] ${title}\n字数：${len}"
         } catch (t: Throwable) {
             if (t is CancellationException) throw t
-            -1 to "[${chapterIndex + 1}] ${title}\n获取字数失败：${t.localizedMessage}"
+            -1 to "[${chapterIndex + 1}] ${title}\n获取字数失败：${t.message}"
         }
         val endTime = systemCurrentTimeMillis()
         val searchBook = book.toSearchBook().apply {
@@ -619,7 +619,7 @@ class ChangeBookSourceViewModelShared(
                 searchBooks.filterTo(searchBookList) {
                     it.chapterWordCountText == null
                 }
-                searchBooks.removeIf { it.chapterWordCountText == null }
+                searchBooks.removeAll { it.chapterWordCountText == null }
             } else {
                 searchBookList.addAll(searchBooks)
                 searchBooks.clear()
@@ -651,7 +651,7 @@ class ChangeBookSourceViewModelShared(
             }.onCompletion {
                 _searchState.value = false
             }.catch {
-                AppLog.put("换源刷新列表出错\n${it.localizedMessage}", it)
+                AppLog.put("换源刷新列表出错\n${it.message}", it)
             }.collect()
         }
     }
@@ -779,7 +779,7 @@ class ChangeBookSourceViewModelShared(
         }.onSuccess {
             success.invoke(it)
         }.onError {
-            error.invoke(it.localizedMessage ?: "获取正文出错")
+            error.invoke(it.message ?: "获取正文出错")
         }
     }
 
@@ -869,7 +869,7 @@ class ChangeBookSourceViewModelShared(
         }.onSuccess {
             onSuccess.invoke(it.first, it.second, it.third)
         }.onError {
-            platform.toastOnUi("自动换源失败\n${it.localizedMessage}")
+            platform.toastOnUi("自动换源失败\n${it.message}")
         }
     }
 

@@ -11,9 +11,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
-import androidx.compose.material3.Text
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -30,6 +28,7 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialogContent
 import io.legado.app.ui.compose.component.AppAutoCompleteField
 import io.legado.app.ui.compose.component.AppCheckbox
+import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSelectorList
 import io.legado.app.ui.compose.theme.AppTheme
 
@@ -215,13 +214,9 @@ class AlertBuilder(val context: Context) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        RadioButton(
+                        AppRadioButton(
                             selected = i == selected,
                             onClick = null,
-                            colors = RadioButtonDefaults.colors(
-                                selectedColor = colors.accent,
-                                unselectedColor = colors.secondaryText,
-                            ),
                         )
                         Text(label, color = colors.primaryText, fontSize = 16.sp, modifier = Modifier.weight(1f))
                     }

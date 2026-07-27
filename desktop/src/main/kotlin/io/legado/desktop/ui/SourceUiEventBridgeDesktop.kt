@@ -7,7 +7,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SourceUiRequest
+import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.ui.book.source.SourceLoginDialog
+import io.legado.app.ui.book.source.VerificationCodeDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.browseUrl
@@ -50,6 +52,29 @@ fun SourceUiEventBridgeHost() {
     }
 
     val request = DesktopSourceUiEventBridge.currentRequest.value ?: return
+
+    // 图片验证码: 不限 BookSource (RssSource 验证同样走此路径), 先于 BookSource 转换处理
+    if (request is SourceUiRequest.VerificationCode) {
+        val key = request.source.getKey()
+        VerificationCodeDialog(
+            url = request.url,
+            source = request.source,
+            onConfirm = { code ->
+                SourceVerificationHelpShared.setResult(key, code)
+                SourceVerificationHelpShared.notifyResultArrived(key)
+                DesktopSourceUiEventBridge.currentRequest.value = null
+            },
+            onDismiss = {
+                // 对齐 app 端 checkResult: 未确认关闭回填空串并唤醒等待线程 (走"验证结果为空")
+                SourceVerificationHelpShared.getResult(key)
+                    ?: SourceVerificationHelpShared.setResult(key, "")
+                SourceVerificationHelpShared.notifyResultArrived(key)
+                DesktopSourceUiEventBridge.currentRequest.value = null
+            },
+        )
+        return
+    }
+
     // BaseSource 抽象, 实例恒为 BookSource; 安全转换防御异常输入, 失败时清空请求避免卡死
     val src = request.source as? BookSource ?: run {
         DesktopSourceUiEventBridge.currentRequest.value = null
@@ -83,5 +108,7 @@ fun SourceUiEventBridgeHost() {
                 },
             )
         }
+        // 上方 early-return 已处理, 此分支不可达 (sealed when 需穷尽)
+        is SourceUiRequest.VerificationCode -> Unit
     }
 }

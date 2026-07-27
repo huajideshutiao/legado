@@ -1,7 +1,7 @@
 package io.legado.app.help
 
 import io.legado.app.help.file.AppFilesDirs
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * nativeMain: [FileCacheProvider] 的 iOS / 鸿蒙 两端共用真实实现
@@ -54,20 +54,21 @@ class NativeFileCacheProvider : FileCacheProvider {
 
     override fun put(key: String, value: String, saveTime: Int) {
         val data = if (saveTime == 0) value else createDateInfo(saveTime) + value
-        putBytes(key, data.toByteArray(Charsets.UTF_8))
+        putBytes(key, data.encodeToByteArray())
     }
 
     override fun getAsString(key: String): String? {
         val bytes = getBytes(key) ?: return null
-        return clearDateInfo(bytes).toString(Charsets.UTF_8)
+        return clearDateInfo(bytes).decodeToString()
     }
 
     override fun put(key: String, value: ByteArray, saveTime: Int) {
         val data = if (saveTime == 0) value else {
-            val header = createDateInfo(saveTime).toByteArray(Charsets.UTF_8)
+            val header = createDateInfo(saveTime).encodeToByteArray()
+            // copyInto 逐参等价原 System.arraycopy(src, 0, ret, destOffset, src.size)
             ByteArray(header.size + value.size).also { ret ->
-                System.arraycopy(header, 0, ret, 0, header.size)
-                System.arraycopy(value, 0, ret, header.size, value.size)
+                header.copyInto(ret, destinationOffset = 0)
+                value.copyInto(ret, destinationOffset = header.size)
             }
         }
         putBytes(key, data)

@@ -2,8 +2,8 @@ package io.legado.app.ui.book.toc.rule
 
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.TxtTocRule
+import io.legado.app.help.coroutine.IoDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
@@ -46,31 +46,31 @@ class TxtTocRuleViewModelShared(
     private val appDb get() = AppDbProviders.get()
 
     fun save(txtTocRule: TxtTocRule) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             appDb.txtTocRuleDao.insert(txtTocRule)
         }
     }
 
     fun del(vararg txtTocRule: TxtTocRule) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             appDb.txtTocRuleDao.delete(*txtTocRule)
         }
     }
 
     fun update(vararg txtTocRule: TxtTocRule) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             appDb.txtTocRuleDao.update(*txtTocRule)
         }
     }
 
     fun importDefault() {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             importDefaultRules.invoke()
         }
     }
 
     fun toTop(vararg rules: TxtTocRule) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             val minOrder = appDb.txtTocRuleDao.minOrder() - 1
             rules.forEachIndexed { index, source ->
                 source.serialNumber = minOrder - index
@@ -80,7 +80,7 @@ class TxtTocRuleViewModelShared(
     }
 
     fun toBottom(vararg sources: TxtTocRule) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             val maxOrder = appDb.txtTocRuleDao.maxOrder() + 1
             sources.forEachIndexed { index, source ->
                 source.serialNumber = maxOrder + index
@@ -90,7 +90,7 @@ class TxtTocRuleViewModelShared(
     }
 
     fun upOrder() {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             val sources = appDb.txtTocRuleDao.all()
             for ((index: Int, source: TxtTocRule) in sources.withIndex()) {
                 source.serialNumber = index + 1
@@ -100,14 +100,14 @@ class TxtTocRuleViewModelShared(
     }
 
     fun enableSelection(vararg txtTocRule: TxtTocRule) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             val array = txtTocRule.map { it.copy(enable = true) }.toTypedArray()
             appDb.txtTocRuleDao.insert(*array)
         }
     }
 
     fun disableSelection(vararg txtTocRule: TxtTocRule) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             val array = txtTocRule.map { it.copy(enable = false) }.toTypedArray()
             appDb.txtTocRuleDao.insert(*array)
         }

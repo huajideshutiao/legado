@@ -24,15 +24,16 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.constraintlayout.widget.ConstraintLayout
@@ -174,10 +175,32 @@ class ReadRssActivity : BaseComposeActivity() {
         }
     }
 
-    // 对齐 rss_read.xml：刷新/收藏/分享/朗读常驻，登录/浏览器打开走溢出
+    // 对齐 rss_read.xml：刷新/收藏 always，分享/朗读 ifRoom，登录/浏览器打开 never
     @Composable
     private fun RssActions() {
         val colors = AppTheme.colors
+        val configuration = LocalConfiguration.current
+        val widthDp = configuration.screenWidthDp
+        val heightDp = configuration.screenHeightDp
+        val maxActionButtons = when {
+            configuration.smallestScreenWidthDp > 600 || widthDp > 600 ||
+                (widthDp > 960 && heightDp > 720) ||
+                (widthDp > 720 && heightDp > 960) -> 5
+
+            widthDp >= 500 ||
+                (widthDp > 640 && heightDp > 480) ||
+                (widthDp > 480 && heightDp > 640) -> 4
+
+            widthDp >= 360 -> 3
+            else -> 2
+        }
+        // overflow 固定存在；always 项优先占位，剩余容量按 XML 顺序分给 ifRoom 项。
+        val ifRoomSlots = (
+            maxActionButtons - 1 - 1 - if (starVisible) 1 else 0
+            ).coerceAtLeast(0)
+        val showShareAction = ifRoomSlots >= 1
+        val showAloudAction = ifRoomSlots >= 2
+
         IconButton(onClick = { viewModel.refresh { webView.reload() } }) {
             Icon(
                 painter = rememberPainter("ic_refresh_black_24dp"),
@@ -198,43 +221,66 @@ class ReadRssActivity : BaseComposeActivity() {
                 )
             }
         }
-        IconButton(onClick = { shareUrl() }) {
-            Icon(
-                painter = rememberPainter("ic_share"),
-                contentDescription = stringResource(R.string.share),
-                tint = colors.primaryText,
-            )
+        if (showShareAction) {
+            IconButton(onClick = { shareUrl() }) {
+                Icon(
+                    painter = rememberPainter("ic_share"),
+                    contentDescription = stringResource(R.string.share),
+                    tint = colors.primaryText,
+                )
+            }
         }
-        IconButton(onClick = { readAloud() }) {
-            Icon(
-                painter = rememberPainter(
-                    if (ttsPlaying) "ic_stop_black_24dp" else "ic_volume_up"
-                ),
-                contentDescription = stringResource(
-                    if (ttsPlaying) R.string.aloud_stop else R.string.read_aloud
-                ),
-                tint = colors.primaryText,
-            )
+        if (showAloudAction) {
+            IconButton(onClick = { readAloud() }) {
+                Icon(
+                    painter = rememberPainter(
+                        if (ttsPlaying) "ic_stop_black_24dp" else "ic_volume_up"
+                    ),
+                    contentDescription = stringResource(
+                        if (ttsPlaying) R.string.aloud_stop else R.string.read_aloud
+                    ),
+                    tint = colors.primaryText,
+                )
+            }
         }
         OverflowMenu { dismiss ->
+            if (!showShareAction) {
+                DropdownMenuItem(
+                    onClick = {
+                        dismiss()
+                        shareUrl()
+                    },
+                ) { Text(stringResource(R.string.share), color = colors.primaryText) }
+            }
+            if (!showAloudAction) {
+                DropdownMenuItem(
+                    onClick = {
+                        dismiss()
+                        readAloud()
+                    },
+                ) {
+                    Text(
+                        stringResource(if (ttsPlaying) R.string.aloud_stop else R.string.read_aloud),
+                        color = colors.primaryText,
+                    )
+                }
+            }
             if (hasLogin) {
                 DropdownMenuItem(
-                    text = { Text(stringResource(R.string.login), color = colors.primaryText) },
                     onClick = {
                         dismiss()
                         viewModel.curBookSource?.showLoginDialog(this@ReadRssActivity)
                     },
-                )
+                ) { Text(stringResource(R.string.login), color = colors.primaryText) }
             }
             DropdownMenuItem(
-                text = {
-                    Text(stringResource(R.string.open_in_browser), color = colors.primaryText)
-                },
                 onClick = {
                     dismiss()
                     webView.url?.let { openUrl(it) } ?: toastOnUi("url null")
                 },
-            )
+            ) {
+                Text(stringResource(R.string.open_in_browser), color = colors.primaryText)
+            }
         }
     }
 

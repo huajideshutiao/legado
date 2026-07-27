@@ -2,6 +2,7 @@ package io.legado.app.help.book
 
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.random.Random
 
 @Suppress("SameParameterValue", "RegExpRedundantEscape")
 object ContentHelp {
@@ -157,7 +158,7 @@ object ContentHelp {
                 if (arrayMid[j] < arrayEnd[i]) k++
                 j++
             }
-            if (Math.random() * gain < 0.8 + k / 2.5) {
+            if (Random.nextDouble() * gain < 0.8 + k / 2.5) {
                 result.add(arrayEnd[i] + offset)
                 i = max(i + min, i)
             }
@@ -200,8 +201,8 @@ object ContentHelp {
                             remove = true
                         }
                         if (remove) {
-                            string.setCharAt(i, '“')
-                            string.setCharAt(i - 2, '”')
+                            string[i] = '“'
+                            string[i - 2] = '”'
                             arrayQuote.removeAt(size - 1)
                             mod[size - 1] = 1
                             mod[size] = -1
@@ -408,15 +409,15 @@ object ContentHelp {
         for (i in 0 until size) {
             val p = arrayQuote[i]
             if (mod[i] > 0) {
-                string.setCharAt(p, '“')
+                string[p] = '“'
                 if (opend) insQuote[i] = true
                 opend = true
             } else if (mod[i] < 0) {
-                string.setCharAt(p, '”')
+                string[p] = '”'
                 opend = false
             } else {
                 opend = !opend
-                if (opend) string.setCharAt(p, '“') else string.setCharAt(p, '”')
+                if (opend) string[p] = '“' else string[p] = '”'
             }
         }
         insN = ArrayList(HashSet(insN))

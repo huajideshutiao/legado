@@ -16,13 +16,14 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.options
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
+import io.ktor.utils.io.charsets.Charsets
 import io.legado.app.constant.AppLog
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.web.api.WebApi
 import io.legado.app.web.api.WebApiRequest
 import io.legado.app.web.api.WebApiResponse
 import io.legado.app.web.utils.AssetsWeb
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * Ktor HTTP routing 配置: ApplicationCall → [WebApiRequest] → [WebApi.handle] → [WebApiResponse] → 原生响应。

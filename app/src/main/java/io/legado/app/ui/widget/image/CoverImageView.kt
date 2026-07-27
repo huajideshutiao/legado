@@ -296,6 +296,7 @@ class CoverImageView @JvmOverloads constructor(
                     seed = defaultCoverSeed(),
                     ratio = coverRatio,
                     sourceOrigin = sourceOrigin,
+                    loadOnlyWifi = loadOnlyWifi,
                     onLoadFinish = onLoadFinish,
                 )
                 placeholder(BookCover.newDefaultDrawable(coverRatio, defaultCoverSeed()))

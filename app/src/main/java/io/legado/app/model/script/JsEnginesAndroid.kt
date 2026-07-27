@@ -8,6 +8,7 @@ import io.legado.app.data.entities.BookSourceJsExt
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.HttpTTSJsExt
 import io.legado.app.help.CacheManager
+import io.legado.app.help.DEFAULT_DATA_ASSET_PREFIX
 import io.legado.app.help.ExploreKindsCacheProvider
 import io.legado.app.help.ExploreKindsCacheProviders
 import io.legado.app.help.JsExtFactory
@@ -32,6 +33,8 @@ import io.legado.app.help.image.BitmapImageOps
 import io.legado.app.model.SharedJsScope
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
+import io.legado.app.model.analyzeRule.AnalyzeUrl
+import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.script.quickjs.QuickJsJsEngine
 import io.legado.app.model.script.quickjs.QuickJsSharedJsScopeProvider
 import io.legado.app.utils.ACache
@@ -89,6 +92,16 @@ fun registerAndroidJsEngines() {
     AnalyzeRuleFactories.register { ruleData, source, preUpdateJs ->
         AnalyzeRule(ruleData, source, preUpdateJs)
     }
+    // shared 各处创建 AnalyzeUrl 同理走工厂: url 内 <js>/{{}}/js 头等场景的 java 绑定
+    // 恢复完整 JsExtensions 面 (createSymmetricCrypto 等) 并命中 KSP @JsApi 分派表。
+    AnalyzeUrlFactories.register {
+            rawUrl, baseUrl, source, ruleData, chapter, readTimeout, callTimeout,
+            coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables ->
+        AnalyzeUrl(
+            rawUrl, baseUrl, source, ruleData, chapter, readTimeout, callTimeout,
+            coroutineContext, headerMapF, hasLoginHeader, selectedOptions, variables
+        )
+    }
     SourceDebugLoggers.impl = object : SourceDebugLogger {
         override fun log(key: String, msg: String, print: Boolean, state: Int) =
             Debug.log(key, msg, print = print, state = state)
@@ -130,10 +143,11 @@ fun registerAndroidJsEngines() {
     io.legado.app.help.DefaultDataResourceProviders.register(
         object : io.legado.app.help.DefaultDataResourceProvider {
             override fun readResource(name: String): String {
-                // 与原 DefaultData.httpTTS 等 lazy 属性的读取方式完全一致:
-                // appCtx.assets.open("defaultData/$name").readBytes() → String
+                // 单一数据源在 shared/commonMain/composeResources/files/defaultData/,
+                // 由 compose 资源插件打进 assets (前缀含模块限定名, 同 AndroidWebAssetSource)。
                 return String(
-                    splitties.init.appCtx.assets.open("defaultData/$name").readBytes()
+                    splitties.init.appCtx.assets
+                        .open("$DEFAULT_DATA_ASSET_PREFIX$name").readBytes()
                 )
             }
         }

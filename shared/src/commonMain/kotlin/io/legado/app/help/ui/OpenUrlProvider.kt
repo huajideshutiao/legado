@@ -1,5 +1,7 @@
 package io.legado.app.help.ui
 
+import kotlin.concurrent.Volatile
+
 /**
  * 打开链接能力 provider (跨平台抽象)。
  *

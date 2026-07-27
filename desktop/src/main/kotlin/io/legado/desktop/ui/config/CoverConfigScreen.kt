@@ -11,12 +11,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -32,8 +28,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.file.desktopAppRootDir
@@ -53,6 +53,7 @@ import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.config.CoverConfigScreen as SharedCoverConfigScreen
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.utils.MD5Utils
@@ -314,7 +315,8 @@ private fun DesktopDefaultCoverDialog(
                             contentAlignment = Alignment.Center,
                         ) {
                             // 用 "+" 文字替代图标 (desktop 端无 ic_add 资源便捷引用)
-                            Text("+", style = MaterialTheme.typography.headlineMedium)
+                            // 28sp/36sp 对应原 M3 headlineMedium
+                            Text("+", style = TextStyle(fontSize = 28.sp, lineHeight = 36.sp))
                         }
                     }
                 }
@@ -324,25 +326,17 @@ private fun DesktopDefaultCoverDialog(
     // 删除确认对话框 (对齐 app 端 alert(R.string.delete, R.string.sure_del))
     val target = pendingDelete
     if (target != null) {
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text(jvmGetString("delete")) },
-            text = { Text(jvmGetString("sure_del")) },
-            confirmButton = {
-                TextButton(onClick = {
-                    removeCover(coversDir = coversDir, prefKey = prefKey, entry = target)
-                    pendingDelete = null
-                    dataVersion++
-                    onDataChanged()
-                }) {
-                    Text(rememberString("ok"))
-                }
+            title = jvmGetString("delete"),
+            message = jvmGetString("sure_del"),
+            okButton = AlertButton(rememberString("ok"), dismissOnClick = false) {
+                removeCover(coversDir = coversDir, prefKey = prefKey, entry = target)
+                pendingDelete = null
+                dataVersion++
+                onDataChanged()
             },
-            dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) {
-                    Text(rememberString("cancel"))
-                }
-            },
+            cancelButton = AlertButton(rememberString("cancel")),
         )
     }
 }
@@ -377,7 +371,7 @@ private fun CoverTile(
             .fillMaxWidth()
             .padding(8.dp)
             .aspectRatio(3f / 4f)
-            .clip(RoundedCornerShape(4.dp))
+            .clip(DesignTokens.shapeSm)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {

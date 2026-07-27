@@ -6,9 +6,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
+import androidx.compose.material.Icon
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -28,6 +27,7 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ColorUtils
 import java.awt.FileDialog
 import java.awt.Frame
@@ -52,8 +52,6 @@ import javax.swing.SwingUtilities
  * - onSelectBgImage: 桌面端用 AWT FileDialog 选图片文件，写入 [ReadStyleConfig.bgType]=2 +
  *   [ReadStyleConfig.bgStr]=文件路径
  * - onSelectBgPreset: 桌面端无 assets 预设背景图，列表为空，此回调不会被触发（no-op）
- * - onPostConfig: app 端调 ReadBookEvents.postConfig(...) 刷新阅读页渲染，
- *   桌面端 ReadBookEvents 未下沉，暂 no-op（TODO）
  *
  * @param readBookConfig 阅读配置（由 ReaderScreen 注入，桥接到 durConfig / bgAlpha / underline）
  * @param isImageBook 是否图片书籍（控制是否显示下划线开关，由 ReaderScreen 注入）
@@ -68,9 +66,14 @@ fun BgTextConfigDialog(
     val controller = remember(readBookConfig) { DesktopBgTextConfigController(readBookConfig) }
     val actions = remember { DesktopBgTextConfigActions(readBookConfig) }
     val bgImageList: List<BgImageItem> = remember { emptyList() }
+    // 对齐 app 端 BgTextConfigDialog.onDismiss：关闭时落盘 configList / shareConfig
+    val dismissAndSave = {
+        readBookConfig.save()
+        onDismiss()
+    }
 
     AppAlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = dismissAndSave,
         title = rememberString("text_bg_style"),
         widthFraction = 0.8f,
         content = {
@@ -84,7 +87,7 @@ fun BgTextConfigDialog(
                 },
             )
         },
-        okButton = AlertButton(text = rememberString("close")) { onDismiss() },
+        okButton = AlertButton(text = rememberString("close")) { dismissAndSave() },
     )
 }
 
@@ -103,8 +106,8 @@ private fun DesktopBgImagePreview(item: BgImageItem, onClick: () -> Unit) {
     Column(
         modifier = Modifier
             .size(66.dp, 88.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .border(1.dp, colors.secondaryText, RoundedCornerShape(4.dp))
+            .clip(DesignTokens.shapeSm)
+            .border(DesignTokens.strokeThin, colors.secondaryText, DesignTokens.shapeSm)
             .clickable(onClick = onClick)
             .padding(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -144,7 +147,7 @@ private fun DesktopBgImagePreview(item: BgImageItem, onClick: () -> Unit) {
  * - `durConfig.setCurTextColor(it)` → 同步更新 textColor + textColorStr
  * - `durConfig.setCurBg(type, value)` → 同步更新 bgType + bgStr
  * - `ReadBookConfig.deleteDur()` → [ReadBookConfigShared.deleteDur]
- * - `ReadBookConfig.save()` → no-op（prefs 自动持久化）
+ * - `ReadBookConfig.save()` → [ReadBookConfigShared.save]（写 readConfig.json / shareReadConfig.json）
  * - `DefaultData.readConfigs.map { it.name }` → 单一预设名（桌面端无 DefaultData 下沉）
  * - `defaultConfigs[i].copy()` → 重置为默认 [ReadStyleConfig]
  */
@@ -202,7 +205,7 @@ private class DesktopBgTextConfigController(
     override fun deleteDur(): Boolean = readBookConfig.deleteDur()
 
     override fun save() {
-        // prefs 自动持久化，无需显式 save
+        readBookConfig.save()
     }
 
     override fun restorePresetNames(): List<String> = listOf("Default")
@@ -237,7 +240,6 @@ private class DesktopBgTextConfigController(
  * - onImportNetConfig: RemoteAssetsUtils 未下沉，暂 no-op（TODO）
  * - onSelectBgImage: AWT FileDialog 选图片文件，写入 [ReadStyleConfig.bgType]=2 + bgStr=文件路径
  * - onSelectBgPreset: bgImageList 为空，此回调不会被触发（no-op）
- * - onPostConfig: ReadBookEvents 未下沉，暂 no-op（TODO）
  */
 private class DesktopBgTextConfigActions(
     private val readBookConfig: ReadBookConfigShared,
@@ -275,7 +277,6 @@ private class DesktopBgTextConfigActions(
     }
 
     override fun onPostConfig(changes: List<ReadConfigChange>) {
-        // TODO: 桌面端 ReadBookEvents.postConfig 未下沉，暂不刷新阅读页渲染
     }
 
     /** 图片文件过滤器（png/jpg/jpeg/bmp/webp） */

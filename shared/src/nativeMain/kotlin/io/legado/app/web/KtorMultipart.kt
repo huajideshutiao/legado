@@ -6,7 +6,7 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receiveMultipart
 import io.ktor.utils.io.core.readBytes
 import io.legado.app.help.file.AppFilesDirs
-import kotlin.io.File
+import io.legado.app.utils.File
 
 /**
  * multipart/form-data 解析结果 (对齐 NanoHTTPD session.parseBody(files) 的语义)。

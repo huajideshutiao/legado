@@ -13,6 +13,7 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.utils.RegexReplacers
 import io.legado.app.utils.escapeRegex
 import io.legado.app.utils.stackTraceStr
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -165,7 +166,7 @@ class ContentProcessorShared(
                     }
                 }
             } catch (e: Exception) {
-                AppLog.put("去除重复标题出错\n${e.localizedMessage}", e)
+                AppLog.put("去除重复标题出错\n${e.message}", e)
             }
             if (reSegment && book.config.reSegment) {
                 // 段落重排
@@ -209,7 +210,12 @@ class ContentProcessorShared(
                         item.isEnabled = false
                         // runBlocking { appDb.replaceRuleDao.update(item) } → AppDbProviders.get().replaceRuleDao
                         // fire-and-forget: 错误恢复路径 (禁用超时规则), 不阻塞当前线程 (避免 Native 端死锁)
-                        GlobalScope.launch { replaceRuleDao.update(item) }
+                        // 写库失败会让坏规则每章反复超时, invokeOnCompletion 记日志暴露
+                        GlobalScope.launch { replaceRuleDao.update(item) }.invokeOnCompletion { cause ->
+                            if (cause != null && cause !is CancellationException) {
+                                AppLog.put("禁用超时替换规则失败: ${item.name}\n${cause.message}", cause)
+                            }
+                        }
                         mContent = item.name + e.stackTraceStr
                     } catch (_: CancellationException) {
                     } catch (e: Exception) {

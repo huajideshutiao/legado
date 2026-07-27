@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
@@ -49,6 +48,7 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 书源列表 Screen (KMP 版, 替代 app 端 `io.legado.app.ui.book.source.manage.BookSourceScreen`)。
@@ -366,7 +366,13 @@ private fun RuleItemScope.BookSourceItem(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // 按压整行触发切换选中, 子按钮 (Switch/Edit/More) 自身消费点击不冒泡
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { callbacks.onToggle(item, !checked) },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             AppCheckbox(
                 checked = checked,
                 onCheckedChange = { callbacks.onToggle(item, it) },
@@ -377,9 +383,7 @@ private fun RuleItemScope.BookSourceItem(
                     color = colors.primaryText,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { callbacks.onToggle(item, !checked) },
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
             AppSwitch(
@@ -510,9 +514,9 @@ private fun CheckSourceProgress(msg: String, onCancel: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 8.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(DesignTokens.shapeDefault)
             .background(colors.bottomBackground)
-            .border(0.5.dp, colors.secondaryText.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+            .border(DesignTokens.strokeHairline, colors.secondaryText.copy(alpha = 0.2f), DesignTokens.shapeDefault)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),

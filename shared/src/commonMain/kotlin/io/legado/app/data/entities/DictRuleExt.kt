@@ -2,7 +2,9 @@ package io.legado.app.data.entities
 
 import io.legado.app.constant.AppConst
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
+import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import kotlinx.coroutines.currentCoroutineContext
 
 /**
@@ -15,11 +17,11 @@ import kotlinx.coroutines.currentCoroutineContext
  * - 原 jvmAndAndroidMain 用 kotlin.io.use 扩展 (java.io.Closeable.use)。
  *   commonMain 中 AnalyzeRuleCore 实现的是 expect interface Closeable
  *   (actual typealias 到 java.io.Closeable), 但 commonMain 编译期不可见 java.io.Closeable.use。
- *   改用 try-finally 等价改写: AnalyzeRuleCore() 无 source, close() 为空操作
- *   (见 AnalyzeRuleCore.close 注释), 行为与原 .use 完全一致。
+ *   改用 try-finally 等价改写: [AnalyzeRuleFactories] 建的实例无 source, close() 为空操作
+ *   (见 [AnalyzeRuleCore.close] 注释), 行为与原 .use 完全一致。
  */
 suspend fun DictRule.search(word: String): String {
-    val analyzeUrl = AnalyzeUrlCore(
+    val analyzeUrl = AnalyzeUrlFactories.create(
         urlRule,
         coroutineContext = currentCoroutineContext(),
         variables = mapOf(AppConst.JsVarName.KEY to word)
@@ -28,7 +30,7 @@ suspend fun DictRule.search(word: String): String {
     if (showRule.isBlank()) {
         return body!!
     }
-    val analyzeRule = AnalyzeRuleCore().apply {
+    val analyzeRule = AnalyzeRuleFactories.create().apply {
         coroutineContext = currentCoroutineContext()
     }
     return try {

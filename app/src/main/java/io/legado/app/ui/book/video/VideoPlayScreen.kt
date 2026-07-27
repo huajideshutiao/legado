@@ -31,12 +31,11 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material.CircularProgressIndicator
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -76,6 +75,7 @@ import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.longToastOnUi
 import io.legado.app.utils.toDurationTime
@@ -157,7 +157,7 @@ fun VideoPlayScreen(activity: VideoPlayActivity) {
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = 16.dp)
-                        .background(colorResource(R.color.arco_fill_3), RoundedCornerShape(8.dp))
+                        .background(colorResource(R.color.arco_fill_3), DesignTokens.shapeDefault)
                         .padding(horizontal = 16.dp, vertical = 4.dp),
                 )
             }
@@ -331,15 +331,16 @@ private fun VideoControlsOverlay(activity: VideoPlayActivity, modifier: Modifier
                         modifier = Modifier.weight(1f),
                     )
                     SpeedButton(activity)
-                    // 分辨率切换: 复用 shared ResolutionButton
-                    val resolutions = activity.viewModel.resolutions.value.orEmpty()
-                    if (resolutions.size > 1) {
-                        ResolutionButton(
-                            resolutions = resolutions,
-                            currentResolutionIndex = activity.viewModel.currentResolutionIndex,
-                            onSwitchResolution = { index -> activity.switchResolution(index) },
-                        )
-                    }
+                    Text(
+                        text = activity.resolutionText ?: stringResource(R.string.resolution),
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(DesignTokens.shapeSm)
+                            .clickable { activity.showResolutionDialog() }
+                            .padding(12.dp),
+                    )
                     val isLandscape =
                         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
                     IconButton(onClick = { activity.toggleOrientationFullscreen() }) {
@@ -468,25 +469,24 @@ private fun SpeedButton(activity: VideoPlayActivity) {
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier
-                .clip(RoundedCornerShape(4.dp))
+                .clip(DesignTokens.shapeSm)
                 .clickable { expanded = true }
                 .padding(12.dp),
         )
         AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f).forEach { speed ->
                 DropdownMenuItem(
-                    text = {
-                        Text(
-                            speedLabel(speed),
-                            color = if (speed == activity.playbackSpeed) AppTheme.colors.accent
-                            else AppTheme.colors.primaryText,
-                        )
-                    },
                     onClick = {
                         expanded = false
                         activity.setPlaySpeed(speed)
                     },
-                )
+                ) {
+                    Text(
+                        speedLabel(speed),
+                        color = if (speed == activity.playbackSpeed) AppTheme.colors.accent
+                        else AppTheme.colors.primaryText,
+                    )
+                }
             }
         }
     }
@@ -592,9 +592,8 @@ private fun VideoTitleActions(activity: VideoPlayActivity) {
 @Composable
 private fun VideoMenuItem(textRes: Int, onClick: () -> Unit) {
     DropdownMenuItem(
-        text = { Text(stringResource(textRes), color = AppTheme.colors.primaryText) },
         onClick = onClick,
-    )
+    ) { Text(stringResource(textRes), color = AppTheme.colors.primaryText) }
 }
 
 // ---- 选集网格(原 ChapterListAdapter + GridLayoutManager(3)) ----

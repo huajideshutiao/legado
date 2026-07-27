@@ -203,7 +203,7 @@ fun Book.updateTo(newBook: Book): Book {
     newBook.canUpdate = canUpdate
     newBook.readConfig = readConfig
     val variableMap = variableMap.toMutableMap()
-    variableMap.keys.removeIf {
+    variableMap.keys.removeAll {
         newBook.hasVariable(it)
     }
     newBook.variableMap.putAll(variableMap)
@@ -229,7 +229,7 @@ fun Book.getExportFileName(suffix: String): String {
     return kotlin.runCatching {
         JsEngines.get().eval(jsStr, bindings).toString() + "." + suffix
     }.onFailure {
-        AppLog.put("导出书名规则错误,使用默认规则\n${it.localizedMessage}", it)
+        AppLog.put("导出书名规则错误,使用默认规则\n${it.message}", it)
     }.getOrDefault(default).normalizeFileName()
 }
 
@@ -255,7 +255,7 @@ fun Book.getExportFileName(
     return kotlin.runCatching {
         JsEngines.get().eval(jsStr, bindings).toString() + "." + suffix
     }.onFailure {
-        AppLog.put("导出书名规则错误,使用默认规则\n${it.localizedMessage}", it)
+        AppLog.put("导出书名规则错误,使用默认规则\n${it.message}", it)
     }.getOrDefault(default).normalizeFileName()
 }
 

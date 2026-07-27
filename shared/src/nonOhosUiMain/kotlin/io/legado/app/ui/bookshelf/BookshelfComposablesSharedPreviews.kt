@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
@@ -14,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.preview.AppPreview
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Book
@@ -70,7 +70,7 @@ private val bookCoverSlot: @Composable (Book, Modifier, isVideoCover: Boolean) -
     Box(
         modifier
             .aspectRatio(ratio)
-            .background(Color(0xFF888888), RoundedCornerShape(4.dp)),
+            .background(Color(0xFF888888), DesignTokens.shapeSm),
         contentAlignment = Alignment.Center,
     ) {
         Text(book.name.take(2), color = Color.White)
@@ -84,7 +84,7 @@ private val groupCoverSlot: @Composable (BookGroup, Modifier, isVideoCover: Bool
     Box(
         modifier
             .aspectRatio(ratio)
-            .background(Color(0xFF6B7280), RoundedCornerShape(4.dp)),
+            .background(Color(0xFF6B7280), DesignTokens.shapeSm),
         contentAlignment = Alignment.Center,
     ) {
         Text(group.groupName.take(2), color = Color.White)

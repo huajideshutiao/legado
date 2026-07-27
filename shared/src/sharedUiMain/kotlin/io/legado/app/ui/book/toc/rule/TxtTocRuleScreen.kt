@@ -280,7 +280,13 @@ private fun RuleItemScope.TxtTocRuleItem(
             .longPressDraggableHandle(onDragStopped = { actions.onPersistOrder() })
             .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // 按压整行触发切换选中, 子按钮 (Switch/Edit/More) 自身消费点击不冒泡
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { actions.onToggleSelect(item, !checked) },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             AppCheckbox(
                 checked = checked,
                 onCheckedChange = { actions.onToggleSelect(item, it) },
@@ -290,9 +296,7 @@ private fun RuleItemScope.TxtTocRuleItem(
                 color = colors.primaryText,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { actions.onToggleSelect(item, !checked) },
+                modifier = Modifier.weight(1f),
             )
             AppSwitch(
                 checked = item.enable,

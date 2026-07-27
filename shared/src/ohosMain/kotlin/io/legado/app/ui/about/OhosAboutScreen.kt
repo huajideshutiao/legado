@@ -12,10 +12,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material.Surface
+import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.ui.OpenUrlProviders
+import io.legado.app.ui.compose.theme.AppTheme
 
 /**
  * 鸿蒙端"关于"页 Screen (对照 iOS `IosAboutScreen`, 复刻 sharedUiMain `AboutScreen` 偏好列表)。
@@ -137,7 +137,7 @@ private fun AboutPreference(
     Column(modifier = modifier) {
         Text(
             text = title,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = AppTheme.colors.primaryText,
             fontSize = 16.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -146,7 +146,7 @@ private fun AboutPreference(
             Spacer(Modifier.height(2.dp))
             Text(
                 text = summary,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = AppTheme.colors.secondaryText,
                 fontSize = 13.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -165,7 +165,7 @@ private fun AboutCategoryHeader(title: String) {
     ) {
         Text(
             text = title,
-            color = MaterialTheme.colorScheme.primary,
+            color = AppTheme.colors.accent,
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
         )
@@ -184,7 +184,7 @@ private fun OhosAboutTopBar(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
+        color = AppTheme.colors.background,
     ) {
         Row(
             modifier = Modifier
@@ -200,7 +200,7 @@ private fun OhosAboutTopBar(
             Text(
                 text = title,
                 fontSize = 20.sp,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = AppTheme.colors.primaryText,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

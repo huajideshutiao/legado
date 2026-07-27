@@ -4,7 +4,9 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import kotlin.time.Clock
+import kotlinx.serialization.Serializable
 
+@Serializable
 @Entity(
     tableName = "bookmarks",
     indices = [(Index(value = ["bookName", "bookAuthor"], unique = false))]

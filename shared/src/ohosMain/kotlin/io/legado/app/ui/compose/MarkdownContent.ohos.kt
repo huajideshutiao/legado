@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -32,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.theme.AppColors
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 // ohos actual: multiplatformMarkdown 库未发布 ohosArm64 变体,
 // 用 Compose 富文本 API 自实现简易 Markdown 渲染 (AnnotatedString + Column)
@@ -327,7 +327,7 @@ private fun CodeBlockView(block: MdBlock.CodeBlock, colors: AppColors) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clip(RoundedCornerShape(4.dp))
+            .clip(DesignTokens.shapeSm)
             .background(colors.primaryText.copy(alpha = 0.08f))
             .padding(8.dp),
     ) {

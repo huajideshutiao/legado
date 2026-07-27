@@ -1,12 +1,15 @@
 package io.legado.app.help.service
 
+import kotlin.concurrent.Volatile
+
 /**
  * Android Service 启动抽象 (shared commonMain)。
  *
  * # 背景
  * 安卓端 `CacheBookService` / `UpdateBookService` / `DownloadService` 是 Android
  * Service, 依赖 `android.content.Context.startService`。桌面 JVM 端没有 Service
- * 概念, 用 `CoroutineScope` 直接调度; iOS/鸿蒙暂留 stub。
+ * 概念, 用 `CoroutineScope` 直接调度; iOS/鸿蒙共用 nativeMain `NativeServiceLauncher`
+ * (同样走协程调度)。
  *
  * # 设计
  * - 接口方法对应 app 端三个 Service 的启动/停止入口

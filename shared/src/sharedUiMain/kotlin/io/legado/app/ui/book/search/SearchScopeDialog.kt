@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -23,7 +22,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,12 +32,7 @@ import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
-
-/** Arco Design arcoblue-6 主色 (#165DFF)。 */
-private val ArcoBlue6 = Color(0xFF165DFF)
-
-/** Arco Design arco_radius_lg = 16dp。 */
-private val ArcoRadiusLg = 16.dp
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 搜索范围选择对话框 (KMP 共享, app + desktop 复用)。
@@ -78,7 +71,7 @@ fun SearchScopeDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            shape = RoundedCornerShape(ArcoRadiusLg),
+            shape = DesignTokens.dialogShape,
             color = colors.background,
             modifier = Modifier.fillMaxWidth(),
         ) {
@@ -133,12 +126,12 @@ fun SearchScopeDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     // "全部书源" 按钮: 清空选择并确认 (对齐原 callback.onSearchScopeOk(SearchScope("")))
-                    AppTextButton(text = allSourceText, color = ArcoBlue6) {
+                    AppTextButton(text = allSourceText, color = DesignTokens.arcoBlue6) {
                         onConfirm(emptySet())
                     }
                     Spacer(Modifier.weight(1f))
                     AppTextButton(text = cancelText, color = colors.secondaryText) { onDismiss() }
-                    AppTextButton(text = okText, color = ArcoBlue6) {
+                    AppTextButton(text = okText, color = DesignTokens.arcoBlue6) {
                         onConfirm(selectedIds.toSet())
                     }
                 }

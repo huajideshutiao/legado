@@ -81,7 +81,7 @@ object BookSourceController {
                 SourceHelp.deleteBookSources(it)
             }
         }.onFailure {
-            return ReturnData().setErrorMsg(it.localizedMessage ?: "数据格式错误")
+            return ReturnData().setErrorMsg(it.message ?: "数据格式错误")
         }
         return ReturnData().setData("已执行"/*okSources*/)
     }

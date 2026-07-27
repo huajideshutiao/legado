@@ -16,7 +16,7 @@ import kotlin.io.encoding.ExperimentalEncodingApi
  * - 用 [Base64] (kotlin.io.encoding 标准库, KMP 可用) 实现 Basic 认证
  * - 与 jvmAndAndroidMain 的差异: 编码 charset 不同
  *   - jvmAndAndroidMain: okhttp3.Credentials.basic(username, password, StandardCharsets.ISO_8859_1)
- *   - nativeMain: "$username:$password".toByteArray(Charsets.UTF_8)
+ *   - nativeMain: "$username:$password".encodeToByteArray() (UTF-8)
  *   - ASCII 用户名/密码场景两者完全一致; 非 ASCII 场景可能与服务端期望的 ISO_8859_1 解码不一致
  *     (功能降级, 与 nativeMain commonMain 无 ISO_8859_1 charset 限制一致, 见 PlatformEncoding.kt)
  * - `Authorization(serverID)` 走 AppDbProviders (commonMain 已可用, iOS/鸿蒙端数据库驱动由宿主注册)
@@ -34,7 +34,7 @@ actual class Authorization actual constructor(
 
     // Basic 认证头: "Basic <base64(username:password)>"
     // 注: UTF-8 编码, 与 jvmAndAndroidMain 的 ISO_8859_1 在 ASCII 场景一致; 非 ASCII 场景为已知降级
-    actual var data: String = "Basic " + Base64.encodeToString("$username:$password".toByteArray(Charsets.UTF_8))
+    actual var data: String = "Basic " + Base64.encode("$username:$password".encodeToByteArray())
         private set
 
     actual constructor(serverID: Long) : this(
