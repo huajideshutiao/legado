@@ -3,7 +3,7 @@ package io.legado.app.ui.book.filter
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.help.coroutine.IoDispatcher
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.source.SearchBookFilter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -34,7 +34,7 @@ import kotlinx.coroutines.launch
  *             block()
  *             SearchBookFilter.reload()
  *         } catch (e: Throwable) {
- *             e.printOnDebug()
+ *             e.printStackTraceOnDebug()
  *         }
  *     }
  * }
@@ -43,8 +43,8 @@ import kotlinx.coroutines.launch
  * - 原 `execute` 默认 `context = Dispatchers.IO` 执行 DAO 写;
  * - 原 `onSuccess` 默认 `executeContext = mainDispatcher` (Main) 调 `SearchBookFilter.reload()`;
  *   `reload()` 内部仅 `snapshot = null` (无 suspend / 无线程要求), 在 IO 调用等价;
- * - 原 catch 块无 `onError`, [Coroutine] 默认 `e.printOnDebug()` (DEBUG 才打栈),
- *   shared 端直接调 [printOnDebug] expect fun, 行为完全一致;
+ * - 原 catch 块无 `onError`, [Coroutine] 默认 `e.printStackTraceOnDebug()` (DEBUG 才打栈),
+ *   shared 端直接调 [printStackTraceOnDebug] expect fun, 行为完全一致;
  * - 原返回 `Coroutine<Unit>` 仅供链式 `onSuccess/onError` 用, 所有调用方
  *   (SourceFilterRuleActivity) 均 fire-and-forget 不使用返回值, 改为 Unit 不影响调用方。
  *
@@ -69,7 +69,7 @@ class SourceFilterRuleViewModelShared(
     /**
      * 通用 mutate: 执行 DAO 写操作后刷新 [SearchBookFilter] 缓存。
      *
-     * 见类注释中的对照说明。catch 块仅 [printOnDebug], 与原 [Coroutine] 默认行为一致。
+     * 见类注释中的对照说明。catch 块仅 [printStackTraceOnDebug], 与原 [Coroutine] 默认行为一致。
      */
     private fun mutate(block: suspend CoroutineScope.() -> Unit) {
         scope.launch(IoDispatcher) {
@@ -77,8 +77,8 @@ class SourceFilterRuleViewModelShared(
                 block()
                 SearchBookFilter.reload()
             } catch (e: Throwable) {
-                // 与原 Coroutine 默认行为等价: e.printOnDebug() 不上报 (release 不打栈)
-                e.printOnDebug()
+                // 与原 Coroutine 默认行为等价: e.printStackTraceOnDebug() 不上报 (release 不打栈)
+                e.printStackTraceOnDebug()
             }
         }
     }

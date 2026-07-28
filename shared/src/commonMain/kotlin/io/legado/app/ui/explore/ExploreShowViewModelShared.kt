@@ -12,7 +12,7 @@ import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.source.SearchBookFilter
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
@@ -45,7 +45,7 @@ import kotlinx.coroutines.launch
  *   不用 `StateFlow.asLiveData()` 扩展)。
  * - DAO 访问走 [AppDbProviders.get] (宿主启动时注册), 替代 app 端 `appDb` 单例。
  * - [IntentData] / [PinnedExploreHelp] / [WebBook] / [SearchBookFilter] / [Coroutine] /
- *   [AppLog] / [printOnDebug] / [stackTraceStr] 均已下沉 commonMain, 直接复用。
+ *   [AppLog] / [printStackTraceOnDebug] / [stackTraceStr] 均已下沉 commonMain, 直接复用。
  *
  * # Android 专属依赖替换
  *
@@ -362,7 +362,7 @@ class ExploreShowViewModelShared(
             _booksFlow.value = books.toList()
             page++
         }.onError {
-            it.printOnDebug()
+            it.printStackTraceOnDebug()
             _errorFlow.value = it.stackTraceStr
         }
     }

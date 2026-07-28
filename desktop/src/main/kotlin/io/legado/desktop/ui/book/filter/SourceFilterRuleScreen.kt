@@ -22,7 +22,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.ui.association.ImportSourceFilterRuleViewModelShared
 import io.legado.app.ui.book.filter.SourceFilterEditDialog
-import io.legado.app.ui.book.filter.SourceFilterRuleScreen as SharedSourceFilterRuleScreen
+
 import io.legado.app.ui.book.filter.SourceFilterRuleUiActions
 import io.legado.app.ui.book.filter.SourceFilterRuleUiState
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
@@ -54,7 +54,7 @@ import java.io.File
 /**
  * 书源过滤规则管理 Screen 桌面端入口。
  *
- * 包装 shared/sharedUiMain 下沉的 [SharedSourceFilterRuleScreen], 注入桌面端 Compose
+ * 包装 shared/sharedUiMain 下沉的 [io.legado.app.ui.book.filter.SourceFilterRuleScreen], 注入桌面端 Compose
  * CompositionLocal Provider (ThemeStore/AppConfig/EventBus/PreferenceStore),
  * 并用 [AppTheme] 提供统一主题, 使 commonMain 的 RuleManageScaffold 骨架 +
  * 通用组件 (AppSearchField/AppDropdownMenu 等) 在桌面 JVM 上正常工作。
@@ -342,7 +342,7 @@ private fun SourceFilterRuleContent(onBack: () -> Unit) {
         }
     }
 
-    SharedSourceFilterRuleScreen(state.value, actions)
+    io.legado.app.ui.book.filter.SourceFilterRuleScreen(state.value, actions)
 
     // ---- 书源屏蔽规则编辑对话框 (onAddRule/onEditRule 触发) ----
     // onConfirm 落库: 新增 (editingRule=null) 走 dao.insert, 编辑走 dao.update

@@ -29,7 +29,7 @@ import io.legado.app.ui.book.changecover.ChangeCoverViewModelShared
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.group.GroupViewModelShared
 import io.legado.app.ui.book.info.BookInfoMenuState
-import io.legado.app.ui.book.info.BookInfoScreen as SharedBookInfoScreen
+
 import io.legado.app.ui.book.info.BookInfoUiActions
 import io.legado.app.ui.book.info.BookInfoUiState
 import io.legado.app.ui.book.info.BookInfoViewModelShared
@@ -53,12 +53,12 @@ import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 
 /**
- * 桌面端书籍详情 Screen 入口 (包装 shared/sharedUiMain 的 [SharedBookInfoScreen])。
+ * 桌面端书籍详情 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.info.BookInfoScreen])。
  *
  * # 职责
  *
  * 对照 desktop [io.legado.desktop.ui.bookshelf.BookshelfScreen] 模式, 仅做桌面平台适配,
- * 业务展示与交互逻辑全部下沉到 shared/sharedUiMain 的 [SharedBookInfoScreen]:
+ * 业务展示与交互逻辑全部下沉到 shared/sharedUiMain 的 [io.legado.app.ui.book.info.BookInfoScreen]:
  *
  * - **书籍转换**: [book] 入参用 [BaseBook] 统一持有 SearchBook/Book, 内部转 Book 供 UI 与
  *   DAO 使用 (SearchBook.toBook() / Book 直接用)
@@ -294,7 +294,7 @@ fun BookInfoScreen(
         )
     }
 
-    SharedBookInfoScreen(
+    io.legado.app.ui.book.info.BookInfoScreen(
         state = state,
         actions = actions,
         blurCoverBgSlot = { modifier -> DesktopBookCover.BlurCoverBg(effectiveBook, modifier) },

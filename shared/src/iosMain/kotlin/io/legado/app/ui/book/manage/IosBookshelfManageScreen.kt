@@ -32,7 +32,7 @@ import io.legado.app.help.file.pickDocuments
 import io.legado.app.ui.book.group.GroupEditDialog
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.group.GroupViewModelShared
-import io.legado.app.ui.book.manage.BookshelfManageScreen as SharedBookshelfManageScreen
+
 import io.legado.app.ui.bookshelf.IosInfoCover
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
@@ -54,12 +54,12 @@ import kotlinx.coroutines.withContext
 import io.legado.app.utils.cnCompare
 
 /**
- * iOS 端书架管理 Screen 入口 (包装 shared/sharedUiMain 的 [SharedBookshelfManageScreen])。
+ * iOS 端书架管理 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.manage.BookshelfManageScreen])。
  *
  * # 职责
  *
  * 对照 desktop `BookshelfManageScreen.kt` 包装模式, 仅做 iOS 平台适配, 业务展示与
- * 交互骨架全部下沉到 shared/sharedUiMain 的 [SharedBookshelfManageScreen]:
+ * 交互骨架全部下沉到 shared/sharedUiMain 的 [io.legado.app.ui.book.manage.BookshelfManageScreen]:
  *
  * - **数据流**: [LaunchedEffect] 订阅 `bookGroupDao.flowAll()` 取分组, `bookDao.flowByGroup(groupId)`
  *   取书籍并按全局 [AppConfigProviders.get].bookshelfSort 排序;
@@ -341,7 +341,7 @@ fun IosBookshelfManageScreen(
         groups = groupList,
     )
 
-    SharedBookshelfManageScreen(
+    io.legado.app.ui.book.manage.BookshelfManageScreen(
         currentState,
         callbacks,
         listState,

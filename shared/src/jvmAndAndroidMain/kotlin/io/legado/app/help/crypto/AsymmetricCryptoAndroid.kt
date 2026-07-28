@@ -4,7 +4,7 @@ import cn.hutool.crypto.KeyUtil
 import cn.hutool.crypto.asymmetric.KeyType
 import io.legado.app.utils.EncoderUtils
 import java.io.InputStream
-import cn.hutool.crypto.asymmetric.AsymmetricCrypto as HutoolAsymmetricCrypto
+
 
 // KMP 化: 原 `class AsymmetricCrypto` 改名为 `AsymmetricCryptoAndroid` (仿 SymmetricCryptoAndroid
 // 命名约定), 避免与 commonMain 同包同名 interface AsymmetricCrypto 在合并编译时冲突
@@ -13,7 +13,7 @@ import cn.hutool.crypto.asymmetric.AsymmetricCrypto as HutoolAsymmetricCrypto
 //
 // @Keep 移除：shared 无 androidx.annotation 依赖，JS 桥反射保活改由 consumer-rules.pro -keep 登记（照 JsURL/StrResponse 先例）。
 @Suppress("unused")
-class AsymmetricCryptoAndroid(algorithm: String) : HutoolAsymmetricCrypto(algorithm), AsymmetricCrypto {
+class AsymmetricCryptoAndroid(algorithm: String) : cn.hutool.crypto.asymmetric.AsymmetricCrypto(algorithm), AsymmetricCrypto {
 
     @Suppress("MemberVisibilityCanBePrivate")
     override fun setPrivateKey(key: ByteArray): AsymmetricCryptoAndroid {

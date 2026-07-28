@@ -16,7 +16,7 @@ import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.toast.Toasters
-import io.legado.app.ui.book.bookmark.AllBookmarkScreen as SharedAllBookmarkScreen
+
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.bookmark.AllBookmarkUiActions
 import io.legado.app.ui.book.bookmark.AllBookmarkUiState
@@ -49,7 +49,7 @@ import java.util.Locale
 /**
  * 所有书签管理 Screen 桌面端入口。
  *
- * 包装 shared/sharedUiMain 下沉的 [SharedAllBookmarkScreen], 注入桌面端 Compose
+ * 包装 shared/sharedUiMain 下沉的 [io.legado.app.ui.book.bookmark.AllBookmarkScreen], 注入桌面端 Compose
  * CompositionLocal Provider (ThemeStore/AppConfig/EventBus/PreferenceStore),
  * 并用 [AppTheme] 提供统一主题, 使 commonMain 的 AppTitleBar + 分组吸顶列表
  * 在桌面 JVM 上正常工作。
@@ -219,7 +219,7 @@ private fun AllBookmarkContent(
         }
     }
 
-    SharedAllBookmarkScreen(state.value, actions)
+    io.legado.app.ui.book.bookmark.AllBookmarkScreen(state.value, actions)
 
     // ---- 书签编辑对话框 (editBookmark 触发, 调用 shared/sharedUiMain 下沉的 BookmarkDialog) ----
     // onConfirm: 把修改后的 bookmark 入库 (bookmarkDao.update), 对齐 app 端 BookmarkViewModel.upBookmark

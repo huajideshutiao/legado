@@ -178,7 +178,7 @@ class Coroutine<T>(
                 ensureActive()
                 success?.let { dispatchCallback(this, value, it) }
             } catch (e: Throwable) {
-                e.printOnDebug()
+                e.printStackTraceOnDebug()
                 val consume: Boolean = errorReturn?.value?.let { value ->
                     success?.let { dispatchCallback(this, value, it) }
                     true

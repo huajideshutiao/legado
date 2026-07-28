@@ -10,7 +10,7 @@ import io.legado.app.help.JsExtensionsCommon
 import io.legado.app.help.source.SourceCacheProviders
 import io.legado.app.help.source.SourceDebugLoggers
 import io.legado.app.help.source.SourceNetworkProviders
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.source.getShareScope
 import io.legado.app.model.script.JsCompiledScript
 import io.legado.app.model.script.JsEngines
@@ -912,7 +912,7 @@ open class AnalyzeRuleCore(
         }.onFailure {
             coroutineContext.ensureActive()
             SourceDebugLoggers.impl?.log("ajax(${urlStr}) error\n${it.stackTraceToString()}")
-            it.printOnDebug()
+            it.printStackTraceOnDebug()
         }.getOrElse {
             it.stackTraceStr
         }

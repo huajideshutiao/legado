@@ -83,7 +83,7 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
-import androidx.media3.ui.R as Media3UiR
+
 
 /** 视频播放页：标题栏 + 渲染面(AndroidView) + 手势层(pointerInput) + 控制层(Compose) + 选集网格 */
 @Composable
@@ -346,8 +346,8 @@ private fun VideoControlsOverlay(activity: VideoPlayActivity, modifier: Modifier
                     IconButton(onClick = { activity.toggleOrientationFullscreen() }) {
                         Icon(
                             painter = painterResource(
-                                if (isLandscape) Media3UiR.drawable.exo_ic_fullscreen_exit
-                                else Media3UiR.drawable.exo_ic_fullscreen_enter
+                                if (isLandscape) androidx.media3.ui.R.drawable.exo_ic_fullscreen_exit
+                                else androidx.media3.ui.R.drawable.exo_ic_fullscreen_enter
                             ),
                             contentDescription = stringResource(R.string.full_screen),
                             tint = Color.White,
@@ -368,24 +368,24 @@ private fun CenterControls(activity: VideoPlayActivity, modifier: Modifier) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         ControlIcon(
-            painter = painterResource(Media3UiR.drawable.exo_ic_skip_previous),
+            painter = painterResource(androidx.media3.ui.R.drawable.exo_ic_skip_previous),
             descRes = R.string.previous_chapter,
             enabled = activity.durChapterIndex > 0,
             onClick = { activity.playPrevChapter() },
         )
         ControlIcon(
-            painter = painterResource(Media3UiR.drawable.exo_ic_rewind),
-            descRes = Media3UiR.string.exo_controls_rewind_description,
+            painter = painterResource(androidx.media3.ui.R.drawable.exo_ic_rewind),
+            descRes = androidx.media3.ui.R.string.exo_controls_rewind_description,
             onClick = { activity.seekBack() },
         )
         PlayPauseButton(activity)
         ControlIcon(
-            painter = painterResource(Media3UiR.drawable.exo_ic_forward),
-            descRes = Media3UiR.string.exo_controls_fastforward_description,
+            painter = painterResource(androidx.media3.ui.R.drawable.exo_ic_forward),
+            descRes = androidx.media3.ui.R.string.exo_controls_fastforward_description,
             onClick = { activity.seekForward() },
         )
         ControlIcon(
-            painter = painterResource(Media3UiR.drawable.exo_ic_skip_next),
+            painter = painterResource(androidx.media3.ui.R.drawable.exo_ic_skip_next),
             descRes = R.string.next_chapter,
             enabled = activity.durChapterIndex < activity.chapters.lastIndex,
             onClick = { activity.playNextChapter() },

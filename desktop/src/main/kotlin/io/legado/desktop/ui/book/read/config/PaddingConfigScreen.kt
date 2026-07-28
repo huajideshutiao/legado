@@ -13,7 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.config.PaddingConfigController
-import io.legado.app.ui.book.read.config.PaddingConfigScreen as SharedPaddingConfigScreen
+
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
@@ -27,14 +27,14 @@ import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 
 /**
- * 桌面端"边距配置" Screen 入口 (包装 shared/sharedUiMain 的 [SharedPaddingConfigScreen])。
+ * 桌面端"边距配置" Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.read.config.PaddingConfigScreen])。
  *
  * # 职责
  *
- * - 在 [SharedPaddingConfigScreen] 之上加 [AppTitleBar] (标题"边距配置" + 返回按钮)
+ * - 在 [io.legado.app.ui.book.read.config.PaddingConfigScreen] 之上加 [AppTitleBar] (标题"边距配置" + 返回按钮)
  * - 装配一个桌面版 [PaddingConfigController] (内部 state 持有, 写不持久化, 加 TODO)
  * - 注入 4 个 DesktopXxxProvider 供 commonMain 的 [AppTheme] /
- *   [SharedPaddingConfigScreen] 通过 LocalXxx 取依赖
+ *   [io.legado.app.ui.book.read.config.PaddingConfigScreen] 通过 LocalXxx 取依赖
  *
  * # 简化项 (依赖未下沉的功能用 TODO 注释 + no-op)
  *
@@ -46,7 +46,7 @@ import io.legado.app.ui.compose.theme.AppTheme
  */
 @Composable
 fun PaddingConfigScreen(onBack: () -> Unit) {
-    // 桌面端 Provider 注入: 供 commonMain 的 AppTheme / SharedPaddingConfigScreen 取依赖
+    // 桌面端 Provider 注入: 供 commonMain 的 AppTheme / io.legado.app.ui.book.read.config.PaddingConfigScreen 取依赖
     val themeStore = remember { DesktopThemeStoreProvider() }
     val appConfig = remember { DesktopAppConfigProvider() }
     val eventBus = remember { DesktopEventBusProvider() }
@@ -73,7 +73,7 @@ fun PaddingConfigScreen(onBack: () -> Unit) {
 }
 
 /**
- * 装配 controller + onPostConfig, 位置传参调用 [SharedPaddingConfigScreen]。
+ * 装配 controller + onPostConfig, 位置传参调用 [io.legado.app.ui.book.read.config.PaddingConfigScreen]。
  *
  * 与 app 端 PaddingConfigDialog 内 PaddingConfigScreen(...) 调用对齐, 差异见顶层 KDoc。
  */
@@ -83,7 +83,7 @@ private fun PaddingConfigContent() {
     val onPostConfig: (List<ReadConfigChange>) -> Unit = {
     }
 
-    SharedPaddingConfigScreen(
+    io.legado.app.ui.book.read.config.PaddingConfigScreen(
         controller = controller,
         onPostConfig = onPostConfig,
     )

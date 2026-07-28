@@ -6,7 +6,7 @@ import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Codec
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.Data
-import org.jetbrains.skia.Image as SkiaImage
+
 import org.jetbrains.skia.ImageInfo
 import org.jetbrains.skia.impl.use
 
@@ -57,7 +57,7 @@ internal actual fun decodeAnimatedFrames(bytes: ByteArray): AnimatedFrames? = ru
             for (i in 0 until frameCount) {
                 // priorFrame = i-1: 允许 Skia 在上一帧结果上增量叠加 (首帧 -1 表示无前置帧)
                 c.readPixels(bitmap, i, i - 1)
-                frames.add(SkiaImage.makeFromBitmap(bitmap).use { it.toComposeImageBitmap() })
+                frames.add(org.jetbrains.skia.Image.makeFromBitmap(bitmap).use { it.toComposeImageBitmap() })
                 // duration 为 0 的帧 (部分 GIF 未声明) 按浏览器惯例兜底 100ms, 否则会全速空转
                 durations[i] = c.getFrameInfo(i).duration.takeIf { it > 0 } ?: DEFAULT_FRAME_DURATION_MS
             }

@@ -29,7 +29,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.booksource.IosBookSourceEditScreen
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.utils.formatNative
-import kotlinx.coroutines.delay
+import io.legado.app.utils.throttleLatest
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -115,10 +115,7 @@ fun IosChangeChapterSourceScreen(
 
     // 收集搜索结果
     LaunchedEffect(Unit) {
-        viewModel.searchDataFlow.conflate().collect {
-            items = it
-            delay(1000)
-        }
+        viewModel.searchDataFlow.throttleLatest(1_000).collect { items = it }
     }
 
     // 收集搜索状态
@@ -128,9 +125,8 @@ fun IosChangeChapterSourceScreen(
 
     // 收集换源进度
     LaunchedEffect(Unit) {
-        viewModel.changeSourceProgress.drop(1).collect { (count, name) ->
+        viewModel.changeSourceProgress.drop(1).throttleLatest(500).collect { (count, name) ->
             durText = searchedCountProgressTemplate.formatNative(items.size, count, viewModel.totalSourceCount, name)
-            delay(500)
         }
     }
 

@@ -4,7 +4,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.mainDispatcher
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -36,7 +36,7 @@ import kotlinx.coroutines.withContext
  *         try {
  *             appDb.bookGroupDao.update(*bookGroup)
  *         } catch (e: Throwable) {
- *             e.printOnDebug()
+ *             e.printStackTraceOnDebug()
  *         } finally {
  *             if (finally != null) withContext(mainDispatcher) { finally.invoke() }
  *         }
@@ -48,8 +48,8 @@ import kotlinx.coroutines.withContext
  * - 原 `onFinally` 默认 `executeContext = mainDispatcher` (Main) 调 finally 回调,
  *   调用方 finally 回调典型为 `dismiss()` (GroupEditDialog), 必须在主线程;
  *   shared 用 [withContext]([mainDispatcher]) 切到 Main 调 finally, 行为完全一致;
- * - 原 catch 块无 `onError`, [Coroutine] 默认 `e.printOnDebug()` (DEBUG 才打栈),
- *   shared 端直接调 [printOnDebug] expect fun, 行为完全一致;
+ * - 原 catch 块无 `onError`, [Coroutine] 默认 `e.printStackTraceOnDebug()` (DEBUG 才打栈),
+ *   shared 端直接调 [printStackTraceOnDebug] expect fun, 行为完全一致;
  * - 原 `onFinally` 在 [Coroutine.executeInternal] 的 finally 块中执行,
  *   无论成功 / 失败 / cancel 都会执行 (除非 NonCancellable); shared 端 Kotlin
  *   `try { } catch { } finally { }` 同样无论成功 / 失败都执行, cancel 时由协程机制
@@ -88,8 +88,8 @@ class GroupViewModelShared(
             try {
                 appDb.bookGroupDao.update(*bookGroup)
             } catch (e: Throwable) {
-                // 与原 Coroutine 默认行为等价: e.printOnDebug() 不上报 (release 不打栈)
-                e.printOnDebug()
+                // 与原 Coroutine 默认行为等价: e.printStackTraceOnDebug() 不上报 (release 不打栈)
+                e.printStackTraceOnDebug()
             } finally {
                 if (finally != null) withContext(mainDispatcher) { finally.invoke() }
             }
@@ -129,8 +129,8 @@ class GroupViewModelShared(
                 appDb.bookGroupDao.getByID(groupId) ?: appDb.bookDao.removeGroup(groupId)
                 appDb.bookGroupDao.insert(bookGroup)
             } catch (e: Throwable) {
-                // 与原 Coroutine 默认行为等价: e.printOnDebug() 不上报 (release 不打栈)
-                e.printOnDebug()
+                // 与原 Coroutine 默认行为等价: e.printStackTraceOnDebug() 不上报 (release 不打栈)
+                e.printStackTraceOnDebug()
             } finally {
                 withContext(mainDispatcher) { finally() }
             }
@@ -152,8 +152,8 @@ class GroupViewModelShared(
                 appDb.bookGroupDao.delete(bookGroup)
                 appDb.bookDao.removeGroup(bookGroup.groupId)
             } catch (e: Throwable) {
-                // 与原 Coroutine 默认行为等价: e.printOnDebug() 不上报 (release 不打栈)
-                e.printOnDebug()
+                // 与原 Coroutine 默认行为等价: e.printStackTraceOnDebug() 不上报 (release 不打栈)
+                e.printStackTraceOnDebug()
             } finally {
                 withContext(mainDispatcher) { finally() }
             }

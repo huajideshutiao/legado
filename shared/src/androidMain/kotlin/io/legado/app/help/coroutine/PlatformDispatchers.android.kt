@@ -8,7 +8,7 @@ import kotlinx.coroutines.Dispatchers
 internal actual val mainDispatcher: CoroutineDispatcher get() = Dispatchers.Main
 
 /** 原 app 侧行为：仅 DEBUG 打栈。本模块 BuildConfig.DEBUG 随 app 构建类型一致。 */
-actual fun Throwable.printOnDebug() {
+actual fun Throwable.printStackTraceOnDebug() {
     if (BuildConfig.DEBUG) {
         printStackTrace()
     }

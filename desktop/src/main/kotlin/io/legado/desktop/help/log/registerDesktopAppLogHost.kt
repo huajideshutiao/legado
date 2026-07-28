@@ -30,11 +30,14 @@ private val desktopAppLogHost = object : AppLogHost {
 
     override fun currentTimeMillis(): Long = System.currentTimeMillis()
 
+    override fun timeZoneOffsetMillis(): Long =
+        java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()).toLong()
+
     override val recordLog: Boolean get() = true
 
-    override fun write(message: String) {
+    override fun write(tag: String, message: String) {
         // 桌面端无文件落盘 LogUtils, 直接 println 到控制台
-        debugLog("[AppLog] $message")
+        debugLog("[$tag] $message")
     }
 
     override fun toast(message: String) {
@@ -42,9 +45,9 @@ private val desktopAppLogHost = object : AppLogHost {
         debugLog("[AppLog.toast] $message")
     }
 
-    override fun debugPrint(message: String, throwable: Throwable?) {
+    override fun debugPrint(tag: String, message: String, throwable: Throwable?) {
         // DEBUG 模式下输出 (替代 Android logcat Log.e)
-        debugLog("[AppLog.debug] $message")
+        debugLog("[$tag] $message")
         throwable?.printStackTrace()
     }
 }

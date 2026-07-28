@@ -43,7 +43,7 @@ import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.group.GroupViewModelShared
 import io.legado.app.ui.bookshelf.BookshelfActions
 import io.legado.app.ui.bookshelf.BookshelfActionsCallbacks
-import io.legado.app.ui.bookshelf.BookshelfScreen as SharedBookshelfScreen
+
 import io.legado.app.ui.bookshelf.BookshelfTier
 import io.legado.app.ui.bookshelf.BookshelfViewModel
 import io.legado.app.ui.bookshelf.DefaultBookCoverPlaceholder
@@ -65,7 +65,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 桌面端书架 Screen 入口 (包装 shared/commonMain 的 [SharedBookshelfScreen])。
+ * 桌面端书架 Screen 入口 (包装 shared/commonMain 的 [io.legado.app.ui.bookshelf.BookshelfScreen])。
  *
  * # 职责
  *
@@ -182,7 +182,7 @@ fun BookshelfScreen(
     val cancelLabel = rememberString("cancel")
     val selectFileLabel = rememberString("select_file")
 
-    SharedBookshelfScreen(
+    io.legado.app.ui.bookshelf.BookshelfScreen(
         viewModel = viewModel,
         onBookClick = onBookClick,
         onBookLongClick = onBookLongClick,

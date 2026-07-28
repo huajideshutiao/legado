@@ -13,8 +13,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
@@ -124,7 +125,8 @@ private fun BookmarkList(state: AllBookmarkUiState, actions: AllBookmarkUiAction
         out
     }
     val navPad = WindowInsets.navigationBars.asPaddingValues()
-    LazyColumn(
+    FastScrollLazyColumn(
+        state = rememberLazyListState(),
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = navPad.calculateBottomPadding()),
     ) {

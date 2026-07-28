@@ -23,7 +23,7 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
-import io.legado.app.ui.book.toc.TocScreen as SharedTocScreen
+
 import io.legado.app.ui.book.toc.TocScrollCmd
 import io.legado.app.ui.book.toc.rule.TxtTocRuleEditDialog
 import io.legado.app.ui.book.toc.TocUiActions
@@ -51,12 +51,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 桌面端目录页 Screen 入口 (包装 shared/sharedUiMain 的 [SharedTocScreen])。
+ * 桌面端目录页 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.toc.TocScreen])。
  *
  * # 职责
  *
  * 对照 desktop [io.legado.desktop.ui.bookinfo.BookInfoScreen] 模式, 仅做桌面平台适配,
- * 业务展示与交互逻辑全部下沉到 shared/sharedUiMain 的 [SharedTocScreen]:
+ * 业务展示与交互逻辑全部下沉到 shared/sharedUiMain 的 [io.legado.app.ui.book.toc.TocScreen]:
  *
  * - **数据加载**: [LaunchedEffect] 异步查 [AppDbProviders.get].bookDao.getBook(bookUrl)
  *   加载本地完整 Book (含 durChapterIndex 等); 再异步加载章节列表 + 书签列表
@@ -85,7 +85,7 @@ import kotlinx.coroutines.withContext
  *
  * 参考 [io.legado.desktop.ui.booksource.BookSourceScreen] 模式, 本 Screen 自带
  * CompositionLocalProvider + [AppTheme] 包裹, 注入桌面端 ThemeStore/AppConfig/EventBus,
- * 让 shared/sharedUiMain 的 [SharedTocScreen] 内部调 AppTheme.colors 等可正常工作。
+ * 让 shared/sharedUiMain 的 [io.legado.app.ui.book.toc.TocScreen] 内部调 AppTheme.colors 等可正常工作。
  *
  * @param book 目录页目标书籍 (由 DesktopApp 注入, 内部用 bookUrl 从 DAO 加载完整 Book)
  * @param onBack 返回回调 (切回调用方路由: 详情/书架)
@@ -116,7 +116,7 @@ fun TocScreen(
  * 目录页内容主体 (Provider + AppTheme 内部)。
  *
  * 持有 13 个状态字段 (对照 app 端 [TocActivity] 的 var 字段), 在 [LaunchedEffect] 内
- * 异步加载, 并构造 [TocUiState] + [DesktopTocActions] 调用 [SharedTocScreen]。
+ * 异步加载, 并构造 [TocUiState] + [DesktopTocActions] 调用 [io.legado.app.ui.book.toc.TocScreen]。
  */
 @Composable
 private fun TocScreenContent(
@@ -225,7 +225,7 @@ private fun TocScreenContent(
     )
 
     // 位置参数调用 (shared Screen 函数类型参数不能用命名参数, 见任务说明)
-    SharedTocScreen(state, actions)
+    io.legado.app.ui.book.toc.TocScreen(state, actions)
 
     // ---- TXT 目录规则编辑对话框 (showTocRegexDialog 触发, TxtTocRuleEditDialog(rule=null) 新增) ----
     // 剪贴板桥接用 AWT Toolkit (替代 app 端 getClipText/sendToClip):

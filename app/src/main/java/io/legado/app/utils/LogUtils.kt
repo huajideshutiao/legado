@@ -8,7 +8,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.appInfo
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.coroutine.printOnDebug as sharedPrintOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.globalExecutor
 import splitties.init.appCtx
 import java.text.SimpleDateFormat
@@ -139,8 +139,8 @@ object LogUtils {
  * 转发到 shared 的 expect/actual 实现 (io.legado.app.help.coroutine.printOnDebug),
  * 消除 BuildConfig.DEBUG 检查的重复逻辑。app 端调用方 import 零改动。
  *
- * P0-0b: shared printOnDebug 改 public 后, 本函数仅作同包名便利转发层。
+ * P0-0b: shared printStackTraceOnDebug 改 public 后, 本函数仅作同包名便利转发层。
  */
 fun Throwable.printOnDebug() {
-    this.sharedPrintOnDebug()
+    this.printStackTraceOnDebug()
 }

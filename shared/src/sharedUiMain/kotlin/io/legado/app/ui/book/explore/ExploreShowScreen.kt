@@ -19,10 +19,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
@@ -50,6 +48,8 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.bookshelf.KindLabels
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.FastScrollLazyColumn
+import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
@@ -302,7 +302,11 @@ private fun ResultArea(
                 if (total > 0 && last >= total - 2) actions.onScrollToBottom()
             }
         }
-        LazyColumn(state = state_, modifier = modifier.fillMaxWidth(), contentPadding = navPad) {
+        FastScrollLazyColumn(
+            state = state_,
+            modifier = modifier.fillMaxWidth(),
+            contentPadding = navPad,
+        ) {
             items(books, key = { it.bookUrl }) { book ->
                 if (cols == 1 && isVideo) {
                     videoItemSlot(
@@ -339,7 +343,7 @@ private fun ResultArea(
                 if (total > 0 && last >= total - 2) actions.onScrollToBottom()
             }
         }
-        LazyVerticalGrid(
+        FastScrollLazyVerticalGrid(
             columns = GridCells.Fixed(spanCount),
             state = state_,
             modifier = modifier.fillMaxWidth(),

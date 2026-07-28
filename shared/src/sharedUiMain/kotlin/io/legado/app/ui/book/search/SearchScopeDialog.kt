@@ -10,8 +10,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
@@ -30,6 +30,7 @@ import io.legado.app.data.entities.BookGroup
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -82,8 +83,9 @@ fun SearchScopeDialog(
                 )
 
                 // 分组列表: LazyColumn + Checkbox (任务要求)
-                LazyColumn(
-                    Modifier
+                FastScrollLazyColumn(
+                    state = rememberLazyListState(),
+                    modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 400.dp),
                 ) {

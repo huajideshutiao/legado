@@ -2,6 +2,8 @@
 
 package io.legado.app.model.script
 
+import com.script.jsdispatch.JsValueConverters
+
 import io.legado.app.help.JsExtensionsCommon
 import io.legado.app.napi.quickjs.JSContext
 import io.legado.app.napi.quickjs.JSPropertyEnum
@@ -681,35 +683,37 @@ object NativeJsEngine : JsEngine {
      * @return JSValue, 或 null 表示跳过此 binding (复杂对象不桥接)
      */
     private fun toJsValue(ctx: CPointer<JSContext>, value: Any?): CValue<JSValue>? {
-        return when (value) {
+        val converted = JsValueConverters.convertAll(value)
+        return when (converted) {
             null -> jsNullValue()
-            is Boolean -> qjs_NewBool(ctx, if (value) 1 else 0)
-            is Int, is Short, is Byte -> qjs_NewInt32(ctx, value.toInt())
+            is Boolean -> qjs_NewBool(ctx, if (converted) 1 else 0)
+            is Int, is Short, is Byte -> qjs_NewInt32(ctx, converted.toInt())
             is Long, is Float, is Double -> {
-                val d = (value as Number).toDouble()
+                val d = (converted as Number).toDouble()
                 if (d.isNaN() || d.isInfinite()) jsNullValue() else qjs_NewFloat64(ctx, d)
             }
             is Number -> {
-                val d = value.toDouble()
+                val d = converted.toDouble()
                 if (d.isNaN() || d.isInfinite()) jsNullValue() else qjs_NewFloat64(ctx, d)
             }
             is String -> {
                 memScoped {
-                    val cstr = value.cstr.ptr
+                    val cstr = converted.cstr.ptr
                     qjs_NewString(ctx, cstr)
                 }
             }
             is Map<*, *> -> {
                 @Suppress("UNCHECKED_CAST")
-                mapToJsObject(ctx, value as Map<String, Any?>)
+                mapToJsObject(ctx, converted as Map<String, Any?>)
             }
-            is List<*> -> listToJsArray(ctx, value)
+
+            is List<*> -> listToJsArray(ctx, converted)
             is JsExtensionsCommon -> {
                 // JsExtensions 桥接: 通过 handle 表 + JS 工厂函数桥接为 JS 对象 (NativeJsExtensionsBridge)
                 // 需要当前 scope (threadLocalScope) 记录 handle, close 时清理
                 val currentScope = threadLocalScope.value
                     ?: return null  // 无 scope 上下文, 跳过 (非 injectBindings 调用路径)
-                NativeJsExtensionsBridge.createJsObject(ctx, value, currentScope)
+                NativeJsExtensionsBridge.createJsObject(ctx, converted, currentScope)
             }
             else -> null  // 其他复杂对象暂不桥接 (TODO: 后续按需扩展)
         }
@@ -771,16 +775,18 @@ object NativeJsEngine : JsEngine {
 
     /** 把 Kotlin 值转为 JS 字面量字符串 (用于拼接 __enterBindings 调用)。null 表示跳过。 */
     private fun toJsLiteral(value: Any?): String? {
-        return when (value) {
+        val converted = JsValueConverters.convertAll(value)
+        return when (converted) {
             null -> "null"
-            is Boolean -> value.toString()
-            is Int, is Long, is Short, is Byte -> value.toString()
+            is Boolean -> converted.toString()
+            is Int, is Long, is Short, is Byte -> converted.toString()
             is Float, is Double -> {
-                val d = (value as Number).toDouble()
+                val d = (converted as Number).toDouble()
                 if (d.isNaN() || d.isInfinite()) "null" else d.toString()
             }
-            is Number -> value.toDouble().toString()
-            is String -> escapeJsString(value)
+
+            is Number -> converted.toDouble().toString()
+            is String -> escapeJsString(converted)
             // Map/List 通过 JS_SetPropertyStr 注入 globalThis, 不走 __enterBindings (避免 JSON 序列化丢失类型)
             is Map<*, *> -> null
             is List<*> -> null

@@ -17,7 +17,6 @@ import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.ui.compose.dialogs.selector
 import io.legado.app.ui.widget.dialog.TextDialog
-import io.legado.app.ui.widget.dialog.autoLinkText
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.toastOnUi
@@ -138,7 +137,6 @@ class BookSourceDebugActivity : BaseComposeActivity(), BookSourceDebugUiActions 
         BookSourceDebugScreen(
             state = state,
             actions = this,
-            linkifyText = { text, linkColor -> autoLinkText(text, linkColor) },
         )
     }
 

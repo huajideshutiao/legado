@@ -163,7 +163,7 @@ class DictRuleEditViewModelShared(
      *   (与 app 端完全一致, getOrThrow 而非 getOrNull);
      * - 成功回调 [success];
      * - 失败 `Toasters.get().toast("格式不对")` (替代 `context.toastOnUi(...)`,
-     *   注意原 app 端 onError 仅 toast 不 printOnDebug, 保持一致)。
+     *   注意原 app 端 onError 仅 toast 不 printStackTraceOnDebug, 保持一致)。
      *
      * 业务在 IO 跑, 回调在 mainDispatcher 跑 (与 BaseViewModel.execute 默认值一致)。
      *
@@ -182,7 +182,7 @@ class DictRuleEditViewModelShared(
         }.onSuccess {
             success.invoke(it)
         }.onError {
-            // 替代 context.toastOnUi(msg), 与 app 端原 onError 一致 (仅 toast, 不 printOnDebug)
+            // 替代 context.toastOnUi(msg), 与 app 端原 onError 一致 (仅 toast, 不 printStackTraceOnDebug)
             Toasters.get().toast("格式不对")
         }
     }

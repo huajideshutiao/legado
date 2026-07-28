@@ -7,7 +7,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import io.legado.app.data.entities.ReplaceRule
-import io.legado.app.ui.book.read.EffectiveReplacesScreen as SharedEffectiveReplacesScreen
+
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
 import io.legado.app.ui.compose.platform.DesktopPreferenceStoreProvider
@@ -19,15 +19,15 @@ import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 
 /**
- * 桌面端"有效替换" Screen 入口 (包装 shared/sharedUiMain 的 [SharedEffectiveReplacesScreen])。
+ * 桌面端"有效替换" Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.read.EffectiveReplacesScreen])。
  *
  * # 职责
  *
- * - 用 [Surface] 包裹 [SharedEffectiveReplacesScreen], 让其 DialogTitleBar 作为页面标题栏
+ * - 用 [Surface] 包裹 [io.legado.app.ui.book.read.EffectiveReplacesScreen], 让其 DialogTitleBar 作为页面标题栏
  *   (原为对话框正文, 桌面端无 Dialog 宿主, 升格为全屏页面, DialogTitleBar 的 onBack
  *   即页面 onBack)
  * - 注入 4 个 DesktopXxxProvider 供 commonMain 的 [AppTheme] /
- *   [SharedEffectiveReplacesScreen] 通过 LocalXxx 取依赖
+ *   [io.legado.app.ui.book.read.EffectiveReplacesScreen] 通过 LocalXxx 取依赖
  *
  * # 简化项 (依赖未下沉的功能用 TODO 注释 + no-op)
  *
@@ -43,7 +43,7 @@ import io.legado.app.ui.compose.theme.AppTheme
  */
 @Composable
 fun EffectiveReplacesScreen(onBack: () -> Unit) {
-    // 桌面端 Provider 注入: 供 commonMain 的 AppTheme / SharedEffectiveReplacesScreen 取依赖
+    // 桌面端 Provider 注入: 供 commonMain 的 AppTheme / io.legado.app.ui.book.read.EffectiveReplacesScreen 取依赖
     val themeStore = remember { DesktopThemeStoreProvider() }
     val appConfig = remember { DesktopAppConfigProvider() }
     val eventBus = remember { DesktopEventBusProvider() }
@@ -64,7 +64,7 @@ fun EffectiveReplacesScreen(onBack: () -> Unit) {
 }
 
 /**
- * 装配 items (空列表) + 4 个回调, 位置传参调用 [SharedEffectiveReplacesScreen]。
+ * 装配 items (空列表) + 4 个回调, 位置传参调用 [io.legado.app.ui.book.read.EffectiveReplacesScreen]。
  *
  * 与 app 端 EffectiveReplacesDialog 内 EffectiveReplacesScreen(...) 调用对齐,
  * 差异见顶层 KDoc。
@@ -74,7 +74,7 @@ private fun EffectiveReplacesContent(onBack: () -> Unit) {
     // TODO: 接入当前阅读书籍上下文后, 从 ReadBookViewModelShared 取 BookContent.effectiveReplaceRules
     val items: List<ReplaceRule> = remember { emptyList() }
 
-    SharedEffectiveReplacesScreen(
+    io.legado.app.ui.book.read.EffectiveReplacesScreen(
         items = items,
         onAddRule = {
             // TODO: 桌面端 ReplaceEditScreen 缺少"当前书籍上下文"参数桥接, 暂不接入

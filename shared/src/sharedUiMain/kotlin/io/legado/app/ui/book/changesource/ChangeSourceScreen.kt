@@ -49,11 +49,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -480,7 +481,7 @@ fun ChapterTocPanel(
                 .fillMaxWidth(),
         ) {
             if (toc != null) {
-                LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+                FastScrollLazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                     itemsIndexed(toc, key = { index, _ -> index }) { index, chapter ->
                         TocItemRow(chapter, chapter.index == durChapterIndex) {
                             onClickChapter(chapter, toc.getOrNull(index + 1)?.url)

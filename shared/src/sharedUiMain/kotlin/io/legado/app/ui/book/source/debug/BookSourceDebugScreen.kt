@@ -35,13 +35,13 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.linkifyText
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -122,26 +122,15 @@ interface BookSourceDebugUiActions {
 /**
  * 书源调试 Screen (KMP 版, 替代 app 端 `BookSourceDebugActivity.Content` 下沉)。
  *
- * 三段式 API:
+ * 二段式 API:
  * - [BookSourceDebugUiState]: 不可变展示状态, 由宿主端 (Activity/桌面) 持有 mutableStateOf 并 copy
  * - [BookSourceDebugUiActions]: 交互回调集合, 宿主端实现接口
- * - [linkifyText]: 网址自动链接注入 (app 端传 `autoLinkText`, 依赖 android.util.Patterns.WEB_URL,
- *   无法下沉到 shared)
- * - [BookSourceDebugScreen]: 纯 Composable 渲染入口, 仅依赖 state + actions + linkifyText
- *
- * 下沉改动:
- * - 字符串资源 `stringResource(R.string.xxx)` → `rememberString("xxx")` (key-based, 跨平台)
- * - `autoLinkText(item, colors.accent)` → `linkifyText(item, colors.accent)` (回调注入)
- * - 平台依赖 (viewModel / showDialogFragment / showHelp / selector / clearExploreKindsCache)
- *   通过 [BookSourceDebugUiActions] 回调桥接, exploreKinds 保留在 app 端 Activity/Model
- *
- * 视觉/布局/动画/手势/状态管理完全与 app 端原版一致 (宽高/边距/颜色/层级)。
+ * - [BookSourceDebugScreen]: 纯 Composable 渲染入口, 仅依赖 state + actions
  */
 @Composable
 fun BookSourceDebugScreen(
     state: BookSourceDebugUiState,
     actions: BookSourceDebugUiActions,
-    linkifyText: (String, Color) -> AnnotatedString,
 ) {
     val colors = AppTheme.colors
     val focusManager = LocalFocusManager.current
@@ -172,15 +161,19 @@ fun BookSourceDebugScreen(
             actions = { DebugActions(actions) },
         )
         Box(Modifier.fillMaxSize()) {
-            // 调试日志流：可选中文本 + WEB_URLS 自动链接（对齐原 TextView 行为）
-            SelectionContainer {
-                LazyColumn(
-                    Modifier.fillMaxSize(),
-                    contentPadding = WindowInsets.navigationBars.asPaddingValues(),
-                ) {
-                    items(state.logs) { item ->
+            // 调试日志流：逐项 SelectionContainer + Text
+            // - Text 内 LinkAnnotation.Url 自动处理短按打开链接
+            // - 逐项 SelectionContainer 负责长按选择文本，桌面鼠标更稳定
+            // - 二者手势时长不同（tap vs long-press），不冲突
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = WindowInsets.navigationBars.asPaddingValues(),
+            ) {
+                items(state.logs) { item ->
+                    val annotated = remember(item) { linkifyText(item, colors.accent) }
+                    SelectionContainer {
                         Text(
-                            text = linkifyText(item, colors.accent),
+                            text = annotated,
                             color = colors.primaryText,
                             fontSize = 14.sp,
                             modifier = Modifier.fillMaxWidth(),

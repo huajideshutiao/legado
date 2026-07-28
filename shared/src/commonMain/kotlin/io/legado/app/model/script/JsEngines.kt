@@ -1,8 +1,16 @@
 package io.legado.app.model.script
 
-import kotlin.concurrent.Volatile
+import com.script.jsdispatch.JsValueConverters
+import io.legado.app.model.analyzeRule.JsonElementJsConverter
+import io.legado.app.model.script.JsEngines.asJsObject
+import io.legado.app.model.script.JsEngines.get
+import io.legado.app.model.script.JsEngines.isJsException
+import io.legado.app.model.script.JsEngines.isJsObject
+import io.legado.app.model.script.JsEngines.registerProvider
+import io.legado.app.model.script.JsEngines.type
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlin.concurrent.Volatile
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -42,6 +50,9 @@ object JsEngines {
 
     /** 宿主启动早期注册一次（任何 JS eval 之前）。 */
     fun registerProvider(engineProvider: JsEngineProvider) {
+        // JsonElement → JS 原生值的转换器随引擎注册一并挂接,
+        // quickjs 在 bindings 注入与 Java 方法返回两条入 JS 路径统一调用 JsValueConverters。
+        JsValueConverters.register(JsonElementJsConverter)
         provider = engineProvider
     }
 

@@ -30,7 +30,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
-import io.legado.app.data.entities.getBookSource
+import io.legado.app.data.entities.resolveBookSource
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.OverflowMenu
@@ -136,7 +136,7 @@ class SourcePickerDialog : BaseComposeDialogFragment() {
     }
 
     private fun onSourceClick(item: BookSourcePart) {
-        item.getBookSource()?.let { source ->
+        item.resolveBookSource()?.let { source ->
             callback?.sourceOnClick(source)
         }
         dismissAllowingStateLoss()

@@ -61,6 +61,9 @@ quickjsKt = "1.0.5"
 media3 = "1.10.1"
 webkit = "1.16.0"
 activity = "1.13.0"
+# Android Foundation 1.11 修复新 TextContextMenuProvider 下 SelectionContainer 复制后未及时释放选区，
+# 避免平台 ActionMode 在关闭前重算成仅“全选”的过渡帧；仅 Android target 使用。
+composeFoundationAndroid = "1.11.4"
 lifecycle = "2.10.0"
 room = "2.8.4"
 # KMP Room 2.8.x 配套: sqlite-bundled 2.7.0 提供 BundledSQLiteDriver (跨平台 SQLite)
@@ -78,8 +81,6 @@ androidsvg = "1.4"
 # 上游 2010 年后停止维护，但纯 Java 实现、无 native 依赖、API 稳定，仍是最轻量选择
 jlayer = "1.0.1"
 junit = "4.13.2"
-# Compose BOM 只统一 compose.* 组件版本；编译器插件版本跟随 kotlin(2.3.21)，二者解耦
-composeBom = "2026.06.01"
 # Coil3: KMP+Compose 原生图片加载库, 替代 Glide
 coil3 = "3.2.0"
 # 拖拽排序：KMP 原生库(Maven Central，经 Aliyun central 镜像可达)，替代 ItemTouchHelper。3.x 用 animateItem API，需 compose≥1.7(BOM 已满足)
@@ -191,12 +192,8 @@ quickjs-kt-android = { module = "io.github.dokar3:quickjs-kt-android", version.r
 # quickjs-kt KMP variant (JVM target 自带 .dll/.so/.dylib): 桌面端 JS 引擎用, Android 端继续用 quickjs-kt-android
 quickjs-kt = { module = "io.github.dokar3:quickjs-kt", version.ref = "quickjsKt" }
 
-# Compose：BOM 统一版本，activity-compose/lifecycle-runtime-compose 跟随现有 activity/lifecycle ref
-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
-compose-material3 = { module = "androidx.compose.material3:material3" }
-# MD2 组件库: AppTheme 基于 M2 MaterialTheme, app 端 Compose 界面与 shared 统一走 material(M2)
-compose-material = { module = "androidx.compose.material:material" }
-compose-ui = { module = "androidx.compose.ui:ui" }
+# Android 平台 Compose 集成层；Compose 核心 runtime/foundation/material/ui 统一由
+# Compose Multiplatform 插件的 compose.* 访问器提供，避免 app/shared 两套依赖体系。
 # Coil3 KMP 图片加载 (替代 Glide, 适配 Compose + 跨端)
 # artifact 名校验 (search.maven.org g:io.coil-kt.coil3): coil-compose / coil-network-okhttp 均 3.2.0
 # coil3-core 原写法 io.coil-kt.coil3:coil3 不存在 (Maven 404), 正确聚合 artifact 为 io.coil-kt.coil3:coil
@@ -207,8 +204,8 @@ coil3-gif = { module = "io.coil-kt.coil3:coil-gif", version.ref = "coil3" }
 coil3-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil3" }
 coil3-network-ktor3 = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil3" }
 coil3-core = { module = "io.coil-kt.coil3:coil", version.ref = "coil3" }
-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 compose-activity = { module = "androidx.activity:activity-compose", version.ref = "activity" }
+compose-foundation-android = { module = "androidx.compose.foundation:foundation", version.ref = "composeFoundationAndroid" }
 compose-lifecycle-runtime = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "reorderable" }
 

@@ -2,7 +2,7 @@ package io.legado.app.lib.webdav
 
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.http.newCallResponse
 import io.legado.app.help.http.text
@@ -238,7 +238,7 @@ actual open class WebDav actual constructor(
                 )
                 list.add(webDavFile)
             } catch (e: MalformedURLException) {
-                e.printOnDebug()
+                e.printStackTraceOnDebug()
             }
         }
         return list

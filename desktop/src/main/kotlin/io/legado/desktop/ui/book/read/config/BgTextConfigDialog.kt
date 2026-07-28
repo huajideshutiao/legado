@@ -21,7 +21,7 @@ import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.config.BgImageItem
 import io.legado.app.ui.book.read.config.BgTextConfigActions
 import io.legado.app.ui.book.read.config.BgTextConfigController
-import io.legado.app.ui.book.read.config.BgTextConfigScreen as SharedBgTextConfigScreen
+
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -34,11 +34,11 @@ import java.awt.Frame
 import javax.swing.SwingUtilities
 
 /**
- * 桌面端"背景文字配置"对话框入口（包装 shared/sharedUiMain 的 [SharedBgTextConfigScreen]）。
+ * 桌面端"背景文字配置"对话框入口（包装 shared/sharedUiMain 的 [io.legado.app.ui.book.read.config.BgTextConfigScreen]）。
  *
  * # 职责
  *
- * - 用 [AppAlertDialog] 包裹 [SharedBgTextConfigScreen]，提供标题"背景与文字" + 关闭按钮
+ * - 用 [AppAlertDialog] 包裹 [io.legado.app.ui.book.read.config.BgTextConfigScreen]，提供标题"背景与文字" + 关闭按钮
  * - 装配桌面版 [BgTextConfigController]（桥接到 [ReadBookConfigShared.durConfig] 各字段）
  * - 装配桌面版 [BgTextConfigActions]（桥接到 AWT FileDialog 选图 / 配置变更通知）
  * - 装配 [bgImageList] / [bgImagePreviewSlot]：桌面端无 RemoteAssetsUtils，无 assets 预设背景图，
@@ -77,7 +77,7 @@ fun BgTextConfigDialog(
         title = rememberString("text_bg_style"),
         widthFraction = 0.8f,
         content = {
-            SharedBgTextConfigScreen(
+            io.legado.app.ui.book.read.config.BgTextConfigScreen(
                 controller = controller,
                 actions = actions,
                 isImageBook = isImageBook,

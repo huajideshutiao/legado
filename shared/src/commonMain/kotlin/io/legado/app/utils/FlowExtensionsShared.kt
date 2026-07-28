@@ -3,14 +3,17 @@ package io.legado.app.utils
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.sync.Semaphore
 
 /**
@@ -23,6 +26,20 @@ import kotlinx.coroutines.sync.Semaphore
  * 包名/函数签名不变, 消费方 import 零改动 (跨模块同包名同签名扩展自动合并,
  * 但不允许重复定义, 需从 app 端 FlowExtensions.kt 删除已下沉的扩展)。
  */
+
+/**
+ * 立即发出每个时间窗的首值，并在窗口结束时补发期间收到的最新值。
+ *
+ * 适用于 UI 高频进度/列表刷新：既不延迟首屏，也不会像 debounce 那样在持续更新时长期不发；
+ * 上游完成时会发出尚未下发的尾值。
+ */
+fun <T> Flow<T>.throttleLatest(periodMillis: Long): Flow<T> {
+    require(periodMillis > 0) { "periodMillis must be positive" }
+    return conflate().transform { value ->
+        emit(value)
+        delay(periodMillis)
+    }
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 inline fun <T> Flow<T>.onEachParallel(

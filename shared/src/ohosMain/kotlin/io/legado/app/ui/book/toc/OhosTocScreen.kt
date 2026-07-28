@@ -24,7 +24,7 @@ import io.legado.app.help.readFromClipboard
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
-import io.legado.app.ui.book.toc.TocScreen as SharedTocScreen
+
 import io.legado.app.ui.book.toc.rule.TxtTocRuleEditDialog
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.platform.sharedStringTable
@@ -37,7 +37,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 鸿蒙端目录页 Screen 入口 (包装 shared/sharedUiMain 的 [SharedTocScreen])。
+ * 鸿蒙端目录页 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.toc.TocScreen])。
  *
  * 对照 iOS 端 [io.legado.app.ui.book.toc.IosTocScreen] / desktop `TocScreen.kt` 包装模式,
  * 仅做鸿蒙平台适配, 业务展示与交互逻辑全部下沉到 shared/sharedUiMain:
@@ -160,7 +160,7 @@ fun OhosTocScreen(
         isLocalBook = loadedBook?.isLocal == true,
     )
 
-    SharedTocScreen(state, actions)
+    io.legado.app.ui.book.toc.TocScreen(state, actions)
 
     // TXT 目录规则编辑对话框 (与 iOS IosTocScreen 一致, 复用 shared/sharedUiMain TxtTocRuleEditDialog)
     if (showTocRegexDialog) {

@@ -43,8 +43,7 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.conflate
+import io.legado.app.utils.throttleLatest
 
 /**
  * 换封面搜索对话框 (KMP 共享, app + desktop 复用)。
@@ -110,13 +109,9 @@ fun ChangeCoverDialog(
     // 搜索中状态 (对照原 searching var, 原版通过 Observer searchStateData 更新)
     var searching by remember { mutableStateOf(false) }
 
-    // 收集搜索结果 (对照原 LaunchedEffect: viewModel.dataFlow.conflate().collect)
-    // delay(1000) 节流, 避免高频 trySend 触发过多重组 (与 app 端原实现一致)
+    // 首值立即显示，持续搜索期间最多每秒刷新一次，并保留窗口内最新结果。
     LaunchedEffect(Unit) {
-        viewModel.dataFlow.conflate().collect {
-            items = it
-            delay(1000)
-        }
+        viewModel.dataFlow.throttleLatest(1_000).collect { items = it }
     }
 
     // 收集搜索状态 (对照原 DisposableEffect + Observer searchStateData)

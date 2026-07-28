@@ -2,7 +2,7 @@
 package io.legado.app.utils
 
 import io.legado.app.constant.AppLog
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import java.io.File
 import java.io.IOException
 import java.util.Collections
@@ -100,7 +100,7 @@ open class ACacheBase protected constructor(
             }
             mCache = ACacheManager(cacheDir, maxSize, maxCount)
         } catch (e: Exception) {
-            e.printOnDebug()
+            e.printStackTraceOnDebug()
         }
     }
 
@@ -121,7 +121,7 @@ open class ACacheBase protected constructor(
                 file.writeText(value)
                 mCache.put(file)
             } catch (e: Exception) {
-                e.printOnDebug()
+                e.printStackTraceOnDebug()
             }
         }
     }
@@ -159,7 +159,7 @@ open class ACacheBase protected constructor(
                     removeFile = true
                 }
             } catch (e: IOException) {
-                e.printOnDebug()
+                e.printStackTraceOnDebug()
             } finally {
                 if (removeFile)
                     remove(key)
@@ -219,7 +219,7 @@ open class ACacheBase protected constructor(
                     null
                 }
             } catch (e: Exception) {
-                e.printOnDebug()
+                e.printStackTraceOnDebug()
             } finally {
                 if (removeFile)
                     remove(key)
@@ -241,7 +241,7 @@ open class ACacheBase protected constructor(
                     return f
                 }
             } catch (e: Exception) {
-                e.printOnDebug()
+                e.printStackTraceOnDebug()
             }
         }
         return null
@@ -303,7 +303,7 @@ open class ACacheBase protected constructor(
                     }
                 }
             } catch (e: Exception) {
-                e.printOnDebug()
+                e.printStackTraceOnDebug()
             }
 
             return false
@@ -427,7 +427,7 @@ open class ACacheBase protected constructor(
                         cacheCount.set(count)
                     }
                 } catch (e: Exception) {
-                    e.printOnDebug()
+                    e.printStackTraceOnDebug()
                 }
 
 
@@ -458,7 +458,7 @@ open class ACacheBase protected constructor(
                 file.setLastModified(currentTime)
                 lastUsageDates[file] = currentTime
             } catch (e: Exception) {
-                e.printOnDebug()
+                e.printStackTraceOnDebug()
             }
 
         }
@@ -492,7 +492,7 @@ open class ACacheBase protected constructor(
                     }
                 }
             } catch (e: Exception) {
-                e.printOnDebug()
+                e.printStackTraceOnDebug()
             }
 
         }
@@ -532,7 +532,7 @@ open class ACacheBase protected constructor(
                 }
                 return fileSize
             } catch (e: Exception) {
-                e.printOnDebug()
+                e.printStackTraceOnDebug()
                 return 0
             }
 

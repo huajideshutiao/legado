@@ -21,10 +21,9 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSourcePart
-import io.legado.app.data.entities.getBookSource
+import io.legado.app.data.entities.resolveBookSource
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.LocalConfig
-import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.model.CheckSource
 import io.legado.app.model.Debug
 import io.legado.app.ui.association.ImportBookSourceDialog
@@ -34,15 +33,15 @@ import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.source.BookSourceListCallbacks
 import io.legado.app.ui.book.source.BookSourceListScreen
 import io.legado.app.ui.book.source.BookSourceListState
-import io.legado.app.ui.book.source.BookSourceSort as KmpBookSourceSort
 import io.legado.app.ui.book.source.debug.BookSourceDebugActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
-import io.legado.app.ui.login.showLoginDialog
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.dragSelectable
+import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.config.CheckSourceConfig
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
+import io.legado.app.ui.login.showLoginDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.cnCompare
@@ -56,12 +55,12 @@ import io.legado.app.utils.showExportSuccess
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.splitNotBlank
 import io.legado.app.utils.startActivity
+import io.legado.app.utils.throttleLatest
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -195,26 +194,26 @@ class BookSourceActivity : BaseComposeActivity() {
         )
     }
 
-    // ---- BookSourceSort 跨模块映射(app 端 manage.BookSourceSort 与 shared 端 KmpBookSourceSort 值一一对应) ----
+    // ---- BookSourceSort 跨模块映射(app 端 manage.BookSourceSort 与 shared 端 io.legado.app.ui.book.source.BookSourceSort 值一一对应) ----
 
-    private fun BookSourceSort.toKmp(): KmpBookSourceSort = when (this) {
-        BookSourceSort.Default -> KmpBookSourceSort.Default
-        BookSourceSort.Name -> KmpBookSourceSort.Name
-        BookSourceSort.Url -> KmpBookSourceSort.Url
-        BookSourceSort.Weight -> KmpBookSourceSort.Weight
-        BookSourceSort.Update -> KmpBookSourceSort.Update
-        BookSourceSort.Enable -> KmpBookSourceSort.Enable
-        BookSourceSort.Respond -> KmpBookSourceSort.Respond
+    private fun BookSourceSort.toKmp(): io.legado.app.ui.book.source.BookSourceSort = when (this) {
+        BookSourceSort.Default -> io.legado.app.ui.book.source.BookSourceSort.Default
+        BookSourceSort.Name -> io.legado.app.ui.book.source.BookSourceSort.Name
+        BookSourceSort.Url -> io.legado.app.ui.book.source.BookSourceSort.Url
+        BookSourceSort.Weight -> io.legado.app.ui.book.source.BookSourceSort.Weight
+        BookSourceSort.Update -> io.legado.app.ui.book.source.BookSourceSort.Update
+        BookSourceSort.Enable -> io.legado.app.ui.book.source.BookSourceSort.Enable
+        BookSourceSort.Respond -> io.legado.app.ui.book.source.BookSourceSort.Respond
     }
 
-    private fun KmpBookSourceSort.toManage(): BookSourceSort = when (this) {
-        KmpBookSourceSort.Default -> BookSourceSort.Default
-        KmpBookSourceSort.Name -> BookSourceSort.Name
-        KmpBookSourceSort.Url -> BookSourceSort.Url
-        KmpBookSourceSort.Weight -> BookSourceSort.Weight
-        KmpBookSourceSort.Update -> BookSourceSort.Update
-        KmpBookSourceSort.Enable -> BookSourceSort.Enable
-        KmpBookSourceSort.Respond -> BookSourceSort.Respond
+    private fun io.legado.app.ui.book.source.BookSourceSort.toManage(): BookSourceSort = when (this) {
+        io.legado.app.ui.book.source.BookSourceSort.Default -> BookSourceSort.Default
+        io.legado.app.ui.book.source.BookSourceSort.Name -> BookSourceSort.Name
+        io.legado.app.ui.book.source.BookSourceSort.Url -> BookSourceSort.Url
+        io.legado.app.ui.book.source.BookSourceSort.Weight -> BookSourceSort.Weight
+        io.legado.app.ui.book.source.BookSourceSort.Update -> BookSourceSort.Update
+        io.legado.app.ui.book.source.BookSourceSort.Enable -> BookSourceSort.Enable
+        io.legado.app.ui.book.source.BookSourceSort.Respond -> BookSourceSort.Respond
     }
 
     /** 搜索/分组筛选沿用原 SearchView 语义(前缀语法以原实现为准)。 */
@@ -402,11 +401,10 @@ class BookSourceActivity : BaseComposeActivity() {
                 table = AppDatabase.BOOK_SOURCE_TABLE_NAME
             ).catch {
                 AppLog.put("书源界面更新书源出错", it)
-            }.flowOn(IO).conflate().collect { data ->
+            }.flowOn(IO).throttleLatest(500).collect { data ->
                 sources = data
                 selected.value =
                     selected.value.intersect(data.map { it.bookSourceUrl }.toSet())
-                delay(500)
             }
         }
     }
@@ -418,12 +416,9 @@ class BookSourceActivity : BaseComposeActivity() {
                     lifecycle,
                     table = AppDatabase.BOOK_SOURCE_TABLE_NAME
                 )
-                .conflate()
                 .distinctUntilChanged()
-                .collect {
-                    groups = it
-                    delay(500)
-                }
+                .throttleLatest(500)
+                .collect { groups = it }
         }
     }
 
@@ -441,7 +436,7 @@ class BookSourceActivity : BaseComposeActivity() {
 
     fun edit(bookSource: BookSourcePart) {
         startActivity<BookSourceEditActivity> {
-            IntentData.source = bookSource.getBookSource()
+            IntentData.source = bookSource.resolveBookSource()
         }
     }
 
@@ -474,7 +469,7 @@ class BookSourceActivity : BaseComposeActivity() {
     }
 
     fun login(bookSource: BookSourcePart) {
-        bookSource.getBookSource()?.showLoginDialog(this as AppCompatActivity)
+        bookSource.resolveBookSource()?.showLoginDialog(this as AppCompatActivity)
     }
 
     // ---- 批量栏 actions(对照 book_source_sel 菜单) ----

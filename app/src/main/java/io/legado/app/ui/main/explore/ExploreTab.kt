@@ -21,15 +21,15 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.findViewTreeViewModelStoreOwner
+import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
-import io.legado.app.R
 import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.PinnedExplore
-import io.legado.app.data.entities.getBookSource
+import io.legado.app.data.entities.resolveBookSource
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.help.IntentData
 import io.legado.app.help.PinnedExploreHelp
@@ -48,13 +48,12 @@ import io.legado.app.utils.FlowBus
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
+import io.legado.app.utils.throttleLatest
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
@@ -175,10 +174,7 @@ class ExploreTabState internal constructor(
             lifecycle,
             Lifecycle.State.RESUMED,
             AppDatabase.BOOK_SOURCE_TABLE_NAME
-        ).conflate().distinctUntilChanged().collect {
-            groups = it
-            delay(500)
-        }
+        ).distinctUntilChanged().throttleLatest(500).collect { groups = it }
     }
 
     suspend fun collectSources(lifecycle: Lifecycle) {
@@ -195,10 +191,7 @@ class ExploreTabState internal constructor(
             AppDatabase.BOOK_SOURCE_TABLE_NAME
         ).catch {
             AppLog.put("发现界面更新数据出错", it)
-        }.conflate().flowOn(IO).collect {
-            sources = it
-            delay(500)
-        }
+        }.flowOn(IO).throttleLatest(500).collect { sources = it }
     }
 
     /** 搜索过滤：空=全部发现、group: 前缀=按分组、其余=关键词，语义与原 SearchView 一致。 */
@@ -228,7 +221,7 @@ class ExploreTabState internal constructor(
             expandedLoading = expandedLoading + url
             try {
                 val result = runCatching {
-                    withContext(IO) { item.getBookSource() to item.exploreKinds() }
+                    withContext(IO) { item.resolveBookSource() to item.exploreKinds() }
                 }.getOrDefault(null to emptyList())
                 expandedKinds = expandedKinds + (url to result)
             } finally {
@@ -292,7 +285,7 @@ class ExploreTabState internal constructor(
     }
 
     fun login(source: BookSourcePart) {
-        source.getBookSource()?.showLoginDialog(activity ?: return)
+        source.resolveBookSource()?.showLoginDialog(activity ?: return)
     }
 
     fun refreshSource(source: BookSourcePart) {

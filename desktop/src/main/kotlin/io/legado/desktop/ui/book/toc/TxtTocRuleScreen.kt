@@ -18,7 +18,7 @@ import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.help.DefaultDataShared
 import io.legado.app.ui.association.ImportTxtTocRuleViewModelShared
 import io.legado.app.ui.book.toc.rule.TxtTocRuleEditDialog
-import io.legado.app.ui.book.toc.rule.TxtTocRuleScreen as SharedTxtTocRuleScreen
+
 import io.legado.app.ui.book.toc.rule.TxtTocRuleUiActions
 import io.legado.app.ui.book.toc.rule.TxtTocRuleUiState
 import io.legado.app.ui.widget.dialog.HelpDialog
@@ -55,7 +55,7 @@ import kotlinx.coroutines.withContext
 /**
  * TXT 目录规则管理 Screen 桌面端入口。
  *
- * 包装 shared/sharedUiMain 下沉的 [SharedTxtTocRuleScreen], 注入桌面端 Compose
+ * 包装 shared/sharedUiMain 下沉的 [io.legado.app.ui.book.toc.rule.TxtTocRuleScreen], 注入桌面端 Compose
  * CompositionLocal Provider (ThemeStore/AppConfig/EventBus/PreferenceStore),
  * 并用 [AppTheme] 提供统一主题, 使 commonMain 的 RuleManageScaffold 骨架 +
  * 通用组件在桌面 JVM 上正常工作。
@@ -299,7 +299,7 @@ private fun TxtTocRuleContent(onBack: () -> Unit) {
         }
     }
 
-    SharedTxtTocRuleScreen(state.value, actions)
+    io.legado.app.ui.book.toc.rule.TxtTocRuleScreen(state.value, actions)
 
     // ---- 导入对话框 (本地/网络导入共用, importVm 非 null 时渲染 DesktopImportDialog
     // 让用户勾选"新增/更新/已有"项后确定 importSelect 入库, 与 app 端 ImportTxtTocRuleDialog

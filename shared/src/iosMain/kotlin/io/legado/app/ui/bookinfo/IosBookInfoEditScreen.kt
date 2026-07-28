@@ -24,7 +24,7 @@ import io.legado.app.help.book.removeType
 import io.legado.app.help.file.pickDocuments
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.book.changecover.ChangeCoverViewModelShared
-import io.legado.app.ui.book.info.edit.BookInfoEditScreen as SharedBookInfoEditScreen
+
 import io.legado.app.ui.book.info.edit.BookInfoEditUiActions
 import io.legado.app.ui.book.info.edit.BookInfoEditUiState
 import io.legado.app.ui.book.info.edit.BookInfoEditViewModelShared
@@ -35,7 +35,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
- * iOS 端书籍信息编辑 Screen 入口 (包装 shared/sharedUiMain 的 [SharedBookInfoEditScreen])。
+ * iOS 端书籍信息编辑 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.info.edit.BookInfoEditScreen])。
  *
  * 对照 desktop `BookInfoEditScreen.kt` 包装模式, 仅做 iOS 平台适配, 业务展示与表单逻辑
  * 全部下沉到 shared/sharedUiMain:
@@ -142,7 +142,7 @@ fun IosBookInfoEditScreen(
         )
     }
 
-    SharedBookInfoEditScreen(
+    io.legado.app.ui.book.info.edit.BookInfoEditScreen(
         state = state,
         actions = actions,
         coverSlot = { b, modifier ->

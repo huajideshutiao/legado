@@ -84,6 +84,8 @@ import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.FastScrollLazyColumn
+import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.RadioChip
 import io.legado.app.ui.compose.component.StrokeTextChip
@@ -737,7 +739,7 @@ private fun ColumnScope.ResultArea(
                     if (count > 0 && !forward) viewModel.scrollToBottom()
                 }
         }
-        LazyColumn(
+        FastScrollLazyColumn(
             state = state,
             modifier = Modifier
                 .fillMaxWidth()
@@ -772,7 +774,7 @@ private fun ColumnScope.ResultArea(
                     if (count > 0 && !forward) viewModel.scrollToBottom()
                 }
         }
-        LazyVerticalGrid(
+        FastScrollLazyVerticalGrid(
             columns = GridCells.Fixed(spanCount),
             state = state,
             modifier = Modifier

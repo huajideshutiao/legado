@@ -38,7 +38,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.book.addType
 import io.legado.app.model.webBook.ExploreOption
-import io.legado.app.ui.book.explore.ExploreShowScreen as SharedExploreShowScreen
+
 import io.legado.app.ui.bookshelf.IosInfoCover
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
@@ -57,12 +57,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * iOS 端发现结果页 Screen 入口 (包装 shared/sharedUiMain 的 [SharedExploreShowScreen])。
+ * iOS 端发现结果页 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.explore.ExploreShowScreen])。
  *
  * # 职责
  *
  * 对照 desktop `ExploreShowScreen.kt` 包装模式, 仅做 iOS 平台适配, 业务展示与交互逻辑
- * 全部下沉到 shared/sharedUiMain 的 [SharedExploreShowScreen]:
+ * 全部下沉到 shared/sharedUiMain 的 [io.legado.app.ui.book.explore.ExploreShowScreen]:
  *
  * - **VM**: [ExploreShowViewModelShared] (commonMain, scope) 处理 initData/explore/toggleFavorite/
  *   switchLayout/setColumnCount/isInBookShelf, 内部已订阅 bookDao.flowAll 维护 bookshelf
@@ -148,7 +148,7 @@ fun IosExploreShowScreen(
         footerText = state.footerText,
     )
 
-    SharedExploreShowScreen(
+    io.legado.app.ui.book.explore.ExploreShowScreen(
         uiState,
         state,
         {
@@ -323,7 +323,7 @@ private fun IosVideoItemPlaceholder(
 }
 
 /**
- * iOS 端发现结果页状态宿主 (实现 [ExploreShowUiActions] 供 shared [SharedExploreShowScreen] 回调)。
+ * iOS 端发现结果页状态宿主 (实现 [ExploreShowUiActions] 供 shared [io.legado.app.ui.book.explore.ExploreShowScreen] 回调)。
  *
  * 对照 desktop `ExploreShowStateHolder`, 差异: 无 Lifecycle 依赖, flow 直接 collect;
  * 用 Compose mutableStateOf 驱动重组; 路由跳转改为回调注入。

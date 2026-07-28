@@ -1,12 +1,12 @@
 package io.legado.app.ui.book.read.page.provider
 
-import androidx.compose.ui.text.TextMeasurer as ComposeTextMeasurer
+
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Density
 // 注：TextUnit.toPx() 是 Density 的成员扩展，with(density){} 内可直接调用，无需单独 import
 
 /**
- * [TextMeasurer] 桌面 JVM 实现：用 Compose Multiplatform 的 [ComposeTextMeasurer] /
+ * [TextMeasurer] 桌面 JVM 实现：用 Compose Multiplatform 的 [androidx.compose.ui.text.TextMeasurer] /
  * [androidx.compose.ui.text.TextLayoutResult] 替代 app 端 `TextPaint` 测量原语。
  *
  * 与 app 端 [AndroidTextMeasurer] 一一对应：
@@ -21,11 +21,11 @@ import androidx.compose.ui.unit.Density
  * 构造参数与 [AndroidTextMeasurer] 的 `paint` 同生命周期：随样式变化重建
  * [io.legado.app.ui.book.read.page.provider.TextChapterLayout]，可长期复用。
  *
- * 注：[ComposeTextMeasurer] 用 import alias 与本包同名接口 [TextMeasurer] 区分，
+ * 注：[androidx.compose.ui.text.TextMeasurer] 用 import alias 与本包同名接口 [TextMeasurer] 区分，
  * 避免编译期歧义。
  */
 class DesktopTextMeasurer(
-    private val textMeasurer: ComposeTextMeasurer,
+    private val textMeasurer: androidx.compose.ui.text.TextMeasurer,
     private val textStyle: TextStyle,
     private val density: Density,
 ) : TextMeasurer {

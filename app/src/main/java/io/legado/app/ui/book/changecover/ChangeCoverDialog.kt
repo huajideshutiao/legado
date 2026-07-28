@@ -37,10 +37,9 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.image.CoverImageView
-import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.delay
+import io.legado.app.utils.throttleLatest
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 
 /**
  * 换封面
@@ -74,10 +73,7 @@ class ChangeCoverDialog() : BaseComposeDialogFragment() {
         androidx.compose.runtime.LaunchedEffect(Unit) {
             viewModel.initData(arguments)
             lifecycle.currentStateFlow.first { it.isAtLeast(STARTED) }
-            viewModel.dataFlow.conflate().collect {
-                itemsFlow.value = it
-                delay(1000)
-            }
+            viewModel.dataFlow.throttleLatest(1_000).collect { itemsFlow.value = it }
         }
 
         Column(Modifier.fillMaxSize()) {
@@ -130,7 +126,7 @@ class ChangeCoverDialog() : BaseComposeDialogFragment() {
         ) {
             AndroidView(
                 factory = { ctx -> CoverImageView(ctx) },
-                update = { it.load(item.coverUrl, item.name, item.author, false, item.origin) },
+                update = { it.loadCover(item.coverUrl, item.name, item.author, false, item.origin) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(0.66f)

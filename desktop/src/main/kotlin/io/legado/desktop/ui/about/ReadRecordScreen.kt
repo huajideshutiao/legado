@@ -32,7 +32,7 @@ import io.legado.app.data.entities.ReadRecordShow
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.toast.Toasters
-import io.legado.app.ui.about.ReadRecordScreen as SharedReadRecordScreen
+
 import io.legado.app.ui.about.ReadRecordUiActions
 import io.legado.app.ui.about.ReadRecordUiState
 import io.legado.app.ui.about.formatDayKey
@@ -54,10 +54,10 @@ import java.util.Calendar
 private const val SEARCH_DEBOUNCE_MS = 300L
 
 /**
- * 桌面端阅读记录 Screen 入口 (包装 shared/sharedUiMain 的 [SharedReadRecordScreen])。
+ * 桌面端阅读记录 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.about.ReadRecordScreen])。
  *
  * 职责对照 desktop [io.legado.desktop.ui.bookinfo.BookInfoScreen] 模式, 仅做桌面平台适配,
- * 业务展示与交互逻辑全部下沉到 shared/sharedUiMain 的 [SharedReadRecordScreen]:
+ * 业务展示与交互逻辑全部下沉到 shared/sharedUiMain 的 [io.legado.app.ui.about.ReadRecordScreen]:
  *
  * - 数据加载: [LaunchedEffect] + [AppDbProviders.get].readRecordDao.all() 拉取全部会话,
  *   单遍聚合 (平移 app 端 ReadRecordActivity.initData) 算出 items / bookMap /
@@ -457,7 +457,7 @@ fun ReadRecordScreen(
     }
 
     // ---- 渲染 (位置参数调用 shared Screen; 函数类型参数用位置传) ----
-    SharedReadRecordScreen(
+    io.legado.app.ui.about.ReadRecordScreen(
         state,
         actions,
         Modifier,

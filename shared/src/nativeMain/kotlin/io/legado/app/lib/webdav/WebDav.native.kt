@@ -4,7 +4,7 @@ import com.fleeksoft.ksoup.Ksoup
 import com.fleeksoft.ksoup.parser.Parser
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.coroutine.runBlockingInScope
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.CustomUrl
@@ -246,7 +246,7 @@ actual open class WebDav actual constructor(
                 list.add(webDavFile)
             } catch (e: Exception) {
                 // nativeMain 端无 java.net.MalformedURLException, 用通用 Exception 兜底
-                e.printOnDebug()
+                e.printStackTraceOnDebug()
             }
         }
         return list

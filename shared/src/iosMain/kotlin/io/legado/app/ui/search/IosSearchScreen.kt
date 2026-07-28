@@ -13,7 +13,7 @@ import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.search.SearchNavCallbacks
-import io.legado.app.ui.book.search.SearchScreen as SharedSearchScreen
+
 import io.legado.app.ui.book.search.SearchViewModel
 import io.legado.app.ui.bookshelf.IosInfoCover
 import io.legado.app.ui.compose.component.AlertButton
@@ -23,7 +23,7 @@ import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.flow.collect
 
 /**
- * iOS 端搜索页 Screen 入口 (KP4: 包装 shared/sharedUiMain 的 [SharedSearchScreen])。
+ * iOS 端搜索页 Screen 入口 (KP4: 包装 shared/sharedUiMain 的 [io.legado.app.ui.book.search.SearchScreen])。
  *
  * # 职责
  *
@@ -80,7 +80,7 @@ fun IosSearchScreen(
     val okLabel = rememberString("ok")
     val cancelLabel = rememberString("cancel")
 
-    SharedSearchScreen(
+    io.legado.app.ui.book.search.SearchScreen(
         viewModel = viewModel,
         navCallbacks = IosSearchNavCallbacks(
             onBack = onBack,

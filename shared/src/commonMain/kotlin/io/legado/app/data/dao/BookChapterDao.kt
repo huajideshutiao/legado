@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import io.legado.app.data.entities.BookChapter
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface BookChapterDao {
@@ -24,6 +25,9 @@ interface BookChapterDao {
 
     @Query("select * from chapters where bookUrl = :bookUrl and `index` = :index")
     suspend fun getChapter(bookUrl: String, index: Int): BookChapter?
+
+    @Query("select * from chapters where bookUrl = :bookUrl and `index` = :index")
+    fun flowChapter(bookUrl: String, index: Int): Flow<BookChapter?>
 
     @Query("select * from chapters where bookUrl = :bookUrl and `title` = :title")
     suspend fun getChapter(bookUrl: String, title: String): BookChapter?

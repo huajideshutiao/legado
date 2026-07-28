@@ -24,7 +24,7 @@ import io.legado.app.help.file.pickDocuments
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.bookshelf.OhosInfoCover
 import io.legado.app.ui.book.changecover.ChangeCoverViewModelShared
-import io.legado.app.ui.book.info.edit.BookInfoEditScreen as SharedBookInfoEditScreen
+
 import io.legado.app.ui.book.info.edit.BookInfoEditUiActions
 import io.legado.app.ui.book.info.edit.BookInfoEditUiState
 import io.legado.app.ui.book.info.edit.BookInfoEditViewModelShared
@@ -32,7 +32,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
- * 鸿蒙端书籍信息编辑 Screen 入口 (包装 shared/sharedUiMain 的 [SharedBookInfoEditScreen])。
+ * 鸿蒙端书籍信息编辑 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.info.edit.BookInfoEditScreen])。
  *
  * 对照 iOS 端 [io.legado.app.ui.bookinfo.IosBookInfoEditScreen] / desktop `BookInfoEditScreen.kt` 的包装模式,
  * 鸿蒙端在 OhosNavHost 的 BOOK_INFO_EDIT 路由分支调用本入口。
@@ -140,7 +140,7 @@ fun OhosBookInfoEditScreen(
         )
     }
 
-    SharedBookInfoEditScreen(
+    io.legado.app.ui.book.info.edit.BookInfoEditScreen(
         state = state,
         actions = actions,
         coverSlot = { b, modifier -> OhosInfoCover(b, modifier) },

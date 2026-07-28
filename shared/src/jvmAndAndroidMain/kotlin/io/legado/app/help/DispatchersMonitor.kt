@@ -56,7 +56,10 @@ object DispatchersMonitor {
                     }
                 }.onJoin {}
                 onTimeout(5000) {
-                    AppLog.put("Dispatcher $dispatcher is timed out waiting for for 5000ms.")
+                    AppLog.put(
+                        "Dispatcher $dispatcher is timed out waiting for for 5000ms.",
+                        tag = TAG
+                    )
                 }
             }
         }

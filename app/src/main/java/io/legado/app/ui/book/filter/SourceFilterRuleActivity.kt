@@ -24,12 +24,11 @@ import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showExportSuccess
 import io.legado.app.utils.splitNotBlank
+import io.legado.app.utils.throttleLatest
 import io.legado.app.utils.toJson
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 
@@ -203,12 +202,11 @@ class SourceFilterRuleActivity :
                 appDb.sourceFilterRuleDao.flowSearch("%$searchKey%")
             }.catch {
                 AppLog.put("过滤规则管理界面更新数据出错", it)
-            }.flowOn(IO).conflate().collect { rules ->
+            }.flowOn(IO).throttleLatest(100).collect { rules ->
                 if (dataInit) setResult(RESULT_OK)
                 filterRules = rules
                 selected.value = selected.value.intersect(rules.map { it.id }.toSet())
                 dataInit = true
-                delay(100)
             }
         }
     }

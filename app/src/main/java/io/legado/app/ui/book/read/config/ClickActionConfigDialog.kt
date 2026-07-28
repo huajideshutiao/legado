@@ -1,6 +1,6 @@
 package io.legado.app.ui.book.read.config
 
-import android.graphics.Color as AColor
+
 import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -104,7 +104,7 @@ class ClickActionConfigDialog : DialogFragment() {
         dialog?.window?.let { window ->
             window.decorView.setPadding(0, 0, 0, 0)
             window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-            window.setBackgroundDrawable(AColor.TRANSPARENT.toDrawable())
+            window.setBackgroundDrawable(android.graphics.Color.TRANSPARENT.toDrawable())
             val attr = window.attributes
             if (AppConfig.isEInkMode) {
                 window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)

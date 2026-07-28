@@ -10,8 +10,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -19,11 +19,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,9 +30,6 @@ import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
-import io.legado.app.ui.compose.component.PullToRefreshDefaults
-import io.legado.app.ui.compose.component.pullToRefresh
-import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -58,8 +53,12 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.getUnreadChapterNum
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.ui.compose.component.FastScrollLazyColumn
+import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.OverflowMenu
-import io.legado.app.ui.compose.platform.LocalAppConfigProvider
+import io.legado.app.ui.compose.component.PullToRefreshDefaults
+import io.legado.app.ui.compose.component.pullToRefresh
+import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
@@ -276,7 +275,7 @@ fun ShelfBooksContent(
         // 复刻原 RecyclerView 默认 ItemAnimator 的 move 动画(阅读返回重排→条目平移)；E-Ink 关
         val eInk = LocalEInk.current
         when (spec.tier) {
-            ShelfTier.LIST -> LazyColumn(
+            ShelfTier.LIST -> FastScrollLazyColumn(
                 state = scroll.list,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 8.dp),
@@ -307,7 +306,7 @@ fun ShelfBooksContent(
                 }
             }
 
-            ShelfTier.GRID -> LazyVerticalGrid(
+            ShelfTier.GRID -> FastScrollLazyVerticalGrid(
                 columns = shelfGridCells(spec),
                 state = scroll.grid,
                 modifier = Modifier.fillMaxSize(),
@@ -337,7 +336,7 @@ fun ShelfBooksContent(
                 }
             }
 
-            ShelfTier.VIDEO -> LazyVerticalGrid(
+            ShelfTier.VIDEO -> FastScrollLazyVerticalGrid(
                 columns = shelfGridCells(spec),
                 state = scroll.grid,
                 modifier = Modifier.fillMaxSize(),
@@ -486,13 +485,12 @@ private fun ShelfMenuItem(textKey: String, onClick: () -> Unit) {
 
 // ---- 条目 ----
 
-/** 复刻 BadgeView: 11sp/最小 16dp/8dp 圆角, 高亮 accent 否则 darker_gray, 0 隐藏 */
+/** 复刻 BadgeView: 11sp 白字/最小 16dp/8dp 圆角, 高亮 accent 否则 darker_gray, 0 隐藏 */
 @Composable
 fun UnreadBadge(count: Int, highlight: Boolean, modifier: Modifier = Modifier) {
     if (count <= 0) return
     val colors = AppTheme.colors
     val bg = if (highlight) colors.accent else Color(0xAAAAAAAA)
-    val textColor = if (LocalAppConfigProvider.current.isNightTheme) Color.White else Color.Black
     Box(
         modifier
             .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
@@ -500,7 +498,7 @@ fun UnreadBadge(count: Int, highlight: Boolean, modifier: Modifier = Modifier) {
             .padding(horizontal = 5.dp, vertical = 1.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text("$count", color = textColor, fontSize = 11.sp)
+        Text("$count", color = Color.White, fontSize = 11.sp)
     }
 }
 

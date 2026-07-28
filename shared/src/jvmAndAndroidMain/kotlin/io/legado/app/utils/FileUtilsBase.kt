@@ -1,7 +1,7 @@
 package io.legado.app.utils
 
 import androidx.annotation.IntDef
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.File
@@ -59,7 +59,7 @@ object FileUtilsBase {
                 file.createNewFile()
             }
         } catch (e: IOException) {
-            e.printOnDebug()
+            e.printStackTraceOnDebug()
         }
         return file
     }

@@ -23,7 +23,7 @@ import io.legado.app.data.entities.Server
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.model.remote.RemoteBook
-import io.legado.app.ui.book.import.remote.RemoteBookScreen as SharedRemoteBookScreen
+
 import io.legado.app.ui.book.import.remote.RemoteBookSort
 import io.legado.app.ui.book.import.remote.RemoteBookUiActions
 import io.legado.app.ui.book.import.remote.RemoteBookUiState
@@ -42,9 +42,9 @@ import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 
 /**
- * 桌面端远程书籍 (WebDav) Screen 入口 (包装 shared/sharedUiMain 的 [SharedRemoteBookScreen])。
+ * 桌面端远程书籍 (WebDav) Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.import.remote.RemoteBookScreen])。
  *
- * 仅做平台适配: 注入 desktop 平台 Provider 让 commonMain 的 [AppTheme] / [SharedRemoteBookScreen]
+ * 仅做平台适配: 注入 desktop 平台 Provider 让 commonMain 的 [AppTheme] / [io.legado.app.ui.book.import.remote.RemoteBookScreen]
  * 跨平台运行; 数据流由 [RemoteBookViewModelShared] 提供 (WebDav 客户端已下沉 commonMain)。
  *
  * @param onBack 返回回调 (由 DesktopApp 注入, 切回 BOOKSHELF 路由)
@@ -256,7 +256,7 @@ private fun RemoteBookContent(onBack: () -> Unit, onStartRead: (Book) -> Unit) {
         checkableCount = checkableCount,
         sortKeyState = sortKeyState,
     )
-    SharedRemoteBookScreen(state, actions)
+    io.legado.app.ui.book.import.remote.RemoteBookScreen(state, actions)
 
     // ---- ServersDialog (shared/sharedUiMain 下沉) ----
     if (showServersDialog) {

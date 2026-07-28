@@ -37,9 +37,9 @@ import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.group.GroupViewModelShared
 import io.legado.app.ui.book.manage.BookshelfManageCallbacks
-import io.legado.app.ui.book.manage.BookshelfManageScreen as SharedBookshelfManageScreen
+
 import io.legado.app.ui.book.manage.BookshelfManageState
-import io.legado.app.ui.bookshelf.BookshelfScreen as SharedBookshelfScreen
+
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.utils.formatNative
 import io.legado.app.utils.parseJsonElement
@@ -51,7 +51,7 @@ import kotlinx.serialization.json.JsonArray
 import platform.Foundation.NSURL
 
 /**
- * iOS 端书架 Screen 入口 (包装 shared/sharedUiMain 的 [SharedBookshelfScreen])。
+ * iOS 端书架 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.bookshelf.BookshelfScreen])。
  *
  * # 职责
  *
@@ -148,7 +148,7 @@ fun IosBookshelfScreen(
     val addBookUrlAllFailedText = rememberString("add_book_url_all_failed")
     val addingBookText = rememberString("adding_book")
 
-    SharedBookshelfScreen(
+    io.legado.app.ui.bookshelf.BookshelfScreen(
         viewModel = viewModel,
         onBookClick = onBookClick,
         onBookLongClick = onBookLongClick,
@@ -438,7 +438,7 @@ fun IosBookshelfScreen(
             properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
             Surface(modifier = Modifier.fillMaxSize()) {
-                SharedBookshelfManageScreen(
+                io.legado.app.ui.book.manage.BookshelfManageScreen(
                     state = state,
                     callbacks = callbacks,
                     listState = manageListState,

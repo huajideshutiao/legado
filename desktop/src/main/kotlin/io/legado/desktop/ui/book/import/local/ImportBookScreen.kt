@@ -24,7 +24,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.model.fileBook.CbzFile
 import io.legado.app.model.fileBook.EpubFile
 import io.legado.app.ui.book.import.ImportFileItem
-import io.legado.app.ui.book.import.local.ImportBookScreen as SharedImportBookScreen
+
 import io.legado.app.ui.book.import.local.ImportBookUiActions
 import io.legado.app.ui.book.import.local.ImportBookUiState
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
@@ -43,16 +43,16 @@ import java.io.File
 import io.legado.desktop.ui.component.FileDialogs
 
 /**
- * 桌面端导入本地书籍 Screen 入口 (包装 shared/sharedUiMain 的 [SharedImportBookScreen])。
+ * 桌面端导入本地书籍 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.import.local.ImportBookScreen])。
  *
  * # 职责
  *
  * 对照 app 端 `ImportBookActivity`, 桌面端仅做平台适配, UI 渲染与交互骨架全部下沉到
- * shared/sharedUiMain 的 [SharedImportBookScreen]:
+ * shared/sharedUiMain 的 [io.legado.app.ui.book.import.local.ImportBookScreen]:
  *
  * - **平台 Provider 注入**: [DesktopThemeStoreProvider] / [DesktopAppConfigProvider] /
  *   [DesktopEventBusProvider] 经 [CompositionLocalProvider] 注入, 让 commonMain 的
- *   [AppTheme] / [SharedImportBookScreen] 跨平台运行
+ *   [AppTheme] / [io.legado.app.ui.book.import.local.ImportBookScreen] 跨平台运行
  * - **数据流**: 持有 [ImportBookUiState] (immutable, copy 更新), actions 用 [remember]
  *   持有稳定实例避免重组
  * - **条目模型**: [DesktopImportBook] 基于 [java.io.File] 实现 [ImportFileItem]
@@ -448,7 +448,7 @@ private fun ImportBookContent(onBack: () -> Unit) {
         checkableCount = checkableCount,
         sortState = sortState,
     )
-    SharedImportBookScreen(state, actions)
+    io.legado.app.ui.book.import.local.ImportBookScreen(state, actions)
 
     // ---- 对话框渲染 (替换原 javax.swing.JOptionPane.showInputDialog) ----
     // 文件名导入 js 输入对话框 (alertImportFileName 触发 showImportFileNameDialog=true;

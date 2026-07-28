@@ -2,7 +2,6 @@ package io.legado.app.ui.compose.component
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyListState
@@ -13,8 +12,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.reorderable.ReorderableItem
 import io.legado.app.ui.compose.reorderable.RuleItemScope
+import io.legado.app.ui.compose.reorderable.RuleReorderableItem
 import io.legado.app.ui.compose.reorderable.rememberReorderableListState
 import io.legado.app.ui.compose.theme.AppTheme
 
@@ -60,12 +59,12 @@ fun <T> RuleManageScaffold(
                     modifier = Modifier.align(Alignment.Center),
                 )
             } else {
-                androidx.compose.foundation.lazy.LazyColumn(
+                FastScrollLazyColumn(
                     state = listState,
                     modifier = fillMod.then(listModifier),
                 ) {
                     items(items, key = itemKey) { item ->
-                        ReorderableItem(reorderState, key = itemKey(item)) {
+                        RuleReorderableItem(reorderState, key = itemKey(item)) {
                             itemContent(item)
                         }
                     }

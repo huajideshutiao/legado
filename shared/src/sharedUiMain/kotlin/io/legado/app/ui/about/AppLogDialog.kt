@@ -16,6 +16,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,6 +29,7 @@ import androidx.compose.ui.window.DialogProperties
 import io.legado.app.constant.AppLog
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.linkifyText
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -40,9 +42,9 @@ import io.legado.app.utils.ScreenInfoProviders
  * 对应 app 端 `io.legado.app.ui.about.AppLogDialog` 的 Content，去掉对 BaseComposeDialogFragment /
  * showDialogFragment / LogUtils / autoLinkText 的依赖，改为纯 @Composable:
  * - 标题栏: 返回 + "日志" + 清空按钮
- * - 列表: LazyColumn，行=时间+消息 (消息可选)，带异常的行可点击查看堆栈
- *
- * [AppLog] 已在 commonMain，直接读取其内存日志快照。
+ * - 列表: LazyColumn，行=时间+消息，带异常的行可点击查看堆栈
+ * - 实时刷新: 订阅 [AppLog.logsFlow]，日志变化时立即重组
+ * - URL 自动链接: 消息中的 URL 可点击跳转 (对齐 origin autoLinkMask)
  *
  * @param onDismiss 用户取消 (返回按钮)
  */
@@ -51,8 +53,8 @@ fun AppLogDialogContent(
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    // 日志列表快照: 进入对话框时取一次, 清空时刷新
-    var logs by remember { mutableStateOf(AppLog.logs) }
+    val logs by AppLog.logsFlow.collectAsState()
+
     // 选中的堆栈日志 (非 null 时弹出堆栈对话框)
     var stackTraceItem by remember { mutableStateOf<Triple<Long, String, Throwable?>?>(null) }
 
@@ -61,10 +63,7 @@ fun AppLogDialogContent(
             title = rememberString("log"),
             onBack = onDismiss,
             actions = {
-                AppTextButton(text = rememberString("clear")) {
-                    AppLog.clear()
-                    logs = emptyList()
-                }
+                AppTextButton(text = rememberString("clear"), onClick = AppLog::clear)
             },
         )
         LazyColumn(
@@ -90,7 +89,7 @@ fun AppLogDialogContent(
 }
 
 /**
- * 单条日志行: 时间 + 消息, 带 throwable 时可点击查看堆栈。
+ * 单条日志行: 时间 + 消息 (URL 可点击), 带 throwable 时可点击查看堆栈。
  */
 @Composable
 private fun LogItem(
@@ -99,6 +98,8 @@ private fun LogItem(
 ) {
     val colors = AppTheme.colors
     val (time, message, throwable) = item
+    // 读取平台时区偏移, 将 UTC epoch 转为本地时间
+    val tzOffset = remember { AppLog.timeZoneOffsetMillis() }
     Column(
         Modifier
             .fillMaxWidth()
@@ -106,17 +107,18 @@ private fun LogItem(
             .padding(8.dp),
     ) {
         Text(
-            text = formatLogTime(time),
+            text = formatLogTime(time, tzOffset),
             color = colors.primaryText,
         )
         SelectionContainer {
             Text(
-                text = message,
+                text = remember(message, colors.accent) { linkifyText(message, colors.accent) },
                 color = colors.primaryText,
             )
         }
     }
 }
+
 
 /**
  * 应用日志对话框 (带 Dialog 窗口, 供桌面 / iOS 端直接使用)。
@@ -157,14 +159,19 @@ fun AppLogDialog(
 }
 
 /**
- * 将 epoch 毫秒格式化为 "yy-MM-dd HH:mm:ss.SSS" (UTC, 对齐 app 端 LogUtils.logTimeFormat)。
+ * 将 epoch 毫秒格式化为 "yy-MM-dd HH:mm:ss.SSS" (本地时间)。
  *
- * 使用 Howard Hinnant 的 civil_from_days 算法将天数转换为年月日, 纯 Kotlin 实现,
- * 不依赖 java.util.Date / SimpleDateFormat (KMP 安全)。
+ * 使用 Howard Hinnant 的 civil_from_days 算法 + [tzOffsetMs] 时区偏移,
+ * 纯 Kotlin 实现, 不依赖 java.util.Date / SimpleDateFormat (KMP 安全)。
+ *
+ * @param epochMillis UTC epoch 毫秒
+ * @param tzOffsetMs 时区偏移量 (毫秒), 由 [AppLog.timeZoneOffsetMillis] 提供
  */
-private fun formatLogTime(epochMillis: Long): String {
-    val totalSeconds = epochMillis / 1000
-    val millis = (epochMillis % 1000).toInt().let { if (it < 0) it + 1000 else it }
+private fun formatLogTime(epochMillis: Long, tzOffsetMs: Long): String {
+    // 将 UTC epoch 转为本地 epoch
+    val localMillis = epochMillis + tzOffsetMs
+    val totalSeconds = localMillis / 1000
+    val millis = (localMillis % 1000).toInt().let { if (it < 0) it + 1000 else it }
     val secs = (totalSeconds % 60).toInt().let { if (it < 0) it + 60 else it }
     val totalMinutes = totalSeconds / 60
     val mins = (totalMinutes % 60).toInt().let { if (it < 0) it + 60 else it }
@@ -172,7 +179,7 @@ private fun formatLogTime(epochMillis: Long): String {
     val hrs = (totalHours % 24).toInt().let { if (it < 0) it + 24 else it }
     val totalDays = totalHours / 24
 
-    // Howard Hinnant civil_from_days (UTC, days since 1970-01-01 → y/m/d)
+    // Howard Hinnant civil_from_days (local days since 1970-01-01 → y/m/d)
     val z = totalDays.toInt() + 719468
     val era = if (z >= 0) z / 146097 else (z - 146096) / 146097
     val doe = z - era * 146097

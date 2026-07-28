@@ -6,7 +6,7 @@ import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.http.KmpResponse
 import io.legado.app.help.http.header
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
@@ -299,7 +299,7 @@ class HttpTtsDownloadScheduler(
                     e is CancellationException -> throw e
                     JsEngines.isJsException(e) -> {
                         AppLog.put("js错误\n${e.message}", e, true)
-                        e.printOnDebug()
+                        e.printStackTraceOnDebug()
                         throw e
                     }
                     isRetryableNetworkError(e) -> {
@@ -311,7 +311,7 @@ class HttpTtsDownloadScheduler(
                     else -> {
                         val exceeded = downloadErrorBreaker.record()
                         AppLog.put("tts下载错误\n${e.message}", e)
-                        e.printOnDebug()
+                        e.printStackTraceOnDebug()
                         if (exceeded) {
                             AppLog.put("TTS服务器连续5次错误，已暂停阅读。", e, true)
                             throw e

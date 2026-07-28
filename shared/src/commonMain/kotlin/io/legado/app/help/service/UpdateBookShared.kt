@@ -33,7 +33,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -44,7 +43,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.min
 
@@ -143,12 +141,11 @@ class UpdateBookShared(
     private var poolSize = min(threadCount, AppConst.MAX_THREAD)
     private var upTocPool = newFixedThreadPoolDispatcher(poolSize)
 
-    /** 等待更新目录的 bookUrl 队列 (LRU 入队去重), 同步访问 (对照 app 端 waitLock + waitUpTocBooks) */
-    private val waitLock = SynchronizedObject()
+    /** 目录等待/执行集合共用一把锁，集合变化时同步发布 [_tocBusy]，避免跨锁快照竞态。 */
+    private val tocStateLock = SynchronizedObject()
     private val waitUpTocBooks = LinkedHashSet<String>()
-    /** 正在更新目录的 bookUrl 集合, 用于 UI 显示单项更新状态 (对照 app 端 onUpTocBooks) */
-    private val onUpTocBooksLock = SynchronizedObject()
     private val onUpTocBooks = LinkedHashSet<String>()
+    private val _tocBusy = MutableStateFlow(false)
 
     private var upTocJob: Job? = null
     private var refreshJob: Job? = null
@@ -176,6 +173,11 @@ class UpdateBookShared(
      *
      * 内部包装 [SourceWrapper] 而非直接存 BookSource?, 与 app 端保持一致 (LruCache 不存 null)。
      */
+    /** 调用方必须持有 [tocStateLock]。 */
+    private fun publishTocBusyLocked() {
+        _tocBusy.value = waitUpTocBooks.isNotEmpty() || onUpTocBooks.isNotEmpty()
+    }
+
     private val bookSourceCacheLock = SynchronizedObject()
     private val bookSourceCache = LinkedHashMap<String, SourceWrapper>()
 
@@ -225,12 +227,11 @@ class UpdateBookShared(
         FlowBus.with(EventBus.STOP_UP_BOOK).onEach {
             upTocJob?.cancel()
             refreshJob?.cancel()
-            synchronized(waitLock) {
+            val urls = synchronized(tocStateLock) {
                 waitUpTocBooks.clear()
-            }
-            val urls = synchronized(onUpTocBooksLock) {
                 val list = onUpTocBooks.toList()
                 onUpTocBooks.clear()
+                publishTocBusyLocked()
                 list
             }
             urls.forEach {
@@ -271,10 +272,11 @@ class UpdateBookShared(
         upTocJob?.cancel()
         refreshJob?.cancel()
         cacheBookJob?.cancel()
-        synchronized(waitLock) {
+        synchronized(tocStateLock) {
             waitUpTocBooks.clear()
+            onUpTocBooks.clear()
+            publishTocBusyLocked()
         }
-        synchronized(onUpTocBooksLock) { onUpTocBooks.clear() }
         upTocTotal.value = 0
         upTocCount.value = 0
         refreshTotal.value = 0
@@ -286,7 +288,7 @@ class UpdateBookShared(
     }
 
     fun isUpdate(bookUrl: String): Boolean {
-        return synchronized(onUpTocBooksLock) { onUpTocBooks.contains(bookUrl) }
+        return synchronized(tocStateLock) { onUpTocBooks.contains(bookUrl) }
     }
 
     /**
@@ -418,17 +420,16 @@ class UpdateBookShared(
         }
     }
 
-    // KMP: 删除 @Synchronized (Native 无效), 内部已用 synchronized(waitLock) 保护
+    // KMP: 删除 @Synchronized (Native 无效), 目录状态由 tocStateLock 统一保护。
     private fun addToWaitUp(urls: Collection<String>) {
         if (urls.isEmpty()) return
-        synchronized(waitLock) {
+        synchronized(tocStateLock) {
             urls.forEach { url ->
-                if (synchronized(onUpTocBooksLock) { url !in onUpTocBooks }) {
-                    if (waitUpTocBooks.add(url)) {
-                        upTocTotal.incrementAndGet()
-                    }
+                if (url !in onUpTocBooks && waitUpTocBooks.add(url)) {
+                    upTocTotal.incrementAndGet()
                 }
             }
+            publishTocBusyLocked()
         }
         updateProgress()
         if (upTocJob == null && refreshJob?.isActive != true) {
@@ -436,16 +437,19 @@ class UpdateBookShared(
         }
     }
 
-    private fun pollWaitUpTocBook(): String? = synchronized(waitLock) {
+    /** 从等待集合原子迁移到执行集合，避免两次操作之间短暂发布空闲状态。 */
+    private fun pollWaitUpTocBook(): String? = synchronized(tocStateLock) {
         val iter = waitUpTocBooks.iterator()
         if (iter.hasNext()) {
             val value = iter.next()
             iter.remove()
+            onUpTocBooks.add(value)
+            publishTocBusyLocked()
             value
         } else null
     }
 
-    private fun waitUpTocBooksEmpty(): Boolean = synchronized(waitLock) {
+    private fun waitUpTocBooksEmpty(): Boolean = synchronized(tocStateLock) {
         waitUpTocBooks.isEmpty()
     }
 
@@ -506,13 +510,18 @@ class UpdateBookShared(
                     emit(pollWaitUpTocBook() ?: break)
                 }
             }.onEachParallel(threadCount) {
-                synchronized(onUpTocBooksLock) { onUpTocBooks.add(it) }
                 postEvent(EventBus.UP_BOOKSHELF, it)
-                updateToc(it)
-                synchronized(onUpTocBooksLock) { onUpTocBooks.remove(it) }
-                upTocCount.incrementAndGet()
-                updateProgress()
-                postEvent(EventBus.UP_BOOKSHELF, it)
+                try {
+                    updateToc(it)
+                    upTocCount.incrementAndGet()
+                    updateProgress()
+                } finally {
+                    synchronized(tocStateLock) {
+                        onUpTocBooks.remove(it)
+                        publishTocBusyLocked()
+                    }
+                    postEvent(EventBus.UP_BOOKSHELF, it)
+                }
             }.onCompletion {
                 upTocCount.value = 0
                 upTocTotal.value = 0
@@ -675,7 +684,7 @@ class UpdateBookShared(
      * 1. preDownloadNum == 0 时直接返回
      * 2. cancel 已有的 cacheBookJob (避免重复启动)
      * 3. 在 upTocPool 上启动新 job:
-     *    - 子 launch 循环检测: 有目录更新时暂停预下载 (setWorkingState(false)),
+     *    - 订阅 [_tocBusy]: 有目录更新时暂停预下载 (setWorkingState(false)),
      *      优先让网络资源服务目录更新 (与 app 端注释"现在更多网站限制并发"一致)
      *    - 调用 CacheBookShared.startProcessJob(upTocPool) 持续处理 cacheBookMap
      *
@@ -691,18 +700,20 @@ class UpdateBookShared(
         if (appConfig.preDownloadNum == 0) return
         cacheBookJob?.cancel()
         cacheBookJob = scope.launch(upTocPool) {
-            launch {
-                // 有目录更新时不缓存, 优先更新目录 (现在更多网站限制并发)
-                while (isActive && CacheBookShared.isRun) {
-                    CacheBookShared.setWorkingState(
-                        waitUpTocBooksEmpty() && synchronized(onUpTocBooksLock) { onUpTocBooks.isEmpty() }
-                    )
-                    delay(1000)
+            val busyJob = launch {
+                // 有目录更新时不缓存；集合增删会立即发布忙闲状态，无需定时轮询。
+                _tocBusy.collect { busy ->
+                    CacheBookShared.setWorkingState(!busy)
                 }
             }
-            // startProcessJob 持续遍历 cacheBookMap 处理待下载章节
-            // (内部 onEachParallel(MAX_THREAD) 并发, Mutex 互斥避免重复启动)
-            CacheBookShared.startProcessJob(upTocPool)
+            try {
+                // startProcessJob 持续遍历 cacheBookMap 处理待下载章节
+                // (内部 onEachParallel(MAX_THREAD) 并发, Mutex 互斥避免重复启动)
+                CacheBookShared.startProcessJob(upTocPool)
+            } finally {
+                busyJob.cancel()
+                CacheBookShared.setWorkingState(true)
+            }
         }
     }
 

@@ -27,7 +27,7 @@ import androidx.core.graphics.ColorUtils
 import java.text.SimpleDateFormat
 import java.util.Date
 import kotlin.math.min
-import com.google.android.material.R as materialR
+
 
 /** 信息条文字对齐(原 ReaderInfoBarView.ALIGN_*) */
 const val INFO_BAR_ALIGN_LEFT = 0
@@ -59,7 +59,7 @@ fun MangaInfoBar(text: String, alignment: Int, modifier: Modifier = Modifier) {
     }
     val colorText = remember(context) {
         ColorUtils.setAlphaComponent(
-            context.obtainStyledAttributes(intArrayOf(materialR.attr.colorOnSurface)).use {
+            context.obtainStyledAttributes(intArrayOf(com.google.android.material.R.attr.colorOnSurface)).use {
                 it.getColor(0, Color.BLACK)
             },
             200,
@@ -67,7 +67,7 @@ fun MangaInfoBar(text: String, alignment: Int, modifier: Modifier = Modifier) {
     }
     val colorOutline = remember(context) {
         ColorUtils.setAlphaComponent(
-            context.obtainStyledAttributes(intArrayOf(materialR.attr.colorSurface)).use {
+            context.obtainStyledAttributes(intArrayOf(com.google.android.material.R.attr.colorSurface)).use {
                 it.getColor(0, Color.WHITE)
             },
             200,

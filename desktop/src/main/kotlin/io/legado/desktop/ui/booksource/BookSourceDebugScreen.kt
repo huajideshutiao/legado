@@ -18,12 +18,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
@@ -34,7 +28,7 @@ import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.Debug
-import io.legado.app.ui.book.source.debug.BookSourceDebugScreen as SharedBookSourceDebugScreen
+
 import io.legado.app.ui.book.source.debug.BookSourceDebugUiActions
 import io.legado.app.ui.book.source.debug.BookSourceDebugUiState
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
@@ -50,13 +44,13 @@ import io.legado.app.utils.browseUrl
 import kotlinx.coroutines.launch
 
 /**
- * 桌面端书源调试 Screen 入口 (包装 shared/sharedUiMain 的 [SharedBookSourceDebugScreen])。
+ * 桌面端书源调试 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.source.debug.BookSourceDebugScreen])。
  *
  * 对照 desktop [BookSourceScreen] 模式, 仅做桌面平台适配, 展示与交互逻辑全部下沉到
- * shared/sharedUiMain 的 [SharedBookSourceDebugScreen]:
+ * shared/sharedUiMain 的 [io.legado.app.ui.book.source.debug.BookSourceDebugScreen]:
  *
  * - 注入 desktop 平台 Provider (ThemeStore / AppConfig / EventBus), 让 commonMain 的
- *   [AppTheme] / [SharedBookSourceDebugScreen] 可跨平台运行
+ *   [AppTheme] / [io.legado.app.ui.book.source.debug.BookSourceDebugScreen] 可跨平台运行
  * - 持有调试状态 (logs / query / helpVisible / loading / textMy / textFx / clearFocusTick)
  *   并打包为 [BookSourceDebugUiState] 传入 shared 端
  * - 实现 [BookSourceDebugUiActions] 接口, 桥接 shared 端回调到桌面端调试逻辑
@@ -349,10 +343,8 @@ private fun BookSourceDebugContent(sourceUrl: String, onBackCallback: () -> Unit
         clearFocusTick = clearFocusTick,
     )
 
-    // 位置参数 + 尾随 lambda 调用 shared 端 Screen
-    SharedBookSourceDebugScreen(state, actions) { text, linkColor ->
-        linkifyText(text, linkColor)
-    }
+    // 调用 shared 端 Screen
+    io.legado.app.ui.book.source.debug.BookSourceDebugScreen(state, actions)
 
     // ---- 对话框渲染 (替换原 javax.swing.JOptionPane) ----
 
@@ -403,31 +395,5 @@ private fun BookSourceDebugContent(sourceUrl: String, onBackCallback: () -> Unit
             message = content,
             okButton = AlertButton(okLabel),
         )
-    }
-}
-
-/**
- * URL 自动链接样式 (替代 app 端 autoLinkText, 后者依赖 android.util.Patterns.WEB_URL)。
- *
- * 用正则匹配 http/https URL, 用 [SpanStyle] 添加链接视觉样式
- * (下划线 + 传入的 linkColor); 非 URL 部分原样追加。
- * 不使用 withLink 以避免在 SelectionContainer 中拦截长按选择。
- *
- * 简化实现: 正则 `https?://\S+` 匹配到非空白字符结尾, 对调试日志场景足够。
- */
-private fun linkifyText(text: String, linkColor: Color): AnnotatedString {
-    val urlRegex = Regex("https?://\\S+")
-    return buildAnnotatedString {
-        var last = 0
-        urlRegex.findAll(text).forEach { match ->
-            append(text.substring(last, match.range.first))
-            val url = match.value
-            // 仅保留链接视觉样式，不注册点击以避免拦截 SelectionContainer 长按选择
-            withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) {
-                append(url)
-            }
-            last = match.range.last + 1
-        }
-        append(text.substring(last))
     }
 }

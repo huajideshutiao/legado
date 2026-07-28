@@ -9,11 +9,14 @@ import androidx.compose.animation.core.animateDecay
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.snapping.SnapLayoutInfoProvider
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
@@ -460,4 +463,26 @@ class MangaRenderState {
         // 原 DecelerateInterpolator
         internal val DecelerateEasing = Easing { 1f - (1f - it) * (1f - it) }
     }
+}
+
+/**
+ * 横向漫画的单页吸附行为。
+ *
+ * Compose 默认 LazyList SnapFlingBehavior 会先按速度衰减一段距离，再吸附到目标项；快速甩动时
+ * 可能越过多项。原 Android RecyclerView 使用 PagerSnapHelper，一次 fling 只选择相邻页。
+ * 这里保留 LazyList 原有的中心吸附计算，但禁用 approach 阶段，使单次手势只在手势结束时
+ * 可见的当前页和相邻页之间做最终吸附，不再继续惯性穿越多页。
+ */
+@Composable
+fun rememberSinglePageSnapFlingBehavior(state: LazyListState): FlingBehavior {
+    val delegate = remember(state) { SnapLayoutInfoProvider(state) }
+    val singlePageProvider = remember(delegate) {
+        object : SnapLayoutInfoProvider {
+            override fun calculateApproachOffset(velocity: Float, decayOffset: Float): Float = 0f
+
+            override fun calculateSnapOffset(velocity: Float): Float =
+                delegate.calculateSnapOffset(velocity)
+        }
+    }
+    return rememberSnapFlingBehavior(singlePageProvider)
 }

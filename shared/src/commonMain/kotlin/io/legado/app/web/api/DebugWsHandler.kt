@@ -6,7 +6,7 @@ import io.legado.app.model.Debug
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isJson
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
  * 出站经注入的 [WsSession]; 平台壳负责帧解码与 30s ping。
  * @param cannotEmptyMsg 由平台壳注入的「不能为空」本地化文案 (原 R.string.cannot_empty)
  *
- * 下沉 commonMain: 依赖 (appDb/Debug/GSON/printOnDebug) 均已下沉, 原 app 端 runOnIO
+ * 下沉 commonMain: 依赖 (appDb/Debug/GSON/printStackTraceOnDebug) 均已下沉, 原 app 端 runOnIO
  * (CoroutineScope 扩展, app 专属) 等价替换为 launch(IO) (本类即 CoroutineScope, 语义一致)。
  */
 class DebugWsHandler(
@@ -81,7 +81,7 @@ class DebugWsHandler(
                     session.close("调试结束")
                 }
             }.onFailure {
-                it.printOnDebug()
+                it.printStackTraceOnDebug()
             }
         }
     }

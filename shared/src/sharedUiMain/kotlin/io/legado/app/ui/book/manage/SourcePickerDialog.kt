@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Surface
@@ -43,6 +44,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppTextButton
+import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
@@ -139,8 +141,9 @@ fun SourcePickerDialog(
                 }
 
                 // 书源列表 (与原版 LazyColumn + items 对齐)
-                LazyColumn(
-                    Modifier
+                FastScrollLazyColumn(
+                    state = rememberLazyListState(),
+                    modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 400.dp),
                 ) {

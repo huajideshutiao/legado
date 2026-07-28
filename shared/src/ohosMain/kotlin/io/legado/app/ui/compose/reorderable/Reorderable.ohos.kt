@@ -167,7 +167,7 @@ private class RuleItemScopeImpl(
 }
 
 @Composable
-actual fun LazyItemScope.ReorderableItem(
+actual fun LazyItemScope.RuleReorderableItem(
     state: ReorderableListState,
     key: Any,
     content: @Composable RuleItemScope.() -> Unit,

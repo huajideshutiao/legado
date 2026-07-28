@@ -3,9 +3,9 @@ package io.legado.app.utils
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.io.ByteArrayOutputStream
-import java.util.Base64 as JavaBase64
+
 import java.util.zip.GZIPOutputStream
-import kotlin.io.encoding.Base64 as KotlinBase64
+
 
 /**
  * StringUtils.compress 的 base64 语义锁定测试。
@@ -43,8 +43,8 @@ class StringUtilsCodecTest {
     fun `base64 编码 kotlin Default 与 java basic 同构且匹配向量`() {
         for ((s, v) in listOf(s1 to v1, s2 to v2, s3 to v3)) {
             val bytes = gzip(s)
-            val kt = KotlinBase64.Default.encode(bytes)
-            val java = JavaBase64.getEncoder().encodeToString(bytes)
+            val kt = kotlin.io.encoding.Base64.Default.encode(bytes)
+            val java = java.util.Base64.getEncoder().encodeToString(bytes)
             assertEquals("kotlin 与 java basic 应逐串一致", java, kt)
             assertEquals("应匹配硬编码 oracle 向量", v, kt)
         }

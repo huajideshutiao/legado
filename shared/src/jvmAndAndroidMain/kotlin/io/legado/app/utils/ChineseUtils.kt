@@ -1,8 +1,8 @@
 package io.legado.app.utils
 
-import com.github.liuyueyi.quick.transfer.ChineseUtils as QuickChineseUtils
+
 import com.github.liuyueyi.quick.transfer.Trie
-import com.github.liuyueyi.quick.transfer.constants.TransType as QuickTransType
+
 import com.github.liuyueyi.quick.transfer.dictionary.BasicDictionary
 import com.github.liuyueyi.quick.transfer.dictionary.DictionaryContainer
 import com.github.liuyueyi.quick.transfer.dictionary.DictionaryFactory
@@ -70,24 +70,24 @@ actual object ChineseUtils {
      * commonMain TransType 映射到 quick-transfer TransType。
      * 用于 unLoad/loadDict/fixT2sDict 内部调用 quick-transfer API 时类型适配。
      */
-    private fun TransType.toQuick(): QuickTransType = when (this) {
-        TransType.SIMPLE_TO_TRADITIONAL -> QuickTransType.SIMPLE_TO_TRADITIONAL
-        TransType.TRADITIONAL_TO_SIMPLE -> QuickTransType.TRADITIONAL_TO_SIMPLE
+    private fun TransType.toQuick(): com.github.liuyueyi.quick.transfer.constants.TransType = when (this) {
+        TransType.SIMPLE_TO_TRADITIONAL -> com.github.liuyueyi.quick.transfer.constants.TransType.SIMPLE_TO_TRADITIONAL
+        TransType.TRADITIONAL_TO_SIMPLE -> com.github.liuyueyi.quick.transfer.constants.TransType.TRADITIONAL_TO_SIMPLE
     }
 
     actual fun s2t(content: String): String {
         loadDict(TransType.SIMPLE_TO_TRADITIONAL)
-        return QuickChineseUtils.s2t(content)
+        return com.github.liuyueyi.quick.transfer.ChineseUtils.s2t(content)
     }
 
     actual fun t2s(content: String): String {
         if (!fixed) fixT2sDict()
         loadDict(TransType.TRADITIONAL_TO_SIMPLE)
-        return QuickChineseUtils.t2s(content)
+        return com.github.liuyueyi.quick.transfer.ChineseUtils.t2s(content)
     }
 
     actual fun unLoad(vararg transType: TransType) {
-        QuickChineseUtils.unLoad(*transType.map { it.toQuick() }.toTypedArray())
+        com.github.liuyueyi.quick.transfer.ChineseUtils.unLoad(*transType.map { it.toQuick() }.toTypedArray())
         synchronized(loadedSet) {
             transType.forEach { loadedSet.remove(it) }
         }
@@ -95,7 +95,7 @@ actual object ChineseUtils {
 
     actual fun fixT2sDict() {
         fixed = true
-        QuickChineseUtils.loadExcludeDict(QuickTransType.TRADITIONAL_TO_SIMPLE, T2S_EXCLUDE_LIST)
+        com.github.liuyueyi.quick.transfer.ChineseUtils.loadExcludeDict(com.github.liuyueyi.quick.transfer.constants.TransType.TRADITIONAL_TO_SIMPLE, T2S_EXCLUDE_LIST)
     }
 
     actual fun loadDict(transType: TransType) {

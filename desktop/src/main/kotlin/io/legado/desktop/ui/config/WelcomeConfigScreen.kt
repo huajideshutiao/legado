@@ -24,21 +24,21 @@ import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.config.WelcomeConfigScreen as SharedWelcomeConfigScreen
+
 import io.legado.app.ui.dialog.NumberPickerDialog
 
 /**
- * 桌面端"欢迎页设置" Screen 入口 (包装 shared/sharedUiMain 的 [SharedWelcomeConfigScreen])。
+ * 桌面端"欢迎页设置" Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.config.WelcomeConfigScreen])。
  *
  * # 职责
  *
- * - 在 [SharedWelcomeConfigScreen] 之上加 [AppTitleBar] (标题"欢迎页设置" + 返回按钮)
+ * - 在 [io.legado.app.ui.config.WelcomeConfigScreen] 之上加 [AppTitleBar] (标题"欢迎页设置" + 返回按钮)
  * - 装配 3 个 summary (showTimeSummary / imageSummary / imageDarkSummary, 从
  *   [PreferenceProviders] 读 prefs 值)
  * - 装配 1 个 NumberPicker 弹窗: welcomeShowTime(0..3000 ms, 默认 3)
  * - 装配 1 个剩余 onClick 回调 (onPickImage: no-op + TODO, 桌面端无 SAF)
  * - 注入 4 个 DesktopXxxProvider 供 commonMain 的 [AppTheme] /
- *   [SharedWelcomeConfigScreen] 通过 LocalXxx 取依赖
+ *   [io.legado.app.ui.config.WelcomeConfigScreen] 通过 LocalXxx 取依赖
  *
  * # 简化项
  *
@@ -52,7 +52,7 @@ import io.legado.app.ui.dialog.NumberPickerDialog
  */
 @Composable
 fun WelcomeConfigScreen(onBack: () -> Unit) {
-    // 桌面端 Provider 注入: 供 commonMain 的 AppTheme / SharedWelcomeConfigScreen 取依赖
+    // 桌面端 Provider 注入: 供 commonMain 的 AppTheme / io.legado.app.ui.config.WelcomeConfigScreen 取依赖
     val themeStore = remember { DesktopThemeStoreProvider() }
     val appConfig = remember { DesktopAppConfigProvider() }
     val eventBus = remember { DesktopEventBusProvider() }
@@ -79,9 +79,9 @@ fun WelcomeConfigScreen(onBack: () -> Unit) {
 }
 
 /**
- * 装配 3 个 summary + 2 个回调, 位置传参调用 [SharedWelcomeConfigScreen]。
+ * 装配 3 个 summary + 2 个回调, 位置传参调用 [io.legado.app.ui.config.WelcomeConfigScreen]。
  *
- * 与 app 端 WelcomeConfigActivity.Content 内 SharedWelcomeConfigScreen(...) 调用对齐。
+ * 与 app 端 WelcomeConfigActivity.Content 内 io.legado.app.ui.config.WelcomeConfigScreen(...) 调用对齐。
  */
 @Composable
 private fun WelcomeConfigContent() {
@@ -110,7 +110,7 @@ private fun WelcomeConfigContent() {
         if (path.isBlank()) notSetLabel else path
     }
 
-    SharedWelcomeConfigScreen(
+    io.legado.app.ui.config.WelcomeConfigScreen(
         onShowTime = { showTimeDialog = true },
         onPickImage = { _ ->
             // TODO: 桌面端无 SAF, 后续可用 java.awt.FileDialog / JFileChooser 选图片

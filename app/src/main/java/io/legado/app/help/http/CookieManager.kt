@@ -10,7 +10,7 @@ import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.Request
 import okhttp3.Response
-import android.webkit.CookieManager as WebkitCookieManager
+
 import kotlinx.coroutines.runBlocking
 
 @Suppress("ConstPropertyName")
@@ -135,7 +135,7 @@ object CookieManager : CookieJarBridge {
         val cookies = CookieStore.getCookie(url).splitNotBlank(";")
         if (cookies.isEmpty()) return
 
-        val webManager = WebkitCookieManager.getInstance()
+        val webManager = android.webkit.CookieManager.getInstance()
         // 不建议在这里直接 removeSessionCookies，因为它会影响全局
         cookies.forEach {
             webManager.setCookie(baseUrl, it)

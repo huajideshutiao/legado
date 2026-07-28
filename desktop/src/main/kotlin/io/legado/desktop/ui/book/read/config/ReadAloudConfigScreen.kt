@@ -23,7 +23,7 @@ import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.association.ImportHttpTtsViewModelShared
-import io.legado.app.ui.book.read.config.ReadAloudConfigScreen as SharedReadAloudConfigScreen
+
 import io.legado.app.ui.book.read.config.ReadAloudDialog
 import io.legado.app.ui.book.read.config.SpeakEngineDialog
 import io.legado.app.ui.compose.component.AppTextField
@@ -50,17 +50,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 桌面端"朗读配置" Screen 入口 (包装 shared/sharedUiMain 的 [SharedReadAloudConfigScreen])。
+ * 桌面端"朗读配置" Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.read.config.ReadAloudConfigScreen])。
  *
  * # 职责
  *
- * - 在 [SharedReadAloudConfigScreen] 之上加 [AppTitleBar] (标题"朗读配置" + 返回按钮)
+ * - 在 [io.legado.app.ui.book.read.config.ReadAloudConfigScreen] 之上加 [AppTitleBar] (标题"朗读配置" + 返回按钮)
  * - 装配 pausePhoneCallsEnabled (从 [PreferenceProviders] 读 PreferKey.ignoreAudioFocus)
  * - 装配 speakEngineSummary (占位 rememberString("system_tts"), 加 TODO)
  * - 装配 onTtsEngine / onSysTtsConfig 回调 (接入 sharedUiMain 的 SpeakEngineDialog /
  *   ReadAloudDialog, 桌面端无 Android TTS 设置, onSysTtsConfig 改为弹朗读控制面板)
  * - 注入 4 个 DesktopXxxProvider 供 commonMain 的 [AppTheme] /
- *   [SharedReadAloudConfigScreen] 内部 PreferenceScreen 通过 LocalXxx 取依赖
+ *   [io.legado.app.ui.book.read.config.ReadAloudConfigScreen] 内部 PreferenceScreen 通过 LocalXxx 取依赖
  *
  * # 简化项 (依赖未下沉的功能用 TODO 注释 + no-op)
  *
@@ -81,7 +81,7 @@ import kotlinx.coroutines.withContext
  */
 @Composable
 fun ReadAloudConfigScreen(onBack: () -> Unit) {
-    // 桌面端 Provider 注入: 供 commonMain 的 AppTheme / SharedReadAloudConfigScreen 取依赖
+    // 桌面端 Provider 注入: 供 commonMain 的 AppTheme / io.legado.app.ui.book.read.config.ReadAloudConfigScreen 取依赖
     val themeStore = remember { DesktopThemeStoreProvider() }
     val appConfig = remember { DesktopAppConfigProvider() }
     val eventBus = remember { DesktopEventBusProvider() }
@@ -109,7 +109,7 @@ fun ReadAloudConfigScreen(onBack: () -> Unit) {
 
 /**
  * 装配 pausePhoneCallsEnabled + speakEngineSummary + 2 个回调, 位置传参调用
- * [SharedReadAloudConfigScreen]。
+ * [io.legado.app.ui.book.read.config.ReadAloudConfigScreen]。
  *
  * 与 app 端 ReadAloudConfigDialog 内 ReadAloudConfigScreen(...) 调用对齐, 差异见顶层 KDoc。
  */
@@ -177,7 +177,7 @@ private fun ReadAloudConfigContent() {
     val okLabel = rememberString("ok")
     val cancelLabel = rememberString("cancel")
 
-    SharedReadAloudConfigScreen(
+    io.legado.app.ui.book.read.config.ReadAloudConfigScreen(
         pausePhoneCallsEnabled = pausePhoneCallsEnabled,
         speakEngineSummary = speakEngineSummary,
         onTtsEngine = { showSpeakEngineDialog = true },

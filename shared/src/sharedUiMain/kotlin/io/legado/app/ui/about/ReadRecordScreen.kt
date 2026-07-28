@@ -16,13 +16,12 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
-import androidx.compose.material.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -50,6 +49,7 @@ import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
@@ -332,7 +332,7 @@ private fun RecordList(
     val showSections = state.itemsPerDayMode
     // dateFormat 在列表层 remember 一次, 所有 RecordRow 共享 (对齐原 Activity 单成员实例行为)
     val dateFormat = remember { ThreadSafeDateFormat("yyyy-MM-dd HH:mm") }
-    LazyColumn(
+    FastScrollLazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = WindowInsets.navigationBars.asPaddingValues(),

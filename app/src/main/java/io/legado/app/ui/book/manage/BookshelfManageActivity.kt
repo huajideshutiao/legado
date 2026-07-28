@@ -859,7 +859,7 @@ class BookshelfManageActivity : BaseComposeActivity(),
         AndroidView(
             factory = { CoverImageView(it) },
             update = { iv ->
-                iv.load(
+                iv.loadCover(
                     book.getDisplayCover(),
                     book.name,
                     book.author,

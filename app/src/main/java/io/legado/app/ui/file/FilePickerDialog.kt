@@ -11,8 +11,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
@@ -33,6 +33,7 @@ import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.ui.book.import.ImportFileRow
 import io.legado.app.ui.book.import.local.ImportBook
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -120,7 +121,10 @@ class FilePickerDialog : BaseComposeDialogFragment() {
                     .fillMaxWidth()
                     .weight(1f, fill = false),
             ) {
-                LazyColumn {
+                FastScrollLazyColumn(
+                    state = rememberLazyListState(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                     items(items, key = { it.file.toString() }) { item ->
                         ImportFileRow(
                             name = item.name,

@@ -4,7 +4,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.toast.Toasters
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
@@ -43,7 +43,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * - **Toast 提示**: 原 `context.toastOnUi(msg)` → [Toasters.get].toast(msg)
  *   (Toaster 接口已下沉 commonMain, androidMain 注册的实现内部切主线程,
  *   与 `context.toastOnUi` 行为等价)。
- * - **错误日志**: 原 `it.printOnDebug()` 走 [printOnDebug] 扩展 (已下沉 commonMain,
+ * - **错误日志**: 原 `it.printStackTraceOnDebug()` 走 [printStackTraceOnDebug] 扩展 (已下沉 commonMain,
  *   各平台 actual 决定是否打栈, 行为对齐)。
  *
  * # 设计选择 (组合委托)
@@ -159,7 +159,7 @@ class ReplaceEditViewModelShared(
      *   `NoStackTraceException("格式不对")` (与 app 端完全一致);
      * - 成功回调 [success];
      * - 失败 `Toasters.get().toast(it.message ?: "Error")`
-     *   (替代 `context.toastOnUi(...)`) + `it.printOnDebug()` (保留原错误日志)。
+     *   (替代 `context.toastOnUi(...)`) + `it.printStackTraceOnDebug()` (保留原错误日志)。
      *
      * 业务在 IO 跑, 回调在 mainDispatcher 跑 (与 BaseViewModel.execute 默认值一致;
      * 注: app 端原 `execute(context = Dispatchers.Main)` 让业务在 Main 跑是为了
@@ -182,7 +182,7 @@ class ReplaceEditViewModelShared(
         }.onError {
             // 替代 context.toastOnUi(msg), Toasters.get() 已下沉 commonMain
             Toasters.get().toast(it.message ?: "Error")
-            it.printOnDebug()
+            it.printStackTraceOnDebug()
         }
     }
 

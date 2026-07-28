@@ -38,7 +38,7 @@ import io.legado.app.model.SharedJsScope
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.source.SourceLoginDialog
 import io.legado.app.ui.book.source.edit.BookSourceEditCallbacks
-import io.legado.app.ui.book.source.edit.BookSourceEditScreen as SharedBookSourceEditScreen
+
 import io.legado.app.ui.book.source.edit.BookSourceEditState
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
@@ -70,15 +70,15 @@ import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
 
 /**
- * 桌面端书源编辑 Screen 入口 (包装 shared/sharedUiMain 的 [SharedBookSourceEditScreen])。
+ * 桌面端书源编辑 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.source.edit.BookSourceEditScreen])。
  *
  * # 职责
  *
  * 对照 desktop [BookSourceDebugScreen] / [BookSourceScreen] 模式, 仅做桌面平台适配,
- * 业务展示与表单逻辑全部下沉到 shared/sharedUiMain 的 [SharedBookSourceEditScreen]:
+ * 业务展示与表单逻辑全部下沉到 shared/sharedUiMain 的 [io.legado.app.ui.book.source.edit.BookSourceEditScreen]:
  *
  * - 注入 desktop 平台 Provider (ThemeStore / AppConfig / EventBus), 让 commonMain 的
- *   [AppTheme] / [SharedBookSourceEditScreen] 可跨平台运行
+ *   [AppTheme] / [io.legado.app.ui.book.source.edit.BookSourceEditScreen] 可跨平台运行
  * - 持有 [BookSourceEditState] (顶部表单状态) + 7 组 `ArrayList<EditEntity>` (各 tab 字段)
  * - [LaunchedEffect] 异步查 [AppDbProviders.get].bookSourceDao.getBookSource(sourceUrl)
  *   加载书源, 完成后调 [upSourceView] 同步表单 (对照 app 端 Activity.upSourceView)
@@ -896,7 +896,7 @@ private fun BookSourceEditContent(
     }
 
     // 位置参数 + 命名参数调用 shared 端 Screen (函数类型参数用命名参数更清晰)
-    SharedBookSourceEditScreen(
+    io.legado.app.ui.book.source.edit.BookSourceEditScreen(
         state = editState,
         callbacks = callbacks,
         editEntities = { tab -> editEntities(tab) },

@@ -1,9 +1,10 @@
 package io.legado.app.api.controller
 
 import io.legado.app.api.ReturnData
+import io.legado.app.api.controller.BookController.getImg
+import io.legado.app.api.controller.ReadBookStateProviders.getOrNull
 import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
-import io.legado.app.utils.cnCompare
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.help.AppWebDavShared
@@ -14,18 +15,33 @@ import io.legado.app.help.book.addType
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.fileBook.FileBookProviders
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.GSON
+import io.legado.app.utils.cnCompare
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isSecurityException
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.systemCurrentTimeMillis
-import kotlin.concurrent.Volatile
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.collections.List
+import kotlin.collections.Map
+import kotlin.collections.firstOrNull
+import kotlin.collections.getOrNull
+import kotlin.collections.sortedBy
+import kotlin.collections.sortedByDescending
+import kotlin.collections.sortedWith
+import kotlin.collections.toTypedArray
+import kotlin.concurrent.Volatile
+import kotlin.text.getOrNull
+import kotlin.text.isBlank
+import kotlin.text.isNullOrEmpty
+import kotlin.text.toInt
+import kotlin.text.toLong
 
 /**
  * 书籍 Web 接口 (shared commonMain 下沉版)。
@@ -206,12 +222,8 @@ object BookController {
         }
         val book = AppDbProviders.get().bookDao.getBook(bookUrl)
         val bookChapterDao = AppDbProviders.get().bookChapterDao
-        var chapter = bookChapterDao.getChapter(bookUrl, index)
-        var wait = 0
-        while (chapter == null && wait < 30) {
-            delay(1000)
-            chapter = bookChapterDao.getChapter(bookUrl, index)
-            wait++
+        val chapter = bookChapterDao.getChapter(bookUrl, index) ?: withTimeoutOrNull(30_000) {
+            bookChapterDao.flowChapter(bookUrl, index).filterNotNull().first()
         }
         if (book == null || chapter == null) {
             return returnData.setErrorMsg("未找到")
@@ -284,7 +296,7 @@ object BookController {
     suspend fun saveBookProgress(postData: String?): ReturnData {
         val returnData = ReturnData()
         GSON.fromJsonObject<BookProgress>(postData)
-            .onFailure { it.printOnDebug() }
+            .onFailure { it.printStackTraceOnDebug() }
             .getOrNull()?.let { bookProgress ->
                 AppDbProviders.get().bookDao.getBook(bookProgress.name, bookProgress.author)?.let { book ->
                     book.durChapterIndex = bookProgress.durChapterIndex

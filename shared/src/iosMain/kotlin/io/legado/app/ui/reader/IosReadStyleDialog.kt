@@ -37,17 +37,17 @@ import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.config.BgImageItem
 import io.legado.app.ui.book.read.config.BgTextConfigActions
 import io.legado.app.ui.book.read.config.BgTextConfigController
-import io.legado.app.ui.book.read.config.BgTextConfigScreen as SharedBgTextConfigScreen
+
 import io.legado.app.ui.book.read.config.ChineseConverterSelectorDialog
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.book.read.config.FontSelectDialog
 import io.legado.app.ui.book.read.config.PaddingConfigController
-import io.legado.app.ui.book.read.config.PaddingConfigScreen as SharedPaddingConfigScreen
+
 import io.legado.app.ui.book.read.config.ReadStyleActions
 import io.legado.app.ui.book.read.config.ReadStyleController
-import io.legado.app.ui.book.read.config.ReadStyleScreen as SharedReadStyleScreen
+
 import io.legado.app.ui.book.read.config.TipConfigController
-import io.legado.app.ui.book.read.config.TipConfigScreen as SharedTipConfigScreen
+
 import io.legado.app.ui.book.read.config.listIosFontFiles
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
@@ -62,11 +62,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
- * iOS 端"阅读样式配置"对话框入口 (包装 shared/sharedUiMain 的 [SharedReadStyleScreen])。
+ * iOS 端"阅读样式配置"对话框入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.read.config.ReadStyleScreen])。
  *
  * # 职责
  *
- * - 用 [AppAlertDialog] 包裹 [SharedReadStyleScreen], 提供标题"阅读样式" + 关闭按钮
+ * - 用 [AppAlertDialog] 包裹 [io.legado.app.ui.book.read.config.ReadStyleScreen], 提供标题"阅读样式" + 关闭按钮
  * - 装配 iOS 版 [IosReadStyleController] (桥接到 [ReadBookConfigShared] 各字段)
  * - 装配 iOS 版 [IosReadStyleActions] (桥接到 padding/tip/bgText/font/chineseConverter 子 Dialog + 翻页动画切换回调)
  * - 装配 [bgPreviewSlot]: 用 Box+Text 显示主题名作为占位 (iOS 端无 curBgDrawable 解码)
@@ -127,7 +127,7 @@ fun IosReadStyleDialog(
         onDismissRequest = dismissAndSave,
         title = rememberString("read_style"),
         content = {
-            SharedReadStyleScreen(
+            io.legado.app.ui.book.read.config.ReadStyleScreen(
                 controller = controller,
                 actions = actions,
                 bgPreviewSlot = { config, selected, onClick, onLongClick ->
@@ -153,7 +153,7 @@ fun IosReadStyleDialog(
             onDismissRequest = { showPaddingConfig = false },
             title = rememberString("padding_config"),
             content = {
-                SharedPaddingConfigScreen(
+                io.legado.app.ui.book.read.config.PaddingConfigScreen(
                     controller = remember(readBookConfig) { IosPaddingConfigController(readBookConfig) },
                     onPostConfig = { changes ->
                         ReadBookEvents.postConfig(changes)
@@ -172,7 +172,7 @@ fun IosReadStyleDialog(
             properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
             Surface(modifier = Modifier.fillMaxWidth()) {
-                SharedTipConfigScreen(
+                io.legado.app.ui.book.read.config.TipConfigScreen(
                     controller = remember(readBookConfig) { IosTipConfigController(readBookConfig) },
                     onBack = { showTipConfig = false },
                     onPostConfig = { changes ->
@@ -378,7 +378,7 @@ private fun IosStylePreview(
 // ====================================================================================================
 
 /**
- * iOS 端"背景文字配置"子 Dialog (包装 shared/sharedUiMain 的 [SharedBgTextConfigScreen])。
+ * iOS 端"背景文字配置"子 Dialog (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.read.config.BgTextConfigScreen])。
  *
  * 用 [AppAlertDialog] 包裹, 提供标题"背景与文字" + 关闭按钮。
  * 装配 [IosBgTextConfigController] / [IosBgTextConfigActions] / [IosBgImagePreview]。
@@ -404,7 +404,7 @@ private fun IosBgTextConfigDialog(
         onDismissRequest = dismissAndSave,
         title = rememberString("text_bg_style"),
         content = {
-            SharedBgTextConfigScreen(
+            io.legado.app.ui.book.read.config.BgTextConfigScreen(
                 controller = controller,
                 actions = actions,
                 isImageBook = isImageBook,

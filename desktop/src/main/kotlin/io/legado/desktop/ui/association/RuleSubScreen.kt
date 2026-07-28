@@ -30,7 +30,7 @@ import io.legado.app.ui.association.ImportDictRuleViewModelShared
 import io.legado.app.ui.association.ImportHttpTtsViewModelShared
 import io.legado.app.ui.association.ImportReplaceRuleViewModelShared
 import io.legado.app.ui.association.ImportTxtTocRuleViewModelShared
-import io.legado.app.ui.association.RuleSubScreen as SharedRuleSubScreen
+
 import io.legado.app.ui.association.RuleSubUiActions
 import io.legado.app.ui.association.RuleSubUiState
 import io.legado.app.ui.association.RuleSubViewModelShared
@@ -59,7 +59,7 @@ import kotlinx.coroutines.flow.flowOn
 /**
  * 规则订阅管理 Screen 桌面端入口。
  *
- * 包装 shared/sharedUiMain 下沉的 [SharedRuleSubScreen], 注入桌面端 Compose
+ * 包装 shared/sharedUiMain 下沉的 [io.legado.app.ui.association.RuleSubScreen], 注入桌面端 Compose
  * CompositionLocal Provider (ThemeStore/AppConfig/EventBus/PreferenceStore),
  * 并用 [AppTheme] 提供统一主题, 使 commonMain 的 RuleManageScaffold 骨架 +
  * 通用组件在桌面 JVM 上正常工作。
@@ -232,7 +232,7 @@ private fun RuleSubContent(onBack: () -> Unit) {
         }
     }
 
-    SharedRuleSubScreen(state.value, actions)
+    io.legado.app.ui.association.RuleSubScreen(state.value, actions)
 
     // ---- 导入对话框 (onOpenSubscription 触发, importVm 非 null 时渲染 DesktopImportDialog
     // 让用户勾选"新增/更新/已有"项后确定 importSelect 入库, 与 app 端各 ImportXxxDialog 流程等价;

@@ -30,7 +30,7 @@ fun ItemExploreVideoBinding.bindVideoCard(
         ivCover.gone()
     } else {
         ivCover.visible()
-        ivCover.load(
+        ivCover.loadCover(
             coverUrl,
             item.name,
             item.author,

@@ -1,7 +1,7 @@
 package io.legado.app.utils
 
 import io.legado.app.constant.AppLog
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import okhttp3.internal.publicsuffix.PublicSuffixDatabase
 import java.net.InetAddress
 import java.net.NetworkInterface
@@ -134,7 +134,7 @@ actual object NetworkUtils {
         try {
             absoluteUrl = URL(baseURL.substringBefore(","))
         } catch (e: Exception) {
-            e.printOnDebug()
+            e.printStackTraceOnDebug()
         }
         return getAbsoluteURL(absoluteUrl, relativePath)
     }
@@ -224,7 +224,7 @@ actual object NetworkUtils {
         try {
             enumeration = NetworkInterface.getNetworkInterfaces()
         } catch (e: SocketException) {
-            e.printOnDebug()
+            e.printStackTraceOnDebug()
             return emptyList()
         }
 

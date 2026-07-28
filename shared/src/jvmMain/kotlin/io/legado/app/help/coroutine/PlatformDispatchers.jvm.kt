@@ -11,6 +11,6 @@ import kotlinx.coroutines.Dispatchers
 internal actual val mainDispatcher: CoroutineDispatcher get() = Dispatchers.Default
 
 /** 桌面无 BuildConfig，工具场景默认打栈便于诊断。 */
-actual fun Throwable.printOnDebug() {
+actual fun Throwable.printStackTraceOnDebug() {
     printStackTrace()
 }

@@ -11,7 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.config.TipConfigController
-import io.legado.app.ui.book.read.config.TipConfigScreen as SharedTipConfigScreen
+
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
 import io.legado.app.ui.compose.platform.DesktopPreferenceStoreProvider
@@ -23,16 +23,16 @@ import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 
 /**
- * 桌面端"提示信息配置" Screen 入口 (包装 shared/sharedUiMain 的 [SharedTipConfigScreen])。
+ * 桌面端"提示信息配置" Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.read.config.TipConfigScreen])。
  *
  * # 职责
  *
- * - 用 [Surface] 包裹 [SharedTipConfigScreen], 让其 DialogTitleBar 作为页面标题栏
+ * - 用 [Surface] 包裹 [io.legado.app.ui.book.read.config.TipConfigScreen], 让其 DialogTitleBar 作为页面标题栏
  *   (原为对话框正文, 桌面端无 Dialog 宿主, 升格为全屏页面, DialogTitleBar 的 onBack
  *   即页面 onBack)
  * - 装配一个桌面版 [TipConfigController] (内部 state 持有, 写不持久化, 加 TODO)
  * - 注入 4 个 DesktopXxxProvider 供 commonMain 的 [AppTheme] /
- *   [SharedTipConfigScreen] 通过 LocalXxx 取依赖
+ *   [io.legado.app.ui.book.read.config.TipConfigScreen] 通过 LocalXxx 取依赖
  *
  * # 简化项 (依赖未下沉的功能用 TODO 注释 + no-op)
  *
@@ -45,7 +45,7 @@ import io.legado.app.ui.compose.theme.AppTheme
  */
 @Composable
 fun TipConfigScreen(onBack: () -> Unit) {
-    // 桌面端 Provider 注入: 供 commonMain 的 AppTheme / SharedTipConfigScreen 取依赖
+    // 桌面端 Provider 注入: 供 commonMain 的 AppTheme / io.legado.app.ui.book.read.config.TipConfigScreen 取依赖
     val themeStore = remember { DesktopThemeStoreProvider() }
     val appConfig = remember { DesktopAppConfigProvider() }
     val eventBus = remember { DesktopEventBusProvider() }
@@ -66,7 +66,7 @@ fun TipConfigScreen(onBack: () -> Unit) {
 }
 
 /**
- * 装配 controller + onBack + onPostConfig, 位置传参调用 [SharedTipConfigScreen]。
+ * 装配 controller + onBack + onPostConfig, 位置传参调用 [io.legado.app.ui.book.read.config.TipConfigScreen]。
  *
  * 与 app 端 TipConfigDialog 内 TipConfigScreen(...) 调用对齐, 差异见顶层 KDoc。
  */
@@ -76,7 +76,7 @@ private fun TipConfigContent(onBack: () -> Unit) {
     val onPostConfig: (List<ReadConfigChange>) -> Unit = {
     }
 
-    SharedTipConfigScreen(
+    io.legado.app.ui.book.read.config.TipConfigScreen(
         controller = controller,
         onBack = onBack,
         onPostConfig = onPostConfig,

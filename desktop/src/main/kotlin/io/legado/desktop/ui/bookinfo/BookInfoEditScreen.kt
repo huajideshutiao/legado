@@ -24,7 +24,7 @@ import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.book.changecover.ChangeCoverViewModelShared
-import io.legado.app.ui.book.info.edit.BookInfoEditScreen as SharedBookInfoEditScreen
+
 import io.legado.app.ui.book.info.edit.BookInfoEditUiActions
 import io.legado.app.ui.book.info.edit.BookInfoEditUiState
 import io.legado.app.ui.book.info.edit.BookInfoEditViewModelShared
@@ -39,12 +39,12 @@ import java.awt.FileDialog
 import java.awt.Frame
 
 /**
- * 桌面端书籍信息编辑 Screen 入口 (包装 shared/sharedUiMain 的 [SharedBookInfoEditScreen])。
+ * 桌面端书籍信息编辑 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.info.edit.BookInfoEditScreen])。
  *
  * # 职责
  *
  * 对照 desktop [BookInfoScreen] 模式, 仅做桌面平台适配, 业务展示与表单逻辑全部下沉到
- * shared/sharedUiMain 的 [SharedBookInfoEditScreen]:
+ * shared/sharedUiMain 的 [io.legado.app.ui.book.info.edit.BookInfoEditScreen]:
  *
  * - **数据加载**: [LaunchedEffect] 异步查 [AppDbProviders.get].bookDao.getBook(bookUrl)
  *   加载本地完整 Book (含 customCoverUrl / customIntro 等)
@@ -182,7 +182,7 @@ fun BookInfoEditScreen(
         )
     }
 
-    SharedBookInfoEditScreen(
+    io.legado.app.ui.book.info.edit.BookInfoEditScreen(
         state = state,
         actions = actions,
         coverSlot = { b, modifier ->

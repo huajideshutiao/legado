@@ -5,7 +5,6 @@ import android.view.View
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
@@ -38,13 +37,14 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
+import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.startActivity
+import io.legado.app.utils.throttleLatest
 import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
@@ -132,15 +132,13 @@ class ChangeBookSourceDialog() : BaseComposeDialogFragment() {
 
         LaunchedEffect(Unit) {
             lifecycle.currentStateFlow.first { it.isAtLeast(STARTED) }
-            viewModel.searchDataFlow.conflate().collect {
-                items = it
-                delay(1000)
-            }
+            viewModel.searchDataFlow.throttleLatest(1_000).collect { items = it }
         }
         LaunchedEffect(Unit) {
             lifecycle.repeatOnLifecycle(STARTED) {
                 viewModel.changeSourceProgress
                     .drop(1)
+                    .throttleLatest(500)
                     .collect { (count, name) ->
                         durText = getString(
                             R.string.change_source_progress,
@@ -149,7 +147,6 @@ class ChangeBookSourceDialog() : BaseComposeDialogFragment() {
                             viewModel.totalSourceCount,
                             name
                         )
-                        delay(500)
                     }
             }
         }
@@ -220,7 +217,7 @@ class ChangeBookSourceDialog() : BaseComposeDialogFragment() {
                 }
             }
             ChangeSourceRefreshBar(searching)
-            LazyColumn(
+            FastScrollLazyColumn(
                 state = listState,
                 modifier = Modifier
                     .weight(1f)

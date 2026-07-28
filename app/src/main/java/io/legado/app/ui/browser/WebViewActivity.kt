@@ -58,7 +58,7 @@ import io.legado.app.utils.sendToClip
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.toggleSystemBar
 import io.legado.app.utils.visible
-import io.legado.app.help.http.CookieManager as AppCookieManager
+
 
 /**
  * 内置浏览器(源验证/登录)：外围纯 Compose，WebView 本体走 AndroidView 白名单。
@@ -332,7 +332,7 @@ class WebViewActivity : BaseComposeActivity() {
                 userAgentString = it
             }
         }
-        AppCookieManager.applyToWebView(url)
+        io.legado.app.help.http.CookieManager.applyToWebView(url)
         WebViewUtil.setupImageLongClick(
             webView, this,
             onSave = { saveImage(it) },

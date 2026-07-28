@@ -54,7 +54,7 @@ import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.config.CoverConfigScreen as SharedCoverConfigScreen
+
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.utils.MD5Utils
 import io.legado.desktop.ui.component.FileDialogs
@@ -68,11 +68,11 @@ import java.nio.file.Paths
 import javax.imageio.ImageIO
 
 /**
- * 桌面端"封面设置" Screen 入口 (包装 shared/sharedUiMain 的 [SharedCoverConfigScreen])。
+ * 桌面端"封面设置" Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.config.CoverConfigScreen])。
  *
  * # 职责
  *
- * - 在 [SharedCoverConfigScreen] 之上加 [AppTitleBar] (标题"封面设置" + 返回按钮)
+ * - 在 [io.legado.app.ui.config.CoverConfigScreen] 之上加 [AppTitleBar] (标题"封面设置" + 返回按钮)
  * - 装配 summary:
  *   - coverHeightSummary: 从 prefs 读取 bookshelfCoverHeight, 默认 120
  *   - dayCoverSummary / nightCoverSummary: 调 [BookCoverShared.listDefaultCovers] 计算数量,
@@ -81,7 +81,7 @@ import javax.imageio.ImageIO
  * - 装配 onDefaultCover: 弹 [DesktopDefaultCoverDialog] (网格列表 + 添加/删除, 平台特殊行为)
  * - 装配 onRefreshCover: 触发 dataVersion 自增, 重组刷新 summary
  * - 注入 4 个 DesktopXxxProvider 供 commonMain 的 [AppTheme] /
- *   [SharedCoverConfigScreen] 通过 LocalXxx 取依赖
+ *   [io.legado.app.ui.config.CoverConfigScreen] 通过 LocalXxx 取依赖
  *
  * # 平台差异 (与 app 端 CoverConfigHost 对齐)
  *
@@ -96,7 +96,7 @@ import javax.imageio.ImageIO
  */
 @Composable
 fun CoverConfigScreen(onBack: () -> Unit) {
-    // 桌面端 Provider 注入: 供 commonMain 的 AppTheme / SharedCoverConfigScreen 取依赖
+    // 桌面端 Provider 注入: 供 commonMain 的 AppTheme / io.legado.app.ui.config.CoverConfigScreen 取依赖
     val themeStore = remember { DesktopThemeStoreProvider() }
     val appConfig = remember { DesktopAppConfigProvider() }
     val eventBus = remember { DesktopEventBusProvider() }
@@ -123,9 +123,9 @@ fun CoverConfigScreen(onBack: () -> Unit) {
 }
 
 /**
- * 装配 summary + 回调, 位置传参调用 [SharedCoverConfigScreen]。
+ * 装配 summary + 回调, 位置传参调用 [io.legado.app.ui.config.CoverConfigScreen]。
  *
- * 与 app 端 CoverConfigHost.Content 内 SharedCoverConfigScreen(...) 调用对齐。
+ * 与 app 端 CoverConfigHost.Content 内 io.legado.app.ui.config.CoverConfigScreen(...) 调用对齐。
  */
 @Composable
 private fun CoverConfigContent() {
@@ -164,7 +164,7 @@ private fun CoverConfigContent() {
     var showDayCoverDialog by remember { mutableStateOf(false) }
     var showNightCoverDialog by remember { mutableStateOf(false) }
 
-    SharedCoverConfigScreen(
+    io.legado.app.ui.config.CoverConfigScreen(
         onDefaultCover = { isNight ->
             if (isNight) showNightCoverDialog = true else showDayCoverDialog = true
         },

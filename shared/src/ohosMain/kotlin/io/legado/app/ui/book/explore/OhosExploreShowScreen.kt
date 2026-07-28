@@ -39,7 +39,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.book.addType
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.webBook.ExploreOption
-import io.legado.app.ui.book.explore.ExploreShowScreen as SharedExploreShowScreen
+
 import io.legado.app.ui.bookshelf.OhosInfoCover
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.explore.ExploreShowViewModelShared
@@ -54,7 +54,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 /**
- * 鸿蒙端发现结果页 Screen 入口 (包装 shared/sharedUiMain 的 [SharedExploreShowScreen])。
+ * 鸿蒙端发现结果页 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.explore.ExploreShowScreen])。
  *
  * 对照 iOS 端 [io.legado.app.ui.book.explore.IosExploreShowScreen] / desktop `ExploreShowScreen.kt`
  * 的包装模式, 鸿蒙端在 OhosNavHost 的 EXPLORE_SHOW 路由分支调用本入口。
@@ -136,7 +136,7 @@ fun OhosExploreShowScreen(
         footerText = state.footerText,
     )
 
-    SharedExploreShowScreen(
+    io.legado.app.ui.book.explore.ExploreShowScreen(
         uiState,
         state,
         {
@@ -331,7 +331,7 @@ private fun OhosExploreCover(
 }
 
 /**
- * 鸿蒙端发现结果页状态宿主 (实现 [ExploreShowUiActions] 供 shared [SharedExploreShowScreen] 回调)。
+ * 鸿蒙端发现结果页状态宿主 (实现 [ExploreShowUiActions] 供 shared [io.legado.app.ui.book.explore.ExploreShowScreen] 回调)。
  *
  * 对照 iOS [IosExploreShowStateHolder] / desktop `ExploreShowStateHolder`, 差异:
  * - 入参用 sourceUrl (String) 而非 BookSource 对象, [initData] 内部加载 BookSource +

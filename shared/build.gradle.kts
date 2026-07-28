@@ -95,6 +95,9 @@ kotlin {
                         file("${projectDir}/src/cinterop/mbedtls"),
                     )
                 }
+                create("nskeyvalueobserving") {
+                    defFile(file("src/cinterop/nskeyvalueobserving.def"))
+                }
             }
         }
         iosArm64(configureNativeCinterops)
@@ -302,6 +305,9 @@ kotlin {
                 implementation(libs.core.ktx)
                 // Coil3 GIF decoder (AnimatedImageDecoder API28+ / GifDecoder Movie), 仅 Android variant
                 implementation(libs.coil3.gif)
+                // Android 新 TextContextMenuProvider 的长期修复：1.11 在 SelectionContainer 复制后
+                // 主动释放选区，避免平台 ActionMode 关闭前闪出仅“全选”的过渡菜单。
+                implementation(libs.compose.foundation.android)
             }
         }
         jvmMain {

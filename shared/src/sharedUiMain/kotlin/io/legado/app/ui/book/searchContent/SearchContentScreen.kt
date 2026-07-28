@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -52,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
@@ -266,7 +266,7 @@ private fun ResultList(
         }
         actions.onConsumePendingScrollIndex()
     }
-    LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+    FastScrollLazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         itemsIndexed(state.results) { index, item ->
             SearchResultItem(
                 item = item,

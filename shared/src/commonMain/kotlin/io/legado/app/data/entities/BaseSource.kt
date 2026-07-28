@@ -12,7 +12,7 @@ import io.legado.app.help.source.SourceDebugLoggers
 import io.legado.app.help.source.SourceNetworkProviders
 import io.legado.app.help.UserAgentProviders
 import io.legado.app.help.JsExtensionsCommon
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.source.getShareScope
 import io.legado.app.model.script.JsBindings
 import io.legado.app.model.script.JsEngines
@@ -103,12 +103,12 @@ interface BaseSource : JsExtensionsCommon {
             AppLog.put("执行登录UI规则出错\n$e", e)
             return null
         }
-        // 复刻原 GSON.fromJsonArray<RowUi>(json).onFailure { it.printOnDebug() }.getOrNull()
+        // 复刻原 GSON.fromJsonArray<RowUi>(json).onFailure { it.printStackTraceOnDebug() }.getOrNull()
         // KS_JSON.decodeFromString 抛异常时打印 debug 并返回 null
         return try {
             KS_JSON.decodeFromString<List<RowUi>>(json)
         } catch (e: Exception) {
-            e.printOnDebug()
+            e.printStackTraceOnDebug()
             null
         }
     }

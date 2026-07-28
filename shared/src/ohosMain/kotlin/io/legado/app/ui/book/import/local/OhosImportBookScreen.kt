@@ -19,7 +19,7 @@ import io.legado.app.constant.AppPattern.bookFileRegex
 import io.legado.app.data.AppDbProviders
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.import.ImportFileItem
-import io.legado.app.ui.book.import.local.ImportBookScreen as SharedImportBookScreen
+
 import io.legado.app.ui.book.import.local.ImportBookUiActions
 import io.legado.app.ui.book.import.local.ImportBookUiState
 import io.legado.app.ui.compose.component.AppOutlinedTextField
@@ -32,12 +32,12 @@ import kotlinx.coroutines.withContext
 import io.legado.app.utils.File
 
 /**
- * 鸿蒙端导入本地书籍 Screen 入口 (包装 shared/sharedUiMain 的 [SharedImportBookScreen])。
+ * 鸿蒙端导入本地书籍 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.import.local.ImportBookScreen])。
  *
  * # 职责
  *
  * 对照 app 端 `ImportBookActivity` / desktop `ImportBookScreen.kt` / iOS `IosImportBookScreen.kt`,
- * 鸿蒙端仅做平台适配, UI 渲染与交互骨架全部下沉到 shared/sharedUiMain 的 [SharedImportBookScreen]:
+ * 鸿蒙端仅做平台适配, UI 渲染与交互骨架全部下沉到 shared/sharedUiMain 的 [io.legado.app.ui.book.import.local.ImportBookScreen]:
  *
  * - **数据流**: 持有 [ImportBookUiState] (immutable, copy 更新), actions 用 [remember]
  *   持有稳定实例避免重组 (与 desktop/iOS 一致; 鸿蒙 Provider 已在 EntryAbility 顶层注入,
@@ -393,7 +393,7 @@ private fun OhosImportBookContent(onBack: () -> Unit) {
         checkableCount = checkableCount,
         sortState = sortState,
     )
-    SharedImportBookScreen(state, actions)
+    io.legado.app.ui.book.import.local.ImportBookScreen(state, actions)
 
     // ---- AlertDialog 渲染 (与 desktop/iOS 一致; 输入统一走 AppOutlinedTextField) ----
     // 文件名导入 js 输入对话框 (alertImportFileName 触发 showImportFileNameDialog=true;

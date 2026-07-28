@@ -1,7 +1,5 @@
 package io.legado.app.ui.book.source.debug
 
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.runtime.Composable
 import io.legado.app.ui.preview.AppPreview
 import io.legado.app.ui.preview.LegadoThemePreview
@@ -9,8 +7,7 @@ import io.legado.app.ui.preview.LegadoThemePreview
 /**
  * [BookSourceDebugScreen] 的 @Preview。
  *
- * 假数据: 纯内存 [BookSourceDebugUiState] + no-op [BookSourceDebugUiActions] +
- * 透传 [linkifyText] (直接包 [AnnotatedString], 不做网址链接)。
+ * 假数据: 纯内存 [BookSourceDebugUiState] + no-op [BookSourceDebugUiActions]。
  */
 
 private val previewState = BookSourceDebugUiState(
@@ -62,29 +59,26 @@ private object NoOpDebugActions : BookSourceDebugUiActions {
     override fun onShowHelp() {}
 }
 
-/** 透传 linkifyText: 不做网址链接, 直接包成 AnnotatedString */
-private fun fakeLinkify(text: String, color: Color): AnnotatedString = AnnotatedString(text)
-
 @AppPreview
 @Composable
 fun BookSourceDebugScreenPreview() = LegadoThemePreview {
-    BookSourceDebugScreen(previewState, NoOpDebugActions, ::fakeLinkify)
+    BookSourceDebugScreen(previewState, NoOpDebugActions)
 }
 
 @AppPreview
 @Composable
 fun BookSourceDebugScreenHelpPreview() = LegadoThemePreview {
-    BookSourceDebugScreen(previewStateHelp, NoOpDebugActions, ::fakeLinkify)
+    BookSourceDebugScreen(previewStateHelp, NoOpDebugActions)
 }
 
 @AppPreview
 @Composable
 fun BookSourceDebugScreenEmptyPreview() = LegadoThemePreview {
-    BookSourceDebugScreen(previewStateEmpty, NoOpDebugActions, ::fakeLinkify)
+    BookSourceDebugScreen(previewStateEmpty, NoOpDebugActions)
 }
 
 @AppPreview
 @Composable
 fun BookSourceDebugScreenDarkPreview() = LegadoThemePreview(dark = true) {
-    BookSourceDebugScreen(previewState, NoOpDebugActions, ::fakeLinkify)
+    BookSourceDebugScreen(previewState, NoOpDebugActions)
 }

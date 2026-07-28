@@ -68,18 +68,18 @@ import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.ui.file.registerHandleFile
+import io.legado.app.ui.widget.number.showNumberPicker
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
-import io.legado.app.utils.isNetworkAvailable
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.fastBinarySearch
 import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.isNetworkAvailable
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.throttle
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.toggleSystemBar
-import io.legado.app.ui.widget.number.showNumberPicker
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -270,6 +270,11 @@ class ReadMangaActivity : BaseComposeActivity(), IBottomDialog,
             loadFail(it.first, it.second)
         }
         viewModel.showLoadingLiveData.observe(this) {
+            showLoading()
+        }
+        viewModel.startLoadLiveData.observe(this) {
+            // 原版在跨章且下一章尚未加载时展示章末加载状态；Compose 版没有独立 footer，
+            // 至少保留全屏加载反馈，避免用户翻到空白页后没有任何响应。
             showLoading()
         }
         viewModel.syncProgressLiveData.observe(this) {

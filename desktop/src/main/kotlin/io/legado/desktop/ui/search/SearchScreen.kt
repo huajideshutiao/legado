@@ -18,7 +18,7 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.search.SearchNavCallbacks
 import io.legado.app.ui.book.search.SearchScopeDialog
-import io.legado.app.ui.book.search.SearchScreen as SharedSearchScreen
+
 import io.legado.app.ui.book.search.SearchViewModel
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.utils.splitNotBlank
@@ -26,12 +26,12 @@ import io.legado.desktop.ui.component.DesktopBookCover
 import kotlinx.coroutines.flow.collect
 
 /**
- * 桌面端搜索 Screen 入口 (包装 shared/commonMain 的 [SharedSearchScreen])。
+ * 桌面端搜索 Screen 入口 (包装 shared/commonMain 的 [io.legado.app.ui.book.search.SearchScreen])。
  *
  * # 职责
  *
  * 对照 desktop [io.legado.desktop.ui.bookshelf.BookshelfScreen] 模式, 仅做桌面平台
- * 适配, 业务逻辑全部下沉到 shared/commonMain 的 [SharedSearchScreen]:
+ * 适配, 业务逻辑全部下沉到 shared/commonMain 的 [io.legado.app.ui.book.search.SearchScreen]:
  *
  * - **VM 生命周期**: 用 `remember { SearchViewModel() }` 持有, 窗口退出时
  *   `DisposableEffect.onDispose { viewModel.close() }` 取消内部协程 scope
@@ -101,7 +101,7 @@ fun SearchScreen(
     val okLabel = rememberString("ok")
     val cancelLabel = rememberString("cancel")
 
-    SharedSearchScreen(
+    io.legado.app.ui.book.search.SearchScreen(
         viewModel = viewModel,
         navCallbacks = DesktopSearchNavCallbacks(
             onBack = onBack,

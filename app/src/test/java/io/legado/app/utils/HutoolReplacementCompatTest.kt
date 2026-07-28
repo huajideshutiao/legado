@@ -1,10 +1,10 @@
 package io.legado.app.utils
 
-import cn.hutool.core.codec.Base64 as HutoolBase64
-import cn.hutool.core.codec.PercentCodec as HutoolPercentCodec
+
+
 import cn.hutool.core.lang.Validator
 import cn.hutool.core.net.RFC3986
-import cn.hutool.core.net.URLDecoder as HutoolURLDecoder
+
 import cn.hutool.core.net.URLEncodeUtil
 import io.legado.app.lib.webdav.UrlPathDecoder
 import org.junit.Assert.assertArrayEquals
@@ -31,11 +31,11 @@ class HutoolReplacementCompatTest {
             "###aGk=###", "无效字符TWFu",
         )
         for (v in vectors) {
-            assertArrayEquals("decode($v)", HutoolBase64.decode(v), Base64Lenient.decode(v))
-            assertEquals("decodeStr($v)", HutoolBase64.decodeStr(v), Base64Lenient.decodeStr(v))
+            assertArrayEquals("decode($v)", cn.hutool.core.codec.Base64.decode(v), Base64Lenient.decode(v))
+            assertEquals("decodeStr($v)", cn.hutool.core.codec.Base64.decodeStr(v), Base64Lenient.decodeStr(v))
             assertEquals(
                 "decodeStr($v, GBK)",
-                HutoolBase64.decodeStr(v, charset("GBK")),
+                cn.hutool.core.codec.Base64.decodeStr(v, charset("GBK")),
                 Base64Lenient.decodeStr(v, charset("GBK"))
             )
         }
@@ -60,7 +60,7 @@ class HutoolReplacementCompatTest {
     @Test
     fun analyzeUrlQueryEncoderMatchesHutool() {
         // 与 AnalyzeUrl.queryEncoder 完全相同的构造式
-        val hutool = RFC3986.UNRESERVED.orNew(HutoolPercentCodec.of("!$%&()*+,/:;=?@[\\]^`{|}"))
+        val hutool = RFC3986.UNRESERVED.orNew(cn.hutool.core.codec.PercentCodec.of("!$%&()*+,/:;=?@[\\]^`{|}"))
         val ours = PercentCodec.UNRESERVED.orNew(PercentCodec.of("!$%&()*+,/:;=?@[\\]^`{|}"))
         val vectors = listOf(printableAscii, "key=中文&x=1 2", "emoji😀", "#hash'quote\"")
         for (v in vectors) {
@@ -80,7 +80,7 @@ class HutoolReplacementCompatTest {
         for (v in vectors) {
             assertEquals(
                 "decode($v)",
-                HutoolURLDecoder.decodeForPath(v, Charsets.UTF_8),
+                cn.hutool.core.net.URLDecoder.decodeForPath(v, Charsets.UTF_8),
                 UrlPathDecoder.decode(v, Charsets.UTF_8)
             )
         }

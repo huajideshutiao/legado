@@ -29,7 +29,7 @@ import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.dict.rule.DictRuleEditDialog
-import io.legado.app.ui.dict.rule.DictRuleScreen as SharedDictRuleScreen
+
 import io.legado.app.ui.dict.rule.DictRuleUiActions
 import io.legado.app.ui.dict.rule.DictRuleUiState
 import io.legado.app.ui.widget.dialog.HelpDialog
@@ -55,7 +55,7 @@ import kotlinx.coroutines.withContext
 /**
  * 字典规则管理 Screen 桌面端入口。
  *
- * 包装 shared/sharedUiMain 下沉的 [SharedDictRuleScreen], 注入桌面端 Compose
+ * 包装 shared/sharedUiMain 下沉的 [io.legado.app.ui.dict.rule.DictRuleScreen], 注入桌面端 Compose
  * CompositionLocal Provider (ThemeStore/AppConfig/EventBus/PreferenceStore),
  * 并用 [AppTheme] 提供统一主题, 使 commonMain 的 RuleManageScaffold 骨架 +
  * 通用组件在桌面 JVM 上正常工作。
@@ -288,7 +288,7 @@ private fun DictRuleContent(onBack: () -> Unit) {
         }
     }
 
-    SharedDictRuleScreen(state.value, actions)
+    io.legado.app.ui.dict.rule.DictRuleScreen(state.value, actions)
 
     // ---- 字典规则编辑对话框 (onAddRule/onEditRule 触发) ----
     // 剪贴板桥接用 AWT Toolkit (替代 app 端 getClipText/sendToClip):

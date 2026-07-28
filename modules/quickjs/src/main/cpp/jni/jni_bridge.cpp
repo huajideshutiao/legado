@@ -23,14 +23,11 @@
 // 覆盖 libc++abi 的 __cxa_demangle: 已 -fno-exceptions, 只有 demangling_terminate_handler
 // (uncaught 异常时打印 typename) 一处会用它, 我们让它返回 nullptr, 触发上游 gc-sections
 // 剪掉整套 itanium_demangle (~114 KB)。签名与 __cxxabi_demangle.h 保持一致。
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "bugprone-reserved-identifier"
 extern "C" __attribute__((used)) char *
-__cxa_demangle(const char *, char *, size_t *, int *status) {
+__cxa_demangle(const char *, char *, size_t *, int *status) { // NOLINT(bugprone-reserved-identifier)
     if (status) *status = -1;
     return nullptr;
 }
-#pragma clang diagnostic pop
 
 // 缓存的 JavaVM (JNI_OnLoad 时设置)
 static JavaVM *g_jvm = nullptr;

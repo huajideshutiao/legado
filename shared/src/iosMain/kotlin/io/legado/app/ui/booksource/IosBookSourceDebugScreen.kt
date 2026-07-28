@@ -14,12 +14,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppLog
@@ -30,7 +24,7 @@ import io.legado.app.help.openURL
 import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.Debug
-import io.legado.app.ui.book.source.debug.BookSourceDebugScreen as SharedBookSourceDebugScreen
+
 import io.legado.app.ui.book.source.debug.BookSourceDebugUiActions
 import io.legado.app.ui.book.source.debug.BookSourceDebugUiState
 import io.legado.app.ui.compose.component.AlertButton
@@ -40,7 +34,7 @@ import io.legado.app.ui.compose.platform.rememberString
 import kotlinx.coroutines.launch
 
 /**
- * iOS 端书源调试 Screen 入口 (包装 shared/sharedUiMain 的 [SharedBookSourceDebugScreen])。
+ * iOS 端书源调试 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.source.debug.BookSourceDebugScreen])。
  *
  * 对照 desktop `BookSourceDebugScreen.kt` 的包装模式, iOS 端在 [IosBookSourceScreen] 的
  * onDebug 回调中用 Dialog 全屏展示本入口。Provider 由 MainViewController 全局注入,
@@ -289,9 +283,7 @@ private fun BookSourceDebugContent(sourceUrl: String, onBackCallback: () -> Unit
         clearFocusTick = clearFocusTick,
     )
 
-    SharedBookSourceDebugScreen(state, actions) { text, linkColor ->
-        linkifyText(text, linkColor)
-    }
+    io.legado.app.ui.book.source.debug.BookSourceDebugScreen(state, actions)
 
     // ---- AppAlertDialog 渲染 ----
 
@@ -346,23 +338,5 @@ private fun BookSourceDebugContent(sourceUrl: String, onBackCallback: () -> Unit
                 srcDialog = null
             },
         )
-    }
-}
-
-// 网址自动链接 (对齐 desktop linkifyText, 正则匹配 URL 转 AnnotatedString)
-private fun linkifyText(text: String, linkColor: Color): AnnotatedString {
-    val urlRegex = Regex("https?://\\S+")
-    return buildAnnotatedString {
-        var last = 0
-        urlRegex.findAll(text).forEach { match ->
-            append(text.substring(last, match.range.first))
-            val url = match.value
-            // 仅保留链接视觉样式，不注册点击以避免拦截 SelectionContainer 长按选择
-            withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) {
-                append(url)
-            }
-            last = match.range.last + 1
-        }
-        append(text.substring(last))
     }
 }

@@ -6,6 +6,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.progress.ProgressManager
 import io.legado.app.help.glide.progress.ProgressManager.LISTENER
 import io.legado.app.help.glide.progress.ProgressResponseBody
+import io.legado.app.lib.cronet.CronetCancelEventListener
 import io.legado.app.utils.NetworkUtils
 import okhttp3.ConnectionSpec
 import okhttp3.Cookie
@@ -74,6 +75,7 @@ private fun createOkHttpClient(): OkHttpClient {
         .connectionSpecs(specs)
         .followRedirects(true)
         .followSslRedirects(true)
+        .eventListener(CronetCancelEventListener)
         .addInterceptor(OkHttpExceptionInterceptor)
         .addInterceptor { chain ->
             var request = chain.request()

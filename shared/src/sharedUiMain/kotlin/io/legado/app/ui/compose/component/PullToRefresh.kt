@@ -2,9 +2,9 @@ package io.legado.app.ui.compose.component
 
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
-import androidx.compose.material.pullrefresh.PullRefreshState as MaterialPullRefreshState
+
 import androidx.compose.material.pullrefresh.pullRefresh
-import androidx.compose.material.pullrefresh.rememberPullRefreshState as rememberMaterialPullRefreshState
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
@@ -21,8 +21,8 @@ import io.legado.app.ui.compose.theme.AppTheme
 @Composable
 fun rememberPullToRefreshState(): PullToRefreshState {
     val state = remember { PullToRefreshState() }
-    state.pullRefreshState = rememberMaterialPullRefreshState(
-        refreshing = state.externalRefreshing,
+    state.pullRefreshState = androidx.compose.material.pullrefresh.rememberPullRefreshState(
+        refreshing = state.externalRefreshing && state.manualRefreshRequested,
         onRefresh = state::refresh,
     )
     return state
@@ -31,13 +31,15 @@ fun rememberPullToRefreshState(): PullToRefreshState {
 @OptIn(ExperimentalMaterialApi::class)
 @Stable
 class PullToRefreshState internal constructor() {
-    internal lateinit var pullRefreshState: MaterialPullRefreshState
+    internal lateinit var pullRefreshState: androidx.compose.material.pullrefresh.PullRefreshState
     internal var externalRefreshing by mutableStateOf(false)
+    internal var manualRefreshRequested by mutableStateOf(false)
     internal var enabled = true
     internal var onRefreshCallback: (() -> Unit)? = null
 
     internal fun refresh() {
         if (!enabled || externalRefreshing) return
+        manualRefreshRequested = true
         onRefreshCallback?.invoke()
     }
 }
@@ -50,6 +52,9 @@ fun Modifier.pullToRefresh(
     onRefresh: () -> Unit,
 ): Modifier = composed {
     SideEffect {
+        if (state.externalRefreshing && !isRefreshing) {
+            state.manualRefreshRequested = false
+        }
         state.externalRefreshing = isRefreshing
         state.enabled = enabled
         state.onRefreshCallback = onRefresh
@@ -69,12 +74,14 @@ object PullToRefreshDefaults {
         modifier: Modifier = Modifier,
         color: Color = Color.Unspecified,
     ) {
-        PullRefreshIndicator(
-            refreshing = isRefreshing,
-            state = state.pullRefreshState,
-            modifier = modifier,
-            backgroundColor = AppTheme.colors.bottomBackground,
-            contentColor = color.takeIf { it != Color.Unspecified } ?: AppTheme.colors.accent,
-        )
+        if (!isRefreshing || state.manualRefreshRequested) {
+            PullRefreshIndicator(
+                refreshing = isRefreshing && state.manualRefreshRequested,
+                state = state.pullRefreshState,
+                modifier = modifier,
+                backgroundColor = AppTheme.colors.bottomBackground,
+                contentColor = color.takeIf { it != Color.Unspecified } ?: AppTheme.colors.accent,
+            )
+        }
     }
 }

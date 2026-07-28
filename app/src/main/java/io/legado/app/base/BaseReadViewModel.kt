@@ -15,7 +15,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.data.entities.getBookSource as getBookSourcePart
+import io.legado.app.data.entities.resolveBookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.IntentData
@@ -298,7 +298,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
             val sources = getTextEnabledSources()
             flow {
                 for (source in sources) {
-                    source.getBookSourcePart()?.let {
+                    source.resolveBookSource()?.let {
                         emit(it)
                     }
                 }

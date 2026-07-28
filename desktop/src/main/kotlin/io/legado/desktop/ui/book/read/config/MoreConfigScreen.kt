@@ -15,7 +15,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.book.read.config.ClickActionConfig
 import io.legado.app.ui.book.read.config.ClickActionDialog
-import io.legado.app.ui.book.read.config.MoreConfigScreen as SharedMoreConfigScreen
+
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
@@ -30,17 +30,17 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.dialog.NumberPickerDialog
 
 /**
- * 桌面端"更多配置" Screen 入口 (包装 shared/sharedUiMain 的 [SharedMoreConfigScreen])。
+ * 桌面端"更多配置" Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.read.config.MoreConfigScreen])。
  *
  * # 职责
  *
- * - 在 [SharedMoreConfigScreen] 之上加 [AppTitleBar] (标题"更多配置" + 返回按钮)
+ * - 在 [io.legado.app.ui.book.read.config.MoreConfigScreen] 之上加 [AppTitleBar] (标题"更多配置" + 返回按钮)
  * - 装配 pageTouchSlopSummary (从 prefs 读取 pageTouchSlop, 0=系统默认)
  * - 装配 1 个 NumberPicker 弹窗: pageTouchSlop(0..9999, 0=系统默认)
  * - 装配 1 个 Dialog: ClickActionDialog (点击区域配置),
  *   回调 onClickRegionalConfig 弹出对应 shared 共享 Dialog
  * - 注入 4 个 DesktopXxxProvider 供 commonMain 的 [AppTheme] /
- *   [SharedMoreConfigScreen] 内部 PreferenceScreen 通过 LocalXxx 取依赖
+ *   [io.legado.app.ui.book.read.config.MoreConfigScreen] 内部 PreferenceScreen 通过 LocalXxx 取依赖
  *
  * # 简化项
  *
@@ -57,7 +57,7 @@ import io.legado.app.ui.dialog.NumberPickerDialog
  */
 @Composable
 fun MoreConfigScreen(onBack: () -> Unit) {
-    // 桌面端 Provider 注入: 供 commonMain 的 AppTheme / SharedMoreConfigScreen 取依赖
+    // 桌面端 Provider 注入: 供 commonMain 的 AppTheme / io.legado.app.ui.book.read.config.MoreConfigScreen 取依赖
     val themeStore = remember { DesktopThemeStoreProvider() }
     val appConfig = remember { DesktopAppConfigProvider() }
     val eventBus = remember { DesktopEventBusProvider() }
@@ -84,7 +84,7 @@ fun MoreConfigScreen(onBack: () -> Unit) {
 }
 
 /**
- * 装配 pageTouchSlopSummary + 3 个回调 + 3 个 Dialog, 位置传参调用 [SharedMoreConfigScreen]。
+ * 装配 pageTouchSlopSummary + 3 个回调 + 3 个 Dialog, 位置传参调用 [io.legado.app.ui.book.read.config.MoreConfigScreen]。
  *
  * 与 app 端 MoreConfigDialog 内 MoreConfigScreen(...) 调用对齐, 差异见顶层 KDoc。
  */
@@ -104,7 +104,7 @@ private fun MoreConfigContent() {
     // summary 直接显示数值 (桌面端无 ViewConfiguration.scaledTouchSlop, 0=系统默认)
     val pageTouchSlopSummary = pageTouchSlop.toString()
 
-    SharedMoreConfigScreen(
+    io.legado.app.ui.book.read.config.MoreConfigScreen(
         pageTouchSlopSummary = pageTouchSlopSummary,
         onPageTouchSlop = { showPageTouchSlopDialog = true },
         onClickRegionalConfig = {

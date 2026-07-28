@@ -6,7 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import sh.calvin.reorderable.ReorderableCollectionItemScope
 import sh.calvin.reorderable.ReorderableLazyListState
-import sh.calvin.reorderable.ReorderableItem as originalReorderableItem
+import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
 // 不用 typealias: 库接口的 longPressDraggableHandle 带默认参数值, 与 expect 冲突
@@ -47,11 +47,11 @@ actual fun rememberReorderableListState(
 }
 
 @Composable
-actual fun LazyItemScope.ReorderableItem(
+actual fun LazyItemScope.RuleReorderableItem(
     state: ReorderableListState,
     key: Any,
     content: @Composable RuleItemScope.() -> Unit,
-) = originalReorderableItem(
+) = ReorderableItem(
     state = state,
     key = key,
 ) {

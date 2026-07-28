@@ -14,12 +14,12 @@ import io.legado.app.utils.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
-import org.jetbrains.skia.Image as SkiaImage
+
 
 /**
  * [ImageBitmapLoader] 的鸿蒙实现。
  *
- * 解码用 Skia [SkiaImage.makeFromEncoded] + [toComposeImageBitmap]
+ * 解码用 Skia [org.jetbrains.skia.Image.makeFromEncoded] + [toComposeImageBitmap]
  * (Compose Multiplatform 鸿蒙端用 Skia 渲染, 与 iOS 端 [io.legado.app.ui.bookshelf.IosBookCover] 解码路径一致)。
  *
  * - 本地路径 (`file://` / `/...`): [File.readBytes] 读文件后 Skia 解码
@@ -106,6 +106,6 @@ internal suspend fun ohosDownloadImageBytes(
 internal fun ohosDecodeImageBytes(bytes: ByteArray): ImageBitmap? {
     if (bytes.isEmpty()) return null
     return runCatching {
-        SkiaImage.makeFromEncoded(bytes).toComposeImageBitmap()
+        org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap()
     }.getOrNull()
 }

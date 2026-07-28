@@ -4,7 +4,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.http.newCallStrResponse
 import io.legado.app.help.source.SourceHelp
@@ -50,7 +50,7 @@ import kotlinx.coroutines.CoroutineScope
  * - **Toast 提示**: 原 `context.toastOnUi(msg)` → [Toasters.get].toast(msg)
  *   (Toaster 接口已下沉 commonMain, androidMain 注册的实现内部切主线程,
  *   与 `context.toastOnUi` 行为等价)。
- * - **错误日志**: 原 `it.printOnDebug()` 走 [printOnDebug] 扩展 (已下沉 commonMain,
+ * - **错误日志**: 原 `it.printStackTraceOnDebug()` 走 [printStackTraceOnDebug] 扩展 (已下沉 commonMain,
  *   各平台 actual 决定是否打栈, 行为对齐)。
  * - **i18n 字符串**: 原 `context.getString(R.string.non_null_name_url)` (校验失败文案)
  *   通过构造函数 lambda [nonNullNameUrlMessage] 注入, app 端实现
@@ -176,7 +176,7 @@ class BookSourceEditViewModelShared(
      * - `bookSource = source` 更新当前引用;
      * - 成功回调 [success] (参数为保存的 source, 与 app 端 `source` 返回值一致);
      * - 失败 `Toasters.get().toast(it.message)` (替代 `context.toastOnUi(...)`,
-     *   注意原 app 端 save 的 onError 无 `?: "Error"` fallback, 保持一致) + `it.printOnDebug()`。
+     *   注意原 app 端 save 的 onError 无 `?: "Error"` fallback, 保持一致) + `it.printStackTraceOnDebug()`。
      *
      * 业务在 IO 跑 (DAO 写入必须 IO), 回调在 mainDispatcher 跑
      * (与 BaseViewModel.execute 默认值一致)。
@@ -216,7 +216,7 @@ class BookSourceEditViewModelShared(
             // 替代 context.toastOnUi(msg), Toasters.get() 已下沉 commonMain
             // 原 app 端 save 的 onError 直接 toast localizedMessage; toast 需非空, 空时给空串
             Toasters.get().toast(it.message ?: "")
-            it.printOnDebug()
+            it.printStackTraceOnDebug()
         }
     }
 
@@ -229,7 +229,7 @@ class BookSourceEditViewModelShared(
      * - 空文本抛 `NoStackTraceException("剪贴板为空")`;
      * - 非空调 [importSource] (非 suspend 版, text + finally 回调) 解析;
      * - 失败 `Toasters.get().toast(it.message ?: "Error")`
-     *   (替代 `context.toastOnUi(...)`) + `it.printOnDebug()`。
+     *   (替代 `context.toastOnUi(...)`) + `it.printStackTraceOnDebug()`。
      *
      * 业务在 IO 跑, 回调在 mainDispatcher 跑 (与 BaseViewModel.execute 默认值一致;
      * 注: app 端原 `execute(context = Dispatchers.Main)` 让业务在 Main 跑是为了
@@ -251,7 +251,7 @@ class BookSourceEditViewModelShared(
         }.onError {
             // 替代 context.toastOnUi(msg), Toasters.get() 已下沉 commonMain
             Toasters.get().toast(it.message ?: "Error")
-            it.printOnDebug()
+            it.printStackTraceOnDebug()
         }
     }
 
@@ -263,7 +263,7 @@ class BookSourceEditViewModelShared(
      * - 调 [importSource] (suspend 版) 解析文本;
      * - 成功回调 [finally] (参数为解析出的 BookSource);
      * - 失败 `Toasters.get().toast(it.message ?: "Error")`
-     *   (替代 `context.toastOnUi(...)`) + `it.printOnDebug()`。
+     *   (替代 `context.toastOnUi(...)`) + `it.printStackTraceOnDebug()`。
      *
      * 业务在 IO 跑, 回调在 mainDispatcher 跑 (与 BaseViewModel.execute 默认值一致)。
      *
@@ -278,7 +278,7 @@ class BookSourceEditViewModelShared(
         }.onError {
             // 替代 context.toastOnUi(msg), Toasters.get() 已下沉 commonMain
             Toasters.get().toast(it.message ?: "Error")
-            it.printOnDebug()
+            it.printStackTraceOnDebug()
         }
     }
 

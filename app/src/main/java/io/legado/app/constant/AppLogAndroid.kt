@@ -15,26 +15,21 @@ private val androidAppLogHost = object : AppLogHost {
 
     override fun currentTimeMillis(): Long = System.currentTimeMillis()
 
+    override fun timeZoneOffsetMillis(): Long =
+        java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()).toLong()
+
     override val recordLog: Boolean get() = AppConfig.recordLog
 
-    override fun write(message: String) {
-        LogUtils.d("AppLog", message)
+    override fun write(tag: String, message: String) {
+        LogUtils.d(tag, message)
     }
 
     override fun toast(message: String) {
         appCtx.toastOnUi(message)
     }
 
-    override fun debugPrint(message: String, throwable: Throwable?) {
+    override fun debugPrint(tag: String, message: String, throwable: Throwable?) {
         if (BuildConfig.DEBUG) {
-            // 原实现取 stackTrace[3](put 的直接调用者)为 tag; 经 host 间接后按类名扫首个非 AppLog 帧, 语义不变
-            val tag = Thread.currentThread().stackTrace
-                .firstOrNull {
-                    val n = it.className
-                    !n.startsWith("io.legado.app.constant.AppLog") &&
-                        !n.startsWith("java.lang.Thread") &&
-                        !n.startsWith("dalvik.system.VMStack")
-                }?.className ?: "AppLog"
             Log.e(tag, message, throwable)
         }
     }

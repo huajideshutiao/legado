@@ -19,7 +19,7 @@ import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.encodeURI
 import io.legado.app.utils.isDataUrl
 import io.legado.app.utils.isXml
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import com.fleeksoft.ksoup.Ksoup
 import com.fleeksoft.ksoup.nodes.Element
 import com.fleeksoft.ksoup.parser.Parser
@@ -137,7 +137,7 @@ class EpubFile(var book: Book) {
             }
         }.onFailure {
             AppLog.put("读取Epub文件失败\n${it.localizedMessage}", it)
-            it.printOnDebug()
+            it.printStackTraceOnDebug()
         }.getOrNull()
     }
 
@@ -353,7 +353,7 @@ class EpubFile(var book: Book) {
             }
         } catch (e: Exception) {
             AppLog.put("加载书籍封面失败\n${e.localizedMessage}", e)
-            e.printOnDebug()
+            e.printStackTraceOnDebug()
         }
     }
 

@@ -2,19 +2,11 @@
 
 package io.legado.app.help.tts
 
+import io.legado.app.help.media.AvPlayerItemStatusObserver
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemDidPlayToEndTimeNotification
-import platform.AVFoundation.AVPlayerItemStatusFailed
-import platform.AVFoundation.AVPlayerItemStatusReadyToPlay
 import platform.AVFoundation.AVURLAsset
 import platform.AVFoundation.currentTime
 import platform.AVFoundation.duration
@@ -34,9 +26,8 @@ import platform.Foundation.NSURL
  *
  * - [setUrl]: AVURLAsset(URL:options:) 经 AVURLAssetHTTPHeaderFieldsKey 注入书源 headers
  *   (cookie/UA/Referer), 与 app 端 ExoPlayer 请求头语义对齐
- * - [prepare]: 轮询 AVPlayerItem.status 到 ReadyToPlay 才 onReady (对标 ExoPlayer STATE_READY)
+ * - [prepare]: KVO 观察 AVPlayerItem.status，到 ReadyToPlay 才 onReady (对标 ExoPlayer STATE_READY)
  * - 播放结束经 NSNotificationCenter [AVPlayerItemDidPlayToEndTimeNotification] 转 onEndOfMedia
- * - AVPlayer API 应在主线程调用 (轮询跑 Dispatchers.Main), 与 AVPlayer contract 一致
  */
 class IosHttpTtsPlayer : HttpTtsPlayer {
 
@@ -58,11 +49,9 @@ class IosHttpTtsPlayer : HttpTtsPlayer {
     /** 播放结束通知 observer token, release 时用于 removeObserver。 */
     @Volatile private var endObserver: Any? = null
 
-    /** 主线程协程域, prepare 的 status 轮询用。 */
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-
-    /** status 轮询 Job, stop/release/换源时取消。 */
-    @Volatile private var statusPollJob: Job? = null
+    /** status KVO 观察器，stop/release/换源时释放。 */
+    @Volatile
+    private var statusObserver: AvPlayerItemStatusObserver? = null
 
     // ===== HttpTtsPlayer contract =====
 
@@ -128,35 +117,26 @@ class IosHttpTtsPlayer : HttpTtsPlayer {
         registerEndObserver(newItem)
     }
 
-    /**
-     * prepare: 轮询 AVPlayerItem.status, ReadyToPlay 才 onReady / Failed 则 onError。
-     * Kotlin/Native 无法 override NSObject category 的 observeValueForKeyPath (映射为扩展函数),
-     * 经典 KVO 不可实现, 取轻量主线程轮询 (50ms) 代替。
-     */
+    /** prepare: KVO 观察 AVPlayerItem.status，立即处理初始状态及后续变化。 */
     override fun prepare() {
         val target = item ?: run {
             listener?.onError("未设置播放源")
             return
         }
-        statusPollJob?.cancel()
-        statusPollJob = scope.launch {
-            while (isActive) {
-                when (target.status) {
-                    AVPlayerItemStatusReadyToPlay -> {
-                        listener?.onReady()
-                        return@launch
-                    }
-
-                    AVPlayerItemStatusFailed -> {
-                        listener?.onError(
-                            target.error?.localizedDescription ?: "AVPlayerItem 加载失败"
-                        )
-                        return@launch
-                    }
-                }
-                delay(50)
-            }
-        }
+        statusObserver?.dispose()
+        val observer = AvPlayerItemStatusObserver(
+            item = target,
+            onReady = {
+                statusObserver = null
+                listener?.onReady()
+            },
+            onFailed = { message ->
+                statusObserver = null
+                listener?.onError(message)
+            },
+        )
+        statusObserver = observer
+        observer.start()
     }
 
     override fun play() {
@@ -168,8 +148,8 @@ class IosHttpTtsPlayer : HttpTtsPlayer {
     }
 
     override fun stop() {
-        statusPollJob?.cancel()
-        statusPollJob = null
+        statusObserver?.dispose()
+        statusObserver = null
         val pl = player ?: return
         pl.pause()
         // 回到开头
@@ -208,11 +188,11 @@ class IosHttpTtsPlayer : HttpTtsPlayer {
     }
 
     /**
-     * 释放当前 player/item/observer/轮询, 不清空 url/headers (供 setUrl 切换源时复用)。
+     * 释放当前 player/item/observer, 不清空 url/headers (供 setUrl 切换源时复用)。
      */
     private fun releaseCurrent() {
-        statusPollJob?.cancel()
-        statusPollJob = null
+        statusObserver?.dispose()
+        statusObserver = null
         endObserver?.let { token ->
             NSNotificationCenter.defaultCenter.removeObserver(token)
             endObserver = null

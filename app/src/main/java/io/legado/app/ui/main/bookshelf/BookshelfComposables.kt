@@ -87,7 +87,7 @@ fun ShelfCover(
             if (iv.tag != key) {
                 iv.tag = key
                 iv.coverRatio = ratio
-                iv.load(path, name, author, loadOnlyWifi, origin, inBookshelf = inBookshelf)
+                iv.loadCover(path, name, author, loadOnlyWifi, origin, inBookshelf = inBookshelf)
             }
         },
     )

@@ -6,6 +6,9 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
+    // Android 与 shared/desktop 统一由 Compose Multiplatform 插件提供 Compose 依赖坐标，
+    // 避免 app 单独走 AndroidX Compose BOM、shared 走 org.jetbrains.compose 的双体系。
+    alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.compose.compiler)
     // K5-c Phase 5: @Database 已下沉 shared/commonMain, room 插件移至 shared 模块
     // alias(libs.plugins.room)
@@ -230,13 +233,16 @@ dependencies {
     implementation(libs.activity.ktx)
     implementation(libs.fragment.ktx)
 
-    //compose：BOM 统一版本，platform 引入
-    implementation(platform(libs.compose.bom))
-    implementation(libs.compose.material3)
-    // MD2 迁移: AppTheme 基于 M2 MaterialTheme, 界面组件统一 material(M2), material3 仅剩存量待清
-    implementation(libs.compose.material)
-    implementation(libs.compose.ui)
-    implementation(libs.compose.ui.tooling.preview)
+    // Compose 核心统一走 Compose Multiplatform 插件坐标，与 shared/desktop 保持同一依赖体系。
+    // 包名仍是 androidx.compose.*；Android target 会自动选择对应 Android 变体。
+    implementation(compose.runtime)
+    implementation(compose.foundation)
+    // Android 使用新版 TextContextMenuProvider；1.11 修复 SelectionContainer 复制后未释放选区，
+    // 避免 ActionMode 关闭前短暂只剩“全选”。不是关闭新菜单架构的兼容开关。
+    implementation(libs.compose.foundation.android)
+    implementation(compose.material)
+    implementation(compose.ui)
+    // activity-compose / lifecycle-runtime-compose 是 Android 平台集成层，不属于第二套 Compose 核心实现。
     implementation(libs.compose.activity)
     implementation(libs.compose.lifecycle.runtime)
     // 拖拽排序：P2 规则管理 10 个界面统一用它替代 ItemTouchHelper

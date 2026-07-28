@@ -21,7 +21,7 @@ import io.legado.app.help.file.pickDirectory
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.import.ImportFileItem
-import io.legado.app.ui.book.import.local.ImportBookScreen as SharedImportBookScreen
+
 import io.legado.app.ui.book.import.local.ImportBookUiActions
 import io.legado.app.ui.book.import.local.ImportBookUiState
 import io.legado.app.ui.compose.component.AppTextField
@@ -35,12 +35,12 @@ import platform.Foundation.NSURL
 import io.legado.app.utils.File
 
 /**
- * iOS 端导入本地书籍 Screen 入口 (包装 shared/sharedUiMain 的 [SharedImportBookScreen])。
+ * iOS 端导入本地书籍 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.import.local.ImportBookScreen])。
  *
  * # 职责
  *
  * 对照 app 端 `ImportBookActivity` / desktop `ImportBookScreen.kt`, iOS 端仅做平台适配,
- * UI 渲染与交互骨架全部下沉到 shared/sharedUiMain 的 [SharedImportBookScreen]:
+ * UI 渲染与交互骨架全部下沉到 shared/sharedUiMain 的 [io.legado.app.ui.book.import.local.ImportBookScreen]:
  *
  * - **数据流**: 持有 [ImportBookUiState] (immutable, copy 更新), actions 用 [remember]
  *   持有稳定实例避免重组 (与 desktop 一致; iOS Provider 已在 MainViewController 顶层注入,
@@ -460,7 +460,7 @@ private fun IosImportBookContent(onBack: () -> Unit) {
         checkableCount = checkableCount,
         sortState = sortState,
     )
-    SharedImportBookScreen(state, actions)
+    io.legado.app.ui.book.import.local.ImportBookScreen(state, actions)
 
     // ---- AlertDialog 渲染 (与 desktop 一致) ----
     // 文件名导入 js 输入对话框 (alertImportFileName 触发 showImportFileNameDialog=true;

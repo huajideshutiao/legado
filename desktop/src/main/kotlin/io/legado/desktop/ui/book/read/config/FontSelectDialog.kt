@@ -25,7 +25,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import io.legado.desktop.ui.component.FileDialogs
 import javax.swing.SwingUtilities
-import io.legado.app.ui.book.read.config.FontSelectDialog as SharedFontSelectDialog
+
 
 /**
  * 默认字体扫描目录（Windows 系统字体目录；其他平台后续可扩展）。
@@ -36,7 +36,7 @@ import io.legado.app.ui.book.read.config.FontSelectDialog as SharedFontSelectDia
 private const val DEFAULT_FONT_DIR = "C:\\Windows\\Fonts"
 
 /**
- * 桌面端"字体选择"对话框：消费 sharedUiMain 的 [SharedFontSelectDialog]
+ * 桌面端"字体选择"对话框：消费 sharedUiMain 的 [io.legado.app.ui.book.read.config.FontSelectDialog]
  * (对话框壳/默认字体按钮/单选列表均为共享件，与 iOS 端同源)，本文件仅保留桌面平台适配：
  *
  * - 字体扫描：`java.io.File` 扫 `.ttf`/`.otf`（共享 [fontFileRegex]，Windows 系统字体目录）
@@ -94,7 +94,7 @@ fun FontSelectDialog(
         }
     }
 
-    SharedFontSelectDialog(
+    io.legado.app.ui.book.read.config.FontSelectDialog(
         fontItems = fontItems,
         curFontPath = curFontPath,
         curFontName = curName,

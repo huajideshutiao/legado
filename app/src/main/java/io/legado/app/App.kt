@@ -24,6 +24,8 @@ import io.legado.app.help.DispatchersMonitor
 import io.legado.app.help.HomeTabHelpShared
 import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.PinnedExploreHelp
+import io.legado.app.help.archive.AndroidArchiveProvider
+import io.legado.app.help.archive.ArchiveProviders
 import io.legado.app.help.book.AndroidBookImageStorage
 import io.legado.app.help.book.AndroidBookStorage
 import io.legado.app.help.book.AndroidLocalBookLocator
@@ -36,14 +38,10 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadBookConfigProviders
-import io.legado.app.help.config.registerAndroidPreferenceProvider
-import io.legado.app.help.i18n.registerAndroidAppStringProvider
-import io.legado.app.help.archive.ArchiveProviders
-import io.legado.app.help.archive.AndroidArchiveProvider
-import io.legado.app.help.image.registerAndroidBookImageLoader
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.ThemeConfig.applyDayNight
 import io.legado.app.help.config.ThemeConfig.applyDayNightInit
+import io.legado.app.help.config.registerAndroidPreferenceProvider
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.file.registerAndroidAppFilesDir
 import io.legado.app.help.http.CookieJarBridgeHolder
@@ -53,13 +51,11 @@ import io.legado.app.help.http.ObsoleteUrlFactory
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.http.registerAndroidBackstageWebView
 import io.legado.app.help.http.registerAndroidCookieStoreProvider
+import io.legado.app.help.i18n.registerAndroidAppStringProvider
+import io.legado.app.help.image.registerAndroidBookImageLoader
 import io.legado.app.help.registerAndroidDirectLinkUploadProviders
 import io.legado.app.help.registerAndroidFileCacheProvider
 import io.legado.app.help.service.registerAndroidServiceLauncher
-import io.legado.app.service.WebService
-import io.legado.app.web.registerAndroidWebServerPlatform
-import io.legado.app.web.utils.registerAndroidWebAssetSource
-import io.legado.app.web.utils.registerAndroidWebStrings
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceUiEventBridge
 import io.legado.app.help.storage.Backup
@@ -71,12 +67,13 @@ import io.legado.app.help.ui.registerAndroidUserAgentProvider
 import io.legado.app.model.BookCover
 import io.legado.app.model.CacheBook
 import io.legado.app.model.fileBook.registerAndroidFileBookProviders
+import io.legado.app.model.fileBook.registerEpubApplicationContext
 import io.legado.app.model.registerAndroidAudioPlayProviders
 import io.legado.app.model.script.JsEngines
 import io.legado.app.model.script.registerAndroidJsEngines
 import io.legado.app.model.webBook.registerAndroidBookInfoRefresher
 import io.legado.app.model.webBook.registerAndroidWebBookProviders
-import io.legado.app.model.fileBook.registerEpubApplicationContext
+import io.legado.app.service.WebService
 import io.legado.app.ui.compose.platform.AndroidPreferenceStoreProvider
 import io.legado.app.ui.platform.registerSharedAppContext
 import io.legado.app.utils.LogUtils
@@ -85,6 +82,9 @@ import io.legado.app.utils.registerAndroidACacheDirProvider
 import io.legado.app.utils.registerAndroidRegexErrorHandler
 import io.legado.app.utils.registerAndroidScreenInfoProvider
 import io.legado.app.utils.removePref
+import io.legado.app.web.registerAndroidWebServerPlatform
+import io.legado.app.web.utils.registerAndroidWebAssetSource
+import io.legado.app.web.utils.registerAndroidWebStrings
 import kotlinx.coroutines.launch
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
@@ -95,7 +95,6 @@ class App : Application() {
 
     private lateinit var oldConfig: Configuration
 
-    @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
     override fun onCreate() {
         super.onCreate()
         // 注册 shared 模块的 ApplicationContext, 供 commonMain 的 stringRes(resId) 使用
@@ -106,10 +105,6 @@ class App : Application() {
         // 打开 content scheme 本地书籍 (contentResolver.openFileDescriptor); 未注册时
         // content scheme 路径返回 null (PFD 获取失败, EpubFile 记录错误日志)
         registerEpubApplicationContext(this)
-        // 1.11+: textToolbarState(Cursor/Selection) is set in addBasicTextFieldTextContextMenuComponents,
-        // only when isNewContextMenuEnabled=true. Legacy route never sets it -> long-press menu broken.
-        // Enable new route; SelectionContainer still uses LocalTextToolbar (ComposeTextToolbar).
-        androidx.compose.foundation.ComposeFoundationFlags.isNewContextMenuEnabled = true
         registerAndroidAppFilesDir(appCtx)
         registerAndroidAppStringProvider()
         registerAndroidAppLogHost()

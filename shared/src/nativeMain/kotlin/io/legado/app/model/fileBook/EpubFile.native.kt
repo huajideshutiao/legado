@@ -12,7 +12,7 @@ import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.book.getRemoteUrl
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.coroutine.runBlockingInScope
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.utils.File
@@ -136,7 +136,7 @@ class EpubFile(var book: Book) {
             }
         }.onFailure {
             AppLog.put("读取Epub文件失败\n${it.localizedMessage}", it)
-            it.printOnDebug()
+            it.printStackTraceOnDebug()
         }.getOrNull()
     }
 
@@ -323,7 +323,7 @@ class EpubFile(var book: Book) {
             }
         } catch (e: Exception) {
             AppLog.put("加载书籍封面失败\n${e.localizedMessage}", e)
-            e.printOnDebug()
+            e.printStackTraceOnDebug()
         }
     }
 

@@ -26,7 +26,7 @@ expect fun rememberReorderableListState(
 
 // LazyItemScope 接收者: 库的 ReorderableItem 依赖 LazyItemScope.animateItem() 计算默认动画
 @Composable
-expect fun LazyItemScope.ReorderableItem(
+expect fun LazyItemScope.RuleReorderableItem(
     state: ReorderableListState,
     key: Any,
     content: @Composable RuleItemScope.() -> Unit,

@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
@@ -41,13 +40,14 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.source.manage.BookSourceActivity
+import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.startActivity
+import io.legado.app.utils.throttleLatest
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -150,10 +150,7 @@ class ChangeChapterSourceDialog() : BaseComposeDialogFragment() {
 
         LaunchedEffect(Unit) {
             lifecycle.currentStateFlow.first { it.isAtLeast(STARTED) }
-            viewModel.searchDataFlow.conflate().collect {
-                items = it
-                delay(1000)
-            }
+            viewModel.searchDataFlow.throttleLatest(1_000).collect { items = it }
         }
         LaunchedEffect(Unit) {
             appDb.bookSourceDao.flowEnabledGroups().conflate().collect {
@@ -214,7 +211,7 @@ class ChangeChapterSourceDialog() : BaseComposeDialogFragment() {
             Box(Modifier.weight(1f)) {
                 Column(Modifier.fillMaxSize()) {
                     ChangeSourceRefreshBar(searching)
-                    LazyColumn(
+                    FastScrollLazyColumn(
                         state = listState,
                         modifier = Modifier
                             .weight(1f)

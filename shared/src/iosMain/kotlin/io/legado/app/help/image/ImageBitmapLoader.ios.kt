@@ -11,7 +11,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.jetbrains.skia.Image as SkiaImage
+
 
 /**
  * [ImageBitmapLoader] 的 iOS Coil3 实现 (复用 [iosCoilImageLoader] 共享管线:
@@ -28,7 +28,7 @@ actual class ImageBitmapLoader actual constructor() {
         if (url.startsWith("cbz://")) {
             return withContext(Dispatchers.IO) {
                 loadCbzEntryBytes(url, book?.bookUrl)?.let { bytes ->
-                    runCatching { SkiaImage.makeFromEncoded(bytes).toComposeImageBitmap() }.getOrNull()
+                    runCatching { org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap() }.getOrNull()
                 }
             }
         }

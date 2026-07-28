@@ -33,7 +33,7 @@ import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.model.SharedJsScope
 import io.legado.app.ui.book.source.SourceLoginDialog
 import io.legado.app.ui.book.source.edit.BookSourceEditCallbacks
-import io.legado.app.ui.book.source.edit.BookSourceEditScreen as SharedBookSourceEditScreen
+
 import io.legado.app.ui.book.source.edit.BookSourceEditState
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.widget.dialog.VariableDialog
@@ -45,7 +45,7 @@ import platform.Foundation.NSDate
 import platform.Foundation.timeIntervalSince1970
 
 /**
- * iOS 端书源编辑 Screen 入口 (包装 shared/sharedUiMain 的 [SharedBookSourceEditScreen])。
+ * iOS 端书源编辑 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.source.edit.BookSourceEditScreen])。
  *
  * 对照 desktop `BookSourceEditScreen.kt` 的包装模式, iOS 端在 [IosBookSourceScreen] 的
  * onEdit 回调中用 Dialog 全屏展示本入口。Provider 由 MainViewController 全局注入,
@@ -635,7 +635,7 @@ private fun BookSourceEditContent(
         )
     }
 
-    SharedBookSourceEditScreen(
+    io.legado.app.ui.book.source.edit.BookSourceEditScreen(
         state = editState,
         callbacks = callbacks,
         editEntities = { tab -> editEntities(tab) },

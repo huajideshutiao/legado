@@ -25,7 +25,7 @@ import io.legado.app.help.config.ReadStyleConfig
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.config.ReadStyleActions
 import io.legado.app.ui.book.read.config.ReadStyleController
-import io.legado.app.ui.book.read.config.ReadStyleScreen as SharedReadStyleScreen
+
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.rememberString
@@ -34,11 +34,11 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ColorUtils
 
 /**
- * 桌面端"阅读样式配置"对话框入口（包装 shared/sharedUiMain 的 [SharedReadStyleScreen]）。
+ * 桌面端"阅读样式配置"对话框入口（包装 shared/sharedUiMain 的 [io.legado.app.ui.book.read.config.ReadStyleScreen]）。
  *
  * # 职责
  *
- * - 用 [AppAlertDialog] 包裹 [SharedReadStyleScreen]，提供标题"阅读样式" + 关闭按钮
+ * - 用 [AppAlertDialog] 包裹 [io.legado.app.ui.book.read.config.ReadStyleScreen]，提供标题"阅读样式" + 关闭按钮
  * - 装配桌面版 [ReadStyleController]（桥接到 [ReadBookConfigShared] 各字段）
  * - 装配桌面版 [ReadStyleActions]（桥接到 padding/tip/bgText 配置入口 + 翻页动画切换回调）
  * - 装配 [bgPreviewSlot]：用 Box+Text 显示主题名作为占位（桌面端无 curBgDrawable 解码）
@@ -55,7 +55,7 @@ import io.legado.app.utils.ColorUtils
  *
  * [ReadStyleController.chineseType] 是 var，但 shared/commonMain 的
  * [AppConfigProviders.get().chineseConverterType] 是 val（只读），desktop 端 set 暂 no-op + TODO。
- * 实际上 [SharedReadStyleScreen] 内部不会直接写 controller.chineseType，点击简繁 SegmentChip
+ * 实际上 [io.legado.app.ui.book.read.config.ReadStyleScreen] 内部不会直接写 controller.chineseType，点击简繁 SegmentChip
  * 触发 [ReadStyleActions.showChineseConverter]（已 no-op），所以 chineseType set 不会被调用。
  *
  * @param readBookConfig 阅读配置（由 ReaderScreen 注入）
@@ -85,7 +85,7 @@ fun ReadStyleDialog(
         title = rememberString("read_style"),
         widthFraction = 0.8f,
         content = {
-            SharedReadStyleScreen(
+            io.legado.app.ui.book.read.config.ReadStyleScreen(
                 controller = controller,
                 actions = actions,
                 bgPreviewSlot = { config, selected, onClick, onLongClick ->

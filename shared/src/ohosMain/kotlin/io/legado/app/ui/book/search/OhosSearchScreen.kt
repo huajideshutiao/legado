@@ -18,7 +18,7 @@ import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.search.SearchNavCallbacks
-import io.legado.app.ui.book.search.SearchScreen as SharedSearchScreen
+
 import io.legado.app.ui.book.search.SearchViewModel
 import io.legado.app.ui.bookshelf.OhosInfoCover
 import io.legado.app.ui.compose.platform.rememberString
@@ -26,7 +26,7 @@ import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.flow.collect
 
 /**
- * 鸿蒙端搜索页 Screen 入口 (包装 shared/sharedUiMain 的 [SharedSearchScreen])。
+ * 鸿蒙端搜索页 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.search.SearchScreen])。
  *
  * 对照 iOS 端 [io.legado.app.ui.search.IosSearchScreen] / desktop `SearchScreen.kt` 的包装模式,
  * 鸿蒙端在 OhosNavHost 的 SEARCH 路由分支调用本入口。
@@ -80,7 +80,7 @@ fun OhosSearchScreen(
     val okLabel = rememberString("ok")
     val cancelLabel = rememberString("cancel")
 
-    SharedSearchScreen(
+    io.legado.app.ui.book.search.SearchScreen(
         viewModel = viewModel,
         navCallbacks = OhosSearchNavCallbacks(
             onBack = onBack,

@@ -12,6 +12,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.removeType
 import io.legado.app.help.http.cookieJarHeader
+import io.legado.app.help.media.AvPlayerItemStatusObserver
 import io.legado.app.help.media.SleepTimer
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
@@ -28,19 +29,14 @@ import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemDidPlayToEndTimeNotification
 import platform.AVFoundation.AVPlayerItemFailedToPlayToEndTimeNotification
-import platform.AVFoundation.AVPlayerItemStatusFailed
-import platform.AVFoundation.AVPlayerItemStatusReadyToPlay
 import platform.AVFoundation.AVURLAsset
 import platform.CoreMedia.CMTimeGetSeconds
 import platform.CoreMedia.CMTimeMake
@@ -390,8 +386,7 @@ class IosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
 /**
  * [AudioPlayController] 的 iOS AVPlayer 实现 (对标 app 端 ExoPlayerAudioPlayController)。
  *
- * item.status 就绪判定用主线程轮询替代 KVO (iosMain 无 KVO 先例,
- * observeValueForKeyPath 为 category 方法, 可覆写性无法本机验证), 行为等价: 就绪前不置 PLAY。
+ * item.status 通过共享 [AvPlayerItemStatusObserver] KVO 观察，状态变化时立即回调。
  */
 private class IosAvAudioPlayController(
     private val scope: CoroutineScope,
@@ -403,7 +398,7 @@ private class IosAvAudioPlayController(
     private var item: AVPlayerItem? = null
     private var endObserver: Any? = null
     private var failObserver: Any? = null
-    private var statusWatchJob: Job? = null
+    private var statusObserver: AvPlayerItemStatusObserver? = null
 
     /** 当前倍速; AVPlayer.play() 会把 rate 复位为 1, 播放中变速/起播都要重设 rate */
     private var speed = 1f
@@ -461,28 +456,21 @@ private class IosAvAudioPlayController(
     override fun prepare() {
         val watchedItem = item ?: return
         state = AudioPlayController.STATE_BUFFERING
-        statusWatchJob?.cancel()
-        statusWatchJob = scope.launch {
-            while (isActive) {
-                when (watchedItem.status) {
-                    AVPlayerItemStatusReadyToPlay -> {
-                        onItemReady()
-                        return@launch
-                    }
-
-                    AVPlayerItemStatusFailed -> {
-                        state = AudioPlayController.STATE_IDLE
-                        listener?.onPlayerError(
-                            RuntimeException(
-                                watchedItem.error?.localizedDescription ?: "AVPlayerItem failed"
-                            )
-                        )
-                        return@launch
-                    }
-                }
-                delay(100)
-            }
-        }
+        statusObserver?.dispose()
+        val observer = AvPlayerItemStatusObserver(
+            item = watchedItem,
+            onReady = {
+                statusObserver = null
+                onItemReady()
+            },
+            onFailed = { message ->
+                statusObserver = null
+                state = AudioPlayController.STATE_IDLE
+                listener?.onPlayerError(RuntimeException(message))
+            },
+        )
+        statusObserver = observer
+        observer.start()
     }
 
     /** 就绪: 先 seek 起播位置, playWhenReady 则起播, 再回调 STATE_READY */
@@ -507,7 +495,8 @@ private class IosAvAudioPlayController(
     }
 
     override fun stop() {
-        statusWatchJob?.cancel()
+        statusObserver?.dispose()
+        statusObserver = null
         player?.pause()
         state = AudioPlayController.STATE_IDLE
     }
@@ -555,8 +544,8 @@ private class IosAvAudioPlayController(
     }
 
     private fun releaseCurrent() {
-        statusWatchJob?.cancel()
-        statusWatchJob = null
+        statusObserver?.dispose()
+        statusObserver = null
         val center = NSNotificationCenter.defaultCenter
         endObserver?.let { center.removeObserver(it) }
         endObserver = null

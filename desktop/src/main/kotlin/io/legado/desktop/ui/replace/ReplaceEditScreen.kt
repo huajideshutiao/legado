@@ -7,7 +7,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.ui.compose.platform.jvmGetString
-import io.legado.app.ui.replace.ReplaceEditScreen as SharedReplaceEditScreen
+
 import io.legado.app.ui.replace.edit.ReplaceEditViewModelShared
 import io.legado.app.utils.GSON
 import io.legado.app.utils.browseUrl
@@ -17,12 +17,12 @@ import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
 
 /**
- * 桌面端替换规则编辑 Screen 入口 (包装 shared/sharedUiMain 的 [SharedReplaceEditScreen])。
+ * 桌面端替换规则编辑 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.replace.ReplaceEditScreen])。
  *
  * # 职责
  *
  * 对照 desktop [ReplaceRuleScreen] 模式, 仅做桌面平台适配, 业务展示与表单逻辑全部下沉到
- * shared/sharedUiMain 的 [SharedReplaceEditScreen]; VM 改用下沉的
+ * shared/sharedUiMain 的 [io.legado.app.ui.replace.ReplaceEditScreen]; VM 改用下沉的
  * [ReplaceEditViewModelShared] (commonMain 共享核心, 替代旧版 commonMain
  * `ReplaceEditViewModel`)。
  *
@@ -81,7 +81,7 @@ fun ReplaceEditScreen(
         viewModel.initData(id = ruleId) { }
     }
 
-    SharedReplaceEditScreen(
+    io.legado.app.ui.replace.ReplaceEditScreen(
         viewModel = viewModel,
         onBack = onBack,
         onSaved = onSaved,

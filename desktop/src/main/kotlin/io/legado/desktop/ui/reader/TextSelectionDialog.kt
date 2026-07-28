@@ -5,7 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import io.legado.app.utils.browseUrl
 import io.legado.desktop.ui.component.DialogSizes
-import io.legado.app.ui.reader.TextSelectionDialog as SharedTextSelectionDialog
+
 
 /**
  * 桌面端"文字选择"对话框薄壳: 委托 sharedUiMain
@@ -22,7 +22,7 @@ fun TextSelectionDialog(
     clipTextSink: (String) -> Unit,
     onDict: (String) -> Unit = {},
 ) {
-    SharedTextSelectionDialog(
+    io.legado.app.ui.reader.TextSelectionDialog(
         chapterName = chapterName,
         content = content,
         onDismiss = onDismiss,

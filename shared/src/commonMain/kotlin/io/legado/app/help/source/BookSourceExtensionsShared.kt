@@ -10,7 +10,7 @@ import io.legado.app.data.entities.rule.FlexChildStyle
 import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.help.ExploreKindsCacheProviders
 import io.legado.app.help.coroutine.IoDispatcher
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.utils.GSON
 import io.legado.app.utils.MD5Utils
@@ -25,7 +25,7 @@ import io.legado.app.utils.concurrent.newConcurrentMap
  * BookSource/BookSourcePart 扩展函数下沉区 (shared commonMain)。
  *
  * exploreKinds() / getExploreKindsKey() (private) / clearExploreKindsCache() 均已下沉,
- * 依赖的 runScriptWithContext / evalJS (BaseSource 成员) / GSON / isJsonArray / printOnDebug /
+ * 依赖的 runScriptWithContext / evalJS (BaseSource 成员) / GSON / isJsonArray / printStackTraceOnDebug /
  * MD5Utils 均已在 commonMain 可用, ACache 读写经 [ExploreKindsCacheProviders] provider 转发
  * (app 端注册转发到 ACache.get("explore"), desktop 端 in-memory Map, 行为等价)。
  *
@@ -69,7 +69,7 @@ suspend fun BookSourcePart.exploreKinds(): List<ExploreKind> {
  * 原 app 端 BookSourceExtensions.kt 的 exploreKinds() 下沉:
  * - ACache.get("explore").getAsString/put → [ExploreKindsCacheProviders.impl]?.getAsString/put
  *   (provider 未注册时退化: 读返回 null 触发重新解析, 写跳过, 行为等价于无磁盘缓存)
- * - runScriptWithContext / evalJS / GSON / isJsonArray / printOnDebug 均已在 commonMain 可用
+ * - runScriptWithContext / evalJS / GSON / isJsonArray / printStackTraceOnDebug 均已在 commonMain 可用
  * - exploreKindsMap (ConcurrentHashMap) 保留为 commonMain 内存缓存
  * - 纯字符串/JSON 解析逻辑直接迁移, 行为与原 app 端完全一致
  */
@@ -137,7 +137,7 @@ suspend fun BookSource.exploreKinds(): List<ExploreKind> {
                 }
             }.onFailure {
                 kinds.add(ExploreKind("ERROR:${it.message}", url = it.stackTraceToString()))
-                it.printOnDebug()
+                it.printStackTraceOnDebug()
             }
         }
         exploreKindsMap[exploreKindsKey] = kinds

@@ -33,7 +33,7 @@ import io.legado.app.ui.book.changecover.ChangeCoverViewModelShared
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.group.GroupViewModelShared
 import io.legado.app.ui.book.info.BookInfoMenuState
-import io.legado.app.ui.book.info.BookInfoScreen as SharedBookInfoScreen
+
 import io.legado.app.ui.book.info.BookInfoUiActions
 import io.legado.app.ui.book.info.BookInfoUiState
 import io.legado.app.ui.book.info.BookInfoViewModelShared
@@ -55,7 +55,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * 鸿蒙端书籍详情 Screen 入口 (包装 shared/sharedUiMain 的 [SharedBookInfoScreen])。
+ * 鸿蒙端书籍详情 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.info.BookInfoScreen])。
  *
  * 对照 iOS 端 [io.legado.app.ui.bookinfo.IosBookInfoScreen] / desktop `BookInfoScreen.kt` 的包装模式,
  * 鸿蒙端在 OhosNavHost 的 BOOK_INFO 路由分支调用本入口。
@@ -322,7 +322,7 @@ fun OhosBookInfoScreen(
     }
 
     // 调用 shared/sharedUiMain 的 BookInfoScreen, 注入鸿蒙端 3 个 stub slot
-    SharedBookInfoScreen(
+    io.legado.app.ui.book.info.BookInfoScreen(
         state = state,
         actions = actions,
         blurCoverBgSlot = { modifier -> OhosBlurCoverBg(effectiveBook, modifier) },

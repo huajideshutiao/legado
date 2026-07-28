@@ -1,5 +1,6 @@
 package com.script.quickjs
 
+import com.script.jsdispatch.JsValueConverters
 
 /**
  * Java 对象反射桥接, 供 native exotic trap 回调。
@@ -44,7 +45,12 @@ object JavaObjectBridgeNative {
      */
     @JvmStatic
     fun getPropertyInfo(obj: Any, name: String, dangerousApi: Boolean): Any? {
-        return JavaObjectBridge.getJavaPropertyRaw(obj, name, dangerousApi)
+        val raw = JavaObjectBridge.getJavaPropertyRaw(obj, name, dangerousApi)
+        // 哨兵必须原样返回供 native IsSameObject 判定; 实际属性值才做宿主→JS 转换。
+        return when (raw) {
+            null, JavaObjectBridge.METHOD_MARKER, JavaObjectBridge.NULL_FIELD_MARKER -> raw
+            else -> JsValueConverters.convertAll(raw)
+        }
     }
 
     /**
@@ -96,7 +102,10 @@ object JavaObjectBridgeNative {
         args: Array<Any?>,
         dangerousApi: Boolean
     ): Any? {
-        return JavaObjectBridge.callInstanceMethodRaw(obj, methodName, args, dangerousApi)
+        val raw = JavaObjectBridge.callInstanceMethodRaw(obj, methodName, args, dangerousApi)
+        // 统一转换入口: Java 方法返回值跨入 JS 前, 先转 JS 原生值
+        // (JsonElement → String/Number/Boolean/Map/List, 详见 JsValueConverters)
+        return JsValueConverters.convertAll(raw)
     }
 
     // ============ 静态成员 (Phase 3 JavaClass trap 用) ============
@@ -131,7 +140,7 @@ object JavaObjectBridgeNative {
         dangerousApi: Boolean
     ): Any? {
         val result = JavaObjectBridge.callStaticMethod(classHandle, methodName, args, dangerousApi)
-        return unwrapResult(result)
+        return JsValueConverters.convertAll(unwrapResult(result))
     }
 
     /**
@@ -151,7 +160,7 @@ object JavaObjectBridgeNative {
     @JvmStatic
     fun getStaticFieldRaw(classHandle: Long, fieldName: String, dangerousApi: Boolean): Any? {
         val result = JavaObjectBridge.getStaticField(classHandle, fieldName, dangerousApi)
-        return unwrapResult(result)
+        return JsValueConverters.convertAll(unwrapResult(result))
     }
 
     /**

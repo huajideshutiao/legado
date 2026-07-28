@@ -33,7 +33,7 @@ import io.legado.app.ui.book.changecover.ChangeCoverViewModelShared
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.group.GroupViewModelShared
 import io.legado.app.ui.book.info.BookInfoMenuState
-import io.legado.app.ui.book.info.BookInfoScreen as SharedBookInfoScreen
+
 import io.legado.app.ui.book.info.BookInfoUiActions
 import io.legado.app.ui.book.info.BookInfoUiState
 import io.legado.app.ui.book.info.BookInfoViewModelShared
@@ -55,7 +55,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * iOS 端书籍详情 Screen 入口 (KP4: 包装 shared/sharedUiMain 的 [SharedBookInfoScreen])。
+ * iOS 端书籍详情 Screen 入口 (KP4: 包装 shared/sharedUiMain 的 [io.legado.app.ui.book.info.BookInfoScreen])。
  *
  * # 职责
  *
@@ -352,7 +352,7 @@ fun IosBookInfoScreen(
 
     // 调用 shared/sharedUiMain 的 BookInfoScreen, 注入 iOS 端 3 个 slot (与 desktop 一致模式,
     // 仅封面加载实现换成 iOS 端 IosBlurCoverBg/IosInfoCover/IosIntroImage)
-    SharedBookInfoScreen(
+    io.legado.app.ui.book.info.BookInfoScreen(
         state = state,
         actions = actions,
         blurCoverBgSlot = { modifier -> IosBlurCoverBg(effectiveBook, modifier) },

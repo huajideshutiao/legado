@@ -46,7 +46,7 @@ import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.help.book.addType
 import io.legado.app.help.source.SearchBookFilter
 import io.legado.app.model.webBook.ExploreOption
-import io.legado.app.ui.book.explore.ExploreShowScreen as SharedExploreShowScreen
+
 import io.legado.app.ui.book.explore.ExploreShowUiActions
 import io.legado.app.ui.book.explore.ExploreShowUiState
 import io.legado.app.ui.book.filter.SourceFilterEditDialog
@@ -82,17 +82,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 桌面端发现结果页 Screen 入口 (包装 shared/sharedUiMain 的 [SharedExploreShowScreen])。
+ * 桌面端发现结果页 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.explore.ExploreShowScreen])。
  *
  * # 职责
  *
  * 对照 desktop [ExploreScreen] / [io.legado.desktop.ui.book.toc.TocScreen] 模式, 仅做
- * 桌面平台适配, 业务展示与交互逻辑全部下沉到 shared/sharedUiMain 的 [SharedExploreShowScreen]:
+ * 桌面平台适配, 业务展示与交互逻辑全部下沉到 shared/sharedUiMain 的 [io.legado.app.ui.book.explore.ExploreShowScreen]:
  *
  * - 注入 desktop 平台 Provider (ThemeStore / AppConfig / EventBus), 让 commonMain 的
- *   [AppTheme] / [SharedExploreShowScreen] 可跨平台运行
+ *   [AppTheme] / [io.legado.app.ui.book.explore.ExploreShowScreen] 可跨平台运行
  * - 持有 [ExploreShowStateHolder] (实现 [ExploreShowUiActions]) 收集 DB flow + 加载发现结果
- * - 打包 [ExploreShowUiState] 传入 shared [SharedExploreShowScreen]
+ * - 打包 [ExploreShowUiState] 传入 shared [io.legado.app.ui.book.explore.ExploreShowScreen]
  *
  * # 数据加载 (对照 app 端 ExploreShowViewModel)
  *
@@ -154,7 +154,7 @@ fun ExploreShowScreen(
  * 发现结果页内容主体 (Provider + AppTheme 内部)。
  *
  * 持有 [ExploreShowStateHolder], 在 [LaunchedEffect] 内收集 DB flow + FlowBus,
- * 构造 [ExploreShowUiState] + slots 调用 [SharedExploreShowScreen]。
+ * 构造 [ExploreShowUiState] + slots 调用 [io.legado.app.ui.book.explore.ExploreShowScreen]。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @Composable
@@ -257,7 +257,7 @@ private fun ExploreShowContent(
     )
 
     // 位置参数调用 (shared Screen 函数类型参数不能用命名参数, 见 ExploreScreen 模式)
-    SharedExploreShowScreen(
+    io.legado.app.ui.book.explore.ExploreShowScreen(
         uiState,
         state,
         {
@@ -783,7 +783,7 @@ private fun DesktopVideoItemPlaceholder(
 }
 
 /**
- * 桌面端发现结果页状态宿主 (实现 [ExploreShowUiActions] 供 shared [SharedExploreShowScreen] 回调)。
+ * 桌面端发现结果页状态宿主 (实现 [ExploreShowUiActions] 供 shared [io.legado.app.ui.book.explore.ExploreShowScreen] 回调)。
  *
  * 对照 app 端 `ExploreShowViewModel` + `ExploreShowActivity` 状态字段 + actions 实现。
  * 差异:

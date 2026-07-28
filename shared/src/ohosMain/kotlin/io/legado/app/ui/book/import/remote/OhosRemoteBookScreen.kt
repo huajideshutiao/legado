@@ -23,19 +23,19 @@ import io.legado.app.data.entities.Server
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.book.import.ImportFileItem
-import io.legado.app.ui.book.import.remote.RemoteBookScreen as SharedRemoteBookScreen
+
 import io.legado.app.ui.book.import.remote.RemoteBookSort
 import io.legado.app.ui.book.import.remote.RemoteBookUiActions
 import io.legado.app.ui.book.import.remote.RemoteBookUiState
 import io.legado.app.ui.compose.platform.rememberString
 
 /**
- * 鸿蒙端远程书籍 (WebDav) Screen 入口 (包装 shared/sharedUiMain 的 [SharedRemoteBookScreen])。
+ * 鸿蒙端远程书籍 (WebDav) Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.import.remote.RemoteBookScreen])。
  *
  * # 职责
  *
  * 对照 app 端 `RemoteBookActivity` / desktop `RemoteBookScreen.kt` / iOS `IosRemoteBookScreen.kt`,
- * 鸿蒙端仅做平台适配, UI 渲染与交互骨架全部下沉到 shared/sharedUiMain 的 [SharedRemoteBookScreen]:
+ * 鸿蒙端仅做平台适配, UI 渲染与交互骨架全部下沉到 shared/sharedUiMain 的 [io.legado.app.ui.book.import.remote.RemoteBookScreen]:
  *
  * - **数据流**: 持有 [RemoteBookUiState] (immutable, copy 更新), actions 用 [remember]
  *   持有稳定实例避免重组 (与 desktop/iOS 一致; 鸿蒙 Provider 已在 EntryAbility 顶层注入,
@@ -287,7 +287,7 @@ private fun OhosRemoteBookContent(onBack: () -> Unit) {
         checkableCount = checkableCount,
         sortKeyState = sortKeyState,
     )
-    SharedRemoteBookScreen(state, actions)
+    io.legado.app.ui.book.import.remote.RemoteBookScreen(state, actions)
 
     // ---- ServersDialog (shared/sharedUiMain 下沉, 替换原"未实现"AlertDialog) ----
     // onShowServersDialog 触发 showServersDialog=true; 调用方注入 servers/initialServerId/回调,

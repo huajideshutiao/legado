@@ -1,7 +1,7 @@
 package io.legado.app.model.analyzeRule
 
 import com.github.jershell.rjpath.RJPath
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -21,7 +21,8 @@ class AnalyzeByJSonPath(json: Any) {
             return when (json) {
                 is JsonElement -> json
                 is String -> jsonParser.parseToJsonElement(json)
-                //getObject/getList 解包出的 Map/List 回流(@js→$. 链)时重建, toString 不是合法 JSON
+                // JS 引擎返回的普通 Map/List 回流(@js→$. 链)时重建。
+                // JsonPath 自己的结果保持 JsonElement, 不在此处提前解包。
                 is Map<*, *>, is List<*> -> anyToElement(json)
                 else -> jsonParser.parseToJsonElement(json.toString())
             }
@@ -42,28 +43,6 @@ class AnalyzeByJSonPath(json: Any) {
                 is Number -> JsonPrimitive(value)
                 is Boolean -> JsonPrimitive(value)
                 else -> jsonParser.parseToJsonElement(value.toString())
-            }
-        }
-
-        /**
-         * JsonElement 深度解包为 jayway 同款容器, 供 JS 侧属性访问拿到裸值:
-         * 对象→LinkedHashMap(保序) 数组→ArrayList 字符串→content
-         * 数字→Long?:Double(对齐 INITIAL_GSON 的 LONG_OR_DOUBLE) 布尔→Boolean null→null
-         */
-        private fun elementToAny(element: JsonElement): Any? {
-            return when (element) {
-                is JsonNull -> null
-                is JsonPrimitive -> when {
-                    element.isString -> element.content
-                    else -> element.content.toLongOrNull()
-                        ?: element.content.toDoubleOrNull()
-                        ?: element.content.toBooleanStrictOrNull()
-                        ?: element.content
-                }
-                is JsonObject -> element.entries.associateTo(LinkedHashMap()) { (k, v) ->
-                    k to elementToAny(v)
-                }
-                is JsonArray -> element.mapTo(ArrayList()) { elementToAny(it) }
             }
         }
     }
@@ -99,7 +78,7 @@ class AnalyzeByJSonPath(json: Any) {
                         else -> results.joinToString("\n") { elementToString(it) }
                     }
                 } catch (e: Exception) {
-                    e.printOnDebug()
+                    e.printStackTraceOnDebug()
                 }
             }
             return result
@@ -157,7 +136,7 @@ class AnalyzeByJSonPath(json: Any) {
                         }
                     }
                 } catch (e: Exception) {
-                    e.printOnDebug()
+                    e.printStackTraceOnDebug()
                 }
             } else {
                 result.add(st)
@@ -183,14 +162,11 @@ class AnalyzeByJSonPath(json: Any) {
 
     fun getObject(rule: String): Any? {
         return try {
-            //对齐旧 jayway: ctx.read(rule) 直接返回, null 就是 null; 解包为裸容器/基本类型
-            when (val r = RJPath.selector(rule).read(element)) {
-                is JsonElement -> elementToAny(r)
-                is List<*> -> r.mapTo(ArrayList()) { if (it is JsonElement) elementToAny(it) else it }
-                else -> r
-            }
+            // 对齐 jayway: ctx.read(rule) 直接返回, null 就是 null。
+            // 结果保持 JsonElement, 类型转换延迟到 JS 胶水层。
+            RJPath.selector(rule).read(element)
         } catch (e: Exception) {
-            e.printOnDebug()
+            e.printStackTraceOnDebug()
             null
         }
     }
@@ -209,18 +185,17 @@ class AnalyzeByJSonPath(json: Any) {
                     when (item) {
                         is JsonArray -> {
                             //路径直接指向数组时展开元素, 与 jayway read 行为一致
-                            for (child in item) {
-                                resultList.add(elementToAny(child))
-                            }
+                            resultList.addAll(item)
                         }
-                        //解包为裸容器/基本类型; JsonNull → null, 对齐旧 jayway 的 [null]
-                        else -> resultList.add(elementToAny(item))
+                        // JsonNull/JsonPrimitive/JsonObject 均保持原生 JsonElement。
+                        // 进入 JS 时再由 JsonElementJsConverter 转成 JS 原生值。
+                        else -> resultList.add(item)
                     }
                 }
                 @Suppress("UNCHECKED_CAST")
                 return resultList as ArrayList<Any>
             } catch (e: Exception) {
-                e.printOnDebug()
+                e.printStackTraceOnDebug()
             }
         } else {
             val results = ArrayList<ArrayList<*>>()

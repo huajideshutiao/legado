@@ -36,7 +36,7 @@ import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.explore.ExploreViewModelShared
-import io.legado.app.ui.main.explore.ExploreScreen as SharedExploreScreen
+
 import io.legado.app.ui.main.explore.ExploreUiActions
 import io.legado.app.ui.main.explore.ExploreUiState
 import io.legado.app.utils.FlowBus
@@ -47,15 +47,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 桌面端发现页入口 (包装 shared/sharedUiMain 的 [SharedExploreScreen])。
+ * 桌面端发现页入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.main.explore.ExploreScreen])。
  *
  * 对照 desktop [io.legado.desktop.ui.booksource.BookSourceScreen] 模式, 仅做桌面平台
- * 适配, 渲染与交互逻辑全部下沉到 shared/sharedUiMain 的 [SharedExploreScreen]:
+ * 适配, 渲染与交互逻辑全部下沉到 shared/sharedUiMain 的 [io.legado.app.ui.main.explore.ExploreScreen]:
  *
  * - 注入 desktop 平台 Provider (ThemeStore / AppConfig / EventBus), 让 commonMain 的
- *   [AppTheme] / [SharedExploreScreen] 可跨平台运行
+ *   [AppTheme] / [io.legado.app.ui.main.explore.ExploreScreen] 可跨平台运行
  * - 持有 [ExploreStateHolder] (实现 [ExploreUiActions]) 收集 DB flow + FlowBus 写入 state
- * - 打包 [ExploreUiState] 传入 shared [SharedExploreScreen]
+ * - 打包 [ExploreUiState] 传入 shared [io.legado.app.ui.main.explore.ExploreScreen]
  *
  * # 路由回调 (由 DesktopApp 顶层注入)
  *
@@ -187,7 +187,7 @@ private fun ExploreContent(
         expandedLoading = state.expandedLoading,
         listState = state.listState,
     )
-    SharedExploreScreen(uiState, state)
+    io.legado.app.ui.main.explore.ExploreScreen(uiState, state)
 
     // ---- 对话框渲染 (替换原 javax.swing.JOptionPane) ----
 
@@ -251,7 +251,7 @@ private fun ExploreContent(
 }
 
 /**
- * 桌面端发现页状态宿主 (实现 [ExploreUiActions] 供 shared [SharedExploreScreen] 回调)。
+ * 桌面端发现页状态宿主 (实现 [ExploreUiActions] 供 shared [io.legado.app.ui.main.explore.ExploreScreen] 回调)。
  *
  * 对照 app 端 `ExploreTabState`: snapshot state + 交互回调。差异:
  * - 无 Lifecycle 依赖 (桌面端无 androidx.lifecycle), flow 直接 collect

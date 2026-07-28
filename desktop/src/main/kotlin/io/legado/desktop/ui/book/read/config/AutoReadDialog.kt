@@ -5,17 +5,17 @@ import androidx.compose.runtime.remember
 import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.ui.book.read.config.AutoReadActions
 import io.legado.app.ui.book.read.config.AutoReadController
-import io.legado.app.ui.book.read.config.AutoReadPanel as SharedAutoReadPanel
+
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.rememberString
 
 /**
- * 桌面端"自动阅读"对话框入口（包装 shared/sharedUiMain 的 [SharedAutoReadPanel]）。
+ * 桌面端"自动阅读"对话框入口（包装 shared/sharedUiMain 的 [io.legado.app.ui.book.read.config.AutoReadPanel]）。
  *
  * # 职责
  *
- * - 用 [AppAlertDialog] 包裹 [SharedAutoReadPanel]，提供标题"自动翻页" + 关闭按钮
+ * - 用 [AppAlertDialog] 包裹 [io.legado.app.ui.book.read.config.AutoReadPanel]，提供标题"自动翻页" + 关闭按钮
  * - 装配桌面版 [AutoReadController]（桥接到 [ReadBookConfigShared.autoReadSpeed]）
  * - 装配桌面版 [AutoReadActions]（桥接到 [AutoReadDialogCallbacks] 各回调）
  *
@@ -42,7 +42,7 @@ fun AutoReadDialog(
     AppAlertDialog(
         onDismissRequest = onDismiss,
         title = rememberString("auto_next_page"),
-        content = { SharedAutoReadPanel(controller = controller, actions = actions) },
+        content = { io.legado.app.ui.book.read.config.AutoReadPanel(controller = controller, actions = actions) },
         okButton = AlertButton(text = rememberString("close")) { onDismiss() },
     )
 }

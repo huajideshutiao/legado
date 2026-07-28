@@ -24,7 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppLog
 import io.legado.app.help.toast.Toasters
-import io.legado.app.ui.about.AboutScreen as SharedAboutScreen
+
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.compose.MarkdownContentSelectable
 import io.legado.app.ui.compose.component.AlertButton
@@ -56,18 +56,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 桌面端"关于"页 Screen 入口 (包装 shared/sharedUiMain 的 [SharedAboutScreen])。
+ * 桌面端"关于"页 Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.about.AboutScreen])。
  *
  * # 职责
  *
- * - 在 [SharedAboutScreen] 之上加 [AppTitleBar] (标题"关于" + 返回按钮)
- * - 注入 4 个 DesktopXxxProvider 供 commonMain 的 [AppTheme] / [SharedAboutScreen]
+ * - 在 [io.legado.app.ui.about.AboutScreen] 之上加 [AppTitleBar] (标题"关于" + 返回按钮)
+ * - 注入 4 个 DesktopXxxProvider 供 commonMain 的 [AppTheme] / [io.legado.app.ui.about.AboutScreen]
  *   内部 [io.legado.app.ui.compose.preference.PreferenceScreen] 通过 LocalXxx 取依赖
  * - 装配 10 个回调 + updateLogSummary, 与 app 端 AboutActivity 逐条对齐
  *
  * # shared 端签名说明
  *
- * shared/sharedUiMain 的 [SharedAboutScreen] 为 stateless 列表页, 直接接收 10 个参数
+ * shared/sharedUiMain 的 [io.legado.app.ui.about.AboutScreen] 为 stateless 列表页, 直接接收 10 个参数
  * (updateLogSummary + 10 个 onXxx 回调), 无 UiState 数据类 / UiActions 接口 / slot 参数,
  * 故桌面端无需 DesktopAboutActions 类与 AboutContent state 拆分, 仅在 [AboutContent] 内
  * 构造 updateLogSummary 与各回调后位置传参调用。
@@ -128,7 +128,7 @@ fun AboutScreen(
 }
 
 /**
- * 持有 updateLogSummary state 并构造各回调, 位置传参调用 [SharedAboutScreen]。
+ * 持有 updateLogSummary state 并构造各回调, 位置传参调用 [io.legado.app.ui.about.AboutScreen]。
  *
  * 与 app 端 AboutActivity.Content 内 AboutScreen(...) 调用逐条对齐, 差异见顶层 KDoc。
  */
@@ -165,7 +165,7 @@ private fun AboutContent() {
     val disclaimerTitle = rememberString("disclaimer")
     val privacyPolicyTitle = rememberString("privacy_policy")
 
-    SharedAboutScreen(
+    io.legado.app.ui.about.AboutScreen(
         updateLogSummary = updateLogSummary,
         onContributors = { browseUrl(CONTRIBUTORS_URL) },
         onTelegramGroup = { browseUrl(TELEGRAM_GROUP_URL) },

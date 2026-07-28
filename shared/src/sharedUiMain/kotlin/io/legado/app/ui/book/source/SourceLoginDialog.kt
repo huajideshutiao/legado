@@ -40,7 +40,7 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.rule.FlexChildStyle
 import io.legado.app.data.entities.rule.RowUi
-import io.legado.app.help.coroutine.printOnDebug
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.ui.about.AppLogDialog
@@ -198,7 +198,7 @@ fun SourceLoginDialog(
                 } catch (e: Exception) {
                     AppLog.put("登录出错\n${e.localizedMessage}", e)
                     Toasters.get().toast("登录出错\n${e.localizedMessage}")
-                    e.printOnDebug()
+                    e.printStackTraceOnDebug()
                 }
             }
         }

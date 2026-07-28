@@ -1,6 +1,7 @@
 package io.legado.app.ui.compose.component
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -76,23 +77,27 @@ fun SelectActionBar(
         )
         if (actions.isNotEmpty()) {
             var showMenu by remember { mutableStateOf(false) }
-            IconButton(onClick = { showMenu = true }, enabled = enabled) {
-                Icon(
-                    painter = rememberPainter("ic_more_vert"),
-                    contentDescription = rememberString("more_menu"),
-                    tint = if (enabled) colors.primaryText else colors.secondaryText.copy(alpha = 0.5f),
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-            AppDropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                actions.forEach { action ->
-                    DropdownMenuItem(
-                        onClick = {
-                            showMenu = false
-                            action.onClick()
-                        },
-                    ) {
-                        Text(action.text, color = colors.primaryText)
+            // 菜单必须与更多按钮处于同一锚点 Box；若作为 Row 的并列节点，
+            // DropdownMenu 会拿到错误的父级坐标，表现为从操作栏左侧弹出。
+            Box {
+                IconButton(onClick = { showMenu = true }, enabled = enabled) {
+                    Icon(
+                        painter = rememberPainter("ic_more_vert"),
+                        contentDescription = rememberString("more_menu"),
+                        tint = if (enabled) colors.primaryText else colors.secondaryText.copy(alpha = 0.5f),
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+                AppDropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    actions.forEach { action ->
+                        DropdownMenuItem(
+                            onClick = {
+                                showMenu = false
+                                action.onClick()
+                            },
+                        ) {
+                            Text(action.text, color = colors.primaryText)
+                        }
                     }
                 }
             }

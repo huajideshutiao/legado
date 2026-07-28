@@ -8,7 +8,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,8 +32,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -76,9 +75,9 @@ fun MangaRenderLayer(state: MangaRenderState, modifier: Modifier = Modifier) {
     state.scope = scope
     state.decaySpec = remember(density) { splineBasedDecay(density) }
     val horizontal = state.horizontal
-    // 横向翻页由 snap 归位到整页(原 PagerSnapHelper)；纵向为普通衰减 fling
+    // 横向对齐原 PagerSnapHelper：整页归位且单次手势最多翻一页；纵向为普通衰减 fling
     val fling = if (horizontal) {
-        rememberSnapFlingBehavior(state.listState)
+        rememberSinglePageSnapFlingBehavior(state.listState)
     } else {
         ScrollableDefaults.flingBehavior()
     }
@@ -270,7 +269,7 @@ private fun LazyItemScope.MangaPageCell(state: MangaRenderState, item: MangaPage
                 v.gifAutoNextEnabled = { state.gifAutoNext }
                 v.isArmTarget = { state.gifAutoNext && state.isIdleCenterPage(index) }
                 v.onTurnPage = { state.onGifTurnPage() }
-                v.load(item.mImageUrl, state.book, state.bookSource, state.grayEnabled)
+                v.loadPageImage(item.mImageUrl, state.book, state.bookSource, state.grayEnabled)
             },
         )
         if (load != MangaCellState.SUCCESS) {

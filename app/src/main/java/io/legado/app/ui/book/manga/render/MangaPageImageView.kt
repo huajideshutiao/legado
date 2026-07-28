@@ -14,7 +14,7 @@ import androidx.vectordrawable.graphics.drawable.Animatable2Compat
 import coil3.asDrawable
 import coil3.dispose
 import coil3.gif.MovieDrawable
-import coil3.load as loadCoil
+import coil3.load
 import coil3.request.CachePolicy
 import coil3.request.transformations
 import coil3.size.Dimension
@@ -70,7 +70,7 @@ class MangaPageImageView(context: Context) : AppCompatImageView(context),
     }
 
     /** url/灰度未变则跳过（Compose update 会因任意状态变化重跑） */
-    fun load(url: String, book: Book?, source: BookSource?, gray: Boolean) {
+    fun loadPageImage(url: String, book: Book?, source: BookSource?, gray: Boolean) {
         book ?: return
         if (loadKey == url to gray) return
         loadKey = url to gray
@@ -127,9 +127,10 @@ class MangaPageImageView(context: Context) : AppCompatImageView(context),
         val book = lastBook ?: return
         val model = MangaModel(imageUrl, book, lastSource)
         val screenWidth = context.resources.displayMetrics.widthPixels
-        loadCoil(model) {
-            // 漫画页磁盘缓存禁用(loadManga 已自管 BookHelp 磁盘缓存)
-            memoryCachePolicy(CachePolicy.DISABLED)
+        load(model) {
+            // 漫画页磁盘缓存禁用(loadManga 已自管 BookHelp 磁盘缓存)；内存缓存必须保留，
+            // 否则 MangaRenderLayer 的 WRITE_ONLY 预加载结果永远不会被页面请求命中。
+            memoryCachePolicy(CachePolicy.ENABLED)
             diskCachePolicy(CachePolicy.DISABLED)
             size(Size(Dimension(screenWidth), Dimension.Undefined))
             if (gray) transformations(sharedGrayTransformation)

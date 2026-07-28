@@ -8,8 +8,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 
@@ -68,7 +69,10 @@ fun ImportListScaffold(
                         .padding(16.dp)
                 )
             } else {
-                LazyColumn(Modifier.fillMaxWidth()) {
+                FastScrollLazyColumn(
+                    state = rememberLazyListState(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                     itemsIndexed((0 until itemCount).toList()) { _, index ->
                         ImportListItem(
                             label = itemLabel(index),

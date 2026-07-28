@@ -1,8 +1,12 @@
 package io.legado.app.constant
 
-import kotlin.concurrent.Volatile
+import io.legado.app.constant.AppLog.lock
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlin.concurrent.Volatile
 
 /**
  * 全域日志入口(下沉自 app,包名/对象名不变,消费方 import 零改动)。
@@ -16,8 +20,12 @@ object AppLog {
 
     private val lock = SynchronizedObject()
     private val mLogs = ArrayList<Triple<Long, String, Throwable?>>()
+    private val _logsFlow = MutableStateFlow<List<Triple<Long, String, Throwable?>>>(emptyList())
 
     val logs get() = synchronized(lock) { mLogs.toList() }
+
+    /** 日志快照流；每次新增或清空日志时立即发布，供 UI 响应式订阅。 */
+    val logsFlow: StateFlow<List<Triple<Long, String, Throwable?>>> = _logsFlow.asStateFlow()
 
     @Volatile
     private var host: AppLogHost? = null
@@ -27,47 +35,89 @@ object AppLog {
         host = appLogHost
     }
 
-    fun put(message: String?, throwable: Throwable? = null, toast: Boolean = false) {
-        message ?: return
-        val h = host
-        if (toast) h?.toast(message)
-        val logMessage = if (throwable == null) {
-            message
-        } else {
-            "$message\n${throwable.stackTraceToString()}"
-        }
-        h?.write(logMessage)
-        synchronized(lock) {
-            if (mLogs.size > 100) {
-                mLogs.removeLastOrNull()
-            }
-            mLogs.add(0, Triple(h?.currentTimeMillis() ?: 0L, message, throwable))
-        }
-        h?.debugPrint(message, throwable)
+    /** 调用方必须持有 [lock]。 */
+    private fun publishLogsLocked() {
+        _logsFlow.value = mLogs.toList()
     }
 
-    fun putNotSave(message: String?, throwable: Throwable? = null, toast: Boolean = false) {
+    /**
+     * 记录日志并落盘。
+     *
+     * 对齐 origin AppLog: 所有副作用 (toast/write/ring/debugPrint) 在同一把锁内,
+     * 保证落盘与环形列表顺序一致 (原 @Synchronized 语义)。
+     *
+     * @param tag 组件标签, 默认 "AppLog", 供迁移前 LogUtils.d(TAG,...) 调用方保留原 TAG。
+     */
+    fun put(
+        message: String?,
+        throwable: Throwable? = null,
+        toast: Boolean = false,
+        tag: String = "AppLog"
+    ) {
         message ?: return
         val h = host
-        if (toast) h?.toast(message)
         synchronized(lock) {
+            val now = h?.currentTimeMillis() ?: 0L
+            if (toast) h?.toast(message)
+            val logMessage = if (throwable == null) {
+                message
+            } else {
+                "$message\n${throwable.stackTraceToString()}"
+            }
+            h?.write(tag, logMessage)
             if (mLogs.size > 100) {
                 mLogs.removeLastOrNull()
             }
-            mLogs.add(0, Triple(h?.currentTimeMillis() ?: 0L, message, throwable))
+            mLogs.add(0, Triple(now, message, throwable))
+            h?.debugPrint(tag, message, throwable)
+            publishLogsLocked()
         }
-        h?.debugPrint(message, throwable)
+    }
+
+    /**
+     * 记录日志但不落盘 (仅内存环形列表 + DEBUG logcat)。
+     *
+     * @param tag 组件标签, 默认 "AppLog"。
+     */
+    fun putNotSave(
+        message: String?,
+        throwable: Throwable? = null,
+        toast: Boolean = false,
+        tag: String = "AppLog"
+    ) {
+        message ?: return
+        val h = host
+        synchronized(lock) {
+            val now = h?.currentTimeMillis() ?: 0L
+            if (toast) h?.toast(message)
+            if (mLogs.size > 100) {
+                mLogs.removeLastOrNull()
+            }
+            mLogs.add(0, Triple(now, message, throwable))
+            h?.debugPrint(tag, message, throwable)
+            publishLogsLocked()
+        }
     }
 
     fun clear() {
         synchronized(lock) {
             mLogs.clear()
+            publishLogsLocked()
         }
     }
 
-    fun putDebug(message: String?, throwable: Throwable? = null) {
+    /**
+     * 受 recordLog 门控的调试日志。
+     *
+     * @param tag 组件标签, 默认 "AppLog"。
+     */
+    fun putDebug(
+        message: String?,
+        throwable: Throwable? = null,
+        tag: String = "AppLog"
+    ) {
         if (host?.recordLog == true) {
-            put(message, throwable)
+            put(message, throwable, tag = tag)
         }
     }
 
@@ -77,17 +127,32 @@ object AppLog {
      */
     val isRecordLogEnabled: Boolean get() = host?.recordLog == true
 
+    /**
+     * 当前时区相对 UTC 的偏移量 (毫秒), 供 UI 层 [AppLogDialog] 将 UTC 时间戳
+     * 转为本地时间显示。未注册 host 时返回 0 (显示 UTC)。
+     *
+     * 示例: 中国标准时间 (UTC+8) 返回 +28800000。
+     */
+    fun timeZoneOffsetMillis(): Long = host?.timeZoneOffsetMillis() ?: 0L
+
 }
 
 /**
  * AppLog 的平台/宿主副作用出口, 由宿主(安卓 App.onCreate)注册。
  * 各方法对应原 app 实现: [write]=LogUtils.d 落盘, [toast]=toastOnUi, [debugPrint]=DEBUG logcat,
  * [recordLog]=AppConfig.recordLog 门, [currentTimeMillis]=墙钟时间戳。
+ *
+ * [tag] 参数来自 [AppLog.put] 的 tag, 允许组件保留原始 TAG 用于日志过滤,
+ * 对齐迁移前直接 [LogUtils.d](TAG,...) 调用方的行为。
  */
 interface AppLogHost {
+    /** 当前 UTC epoch 毫秒 (墙钟)。 */
     fun currentTimeMillis(): Long
+
+    /** 当前时区相对 UTC 的偏移量 (毫秒)。 */
+    fun timeZoneOffsetMillis(): Long
     val recordLog: Boolean
-    fun write(message: String)
+    fun write(tag: String, message: String)
     fun toast(message: String)
-    fun debugPrint(message: String, throwable: Throwable?)
+    fun debugPrint(tag: String, message: String, throwable: Throwable?)
 }

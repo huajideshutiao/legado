@@ -2,9 +2,9 @@ package io.legado.app.ui.book.manga
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,7 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -45,6 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.book.manga.render.MangaRenderState
+import io.legado.app.ui.book.manga.render.rememberSinglePageSnapFlingBehavior
 import io.legado.app.ui.book.manga.render.webtoonGestures
 import io.legado.app.ui.compose.platform.handleReadPageKeys
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -224,9 +224,9 @@ private fun MangaRenderArea(
     val state = remember { MangaRenderState() }
     state.scope = scope
     state.horizontal = horizontal
-    // 横向翻页 snap 归位（对照 app 端 PagerSnapHelper）；纵向普通衰减 fling
+    // 横向对齐 PagerSnapHelper：整页归位且单次手势最多翻一页；纵向普通衰减 fling
     val fling = if (horizontal) {
-        rememberSnapFlingBehavior(state.listState)
+        rememberSinglePageSnapFlingBehavior(state.listState)
     } else {
         ScrollableDefaults.flingBehavior()
     }
@@ -290,6 +290,7 @@ private fun MangaRenderArea(
                 if (horizontal) {
                     LazyRow(
                         state = state.listState,
+                        flingBehavior = fling,
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         items(images, key = { it }) { url ->
@@ -303,6 +304,7 @@ private fun MangaRenderArea(
                 } else {
                     LazyColumn(
                         state = state.listState,
+                        flingBehavior = fling,
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         items(images, key = { it }) { url ->

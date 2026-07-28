@@ -35,7 +35,7 @@ import io.legado.app.ui.book.group.GroupEditDialog
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.group.GroupViewModelShared
 import io.legado.app.ui.book.manage.BookshelfManageCallbacks
-import io.legado.app.ui.book.manage.BookshelfManageScreen as SharedBookshelfManageScreen
+
 import io.legado.app.ui.book.manage.BookshelfManageState
 import io.legado.app.ui.book.manage.SourcePickerDialog
 import io.legado.app.ui.compose.component.AlertButton
@@ -76,16 +76,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 桌面端书架管理入口 (包装 shared/sharedUiMain 下沉的 [SharedBookshelfManageScreen])。
+ * 桌面端书架管理入口 (包装 shared/sharedUiMain 下沉的 [io.legado.app.ui.book.manage.BookshelfManageScreen])。
  *
  * # 职责
  *
  * 对照 app 端 [io.legado.app.ui.book.manage.BookshelfManageActivity], 桌面端仅做平台适配,
- * UI 渲染与交互骨架全部下沉到 shared/sharedUiMain 的 [SharedBookshelfManageScreen]:
+ * UI 渲染与交互骨架全部下沉到 shared/sharedUiMain 的 [io.legado.app.ui.book.manage.BookshelfManageScreen]:
  *
  * - **平台 Provider 注入**: [DesktopThemeStoreProvider] / [DesktopAppConfigProvider] /
  *   [DesktopEventBusProvider] 经 [CompositionLocalProvider] 注入, 让 commonMain 的
- *   [AppTheme] / [SharedBookshelfManageScreen] 跨平台运行
+ *   [AppTheme] / [io.legado.app.ui.book.manage.BookshelfManageScreen] 跨平台运行
  * - **数据流**: [LaunchedEffect] 订阅 `bookGroupDao.flowAll()` 取分组, `bookDao.flowByGroup(groupId)`
  *   取书籍并按全局 [AppConfigProviders.get].bookshelfSort 排序 (简化, 不做 per-group 排序);
  *   搜索/类型筛选复用 [BookFilter.IncrementalFilter] (下沉到 commonMain)
@@ -569,7 +569,7 @@ private fun BookshelfManageContent(onBack: () -> Unit) {
         groups = groupList,
     )
 
-    SharedBookshelfManageScreen(
+    io.legado.app.ui.book.manage.BookshelfManageScreen(
         currentState,
         callbacks,
         listState,

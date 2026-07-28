@@ -10,7 +10,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import io.legado.app.constant.AppLog
 import io.legado.app.help.IntentData
-import io.legado.app.ui.book.searchContent.SearchContentScreen as SharedSearchContentScreen
+
 import io.legado.app.ui.book.searchContent.SearchContentUiActions
 import io.legado.app.ui.book.searchContent.SearchContentUiState
 import io.legado.app.ui.book.searchContent.SearchContentViewModelShared
@@ -32,23 +32,23 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 桌面端"书内全文搜索" Screen 入口 (包装 shared/sharedUiMain 的 [SharedSearchContentScreen])。
+ * 桌面端"书内全文搜索" Screen 入口 (包装 shared/sharedUiMain 的 [io.legado.app.ui.book.searchContent.SearchContentScreen])。
  *
  * # 职责
  *
- * - 注入 4 个 DesktopXxxProvider 供 commonMain 的 [AppTheme] / [SharedSearchContentScreen]
+ * - 注入 4 个 DesktopXxxProvider 供 commonMain 的 [AppTheme] / [io.legado.app.ui.book.searchContent.SearchContentScreen]
  *   通过 LocalXxx 取依赖
  * - 在 [SearchContentContent] 内持有 [SearchContentUiState] state + 构造
- *   [SearchContentUiActions] 实现, 位置传参调用 [SharedSearchContentScreen]
+ *   [SearchContentUiActions] 实现, 位置传参调用 [io.legado.app.ui.book.searchContent.SearchContentScreen]
  *
  * # shared 端签名说明
  *
- * shared/sharedUiMain 的 [SharedSearchContentScreen] 接收 [SearchContentUiState] +
+ * shared/sharedUiMain 的 [io.legado.app.ui.book.searchContent.SearchContentScreen] 接收 [SearchContentUiState] +
  * [SearchContentUiActions] 两个参数 (state + actions 拆分模式), 故桌面端需在 Content
  * 内构造 state + 实现 actions 接口, 与 [io.legado.desktop.ui.about.AboutScreen]
  * 的 Content 持有 state 模式一致。
  *
- * [SharedSearchContentScreen] 内部已自带 [io.legado.app.ui.compose.component.AppTitleBar]
+ * [io.legado.app.ui.book.searchContent.SearchContentScreen] 内部已自带 [io.legado.app.ui.compose.component.AppTitleBar]
  * (标题栏 + 搜索框 + 替换开关菜单), 故此处不再外加 AppTitleBar (避免双层标题栏)。
  *
  * # KMP 化接入说明
@@ -78,7 +78,7 @@ fun SearchContentScreen(
     onBack: () -> Unit,
     onOpenResult: (SearchResult) -> Unit = {},
 ) {
-    // 桌面端 Provider 注入: 供 commonMain 的 AppTheme / SharedSearchContentScreen 取依赖
+    // 桌面端 Provider 注入: 供 commonMain 的 AppTheme / io.legado.app.ui.book.searchContent.SearchContentScreen 取依赖
     val themeStore = remember { DesktopThemeStoreProvider() }
     val appConfig = remember { DesktopAppConfigProvider() }
     val eventBus = remember { DesktopEventBusProvider() }
@@ -98,7 +98,7 @@ fun SearchContentScreen(
 
 /**
  * 持有 [SearchContentUiState] state + 构造 [SearchContentUiActions] 实现,
- * 位置传参调用 [SharedSearchContentScreen]。
+ * 位置传参调用 [io.legado.app.ui.book.searchContent.SearchContentScreen]。
  *
  * state 字段语义对照 shared/sharedUiMain 的 [SearchContentUiState] KDoc;
  * actions 字段对照 [SearchContentUiActions] 接口方法 (详见 shared KDoc)。
@@ -232,7 +232,7 @@ private fun SearchContentContent(
         onConsumePendingScrollIndex = { pendingScrollIndex = null },
     )
 
-    SharedSearchContentScreen(state = state, actions = actions)
+    io.legado.app.ui.book.searchContent.SearchContentScreen(state = state, actions = actions)
 }
 
 /**

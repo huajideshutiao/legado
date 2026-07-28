@@ -58,6 +58,7 @@ import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -306,7 +307,7 @@ private fun ChapterListPage(state: TocUiState, actions: TocUiActions) {
         }
     }
     Column(Modifier.fillMaxSize()) {
-        LazyColumn(
+        FastScrollLazyColumn(
             state = listState,
             modifier = Modifier
                 .weight(1f)
@@ -533,7 +534,7 @@ private fun BookmarkPage(state: TocUiState, actions: TocUiActions) {
         }
     }
     val navPad = WindowInsets.navigationBars.asPaddingValues()
-    LazyColumn(
+    FastScrollLazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
@@ -717,7 +718,7 @@ fun TocDrawerContent(
         }
 
         // 章节列表
-        LazyColumn(
+        FastScrollLazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
         ) {

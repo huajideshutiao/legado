@@ -1,5 +1,6 @@
 package com.script.quickjs
 
+import com.script.jsdispatch.JsValueConverters
 import com.script.quickjs.QuickJsEngine.cacheBootstrapGlobals
 import com.script.quickjs.QuickJsEngine.cacheBootstrapHelpers
 import com.script.quickjs.QuickJsEngine.cleanupBindings
@@ -220,11 +221,13 @@ object QuickJsEngine {
         val out = ArrayList<Any?>(bindings.size * 2)
         for ((key, value) in bindings) {
             if (!isValidVarName(key)) continue
-            if (value != null && value !is String && value !is Boolean && value !is Number) {
-                if (!JsSecurityPolicy.isObjectVisible(value, dangerousApi)) continue
+            // 统一转换入口: 与 injectVariable 对称, 子 scope 路径也做宿主→JS 值转换
+            val converted = JsValueConverters.convertAll(value)
+            if (converted != null && converted !is String && converted !is Boolean && converted !is Number) {
+                if (!JsSecurityPolicy.isObjectVisible(converted, dangerousApi)) continue
             }
             out.add(key)
-            out.add(value)
+            out.add(converted)
         }
         return out.toTypedArray()
     }
@@ -574,16 +577,19 @@ object QuickJsEngine {
     ): Boolean {
         if (!isValidVarName(key)) return false
         if (globalHandle == 0L) return false
+        // 统一转换入口: bindings 注入前先把宿主对象转 JS 原生值
+        // (JsonElement → String/Number/Boolean/Map/List, 详见 JsValueConverters)
+        val converted = JsValueConverters.convertAll(value)
         when {
             // null/String/Boolean/Number: fromJavaObject 直接转 JS 值, 不走 JS 解析
-            value == null || value is String || value is Boolean || value is Number -> {
-                QuickJsNative.nativeSetProperty(ctxPtr, globalHandle, key, value)
+            converted == null || converted is String || converted is Boolean || converted is Number -> {
+                QuickJsNative.nativeSetProperty(ctxPtr, globalHandle, key, converted)
             }
             else -> {
                 // Java 对象: 显式安全检查 + wrap + SetPropertyHandle
                 // (nativeSetProperty 走 fromJavaObject 会自动 wrap, 但那绕过 isObjectVisible)
-                if (!JsSecurityPolicy.isObjectVisible(value, dangerousApi)) return false
-                val jsValueHandle = QuickJsNative.nativeWrapJavaObject(ctxPtr, value)
+                if (!JsSecurityPolicy.isObjectVisible(converted, dangerousApi)) return false
+                val jsValueHandle = QuickJsNative.nativeWrapJavaObject(ctxPtr, converted)
                 val valueHandle = (jsValueHandle as? Number)?.toLong() ?: 0L
                 if (valueHandle == 0L) return false
                 QuickJsNative.nativeSetPropertyHandle(ctxPtr, globalHandle, key, valueHandle)

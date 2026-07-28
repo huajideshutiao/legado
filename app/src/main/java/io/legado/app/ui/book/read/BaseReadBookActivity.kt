@@ -8,7 +8,6 @@ import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowInsets
 import android.view.WindowManager
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
@@ -18,8 +17,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
@@ -63,8 +64,6 @@ import io.legado.app.utils.setNavigationBarColorAuto
 import io.legado.app.utils.showDialogFragment
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import androidx.compose.foundation.layout.WindowInsets as ComposeWindowInsets
-import androidx.compose.foundation.layout.navigationBars as composeNavigationBars
 
 /**
  * 阅读界面基类：纯 Compose 宿主。
@@ -252,14 +251,14 @@ abstract class BaseReadBookActivity : BaseComposeActivity(imageBg = false), IBot
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.insetsController?.run {
                 if (toolBarHide && ReadBookConfig.hideNavigationBar) {
-                    hide(WindowInsets.Type.navigationBars())
+                    hide(android.view.WindowInsets.Type.navigationBars())
                 } else {
-                    show(WindowInsets.Type.navigationBars())
+                    show(android.view.WindowInsets.Type.navigationBars())
                 }
                 if (toolBarHide && ReadBookConfig.hideStatusBar) {
-                    hide(WindowInsets.Type.statusBars())
+                    hide(android.view.WindowInsets.Type.statusBars())
                 } else {
-                    show(WindowInsets.Type.statusBars())
+                    show(android.view.WindowInsets.Type.statusBars())
                 }
             }
         }
@@ -319,7 +318,7 @@ abstract class BaseReadBookActivity : BaseComposeActivity(imageBg = false), IBot
                 Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .windowInsetsBottomHeight(ComposeWindowInsets.composeNavigationBars)
+                    .windowInsetsBottomHeight(WindowInsets.navigationBars)
                     .background(AppTheme.colors.bottomBackground)
             )
         }

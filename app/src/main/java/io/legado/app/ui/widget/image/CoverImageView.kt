@@ -14,7 +14,7 @@ import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.content.withStyledAttributes
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
-import coil3.load as loadCoil
+import coil3.load
 import coil3.request.placeholder
 import io.legado.app.R
 import io.legado.app.constant.AppPattern
@@ -266,7 +266,7 @@ class CoverImageView @JvmOverloads constructor(
         return name?.takeIf { it.isNotBlank() } ?: bitmapPath
     }
 
-    fun load(
+    fun loadCover(
         path: String? = null,
         name: String? = null,
         author: String? = null,
@@ -291,7 +291,7 @@ class CoverImageView @JvmOverloads constructor(
         val doLoad = {
             // placeholder 走 setImageDrawable(上面 showDefaultCover),9-patch chunk 不会被光栅化;
             // 加载期间默认图能正确拉伸。error 由 listener.onError 接管(显示默认封面)。
-            this@CoverImageView.loadCoil(path) {
+            this@CoverImageView.load(path) {
                 coverConfig(
                     seed = defaultCoverSeed(),
                     ratio = coverRatio,
