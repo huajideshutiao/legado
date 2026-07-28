@@ -127,7 +127,7 @@ internal fun OhosRssTopBar(
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // ohosMain 未声明 materialIconsExtended, 用 TextButton 替代 Icon(返回箭头)
+            // 保留鸿蒙标题栏的文本返回按钮实现
             TextButton(onClick = onBack) {
                 Text("←")
             }

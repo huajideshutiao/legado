@@ -27,3 +27,7 @@ docs/
 # OHOS AntUI Framework 原生构建产物（libmykmp_framework.so 由 build_ohos_framework.sh 本地生成）
 ohosApp/entry/libs/
 build/native_framework_build/
+
+# OHOS/DevEco 构建缓存与本地依赖
+.hvigor/
+oh_modules/

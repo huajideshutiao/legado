@@ -84,8 +84,8 @@ class ChangeCoverDialog() : BaseComposeDialogFragment() {
                 IconButton(onClick = { viewModel.startOrStopSearch() }) {
                     Icon(
                         painter = painterResource(
-                            if (searching) R.drawable.ic_stop_black_24dp
-                            else R.drawable.ic_refresh_black_24dp
+                            if (searching) io.legado.shared.R.drawable.ic_stop_black_24dp
+                            else io.legado.shared.R.drawable.ic_refresh_black_24dp
                         ),
                         contentDescription = stringResource(
                             if (searching) R.string.stop else R.string.refresh

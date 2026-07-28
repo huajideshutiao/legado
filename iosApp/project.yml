@@ -59,41 +59,30 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.legado.app.ios
         PRODUCT_NAME: legado
-        # 引用 shared framework (Kotlin Multiplatform 产出)
-        # framework 路径在 build phase 中配置 (见下面 script)
+        # Kotlin 官方 direct integration 将当前 SDK/架构/构建类型对应的 framework
+        # 复制到 TARGET_BUILD_DIR 并签名，不再硬编码 shared/build/bin 下的变体路径。
         FRAMEWORK_SEARCH_PATHS:
           - "$(inherited)"
-          - "$(SRCROOT)/../shared/build/bin/iosArm64/debugFramework"
-          - "$(SRCROOT)/../shared/build/bin/iosArm64/releaseFramework"
-          - "$(SRCROOT)/../shared/build/bin/iosSimulatorArm64/debugFramework"
-          - "$(SRCROOT)/../shared/build/bin/iosSimulatorArm64/releaseFramework"
+          - "$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)"
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
           - "@executable_path/Frameworks"
-        # 链接 shared framework
         OTHER_LDFLAGS:
           - "-framework"
           - "shared"
-    dependencies:
-      - framework: ../shared/build/bin/iosArm64/debugFramework/shared.framework
-        embed: true
-        codeSign: true
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
     preBuildScripts:
       - script: |
           #!/bin/bash
-          # 编译 shared framework (Kotlin Multiplatform)
-          # 仅在 framework 不存在时编译, 避免每次 build 都跑 gradle
           set -e
+          if [ "YES" = "$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED" ]; then
+            echo "Skipping Gradle framework build because the IDE already built it."
+            exit 0
+          fi
           cd "$SRCROOT/.."
-          if [ ! -d "shared/build/bin/iosArm64/debugFramework/shared.framework" ]; then
-            echo "Building shared.framework (iosArm64 debug)..."
-            ./gradlew :shared:linkDebugFrameworkIosArm64 --stacktrace
-          fi
-          if [ ! -d "shared/build/bin/iosSimulatorArm64/debugFramework/shared.framework" ]; then
-            echo "Building shared.framework (iosSimulatorArm64 debug)..."
-            ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 --stacktrace
-          fi
-        name: Build shared framework
+          ./gradlew :shared:embedAndSignAppleFrameworkForXcode --stacktrace
+        name: Embed and sign shared framework
+        basedOnDependencyAnalysis: false
     scheme:
       testTargets: []
       gatherCoverageData: false

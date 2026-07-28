@@ -44,7 +44,7 @@ private const val MAX_TEXT_LENGTH = 32 * 1024
 /**
  * 鸿蒙端崩溃日志对话框 (对照 app 端 `CrashLogsDialog` + sharedUiMain `CrashLogsDialogContent`)。
  *
- * ohosMain 已继承 sharedUiMain, 但因主题/图标依赖差异 (MaterialTheme vs AppTheme, materialIconsExtended),
+ * ohosMain 已继承 sharedUiMain，但因主题与平台交互差异（MaterialTheme vs AppTheme），
  * 此处单独实现等价 UI, 行为与 app/desktop 端一致:
  * - 标题栏: 返回 + "崩溃日志" + 清空按钮
  * - 列表: LazyColumn, 行=文件名, 点击读内容弹内容查看对话框, 长按分享(toast)
@@ -86,7 +86,7 @@ fun OhosCrashLogsDialog(
                         .padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // ohosMain 未声明 materialIconsExtended, 用 TextButton 替代 Icon(返回箭头)
+                    // 保留鸿蒙标题栏的文本返回按钮实现
                     TextButton(onClick = onDismiss) {
                         Text("←")
                     }
@@ -195,7 +195,7 @@ private fun CrashLogViewDialog(
                         .padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // ohosMain 未声明 materialIconsExtended, 用 TextButton 替代 Icon(返回箭头)
+                    // 保留鸿蒙标题栏的文本返回按钮实现
                     TextButton(onClick = onDismiss) {
                         Text("←")
                     }

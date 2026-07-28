@@ -203,7 +203,7 @@ class AndroidZipFile : ZipConstants, AndroidZipFileReader {
         if (PfdHelper.skipBytes(
                 pfd,
                 ZipConstants.Companion.ENDOFF - ZipConstants.Companion.ENDSIZ
-            ) !== ZipConstants.Companion.ENDOFF - ZipConstants.Companion.ENDSIZ
+            ) != ZipConstants.Companion.ENDOFF - ZipConstants.Companion.ENDSIZ
         ) throw EOFException(name)
         val centralOffset = readLeInt(pfd, ebs)
 
@@ -284,7 +284,7 @@ class AndroidZipFile : ZipConstants, AndroidZipFileReader {
      */
     @Throws(IOException::class)
     protected fun finalize() {
-        if (!closed && pfd != null) close()
+        if (!closed) close()
     }
 
     /**

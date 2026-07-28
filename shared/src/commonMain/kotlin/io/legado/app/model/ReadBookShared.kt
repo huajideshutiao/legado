@@ -88,19 +88,25 @@ class ReadBookShared {
      * chapterSize/BookSource 加载/ContentProcessor 初始化等平台逻辑留 actual。
      */
     fun loadBook(book: Book) {
-        val isDiffBook = _book.value?.bookUrl != book.bookUrl
+        val initState = calculateReadBookInitState(
+            previousBookUrl = _book.value?.bookUrl,
+            firstChapterBookUrl = _chapterList.value.firstOrNull()?.bookUrl,
+            currentChapterIndex = _durChapterIndex.value,
+            incomingBook = book,
+        )
         _book.value = book
-        if (isDiffBook) {
+        if (initState.shouldDropChapterList) {
             _chapterList.value = emptyList()
             chapterSize = 0
             simulatedChapterSize = 0
+        }
+        if (initState.isDifferentBook) {
             clearTextChapter()
             _webBookProgress.value = null
         }
-        if (isDiffBook || _durChapterIndex.value != book.durChapterIndex) {
-            _durChapterIndex.value = book.durChapterIndex
-            // 负 durChapterPos 是「停在章末」的编码, 归一为正 (原版 ReadBook.initData:119)
-            _durChapterPos.value = book.durChapterPos * (if (book.durChapterPos < 0) -1 else 1)
+        if (initState.shouldResetProgress) {
+            _durChapterIndex.value = initState.chapterIndex
+            _durChapterPos.value = initState.chapterPosition
             clearTextChapter()
         }
         callback?.onBookChanged(book)

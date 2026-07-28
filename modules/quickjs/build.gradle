@@ -1,31 +1,19 @@
 plugins {
-    alias libs.plugins.android.library
-    alias libs.plugins.kotlin.multiplatform
+    id 'legado.kmp.library'
     alias libs.plugins.ksp
 }
 
 kotlin {
-    jvmToolchain(17)
-
-    androidTarget {
-        compilations.all {
-            compileTaskProvider.configure {
-                compilerOptions {
-                    jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-                }
-            }
+    jvm()
+    android {
+        namespace = 'com.script.quickjs'
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         }
+        withDeviceTest {}
     }
 
-    jvm {
-        compilations.all {
-            compileTaskProvider.configure {
-                compilerOptions {
-                    jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-                }
-            }
-        }
-    }
+    // 默认层级与 JVM/Android 编译参数由 legado.kmp.library 统一配置。
 
     sourceSets {
         commonMain {
@@ -47,6 +35,7 @@ kotlin {
             dependsOn(jvmAndAndroidMain)
             dependencies {
                 implementation(libs.androidx.collection)
+                implementation(project(':modules:quickjs-android-native'))
             }
         }
 
@@ -58,7 +47,7 @@ kotlin {
             }
         }
 
-        androidTest {
+        androidDeviceTest {
             dependencies {
                 implementation(libs.bundles.androidTest)
             }
@@ -73,56 +62,10 @@ kotlin {
     }
 }
 
-// KSP 处理器: androidTest 内 @JsApi fixture 生成分派表, 让行为基准全量跑在"先查表"路径上
-// (KMP 模式下 kspAndroidTest 仍由 KSP plugin 提供的顶级配置容器管理)
+// KSP 处理器: Android device test 内 @JsApi fixture 生成分派表,
+// 让行为基准全量跑在"先查表"路径上。
 dependencies {
-    kspAndroidTest project(':modules:quickjs-processor')
-}
-
-android {
-    compileSdk = compile_sdk_version
-    namespace = 'com.script.quickjs'
-    defaultConfig {
-        minSdk 26
-        targetSdk 36
-
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles "consumer-rules.pro"
-
-        // NDK 配置: 支持 4 个 ABI (与 app 模块一致)
-        ndk {
-            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'
-        }
-        // CMake 构建参数
-        externalNativeBuild {
-            cmake {
-                arguments '-DANDROID_STL=c++_static'
-                cppFlags '-std=c++17', '-fvisibility=hidden'
-                cFlags '-fvisibility=hidden'
-            }
-        }
-    }
-
-    // CMake 构建脚本路径 (Android target 专用, 桌面 JVM 通过 jvmMain 的 exec task 单独编译)
-    externalNativeBuild {
-        cmake {
-            path 'src/main/cpp/CMakeLists.txt'
-            version '3.22.1'
-        }
-    }
-
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
-    }
-    lint {
-        checkDependencies = true
-    }
-    tasks.withType(JavaCompile).tap {
-        configureEach {
-            options.compilerArgs << "-Xlint:deprecation"
-        }
-    }
+    kspAndroidDeviceTest project(':modules:quickjs-processor')
 }
 
 // ============ 桌面 JVM native 库构建 (KP1.1) ============
@@ -130,7 +73,7 @@ android {
 // 若系统未装 cmake/编译器, task 输出警告但不失败 (Kotlin 代码仍能编译, 仅 native 库缺失)
 def jvmNativeDir = layout.buildDirectory.dir("libs/jvm/native").get().asFile
 def jvmNativeBuildDir = layout.buildDirectory.dir("intermediates/cmake-jvm").get().asFile
-def cppDir = file("src/main/cpp")
+def cppDir = project(':modules:quickjs-android-native').file("src/main/cpp")
 
 // 探测主机操作系统对应的 native 库文件名
 String nativeLibName() {

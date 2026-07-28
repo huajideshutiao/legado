@@ -12,6 +12,7 @@ import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
 import io.legado.app.help.setLiveOngoing
 import io.legado.app.help.setLiveProgress
+import io.legado.app.service.UpdateBookService.Companion.isRun
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.servicePendingIntent
 
@@ -63,12 +64,12 @@ class UpdateBookService : BaseService() {
 
     private val notificationBuilder by lazy {
         NotificationCompat.Builder(this, AppConst.channelIdDownload)
-            .setSmallIcon(R.drawable.ic_update)
+            .setSmallIcon(io.legado.shared.R.drawable.ic_update)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentTitle(getString(R.string.update_toc))
             .addAction(
-                R.drawable.ic_stop_black_24dp,
+                io.legado.shared.R.drawable.ic_stop_black_24dp,
                 getString(R.string.cancel),
                 servicePendingIntent<UpdateBookService>(IntentAction.stop)
             )

@@ -39,8 +39,9 @@ media = "1.8.0"
 # 出于轻量化考虑，不改用ktor
 nanoHttpd = "2.3.1"
 okhttp = "5.3.2"
-# 与 okhttp 5.3.2 传递引入的版本对齐；存储层直接依赖
-okio = "3.16.4"
+# AntUI 私服提供 ohosArm64 的 Okio fork；标准 3.16.4 不含 ohos_arm64 变体。
+# OkHttp 5.3.2 对 Okio 3.x 保持二进制兼容，统一到当前 fork 发布的 3.10.0-alipay。
+okio = "3.10.0-alipay"
 quickChineseTransfer = "0.2.16"
 playServicesCronet = "18.1.1"
 
@@ -105,9 +106,10 @@ fragment-compose = { module = "androidx.fragment:fragment-compose", version.ref 
 
 androidx-annotation = { module = "androidx.annotation:annotation", version.ref = "annotation" }
 
-# KMP Room 2.8.x 配套: sqlite-bundled 提供 BundledSQLiteDriver (跨平台 SQLite, jvm/android 均可用)
-# 见 https://developer.android.com/kotlin/multiplatform/room
+# SQLite 驱动按平台选择：Android/iOS 使用系统 SQLite，Desktop 使用 bundled SQLite。
+# 鸿蒙当前仍保留 bundled，待 DevEco 真机验证后再决定是否改原生 relationalStore 桥接。
 androidx-sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "sqlite" }
+androidx-sqlite-framework = { module = "androidx.sqlite:sqlite-framework", version.ref = "sqlite" }
 
 androidx-collection = { module = "androidx.collection:collection", version.ref = "collection" }
 androidx-media3-exoplayer-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "media3" }
@@ -217,6 +219,7 @@ androidTest = ["androidx-espresso-core", "androidx-junit", "androidx-runner"]
 
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
+android-kmp-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }

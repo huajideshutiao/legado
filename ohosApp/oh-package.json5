@@ -1,4 +1,5 @@
 {
+  "modelVersion": "6.1.1",
   "model": "5.0.0-Release",
   "description": "Legado 鸿蒙 (HarmonyOS) 应用工程 - KMP 全平台化任务 KP4 鸿蒙 target 的 ArkTS UI 骨架",
   "dependencies": {},

@@ -67,6 +67,36 @@ interface ContentProcessorAccessor {
     ): CharSequence = getContent(book, chapter, content, useReplace = useReplace)
 
     /**
+     * 返回完整正文处理结果，保留 [BookContent.textList]、去重标题标记和实际生效规则。
+     *
+     * 阅读排版不能先把 [BookContent] 压平成字符串再 `split/trim/filter`：原版
+     * `TextChapterLayout` 逐项消费 `textList`，并在每项内部按换行遍历；提前压平会丢失
+     * 空段、首尾空白以及 HTML 图片标签的解析边界。默认实现仅用于兼容第三方实现，
+     * 正式平台实现必须覆写并直接返回 ContentProcessor 的原始 [BookContent]。
+     */
+    fun getBookContent(
+        book: Book,
+        chapter: BookChapter,
+        content: String,
+        includeTitle: Boolean = true,
+        useReplace: Boolean = true,
+        chineseConvert: Boolean = true,
+        reSegment: Boolean = true,
+    ): BookContent = BookContent(
+        sameTitleRemoved = false,
+        textList = listOf(
+            getContent(
+                book = book,
+                chapter = chapter,
+                content = content,
+                includeTitle = includeTitle,
+                useReplace = useReplace,
+            ).toString()
+        ),
+        effectiveReplaceRules = null,
+    )
+
+    /**
      * 刷新所有已缓存 ContentProcessor 实例的替换规则 (对应 `ContentProcessor.upReplaceRules()`)。
      *
      * 书源导入完成后调用, 让后续正文加载使用最新的 replaceRuleDao 数据。

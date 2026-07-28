@@ -166,7 +166,7 @@ fun ImportFileRow(
                 checkable -> AppCheckbox(
                     checked = checked,
                     onCheckedChange = null,
-                    modifier = Modifier.align(Alignment.CenterStart),
+                    modifier = Modifier.align(Alignment.Center),
                 )
 
                 onBookShelf -> RowIcon(rememberPainter("ic_book_has"), Modifier.align(Alignment.Center))

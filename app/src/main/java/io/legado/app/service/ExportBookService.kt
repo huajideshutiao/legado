@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
+import coil3.toBitmap
 import io.legado.app.R
 import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
@@ -17,7 +18,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
-import coil3.toBitmap
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.getDisplayTitle
@@ -27,13 +27,10 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalModified
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.setLiveOngoing
-import io.legado.app.lib.epublib.domain.Author
-import io.legado.app.lib.epublib.domain.Date
 import io.legado.app.lib.epublib.domain.EpubBook
 import io.legado.app.lib.epublib.domain.FileResourceProvider
 import io.legado.app.lib.epublib.domain.LazyResource
 import io.legado.app.lib.epublib.domain.LazyResourceProvider
-import io.legado.app.lib.epublib.domain.Metadata
 import io.legado.app.lib.epublib.domain.Resource
 import io.legado.app.lib.epublib.domain.TOCReference
 import io.legado.app.lib.epublib.epub.EpubWriter
@@ -45,7 +42,6 @@ import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.manage.BookshelfManageActivity
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
-import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.cnCompare
@@ -145,7 +141,7 @@ class ExportBookService : BaseService() {
     @SuppressLint("MissingPermission")
     override fun startForegroundNotification() {
         val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
-            .setSmallIcon(R.drawable.ic_export)
+            .setSmallIcon(io.legado.shared.R.drawable.ic_export)
             .setSubText(getString(R.string.export_book))
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setGroup(groupKey)
@@ -155,7 +151,7 @@ class ExportBookService : BaseService() {
 
     private fun upExportNotification(finish: Boolean = false) {
         val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
-            .setSmallIcon(R.drawable.ic_export)
+            .setSmallIcon(io.legado.shared.R.drawable.ic_export)
             .setSubText(getString(R.string.export_book))
             .setContentIntent(activityPendingIntent<BookshelfManageActivity>("bookshelfManageActivity"))
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -169,7 +165,7 @@ class ExportBookService : BaseService() {
             // 不挂 ProgressStyle; 若系统判定不可提升会自动降级为普通通知, 无副作用。
             notification.setLiveOngoing()
             notification.addAction(
-                R.drawable.ic_stop_black_24dp,
+                io.legado.shared.R.drawable.ic_stop_black_24dp,
                 getString(R.string.cancel),
                 servicePendingIntent<ExportBookService>(IntentAction.stop)
             )

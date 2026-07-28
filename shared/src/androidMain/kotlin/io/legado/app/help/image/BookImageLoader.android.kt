@@ -3,6 +3,7 @@ package io.legado.app.help.image
 import android.content.Context
 import android.os.Build
 import androidx.compose.ui.graphics.asImageBitmap
+import coil3.ComponentRegistry
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.gif.AnimatedImageDecoder
@@ -83,8 +84,14 @@ fun registerAndroidBookImageLoader(context: Context) {
  *
  * app 端 AsyncImage 默认走 SingletonImageLoader, 需在 App.onCreate 设置 Factory 返回此 loader,
  * 让不显式传 imageLoader 的 AsyncImage 也有防盗链 header 注入。
+ *
+ * [additionalComponents] 必须在这里追加到同一个注册表；对返回的 loader 调
+ * `newBuilder().components { ... }` 会替换已有注册表，导致封面解密等基础组件失效。
  */
-fun buildBookImageLoader(context: Context): ImageLoader {
+fun buildBookImageLoader(
+    context: Context,
+    additionalComponents: ComponentRegistry.Builder.() -> Unit = {},
+): ImageLoader {
     val sharedClient = OkHttpClientProviders.get().okHttpClient as OkHttpClient
     return ImageLoader.Builder(context as PlatformContext)
         .components {
@@ -101,6 +108,7 @@ fun buildBookImageLoader(context: Context): ImageLoader {
             } else {
                 add(GifDecoder.Factory())
             }
+            additionalComponents()
         }
         .build()
 }

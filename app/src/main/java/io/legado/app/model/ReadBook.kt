@@ -109,21 +109,27 @@ object ReadBook : CoroutineScope by MainScope() {
 
     fun initData(book: Book) {
         releaseAndCancel()
-        val isDiffBook = this.book?.bookUrl != book.bookUrl
+        val initState = calculateReadBookInitState(
+            previousBookUrl = this.book?.bookUrl,
+            firstChapterBookUrl = chapterList?.firstOrNull()?.bookUrl,
+            currentChapterIndex = durChapterIndex,
+            incomingBook = book,
+        )
+        val isDiffBook = initState.isDifferentBook
         this.book = book
         if (isDiffBook){
             ReadTimeRecorder.setBook(ReadTimeRecorder.Source.READ_BOOK, book.name)
         }
-        if (chapterList?.getOrNull(0)?.bookUrl != book.bookUrl){
+        if (initState.shouldDropChapterList) {
             chapterList = null
         }
         chapterSize = chapterList?.size ?: runBlocking { appDb.bookChapterDao.getChapterCount(book.bookUrl) }
         simulatedChapterSize = if (book.readSimulating()) book.simulatedTotalChapterNum()
         else chapterSize
         contentProcessor = ContentProcessor.get(book)
-        if (isDiffBook||durChapterIndex != book.durChapterIndex){
-            durChapterIndex = book.durChapterIndex
-            durChapterPos = book.durChapterPos  * (if (book.durChapterPos<0)-1 else 1)
+        if (initState.shouldResetProgress) {
+            durChapterIndex = initState.chapterIndex
+            durChapterPos = initState.chapterPosition
             isLocalBook = book.isLocal
             clearTextChapter()
         }

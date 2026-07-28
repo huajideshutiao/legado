@@ -12,6 +12,8 @@ import kotlin.math.min
 class TextChapterShared(
     val chapterIndex: Int,
     val pages: List<TextPage>,
+    /** 排版本章时段评计数是否已就绪并应用；false 时计数迟到需要重排。 */
+    val reviewCountApplied: Boolean = false,
 ) : TextChapterRef {
 
     override val pageSize: Int get() = pages.size

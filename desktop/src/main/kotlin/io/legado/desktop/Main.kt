@@ -582,7 +582,7 @@ private fun initDesktopRuntimeEnvironment() {
     //    portable 模式: 数据存 exe 同级 dataDir (设置 legado.portable.root 系统属性,
     //      下游 DesktopAppFilesDir/JvmBookStorage 读此属性定位配置根)。
     //    installed/dev 模式: 不设置系统属性, 下游 DesktopAppPaths 走 portable.txt
-    //      标记检测 / 系统数据目录 (含 ~/.legado 旧目录迁移兼容)。
+    //      标记检测 / 系统数据目录。
     if (InstallType.IS_PORTABLE) {
         val exeDir = resDirFile.parentFile?.parentFile ?: resDirFile.parentFile
         val dataDir = File(exeDir, "data")

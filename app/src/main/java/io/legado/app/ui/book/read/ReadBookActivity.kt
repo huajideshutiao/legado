@@ -38,7 +38,6 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.IntentData
 import io.legado.app.help.TTS
-import io.legado.app.help.searchResultList
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.delete
@@ -51,6 +50,7 @@ import io.legado.app.help.book.removeType
 import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.searchResultList
 import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.theme.accentColor
@@ -82,23 +82,23 @@ import io.legado.app.ui.book.searchContent.SearchResult
 import io.legado.app.ui.book.source.edit.BookSourceEditActivity
 import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.book.toc.rule.TxtTocRuleDialog
-import io.legado.app.ui.login.showLoginDialog
 import io.legado.app.ui.browser.WebViewActivity
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.dialogs.selector
 import io.legado.app.ui.dict.DictDialog
 import io.legado.app.ui.file.registerHandleFile
+import io.legado.app.ui.login.showLoginDialog
 import io.legado.app.ui.replace.edit.ReplaceEditActivity
 import io.legado.app.ui.widget.PopupAction
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.LogUtils
-import io.legado.app.utils.isNetworkAvailable
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.dismissDialogFragment
 import io.legado.app.utils.invisible
 import io.legado.app.utils.isAbsUrl
+import io.legado.app.utils.isNetworkAvailable
 import io.legado.app.utils.isTrue
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.observeEventSticky
@@ -146,14 +146,14 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
     private val cursorLeft: ImageView by lazy {
         ImageView(this).apply {
-            setImageResource(R.drawable.ic_cursor_left)
+            setImageResource(io.legado.shared.R.drawable.ic_cursor_left)
             contentDescription = getString(R.string.select_start)
             visibility = View.INVISIBLE
         }
     }
     private val cursorRight: ImageView by lazy {
         ImageView(this).apply {
-            setImageResource(R.drawable.ic_cursor_right)
+            setImageResource(io.legado.shared.R.drawable.ic_cursor_right)
             contentDescription = getString(R.string.select_end)
             visibility = View.INVISIBLE
         }

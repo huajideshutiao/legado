@@ -2,20 +2,10 @@
 
 package io.legado.app.ui.compose.platform
 
-// iOS 端 SVG 化下沉后, 仅保留以下 Material Icons 作为兜底/无对应 drawable 的图标 (与 jvmMain 镜像):
-// - Icons.Filled.Help: 未识别 key 的占位图标
-// - Icons.AutoMirrored.Filled.ArrowForward: ic_arrow_forward (app 端无对应 drawable xml)
-// - Icons.Filled.Speed: ic_speed (app 端无对应 drawable xml)
-// 其余 key 全部下沉到 shared/commonMain/composeResources/drawable/ 的 SVG (与 app 端 R.drawable 视觉对齐)
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Help
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import io.legado.app.ui.compose.theme.LocalAppColors
 import io.legado.app.utils.formatNative
 import legado.shared.generated.resources.Res
@@ -24,6 +14,7 @@ import legado.shared.generated.resources.ic_arrow_back
 import legado.shared.generated.resources.ic_arrow_down
 import legado.shared.generated.resources.ic_arrow_drop_down
 import legado.shared.generated.resources.ic_arrow_drop_up
+import legado.shared.generated.resources.ic_arrow_forward
 import legado.shared.generated.resources.ic_arrow_right
 import legado.shared.generated.resources.ic_auto_page
 import legado.shared.generated.resources.ic_auto_page_stop
@@ -70,6 +61,7 @@ import legado.shared.generated.resources.ic_interface_setting
 import legado.shared.generated.resources.ic_layout_list
 import legado.shared.generated.resources.ic_layout_video
 import legado.shared.generated.resources.ic_lock_outline
+import legado.shared.generated.resources.ic_material_help
 import legado.shared.generated.resources.ic_menu
 import legado.shared.generated.resources.ic_more_vert
 import legado.shared.generated.resources.ic_outline_cloud_24
@@ -95,6 +87,7 @@ import legado.shared.generated.resources.ic_share
 import legado.shared.generated.resources.ic_skip_next
 import legado.shared.generated.resources.ic_skip_previous
 import legado.shared.generated.resources.ic_sort
+import legado.shared.generated.resources.ic_speed
 import legado.shared.generated.resources.ic_star
 import legado.shared.generated.resources.ic_star_border
 import legado.shared.generated.resources.ic_stop_black_24dp
@@ -115,12 +108,10 @@ import org.jetbrains.compose.resources.painterResource
  *
  * - rememberString: 复用 commonMain sharedStringTable (与 jvmMain 一致, 单一数据源),
  *   不再依赖 NSBundle/Localizable.strings; formatArgs 非空时用 String.format 填充。
- * - rememberPainter: 加载 shared/commonMain/composeResources/drawable/ 下 SVG
+ * - rememberPainter: 加载 shared/sharedIconResources/drawable/ 下共享 vector XML
  *   (与 app 端 R.drawable 视觉对齐, 单一数据源, iOS 端不再用 Material Icons 替代)。
- *   与 jvmMain 镜像: 仅 ic_arrow_forward / ic_speed (app 端无对应 drawable xml) 与
- *   未识别 key 走 Material Icons 兜底 (material-icons-extended 已在 sharedUiMain 引入,
- *   iosMain 继承); Compose Multiplatform 提供 painterResource, 无需 UIImage 平台转换。
- *   未识别 key 返回 Icons.Filled.Help 占位, 与 jvmMain 行为一致。
+ *   与 jvmMain 镜像：所有图标均走共享 Compose Resources；未识别 key 返回
+ *   Material Help SVG 占位。Compose Multiplatform 提供 painterResource，无需 UIImage 平台转换。
  * - rememberColor: 复用 jvmMain 的 when 分支 (Color/LocalAppColors 跨平台一致),
  *   按 LocalAppColors.current.isDark 分 light/dark, 与 Android values/values-night
  *   资源限定符行为对齐。
@@ -138,11 +129,9 @@ import org.jetbrains.compose.resources.painterResource
  */
 @Composable
 actual fun rememberPainter(key: String): Painter {
-    // 优先加载下沉到 shared/commonMain/composeResources/drawable/ 的 SVG 图标
-    // (与 app 端 R.drawable 视觉对齐, 单一数据源, iOS 端不再用 Material Icons 替代)
-    // 与 jvmMain 镜像: SVG 路径颜色与 app 端 VectorDrawable fillColor/strokeColor 硬编码一致
-    // 原 fillColor 为白/@color 引用 + tint 的 drawable, SVG 统一用 #000000, 由 Compose 通过 tint 着色
-    val svgRes: DrawableResource? = when (key) {
+    // 从非 Android 图标源集加载共享 vector XML；Android 将同一文件作为原生 drawable 编译。
+    // 与 jvmMain 镜像，路径颜色和描边保持一致。
+    val svgRes: DrawableResource = when (key) {
         // 导航栏图标 (原有 SVG)
         "ic_arrow_back" -> Res.drawable.ic_arrow_back
         "ic_menu" -> Res.drawable.ic_menu
@@ -243,18 +232,11 @@ actual fun rememberPainter(key: String): Painter {
         "ic_review_thumb_up_filled" -> Res.drawable.ic_review_thumb_up_filled
         "ic_review_thumb_down" -> Res.drawable.ic_review_thumb_down
         "ic_review_thumb_down_filled" -> Res.drawable.ic_review_thumb_down_filled
-        else -> null
+        "ic_arrow_forward" -> Res.drawable.ic_arrow_forward
+        "ic_speed" -> Res.drawable.ic_speed
+        else -> Res.drawable.ic_material_help
     }
-    if (svgRes != null) {
-        return painterResource(svgRes)
-    }
-    // 兜底: 仅有以下 key 无 app 端 drawable xml 对应, 仍走 Material Icons (与 jvmMain 一致)
-    val imageVector = when (key) {
-        "ic_arrow_forward" -> Icons.AutoMirrored.Filled.ArrowForward // 段落前进 (app 端无 drawable, 区分于章节 SkipNext, 方向敏感图标已迁移到 AutoMirrored 包)
-        "ic_speed" -> Icons.Filled.Speed // 语速调节 (TTS 播放速度滑杆, app 端无 drawable)
-        else -> Icons.Filled.Help // 占位图标, 暴露未识别 key 便于调试
-    }
-    return rememberVectorPainter(imageVector)
+    return painterResource(svgRes)
 }
 
 @Composable

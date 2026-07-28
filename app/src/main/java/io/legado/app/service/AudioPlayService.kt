@@ -411,12 +411,12 @@ class AudioPlayService : BaseService(), AudioPlayControllerListener, AudioPlayMa
                 .addCustomAction(
                     APP_ACTION_STOP,
                     getString(R.string.stop),
-                    R.drawable.ic_stop_black_24dp
+                    io.legado.shared.R.drawable.ic_stop_black_24dp
                 )
                 .addCustomAction(
                     APP_ACTION_TIMER,
                     getString(R.string.set_timer),
-                    R.drawable.ic_time_add_24dp
+                    io.legado.shared.R.drawable.ic_time_add_24dp
                 )
                 .build()
         )
@@ -466,13 +466,13 @@ class AudioPlayService : BaseService(), AudioPlayControllerListener, AudioPlayMa
             ?: getString(R.string.audio_play_s)
         val playPause = if (pause) {
             MediaPlaybackNotification.Action(
-                R.drawable.ic_play_24dp,
+                io.legado.shared.R.drawable.ic_play_24dp,
                 getString(R.string.resume),
                 servicePendingIntent<AudioPlayService>(IntentAction.resume)
             )
         } else {
             MediaPlaybackNotification.Action(
-                R.drawable.ic_pause_24dp,
+                io.legado.shared.R.drawable.ic_pause_24dp,
                 getString(R.string.pause),
                 servicePendingIntent<AudioPlayService>(IntentAction.pause)
             )
@@ -486,23 +486,23 @@ class AudioPlayService : BaseService(), AudioPlayControllerListener, AudioPlayMa
             contentIntent = activityPendingIntent<AudioPlayActivity>("activity"),
             actions = listOf(
                 MediaPlaybackNotification.Action(
-                    R.drawable.ic_time_add_24dp,
+                    io.legado.shared.R.drawable.ic_time_add_24dp,
                     getString(R.string.set_timer),
                     servicePendingIntent<AudioPlayService>(IntentAction.addTimer)
                 ),
                 MediaPlaybackNotification.Action(
-                    R.drawable.ic_skip_previous,
+                    io.legado.shared.R.drawable.ic_skip_previous,
                     getString(R.string.pref_media_button_per_next),
                     servicePendingIntent<AudioPlayService>(IntentAction.prev)
                 ),
                 playPause,
                 MediaPlaybackNotification.Action(
-                    R.drawable.ic_skip_next,
+                    io.legado.shared.R.drawable.ic_skip_next,
                     getString(R.string.pref_media_button_per_next_summary),
                     servicePendingIntent<AudioPlayService>(IntentAction.next)
                 ),
                 MediaPlaybackNotification.Action(
-                    R.drawable.ic_stop_black_24dp,
+                    io.legado.shared.R.drawable.ic_stop_black_24dp,
                     getString(R.string.stop),
                     servicePendingIntent<AudioPlayService>(IntentAction.stop)
                 ),

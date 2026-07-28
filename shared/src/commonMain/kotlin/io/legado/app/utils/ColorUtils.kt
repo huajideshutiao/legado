@@ -1,7 +1,5 @@
 package io.legado.app.utils
 
-import androidx.annotation.ColorInt
-import androidx.annotation.FloatRange
 import kotlin.math.abs
 import kotlin.math.cbrt
 import kotlin.math.max
@@ -22,14 +20,14 @@ object ColorUtils {
      * WCAG 2.x 相对亮度: L = 0.2126*R + 0.7152*G + 0.0722*B (R/G/B 为 gamma 解码后的线性值)。
      * 对齐 androidx.core.graphics.ColorUtils.calculateLuminance。
      */
-    fun calculateLuminance(@ColorInt color: Int): Double {
+    fun calculateLuminance(color: Int): Double {
         val r = channelLinear(red(color))
         val g = channelLinear(green(color))
         val b = channelLinear(blue(color))
         return 0.2126 * r + 0.7152 * g + 0.0722 * b
     }
 
-    fun isColorLight(@ColorInt color: Int): Boolean {
+    fun isColorLight(color: Int): Boolean {
         return calculateLuminance(color) >= 0.5
     }
 
@@ -42,12 +40,11 @@ object ColorUtils {
         return "#$hex"
     }
 
-    fun stripAlpha(@ColorInt color: Int): Int {
+    fun stripAlpha(color: Int): Int {
         return -0x1000000 or color
     }
 
-    @ColorInt
-    fun shiftColor(@ColorInt color: Int, @FloatRange(from = 0.0, to = 2.0) by: Float): Int {
+    fun shiftColor(color: Int, by: Float): Int {
         if (by == 1f) return color
         val alpha = alpha(color)
         val hsv = FloatArray(3)
@@ -56,26 +53,22 @@ object ColorUtils {
         return (alpha shl 24) + (0x00ffffff and HSVToColor(hsv))
     }
 
-    @ColorInt
-    fun darkenColor(@ColorInt color: Int): Int {
+    fun darkenColor(color: Int): Int {
         return shiftColor(color, 0.9f)
     }
 
-    @ColorInt
-    fun lightenColor(@ColorInt color: Int): Int {
+    fun lightenColor(color: Int): Int {
         return shiftColor(color, 1.1f)
     }
 
-    @ColorInt
-    fun invertColor(@ColorInt color: Int): Int {
+    fun invertColor(color: Int): Int {
         val r = 255 - red(color)
         val g = 255 - green(color)
         val b = 255 - blue(color)
         return argb(alpha(color), r, g, b)
     }
 
-    @ColorInt
-    fun adjustAlpha(@ColorInt color: Int, @FloatRange(from = 0.0, to = 1.0) factor: Float): Int {
+    fun adjustAlpha(color: Int, factor: Float): Int {
         val alpha = (alpha(color) * factor).roundToInt()
         val red = red(color)
         val green = green(color)
@@ -83,8 +76,7 @@ object ColorUtils {
         return argb(alpha, red, green, blue)
     }
 
-    @ColorInt
-    fun withAlpha(@ColorInt baseColor: Int, @FloatRange(from = 0.0, to = 1.0) alpha: Float): Int {
+    fun withAlpha(baseColor: Int, alpha: Float): Int {
         val a = min(255, max(0, (alpha * 255).toInt())) shl 24
         val rgb = 0x00ffffff and baseColor
         return a + rgb
@@ -93,7 +85,7 @@ object ColorUtils {
     /**
      * Taken from CollapsingToolbarLayout's CollapsingTextHelper class.
      */
-    fun blendColors(color1: Int, color2: Int, @FloatRange(from = 0.0, to = 1.0) ratio: Float): Int {
+    fun blendColors(color1: Int, color2: Int, ratio: Float): Int {
         val inverseRatio = 1f - ratio
         val a = alpha(color1) * inverseRatio + alpha(color2) * ratio
         val r = red(color1) * inverseRatio + red(color2) * ratio
@@ -140,13 +132,13 @@ object ColorUtils {
 
     // ---- 纯 Kotlin 通道拆分 (替代 android.graphics.Color.alpha/red/green/blue) ----
 
-    fun alpha(@ColorInt color: Int): Int = color ushr 24
+    fun alpha(color: Int): Int = color ushr 24
 
-    fun red(@ColorInt color: Int): Int = color shr 16 and 0xFF
+    fun red(color: Int): Int = color shr 16 and 0xFF
 
-    fun green(@ColorInt color: Int): Int = color shr 8 and 0xFF
+    fun green(color: Int): Int = color shr 8 and 0xFF
 
-    fun blue(@ColorInt color: Int): Int = color and 0xFF
+    fun blue(color: Int): Int = color and 0xFF
 
     // ---- 纯 Kotlin HSV↔RGB (替代 android.graphics.Color.colorToHSV / HSVToColor) ----
 
@@ -154,7 +146,7 @@ object ColorUtils {
      * RGB → HSV, 对齐 android.graphics.Color.colorToHSV。
      * hsv[0]=Hue [0,360), hsv[1]=Saturation [0,1], hsv[2]=Value [0,1]。
      */
-    fun colorToHSV(@ColorInt color: Int, hsv: FloatArray) {
+    fun colorToHSV(color: Int, hsv: FloatArray) {
         val r = red(color) / 255f
         val g = green(color) / 255f
         val b = blue(color) / 255f
@@ -246,7 +238,7 @@ object ColorUtils {
     /**
      * sRGB → CIE-L*a*b* (D65 白点), 对齐 androidx.core.graphics.ColorUtils.colorToLAB。
      */
-    private fun colorToLAB(@ColorInt color: Int, lab: DoubleArray) {
+    private fun colorToLAB(color: Int, lab: DoubleArray) {
         val xyz = DoubleArray(3)
         colorToXYZ(color, xyz)
         // D65 白点参考: Xn=95.047, Yn=100.000, Zn=108.883
@@ -268,7 +260,7 @@ object ColorUtils {
     /**
      * sRGB → XYZ (D65), 对齐 androidx.core.graphics.ColorUtils.colorToXYZ。
      */
-    private fun colorToXYZ(@ColorInt color: Int, xyz: DoubleArray) {
+    private fun colorToXYZ(color: Int, xyz: DoubleArray) {
         val r = channelLinear(red(color))
         val g = channelLinear(green(color))
         val b = channelLinear(blue(color))

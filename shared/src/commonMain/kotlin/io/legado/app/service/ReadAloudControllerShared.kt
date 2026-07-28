@@ -12,13 +12,13 @@ import io.legado.app.help.tts.SystemTtsEngine
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.help.tts.TtsProgressListener
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
-import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.runBlocking
+import kotlin.concurrent.Volatile
 
 /**
  * 跨平台朗读控制器（KMP commonMain 版, KP2-D P0-8 新增）。
@@ -325,7 +325,6 @@ class ReadAloudControllerShared(
         val config = runCatching {
             runBlocking { httpTtsConfigLoader(id) }
         }.getOrNull() ?: return false
-        if (config == null) return false
 
         val player = httpTtsPlayerFactory(config) ?: return false
 

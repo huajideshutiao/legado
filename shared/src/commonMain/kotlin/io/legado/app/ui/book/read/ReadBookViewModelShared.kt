@@ -20,15 +20,19 @@ import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.app.ui.book.read.page.PageDelegateShared
 import io.legado.app.ui.book.read.page.entities.TextChapterShared
 import io.legado.app.ui.book.read.page.entities.TextPage
+import io.legado.app.ui.book.read.page.provider.ChapterContentParserShared
 import io.legado.app.ui.book.read.page.provider.SimpleChapterLayout
 import io.legado.app.ui.book.read.page.provider.SimpleTextMeasurer
 import io.legado.app.ui.book.searchContent.SearchResult
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -116,6 +120,8 @@ class ReadBookViewModelShared(
 
     // region 预下载状态 (对照 app 端 ReadBook 同名字段)
     private val loadingChapters = arrayListOf<Int>()
+    /** 单章排版/加载任务；切章时取消三章窗口外任务，对齐 app chapterLoadingJobs。 */
+    private val chapterLoadingJobs = mutableMapOf<Int, Job>()
 
     // 替代原 @Synchronized 的 this 监视器 (kotlin.jvm.Synchronized 无 common 变体且 native 无效)
     private val syncLock = SynchronizedObject()
@@ -124,6 +130,10 @@ class ReadBookViewModelShared(
     private val downloadFailChapters = mutableMapOf<Int, Int>()
     private val downloadScope = CoroutineScope(SupervisorJob() + IoDispatcher)
     private val preDownloadSemaphore = Semaphore(2)
+
+    /** 段评数按 chapter.index 复用；与 app ReadBook.reviewCountDeferred 生命周期一致。 */
+    private val reviewCountDeferred = mutableMapOf<Int, Deferred<Map<Int, Int>?>>()
+    private var reviewCountBookUrl: String? = null
     // endregion
 
     // region readBook 状态对外暴露 (readBook 私有, 桌面端 TTS Navigator 等外部消费者通过本区域访问)
@@ -158,12 +168,17 @@ class ReadBookViewModelShared(
      * 正文经 ContentProcessor 完整处理链后排版，详见 [contentLoadFinish]。
      */
     fun loadChapter(index: Int) {
-        scope.launch {
+        val currentBookUrl = readBook.book.value?.bookUrl
+        if (reviewCountBookUrl != currentBookUrl) {
+            clearExpiredChapterLoadingJobs(clearAll = true)
+            reviewCountBookUrl = currentBookUrl
+        }
+        launchChapterLoad(index) {
             // 1. 同步 shared 状态字段（callback 通知）
             readBook.loadChapter(index)
 
             // 2. 读章节列表（与 app 端 `appDb.bookChapterDao.getChapterList` 等价简化版）
-            val book = readBook.book.value ?: return@launch
+            val book = readBook.book.value ?: return@launchChapterLoad
             val chapterList: List<BookChapter> = runCatching {
                 AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
             }.getOrDefault(emptyList())
@@ -183,7 +198,7 @@ class ReadBookViewModelShared(
             if (chapterList.getOrNull(index) == null) {
                 // 章节序号越界：显示占位页
                 showMessageChapter("无章节内容", index, chapterList.size)
-                return@launch
+                return@launchChapterLoad
             }
 
             // 3.5 打开书首次装载时拉云进度（对照 app 端 initBook 的 syncProgress，每本书只触发一次）
@@ -197,15 +212,51 @@ class ReadBookViewModelShared(
                 readBook.clearTextChapter()
                 readBook.updateDurChapterIndex(index)
                 readBook.updateDurChapterPos(0)
+                clearExpiredChapterLoadingJobs()
                 // 落库 + WebDav 上传（上传时机 shared 折中为章节切换，见 uploadProgress KDoc）
                 uploadProgress()
             }
 
             // 5. 当前章优先装载，前后章异步预载（对照 app 端 loadContent 三章同载）
             loadContent(index)
-            launch { loadContent(index + 1) }
-            launch { loadContent(index - 1) }
+            launchChapterLoad(index + 1) { loadContent(index + 1) }
+            launchChapterLoad(index - 1) { loadContent(index - 1) }
         }
+    }
+
+    /**
+     * 以 chapter.index 记录任务；同章新任务替换旧任务，完成时仅清理自身。
+     */
+    private fun launchChapterLoad(index: Int, block: suspend CoroutineScope.() -> Unit): Job {
+        synchronized(syncLock) {
+            chapterLoadingJobs.remove(index)?.cancel()
+        }
+        val job: Job = scope.launch(block = block)
+        synchronized(syncLock) { chapterLoadingJobs[index] = job }
+        job.invokeOnCompletion {
+            synchronized(syncLock) {
+                if (chapterLoadingJobs[index] === job) chapterLoadingJobs.remove(index)
+            }
+        }
+        return job
+    }
+
+    /**
+     * 取消当前三章窗口外的排版/正文任务；clearAll 用于切书和销毁。
+     */
+    private fun clearExpiredChapterLoadingJobs(clearAll: Boolean = false) {
+        synchronized(syncLock) {
+            val iterator = chapterLoadingJobs.iterator()
+            while (iterator.hasNext()) {
+                val (index, job) = iterator.next()
+                if (clearAll || index !in readBook.durChapterIndex.value - 1..readBook.durChapterIndex.value + 1) {
+                    job.cancel()
+                    iterator.remove()
+                    loadingChapters.remove(index)
+                }
+            }
+        }
+        clearExpiredReviewCount(clearAll)
     }
 
     /**
@@ -223,17 +274,68 @@ class ReadBookViewModelShared(
                     AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)
                 }.getOrNull()
                 ?: return
+            // 与 app ReadBook.loadContent 一致：正文 IO 前先并行启动段评数请求，正文缓存命中也不阻塞。
+            val countDeferred = startReviewCountFetchAsync(book, chapter)
             val cached = runCatching {
                 BookStorageProviders.get().getContent(book, chapter)
             }.getOrNull()
-            val content = if (cached.isNullOrBlank()) downloadAwait(book, chapter) else cached
-            contentLoadFinish(book, chapter, content)
+            val content = cached ?: downloadAwait(book, chapter)
+            // 原版在 contentLoadFinish 入口先 removeLoading；先释放守卫，确保段评迟到触发的重排
+            // 可以立即重新加载同章，不会被本次 finally 尚未执行的 loading 标记挡住。
+            removeLoading(index)
+            contentLoadFinish(book, chapter, content, countDeferred)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             AppLog.put("加载正文出错\n${e.message}", e)
         } finally {
             removeLoading(index)
+        }
+    }
+
+    /**
+     * 与正文加载并行启动段评数 IO，按 chapter.index 复用 Deferred。
+     * 条件和 app ReadBook.startReviewCountFetchAsync 完全一致。
+     */
+    private fun startReviewCountFetchAsync(
+        book: Book,
+        chapter: BookChapter,
+    ): Deferred<Map<Int, Int>?>? {
+        val source = readBook.bookSource.value ?: return null
+        if (!source.enabledReview) return null
+        if (source.ruleReview.isNullOrEmpty()) return null
+        val rule = source.reviewRule
+        if (rule.reviewUrl.isNullOrBlank()) return null
+        if (rule.reviewCountRule.isNullOrBlank()) return null
+        synchronized(syncLock) {
+            reviewCountDeferred[chapter.index]?.let { return it }
+            return scope.async(IoDispatcher) {
+                WebBook.getReviewCountAwait(source, book, chapter).getOrNull()
+            }.also { reviewCountDeferred[chapter.index] = it }
+        }
+    }
+
+    /**
+     * 段评数迟于当前章排版到达时触发整章重排；仅当前章且章节对象仍相同时生效。
+     */
+    private fun scheduleReviewRelayoutIfNeeded(
+        deferred: Deferred<Map<Int, Int>?>?,
+        chapter: BookChapter,
+        textChapter: TextChapterShared,
+    ) {
+        if (deferred == null || textChapter.reviewCountApplied) return
+        scope.launch {
+            val map = deferred.await() ?: return@launch
+            if (map.isEmpty()) return@launch
+            if (chapter.index != readBook.durChapterIndex.value) return@launch
+            if (readBook.curTextChapter.value !== textChapter) return@launch
+            readBook.clearTextChapter()
+            synchronized(syncLock) {
+                reviewCountDeferred[chapter.index] = CompletableDeferred(map)
+            }
+            launchChapterLoad(chapter.index) { loadContent(chapter.index) }
+            launchChapterLoad(chapter.index + 1) { loadContent(chapter.index + 1) }
+            launchChapterLoad(chapter.index - 1) { loadContent(chapter.index - 1) }
         }
     }
 
@@ -256,34 +358,54 @@ class ReadBookViewModelShared(
      * 排版并按滑窗 offset 归位（对照 app 端 `contentLoadFinish` + `processContent`：
      * ContentProcessor 替换净化 / 简繁转换 / 重新分段 / 去重复标题 → 排版 → offset -1/0/+1 三分支）。
      */
-    private suspend fun contentLoadFinish(book: Book, chapter: BookChapter, content: String) {
+    private suspend fun contentLoadFinish(
+        book: Book,
+        chapter: BookChapter,
+        content: String,
+        countDeferred: Deferred<Map<Int, Int>?>? = null,
+    ) {
         if (chapter.index !in readBook.durChapterIndex.value - 1..readBook.durChapterIndex.value + 1) {
             return
         }
-        val processor = runCatching { ContentProcessorProviders.get() }.getOrNull()
-        val displayTitle = runCatching {
-            chapter.getDisplayTitle(processor?.getTitleReplaceRules(book), book.getUseReplaceRule())
-        }.getOrDefault(chapter.title)
-        val processedContent = processor?.let {
-            runCatching {
-                it.getContent(book, chapter, content, includeTitle = false, useReplace = true).toString()
-            }.getOrNull()
-        } ?: content
-
-        val paragraphs = processedContent.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+        val processor = ContentProcessorProviders.get()
+        val displayTitle = chapter.getDisplayTitle(
+            processor.getTitleReplaceRules(book),
+            book.getUseReplaceRule(),
+        )
+        // 原版 ReadBook.processContent 把完整 BookContent 交给 ChapterProvider/TextChapterLayout：
+        // textList 的项边界、空行、首尾空白和 HTML 图片标签均属于排版输入，不能先压平后
+        // split/trim/filter。这里直接消费同一份 BookContent，并复用下沉的解析器。
+        val bookContent = processor.getBookContent(
+            book = book,
+            chapter = chapter,
+            content = content,
+            includeTitle = false,
+            useReplace = true,
+        )
+        val parsedParagraphs = ChapterContentParserShared.parse(bookContent)
+        // 原版排版开始时只非阻塞读取已完成的 Deferred；未完成则先按无段评排版，保证即开即用。
+        val reviewCountMap = countDeferred?.takeIf { it.isCompleted }?.await()
         val pages = buildLayout().layout(
             displayTitle = displayTitle,
-            contents = paragraphs,
+            contents = bookContent.textList,
             chapterIndex = chapter.index,
             chapterSize = readBook.chapterSize,
+            reviewCountMap = reviewCountMap,
+            parsedParagraphs = parsedParagraphs,
+            imageStyle = book.config.imageStyle,
         )
-        val textChapter = TextChapterShared(chapter.index, pages)
+        val textChapter = TextChapterShared(
+            chapterIndex = chapter.index,
+            pages = pages,
+            reviewCountApplied = reviewCountMap != null,
+        )
         pages.forEach { it.textChapter = textChapter }
         // 排版期间可能已切章，以最新 durChapterIndex 归位滑窗（原版 when(offset) 三分支，超窗丢弃）
         when (val offset = chapter.index - readBook.durChapterIndex.value) {
             0 -> {
                 readBook.updateTextChapter(offset, textChapter)
                 applyCurChapterPages(textChapter)
+                scheduleReviewRelayoutIfNeeded(countDeferred, chapter, textChapter)
             }
             -1, 1 -> readBook.updateTextChapter(offset, textChapter)
         }
@@ -320,15 +442,16 @@ class ReadBookViewModelShared(
         if (curIndex < readBook.simulatedChapterSize - 1) {
             readBook.updateDurChapterPos(0)
             readBook.updateDurChapterIndex(curIndex + 1)
+            clearExpiredChapterLoadingJobs()
             readBook.slideTextChaptersNext()
             val newCur = readBook.curTextChapter.value
             if (newCur != null) {
                 applyCurChapterPages(newCur)
             }
-            scope.launch {
-                if (newCur == null) loadContent(curIndex + 1)
-                loadContent(curIndex + 2)
+            if (newCur == null) {
+                launchChapterLoad(curIndex + 1) { loadContent(curIndex + 1) }
             }
+            launchChapterLoad(curIndex + 2) { loadContent(curIndex + 2) }
             // 落库 + WebDav 上传（上传时机 shared 折中为章节切换，见 uploadProgress KDoc）
             uploadProgress()
             return true
@@ -377,15 +500,16 @@ class ReadBookViewModelShared(
             }
             readBook.updateDurChapterPos(prevPos)
             readBook.updateDurChapterIndex(curIndex - 1)
+            clearExpiredChapterLoadingJobs()
             readBook.slideTextChaptersPrev()
             val newCur = readBook.curTextChapter.value
             if (newCur != null) {
                 applyCurChapterPages(newCur)
             }
-            scope.launch {
-                if (newCur == null) loadContent(curIndex - 1)
-                loadContent(curIndex - 2)
+            if (newCur == null) {
+                launchChapterLoad(curIndex - 1) { loadContent(curIndex - 1) }
             }
+            launchChapterLoad(curIndex - 2) { loadContent(curIndex - 2) }
             // 落库 + WebDav 上传（上传时机 shared 折中为章节切换，见 uploadProgress KDoc）
             uploadProgress()
             return true
@@ -547,6 +671,10 @@ class ReadBookViewModelShared(
      */
     fun onCleared() {
         uploadProgress()
+        clearExpiredChapterLoadingJobs(clearAll = true)
+        reviewCountBookUrl = null
+        preDownloadTask?.cancel()
+        downloadScope.coroutineContext.cancelChildren()
     }
     // endregion
 
@@ -595,7 +723,26 @@ class ReadBookViewModelShared(
             paragraphIndent = cfg.paragraphIndent,
             textFullJustify = cfg.textFullJustify,
             useZhLayout = cfg.useZhLayout,
+            reviewChar = "▨",
+            srcReplaceChar = ChapterContentParserShared.srcReplaceChar,
         )
+    }
+
+    /**
+     * 取消窗口外尚未完成的段评 IO；已完成结果保留供同一本书回翻复用。
+     * 对照 app ReadBook.clearExpiredChapterLoadingJob 中 reviewCountDeferred 分支。
+     */
+    private fun clearExpiredReviewCount(clearAll: Boolean = false) {
+        synchronized(syncLock) {
+            val iterator = reviewCountDeferred.iterator()
+            while (iterator.hasNext()) {
+                val (index, deferred) = iterator.next()
+                if (clearAll || (!deferred.isCompleted && index !in readBook.durChapterIndex.value - 1..readBook.durChapterIndex.value + 1)) {
+                    deferred.cancel()
+                    iterator.remove()
+                }
+            }
+        }
     }
 
     /** 章节加载互斥（对照 app 端 ReadBook.addLoading / removeLoading） */

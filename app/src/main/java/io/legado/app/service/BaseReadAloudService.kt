@@ -51,7 +51,6 @@ import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.launch
-import splitties.init.appCtx
 import splitties.systemservices.notificationManager
 import splitties.systemservices.telephonyManager
 
@@ -393,7 +392,7 @@ abstract class BaseReadAloudService : BaseService() {
                     PlaybackStateCompat.CustomAction.Builder(
                         "ACTION_ADD_TIMER",
                         getString(R.string.set_timer),
-                        R.drawable.ic_time_add_24dp
+                        io.legado.shared.R.drawable.ic_time_add_24dp
                     ).build()
                 )
                 .build()
@@ -457,13 +456,13 @@ abstract class BaseReadAloudService : BaseService() {
             ?: getString(R.string.read_aloud_s)
         val playPause = if (pause) {
             MediaPlaybackNotification.Action(
-                R.drawable.ic_play_24dp,
+                io.legado.shared.R.drawable.ic_play_24dp,
                 getString(R.string.resume),
                 aloudServicePendingIntent(IntentAction.resume)
             )
         } else {
             MediaPlaybackNotification.Action(
-                R.drawable.ic_pause_24dp,
+                io.legado.shared.R.drawable.ic_pause_24dp,
                 getString(R.string.pause),
                 aloudServicePendingIntent(IntentAction.pause)
             )
@@ -481,23 +480,23 @@ abstract class BaseReadAloudService : BaseService() {
             contentIntent = activityPendingIntent<ReadBookActivity>("activity"),
             actions = listOf(
                 MediaPlaybackNotification.Action(
-                    R.drawable.ic_time_add_24dp,
+                    io.legado.shared.R.drawable.ic_time_add_24dp,
                     getString(R.string.set_timer),
                     aloudServicePendingIntent(IntentAction.addTimer)
                 ),
                 MediaPlaybackNotification.Action(
-                    R.drawable.ic_skip_previous,
+                    io.legado.shared.R.drawable.ic_skip_previous,
                     getString(R.string.previous_chapter),
                     aloudServicePendingIntent(IntentAction.prev)
                 ),
                 playPause,
                 MediaPlaybackNotification.Action(
-                    R.drawable.ic_skip_next,
+                    io.legado.shared.R.drawable.ic_skip_next,
                     getString(R.string.next_chapter),
                     aloudServicePendingIntent(IntentAction.next)
                 ),
                 MediaPlaybackNotification.Action(
-                    R.drawable.ic_stop_black_24dp,
+                    io.legado.shared.R.drawable.ic_stop_black_24dp,
                     getString(R.string.stop),
                     aloudServicePendingIntent(IntentAction.stop)
                 ),

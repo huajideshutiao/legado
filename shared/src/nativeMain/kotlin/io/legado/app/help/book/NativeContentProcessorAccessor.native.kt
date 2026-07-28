@@ -77,6 +77,24 @@ class NativeContentProcessorAccessor : ContentProcessorAccessor {
         book, chapter, content, includeTitle = includeTitle, useReplace = useReplace
     ).toString()
 
+    override fun getBookContent(
+        book: Book,
+        chapter: BookChapter,
+        content: String,
+        includeTitle: Boolean,
+        useReplace: Boolean,
+        chineseConvert: Boolean,
+        reSegment: Boolean,
+    ): BookContent = getProcessor(book).getContent(
+        book = book,
+        chapter = chapter,
+        content = content,
+        includeTitle = includeTitle,
+        useReplace = useReplace,
+        chineseConvert = chineseConvert,
+        reSegment = reSegment,
+    )
+
     override fun upReplaceRules() {
         // 刷新所有缓存实例的替换规则 (与 app 端 ContentProcessor.upReplaceRules 静态方法一致)
         processorCache.values.forEach {

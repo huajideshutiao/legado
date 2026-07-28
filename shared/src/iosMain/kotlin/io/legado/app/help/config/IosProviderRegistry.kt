@@ -88,7 +88,7 @@ import platform.UIKit.UIDevice
  *
  * # 当前实现状态 (KP4 真实化后)
  * - 真实持久化的 provider: IosPreferenceProvider (NSUserDefaults) /
- *   IosDatabaseDriver (Room KMP + BundledSQLiteDriver) / IosBookStorage (NSFileManager) /
+ *   IosDatabaseDriver (Room KMP + NativeSQLiteDriver) / IosBookStorage (NSFileManager) /
  *   IosBookImageStorage (NSFileManager + Ktor) / IosLocalBookLocator (NSFileManager) /
  *   IosFileDownloader (NSFileManager + Ktor) / BackupFileOps (actual object, NSFileManager)
  * - HTTP provider: IosHttpProvider (Ktor CIO engine 包装 KmpHttpClient, 注册到

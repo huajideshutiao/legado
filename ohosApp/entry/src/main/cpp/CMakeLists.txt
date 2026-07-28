@@ -84,14 +84,16 @@ target_link_libraries(legado_napi PUBLIC
     libhilog_ndk.z.so
 )
 
-# 如果 liblegado_shared.so 存在则链接 (KP4 阶段可能尚未编译)
-if(EXISTS ${LEGADO_SHARED_LIB_PATH})
-    target_link_libraries(legado_napi PUBLIC ${LEGADO_SHARED_LIB_PATH})
-    target_compile_definitions(legado_napi PRIVATE LEGADO_SHARED_AVAILABLE=1)
-else()
-    target_compile_definitions(legado_napi PRIVATE LEGADO_SHARED_AVAILABLE=0)
-    message(WARNING "liblegado_shared.so 未找到, napi 桥接层将退化为 mock 实现")
+# 共享库由根 Gradle 任务 stageOhosNativeLibraries 统一准备。
+# 缺产物时立即失败，禁止生成表面可安装、实际退化到 mock 的 HAP。
+if(NOT EXISTS ${LEGADO_SHARED_LIB_PATH})
+    message(FATAL_ERROR
+        "liblegado_shared.so 未找到: ${LEGADO_SHARED_LIB_PATH}. "
+        "请先在项目根目录运行: ./gradlew stageOhosNativeLibraries -PenableOhosTarget=true"
+    )
 endif()
+target_link_libraries(legado_napi PUBLIC ${LEGADO_SHARED_LIB_PATH})
+target_compile_definitions(legado_napi PRIVATE LEGADO_SHARED_AVAILABLE=1)
 
 # 指定输出架构
 set_target_properties(legado_napi PROPERTIES

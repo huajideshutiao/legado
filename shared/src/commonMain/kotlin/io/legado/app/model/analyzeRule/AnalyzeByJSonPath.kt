@@ -103,6 +103,7 @@ class AnalyzeByJSonPath(json: Any) {
      */
     private fun elementToString(element: JsonElement): String {
         return when (element) {
+            is JsonNull -> ""
             is JsonPrimitive -> element.content
             is JsonArray -> element.joinToString("\n") { item ->
                 (item as? JsonPrimitive)?.content ?: item.toString()

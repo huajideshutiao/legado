@@ -1,15 +1,16 @@
+import com.android.build.api.artifact.SingleArtifact
+import com.android.build.api.variant.BuiltArtifactsLoader
+import com.android.build.api.variant.FilterConfiguration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 plugins {
-    alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
+    id("legado.android.application")
     alias(libs.plugins.kotlin.serialization)
     // Android 与 shared/desktop 统一由 Compose Multiplatform 插件提供 Compose 依赖坐标，
     // 避免 app 单独走 AndroidX Compose BOM、shared 走 org.jetbrains.compose 的双体系。
-    alias(libs.plugins.compose.multiplatform)
-    alias(libs.plugins.compose.compiler)
+    id("legado.compose")
     // K5-c Phase 5: @Database 已下沉 shared/commonMain, room 插件移至 shared 模块
     // alias(libs.plugins.room)
     alias(libs.plugins.ksp)
@@ -19,6 +20,46 @@ fun releaseTime(): String {
     val fmt = DateTimeFormatter.ofPattern("yy.MMddHH")
         .withZone(ZoneId.of("GMT+8"))
     return fmt.format(Instant.now())
+}
+
+abstract class CopyRenamedApks : DefaultTask() {
+
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val inputDirectory: DirectoryProperty
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @get:Internal
+    abstract val builtArtifactsLoader: Property<BuiltArtifactsLoader>
+
+    @get:Input
+    abstract val releaseSuffix: Property<String>
+
+    @TaskAction
+    fun copyApks() {
+        val output = outputDirectory.get().asFile
+        output.deleteRecursively()
+        output.mkdirs()
+
+        val builtArtifacts = builtArtifactsLoader.get().load(inputDirectory.get())
+            ?: error("Cannot load APK metadata from ${inputDirectory.get().asFile}")
+        val abiShortNames = mapOf(
+            "arm64-v8a" to "arm64",
+            "armeabi-v7a" to "armv7",
+            "x86_64" to "x64",
+            "x86" to "x86",
+        )
+
+        builtArtifacts.elements.forEach { artifact ->
+            val abi = artifact.filters.firstOrNull {
+                it.filterType == FilterConfiguration.FilterType.ABI
+            }?.identifier
+            val outputName = "${abiShortNames[abi] ?: "all"}${releaseSuffix.get()}.apk"
+            File(artifact.outputFile).copyTo(output.resolve(outputName), overwrite = true)
+        }
+    }
 }
 
 val name = "legado"
@@ -32,13 +73,7 @@ val gitCommits = providers.exec {
 // room { schemaDirectory("$projectDir/schemas") }
 
 android {
-    compileSdk = rootProject.extra["compile_sdk_version"] as Int
     namespace = "io.legado.app"
-    kotlin {
-        jvmToolchain {
-            languageVersion.set(JavaLanguageVersion.of(17))
-        }
-    }
 
     signingConfigs {
         if (project.hasProperty("RELEASE_STORE_FILE")) {
@@ -56,8 +91,6 @@ android {
     }
     defaultConfig {
         applicationId = "shutiao.reader"
-        minSdk = 26
-        targetSdk = 36
         versionCode = 10000 + gitCommits
         versionName = version
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -142,30 +175,6 @@ android {
         }
     }
 
-    // 改输出 APK 文件名: ApkVariantOutput 才有 getFilter/outputFileName, configureEach receiver 推断为
-    // 父类型 BaseVariantOutput, 需 cast (AGP 8 旧 VariantOutput API 仍可用, 新 Variant API 无 outputFileName 写入入口)
-    applicationVariants.configureEach {
-        outputs.configureEach {
-            val apkOutput = this as com.android.build.gradle.api.ApkVariantOutput
-            val abi = apkOutput.getFilter(com.android.build.VariantOutput.FilterType.ABI)
-            // 简写架构名称
-            val abiShortMap = mapOf(
-                "arm64-v8a" to "arm64",
-                "armeabi-v7a" to "armv7",
-                "x86_64" to "x64",
-                "x86" to "x86",
-                "all" to "all"
-            )
-            val abiName = abiShortMap[abi ?: "all"]
-            var suffix = ""
-            if (buildType.name == "release") {
-                suffix = if (buildType.applicationIdSuffix == ".releaseA") "_releaseA" else ""
-            }
-            apkOutput.outputFileName = "${abiName}${suffix}.apk"
-        }
-    }
-
-
     // KSP 参数
     ksp {
         // K5-c Phase 5: Room KSP 已移至 shared 模块, room.* arg 不再需要
@@ -181,9 +190,6 @@ android {
     compileOptions {
         // Flag to enable support for the new language APIs
         isCoreLibraryDesugaringEnabled = true
-        // Sets Java compatibility
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
     }
     packaging {
         resources.excludes.add("META-INF/*")
@@ -214,6 +220,23 @@ android {
     }
     tasks.withType<JavaCompile>().configureEach {
         //options.compilerArgs.add("-Xlint:unchecked")
+    }
+}
+
+// The public Variant/Artifacts API deliberately keeps AGP's packaged APK names stable for
+// Android Studio deployment. Copy release-facing APKs to a separate directory instead of
+// mutating internal variant output objects. Each task is wired lazily to its variant APKs.
+androidComponents {
+    onVariants { variant ->
+        val taskName = "copyRenamedApksFor${variant.name.replaceFirstChar(Char::uppercaseChar)}"
+        val copyTask = tasks.register<CopyRenamedApks>(taskName) {
+            outputDirectory.set(layout.buildDirectory.dir("outputs/renamed-apks/${variant.name}"))
+            builtArtifactsLoader.set(variant.artifacts.getBuiltArtifactsLoader())
+            releaseSuffix.set("")
+        }
+        variant.artifacts.use(copyTask)
+            .wiredWith(CopyRenamedApks::inputDirectory)
+            .toListenTo(SingleArtifact.APK)
     }
 }
 

@@ -239,6 +239,26 @@ object WebBookProvidersImpl :
         book, chapter, content, includeTitle = includeTitle, useReplace = useReplace
     ).toString()
 
+    // 阅读排版主链用: 保留 BookContent.textList / sameTitleRemoved / effectiveReplaceRules，
+    // 避免 shared 提前压平正文后再 split/trim/filter 改变原版排版输入语义。
+    override fun getBookContent(
+        book: io.legado.app.data.entities.Book,
+        chapter: io.legado.app.data.entities.BookChapter,
+        content: String,
+        includeTitle: Boolean,
+        useReplace: Boolean,
+        chineseConvert: Boolean,
+        reSegment: Boolean,
+    ): io.legado.app.help.book.BookContent = ContentProcessor.get(book).getContent(
+        book = book,
+        chapter = chapter,
+        content = content,
+        includeTitle = includeTitle,
+        useReplace = useReplace,
+        chineseConvert = chineseConvert,
+        reSegment = reSegment,
+    )
+
     // ImportBookSourceViewModelShared 用: 刷新所有缓存 ContentProcessor 的替换规则
     override fun upReplaceRules() = ContentProcessor.upReplaceRules()
 

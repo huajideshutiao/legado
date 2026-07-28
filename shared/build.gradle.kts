@@ -1,9 +1,7 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 
 plugins {
-    id("org.jetbrains.kotlin.multiplatform")
-    alias(libs.plugins.android.library)
+    id("legado.kmp.library")
     // Book/ReadConfig @Serializable + LocalDateAsGsonSerializer.Serializer() 编译器插件, 随 Book 下沉带入
     alias(libs.plugins.kotlin.serialization)
     // K5-c Phase 5: @Database 下沉 commonMain, shared 模块需要 room 插件配置 schema 输出
@@ -12,8 +10,7 @@ plugins {
     alias(libs.plugins.ksp)
     // KMP UI 共享: shared 启用 Compose Multiplatform, commonMain 承载 app/desktop 共享 Composable
     // (用户指示: app 模块 Compose 化尽量复用, KMP 最佳范式)
-    alias(libs.plugins.compose.multiplatform)
-    alias(libs.plugins.compose.compiler)
+    id("legado.compose")
 }
 
 // K5-c Phase 5: Room schema 输出目录 (从 app/schemas 迁移到 shared/schemas)
@@ -28,33 +25,44 @@ room {
 // always 直接放行生成, 与 Auto 命中时行为一致。
 compose.resources {
     generateResClass = always
+    // 图标保留一份源文件：非 Android 目标由 Compose Resources 打包，Android 目标
+    // 通过 android.sourceSets.main.res 直接编译为原生 drawable，避免 APK 同时出现
+    // res/drawable XML 与 assets/composeResources 图标副本。
+    customDirectory(
+        sourceSetName = "nonAndroidIconMain",
+        directoryProvider = providers.provider { layout.projectDirectory.dir("src/sharedIconResources") },
+    )
 }
 
-kotlin {
-    jvmToolchain(17)
+// iOS/macOS 产物只能在 macOS 主机编译：非 macOS 不注册 iOS target，从源头避免创建任务、
+// 解析配置及下载 iOS 依赖。enableIosTarget 仅作为 macOS 主机上的显式开关。
+val isMacHost = System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
+val enableIosTarget = isMacHost &&
+    (providers.gradleProperty("enableIosTarget").orNull?.toBoolean() ?: true)
+val enableOhosTarget = providers.gradleProperty("enableOhosTarget").orNull?.toBoolean() ?: false
 
+kotlin {
     // NoStackTraceException 系 expect/actual class(栈抑制为 JVM 专属),压 Beta 告警
     compilerOptions {
         freeCompilerArgs.add("-Xexpect-actual-classes")
     }
 
-    androidTarget {
-        compilations.configureEach {
-            compileTaskProvider.configure {
-                compilerOptions {
-                    jvmTarget.set(JvmTarget.JVM_17)
-                }
-            }
-        }
-    }
-
     jvm()
 
-    // KMP 跨端 target (iOS/鸿蒙) 按 gradle 属性条件启用:
+    android {
+        namespace = "io.legado.shared"
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
+        androidResources {
+            enable = true
+        }
+        withHostTest {}
+    }
+
+    // KMP 跨端 target (iOS/鸿蒙) 按 gradle 属性条件启用。
     val isIdea = System.getProperty("idea.active") == "true"
     val officialVersion = "1.8.2"
-    val enableIosTarget = (project.findProperty("enableIosTarget") ?: "true").toString() == "true"
-    val enableOhosTarget = (project.findProperty("enableOhosTarget") ?: "false").toString() == "true"
 
     if (enableIosTarget) {
         // KP3: 仅启用 iosArm64 + iosSimulatorArm64, 暂不启用 iosX64 (老 x86 模拟器)
@@ -118,7 +126,7 @@ kotlin {
             // KP4: 输出 liblegado_shared.so 供 ohosApp/entry/src/main/cpp/legado_napi.cpp 链接
             // (LegadoNativeExports.kt 用 @CName 导出 C ABI, napi 桥接层 dlopen/dlsym 调用)
             // baseName "legado_shared" → 产物 liblegado_shared.so (linux 命名规范: lib<baseName>.so)
-            // CMakeLists.txt 中 LEGADO_SHARED_LIB_PATH 引用此产物, 不存在时退化为 mock
+            // 根 Gradle staging 任务会将产物复制到鸿蒙 entry；CMake 缺失时直接失败
             binaries {
                 sharedLib {
                     baseName = "legado_shared"
@@ -148,19 +156,19 @@ kotlin {
                 create("mykmp_framework") {
                     defFile(project.file("src/ohosMain/nativeInterop/cinterop/antui_framework.def"))
                     compilerOpts("-I${project.projectDir.absolutePath}/src/ohosMain/nativeInterop/cinterop")
+                    linkerOpts("-L${rootProject.projectDir}/ohosApp/entry/libs/arm64-v8a")
                 }
             }
         }
     }
 
+    // 默认层级由 legado.kmp.library 统一应用；此处只追加项目特有的共享层。
     sourceSets {
         commonMain.dependencies {
             implementation(libs.kotlin.stdlib)
             // @JsApi 注解 (BaseSource/CacheManager 等 JS 面标注), 全 target 微型模块
             // api: 注解出现在 shared 公开类型上, app 端 KSP 需解析到该注解才能生成分派表
             api(project(":modules:js-api"))
-            // PageAnim.kt @IntDef 注解需要; androidx.annotation 1.10.0 已 KMP 发布
-            implementation(libs.androidx.annotation)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.atomicfu)
             // okio 已 KMP 发布; commonMain 用 okio.IOException (KmpCallback.onFailure 公开签名引用, 故 api)
@@ -170,10 +178,6 @@ kotlin {
             // room-ktx (协程支持) Android 专属, 不在 commonMain 暴露, 移到 androidMain
             api(libs.room.common)
             api(libs.room.runtime)
-            // KMP Room 2.8.x 配套: sqlite-bundled 提供 BundledSQLiteDriver (跨平台 SQLite)
-            // commonMain 引入让 jvm/android/ios/ohos 均可直接用 BundledSQLiteDriver()
-            // 见 https://developer.android.com/kotlin/multiplatform/room
-            implementation(libs.androidx.sqlite.bundled)
             // HtmlFormatter/EscapeUtils 的 HTML 解析（ksoup 已 KMP 发布，公开签名不泄漏其类型）
             // 原 modules:jsoup-compat 已合并到 shared commonMain/jvmAndAndroidMain (KMP 最佳范式: 单一 KMP 共享模块)
             implementation(libs.ksoup)
@@ -198,11 +202,17 @@ kotlin {
             // settings.gradle.kts 的 configurations.all { eachDependency/force } 对其完全不生效
             // → IDE sync 报 "Could not resolve components-resources:1.8.2.99-alipay"。
             // 声明期钉版是唯一能覆盖 detachedConfiguration 的位置 (从源头就不产生 -alipay 坐标)。
-            api("org.jetbrains.compose.components:components-resources:1.8.2")
+            api(
+                if (enableOhosTarget) {
+                    "org.jetbrains.compose.components:components-resources:1.8.2.99-alipay"
+                } else {
+                    "org.jetbrains.compose.components:components-resources:1.8.2"
+                }
+            )
         }
         // sharedUiMain: Compose UI 共享源集, android/jvm/ios/ohos 均继承
-        // 不含 reorderable/coil3/multiplatformMarkdown/ui-tooling-preview/material-icons-extended 依赖
-        // (五库未发布 ohosArm64 变体) 使用 these 库的代码通过 expect/actual 抽离, actual 实现在 nonOhosUiMain
+        // 不含 reorderable/coil3/multiplatformMarkdown/ui-tooling-preview 依赖
+        // (四库未发布 ohosArm64 变体) 使用这些库的代码通过 expect/actual 抽离, actual 实现在 nonOhosUiMain
         // ohosMain 提供 stub actual (Compose 原生/降级实现)
         val sharedUiMain by creating {
             dependsOn(commonMain.get())
@@ -222,19 +232,10 @@ kotlin {
                     implementation(compose.material)
                     implementation(compose.ui)
                 }
-
-                // material3/ui-tooling 用显式官方坐标而非 compose.material3/compose.uiTooling 访问器:
-                // 二者在 settings.gradle.kts 已被全局 force 到官方版 (fork 未发布对应制品), 声明期直接钉版
-                // 语义等价, 且能覆盖 KGP IdeBinaryDependencyResolver 的 detachedConfiguration
-                // (绕过 settings 规则, 详见 commonMain 的 components-resources 注释)
-                implementation("org.jetbrains.compose.material3:material3:1.8.2")
-                // @Preview 注解依赖 (ui-tooling 含多平台渲染支持)
-                implementation("org.jetbrains.compose.ui:ui-tooling:1.8.2")
-                // ui-tooling-preview / material-icons-extended 移到 nonOhosUiMain (fork 未发布 ohosArm64 变体)
             }
         }
-        // nonOhosUiMain: 承载 reorderable/coil3/multiplatformMarkdown/ui-tooling-preview/material-icons-extended 依赖和 actual 实现
-        // android/jvm/ios 继承此源集; ohosMain 不继承, 只继承 sharedUiMain + 提供 stub actual
+        // nonOhosUiMain: 承载 reorderable/coil3/multiplatformMarkdown 依赖和 actual 实现
+        // android/jvm/ios 继承此源集; 平台专属 Preview 注解依赖分别放 androidMain/jvmMain，避免进入 iOS cinterop
         val nonOhosUiMain by creating {
             dependsOn(sharedUiMain)
             dependencies {
@@ -246,10 +247,6 @@ kotlin {
                 implementation(libs.multiplatformMarkdown)
                 implementation(libs.multiplatformMarkdown.m3)
                 implementation(libs.multiplatformMarkdown.coil3)
-                // @Preview 注解 (fork 未发布 ohosArm64 变体, 仅 android/jvm/ios 使用)
-                implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.8.2")
-                // material-icons-extended 含 ~5000 图标 (fork 未发布 ohosArm64 变体, 仅 android/jvm/ios 使用)
-                implementation(compose.materialIconsExtended)
             }
         }
         // skikoUiMain: desktop (jvm) 与鸿蒙共用的 skia 直调源集。
@@ -280,10 +277,6 @@ kotlin {
                 // Coil3 OkHttp 网络后端: 仅发 jvm/android 变体 (无 iosArm64/linuxArm64),
                 // 必须放 jvmAndAndroidMain; 若放 sharedUiMain 会因 iosMain 继承而 iOS 依赖解析失败
                 implementation(libs.coil3.network.okhttp)
-                // epublib 下沉: org.xmlpull.v1.XmlSerializer / XmlPullParserFactory 接口由 kxml2 提供
-                // (Android 内置 kxml2 实现, 桌面 JVM 无 xmlpull API; 引入 kxml2 让两端行为一致, Android 端不冲突)
-                // kxml2 纯 Java 实现, 仅发布 JVM 变体, 故放 jvmAndAndroidMain (Android + 桌面 JVM 共用)
-                implementation("net.sf.kxml:kxml2:2.3.0")
                 // Web 服务下沉: HttpServer/WebSocketServer 基于 NanoHTTPD(纯 Java, Android + 桌面 JVM 共用)
                 implementation(libs.nanohttpd.nanohttpd)
                 implementation(libs.nanohttpd.websocket)
@@ -308,6 +301,8 @@ kotlin {
                 // Android 新 TextContextMenuProvider 的长期修复：1.11 在 SelectionContainer 复制后
                 // 主动释放选区，避免平台 ActionMode 关闭前闪出仅“全选”的过渡菜单。
                 implementation(libs.compose.foundation.android)
+                // Android 原生 @Preview；该制品没有 Kotlin/Native 变体，不能放进 iOS 继承的中间源集。
+                implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.8.2")
             }
         }
         jvmMain {
@@ -318,32 +313,44 @@ kotlin {
             // skiko 由 compose desktop 变体传递引入 (ui-graphics-desktop → org.jetbrains.skiko:skiko), 无需显式声明
             dependsOn(skikoUiMain)
             dependencies {
-                // 桌面端 ResourceProvider.jvm 用 Icons.Filled.* 替代 painterResource(R.drawable.*)
-                // material-icons-extended 含 ~5000 图标; core 只有 ~30, 不含 Search/MoreVert 等
-                implementation(compose.materialIconsExtended)
+                // Desktop 没有 Android 内置 XmlPull 与系统 SQLite，分别补齐 JVM 实现。
+                implementation("net.sf.kxml:kxml2:2.3.0")
+                implementation(libs.androidx.sqlite.bundled)
+                // Desktop 原生 @Preview；限制在 JVM 源集，避免污染 iOS cinterop 配置。
+                implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.8.2")
             }
         }
-        // Native 中间源集: iOS / 鸿蒙 (Kotlin/Native target) 共用 actual 实现
-        // nativeMain dependsOn commonMain; iosMain/ohosMain dependsOn nativeMain 间接继承 commonMain
-        // nativeMain 不依赖 sharedUiMain; iosMain 继承 nonOhosUiMain, ohosMain 继承 sharedUiMain
-        val nativeMain by creating {
+        // 图标资源只由非 Android 目标继承；Android 直接将同一目录编译为原生 drawable。
+        // 这样源码仍是单一数据源，同时避免 Android APK 再携带一整套 Compose drawable assets。
+        val nonAndroidIconMain by creating {
             dependsOn(commonMain.get())
-            dependencies {
-                // Ktor server (CIO engine): iOS/鸿蒙 (nativeMain) 共用 Web 服务壳
-                // (替代 jvmAndAndroidMain 的 NanoHTTPD); CIO 3.1.0 发布 iosArm64/linuxArm64 变体, 纯 Kotlin 无系统库依赖
-                implementation("io.ktor:ktor-server-core:3.1.0")
-                implementation("io.ktor:ktor-server-cio:3.1.0")
-                implementation("io.ktor:ktor-server-websockets:3.1.0")
-            }
         }
-        // iOS / 鸿蒙源集: 仅在对应 target 启用时参与编译 (默认忽略)
-        // 各 expect 的 actual 实现放 iosMain/ohosMain 目录, 启用 target 时编译验证
-        val iosMain by creating {
+        jvmMain.get().dependsOn(nonAndroidIconMain)
+
+        // Native 中间源集只在 iOS 或鸿蒙 target 实际启用时创建，避免普通 Windows/Linux 构建
+        // 注册无消费者的 Native 源集及其依赖。
+        val nativeMain = if (enableIosTarget || enableOhosTarget) {
+            maybeCreate("nativeMain").apply {
+                dependencies {
+                    // Ktor server (CIO engine): iOS/鸿蒙 (nativeMain) 共用 Web 服务壳
+                    // (替代 jvmAndAndroidMain 的 NanoHTTPD); CIO 3.1.0 发布 iosArm64/linuxArm64 变体, 纯 Kotlin 无系统库依赖
+                    implementation("io.ktor:ktor-server-core:3.1.0")
+                    implementation("io.ktor:ktor-server-cio:3.1.0")
+                    implementation("io.ktor:ktor-server-websockets:3.1.0")
+                }
+            }
+        } else {
+            null
+        }
+        // iOS 源集仅在 macOS 且 iOS target 启用时创建，非 macOS 不注册其配置和依赖。
+        if (enableIosTarget) maybeCreate("iosMain").apply {
             // iosMain 继承 nonOhosUiMain (间接继承 sharedUiMain), 获取 reorderable/coil3/markdown actual
-            // nativeMain 下沉: iosMain dependsOn nativeMain (共用 Native actual, 如 ThreadBridge)
-            dependsOn(nativeMain)
+            // iosMain -> nativeMain 由默认层级模板提供；这里只追加项目特有的 UI 层。
             dependsOn(nonOhosUiMain)
+            dependsOn(nonAndroidIconMain)
             dependencies {
+                // iOS 使用系统自带 SQLite，通过 NativeSQLiteDriver 接入 Room。
+                implementation(libs.androidx.sqlite.framework)
                 // iOS 加密 (AES/MD5/SHA/HMAC): krypto 4.0.10 纯 Kotlin KMP 实现
                 // 替代 jvmAndAndroidMain 的 hutool; 字节级与 javax.crypto.Cipher 对拍
                 implementation(libs.krypto)
@@ -351,11 +358,6 @@ kotlin {
                 // pom 依赖 ktor-client-core 3.1.0 与本源集 Ktor 版本一致; 桥接 IosHttpProvider 的 Ktor HttpClient
                 // (desktop/android 走 jvmAndAndroidMain 的 coil-network-okhttp 后端, 故本依赖 iosMain 专属不放 nonOhosUiMain)
                 implementation(libs.coil3.network.ktor3)
-                // iOS Compose material-icons: ResourceProvider.ios.kt 用 Icons.Filled.Help 占位
-                // commonMain 的 compose.material3 不传递 material-icons, 需 iOS source set 显式声明
-                // Compose Multiplatform compose 对象无 materialIconsCore 属性, 用 materialIconsExtended 替代
-                // (jvmMain 显式声明 materialIconsExtended 同理)
-                implementation(compose.materialIconsExtended)
                 // iOS WebDav: Ktor 3.1.0 CIO 引擎 (纯 Kotlin, 无 OpenSSL/平台依赖)
                 // 替代 jvmAndAndroidMain 的 OkHttp; 仅 iOS target 启用时拉取
                 implementation("io.ktor:ktor-client-core:3.1.0")
@@ -375,17 +377,20 @@ kotlin {
         // iosSimulatorArm64Main / iosArm64Main 源集声明已移除
         // Kotlin 2.3.21 hierarchy template 自动处理 dependsOn(iosMain), 手写冗余
         // iosX64Main 同理已移除 (KP3: 不再启用 iosX64 target, 现代 Mac 均为 ARM 架构)
-        val ohosMain by creating {
+        val ohosMain = if (enableOhosTarget) maybeCreate("ohosMain").apply {
             // nativeMain 下沉: ohosMain dependsOn nativeMain (共用 Native actual, 如 ThreadBridge), 间接继承 commonMain
-            dependsOn(nativeMain)
+            dependsOn(requireNotNull(nativeMain))
             // ohosMain 直接继承 sharedUiMain, 鸿蒙端复用全部 Compose UI 代码
             // reorderable/coil3/multiplatformMarkdown 三个库未发布 ohosArm64 变体,
             // 通过 expect/actual 抽离使用点, ohosMain 提供 actual 实现 (Compose 原生/stub)
             dependsOn(sharedUiMain)
+            dependsOn(nonAndroidIconMain)
             // skiko 直调 (Codec 逐帧动图解码): 与 desktop 共用 skikoUiMain 一份实现
             // (本源集下方已显式声明 libs.skiko 依赖)
             dependsOn(skikoUiMain)
             dependencies {
+                // 鸿蒙 Room 当前实现直接使用 bundled driver；只在鸿蒙变体解析。
+                implementation(libs.androidx.sqlite.bundled)
                 // skiko 0.9.4.2.40-alipay (鸿蒙端 Compose 渲染后端, 提供 ohosArm64 变体)
                 implementation(libs.skiko)
                 // kotlinx-datetime (compose-multiplatform 1.8.2.99-alipay 传递依赖, 显式声明)
@@ -407,12 +412,12 @@ kotlin {
                 // ktor-client-websockets / ktor-websocket-serialization: ohosArm64 变体未发布且项目零使用 WebSocket 客户端
                 // 项目 WebSocket 全为服务端 (ktor-server-websockets, 见 KtorWebServerPlatform), 无需客户端模块
             }
-        }
+        } else null
         // ohosArm64 target (鸿蒙) 编译时包含 ohosMain 源集代码
         // 仅在 ohosArm64 target 启用 (enableOhosTarget=true) 时注册, 否则 by getting 会找不到源集
         if (enableOhosTarget) {
             val ohosArm64Main by getting {
-                dependsOn(ohosMain)
+                dependsOn(requireNotNull(ohosMain))
             }
         }
         val jvmAndAndroidTest by creating {
@@ -424,7 +429,7 @@ kotlin {
                 implementation("org.jetbrains.kotlin:kotlin-reflect")
             }
         }
-        androidUnitTest {
+        getByName("androidHostTest") {
             dependsOn(jvmAndAndroidTest)
         }
         jvmTest {
@@ -433,23 +438,22 @@ kotlin {
     }
 }
 
-android {
-    compileSdk = rootProject.extra["compile_sdk_version"] as Int
-    namespace = "io.legado.shared"
-    defaultConfig {
-        minSdk = 26
-        consumerProguardFiles("consumer-rules.pro")
+// Compose Resources 1.7+ 将资源复制到 Android assets；其复制任务不会可靠清理
+// 已删除/改名的旧产物。每次任务实际执行前重建自身输出，防止 SVG 等历史文件残留进 APK。
+tasks.matching {
+    it.name == "copyDebugComposeResourcesToAndroidAssets" ||
+        it.name == "copyReleaseComposeResourcesToAndroidAssets"
+}.configureEach {
+    doFirst {
+        outputs.files.forEach { output -> project.delete(output) }
     }
-    buildFeatures {
-        // printOnDebug 的 android actual 走本模块 BuildConfig.DEBUG（与 app release 行为一致）
-        buildConfig = true
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-    lint {
-        checkDependencies = true
+}
+
+androidComponents {
+    onVariants { variant ->
+        // 与 JVM/iOS/OHOS 共用同一套 vector XML，但 Android 交给 AAPT 编译为 res，
+        // 不再通过 Compose Resources 复制到 assets。
+        variant.sources.res?.addStaticSourceDirectory("src/sharedIconResources")
     }
 }
 
@@ -466,13 +470,13 @@ dependencies {
     // KP3: iOS target 默认启用, 追加 kspIosArm64/kspIosSimulatorArm64 让 Room 在 iOS 各 target 生成 AppDatabase_Impl
     // (Room KMP 2.8.x 支持 Kotlin/Native); iosX64 不启用故无 kspIosX64
     // iOS target 关闭时 (-PenableIosTarget=false), kspIosArm64 configuration 不存在, 必须条件判断避免配置失败
-    if ((project.findProperty("enableIosTarget") ?: "true").toString() == "true") {
+    if (enableIosTarget) {
         add("kspIosArm64", libs.room.compiler)
         add("kspIosSimulatorArm64", libs.room.compiler)
     }
     // add("kspIosX64", libs.room.compiler)  // KP3: iosX64 不启用 (androidx 依赖缺 iosX64 变体)
     // fork 版 Compose 工具链接入: ohosArm64 target 条件启用, kspOhosArm64 仅在 enableOhosTarget=true 时添加
-    if ((project.findProperty("enableOhosTarget") ?: "false").toString() == "true") {
+    if (enableOhosTarget) {
         add("kspOhosArm64", libs.room.compiler)  // fork 版 Compose 工具链: 替换原 kspLinuxArm64 (鸿蒙 Room 编译)
     }
 }

@@ -43,6 +43,11 @@
 -keep,allowoptimization @androidx.annotation.Keep class * { *; }
 # AnalyzeRuleCore 下沉 commonMain 后无法用 androidx @Keep (无 common 变体), 按类名 keep (JS 反射调用其方法)
 -keep,allowoptimization class io.legado.app.model.analyzeRule.AnalyzeRuleCore { *; }
+
+# Android-KMP library 的 consumer keep rules 发布在 AGP 8.13 尚不可用，
+# 先由最终 app 统一承载 shared/quickjs 的反射与 JNI 保留规则。
+-include ../shared/consumer-rules.pro
+-include ../modules/quickjs/consumer-rules.pro
 -keepclassmembers,allowoptimization class * {
     @androidx.annotation.Keep <methods>;
     @androidx.annotation.Keep <fields>;

@@ -1,11 +1,5 @@
 package io.legado.app.model
 
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.client.statement.bodyAsBytes
-import io.ktor.http.isSuccess
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
@@ -16,6 +10,8 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.NativeBookStorage
 import io.legado.app.help.book.removeType
+import io.legado.app.help.http.KmpRequestBuilder
+import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.http.cookieJarHeader
 import io.legado.app.help.media.SleepTimer
 import io.legado.app.help.toast.Toasters
@@ -439,22 +435,25 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
 
     private suspend fun downloadToCache(url: String, headers: Map<String, String>): File =
         withContext(Dispatchers.IO) {
-            val client = HttpClient(CIO)
+            val request = KmpRequestBuilder()
+                .url(url)
+                .get()
+                .apply {
+                    headers.forEach { (name, value) -> addHeader(name, value) }
+                }
+                .build()
+            val response = OkHttpClientProviders.get().newCall(request).execute()
             try {
-                val response = client.get(url) {
-                    headers.forEach { (k, v) -> header(k, v) }
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("HTTP ${response.code}: $url")
                 }
-                if (!response.status.isSuccess()) {
-                    throw IllegalStateException("HTTP ${response.status.value}: $url")
-                }
-                val bytes = response.bodyAsBytes()
                 val cacheDir = File("${NativeBookStorage.defaultRootPath()}/$AUDIO_CACHE_DIR")
                 if (!cacheDir.exists()) cacheDir.mkdirs()
                 val tmpFile = File(cacheDir, "${url.hashCode() and 0x7FFFFFFF}.tmp")
-                tmpFile.writeBytes(bytes)
+                tmpFile.writeBytes(response.body.bytes())
                 tmpFile
             } finally {
-                client.close()
+                response.close()
             }
         }
 

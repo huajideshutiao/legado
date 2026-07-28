@@ -81,23 +81,33 @@ Legado 项目的 KMP 全平台化任务 (KP4) 需要让鸿蒙 target (linuxArm64
 
 ## 4. 编译与运行流程
 
-### 4.1 编译 KMP 共享库 (.so)
+### 4.1 准备鸿蒙原生产物
 
 ```bash
-# 鸿蒙 target 已切换为 ohosArm64 (支付宝 fork 工具链), 默认关闭需显式启用:
-./gradlew :shared:linkDebugSharedOhosArm64 -PenableOhosTarget=true
-# 产物: shared/build/bin/ohosArm64/debugShared/liblegado_shared.so
+# 同时构建 KMP 共享库与 Compose 桥接库，并统一复制到
+# ohosApp/entry/libs/arm64-v8a/：
+./gradlew stageOhosNativeLibraries -PenableOhosTarget=true
+
+# 可选：显式校验两个必需 .so 均存在
+./gradlew verifyOhosNativeLibraries -PenableOhosTarget=true
 ```
+
+Gradle staging 契约包含：
+- `liblegado_shared.so`：`:shared:linkDebugSharedOhosArm64` 产物。
+- `libmykmp_framework.so`：`build_ohos_framework.sh` 产物；会先于 KMP shared link 构建并加入 linker 搜索路径。
 
 ### 4.2 编译鸿蒙 HAP
 
 ```
-1. DevEco Studio 打开 ohosApp/
-2. 把 liblegado_shared.so 复制到 ohosApp/entry/libs/arm64-v8a/
-3. Sync Project (hvigor 同步)
-4. Build → Build Hap(s)/APP(s) → Build Hap(s)
-5. 产物: ohosApp/entry/build/default/outputs/default/entry-default-unsigned.hap
+1. DevEco Studio 单独打开 ohosApp/（不要打开仓库根目录）
+2. Sync Project (hvigor 同步)
+3. Build → Build Hap(s)/APP(s) → Build Hap(s)
+4. 产物: ohosApp/entry/build/default/outputs/default/entry-default-unsigned.hap
 ```
+
+`entry/hvigorfile.ts` 已把 `stageOhosNativeLibraries` 接到 CMake 配置前，DevEco Studio 点击构建时会自动调用根
+Gradle 构建并准备两个原生库，无需预先手工运行 Gradle。CMake 在原生产物构建失败或缺失时会直接失败，不再静默生成
+mock 版本。
 
 ### 4.3 部署运行
 

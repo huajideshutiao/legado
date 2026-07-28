@@ -616,16 +616,20 @@ object ReadBookConfig {
         var footerMode: Int = 0
     ) {
 
-        @Transient
+        @kotlin.jvm.Transient
+        @kotlinx.serialization.Transient
         private var textColorIntEInk = -1
 
-        @Transient
+        @kotlin.jvm.Transient
+        @kotlinx.serialization.Transient
         private var textColorIntNight = -1
 
-        @Transient
+        @kotlin.jvm.Transient
+        @kotlinx.serialization.Transient
         private var textColorInt = -1
 
-        @Transient
+        @kotlin.jvm.Transient
+        @kotlinx.serialization.Transient
         private var initColorInt = false
 
         private fun initColorInt() {

@@ -53,8 +53,8 @@ import io.legado.app.utils.getPrefString
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.startActivity
-import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.ReorderableRow
+
 /**
  * 主题设置宿主（原 ThemeConfigFragment 壳上浮）。
  * launcherIcon 写 prefs 后仍走 OnSharedPreferenceChangeListener 承接原副作用；动态 summary 用 state 承接；
@@ -189,29 +189,29 @@ class ThemeConfigHost(activity: ConfigActivity) : ConfigHost(activity),
         val defaultNavItems = listOf(
             NavItem(
                 BottomNavTag.HOME,
-                R.drawable.ic_bottom_home_s,
-                R.drawable.ic_bottom_home_e,
+                io.legado.shared.R.drawable.ic_bottom_home_s,
+                io.legado.shared.R.drawable.ic_bottom_home_e,
                 R.string.home,
                 AppConfig.showHome
             ),
             NavItem(
                 BottomNavTag.BOOKSHELF,
-                R.drawable.ic_bottom_books_s,
-                R.drawable.ic_bottom_books_e,
+                io.legado.shared.R.drawable.ic_bottom_books_s,
+                io.legado.shared.R.drawable.ic_bottom_books_e,
                 R.string.bookshelf,
                 true
             ),
             NavItem(
                 BottomNavTag.DISCOVERY,
-                R.drawable.ic_bottom_explore_s,
-                R.drawable.ic_bottom_explore_e,
+                io.legado.shared.R.drawable.ic_bottom_explore_s,
+                io.legado.shared.R.drawable.ic_bottom_explore_e,
                 R.string.discovery,
                 AppConfig.showDiscovery
             ),
             NavItem(
                 BottomNavTag.MY,
-                R.drawable.ic_bottom_person_s,
-                R.drawable.ic_bottom_person_e,
+                io.legado.shared.R.drawable.ic_bottom_person_s,
+                io.legado.shared.R.drawable.ic_bottom_person_e,
                 R.string.my,
                 true
             ),

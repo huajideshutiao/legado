@@ -52,20 +52,14 @@ xcodegen generate
 > 如果不装 XcodeGen, 也可手动用 Xcode 创建工程 (File > New > Project > iOS App),
 > 然后手动添加 iOSApp.swift / ContentView.swift / Info.plist, 配置 framework 搜索路径。
 
-### 4. 编译 shared framework (Kotlin Multiplatform)
+### 4. shared framework 直接集成
 
-```bash
-# 在项目根目录 (legado/)
-./gradlew :shared:linkDebugFrameworkIosArm64       # 真机
-./gradlew :shared:linkDebugFrameworkIosSimulatorArm64  # 模拟器 (Apple Silicon Mac)
-```
+`project.yml` 使用 Kotlin 官方 `embedAndSignAppleFrameworkForXcode` 任务。Xcode 每次构建会根据
+当前 `SDK_NAME`、`ARCHS` 和 Debug/Release 自动选择正确的 Kotlin target，复制 framework 到
+`TARGET_BUILD_DIR` 并完成签名，不再依赖硬编码的 `shared/build/bin/...` 路径。
 
-产物路径:
-- `shared/build/bin/iosArm64/debugFramework/shared.framework`
-- `shared/build/bin/iosSimulatorArm64/debugFramework/shared.framework`
-
-> XcodeGen 的 `preBuildScripts` 已配置自动编译: 仅在 framework 不存在时触发 gradle,
-> 避免每次 build 都跑 gradle (增量构建由 Kotlin/Gradle 自管理)。
+直接在 Xcode 构建即可；如由 Android Studio/IntelliJ 的 iOS 运行配置发起，脚本会通过
+`OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED` 避免重复调用 Gradle。
 
 ### 5. 打开 Xcode 运行
 

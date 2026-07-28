@@ -416,7 +416,8 @@ object ThemeConfig {
         var bottomBackground: String
     ) {
 
-        @Transient
+        @kotlin.jvm.Transient
+        @kotlinx.serialization.Transient
         var isBuiltin: Boolean = false
 
         override fun hashCode(): Int {

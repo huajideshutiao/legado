@@ -12,7 +12,6 @@ import java.io.OutputStreamWriter
 import java.io.UnsupportedEncodingException
 import java.io.Writer
 import java.net.URL
-import java.util.Objects
 import javax.xml.parsers.DocumentBuilder
 import javax.xml.parsers.DocumentBuilderFactory
 import javax.xml.parsers.ParserConfigurationException
@@ -39,18 +38,15 @@ class EpubProcessorSupport {
                     previousLocation + systemId.substring(systemId.lastIndexOf('/'))
             }
 
-            if (Objects.requireNonNull<ClassLoader?>(this.javaClass.getClassLoader())
-                    .getResource(resourcePath) == null
-            ) {
+            val classLoader = requireNotNull(javaClass.classLoader)
+            if (classLoader.getResource(resourcePath) == null) {
                 throw RuntimeException(
                     ("remote resource is not cached : [" + systemId
                         + "] cannot continue")
                 )
             }
 
-            val `in` =
-                Objects.requireNonNull<ClassLoader?>(EpubProcessorSupport::class.java.getClassLoader())
-                    .getResourceAsStream(resourcePath)
+            val `in` = classLoader.getResourceAsStream(resourcePath)
             return InputSource(`in`)
         }
     }

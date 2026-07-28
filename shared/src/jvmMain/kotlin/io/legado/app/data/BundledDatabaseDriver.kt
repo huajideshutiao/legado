@@ -97,8 +97,7 @@ class BundledDatabaseDriver(
          * 默认数据库路径: `{desktopAppRootDir}/legado.db`。
          *
          * - 便携模式: 跟随 exe 同级 `data/` 目录 (portable.txt 标记 / legado.portable.root)
-         * - 安装/开发模式: 系统数据目录 (%APPDATA%/XDG_DATA_HOME/Application Support)/legado,
-         *   旧 ~/.legado 有数据时沿用 (见 desktopAppRootDir)
+         * - 安装/开发模式: 系统数据目录 (%APPDATA%/XDG_DATA_HOME/Application Support)/legado
          */
         fun defaultDbPath(): String {
             return File(desktopAppRootDir(), DATABASE_NAME).absolutePath

@@ -106,9 +106,22 @@ class AnalyzeByJSonPathUnwrapTest {
     }
 
     @Test
+    fun `显式 JsonNull 文本入口返回空字符串`() {
+        val analyzer = AnalyzeByJSonPath("""{"body":null,"text":"null"}""")
+        assertEquals("", analyzer.getString("$.body"))
+        assertEquals("null", analyzer.getString("$.text"))
+    }
+
+    @Test
     fun `不存在的路径经 AnalyzeRule 返回空字符串`() {
         val analyzer = AnalyzeRuleCore().setContent("""{"name":"玄幻"}""")
         assertEquals("", analyzer.getString("$.missing"))
+    }
+
+    @Test
+    fun `显式 JsonNull 经内嵌规则返回空字符串`() {
+        val analyzer = AnalyzeRuleCore().setContent("""{"body":null}""")
+        assertEquals("", analyzer.getString("{{$.body}}"))
     }
 
     @Test

@@ -1,12 +1,8 @@
 package io.legado.app.help.tts
 
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.client.statement.bodyAsBytes
-import io.ktor.http.isSuccess
 import io.legado.app.help.book.NativeBookStorage
+import io.legado.app.help.http.KmpRequestBuilder
+import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.MD5Utils
@@ -320,21 +316,25 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
     }
 
     /**
-     * 用 Ktor HttpClient (CIO engine) 下载 url, headers 逐个注入。
-     * 参考 [io.legado.app.help.file.OhosFileDownloader.download]。
+     * 通过鸿蒙原生 HTTP provider 下载。底层由 KmpHttpTypes.ohos.kt 经 napi 调用
+     * `@ohos.net.http`，避免依赖没有 ohosArm64 变体的 Ktor。
      */
     private suspend fun downloadBytes(url: String, headers: Map<String, String>): ByteArray {
-        val client = HttpClient(CIO)
+        val request = KmpRequestBuilder()
+            .url(url)
+            .get()
+            .apply {
+                headers.forEach { (name, value) -> addHeader(name, value) }
+            }
+            .build()
+        val response = OkHttpClientProviders.get().newCall(request).execute()
         try {
-            val response = client.get(url) {
-                headers.forEach { (k, v) -> header(k, v) }
+            if (!response.isSuccessful) {
+                throw IllegalStateException("HTTP ${response.code}: $url")
             }
-            if (!response.status.isSuccess()) {
-                throw IllegalStateException("HTTP ${response.status.value}: $url")
-            }
-            return response.bodyAsBytes()
+            return response.body.bytes()
         } finally {
-            client.close()
+            response.close()
         }
     }
 

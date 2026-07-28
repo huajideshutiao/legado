@@ -147,9 +147,7 @@ fun ThemeListDialog(onDismiss: () -> Unit) {
     dataVersion
 
     // 列表 = 内置主题 + 自定义主题 (对照 app 端 builtins + ThemeConfig.configList)
-    // 先做旧版 prefs desktop.theme.customList → provider 的一次性迁移, 再读 provider
     val items = remember(dataVersion) {
-        migrateLegacyCustomList(pref)
         BuiltinThemes + ThemeConfigProviders.get().getConfigList()
     }
     val builtinCount = BuiltinThemes.size
@@ -440,19 +438,6 @@ private fun share(index: Int) {
 /** 删除自定义主题 (对照 app 端 ThemeConfig.delConfig: removeAt + save) */
 private fun deleteCustom(index: Int) {
     ThemeConfigProviders.get().delConfig(index)
-}
-
-/**
- * 旧版 prefs `desktop.theme.customList` → provider 的一次性迁移。
- * 也兜底回收 ThemeCustomizeDialog 会话异常中断残留的播种数据 (同名覆盖合并, 无损)。
- */
-private fun migrateLegacyCustomList(pref: PreferenceStoreProvider) {
-    val legacy = pref.getString(ThemePrefKeys.CUSTOM_LIST) ?: return
-    val provider = ThemeConfigProviders.get()
-    runCatching {
-        GSON.fromJsonArray<ThemeConfigData>(legacy).getOrThrow()
-    }.getOrDefault(emptyList()).forEach { provider.addConfig(it) }
-    pref.putString(ThemePrefKeys.CUSTOM_LIST, null)
 }
 
 /**

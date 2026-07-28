@@ -43,6 +43,7 @@ import io.legado.app.help.config.ThemeConfig.applyDayNight
 import io.legado.app.help.config.ThemeConfig.applyDayNightInit
 import io.legado.app.help.config.registerAndroidPreferenceProvider
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.coroutine.registerAndroidDebugState
 import io.legado.app.help.file.registerAndroidAppFilesDir
 import io.legado.app.help.http.CookieJarBridgeHolder
 import io.legado.app.help.http.CookieManager
@@ -97,6 +98,8 @@ class App : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Android-KMP library 不生成 BuildConfig，由宿主注入 ApplicationInfo 可调试状态。
+        registerAndroidDebugState(this)
         // 注册 shared 模块的 ApplicationContext, 供 commonMain 的 stringRes(resId) 使用
         registerSharedAppContext(this)
         // 注册 commonMain 的 Toasters actual (AndroidToaster), 供下沉业务调用 Toasters.get().toast()
@@ -146,11 +149,12 @@ class App : Application() {
         ArchiveProviders.register(AndroidArchiveProvider)
         // Coil3 批 2: 设置 SingletonImageLoader.Factory, 让 app 端 AsyncImage / imageView.load 默认走
         // 注册了 SourceOriginHeaderInterceptor + 共享 OkHttpClient 的 ImageLoader (防盗链 header 自动注入)
-        // 批 4: 追加 MangaModelFetcher(漫画页走 BookHelp 缓存+AnalyzeUrl 下载, 非标准 url)
+        // 批 4: 在同一个 ComponentRegistry 中追加 MangaModelFetcher，不能对已构建的 loader
+        // 再调用 newBuilder().components { ... }，该 API 会替换而不是追加全部组件。
         coil3.SingletonImageLoader.setSafe {
-            io.legado.app.help.image.buildBookImageLoader(it).newBuilder()
-                .components { add(io.legado.app.help.glide.MangaModelFetcher.Factory()) }
-                .build()
+            io.legado.app.help.image.buildBookImageLoader(it) {
+                add(io.legado.app.help.glide.MangaModelFetcher.Factory())
+            }
         }
         // 注册 FileBook 平台 provider (commonMain FileBook object 经
         // FileBookProviders 调到 app 端 FileBookAccessorImpl, 含 importFromArchive /

@@ -1,27 +1,17 @@
 import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins {
-    alias(libs.plugins.kotlin.jvm)
+    id("legado.jvm.application")
     // shared 模块 @Serializable 类 (Book/BookSource 等) 在桌面端展示需要序列化插件
     alias(libs.plugins.kotlin.serialization)
     // Compose Multiplatform 桌面端 (plan 附录J: desktop/jvm 走 CMP 桌面官方 JVM)
-    alias(libs.plugins.compose.multiplatform)
-    alias(libs.plugins.compose.compiler)
-}
-
-// JvmTarget 跟随主项目 (shared 模块 JVM_17); CMP 桌面也要求 JDK 17+
-kotlin {
-    compilerOptions {
-        jvmTarget.set(JvmTarget.JVM_17)
-    }
+    id("legado.compose")
 }
 
 // KP6+: 安装类型由编译期参数控制 (用户裁决: 不靠 runtime/ 目录嗅探, 改 BuildConfig)
 // gradle property: -Plegado.installType=portable|installed|dev (默认 dev 保护开发流程)
 //   portable  = 数据存 exe 同级 dataDir (便携版, 拷贝即迁移)
-//   installed = 数据存用户 .legado 目录 (MSI 安装版)
+//   installed = 数据存系统推荐应用数据目录 (MSI 安装版)
 //   dev       = 数据存项目工作目录 (开发期 :desktop:run)
 val installType = (project.findProperty("legado.installType") as String?)
     ?.takeIf { it in setOf("portable", "installed", "dev") }
@@ -41,7 +31,7 @@ val generateInstallType by tasks.registering {
  * 用户裁决: 不靠运行时嗅探 runtime/ 目录 (用户可能安装到非指定目录导致误判),
  * 改由打包时传入 installType 控制 dataDir 定位:
  * - PORTABLE: 数据存 exe 同级 dataDir
- * - INSTALLED: 数据存用户 ~/.legado 目录
+ * - INSTALLED: 数据存系统推荐应用数据目录
  * - DEV: 数据存项目工作目录 (开发期)
  */
 object InstallType {
@@ -73,13 +63,7 @@ dependencies {
     implementation(compose.desktop.currentOs)
     @Suppress("DEPRECATION")
     implementation(compose.material3)
-    // 桌面端侧栏图标 (Icons.Filled.Search/Settings/Refresh/Help 等) 需要 material-icons-extended
-    // shared.jvmMain 已 implementation(compose.materialIconsExtended) 但不 api 暴露, desktop 显式补
-    // @Suppress: compose.materialIconsExtended 在 Compose 1.8+ 标记 deprecation (pin 到 1.7.3),
-    // 但桌面端仍依赖 Icons.Filled.* 系列图标 (未完全 SVG 化的部分), 保留直到图标全部下沉
-    @Suppress("DEPRECATION")
-    implementation(compose.materialIconsExtended)
-    // Compose Multiplatform 资源运行时: 加载 shared/commonMain/composeResources/drawable/ 下的 SVG 图标
+    // Compose Multiplatform 资源运行时: 加载 shared/sharedIconResources/drawable/ 下的共享 vector XML 图标
     // (ResourceProvider.jvm.kt 用 painterResource(Res.drawable.xxx) 替代部分 Material Icons, 与 app 端视觉对齐)
     // desktop 单 JVM 模块 (kotlin.jvm 插件) 的 compose extension 不支持 .resources 属性
     // (仅 KMP multiplatform 插件下可用), 故不在此声明; 改由 shared sharedUiMain 用 api 暴露,

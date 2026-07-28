@@ -2,7 +2,7 @@ package io.legado.app.data
 
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import androidx.sqlite.driver.NativeSQLiteDriver
 import io.legado.app.data.AppDatabase.Companion.DATABASE_NAME
 import io.legado.app.help.file.AppFilesDirs
 import kotlinx.coroutines.Dispatchers
@@ -10,13 +10,10 @@ import kotlinx.coroutines.IO
 import platform.Foundation.NSFileManager
 
 /**
- * iOS 端 [DatabaseDriverProvider] 实现: **Room KMP + BundledSQLiteDriver 真实数据库**。
+ * iOS 端 [DatabaseDriverProvider] 实现: **Room KMP + NativeSQLiteDriver 真实数据库**。
  *
- * KP3: 替代 KP4 时期的 stub, 用 Room KMP + BundledSQLiteDriver 在 iOS 沙盒构造真实 SQLite 数据库:
- *
- * # 实现要点 (与 jvmMain BundledDatabaseDriver 行为对齐)
- * - **驱动**: [BundledSQLiteDriver] (androidx.sqlite:sqlite-bundled 跨平台 SQLite, 内嵌原生库)
- *   iOS 上 BundledSQLiteDriver 内部用 .a 静态库 (sqlite-bundled commonMain KMP 发布, arm64/simulator 通用)
+ * iOS 系统已提供 SQLite，使用 `sqlite-framework` 的 [NativeSQLiteDriver] 直接接入，
+ * 不再把另一份 SQLite 静态库链接进 framework。
  * - **数据库路径**: 默认 `{AppFilesDirs.filesDir}/legado.db` (沙盒 Documents 目录下, 持久化)
  * - **查询协程上下文**: [Dispatchers.IO] (iOS 上 Ktor CIO + Dispatchers.IO 可用)
  * - **迁移策略**: iOS 首启动即此版本 (86), 无历史迁移; 若 schema 与文件不匹配,
@@ -54,14 +51,13 @@ class IosDatabaseDriver(
     /**
      * iOS 端 [AppDatabase] 单例 (真实 Room 数据库)。
      *
-     * lazy 构造: 首次访问时执行 `Room.databaseBuilder<AppDatabase>` + `BundledSQLiteDriver`。
-     * 与 jvmMain BundledDatabaseDriver.appDatabase 行为完全一致, 仅数据库路径不同。
+     * lazy 构造: 首次访问时执行 `Room.databaseBuilder<AppDatabase>` + `NativeSQLiteDriver`。
      */
     val appDatabase: AppDatabase by lazy {
         Room.databaseBuilder<AppDatabase>(
             name = dbFile
         )
-            .setDriver(BundledSQLiteDriver())
+            .setDriver(NativeSQLiteDriver())
             .setQueryCoroutineContext(Dispatchers.IO)
             // iOS 首启动空库即 version 86, 无 Android 端 83→86 的 autoMigration 历史。
             // 若后续 schema 升级与本地文件不匹配 (如 shared 模块升级后 @Database version 提升),

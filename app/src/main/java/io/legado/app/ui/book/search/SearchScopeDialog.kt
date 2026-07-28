@@ -205,7 +205,7 @@ class SearchScopeDialog : BaseComposeDialogFragment() {
                 if (!groupMode) {
                     IconButton(onClick = { showScreen = true }) {
                         Icon(
-                            painter = painterResource(R.drawable.outline_filter_alt_24),
+                            painter = painterResource(io.legado.shared.R.drawable.outline_filter_alt_24),
                             contentDescription = stringResource(R.string.screen),
                             tint = colors.primaryText,
                         )

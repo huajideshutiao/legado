@@ -58,7 +58,7 @@ import platform.UIKit.UIViewController
  * - 封面加载: [io.legado.app.ui.bookshelf.IosBookCover] (Coil3 + Ktor3 网络后端 + Skia 解码)
  * - JS 引擎: [io.legado.app.model.script.IosJsEngine] (quickjs cinterop 编译 C 源码, 与 Android/Desktop 端 quickjs 统一)
  * - HTTP 层: [io.legado.app.help.http.IosHttpProvider] (Ktor CIO 包装 KmpHttpClient)
- * - 数据库: [io.legado.app.data.IosDatabaseDriver] (Room KMP + BundledSQLiteDriver)
+ * - 数据库: [io.legado.app.data.IosDatabaseDriver] (Room KMP + NativeSQLiteDriver)
  * - TTS: [io.legado.app.help.tts.IosSystemTtsEngine] (AVSpeechSynthesizer)
  *
  * KP4 已接入阅读流子路由 (详见 [io.legado.app.ui.IosNavHost]):

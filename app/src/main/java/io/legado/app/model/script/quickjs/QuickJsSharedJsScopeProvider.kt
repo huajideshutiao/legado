@@ -76,7 +76,9 @@ object QuickJsSharedJsScopeProvider : SharedJsScopeProvider {
         }
         val key = MD5Utils.md5Encode(jsLib)
         val bytecodeEntry = getOrCreateBytecodeEntry(key, jsLib)
-        val perThread = threadCache.get()
+        val perThread = checkNotNull(threadCache.get()) {
+            "QuickJS per-thread cache was not initialized"
+        }
         val cached = perThread.get(key)
         if (cached != null && cached.version == bytecodeEntry.version) {
             return QuickJsJsScope(cached.ctx)

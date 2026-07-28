@@ -1,6 +1,5 @@
 package io.legado.app.help.file
 
-import io.legado.app.constant.AppLog
 import java.io.File
 
 /** codeSource 定位锚点 (top-level 函数无 Class 对象, 借私有类取 protectionDomain)。 */
@@ -14,7 +13,6 @@ private class DesktopAppPathsAnchor
  *   `legado.portable.root` 系统属性 (Main.kt 编译期 InstallType=portable 时设置) 优先级更高。
  * - **安装/开发模式**: 系统推荐数据目录 + `/legado` (Win=%APPDATA%, Linux=XDG_DATA_HOME
  *   兜底 ~/.local/share, macOS=~/Library/Application Support)。
- * - **迁移兼容**: 新默认目录为空而旧目录 `~/.legado` 有数据时沿用旧目录并 AppLog 提示 (不自动搬迁)。
  *
  * 消费方: DesktopAppFilesDir / BundledDatabaseDriver / JvmBookStorage / DesktopFileBookAccessor 等。
  *
@@ -37,35 +35,20 @@ private val resolvedCacheDir: String by lazy {
 }
 
 private fun resolveRootDir(): String {
-    // 1. 显式覆盖: Main.kt 编译期 InstallType=portable 时设置 (兼容旧打包链路)
+    // 1. 显式覆盖: Main.kt 编译期 InstallType=portable 时设置
     val portable = System.getProperty("legado.portable.root")
     if (!portable.isNullOrEmpty()) {
         return File(portable).apply { mkdirs() }.absolutePath
     }
     // 2. 便携标记: 程序目录 (jpackage app/ 布局取其上级) 存在 portable.txt → 程序同目录 data/。
-    //    只认 portable.txt 不认 data/ 目录: 旧便携 zip 编译为 dev 型且带 data/README 占位,
-    //    数据实际落 ~/.legado, 若把 data/ 当标记会孤立旧用户数据
+    //    只认 portable.txt, data/ 可能只是打包占位目录, 不能作为便携模式标记。
     programDir()?.let { dir ->
         if (File(dir, "portable.txt").exists()) {
             return File(dir, "data").apply { mkdirs() }.absolutePath
         }
     }
-    // 3. 系统推荐数据目录, 带旧目录 ~/.legado 迁移兼容
-    val newDir = systemDataDir()
-    val home = System.getProperty("user.home")
-    if (home != null) {
-        val legacy = File(home, ".legado")
-        val newHasData = newDir.list()?.isNotEmpty() == true
-        val legacyHasData = legacy.list()?.isNotEmpty() == true
-        if (!newHasData && legacyHasData) {
-            AppLog.put(
-                "检测到旧版数据目录 ${legacy.absolutePath}, 继续沿用 " +
-                    "(新默认目录 ${newDir.absolutePath} 为空, 不自动搬迁)"
-            )
-            return legacy.absolutePath
-        }
-    }
-    return newDir.apply { mkdirs() }.absolutePath
+    // 3. 系统推荐数据目录
+    return systemDataDir().apply { mkdirs() }.absolutePath
 }
 
 /**
@@ -80,7 +63,7 @@ private fun programDir(): File? = runCatching {
     if (jarDir.name == "app") jarDir.parentFile else jarDir
 }.getOrNull()
 
-/** 按 OS 返回系统推荐数据目录 + /legado (不自动创建, 供与旧目录比较)。 */
+/** 按 OS 返回系统推荐数据目录 + /legado (不自动创建)。 */
 private fun systemDataDir(): File {
     val os = System.getProperty("os.name").orEmpty().lowercase()
     val home = System.getProperty("user.home").orEmpty()

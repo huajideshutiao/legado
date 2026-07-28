@@ -235,7 +235,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                 //  UpdateBookShared 内硬编码 "更新目录" / "强制刷新" 与之对齐)
                 val notificationBuilder =
                     NotificationCompat.Builder(context, AppConst.channelIdDownload)
-                        .setSmallIcon(R.drawable.ic_update)
+                        .setSmallIcon(io.legado.shared.R.drawable.ic_update)
                         .setOngoing(true)
                         .setOnlyAlertOnce(true)
                         .setContentTitle(title)
@@ -246,7 +246,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
                             shortText = if (total > 0) "$count/$total" else null
                         )
                         .addAction(
-                            R.drawable.ic_stop_black_24dp,
+                            io.legado.shared.R.drawable.ic_stop_black_24dp,
                             context.getString(R.string.cancel),
                             context.servicePendingIntent<UpdateBookService>(IntentAction.stop)
                         )

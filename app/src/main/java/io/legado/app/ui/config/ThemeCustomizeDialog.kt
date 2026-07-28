@@ -34,7 +34,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
-import androidx.core.os.bundleOf
 import io.legado.app.R
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.base.ComposeDialog
@@ -95,15 +94,24 @@ class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
         private const val KEY_IS_NIGHT = "s_isNight"
 
         fun editPrefs(isNight: Boolean) = ThemeCustomizeDialog().apply {
-            arguments = bundleOf(ARG_MODE to MODE_EDIT_PREFS, ARG_IS_NIGHT to isNight)
+            arguments = Bundle().apply {
+                putInt(ARG_MODE, MODE_EDIT_PREFS)
+                putBoolean(ARG_IS_NIGHT, isNight)
+            }
         }
 
         fun editConfig(index: Int) = ThemeCustomizeDialog().apply {
-            arguments = bundleOf(ARG_MODE to MODE_EDIT_CONFIG, ARG_CONFIG_INDEX to index)
+            arguments = Bundle().apply {
+                putInt(ARG_MODE, MODE_EDIT_CONFIG)
+                putInt(ARG_CONFIG_INDEX, index)
+            }
         }
 
         fun newConfig(isNight: Boolean) = ThemeCustomizeDialog().apply {
-            arguments = bundleOf(ARG_MODE to MODE_NEW_CONFIG, ARG_IS_NIGHT to isNight)
+            arguments = Bundle().apply {
+                putInt(ARG_MODE, MODE_NEW_CONFIG)
+                putBoolean(ARG_IS_NIGHT, isNight)
+            }
         }
     }
 
