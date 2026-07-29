@@ -44,7 +44,7 @@ import kotlinx.coroutines.sync.withLock
  *   继续承担, 本 KMP 版仅暴露 [backupLocked] 供宿主主动调用
  * - **BackupConfig**: 复用同包公共 [BackupConfigShared] (完整版, 含 ignoreConfig
  *   动态分支 + 持久化), 桌面端默认 ignoreConfig 为空时行为等价于「仅过滤 ignorePrefKeys」;
- *   app 端 [io.legado.app.help.storage.BackupConfig] 已 typealias 到同一 [BackupConfigShared]
+ *   app 端直接使用同包 [BackupConfigShared]
  *
  * # 命名后缀 Shared
  * 与 app 端 [io.legado.app.help.storage.Backup] 同包同名会与 app 模块冲突

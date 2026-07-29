@@ -1,3 +1,5 @@
+@file:OptIn(kotlin.time.ExperimentalTime::class)
+
 package io.legado.app.help.update
 
 import io.legado.app.exception.NoStackTraceException

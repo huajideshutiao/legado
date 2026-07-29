@@ -22,7 +22,7 @@ function legadoNativeLibrariesPlugin(): HvigorPlugin {
             [
               'stageOhosNativeLibraries',
               '-PenableOhosTarget=true',
-              `-PdevecoSdkHome=${process.env.DEVECO_SDK_HOME ?? ''}`
+              '-PrendererBackend=fusion-renderer'
             ],
             {
               cwd: projectRoot,

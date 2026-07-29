@@ -34,12 +34,12 @@ import java.nio.file.Paths
  * # 注意
  * - startCacheBookService 的 chapterList 加载 + 目录为空时拉取详情/目录逻辑
  *   (app 端 CacheBookService.addDownloadData 内 mutex.withLock 段) 由桌面端
- *   DesktopMainViewModel.cacheBook()/addDownload() 在调用 startCacheBookService 前
+ *   阅读 VM 的 cacheBook()/addDownload() 在调用 startCacheBookService 前
  *   自行处理, 本方法仅做 addDownload + startProcessJob (与桌面端原 DesktopCacheBook 配合
- *   DesktopMainViewModel 的现有分工一致)。
+ *   桌面端阅读 VM 的现有分工一致)。
  * - downloadJob 重启逻辑 (app 端 CacheBookService.removeDownload 内
  *   `if (downloadJob == null && CacheBook.isRun) download()`) 桌面端由
- *   DesktopMainViewModel 监听 isRun 自行管理, 本方法不直接重启。
+ *   阅读 VM 监听 isRun 自行管理, 本方法不直接重启。
  */
 class DesktopServiceLauncher(
     private val scope: CoroutineScope,
@@ -74,7 +74,7 @@ class DesktopServiceLauncher(
         // 对照 app 端 CacheBookService.removeDownload: 仅移除单本书, 其他书继续
         CacheBookShared.cacheBookMap[bookUrl]?.stop()
         postEvent(EventBus.UP_DOWNLOAD, "")
-        // 桌面端无 stopSelf; downloadJob 重启由 DesktopMainViewModel 监听 isRun 自行管理
+        // 桌面端无 stopSelf; downloadJob 重启由桌面端阅读 VM 监听 isRun 自行管理
     }
 
     override fun startUpdateBookService() {

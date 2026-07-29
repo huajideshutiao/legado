@@ -15,9 +15,9 @@ import io.legado.app.ui.association.LegadoDeepLinkHandler
  *                     └── LegadoDeepLinkHandler.pending (StateFlow) 记录待导入请求
  * ```
  *
- * 消费侧: [io.legado.app.ui.IosNavHost] 尾部挂 [io.legado.app.ui.association.DeepLinkImportHost],
+ * 消费侧: [io.legado.app.MainViewController] 尾部挂 [io.legado.app.ui.association.DeepLinkImportHost],
  * collect `LegadoDeepLinkHandler.pending` 后按类型走 ImportXxxViewModelShared + ImportItemsDialog
- * (与 IosBookSourceScreen 手动网络导入同链), 完成/取消均 `LegadoDeepLinkHandler.consume()`。
+ * (与 LegadoApp 内手动网络导入同链), 完成/取消均 `LegadoDeepLinkHandler.consume()`。
  * 冷启动先投递后组合也不丢 (pending 是 StateFlow)。
  *
  * @return true=已识别并记录; false=非 legado/yuedu scheme 或缺 src 参数 (调用方可透传给其他 handler)

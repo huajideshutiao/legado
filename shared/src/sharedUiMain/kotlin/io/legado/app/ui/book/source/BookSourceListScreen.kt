@@ -21,6 +21,7 @@ import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -81,7 +82,7 @@ fun BookSourceListScreen(
     listModifier: Modifier = Modifier,
 ) {
     // 按域名分组时预计算各 host 组首项 url 集合, 避免 item 内 O(n) 回查 (对照 adapter.isItemHeader)
-    val headerUrls = remember(state.sources, state.groupSourcesByDomain, state.checkTick) {
+    val headerUrls = remember(state.sources, state.groupSourcesByDomain) {
         if (!state.groupSourcesByDomain) emptySet()
         else buildSet {
             var lastHost: String? = null
@@ -94,6 +95,7 @@ fun BookSourceListScreen(
             }
         }
     }
+    val checkState by Debug.checkState.collectAsState()
     // 手动排序且未按域名分组时才允许拖拽 (对照原 itemTouchCallback.isCanDrag)
     val canDrag = state.sort == BookSourceSort.Default && !state.groupSourcesByDomain
     RuleManageScaffold(
@@ -145,6 +147,7 @@ fun BookSourceListScreen(
             checked = state.selected.contains(item.bookSourceUrl),
             headerUrls = headerUrls,
             canDrag = canDrag,
+            checkState = checkState,
         )
     }
 }
@@ -162,7 +165,6 @@ data class BookSourceListState(
     val groupSourcesByDomain: Boolean = false,
     val checkSourceMsg: String? = null,
     val checkSourceVisible: Boolean = false,
-    val checkTick: Int = 0,
 )
 
 /**
@@ -324,17 +326,14 @@ private fun RuleItemScope.BookSourceItem(
     checked: Boolean,
     headerUrls: Set<String>,
     canDrag: Boolean,
+    checkState: Debug.CheckState,
 ) {
     val colors = AppTheme.colors
     var showMenu by remember { mutableStateOf(false) }
-    // 校验文案随 checkTick 重组读取 (EventBus 桥接)
-    val tick = state.checkTick
-    val debugMsg = remember(item.bookSourceUrl, tick) {
-        Debug.debugMessageMap[item.bookSourceUrl].orEmpty()
-    }
-    val showProgress = remember(item.bookSourceUrl, tick) {
-        Debug.isChecking && debugMsg.isNotEmpty() && !debugMsg.contains(Regex("成功|失败"))
-    }
+    val debugMsg = checkState.messages[item.bookSourceUrl].orEmpty()
+    val showProgress = checkState.isChecking &&
+        debugMsg.isNotEmpty() &&
+        !debugMsg.contains(Regex("成功|失败"))
     // 预取单项菜单文案
     val strToTop = rememberString("to_top")
     val strToBottom = rememberString("to_bottom")

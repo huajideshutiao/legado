@@ -45,7 +45,7 @@ private data class ForwardMessage(val token: String, val args: List<String>)
  * # 首实例收到转发后的动作
  *
  * 1. args 里第一个 legado://`/`yuedu:// URL 投递 [LegadoDeepLinkHandler.handle]
- *    (与 Main.kt 冷启动 `handleDeepLinkArgs` 同一条链, 由 DesktopDeepLinkImportHost 弹导入框);
+ *    (与 Main.kt 冷启动 `handleDeepLinkArgs` 同一条链, 由 DeepLinkImportHost 弹导入框);
  * 2. 窗口前置 ([bindWindow] 注册的 AWT 窗口, EDT 上取消最小化 + toFront + requestFocus)。
  *
  * # 边界处理

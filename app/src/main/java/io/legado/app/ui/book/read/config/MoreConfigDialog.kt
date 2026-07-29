@@ -53,7 +53,8 @@ class MoreConfigDialog : BasePrefDialogFragment(),
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        (activity as ReadBookActivity).bottomDialog++
+        // 安全转换，避免 activity 非 ReadBookActivity 时崩溃
+        (activity as? ReadBookActivity)?.apply { bottomDialog++ }
         val slopSquare = ViewConfiguration.get(requireContext()).scaledTouchSlop
         val pageTouchSlopSummary =
             getString(R.string.page_touch_slop_summary, slopSquare.toString())
@@ -98,7 +99,8 @@ class MoreConfigDialog : BasePrefDialogFragment(),
 
     override fun onDismiss(dialog: DialogInterface) {
         super.onDismiss(dialog)
-        (activity as ReadBookActivity).bottomDialog--
+        // 安全转换，避免 activity 非 ReadBookActivity 时崩溃
+        (activity as? ReadBookActivity)?.apply { bottomDialog-- }
     }
 
     override fun onSharedPreferenceChanged(

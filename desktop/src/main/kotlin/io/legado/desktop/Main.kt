@@ -41,6 +41,7 @@ import io.legado.app.help.source.SourceHelpAccessors
 import io.legado.app.help.toast.registerDesktopToaster
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.model.script.JsEngines
+import io.legado.app.ui.association.DeepLinkImportHost
 import io.legado.app.ui.association.LegadoDeepLink
 import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
@@ -85,13 +86,15 @@ import io.legado.desktop.model.fileBook.registerDesktopFileBookAccessor
 import io.legado.desktop.model.webBook.registerDesktopWebBookProviders
 import io.legado.desktop.tts.DesktopHttpTtsPlayer
 import io.legado.desktop.tts.DesktopSystemTtsEngine
-import io.legado.desktop.ui.DesktopApp
-import io.legado.desktop.ui.SourceUiEventBridgeHost
-import io.legado.desktop.ui.association.DesktopDeepLinkImportHost
-import io.legado.desktop.ui.main.DesktopStartupTasks
-import kotlinx.coroutines.CoroutineScope
+import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.LegadoApp
+import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.root.ScreenModelStore
+import io.legado.app.ui.book.source.SourceUiEventBridgeHost
+import io.legado.desktop.ui.DesktopPlatformCapabilities
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import org.jsoup.Jsoup
@@ -155,7 +158,7 @@ fun main(args: Array<String>) {
 
 /**
  * 解析启动参数中的 legado://`/`yuedu:// deep link, 经 [LegadoDeepLinkHandler] 记录,
- * 待 [io.legado.desktop.ui.association.DesktopDeepLinkImportHost] 在窗口内消费弹导入对话框。
+ * 待 [DeepLinkImportHost] 在窗口内消费弹导入对话框。
  *
  * # 各 OS 系统级 URL protocol 注册方法 (安装器/打包配置, 本函数只管进程启动参数)
  *
@@ -199,7 +202,7 @@ private fun runDesktopApp() = application {
     registerDesktopAndroidId()
     // 注册桌面端 Toaster + NotificationProgress provider (shared jvmMain 已实现)
     // - Toasters: SystemTray + TrayIcon 显示通知 (forceRefresh 提示 / 错误反馈用)
-    // - NotificationProgresses: SystemTray 进度通知 (已弃用: 桌面端进度改走 UI 内 StateFlow, 见 DesktopMainViewModel)
+    // - NotificationProgresses: SystemTray 进度通知 (已弃用: 桌面端进度改走 UI 内 StateFlow)
     // 未注册时 Toasters.get() 抛 IllegalStateException (forceRefresh 未 runCatching 防御);
     // SystemTray 需在主线程初始化, 故同步注册
     registerDesktopToaster()
@@ -245,9 +248,11 @@ private fun runDesktopApp() = application {
     // 间接访问 appDb 的 9 个 DAO / saveContent; 未注册时阅读流/搜索/书源管理全失效
     AppDbProviders.register(DesktopAppDbAccessor())
     BookHelpProviders.register(DesktopBookHelpAccessor())
+    // 注册桌面端 PlatformCapabilities (供 shared LegadoApp 经 PlatformCapabilityProviders.get() 取能力)
+    PlatformCapabilityProviders.register(DesktopPlatformCapabilities)
 
     // ==================== 阶段2: 显示窗口 ====================
-    // KP2: 桌面端窗口框架——注入 4 个 DesktopXxxProvider + AppTheme 包装 DesktopApp
+    // KP2: 桌面端窗口框架——注入 4 个 DesktopXxxProvider + AppTheme 包装 LegadoApp
     // 窗口标题改为 "阅读" (用户反馈: 应用名应该就叫阅读)
     // icon 用 classpath 资源 icon.png (复制自 app/src/main/res/mipmap-xxxhdpi/ic_launcher.png),
     // 不再使用 Java 默认咖啡杯图标; 资源位于 desktop/src/main/resources/icon.png
@@ -262,8 +267,13 @@ private fun runDesktopApp() = application {
                 ?.toComposeImageBitmap()?.let { BitmapPainter(it) }
         }.getOrNull()
     }
+    // AppNavigator: 零薄壳导航唯一状态源 (替代旧 DesktopApp 的 20+ 并行状态字段)
+    val navigator = remember { AppNavigator(AppRoute.Main()) }
+    val screenModelStore = remember { ScreenModelStore() }
     Window(
         onCloseRequest = ::exitApplication,
+        // 返回键由 shared LegadoApp 内部 handleBackKey 统一处理, desktop Window 不消费
+        onKeyEvent = { false },
         title = appName,
         icon = iconPainter,
     ) {
@@ -293,12 +303,17 @@ private fun runDesktopApp() = application {
             AppTheme {
                 // 对照 app 端 App.kt:132 SourceUiEventBridge.init(): desktop 无 Activity,
                 // 改用 Composable 宿主订阅 FlowBus(SOURCE_UI_REQUEST) 弹 Compose Dialog
-                // (实现见 SourceUiEventBridgeDesktop.kt)
+                // (实现见 shared/sharedUiMain 的 SourceUiEventBridgeHost)
                 SourceUiEventBridgeHost()
                 // legado:// deep link 导入对话框宿主: 消费 main(args)/OpenURIHandler 经
                 // LegadoDeepLinkHandler 记录的待导入请求 (对照 app 端 AssociationActivity 分发)
-                DesktopDeepLinkImportHost()
-                DesktopApp()
+                DeepLinkImportHost()
+                // 零薄壳: shared LegadoApp 统一管理导航栈 + ScreenModel 生命周期,
+                // 所有路由由 shared RouteContent 直接渲染
+                LegadoApp(
+                    navigator = navigator,
+                    screenModelStore = screenModelStore,
+                )
             }
         }
     }
@@ -397,16 +412,14 @@ private suspend fun registerSecondaryProviders() {
         // LogUtils.init 为 Android 专属, desktop 用 registerDesktopAppLogHost 替代
         // 注: app 端 App.kt:144 DefaultData.upVersion() 未补齐 — DefaultData object 在 app 模块,
         // 依赖 LocalConfig (SharedPreferences) + AppConst.appInfo (PackageManager), 均 Android 专属,
-        // desktop 无对应下沉实现; 首次启动默认数据导入由下方 DesktopStartupTasks.run 处理。
+        // desktop 无对应下沉实现; 首次启动默认数据导入待下沉到 shared LegadoApp 内部 (见下方 TODO)。
         // 注: app 端 App.kt:171 BookCover.toString() 未补齐 — BookCover object 依赖 Android
         // Glide/Bitmap/Drawable/appCtx, desktop 用独立的 DesktopBookCover (JDK ImageIO + OkHttp),
         // 无对应下沉的封面缓存初始化逻辑。
 
         // 16. 启动期默认数据加载 + 缓存清理 + WebDav 进度同步
         // (对照 app 端 MainActivity.onPostCreate viewModel.postLoad + App.kt onCreate Coroutine.async 块)
-        // app 生命周期 scope, 退出时由 JVM 回收; 不创建临时 DesktopMainViewModel 避免其内部 scope 泄漏
-        val startupScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        DesktopStartupTasks.run(startupScope)
+        // TODO: 待下沉到 shared LegadoApp 内部统一编排 (原 DesktopStartupTasks 已删除, 避免临时 scope 泄漏)
 
         // 冒烟测试: 仅在 debug 模式执行 (生产环境不执行, 避免启动期阻塞)
         // 开启方式: java -Dlegado.desktop.smokeTest=true -jar ... 或在 build.gradle.kts jvmArgs 添加

@@ -1,0 +1,346 @@
+package io.legado.app.ui.route
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Icon
+import androidx.compose.material.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import io.legado.app.constant.PreferKey
+import io.legado.app.data.entities.BookSource
+import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppSlider
+import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.platform.LocalEventBusProvider
+import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
+import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.platform.rememberStringArray
+import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.config.ThemeConfigScreen
+import io.legado.app.ui.config.ThemeConfigScreenModel
+import io.legado.app.ui.config.ThemeConfigUiEvent
+import io.legado.app.ui.dialog.NumberPickerDialog
+import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.ScreenModelStore
+
+/**
+ * 主题设置 shared 路由入口。
+ * 通过 [ScreenModelStore] 复用 [ThemeConfigScreenModel], 渲染 [ThemeConfigScreen]。
+ *
+ * 导航类回调 (onCoverConfig/onWelcomeStyle) 用 [AppNavigator.push];
+ * fontScale/sourceEditMaxLine 用 [NumberPickerDialog] 实现 (对照 app 端 showNumberPicker);
+ * onSearchLayout 已在 shared 用 [SearchLayoutConfigDialog] 重建 (对照 ThemeConfigHost.configSearch);
+ * onBookshelfLayout/onBottomNavConfig/onThemeList/onCustomizeDayTheme/onCustomizeNightTheme
+ * 通过 [PlatformCapabilityProviders] 注入各端实现 (app 端 ThemeConfigHost 已实现, 其他端按需 override)。
+ */
+@Composable
+fun ThemeConfigRoute(
+    entry: RouteEntry,
+    navigator: AppNavigator,
+    screenModelStore: ScreenModelStore,
+) {
+    val pref = LocalPreferenceStoreProvider.current
+    val appConfig = remember { AppConfigProviders.get() }
+
+    val fontScaleFormat = rememberString("font_scale_summary")
+    val sourceEditMaxLineFormat = rememberString("source_edit_max_line_summary")
+    val defaultStr = rememberString("btn_default_s")
+    // 顶栏标题 (对照 app 端 R.string.theme_setting)
+    val titleStr = rememberString("theme_setting")
+
+    var showFontScalePicker by remember { mutableStateOf(false) }
+    var showSourceEditMaxLinePicker by remember { mutableStateOf(false) }
+    var showSearchLayoutPicker by remember { mutableStateOf(false) }
+
+    val screenModel = screenModelStore.getOrCreateTyped(entry) {
+        ThemeConfigScreenModel(
+            onBookshelfLayout = {
+                PlatformCapabilityProviders.getOrNull()?.showBookshelfLayoutDialog()
+            },
+            onSearchLayout = { showSearchLayoutPicker = true },
+            onBottomNavConfig = {
+                PlatformCapabilityProviders.getOrNull()?.showBottomNavConfigDialog()
+            },
+            onThemeList = {
+                PlatformCapabilityProviders.getOrNull()?.showThemeListDialog()
+            },
+            onCustomizeDayTheme = {
+                PlatformCapabilityProviders.getOrNull()?.showCustomizeDayThemeDialog()
+            },
+            onCustomizeNightTheme = {
+                PlatformCapabilityProviders.getOrNull()?.showCustomizeNightThemeDialog()
+            },
+            onFontScale = { showFontScalePicker = true },
+            onSourceEditMaxLine = { showSourceEditMaxLinePicker = true },
+        )
+    }
+    val state by screenModel.state.collectAsState()
+
+    // 对照 app 端 init: 初始化动态 summary
+    LaunchedEffect(Unit) {
+        if (state.fontScaleSummary.isEmpty()) {
+            // 对照 app 端 fontScaleSummary(): getString(R.string.font_scale_summary, getFontScale(activity))
+            val fontScale = PlatformCapabilityProviders.getOrNull()?.getFontScale()
+            if (fontScale != null) {
+                screenModel.dispatch(
+                    ThemeConfigUiEvent.UpdateFontScaleSummary(
+                        fontScaleFormat.replace(
+                            "%s",
+                            fontScale
+                        )
+                    )
+                )
+            }
+        }
+        if (state.sourceEditMaxLineSummary.isEmpty()) {
+            // 对照 app 端 sourceEditMaxLineSummary: getString(R.string.source_edit_max_line_summary, sourceEditMaxLine)
+            screenModel.dispatch(
+                ThemeConfigUiEvent.UpdateSourceEditMaxLineSummary(
+                    sourceEditMaxLineFormat.replace("%s", appConfig.sourceEditMaxLine.toString())
+                )
+            )
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        AppTitleBar(
+            title = titleStr,
+            onBack = { navigator.pop() },
+        )
+        ThemeConfigScreen(
+            fontScaleSummary = state.fontScaleSummary,
+            sourceEditMaxLineSummary = state.sourceEditMaxLineSummary,
+            onBookshelfLayout = { screenModel.dispatch(ThemeConfigUiEvent.BookshelfLayout) },
+            onSearchLayout = { screenModel.dispatch(ThemeConfigUiEvent.SearchLayout) },
+            onCoverConfig = { navigator.push(AppRoute.CoverConfig) },
+            onWelcomeStyle = { navigator.push(AppRoute.WelcomeConfig) },
+            onBottomNavConfig = { screenModel.dispatch(ThemeConfigUiEvent.BottomNavConfig) },
+            onThemeList = { screenModel.dispatch(ThemeConfigUiEvent.ThemeList) },
+            onCustomizeDayTheme = { screenModel.dispatch(ThemeConfigUiEvent.CustomizeDayTheme) },
+            onCustomizeNightTheme = { screenModel.dispatch(ThemeConfigUiEvent.CustomizeNightTheme) },
+            onFontScale = { screenModel.dispatch(ThemeConfigUiEvent.FontScale) },
+            onSourceEditMaxLine = { screenModel.dispatch(ThemeConfigUiEvent.SourceEditMaxLine) },
+        )
+    }
+
+    // 字体缩放 NumberPicker (对照 app 端 onFontScale: 8..16, 默认 10, neutralButton=默认)
+    if (showFontScalePicker) {
+        NumberPickerDialog(
+            title = rememberString("font_scale"),
+            value = 10,
+            range = 8..16,
+            onConfirm = {
+                pref.putInt(PreferKey.fontScale, it)
+                // 对照 app 端 onSharedPreferenceChanged: fontScaleSummary + recreate
+                val fontScale = PlatformCapabilityProviders.getOrNull()?.getFontScale()
+                if (fontScale != null) {
+                    screenModel.dispatch(
+                        ThemeConfigUiEvent.UpdateFontScaleSummary(
+                            fontScaleFormat.replace(
+                                "%s",
+                                fontScale
+                            )
+                        )
+                    )
+                }
+            },
+            onDismiss = { showFontScalePicker = false },
+            neutralButtonText = defaultStr,
+            onNeutral = {
+                // 对照 app 端 neutralButton: putPrefInt(PreferKey.fontScale, 0)
+                pref.putInt(PreferKey.fontScale, 0)
+                val fontScale = PlatformCapabilityProviders.getOrNull()?.getFontScale()
+                if (fontScale != null) {
+                    screenModel.dispatch(
+                        ThemeConfigUiEvent.UpdateFontScaleSummary(
+                            fontScaleFormat.replace(
+                                "%s",
+                                fontScale
+                            )
+                        )
+                    )
+                }
+            },
+        )
+    }
+
+    // 源编辑最大行数 NumberPicker (对照 app 端 onSourceEditMaxLine: 10..MAX_VALUE)
+    if (showSourceEditMaxLinePicker) {
+        NumberPickerDialog(
+            title = rememberString("source_edit_text_max_line"),
+            value = appConfig.sourceEditMaxLine,
+            range = 10..Int.MAX_VALUE,
+            onConfirm = {
+                pref.putInt(PreferKey.sourceEditMaxLine, it)
+                // 对照 app 端 onSharedPreferenceChanged: sourceEditMaxLineSummary
+                screenModel.dispatch(
+                    ThemeConfigUiEvent.UpdateSourceEditMaxLineSummary(
+                        sourceEditMaxLineFormat.replace("%s", it.toString())
+                    )
+                )
+            },
+            onDismiss = { showSourceEditMaxLinePicker = false },
+        )
+    }
+
+    // 搜索布局配置 (对照 app 端 ThemeConfigHost.configSearch, Compose 重建)
+    if (showSearchLayoutPicker) {
+        // 在 @Composable 上下文获取 eventBus, 供非 Composable lambda 使用
+        val eventBus = LocalEventBusProvider.current
+        SearchLayoutConfigDialog(
+            currentLayout = appConfig.searchLayout,
+            onConfirm = { newLayout ->
+                if (appConfig.searchLayout != newLayout) {
+                    pref.putInt(PreferKey.searchLayout, newLayout)
+                    // 对照 app 端 configSearch okButton: recreateActivities()
+                    eventBus.emitRecreate()
+                }
+            },
+            onDismiss = { showSearchLayoutPicker = false },
+        )
+    }
+}
+
+/**
+ * 搜索布局配置对话框 (shared Compose 重建, 对照 app 端 dialog_search_config.xml + ThemeConfigHost.configSearch)。
+ *
+ * 原 dialog 控件: 1 Spinner(explore_item_style: 普通/视频) + 1 SeekBar(列数 0..6) + ok/cancel。
+ * 改用 [AppAlertDialog] + 自绘 DropdownBox + [AppSlider] 替代, 行为逐项等价。
+ */
+@Composable
+private fun SearchLayoutConfigDialog(
+    currentLayout: Int,
+    onConfirm: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = AppTheme.colors
+    val styles = rememberStringArray("explore_item_style")
+    var isVideo by remember {
+        mutableStateOf(BookSource.exploreStyleIsVideo(currentLayout))
+    }
+    var selectedCols by remember {
+        mutableIntStateOf(BookSource.exploreStyleCols(currentLayout).coerceIn(0, 6))
+    }
+
+    AppAlertDialog(
+        onDismissRequest = onDismiss,
+        title = rememberString("search_layout"),
+        okButton = AlertButton(text = rememberString("ok")) {
+            // 对照 app 端 makeLayoutStyle: 视频置 EXPLORE_STYLE_VIDEO_FLAG, cols 取低 3 位
+            val newLayout = (if (isVideo) BookSource.EXPLORE_STYLE_VIDEO_FLAG else 0) or
+                (selectedCols and BookSource.EXPLORE_STYLE_COLS_MASK)
+            onConfirm(newLayout)
+        },
+        cancelButton = AlertButton(text = rememberString("cancel")),
+    ) {
+        Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
+            // 第一行: explore_style 标签 + 普通/视频 下拉 (对照原 Spinner sp_item_style)
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    rememberString("explore_style"),
+                    color = colors.primaryText,
+                    modifier = Modifier.padding(end = 8.dp),
+                )
+                LayoutStyleDropdown(
+                    options = styles,
+                    selectedIndex = if (isVideo) 1 else 0,
+                ) { index ->
+                    isVideo = index == 1
+                }
+            }
+            // 第二行: explore_cols 标签 + AppSlider 0..6 + 当前值
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    rememberString("explore_cols"),
+                    color = colors.primaryText,
+                )
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .padding(horizontal = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AppSlider(
+                        value = selectedCols,
+                        max = 6,
+                        onValueChange = { selectedCols = it },
+                    )
+                }
+                Text(
+                    selectedCols.toString(),
+                    color = colors.primaryText,
+                    fontSize = 16.sp,
+                    modifier = Modifier.padding(start = 4.dp),
+                )
+            }
+        }
+    }
+}
+
+/** 复刻 AppCompatSpinner 语义: 当前值 + 下拉箭头, 点开 [AppDropdownMenu] 单选 */
+@Composable
+private fun LayoutStyleDropdown(
+    options: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+) {
+    val colors = AppTheme.colors
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier
+                .clickable { expanded = true }
+                .padding(horizontal = 4.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                options.getOrElse(selectedIndex) { "" },
+                color = colors.primaryText,
+                fontSize = 14.sp,
+            )
+            Icon(
+                painter = rememberPainter("ic_arrow_drop_down"),
+                contentDescription = null,
+                tint = colors.secondaryText,
+            )
+        }
+        AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEachIndexed { i, label ->
+                DropdownMenuItem(onClick = { expanded = false; onSelect(i) }) {
+                    Text(label, color = colors.primaryText)
+                }
+            }
+        }
+    }
+}

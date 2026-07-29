@@ -19,20 +19,22 @@ import kotlinx.coroutines.withContext
 /**
  * [ImageBitmapLoader] 的鸿蒙实现。
  *
- * 解码用 Skia [org.jetbrains.skia.Image.makeFromEncoded] + [toComposeImageBitmap]
- * (Compose Multiplatform 鸿蒙端用 Skia 渲染, 与 iOS 端 [io.legado.app.ui.bookshelf.IosBookCover] 解码路径一致)。
+ * 静态图片解码使用 CPF 融合渲染变体随 `ui-graphics-ohosarm64` 解析到的编码图像桥接；
+ * 该变体最终由 OHOS `image_source`/`pixelmap`/`native_drawing` 管线绘制，不创建
+ * XComponent、EGL Surface 或 Skia GPU 自渲染面。这里保留 `org.jetbrains.skia.Image` API
+ * 仅作为 CPF 对 Compose [ImageBitmap] 的兼容解码门面，不代表启用 Skia Renderer。
  *
- * - 本地路径 (`file://` / `/...`): [File.readBytes] 读文件后 Skia 解码
+ * - 本地路径 (`file://` / `/...`): [File.readBytes] 读文件后解码
  *   (鸿蒙端 [kotlin.io.File] 基于 POSIX fs, 行为与 JVM java.io.File 等价)
  * - 网络路径 (`http(s)://`):
  *   - 本地书 / 无书源: [OkHttpClientProviders] 取 [io.legado.app.help.http.KmpHttpClient] 直接 GET
  *     (鸿蒙端 KmpHttpClient 经 napi 桥接 @ohos.net.http, API 与 OkHttp 一致;
  *     okhttp3.Request 在 ohosMain 不可用, 改用 [KmpRequestBuilder])
  *   - 网络书: [AnalyzeUrlCore] 发请求, 自动带书源 header / cookie / charset / JS
- * - `cbz://`: [loadCbzEntryBytes] 经 ArchiveProviders 抽压缩包条目字节后 Skia 解码
+ * - `cbz://`: [loadCbzEntryBytes] 经 ArchiveProviders 抽压缩包条目字节后解码
  *   (支持 `cbz://{entry}` + Book 与 `cbz://{path}#{entry}` 自含两种形式)
- * - GIF: [loadBitmap] 的 Skia 解码仅取静态首帧; 需要动图的消费点改用 [loadBytes] 取裸字节走
- *   [rememberAnimatedImageBitmap] (skiko Codec 逐帧解码, 与 desktop 共用 skikoUiMain 实现)
+ * - GIF: [loadBitmap] 当前只取静态首帧；融合渲染不直接调用 Skia Codec，
+ *   [rememberAnimatedImageBitmap] 在接入 CPF Coil OHOS 动图解码器前安全退化为静态图
  */
 actual class ImageBitmapLoader actual constructor() {
 
@@ -102,7 +104,7 @@ internal suspend fun ohosDownloadImageBytes(
     }.getOrNull()
 }
 
-/** Skia 解码字节数组为 [ImageBitmap] (与 iOS 端 IosBookCover uiImageToBitmap 解码路径一致)。 */
+/** 通过 CPF OHOS 图形兼容门面将编码字节解码为融合渲染可绘制的 [ImageBitmap]。 */
 internal fun ohosDecodeImageBytes(bytes: ByteArray): ImageBitmap? {
     if (bytes.isEmpty()) return null
     return runCatching {

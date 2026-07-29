@@ -1,20 +1,13 @@
 package io.legado.app.help
 
-import android.content.Intent
 import androidx.annotation.Keep
 import com.script.jsdispatch.JsApi
 import io.legado.app.help.coroutine.ConcurrentRateLimiter
 import io.legado.app.help.http.SSLHelper
 import io.legado.app.help.http.cookieJarHeader
-import io.legado.app.model.script.JsFn
 import io.legado.app.model.script.jsContext
-import io.legado.app.ui.association.JsActivity1
-import io.legado.app.ui.association.JsActivity2
-import io.legado.app.utils.isMainThread
 import org.jsoup.Connection
 import org.jsoup.Jsoup
-import splitties.init.appCtx
-import java.util.concurrent.locks.LockSupport
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 
@@ -103,32 +96,4 @@ interface JsExtensions : JsEncodeUtilsAndroid, JsExtensionsCommon {
         return response
     }
 
-    /**
-     * 启动一个空白Activity，允许js操作，允许传入是否透明
-     * @param action js函数
-     * @param isTransparent 是否透明
-     */
-    fun startJsActivity(action: JsFn, isTransparent: Boolean = true) {
-        val cx = jsContext
-        if (isMainThread) return
-        cx.ensureActive()
-        val currentThread = Thread.currentThread()
-        var error: Throwable? = null
-        val intent = Intent(
-            appCtx,
-            if (isTransparent) JsActivity1::class.java else JsActivity2::class.java
-        ).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            putExtra("actionKey", IntentData.put(action))
-            putExtra("waitKey", IntentData.put { e: Throwable? ->
-                error = e
-                LockSupport.unpark(currentThread)
-            })
-        }
-        appCtx.startActivity(intent)
-        LockSupport.park(currentThread)
-        error?.let { throw it }
-    }
-
-    fun startJsActivity(action: JsFn) = startJsActivity(action, true)
 }

@@ -15,7 +15,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.setLiveProgress
 import io.legado.app.model.CheckSourceShared
 import io.legado.app.model.Debug
-import io.legado.app.ui.book.source.manage.BookSourceActivity
+import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
@@ -60,7 +60,9 @@ class CheckSourceService : BaseService() {
             .setOnlyAlertOnce(true)
             .setContentTitle(getString(R.string.check_book_source))
             .setContentIntent(
-                activityPendingIntent<BookSourceActivity>("activity")
+                activityPendingIntent<MainActivity>("activity") {
+                    putExtra("route", "book_source_manage")
+                }
             )
             .addAction(
                 io.legado.shared.R.drawable.ic_stop_black_24dp,

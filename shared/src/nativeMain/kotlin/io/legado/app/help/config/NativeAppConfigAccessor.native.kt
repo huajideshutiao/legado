@@ -34,8 +34,16 @@ class NativeAppConfigAccessor(
     override val tocCountWords: Boolean
         get() = prefs.getBoolean(PreferKey.tocCountWords, true)
 
+    override fun setTocCountWords(value: Boolean) {
+        prefs.putBoolean(PreferKey.tocCountWords, value)
+    }
+
     override val tocUiUseReplace: Boolean
         get() = prefs.getBoolean(PreferKey.tocUiUseReplace, false)
+
+    override fun setTocUiUseReplace(value: Boolean) {
+        prefs.putBoolean(PreferKey.tocUiUseReplace, value)
+    }
 
     override var chineseConverterType: Int
         get() = prefs.getInt(PreferKey.chineseConverterType, 0)

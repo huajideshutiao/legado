@@ -2,6 +2,13 @@ plugins {
     `kotlin-dsl`
 }
 
+repositories {
+    maven("https://maven.eazytec-cloud.com/nexus/repository/maven-public/")
+    google()
+    gradlePluginPortal()
+    mavenCentral()
+}
+
 group = "io.legado.buildlogic"
 
 java {

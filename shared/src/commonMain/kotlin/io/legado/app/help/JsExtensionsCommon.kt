@@ -8,6 +8,7 @@ import io.legado.app.constant.androidId
 import io.legado.app.constant.dateFormat
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.archive.ArchiveProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.BackstageWebViewProviders
@@ -18,20 +19,18 @@ import io.legado.app.help.ui.OpenUrlProviders
 import io.legado.app.help.ui.ToastProviders
 import io.legado.app.help.ui.UserAgentProviders
 import io.legado.app.model.Debug
-import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.analyzeRule.CustomUrl
 import io.legado.app.model.analyzeRule.QueryTTF
 import io.legado.app.model.script.jsContext
 import io.legado.app.model.script.jsContextOrNull
-import io.legado.app.help.archive.ArchiveProviders
 import io.legado.app.utils.Base64Lenient
-import io.legado.app.utils.EncodingDetect
-import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.EncoderUtils
+import io.legado.app.utils.EncodingDetect
 import io.legado.app.utils.GSON
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.JsURL
+import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.StringUtils
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isAbsUrl
@@ -738,6 +737,23 @@ interface JsExtensionsCommon {
         jsContext.ensureActive()
         // saveResult=false/refetchAfterSuccess=false 对齐原 app 端 SourceVerificationHelp.startBrowser 默认
         SourceVerificationHelpShared.startBrowser(getSource(), url, title, false, false)
+    }
+
+    /**
+     * 使用内置浏览器打开链接 (BottomSheet 半屏方式)
+     * @param url 要打开的链接
+     * @param title 浏览器页面的标题
+     */
+    fun startBrowser(url: String, title: String, asBottomSheet: Boolean) {
+        jsContext.ensureActive()
+        SourceVerificationHelpShared.startBrowser(
+            getSource(),
+            url,
+            title,
+            false,
+            false,
+            asBottomSheet
+        )
     }
 
     /**

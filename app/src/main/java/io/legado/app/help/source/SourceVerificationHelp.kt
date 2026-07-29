@@ -3,10 +3,10 @@ package io.legado.app.help.source
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.ui.association.VerificationCodeDialog
-import io.legado.app.ui.browser.WebViewActivity
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
+import io.legado.app.ui.root.AppRoute
 import io.legado.app.utils.isMainThread
-import io.legado.app.utils.startActivity
-import splitties.init.appCtx
 
 /**
  * 源验证 (app 端薄壳)。
@@ -15,7 +15,7 @@ import splitties.init.appCtx
  * 注册并唤醒等待线程) 下沉到 [SourceVerificationHelpShared] (shared commonMain),
  * 供 desktop/iOS/鸿蒙 复用。
  *
- * UI 部分 (VerificationCodeDialog.display / 启动 WebViewActivity) 经
+ * UI 部分 (VerificationCodeDialog.display / 推送 AppRoute.WebView) 经
  * [VerificationUiProvider] 注入, 本文件 [VerificationUiProviderImpl] 为 app 端实现,
  * 在 App.onCreate 经 [registerAndroidVerificationUiProvider] 注册。
  *
@@ -62,11 +62,13 @@ object SourceVerificationHelp {
         url: String,
         title: String,
         saveResult: Boolean? = false,
-        refetchAfterSuccess: Boolean? = true
+        refetchAfterSuccess: Boolean? = true,
+        asBottomSheet: Boolean = false,
     ) {
         source ?: throw NoStackTraceException("startBrowser parameter source cannot be null")
         require(url.length < 64 * 1024) { "startBrowser parameter url too long" }
-        VerificationUiProviders.get().startBrowser(source, url, title, saveResult, refetchAfterSuccess)
+        VerificationUiProviders.get()
+            .startBrowser(source, url, title, saveResult, refetchAfterSuccess, asBottomSheet)
         SourceVerificationHelpShared.registerWaitingThread(source.getKey())
     }
 
@@ -92,8 +94,8 @@ object SourceVerificationHelp {
 /**
  * [VerificationUiProvider] 的 app 端实现。
  *
- * 委托原 [VerificationCodeDialog.display] / [appCtx.startActivity]<[WebViewActivity]>,
- * 行为与下沉前完全一致。在 App.onCreate 经 [registerAndroidVerificationUiProvider] 注册
+ * 委托 [VerificationCodeDialog.display] / [AppNavigatorProviders] 推送 [AppRoute.WebView],
+ * 在 App.onCreate 经 [registerAndroidVerificationUiProvider] 注册
  * 到 [VerificationUiProviders]。
  */
 object VerificationUiProviderImpl : VerificationUiProvider {
@@ -112,16 +114,15 @@ object VerificationUiProviderImpl : VerificationUiProvider {
         url: String,
         title: String,
         saveResult: Boolean?,
-        refetchAfterSuccess: Boolean?
+        refetchAfterSuccess: Boolean?,
+        asBottomSheet: Boolean,
     ) {
-        appCtx.startActivity<WebViewActivity> {
-            putExtra("title", title)
-            putExtra("url", url)
-            putExtra("sourceOrigin", source.getKey())
-            putExtra("sourceName", source.getTag())
-            putExtra("sourceType", source.getSourceType())
-            putExtra("sourceVerificationEnable", saveResult)
-            putExtra("refetchAfterSuccess", refetchAfterSuccess)
+        val navigator = AppNavigatorProviders.getOrNull() ?: return
+        if (asBottomSheet) {
+            // BottomSheet 半屏方式打开 (对照 JsActivity BottomSheetDialog peekHeight=60%)
+            navigator.showOverlay(AppOverlay.Sheet(key = "web_view", payload = url))
+        } else {
+            navigator.push(AppRoute.WebView(url))
         }
     }
 }

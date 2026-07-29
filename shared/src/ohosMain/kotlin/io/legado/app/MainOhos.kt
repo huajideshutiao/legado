@@ -1,15 +1,22 @@
 package io.legado.app
 
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.window.ComposeArkUIViewController
 import io.legado.app.help.config.registerOhosProviders
 import io.legado.app.ui.AppBackground
-import io.legado.app.ui.OhosNavHost
-import io.legado.app.ui.SourceUiEventBridgeHost
+import io.legado.app.ui.OhosPlatformCapabilities
+import io.legado.app.ui.book.source.SourceUiEventBridgeHost
+import io.legado.app.ui.association.DeepLinkImportHost
 import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
@@ -19,30 +26,43 @@ import io.legado.app.ui.compose.platform.OhosEventBusProvider
 import io.legado.app.ui.compose.platform.OhosPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.OhosThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.LegadoApp
+import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.root.ScreenModelStore
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.coroutines.initMainHandler
+import platform.ArkTS.ArkTS_Napi_NativeModule.napi_env
+import platform.ArkTS.ArkTS_Napi_NativeModule.napi_value
+import kotlin.experimental.ExperimentalNativeApi
 
 /**
- * 鸿蒙端 Compose 入口 (对标 iOS `MainViewController` / desktop `Main.kt`)。
+ * 鸿蒙端 Compose 入口 (零薄壳: 直接调用 shared LegadoApp)。
  *
- * 由 EntryAbility 通过 napi 桥接调用, 顶层提供 Surface 容器 + [OhosNavHost] 路由。
- *
- * # 启动序列
- *
- * 1. [registerOhosProviders] 注册 commonMain 业务 provider (AppFilesDir / Preference /
- *    Database / BookStorage / JsEngine / Tts / WebServer 等, 详见
- *    [io.legado.app.help.config.OhosProviderRegistry] 注册顺序约束)
- * 2. [CompositionLocalProvider] 注入 4 个鸿蒙 Compose UI Provider
- *    (ThemeStore / AppConfig / EventBus / PreferenceStore, 对照 iOS MainViewController)
- * 3. [AppTheme] 包装内容, 提供主题色 + EInk 标记 + 文本样式
- *    (sharedUiMain 各 Screen 读 LocalAppColors, 缺 AppTheme 包装会崩)
- * 4. [Surface] 容器铺满全屏, 背景色 [AppBackground], 内嵌 [OhosNavHost]
- *    用 when(currentRoute) 切换全部子路由
+ * [MainArkUIViewController] 由 CPF 融合渲染宿主创建并接入 ArkUI RenderNode。
  */
+@OptIn(ExperimentalNativeApi::class, ExperimentalForeignApi::class)
+@CName("MainArkUIViewController")
+fun MainArkUIViewController(env: napi_env): napi_value {
+    initMainHandler(env)
+    return ComposeArkUIViewController(env) {
+        MainOhos()
+    }
+}
+
 @Composable
 fun MainOhos() {
-    // provider 注册 (首次组合时执行一次, 幂等; 对照 iOS MainViewController 中 registerIosProviders())
+    // provider 注册 (首次组合时执行一次, 幂等)
     remember { registerOhosProviders() }
+    // 注册平台能力 (供 shared LegadoApp 经 PlatformCapabilityProviders.get() 取能力)
+    remember { PlatformCapabilityProviders.register(OhosPlatformCapabilities) }
 
-    // 注入 4 个鸿蒙 Compose UI Provider (对照 iOS MainViewController / desktop Main.kt)
+    // 零薄壳导航: AppNavigator 替代原平台导航宿主的 20+ 并行状态字段
+    val navigator = remember { AppNavigator(AppRoute.Main()) }
+    val screenModelStore = remember { ScreenModelStore() }
+
+    // 注入 4 个鸿蒙 Compose UI Provider
     val themeStoreProvider = remember { OhosThemeStoreProvider() }
     val appConfigProvider = remember { OhosAppConfigProvider() }
     val eventBusProvider = remember { OhosEventBusProvider() }
@@ -56,10 +76,27 @@ fun MainOhos() {
     ) {
         AppTheme {
             Surface(modifier = Modifier.fillMaxSize(), color = AppBackground) {
-                OhosNavHost()
+                val rootFocusRequester = remember { FocusRequester() }
+                LaunchedEffect(Unit) {
+                    runCatching { rootFocusRequester.requestFocus() }
+                }
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .focusRequester(rootFocusRequester)
+                        .focusable()
+                ) {
+                    // 零薄壳: shared LegadoApp 统一管理导航栈 + ScreenModel 生命周期,
+                    // 所有路由由 shared RouteContent 直接渲染
+                    LegadoApp(
+                        navigator = navigator,
+                        screenModelStore = screenModelStore,
+                    )
+                    // legado:// deep link 导入宿主
+                    DeepLinkImportHost()
+                }
             }
-            // 书源 UI 事件桥: 订阅 SOURCE_UI_REQUEST, 承接 JS 的 showLoginDialog/
-            // showSourceVariableDialog 弹窗 (对照 desktop DesktopApp 的 SourceUiEventBridgeHost)
+            // 书源 UI 事件桥
             SourceUiEventBridgeHost()
         }
     }

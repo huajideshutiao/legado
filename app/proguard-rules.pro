@@ -135,14 +135,6 @@
 }
 
 ############################
-# AndroidX activity：JsActivity 通过反射设置 OnBackPressedCallback
-############################
--keepclassmembers class androidx.activity.OnBackPressedCallback {
-    public boolean isEnabled();
-    public void setEnabled(boolean);
-}
-
-############################
 # 静默无关警告
 ############################
 -dontwarn javax.annotation.**

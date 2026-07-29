@@ -1,5 +1,6 @@
 package io.legado.app.ui.book.read.page.entities
 
+import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.utils.fastBinarySearchBy
 import kotlin.math.abs
 import kotlin.math.min
@@ -14,6 +15,8 @@ class TextChapterShared(
     val pages: List<TextPage>,
     /** 排版本章时段评计数是否已就绪并应用；false 时计数迟到需要重排。 */
     val reviewCountApplied: Boolean = false,
+    // 本章起效的替换规则，对照 app 端 TextChapter.effectiveReplaceRules，供 EffectiveReplaces 对话框读取
+    val effectiveReplaceRules: List<ReplaceRule>? = null,
 ) : TextChapterRef {
 
     override val pageSize: Int get() = pages.size

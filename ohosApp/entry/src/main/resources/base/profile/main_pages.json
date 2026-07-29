@@ -1,13 +1,5 @@
 {
   "src": [
-    "pages/Index",
-    "pages/Bookshelf",
-    "pages/Reader",
-    "pages/AudioPlay",
-    "pages/MangaReader",
-    "pages/KmpInteropTest",
-    "pages/MyTab",
-    "pages/SearchScreen",
-    "pages/VideoPlay"
+    "pages/Index"
   ]
 }

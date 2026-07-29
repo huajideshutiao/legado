@@ -23,7 +23,7 @@ import kotlin.coroutines.EmptyCoroutineContext
 /**
  * 桌面端 AnalyzeRule 薄子类: 补齐 app 端 AnalyzeRule JS 面中跨端可用的部分
  * (JsEncodeUtils 摘要/加解密工厂 + refreshTocUrl), 加解密全部复用 shared jvmAndAndroidMain 实现物。
- * jsoup get/head/post 与 startJsActivity 依赖 app 端专属库/组件, 桌面端不提供 (与现状一致)。
+ * jsoup get/head/post 依赖 app 端专属库/组件, 桌面端不提供 (与现状一致)。
  *
  * 放 shared jvmMain 而非 desktop 模块: hutool 在 shared 是 implementation 依赖,
  * desktop 模块编译期不可见, setIv 等 hutool 父类成员只能在 shared 内部引用。

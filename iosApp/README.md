@@ -21,8 +21,8 @@ iOSApp (SwiftUI App)
   └── ContentView (UIViewControllerRepresentable)
         └── MainViewControllerKt.MainViewController()  [shared framework, Kotlin]
               └── ComposeUIViewController
-                    └── AppTheme { IosBookshelfScreen() }
-                          └── SharedBookshelfScreen (shared/sharedUiMain)
+                    └── AppTheme { LegadoApp(navigator, screenModelStore) }
+                          └── shared RouteContent 统一分发 53 路由
 ```
 
 ## macOS 构建步骤 (Windows 无法编译 iOS target)
@@ -93,67 +93,43 @@ iOS 端代码改动 (iosMain/) 在 Windows 上无法编译验证, 但 IDE (Andro
 - 本地调试: 用 Personal Team (Apple ID 免费账号即可, 7 天签名)
 - 上架 App Store: 在 Xcode Signing & Capabilities 中填 Apple Developer 团队 ID
 
-## KP3 接入状态 (2026-07-22)
+## iOS 端零薄壳架构
 
-iOS 端已接入 (详见 `shared/src/iosMain/`):
+iOS 端零薄壳架构: `MainViewController.kt` 直接调用 shared `LegadoApp`, 53 路由由 shared
+`RouteContent` 统一分发, 不再维护 `IosNavHost` / `IosBookshelfScreen` / `IosReaderScreen` /
+`IosSearchScreen` / `IosBookInfoScreen` / `IosBookSourceScreen` 等平台薄壳 Composable。
 
-| 模块 | 实现 | 状态 |
-|------|------|------|
-| UI 入口 | `MainViewController.kt` (ComposeUIViewController + IosBookshelfScreen) | ✅ 已接入 |
-| 书架 | `IosBookshelfScreen.kt` (包装 shared/sharedUiMain BookshelfScreen) | ✅ 已接入 |
-| 封面加载 | `IosBookCover.kt` (UIImage + Skia ImageBitmap 桥接) | ✅ 已接入 |
-| JS 引擎 | `IosJsEngine.kt` (JavaScriptCore, 替代 quickjs JNI) | ✅ 已接入 |
-| HTTP 层 | `IosHttpProvider.kt` (Ktor CIO 包装 KmpHttpClient) | ✅ 已接入 |
-| 数据库 | `IosDatabaseDriver.kt` (Room KMP + BundledSQLiteDriver) | ✅ 已接入 |
-| TTS | `IosSystemTtsEngine.kt` (AVSpeechSynthesizer) | ✅ 已接入 |
-| 数据访问 | `IosAppDbAccessor.kt` / `IosBookHelpAccessor.kt` / `IosSourceHelpAccessor.kt` | ✅ 已接入 |
-| Provider 注册 | `IosProviderRegistry.kt` (9 步顺序, 与 desktop Main.kt 对齐) | ✅ 已接入 |
+### 内部调用关系 (shared/src/iosMain/.../MainViewController.kt)
 
-## KP4 接入状态 (2026-07-24)
+```
+ComposeUIViewController
+  └── AppTheme
+        ├── 顶部 48dp 着色条 (themeStoreProvider.accentColor)
+        ├── Box (ESC/BackSpace 触发 navigator.pop())
+        │     └── LegadoApp(navigator, screenModelStore)  [shared]
+        │           └── RouteContent  [shared]  按 AppRoute 类型分发 53 路由
+        ├── SourceUiEventBridgeHost()  (订阅 SOURCE_UI_REQUEST, 承接 JS 弹窗)
+        └── DeepLinkImportHost()  (legado:// deep link 导入)
+```
 
-iOS 端阅读流子路由已接入 (对照 desktop `DesktopApp.kt` 的 `when(currentRoute)` 路由模式,
-由 `MainViewController.kt` 调用 `IosNavHost()` 替代原直接调 `IosBookshelfScreen()`):
+### iOS 平台能力 actual 实现 (shared/src/iosMain/)
 
-| 子路由 | 实现 | 包装的 shared/sharedUiMain Composable | 状态 |
-|------|------|------|------|
-| 路由宿主 | `ui/IosNavHost.kt` (5 路由枚举 BOOKSHELF/READER/SEARCH/BOOK_INFO/BOOK_SOURCE) | - | ✅ 已接入 |
-| 阅读页 (READER) | `ui/reader/IosReaderScreen.kt` | `ReadViewComposable` | ✅ 已接入 (最小可读, 无菜单/目录/TTS) |
-| 搜索页 (SEARCH) | `ui/search/IosSearchScreen.kt` | `SearchScreen` | ✅ 已接入 (含 SearchScopeDialog/AppLogDialog/清空历史确认) |
-| 详情页 (BOOK_INFO) | `ui/bookinfo/IosBookInfoScreen.kt` | `BookInfoScreen` | ✅ 已接入 (含 SourceLoginDialog/GroupManageDialog/VariableDialog/AppLogDialog) |
-| 书源管理 (BOOK_SOURCE) | `ui/booksource/IosBookSourceScreen.kt` | `BookSourceListScreen` | ✅ 已接入 (核心数据操作, 校验/导入/编辑/调试 留 TODO) |
+| 模块                  | 实现                                                                                                            |
+|---------------------|---------------------------------------------------------------------------------------------------------------|
+| UI 入口               | `MainViewController.kt` (ComposeUIViewController + shared LegadoApp)                                          |
+| 平台能力聚合              | `IosPlatformCapabilities.kt` + `IosProviderRegistry.kt` (与 desktop Main.kt 对齐)                                |
+| Compose 平台 Provider | `IosProviders.kt` (ThemeStore / AppConfig / EventBus / PreferenceStore 4 个 Provider)                          |
+| 数据库                 | `IosDatabaseDriver.kt` (Room KMP + BundledSQLiteDriver) + `IosAppDbAccessor.kt`                               |
+| JS 引擎               | `RegisterIosJsEngines.kt` (JavaScriptCore, 替代 quickjs JNI)                                                    |
+| HTTP 层              | `IosHttpProvider.kt` (Ktor CIO 包装 KmpHttpClient)                                                              |
+| TTS                 | `IosSystemTtsEngine.kt` (AVSpeechSynthesizer)                                                                 |
+| 图片加载                | `IosBitmapProvider.kt` + `BookImageLoader.ios.kt` + `ImageBitmapLoader.ios.kt`                                |
+| 图片操作                | `IosImageOps.kt` (UIImage + UIGraphics 真实像素操作: decode/encode/split/stitch/crop/size)                          |
+| Toast               | `Toaster.ios.kt` (dispatch_async 主线程 + UIAlertController present, NSLog 兜底)                                   |
+| 进度通知                | `NotificationProgress.ios.kt` (UNUserNotificationCenter 本地通知 + 权限请求, NSLog 兜底)                                |
+| Crypto              | `NativeSignOps.ios.kt` / `NativeKryptoOps.ios.kt` / `NativeAsymmetricCryptoOps.ios.kt` / `IosCryptoNative.kt` |
+| 其他                  | `IosFilePicker.ios.kt` / `IosImagePicker.ios.kt` / `IosOpenUrlProvider.kt` / `IosUserAgentProvider.kt` 等      |
 
-跳转关系 (与 desktop 一致):
-- 书架点击书籍 → READER (携带 Book)
-- 书架长按书籍 → BOOK_INFO (携带 BaseBook)
-- 书架顶栏搜索按钮 → SEARCH
-- 书架溢出菜单"书源管理" → BOOK_SOURCE
-- 搜索结果点击书籍 → BOOK_INFO (携带 BaseBook)
-- 详情页"开始阅读" → READER (携带 Book)
-- 书源管理单项菜单"搜索书籍" → SEARCH
-- 各子路由 onBack → BOOKSHELF (READER/SEARCH/BOOK_INFO/BOOK_SOURCE 默认回书架)
-
-## KP4 provider 真实化 (2026-07-24)
-
-4 个 stub provider 已真实化 (详见 `shared/src/iosMain/`):
-
-| 模块 | 实现 | 状态 |
-|------|------|------|
-| 图片操作 | `IosImageOps.kt` (UIImage + UIGraphics 真实像素操作: decode/encode/split/stitch/crop/size) | ✅ 已接入 |
-| Toast | `Toaster.ios.kt` (dispatch_async 主线程 + UIAlertController present, NSLog 兜底) | ✅ 已接入 |
-| 进度通知 | `NotificationProgress.ios.kt` (UNUserNotificationCenter 本地通知 + 权限请求, NSLog 兜底) | ✅ 已接入 |
-| 服务调度 | `ServiceLauncher.ios.kt` (kotlinx.coroutines 协程 + CacheBookShared; UpdateBook 待 commonMain 下沉) | ✅ 已接入 (UpdateBook 部分 stub) |
-
-> 注: 上述 4 项 iOS target 代码在 Windows 上无法编译验证, 真实编译验证必须在 macOS 上进行
+> 注: 上述 iOS target 代码在 Windows 上无法编译验证, 真实编译验证必须在 macOS 上进行
 > (`./gradlew :shared:compileKotlinIosArm64`)。UIAlertController/UNNotificationRequest 工厂方法
 > 与 NS_OPTIONS 位运算等少数 ObjC 桥接细节如遇编译报错, 按文件内 TODO 注释微调即可。
-
-## 后续 KP5 待接入
-
-- ReadMenuOverlay (阅读菜单层: 顶栏/底栏/进度条/子菜单, 依赖 ReadMenuState iOS actual 实现)
-- TocDrawerContent (阅读页目录侧栏)
-- TtsControlPanel (阅读页 TTS 控制面板)
-- ChangeCoverDialog (详情页换封面, 依赖 ChangeCoverPlatform iOS actual 实现)
-- 书源校验 (BookSourceChecker, 依赖 NotificationProgresses iOS actual)
-- 书源编辑/调试/登录子路由 (BOOK_SOURCE_EDIT/BOOK_SOURCE_DEBUG)
-- 目录/换源子路由 (TOC/CHANGE_SOURCE)
-- 音频/漫画/视频/RSS 阅读路由 (AUDIO_PLAYER/MANGA_READER/VIDEO_PLAYER/RSS_*)

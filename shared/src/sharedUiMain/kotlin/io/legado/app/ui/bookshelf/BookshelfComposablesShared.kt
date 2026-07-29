@@ -686,14 +686,13 @@ fun ShelfGridItem(
     Box(modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
         Column(Modifier.fillMaxWidth()) {
             // 封面 Box: 宽度填满 (减 12dp 左右内边距), 对照原 XML iv_cover match_parent + 12dp margin
-            if (!book.getDisplayCover().isNullOrBlank()) {
-                Box(
-                    Modifier.fillMaxWidth().padding(start = 12.dp, top = 12.dp, end = 12.dp),
-                    contentAlignment = Alignment.TopCenter,
-                ) {
-                    // 对照原 bindGridCard: ivCover.coverRatio = NOVEL (恒)
-                    coverSlot(book, Modifier.fillMaxWidth(), false)
-                }
+            // 无 cover URL 时仍渲染封面 Box (走占位), 对齐 app 端 CoverImageView 无 path 也显示默认封面
+            Box(
+                Modifier.fillMaxWidth().padding(start = 12.dp, top = 12.dp, end = 12.dp),
+                contentAlignment = Alignment.TopCenter,
+            ) {
+                // 对照原 bindGridCard: ivCover.coverRatio = NOVEL (恒)
+                coverSlot(book, Modifier.fillMaxWidth(), false)
             }
             Text(
                 text = book.name,
@@ -739,11 +738,10 @@ fun ShelfVideoItem(
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(8.dp),
     ) {
-        if (!book.getDisplayCover().isNullOrBlank()) {
-            Box(Modifier.fillMaxWidth()) {
-                // 对照原 bindVideoCard: ivCover.coverRatio = VIDEO (恒)
-                coverSlot(book, Modifier.fillMaxWidth(), true)
-            }
+        // 无 cover URL 时仍渲染封面 Box (走占位), 对齐 app 端 CoverImageView 无 path 也显示默认封面
+        Box(Modifier.fillMaxWidth()) {
+            // 对照原 bindVideoCard: ivCover.coverRatio = VIDEO (恒)
+            coverSlot(book, Modifier.fillMaxWidth(), true)
         }
         Text(
             text = book.name,
@@ -857,11 +855,10 @@ fun GroupVideoItem(
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(8.dp),
     ) {
-        if (!group.cover.isNullOrBlank()) {
-            Box(Modifier.fillMaxWidth()) {
-                // 对照原 style2 BooksAdapterVideo.GroupViewHolder: ivCover.coverRatio = VIDEO
-                coverSlot(group, Modifier.fillMaxWidth(), true)
-            }
+        // 无 cover URL 时仍渲染封面 Box (走占位), 对齐 app 端无 path 也显示默认封面
+        Box(Modifier.fillMaxWidth()) {
+            // 对照原 style2 BooksAdapterVideo.GroupViewHolder: ivCover.coverRatio = VIDEO
+            coverSlot(group, Modifier.fillMaxWidth(), true)
         }
         Text(
             text = group.groupName,

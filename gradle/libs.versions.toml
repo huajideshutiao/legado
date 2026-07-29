@@ -1,11 +1,12 @@
 [versions]
 
 cronet = "143.7445.0"
-# AntUI 接入: 切换到 fork 版 Kotlin 2.3.0.1-alipay (提供 ohosArm64() target)
-kotlin = "2.3.0.1-alipay"
+# CPF-KMP-CMP 0.4.0 配套 Kotlin，提供正式 ohosArm64()/ohosX64() target。
+kotlin = "2.2.21-0.4.0"
+composeMultiplatform = "1.9.2-0.4.0"
 krypto = "4.0.10"
 ksoup = "0.2.6"
-# KSP 2.x 独立版本号, 不再强绑定 Kotlin 主版本号; AntUI fork 版 Kotlin 2.3.0.1-alipay 兼容 KSP 2.3.7
+# KSP 2.x 独立版本号；沿用当前稳定处理器版本。
 ksp = "2.3.7"
 #agp影响范围太大，暂不升级
 #noinspection AndroidGradlePluginVersion
@@ -20,16 +21,15 @@ documentfile = "1.1.0"
 libarchive = "1.1.6"
 glide = "5.0.7"
 jsonPath = "3.0.0"
-# AntUI 接入: kotlinx 系列切换到 fork 版 -alipay (与 compose-multiplatform 1.8.2.99-alipay 配套)
-kotlinxSerializationJson = "1.9.1-alipay"
-coroutines = "1.10.2-alipay"
+# CPF-KMP-CMP 0.4.0 配套的鸿蒙 KMP 生态制品。
+kotlinxSerializationJson = "1.9.1-0.4.0"
+coroutines = "1.10.2-0.4.0"
 # KJ3 并发原语下沉：仅用 locks 门面(synchronized/SynchronizedObject)，纯库无需 gradle 插件
-# AntUI 接入: atomicfu 切换到 fork 版 0.30.0-beta-alipay
-atomicfu = "0.30.0-beta-alipay"
-# AntUI 接入: 新增 fork 版 kotlinx-datetime (compose-multiplatform 1.8.2.99-alipay 传递依赖)
-kotlinxDatetime = "0.6.1-alipay"
-# AntUI 接入: 新增 fork 版 skiko (鸿蒙端 Compose 渲染后端, ohosArm64 变体)
-skiko = "0.9.4.2.40-alipay"
+atomicfu = "0.31.0-0.4.0"
+kotlinxDatetime = "0.7.1-0.4.0"
+# 融合渲染由 CPF Compose 插件自动选择 skiko-ohosarm64-fusionrenderer 变体；
+# 此 root 坐标保留给 desktop 与直接使用 org.jetbrains.skia 的共享实现。
+skiko = "0.9.22.2-0.4.0"
 # 作者已声明项目暂停维护（最后发布 2021），但 Android 平台无同等功能的活跃替代品
 markwon = "4.6.2"
 # 锁定 0.41.0：0.42.0+ 起 AAR 强制 compileSdk 37（kotlin-stdlib 2.4.0），AGP 8.13.2 上限 36
@@ -39,9 +39,8 @@ media = "1.8.0"
 # 出于轻量化考虑，不改用ktor
 nanoHttpd = "2.3.1"
 okhttp = "5.3.2"
-# AntUI 私服提供 ohosArm64 的 Okio fork；标准 3.16.4 不含 ohos_arm64 变体。
-# OkHttp 5.3.2 对 Okio 3.x 保持二进制兼容，统一到当前 fork 发布的 3.10.0-alipay。
-okio = "3.10.0-alipay"
+# CPF 适配版 Okio 同时覆盖标准平台与 ohosArm64 变体。
+okio = "3.16.4-0.4.0"
 quickChineseTransfer = "0.2.16"
 playServicesCronet = "18.1.1"
 
@@ -82,8 +81,8 @@ androidsvg = "1.4"
 # 上游 2010 年后停止维护，但纯 Java 实现、无 native 依赖、API 稳定，仍是最轻量选择
 jlayer = "1.0.1"
 junit = "4.13.2"
-# Coil3: KMP+Compose 原生图片加载库, 替代 Glide
-coil3 = "3.2.0"
+# Coil3 官方版本
+coil3 = "3.3.0"
 # 拖拽排序：KMP 原生库(Maven Central，经 Aliyun central 镜像可达)，替代 ItemTouchHelper。3.x 用 animateItem API，需 compose≥1.7(BOM 已满足)
 reorderable = "3.1.0"
 
@@ -93,10 +92,10 @@ multiplatformMarkdown = { module = "com.mikepenz:multiplatform-markdown-renderer
 multiplatformMarkdown-m3 = { module = "com.mikepenz:multiplatform-markdown-renderer-m3", version.ref = "multiplatformMarkdown" }
 multiplatformMarkdown-coil3 = { module = "com.mikepenz:multiplatform-markdown-renderer-coil3", version.ref = "multiplatformMarkdown" }
 
-# AntUI 接入: skiko (鸿蒙端 Compose 渲染后端, ohosArm64 变体)
+# Skiko root 坐标；鸿蒙融合渲染变体由 CPF Compose 插件按 rendererBackend 选择。
 skiko = { module = "org.jetbrains.skiko:skiko", version.ref = "skiko" }
-# AntUI 接入: kotlinx-datetime (compose-multiplatform 1.8.2.99-alipay 传递依赖, ohosMain 显式声明)
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
+compose-multiplatform-export = { module = "org.jetbrains.compose.export:export", version.ref = "composeMultiplatform" }
 
 activity-ktx = { module = "androidx.activity:activity-ktx", version.ref = "activity" }
 cronet-api = { module = "org.chromium.net:cronet-api", version.ref = "cronet" }
@@ -232,6 +231,5 @@ compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "
 
 # 桌面端入口模块（验证 KMP shared jvm target）
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
-# Compose Multiplatform (AntUI fork 版 1.8.2.99-alipay: 提供 ohosArm64 变体, 鸿蒙端 Compose 支持)
-# 官方上游 1.8.2 兼容 Kotlin 2.0.x+; fork 版基于 Kotlin 2.3.0.1-alipay 重新构建
-compose-multiplatform = { id = "org.jetbrains.compose", version = "1.8.2.99-alipay" }
+# CPF-KMP-CMP 0.4.0 Compose 插件，负责 OHOS target、导出与融合渲染变体选择。
+compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }

@@ -51,6 +51,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import io.legado.app.constant.BottomNavTag
+import io.legado.app.ui.compose.platform.platformStatusBarPadding
+import io.legado.app.ui.compose.theme.LocalEInk
 import kotlinx.coroutines.flow.SharedFlow
 
 /**
@@ -100,7 +102,12 @@ fun MainScreen(
         snapshotFlow { pagerState.currentPage }.collect { currentPageSink(it) }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    // 状态栏回避: 非_eInk 走 platformStatusBarPadding (Android/iOS/OHOS=statusBarsPadding, JVM=no-op);
+    // eInk 维持原状(无 padding), 与 HomeScreen/ExploreScreen 顶栏的 eInk 分支对齐。
+    // 父级消费 statusBars 后, 子 Tab 顶栏自带的 statusBarsPadding() 拿到 0 inset, 不会双倍 padding。
+    val eInk = LocalEInk.current
+    val insetsModifier = if (eInk) Modifier else Modifier.platformStatusBarPadding()
+    Column(Modifier.fillMaxSize().then(insetsModifier)) {
         HorizontalPager(
             state = pagerState,
             beyondViewportPageCount = 3,

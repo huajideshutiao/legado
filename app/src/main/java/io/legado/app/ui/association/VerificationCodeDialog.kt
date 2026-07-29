@@ -58,6 +58,7 @@ object VerificationCodeDialog {
         sourceName: String? = null,
         sourceType: Int
     ) {
+        // 因 PhotoDialog 经 showDialogFragment 显示，需 AppCompatActivity 提供 supportFragmentManager
         val activity = io.legado.app.help.LifecycleHelp.currentActivity as? AppCompatActivity
         if (activity == null) {
             appCtx.toastOnUi("无法在后台显示验证码对话框")

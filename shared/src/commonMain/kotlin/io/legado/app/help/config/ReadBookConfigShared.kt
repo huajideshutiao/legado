@@ -11,9 +11,11 @@ import io.legado.app.ui.compose.platform.PreferenceStoreProvider
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.KS_JSON
+import io.legado.app.utils.Md5Digest
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.hexString
+import io.legado.app.utils.toHexLower
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.serialization.SerialName
@@ -356,6 +358,124 @@ class ReadBookConfigShared(private val prefs: PreferenceStoreProvider) {
         config.bgStrEInk = importBg(config.bgTypeEInk, config.bgStrEInk, configDir, filesBase, sep)
         config.curTextColor()
         return config
+    }
+
+    /**
+     * 从本地路径导入配置 zip (对照 app 端 `BgTextConfigViewModel.importConfig`)。
+     *
+     * 读取文件字节后委托 [import], 调用方负责选择文件路径 (各端 FilePickerService)。
+     */
+    fun importFromPath(path: String): ReadStyleConfig {
+        val bytes = FileUtilsCommon.readBytes(path)
+            ?: error("读取配置文件失败: $path")
+        return import(bytes)
+    }
+
+    /**
+     * 导出当前主题配置为 zip, 返回临时 zip 路径 (对照 app 端 `BgTextConfigViewModel.exportConfig`)。
+     *
+     * # 行为
+     * 1. 在 `{externalCacheDir ?: cacheDir}/readConfig` 创建临时目录
+     * 2. 写入 `readConfig.json` (经 [getExportConfig] 处理 shareLayout 后的副本)
+     * 3. 字体文件非空时复制到临时目录, config.textFont 改为文件名 (与 app 端一致)
+     * 4. 三套背景图 (bgType==2) 复制到临时目录
+     * 5. zip 全部文件到 `{externalCacheDir ?: cacheDir}/readConfig.zip`
+     * 6. 返回 zip 临时路径, 调用方负责复制到用户选择的目标并清理临时文件
+     */
+    fun exportConfigZip(): String {
+        val sep = BackupFileOps.separator
+        val cacheBase = AppFilesDirs.get().externalCacheDir ?: AppFilesDirs.get().cacheDir
+        val configDir = cacheBase + sep + "readConfig"
+        BackupFileOps.delete(configDir)
+        BackupFileOps.createFolderIfNotExist(configDir)
+
+        val exportFiles = mutableListOf<String>()
+        val config = getExportConfig()
+
+        // 字体文件: 路径非空时复制到临时目录, config.textFont 改为文件名
+        val fontPath = textFont
+        if (fontPath.isNotEmpty()) {
+            val fontName = fontPath.substringAfterLast(sep).substringAfterLast('/')
+            val fontFile = configDir + sep + fontName
+            if (BackupFileOps.exists(fontPath) && !BackupFileOps.exists(fontFile)) {
+                BackupFileOps.copyFile(fontPath, fontFile)
+                config.textFont = fontName
+                exportFiles.add(fontFile)
+            }
+        }
+
+        // readConfig.json
+        val configFile = configDir + sep + configFileName
+        BackupFileOps.writeText(
+            configFile,
+            KS_JSON.encodeToString(ReadStyleConfig.serializer(), config)
+        )
+        exportFiles.add(configFile)
+
+        // 三套背景图 (bgType==2)
+        repeat(3) { index ->
+            val bgPath = getBgPath(index) ?: return@repeat
+            val bgName = bgPath.substringAfterLast(sep).substringAfterLast('/')
+            val bgExportFile = configDir + sep + bgName
+            if (BackupFileOps.exists(bgPath) && !BackupFileOps.exists(bgExportFile)) {
+                BackupFileOps.copyFile(bgPath, bgExportFile)
+                exportFiles.add(bgExportFile)
+            }
+        }
+
+        // zip
+        val configZipPath = cacheBase + sep + "readConfig.zip"
+        BackupFileOps.delete(configZipPath)
+        check(BackupFileOps.zipFiles(exportFiles, configZipPath)) { "打包配置失败" }
+        return configZipPath
+    }
+
+    /**
+     * 取指定索引的背景图片路径 (对照 app 端 `Config.getBgPath`)。
+     *
+     * @param bgIndex 0:白天 1:夜间 2:E-Ink
+     * @return bgType==2 时返回背景路径 (含分隔符视为绝对路径, 否则拼 `{files}/bg/{bgStr}`); 否则 null
+     */
+    fun getBgPath(bgIndex: Int): String? {
+        val (bgType, bgStr) = when (bgIndex) {
+            0 -> durConfig.bgType to durConfig.bgStr
+            1 -> durConfig.bgTypeNight to durConfig.bgStrNight
+            2 -> durConfig.bgTypeEInk to durConfig.bgStrEInk
+            else -> error("unknown bgIndex: $bgIndex")
+        }
+        if (bgType != 2) return null
+        val filesBase = AppFilesDirs.get().externalFilesDir ?: AppFilesDirs.get().filesDir
+        val sep = BackupFileOps.separator
+        return resolveBgPath(filesBase, bgStr, sep)
+    }
+
+    /**
+     * 从本地图片路径设置背景图 (对照 app 端 `BgTextConfigViewModel.setBgFromUri`)。
+     *
+     * # 行为
+     * 1. 读取图片字节, 计算 MD5 → fileName = `md5.suffix`
+     * 2. 复制到 `{externalFilesDir ?: filesDir}/bg/{fileName}` (已存在则跳过)
+     * 3. 调用方负责 `durConfig.setCurBg(2, fileName)` + postConfig(BG)
+     *
+     * @return 背景图文件名 (md5.suffix), 调用方用于 setCurBg
+     */
+    fun setBgFromPath(path: String): String {
+        val bytes = FileUtilsCommon.readBytes(path)
+            ?: error("读取图片失败: $path")
+        val suffix = path.substringAfterLast('.', "unknown")
+        val digest = Md5Digest()
+        digest.update(bytes, 0, bytes.size)
+        val fileName = digest.digest().toHexLower() + ".$suffix"
+
+        val filesBase = AppFilesDirs.get().externalFilesDir ?: AppFilesDirs.get().filesDir
+        val sep = BackupFileOps.separator
+        val bgDir = filesBase + sep + "bg"
+        val bgPath = bgDir + sep + fileName
+        if (!BackupFileOps.exists(bgPath)) {
+            BackupFileOps.createFolderIfNotExist(bgDir)
+            check(FileUtilsCommon.writeBytes(bgPath, bytes)) { "写入背景图失败: $bgPath" }
+        }
+        return fileName
     }
 
     /** 导入单套背景：图片类型 (bgType==2) 落地到 `{files}/bg` 并返回新路径，颜色类型仅校验 hex。 */

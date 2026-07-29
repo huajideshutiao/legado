@@ -11,7 +11,8 @@ import io.legado.app.ui.compose.platform.PreferenceStoreProvider
  *   `AndroidPreferenceStoreProvider` (包装 defaultSharedPreferences) 构造。
  * - 桌面 jvm: [io.legado.app.help.config.DesktopReadConfigProviders] 用
  *   `DesktopPreferenceStoreProvider` 构造。
- * - iOS: `IosReaderScreen` 用工厂函数 + `IosPreferenceStoreProvider` (NSUserDefaults) 构造。
+ * - iOS: `MainViewController` 用工厂函数 + `IosPreferenceStoreProvider` (NSUserDefaults) 构造
+ *   (Provider 由 `registerIosProviders()` 注册)。
  *
  * 模式参考 `AppConfigProviders` / `ThemeStoreProvider` / `PreferenceStoreProvider`，
  * 用 interface 而非 expect/actual，避免 shared androidMain 反向依赖 app 模块。

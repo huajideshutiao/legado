@@ -21,7 +21,12 @@
 //
 // 同步语义注意: 业务类函数内部用 runBlocking 转 suspend, 应在 TaskPool/Worker 中调用
 
+import type { ArkUIViewController } from '@cpf-kmp-cmp/compose';
+
 export interface LegadoNativeBridge {
+  /** 创建由 CPF 融合渲染承载的 Legado Compose 根控制器。 */
+  MainArkUIViewController(): ArkUIViewController;
+
   // ===== 工具类 (KP4) =====
   chineseT2S(text: string): string;
   chineseS2T(text: string): string;

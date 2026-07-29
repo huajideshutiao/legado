@@ -26,6 +26,7 @@ fun MoreConfigScreen(
     pageTouchSlopSummary: String,
     onPageTouchSlop: () -> Unit,
     onClickRegionalConfig: () -> Unit,
+    onPrefChange: (String) -> Unit = {},
 ) {
     val screenDirectionEntries = rememberStringArray("screen_direction_title")
     val screenDirectionValues = rememberStringArray("screen_direction_value")
@@ -62,6 +63,7 @@ fun MoreConfigScreen(
                 values = screenDirectionValues,
                 defaultValue = "0",
                 isBottomBackground = true,
+                onValueChange = { onPrefChange(PreferKey.screenOrientation) },
             )
             listPreference(
                 prefKey = PreferKey.keepLight,
@@ -70,18 +72,21 @@ fun MoreConfigScreen(
                 values = screenTimeOutValues,
                 defaultValue = "0",
                 isBottomBackground = true,
+                onValueChange = { onPrefChange(PreferKey.keepLight) },
             )
             switchPreference(
                 prefKey = PreferKey.hideStatusBar,
                 title = titleHideStatusBar,
                 defaultValue = false,
                 isBottomBackground = true,
+                onCheckedChange = { onPrefChange(PreferKey.hideStatusBar) },
             )
             switchPreference(
                 prefKey = PreferKey.hideNavigationBar,
                 title = titleHideNavigationBar,
                 defaultValue = false,
                 isBottomBackground = true,
+                onCheckedChange = { onPrefChange(PreferKey.hideNavigationBar) },
             )
             listPreference(
                 prefKey = PreferKey.doublePageHorizontal,
@@ -90,6 +95,7 @@ fun MoreConfigScreen(
                 values = doublePageValues,
                 defaultValue = "0",
                 isBottomBackground = true,
+                onValueChange = { onPrefChange(PreferKey.doublePageHorizontal) },
             )
             listPreference(
                 prefKey = PreferKey.progressBarBehavior,
@@ -98,24 +104,28 @@ fun MoreConfigScreen(
                 values = progressBarValues,
                 defaultValue = "page",
                 isBottomBackground = true,
+                onValueChange = { onPrefChange(PreferKey.progressBarBehavior) },
             )
             switchPreference(
                 prefKey = PreferKey.useZhLayout,
                 title = titleUseZhLayout,
                 defaultValue = false,
                 isBottomBackground = true,
+                onCheckedChange = { onPrefChange(PreferKey.useZhLayout) },
             )
             switchPreference(
                 prefKey = PreferKey.textFullJustify,
                 title = titleTextFullJustify,
                 defaultValue = true,
                 isBottomBackground = true,
+                onCheckedChange = { onPrefChange(PreferKey.textFullJustify) },
             )
             switchPreference(
                 prefKey = PreferKey.textBottomJustify,
                 title = titleTextBottomJustify,
                 defaultValue = true,
                 isBottomBackground = true,
+                onCheckedChange = { onPrefChange(PreferKey.textBottomJustify) },
             )
             switchPreference(
                 prefKey = PreferKey.mouseWheelPage,
@@ -156,6 +166,7 @@ fun MoreConfigScreen(
                 prefKey = PreferKey.showReadTitleAddition,
                 title = titleShowReadTitleAddition,
                 defaultValue = true,
+                onCheckedChange = { onPrefChange(PreferKey.showReadTitleAddition) },
             )
         }
     }

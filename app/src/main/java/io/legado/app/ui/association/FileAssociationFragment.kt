@@ -2,7 +2,6 @@ package io.legado.app.ui.association
 
 import android.net.Uri
 import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.DialogFragment
@@ -12,20 +11,25 @@ import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.InvalidBooksDirException
+import io.legado.app.help.book.isAudio
+import io.legado.app.help.book.isImage
+import io.legado.app.help.book.isRss
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.canRead
 import io.legado.app.utils.checkWrite
 import io.legado.app.utils.getFile
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.readUri
-import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
@@ -70,7 +74,16 @@ class FileAssociationFragment() : Fragment() {
             finishActivity()
         }
         viewModel.openBookLiveData.observe(this) {
-            requireContext().startActivityForBook(it)
+            // 按 book 类型分发到对应阅读路由
+            val navigator = AppNavigatorProviders.get()
+            val target = when {
+                it.isAudio -> AppRoute.AudioPlay(it.toRouteRef())
+                it.isVideo -> AppRoute.VideoPlay(it.toRouteRef())
+                it.isImage -> AppRoute.MangaReader(it.toRouteRef())
+                it.isRss -> AppRoute.ReadRss(it.toRouteRef())
+                else -> AppRoute.Reader(it.toRouteRef())
+            }
+            navigator.push(target)
             finishActivity()
         }
         viewModel.onLineImportLive.observe(this) {
@@ -126,7 +139,12 @@ class FileAssociationFragment() : Fragment() {
             "/dictRule" -> showImportDialog(ImportDictRuleDialog(url, isShell))
             "/theme" -> showImportDialog(ImportThemeDialog(url, isShell))
             "/addToBookshelf" -> {
-                AddToBookshelfHelper.add(requireActivity(), url, isShell)
+                AddToBookshelfHelper.add(
+                    AppNavigatorProviders.get(),
+                    requireActivity(),
+                    url,
+                    isShell
+                )
                 removeSelf()
             }
 
@@ -168,7 +186,8 @@ class FileAssociationFragment() : Fragment() {
     }
 
     private fun showImportDialog(dialog: DialogFragment) {
-        (activity as? AppCompatActivity)?.showDialogFragment(dialog)
+        // 通过宿主 Activity 的 FragmentManager 显示，避免强转 AppCompatActivity
+        dialog.show(parentFragmentManager, dialog::class.simpleName)
         removeSelf()
     }
 

@@ -23,7 +23,7 @@ import kotlin.coroutines.CoroutineContext
  *
  * 1. **桌面端 [CacheBookCallback] 注册**, 用 postEvent 通知阅读页 Composable 监听
  *    自行重载 (桌面端无 ReadBook 单例, 与 app 端 callback 桥接 ReadBook 区别)
- * 2. **对外 API 委托** [CacheBookShared], 保持 [DesktopMainViewModel] 等调用点不变
+ * 2. **对外 API 委托** [CacheBookShared], 保持桌面端调用点不变
  *
  * 调度核心逻辑 (cacheBookMap / getOrCreate / startProcessJob / downloadSummary /
  * CacheBookModel 等) 全部委托 [CacheBookShared], 行为与下沉前完全一致。
@@ -31,7 +31,7 @@ import kotlin.coroutines.CoroutineContext
  * # 平台差异 (对照 app 端 CacheBook)
  *
  * - **不依赖 CacheBookService (Android Service)**: 桌面端用协程直接处理,
- *   [DesktopMainViewModel.cacheBook] 在协程内调 [startProcessJob]
+ *   [ReadBookViewModelShared] 下载流程在协程内调 [startProcessJob]
  * - **不依赖 ReadBook 单例 (app 专属)**: app 端 callback 桥接
  *   `ReadBook.contentLoadFinish` / `downloadedChapters` / `downloadFailChapters`;
  *   桌面端 callback 用 postEvent 通知阅读页 Composable 监听自行重载
@@ -45,7 +45,7 @@ import kotlin.coroutines.CoroutineContext
  * - **addDownload clamp**: 原 DesktopCacheBook.addDownload 内部 clamp
  *   `min(end, book.lastChapterIndex)`; 下沉后 [CacheBookModelShared.addDownload] 不 clamp
  *   (与 app 端 CacheBookModel 一致, 由调用方负责 clamp)。
- *   [DesktopMainViewModel.addDownload] 调用前 clamp endIndex 到 lastChapterIndex
+ *   [ReadBookViewModelShared] 下载调用前 clamp endIndex 到 lastChapterIndex
  *
  * # 已复用的 shared commonMain 下沉件
  *
@@ -62,7 +62,7 @@ import kotlin.coroutines.CoroutineContext
  * # 生命周期
  *
  * object 单例, 进程内全局共享 (与 app 端 CacheBook 一致)。
- * [close] 由 [DesktopMainViewModel.onCleared] 调用清理所有任务 + 清空 map
+ * [close] 由 [ReadBookViewModelShared.onCleared] 调用清理所有任务 + 清空 map
  * (实际原桌面端注释提到"不调 close, 单例跨 VM 保留", 保持原行为, 由调用方决定)。
  */
 object DesktopCacheBook {

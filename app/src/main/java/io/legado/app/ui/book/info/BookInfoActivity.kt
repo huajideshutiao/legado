@@ -52,20 +52,13 @@ import io.legado.app.help.config.LocalConfig
 import io.legado.app.lib.theme.isDarkTheme
 import io.legado.app.ui.book.audio.AudioPlayActivity
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
-import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
-import io.legado.app.ui.book.explore.ExploreShowActivity
 import io.legado.app.ui.book.group.GroupSelectDialog
-import io.legado.app.ui.book.info.edit.BookInfoEditActivity
 import io.legado.app.ui.book.manga.ReadMangaActivity
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.book.rss.ReadRssActivity
-import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.search.SearchScope
-import io.legado.app.ui.book.source.edit.BookSourceEditActivity
-import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.book.video.VideoPlayActivity
-import io.legado.app.ui.login.showLoginDialog
 import io.legado.app.ui.widget.dialog.showBookVariableDialog
 import io.legado.app.ui.widget.dialog.showSourceVariableDialog
 import io.legado.app.ui.compose.component.AppCheckbox
@@ -79,7 +72,6 @@ import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
-import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.longToastOnUi
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.openFileUri
@@ -89,7 +81,13 @@ import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.RouteResultPayload
+import io.legado.app.ui.root.RouteResults
+import io.legado.app.ui.root.toRouteRef
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -109,26 +107,9 @@ import kotlinx.coroutines.withContext
  */
 class BookInfoActivity :
     BaseComposeActivity(toolBarTheme = Theme.Dark),
-    GroupSelectDialog.CallBack, ChangeBookSourceDialog.CallBack, ChangeCoverDialog.CallBack,
+    GroupSelectDialog.CallBack, ChangeCoverDialog.CallBack,
     BookInfoUiActions {
 
-    private val tocActivityResult = registerForActivityResult(TocActivityResult()) {
-        it?.let {
-            viewModel.getBook(false)?.let { book ->
-                lifecycleScope.launch {
-                    withContext(IO) {
-                        book.durChapterIndex = it.first
-                        book.durChapterPos = it.second
-                        chapterChanged = it.third
-                        appDb.bookDao.update(book)
-                    }
-                    startReadActivity(book)
-                }
-            }
-        } ?: let {
-            if (!viewModel.inBookshelf) viewModel.delBook()
-        }
-    }
     private val localBookTreeSelect by lazy {
         registerHandleFile { result ->
             result.uri?.let { treeUri ->
@@ -152,16 +133,6 @@ class BookInfoActivity :
                 finish()
             }
         }
-    }
-    private val infoEditResult = registerForActivityResult(
-        StartActivityContract(BookInfoEditActivity::class.java)
-    ) {
-        if (it.resultCode == RESULT_OK) viewModel.upEditBook()
-    }
-    private val editSourceResult = registerForActivityResult(
-        StartActivityContract(BookSourceEditActivity::class.java)
-    ) {
-        if (it.resultCode != RESULT_CANCELED) viewModel.upSource()
     }
     private var chapterChanged = false
     private val waitDialog by lazy { WaitDialog.from(this) }
@@ -197,6 +168,55 @@ class BookInfoActivity :
         LaunchedEffect(useDevFeat, isLandscape) {
             // useDevFeat 态下标题栏文字为深色, 需要亮色状态栏图标; 其余沿用 Theme.Dark
             setLightStatusBar(if (useDevFeat) isDarkTheme else false)
+        }
+        // 监听 BookInfoEdit 路由回传的 Ok 结果 (对齐原 infoEditResult launcher)
+        LaunchedEffect(Unit) {
+            AppNavigatorProviders.getOrNull()?.results
+                ?.filter { it.key == RouteResults.BOOK_INFO_EDIT }
+                ?.collect { if (it.payload is RouteResultPayload.Ok) viewModel.upEditBook() }
+        }
+        // 监听整书换源路由回传结果 (原 ChangeBookSourceDialog.CallBack)
+        LaunchedEffect(Unit) {
+            AppNavigatorProviders.getOrNull()?.results
+                ?.filter { it.key == RouteResults.CHANGE_SOURCE }
+                ?.collect { result ->
+                    val payload = result.payload as? RouteResultPayload.ChangeSource
+                        ?: return@collect
+                    onChangeSourceResult(payload.source, payload.book, payload.toc)
+                }
+        }
+        // 监听书源编辑路由回传结果 (原 editSourceResult 非 CANCELED)
+        LaunchedEffect(Unit) {
+            AppNavigatorProviders.getOrNull()?.results
+                ?.filter { it.key == RouteResults.BOOK_SOURCE_EDIT }
+                ?.collect { result ->
+                    if (result.payload is RouteResultPayload.BookSourceEdit) {
+                        viewModel.upSource()
+                    }
+                }
+        }
+        // 监听目录页路由回传结果 (原 tocActivityResult: 选章节跳阅读, 返回未选则删书)
+        LaunchedEffect(Unit) {
+            AppNavigatorProviders.getOrNull()?.results
+                ?.filter { it.key == RouteResults.TOC }
+                ?.collect { result ->
+                    val payload = result.payload as? RouteResultPayload.Toc
+                    val book = payload?.let { viewModel.getBook(false) }
+                    if (payload != null && book != null) {
+                        lifecycleScope.launch {
+                            withContext(IO) {
+                                book.durChapterIndex = payload.chapterIndex
+                                book.durChapterPos = payload.chapterPos
+                                chapterChanged = payload.chapterChanged
+                                appDb.bookDao.update(book)
+                            }
+                            startReadActivity(book)
+                        }
+                    } else {
+                        // 用户返回未选择章节, 或获取书籍失败 (原 parseResult 返回 null)
+                        if (!viewModel.inBookshelf) viewModel.delBook()
+                    }
+                }
         }
         val menuState = BookInfoMenuState(
             isLocal = book?.origin == BookType.localTag,
@@ -389,7 +409,10 @@ class BookInfoActivity :
     fun editBook() {
         viewModel.getBook()?.let {
             IntentData.book = it
-            infoEditResult.launch {}
+            AppNavigatorProviders.getOrNull()?.push(
+                AppRoute.BookInfoEdit(it.toRouteRef()),
+                resultKey = RouteResults.BOOK_INFO_EDIT,
+            )
         }
     }
 
@@ -422,7 +445,7 @@ class BookInfoActivity :
     fun login() {
         viewModel.curBookSource?.let {
             IntentData.book = viewModel.bookData.value
-            it.showLoginDialog(this)
+            it.showLoginDialog()
         }
     }
 
@@ -501,13 +524,22 @@ class BookInfoActivity :
 
     override fun onOriginClick() {
         if (viewModel.curBook?.isLocal == true) return
-        viewModel.curBookSource?.let { editSourceResult.launch { IntentData.source = it } }
-            ?: toastOnUi(R.string.error_no_source)
+        viewModel.curBookSource?.let {
+            AppNavigatorProviders.getOrNull()?.push(
+                AppRoute.BookSourceEdit(it.bookSourceUrl),
+                resultKey = RouteResults.BOOK_SOURCE_EDIT,
+            )
+        } ?: toastOnUi(R.string.error_no_source)
     }
 
     override fun onOriginLongClick() {
         viewModel.getBook()
-            ?.let { showDialogFragment(ChangeBookSourceDialog(it.name, it.getRealAuthor())) }
+            ?.let {
+                AppNavigatorProviders.getOrNull()?.push(
+                    AppRoute.ChangeSource(it.toRouteRef()),
+                    resultKey = RouteResults.CHANGE_SOURCE,
+                )
+            }
     }
 
     override fun onTocClick() {
@@ -516,7 +548,10 @@ class BookInfoActivity :
         viewModel.getBook()?.let {
             IntentData.book = it
             IntentData.chapterList = chapters
-            tocActivityResult.launch(it.bookUrl)
+            AppNavigatorProviders.getOrNull()?.push(
+                AppRoute.Toc(it.toRouteRef()),
+                resultKey = RouteResults.TOC,
+            )
         }
     }
 
@@ -526,9 +561,7 @@ class BookInfoActivity :
 
     override fun onNameClick() {
         viewModel.getBook(false)?.let {
-            startActivity<SearchActivity> {
-                putExtra("key", it.name)
-            }
+            AppNavigatorProviders.getOrNull()?.push(AppRoute.Search(key = it.name))
         }
     }
 
@@ -551,21 +584,20 @@ class BookInfoActivity :
     fun search(author: String, submit: Boolean = true) {
         val tmp = author.split("::", limit = 2)
         if (tmp.size > 1) {
-            IntentData.source = viewModel.curBookSource
-            startActivity<ExploreShowActivity> {
-                putExtra("exploreName", tmp[0])
-                putExtra("exploreUrl", tmp[1])
-            }
-        } else startActivity<SearchActivity> {
-            putExtra("key", tmp[0])
-            putExtra("submit", submit)
-            viewModel.curBookSource?.let {
-                it.searchUrl?.let { _ ->
-                    putExtra(
-                        "searchScope", SearchScope(it).toString()
-                    )
+            // 对照 BookInfoRoute.onSearchAuthor: 直接用 curBookSource 跳 ExploreShow
+            val source = viewModel.curBookSource ?: return
+            AppNavigatorProviders.getOrNull()?.push(AppRoute.ExploreShow(source, tmp[0], tmp[1]))
+        } else {
+            // 对照原 startActivity<SearchActivity> intent 契约
+            var searchScope: String? = null
+            viewModel.curBookSource?.let { src ->
+                src.searchUrl?.let { _ ->
+                    searchScope = SearchScope(src).toString()
                 }
             }
+            AppNavigatorProviders.getOrNull()?.push(
+                AppRoute.Search(key = tmp[0], searchScope = searchScope, submit = submit)
+            )
         }
     }
 
@@ -674,9 +706,8 @@ class BookInfoActivity :
         )
     }
 
-    override val oldBook: Book? get() = viewModel.bookData.value
-
-    override fun changeTo(source: BookSource, book: Book, toc: List<BookChapter>) =
+    // 换源结果: 整书换源 (原 ChangeBookSourceDialog.CallBack.changeTo)
+    private fun onChangeSourceResult(source: BookSource, book: Book, toc: List<BookChapter>) =
         viewModel.changeTo(source, book, toc)
 
     override fun coverChangeTo(coverUrl: String) {

@@ -33,13 +33,15 @@ interface VerificationUiProvider {
      * @param title 浏览器页面标题
      * @param saveResult 是否保存网页源代码到数据库
      * @param refetchAfterSuccess 成功后是否重新抓取
+     * @param asBottomSheet true 时以 BottomSheet 半屏方式打开 (对照 JsActivity BottomSheetDialog)
      */
     fun startBrowser(
         source: BaseSource,
         url: String,
         title: String,
         saveResult: Boolean?,
-        refetchAfterSuccess: Boolean?
+        refetchAfterSuccess: Boolean?,
+        asBottomSheet: Boolean = false,
     )
 }
 

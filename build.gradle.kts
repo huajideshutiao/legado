@@ -21,43 +21,33 @@ tasks.register<Delete>("clean") {
 }
 
 val ohosLibsDir = layout.projectDirectory.dir("ohosApp/entry/libs/arm64-v8a")
-val ohosSharedLibrary = layout.projectDirectory.file(
-    "shared/build/bin/ohosArm64/debugShared/liblegado_shared.so"
-)
-
-val buildOhosFramework by tasks.registering(Exec::class) {
-    group = "ohos"
-    description = "Build the HarmonyOS Compose bridge library."
-    workingDir = rootProject.projectDir
-    doFirst {
-        val sdkHome = project.findProperty("devecoSdkHome")?.toString()?.takeIf(String::isNotBlank)
-            ?: System.getenv("DEVECO_SDK_HOME")
-        require(!sdkHome.isNullOrBlank()) {
-            "HarmonyOS SDK path is missing. Pass -PdevecoSdkHome=<DevEco Studio>/sdk."
-        }
-        commandLine("bash", "build_ohos_framework.sh", sdkHome)
-    }
-    inputs.dir("ohosApp/antui_framework/src/main/cpp")
-    outputs.file(ohosLibsDir.file("libmykmp_framework.so"))
-}
-
-project(":shared") {
-    tasks.matching { it.name == "linkDebugSharedOhosArm64" }.configureEach {
-        dependsOn(rootProject.tasks.named("buildOhosFramework"))
-    }
-}
+val ohosIncludeDir = layout.projectDirectory.dir("ohosApp/entry/src/main/cpp/include/arm64-v8a")
+val ohosSharedOutputDir = layout.projectDirectory.dir("shared/build/bin/ohosArm64/debugShared")
+val ohosSharedLibrary = ohosSharedOutputDir.file("liblegado_shared.so")
 
 val stageOhosNativeLibraries by tasks.registering(Copy::class) {
     group = "ohos"
-    description = "Build and stage all native libraries required by the HarmonyOS entry module."
+    description = "Build and stage CPF-KMP-CMP OHOS shared library and generated API header."
     dependsOn(":shared:linkDebugSharedOhosArm64")
-    from(ohosSharedLibrary)
-    into(ohosLibsDir)
+    into(layout.projectDirectory.dir("ohosApp"))
+    from(ohosSharedLibrary) {
+        into("entry/libs/arm64-v8a")
+    }
+    from(ohosSharedOutputDir) {
+        include("*.h")
+        into("entry/src/main/cpp/include/arm64-v8a")
+    }
     doFirst {
-        if (!ohosSharedLibrary.asFile.isFile) {
+        val generatedHeaders =
+            ohosSharedOutputDir.asFile.listFiles { file -> file.extension == "h" }.orEmpty()
+        val missing = buildList {
+            if (!ohosSharedLibrary.asFile.isFile) add(ohosSharedLibrary.asFile)
+            if (generatedHeaders.isEmpty()) add(ohosSharedOutputDir.file("<generated-api-header>.h").asFile)
+        }
+        if (missing.isNotEmpty()) {
             throw GradleException(
-                "Missing ${ohosSharedLibrary.asFile}. " +
-                    "Run with -PenableOhosTarget=true on a host with the HarmonyOS Kotlin/Native toolchain."
+                "Missing CPF OHOS outputs: ${missing.joinToString()}. " +
+                    "Run with -PenableOhosTarget=true and rendererBackend=fusion-renderer."
             )
         }
     }
@@ -65,14 +55,16 @@ val stageOhosNativeLibraries by tasks.registering(Copy::class) {
 
 val verifyOhosNativeLibraries by tasks.registering {
     group = "verification"
-    description = "Verify that HarmonyOS native libraries have been staged."
+    description = "Verify that the CPF OHOS fusion-renderer artifacts have been staged."
     dependsOn(stageOhosNativeLibraries)
     doLast {
-        val required = listOf("liblegado_shared.so", "libmykmp_framework.so")
-            .map { ohosLibsDir.file(it).asFile }
-        val missing = required.filterNot(File::isFile)
-        if (missing.isNotEmpty()) {
-            throw GradleException("Missing HarmonyOS native libraries: ${missing.joinToString()}")
+        val stagedHeaders =
+            ohosIncludeDir.asFile.listFiles { file -> file.extension == "h" }.orEmpty()
+        val missingLibrary = !ohosLibsDir.file("liblegado_shared.so").asFile.isFile
+        if (missingLibrary || stagedHeaders.isEmpty()) {
+            throw GradleException(
+                "Missing HarmonyOS native artifacts in ${ohosLibsDir.asFile} or ${ohosIncludeDir.asFile}."
+            )
         }
     }
 }

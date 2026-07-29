@@ -27,7 +27,7 @@ fun interface JsEngineProvider {
  * 按 [type] 返回对应引擎实现并缓存实例。
  * 切换开关后下次访问 [get] 自动取新引擎（缓存失效重建）。
  *
- * 业务层（AnalyzeRule/BaseSource/AnalyzeUrl/SharedJsScope/JsActivity）通过 [get] 获取当前引擎，
+ * 业务层（AnalyzeRule/BaseSource/AnalyzeUrl/SharedJsScope）通过 [get] 获取当前引擎，
  * 不再直接依赖 `QuickJsEngine` 或 `RhinoScriptEngine` 静态方法。
  *
  * 具体引擎实现经 [registerProvider] 注入（安卓在 App.onCreate 注册 quickjs/rhino 适配），

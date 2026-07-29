@@ -24,13 +24,13 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.model.ReadBook
-import io.legado.app.ui.browser.WebViewActivity
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.widget.dialog.showBookVariableDialog
 import io.legado.app.ui.widget.dialog.showSourceVariableDialog
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.openUrl
-import io.legado.app.utils.startActivity
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -283,14 +283,8 @@ class ReadMenu(internal val activity: ReadBookActivity) : ReadMenuState {
             context.openUrl(chapterUrl.orEmpty().substringBefore(",{"))
         } else {
             Coroutine.async {
-                context.startActivity<WebViewActivity> {
-                    val bookSource = ReadBook.bookSource
-                    putExtra("title", chapterName)
-                    putExtra("url", chapterUrl)
-                    putExtra("sourceOrigin", bookSource?.bookSourceUrl)
-                    putExtra("sourceName", bookSource?.bookSourceName)
-                    putExtra("sourceType", bookSource?.getSourceType())
-                }
+                // 内置浏览器跳转走 AppNavigator
+                AppNavigatorProviders.get().push(AppRoute.WebView(chapterUrl.orEmpty()))
             }
         }
     }

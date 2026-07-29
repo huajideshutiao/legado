@@ -1,0 +1,318 @@
+package io.legado.app.ui.route
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalClipboardManager
+import io.legado.app.constant.BookSourceType
+import io.legado.app.data.entities.BookSource
+import io.legado.app.help.config.HelpVersion
+import io.legado.app.help.config.LocalConfigKeys
+import io.legado.app.help.config.LocalConfigShared
+import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.config.SourceConfig
+import io.legado.app.help.http.CookieStoreProviders
+import io.legado.app.model.SharedJsScope
+import io.legado.app.ui.book.search.SearchScope
+import io.legado.app.ui.book.source.edit.BookSourceEditCallbacks
+import io.legado.app.ui.book.source.edit.BookSourceEditScreen
+import io.legado.app.ui.book.source.edit.BookSourceEditScreenModel
+import io.legado.app.ui.book.source.edit.BookSourceEditState
+import io.legado.app.ui.book.source.edit.BookSourceEditUiEvent
+import io.legado.app.ui.book.source.edit.BookSourceEditViewModelShared
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.RouteResultPayload
+import io.legado.app.ui.root.ScreenModelStore
+import io.legado.app.ui.widget.dialog.HelpDialog
+import io.legado.app.utils.GSON
+import io.legado.app.utils.toJson
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+
+/**
+ * AppRoute.BookSourceEdit 路由下沉入口: 桥接 [BookSourceEditScreenModel] 状态与 [BookSourceEditScreen] 渲染。
+ *
+ * sourceUrl 取自路由, dispatch Init 触发书源加载; 保存/调试/搜索通过导航器跳转。
+ * 实体列表由 [BookSourceEditScreenModel.editEntities] 提供; codeEditorSlot 用跨平台
+ * [AppOutlinedTextField] 默认实现 (app 端通过自身 Activity 注入 CodeView); bottomBar 桌面端省略。
+ *
+ * 对照 app 端 `BookSourceEditActivity`: 所有菜单动作 (save/debug/login/search/clearCookie/
+ * copySource/pasteSource/autoIndent/setSourceVariable/shareSourceStr/help) 与 header 状态变更
+ * 均通过 [BookSourceEditCallbacks] 接入; 平台专属行为 (登录弹窗/源变量弹窗/CodeView 缩进/剪贴板/
+ * 分享) 通过 [PlatformCapabilityProviders] 委托; 危险 API 确认对话框用 shared [AppAlertDialog]。
+ */
+@Composable
+fun BookSourceEditRoute(
+    entry: RouteEntry,
+    navigator: AppNavigator,
+    screenModelStore: ScreenModelStore,
+) {
+    val route = entry.route as AppRoute.BookSourceEdit
+    val sourceUrl = route.sourceUrl
+
+    val nonNullNameUrlMessage = rememberString("non_null_name_url")
+    val strEnableDangerousApi = rememberString("enable_dangerous_api")
+    val strEnableDangerousApiConfirm = rememberString("enable_dangerous_api_confirm")
+    val strOk = rememberString("ok")
+    val strCancel = rememberString("cancel")
+    // 退出确认对话框文案 (对照 app 端 finish() 内 alert)
+    val strExit = rememberString("exit")
+    val strExitNoSave = rememberString("exit_no_save")
+    val strYes = rememberString("yes")
+    val strNo = rememberString("no")
+
+    // Compose 剪贴板管理器 (KMP 可用, 替代 app 端 getClipText; 对照 ReplaceEditRoute)
+    val clipboardManager = LocalClipboardManager.current
+    val screenModel = screenModelStore.getOrCreateTyped(entry) {
+        BookSourceEditScreenModel(
+            BookSourceEditViewModelShared(
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+                // 剪贴板: Compose LocalClipboardManager (替代 app 端 getClipText)
+                clipTextProvider = { clipboardManager.getText()?.text },
+                // SourceConfig 已下沉 commonMain, 直接调用 (替代 app 端 SourceConfig.removeSource)
+                sourceConfigRemover = { url -> SourceConfig.removeSource(url) },
+                // CookieStoreProviders 已下沉 commonMain (替代 app 端 CookieStore.removeCookie)
+                cookieRemover = { url -> CookieStoreProviders.get()?.removeCookie(url) },
+                nonNullNameUrlMessage = { nonNullNameUrlMessage },
+            )
+        )
+    }
+
+    val editState = remember { BookSourceEditState() }
+
+    // 对话框状态 (对照 app 端 Activity 内 showHelp / alert 调用)
+    var helpFileName by remember { mutableStateOf<String?>(null) }
+    var showDangerousApiConfirm by remember { mutableStateOf(false) }
+    // 退出确认对话框 (对照 app 端 finish() 内 alert: source 变更未保存时询问)
+    var showExitConfirm by remember { mutableStateOf(false) }
+
+    // 初始化: 加载书源后填充 header 表单 (对照 app 端 upSourceView header 部分)
+    LaunchedEffect(sourceUrl) {
+        screenModel.dispatch(BookSourceEditUiEvent.Init(sourceUrl, null) {
+            screenModel.bookSource?.let { bs ->
+                applySourceToEditState(bs, editState)
+            }
+        })
+    }
+
+    // 首次打开规则帮助引导 (对照 app 端 onPostCreate: !LocalConfig.ruleHelpVersionIsLast)
+    LaunchedEffect(Unit) {
+        val prefs = PreferenceProviders.get()
+        val isLastHelp = LocalConfigShared.isLastVersion(
+            lastVersion = HelpVersion.ruleHelp,
+            versionKey = LocalConfigKeys.ruleHelpVersion,
+            getInt = prefs::getInt,
+            getBoolean = prefs::getBoolean,
+            putInt = prefs::putInt,
+        )
+        if (!isLastHelp) helpFileName = "ruleHelp"
+    }
+
+    val callbacks = remember(navigator, screenModel) {
+        BookSourceEditCallbacks(
+            onBack = {
+                // 对照 app 端 finish(): source 变更未保存时弹退出确认, 未变更直接退出
+                val source = screenModel.getSource(editState)
+                val original = screenModel.bookSource ?: BookSource()
+                if (!source.equal(original)) {
+                    showExitConfirm = true
+                } else {
+                    navigator.pop()
+                }
+            },
+            onSave = {
+                // 对照 app 端 saveSource: setResult(RESULT_OK, origin) + finish()
+                val source = screenModel.getSource(editState)
+                screenModel.dispatch(BookSourceEditUiEvent.Save(source) {
+                    navigator.pop(RouteResultPayload.BookSourceEdit(source.bookSourceUrl))
+                })
+            },
+            onDebug = {
+                // 对照 app 端 debugSource: viewModel.save(getSource()) { startActivity<BookSourceDebugActivity> }
+                val source = screenModel.getSource(editState)
+                screenModel.dispatch(BookSourceEditUiEvent.Save(source) { saved ->
+                    navigator.push(AppRoute.BookSourceDebug(saved.bookSourceUrl))
+                })
+            },
+            onLogin = {
+                // 对照 app 端 login: viewModel.save(getSource()) { source.showLoginDialog(this) }
+                val source = screenModel.getSource(editState)
+                screenModel.dispatch(BookSourceEditUiEvent.Save(source) { saved ->
+                    PlatformCapabilityProviders.getOrNull()?.showBookSourceLogin(saved)
+                })
+            },
+            onSearch = {
+                // 对照 app 端 searchSource: viewModel.save(getSource()) { startActivity<SearchActivity> { putExtra("searchScope", ...) } }
+                val source = screenModel.getSource(editState)
+                screenModel.dispatch(BookSourceEditUiEvent.Save(source) { saved ->
+                    SearchScope(saved).save()
+                    navigator.push(AppRoute.Search())
+                })
+            },
+            onClearCookie = {
+                // 对照 app 端 clearCookie: viewModel.clearCookie(getSource().bookSourceUrl)
+                val source = screenModel.getSource(editState)
+                screenModel.dispatch(BookSourceEditUiEvent.ClearCookie(source.bookSourceUrl))
+            },
+            onCopySource = {
+                // 对照 app 端 copySource: sendToClip(GSON.toJson(getSource()))
+                val source = screenModel.getSource(editState)
+                PlatformCapabilityProviders.getOrNull()?.copyToClipboard(GSON.toJson(source))
+            },
+            onPasteSource = {
+                // 对照 app 端 pasteSource: viewModel.pasteSource { upSourceView(it) }
+                // ScreenModel 内部已调 upSourceView 重建实体列表, 这里同步 header 表单
+                screenModel.dispatch(BookSourceEditUiEvent.PasteSource { source ->
+                    applySourceToEditState(source, editState)
+                })
+            },
+            onAutoIndent = {
+                // 对照 app 端 autoIndent: getActiveCodeView()?.reFormat()
+                PlatformCapabilityProviders.getOrNull()?.autoIndentCode()
+            },
+            onSetSourceVariable = {
+                // 对照 app 端 setSourceVariable: viewModel.save(getSource()) { source.showSourceVariableDialog(this) }
+                val source = screenModel.getSource(editState)
+                screenModel.dispatch(BookSourceEditUiEvent.Save(source) { saved ->
+                    PlatformCapabilityProviders.getOrNull()?.showBookSourceVariableDialog(saved)
+                })
+            },
+            onShareSourceStr = {
+                // 对照 app 端 shareSourceStr: share(GSON.toJson(getSource()))
+                val source = screenModel.getSource(editState)
+                PlatformCapabilityProviders.getOrNull()?.shareText(GSON.toJson(source))
+            },
+            onHelp = { fileName ->
+                // 对照 app 端 help: showHelp(fileName)
+                helpFileName = fileName
+            },
+            hasLogin = {
+                // 对照 app 端 hasLogin: getSource().hasLogin()
+                screenModel.getSource(editState).hasLogin()
+            },
+            onBookSourceTypeChange = { editState.bookSourceTypeIndex = it },
+            onEnabledChange = { editState.enabled = it },
+            onEnabledCookieJarChange = { editState.enabledCookieJar = it },
+            onEnableDangerousApiClick = { isChecked ->
+                // 对照 app 端 onDangerousApiClick
+                editState.enableDangerousApi = isChecked
+                val originalEnabled = screenModel.bookSource?.enableDangerousApi == true
+                if (isChecked != originalEnabled) {
+                    SharedJsScope.remove(screenModel.bookSource?.jsLib)
+                }
+                if (isChecked) {
+                    showDangerousApiConfirm = true
+                }
+            },
+            onEnabledReviewChange = { editState.enabledReview = it },
+            onEnabledExploreChange = { editState.enabledExplore = it },
+            onExploreStyleChange = { editState.exploreStyleIndex = it },
+            onExploreColsChange = { editState.exploreColsIndex = it },
+            onTabChange = { editState.currentTab = it },
+        )
+    }
+
+    BookSourceEditScreen(
+        state = editState,
+        callbacks = callbacks,
+        editEntities = { tab -> screenModel.editEntities(tab) },
+        codeEditorSlot = { entity, modifier ->
+            // 跨平台默认实现: app 端通过自身 Activity 注入 CodeView, 桌面端用 OutlinedTextField
+            AppOutlinedTextField(
+                value = entity.value.orEmpty(),
+                onValueChange = { entity.value = it },
+                modifier = modifier,
+                label = rememberString(entity.hint),
+            )
+        },
+        bottomBar = {
+            // 桌面端无 KeyboardToolbar, 省略; app 端通过自身 Activity 注入
+        },
+    )
+
+    // 帮助对话框 (对照 app 端 showHelp(fileName))
+    helpFileName?.let { fileName ->
+        HelpDialog(fileName) { helpFileName = null }
+    }
+
+    // 危险 API 确认对话框 (对照 app 端 onDangerousApiClick 内 alert)
+    // dismissOnClick=false: 按钮点击不触发 onDismissRequest, 手动关闭; onDismissRequest 仅在外部点击/返回时触发
+    if (showDangerousApiConfirm) {
+        AppAlertDialog(
+            onDismissRequest = {
+                // 对照 app 端 onCancelled: 外部点击/返回时回退
+                editState.enableDangerousApi = false
+                showDangerousApiConfirm = false
+            },
+            title = strEnableDangerousApi,
+            message = strEnableDangerousApiConfirm,
+            okButton = AlertButton(text = strOk, dismissOnClick = false) {
+                // 对照 app 端 positiveButton: 保留勾选, 关闭对话框
+                showDangerousApiConfirm = false
+            },
+            cancelButton = AlertButton(text = strCancel, dismissOnClick = false) {
+                // 对照 app 端 negativeButton: 回退并关闭
+                editState.enableDangerousApi = false
+                showDangerousApiConfirm = false
+            },
+        )
+    }
+
+    // 退出确认对话框 (对照 app 端 finish() 内 alert)
+    // source 变更未保存时询问: 是=继续编辑(留), 否=退出
+    // dismissOnClick=false: 按钮点击不触发 onDismissRequest, 手动关闭
+    if (showExitConfirm) {
+        AppAlertDialog(
+            onDismissRequest = {
+                // 对照 app 端 onCancelled (未定义): 外部点击/返回时仅关闭对话框, 不退出
+                showExitConfirm = false
+            },
+            title = strExit,
+            message = strExitNoSave,
+            okButton = AlertButton(text = strYes, dismissOnClick = false) {
+                // 对照 app 端 positiveButton(是): 继续编辑, 仅关闭对话框
+                showExitConfirm = false
+            },
+            cancelButton = AlertButton(text = strNo, dismissOnClick = false) {
+                // 对照 app 端 negativeButton(否): 退出
+                showExitConfirm = false
+                navigator.pop()
+            },
+        )
+    }
+}
+
+// 书源类型转 tab 下标 (对照 app 端 bookSourceTypeToIndex)
+private fun bookSourceTypeToIndex(type: Int): Int = when (type) {
+    BookSourceType.rss -> 5
+    BookSourceType.video -> 4
+    BookSourceType.file -> 3
+    BookSourceType.image -> 2
+    BookSourceType.audio -> 1
+    else -> 0
+}
+
+// 从 BookSource 同步 header 表单状态 (对照 app 端 upSourceView header 部分)
+// 实体列表由 ScreenModel.upSourceView 重建, 这里仅同步 editState 的 header 字段 + sourceVersion++
+private fun applySourceToEditState(bs: BookSource, editState: BookSourceEditState) {
+    editState.bookSourceTypeIndex = bookSourceTypeToIndex(bs.bookSourceType)
+    editState.enabled = bs.enabled
+    editState.enabledCookieJar = bs.enabledCookieJar == true
+    editState.enableDangerousApi = bs.enableDangerousApi == true
+    editState.enabledExplore = bs.enabledExplore
+    editState.enabledReview = bs.enabledReview
+    editState.exploreStyleIndex = if (BookSource.exploreStyleIsVideo(bs.exploreStyle)) 1 else 0
+    editState.exploreColsIndex = BookSource.exploreStyleCols(bs.exploreStyle).coerceIn(0, 6)
+    editState.sourceVersion++
+}

@@ -38,12 +38,16 @@ class AutoReadDialog : BaseReadBottomComposeDialog() {
         var speed by remember {
             mutableIntStateOf(ReadBookConfig.autoReadSpeed.coerceAtLeast(1))
         }
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Column(Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     stringResource(R.string.auto_page_speed),
                     color = colors.text, fontSize = 14.sp,
-                    modifier = Modifier.weight(1f).padding(8.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(8.dp),
                 )
                 Text(
                     String.format(Locale.ROOT, "%ds", speed),
@@ -63,7 +67,9 @@ class AutoReadDialog : BaseReadBottomComposeDialog() {
                 modifier = Modifier.fillMaxWidth(),
             )
             Row(
-                Modifier.fillMaxWidth().padding(top = 8.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 ReadMenuIconButton("ic_toc", stringResource(R.string.chapter_list), colors.text) {
@@ -78,8 +84,9 @@ class AutoReadDialog : BaseReadBottomComposeDialog() {
                     dismissAllowingStateLoss()
                 }
                 ReadMenuIconButton("ic_settings", stringResource(R.string.setting), colors.text) {
-                    (activity as BaseReadBookActivity).showPageAnimConfig {
-                        (activity as ReadBookActivity).upPageAnim()
+                    // 安全转换，避免 activity 非预期类型时崩溃
+                    (activity as? BaseReadBookActivity)?.showPageAnimConfig {
+                        (activity as? ReadBookActivity)?.upPageAnim()
                         ReadBook.loadContent(false)
                     }
                 }

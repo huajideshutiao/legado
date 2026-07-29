@@ -72,6 +72,7 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
  * @param filterDay          当前筛选的具体日期 yyyyMMdd; 0 表示未筛选
  * @param searchText         搜索框文本
  * @param searchFocused      搜索框是否聚焦 (列表滚动时收起焦点)
+ * @param clearFocusToken    收焦令牌; 递增时触发 Screen 内 focusManager.clearFocus() (对照 app 端 clearSearchFocusFn)
  * @param items              列表数据 (按时间排序时按 (bookName, day) 拆行)
  * @param bookMap            列表对应的书籍信息 (按 bookName 索引), 用于渲染封面/作者
  * @param todayTimeByBook    每本书当日累计阅读时长 (按 bookName 索引)
@@ -96,6 +97,7 @@ data class ReadRecordUiState(
     val filterDay: Int = 0,
     val searchText: String = "",
     val searchFocused: Boolean = false,
+    val clearFocusToken: Long = 0L,
     val items: List<ReadRecordShow> = emptyList(),
     val bookMap: Map<String, Book> = emptyMap(),
     val todayTimeByBook: Map<String, Long> = emptyMap(),
@@ -186,6 +188,14 @@ fun ReadRecordScreen(
     heatmapSlot: @Composable (Modifier) -> Unit,
     coverSlot: @Composable (ReadRecordShow, Book?, Modifier) -> Unit,
 ) {
+    // 对照 app 端 clearSearchFocusFn = { focusManager.clearFocus() }:
+    // 监听 clearFocusToken 递增时实际收焦 (onBack/onSearch/clearSearchFocus 触发)
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(state.clearFocusToken) {
+        if (state.clearFocusToken > 0) {
+            focusManager.clearFocus()
+        }
+    }
     Column(modifier.fillMaxSize()) {
         AppTitleBar(
             title = rememberString("read_record"),

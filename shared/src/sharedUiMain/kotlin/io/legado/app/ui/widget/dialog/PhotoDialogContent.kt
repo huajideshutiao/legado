@@ -31,10 +31,10 @@ import io.legado.app.ui.compose.platform.rememberString
  * 跨平台大图查看内容件 (对照 app 端 [io.legado.app.ui.widget.dialog.PhotoDialog] 的 Content)。
  *
  * 图片加载走 [ImageBitmapLoader] (commonMain 面, 各端 actual: jvm=OkHttp+ImageIO,
- * iOS=Coil3, 鸿蒙=Skia; 传 [bookSource] 时网络图自动带书源防盗链 header/cookie)。
+ * iOS=Coil3，鸿蒙=ArkUI 融合渲染平台图片管线；传 [bookSource] 时网络图自动带书源防盗链 header/cookie)。
  * 手势复用共享 [zoomable] (双指缩放/单指平移/双击循环/fling 惯性, E-Ink 自动降级)。
  *
- * GIF 动图: desktop/鸿蒙 经 [rememberAnimatedImageBitmap] 逐帧播放 (skiko Codec);
+ * GIF 动图: desktop 经 [rememberAnimatedImageBitmap] 使用 Skiko Codec 逐帧播放；
  * 其余格式与其他端仍走静态 [ImageBitmapLoader] 路径。
  *
  * app 端 PhotoDialog 不消费本件: 其加载链含章节缓存文件/EPUB ZIP/SVG/data URI/Coil
@@ -63,8 +63,8 @@ fun PhotoDialogContent(
             ImageBitmapLoader().loadBitmap(src, book, bookSource)
         }.getOrNull()
     }
-    // GIF 动图旁路: 大图查看是唯一值得逐帧播放的场景, 故额外取一次裸字节走 skiko Codec
-    // (desktop/鸿蒙 有效; Android/iOS 的 decodeAnimatedFrames 恒 null, 直接退化静态图)。
+    // GIF 动图旁路: 大图查看是唯一值得逐帧播放的场景, 故额外取一次裸字节解码。
+    // Desktop 使用 Skiko Codec；Android/iOS/鸿蒙交给平台图片管线，无法逐帧时退化静态图。
     // 非 GIF 字节不进解码器, 静态图仅多一次带缓存的字节读取。
     val gifBytes by produceState<ByteArray?>(null, src) {
         value = runCatching {

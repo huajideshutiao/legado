@@ -1,3 +1,5 @@
+@file:OptIn(kotlin.time.ExperimentalTime::class)
+
 package io.legado.app.help.coroutine
 
 import io.legado.app.data.entities.BaseSource

@@ -92,6 +92,7 @@ inline fun <reified T : Activity> Fragment.startActivity(
     startActivity(Intent(requireContext(), T::class.java).apply(configIntent))
 }
 
+// 工具函数:内部导航迁移点在调用方(navigator)
 fun Fragment.startActivityForBook(
     book: Book,
     configIntent: Intent.() -> Unit = {},

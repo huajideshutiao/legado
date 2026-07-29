@@ -1,7 +1,7 @@
 package io.legado.app.ui.association
 
+import android.app.Activity
 import android.content.Intent
-import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,7 +47,8 @@ object OpenUrlConfirmDialog {
         sourceName: String? = null,
         sourceType: Int = SourceType.book
     ) {
-        val activity = LifecycleHelp.currentActivity as? AppCompatActivity
+        // 仅用作 Context 承载 Dialog, 无需 AppCompatActivity 特有能力
+        val activity: Activity? = LifecycleHelp.currentActivity
         if (activity == null) {
             appCtx.toastOnUi("无法在后台显示跳转确认对话框")
             return

@@ -6,6 +6,10 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.CacheManager
 import io.legado.app.help.IntentData
 import io.legado.app.help.JsExtensionsPlatform
+import io.legado.app.help.source.SourceVerificationHelpShared.notifyResultArrived
+import io.legado.app.help.source.SourceVerificationHelpShared.setResult
+import io.legado.app.help.source.SourceVerificationHelpShared.verificationLock
+import io.legado.app.help.source.SourceVerificationHelpShared.waitTime
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlin.time.Duration.Companion.minutes
@@ -84,12 +88,13 @@ object SourceVerificationHelpShared {
         url: String,
         title: String,
         saveResult: Boolean? = false,
-        refetchAfterSuccess: Boolean? = true
+        refetchAfterSuccess: Boolean? = true,
+        asBottomSheet: Boolean = false,
     ) {
         source ?: throw NoStackTraceException("startBrowser parameter source cannot be null")
         require(url.length < 64 * 1024) { "startBrowser parameter url too long" }
         VerificationUiProviders.get()
-            .startBrowser(source, url, title, saveResult, refetchAfterSuccess)
+            .startBrowser(source, url, title, saveResult, refetchAfterSuccess, asBottomSheet)
         registerWaitingThread(source.getKey())
     }
 

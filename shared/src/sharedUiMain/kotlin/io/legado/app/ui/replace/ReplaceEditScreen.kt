@@ -42,7 +42,7 @@ import io.legado.app.ui.replace.edit.ReplaceEditViewModelShared
 /**
  * 替换规则编辑 Screen (KMP 版, commonMain 共享)。
  *
- * 对照 app 端 `ReplaceEditActivity.Content` 下沉, 做以下简化以消除 Android 依赖:
+ * 对照 app 端原 Content 下沉, 做以下简化以消除 Android 依赖:
  * - **去掉 KeyboardToolbar**: app 端 `io.legado.app.ui.widget.keyboard.KeyboardToolbar`
  *   及 `insertAtCursor`/`KeyboardAssistsConfig` 未下沉, 强 Android 依赖; KMP 版用回调
  *   [onHelp] 暴露帮助入口, 宿主端可自行实现辅助键工具栏并接入 (app 端后续包装时回填)
@@ -184,7 +184,7 @@ fun ReplaceEditScreen(
 /**
  * 单个输入框状态: 值 + 撤销/重做历史 (上限 100 步)。
  *
- * 对照 app 端 `ReplaceEditActivity.FieldState` 下沉, 去掉 `insertAtCursor` (依赖 app 端
+ * 对照 app 端原 FieldState 下沉, 去掉 `insertAtCursor` (依赖 app 端
  * `KeyboardToolbarState.insertAtCursor` 扩展); 保留 undo/redo/onChange/reset 语义。
  * undo/redo 暂未在 KMP Screen 内挂快捷键 (app 端走 KeyboardToolbar), 留待宿主接入。
  */

@@ -52,8 +52,8 @@ import kotlin.math.min
  *
  * # 背景
  *
- * app 端 `io.legado.app.ui.main.MainViewModel` 与桌面端
- * `io.legado.desktop.ui.main.DesktopMainViewModel` 各自实现了一份高度重复的
+ * app 端 `io.legado.app.ui.main.MainViewModel` 与桌面端阅读 VM
+ * 各自实现了一份高度重复的
  * 目录更新编排逻辑 (upToc / forceRefresh / scheduleAutoUpdate / refreshBook /
  * updateToc / addDownload / cacheBook / startUpTocJob / onUpTocJobCompleted /
  * addToWaitUp / pollWaitUpTocBook / upPool 等), 仅在以下平台差异点不同:
@@ -88,7 +88,7 @@ import kotlin.math.min
  * - [CacheBookShared]: shared model/CacheBookShared 已下沉 (替代 app 端 `CacheBook` /
  *   桌面端 `DesktopCacheBook`, 各端 CacheBook 单例都是 CacheBookShared 的薄壳)
  *
- * # 平台差异处理 (对照 app 端 MainViewModel / 桌面端 DesktopMainViewModel)
+ * # 平台差异处理 (对照 app 端 MainViewModel / 桌面端宿主)
  *
  * - **不依赖 ViewModelStore / lifecycleScope**: 由调用方构造时注入 [scope]
  *   (app 端 viewModelScope / 桌面端自有 scope / iOS-鸿蒙 NativeServiceLauncher 的 scope)
@@ -112,7 +112,7 @@ import kotlin.math.min
  *
  * class (非 object), 由各端 VM 持有实例:
  * - app 端 `MainViewModel` 持有, viewModelScope 注入, `onCleared` 时调 [onCleared]
- * - 桌面端 `DesktopMainViewModel` 持有, 自有 scope 注入, `DisposableEffect.onDispose` 调 [onCleared]
+ * - 桌面端宿主持有, 自有 scope 注入, `DisposableEffect.onDispose` 调 [onCleared]
  * - iOS/鸿蒙 `NativeServiceLauncher` 持有, launcher scope 注入, launcher 销毁时调 [onCleared]
  *
  * 模式参考 [CacheBookShared] (但 CacheBookShared 是 object 单例因 cacheBookMap 跨 VM 共享;
@@ -125,7 +125,7 @@ class UpdateBookShared(
     private val callback: UpdateBookCallback,
 ) {
 
-    // region 依赖间接访问 (provider 间接, 与 DesktopMainViewModel 一致)
+    // region 依赖间接访问 (provider 间接, 与桌面端宿主一致)
     private val appDb get() = AppDbProviders.get()
     private val appConfig get() = AppConfigProviders.get()
     // endregion
@@ -820,14 +820,14 @@ class UpdateBookShared(
  * # 背景
  * app 端 `MainViewModel.updateUpdateNotification` 用 `NotificationManagerCompat` +
  * `startService<UpdateBookService>` 显示通知栏进度, `context.toastOnUi(R.string.xxx)` 显示 toast;
- * 桌面端 `DesktopMainViewModel.updateProgress` 用 `NotificationProgresses` (SystemTray 文本通知) +
+ * 桌面端宿主的 updateProgress 用 `NotificationProgresses` (SystemTray 文本通知) +
  * StateFlow 暴露给 UI, `Toasters.get().toast(msg)` 显示 toast;
  * iOS/鸿蒙端经各自已注册的 NotificationProgress / Toaster 真实实现桥接。
  *
  * 本接口把上述差异抽象出来, 由各端 actual 自行实现注册:
  * - Android: app 端 `MainViewModel` 持有 callback 实现, 桥接 `NotificationManagerCompat` +
  *   `startService<UpdateBookService>` + `context.toastOnUi`
- * - 桌面: `DesktopMainViewModel` 持有 callback 实现, 桥接 `NotificationProgresses` + `Toasters`
+ * - 桌面: 桌面端宿主持有 callback 实现, 桥接 `NotificationProgresses` + `Toasters`
  * - iOS/鸿蒙: `NativeServiceLauncher` 持有 `NativeUpdateBookCallback`,
  *   同样桥接 `NotificationProgresses` + `Toasters`
  *

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -63,11 +64,15 @@ import io.legado.app.ui.book.manga.render.MangaRenderState
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.book.read.config.ClickActionConfigDialog
 import io.legado.app.ui.book.read.config.ClickArea
-import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.ui.file.registerHandleFile
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.RouteResultPayload
+import io.legado.app.ui.root.RouteResults
+import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.number.showNumberPicker
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
@@ -81,6 +86,7 @@ import io.legado.app.utils.throttle
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.toggleSystemBar
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
@@ -145,12 +151,7 @@ class ReadMangaActivity : BaseComposeActivity(), IBottomDialog,
     var enableAutoPage = false
         private set
 
-    //打开目录返回选择章节返回结果
-    private val tocActivity = registerForActivityResult(TocActivityResult()) {
-        it?.let {
-            viewModel.openChapter(it.first, it.second)
-        }
-    }
+    //打开目录返回选择章节返回结果 (LaunchedEffect 收集 RouteResults.TOC)
     private val bookInfoActivity =
         registerForActivityResult(StartActivityContract(BookInfoActivity::class.java)) {
             if (it.resultCode == RESULT_OK) {
@@ -185,6 +186,15 @@ class ReadMangaActivity : BaseComposeActivity(), IBottomDialog,
 
     @Composable
     override fun Content() {
+        // 监听目录页路由回传结果 (原 tocActivity registerForActivityResult)
+        LaunchedEffect(Unit) {
+            AppNavigatorProviders.getOrNull()?.results
+                ?.filter { it.key == RouteResults.TOC }
+                ?.collect { result ->
+                    val payload = result.payload as? RouteResultPayload.Toc ?: return@collect
+                    viewModel.openChapter(payload.chapterIndex, payload.chapterPos)
+                }
+        }
         Box(Modifier.fillMaxSize()) {
             MangaRenderLayer(renderState)
             if (infoBarVisible) {
@@ -534,7 +544,12 @@ class ReadMangaActivity : BaseComposeActivity(), IBottomDialog,
             MangaMenuAction.CATALOG -> {
                 IntentData.book = viewModel.curBook
                 IntentData.chapterList = viewModel.chapterListData.value
-                tocActivity.launch("")
+                viewModel.curBook?.let {
+                    AppNavigatorProviders.getOrNull()?.push(
+                        AppRoute.Toc(it.toRouteRef()),
+                        resultKey = RouteResults.TOC,
+                    )
+                }
             }
 
             MangaMenuAction.REFRESH -> {
@@ -751,7 +766,12 @@ class ReadMangaActivity : BaseComposeActivity(), IBottomDialog,
             10 -> {
                 IntentData.book = viewModel.curBook
                 IntentData.chapterList = viewModel.chapterListData.value
-                tocActivity.launch("")
+                viewModel.curBook?.let {
+                    AppNavigatorProviders.getOrNull()?.push(
+                        AppRoute.Toc(it.toRouteRef()),
+                        resultKey = RouteResults.TOC,
+                    )
+                }
             }
         }
     }

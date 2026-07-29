@@ -22,7 +22,8 @@ import io.legado.app.data.entities.BookSource
  * - androidMain: 暂 stub (返回 null; app 端消费点走 Coil3, 按需再补 BitmapFactory)
  * - iosMain: Coil3 共享管线 (防盗链 Interceptor + Ktor3 + 缓存); cbz:// 前置直解
  *   (ArchiveProviders 抽条目字节 + Skia 解码)
- * - ohosMain: Skia 解码 + KmpHttpClient/AnalyzeUrlCore; cbz:// 同走 ArchiveProviders
+ * - ohosMain: CPF 融合渲染变体提供的编码图像解码 + KmpHttpClient/AnalyzeUrlCore;
+ *   cbz:// 同走 ArchiveProviders
  *
  * 不放 commonMain: [ImageBitmap] 需 Compose UI 依赖, 仅 sharedUiMain 有 (ohos/linuxArm64 约束)。
  */

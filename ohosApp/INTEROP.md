@@ -2,9 +2,11 @@
 
 ## 1. 背景与目标
 
-Legado 项目的 KMP 全平台化任务 (KP4) 需要让鸿蒙 target (linuxArm64, OpenHarmony arm64) 复用 `modules/shared` 中的共享业务代码 (ChineseUtils / MD5Utils / Ktor HTTP / Room 数据库等)。
+Legado 项目的 KMP 全平台化任务需要让 CPF `ohosArm64` target 复用 `shared` 中的共享业务代码 (
+ChineseUtils / MD5Utils / HTTP / 数据库等)，并由 ArkUI 融合渲染承载 Compose UI。
 
-由于 ArkTS 不能直接调用 Kotlin 类/对象，需要 napi 桥接层把 Kotlin/Native 编译的 `liblegado_shared.so` 中的 C ABI 符号暴露给 ArkTS。
+ArkTS 通过 NAPI 获取 `liblegado_shared.so` 导出的 Compose 控制器和业务 C ABI；`@cpf-kmp-cmp/compose`
+再按 backend id 将控制器接入 Fusion Renderer 的 ArkUI RenderNode。
 
 本文档说明完整的桥接方案与各层职责。
 
@@ -13,8 +15,7 @@ Legado 项目的 KMP 全平台化任务 (KP4) 需要让鸿蒙 target (linuxArm64
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  ArkTS 层 (ohosApp/entry/src/main/ets)                          │
-│  EntryAbility.ets / Index.ets / Bookshelf.ets / Reader.ets /    │
-│  KmpInteropTest.ets                                              │
+│  EntryAbility.ets / Index.ets (Compose 渲染宿主)                │
 │                                                                  │
 │    ↓ import legado from 'liblegado_napi.so'                      │
 │    ↓ legado.chineseT2S('简体')                                  │
@@ -67,10 +68,8 @@ Legado 项目的 KMP 全平台化任务 (KP4) 需要让鸿蒙 target (linuxArm64
 
 ### 3.3 ArkTS 调用方 (ohosApp/entry/src/main/ets)
 
-- **`pages/KmpInteropTest.ets`** - 调用演示页面, 展示 chineseT2S / md5Encode 等结果
-- **`pages/Index.ets`** - 首页路由入口
-- **`pages/Bookshelf.ets`** - 书架页面 (后续通过 napi 调用 BookshelfViewModel.getBooks)
-- **`pages/Reader.ets`** - 阅读页面 (后续通过 napi 调用 ReadBookViewModelShared.getCurTextPage)
+- **`pages/Index.ets`** - Compose 渲染宿主入口, 调用 legado.MainArkUIViewController() 接入 shared
+  LegadoApp
 - **`entryability/EntryAbility.ets`** - UIAbility 入口, onCreate 中调用 `registerOhosProviders()`
 
 ### 3.4 ohosMain 配置 provider stub
@@ -84,17 +83,19 @@ Legado 项目的 KMP 全平台化任务 (KP4) 需要让鸿蒙 target (linuxArm64
 ### 4.1 准备鸿蒙原生产物
 
 ```bash
-# 同时构建 KMP 共享库与 Compose 桥接库，并统一复制到
-# ohosApp/entry/libs/arm64-v8a/：
-./gradlew stageOhosNativeLibraries -PenableOhosTarget=true
+# 使用 CPF-KMP-CMP 融合渲染构建 KMP 共享库，并复制 .so 与生成的 API 头到鸿蒙 entry：
+./gradlew stageOhosNativeLibraries -PenableOhosTarget=true -PrendererBackend=fusion-renderer
 
-# 可选：显式校验两个必需 .so 均存在
-./gradlew verifyOhosNativeLibraries -PenableOhosTarget=true
+# 可选：显式校验共享库和生成头均存在
+./gradlew verifyOhosNativeLibraries -PenableOhosTarget=true -PrendererBackend=fusion-renderer
 ```
 
 Gradle staging 契约包含：
-- `liblegado_shared.so`：`:shared:linkDebugSharedOhosArm64` 产物。
-- `libmykmp_framework.so`：`build_ohos_framework.sh` 产物；会先于 KMP shared link 构建并加入 linker 搜索路径。
+
+- `liblegado_shared.so`：`:shared:linkDebugSharedOhosArm64` 的 CPF 融合渲染产物。
+- K/N 自动生成的 API 头：供 entry NAPI 直接调用 `MainArkUIViewController` 与 Compose 初始化符号。
+- Compose ArkTS/native 运行时：由 `@cpf-kmp-cmp/compose:1.9.2-0.4.0` 提供，不再维护 AntUI XComponent
+  桥接库。
 
 ### 4.2 编译鸿蒙 HAP
 
@@ -106,7 +107,7 @@ Gradle staging 契约包含：
 ```
 
 `entry/hvigorfile.ts` 已把 `stageOhosNativeLibraries` 接到 CMake 配置前，DevEco Studio 点击构建时会自动调用根
-Gradle 构建并准备两个原生库，无需预先手工运行 Gradle。CMake 在原生产物构建失败或缺失时会直接失败，不再静默生成
+Gradle 构建并准备 KMP 共享库与 API 头，无需预先手工运行 Gradle。CMake 在原生产物构建失败或缺失时会直接失败，不再静默生成
 mock 版本。
 
 ### 4.3 部署运行
@@ -115,7 +116,7 @@ mock 版本。
 1. DevEco Studio 连接鸿蒙模拟器或真机
 2. Run → Run 'entry'
 3. 应用启动后, EntryAbility.onCreate 调用 legado_register_providers()
-4. 进入 KmpInteropTest 页面验证 chineseT2S / md5Encode 等
+4. Index.ets 加载 shared LegadoApp Compose UI, 业务 UI 由 shared 统一渲染
 ```
 
 ## 5. 内存与生命周期约定
@@ -159,8 +160,8 @@ mock 版本。
 ## 7. 当前 KP4 阶段已实现
 
 - [x] ohosApp 工程基础结构 (AppScope / entry / build-profile / hvigorfile / oh-package)
-- [x] ArkTS UI 骨架 (EntryAbility / Index / Bookshelf / Reader)
-- [x] KmpInteropTest 页面 (Mock 桥接兜底)
+- [x] ArkTS UI 骨架 (EntryAbility / Index)
+- [x] 业务 UI 由 shared LegadoApp 统一渲染, Index.ets 仅作为 Compose 渲染宿主
 - [x] Kotlin/Native C ABI 导出函数 (LegadoNativeExports.kt @CName)
 - [x] napi 桥接 C++ 骨架 (legado_napi.cpp + CMakeLists.txt + .d.ts)
 - [x] ohosMain config provider stub (AppConfigAccessor / PreferenceProvider / 集中注册)
@@ -206,7 +207,6 @@ KP6 已完成鸿蒙端 Room KMP + BundledSQLiteDriver 真实数据库接入, 替
 | `ohosApp/entry/src/main/cpp/legado_napi.cpp` | `BookshelfList`/`SearchBook`/`LoadChapter`/`ImportBookSource` 通过 dlsym 调用 `legado_bookshelf_list` 等 @CName 符号; dlsym 失败时返回 `"[]"`/`""`/`0` 兜底 (非 mock, 是 .so 未加载时的容错) |
 | `shared/src/ohosMain/kotlin/io/legado/app/napi/LegadoNativeExports.kt` | `legado_bookshelf_list` 等已走 `AppDbProviders.get().bookDao.getBooksByGroup(BookGroup.IdAll)` 真实 DAO 查询, runBlocking 转 suspend |
 | `ohosApp/entry/src/main/ets/entryability/EntryAbility.ets` | `onCreate` 调用 `legado.registerOhosProviders()` 完成 provider 注入 |
-| `ohosApp/entry/src/main/ets/pages/Bookshelf.ets` | `aboutToAppear` → `legado.bookshelfList()` → JSON.parse → 渲染真实书架数据 |
 
 ### 10.3 sqlite-bundled linuxArm64 变体验证结论 (任务 9 核心标注)
 

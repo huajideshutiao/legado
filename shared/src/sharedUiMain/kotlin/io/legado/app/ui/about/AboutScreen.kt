@@ -8,25 +8,25 @@ import io.legado.app.ui.compose.preference.preference
 import io.legado.app.ui.compose.preference.preferenceCategory
 
 /**
- * 关于页（迁 about.xml）。逐条对齐原条目/key/点击行为。
+ * 关于页 (迁 about.xml)。逐条对齐原条目/key/点击行为。
  * qqGroup 原 isPreferenceVisible=false 恒隐藏，故不渲染；update_log 仅显版本 summary、无点击。
- * 各动作（链接/检查更新/md 弹窗/日志/堆转储）由宿主 Activity 回调承接。
  *
  * 下沉 shared/sharedUiMain: stringResource(R.string.xxx) → rememberString("xxx"),
  * 与 app 端原包名/类名一致, app/desktop 端共用。
+ *
+ * 三段式 API:
+ * - [AboutUiState]: 不可变展示状态 (版本号/URL), 由宿主构造后推入 [AboutScreenModel]
+ * - [AboutUiActions]: 交互回调集合, 宿主端实现接口
+ * - [AboutScreen]: 纯 Composable 渲染入口, 仅依赖 state + actions
+ *
+ * @param state    展示状态
+ * @param actions  交互回调
+ * @param modifier 外部 modifier
  */
 @Composable
 fun AboutScreen(
-    updateLogSummary: String,
-    onContributors: () -> Unit,
-    onTelegramGroup: () -> Unit,
-    onCheckUpdate: () -> Unit,
-    onCrashLog: () -> Unit,
-    onSaveLog: () -> Unit,
-    onCreateHeapDump: () -> Unit,
-    onLicense: () -> Unit,
-    onDisclaimer: () -> Unit,
-    onPrivacyPolicy: () -> Unit = {},
+    state: AboutUiState,
+    actions: AboutUiActions,
     modifier: Modifier = Modifier,
 ) {
     val titleContributors = rememberString("contributors")
@@ -46,45 +46,45 @@ fun AboutScreen(
         preference(
             title = titleContributors,
             summary = summaryContributors,
-            onClick = onContributors,
+            onClick = { actions.onOpenUrl(state.contributorsUrl) },
         )
         preference(
             title = titleTelegram,
-            onClick = onTelegramGroup,
+            onClick = { actions.onOpenUrl(state.telegramGroupUrl) },
         )
         preference(
             title = titleUpdateLog,
-            summary = updateLogSummary,
+            summary = state.updateLogSummary,
         )
         preference(
             title = titleCheckUpdate,
-            onClick = onCheckUpdate,
+            onClick = { actions.onCheckUpdate() },
         )
 
         preferenceCategory(titleOther)
         preference(
             title = titleCrashLog,
-            onClick = onCrashLog,
+            onClick = { actions.onShowCrashLogs() },
         )
         preference(
             title = titleSaveLog,
-            onClick = onSaveLog,
+            onClick = { actions.onSaveLog() },
         )
         preference(
             title = titleCreateHeapDump,
-            onClick = onCreateHeapDump,
+            onClick = { actions.onCreateHeapDump() },
         )
         preference(
             title = titlePrivacyPolicy,
-            onClick = onPrivacyPolicy,
+            onClick = { actions.onShowMdFile(titlePrivacyPolicy, "privacyPolicy.md") },
         )
         preference(
             title = titleLicense,
-            onClick = onLicense,
+            onClick = { actions.onShowMdFile(titleLicense, "LICENSE.md") },
         )
         preference(
             title = titleDisclaimer,
-            onClick = onDisclaimer,
+            onClick = { actions.onShowMdFile(titleDisclaimer, "disclaimer.md") },
         )
     }
 }

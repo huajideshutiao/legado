@@ -11,6 +11,7 @@ import android.os.Bundle
 import androidx.activity.addCallback
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -47,8 +48,10 @@ import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
-import io.legado.app.ui.book.source.edit.BookSourceEditActivity
-import io.legado.app.ui.login.showLoginDialog
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.RouteResultPayload
+import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.widget.dialog.showBookVariableDialog
 import io.legado.app.ui.widget.dialog.showSourceVariableDialog
 import io.legado.app.ui.compose.dialogs.alert
@@ -57,6 +60,7 @@ import io.legado.app.utils.dpToPx
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toggleSystemBar
+import kotlinx.coroutines.flow.filter
 import java.util.Locale
 import kotlin.math.abs
 
@@ -100,12 +104,6 @@ class VideoPlayActivity : BaseComposeActivity() {
         private set
     private val player get() = exoPlayer
 
-    private val sourceEditResult =
-        registerForActivityResult(StartActivityContract(BookSourceEditActivity::class.java)) {
-            if (it.resultCode == RESULT_OK) {
-                viewModel.upSource()
-            }
-        }
     private val bookInfoResult =
         registerForActivityResult(StartActivityContract(BookInfoActivity::class.java)) { result ->
             when (result.resultCode) {
@@ -288,6 +286,16 @@ class VideoPlayActivity : BaseComposeActivity() {
 
     @Composable
     override fun Content() {
+        // 监听书源编辑路由回传结果 (原 sourceEditResult RESULT_OK)
+        LaunchedEffect(Unit) {
+            AppNavigatorProviders.getOrNull()?.results
+                ?.filter { it.key == RouteResults.BOOK_SOURCE_EDIT }
+                ?.collect { result ->
+                    if (result.payload is RouteResultPayload.BookSourceEdit) {
+                        viewModel.upSource()
+                    }
+                }
+        }
         VideoPlayScreen(this)
     }
 
@@ -509,7 +517,7 @@ class VideoPlayActivity : BaseComposeActivity() {
                 "nowChapter",
                 viewModel.chapterListData.value?.get(viewModel.curBook!!.durChapterIndex)
             )
-            it.showLoginDialog(this)
+            it.showLoginDialog()
         }
     }
 
@@ -527,8 +535,10 @@ class VideoPlayActivity : BaseComposeActivity() {
 
     fun editSource() {
         viewModel.curBookSource?.let {
-            IntentData.source = it
-            sourceEditResult.launch {}
+            AppNavigatorProviders.getOrNull()?.push(
+                AppRoute.BookSourceEdit(it.bookSourceUrl),
+                resultKey = RouteResults.BOOK_SOURCE_EDIT,
+            )
         }
     }
 

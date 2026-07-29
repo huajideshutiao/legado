@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -154,6 +156,21 @@ class BookshelfViewModel {
         5 -> list.sortedWith { a, b -> a.author.cnCompare(b.author) }
         else -> list.sortedByDescending { it.durChapterTime }
     }
+
+    /**
+     * 返回指定分组的书籍流 (对照 app 端 GroupBooksPage 的 observeGroupBooks),
+     * 供 HorizontalPager 各页独立订阅, 互不干扰。
+     *
+     * 排序键取分组自身 [BookGroup.bookSort], < 0 时回退全局 [AppConfigAccessor.bookshelfSort]
+     * (与 [observeBooks] 语义一致)。
+     */
+    fun booksByGroup(groupId: Long): Flow<List<Book>> =
+        bookDao.flowByGroup(groupId)
+            .distinctUntilChanged()
+            .catch { AppLog.put("书架书籍数据加载出错 groupId=$groupId", it) }
+            .flowOn(IoDispatcher)
+            .conflate()
+            .map { list -> sortBooks(list, sortOf(groupId)) }
 
     /**
      * 切换当前分组, 重启书籍数据流订阅。

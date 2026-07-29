@@ -114,12 +114,8 @@
             android:alwaysRetainTaskState="true"
             android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
             android:exported="true"
-            android:launchMode="singleTask" /> <!-- 阅读界面 -->
-        <activity
-            android:name=".ui.book.read.ReadBookActivity"
-            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
-            android:exported="true"
             android:launchMode="singleTask">
+            <!-- S Pen 远程操作: 注册到主界面使其全局可用, trigger_key 经系统转 KeyEvent 派发 -->
             <intent-filter>
                 <action android:name="com.samsung.android.support.REMOTE_ACTION" />
             </intent-filter>
@@ -127,141 +123,7 @@
             <meta-data
                 android:name="com.samsung.android.support.REMOTE_ACTION"
                 android:resource="@xml/spen_remote_actions" />
-        </activity> <!-- 段评输入面板(模拟 BottomSheet 的 Activity) -->
-        <activity
-            android:name=".ui.book.read.ReviewPostActivity"
-            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
-            android:exported="false"
-            android:theme="@style/AppTheme.BottomSheetInput"
-            android:windowSoftInputMode="stateAlwaysVisible|adjustNothing" /> <!-- 阅读漫画界面 -->
-        <activity
-            android:name=".ui.book.manga.ReadMangaActivity"
-            android:exported="false"
-            android:launchMode="singleTask">
-            <intent-filter>
-                <action android:name="com.samsung.android.support.REMOTE_ACTION" />
-            </intent-filter>
-
-            <meta-data
-                android:name="com.samsung.android.support.REMOTE_ACTION"
-                android:resource="@xml/spen_remote_actions" />
-        </activity> <!-- 书籍详情页 -->
-        <activity
-            android:name=".ui.book.info.BookInfoActivity"
-            android:launchMode="singleTop"
-            android:windowSoftInputMode="adjustNothing" /> <!-- 书籍信息编辑 -->
-        <activity
-            android:name=".ui.book.info.edit.BookInfoEditActivity"
-            android:launchMode="singleTask"
-            android:windowSoftInputMode="adjustResize|stateHidden" /> <!-- 音频播放界面 -->
-        <activity
-            android:name=".ui.book.audio.AudioPlayActivity"
-            android:launchMode="singleTask" /> <!-- 授权界面 -->
-        <activity
-            android:name=".lib.permission.PermissionActivity"
-            android:theme="@style/Activity.Permission" /><!-- 书源编辑 -->
-        <activity
-            android:name=".ui.book.source.edit.BookSourceEditActivity"
-            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
-            android:launchMode="singleTask"
-            android:windowSoftInputMode="adjustResize|stateHidden" /><!-- 替换规则编辑 -->
-        <activity
-            android:name=".ui.replace.edit.ReplaceEditActivity"
-            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
-            android:launchMode="singleTask"
-            android:windowSoftInputMode="adjustResize|stateHidden" /> <!-- 配置界面 -->
-        <activity
-            android:name=".ui.config.ConfigActivity"
-            android:launchMode="standard" /> <!-- 搜索界面 -->
-        <activity
-            android:name=".ui.book.search.SearchActivity"
-            android:launchMode="standard" /> <!-- 关于界面 -->
-        <activity
-            android:name=".ui.about.AboutActivity"
-            android:launchMode="singleTask"
-            android:screenOrientation="behind"
-            tools:ignore="DiscouragedApi" /> <!-- 书源管理 -->
-        <activity
-            android:name=".ui.book.source.manage.BookSourceActivity"
-            android:launchMode="singleTop"
-            android:screenOrientation="behind"
-            tools:ignore="DiscouragedApi" /> <!-- txt目录规则管理 -->
-        <activity
-            android:name=".ui.book.toc.rule.TxtTocRuleActivity"
-            android:launchMode="singleTop"
-            android:screenOrientation="behind"
-            tools:ignore="DiscouragedApi" /> <!-- 规则订阅管理 -->
-        <activity
-            android:name=".ui.association.RuleSubActivity"
-            android:launchMode="singleTop"
-            android:screenOrientation="behind"
-            tools:ignore="DiscouragedApi" /> <!-- 替换规则界面 -->
-        <activity
-            android:name=".ui.replace.ReplaceRuleActivity"
-            android:launchMode="singleTop"
-            android:screenOrientation="behind"
-            tools:ignore="DiscouragedApi" /> <!-- 结果过滤规则 -->
-        <activity
-            android:name=".ui.book.filter.SourceFilterRuleActivity"
-            android:launchMode="singleTop"
-            android:screenOrientation="behind"
-            tools:ignore="DiscouragedApi" /> <!-- 书籍管理 -->
-        <activity
-            android:name=".ui.book.manage.BookshelfManageActivity"
-            android:launchMode="singleTop"
-            android:screenOrientation="behind"
-            tools:ignore="DiscouragedApi" /> <!-- 书源调试 -->
-        <activity
-            android:name=".ui.book.source.debug.BookSourceDebugActivity"
-            android:launchMode="singleTop"
-            android:screenOrientation="behind"
-            tools:ignore="DiscouragedApi" /> <!-- 目录 -->
-        <activity
-            android:name=".ui.book.toc.TocActivity"
-            android:launchMode="singleTop"
-            android:screenOrientation="behind"
-            tools:ignore="DiscouragedApi" /> <!-- 正文搜索 -->
-        <activity
-            android:name=".ui.book.searchContent.SearchContentActivity"
-            android:launchMode="singleTop"
-            android:screenOrientation="behind"
-            tools:ignore="DiscouragedApi" /> <!-- RSS阅读 -->
-        <activity
-            android:name=".ui.book.rss.ReadRssActivity"
-            android:configChanges="orientation|screenSize"
-            android:hardwareAccelerated="true"
-            android:launchMode="singleTop" /> <!-- 导入书籍 -->
-        <activity
-            android:name=".ui.book.import.local.ImportBookActivity"
-            android:launchMode="singleTop" /> <!-- 添加远程 -->
-        <activity
-            android:name=".ui.book.import.remote.RemoteBookActivity"
-            android:launchMode="singleTop" /> <!-- 发现界面 -->
-        <activity android:name=".ui.book.explore.ExploreShowActivity" /> <!-- 书签 -->
-        <activity
-            android:name=".ui.book.bookmark.AllBookmarkActivity"
-            android:launchMode="singleTop" /> <!-- WebView界面 -->
-        <activity
-            android:name=".ui.browser.WebViewActivity"
-            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
-            android:hardwareAccelerated="true"
-            android:launchMode="standard" /> <!-- 书源登录 -->
-        <activity
-            android:name=".ui.about.ReadRecordActivity"
-            android:configChanges="orientation|screenSize"
-            android:hardwareAccelerated="true" /> <!-- 字典管理 -->
-        <activity
-            android:name=".ui.dict.rule.DictRuleActivity"
-            android:configChanges="orientation|screenSize"
-            android:hardwareAccelerated="true" /> <!-- 选择文件 -->
-        <activity
-            android:name=".ui.association.AssociationActivity"
-            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
-            android:excludeFromRecents="true"
-            android:exported="true"
-            android:label="@string/app_name"
-            android:launchMode="singleTask"
-            android:theme="@style/AppTheme.Transparent">
+            <!-- DeepLink + 文件关联入口 (由 AssociationActivity 迁移, 在 onCreate/onNewIntent 解析后经 LaunchRequest 分发) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
@@ -319,13 +181,53 @@
                 <data android:pathPattern=".*\\.7z" />
                 <data android:pathPattern=".*\\.7Z" />
             </intent-filter>
-        </activity>
+        </activity> <!-- 阅读界面 -->
+        <activity
+            android:name=".ui.book.read.ReadBookActivity"
+            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
+            android:exported="true"
+            android:launchMode="singleTask" /> <!-- 阅读漫画界面 -->
+        <activity
+            android:name=".ui.book.manga.ReadMangaActivity"
+            android:exported="false"
+            android:launchMode="singleTask" /> <!-- 书籍详情页 -->
+        <activity
+            android:name=".ui.book.info.BookInfoActivity"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustNothing" /> <!-- 音频播放界面 -->
+        <activity
+            android:name=".ui.book.audio.AudioPlayActivity"
+            android:launchMode="singleTask" /> <!-- 授权界面 -->
+        <activity
+            android:name=".lib.permission.PermissionActivity"
+            android:theme="@style/Activity.Permission" />
+        <!-- 书籍管理 -->
+        <activity
+            android:name=".ui.book.manage.BookshelfManageActivity"
+            android:launchMode="singleTop"
+            android:screenOrientation="behind"
+            tools:ignore="DiscouragedApi" /> <!-- RSS阅读 -->
+        <activity
+            android:name=".ui.book.rss.ReadRssActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true"
+            android:launchMode="singleTop" /> <!-- 选择文件 -->
+        <!-- 关联入口: intent-filter 已迁移到 MainActivity, Activity 暂保留 (shared AssociationRoute 待落地) -->
+        <activity
+            android:name=".ui.association.AssociationActivity"
+            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:launchMode="singleTask"
+            android:theme="@style/AppTheme.Transparent" />
 
+        <!-- 文本处理入口 alias 到 MainActivity -->
         <activity-alias
             android:name=".ui.association.ProcessTextActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:targetActivity=".ui.association.AssociationActivity">
+            android:targetActivity=".ui.main.MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.PROCESS_TEXT" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -338,14 +240,6 @@
             </intent-filter>
         </activity-alias>
 
-        <!-- JS Activity -->
-        <activity
-            android:name=".ui.association.JsActivity1"
-            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
-        <activity
-            android:name=".ui.association.JsActivity2"
-            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout" />
         <!-- 打开文件 -->
 
         <service

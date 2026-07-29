@@ -1,8 +1,10 @@
 {
   "modelVersion": "6.1.1",
   "model": "5.0.0-Release",
-  "description": "Legado 鸿蒙 (HarmonyOS) 应用工程 - KMP 全平台化任务 KP4 鸿蒙 target 的 ArkTS UI 骨架",
-  "dependencies": {},
+  "description": "Legado HarmonyOS host for CPF-KMP-CMP fusion renderer",
+  "dependencies": {
+    "@cpf-kmp-cmp/compose": "1.9.2-0.4.0"
+  },
   "devDependencies": {
     "@ohos/hypium": "1.0.21"
   }

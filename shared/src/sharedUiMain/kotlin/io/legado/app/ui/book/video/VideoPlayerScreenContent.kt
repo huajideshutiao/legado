@@ -91,6 +91,8 @@ import kotlin.math.abs
  * @param onSpeedChange 倍速切换 (长按 → 触发 2x, 松开恢复 1x)
  * @param controlsVisible 控制层可见状态 (键盘事件感知)
  * @param onToggleControls 显隐控制层 (Escape 触发)
+ * @param onTitleClick 标题区点击回调 (对照 Activity onTitleClick, 默认空保持向后兼容)
+ * @param titleActions 标题栏右侧额外 actions (由 Route 注入 refresh/shelf/overflowMenu, 默认空)
  */
 @Composable
 fun VideoPlayerScreenContent(
@@ -112,6 +114,9 @@ fun VideoPlayerScreenContent(
     onToggleControls: () -> Unit = {},
     // 平台自定义顶栏 (null = 用 shared VideoTitleBar; 传 {} 隐藏)
     topBarSlot: (@Composable () -> Unit)? = null,
+    // 标题区点击 + 标题栏右侧额外 actions (默认空保持向后兼容, 仅 topBarSlot=null 时生效)
+    onTitleClick: () -> Unit = {},
+    titleActions: @Composable RowScope.() -> Unit = {},
     // 平台自定义底栏 (默认 shared VideoControlBar; 传 {} 隐藏; ColumnScope 允许 weight)
     bottomBarSlot: @Composable ColumnScope.() -> Unit = {
         VideoControlBar(
@@ -163,6 +168,8 @@ fun VideoPlayerScreenContent(
                     onBack = onBack,
                     onOpenToc = onOpenToc,
                     onOpenChangeSource = onOpenChangeSource,
+                    onTitleClick = onTitleClick,
+                    actions = titleActions,
                 )
             }
             Box(
@@ -178,7 +185,14 @@ fun VideoPlayerScreenContent(
 
 // ---- 顶部标题栏 ----
 
-/** 视频标题栏 (56dp, 返回 + 书名/章节名 + 目录 + 换源, 黑底白字)。 */
+/** 视频标题栏 (56dp, 返回 + 书名/章节名 + 目录 + 换源, 黑底白字)。
+ *
+ *  对照 app 端 [io.legado.app.ui.book.video.VideoPlayActivity.onTitleClick]:
+ *  标题区整体可点进书籍详情, 由 [onTitleClick] 桥接 navigator.push(BookInfo)。
+ *
+ *  @param onTitleClick 标题区点击回调 (默认空, 向后兼容 desktop)
+ *  @param actions 右侧额外 action 区 (默认空, 由 Route 注入 refresh/shelf/overflowMenu)
+ */
 @Composable
 fun VideoTitleBar(
     bookName: String,
@@ -186,6 +200,8 @@ fun VideoTitleBar(
     onBack: () -> Unit,
     onOpenToc: () -> Unit,
     onOpenChangeSource: () -> Unit,
+    onTitleClick: () -> Unit = {},
+    actions: @Composable RowScope.() -> Unit = {},
 ) {
     Row(
         Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
@@ -198,7 +214,11 @@ fun VideoTitleBar(
                 tint = Color.White,
             )
         }
-        Column(Modifier.weight(1f)) {
+        Column(
+            Modifier
+                .weight(1f)
+                .clickable { onTitleClick() }
+        ) {
             Text(
                 text = bookName,
                 color = Color.White,
@@ -216,6 +236,7 @@ fun VideoTitleBar(
                 )
             }
         }
+        actions()
         IconButton(onClick = onOpenToc) {
             Icon(
                 painter = rememberPainter("ic_toc"),

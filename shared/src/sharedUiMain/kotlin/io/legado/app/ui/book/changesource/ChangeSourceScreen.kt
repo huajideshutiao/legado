@@ -35,6 +35,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.ui.compose.component.AppDropdownMenu
@@ -62,6 +65,7 @@ import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ScreenInfoProviders
+import kotlinx.coroutines.launch
 
 /**
  * 换源标题栏：复刻 dialog_title_bar + change_source 菜单
@@ -590,5 +594,231 @@ fun GroupPickerDialog(
                 }
             }
         }
+    }
+}
+
+/**
+ * 整书换源 UI 交互回调。
+ *
+ * 实际业务 (搜索/筛选/启停/切源) 留在 [ChangeBookSourceViewModelShared], Route 层
+ * 将 navigator 与平台 ViewModel 桥接到本接口。
+ */
+interface ChangeSourceUiActions {
+    /** 返回 (导航器 pop) */
+    fun onBack()
+
+    /** 启停搜索 (标题栏刷新按钮) */
+    fun onStartStop()
+
+    /** 筛选关键词变更 (searchMode 输入) */
+    fun onScreen(key: String)
+
+    /** 切换筛选模式 (放大镜按钮) */
+    fun onSearchModeChange(enabled: Boolean)
+
+    /** 点击源条目 (触发切源流程) */
+    fun onItemClick(book: SearchBook)
+}
+
+/**
+ * 整书换源页菜单/检查项回调 (对照 app 端 Dialog.Content 溢出菜单 8 项)。
+ *
+ * Route 层桥接到 platform 开关字段 + [ChangeBookSourceViewModelShared] 刷新方法。
+ */
+interface ChangeSourceMenuActions {
+    /** 书源管理 (navigator.push(BookSourceManage)) */
+    fun onBookSourceManage()
+
+    /** 刷新列表 (viewModel.startRefreshList()) */
+    fun onRefreshList()
+
+    /** 校验作者开关 (platform.changeSourceCheckAuthor = value; viewModel.refresh()) */
+    fun onCheckAuthorChange(value: Boolean)
+
+    /** 加载字数开关 (platform.changeSourceLoadWordCount = value; viewModel.onLoadWordCountChecked(value)) */
+    fun onLoadWordCountChange(value: Boolean)
+
+    /** 加载详情开关 (platform.changeSourceLoadInfo = value) */
+    fun onLoadInfoChange(value: Boolean)
+
+    /** 加载目录开关 (platform.changeSourceLoadToc = value) */
+    fun onLoadTocChange(value: Boolean)
+
+    /** 关闭 (navigator.pop()) */
+    fun onClose()
+}
+
+/**
+ * 整书换源列表项操作回调 (对照 app 端 Dialog.Content SearchBookItem 调用第 228-242 行)。
+ *
+ * Route 层桥接到 [ChangeBookSourceViewModelShared] 评分/置顶置底/编辑/禁用/删除方法。
+ */
+interface ChangeSourceItemActions {
+    /** 取评分 (viewModel.getBookScore(book)) */
+    fun getScore(book: SearchBook): Int
+
+    /** 设置评分 (viewModel.setBookScore(book, score)) */
+    fun setScore(book: SearchBook, score: Int)
+
+    /** 置顶 (viewModel.topSource(book)) */
+    fun onTop(book: SearchBook)
+
+    /** 置底 (viewModel.bottomSource(book)) */
+    fun onBottom(book: SearchBook)
+
+    /** 编辑书源 (navigator.push(BookSourceEdit(book.origin))) */
+    fun onEdit(book: SearchBook)
+
+    /** 禁用书源 (viewModel.disableSource(book)) */
+    fun onDisable(book: SearchBook)
+
+    /** 删除书源 (弹确认 alert -> viewModel.del(book) -> 可能 autoChangeSource) */
+    fun onDelete(book: SearchBook)
+}
+
+/**
+ * 整书换源页 (对照 app 端 [ChangeBookSourceDialog])。
+ *
+ * 下沉自 Dialog 形态: 标题栏 (复用 [ChangeSourceTitleBar]) + 搜索进度条
+ * (复用 [ChangeSourceRefreshBar]) + 源列表 ([SearchBookItem] 完整版含点赞/长按菜单)
+ * + 底栏 (复用 [ChangeSourceBottomBar]) + 分组选择对话框 ([GroupPickerDialog])。
+ *
+ * 与 [ChangeChapterSourceScreen] 同构, 差异: 列表项用完整 [SearchBookItem] (含点赞/长按菜单/字数列)。
+ * 菜单 8 项与列表项操作通过 [ChangeSourceMenuActions] / [ChangeSourceItemActions] 注入。
+ *
+ * @param state UI 状态 (由 [ChangeSourceScreenModel] 持有)
+ * @param book 当前书籍 (标题栏显示书名/作者)
+ * @param actions 交互回调 (由 Route 层桥接到 navigator + 平台 ViewModel)
+ * @param menuActions 菜单项回调 (由 Route 层桥接到 platform 开关 + ViewModel)
+ * @param itemActions 列表项操作回调 (由 Route 层桥接到 ViewModel)
+ * @param searchGroup 当前选中分组 (GroupMenuItem 标题显示)
+ * @param onSearchGroupChange 分组变化回调 (保留供 Route 同步, Screen 内用 state 显示)
+ * @param onShowGroupPicker 显示分组选择对话框
+ * @param showGroupPicker 分组选择对话框是否显示
+ * @param onGroupPickerDismiss 分组选择对话框关闭
+ * @param onGroupPickerSelect 分组选择对话框选中
+ * @param groups 启用分组列表 (GroupPickerDialog 渲染)
+ */
+@Composable
+fun ChangeSourceScreen(
+    state: ChangeSourceUiState,
+    book: Book,
+    actions: ChangeSourceUiActions,
+    menuActions: ChangeSourceMenuActions,
+    itemActions: ChangeSourceItemActions,
+    searchGroup: String,
+    onSearchGroupChange: (String) -> Unit,
+    onShowGroupPicker: () -> Unit,
+    showGroupPicker: Boolean,
+    onGroupPickerDismiss: () -> Unit,
+    onGroupPickerSelect: (String) -> Unit,
+    groups: List<String>,
+) {
+    // 筛选模式 / 关键词为本地 UI 状态, 与 app 端 Dialog 同样用 rememberSaveable 持久化
+    var searchMode by rememberSaveable { mutableStateOf(false) }
+    var screenKey by rememberSaveable { mutableStateOf("") }
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+
+    Column(Modifier.fillMaxSize()) {
+        ChangeSourceTitleBar(
+            title = book.name,
+            subtitle = book.author,
+            searchMode = searchMode,
+            screenKey = screenKey,
+            searching = state.isLoading,
+            onBack = actions::onBack,
+            onSearchModeChange = {
+                searchMode = it
+                actions.onSearchModeChange(it)
+            },
+            onScreen = {
+                screenKey = it
+                actions.onScreen(it)
+            },
+            onStartStop = actions::onStartStop,
+        ) { dismiss ->
+            // 对照 app 端 Dialog.Content 第 179-220 行 8 个菜单项
+            TextMenuItem(rememberString("book_source_manage")) {
+                dismiss(); menuActions.onBookSourceManage()
+            }
+            TextMenuItem(rememberString("refresh_list")) {
+                dismiss(); menuActions.onRefreshList()
+            }
+            CheckMenuItem(rememberString("checkAuthor"), state.checkAuthor) {
+                dismiss()
+                menuActions.onCheckAuthorChange(!state.checkAuthor)
+            }
+            CheckMenuItem(rememberString("load_word_count"), state.loadWordCount) {
+                dismiss()
+                menuActions.onLoadWordCountChange(!state.loadWordCount)
+            }
+            CheckMenuItem(rememberString("load_info"), state.loadInfo) {
+                dismiss()
+                menuActions.onLoadInfoChange(!state.loadInfo)
+            }
+            CheckMenuItem(rememberString("load_toc"), state.loadToc) {
+                dismiss()
+                menuActions.onLoadTocChange(!state.loadToc)
+            }
+            GroupMenuItem(
+                title = if (searchGroup.isEmpty()) {
+                    rememberString("group")
+                } else {
+                    rememberString("group") + "($searchGroup)"
+                },
+                dismissParent = dismiss,
+                onShowGroupPicker = onShowGroupPicker,
+            )
+            TextMenuItem(rememberString("close")) {
+                dismiss(); menuActions.onClose()
+            }
+        }
+        ChangeSourceRefreshBar(state.isLoading)
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+        ) {
+            items(state.sources, key = { it.bookUrl }) { searchBook ->
+                // 对照 app 端 Dialog.Content 第 228-242 行 SearchBookItem 完整回调
+                SearchBookItem(
+                    book = searchBook,
+                    isCurSource = searchBook.bookUrl == state.curBookUrl,
+                    loadWordCount = state.loadWordCount,
+                    getScore = { itemActions.getScore(searchBook) },
+                    setScore = { itemActions.setScore(searchBook, it) },
+                    onClick = { actions.onItemClick(searchBook) },
+                    onTop = { itemActions.onTop(searchBook) },
+                    onBottom = { itemActions.onBottom(searchBook) },
+                    onEdit = { itemActions.onEdit(searchBook) },
+                    onDisable = { itemActions.onDisable(searchBook) },
+                    onDelete = { itemActions.onDelete(searchBook) },
+                )
+            }
+        }
+        ChangeSourceBottomBar(
+            durText = state.durText,
+            onDurClick = {
+                val index = state.sources.indexOfFirst { it.bookUrl == state.curBookUrl }
+                if (index >= 0) scope.launch { listState.scrollToItem(index) }
+            },
+            onTop = { scope.launch { listState.scrollToItem(0) } },
+            onBottom = {
+                scope.launch {
+                    if (state.sources.isNotEmpty()) listState.scrollToItem(state.sources.lastIndex)
+                }
+            },
+        )
+    }
+    // 对照 app 端 Dialog.Content 第 258-269 行: 分组选择独立 Dialog
+    if (showGroupPicker) {
+        GroupPickerDialog(
+            groups = groups,
+            selectedGroup = searchGroup,
+            onDismiss = onGroupPickerDismiss,
+            onSelect = onGroupPickerSelect,
+        )
     }
 }

@@ -174,7 +174,7 @@ object Backup {
         currentCoroutineContext().ensureActive()
         val configMap = mutableMapOf<String, Any>()
         appCtx.defaultSharedPreferences.all.forEach { (key, value) ->
-            if (BackupConfig.keyIsNotIgnore(key)) {
+            if (BackupConfigShared.keyIsNotIgnore(key)) {
                 when (key) {
                     PreferKey.webDavPassword -> {
                         configMap[key] = aes.runCatching {

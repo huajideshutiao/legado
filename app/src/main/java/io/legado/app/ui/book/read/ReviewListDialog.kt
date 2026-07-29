@@ -1,18 +1,16 @@
 package io.legado.app.ui.book.read
 
-import android.app.Activity.RESULT_OK
 import android.app.Application
-import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -51,12 +49,18 @@ import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.RouteResultPayload
+import io.legado.app.ui.root.RouteResults
+import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.flow.filter
 
 /**
  * 评论列表对话框（BottomSheet 风格，内容委托 shared ReviewListDialog Composable）
@@ -70,7 +74,7 @@ import kotlinx.coroutines.Dispatchers.IO
  * - ReviewViewModel (拉取书评列表 / 点赞点踩 / 回复 / 删除)
  * - 状态管理 (reviews / expandedKeys / votedIds / footer 状态)
  * - Glide 图片渲染槽 (avatarSlot / imageSlot)
- * - 平台专属行为: alert 删除确认 / ReviewPostActivity 发书评 / PhotoDialog 查看大图 / sendToClip 复制
+ * - 平台专属行为: alert 删除确认 / ReviewPost 路由发书评 / PhotoDialog 查看大图 / sendToClip 复制
  */
 class ReviewListDialog() : BottomSheetDialogFragment() {
 
@@ -114,22 +118,12 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
     // 已用书源初始状态种子过的 id；保证用户点击翻转后不被 item 旧值回灌覆盖
     private val voteSeeded = HashSet<String>()
 
-    // 段评输入面板:Activity 模拟 BottomSheet,通过 launcher 回写内容
-    private val reviewPostLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == RESULT_OK) {
-            val content = result.data
-                ?.getStringExtra(ReviewPostActivity.RESULT_CONTENT)
-                .orEmpty()
-            if (content.isNotBlank()) submitPost(content)
-        }
-    }
-
     private fun launchPostActivity(replyPreview: String?) {
-        val intent = Intent(requireContext(), ReviewPostActivity::class.java)
-        replyPreview?.let { intent.putExtra(ReviewPostActivity.EXTRA_REPLY_PREVIEW, it) }
-        reviewPostLauncher.launch(intent)
+        val book = viewModel.book ?: return
+        AppNavigatorProviders.getOrNull()?.push(
+            AppRoute.ReviewPost(book.toRouteRef(), replyPreview),
+            resultKey = RouteResults.REVIEW_POST,
+        )
     }
 
     /** 点击单条段评 → 弹回复输入框，replyTo 暂存为该条 */
@@ -173,6 +167,16 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                 LocalPreferenceStoreProvider provides preferenceStoreProvider,
             ) {
                 AppTheme {
+                    // 接收 ReviewPost 路由回传的段评内容
+                    LaunchedEffect(Unit) {
+                        AppNavigatorProviders.getOrNull()?.results
+                            ?.filter { it.key == RouteResults.REVIEW_POST }
+                            ?.collect { result ->
+                                val payload = result.payload as? RouteResultPayload.ReviewPost
+                                    ?: return@collect
+                                if (payload.content.isNotBlank()) submitPost(payload.content)
+                            }
+                    }
                     // nestedScroll 桥接: 列表到顶后继续下拉交还 BottomSheetBehavior 收起
                     val lazyListModifier = Modifier.nestedScroll(rememberNestedScrollInteropConnection())
                     ReviewListDialog(

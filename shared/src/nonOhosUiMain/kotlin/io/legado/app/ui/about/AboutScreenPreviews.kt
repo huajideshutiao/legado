@@ -10,15 +10,13 @@ import io.legado.app.ui.preview.LegadoThemePreview
 @Composable
 fun AboutScreenPreview() = LegadoThemePreview {
     AboutScreen(
-        updateLogSummary = "3.25.070226 · 修复换源界面崩溃; 新增字典规则管理",
-        onContributors = {},
-        onTelegramGroup = {},
-        onCheckUpdate = {},
-        onCrashLog = {},
-        onSaveLog = {},
-        onCreateHeapDump = {},
-        onLicense = {},
-        onDisclaimer = {},
+        state = AboutUiState(
+            version = "3.25.070226",
+            updateLogSummary = "3.25.070226 · 修复换源界面崩溃; 新增字典规则管理",
+            contributorsUrl = "https://github.com/huajideshutiao/legado/graphs/contributors",
+            telegramGroupUrl = "https://t.me/+mT22ceIeiSllM2U1",
+        ),
+        actions = NoopAboutActions,
     )
 }
 
@@ -26,14 +24,22 @@ fun AboutScreenPreview() = LegadoThemePreview {
 @Composable
 fun AboutScreenDarkPreview() = LegadoThemePreview(dark = true) {
     AboutScreen(
-        updateLogSummary = "3.25.070226 · 修复换源界面崩溃; 新增字典规则管理",
-        onContributors = {},
-        onTelegramGroup = {},
-        onCheckUpdate = {},
-        onCrashLog = {},
-        onSaveLog = {},
-        onCreateHeapDump = {},
-        onLicense = {},
-        onDisclaimer = {},
+        state = AboutUiState(
+            version = "3.25.070226",
+            updateLogSummary = "3.25.070226 · 修复换源界面崩溃; 新增字典规则管理",
+            contributorsUrl = "https://github.com/huajideshutiao/legado/graphs/contributors",
+            telegramGroupUrl = "https://t.me/+mT22ceIeiSllM2U1",
+        ),
+        actions = NoopAboutActions,
     )
+}
+
+private object NoopAboutActions : AboutUiActions {
+    override fun onShare() {}
+    override fun onOpenUrl(url: String) {}
+    override fun onCheckUpdate() {}
+    override fun onShowCrashLogs() {}
+    override fun onSaveLog() {}
+    override fun onCreateHeapDump() {}
+    override fun onShowMdFile(title: String, fileName: String) {}
 }

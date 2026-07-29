@@ -547,11 +547,11 @@ object QuickJsEngine {
     /**
      * 创建独立的 native ctx (已注入 bootstrap + 注册 binding),返回 QuickJsContext。
      *
-     * 用于 [io.legado.app.ui.association.JsActivity] 等需要独立 scope 的场景,
+     * 用于需要独立 scope 的场景,
      * 不与 SharedJsScope 缓存的 scope 共享。
      *
      * 注意: 与旧版不同, 返回类型改为 [QuickJsContext] (而非 quickjs-kt 的 QuickJs)。
-     * 业务层 JsActivity 通过 cx.close() 释放, 不再调用 cx.quickJs.close()。
+     * 业务层通过 cx.close() 释放, 不再调用 cx.quickJs.close()。
      */
     fun createQuickJsForActivity(): QuickJsContext = createNativeCtx()
 

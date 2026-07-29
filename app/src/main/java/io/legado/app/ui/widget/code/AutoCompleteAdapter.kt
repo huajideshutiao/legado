@@ -196,7 +196,7 @@ class AutoCompleteAdapter(
                 "ajax()","ajaxAll()","get()","post()",
                 // Browser
                 "startBrowser()","startBrowserAwait()",
-                "openUrl()", "startJsActivity()",
+                "openUrl()",
                 // User-Agent
                 "getWebViewUA()", "getVerificationCode()",
                 // Cookie

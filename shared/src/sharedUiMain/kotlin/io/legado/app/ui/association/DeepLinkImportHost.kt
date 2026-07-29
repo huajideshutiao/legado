@@ -18,9 +18,9 @@ import kotlinx.coroutines.launch
  * legado:// deep link 导入宿主 (iOS/鸿蒙共用, 对照 desktop `DesktopDeepLinkImportHost`,
  * 语义源头是 app 端 AssociationActivity + FileAssociationFragment.handleOnLineImport)。
  *
- * 挂载点与 [io.legado.app.ui.SourceUiEventBridgeHost] 平级:
- * - iOS: [io.legado.app.ui.IosNavHost] 尾部 (投递侧 `handleLegadoDeepLink` ← onOpenURL)
- * - 鸿蒙: [io.legado.app.ui.OhosNavHost] 尾部 (投递侧 EntryAbility onCreate/onNewWant → napi)
+ * 挂载点与 [io.legado.app.ui.book.source.SourceUiEventBridgeHost] 平级:
+ * - iOS: [io.legado.app.MainViewController] 尾部 (投递侧 `handleLegadoDeepLink` ← onOpenURL)
+ * - 鸿蒙: [io.legado.app.MainOhos] 尾部 (投递侧 EntryAbility onCreate/onNewWant → napi)
  *
  * 链路: [LegadoDeepLinkHandler.pending] 非 null → [DeepLinkImportTarget.of] 建 VM →
  * startImport(src) 下载解析比对 → successState>0 弹 [ImportItemsDialog] 勾选入库
@@ -99,7 +99,7 @@ private fun DeepLinkImportContent(
     if (!showDialog) return
     val bookSourceVm = target.bookSourceVm
     if (bookSourceVm != null) {
-        // 书源另走带"选中新增源/选中更新源"菜单的封装 (与 IosBookSourceScreen 网络导入同一入口)
+        // 书源另走带"选中新增源/选中更新源"菜单的封装 (与 LegadoApp 内书源网络导入同一入口)
         ImportBookSourceItemsDialog(
             vm = bookSourceVm,
             onDismiss = { LegadoDeepLinkHandler.consume() },

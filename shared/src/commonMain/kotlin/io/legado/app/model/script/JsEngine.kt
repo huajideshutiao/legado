@@ -3,7 +3,7 @@
  *
  * - **引擎选择**：硬编码 QUICKJS（见 [JsEngines.type]），RHINO 实现保留但不进产物
  *   （KMP 裁决 2026-07-17，详见 [JsEngines]）。切换入口已撤。
- * - **主调方向**：业务层（AnalyzeRule / BaseSource / AnalyzeUrl / SharedJsScope / JsActivity）
+ * - **主调方向**：业务层（AnalyzeRule / BaseSource / AnalyzeUrl / SharedJsScope）
  *   通过 [JsEngine.eval] / [JsEngine.getRuntimeScope] 等方法执行 JS。
  * - **被调方向**：JS 回调 Kotlin 对象方法（如 `image.decode(...)`）由 `@JsApi` 注解 +
  *   KSP 生成的 `JsApiDispatcher` 静态分派表处理（注解见 `modules/js-api`，分派表见 `modules/quickjs`），与本抽象正交。
@@ -156,7 +156,7 @@ interface JsEngine {
     /** 创建运行时 scope，注入 bindings 变量。对应 QuickJsEngine.getRuntimeScope。 */
     fun getRuntimeScope(bindings: JsBindings): JsScope
 
-    /** 创建独立 scope（JsActivity 用），不与 SharedJsScope 共享。对应 createQuickJsForActivity。 */
+    /** 创建独立 scope，不与 SharedJsScope 共享。 */
     fun createStandaloneScope(): JsScope
 
     // ============ 编译 ============
@@ -286,15 +286,3 @@ interface JsEngine {
     suspend fun <T> runScriptWithContext(block: () -> T): T
 
 }
-
-/**
- * 统一 ScriptException 类型别名。
- *
- * rhino `com.script.ScriptException` 与 quickjs `com.script.quickjs.ScriptException`
- * 都继承 `java.lang.Exception`，此处用 Exception 兜底，业务代码 `is ScriptException`
- * 仍能匹配两个引擎抛出的异常。
- *
- * 注意：语义变宽（捕获所有 Exception），但 HttpReadAloudService/CheckSourceService
- * 等使用处的 when 分支有其他兜底（NoStackTraceException 等），业务上可接受。
- */
-typealias ScriptException = Exception

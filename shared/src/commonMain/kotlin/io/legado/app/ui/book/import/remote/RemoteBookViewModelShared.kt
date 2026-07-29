@@ -11,6 +11,7 @@ import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.coroutine.mainDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.lib.webdav.Authorization
 import io.legado.app.lib.webdav.WebDav
@@ -18,11 +19,13 @@ import io.legado.app.lib.webdav.WebDavFile
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.remote.RemoteBook
 import io.legado.app.utils.AlphanumComparator
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 远程书籍 VM 共享核心 (KMP 版, commonMain)。
@@ -32,12 +35,9 @@ import kotlinx.coroutines.launch
  *   (Android = viewModelScope / 桌面 = rememberCoroutineScope())
  * - 去 MutableLiveData / callbackFlow, 改用 [MutableStateFlow] + [asStateFlow]
  *   (对照 [ServersViewModelShared] / [ServerConfigViewModelShared] 同模式)
- * - 去 RemoteBookWebDav (app 专属, 依赖 isNetworkAvailable / Uri / runBlocking init),
- *   改为直接调用已下沉的 [WebDav] + [RemoteBook.create] + [FileBook.importRemoteBook]
- *   (三者均为 commonMain expect/actual, 已在 jvmAndAndroidMain actual 实现)
- * - 去 AppWebDav.defaultBookWebDav (app 专属, 依赖 RemoteBookWebDav),
- *   改为 [AppWebDavShared.upConfig] + 手工拼接 rootBookUrl (与 AppWebDavShared 内部
- *   rootWebDavUrl + "books/" 同值, 因 AppWebDavShared.rootWebDavUrl 为 private 不可外部访问)
+ * - WebDav 连接初始化与文件操作通过 [RemoteBookConnectionProvider]/[RemoteBookOperations]
+ *   注入；默认实现使用 [AppWebDavShared]/[WebDav]/[FileBook]，Android 注入原
+ *   RemoteBookWebDav/网络检查/SAF 下载语义，避免共享简化实现改变 app 行为。
  *
  * # 设计选择 (组合委托)
  *
@@ -54,6 +54,9 @@ import kotlinx.coroutines.launch
 class RemoteBookViewModelShared(
     private val scope: CoroutineScope,
     private val onStartRead: (Book) -> Unit = {},
+    private val connectionProvider: RemoteBookConnectionProvider = DefaultRemoteBookConnectionProvider(),
+    private val operations: RemoteBookOperations = DefaultRemoteBookOperations(),
+    private val onPermissionDenied: () -> Unit = {},
 ) {
 
     /** DAO 容器 (宿主启动时由 app 端注册 AppDbAccessorImpl)。 */
@@ -71,6 +74,8 @@ class RemoteBookViewModelShared(
 
     private val _items = MutableStateFlow<List<RemoteBook>>(emptyList())
     val items: StateFlow<List<RemoteBook>> = _items.asStateFlow()
+    private var sourceItems: List<RemoteBook> = emptyList()
+    private var filterKey: String? = null
 
     /** 面包屑路径 (相对, UI 显示用, 对照 app Activity.path)。 */
     private val _currentPath = MutableStateFlow<String?>(null)
@@ -78,6 +83,9 @@ class RemoteBookViewModelShared(
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    private val _refreshVersion = MutableStateFlow(0)
+    val refreshVersion: StateFlow<Int> = _refreshVersion.asStateFlow()
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
@@ -102,49 +110,18 @@ class RemoteBookViewModelShared(
     fun initData(onSuccess: () -> Unit) {
         scope.launch(IoDispatcher) {
             try {
-                isDefaultWebdav = false
-                val serverId = AppConfigProviders.get().remoteServerId
-                val server = appDb.serverDao.get(serverId)
-                val config = server?.getWebDavConfig()
-                if (config != null) {
-                    authorization = Authorization(config)
-                    rootBookUrl = config.url
-                    serverID = server.id
-                } else {
-                    // 默认 webdav (坚果云), 用 AppWebDavShared 完成认证
-                    isDefaultWebdav = true
-                    AppWebDavShared.upConfig()
-                    authorization = AppWebDavShared.authorization
-                        ?: throw NoStackTraceException("webDav没有配置")
-                    rootBookUrl = computeDefaultRootBookUrl()
-                    serverID = null
-                }
-                onSuccess()
+                val connection = connectionProvider.resolve()
+                isDefaultWebdav = connection.isDefaultWebdav
+                authorization = connection.authorization
+                rootBookUrl = connection.rootBookUrl
+                serverID = connection.serverID
+                withContext(mainDispatcher) { onSuccess() }
             } catch (e: Throwable) {
+                if (e is CancellationException) throw e
                 AppLog.put("初始化webDav出错\n${e.message}", e)
                 Toasters.get().toast("初始化webDav出错:${e.message}")
             }
         }
-    }
-
-    /**
-     * 默认 webdav 的书籍根 URL (对照 app AppWebDav.defaultBookWebDav.rootBookUrl)。
-     *
-     * AppWebDavShared.rootWebDavUrl 为 private 不可外部访问, 此处按相同逻辑重算:
-     * - 配置 URL 为空时默认坚果云 https://dav.jianguoyun.com/dav/
-     * - URL 不以 "/" 结尾自动补
-     * - webDavDir 非空时追加为子目录
-     * - 末尾追加 "books/" 子目录 (对照 app AppWebDav.exportsWebDavUrl 同值)
-     */
-    private fun computeDefaultRootBookUrl(): String {
-        val configUrl = AppConfigProviders.get().webDavUrl
-        var url = if (configUrl.isEmpty()) "https://dav.jianguoyun.com/dav/" else configUrl
-        if (!url.endsWith("/")) url = "$url/"
-        PreferenceProviders.get().getString(PreferKey.webDavDir, "legado")
-            .trim()
-            .takeIf { it.isNotEmpty() }
-            ?.let { url = "${url}${it}/" }
-        return "${url}books/"
     }
 
     /**
@@ -167,17 +144,19 @@ class RemoteBookViewModelShared(
             try {
                 _isLoading.value = true
                 _error.value = null
-                _items.value = emptyList()
-                val webDavFileList: List<WebDavFile> = WebDav(targetPath, auth).listFiles()
-                val remoteBooks = webDavFileList
+                sourceItems = emptyList()
+                publishItems()
+                val remoteBooks = operations.listFiles(targetPath, auth)
                     .filter { file ->
                         file.isDir
                             || bookFileRegex.matches(file.displayName)
                             || archiveFileRegex.matches(file.displayName)
                     }
                     .map { RemoteBook.create(it) }
-                _items.value = sortItems(remoteBooks)
+                sourceItems = remoteBooks
+                publishItems()
             } catch (e: Throwable) {
+                if (e is CancellationException) throw e
                 AppLog.put("获取webDav书籍出错\n${e.message}", e)
                 Toasters.get().toast("获取webDav书籍出错\n${e.message}")
                 _error.value = e.message
@@ -219,23 +198,26 @@ class RemoteBookViewModelShared(
         }
         scope.launch(IoDispatcher) {
             try {
+                // 对照 app 端 addSelectionToBookshelf / addToBookShelfAgain: loading=true
+                _isLoading.value = true
                 selection.forEach { remoteBook ->
-                    val webDav = WebDav(remoteBook.path, auth)
-                    FileBook.importRemoteBook(
-                        webDav = webDav,
+                    operations.importRemoteBook(
+                        authorization = auth,
                         serverID = serverID,
-                        name = remoteBook.filename,
-                        path = remoteBook.path,
-                        size = remoteBook.size,
-                        lastModify = remoteBook.lastModify,
-                        downloadFile = true,
+                        remoteBook = remoteBook,
                     )
                     remoteBook.isOnBookShelf = true
                 }
+                publishItems()
+                _refreshVersion.value += 1
             } catch (e: Throwable) {
+                if (e is CancellationException) throw e
                 AppLog.put("导入出错\n${e.message}", e, true)
+                if (e is SecurityException) onPermissionDenied()
             } finally {
-                finally()
+                // 对照 app 端 callback 内 loading=false
+                _isLoading.value = false
+                withContext(mainDispatcher) { finally() }
             }
         }
     }
@@ -275,7 +257,11 @@ class RemoteBookViewModelShared(
      * @param newSortKey 新排序键 (与当前相同则切换升降序, 否则重置为升序)
      * @param onSortChanged 排序状态变更回调 (调用方刷新 UI 显示的 sortKeyState)
      */
-    fun sortCheck(newSortKey: RemoteBookSort, onSortChanged: (RemoteBookSort, Boolean) -> Unit) {
+    fun sortCheck(
+        newSortKey: RemoteBookSort,
+        onSortChanged: (RemoteBookSort, Boolean) -> Unit,
+        reorderCurrent: Boolean = true,
+    ) {
         if (sortKey == newSortKey) {
             sortAscending = !sortAscending
         } else {
@@ -283,8 +269,22 @@ class RemoteBookViewModelShared(
             sortKey = newSortKey
         }
         onSortChanged(sortKey, sortAscending)
-        // 重新排序当前 items (无需重新请求网络)
-        _items.value = sortItems(_items.value)
+        // Android 原入口随后 upPath 重新请求，避免在此产生一次原版没有的中间列表更新。
+        if (reorderCurrent) publishItems()
+    }
+
+    /** 对照 app VM updateCallBackFlow/DataCallback.screen，空关键字恢复完整列表。 */
+    fun updateFilter(key: String?) {
+        filterKey = key?.takeIf { it.isNotBlank() }
+        publishItems()
+    }
+
+    private fun publishItems() {
+        val filtered = filterKey?.let { key ->
+            sourceItems.filter { it.filename.contains(key) }
+        } ?: sourceItems
+        // copy 对齐旧 callbackFlow 每次 emit 新列表引用，也让 isOnBookShelf 原地变更可靠触发 UI。
+        _items.value = sortItems(filtered).map { it.copy() }
     }
 
     /** 按 sortKey + sortAscending 排序 (对照 app VM dataFlow.map 排序逻辑)。 */
@@ -294,5 +294,82 @@ class RemoteBookViewModelShared(
             else -> compareBy { it: RemoteBook -> it.lastModify }
         }.let { if (sortAscending) it else it.reversed() }
         return list.sortedWith(compareBy<RemoteBook> { !it.isDir }.then(secondary))
+    }
+}
+
+data class RemoteBookConnection(
+    val authorization: Authorization,
+    val rootBookUrl: String,
+    val serverID: Long?,
+    val isDefaultWebdav: Boolean,
+)
+
+interface RemoteBookConnectionProvider {
+    suspend fun resolve(): RemoteBookConnection
+}
+
+private class DefaultRemoteBookConnectionProvider : RemoteBookConnectionProvider {
+    override suspend fun resolve(): RemoteBookConnection {
+        val serverId = AppConfigProviders.get().remoteServerId
+        val server = AppDbProviders.get().serverDao.get(serverId)
+        val config = server?.getWebDavConfig()
+        if (config != null) {
+            return RemoteBookConnection(
+                authorization = Authorization(config),
+                rootBookUrl = config.url,
+                serverID = server.id,
+                isDefaultWebdav = false,
+            )
+        }
+
+        AppWebDavShared.upConfig()
+        val authorization = AppWebDavShared.authorization
+            ?: throw NoStackTraceException("webDav没有配置")
+        val configUrl = AppConfigProviders.get().webDavUrl
+        var rootUrl = if (configUrl.isEmpty()) "https://dav.jianguoyun.com/dav/" else configUrl
+        if (!rootUrl.endsWith("/")) rootUrl = "$rootUrl/"
+        PreferenceProviders.get().getString(PreferKey.webDavDir, "legado")
+            .trim()
+            .takeIf { it.isNotEmpty() }
+            ?.let { rootUrl = "$rootUrl$it/" }
+        return RemoteBookConnection(
+            authorization = authorization,
+            rootBookUrl = "${rootUrl}books/",
+            serverID = null,
+            isDefaultWebdav = true,
+        )
+    }
+}
+
+interface RemoteBookOperations {
+    suspend fun listFiles(path: String, authorization: Authorization): List<WebDavFile>
+
+    suspend fun importRemoteBook(
+        authorization: Authorization,
+        serverID: Long?,
+        remoteBook: RemoteBook,
+    )
+}
+
+private class DefaultRemoteBookOperations : RemoteBookOperations {
+    override suspend fun listFiles(
+        path: String,
+        authorization: Authorization,
+    ): List<WebDavFile> = WebDav(path, authorization).listFiles()
+
+    override suspend fun importRemoteBook(
+        authorization: Authorization,
+        serverID: Long?,
+        remoteBook: RemoteBook,
+    ) {
+        FileBook.importRemoteBook(
+            webDav = WebDav(remoteBook.path, authorization),
+            serverID = serverID,
+            name = remoteBook.filename,
+            path = remoteBook.path,
+            size = remoteBook.size,
+            lastModify = remoteBook.lastModify,
+            downloadFile = true,
+        )
     }
 }

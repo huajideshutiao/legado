@@ -1,3 +1,5 @@
+@file:OptIn(kotlin.time.ExperimentalTime::class)
+
 package io.legado.app.data.entities
 
 import androidx.room.Entity

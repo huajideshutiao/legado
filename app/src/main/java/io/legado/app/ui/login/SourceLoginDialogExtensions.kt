@@ -1,32 +1,23 @@
 package io.legado.app.ui.login
 
-import androidx.appcompat.app.AppCompatActivity
-import io.legado.app.R
 import io.legado.app.data.entities.BaseSource
-import io.legado.app.help.IntentData
-import io.legado.app.ui.browser.WebViewActivity
-import io.legado.app.utils.showDialogFragment
-import io.legado.app.utils.startActivity
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppRoute
 
 /**
- * 登录对话框入口（原 BaseSource.showLoginDialog，去 entity 安卓渗漏后上移）。
- * JS 的 source.showLoginDialog() 经事件桥 SourceUiEventBridge 转调此扩展。
+ * 登录对话框导航入口 (原 BaseSource.showLoginDialog 扩展, 重命名避免与成员函数同名遮蔽)。
+ * JS 的 source.showLoginDialog() 调成员函数发事件, SourceUiEventBridge 收到后转调此扩展。
  */
-fun BaseSource.showLoginDialog(activity: AppCompatActivity?) {
-    activity ?: return
+fun BaseSource.navigateToLogin() {
+    // 非 Composable 取全局 navigator (LegadoApp 组合时注册)
+    val navigator = AppNavigatorProviders.getOrNull() ?: return
     if (loginUi.isNullOrEmpty()) {
         if (!loginUrl.isNullOrBlank()) {
-            activity.startActivity<WebViewActivity> {
-                putExtra("url", loginUrl)
-                putExtra("title", activity.getString(R.string.login_source, getTag()))
-                putExtra("sourceName", getTag())
-                putExtra("sourceOrigin", getKey())
-                putExtra("sourceType", getSourceType())
-                putExtra("isLogin", true)
-            }
+            // URL 登录走 WebView 路由
+            navigator.push(AppRoute.WebView(loginUrl!!))
         }
     } else {
-        IntentData.source = this
-        activity.showDialogFragment<SourceLoginDialog>()
+        // loginUi 登录走书源登录页路由
+        navigator.push(AppRoute.Login(getKey()))
     }
 }

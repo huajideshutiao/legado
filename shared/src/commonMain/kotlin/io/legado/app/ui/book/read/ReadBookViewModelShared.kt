@@ -398,6 +398,7 @@ class ReadBookViewModelShared(
             chapterIndex = chapter.index,
             pages = pages,
             reviewCountApplied = reviewCountMap != null,
+            effectiveReplaceRules = bookContent.effectiveReplaceRules,
         )
         pages.forEach { it.textChapter = textChapter }
         // 排版期间可能已切章，以最新 durChapterIndex 归位滑窗（原版 when(offset) 三分支，超窗丢弃）

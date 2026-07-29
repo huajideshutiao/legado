@@ -5,8 +5,8 @@ import type window from '@ohos.window';
 import notificationManager from '@ohos.notificationManager';
 // napi 桥接层加载 (鸿蒙编译产物 liblegado_napi.so)
 // 详见 ohosApp/INTEROP.md 与 ohosApp/entry/src/main/cpp/legado_napi.cpp
-// KP5: napi 桥接已就绪 (bookshelfList/searchBook/loadChapter/importBookSource 接入真实 KMP 数据),
-// 与 Bookshelf.ets / Reader.ets / KmpInteropTest.ets 一致地 import legado from 'liblegado_napi.so'
+// KP5: napi 桥接已就绪 (bookshelfList/searchBook/loadChapter/importBookSource 接入真实 KMP 数据)
+// import legado from 'liblegado_napi.so' (ArkTS 侧 napi 模块加载)
 import legado from 'liblegado_napi.so';
 // KP8+ Image/Media 桥接处理器 (ArkTS 侧 PixelMap/AVPlayer 真实实现)
 import { handleImageRequest } from '../bridge/ImageBridgeHandler';
@@ -53,10 +53,9 @@ interface NotificationPayload {
  *    使 OhosToastProvider.showToast (promptAction.showToast) 和 OhosOpenUrlProvider.openUrl (context.startAbility)
  *    在鸿蒙端真实工作 (此前均为 println stub)
  *
- * 注意: `liblegado_napi.so` 由 CMakeLists.txt 编译 legado_napi.cpp 生成,
- * 依赖 Kotlin/Native linuxArm64 产物 liblegado_shared.so。
- * napi 桥接层未就绪 (CMakeLists.txt 中 LEGADO_SHARED_AVAILABLE=0) 时, dlsym 解析的函数指针为 null,
- * legado_napi.cpp 内部各函数会返回 mock 兜底值 (空数组/空串/0), 不影响 UI 骨架运行。
+ * 注意: `liblegado_napi.so` 由 CMakeLists.txt 编译 legado_napi.cpp 生成，
+ * 直接链接 CPF `ohosArm64` 产物 `liblegado_shared.so` 与 Compose RenderNode 桥。
+ * 根 Gradle staging 和 CMake 均对缺失产物直接失败，不再生成表面可运行的 mock HAP。
  */
 export default class EntryAbility extends UIAbility {
 
@@ -86,7 +85,7 @@ export default class EntryAbility extends UIAbility {
 
     // KP5: 注册 shared 模块所有 KMP provider。
     // 必须在任何 commonMain 业务代码调用前完成 (webBook 编排链依赖 AppConfigAccessor;
-    // Bookshelf.ets aboutToAppear 调 legado.bookshelfList() 依赖 AppDbProviders 已注册)。
+    // KMP 业务侧调 legado.bookshelfList() 等 napi 函数依赖 AppDbProviders 已注册)。
     // napi 桥接层 (legado_napi.cpp) 内部已对 dlsym 失败做 null 兜底, 此处调用始终安全。
     try {
       legado.registerOhosProviders();

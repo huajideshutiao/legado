@@ -20,8 +20,14 @@ interface AppConfigAccessor {
     /** 目录页是否统计字数 (原 AppConfig.tocCountWords)。 */
     val tocCountWords: Boolean
 
+    /** 持久化 tocCountWords (原 AppConfig.tocCountWords = value)。 */
+    fun setTocCountWords(value: Boolean) {}
+
     /** 目录界面是否使用替换规则 (原 AppConfig.tocUiUseReplace), 默认 false。 */
     val tocUiUseReplace: Boolean
+
+    /** 持久化 tocUiUseReplace (原 AppConfig.tocUiUseReplace = value)。 */
+    fun setTocUiUseReplace(value: Boolean) {}
 
     /** 简繁转换类型 (原 AppConfig.chineseConverterType): 0=不转换, 1=t2s, 2=s2t。 */
     var chineseConverterType: Int
@@ -138,6 +144,9 @@ interface AppConfigAccessor {
     /** TTS 引擎 (原 AppConfig.ttsEngine), 默认空串。 */
     val ttsEngine: String
 
+    // 持久化 ttsEngine (原 AppConfig.ttsEngine = value), 默认空实现供各端按需覆写
+    fun setTtsEngine(value: String?) {}
+
     /** TTS 语速 (原 AppConfig.ttsSpeechRate), 默认 5 (= AppConfig.defaultSpeechRate)。 */
     val ttsSpeechRate: Int
 
@@ -211,6 +220,13 @@ interface AppConfigAccessor {
 
     /** 欢迎页展示时长毫秒 (原 AppConfig.welcomeShowTime), 默认 600, 范围 0..3000。 */
     val welcomeShowTime: Int
+
+    /** 是否启用开发特性 (原 AppConfig.devFeat), 默认 false。 */
+    val devFeat: Boolean get() = false
+
+    /** 书籍详情页横向布局开关 (原 AppConfig.bookInfoHorizontalLayout), 默认 false。
+     *  BookInfoRoute 据此计算 useDevFeat (与 isVideo/isLandscape 组合)。 */
+    val bookInfoHorizontalLayout: Boolean get() = false
 }
 
 /**

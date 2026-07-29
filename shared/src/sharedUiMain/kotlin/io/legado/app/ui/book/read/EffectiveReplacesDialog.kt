@@ -45,7 +45,7 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
  *
  * 对应 app 端 `io.legado.app.ui.book.read.EffectiveReplacesDialog`,
  * 但去掉对 Android Fragment / activityViewModels / registerForActivityResult /
- * Intent(ReplaceRuleActivity/ReplaceEditActivity) / ReadBookViewModel 的依赖,
+ * Intent(ReplaceRuleActivity) / ReadBookViewModel 的依赖,
  * 改为纯 @Composable + 回调形式:
  * - 调用方传入 [book] (上下文, 用于未来扩展标题展示书名) 与 [items] (当前章节起效的替换规则列表,
  *   含 chineseConvert 项时由调用方附加, 与 EffectiveReplacesScreen 设计一致)

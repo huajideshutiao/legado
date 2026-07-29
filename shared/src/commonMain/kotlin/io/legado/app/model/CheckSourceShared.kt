@@ -11,7 +11,6 @@ import io.legado.app.help.source.SourceCacheProviders
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.help.source.exploreKinds
-import io.legado.app.model.script.ScriptException
 import io.legado.app.model.webBook.WebBook
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -178,7 +177,7 @@ object CheckSourceShared {
      * 内部执行:
      * 1. `withTimeout([timeout])` 调用 [doCheckSource]
      * 2. 成功: `Debug.updateFinalMessage` 写入 "校验成功"
-     * 3. 失败: 按 TimeoutCancellationException / ScriptException / 其他分类 addGroup
+     * 3. 失败: 按 TimeoutCancellationException / Exception / 其他分类 addGroup
      *    + addErrorComment + updateFinalMessage
      * 4. 末尾同步 `source.respondTime`
      *
@@ -195,7 +194,7 @@ object CheckSourceShared {
             currentCoroutineContext().ensureActive()
             when (it) {
                 is TimeoutCancellationException -> source.addGroup("校验超时")
-                is ScriptException -> source.addGroup("js失效")
+                is Exception -> source.addGroup("js失效")
                 !is NoStackTraceException -> source.addGroup("网站失效")
             }
             source.addErrorComment(it)

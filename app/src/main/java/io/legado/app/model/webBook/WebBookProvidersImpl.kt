@@ -117,7 +117,13 @@ object WebBookProvidersImpl :
     // ---- AppConfigAccessor ----
     override val threadCount: Int get() = AppConfig.threadCount
     override val tocCountWords: Boolean get() = AppConfig.tocCountWords
+    override fun setTocCountWords(value: Boolean) {
+        AppConfig.tocCountWords = value
+    }
     override val tocUiUseReplace: Boolean get() = AppConfig.tocUiUseReplace
+    override fun setTocUiUseReplace(value: Boolean) {
+        AppConfig.tocUiUseReplace = value
+    }
     override var chineseConverterType: Int
         get() = AppConfig.chineseConverterType
         set(value) { AppConfig.chineseConverterType = value }
@@ -211,6 +217,9 @@ object WebBookProvidersImpl :
     override val bitmapCacheSize: Int get() = AppConfig.bitmapCacheSize
     override val sourceEditMaxLine: Int get() = AppConfig.sourceEditMaxLine
     override val welcomeShowTime: Int get() = AppConfig.welcomeShowTime
+
+    // 书籍详情页横向布局开关, BookInfoRoute 计算 useDevFeat 用
+    override val bookInfoHorizontalLayout: Boolean get() = AppConfig.bookInfoHorizontalLayout
 
     // ---- ContentProcessorAccessor ----
     override fun getTitleReplaceRules(

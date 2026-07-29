@@ -12,10 +12,10 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.activity.addCallback
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.net.toUri
@@ -64,8 +64,6 @@ import io.legado.app.receiver.TimeBatteryReceiver
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
-import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
-import io.legado.app.ui.book.changesource.ChangeChapterSourceDialog
 import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.read.config.AutoReadDialog
 import io.legado.app.ui.book.read.config.MoreConfigDialog
@@ -77,18 +75,17 @@ import io.legado.app.ui.book.read.page.entities.PageDirection
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.provider.ChapterProvider
 import io.legado.app.ui.book.read.page.provider.LayoutProgressListener
-import io.legado.app.ui.book.searchContent.SearchContentActivity
 import io.legado.app.ui.book.searchContent.SearchResult
-import io.legado.app.ui.book.source.edit.BookSourceEditActivity
-import io.legado.app.ui.book.toc.TocActivityResult
 import io.legado.app.ui.book.toc.rule.TxtTocRuleDialog
-import io.legado.app.ui.browser.WebViewActivity
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.dialogs.selector
 import io.legado.app.ui.dict.DictDialog
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.ui.login.showLoginDialog
-import io.legado.app.ui.replace.edit.ReplaceEditActivity
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.RouteResultPayload
+import io.legado.app.ui.root.RouteResults
+import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.PopupAction
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.ACache
@@ -104,7 +101,6 @@ import io.legado.app.utils.observeEvent
 import io.legado.app.utils.observeEventSticky
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
-import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.sysScreenOffTime
 import io.legado.app.utils.throttle
@@ -115,6 +111,7 @@ import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -129,8 +126,6 @@ class ReadBookActivity : BaseReadBookActivity(),
     TextActionMenu.CallBack,
     ContentTextView.CallBack,
     ReadBookCallback,
-    ChangeBookSourceDialog.CallBack,
-    ChangeChapterSourceDialog.CallBack,
     ReadBook.CallBack,
     TxtTocRuleDialog.CallBack,
     LayoutProgressListener {
@@ -191,6 +186,60 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     @Composable
     override fun Content() {
+        // 监听整书换源 / 章节换源路由回传结果 (原 ChangeBookSourceDialog/ChangeChapterSourceDialog.CallBack)
+        LaunchedEffect(Unit) {
+            AppNavigatorProviders.getOrNull()?.results
+                ?.filter { it.key == RouteResults.CHANGE_SOURCE }
+                ?.collect { result ->
+                    val payload = result.payload as? RouteResultPayload.ChangeSource
+                        ?: return@collect
+                    onChangeSourceResult(payload.source, payload.book, payload.toc)
+                }
+        }
+        LaunchedEffect(Unit) {
+            AppNavigatorProviders.getOrNull()?.results
+                ?.filter { it.key == RouteResults.CHANGE_CHAPTER_SOURCE }
+                ?.collect { result ->
+                    val payload = result.payload as? RouteResultPayload.ChangeChapterContent
+                        ?: return@collect
+                    onChangeChapterContent(payload.content)
+                }
+        }
+        // 监听书源编辑路由回传结果 (原 sourceEditActivity RESULT_OK)
+        LaunchedEffect(Unit) {
+            AppNavigatorProviders.getOrNull()?.results
+                ?.filter { it.key == RouteResults.BOOK_SOURCE_EDIT }
+                ?.collect { result ->
+                    if (result.payload is RouteResultPayload.BookSourceEdit) {
+                        viewModel.upBookSource { upMenuView() }
+                    }
+                }
+        }
+        // 监听正文搜索路由回传结果 (原 searchContentActivity RESULT_OK)
+        LaunchedEffect(Unit) {
+            AppNavigatorProviders.getOrNull()?.results
+                ?.filter { it.key == RouteResults.SEARCH_CONTENT }
+                ?.collect { result ->
+                    val payload = result.payload as? RouteResultPayload.SearchContent
+                        ?: return@collect
+                    onSearchContentResult(payload.searchWord, payload.searchResultIndex)
+                }
+        }
+        // 监听替换规则编辑路由回传结果 (原 replaceActivity RESULT_OK)
+        LaunchedEffect(Unit) {
+            AppNavigatorProviders.getOrNull()?.results
+                ?.filter { it.key == RouteResults.REPLACE_EDIT }
+                ?.collect { if (it.payload is RouteResultPayload.Ok) viewModel.replaceRuleChanged() }
+        }
+        // 监听目录页路由回传结果 (原 tocActivity registerForActivityResult)
+        LaunchedEffect(Unit) {
+            AppNavigatorProviders.getOrNull()?.results
+                ?.filter { it.key == RouteResults.TOC }
+                ?.collect { result ->
+                    val payload = result.payload as? RouteResultPayload.Toc ?: return@collect
+                    viewModel.openChapter(payload.chapterIndex, payload.chapterPos)
+                }
+        }
         Box(Modifier.fillMaxSize()) {
             AndroidView(factory = { renderLayer }, modifier = Modifier.fillMaxSize())
             ReadMenuOverlay(readMenu)
@@ -199,46 +248,6 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
-    private val tocActivity =
-        registerForActivityResult(TocActivityResult()) {
-            it?.let {
-                viewModel.openChapter(it.first, it.second)
-            }
-        }
-    private val sourceEditActivity =
-        registerForActivityResult(StartActivityContract(BookSourceEditActivity::class.java)) {
-            if (it.resultCode == RESULT_OK) {
-                viewModel.upBookSource {
-                    upMenuView()
-                }
-            }
-        }
-    private val replaceActivity =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-            if (it.resultCode == RESULT_OK) {
-                viewModel.replaceRuleChanged()
-            }
-        }
-    private val searchContentActivity =
-        registerForActivityResult(StartActivityContract(SearchContentActivity::class.java)) {
-            val data = it.data ?: return@registerForActivityResult
-            val key = data.getLongExtra("key", System.currentTimeMillis())
-            val index = data.getIntExtra("index", 0)
-            val searchResult = IntentData.get<SearchResult>("searchResult$key")
-            val searchResultList = IntentData.get<List<SearchResult>>("searchResultList$key")
-            if (searchResult != null && searchResultList != null) {
-                viewModel.searchContentQuery = searchResult.query
-                searchMenu.upSearchResultList(searchResultList)
-                isShowingSearchResult = true
-                viewModel.searchResultIndex = index
-                searchMenu.updateSearchResultIndex(index)
-                searchMenu.selectedSearchResult?.let { currentResult ->
-                    ReadBook.saveCurrentBookProgress() //退出全文搜索恢复此时进度
-                    skipToSearch(currentResult)
-                    showActionMenu()
-                }
-            }
-        }
     private val bookInfoActivity =
         registerForActivityResult(StartActivityContract(BookInfoActivity::class.java)) {
             if (it.resultCode == RESULT_OK) {
@@ -604,12 +613,9 @@ class ReadBookActivity : BaseReadBookActivity(),
                     scopes.add(it)
                 }
                 val text = selectedText.lineSequence().joinToString("\n") { it.trim() }
-                replaceActivity.launch(
-                    ReplaceEditActivity.startIntent(
-                        this,
-                        pattern = text,
-                        scope = scopes.joinToString(";")
-                    )
+                AppNavigatorProviders.getOrNull()?.push(
+                    AppRoute.ReplaceEdit(pattern = text, scope = scopes.joinToString(";")),
+                    resultKey = RouteResults.REPLACE_EDIT,
                 )
                 return true
             }
@@ -748,10 +754,8 @@ class ReadBookActivity : BaseReadBookActivity(),
         readMenu.runMenuIn()
     }
 
-    override val oldBook: Book?
-        get() = ReadBook.book
-
-    override fun changeTo(source: BookSource, book: Book, toc: List<BookChapter>) {
+    // 换源结果: 整书换源 (原 ChangeBookSourceDialog.CallBack.changeTo)
+    private fun onChangeSourceResult(source: BookSource, book: Book, toc: List<BookChapter>) {
         if (!book.isAudio) {
             viewModel.changeTo(source, book, toc)
         } else {
@@ -769,7 +773,8 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
-    override fun replaceContent(content: String) {
+    // 换源结果: 章节换源正文 (原 ChangeChapterSourceDialog.CallBack.replaceContent)
+    private fun onChangeChapterContent(content: String) {
         ReadBook.book?.let {
             viewModel.saveContent(it, content)
         }
@@ -817,8 +822,10 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun openSourceEditActivity() {
         ReadBook.bookSource?.let {
-            IntentData.source = it
-            sourceEditActivity.launch {}
+            AppNavigatorProviders.getOrNull()?.push(
+                AppRoute.BookSourceEdit(it.bookSourceUrl),
+                resultKey = RouteResults.BOOK_SOURCE_EDIT,
+            )
         }
     }
 
@@ -845,7 +852,12 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun openChapterList() {
         IntentData.book = ReadBook.book
         IntentData.chapterList = ReadBook.chapterList
-        tocActivity.launch("")
+        ReadBook.book?.let {
+            AppNavigatorProviders.getOrNull()?.push(
+                AppRoute.Toc(it.toRouteRef()),
+                resultKey = RouteResults.TOC,
+            )
+        }
     }
 
     /**
@@ -853,15 +865,35 @@ class ReadBookActivity : BaseReadBookActivity(),
      */
     override fun openSearchActivity(searchWord: String?) {
         val book = ReadBook.book ?: return
-        searchContentActivity.launch {
-            IntentData.book = book
-            putExtra("searchWord", searchWord ?: viewModel.searchContentQuery)
-            putExtra("searchResultIndex", viewModel.searchResultIndex)
-            viewModel.searchResultList?.first()?.let {
-                if (it.query == viewModel.searchContentQuery) {
-                    IntentData.searchResultList = viewModel.searchResultList
-                }
+        IntentData.book = book
+        viewModel.searchResultList?.first()?.let {
+            if (it.query == viewModel.searchContentQuery) {
+                IntentData.searchResultList = viewModel.searchResultList
             }
+        }
+        AppNavigatorProviders.getOrNull()?.push(
+            AppRoute.SearchContent(
+                index = viewModel.searchResultIndex,
+                word = searchWord ?: viewModel.searchContentQuery,
+            ),
+            resultKey = RouteResults.SEARCH_CONTENT,
+        )
+    }
+
+    /**
+     * 正文搜索路由回传: 跳转到选中结果 (原 searchContentActivity RESULT_OK 回调)
+     */
+    private fun onSearchContentResult(searchWord: String?, index: Int) {
+        val searchResultList = IntentData.searchResultList ?: return
+        viewModel.searchContentQuery = searchWord.orEmpty()
+        searchMenu.upSearchResultList(searchResultList)
+        isShowingSearchResult = true
+        viewModel.searchResultIndex = index
+        searchMenu.updateSearchResultIndex(index)
+        searchMenu.selectedSearchResult?.let { currentResult ->
+            ReadBook.saveCurrentBookProgress() //退出全文搜索恢复此时进度
+            skipToSearch(currentResult)
+            showActionMenu()
         }
     }
 
@@ -931,7 +963,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         ReadBook.bookSource?.let {
             IntentData.book = ReadBook.book
             IntentData.chapter = ReadBook.chapterList?.get(ReadBook.durChapterIndex)
-            it.showLoginDialog(this)
+            it.showLoginDialog()
         }
     }
 
@@ -960,14 +992,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                     analyzeRule.evalJS(payAction).toString()
                 }.onSuccess(IO) {
                     if (it.isAbsUrl()) {
-                        startActivity<WebViewActivity> {
-                            val bookSource = ReadBook.bookSource
-                            putExtra("title", getString(R.string.chapter_pay))
-                            putExtra("url", it)
-                            putExtra("sourceOrigin", bookSource?.bookSourceUrl)
-                            putExtra("sourceName", bookSource?.bookSourceName)
-                            putExtra("sourceType", bookSource?.getSourceType())
-                        }
+                        AppNavigatorProviders.getOrNull()?.push(AppRoute.WebView(it))
                     } else if (it.isTrue()) {
                         //购买成功后刷新目录
                         ReadBook.book?.let {
@@ -1394,7 +1419,10 @@ class ReadBookActivity : BaseReadBookActivity(),
                 ReadMenuAction.BOOK_CHANGE_SOURCE -> {
                     readMenu.runMenuOut()
                     ReadBook.book?.let {
-                        showDialogFragment(ChangeBookSourceDialog(it.name, it.author))
+                        AppNavigatorProviders.getOrNull()?.push(
+                            AppRoute.ChangeSource(it.toRouteRef()),
+                            resultKey = RouteResults.CHANGE_SOURCE,
+                        )
                     }
                 }
 
@@ -1404,13 +1432,13 @@ class ReadBookActivity : BaseReadBookActivity(),
                         appDb.bookChapterDao.getChapter(book.bookUrl, ReadBook.durChapterIndex)
                             ?: return@launch
                     readMenu.runMenuOut()
-                    showDialogFragment(
-                        ChangeChapterSourceDialog(
-                            book.name,
-                            book.author,
+                    AppNavigatorProviders.getOrNull()?.push(
+                        AppRoute.ChangeChapterSource(
+                            book.toRouteRef(),
                             chapter.index,
-                            chapter.title
-                        )
+                            chapter.title,
+                        ),
+                        resultKey = RouteResults.CHANGE_CHAPTER_SOURCE,
                     )
                 }
 

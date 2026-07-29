@@ -1,7 +1,7 @@
 package io.legado.app.ui.preview
 
-import androidx.compose.desktop.ui.tooling.preview.Preview
-
-// Desktop/JVM: Compose 1.8.2 desktop jar 仅含 androidx.compose.desktop.ui.tooling.preview.Preview,
-// 桥接到该平台原生 @Preview (IDE 渲染 + SOURCE 保留)
-actual typealias AppPreview = Preview
+// JVM stub: compose.components.uiToolingPreview 在当前 fork 版本未稳定暴露 androidx.compose.ui.tooling.preview.Preview
+// 与 iosMain/ohosMain 一致, 使用 stub 注解; 后续工具链升级后可恢复 typealias
+@Target(AnnotationTarget.FUNCTION)
+@Retention(AnnotationRetention.SOURCE)
+actual annotation class AppPreview()

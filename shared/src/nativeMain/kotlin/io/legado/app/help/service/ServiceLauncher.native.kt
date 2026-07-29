@@ -158,7 +158,7 @@ class NativeServiceLauncher(
  *
  * 本 callback 把 UpdateBook 进度通知 / toast 反馈桥接到这两个已注册的真实 provider,
  * 替代原 stub。与 app 端 MainViewModel 桥接 NotificationManager + toastOnUi 一致,
- * 与桌面端 DesktopMainViewModel 桥接 NotificationProgresses + Toasters 一致。
+ * 与桌面端阅读 VM 桥接 NotificationProgresses + Toasters 一致。
  *
  * # 复用而非复制
  * 不直接调平台 API (避免与 IosNotificationProgress / OhosNotificationProgress / IosToaster /
@@ -183,7 +183,7 @@ class NativeServiceLauncher(
  * 替代原 iosMain IosUpdateBookCallback + registerIosUpdateBookCallback (行为完全一致,
  * 已下沉到 nativeMain 共用, 避免平台 actual 重复)。
  *
- * 模式参考 desktop 端 DesktopMainViewModel 持有 UpdateBookCallback 实现桥接 NotificationProgresses + Toasters。
+ * 模式参考 desktop 端宿主持有 UpdateBookCallback 实现桥接 NotificationProgresses + Toasters。
  */
 object NativeUpdateBookCallback : UpdateBookCallback {
 
@@ -202,17 +202,17 @@ object NativeUpdateBookCallback : UpdateBookCallback {
     }
 
     override fun toastForceRefreshBusy() {
-        // 文案与桌面端 DesktopMainViewModel 一致
+        // 文案与桌面端宿主一致
         Toasters.get().toast("正在刷新中, 请稍后再试")
     }
 
     override fun toastForceRefreshStart(count: Int) {
-        // 文案与桌面端 DesktopMainViewModel 一致
+        // 文案与桌面端宿主一致
         Toasters.get().toast("开始强制刷新 $count 本")
     }
 
     override fun toastForceRefreshDone() {
-        // 文案与桌面端 DesktopMainViewModel 一致
+        // 文案与桌面端宿主一致
         Toasters.get().toast("刷新完成")
     }
 }

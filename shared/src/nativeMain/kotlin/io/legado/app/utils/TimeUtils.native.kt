@@ -85,7 +85,8 @@ private fun civilFromDays(daysSinceEpoch: Long): Triple<Int, Int, Int> {
     val d = doy - (153 * mp + 2) / 5 + 1
     val m = if (mp < 10) mp + 3 else mp - 9
     val year = if (m <= 2) y + 1 else y
-    return Triple(year, m, d)
+    // 算术传播使 year/m/d 为 Long; 调用方期望 Int (年月日均落在 Int 范围内)
+    return Triple(year.toInt(), m.toInt(), d.toInt())
 }
 
 /**

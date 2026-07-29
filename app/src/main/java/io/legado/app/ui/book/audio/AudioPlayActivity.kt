@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.os.Bundle
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -36,15 +37,15 @@ import io.legado.app.model.AudioPlayShared
 import io.legado.app.service.AudioPlayService
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
-import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
-import io.legado.app.ui.book.source.edit.BookSourceEditActivity
-import io.legado.app.ui.book.toc.TocActivityResult
-import io.legado.app.ui.login.showLoginDialog
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.RouteResultPayload
+import io.legado.app.ui.root.RouteResults
+import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.dialog.showBookVariableDialog
 import io.legado.app.ui.widget.dialog.showSourceVariableDialog
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.utils.FlowBus
-import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.getRepresentativeColor
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.observeEventSticky
@@ -53,6 +54,7 @@ import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toDurationTime
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -60,8 +62,7 @@ import kotlinx.coroutines.withContext
 /**
  * 音频播放
  */
-class AudioPlayActivity : BaseComposeActivity(toolBarTheme = Theme.Dark),
-    ChangeBookSourceDialog.CallBack {
+class AudioPlayActivity : BaseComposeActivity(toolBarTheme = Theme.Dark) {
 
     val viewModel by viewModels<AudioPlayViewModel>()
 
@@ -86,28 +87,49 @@ class AudioPlayActivity : BaseComposeActivity(toolBarTheme = Theme.Dark),
     var prevEnabled by mutableStateOf(true)
     var nextEnabled by mutableStateOf(true)
 
-    private val tocActivityResult = registerForActivityResult(TocActivityResult()) {
-        it?.let {
-            val targetIndex = it.first
-            val targetPos = it.second
-            when {
-                targetIndex != AudioPlay.durChapterIndex -> viewModel.skipTo(targetIndex, targetPos)
-                targetPos > 0 && targetPos != AudioPlay.durChapterPos ->
-                    viewModel.adjustProgress(targetPos)
-
-                targetPos == 0 -> viewModel.skipTo(targetIndex)
-            }
-        }
-    }
-    private val sourceEditResult =
-        registerForActivityResult(StartActivityContract(BookSourceEditActivity::class.java)) {
-            if (it.resultCode == RESULT_OK) {
-                viewModel.upSource()
-            }
-        }
-
     @Composable
     override fun Content() {
+        // 监听整书换源路由回传结果 (原 ChangeBookSourceDialog.CallBack)
+        LaunchedEffect(Unit) {
+            AppNavigatorProviders.getOrNull()?.results
+                ?.filter { it.key == RouteResults.CHANGE_SOURCE }
+                ?.collect { result ->
+                    val payload = result.payload as? RouteResultPayload.ChangeSource
+                        ?: return@collect
+                    onChangeSourceResult(payload.source, payload.book, payload.toc)
+                }
+        }
+        // 监听书源编辑路由回传结果 (原 sourceEditResult RESULT_OK)
+        LaunchedEffect(Unit) {
+            AppNavigatorProviders.getOrNull()?.results
+                ?.filter { it.key == RouteResults.BOOK_SOURCE_EDIT }
+                ?.collect { result ->
+                    if (result.payload is RouteResultPayload.BookSourceEdit) {
+                        viewModel.upSource()
+                    }
+                }
+        }
+        // 监听目录页路由回传结果 (原 tocActivityResult)
+        LaunchedEffect(Unit) {
+            AppNavigatorProviders.getOrNull()?.results
+                ?.filter { it.key == RouteResults.TOC }
+                ?.collect { result ->
+                    val payload = result.payload as? RouteResultPayload.Toc ?: return@collect
+                    val targetIndex = payload.chapterIndex
+                    val targetPos = payload.chapterPos
+                    when {
+                        targetIndex != AudioPlay.durChapterIndex -> viewModel.skipTo(
+                            targetIndex,
+                            targetPos
+                        )
+
+                        targetPos > 0 && targetPos != AudioPlay.durChapterPos ->
+                            viewModel.adjustProgress(targetPos)
+
+                        targetPos == 0 -> viewModel.skipTo(targetIndex)
+                    }
+                }
+        }
         AudioPlayScreen(this)
     }
 
@@ -143,7 +165,10 @@ class AudioPlayActivity : BaseComposeActivity(toolBarTheme = Theme.Dark),
 
     fun showChangeSource() {
         AudioPlay.book?.let {
-            showDialogFragment(ChangeBookSourceDialog(it.name, it.author))
+            AppNavigatorProviders.getOrNull()?.push(
+                AppRoute.ChangeSource(it.toRouteRef()),
+                resultKey = RouteResults.CHANGE_SOURCE,
+            )
         }
     }
 
@@ -151,7 +176,7 @@ class AudioPlayActivity : BaseComposeActivity(toolBarTheme = Theme.Dark),
         AudioPlay.bookSource?.let {
             IntentData.book = AudioPlay.book
             IntentData.chapter = AudioPlay.durChapter
-            it.showLoginDialog(this)
+            it.showLoginDialog()
         }
     }
 
@@ -171,8 +196,10 @@ class AudioPlayActivity : BaseComposeActivity(toolBarTheme = Theme.Dark),
 
     fun editSource() {
         AudioPlay.bookSource?.let {
-            IntentData.source = it
-            sourceEditResult.launch {}
+            AppNavigatorProviders.getOrNull()?.push(
+                AppRoute.BookSourceEdit(it.bookSourceUrl),
+                resultKey = RouteResults.BOOK_SOURCE_EDIT,
+            )
         }
     }
 
@@ -198,7 +225,12 @@ class AudioPlayActivity : BaseComposeActivity(toolBarTheme = Theme.Dark),
     fun openChapterList() {
         IntentData.book = AudioPlay.book
         IntentData.chapterList = AudioPlay.chapterList
-        tocActivityResult.launch("")
+        AudioPlay.book?.let {
+            AppNavigatorProviders.getOrNull()?.push(
+                AppRoute.Toc(it.toRouteRef()),
+                resultKey = RouteResults.TOC,
+            )
+        }
     }
 
     fun playButton() = viewModel.togglePlay()
@@ -209,10 +241,8 @@ class AudioPlayActivity : BaseComposeActivity(toolBarTheme = Theme.Dark),
         if (AudioPlay.status == Status.PAUSE) viewModel.resume()
     }
 
-    override val oldBook: Book?
-        get() = AudioPlay.book
-
-    override fun changeTo(source: BookSource, book: Book, toc: List<BookChapter>) {
+    // 换源结果: 整书换源 (原 ChangeBookSourceDialog.CallBack.changeTo)
+    private fun onChangeSourceResult(source: BookSource, book: Book, toc: List<BookChapter>) {
         if (book.isAudio) {
             viewModel.changeTo(source, book, toc)
         } else {
@@ -238,10 +268,7 @@ class AudioPlayActivity : BaseComposeActivity(toolBarTheme = Theme.Dark),
         }
 
         if (!AppConfig.showAddToShelfAlert) {
-            viewModel.removeFromBookshelf {
-                viewModel.stop()
-                super.finish()
-            }
+            viewModel.removeFromBookshelf { super.finish() }
         } else {
             alert(title = getString(R.string.add_to_bookshelf)) {
                 setMessage(getString(R.string.check_add_bookshelf, book.name))
@@ -252,11 +279,7 @@ class AudioPlayActivity : BaseComposeActivity(toolBarTheme = Theme.Dark),
                     setResult(RESULT_OK)
                 }
                 noButton {
-                    viewModel.removeFromBookshelf {
-                        viewModel.stop()
-                        super.finish()
-                    }
-
+                    viewModel.removeFromBookshelf { super.finish() }
                 }
             }
         }

@@ -1,0 +1,122 @@
+package io.legado.app.ui.route
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import io.legado.app.help.IntentData
+import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.ui.book.info.edit.BookInfoEditScreen
+import io.legado.app.ui.book.info.edit.BookInfoEditScreenModel
+import io.legado.app.ui.book.info.edit.BookInfoEditUiActions
+import io.legado.app.ui.book.info.edit.BookInfoEditUiEvent
+import io.legado.app.ui.book.info.edit.BookInfoEditViewModelShared
+import io.legado.app.ui.bookshelf.LocalBookCoverSlot
+import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.FileFilter
+import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.RouteResultPayload
+import io.legado.app.ui.root.ScreenModelStore
+import io.legado.app.ui.root.asBook
+
+/**
+ * 书籍信息编辑页 shared 路由入口。
+ * 通过 [ScreenModelStore] 复用 [BookInfoEditScreenModel], 渲染 [BookInfoEditScreen]。
+ *
+ * 选图走 [PlatformServiceProviders] 文件选择器; 换封面源弹窗走 [PlatformCapabilityProviders];
+ * 封面渲染用跨平台占位 (app 端通过自身 Activity 注入 ShelfCover)。
+ */
+@Composable
+fun BookInfoEditRoute(
+    entry: RouteEntry,
+    navigator: AppNavigator,
+    screenModelStore: ScreenModelStore,
+) {
+    val route = entry.route as AppRoute.BookInfoEdit
+    val bookUrl = route.book.bookUrl
+    val scope = rememberCoroutineScope()
+
+    val screenModel = screenModelStore.getOrCreateTyped(entry) {
+        BookInfoEditScreenModel(
+            shared = BookInfoEditViewModelShared(scope = scope, readBookUpdater = {}),
+            updateCacheFolder = { oldBook, newBook ->
+                BookStorageProviders.get().updateCacheFolder(oldBook, newBook)
+            },
+        )
+    }
+
+    // 注入待编辑书籍供 shared.loadBook 读取
+    LaunchedEffect(bookUrl) {
+        IntentData.book = route.book.asBook()
+        screenModel.loadBook()
+    }
+
+    val state by screenModel.state.collectAsState()
+
+    val actions = object : BookInfoEditUiActions {
+        override fun onBack() {
+            navigator.pop()
+        }
+
+        // 保存成功后同步 IntentData (供上级页面刷新) + 返回 Ok 结果
+        override fun onSave() {
+            screenModel.dispatch(BookInfoEditUiEvent.Save {
+                screenModel.book?.let { IntentData.book = it }
+                navigator.pop(RouteResultPayload.Ok)
+            })
+        }
+
+        // 本地选图: 平台文件选择器 (对照 app 端 HandleFileContract)
+        override fun onSelectCover() {
+            val path = PlatformServiceProviders.getOrNull()?.files?.pickFile(FileFilter.Images)
+            if (path != null) {
+                screenModel.dispatch(BookInfoEditUiEvent.CoverChangeTo(path))
+            }
+        }
+
+        // 换封面源弹窗 (对照 app 端 ChangeCoverDialog)
+        override fun onChangeCoverSource() {
+            screenModel.book?.let { book ->
+                PlatformCapabilityProviders.getOrNull()?.showChangeCoverDialog(book) { coverUrl ->
+                    screenModel.dispatch(BookInfoEditUiEvent.CoverChangeTo(coverUrl))
+                }
+            }
+        }
+
+        override fun onRefreshCover() {
+            screenModel.dispatch(BookInfoEditUiEvent.RefreshCover)
+        }
+
+        override fun onNameChange(value: String) =
+            screenModel.dispatch(BookInfoEditUiEvent.NameChange(value))
+
+        override fun onAuthorChange(value: String) =
+            screenModel.dispatch(BookInfoEditUiEvent.AuthorChange(value))
+
+        override fun onTypeChange(index: Int) =
+            screenModel.dispatch(BookInfoEditUiEvent.TypeChange(index))
+
+        override fun onCoverUrlChange(value: String) =
+            screenModel.dispatch(BookInfoEditUiEvent.CoverUrlChange(value))
+
+        override fun onIntroChange(value: String) =
+            screenModel.dispatch(BookInfoEditUiEvent.IntroChange(value))
+
+        override fun onBookUrlChange(value: String) =
+            screenModel.dispatch(BookInfoEditUiEvent.BookUrlChange(value))
+    }
+
+    val bookCoverSlot = LocalBookCoverSlot.current
+
+    BookInfoEditScreen(
+        state = state,
+        actions = actions,
+        coverSlot = { book, modifier ->
+            book?.let { bookCoverSlot(it, modifier, false) }
+        },
+    )
+}

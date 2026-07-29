@@ -526,7 +526,7 @@ object LegadoNativeExports {
      * napi (legado_napi.cpp HandleDeepLink) → dlsym("legado_handle_deep_link") →
      * 本函数 → [LegadoDeepLinkHandler.handle] → 解析后写入 `pending` (StateFlow)。
      *
-     * 消费侧是 [io.legado.app.ui.OhosNavHost] 尾部的
+     * 消费侧是 [io.legado.app.MainOhos] 尾部的
      * [io.legado.app.ui.association.DeepLinkImportHost], 弹勾选对话框后入库。
      *
      * # 时机

@@ -1,0 +1,334 @@
+package io.legado.app.ui.root
+
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.ui.book.import.ImportFileItem
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+
+/** AppRoot 只依赖能力面；实现由唯一系统入口注册。 */
+interface PlatformCapabilities {
+    fun exitApplication()
+    fun openExternalUrl(url: String)
+    fun shareText(text: String)
+
+    // 主题: 切换日夜模式 (对照 app 端 ThemeConfig.applyDayNight)
+    fun applyDayNight() {}
+
+    // 剪贴板: 复制文本 (对照 app 端 sendToClip)
+    fun copyToClipboard(text: String) {}
+
+    // Web 服务: 获取当前运行地址 (对照 app 端 WebService.hostAddress)
+    fun getWebServiceUrl(): String? = null
+
+    // Web 服务: 当前是否运行 (对照 app 端 WebService.isRun), 供 MyConfigRoute 初始化开关态
+    fun isWebServiceRunning(): Boolean = false
+
+    // Web 服务: 启停服务 (对照 app 端 WebService.start / WebService.stop), 由 MyConfigRoute 开关回调调用
+    fun setWebService(enabled: Boolean) {}
+
+    // Web 服务: 运行状态变化流 (对照 app 端 FlowBus.withSticky(EventBus.WEB_SERVICE)),
+    // 平台可选实现; null 时 MyConfigRoute 回退本地 mutableStateOf
+    val webServiceState: StateFlow<Boolean>? get() = null
+
+    // 换封面源弹窗 (对照 app 端 ChangeCoverDialog)
+    fun showChangeCoverDialog(book: Book, onCoverSelected: (String) -> Unit) {}
+
+    // 默认封面画廊弹窗 (对照 app 端 DefaultCoverGalleryDialog)
+    fun showDefaultCoverGallery(isNight: Boolean) {}
+
+    // 刷新默认封面缓存 (对照 app 端 BookCover.upDefaultCover)
+    fun refreshDefaultCover() {}
+
+    // 跳转系统 TTS 设置页 (app 端 IntentHelp.openTTSSetting), 默认空实现供各端按需覆写
+    fun openTtsSettings() {}
+
+    // 获取系统字体缩放值 (对照 app 端 AppContextWrapper.getFontScale), 默认 null 供各端按需覆写
+    fun getFontScale(): String? = null
+
+    // 触摸滑动阈值 (对照 app 端 ViewConfiguration.get(ctx).scaledTouchSlop), 默认 0
+    fun getScaledTouchSlop(): Int = 0
+
+    // 导入本地书籍平台能力 (各端按需 override, 默认空实现避免破坏未实现端)
+    // 对照 app 端 ImportBookActivity 同名方法
+    /** 选择导入根目录 (对照 onPickFolder / selectFolder.launch) */
+    fun pickImportFolder() {}
+
+    /** 扫描当前文件夹及子文件夹 (对照 onScanFolder / scanFolder) */
+    fun scanImportFolder() {}
+
+    /** 弹出文件名导入 js 编辑框 (对照 onAlertImportFileName / alertImportFileName) */
+    fun alertImportFileName() {}
+
+    /** 将选中条目上架 (对照 onAddSelectionToBookshelf / addSelectionToBookshelf), 完成后回调 onComplete */
+    fun addImportSelectionToBookshelf(items: List<ImportFileItem>, onComplete: () -> Unit = {}) {
+        onComplete()
+    }
+
+    /** 更新搜索过滤关键字 (对照 onSearchTextChange / viewModel.updateCallBackFlow) */
+    fun updateImportBookFilter(key: String) {}
+
+    /** 更新排序方式 (对照 upSort / viewModel.sort + AppConfig.localBookImportSort) */
+    fun updateImportBookSort(sort: Int) {}
+
+    /** 打开已上架书籍阅读页 (对照 startRead / startReadBook) */
+    fun openImportedBookReader(item: ImportFileItem) {}
+
+    /** 进入子目录 (对照 onItemClick isDir 分支 / nextDoc) */
+    fun navigateImportDir(item: ImportFileItem) {}
+
+    /** 返回上级目录 (对照 onItemClick isUpDir 分支 / goBackDir) */
+    fun goBackImportDir() {}
+
+    // 关于页平台能力 (各端按需 override, 默认空实现避免破坏未实现端)
+    // 对照 app 端 AboutActivity 同名方法
+    /** 检查更新 (对照 onCheckUpdate / AppUpdate.check) */
+    fun checkUpdate() {}
+
+    /** 显示崩溃日志 (对照 onShowCrashLogs / showDialogFragment<CrashLogsDialog>) */
+    fun showCrashLogs() {}
+
+    /** 保存日志到备份目录 (对照 onSaveLog / saveLog) */
+    fun saveLog() {}
+
+    /** 创建堆转储 (对照 onCreateHeapDump / createHeapDump) */
+    fun createHeapDump() {}
+
+    /** 显示 MD 文件 (对照 onShowMdFile / showMdFile) */
+    fun showMdFile(title: String, fileName: String) {}
+
+    /** 弹出列数选择器 (对照 app 端 ExploreShowActivity.showColumnPicker / showNumberPicker) */
+    fun showColumnPicker(current: Int, onSelected: (Int) -> Unit) {}
+
+    // 书籍详情页平台能力 (各端按需 override, 默认空实现避免破坏未实现端)
+    // 对照 app 端 BookInfoActivity 同名方法
+    /** 上传书籍到远程 (对照 onUploadBook) */
+    fun uploadBook(book: Book) {}
+
+    /** 下载到本地 (对照 onDownloadToLocal) */
+    fun downloadBookToLocal(book: Book) {}
+
+    /** 源变量弹窗 (对照 onSetSourceVariable) */
+    fun showSourceVariableDialog(book: Book) {}
+
+    /** 书籍变量弹窗 (对照 onSetBookVariable) */
+    fun showBookVariableDialog(book: Book) {}
+
+    /** 清缓存 (对照 onClearCache) */
+    fun clearBookCache(book: Book) {}
+
+    /** 刷新书籍信息 (对照 onRefresh / viewModel.refreshBook) */
+    fun refreshBookInfo(book: Book) {}
+
+    /** 重新加载书籍信息 (对照 toggleSplitLongChapter / viewModel.loadBookInfo) */
+    fun reloadBookInfo(book: Book) {}
+
+    /** 书架操作: 上架/下架 (对照 onShelfClick, onComplete: null=删除, true=已上架, false=取消) */
+    fun toggleBookshelf(book: Book, inBookshelf: Boolean, onComplete: (Boolean?) -> Unit) {}
+
+    /** webFile 下载导入后阅读 (对照 onReadClick isWebFile 分支) */
+    fun handleWebFileRead(book: Book) {}
+
+    /** 简介动作 JS 派发 (对照 onDispatchIntroAction / source.evalJS) */
+    fun evalIntroAction(book: Book, js: String) {}
+
+    // 书籍详情页三态相关平台能力 (各端按需 override, 默认值避免破坏未实现端)
+    // 对照 BookInfoActivity.Content 内 isLandscape / setLightStatusBar 计算
+    /** 当前是否横屏 (对照 LocalConfiguration.current.orientation == ORIENTATION_LANDSCAPE) */
+    fun isLandscape(): Boolean = false
+
+    /** 设置状态栏图标色 (对照 setLightStatusBar(if (useDevFeat) isDarkTheme else false)) */
+    fun setLightStatusBarForBookInfo(useDevFeat: Boolean, isDarkTheme: Boolean) {}
+
+    /** 获取 app 版本名 (对照 app 端 AppConst.appInfo.versionName), 供 AboutRoute 初始化 state */
+    fun getAppVersionName(): String? = null
+
+    // 书架管理平台能力 (各端按需 override, 默认空实现避免破坏未实现端)
+    // 对照 app 端 BookshelfManageActivity 同名方法/状态
+    /** 导出全部选中书籍为书源 JSON (对照 exportAllUseBookSource) */
+    fun exportAllUseBookSource() {}
+
+    /** 导出全部选中书籍为文件 (对照 exportAll) */
+    fun exportAllBooks() {}
+
+    /** 导出书架 JSON (对照 exportBookshelf) */
+    fun exportBookshelf() {}
+
+    /** 弹出批量换源对话框 (对照 showDialogFragment<SourcePickerDialog>) */
+    fun showSourcePickerDialog() {}
+
+    /** 切换"导出替换"开关 (对照 toggleEnableReplace) */
+    fun toggleExportUseReplace() {}
+
+    /** 切换"自定义导出"开关 (对照 toggleCustomExport) */
+    fun toggleCustomExport() {}
+
+    /** 切换"导出到 WebDav"开关 (对照 toggleExportWebDav) */
+    fun toggleExportWebDav() {}
+
+    /** 选择导出文件夹 (对照 selectExportFolderMenu / selectExportFolder) */
+    fun selectExportFolder() {}
+
+    /** 弹出导出配置对话框 (对照 showExportConfig) */
+    fun showExportConfig() {}
+
+    /** "导出替换"开关当前值 (对照 AppConfig.exportUseReplace) */
+    fun exportUseReplace(): Boolean = false
+
+    /** "自定义导出"开关当前值 (对照 AppConfig.enableCustomExport) */
+    fun enableCustomExport(): Boolean = false
+
+    /** "导出到 WebDav"开关当前值 (对照 AppConfig.exportToWebDav) */
+    fun exportToWebDav(): Boolean = false
+
+    /** 读取"删除源文件"偏好 (对照 LocalConfig.deleteBookOriginal) */
+    fun getDeleteBookOriginal(): Boolean = false
+
+    /** 持久化"删除源文件"偏好 (对照 LocalConfig.deleteBookOriginal = value) */
+    fun setDeleteBookOriginal(value: Boolean) {}
+
+    /** 缓存进度文案 (对照 cacheInfo, null=隐藏) */
+    fun cacheInfo(book: Book): String? = null
+
+    /** 已缓存章节数 (对照 viewModel.cacheChapters[bookUrl]?.size, null=未加载) */
+    fun cacheChapterCount(book: Book): Int? = null
+
+    /** 扫描书籍缓存文件 (对照 viewModel.loadCacheFiles) */
+    fun loadCacheFiles(books: List<Book>) {}
+
+    // 导入本地书籍平台状态 (各端按需 override, 默认空状态避免破坏未实现端)
+    // 对照 app 端 ImportBookActivity 同名状态字段
+    /** 导入文件列表 (对照 items) */
+    fun importBookItems(): StateFlow<List<ImportFileItem>> =
+        PlatformCapabilitiesDefaults.emptyItemsFlow
+
+    /** 当前路径 (对照 path) */
+    fun importBookPath(): StateFlow<String?> = PlatformCapabilitiesDefaults.nullStringFlow
+
+    /** 加载中 (对照 loading) */
+    fun importBookLoading(): StateFlow<Boolean> = PlatformCapabilitiesDefaults.falseFlow
+
+    /** 空消息可见 (对照 emptyMsgVisible) */
+    fun importBookEmptyMsgVisible(): StateFlow<Boolean> = PlatformCapabilitiesDefaults.falseFlow
+
+    /** 初始化导入数据 (对照 onActivityCreated 内 initData) */
+    fun initImportBookData() {}
+
+    // 书源管理平台能力 (各端按需 override, 默认空实现避免破坏未实现端)
+    // 对照 app 端 BookSourceActivity 同名方法
+    /** 新建书源 (对照 addBookSource / startActivity<BookSourceEditActivity>()) */
+    fun addBookSource() {}
+
+    /** 显示书源分组管理对话框 (对照 showGroupManage / showDialogFragment<GroupManageDialog>) */
+    fun showBookSourceGroupManage() {}
+
+    /** 取消书源校验 (对照 cancelCheckSource / CheckSource.stop + Debug.finishChecking) */
+    fun cancelCheckSource() {}
+
+    /** 批量加入分组 (对照 selectionAddToGroups, 含 alert 输入分组名) */
+    fun selectionAddToGroups(selection: List<BookSourcePart>) {}
+
+    /** 批量移出分组 (对照 selectionRemoveFromGroups, 含 alert 输入分组名) */
+    fun selectionRemoveFromGroups(selection: List<BookSourcePart>) {}
+
+    /** 导出选中书源到文件 (对照 exportSelection / saveToFile + exportDir.launch) */
+    fun exportBookSourceSelection(
+        selection: List<BookSourcePart>,
+        allCount: Int,
+        sortAscending: Boolean
+    ) {
+    }
+
+    /** 分享选中书源 (对照 shareSelection / saveToFile + share) */
+    fun shareBookSourceSelection(
+        selection: List<BookSourcePart>,
+        allCount: Int,
+        sortAscending: Boolean
+    ) {
+    }
+
+    /** 校验选中书源 (对照 checkSource, 含 alert 输入关键词 + CheckSource.start) */
+    fun checkBookSource(selection: List<BookSourcePart>) {}
+
+    // 书源编辑平台能力 (各端按需 override, 默认空实现避免破坏未实现端)
+    // 对照 app 端 BookSourceEditActivity 同名方法
+    /** 书源登录 (对照 login, 先保存后弹 showLoginDialog) */
+    fun showBookSourceLogin(source: BookSource) {}
+
+    /** 书源变量编辑 (对照 setSourceVariable, 先保存后弹 showSourceVariableDialog) */
+    fun showBookSourceVariableDialog(source: BookSource) {}
+
+    /** 代码自动缩进 (对照 autoIndent, 需平台 CodeView) */
+    fun autoIndentCode() {}
+
+    /** 危险 API 开关点击 (对照 onDangerousApiClick, 含 SharedJsScope.remove + alert 确认) */
+    fun onEnableDangerousApiClick(
+        isChecked: Boolean,
+        bookSource: BookSource?,
+        onRevert: () -> Unit
+    ) {
+    }
+
+    // 主页管理平台能力 (各端按需 override, 默认空实现避免破坏未实现端)
+    // 对照 app 端 HomeTabState.openManageTab / openManageSection
+    /** 打开"管理分组"对话框 (对照 showDialogFragment<HomeTabManageDialog>) */
+    fun showHomeTabManageDialog() {}
+
+    /** 打开"管理展示项"对话框 (对照 showDialogFragment<HomeSectionManageDialog>) */
+    fun showHomeSectionManageDialog(tabTitle: String) {}
+
+    // 主题设置弹窗平台能力 (各端按需 override, 默认空实现避免破坏未实现端)
+    // 对照 app 端 ThemeConfigHost 同名方法; onSearchLayout 已在 shared 用 Compose 重建, 不在此注入
+    /** 显示书架布局配置对话框 (对照 ThemeConfigHost.configBookshelf) */
+    fun showBookshelfLayoutDialog() {}
+
+    /** 显示底栏配置对话框 (对照 ThemeConfigHost.configBottomNav) */
+    fun showBottomNavConfigDialog() {}
+
+    /** 显示主题列表对话框 (对照 ThemeListDialog) */
+    fun showThemeListDialog() {}
+
+    /** 显示自定义日间主题对话框 (对照 ThemeCustomizeDialog.editPrefs(false)) */
+    fun showCustomizeDayThemeDialog() {}
+
+    /** 显示自定义夜间主题对话框 (对照 ThemeCustomizeDialog.editPrefs(true)) */
+    fun showCustomizeNightThemeDialog() {}
+
+    // 其它设置平台能力 (各端按需 override, 默认空实现避免破坏未实现端)
+    // 对照 app 端 OtherConfigHost 同名方法
+    /** 写本地密码 (对照 app 端 LocalConfig.password = value, 写 "local" SharedPreferences) */
+    fun setLocalPassword(password: String?) {}
+
+    /** SAF 选书籍目录 (对照 app 端 localBookTreeSelect.launch DIR_SYS), 选中后回调 onSelected(uri) */
+    fun pickBookTreeUri(onSelected: (String?) -> Unit) {}
+
+    /** 显示校验设置 Dialog (对照 app 端 showDialogFragment<CheckSourceConfig>), dismiss 后回调 onDismiss */
+    fun showCheckSourceConfigDialog(onDismiss: () -> Unit = {}) {}
+
+    /** 显示直链上传规则 Dialog (对照 app 端 showDialogFragment<DirectLinkUploadConfig>) */
+    fun showDirectLinkUploadConfigDialog() {}
+
+    /** 清理 WebView 数据 (对照 app 端 viewModel.clearWebViewData: 删 webview 目录 + toast + 重启) */
+    fun clearWebViewData() {}
+}
+
+object PlatformCapabilityProviders {
+    private var provider: PlatformCapabilities? = null
+
+    fun register(value: PlatformCapabilities) {
+        provider = value
+    }
+
+    fun get(): PlatformCapabilities = provider
+        ?: error("PlatformCapabilities must be registered by the system entry")
+
+    fun getOrNull(): PlatformCapabilities? = provider
+}
+
+// 平台能力默认 StateFlow 实例 (稳定引用, 避免每次调用返回新实例)
+internal object PlatformCapabilitiesDefaults {
+    val emptyItemsFlow: StateFlow<List<ImportFileItem>> = MutableStateFlow(emptyList())
+    val nullStringFlow: StateFlow<String?> = MutableStateFlow(null)
+    val falseFlow: StateFlow<Boolean> = MutableStateFlow(false)
+}

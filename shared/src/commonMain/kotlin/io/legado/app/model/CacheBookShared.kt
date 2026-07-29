@@ -88,7 +88,7 @@ import kotlin.coroutines.CoroutineContext
  * # 生命周期
  *
  * object 单例, 进程内全局共享 (与 app 端 CacheBook 一致)。
- * [close] 由宿主 (app 端 CacheBookService.onDestroy / 桌面端 DesktopMainViewModel) 调用
+ * [close] 由宿主 (app 端 CacheBookService.onDestroy / 桌面端阅读 VM) 调用
  * 清理所有任务 + 清空 map。
  */
 object CacheBookShared {

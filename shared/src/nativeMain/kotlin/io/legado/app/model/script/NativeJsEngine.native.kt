@@ -199,12 +199,12 @@ object NativeJsEngine : JsEngine {
         return scope
     }
 
-    /** 创建独立 scope (JsActivity 用), 不与 SharedJsScope 共享。 */
+    /** 创建独立 scope, 不与 SharedJsScope 共享。 */
     override fun createStandaloneScope(): JsScope {
         val rt = JS_NewRuntime() ?: error("JS_NewRuntime() returned null")
         val ctx = JS_NewContext(rt) ?: error("JS_NewContext() returned null")
         evalInternal(ctx, BOOTSTRAP_CODE, "<bootstrap>", checkException = true)
-        // 独立 scope 也需注册 __nativeDispatch (JsActivity 路径可能注入 java 变量)
+        // 独立 scope 也需注册 __nativeDispatch (可能注入 java 变量)
         registerNativeDispatch(ctx)
         return NativeJsScope(rt, ctx)
     }
@@ -1122,6 +1122,6 @@ class NativeJsObject(val delegate: NativeNativeObject) : JsObject,
  *
  * 对应 quickjs 的 com.script.quickjs.ScriptException。
  * 由 [NativeJsEngine.evalInternal] 在 JS 抛异常时构造, 业务层 catch 时
- * `is ScriptException` (typealias = Exception) 可匹配。
+ * `is Exception` 可匹配。
  */
 class NativeScriptException(message: String) : Exception(message)

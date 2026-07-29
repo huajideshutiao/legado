@@ -17,6 +17,8 @@ import io.legado.app.ui.compose.dialogs.selector
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.toReadRoute
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.runBlocking
@@ -111,7 +113,14 @@ abstract class BaseImportBookActivity : BaseComposeActivity() {
     abstract fun onSearchTextChange(newText: String?)
 
     protected fun startReadBook(book: Book) {
-        startActivityForBook(book)
+        // 优先走统一导航，缺失实现时回退到原 startActivity 方式
+        val navigator = AppNavigatorProviders.getOrNull()
+        if (navigator != null) {
+            navigator.push(book.toReadRoute())
+            finish()
+        } else {
+            startActivityForBook(book)
+        }
     }
 
     protected fun onArchiveFileClick(fileDoc: FileDoc) {

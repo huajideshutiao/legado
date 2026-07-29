@@ -234,11 +234,15 @@ class ReplaceRuleListViewModel {
 
     //region 分组管理 (对应 app ReplaceRuleViewModel.addGroup/upGroup/delGroup)
 
-    fun addGroup(group: String, target: List<ReplaceRule> = _rules.value.filter { it.group.isNullOrBlank() }) {
-        if (target.isEmpty()) return
+    // 使用 DAO 查询 noGroup() 与 app 端 ReplaceRuleViewModelShared.addGroup 行为一致
+    // (避免 _rules.value 因筛选/未刷新导致遗漏, 与 app 端 addGroup 等价)
+    fun addGroup(group: String) {
         Coroutine.async(scope = scope) {
-            target.forEach { it.group = group }
-            dao.update(*target.toTypedArray())
+            val sources = dao.noGroup()
+            sources.forEach { source ->
+                source.group = group
+            }
+            dao.update(*sources.toTypedArray())
         }
     }
 

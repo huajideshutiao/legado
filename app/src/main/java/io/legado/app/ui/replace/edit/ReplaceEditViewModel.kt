@@ -55,10 +55,9 @@ class ReplaceEditViewModel(application: Application) : BaseViewModel(application
     /**
      * 当前编辑的规则 (initData 后非空), 由 [shared] 同步赋值。
      *
-     * Activity 通过 `viewModel.replaceRule` 读取组装表单 (见
-     * `ReplaceEditActivity.getReplaceRule`)。原 `var replaceRule: ReplaceRule? = null`
-     * 字段下沉后改为委托 [shared.replaceRule] (private set), app 端只读访问。
-     * Activity 实际只读不写, 行为等价。
+     * 原表单组装依赖 `viewModel.replaceRule` (对照 app 端 getReplaceRule)。
+     * 原 `var replaceRule: ReplaceRule? = null` 字段下沉后改为委托
+     * [shared.replaceRule] (private set), app 端只读访问。
      */
     val replaceRule: ReplaceRule? get() = shared.replaceRule
 

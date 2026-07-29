@@ -44,6 +44,7 @@ interface BookImageLoader {
  * [BookImageLoader] provider 容器。宿主启动早期注册一次。
  */
 object BookImageLoaders {
+
     @Volatile
     private var impl: BookImageLoader? = null
 
@@ -54,4 +55,7 @@ object BookImageLoaders {
 
     /** 获取已注册实现, 未注册抛出 IllegalStateException。 */
     fun get(): BookImageLoader = impl ?: error("BookImageLoader not registered")
+
+    /** 获取已注册实现, 未注册返回 null (供 ohos 等未注册平台安全回退占位)。 */
+    fun getOrNull(): BookImageLoader? = impl
 }

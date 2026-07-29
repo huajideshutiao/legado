@@ -7,8 +7,9 @@ import androidx.fragment.app.commit
 import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.Theme
 import io.legado.app.receiver.MediaButtonReceiver
-import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.main.MainActivity
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppRoute
 import io.legado.app.utils.startActivity
 import splitties.init.appCtx
 
@@ -70,7 +71,7 @@ class AssociationActivity :
         if (result.length > 1) {
             startActivity<MainActivity>()
         } else {
-            SearchActivity.start(this, text)
+            AppNavigatorProviders.getOrNull()?.push(AppRoute.Search(key = text))
         }
         finish()
     }

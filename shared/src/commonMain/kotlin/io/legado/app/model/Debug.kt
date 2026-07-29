@@ -23,6 +23,9 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * 书源调试编排器 (shared commonMain 下沉版)。
@@ -44,13 +47,37 @@ object Debug {
     var callback: Callback? = null
     private var debugSource: String? = null
     private val tasks: CompositeCoroutine = CompositeCoroutine()
-    val debugMessageMap = HashMap<String, String>()
+    private val debugMessageMap = HashMap<String, String>()
     private val debugTimeMap = HashMap<String, Long>()
-    var isChecking: Boolean = false
+    private val _checkState = MutableStateFlow(CheckState())
+    val checkState: StateFlow<CheckState> = _checkState.asStateFlow()
+
+    var isChecking: Boolean
+        get() = _checkState.value.isChecking
+        set(value) = synchronized(lock) {
+            publishCheckState(isChecking = value)
+        }
 
     private var startTime: Long = systemCurrentTimeMillis()
 
     private val lock = SynchronizedObject()
+
+    data class CheckState(
+        val isChecking: Boolean = false,
+        val messages: Map<String, String> = emptyMap(),
+    )
+
+    private fun publishCheckState(isChecking: Boolean = _checkState.value.isChecking) {
+        _checkState.value = CheckState(
+            isChecking = isChecking,
+            messages = debugMessageMap.toMap(),
+        )
+    }
+
+    fun clearCheckMessages() = synchronized(lock) {
+        debugMessageMap.clear()
+        publishCheckState()
+    }
 
     /**
      * 格式化时间差为 `[mm:ss.SSS]` 字符串 (对应原 `SimpleDateFormat("[mm:ss.SSS]")`)。
@@ -105,6 +132,7 @@ object Debug {
                 printMsg = printMsg.replace(AppPattern.debugMessageSymbolRegex, "")
 
                 debugMessageMap[sourceUrl] = "$time $printMsg"
+                publishCheckState()
             }
         }
     }
@@ -122,27 +150,28 @@ object Debug {
         }
     }
 
-    fun startChecking(source: BookSource) {
-        isChecking = true
+    fun startChecking(source: BookSource) = synchronized(lock) {
         debugTimeMap[source.bookSourceUrl] = systemCurrentTimeMillis()
         debugMessageMap[source.bookSourceUrl] = "${formatDuration(0)} 开始校验"
+        publishCheckState(isChecking = true)
     }
 
-    fun finishChecking() {
-        isChecking = false
+    fun finishChecking() = synchronized(lock) {
+        publishCheckState(isChecking = false)
     }
 
     fun getRespondTime(sourceUrl: String): Long {
         return debugTimeMap[sourceUrl] ?: CheckSourceShared.timeout
     }
 
-    fun updateFinalMessage(sourceUrl: String, state: String) {
+    fun updateFinalMessage(sourceUrl: String, state: String) = synchronized(lock) {
         if (debugTimeMap[sourceUrl] != null && debugMessageMap[sourceUrl] != null) {
             val spendingTime = systemCurrentTimeMillis() - debugTimeMap[sourceUrl]!!
             debugTimeMap[sourceUrl] =
                 if (state == "校验成功") spendingTime else CheckSourceShared.timeout + spendingTime
             val printTime = formatDuration(spendingTime)
             debugMessageMap[sourceUrl] = "$printTime $state"
+            publishCheckState()
         }
     }
 

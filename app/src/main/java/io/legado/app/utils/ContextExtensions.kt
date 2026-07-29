@@ -62,6 +62,7 @@ inline fun <reified A : Activity> Context.startActivity(configIntent: Intent.() 
     startActivity(intent)
 }
 
+// 工具函数:内部导航迁移点在调用方(navigator)
 fun Context.startActivityForBook(
     book: BaseBook,
     configIntent: Intent.() -> Unit = {},

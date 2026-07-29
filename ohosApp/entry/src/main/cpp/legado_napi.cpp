@@ -69,6 +69,7 @@
  * ArkTS 侧应通过 TaskPool / Worker 调用这些函数, 避免阻塞主线程。
  */
 
+#include "liblegado_shared_api.h"
 #include "napi/native_api.h"
 #include <dlfcn.h>
 #include <hilog/log.h>
@@ -261,6 +262,11 @@ static bool load_legado_shared() {
 
     OH_LOG_INFO(LOG_APP, "liblegado_shared.so loaded, symbols resolved (KP5: + bookshelfList/searchBook/loadChapter/chapterList/importBookSource; KP5+: + loadMangaChapter/exploreList/openExplore/editExploreSource/topExploreSource/deleteExploreSource; KP7+: + registerFileDir/registerCacheDir/registerToastFn/registerNotificationFn; KP8+: + registerImageFn/registerMediaFn/imageCallback/mediaEvent/registerTtsFn/ttsEvent/registerCryptoFn/cryptoCallback/registerHttpFn/httpCallback/registerOpenUrlFn/registerFilePickerFn/filePickerCallback/registerPasteboardFn/pasteboardCallback/registerTextCodecFn/textCodecCallback)");
     return true;
+}
+
+// CPF Compose 控制器：把 K/N 导出的 MainArkUIViewController(env) 暴露给 ArkTS。
+static napi_value CreateMainArkUIViewController(napi_env env, napi_callback_info info) {
+    return reinterpret_cast<napi_value>(MainArkUIViewController(env));
 }
 
 // ============ 工具类 napi 包装 (KP4 已存在) ============
@@ -1690,7 +1696,10 @@ static napi_value TextCodecCallback(napi_env env, napi_callback_info info) {
 // napi module 初始化: 注册所有方法
 EXTERN_C_START
 static napi_value Init(napi_env env, napi_value exports) {
+androidx_compose_ui_arkui_init(env, exports
+);
     napi_property_descriptor desc[] = {
+            {"MainArkUIViewController", nullptr, CreateMainArkUIViewController, nullptr, nullptr, nullptr, napi_default, nullptr},
         // 工具类 (KP4)
         {"chineseT2S", nullptr, ChineseT2S, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"chineseS2T", nullptr, ChineseS2T, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -1758,7 +1767,7 @@ static napi_module legadoNapiModule = {
     .nm_flags = 0,
     .nm_filename = "legado_napi",
     .nm_register_func = Init,
-    .nm_modname = "legado.legado_napi",
+        .nm_modname = "legado_napi",
     .nm_priv = ((void *)0),
     .reserved = {0},
 };

@@ -22,7 +22,7 @@ import io.legado.app.help.DefaultData
  *
  * # 调用方兼容
  *
- * [TxtTocRuleActivity] 调用方式保持不变:
+ * [TxtTocRuleDialog] 调用方式保持不变:
  * - `viewModel.save(rule)` / `viewModel.del(rule)` / `viewModel.update(rule)` 等
  * - `viewModel.importDefault()` / `viewModel.toTop(rule)` / `viewModel.toBottom(rule)`
  * - 方法签名 (vararg 参数) 完全一致

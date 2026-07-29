@@ -45,7 +45,7 @@ import io.legado.app.ui.compose.theme.AppTheme
 /**
  * TXT 目录规则管理 UI 状态 (KMP 版, commonMain 共享)。
  *
- * app 端 [TxtTocRuleActivity] 在 `Content()` 内将自身的 `mutableStateOf` 字段
+ * 宿主端 [TxtTocRuleRoute] 内部由 [TxtTocRuleScreenModel] 持有状态并
  * 打包为本数据类传入; 桌面端可同样构造本类复用 [TxtTocRuleScreen]。
  *
  * 字段语义对照原 `TxtTocRuleActivity` 同名字段:
@@ -60,9 +60,9 @@ data class TxtTocRuleUiState(
 /**
  * TXT 目录规则管理用户交互回调。
  *
- * app 端 [TxtTocRuleActivity] 实现本接口; 已有同名方法直接 `override`,
- * 其余方法以 `override fun onXxx() = xxx()` 桥接现有方法, 不改动 Activity
- * 内部其它调用点 (参考 SearchContentActivity 薄壳模式)。
+ * 宿主端 [TxtTocRuleRoute] 内以匿名对象实现本接口, 委托
+ * [TxtTocRuleScreenModel] dispatch 与 navigator 跳转, 平台专属依赖
+ * (HandleFileContract/showExportSuccess 等) 由 Overlay 渲染层承载。
  *
  * 设计: 返回式回调, 无 Android Context 依赖。所有需要 Android 专属 API 的动作
  * (如 [onBack] 调 finish、[onImportLocal] 走 HandleFileContract、

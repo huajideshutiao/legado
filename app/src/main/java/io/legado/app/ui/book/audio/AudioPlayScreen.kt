@@ -50,6 +50,7 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.widget.LrcView
 import io.legado.app.utils.dpToPx
+import io.legado.app.utils.getRepresentativeColor
 import java.util.Locale
 
 /**
@@ -65,49 +66,111 @@ import java.util.Locale
  */
 @Composable
 fun AudioPlayScreen(activity: AudioPlayActivity) {
+    AudioPlayAndroidContent(
+        state = AudioPlayUiState(
+            title = activity.titleText,
+            subTitle = activity.subTitle,
+            coverUrl = activity.coverUrl,
+            coverVisible = activity.coverVisible,
+            timerMinute = activity.timerMinute,
+            speed = activity.speed,
+            progressMs = activity.progressMs,
+            durationMs = activity.durationMs,
+            bufferMs = activity.bufferMs,
+            isPlaying = activity.isPlaying,
+            loading = activity.loading,
+            playMode = activity.playMode,
+            prevEnabled = activity.prevEnabled,
+            nextEnabled = activity.nextEnabled,
+            lrcData = activity.lrcData,
+            lrcProgress = activity.lrcProgress,
+        ),
+        onBack = { activity.onBackPressedDispatcher.onBackPressed() },
+        onOpenChangeSource = activity::showChangeSource,
+        onOpenToc = activity::openChapterList,
+        onOpenBookSourceEdit = { activity.editSource() },
+        onOpenReview = activity::openReview,
+        onEvent = { event ->
+            when (event) {
+                AudioPlayUiEvent.CoverClick -> activity.coverVisible = false
+                AudioPlayUiEvent.TogglePlay -> activity.playButton()
+                AudioPlayUiEvent.Prev -> activity.viewModel.prev()
+                AudioPlayUiEvent.Next -> activity.viewModel.next()
+                AudioPlayUiEvent.ChangePlayMode -> activity.viewModel.changePlayMode()
+                is AudioPlayUiEvent.Seek -> activity.viewModel.adjustProgress(event.positionMs)
+                is AudioPlayUiEvent.SetTimer -> activity.viewModel.setTimer(event.minute)
+                is AudioPlayUiEvent.SetSpeed -> activity.viewModel.adjustSpeed(event.speed)
+                is AudioPlayUiEvent.LrcClick -> activity.onLrcClick(event.time)
+                is AudioPlayUiEvent.Init -> Unit
+            }
+        },
+        activity = activity,
+    )
+}
+
+@Composable
+fun AudioPlayAndroidContent(
+    state: AudioPlayUiState,
+    onBack: () -> Unit,
+    onOpenChangeSource: () -> Unit,
+    onOpenToc: () -> Unit,
+    onOpenBookSourceEdit: (String) -> Unit,
+    onOpenReview: () -> Unit,
+    onEvent: (AudioPlayUiEvent) -> Unit,
+    activity: AudioPlayActivity? = null,
+) {
     val colors = AppTheme.colors
-    // 模糊背景代表色衍生主/次色, null 时回退 accent
-    val lrcActiveColor = activity.lrcColors?.let { Color(it.first) }
-    val lrcInactiveColor = activity.lrcColors?.let { Color(it.second) }
+    var lrcColors by remember { mutableStateOf<Pair<Int, Int>?>(activity?.lrcColors) }
+    val lrcActiveColor = lrcColors?.let { Color(it.first) }
+    val lrcInactiveColor = lrcColors?.let { Color(it.second) }
     AudioPlayScreenContent(
-        title = activity.titleText,
-        subTitle = activity.subTitle,
-        coverUrl = activity.coverUrl,
-        coverVisible = activity.coverVisible,
-        timerMinute = activity.timerMinute,
-        speed = activity.speed,
-        progressMs = activity.progressMs,
-        durationMs = activity.durationMs,
-        bufferMs = activity.bufferMs,
-        isPlaying = activity.isPlaying,
-        loading = activity.loading,
-        playMode = activity.playMode,
-        prevEnabled = activity.prevEnabled,
-        nextEnabled = activity.nextEnabled,
+        title = state.title,
+        subTitle = state.subTitle,
+        coverUrl = state.coverUrl,
+        coverVisible = state.coverVisible,
+        timerMinute = state.timerMinute,
+        speed = state.speed,
+        progressMs = state.progressMs,
+        durationMs = state.durationMs,
+        bufferMs = state.bufferMs,
+        isPlaying = state.isPlaying,
+        loading = state.loading,
+        playMode = state.playMode,
+        prevEnabled = state.prevEnabled,
+        nextEnabled = state.nextEnabled,
         accentColor = colors.accent,
         lrcActiveColor = lrcActiveColor,
         lrcInactiveColor = lrcInactiveColor,
-        onBack = { activity.onBackPressedDispatcher.onBackPressed() },
-        onOpenChangeSource = { activity.showChangeSource() },
-        onCoverClick = { activity.coverVisible = false },
-        onTogglePlay = { activity.playButton() },
-        onPrev = { activity.viewModel.prev() },
-        onNext = { activity.viewModel.next() },
-        onChangePlayMode = { activity.viewModel.changePlayMode() },
-        onOpenToc = { activity.openChapterList() },
-        onSeek = { activity.viewModel.adjustProgress(it) },
-        onSetTimer = { activity.viewModel.setTimer(it) },
-        onSetSpeed = { activity.viewModel.adjustSpeed(it) },
+        onBack = onBack,
+        onOpenChangeSource = onOpenChangeSource,
+        onCoverClick = { onEvent(AudioPlayUiEvent.CoverClick) },
+        onTogglePlay = { onEvent(AudioPlayUiEvent.TogglePlay) },
+        onPrev = { onEvent(AudioPlayUiEvent.Prev) },
+        onNext = { onEvent(AudioPlayUiEvent.Next) },
+        onChangePlayMode = { onEvent(AudioPlayUiEvent.ChangePlayMode) },
+        onOpenToc = onOpenToc,
+        onSeek = { onEvent(AudioPlayUiEvent.Seek(it)) },
+        onSetTimer = { onEvent(AudioPlayUiEvent.SetTimer(it)) },
+        onSetSpeed = { onEvent(AudioPlayUiEvent.SetSpeed(it)) },
         onStop = null,
         coverSlot = { url, modifier -> CoverSlot(url, modifier) },
-        blurBgSlot = { url, modifier -> BlurBgSlot(activity, url, modifier) },
-        lrcSlot = { modifier -> LrcSlot(activity, modifier) },
-        titleBarTrailingSlot = { TitleBarTrailing(activity) },
+        blurBgSlot = { url, modifier ->
+            BlurBgSlot(url, modifier) { colorsPair -> lrcColors = colorsPair }
+        },
+        lrcSlot = { modifier -> LrcSlot(state, onEvent, lrcColors, modifier) },
+        titleBarTrailingSlot = {
+            TitleBarTrailing(
+                activity = activity,
+                state = state,
+                onOpenBookSourceEdit = onOpenBookSourceEdit,
+                onOpenReview = onOpenReview,
+            )
+        },
         timerDialogSlot = { initial, onProgressChanged, onDismiss ->
             SliderPopupCard(
                 max = 180,
                 initial = initial,
-                formatText = { activity.getString(R.string.timer_m, it) },
+                formatText = { "${it}m" },
                 onProgressChanged = onProgressChanged,
                 onDismiss = onDismiss,
             )
@@ -136,9 +199,14 @@ fun AudioPlayScreen(activity: AudioPlayActivity) {
 // ---- 标题栏尾部: review + 溢出菜单 (登录/复制URL/变量/编辑书源/锁屏/书签/日志) ----
 
 @Composable
-private fun TitleBarTrailing(activity: AudioPlayActivity) {
+private fun TitleBarTrailing(
+    activity: AudioPlayActivity?,
+    state: AudioPlayUiState,
+    onOpenBookSourceEdit: (String) -> Unit,
+    onOpenReview: () -> Unit,
+) {
     if (AudioPlay.bookSource?.reviewRule?.reviewUrl.isNullOrBlank() == false) {
-        IconButton(onClick = { activity.openReview() }) {
+        IconButton(onClick = onOpenReview) {
             Icon(
                 painter = rememberPainter("ic_edit"),
                 contentDescription = stringResource(R.string.review),
@@ -146,11 +214,15 @@ private fun TitleBarTrailing(activity: AudioPlayActivity) {
             )
         }
     }
-    AudioOverflowMenu(activity)
+    AudioOverflowMenu(activity, state, onOpenBookSourceEdit)
 }
 
 @Composable
-private fun AudioOverflowMenu(activity: AudioPlayActivity) {
+private fun AudioOverflowMenu(
+    activity: AudioPlayActivity?,
+    state: AudioPlayUiState,
+    onOpenBookSourceEdit: (String) -> Unit,
+) {
     val colors = AppTheme.colors
     var expanded by remember { mutableStateOf(false) }
     Box {
@@ -163,23 +235,51 @@ private fun AudioOverflowMenu(activity: AudioPlayActivity) {
         }
         AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             val dismiss = { expanded = false }
-            if (AudioPlay.bookSource?.hasLogin() == true) {
-                AudioMenuItem(R.string.login) { dismiss(); activity.showLogin() }
+            val source = AudioPlay.bookSource
+            val book = AudioPlay.book
+            if (source?.hasLogin() == true) {
+                AudioMenuItem(R.string.login) {
+                    dismiss()
+                    activity?.showLogin()
+                }
             }
-            AudioMenuItem(R.string.copy_play_url) { dismiss(); activity.copyAudioUrl() }
-            AudioMenuItem(R.string.set_source_variable) { dismiss(); activity.showSourceVariable() }
-            AudioMenuItem(R.string.set_book_variable) { dismiss(); activity.showBookVariable() }
-            AudioMenuItem(R.string.edit_book_source) { dismiss(); activity.editSource() }
-            DropdownMenuItem(onClick = { dismiss(); activity.toggleWakeLock() }) {
+            AudioMenuItem(R.string.copy_play_url) {
+                dismiss()
+                activity?.copyAudioUrl()
+            }
+            AudioMenuItem(R.string.set_source_variable) {
+                dismiss()
+                activity?.showSourceVariable()
+            }
+            AudioMenuItem(R.string.set_book_variable) {
+                dismiss()
+                activity?.showBookVariable()
+            }
+            AudioMenuItem(R.string.edit_book_source) {
+                dismiss()
+                source?.bookSourceUrl?.let(onOpenBookSourceEdit)
+            }
+            DropdownMenuItem(onClick = {
+                dismiss()
+                AppConfig.audioPlayUseWakeLock = !AppConfig.audioPlayUseWakeLock
+            }) {
                 Text(
                     stringResource(R.string.audio_play_wake_lock),
                     color = colors.primaryText,
-                    modifier = Modifier.weight(1f).padding(end = 12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 12.dp),
                 )
                 AppMenuCheckbox(checked = AppConfig.audioPlayUseWakeLock)
             }
-            AudioMenuItem(R.string.bookmark_add) { dismiss(); activity.addBookmark() }
-            AudioMenuItem(R.string.log) { dismiss(); activity.showAppLog() }
+            AudioMenuItem(R.string.bookmark_add) {
+                dismiss()
+                activity?.addBookmark()
+            }
+            AudioMenuItem(R.string.log) {
+                dismiss()
+                activity?.showAppLog()
+            }
         }
     }
 }
@@ -222,7 +322,11 @@ private fun CoverSlot(coverUrl: String?, modifier: Modifier) {
 // ---- 平台 blurBgSlot: 模糊背景 (blurConfig + TransitionDrawable 淡入 + onBlurCoverLoaded 回调) ----
 
 @Composable
-private fun BlurBgSlot(activity: AudioPlayActivity, coverUrl: String?, modifier: Modifier) {
+private fun BlurBgSlot(
+    coverUrl: String?,
+    modifier: Modifier,
+    onColorsChanged: (Pair<Int, Int>) -> Unit,
+) {
     AndroidView(
         factory = {
             AppCompatImageView(it).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
@@ -249,7 +353,8 @@ private fun BlurBgSlot(activity: AudioPlayActivity, coverUrl: String?, modifier:
                                 } else {
                                     iv.setImageDrawable(newDrawable)
                                 }
-                                newDrawable.toBitmapOrNull()?.let { activity.onBlurCoverLoaded(it) }
+                                newDrawable.toBitmapOrNull()?.deriveLrcColors()
+                                    ?.let(onColorsChanged)
                             }
                         },
                     )
@@ -262,7 +367,12 @@ private fun BlurBgSlot(activity: AudioPlayActivity, coverUrl: String?, modifier:
 // ---- 平台 lrcSlot: 自绘 LrcView (AndroidView 桥接, 滚动 + 渐变动画) ----
 
 @Composable
-private fun LrcSlot(activity: AudioPlayActivity, modifier: Modifier) {
+private fun LrcSlot(
+    state: AudioPlayUiState,
+    onEvent: (AudioPlayUiEvent) -> Unit,
+    colors: Pair<Int, Int>?,
+    modifier: Modifier,
+) {
     val holder = remember { LrcKeys() }
     AndroidView(
         factory = { ctx ->
@@ -270,26 +380,26 @@ private fun LrcSlot(activity: AudioPlayActivity, modifier: Modifier) {
                 val pad = 16.dpToPx()
                 setPadding(pad, 0, pad, 0)
                 setOnPlayClickListener { time ->
-                    activity.onLrcClick(time)
+                    onEvent(AudioPlayUiEvent.LrcClick(time))
                     updateProgress(time)
                 }
             }
         },
         modifier = modifier,
         update = { view ->
-            activity.lrcData?.let {
+            state.lrcData?.let {
                 if (holder.data !== it) {
                     holder.data = it
                     view.setLrcData(it)
                 }
             }
-            activity.lrcColors?.let {
+            colors?.let {
                 if (holder.colors != it) {
                     holder.colors = it
                     view.setColors(it.first, it.second)
                 }
             }
-            view.updateProgress(activity.lrcProgress)
+            view.updateProgress(state.lrcProgress)
         },
     )
 }
@@ -297,6 +407,26 @@ private fun LrcSlot(activity: AudioPlayActivity, modifier: Modifier) {
 private class LrcKeys {
     var data: List<Pair<Int, String>>? = null
     var colors: Pair<Int, Int>? = null
+}
+
+private fun android.graphics.Bitmap.deriveLrcColors(): Pair<Int, Int>? {
+    val meanColor = runCatching { getRepresentativeColor() }.getOrNull() ?: return null
+    val secondaryHsl = FloatArray(3)
+    androidx.core.graphics.ColorUtils.colorToHSL(meanColor, secondaryHsl)
+    val isLight = secondaryHsl[2] > 0.6f
+    secondaryHsl[2] = if (isLight) {
+        (secondaryHsl[2] - 0.45f).coerceAtLeast(0.3f)
+    } else {
+        (secondaryHsl[2] + 0.45f).coerceAtMost(0.7f)
+    }
+    val secondaryColor = androidx.core.graphics.ColorUtils.HSLToColor(secondaryHsl)
+    val primaryHsl = secondaryHsl.copyOf()
+    primaryHsl[2] = if (isLight) {
+        (primaryHsl[2] - 0.35f).coerceAtLeast(0.2f)
+    } else {
+        (primaryHsl[2] + 0.35f).coerceAtMost(0.8f)
+    }
+    return androidx.core.graphics.ColorUtils.HSLToColor(primaryHsl) to secondaryColor
 }
 
 // ---- 定时/倍速滑条弹窗 (原 SliderPopup: 全宽卡片, 锚点下沿上方 100dp) ----

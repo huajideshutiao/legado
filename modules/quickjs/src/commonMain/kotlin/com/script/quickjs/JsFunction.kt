@@ -4,7 +4,7 @@ package com.script.quickjs
  * JS function 的 Java 侧包装。
  *
  * 对应 rhino 的 `org.mozilla.javascript.Function`。
- * 用于 [io.legado.app.ui.association.JsActivity] 等需要把 JS function
+ * 用于需要把 JS function
  * 作为对象传递/调用的场景。
  *
  * 架构 A (自封装 native QuickJS):

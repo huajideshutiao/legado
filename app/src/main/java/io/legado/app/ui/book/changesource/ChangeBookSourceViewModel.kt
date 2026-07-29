@@ -11,12 +11,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.help.book.ContentProcessor
-import io.legado.app.help.book.BookHelp
-import io.legado.app.help.config.AppConfig
-import io.legado.app.help.config.SourceConfig
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
@@ -33,9 +28,10 @@ import kotlinx.coroutines.launch
  * - 本类必须继承 [BaseViewModel] (AndroidViewModel 子类, 提供 `execute` / `context` / `viewModelScope`),
  *   Kotlin 单继承无法同时继承 [ChangeBookSourceViewModelShared];
  * - 平台专属逻辑通过 [ChangeBookSourcePlatform] 聚合接口注入 [shared]:
- *   - [AndroidChangeBookSourcePlatform] 包装 `AppConfig` (4 个 changeSource* 开关 + threadCount +
+ *   - 通过 [ChangeBookSourcePlatformProviders.get()] 注入 [AndroidChangeBookSourcePlatform]
+ *     (顶级类, app 端实现, 包装 `AppConfig` (4 个 changeSource* 开关 + threadCount +
  *     searchGroup 读写) / `ContentProcessor.getContent` / `BookHelp.getDurChapter` /
- *     `SourceConfig` 评分 3 方法 / `context.toastOnUi`;
+ *     `SourceConfig` 评分 3 方法 / `appCtx.toastOnUi`);
  * - 仅 1 个聚合接口参数, 不违反"避免超多继承与参数传递"原则。
  *
  * # 调用方兼容
@@ -74,8 +70,9 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     /**
      * 共享核心 VM (KMP), 注入 [viewModelScope] 与 [AndroidChangeBookSourcePlatform]。
      *
-     * 平台专属依赖通过聚合接口注入, 避免在 commonMain 硬编码 AppConfig / ContentProcessor /
-     * BookHelp / SourceConfig / toastOnUi (全部 Android 专属)。
+     * 平台专属依赖通过聚合接口注入, 由 [ChangeBookSourcePlatformProviders.get()] 返回
+     * [AndroidChangeBookSourcePlatform] (顶级类, app 端实现), 避免在 commonMain 硬编码
+     * AppConfig / ContentProcessor / BookHelp / SourceConfig / toastOnUi (全部 Android 专属)。
      *
      * 访问可见性: `protected` 供子类 [ChangeChapterSourceViewModel] 直接转发
      * `chapterIndex` / `chapterTitle` / `getContent` / `initData` 6 参数重载 等
@@ -83,7 +80,7 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
      */
     protected val shared: ChangeBookSourceViewModelShared = ChangeBookSourceViewModelShared(
         scope = viewModelScope,
-        platform = AndroidChangeBookSourcePlatform(),
+        platform = ChangeBookSourcePlatformProviders.get(),
     )
 
     /**
@@ -235,114 +232,6 @@ open class ChangeBookSourceViewModel(application: Application) : BaseViewModel(a
     override fun onCleared() {
         super.onCleared()
         shared.onCleared()
-    }
-
-    /**
-     * Android 端 [ChangeBookSourcePlatform] 实现: 包装 [AppConfig] / [ContentProcessor] /
-     * [BookHelp] / [SourceConfig] / [context.toastOnUi]。
-     *
-     * 内部类形式, 直接访问外类 [context] (BaseViewModel 提供)。
-     */
-    private inner class AndroidChangeBookSourcePlatform : ChangeBookSourcePlatform {
-
-        // ---- AppConfig 相关 ----
-
-        override val threadCount: Int
-            get() = AppConfig.threadCount
-
-        /**
-         * searchGroup 用 var 实现: getter 读 [AppConfig.searchGroup],
-         * setter 写 [AppConfig.searchGroup] (持久化到 SharedPreferences)。
-         *
-         * 注: [setSearchGroup] 默认实现已调 `searchGroup = value` 触发 setter, 无需额外覆盖。
-         */
-        override var searchGroup: String
-            get() = AppConfig.searchGroup
-            set(value) {
-                AppConfig.searchGroup = value
-            }
-
-        /**
-         * changeSourceCheckAuthor: getter 读 [AppConfig.changeSourceCheckAuthor],
-         * setter 写 [AppConfig.changeSourceCheckAuthor] (持久化到 SharedPreferences)。
-         *
-         * app 端 Dialog 直接 `AppConfig.changeSourceCheckAuthor = value` 写回, 走此 setter。
-         */
-        override var changeSourceCheckAuthor: Boolean
-            get() = AppConfig.changeSourceCheckAuthor
-            set(value) {
-                AppConfig.changeSourceCheckAuthor = value
-            }
-
-        override var changeSourceLoadInfo: Boolean
-            get() = AppConfig.changeSourceLoadInfo
-            set(value) {
-                AppConfig.changeSourceLoadInfo = value
-            }
-
-        override var changeSourceLoadToc: Boolean
-            get() = AppConfig.changeSourceLoadToc
-            set(value) {
-                AppConfig.changeSourceLoadToc = value
-            }
-
-        override var changeSourceLoadWordCount: Boolean
-            get() = AppConfig.changeSourceLoadWordCount
-            set(value) {
-                AppConfig.changeSourceLoadWordCount = value
-            }
-
-        // ---- BookHelp 相关 ----
-
-        /** 委托 [BookHelp.getDurChapter], 章节名相似度匹配定位当前章节。 */
-        override fun getDurChapter(oldBook: Book, chapters: List<BookChapter>): Int {
-            return BookHelp.getDurChapter(oldBook, chapters)
-        }
-
-        // ---- ContentProcessor 相关 ----
-
-        /**
-         * 委托 [ContentProcessor.get].getContent, 走完整正文处理
-         * (替换规则 / 简繁 / 重排段 / 去重复标题)。
-         *
-         * includeTitle 传 false, 与原 `contentProcessor.getContent(oldBook, chapter, content, false)` 一致。
-         *
-         * 注: [ContentProcessor.getContent] 返回 [BookContent] (非 CharSequence), 接口要求
-         * [CharSequence]; [BookContent.toString] 实现为 `textList.joinToString("\n")`,
-         * 与 shared 调用方 [ChangeBookSourceViewModelShared.loadWordCount] 中
-         * `platform.processContent(...).toString()` 语义一致 (取拼接后的正文文本)。
-         */
-        override fun processContent(
-            oldBook: Book, chapter: BookChapter, content: String, includeTitle: Boolean
-        ): CharSequence {
-            return ContentProcessor.get(oldBook).getContent(
-                oldBook, chapter, content, includeTitle
-            ).toString()
-        }
-
-        // ---- SourceConfig 评分相关 ----
-
-        /** 委托 [SourceConfig.setBookScore], 持久化到 SharedPreferences。 */
-        override fun setBookScore(origin: String, name: String, author: String, score: Int) {
-            SourceConfig.setBookScore(origin, name, author, score)
-        }
-
-        /** 委托 [SourceConfig.getBookScore], 从 SharedPreferences 读。 */
-        override fun getBookScore(origin: String, name: String, author: String): Int {
-            return SourceConfig.getBookScore(origin, name, author)
-        }
-
-        /** 委托 [SourceConfig.getSourceScore], 从 SharedPreferences 读。 */
-        override fun getSourceScore(origin: String): Int {
-            return SourceConfig.getSourceScore(origin)
-        }
-
-        // ---- Toast 相关 ----
-
-        /** 委托 [context.toastOnUi], 走 Android Toast。 */
-        override fun toastOnUi(msg: String) {
-            context.toastOnUi(msg)
-        }
     }
 
     /**

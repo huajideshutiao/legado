@@ -1,7 +1,6 @@
 package io.legado.app.ui.book.read.config
 
 import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
@@ -21,7 +20,6 @@ import io.legado.app.R
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.ui.about.AppLogDialog
-import io.legado.app.ui.login.showLoginDialog
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.FormEditFields
 import io.legado.app.ui.compose.component.OverflowMenu
@@ -110,7 +108,7 @@ class HttpTtsEditDialog() : BaseComposeDialogFragment() {
     private fun login() = dataFromView().let { httpTts ->
         if (httpTts.hasLogin()) {
             viewModel.save(httpTts) {
-                httpTts.showLoginDialog(activity as AppCompatActivity)
+                httpTts.showLoginDialog()
             }
         } else toastOnUi("没有登陆界面")
     }

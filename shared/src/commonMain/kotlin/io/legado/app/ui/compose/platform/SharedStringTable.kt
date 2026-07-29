@@ -217,6 +217,10 @@ val sharedStringTable: Map<String, String> = mapOf(
             "book_name" to "书名",
             "book_source_manage" to "书源管理",
             "book_source_manage_desc" to "新建、导入、编辑或管理书源",
+    // ChangeSourceRoute 下沉带入 (与 app 端 values-zh/strings.xml 对齐)
+    "change_source_progress" to "结果 %1\$d, 当前进度 %2\$d / %3\$d: %4\$s",
+    "book_type_different" to "书籍类型不一样",
+    "soure_change_source" to "是否确认换源",
             "book_tree_uri_t" to "书籍保存位置",
             "book_type" to "类型：",
             "bookshelf_cover_height" to "列表模式下封面高度",
@@ -587,6 +591,8 @@ val sharedStringTable: Map<String, String> = mapOf(
             // NumberPickerDialog 用到的 key (与 app 端 values-zh/strings.xml 对齐)
             "btn_default_s" to "默认",
             "page_touch_slop_dialog_title" to "滑动翻页阈值（0 = 系统默认值）",
+    // 对照 app 端 values-zh/strings.xml page_touch_slop_summary (带 %s 占位)
+    "page_touch_slop_summary" to "滑动距离阈值（当前系统值: %s）",
             // BookSourceDebugScreen 源码查看对话框标题 (与 app 端 values-zh/strings.xml 对齐)
             "search_src" to "搜索页源码",
             "book_src" to "书籍源码",
@@ -1233,5 +1239,12 @@ val sharedStringTable: Map<String, String> = mapOf(
             "ohos_webview_not_implemented" to "WebView 待接入鸿蒙端 @ohos.web.webview",
             // 鸿蒙端 REVIEW_POST 路由 Screen 用到的 key
             "publish_review" to "发布书评",
-            "post_review" to "发布"
+    "post_review" to "发布",
+    // 子代理核对补全: 缺失的 i18n key (与 app 端 values-zh/strings.xml 对齐)
+    "sure" to "确认",
+    "error" to "错误",
+    "delete_book_file" to "删除源文件",
+    "cloud_progress_exceeds_current" to "云端进度超过本地进度，是否同步？",
+    "sync_book_progress_t" to "同步阅读进度",
+    "reply_review_to" to "回复: %s"
 )

@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
+import org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType
 
 plugins {
     id("legado.kmp.library")
@@ -41,6 +42,21 @@ val enableIosTarget = isMacHost &&
     (providers.gradleProperty("enableIosTarget").orNull?.toBoolean() ?: true)
 val enableOhosTarget = providers.gradleProperty("enableOhosTarget").orNull?.toBoolean() ?: false
 
+// CPF 0.4.0 的 root metadata 只发布 Android/iOS/OHOS 变体，Desktop JVM 继续使用同基线的
+// JetBrains 1.9.2 平台制品。仅在 JVM 配置上切换版本，不影响 OHOS 的 fusion-renderer 变体选择。
+configurations.configureEach {
+    if (name.contains("jvm", ignoreCase = true)) {
+        resolutionStrategy.eachDependency {
+            if (requested.group.startsWith("org.jetbrains.compose") &&
+                requested.version == libs.versions.composeMultiplatform.get()
+            ) {
+                useVersion("1.9.2")
+                because("CPF 0.4.0 does not publish Desktop JVM variants")
+            }
+        }
+    }
+}
+
 kotlin {
     // NoStackTraceException 系 expect/actual class(栈抑制为 JVM 专属),压 Beta 告警
     compilerOptions {
@@ -61,9 +77,6 @@ kotlin {
     }
 
     // KMP 跨端 target (iOS/鸿蒙) 按 gradle 属性条件启用。
-    val isIdea = System.getProperty("idea.active") == "true"
-    val officialVersion = "1.8.2"
-
     if (enableIosTarget) {
         // KP3: 仅启用 iosArm64 + iosSimulatorArm64, 暂不启用 iosX64 (老 x86 模拟器)
         // 原因: androidx.annotation 1.10.0 / sqlite-bundled 不发布 iosX64 变体, 启用会 KMP 依赖解析失败
@@ -112,12 +125,8 @@ kotlin {
         iosSimulatorArm64(configureNativeCinterops)
     }
     if (enableOhosTarget) {
-        // 鸿蒙端 Compose 支持 (fork 版 compose-multiplatform 提供 ohosArm64 target)
-        // 原方案用 linuxArm64 target 模拟鸿蒙 (因 Compose Multiplatform 不发布 linuxArm64 变体, 鸿蒙端 UI 用 ArkTS)
-        // 现 fork 版 compose-multiplatform 1.8.2.99-alipay + skiko 0.9.4.2.40-alipay 提供 ohosArm64 变体,
-        // 鸿蒙端可真正使用 Compose (skiko 渲染), 不再需要 ArkTS UI
-        // krypto 4.0.10 / Ktor 3.1.0 CIO 上游官方库若未发布 ohosArm64 变体, 启用时可能 KMP 依赖解析失败
-        // (留待后续 Compose UI 重写任务处理: 替换为鸿蒙 native 等价方案或 fork 版本)
+        // CPF-KMP-CMP 0.4.0 正式 ohosArm64 target。UI 走 rendererBackend=fusion-renderer：
+        // Compose 绘制录制到 ArkUI RenderNode，由系统完成 GPU 合成，不再创建 XComponent/EGL 自渲染面。
         // KP6: 鸿蒙端 JS 引擎改用 quickjs cinterop (替换原 JSVM-API dlopen/dlsym stub), 与 iOS / Android /
         // Desktop 端 quickjs 引擎统一 (全平台 quickjs)。cinterop 编译 quickjs-ng C 源码,
         // 单一数据源: def 文件 src/cinterop/quickjs.def, C 源码目录 src/cinterop/quickjs-ng/
@@ -130,6 +139,30 @@ kotlin {
             binaries {
                 sharedLib {
                     baseName = "legado_shared"
+                    if (buildType == NativeBuildType.RELEASE) {
+                        optimized = false
+                    }
+                    export(libs.compose.multiplatform.export)
+                    linkerOpts("-lz")
+                    val rendererBackend = rootProject.findProperty("rendererBackend")?.toString()
+                        ?: "fusion-renderer"
+                    require(rendererBackend == "fusion-renderer") {
+                        "Legado OHOS only supports CPF fusion rendering; rendererBackend must be 'fusion-renderer', " +
+                            "but was '$rendererBackend'."
+                    }
+                    linkerOpts(
+                        "-lnative_drawing",
+                        "-limage_source",
+                        "-lpixelmap",
+                        "-lpixelmap_ndk.z",
+                        "-lnative_window",
+                        "-lace_napi.z",
+                        "-lhilog_ndk.z",
+                        "-lhitrace_ndk.z",
+                        "-luv",
+                        "-lunwind",
+                        "-licu",
+                    )
                 }
             }
             // KP6: quickjs cinterop 配置 (与 iOS 端 iosArm64/iosSimulatorArm64 块语法一致)
@@ -149,14 +182,6 @@ kotlin {
                         file("${projectDir}/src/cinterop/mbedtls/include"),
                         file("${projectDir}/src/cinterop/mbedtls"),
                     )
-                }
-                // 鸿蒙端 Compose 渲染框架桥接 cinterop (libmykmp_framework.so, 参考 mykmp-antui/common/build.gradle.kts)
-                // 头文件 antui_framework.h 声明 GetArkTsEnv / PostTaskByUVLooper 等 C ABI,
-                // 链接 libmykmp_framework.so (从 ohosApp/antui_framework/src/main/cpp/ C++ 源码用 OHOS NDK + CMake 构建)
-                create("mykmp_framework") {
-                    defFile(project.file("src/ohosMain/nativeInterop/cinterop/antui_framework.def"))
-                    compilerOpts("-I${project.projectDir.absolutePath}/src/ohosMain/nativeInterop/cinterop")
-                    linkerOpts("-L${rootProject.projectDir}/ohosApp/entry/libs/arm64-v8a")
                 }
             }
         }
@@ -191,24 +216,8 @@ kotlin {
             // (OkHttp 5.x 不发布 iosArm64/linuxArm64 等 Kotlin/Native 变体, 留 commonMain 会 KMP 依赖解析失败)
             // KMP UI 共享: Compose Multiplatform UI 依赖隔离到 sharedUiMain 源集 (UI 代码与业务逻辑分离)
             // 历史: Compose Multiplatform 曾不发布 linuxArm64 变体, 现已切换 ohosArm64 (fork 提供), 分离保留作架构隔离
-            // 例外: components-resources (资源加载, 非 UI 代码) 放 commonMain, 供 Res 类生成与运行时加载
-            // ohos target 默认关闭 (-PenableOhosTarget=false), 启用时需引入 composeMain 中间源集隔离
-            // 官方文档: https://www.jetbrains.com/help/kotlin-multiplatform-dev/compose-multiplatform-resources-setup.html
-            //
-            // 用显式坐标而非 compose.components.resources 访问器: 访问器解析出 fork 插件版本 1.8.2.99-alipay,
-            // 而该 fork 只发布 root pom/module + -android/-ohosarm64, 无 -jvm/-desktop 变体。
-            // KGP 的 IdeBinaryDependencyResolver 为中间源集 (jvmAndAndroidMain/sharedUiMain/nonOhosUiMain)
-            // 建 detachedConfiguration 解析依赖, 而 detached 不属于 project.configurations 容器,
-            // settings.gradle.kts 的 configurations.all { eachDependency/force } 对其完全不生效
-            // → IDE sync 报 "Could not resolve components-resources:1.8.2.99-alipay"。
-            // 声明期钉版是唯一能覆盖 detachedConfiguration 的位置 (从源头就不产生 -alipay 坐标)。
-            api(
-                if (enableOhosTarget) {
-                    "org.jetbrains.compose.components:components-resources:1.8.2.99-alipay"
-                } else {
-                    "org.jetbrains.compose.components:components-resources:1.8.2"
-                }
-            )
+            // CPF 0.4.0 已发布标准平台与 OHOS 变体，统一使用插件访问器，不再按 IDE/目标分叉坐标。
+            api(compose.components.resources)
         }
         // sharedUiMain: Compose UI 共享源集, android/jvm/ios/ohos 均继承
         // 不含 reorderable/coil3/multiplatformMarkdown/ui-tooling-preview 依赖
@@ -217,21 +226,10 @@ kotlin {
         val sharedUiMain by creating {
             dependsOn(commonMain.get())
             dependencies {
-                // runtime/foundation/material/ui 保持使用 compose.* 访问器 (fork 版): ohosArm64 需要 fork 的
-                // -ohosarm64 变体。但在 IDE 环境下, DetachedConfiguration 会无视 settings.gradle.kts
-                // 的 force 规则尝试解析 -alipay 版的 jvm 变体(不存在), 导致 IDE 报红。
-                // 解决方案: IDE 环境下硬钉官方版本, 编译环境下(如鸿蒙打包)保持访问器。
-                if (isIdea) {
-                    implementation("org.jetbrains.compose.runtime:runtime:$officialVersion")
-                    implementation("org.jetbrains.compose.foundation:foundation:$officialVersion")
-                    implementation("org.jetbrains.compose.material:material:$officialVersion")
-                    implementation("org.jetbrains.compose.ui:ui:$officialVersion")
-                } else {
-                    implementation(compose.runtime)
-                    implementation(compose.foundation)
-                    implementation(compose.material)
-                    implementation(compose.ui)
-                }
+                implementation(compose.runtime)
+                implementation(compose.foundation)
+                implementation(compose.material)
+                implementation(compose.ui)
             }
         }
         // nonOhosUiMain: 承载 reorderable/coil3/multiplatformMarkdown 依赖和 actual 实现
@@ -249,11 +247,8 @@ kotlin {
                 implementation(libs.multiplatformMarkdown.coil3)
             }
         }
-        // skikoUiMain: desktop (jvm) 与鸿蒙共用的 skia 直调源集。
-        // 两端 Compose 均由 skiko 渲染, org.jetbrains.skia.* 包名/签名一致, 故 Codec 逐帧
-        // 动图解码等实现只写一份; 不放 sharedUiMain 是因 androidMain 也继承它, 而 Android 端
-        // Compose 映射 androidx.compose (无 skiko), 会找不到 org.jetbrains.skia 符号。
-        // iosMain 同样坐在 skiko 上但不继承: iOS 走 Coil3 管线自带动图与缓存 (见 ios actual 注释)。
+        // Desktop 继续允许直接调用 Skia Codec；OHOS UI 已切换 ArkUI 融合渲染，
+        // 不再继承任何以 Skia 自绘为语义的共享源集。
         val skikoUiMain by creating {
             dependsOn(sharedUiMain)
         }
@@ -301,23 +296,25 @@ kotlin {
                 // Android 新 TextContextMenuProvider 的长期修复：1.11 在 SelectionContainer 复制后
                 // 主动释放选区，避免平台 ActionMode 关闭前闪出仅“全选”的过渡菜单。
                 implementation(libs.compose.foundation.android)
+                // activity-compose: PlatformBackHandler.android actual 委托
+                // androidx.activity.compose.BackHandler, 拦截系统返回键/返回手势
+                implementation(libs.compose.activity)
                 // Android 原生 @Preview；该制品没有 Kotlin/Native 变体，不能放进 iOS 继承的中间源集。
-                implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.8.2")
+                implementation(compose.components.uiToolingPreview)
             }
         }
         jvmMain {
             dependsOn(jvmAndAndroidMain)
             // jvmMain 继承 nonOhosUiMain (间接继承 sharedUiMain), 获取 reorderable/coil3/markdown actual
             dependsOn(nonOhosUiMain)
-            // skiko 直调 (Codec 逐帧动图解码): 与鸿蒙共用 skikoUiMain 一份实现
-            // skiko 由 compose desktop 变体传递引入 (ui-graphics-desktop → org.jetbrains.skiko:skiko), 无需显式声明
+            // Desktop 的 Codec 逐帧动图解码继续使用 Skiko。
             dependsOn(skikoUiMain)
             dependencies {
                 // Desktop 没有 Android 内置 XmlPull 与系统 SQLite，分别补齐 JVM 实现。
                 implementation("net.sf.kxml:kxml2:2.3.0")
                 implementation(libs.androidx.sqlite.bundled)
                 // Desktop 原生 @Preview；限制在 JVM 源集，避免污染 iOS cinterop 配置。
-                implementation("org.jetbrains.compose.ui:ui-tooling-preview:1.8.2")
+                implementation(compose.components.uiToolingPreview)
             }
         }
         // 图标资源只由非 Android 目标继承；Android 直接将同一目录编译为原生 drawable。
@@ -385,15 +382,13 @@ kotlin {
             // 通过 expect/actual 抽离使用点, ohosMain 提供 actual 实现 (Compose 原生/stub)
             dependsOn(sharedUiMain)
             dependsOn(nonAndroidIconMain)
-            // skiko 直调 (Codec 逐帧动图解码): 与 desktop 共用 skikoUiMain 一份实现
-            // (本源集下方已显式声明 libs.skiko 依赖)
-            dependsOn(skikoUiMain)
             dependencies {
-                // 鸿蒙 Room 当前实现直接使用 bundled driver；只在鸿蒙变体解析。
+                // 鸿蒙 Room 2.8.x 仍没有 CPF 对应变体；数据库迁移到 Room3 前该依赖可能阻塞 OHOS link。
                 implementation(libs.androidx.sqlite.bundled)
-                // skiko 0.9.4.2.40-alipay (鸿蒙端 Compose 渲染后端, 提供 ohosArm64 变体)
-                implementation(libs.skiko)
-                // kotlinx-datetime (compose-multiplatform 1.8.2.99-alipay 传递依赖, 显式声明)
+                // 导出 ComposeArkUIViewController / androidx_compose_ui_arkui_init 给 entry NAPI。
+                api(libs.compose.multiplatform.export)
+                // CPF 插件依据 rendererBackend 自动选择 skiko-ohosarm64-fusionrenderer；
+                // 不显式添加 root skiko，避免将自渲染变体重新引入 OHOS 图。
                 implementation(libs.kotlinx.datetime)
                 // 鸿蒙端加密 (AES/MD5/SHA/HMAC): krypto 4.0.10 未发布 ohosArm64 变体,
                 // 改用 @ohos.security.cryptoFramework napi 桥接 (NativeKryptoOps.ohos.kt → CryptoBridgeHandler.ets)
@@ -462,7 +457,7 @@ androidComponents {
 // 启用 kspJvm 让 Room 在 JVM target 生成 AppDatabase_Impl, 桌面端走 BundledSQLiteDriver 真实数据库。
 // KP3: iOS target 默认启用, 追加 kspIosArm64/kspIosSimulatorArm64 让 Room 在 iOS 各 target 生成 AppDatabase_Impl
 // (Room KMP 2.8.x 支持 Kotlin/Native); iosX64 不启用故无 kspIosX64
-// fork 版 Compose 工具链接入: 鸿蒙 target 从 linuxArm64 切换为 ohosArm64, KSP 配置相应改为 kspOhosArm64
+// CPF-KMP-CMP 工具链使用正式 ohosArm64 target，KSP 配置名为 kspOhosArm64。
 // 注意: ohosArm64 target 默认禁用 (通过 -PenableOhosTarget=true 启用), kspOhosArm64 方法仅在 target 启用时存在
 dependencies {
     add("kspAndroid", libs.room.compiler)
@@ -477,6 +472,6 @@ dependencies {
     // add("kspIosX64", libs.room.compiler)  // KP3: iosX64 不启用 (androidx 依赖缺 iosX64 变体)
     // fork 版 Compose 工具链接入: ohosArm64 target 条件启用, kspOhosArm64 仅在 enableOhosTarget=true 时添加
     if (enableOhosTarget) {
-        add("kspOhosArm64", libs.room.compiler)  // fork 版 Compose 工具链: 替换原 kspLinuxArm64 (鸿蒙 Room 编译)
+        add("kspOhosArm64", libs.room.compiler)
     }
 }

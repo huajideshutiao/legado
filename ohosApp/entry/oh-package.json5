@@ -1,11 +1,14 @@
 {
   "name": "entry",
   "version": "1.0.0",
-  "description": "Legado 鸿蒙 entry 模块 (主 HAP)",
+  "description": "Legado HarmonyOS entry with CPF-KMP-CMP fusion renderer",
   "main": "",
   "author": "",
   "license": "Apache-2.0",
-  "dependencies": {},
+  "dependencies": {
+    "liblegado_napi.so": "file:./src/main/cpp/types/liblegado_napi",
+    "@cpf-kmp-cmp/compose": "1.9.2-0.4.0"
+  },
   "devDependencies": {
     "@ohos/hypium": "1.0.21"
   }

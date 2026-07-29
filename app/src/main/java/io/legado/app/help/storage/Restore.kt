@@ -112,7 +112,7 @@ object Restore {
                     book.coverUrl = FileBook.getCoverPath(book.bookUrl)
                 }
             val newBooks = arrayListOf<Book>()
-            val ignoreLocalBook = BackupConfig.ignoreLocalBook
+            val ignoreLocalBook = BackupConfigShared.ignoreLocalBook
             it.forEach { book ->
                 if (ignoreLocalBook && book.isLocal) {
                     return@forEach
@@ -197,7 +197,7 @@ object Restore {
         }?.onFailure {
             AppLog.put("恢复主题出错\n${it.localizedMessage}", it)
         }
-        if (!BackupConfig.ignoreReadConfig) {
+        if (!BackupConfigShared.ignoreReadConfig) {
             //恢复阅读界面配置
             File(path, ReadBookConfig.configFileName).takeIf {
                 it.exists()
@@ -280,7 +280,7 @@ object Restore {
         if (configMap.isNotEmpty()) {
             appCtx.defaultSharedPreferences.edit {
                 configMap.forEach { (key, value) ->
-                    if (BackupConfig.keyIsNotIgnore(key)) {
+                    if (BackupConfigShared.keyIsNotIgnore(key)) {
                         when (key) {
                             PreferKey.webDavPassword -> {
                                 kotlin.runCatching {

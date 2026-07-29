@@ -415,6 +415,10 @@ class SimulationPageDelegateCompose(
                     curContent()
                 }
             }
+            // NONE 已在函数入口处提前 return，此处不会执行到，仅为满足 when 穷尽性
+            PageDirectionShared.NONE -> {
+                curContent()
+            }
         }
     }
 

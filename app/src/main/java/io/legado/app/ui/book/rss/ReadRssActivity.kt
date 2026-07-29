@@ -51,7 +51,6 @@ import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
-import io.legado.app.ui.login.showLoginDialog
 import io.legado.app.ui.browser.BaseWebViewClient
 import io.legado.app.ui.browser.CommonWebChromeClient
 import io.legado.app.ui.browser.VisibleWebView
@@ -269,7 +268,7 @@ class ReadRssActivity : BaseComposeActivity() {
                 DropdownMenuItem(
                     onClick = {
                         dismiss()
-                        viewModel.curBookSource?.showLoginDialog(this@ReadRssActivity)
+                        viewModel.curBookSource?.showLoginDialog()
                     },
                 ) { Text(stringResource(R.string.login), color = colors.primaryText) }
             }

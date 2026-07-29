@@ -1,6 +1,5 @@
 package io.legado.app.ui.book.filter
 
-import android.content.Intent
 import android.os.Bundle
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -35,6 +34,8 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.LocalAppNavigator
 import io.legado.app.utils.showDialogFragment
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
@@ -69,6 +70,8 @@ class SourceFilterRuleListDialog() : BaseComposeDialogFragment(),
 
     @Composable
     override fun Content() {
+        // 列表内导航统一走 AppNavigator
+        val navigator = LocalAppNavigator.current
         RuleManageScaffold(
             items = rules,
             itemKey = { it.id },
@@ -95,7 +98,9 @@ class SourceFilterRuleListDialog() : BaseComposeDialogFragment(),
             },
             actionBar = {
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -103,7 +108,7 @@ class SourceFilterRuleListDialog() : BaseComposeDialogFragment(),
                         dismissAllowingStateLoss()
                     }
                     AppTextButton(text = stringResource(R.string.source_filter_rule_manage)) {
-                        startActivity(Intent(requireContext(), SourceFilterRuleActivity::class.java))
+                        navigator.push(AppRoute.SourceFilterRule)
                         dismissAllowingStateLoss()
                     }
                 }
@@ -118,7 +123,9 @@ class SourceFilterRuleListDialog() : BaseComposeDialogFragment(),
         val colors = AppTheme.colors
         var showMenu by remember { mutableStateOf(false) }
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(

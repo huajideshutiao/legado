@@ -1,21 +1,29 @@
 package io.legado.app.ui.main
 
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.text.format.DateUtils
+import android.view.WindowManager
 import androidx.activity.addCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.AppConst
-import io.legado.app.constant.BottomNavTag
-import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.appInfo
 import io.legado.app.help.AppWebDav
@@ -23,91 +31,189 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.update.AppUpdate
+import io.legado.app.model.CoverRatio
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.about.CrashLogsDialog
+import io.legado.app.ui.association.DeepLinkImportHost
+import io.legado.app.ui.association.LegadoDeepLink
+import io.legado.app.ui.association.LegadoDeepLinkHandler
+import io.legado.app.ui.book.audio.AndroidAudioPlayPlatformProvider
+import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
+import io.legado.app.ui.book.changecover.ChangeCoverDialog
+import io.legado.app.ui.book.manga.AndroidMangaReaderPlatform
+import io.legado.app.ui.book.manga.MangaReaderScreenModel
+import io.legado.app.ui.book.read.AndroidReaderPlatformProvider
+import io.legado.app.ui.book.read.ReaderPlatformProviders
+import io.legado.app.ui.book.video.AndroidVideoPlayPlatformProvider
+import io.legado.app.ui.book.video.VideoPlayPlatformProviders
+import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.compose.dialogs.alert
-import io.legado.app.ui.bookshelf.BookshelfTabController
-import io.legado.app.ui.main.bookshelf.BookshelfTab
-import io.legado.app.ui.main.explore.ExploreTab
-import io.legado.app.ui.main.explore.ExploreTabController
-import io.legado.app.ui.main.home.HomeTab
-import io.legado.app.ui.main.my.MyTab
+import io.legado.app.ui.file.HandleFileContract
+import io.legado.app.ui.file.registerHandleFile
+import io.legado.app.ui.main.bookshelf.ShelfCover
+import io.legado.app.ui.reader.TextSelectionDialog
+import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.LaunchRequest
+import io.legado.app.ui.root.LaunchRequestBus
+import io.legado.app.ui.root.LegadoApp
+import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.observeEvent
+import io.legado.app.utils.registerForActivityResult
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.web.utils.WebAssetSources
 import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 
 /**
- * 主界面：纯 Compose 壳（附录 H）。四 tab 经 MainScreen 的 Pager 装配，
- * 底栏可配置顺序/显隐、书架双风格、返回键三段语义、reselect 双击均与旧实现等价。
+ * 主界面：零薄壳入口。Content 调用 shared [LegadoApp]，由 shared RouteContent 统一渲染。
+ * 保留启动期逻辑（版本更新/本地密码/崩溃通知/备份同步）和平台专属回调（换封面/导入选目录）。
  */
-class MainActivity : BaseComposeActivity() {
+class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
 
     val viewModel by viewModels<MainViewModel>()
 
     private var exitTime: Long = 0
-    private var bookshelfReselected: Long = 0
-    private var exploreReselected: Long = 0
     private val EXIT_INTERVAL = 2000L
 
-    /** 可见 tab（顺序含配置校验，等价旧 upBottomMenu） */
-    var visibleTags by mutableStateOf(computeVisibleTags())
-        private set
+    /** 换封面源回调暂存: 由 [AndroidPlatformCapabilities.showChangeCoverDialog] 写入,
+     *  ChangeCoverDialog 触发 [coverChangeTo] 时消费。 */
+    var pendingCoverChangeCallback: ((String) -> Unit)? = null
 
-    /** 书架风格，NOTIFY_MAIN 时刷新（等价旧 getFragmentId 的动态判定） */
-    var bookshelfStyle by mutableIntStateOf(AppConfig.bookGroupStyle)
-        private set
+    /** SAF 选书籍目录回调暂存: 由 [AndroidPlatformCapabilities.pickBookTreeUri] 写入,
+     *  [bookTreeUriSelect] 回调时消费。 */
+    var pendingBookTreeUriCallback: ((String?) -> Unit)? = null
 
-    /** Pager 当前页（MainScreen 回写），供返回键/重选判定 */
-    var currentPage = 0
+    private var readerSelection by mutableStateOf<Pair<String, String>?>(null)
 
-    /** 首页落点（等价旧 upHomePage），仅初始组合时消费 */
-    val initialPage: Int get() = homePageIndex()
+    // 平台能力与服务: onActivityCreated 同步创建并注册, 修复 LaunchedEffect 异步注册时序问题
+    private lateinit var capabilities: AndroidPlatformCapabilities
+    private lateinit var services: AndroidPlatformServices
 
-    /** 页面跳转指令流：index to smooth */
-    val pageSelections = MutableSharedFlow<Pair<Int, Boolean>>(extraBufferCapacity = 4)
+    /** 导入书籍: SAF 选根目录 (对照 ImportBookActivity.selectFolder, 仅写 pref, 不触发 initRootDoc)。 */
+    private val importSelectFolder = registerHandleFile { result ->
+        result.uri?.let { AppConfig.importBookPath = it.toString() }
+    }
 
-    /** tab controller（MainScreen 组合时回传） */
-    var bookshelfController: BookshelfTabController? = null
-    var exploreController: ExploreTabController? = null
+    /** 暴露给 [AndroidPlatformCapabilities] 启动 SAF 选目录。 */
+    fun launchImportFolderPicker() = importSelectFolder.launch()
+
+    /** 其它设置: SAF 选书籍目录 (对照 OtherConfigHost.localBookTreeSelect, DIR_SYS)。 */
+    private val bookTreeUriSelect = registerHandleFile { result ->
+        pendingBookTreeUriCallback?.invoke(result.uri?.toString())
+        pendingBookTreeUriCallback = null
+    }
+
+    /** 暴露给 [AndroidPlatformCapabilities] 启动 SAF 选书籍目录。 */
+    fun launchBookTreeUriPicker() = bookTreeUriSelect.launch {
+        title = getString(R.string.select_book_folder)
+        mode = HandleFileContract.DIR_SYS
+    }
+
+    // FilePickerService 桥接: launcher 须在 Activity STARTED 前注册, 交给 AndroidFilePickerService 阻塞等待回调
+    private val openDocumentPicker =
+        registerForActivityResult(ActivityResultContracts.OpenDocument())
+    private val openDocumentsPicker =
+        registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments())
+    private val createDocumentPicker =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("*/*"))
+
+    // 选目录: SAF OpenDocumentTree (备份路径用), 与 selectDocTree 同语义
+    private val openDocumentTreePicker =
+        registerForActivityResult(ActivityResultContracts.OpenDocumentTree())
+
+    override fun coverChangeTo(coverUrl: String) {
+        pendingCoverChangeCallback?.invoke(coverUrl)
+        pendingCoverChangeCallback = null
+    }
+
+    fun showReaderTextSelection(chapterName: String, content: String) {
+        readerSelection = chapterName to content
+    }
+
+    fun enterReaderWindow() {
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        services.window.setSystemBars(io.legado.app.ui.root.SystemBarsPolicy.Immersive)
+    }
+
+    fun exitReaderWindow() {
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        services.window.setSystemBars(io.legado.app.ui.root.SystemBarsPolicy.Default)
+    }
 
     @Composable
     override fun Content() {
-        // 薄壳: 注入 app 端 4 个 Tab Composable + AppConfig 底栏三项配置,
-        // shared 版 MainScreen 负责 Pager 装配 + MainBottomBar 渲染
-        MainScreen(
-            visibleTags = visibleTags,
-            initialPage = initialPage,
-            pageSelections = pageSelections,
-            currentPageSink = { currentPage = it },
-            onSelectPage = ::selectPage,
-            onReselect = ::onTabReselect,
-            homeTab = { HomeTab() },
-            // style 切换由 BookshelfTab 内部 key(style) 重建, controller 回传 bookshelfController
-            bookshelfTab = { BookshelfTab(style = bookshelfStyle) { bookshelfController = it } },
-            exploreTab = { ExploreTab { exploreController = it } },
-            myTab = { MyTab() },
-            bottomBarIconSize = AppConfig.bottomBarIconSize,
-            bottomBarHeight = AppConfig.bottomBarHeight,
-            bottomBarLabelMode = AppConfig.bottomBarLabelMode,
-        )
+        val navigator = remember { AppNavigator() }
+        val screenModelStore = remember { ScreenModelStore() }
+        val context = LocalContext.current
+
+        Box(Modifier.fillMaxSize()) {
+            // 注入 app 端 ShelfCover 到 shared 路由 (书架/详情页), 覆盖 LocalBookCoverSlot 兜底
+            CompositionLocalProvider(
+                LocalBookCoverSlot provides { book, modifier, isVideoCover ->
+                    ShelfCover(
+                        path = book.getDisplayCover(),
+                        name = book.name,
+                        author = book.author,
+                        origin = book.origin,
+                        ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL,
+                        reloadKey = 0,
+                        modifier = modifier,
+                    )
+                },
+            ) {
+                LegadoApp(
+                    navigator = navigator,
+                    screenModelStore = screenModelStore,
+                    capabilities = capabilities,
+                    platformServices = services,
+                )
+            }
+            // legado:// deep link 导入对话框宿主 (对照 iOS/鸿蒙 MainViewController 末尾挂载)
+            DeepLinkImportHost()
+            readerSelection?.let { (chapterName, content) ->
+                TextSelectionDialog(
+                    chapterName = chapterName,
+                    content = content,
+                    onDismiss = { readerSelection = null },
+                    clipTextProvider = {
+                        val clipboard =
+                            context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        clipboard?.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
+                    },
+                    clipTextSink = { capabilities.copyToClipboard(it) },
+                    openUrl = capabilities::openExternalUrl,
+                )
+            }
+        }
     }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
+        // 同步创建并注册平台能力与服务, 修复 LaunchedEffect 异步注册时序问题
+        // Route 首次组合时即可能调用 PlatformCapabilityProviders.get()
+        capabilities = AndroidPlatformCapabilities(this)
+        services = AndroidPlatformServices(
+            this, capabilities,
+            openDocumentPicker, openDocumentsPicker, createDocumentPicker, openDocumentTreePicker,
+        )
+        PlatformCapabilityProviders.register(capabilities)
+        PlatformServiceProviders.register(services)
+        ReaderPlatformProviders.register(AndroidReaderPlatformProvider(this))
+        AudioPlayPlatformProviders.register(AndroidAudioPlayPlatformProvider())
+        MangaReaderScreenModel.Providers.register(AndroidMangaReaderPlatform)
+        VideoPlayPlatformProviders.register(AndroidVideoPlayPlatformProvider(this))
+
+        // 返回键: navigator.pop 优先 (导航栈有内容时返回上一页), 失败后走双击退出
         onBackPressedDispatcher.addCallback(this) {
-            val bookshelfPos = visibleTags.indexOf(BottomNavTag.BOOKSHELF)
-            if (currentPage != bookshelfPos && bookshelfPos >= 0) {
-                selectPage(bookshelfPos, smooth = true)
-                return@addCallback
-            }
-            if (bookshelfController?.back() == true) {
+            val navigator = AppNavigatorProviders.getOrNull()
+            if (navigator?.pop() == true) {
                 return@addCallback
             }
             if (System.currentTimeMillis() - exitTime > EXIT_INTERVAL) {
@@ -120,6 +226,37 @@ class MainActivity : BaseComposeActivity() {
                     moveTaskToBack(true)
                 }
             }
+        }
+        // 冷启动经 DeepLink/文件关联 intent-filter 命中: 解析启动 Intent
+        handleExternalIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // warm launch: singleTask 复用已运行实例, 新 VIEW intent 经 onNewIntent 派发
+        handleExternalIntent(intent)
+    }
+
+    /**
+     * 解析外部 Intent (DeepLink / 文件关联 / PROCESS_TEXT) 并投递到 shared:
+     * - legado:// / yuedu:// → [LegadoDeepLinkHandler] → DeepLinkImportHost 弹导入对话框
+     * - file:// / content:// / app:// → [LaunchRequest.ImportFile] → 导入书籍
+     * - PROCESS_TEXT / SEND → [LaunchRequest.ProcessText] → 搜索
+     */
+    private fun handleExternalIntent(intent: Intent?) {
+        val request = intent?.toLaunchRequest() ?: return
+        when (request) {
+            is LaunchRequest.DeepLink -> {
+                // legado 系: 走 shared 导入宿主; 缺 src 等非法格式静默丢弃 (对齐 app 端 finish)
+                if (LegadoDeepLink.isDeepLink(request.url)) {
+                    LegadoDeepLinkHandler.handle(request.url)
+                } else {
+                    // 非 legado 系: 回落 LaunchRequestBus (经 handleLaunchRequest → WebView 兜底)
+                    LaunchRequestBus.dispatch(request)
+                }
+            }
+
+            else -> LaunchRequestBus.dispatch(request)
         }
     }
 
@@ -156,31 +293,6 @@ class MainActivity : BaseComposeActivity() {
             }
         }
         viewModel.postLoad()
-    }
-
-    fun selectPage(index: Int, smooth: Boolean) {
-        pageSelections.tryEmit(index to smooth)
-    }
-
-    /** 底栏重选当前 tab：300ms 内双击触发（等价旧 onNavigationItemReselected） */
-    fun onTabReselect(tag: String) {
-        when (tag) {
-            BottomNavTag.BOOKSHELF -> {
-                if (System.currentTimeMillis() - bookshelfReselected > 300) {
-                    bookshelfReselected = System.currentTimeMillis()
-                } else {
-                    bookshelfController?.gotoTop()
-                }
-            }
-
-            BottomNavTag.DISCOVERY -> {
-                if (System.currentTimeMillis() - exploreReselected > 300) {
-                    exploreReselected = System.currentTimeMillis()
-                } else {
-                    exploreController?.compressExplore()
-                }
-            }
-        }
     }
 
     /**
@@ -265,64 +377,11 @@ class MainActivity : BaseComposeActivity() {
         }
     }
 
-    /**
-     * 如果重启太快fragment不会重建,这里更新一下书架的排序
-     */
-    override fun recreate() {
-        bookshelfController?.upSort()
-        super.recreate()
-    }
-
     override fun observeLiveBus() {
         super.observeLiveBus()
-
-        observeEvent<Boolean>(EventBus.NOTIFY_MAIN) {
-            visibleTags = computeVisibleTags()
-            bookshelfStyle = AppConfig.bookGroupStyle
-            if (it) {
-                selectPage(visibleTags.lastIndex, smooth = false)
-            }
-        }
         observeEvent<String>(PreferKey.threadCount) {
             viewModel.upPool()
         }
-    }
-
-    /** 等价旧 upBottomMenu：顺序配置校验（非法回落默认并清 pref）+ showHome/showDiscovery 过滤 */
-    private fun computeVisibleTags(): List<String> {
-        val defaultTagOrder = listOf(
-            BottomNavTag.HOME,
-            BottomNavTag.BOOKSHELF,
-            BottomNavTag.DISCOVERY,
-            BottomNavTag.MY,
-        )
-        val savedTagOrder = AppConfig.bottomNavItemOrder?.split(",").orEmpty()
-        val orderedTags = savedTagOrder
-            .takeIf { it.size == 4 && it.toSet() == defaultTagOrder.toSet() }
-            ?: defaultTagOrder.also {
-                if (AppConfig.bottomNavItemOrder != null) AppConfig.bottomNavItemOrder = null
-            }
-        val tags = orderedTags.filter { tag ->
-            when (tag) {
-                BottomNavTag.HOME -> AppConfig.showHome
-                BottomNavTag.DISCOVERY -> AppConfig.showDiscovery
-                else -> true
-            }
-        }
-        return tags.ifEmpty { listOf(BottomNavTag.BOOKSHELF) }
-    }
-
-    /** 等价旧 upHomePage：defaultHomePage 落点，目标 tab 隐藏时回落书架 */
-    private fun homePageIndex(): Int {
-        val bookshelfPos = visibleTags.indexOf(BottomNavTag.BOOKSHELF)
-        val pos = when (AppConfig.defaultHomePage) {
-            "home" -> visibleTags.indexOf(BottomNavTag.HOME)
-            "bookshelf" -> bookshelfPos
-            "explore" -> visibleTags.indexOf(BottomNavTag.DISCOVERY)
-            "my" -> visibleTags.indexOf(BottomNavTag.MY)
-            else -> bookshelfPos
-        }
-        return if (pos >= 0) pos else bookshelfPos.coerceAtLeast(0)
     }
 
 }

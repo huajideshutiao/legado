@@ -28,8 +28,9 @@ import io.legado.app.ui.compose.theme.AppTheme
  *
  * 下沉自 app 端 `EffectiveReplacesDialog`，原 DialogFragment 宿主由 app 端 thin wrapper 保留：
  * - `BaseComposeDialogFragment` 提供 isFullHeight / 窗口尺寸 / Provider 注入
- * - `registerForActivityResult` + `Intent(ReplaceRuleActivity/ReplaceEditActivity)` 通过
- *   [onAddRule] / [onManageAll] 回调由 wrapper 桥接（这些 AndroidX API 不能下沉）
+ * - `registerForActivityResult` + `Intent(ReplaceRuleActivity)` 通过
+ *   [onAddRule] / [onManageAll] 回调由 wrapper 桥接（这些 AndroidX API 不能下沉,
+ *   ReplaceEdit 已路由化）
  * - `ReadBookViewModel.replaceRuleChanged()` 通过 [onDismiss] 由 wrapper 在 onDismiss 时
  *   根据 isEdit 标志调用（编辑/管理 Activity 返回 RESULT_OK 时设置 isEdit）
  * - `ChineseUtils.showConverterSelector` 通过 [onItemClick] 由 wrapper 判断 chineseConvert
@@ -41,8 +42,8 @@ import io.legado.app.ui.compose.theme.AppTheme
  * - `stringResource(R.string.add/empty/close/source_filter_rule_manage)` → `rememberString(...)`
  *
  * @param items 当前章节起效的替换规则列表（含 chineseConvert 项时由 wrapper 附加）
- * @param onAddRule 点击右上角"+"新增规则（wrapper 启动 ReplaceEditActivity）
- * @param onItemClick 点击单条规则（wrapper 启动 ReplaceEditActivity 或 ChineseConvert alert）
+ * @param onAddRule 点击右上角"+"新增规则（wrapper 启动 ReplaceEditRoute）
+ * @param onItemClick 点击单条规则（wrapper 启动 ReplaceEditRoute 或 ChineseConvert alert）
  * @param onManageAll 点击底部"管理全部"（wrapper 启动 ReplaceRuleActivity）
  * @param onDismiss 关闭回调（对应 `dismiss()`）
  */

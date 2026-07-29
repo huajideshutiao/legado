@@ -107,6 +107,28 @@ tasks.register("buildJvmNativeLib") {
         }
 
         jvmNativeDir.mkdirs()
+
+        // CMake 的构建目录会把 -S 源目录写入 CMakeCache.txt。QuickJS native 源码迁移到
+        // quickjs-android-native 后，旧缓存仍指向 modules/quickjs/src/main/cpp，继续配置会报
+        // "source does not match the source used to generate cache"。仅在源目录确实变化时清理
+        // 这个可再生的 CMake 中间目录，避免要求开发者手动删 build 或执行全量 clean。
+        def cmakeCache = new File(jvmNativeBuildDir, "CMakeCache.txt")
+        if (cmakeCache.exists()) {
+            def homePrefix = "CMAKE_HOME_DIRECTORY:INTERNAL="
+            def cachedHome = cmakeCache.readLines().find { it.startsWith(homePrefix) }
+                    ?.substring(homePrefix.length())
+            if (cachedHome != null) {
+                def cachedPath = new File(cachedHome).canonicalPath
+                def currentPath = cppDir.canonicalPath
+                def sameSource = System.getProperty("os.name").toLowerCase().contains("windows")
+                        ? cachedPath.equalsIgnoreCase(currentPath)
+                        : cachedPath == currentPath
+                if (!sameSource) {
+                    logger.lifecycle("[quickjs-jvm] CMake source changed: ${cachedPath} -> ${currentPath}; resetting stale cache.")
+                    project.delete(jvmNativeBuildDir)
+                }
+            }
+        }
         jvmNativeBuildDir.mkdirs()
 
         // Windows 上检测是否需要 MinGW 生成器 (无 nmake/MSVC 时)

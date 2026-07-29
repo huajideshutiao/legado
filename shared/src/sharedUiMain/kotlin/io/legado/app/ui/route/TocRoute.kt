@@ -1,0 +1,272 @@
+package io.legado.app.ui.route
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import io.legado.app.constant.AppLog
+import io.legado.app.constant.EventBus
+import io.legado.app.data.AppDbProviders
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.Bookmark
+import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.storage.BackupFileOps
+import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.book.bookmark.BookmarkDialog
+import io.legado.app.ui.book.toc.TocScreen
+import io.legado.app.ui.book.toc.TocScreenModel
+import io.legado.app.ui.book.toc.TocUiActions
+import io.legado.app.ui.book.toc.TocUiEvent
+import io.legado.app.ui.compose.platform.PlatformBackHandler
+import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.RouteResultPayload
+import io.legado.app.ui.root.ScreenModelStore
+import io.legado.app.ui.root.asBook
+import io.legado.app.ui.widget.dialog.WaitDialog
+import io.legado.app.utils.FlowBus
+import kotlinx.coroutines.launch
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+/**
+ * 目录页 shared 路由入口。
+ * 通过 [ScreenModelStore] 复用 [TocScreenModel], 渲染 [TocScreen]。
+ */
+@Composable
+fun TocRoute(
+    entry: RouteEntry,
+    navigator: AppNavigator,
+    screenModelStore: ScreenModelStore,
+) {
+    val route = entry.route as AppRoute.Toc
+    val book = route.book.asBook()
+    val scope = rememberCoroutineScope()
+    val screenModel = screenModelStore.getOrCreateTyped(entry) {
+        TocScreenModel(getChapterFiles = { b ->
+            BookStorageProviders.get().getChapterFiles(b).toSet()
+        })
+    }
+    val state by screenModel.state.collectAsState()
+    val waitDialogVisible by screenModel.waitDialog.collectAsState()
+
+    // 初始化书籍数据
+    LaunchedEffect(book) {
+        screenModel.dispatch(TocUiEvent.SetBook(book))
+    }
+
+    // 对照 Activity.observeLiveBus: SAVE_CONTENT 事件触发 cacheFileNames 增量更新
+    LaunchedEffect(Unit) {
+        FlowBus.with(EventBus.SAVE_CONTENT).collect { event ->
+            (event as? Pair<*, *>)?.let { (savedBook, chapter) ->
+                val bookTyped = savedBook as? Book ?: return@let
+                val chapterTyped = chapter as? BookChapter ?: return@let
+                val curBookUrl = screenModel.state.value.book?.bookUrl ?: return@let
+                if (bookTyped.bookUrl == curBookUrl) {
+                    screenModel.dispatch(TocUiEvent.AddCacheFile(chapterTyped.getFileName()))
+                }
+            }
+        }
+    }
+
+    // 平台对话框状态
+    var showLogDialog by remember { mutableStateOf(false) }
+    var editingBookmark by remember { mutableStateOf<Bookmark?>(null) }
+
+    // resultKey 非空: 调用方 (Android Activity) 期望结果回传, pop payload (对照 TocActivity.setResult+finish)
+    // resultKey 为空: shared/desktop 直接跳阅读页
+    val resultKey = entry.resultKey
+    val actions = remember(navigator, route, screenModel, scope, resultKey) {
+        object : TocUiActions {
+            override fun onBack() {
+                navigator.pop()
+            }
+
+            // 章节点击: resultKey 模式回传定位; 否则跳阅读页
+            override fun openChapter(chapter: BookChapter) {
+                if (resultKey != null) {
+                    navigator.pop(
+                        payload = RouteResultPayload.Toc(
+                            chapterIndex = chapter.index,
+                            chapterPos = 0,
+                            chapterChanged = chapter.index != screenModel.state.value.durChapterIndex,
+                        )
+                    )
+                } else {
+                    navigator.push(AppRoute.Reader(route.book, chapter.index, null))
+                }
+            }
+
+            override fun setSearchMode(active: Boolean) {
+                screenModel.dispatch(TocUiEvent.SetSearchMode(active))
+            }
+
+            override fun setQuery(query: String) {
+                screenModel.dispatch(TocUiEvent.SetQuery(query))
+            }
+
+            override fun toggleVolume(volume: BookChapter) {
+                screenModel.dispatch(TocUiEvent.ToggleVolume(volume))
+            }
+
+            // 反转章节列表: 重排 index 后 dispatch, 并持久化 (对照 TocViewModelShared.reverseToc)
+            override fun reverseChapterList() {
+                val current = screenModel.state.value.chapters
+                if (current.isEmpty()) return
+                val reversed = current.reversed().apply {
+                    forEachIndexed { i, c -> c.index = i }
+                }
+                screenModel.dispatch(TocUiEvent.ReverseChapterList(reversed))
+                val curBook = screenModel.state.value.book ?: return
+                curBook.config.reverseToc = !curBook.config.reverseToc
+                // 非书架书可能 FK 约束失败, 尽力持久化
+                scope.launch {
+                    runCatching {
+                        AppDbProviders.get().bookChapterDao.insert(*reversed.toTypedArray())
+                    }
+                }
+            }
+
+            // 切换净化标题开关: AppConfig 写回与 state 同步由 ScreenModel 内部完成 (对照 Activity)
+            override fun toggleUseReplace() {
+                screenModel.dispatch(TocUiEvent.ToggleUseReplace)
+            }
+
+            // 切换字数显示开关: AppConfig 写回与 state 同步由 ScreenModel 内部完成 (对照 Activity)
+            override fun toggleCountWords() {
+                screenModel.dispatch(TocUiEvent.ToggleCountWords)
+            }
+
+            // 翻转拆分长章节开关并重载 TOC (对照 Activity.upBookAndToc + viewModel.upBookTocRule)
+            override fun toggleSplitLongChapter() {
+                val curBook = screenModel.state.value.book ?: return
+                curBook.config.splitLongChapter = !curBook.config.splitLongChapter
+                screenModel.dispatch(TocUiEvent.UpBookTocRule(curBook))
+            }
+
+            // 跳转 TXT 目录规则管理页 (app 端用对话框, shared 用列表页替代)
+            override fun showTocRegexDialog() {
+                navigator.push(AppRoute.TxtTocRule)
+            }
+
+            // 导出书签 JSON: 平台文件选择器 + BackupFileOps 写文件 (对照 viewModel.saveBookmark)
+            override fun exportBookmark() {
+                val curBook = screenModel.state.value.book ?: return
+                scope.launch {
+                    try {
+                        val path = PlatformServiceProviders.get().files.saveFile(
+                            "bookmark-${curBook.name} ${curBook.author}.json"
+                        ) ?: return@launch
+                        val bookmarks = AppDbProviders.get().bookmarkDao
+                            .getByBook(curBook.name, curBook.author)
+                        BackupFileOps.writeText(path, Json.encodeToString(bookmarks))
+                        Toasters.get().toast("导出成功")
+                    } catch (e: Throwable) {
+                        AppLog.put("导出失败\n${e.localizedMessage}", e, true)
+                    }
+                }
+            }
+
+            // 导出书签 Markdown (对照 viewModel.saveBookmarkMd)
+            override fun exportBookmarkMd() {
+                val curBook = screenModel.state.value.book ?: return
+                scope.launch {
+                    try {
+                        val path = PlatformServiceProviders.get().files.saveFile(
+                            "bookmark-${curBook.name} ${curBook.author}.md"
+                        ) ?: return@launch
+                        val sb = StringBuilder()
+                        sb.append("## ${curBook.name} ${curBook.author}\n\n")
+                        AppDbProviders.get().bookmarkDao
+                            .getByBook(curBook.name, curBook.author).forEach {
+                                sb.append("#### ${it.chapterName}\n\n")
+                                sb.append("###### 原文\n ${it.bookText}\n\n")
+                                sb.append("###### 摘要\n ${it.content}\n\n")
+                            }
+                        BackupFileOps.writeText(path, sb.toString())
+                        Toasters.get().toast("导出成功")
+                    } catch (e: Throwable) {
+                        AppLog.put("导出失败\n${e.localizedMessage}", e, true)
+                    }
+                }
+            }
+
+            override fun showLog() {
+                showLogDialog = true
+            }
+
+            // 书签点击: resultKey 模式回传定位; 否则跳阅读页
+            override fun openBookmark(bookmark: Bookmark) {
+                if (resultKey != null) {
+                    navigator.pop(
+                        payload = RouteResultPayload.Toc(
+                            chapterIndex = bookmark.chapterIndex,
+                            chapterPos = bookmark.chapterPos,
+                            chapterChanged = false,
+                        )
+                    )
+                } else {
+                    navigator.push(
+                        AppRoute.Reader(
+                            route.book,
+                            bookmark.chapterIndex,
+                            bookmark.chapterPos
+                        )
+                    )
+                }
+            }
+
+            // 弹出书签编辑对话框 (shared BookmarkDialog)
+            override fun editBookmark(bookmark: Bookmark, pos: Int) {
+                editingBookmark = bookmark
+            }
+
+            // 章节长按 Toast (对照 app 端 longToastOnUi)
+            override fun onChapterLongClick(title: String) {
+                Toasters.get().toastLong(title)
+            }
+        }
+    }
+
+    // 搜索模式下系统返回键退出搜索 (对照 app TocActivity.Content 的 BackHandler)
+    PlatformBackHandler(enabled = state.searching) { actions.setSearchMode(false) }
+
+    // 日志对话框
+    if (showLogDialog) {
+        AppLogDialog(onDismiss = { showLogDialog = false })
+    }
+
+    // 等待对话框 (对照 Activity.waitDialog, 由 ScreenModel.upBookTocRule 控制显隐)
+    WaitDialog(visible = waitDialogVisible, onDismissRequest = { })
+
+    // 书签编辑对话框
+    editingBookmark?.let { bookmark ->
+        BookmarkDialog(
+            bookmark = bookmark,
+            showDelete = true,
+            onConfirm = { updated ->
+                scope.launch {
+                    AppDbProviders.get().bookmarkDao.update(updated)
+                }
+                editingBookmark = null
+            },
+            onDismiss = { editingBookmark = null },
+            onDelete = {
+                scope.launch {
+                    AppDbProviders.get().bookmarkDao.delete(bookmark)
+                }
+                editingBookmark = null
+            },
+        )
+    }
+
+    TocScreen(state = state, actions = actions)
+}

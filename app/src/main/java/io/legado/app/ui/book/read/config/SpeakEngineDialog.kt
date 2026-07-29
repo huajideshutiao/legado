@@ -1,6 +1,5 @@
 package io.legado.app.ui.book.read.config
 
-import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,7 +45,6 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.ui.login.showLoginDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
@@ -146,7 +144,9 @@ class SpeakEngineDialog : BaseComposeDialogFragment() {
                     }
                 },
             )
-            LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+            LazyColumn(Modifier
+                .weight(1f)
+                .fillMaxWidth()) {
                 item(key = "sysDefault") {
                     EngineRow(
                         name = "系统默认",
@@ -172,13 +172,16 @@ class SpeakEngineDialog : BaseComposeDialogFragment() {
                     ) {
                         upTts(httpTTS.id.toString())
                         if (httpTTS.hasLogin() && httpTTS.getLoginInfo().isNullOrBlank()) {
-                            httpTTS.showLoginDialog(activity as AppCompatActivity)
+                            httpTTS.showLoginDialog()
                         }
                     }
                 }
             }
             Row(
-                Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 AppTextButton(stringResource(R.string.book)) {
