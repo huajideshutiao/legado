@@ -3,6 +3,8 @@ package io.legado.app.ui.book.video
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.interop.ArkUIView2
@@ -41,7 +43,9 @@ object OhosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
         screenModel: VideoPlayScreenModel,
         modifier: Modifier,
     ) {
-        val url = screenModel.shared.videoUrl.value?.url
+        // 必须以 State 订阅: 直读 StateFlow.value 不会随链接就绪重组, 会一直停在等待态 (对照 desktop 64711ebf22)
+        val videoUrl by screenModel.shared.videoUrl.collectAsState()
+        val url = videoUrl?.url
         LaunchedEffect(url) {
             if (url != null) (controller as? OhosVideoPlayerController)?.loadUrl(url)
         }

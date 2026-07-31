@@ -9,12 +9,10 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.BookChapterLike
 import io.legado.app.data.entities.BookLike
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.coroutine.ConcurrentRateLimiter
 import io.legado.app.help.JsExtensionsCommon
-import io.legado.app.help.source.SourceCacheProviders
-import io.legado.app.help.source.SourceDebugLoggers
-import io.legado.app.help.source.SourceNetworkProviders
 import io.legado.app.help.UserAgentProviders
+import io.legado.app.help.coroutine.ConcurrentRateLimiter
+import io.legado.app.help.coroutine.runBlockingInScope
 import io.legado.app.help.http.BackstageWebViewProviders
 import io.legado.app.help.http.KmpHttpClient
 import io.legado.app.help.http.KmpRequestBuilder
@@ -33,18 +31,19 @@ import io.legado.app.help.http.postMultipart
 import io.legado.app.help.http.tagKmp
 import io.legado.app.help.http.toKmpMediaType
 import io.legado.app.help.http.toKmpRequestBody
-import io.legado.app.help.coroutine.runBlockingInScope
+import io.legado.app.help.source.SourceCacheProviders
+import io.legado.app.help.source.SourceDebugLoggers
+import io.legado.app.help.source.SourceNetworkProviders
 import io.legado.app.help.source.getShareScope
 import io.legado.app.model.script.JsEngines
 import io.legado.app.model.script.buildScriptBindings
 import io.legado.app.model.webBook.replaceExploreOptionsInUrl
-import io.legado.app.utils.EncoderUtils
 import io.legado.app.utils.InputStream
+import io.legado.app.utils.KS_JSON
+import io.legado.app.utils.KS_JSON_STRICT
 import io.legado.app.utils.MimeBase64Decoder
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.PercentCodec
-import io.legado.app.utils.KS_JSON
-import io.legado.app.utils.KS_JSON_STRICT
 import io.legado.app.utils.byteStreamAsInput
 import io.legado.app.utils.decodeAnyMapOrNull
 import io.legado.app.utils.formatDoubleNoDecimal
@@ -53,15 +52,15 @@ import io.legado.app.utils.isDataUrl
 import io.legado.app.utils.isJson
 import io.legado.app.utils.isXml
 import io.legado.app.utils.toInputStream
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.coroutines.ContinuationInterceptor
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.math.max
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * AnalyzeUrl 主体: 纯 JVM 逻辑, 无 android-only 依赖。
- * app 端 [AnalyzeUrl] 继承本类并实现 [io.legado.app.help.JsExtensions],
+ * app 端 [AnalyzeUrl] 继承本类并实现 [io.legado.app.help.JsExtensionsJvm],
  * 添加 android-only 方法 (getGlideUrl/getMediaItem)。
  *
  * KSP @JsApi 分派表由 app 端 AnalyzeUrl 生成, 通过 getAllFunctions() 继承链

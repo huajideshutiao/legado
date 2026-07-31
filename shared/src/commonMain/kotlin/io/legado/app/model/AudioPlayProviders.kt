@@ -135,9 +135,10 @@ interface AudioPlayBookBridge {
     /**
      * 获取书籍对应 BookSource (对应 app 端 `Book.getBookSource()` 扩展)。
      *
-     * runBlocking 查 bookSourceDao.getBookSource(origin)。
+     * suspend: 调用方 [AudioPlayShared.resetData] 可能从主线程协程进入,
+     * 实现内不得用 runBlocking 阻塞等 DB。
      */
-    fun getBookSource(book: Book): BookSource?
+    suspend fun getBookSource(book: Book): BookSource?
 }
 
 /**

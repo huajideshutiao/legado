@@ -125,28 +125,28 @@ class HttpTtsEditDialog() : BaseComposeDialogFragment() {
         editEntities = listOf(
             // name: 简单文本字段
             EditEntity("name", httpTTS.name, R.string.name),
-            // url: CodeView + 全部 pattern (legado + json + js)
+            // url: 代码字段 + 全部着色 (legado + json + js)
             EditEntity("url", httpTTS.url, "url", ViewType.code, codePatterns = CodePattern.all),
             // contentType: 短文本字段（MIME 类型），无需语法高亮
             EditEntity("contentType", httpTTS.contentType, "Content-Type"),
             // concurrentRate: 短文本字段（限速值），无需语法高亮
             EditEntity("concurrentRate", httpTTS.concurrentRate, R.string.concurrent_rate),
-            // loginUrl: CodeView + 全部 pattern
+            // loginUrl: 代码字段 + 全部着色
             EditEntity(
                 "loginUrl", httpTTS.loginUrl, R.string.login_url,
                 ViewType.code, codePatterns = CodePattern.all
             ),
-            // loginUi: CodeView + json pattern
+            // loginUi: 代码字段 + json 着色
             EditEntity(
                 "loginUi", httpTTS.loginUi, R.string.login_ui,
                 ViewType.code, codePatterns = CodePattern.json
             ),
-            // loginCheckJs: CodeView + js pattern
+            // loginCheckJs: 代码字段 + js 着色
             EditEntity(
                 "loginCheckJs", httpTTS.loginCheckJs, R.string.login_check_js,
                 ViewType.code, codePatterns = CodePattern.js
             ),
-            // header: CodeView + 全部 pattern
+            // header: 代码字段 + 全部着色
             EditEntity(
                 "header", httpTTS.header, R.string.source_http_header,
                 ViewType.code, codePatterns = CodePattern.all

@@ -64,9 +64,6 @@ abstract class PageDelegateCompose(
 
         // 与 app 端 CoverPageDelegate shadowDrawableR setBounds(0,0,30,viewHeight) 对应
         const val SHADOW_WIDTH_PX = 30
-
-        // 手势 slop 阈值（近似 Android touchSlop * 2，桌面端用 24px）
-        const val TOUCH_SLOP_PX = 24f
     }
 
     // region 状态字段（实现 PageDelegateShared 接口）
@@ -93,8 +90,9 @@ abstract class PageDelegateCompose(
     protected var viewWidth: Int = 0
     protected var viewHeight: Int = 0
 
-    // 触摸点状态（与 app 端 PageDelegate.startX/lastX/touchX/touchY 字段对应）
+    // 触摸点状态（与 app 端 PageDelegate.startX/startY/lastX/touchX/touchY 字段对应）
     protected var startX: Float = 0f
+    protected var startY: Float = 0f
     protected var lastX: Float = 0f
     protected var touchX: Float = 0f
     protected var touchY: Float = 0f
@@ -114,6 +112,14 @@ abstract class PageDelegateCompose(
      * 当前动画协程引用，用于 [abortAnim] 时取消正在执行的动画。
      */
     protected var animJob: Job? = null
+
+    /**
+     * 点击落点 → 动作分发，由 [io.legado.app.ui.book.read.page.ReadViewComposable] 注入。
+     *
+     * 对照 app 端 `ReadView.onSingleTapUp`：区域判定与动作执行属于 ReadView 而非 delegate。
+     * 未注入时子类 [onTap] 退回内置的三等分左右/上下翻页。
+     */
+    var onTapAt: ((Float, Float) -> Unit)? = null
 
     // region PageDelegateShared 接口默认实现
 

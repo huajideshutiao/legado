@@ -3,6 +3,7 @@ package io.legado.app.ui.book.changesource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelpChapterLocator
+import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.SourceConfig
 import io.legado.app.help.toast.Toasters
@@ -55,10 +56,13 @@ class IosChangeBookSourcePlatform : ChangeBookSourcePlatform {
 
     // ---- ContentProcessor 相关 ----
 
-    // ContentProcessor 未下沉, 直接返回原文 (与 desktop 简化一致)
+    // 委托 shared ContentProcessorProviders (NativeContentProcessorAccessor 已注册),
+    // 走完整正文处理 (替换规则/简繁/重排段/去重标题), 与 app 端 contentProcessor.getContent 同源
     override fun processContent(
         oldBook: Book, chapter: BookChapter, content: String, includeTitle: Boolean
-    ): CharSequence = content
+    ): CharSequence = ContentProcessorProviders.get().getContent(
+        oldBook, chapter, content, includeTitle, useReplace = true
+    )
 
     // ---- SourceConfig 评分相关 (复用 commonMain, 走 PreferenceProviders 持久化) ----
 

@@ -29,6 +29,9 @@ import io.legado.app.help.book.JvmBookImageStorage
 import io.legado.app.help.book.JvmBookStorage
 import io.legado.app.help.book.JvmLocalBookLocator
 import io.legado.app.help.book.LocalBookLocators
+import io.legado.app.help.config.LocalReadConfigProviders
+import io.legado.app.help.config.ReadConfigProviders
+import io.legado.app.help.config.ReadTipConfigShared
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.file.registerDesktopAppFilesDir
 import io.legado.app.help.http.OkHttpClientProviders
@@ -41,9 +44,6 @@ import io.legado.app.help.source.SourceHelpAccessors
 import io.legado.app.help.storage.registerJvmDataStorage
 import io.legado.app.help.toast.registerDesktopToaster
 import io.legado.app.help.tts.TtsEngineProvider
-import io.legado.app.help.config.LocalReadConfigProviders
-import io.legado.app.help.config.ReadConfigProviders
-import io.legado.app.help.config.ReadTipConfigShared
 import io.legado.app.model.DesktopReadBookProvider
 import io.legado.app.model.LocalReadBookProvider
 import io.legado.app.model.fileBook.BitmapProviders
@@ -87,7 +87,6 @@ import io.legado.desktop.config.registerDesktopConfig
 import io.legado.desktop.data.DesktopAppDbAccessor
 import io.legado.desktop.help.DesktopDefaultDataResourceProvider
 import io.legado.desktop.help.SingleInstanceGuard
-import io.legado.desktop.help.initDesktopDefaultData
 import io.legado.desktop.help.book.DesktopBitmapProvider
 import io.legado.desktop.help.book.DesktopBookHelpAccessor
 import io.legado.desktop.help.book.DesktopZipFileWrapperFactory
@@ -96,6 +95,7 @@ import io.legado.desktop.help.changesource.registerDesktopChangeBookSourcePlatfo
 import io.legado.desktop.help.config.registerDesktopPasswordProvider
 import io.legado.desktop.help.http.registerDesktopBackstageWebView
 import io.legado.desktop.help.i18n.registerDesktopAppStringProvider
+import io.legado.desktop.help.initDesktopDefaultData
 import io.legado.desktop.help.log.registerDesktopAppLogHost
 import io.legado.desktop.help.registerDesktopAndroidId
 import io.legado.desktop.help.registerDesktopArchiveProvider
@@ -107,6 +107,7 @@ import io.legado.desktop.help.source.DesktopSourceHelpAccessor
 import io.legado.desktop.help.source.registerDesktopSourceProviders
 import io.legado.desktop.help.source.registerDesktopVerificationUiProvider
 import io.legado.desktop.help.storage.registerDesktopBackupRestoreHook
+import io.legado.desktop.help.tts.DesktopReadAloudHost
 import io.legado.desktop.help.ui.registerDesktopOpenUrlProvider
 import io.legado.desktop.help.ui.registerDesktopToastProvider
 import io.legado.desktop.help.ui.registerDesktopUserAgentProvider
@@ -122,12 +123,13 @@ import io.legado.desktop.ui.DesktopDialogHost
 import io.legado.desktop.ui.DesktopPlatformCapabilities
 import io.legado.desktop.ui.DesktopPlatformServices
 import io.legado.desktop.ui.DesktopWindowHandle
-import io.legado.desktop.ui.tray.DesktopMediaTray
 import io.legado.desktop.ui.browser.DesktopWebViewSlot
 import io.legado.desktop.ui.platform.DesktopAudioPlayPlatformProvider
 import io.legado.desktop.ui.platform.DesktopMangaReaderPlatform
 import io.legado.desktop.ui.platform.DesktopReaderPlatformProvider
 import io.legado.desktop.ui.platform.DesktopVideoPlayPlatformProvider
+import io.legado.desktop.ui.tray.DesktopMediaTray
+import io.legado.desktop.ui.tray.ReadAloudTrayBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
@@ -305,7 +307,16 @@ private fun runDesktopApp() = application {
             windowProvider = { windowHandle.window },
             exitAction = ::exitApplication,
         )
-        onDispose { DesktopMediaTray.uninstall() }
+        // 朗读控制器绑定: 托盘按 controller.state 增删朗读菜单项, 空闲时自动隐藏
+        DesktopMediaTray.readAloud = ReadAloudTrayBinding(
+            controller = DesktopReadAloudHost.controller,
+            bookName = { DesktopReadAloudHost.bookName },
+            chapterTitle = { DesktopReadAloudHost.chapterTitle },
+        )
+        onDispose {
+            DesktopMediaTray.readAloud = null
+            DesktopMediaTray.uninstall()
+        }
     }
     // 注册桌面端 4 个媒体 PlatformProvider (对照 app 端 MainActivity.onActivityCreated 同步注册),
     // 避免 Reader/Audio/Manga/Video Route 显示 "platform unavailable":
@@ -314,19 +325,23 @@ private fun runDesktopApp() = application {
     // - Manga: Coil3 AsyncImage 渲染 + ColorMatrix 灰度/颜色滤镜
     // - Video: MPV 播放器 (SwingPanel + nativeHwnd 桥接, Windows 用 WComponentPeer getHwnd)
     ReaderPlatformProviders.register(DesktopReaderPlatformProvider())
-    // ReadBookShared 的平台钩子 (缓存运行态 / 本地 txt 分章缓存; 朗读与图片缓存为空实现,
+    // ReadBookShared 的平台钩子 (朗读宿主 / 缓存运行态 / 本地 txt 分章缓存; 图片缓存为空实现,
     // 见 DesktopReadBookPlatform 注释)。须早于任何阅读页打开
     registerDesktopReadBookPlatform()
     // 阅读排版度量: 注册 Skia 真实字形度量, 取代 SimpleTextMeasurer 等宽近似
-    // (字形来源与 PageContentCanvas 的 Compose FontFamily.Default 同源)
-    TextMeasurerProviders.register { textSizePx, letterSpacingPx ->
-        SkiaTextMeasurer(textSizePx = textSizePx, letterSpacingPx = letterSpacingPx)
+    // (字形来源与 PageContentCanvas 的 loadReaderFontFamily / FontFamily.Default 同源)
+    TextMeasurerProviders.register { textSizePx, letterSpacingPx, fontPath ->
+        SkiaTextMeasurer(
+            textSizePx = textSizePx,
+            letterSpacingPx = letterSpacingPx,
+            typeface = SkiaTextMeasurer.readerTypeface(fontPath),
+        )
     }
     // 阅读页内嵌图片 (PDF 单图页 / EPUB 插图): 排版取尺寸 + 绘制取位图
     registerReaderImageResolver()
     AudioPlayPlatformProviders.register(DesktopAudioPlayPlatformProvider())
     MangaReaderScreenModel.Providers.register(DesktopMangaReaderPlatform)
-    VideoPlayPlatformProviders.register(DesktopVideoPlayPlatformProvider())
+    VideoPlayPlatformProviders.register(DesktopVideoPlayPlatformProvider(windowHandle))
 
     // ==================== 阶段2: 显示窗口 ====================
     // KP2: 桌面端窗口框架——注入 4 个 DesktopXxxProvider + AppTheme 包装 LegadoApp

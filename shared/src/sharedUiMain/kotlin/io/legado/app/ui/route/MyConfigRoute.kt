@@ -91,9 +91,7 @@ fun MyConfigRoute(
         onBookmark = { navigator.push(AppRoute.Bookmark()) },
         onReadRecord = { navigator.push(AppRoute.ReadRecord) },
         onAbout = { navigator.push(AppRoute.About) },
-        // RSS 源入口: 各端共用 (string/drawable 资源已在 shared 与 app 端注册)
-        showRssEntry = true,
-        onRssSources = { navigator.push(AppRoute.RssSources) },
+        // 原版 pref_main.xml 无 RSS 条目, 订阅入口在主界面底栏 tab, 此处不渲染
     )
 
     // web 服务长按菜单 (对照 MyTab context.selector: 复制地址 / 浏览器打开)

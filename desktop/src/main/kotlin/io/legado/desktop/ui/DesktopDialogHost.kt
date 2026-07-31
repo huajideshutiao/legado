@@ -13,10 +13,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.AppDbProviders
+import io.legado.app.help.source.SourceHelp
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppTextButton
@@ -25,6 +27,7 @@ import io.legado.app.ui.widget.dialog.VariableDialog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /**
  * 桌面端命令式对话框请求 (非 Composable 上下文 → Compose 弹窗)。
@@ -53,6 +56,19 @@ sealed interface DesktopDialogRequest {
 
     /** 书源分组管理 (增/改名/删, 对照 app 端已删除的 source/manage/GroupManageDialog)。 */
     data object BookSourceGroupManage : DesktopDialogRequest
+
+    /**
+     * 跳转确认 (对照 app 端 `OpenUrlConfirmDialog.display`)。
+     *
+     * 书源 JS 调 `java.openUrl` 拉起外部浏览器/程序前必须经用户确认, 顺带给出禁用/删除该源的出口。
+     */
+    data class OpenUrlConfirm(
+        val url: String,
+        val sourceKey: String?,
+        val sourceName: String?,
+        val sourceType: Int,
+        val onConfirm: () -> Unit,
+    ) : DesktopDialogRequest
 }
 
 /** 对话框请求队列 (单槽, 后到的请求覆盖未消费的前一个)。 */
@@ -102,6 +118,68 @@ fun DesktopDialogHost() {
         DesktopDialogRequest.BookSourceGroupManage -> BookSourceGroupManageDialog(
             onDismiss = { DesktopDialogs.dismiss() },
         )
+
+        is DesktopDialogRequest.OpenUrlConfirm -> OpenUrlConfirmDialog(
+            request = current,
+            onDismiss = { DesktopDialogs.dismiss() },
+        )
+    }
+}
+
+/**
+ * 跳转确认对话框 (对照 app 端 `OpenUrlConfirmDialog`)。
+ *
+ * 标题/文案/按钮与原版一致; 原版 Toolbar 菜单的"禁用书源/删除书源"改为正文两个文字按钮,
+ * 删除同样带二次确认。
+ */
+@Composable
+private fun OpenUrlConfirmDialog(
+    request: DesktopDialogRequest.OpenUrlConfirm,
+    onDismiss: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val sourceName = request.sourceName ?: request.sourceKey.orEmpty()
+    var confirmDelete by remember { mutableStateOf(false) }
+
+    if (confirmDelete) {
+        AppAlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = "删除",
+            message = "确定删除吗?\n$sourceName",
+            okButton = AlertButton(text = "是") {
+                request.sourceKey?.let { key ->
+                    scope.launch { runCatching { SourceHelp.deleteSource(key, request.sourceType) } }
+                }
+                onDismiss()
+            },
+            cancelButton = AlertButton(text = "否") { confirmDelete = false },
+        )
+        return
+    }
+
+    AppAlertDialog(
+        onDismissRequest = onDismiss,
+        title = "跳转确认",
+        okButton = AlertButton(text = "确定") {
+            request.onConfirm()
+            onDismiss()
+        },
+        cancelButton = AlertButton(text = "取消") { onDismiss() },
+        widthFraction = 0.8f,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp)) {
+            Text("$sourceName 正在请求跳转链接/应用，是否跳转？")
+            Text(request.url, modifier = Modifier.padding(top = 8.dp))
+            AppTextButton(text = "禁用书源", onClick = {
+                request.sourceKey?.let { key ->
+                    scope.launch {
+                        runCatching { SourceHelp.enableSource(key, request.sourceType, false) }
+                    }
+                }
+                onDismiss()
+            })
+            AppTextButton(text = "删除书源", onClick = { confirmDelete = true })
+        }
     }
 }
 

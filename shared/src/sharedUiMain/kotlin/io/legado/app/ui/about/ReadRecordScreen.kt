@@ -16,8 +16,9 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
@@ -49,8 +50,9 @@ import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.component.FastScrollLazyColumn
+import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
@@ -86,6 +88,7 @@ import legado.shared.generated.resources.today_read_time
 import legado.shared.generated.resources.week_read_time
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import io.legado.app.utils.format
 
 // ===== state / actions =====
 
@@ -202,8 +205,8 @@ interface ReadRecordUiActions {
  * 仅将平台依赖替换为 state + actions + slot; 宽高/边距/字号/圆角/颜色全部保持原值。
  *
  * 顶部统计卡与热力图卡布局基于可用宽度自适应 (BoxWithConstraints), 不做平台判断:
- * 宽度 >= [SUMMARY_HEATMAP_ROW_MIN_WIDTH] (1000dp) 时同行排列 (各占一半),
- * 否则纵向堆叠; 手机/平板竖屏堆叠、桌面宽屏同行。
+ * 宽度 >= [SUMMARY_HEATMAP_ROW_MIN_WIDTH] 时同行排列 (各占一半), 否则纵向堆叠;
+ * 下方记录列表用 `rememberResponsiveColumns(1)` 随宽度拆列, 窄屏仍是单列。
  *
  * @param state       展示状态
  * @param actions     交互回调
@@ -341,10 +344,10 @@ private fun SortItem(
 /**
  * 顶部统计卡与热力图卡同行排列的最小可用宽度阈值 (基于 BoxWithConstraints.maxWidth)。
  *
- * 不做平台判断, 仅按宽度自适应: 手机/平板竖屏 (<1000dp, 约束下纵向堆叠) / 桌面宽屏
- * (>=1000dp, 同行各占一半)。1000dp 下两卡各 500dp, 统计卡 2 列与热力图 7 列网格均可正常显示。
+ * 取 840dp 档 (MainNavRailMinWindowWidth 600dp 的上一档): 同行时两卡各 420dp,
+ * 高于响应式参考宽度 400dp, 统计卡 2 列文案与热力图 7 列网格都不会被压窄。
  */
-private val SUMMARY_HEATMAP_ROW_MIN_WIDTH = 1000.dp
+private val SUMMARY_HEATMAP_ROW_MIN_WIDTH = 840.dp
 
 /**
  * 列表: 头部统计卡 + 热力图卡 + 记录行 (perDayMode 时按天分段)。
@@ -359,7 +362,7 @@ private fun RecordList(
     heatmapSlot: @Composable (Modifier) -> Unit,
     coverSlot: @Composable (ReadRecordShow, Book?, Modifier) -> Unit,
 ) {
-    val listState = rememberLazyListState()
+    val listState = rememberLazyGridState()
     // 开始拖动列表时收起搜索框焦点 (对齐原 OnScrollListener)
     val focusManager = LocalFocusManager.current
     // rememberUpdatedState 保证 LaunchedEffect 内读到最新的 searchFocused
@@ -373,15 +376,17 @@ private fun RecordList(
     val showSections = state.itemsPerDayMode
     // dateFormat 在列表层 remember 一次, 所有 RecordRow 共享 (对齐原 Activity 单成员实例行为)
     val dateFormat = remember { ThreadSafeDateFormat("yyyy-MM-dd HH:mm") }
-    FastScrollLazyColumn(
+    FastScrollLazyVerticalGrid(
+        // 与书架 LIST 档一致: 400dp→1 列, 800dp→2 列, 行内布局不变
+        columns = rememberResponsiveColumns(1),
         state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = WindowInsets.navigationBars.asPaddingValues(),
     ) {
         // 顶部统计卡与热力图卡: 基于可用宽度自适应, 不做平台判断
-        // (>=1000dp 同行各占一半, <1000dp 纵向堆叠; HeatMapCard 同行布局下补 12dp top padding
+        // (>=阈值同行各占一半, 否则纵向堆叠; HeatMapCard 同行布局下补 12dp top padding
         //  与 SummaryCard 顶部对齐, 纵向布局下由 SummaryCard bottom 提供间距, 保持原值)
-        item(key = "header") {
+        item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
             BoxWithConstraints {
                 if (maxWidth >= SUMMARY_HEATMAP_ROW_MIN_WIDTH) {
                     Row(Modifier.fillMaxWidth()) {
@@ -407,7 +412,9 @@ private fun RecordList(
                 if (record.day != lastDay) {
                     lastDay = record.day
                     val day = record.day
-                    item(key = "day_${day}_$idx") { DaySection(formatDayKey(day)) }
+                    item(key = "day_${day}_$idx", span = { GridItemSpan(maxLineSpan) }) {
+                        DaySection(formatDayKey(day))
+                    }
                 }
                 item(key = "${record.bookName}|${record.day}") {
                     RecordRow(record, state, actions, dateFormat, coverSlot)

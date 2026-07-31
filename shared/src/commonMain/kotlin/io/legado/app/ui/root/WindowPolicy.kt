@@ -27,7 +27,8 @@ object WindowPolicies {
     )
     val VideoPlayer = WindowPolicy(
         keepScreenOn = true,
-        orientation = OrientationPolicy.Landscape,
+        // 原版 VideoPlayActivity 不强制横屏, 由用户在播放页手动切换; 这里默认不锁方向
+        orientation = OrientationPolicy.Unspecified,
         pictureInPicture = true
     )
     val AudioPlay = WindowPolicy(keepScreenOn = true)

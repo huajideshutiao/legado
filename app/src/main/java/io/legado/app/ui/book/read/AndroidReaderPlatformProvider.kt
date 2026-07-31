@@ -12,6 +12,7 @@ import androidx.lifecycle.LifecycleOwner
 import io.legado.app.R
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
@@ -80,6 +81,94 @@ class AndroidReaderPlatformProvider(
         activity.exitReaderWindow()
         lifecycleObserver?.let { activity.lifecycle.removeObserver(it) }
         lifecycleObserver = null
+    }
+
+    override fun readAloudControls(
+        navigator: AppNavigator,
+        screenModel: ReaderScreenModel,
+    ): ReadAloudControls = AndroidReadAloudControls(navigator, screenModel, activity)
+}
+
+/**
+ * app 端朗读控制桥: 全部落到现有 [ReadAloud] 门面 + [BaseReadAloudService] 静态态,
+ * 与 ReadBookActivity 那套自有 [io.legado.app.ui.book.read.config.ReadAloudDialog] 同一条链路。
+ */
+private class AndroidReadAloudControls(
+    private val navigator: AppNavigator,
+    private val screenModel: ReaderScreenModel,
+    private val activity: MainActivity,
+) : ReadAloudControls {
+
+    override val isPlaying: Boolean get() = !BaseReadAloudService.pause
+
+    override val timerMinute: Int
+        get() = BaseReadAloudService.timeMinute.takeIf { it > 0 } ?: AppConfig.ttsTimer
+
+    override val speechRate: Int get() = AppConfig.ttsSpeechRate
+
+    override val followSys: Boolean get() = AppConfig.ttsFlowSys
+
+    override fun playPause() {
+        when {
+            !BaseReadAloudService.isRun -> {
+                ReadAloud.upReadAloudClass()
+                ReadAloud.play(activity)
+            }
+
+            BaseReadAloudService.pause -> ReadAloud.resume(activity)
+            else -> ReadAloud.pause(activity)
+        }
+    }
+
+    override fun stop() = ReadAloud.stop(activity)
+
+    override fun prevChapter() {
+        screenModel.viewModel.moveToPrevChapter()
+    }
+
+    override fun nextChapter() {
+        screenModel.viewModel.moveToNextChapter()
+    }
+
+    override fun prevParagraph() = ReadAloud.prevParagraph(activity)
+
+    override fun nextParagraph() = ReadAloud.nextParagraph(activity)
+
+    override fun setTimer(minute: Int) {
+        ReadAloud.setTimer(activity, minute)
+    }
+
+    override fun setSpeechRate(rate: Int) {
+        AppConfig.ttsSpeechRate = rate.coerceIn(0, 45)
+        upTtsSpeechRate()
+    }
+
+    override fun setFollowSys(follow: Boolean) {
+        AppConfig.ttsFlowSys = follow
+        upTtsSpeechRate()
+    }
+
+    /** 对照原版 ReadAloudDialog.upTtsSpeechRate: 新语速要 pause+resume 才作用到当前段 */
+    private fun upTtsSpeechRate() {
+        ReadAloud.upTtsSpeechRate(activity)
+        if (!BaseReadAloudService.pause) {
+            ReadAloud.pause(activity)
+            ReadAloud.resume(activity)
+        }
+    }
+
+    override fun openChapterList() {
+        screenModel.currentBook?.let {
+            navigator.push(AppRoute.Toc(it.toRouteRef()), RouteResults.TOC)
+        }
+    }
+
+    override fun openSettings() {
+        navigator.push(AppRoute.ReadAloudConfig)
+    }
+
+    override fun toBackstage() {
+        navigator.pop()
     }
 }
 
@@ -240,8 +329,14 @@ private class AndroidReaderMenuState(
     override fun onSourceAction(action: SourceAction) {
         when (action) {
             SourceAction.LOGIN -> {
-                val origin = screenModel.viewModel.book.value?.origin ?: return
-                navigator.push(AppRoute.Login(origin))
+                val source = screenModel.viewModel.bookSource.value ?: return
+                // 带上当前书与当前章, 供登录 JS 的 book/chapter 绑定 (对照原版 showLogin 预置 IntentData)
+                val dataKey = SourceLoginContext.put(
+                    source,
+                    screenModel.currentBook,
+                    screenModel.currentChapter,
+                )
+                navigator.push(AppRoute.Login(source.getKey(), dataKey))
             }
 
             SourceAction.EDIT_SOURCE -> {
@@ -303,8 +398,15 @@ private class AndroidReaderMenuState(
     }
 
     override fun clickSearch() {
+        // 缓存的结果只有 query 与当前一致才回填 (对照 ReadBookActivity.openSearchActivity)
+        val initialResults = screenModel.searchResultList
+            ?.takeIf { results -> results.firstOrNull()?.query == screenModel.searchContentQuery }
         navigator.push(
-            AppRoute.SearchContent(),
+            AppRoute.SearchContent(
+                index = screenModel.searchResultIndex,
+                word = screenModel.searchContentQuery.takeIf { it.isNotEmpty() },
+                initialResults = initialResults,
+            ),
             resultKey = RouteResults.SEARCH_CONTENT,
         )
     }
@@ -353,9 +455,9 @@ private class AndroidReaderMenuState(
         }
     }
 
-    // 长按朗读: 跳转朗读配置页 (对照 app 端 showReadAloudDialog)
+    // 长按朗读: 弹共享朗读控制面板 (对照原版 ReadMenu 长按 → showReadAloudDialog)
     override fun longClickReadAloud() {
-        navigator.push(AppRoute.ReadAloudConfig)
+        screenModel.postDialogEvent(ReaderDialogEvent.ReadAloud)
     }
 
     override fun clickFont() {

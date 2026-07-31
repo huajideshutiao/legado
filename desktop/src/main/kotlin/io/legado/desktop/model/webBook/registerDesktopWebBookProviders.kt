@@ -20,6 +20,7 @@ import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.RegexReplacerImpl
 import io.legado.app.utils.RegexReplacers
 import kotlinx.coroutines.runBlocking
+import java.lang.ref.WeakReference
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -104,9 +105,9 @@ private object DesktopIntentDataAccessor : IntentDataAccessor {
  *
  * # 缓存策略
  *
- * 用 [ConcurrentHashMap] 按 `bookName + bookOrigin` 缓存 [ContentProcessorShared] 实例,
- * 与 app 端 WeakReference 缓存行为对齐 (避免每次 new + 重新查 replaceRuleDao)。
- * Desktop 端无 WeakReference (JVM 端长时间持有 BookSource 不算泄漏, 桌面进程生命周期短)。
+ * 与 app 端 `ContentProcessor.processors` 同构: `bookName + bookOrigin` → [WeakReference],
+ * 无强引用滞留; 实例构造 (含 upReplaceRules/upRemoveSameTitle 的 DB IO) 在缓存锁外完成,
+ * 与 app 端 `ContentProcessor.get` 的 init 时机一致。
  *
  * 注册时机: 在 [AppDbProviders] 已注册之后 (ContentProcessorShared 依赖 replaceRuleDao/bookDao),
  * 由 [registerDesktopWebBookProviders] 完成。
@@ -117,20 +118,21 @@ private object DesktopContentProcessorAccessor : ContentProcessorAccessor {
 
     private val deps = DefaultContentProcessorDeps()
 
-    // ContentProcessorShared 缓存: 按 bookName + bookOrigin 索引, 与 app 端 WeakReference 缓存对齐
-    private val processorCache = ConcurrentHashMap<String, ContentProcessorShared>()
+    // 与 app 端 ContentProcessor.processors 对齐: 弱引用, book 不再被引用后可回收
+    private val processors = ConcurrentHashMap<String, WeakReference<ContentProcessorShared>>()
 
     private fun getProcessor(book: Book): ContentProcessorShared {
         val key = book.name + book.origin
-        return processorCache.computeIfAbsent(key) {
-            ContentProcessorShared(book.name, book.origin, deps).also { p ->
-                // 初始化: 同步刷新替换规则 + 去重标题缓存 (与 app 端 ContentProcessor.init 行为一致)
-                runBlocking {
-                    p.upReplaceRules()
-                    p.upRemoveSameTitle()
-                }
-            }
+        processors[key]?.get()?.let { return it }
+        // 构造 + 初始化 (DB IO) 放在 map 操作之外, 避免在 ConcurrentHashMap 分段锁内阻塞;
+        // 并发下可能多建一个实例, 与 app 端同样是良性竞争
+        val processor = ContentProcessorShared(book.name, book.origin, deps)
+        runBlocking {
+            processor.upReplaceRules()
+            processor.upRemoveSameTitle()
         }
+        processors[key] = WeakReference(processor)
+        return processor
     }
 
     override fun getTitleReplaceRules(book: Book): List<ReplaceRule> =
@@ -175,9 +177,9 @@ private object DesktopContentProcessorAccessor : ContentProcessorAccessor {
     )
 
     override fun upReplaceRules() {
-        // 刷新所有缓存实例的替换规则 (与 app 端 ContentProcessor.upReplaceRules 静态方法一致)
-        processorCache.values.forEach {
-            runBlocking { it.upReplaceRules() }
+        // 刷新所有存活实例的替换规则 (与 app 端 ContentProcessor.upReplaceRules 静态方法一致)
+        processors.values.forEach { ref ->
+            ref.get()?.let { runBlocking { it.upReplaceRules() } }
         }
     }
 }

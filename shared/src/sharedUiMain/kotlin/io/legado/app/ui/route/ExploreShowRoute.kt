@@ -22,6 +22,7 @@ import io.legado.app.ui.book.explore.ExploreShowUiEvent
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.bookshelf.ShelfVideoItem
+import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.ExploreOptionsRow
@@ -287,9 +288,9 @@ fun ExploreShowRoute(
             )
         },
         // 视频卡: 复用 ShelfVideoItem (item_explore_video 的 shared Compose 版), 封面走 LocalBookCoverSlot
-        videoItemSlot = { book, _, onClick, onLongClick ->
+        videoItemSlot = { book, inBookshelf, onClick, onLongClick ->
             ShelfVideoItem(
-                book = book.toBook(),
+                book = book.toCoverBook(inBookshelf),
                 coverReloadTick = state.bookshelfVersion,
                 onClick = onClick,
                 onLongClick = onLongClick,
@@ -299,8 +300,13 @@ fun ExploreShowRoute(
             )
         },
         // 封面: 复用 LocalBookCoverSlot (宿主端注入 ShelfCover, 兜底 SharedBookCover)
-        coverSlot = { book, _, isVideoStyle, modifier ->
-            LocalBookCoverSlot.current(book.toBook(), modifier, isVideoStyle)
+        coverSlot = { book, inBookshelf, isVideoStyle, modifier ->
+            // toCoverBook 结果缓存一次, 避免每次重组新建 Book (对照 SearchScreen coverSlot 写法)
+            LocalBookCoverSlot.current(
+                remember(book, inBookshelf) { book.toCoverBook(inBookshelf) },
+                modifier,
+                isVideoStyle,
+            )
         },
     )
 }

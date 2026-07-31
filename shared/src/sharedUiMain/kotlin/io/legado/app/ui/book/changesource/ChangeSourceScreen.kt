@@ -47,10 +47,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppMenuCheckbox
@@ -64,7 +64,9 @@ import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
+import io.legado.app.utils.format
 import kotlinx.coroutines.launch
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.all_source
@@ -127,7 +129,7 @@ fun ChangeSourceTitleBar(
         Modifier
             .fillMaxWidth()
             .background(colors.bottomBackground)
-            .height(48.dp),
+            .height(DesignTokens.viewHeightXl),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = {
@@ -599,7 +601,7 @@ fun GroupPickerDialog(
     onSelect: (String) -> Unit,
 ) {
     val colors = AppTheme.colors
-    Dialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
+    AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
         Surface(
             shape = AppTheme.DesignTokens.dialogShape,
             color = colors.background,

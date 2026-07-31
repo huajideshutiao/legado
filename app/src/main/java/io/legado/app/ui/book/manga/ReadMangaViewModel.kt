@@ -11,7 +11,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.coroutine.ConcurrentRateLimiter
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
@@ -24,6 +23,7 @@ import io.legado.app.help.book.readSimulating
 import io.legado.app.help.book.saveRead
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.coroutine.ConcurrentRateLimiter
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.webBook.WebBook
@@ -64,6 +64,7 @@ class ReadMangaViewModel(application: Application) :
     var curMangaChapter: MangaChapter? = null
     var nextMangaChapter: MangaChapter? = null
     private val loadingChapters = arrayListOf<Int>()
+    private var tocUpdating = false // 目录拉取进行中, 防恢复链反复触发 upToc
     var simulatedChapterSize = 0
     var preDownloadTask: Job? = null
     val downloadedChapters = hashSetOf<Int>()
@@ -159,7 +160,8 @@ class ReadMangaViewModel(application: Application) :
                 chapterListData.value?.getOrNull(index)
                     ?: appDb.bookChapterDao.getChapter(book.bookUrl, index)
                     ?: run {
-                        if (index < simulatedChapterSize) {
+                        // 章节缺失: 目录未就绪/列表末尾, 交由 upToc 拉目录恢复或报失败, 不能静默断头
+                        if (index < simulatedChapterSize || curMangaChapter == null) {
                             upToc(true)
                         }
                         return@execute
@@ -454,13 +456,19 @@ class ReadMangaViewModel(application: Application) :
 
     @Synchronized
     fun upToc(force: Boolean = false) {
-        val bookSource = curBookSource ?: return
+        val bookSource = curBookSource ?: run {
+            // 无书源必然拉不到目录, 明确报失败而非静默断头
+            loadFailLiveData.postValue(appCtx.getString(R.string.error_load_toc) to true)
+            return
+        }
         val book = curBook ?: return
         if (!force) {
             if (!book.canUpdate) return
             if (chapterSize - durChapterIndex - 1 >= 3) return
             if (System.currentTimeMillis() - book.lastCheckTime < 600000) return
         }
+        if (tocUpdating) return // 拉取进行中, 防 loadContent 恢复链反复触发
+        tocUpdating = true
         book.lastCheckTime = System.currentTimeMillis()
         val oldBook = book.copy()
         execute { WebBook.getChapterListAwait(bookSource, book).getOrThrow() }
@@ -477,12 +485,19 @@ class ReadMangaViewModel(application: Application) :
                         appDb.bookChapterDao.delByBook(oldBook.bookUrl)
                         appDb.bookChapterDao.insert(*cList.toTypedArray())
                     }
-                    chapterListData.postValue(cList)
+                    // setValue 同步生效, 恢复链立即可读新目录 (postValue 有异步窗口)
+                    chapterListData.value = cList
                     onChapterListUpdated(book, false)
+                    // 触发拉取的当前章可能仍缺失, 优先补当前章再补下一章
+                    if (curMangaChapter == null) loadContent(durChapterIndex)
                     nextMangaChapter ?: loadContent(durChapterIndex + 1)
+                } else if (curMangaChapter == null) {
+                    // 目录无新增且当前章仍缺失: 原逻辑静默断头, 改为明确失败交回用户重试
+                    loadFailLiveData.postValue(appCtx.getString(R.string.error_load_toc) to true)
                 }
             }
             .onError { loadFailLiveData.postValue(appCtx.getString(R.string.error_load_toc) to true) }
+            .onFinally { tocUpdating = false }
     }
 
 

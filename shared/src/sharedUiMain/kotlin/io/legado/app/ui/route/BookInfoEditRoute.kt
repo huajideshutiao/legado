@@ -6,6 +6,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.ui.book.info.edit.BookInfoEditScreen
 import io.legado.app.ui.book.info.edit.BookInfoEditScreenModel
@@ -22,6 +23,8 @@ import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 书籍信息编辑页 shared 路由入口。
@@ -70,10 +73,15 @@ fun BookInfoEditRoute(
         }
 
         // 本地选图: 平台文件选择器 (对照 app 端 HandleFileContract)
+        // 选择器实现是阻塞式的 (Android 端 runBlocking 等 SAF 回调), 必须切到 IO 再调
         override fun onSelectCover() {
-            val path = PlatformServiceProviders.getOrNull()?.files?.pickFile(FileFilter.Images)
-            if (path != null) {
-                screenModel.dispatch(BookInfoEditUiEvent.CoverChangeTo(path))
+            scope.launch {
+                val path = withContext(IoDispatcher) {
+                    PlatformServiceProviders.getOrNull()?.files?.pickFile(FileFilter.Images)
+                }
+                if (path != null) {
+                    screenModel.dispatch(BookInfoEditUiEvent.CoverChangeTo(path))
+                }
             }
         }
 

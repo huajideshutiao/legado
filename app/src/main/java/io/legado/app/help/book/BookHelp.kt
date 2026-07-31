@@ -9,7 +9,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookHelp.clearCacheExtra
-import io.legado.app.help.book.BookHelp.clearInvalidBookFolders
 import io.legado.app.help.book.BookHelp.clearInvalidCache
 import io.legado.app.help.book.BookHelp.getCacheFile
 import io.legado.app.help.config.AppConfig
@@ -33,10 +32,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
@@ -95,79 +92,8 @@ object BookHelp {
         BookHelpShared.clearInvalidCache()
     }
 
-    /**
-     * 删除不在书架的书籍缓存目录 + 漫画缓存超限淘汰 (原 [clearInvalidCache] 步骤 1 与 3)。
-     *
-     * 由 [AndroidBookStorage.clearInvalidBookFolders] 委托调用。
-     */
-    suspend fun clearInvalidBookFolders(
-        validFolderNames: Set<String>,
-        imageSubFolderName: String,
-        maxSize: Long
-    ) {
-        withContext(IO) {
-            val cacheFiles = listBookCacheFolders()
-            coroutineScope {
-                cacheFiles.forEach { bookFile ->
-                    if (!validFolderNames.contains(bookFile.name)) {
-                        launch { FileUtils.delete(bookFile, true) }
-                    }
-                }
-            }
-            evictMangaCache(
-                cacheFiles.filter { validFolderNames.contains(it.name) },
-                imageSubFolderName,
-                maxSize
-            )
-        }
-    }
-
-    /**
-     * 漫画缓存超限淘汰 (原 [clearInvalidCache] 第 3 段, 不删失效目录)。
-     *
-     * 由 [AndroidBookStorage.clearInvalidCache] 委托调用。
-     */
-    suspend fun evictMangaCache(imageSubFolderName: String, maxSize: Long) {
-        withContext(IO) {
-            evictMangaCache(listBookCacheFolders(), imageSubFolderName, maxSize)
-        }
-    }
-
-    private fun listBookCacheFolders(): List<File> {
-        val cacheFolder = downloadDir.getFile(cacheFolderName)
-        return cacheFolder.listFiles()?.filter { it.isDirectory } ?: emptyList()
-    }
-
-    /**
-     * 按最后修改时间由旧到新淘汰漫画缓存, 直到总大小收敛到 [maxSize] 以内。
-     * 总大小按全部 [folders] 统计, 但只有含 [imageSubFolderName] 子目录的漫画缓存参与淘汰。
-     */
-    private suspend fun evictMangaCache(
-        folders: List<File>,
-        imageSubFolderName: String,
-        maxSize: Long
-    ) {
-        if (folders.isEmpty()) return
-        val folderSizes = ConcurrentHashMap<File, Long>()
-        val mangaFolders = ConcurrentHashMap.newKeySet<File>()
-        folders.asFlow().onEachParallel(8) { folder ->
-            folderSizes[folder] = folder.walk().filter { it.isFile }.sumOf { it.length() }
-            if (File(folder, imageSubFolderName).exists()) {
-                mangaFolders.add(folder)
-            }
-        }.collect()
-
-        var totalSize = folderSizes.values.sum()
-        if (totalSize <= maxSize) return
-        for (folder in folders.sortedBy { it.lastModified() }) {
-            if (mangaFolders.contains(folder)) {
-                val size = folderSizes[folder] ?: 0L
-                FileUtils.delete(folder, true)
-                totalSize -= size
-                if (totalSize <= maxSize) break
-            }
-        }
-    }
+    // 缓存目录清理编排 (clearInvalidBookFolders/evictMangaCache) 已下沉
+    // [BookHelpShared] (三端统一), 本端经 [AndroidBookStorage] 委托调用, 不再保留本地实现。
 
     /**
      * 清理平台专属临时文件 (供 WebBookProvidersImpl.clearCacheExtra 委托)。

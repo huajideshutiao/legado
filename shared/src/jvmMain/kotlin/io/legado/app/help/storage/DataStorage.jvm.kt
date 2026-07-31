@@ -23,9 +23,13 @@ class JvmDataStorage : DataStorage {
 
     override val coversDir: String = Paths.get(rootDir, "covers", "default").toString()
 
-    override val backgroundsDir: String = Paths.get(rootDir, "bg").toString()
+    // 与导入侧写入位置对齐: ReadBookConfigShared/ThemeConfigProvider 落 {filesDir}/bg 与 /font,
+    // 直接挂 rootDir 会差一层 files/, 导致导入后读不到 (AppFilesDirs 惰性取值, 同 backupDir)
+    override val backgroundsDir: String
+        get() = Paths.get(AppFilesDirs.get().filesDir, "bg").toString()
 
-    override val fontsDir: String = Paths.get(rootDir, "font").toString()
+    override val fontsDir: String
+        get() = Paths.get(AppFilesDirs.get().filesDir, "font").toString()
 
     // AppFilesDirs 可能晚于本类构造注册, 故惰性取值
     override val backupDir: String

@@ -7,10 +7,10 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.BookChapterLike
 import io.legado.app.data.entities.BookLike
 import io.legado.app.help.JsExtensionsCommon
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.source.SourceCacheProviders
 import io.legado.app.help.source.SourceDebugLoggers
 import io.legado.app.help.source.SourceNetworkProviders
-import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.source.getShareScope
 import io.legado.app.model.script.JsCompiledScript
 import io.legado.app.model.script.JsEngines
@@ -18,7 +18,6 @@ import io.legado.app.model.script.JsScope
 import io.legado.app.model.script.buildScriptBindings
 import io.legado.app.utils.Closeable
 import io.legado.app.utils.EscapeUtils
-import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.KS_JSON_STRICT
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.URL
@@ -36,7 +35,7 @@ import kotlin.coroutines.EmptyCoroutineContext
 
 /**
  * AnalyzeRule 主体: 纯 JVM 逻辑, 无 android-only 依赖。
- * app 端 [AnalyzeRule] 继承本类并实现 [io.legado.app.help.JsExtensions],
+ * app 端 [AnalyzeRule] 继承本类并实现 [io.legado.app.help.JsExtensionsJvm],
  * 添加 android-only 方法 (refreshTocUrl override)。
  *
  * KSP @JsApi 分派表由 app 端 AnalyzeRule 生成, 通过 getAllFunctions() 继承链

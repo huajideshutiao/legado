@@ -41,6 +41,8 @@ private val jvmBookImageLoader: ImageLoader by lazy {
             add(DecodedCoverKeyer(), DecodedCoverBytes::class)
             add(DecodedCoverFetcher.Factory(), DecodedCoverBytes::class)
             add(SourceOriginHeaderInterceptor())
+            // 漫画页: 经图片缓存 + AnalyzeUrl 下载 + 解密取字节 (与 app 端同一条链路)
+            add(MangaModelFetcher.Factory())
             add(OkHttpNetworkFetcherFactory(callFactory = {
                 OkHttpClientProviders.get().okHttpClient as OkHttpClient
             }))

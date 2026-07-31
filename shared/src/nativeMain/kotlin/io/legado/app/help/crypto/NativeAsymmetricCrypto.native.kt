@@ -54,7 +54,7 @@ class NativeAsymmetricCrypto(
         )
 
     override fun decryptStr(data: Any, usePublicKey: Boolean?): String =
-        String(decrypt(data, usePublicKey))
+        decrypt(data, usePublicKey).decodeToString()
 
     override fun encrypt(data: Any, usePublicKey: Boolean?): ByteArray =
         NativeAsymmetricCryptoOps.encrypt(

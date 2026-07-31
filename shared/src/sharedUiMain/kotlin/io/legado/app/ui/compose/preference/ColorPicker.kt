@@ -37,9 +37,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialogContent
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.appDialogSize
@@ -124,7 +124,7 @@ fun ColorPickerDialog(
     showAlphaSlider: Boolean = false,
     presets: List<Int> = MaterialPresets,
 ) {
-    Dialog(onDismissRequest = onDismissRequest, properties = AppDialogSizes.properties()) {
+    AppDialog(onDismissRequest = onDismissRequest, properties = AppDialogSizes.properties()) {
         ColorPickerDialogContent(
             initColor = initColor,
             title = title,

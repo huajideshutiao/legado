@@ -1,13 +1,17 @@
 package io.legado.app.ui.compose.component.code
 
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.LocalTextStyle
+import androidx.compose.material.Text
 import androidx.compose.material.TextFieldDefaults
 import androidx.compose.material.TextFieldDefaults.indicatorLine
 import androidx.compose.runtime.Composable
@@ -21,17 +25,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppDecorationBox
 import io.legado.app.ui.compose.component.AppFieldColors
 import io.legado.app.ui.compose.component.AppTextFieldImpl
+import io.legado.app.ui.compose.theme.AppTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -68,6 +77,8 @@ fun CodeTextField(
     isError: Boolean = false,
     errorMessage: String? = null,
     showIndicator: Boolean = true,
+    showLineNumbers: Boolean = false,
+    minHeight: Dp = 56.dp,
     fontSize: TextUnit = 14.sp,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
@@ -84,7 +95,10 @@ fun CodeTextField(
             fontSize = fontSize,
             fontFamily = FontFamily.Monospace,
         )
-        val textColor = baseStyle.color.takeOrElse { colors.textColor(enabled).value }
+        // 行号对齐需统一行高: 等宽字体对 CJK 回退字体的自然行高不一致
+        val codeStyle =
+            if (showLineNumbers) baseStyle.copy(lineHeight = fontSize * 1.5f) else baseStyle
+        val textColor = codeStyle.color.takeOrElse { colors.textColor(enabled).value }
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
@@ -97,10 +111,10 @@ fun CodeTextField(
                         Modifier
                     }
                 )
-                .defaultMinSize(minWidth = TextFieldDefaults.MinWidth),
+                .defaultMinSize(minWidth = TextFieldDefaults.MinWidth, minHeight = minHeight),
             enabled = enabled,
             readOnly = readOnly,
-            textStyle = baseStyle.copy(color = textColor),
+            textStyle = codeStyle.copy(color = textColor),
             keyboardOptions = keyboardOptions,
             keyboardActions = keyboardActions,
             singleLine = false,
@@ -109,23 +123,76 @@ fun CodeTextField(
             interactionSource = interactionSource,
             cursorBrush = SolidColor(colors.cursorColor(isError).value),
             decorationBox = { innerTextField ->
-                AppDecorationBox(
-                    text = value.text,
-                    innerTextField = innerTextField,
-                    enabled = enabled,
-                    singleLine = false,
-                    // 装饰盒仅用于测量/占位, 着色已在 BasicTextField 内生效
-                    visualTransformation = VisualTransformation.None,
-                    interactionSource = interactionSource,
-                    isError = isError,
-                    label = label,
-                    placeholder = placeholder,
-                    leadingIcon = null,
-                    trailingIcon = null,
-                    colors = colors,
-                )
+                val decoration: @Composable () -> Unit = {
+                    AppDecorationBox(
+                        text = value.text,
+                        innerTextField = innerTextField,
+                        enabled = enabled,
+                        singleLine = false,
+                        // 装饰盒仅用于测量/占位, 着色已在 BasicTextField 内生效
+                        visualTransformation = VisualTransformation.None,
+                        interactionSource = interactionSource,
+                        isError = isError,
+                        label = label,
+                        placeholder = placeholder,
+                        leadingIcon = null,
+                        trailingIcon = null,
+                        colors = colors,
+                    )
+                }
+                if (showLineNumbers) {
+                    // 行号列与文本同处 decorationBox (BasicTextField 滚动容器) 内, 随文本同步滚动
+                    val contentPadding = if (label == null) {
+                        TextFieldDefaults.textFieldWithoutLabelPadding(
+                            start = 0.dp,
+                            end = 0.dp,
+                            bottom = 4.dp
+                        )
+                    } else {
+                        TextFieldDefaults.textFieldWithLabelPadding(
+                            start = 0.dp,
+                            end = 0.dp,
+                            bottom = 4.dp
+                        )
+                    }
+                    Row(Modifier.fillMaxWidth()) {
+                        LineNumberGutter(
+                            lineCount = value.text.count { it == '\n' } + 1,
+                            textStyle = codeStyle,
+                            topPadding = contentPadding.calculateTopPadding(),
+                            bottomPadding = contentPadding.calculateBottomPadding(),
+                        )
+                        Box(Modifier.weight(1f)) { decoration() }
+                    }
+                } else {
+                    decoration()
+                }
             },
         )
+    }
+}
+
+/** 行号列: 与文本同字体/字号/行高, 上下按装饰盒 contentPadding 对齐 */
+@Composable
+private fun LineNumberGutter(
+    lineCount: Int,
+    textStyle: TextStyle,
+    topPadding: Dp,
+    bottomPadding: Dp,
+) {
+    Text(
+        text = buildLineNumbers(lineCount),
+        color = AppTheme.colors.secondaryText,
+        style = textStyle,
+        textAlign = TextAlign.End,
+        modifier = Modifier.padding(top = topPadding, end = 8.dp, bottom = bottomPadding),
+    )
+}
+
+private fun buildLineNumbers(lineCount: Int): String = buildString {
+    for (i in 1..lineCount) {
+        if (i > 1) append('\n')
+        append(i)
     }
 }
 
@@ -143,6 +210,8 @@ fun CodeTextField(
     isError: Boolean = false,
     errorMessage: String? = null,
     showIndicator: Boolean = true,
+    showLineNumbers: Boolean = false,
+    minHeight: Dp = 56.dp,
     fontSize: TextUnit = 14.sp,
 ) {
     var fieldValue by remember { mutableStateOf(TextFieldValue(value)) }
@@ -163,6 +232,8 @@ fun CodeTextField(
         isError = isError,
         errorMessage = errorMessage,
         showIndicator = showIndicator,
+        showLineNumbers = showLineNumbers,
+        minHeight = minHeight,
         fontSize = fontSize,
     )
 }

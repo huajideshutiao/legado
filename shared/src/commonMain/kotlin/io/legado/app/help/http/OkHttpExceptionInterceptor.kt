@@ -14,7 +14,8 @@ import okio.IOException
  */
 object OkHttpExceptionInterceptor : KmpInterceptor {
 
-    @Throws(IOException::class)
+    // 注: Kotlin/Native 要求 override 与父声明 @Throws 过滤器一致,
+    // KmpInterceptor.intercept 无 @Throws, 故此处不能单独标注 (仍抛 IOException)。
     override fun intercept(chain: KmpInterceptorChain): KmpResponse {
         try {
             return chain.proceed(chain.request())

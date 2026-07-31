@@ -1,5 +1,7 @@
 package io.legado.app.ui.route
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -11,11 +13,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
-import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.book.source.LoginScreen
 import io.legado.app.ui.book.source.LoginScreenModel
 import io.legado.app.ui.book.source.LoginUiActions
 import io.legado.app.ui.book.source.LoginUiEvent
+import io.legado.app.ui.book.source.SourceLoginDialog
+import io.legado.app.ui.browser.LocalWebViewSlot
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -25,8 +29,12 @@ import io.legado.app.ui.root.ScreenModelStore
 /**
  * 书源登录 shared 路由入口。
  *
- * 解析 [AppRoute.Login.sourceUrl], 通过 [ScreenModelStore] 复用 [LoginScreenModel],
- * 渲染 [LoginScreen]。
+ * 对照原版 `BaseSource.showLoginDialog` 的两条分支分发:
+ * - loginUi 非空 -> [SourceLoginDialog] 表单登录 (book/chapter 作为登录 JS 上下文);
+ * - 否则 -> [LoginScreen] WebView 登录 (对照 `WebViewActivity` isLogin=true)。
+ *
+ * 源对象与 book/chapter 由 [AppRoute.Login.dataKey] 指向的内存上下文携带 (对照原版 IntentData),
+ * 缺失时 [LoginScreenModel] 退化为按 sourceUrl 查库。
  *
  * WebView 渲染由平台注入 [LoginScreen.platformWebViewSlot], 经 [LocalWebViewSlot] 取平台实现。
  */
@@ -43,9 +51,9 @@ fun LoginRoute(
     val clipboard = LocalClipboardManager.current
     val platformCapabilities = PlatformCapabilityProviders.get()
 
-    // 加载书源, 取 loginUrl 供 WebView slot
+    // 解析源 (dataKey 内存上下文优先, 其次查库), 取 loginUrl 供 WebView slot
     LaunchedEffect(sourceUrl) {
-        screenModel.dispatch(LoginUiEvent.Init(sourceUrl))
+        screenModel.dispatch(LoginUiEvent.Init(sourceUrl, route.dataKey))
     }
 
     val state by screenModel.state.collectAsState()
@@ -54,6 +62,10 @@ fun LoginRoute(
     LaunchedEffect(screenModel) {
         screenModel.loginCompleteFlow.collect { navigator.pop() }
     }
+
+    // loginUi 非空走表单登录 (对照原版 BaseSource.showLoginDialog 的 SourceLoginDialog 分支),
+    // book/chapter 作为登录 JS 上下文透传
+    val formSource = state.source?.takeIf { !it.loginUi.isNullOrEmpty() }
 
     // 刷新: 自增序号重建平台 WebView slot
     var webViewReloadKey by remember { mutableIntStateOf(0) }
@@ -96,10 +108,23 @@ fun LoginRoute(
         }
     }
 
-    LoginScreen(
-        state = state,
-        actions = actions,
-        platformWebViewSlot = { url -> LocalWebViewSlot.current(url, Modifier.fillMaxSize()) },
-        webViewReloadKey = webViewReloadKey,
-    )
+    when {
+        // 源还没解析出来: 先不建 WebView, 否则表单源会闪一下空白页
+        state.loading -> Box(Modifier.fillMaxSize().background(AppTheme.colors.background))
+
+        formSource != null -> SourceLoginDialog(
+            source = formSource,
+            onDismiss = { navigator.pop() },
+            onOpenUrl = platformCapabilities::openExternalUrl,
+            book = state.book,
+            chapter = state.chapter,
+        )
+
+        else -> LoginScreen(
+            state = state,
+            actions = actions,
+            platformWebViewSlot = { url -> LocalWebViewSlot.current(url, Modifier.fillMaxSize()) },
+            webViewReloadKey = webViewReloadKey,
+        )
+    }
 }

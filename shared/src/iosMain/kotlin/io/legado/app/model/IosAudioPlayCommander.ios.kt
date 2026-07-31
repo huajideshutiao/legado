@@ -33,7 +33,7 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemDidPlayToEndTimeNotification
@@ -383,7 +383,7 @@ class IosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
         }
     }
 
-    override fun getBookSource(book: Book): BookSource? = runBlocking {
+    override suspend fun getBookSource(book: Book): BookSource? = withContext(Dispatchers.IO) {
         runCatching {
             AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
         }.onFailure {

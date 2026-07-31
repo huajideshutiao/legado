@@ -21,8 +21,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import io.legado.app.constant.AppLog
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
@@ -31,6 +31,7 @@ import io.legado.app.ui.compose.linkifyText
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.widget.dialog.TextDialog
+import io.legado.app.utils.format
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.clear
 import legado.shared.generated.resources.log
@@ -132,7 +133,7 @@ fun AppLogDialog(
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    Dialog(
+    AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {

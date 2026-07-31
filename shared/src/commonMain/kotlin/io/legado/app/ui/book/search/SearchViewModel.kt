@@ -13,14 +13,17 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.SearchModel
+import io.legado.app.utils.concurrent.newConcurrentSet
+import io.legado.app.utils.systemCurrentTimeMillis
+import io.legado.app.utils.throttleLatest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -37,8 +40,6 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.launch
-import io.legado.app.utils.concurrent.newConcurrentSet
-import io.legado.app.utils.systemCurrentTimeMillis
 
 /**
  * 搜索 ViewModel (KMP 版)。
@@ -82,6 +83,15 @@ class SearchViewModel(
      */
     private val _searchBooks = signalFlow<List<SearchBook>>()
     val searchBooks: SharedFlow<List<SearchBook>> = _searchBooks.asSharedFlow()
+
+    /**
+     * 搜索结果更新源: 每源完成一次全量发射, 经 [throttleLatest] 节流后再进 [_searchBooks]。
+     * 无 replay: 重启节流收集时不会回放旧搜索的列表。
+     */
+    private val searchBooksSource = MutableSharedFlow<List<SearchBook>>(
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
 
     private val _hasMore = MutableStateFlow(true)
     val hasMore = _hasMore.asStateFlow()
@@ -155,8 +165,17 @@ class SearchViewModel(
     private var searchID = 0L
     private var filteredCount = 0
     private var booksFlowJob: Job? = null
+    private var searchBooksThrottleJob: Job? = null
     private val bookshelfSearchKeyFlow = MutableStateFlow("")
-    private var isManualStopSearch = false
+
+    /** 用户手动停止搜索 (对齐原 isManualStopSearch): 停后不触底续搜, 启停按钮也隐藏。 */
+    private val _manualStopped = MutableStateFlow(false)
+    val manualStopped = _manualStopped.asStateFlow()
+    private var isManualStopSearch: Boolean
+        get() = _manualStopped.value
+        set(value) {
+            _manualStopped.value = value
+        }
 
     private val searchModel = SearchModel(scope, object : SearchModel.CallBack {
 
@@ -168,7 +187,7 @@ class SearchViewModel(
         }
 
         override fun onSearchSuccess(searchBooks: List<SearchBook>) {
-            _searchBooks.tryEmit(searchBooks)
+            searchBooksSource.tryEmit(searchBooks)
         }
 
         override fun onSearchFinish(isEmpty: Boolean, hasMore: Boolean) {
@@ -215,6 +234,9 @@ class SearchViewModel(
     })
 
     init {
+        // 每源完成就全量发射一次: 500ms 一拍进 UI, 避免搜索期间列表高频整体重组
+        restartSearchBooksCollector()
+
         // 订阅书架书籍 key, 用于 isInBookShelf 判断 (对齐原 init { execute { ... } })
         scope.launch {
             AppDatabaseProviders.get().appDb.bookDao.flowShelfBookKeys().mapLatest { shelfBooks ->
@@ -225,7 +247,11 @@ class SearchViewModel(
                     keys.add(it.bookUrl)
                 }
                 keys
-            }.catch {
+            }
+                // 书架全表 Flow 高频发射: 内容没变就跳过 + 500ms 节流 (对照 ExploreScreenModel), 避免高频整体重组
+                .distinctUntilChanged()
+                .throttleLatest(500)
+                .catch {
                 AppLog.put("搜索界面获取书籍列表失败\n${it.message}", it)
             }.collect {
                 bookshelf.clear()
@@ -364,6 +390,16 @@ class SearchViewModel(
     // ---- 搜索 ----
 
     /**
+     * 重启结果节流收集: 新搜索时丢弃上一轮尚未下发的尾部发射, 避免新搜索短暂显示旧结果。
+     */
+    private fun restartSearchBooksCollector() {
+        searchBooksThrottleJob?.cancel()
+        searchBooksThrottleJob = scope.launch {
+            searchBooksSource.throttleLatest(500).collect { _searchBooks.tryEmit(it) }
+        }
+    }
+
+    /**
      * 开始搜索。
      * @param key 搜索关键词。空字符串表示触底续搜 (沿用上次的 searchKey)。
      * @param resetOptions 是否重置搜索选项 (单源搜索声明的可选项)。
@@ -374,6 +410,7 @@ class SearchViewModel(
                 searchModel.cancelSearch()
                 searchID = systemCurrentTimeMillis()
                 _searchBooks.tryEmit(emptyList())
+                restartSearchBooksCollector()
                 searchKey = key
                 _hasMore.value = true
                 if (resetOptions && searchOptions.isNotEmpty()) {

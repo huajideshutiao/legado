@@ -1,5 +1,6 @@
 package io.legado.app.help.storage
 
+import io.legado.app.exception.SecurityException
 import io.legado.app.utils.File
 
 /**
@@ -167,13 +168,44 @@ internal object NativeZipCodec {
      */
     fun unZipToPath(zipPath: String, destDir: String) {
         val data = File(zipPath).readBytes()
+        // 确保 destDir 存在
+        File(destDir).mkdirs()
+        forEachEntry(data) { entryName, entryData ->
+            if (entryData == null) {
+                // 目录 entry
+                File((destDir + "/" + entryName).trimEnd('/')).mkdirs()
+                return@forEachEntry
+            }
+            val destPath = destDir + "/" + entryName
+            val parentDir = destPath.substringBeforeLast('/')
+            if (parentDir.isNotEmpty()) {
+                File(parentDir).mkdirs()
+            }
+            File(destPath).writeBytes(entryData)
+        }
+    }
 
+    /**
+     * 解压 zip 字节数组为 `entryName -> bytes` 映射 (目录 entry 跳过)。
+     *
+     * 等价 jvmAndAndroidMain 端 `ZipInputStream` 全量读入内存, 供 [unzipEpubEntries] 使用。
+     */
+    fun unzipToMap(zipData: ByteArray): Map<String, ByteArray> {
+        val result = LinkedHashMap<String, ByteArray>()
+        forEachEntry(zipData) { entryName, entryData ->
+            if (entryData != null) result[entryName] = entryData
+        }
+        return result
+    }
+
+    /**
+     * 遍历 zip 中央目录, 逐 entry 回调。
+     * 目录 entry 回调 `data == null`, 文件 entry 回调解压并校验后的字节。
+     */
+    private inline fun forEachEntry(data: ByteArray, onEntry: (String, ByteArray?) -> Unit) {
         if (data.size < EOCD_MIN_SIZE) {
             throw IllegalStateException("NativeZipCodec.unZipToPath: zip too small (${data.size} bytes)")
         }
-
-        // 确保 destDir 存在
-        File(destDir).mkdirs()
 
         // 1. 找到 End of Central Directory Record
         val eocdOffset = findEocd(data)
@@ -202,10 +234,9 @@ internal object NativeZipCodec {
                 throw SecurityException("NativeZipCodec: zip entry path unsafe: $entryName")
             }
 
-            // 目录 entry (以 "/" 结尾): 创建目录后跳过
+            // 目录 entry (以 "/" 结尾)
             if (entryName.endsWith("/")) {
-                val dirPath = (destDir + "/" + entryName).trimEnd('/')
-                File(dirPath).mkdirs()
+                onEntry(entryName, null)
                 continue
             }
 
@@ -236,13 +267,7 @@ internal object NativeZipCodec {
                 throw IllegalStateException("NativeZipCodec: CRC mismatch for $entryName")
             }
 
-            // 6. 写入文件 (父目录不存在则递归创建)
-            val destPath = destDir + "/" + entryName
-            val parentDir = destPath.substringBeforeLast('/')
-            if (parentDir.isNotEmpty()) {
-                File(parentDir).mkdirs()
-            }
-            File(destPath).writeBytes(entryData)
+            onEntry(entryName, entryData)
         }
     }
 
@@ -622,7 +647,7 @@ internal object NativeZipCodec {
     private val CRC_TABLE = IntArray(256) { i ->
         var c = i
         repeat(8) {
-            c = if (c and 1 != 0) 0xEDB88320 xor (c ushr 1) else c ushr 1
+            c = if (c and 1 != 0) 0xEDB88320.toInt() xor (c ushr 1) else c ushr 1
         }
         c
     }

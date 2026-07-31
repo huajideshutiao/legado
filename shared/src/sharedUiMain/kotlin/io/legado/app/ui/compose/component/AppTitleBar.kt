@@ -20,6 +20,7 @@ import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -149,7 +150,7 @@ fun AppSearchField(
         modifier
             .fillMaxWidth()
             .padding(end = 8.dp)
-            .height(32.dp) // arco_view_height_default
+            .height(DesignTokens.viewHeightDefault)
             .clip(DesignTokens.shapeDefault)
             .border(DesignTokens.strokeHairline, fillStroke, DesignTokens.shapeDefault)
             .background(fillStroke)
@@ -199,14 +200,19 @@ fun AppSearchField(
     }
 }
 
-/** TitleBar 溢出菜单：竖点图标 + 展开的 DropdownMenu，项由调用方填充。 */
+/** TitleBar 溢出菜单：竖点图标 + 展开的 DropdownMenu，项由调用方填充。
+ *
+ *  @param onExpandedChange 展开/收起状态回调 (供调用方感知弹层遮挡, 如桌面端 airspace 窗口)
+ */
 @Composable
 fun OverflowMenu(
     modifier: Modifier = Modifier,
+    onExpandedChange: (Boolean) -> Unit = {},
     content: @Composable ColumnScope.(dismiss: () -> Unit) -> Unit,
 ) {
     val colors = AppTheme.colors
     var expanded by remember { mutableStateOf(false) }
+    LaunchedEffect(expanded) { onExpandedChange(expanded) }
     Box(modifier) {
         IconButton(onClick = { expanded = true }) {
             Icon(

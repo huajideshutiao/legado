@@ -45,7 +45,6 @@ import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.SelectActionBar
-import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -339,7 +338,8 @@ private fun SortItem(
 ) {
     val colors = AppTheme.colors
     DropdownMenuItem(onClick = { onClick(value) }) {
-        Text(text, color = colors.primaryText, modifier = Modifier.weight(1f))
+        Text(text, color = colors.primaryText)
+        Spacer(Modifier.width(12.dp))
         AppMenuCheckbox(checked = current == value)
     }
 }
@@ -348,7 +348,8 @@ private fun SortItem(
 private fun CheckDropdownItem(text: String, checked: Boolean, onClick: () -> Unit) {
     val colors = AppTheme.colors
     DropdownMenuItem(onClick = onClick) {
-        Text(text, color = colors.primaryText, modifier = Modifier.weight(1f))
+        Text(text, color = colors.primaryText)
+        Spacer(Modifier.width(12.dp))
         AppMenuCheckbox(checked = checked)
     }
 }

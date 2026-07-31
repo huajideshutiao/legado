@@ -77,6 +77,7 @@ import io.legado.app.ui.bookshelf.BookshelfScreen
 import io.legado.app.ui.bookshelf.BookshelfViewModel
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.bookshelf.ShelfScrollState
+import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
@@ -116,6 +117,8 @@ import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -591,7 +594,7 @@ private fun HomeCoverRow(
             ) {
                 // 封面: 走 LocalBookCoverSlot (与书架/探索页一致)
                 LocalBookCoverSlot.current(
-                    book.toBook(),
+                    book.toCoverBook(),
                     Modifier
                         .fillMaxWidth()
                         .height(coverHeight),
@@ -690,7 +693,7 @@ private fun HomeRankItem(
         }
         // 封面固定 70dp 高 (对照 XML iv_cover height=70dp), 恒 NOVEL 比例
         Box(Modifier.height(70.dp).padding(start = if (showRank) 8.dp else 0.dp)) {
-            LocalBookCoverSlot.current(book.toBook(), Modifier.fillMaxHeight(), false)
+            LocalBookCoverSlot.current(book.toCoverBook(), Modifier.fillMaxHeight(), false)
         }
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Text(
@@ -747,7 +750,7 @@ private fun HomeInfiniteGridCard(
         Column(Modifier.fillMaxWidth()) {
             // 封面: 走 LocalBookCoverSlot (与书架/探索页一致)
             LocalBookCoverSlot.current(
-                book.toBook(),
+                book.toCoverBook(),
                 Modifier
                     .fillMaxWidth()
                     .padding(start = 12.dp, top = 12.dp, end = 12.dp)
@@ -794,7 +797,10 @@ private fun BookshelfTabContent(
     val groups by viewModel.bookGroups.collectAsState()
     var manageableGroups by remember { mutableStateOf<List<BookGroup>>(emptyList()) }
     LaunchedEffect(Unit) {
-        AppDbProviders.get().bookGroupDao.flowAll().collect { manageableGroups = it }
+        AppDbProviders.get().bookGroupDao.flowAll()
+            .distinctUntilChanged()
+            .conflate()
+            .collect { manageableGroups = it }
     }
     // 对照 BookshelfManageRoute: GroupViewModelShared 持久化分组增删改
     val groupVm = remember(scope) { GroupViewModelShared(scope) }
@@ -807,6 +813,7 @@ private fun BookshelfTabContent(
 
     val callbacks = remember(navigator) {
         BookshelfActionsCallbacks(
+            onRefresh = { viewModel.upToc() },
             onAddLocalBook = { navigator.push(AppRoute.ImportBook()) },
             onAddRemoteBook = { navigator.push(AppRoute.RemoteBook) },
             onShowAddBookByUrlAlert = { showAddByUrl = true },
@@ -1109,8 +1116,6 @@ private fun MyTabContent(navigator: AppNavigator) {
             onBookmark = { navigator.push(AppRoute.Bookmark()) },
             onReadRecord = { navigator.push(AppRoute.ReadRecord) },
             onAbout = { navigator.push(AppRoute.About) },
-            showRssEntry = true,
-            onRssSources = { navigator.push(AppRoute.RssSources) },
         )
     }
 

@@ -151,7 +151,7 @@ fun TxtTocRuleEditDialog(
             Regex(tocRule.rule, RegexOption.MULTILINE)
         } catch (ex: Exception) {
             AppLog.put(
-                "$regexErrorText：${ex.localizedMessage}",
+                "$regexErrorText：${ex.message}",
                 ex,
                 true,
             )

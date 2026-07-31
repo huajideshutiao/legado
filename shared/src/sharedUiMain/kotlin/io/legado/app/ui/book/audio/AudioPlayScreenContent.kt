@@ -80,6 +80,7 @@ import legado.shared.generated.resources.speed
 import legado.shared.generated.resources.stop
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import io.legado.app.utils.format
 
 /**
  * 音频播放页主体内容 (模糊封面背景 + 遮罩 + 标题栏 + 副标题 + 封面/歌词区 + 进度条 + 播放控制排)。
@@ -389,11 +390,6 @@ private fun AudioPlayOverflowMenu(actions: AudioPlayOverflowActions) {
             AudioOverflowItem("copy_play_url") {
                 dismiss()
                 actions.onCopyAudioUrl()
-            }
-            // 浏览器打开播放 URL (对照 PlatformCapabilities.openExternalUrl)
-            AudioOverflowItem("open_in_browser") {
-                dismiss()
-                actions.onOpenAudioUrl()
             }
             AudioOverflowItem("set_source_variable") {
                 dismiss()

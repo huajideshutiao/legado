@@ -8,6 +8,7 @@ import io.legado.app.constant.BookSourceType
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.RuleBigDataProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.model.script.JsEngines
@@ -273,4 +274,29 @@ fun tryParesExportFileName(jsStr: String): Boolean {
         JsEngines.get().eval(jsStr, bindings)
         true
     }.getOrDefault(false)
+}
+
+/**
+ * 迁移旧的书籍的一些信息到新的书籍中 (换源用)。
+ *
+ * 原 app 端 BookExtensions.kt, 两个依赖已先行下沉 (BookHelp.getDurChapter →
+ * [BookHelpChapterLocator], ContentProcessor → [ContentProcessorProviders]), 故整体下沉。
+ */
+fun Book.migrateTo(newBook: Book, toc: List<BookChapter>): Book {
+    newBook.durChapterIndex = BookHelpChapterLocator
+        .getDurChapter(durChapterIndex, durChapterTitle, toc, totalChapterNum)
+    newBook.durChapterTitle = toc[newBook.durChapterIndex].getDisplayTitle(
+        ContentProcessorProviders.get().getTitleReplaceRules(newBook),
+        getUseReplaceRule()
+    )
+    newBook.durChapterPos = durChapterPos
+    newBook.durChapterTime = durChapterTime
+    newBook.group = group
+    newBook.order = order
+    newBook.customCoverUrl = customCoverUrl
+    newBook.customIntro = customIntro
+    newBook.customTag = customTag
+    newBook.canUpdate = canUpdate
+    newBook.readConfig = readConfig
+    return newBook
 }

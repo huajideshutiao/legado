@@ -16,8 +16,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
@@ -67,7 +67,7 @@ fun WaitDialogContent(
 /**
  * 加载等待对话框 (KMP 共享, desktop / iOS 直接复用)。
  *
- * 用 [androidx.compose.ui.window.Dialog] 包裹 [WaitDialogContent], 提供声明式 API:
+ * 用 [AppDialog] 包裹 [WaitDialogContent], 提供声明式 API:
  * - `dismissOnClickOutside = false` 对齐 app 端 `setCanceledOnTouchOutside(false)`
  * - `dismissOnBackPress = true` 对齐 app 端默认返回键关闭
  *
@@ -86,7 +86,7 @@ fun WaitDialog(
 ) {
     if (!visible) return
     // 原版特例: 转圈小窗不走 AppDialogSizes 的 0.9 屏宽钳制, 保持内容自适应
-    Dialog(
+    AppDialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(
             dismissOnBackPress = true,

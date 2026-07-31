@@ -11,6 +11,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalClipboardManager
 import io.legado.app.constant.BookSourceType
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.IntentData
+import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.config.HelpVersion
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.LocalConfigShared
@@ -29,6 +31,7 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
@@ -168,9 +171,11 @@ fun BookSourceEditRoute(
                 })
             },
             onDebug = {
-                // 对照 app 端 debugSource: viewModel.save(getSource()) { startActivity<BookSourceDebugActivity> }
+                // 对照 app 端 debugSource: viewModel.save(getSource()) { startActivity<BookSourceDebugActivity> { IntentData.source = source } }
+                // 传编辑器内存对象而非只传 url: 调试页优先用它, 保证调的是当前编辑结果
                 val source = screenModel.getSource(editState)
                 screenModel.dispatch(BookSourceEditUiEvent.Save(source) { saved ->
+                    IntentData.source = saved
                     navigator.push(AppRoute.BookSourceDebug(saved.bookSourceUrl))
                 })
             },
@@ -178,7 +183,18 @@ fun BookSourceEditRoute(
                 // 对照 app 端 login: viewModel.save(getSource()) { source.showLoginDialog(this) }
                 val source = screenModel.getSource(editState)
                 screenModel.dispatch(BookSourceEditUiEvent.Save(source) { saved ->
-                    PlatformCapabilityProviders.getOrNull()?.showBookSourceLogin(saved)
+                    if (saved.loginUi.isNullOrEmpty()) {
+                        // URL 登录: 对照原版 showLoginDialog 的 WebViewActivity 分支, 开登录页
+                        PlatformCapabilityProviders.getOrNull()?.showBookSourceLogin(saved)
+                    } else {
+                        // 表单登录: 对照原版 showDialogFragment<SourceLoginDialog>, Overlay 弹对话框
+                        navigator.showOverlay(
+                            AppOverlay.Dialog(
+                                key = "sourceLogin",
+                                payload = SourceLoginContext.put(saved),
+                            )
+                        )
+                    }
                 })
             },
             onSearch = {

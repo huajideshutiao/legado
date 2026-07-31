@@ -1,5 +1,6 @@
 package io.legado.desktop.help.storage
 
+import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.storage.BackupRestoreHook
@@ -29,6 +30,12 @@ object DesktopBackupRestoreHook : BackupRestoreHook {
         runCatching { Toasters.get().toast(jvmGetString("restore_success")) }
     }
 
+    /** 备份收尾: 上传阅读背景图 (逻辑已下沉 [AppWebDavShared.upBgs], 桌面端直接复用)。 */
+    override suspend fun onBackupFinished(uploadToWebDav: Boolean) {
+        if (!uploadToWebDav) return
+        runCatching { AppWebDavShared.upBgs() }
+    }
+
     // 与 app 端 LocalConfig.lastBackup 同 key, 桌面端落 PreferenceProvider
     private fun markLastBackup() {
         runCatching {
@@ -39,7 +46,6 @@ object DesktopBackupRestoreHook : BackupRestoreHook {
 
     // onThemeConfigRestored 用接口默认实现: 默认已调 ThemeConfigProviders.get().upConfig(),
     // 桌面端注册的是 FileThemeConfigProvider, 恢复后主题列表会自动重载。
-    // onBackupFinished 保持空: 上传阅读背景图依赖 app 端 AppWebDav.upBgs (未下沉)。
 }
 
 /** 桌面宿主启动早期注册一次 (任何备份/恢复之前)。 */

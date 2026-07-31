@@ -60,7 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSwitch
@@ -191,7 +191,7 @@ fun ReadAloudDialog(
     // 拖动中的语速预览值 (与原版 AppSlider 拖动语义对齐: 拖动中仅刷新显示, 抬手回调)
     var draggingSpeed by remember { mutableFloatStateOf(-1f) }
 
-    Dialog(
+    AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
@@ -273,15 +273,11 @@ fun ReadAloudDialog(
                     )
                     // 滑条 0..180 分钟 (与原版 AppSlider(value=timer, max=180) 对齐)
                     // 用 material.Slider (Float) 替代 AppSlider (Int), 因为 AppSlider 没有 Float 重载
+                    // 拖动中只刷显示, 抬手才落定时 (与原版 onValueChangeFinished 一致, 免每帧重启计时器)
                     Slider(
                         value = timer.toFloat(),
-                        onValueChange = {
-                            val newTimer = it.toInt().coerceIn(0, 180)
-                            if (newTimer != timer) {
-                                timer = newTimer
-                                onSetTimer(timer)
-                            }
-                        },
+                        onValueChange = { timer = it.toInt().coerceIn(0, 180) },
+                        onValueChangeFinished = { onSetTimer(timer) },
                         valueRange = 0f..180f,
                         colors = SliderDefaults.colors(
                             thumbColor = DesignTokens.arcoBlue6,

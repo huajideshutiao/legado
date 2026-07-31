@@ -35,7 +35,7 @@ object NativeVerificationUiProvider : VerificationUiProvider {
         title: String,
         saveResult: Boolean?,
         refetchAfterSuccess: Boolean?,
-        asBottomSheet: Boolean = false,
+        asBottomSheet: Boolean,
     ) {
         // native 暂无 BottomSheet 容器, asBottomSheet 降级为普通打开 (忽略半屏语义)
         if (saveResult == true) {

@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
@@ -38,6 +39,7 @@ import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,6 +66,7 @@ import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
+import kotlinx.coroutines.delay
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.delete
 import legado.shared.generated.resources.edit
@@ -218,6 +221,7 @@ fun ExploreScreen(
     onBack: (() -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
+    val eInk = LocalEInk.current
     Column(Modifier.fillMaxSize().background(colors.background)) {
         ExploreTitleBar(
             searchKey = state.searchKey,
@@ -254,8 +258,40 @@ fun ExploreScreen(
                     ExploreSourceItem(state, actions, item, expanded = state.expandedUrl == item.bookSourceUrl)
                 }
             }
+            // 展开后内容过高: 等展开动画结束, 把该项推到列表顶部尽量显示
+            // (对照 origin/master ExploreAdapter.ensureExpandedItemVisible)
+            LaunchedEffect(state.expandedUrl, state.expandedKinds[state.expandedUrl]) {
+                val url = state.expandedUrl ?: return@LaunchedEffect
+                if (state.expandedKinds[url] == null) return@LaunchedEffect
+                val listState = state.listState
+                // eInk 无展开动画, 等一帧读布局; 普通模式等动画跑完 (动画期间高度在变)
+                if (eInk) delay(32L) else delay(EXPAND_DURATION_MS + 32L)
+                ensureExpandedItemVisible(listState, url)
+            }
         }
     }
+}
+
+/**
+ * 展开完成后按需平滑滚动，让展开项尽量完整可见 (对照 origin/master ExploreAdapter.ensureExpandedItemVisible)。
+ * 优先策略：底部超出 → 让标题贴顶（但不会把标题滚到顶部以上）；
+ *           顶部被切 → 把标题拉回到顶部；
+ *           其他情况不动。
+ */
+private suspend fun ensureExpandedItemVisible(listState: LazyListState, url: String) {
+    val layoutInfo = listState.layoutInfo
+    val info = layoutInfo.visibleItemsInfo.firstOrNull { it.key == url } ?: return
+    val viewportTop = layoutInfo.viewportStartOffset
+    val viewportBottom = layoutInfo.viewportEndOffset
+    val viewTop = info.offset - viewportTop
+    val viewBottom = viewTop + info.size
+
+    val dy = when {
+        viewBottom > viewportBottom -> viewTop.coerceAtLeast(0)
+        viewTop < 0 -> viewTop
+        else -> 0
+    }
+    if (dy != 0) listState.animateScrollBy(dy.toFloat())
 }
 
 /** 收藏区 (替原 flexbox header): 标题 + 收藏项流式标签, 长按删除。 */

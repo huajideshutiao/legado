@@ -1,11 +1,9 @@
 package io.legado.app.ui.main.home
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -25,9 +23,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import io.legado.app.constant.EventBus
 import io.legado.app.help.HomeTabHelpShared
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
@@ -73,56 +71,53 @@ fun HomeTabManageDialog(onDismiss: () -> Unit) {
         }
     }
 
-    Dialog(
+    AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
-        Box(Modifier.fillMaxSize()) {
-            // 全高型: 高度锁定 0.8 屏高
-            Surface(
-                modifier = Modifier
-                    .appDialogSize(fullHeight = true)
-                    .align(Alignment.Center),
-                shape = DesignTokens.shapeDefault,
-                color = colors.fillet,
-            ) {
-                RuleManageScaffold(
-                    items = tabs,
-                    itemKey = { it.title },
-                    onMove = { from, to ->
-                        tabs = tabs.toMutableList().apply { add(to, removeAt(from)) }
-                    },
-                    titleBar = {
-                        DialogTitleBar(
-                            title = stringResource(Res.string.home_tab_manage),
-                            onBack = onDismiss,
-                            actions = {
-                                IconButton(onClick = { addingTab = true }) {
-                                    Icon(
-                                        painter = painterResource(Res.drawable.ic_add),
-                                        contentDescription = stringResource(Res.string.home_tab_add),
-                                        tint = colors.primaryText,
-                                    )
-                                }
-                            },
-                        )
-                    },
-                ) { item ->
-                    HomeManageItem(
-                        title = item.title,
-                        desc = stringResource(
-                            Res.string.home_tab_section_count,
-                            item.sections.size,
-                        ),
-                        actionText = stringResource(Res.string.edit),
-                        onClick = { openSectionsOf = item.title },
-                        onAction = { editingTab = item.title },
-                        onPersistOrder = {
-                            HomeTabHelpShared.saveTabsOrder(tabs)
-                            postEvent(EventBus.HOME_TAB, HomeTabEvent(HomeTabEvent.REORDER))
+        // 不能套 fillMaxSize: 撑满窗口会让整窗都算"框内", 点外部永远关不掉; 居中由 RootMeasurePolicy 负责。
+        // 全高型: 高度锁定 0.8 屏高
+        Surface(
+            modifier = Modifier.appDialogSize(fullHeight = true),
+            shape = DesignTokens.shapeDefault,
+            color = colors.fillet,
+        ) {
+            RuleManageScaffold(
+                items = tabs,
+                itemKey = { it.title },
+                onMove = { from, to ->
+                    tabs = tabs.toMutableList().apply { add(to, removeAt(from)) }
+                },
+                titleBar = {
+                    DialogTitleBar(
+                        title = stringResource(Res.string.home_tab_manage),
+                        onBack = onDismiss,
+                        actions = {
+                            IconButton(onClick = { addingTab = true }) {
+                                Icon(
+                                    painter = painterResource(Res.drawable.ic_add),
+                                    contentDescription = stringResource(Res.string.home_tab_add),
+                                    tint = colors.primaryText,
+                                )
+                            }
                         },
                     )
-                }
+                },
+            ) { item ->
+                HomeManageItem(
+                    title = item.title,
+                    desc = stringResource(
+                        Res.string.home_tab_section_count,
+                        item.sections.size,
+                    ),
+                    actionText = stringResource(Res.string.edit),
+                    onClick = { openSectionsOf = item.title },
+                    onAction = { editingTab = item.title },
+                    onPersistOrder = {
+                        HomeTabHelpShared.saveTabsOrder(tabs)
+                        postEvent(EventBus.HOME_TAB, HomeTabEvent(HomeTabEvent.REORDER))
+                    },
+                )
             }
         }
     }

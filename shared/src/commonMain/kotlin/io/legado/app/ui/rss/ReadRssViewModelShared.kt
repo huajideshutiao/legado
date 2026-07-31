@@ -75,7 +75,7 @@ class ReadRssViewModelShared(
      * 可重复调用 (顶栏刷新按钮触发)。
      *
      * @param book RSS 源对应的 Book (type 含 BookType.rss 位)
-     * @param chapterIndex 章节 index (对应 RssArticlesScreen 点击回调)
+     * @param chapterIndex 章节 index (文章在章节列表中的位置)
      */
     fun loadContent(book: Book, chapterIndex: Int) {
         _state.value = ReadRssUiState.Loading

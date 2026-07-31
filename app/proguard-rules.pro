@@ -57,7 +57,7 @@
 ############################
 # 业务：JS 引擎调用的 Java 类
 ############################
--keep class * extends io.legado.app.help.JsExtensions { *; }
+-keep class * extends io.legado.app.help.JsExtensionsJvm { *; }
 
 ############################
 # 业务：数据实体（Gson 反射 + Room + JS 访问）

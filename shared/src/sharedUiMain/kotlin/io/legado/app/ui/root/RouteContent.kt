@@ -40,8 +40,6 @@ import io.legado.app.ui.route.ReplaceEditRoute
 import io.legado.app.ui.route.ReplaceRuleRoute
 import io.legado.app.ui.route.ReviewListRoute
 import io.legado.app.ui.route.ReviewPostRoute
-import io.legado.app.ui.route.RssArticlesRoute
-import io.legado.app.ui.route.RssSourcesRoute
 import io.legado.app.ui.route.RuleSubRoute
 import io.legado.app.ui.route.SearchContentRoute
 import io.legado.app.ui.route.SearchRoute
@@ -271,16 +269,6 @@ fun RouteContent(
 
         is AppRoute.MangaReader -> {
             MangaReaderRoute(entry, navigator, screenModelStore)
-            true
-        }
-
-        is AppRoute.RssSources -> {
-            RssSourcesRoute(entry, navigator, screenModelStore)
-            true
-        }
-
-        is AppRoute.RssArticles -> {
-            RssArticlesRoute(entry, navigator, screenModelStore)
             true
         }
 

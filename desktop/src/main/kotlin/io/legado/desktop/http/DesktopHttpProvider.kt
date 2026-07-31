@@ -1,10 +1,11 @@
 package io.legado.desktop.http
 
 import io.legado.app.constant.AppConst
+import io.legado.app.help.UserAgentProviders
 import io.legado.app.help.http.CookieJarBridgeHolder
 import io.legado.app.help.http.DecompressInterceptor
-import io.legado.app.help.http.OkHttpExceptionInterceptor
 import io.legado.app.help.http.OkHttpClientProvider
+import io.legado.app.help.http.OkHttpExceptionInterceptor
 import io.legado.app.help.http.OkHttpProxyClientProvider
 import io.legado.app.help.http.OkhttpUncaughtExceptionHandler
 import io.legado.app.help.http.SSLHelper
@@ -24,7 +25,9 @@ import java.util.concurrent.TimeUnit
  *
  * 参考 [io.legado.app.help.http.okHttpClient] 的构造逻辑, 桌面端裁剪:
  * - 不挂 Cronet 拦截器 (Cronet 是 Android 专属);
- * - 不挂 Glide ProgressManager 包装 (桌面无 Glide);
+ * - 不挂 ProgressResponseBody 进度包装: 唯一消费方是 app 端漫画阅读器 MangaPageImageView,
+ *   桌面端无 ProgressManager.addListener 调用, 包上去每个响应都是白付一次 map 查询;
+ *   若将来桌面漫画要显示单页下载进度, 需先把 ProgressResponseBody 下沉到 shared;
  * - cookieJar 通过 [CookieJarBridgeHolder] 注入桥接, 未注册则跳过 (桌面端可注册 [DesktopCookieJarBridge] 内存版);
  * - SSL/超时/重试/重定向/拦截器 (异常/头注入/解压) 与 Android 端语义一致。
  *
@@ -33,7 +36,11 @@ import java.util.concurrent.TimeUnit
  * - [OkHttpProxyClientProvider]: 暴露 [getProxyClient] 工厂 + 缓存。
  */
 class DesktopHttpProvider(
-    private val userAgent: String = DEFAULT_UA,
+    /**
+     * 每次请求现取, 对照 app 端拦截器内直接读 `AppConfig.userAgent`:
+     * 用户在设置里改 UA 后立即生效, 不需要重启 (构造期常量化会锁死旧值)。
+     */
+    private val userAgent: () -> String = { UserAgentProviders.impl?.get() ?: DEFAULT_UA },
 ) : OkHttpClientProvider, OkHttpProxyClientProvider {
 
     override val okHttpClient: OkHttpClient by lazy { createOkHttpClient() }
@@ -109,7 +116,7 @@ class DesktopHttpProvider(
                 var request = chain.request()
                 val builder = request.newBuilder()
                 if (request.header(AppConst.UA_NAME) == null) {
-                    builder.addHeader(AppConst.UA_NAME, userAgent)
+                    builder.addHeader(AppConst.UA_NAME, userAgent())
                 } else if (request.header(AppConst.UA_NAME) == "null") {
                     builder.removeHeader(AppConst.UA_NAME)
                 }

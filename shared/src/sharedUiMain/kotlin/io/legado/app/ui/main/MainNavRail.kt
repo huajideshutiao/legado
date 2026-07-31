@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
@@ -27,7 +26,6 @@ private val MainNavRailWidth = 72.dp
  * 图标/标签/配色/E-Ink 处理与底栏完全一致 (共用 [MainNavItem] + [rememberMainNavColors]),
  * 仅排列方向由横改竖、E-Ink 分割线由顶边改右边、insets 由底部改左侧。
  *
- * @param itemHeight 单项高度 dp (取底栏高度 AppConfig.bottomBarHeight, 保持项内比例一致)
  */
 @Composable
 fun MainNavRail(
@@ -36,7 +34,6 @@ fun MainNavRail(
     onSelect: (Int) -> Unit,
     onReselect: (String) -> Unit,
     iconSize: Int,
-    itemHeight: Int,
     labelMode: Int,
 ) {
     val colors = rememberMainNavColors()
@@ -59,7 +56,8 @@ fun MainNavRail(
                     iconSize = iconSize,
                     colors = colors,
                     onClick = { if (selected) onReselect(tag) else onSelect(index) },
-                    modifier = Modifier.fillMaxWidth().height(itemHeight.dp),
+                    // 竖直均分 (对称于底栏的 weight 均分宽度), 固定高度会让项全挤在顶部
+                    modifier = Modifier.fillMaxWidth().weight(1f),
                 )
             }
         }

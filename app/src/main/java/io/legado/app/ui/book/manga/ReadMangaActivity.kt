@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,8 +60,10 @@ import io.legado.app.ui.book.manga.entities.BaseMangaPage
 import io.legado.app.ui.book.manga.entities.MangaPage
 import io.legado.app.ui.book.manga.render.INFO_BAR_ALIGN_CENTER
 import io.legado.app.ui.book.manga.render.MangaInfoBar
+import io.legado.app.ui.book.manga.render.MangaPageCell
 import io.legado.app.ui.book.manga.render.MangaRenderLayer
 import io.legado.app.ui.book.manga.render.MangaRenderState
+import io.legado.app.ui.book.manga.render.installCoilPreloader
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.book.read.config.ClickActionConfigDialog
 import io.legado.app.ui.book.read.config.ClickArea
@@ -197,8 +200,14 @@ class ReadMangaActivity : BaseComposeActivity(), IBottomDialog,
                 }
         }
         Box(Modifier.fillMaxSize()) {
-            MangaRenderLayer(renderState)
-            if (infoBarVisible) {
+            // 渲染层已下沉 shared, app 只注入 Coil3 预加载器与 ImageView 图片单元格
+            val context = LocalContext.current
+            renderState.installCoilPreloader(context)
+            MangaRenderLayer(renderState) { item, index ->
+                MangaPageCell(renderState, item, index)
+            }
+            // 加载中不显示信息条 (原版 infobar 只在加载完成分支置可见)
+            if (infoBarVisible && !loadingViewVisible) {
                 MangaInfoBar(
                     text = infoBarText,
                     alignment = infoBarAlignment,
@@ -284,9 +293,7 @@ class ReadMangaActivity : BaseComposeActivity(), IBottomDialog,
             showLoading()
         }
         viewModel.startLoadLiveData.observe(this) {
-            // 原版在跨章且下一章尚未加载时展示章末加载状态；Compose 版没有独立 footer，
-            // 至少保留全屏加载反馈，避免用户翻到空白页后没有任何响应。
-            showLoading()
+            // 原版为章末 footer 加载条; Compose 无 footer, 切章不遮内容, 保留原内容等新章就绪
         }
         viewModel.syncProgressLiveData.observe(this) {
             sureNewProgress(it)

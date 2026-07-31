@@ -416,10 +416,11 @@ class ReadAloudControllerShared(
      * - 同步写入 [SystemTtsEngine.speechRate] (引擎 var 属性, 立即生效)
      * - 更新 [_speechRate] StateFlow, 触发 UI 滑杆重组
      *
-     * @param rate 目标语速倍率 (会被 coerceIn 到 0.5..2.0)
+     * @param rate 目标语速倍率 (会被 coerceIn 到 0.5..5.0, 对齐原版
+     *   `(AppConfig.ttsSpeechRate + 5) / 10f` 与 seekBar 0..45 的取值域)
      */
     fun setSpeechRate(rate: Float) {
-        val clamped = rate.coerceIn(0.5f, 2.0f)
+        val clamped = rate.coerceIn(0.5f, 5.0f)
         _speechRate.value = clamped
         // 同步到当前引擎实例 (朗读中下一段 speak 即生效, 无需等 start/resume)
         engineProvider()?.speechRate = clamped

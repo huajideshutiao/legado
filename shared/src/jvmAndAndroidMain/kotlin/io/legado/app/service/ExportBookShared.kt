@@ -1,6 +1,7 @@
 package io.legado.app.service
 
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.lib.epublib.domain.Author
 import io.legado.app.lib.epublib.domain.Date
 import io.legado.app.lib.epublib.domain.EpubBook
@@ -191,6 +192,44 @@ interface ExportBookDeps : ExportBookContentDeps {
      * @param filename 文件名
      */
     suspend fun exportToWebDav(uri: String, filename: String)
+
+    // ==================== EPUB/CBZ 导出 (ExportBookEpubShared) 平台依赖 ====================
+
+    /**
+     * 生成分割导出文件名 (对应 Book.getExportFileName(suffix, index))。
+     */
+    fun getExportFileName(book: Book, suffix: String, index: Int): String
+
+    /**
+     * 封面图片字节 (JPEG, 对应 app 端 `setCover` 的 Coil3 链路:
+     * 先查磁盘缓存, 没有再下载解码压缩), null = 无封面。
+     */
+    suspend fun getCoverImageBytes(book: Book): ByteArray?
+
+    /**
+     * 内置 epub 模板资源 (对应 app 端 `appCtx.assets.open(assetPath)`,
+     * 如 "epub/fonts.css" / "epub/chapter.html")。
+     */
+    fun getBuiltinAsset(assetPath: String): ByteArray
+
+    /**
+     * 外部模板目录条目 (导出目录下 "Asset" 目录的内容), null = 无 Asset 模板目录。
+     *
+     * 对应 app 端 `FileDoc.fromDir(dirPath).find("Asset")?.list()`:
+     * 条目一层子目录 (Text 目录), 子目录内再一层文件, 不递归更深。
+     */
+    fun listTemplateFiles(dirPath: String): List<ExportBookEpubShared.TemplateFileInfo>?
+
+    /**
+     * 标题替换规则 (对应 `ContentProcessor.get(book.name, book.origin).getTitleReplaceRules()`)。
+     */
+    fun getTitleReplaceRules(book: Book): List<ReplaceRule>
+
+    /** 封面章节名 (对应 R.string.img_cover)。 */
+    fun strImgCover(): String
+
+    /** 简介章节名 (对应 R.string.book_intro)。 */
+    fun strBookIntro(): String
 }
 
 /**

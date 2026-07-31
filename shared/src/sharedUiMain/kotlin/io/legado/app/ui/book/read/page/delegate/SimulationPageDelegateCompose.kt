@@ -1,5 +1,8 @@
 package io.legado.app.ui.book.read.page.delegate
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -67,9 +70,6 @@ class SimulationPageDelegateCompose(
     // 不让 x,y 为 0，否则在点计算时会有问题
     private var mTouchX = 0.1f
     private var mTouchY = 0.1f
-
-    // 触摸起点 Y（基类 PageDelegateCompose 只有 startX，Simulation 需要垂直方向判定）
-    private var startY: Float = 0f
 
     // 拖拽点对应的页脚
     private var mCornerX = 1
@@ -317,7 +317,6 @@ class SimulationPageDelegateCompose(
 
     override fun onDown(x: Float, y: Float) {
         super.onDown(x, y)
-        startY = y
         // 与 app 端 SimulationPageDelegate.onTouch ACTION_DOWN 对应
         calcCornerXY(x, y)
     }
@@ -361,21 +360,57 @@ class SimulationPageDelegateCompose(
         }
     }
 
+    /**
+     * 与 app 端 `SimulationPageDelegate.onAnimStart` 对应。
+     *
+     * 仿真翻页的曲面由触摸点 [touchX]/[touchY] 决定（[calcPoints]），所以动画驱动的是
+     * **触摸点本身**（原版 `startScroll(touchX, touchY, dx, dy)` + `computeScroll` 里
+     * `setTouchPoint(scroller.currX, currY)`），而不是基类的单轴页面偏移。
+     * `_currentOffset` 仍同步推进：它是唯一的 Compose state，负责触发每帧重组。
+     */
     override fun onAnimStart(animationSpeed: Int) {
         if (!isMoved || mDirection == PageDirectionShared.NONE) return
-        // 与 app 端 SimulationPageDelegate.onAnimStart 的 dx/dy 计算对应
-        // 这里仅计算目标偏移，实际动画由基类 animateOffsetTo 驱动
         isStarted = true
         isRunning = true
-        val target = when {
+        // dx/dy 逐行照搬原版
+        var dx: Float
+        val dy: Float
+        if (isCancel) {
+            dx = if (mCornerX > 0 && mDirection == PageDirectionShared.NEXT) {
+                viewWidth - touchX
+            } else {
+                -touchX
+            }
+            if (mDirection != PageDirectionShared.NEXT) {
+                dx = -(viewWidth + touchX)
+            }
+            dy = if (mCornerY > 0) viewHeight - touchY else -touchY
+        } else {
+            dx = if (mCornerX > 0 && mDirection == PageDirectionShared.NEXT) {
+                -(viewWidth + touchX)
+            } else {
+                viewWidth - touchX
+            }
+            // 防止 touchY 最终变为 0
+            dy = if (mCornerY > 0) viewHeight - touchY else 1 - touchY
+        }
+        val fromX = touchX
+        val fromY = touchY
+        val fromOffset = _currentOffset
+        val toOffset = when {
             isCancel -> 0f
             mDirection == PageDirectionShared.NEXT -> -viewWidth.toFloat()
-            mDirection == PageDirectionShared.PREV -> viewWidth.toFloat()
-            else -> 0f
+            else -> viewWidth.toFloat()
         }
+        val duration = if (animationSpeed <= 0) this.animationSpeed else animationSpeed
         animJob?.cancel()
         animJob = scope.launch {
-            animateOffsetTo(target, animationSpeed)
+            Animatable(0f).animateTo(1f, tween(duration, easing = FastOutSlowInEasing)) {
+                touchX = fromX + dx * value
+                touchY = fromY + dy * value
+                _currentOffset = fromOffset + (toOffset - fromOffset) * value
+            }
+            onAnimStop()
         }
     }
 

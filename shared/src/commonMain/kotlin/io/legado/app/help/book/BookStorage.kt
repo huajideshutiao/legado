@@ -13,12 +13,15 @@ import kotlin.concurrent.Volatile
  * 读写相关方法, 供桌面 JVM / iOS / 鸿蒙 commonMain 业务调用。
  *
  * 实现注册:
- * - Android: app 端启动早期调用 [BookStorageProviders.register] 注入委托给
- *   [io.legado.app.help.book.BookHelp] 的实现 (本任务不涉及, 后续任务做)。
+ * - Android: app 端启动早期调用 [BookStorageProviders.register] 注入
+ *   [io.legado.app.help.book.AndroidBookStorage] (委托 [io.legado.app.help.book.BookHelp])。
  * - 桌面 JVM: desktop 模块启动时注入 [io.legado.app.help.book.JvmBookStorage]
  *   (java.nio.file.Path 实现)。
  * - iOS / 鸿蒙: 共用 nativeMain [io.legado.app.help.book.NativeBookStorage]
  *   (`kotlin.io.File` 实现)。
+ *
+ * 缓存清理编排 (clearInvalidCache/clearInvalidBookFolders) 三端统一委托
+ * [io.legado.app.help.book.BookHelpShared] (淘汰算法下沉 commonMain)。
  *
  * 模式参考 [io.legado.app.help.config.AppConfigProviders] /
  * [io.legado.app.help.book.BookHelpProviders]。

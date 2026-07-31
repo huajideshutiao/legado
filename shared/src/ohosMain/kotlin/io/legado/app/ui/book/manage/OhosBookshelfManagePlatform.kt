@@ -1,30 +1,13 @@
 package io.legado.app.ui.book.manage
 
 import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookChapter
-import io.legado.app.help.book.BookHelpChapterLocator
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.LocalBookLocators
 
-// 鸿蒙书架管理平台实现: 复用 commonMain 的 BookStorageProviders/LocalBookLocators/BookHelpChapterLocator
+// 鸿蒙书架管理平台实现: 复用 commonMain 的 BookStorageProviders/LocalBookLocators
 class OhosBookshelfManagePlatform : BookshelfManagePlatform {
 
-    // 迁移旧书进度/分组/自定义字段到新书 (对照 app 端 Book.migrateTo)
-    override fun migrateBook(oldBook: Book, newBook: Book, toc: List<BookChapter>): Book {
-        val newIndex = BookHelpChapterLocator.getDurChapter(oldBook, toc)
-        newBook.durChapterIndex = newIndex
-        newBook.durChapterTitle = toc.getOrNull(newIndex)?.title ?: oldBook.durChapterTitle
-        newBook.durChapterPos = oldBook.durChapterPos
-        newBook.durChapterTime = oldBook.durChapterTime
-        newBook.group = oldBook.group
-        newBook.order = oldBook.order
-        newBook.customCoverUrl = oldBook.customCoverUrl
-        newBook.customIntro = oldBook.customIntro
-        newBook.customTag = oldBook.customTag
-        newBook.canUpdate = oldBook.canUpdate
-        newBook.readConfig = oldBook.readConfig
-        return newBook
-    }
+    // migrateBook 用接口默认实现 (直接调下沉后的 Book.migrateTo), 不再自写简化版
 
     // 清除书籍章节缓存: 委托 BookStorageProviders (OhosBookStorage 实现)
     override fun clearCache(book: Book) {

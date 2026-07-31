@@ -17,6 +17,8 @@ import androidx.compose.ui.graphics.Color
 import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.help.IntentData
+import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
@@ -69,7 +71,8 @@ fun AudioPlayRoute(
     screenModelStore: ScreenModelStore,
 ) {
     val route = entry.route as AppRoute.AudioPlay
-    val book = route.book.asBook()
+    // asBook() 每次 copy() 新实例, remember(route) 固定后 LaunchedEffect(book) 只在换路由时重启
+    val book = remember(route) { route.book.asBook() }
 
     val screenModel = screenModelStore.getOrCreateTyped(entry) { AudioPlayScreenModel() }
     val state by screenModel.state.collectAsState()
@@ -169,19 +172,18 @@ fun AudioPlayRoute(
         hasLogin = source?.hasLogin() == true,
         onLogin = {
             // 对照 BookInfoRoute/MainRoute: 跳 shared LoginRoute, 不走平台专属 showBookSourceLogin
-            source?.let { navigator.push(AppRoute.Login(it.bookSourceUrl)) }
+            // 带上书与当前章, 供登录 JS 绑定 (对照原版 menu_login 预置 IntentData.book/chapter)
+            source?.let {
+                val dataKey = SourceLoginContext.put(
+                    it, AudioPlayShared.book, AudioPlayShared.durChapter
+                )
+                navigator.push(AppRoute.Login(it.bookSourceUrl, dataKey))
+            }
         },
         onCopyAudioUrl = {
             val url = AudioPlayShared.durPlayUrl
             if (url.isNotEmpty()) {
                 PlatformCapabilityProviders.getOrNull()?.copyToClipboard(url)
-            }
-        },
-        onOpenAudioUrl = {
-            // 浏览器打开播放 URL (对照 PlatformCapabilities.openExternalUrl)
-            val url = AudioPlayShared.durPlayUrl
-            if (url.isNotEmpty()) {
-                PlatformCapabilityProviders.getOrNull()?.openExternalUrl(url)
             }
         },
         onSetSourceVariable = {
@@ -234,6 +236,8 @@ fun AudioPlayRoute(
             )
         },
         onOpenToc = {
+            // 对照 app 端 AudioPlayActivity.openChapterList: 未加书架的书目录不落库, 走内存传递
+            IntentData.chapterList = AudioPlayShared.chapterList
             navigator.push(AppRoute.Toc(book.toRouteRef()), resultKey = RouteResults.TOC)
         },
         onOpenBookSourceEdit = { sourceUrl ->

@@ -6,23 +6,29 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.getDisplayTitle
 import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.CacheBookShared
 import io.legado.app.model.ReadBookShared
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.read.ReadBookViewModelShared.LayoutConfig.Companion.DEFAULT
 import io.legado.app.ui.book.read.page.PageDelegateShared
 import io.legado.app.ui.book.read.page.entities.TextChapterShared
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.provider.ChapterContentParserShared
+import io.legado.app.ui.book.read.page.provider.ImageResolver
 import io.legado.app.ui.book.read.page.provider.ImageResolverProviders
+import io.legado.app.ui.book.read.page.provider.ParsedParagraph
 import io.legado.app.ui.book.read.page.provider.SimpleChapterLayout
 import io.legado.app.ui.book.read.page.provider.SimpleTextMeasurer
 import io.legado.app.ui.book.read.page.provider.TextMeasurerProviders
@@ -46,6 +52,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.withContext
 import kotlin.math.min
 
 /**
@@ -62,12 +69,9 @@ import kotlin.math.min
  * - 用 [BookStorageProviders.get].getContent 读本地章节缓存正文，与 app 端
  *   `BookHelp.getContent` 等价；桌面端需在 Main.kt 注册 `JvmBookStorage`。
  *
- * 持有 [pageDelegate] 引用：[PageDelegateShared] 接口（commonMain 平台无关 API）+
- * [io.legado.app.ui.book.read.page.delegate.PageDelegate] 抽象基类（sharedUiMain
- * Compose 渲染入口）由 actual 平台注入。KP2-D 已实现 [io.legado.app.ui.book.read.page.delegate.CoverPageDelegate]
- * / [io.legado.app.ui.book.read.page.delegate.SlidePageDelegate] / [io.legado.app.ui.book.read.page.delegate.SimulationPageDelegate]
- * / [io.legado.app.ui.book.read.page.delegate.ScrollPageDelegate] / [io.legado.app.ui.book.read.page.delegate.NoAnimPageDelegate]
- * 五种翻页 delegate，覆盖 app 端全部翻页模式。
+ * 持有 [pageDelegate] 引用：[PageDelegateShared] 接口（commonMain 平台无关 API），
+ * 实例由 sharedUiMain 的 `rememberPageDelegate` 按 `ReadBookConfig.pageAnim` 创建，
+ * 覆盖 app 端全部五种翻页模式。
  *
  * @param readBook 跨平台阅读状态承载类（已下沉 commonMain）
  * @param scope 协程作用域，actual 平台注入（Android=viewModelScope / 桌面=应用主作用域）
@@ -108,20 +112,17 @@ class ReadBookViewModelShared(
     private var pageIndex: Int = 0
 
     /**
-     * 翻页动画委托，由 actual 平台注入 [PageDelegateShared]（或其子类）实现。
+     * 翻页动画委托。
      *
-     * KP2-D：桌面端注入 [io.legado.app.ui.book.read.page.delegate.CoverPageDelegate]
-     * / [io.legado.app.ui.book.read.page.delegate.SlidePageDelegate]
-     * / [io.legado.app.ui.book.read.page.delegate.SimulationPageDelegate]
-     * / [io.legado.app.ui.book.read.page.delegate.ScrollPageDelegate]
-     * / [io.legado.app.ui.book.read.page.delegate.NoAnimPageDelegate]
-     * （Compose Animatable + Modifier.offset 实现各种翻页动画）。
+     * 由 [io.legado.app.ui.book.read.page.delegate.rememberPageDelegate] 按
+     * `ReadBookConfig.pageAnim` 创建并写入（对照 app 端 `ReadView.upPageAnim`），
+     * 覆盖 Cover / Slide / Simulation / Scroll / NoAnim 五种模式；阅读页离开组合时置回 null。
      *
-     * 默认 null：未注入时 [io.legado.app.ui.book.read.page.ReadViewComposable] 不绘制动画层，
-     * 仅支持点击翻页（[nextPage] / [prevPage] 同步切换 TextPage 状态）。
+     * 这里存的是 commonMain 接口引用，供快捷键翻页等非 Compose 入口
+     * （[io.legado.app.ui.book.read.page.turnPage]）复用；Compose 渲染入口在
+     * [io.legado.app.ui.book.read.page.delegate.PageDelegateCompose] 上。
      *
-     * 章节边界联动（KP2-D P0-5）：[nextPage] / [prevPage] 返回 false 时由调用方
-     * （[io.legado.app.ui.book.read.page.delegate.PageDelegate.onAnimStop] 等）
+     * 章节边界联动：[nextPage] / [prevPage] 返回 false 时由委托的 `onAnimStop`
      * 调 [moveToNextChapter] / [moveToPrevChapter] 切章。
      */
     var pageDelegate: PageDelegateShared? = null
@@ -142,6 +143,10 @@ class ReadBookViewModelShared(
     /** 段评数按 chapter.index 复用；与 app ReadBook.reviewCountDeferred 生命周期一致。 */
     private val reviewCountDeferred = mutableMapOf<Int, Deferred<Map<Int, Int>?>>()
     private var reviewCountBookUrl: String? = null
+
+    // 缓存已处理的章节内容，视口变化时只重排版不重新下载/处理
+    private val processedContentCache = mutableMapOf<Int, ProcessedChapterContent>()
+    private var processedContentBookUrl: String? = null
     // endregion
 
     // region readBook 状态对外暴露 (readBook 私有, 桌面端 TTS Navigator 等外部消费者通过本区域访问)
@@ -178,7 +183,24 @@ class ReadBookViewModelShared(
     /** 当前章节阅读位置 (委托 readBook.durChapterPos), 供书签记录 */
     val durChapterPos: StateFlow<Int> get() = readBook.durChapterPos
 
+    /**
+     * 跳到章内字符位置并刷新页面流。
+     *
+     * 对照 app 端 ReadBookActivity 的 TTS_PROGRESS 观察者
+     * (`ReadBook.durChapterPos = chapterStart` + upContent): 朗读推进到某段时把阅读位置
+     * 拉到该段, 跨页时页面流随之翻页。
+     */
+    fun updateReadPosition(pos: Int) {
+        readBook.updateDurChapterPos(pos)
+        syncPageFlows()
+    }
+
     // endregion
+
+    init {
+        // 朗读宿主等非 Compose 消费者经 ActiveReadBookRegistry 取当前阅读 ViewModel
+        ActiveReadBookRegistry.attachViewModel(this)
+    }
 
     /**
      * 推入新排版配置并按新参数重排（对照原版 `ChapterProvider.upStyle` / `upViewSize` 后
@@ -195,16 +217,32 @@ class ReadBookViewModelShared(
     /**
      * 三章滑窗按当前排版参数重排：durChapterPos 不动，排版完成后
      * [applyCurChapterPages] 按字符位置回到原页（对照原版 resetPageOffset=false 的保进度语义）。
+     *
+     * 优先复用已缓存的正文处理结果（ContentProcessor + ChapterContentParserShared），
+     * 只重跑排版（SimpleChapterLayout.layout），避免窗口大小变化时重新下载/解析正文。
      */
     fun relayoutCurrentChapter() {
         if (readBook.book.value == null) return
         val index = readBook.durChapterIndex.value
-        readBook.clearTextChapter()
+        val bookUrl = readBook.book.value?.bookUrl
+        // 书籍切换时清空缓存
+        if (processedContentBookUrl != bookUrl) {
+            processedContentCache.clear()
+            processedContentBookUrl = bookUrl
+        }
         for (i in intArrayOf(index, index + 1, index - 1)) {
-            launchChapterLoad(i) {
-                // 上一轮任务被 cancel 后其 finally 可能迟到，先清守卫免得本次装载被挡
-                removeLoading(i)
-                loadContent(i)
+            val cached = processedContentCache[i]
+            if (cached != null) {
+                // 复用已处理内容，只重排版
+                launchChapterLoad(i) {
+                    removeLoading(i)
+                    relayoutFromCache(i, cached)
+                }
+            } else {
+                launchChapterLoad(i) {
+                    removeLoading(i)
+                    loadContent(i)
+                }
             }
         }
     }
@@ -215,6 +253,7 @@ class ReadBookViewModelShared(
     fun refreshCurrentChapter() {
         val book = readBook.book.value ?: return
         val index = readBook.durChapterIndex.value
+        processedContentCache.remove(index)
         launchChapterLoad(index) {
             val chapter = runCatching {
                 AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)
@@ -239,16 +278,26 @@ class ReadBookViewModelShared(
             clearExpiredChapterLoadingJobs(clearAll = true)
             reviewCountBookUrl = currentBookUrl
         }
+        // 书籍切换时清空已处理内容缓存
+        if (processedContentBookUrl != currentBookUrl) {
+            processedContentCache.clear()
+            processedContentBookUrl = currentBookUrl
+        }
         launchChapterLoad(index) {
             // 1. 同步 shared 状态字段（callback 通知）
             readBook.loadChapter(index)
 
-            // 2. 读章节列表（与 app 端 `appDb.bookChapterDao.getChapterList` 等价简化版）
+            // 2. 章节列表：内存优先，内存没有再查库。
+            // 未加入书架的书按原版语义不落库（BaseReadViewModel.loadChapterList 的 inBookshelf 守卫），
+            // 章节只存在于内存，无条件用查库结果覆盖会把它清成空目录。
             val book = readBook.book.value ?: return@launchChapterLoad
-            val chapterList: List<BookChapter> = runCatching {
-                AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
-            }.getOrDefault(emptyList())
-            readBook.updateChapterList(chapterList)
+            var chapterList: List<BookChapter> =
+                readBook.chapterList.value.takeIf { it.firstOrNull()?.bookUrl == book.bookUrl }
+                    ?: runCatching {
+                        AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
+                    }.onFailure {
+                        AppLog.put("读取目录失败\n${it.message}", it)
+                    }.getOrDefault(emptyList()).also { readBook.updateChapterList(it) }
 
             // 3. 书源解析缓存（对照 app 端 ReadBook.upWebBook，本地书为 null；upToc/预下载复用）
             if (book.isLocal) {
@@ -259,6 +308,12 @@ class ReadBookViewModelShared(
                         AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
                     }.getOrNull()
                 )
+            }
+
+            if (chapterList.isEmpty()) {
+                // 内存和库都没有目录：回源重解析（对照 app 端 BaseReadViewModel.upBook 的
+                // `!inBookshelf || totalChapterNum == 0 || 库里查空` → loadChapterList 分支）
+                chapterList = loadChapterListFromSource(book)
             }
 
             if (chapterList.getOrNull(index) == null) {
@@ -288,6 +343,43 @@ class ReadBookViewModelShared(
             launchChapterLoad(index + 1) { loadContent(index + 1) }
             launchChapterLoad(index - 1) { loadContent(index - 1) }
         }
+    }
+
+    /**
+     * 回源重新解析目录（对照 app 端 `ReadBookViewModel.loadChapterListAwait`）：
+     * 未加入书架的书只更新内存章节表，不落库（与原版 inBookshelf 守卫一致，也避免外键失败）。
+     */
+    private suspend fun loadChapterListFromSource(book: Book): List<BookChapter> {
+        val oldBook = book.copy()
+        val list: List<BookChapter> = try {
+            if (book.isLocal) {
+                withContext(IoDispatcher) { FileBook.getChapterList(book) }
+            } else {
+                val source = readBook.bookSource.value ?: return emptyList()
+                WebBook.getChapterListAwait(source, book, true).getOrThrow()
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AppLog.put("获取目录失败\n${e.message}", e)
+            return emptyList()
+        }
+        if (!book.isNotShelf) {
+            runCatching {
+                val appDb = AppDbProviders.get()
+                // runPreUpdateJs 有可能改掉 bookUrl，此时按新 url 迁移书与缓存目录
+                if (oldBook.bookUrl == book.bookUrl) {
+                    appDb.bookDao.update(book)
+                } else {
+                    appDb.bookDao.replace(oldBook, book)
+                    BookStorageProviders.get().updateCacheFolder(oldBook, book)
+                }
+                appDb.bookChapterDao.delByBook(oldBook.bookUrl)
+                appDb.bookChapterDao.insert(*list.toTypedArray())
+            }.onFailure { AppLog.put("目录落库失败\n${it.message}", it) }
+        }
+        readBook.updateChapterList(list)
+        return list
     }
 
     /**
@@ -451,6 +543,10 @@ class ReadBookViewModelShared(
         val parsedParagraphs = ChapterContentParserShared.parse(bookContent)
         // 原版排版开始时只非阻塞读取已完成的 Deferred；未完成则先按无段评排版，保证即开即用。
         val reviewCountMap = countDeferred?.takeIf { it.isCompleted }?.await()
+        // 图片解析器只创建一次，首次排版和 resize 重排共用
+        val imageResolver = ImageResolverProviders.createOrNull(
+            book, chapter, readBook.bookSource.value,
+        )
         val pages = buildLayout().layout(
             displayTitle = displayTitle,
             contents = bookContent.textList,
@@ -458,10 +554,7 @@ class ReadBookViewModelShared(
             chapterSize = readBook.chapterSize,
             reviewCountMap = reviewCountMap,
             parsedParagraphs = parsedParagraphs,
-            // 内嵌图片：解析器由平台注册（sharedUiMain ReaderImageResolver），未注册时跳过图片行
-            imageResolver = ImageResolverProviders.createOrNull(
-                book, chapter, readBook.bookSource.value,
-            ),
+            imageResolver = imageResolver,
             imageStyle = book.config.imageStyle,
         )
         val textChapter = TextChapterShared(
@@ -471,6 +564,16 @@ class ReadBookViewModelShared(
             effectiveReplaceRules = bookContent.effectiveReplaceRules,
         )
         pages.forEach { it.textChapter = textChapter }
+        // 缓存已处理内容，视口变化时只重排版
+        processedContentCache[chapter.index] = ProcessedChapterContent(
+            chapter = chapter,
+            displayTitle = displayTitle,
+            textList = bookContent.textList,
+            parsedParagraphs = parsedParagraphs,
+            effectiveReplaceRules = bookContent.effectiveReplaceRules,
+            reviewCountMap = reviewCountMap,
+            imageResolver = imageResolver,
+        )
         // 排版期间可能已切章，以最新 durChapterIndex 归位滑窗（原版 when(offset) 三分支，超窗丢弃）
         when (val offset = chapter.index - readBook.durChapterIndex.value) {
             0 -> {
@@ -478,6 +581,46 @@ class ReadBookViewModelShared(
                 applyCurChapterPages(textChapter)
                 scheduleReviewRelayoutIfNeeded(countDeferred, chapter, textChapter)
             }
+            -1, 1 -> readBook.updateTextChapter(offset, textChapter)
+        }
+    }
+
+    /**
+     * 复用已缓存的处理结果只重排版（视口大小变化时调用，跳过下载/ContentProcessor/解析/JS执行）。
+     * 纯 UI 重排：复用 imageResolver（其内部 sizes 缓存避免重复网络请求），跳过 preDownload。
+     */
+    private suspend fun relayoutFromCache(index: Int, cached: ProcessedChapterContent) {
+        if (index !in readBook.durChapterIndex.value - 1..readBook.durChapterIndex.value + 1) return
+        val book = readBook.book.value ?: return
+        val pages = buildLayout().layout(
+            displayTitle = cached.displayTitle,
+            contents = cached.textList,
+            chapterIndex = index,
+            chapterSize = readBook.chapterSize,
+            reviewCountMap = cached.reviewCountMap,
+            parsedParagraphs = cached.parsedParagraphs,
+            imageResolver = cached.imageResolver,
+            imageStyle = book.config.imageStyle,
+        )
+        val textChapter = TextChapterShared(
+            chapterIndex = index,
+            pages = pages,
+            reviewCountApplied = cached.reviewCountMap != null,
+            effectiveReplaceRules = cached.effectiveReplaceRules,
+        )
+        pages.forEach { it.textChapter = textChapter }
+        when (val offset = index - readBook.durChapterIndex.value) {
+            0 -> {
+                readBook.updateTextChapter(offset, textChapter)
+                // 纯 UI 重排：只更新页状态，不触发 preDownload（避免网络请求/JS执行）
+                pageList.clear()
+                pageList.addAll(textChapter.pages)
+                if (readBook.durChapterPos.value == Int.MAX_VALUE) {
+                    readBook.updateDurChapterPos(textChapter.lastReadLength)
+                }
+                syncPageFlows()
+            }
+
             -1, 1 -> readBook.updateTextChapter(offset, textChapter)
         }
     }
@@ -741,6 +884,7 @@ class ReadBookViewModelShared(
      * 走 [progressSyncScope]，UI scope 取消不影响本次落库/上传。
      */
     fun onCleared() {
+        ActiveReadBookRegistry.detachViewModel(this)
         uploadProgress()
         clearExpiredChapterLoadingJobs(clearAll = true)
         reviewCountBookUrl = null
@@ -775,7 +919,8 @@ class ReadBookViewModelShared(
      */
     private fun buildLayout(): SimpleChapterLayout {
         val cfg = _layoutConfig.value
-        val measurer = TextMeasurerProviders.createOrNull(cfg.textSizePx, cfg.letterSpacingPx)
+        val measurer = TextMeasurerProviders
+            .createOrNull(cfg.textSizePx, cfg.letterSpacingPx, cfg.textFontPath)
             ?: SimpleTextMeasurer(
                 textSizePx = cfg.textSizePx,
                 letterSpacingPx = cfg.letterSpacingPx,
@@ -1032,7 +1177,20 @@ class ReadBookViewModelShared(
      * @param textFullJustify 是否两端对齐
      * @param textBottomJustify 是否底部对齐
      * @param useZhLayout 是否启用 ZhLineBreaker 中文避头尾断行
+     * @param textFontPath 自定义正文字体文件路径（= `ReadBookConfig.textFont`，空 = 平台默认字体）；
+     *   度量侧必须与绘制侧 `loadReaderFontFamily` 用同一个文件，否则选字体后正文错位
      */
+    /** 已处理的章节内容缓存（跳过下载/ContentProcessor/解析，只重排版） */
+    private class ProcessedChapterContent(
+        val chapter: BookChapter,
+        val displayTitle: String,
+        val textList: List<String>,
+        val parsedParagraphs: List<ParsedParagraph>,
+        val effectiveReplaceRules: List<ReplaceRule>?,
+        val reviewCountMap: Map<Int, Int>?,
+        val imageResolver: ImageResolver?,
+    )
+
     data class LayoutConfig(
         val viewWidth: Int = 720,
         val viewHeight: Int = 1080,
@@ -1051,6 +1209,7 @@ class ReadBookViewModelShared(
         val textFullJustify: Boolean = true,
         val textBottomJustify: Boolean = false,
         val useZhLayout: Boolean = true,
+        val textFontPath: String = "",
     ) {
         /** 可视区宽度（px，扣除左右内边距） */
         val visibleWidth: Int get() = viewWidth - paddingLeft - paddingRight

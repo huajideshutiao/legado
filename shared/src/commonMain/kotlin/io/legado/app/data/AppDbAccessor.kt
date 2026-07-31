@@ -72,18 +72,6 @@ interface AppDbAccessor {
     val bookmarkDao: BookmarkDao
 
     /**
-     * 在单个 Room 事务中执行 [block] (对应 appDb.runInTransaction)。
-     *
-     * SourceHelp.deleteBookSourcesByKeys 原走 `appDb.runInTransaction { ... }` 包裹
-     * 多个 DAO 写操作 (delete/deleteIn/deleteSourceVariables) 保证原子性, 下沉后
-     * 由 app 端 WebBookProvidersImpl 委托 `appDb.runInTransaction { block() }` 实现,
-     * 行为与原完全一致。
-     *
-     * 注: 本方法接收非 suspend block, 供非 suspend 调用方使用 (内部 DAO 调用需自行 runBlocking)。
-     */
-    fun <R> runInTransaction(block: () -> R): R
-
-    /**
      * suspend 版本的事务执行 (KMP 安全, Native 端无死锁风险)。
      *
      * 供 suspend 调用方使用 (如 [io.legado.app.help.service.UpdateBookShared]),

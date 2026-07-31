@@ -265,7 +265,7 @@ fun ShelfBooksContent(
         }
     }
     // 复刻原 onItemRangeInserted/Moved(0) 的滚顶: 列表模式且停在顶部时, 新的第一项要露出来
-    val firstKey = items.firstOrNull()?.let(::shelfItemKey)
+    val firstKey = remember(items) { items.firstOrNull()?.let(::shelfItemKey) }
     LaunchedEffect(firstKey) {
         if (firstKey != null && spec.tier == ShelfTier.LIST
             && scroll.list.firstVisibleItemIndex <= 1
@@ -451,6 +451,8 @@ fun BookshelfActions(callbacks: BookshelfActionsCallbacks) {
         )
     }
     OverflowMenu { dismiss ->
+        // 刷新: 等价下拉刷新 (onRefresh), 无下拉手势的端 (如桌面) 走此入口
+        ShelfMenuItem("refresh") { dismiss(); callbacks.onRefresh() }
         ShelfMenuItem("force_refresh_book") { dismiss(); callbacks.onRefreshShelf() }
         ShelfMenuItem("book_local") { dismiss(); callbacks.onAddLocalBook() }
         ShelfMenuItem("add_remote_book") { dismiss(); callbacks.onAddRemoteBook() }
@@ -459,20 +461,14 @@ fun BookshelfActions(callbacks: BookshelfActionsCallbacks) {
         ShelfMenuItem("group_manage") { dismiss(); callbacks.onShowGroupManage() }
         ShelfMenuItem("import_bookshelf") { dismiss(); callbacks.onImportBookshelf() }
         ShelfMenuItem("log") { dismiss(); callbacks.onShowAppLog() }
-        // "发现"入口 (仅注入方传入回调时渲染; iOS 端无底部 tab, 由此进入发现页)
-        callbacks.onOpenExplore?.let { open ->
-            ShelfMenuItem("discovery") { dismiss(); open() }
-        }
-        // "我的"入口 (仅注入方传入回调时渲染; iOS 端无底部 tab, 由此进入设置/RSS, 对照 ohos My tab)
-        callbacks.onOpenMyConfig?.let { open ->
-            ShelfMenuItem("my") { dismiss(); open() }
-        }
     }
 }
 
 /** 书架顶栏动作回调集合 (替代 app 端 BaseBookshelfState 的菜单动作方法) */
 data class BookshelfActionsCallbacks(
     val onOpenSearch: () -> Unit = {},
+    /** 刷新 (等价下拉刷新 onRefresh, 无下拉手势的端走菜单入口) */
+    val onRefresh: () -> Unit = {},
     val onRefreshShelf: () -> Unit = {},
     val onAddLocalBook: () -> Unit = {},
     val onAddRemoteBook: () -> Unit = {},
@@ -481,10 +477,6 @@ data class BookshelfActionsCallbacks(
     val onShowGroupManage: () -> Unit = {},
     val onImportBookshelf: () -> Unit = {},
     val onShowAppLog: () -> Unit = {},
-    /** "我的"入口 (null 不渲染菜单项; 无底部 tab 的平台注入, 如 iOS) */
-    val onOpenMyConfig: (() -> Unit)? = null,
-    /** "发现"入口 (null 不渲染菜单项; 无底部 tab 的平台注入, 如 iOS) */
-    val onOpenExplore: (() -> Unit)? = null,
 )
 
 @Composable
@@ -570,6 +562,12 @@ fun ShelfListItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
+    // 搜索页书架命中区复用本条目时按原版 BookAdapter 覆盖书架配置门:
+    // kind/intro/更新时间恒显, flHasNew.gone() 不画未读徽标
+    forceShowKind: Boolean = false,
+    forceShowIntro: Boolean = false,
+    forceShowUpdateTime: Boolean = false,
+    hideUnread: Boolean = false,
     coverSlot: @Composable (Book, Modifier, isVideoCover: Boolean) -> Unit,
     // 更新时间 Text 注入: 父项不感知 timeTick 心跳
     lastUpdateTextSlot: @Composable () -> Unit,
@@ -609,8 +607,12 @@ fun ShelfListItem(
                         strokeWidth = 2.dp,
                         modifier = Modifier.size(26.dp),
                     )
-                } else if (appConfig.showUnread) {
-                    UnreadBadge(book.getUnreadChapterNum(), book.lastCheckCount > 0)
+                } else if (!hideUnread && appConfig.showUnread) {
+                    val unread = remember(
+                        book.durChapterIndex,
+                        book.totalChapterNum
+                    ) { book.getUnreadChapterNum() }
+                    UnreadBadge(unread, book.lastCheckCount > 0)
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -623,11 +625,13 @@ fun ShelfListItem(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f).padding(end = 8.dp),
                 )
-                if (showLastUpdateTime && appConfig.showLastUpdateTime && !book.isLocal) {
+                if (forceShowUpdateTime ||
+                    (showLastUpdateTime && appConfig.showLastUpdateTime && !book.isLocal)
+                ) {
                     lastUpdateTextSlot()
                 }
             }
-            if (showKindIntro && appConfig.bookshelfListShowKind) {
+            if (forceShowKind || (showKindIntro && appConfig.bookshelfListShowKind)) {
                 // 正则切分 + 净化, 别每次重组重算
                 val kinds = remember(book.kind, book.wordCount) { book.getKindList() }
                 if (kinds.isNotEmpty()) KindLabels(kinds)
@@ -656,8 +660,8 @@ fun ShelfListItem(
                     )
                 }
             }
-            if (showKindIntro && appConfig.bookshelfListShowIntro) {
-                val intro = book.getDisplayIntro()
+            if (forceShowIntro || (showKindIntro && appConfig.bookshelfListShowIntro)) {
+                val intro = remember(book.intro, book.author) { book.getDisplayIntro() }
                 if (!intro.isNullOrBlank()) {
                     Text(
                         text = intro,
@@ -730,8 +734,10 @@ fun ShelfGridItem(
                 modifier = Modifier.align(Alignment.TopEnd).size(22.dp),
             )
         } else if (appConfig.showUnread) {
+            val unread =
+                remember(book.durChapterIndex, book.totalChapterNum) { book.getUnreadChapterNum() }
             UnreadBadge(
-                count = book.getUnreadChapterNum(),
+                count = unread,
                 highlight = book.lastCheckCount > 0,
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 4.dp, end = 4.dp),
             )

@@ -35,7 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.AppScrollTabRow
@@ -101,7 +101,7 @@ fun VariableDialog(
     // 当前选中的 Tab (0=源变量, 1=书籍变量)
     var selectedTab by remember { mutableStateOf(0) }
 
-    Dialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
+    AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
         Surface(
             shape = DesignTokens.dialogShape,
             color = colors.background,

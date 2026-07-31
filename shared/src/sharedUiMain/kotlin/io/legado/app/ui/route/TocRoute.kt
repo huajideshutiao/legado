@@ -15,6 +15,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.about.AppLogDialog
@@ -34,7 +35,7 @@ import io.legado.app.ui.root.asBook
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.launch
-import kotlinx.serialization.encodeToString
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
 /**
@@ -48,7 +49,8 @@ fun TocRoute(
     screenModelStore: ScreenModelStore,
 ) {
     val route = entry.route as AppRoute.Toc
-    val book = route.book.asBook()
+    // asBook() 每次 copy() 新实例, remember(route) 固定后 LaunchedEffect(book) 只在换路由时重启
+    val book = remember(route) { route.book.asBook() }
     val scope = rememberCoroutineScope()
     val screenModel = screenModelStore.getOrCreateTyped(entry) {
         TocScreenModel(getChapterFiles = { b ->
@@ -158,19 +160,24 @@ fun TocRoute(
             }
 
             // 导出书签 JSON: 平台文件选择器 + BackupFileOps 写文件 (对照 viewModel.saveBookmark)
+            // scope 是 rememberCoroutineScope (主线程调度), 选择器与写文件都得切 IO
             override fun exportBookmark() {
                 val curBook = screenModel.state.value.book ?: return
                 scope.launch {
                     try {
-                        val path = PlatformServiceProviders.get().files.saveFile(
-                            "bookmark-${curBook.name} ${curBook.author}.json"
-                        ) ?: return@launch
-                        val bookmarks = AppDbProviders.get().bookmarkDao
-                            .getByBook(curBook.name, curBook.author)
-                        BackupFileOps.writeText(path, Json.encodeToString(bookmarks))
+                        val path = withContext(IoDispatcher) {
+                            PlatformServiceProviders.get().files.saveFile(
+                                "bookmark-${curBook.name} ${curBook.author}.json"
+                            )
+                        } ?: return@launch
+                        withContext(IoDispatcher) {
+                            val bookmarks = AppDbProviders.get().bookmarkDao
+                                .getByBook(curBook.name, curBook.author)
+                            BackupFileOps.writeText(path, Json.encodeToString(bookmarks))
+                        }
                         Toasters.get().toast("导出成功")
                     } catch (e: Throwable) {
-                        AppLog.put("导出失败\n${e.localizedMessage}", e, true)
+                        AppLog.put("导出失败\n${e.message}", e, true)
                     }
                 }
             }
@@ -180,21 +187,25 @@ fun TocRoute(
                 val curBook = screenModel.state.value.book ?: return
                 scope.launch {
                     try {
-                        val path = PlatformServiceProviders.get().files.saveFile(
-                            "bookmark-${curBook.name} ${curBook.author}.md"
-                        ) ?: return@launch
-                        val sb = StringBuilder()
-                        sb.append("## ${curBook.name} ${curBook.author}\n\n")
-                        AppDbProviders.get().bookmarkDao
-                            .getByBook(curBook.name, curBook.author).forEach {
-                                sb.append("#### ${it.chapterName}\n\n")
-                                sb.append("###### 原文\n ${it.bookText}\n\n")
-                                sb.append("###### 摘要\n ${it.content}\n\n")
-                            }
-                        BackupFileOps.writeText(path, sb.toString())
+                        val path = withContext(IoDispatcher) {
+                            PlatformServiceProviders.get().files.saveFile(
+                                "bookmark-${curBook.name} ${curBook.author}.md"
+                            )
+                        } ?: return@launch
+                        withContext(IoDispatcher) {
+                            val sb = StringBuilder()
+                            sb.append("## ${curBook.name} ${curBook.author}\n\n")
+                            AppDbProviders.get().bookmarkDao
+                                .getByBook(curBook.name, curBook.author).forEach {
+                                    sb.append("#### ${it.chapterName}\n\n")
+                                    sb.append("###### 原文\n ${it.bookText}\n\n")
+                                    sb.append("###### 摘要\n ${it.content}\n\n")
+                                }
+                            BackupFileOps.writeText(path, sb.toString())
+                        }
                         Toasters.get().toast("导出成功")
                     } catch (e: Throwable) {
-                        AppLog.put("导出失败\n${e.localizedMessage}", e, true)
+                        AppLog.put("导出失败\n${e.message}", e, true)
                     }
                 }
             }
@@ -227,11 +238,6 @@ fun TocRoute(
             // 弹出书签编辑对话框 (shared BookmarkDialog)
             override fun editBookmark(bookmark: Bookmark, pos: Int) {
                 editingBookmark = bookmark
-            }
-
-            // 章节长按 Toast (对照 app 端 longToastOnUi)
-            override fun onChapterLongClick(title: String) {
-                Toasters.get().toastLong(title)
             }
         }
     }

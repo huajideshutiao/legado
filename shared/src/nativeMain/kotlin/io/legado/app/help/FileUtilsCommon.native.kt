@@ -1,5 +1,6 @@
 package io.legado.app.help
 
+import io.legado.app.exception.SecurityException
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.utils.File
 
@@ -145,5 +146,30 @@ internal actual object FileUtilsCommon {
         } catch (_: Exception) {
             false
         }
+    }
+
+    actual fun listSubDirs(path: String): List<String> {
+        val dir = File(path)
+        if (!dir.isDirectory) return emptyList()
+        return dir.listFiles()?.filter { it.isDirectory }?.map { it.absolutePath } ?: emptyList()
+    }
+
+    actual fun getDirSize(path: String): Long {
+        val file = File(path)
+        if (!file.exists()) return 0L
+        if (file.isFile) return file.length()
+        var size = 0L
+        file.walkTopDown().forEach { if (it.isFile) size += it.length() }
+        return size
+    }
+
+    actual fun lastModified(path: String): Long {
+        val file = File(path)
+        return if (file.exists()) file.lastModified() else 0L
+    }
+
+    actual fun getName(path: String): String {
+        val idx = maxOf(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+        return if (idx >= 0) path.substring(idx + 1) else path
     }
 }

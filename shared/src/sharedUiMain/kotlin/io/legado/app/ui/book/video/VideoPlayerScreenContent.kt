@@ -30,6 +30,7 @@ import androidx.compose.material.AlertDialog
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
 import androidx.compose.material.RadioButton
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
@@ -66,8 +67,14 @@ import io.legado.app.ui.compose.platform.handleMediaKeys
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.utils.format
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.full_screen
+import legado.shared.generated.resources.ic_fast_forward
+import legado.shared.generated.resources.ic_fast_rewind
+import legado.shared.generated.resources.ic_fullscreen_enter
+import legado.shared.generated.resources.ic_fullscreen_exit
 import legado.shared.generated.resources.ic_skip_next
 import legado.shared.generated.resources.ic_skip_previous
 import legado.shared.generated.resources.loading
@@ -154,14 +161,15 @@ fun VideoPlayerScreenContent(
             .background(containerColor)
             // 键盘快捷键: 消费共享 handleMediaKeys
             // (Space=播放/暂停, ←/→=seek ∓10s, 长按 →=2x 倍速, ↑/↓=上/下一章;
-            //  Esc/Backspace 控制层可见先收控制层, 否则返回)
+            //  Esc/Backspace 走 Route onBack 多层级返回, 对齐安卓端 onBackPressedDispatcher:
+            //  全屏→退出全屏 / 否则返回)
             .handleMediaKeys(
                 onTogglePlayPause = onPlayPause,
                 onSeekDelta = onSeekDelta,
                 onPrev = onPrevChapter,
                 onNext = onNextChapter,
                 onSpeedChange = onSpeedChange,
-                onBack = { if (controlsVisible) onToggleControls() else onBack() },
+                onBack = onBack,
                 scope = scope,
             )
             .focusRequester(keyFocusRequester)
@@ -281,6 +289,12 @@ fun VideoControlsOverlay(
     onSeekDragStateChange: (Boolean) -> Unit = {},
     centerControls: @Composable (BoxScope.() -> Unit)? = null,
     leadingContent: @Composable (BoxScope.() -> Unit) = {},
+    // 系统级全屏 (对照 app toggleOrientationFullscreen: 隐藏系统底栏/窗口装饰);
+    // 与右上角菜单的窗口内全屏 (onToggleFullScreen) 区分
+    isSystemFullScreen: Boolean = false,
+    onToggleSystemFullScreen: () -> Unit = {},
+    // 是否在底部控制栏渲染系统级全屏按钮 (desktop 传 true, app 用 trailingBottomContent 自行注入)
+    showSystemFullScreenButton: Boolean = false,
     trailingBottomContent: @Composable (RowScope.() -> Unit) = {},
     enterTransition: EnterTransition = fadeIn(),
     exitTransition: ExitTransition = fadeOut(),
@@ -358,12 +372,23 @@ fun VideoControlsOverlay(
                         currentSpeedColor = accentColor,
                         otherSpeedColor = secondaryTextColor,
                     )
-                    if (hasMultiResolution) {
-                        ResolutionButton(
-                            resolutions = resolutions,
-                            currentResolutionIndex = currentResolutionIndex,
-                            onSwitchResolution = onSwitchResolution,
-                        )
+                    ResolutionButton(
+                        resolutions = resolutions,
+                        currentResolutionIndex = currentResolutionIndex,
+                        onSwitchResolution = onSwitchResolution,
+                    )
+                    // 系统级全屏按钮 (desktop 传 showSystemFullScreenButton=true; app 用 trailingBottomContent)
+                    if (showSystemFullScreenButton) {
+                        IconButton(onClick = onToggleSystemFullScreen) {
+                            Icon(
+                                painter = painterResource(
+                                    if (isSystemFullScreen) Res.drawable.ic_fullscreen_exit
+                                    else Res.drawable.ic_fullscreen_enter
+                                ),
+                                contentDescription = stringResource(Res.string.full_screen),
+                                tint = Color.White,
+                            )
+                        }
                     }
                     trailingBottomContent()
                 }
@@ -391,10 +416,11 @@ fun VideoCenterControls(
     onPlayPause: () -> Unit,
     onSeekForward: () -> Unit,
     onNext: () -> Unit,
-    rewindPainter: Painter,
-    forwardPainter: Painter,
     rewindDesc: String,
     forwardDesc: String,
+    // 平台注入 (如 media3 exo_ic_rewind); 默认用 shared 双三角图标
+    rewindPainter: Painter = painterResource(Res.drawable.ic_fast_rewind),
+    forwardPainter: Painter = painterResource(Res.drawable.ic_fast_forward),
     enabledPrev: Boolean = true,
     enabledNext: Boolean = true,
     modifier: Modifier = Modifier,
@@ -707,8 +733,11 @@ fun ResolutionButton(
 }
 
 /** 倍速文字格式 (去尾零 + "X", 如 1X / 1.5X / 0.5X)。 */
-fun speedLabel(speed: Float): String =
-    speed.toBigDecimal().stripTrailingZeros().toPlainString() + "X"
+fun speedLabel(speed: Float): String {
+    // Kotlin/Native 无 BigDecimal, 用 %.2f + 去尾零等价 stripTrailingZeros().toPlainString()
+    val s = "%.2f".format(speed).trimEnd('0').trimEnd('.')
+    return s + "X"
+}
 
 /** 毫秒 → mm:ss / h:mm:ss 时长格式。 */
 fun Long.toDurationTime(): String {
@@ -724,6 +753,8 @@ fun Long.toDurationTime(): String {
 }
 
 // ---- 加载/错误覆盖层 ----
+// 注: 由平台渲染槽按自己的状态调用, 本文件不自动叠加 —— 播放器是否就绪只有平台层知道
+// (desktop 未装 mpv 时要出安装引导, 盖上通用 loading 就永远转圈)。
 
 @Composable
 fun LoadingOverlay() {

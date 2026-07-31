@@ -22,8 +22,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.AppTextButton
@@ -47,9 +47,9 @@ import org.jetbrains.compose.resources.stringResource
  * BaseComposeDialogFragment / Bundle / GSON / appDb 的依赖, 改为纯 @Composable + 回调形式:
  * - 展示章节名 (只读), 编辑书签原文 (bookText) 和备注内容 (content)
  * - 编辑态 (showDelete=true) 露出删除按钮, 调用 [onDelete]
- * - 确认时把修改后的 bookmark 通过 [onConfirm] 回传, 调用方负责入库
+ * - 确认时把修改后的 bookmark (新实例) 通过 [onConfirm] 回传, 调用方负责入库
  *
- * @param bookmark 待编辑的书签 (bookText/content 会被修改后通过 onConfirm 回传)
+ * @param bookmark 待编辑的书签 (不被修改, 确认时以 copy 回传)
  * @param showDelete 是否显示删除按钮 (编辑态传 true, 新建态传 false)
  * @param onConfirm 用户点击确定, 参数为更新后的 bookmark
  * @param onDismiss 用户取消 (返回按钮 / 点击对话框外部 / 取消按钮)
@@ -74,7 +74,7 @@ fun BookmarkDialog(
     var bookText by remember { mutableStateOf(bookmark.bookText) }
     var content by remember { mutableStateOf(bookmark.content) }
 
-    Dialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
+    AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
         Surface(
             shape = DesignTokens.dialogShape,
             color = colors.background,
@@ -132,10 +132,8 @@ fun BookmarkDialog(
                     Spacer(Modifier.weight(1f))
                     AppTextButton(text = cancelText, color = colors.secondaryText) { onDismiss() }
                     AppTextButton(text = okText, color = DesignTokens.arcoBlue6) {
-                        // 对齐 app 端: 直接修改 bookmark 的 bookText/content 字段后回传
-                        bookmark.bookText = bookText
-                        bookmark.content = content
-                        onConfirm(bookmark)
+                        // 回传新实例: 原地改字段后引用不变, 调用方 state 判定未变不重组
+                        onConfirm(bookmark.copy(bookText = bookText, content = content))
                     }
                 }
             }

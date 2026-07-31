@@ -257,6 +257,8 @@ object BookCover {
 
     /**
      * suspend 取封面 Bitmap: 通知/PhotoDialog/getCover 用。useDefaultCover 或空路径回退默认封面。
+     * 不改写 diskCacheKey: 对照原版 `ImageLoader.loadBitmap` 无 `signature("covers")`, 写临时区;
+     * 读时 MultiDiskCache 会回查持久区, 书架书仍能命中。
      */
     suspend fun loadCoverBitmap(
         context: Context,
@@ -272,7 +274,6 @@ object BookCover {
         val request = ImageRequest.Builder(context as PlatformContext)
             .data(path)
             .sourceOrigin(sourceOrigin)
-            .bookshelfCoverCache(path)
             .build()
         val result = loader.execute(request)
         return if (result is SuccessResult) {

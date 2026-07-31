@@ -2,29 +2,44 @@ package io.legado.desktop.ui.platform
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.CircularProgressIndicator
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil3.PlatformContext
+import coil3.SingletonImageLoader
 import coil3.compose.AsyncImagePainter
+import coil3.compose.rememberAsyncImagePainter
+import coil3.request.CachePolicy
+import coil3.request.ImageRequest
+import coil3.size.Size
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.book.BookImageStorageProviders
-import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.PreferenceProviders
-import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
-import io.legado.app.model.fileBook.FileBook
-import io.legado.app.model.script.runScriptWithContext
+import io.legado.app.help.image.MangaImageBytesLoader
+import io.legado.app.model.manga.MangaModel
 import io.legado.app.ui.book.manga.MangaImageExtractorShared
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
@@ -33,10 +48,8 @@ import io.legado.app.ui.book.manga.config.isNoOp
 import io.legado.app.ui.book.manga.config.toColorMatrix
 import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.GSON
-import io.legado.app.utils.ImageUtils
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.toJson
-import io.legado.desktop.ui.component.rememberCoverPainter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
@@ -51,7 +64,8 @@ import java.io.File
  * - config: 直读 [PreferenceProviders] 同 key PreferKey (与 app 端 AppConfig 同源),
  *   未纳入 [io.legado.app.help.config.AppConfigAccessor] 接口
  * - flowImages: 复用 shared [MangaImageExtractorShared] (与 app 端 BookHelp.flowImages 同一提取逻辑)
- * - Image: Coil3 [rememberCoverPainter] (走共享 SingletonImageLoader, 含防盗链 header/缓存),
+ * - Image: Coil3 [MangaModel] 请求 (走 shared MangaModelFetcher: 图片缓存 + AnalyzeUrl 防盗链
+ *   header + 解密, 与 app 端 MangaPageImageView 同一条链路),
  *   colorFilter 用 Compose [ColorFilter.colorMatrix] (与 app 端 ColorMatrixColorFilter 同矩阵),
  *   grayEnabled 用灰度 ColorMatrix (对照 app 端 Coil3 灰度变换)
  * - toggle/update*: 写回 [PreferenceProviders] 同 key (与 app 端 AppConfig = value 等价)
@@ -68,7 +82,8 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
             preDownloadNum = prefs.getInt(PreferKey.mangaPreDownloadNum, 10),
             syncBookProgressPlus = prefs.getBoolean(PreferKey.syncBookProgressPlus, false),
             horizontal = prefs.getBoolean(PreferKey.enableMangaHorizontalScroll, false),
-            autoPageSpeed = prefs.getInt(PreferKey.mangaAutoPageSpeed, 0),
+            // 默认 3: 对齐 app 端 AppConfig.mangaAutoPageSpeed (0 会让定时翻页退化成空转)
+            autoPageSpeed = prefs.getInt(PreferKey.mangaAutoPageSpeed, 3),
             grayEnabled = prefs.getBoolean(PreferKey.enableMangaGray, false),
             colorFilterConfig = runCatching {
                 GSON.fromJsonObject<MangaColorFilterConfig>(
@@ -76,6 +91,12 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
                 ).getOrNull()
             }.getOrNull() ?: MangaColorFilterConfig(),
             gifAutoNext = prefs.getBoolean(PreferKey.enableMangaGifAutoNext, false),
+            disablePageAnim = prefs.getBoolean(PreferKey.disableMangaPageAnim, false),
+            footerConfig = runCatching {
+                GSON.fromJsonObject<MangaFooterConfig>(
+                    prefs.getString(PreferKey.mangaFooterConfig, "")
+                ).getOrNull()
+            }.getOrNull() ?: MangaFooterConfig(),
         )
 
     // 桌面端无电池概念
@@ -100,22 +121,50 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
         colorFilterConfig: MangaColorFilterConfig,
         grayEnabled: Boolean,
     ) {
-        // 走共享 SingletonImageLoader (防盗链 header/缓存/解密), sourceOrigin 注入书源 header
-        val painter = rememberCoverPainter(url, source?.bookSourceUrl)
+        // 重试计数进 remember key: 变化即重建 ImageRequest, 重新走一次 fetch (对照 app 端 retry())
+        var retryTick by remember(url) { mutableStateOf(0) }
+        val request = remember(url, book, source, retryTick) {
+            ImageRequest.Builder(PlatformContext.INSTANCE)
+                // MangaModel 走 MangaModelFetcher: 图片缓存 + AnalyzeUrl(防盗链 header) + 解密,
+                // 与 app 端同一条链路; 裸 url 直连对需要处理的源必然全失败
+                .data(book?.let { MangaModel(url, it, source) })
+                // 磁盘缓存由 MangaImageBytesLoader 自管, 内存缓存保留 (对照 app 端 MangaPageImageView)
+                .memoryCacheKey(url)
+                .diskCachePolicy(CachePolicy.DISABLED)
+                .size(Size.ORIGINAL)
+                .build()
+        }
+        val painter = rememberAsyncImagePainter(request)
         val state by painter.state.collectAsState()
         // 合并颜色滤镜: colorFilterConfig 矩阵 + 灰度矩阵 (对照 app 端 view.colorFilter + loadPageImage gray)
         val colorFilter = remember(colorFilterConfig, grayEnabled) {
             buildColorFilter(colorFilterConfig, grayEnabled)
         }
-        Box(modifier.background(Color.Black)) {
-            if (state is AsyncImagePainter.State.Success) {
-                Image(
+        Box(modifier.background(Color.Black), contentAlignment = Alignment.Center) {
+            when (state) {
+                is AsyncImagePainter.State.Success -> Image(
                     painter = painter,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     // 横向滚动: FIT_CENTER (等比留白); 纵向滚动: FIT_XY (填满, 对照 app 端 ScaleType.FIT_XY)
                     contentScale = if (horizontal) ContentScale.Fit else ContentScale.FillBounds,
                     colorFilter = colorFilter,
+                )
+                // 对照 app 端 item_book_manga_page: 转圈 / 失败换 "重新加载"
+                is AsyncImagePainter.State.Error -> Text(
+                    text = "重新加载",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { retryTick++ }
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+
+                else -> CircularProgressIndicator(
+                    color = Color.White,
+                    strokeWidth = 4.dp,
+                    modifier = Modifier.size(48.dp),
                 )
             }
         }
@@ -173,10 +222,8 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
     /**
      * 保存图片到 [destPath] (destPath 由 shared 路由经 FileDialogs 保存框取得的绝对路径)。
      *
-     * 对照 app 端 AndroidMangaReaderPlatform: 优先本地图片缓存, 本地书走 FileBook;
-     * 桌面端漫画走 Coil3 直连不落 BookImageStorage 缓存, 故再补一层按书源下载
-     * (AnalyzeUrl + ImageUtils.decode, 同 app 端 BookHelp.saveImage 的取字节链路)。
-     * 落盘后按魔数校正扩展名 (对照 app 端 FileUtils.saveImage 的 getImageExtension)。
+     * 取字节直接复用 [MangaImageBytesLoader] (图片缓存 → 本地书 FileBook → 按书源下载+解密),
+     * 与阅读页同一条链路。落盘后按魔数校正扩展名 (对照 app 端 FileUtils.saveImage)。
      */
     override suspend fun saveImage(
         url: String,
@@ -186,9 +233,7 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
     ): Boolean = withContext(Dispatchers.IO) {
         book ?: return@withContext false
         runCatching {
-            val bytes = readCachedImage(book, url)
-                ?: readLocalBookImage(book, url)
-                ?: downloadImage(url, book, source)
+            val bytes = MangaImageBytesLoader.load(url, book, source, currentCoroutineContext())
                 ?: return@runCatching false
             val dest = File(destPath)
             dest.parentFile?.mkdirs()
@@ -199,29 +244,6 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
             AppLog.put("保存图片出错\n${it.localizedMessage}", it)
             false
         }
-    }
-
-    /** 读本地图片缓存; JvmBookImageStorage 路径仅由 book+url 派生, chapter 只参与签名, 占位即可。 */
-    private fun readCachedImage(book: Book, url: String): ByteArray? = runCatching {
-        val chapter = BookChapter(url = url, bookUrl = book.bookUrl)
-        val path = BookImageStorageProviders.get().getImagePath(book, chapter, url) ?: return null
-        File(path).takeIf { it.isFile }?.readBytes()
-    }.getOrNull()
-
-    /** 本地书 (epub/cbz 等) 内嵌图片, 对照 app 端 BaseReadViewModel.saveImage 的 FileBook 分支。 */
-    private fun readLocalBookImage(book: Book, url: String): ByteArray? {
-        if (!book.isLocal) return null
-        return runCatching { FileBook.getImage(book, url)?.use { it.readBytes() } }.getOrNull()
-    }
-
-    /** 按书源下载并解密, 对照 app 端 BookHelp.saveImage 的 getByteArrayAwait + ImageUtils.decode。 */
-    private suspend fun downloadImage(url: String, book: Book, source: BookSource?): ByteArray? {
-        val bytes = AnalyzeUrlFactories.create(
-            rawUrl = url,
-            source = source,
-            coroutineContext = currentCoroutineContext()
-        ).getByteArrayAwait()
-        return runScriptWithContext { ImageUtils.decode(url, bytes, false, source, book) }
     }
 
     /** 路由建议名恒为 `.jpg`, 与实际格式不符时按魔数改名 (与 app 端一致)。 */
@@ -259,6 +281,28 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
         val enable = !prefs.getBoolean(PreferKey.enableMangaGifAutoNext, false)
         prefs.putBoolean(PreferKey.enableMangaGifAutoNext, enable)
         return enable
+    }
+
+    override fun setPreDownloadNum(num: Int) {
+        prefs.putInt(PreferKey.mangaPreDownloadNum, num)
+    }
+
+    override fun setAutoPageSpeed(speed: Int) {
+        prefs.putInt(PreferKey.mangaAutoPageSpeed, speed)
+    }
+
+    /** 预载到内存缓存: WRITE_ONLY 只写不返回图 (对照 app 端 installCoilPreloader) */
+    override suspend fun preloadImage(url: String, book: Book, source: BookSource?) {
+        runCatching {
+            val request = ImageRequest.Builder(PlatformContext.INSTANCE)
+                .data(MangaModel(url, book, source))
+                .memoryCacheKey(url)
+                .memoryCachePolicy(CachePolicy.WRITE_ONLY)
+                .diskCachePolicy(CachePolicy.DISABLED)
+                .size(Size.ORIGINAL)
+                .build()
+            SingletonImageLoader.get(PlatformContext.INSTANCE).execute(request)
+        }
     }
 
     // 标准 ITU-R BT.601 灰度矩阵 (对照 Coil3 GrayscaleTransformation)

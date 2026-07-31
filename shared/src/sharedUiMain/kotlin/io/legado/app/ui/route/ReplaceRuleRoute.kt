@@ -25,7 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
@@ -34,6 +33,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.association.ImportItemsDialog
 import io.legado.app.ui.association.ImportReplaceRuleItemsVm
 import io.legado.app.ui.association.ImportReplaceRuleViewModelShared
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.AppTextButton
@@ -221,7 +221,7 @@ private fun ReplaceGroupManageDialog(
     // null=列表态, (null, "")=新建, (oldName, value)=编辑
     var editing by remember { mutableStateOf<Pair<String?, String>?>(null) }
 
-    Dialog(
+    AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
@@ -301,12 +301,6 @@ private fun ReplaceGroupManageDialog(
                                 )
                             }
                         }
-                    }
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.End,
-                    ) {
-                        AppTextButton(text = stringResource(Res.string.ok), onClick = onDismiss)
                     }
                 }
             }

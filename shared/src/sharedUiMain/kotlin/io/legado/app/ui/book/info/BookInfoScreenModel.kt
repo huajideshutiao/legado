@@ -77,6 +77,13 @@ class BookInfoScreenModel : ScreenModel {
     )
     val state: StateFlow<BookInfoUiState> = _state.asStateFlow()
 
+    /**
+     * 最近一次解析到的目录（对照 app 端 `BookInfoViewModel.chapterListData`）。
+     * 未加书架的书不落库，跳目录页/阅读页只能靠这份内存章节表。
+     */
+    var loadedChapterList: List<BookChapter>? = null
+        private set
+
     fun dispatch(event: BookInfoUiEvent) {
         when (event) {
             BookInfoUiEvent.Refresh -> _state.update { it.copy(tocText = null) }
@@ -173,6 +180,7 @@ class BookInfoScreenModel : ScreenModel {
 
     /** 加载完成后回填书籍与目录文案 (对照 Activity showBook + upLoading(false, chapterList))。 */
     private suspend fun upShowBook(book: Book, toc: List<BookChapter>, errorLoadToc: String) {
+        if (toc.isNotEmpty()) loadedChapterList = toc
         val lasted = lastedTitleOf(book)
         dispatch(BookInfoUiEvent.ShowBook(book, lasted))
         dispatch(

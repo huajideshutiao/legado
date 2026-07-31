@@ -13,8 +13,8 @@ import kotlin.concurrent.Volatile
  * 图片缓存读写相关方法, 供桌面 JVM / iOS / 鸿蒙 commonMain 业务调用。
  *
  * 实现注册:
- * - Android: app 端启动早期调用 [BookImageStorageProviders.register] 注入委托给
- *   [io.legado.app.help.book.BookHelp] 的实现 (本任务不涉及, 后续任务做)。
+ * - Android: app 端启动早期调用 [BookImageStorageProviders.register] 注入
+ *   [io.legado.app.help.book.AndroidBookImageStorage] (委托 [io.legado.app.help.book.BookHelp])。
  * - 桌面 JVM: desktop 模块启动时注入 [io.legado.app.help.book.JvmBookImageStorage]
  *   (java.nio.file.Path + OkHttp 实现)。
  * - iOS / 鸿蒙: 共用 nativeMain [io.legado.app.help.book.NativeBookImageStorage]

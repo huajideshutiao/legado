@@ -20,7 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
@@ -136,8 +136,8 @@ fun CodeDialogContent(
 /**
  * 代码查看/编辑对话框 (KMP 共享, desktop / iOS 直接复用)。
  *
- * 用 [androidx.compose.ui.window.Dialog] 包裹 [CodeDialogContent], 提供声明式 API。
- * app 端不使用本函数 (app 端用 CodeView 版 CodeDialog 保留语法高亮); desktop / iOS 端可直接调用。
+ * 用 [AppDialog] 包裹 [CodeDialogContent], 提供声明式 API。
+ * app 端不使用本函数 (仍走 DialogFragment 版 CodeDialog 以保持 showDialogFragment 调用点); desktop / iOS 端可直接调用。
  *
  * @param code 初始代码文本
  * @param disableEdit true=只读查看, false=可编辑
@@ -152,7 +152,7 @@ fun CodeDialog(
     onSave: ((String) -> Unit)? = null,
     onShowKeyboardConfig: () -> Unit = {},
 ) {
-    Dialog(
+    AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(
             dismissOnBackPress = true,

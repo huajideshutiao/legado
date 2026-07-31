@@ -44,11 +44,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
+import io.legado.app.data.entities.SearchBook
+import io.legado.app.help.book.addType
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
@@ -62,8 +66,10 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.FlowBus
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -145,10 +151,10 @@ fun BookshelfScreen(
     // 数量开关变更走 BOOKSHELF_REFRESH 重绑 tab)
     var configTick by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
-        FlowBus.with(EventBus.NOTIFY_MAIN).collect { configTick++ }
-    }
-    LaunchedEffect(Unit) {
-        FlowBus.with(EventBus.BOOKSHELF_REFRESH).collect { configTick++ }
+        coroutineScope {
+            launch { FlowBus.with(EventBus.NOTIFY_MAIN).collect { configTick++ } }
+            launch { FlowBus.with(EventBus.BOOKSHELF_REFRESH).collect { configTick++ } }
+        }
     }
     // 分组样式分流 (对照 MainActivity.getFragmentId: bookGroupStyle==1 走 BookshelfFragment2)
     if (remember(configTick) { appConfig.bookGroupStyle } == 1) {
@@ -185,8 +191,7 @@ fun BookshelfScreen(
     val pageScrollStates = remember { mutableStateMapOf<Long, ShelfScrollState>() }
     // 封面 slot 直接透传 (原来外面再包一层 lambda: 每次重组换实例, 会让所有可见条目一起重组)
     val bookCoverSlot: @Composable (Book, Modifier, Boolean) -> Unit = resolvedCoverSlot
-    val groupCoverSlot: @Composable (BookGroup, Modifier, Boolean) -> Unit =
-        { _, m, _ -> Box(m) }
+    val groupCoverSlot: @Composable (BookGroup, Modifier, Boolean) -> Unit = DefaultGroupCoverSlot
 
     // HorizontalPager (对照 app 端 BookshelfScreen1, pageCount 动态跟随 groups)
     val pagerState = rememberPagerState(
@@ -626,30 +631,34 @@ fun SharedBookCover(
     val useDefaultCover = remember { AppConfigProviders.get().useDefaultCover }
     // 位图与"是否默认封面"合成一个 state: 一次加载只引发一次重组
     var coverState by remember(cover, book.origin) { mutableStateOf(NoCoverBitmap) }
-    // 实际显示尺寸 (px): 用 StateFlow 而非 snapshot state 承接量出的尺寸, 量尺寸不触发重组
-    // (同 coil ConstraintsSizeResolver 的做法)
+    // 尺寸只用于首次按显示大小降采样；后续窗口 resize 不应重新发起封面请求。
+    // 否则每跨过一个量化尺寸档都会再次进入图片 Interceptor，重复执行书源 JS header 规则。
     val displaySize = remember { MutableStateFlow(IntSize.Zero) }
     LaunchedEffect(cover, book.origin, loader, useDefaultCover, isVideoCover) {
         if (loader == null) return@LaunchedEffect
+        val decodeSize = firstValidCoverDecodeSize(displaySize)
         val ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL
-        displaySize.map(::coverDecodeSize).distinctUntilChanged().collect { size ->
-            if (size.width <= 0 || size.height <= 0) return@collect
-            // 默认封面链要读 prefs + 解 JSON, 挪到真用得上时才算 (有封面的书零开销)
-            suspend fun loadDefault() {
-                val path = defaultCoverFilePath(
-                    seed = book.name.takeIf { it.isNotBlank() } ?: cover,
-                    ratio = ratio,
-                ) ?: return
-                val bmp = loader.loadImageOrNull(path, null, size.width, size.height)
-                coverState = if (bmp == null) NoCoverBitmap else CoverBitmap(bmp, true)
-            }
-            if (useDefaultCover || cover.isNullOrBlank()) {
-                loadDefault()
-                return@collect
-            }
-            val bmp = loader.loadCoverOrNull(cover, book.origin, size.width, size.height)
-            if (bmp != null) coverState = CoverBitmap(bmp, false) else loadDefault()
+
+        // 默认封面链要读 prefs + 解 JSON, 挪到真用得上时才算 (有封面的书零开销)
+        suspend fun loadDefault() {
+            val path = defaultCoverFilePath(
+                seed = book.name.takeIf { it.isNotBlank() } ?: cover,
+                ratio = ratio,
+            ) ?: return
+            val bmp = loader.loadImageOrNull(path, null, decodeSize.width, decodeSize.height)
+            coverState = if (bmp == null) NoCoverBitmap else CoverBitmap(bmp, true)
         }
+        if (useDefaultCover || cover.isNullOrBlank()) {
+            loadDefault()
+            return@LaunchedEffect
+        }
+        val bmp = if (book.isNotShelf) {
+            // 非书架书 (搜索/发现/主页结果) 的封面只落临时缓存区, 不占书架持久区
+            loader.loadImageOrNull(cover, book.origin, decodeSize.width, decodeSize.height)
+        } else {
+            loader.loadCoverOrNull(cover, book.origin, decodeSize.width, decodeSize.height)
+        }
+        if (bmp != null) coverState = CoverBitmap(bmp, false) else loadDefault()
     }
     // 对齐 CoverImageView.onMeasure: 高度有界时按比例反推宽度, 否则按宽度推高度。
     // 不能硬加 fillMaxWidth() —— 列表条目/发现结果页传的是定高 modifier, 撑满宽度会让封面失控放大。
@@ -701,15 +710,28 @@ private class CoverBitmap(val bitmap: ImageBitmap?, val isDefault: Boolean)
 
 private val NoCoverBitmap = CoverBitmap(null, false)
 
+/** 默认分组封面 slot: 空白占位 (分组无独立封面, 仅占位以对齐 bookCoverSlot 签名) */
+private val DefaultGroupCoverSlot: @Composable (BookGroup, Modifier, Boolean) -> Unit =
+    { _, m, _ -> Box(m) }
+
 /**
  * 解码目标尺寸: 向上取到 64 的倍数, 让相邻列宽/微小布局抖动共用同一份内存缓存,
  * 也避免尺寸每变一像素就重新解一次。
  */
-private fun coverDecodeSize(size: IntSize): IntSize {
+internal fun coverDecodeSize(size: IntSize): IntSize {
     if (size.width <= 0 || size.height <= 0) return IntSize.Zero
     fun step(px: Int) = (px + 63) / 64 * 64
     return IntSize(step(size.width), step(size.height))
 }
+
+/**
+ * 等待首个有效布局尺寸并量化，随后立即返回。
+ *
+ * 图片请求只需要首个显示尺寸来降采样；不能持续 collect 尺寸，否则桌面窗口 resize 会触发
+ * 新请求，并让书源的 JS 请求头规则跟着重复执行。
+ */
+internal suspend fun firstValidCoverDecodeSize(sizes: Flow<IntSize>): IntSize =
+    sizes.map(::coverDecodeSize).first { it != IntSize.Zero }
 
 /**
  * 用户自定义默认封面集选图 (对照 app 端 `BookCover.newDefaultDrawable` 的选图段)。
@@ -745,4 +767,13 @@ internal const val VIDEO_COVER_RATIO = 16f / 9f
  */
 val LocalBookCoverSlot = staticCompositionLocalOf<@Composable (Book, Modifier, Boolean) -> Unit> {
     @Composable { book, modifier, isVideoCover -> SharedBookCover(book, modifier, isVideoCover) }
+}
+
+/**
+ * SearchBook → Book 适配 [LocalBookCoverSlot]: 非书架书补 notShelf 标记, 宿主端据此把封面
+ * 落临时缓存区而非书架持久区 (对照原版 `BaseExploreShowAdapter.registerListener` 在 bind 时
+ * `addType(notShelf)` + `ImageLoader.load(.., inBookshelf)` 的分流)。
+ */
+fun SearchBook.toCoverBook(inBookshelf: Boolean = false): Book = toBook().apply {
+    if (!inBookshelf) addType(BookType.notShelf)
 }

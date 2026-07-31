@@ -1,6 +1,7 @@
 package io.legado.app.lib.webdav
 
 import io.legado.app.utils.InputStream
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * WebDav 客户端 expect 声明。
@@ -30,14 +31,14 @@ expect open class WebDav(
     /**
      * 获取当前 url 文件信息
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     suspend fun getWebDavFile(): WebDavFile?
 
     /**
      * 列出当前路径下的文件
      * @return 文件列表
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     suspend fun listFiles(): List<WebDavFile>
 
     /**
@@ -61,31 +62,31 @@ expect open class WebDav(
      * @param savedPath       本地的完整路径，包括最后的文件名
      * @param replaceExisting 是否替换本地的同名文件
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     suspend fun downloadTo(savedPath: String, replaceExisting: Boolean)
 
     /**
      * 下载文件,返回ByteArray
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     suspend fun download(): ByteArray
 
     /**
      * 上传文件(本地路径)
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     suspend fun upload(localPath: String, contentType: String = DEFAULT_CONTENT_TYPE)
 
     /**
      * 上传文件(字节数组)
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     suspend fun upload(byteArray: ByteArray, contentType: String = DEFAULT_CONTENT_TYPE)
 
     /**
      * 下载文件输入流
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     suspend fun downloadInputStream(): InputStream
 
     /**

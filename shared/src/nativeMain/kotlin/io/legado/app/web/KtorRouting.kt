@@ -8,6 +8,7 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
 import io.ktor.server.request.contentType
+import io.ktor.server.request.httpMethod
 import io.ktor.server.request.path
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respondBytes
@@ -16,6 +17,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.options
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
+import io.ktor.util.toMap
 import io.ktor.utils.io.charsets.Charsets
 import io.legado.app.constant.AppLog
 import io.legado.app.utils.stackTraceStr
@@ -24,6 +26,7 @@ import io.legado.app.web.api.WebApiRequest
 import io.legado.app.web.api.WebApiResponse
 import io.legado.app.web.utils.AssetsWeb
 import io.legado.app.utils.File
+import io.legado.app.utils.systemCurrentTimeMillis
 
 /**
  * Ktor HTTP routing 配置: ApplicationCall → [WebApiRequest] → [WebApi.handle] → [WebApiResponse] → 原生响应。
@@ -55,7 +58,7 @@ private suspend fun handleApiCall(call: ApplicationCall, assetsWeb: AssetsWeb) {
     // 拉起 Service 续命 (app 端) / no-op (桌面/iOS/鸿蒙端)
     WebServerManager.serve()
     val origin = call.request.headers["origin"]
-    val startAt = kotlin.system.getTimeMillis()
+    val startAt = systemCurrentTimeMillis()
     val uri = call.request.path()
     var tempFiles: Collection<String> = emptyList()
 

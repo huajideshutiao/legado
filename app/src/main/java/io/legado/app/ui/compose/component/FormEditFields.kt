@@ -1,7 +1,5 @@
 package io.legado.app.ui.compose.component
 
-import android.view.ViewGroup
-import android.widget.LinearLayout
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -12,15 +10,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.widget.doAfterTextChanged
-import com.google.android.material.textfield.TextInputLayout
-import io.legado.app.lib.theme.applyThemeTree
-import io.legado.app.lib.theme.space
-import io.legado.app.ui.widget.code.CodeView
-import io.legado.app.ui.widget.code.addJsPattern
-import io.legado.app.ui.widget.code.addJsonPattern
-import io.legado.app.ui.widget.code.addLegadoPattern
+import io.legado.app.ui.compose.component.code.CodeTextField
+import io.legado.app.ui.compose.component.code.rememberCodeSyntax
 import io.legado.app.ui.widget.text.EditEntity
 
 /**
@@ -58,38 +49,26 @@ private fun FormTextField(entity: EditEntity) {
     )
 }
 
-/** CodeView 输入行：AndroidView 白名单包裹（构造一次，无 update），按 codePatterns 配置语法高亮 */
+/** 代码输入行：共享 [CodeTextField]，按 [EditEntity.codePatterns] 位掩码开对应着色组 */
 @Composable
 private fun FormCodeField(entity: EditEntity) {
-    AndroidView(
-        factory = { ctx ->
-            val root = TextInputLayout(ctx).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-                setPadding(0, ctx.space.xs, 0, 0)
-                hint = entity.hint
-            }
-            val codeView = CodeView(ctx).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-            }
-            root.addView(codeView)
-            entity.codePatterns.let { patterns ->
-                if (patterns and EditEntity.CodePattern.legado != 0) codeView.addLegadoPattern()
-                if (patterns and EditEntity.CodePattern.json != 0) codeView.addJsonPattern()
-                if (patterns and EditEntity.CodePattern.js != 0) codeView.addJsPattern()
-            }
-            codeView.setText(entity.value)
-            // 视图单实例常驻(无复用)，同步写回
-            codeView.doAfterTextChanged { entity.value = it?.toString() }
-            // 动态构造的 View 不走 Factory2, 整树着色
-            root.applyThemeTree()
-            root
+    val patterns = entity.codePatterns
+    val syntax = rememberCodeSyntax(
+        legado = patterns and EditEntity.CodePattern.legado != 0,
+        json = patterns and EditEntity.CodePattern.json != 0,
+        js = patterns and EditEntity.CodePattern.js != 0,
+    )
+    var value by remember(entity) { mutableStateOf(entity.value.orEmpty()) }
+    CodeTextField(
+        value = value,
+        onValueChange = {
+            value = it
+            entity.value = it
         },
-        modifier = Modifier.fillMaxWidth(),
+        syntax = syntax,
+        label = entity.hint,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
     )
 }

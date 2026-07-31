@@ -79,7 +79,9 @@ fun VideoPlayRoute(
 ) {
     val route = entry.route as AppRoute.VideoPlay
     // BookRef -> Book, 导航时再 toRouteRef() 转回 (防御性拷贝, 避免与路由持有对象别名)
-    val book = route.book.asBook()
+    // asBook() 每次调用都 copy() 新实例, 若不 remember 固定, 路由每次重组 book 都变,
+    // LaunchedEffect(book) 会反复重启 → 重拉章节/重跑 JS header 规则 (调窗即报 js 错)
+    val book = remember(route) { route.book.asBook() }
 
     val prefStore = LocalPreferenceStoreProvider.current
     val screenModel = screenModelStore.getOrCreateTyped(entry) { VideoPlayScreenModel(prefStore) }
@@ -145,20 +147,27 @@ fun VideoPlayRoute(
         }
     }
 
-    // 返回栈由导航器统一管理; 对照 Activity onBackPressedDispatcher 三级返回
-    // (横屏→竖屏属平台专属, 此处仅处理全屏→非全屏 / 否则 pop)
+    // 返回栈由导航器统一管理; 对照 Activity onBackPressedDispatcher 返回逻辑
+    // (系统级全屏与窗口内全屏互斥: 当前是哪种全屏就退哪种, 退全屏后下次 ESC 才 pop)
     val onBack: () -> Unit = {
-        if (state.isFullScreen) {
-            screenModel.setFullScreen(false)
-        } else {
-            navigator.pop()
+        val s = screenModel.state.value
+        when {
+            s.isSystemFullScreen -> screenModel.setSystemFullScreen(false)
+            s.isFullScreen -> screenModel.setFullScreen(false)
+            else -> navigator.pop()
         }
     }
     // 全屏时系统返回先退全屏 (对照 Activity onBackPressedDispatcher: isFullScreen -> applyFullScreen(false));
-    // 非栈顶不拦截 (栈内页面全程留在 Composition)
+    // 两种全屏互斥, 同时只可能有一种激活; 非栈顶不拦截 (栈内页面全程留在 Composition)
     val backStack by navigator.backStack.collectAsState()
     val isTopEntry = backStack.lastOrNull()?.id == entry.id
-    AppBackHandler(enabled = isTopEntry && state.isFullScreen) { screenModel.setFullScreen(false) }
+    AppBackHandler(enabled = isTopEntry && (state.isFullScreen || state.isSystemFullScreen)) {
+        val s = screenModel.state.value
+        when {
+            s.isSystemFullScreen -> screenModel.setSystemFullScreen(false)
+            s.isFullScreen -> screenModel.setFullScreen(false)
+        }
+    }
 
     // 对照 Activity onTitleClick: bookInfoResult.launch(IntentData.book=...)
     val onTitleClick: () -> Unit =
@@ -177,6 +186,14 @@ fun VideoPlayRoute(
 
     // 平台对话框状态 (对照 TocRoute showLogDialog/editingBookmark)
     var showLogDialog by remember { mutableStateOf(false) }
+
+    // 弹层可见性: 桌面端 mpv 是重量级原生窗口 (airspace), 会盖住 Compose 弹层
+    // (菜单/对话框), 弹层打开时上报平台临时隐藏 mpv 窗口, 关闭后恢复
+    var menuExpanded by remember { mutableStateOf(false) }
+    val overlayVisible = menuExpanded || showLogDialog || state.pendingBookmark != null
+    LaunchedEffect(overlayVisible) {
+        screenModel.platform?.setOverlayVisible(overlayVisible)
+    }
 
     // 选集字数显示 (对照 app VideoChapterItem 读 AppConfig.tocCountWords)
     val countWords =
@@ -201,7 +218,8 @@ fun VideoPlayRoute(
         controlsVisible = state.controlsVisible,
         onToggleControls = screenModel::onToggleControls,
         onTitleClick = onTitleClick,
-        isFullScreen = state.isFullScreen,
+        // 系统级全屏同样隐藏标题栏与选集网格 (两者视觉上都需要视频占满)
+        isFullScreen = state.isFullScreen || state.isSystemFullScreen,
         chapters = state.chapters,
         displayTitles = state.displayTitles,
         countWords = countWords,
@@ -229,6 +247,7 @@ fun VideoPlayRoute(
             VideoOverflowMenu(
                 hasLogin = screenModel.shared.curBookSource?.hasLogin() == true,
                 hasReview = !screenModel.shared.curBookSource?.reviewRule?.reviewUrl.isNullOrBlank(),
+                onExpandedChange = { menuExpanded = it },
                 onFullScreen = screenModel::onToggleFullScreen,
                 onLogin = screenModel::onShowLogin,
                 onCopyPlayUrl = screenModel::onCopyPlayUrl,
@@ -268,6 +287,7 @@ fun VideoPlayRoute(
 private fun VideoOverflowMenu(
     hasLogin: Boolean,
     hasReview: Boolean,
+    onExpandedChange: (Boolean) -> Unit = {},
     onFullScreen: () -> Unit,
     onLogin: () -> Unit,
     onCopyPlayUrl: () -> Unit,
@@ -278,7 +298,7 @@ private fun VideoOverflowMenu(
     onAddBookmark: () -> Unit,
     onAppLog: () -> Unit,
 ) {
-    OverflowMenu { dismiss ->
+    OverflowMenu(onExpandedChange = onExpandedChange) { dismiss ->
         VideoMenuItem(Res.string.full_screen) { dismiss(); onFullScreen() }
         if (hasLogin) {
             VideoMenuItem(Res.string.login) { dismiss(); onLogin() }

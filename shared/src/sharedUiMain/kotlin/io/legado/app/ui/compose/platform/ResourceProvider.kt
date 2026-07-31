@@ -12,10 +12,10 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * 跨平台资源访问器。
  *
- * 字符串/字符串数组四端统一走 Compose Resources 按 key 索引的映射表 (见 [findStringResource]);
- * Painter/Color 仍是 expect/actual: 图标源在 Android 走 AAPT 原生 drawable、其余端走 Compose
- * Resources (见 shared/build.gradle.kts 的 nonAndroidIconMain customDirectory), 颜色则无
- * Compose Resources 对应 API。
+ * 字符串/字符串数组/Painter 四端统一走 Compose Resources 按 key 索引的映射表
+ * (见 ComposeResourceLookup 的 [findStringResource] / [findDrawableResource]);
+ * 仅 [rememberColor] 与 [rememberLauncherIconPainters] 是 expect/actual —— 前者无
+ * Compose Resources 对应 API, 后者 Android 需处理 AdaptiveIconDrawable。
  *
  * 调用方用 [rememberPainter] / [rememberString] / [rememberColor] 替代
  * painterResource/stringResource/colorResource, 由 B 类 Composable 下沉时统一调用。

@@ -2,7 +2,6 @@
 // - select_book_source: "选择书源"
 // - search_book_source: "搜索书源" (已存在 jvmMain)
 // - change_source_delay: "换源延迟"
-// - respond_time_ms: "响应时间：%1$d ms" (复用 jvmMain respondTime, 带 formatArgs)
 // - ok: "确定" (已存在 jvmMain)
 // - cancel: "取消" (已存在 jvmMain)
 //
@@ -35,8 +34,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import io.legado.app.data.entities.BookSource
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
@@ -48,7 +47,6 @@ import io.legado.app.ui.dialog.NumberPickerDialog
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.change_source_delay
 import legado.shared.generated.resources.ic_arrow_back
-import legado.shared.generated.resources.respondTime
 import legado.shared.generated.resources.search_book_source
 import legado.shared.generated.resources.select_book_source
 import org.jetbrains.compose.resources.painterResource
@@ -60,8 +58,7 @@ import org.jetbrains.compose.resources.stringResource
  * 对照 app 端 `io.legado.app.ui.book.manage.SourcePickerDialog`：
  * - 搜索框即时筛选启用书源；
  * - 点击书源后立即回调并关闭；
- * - 溢出菜单可设置批量换源延迟；
- * - 列表补充显示 URL 与最近响应时间。
+ * - 溢出菜单可设置批量换源延迟。
  *
  * 数据加载与延迟持久化由调用方负责，组件只维护查询和弹窗状态。
  */
@@ -86,7 +83,7 @@ fun SourcePickerDialog(
         }
     }
 
-    Dialog(
+    AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
@@ -170,14 +167,7 @@ fun SourcePickerDialog(
     }
 }
 
-/**
- * 书源行: 书源名 + URL + 最后响应时间。
- *
- * 复刻自 app 端 `SourcePickerDialog.Content` 中的 Text(item.getDisPlayNameGroup()),
- * 并按任务要求"显示书源名 + URL + 最后响应时间"扩展为多行布局:
- * - 第一行: 书源名 (含分组, 与原版 getDisPlayNameGroup 对齐)
- * - 第二行: URL + 响应时间 (任务要求新增)
- */
+/** 书源行: 单行书源名 (含分组), 对照原版 TextView(item.getDisPlayNameGroup())。 */
 @Composable
 private fun SourceRow(
     source: BookSource,
@@ -191,28 +181,13 @@ private fun SourceRow(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f)) {
-            // 第一行: 书源名 (含分组, 与原版 getDisPlayNameGroup 对齐)
-            Text(
-                text = source.getDisPlayNameGroup(),
-                color = colors.primaryText,
-                fontSize = 15.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            // 第二行: URL + 响应时间 (任务要求新增, 显示书源 URL 与最后响应时间)
-            Text(
-                text = "${source.bookSourceUrl}  ${
-                    stringResource(
-                        Res.string.respondTime,
-                        source.respondTime
-                    )
-                }",
-                color = colors.secondaryText,
-                fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        Text(
+            text = source.getDisPlayNameGroup(),
+            color = colors.primaryText,
+            fontSize = 15.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
     }
 }

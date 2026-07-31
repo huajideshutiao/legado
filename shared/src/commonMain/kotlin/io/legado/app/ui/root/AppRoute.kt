@@ -186,15 +186,6 @@ sealed interface AppRoute {
     @SerialName("import_book")
     data class ImportBook(val filePath: String? = null) : AppRoute
 
-    // 三端合并: RSS 类 (sourceUrl 定位源)
-    @Serializable
-    @SerialName("rss_sources")
-    data object RssSources : AppRoute
-
-    @Serializable
-    @SerialName("rss_articles")
-    data class RssArticles(val sourceUrl: String) : AppRoute
-
     // 三端合并: 配置类 (MY 子项)
     @Serializable
     @SerialName("about")
@@ -262,9 +253,17 @@ sealed interface AppRoute {
     @SerialName("web_view")
     data class WebView(val url: String) : AppRoute
 
+    /**
+     * 书源登录页。
+     *
+     * [dataKey] 指向 [io.legado.app.help.SourceLoginContext]（源对象 + book/chapter JS 上下文），
+     * 对照原版 `IntentData.nowSource/nowBook/nowChapter`：HttpTTS 等不在 bookSourceDao 的源
+     * 只能靠它拿到，登录 JS 的 book/chapter 绑定也只能靠它传。
+     * 为空（或进程重建后失效）时退化为按 [sourceUrl] 查库。
+     */
     @Serializable
     @SerialName("login")
-    data class Login(val sourceUrl: String) : AppRoute
+    data class Login(val sourceUrl: String, val dataKey: String? = null) : AppRoute
 
     @Serializable
     @SerialName("js_edit")

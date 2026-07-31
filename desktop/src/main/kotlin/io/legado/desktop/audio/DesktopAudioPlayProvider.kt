@@ -30,7 +30,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 /**
  * 桌面端 AudioPlay 平台 provider (对应 app 端 [io.legado.app.model.AudioPlayProvidersImpl])。
@@ -432,15 +432,12 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
         }
     }
 
-    override fun getBookSource(book: Book): BookSource? {
-        // 对应 app 端 Book.getBookSource(): runBlocking 查 bookSourceDao
-        return runBlocking {
-            try {
-                AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
-            } catch (e: Exception) {
-                AppLog.put(jvmGetString("desktop_audio_get_book_source_failed", e.message ?: ""), e)
-                null
-            }
+    override suspend fun getBookSource(book: Book): BookSource? = withContext(Dispatchers.IO) {
+        try {
+            AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
+        } catch (e: Exception) {
+            AppLog.put(jvmGetString("desktop_audio_get_book_source_failed", e.message ?: ""), e)
+            null
         }
     }
 

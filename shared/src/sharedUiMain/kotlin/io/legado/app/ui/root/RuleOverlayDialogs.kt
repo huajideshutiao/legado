@@ -1,7 +1,5 @@
 package io.legado.app.ui.root
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -10,11 +8,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.window.Dialog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.DictRule
 import io.legado.app.data.entities.SourceFilterRule
@@ -34,6 +30,7 @@ import io.legado.app.ui.association.ImportTxtTocRuleViewModelShared
 import io.legado.app.ui.book.filter.SourceFilterEditDialog
 import io.legado.app.ui.book.filter.SourceFilterRuleListDialog
 import io.legado.app.ui.book.toc.rule.TxtTocRuleEditDialog
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
@@ -64,21 +61,18 @@ import org.jetbrains.compose.resources.stringResource
  * 只画 Surface 不含窗口, 走 Overlay 渲染时需要在此补 [Dialog] 外壳。
  */
 @Composable
-private fun EditDialogHost(onDismiss: () -> Unit, content: @Composable () -> Unit) {
-    Dialog(
+internal fun EditDialogHost(onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties()
     ) {
-        Box(Modifier.fillMaxSize()) {
-            Surface(
-                modifier = Modifier
-                    .appDialogSize()
-                    .align(Alignment.Center),
-                shape = DesignTokens.shapeDefault,
-                color = AppTheme.colors.fillet,
-            ) {
-                content()
-            }
+        // 不能套 fillMaxSize: 撑满窗口会让整窗都算"框内", 点外部永远关不掉; 居中由 RootMeasurePolicy 负责。
+        Surface(
+            modifier = Modifier.appDialogSize(),
+            shape = DesignTokens.shapeDefault,
+            color = AppTheme.colors.fillet,
+        ) {
+            content()
         }
     }
 }

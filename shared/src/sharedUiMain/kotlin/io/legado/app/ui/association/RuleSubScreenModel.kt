@@ -37,7 +37,7 @@ class RuleSubScreenModel : ScreenModel {
     init {
         AppDbProviders.get().ruleSubDao.flowAll()
             .catch {
-                AppLog.put("规则订阅界面获取数据失败\n${it.localizedMessage}", it)
+                AppLog.put("规则订阅界面获取数据失败\n${it.message}", it)
             }
             .flowOn(IoDispatcher)
             .conflate()

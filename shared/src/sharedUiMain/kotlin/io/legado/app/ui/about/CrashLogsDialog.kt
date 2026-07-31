@@ -29,7 +29,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
@@ -151,7 +151,7 @@ private fun CrashLogViewDialog(
     val tooLargeText = stringResource(Res.string.text_too_large)
     val clipboard = LocalClipboardManager.current
 
-    Dialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
+    AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
         // 圆角/底色对齐 BaseComposeDialogFragment.filletBackground + alert DSL AppAlertDialogContent
         Surface(
             shape = DesignTokens.shapeDefault,
@@ -211,7 +211,7 @@ fun CrashLogsDialog(
     onShare: (CrashLogItem) -> Unit,
 ) {
     val colors = AppTheme.colors
-    Dialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
+    AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
         // 圆角/底色对齐 BaseComposeDialogFragment.filletBackground + alert DSL AppAlertDialogContent
         Surface(
             shape = DesignTokens.shapeDefault,

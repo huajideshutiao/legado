@@ -156,7 +156,7 @@ class SearchContentScreenModel(
                     results.add(SearchResult(resultText = emptyResultText()))
                 }
             }.onFailure {
-                AppLog.put("全文搜索出错\n${it.localizedMessage}", it)
+                AppLog.put("全文搜索出错\n${it.message}", it)
             }
             _state.update { it.copy(searching = false) }
         }

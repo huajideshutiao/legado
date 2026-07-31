@@ -2,6 +2,7 @@ package io.legado.app.help
 
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.utils.File
+import io.legado.app.utils.systemCurrentTimeMillis
 
 /**
  * nativeMain: [FileCacheProvider] 的 iOS / 鸿蒙 两端共用真实实现
@@ -118,7 +119,7 @@ class NativeFileCacheProvider : FileCacheProvider {
 
     private fun createDateInfo(second: Int): String {
         // 13 位零填充毫秒时间戳 + "-" + 存活秒数 + 分隔符
-        val currentTime = StringBuilder(System.currentTimeMillis().toString())
+        val currentTime = StringBuilder(systemCurrentTimeMillis().toString())
         while (currentTime.length < 13) {
             currentTime.insert(0, "0")
         }
@@ -131,7 +132,7 @@ class NativeFileCacheProvider : FileCacheProvider {
         return try {
             val saveTime = info[0].toLong()
             val deleteAfter = info[1].toLong()
-            System.currentTimeMillis() > saveTime + deleteAfter * 1000
+            systemCurrentTimeMillis() > saveTime + deleteAfter * 1000
         } catch (e: Exception) {
             false
         }
@@ -149,8 +150,8 @@ class NativeFileCacheProvider : FileCacheProvider {
 
     private fun getDateInfo(data: ByteArray): Array<String>? {
         if (!hasDateInfo(data)) return null
-        val saveDate = String(data.copyOfRange(0, 13))
-        val deleteAfter = String(data.copyOfRange(14, indexOf(data, separator)))
+        val saveDate = data.copyOfRange(0, 13).decodeToString()
+        val deleteAfter = data.copyOfRange(14, indexOf(data, separator)).decodeToString()
         return arrayOf(saveDate, deleteAfter)
     }
 

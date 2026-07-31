@@ -6,6 +6,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.source.debug.BookSourceDebugScreen
@@ -19,6 +20,8 @@ import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.widget.dialog.HelpDialog
 import io.legado.app.ui.widget.dialog.TextDialog
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.book_src
 import legado.shared.generated.resources.content_src
@@ -71,8 +74,8 @@ fun BookSourceDebugRoute(
             defaultTextMy = defaultTextMy,
             defaultTextFx = defaultTextFx,
             systemText = systemText,
-            exploreErrorText = { url -> exploreErrorTemplate.replace("%s", url) },
-            exploreJsonErrorText = { e -> exploreJsonErrorTemplate.replace("%s", e.toString()) },
+            exploreErrorText = { url -> exploreErrorTemplate.replace("%1\$s", url) },
+            exploreJsonErrorText = { e -> exploreJsonErrorTemplate.replace("%1\$s", e.toString()) },
         )
     }
 
@@ -93,6 +96,7 @@ fun BookSourceDebugRoute(
     // 源码对话框: title to content (对照 app 端 showDialogFragment(TextDialog("html", src)))
     var srcDialog by remember { mutableStateOf<Pair<String, String>?>(null) }
     var showHelp by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     val actions = remember(navigator, screenModel) {
         object : BookSourceDebugUiActions {
@@ -127,7 +131,12 @@ fun BookSourceDebugRoute(
             override fun onChipFxLongClick() {
                 // 对照 app 端: 仅当 exploreKinds 非空时弹 selector
                 if (screenModel.exploreKinds.isNotEmpty()) {
-                    showFxSelector = true
+                    // 延迟一帧再弹出: 长按触发时鼠标仍处于按下状态, 立即弹出会让释放事件
+                    // 落到对话框 scrim 上误触 dismissOnClickOutside 关闭对话框
+                    scope.launch {
+                        delay(100)
+                        showFxSelector = true
+                    }
                 }
             }
 
@@ -143,24 +152,25 @@ fun BookSourceDebugRoute(
                 screenModel.dispatch(BookSourceDebugUiEvent.ChipContentClick)
             }
 
+            // 原版即使 src 为 null 也弹空对话框, 不做静默吞掉
             override fun onShowSearchSrc() {
-                screenModel.searchSrc?.let { srcDialog = strSearchSrc to it }
+                srcDialog = strSearchSrc to screenModel.searchSrc.orEmpty()
             }
 
             override fun onShowBookSrc() {
-                screenModel.bookSrc?.let { srcDialog = strBookSrc to it }
+                srcDialog = strBookSrc to screenModel.bookSrc.orEmpty()
             }
 
             override fun onShowTocSrc() {
-                screenModel.tocSrc?.let { srcDialog = strTocSrc to it }
+                srcDialog = strTocSrc to screenModel.tocSrc.orEmpty()
             }
 
             override fun onShowContentSrc() {
-                screenModel.contentSrc?.let { srcDialog = strContentSrc to it }
+                srcDialog = strContentSrc to screenModel.contentSrc.orEmpty()
             }
 
             override fun onShowReviewSrc() {
-                screenModel.reviewSrc?.let { srcDialog = strReviewSrc to it }
+                srcDialog = strReviewSrc to screenModel.reviewSrc.orEmpty()
             }
 
             override fun onRefreshExplore() {
@@ -180,6 +190,8 @@ fun BookSourceDebugRoute(
     )
 
     // 发现分类长按选择器 (对照 app 端 onChipFxLongClick / selector)
+    // dismissOnClickOutside 默认 true: 对齐 app 端 selector 点击外部可取消;
+    // 长按弹出的释放误触已由 onChipFxLongClick 内 delay(100) 规避
     if (showFxSelector) {
         AppSelectorDialog(
             onDismissRequest = { showFxSelector = false },

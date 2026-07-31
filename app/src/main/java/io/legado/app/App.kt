@@ -152,12 +152,9 @@ class App : Application() {
         ArchiveProviders.register(AndroidArchiveProvider)
         // Coil3 批 2: 设置 SingletonImageLoader.Factory, 让 app 端 AsyncImage / imageView.load 默认走
         // 注册了 SourceOriginHeaderInterceptor + 共享 OkHttpClient 的 ImageLoader (防盗链 header 自动注入)
-        // 批 4: 在同一个 ComponentRegistry 中追加 MangaModelFetcher，不能对已构建的 loader
-        // 再调用 newBuilder().components { ... }，该 API 会替换而不是追加全部组件。
+        // MangaModelFetcher 已随漫画图片链路下沉到 buildBookImageLoader 内部注册
         coil3.SingletonImageLoader.setSafe {
-            io.legado.app.help.image.buildBookImageLoader(it) {
-                add(io.legado.app.help.glide.MangaModelFetcher.Factory())
-            }
+            io.legado.app.help.image.buildBookImageLoader(it)
         }
         // 注册 FileBook 平台 provider (commonMain FileBook object 经
         // FileBookProviders 调到 app 端 FileBookAccessorImpl, 含 importFromArchive /

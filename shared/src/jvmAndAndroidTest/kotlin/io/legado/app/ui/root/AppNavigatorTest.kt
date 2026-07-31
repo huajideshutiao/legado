@@ -25,7 +25,7 @@ class AppNavigatorTest {
         val navigator = AppNavigator()
         val rootId = navigator.currentEntry.id
         navigator.push(AppRoute.Search(), RouteResults.OK)
-        navigator.push(AppRoute.RssSources)
+        navigator.push(AppRoute.About)
         navigator.pop()
 
         val rootResult = async { navigator.resultsFor(rootId).first() }
@@ -40,7 +40,7 @@ class AppNavigatorTest {
         val rootId = navigator.currentEntry.id
         navigator.push(AppRoute.Search(), RouteResults.OK)
         val searchId = navigator.currentEntry.id
-        navigator.push(AppRoute.RssSources, RouteResults.OK)
+        navigator.push(AppRoute.About, RouteResults.OK)
 
         navigator.pop(RouteResultPayload.Ok)
         val searchResult = withTimeout(1_000) { navigator.resultsFor(searchId).first() }

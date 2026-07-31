@@ -222,7 +222,7 @@ actual class File actual constructor(val path: String) {
 }
 
 actual interface Closeable {
-    fun close()
+    actual fun close()
 }
 
 /**
@@ -270,6 +270,7 @@ private class ByteArrayInputStream(
     override fun available(): Int = count - pos
 }
 
-actual fun Throwable.isSecurityException(): Boolean = false
+actual fun Throwable.isSecurityException(): Boolean =
+    this is io.legado.app.exception.SecurityException
 
 actual fun String.platformIntern(): String = this

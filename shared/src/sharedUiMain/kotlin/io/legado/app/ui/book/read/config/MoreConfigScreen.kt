@@ -7,6 +7,7 @@ import io.legado.app.ui.compose.preference.listPreference
 import io.legado.app.ui.compose.preference.preference
 import io.legado.app.ui.compose.preference.switchPreference
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.auto_change_source
 import legado.shared.generated.resources.click_regional_config
@@ -61,6 +62,11 @@ fun MoreConfigScreen(
     val progressBarEntries = stringArrayResource(Res.array.progress_bar_behavior_title)
     val progressBarValues = stringArrayResource(Res.array.progress_bar_behavior_value)
 
+    // 按平台过滤: 桌面无系统栏/无屏幕方向, 这三项拨了没有任何效果; 未注册 capabilities 时(如 @Preview)按显示处理
+    val caps = PlatformCapabilityProviders.getOrNull()
+    val hasSystemBars = caps?.hasSystemBars() ?: true
+    val hasScreenOrientation = caps?.hasScreenOrientation() ?: true
+
     val titleScreenDirection = stringResource(Res.string.screen_direction)
     val titleKeepLight = stringResource(Res.string.keep_light)
     val titleHideStatusBar = stringResource(Res.string.pt_hide_status_bar)
@@ -79,15 +85,17 @@ fun MoreConfigScreen(
 
     AppTheme {
         PreferenceScreen {
-            listPreference(
-                prefKey = PreferKey.screenOrientation,
-                title = titleScreenDirection,
-                entries = screenDirectionEntries,
-                values = screenDirectionValues,
-                defaultValue = "0",
-                isBottomBackground = true,
-                onValueChange = { onPrefChange(PreferKey.screenOrientation) },
-            )
+            if (hasScreenOrientation) {
+                listPreference(
+                    prefKey = PreferKey.screenOrientation,
+                    title = titleScreenDirection,
+                    entries = screenDirectionEntries,
+                    values = screenDirectionValues,
+                    defaultValue = "0",
+                    isBottomBackground = true,
+                    onValueChange = { onPrefChange(PreferKey.screenOrientation) },
+                )
+            }
             listPreference(
                 prefKey = PreferKey.keepLight,
                 title = titleKeepLight,
@@ -97,20 +105,22 @@ fun MoreConfigScreen(
                 isBottomBackground = true,
                 onValueChange = { onPrefChange(PreferKey.keepLight) },
             )
-            switchPreference(
-                prefKey = PreferKey.hideStatusBar,
-                title = titleHideStatusBar,
-                defaultValue = false,
-                isBottomBackground = true,
-                onCheckedChange = { onPrefChange(PreferKey.hideStatusBar) },
-            )
-            switchPreference(
-                prefKey = PreferKey.hideNavigationBar,
-                title = titleHideNavigationBar,
-                defaultValue = false,
-                isBottomBackground = true,
-                onCheckedChange = { onPrefChange(PreferKey.hideNavigationBar) },
-            )
+            if (hasSystemBars) {
+                switchPreference(
+                    prefKey = PreferKey.hideStatusBar,
+                    title = titleHideStatusBar,
+                    defaultValue = false,
+                    isBottomBackground = true,
+                    onCheckedChange = { onPrefChange(PreferKey.hideStatusBar) },
+                )
+                switchPreference(
+                    prefKey = PreferKey.hideNavigationBar,
+                    title = titleHideNavigationBar,
+                    defaultValue = false,
+                    isBottomBackground = true,
+                    onCheckedChange = { onPrefChange(PreferKey.hideNavigationBar) },
+                )
+            }
             listPreference(
                 prefKey = PreferKey.doublePageHorizontal,
                 title = titleDoublePage,

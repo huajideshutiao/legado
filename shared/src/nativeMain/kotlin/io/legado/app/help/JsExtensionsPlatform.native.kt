@@ -43,7 +43,7 @@ internal actual object JsExtensionsPlatform {
         val shiftedMillis = time + shiftHours * 3_600_000L
         val (y, mo, d) = io.legado.app.utils.yearMonthDayFromMillis(shiftedMillis)
         // 计算时分秒 (UTC 当天)
-        val dayMillis = Math.floorMod(shiftedMillis, 86_400_000L).toInt()
+        val dayMillis = shiftedMillis.mod(86_400_000L).toInt()
         val totalSeconds = dayMillis / 1000
         val hour = totalSeconds / 3600
         val minute = (totalSeconds % 3600) / 60

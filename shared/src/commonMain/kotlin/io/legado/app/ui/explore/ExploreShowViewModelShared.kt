@@ -21,6 +21,7 @@ import io.legado.app.model.webBook.WebBook.getBookListAwait
 import io.legado.app.model.webBook.parseExploreOptionsFromUrl
 import io.legado.app.utils.concurrent.newConcurrentSet
 import io.legado.app.utils.stackTraceStr
+import io.legado.app.utils.throttleLatest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.BufferOverflow
@@ -31,6 +32,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.launch
 
@@ -195,7 +197,11 @@ class ExploreShowViewModelShared(
                     keys.add(it.bookUrl)
                 }
                 keys
-            }.catch {
+            }
+                // 书架全表 Flow 高频发射: 内容没变就跳过 + 500ms 节流 (对照 ExploreScreenModel), 避免高频整体重组
+                .distinctUntilChanged()
+                .throttleLatest(500)
+                .catch {
                 AppLog.put("发现列表界面获取书籍数据失败\n${it.message}", it)
             }.collect {
                 bookshelf.clear()

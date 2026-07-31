@@ -19,7 +19,6 @@ import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -71,14 +70,17 @@ class ScrollPageDelegateCompose(
     animationSpeed: Int = DEFAULT_ANIMATION_SPEED,
 ) : PageDelegateCompose(viewModel, scope, animationSpeed) {
 
-    // region 触摸点状态（垂直方向，与 app 端 ScrollPageDelegate touchY/lastY 对应）
-    private var startY: Float = 0f
+    // region 触摸点状态（垂直方向，与 app 端 ScrollPageDelegate touchY/lastY 对应；startY 在基类）
     private var lastY: Float = 0f
     // endregion
 
     // region PageDelegateShared 接口实现（垂直翻页逻辑）
 
     override fun onDown(x: Float, y: Float) {
+        // 与 app 端 PageDelegate.onTouch ACTION_DOWN 分支先 abortAnim() 对应:
+        // 动画进行中按下立即中断, 否则旧动画协程会继续写 _currentOffset 与新手势冲突
+        // (滚动委托原版 abortAnim 只取消不补页, 见 ScrollPageDelegate.abortAnim)
+        abortAnim()
         // 与 app 端 PageDelegate.onDown 对应：重置状态字段
         isMoved = false
         noNext = false
@@ -97,30 +99,29 @@ class ScrollPageDelegateCompose(
 
     override fun onScroll(x: Float, y: Float) {
         if (!isMoved) {
-            val deltaX = x - startX
             val deltaY = y - startY
-            // 判断是否超过 slop 阈值（与 app 端 pageSlopSquare2 判定对应）
-            if (deltaX * deltaX + deltaY * deltaY > TOUCH_SLOP_PX * TOUCH_SLOP_PX) {
-                isMoved = true
-                if (deltaY < 0) {
-                    // 向上滑 → NEXT，校验是否有下一页 / 下一章
-                    if (!hasNext()) {
-                        noNext = true
-                        return
-                    }
-                    setDirection(PageDirectionShared.NEXT)
-                } else {
-                    // 向下滑 → PREV，校验是否有上一页 / 上一章
-                    if (!hasPrev()) {
-                        noNext = true
-                        return
-                    }
-                    setDirection(PageDirectionShared.PREV)
+            // Compose detectDragGestures 已在内部 awaitPointerSlop 消耗系统 touchSlop 后才回调
+            // onDragStart(收到的是越过 slop 时的点) 与 onScroll, 首个 onScroll 即已越过 slop,
+            // 这里不再叠加 TOUCH_SLOP_PX 二次判定——原版两层判定共享按下点基准, 叠加是迁移失真。
+            isMoved = true
+            if (deltaY < 0) {
+                // 向上滑 → NEXT，校验是否有下一页 / 下一章
+                if (!hasNext()) {
+                    noNext = true
+                    return
                 }
-                // 重设 startY 为当前点，避免初始 slop 偏移带入 currentOffset
-                startY = y
-                lastY = y
+                setDirection(PageDirectionShared.NEXT)
+            } else {
+                // 向下滑 → PREV，校验是否有上一页 / 上一章
+                if (!hasPrev()) {
+                    noNext = true
+                    return
+                }
+                setDirection(PageDirectionShared.PREV)
             }
+            // 重设 startY 为当前点，避免初始 slop 偏移带入 currentOffset
+            startY = y
+            lastY = y
         }
         if (isMoved) {
             // 反向移动判定取消（与 app 端 ScrollPageDelegate 判定一致）
@@ -140,8 +141,12 @@ class ScrollPageDelegateCompose(
     }
 
     override fun onTap(x: Float, y: Float): Boolean {
-        // 按 y 位置区分：上 1/3 → 上一页，下 1/3 → 下一页，中间 → 交上层处理菜单
-        // 与 app 端 ReadView.onSingleTapUp → leftRightTap / centerTap 逻辑对应（垂直版）
+        // 优先走宿主注入的九宫格分发（对照 app 端 ReadView.clickArea + click）
+        onTapAt?.let { dispatch ->
+            dispatch(x, y)
+            return true
+        }
+        // 未注入时按 y 位置区分：上 1/3 → 上一页，下 1/3 → 下一页，中间 → 交上层处理菜单
         if (viewHeight <= 0) return false
         val third = viewHeight / 3f
         return when {
@@ -215,20 +220,18 @@ class ScrollPageDelegateCompose(
     }
 
     override fun nextPageByAnim(animDurationMs: Int) {
-        // 与 app 端 ScrollPageDelegate.nextPageByAnim 对应
+        // 与 app 端 ScrollPageDelegate.nextPageByAnim 对应：末尾统一走 onAnimStart
         if (isRunning) return
         if (!hasNext()) return
         abortAnim()
         setDirection(PageDirectionShared.NEXT)
         // 模拟从底部按下，向上滑（与 app 端 setStartPoint(0, viewHeight, false) 对应）
         startY = viewHeight.toFloat()
+        lastY = startY
+        touchY = startY
         isMoved = true
-        isStarted = true
-        isRunning = true
-        animJob?.cancel()
-        animJob = scope.launch {
-            animateOffsetTo(-viewHeight.toFloat(), animDurationMs)
-        }
+        isCancel = false
+        onAnimStart(animDurationMs)
     }
 
     override fun prevPageByAnim(animDurationMs: Int) {
@@ -239,13 +242,11 @@ class ScrollPageDelegateCompose(
         setDirection(PageDirectionShared.PREV)
         // 模拟从顶部按下，向下滑（与 app 端 setStartPoint(0, 0, false) 对应）
         startY = 0f
+        lastY = 0f
+        touchY = 0f
         isMoved = true
-        isStarted = true
-        isRunning = true
-        animJob?.cancel()
-        animJob = scope.launch {
-            animateOffsetTo(viewHeight.toFloat(), animDurationMs)
-        }
+        isCancel = false
+        onAnimStart(animDurationMs)
     }
 
     // endregion

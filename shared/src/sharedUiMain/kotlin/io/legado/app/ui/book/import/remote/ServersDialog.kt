@@ -39,10 +39,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import io.legado.app.data.entities.Server
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppTextButton
@@ -119,7 +119,7 @@ fun ServersDialog(
     // 待删除的服务器 (非 null 时弹出二次确认 alert, 与 app 端 deleteServer(server) 弹 alert 对齐)
     var deletingServer by remember { mutableStateOf<Server?>(null) }
 
-    Dialog(
+    AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
@@ -212,7 +212,7 @@ private fun ServerItem(
     Row(
         Modifier
             .fillMaxWidth()
-            .height(48.dp),
+            .height(DesignTokens.viewHeightXl),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(

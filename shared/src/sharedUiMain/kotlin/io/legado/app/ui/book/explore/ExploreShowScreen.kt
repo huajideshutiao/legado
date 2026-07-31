@@ -312,7 +312,7 @@ private fun ResultArea(
         modifier = modifier.fillMaxWidth(),
         contentPadding = navPad,
     ) {
-        items(books, key = { it.bookUrl }) { book ->
+        items(books, key = { it.bookUrl }, contentType = { "exploreBook" }) { book ->
             when {
                 // cols>=1 且视频 = 视频卡 (1 列大卡 / 多列网格卡), cols==0 才是视频行样式
                 isVideo && cols >= 1 -> videoItemSlot(
@@ -443,14 +443,16 @@ private fun ExploreListItem(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ListRowIcon("ic_author")
                 Text(
-                    text = book.getRealAuthor(),
+                    // 对照书架 ShelfListItem: 作者解析只算一次
+                    text = remember(book.author) { book.getRealAuthor() },
                     color = colors.secondaryText,
                     fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            val kinds = book.getKindList()
+            // 正则切分 + 净化, 别每次重组重算 (对照书架 ShelfListItem)
+            val kinds = remember(book.kind, book.wordCount) { book.getKindList() }
             if (kinds.isNotEmpty()) KindLabels(kinds)
             if (!book.latestChapterTitle.isNullOrEmpty()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

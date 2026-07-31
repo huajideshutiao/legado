@@ -6,7 +6,7 @@ import kotlin.concurrent.Volatile
 /**
  * F2: BookSource/HttpTTS 实体下沉解除 JsExtensions 继承依赖。
  *
- * 实体类 (BookSource/HttpTTS) 下沉到 shared 后不再继承 app 端 [io.legado.app.help.JsExtensions],
+ * 实体类 (BookSource/HttpTTS) 下沉到 shared 后不再继承 app 端 JsExtensions (已删, 面移至 [io.legado.app.help.JsExtensionsJvm]),
  * app 端启动时通过 [JsExtProviders.register] 注册 [JsExtFactory],
  * [BaseSource.evalJS] 注入 bindings["java"]/["source"] 时调用 [wrap] 取得包装器
  * (BookSourceJsExt/HttpTTSJsExt), 让 JS 调用 source.ajax(...) 等方法时

@@ -34,6 +34,7 @@ class IosDatabaseDriver(
     dbPath: String = defaultDbPath()
 ) : NativeDatabaseDriver {
 
+    @OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
     private val dbFile: String = dbPath.apply {
         // 父目录不存在则递归创建 (与 jvmMain File(dbPath).apply { parentFile?.mkdirs() } 行为对齐)
         val parentDir = substringBeforeLast('/')
@@ -53,7 +54,7 @@ class IosDatabaseDriver(
      *
      * lazy 构造: 首次访问时执行 `Room.databaseBuilder<AppDatabase>` + `NativeSQLiteDriver`。
      */
-    val appDatabase: AppDatabase by lazy {
+    override val appDatabase: AppDatabase by lazy {
         Room.databaseBuilder<AppDatabase>(
             name = dbFile
         )

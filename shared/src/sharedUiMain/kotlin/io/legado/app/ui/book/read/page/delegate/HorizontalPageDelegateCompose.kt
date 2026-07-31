@@ -56,6 +56,9 @@ abstract class HorizontalPageDelegateCompose(
     // region PageDelegateShared 接口实现（横向翻页共用逻辑）
 
     override fun onDown(x: Float, y: Float) {
+        // 与 app 端 PageDelegate.onTouch ACTION_DOWN 分支先 abortAnim() 对应:
+        // 动画进行中按下立即中断(并补页), 否则旧动画协程会继续写 _currentOffset 与新手势冲突
+        abortAnim()
         // 与 app 端 PageDelegate.onDown 对应：重置状态字段
         isMoved = false
         noNext = false
@@ -64,6 +67,7 @@ abstract class HorizontalPageDelegateCompose(
         setDirection(PageDirectionShared.NONE)
         // 记录起始触碰点
         startX = x
+        startY = y
         lastX = x
         touchX = x
         touchY = y
@@ -74,30 +78,29 @@ abstract class HorizontalPageDelegateCompose(
     override fun onScroll(x: Float, y: Float) {
         if (!isMoved) {
             val deltaX = x - startX
-            val deltaY = y - touchY
-            // 判断是否超过 slop 阈值（与 app 端 pageSlopSquare2 判定对应）
-            if (deltaX * deltaX + deltaY * deltaY > TOUCH_SLOP_PX * TOUCH_SLOP_PX) {
-                isMoved = true
-                if (deltaX > 0) {
-                    // 向右滑 → PREV，校验是否有上一页 / 上一章
-                    if (!hasPrev()) {
-                        noNext = true
-                        return
-                    }
-                    setDirection(PageDirectionShared.PREV)
-                } else {
-                    // 向左滑 → NEXT，校验是否有下一页 / 下一章
-                    if (!hasNext()) {
-                        noNext = true
-                        return
-                    }
-                    setDirection(PageDirectionShared.NEXT)
+            // Compose detectDragGestures 已在内部 awaitPointerSlop 消耗系统 touchSlop 后才回调
+            // onDragStart(收到的是越过 slop 时的点) 与 onScroll, 首个 onScroll 即已越过 slop,
+            // 这里不再叠加 TOUCH_SLOP_PX 二次判定——原版两层判定共享按下点基准, 叠加是迁移失真。
+            isMoved = true
+            if (deltaX > 0) {
+                // 向右滑 → PREV，校验是否有上一页 / 上一章
+                if (!hasPrev()) {
+                    noNext = true
+                    return
                 }
-                // 重设 startX 为当前点，避免初始 slop 偏移带入 currentOffset
-                // 与 app 端 readView.setStartPoint(event.x, event.y, false) 对应
-                startX = x
-                lastX = x
+                setDirection(PageDirectionShared.PREV)
+            } else {
+                // 向左滑 → NEXT，校验是否有下一页 / 下一章
+                if (!hasNext()) {
+                    noNext = true
+                    return
+                }
+                setDirection(PageDirectionShared.NEXT)
             }
+            // 重设 startX 为当前点，避免初始 slop 偏移带入 currentOffset
+            // 与 app 端 readView.setStartPoint(event.x, event.y, false) 对应
+            startX = x
+            lastX = x
         }
         if (isMoved) {
             // 反向移动判定取消（与 app 端 HorizontalPageDelegate.onScroll 判定一致）
@@ -118,8 +121,12 @@ abstract class HorizontalPageDelegateCompose(
     }
 
     override fun onTap(x: Float, y: Float): Boolean {
-        // 按 x 位置区分：左 1/3 → 上一页，右 1/3 → 下一页，中间 → 交上层处理菜单
-        // 与 app 端 ReadView.onSingleTapUp → leftRightTap / centerTap 逻辑对应
+        // 优先走宿主注入的九宫格分发（对照 app 端 ReadView.clickArea + click）
+        onTapAt?.let { dispatch ->
+            dispatch(x, y)
+            return true
+        }
+        // 未注入时按 x 位置区分：左 1/3 → 上一页，右 1/3 → 下一页，中间 → 交上层处理菜单
         if (viewWidth <= 0) return false
         val third = viewWidth / 3f
         return when {
@@ -136,13 +143,24 @@ abstract class HorizontalPageDelegateCompose(
     }
 
     override fun abortAnim() {
-        // 取消正在执行的动画协程
+        // 与 app 端 HorizontalPageDelegate.abortAnim 对应:
+        // 动画进行中(animJob 未完成)按下/翻页抢跑时, 取消动画协程并立即补页(fillPage)
+        val dir = mDirection
+        val wasRunning = animJob?.isActive == true
         animJob?.cancel()
         animJob = null
         isStarted = false
         isMoved = false
         isRunning = false
         _currentOffset = 0f
+        if (wasRunning && dir != PageDirectionShared.NONE && !isCancel) {
+            // 对照 app 端 readView.fillPage(mDirection): 中断时立即完成翻页
+            when (dir) {
+                PageDirectionShared.NEXT -> if (!viewModel.nextPage()) viewModel.moveToNextChapter()
+                PageDirectionShared.PREV -> if (!viewModel.prevPage()) viewModel.moveToPrevChapter()
+                else -> Unit
+            }
+        }
     }
 
     override fun onAnimStart(animationSpeed: Int) {
@@ -195,20 +213,24 @@ abstract class HorizontalPageDelegateCompose(
     }
 
     override fun nextPageByAnim(animDurationMs: Int) {
-        // 与 app 端 HorizontalPageDelegate.nextPageByAnim 对应
+        // 与 app 端 HorizontalPageDelegate.nextPageByAnim 对应：
+        // abortAnim → setDirection → setStartPoint → onAnimStart
+        // 必须经 onAnimStart 而非直接起动画，否则 NoAnim 的"松手即翻"覆写被绕过
         if (isRunning) return
         if (!hasNext()) return
         abortAnim()
         setDirection(PageDirectionShared.NEXT)
-        // 模拟从右侧按下，向左滑（与 app 端 setStartPoint(viewWidth*0.9, ...) 对应）
-        startX = viewWidth.toFloat()
+        // 模拟从右侧按下，向左滑（与 app 端 setStartPoint(viewWidth*0.9f, y) 对应，
+        // y 按上次触点落在上/下半屏取 1f 或 viewHeight*0.9f，仿真翻页据此选页脚）
+        val y = if (startY > viewHeight / 2) viewHeight * 0.9f else 1f
+        startX = viewWidth * 0.9f
+        startY = y
+        lastX = startX
+        touchX = startX
+        touchY = y
         isMoved = true
-        isStarted = true
-        isRunning = true
-        animJob?.cancel()
-        animJob = scope.launch {
-            animateOffsetTo(-viewWidth.toFloat(), animDurationMs)
-        }
+        isCancel = false
+        onAnimStart(animDurationMs)
     }
 
     override fun prevPageByAnim(animDurationMs: Int) {
@@ -217,15 +239,15 @@ abstract class HorizontalPageDelegateCompose(
         if (!hasPrev()) return
         abortAnim()
         setDirection(PageDirectionShared.PREV)
-        // 模拟从左侧按下，向右滑（与 app 端 setStartPoint(0, ...) 对应）
+        // 模拟从左下角按下，向右滑（与 app 端 setStartPoint(0f, viewHeight) 对应）
         startX = 0f
+        startY = viewHeight.toFloat()
+        lastX = 0f
+        touchX = 0f
+        touchY = viewHeight.toFloat()
         isMoved = true
-        isStarted = true
-        isRunning = true
-        animJob?.cancel()
-        animJob = scope.launch {
-            animateOffsetTo(viewWidth.toFloat(), animDurationMs)
-        }
+        isCancel = false
+        onAnimStart(animDurationMs)
     }
 
     // endregion

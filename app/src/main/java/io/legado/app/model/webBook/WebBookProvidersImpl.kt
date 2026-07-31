@@ -99,13 +99,6 @@ object WebBookProvidersImpl :
     override val bookmarkDao get() = appDb.bookmarkDao
 
     // ---- AppDbAccessor 事务 ----
-    // Room 3 移除了同步的 runInTransaction (事务入口只剩 suspend 的 useWriterConnection);
-    // 用 runBlocking 包裹会与 block 内自己的 runBlocking 争抢写连接而死锁, 故保持直通,
-    // 每个 DAO 操作本身原子 (与桌面端 DesktopAppDbAccessor 一致)。
-    override fun <R> runInTransaction(block: () -> R): R {
-        return block()
-    }
-
     // suspend 版本走 Room 真事务: useWriterConnection 把写连接放进协程上下文,
     // block 内的 suspend DAO 复用同一连接; immediateTransaction 对应 BEGIN IMMEDIATE, 异常自动回滚。
     override suspend fun <R> runInTransactionSuspending(block: suspend () -> R): R {

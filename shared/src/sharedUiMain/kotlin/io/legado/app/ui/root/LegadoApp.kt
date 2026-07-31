@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookGroup
+import io.legado.app.help.SourceLoginContext
+import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
@@ -39,7 +41,9 @@ import io.legado.app.ui.book.changecover.ChangeCoverViewModelShared
 import io.legado.app.ui.book.group.GroupEditDialog
 import io.legado.app.ui.book.group.GroupSelectDialog
 import io.legado.app.ui.book.group.GroupViewModelShared
+import io.legado.app.ui.book.source.SourceLoginDialog
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
+import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.compose.platform.PlatformBackHandler
 import io.legado.app.ui.compose.platform.handleBackKey
@@ -73,16 +77,28 @@ fun LegadoApp(
         SideEffect { AppNavigatorProviders.register(navigator) }
 
         val entries by navigator.backStack.collectAsState()
-        val previousEntryCount = remember { mutableStateOf(entries.size) }
         val transition = remember { Animatable(1f) }
+        // 方向/出栈页/动画标志在组合阶段维护: LaunchedEffect 滞后一帧, 动画参数若等
+        // effect 定, 首帧会先按"无动画终态"渲染 (前进: 旧页瞬间消失露底; 返回: 目标页
+        // 硬切), 正是切换闪烁的来源。组合阶段先定方向, 首帧即渲染动画起始位
         var navigatingForward by remember { mutableStateOf(true) }
-        LaunchedEffect(entries.size) {
-            if (entries.size != previousEntryCount.value) {
-                navigatingForward = entries.size > previousEntryCount.value
-                previousEntryCount.value = entries.size
-                transition.snapTo(0f)
-                transition.animateTo(1f, tween(durationMillis = 220))
+        var animating by remember { mutableStateOf(false) }
+        var outgoingEntry by remember { mutableStateOf<RouteEntry?>(null) }
+        // 上次已消化(动画播完)的栈, 由下方动画 effect 更新, 组合阶段据此检测新导航
+        val lastSettled = remember { mutableStateOf(entries) }
+        if (entries.size != lastSettled.value.size) {
+            navigatingForward = entries.size > lastSettled.value.size
+            // 返回导航时缓存即将消失的页面，用于滑出动画
+            if (!navigatingForward) {
+                outgoingEntry = lastSettled.value.lastOrNull()
             }
+            animating = true
+        }
+        // 返回导航时出栈页保留在栈尾滑出, 动画结束后由 effect 清 outgoingEntry 复位
+        val displayEntries = if (!navigatingForward) {
+            entries + listOfNotNull(outgoingEntry)
+        } else {
+            entries
         }
         val currentEntry = entries.lastOrNull()
         val currentRoute = currentEntry?.route
@@ -96,10 +112,6 @@ fun LegadoApp(
                 .onFailure { AppLog.put("应用窗口策略失败", it) }
         }
 
-        // ScreenModel 生命周期与栈绑定 (清理已出栈的 ScreenModel)
-        LaunchedEffect(entries) {
-            screenModelStore.retain(entries)
-        }
         DisposableEffect(screenModelStore) {
             onDispose { screenModelStore.clear() }
         }
@@ -122,44 +134,79 @@ fun LegadoApp(
             // 非顶层页面移出可见区域，出栈后才真正离开 Composition 并释放资源。
             val saveableStateHolder = rememberSaveableStateHolder()
             var retainedEntryIds by remember { mutableStateOf(entries.mapTo(mutableSetOf()) { it.id }) }
+            // 动画驱动 + 动画结束后的清理: 出栈页的 ScreenModel/SaveableState 要撑到动画
+            // 播完, 提前 retain/removeState 会让返回动画中的页面重建 ViewModel 重载数据
             LaunchedEffect(entries) {
+                if (entries.size != lastSettled.value.size) {
+                    transition.snapTo(0f)
+                    transition.animateTo(1f, tween(durationMillis = 300))
+                    lastSettled.value = entries
+                    outgoingEntry = null
+                    animating = false
+                } else if (transition.value != 1f) {
+                    // 动画中途导航被打断且栈规模不变 (如快速 push+pop): 复位动画,
+                    // 否则页面会停在动画中间位
+                    transition.snapTo(1f)
+                    animating = false
+                }
+                // ScreenModel 生命周期与栈绑定 (清理已出栈的 ScreenModel)
+                screenModelStore.retain(entries)
                 val currentIds = entries.mapTo(mutableSetOf()) { it.id }
                 (retainedEntryIds - currentIds).forEach { removedId ->
                     saveableStateHolder.removeState(removedId.value)
                 }
                 retainedEntryIds = currentIds
             }
-            entries.forEachIndexed { index, entry ->
-                val isCurrent = index == entries.lastIndex
-                val isPrevious = index == entries.lastIndex - 1
+            // 动画角色: top=动画后留存的栈顶页, slide=前进时的旧页或返回时的出栈页
+            val topEntry = entries.lastOrNull()
+            val slideEntry = outgoingEntry ?: displayEntries.getOrNull(displayEntries.lastIndex - 1)
+            displayEntries.forEach { entry ->
+                val isTop = entry.id == topEntry?.id
+                val isSliding = entry.id == slideEntry?.id
                 Box(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
                             val progress = transition.value
+                            val running = transition.isRunning
+                            // 动画尚未启动的首帧 (组合先于 effect 的 snapTo): 按起始位渲染,
+                            // 与 snapTo(0) 后的动画首帧位置一致, 避免先闪终态再动画
+                            val idleFrame = animating && !running && progress == 1f
                             when {
-                                isCurrent -> {
+                                isTop -> {
                                     alpha = 1f
-                                    translationX = if (navigatingForward) {
-                                        size.width * 0.08f * (1f - progress)
-                                    } else {
-                                        -size.width * 0.03f * (1f - progress)
-                                    }
                                     scaleX = 1f
                                     scaleY = 1f
+                                    translationX = when {
+                                        idleFrame && navigatingForward -> size.width
+                                        idleFrame -> -size.width * 0.3f
+                                        navigatingForward -> size.width * (1f - progress)
+                                        else -> -size.width * 0.3f * (1f - progress)
+                                    }
                                 }
 
-                                isPrevious && navigatingForward && transition.isRunning -> {
+                                isSliding -> {
+                                    // 前进: 旧页向左滑出; 返回: 出栈页向右滑出
                                     alpha = 1f
-                                    translationX = -size.width * 0.03f * progress
                                     scaleX = 1f
                                     scaleY = 1f
+                                    translationX = when {
+                                        idleFrame -> 0f
+                                        animating && navigatingForward -> -size.width * 0.3f * progress
+                                        animating -> size.width * progress
+                                        else -> -size.width
+                                    }
                                 }
 
                                 else -> {
+                                    // 移出屏幕而非 scale=0: 零缩放图层的逆矩阵是退化矩阵, 命中测试产生
+                                    // NaN/Inf 坐标会腐蚀指针分发 (手势进行中导航离开时尤其明显, 表现为
+                                    // 返回后整个界面触摸无响应但系统事件仍到达窗口)。平移到屏幕外坐标有限,
+                                    // 命中测试干净 miss, 且不参与可见绘制 (alpha=0 + clip)。
                                     alpha = 0f
-                                    scaleX = 0f
-                                    scaleY = 0f
+                                    scaleX = 1f
+                                    scaleY = 1f
+                                    translationX = -size.width
                                 }
                             }
                             transformOrigin = TransformOrigin(0f, 0f)
@@ -218,7 +265,7 @@ val LocalPlatformServices = staticCompositionLocalOf<PlatformServices?> { null }
 private fun applyWindowPolicy(policy: WindowPolicy) {
     val services = PlatformServiceProviders.getOrNull() ?: return
     val wc = services.window
-    wc.setFullscreen(policy.fullscreen)
+    if (wc.appliesPolicyFullscreen) wc.setFullscreen(policy.fullscreen)
     wc.setKeepScreenOn(policy.keepScreenOn)
     wc.setOrientation(policy.orientation)
     wc.setSystemBars(policy.systemBars)
@@ -304,6 +351,7 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
     when (overlay.key) {
         "photo" -> PhotoOverlayDialogContent(overlay, navigator)
         "group_select" -> GroupSelectDialogContent(overlay, navigator)
+        "sourceLogin" -> SourceLoginOverlayDialogContent(overlay, navigator)
         "change_cover" -> ChangeCoverDialogContent(overlay, navigator)
         "app_log" -> AppLogOverlayDialogContent(overlay, navigator)
 
@@ -344,6 +392,26 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
             RuleExportDialogContent(overlay, navigator, "exportSourceFilterRule.json")
 
         else -> FallbackDialogContent(overlay, navigator)
+    }
+}
+
+// 书源表单登录对话框 (key="sourceLogin", payload=SourceLoginContext 的 dataKey)。
+// 对照原版 BaseSource.showLoginDialog 的 showDialogFragment<SourceLoginDialog> 分支。
+@Composable
+private fun SourceLoginOverlayDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
+    val context = remember(overlay.payload) { overlay.payload?.let { SourceLoginContext.take(it) } }
+    if (context == null) {
+        LaunchedEffect(Unit) { navigator.dismissOverlay(overlay.key) }
+        return
+    }
+    EditDialogHost(onDismiss = { navigator.dismissOverlay(overlay.key) }) {
+        SourceLoginDialog(
+            source = context.source,
+            onDismiss = { navigator.dismissOverlay(overlay.key) },
+            onOpenUrl = { PlatformCapabilityProviders.getOrNull()?.openExternalUrl(it) },
+            book = context.book,
+            chapter = context.chapter,
+        )
     }
 }
 
@@ -445,8 +513,9 @@ private fun ChangeCoverDialogContent(overlay: AppOverlay.Dialog, navigator: AppN
         },
         onDismiss = { navigator.dismissOverlay(overlay.key) },
         coverSlot = { searchBook, modifier ->
-            // SearchBook → Book 适配 LocalBookCoverSlot 签名
-            bookCoverSlot(searchBook.toBook(), modifier, false)
+            // SearchBook → Book 适配 LocalBookCoverSlot 签名; 候选封面恒走临时缓存区
+            // (对照原版 CoverAdapter 的 ivCover.load(..) 默认 inBookshelf = false)
+            bookCoverSlot(searchBook.toCoverBook(), modifier, false)
         },
     )
 }
@@ -472,7 +541,13 @@ private fun FallbackDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavi
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
 private fun SheetOverlayContent(overlay: AppOverlay.Sheet, navigator: AppNavigator) {
-    val sheetState = rememberModalBottomSheetState(ModalBottomSheetValue.Expanded)
+    // E-Ink 直接以 Expanded 起步 = 无进场动画 (对齐 app 版无动画);
+    // 其余以 Hidden 起步, 由下方 show() 滑入展开
+    val sheetState = rememberModalBottomSheetState(
+        if (AppConfigProviders.get().isEInkMode) ModalBottomSheetValue.Expanded
+        else ModalBottomSheetValue.Hidden
+    )
+    var hasShown by remember { mutableStateOf(false) }
     ModalBottomSheetLayout(
         sheetState = sheetState,
         sheetContent = {
@@ -488,8 +563,16 @@ private fun SheetOverlayContent(overlay: AppOverlay.Sheet, navigator: AppNavigat
         sheetElevation = 0.dp,
         content = { Box(Modifier.fillMaxSize()) },
     )
+    // 初始 Hidden 再滑入展开: 对齐 app 版底部菜单滑入动画 (E-Ink 已起步 Expanded, 无动画)
+    LaunchedEffect(Unit) {
+        if (sheetState.currentValue != ModalBottomSheetValue.Expanded) {
+            sheetState.show()
+        }
+        hasShown = true
+    }
     LaunchedEffect(sheetState.currentValue) {
-        if (sheetState.currentValue == ModalBottomSheetValue.Hidden) {
+        // hasShown 排除初始 Hidden (滑入动画起点), 只在展开过之后响应下滑收起
+        if (hasShown && sheetState.currentValue == ModalBottomSheetValue.Hidden) {
             navigator.dismissOverlay(overlay.key)
         }
     }

@@ -27,12 +27,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppCheckbox
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppOutlinedTextField
@@ -135,103 +135,100 @@ fun GroupEditDialog(
         stringResource(Res.string.book_sort_author),
     )
 
-    Dialog(
+    AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
-        Box(Modifier.fillMaxSize()) {
-            Surface(
-                shape = DesignTokens.shapeDefault,
-                color = colors.background,
-                modifier = Modifier
-                    .appDialogSize()
-                    .align(Alignment.Center),
-            ) {
-                Column(Modifier.fillMaxWidth()) {
-                    DialogTitleBar(
-                        title = rememberString(titleKey),
-                        onBack = onDismiss,
-                    )
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                    ) {
-                        if (coverSlot != null) {
-                            Box(
-                                Modifier
-                                    .width(110.dp)
-                                    .aspectRatio(3f / 4f)
-                                    .let { modifier ->
-                                        if (onPickCover == null) modifier else modifier.clickable {
-                                            scope.launch { onPickCover()?.let { cover = it } }
-                                        }
-                                    },
-                            ) {
-                                coverSlot(cover, Modifier.fillMaxSize())
-                            }
-                        }
-                        Column(
+        // 不能套 fillMaxSize: 撑满窗口会让整窗都算"框内", 点外部永远关不掉; 居中由 RootMeasurePolicy 负责。
+        Surface(
+            shape = DesignTokens.shapeDefault,
+            color = colors.background,
+            modifier = Modifier.appDialogSize(),
+        ) {
+            Column(Modifier.fillMaxWidth()) {
+                DialogTitleBar(
+                    title = rememberString(titleKey),
+                    onBack = onDismiss,
+                )
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                ) {
+                    if (coverSlot != null) {
+                        Box(
                             Modifier
-                                .weight(1f)
-                                .let { if (coverSlot != null) it.padding(start = 8.dp) else it },
+                                .width(110.dp)
+                                .aspectRatio(3f / 4f)
+                                .let { modifier ->
+                                    if (onPickCover == null) modifier else modifier.clickable {
+                                        scope.launch { onPickCover()?.let { cover = it } }
+                                    }
+                                },
                         ) {
-                            AppOutlinedTextField(
-                                value = groupName,
-                                onValueChange = { groupName = it },
-                                label = stringResource(Res.string.group_name),
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            SortRow(
-                                bookSort = bookSort,
-                                sortEntries = sortEntries,
-                                onSortSelected = { bookSort = it },
-                            )
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp)
-                                    .clickable { enableRefresh = !enableRefresh },
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                AppCheckbox(
-                                    checked = enableRefresh,
-                                    onCheckedChange = { enableRefresh = it },
-                                )
-                                Text(
-                                    text = stringResource(Res.string.allow_drop_down_refresh),
-                                    color = colors.primaryText,
-                                    fontSize = 14.sp,
-                                )
-                            }
+                            coverSlot(cover, Modifier.fillMaxSize())
                         }
                     }
-                    Row(
+                    Column(
                         Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                            .weight(1f)
+                            .let { if (coverSlot != null) it.padding(start = 8.dp) else it },
                     ) {
-                        val showDelete = !isNew &&
-                            (editingGroup.groupId > 0L || editingGroup.groupId == Long.MIN_VALUE)
-                        if (showDelete) {
-                            AppTextButton(text = stringResource(Res.string.delete)) {
-                                showDeleteDialog = true
-                            }
+                        AppOutlinedTextField(
+                            value = groupName,
+                            onValueChange = { groupName = it },
+                            label = stringResource(Res.string.group_name),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        SortRow(
+                            bookSort = bookSort,
+                            sortEntries = sortEntries,
+                            onSortSelected = { bookSort = it },
+                        )
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                                .clickable { enableRefresh = !enableRefresh },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            AppCheckbox(
+                                checked = enableRefresh,
+                                onCheckedChange = { enableRefresh = it },
+                            )
+                            Text(
+                                text = stringResource(Res.string.allow_drop_down_refresh),
+                                color = colors.primaryText,
+                                fontSize = 14.sp,
+                            )
                         }
-                        Spacer(Modifier.weight(1f))
-                        AppTextButton(text = stringResource(Res.string.cancel), onClick = onDismiss)
-                        AppTextButton(text = stringResource(Res.string.ok)) {
-                            if (groupName.isEmpty()) {
-                                Toasters.get().toast("分组名称不能为空")
-                            } else {
-                                editingGroup.groupName = groupName
-                                editingGroup.bookSort = bookSort
-                                editingGroup.enableRefresh = enableRefresh
-                                editingGroup.cover = cover
-                                onConfirm(editingGroup)
-                            }
+                    }
+                }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val showDelete = !isNew &&
+                        (editingGroup.groupId > 0L || editingGroup.groupId == Long.MIN_VALUE)
+                    if (showDelete) {
+                        AppTextButton(text = stringResource(Res.string.delete)) {
+                            showDeleteDialog = true
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    AppTextButton(text = stringResource(Res.string.cancel), onClick = onDismiss)
+                    AppTextButton(text = stringResource(Res.string.ok)) {
+                        if (groupName.isEmpty()) {
+                            Toasters.get().toast("分组名称不能为空")
+                        } else {
+                            editingGroup.groupName = groupName
+                            editingGroup.bookSort = bookSort
+                            editingGroup.enableRefresh = enableRefresh
+                            editingGroup.cover = cover
+                            onConfirm(editingGroup)
                         }
                     }
                 }

@@ -5,6 +5,8 @@ import org.jetbrains.skia.Font
 import org.jetbrains.skia.FontMgr
 import org.jetbrains.skia.FontStyle
 import org.jetbrains.skia.Typeface
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * [TextMeasurer] 桌面实现：走 Skia 真实字形度量（[Font.getWidths] / [Font.metrics]），
@@ -45,6 +47,10 @@ import org.jetbrains.skia.Typeface
  * @param letterSpacingPx 字间距（px，= app 端 `letterSpacing * textSize`）
  * @param typeface 字形来源；默认 [defaultReaderTypeface] 与 desktop 绘制侧
  *   （`PageContentCanvas` 的 Compose `FontFamily.Default`）同源，避免「A 字体度量 / B 字体绘制」。
+ *   用户选了自定义字体时由注册处传 [readerTypeface] 的结果（与绘制侧读同一文件）。
+ *   注意「同源」只到主字体：主字体缺字时 Compose 的 SkParagraph 会走字体回退（中日韩正文在
+ *   Windows 上的 Segoe UI / Arial 里全部缺字），[Font] 却只会给 .notdef 的窄 advance，
+ *   所以本类必须自己做同款回退，见 [fallbackAdvance]。
  */
 class SkiaTextMeasurer(
     override val textSizePx: Float,
@@ -57,6 +63,8 @@ class SkiaTextMeasurer(
         // 不开则 advance 会被 hinting 取整，与绘制侧对不上。
         isSubpixel = true
     }
+
+    private val primaryFamily: String? = typeface?.familyName
 
     override val descent: Float get() = font.metrics.descent
 
@@ -73,18 +81,26 @@ class SkiaTextMeasurer(
     /**
      * 按 UTF-16 code unit 回调每位宽度（代理对低位回调 0），
      * 保证 [measureGlyphWidths] 与 [measureWidth] 同源同口径。
+     *
+     * 主字体给出 glyph 0（.notdef）即为缺字，改用回退字体的 advance——与绘制侧一致。
      */
     private inline fun forEachGlyphWidth(text: String, emit: (index: Int, width: Float) -> Unit) {
         if (text.isEmpty()) return
         // Skia 无「写入调用方数组」的 API，glyphs/advances 两个临时数组不可避免；
         // 调用方（SimpleChapterLayout.setTypeText）本就按段落粒度调用，非逐字热路径。
-        val advances = font.getWidths(font.getStringGlyphs(text))
+        val glyphs = font.getStringGlyphs(text)
+        val advances = font.getWidths(glyphs)
         var codePointIndex = 0
         var i = 0
         while (i < text.length) {
             val c = text[i]
             val isPair = c.isHighSurrogate() && i + 1 < text.length && text[i + 1].isLowSurrogate()
-            val advance = advances.getOrElse(codePointIndex) { 0f }
+            var advance = advances.getOrElse(codePointIndex) { 0f }
+            if (glyphs.getOrElse(codePointIndex) { 0 }.toInt() == 0) {
+                val codePoint = if (isPair) text.codePointAt(i) else c.code
+                val fallback = fallbackAdvance(codePoint)
+                if (fallback > 0f) advance = fallback
+            }
             emit(i, if (advance > 0f) advance + letterSpacingPx else 0f)
             if (isPair) {
                 emit(i + 1, 0f)
@@ -96,7 +112,41 @@ class SkiaTextMeasurer(
         }
     }
 
+    /**
+     * 主字体缺字时按码点取回退字体的 advance（对应 SkParagraph 绘制时的 defaultFallback）。
+     * 取不到返回 0，调用方保留 .notdef 宽度。
+     */
+    private fun fallbackAdvance(codePoint: Int): Float {
+        val key = (codePoint.toLong() shl 32) or (textSizePx.toRawBits().toLong() and 0xFFFFFFFFL)
+        advanceCache[key]?.let { return it }
+        val advance = synchronized(cacheLock) {
+            val typeface = runCatching {
+                FontMgr.default.matchFamilyStyleCharacter(
+                    primaryFamily, FontStyle.NORMAL, localeTags, codePoint
+                )
+            }.getOrNull()
+            if (typeface == null) {
+                0f
+            } else {
+                val fallbackFont = fontCache.getOrPut("${typeface.familyName}@$textSizePx") {
+                    Font(typeface, textSizePx).apply { isSubpixel = true }
+                }
+                val text = String(Character.toChars(codePoint))
+                fallbackFont.getWidths(fallbackFont.getStringGlyphs(text)).firstOrNull() ?: 0f
+            }
+        }
+        advanceCache[key] = advance
+        return advance
+    }
+
     companion object {
+
+        /** 回退查表结果全局缓存：度量器按章重建，缓存跟着重建就白查了。 */
+        private val advanceCache = ConcurrentHashMap<Long, Float>()
+        private val fontCache = HashMap<String, Font>()
+        private val cacheLock = Any()
+        private val localeTags: Array<String> =
+            arrayOf(Locale.getDefault().toLanguageTag())
 
         /**
          * 与 Compose `FontFamily.Default` 同源的默认字形：CMP skiko 把 Default 映射到
@@ -117,6 +167,17 @@ class SkiaTextMeasurer(
             }
             return runCatching { FontMgr.default.matchFamiliesStyle(families, FontStyle.NORMAL) }
                 .getOrNull()
+        }
+
+        /**
+         * 用户自定义正文字体（`ReadBookConfig.textFont`）→ Typeface。
+         * 走 `FontMgr.default.makeFromFile`，与绘制侧 `loadReaderFontFamily`（Compose
+         * `Font(File)` 内部同一调用）读同一个文件；空路径 / 加载失败回落 [defaultReaderTypeface]。
+         */
+        fun readerTypeface(fontPath: String): Typeface? {
+            if (fontPath.isEmpty()) return defaultReaderTypeface()
+            return runCatching { FontMgr.default.makeFromFile(fontPath) }.getOrNull()
+                ?: defaultReaderTypeface()
         }
     }
 }

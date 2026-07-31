@@ -6,30 +6,21 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.ScrollableDefaults
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyItemScope
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
+import androidx.compose.material.LocalTextStyle
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,43 +35,46 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookSource
+import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaFooterConfig
+import io.legado.app.ui.book.manga.entities.BaseMangaPage
+import io.legado.app.ui.book.manga.entities.MangaPage
+import io.legado.app.ui.book.manga.render.MangaReaderBackground
+import io.legado.app.ui.book.manga.render.MangaRenderLayer
 import io.legado.app.ui.book.manga.render.MangaRenderState
-import io.legado.app.ui.book.manga.render.rememberSinglePageSnapFlingBehavior
-import io.legado.app.ui.book.manga.render.webtoonGestures
+import io.legado.app.ui.book.read.config.ClickActionConfig
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSlider
-import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.handleReadPageKeys
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
+import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
-import legado.shared.generated.resources.auto_next_page
 import legado.shared.generated.resources.back
 import legado.shared.generated.resources.bookmark_add
-import legado.shared.generated.resources.change_source
+import legado.shared.generated.resources.bottom_line
 import legado.shared.generated.resources.chapter_list
+import legado.shared.generated.resources.click_regional_config
 import legado.shared.generated.resources.disable_manga_page_anim
+import legado.shared.generated.resources.enable_auto_page_scroll
 import legado.shared.generated.resources.enable_manga_horizontal_scroll
 import legado.shared.generated.resources.hide_manga_title
 import legado.shared.generated.resources.ic_arrow_back
-import legado.shared.generated.resources.ic_auto_page
 import legado.shared.generated.resources.ic_more_vert
 import legado.shared.generated.resources.ic_refresh_black_24dp
-import legado.shared.generated.resources.ic_skip_next
-import legado.shared.generated.resources.ic_skip_previous
 import legado.shared.generated.resources.ic_toc
 import legado.shared.generated.resources.loading
+import legado.shared.generated.resources.manga_auto_page_speed
 import legado.shared.generated.resources.manga_check_chapter
 import legado.shared.generated.resources.manga_check_page_number
 import legado.shared.generated.resources.manga_check_progress
@@ -89,34 +83,38 @@ import legado.shared.generated.resources.manga_footer_config
 import legado.shared.generated.resources.manga_gif_auto_next
 import legado.shared.generated.resources.more_menu
 import legado.shared.generated.resources.next_chapter
-import legado.shared.generated.resources.page_preview
+import legado.shared.generated.resources.pre_download_m
 import legado.shared.generated.resources.previous_chapter
 import legado.shared.generated.resources.refresh
 import legado.shared.generated.resources.reload
-import org.jetbrains.compose.resources.getString
+import legado.shared.generated.resources.review
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
  * 漫画阅读 Screen 主体内容（各端共享，由 desktop/app 调用）。
  *
- * 布局对齐 app 端 ReadMangaActivity: 全屏渲染区 + 顶部信息条(电池/时间/进度) +
- * 菜单 Overlay(顶部标题栏 + 底部控制栏含 SeekBar), 黑底 (#1A1A1A) 白字视觉风格保留。
+ * 布局对齐 app 端 ReadMangaActivity: 全屏渲染区(book_ant_10 #141414) + 底部信息条(ReaderInfoBarView) +
+ * 菜单 Overlay(TitleBar + view_manga_menu 底栏), 菜单配色走 ThemeStore(background/bottomBackground/primaryText)。
  *
- * 渲染区复用 app 端 [MangaRenderState] + [webtoonGestures]（缩放/平移/双击锚定/边界拖动翻页），
- * 图片加载经 [imageSlot] 注入，滤镜 (colorFilterConfig/grayEnabled) 由平台应用到 ImageView。
- * GIF 由 Coil3 自动识别解码 (coil3-gif), 无需 isGif 标记。
+ * 渲染区直接复用 app 端下沉的 [MangaRenderLayer] + [MangaRenderState]：章节转场页、居中页驱动
+ * 进度/跨章、预加载、GIF 播完翻页、pendingScroll 定位全部走同一份实现，
+ * 平台差异只剩图片单元格 ([imageSlot]) 与预加载执行体 ([preloadImage])。
  *
- * @param bookName 书名（标题栏主标题）
- * @param chapterTitle 章节标题（标题栏副标题）
- * @param images 当前章节图片 URL 列表
+ * @param bookName 书名（标题栏标题, 对照 app 端 MangaMenu.title）
+ * @param chapterTitle 章节名（底部信息条用, 原版标题栏不显示章节名）
+ * @param items 当前 prev/cur/next 三章合并后的页列表 (含章节转场 ReaderLoading)
+ * @param contentPos 内容定位下标 (对照 app 端 buildMangaContent().pos)
+ * @param curFinish 当前章是否已加载完成 (对照 app 端 MangaContent.curFinish)
+ * @param book 当前书籍 (图片加载/预加载用)
+ * @param bookSource 当前书源 (图片加载/预加载用)
  * @param curChapterIndex 当前章节序号 (0-based)
  * @param chapterSize 总章节数
  * @param horizontal 横向翻页模式（true=LazyRow 整页，false=LazyColumn webtoon）
  * @param autoPageSpeed 自动翻页速度（横向=秒/页，纵向=滚动速度系数）
  * @param loading 加载中标记（覆盖层）
  * @param error 错误消息（null=无错误）
- * @param batteryLevel 电池电量 0-100, -1 不显示
+ * @param batteryLevel 电池电量 0-100, -1 不显示 (原版信息条不含电池, 暂未使用)
  * @param systemTime 系统时间 HH:mm
  * @param currentPage 章节内当前页 (0-based)
  * @param pageCount 章节内总页数
@@ -126,21 +124,28 @@ import org.jetbrains.compose.resources.stringResource
  * @param onBack 返回回调
  * @param onPrevChapter 上一章
  * @param onNextChapter 下一章
- * @param onPrevPage 上一页（提供后键盘上翻键优先调用，否则回落到 onPrevChapter）
- * @param onNextPage 下一页（提供后键盘下翻键/空格优先调用，否则回落到 onNextChapter）
+ * @param onPrevPage 上一页（提供后键盘上翻键优先调用，否则整屏回滚）
+ * @param onNextPage 下一页（提供后键盘下翻键/空格优先调用，否则整屏前滚）
+ * @param onCenterItemChanged 居中页变化（对照 app 端 onCenterItemChanged: 驱动跨章/进度）
+ * @param onSeekToPage SeekBar 拖动定位到章内页 (对照 app 端 skipToPage)
  * @param onRetry 错误重试
  * @param onOpenToc 打开目录回调
- * @param onOpenChangeSource 打开换源回调
+ * @param onOpenBookInfo 打开书籍详情 (标题栏点击)
  * @param onAddBookmark 添加书签
  * @param onSaveImage 长按图片保存 (参数为图片 url)
  * @param onToggleHorizontal 切换横/纵向翻页
+ * @param preloadImage 图片预加载执行体 (对照 app 端 Coil3 WRITE_ONLY 预载, 未提供则不预载)
  * @param imageSlot 平台图片渲染插槽：(url, modifier, horizontal, colorFilterConfig, grayEnabled) -> Compose 图片组件
  */
 @Composable
 fun MangaReaderScreenContent(
     bookName: String,
     chapterTitle: String,
-    images: List<String>,
+    items: List<BaseMangaPage>,
+    contentPos: Int,
+    curFinish: Boolean,
+    book: Book?,
+    bookSource: BookSource?,
     curChapterIndex: Int,
     chapterSize: Int,
     horizontal: Boolean,
@@ -158,15 +163,20 @@ fun MangaReaderScreenContent(
     hideMangaTitle: Boolean = false,
     disablePageAnim: Boolean = false,
     gifAutoNext: Boolean = false,
+    preDownloadNum: Int = 10,
+    hasReview: Boolean = false,
+    clickActionConfig: ClickActionConfig = ClickActionConfig(),
     onBack: () -> Unit,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
     onPrevPage: (() -> Unit)? = null,
     onNextPage: (() -> Unit)? = null,
+    onCenterItemChanged: (BaseMangaPage) -> Unit = {},
+    onSeekToPage: (Int) -> Unit = {},
     onRetry: () -> Unit,
     onRefresh: () -> Unit = {},
     onOpenToc: () -> Unit = {},
-    onOpenChangeSource: () -> Unit = {},
+    onOpenBookInfo: () -> Unit = {},
     onAddBookmark: () -> Unit = {},
     onSaveImage: (String) -> Unit = {},
     onToggleHorizontal: () -> Unit = {},
@@ -175,7 +185,11 @@ fun MangaReaderScreenContent(
     onToggleGifAutoNext: () -> Unit = {},
     onOpenColorFilter: () -> Unit = {},
     onOpenFooterConfig: () -> Unit = {},
-    onOpenGridPreview: () -> Unit = {},
+    onOpenPreDownloadNum: () -> Unit = {},
+    onOpenAutoPageSpeed: () -> Unit = {},
+    onOpenClickRegionConfig: () -> Unit = {},
+    onOpenReview: () -> Unit = {},
+    preloadImage: (suspend (String, Book, BookSource?) -> Unit)? = null,
     imageSlot: @Composable (String, Modifier, Boolean, MangaColorFilterConfig, Boolean) -> Unit,
 ) {
     // 键盘事件焦点: onPreviewKeyEvent 需节点持有焦点才触发, 进入即取焦点
@@ -183,45 +197,134 @@ fun MangaReaderScreenContent(
     LaunchedEffect(Unit) {
         runCatching { keyFocusRequester.requestFocus() }
     }
-    // 菜单 Overlay 显隐 (居中点击切换, 对照 app 端 click action 0)
+    // 菜单 Overlay 显隐 (点击区域动作 0 呼出, 对照 app 端 click action 0)
     var menuVisible by remember { mutableStateOf(false) }
-    // 九宫格缩略图模式 (对照 app 端 MangaRenderLayer 无, shared 简化版新增)
-    var gridMode by remember { mutableStateOf(false) }
-    // 渲染状态: 提升到顶层, 供 SeekBar/九宫格定位复用 listState
+    // 自动翻页开关: 对照原版 menu_enable_auto_page, 由溢出菜单勾选项控制 (原版同样不持久化)
+    var autoPageEnabled by remember { mutableStateOf(false) }
+    // 渲染状态: 提升到顶层, 供 SeekBar 定位复用 listState
     val renderState = remember { MangaRenderState() }
     val scope = rememberCoroutineScope()
+    val bottomLineText = stringResource(Res.string.bottom_line)
     renderState.scope = scope
     renderState.horizontal = horizontal
+    // 速度下限 1: 对照 app 端 showNumberPickerDialog(min=1); 0 会让定时翻页退化成空转
+    renderState.autoSpeed = autoPageSpeed.coerceAtLeast(1)
+    renderState.items = items
+    renderState.book = book
+    renderState.bookSource = bookSource
+    renderState.colorFilterConfig = colorFilterConfig
+    renderState.grayEnabled = grayEnabled
+    // 对照 app 端 initRenderLayer: GIF 播完翻页只在横向模式生效
+    renderState.gifAutoNext = gifAutoNext && horizontal
+    renderState.preloadCount = preDownloadNum
+    renderState.preloadExecutor = preloadImage
+
+    /**
+     * 翻页, 返回是否真的翻动了 (对照 app 端 ReadMangaActivity.scrollPageTo)。
+     * silent=true 时受阻不弹提示, 供 GIF 播完翻页在受阻时继续循环重试。
+     */
+    fun scrollPageTo(direction: Int, silent: Boolean = false): Boolean {
+        if (!renderState.canScroll(direction)) {
+            if (!silent) Toasters.get().toast(bottomLineText)
+            return false
+        }
+        renderState.scrollPage(direction, animated = !disablePageAnim)
+        if (disablePageAnim && renderState.gifAutoNext) {
+            // 无翻页动画时同步滚动不触发停稳回调, 手动装填新当前页的 GIF
+            renderState.post { renderState.syncGifAutoNextForCurrentPage() }
+        }
+        return true
+    }
+
+    // 居中页变化驱动跨章/进度/信息条 (对照 app 端 onCenterItemChanged)
+    renderState.onCenterItemChanged = { position ->
+        items.getOrNull(position)?.let(onCenterItemChanged)
+    }
+    // 仅在滚动彻底停止后装填居中页 GIF, 避免滑动途中提前播完停在末帧
+    renderState.onScrollIdle = { renderState.syncGifAutoNextForCurrentPage() }
+    renderState.onGifTurnPage = { scrollPageTo(1, silent = true) }
+    renderState.onAutoPageTick = { scrollPageTo(1) }
+    // 长按当前居中页图片 → 保存 (对照 app 端 onLongTap)
+    renderState.onLongTap = {
+        val item = items.getOrNull(renderState.centerItemIndex())
+        if (item is MangaPage) {
+            onSaveImage(item.mImageUrl)
+            true
+        } else {
+            false
+        }
+    }
+
+    // 点击九宫格: 对照 app 端 ClickArea.getAction + ReadMangaActivity.click(action)
+    var containerSize by remember { mutableStateOf(IntSize.Zero) }
+    renderState.onContainerSizeExtra = { containerSize = it }
+    renderState.clickActionAt = { x, y ->
+        clickActionConfig.actionAt(x, y, containerSize.width, containerSize.height)
+    }
+    renderState.onAction = { action ->
+        when (action) {
+            0 -> if (!menuVisible && !loading) menuVisible = true
+            1 -> if (onNextPage != null) onNextPage() else scrollPageTo(1)
+            2 -> if (onPrevPage != null) onPrevPage() else scrollPageTo(-1)
+            3 -> onNextChapter()
+            4 -> onPrevChapter()
+            10 -> onOpenToc()
+        }
+    }
+
+    // 自动翻页 (对照 app 端 applyAutoPage): 横向按页定时翻, 纵向匀速滚动
+    LaunchedEffect(autoPageEnabled, horizontal, renderState.autoSpeed) {
+        renderState.setAutoPageEnabled(autoPageEnabled && horizontal)
+        renderState.setAutoScrollEnabled(autoPageEnabled && !horizontal)
+    }
+
+    // 初始/切章定位 (对照 app 端 upContent: loadingViewVisible && curFinish 时 scrollToPosition)。
+    // shared VM 在 upContent 内已把 loading 置回 false, 故用本地标记记住"这轮加载需要定位"
+    var awaitingScroll by remember { mutableStateOf(true) }
+    LaunchedEffect(loading) { if (loading) awaitingScroll = true }
+    LaunchedEffect(items, curFinish) {
+        if (awaitingScroll && curFinish && items.isNotEmpty()) {
+            awaitingScroll = false
+            renderState.scrollToPosition(contentPos) {
+                // 初始定位不触发停稳回调, 手动装填首个当前页的 GIF
+                renderState.syncGifAutoNextForCurrentPage()
+            }
+        }
+    }
 
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color(0xFF1A1A1A))
+            .background(MangaReaderBackground)
+            // 对照 app 端 onKeyDown: 音量/翻页键走整屏翻页, 不是切章
             .handleReadPageKeys(
-                onPrevPage = { onPrevPage?.invoke() ?: onPrevChapter() },
-                onNextPage = { onNextPage?.invoke() ?: onNextChapter() },
+                onPrevPage = { if (onPrevPage != null) onPrevPage() else scrollPageTo(-1) },
+                onNextPage = { if (onNextPage != null) onNextPage() else scrollPageTo(1) },
                 onBack = onBack,
             )
             .focusRequester(keyFocusRequester)
             .focusable(),
     ) {
-        MangaRenderArea(
-            images = images,
-            horizontal = horizontal,
-            autoPageSpeed = autoPageSpeed,
-            loading = loading,
-            error = error,
-            onRetry = onRetry,
-            onMenuToggle = { menuVisible = !menuVisible },
-            onLongPressImage = onSaveImage,
-            state = renderState,
-            imageSlot = imageSlot,
-            colorFilterConfig = colorFilterConfig,
-            grayEnabled = grayEnabled,
-        )
+        MangaRenderLayer(renderState) { item, _ ->
+            MangaPageCell(
+                url = item.mImageUrl,
+                horizontal = horizontal,
+                imageSlot = imageSlot,
+                colorFilterConfig = colorFilterConfig,
+                grayEnabled = grayEnabled,
+            )
+        }
+
+        // 对照 app 端 loadFail: 失败时 ll_loading 收起换 ll_retry, 故错误优先于转圈
+        if (loading && error == null) {
+            LoadingOverlay()
+        }
+        if (error != null) {
+            ErrorOverlay(error = error, onRetry = onRetry)
+        }
 
         // 底部信息条: 按 footerConfig 格式化进度文字 (对照 app 端 MangaInfoBar + upInfoBar)
-        if (!gridMode && !footerConfig.hideFooter) {
+        if (!footerConfig.hideFooter) {
             MangaInfoBarOverlay(
                 footerConfig = footerConfig,
                 chapterName = chapterTitle,
@@ -236,22 +339,24 @@ fun MangaReaderScreenContent(
         }
 
         // 菜单 Overlay: 顶部标题栏 + 底部控制栏(SeekBar) (对照 app 端 MangaMenuOverlay)
-        if (menuVisible && !gridMode) {
+        if (menuVisible) {
             MangaMenuOverlay(
                 bookName = bookName,
-                chapterTitle = chapterTitle,
-                curChapterIndex = curChapterIndex,
-                chapterSize = chapterSize,
                 currentPage = currentPage,
                 pageCount = pageCount,
                 horizontal = horizontal,
                 hideMangaTitle = hideMangaTitle,
                 disablePageAnim = disablePageAnim,
                 gifAutoNext = gifAutoNext,
+                autoPageEnabled = autoPageEnabled,
+                preDownloadNum = preDownloadNum,
+                autoPageSpeed = autoPageSpeed,
+                hasReview = hasReview,
+                onToggleAutoPage = { autoPageEnabled = !autoPageEnabled },
                 onBack = onBack,
                 onRefresh = onRefresh,
                 onOpenToc = onOpenToc,
-                onOpenChangeSource = onOpenChangeSource,
+                onOpenBookInfo = onOpenBookInfo,
                 onAddBookmark = onAddBookmark,
                 onToggleHorizontal = onToggleHorizontal,
                 onToggleHideTitle = onToggleHideTitle,
@@ -259,51 +364,58 @@ fun MangaReaderScreenContent(
                 onToggleGifAutoNext = onToggleGifAutoNext,
                 onOpenColorFilter = onOpenColorFilter,
                 onOpenFooterConfig = onOpenFooterConfig,
-                onOpenGridPreview = {
-                    menuVisible = false
-                    gridMode = true
-                },
+                onOpenPreDownloadNum = onOpenPreDownloadNum,
+                onOpenAutoPageSpeed = onOpenAutoPageSpeed,
+                onOpenClickRegionConfig = onOpenClickRegionConfig,
+                onOpenReview = onOpenReview,
                 onPrevChapter = onPrevChapter,
                 onNextChapter = onNextChapter,
+                // 对照 app 端 MangaSeekBar + skipToPage: 拖动中即定位到本章该页
                 onSeekPage = { index ->
-                    scope.launch {
-                        renderState.listState.scrollToItem(
-                            index.coerceIn(
-                                0,
-                                (pageCount - 1).coerceAtLeast(0)
-                            )
-                        )
+                    val itemPos = items.indexOfFirst {
+                        it.chapterIndex == curChapterIndex && it.index == index
+                    }
+                    if (itemPos > -1) {
+                        renderState.scrollToPosition(itemPos)
+                        onSeekToPage(index)
                     }
                 },
                 onDismiss = { menuVisible = false },
             )
         }
-
-        // 九宫格缩略图模式 (LazyVerticalGrid)
-        if (gridMode) {
-            MangaThumbnailGridOverlay(
-                images = images,
-                imageSlot = imageSlot,
-                colorFilterConfig = colorFilterConfig,
-                grayEnabled = grayEnabled,
-                onClose = { gridMode = false },
-                onPageSelected = { index ->
-                    gridMode = false
-                    scope.launch {
-                        renderState.listState.scrollToItem(
-                            index.coerceIn(
-                                0,
-                                (pageCount - 1).coerceAtLeast(0)
-                            )
-                        )
-                    }
-                },
-            )
-        }
     }
 }
 
-// ---- 底部信息条 (进度文字 + 时间, 对照 app 端 MangaInfoBar + upInfoBar) ----
+/** 点击落点 → 动作值, 对照 app 端 [io.legado.app.ui.book.read.config.ClickArea] 的 3x3 分区 */
+private fun ClickActionConfig.actionAt(x: Float, y: Float, width: Int, height: Int): Int {
+    if (width <= 0 || height <= 0) return -1
+    val col = when {
+        x < width * 0.33f -> 0
+        x < width * 0.66f -> 1
+        else -> 2
+    }
+    val row = when {
+        y < height * 0.33f -> 0
+        y < height * 0.66f -> 1
+        else -> 2
+    }
+    return when (row * 3 + col) {
+        0 -> tl
+        1 -> tc
+        2 -> tr
+        3 -> ml
+        4 -> mc
+        5 -> mr
+        6 -> bl
+        7 -> bc
+        else -> br
+    }
+}
+
+// ---- 底部信息条 (进度文字 + 时间, 对照 app 端 ReaderInfoBarView + upInfoBar) ----
+
+/** 对照 ReaderInfoBarView.ALIGN_CENTER */
+private const val INFO_BAR_ALIGN_CENTER = 1
 
 @Composable
 private fun MangaInfoBarOverlay(
@@ -338,22 +450,52 @@ private fun MangaInfoBarOverlay(
             append(progressPercent)
         }
     }
-    Row(
+    val colors = AppTheme.colors
+    // 对照 ReaderInfoBarView: colorOnSurface/colorSurface 各取 alpha 200, 描边保证压在图片上可读
+    val fill = colors.primaryText.copy(alpha = 0.78f)
+    val outline = colors.background.copy(alpha = 0.78f)
+    Box(
         modifier
             .fillMaxWidth()
-            .background(Color(0xAA000000))
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            // 对照 activity_manga.xml: 高 20dp + marginBottom 16dp; 16dp padding + 控件内 10dp inset
+            .padding(bottom = 16.dp)
+            .height(20.dp)
+            .padding(horizontal = 26.dp),
     ) {
+        val alignment = if (footerConfig.footerOrientation == INFO_BAR_ALIGN_CENTER) {
+            Alignment.Center
+        } else {
+            Alignment.CenterStart
+        }
+        InfoBarText(infoText, fill, outline, Modifier.align(alignment))
+        InfoBarText(systemTime, fill, outline, Modifier.align(Alignment.CenterEnd))
+    }
+}
+
+/** 对照 ReaderInfoBarView.drawTextOutline: 先描边后填充 */
+@Composable
+private fun InfoBarText(
+    text: String,
+    fill: Color,
+    outline: Color,
+    modifier: Modifier = Modifier,
+) {
+    val style = LocalTextStyle.current.copy(fontSize = 11.sp)
+    Box(modifier) {
         Text(
-            text = infoText,
-            color = Color.White,
-            fontSize = 12.sp,
-            modifier = Modifier.weight(1f),
+            text = text,
+            color = outline,
+            style = style.copy(drawStyle = Stroke(width = 2f)),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Text(text = systemTime, color = Color.White, fontSize = 12.sp)
+        Text(
+            text = text,
+            color = fill,
+            style = style,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -362,19 +504,21 @@ private fun MangaInfoBarOverlay(
 @Composable
 private fun MangaMenuOverlay(
     bookName: String,
-    chapterTitle: String,
-    curChapterIndex: Int,
-    chapterSize: Int,
     currentPage: Int,
     pageCount: Int,
     horizontal: Boolean,
     hideMangaTitle: Boolean,
     disablePageAnim: Boolean,
     gifAutoNext: Boolean,
+    autoPageEnabled: Boolean,
+    preDownloadNum: Int,
+    autoPageSpeed: Int,
+    hasReview: Boolean,
+    onToggleAutoPage: () -> Unit,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onOpenToc: () -> Unit,
-    onOpenChangeSource: () -> Unit,
+    onOpenBookInfo: () -> Unit,
     onAddBookmark: () -> Unit,
     onToggleHorizontal: () -> Unit,
     onToggleHideTitle: () -> Unit,
@@ -382,7 +526,10 @@ private fun MangaMenuOverlay(
     onToggleGifAutoNext: () -> Unit,
     onOpenColorFilter: () -> Unit,
     onOpenFooterConfig: () -> Unit,
-    onOpenGridPreview: () -> Unit,
+    onOpenPreDownloadNum: () -> Unit,
+    onOpenAutoPageSpeed: () -> Unit,
+    onOpenClickRegionConfig: () -> Unit,
+    onOpenReview: () -> Unit,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
     onSeekPage: (Int) -> Unit,
@@ -409,23 +556,30 @@ private fun MangaMenuOverlay(
         ) {
             MangaMenuTopBar(
                 bookName = bookName,
-                chapterTitle = chapterTitle,
                 onBack = onBack,
                 onRefresh = onRefresh,
                 onOpenToc = onOpenToc,
-                onOpenChangeSource = onOpenChangeSource,
+                onOpenBookInfo = onOpenBookInfo,
                 onAddBookmark = onAddBookmark,
                 horizontal = horizontal,
                 hideMangaTitle = hideMangaTitle,
                 disablePageAnim = disablePageAnim,
                 gifAutoNext = gifAutoNext,
+                autoPageEnabled = autoPageEnabled,
+                preDownloadNum = preDownloadNum,
+                autoPageSpeed = autoPageSpeed,
+                hasReview = hasReview,
+                onToggleAutoPage = onToggleAutoPage,
                 onToggleHorizontal = onToggleHorizontal,
                 onToggleHideTitle = onToggleHideTitle,
                 onToggleDisablePageAnim = onToggleDisablePageAnim,
                 onToggleGifAutoNext = onToggleGifAutoNext,
                 onOpenColorFilter = onOpenColorFilter,
                 onOpenFooterConfig = onOpenFooterConfig,
-                onOpenGridPreview = onOpenGridPreview,
+                onOpenPreDownloadNum = onOpenPreDownloadNum,
+                onOpenAutoPageSpeed = onOpenAutoPageSpeed,
+                onOpenClickRegionConfig = onOpenClickRegionConfig,
+                onOpenReview = onOpenReview,
             )
         }
         AnimatedVisibility(
@@ -438,8 +592,6 @@ private fun MangaMenuOverlay(
             exit = slideOutVertically { it },
         ) {
             MangaMenuBottomBar(
-                curChapterIndex = curChapterIndex,
-                chapterSize = chapterSize,
                 currentPage = currentPage,
                 pageCount = pageCount,
                 onPrevChapter = onPrevChapter,
@@ -453,72 +605,79 @@ private fun MangaMenuOverlay(
 @Composable
 private fun MangaMenuTopBar(
     bookName: String,
-    chapterTitle: String,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onOpenToc: () -> Unit,
-    onOpenChangeSource: () -> Unit,
+    onOpenBookInfo: () -> Unit,
     onAddBookmark: () -> Unit,
     horizontal: Boolean,
     hideMangaTitle: Boolean,
     disablePageAnim: Boolean,
     gifAutoNext: Boolean,
+    autoPageEnabled: Boolean,
+    preDownloadNum: Int,
+    autoPageSpeed: Int,
+    hasReview: Boolean,
+    onToggleAutoPage: () -> Unit,
     onToggleHorizontal: () -> Unit,
     onToggleHideTitle: () -> Unit,
     onToggleDisablePageAnim: () -> Unit,
     onToggleGifAutoNext: () -> Unit,
     onOpenColorFilter: () -> Unit,
     onOpenFooterConfig: () -> Unit,
-    onOpenGridPreview: () -> Unit,
+    onOpenPreDownloadNum: () -> Unit,
+    onOpenAutoPageSpeed: () -> Unit,
+    onOpenClickRegionConfig: () -> Unit,
+    onOpenReview: () -> Unit,
 ) {
+    // 对照 TitleBar: 背景走 ThemeStore backgroundColor, 文字 primaryText
+    val colors = AppTheme.colors
     Column(
         Modifier
             .fillMaxWidth()
-            .background(Color(0xF01A1A1A))
+            .background(colors.background)
             .padding(horizontal = 8.dp),
     ) {
+        // 整行点击打开书籍详情 (对照 app 端 toolbar click → openBookInfoActivity)
         Row(
-            Modifier.fillMaxWidth().height(56.dp),
+            Modifier
+                .fillMaxWidth()
+                .height(DesignTokens.viewHeightMax)
+                .clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null,
+                ) { onOpenBookInfo() },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) {
                 Icon(
                     painter = painterResource(Res.drawable.ic_arrow_back),
                     contentDescription = stringResource(Res.string.back),
-                    tint = Color.White,
+                    tint = colors.primaryText,
                 )
             }
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = bookName,
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (chapterTitle.isNotEmpty()) {
-                    Text(
-                        text = chapterTitle,
-                        color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
+            // 对照 app 端 MangaMenu.title: 标题只显示书名, 20sp 单行
+            Text(
+                text = bookName,
+                color = colors.primaryText,
+                fontSize = 20.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
             // 刷新当前章 (对照 app 端 MangaMenuAction.REFRESH)
             IconButton(onClick = onRefresh) {
                 Icon(
                     painter = painterResource(Res.drawable.ic_refresh_black_24dp),
                     contentDescription = stringResource(Res.string.refresh),
-                    tint = Color.White,
+                    tint = colors.primaryText,
                 )
             }
             IconButton(onClick = onOpenToc) {
                 Icon(
                     painter = painterResource(Res.drawable.ic_toc),
                     contentDescription = stringResource(Res.string.chapter_list),
-                    tint = Color.White,
+                    tint = colors.primaryText,
                 )
             }
             MangaOverflowMenu(
@@ -526,72 +685,96 @@ private fun MangaMenuTopBar(
                 hideMangaTitle = hideMangaTitle,
                 disablePageAnim = disablePageAnim,
                 gifAutoNext = gifAutoNext,
+                autoPageEnabled = autoPageEnabled,
+                preDownloadNum = preDownloadNum,
+                autoPageSpeed = autoPageSpeed,
+                hasReview = hasReview,
+                onToggleAutoPage = onToggleAutoPage,
                 onToggleHorizontal = onToggleHorizontal,
                 onToggleHideTitle = onToggleHideTitle,
                 onToggleDisablePageAnim = onToggleDisablePageAnim,
                 onToggleGifAutoNext = onToggleGifAutoNext,
                 onOpenColorFilter = onOpenColorFilter,
                 onOpenFooterConfig = onOpenFooterConfig,
-                onOpenChangeSource = onOpenChangeSource,
+                onOpenPreDownloadNum = onOpenPreDownloadNum,
+                onOpenAutoPageSpeed = onOpenAutoPageSpeed,
+                onOpenClickRegionConfig = onOpenClickRegionConfig,
+                onOpenReview = onOpenReview,
                 onAddBookmark = onAddBookmark,
-                onOpenGridPreview = onOpenGridPreview,
             )
         }
     }
 }
 
-/** 溢出菜单 (对照 app 端 MangaOverflowMenu, 含全部 MangaMenuAction 项) */
+/** 溢出菜单, 项与顺序对照 app 端 MangaOverflowMenu (即 menu/book_manga.xml) */
 @Composable
 private fun MangaOverflowMenu(
     horizontal: Boolean,
     hideMangaTitle: Boolean,
     disablePageAnim: Boolean,
     gifAutoNext: Boolean,
+    autoPageEnabled: Boolean,
+    preDownloadNum: Int,
+    autoPageSpeed: Int,
+    hasReview: Boolean,
+    onToggleAutoPage: () -> Unit,
     onToggleHorizontal: () -> Unit,
     onToggleHideTitle: () -> Unit,
     onToggleDisablePageAnim: () -> Unit,
     onToggleGifAutoNext: () -> Unit,
     onOpenColorFilter: () -> Unit,
     onOpenFooterConfig: () -> Unit,
-    onOpenChangeSource: () -> Unit,
+    onOpenPreDownloadNum: () -> Unit,
+    onOpenAutoPageSpeed: () -> Unit,
+    onOpenClickRegionConfig: () -> Unit,
+    onOpenReview: () -> Unit,
     onAddBookmark: () -> Unit,
-    onOpenGridPreview: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val preDownloadText = stringResource(Res.string.pre_download_m, preDownloadNum)
     val hideTitleText = stringResource(Res.string.hide_manga_title)
+    val autoPageText = stringResource(Res.string.enable_auto_page_scroll)
+    val autoPageSpeedText = stringResource(Res.string.manga_auto_page_speed, autoPageSpeed)
     val horizontalText = stringResource(Res.string.enable_manga_horizontal_scroll)
     val disableAnimText = stringResource(Res.string.disable_manga_page_anim)
     val gifAutoNextText = stringResource(Res.string.manga_gif_auto_next)
     val footerConfigText = stringResource(Res.string.manga_footer_config)
+    val clickRegionText = stringResource(Res.string.click_regional_config)
     val colorFilterText = stringResource(Res.string.manga_color_filter)
-    val changeSourceText = stringResource(Res.string.change_source)
+    val reviewText = stringResource(Res.string.review)
     val bookmarkAddText = stringResource(Res.string.bookmark_add)
-    val gridPreviewText = stringResource(Res.string.page_preview)
     Box {
         IconButton(onClick = { expanded = true }) {
             Icon(
                 painter = painterResource(Res.drawable.ic_more_vert),
                 contentDescription = stringResource(Res.string.more_menu),
-                tint = Color.White,
+                tint = AppTheme.colors.primaryText,
             )
         }
         AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             val click: () -> Unit = { expanded = false }
+            // 顺序对照 app 端 MangaOverflowMenu
+            OverflowItem(preDownloadText) { click(); onOpenPreDownloadNum() }
             OverflowCheckItem(hideTitleText, hideMangaTitle) { click(); onToggleHideTitle() }
-            OverflowCheckItem(horizontalText, horizontal) { click(); onToggleHorizontal() }
+            OverflowCheckItem(autoPageText, autoPageEnabled) { click(); onToggleAutoPage() }
+            if (autoPageEnabled) {
+                OverflowItem(autoPageSpeedText) { click(); onOpenAutoPageSpeed() }
+            }
             if (horizontal) {
                 OverflowCheckItem(gifAutoNextText, gifAutoNext) { click(); onToggleGifAutoNext() }
             }
+            OverflowCheckItem(horizontalText, horizontal) { click(); onToggleHorizontal() }
             OverflowCheckItem(
                 disableAnimText,
                 disablePageAnim
             ) { click(); onToggleDisablePageAnim() }
             OverflowItem(footerConfigText) { click(); onOpenFooterConfig() }
+            OverflowItem(clickRegionText) { click(); onOpenClickRegionConfig() }
             OverflowItem(colorFilterText) { click(); onOpenColorFilter() }
-            OverflowItem(changeSourceText) { click(); onOpenChangeSource() }
+            if (hasReview) {
+                OverflowItem(reviewText) { click(); onOpenReview() }
+            }
             OverflowItem(bookmarkAddText) { click(); onAddBookmark() }
-            // 九宫格预览 (shared 独有, app 端用 ClickArea 分区导航)
-            OverflowItem(gridPreviewText) { click(); onOpenGridPreview() }
         }
     }
 }
@@ -599,7 +782,7 @@ private fun MangaOverflowMenu(
 @Composable
 private fun OverflowItem(text: String, onClick: () -> Unit) {
     DropdownMenuItem(onClick = onClick) {
-        Text(text, color = Color.White)
+        Text(text, color = AppTheme.colors.menuText)
     }
 }
 
@@ -608,228 +791,72 @@ private fun OverflowCheckItem(text: String, checked: Boolean, onClick: () -> Uni
     DropdownMenuItem(onClick = onClick) {
         Text(
             text,
-            color = Color.White,
+            color = AppTheme.colors.menuText,
             modifier = Modifier.weight(1f).padding(end = 12.dp),
         )
         AppMenuCheckbox(checked = checked)
     }
 }
 
+/** 底部控制栏, 对照 view_manga_menu.xml: bottomBackground 底 + 上一章/页码 SeekBar/下一章 单行 */
 @Composable
 private fun MangaMenuBottomBar(
-    curChapterIndex: Int,
-    chapterSize: Int,
     currentPage: Int,
     pageCount: Int,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
     onSeekPage: (Int) -> Unit,
 ) {
+    val colors = AppTheme.colors
     Column(
         Modifier
             .fillMaxWidth()
-            .background(Color(0xF01A1A1A))
-            .padding(horizontal = 8.dp),
+            .background(colors.bottomBackground),
     ) {
-        // 章节内页面 SeekBar (对照 app 端 MangaSeekBar)
-        if (pageCount > 1) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "${currentPage + 1}",
-                    color = Color.White,
-                    fontSize = 12.sp,
-                )
-                // 拖动中预览值, 抬手跳页
-                var dragValue by remember { mutableStateOf<Int?>(null) }
-                AppSlider(
-                    value = dragValue ?: currentPage,
-                    max = (pageCount - 1).coerceAtLeast(1),
-                    onValueChange = { dragValue = it },
-                    onValueChangeFinished = {
-                        dragValue?.let { onSeekPage(it) }
-                        dragValue = null
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 8.dp),
-                )
-                Text(
-                    text = "$pageCount",
-                    color = Color.White,
-                    fontSize = 12.sp,
-                )
-            }
-        }
         Row(
-            Modifier.fillMaxWidth().height(56.dp),
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onPrevChapter, enabled = curChapterIndex > 0) {
-                Icon(
-                    painter = painterResource(Res.drawable.ic_skip_previous),
-                    contentDescription = stringResource(Res.string.previous_chapter),
-                    tint = if (curChapterIndex > 0) Color.White else Color.White.copy(alpha = 0.3f),
-                )
-            }
-            Text(
-                text = "${curChapterIndex + 1}/$chapterSize",
-                color = Color.White,
-                fontSize = 16.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.weight(1f),
+            ChapterNavText(
+                text = stringResource(Res.string.previous_chapter),
+                color = colors.primaryText,
+                onClick = onPrevChapter,
             )
-            IconButton(onClick = onNextChapter, enabled = curChapterIndex < chapterSize - 1) {
-                Icon(
-                    painter = painterResource(Res.drawable.ic_skip_next),
-                    contentDescription = stringResource(Res.string.next_chapter),
-                    tint = if (curChapterIndex < chapterSize - 1) Color.White else Color.White.copy(
-                        alpha = 0.3f
-                    ),
-                )
-            }
+            // 对照 app 端 MangaSeekBar: 拖动中(fromUser)即跳页, 抬手只是结束拖动
+            AppSlider(
+                value = currentPage,
+                max = (pageCount - 1).coerceAtLeast(0),
+                onValueChange = { onSeekPage(it) },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(25.dp),
+            )
+            ChapterNavText(
+                text = stringResource(Res.string.next_chapter),
+                color = colors.primaryText,
+                onClick = onNextChapter,
+            )
         }
     }
 }
-
-// ---- 渲染区 (复用 shared MangaRenderState + webtoonGestures) ----
 
 @Composable
-private fun MangaRenderArea(
-    images: List<String>,
-    horizontal: Boolean,
-    autoPageSpeed: Int,
-    loading: Boolean,
-    error: String?,
-    onRetry: () -> Unit,
-    onMenuToggle: () -> Unit,
-    onLongPressImage: (String) -> Unit,
-    state: MangaRenderState,
-    imageSlot: @Composable (String, Modifier, Boolean, MangaColorFilterConfig, Boolean) -> Unit,
-    colorFilterConfig: MangaColorFilterConfig,
-    grayEnabled: Boolean,
-) {
-    // 横向对齐 PagerSnapHelper：整页归位且单次手势最多翻一页；纵向普通衰减 fling
-    val fling = if (horizontal) {
-        rememberSinglePageSnapFlingBehavior(state.listState)
-    } else {
-        ScrollableDefaults.flingBehavior()
-    }
-    state.flingBehavior = fling
-
-    // 自动翻页开关（默认关，由悬浮按钮切换）
-    var autoPageEnabled by remember { mutableStateOf(false) }
-
-    // 自动翻页: 水平模式按页定时翻; 垂直模式持续滚动
-    LaunchedEffect(autoPageEnabled, horizontal, autoPageSpeed) {
-        if (!autoPageEnabled) return@LaunchedEffect
-        if (horizontal) {
-            while (isActive) {
-                kotlinx.coroutines.delay(autoPageSpeed * 1000L)
-                if (!state.listState.canScrollForward) {
-                    autoPageEnabled = false
-                    break
-                }
-                val viewport = state.listState.layoutInfo.viewportSize.width
-                state.listState.scrollBy(viewport.toFloat())
-            }
-        } else {
-            while (isActive) {
-                if (!state.listState.canScrollForward) {
-                    autoPageEnabled = false
-                    break
-                }
-                runCatching {
-                    state.listState.scrollBy(10000f)
-                }
-            }
-        }
-    }
-
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color(0xFF1A1A1A))
-            .onSizeChanged(state::onContainerSize)
-            .pointerInput(state) { webtoonGestures(state) }
-            .pointerInput(state) {
-                detectTapGestures(
-                    onTap = {
-                        state.onSingleTap(it)
-                        // 居中点击切换菜单 (对照 app 端 click action 0, 简化版无九宫格分区)
-                        onMenuToggle()
-                    },
-                    onDoubleTap = { state.onDoubleTap(it) },
-                    onLongPress = {
-                        // 长按当前居中页图片 → 保存 (对照 app 端 onLongTap)
-                        val center = state.centerItemIndex()
-                        if (center in images.indices) onLongPressImage(images[center])
-                    },
-                )
-            },
-    ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    scaleX = state.scale
-                    scaleY = state.scale
-                    translationX = state.transX
-                    translationY = state.transY
-                },
-        ) {
-            if (images.isNotEmpty()) {
-                if (horizontal) {
-                    LazyRow(
-                        state = state.listState,
-                        flingBehavior = fling,
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        items(images, key = { it }) { url ->
-                            MangaPageCell(
-                                url = url,
-                                horizontal = true,
-                                imageSlot = imageSlot,
-                                colorFilterConfig = colorFilterConfig,
-                                grayEnabled = grayEnabled,
-                            )
-                        }
-                    }
-                } else {
-                    LazyColumn(
-                        state = state.listState,
-                        flingBehavior = fling,
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        items(images, key = { it }) { url ->
-                            MangaPageCell(
-                                url = url,
-                                horizontal = false,
-                                imageSlot = imageSlot,
-                                colorFilterConfig = colorFilterConfig,
-                                grayEnabled = grayEnabled,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        if (loading) {
-            LoadingOverlay()
-        }
-        if (error != null && !loading) {
-            ErrorOverlay(error = error, onRetry = onRetry)
-        }
-        AutoPageToggleButton(
-            enabled = autoPageEnabled,
-            onToggle = { autoPageEnabled = !autoPageEnabled },
-            modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-        )
-    }
+private fun ChapterNavText(text: String, color: Color, onClick: () -> Unit) {
+    Text(
+        text = text,
+        color = color,
+        fontSize = 14.sp,
+        maxLines = 1,
+        modifier = Modifier
+            .padding(horizontal = 12.dp)
+            .clickable { onClick() }
+            .padding(vertical = 12.dp),
+    )
 }
+
+// ---- 渲染区图片单元格 (列表/手势/转场页均在 shared MangaRenderLayer) ----
 
 @Composable
 private fun LazyItemScope.MangaPageCell(
@@ -839,98 +866,37 @@ private fun LazyItemScope.MangaPageCell(
     colorFilterConfig: MangaColorFilterConfig,
     grayEnabled: Boolean,
 ) {
-    val cellModifier = if (horizontal) Modifier.fillParentMaxSize() else Modifier.fillMaxWidth()
+    // 图片是否已量出高度; 未出图时整格占满一屏并转圈, 对照 app 端 MangaPageCell 的
+    // fillParentMaxHeight + MangaCellState.LOADING 覆盖层 (平台图片槽不上报状态, 以量得的高度代替)
+    var imageHeight by remember(url) { mutableStateOf(0) }
+    val cellModifier = when {
+        horizontal -> Modifier.fillParentMaxSize()
+        imageHeight > 0 -> Modifier.fillMaxWidth()
+        else -> Modifier.fillMaxWidth().fillParentMaxHeight()
+    }
     Box(
-        cellModifier.background(Color(0xFF1A1A1A)),
+        cellModifier.background(MangaReaderBackground),
         contentAlignment = Alignment.Center,
     ) {
-        imageSlot(
-            url,
-            if (horizontal) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
-            horizontal,
-            colorFilterConfig,
-            grayEnabled,
-        )
-    }
-}
-
-// ---- 九宫格缩略图 ----
-
-@Composable
-private fun MangaThumbnailGridOverlay(
-    images: List<String>,
-    imageSlot: @Composable (String, Modifier, Boolean, MangaColorFilterConfig, Boolean) -> Unit,
-    colorFilterConfig: MangaColorFilterConfig,
-    grayEnabled: Boolean,
-    onClose: () -> Unit,
-    onPageSelected: (Int) -> Unit,
-) {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color(0xFF1A1A1A))
-    ) {
-        Column(Modifier.fillMaxSize()) {
-            // 顶栏: 关闭按钮
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .background(Color(0xF01A1A1A))
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "${images.size} 页",
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    modifier = Modifier.weight(1f).padding(start = 8.dp),
-                )
-                IconButton(onClick = onClose) {
-                    Icon(
-                        painter = painterResource(Res.drawable.ic_arrow_back),
-                        contentDescription = stringResource(Res.string.back),
-                        tint = Color.White,
-                    )
-                }
-            }
-            LazyVerticalGrid(
-                columns = rememberResponsiveColumns(3),
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                itemsIndexed(images, key = { _, url -> url }) { index, url ->
-                    Box(
-                        Modifier
-                            .aspectRatio(0.75f)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0xFF2A2A2A))
-                            .clickable { onPageSelected(index) },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        // 缩略图: 纵向填充, 不应用横向整页尺寸
-                        imageSlot(
-                            url,
-                            Modifier.fillMaxSize(),
-                            false,
-                            colorFilterConfig,
-                            grayEnabled
-                        )
-                        Text(
-                            text = "${index + 1}",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(4.dp)
-                                .background(Color(0x88000000), RoundedCornerShape(2.dp))
-                                .padding(horizontal = 4.dp),
-                        )
-                    }
-                }
-            }
+        if (imageHeight == 0 && !horizontal) {
+            CircularProgressIndicator(
+                color = Color.White,
+                strokeWidth = 4.dp,
+                modifier = Modifier.size(48.dp),
+            )
+        }
+        Box(
+            (if (horizontal) Modifier.fillMaxSize() else Modifier.fillMaxWidth())
+                .onSizeChanged { imageHeight = it.height },
+            contentAlignment = Alignment.Center,
+        ) {
+            imageSlot(
+                url,
+                if (horizontal) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
+                horizontal,
+                colorFilterConfig,
+                grayEnabled,
+            )
         }
     }
 }
@@ -971,31 +937,5 @@ private fun ErrorOverlay(error: String, onRetry: () -> Unit) {
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
-    }
-}
-
-// ---- 自动翻页切换按钮 ----
-
-@Composable
-private fun AutoPageToggleButton(
-    enabled: Boolean,
-    onToggle: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val accent = Color(0xFF165DFF)
-    Box(
-        modifier
-            .size(48.dp)
-            .clip(RoundedCornerShape(24.dp))
-            .background(if (enabled) accent else Color(0x66000000))
-            .clickable { onToggle() },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            painter = painterResource(Res.drawable.ic_auto_page),
-            contentDescription = stringResource(Res.string.auto_next_page),
-            tint = Color.White,
-            modifier = Modifier.size(24.dp),
-        )
     }
 }

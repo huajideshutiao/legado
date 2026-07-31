@@ -11,6 +11,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.ThreadSafeDateFormat
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.bookmark.AllBookmarkScreen
@@ -26,6 +27,7 @@ import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import legado.shared.generated.resources.Res
@@ -63,24 +65,28 @@ fun BookmarkRoute(
 
             // 导出书签 JSON (对照 AllBookmarkViewModel.exportBookmark: 平台文件选择器 + BackupFileOps)
             // 按书过滤时仅导出该书书签 (对照 TocRoute.exportBookmark 用 getByBook)
+            // scope 是 rememberCoroutineScope (主线程调度), 选择器与写文件都得切 IO
             override fun export() {
                 scope.launch {
                     try {
                         val fileName = "bookmark-${
                             ThreadSafeDateFormat("yyMMddHHmmss").format(systemCurrentTimeMillis())
                         }.json"
-                        val path = PlatformServiceProviders.get().files.saveFile(fileName)
-                            ?: return@launch
-                        val dao = AppDbProviders.get().bookmarkDao
-                        val bookmarks = if (book != null) {
-                            dao.getByBook(book.name, book.author)
-                        } else {
-                            dao.all()
+                        val path = withContext(IoDispatcher) {
+                            PlatformServiceProviders.get().files.saveFile(fileName)
+                        } ?: return@launch
+                        withContext(IoDispatcher) {
+                            val dao = AppDbProviders.get().bookmarkDao
+                            val bookmarks = if (book != null) {
+                                dao.getByBook(book.name, book.author)
+                            } else {
+                                dao.all()
+                            }
+                            BackupFileOps.writeText(path, Json.encodeToString(bookmarks))
                         }
-                        BackupFileOps.writeText(path, Json.encodeToString(bookmarks))
                         Toasters.get().toast("导出成功")
                     } catch (e: Throwable) {
-                        AppLog.put("导出失败\n${e.localizedMessage}", e, true)
+                        AppLog.put("导出失败\n${e.message}", e, true)
                     }
                 }
             }
@@ -93,31 +99,34 @@ fun BookmarkRoute(
                         val fileName = "bookmark-${
                             ThreadSafeDateFormat("yyMMddHHmmss").format(systemCurrentTimeMillis())
                         }.md"
-                        val path = PlatformServiceProviders.get().files.saveFile(fileName)
-                            ?: return@launch
-                        val dao = AppDbProviders.get().bookmarkDao
-                        val bookmarks = if (book != null) {
-                            dao.getByBook(book.name, book.author)
-                        } else {
-                            dao.all()
-                        }
-                        val sb = StringBuilder()
-                        var name = ""
-                        var author = ""
-                        bookmarks.forEach {
-                            if (it.bookName != name && it.bookAuthor != author) {
-                                name = it.bookName
-                                author = it.bookAuthor
-                                sb.append("## ${it.bookName} ${it.bookAuthor}\n\n")
+                        val path = withContext(IoDispatcher) {
+                            PlatformServiceProviders.get().files.saveFile(fileName)
+                        } ?: return@launch
+                        withContext(IoDispatcher) {
+                            val dao = AppDbProviders.get().bookmarkDao
+                            val bookmarks = if (book != null) {
+                                dao.getByBook(book.name, book.author)
+                            } else {
+                                dao.all()
                             }
-                            sb.append("#### ${it.chapterName}\n\n")
-                            sb.append("###### 原文\n ${it.bookText}\n\n")
-                            sb.append("###### 摘要\n ${it.content}\n\n")
+                            val sb = StringBuilder()
+                            var name = ""
+                            var author = ""
+                            bookmarks.forEach {
+                                if (it.bookName != name && it.bookAuthor != author) {
+                                    name = it.bookName
+                                    author = it.bookAuthor
+                                    sb.append("## ${it.bookName} ${it.bookAuthor}\n\n")
+                                }
+                                sb.append("#### ${it.chapterName}\n\n")
+                                sb.append("###### 原文\n ${it.bookText}\n\n")
+                                sb.append("###### 摘要\n ${it.content}\n\n")
+                            }
+                            BackupFileOps.writeText(path, sb.toString())
                         }
-                        BackupFileOps.writeText(path, sb.toString())
                         Toasters.get().toast("导出成功")
                     } catch (e: Throwable) {
-                        AppLog.put("导出失败\n${e.localizedMessage}", e, true)
+                        AppLog.put("导出失败\n${e.message}", e, true)
                     }
                 }
             }

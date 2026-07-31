@@ -1,10 +1,8 @@
 package io.legado.app.ui.book.filter
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -24,12 +22,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.source.SearchBookFilter
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSwitch
@@ -95,101 +93,95 @@ fun SourceFilterRuleListDialog(
         }
     }
 
-    Dialog(
+    AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
-        Box(Modifier.fillMaxSize()) {
-            Surface(
-                // 原版 isFullHeight = true, 高度固定 0.8 屏高
-                modifier = Modifier
-                    .appDialogSize(fullHeight = true)
-                    .align(Alignment.Center),
-                shape = DesignTokens.shapeDefault,
-                color = colors.fillet,
-            ) {
-                RuleManageScaffold(
-                    items = rules,
-                    itemKey = { it.id },
-                    onMove = { _, _ -> },
-                    emptyText = stringResource(Res.string.source_filter_rule_no_match),
-                    titleBar = {
-                        DialogTitleBar(
-                            title = stringResource(Res.string.source_filter_rule),
-                            onBack = onDismiss,
-                            actions = {
-                                IconButton(onClick = { addingNew = true }) {
-                                    Icon(
-                                        painter = painterResource(Res.drawable.ic_add),
-                                        contentDescription = stringResource(Res.string.add),
-                                        tint = colors.primaryText,
-                                    )
-                                }
-                            },
-                        )
-                    },
-                    actionBar = {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp),
-                            horizontalArrangement = Arrangement.End,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            AppTextButton(
-                                text = stringResource(Res.string.close),
-                                color = colors.secondaryText,
-                            ) { onDismiss() }
-                            AppTextButton(
-                                text = stringResource(Res.string.source_filter_rule_manage),
-                            ) { onManageAll() }
-                        }
-                    },
-                ) { item ->
-                    SourceFilterRuleListItem(
-                        item = item,
-                        onToggleEnabled = { enabled ->
-                            item.enabled = enabled
-                            coroutineScope.launch(IoDispatcher) {
-                                SearchBookFilter.save(item, isNew = false)
+        // 不能套 fillMaxSize: 撑满窗口会让整窗都算"框内", 点外部永远关不掉; 居中由 RootMeasurePolicy 负责。
+        Surface(
+            // 原版 isFullHeight = true, 高度固定 0.8 屏高
+            modifier = Modifier.appDialogSize(fullHeight = true),
+            shape = DesignTokens.shapeDefault,
+            color = colors.fillet,
+        ) {
+            RuleManageScaffold(
+                items = rules,
+                itemKey = { it.id },
+                onMove = { _, _ -> },
+                emptyText = stringResource(Res.string.source_filter_rule_no_match),
+                titleBar = {
+                    DialogTitleBar(
+                        title = stringResource(Res.string.source_filter_rule),
+                        onBack = onDismiss,
+                        actions = {
+                            IconButton(onClick = { addingNew = true }) {
+                                Icon(
+                                    painter = painterResource(Res.drawable.ic_add),
+                                    contentDescription = stringResource(Res.string.add),
+                                    tint = colors.primaryText,
+                                )
                             }
                         },
-                        onEdit = { editing = item },
-                        onDelete = { pendingDelete = item },
                     )
-                }
+                },
+                actionBar = {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AppTextButton(
+                            text = stringResource(Res.string.close),
+                            color = colors.secondaryText,
+                        ) { onDismiss() }
+                        AppTextButton(
+                            text = stringResource(Res.string.source_filter_rule_manage),
+                        ) { onManageAll() }
+                    }
+                },
+            ) { item ->
+                SourceFilterRuleListItem(
+                    item = item,
+                    onToggleEnabled = { enabled ->
+                        item.enabled = enabled
+                        coroutineScope.launch(IoDispatcher) {
+                            SearchBookFilter.save(item, isNew = false)
+                        }
+                    },
+                    onEdit = { editing = item },
+                    onDelete = { pendingDelete = item },
+                )
             }
         }
     }
 
     if (addingNew || editing != null) {
         // SourceFilterEditDialog 只画 Surface (原 BaseComposeDialogFragment 的 Content), 需补窗口外壳
-        Dialog(
+        AppDialog(
             onDismissRequest = {
                 addingNew = false
                 editing = null
             },
             properties = AppDialogSizes.properties(),
         ) {
-            Box(Modifier.fillMaxSize()) {
-                Surface(
-                    modifier = Modifier
-                        .appDialogSize()
-                        .align(Alignment.Center),
-                    shape = DesignTokens.shapeDefault,
-                    color = colors.fillet,
-                ) {
-                    SourceFilterEditDialog(
-                        rule = editing,
-                        onConfirm = { rule -> saveRule(rule, isNew = editing == null) },
-                        onDismiss = {
-                            addingNew = false
-                            editing = null
-                        },
-                        // 对照 app 端 SourceFilterEditDialog(existing = null, defaultScope = scope)
-                        defaultScope = scope,
-                    )
-                }
+            // 不能套 fillMaxSize: 撑满窗口会让整窗都算"框内", 点外部永远关不掉; 居中由 RootMeasurePolicy 负责。
+            Surface(
+                modifier = Modifier.appDialogSize(),
+                shape = DesignTokens.shapeDefault,
+                color = colors.fillet,
+            ) {
+                SourceFilterEditDialog(
+                    rule = editing,
+                    onConfirm = { rule -> saveRule(rule, isNew = editing == null) },
+                    onDismiss = {
+                        addingNew = false
+                        editing = null
+                    },
+                    // 对照 app 端 SourceFilterEditDialog(existing = null, defaultScope = scope)
+                    defaultScope = scope,
+                )
             }
         }
     }

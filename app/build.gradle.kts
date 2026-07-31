@@ -94,16 +94,6 @@ android {
         val cronetMainVersion = cronetVersion.substring(0, cronetVersion.indexOf('.')) + ".0.0.0"
         buildConfigField("String", "Cronet_Version", "\"$cronetVersion\"")
         buildConfigField("String", "Cronet_Main_Version", "\"$cronetMainVersion\"")
-
-        javaCompileOptions {
-            annotationProcessorOptions {
-                arguments += mapOf(
-                    "room.incremental" to "true",
-                    "room.expandProjection" to "true",
-                    "room.schemaLocation" to "$projectDir/schemas".toString()
-                )
-            }
-        }
     }
     buildFeatures {
         buildConfig = true
@@ -171,12 +161,12 @@ android {
 
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 
     kotlinOptions {
-        jvmTarget = "17"
+        jvmTarget = "21"
     }
 
     packaging {

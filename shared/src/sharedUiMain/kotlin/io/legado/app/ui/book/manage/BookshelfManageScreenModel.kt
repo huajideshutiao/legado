@@ -67,7 +67,7 @@ class BookshelfManageScreenModel(
         groupsFlowJob = scope.launch {
             appDb.bookGroupDao.flowAll()
                 .catch {
-                    AppLog.put("书架管理界面获取分组数据失败\n${it.localizedMessage}", it)
+                    AppLog.put("书架管理界面获取分组数据失败\n${it.message}", it)
                 }.flowOn(IoDispatcher).conflate().collect {
                     _state.value = _state.value.copy(groups = it)
                 }
@@ -110,7 +110,7 @@ class BookshelfManageScreenModel(
                     else -> list.sortedByDescending { it.durChapterTime }
                 }
             }.catch {
-                AppLog.put("书架管理界面获取书籍列表失败\n${it.localizedMessage}", it)
+                AppLog.put("书架管理界面获取书籍列表失败\n${it.message}", it)
             }.flowOn(IoDispatcher).conflate().collect {
                 allBooks = it
                 upBookData()

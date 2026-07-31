@@ -158,7 +158,6 @@ fun MainScreen(
                 onSelect = { onSelectPage(it, true) },
                 onReselect = onReselect,
                 iconSize = bottomBarIconSize,
-                itemHeight = bottomBarHeight,
                 labelMode = bottomBarLabelMode,
             )
             // 底栏移走后内容延伸到窗口底部, 需自行避让系统导航条 (左侧那份由侧栏消费)

@@ -99,11 +99,11 @@ class ReviewListScreenModel(
                 )
             } catch (e: Exception) {
                 if (append) currentPage -= 1
-                AppLog.put("评论加载失败\n${e.localizedMessage}", e)
+                AppLog.put("评论加载失败\n${e.message}", e)
                 _state.value = _state.value.copy(
                     loading = false,
                     footerLoading = false,
-                    error = "评论加载失败: ${e.localizedMessage}",
+                    error = "评论加载失败: ${e.message}",
                 )
             } finally {
                 loading = false

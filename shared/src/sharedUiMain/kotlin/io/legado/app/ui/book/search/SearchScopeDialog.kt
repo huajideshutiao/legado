@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -32,12 +31,12 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.compose.component.AppCheckbox
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSearchField
@@ -122,132 +121,129 @@ fun SearchScopeDialog(
     val visibleGroups = groups ?: dbGroups
     val visibleSources = if (sources == null) dbSources else injectedSources
 
-    Dialog(
+    AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
-        Box(Modifier.fillMaxSize()) {
-            // 全高型: 高度锁定 0.8 屏高
-            Surface(
-                shape = DesignTokens.shapeDefault,
-                color = colors.fillet,
-                modifier = Modifier
-                    .appDialogSize(fullHeight = true)
-                    .align(Alignment.Center),
-            ) {
-                Column(Modifier.fillMaxWidth()) {
-                    ScopeTitleBar(
-                        groupMode = groupMode,
-                        showScreen = showScreen,
-                        screenText = screenText,
-                        onScreenTextChange = { screenText = it },
-                        onShowScreenChange = { show ->
-                            showScreen = show
-                            if (!show) screenText = ""
-                        },
-                    )
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        // 不能套 fillMaxSize: 撑满窗口会让整窗都算"框内", 点外部永远关不掉; 居中由 RootMeasurePolicy 负责。
+        // 全高型: 高度锁定 0.8 屏高
+        Surface(
+            shape = DesignTokens.shapeDefault,
+            color = colors.fillet,
+            modifier = Modifier.appDialogSize(fullHeight = true),
+        ) {
+            Column(Modifier.fillMaxWidth()) {
+                ScopeTitleBar(
+                    groupMode = groupMode,
+                    showScreen = showScreen,
+                    screenText = screenText,
+                    onScreenTextChange = { screenText = it },
+                    onShowScreenChange = { show ->
+                        showScreen = show
+                        if (!show) screenText = ""
+                    },
+                )
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    RadioChip(
+                        text = stringResource(Res.string.group),
+                        checked = groupMode,
+                        modifier = Modifier.weight(1f),
                     ) {
-                        RadioChip(
-                            text = stringResource(Res.string.group),
-                            checked = groupMode,
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            groupMode = true
-                            showScreen = false
-                            screenText = ""
-                        }
-                        RadioChip(
-                            text = stringResource(Res.string.book_source),
-                            checked = !groupMode,
-                            modifier = Modifier.weight(1f),
-                        ) { groupMode = false }
+                        groupMode = true
+                        showScreen = false
+                        screenText = ""
                     }
-                    Box(Modifier.fillMaxWidth().weight(1f)) {
-                        if (groupMode) {
-                            LazyColumn(Modifier.fillMaxWidth()) {
-                                items(visibleGroups, key = { it }) { group ->
-                                    val checked = group in selectedGroups
-                                    Row(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .toggleable(
-                                                value = checked,
-                                                role = Role.Checkbox,
-                                            ) { isChecked ->
-                                                selectedGroups = if (isChecked) {
-                                                    selectedGroups + group
-                                                } else {
-                                                    selectedGroups - group
-                                                }
+                    RadioChip(
+                        text = stringResource(Res.string.book_source),
+                        checked = !groupMode,
+                        modifier = Modifier.weight(1f),
+                    ) { groupMode = false }
+                }
+                Box(Modifier.fillMaxWidth().weight(1f)) {
+                    if (groupMode) {
+                        LazyColumn(Modifier.fillMaxWidth()) {
+                            items(visibleGroups, key = { it }) { group ->
+                                val checked = group in selectedGroups
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .toggleable(
+                                            value = checked,
+                                            role = Role.Checkbox,
+                                        ) { isChecked ->
+                                            selectedGroups = if (isChecked) {
+                                                selectedGroups + group
+                                            } else {
+                                                selectedGroups - group
                                             }
-                                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        AppCheckbox(checked = checked, onCheckedChange = null)
-                                        Text(
-                                            text = group,
-                                            color = colors.primaryText,
-                                            modifier = Modifier.padding(start = 8.dp),
-                                        )
-                                    }
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    AppCheckbox(checked = checked, onCheckedChange = null)
+                                    Text(
+                                        text = group,
+                                        color = colors.primaryText,
+                                        modifier = Modifier.padding(start = 8.dp),
+                                    )
                                 }
                             }
-                        } else {
-                            LazyColumn(Modifier.fillMaxWidth()) {
-                                items(visibleSources, key = { it.bookSourceUrl }) { source ->
-                                    val selected =
-                                        selectedSource?.bookSourceUrl == source.bookSourceUrl
-                                    Row(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .selectable(
-                                                selected = selected,
-                                                role = Role.RadioButton,
-                                            ) { selectedSource = source }
-                                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        AppRadioButton(selected = selected, onClick = null)
-                                        Text(
-                                            text = source.bookSourceName,
-                                            color = colors.primaryText,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.padding(start = 8.dp),
-                                        )
-                                    }
+                        }
+                    } else {
+                        LazyColumn(Modifier.fillMaxWidth()) {
+                            items(visibleSources, key = { it.bookSourceUrl }) { source ->
+                                val selected =
+                                    selectedSource?.bookSourceUrl == source.bookSourceUrl
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .selectable(
+                                            selected = selected,
+                                            role = Role.RadioButton,
+                                        ) { selectedSource = source }
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    AppRadioButton(selected = selected, onClick = null)
+                                    Text(
+                                        text = source.bookSourceName,
+                                        color = colors.primaryText,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(start = 8.dp),
+                                    )
                                 }
                             }
                         }
                     }
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        AppTextButton(text = stringResource(Res.string.all_source)) {
-                            onConfirm(SearchScope(""))
+                }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AppTextButton(text = stringResource(Res.string.all_source)) {
+                        onConfirm(SearchScope(""))
+                    }
+                    Spacer(Modifier.weight(1f))
+                    AppTextButton(
+                        text = stringResource(Res.string.cancel),
+                        color = colors.secondaryText,
+                        onClick = onDismiss,
+                    )
+                    AppTextButton(text = stringResource(Res.string.ok)) {
+                        val scope = if (groupMode) {
+                            SearchScope(selectedGroups)
+                        } else {
+                            selectedSource?.let(::SearchScope) ?: SearchScope("")
                         }
-                        Spacer(Modifier.weight(1f))
-                        AppTextButton(
-                            text = stringResource(Res.string.cancel),
-                            color = colors.secondaryText,
-                            onClick = onDismiss,
-                        )
-                        AppTextButton(text = stringResource(Res.string.ok)) {
-                            val scope = if (groupMode) {
-                                SearchScope(selectedGroups)
-                            } else {
-                                selectedSource?.let(::SearchScope) ?: SearchScope("")
-                            }
-                            onConfirm(scope)
-                        }
+                        onConfirm(scope)
                     }
                 }
             }

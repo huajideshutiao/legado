@@ -1,11 +1,14 @@
 package io.legado.app.ui.book.read
 
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import io.legado.app.ui.book.read.page.ReadViewComposable
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import kotlinx.coroutines.flow.StateFlow
@@ -32,11 +35,17 @@ data class ReaderUiState(
  * 不经过本接口。
  */
 interface ReaderUiActions {
-    /** 页面单击（中心区域转发，左右区域由 delegate 内部翻页不转发） */
+    /** 页面单击且动作为 0（菜单）时回调，其余动作在 [ReadViewComposable] 内消费或走 [onPageAction] */
     fun onPageClick(column: TextColumn?)
 
     /** 页面长按（用于文字选择） */
     fun onPageLongClick(column: TextColumn?)
+
+    /**
+     * 九宫格点击的非翻页动作（对照 app 端 ReadView.click 里走 callBack 的分支）：
+     * 7=添加书签 / 9=替换状态 / 10=目录 / 11=全文搜索 / 13=朗读暂停继续。
+     */
+    fun onPageAction(action: Int) {}
 
     /** 返回 */
     fun onBack()
@@ -61,14 +70,23 @@ fun ReaderScreen(
     state: ReaderUiState,
     actions: ReaderUiActions,
     modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null,
 ) {
     val batteryLevel by state.batteryLevel.collectAsState()
-    Box(modifier.fillMaxSize()) {
+    Box(
+        modifier
+            .fillMaxSize()
+            // 键盘翻页前提: 全应用无焦点节点时 Compose 不会把按键派发进节点树
+            // (FocusOwnerImpl.dispatchKeyEvent 找不到 KeyInput 节点直接 return false)
+            .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+            .focusable()
+    ) {
         ReadViewComposable(
             viewModel = state.viewModel,
             batteryLevel = batteryLevel,
             onClick = { column -> actions.onPageClick(column) },
             onLongClick = { column -> actions.onPageLongClick(column) },
+            onAction = { action -> actions.onPageAction(action) },
         )
         ReadMenuOverlay(state = state.menuState)
     }

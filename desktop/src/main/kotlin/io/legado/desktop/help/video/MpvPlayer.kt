@@ -90,8 +90,11 @@ class MpvPlayer(
 
     private val writeLock = Any()
 
-    /** IPC 未就绪时的命令暂存队列 (连接建立后按序补发) */
-    private val pending = ArrayDeque<String>()
+    /**
+     * IPC 命令出队列: 发送命令只入队, 由专用写线程落盘。
+     * 任何调用方 (含 EDT) 调用 command/send 都立即返回, 永不因管道写阻塞。
+     */
+    private val outbox = java.util.concurrent.LinkedBlockingQueue<String>()
 
     /** mpv 错误输出尾部 (最近 20 行), 启动失败时随原因上报, 避免"白屏无因" */
     private val outputTail = ArrayDeque<String>()
@@ -169,6 +172,13 @@ class MpvPlayer(
         }
         val p = ProcessBuilder(cmd).redirectErrorStream(true).start()
         process = p
+        // mpv --wid 嵌入时会给子窗口设 WS_DISABLED (issue #6762), 鼠标到不了 mpv,
+        // 内建 OSC 永不显示; 起后台线程清除该样式, 让 OSC 可交互 (不影响渲染/焦点)
+        if (wid != null && MpvDetector.isWindows) {
+            Thread({
+                kotlinx.coroutines.runBlocking { MpvInputUnblock.unblockEmbeddedInput(wid) }
+            }, "legado-mpv-input").apply { isDaemon = true; start() }
+        }
         // 收集 mpv 错误输出尾部 (顺带 drain 防缓冲塞满), 失败时随原因一起上报
         drainThread = Thread({ drainOutput(p) }, "legado-mpv-drain")
             .apply { isDaemon = true; start() }
@@ -244,17 +254,10 @@ class MpvPlayer(
 
     // ---- 内部: IPC ----
 
+    /** 发送命令: 只入队不写管道, 调用方 (含 EDT) 永不阻塞; 队列满时丢弃 (超出即异常状态) */
     private fun send(json: String) {
-        synchronized(writeLock) {
-            val conn = connection
-            if (!ipcReady || conn == null) {
-                if (pending.size < 64) pending.addLast(json)
-                return
-            }
-            runCatching { conn.writeLine(json) }.onFailure {
-                AppLog.putDebug("mpv IPC 写入失败: ${it.message}")
-            }
-        }
+        AppLog.putDebug("mpv IPC 命令入队: $json")
+        if (outbox.size < 64) outbox.offer(json)
     }
 
     private fun runIpc(p: Process) {
@@ -268,13 +271,12 @@ class MpvPlayer(
         synchronized(writeLock) {
             connection = conn
             ipcReady = true
-            runCatching {
-                // id 1/2 与 handleEvent 对应
-                conn.writeLine("""{"command":["observe_property",1,"time-pos"]}""")
-                conn.writeLine("""{"command":["observe_property",2,"duration"]}""")
-                while (pending.isNotEmpty()) conn.writeLine(pending.removeFirst())
-            }
         }
+        // 专用写线程: 用户命令走写连接 (与读连接隔离, 避免 Windows 同步 I/O 串行化)
+        Thread({ writeLoop(conn) }, "legado-mpv-ipc-writer").apply { isDaemon = true }.start()
+        // observe_property 在读连接上发送, 事件回到读连接
+        // (不能走 outbox/writeConn: 事件需回到 readConn 才能被读循环处理)
+        conn.initObservables()
         try {
             while (true) {
                 val line = conn.readLine() ?: break
@@ -289,6 +291,23 @@ class MpvPlayer(
         } finally {
             synchronized(writeLock) { ipcReady = false }
             runCatching { conn.close() }
+        }
+    }
+
+    /** 写线程循环: 从出队列取命令写管道; ipcReady=false (连接断开/退出) 时收尾退出 */
+    private fun writeLoop(conn: IpcConnection) {
+        while (ipcReady) {
+            val json = try {
+                outbox.poll(500, TimeUnit.MILLISECONDS)
+            } catch (e: InterruptedException) {
+                break
+            }
+            if (json == null) continue
+            runCatching { conn.writeLine(json) }.onFailure {
+                AppLog.putDebug("mpv IPC 写入失败: ${it.message}")
+            }.onSuccess {
+                AppLog.putDebug("mpv IPC 已写入管道: $json")
+            }
         }
     }
 
@@ -312,14 +331,17 @@ class MpvPlayer(
         val obj = Json.parseToJsonElement(line).jsonObject
         when (obj["event"]?.jsonPrimitive?.contentOrNull) {
             "property-change" -> {
-                val data = (obj["data"] as? JsonPrimitive)?.doubleOrNull ?: return
                 when (obj["id"]?.jsonPrimitive?.intOrNull) {
                     1 -> {
+                        val data = (obj["data"] as? JsonPrimitive)?.doubleOrNull ?: return
                         lastPosMs = (data * 1000).toLong().coerceAtLeast(0L)
                         if (lastPosMs > 0) hadPlayback = true
                     }
 
-                    2 -> durationMs = (data * 1000).toLong().coerceAtLeast(0L)
+                    2 -> {
+                        val data = (obj["data"] as? JsonPrimitive)?.doubleOrNull ?: return
+                        durationMs = (data * 1000).toLong().coerceAtLeast(0L)
+                    }
                 }
             }
 
@@ -366,24 +388,45 @@ class MpvPlayer(
     private interface IpcConnection {
         fun readLine(): String?
         fun writeLine(line: String)
+
+        /** 在读端发送 observe_property, 事件回到读端 */
+        fun initObservables()
+
         fun close()
     }
 
     /**
-     * Windows 命名管道: RandomAccessFile 可直接开 `\\.\pipe\xxx`。
+     * Windows 命名管道: 用两个独立连接分离读/写, 避免 Windows 同步 I/O 串行化。
      *
-     * 读线程阻塞在 [readLine] 时写入同句柄可能被内核短暂串行化, 但 observe_property
-     * 的 time-pos 事件流 (~1s/条) 会持续解锁, 写延迟上限约一个事件间隔, 可接受。
+     * 单连接时: 读线程阻塞在 readLine (mpv 暂停后 time-pos 事件停止), 写线程的
+     * write 也被内核串行化阻塞, 导致 cycle pause 命令无法发送 → 暂停后无法恢复播放。
+     *
+     * 双连接: readConn 发 observe_property + 读事件, writeConn 只写命令, 互不阻塞。
+     * mpv 的 --input-ipc-server 支持多客户端连接, 每个连接独立处理。
      */
     private class PipeConnection(path: String) : IpcConnection {
-        private val raf = RandomAccessFile(path, "rw")
-        override fun readLine(): String? = raf.readLine()
+        private val readConn = RandomAccessFile(path, "rw")
+        private val writeConn = RandomAccessFile(path, "rw")
+
+        override fun readLine(): String? = readConn.readLine()
         override fun writeLine(line: String) {
-            raf.write((line + "\n").toByteArray(Charsets.UTF_8))
+            writeConn.write((line + "\n").toByteArray(Charsets.UTF_8))
+        }
+
+        /** 在读连接上直接发送 observe_property, 事件回到读连接 */
+        override fun initObservables() {
+            val cmds = byteArrayOf(
+                *"""{"command":["observe_property",1,"time-pos"]}""".toByteArray(),
+                0x0A,
+                *"""{"command":["observe_property",2,"duration"]}""".toByteArray(),
+                0x0A,
+            )
+            readConn.write(cmds)
         }
 
         override fun close() {
-            runCatching { raf.close() }
+            runCatching { readConn.close() }
+            runCatching { writeConn.close() }
         }
     }
 
@@ -399,6 +442,16 @@ class MpvPlayer(
 
         override fun writeLine(line: String) {
             output.write((line + "\n").toByteArray(Charsets.UTF_8))
+            output.flush()
+        }
+
+        // Unix socket 天然双工, 读写不互相阻塞, 直接写即可
+        override fun initObservables() {
+            val cmds = listOf(
+                """{"command":["observe_property",1,"time-pos"]}""",
+                """{"command":["observe_property",2,"duration"]}""",
+            ).joinToString("\n") + "\n"
+            output.write(cmds.toByteArray(Charsets.UTF_8))
             output.flush()
         }
 

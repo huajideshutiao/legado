@@ -95,6 +95,15 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
         return AppConfig.enableMangaGifAutoNext
     }
 
+    // 持久化预下载章节数 / 自动翻页速度 (对照 MangaMenuAction.PRE_DOWNLOAD_NUM / AUTO_PAGE_SPEED)
+    override fun setPreDownloadNum(num: Int) {
+        AppConfig.mangaPreDownloadNum = num
+    }
+
+    override fun setAutoPageSpeed(speed: Int) {
+        AppConfig.mangaAutoPageSpeed = speed
+    }
+
     override fun flowImages(
         bookChapter: BookChapter,
         content: String

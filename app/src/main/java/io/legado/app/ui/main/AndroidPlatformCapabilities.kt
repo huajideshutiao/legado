@@ -5,6 +5,18 @@ import android.content.DialogInterface
 import android.content.res.Configuration
 import android.net.Uri
 import android.view.ViewConfiguration
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material.Text
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.fragment.app.commit
 import androidx.lifecycle.ViewModelProvider
@@ -22,6 +34,8 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.CrashHandler
 import io.legado.app.help.IntentHelp
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.delete
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ThemeConfig
@@ -30,14 +44,18 @@ import io.legado.app.help.update.AppUpdate
 import io.legado.app.model.BookCover
 import io.legado.app.model.CheckSource
 import io.legado.app.model.Debug
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.service.WebService
 import io.legado.app.ui.about.CrashLogsDialog
+import io.legado.app.ui.association.AddToBookshelfHelper
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.import.local.ImportBook
 import io.legado.app.ui.book.import.local.ImportBookViewModel
+import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.config.CheckSourceConfig
 import io.legado.app.ui.config.DefaultCoverGalleryDialog
 import io.legado.app.ui.config.DirectLinkUploadConfig
@@ -300,6 +318,67 @@ class AndroidPlatformCapabilities(
     override fun clearBookCache(book: Book) {
         activity.lifecycleScope.launch(IO) {
             BookHelp.clearCache(book)
+        }
+    }
+
+    // 对照 BookInfoActivity.onShelfClick / deleteBook: 上架/下架
+    override fun toggleBookshelf(book: Book, inBookshelf: Boolean, onComplete: (Boolean?) -> Unit) {
+        if (inBookshelf) {
+            deleteBook(book, onComplete)
+        } else {
+            // webFile 原版走 showWebFileDownloadAlert 下载导入, 该链路绑定
+            // BookInfoViewModel (webFiles/importWebFile 未下沉), 暂与普通书一致, 待补
+            AddToBookshelfHelper.add(AppNavigatorProviders.get(), activity, book.bookUrl)
+            onComplete(true)
+        }
+    }
+
+    // 对照 BookInfoActivity.deleteBook: 删除确认弹窗 (本地书带"删除源文件"勾选)
+    private fun deleteBook(book: Book, onComplete: (Boolean?) -> Unit) {
+        if (!AppConfig.bookInfoDeleteAlert) {
+            delBook(book, LocalConfig.deleteBookOriginal, onComplete)
+            return
+        }
+        activity.alert(titleResource = R.string.draw, messageResource = R.string.sure_del) {
+            val deleteFile = mutableStateOf(LocalConfig.deleteBookOriginal)
+            if (book.isLocal) {
+                customView {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .toggleable(
+                                value = deleteFile.value,
+                                role = Role.Checkbox,
+                                onValueChange = { deleteFile.value = it },
+                            )
+                            .padding(horizontal = 24.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        AppCheckbox(checked = deleteFile.value, onCheckedChange = null)
+                        Text(
+                            stringResource(R.string.delete_book_file),
+                            color = AppTheme.colors.primaryText
+                        )
+                    }
+                }
+            }
+            yesButton {
+                if (book.isLocal) LocalConfig.deleteBookOriginal = deleteFile.value
+                delBook(book, LocalConfig.deleteBookOriginal, onComplete)
+            }
+            noButton()
+        }
+    }
+
+    // 对照 BookInfoViewModel.delBook (BaseReadViewModel): 删章节/DB + 清缓存 + 本地书删原文件
+    private fun delBook(book: Book, deleteOriginal: Boolean, onComplete: (Boolean?) -> Unit) {
+        activity.lifecycleScope.launch(IO) {
+            appDb.bookChapterDao.delByBook(book.bookUrl)
+            book.delete()
+            BookHelp.clearCache(book)
+            if (book.isLocal) FileBook.deleteBook(book, deleteOriginal)
+            activity.runOnUiThread { onComplete(null) }
         }
     }
 

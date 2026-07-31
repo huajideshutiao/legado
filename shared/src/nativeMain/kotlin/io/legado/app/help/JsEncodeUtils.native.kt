@@ -93,7 +93,7 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
     /**
      * native 端工厂: 创建 [NativeSymmetricCrypto] (iOS krypto AES 全模式 / 鸿蒙 napi AES-ECB)。
      *
-     * 与 app 端 [io.legado.app.help.JsEncodeUtilsAndroid.createSymmetricCrypto] 签名与行为对齐:
+     * 与 [io.legado.app.help.JsEncodeUtilsDefaults.createSymmetricCrypto] 签名与行为对齐:
      * key==null 用随机密钥, iv 非空时 setIv; 不支持的算法/模式由 [NativeSymmetricCrypto] 构造抛异常降级。
      *
      * 返回类型为 commonMain [SymmetricCrypto] interface (跨端引用透明兼容),
@@ -143,7 +143,7 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
 
     /**
      * native 端工厂: 创建 [NativeAsymmetricCrypto] (iOS Security.framework 真实 / 鸿蒙 stub 抛异常, 见类注释)。
-     * 与 app 端 [io.legado.app.help.JsEncodeUtilsAndroid.createAsymmetricCrypto] 签名对齐。
+     * 与 [io.legado.app.help.JsEncodeUtilsDefaults.createAsymmetricCrypto] 签名对齐。
      */
     fun createAsymmetricCrypto(
         transformation: String
@@ -155,7 +155,7 @@ interface JsEncodeUtilsDefaults : JsEncodeUtils {
 
     /**
      * native 端工厂: 创建 [NativeSign] (iOS Security.framework 真实 / 鸿蒙 stub 抛异常, 见类注释)。
-     * 与 app 端 [io.legado.app.help.JsEncodeUtilsAndroid.createSign] 签名对齐。
+     * 与 [io.legado.app.help.JsEncodeUtilsDefaults.createSign] 签名对齐。
      */
     fun createSign(
         algorithm: String

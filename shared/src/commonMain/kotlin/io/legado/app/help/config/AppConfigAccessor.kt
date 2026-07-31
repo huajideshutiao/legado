@@ -157,8 +157,16 @@ interface AppConfigAccessor {
     /** 持久化音频唤醒锁 (原 AppConfig.audioPlayUseWakeLock = value)。 */
     fun setAudioPlayUseWakeLock(value: Boolean) {}
 
-    /** 退出未上架书时是否弹加书架确认 (原 AppConfig.showAddToShelfAlert), 默认 true。 */
-    val showAddToShelfAlert: Boolean get() = true
+    /**
+     * 退出未上架书时是否弹加书架确认 (原 AppConfig.showAddToShelfAlert), 默认 true。
+     *
+     * 同 [devFeat]: 只有 app 端 Accessor 覆写, 桌面/iOS/鸿蒙曾恒为 true 让
+     * OtherConfigScreen 的关闭开关失效; 直接读同一个 pref key 兜底。
+     */
+    val showAddToShelfAlert: Boolean
+        get() = runCatching {
+            PreferenceProviders.get().getBoolean(PreferKey.showAddToShelfAlert, true)
+        }.getOrDefault(true)
 
     // 持久化 ttsEngine (原 AppConfig.ttsEngine = value), 默认空实现供各端按需覆写
     fun setTtsEngine(value: String?) {}
@@ -254,9 +262,17 @@ interface AppConfigAccessor {
             PreferenceProviders.get().getBoolean(PreferKey.devFeat, false)
         }.getOrDefault(false)
 
-    /** 书籍详情页横向布局开关 (原 AppConfig.bookInfoHorizontalLayout), 默认 false。
-     *  BookInfoRoute 据此计算 useDevFeat (与 isVideo/isLandscape 组合)。 */
-    val bookInfoHorizontalLayout: Boolean get() = false
+    /**
+     * 书籍详情页横向布局开关 (原 AppConfig.bookInfoHorizontalLayout), 默认 false。
+     * BookInfoRoute 据此计算 useDevFeat (与 isVideo/isLandscape 组合)。
+     *
+     * 同 [devFeat]: 只有 app 端 Accessor 覆写, 桌面/iOS/鸿蒙曾恒为 false,
+     * 直接读设置界面 (ThemeConfigScreen) 写入的同一个 pref key 兜底。
+     */
+    val bookInfoHorizontalLayout: Boolean
+        get() = runCatching {
+            PreferenceProviders.get().getBoolean(PreferKey.bookInfoHorizontalLayout, false)
+        }.getOrDefault(false)
 }
 
 /**

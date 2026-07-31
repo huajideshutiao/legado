@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlin.jvm.JvmInline
 
 @Serializable
 @JvmInline

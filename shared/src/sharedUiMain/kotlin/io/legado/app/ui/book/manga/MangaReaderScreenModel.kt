@@ -2,14 +2,27 @@ package io.legado.app.ui.book.manga
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import io.legado.app.constant.AppLog
+import io.legado.app.constant.BookType
+import io.legado.app.constant.EventBus
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.IntentData
+import io.legado.app.constant.PreferKey
+import io.legado.app.help.book.isNotShelf
+import io.legado.app.help.book.migrateTo
+import io.legado.app.help.book.removeType
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaFooterConfig
-import io.legado.app.ui.book.manga.entities.MangaPage
+import io.legado.app.ui.book.manga.entities.BaseMangaPage
+import io.legado.app.ui.book.read.config.ClickActionConfig
 import io.legado.app.ui.root.ScreenModel
+import io.legado.app.utils.FlowBus
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -27,6 +40,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.systemCurrentTimeMillis
+import io.legado.app.utils.format
 
 /**
  * 漫画阅读页 shared ScreenModel: 适配 [MangaReaderViewModelShared] 各 StateFlow
@@ -58,7 +72,7 @@ class MangaReaderScreenModel : ScreenModel {
         suspend fun saveImage(
             url: String,
             book: Book?,
-            source: io.legado.app.data.entities.BookSource?,
+            source: BookSource?,
             destPath: String
         ): Boolean = false
 
@@ -83,13 +97,30 @@ class MangaReaderScreenModel : ScreenModel {
         /** 切换 GIF 播完翻页 (对照 app 端 MangaMenuAction.GIF_AUTO_NEXT = !enable), 返回切换后的值 */
         fun toggleGifAutoNext(): Boolean = false
 
+        /** 持久化预下载章节数 (对照 app 端 MangaMenuAction.PRE_DOWNLOAD_NUM 写 AppConfig.mangaPreDownloadNum) */
+        fun setPreDownloadNum(num: Int) {}
+
+        /** 持久化自动翻页速度 (对照 app 端 MangaMenuAction.AUTO_PAGE_SPEED 写 AppConfig.mangaAutoPageSpeed) */
+        fun setAutoPageSpeed(speed: Int) {}
+
+        /**
+         * 预加载图片到内存缓存 (对照 app 端 Coil3 memoryCachePolicy(WRITE_ONLY) 预载)。
+         * 默认空实现: 不支持预载的平台照常按需加载。
+         */
+        suspend fun preloadImage(
+            url: String,
+            book: Book,
+            source: BookSource?
+        ) {
+        }
+
         @Composable
         fun Image(
             url: String,
             modifier: Modifier,
             horizontal: Boolean,
             book: Book?,
-            source: io.legado.app.data.entities.BookSource?,
+            source: BookSource?,
             colorFilterConfig: MangaColorFilterConfig,
             grayEnabled: Boolean,
         )
@@ -132,6 +163,8 @@ class MangaReaderScreenModel : ScreenModel {
             hideMangaTitle = (platform?.config ?: MangaReaderConfig.DEFAULT).hideMangaTitle,
             disablePageAnim = (platform?.config ?: MangaReaderConfig.DEFAULT).disablePageAnim,
             gifAutoNext = (platform?.config ?: MangaReaderConfig.DEFAULT).gifAutoNext,
+            preDownloadNum = (platform?.config ?: MangaReaderConfig.DEFAULT).preDownloadNum,
+            clickActionConfig = readClickActionConfig(),
         )
     )
     val state: StateFlow<MangaReaderUiState> = _state.asStateFlow()
@@ -157,15 +190,13 @@ class MangaReaderScreenModel : ScreenModel {
             shared.book, shared.durChapter, shared.mangaContent,
             shared.durChapterIndex, shared.loading,
         ) { book, durChapter, mangaContent, durChapterIndex, loading ->
-            val images = mangaContent?.items
-                ?.filterIsInstance<MangaPage>()
-                ?.map { it.mImageUrl }
-                ?: emptyList()
             val imageCount = shared.currentImageCount
             _state.value.copy(
                 bookName = book?.name ?: "",
                 chapterTitle = durChapter?.title ?: "",
-                images = images,
+                items = mangaContent?.items?.filterIsInstance<BaseMangaPage>() ?: emptyList(),
+                contentPos = mangaContent?.pos ?: 0,
+                curFinish = mangaContent?.curFinish == true,
                 curChapterIndex = durChapterIndex,
                 chapterSize = shared.chapterSize,
                 currentPage = shared.durChapterPos.value.coerceIn(
@@ -174,6 +205,8 @@ class MangaReaderScreenModel : ScreenModel {
                 ),
                 pageCount = imageCount,
                 loading = loading,
+                // 有评论规则才显示"评论"菜单项 (对照 app 端 onMenuOpened 里 reviewUrl 判空)
+                hasReview = shared.bookSource.value?.reviewRule?.reviewUrl.isNullOrBlank() == false,
             )
         }.combine(errorMsg) { uiState, error ->
             uiState.copy(error = error)
@@ -204,6 +237,58 @@ class MangaReaderScreenModel : ScreenModel {
     /** 平台收到电量变化时调用, 更新信息条电量 */
     fun refreshBattery() {
         _batteryLevel.value = platform?.getBatteryLevel() ?: -1
+    }
+
+    /**
+     * 居中页变化 (对照 app 端 ReadMangaActivity.initRenderLayer 的 onCenterItemChanged):
+     * 跨到相邻章即切章, 同章则同步章内页码并触发预下载。
+     */
+    fun onCenterItemChanged(item: BaseMangaPage) {
+        val durIndex = shared.durChapterIndex.value
+        when {
+            durIndex < item.chapterIndex -> shared.moveToNextChapter()
+            durIndex > item.chapterIndex -> shared.moveToPrevChapter()
+            else -> {
+                shared.setDurChapterPos(item.index)
+                shared.curPageChanged()
+            }
+        }
+    }
+
+    /** SeekBar 拖动定位 (对照 app 端 skipToPage: 只更新章内页码, 列表定位在 Content 内完成) */
+    fun seekToPage(index: Int) {
+        shared.setDurChapterPos(index)
+    }
+
+    /** 图片预加载执行体 (对照 app 端 Coil3 WRITE_ONLY 预载), 平台默认空实现 */
+    val preloadImage: (suspend (String, Book, BookSource?) -> Unit)?
+        get() = platform?.let { p -> { url, book, source -> p.preloadImage(url, book, source) } }
+
+    /**
+     * 整书换源落库 (对照原版 BaseReadViewModel.changeTo, 漫画沿用基类实现)。
+     *
+     * migrateTo 迁移进度/分组等字段 → 已在书架的书删旧插新 + 落目录 → 内存装载新源/目录。
+     * 守卫用 `!isNotShelf` (原版 inBookshelf 口径), 少了落库会出现书架重复书 + 进度丢失。
+     */
+    fun changeTo(source: BookSource, newBook: Book, toc: List<BookChapter>) {
+        scope.launch {
+            runCatching {
+                val oldBook = currentBook
+                oldBook?.migrateTo(newBook, toc)
+                if (oldBook != null && !oldBook.isNotShelf) {
+                    newBook.removeType(BookType.updateError)
+                    AppDbProviders.get().bookDao.delete(oldBook)
+                    AppDbProviders.get().bookDao.insert(newBook)
+                    AppDbProviders.get().bookChapterDao.insert(*toc.toTypedArray())
+                }
+                IntentData.book = newBook
+                // 目录先进内存: 未入书架的书没落库, 少了这步会再回源拉一次目录
+                shared.onSourceChanged(newBook, toc, source)
+            }.onFailure {
+                AppLog.put("换源失败\n$it", it, true)
+            }
+            FlowBus.with(EventBus.SOURCE_CHANGED).tryEmit(newBook.bookUrl)
+        }
     }
 
     /** 切换横/纵向翻页 (对照 app 端 MangaMenuAction.HORIZONTAL_SCROLL) */
@@ -250,8 +335,52 @@ class MangaReaderScreenModel : ScreenModel {
         _state.value = _state.value.copy(gifAutoNext = newEnable)
     }
 
-    /** 构造当前阅读位置书签 (对照 ReadMangaActivity.addBookmark) */
-    fun buildBookmark(): Bookmark? {
+    /** 设置预下载章节数并持久化 (对照 app 端 MangaMenuAction.PRE_DOWNLOAD_NUM) */
+    fun setPreDownloadNum(num: Int) {
+        platform?.setPreDownloadNum(num)
+        _state.value = _state.value.copy(preDownloadNum = num)
+    }
+
+    /** 设置自动翻页速度并持久化 (对照 app 端 MangaMenuAction.AUTO_PAGE_SPEED) */
+    fun setAutoPageSpeed(speed: Int) {
+        platform?.setAutoPageSpeed(speed)
+        _state.value = _state.value.copy(autoPageSpeed = speed)
+    }
+
+    /** 更新点击区域配置并持久化 (对照 app 端 ClickActionConfigDialog 即时写 AppConfig.clickActionXX) */
+    fun updateClickActionConfig(config: ClickActionConfig) {
+        val prefs = runCatching { PreferenceProviders.get() }.getOrNull()
+        prefs?.run {
+            putInt(PreferKey.clickActionTL, config.tl)
+            putInt(PreferKey.clickActionTC, config.tc)
+            putInt(PreferKey.clickActionTR, config.tr)
+            putInt(PreferKey.clickActionML, config.ml)
+            putInt(PreferKey.clickActionMC, config.mc)
+            putInt(PreferKey.clickActionMR, config.mr)
+            putInt(PreferKey.clickActionBL, config.bl)
+            putInt(PreferKey.clickActionBC, config.bc)
+            putInt(PreferKey.clickActionBR, config.br)
+        }
+        _state.value = _state.value.copy(clickActionConfig = config)
+    }
+
+    private fun readClickActionConfig(): ClickActionConfig {
+        val prefs = runCatching { PreferenceProviders.get() }.getOrNull() ?: return ClickActionConfig()
+        val d = ClickActionConfig()
+        return ClickActionConfig(
+            tl = prefs.getInt(PreferKey.clickActionTL, d.tl),
+            tc = prefs.getInt(PreferKey.clickActionTC, d.tc),
+            tr = prefs.getInt(PreferKey.clickActionTR, d.tr),
+            ml = prefs.getInt(PreferKey.clickActionML, d.ml),
+            mc = prefs.getInt(PreferKey.clickActionMC, d.mc),
+            mr = prefs.getInt(PreferKey.clickActionMR, d.mr),
+            bl = prefs.getInt(PreferKey.clickActionBL, d.bl),
+            bc = prefs.getInt(PreferKey.clickActionBC, d.bc),
+            br = prefs.getInt(PreferKey.clickActionBR, d.br),
+        )
+    }
+
+    /** 构造当前阅读位置书签 (对照 ReadMangaActivity.addBookmark) */    fun buildBookmark(): Bookmark? {
         val book = currentBook ?: return null
         val chapterIndex = shared.durChapterIndex.value
         val pos = shared.durChapterPos.value
@@ -313,15 +442,16 @@ class MangaReaderScreenModel : ScreenModel {
                 errorMsg.value = null
                 shared.refreshContentDur(it)
             }
-            // 换源回填: 复用 shared.onSourceChanged 直接装载新源/目录
-            is MangaReaderUiEvent.ChangeSource -> {
-                IntentData.book = event.book
-                scope.launch {
-                    shared.onSourceChanged(event.book, event.toc)
-                }
-            }
+            // 换源回填: migrateTo + 落库 + 装载新源/目录 (对照原版 BaseReadViewModel.changeTo)
+            is MangaReaderUiEvent.ChangeSource -> changeTo(event.source, event.book, event.toc)
         }
     }
+
+    /** 进入阅读页 (对照 app 端 onResume): 开始阅读计时 */
+    fun onEnter() = shared.onEnter()
+
+    /** 离开阅读页 (对照 app 端 onPause): 结束计时 + 落库 + 上传进度 + 取消预下载 */
+    fun onLeave() = shared.onLeave()
 
     override fun onCleared() {
         shared.onCleared()
@@ -333,7 +463,9 @@ class MangaReaderScreenModel : ScreenModel {
 data class MangaReaderUiState(
     val bookName: String = "",
     val chapterTitle: String = "",
-    val images: List<String> = emptyList(),
+    val items: List<BaseMangaPage> = emptyList(),
+    val contentPos: Int = 0,
+    val curFinish: Boolean = false,
     val curChapterIndex: Int = 0,
     val chapterSize: Int = 0,
     val horizontal: Boolean = false,
@@ -349,6 +481,9 @@ data class MangaReaderUiState(
     val hideMangaTitle: Boolean = false,
     val disablePageAnim: Boolean = false,
     val gifAutoNext: Boolean = false,
+    val preDownloadNum: Int = 10,
+    val hasReview: Boolean = false,
+    val clickActionConfig: ClickActionConfig = ClickActionConfig(),
 )
 
 /** ScreenModel 可处理的 UI 事件 (平台相关回调如 onBack/onOpenToc 仍走 Route)。 */
@@ -380,9 +515,10 @@ sealed interface MangaReaderUiEvent {
 
     /**
      * 整书换源回填 (对应 RouteResults.CHANGE_SOURCE 回传 source + book + toc)。
-     * 复用 [MangaReaderViewModelShared.onSourceChanged] 装载新源/目录并重新加载内容。
+     * 走 [MangaReaderScreenModel.changeTo]: migrateTo + 落库 + 装载新源/目录。
      */
     data class ChangeSource(
+        val source: BookSource,
         val book: Book,
         val toc: List<BookChapter>,
     ) : MangaReaderUiEvent

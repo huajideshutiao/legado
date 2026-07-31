@@ -61,11 +61,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: 17
+          java-version: 21
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Compile shared (jvm) & desktop
@@ -102,11 +102,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: 17
+          java-version: 21
       - name: Release Apk Sign
         # ⚠️ 安全提示: 签名库 .github/workflows/legado.jks 直接提交在仓库里, 且口令
         # (gedoor_legado) 明文硬编码在下方 sed 中 —— 任何人 clone 即可签出「看起来官方」的包。
@@ -260,11 +260,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: 17
+          java-version: 21
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Unify Desktop packageVersion
@@ -317,11 +317,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: 17
+          java-version: 21
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Install Linux packaging deps
@@ -364,11 +364,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: 17
+          java-version: 21
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Unify Desktop packageVersion
@@ -407,11 +407,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: 17
+          java-version: 21
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Build HarmonyOS .so (debug)

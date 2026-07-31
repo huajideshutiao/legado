@@ -44,6 +44,7 @@ import legado.shared.generated.resources.default_cover_count
 import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.select_image
 import org.jetbrains.compose.resources.stringResource
+import io.legado.app.utils.format
 
 /**
  * 封面配置 shared 路由入口。

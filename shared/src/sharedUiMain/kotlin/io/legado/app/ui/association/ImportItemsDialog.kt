@@ -21,7 +21,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.DictRule
 import io.legado.app.data.entities.HttpTTS
@@ -32,6 +31,7 @@ import io.legado.app.help.config.ThemeConfigData
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppCheckbox
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppOutlinedTextField
@@ -113,7 +113,7 @@ fun ImportItemsDialog(
     val stateUpdate = stringResource(Res.string.import_state_update)
     val stateExisting = stringResource(Res.string.import_state_existing)
 
-    Dialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
+    AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
         Surface(
             shape = DesignTokens.dialogShape,
             color = AppTheme.colors.background,

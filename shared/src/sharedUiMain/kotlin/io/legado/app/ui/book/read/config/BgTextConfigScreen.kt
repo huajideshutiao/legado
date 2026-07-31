@@ -26,14 +26,15 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppDetailSeekBar
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.AppSelectorDialog
-import io.legado.app.ui.compose.component.AppDetailSeekBar
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.StrokeTextChip
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.preference.ColorPickerDialog
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ColorUtils
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bg_alpha
@@ -242,7 +243,7 @@ fun BgTextConfigScreen(
     ) {
         // 样式名行：名称 + 编辑 + 恢复预设
         Row(
-            Modifier.fillMaxWidth().height(40.dp),
+            Modifier.fillMaxWidth().height(DesignTokens.viewHeightLarge),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(styleNameStr, color = colors.primaryText, fontSize = 16.sp)
@@ -448,7 +449,7 @@ private fun SwitchRow(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().height(40.dp),
+        Modifier.fillMaxWidth().height(DesignTokens.viewHeightLarge),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, color = AppTheme.colors.primaryText, modifier = Modifier.weight(1f))

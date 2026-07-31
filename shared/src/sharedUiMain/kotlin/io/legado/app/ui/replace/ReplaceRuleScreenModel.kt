@@ -77,7 +77,6 @@ class ReplaceRuleScreenModel : ScreenModel {
     fun dispatch(event: ReplaceRuleUiEvent) {
         when (event) {
             is ReplaceRuleUiEvent.SetQuery -> {
-                if (_state.value.query == event.query) return
                 _state.value = _state.value.copy(query = event.query)
                 observeRules()
             }
@@ -137,7 +136,6 @@ class ReplaceRuleScreenModel : ScreenModel {
 
             ReplaceRuleUiEvent.TopSelect -> {
                 val selection = selection()
-                if (selection.isEmpty()) return
                 scope.launch(IoDispatcher) {
                     var minOrder = appDb.replaceRuleDao.minOrder() - selection.size
                     selection.forEach { it.order = ++minOrder }
@@ -147,7 +145,6 @@ class ReplaceRuleScreenModel : ScreenModel {
 
             ReplaceRuleUiEvent.BottomSelect -> {
                 val selection = selection()
-                if (selection.isEmpty()) return
                 scope.launch(IoDispatcher) {
                     var maxOrder = appDb.replaceRuleDao.maxOrder()
                     selection.forEach { it.order = maxOrder++ }
@@ -157,7 +154,6 @@ class ReplaceRuleScreenModel : ScreenModel {
 
             ReplaceRuleUiEvent.EnableSelection -> {
                 val selection = selection()
-                if (selection.isEmpty()) return
                 scope.launch(IoDispatcher) {
                     val array = Array(selection.size) { selection[it].copy(isEnabled = true) }
                     appDb.replaceRuleDao.update(*array)
@@ -166,7 +162,6 @@ class ReplaceRuleScreenModel : ScreenModel {
 
             ReplaceRuleUiEvent.DisableSelection -> {
                 val selection = selection()
-                if (selection.isEmpty()) return
                 scope.launch(IoDispatcher) {
                     val array = Array(selection.size) { selection[it].copy(isEnabled = false) }
                     appDb.replaceRuleDao.update(*array)

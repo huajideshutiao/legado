@@ -18,24 +18,22 @@ import io.legado.app.data.dao.TxtTocRuleDao
 
 /**
  * iOS/鸿蒙 (Native target) 共用 [AppDbAccessor] 实现:
- * 委托 [AppDatabaseProviders.get].appDb 的 10 个 DAO + `runInTransaction`,
+ * 委托 [AppDatabaseProviders.get].appDb 的 10 个 DAO,
  * 供 shared commonMain 中下沉的 webBook 编排层 (WebBook/BookContent/
  * SourceHelp/SearchBookFilter/ReadBookViewModelShared 等) 通过 [AppDbProviders]
  * 间接访问 appDb。
  *
  * # 共用原因
- * iOS 与鸿蒙两端 AppDbAccessor 主体实现完全一致 (10 个 DAO 直接转发 appDb 的 abstract val
- * + runInTransaction 降级为直接执行 block), 仅类名 (IosAppDbAccessor / OhosAppDbAccessor)
+ * iOS 与鸿蒙两端 AppDbAccessor 主体实现完全一致 (10 个 DAO 直接转发 appDb 的 abstract val),
+ * 仅类名 (IosAppDbAccessor / OhosAppDbAccessor)
  * 与注册函数不同, 故下沉到 nativeMain 共用, 平台源集用 typealias 别名 + 各自 register 函数。
  *
- * # runInTransaction 行为 (两端共用 stub 待真实化)
+ * # 事务行为 (Native 端仍是降级实现)
  *
- * KMP Room 无 `RoomDatabase.runInTransaction(Runnable)` (Android 专属),
- * Room 3 已无 ktx 制品 (withTransaction 扩展不复存在),
- * room-runtime 的 useWriterTransaction 在 androidx.sqlite 包中也不不可用;
- * P0 阶段降级: 直接执行 block 不做事务包裹, 每个 DAO 操作本身原子, 最坏情况部分失败
- * (调用方 SourceHelp.deleteBookSourcesByKeys 内部已有 runBlocking + chunked 兜底, 影响可控)。
- * TODO: 改用 useWriterConnection + immediateTransaction 恢复事务语义 (需调用方 suspend 化)。
+ * [runInTransactionSuspending] 直接执行 block 不做事务包裹, 每个 DAO 操作本身原子,
+ * 最坏情况部分失败 (调用方 SourceHelp.deleteBookSourcesByKeys 有 chunked 兜底, 影响可控)。
+ * TODO: Room 3 的 useWriterConnection + immediateTransaction 在 Native 端可用, 待验证后接真事务
+ * (jvm/android 两端已走该路径, 见 DesktopAppDbAccessor / WebBookProvidersImpl)。
  *
  * 模式参考 desktop `DesktopAppDbAccessor` 实现。
  */
@@ -72,13 +70,6 @@ class NativeAppDbAccessor : AppDbAccessor {
     override val bookmarkDao: BookmarkDao get() = appDb.bookmarkDao
 
     // ---- AppDbAccessor 事务 ----
-    // KMP Room 无 RoomDatabase.runInTransaction(Runnable) (Android 专属),
-    // P0 阶段降级: 直接执行 block 不做事务包裹 (与桌面端 DesktopAppDbAccessor 行为一致)
-    // TODO: 改用 useWriterConnection + immediateTransaction 恢复事务语义 (需调用方 suspend 化)
-    override fun <R> runInTransaction(block: () -> R): R {
-        return block()
-    }
-
     // suspend 版本: Native 端无 room-ktx, 降级为直接执行 block (与非 suspend 版本行为一致)
     // 供 UpdateBookShared 等 suspend 调用方使用, block 内可直接调 suspend DAO, 无需 runBlocking
     // (Native 端 runBlocking 有死锁风险, 用 suspend 版本规避)

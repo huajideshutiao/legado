@@ -161,14 +161,12 @@ fun SharedGroupCover(
     // useDefaultCover 时跳过加载, 直接走占位 (对照 app 端 CoverImageView.load 行为)
     val useDefaultCover = remember { AppConfigProviders.get().useDefaultCover }
     var bitmap by remember(cover) { mutableStateOf<ImageBitmap?>(null) }
-    // 显示尺寸走 StateFlow (量尺寸不触发重组), 按尺寸降采样解码而非解原图
+    // 仅以首次有效布局尺寸降采样；窗口 resize 不重新发起图片请求。
     val displaySize = remember { MutableStateFlow(IntSize.Zero) }
     LaunchedEffect(cover, loader, useDefaultCover) {
         if (useDefaultCover || cover.isNullOrBlank() || loader == null) return@LaunchedEffect
-        displaySize.collect { size ->
-            if (size.width <= 0 || size.height <= 0) return@collect
-            bitmap = loader.loadImageOrNull(cover, null, size.width, size.height)
-        }
+        val decodeSize = firstValidCoverDecodeSize(displaySize)
+        bitmap = loader.loadImageOrNull(cover, null, decodeSize.width, decodeSize.height)
     }
     val aspectRatio = if (isVideoCover) VIDEO_COVER_RATIO else NOVEL_COVER_RATIO
     val resolvedModifier = modifier.fillMaxWidth().aspectRatio(aspectRatio)

@@ -78,6 +78,14 @@ object AppTheme {
         val strokeThin: Dp = 1.dp
         val strokeMedium: Dp = 2.dp
 
+        // Arco 视图高度六档 (对齐 dimens.xml arco_view_height_mini/small/default/large/xl/max)
+        val viewHeightMini: Dp = 24.dp
+        val viewHeightSmall: Dp = 28.dp
+        val viewHeightDefault: Dp = 32.dp
+        val viewHeightLarge: Dp = 40.dp
+        val viewHeightXl: Dp = 48.dp
+        val viewHeightMax: Dp = 56.dp
+
         // Arco arcoblue-6 主色 (#165DFF), 仅作无主题色场景的兜底强调色
         val arcoBlue6: Color = Color(0xFF165DFF)
 

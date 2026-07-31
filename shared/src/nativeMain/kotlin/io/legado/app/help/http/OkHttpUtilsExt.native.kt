@@ -3,6 +3,7 @@ package io.legado.app.help.http
 import io.legado.app.utils.EncodingDetect
 import io.legado.app.utils.Utf8BomUtils
 import io.legado.app.utils.textCharsetCodec
+import io.legado.app.utils.systemCurrentTimeMillis
 
 /**
  * OkHttp 工具扩展 nativeMain Actual 实现 (基于 KmpHttpTypes.native.kt 真实 HTTP 层)。
@@ -79,7 +80,7 @@ actual fun KmpResponseBody.decompressed(): KmpResponseBody {
  * nativeMain 端 [postMultipart] 实现: 手动构造 multipart/form-data body。
  *
  * 与 okhttp3.MultipartBody.Builder 字节级对齐:
- * - boundary: "legado-native-boundary-${getTimeMillis()}-${hashCode}" (避免与正文冲突)
+ * - boundary: "legado-native-boundary-${systemCurrentTimeMillis()}-${hashCode}" (避免与正文冲突)
  * - 普通字段: `--boundary\r\nContent-Disposition: form-data; name="key"\r\n\r\nvalue\r\n`
  * - 文件字段 (Map<*, *>): `--boundary\r\nContent-Disposition: form-data; name="key"; filename="fileName"\r\n
  *   Content-Type: contentType\r\n\r\n<bytes>\r\n`
@@ -89,8 +90,8 @@ actual fun KmpResponseBody.decompressed(): KmpResponseBody {
  * 实际不生效 (Ktor setBody 时统一用 multipart/form-data; boundary=...); 与 jvm 行为基本一致。
  */
 actual fun KmpRequestBuilder.postMultipart(type: String?, form: Map<String, Any>) {
-    // 用 kotlin.system.getTimeMillis() (Kotlin 1.9+ commonMain API) 替代 jvm 的 System.currentTimeMillis()
-    val boundary = "legado-native-boundary-${kotlin.system.getTimeMillis()}-${(form.hashCode() and 0xFFFFFF)}"
+    // 用 systemCurrentTimeMillis() (posix clock_gettime 包装) 替代 jvm 的 System.currentTimeMillis()
+    val boundary = "legado-native-boundary-${systemCurrentTimeMillis()}-${(form.hashCode() and 0xFFFFFF)}"
     val CRLF = "\r\n"
     val sb = StringBuilder()
     val byteParts: MutableList<ByteArray> = mutableListOf()

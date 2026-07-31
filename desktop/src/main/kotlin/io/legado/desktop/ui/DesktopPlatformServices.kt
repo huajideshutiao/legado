@@ -118,11 +118,14 @@ private class DesktopPermissionService : PermissionService {
     override fun requestPermission(permission: String): Boolean = true
 }
 
-// Window 全屏经 AWT GraphicsDevice 切换 (javafx Stage.setFullScreen 等价物);
+// Window 全屏经 AWT GraphicsDevice 切换 (javafx Stage.setFullScreen 等价物), 仅供 F11 手动切换;
 // 常亮/方向/系统栏桌面端无对应概念, no-op
 private class DesktopWindowController(
     private val handle: DesktopWindowHandle,
 ) : WindowController {
+    // 路由策略的 fullscreen 是 Android 沉浸式隐藏系统栏语义, 桌面无系统栏, 不该据此改窗口尺寸
+    override val appliesPolicyFullscreen: Boolean get() = false
+
     override fun setFullscreen(enabled: Boolean) {
         val window = handle.window ?: return
         val device = window.graphicsConfiguration?.device ?: return

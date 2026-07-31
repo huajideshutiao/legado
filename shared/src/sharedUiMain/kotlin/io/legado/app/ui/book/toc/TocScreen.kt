@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,10 +19,8 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -34,6 +33,7 @@ import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -63,6 +63,7 @@ import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.StringUtils
@@ -159,8 +160,6 @@ interface TocUiActions {
     fun showLog()
     fun openBookmark(bookmark: Bookmark)
     fun editBookmark(bookmark: Bookmark, pos: Int)
-    /** 章节长按回调（替代原 `context.longToastOnUi(title)`）。 */
-    fun onChapterLongClick(title: String)
 }
 
 // ===== TocScreen 完整版（app 端 TocActivity 用）=====
@@ -252,7 +251,7 @@ private fun TocTab(title: String, selected: Boolean, onClick: () -> Unit) {
     Column(
         Modifier
             .width(IntrinsicSize.Max)
-            .height(48.dp)
+            .height(DesignTokens.viewHeightXl)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -321,9 +320,9 @@ private fun TocActions(state: TocUiState, actions: TocUiActions, page: Int) {
 @Composable
 private fun ChapterListPage(state: TocUiState, actions: TocUiActions) {
     val listState = rememberLazyListState()
-    val chapters = state.chapters
-    val collapsed = state.collapsedVolumes
-    val display = remember(chapters, collapsed) { buildDisplayList(chapters, collapsed) }
+    val display by remember(state.chapters, state.collapsedVolumes) {
+        derivedStateOf { buildDisplayList(state.chapters, state.collapsedVolumes) }
+    }
     val scroll = state.chapterScroll
     LaunchedEffect(scroll) {
         if (display.isNotEmpty()) {
@@ -331,6 +330,13 @@ private fun ChapterListPage(state: TocUiState, actions: TocUiActions) {
         }
     }
     Column(Modifier.fillMaxSize()) {
+        // 提取不变的引用，避免在 lambda 内反复读 state
+        val titleMap = state.displayTitleMap
+        val cacheFiles = state.cacheFileNames
+        val isLocal = state.isLocalBook
+        val collapsedSet = state.collapsedVolumes
+        val countWords = state.countWords
+        val durIndex = state.durChapterIndex
         FastScrollLazyColumn(
             state = listState,
             modifier = Modifier
@@ -338,15 +344,17 @@ private fun ChapterListPage(state: TocUiState, actions: TocUiActions) {
                 .fillMaxWidth(),
         ) {
             items(display, key = { it.index }) { item ->
+                // 缓存文件名, 避免每次重组重复计算
+                val fileName = remember(item) { item.getFileName() }
                 // 参数瘦身: 只传本项派生值(全稳定), state 任一无关字段变化时本项可跳过重组
                 ChapterItem(
                     item = item,
-                    title = state.displayTitleMap[item.title] ?: item.title,
-                    isDur = state.durChapterIndex == item.index,
-                    cached = state.isLocalBook || item.isVolume ||
-                            state.cacheFileNames.contains(item.getFileName()),
-                    collapsed = item.index in state.collapsedVolumes,
-                    countWords = state.countWords,
+                    title = titleMap[item.title] ?: item.title,
+                    isDur = durIndex == item.index,
+                    cached = isLocal || item.isVolume ||
+                        cacheFiles.contains(fileName),
+                    collapsed = item.index in collapsedSet,
+                    countWords = countWords,
                     actions = actions,
                 )
             }
@@ -369,6 +377,7 @@ private fun ChapterItem(
     Row(
         Modifier
             .fillMaxWidth()
+            .height(DesignTokens.viewHeightLarge)
             .then(
                 // 卷名突出显示，普通章节保持 ripple
                 if (item.isVolume) Modifier.background(rememberColor("btn_bg")) else Modifier
@@ -377,7 +386,6 @@ private fun ChapterItem(
                 onClick = {
                     if (item.isVolume) actions.toggleVolume(item) else actions.openChapter(item)
                 },
-                onLongClick = { actions.onChapterLongClick(title) },
             )
             .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -474,7 +482,8 @@ private fun ChapterInfoBar(
         Color.White
     }
     val book = state.book
-    val info = remember(book) {
+    // Book.equals 只比 bookUrl, 用 book 当 key 会漏掉进度变化, 故按会变的标量取 key
+    val info = remember(book?.durChapterTitle, book?.durChapterIndex, book?.totalChapterNum) {
         book?.let {
             "${it.durChapterTitle}(${it.durChapterIndex + 1}/${it.simulatedTotalChapterNum()})"
         }.orEmpty()
@@ -646,7 +655,7 @@ private fun CheckItem(text: String, checked: Boolean, onClick: () -> Unit) {
         onClick = onClick,
     ) {
         Text(text, color = colors.primaryText)
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.width(12.dp))
         AppMenuCheckbox(checked = checked)
     }
 }
@@ -720,7 +729,7 @@ fun TocDrawerContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
+                .height(DesignTokens.viewHeightXl)
                 .background(colors.background)
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,

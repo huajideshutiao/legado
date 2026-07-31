@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
@@ -159,8 +160,14 @@ private class IosReadMenuState(
     override fun onSourceAction(action: SourceAction) {
         when (action) {
             SourceAction.LOGIN -> {
-                val origin = screenModel.viewModel.book.value?.origin ?: return
-                navigator.push(AppRoute.Login(origin))
+                val source = screenModel.viewModel.bookSource.value ?: return
+                // 带上当前书与当前章, 供登录 JS 的 book/chapter 绑定 (对照原版 showLogin 预置 IntentData)
+                val dataKey = SourceLoginContext.put(
+                    source,
+                    screenModel.currentBook,
+                    screenModel.currentChapter,
+                )
+                navigator.push(AppRoute.Login(source.getKey(), dataKey))
             }
 
             SourceAction.EDIT_SOURCE -> {
@@ -220,7 +227,17 @@ private class IosReadMenuState(
     }
 
     override fun clickSearch() {
-        navigator.push(AppRoute.SearchContent(), resultKey = RouteResults.SEARCH_CONTENT)
+        // 缓存的结果只有 query 与当前一致才回填 (对照 ReadBookActivity.openSearchActivity)
+        val initialResults = screenModel.searchResultList
+            ?.takeIf { results -> results.firstOrNull()?.query == screenModel.searchContentQuery }
+        navigator.push(
+            AppRoute.SearchContent(
+                index = screenModel.searchResultIndex,
+                word = screenModel.searchContentQuery.takeIf { it.isNotEmpty() },
+                initialResults = initialResults,
+            ),
+            resultKey = RouteResults.SEARCH_CONTENT,
+        )
     }
 
     override fun clickAutoPage() {

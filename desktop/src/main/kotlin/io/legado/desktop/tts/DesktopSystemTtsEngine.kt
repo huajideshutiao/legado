@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * | macOS   | `say`                       | 停止重读 | 无     | `say -v ?` |
  * | Linux   | `spd-say` → `espeak-ng`     | 停止重读 | 无     | `-L` / `--voices` |
  *
- * 后端在首次使用时惰性探测 (见 [backend]), 探测不到任何后端时 [isReady] 为 false,
+ * 后端在启动时由后台线程预热 (见 init), 结果缓存; 探测不到任何后端时 [isReady] 为 false,
  * [unsupportedMessage] 给出安装提示。
  */
 class DesktopSystemTtsEngine : SystemTtsEngine {
@@ -26,6 +26,15 @@ class DesktopSystemTtsEngine : SystemTtsEngine {
     private val backendHolder: Lazy<DesktopTtsBackend?> = lazy { detectBackend() }
 
     private val backend: DesktopTtsBackend? get() = backendHolder.value
+
+    init {
+        // 后端探测会阻塞 (Windows 走 SAPI COM 初始化, 最长等 5s; Linux/mac 起探测子进程),
+        // 而朗读按钮的点击路径是在 EDT 上同步调进来的, 所以启动时就在后台线程预热。
+        Thread({ runCatching { backendHolder.value } }, "desktop-tts-warmup").apply {
+            isDaemon = true
+            start()
+        }
+    }
 
     @Volatile private var speakingField: Boolean = false
 

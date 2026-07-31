@@ -65,6 +65,9 @@ class FailedUrlSkipInterceptor : Interceptor {
  * 封面解密 Interceptor: 书源带 coverDecodeJs 时下载原始字节跑 JS 解密,
  * 再以 [DecodedCoverBytes] 数据回灌 Coil3 管线解码 (对齐原 OkHttpStreamFetcher
  * ImageUtils.decode(isCover=true) 行为)。无 coverDecodeJs 的书源零开销直通。
+ *
+ * 解密后字节的缓存策略：进程内 LRU + Coil3 磁盘缓存（通过 DecodedCoverKeyer/DecodedCoverFetcher）。
+ * 进程重启后仍可从磁盘缓存命中，避免每次打开书架都重新下载+执行解密 JS。
  */
 class CoverDecodeInterceptor : Interceptor {
 
@@ -77,7 +80,25 @@ class CoverDecodeInterceptor : Interceptor {
         val source = SourceHelp.getSource(sourceOrigin) as? BookSource
             ?: return chain.proceed()
         if (source.coverDecodeJs.isNullOrBlank()) return chain.proceed()
+        // 进程内缓存命中：直接用解密后字节，不下载不执行JS
         val decoded = decodedBytesCache[url] ?: run {
+            // 先查 Coil3 磁盘缓存是否有解密后的字节
+            val diskKey = "coverDecode:$url"
+            val imageLoader = coil3.SingletonImageLoader.get(chain.request.context)
+            val diskCache = imageLoader.diskCache
+            val diskSnapshot = diskCache?.openSnapshot(diskKey)
+            if (diskSnapshot != null) {
+                try {
+                    val bytes = diskSnapshot.data.toFile().readBytes()
+                    if (bytes.isNotEmpty()) {
+                        decodedBytesCache[url] = bytes
+                        return@run bytes
+                    }
+                } finally {
+                    diskSnapshot.close()
+                }
+            }
+            // 缓存未命中：下载原始字节 + 执行解密JS
             val raw = downloadBytes(url, sourceOrigin)
             val bytes = runScriptWithContext {
                 ImageUtils.decode(url, raw, isCover = true, source)
@@ -86,6 +107,11 @@ class CoverDecodeInterceptor : Interceptor {
                 throw NoStackTraceException("封面二次解密失败")
             }
             decodedBytesCache[url] = bytes
+            // 写入磁盘缓存，下次进程重启也可命中
+            diskCache?.openEditor(diskKey)?.let { editor ->
+                editor.data.toFile().writeBytes(bytes)
+                editor.commit()
+            }
             bytes
         }
         val newRequest = request.newBuilder()

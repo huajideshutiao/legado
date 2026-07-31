@@ -44,7 +44,7 @@ class DictRuleScreenModel(
         scope.launch {
             appDb.dictRuleDao.flowAll()
                 .catch {
-                    AppLog.put("字典规则获取数据失败\n${it.localizedMessage}", it)
+                    AppLog.put("字典规则获取数据失败\n${it.message}", it)
                 }
                 .flowOn(IoDispatcher)
                 .collect { rules ->

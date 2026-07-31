@@ -47,7 +47,8 @@ object FileBook : BaseFileBook {
 
     fun isBookFile(fileName: String): Boolean = AppPattern.bookFileRegex.matches(fileName)
 
-    @Throws(TocEmptyException::class)
+    // 注: Kotlin/Native 要求 override 与父声明的 @Throws 过滤器一致,
+    // BaseFileBook.getChapterList 无 @Throws, 故此处不能单独标注 (仍会抛 TocEmptyException)。
     override fun getChapterList(book: Book): ArrayList<BookChapter> {
         val chapters = book.getHandler().getChapterList(book)
         if (chapters.isEmpty()) {

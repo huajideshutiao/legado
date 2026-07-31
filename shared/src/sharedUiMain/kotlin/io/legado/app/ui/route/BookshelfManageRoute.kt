@@ -71,9 +71,7 @@ import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.add_to_group
 import legado.shared.generated.resources.allow_update
 import legado.shared.generated.resources.cancel
-import legado.shared.generated.resources.change_source
 import legado.shared.generated.resources.change_source_batch
-import legado.shared.generated.resources.chapter_list
 import legado.shared.generated.resources.check_selected_interval
 import legado.shared.generated.resources.clear_cache
 import legado.shared.generated.resources.clear_cache_success
@@ -89,9 +87,9 @@ import legado.shared.generated.resources.local_book
 import legado.shared.generated.resources.no_group
 import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.screen
-import legado.shared.generated.resources.select_one_book
 import legado.shared.generated.resources.sure_del
 import org.jetbrains.compose.resources.stringResource
+import io.legado.app.utils.format
 
 /**
  * 书架管理 shared 路由入口。
@@ -150,9 +148,6 @@ fun BookshelfManageRoute(
         manageVm.upAdapter.collect { refreshTick++ }
     }
 
-    // 目录选择目标书: TocRoute 回传后用于定位更新哪本书的进度
-    var tocSelectTarget by remember { mutableStateOf<Book?>(null) }
-
     // 用路由 groupId 初始化分组 (对照 app 端 intent.getLongExtra("groupId", -1))
     LaunchedEffect(Unit) {
         screenModel.dispatch(BookshelfManageUiEvent.InitGroup(route.groupId))
@@ -164,34 +159,6 @@ fun BookshelfManageRoute(
             .collect { result ->
                 if (result.payload is RouteResultPayload.Deleted) {
                     screenModel.dispatch(BookshelfManageUiEvent.InitGroup(route.groupId))
-                }
-            }
-    }
-
-    // 目录选择结果: 跳 TocRoute 选章节后回传, 更新目标 book 阅读进度并落库 (对照 TocActivity setResult)
-    LaunchedEffect(Unit) {
-        navigator.resultsFor(entry.id).filter { it.key == RouteResults.TOC }.collect { result ->
-            val payload = result.payload as? RouteResultPayload.Toc ?: return@collect
-            val target = tocSelectTarget ?: return@collect
-            scope.launch(IoDispatcher) {
-                val updated = target.copy(
-                    durChapterIndex = payload.chapterIndex,
-                    durChapterPos = payload.chapterPos,
-                )
-                AppDbProviders.get().bookDao.update(updated)
-            }
-            tocSelectTarget = null
-        }
-    }
-
-    // 批量换源结果: 跳 ChangeSourceRoute 选源后回传, 把选中书籍批量换到该源 (任务要求"跳 ChangeSourceRoute 带 resultKey")
-    LaunchedEffect(Unit) {
-        navigator.resultsFor(entry.id).filter { it.key == RouteResults.CHANGE_SOURCE }
-            .collect { result ->
-                val payload = result.payload as? RouteResultPayload.ChangeSource ?: return@collect
-                val selection = screenModel.selection()
-                if (selection.isNotEmpty()) {
-                    manageVm.changeSource(selection, payload.source)
                 }
             }
     }
@@ -267,19 +234,6 @@ fun BookshelfManageRoute(
                         groupSelectTarget = GroupSelectTarget.AddSelection
                     },
                     onShowSourcePicker = { showSourcePicker = true },
-                    onSelectToc = { book ->
-                        tocSelectTarget = book
-                        navigator.push(
-                            AppRoute.Toc(book.toRouteRef()),
-                            resultKey = RouteResults.TOC
-                        )
-                    },
-                    onChangeSourceRoute = { book ->
-                        navigator.push(
-                            AppRoute.ChangeSource(book.toRouteRef()),
-                            resultKey = RouteResults.CHANGE_SOURCE,
-                        )
-                    },
                 )
             },
             onToggle = { book, checked ->
@@ -512,7 +466,7 @@ private fun downloadAll(screenModel: BookshelfManageScreenModel) {
     }
 }
 
-/** 缓存进度文案: 读 VM.cacheChapters + cacheSizes (对照 app 端 cacheInfo, 任务要求展示缓存大小) */
+/** 缓存进度文案: 读 VM.cacheChapters (对照 app 端 cacheInfo) */
 private fun cacheInfo(
     book: Book,
     vm: BookshelfManageViewModelShared,
@@ -523,22 +477,7 @@ private fun cacheInfo(
     return if (cs == null) {
         labels.loading
     } else {
-        val progress = labels.downloadCount.format(cs.size, book.totalChapterNum)
-        val sizeBytes = vm.cacheSizes[book.bookUrl] ?: 0L
-        if (sizeBytes > 0L) "$progress · ${formatCacheSize(sizeBytes)}" else progress
-    }
-}
-
-/** 字节数格式化为人类可读大小 (KB/MB/GB), 与 app 端 FileUtils.formatFileSize 行为一致 */
-private fun formatCacheSize(bytes: Long): String {
-    val kb = 1024.0
-    val mb = kb * 1024
-    val gb = mb * 1024
-    return when {
-        bytes >= gb -> String.format("%.2f GB", bytes / gb)
-        bytes >= mb -> String.format("%.2f MB", bytes / mb)
-        bytes >= kb -> String.format("%.1f KB", bytes / kb)
-        else -> "$bytes B"
+        labels.downloadCount.format(cs.size, book.totalChapterNum)
     }
 }
 
@@ -554,11 +493,8 @@ private data class ManageLabels(
     val addToGroup: String,
     val exportBookshelf: String,
     val changeSourceBatch: String,
-    val changeSource: String,
-    val toc: String,
     val clearCache: String,
     val checkSelectedInterval: String,
-    val selectOneBook: String,
     val loading: String,
     val downloadCount: String,
     val clearCacheSuccess: String,
@@ -574,11 +510,8 @@ private fun rememberManageLabels(): ManageLabels = ManageLabels(
     addToGroup = stringResource(Res.string.add_to_group),
     exportBookshelf = stringResource(Res.string.export_bookshelf),
     changeSourceBatch = stringResource(Res.string.change_source_batch),
-    changeSource = stringResource(Res.string.change_source),
-    toc = stringResource(Res.string.chapter_list),
     clearCache = stringResource(Res.string.clear_cache),
     checkSelectedInterval = stringResource(Res.string.check_selected_interval),
-    selectOneBook = stringResource(Res.string.select_one_book),
     loading = stringResource(Res.string.loading),
     downloadCount = stringResource(Res.string.download_count),
     clearCacheSuccess = stringResource(Res.string.clear_cache_success),
@@ -593,8 +526,6 @@ private fun buildSelectActions(
     onDeleteSelection: () -> Unit,
     onAddToGroup: () -> Unit,
     onShowSourcePicker: () -> Unit,
-    onSelectToc: (Book) -> Unit,
-    onChangeSourceRoute: (Book) -> Unit,
 ): List<SelectAction> {
     val platform = PlatformCapabilityProviders.get()
     return listOf(
@@ -616,14 +547,6 @@ private fun buildSelectActions(
         },
         // 批量改源: 弹源选择对话框 (对照 showDialogFragment<SourcePickerDialog>)
         SelectAction(labels.changeSourceBatch) { onShowSourcePicker() },
-        // 单本换源: 跳 ChangeSourceRoute 带 resultKey, 回传后批量换到该源
-        SelectAction(labels.changeSource) {
-            singleSelection(screenModel, labels.selectOneBook)?.let(onChangeSourceRoute)
-        },
-        // 目录选择: 跳 TocRoute 选章节定位
-        SelectAction(labels.toc) {
-            singleSelection(screenModel, labels.selectOneBook)?.let(onSelectToc)
-        },
         SelectAction(labels.clearCache) {
             clearCache(screenModel, scope, labels.clearCacheSuccess)
         },
@@ -631,20 +554,6 @@ private fun buildSelectActions(
             screenModel.dispatch(BookshelfManageUiEvent.CheckSelectedInterval)
         },
     )
-}
-
-/** 取选中单本书; 非 1 本时 toast 提示并返回 null (目录选择/单本换源入口校验) */
-private fun singleSelection(
-    screenModel: BookshelfManageScreenModel,
-    selectOneBookLabel: String,
-): Book? {
-    val selection = screenModel.selection()
-    return if (selection.size == 1) {
-        selection.first()
-    } else {
-        Toasters.get().toast(selectOneBookLabel)
-        null
-    }
 }
 
 /** 批量更新选中书籍的 canUpdate 标记 (对照 app 端 upCanUpdate) */

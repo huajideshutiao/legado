@@ -2,13 +2,15 @@ package io.legado.app.model
 
 import android.content.Intent
 import io.legado.app.constant.IntentAction
+import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.save
 import io.legado.app.help.book.saveRead
 import io.legado.app.service.AudioPlayService
 import io.legado.app.utils.startService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 
 /**
@@ -19,7 +21,7 @@ import splitties.init.appCtx
  *   `appCtx.startService<AudioPlayService>` + IntentAction + extras,
  *   与原 app 端 `AudioPlay.sendAction` 完全等价
  * - [AndroidAudioPlayBookBridge]: 实现 [AudioPlayBookBridge], 委托
- *   `book.saveRead()` / `book.save()` / `book.getBookSource()` 扩展 (app 端 BookExtensions.kt)
+ *   `book.saveRead()` / `book.save()` 扩展 (app 端 BookExtensions.kt); getBookSource 直接查 DAO
  *
  * 注册时机: App.onCreate, 经 [registerAndroidAudioPlayProviders]。
  *
@@ -92,8 +94,9 @@ object AudioPlayProvidersImpl : AudioPlayCommander, AudioPlayBookBridge {
         book.save()
     }
 
-    override fun getBookSource(book: Book): BookSource? {
-        return book.getBookSource()
+    // 不走 book.getBookSource() 扩展: 那个扩展是 runBlocking, 调用链可能在主线程协程上
+    override suspend fun getBookSource(book: Book): BookSource? = withContext(Dispatchers.IO) {
+        appDb.bookSourceDao.getBookSource(book.origin)
     }
 }
 

@@ -62,15 +62,6 @@ class DesktopAppDbAccessor : AppDbAccessor {
     override val bookmarkDao get() = appDb.bookmarkDao
 
     // ---- AppDbAccessor 事务 ----
-    // 非 suspend 版本无法接真事务: Room KMP 的事务入口 (useWriterConnection) 是 suspend,
-    // 用 runBlocking 包裹会让 block 内调用方自己的 runBlocking 落到另一个协程上下文,
-    // 拿不到 ConnectionElement 而去重新申请写连接 —— 写连接已被外层占用, 必然死锁。
-    // 故保持直通: 每个 DAO 操作本身原子, 最坏情况部分失败
-    // (调用方 SourceHelp.deleteBookSourcesByKeys 内部已有 runBlocking + chunked 兜底, 影响可控)
-    override fun <R> runInTransaction(block: () -> R): R {
-        return block()
-    }
-
     // suspend 版本走 Room KMP 真事务: useWriterConnection 把写连接放进协程上下文
     // (ConnectionElement), block 内的 suspend DAO 会复用同一连接加入事务;
     // immediateTransaction 对应 BEGIN IMMEDIATE, 抛异常自动回滚。

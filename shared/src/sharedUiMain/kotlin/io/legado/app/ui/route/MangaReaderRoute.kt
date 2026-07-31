@@ -1,6 +1,7 @@
 package io.legado.app.ui.route
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -11,6 +12,7 @@ import androidx.compose.runtime.setValue
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.manga.MangaReaderScreenContent
@@ -18,6 +20,8 @@ import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.manga.MangaReaderUiEvent
 import io.legado.app.ui.book.manga.config.MangaColorFilterDialog
 import io.legado.app.ui.book.manga.config.MangaFooterSettingDialog
+import io.legado.app.ui.book.read.config.ClickActionDialog
+import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformServiceProviders
@@ -29,6 +33,11 @@ import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.pre_download
+import legado.shared.generated.resources.setting_manga_auto_page_speed
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 漫画阅读页 shared 路由入口。
@@ -49,7 +58,8 @@ fun MangaReaderRoute(
     screenModelStore: ScreenModelStore,
 ) {
     val route = entry.route as AppRoute.MangaReader
-    val book = route.book.asBook()
+    // asBook() 每次 copy() 新实例, remember(route) 固定后 LaunchedEffect(book) 只在换路由时重启
+    val book = remember(route) { route.book.asBook() }
 
     val screenModel = screenModelStore.getOrCreateTyped(entry) { MangaReaderScreenModel() }
     val state by screenModel.state.collectAsState()
@@ -78,26 +88,31 @@ fun MangaReaderRoute(
                 }
 
                 RouteResults.CHANGE_SOURCE -> {
-                    // 换源回传新 book + toc (对照 app 端 onSourceChanged)
+                    // 换源回传新 source + book + toc: 必须走 changeTo 完成迁移+落库,
+                    // 只 initMangaData 会丢目录并在书架残留旧书
                     (result.payload as? RouteResultPayload.ChangeSource)?.let { cs ->
-                        screenModel.dispatch(MangaReaderUiEvent.ChangeSource(cs.book, cs.toc))
+                        screenModel.dispatch(
+                            MangaReaderUiEvent.ChangeSource(cs.source, cs.book, cs.toc)
+                        )
                     }
                 }
             }
         }
     }
 
-    // 返回栈由导航器统一管理; 目录/换源派发独立 BookRef 快照 + resultKey
+    // 阅读计时 + 退出落库/上传进度 (对照 app 端 onResume ReadTimeRecorder.start /
+    // onPause ReadTimeRecorder.end + saveRead + uploadProgress + cancelPreDownloadTask)
+    DisposableEffect(Unit) {
+        screenModel.onEnter()
+        onDispose { screenModel.onLeave() }
+    }
+
+    // 返回栈由导航器统一管理; 目录派发独立 BookRef 快照 + resultKey
     val onBack: () -> Unit = { navigator.pop() }
     val onOpenToc: () -> Unit =
         { navigator.push(AppRoute.Toc(book.toRouteRef()), resultKey = RouteResults.TOC) }
-    val onOpenChangeSource: () -> Unit =
-        {
-            navigator.push(
-                AppRoute.ChangeSource(book.toRouteRef()),
-                resultKey = RouteResults.CHANGE_SOURCE
-            )
-        }
+    // 顶栏标题点击进书籍详情 (对照 app 端 MangaMenu toolbar click → openBookInfoActivity)
+    val onOpenBookInfo: () -> Unit = { navigator.push(AppRoute.BookInfo(book.toRouteRef())) }
 
     // 书签编辑对话框状态 (对照 VideoPlayRoute pendingBookmark)
     var editingBookmark by remember { mutableStateOf<Bookmark?>(null) }
@@ -105,11 +120,20 @@ fun MangaReaderRoute(
     var showColorFilterDialog by remember { mutableStateOf(false) }
     // 页脚配置对话框 (对照 app 端 showDialogFragment<MangaFooterSettingDialog>)
     var showFooterConfigDialog by remember { mutableStateOf(false) }
+    // 预下载数量 / 自动翻页速度 数字选择框 (对照 app 端 showNumberPickerDialog)
+    var showPreDownloadDialog by remember { mutableStateOf(false) }
+    var showAutoPageSpeedDialog by remember { mutableStateOf(false) }
+    // 点击区域配置 (对照 app 端 showDialogFragment<ClickActionConfigDialog>)
+    var showClickRegionDialog by remember { mutableStateOf(false) }
 
     MangaReaderScreenContent(
         bookName = state.bookName,
         chapterTitle = state.chapterTitle,
-        images = state.images,
+        items = state.items,
+        contentPos = state.contentPos,
+        curFinish = state.curFinish,
+        book = screenModel.currentBook,
+        bookSource = screenModel.currentSource,
         curChapterIndex = state.curChapterIndex,
         chapterSize = state.chapterSize,
         horizontal = state.horizontal,
@@ -127,28 +151,36 @@ fun MangaReaderRoute(
         hideMangaTitle = state.hideMangaTitle,
         disablePageAnim = state.disablePageAnim,
         gifAutoNext = state.gifAutoNext,
+        preDownloadNum = state.preDownloadNum,
+        hasReview = state.hasReview,
+        clickActionConfig = state.clickActionConfig,
         onBack = onBack,
         onPrevChapter = { screenModel.dispatch(MangaReaderUiEvent.PrevChapter) },
         onNextChapter = { screenModel.dispatch(MangaReaderUiEvent.NextChapter) },
+        onCenterItemChanged = { screenModel.onCenterItemChanged(it) },
+        onSeekToPage = { screenModel.seekToPage(it) },
         onRetry = { screenModel.dispatch(MangaReaderUiEvent.Retry) },
         onRefresh = { screenModel.dispatch(MangaReaderUiEvent.Refresh) },
         onOpenToc = onOpenToc,
-        onOpenChangeSource = onOpenChangeSource,
+        onOpenBookInfo = onOpenBookInfo,
         onAddBookmark = {
             screenModel.buildBookmark()?.let { editingBookmark = it }
         },
         onSaveImage = { url ->
             scope.launch {
                 runCatching {
-                    val destPath = PlatformServiceProviders.get().files.saveFile(
-                        "manga-${systemCurrentTimeMillis()}.jpg"
-                    ) ?: return@launch
+                    // scope 是 rememberCoroutineScope (主线程调度), 阻塞式选择器必须切 IO
+                    val destPath = withContext(IoDispatcher) {
+                        PlatformServiceProviders.get().files.saveFile(
+                            "manga-${systemCurrentTimeMillis()}.jpg"
+                        )
+                    } ?: return@launch
                     val ok = screenModel.platformRenderer?.saveImage(
                         url, screenModel.currentBook, screenModel.currentSource, destPath
                     ) ?: false
                     Toasters.get().toast(if (ok) "保存成功" else "保存失败")
                 }.onFailure {
-                    AppLog.put("保存图片出错\n${it.localizedMessage}", it)
+                    AppLog.put("保存图片出错\n${it.message}", it)
                     Toasters.get().toast("保存失败")
                 }
             }
@@ -159,6 +191,11 @@ fun MangaReaderRoute(
         onToggleGifAutoNext = { screenModel.toggleGifAutoNext() },
         onOpenColorFilter = { showColorFilterDialog = true },
         onOpenFooterConfig = { showFooterConfigDialog = true },
+        onOpenPreDownloadNum = { showPreDownloadDialog = true },
+        onOpenAutoPageSpeed = { showAutoPageSpeedDialog = true },
+        onOpenClickRegionConfig = { showClickRegionDialog = true },
+        onOpenReview = { navigator.push(AppRoute.ReviewPost(book.toRouteRef())) },
+        preloadImage = screenModel.preloadImage,
         imageSlot = { url, modifier, horizontal, colorFilterConfig, grayEnabled ->
             screenModel.platformRenderer?.Image(
                 url = url,
@@ -202,6 +239,43 @@ fun MangaReaderRoute(
             config = state.footerConfig,
             onConfigChange = { screenModel.updateFooterConfig(it) },
             onDismiss = { showFooterConfigDialog = false },
+        )
+    }
+
+    // 预下载章节数 (对照 app 端 showNumberPickerDialog(min=0, max=9999))
+    if (showPreDownloadDialog) {
+        NumberPickerDialog(
+            title = stringResource(Res.string.pre_download),
+            value = state.preDownloadNum,
+            range = 0..9999,
+            onConfirm = {
+                screenModel.setPreDownloadNum(it)
+                showPreDownloadDialog = false
+            },
+            onDismiss = { showPreDownloadDialog = false },
+        )
+    }
+
+    // 自动翻页速度 (对照 app 端 showNumberPickerDialog(min=1, max=9999))
+    if (showAutoPageSpeedDialog) {
+        NumberPickerDialog(
+            title = stringResource(Res.string.setting_manga_auto_page_speed),
+            value = state.autoPageSpeed,
+            range = 1..9999,
+            onConfirm = {
+                screenModel.setAutoPageSpeed(it)
+                showAutoPageSpeedDialog = false
+            },
+            onDismiss = { showAutoPageSpeedDialog = false },
+        )
+    }
+
+    // 点击区域配置 (对照 app 端 ClickActionConfigDialog, 即时写入)
+    if (showClickRegionDialog) {
+        ClickActionDialog(
+            clickActionConfig = state.clickActionConfig,
+            onConfirm = { screenModel.updateClickActionConfig(it) },
+            onDismiss = { showClickRegionDialog = false },
         )
     }
 }

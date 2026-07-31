@@ -13,6 +13,8 @@ group = "io.legado.buildlogic"
 
 java {
     toolchain {
+        // 保持 17: 约定插件字节码由 Gradle daemon 自身加载, daemon 可能仍跑系统 JDK 17
+        // (命令行 gradlew) 而非 Android Studio 的 JBR 21; 17 字节码在两者上都能加载。
         languageVersion.set(JavaLanguageVersion.of(17))
     }
 }
@@ -27,6 +29,8 @@ val composeVersion = version(if (enableOhosTarget) "composeMultiplatform-ohos" e
 dependencies {
     // 与主构建工具链对齐，避免约定插件向子项目注入旧版 Kotlin/Compose 插件。
     implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
+    // composeCompiler {} DSL (稳定性配置/metrics) 需要编译期可见。
+    implementation("org.jetbrains.kotlin:compose-compiler-gradle-plugin:$kotlinVersion")
     implementation("com.android.tools.build:gradle:${version("agp")}")
     implementation("org.jetbrains.compose:compose-gradle-plugin:$composeVersion")
 }

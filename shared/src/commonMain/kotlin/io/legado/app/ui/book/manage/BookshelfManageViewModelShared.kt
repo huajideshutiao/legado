@@ -7,6 +7,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.migrateTo
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.Coroutine
@@ -42,10 +43,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * # Android 专属依赖替换 (平台注入)
  *
  * 以下平台专属逻辑通过 [BookshelfManagePlatform] 聚合接口注入, 不在 commonMain 硬编码:
- * - **Book.migrateTo(newBook, toc)**: 依赖 `BookHelp.getDurChapter` +
- *   `ContentProcessor.getTitleReplaceRules` + `getUseReplaceRule`, BookHelp 重 Android 依赖
- *   (BitmapFactory/ParcelFileDescriptor/DocumentFile/appCtx), 留 app 端。换源场景下
- *   `book.migrateTo(newBook, toc)` 调用通过 [BookshelfManagePlatform.migrateBook] 委托。
+ * - **Book.migrateTo(newBook, toc)**: 已下沉 commonMain,
+ *   [BookshelfManagePlatform.migrateBook] 默认实现直接调它, 各端无需再实现。
  * - **BookHelp.clearCache(book)**: 同上, BookHelp 留 app 端, 通过
  *   [BookshelfManagePlatform.clearCache] 委托。
  * - **BookHelp.getChapterFiles(book)**: 同上, 通过
@@ -402,7 +401,6 @@ class BookshelfManageViewModelShared(
  * - [io.legado.app.help.book.BookStorage] 虽有 clearCache(book)/getChapterFiles(book), 但
  *   App 端尚未注册 BookStorageProviders (BookHelp 仍是 app 端直接调用);
  * - [io.legado.app.help.book.LocalBookLocator] 有 deleteBook(book) 但无 deleteOriginal 参数;
- * - Book.migrateTo 依赖 BookHelp.getDurChapter + ContentProcessor, 完全未下沉;
  * - 用聚合接口注入只改 BookshelfManageViewModel 一处, 不扩散既有 accessor, 符合
  *   "避免超多 Provider 接口" 原则。
  *
@@ -413,15 +411,16 @@ interface BookshelfManagePlatform {
     /**
      * 迁移旧书信息到新书 (对照 `Book.migrateTo(newBook, toc)`)。
      *
-     * app 端委托 `book.migrateTo(newBook, toc)` (内部走 BookHelp.getDurChapter +
-     * ContentProcessor.getTitleReplaceRules + getUseReplaceRule, 重 Android 依赖留 app 端)。
+     * 默认实现直接调下沉后的 `Book.migrateTo` (BookHelpChapterLocator + ContentProcessorProviders),
+     * 各端不必再自写一份 —— 早期各端简化版跳过了标题替换规则, 与原版不一致。
      *
      * @param oldBook 旧书 (取 durChapterIndex/durChapterTitle/durChapterPos/group/order 等)
      * @param newBook 新书 (写入 durChapterIndex/durChapterTitle 等字段后返回)
      * @param toc 新源目录 (定位当前章节用)
      * @return 修改后的 [newBook] (与原 `book.migrateTo(newBook, toc)` 返回值一致)
      */
-    fun migrateBook(oldBook: Book, newBook: Book, toc: List<BookChapter>): Book
+    fun migrateBook(oldBook: Book, newBook: Book, toc: List<BookChapter>): Book =
+        oldBook.migrateTo(newBook, toc)
 
     /**
      * 清除书籍章节缓存 (对照 `BookHelp.clearCache(book)`)。

@@ -34,6 +34,10 @@ kotlin {
         namespace = "io.legado.shared"
         compileSdk = 36
         minSdk = 26
+        // 新版 AGP KMP library 插件默认不处理 Android assets/resources, compose.resources
+        // 的 copy*ComposeResourcesToAndroidAssets 任务因此拿不到 outputDirectory (配置校验失败,
+        // 生成的 composeResources/ 资产也不会进 AAR)。开启后才会有 Sources.assets 供 CMP 接线。
+        androidResources.enable = true
     }
 
     if (enableIosTarget) {
@@ -50,20 +54,25 @@ kotlin {
                     linkerOpts("-L${nativeLibDir.absolutePath}", "-lquickjs", "-lmbedtls")
                 }
             }
-            compilations.getByName("main").cinterops {
-                create("quickjs") {
-                    defFile(file("src/cinterop/quickjs.def"))
-                    includeDirs(file("${projectDir}/src/cinterop/quickjs-ng"))
-                }
-                create("mbedtls") {
-                    defFile(file("src/cinterop/mbedtls.def"))
-                    includeDirs(
-                        file("${projectDir}/src/cinterop/mbedtls/include"),
-                        file("${projectDir}/src/cinterop/mbedtls"),
-                    )
-                }
-                create("nskeyvalueobserving") {
-                    defFile(file("src/cinterop/nskeyvalueobserving.def"))
+            // KGP 的 klib 跨平台编译要求目标不含任何 cinterop (见 KotlinNativeTarget
+            // .crossCompilationOnCurrentHostSupported); 且 cinterop 本身在非 mac 上无法运行。
+            // 非 mac host 跳过声明, 以便在 Windows 上跑 compileKotlinIosArm64 做语法/签名校验。
+            if (isMacHost) {
+                compilations.getByName("main").cinterops {
+                    create("quickjs") {
+                        defFile(file("src/cinterop/quickjs.def"))
+                        includeDirs(file("${projectDir}/src/cinterop/quickjs-ng"))
+                    }
+                    create("mbedtls") {
+                        defFile(file("src/cinterop/mbedtls.def"))
+                        includeDirs(
+                            file("${projectDir}/src/cinterop/mbedtls/include"),
+                            file("${projectDir}/src/cinterop/mbedtls"),
+                        )
+                    }
+                    create("nskeyvalueobserving") {
+                        defFile(file("src/cinterop/nskeyvalueobserving.def"))
+                    }
                 }
             }
         }
@@ -146,6 +155,7 @@ kotlin {
         }
         val nativeMain = if (enableIosTarget || enableOhosTarget) {
             maybeCreate("nativeMain").apply {
+                dependsOn(commonMain.get())
                 dependencies {
                     implementation("io.ktor:ktor-server-core:3.1.0")
                     implementation("io.ktor:ktor-server-cio:3.1.0")
@@ -154,15 +164,26 @@ kotlin {
             }
         } else null
 
-        if (enableIosTarget) maybeCreate("iosMain").apply {
-            dependsOn(nonOhosUiMain)
-            dependencies {
-                implementation(libs.androidx.sqlite.framework)
-                implementation(libs.krypto)
-                implementation(libs.coil3.network.ktor3)
-                implementation("io.ktor:ktor-client-core:3.1.0")
-                implementation("io.ktor:ktor-client-cio:3.1.0")
+        if (enableIosTarget) {
+            val iosMain = maybeCreate("iosMain").apply {
+                dependsOn(nativeMain!!)
+                dependsOn(nonOhosUiMain)
+                dependencies {
+                    implementation(libs.androidx.sqlite.framework)
+                    implementation(libs.krypto)
+                    implementation(libs.coil3.network.ktor3)
+                    implementation("io.ktor:ktor-client-core:3.1.0")
+                    implementation("io.ktor:ktor-client-cio:3.1.0")
+                }
             }
+            // 显式 dependsOn 会让 KGP 回退到 pre-1.9.20 默认边 (只连 commonMain),
+            // 中间源集 nativeMain/iosMain 不会自动挂到 leaf, 须手工连。
+            maybeCreate("iosArm64Main").dependsOn(iosMain)
+            maybeCreate("iosSimulatorArm64Main").dependsOn(iosMain)
+        }
+        if (enableOhosTarget) {
+            maybeCreate("ohosMain").dependsOn(nativeMain!!)
+            maybeCreate("ohosArm64Main").dependsOn(maybeCreate("ohosMain"))
         }
 
         val jvmAndAndroidTest by creating {

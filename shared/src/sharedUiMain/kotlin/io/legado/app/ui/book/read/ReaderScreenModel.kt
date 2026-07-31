@@ -1,11 +1,22 @@
 package io.legado.app.ui.book.read
 
+import io.legado.app.constant.AppLog
+import io.legado.app.constant.BookType
+import io.legado.app.constant.EventBus
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.help.book.isNotShelf
+import io.legado.app.help.book.migrateTo
+import io.legado.app.help.book.removeType
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.ReadBookShared
+import io.legado.app.ui.book.searchContent.SearchResult
 import io.legado.app.ui.root.ScreenModel
+import io.legado.app.utils.FlowBus
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -13,6 +24,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 /**
  * 阅读页平台能力注入接口。
@@ -53,6 +65,64 @@ interface ReaderPlatformProvider {
      * 平台 actual 在 Activity Lifecycle 中调用 [ReaderScreenModel.onResume]。
      */
     fun onResume(screenModel: ReaderScreenModel) {}
+
+    /**
+     * 朗读控制桥：驱动长按朗读弹出的共享面板
+     * [io.legado.app.ui.book.read.config.ReadAloudDialog]。
+     *
+     * 返回 null 表示该端没有朗读实现，路由不弹面板（iOS/鸿蒙）。
+     */
+    fun readAloudControls(
+        navigator: io.legado.app.ui.root.AppNavigator,
+        screenModel: ReaderScreenModel,
+    ): ReadAloudControls? = null
+}
+
+/**
+ * 朗读控制动作集：对照 app 端 `ReadAloud` 门面 + `BaseReadAloudService` 静态态，
+ * 平台无关地暴露给共享 [io.legado.app.ui.book.read.config.ReadAloudDialog]。
+ *
+ * 语速口径与原版 `AppConfig.ttsSpeechRate` 一致：Int 0..45，展示倍率 = (value + 5) / 10f。
+ */
+interface ReadAloudControls {
+    /** 是否正在朗读（对照 `!BaseReadAloudService.pause`） */
+    val isPlaying: Boolean
+
+    /** 当前定时剩余分钟（对照 `BaseReadAloudService.timeMinute`，无定时时回落 `AppConfig.ttsTimer`） */
+    val timerMinute: Int
+
+    /** 当前语速 0..45（对照 `AppConfig.ttsSpeechRate`） */
+    val speechRate: Int
+
+    /** 是否跟随系统语速（对照 `AppConfig.ttsFlowSys`） */
+    val followSys: Boolean
+
+    /** 播放/暂停切换（对照 `ReadBookActivity.onClickReadAloud`） */
+    fun playPause()
+
+    fun stop()
+
+    /** 上一章 / 下一章（对照原版 `ReadBook.moveToPrevChapter/moveToNextChapter`） */
+    fun prevChapter()
+    fun nextChapter()
+
+    /** 上一句 / 下一句（对照 `ReadAloud.prevParagraph/nextParagraph`） */
+    fun prevParagraph()
+    fun nextParagraph()
+
+    /** 设定定时关闭分钟数（对照 `ReadAloud.setTimer`） */
+    fun setTimer(minute: Int)
+
+    /** 设定语速并实时生效（对照 `AppConfig.ttsSpeechRate = v` + `ReadAloud.upTtsSpeechRate`） */
+    fun setSpeechRate(rate: Int)
+
+    /** 切换跟随系统语速 */
+    fun setFollowSys(follow: Boolean)
+
+    /** 打开目录 / 朗读设置 / 转到后台（对照原版 CallBack.openChapterList/设置按钮/finish） */
+    fun openChapterList()
+    fun openSettings()
+    fun toBackstage()
 }
 
 /**
@@ -163,6 +233,12 @@ class ReaderScreenModel(
     private val _batteryLevel = MutableStateFlow(getBatteryLevel())
     val batteryLevel: StateFlow<Int> = _batteryLevel.asStateFlow()
 
+    // 搜索内容页的结果缓存, 返回阅读器后再次进入时免重搜
+    // (对照 app 端 ReadBookActivity.viewModel.searchResultList/searchContentQuery/searchResultIndex)
+    var searchResultList: List<SearchResult>? = null
+    var searchContentQuery: String = ""
+    var searchResultIndex: Int = 0
+
     /**
      * 初始化书籍并装载章节（对照 app 端 ReadBookViewModel.initData + applyBookmarkPosition）。
      * chapterIndex + chapterPos 来自书签跳转入口（对照 app 端 intent extra chapterIndex/chapterPos）。
@@ -179,6 +255,40 @@ class ReaderScreenModel(
     /** 刷新电池电量（平台收到电量变化广播时调用） */
     fun refreshBattery() {
         _batteryLevel.value = getBatteryLevel()
+    }
+
+    /**
+     * 整书换源落地（对照 app 端 `BaseReadViewModel.changeTo`）。
+     *
+     * 换源页只负责搜出 (source, newBook, toc)，迁移与落库必须在此完成：
+     * 迁移进度/分组等字段 → 删旧书 → 插新书 → 插新目录，最后重新装载。
+     * 少任一步都会导致书架残留旧书或目录取不到（新目录只存在于内存）。
+     */
+    fun changeTo(source: BookSource, newBook: Book, toc: List<BookChapter>) {
+        scope.launch {
+            runCatching {
+                val oldBook = currentBook
+                oldBook?.migrateTo(newBook, toc)
+                // 未入书架的书原版同样不落库 (BaseReadViewModel.changeTo 的 inBookshelf 守卫,
+                // 此处沿用 ReadBookViewModelShared.loadChapterListFromSource 的 isNotShelf 口径)
+                if (oldBook != null && !oldBook.isNotShelf) {
+                    newBook.removeType(BookType.updateError)
+                    AppDbProviders.get().bookDao.delete(oldBook)
+                    AppDbProviders.get().bookDao.insert(newBook)
+                    AppDbProviders.get().bookChapterDao.insert(*toc.toTypedArray())
+                }
+                readBook.loadBook(newBook)
+                readBook.bookSourceValue = source
+                // 对照原版 chapterListData.postValue(toc): 目录先进内存,
+                // 未入书架的书没落库, 少了这步会再回源拉一次目录
+                readBook.updateChapterList(toc)
+                // 对照 onSourceChanged: ReadBook.initData(book) + loadContent
+                viewModel.loadChapter(newBook.durChapterIndex)
+            }.onFailure {
+                AppLog.put("换源失败\n$it", it, true)
+            }
+            FlowBus.with(EventBus.SOURCE_CHANGED).tryEmit(newBook.bookUrl)
+        }
     }
 
     // region 对话框事件 (书签/正文编辑/日志, 由 AndroidReaderMenuState 触发, ReaderRoute 渲染)
@@ -253,4 +363,7 @@ sealed interface ReaderDialogEvent {
 
     /** 查看日志 */
     object Log : ReaderDialogEvent
+
+    /** 朗读控制面板 (对照原版 ReadMenu 朗读按钮长按 → showReadAloudDialog) */
+    object ReadAloud : ReaderDialogEvent
 }

@@ -18,9 +18,10 @@ import kotlinx.coroutines.launch
  *
  * # 下沉说明 (nativeMain 共用)
  * 原 `iosMain/.../ServiceLauncher.ios.kt` 与 `ohosMain/.../ServiceLauncher.ohos.kt`
- * 是几乎逐字节相同的 actual 实现 (CacheBookShared 真实调度 + UpdateBook stub +
- * FileDownloader 真实下载), 仅日志 API 不同 (iOS 用 `NSLog`, 鸿蒙用 `println`),
+ * 是几乎逐字节相同的 actual 实现, 仅日志 API 不同 (iOS 用 `NSLog`, 鸿蒙用 `println`),
  * 满足 "平台 actual 严禁直接拷贝" 硬约束 — 必须通过 nativeMain 中间源集共用。
+ * 三条业务线现均为真实实现: CacheBookShared 调度 + UpdateBookShared 自动更新
+ * (原 stub 已替换, 见下文) + FileDownloader 下载。
  *
  * 本文件下沉到 nativeMain 后, iosMain / ohosMain 不再持有 actual 实现类,
  * iOS / 鸿蒙 target 通过 nativeMain 共用 [NativeServiceLauncher] + 两个注册入口

@@ -14,6 +14,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.utils.postEvent
@@ -60,6 +61,9 @@ class TocScreenModel(
     // 净化标题内部累积, 批量 flush 到 state
     private val displayTitles = linkedMapOf<String, String>()
 
+    // 内存章节表快照 (IntentData 消费一次即失效, 搜索/重载要复用)
+    private var memoryChapterList: List<BookChapter>? = null
+
     // 多协程管理: 章节加载 / 净化标题 / 书签订阅
     private var chaptersJob: Job? = null
     private var displayTitleJob: Job? = null
@@ -89,6 +93,7 @@ class TocScreenModel(
     // ===== 书籍初始化 =====
 
     private fun setBook(book: Book) {
+        if (_state.value.book?.bookUrl != book.bookUrl) memoryChapterList = null
         _state.value = _state.value.copy(
             book = book,
             durChapterIndex = book.durChapterIndex,
@@ -124,10 +129,19 @@ class TocScreenModel(
         chaptersJob = scope.launch {
             val list = withContext(IoDispatcher) {
                 val end = (book.simulatedTotalChapterNum()) - 1
-                var chapterList = IntentData.chapterList?.subList(0, end + 1)
+                // 内存章节表来源：跨页传递的 IntentData → 本地缓存（IntentData 取一次即失效，
+                // 搜索时要复用）→ 阅读页活动章节表。未加书架的书按原版语义不落库，只有内存有目录。
+                val memory = IntentData.chapterList
+                    ?: memoryChapterList
+                    ?: ActiveReadBookRegistry.current?.chapterList?.value?.takeIf { it.isNotEmpty() }
+                // totalChapterNum 尚未回填(end < 0)时不截断，否则内存目录会被裁成空
+                var chapterList = memory?.let {
+                    it.subList(0, if (end < 0) it.size else minOf(end + 1, it.size))
+                }
                 if (chapterList?.firstOrNull()?.bookUrl != bookUrl) {
                     chapterList = null
                 }
+                chapterList?.let { memoryChapterList = it }
                 when {
                     searchKey.isNullOrBlank() ->
                         chapterList ?: appDb.bookChapterDao.getChapterList(bookUrl, 0, end)
@@ -197,6 +211,7 @@ class TocScreenModel(
 
     private fun reverseChapterListInternal(list: List<BookChapter>) {
         if (list.isEmpty()) return
+        memoryChapterList = list
         setChapterList(list)
     }
 
@@ -256,6 +271,7 @@ class TocScreenModel(
                 appDb.bookChapterDao.delByBook(book.bookUrl)
                 appDb.bookChapterDao.insert(*chapters.toTypedArray())
                 appDb.bookDao.update(book)
+                memoryChapterList = chapters
                 postEvent(EventBus.UP_BOOKSHELF, book.bookUrl)
                 _state.value = _state.value.copy(
                     book = book,
@@ -266,7 +282,7 @@ class TocScreenModel(
                 upBookmarks()
             } catch (e: Throwable) {
                 if (e is CancellationException) throw e
-                AppLog.put("LoadTocError:${e.localizedMessage}", e)
+                AppLog.put("LoadTocError:${e.message}", e)
             } finally {
                 _waitDialog.value = false
             }
@@ -298,7 +314,7 @@ class TocScreenModel(
                 searchKey.isBlank() -> appDb.bookmarkDao.flowByBook(book.name, book.author)
                 else -> appDb.bookmarkDao.flowSearch(book.name, book.author, searchKey)
             }.catch {
-                AppLog.put("目录界面获取书签数据失败\n${it.localizedMessage}", it)
+                AppLog.put("目录界面获取书签数据失败\n${it.message}", it)
             }.flowOn(IoDispatcher).collect { list ->
                 val dur = _state.value.durChapterIndex
                 var scrollPos = 0

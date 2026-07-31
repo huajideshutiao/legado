@@ -111,6 +111,7 @@ internal class WindowsSapiTtsBackend : DesktopTtsBackend {
     }
 
     /** 探测: COM 能创建出来就算可用。 */
+    // 最长阻塞 5s, 只应在后台线程调 (DesktopSystemTtsEngine 启动时预热, 不落 EDT)
     fun isAvailable(): Boolean {
         readyLatch.await(5, TimeUnit.SECONDS)
         return !initFailed && alive.get()

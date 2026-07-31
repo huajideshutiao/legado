@@ -203,7 +203,7 @@ fun SourceFilterEditDialog(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .height(DesignTokens.viewHeightXl)
                         .clickable { enabled = !enabled },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -258,7 +258,7 @@ private fun FieldChecks(
     Row(
         Modifier
             .fillMaxWidth()
-            .height(40.dp),
+            .height(DesignTokens.viewHeightLarge),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         fieldLabels.forEach { (field, labelRes) ->

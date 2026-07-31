@@ -102,8 +102,9 @@ class BookSourceDebugScreenModel(
     fun init(sourceUrl: String?) {
         scope.launch(IoDispatcher) {
             try {
+                // 优先取编辑页跳转前塞入的内存对象 (含未落库的最新编辑结果);
+                // 书源管理页只带 url, 走 DB 兜底
                 bookSource = IntentData.source as? BookSource
-                bookSource
                     ?: sourceUrl?.let { AppDbProviders.get().bookSourceDao.getBookSource(it) }
             } finally {
                 initHelpView()
@@ -130,11 +131,13 @@ class BookSourceDebugScreenModel(
                     if (it.title.startsWith("ERROR:")) {
                         logs.add(exploreErrorText(it.url ?: ""))
                         _uiState.update { state -> state.copy(helpVisible = false) }
+                        _clearFocusFlow.tryEmit(Unit)
                     }
                 }
             } catch (e: NullPointerException) {
                 logs.add(exploreJsonErrorText(e))
                 _uiState.update { state -> state.copy(helpVisible = false) }
+                _clearFocusFlow.tryEmit(Unit)
             }
         }
     }
@@ -204,10 +207,10 @@ class BookSourceDebugScreenModel(
     private fun setQuery(text: String, submit: Boolean) {
         _uiState.update { it.copy(query = text) }
         if (submit) {
+            // 对齐 app 端: 空白 query 用默认搜索词兜底, 始终走完整提交流程
             _uiState.update { it.copy(helpVisible = false) }
             _clearFocusFlow.tryEmit(Unit)
-            val key = text.ifBlank { defaultTextMy }
-            startSearch(key)
+            startSearch(text.ifBlank { defaultTextMy })
         }
     }
 

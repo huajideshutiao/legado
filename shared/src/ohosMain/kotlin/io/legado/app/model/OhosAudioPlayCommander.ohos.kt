@@ -37,7 +37,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 
@@ -501,7 +500,7 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
         }
     }
 
-    override fun getBookSource(book: Book): BookSource? = runBlocking {
+    override suspend fun getBookSource(book: Book): BookSource? = withContext(Dispatchers.IO) {
         runCatching {
             AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
         }.onFailure {

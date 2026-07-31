@@ -1,6 +1,8 @@
 package io.legado.app.help
 
 import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.source.SourceCacheProvider
+import io.legado.app.help.source.SourceCacheProviders
 import io.legado.app.utils.File
 
 /**

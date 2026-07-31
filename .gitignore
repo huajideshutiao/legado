@@ -31,3 +31,4 @@ build/native_framework_build/
 # OHOS/DevEco 构建缓存与本地依赖
 .hvigor/
 oh_modules/
+/.workbuddy-ai/

@@ -58,6 +58,7 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.toJson
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -208,8 +209,8 @@ fun SourceLoginDialog(
                     Toasters.get().toast(successText)
                     withContext(mainDispatcher) { onDismiss() }
                 } catch (e: Exception) {
-                    AppLog.put("登录出错\n${e.localizedMessage}", e)
-                    Toasters.get().toast("登录出错\n${e.localizedMessage}")
+                    AppLog.put("登录出错\n${e.message}", e)
+                    Toasters.get().toast("登录出错\n${e.message}")
                     e.printStackTraceOnDebug()
                 }
             }

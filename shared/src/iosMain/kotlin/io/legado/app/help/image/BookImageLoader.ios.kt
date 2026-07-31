@@ -102,6 +102,9 @@ private fun buildIosBookImageLoader(): ImageLoader {
             add(DecodedCoverKeyer(), DecodedCoverBytes::class)
             add(DecodedCoverFetcher.Factory(), DecodedCoverBytes::class)
             add(SourceOriginHeaderInterceptor())
+            // 漫画页: MangaModel 走完整取图链路 (图片缓存 → 本地书 FileBook → AnalyzeUrl 防盗链
+            // header 下载 → ImageUtils.decode 解密), 与 android/desktop 同源
+            add(MangaModelFetcher.Factory())
             // 网络后端: 复用 IosHttpProvider 的 Ktor HttpClient (KmpHttpClient 内部 client,
             // internal 字段同模块可见; lambda 惰性求值, ImageLoader 构建时不触发网络栈初始化)
             add(KtorNetworkFetcherFactory(httpClient = {

@@ -80,6 +80,11 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
 
     override fun getAppVersionName(): String? = DesktopAppInfo.versionName
 
+    // 桌面窗口无系统状态栏/导航栏, 也无屏幕方向: 对应设置项隐藏
+    override fun hasSystemBars(): Boolean = false
+
+    override fun hasScreenOrientation(): Boolean = false
+
     // ===== Web 服务 (WebServerManager 已下沉) =====
 
     override fun getWebServiceUrl(): String? = WebServerManager.hostAddress.takeIf { it.isNotEmpty() }

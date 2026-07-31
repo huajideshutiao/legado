@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -49,6 +48,7 @@ import io.legado.app.ui.compose.component.code.rememberFullCodeSyntax
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.widget.text.EditEntity
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.action_save
@@ -295,35 +295,31 @@ private fun EditActions(state: BookSourceEditState, callbacks: BookSourceEditCal
         // 对齐 View 版 onMenuOpened 的登录项可见性: 每次展开时计算 (DropdownMenu content
         // 在 expanded 时新组合, remember 无 key 等价每次展开重新求值)
         val hasLogin = remember { callbacks.hasLogin() }
-        if (hasLogin) {
-            MenuItem(stringResource(Res.string.login)) { dismiss(); callbacks.onLogin() }
-        }
-        MenuItem(stringResource(Res.string.search)) { dismiss(); callbacks.onSearch() }
-        MenuItem(stringResource(Res.string.cookie)) { dismiss(); callbacks.onClearCookie() }
-        MenuItem(stringResource(Res.string.copy_source)) { dismiss(); callbacks.onCopySource() }
-        MenuItem(stringResource(Res.string.paste_source)) { dismiss(); callbacks.onPasteSource() }
-        MenuItem(stringResource(Res.string.auto_indent)) { dismiss(); callbacks.onAutoIndent() }
-        MenuItem(stringResource(Res.string.set_source_variable)) { dismiss(); callbacks.onSetSourceVariable() }
-        MenuItem(stringResource(Res.string.str_share)) { dismiss(); callbacks.onShareSourceStr() }
-        // 「帮助」二级菜单 (对齐 app 端 source_edit.xml 的嵌套 <menu>)
+        // 「帮助」二级菜单: 同一 Popup 内用 if/else 切换内容(对照 BookshelfManageScreen),
+        // 避免嵌套 DropdownMenu/Popup 导致桌面端卡死; 菜单关闭随 Popup 释放状态, 下次打开回到一级
         var showHelpSubmenu by remember { mutableStateOf(false) }
-        MenuItem(stringResource(Res.string.help)) { showHelpSubmenu = true }
-        Box {
-            AppDropdownMenu(
-                expanded = showHelpSubmenu,
-                onDismissRequest = { showHelpSubmenu = false },
-                modifier = Modifier.offset(x = 200.dp), // 偏移到父菜单右侧
-            ) {
-                MenuItem(stringResource(Res.string.book_source_tutorial)) {
-                    dismiss(); showHelpSubmenu = false; callbacks.onHelp("ruleHelp")
-                }
-                MenuItem(stringResource(Res.string.js_tutorial)) {
-                    dismiss(); showHelpSubmenu = false; callbacks.onHelp("jsHelp")
-                }
-                MenuItem(stringResource(Res.string.regex_tutorial)) {
-                    dismiss(); showHelpSubmenu = false; callbacks.onHelp("regexHelp")
-                }
+        if (showHelpSubmenu) {
+            MenuItem(stringResource(Res.string.book_source_tutorial)) {
+                dismiss(); callbacks.onHelp("ruleHelp")
             }
+            MenuItem(stringResource(Res.string.js_tutorial)) {
+                dismiss(); callbacks.onHelp("jsHelp")
+            }
+            MenuItem(stringResource(Res.string.regex_tutorial)) {
+                dismiss(); callbacks.onHelp("regexHelp")
+            }
+        } else {
+            if (hasLogin) {
+                MenuItem(stringResource(Res.string.login)) { dismiss(); callbacks.onLogin() }
+            }
+            MenuItem(stringResource(Res.string.search)) { dismiss(); callbacks.onSearch() }
+            MenuItem(stringResource(Res.string.cookie)) { dismiss(); callbacks.onClearCookie() }
+            MenuItem(stringResource(Res.string.copy_source)) { dismiss(); callbacks.onCopySource() }
+            MenuItem(stringResource(Res.string.paste_source)) { dismiss(); callbacks.onPasteSource() }
+            MenuItem(stringResource(Res.string.auto_indent)) { dismiss(); callbacks.onAutoIndent() }
+            MenuItem(stringResource(Res.string.set_source_variable)) { dismiss(); callbacks.onSetSourceVariable() }
+            MenuItem(stringResource(Res.string.str_share)) { dismiss(); callbacks.onShareSourceStr() }
+            MenuItem(stringResource(Res.string.help)) { showHelpSubmenu = true }
         }
     }
 }
@@ -437,7 +433,7 @@ private fun TabBar(state: BookSourceEditState, callbacks: BookSourceEditCallback
     Row(
         Modifier
             .fillMaxWidth()
-            .height(40.dp)
+            .height(DesignTokens.viewHeightLarge)
     ) {
         tabTitles.forEachIndexed { i, key ->
             val selected = state.currentTab == i
@@ -536,6 +532,8 @@ private fun CodeField(
         },
         syntax = syntax,
         label = rememberString(entity.hint),
+        // 对照原版 CodeView: 书源编辑条目开行号 (isLineNumberEnabled=true)
+        showLineNumbers = true,
         modifier = Modifier
             .fillMaxWidth()
             .onFocusChanged {
@@ -649,7 +647,7 @@ private fun SpinnerField(entity: EditEntity) {
     Row(
         Modifier
             .fillMaxWidth()
-            .height(48.dp)
+            .height(DesignTokens.viewHeightXl)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

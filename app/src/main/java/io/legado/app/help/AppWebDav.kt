@@ -5,8 +5,6 @@ import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
-import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.AppWebDav.bgWebDavUrl
 import io.legado.app.help.AppWebDav.defaultBookWebDav
 import io.legado.app.help.AppWebDav.exportWebDav
 import io.legado.app.help.AppWebDav.exportsWebDavUrl
@@ -37,7 +35,7 @@ import java.io.File
  *   authorization / isOk / isJianGuoYun) 直接转发到 [AppWebDavShared]
  * - Android 专属方法保留在本文件:
  *   - [defaultBookWebDav]: 依赖 `RemoteBookWebDav` (Android 专属)
- *   - [upBgs]: 依赖 `Array<File>` + [isNetworkAvailable]
+ *   - [upBgs]: 仅保留 [isNetworkAvailable] 判断, 遍历/上传委托 [AppWebDavShared.upBgs]
  *   - [exportWebDav] 两个重载: 依赖 `Uri` / `ByteArray` + [isNetworkAvailable]
  * - [upConfig] 转发 [AppWebDavShared.upConfig] 完成认证 + 目录创建后, 额外初始化
  *   Android 专属的 [defaultBookWebDav] (RemoteBookWebDav 依赖 Android 专属类, shared 不下沉)
@@ -59,9 +57,6 @@ object AppWebDav {
 
     /** 书籍导出 URL (与 [AppWebDavShared] 内部 exportsWebDavUrl 同值), 供 [exportWebDav] 使用。 */
     private val exportsWebDavUrl get() = "${rootWebDavUrl}books/"
-
-    /** 背景图片 URL (与 [AppWebDavShared] 内部 bgWebDavUrl 同值), 供 [upBgs] 使用。 */
-    private val bgWebDavUrl get() = "${rootWebDavUrl}background/"
 
     /** 当前认证信息, 转发自 [AppWebDavShared.authorization]。 */
     val authorization: Authorization? get() = AppWebDavShared.authorization
@@ -170,20 +165,11 @@ object AppWebDav {
     // ---- Android 专属方法保留 (依赖 Uri / appCtx / isNetworkAvailable / File) ----
 
     /**
-     * 上传背景图片 (Android 专属, 依赖 `Array<File>` + [isNetworkAvailable])。
+     * 上传背景图片: 网络判断留 app 端, 遍历/去重/上传委托 [AppWebDavShared.upBgs]。
      */
     suspend fun upBgs(files: Array<File>) {
-        val authorization = AppWebDavShared.authorization ?: return
         if (!isNetworkAvailable()) return
-        val bgWebDavFiles = getAllBgWebDavFiles().getOrThrow()
-            .map { it.displayName }
-            .toSet()
-        files.forEach {
-            if (!bgWebDavFiles.contains(it.name) && it.exists()) {
-                WebDav("$bgWebDavUrl${it.name}", authorization)
-                    .upload(it)
-            }
-        }
+        AppWebDavShared.upBgs(files.map { it.absolutePath })
     }
 
     @Suppress("unused")
@@ -212,19 +198,6 @@ object AppWebDav {
         } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
             AppLog.put("WebDav导出失败\n${e.localizedMessage}", e, true)
-        }
-    }
-
-    /**
-     * 获取云端所有背景名称 (Android 专属, 依赖 [isNetworkAvailable])。
-     */
-    private suspend fun getAllBgWebDavFiles(): Result<List<WebDavFile>> {
-        return kotlin.runCatching {
-            if (!isNetworkAvailable())
-                throw NoStackTraceException("网络未连接")
-            val auth = AppWebDavShared.authorization
-                ?: throw NoStackTraceException("webDav未配置")
-            WebDav(bgWebDavUrl, auth).listFiles()
         }
     }
 

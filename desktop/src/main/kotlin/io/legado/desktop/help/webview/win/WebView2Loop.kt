@@ -12,6 +12,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * WebView2 专用 STA 线程 + Win32 消息泵。
@@ -66,7 +67,12 @@ internal object WebView2Loop {
         val thread = Thread({ runLoop(ready) }, "legado-webview2")
         thread.isDaemon = true
         thread.start()
-        ready.await()
+        // 超时不再等: 建窗口卡住时按启动失败处理, 上层降级到无 WebView 路径而不是永久挂起
+        if (!ready.await(START_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            AppLog.put("WebView2 消息泵启动超时 (${START_TIMEOUT_SECONDS}s), 按不可用处理")
+            startFailed = true
+            return false
+        }
         if (pumpWindow == null) startFailed = true
         return pumpWindow != null
     }
@@ -174,4 +180,7 @@ internal object WebView2Loop {
 
     private const val DEFAULT_WIDTH = 1100
     private const val DEFAULT_HEIGHT = 800
+
+    /** 消息泵启动等待上限。 */
+    private const val START_TIMEOUT_SECONDS = 30L
 }

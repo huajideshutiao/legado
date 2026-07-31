@@ -20,14 +20,16 @@ import kotlinx.coroutines.launch
  * 空格/上/下/右带按住防抖 (KeyEventType 无 KeyRepeat, 用 heldKeys 自管, 一次按压只触发一次);
  * 左方向键不防抖, 按住连续后退 seek 是预期行为。
  *
+ * 右方向键三段式: 300ms 死区 (不触发任何操作) → seek +10s → 再 500ms (总计 800ms) → 2x 倍速
+ * 模拟 Android 触摸手势的 touch slop / long press 机制。
+ *
  * @param onTogglePlayPause 空格触发播放/暂停切换
  * @param onSeekDelta 视频用, 左右方向键 seek (传入 ±10000ms); null 时方向键降级为上/下一章
  * @param onPrev 上一章/上一页 (方向键左/上)
  * @param onNext 下一章/下一页 (方向键右/下)
  * @param onSpeedChange 视频用, 长按右方向键倍速 (2.0f), 松开恢复 (1.0f)
+ * @param onGestureText 手势/按键反馈文字回调 (如 "2.0X"), null 时隐藏; 由调用方渲染提示 UI
  * @param onBack ESC/Backspace 返回
- * @param onPrevChapter 独立上下章节占位, 暂不绑定按键
- * @param onNextChapter 独立上下章节占位, 暂不绑定按键
  * @param scope 由调用方传入 rememberCoroutineScope(), 用于管理长按 timer
  */
 fun Modifier.handleMediaKeys(
@@ -36,42 +38,43 @@ fun Modifier.handleMediaKeys(
     onPrev: () -> Unit = {},
     onNext: () -> Unit = {},
     onSpeedChange: (Float) -> Unit = {},
+    onGestureText: ((String?) -> Unit)? = null,
     onBack: () -> Unit = {},
     onPrevChapter: (() -> Unit)? = null,
     onNextChapter: (() -> Unit)? = null,
     scope: CoroutineScope,
 ): Modifier = composed {
-    // 长按倍速 timer + 按住防抖状态, remember 保证跨重组持久化
     val state = remember { MediaKeyState() }
     onPreviewKeyEvent { event ->
         when (event.key) {
             Key.DirectionRight -> {
                 when (event.type) {
                     KeyEventType.KeyDown -> {
-                        // 自动重复的 KeyDown 只消费不重复触发
-                        // (否则重复 seek + 重启 timer, 长按倍速永远到不了 400ms 阈值)
                         if (state.heldKeys.add(Key.DirectionRight)) {
-                            // 短按立即触发 seek/next (长按则由 timer 接管倍速)
-                            if (onSeekDelta != null) onSeekDelta(10_000L) else onNext()
-                            // 启动长按倍速 timer (400ms 阈值)
                             state.speedJob?.cancel()
                             state.longPressActive = false
                             state.speedJob = scope.launch {
-                                delay(400)
+                                // 阶段 1: 300ms 死区 — 不触发任何操作
+                                delay(300)
+                                // 阶段 2: 死区结束, seek +10s (或下一章)
+                                if (onSeekDelta != null) onSeekDelta(10_000L) else onNext()
+                                // 阶段 3: 再 500ms (总计 800ms) → 2x 倍速 + 手势提示
+                                delay(500)
                                 state.longPressActive = true
                                 onSpeedChange(2.0f)
+                                onGestureText?.invoke("2.0X")
                             }
                         }
                         true
                     }
                     KeyEventType.KeyUp -> {
-                        // 取消长按 timer, 若已触发倍速则恢复正常
                         state.heldKeys.remove(Key.DirectionRight)
                         state.speedJob?.cancel()
                         state.speedJob = null
                         if (state.longPressActive) {
                             state.longPressActive = false
                             onSpeedChange(1.0f)
+                            onGestureText?.invoke(null)
                         }
                         false
                     }
@@ -126,7 +129,7 @@ fun Modifier.handleMediaKeys(
     }
 }
 
-// 长按倍速 timer 状态 + 按住键防抖标记
+// ---- Compose 节点级状态 ----
 private class MediaKeyState {
     var speedJob: Job? = null
     var longPressActive: Boolean = false

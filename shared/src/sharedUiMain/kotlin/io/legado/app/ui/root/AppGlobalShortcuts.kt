@@ -37,9 +37,14 @@ fun AppGlobalShortcuts(navigator: AppNavigator) {
     val entries by navigator.backStack.collectAsState()
     val currentRoute = entries.lastOrNull()?.route
 
-    // 全屏态以当前路由的窗口策略为基线, F11 在其上手动翻转 (窗口层无全屏状态查询接口)
+    // 全屏态以当前路由的窗口策略为基线, F11 在其上手动翻转 (窗口层无全屏状态查询接口);
+    // 不按策略走全屏的平台 (desktop) 基线恒 false, 否则进阅读页后首次 F11 会空按一次
+    val windowController = PlatformServiceProviders.getOrNull()?.window
     var fullscreen by remember(currentRoute) {
-        mutableStateOf(currentRoute?.let { WindowPolicies.forRoute(it).fullscreen } == true)
+        mutableStateOf(
+            windowController?.appliesPolicyFullscreen == true &&
+                currentRoute?.let { WindowPolicies.forRoute(it).fullscreen } == true
+        )
     }
 
     AppShortcutHandler(GlobalShortcuts.all) { shortcut ->
@@ -53,7 +58,7 @@ fun AppGlobalShortcuts(navigator: AppNavigator) {
             GlobalShortcuts.Refresh -> navigator.refreshCurrent()
             GlobalShortcuts.Fullscreen -> {
                 fullscreen = !fullscreen
-                PlatformServiceProviders.getOrNull()?.window?.setFullscreen(fullscreen)
+                windowController?.setFullscreen(fullscreen)
             }
         }
     }

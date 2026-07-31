@@ -5,7 +5,7 @@ import com.script.jsdispatch.JsApi
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.JsExtensions
+import io.legado.app.help.JsExtensionsJvm
 import io.legado.app.model.webBook.BookInfoRefreshers
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.URL
@@ -15,7 +15,7 @@ import kotlinx.coroutines.withTimeout
 /**
  * 解析规则获取结果
  *
- * app 端薄子类: 继承 shared 的 [AnalyzeRuleCore] 并实现 [JsExtensions],
+ * app 端薄子类: 继承 shared 的 [AnalyzeRuleCore] 并实现 [JsExtensionsJvm],
  * 仅保留 android-only 方法 ([refreshTocUrl] override, 依赖 [BookSource]/[Book]).
  *
  * KSP @JsApi 分派表由本类生成, 通过 getAllFunctions() 继承链
@@ -24,10 +24,10 @@ import kotlinx.coroutines.withTimeout
  * - [getSource] / [evalJS] / [getString] / [getStringList] / [getElement] / [getElements]
  *   / [put] / [get] / [close] / [setContent] / [setBaseUrl] / [setRedirectUrl] / [splitSourceRule]
  *   等均继承自 [AnalyzeRuleCore], 无需 override.
- * - [io.legado.app.help.JsExtensions.getSource] 契约由 [AnalyzeRuleCore.getSource] (open fun) 满足,
+ * - [io.legado.app.help.JsExtensionsJvm.getSource] 契约由 [AnalyzeRuleCore.getSource] (open fun) 满足,
  *   因 [io.legado.app.help.JsExtensionsCommon] 未声明 getSource, 无 diamond 冲突.
- * - [io.legado.app.help.JsExtensions.ajax] 与 [AnalyzeRuleCore.ajax] 形成 diamond 继承
- *   (JsExtensions.ajax 有默认实现, AnalyzeRuleCore.ajax 也是具体方法),
+ * - [io.legado.app.help.JsExtensionsJvm.ajax] 与 [AnalyzeRuleCore.ajax] 形成 diamond 继承
+ *   (JsExtensionsJvm.ajax 有默认实现, AnalyzeRuleCore.ajax 也是具体方法),
  *   需在子类显式 [ajax] override 转发到 super.ajax 选择 Core 实现 (传递 ruleData, 行为更完整).
  */
 @Keep
@@ -37,15 +37,15 @@ class AnalyzeRule(
     ruleData: RuleDataInterface? = null,
     source: BaseSource? = null,
     preUpdateJs: Boolean = false
-) : AnalyzeRuleCore(ruleData, source, preUpdateJs), JsExtensions {
+) : AnalyzeRuleCore(ruleData, source, preUpdateJs), JsExtensionsJvm {
 
     /**
      * 解析 diamond 继承冲突:
      * - [AnalyzeRuleCore.ajax] (shared 具体方法, 使用 [AnalyzeUrlCore])
-     * - [JsExtensions.ajax] (app 接口默认实现, 使用 [AnalyzeUrl])
+     * - [JsExtensionsJvm.ajax] (接口默认实现, 使用 [AnalyzeUrl])
      *
      * 显式选择 [AnalyzeRuleCore.ajax] (传递 ruleData 给 [AnalyzeUrlCore], 行为更完整),
-     * 用 super<AnalyzeRuleCore>.ajax 转发到父类实现 (因 JsExtensions.ajax 也提供默认实现, 需指定父类).
+     * 用 super<AnalyzeRuleCore>.ajax 转发到父类实现 (因 JsExtensionsJvm.ajax 也提供默认实现, 需指定父类).
      */
     override fun ajax(url: Any): String? = super<AnalyzeRuleCore>.ajax(url)
 

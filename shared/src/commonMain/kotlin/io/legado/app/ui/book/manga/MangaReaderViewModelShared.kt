@@ -6,6 +6,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.ContentProcessorProviders
@@ -38,6 +39,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -158,7 +160,9 @@ class MangaReaderViewModelShared(
     private val _mangaContent = MutableStateFlow<MangaContent?>(null)
     val mangaContent: StateFlow<MangaContent?> = _mangaContent.asStateFlow()
 
-    private val _loading = MutableStateFlow(false)
+    // 初值 true: 对照 app 端 activity_manga.xml 的 fl_loading 默认可见 / ReadMangaActivity
+    // loadingVisible=true, 进入即转圈, 由 upContent 或加载失败置回 false
+    private val _loading = MutableStateFlow(true)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
 
     /**
@@ -192,6 +196,9 @@ class MangaReaderViewModelShared(
     private val downloadedChapters = mutableSetOf<Int>()
     private val downloadFailChapters = mutableMapOf<Int, Int>()
     private val downloadScope = CoroutineScope(SupervisorJob() + IoDispatcher)
+
+    /** 退出时落库/上传专用作用域: UI scope 取消不打断 (对照 ReadBookViewModelShared.progressSyncScope) */
+    private val progressSyncScope = CoroutineScope(SupervisorJob() + IoDispatcher)
     private val preDownloadSemaphore = Semaphore(2)
     val hasNextChapter: Boolean get() = _durChapterIndex.value < simulatedChapterSize - 1
     // endregion
@@ -567,34 +574,77 @@ class MangaReaderViewModelShared(
      * 因 shared 无 Book.saveRead 扩展 (其依赖 runBlocking + appDb, 已由 provider 替代)。
      */
     fun saveRead() {
-        scope.launch {
-            runCatching {
-                val book = _book.value ?: return@launch
-                book.durChapterIndex = _durChapterIndex.value
-                book.durChapterPos = _durChapterPos.value * (
-                    if (curMangaChapter?.imageCount == _durChapterPos.value + 1) -1 else 1
+        scope.launch { saveReadAwait() }
+    }
+
+    /** [saveRead] 的 suspend 核心, 供退出时"先落库再上传"复用 (原版 onPause 顺序)。 */
+    private suspend fun saveReadAwait() {
+        runCatching {
+            val book = _book.value ?: return
+            book.durChapterIndex = _durChapterIndex.value
+            book.durChapterPos = _durChapterPos.value * (
+                if (curMangaChapter?.imageCount == _durChapterPos.value + 1) -1 else 1
                 )
-                AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, _durChapterIndex.value)?.let {
-                    book.durChapterTitle = it.getDisplayTitle(
-                        ContentProcessorProviders.get().getTitleReplaceRules(book),
-                        book.getUseReplaceRule()
-                    )
-                    _durChapter.value = it
-                }
-                // book.saveRead() 内联 (app 端 BookExtensions.kt: updateProgress + ReadTimeRecorder.flushAll)
-                book.lastCheckCount = 0
-                book.durChapterTime = systemCurrentTimeMillis()
-                AppDbProviders.get().bookDao.updateProgress(
-                    book.bookUrl,
-                    book.durChapterIndex,
-                    book.durChapterPos,
-                    book.durChapterTime,
-                    book.durChapterTitle
+            AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, _durChapterIndex.value)?.let {
+                book.durChapterTitle = it.getDisplayTitle(
+                    ContentProcessorProviders.get().getTitleReplaceRules(book),
+                    book.getUseReplaceRule()
                 )
-                ReadTimeRecorder.flushAll()
-            }.onFailure {
-                AppLog.put("保存漫画阅读进度信息出错\n$it", it)
+                _durChapter.value = it
             }
+            // book.saveRead() 内联 (app 端 BookExtensions.kt: updateProgress + ReadTimeRecorder.flushAll)
+            book.lastCheckCount = 0
+            book.durChapterTime = systemCurrentTimeMillis()
+            AppDbProviders.get().bookDao.updateProgress(
+                book.bookUrl,
+                book.durChapterIndex,
+                book.durChapterPos,
+                book.durChapterTime,
+                book.durChapterTitle
+            )
+            ReadTimeRecorder.flushAll()
+        }.onFailure {
+            AppLog.put("保存漫画阅读进度信息出错\n$it", it)
+        }
+    }
+
+    /** 进入漫画阅读时调用 (对照 app 端 ReadMangaActivity.onResume): 开始阅读计时。 */
+    fun onEnter() {
+        ReadTimeRecorder.start(ReadTimeRecorder.Source.MANGA, _book.value?.name ?: "")
+    }
+
+    /**
+     * 退出漫画阅读时调用 (对照 app 端 ReadMangaActivity.onPause + onDestroy)：
+     * 结束阅读计时 → 在架的书落库并上传进度 → 取消预下载。
+     *
+     * 走进程级 [progressSyncScope]，UI 侧 scope 取消不打断本次落库/上传
+     * (口径同 [io.legado.app.ui.book.read.ReadBookViewModelShared.onLeaveReader])。
+     */
+    fun onLeave() {
+        ReadTimeRecorder.end(ReadTimeRecorder.Source.MANGA)
+        val book = _book.value
+        if (book != null && !book.isNotShelf) {
+            progressSyncScope.launch {
+                saveReadAwait()
+                uploadProgressAwait(book.bookUrl)
+            }
+        }
+        cancelPreDownloadTask()
+    }
+
+    /** 上传进度: 读 DB 最新行构造 BookProgress 上传 (对照 app 端 BaseReadViewModel.uploadProgress)。 */
+    private suspend fun uploadProgressAwait(bookUrl: String) {
+        runCatching {
+            val fresh = AppDbProviders.get().bookDao.getBook(bookUrl) ?: return
+            val syncTimeBefore = fresh.syncTime
+            AppWebDavShared.uploadBookProgress(fresh)
+            currentCoroutineContext().ensureActive()
+            if (fresh.syncTime != syncTimeBefore) {
+                AppDbProviders.get().bookDao.update(fresh)
+            }
+        }.onFailure {
+            currentCoroutineContext().ensureActive()
+            AppLog.put("上传阅读进度失败\n${it.message}", it)
         }
     }
 
@@ -859,10 +909,19 @@ class MangaReaderViewModelShared(
      * actual 平台薄壳在书源加载完成后调用本方法, 直接触发 initMangaData + loadContent
      * (规避 StateFlow 异步时序, 与 app 端 initManga 同类修复)。
      */
-    suspend fun onSourceChanged(book: Book, toc: List<BookChapter>) {
+    suspend fun onSourceChanged(book: Book, toc: List<BookChapter>, source: BookSource? = null) {
+        if (source != null) _bookSource.value = source
         _chapterList.value = toc
         initMangaData(book, prefetchedList = toc)
         loadContent()
+    }
+
+    /**
+     * 居中页变化时同步章内页码 (对应 app 端 `viewModel.durChapterPos = item.index`)。
+     * 不落库, 落库由 [saveRead] 负责。
+     */
+    fun setDurChapterPos(pos: Int) {
+        _durChapterPos.value = pos
     }
 
     /**

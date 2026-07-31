@@ -1,21 +1,27 @@
 package io.legado.desktop.help.ui
 
+import io.legado.app.help.toast.Toasters
 import io.legado.app.help.ui.ToastProvider
 import io.legado.app.help.ui.ToastProviders
-import java.awt.Toolkit
 
 /**
  * [ToastProvider] 桌面端实现。
  *
- * desktop 无系统 Toast, 用 beep + 控制台打印替代 (JOptionPane 会阻塞, 不适合 toast)。
- * 在 main 入口经 [registerDesktopToastProvider] 注册到 [ToastProviders]。
+ * 转发到已注册的 [Toasters] (桌面 actual 为 DesktopToaster): 经 DesktopTrayNotifier 交给
+ * DesktopMediaTray 唯一托盘图标发气泡通知, 无托盘/无头时它自己落 stdout 兜底。
+ * 原实现只 beep + println, 书源级提示 (校验成功 / 规则错误) 用户完全看不到。
+ * 不另起 Snackbar 宿主: 托盘通知在窗口最小化时同样可见, 且托盘所有权已收口在 DesktopMediaTray。
  */
 object DesktopToastProviderImpl : ToastProvider {
 
     override fun showToast(msg: String, long: Boolean) {
-        // 蜂鸣提示 + 控制台输出, 不阻塞调用方 (JS 执行线程)
-        runCatching { Toolkit.getDefaultToolkit().beep() }
-        println("[Toast] $msg")
+        // 未注册 Toasters (get() 抛异常) 时退回控制台, 不打断调用方 (JS 执行线程)
+        val toaster = runCatching { Toasters.get() }.getOrNull()
+        if (toaster == null) {
+            println("[Toast] $msg")
+            return
+        }
+        if (long) toaster.toastLong(msg) else toaster.toast(msg)
     }
 }
 

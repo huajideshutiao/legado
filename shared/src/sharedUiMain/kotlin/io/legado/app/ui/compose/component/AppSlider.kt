@@ -27,6 +27,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.ic_add
 import legado.shared.generated.resources.ic_reduce
@@ -63,7 +64,7 @@ fun AppSlider(
 
     Box(
         modifier
-            .height(40.dp)
+            .height(DesignTokens.viewHeightLarge)
             .pointerInput(enabled, min, max) {
                 if (!enabled) return@pointerInput
                 detectTapGestures(onTap = { pos ->
@@ -117,7 +118,7 @@ fun AppDetailSeekBar(
     var dragValue by remember { mutableIntStateOf(-1) }
     val shown = if (dragValue >= 0) dragValue else value
     Row(
-        modifier.height(40.dp),
+        modifier.height(DesignTokens.viewHeightLarge),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(title, color = textColor, maxLines = 1, modifier = Modifier.padding(end = 16.dp))

@@ -46,6 +46,7 @@ import io.legado.app.ui.compose.component.pullToRefresh
 import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import kotlinx.coroutines.launch
 import legado.shared.generated.resources.Res
@@ -421,7 +422,7 @@ private fun HomeTabPage(
 private fun LoadMoreFooter(loading: Boolean, hasMore: Boolean) {
     val colors = AppTheme.colors
     Box(
-        Modifier.fillMaxWidth().height(48.dp),
+        Modifier.fillMaxWidth().height(DesignTokens.viewHeightXl),
         contentAlignment = Alignment.Center,
     ) {
         when {

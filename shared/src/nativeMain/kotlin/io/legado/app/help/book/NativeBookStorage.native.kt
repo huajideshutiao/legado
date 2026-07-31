@@ -4,6 +4,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.utils.File
+import kotlinx.coroutines.runBlocking
 
 /**
  * [BookStorage] iOS/鸿蒙 (Native target) 共用真实实现 (基于 [kotlin.io.File])。
@@ -27,7 +28,8 @@ import io.legado.app.utils.File
  * - [delContent]/[clearCache]: [File.deleteRecursively] (递归删除整本书缓存目录)
  * - [getChapterFiles]: [File.listFiles] + 过滤普通文件 (排除子目录)
  * - [updateCacheFolder]: [File.renameTo] (与 JVM Files.move / iOS NSFileManager.moveItemAtPath 等价)
- * - [clearInvalidCache]: 遍历 + 累计大小 + 按修改时间淘汰
+ * - [clearInvalidCache]/[clearInvalidBookFolders]: 委托 [BookHelpShared] 统一编排
+ *   (遍历 + 累计大小 + 按修改时间淘汰, 三端共用)
  *
  * # 与原 iOS 端差异 (统一为 kotlin.io.File 后)
  * - 原子写: iOS 用 NSData.writeToFile(atomically=true); 统一后用 [File.writeText]
@@ -145,9 +147,10 @@ class NativeBookStorage(
     }
 
     override fun clearInvalidCache(maxSize: Long) {
-        // 对照 app 端 BookHelp.clearInvalidCache "漫画图片缓存管理 (512MB)"段:
-        // 仅淘汰含 images 子目录的漫画缓存, 正常文本缓存不参与淘汰
-        evictMangaCache(listBookDirs(), BookHelpShared.cacheImageFolderName, maxSize)
+        // 统一编排下沉 [BookHelpShared.evictMangaCache] (原本地 evictMangaCache 平行实现已删)
+        runBlocking {
+            BookHelpShared.evictMangaCache(rootPath, BookHelpShared.cacheImageFolderName, maxSize)
+        }
     }
 
     override fun clearInvalidBookFolders(
@@ -155,45 +158,11 @@ class NativeBookStorage(
         imageSubFolderName: String,
         maxSize: Long
     ) {
-        val bookDirs = listBookDirs()
-        // 1. 删除不在书架的书籍缓存目录 (对照 app 端 clearInvalidCache 步骤 1)
-        val (valid, invalid) = bookDirs.partition { validFolderNames.contains(it.name) }
-        invalid.forEach { it.deleteRecursively() }
-        // 2. 对剩余有效目录做漫画缓存超量淘汰
-        evictMangaCache(valid, imageSubFolderName, maxSize)
-    }
-
-    /** 列出缓存根目录下所有书籍缓存目录。 */
-    private fun listBookDirs(): List<File> {
-        val root = File(rootPath)
-        if (!root.exists()) return emptyList()
-        return root.listFiles()?.filter { it.isDirectory } ?: emptyList()
-    }
-
-    /**
-     * 漫画图片缓存超量淘汰 (对照 app 端 BookHelp.clearInvalidCache 第 3 段)。
-     *
-     * 总大小按全部 [bookDirs] 统计, 但只有含 [imageSubFolderName] 子目录的漫画缓存
-     * 参与淘汰, 按最后修改时间由旧到新删除直到总大小收敛到 [maxSize] 以内。
-     */
-    private fun evictMangaCache(bookDirs: List<File>, imageSubFolderName: String, maxSize: Long) {
-        if (bookDirs.isEmpty()) return
-        val stats = bookDirs.map { dir ->
-            DirStat(
-                dir.absolutePath,
-                dirSize(dir),
-                dir.lastModified(),
-                File("${dir.absolutePath}/$imageSubFolderName").exists()
+        // 统一编排下沉 [BookHelpShared.clearInvalidBookFolders] (原本地实现已删)
+        runBlocking {
+            BookHelpShared.clearInvalidBookFolders(
+                rootPath, validFolderNames, imageSubFolderName, maxSize
             )
-        }
-
-        var total = stats.sumOf { it.size }
-        if (total <= maxSize) return
-        stats.sortedBy { it.mtime }.forEach { stat ->
-            if (!stat.isManga) return@forEach
-            File(stat.path).deleteRecursively()
-            total -= stat.size
-            if (total <= maxSize) return
         }
     }
 
@@ -213,21 +182,6 @@ class NativeBookStorage(
         return "${resolveBookDir(book)}/$fileName"
     }
 
-    /**
-     * 计算目录总大小 (字节)。
-     *
-     * 递归遍历目录下所有普通文件, 累计 [File.length];
-     * 与 JVM `dir.toFile().walkTopDown().filter { it.isFile }.sumOf { it.length() }` /
-     * iOS dirStat 递归行为对齐。
-     */
-    private fun dirSize(dir: File): Long {
-        if (!dir.exists()) return 0L
-        if (dir.isFile) return dir.length()
-        var size = 0L
-        dir.walkTopDown().forEach { if (it.isFile) size += it.length() }
-        return size
-    }
-
     companion object {
         /**
          * 默认章节缓存根路径, 取 [DataStorageProviders] 的 `chapterCacheDir`
@@ -238,19 +192,6 @@ class NativeBookStorage(
         }
     }
 }
-
-/**
- * 缓存目录统计 (路径 / 大小 / 最后修改时间 / 是否漫画缓存)。
- *
- * 单独提为顶层 private data class, 与 [io.legado.app.help.book.JvmBookStorage] 一致,
- * 避免 local data class 在某些 Kotlin 版本 / KSP 处理上的边界问题。
- */
-private data class DirStat(
-    val path: String,
-    val size: Long,
-    val mtime: Long,
-    val isManga: Boolean
-)
 
 /**
  * 注册 [NativeBookStorage] 到 [BookStorageProviders]

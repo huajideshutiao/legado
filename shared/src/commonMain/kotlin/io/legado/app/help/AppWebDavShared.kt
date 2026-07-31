@@ -7,13 +7,19 @@ import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.AppWebDavShared.DEFAULT_WEB_DAV_URL
+import io.legado.app.help.AppWebDavShared.exportWebDav
+import io.legado.app.help.AppWebDavShared.rootWebDavUrl
+import io.legado.app.help.AppWebDavShared.upConfig
 import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.storage.BackupShared
+import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.lib.webdav.Authorization
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavException
@@ -29,6 +35,7 @@ import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.app.utils.toJson
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * AppWebDav 业务流程的 KMP 共享版 (BackupShared/RestoreShared 配套)。
@@ -46,9 +53,9 @@ import kotlinx.coroutines.ensureActive
  *   PreferenceProviders 直接读 PreferKey)。
  * - **不依赖 appString / toastOnUi**: 错误信息改为通过 [AppLog.put] 输出, 由宿主
  *   AppLogHost 决定是否 toast/落盘。
- * - **不下沉 books export / upBgs 业务**: 依赖 `RemoteBookWebDav` / `Uri` /
- *   `Array<File>` 的方法 (exportWebDav(Uri) / upBgs / RemoteBookWebDav) 保留在
- *   app 端 [io.legado.app.help.AppWebDav], 桌面端如需可后续补 desktop actual。
+ * - **不下沉 RemoteBookWebDav**: 依赖 `RemoteBookWebDav` 的 defaultBookWebDav 保留在
+ *   app 端 [io.legado.app.help.AppWebDav]; 其 `exportWebDav(Uri)` 在此以路径版
+ *   [exportWebDav] 下沉 (Uri → 本地路径)。
  * - **不依赖 isNetworkAvailable**: 直接 try-catch, 让 [WebDavException] 自身报错。
  *
  * # 命名后缀 Shared
@@ -87,12 +94,10 @@ object AppWebDavShared {
     /** 书籍进度同步 URL (rootWebDavUrl + PROGRESS_SUB_DIR)。 */
     private val bookProgressUrl: String get() = "${rootWebDavUrl}${PROGRESS_SUB_DIR}"
 
-    /** 书籍导出 URL (rootWebDavUrl + EXPORTS_SUB_DIR), 桌面端保留备用。 */
-    @Suppress("unused")
+    /** 书籍导出 URL (rootWebDavUrl + EXPORTS_SUB_DIR)。 */
     private val exportsWebDavUrl: String get() = "${rootWebDavUrl}${EXPORTS_SUB_DIR}"
 
-    /** 背景图片 URL (rootWebDavUrl + BG_SUB_DIR), 桌面端保留备用。 */
-    @Suppress("unused")
+    /** 背景图片 URL (rootWebDavUrl + BG_SUB_DIR)。 */
     private val bgWebDavUrl: String get() = "${rootWebDavUrl}${BG_SUB_DIR}"
 
     /**
@@ -123,7 +128,7 @@ object AppWebDavShared {
      * - 校验失败抛 [WebDavException] (由调用方 toast, 与原版 checkAuthorization 内 toast 等价)
      * - 校验成功创建 root / bookProgress / exports / bg 4 个子目录
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     suspend fun upConfig() {
         authorization = null
         val account = AppConfigProviders.get().webDavAccount
@@ -150,7 +155,7 @@ object AppWebDavShared {
      * 校验失败会清空 webDavPassword (避免持续使用错误密码), 并抛 [WebDavException],
      * 文案走 [appString] 与 app 端 R.string.webdav_application_authorization_error 一致。
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     private suspend fun checkAuthorization(authorization: Authorization) {
         if (!WebDav(rootWebDavUrl, authorization).check()) {
             PreferenceProviders.get().remove(PreferKey.webDavPassword)
@@ -185,7 +190,7 @@ object AppWebDavShared {
      *
      * @param name 备份文件名 (相对 [rootWebDavUrl])
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     suspend fun restoreWebDav(name: String) {
         val auth = authorization ?: return
         val webDav = WebDav(rootWebDavUrl + name, auth)
@@ -230,6 +235,61 @@ object AppWebDavShared {
         val auth = authorization ?: throw NoStackTraceException("webDav没有配置")
         val putUrl = "$rootWebDavUrl$fileName"
         WebDav(putUrl, auth).upload(BackupShared.zipFilePath)
+    }
+
+    /**
+     * 上传阅读背景图到 WebDav 的 `background/` 子目录 (对照 app 端 AppWebDav.upBgs)。
+     *
+     * 云端已存在同名文件或本地文件不存在则跳过。
+     *
+     * @param paths 本地背景图绝对路径; 不传则取 ReadBookConfig 的全部图片背景
+     *   (相对名按 DataStorage.backgroundsDir 补全)。
+     */
+    @Throws(Exception::class)
+    suspend fun upBgs(paths: List<String> = allPicBgPaths()) {
+        val auth = authorization ?: return
+        val remoteNames = WebDav(bgWebDavUrl, auth).listFiles()
+            .map { it.displayName }
+            .toSet()
+        paths.forEach { path ->
+            val name = path.substringAfterLast('/').substringAfterLast('\\')
+            if (name !in remoteNames && BackupFileOps.exists(path)) {
+                WebDav("$bgWebDavUrl$name", auth).upload(path)
+            }
+        }
+    }
+
+    /** 图片背景资源字符串 → 本地绝对路径 (对照 app 端 Backup.onBackupFinished 的解析)。 */
+    private fun allPicBgPaths(): List<String> {
+        val readBookConfig = ReadBookConfigProviders.getOrNull() ?: return emptyList()
+        val bgDir = DataStorageProviders.get().backgroundsDir.trimEnd('/', '\\')
+        return readBookConfig.getAllPicBgStr().map {
+            if (it.contains('/') || it.contains('\\')) it
+            else "$bgDir${BackupFileOps.separator}$it"
+        }
+    }
+
+    /**
+     * 导出的书籍文件上传到 WebDav `books/` 子目录 (对照 app 端 `AppWebDav.exportWebDav(Uri, String)`)。
+     *
+     * 与 app 端一致: 未配置 WebDav 直接跳过, 失败只 [AppLog.put] 不抛 (导出本身已成功)。
+     *
+     * @param localPath 已导出的本地文件路径
+     * @param fileName 上传到远端的文件名
+     */
+    suspend fun exportWebDav(localPath: String, fileName: String) {
+        // app 端 AppWebDav 在 init 块里 upConfig, 本对象无 init, 首次导出时补一次认证
+        if (authorization == null) {
+            runCatching { upConfig() }
+            currentCoroutineContext().ensureActive()
+        }
+        val auth = authorization ?: return
+        try {
+            WebDav(exportsWebDavUrl + fileName, auth).upload(localPath, "text/plain")
+        } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
+            AppLog.put("WebDav导出失败\n${e.message}", e, true)
+        }
     }
 
     /**

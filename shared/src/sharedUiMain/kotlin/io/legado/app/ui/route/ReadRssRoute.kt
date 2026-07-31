@@ -8,21 +8,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.book.rss.ReadRssScreen
 import io.legado.app.ui.book.rss.ReadRssScreenModel
 import io.legado.app.ui.book.rss.ReadRssUiActions
 import io.legado.app.ui.book.rss.ReadRssUiEvent
+import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
-import io.legado.app.ui.rss.ReadRssUiState as SharedReadRssUiState
 import io.legado.app.ui.rss.ReadRssViewModelShared
 import io.legado.app.utils.NetworkUtils
 import kotlinx.coroutines.launch
+import io.legado.app.ui.rss.ReadRssUiState as SharedReadRssUiState
 
 /**
  * RSS 阅读 shared 路由入口。
@@ -39,7 +39,8 @@ fun ReadRssRoute(
     screenModelStore: ScreenModelStore,
 ) {
     val route = entry.route as AppRoute.ReadRss
-    val book = route.book.asBook()
+    // asBook() 每次 copy() 新实例, remember(route) 固定后 LaunchedEffect(book) 只在换路由时重启
+    val book = remember(route) { route.book.asBook() }
 
     val screenModel = screenModelStore.getOrCreateTyped(entry) { ReadRssScreenModel() }
     val state by screenModel.state.collectAsState()
@@ -72,7 +73,7 @@ fun ReadRssRoute(
                 }
             }
         }
-        // 触发首次加载 (chapterIndex = book.durChapterIndex, 由 RssArticlesRoute 点击时写入)
+        // 触发首次加载 (chapterIndex = book.durChapterIndex, 由跳转方写入)
         shared.loadContent(book, book.durChapterIndex)
     }
 

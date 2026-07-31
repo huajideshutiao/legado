@@ -170,15 +170,14 @@ class ReplaceRuleListViewModel {
 
     fun toTop(rule: ReplaceRule) {
         Coroutine.async(scope = scope) {
-            rule.order = dao.minOrder() - 1
-            dao.update(rule)
+            // copy 而非原地改: ReplaceRule.regex 是挂实例的 lazy 缓存, 且原地改不触发重组
+            dao.update(rule.copy(order = dao.minOrder() - 1))
         }
     }
 
     fun toBottom(rule: ReplaceRule) {
         Coroutine.async(scope = scope) {
-            rule.order = dao.maxOrder() + 1
-            dao.update(rule)
+            dao.update(rule.copy(order = dao.maxOrder() + 1))
         }
     }
 
@@ -186,8 +185,8 @@ class ReplaceRuleListViewModel {
         if (rules.isEmpty()) return
         Coroutine.async(scope = scope) {
             var minOrder = dao.minOrder() - rules.size
-            rules.forEach { it.order = ++minOrder }
-            dao.update(*rules.toTypedArray())
+            val updated = rules.map { it.copy(order = ++minOrder) }
+            dao.update(*updated.toTypedArray())
         }
     }
 
@@ -225,8 +224,9 @@ class ReplaceRuleListViewModel {
      * 取 [_rules] 当前顺序写回 sortOrder, flow re-emit 后用新顺序展示。
      */
     fun persistOrder() {
-        val rules = _rules.value
-        rules.forEachIndexed { index, item -> item.order = index + 1 }
+        // 原地改 order 不改 equals(按 id), Compose 判定未变; 产出新实例并回填 state
+        val rules = _rules.value.mapIndexed { index, item -> item.copy(order = index + 1) }
+        _rules.value = rules
         update(*rules.toTypedArray())
     }
 

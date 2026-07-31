@@ -637,9 +637,12 @@ private fun SourceActionButton(state: ReadMenuState) {
 @Composable
 private fun ReadMenuBottom(state: ReadMenuState) {
     val eInk = LocalEInk.current
-    val bg = Color(state.bgColor)
-    val text = Color(state.textColor)
-    val pressedBg = Color(ColorUtils.darkenColor(state.bgColor))
+    val colors = AppTheme.colors
+    // 非沉浸式走主题底栏色 / 主文字色（对照原版 ReadMenu.upColorConfig 的 else 分支：
+    // bgColor = context.bottomBackground, textColor = getPrimaryTextColor）
+    val bg = if (state.immersive) Color(state.bgColor) else colors.bottomBackground
+    val text = if (state.immersive) Color(state.textColor) else colors.primaryText
+    val pressedBg = Color(ColorUtils.darkenColor(bg.toArgb()))
     Column(Modifier.fillMaxWidth()) {
         // 悬浮按钮行(原 ll_floating_button，透明底，空白处点击穿透到 bg 收起菜单)
         Row(

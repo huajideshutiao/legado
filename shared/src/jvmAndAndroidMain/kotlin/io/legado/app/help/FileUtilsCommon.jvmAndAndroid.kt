@@ -1,5 +1,12 @@
 package io.legado.app.help
 
+import io.legado.app.help.FileUtilsCommon.createFileReplace
+import io.legado.app.help.FileUtilsCommon.delete
+import io.legado.app.help.FileUtilsCommon.getCachePath
+import io.legado.app.help.FileUtilsCommon.getPath
+import io.legado.app.help.FileUtilsCommon.readBytes
+import io.legado.app.help.FileUtilsCommon.resolveCachePath
+import io.legado.app.help.FileUtilsCommon.writeBytes
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.utils.FileUtilsBase
 import java.io.File
@@ -99,5 +106,28 @@ internal actual object FileUtilsCommon {
         } catch (_: Exception) {
             false
         }
+    }
+
+    actual fun listSubDirs(path: String): List<String> {
+        val dir = File(path)
+        if (!dir.isDirectory) return emptyList()
+        return dir.listFiles { f -> f.isDirectory }?.map { it.absolutePath } ?: emptyList()
+    }
+
+    actual fun getDirSize(path: String): Long {
+        val file = File(path)
+        if (!file.exists()) return 0L
+        if (file.isFile) return file.length()
+        return file.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+    }
+
+    actual fun lastModified(path: String): Long {
+        val file = File(path)
+        return if (file.exists()) file.lastModified() else 0L
+    }
+
+    actual fun getName(path: String): String {
+        val idx = maxOf(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+        return if (idx >= 0) path.substring(idx + 1) else path
     }
 }

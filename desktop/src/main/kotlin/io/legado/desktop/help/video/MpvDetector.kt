@@ -2,6 +2,8 @@ package io.legado.desktop.help.video
 
 import io.legado.app.constant.AppLog
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.desktop.help.video.MpvDetector.PREF_KEY_MPV_PATH
+import io.legado.desktop.help.video.MpvDetector.detect
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -70,8 +72,15 @@ object MpvDetector {
     /** 平台常见安装路径 (Windows: 环境变量拼接; Unix: 固定绝对路径) */
     private fun commonInstallPaths(): List<String> = if (isWindows) {
         buildList {
-            System.getenv("ProgramFiles")?.let { add("$it\\mpv\\mpv.exe") }
-            System.getenv("ProgramFiles(x86)")?.let { add("$it\\mpv\\mpv.exe") }
+            System.getenv("ProgramFiles")?.let {
+                add("$it\\mpv\\mpv.exe")
+                // shinchiro 版 winget 包 (shinchiro.mpv) 实际安装目录
+                add("$it\\MPV Player\\mpv.exe")
+            }
+            System.getenv("ProgramFiles(x86)")?.let {
+                add("$it\\mpv\\mpv.exe")
+                add("$it\\MPV Player\\mpv.exe")
+            }
             System.getenv("LOCALAPPDATA")?.let {
                 add("$it\\Programs\\mpv\\mpv.exe")
                 // winget 的可执行软链目录

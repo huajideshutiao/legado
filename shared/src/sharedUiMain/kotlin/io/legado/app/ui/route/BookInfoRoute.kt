@@ -14,6 +14,8 @@ import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.IntentData
+import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
@@ -51,6 +53,7 @@ import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -115,6 +118,9 @@ fun BookInfoRoute(
                 screenModel.dispatch(
                     BookInfoUiEvent.ShowBook(curBook, screenModel.lastedTitleOf(curBook))
                 )
+            } else if (curBook.isRss) {
+                // 原地改 tocUrl/bookUrl 不换实例, state.book 引用不变, 需 bump tick 驱动重组
+                screenModel.dispatch(BookInfoUiEvent.BumpBookTick)
             }
             // 加载分组名 (对照 Activity upGroup: 空→no_group)
             val groupName = try {
@@ -216,7 +222,13 @@ fun BookInfoRoute(
 
         // 目录
         override fun onTocClick() {
-            navigator.push(AppRoute.Toc(book.toRouteRef()), RouteResults.TOC)
+            // 对照 app 端 BookInfoActivity: 未加书架的书目录不落库, 用内存章节表跨页传递;
+            // 书籍取刷新后的 state.book, 否则 totalChapterNum 还是进页时的旧值(目录会被截断)
+            IntentData.chapterList = screenModel.loadedChapterList
+            navigator.push(
+                AppRoute.Toc((state.book ?: book).toRouteRef()),
+                RouteResults.TOC,
+            )
         }
 
         // 分享: 构建书籍信息 JSON, 通过平台能力分享
@@ -267,10 +279,12 @@ fun BookInfoRoute(
             }
         }
 
-        // 登录: 跳转书源登录页
+        // 登录: 跳转书源登录页 (带上当前书, 对照原版 menu_login 预置 IntentData.book)
         override fun onLogin() {
-            val sourceUrl = (state.book ?: book).origin
-            navigator.push(AppRoute.Login(sourceUrl))
+            val b = state.book ?: book
+            val source = bookSource
+            val dataKey = source?.let { SourceLoginContext.put(it, b) }
+            navigator.push(AppRoute.Login(source?.getKey() ?: b.origin, dataKey))
         }
 
         // 评论: 跳转书评列表页
@@ -428,120 +442,136 @@ fun BookInfoRoute(
         onDispose { navigator.unregisterRefreshHandler(entry.id) }
     }
 
-    // 换封面对话框返回：同步当前书籍封面并驱动详情封面、模糊背景重载。
+    // 事件订阅作用域: 各 launch 独立收集路由结果与 FlowBus
     LaunchedEffect(Unit) {
-        navigator.overlayResults
-            .filter { it.key == RouteResults.OVERLAY_CHANGE_COVER }
-            .collect { result ->
-                val coverUrl = (result.payload as? RouteResultPayload.ChangeCover)?.coverUrl
-                    ?: return@collect
-                val b = screenModel.state.value.book ?: book
-                b.customCoverUrl = coverUrl
-                if (screenModel.state.value.inBookshelf) {
-                    withContext(IoDispatcher) { AppDbProviders.get().bookDao.update(b) }
-                }
-                screenModel.dispatch(BookInfoUiEvent.BumpCoverTick)
+        coroutineScope {
+            // 换封面对话框返回：同步当前书籍封面并驱动详情封面、模糊背景重载。
+            launch {
+                navigator.overlayResults
+                    .filter { it.key == RouteResults.OVERLAY_CHANGE_COVER }
+                    .collect { result ->
+                        val coverUrl = (result.payload as? RouteResultPayload.ChangeCover)?.coverUrl
+                            ?: return@collect
+                        val b = screenModel.state.value.book ?: book
+                        b.customCoverUrl = coverUrl
+                        if (screenModel.state.value.inBookshelf) {
+                            withContext(IoDispatcher) { AppDbProviders.get().bookDao.update(b) }
+                        }
+                        screenModel.dispatch(BookInfoUiEvent.BumpCoverTick)
+                    }
             }
-    }
-
-    // 对照 Activity observeLiveBus: EventBus.REFRESH_BOOK_INFO → refreshBook
-    LaunchedEffect(Unit) {
-        FlowBus.with(EventBus.REFRESH_BOOK_INFO).collect {
-            val b = screenModel.state.value.book ?: book
-            screenModel.refresh(b, bookSource, errorLoadTocLabel, isSearchBook = isSearchBook)
-        }
-    }
-
-    // 书籍信息编辑返回: 重新加载 book info (对照 app 端 viewModel.upEditBook, 仅 Ok 触发)
-    LaunchedEffect(Unit) {
-        navigator.resultsFor(entry.id).filter { it.key == RouteResults.BOOK_INFO_EDIT }
-            .collect { result ->
-                if (result.payload !is RouteResultPayload.Ok) return@collect
-                val b = screenModel.state.value.book ?: book
-                // 编辑可能改封面/书名, 驱动封面与模糊背景重载
-                screenModel.dispatch(BookInfoUiEvent.BumpCoverTick)
-                screenModel.refresh(b, bookSource, errorLoadTocLabel, isSearchBook = isSearchBook)
-            }
-    }
-
-    // 书源编辑返回: 按回传 origin 重新加载 bookSource
-    LaunchedEffect(Unit) {
-        navigator.resultsFor(entry.id).filter { it.key == RouteResults.BOOK_SOURCE_EDIT }
-            .collect { result ->
-                val origin =
-                    (result.payload as? RouteResultPayload.BookSourceEdit)?.origin ?: return@collect
-                scope.launch(IoDispatcher) {
-                    bookSource = AppDbProviders.get().bookSourceDao.getBookSource(origin)
-                }
-        }
-    }
-
-    // 整书换源返回: 同步新书源 + 用新源刷新 book info
-    LaunchedEffect(Unit) {
-        navigator.resultsFor(entry.id).filter { it.key == RouteResults.CHANGE_SOURCE }
-            .collect { result ->
-                val payload = result.payload as? RouteResultPayload.ChangeSource ?: return@collect
-                // bookSource 由 LaunchedEffect(book.origin) 按路由书籍加载, 换源后不会自动更新
-                bookSource = payload.source
-                screenModel.dispatch(
-                    BookInfoUiEvent.ShowBook(
-                        payload.book,
-                        screenModel.lastedTitleOf(payload.book)
+            // 对照 Activity observeLiveBus: EventBus.REFRESH_BOOK_INFO → refreshBook
+            launch {
+                FlowBus.with(EventBus.REFRESH_BOOK_INFO).collect {
+                    val b = screenModel.state.value.book ?: book
+                    screenModel.refresh(
+                        b,
+                        bookSource,
+                        errorLoadTocLabel,
+                        isSearchBook = isSearchBook
                     )
-                )
-                screenModel.refresh(
-                    payload.book, payload.source, errorLoadTocLabel,
-                    isSearchBook = isSearchBook,
-                )
-            }
-    }
-
-    // 目录返回: 选章节跳阅读, 未选则删书 (对照 app 端 BookInfoActivity tocActivityResult)
-    LaunchedEffect(Unit) {
-        navigator.resultsFor(entry.id).filter { it.key == RouteResults.TOC }.collect { result ->
-            val payload = result.payload as? RouteResultPayload.Toc
-            val b = screenModel.state.value.book ?: book
-            if (payload != null) {
-                scope.launch(IoDispatcher) {
-                    b.durChapterIndex = payload.chapterIndex
-                    b.durChapterPos = payload.chapterPos
-                    AppDbProviders.get().bookDao.update(b)
                 }
-                val target = when {
-                    b.isAudio -> AppRoute.AudioPlay(b.toRouteRef())
-                    b.isVideo -> AppRoute.VideoPlay(b.toRouteRef())
-                    b.isImage -> AppRoute.MangaReader(b.toRouteRef())
-                    b.isRss -> AppRoute.ReadRss(b.toRouteRef())
-                    else -> AppRoute.Reader(b.toRouteRef())
-                }
-                navigator.push(target, RouteResults.READER)
-            } else if (!screenModel.state.value.inBookshelf) {
-                // 未选章节且不在书架: 删书 (对照 app 端 viewModel.delBook)
-                PlatformCapabilityProviders.getOrNull()
-                    ?.toggleBookshelf(b, false) { navigator.pop(RouteResultPayload.Deleted) }
             }
-        }
-    }
-
-    // 阅读器返回: 刷新阅读进度 + 书架状态 (对照 app 端 readBookResult launcher)
-    LaunchedEffect(Unit) {
-        navigator.resultsFor(entry.id).filter { it.key == RouteResults.READER }.collect { result ->
-            val b = screenModel.state.value.book ?: book
-            // 书籍可能在阅读中被加入书架/删除, 重新查询 DB 同步状态
-            scope.launch(IoDispatcher) {
-                val inShelf = AppDbProviders.get().bookDao.getBook(b.bookUrl) != null
-                screenModel.dispatch(BookInfoUiEvent.UpdateBookshelf(inShelf))
-                // 刷新目录文案为当前阅读章节 (对照 Activity upLoading(false, listOf()))
-                screenModel.dispatch(
-                    BookInfoUiEvent.UpdateToc(
-                        tocText = b.durChapterTitle ?: "",
-                        lastedTitle = null,
-                    )
-                )
+            // 书籍信息编辑返回: 重新加载 book info (对照 app 端 viewModel.upEditBook, 仅 Ok 触发)
+            launch {
+                navigator.resultsFor(entry.id).filter { it.key == RouteResults.BOOK_INFO_EDIT }
+                    .collect { result ->
+                        if (result.payload !is RouteResultPayload.Ok) return@collect
+                        val b = screenModel.state.value.book ?: book
+                        // 编辑可能改封面/书名, 驱动封面与模糊背景重载
+                        screenModel.dispatch(BookInfoUiEvent.BumpCoverTick)
+                        screenModel.refresh(
+                            b,
+                            bookSource,
+                            errorLoadTocLabel,
+                            isSearchBook = isSearchBook
+                        )
+                    }
             }
-            // 阅读器返回 Deleted: 透传删除 (对照 Activity RESULT_DELETED)
-            if (result.payload is RouteResultPayload.Deleted) {
-                navigator.pop(RouteResultPayload.Deleted)
+            // 书源编辑返回: 按回传 origin 重新加载 bookSource
+            launch {
+                navigator.resultsFor(entry.id).filter { it.key == RouteResults.BOOK_SOURCE_EDIT }
+                    .collect { result ->
+                        val origin =
+                            (result.payload as? RouteResultPayload.BookSourceEdit)?.origin
+                                ?: return@collect
+                        scope.launch(IoDispatcher) {
+                            bookSource = AppDbProviders.get().bookSourceDao.getBookSource(origin)
+                        }
+                    }
+            }
+            // 整书换源返回: 同步新书源 + 用新源刷新 book info
+            launch {
+                navigator.resultsFor(entry.id).filter { it.key == RouteResults.CHANGE_SOURCE }
+                    .collect { result ->
+                        val payload =
+                            result.payload as? RouteResultPayload.ChangeSource ?: return@collect
+                        // bookSource 由 LaunchedEffect(book.origin) 按路由书籍加载, 换源后不会自动更新
+                        bookSource = payload.source
+                        screenModel.dispatch(
+                            BookInfoUiEvent.ShowBook(
+                                payload.book,
+                                screenModel.lastedTitleOf(payload.book)
+                            )
+                        )
+                        screenModel.refresh(
+                            payload.book, payload.source, errorLoadTocLabel,
+                            isSearchBook = isSearchBook,
+                        )
+                    }
+            }
+            // 目录返回: 选章节跳阅读, 未选则删书 (对照 app 端 BookInfoActivity tocActivityResult)
+            launch {
+                navigator.resultsFor(entry.id).filter { it.key == RouteResults.TOC }
+                    .collect { result ->
+                        val payload = result.payload as? RouteResultPayload.Toc
+                        val b = screenModel.state.value.book ?: book
+                        if (payload != null) {
+                            scope.launch(IoDispatcher) {
+                                b.durChapterIndex = payload.chapterIndex
+                                b.durChapterPos = payload.chapterPos
+                                AppDbProviders.get().bookDao.update(b)
+                            }
+                            val target = when {
+                                b.isAudio -> AppRoute.AudioPlay(b.toRouteRef())
+                                b.isVideo -> AppRoute.VideoPlay(b.toRouteRef())
+                                b.isImage -> AppRoute.MangaReader(b.toRouteRef())
+                                b.isRss -> AppRoute.ReadRss(b.toRouteRef())
+                                else -> AppRoute.Reader(b.toRouteRef())
+                            }
+                            navigator.push(target, RouteResults.READER)
+                        } else if (!screenModel.state.value.inBookshelf) {
+                            // 未选章节且不在书架: 删书 (对照 app 端 viewModel.delBook)
+                            PlatformCapabilityProviders.getOrNull()
+                                ?.toggleBookshelf(
+                                    b,
+                                    false
+                                ) { navigator.pop(RouteResultPayload.Deleted) }
+                        }
+                    }
+            }
+            // 阅读器返回: 刷新阅读进度 + 书架状态 (对照 app 端 readBookResult launcher)
+            launch {
+                navigator.resultsFor(entry.id).filter { it.key == RouteResults.READER }
+                    .collect { result ->
+                        val b = screenModel.state.value.book ?: book
+                        // 书籍可能在阅读中被加入书架/删除, 重新查询 DB 同步状态
+                        scope.launch(IoDispatcher) {
+                            val inShelf = AppDbProviders.get().bookDao.getBook(b.bookUrl) != null
+                            screenModel.dispatch(BookInfoUiEvent.UpdateBookshelf(inShelf))
+                            // 刷新目录文案为当前阅读章节 (对照 Activity upLoading(false, listOf()))
+                            screenModel.dispatch(
+                                BookInfoUiEvent.UpdateToc(
+                                    tocText = b.durChapterTitle ?: "",
+                                    lastedTitle = null,
+                                )
+                            )
+                        }
+                        // 阅读器返回 Deleted: 透传删除 (对照 Activity RESULT_DELETED)
+                        if (result.payload is RouteResultPayload.Deleted) {
+                            navigator.pop(RouteResultPayload.Deleted)
+                        }
+                    }
             }
         }
     }

@@ -19,6 +19,7 @@ import io.legado.app.lib.webdav.WebDavFile
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.remote.RemoteBook
 import io.legado.app.utils.AlphanumComparator
+import io.legado.app.utils.isSecurityException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -213,7 +214,7 @@ class RemoteBookViewModelShared(
             } catch (e: Throwable) {
                 if (e is CancellationException) throw e
                 AppLog.put("导入出错\n${e.message}", e, true)
-                if (e is SecurityException) onPermissionDenied()
+                if (e.isSecurityException()) onPermissionDenied()
             } finally {
                 // 对照 app 端 callback 内 loading=false
                 _isLoading.value = false

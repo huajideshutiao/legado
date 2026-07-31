@@ -21,7 +21,6 @@ import legado.shared.generated.resources.ic_cfg_web
 import legado.shared.generated.resources.ic_history
 import legado.shared.generated.resources.ic_import
 import legado.shared.generated.resources.ic_translate
-import legado.shared.generated.resources.ic_web_outline
 import legado.shared.generated.resources.outline_filter_alt_24
 import legado.shared.generated.resources.about
 import legado.shared.generated.resources.backup_restore
@@ -34,7 +33,6 @@ import legado.shared.generated.resources.other
 import legado.shared.generated.resources.other_setting
 import legado.shared.generated.resources.read_record
 import legado.shared.generated.resources.replace_purify
-import legado.shared.generated.resources.rss_sources
 import legado.shared.generated.resources.rule_subscription
 import legado.shared.generated.resources.source_filter_rule
 import legado.shared.generated.resources.theme_mode
@@ -73,7 +71,6 @@ import org.jetbrains.compose.resources.stringResource
  * - `ic_bookmark`         书签
  * - `ic_history`          阅读记录（已注册, 复用）
  * - `ic_cfg_about`        关于
- * - `ic_web_outline`      RSS 源 (showRssEntry=true 时渲染)
  *
  * ### String key (string)
  * - `theme_mode`                主题模式（标题）
@@ -85,7 +82,6 @@ import org.jetbrains.compose.resources.stringResource
  * - `book_source_manage` / `book_source_manage_desc`
  * - `replace_purify` / `source_filter_rule` / `txt_toc_rule`
  * - `dict_rule` / `rule_subscription`
- * - `rss_sources`               RSS 源 (showRssEntry=true 时渲染)
  * - `other`                     分类标题
  * - `bookmark` / `read_record` / `about`
  *
@@ -114,9 +110,6 @@ fun MyConfigScreen(
     onBookmark: () -> Unit,
     onReadRecord: () -> Unit,
     onAbout: () -> Unit,
-    // RSS 源入口开关 (MyConfigRoute 默认启用, 各端共用)
-    showRssEntry: Boolean = false,
-    onRssSources: () -> Unit = {},
 ) {
     val themeModeEntries = stringArrayResource(Res.array.theme_mode)
     val themeModeValues = stringArrayResource(Res.array.theme_mode_v)
@@ -136,8 +129,6 @@ fun MyConfigScreen(
     val titleTxtTocRule = stringResource(Res.string.txt_toc_rule)
     val titleDictRule = stringResource(Res.string.dict_rule)
     val titleRuleSub = stringResource(Res.string.rule_subscription)
-    // RSS 源标题 (仅 showRssEntry=true 时取值)
-    val titleRssSources = if (showRssEntry) stringResource(Res.string.rss_sources) else ""
     val titleOther = stringResource(Res.string.other)
     val titleBookmark = stringResource(Res.string.bookmark)
     val titleReadRecord = stringResource(Res.string.read_record)
@@ -156,8 +147,6 @@ fun MyConfigScreen(
     val iconBookmark = painterResource(Res.drawable.ic_bookmark)
     val iconHistory = painterResource(Res.drawable.ic_history)
     val iconAbout = painterResource(Res.drawable.ic_cfg_about)
-    // RSS 源图标 (复用 ic_web_outline, 仅 showRssEntry=true 时渲染)
-    val iconRss = painterResource(Res.drawable.ic_web_outline)
 
     AppTheme {
         PreferenceScreen {
@@ -230,14 +219,6 @@ fun MyConfigScreen(
                 icon = iconImport,
                 onClick = onRuleSubManage,
             )
-            // RSS 源入口 (showRssEntry=true 时渲染)
-            if (showRssEntry) {
-                preference(
-                    title = titleRssSources,
-                    icon = iconRss,
-                    onClick = onRssSources,
-                )
-            }
 
             preferenceCategory(titleOther)
             preference(

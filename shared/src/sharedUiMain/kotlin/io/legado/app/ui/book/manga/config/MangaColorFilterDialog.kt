@@ -15,9 +15,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDetailSeekBar
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
@@ -63,7 +63,7 @@ fun MangaColorFilterDialog(
     var b by remember { mutableStateOf(config.b) }
     var gray by remember { mutableStateOf(grayEnabled) }
 
-    Dialog(
+    AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {

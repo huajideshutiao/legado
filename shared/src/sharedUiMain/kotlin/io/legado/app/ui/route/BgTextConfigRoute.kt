@@ -145,7 +145,7 @@ fun BgTextConfigRoute(
                     )
                     Toasters.get().toast("导入成功")
                 }.onFailure {
-                    Toasters.get().toast("导入失败:${it.localizedMessage}")
+                    Toasters.get().toast("导入失败:${it.message}")
                 }
             }
         }
@@ -173,7 +173,7 @@ fun BgTextConfigRoute(
                 }.onSuccess {
                     Toasters.get().toast("导出成功")
                 }.onFailure {
-                    Toasters.get().toast("导出失败:${it.localizedMessage}")
+                    Toasters.get().toast("导出失败:${it.message}")
                 }
             }
         }
@@ -199,7 +199,7 @@ fun BgTextConfigRoute(
                 }.onSuccess {
                     ReadBookEvents.postConfig(ReadConfigChange.BG)
                 }.onFailure {
-                    Toasters.get().toast(it.localizedMessage ?: "设置背景图失败")
+                    Toasters.get().toast(it.message ?: "设置背景图失败")
                 }
             }
         }

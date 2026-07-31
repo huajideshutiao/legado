@@ -1,20 +1,42 @@
 package io.legado.app.utils
 
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.convert
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import platform.posix.CLOCK_MONOTONIC
+import platform.posix.CLOCK_REALTIME
+import platform.posix.clock_gettime
+import platform.posix.timespec
+
 /**
  * TimeUtils 的 iOS/鸿蒙 actual。
  *
  * 详见 commonMain/utils/TimeUtils.shared.kt expect 注释。
- * - [systemCurrentTimeMillis]: 委托 kotlin.system.currentTimeMillis (KMP 标准, epoch 毫秒)
- * - [systemNanoTime]: 委托 kotlin.system.nanoTime (KMP 标准, 高精度纳秒计时)
+ * - [systemCurrentTimeMillis]: posix clock_gettime(CLOCK_REALTIME) (epoch 毫秒)
+ * - [systemNanoTime]: posix clock_gettime(CLOCK_MONOTONIC) (单调递增纳秒计时)
  * - [yearMonthDayFromMillis]: 纯 Kotlin 公历换算 (与 java.util.Calendar 本地时区语义对齐)
  *
  * 注: epoch 毫秒 → 本地日期需考虑时区。iOS/鸿蒙无 java.util.TimeZone,
  * 用 kotlinx-datetime 或自行处理 epoch → 本地日期。
  * 本实现用纯 Kotlin 算法, 按本地时区偏移量 (毫秒) 计算, 行为等价 java.util.Calendar 默认时区。
  */
-actual fun systemCurrentTimeMillis(): Long = kotlin.system.currentTimeMillis
+@OptIn(ExperimentalForeignApi::class)
+actual fun systemCurrentTimeMillis(): Long = memScoped {
+    // kotlin.system.getTimeMillis 自 2.1 起为 error 级 deprecation, 改走 posix
+    // CLOCK_* 常量与 clockid_t 的宽度各平台绑定不一 (darwin UInt / linux Int), 用 convert() 统一
+    val ts = alloc<timespec>()
+    clock_gettime(CLOCK_REALTIME.convert(), ts.ptr)
+    ts.tv_sec * 1_000L + ts.tv_nsec / 1_000_000L
+}
 
-actual fun systemNanoTime(): Long = kotlin.system.nanoTime
+@OptIn(ExperimentalForeignApi::class)
+actual fun systemNanoTime(): Long = memScoped {
+    val ts = alloc<timespec>()
+    clock_gettime(CLOCK_MONOTONIC.convert(), ts.ptr)
+    ts.tv_sec * 1_000_000_000L + ts.tv_nsec
+}
 
 actual fun yearMonthDayFromMillis(epochMillis: Long): Triple<Int, Int, Int> {
     // 本地时区偏移量 (毫秒)。iOS/鸿蒙无 java.util.TimeZone.getDefault(),
@@ -55,11 +77,11 @@ actual fun midnightSecFromDayKey(dayKey: Int): Long {
  * 漫画信息条 HH:mm: 纯 Kotlin UTC 换算 (与 yearMonthDayFromMillis 的 UTC 简化一致)。
  */
 actual fun formatTimeOfDay(epochMillis: Long): String {
-    val millisOfDay = Math.floorMod(epochMillis, 86_400_000L)
+    val millisOfDay = epochMillis.mod(86_400_000L)
     val totalMinutes = (millisOfDay / 60_000L).toInt()
     val h = totalMinutes / 60
     val m = totalMinutes % 60
-    return "%02d:%02d".format(h, m)
+    return "${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}"
 }
 
 /**
@@ -76,7 +98,7 @@ private fun currentLocalOffsetMillis(): Long = 0L
 
 /** 纯 Kotlin 公历换算: epoch 毫秒 → (year, month, day) (基于 [civilFromDays])。 */
 private fun epochToYmd(epochMillis: Long): Triple<Int, Int, Int> {
-    val days = Math.floorDiv(epochMillis, 86_400_000L).toInt()
+    val days = epochMillis.floorDiv(86_400_000L).toInt()
     // days 自 1970-01-01 起; civilFromDays 接受自 1970-01-01 起的天数
     return civilFromDays(days.toLong())
 }
@@ -111,5 +133,5 @@ private fun daysFromCivil(year: Int, month: Int, day: Int): Long {
     val yoe = y - era * 400
     val doy = (153 * (m - 3) + 2) / 5 + day - 1
     val doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
-    return era * 146_097 + doe - 719_468
+    return (era * 146_097 + doe - 719_468).toLong()
 }

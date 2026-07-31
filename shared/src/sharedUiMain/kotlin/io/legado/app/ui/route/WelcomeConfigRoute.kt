@@ -12,10 +12,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.AppTitleBar
@@ -39,6 +41,8 @@ import legado.shared.generated.resources.select_image
 import legado.shared.generated.resources.welcome_show_time
 import legado.shared.generated.resources.welcome_style
 import org.jetbrains.compose.resources.stringResource
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 启动闪屏配置 shared 路由入口。
@@ -51,6 +55,7 @@ fun WelcomeConfigRoute(
     screenModelStore: ScreenModelStore,
 ) {
     val pref = LocalPreferenceStoreProvider.current
+    val scope = rememberCoroutineScope()
     val selectImageStr = stringResource(Res.string.select_image)
     // 顶栏标题 (对照 app 端 R.string.welcome_style)
     val titleStr = stringResource(Res.string.welcome_style)
@@ -82,12 +87,18 @@ fun WelcomeConfigRoute(
             onShowTime = { showTimePicker = true },
             onPickImage = { isNight ->
                 // 平台文件选择器选图, 实际裁剪/落盘由平台层接管
-                val path = PlatformServiceProviders.getOrNull()?.files?.pickFile(FileFilter.Images)
-                if (path != null) {
-                    // 对照 app 端 putImagePref(key, path)
-                    val key = if (isNight) PreferKey.welcomeImageDark else PreferKey.welcomeImage
-                    pref.putString(key, path)
-                    screenModel.dispatch(WelcomeConfigUiEvent.ImagePicked(isNight, path))
+                // 选择器是阻塞式的 (Android 端 runBlocking 等 SAF 回调), 必须切 IO
+                scope.launch {
+                    val path = withContext(IoDispatcher) {
+                        PlatformServiceProviders.getOrNull()?.files?.pickFile(FileFilter.Images)
+                    }
+                    if (path != null) {
+                        // 对照 app 端 putImagePref(key, path)
+                        val key =
+                            if (isNight) PreferKey.welcomeImageDark else PreferKey.welcomeImage
+                        pref.putString(key, path)
+                        screenModel.dispatch(WelcomeConfigUiEvent.ImagePicked(isNight, path))
+                    }
                 }
             },
             // 对照 app 端 showTimeSummary = "${AppConfig.welcomeShowTime}ms"

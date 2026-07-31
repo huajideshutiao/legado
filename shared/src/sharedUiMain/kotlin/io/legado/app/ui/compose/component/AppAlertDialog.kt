@@ -19,7 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -56,7 +55,7 @@ fun AppAlertDialog(
     widthFraction: Float = 1f,
     content: (@Composable () -> Unit)? = null,
 ) {
-    Dialog(onDismissRequest = onDismissRequest, properties = properties) {
+    AppDialog(onDismissRequest = onDismissRequest, properties = properties) {
         AppAlertDialogContent(
             onDismissRequest = onDismissRequest,
             title = title,
@@ -157,8 +156,15 @@ fun AppSelectorDialog(
     onItemSelected: (index: Int) -> Unit,
     // 对话框宽度占窗口宽度的比例 (默认 1f 占满, 桌面端备份相关对话框传 0.8f)
     widthFraction: Float = 1f,
+    // 点击对话框外部是否关闭, 长按弹出场景需传 false 避免释放事件误触
+    dismissOnClickOutside: Boolean = true,
 ) {
-    AppAlertDialog(onDismissRequest = onDismissRequest, title = title, widthFraction = widthFraction) {
+    AppAlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = title,
+        widthFraction = widthFraction,
+        properties = AppDialogSizes.properties(dismissOnClickOutside = dismissOnClickOutside),
+    ) {
         AppSelectorList(items = items) {
             onItemSelected(it)
             onDismissRequest()

@@ -203,7 +203,7 @@ fun ReviewListDialog(
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(48.dp)
+                .height(DesignTokens.viewHeightXl)
         ) {
             IconButton(
                 onClick = onDismiss,
@@ -388,7 +388,7 @@ private fun ReviewItem(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .height(28.dp),
+                    .height(DesignTokens.viewHeightSmall),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -538,7 +538,7 @@ private fun ReviewItem(
                     Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp)
-                        .height(40.dp)
+                        .height(DesignTokens.viewHeightLarge)
                         .clip(DesignTokens.shapeDefault)
                         .background(rememberColor("btn_bg"))
                         .clickable { onOpenReplies(item) }

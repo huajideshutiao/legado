@@ -1,5 +1,7 @@
 package io.legado.app.ui.root
 
+import io.legado.app.constant.AppLog
+
 /** 共享页面状态持有者；不允许持有 Activity、View 或平台控制器。 */
 interface ScreenModel {
     fun onCleared() = Unit
@@ -26,12 +28,21 @@ class ScreenModelStore {
     fun retain(entries: List<RouteEntry>) {
         val activeIds = entries.mapTo(mutableSetOf()) { it.id }
         val removed = models.keys.filterNot { it in activeIds }
-        removed.forEach { id -> models.remove(id)?.onCleared() }
+        removed.forEach { id -> models.remove(id)?.let(::clearSafely) }
     }
 
     fun clear() {
-        models.values.forEach(ScreenModel::onCleared)
+        models.values.forEach(::clearSafely)
         models.clear()
+    }
+
+    /**
+     * retain/clear 由 LegadoApp 的 LaunchedEffect 调用, onCleared 抛出会连坐整个 Recomposer
+     * (桌面端表现为窗口能重绘但键鼠全失灵), 故逐个隔离并记下是哪个 ScreenModel。
+     */
+    private fun clearSafely(model: ScreenModel) {
+        runCatching { model.onCleared() }
+            .onFailure { AppLog.put("ScreenModel.onCleared 异常: ${model::class.simpleName}", it) }
     }
 
     val size: Int get() = models.size

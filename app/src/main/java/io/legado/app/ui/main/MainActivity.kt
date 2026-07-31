@@ -33,6 +33,7 @@ import io.legado.app.constant.appInfo
 import io.legado.app.data.entities.Book
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.isImage
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.LocalReadConfigProviders
@@ -274,6 +275,9 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
                         origin = book.origin,
                         ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL,
                         reloadKey = 0,
+                        // 书架态决定封面落持久区还是临时区 (对照原 ExploreShowAdapter 的
+                        // inBookshelf = callBack.isInBookshelf(item)); 搜索/发现结果带 notShelf 标记
+                        inBookshelf = !book.isNotShelf,
                         modifier = modifier,
                     )
                 },
@@ -332,10 +336,10 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
         MangaReaderScreenModel.Providers.register(AndroidMangaReaderPlatform)
         VideoPlayPlatformProviders.register(AndroidVideoPlayPlatformProvider(this))
         // 排版度量走真实字形（对照 TextStyleProvider.getPaints 的 contentPaint）
-        TextMeasurerProviders.register { textSizePx, letterSpacingPx ->
+        TextMeasurerProviders.register { textSizePx, letterSpacingPx, fontPath ->
             AndroidTextMeasurer(TextPaint().apply {
                 isAntiAlias = true
-                typeface = readerContentTypeface()
+                typeface = readerContentTypeface(fontPath)
                 textSize = textSizePx
                 letterSpacing = if (textSizePx > 0f) letterSpacingPx / textSizePx else 0f
             })
@@ -519,11 +523,14 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
 
 }
 
-/** 正文度量字体：ReadBookConfig.textFont + textBold，对照 TextStyleProvider.getPaints 的 textFont。 */
-private fun readerContentTypeface(): Typeface {
+/**
+ * 正文度量字体：[fontPath] = `ReadBookConfig.textFont`，与绘制侧 `loadReaderFontFamily`
+ * （同为 `Typeface.createFromFile`）读同一文件；空路径 / 加载失败一并回落 SANS_SERIF。
+ */
+private fun readerContentTypeface(fontPath: String): Typeface {
     val base = runCatching {
-        if (ReadBookConfig.textFont.isNotEmpty()) {
-            Typeface.createFromFile(ReadBookConfig.textFont)
+        if (fontPath.isNotEmpty()) {
+            Typeface.createFromFile(fontPath)
         } else {
             Typeface.SANS_SERIF
         }

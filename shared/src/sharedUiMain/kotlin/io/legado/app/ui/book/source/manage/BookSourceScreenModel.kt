@@ -13,6 +13,7 @@ import io.legado.app.ui.root.ScreenModel
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.throttleLatest
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

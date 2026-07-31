@@ -83,7 +83,11 @@ fun AppTextField(
             modifier = Modifier
                 .fillMaxWidth()
                 .indicatorLine(enabled, isError, interactionSource, colors)
-                .defaultMinSize(minWidth = TextFieldDefaults.MinWidth),
+                // 对齐 String 重载与安卓默认 TextInputLayout 高度 (56dp, TextFieldDefaults.MinHeight)
+                .defaultMinSize(
+                    minWidth = TextFieldDefaults.MinWidth,
+                    minHeight = TextFieldDefaults.MinHeight,
+                ),
             enabled = enabled,
             readOnly = readOnly,
             textStyle = textStyle.copy(color = textColor),

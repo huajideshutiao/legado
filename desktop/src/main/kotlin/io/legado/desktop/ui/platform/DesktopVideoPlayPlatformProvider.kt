@@ -18,6 +18,7 @@ import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +32,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.sun.jna.Native
 import io.legado.app.constant.AppLog
+import io.legado.app.ui.book.video.ErrorOverlay
+import io.legado.app.ui.book.video.LoadingOverlay
 import io.legado.app.ui.book.video.VideoPlayPlatformProvider
 import io.legado.app.ui.book.video.VideoPlayScreenModel
 import io.legado.app.ui.book.video.VideoPlayerController
@@ -38,7 +41,9 @@ import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.desktop.help.video.MpvDetector
 import io.legado.desktop.help.video.MpvDownloader
+import io.legado.desktop.help.video.MpvInputUnblock
 import io.legado.desktop.help.video.MpvPlayer
+import io.legado.desktop.ui.DesktopWindowHandle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -58,6 +63,7 @@ import java.net.URI
  * - **控制层**: mpv 内建 OSC (--osc=yes), 不叠 Compose 控制层 —— SwingPanel 是重量级 AWT,
  *   Compose 内容画不到它之上 (airspace), 故视频区内一律不放 Compose 控件
  * - **降级链**: 嵌入 → 独立窗口 (句柄拿不到/macOS) → 未装 mpv 显示引导安装占位
+ *   (探测进页即跑, 不等播放链接: 没装 mpv 的机器立刻见引导页而不是干等章节加载)
  * - **IPC 桥**: 经 MpvPlayer.command 转发 playPause/seekTo/setSpeed; positionMs/durationMs
  *   由 mpv observe_property 事件持续刷新
  *
@@ -66,12 +72,27 @@ import java.net.URI
  * 检测/下载/启动失败都渲染成 [MpvStage] 对应的占位层, 不留白屏;
  * mpv 未渲染时的底色统一为黑 (Canvas + SwingPanel 背景, 后者默认是白色)。
  */
-class DesktopVideoPlayPlatformProvider : VideoPlayPlatformProvider {
+class DesktopVideoPlayPlatformProvider(
+    private val windowHandle: DesktopWindowHandle = DesktopWindowHandle(),
+) : VideoPlayPlatformProvider {
 
     override fun createController(
         screenModel: VideoPlayScreenModel,
         onPlaybackEnded: () -> Unit,
     ): VideoPlayerController = DesktopVideoPlayerController(onPlaybackEnded)
+
+    // 系统级全屏: 真正的完全全屏, 隐藏系统底栏/窗口装饰 (GraphicsDevice.setFullScreenWindow)
+    // 与 applyFullscreen (右上角菜单的窗口内全屏) 区分
+    override fun applySystemFullScreen(enabled: Boolean) {
+        val window = windowHandle.window ?: return
+        val device = window.graphicsConfiguration?.device ?: return
+        device.setFullScreenWindow(if (enabled) window else null)
+    }
+
+    // Compose 弹层 (菜单/对话框) 打开时隐藏 mpv 子窗口, 否则 airspace 原生窗口盖住弹层
+    override fun setOverlayVisible(visible: Boolean) {
+        MpvInputUnblock.setVisible(!visible)
+    }
 
     @Composable
     override fun Render(
@@ -80,11 +101,14 @@ class DesktopVideoPlayPlatformProvider : VideoPlayPlatformProvider {
         modifier: Modifier,
     ) {
         val desktopController = controller as? DesktopVideoPlayerController ?: return
-        val url = screenModel.shared.videoUrl.value?.url
-        val headers = screenModel.shared.videoUrl.value?.headerMap ?: emptyMap()
+        // 必须以 State 订阅: 直读 StateFlow.value 不会随链接就绪重组, 会一直停在等待态
+        val videoUrl by screenModel.shared.videoUrl.collectAsState()
+        val uiState by screenModel.state.collectAsState()
+        val url = videoUrl?.url
+        val headers = videoUrl?.headerMap ?: emptyMap()
         val startMs = screenModel.shared.curBook?.durChapterPos?.toLong() ?: 0L
         val bookName = screenModel.shared.curBook?.name ?: ""
-        val chapterTitle = screenModel.state.value.chapterTitle
+        val chapterTitle = uiState.chapterTitle
 
         val scope = rememberCoroutineScope()
         // AWT Canvas 供 mpv --wid 嵌入; 背景设黑, 否则 mpv 起窗前是刺眼的系统默认底色
@@ -92,9 +116,12 @@ class DesktopVideoPlayPlatformProvider : VideoPlayPlatformProvider {
         var stage by remember { mutableStateOf<MpvStage>(MpvStage.Detecting) }
         var mpvPath by remember { mutableStateOf<String?>(null) }
 
-        // mpv 播放错误是 IPC/进程退出异步上报的, 转成可见失败态而不是只进日志
+        // mpv 播放错误是 IPC/进程退出异步上报的, 转成可见失败态而不是只进日志;
+        // 回调跑在后台线程 (IPC/waiter), 而 stage 是 Compose State —— 后台线程直接写快照
+        // 会与 EDT 上的重组竞争 (snapshot 写冲突), 轻则状态丢失重则帧时钟停摆。经 scope.launch
+        // (composition scope = 主调度器) 切回 EDT 再写状态, 与 Android 端"回调 postMain 再动 UI"同构。
         DisposableEffect(desktopController) {
-            desktopController.onError = { msg -> stage = MpvStage.Failed(msg) }
+            desktopController.onError = { msg -> scope.launch { stage = MpvStage.Failed(msg) } }
             onDispose { desktopController.onError = null }
         }
 
@@ -103,11 +130,22 @@ class DesktopVideoPlayPlatformProvider : VideoPlayPlatformProvider {
             if (mpvPath == null || forceRefresh) stage = MpvStage.Detecting
             val path = withContext(Dispatchers.IO) { MpvDetector.detect(forceRefresh) }
             mpvPath = path
-            stage = if (path == null) MpvStage.NotFound(null) else MpvStage.Launching
+            // videoUrl 是 State, 此处读到的是最新值 (探测期间链接可能才刚就绪)
+            stage = when {
+                path == null -> MpvStage.NotFound(null)
+                videoUrl?.url.isNullOrEmpty() -> MpvStage.Ready
+                else -> MpvStage.Launching
+            }
         }
 
-        LaunchedEffect(url) {
-            if (!url.isNullOrEmpty()) detect(forceRefresh = false)
+        // 探测与播放链接解耦: 没装 mpv 时进页立即出引导页, 不必等章节内容加载完
+        LaunchedEffect(Unit) { detect(forceRefresh = false) }
+
+        // mpv 与链接都就绪即起播; 切章/切分辨率的链接变更同样经此重新起播
+        LaunchedEffect(mpvPath, url) {
+            if (mpvPath != null && !url.isNullOrEmpty() && stage !is MpvStage.Launching) {
+                stage = MpvStage.Launching
+            }
         }
 
         // Launching 阶段 SwingPanel 已挂载, 等 Canvas addNotify 后再取句柄启动 mpv
@@ -156,6 +194,16 @@ class DesktopVideoPlayPlatformProvider : VideoPlayPlatformProvider {
                 MpvStage.Detecting -> MpvBusyHint(rememberString("loading"))
                 MpvStage.Detached -> MpvCenterText(rememberString("mpv_detached_playing"))
 
+                // mpv 就绪但链接还没到: 复用 shared 加载/错误层, 章节加载失败不再是空转圈
+                MpvStage.Ready -> {
+                    val error = uiState.error
+                    if (error != null) {
+                        ErrorOverlay(error = error, onRetry = screenModel::onRefreshChapter)
+                    } else {
+                        LoadingOverlay()
+                    }
+                }
+
                 is MpvStage.Downloading -> MpvDownloadingHint(current.progress)
 
                 is MpvStage.NotFound -> MpvInstallGuide(
@@ -186,6 +234,8 @@ class DesktopVideoPlayPlatformProvider : VideoPlayPlatformProvider {
                 )
             }
         }
+
+
     }
 }
 
@@ -193,6 +243,9 @@ class DesktopVideoPlayPlatformProvider : VideoPlayPlatformProvider {
 private sealed interface MpvStage {
     /** 探测 mpv 可执行中 */
     data object Detecting : MpvStage
+
+    /** mpv 可用, 等播放链接 (章节内容加载中/失败), 此时不挂 SwingPanel 好让占位层可见 */
+    data object Ready : MpvStage
 
     /** 已找到 mpv, SwingPanel 挂载中 (等 Canvas 原生句柄) */
     data object Launching : MpvStage

@@ -3,8 +3,8 @@ package io.legado.app.ui.book.search
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,7 +13,8 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,7 +22,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -29,8 +29,8 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
@@ -45,8 +45,8 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -58,7 +58,6 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -70,12 +69,14 @@ import io.legado.app.data.entities.SearchKeyword
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.ui.bookshelf.KindLabels
+import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.bookshelf.ShelfGridItem
 import io.legado.app.ui.bookshelf.ShelfLastUpdateText
 import io.legado.app.ui.bookshelf.ShelfListItem
 import io.legado.app.ui.bookshelf.ShelfRowIcon
 import io.legado.app.ui.bookshelf.ShelfVideoItem
 import io.legado.app.ui.bookshelf.UnreadBadge
+import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppCheckbox
@@ -102,6 +103,7 @@ import legado.shared.generated.resources.bookshelf
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.clear
 import legado.shared.generated.resources.groups_or_source
+import legado.shared.generated.resources.intro_show_null
 import legado.shared.generated.resources.log
 import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.precision_search
@@ -113,7 +115,6 @@ import legado.shared.generated.resources.search_result_empty_close_precision
 import legado.shared.generated.resources.search_result_empty_switch_all
 import legado.shared.generated.resources.source_filter_rule
 import legado.shared.generated.resources.stop
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -178,17 +179,15 @@ object NoOpSearchNavCallbacks : SearchNavCallbacks {
  * - `painterResource(R.drawable.xxx)` → [rememberPainter]("xxx")
  * - `colorResource(R.color.xxx)` → [AppTheme.colors] 语义色
  * - `WindowInsets.navigationBars.asPaddingValues()` → `rememberNavigationBarPaddingValues()` (跨平台导航栏 padding)
- * - `ShelfCover` (app 专属, 走 Glide) → [coverSlot] / [shelfCoverSlot] 注入, 未注入时走占位
- * - `KindLabels` / `UnreadBadge` (app 专属) → 简化为多源计数文字
+ * - `ShelfCover` (app 专属) → [coverSlot] / [shelfCoverSlot] 注入, 未传时取 [LocalBookCoverSlot]
+ * - `KindLabels` / `UnreadBadge` (app 专属) → 复用书架 shared 版同名组件
  * - `AndroidView { LinearLayout + setUpExploreOptions }` (单源搜索选项 chip) → 暂未实现 (KMP 无桥接)
  * - `AndroidView { ItemExploreVideoBinding }` (视频卡) → 暂未实现 (KMP 无 ViewBinding)
  *
  * @param viewModel KMP 版 [SearchViewModel]
  * @param navCallbacks 路由回调, 默认 [NoOpSearchNavCallbacks]
- * @param coverSlot 搜索结果封面注入 (list/grid 两档条目共用)。null 走内置
- *   [SearchCoverPlaceholder] 占位; 非 null 时接收与占位完全一致的尺寸 Modifier,
- *   由各端用自己的封面实现渲染 (app=ShelfCover, desktop=DesktopBookCover,
- *   iOS=IosInfoCover, 鸿蒙=OhosInfoCover)。签名与书架 `bookCoverSlot` 一致,
+ * @param coverSlot 搜索结果封面注入 (list/grid 两档条目共用)。null 时取
+ *   [LocalBookCoverSlot] (宿主端注入 ShelfCover, 兜底 SharedBookCover), 与书架/发现同源。
  *   isVideoCover 供各端选封面比例 (对照 CoverRatio: false=NOVEL, true=VIDEO)
  * @param shelfCoverSlot 输入帮助区书架命中项封面注入, 契约同 [coverSlot] (条目类型为 Book)
  */
@@ -202,6 +201,25 @@ fun SearchScreen(
 ) {
     val colors = AppTheme.colors
 
+    // 封面 slot: 显式传入优先, 否则取 CompositionLocal (对照 BookshelfScreen / ExploreShowRoute)
+    val bookCoverSlot = LocalBookCoverSlot.current
+    val resolvedShelfCoverSlot = shelfCoverSlot ?: bookCoverSlot
+    // 默认 lambda 只建一次: 每次重组换实例, 会让结果列表所有可见条目一起重组
+    // (参照书架 BookshelfScreen.kt 的 bookCoverSlot 透传注释)
+    val resolvedCoverSlot: @Composable (SearchBook, Modifier, Boolean) -> Unit =
+        remember(coverSlot, bookCoverSlot, viewModel) {
+            coverSlot ?: { book, coverModifier, isVideoCover ->
+                // SearchBook → Book 适配 LocalBookCoverSlot 签名 (同 ExploreShowRoute);
+                // 渲染时就按书架态打 notShelf 标记, 非书架书的封面才不会落进持久缓存区
+                val inShelf = viewModel.isInBookShelf(book)
+                bookCoverSlot(
+                    remember(book, inShelf) { book.toCoverBook(inShelf) },
+                    coverModifier,
+                    isVideoCover,
+                )
+            }
+        }
+
     // 收集 UI 状态
     val query by viewModel.query.collectAsState()
     val inputHelpVisible by viewModel.inputHelpVisible.collectAsState()
@@ -214,6 +232,7 @@ fun SearchScreen(
     val scopeVersion by viewModel.scopeVersion.collectAsState()
     val bookshelfVersion by viewModel.bookshelfVersion.collectAsState()
     val precisionSearch by viewModel.precisionSearch.collectAsState()
+    val manualStopped by viewModel.manualStopped.collectAsState()
 
     val searchOptionsVersion by viewModel.searchOptionsVersion.collectAsState()
 
@@ -296,7 +315,7 @@ fun SearchScreen(
                         styleIsVideo = styleIsVideo,
                         styleCols = styleCols,
                         bookshelfVersion = bookshelfVersion,
-                        shelfCoverSlot = shelfCoverSlot,
+                        shelfCoverSlot = resolvedShelfCoverSlot,
                     )
                 } else {
                     SearchOptionsRow(
@@ -314,13 +333,15 @@ fun SearchScreen(
                         styleIsVideo = styleIsVideo,
                         styleCols = styleCols,
                         bookshelfVersion = bookshelfVersion,
-                        coverSlot = coverSlot,
+                        coverSlot = resolvedCoverSlot,
                     )
                 }
             }
             RefreshBar(isSearching, Modifier.align(Alignment.TopStart))
             StartStopFab(
-                visible = isSearching || (hasMore && viewModel.searchKey.isNotEmpty()),
+                // 对照 searchFinally: 手动停止后按钮隐藏, 不显示"继续搜索"
+                visible = isSearching ||
+                    (!manualStopped && hasMore && viewModel.searchKey.isNotEmpty()),
                 showStop = isSearching,
                 onClick = viewModel::onFabClick,
                 modifier = Modifier.align(Alignment.BottomEnd),
@@ -389,12 +410,7 @@ private fun SearchActions(
         } else {
             scope.displayNames
         }
-        names.forEach { name ->
-            CheckMenuItem(name, checked = true) { dismiss(); viewModel.removeScopeName(name) }
-        }
-        CheckMenuItem(stringResource(Res.string.all_source), checked = names.isEmpty()) {
-            dismiss(); viewModel.selectScopeAll()
-        }
+        // 顺序对照 book_search.xml + onMenuOpened: 静态项在前, 动态范围组居中, 日志 (orderInCategory 9999) 最后
         CheckMenuItem(stringResource(Res.string.precision_search), precisionSearch) {
             dismiss(); viewModel.togglePrecisionSearch()
         }
@@ -406,6 +422,12 @@ private fun SearchActions(
         }
         TextMenuItem(stringResource(Res.string.source_filter_rule)) {
             dismiss(); navCallbacks.onShowSourceFilterRule()
+        }
+        names.forEach { name ->
+            CheckMenuItem(name, checked = true) { dismiss(); viewModel.removeScopeName(name) }
+        }
+        CheckMenuItem(stringResource(Res.string.all_source), checked = names.isEmpty()) {
+            dismiss(); viewModel.selectScopeAll()
         }
         TextMenuItem(stringResource(Res.string.log)) { dismiss(); navCallbacks.onShowAppLog() }
     }
@@ -426,8 +448,9 @@ private fun CheckMenuItem(text: String, checked: Boolean, onClick: () -> Unit) {
     DropdownMenuItem(
         onClick = onClick,
     ) {
+        // 固定间距而非 weight: weight 让整行参与测量, 菜单项多时每项都多算一遍
         Text(text, color = colors.primaryText)
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.width(12.dp))
         AppMenuCheckbox(checked = checked)
     }
 }
@@ -445,7 +468,7 @@ private fun ColumnScope.InputHelp(
     styleIsVideo: Boolean,
     styleCols: Int,
     bookshelfVersion: Int,
-    shelfCoverSlot: (@Composable (Book, Modifier, isVideoCover: Boolean) -> Unit)?,
+    shelfCoverSlot: @Composable (Book, Modifier, isVideoCover: Boolean) -> Unit,
 ) {
     val colors = AppTheme.colors
     val navPad = rememberNavigationBarPaddingValues()
@@ -474,13 +497,13 @@ private fun ColumnScope.InputHelp(
                         showKindIntro = true,
                         onClick = { navCallbacks.onBookClick(book) },
                         onLongClick = { navCallbacks.onBookClick(book, true) },
-                        coverSlot = { b, modifier, isVideoCover ->
-                            if (shelfCoverSlot != null) {
-                                shelfCoverSlot(b, modifier, isVideoCover)
-                            } else {
-                                SearchCoverPlaceholder(b, modifier, isVideoCover)
-                            }
-                        },
+                        // 对照原版 BookAdapter: kind/intro/更新时间恒显(不受书架配置门控),
+                        // flHasNew.gone() 故不画未读徽标
+                        forceShowKind = true,
+                        forceShowIntro = true,
+                        forceShowUpdateTime = true,
+                        hideUnread = true,
+                        coverSlot = shelfCoverSlot,
                         lastUpdateTextSlot = {
                             ShelfLastUpdateText(
                                 book.durChapterTime,
@@ -498,20 +521,13 @@ private fun ColumnScope.InputHelp(
                     .weight(1f),
             ) {
                 items(bookshelfBooks, key = { it.bookUrl }) { book ->
-                    val cover: @Composable (Book, Modifier, Boolean) -> Unit = { b, modifier, isVideoCover ->
-                        if (shelfCoverSlot != null) {
-                            shelfCoverSlot(b, modifier, isVideoCover)
-                        } else {
-                            SearchCoverPlaceholder(b, modifier, isVideoCover)
-                        }
-                    }
                     if (styleIsVideo) {
                         ShelfVideoItem(
                             book = book,
                             coverReloadTick = bookshelfVersion,
                             onClick = { navCallbacks.onBookClick(book) },
                             onLongClick = { navCallbacks.onBookClick(book, true) },
-                            coverSlot = cover,
+                            coverSlot = shelfCoverSlot,
                         )
                     } else {
                         ShelfGridItem(
@@ -520,7 +536,7 @@ private fun ColumnScope.InputHelp(
                             refreshingUrls = emptySet(),
                             onClick = { navCallbacks.onBookClick(book) },
                             onLongClick = { navCallbacks.onBookClick(book, true) },
-                            coverSlot = cover,
+                            coverSlot = shelfCoverSlot,
                         )
                     }
                 }
@@ -744,14 +760,17 @@ private fun ColumnScope.ResultArea(
     styleIsVideo: Boolean,
     styleCols: Int,
     bookshelfVersion: Int,
-    coverSlot: (@Composable (SearchBook, Modifier, isVideoCover: Boolean) -> Unit)?,
+    coverSlot: @Composable (SearchBook, Modifier, isVideoCover: Boolean) -> Unit,
 ) {
     @Suppress("UNUSED_EXPRESSION") bookshelfVersion // 书架增删时重组刷新绿点
     if (styleCols == 0 || (styleCols == 1 && !styleIsVideo)) {
         val state = rememberLazyListState()
-        // 新批次插到头部时回顶 (对齐原 AdapterDataObserver 的 positionStart==0)
+        // 新批次插到头部时回顶 (对齐原 AdapterDataObserver 的 positionStart==0);
+        // 仅列表停在顶部时才回顶, 滚动中不打断 (对照书架 ShelfBooksContent 的 firstKey 守卫)
         val firstKey = books.firstOrNull()?.let { "${it.name}|${it.author}" }
-        LaunchedEffect(firstKey) { if (firstKey != null) state.scrollToItem(0) }
+        LaunchedEffect(firstKey) {
+            if (firstKey != null && state.firstVisibleItemIndex <= 1) state.scrollToItem(0)
+        }
         // 触底续搜 (对齐原 canScrollVertically(1)==false -> scrollToBottom)
         LaunchedEffect(state) {
             snapshotFlow { state.layoutInfo.totalItemsCount to state.canScrollForward }
@@ -766,11 +785,13 @@ private fun ColumnScope.ResultArea(
                 .fillMaxWidth()
                 .weight(1f),
         ) {
-            items(books, key = { "${it.origin}|${it.bookUrl}" }) { book ->
+            items(
+                books,
+                key = { "${it.origin}|${it.bookUrl}" },
+                contentType = { "searchBook" }) { book ->
                 val isVideoStyle = styleCols == 0 && styleIsVideo
                 SearchListItem(
                     book = book,
-                    coverPath = book.coverUrl,
                     isVideoStyle = isVideoStyle,
                     inBookshelf = viewModel.isInBookShelf(book),
                     showShelfDot = true,
@@ -778,16 +799,17 @@ private fun ColumnScope.ResultArea(
                     intro = book.intro,
                     onClick = { navCallbacks.onBookClick(book) },
                     onLongClick = { navCallbacks.onBookClick(book, true) },
-                    coverSlot = coverSlot?.let { slot ->
-                        { modifier -> slot(book, modifier, isVideoStyle) }
-                    },
+                    coverSlot = { modifier -> coverSlot(book, modifier, isVideoStyle) },
                 )
             }
         }
     } else {
         val state = rememberLazyGridState()
+        // 同列表分支: 仅停在顶部附近时回顶, 滚动中不打断
         val firstKey = books.firstOrNull()?.let { "${it.name}|${it.author}" }
-        LaunchedEffect(firstKey) { if (firstKey != null) state.scrollToItem(0) }
+        LaunchedEffect(firstKey) {
+            if (firstKey != null && state.firstVisibleItemIndex <= 1) state.scrollToItem(0)
+        }
         LaunchedEffect(state) {
             snapshotFlow { state.layoutInfo.totalItemsCount to state.canScrollForward }
                 .distinctUntilChanged()
@@ -802,14 +824,13 @@ private fun ColumnScope.ResultArea(
                 .fillMaxWidth()
                 .weight(1f),
         ) {
-            items(books, key = { "${it.origin}|${it.bookUrl}" }) { book ->
+            items(
+                books,
+                key = { "${it.origin}|${it.bookUrl}" },
+                contentType = { "searchBook" }) { book ->
                 val displayBook = remember(book) { book.toBook() }
                 val cover: @Composable (Book, Modifier, Boolean) -> Unit = { _, modifier, isVideoCover ->
-                    if (coverSlot != null) {
-                        coverSlot(book, modifier, isVideoCover)
-                    } else {
-                        SearchCoverPlaceholder(book, modifier, isVideoCover)
-                    }
+                    coverSlot(book, modifier, isVideoCover)
                 }
                 if (styleIsVideo) {
                     ShelfVideoItem(
@@ -834,12 +855,16 @@ private fun ColumnScope.ResultArea(
     }
 }
 
-// ===== 条目 (List tier, KMP 简化版: 无 KindLabels/UnreadBadge) =====
+// ===== 条目 (List tier, 对照 item_bookshelf_list + ExploreShowAdapter.bind) =====
 
+/**
+ * 搜索结果 List 条目。原版复用 item_bookshelf_list (ExploreShowAdapter),
+ * 与书架条目同构, 差别只在: 绿点 ivInBookshelf 显示书架命中、bvOriginCount 显示多源数、
+ * tvRead/tvLastUpdateTime 恒隐、kind/intro 不受书架配置开关影响。
+ */
 @Composable
 private fun SearchListItem(
     book: BaseBook,
-    coverPath: String?,
     isVideoStyle: Boolean,
     inBookshelf: Boolean,
     showShelfDot: Boolean,
@@ -847,9 +872,7 @@ private fun SearchListItem(
     intro: String?,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    readTitle: String? = null,
-    timeAgo: String? = null,
-    coverSlot: (@Composable (Modifier) -> Unit)? = null,
+    coverSlot: @Composable (Modifier) -> Unit,
 ) {
     val colors = AppTheme.colors
     Row(
@@ -859,26 +882,13 @@ private fun SearchListItem(
             .padding(8.dp),
     ) {
         // 视频列表按原 applyCoverHeight 收窄高度，宽度始终由封面比例反算。
-        val coverHeight = AppConfigProviders.get().bookshelfCoverHeight
-            .let { if (isVideoStyle) (it * 0.75f).toInt() else it }
-        val coverWidth = coverHeight * coverAspectRatio(isVideoStyle)
-        val coverModifier = Modifier.size(width = coverWidth.dp, height = coverHeight.dp)
-        if (coverSlot != null) {
-            coverSlot(coverModifier)
-        } else {
-            Box(
-                coverModifier.background(colors.bottomBackground),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (!coverPath.isNullOrBlank()) {
-                    Text(
-                        text = book.name.take(2),
-                        color = colors.secondaryText,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                    )
-                }
-            }
+        // 换算别每次重组都做, 仅跟随视频样式变化 (对照书架 shelfCoverHeightDp)
+        val coverHeight = remember(isVideoStyle) {
+            AppConfigProviders.get().bookshelfCoverHeight
+                .let { if (isVideoStyle) (it * 0.75f).toInt() else it }
+        }
+        Box(Modifier.height(coverHeight.dp)) {
+            coverSlot(Modifier.fillMaxHeight())
         }
         Column(
             Modifier
@@ -889,10 +899,11 @@ private fun SearchListItem(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (showShelfDot && inBookshelf) {
+                    // 对照 iv_in_bookshelf: 8dp 圆点 @color/md_green_600
                     Box(
                         Modifier
                             .size(8.dp)
-                            .background(colors.accent, CircleShape),
+                            .background(ShelfHitDotColor, CircleShape),
                     )
                 }
                 Text(
@@ -905,96 +916,51 @@ private fun SearchListItem(
                         .weight(1f)
                         .padding(start = 4.dp),
                 )
-                // 多源计数 (替代原 UnreadBadge, KMP 简化为文字)
-                if (originCount > 1) {
+                // 对照 bv_origin_count: 多源数徽标 (BadgeView, count<=0 自动隐藏)
+                UnreadBadge(originCount, highlight = false)
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ShelfRowIcon("ic_author")
+                Text(
+                    // 对照书架 ShelfListItem: 作者解析只算一次
+                    text = remember(book.author) { book.getRealAuthor() },
+                    color = colors.secondaryText,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            val kinds = remember(book.kind, book.wordCount) { book.getKindList() }
+            if (kinds.isNotEmpty()) KindLabels(kinds)
+            if (!book.latestChapterTitle.isNullOrEmpty()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ShelfRowIcon("ic_book_last")
                     Text(
-                        text = "$originCount",
+                        text = book.latestChapterTitle.toString(),
                         color = colors.secondaryText,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(start = 4.dp),
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
+            // 对照 SearchBook.trimIntro: 简介为空时回落"暂无简介", 恒占一行
+            // trim 只算一次, 别每次重组都做字符串处理
+            val introText = remember(intro) { intro?.trim()?.takeIf { it.isNotEmpty() } }
             Text(
-                text = book.getRealAuthor(),
+                text = introText ?: stringResource(Res.string.intro_show_null),
                 color = colors.secondaryText,
                 fontSize = 13.sp,
-                maxLines = 1,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
-            )
-            val kinds = book.getKindList()
-            if (kinds.isNotEmpty()) {
-                Text(
-                    text = kinds.joinToString(" "),
-                    color = colors.secondaryText,
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (!readTitle.isNullOrEmpty()) {
-                Text(
-                    text = readTitle,
-                    color = colors.secondaryText,
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (!book.latestChapterTitle.isNullOrEmpty()) {
-                Text(
-                    text = book.latestChapterTitle.toString(),
-                    color = colors.secondaryText,
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (!intro.isNullOrBlank()) {
-                Text(
-                    text = intro,
-                    color = colors.secondaryText,
-                    fontSize = 13.sp,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(start = 2.dp),
-                )
-            }
-            if (timeAgo != null) {
-                Text(
-                    text = timeAgo,
-                    color = colors.secondaryText,
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                )
-            }
-        }
-    }
-}
-
-/** 封面宽高比 (对照 CoverRatio: NOVEL=3:4 → 0.75, VIDEO=16:9) */
-private fun coverAspectRatio(isVideoCover: Boolean): Float = if (isVideoCover) 16f / 9f else 0.75f
-
-/** 搜索项占位封面 (KMP 无 ShelfCover, 用纯色 Box + 书名首字占位, 与原 SearchListItem 封面一致) */
-@Composable
-private fun SearchCoverPlaceholder(book: BaseBook, modifier: Modifier, isVideoCover: Boolean) {
-    val colors = AppTheme.colors
-    Box(
-        modifier
-            .aspectRatio(coverAspectRatio(isVideoCover))
-            .background(colors.bottomBackground),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (!book.coverUrl.isNullOrBlank()) {
-            Text(
-                text = book.name.take(2),
-                color = colors.secondaryText,
-                fontSize = 12.sp,
-                maxLines = 1,
+                modifier = Modifier.padding(start = 2.dp),
             )
         }
     }
 }
+
+/** 书架命中绿点 (对照 @color/md_green_600) */
+private val ShelfHitDotColor = Color(0xFF43A047)
 
 // ===== 进度条与启停按钮 =====
 

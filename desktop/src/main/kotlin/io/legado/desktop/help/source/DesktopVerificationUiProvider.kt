@@ -1,6 +1,8 @@
 package io.legado.desktop.help.source
 
+import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.AppPattern
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BaseSource
@@ -19,7 +21,9 @@ import io.legado.desktop.help.webview.WebViewWindowRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 /**
  * [VerificationUiProvider] 桌面端实现。
@@ -63,12 +67,43 @@ object DesktopVerificationUiProvider : VerificationUiProvider {
             throw NoStackTraceException(msg)
         }
         val sourceKey = source.getKey()
+        // 对照 WebViewModel.initData: 开窗前先算一次 AnalyzeUrl (含书源 header/登录头 JS),
+        // 成功后重拉复用同一份 headerMap, 避免重复 eval 且与原版传参一致
+        val analyzeUrl = runCatching {
+            AnalyzeUrlFactories.create(url, source = source)
+        }.getOrNull()
+        val headerMap = analyzeUrl?.headerMap?.toMap()
+        // 与原版 baseUrl 取值一致: 有 Origin 头用 Origin, 否则用解析后的地址
+        // (rawUrl 可能带 ",{...}" 选项串, 直接丢给浏览器会导航到无效地址)
+        val baseUrl = headerMap?.get("Origin") ?: analyzeUrl?.url?.takeIf { it.isNotBlank() } ?: url
+        // 对照 WebViewModel.initData 的三条 html 分支 (窗口非登录态 = 原版 !isLogin):
+        // 非 http/data 的 url 本身就是 html; POST 先 HTTP 拉 body; dataUri 解码。
+        // 验证流程强制后台线程 (shared 侧 check), 用 runBlocking 同步取回, 保持
+        // "引擎不可用 / 窗口打开失败"仍同步抛, 避免等待线程永久挂起。
+        // 仅在 AWT EDT 上阻塞会冻结 UI, 此时跳过同步抓取 (退回纯 loadUrl)。
+        val onEdt = runCatching { java.awt.EventQueue.isDispatchThread() }.getOrDefault(false)
+        val html = if (onEdt) null else analyzeUrl?.let { au ->
+            when {
+                !url.startsWith("data", true) && !url.startsWith("http", true) -> url
+                au.isPost() -> runBlocking {
+                    runCatching { au.getStrResponseAwait(allowWebView = false).body }.getOrNull()
+                }
+                AppPattern.dataUriRegex.matches(au.url) -> runBlocking {
+                    runCatching { au.getByteArrayAwait().toString(Charsets.UTF_8) }.getOrNull()
+                }
+                else -> null
+            }
+        }
         // 关窗回调里要用到句柄本身 (取网页源码), 故先声明再赋值
         var handle: WebViewWindowHandle? = null
         handle = engine.openWindow(
             WebViewWindowRequest(
-                url = url,
+                url = baseUrl,
+                html = html,
                 title = "$title - 完成验证后关闭本窗口",
+                // 对照 WebViewActivity.initWebView: 书源指定 UA 时同步给浏览器,
+                // 否则验证站点拿到的 UA 与后续 HTTP 重拉不一致, cookie 可能失效
+                userAgent = headerMap?.get(AppConst.UA_NAME),
                 cookieTag = sourceKey,
                 onClosed = {
                     scope.launch {
@@ -76,6 +111,7 @@ object DesktopVerificationUiProvider : VerificationUiProvider {
                             sourceKey = sourceKey,
                             url = url,
                             refetchAfterSuccess = refetchAfterSuccess != false,
+                            headerMap = headerMap,
                             html = { handle?.currentHtml() },
                         )
                     }
@@ -97,13 +133,20 @@ object DesktopVerificationUiProvider : VerificationUiProvider {
         sourceKey: String,
         url: String,
         refetchAfterSuccess: Boolean,
+        headerMap: Map<String, String>?,
         html: suspend () -> String?,
     ) {
         val result = runCatching {
             if (refetchAfterSuccess) {
                 val bookSource = AppDbProviders.get().bookSourceDao.getBookSource(sourceKey)
-                AnalyzeUrlFactories.create(url, source = bookSource)
-                    .getStrResponseAwait(allowWebView = false).body
+                // headerMapF / coroutineContext 与原版一致: 前者复用开窗前算好的请求头,
+                // 后者让重拉能随调用方取消
+                AnalyzeUrlFactories.create(
+                    url,
+                    source = bookSource,
+                    coroutineContext = currentCoroutineContext(),
+                    headerMapF = headerMap,
+                ).getStrResponseAwait(allowWebView = false).body
             } else {
                 html()
             }

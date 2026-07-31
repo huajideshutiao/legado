@@ -163,6 +163,26 @@ class VideoPlayViewModelShared(
             _error.value = "书源不存在"
             return
         }
+        // 书籍信息未加载 (tocUrl 空) 时先自动加载, 对照原版
+        // BaseReadViewModel.upBook → loadBookInfo: 搜索/发现直达播放或 DB 信息不全时,
+        // 先 getBookInfoAwait 补齐书籍信息 (tocUrl/章节数/简介等) 再拉目录。
+        if (book.tocUrl.isEmpty() || book.totalChapterNum == 0) {
+            runCatching {
+                WebBook.getBookInfoAwait(source, book)
+            }.onFailure {
+                AppLog.put("加载书籍信息出错\n${it.message}", it)
+                _error.value = "加载书籍信息失败: ${it.message}"
+                return
+            }
+            // 书架书信息更新落库 (对照原版 loadBookInfo 尾部: inBookshelf → book.save())
+            if (!book.isNotShelf) {
+                runCatching {
+                    AppDbProviders.get().bookDao.update(book)
+                }.onFailure {
+                    AppLog.put("保存书籍信息出错\n${it.message}", it)
+                }
+            }
+        }
         chapterList = runCatching {
             WebBook.getChapterListAwait(source, book).getOrThrow()
         }.onFailure {
@@ -259,7 +279,6 @@ class VideoPlayViewModelShared(
                 }
                 // 解析视频源 (复用同包工具函数)
                 parseVideoContent(content, source)
-                _loading.value = false
                 // 持久化阅读进度
                 if (persistProgress) {
                     saveRead(clampedIndex)
@@ -269,6 +288,9 @@ class VideoPlayViewModelShared(
             } catch (e: Exception) {
                 AppLog.put("加载章节出错\n${e.message}", e)
                 _error.value = "加载出错: ${e.message}"
+            } finally {
+                // 失败分支也要落 loading, 否则 UI 停在加载态看不到错误
+                _loading.value = false
             }
         }
     }

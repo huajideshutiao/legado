@@ -28,6 +28,7 @@ import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
 import coil3.size.Size
 import io.legado.app.data.entities.Book
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.image.coverDiskCacheKey
 import io.legado.app.help.image.sourceOrigin
 import io.legado.app.ui.compose.platform.rememberString
@@ -70,7 +71,12 @@ object DesktopBookCover {
      */
     @Composable
     fun BlurCoverBg(book: Book?, modifier: Modifier = Modifier) {
-        val painter = rememberCoverPainter(book?.getDisplayCover(), book?.origin, persistent = true)
+        val painter = rememberCoverPainter(
+            book?.getDisplayCover(),
+            book?.origin,
+            // 非书架书的封面落临时缓存区 (对照 app 端 BookInfoActivity 的 inBookshelf 分流)
+            persistent = book?.isNotShelf == false,
+        )
         val state by painter.state.collectAsState()
         Box(modifier) {
             if (state is AsyncImagePainter.State.Success) {
@@ -98,7 +104,11 @@ object DesktopBookCover {
      */
     @Composable
     fun InfoCover(book: Book?, modifier: Modifier = Modifier) {
-        val painter = rememberCoverPainter(book?.getDisplayCover(), book?.origin, persistent = true)
+        val painter = rememberCoverPainter(
+            book?.getDisplayCover(),
+            book?.origin,
+            persistent = book?.isNotShelf == false,
+        )
         val state by painter.state.collectAsState()
         if (state is AsyncImagePainter.State.Success) {
             Image(

@@ -29,6 +29,7 @@ import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.all_bookmark
 import legado.shared.generated.resources.export
@@ -158,7 +159,7 @@ private fun GroupHeader(text: String) {
         modifier = Modifier
             .fillMaxWidth()
             .background(colors.background)
-            .height(32.dp)
+            .height(DesignTokens.viewHeightDefault)
             .wrapContentHeight(Alignment.CenterVertically)
             .padding(horizontal = 16.dp),
     )

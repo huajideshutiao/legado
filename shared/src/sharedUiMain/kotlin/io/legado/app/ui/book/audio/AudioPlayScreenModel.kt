@@ -14,6 +14,7 @@ import io.legado.app.model.AudioPlayShared
 import io.legado.app.ui.root.ScreenModel
 import androidx.compose.ui.Modifier
 import io.legado.app.utils.FlowBus
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -61,8 +62,6 @@ interface AudioPlayPlatformProvider {
 data class AudioPlayOverflowActions(
     val onLogin: () -> Unit,
     val onCopyAudioUrl: () -> Unit,
-    /** 浏览器打开播放 URL (对照 PlatformCapabilities.openExternalUrl) */
-    val onOpenAudioUrl: () -> Unit,
     val onSetSourceVariable: () -> Unit,
     val onSetBookVariable: () -> Unit,
     val onEditBookSource: () -> Unit,
@@ -72,6 +71,8 @@ data class AudioPlayOverflowActions(
     val hasLogin: Boolean,
     /** 唤醒锁切换 (Android 专属, null=不显示; 对照 AppConfig.audioPlayUseWakeLock) */
     val onToggleWakeLock: (() -> Unit)? = null,
+    /** 原版 audio_play.xml 无"浏览器打开"菜单项, 菜单已移除; 仅留形参兼容 app 端调用点 */
+    val onOpenAudioUrl: () -> Unit = {},
 )
 
 object AudioPlayPlatformProviders {

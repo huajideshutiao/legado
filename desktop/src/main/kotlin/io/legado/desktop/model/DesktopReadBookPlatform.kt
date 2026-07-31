@@ -3,12 +3,13 @@ package io.legado.desktop.model
 import io.legado.app.model.ReadBookPlatform
 import io.legado.app.model.ReadBookPlatforms
 import io.legado.app.model.fileBook.TextFile
+import io.legado.desktop.help.tts.DesktopReadAloudHost
 
 /**
  * 桌面端 [ReadBookPlatform]: 供 shared [io.legado.app.model.ReadBookShared] 回调平台副作用。
  *
- * 对照 app 端 `AndroidReadBookPlatform`, 桌面端只接缓存运行态与本地 txt 分章缓存,
- * 朗读/图片缓存两组保持接口默认空实现 (原因见各 override 注释)。
+ * 对照 app 端 `AndroidReadBookPlatform`, 桌面端接朗读宿主 / 缓存运行态 / 本地 txt 分章缓存,
+ * 图片缓存保持接口默认空实现 (原因见 override 注释)。
  */
 object DesktopReadBookPlatform : ReadBookPlatform {
 
@@ -23,10 +24,21 @@ object DesktopReadBookPlatform : ReadBookPlatform {
         TextFile.clear()
     }
 
-    // 朗读 (isReadAloudRun/isReadAloudPause/playReadAloud/pauseReadAloud) 用接口默认值:
-    // 桌面端没有朗读服务宿主 (ReadAloudControllerShared 尚无接入点), 默认值等价于"未朗读",
-    // 阅读编排照常跑, 只是翻页不联动朗读。
-    // clearImageCache 同样保持空实现: 桌面端阅读内联图无独立位图缓存,
+    // 朗读: 桥接到 DesktopReadAloudHost (ReadAloudControllerShared + 桌面 TTS 引擎),
+    // 对照 app 端 AndroidReadBookPlatform 的 BaseReadAloudService / ReadAloud 门面。
+    override val isReadAloudRun: Boolean get() = DesktopReadAloudHost.isRun
+
+    override val isReadAloudPause: Boolean get() = DesktopReadAloudHost.isPause
+
+    override fun playReadAloud(play: Boolean, startPos: Int) {
+        DesktopReadAloudHost.play(play, startPos)
+    }
+
+    override fun pauseReadAloud() {
+        DesktopReadAloudHost.pause()
+    }
+
+    // clearImageCache 保持空实现: 桌面端阅读内联图无独立位图缓存,
     // Coil 单例内存缓存与书架封面共用, 退出阅读时清会误伤封面。
 }
 

@@ -46,7 +46,7 @@ class TxtTocRuleScreenModel(
         scope.launch {
             appDb.txtTocRuleDao.observeAll()
                 .catch {
-                    AppLog.put("TXT目录规则界面获取数据失败\n${it.localizedMessage}", it)
+                    AppLog.put("TXT目录规则界面获取数据失败\n${it.message}", it)
                 }.flowOn(IoDispatcher).conflate().collect { rules ->
                     val selected = _state.value.selected.intersect(rules.map { it.id }.toSet())
                     _state.value = _state.value.copy(tocRules = rules, selected = selected)

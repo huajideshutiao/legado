@@ -30,6 +30,7 @@ import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.http.withCharset
 import io.ktor.utils.io.charsets.Charsets
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -125,7 +126,7 @@ actual open class WebDav actual constructor(
     /**
      * 获取当前url文件信息
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     actual suspend fun getWebDavFile(): WebDavFile? {
         return propFindResponse(depth = 0)?.let {
             parseBody(it).firstOrNull()
@@ -136,7 +137,7 @@ actual open class WebDav actual constructor(
      * 列出当前路径下的文件
      * @return 文件列表
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     actual suspend fun listFiles(): List<WebDavFile> {
         propFindResponse()?.let { body ->
             val normalizedPath = path.removeSuffix("/")
@@ -150,7 +151,7 @@ actual open class WebDav actual constructor(
     /**
      * @param propsList 指定列出文件的哪些属性
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     private suspend fun propFindResponse(
         propsList: List<String> = emptyList(),
         depth: Int = 1
@@ -335,7 +336,7 @@ actual open class WebDav actual constructor(
      * @param savedPath       本地的完整路径，包括最后的文件名
      * @param replaceExisting 是否替换本地的同名文件
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     actual suspend fun downloadTo(savedPath: String, replaceExisting: Boolean) {
         val file = File(savedPath)
         if (file.exists() && !replaceExisting) {
@@ -351,7 +352,7 @@ actual open class WebDav actual constructor(
     /**
      * 下载文件,返回ByteArray
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     actual suspend fun download(): ByteArray {
         val url = httpUrl ?: throw WebDavException("WebDav下载出错\nurl为空")
         return kotlin.runCatching {
@@ -380,7 +381,7 @@ actual open class WebDav actual constructor(
      *
      * @param contentType 上传 Content-Type, 默认 [DEFAULT_CONTENT_TYPE]
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     actual suspend fun upload(localPath: String, contentType: String) {
         val file = File(localPath)
         if (!file.exists()) {
@@ -395,7 +396,7 @@ actual open class WebDav actual constructor(
     /**
      * 上传文件(字节数组)
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     actual suspend fun upload(byteArray: ByteArray, contentType: String) {
         kotlin.runCatching {
             withContext(Dispatchers.Default) {
@@ -420,7 +421,7 @@ actual open class WebDav actual constructor(
      * **nativeMain 端降级**: 返回 ByteArrayInputStream 风格 (全量 bytes 装入内存),
      * jvmAndAndroidMain 为 OkHttp 流式 byteStream(); 大文件场景内存占用更高。
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     actual suspend fun downloadInputStream(): InputStream {
         val url = httpUrl ?: throw WebDavException("WebDav下载出错\nurl为空")
         val bytes = kotlin.runCatching {
@@ -493,7 +494,7 @@ actual open class WebDav actual constructor(
      * 注: nativeMain 端 Ktor 的 body 读取是 suspend, 故本函数为 suspend;
      * 调用方均在 suspend 函数中, 无影响。
      */
-    @Throws(WebDavException::class)
+    @Throws(WebDavException::class, CancellationException::class)
     private suspend fun checkResult(response: HttpResponse) {
         if (!response.status.isSuccess()) {
             val code = response.status.value

@@ -8,7 +8,7 @@ package io.legado.app.help.crypto
  * 提供完整能力；iOS / 鸿蒙 半区可提供 actual 实现或抛 UnsupportedOperationException 降级。
  *
  * 接口签名对齐 jvmAndAndroidMain 既有 public 方法，不暴露 hutool 类型，保证调用方
- * （JsEncodeUtilsAndroid 等）跨端引用透明兼容。jvmAndAndroidMain 实现类仅追加
+ * （JsEncodeUtilsDefaults 等）跨端引用透明兼容。jvmAndAndroidMain 实现类仅追加
  * `: AsymmetricCrypto` 标记，方法体零变化。
  *
  * 注：interface 方法不定义默认值，由各 actual 实现类自行指定（jvmAndAndroidMain 保留

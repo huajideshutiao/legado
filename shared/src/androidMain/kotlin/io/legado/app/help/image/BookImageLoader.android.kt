@@ -139,6 +139,8 @@ fun buildBookImageLoader(
             add(DecodedCoverKeyer(), DecodedCoverBytes::class)
             add(DecodedCoverFetcher.Factory(), DecodedCoverBytes::class)
             add(SourceOriginHeaderInterceptor())
+            // 漫画页: 经 BookHelp 缓存 + AnalyzeUrl 下载 + 解密取字节 (裸 url 走不通防盗链/解密站点)
+            add(MangaModelFetcher.Factory())
             add(OkHttpNetworkFetcherFactory(callFactory = { sharedClient }))
             // GIF: API 28+ 用 AnimatedImageDecoder(还支持 animated WebP/HEIF), 低版本用 GifDecoder(Movie)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {

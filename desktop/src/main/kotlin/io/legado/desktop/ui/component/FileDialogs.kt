@@ -13,7 +13,9 @@ import java.io.File
  * [java.awt.FileDialog] —— AWT 在 mac 上本就是原生 NSOpenPanel, 在 Linux 上是 GTK 对话框, 观感正常。
  * 仅 Windows 的 AWT 实现落在 comdlg32 旧版 `GetOpenFileName` 上, 视觉停留在 Win9x 风格, 故单独替换。
  *
- * 所有方法阻塞当前线程直到用户选择/取消, 须在 IO 线程或 EDT 调用。
+ * 所有方法阻塞当前线程直到用户选择/取消, 但两条分支在 EDT 上都会继续分发 AWT 事件
+ * (Windows 分支见 [WindowsFileDialogs.show], AWT 分支靠模态 Dialog 自带的二级事件循环),
+ * 故 EDT / IO 线程调用均安全。
  */
 object FileDialogs {
 
@@ -102,21 +104,30 @@ object FileDialogs {
         defaultName: String? = null,
         initialDir: File? = null,
     ): File? {
-        val dialog = FileDialog(Frame(), title ?: "", mode)
-        initialDir?.takeIf { it.isDirectory }?.let { dialog.directory = it.absolutePath }
-        if (fileMode) {
-            // 目录选择：FilenameFilter 配合 setFile("*")，在 Linux 选目录后 getDirectory 返回选中目录
-            dialog.file = "*"
-        }
-        if (extensions.isNotEmpty()) {
-            dialog.setFilenameFilter { _, name ->
-                extensions.any { ext -> name.endsWith(".$ext", ignoreCase = true) }
+        // 属主优先用当前应用窗口; 取不到才造临时 Frame, 用完必须 dispose 否则每次调用泄漏一个原生窗口
+        val parent = ownerWindow() as? Frame
+        val temp = if (parent == null) Frame() else null
+        val dialog = FileDialog(parent ?: temp!!, title ?: "", mode)
+        try {
+            initialDir?.takeIf { it.isDirectory }?.let { dialog.directory = it.absolutePath }
+            if (fileMode) {
+                // 目录选择：FilenameFilter 配合 setFile("*")，在 Linux 选目录后 getDirectory 返回选中目录
+                dialog.file = "*"
             }
+            if (extensions.isNotEmpty()) {
+                dialog.setFilenameFilter { _, name ->
+                    extensions.any { ext -> name.endsWith(".$ext", ignoreCase = true) }
+                }
+            }
+            defaultName?.let { dialog.file = it }
+            // 模态 show: 在 EDT 上 AWT 自行开二级事件循环 (UI 不冻结), 其它线程上只阻塞该线程
+            dialog.isVisible = true
+            val dir = dialog.directory ?: return null
+            val file = dialog.file ?: return null
+            return File(dir, file).takeIf { it.exists() || mode == FileDialog.SAVE }
+        } finally {
+            dialog.dispose()
+            temp?.dispose()
         }
-        defaultName?.let { dialog.file = it }
-        dialog.isVisible = true
-        val dir = dialog.directory ?: return null
-        val file = dialog.file ?: return null
-        return File(dir, file).takeIf { it.exists() || mode == FileDialog.SAVE }
     }
 }

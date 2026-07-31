@@ -1,7 +1,5 @@
 package io.legado.app.ui.main.home
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Surface
@@ -11,12 +9,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.window.Dialog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.HomeSection
 import io.legado.app.help.HomeTabHelpShared
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
@@ -79,64 +76,61 @@ fun HomeSectionManageDialog(
     )
     val deleteText = stringResource(Res.string.delete)
 
-    Dialog(
+    AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
-        Box(Modifier.fillMaxSize()) {
-            // 全高型: 高度锁定 0.8 屏高
-            Surface(
-                modifier = Modifier
-                    .appDialogSize(fullHeight = true)
-                    .align(Alignment.Center),
-                shape = DesignTokens.shapeDefault,
-                color = colors.fillet,
-            ) {
-                RuleManageScaffold(
-                    items = sections,
-                    itemKey = { it.id },
-                    onMove = { from, to ->
-                        sections = sections.toMutableList().apply { add(to, removeAt(from)) }
-                    },
-                    emptyText = stringResource(Res.string.home_manage_empty),
-                    titleBar = {
-                        DialogTitleBar(
-                            title = stringResource(Res.string.home_manage_for_tab, tabTitle),
-                            onBack = onDismiss,
-                            actions = {
-                                IconButton(onClick = { addingSection = true }) {
-                                    Icon(
-                                        painter = painterResource(Res.drawable.ic_add),
-                                        contentDescription = stringResource(Res.string.home_add_section),
-                                        tint = colors.primaryText,
-                                    )
-                                }
-                            },
-                        )
-                    },
-                ) { item ->
-                    HomeManageItem(
-                        title = item.title,
-                        desc = "${styleNames.getOrElse(item.style) { styleNames[0] }} · ${item.sourceName}",
-                        actionText = deleteText,
-                        onClick = { editingSection = item },
-                        onAction = {
-                            HomeTabHelpShared.removeSection(tabTitle, item.id)
-                            postEvent(
-                                EventBus.HOME_SECTION,
-                                HomeSectionEvent(HomeSectionEvent.REMOVE, tabTitle, item)
-                            )
-                            upData()
-                        },
-                        onPersistOrder = {
-                            HomeTabHelpShared.saveSectionsOrder(tabTitle, sections)
-                            postEvent(
-                                EventBus.HOME_SECTION,
-                                HomeSectionEvent(HomeSectionEvent.REORDER, tabTitle)
-                            )
+        // 不能套 fillMaxSize: 撑满窗口会让整窗都算"框内", 点外部永远关不掉; 居中由 RootMeasurePolicy 负责。
+        // 全高型: 高度锁定 0.8 屏高
+        Surface(
+            modifier = Modifier.appDialogSize(fullHeight = true),
+            shape = DesignTokens.shapeDefault,
+            color = colors.fillet,
+        ) {
+            RuleManageScaffold(
+                items = sections,
+                itemKey = { it.id },
+                onMove = { from, to ->
+                    sections = sections.toMutableList().apply { add(to, removeAt(from)) }
+                },
+                emptyText = stringResource(Res.string.home_manage_empty),
+                titleBar = {
+                    DialogTitleBar(
+                        title = stringResource(Res.string.home_manage_for_tab, tabTitle),
+                        onBack = onDismiss,
+                        actions = {
+                            IconButton(onClick = { addingSection = true }) {
+                                Icon(
+                                    painter = painterResource(Res.drawable.ic_add),
+                                    contentDescription = stringResource(Res.string.home_add_section),
+                                    tint = colors.primaryText,
+                                )
+                            }
                         },
                     )
-                }
+                },
+            ) { item ->
+                HomeManageItem(
+                    title = item.title,
+                    desc = "${styleNames.getOrElse(item.style) { styleNames[0] }} · ${item.sourceName}",
+                    actionText = deleteText,
+                    onClick = { editingSection = item },
+                    onAction = {
+                        HomeTabHelpShared.removeSection(tabTitle, item.id)
+                        postEvent(
+                            EventBus.HOME_SECTION,
+                            HomeSectionEvent(HomeSectionEvent.REMOVE, tabTitle, item)
+                        )
+                        upData()
+                    },
+                    onPersistOrder = {
+                        HomeTabHelpShared.saveSectionsOrder(tabTitle, sections)
+                        postEvent(
+                            EventBus.HOME_SECTION,
+                            HomeSectionEvent(HomeSectionEvent.REORDER, tabTitle)
+                        )
+                    },
+                )
             }
         }
     }

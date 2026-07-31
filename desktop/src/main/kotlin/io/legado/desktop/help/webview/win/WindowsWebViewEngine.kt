@@ -223,7 +223,12 @@ private class WebView2WindowHandle(
             }
         }
         created.onWindowClose = { close() }
-        created.navigate(request.url)
+        val html = request.html
+        if (!html.isNullOrEmpty()) {
+            created.navigateToString(html)
+        } else {
+            created.navigate(request.url)
+        }
     }
 
     override suspend fun currentHtml(): String? {

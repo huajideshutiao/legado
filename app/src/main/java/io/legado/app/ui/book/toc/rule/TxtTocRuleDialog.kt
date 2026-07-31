@@ -33,7 +33,6 @@ import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.TxtTocRule
-import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.association.ImportTxtTocRuleDialog
 import io.legado.app.ui.compose.component.AppRadioButton

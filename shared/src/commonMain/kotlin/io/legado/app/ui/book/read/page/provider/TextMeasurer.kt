@@ -42,14 +42,22 @@ interface TextMeasurer {
 object TextMeasurerProviders {
 
     @Volatile
-    private var factory: ((textSizePx: Float, letterSpacingPx: Float) -> TextMeasurer)? = null
+    private var factory: TextMeasurerFactory? = null
 
     /** 宿主启动早期注册一次（任何章节排版之前）。 */
-    fun register(factory: (textSizePx: Float, letterSpacingPx: Float) -> TextMeasurer) {
+    fun register(factory: TextMeasurerFactory) {
         this.factory = factory
     }
 
     /** 未注册返回 null，由调用方回退 [SimpleTextMeasurer]。 */
-    fun createOrNull(textSizePx: Float, letterSpacingPx: Float): TextMeasurer? =
-        factory?.invoke(textSizePx, letterSpacingPx)
+    fun createOrNull(textSizePx: Float, letterSpacingPx: Float, fontPath: String): TextMeasurer? =
+        factory?.invoke(textSizePx, letterSpacingPx, fontPath)
 }
+
+/**
+ * 度量器工厂：[fontPath] 为 `ReadBookConfig.textFont`（自定义字体文件绝对路径，空 = 默认字体）。
+ * 实现必须与绘制侧 `loadReaderFontFamily` 读同一个文件、失败时回落同一个默认字体，
+ * 否则「A 字体度量 / B 字体绘制」会让正文错位。
+ */
+typealias TextMeasurerFactory =
+        (textSizePx: Float, letterSpacingPx: Float, fontPath: String) -> TextMeasurer

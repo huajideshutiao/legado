@@ -38,8 +38,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import io.legado.app.data.entities.HttpTTS
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppTextButton
@@ -122,7 +122,7 @@ fun SpeakEngineDialog(
     // 当前选中引擎 id 字符串 (本地状态, 用于即时更新 RadioButton 选中态)
     var selected by remember(selectedEngineUrl) { mutableStateOf(selectedEngineUrl) }
 
-    Dialog(
+    AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
@@ -186,7 +186,7 @@ fun SpeakEngineDialog(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .height(56.dp)
+                        .height(DesignTokens.viewHeightMax)
                         .padding(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
@@ -223,7 +223,7 @@ private fun EngineRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .height(48.dp)
+            .height(DesignTokens.viewHeightXl)
             .clickable(onClick = onSelect),
         verticalAlignment = Alignment.CenterVertically,
     ) {

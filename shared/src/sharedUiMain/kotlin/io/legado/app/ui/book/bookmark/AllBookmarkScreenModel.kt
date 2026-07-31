@@ -42,7 +42,7 @@ class AllBookmarkScreenModel(
             } else {
                 dao.flowAll()
             }
-            flow.catch { AppLog.put("所有书签界面获取数据失败\n${it.localizedMessage}", it) }
+            flow.catch { AppLog.put("所有书签界面获取数据失败\n${it.message}", it) }
                 .flowOn(Dispatchers.Default)
                 .collect { _state.value = AllBookmarkUiState(it) }
         }

@@ -1,7 +1,7 @@
 package io.legado.app.help
 
 /**
- * JsExtensionsCommon file IO 跨平台门面 (expect object)。
+ * 跨平台 file IO 门面 (expect object)。
  *
  * # 背景
  * 原 app 端 JsExtensions 的 8 个 file IO 方法 (readFile/readTxtFile/deleteFile/
@@ -14,7 +14,9 @@ package io.legado.app.help
  * # 设计
  * - 入参统一 String 路径 (避免 commonMain 引入 JDK File 类型, 模式参考 [JsExtensionsPlatform])
  * - 缓存目录走 [io.legado.app.help.file.AppFilesDirs] (commonMain 已下沉)
- * - 仅 JsExtensionsCommon 使用, 标记 internal 避免污染公开 API
+ * - 使用方: [JsExtensionsCommon] 文件方法 + [io.legado.app.help.book.BookHelpShared]
+ *   缓存管理编排 (clearInvalidBookFolders/evictMangaCache, 三端 BookStorage 统一委托),
+ *   标记 internal 避免污染公开 API
  *
  * 模式参考 [JsExtensionsPlatform] / [io.legado.app.utils.FileUtilsBase]。
  */
@@ -73,4 +75,24 @@ internal expect object FileUtilsCommon {
      * 成功返回 true。
      */
     fun createFileReplace(path: String): Boolean
+
+    /**
+     * 列出目录下所有一级子目录的绝对路径 (不含文件)。
+     * 非目录或不存在返回空列表。
+     */
+    fun listSubDirs(path: String): List<String>
+
+    /**
+     * 递归统计目录下所有普通文件的大小总和 (字节); 文件返回自身大小, 不存在返回 0。
+     */
+    fun getDirSize(path: String): Long
+
+    /** 文件/目录的最后修改时间戳 (毫秒, epoch), 不存在返回 0。 */
+    fun lastModified(path: String): Long
+
+    /**
+     * 取路径最后一段名称 (跨平台: 兼容 '/' 与 '\\' 分隔符, 纯字符串操作)。
+     * 尾部带分隔符的路径返回空串。
+     */
+    fun getName(path: String): String
 }

@@ -22,8 +22,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.image.ImageBitmapLoader
@@ -150,6 +148,17 @@ fun PhotoViewDialog(
 }
 
 /**
+ * 全屏大图 Overlay 的平台承载: 各端 actual 用对应平台的 Dialog 配置让黑色背景
+ * 铺满整屏并延伸到系统栏之下 (Android: decorFitsSystemWindows=false;
+ * iOS/鸿蒙/桌面: usePlatformInsets=false)。
+ */
+@Composable
+internal expect fun PlatformPhotoOverlayDialog(
+    onDismissRequest: () -> Unit,
+    content: @Composable () -> Unit,
+)
+
+/**
  * 大图查看 Overlay: 全屏铺满 + 黑色半透明底色, 图片加载和缩放复用 [PhotoDialogContent]。
  *
  * @param src 图片路径 (http(s):// / file:// / 绝对路径 / data URI)
@@ -164,14 +173,7 @@ fun PhotoViewOverlayDialog(
     book: Book? = null,
     bookSource: BookSource? = null,
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = false,
-        ),
-    ) {
+    PlatformPhotoOverlayDialog(onDismissRequest = onDismiss) {
         PhotoDialogContent(
             src = src,
             modifier = Modifier

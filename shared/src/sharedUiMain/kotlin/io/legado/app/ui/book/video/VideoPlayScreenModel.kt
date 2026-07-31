@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 
 /**
  * 视频播放页 shared ScreenModel: 适配 [VideoPlayViewModelShared] 各 StateFlow
@@ -70,6 +71,10 @@ interface VideoPlayPlatformProvider {
         onPlaybackEnded: () -> Unit,
     ): VideoPlayerController
 
+    /**
+     * 渲染视频区。加载/错误/"播放器未安装"等占位一律由本方法自己出
+     * (可复用 [LoadingOverlay]/[ErrorOverlay]), 共享层不叠通用遮罩。
+     */
     @Composable
     fun Render(
         controller: VideoPlayerController,
@@ -79,6 +84,17 @@ interface VideoPlayPlatformProvider {
 
     fun applyFullscreen(enabled: Boolean) {}
     fun toggleOrientation() {}
+
+    // 系统级全屏 (隐藏系统底栏/窗口装饰, 对照 app applyFullscreen 在桌面端的增强版);
+    // 与 applyFullscreen (右上角菜单的窗口内全屏) 区分
+    fun applySystemFullScreen(enabled: Boolean) {}
+
+    /**
+     * 视频页内是否有 Compose 弹层 (菜单/对话框) 打开。
+     * 平台可借此处理 airspace 遮挡: 桌面端 mpv 是重量级原生窗口, 弹层会被盖住,
+     * 弹出时临时隐藏 mpv 窗口, 关闭后恢复。
+     */
+    fun setOverlayVisible(visible: Boolean) {}
 }
 
 object VideoPlayPlatformProviders {
@@ -237,6 +253,10 @@ class VideoPlayScreenModel(
                 it.copy(isFullScreen = event.isFullScreen)
             }
 
+            is VideoPlayUiEvent.UpdateSystemFullScreen -> _state.update {
+                it.copy(isSystemFullScreen = event.isSystemFullScreen)
+            }
+
             is VideoPlayUiEvent.UpdatePlayWhenReady -> _state.update {
                 it.copy(playWhenReady = event.playWhenReady)
             }
@@ -310,11 +330,13 @@ class VideoPlayScreenModel(
         }
     }
 
-    /** 切换全屏 (对照 Activity toggleFullScreen: applyFullScreen(!isFullScreen))。
-     *  平台专属 (system bar 显隐 + 横竖屏) 待 host 注入, 此处仅翻转 state 标记 */
+    /** 切换窗口内全屏 (对照 Activity toggleFullScreen: applyFullScreen(!isFullScreen))。
+     *  与系统级全屏互斥: 进入窗口内全屏前退出系统级全屏 */
     fun onToggleFullScreen() {
         val enabled = !_state.value.isFullScreen
-        _state.update { it.copy(isFullScreen = enabled) }
+        _state.update { it.copy(isFullScreen = enabled, isSystemFullScreen = false) }
+        // 互斥: 进入窗口内全屏前退出系统级全屏
+        if (enabled) platform?.applySystemFullScreen(false)
         platform?.applyFullscreen(enabled)
     }
 
@@ -327,6 +349,18 @@ class VideoPlayScreenModel(
      *  平台专属, 待 host 注入 */
     fun onToggleOrientationFullscreen() {
         platform?.toggleOrientation()
+    }
+
+    // 系统级全屏切换 (桌面端隐藏系统底栏/窗口装饰; 与窗口内全屏互斥)
+    fun onToggleSystemFullScreen() {
+        val enabled = !_state.value.isSystemFullScreen
+        _state.update { it.copy(isSystemFullScreen = enabled, isFullScreen = false) }
+        platform?.applySystemFullScreen(enabled)
+    }
+
+    fun setSystemFullScreen(enabled: Boolean) {
+        _state.update { it.copy(isSystemFullScreen = enabled) }
+        platform?.applySystemFullScreen(enabled)
     }
 
     /** 登录 (对照 Activity showLogin: IntentData + showLoginDialog)。
@@ -437,6 +471,7 @@ class VideoPlayScreenModel(
         // 再释放播放器 (对照 app onDestroy: player.release)
         controller?.release()
         platform?.applyFullscreen(false)
+        platform?.applySystemFullScreen(false)
         scope.cancel()
     }
 }
@@ -456,6 +491,8 @@ data class VideoPlayUiState(
     val inShelf: Boolean = false,
     /** 是否全屏 (对照 Activity isFullScreen) */
     val isFullScreen: Boolean = false,
+    /** 是否系统级全屏 (隐藏系统底栏/窗口装饰, 对照 app applyFullscreen 在桌面端的增强) */
+    val isSystemFullScreen: Boolean = false,
     /** 播放就绪态 (对照 Activity playWhenReady) */
     val playWhenReady: Boolean = false,
     /** 播放器状态 (对照 Activity playbackState, Player.STATE_*) */
@@ -518,6 +555,9 @@ sealed interface VideoPlayUiEvent {
 
     /** 全屏状态更新 (对齐 Activity isFullScreen) */
     data class UpdateFullScreen(val isFullScreen: Boolean) : VideoPlayUiEvent
+
+    /** 系统级全屏状态更新 (对齐桌面端 applySystemFullScreen) */
+    data class UpdateSystemFullScreen(val isSystemFullScreen: Boolean) : VideoPlayUiEvent
 
     /** 播放就绪态更新 (对齐 onPlayWhenReadyChanged) */
     data class UpdatePlayWhenReady(val playWhenReady: Boolean) : VideoPlayUiEvent

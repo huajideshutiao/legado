@@ -223,7 +223,7 @@ class ExploreScreenModel : ScreenModel {
                 runScriptWithContext { source.evalJS(js) }
             }.onFailure { e ->
                 ensureActive()
-                AppLog.put("JS错误${e.localizedMessage}", e, true)
+                AppLog.put("JS错误${e.message}", e, true)
             }
         }
     }

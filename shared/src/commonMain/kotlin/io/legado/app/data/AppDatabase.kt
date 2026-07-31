@@ -1,8 +1,10 @@
 package io.legado.app.data
 
 import androidx.room3.AutoMigration
+import androidx.room3.ConstructedBy
 import androidx.room3.Database
 import androidx.room3.RoomDatabase
+import androidx.room3.RoomDatabaseConstructor
 import androidx.room3.ColumnTypeConverters
 import androidx.room3.migration.AutoMigrationSpec
 import androidx.sqlite.SQLiteConnection
@@ -71,6 +73,8 @@ import io.legado.app.data.entities.TxtTocRule
 // 需在 Database 级可见 ReadConfig <-> String 转换链 (与 Book 实体上的 ENTITY 作用域双重注册,
 // 详见 Book.kt 顶部注释)。缺此注册会导致 iOS/ohos KSP 报 ReadConfig 类型链解析失败。
 @ColumnTypeConverters(Book.Converters::class)
+// 非 Android 平台 (iOS/desktop/鸿蒙) Room3 要求显式 @ConstructedBy 提供实例工厂
+@ConstructedBy(AppDatabaseConstructor::class)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract val bookDao: BookDao
@@ -99,6 +103,12 @@ abstract class AppDatabase : RoomDatabase() {
         const val BOOK_SOURCE_TABLE_NAME = "book_sources"
     }
 
+}
+
+// Room3 编译期生成 actual (KSP expect/actual 约定), 各平台源集无需手写
+@Suppress("KotlinNoActualForExpect")
+expect object AppDatabaseConstructor : RoomDatabaseConstructor<AppDatabase> {
+    override fun initialize(): AppDatabase
 }
 
 // 历史数据清洗：原本写在 AppDatabase.onOpen 里，每次打开库都会跑，

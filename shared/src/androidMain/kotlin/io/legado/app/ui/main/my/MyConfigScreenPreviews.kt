@@ -108,7 +108,5 @@ fun MyConfigScreenWithRssEntryPreview() = LegadoThemePreview {
         onBookmark = {},
         onReadRecord = {},
         onAbout = {},
-        showRssEntry = true,
-        onRssSources = {},
     )
 }

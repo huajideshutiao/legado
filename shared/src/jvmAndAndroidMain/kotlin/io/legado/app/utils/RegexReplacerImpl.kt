@@ -7,10 +7,12 @@ import io.legado.app.model.script.JsBindings
 import io.legado.app.model.script.JsEngines
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.util.concurrent.Executors
 import java.util.regex.Matcher
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.resume
@@ -24,13 +26,22 @@ import kotlin.coroutines.resumeWithException
  * - java.util.regex.Matcher 在 jvmAndAndroidMain 可用 (Kotlin common Regex 无 appendReplacement/quoteReplacement)
  * - runBlocking 经 [runBlockingInScope] expect/actual 桥接 (commonMain 禁用 runBlocking)
  * - Android 专属的 longToastOnUi / CrashHandler.saveCrashInfo2File / appCtx.restart()
- *   经 [RegexErrorHandlers] 注入 (app 端注册), 桌面端不注册时静默跳过
+ *   经 [RegexErrorHandlers] 注入 (app 端注册 Android 实现, 桌面端注册 DesktopRegexErrorHandler)
  *
  * app 端 [RegexExtensions.kt] 改为薄壳, CharSequence.replace 扩展委托到本实现,
  * WebBookProvidersImpl 的 RegexReplacer 实现亦经本类完成替换。
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 object RegexReplacerImpl : RegexReplacer {
+
+    /**
+     * 匹配专用线程池。灾难性回溯的正则不响应中断, 超时后那条线程会一直吃满一核并永久泄漏;
+     * 跑在 Dispatchers.IO 上会逐个吃掉共享 IO 线程, 最终把网络/数据库一起拖死。
+     * 独立 cached 池 (daemon) 把泄漏隔离在这里, 不影响其余 IO 任务。
+     */
+    private val matchDispatcher = Executors.newCachedThreadPool { runnable ->
+        Thread(runnable, "regex-replace").apply { isDaemon = true }
+    }.asCoroutineDispatcher()
 
     override fun replace(
         source: CharSequence,
@@ -43,7 +54,7 @@ object RegexReplacerImpl : RegexReplacer {
         return runBlockingInScope(EmptyCoroutineContext) {
             suspendCancellableCoroutine { block ->
                 Coroutine.async(executeContext = Dispatchers.IO) {
-                    val job = launch {
+                    val job = launch(matchDispatcher) {
                         try {
                             val pattern = regex.toPattern()
                             val matcher = pattern.matcher(source)

@@ -809,7 +809,7 @@ class ChangeBookSourceViewModelShared(
             appDb.bookSourceDao.getBookSource(searchBook.origin)?.let { source ->
                 val minOrder = appDb.bookSourceDao.minOrder() - 1
                 source.customOrder = minOrder
-                searchBook.originOrder = source.customOrder
+                replaceSearchBook(searchBook, source.customOrder)
                 appDb.bookSourceDao.update(source)
             }
             searchCallback?.upAdapter()
@@ -826,10 +826,23 @@ class ChangeBookSourceViewModelShared(
             appDb.bookSourceDao.getBookSource(searchBook.origin)?.let { source ->
                 val maxOrder = appDb.bookSourceDao.maxOrder() + 1
                 source.customOrder = maxOrder
-                searchBook.originOrder = source.customOrder
+                replaceSearchBook(searchBook, source.customOrder)
                 appDb.bookSourceDao.update(source)
             }
             searchCallback?.upAdapter()
+        }
+    }
+
+    /**
+     * 用新实例替换 searchBooks 中的条目 (原地改 originOrder 不会改变 equals, Compose 判定未变不重组)。
+     * copy 丢失非构造属性, 故手动带上 infoHtml/tocHtml 缓存。
+     */
+    private fun replaceSearchBook(searchBook: SearchBook, originOrder: Int) {
+        val index = searchBooks.indexOf(searchBook)
+        if (index < 0) return
+        searchBooks[index] = searchBook.copy(originOrder = originOrder).also {
+            it.infoHtml = searchBook.infoHtml
+            it.tocHtml = searchBook.tocHtml
         }
     }
 

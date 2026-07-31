@@ -117,9 +117,21 @@ dependencies {
     implementation("org.slf4j:slf4j-nop:2.0.17")
     // P0.3 桌面端真实 WebView slot: JavaFX WebView 经 SwingPanel(JFXPanel) 嵌入 Compose
     // javafx-web 提供 javafx.scene.web.WebView, javafx-swing 提供 javafx.embed.swing.JFXPanel
-    // OpenJFX 21 默认按当前 OS 解析 classifier (win/linux/mac), 与桌面打包目标一致
-    implementation("org.openjfx:javafx-web:21.0.5")
-    implementation("org.openjfx:javafx-swing:21.0.5")
+    // OpenJFX 21 Maven 构件的坑: 主 jar 是空壳 (0KB), 全部类在平台 classifier (win/linux/mac)
+    // 里, 且传递依赖也会拉到空主 jar —— 必须显式给每个模块挂当前 OS 的 classifier。
+    // nativeDistributions 也只打当前 OS, 这里按 OperatingSystem.current() 取 classifier 即可。
+    val javafxClassifier = when {
+        OperatingSystem.current().isWindows -> "win"
+        OperatingSystem.current().isMacOsX -> "mac"
+        OperatingSystem.current().isLinux -> "linux"
+        else -> throw GradleException("Unsupported OS for JavaFX: ${System.getProperty("os.name")}")
+    }
+    implementation("org.openjfx:javafx-base:21.0.5:$javafxClassifier")
+    implementation("org.openjfx:javafx-graphics:21.0.5:$javafxClassifier")
+    implementation("org.openjfx:javafx-controls:21.0.5:$javafxClassifier")
+    implementation("org.openjfx:javafx-media:21.0.5:$javafxClassifier")
+    implementation("org.openjfx:javafx-web:21.0.5:$javafxClassifier")
+    implementation("org.openjfx:javafx-swing:21.0.5:$javafxClassifier")
     // KP2-D: 桌面端 Room 事务支持
     // room-ktx 2.8.4 不发布 jvm 变体 (Android 专属), 桌面端改用 room-runtime 的 useWriterTransaction
     // shared.commonMain 已 api(libs.room.runtime), 桌面端通过传递依赖可见, 无需显式声明

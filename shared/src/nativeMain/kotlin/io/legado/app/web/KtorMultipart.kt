@@ -4,9 +4,10 @@ import io.ktor.http.content.PartData
 import io.ktor.http.content.forEachPart
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receiveMultipart
-import io.ktor.utils.io.core.readBytes
+import io.ktor.utils.io.toByteArray
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.utils.File
+import io.legado.app.utils.systemCurrentTimeMillis
 
 /**
  * multipart/form-data 解析结果 (对齐 NanoHTTPD session.parseBody(files) 的语义)。
@@ -46,10 +47,11 @@ suspend fun ApplicationCall.parseMultipart(): MultipartParseResult {
             }
             is PartData.FileItem -> {
                 val name = part.name ?: return@forEachPart
-                val bytes = part.provider().readBytes()
+                // Ktor 3 的 FileItem.provider() 返回 ByteReadChannel, 用 toByteArray 全量读
+                val bytes = part.provider().toByteArray()
                 val tempFile = File(
                     AppFilesDirs.get().cacheDir,
-                    "upload_${kotlin.system.getTimeMillis()}_${name}.tmp",
+                    "upload_${systemCurrentTimeMillis()}_${name}.tmp",
                 )
                 tempFile.writeBytes(bytes)
                 files[name] = tempFile.absolutePath

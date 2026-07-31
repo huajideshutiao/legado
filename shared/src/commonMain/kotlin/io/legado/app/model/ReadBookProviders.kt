@@ -1,6 +1,7 @@
 package io.legado.app.model
 
 import io.legado.app.data.entities.Book
+import io.legado.app.ui.book.read.ReadBookViewModelShared
 import kotlin.concurrent.Volatile
 
 /**
@@ -32,12 +33,29 @@ object ActiveReadBookRegistry {
     @Volatile
     private var readBook: ReadBookShared? = null
 
+    @Volatile
+    private var viewModel: ReadBookViewModelShared? = null
+
+    /** 当前活动阅读状态; 供非 Compose 宿主 (如桌面朗读宿主) 读取章节/位置。 */
+    val current: ReadBookShared? get() = readBook
+
+    /** 当前活动阅读 ViewModel; 朗读宿主用其取正文、切章并回写朗读位置。 */
+    val currentViewModel: ReadBookViewModelShared? get() = viewModel
+
     fun attach(value: ReadBookShared) {
         readBook = value
     }
 
     fun detach(value: ReadBookShared) {
         if (readBook === value) readBook = null
+    }
+
+    fun attachViewModel(value: ReadBookViewModelShared) {
+        viewModel = value
+    }
+
+    fun detachViewModel(value: ReadBookViewModelShared) {
+        if (viewModel === value) viewModel = null
     }
 
     fun updateIfCurrent(book: Book) {

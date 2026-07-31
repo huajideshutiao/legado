@@ -6,6 +6,8 @@ import io.ktor.server.websocket.WebSocketServerSession
 import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
+import io.ktor.websocket.close
+import io.ktor.websocket.readText
 import io.legado.app.web.api.DebugWsHandler
 import io.legado.app.web.api.SearchWsHandler
 import io.legado.app.web.api.WsHandler
@@ -82,7 +84,8 @@ private suspend fun handleWsSession(
     // 30s ping 心跳 (对齐 NanoWsSession.onOpen 的 ping 协程)
     wsSession.launch {
         while (isActive) {
-            wsSession.send(Frame.Ping("ping".toByteArray()))
+            // Kotlin/Native 无 JVM 的 String.toByteArray(), 用 stdlib encodeToByteArray (UTF-8)
+            wsSession.send(Frame.Ping("ping".encodeToByteArray()))
             delay(30000)
         }
     }

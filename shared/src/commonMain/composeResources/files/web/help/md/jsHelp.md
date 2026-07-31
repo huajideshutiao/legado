@@ -104,7 +104,7 @@ java.get(key)
 java.put(key, value)
 ```
 
-### [js扩展类](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/help/JsExtensions.kt) 部分函数
+### [js扩展类](https://github.com/huajideshutiao/legado/blob/master/shared/src/jvmAndAndroidMain/kotlin/io/legado/app/help/JsExtensionsJvm.kt) 部分函数
 
 *
 链接解析[JsURL](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/utils/JsURL.kt)

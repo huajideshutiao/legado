@@ -6,6 +6,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.RuleBigDataProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
@@ -13,7 +14,14 @@ import io.legado.app.help.coroutine.runBlockingInScope
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.StringUtils
+import io.legado.app.utils.concurrent.newConcurrentMap
+import io.legado.app.utils.concurrent.newConcurrentSet
+import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.math.min
@@ -85,6 +93,72 @@ object BookHelpShared {
 
             // 4: 平台专属临时文件清理 (app 端 override 做 ArchiveUtils.TEMP_PATH + filesDir)
             BookHelpProviders.get().clearCacheExtra()
+        }
+    }
+
+    /**
+     * 删除不在 [validFolderNames] 中的书籍缓存目录 + 漫画缓存超量淘汰
+     * (对照 app 端 `BookHelp.clearInvalidBookFolders`, 原三端平行实现统一下沉至此)。
+     *
+     * [rootPath] 为书籍缓存根目录 (book_cache), 三端 BookStorage 各自传自己的 rootPath。
+     * 算法与 app 版一致: 失效目录并发删除 (EBUSY 兜底走 [FileUtilsCommon.delete]),
+     * 有效目录按最后修改时间由旧到新淘汰含 [imageSubFolderName] 子目录的漫画缓存,
+     * 直到总大小收敛到 [maxSize] 以内。
+     */
+    suspend fun clearInvalidBookFolders(
+        rootPath: String,
+        validFolderNames: Set<String>,
+        imageSubFolderName: String,
+        maxSize: Long
+    ) {
+        withContext(IoDispatcher) {
+            val bookDirs = FileUtilsCommon.listSubDirs(rootPath)
+            coroutineScope {
+                bookDirs.forEach { dir ->
+                    if (!validFolderNames.contains(FileUtilsCommon.getName(dir))) {
+                        launch { FileUtilsCommon.delete(dir, deleteRootDir = true) }
+                    }
+                }
+            }
+            // 失效目录已删, 重列即有效集 (与 app 版"列一次复用"结果等价)
+            evictMangaCache(rootPath, imageSubFolderName, maxSize)
+        }
+    }
+
+    /**
+     * 漫画缓存超量淘汰 (对照 app 端 `BookHelp.evictMangaCache`, 不删失效书目录)。
+     *
+     * 总大小按 [rootPath] 下全部目录统计, 但只有含 [imageSubFolderName] 子目录的漫画缓存
+     * 参与淘汰, 按最后修改时间由旧到新删除直到总大小收敛到 [maxSize] 以内。
+     * 统计并发 8 路 (与 app 版 onEachParallel(8) 一致)。
+     */
+    suspend fun evictMangaCache(
+        rootPath: String,
+        imageSubFolderName: String,
+        maxSize: Long
+    ) {
+        withContext(IoDispatcher) {
+            val bookDirs = FileUtilsCommon.listSubDirs(rootPath)
+            if (bookDirs.isEmpty()) return@withContext
+            val folderSizes = newConcurrentMap<String, Long>()
+            val mangaFolders = newConcurrentSet<String>()
+            bookDirs.asFlow().onEachParallel(8) { dir ->
+                folderSizes[dir] = FileUtilsCommon.getDirSize(dir)
+                if (FileUtilsCommon.exist(FileUtilsCommon.getPath(dir, imageSubFolderName))) {
+                    mangaFolders.add(dir)
+                }
+            }.collect()
+
+            var totalSize = folderSizes.values.sum()
+            if (totalSize <= maxSize) return@withContext
+            for (dir in bookDirs.sortedBy { FileUtilsCommon.lastModified(it) }) {
+                if (mangaFolders.contains(dir)) {
+                    val size = folderSizes[dir] ?: 0L
+                    FileUtilsCommon.delete(dir, deleteRootDir = true)
+                    totalSize -= size
+                    if (totalSize <= maxSize) break
+                }
+            }
         }
     }
 

@@ -52,6 +52,7 @@ import legado.shared.generated.resources.soure_change_source
 import legado.shared.generated.resources.sure_del
 import legado.shared.generated.resources.yes
 import org.jetbrains.compose.resources.stringResource
+import io.legado.app.utils.format
 
 /**
  * 整书换源 shared 路由入口。

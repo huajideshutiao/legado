@@ -9,10 +9,6 @@ import io.legado.app.help.book.addType
 import io.legado.app.help.book.isRss
 import io.legado.app.help.book.removeType
 import io.legado.app.model.webBook.WebBook
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 
 /**
  * RSS 业务编排层 (shared commonMain, 供多端复用)。
@@ -24,15 +20,12 @@ import kotlinx.coroutines.flow.map
  * shared 端已有的 [io.legado.app.data.entities.OldRssSource] 仅用于旧 rssSources.json
  * 迁移, 非运行时实体, 故本模块不新建 RssSource / RssArticle 实体。
  *
- * 本类把 app 端 `ReadRssActivity` / `ReadRssViewModel` + 桌面端 3 个 Rss Screen 的
- * 核心数据流编排下沉到 commonMain, 让 Android / Desktop / iOS / 鸿蒙 复用同一逻辑,
- * 避免桌面端独立重写。
+ * 本类把 app 端 `ReadRssActivity` / `ReadRssViewModel` 的核心数据流编排下沉到 commonMain,
+ * 让 Android / Desktop / iOS / 鸿蒙 复用同一逻辑。
  *
  * # 下沉范围
  *
- * - [flowRssSources]: 订阅 bookDao.flowAll() 过滤 isRss (对应桌面端 RssSourcesScreen)
- * - [loadRssArticles]: 拉取文章列表 (对应桌面端 RssArticlesScreen + app 端 BaseReadViewModel.upBook)
- * - [loadRssContent]: 拉取正文 (对应桌面端 ReadRssScreen + app 端 ReadRssViewModel.initData)
+ * - [loadRssContent]: 拉取正文 (对应 app 端 ReadRssViewModel.initData)
  *
  * # 不下沉项 (留各端 UI 层)
  *
@@ -52,50 +45,6 @@ object RssHelp {
     private val appDb get() = AppDbProviders.get()
 
     /**
-     * RSS 源列表数据流: 订阅 bookDao.flowAll() 过滤 [Book.isRss]。
-     *
-     * RSS 源以 Book 形式存在 (type 含 BookType.rss 位), 列表行显示 `book.name` + feed URL。
-     * 对应桌面端 RssSourcesScreen 的 `produceState { flowAll().map { filter isRss } }`。
-     */
-    fun flowRssSources(): Flow<List<Book>> =
-        appDb.bookDao.flowAll().map { list -> list.filter { it.isRss } }
-
-    /**
-     * 拉取 RSS 文章列表 ([BookChapter] 列表)。
-     *
-     * 流程 (对照桌面端 RssArticlesScreen.loadArticles + app 端 BaseReadViewModel.upBook):
-     * 1. RSS Book 兜底: tocUrl 为空时用 bookUrl 作为请求 URL
-     *    (app 端 upBook: `if (book.isRss) { book.tocUrl = book.bookUrl }`)
-     * 2. 取关联 BookSource (`book.origin = bookSource.bookSourceUrl`)
-     * 3. [WebBook.getChapterListAwait] 拉取最新文章列表
-     * 4. 落库 bookChapterDao.insert (按 bookUrl 关联)
-     * 5. 返回 Result: 成功返回新拉取的列表; 失败抛异常, 调用方用 [getCachedArticles] 回退
-     *
-     * @param book RSS 源对应的 Book (type 含 BookType.rss 位)
-     * @return 成功返回新拉取的章节列表; 失败抛异常, 调用方用 [getCachedArticles] 回退
-     */
-    suspend fun loadRssArticles(book: Book): Result<List<BookChapter>> = runCatching {
-        // RSS Book 兜底: tocUrl 为空时用 bookUrl 作为请求 URL
-        // (对照 BaseReadViewModel.upBook: if (book.isRss) { book.tocUrl = book.bookUrl })
-        val requestBook = if (book.isRss && book.tocUrl.isBlank()) {
-            book.copy(tocUrl = book.bookUrl)
-        } else {
-            book
-        }
-        // 取关联的 BookSource (book.origin = bookSource.bookSourceUrl)
-        val source = appDb.bookSourceDao.getBookSource(book.origin)
-            ?: throw IllegalStateException("未找到书源 (origin=${book.origin})")
-        // 联网拉取最新文章列表
-        val toc = WebBook.getChapterListAwait(source, requestBook).getOrThrow()
-        // 落库 (按 book.bookUrl 关联, RSS Book 已入库则 bookUrl="data:")
-        appDb.bookChapterDao.insert(*toc.toTypedArray())
-        toc
-    }.onFailure {
-        // 协程取消需向上抛出, 不被 runCatching 吞掉
-        currentCoroutineContext().ensureActive()
-    }
-
-    /**
      * 读取本地缓存的文章列表 (联网失败时回退用)。
      *
      * @param book RSS 源对应的 Book, 按 [Book.bookUrl] 关联章节
@@ -106,7 +55,7 @@ object RssHelp {
     /**
      * 收藏 RSS 源 (对照 app 端 BaseReadViewModel.addToBookshelf):
      * order 置底 + 继承同名书阅读进度 + 清 notShelf 标记后落库。
-     * 文章章节已由 [loadRssArticles] 落库, 无需像 app 端再插 chapterListData。
+     * 无需像 app 端再插 chapterListData。
      */
     suspend fun addToBookshelf(book: Book) {
         if (book.order == 0) {
@@ -138,7 +87,7 @@ object RssHelp {
     /**
      * 拉取 RSS 文章正文。
      *
-     * 分支 (对照桌面端 ReadRssScreen.loadContent + app 端 ReadRssViewModel.initData):
+     * 分支 (对照 app 端 ReadRssViewModel.initData):
      * 1. `book.originName == "RSS" && !book.intro.isNullOrBlank()` → 直接返回 intro (RSS 源简介)
      * 2. `source.contentRule.content` 为空 → 返回 [RssContentResult.Empty] (无正文规则, UI 提示用浏览器打开)
      * 3. 否则 [WebBook.getContentAwait] 拉正文 → [RssContentResult.Content]
@@ -150,7 +99,7 @@ object RssHelp {
      * 失败时返回 [RssContentResult.Error] (内部已记录 [AppLog]), 不会抛异常, 调用方无需 try-catch。
      *
      * @param book RSS 源对应的 Book
-     * @param chapterIndex 章节 index (对应 RssArticlesScreen 点击回调)
+     * @param chapterIndex 章节 index (文章在章节列表中的位置)
      * @return [RssContentResult] 三态结果
      */
     suspend fun loadRssContent(book: Book, chapterIndex: Int): RssContentResult {

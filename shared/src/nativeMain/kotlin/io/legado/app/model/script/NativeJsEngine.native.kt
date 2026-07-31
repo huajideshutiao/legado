@@ -117,10 +117,10 @@ import kotlin.coroutines.ensureActive
  * | bootstrap | 注入 Packages/JavaImporter/JavaAdapter + bindingsStack | 仅注入 bindingsStack (Java 相关 stub) |
  * | 资源管理 | 显式 close 释放 native ctx + PhantomReference 兜底 | 显式 close 调用 JS_FreeContext + JS_FreeRuntime |
  *
- * # 桥接限制 (P0 阶段 stub, TODO 后续补完)
- * - **复杂 Kotlin 对象桥接**: Android 端通过 native exotic trap 让 JS 直接反射访问 Java 对象属性/方法,
- *   native 端 cinterop 桥接需用 JS_NewCFunction + JSClassDef 显式暴露, P0 阶段仅支持基本类型 + Map/List,
- *   `java`/`source`/`cookie`/`cache` 等带方法的对象暂不桥接 (注入时跳过, JS 里访问会得到 undefined);
+ * # 桥接限制 (TODO 后续补完)
+ * - **复杂 Kotlin 对象桥接**: 基本类型 / Map / List 与 [JsExtensionsCommon] (即 `java` binding,
+ *   经 [NativeJsExtensionsBridge] handle 表 + methodId 分派) 均已桥接; 其余带方法的 Kotlin 对象
+ *   仍走 [toJsValue] 的 else 分支返回 null (注入时跳过, JS 里访问会得到 undefined);
  * - **Java 类加载**: `Packages.java.xxx` / `importClass` / `JavaAdapter` 在 native 上无意义
  *   (无 Java 类), bootstrap 中 stub 为返回 0/null/抛异常, 让依赖此能力的书源 JS 在 native 上明确失败
  *   而非静默错误;

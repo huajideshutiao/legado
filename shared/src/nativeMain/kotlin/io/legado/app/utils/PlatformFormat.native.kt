@@ -17,24 +17,24 @@ actual fun formatDoubleNoDecimal(value: Double): String {
 }
 
 /**
- * `java.lang.String.format(this, *args)` 的 Kotlin/Native 替代 (nativeMain, iOS/鸿蒙共用)。
+ * `java.lang.String.format(this, *args)` 的 Kotlin/Native actual (nativeMain, iOS/鸿蒙共用)。
  *
- * Kotlin/Native 标准库没有 `String.format` (klib dump 实证), 但 iOS/鸿蒙 UI 层有 ~67 处
+ * Kotlin/Native 标准库没有 `String.format` (klib dump 实证), 但 iOS/鸿蒙 UI 层有大量
  * 文案模板依赖它。本函数按顺序替换占位符, 覆盖项目实际用到的全部规格。
  *
- * # 支持范围 (项目现状: SharedStringTable 全表仅 %s / %d, 无索引式 %1$s, 无 %%)
+ * # 支持范围 (项目现状扫描: %s / %d / %02d / %03d / %.1f / %.2f / %%)
  * - `%s` → `arg.toString()` (null → "null", 与 JVM Formatter 一致)
- * - `%d` → 整数十进制 (与 JVM 一致; 非数字实参原样 toString, 不抛 IllegalFormatConversionException)
+ * - `%d` → 整数十进制, 支持 `0` 填充与宽度 (如 `%02d`)
+ * - `%f` → 定点小数, 支持精度 (如 `%.1f`), 缺省精度 6 位 (与 JVM 一致)
  * - `%%` → 单个字面 `%`
  *
  * # 与 JVM Formatter 的差异
- * - 不支持宽度/精度/flag (如 `%5s` / `%.2f`) 与索引式 `%1$s`: 遇到无法识别的规格
- *   原样保留该片段并跳过 (JVM 会抛 UnknownFormatConversionException)。
- *   全表零使用, 故不可见; 新增此类模板时需在此扩展。
+ * - 不支持索引式 `%1$s` 与 `-`/`+`/`,` 等 flag: 遇到无法识别的规格原样保留该片段
+ *   (JVM 会抛 UnknownFormatConversionException)。全表零使用, 新增此类模板时需在此扩展。
  * - 实参多于占位符时忽略多余项 (JVM 同为忽略); 少于占位符时保留未消费的占位符原文
  *   (JVM 抛 MissingFormatArgumentException) — 保留原文更利于线上排查文案缺参。
  */
-fun String.formatNative(vararg args: Any?): String {
+actual fun String.format(vararg args: Any?): String {
     if (args.isEmpty() && !contains('%')) return this
     val sb = StringBuilder(length + 16)
     var argIndex = 0
@@ -46,26 +46,68 @@ fun String.formatNative(vararg args: Any?): String {
             i++
             continue
         }
-        when (this[i + 1]) {
-            '%' -> {
-                sb.append('%')
-                i += 2
-            }
-            's', 'd' -> {
-                if (argIndex < args.size) {
-                    sb.append(args[argIndex++].toString())
-                } else {
-                    // 缺参: 保留占位符原文 (便于定位文案与实参不匹配)
-                    sb.append(c).append(this[i + 1])
-                }
-                i += 2
-            }
-            // 未支持的规格 (宽度/精度/索引式等): 原样输出 '%', 继续逐字符扫描
-            else -> {
-                sb.append(c)
-                i++
+        // 解析 %[0][width][.precision]conv
+        var j = i + 1
+        if (this[j] == '%') {
+            sb.append('%')
+            i = j + 1
+            continue
+        }
+        val zeroPad = this[j] == '0'
+        if (zeroPad) j++
+        var width = 0
+        while (j < length && this[j].isDigit()) {
+            width = width * 10 + (this[j] - '0')
+            j++
+        }
+        var precision = -1
+        if (j < length && this[j] == '.') {
+            j++
+            precision = 0
+            while (j < length && this[j].isDigit()) {
+                precision = precision * 10 + (this[j] - '0')
+                j++
             }
         }
+        val conv = if (j < length) this[j] else ' '
+        if (conv != 's' && conv != 'd' && conv != 'f') {
+            // 未支持的规格: 原样输出 '%', 继续逐字符扫描
+            sb.append(c)
+            i++
+            continue
+        }
+        if (argIndex >= args.size) {
+            // 缺参: 保留占位符原文 (便于定位文案与实参不匹配)
+            sb.append(this, i, j + 1)
+            i = j + 1
+            continue
+        }
+        val arg = args[argIndex++]
+        val text = when (conv) {
+            'f' -> formatFixed(arg, if (precision < 0) 6 else precision)
+            else -> arg.toString()
+        }
+        sb.append(if (text.length >= width) text else text.padStart(width, if (zeroPad) '0' else ' '))
+        i = j + 1
     }
     return sb.toString()
 }
+
+/** `%.Nf` 定点格式化 (HALF_UP, 与 JVM Formatter 的 RoundingMode.HALF_UP 一致)。 */
+private fun formatFixed(arg: Any?, precision: Int): String {
+    val v = (arg as? Number)?.toDouble() ?: return arg.toString()
+    if (v.isNaN()) return "NaN"
+    if (v.isInfinite()) return if (v > 0) "Infinity" else "-Infinity"
+    val neg = v < 0
+    var scale = 1L
+    repeat(precision) { scale *= 10 }
+    val scaled = kotlin.math.round(kotlin.math.abs(v) * scale).toLong()
+    val intPart = scaled / scale
+    val sign = if (neg) "-" else ""
+    if (precision == 0) return "$sign$intPart"
+    val frac = (scaled % scale).toString().padStart(precision, '0')
+    return "$sign$intPart.$frac"
+}
+
+/** 旧名保留 (NativeFileBookAccessor / NativeQuickJsSharedJsScopeProvider 在用), 委托 [format]。 */
+fun String.formatNative(vararg args: Any?): String = format(*args)

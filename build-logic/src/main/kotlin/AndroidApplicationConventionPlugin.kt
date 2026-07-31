@@ -16,8 +16,8 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
         pluginManager.apply("org.jetbrains.kotlin.android")
 
         extensions.findByType(KotlinAndroidProjectExtension::class.java)?.apply {
-            jvmToolchain(17)
-            compilerOptions.jvmTarget.set(JvmTarget.JVM_17)
+            jvmToolchain(21)
+            compilerOptions.jvmTarget.set(JvmTarget.JVM_21)
         }
 
         extensions.configure<ApplicationExtension> {
@@ -27,8 +27,8 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                 targetSdk = 36
             }
             compileOptions {
-                sourceCompatibility = JavaVersion.VERSION_17
-                targetCompatibility = JavaVersion.VERSION_17
+                sourceCompatibility = JavaVersion.VERSION_21
+                targetCompatibility = JavaVersion.VERSION_21
             }
         }
     }

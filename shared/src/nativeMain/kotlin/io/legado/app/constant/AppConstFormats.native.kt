@@ -22,7 +22,7 @@ actual class ThreadSafeDateFormat actual constructor(private val pattern: String
         // 注: iOS/鸿蒙无 java.util.TimeZone.getDefault(), 暂按 UTC 处理
         // 若需本地时区, 应由宿主注入时区偏移量
         val (y, mo, d) = io.legado.app.utils.yearMonthDayFromMillis(millis)
-        val dayMillis = Math.floorMod(millis, 86_400_000L).toInt()
+        val dayMillis = millis.mod(86_400_000L).toInt()
         val totalSeconds = dayMillis / 1000
         val hour = totalSeconds / 3600
         val minute = (totalSeconds % 3600) / 60

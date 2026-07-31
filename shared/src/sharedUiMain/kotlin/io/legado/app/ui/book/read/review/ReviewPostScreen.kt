@@ -28,6 +28,7 @@ import legado.shared.generated.resources.post_review
 import legado.shared.generated.resources.rating
 import legado.shared.generated.resources.review_post_hint
 import org.jetbrains.compose.resources.stringResource
+import io.legado.app.utils.format
 
 /**
  * 发表段评/书评 shared Screen。

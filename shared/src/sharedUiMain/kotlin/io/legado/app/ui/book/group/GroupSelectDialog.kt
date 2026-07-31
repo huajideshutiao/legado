@@ -1,11 +1,9 @@
 package io.legado.app.ui.book.group
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -23,9 +21,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.ui.compose.component.AppCheckbox
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
@@ -63,82 +61,80 @@ fun GroupSelectDialog(
     var groupId by remember(initialGroupId) { mutableLongStateOf(initialGroupId) }
     var displayGroups by remember(groups) { mutableStateOf(groups) }
 
-    Dialog(
+    AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
-        Box(Modifier.fillMaxSize()) {
-            Surface(
-                modifier = Modifier
-                    .appDialogSize()
-                    .align(Alignment.Center),
-                shape = DesignTokens.shapeDefault,
-                color = colors.fillet,
-            ) {
-                Column {
-                    RuleManageScaffold(
-                        items = displayGroups,
-                        itemKey = { it.groupId },
-                        fillMaxHeight = false,
-                        onMove = { from, to ->
-                            displayGroups = displayGroups.toMutableList().apply {
-                                add(to, removeAt(from))
-                            }
-                        },
-                        titleBar = {
-                            DialogTitleBar(
-                                title = stringResource(Res.string.group_select),
-                                onBack = onDismiss,
-                                actions = {
-                                    IconButton(onClick = onAddGroup) {
-                                        Icon(
-                                            painter = painterResource(Res.drawable.ic_add),
-                                            contentDescription = stringResource(Res.string.group_add),
-                                            tint = colors.primaryText,
-                                        )
-                                    }
-                                },
-                            )
-                        },
-                        actionBar = {
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Spacer(Modifier.weight(1f))
-                                AppTextButton(
-                                    text = stringResource(Res.string.cancel),
-                                    color = colors.secondaryText,
-                                    onClick = onDismiss,
-                                )
-                                AppTextButton(text = stringResource(Res.string.ok)) {
-                                    onConfirm(groupId)
+        // 内容不能套 fillMaxSize: 对话框 layer 的 boundsInWindow 按内容实测尺寸算,
+        // 撑满窗口会让整窗都算"框内", 点外部永远触发不了 dismiss。居中由 RootMeasurePolicy 负责。
+        Surface(
+            modifier = Modifier.appDialogSize(),
+            shape = DesignTokens.shapeDefault,
+            color = colors.fillet,
+        ) {
+            Column {
+                RuleManageScaffold(
+                    items = displayGroups,
+                    itemKey = { it.groupId },
+                    fillMaxHeight = false,
+                    onMove = { from, to ->
+                        displayGroups = displayGroups.toMutableList().apply {
+                            add(to, removeAt(from))
+                        }
+                    },
+                    titleBar = {
+                        DialogTitleBar(
+                            title = stringResource(Res.string.group_select),
+                            onBack = onDismiss,
+                            actions = {
+                                IconButton(onClick = onAddGroup) {
+                                    Icon(
+                                        painter = painterResource(Res.drawable.ic_add),
+                                        contentDescription = stringResource(Res.string.group_add),
+                                        tint = colors.primaryText,
+                                    )
                                 }
-                            }
-                        },
-                    ) { item ->
-                        GroupItem(
-                            item = item,
-                            checked = (groupId and item.groupId) > 0,
-                            onCheckedChange = { checked ->
-                                groupId = if (checked) {
-                                    groupId or item.groupId
-                                } else {
-                                    groupId and item.groupId.inv()
-                                }
-                            },
-                            onEdit = { onEditGroup(item) },
-                            onPersistOrder = {
-                                val ordered = displayGroups.mapIndexed { index, group ->
-                                    group.copy(order = index + 1)
-                                }
-                                displayGroups = ordered
-                                onPersistOrder(ordered)
                             },
                         )
-                    }
+                    },
+                    actionBar = {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Spacer(Modifier.weight(1f))
+                            AppTextButton(
+                                text = stringResource(Res.string.cancel),
+                                color = colors.secondaryText,
+                                onClick = onDismiss,
+                            )
+                            AppTextButton(text = stringResource(Res.string.ok)) {
+                                onConfirm(groupId)
+                            }
+                        }
+                    },
+                ) { item ->
+                    GroupItem(
+                        item = item,
+                        checked = (groupId and item.groupId) > 0,
+                        onCheckedChange = { checked ->
+                            groupId = if (checked) {
+                                groupId or item.groupId
+                            } else {
+                                groupId and item.groupId.inv()
+                            }
+                        },
+                        onEdit = { onEditGroup(item) },
+                        onPersistOrder = {
+                            val ordered = displayGroups.mapIndexed { index, group ->
+                                group.copy(order = index + 1)
+                            }
+                            displayGroups = ordered
+                            onPersistOrder(ordered)
+                        },
+                    )
                 }
             }
         }

@@ -10,6 +10,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -29,14 +31,17 @@ import io.legado.app.ui.book.read.ContentEditDialog
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.ReadConfigChange
+import io.legado.app.ui.book.read.ReadMenuAction
 import io.legado.app.ui.book.read.ReaderDialogEvent
 import io.legado.app.ui.book.read.ReaderPlatformProviders
 import io.legado.app.ui.book.read.ReaderScreen
 import io.legado.app.ui.book.read.ReaderScreenModel
 import io.legado.app.ui.book.read.ReaderUiActions
 import io.legado.app.ui.book.read.ReaderUiState
+import io.legado.app.ui.book.read.config.ReadAloudDialog
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
+import io.legado.app.ui.book.read.page.turnPage
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.AppShortcut
@@ -73,7 +78,8 @@ fun ReaderRoute(
     screenModelStore: ScreenModelStore,
 ) {
     val route = entry.route as AppRoute.Reader
-    val book = route.book.asBook()
+    // asBook() 每次 copy() 新实例, remember(route) 固定后 LaunchedEffect(book) 只在换路由时重启
+    val book = remember(route) { route.book.asBook() }
     val provider = requireNotNull(ReaderPlatformProviders.getOrNull()) {
         "ReaderPlatformProvider must be registered before opening ReaderRoute"
     }
@@ -131,7 +137,7 @@ fun ReaderRoute(
 
     val actions = remember(navigator, screenModel) {
         object : ReaderUiActions {
-            // 中心区域单击：显示菜单（菜单隐藏时 ReadMenuOverlay early return，由 ReadViewComposable 接管手势）
+            // 点击动作 0（默认中心区域）：显示菜单
             // 菜单显示时 ReadMenuOverlay 的 bg Box 拦截触摸调 onBgClick 收起，不经过本回调
             override fun onPageClick(column: TextColumn?) {
                 screenModel.showMenu()
@@ -141,6 +147,19 @@ fun ReaderRoute(
                 provider.onLongPress(screenModel)
             }
 
+            // 非翻页类点击动作，对照 app 端 ReadView.click 走 callBack 的分支
+            // (5/6 朗读上下段无 shared 接口，暂不接)
+            override fun onPageAction(action: Int) {
+                val menu = screenModel.menuState
+                when (action) {
+                    7 -> menu.onTopMenuAction(ReadMenuAction.ADD_BOOKMARK)
+                    9 -> menu.clickReplaceRule()
+                    10 -> menu.clickCatalog()
+                    11 -> menu.clickSearch()
+                    13 -> menu.clickReadAloud()
+                }
+            }
+
             override fun onBack() {
                 navigator.pop()
             }
@@ -148,6 +167,25 @@ fun ReaderRoute(
     }
 
     val scope = rememberCoroutineScope()
+
+    // 阅读页取焦点：Compose 全应用无活动焦点节点时按键根本不进节点树
+    // (FocusOwnerImpl.dispatchKeyEvent 取不到 KeyInput 节点直接 return false)，
+    // 故本页在栈顶时（含从目录/换源返回后）都要重新请求
+    val keyFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(entry.id) {
+        navigator.backStack.collect { stack ->
+            if (stack.lastOrNull()?.id == entry.id) {
+                runCatching { keyFocusRequester.requestFocus() }
+            }
+        }
+    }
+    // 菜单按钮是 clickable，非触摸输入模式下点击会夺焦；收起菜单后要把焦点收回。
+    // 用 snapshotFlow 而非直接读 isVisible，避免整页跟着菜单动画重组
+    LaunchedEffect(screenModel) {
+        snapshotFlow { screenModel.menuState.isVisible }.collect { visible ->
+            if (!visible) runCatching { keyFocusRequester.requestFocus() }
+        }
+    }
 
     // region 阅读页快捷键 (对照 app 端 ReadBookKeyHandler.onKeyDown)
     // 栈内页面全部留在组合中, 故非栈顶时必须失效, 否则目录/换源等子页里按方向键会翻背景的书;
@@ -162,7 +200,8 @@ fun ReaderRoute(
         } else {
             PageDirectionShared.NEXT
         }
-        screenModel.viewModel.pageDelegate?.keyTurnPage(direction)
+        // turnPage 内部优先走 pageDelegate.keyTurnPage(带动画), 无委托时直接位移页码
+        screenModel.viewModel.turnPage(direction)
     }
     AppShortcutHandler(ReaderShortcuts.textSize, enabled = isTopEntry) { shortcut ->
         val delta = if (shortcut == ReaderShortcuts.increaseTextSize) 1 else -1
@@ -179,7 +218,7 @@ fun ReaderRoute(
     }
     // endregion
 
-    ReaderScreen(state = state, actions = actions)
+    ReaderScreen(state = state, actions = actions, focusRequester = keyFocusRequester)
 
     // 云进度同步确认对话框 (对照 app 端 ReadBookActivity.sureNewProgress)
     var syncProgress by remember { mutableStateOf<BookProgress?>(null) }
@@ -220,7 +259,8 @@ fun ReaderRoute(
                 RouteResults.CHANGE_SOURCE -> {
                     val payload =
                         result.payload as? RouteResultPayload.ChangeSource ?: return@collect
-                    screenModel.initBook(payload.book, null, null)
+                    // 必须走 changeTo 完成迁移+落库, 只 initBook 会丢目录并在书架残留旧书
+                    screenModel.changeTo(payload.source, payload.book, payload.toc)
                 }
 
                 RouteResults.BOOK_SOURCE_EDIT -> screenModel.viewModel.refreshCurrentChapter()
@@ -252,6 +292,10 @@ fun ReaderRoute(
                 RouteResults.SEARCH_CONTENT -> {
                     val payload = result.payload as? RouteResultPayload.SearchContent
                         ?: return@collect
+                    // 回写缓存, 下次进搜索页可免重搜 (对照 ReadBookActivity.onSearchContentResult)
+                    screenModel.searchContentQuery = payload.searchWord.orEmpty()
+                    screenModel.searchResultList = payload.searchResults
+                    screenModel.searchResultIndex = payload.searchResultIndex
                     val searchResult = payload.searchResults.getOrNull(payload.searchResultIndex)
                         ?: return@collect
                     screenModel.openChapter(searchResult.chapterIndex)
@@ -306,13 +350,64 @@ fun ReaderRoute(
             AppLogDialog(onDismiss = { screenModel.clearDialogEvent() })
         }
 
+        // 朗读控制面板 (对照原版 ReadMenu 朗读按钮长按 → ReadAloudDialog)
+        is ReaderDialogEvent.ReadAloud -> {
+            val controls = remember(provider, navigator, screenModel) {
+                provider.readAloudControls(navigator, screenModel)
+            }
+            if (controls == null) {
+                // 该端无朗读实现: 直接销事件, 避免卡住后续对话框
+                LaunchedEffect(screenModel) { screenModel.clearDialogEvent() }
+            } else {
+                // 朗读态/定时走事件流重组 (对照 app 端 ReadAloudDialog 的 aloudState/readAloudDs 订阅)
+                var playing by remember { mutableStateOf(controls.isPlaying) }
+                var timer by remember { mutableIntStateOf(controls.timerMinute) }
+                LaunchedEffect(controls) {
+                    ReadBookEvents.aloudState.collect { playing = controls.isPlaying }
+                }
+                LaunchedEffect(controls) {
+                    ReadBookEvents.readAloudDs.collect { timer = it }
+                }
+                ReadAloudDialog(
+                    isPlaying = playing,
+                    initialTimer = timer,
+                    initialSpeechRate = controls.speechRate,
+                    initialFollowSys = controls.followSys,
+                    onPlayPause = { controls.playPause() },
+                    onStop = { controls.stop() },
+                    onPrev = { controls.prevChapter() },
+                    onNext = { controls.nextChapter() },
+                    onPrevParagraph = { controls.prevParagraph() },
+                    onNextParagraph = { controls.nextParagraph() },
+                    onSetTimer = { controls.setTimer(it) },
+                    // 面板回调是展示倍率, 还原成原版 ttsSpeechRate 口径 (rate*10-5)
+                    onAdjustSpeed = { controls.setSpeechRate((it * 10f).toInt() - 5) },
+                    onFollowSysChange = { controls.setFollowSys(it) },
+                    onOpenChapterList = {
+                        screenModel.clearDialogEvent()
+                        controls.openChapterList()
+                    },
+                    onShowMenuBar = { screenModel.showMenu() },
+                    onBackstage = {
+                        screenModel.clearDialogEvent()
+                        controls.toBackstage()
+                    },
+                    onOpenSettings = {
+                        screenModel.clearDialogEvent()
+                        controls.openSettings()
+                    },
+                    onDismiss = { screenModel.clearDialogEvent() },
+                )
+            }
+        }
+
         null -> Unit
     }
     // endregion
 }
 
 /** 视口尺寸去抖窗口（ms），对照原版 upViewSize 的 postDelayed(300) 量级。 */
-private const val VIEW_SIZE_DEBOUNCE_MS = 200L
+private const val VIEW_SIZE_DEBOUNCE_MS = 500L
 
 /** 字号可调范围，对照 ReadStyleScreen 字号 seekBar（内部 0..45，展示值 +5）。 */
 private const val MIN_TEXT_SIZE = 5
@@ -381,5 +476,7 @@ private fun buildLayoutConfig(
         textFullJustify = config.textFullJustify,
         textBottomJustify = config.textBottomJustify,
         useZhLayout = config.useZhLayout,
+        // 度量侧字体与 ReaderDrawStyle 的 loadReaderFontFamily 同一路径，避免度量/绘制不同字体
+        textFontPath = config.textFont,
     )
 }

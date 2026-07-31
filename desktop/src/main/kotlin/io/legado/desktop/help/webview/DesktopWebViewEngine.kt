@@ -5,7 +5,7 @@ import io.legado.app.utils.EscapeUtils
 /**
  * 桌面端内嵌浏览器引擎抽象。
  *
- * 引擎按三级回退链选择 (见 [DesktopWebViewEngines]): 系统自带引擎 → KCEF → 无
+ * 引擎按三级回退链选择 (见 [DesktopWebViewEngines]): 系统自带引擎 → JavaFX WebView → 无
  * (无引擎时调用方回退系统浏览器)。三个消费点分别是无头回源
  * ([io.legado.desktop.help.http.registerDesktopBackstageWebView])、书源网页验证
  * ([io.legado.desktop.help.source.DesktopVerificationUiProvider]) 与登录页
@@ -66,12 +66,17 @@ class WebViewFetchResult(
  * 引擎会在每次导航完成后把浏览器 cookie 写回 CookieStore, 对照 app 端
  * `WebViewActivity.onPageFinished`: 按页面地址存一份, [cookieTag] 非空时再按书源 key 存一份。
  *
+ * @param html 渲染内容 (对照 app 端 `loadDataWithBaseURL` 分支): POST / dataUri / 非 http 源
+ *   由调用方先抓取解码后传入; 非空时引擎渲染 html 而非 [url]。两个引擎 (WebView2
+ *   `NavigateToString` / JavaFX `loadContent`) 都无 base URL 参数, 页面相对资源按
+ *   about:blank 根解析, 与原版 `loadDataWithBaseURL` 存在此语义差异 (实现时评估)。
  * @param onNavigated 每次导航完成回调 (参数为当前地址), cookie 回写已由引擎完成
  * @param onClosed 窗口关闭回调 (用户点 X 或代码 close 都会触发, 保证只回调一次)
  */
 data class WebViewWindowRequest(
     val url: String,
     val title: String,
+    val html: String? = null,
     val userAgent: String? = null,
     val cookieTag: String? = null,
     val onNavigated: (String) -> Unit = {},

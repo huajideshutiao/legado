@@ -97,19 +97,20 @@ object AndroidBookStorage : BookStorage {
     }
 
     /**
-     * 漫画缓存超量淘汰, 委托 [BookHelp.evictMangaCache] (不删失效书目录)。
+     * 漫画缓存超量淘汰, 委托 [BookHelpShared.evictMangaCache] (不删失效书目录)。
      *
      * 该方法为 suspend, 用 [runBlocking] 适配接口的同步签名。
      */
     override fun clearInvalidCache(maxSize: Long) {
         runBlocking {
-            BookHelp.evictMangaCache(BookHelpShared.cacheImageFolderName, maxSize)
+            BookHelpShared.evictMangaCache(rootPath, BookHelpShared.cacheImageFolderName, maxSize)
         }
     }
 
     /**
      * 删除不在书架的书籍缓存目录 + 漫画缓存超量淘汰,
-     * 参数透传给 [BookHelp.clearInvalidBookFolders] (与 [clearInvalidCache] 一致用 [runBlocking] 适配同步签名)。
+     * 委托 [BookHelpShared.clearInvalidBookFolders] (统一编排, 三端共用;
+     * 与 [clearInvalidCache] 一致用 [runBlocking] 适配同步签名)。
      */
     override fun clearInvalidBookFolders(
         validFolderNames: Set<String>,
@@ -117,7 +118,9 @@ object AndroidBookStorage : BookStorage {
         maxSize: Long
     ) {
         runBlocking {
-            BookHelp.clearInvalidBookFolders(validFolderNames, imageSubFolderName, maxSize)
+            BookHelpShared.clearInvalidBookFolders(
+                rootPath, validFolderNames, imageSubFolderName, maxSize
+            )
         }
     }
 }

@@ -65,7 +65,7 @@ fun JsEditRoute(
                     screenModel.markSaved()
                     Toasters.get().toast("保存成功")
                 } catch (e: Throwable) {
-                    AppLog.put("保存失败\n${e.localizedMessage}", e, true)
+                    AppLog.put("保存失败\n${e.message}", e, true)
                 }
             }
         }

@@ -1,5 +1,6 @@
 package io.legado.app.utils
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
@@ -24,11 +25,16 @@ import kotlinx.serialization.json.longOrNull
 import kotlin.math.ceil
 
 // 宽松 JSON 解析（对应原 GSON，容错降级用）
+// allowComments 补齐 Gson lenient 的注释容忍度（实测 Gson.fromJson 恒 lenient，收 // 与 /* */）；
+// allowTrailingComma 收手写书源常见的尾逗号（Gson 对象内其实不收，此处放宽一档）。
+@OptIn(ExperimentalSerializationApi::class)
 val KS_JSON: Json = Json {
     ignoreUnknownKeys = true
     isLenient = true
     encodeDefaults = false
     coerceInputValues = true
+    allowComments = true
+    allowTrailingComma = true
 }
 
 // 严格 JSON 解析（对应原 GSONStrict，先尝试严格解析）

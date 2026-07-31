@@ -149,6 +149,13 @@ interface PlatformCapabilities {
     /** 设置状态栏图标色 (对照 setLightStatusBar(if (useDevFeat) isDarkTheme else false)) */
     fun setLightStatusBarForBookInfo(useDevFeat: Boolean, isDarkTheme: Boolean) {}
 
+    // 设置项按平台过滤: 无系统栏/无屏幕方向的端 (桌面) 隐藏对应开关, 拨了也没效果
+    /** 是否有系统状态栏/导航栏 (决定 MoreConfig 的隐藏状态栏/导航栏开关显隐) */
+    fun hasSystemBars(): Boolean = true
+
+    /** 是否支持锁定屏幕方向 (决定 MoreConfig 的屏幕方向选项显隐) */
+    fun hasScreenOrientation(): Boolean = true
+
     /** 获取 app 版本名 (对照 app 端 AppConst.appInfo.versionName), 供 AboutRoute 初始化 state */
     fun getAppVersionName(): String? = null
 

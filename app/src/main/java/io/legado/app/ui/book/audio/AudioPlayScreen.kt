@@ -39,7 +39,6 @@ import coil3.request.placeholder
 import io.legado.app.R
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.blurConfig
-import io.legado.app.model.bookshelfCoverCache
 import io.legado.app.model.coverConfig
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -243,7 +242,8 @@ private fun CoverSlot(coverUrl: String?, modifier: Modifier) {
                         seed = AudioPlay.book?.name,
                         sourceOrigin = AudioPlay.bookSource?.bookSourceUrl,
                     )
-                    bookshelfCoverCache(coverUrl)
+                    // 不落持久区: 对照原版 AudioPlayActivity.updateCover 的 BookCover.load 默认
+                    // inBookshelf = false; 持久区只留给书架列表封面
                     placeholder(iv.drawable)
                 }
             }

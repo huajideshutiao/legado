@@ -7,7 +7,6 @@ import androidx.core.net.toUri
 import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
@@ -163,27 +162,9 @@ fun Book.getBookSource(): BookSource? {
 // 注: Book.getUnreadChapterNum 已下沉到 shared BookDisplayExtensionsShared.kt
 // (同包名 io.legado.app.help.book, 跨模块同名同签名扩展由 Kotlin 自动解析, 无需 import)
 
-/**
- * 迁移旧的书籍的一些信息到新的书籍中
- */
-fun Book.migrateTo(newBook: Book, toc: List<BookChapter>): Book {
-    newBook.durChapterIndex = BookHelp
-        .getDurChapter(durChapterIndex, durChapterTitle, toc, totalChapterNum)
-    newBook.durChapterTitle = toc[newBook.durChapterIndex].getDisplayTitle(
-        ContentProcessor.get(newBook.name, newBook.origin).getTitleReplaceRules(),
-        getUseReplaceRule()
-    )
-    newBook.durChapterPos = durChapterPos
-    newBook.durChapterTime = durChapterTime
-    newBook.group = group
-    newBook.order = order
-    newBook.customCoverUrl = customCoverUrl
-    newBook.customIntro = customIntro
-    newBook.customTag = customTag
-    newBook.canUpdate = canUpdate
-    newBook.readConfig = readConfig
-    return newBook
-}
+// 注: Book.migrateTo 已下沉到 shared BookExtensionsShared.kt
+// (BookHelp.getDurChapter → BookHelpChapterLocator, ContentProcessor → ContentProcessorProviders),
+// 同包名同签名扩展跨模块自动合并, 此处删除避免重复定义。
 
 fun Book.save() {
     removeType(BookType.notShelf)

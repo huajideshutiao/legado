@@ -95,7 +95,6 @@ private object NoOpTocActions : TocUiActions {
     override fun showLog() {}
     override fun openBookmark(bookmark: Bookmark) {}
     override fun editBookmark(bookmark: Bookmark, pos: Int) {}
-    override fun onChapterLongClick(title: String) {}
 }
 
 @Preview

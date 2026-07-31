@@ -390,7 +390,7 @@ private fun ScopeCheckRow(
     }
 }
 
-/** 从表单字段组装 ReplaceRule (沿用原 rule 实例保留 id) */
+/** 从表单字段组装 ReplaceRule (copy 保留 id/order, 同时丢弃实例上缓存的旧 regex) */
 private fun buildReplaceRule(
     base: ReplaceRule?,
     name: FieldState,
@@ -404,16 +404,16 @@ private fun buildReplaceRule(
     scopeTitle: Boolean,
     scopeContent: Boolean,
 ): ReplaceRule {
-    val rule = base ?: ReplaceRule()
-    rule.name = name.text
-    rule.group = group.text
-    rule.pattern = pattern.text
-    rule.isRegex = useRegex
-    rule.replacement = replacement.text
-    rule.scopeTitle = scopeTitle
-    rule.scopeContent = scopeContent
-    rule.scope = scope.text
-    rule.excludeScope = excludeScope.text
-    rule.timeoutMillisecond = timeout.text.ifEmpty { "3000" }.toLong()
-    return rule
+    return (base ?: ReplaceRule()).copy(
+        name = name.text,
+        group = group.text,
+        pattern = pattern.text,
+        isRegex = useRegex,
+        replacement = replacement.text,
+        scopeTitle = scopeTitle,
+        scopeContent = scopeContent,
+        scope = scope.text,
+        excludeScope = excludeScope.text,
+        timeoutMillisecond = timeout.text.ifEmpty { "3000" }.toLong(),
+    )
 }

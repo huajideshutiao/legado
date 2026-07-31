@@ -8,23 +8,24 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.rememberScrollState
@@ -37,9 +38,6 @@ import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
-import io.legado.app.ui.compose.component.PullToRefreshDefaults
-import io.legado.app.ui.compose.component.pullToRefresh
-import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
@@ -73,6 +71,9 @@ import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.isWebFile
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppMenuCheckbox
+import io.legado.app.ui.compose.component.PullToRefreshDefaults
+import io.legado.app.ui.compose.component.pullToRefresh
+import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
@@ -103,7 +104,6 @@ import legado.shared.generated.resources.more_menu
 import legado.shared.generated.resources.other
 import legado.shared.generated.resources.read_dur_progress
 import legado.shared.generated.resources.reading
-import legado.shared.generated.resources.refresh
 import legado.shared.generated.resources.review
 import legado.shared.generated.resources.set_book_variable
 import legado.shared.generated.resources.set_source_variable
@@ -442,7 +442,7 @@ private fun InfoTitleBar(
         modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .height(56.dp),
+            .height(DesignTokens.viewHeightMax),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = { actions.onBack() }) {
@@ -495,9 +495,8 @@ private fun InfoOverflowMenu(
             // 展开时求值可见性,对照 onMenuOpened
             val menu = state.menuState
             val dismiss = { expanded = false }
-            MenuItem(stringResource(Res.string.refresh)) {
-                dismiss(); actions.onRefresh()
-            }
+            // 刷新: 等价下拉刷新 (onRefresh), 无下拉手势的端 (如桌面) 走此入口
+            MenuItem(rememberString("refresh")) { dismiss(); actions.onRefresh() }
             if (menu.isLocal) {
                 MenuItem(stringResource(Res.string.upload_to_remote)) {
                     dismiss(); actions.onUploadBook()
@@ -568,7 +567,7 @@ private fun CheckMenuItem(text: String, checked: Boolean, onClick: () -> Unit) {
         onClick = onClick,
     ) {
         Text(text, color = colors.primaryText)
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.width(12.dp))
         AppMenuCheckbox(checked = checked)
     }
 }
@@ -1097,7 +1096,7 @@ private fun ArcoSolidButton(
     val realBg = if (pressed) Color(ColorUtils.darkenColor(bg.toArgb())) else bg
     Box(
         modifier
-            .height(48.dp) // arco_view_height_xl
+            .height(DesignTokens.viewHeightXl)
             .clip(DesignTokens.shapeDefault)
             .background(realBg)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick),

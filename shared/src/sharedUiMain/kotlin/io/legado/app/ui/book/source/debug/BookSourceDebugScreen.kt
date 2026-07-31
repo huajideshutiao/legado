@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -321,6 +322,9 @@ private fun FilletChip(text: String, onLongClick: (() -> Unit)? = null, onClick:
             .padding(4.dp) // drawable inset 4dp
             .clip(DesignTokens.shapeDefault)
             .background(if (pressed) pressedBg else normalBg)
+            // 复刻 app 端 TextView 不抢输入法焦点: 桌面端 combinedClickable 默认会抢占焦点
+            // 导致搜索框失焦 -> helpVisible=false -> HelpPanel 按下即消失, 长按无法触发
+            .focusProperties { canFocus = false }
             .combinedClickable(
                 interactionSource = interaction,
                 indication = null,

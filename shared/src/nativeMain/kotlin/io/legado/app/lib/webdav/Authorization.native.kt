@@ -4,6 +4,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Server.WebDavConfig
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlinx.coroutines.runBlocking
 
 /**
  * WebDav 认证 nativeMain actual 实现。
@@ -38,7 +39,8 @@ actual class Authorization actual constructor(
         private set
 
     actual constructor(serverID: Long) : this(
-        AppDbProviders.get().serverDao.get(serverID)?.getWebDavConfig()
+        // serverDao.get 现已 suspend (Room KMP 强制), 构造函数不能 suspend, 用 runBlocking 同步等待
+        runBlocking { AppDbProviders.get().serverDao.get(serverID) }?.getWebDavConfig()
             ?: throw WebDavException("Unexpected WebDav Authorization")
     )
 

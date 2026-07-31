@@ -752,4 +752,6 @@ private fun urlEncodeQuery(s: String): String {
  * String.ifNotEmpty 扩展 (Kotlin stdlib 没有这个, 自己定义)。
  */
 private inline fun String.ifNotEmpty(block: (String) -> Unit) {
-    if (isNotEm
+    if (isNotEmpty()) block(this)
+}
+// endregion

@@ -13,7 +13,7 @@ import java.util.zip.ZipOutputStream
  */
 class GetZipByteArrayContentTest {
 
-    private val ext = object : JsExtensions {
+    private val ext = object : JsExtensionsJvm {
         override fun getSource(): BaseSource? = null
     }
 

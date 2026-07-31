@@ -10,8 +10,8 @@ import io.legado.desktop.help.webview.win.WindowsWebViewEngine
  *
  * 1. **系统自带引擎** —— Windows 走 WebView2 Runtime (Win11 预装 / 装了 Edge 即有),
  *    零发行包体积增量;
- * 2. **兜底引擎** —— 系统引擎缺失时启用, 首次使用下载独立浏览器内核到应用数据目录
- *    (见 [FallbackWebViewEngine], 本次仅落接口分层与探测, 见其 KDoc 的待办);
+ * 2. **兜底引擎** —— 系统引擎缺失时启用 [JavaFXWebViewEngine] (依赖已声明的
+ *    `org.openjfx:javafx-web`, 无随包 native), 替代已归档的 KCEF 方案;
  * 3. **系统浏览器** —— 两级都不可用时 [get] 返回 null, 调用方回退 `Desktop.browse`,
  *    行为与接入本模块之前一致, 不崩。
  */
@@ -42,7 +42,7 @@ object DesktopWebViewEngines {
     private fun candidates(): List<DesktopWebViewEngine> = buildList {
         if (Platform.isWindows()) add(WindowsWebViewEngine)
         if (Platform.isLinux()) add(LinuxWebViewEngine)
-        add(FallbackWebViewEngine)
+        add(JavaFXWebViewEngine)
     }
 
     /**

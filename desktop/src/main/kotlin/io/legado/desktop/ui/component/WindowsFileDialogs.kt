@@ -13,8 +13,12 @@ import com.sun.jna.ptr.IntByReference
 import com.sun.jna.ptr.PointerByReference
 import com.sun.jna.win32.StdCallLibrary
 import com.sun.jna.win32.W32APIOptions
+import java.awt.EventQueue
+import java.awt.Toolkit
 import java.awt.Window
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Windows Vista+ 现代文件对话框 (Common Item Dialog / IFileDialog) 的 JNA 直调实现。
@@ -91,6 +95,11 @@ internal object WindowsFileDialogs {
      * 显示现代文件对话框。返回选中路径 (取消/失败返回空列表)。
      *
      * COM 模态对话框需要 STA 单元, 故固定在一次性专用线程上跑, 不污染调用方 (IO 池) 的单元状态。
+     * 调用方线程分两种收尾方式:
+     * - EDT: 走 [java.awt.SecondaryLoop] 边等边分发事件 (与 AWT 模态对话框同机制)。直接 join 会掐死
+     *   AWT 消息泵, 而 `Show(owner)` 期间主窗口正处于 `EnableWindow(false)` 禁用态, 泵一停就再也收不到
+     *   恢复消息 —— 表现为窗口能重绘/能拖动但键鼠永久失效。
+     * - 其它线程 (IO 池等): 只阻塞该线程, EDT 照常运行, 用 latch 等即可。
      */
     fun show(
         title: String?,
@@ -105,20 +114,55 @@ internal object WindowsFileDialogs {
     ): List<File> {
         if (!isSupported) return emptyList()
         val ownerHwnd = owner?.let { runCatching { Native.getWindowPointer(it) }.getOrNull() }
-        var result: List<File> = emptyList()
+        val result = AtomicReference<List<File>>(emptyList())
+        val done = CountDownLatch(1)
+        val loop = if (EventQueue.isDispatchThread()) {
+            runCatching { Toolkit.getDefaultToolkit().systemEventQueue.createSecondaryLoop() }.getOrNull()
+        } else {
+            null
+        }
         val thread = Thread({
-            result = runCatching {
-                showOnStaThread(
-                    title, save, pickFolders, multiSelect,
-                    extensions, extensionDesc, defaultName, initialDir, ownerHwnd,
+            try {
+                result.set(
+                    runCatching {
+                        showOnStaThread(
+                            title, save, pickFolders, multiSelect,
+                            extensions, extensionDesc, defaultName, initialDir, ownerHwnd,
+                        )
+                    }.getOrDefault(emptyList())
                 )
-            }.getOrDefault(emptyList())
+            } finally {
+                // 异常/崩溃路径下 COM 可能没复原属主窗口的禁用态, 这里无条件兜底
+                restoreOwner(ownerHwnd)
+                done.countDown()
+                // 经事件队列退出: 保证 exit() 排在 enter() 之后。STA 线程直接调 exit() 可能早于
+                // EDT 进入循环, 那次 exit 会被丢弃, EDT 反而永久停在 enter()。
+                loop?.let { EventQueue.invokeLater { it.exit() } }
+            }
         }, "win-file-dialog")
         thread.isDaemon = true
         thread.start()
-        thread.join()
-        return result
+        // enter() 阻塞本线程但持续分发 AWT 事件; 返回 false 表示循环没起来, 退回 latch 等待
+        if (loop == null || !loop.enter()) {
+            runCatching { done.await() }
+        }
+        return result.get()
     }
+
+    /** COM 模态期间属主窗口被 `EnableWindow(false)`; 已是启用态时不动它, 只把焦点交回来。 */
+    private fun restoreOwner(ownerHwnd: Pointer?) {
+        if (ownerHwnd == null) return
+        // jna-platform 的 User32 没声明 EnableWindow, 直接按符号取 (ALT_CONVENTION = stdcall)
+        runCatching {
+            if (user32("IsWindowEnabled").invokeInt(arrayOf(ownerHwnd)) == 0) {
+                user32("EnableWindow").invokeInt(arrayOf(ownerHwnd, 1))
+            }
+            user32("SetForegroundWindow").invokeInt(arrayOf(ownerHwnd))
+        }
+    }
+
+    private fun user32(name: String): Function =
+        Function.getFunction("user32", name, Function.ALT_CONVENTION)
 
     private fun showOnStaThread(
         title: String?,
@@ -131,7 +175,10 @@ internal object WindowsFileDialogs {
         initialDir: File?,
         ownerHwnd: Pointer?,
     ): List<File> {
-        Ole32.INSTANCE.CoInitializeEx(Pointer.NULL, Ole32.COINIT_APARTMENTTHREADED)
+        // 初始化失败时不能配对 CoUninitialize (会把别人的引用计数减没)
+        val initialized = Ole32.INSTANCE
+            .CoInitializeEx(Pointer.NULL, Ole32.COINIT_APARTMENTTHREADED).toInt() >= 0
+        if (!initialized) return emptyList()
         try {
             val ppv = PointerByReference()
             val hr = Ole32.INSTANCE.CoCreateInstance(

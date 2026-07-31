@@ -44,7 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.appDialogSize
@@ -152,12 +152,12 @@ fun ClickActionDialog(
         actionValues.zip(actionNames).toMap()
     }
 
-    // 9 个区域当前值 (mutableIntStateOf 用于 Compose 重组)
+    // 9 个区域当前值 (mutableIntStateOf 用于 Compose 重组), 顺序与下方网格 rowOrders 一致
     val states = remember(clickActionConfig) {
         listOf(
             mutableIntStateOf(clickActionConfig.tl),
-            mutableIntStateOf(clickActionConfig.tr),
             mutableIntStateOf(clickActionConfig.tc),
+            mutableIntStateOf(clickActionConfig.tr),
             mutableIntStateOf(clickActionConfig.ml),
             mutableIntStateOf(clickActionConfig.mc),
             mutableIntStateOf(clickActionConfig.mr),
@@ -170,7 +170,7 @@ fun ClickActionDialog(
     // 当前展开 selector 的格子索引 (null=未展开), 与原版 context.selector 单弹窗语义对齐
     var selectorTargetIndex by remember { mutableStateOf<Int?>(null) }
 
-    Dialog(
+    AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {

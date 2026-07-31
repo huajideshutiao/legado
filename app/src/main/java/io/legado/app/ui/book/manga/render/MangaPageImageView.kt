@@ -21,7 +21,7 @@ import coil3.size.Dimension
 import coil3.size.Size
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.glide.MangaModel
+import io.legado.app.model.manga.MangaModel
 import io.legado.app.help.glide.progress.ProgressManager
 import io.legado.app.ui.book.manga.entities.GrayscaleTransformation
 
