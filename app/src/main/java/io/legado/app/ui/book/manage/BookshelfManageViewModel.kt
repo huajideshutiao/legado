@@ -20,6 +20,7 @@ import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.writeToOutputStream
 import kotlinx.coroutines.launch
+import splitties.init.appCtx
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -293,38 +294,44 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
         shared.loadCacheFiles(books)
     }
 
-    /**
-     * Android 端 [BookshelfManagePlatform] 实现: 包装 [Book.migrateTo] /
-     * [BookHelp.clearCache] / [BookHelp.getChapterFiles] / [FileBook.deleteBook] /
-     * `R.string.clear_cache_success`。
-     *
-     * 内部类形式, 直接访问外类 [context] (BaseViewModel 提供)。
-     */
-    private inner class AndroidBookshelfManagePlatform : BookshelfManagePlatform {
+}
 
-        /** 委托 [Book.migrateTo], 迁移旧书进度/分组/自定义字段到新书。 */
-        override fun migrateBook(oldBook: Book, newBook: Book, toc: List<BookChapter>): Book {
-            return oldBook.migrateTo(newBook, toc)
-        }
+/**
+ * Android 端 [BookshelfManagePlatform] 实现 (顶级类, 供 shared Route + app ViewModel 共用)。
+ *
+ * 委托 [Book.migrateTo] / [BookHelp.clearCache] / [BookHelp.getChapterFiles] /
+ * [FileBook.deleteBook] / `R.string.clear_cache_success`。
+ * 原 inner class 通过 `context` (BaseViewModel 提供) 访问 Android Context;
+ * 顶级类无外类 context, 改用 [appCtx] (Application Context), 与原行为等价。
+ */
+class AndroidBookshelfManagePlatform : BookshelfManagePlatform {
 
-        /** 委托 [BookHelp.clearCache], 删除该书所有章节缓存文件。 */
-        override fun clearCache(book: Book) {
-            BookHelp.clearCache(book)
-        }
-
-        /** 委托 [BookHelp.getChapterFiles], 列出已缓存的章节文件名集合。 */
-        override fun getChapterFiles(book: Book): HashSet<String> {
-            return BookHelp.getChapterFiles(book)
-        }
-
-        /** 委托 [FileBook.deleteBook], 删除本地书源文件 (含压缩包子书场景)。 */
-        override fun deleteLocalBook(book: Book, deleteOriginal: Boolean) {
-            FileBook.deleteBook(book, deleteOriginal)
-        }
-
-        /** 解析 R.string.clear_cache_success 为字符串, 供 shared Toasters.toast 显示。 */
-        override val clearCacheSuccessMessage: String
-            get() = context.getString(R.string.clear_cache_success)
+    /** 委托 [Book.migrateTo], 迁移旧书进度/分组/自定义字段到新书。 */
+    override fun migrateBook(oldBook: Book, newBook: Book, toc: List<BookChapter>): Book {
+        return oldBook.migrateTo(newBook, toc)
     }
 
+    /** 委托 [BookHelp.clearCache], 删除该书所有章节缓存文件。 */
+    override fun clearCache(book: Book) {
+        BookHelp.clearCache(book)
+    }
+
+    /** 委托 [BookHelp.getChapterFiles], 列出已缓存的章节文件名集合。 */
+    override fun getChapterFiles(book: Book): HashSet<String> {
+        return BookHelp.getChapterFiles(book)
+    }
+
+    /** 委托 [FileBook.deleteBook], 删除本地书源文件 (含压缩包子书场景)。 */
+    override fun deleteLocalBook(book: Book, deleteOriginal: Boolean) {
+        FileBook.deleteBook(book, deleteOriginal)
+    }
+
+    /** 解析 R.string.clear_cache_success 为字符串, 供 shared Toasters.toast 显示。 */
+    override val clearCacheSuccessMessage: String
+        get() = appCtx.getString(R.string.clear_cache_success)
+}
+
+/** 安卓宿主启动早期注册 BookshelfManage 平台 provider。 */
+fun registerAndroidBookshelfManagePlatform() {
+    BookshelfManagePlatformProviders.register(AndroidBookshelfManagePlatform())
 }

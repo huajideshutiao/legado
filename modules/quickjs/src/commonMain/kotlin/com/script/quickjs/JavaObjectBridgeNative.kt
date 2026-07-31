@@ -82,6 +82,38 @@ object JavaObjectBridgeNative {
         return JavaObjectBridge.getInstanceKeysRaw(obj, dangerousApi)
     }
 
+    /** 创建与源数组组件类型一致的新数组。 */
+    @JvmStatic
+    fun newArrayLike(source: Any, values: Array<Any?>): Any {
+        val componentType = source.javaClass.componentType
+            ?: throw IllegalArgumentException("Source is not an array")
+        val result = java.lang.reflect.Array.newInstance(componentType, values.size)
+        values.forEachIndexed { index, value ->
+            java.lang.reflect.Array.set(result, index, coerceArrayElement(componentType, value))
+        }
+        return result
+    }
+
+    private fun coerceArrayElement(componentType: Class<*>, value: Any?): Any? {
+        if (!componentType.isPrimitive || value == null) return value
+        return when (componentType) {
+            java.lang.Byte.TYPE -> (value as Number).toByte()
+            java.lang.Short.TYPE -> (value as Number).toShort()
+            java.lang.Integer.TYPE -> (value as Number).toInt()
+            java.lang.Long.TYPE -> (value as Number).toLong()
+            java.lang.Float.TYPE -> (value as Number).toFloat()
+            java.lang.Double.TYPE -> (value as Number).toDouble()
+            java.lang.Character.TYPE -> when (value) {
+                is Char -> value
+                is Number -> value.toInt().toChar()
+                else -> value.toString().single()
+            }
+
+            java.lang.Boolean.TYPE -> value as Boolean
+            else -> value
+        }
+    }
+
     // ============ method callable 回调 ============
 
     /**

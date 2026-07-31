@@ -1,18 +1,22 @@
 package io.legado.app.ui.route
 
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.book.source.LoginScreen
 import io.legado.app.ui.book.source.LoginScreenModel
 import io.legado.app.ui.book.source.LoginUiActions
 import io.legado.app.ui.book.source.LoginUiEvent
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 
@@ -22,8 +26,7 @@ import io.legado.app.ui.root.ScreenModelStore
  * 解析 [AppRoute.Login.sourceUrl], 通过 [ScreenModelStore] 复用 [LoginScreenModel],
  * 渲染 [LoginScreen]。
  *
- * WebView 渲染由平台注入 [LoginScreen.platformWebViewSlot], 平台 WebView 能力待下沉, 暂空实现
- * (依赖各端 WebView 能力抽象, 对照 [WebViewRoute] 同期待接入)。
+ * WebView 渲染由平台注入 [LoginScreen.platformWebViewSlot], 经 [LocalWebViewSlot] 取平台实现。
  */
 @Composable
 fun LoginRoute(
@@ -36,6 +39,7 @@ fun LoginRoute(
 
     val screenModel = screenModelStore.getOrCreateTyped(entry) { LoginScreenModel() }
     val clipboard = LocalClipboardManager.current
+    val platformCapabilities = PlatformCapabilityProviders.get()
 
     // 加载书源, 取 loginUrl 供 WebView slot
     LaunchedEffect(sourceUrl) {
@@ -49,7 +53,8 @@ fun LoginRoute(
         if (state.loggedIn) navigator.pop()
     }
 
-    val actions = remember(navigator, clipboard, screenModel) {
+    val actions =
+        remember(navigator, clipboard, screenModel, platformCapabilities, state.loginUrl) {
         object : LoginUiActions {
             override fun onBack() {
                 navigator.pop()
@@ -60,12 +65,13 @@ fun LoginRoute(
             }
 
             override fun onRefresh() {
-                // WebView 刷新由平台 slot 处理, 此处暂无操作
-                // TODO: 平台 WebView slot 下沉后, 通过 PlatformWebViewController.reload() 实现
+                // 重新创建平台 WebView slot，触发当前登录地址重载。
+                screenModel.dispatch(LoginUiEvent.Refresh)
             }
 
             override fun onOpenInBrowser() {
-                // TODO: 平台浏览器打开, 需 PlatformCapabilities.openInBrowser(url) 下沉
+                state.loginUrl.takeIf { it.isNotBlank() }
+                    ?.let(platformCapabilities::openExternalUrl)
             }
 
             override fun onCopyUrl() {
@@ -85,6 +91,6 @@ fun LoginRoute(
     LoginScreen(
         state = state,
         actions = actions,
-        platformWebViewSlot = { /* WebView 待平台下沉 */ },
+        platformWebViewSlot = { url -> LocalWebViewSlot.current(url, Modifier.fillMaxSize()) },
     )
 }

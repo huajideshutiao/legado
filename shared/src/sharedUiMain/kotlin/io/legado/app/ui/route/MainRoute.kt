@@ -7,21 +7,30 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.AlertDialog
 import androidx.compose.material.CircularProgressIndicator
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -32,32 +41,46 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.BottomNavTag
+import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
+import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.HomeSection
 import io.legado.app.data.entities.PinnedExplore
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.rule.ExploreKind
+import io.legado.app.help.book.isRss
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfigAccessor
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
+import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.book.group.GroupEditDialog
+import io.legado.app.ui.book.group.GroupManageDialog
+import io.legado.app.ui.book.group.GroupViewModelShared
+import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.bookshelf.BookshelfActionsCallbacks
+import io.legado.app.ui.bookshelf.BookshelfAddViewModelShared
 import io.legado.app.ui.bookshelf.BookshelfScreen
 import io.legado.app.ui.bookshelf.BookshelfViewModel
+import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.bookshelf.ShelfScrollState
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.LocalEInk
+import io.legado.app.ui.dialog.TextInputDialog
 import io.legado.app.ui.main.MainScreen
 import io.legado.app.ui.main.explore.ExploreScreen
 import io.legado.app.ui.main.explore.ExploreScreenModel
@@ -66,21 +89,51 @@ import io.legado.app.ui.main.explore.ExploreUiEvent
 import io.legado.app.ui.main.explore.ExploreUiState
 import io.legado.app.ui.main.home.HomeScreen
 import io.legado.app.ui.main.home.HomeScreenModel
+import io.legado.app.ui.main.home.HomeSectionManageDialog
+import io.legado.app.ui.main.home.HomeSectionOptionsRow
+import io.legado.app.ui.main.home.HomeTabManageDialog
 import io.legado.app.ui.main.home.homeSectionKey
 import io.legado.app.ui.main.my.MyConfigScreen
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.LocalPlatformCapabilities
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
+import io.legado.app.ui.widget.dialog.HelpDialog
 import io.legado.app.ui.widget.dialog.TextDialog
+import io.legado.app.utils.FlowBus
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.add_book_url
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.copy_url
+import legado.shared.generated.resources.draw
+import legado.shared.generated.resources.empty
+import legado.shared.generated.resources.error_load_msg
+import legado.shared.generated.resources.help
+import legado.shared.generated.resources.home_more
+import legado.shared.generated.resources.ic_arrow_right
+import legado.shared.generated.resources.ic_help
+import legado.shared.generated.resources.import_bookshelf
+import legado.shared.generated.resources.my
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.open_in_browser
+import legado.shared.generated.resources.sure_del
+import legado.shared.generated.resources.web_service
+import legado.shared.generated.resources.web_service_desc
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 主界面 shared 路由入口。
@@ -132,6 +185,19 @@ fun MainRoute(
         ShelfScrollState()
     }
     val scope = rememberCoroutineScope()
+
+    // F5 刷新: 四个 tab 共享同一 entry, 按当前页分发到对应 tab 的刷新入口
+    // (书架/首页有下拉刷新, 发现/我的无)
+    DisposableEffect(entry.id, visibleTags, currentPage) {
+        navigator.registerRefreshHandler(entry.id) {
+            when (visibleTags.getOrNull(currentPage)) {
+                BottomNavTag.BOOKSHELF -> mainScreenModel.bookshelfViewModel.upToc()
+                BottomNavTag.HOME -> mainScreenModel.homeScreenModel.refreshCurrentTab()
+                else -> Unit
+            }
+        }
+        onDispose { navigator.unregisterRefreshHandler(entry.id) }
+    }
 
     MainScreen(
         visibleTags = visibleTags,
@@ -186,9 +252,10 @@ fun MainRoute(
                 }
             }
         },
-        homeTab = { HomeTabContent(mainScreenModel.homeScreenModel, navigator) },
+        homeTab = { HomeTabContent(entry, mainScreenModel.homeScreenModel, navigator) },
         bookshelfTab = {
             BookshelfTabContent(
+                entry,
                 mainScreenModel.bookshelfViewModel,
                 navigator,
                 bookshelfScrollState,
@@ -196,9 +263,10 @@ fun MainRoute(
         },
         exploreTab = {
             ExploreTabContent(
-                mainScreenModel.exploreScreenModel,
-                exploreListState,
-                navigator,
+                entry = entry,
+                screenModel = mainScreenModel.exploreScreenModel,
+                listState = exploreListState,
+                navigator = navigator,
             )
         },
         myTab = { MyTabContent(navigator) },
@@ -270,8 +338,32 @@ private fun computeHomePageIndex(visibleTags: List<String>, defaultHomePage: Str
  * 书籍点击对照 ExploreShowRoute.onBookClick: 跳 BookInfo 详情页 (SearchBook.toRouteRef())。
  */
 @Composable
-private fun HomeTabContent(screenModel: HomeScreenModel, navigator: AppNavigator) {
+private fun HomeTabContent(
+    entry: RouteEntry,
+    screenModel: HomeScreenModel,
+    navigator: AppNavigator
+) {
     val state by screenModel.state.collectAsState()
+    val scope = rememberCoroutineScope()
+    // 顶栏两个管理入口的弹窗态由 ScreenModel 持有, 本 Route 据此渲染 shared 对话框
+    val manageSectionOf by screenModel.manageSectionOf.collectAsState()
+    val manageTab by screenModel.manageTab.collectAsState()
+
+    val currentTabTitle = state.tabs.getOrNull(state.currentPage)?.title
+    DisposableEffect(entry.id, currentTabTitle, screenModel) {
+        navigator.registerRefreshHandler(entry.id) {
+            currentTabTitle?.let { screenModel.refreshTab(it) }
+        }
+        onDispose { navigator.unregisterRefreshHandler(entry.id) }
+    }
+    // 对照 HomeTabFragment.sectionCallback.onBookClick 的分流
+    val onBook: (SearchBook, HomeSection, Boolean) -> Unit = { book, section, longClick ->
+        openHomeBook(book, section, longClick, navigator, scope)
+    }
+    // 对照 sectionCallback.onMoreClick: 标题行整行点击 → ExploreShow (该展示项的发现地址)
+    val onMore: (HomeSection) -> Unit = { section ->
+        scope.launch { openExploreShow(section, navigator) }
+    }
     HomeScreen(
         state = state,
         actions = screenModel,
@@ -282,35 +374,118 @@ private fun HomeTabContent(screenModel: HomeScreenModel, navigator: AppNavigator
                 books = state.sectionBooks[homeSectionKey(tabTitle, section.id)] ?: emptyList(),
                 loading = state.sectionLoading[homeSectionKey(tabTitle, section.id)] == true,
                 error = state.sectionError[homeSectionKey(tabTitle, section.id)] == true,
-                onBookClick = { book -> navigator.push(AppRoute.BookInfo(book.toRouteRef())) },
+                options = state.sectionOptions[homeSectionKey(tabTitle, section.id)] ?: emptyList(),
+                optionsVersion = state.sectionOptionsVersion,
+                onOptionSelected = { screenModel.onSectionOptionSelected(tabTitle, section) },
+                onBookClick = { book -> onBook(book, section, false) },
+                onBookLongClick = { book -> onBook(book, section, true) },
+                onMoreClick = { onMore(section) },
             )
         },
-        infiniteHeaderSlot = { _, section -> HomeInfiniteHeader(section) },
-        infiniteGridCardSlot = { _, _, book ->
-            HomeInfiniteGridCard(book) { navigator.push(AppRoute.BookInfo(book.toRouteRef())) }
+        infiniteHeaderSlot = { tabTitle, section ->
+            HomeInfiniteHeader(
+                section = section,
+                options = state.sectionOptions[homeSectionKey(tabTitle, section.id)] ?: emptyList(),
+                optionsVersion = state.sectionOptionsVersion,
+                onOptionSelected = { screenModel.onSectionOptionSelected(tabTitle, section) },
+                onMoreClick = { onMore(section) },
+            )
+        },
+        infiniteGridCardSlot = { _, section, book ->
+            HomeInfiniteGridCard(
+                book = book,
+                onBookClick = { onBook(book, section, false) },
+                onBookLongClick = { onBook(book, section, true) },
+            )
         },
     )
+
+    // 顶栏"管理展示项" (对照 main_home 菜单 menu_manage_section)
+    manageSectionOf?.let { tabTitle ->
+        HomeSectionManageDialog(
+            tabTitle = tabTitle,
+            onDismiss = { screenModel.closeManageSection() },
+        )
+    }
+    // 顶栏"管理分组" (对照 main_home 菜单 menu_manage_tab)
+    if (manageTab) {
+        HomeTabManageDialog(onDismiss = { screenModel.closeManageTab() })
+    }
 }
 
-/** 非无限流展示项区块: 标题行 + 内容区 (CoverRow/FourRow 横向封面行 / RankList 排行榜列) */
+/**
+ * 主页书籍点击分流 (对照 HomeTabFragment.sectionCallback.onBookClick)。
+ *
+ * bookUrl 含 "::" 伪 URL → ExploreShow (分类跳转); 否则长按/未开 devFeat 走 BookInfo,
+ * 开了 devFeat 时按书籍类型分流 video/rss/其他。
+ */
+private fun openHomeBook(
+    book: SearchBook,
+    section: HomeSection,
+    longClick: Boolean,
+    navigator: AppNavigator,
+    scope: CoroutineScope,
+) {
+    val urlParts = book.bookUrl.split("::", limit = 2)
+    if (urlParts.size == 2) {
+        scope.launch {
+            val source = withContext(IoDispatcher) {
+                AppDbProviders.get().bookSourceDao.getBookSource(section.sourceUrl)
+            }
+            if (source != null) {
+                navigator.push(AppRoute.ExploreShow(source, urlParts[0], urlParts[1]))
+            } else {
+                Toasters.get().toast("Source not found")
+            }
+        }
+        return
+    }
+    val ref = book.toRouteRef()
+    when {
+        longClick || !AppConfigProviders.get().devFeat -> navigator.push(AppRoute.BookInfo(ref))
+        book.isVideo -> navigator.push(AppRoute.VideoPlay(ref))
+        book.isRss -> navigator.push(AppRoute.ReadRss(ref))
+        else -> navigator.push(AppRoute.BookInfo(ref))
+    }
+}
+
+/** 对照 sectionCallback.onMoreClick: 按 section 的 sourceUrl 取书源后跳 ExploreShow */
+private suspend fun openExploreShow(section: HomeSection, navigator: AppNavigator) {
+    val source = withContext(IoDispatcher) {
+        AppDbProviders.get().bookSourceDao.getBookSource(section.sourceUrl)
+    }
+    if (source != null) {
+        navigator.push(AppRoute.ExploreShow(source, section.exploreName, section.exploreUrl))
+    } else {
+        Toasters.get().toast("Source not found")
+    }
+}
+
+/** 非无限流展示项区块: 标题行 + 参数 chip 行 + 内容区 (CoverRow/FourRow 横向封面行 / RankList 排行榜列) */
 @Composable
 private fun HomeSectionBlock(
     section: HomeSection,
     books: List<SearchBook>,
     loading: Boolean,
     error: Boolean,
+    options: List<ExploreOption>,
+    optionsVersion: Int,
+    onOptionSelected: () -> Unit,
     onBookClick: (SearchBook) -> Unit,
+    onBookLongClick: (SearchBook) -> Unit,
+    onMoreClick: () -> Unit,
 ) {
     val colors = AppTheme.colors
     Column(Modifier.fillMaxWidth()) {
-        HomeSectionTitleRow(section.title)
+        HomeSectionTitleRow(section.title, onMoreClick)
+        HomeSectionOptionsRow(options, optionsVersion, onOptionSelected)
         when {
             error -> Box(
                 Modifier.fillMaxWidth().height(80.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = rememberString("error_load_msg"),
+                    text = stringResource(Res.string.error_load_msg),
                     color = colors.secondaryText,
                     fontSize = 13.sp,
                 )
@@ -328,7 +503,7 @@ private fun HomeSectionBlock(
                     )
                 } else {
                     Text(
-                        text = rememberString("empty"),
+                        text = stringResource(Res.string.empty),
                         color = colors.secondaryText,
                         fontSize = 13.sp,
                     )
@@ -336,21 +511,34 @@ private fun HomeSectionBlock(
             }
 
             else -> when (section.style) {
-                HomeSection.STYLE_RANK_LIST -> HomeRankList(books, onBookClick)
-                else -> HomeCoverRow(books, onBookClick, section.coverVideo)
+                // 对照 HomeSectionAdapter.RANK_LIMIT: 排行榜只展示前 5 名
+                HomeSection.STYLE_RANK_LIST ->
+                    HomeRankList(books.take(HOME_RANK_LIMIT), onBookClick, onBookLongClick)
+
+                // 对照 FourColumnAdapter: 每列 4 本, 横向翻列
+                HomeSection.STYLE_FOUR_ROW -> HomeFourRow(books, onBookClick, onBookLongClick)
+                else -> HomeCoverRow(books, onBookClick, onBookLongClick, section.coverVideo)
             }
         }
     }
 }
 
-/** 展示项标题行 (对照 SectionTitleRow: 粗体标题 + 左侧色块) */
+/** 对照 HomeSectionAdapter.RANK_LIMIT: 排行榜样式仅展示前 N 名 */
+private const val HOME_RANK_LIMIT = 5
+
+/**
+ * 展示项标题行 (对照 view_home_section_title.xml: 标题 + "更多" + 右箭头, 整行可点)。
+ *
+ * 原 XML 无左侧色块, 但迁移版已有且属现有样式, 保留不动 (只补"更多"入口)。
+ */
 @Composable
-private fun HomeSectionTitleRow(title: String) {
+private fun HomeSectionTitleRow(title: String, onMoreClick: () -> Unit) {
     val colors = AppTheme.colors
     Row(
         Modifier
             .fillMaxWidth()
             .heightIn(min = 40.dp)
+            .clickable(onClick = onMoreClick)
             .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -366,16 +554,31 @@ private fun HomeSectionTitleRow(title: String) {
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = 8.dp),
+            modifier = Modifier.weight(1f).padding(start = 8.dp),
+        )
+        // 对照 view_home_section_title.xml 的 tv_more + iv_arrow (13sp 摘要色 + 16dp 箭头)
+        Text(
+            text = stringResource(Res.string.home_more),
+            color = colors.secondaryText,
+            fontSize = 13.sp,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 8.dp),
+        )
+        Icon(
+            painter = painterResource(Res.drawable.ic_arrow_right),
+            contentDescription = stringResource(Res.string.home_more),
+            tint = colors.secondaryText,
+            modifier = Modifier.size(16.dp),
         )
     }
 }
 
-/** 横向封面行 (对照 CoverRow/FourRow): 占位封面 + 书名, 横向滚动 */
+/** 横向封面行 (对照 CoverCardAdapter): 封面 + 书名, 横向滚动 */
 @Composable
 private fun HomeCoverRow(
     books: List<SearchBook>,
     onBookClick: (SearchBook) -> Unit,
+    onBookLongClick: (SearchBook) -> Unit,
     isVideoStyle: Boolean,
 ) {
     val colors = AppTheme.colors
@@ -392,25 +595,19 @@ private fun HomeCoverRow(
                 Modifier
                     .width(90.dp)
                     .padding(horizontal = 4.dp)
-                    .clickable { onBookClick(book) },
+                    .combinedClickable(
+                        onClick = { onBookClick(book) },
+                        onLongClick = { onBookLongClick(book) },
+                    ),
             ) {
-                // 占位封面 (无 L3 ShelfCover): 纯色 Box + 书名首字
-                Box(
+                // 封面: 走 LocalBookCoverSlot (与书架/探索页一致)
+                LocalBookCoverSlot.current(
+                    book.toBook(),
                     Modifier
                         .fillMaxWidth()
-                        .height(coverHeight.dp)
-                        .background(colors.bottomBackground),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (!book.coverUrl.isNullOrBlank()) {
-                        Text(
-                            text = book.name.take(2),
-                            color = colors.secondaryText,
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                        )
-                    }
-                }
+                        .height(coverHeight.dp),
+                    isVideoStyle,
+                )
                 Text(
                     text = book.name,
                     color = colors.primaryText,
@@ -425,91 +622,149 @@ private fun HomeCoverRow(
     }
 }
 
-/** 排行榜列 (对照 RankColumn): 序号 + 书名 + 作者, 垂直列表 */
+/** 排行榜列 (对照 RankBookAdapter showRank=true): 序号 + 封面 + 书名/作者, 垂直列表 */
 @Composable
 private fun HomeRankList(
     books: List<SearchBook>,
     onBookClick: (SearchBook) -> Unit,
+    onBookLongClick: (SearchBook) -> Unit,
 ) {
-    val colors = AppTheme.colors
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
         books.forEachIndexed { index, book ->
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 36.dp)
-                    .clickable { onBookClick(book) }
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "${index + 1}",
-                    color = if (index < 3) colors.accent else colors.secondaryText,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.size(24.dp),
-                )
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .padding(start = 8.dp),
-                ) {
-                    Text(
-                        text = book.name,
-                        color = colors.primaryText,
-                        fontSize = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (book.author.isNotBlank()) {
-                        Text(
-                            text = book.getRealAuthor(),
-                            color = colors.secondaryText,
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+            HomeRankItem(index + 1, book, true, onBookClick, onBookLongClick)
+        }
+    }
+}
+
+/**
+ * 四行样式 (对照 FourColumnAdapter): 书籍按 4 本一列切块, 横向翻列,
+ * 每列内部走无序号的 [HomeRankItem] (原版 FourColumnVH 内嵌 RankBookAdapter(showRank=false))。
+ * 列宽 220dp 对齐原版 FourColumnAdapter.onCreateViewHolder。
+ */
+@Composable
+private fun HomeFourRow(
+    books: List<SearchBook>,
+    onBookClick: (SearchBook) -> Unit,
+    onBookLongClick: (SearchBook) -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    ) {
+        books.chunked(4).forEach { column ->
+            Column(Modifier.width(220.dp)) {
+                column.forEach { book ->
+                    HomeRankItem(0, book, false, onBookClick, onBookLongClick)
                 }
             }
         }
     }
 }
 
-/** 无限流头部: 标题行 (无 AndroidView 参数 chip 行, 纯 Compose) */
+/** 单条排行/四行条目 (对照 item_home_rank_book.xml: 序号 28dp + 70dp 封面 + 书名/作者) */
 @Composable
-private fun HomeInfiniteHeader(section: HomeSection) {
-    HomeSectionTitleRow(section.title)
+private fun HomeRankItem(
+    rank: Int,
+    book: SearchBook,
+    showRank: Boolean,
+    onBookClick: (SearchBook) -> Unit,
+    onBookLongClick: (SearchBook) -> Unit,
+) {
+    val colors = AppTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = { onBookClick(book) },
+                onLongClick = { onBookLongClick(book) },
+            )
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (showRank) {
+            // 对照 RankBookVH: 前 3 名红/橙/黄, 其余摘要色
+            Text(
+                text = "$rank",
+                color = when (rank) {
+                    1 -> Color(0xFFE53935)
+                    2 -> Color(0xFFF57C00)
+                    3 -> Color(0xFFFBC02D)
+                    else -> colors.secondaryText
+                },
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.width(28.dp),
+            )
+        }
+        // 封面固定 70dp 高 (对照 XML iv_cover height=70dp), 恒 NOVEL 比例
+        Box(Modifier.height(70.dp).padding(start = if (showRank) 8.dp else 0.dp)) {
+            LocalBookCoverSlot.current(book.toBook(), Modifier.fillMaxHeight(), false)
+        }
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Text(
+                text = book.name,
+                color = colors.primaryText,
+                fontSize = 14.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (book.author.isNotBlank()) {
+                Text(
+                    text = book.getRealAuthor(),
+                    color = colors.secondaryText,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+    }
 }
 
-/** 无限流网格单元 (对照 InfiniteGridCard): 占位封面 + 书名, 占满单格宽度 */
+/** 无限流头部: 标题行 + 参数 chip 行 (对照 HomeSectionAdapter: 无限流同样显示参数行) */
+@Composable
+private fun HomeInfiniteHeader(
+    section: HomeSection,
+    options: List<ExploreOption>,
+    optionsVersion: Int,
+    onOptionSelected: () -> Unit,
+    onMoreClick: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        HomeSectionTitleRow(section.title, onMoreClick)
+        HomeSectionOptionsRow(options, optionsVersion, onOptionSelected)
+    }
+}
+
+/** 无限流网格单元 (对照 InfiniteGridCard): 封面 + 书名, 占满单格宽度 */
 @Composable
 private fun HomeInfiniteGridCard(
     book: SearchBook,
     onBookClick: () -> Unit,
+    onBookLongClick: () -> Unit,
 ) {
     val colors = AppTheme.colors
     val coverHeight = AppConfigProviders.get().bookshelfCoverHeight
-    Box(Modifier.fillMaxWidth().combinedClickable(onClick = onBookClick)) {
+    Box(
+        Modifier.fillMaxWidth().combinedClickable(
+            onClick = onBookClick,
+            onLongClick = onBookLongClick,
+        )
+    ) {
         Column(Modifier.fillMaxWidth()) {
-            Box(
+            // 封面: 走 LocalBookCoverSlot (与书架/探索页一致)
+            LocalBookCoverSlot.current(
+                book.toBook(),
                 Modifier
                     .fillMaxWidth()
                     .padding(start = 12.dp, top = 12.dp, end = 12.dp)
-                    .height(coverHeight.dp)
-                    .background(colors.bottomBackground),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (!book.coverUrl.isNullOrBlank()) {
-                    Text(
-                        text = book.name.take(2),
-                        color = colors.secondaryText,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                    )
-                }
-            }
+                    .height(coverHeight.dp),
+                false,
+            )
             Text(
                 text = book.name,
                 color = colors.primaryText,
@@ -530,21 +785,54 @@ private fun HomeInfiniteGridCard(
  *
  * onBookClick 对照 app 端 BaseBookshelfState.open (→ startActivityForBook 按书籍类型分流);
  * onBookLongClick 对照 BaseBookshelfState.openBookInfo (→ BookInfoActivity)。
+ * onGroupLongClick 对照 app 端 GroupSelectDialog 长按分组 → GroupEditDialog (重命名/排序/删除);
+ * 溢出菜单 group_manage → GroupManageDialog (增/改名/删分组)。
  */
 @Composable
 private fun BookshelfTabContent(
+    entry: RouteEntry,
     viewModel: BookshelfViewModel,
     navigator: AppNavigator,
     scrollState: ShelfScrollState,
 ) {
+    DisposableEffect(entry.id, viewModel) {
+        navigator.registerRefreshHandler(entry.id) {
+            viewModel.upToc()
+        }
+        onDispose { navigator.unregisterRefreshHandler(entry.id) }
+    }
+
     var showAppLog by remember { mutableStateOf(false) }
-    // 对照 app 端 BookshelfActions 菜单项: 路由类用 navigator.push, 日志用对话框
+    // 分组长按或管理列表编辑 → GroupEditDialog。
+    var editingGroup by remember { mutableStateOf<BookGroup?>(null) }
+    var addingGroup by remember { mutableStateOf(false) }
+    // 溢出菜单 "group_manage" → GroupManageDialog (分组列表管理)
+    var showGroupManage by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val groups by viewModel.bookGroups.collectAsState()
+    var manageableGroups by remember { mutableStateOf<List<BookGroup>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        AppDbProviders.get().bookGroupDao.flowAll().collect { manageableGroups = it }
+    }
+    // 对照 BookshelfManageRoute: GroupViewModelShared 持久化分组增删改
+    val groupVm = remember(scope) { GroupViewModelShared(scope) }
+    // 溢出菜单 "add_url" / "import_bookshelf" → 输入框对话框 (对照 BaseBookshelfFragment
+    // showAddBookByUrlAlert / importBookshelfAlert)
+    var showAddByUrl by remember { mutableStateOf(false) }
+    var showImportShelf by remember { mutableStateOf(false) }
+    val addVm = remember(scope) { BookshelfAddViewModelShared(scope) }
+    val currentGroupId by viewModel.currentGroupId.collectAsState()
+
     val callbacks = remember(navigator) {
         BookshelfActionsCallbacks(
-            onAddLocalBook = { navigator.push(AppRoute.ImportBook) },
+            onAddLocalBook = { navigator.push(AppRoute.ImportBook()) },
             onAddRemoteBook = { navigator.push(AppRoute.RemoteBook) },
-            onOpenBookshelfManage = { navigator.push(AppRoute.BookshelfManage) },
+            onShowAddBookByUrlAlert = { showAddByUrl = true },
+            onOpenBookshelfManage = { navigator.push(AppRoute.BookshelfManage()) },
+            onShowGroupManage = { showGroupManage = true },
+            onImportBookshelf = { showImportShelf = true },
             onShowAppLog = { showAppLog = true },
+            onRefreshShelf = { viewModel.refresh() },
         )
     }
     BookshelfScreen(
@@ -552,12 +840,74 @@ private fun BookshelfTabContent(
         onBookClick = { book -> navigator.push(book.toReadRoute()) },
         onBookLongClick = { book -> navigator.push(AppRoute.BookInfo(book.toRouteRef())) },
         onSearchClick = { navigator.push(AppRoute.Search()) },
+        onGroupLongClick = { group -> editingGroup = group },
         bookshelfActionsCallbacks = callbacks,
         scrollState = scrollState,
     )
     // 应用日志对话框 (对照 SearchRoute / LoginRoute 同名状态)
     if (showAppLog) {
         AppLogDialog(onDismiss = { showAppLog = false })
+    }
+    // "添加网址" (对照 BaseBookshelfFragment.showAddBookByUrlAlert: 单行输入 hint=url)
+    if (showAddByUrl) {
+        TextInputDialog(
+            title = stringResource(Res.string.add_book_url),
+            hint = "url",
+            onConfirm = {
+                showAddByUrl = false
+                if (it.isNotBlank()) addVm.addBookByUrl(it)
+            },
+            onDismiss = { showAddByUrl = false },
+        )
+    }
+    // "导入书架" (对照 BaseBookshelfFragment.importBookshelfAlert: 输入 url/json;
+    // 原版 neutralButton 选文件走 HandleFileContract, 属平台文件选择器, shared 端不提供)
+    if (showImportShelf) {
+        TextInputDialog(
+            title = stringResource(Res.string.import_bookshelf),
+            hint = "url/json",
+            onConfirm = {
+                showImportShelf = false
+                if (it.isNotBlank()) addVm.importBookshelf(it, currentGroupId)
+            },
+            onDismiss = { showImportShelf = false },
+        )
+    }
+    // 分组管理对话框与原版一致，编辑和新增使用完整 GroupEditDialog。
+    if (showGroupManage) {
+        GroupManageDialog(
+            groups = manageableGroups,
+            onAddGroup = { addingGroup = true },
+            onEditGroup = { editingGroup = it },
+            onUpdateGroup = { groupVm.upGroup(it) },
+            onPersistOrder = { ordered -> groupVm.upGroup(*ordered.toTypedArray()) },
+            onDismiss = { showGroupManage = false },
+            canAddGroup = { AppDbProviders.get().bookGroupDao.canAddGroup() },
+        )
+    }
+    if (addingGroup || editingGroup != null) {
+        GroupEditDialog(
+            group = editingGroup,
+            onConfirm = { updated ->
+                if (addingGroup) {
+                    groupVm.addGroup(
+                        updated.groupName,
+                        updated.bookSort,
+                        updated.enableRefresh,
+                        updated.cover,
+                    ) { addingGroup = false }
+                } else {
+                    groupVm.upGroup(updated) { editingGroup = null }
+                }
+            },
+            onDismiss = {
+                addingGroup = false
+                editingGroup = null
+            },
+            onDelete = { del ->
+                groupVm.delGroup(del) { editingGroup = null }
+            },
+        )
     }
 }
 
@@ -569,6 +919,7 @@ private fun BookshelfTabContent(
  */
 @Composable
 private fun ExploreTabContent(
+    entry: RouteEntry,
     screenModel: ExploreScreenModel,
     listState: LazyListState,
     navigator: AppNavigator,
@@ -645,7 +996,7 @@ private fun ExploreTabContent(
             }
 
             override fun onEditSource(sourceUrl: String) {
-                navigator.push(AppRoute.BookSourceEdit(sourceUrl))
+                navigator.push(AppRoute.BookSourceEdit(sourceUrl), RouteResults.BOOK_SOURCE_EDIT)
             }
 
             override fun onToTop(source: BookSourcePart) {
@@ -657,8 +1008,7 @@ private fun ExploreTabContent(
             }
 
             override fun onSearchBook(source: BookSourcePart) {
-                // AppRoute.Search 暂无 SearchScope 参数, 走全局搜索
-                navigator.push(AppRoute.Search())
+                navigator.push(AppRoute.Search(searchScope = SearchScope(source).toString()))
             }
 
             override fun onRefreshSource(source: BookSourcePart) {
@@ -671,16 +1021,23 @@ private fun ExploreTabContent(
         }
     }
 
+    // 书源编辑返回: 触发发现页刷新当前展开源分类 (sources 列表由 DB flow 自动刷新)
+    LaunchedEffect(Unit) {
+        navigator.resultsFor(entry.id).filter { it.key == RouteResults.BOOK_SOURCE_EDIT }.collect {
+            FlowBus.with(EventBus.REFRESH_EXPLORE).tryEmit("")
+        }
+    }
+
     // 删除书源确认 (对照 ExploreTabState.deleteSource 的 alert)
     pendingDeleteSource?.let { src ->
         AppAlertDialog(
             onDismissRequest = { pendingDeleteSource = null },
-            title = rememberString("draw"),
-            message = rememberString("sure_del") + "\n" + src.bookSourceName,
-            okButton = AlertButton(rememberString("ok")) {
+            title = stringResource(Res.string.draw),
+            message = stringResource(Res.string.sure_del) + "\n" + src.bookSourceName,
+            okButton = AlertButton(stringResource(Res.string.ok)) {
                 screenModel.dispatch(ExploreUiEvent.DeleteSource(src))
             },
-            cancelButton = AlertButton(rememberString("cancel")),
+            cancelButton = AlertButton(stringResource(Res.string.cancel)),
         )
     }
 
@@ -688,12 +1045,12 @@ private fun ExploreTabContent(
     pendingRemovePin?.let { pin ->
         AppAlertDialog(
             onDismissRequest = { pendingRemovePin = null },
-            title = rememberString("draw"),
-            message = rememberString("sure_del") + "\n${pin.sourceName}-${pin.categoryName}",
-            okButton = AlertButton(rememberString("ok")) {
+            title = stringResource(Res.string.draw),
+            message = stringResource(Res.string.sure_del) + "\n${pin.sourceName}-${pin.categoryName}",
+            okButton = AlertButton(stringResource(Res.string.ok)) {
                 screenModel.dispatch(ExploreUiEvent.RemovePinned(pin))
             },
-            cancelButton = AlertButton(rememberString("cancel")),
+            cancelButton = AlertButton(stringResource(Res.string.cancel)),
         )
     }
 
@@ -716,31 +1073,58 @@ private fun ExploreTabContent(
  */
 @Composable
 private fun MyTabContent(navigator: AppNavigator) {
-    var webServiceChecked by remember { mutableStateOf(false) }
-    var webServiceSummary by remember { mutableStateOf("") }
+    val caps = LocalPlatformCapabilities.current
+    val webServiceDesc = stringResource(Res.string.web_service_desc)
+    // 订阅平台 Web 服务运行态 (对照 MyConfigRoute LaunchedEffect 收集 webServiceState);
+    // 平台未提供 webServiceState 时回退本地 MutableStateFlow, 供 onWebServiceChange 乐观更新
+    val fallbackRunning = remember { MutableStateFlow(caps.isWebServiceRunning()) }
+    val webServiceRunning by (caps.webServiceState ?: fallbackRunning).collectAsState()
+    val webServiceSummary = if (webServiceRunning) {
+        caps.getWebServiceUrl().orEmpty()
+    } else {
+        webServiceDesc
+    }
     var showWebServiceMenu by remember { mutableStateOf(false) }
+    // 对照 MyFragment.onCompatOptionsItemSelected: menu_help → showHelp("appHelp")
+    var showAppHelp by remember { mutableStateOf(false) }
 
-    MyConfigScreen(
-        webServiceChecked = webServiceChecked,
-        webServiceSummary = webServiceSummary,
-        onThemeModeChange = {
-            PlatformCapabilityProviders.getOrNull()?.applyDayNight()
-        },
-        onWebServiceChange = { webServiceChecked = it },
-        onWebServiceLongClick = { showWebServiceMenu = true },
-        onThemeSetting = { navigator.push(AppRoute.ThemeConfig) },
-        onWebDavSetting = { navigator.push(AppRoute.BackupConfig) },
-        onOtherSetting = { navigator.push(AppRoute.OtherConfig) },
-        onBookSourceManage = { navigator.push(AppRoute.BookSourceManage) },
-        onReplaceManage = { navigator.push(AppRoute.ReplaceRule) },
-        onSourceFilterRuleManage = { navigator.push(AppRoute.SourceFilterRule) },
-        onTxtTocRuleManage = { navigator.push(AppRoute.TxtTocRule) },
-        onDictRuleManage = { navigator.push(AppRoute.DictRule) },
-        onRuleSubManage = { navigator.push(AppRoute.RuleSub) },
-        onBookmark = { navigator.push(AppRoute.Bookmark()) },
-        onReadRecord = { navigator.push(AppRoute.ReadRecord) },
-        onAbout = { navigator.push(AppRoute.About) },
-    )
+    Column(Modifier.fillMaxSize()) {
+        // 顶栏 (对照 fragment_my_config.xml 的 TitleBar title=my + main_my.xml 的 help 图标);
+        // tab 页无返回键, 故不用 AppTitleBar (它恒渲染返回箭头), 复刻其视觉容器
+        MyTabTitleBar(onHelp = { showAppHelp = true })
+        MyConfigScreen(
+            webServiceChecked = webServiceRunning,
+            webServiceSummary = webServiceSummary,
+            onThemeModeChange = {
+                PlatformCapabilityProviders.getOrNull()?.applyDayNight()
+            },
+            onWebServiceChange = {
+                // 乐观更新回退态; 平台 webServiceState 非 null 时由流回填校正
+                fallbackRunning.value = it
+                caps.setWebService(it)
+            },
+            onWebServiceLongClick = { showWebServiceMenu = true },
+            onThemeSetting = { navigator.push(AppRoute.ThemeConfig) },
+            onWebDavSetting = { navigator.push(AppRoute.BackupConfig) },
+            onOtherSetting = { navigator.push(AppRoute.OtherConfig) },
+            onBookSourceManage = { navigator.push(AppRoute.BookSourceManage) },
+            onReplaceManage = { navigator.push(AppRoute.ReplaceRule) },
+            onSourceFilterRuleManage = { navigator.push(AppRoute.SourceFilterRule) },
+            onTxtTocRuleManage = { navigator.push(AppRoute.TxtTocRule) },
+            onDictRuleManage = { navigator.push(AppRoute.DictRule) },
+            onRuleSubManage = { navigator.push(AppRoute.RuleSub) },
+            onBookmark = { navigator.push(AppRoute.Bookmark()) },
+            onReadRecord = { navigator.push(AppRoute.ReadRecord) },
+            onAbout = { navigator.push(AppRoute.About) },
+            showRssEntry = true,
+            onRssSources = { navigator.push(AppRoute.RssSources) },
+        )
+    }
+
+    // 帮助对话框 (对照 MyFragment.showHelp("appHelp"))
+    if (showAppHelp) {
+        HelpDialog("appHelp") { showAppHelp = false }
+    }
 
     // web 服务长按菜单 (对照 app 端 selector: 复制地址 / 浏览器打开)
     if (showWebServiceMenu) {
@@ -748,27 +1132,87 @@ private fun MyTabContent(navigator: AppNavigator) {
         val url = PlatformCapabilityProviders.getOrNull()?.getWebServiceUrl()
         AlertDialog(
             onDismissRequest = { showWebServiceMenu = false },
-            title = { Text(rememberString("web_service"), color = colors.primaryText) },
+            title = { Text(stringResource(Res.string.web_service), color = colors.primaryText) },
             text = {
                 Column {
                     TextButton(onClick = {
                         showWebServiceMenu = false
                         url?.let { PlatformCapabilityProviders.getOrNull()?.copyToClipboard(it) }
-                    }) { Text(rememberString("copy_url"), color = colors.primaryText) }
+                    }) { Text(stringResource(Res.string.copy_url), color = colors.primaryText) }
                     TextButton(onClick = {
                         showWebServiceMenu = false
                         url?.let { PlatformCapabilityProviders.getOrNull()?.openExternalUrl(it) }
-                    }) { Text(rememberString("open_in_browser"), color = colors.primaryText) }
+                    }) {
+                        Text(
+                            stringResource(Res.string.open_in_browser),
+                            color = colors.primaryText
+                        )
+                    }
                 }
             },
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { showWebServiceMenu = false }) {
-                    Text(rememberString("cancel"))
+                    Text(stringResource(Res.string.cancel))
                 }
             },
             shape = AppTheme.DesignTokens.dialogShape,
             backgroundColor = MaterialTheme.colors.surface,
         )
+    }
+}
+
+/**
+ * "我的" tab 顶栏 (对照 fragment_my_config.xml 的 TitleBar + main_my.xml 的 help 图标)。
+ *
+ * 不复用 [io.legado.app.ui.compose.component.AppTitleBar]: 后者恒渲染返回箭头, tab 页无返回;
+ * 背景/insets/E-Ink 分割线取值与其一致。
+ */
+@Composable
+private fun MyTabTitleBar(onHelp: () -> Unit) {
+    val colors = AppTheme.colors
+    val eInk = LocalEInk.current
+    val themeStore = LocalThemeStoreProvider.current
+    val hasBgImage = remember(themeStore.bgImagePath) { !themeStore.bgImagePath.isNullOrBlank() }
+    val bg = when {
+        eInk -> Color.White
+        hasBgImage -> Color.Transparent
+        else -> colors.background
+    }
+    val insetsModifier = if (eInk) {
+        Modifier.windowInsetsPadding(WindowInsets(0))
+    } else {
+        Modifier.statusBarsPadding()
+    }
+    Box(Modifier.fillMaxWidth().background(bg).then(insetsModifier)) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(Res.string.my),
+                color = colors.primaryText,
+                fontSize = 20.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = onHelp) {
+                Icon(
+                    painter = painterResource(Res.drawable.ic_help),
+                    contentDescription = stringResource(Res.string.help),
+                    tint = colors.primaryText,
+                )
+            }
+        }
+        if (eInk) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(colors.secondaryText.copy(alpha = 0.4f))
+                    .align(Alignment.BottomStart),
+            )
+        }
     }
 }

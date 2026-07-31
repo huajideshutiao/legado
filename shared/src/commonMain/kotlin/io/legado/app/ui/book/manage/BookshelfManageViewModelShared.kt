@@ -154,10 +154,18 @@ class BookshelfManageViewModelShared(
     /**
      * 每本书已缓存的章节 URL 集合 (对照原 `val cacheChapters = hashMapOf<String, HashSet<String>>()`)。
      *
-     * Activity 多处直接读写 (`viewModel.cacheChapters[book.bookUrl]?.add(chapter.url)` /
-     * `?.size` / `?.let { ... }`), 通过 getter 转发暴露可变映射, 行为不变。
+     * Activity 多处直接读写 (`viewModel.cacheChapters[book.bookUrl]?.add(chapter.url)`
+     * / `?.size` / `?.let { ... }`), 通过 getter 转发暴露可变映射, 行为不变。
      */
     val cacheChapters = hashMapOf<String, HashSet<String>>()
+
+    /**
+     * 每本书缓存文件总字节 (任务要求"缓存统计:展示每本书缓存大小")。
+     *
+     * [loadCacheFiles] 扫描时调用 [BookshelfManagePlatform.getCacheSize] 累加, 供宿主端
+     * [io.legado.app.ui.route.BookshelfManageRoute.cacheInfo] 拼接 "12/100 · 3.5MB" 文案。
+     */
+    val cacheSizes = hashMapOf<String, Long>()
 
     /**
      * 批量更新书籍 canUpdate 标记, 对应 app 端 `upCanUpdate(books, canUpdate)`。
@@ -328,6 +336,8 @@ class BookshelfManageViewModelShared(
      *      * `cacheNames.contains(chapter.getFileName())` 文件存在 → 加入 chapterCaches;
      *      * `chapter.isVolume` 卷章节 (无正文) → 也视为已缓存 (与原一致);
      *    - 把 chapterCaches 存入 [cacheChapters];
+     *    - 调 [BookshelfManagePlatform.getCacheSize] 取缓存总字节存入 [cacheSizes]
+     *      (任务要求"缓存统计:展示每本书缓存大小");
      *    - 推送 [_upAdapter] (对照原 `upAdapterLiveData.sendValue(book.bookUrl)`,
      *      app 端桥接 LiveData 后 Activity observe 触发 refreshTick++ 重组);
      *    - `ensureActive()` 检查协程取消 (与原一致)。
@@ -353,6 +363,8 @@ class BookshelfManageViewModelShared(
                         }
                     }
                     cacheChapters[book.bookUrl] = chapterCaches
+                    // 缓存大小统计: 平台遍历缓存目录求和 (任务要求"展示每本书缓存大小")
+                    cacheSizes[book.bookUrl] = platform.getCacheSize(book)
                     _upAdapter.value = book.bookUrl
                 }
                 ensureActive()
@@ -423,6 +435,17 @@ interface BookshelfManagePlatform {
     fun getChapterFiles(book: Book): HashSet<String>
 
     /**
+     * 统计书籍缓存文件总字节 (任务要求"缓存统计:展示每本书缓存大小")。
+     *
+     * app 端委托 `BookHelp` 缓存目录遍历求和 (book_cache/<folder>/ 下所有文件 size 累加)。
+     * 默认返回 0, 未实现端不显示大小, 不破坏现有行为。
+     *
+     * @param book 待统计的书籍
+     * @return 缓存文件总字节; 0 表示无缓存或未实现
+     */
+    fun getCacheSize(book: Book): Long = 0L
+
+    /**
      * 删除本地书源文件 (对照 `FileBook.deleteBook(book, deleteOriginal)`)。
      *
      * app 端委托 `FileBook.deleteBook(book, deleteOriginal)` (内部走 DocumentFile /
@@ -441,4 +464,32 @@ interface BookshelfManagePlatform {
      * 桌面端可用硬编码字符串 "清缓存成功" 或 i18n 资源系统。
      */
     val clearCacheSuccessMessage: String
+}
+
+/**
+ * [BookshelfManagePlatform] 注入容器 (shared commonMain)。
+ *
+ * 模式参考 [io.legado.app.data.AppDbProviders] /
+ * [io.legado.app.ui.book.changesource.ChangeBookSourcePlatformProviders]。
+ * 宿主启动早期注册一次 (App.onCreate / desktop main), shared 内通过 [get] 获取。
+ * 未注册时调用 [get] 抛 IllegalStateException。
+ */
+object BookshelfManagePlatformProviders {
+
+    @kotlin.concurrent.Volatile
+    private var impl: BookshelfManagePlatform? = null
+
+    /** 宿主启动早期注册一次 (任何 BookshelfManageViewModelShared 实例化之前)。 */
+    fun register(impl: BookshelfManagePlatform) {
+        this.impl = impl
+    }
+
+    /** 获取已注册实现, 未注册抛出 IllegalStateException。 */
+    fun get(): BookshelfManagePlatform =
+        impl ?: error("BookshelfManagePlatformProviders not registered")
+
+    /** 仅测试场景: 清空注册 (生产代码勿调用)。 */
+    fun reset() {
+        impl = null
+    }
 }

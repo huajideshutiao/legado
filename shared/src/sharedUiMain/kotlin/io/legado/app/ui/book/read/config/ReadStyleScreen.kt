@@ -43,10 +43,35 @@ import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.RadioChip
 import io.legado.app.ui.compose.component.StrokeTextChip
 import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.platform.rememberStringArray
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.add
+import legado.shared.generated.resources.font_weight_text
+import legado.shared.generated.resources.ic_add
+import legado.shared.generated.resources.information
+import legado.shared.generated.resources.line_size
+import legado.shared.generated.resources.padding
+import legado.shared.generated.resources.page_anim
+import legado.shared.generated.resources.page_anim_cover
+import legado.shared.generated.resources.page_anim_none
+import legado.shared.generated.resources.page_anim_scroll
+import legado.shared.generated.resources.page_anim_simulation
+import legado.shared.generated.resources.page_anim_slide
+import legado.shared.generated.resources.paragraph_size
+import legado.shared.generated.resources.share_layout
+import legado.shared.generated.resources.text
+import legado.shared.generated.resources.text_bg_style
+import legado.shared.generated.resources.text_font
+import legado.shared.generated.resources.text_font_weight_converter
+import legado.shared.generated.resources.text_indent
+import legado.shared.generated.resources.text_letter_spacing
+import legado.shared.generated.resources.text_size
+import legado.shared.generated.resources.indent
+import legado.shared.generated.resources.text_font_weight
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringArrayResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 阅读样式配置控制器：把 app 端 `ReadBookConfig` 的样式字段读写抽象为接口，
@@ -146,8 +171,8 @@ interface ReadStyleActions {
  * - `AppAlertDialog` 的 content 槽 / 全屏 Dialog（desktop 端）
  *
  * 资源访问替换：
- * - `stringResource(R.string.xxx)` → `rememberString("xxx")`
- * - `stringArrayResource(R.array.xxx)` → `rememberStringArray("xxx")`
+ * - `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)`
+ * - `stringArrayResource(R.array.xxx)` → `stringArrayResource(Res.array.xxx)`
  * - `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")`
  * - `ReadBookConfig.xxx` → [controller.xxx]
  * - `callBack.xxx` / `showDialogFragment<Xxx>` → [actions.xxx]
@@ -162,8 +187,8 @@ interface ReadStyleActions {
  * - 样式列表 LazyRow + 新增样式项
  *
  * # 字重 / 缩进 selector
- * 直接用 shared 的 [AppSelectorDialog]，通过 `rememberStringArray("text_font_weight")` /
- * `rememberStringArray("indent")` 取 entries，无需 callback 桥接。
+ * 直接用 shared 的 [AppSelectorDialog]，通过 `stringArrayResource(Res.array.text_font_weight)` /
+ * `stringArrayResource(Res.array.indent)` 取 entries，无需 callback 桥接。
  *
  * # 简繁 / 字体 / 边距 / 信息 / showBgTextConfig
  * 通过 [actions] 桥接到各平台实现（ChineseUtils / FontSelectDialog 等 Android 专属）。
@@ -189,29 +214,29 @@ fun ReadStyleScreen(
 ) {
     val colors = AppTheme.colors
     // 资源 key 在 Composable 顶层一次性求值
-    val fontWeightTextStr = rememberString("font_weight_text")
-    val textFontStr = rememberString("text_font")
-    val textIndentStr = rememberString("text_indent")
-    val paddingStr = rememberString("padding")
-    val informationStr = rememberString("information")
-    val textSizeStr = rememberString("text_size")
-    val textLetterSpacingStr = rememberString("text_letter_spacing")
-    val lineSizeStr = rememberString("line_size")
-    val paragraphSizeStr = rememberString("paragraph_size")
-    val pageAnimStr = rememberString("page_anim")
-    val textBgStyleStr = rememberString("text_bg_style")
-    val shareLayoutStr = rememberString("share_layout")
-    val addStr = rememberString("add")
-    val textStr = rememberString("text")
+    val fontWeightTextStr = stringResource(Res.string.font_weight_text)
+    val textFontStr = stringResource(Res.string.text_font)
+    val textIndentStr = stringResource(Res.string.text_indent)
+    val paddingStr = stringResource(Res.string.padding)
+    val informationStr = stringResource(Res.string.information)
+    val textSizeStr = stringResource(Res.string.text_size)
+    val textLetterSpacingStr = stringResource(Res.string.text_letter_spacing)
+    val lineSizeStr = stringResource(Res.string.line_size)
+    val paragraphSizeStr = stringResource(Res.string.paragraph_size)
+    val pageAnimStr = stringResource(Res.string.page_anim)
+    val textBgStyleStr = stringResource(Res.string.text_bg_style)
+    val shareLayoutStr = stringResource(Res.string.share_layout)
+    val addStr = stringResource(Res.string.add)
+    val textStr = stringResource(Res.string.text)
     // 翻页动画标签
-    val pageAnimCoverStr = rememberString("page_anim_cover")
-    val pageAnimSlideStr = rememberString("page_anim_slide")
-    val pageAnimSimulationStr = rememberString("page_anim_simulation")
-    val pageAnimScrollStr = rememberString("page_anim_scroll")
-    val pageAnimNoneStr = rememberString("page_anim_none")
+    val pageAnimCoverStr = stringResource(Res.string.page_anim_cover)
+    val pageAnimSlideStr = stringResource(Res.string.page_anim_slide)
+    val pageAnimSimulationStr = stringResource(Res.string.page_anim_simulation)
+    val pageAnimScrollStr = stringResource(Res.string.page_anim_scroll)
+    val pageAnimNoneStr = stringResource(Res.string.page_anim_none)
     // 字重 / 缩进 selector entries
-    val fontWeightEntries = rememberStringArray("text_font_weight")
-    val indentEntries = rememberStringArray("indent")
+    val fontWeightEntries = stringArrayResource(Res.array.text_font_weight)
+    val indentEntries = stringArrayResource(Res.array.indent)
     // 文字色取自当前样式 (用于样式列表预览文字色, 对齐 app 端 textColor = Color(item.curTextColor()))
     val textColor = Color(controller.curTextColor())
 
@@ -429,7 +454,7 @@ fun ReadStyleScreen(
     if (showTextBoldSelector) {
         AppSelectorDialog(
             onDismissRequest = { showTextBoldSelector = false },
-            title = rememberString("text_font_weight_converter"),
+            title = stringResource(Res.string.text_font_weight_converter),
             items = fontWeightEntries,
             onItemSelected = { index ->
                 controller.textBold = index
@@ -526,8 +551,8 @@ private fun AddStyleItem(textColor: Color, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            painter = rememberPainter("ic_add"),
-            contentDescription = rememberString("add"),
+            painter = painterResource(Res.drawable.ic_add),
+            contentDescription = stringResource(Res.string.add),
             tint = textColor,
         )
     }

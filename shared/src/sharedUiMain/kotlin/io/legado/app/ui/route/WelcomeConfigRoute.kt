@@ -23,7 +23,6 @@ import io.legado.app.ui.config.WelcomeConfigUiState
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
@@ -31,6 +30,13 @@ import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.select_image
+import legado.shared.generated.resources.welcome_show_time
+import legado.shared.generated.resources.welcome_style
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 启动闪屏配置 shared 路由入口。
@@ -43,9 +49,9 @@ fun WelcomeConfigRoute(
     screenModelStore: ScreenModelStore,
 ) {
     val pref = LocalPreferenceStoreProvider.current
-    val selectImageStr = rememberString("select_image")
+    val selectImageStr = stringResource(Res.string.select_image)
     // 顶栏标题 (对照 app 端 R.string.welcome_style)
-    val titleStr = rememberString("welcome_style")
+    val titleStr = stringResource(Res.string.welcome_style)
 
     val screenModel = screenModelStore.getOrCreateTyped(entry) {
         // 对照 app 端 init: 从 prefs 读取初始状态
@@ -96,7 +102,12 @@ fun WelcomeConfigRoute(
         var timeValue by remember { mutableStateOf(state.welcomeShowTime.toString()) }
         AlertDialog(
             onDismissRequest = { showTimePicker = false },
-            title = { Text(rememberString("welcome_show_time"), color = colors.primaryText) },
+            title = {
+                Text(
+                    stringResource(Res.string.welcome_show_time),
+                    color = colors.primaryText
+                )
+            },
             text = {
                 AppTextField(
                     value = timeValue,
@@ -114,10 +125,12 @@ fun WelcomeConfigRoute(
                         screenModel.dispatch(WelcomeConfigUiEvent.ShowTimeChange(clamped))
                     }
                     showTimePicker = false
-                }) { Text(rememberString("ok")) }
+                }) { Text(stringResource(Res.string.ok)) }
             },
             dismissButton = {
-                TextButton(onClick = { showTimePicker = false }) { Text(rememberString("cancel")) }
+                TextButton(onClick = {
+                    showTimePicker = false
+                }) { Text(stringResource(Res.string.cancel)) }
             },
             shape = DesignTokens.dialogShape,
             backgroundColor = MaterialTheme.colors.surface,

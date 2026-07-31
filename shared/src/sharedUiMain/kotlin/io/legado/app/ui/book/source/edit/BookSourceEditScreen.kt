@@ -37,9 +37,34 @@ import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.platform.rememberStringArray
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.text.EditEntity
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.action_save
+import legado.shared.generated.resources.auto_indent
+import legado.shared.generated.resources.book_source_tutorial
+import legado.shared.generated.resources.book_type
+import legado.shared.generated.resources.cookie
+import legado.shared.generated.resources.copy_source
+import legado.shared.generated.resources.debug_source
+import legado.shared.generated.resources.edit_book_source
+import legado.shared.generated.resources.explore_cols
+import legado.shared.generated.resources.explore_style
+import legado.shared.generated.resources.help
+import legado.shared.generated.resources.ic_arrow_drop_down
+import legado.shared.generated.resources.ic_bug_report
+import legado.shared.generated.resources.ic_save
+import legado.shared.generated.resources.js_tutorial
+import legado.shared.generated.resources.login
+import legado.shared.generated.resources.paste_source
+import legado.shared.generated.resources.regex_tutorial
+import legado.shared.generated.resources.search
+import legado.shared.generated.resources.set_source_variable
+import legado.shared.generated.resources.str_share
+import legado.shared.generated.resources.explore_item_style
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringArrayResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 书源编辑 Screen (KMP 版, 替代 app 端 `io.legado.app.ui.book.source.edit.BookSourceEditScreen`)。
@@ -47,10 +72,10 @@ import io.legado.app.ui.widget.text.EditEntity
  * 下沉改动 (对照 app 端原版 11 个 @Composable):
  * - 去掉对 `BookSourceEditActivity` 的直接依赖, 改为通过 [BookSourceEditState] +
  *   [BookSourceEditCallbacks] + [editEntities] 传入状态与回调, 解耦 Composable 与 Android Activity
- * - 字符串资源 `stringResource(R.string.xxx)` → `rememberString("xxx")` (key-based, 跨平台)
+ * - 字符串资源 `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)` (key-based, 跨平台)
  * - 图标资源 `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")` (key-based, 跨平台)
  * - 颜色资源 `colorResource(R.color.xxx)` → `rememberColor("xxx")` (key-based, 跨平台)
- * - 数组资源 `stringArrayResource(R.array.xxx)` → `rememberStringArray("xxx")` (key-based, 跨平台)
+ * - 数组资源 `stringArrayResource(R.array.xxx)` → `stringArrayResource(Res.array.xxx)` (key-based, 跨平台)
  * - CodeView (Android 专属语法高亮控件) → [codeEditorSlot] 注入:
  *   app 端用 `AndroidView { createEditField(ctx, entity) }` (CodeView) 实现,
  *   desktop 端用普通 `OutlinedTextField` 实现
@@ -130,7 +155,7 @@ fun BookSourceEditScreen(
 ) {
     Column(modifier.fillMaxSize()) {
         AppTitleBar(
-            title = rememberString("edit_book_source"),
+            title = stringResource(Res.string.edit_book_source),
             onBack = callbacks.onBack,
             actions = { EditActions(state, callbacks) },
         )
@@ -225,15 +250,15 @@ private fun EditActions(state: BookSourceEditState, callbacks: BookSourceEditCal
     val colors = AppTheme.colors
     IconButton(onClick = callbacks.onSave) {
         Icon(
-            painter = rememberPainter("ic_save"),
-            contentDescription = rememberString("action_save"),
+            painter = painterResource(Res.drawable.ic_save),
+            contentDescription = stringResource(Res.string.action_save),
             tint = colors.primaryText,
         )
     }
     IconButton(onClick = callbacks.onDebug) {
         Icon(
-            painter = rememberPainter("ic_bug_report"),
-            contentDescription = rememberString("debug_source"),
+            painter = painterResource(Res.drawable.ic_bug_report),
+            contentDescription = stringResource(Res.string.debug_source),
             tint = colors.primaryText,
         )
     }
@@ -242,31 +267,31 @@ private fun EditActions(state: BookSourceEditState, callbacks: BookSourceEditCal
         // 在 expanded 时新组合, remember 无 key 等价每次展开重新求值)
         val hasLogin = remember { callbacks.hasLogin() }
         if (hasLogin) {
-            MenuItem(rememberString("login")) { dismiss(); callbacks.onLogin() }
+            MenuItem(stringResource(Res.string.login)) { dismiss(); callbacks.onLogin() }
         }
-        MenuItem(rememberString("search")) { dismiss(); callbacks.onSearch() }
-        MenuItem(rememberString("cookie")) { dismiss(); callbacks.onClearCookie() }
-        MenuItem(rememberString("copy_source")) { dismiss(); callbacks.onCopySource() }
-        MenuItem(rememberString("paste_source")) { dismiss(); callbacks.onPasteSource() }
-        MenuItem(rememberString("auto_indent")) { dismiss(); callbacks.onAutoIndent() }
-        MenuItem(rememberString("set_source_variable")) { dismiss(); callbacks.onSetSourceVariable() }
-        MenuItem(rememberString("str_share")) { dismiss(); callbacks.onShareSourceStr() }
+        MenuItem(stringResource(Res.string.search)) { dismiss(); callbacks.onSearch() }
+        MenuItem(stringResource(Res.string.cookie)) { dismiss(); callbacks.onClearCookie() }
+        MenuItem(stringResource(Res.string.copy_source)) { dismiss(); callbacks.onCopySource() }
+        MenuItem(stringResource(Res.string.paste_source)) { dismiss(); callbacks.onPasteSource() }
+        MenuItem(stringResource(Res.string.auto_indent)) { dismiss(); callbacks.onAutoIndent() }
+        MenuItem(stringResource(Res.string.set_source_variable)) { dismiss(); callbacks.onSetSourceVariable() }
+        MenuItem(stringResource(Res.string.str_share)) { dismiss(); callbacks.onShareSourceStr() }
         // 「帮助」二级菜单 (对齐 app 端 source_edit.xml 的嵌套 <menu>)
         var showHelpSubmenu by remember { mutableStateOf(false) }
-        MenuItem(rememberString("help")) { showHelpSubmenu = true }
+        MenuItem(stringResource(Res.string.help)) { showHelpSubmenu = true }
         Box {
             AppDropdownMenu(
                 expanded = showHelpSubmenu,
                 onDismissRequest = { showHelpSubmenu = false },
                 modifier = Modifier.offset(x = 200.dp), // 偏移到父菜单右侧
             ) {
-                MenuItem(rememberString("book_source_tutorial")) {
+                MenuItem(stringResource(Res.string.book_source_tutorial)) {
                     dismiss(); showHelpSubmenu = false; callbacks.onHelp("ruleHelp")
                 }
-                MenuItem(rememberString("js_tutorial")) {
+                MenuItem(stringResource(Res.string.js_tutorial)) {
                     dismiss(); showHelpSubmenu = false; callbacks.onHelp("jsHelp")
                 }
-                MenuItem(rememberString("regex_tutorial")) {
+                MenuItem(stringResource(Res.string.regex_tutorial)) {
                     dismiss(); showHelpSubmenu = false; callbacks.onHelp("regexHelp")
                 }
             }
@@ -295,12 +320,12 @@ private fun HeaderRow1(state: BookSourceEditState, callbacks: BookSourceEditCall
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                rememberString("book_type"),
+                stringResource(Res.string.book_type),
                 color = colors.primaryText,
                 modifier = Modifier.padding(end = 8.dp),
             )
             DropdownBox(
-                options = rememberStringArray("book_type"),
+                options = stringArrayResource(Res.array.book_type),
                 selectedIndex = state.bookSourceTypeIndex,
             ) { callbacks.onBookSourceTypeChange(it) }
         }
@@ -334,12 +359,12 @@ private fun HeaderRow2(state: BookSourceEditState, callbacks: BookSourceEditCall
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                rememberString("explore_style"),
+                stringResource(Res.string.explore_style),
                 color = colors.primaryText,
                 modifier = Modifier.padding(end = 8.dp),
             )
             DropdownBox(
-                options = rememberStringArray("explore_item_style"),
+                options = stringArrayResource(Res.array.explore_item_style),
                 selectedIndex = state.exploreStyleIndex,
             ) { callbacks.onExploreStyleChange(it) }
         }
@@ -348,7 +373,7 @@ private fun HeaderRow2(state: BookSourceEditState, callbacks: BookSourceEditCall
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                rememberString("explore_cols"),
+                stringResource(Res.string.explore_cols),
                 color = colors.primaryText,
                 modifier = Modifier.padding(end = 8.dp),
             )
@@ -504,7 +529,7 @@ private fun DropdownBox(
                 fontSize = 14.sp,
             )
             Icon(
-                painter = rememberPainter("ic_arrow_drop_down"),
+                painter = painterResource(Res.drawable.ic_arrow_drop_down),
                 contentDescription = null,
                 tint = colors.secondaryText,
             )

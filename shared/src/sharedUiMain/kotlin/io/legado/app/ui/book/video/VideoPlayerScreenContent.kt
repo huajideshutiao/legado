@@ -62,9 +62,27 @@ import io.legado.app.data.entities.VideoResolution
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.platform.handleMediaKeys
 import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlin.math.abs
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.back
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.change_source
+import legado.shared.generated.resources.chapter_list
+import legado.shared.generated.resources.ic_arrow_back
+import legado.shared.generated.resources.ic_exchange
+import legado.shared.generated.resources.ic_skip_next
+import legado.shared.generated.resources.ic_skip_previous
+import legado.shared.generated.resources.ic_toc
+import legado.shared.generated.resources.loading
+import legado.shared.generated.resources.next_chapter
+import legado.shared.generated.resources.pause
+import legado.shared.generated.resources.play
+import legado.shared.generated.resources.previous_chapter
+import legado.shared.generated.resources.reload
+import legado.shared.generated.resources.resolution
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 视频播放页主体内容 (标题栏 + 渲染槽 + 章节控制栏)。
@@ -209,8 +227,8 @@ fun VideoTitleBar(
     ) {
         IconButton(onClick = onBack) {
             Icon(
-                painter = rememberPainter("ic_arrow_back"),
-                contentDescription = rememberString("back"),
+                painter = painterResource(Res.drawable.ic_arrow_back),
+                contentDescription = stringResource(Res.string.back),
                 tint = Color.White,
             )
         }
@@ -239,15 +257,15 @@ fun VideoTitleBar(
         actions()
         IconButton(onClick = onOpenToc) {
             Icon(
-                painter = rememberPainter("ic_toc"),
-                contentDescription = rememberString("chapter_list"),
+                painter = painterResource(Res.drawable.ic_toc),
+                contentDescription = stringResource(Res.string.chapter_list),
                 tint = Color.White,
             )
         }
         IconButton(onClick = onOpenChangeSource) {
             Icon(
-                painter = rememberPainter("ic_exchange"),
-                contentDescription = rememberString("change_source"),
+                painter = painterResource(Res.drawable.ic_exchange),
+                contentDescription = stringResource(Res.string.change_source),
                 tint = Color.White,
             )
         }
@@ -418,8 +436,8 @@ fun VideoCenterControls(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         VideoCircleIconButton(
-            painter = rememberPainter("ic_skip_previous"),
-            contentDescription = rememberString("previous_chapter"),
+            painter = painterResource(Res.drawable.ic_skip_previous),
+            contentDescription = stringResource(Res.string.previous_chapter),
             enabled = enabledPrev,
             onClick = onPrev,
         )
@@ -441,8 +459,8 @@ fun VideoCenterControls(
             onClick = onSeekForward,
         )
         VideoCircleIconButton(
-            painter = rememberPainter("ic_skip_next"),
-            contentDescription = rememberString("next_chapter"),
+            painter = painterResource(Res.drawable.ic_skip_next),
+            contentDescription = stringResource(Res.string.next_chapter),
             enabled = enabledNext,
             onClick = onNext,
         )
@@ -503,7 +521,9 @@ fun PlayPauseButton(
     ) {
         Icon(
             painter = rememberPainter(if (isPlaying) "ic_pause_24dp" else "ic_play_24dp"),
-            contentDescription = if (isPlaying) rememberString("pause") else rememberString("play"),
+            contentDescription = if (isPlaying) stringResource(Res.string.pause) else stringResource(
+                Res.string.play
+            ),
             tint = iconTint,
             modifier = Modifier.size(iconSize),
         )
@@ -656,7 +676,8 @@ fun ResolutionButton(
     onSwitchResolution: (Int) -> Unit,
 ) {
     var showDialog by remember { mutableStateOf(false) }
-    val currentName = resolutions.getOrNull(currentResolutionIndex)?.name ?: rememberString("resolution")
+    val currentName =
+        resolutions.getOrNull(currentResolutionIndex)?.name ?: stringResource(Res.string.resolution)
     Text(
         text = currentName,
         color = Color.White,
@@ -670,7 +691,7 @@ fun ResolutionButton(
     if (showDialog) {
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text(rememberString("resolution")) },
+            title = { Text(stringResource(Res.string.resolution)) },
             text = {
                 Column {
                     resolutions.forEachIndexed { index, resolution ->
@@ -705,7 +726,7 @@ fun ResolutionButton(
             },
             confirmButton = {
                 TextButton(onClick = { showDialog = false }) {
-                    Text(rememberString("cancel"))
+                    Text(stringResource(Res.string.cancel))
                 }
             },
         )
@@ -741,7 +762,7 @@ fun LoadingOverlay() {
                 modifier = Modifier.size(48.dp),
             )
             Text(
-                text = rememberString("loading"),
+                text = stringResource(Res.string.loading),
                 color = Color.White,
                 modifier = Modifier.padding(top = 12.dp),
             )
@@ -755,7 +776,7 @@ fun ErrorOverlay(error: String, onRetry: () -> Unit) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(text = error, color = Color.White, textAlign = TextAlign.Center)
             Text(
-                text = rememberString("reload"),
+                text = stringResource(Res.string.reload),
                 color = Color(0xFF165DFF),
                 fontSize = 18.sp,
                 modifier = Modifier
@@ -790,8 +811,8 @@ fun VideoControlBar(
     ) {
         IconButton(onClick = onPrev, enabled = curIndex > 0) {
             Icon(
-                painter = rememberPainter("ic_skip_previous"),
-                contentDescription = rememberString("previous_chapter"),
+                painter = painterResource(Res.drawable.ic_skip_previous),
+                contentDescription = stringResource(Res.string.previous_chapter),
                 tint = if (curIndex > 0) Color.White else Color.White.copy(alpha = 0.3f),
             )
         }
@@ -804,8 +825,8 @@ fun VideoControlBar(
         )
         IconButton(onClick = onNext, enabled = curIndex < size - 1) {
             Icon(
-                painter = rememberPainter("ic_skip_next"),
-                contentDescription = rememberString("next_chapter"),
+                painter = painterResource(Res.drawable.ic_skip_next),
+                contentDescription = stringResource(Res.string.next_chapter),
                 tint = if (curIndex < size - 1) Color.White else Color.White.copy(alpha = 0.3f),
             )
         }

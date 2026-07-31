@@ -15,14 +15,22 @@ import io.legado.app.ui.about.AboutScreenModel
 import io.legado.app.ui.about.AboutUiActions
 import io.legado.app.ui.about.AboutUiState
 import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.about
+import legado.shared.generated.resources.app_share_description
+import legado.shared.generated.resources.contributors_url
+import legado.shared.generated.resources.ic_share
+import legado.shared.generated.resources.share
+import legado.shared.generated.resources.telegram_group_url
+import legado.shared.generated.resources.version
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 关于页 shared 路由入口。
@@ -46,12 +54,12 @@ fun AboutRoute(
 
     // 平台资源 (版本号/URL) 在 shared 层无法直读 R.string / AppConst.appInfo, 用 rememberString +
     // 平台能力拼装后推入 ScreenModel (对照 AboutActivity 内 AboutUiState 构造)
-    val strVersion = rememberString("version")
-    val strContributorsUrl = rememberString("contributors_url")
-    val strTelegramGroupUrl = rememberString("telegram_group_url")
-    val strAbout = rememberString("about")
-    val strShare = rememberString("share")
-    val strAppShareDescription = rememberString("app_share_description")
+    val strVersion = stringResource(Res.string.version)
+    val strContributorsUrl = stringResource(Res.string.contributors_url)
+    val strTelegramGroupUrl = stringResource(Res.string.telegram_group_url)
+    val strAbout = stringResource(Res.string.about)
+    val strShare = stringResource(Res.string.share)
+    val strAppShareDescription = stringResource(Res.string.app_share_description)
     LaunchedEffect(Unit) {
         val versionName = PlatformCapabilityProviders.getOrNull()?.getAppVersionName().orEmpty()
         screenModel.updateState(
@@ -109,7 +117,7 @@ fun AboutRoute(
             actions = {
                 IconButton(onClick = { actions.onShare() }) {
                     Icon(
-                        painter = rememberPainter("ic_share"),
+                        painter = painterResource(Res.drawable.ic_share),
                         contentDescription = strShare,
                         tint = AppTheme.colors.primaryText,
                     )

@@ -21,7 +21,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -35,6 +34,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.image.CoverImageView
 import io.legado.app.utils.throttleLatest
@@ -83,9 +83,9 @@ class ChangeCoverDialog() : BaseComposeDialogFragment() {
             ) {
                 IconButton(onClick = { viewModel.startOrStopSearch() }) {
                     Icon(
-                        painter = painterResource(
-                            if (searching) io.legado.shared.R.drawable.ic_stop_black_24dp
-                            else io.legado.shared.R.drawable.ic_refresh_black_24dp
+                        painter = rememberPainter(
+                            if (searching) "ic_stop_black_24dp"
+                            else "ic_refresh_black_24dp"
                         ),
                         contentDescription = stringResource(
                             if (searching) R.string.stop else R.string.refresh

@@ -34,8 +34,10 @@ object DesktopVerificationUiProvider : VerificationUiProvider {
         url: String,
         title: String,
         saveResult: Boolean?,
-        refetchAfterSuccess: Boolean?
+        refetchAfterSuccess: Boolean?,
+        asBottomSheet: Boolean,
     ) {
+        // desktop 无 BottomSheet 容器, asBottomSheet 降级为普通打开 (忽略半屏语义)
         if (saveResult == true) {
             val msg = "桌面端暂不支持该验证方式(需内置浏览器回传网页源码): $title"
             runCatching { ToastProviders.get().showToast(msg, long = true) }

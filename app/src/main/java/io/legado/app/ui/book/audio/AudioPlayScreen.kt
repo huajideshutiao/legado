@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
@@ -38,12 +37,9 @@ import coil3.asDrawable
 import coil3.load
 import coil3.request.placeholder
 import io.legado.app.R
-import io.legado.app.help.config.AppConfig
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.blurConfig
 import io.legado.app.model.coverConfig
-import io.legado.app.ui.compose.component.AppMenuCheckbox
-import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
@@ -52,6 +48,7 @@ import io.legado.app.ui.widget.LrcView
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.getRepresentativeColor
 import java.util.Locale
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 音频播放页 (薄壳): 主体 UI 调用 shared [AudioPlayScreenContent], 平台特殊部分以 slot 注入。
@@ -66,6 +63,20 @@ import java.util.Locale
  */
 @Composable
 fun AudioPlayScreen(activity: AudioPlayActivity) {
+    // 构造溢出菜单动作 (对照 AudioPlayRoute 的 overflowActions, 经 shared AudioPlayOverflowMenu 渲染)
+    val source = AudioPlay.bookSource
+    val overflowActions = AudioPlayOverflowActions(
+        hasLogin = source?.hasLogin() == true,
+        onLogin = { activity.showLogin() },
+        onCopyAudioUrl = { activity.copyAudioUrl() },
+        onOpenAudioUrl = { activity.openAudioUrl() },
+        onSetSourceVariable = { activity.showSourceVariable() },
+        onSetBookVariable = { activity.showBookVariable() },
+        onEditBookSource = { activity.editSource() },
+        onAddBookmark = { activity.addBookmark() },
+        onShowAppLog = { activity.showAppLog() },
+        onToggleWakeLock = { activity.toggleWakeLock() },
+    )
     AudioPlayAndroidContent(
         state = AudioPlayUiState(
             title = activity.titleText,
@@ -90,6 +101,7 @@ fun AudioPlayScreen(activity: AudioPlayActivity) {
         onOpenToc = activity::openChapterList,
         onOpenBookSourceEdit = { activity.editSource() },
         onOpenReview = activity::openReview,
+        overflowActions = overflowActions,
         onEvent = { event ->
             when (event) {
                 AudioPlayUiEvent.CoverClick -> activity.coverVisible = false
@@ -102,6 +114,7 @@ fun AudioPlayScreen(activity: AudioPlayActivity) {
                 is AudioPlayUiEvent.SetSpeed -> activity.viewModel.adjustSpeed(event.speed)
                 is AudioPlayUiEvent.LrcClick -> activity.onLrcClick(event.time)
                 is AudioPlayUiEvent.Init -> Unit
+                is AudioPlayUiEvent.UpdateInShelf -> Unit
             }
         },
         activity = activity,
@@ -116,6 +129,7 @@ fun AudioPlayAndroidContent(
     onOpenToc: () -> Unit,
     onOpenBookSourceEdit: (String) -> Unit,
     onOpenReview: () -> Unit,
+    overflowActions: AudioPlayOverflowActions,
     onEvent: (AudioPlayUiEvent) -> Unit,
     activity: AudioPlayActivity? = null,
 ) {
@@ -153,18 +167,14 @@ fun AudioPlayAndroidContent(
         onSetTimer = { onEvent(AudioPlayUiEvent.SetTimer(it)) },
         onSetSpeed = { onEvent(AudioPlayUiEvent.SetSpeed(it)) },
         onStop = null,
+        overflowActions = overflowActions,
         coverSlot = { url, modifier -> CoverSlot(url, modifier) },
         blurBgSlot = { url, modifier ->
             BlurBgSlot(url, modifier) { colorsPair -> lrcColors = colorsPair }
         },
         lrcSlot = { modifier -> LrcSlot(state, onEvent, lrcColors, modifier) },
         titleBarTrailingSlot = {
-            TitleBarTrailing(
-                activity = activity,
-                state = state,
-                onOpenBookSourceEdit = onOpenBookSourceEdit,
-                onOpenReview = onOpenReview,
-            )
+            TitleBarTrailing(onOpenReview = onOpenReview)
         },
         timerDialogSlot = { initial, onProgressChanged, onDismiss ->
             SliderPopupCard(
@@ -196,15 +206,10 @@ fun AudioPlayAndroidContent(
     )
 }
 
-// ---- 标题栏尾部: review + 溢出菜单 (登录/复制URL/变量/编辑书源/锁屏/书签/日志) ----
+// ---- 标题栏尾部: review 钮 (溢出菜单由 shared AudioPlayOverflowMenu 经 overflowActions 渲染) ----
 
 @Composable
-private fun TitleBarTrailing(
-    activity: AudioPlayActivity?,
-    state: AudioPlayUiState,
-    onOpenBookSourceEdit: (String) -> Unit,
-    onOpenReview: () -> Unit,
-) {
+private fun TitleBarTrailing(onOpenReview: () -> Unit) {
     if (AudioPlay.bookSource?.reviewRule?.reviewUrl.isNullOrBlank() == false) {
         IconButton(onClick = onOpenReview) {
             Icon(
@@ -213,81 +218,6 @@ private fun TitleBarTrailing(
                 tint = Color.White,
             )
         }
-    }
-    AudioOverflowMenu(activity, state, onOpenBookSourceEdit)
-}
-
-@Composable
-private fun AudioOverflowMenu(
-    activity: AudioPlayActivity?,
-    state: AudioPlayUiState,
-    onOpenBookSourceEdit: (String) -> Unit,
-) {
-    val colors = AppTheme.colors
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { expanded = true }) {
-            Icon(
-                painter = rememberPainter("ic_more_vert"),
-                contentDescription = stringResource(R.string.more_menu),
-                tint = Color.White,
-            )
-        }
-        AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            val dismiss = { expanded = false }
-            val source = AudioPlay.bookSource
-            val book = AudioPlay.book
-            if (source?.hasLogin() == true) {
-                AudioMenuItem(R.string.login) {
-                    dismiss()
-                    activity?.showLogin()
-                }
-            }
-            AudioMenuItem(R.string.copy_play_url) {
-                dismiss()
-                activity?.copyAudioUrl()
-            }
-            AudioMenuItem(R.string.set_source_variable) {
-                dismiss()
-                activity?.showSourceVariable()
-            }
-            AudioMenuItem(R.string.set_book_variable) {
-                dismiss()
-                activity?.showBookVariable()
-            }
-            AudioMenuItem(R.string.edit_book_source) {
-                dismiss()
-                source?.bookSourceUrl?.let(onOpenBookSourceEdit)
-            }
-            DropdownMenuItem(onClick = {
-                dismiss()
-                AppConfig.audioPlayUseWakeLock = !AppConfig.audioPlayUseWakeLock
-            }) {
-                Text(
-                    stringResource(R.string.audio_play_wake_lock),
-                    color = colors.primaryText,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 12.dp),
-                )
-                AppMenuCheckbox(checked = AppConfig.audioPlayUseWakeLock)
-            }
-            AudioMenuItem(R.string.bookmark_add) {
-                dismiss()
-                activity?.addBookmark()
-            }
-            AudioMenuItem(R.string.log) {
-                dismiss()
-                activity?.showAppLog()
-            }
-        }
-    }
-}
-
-@Composable
-private fun AudioMenuItem(textRes: Int, onClick: () -> Unit) {
-    DropdownMenuItem(onClick = onClick) {
-        Text(stringResource(textRes), color = AppTheme.colors.primaryText)
     }
 }
 

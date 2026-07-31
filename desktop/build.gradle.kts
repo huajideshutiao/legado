@@ -8,6 +8,22 @@ plugins {
     id("legado.compose")
 }
 
+// CPF 0.4.0 的 root metadata 只发布 Android/iOS/OHOS 变体，Desktop JVM 继续使用同基线的
+// JetBrains 1.9.2 平台制品 (与 shared/build.gradle.kts 同款 resolutionStrategy 对齐)
+val isHarmonyMode = providers.gradleProperty("enableOhosTarget").getOrNull() == "true"
+val activeComposeVersion = if (isHarmonyMode) "1.9.2-0.4.0" else "1.7.1"
+
+configurations.configureEach {
+    resolutionStrategy.eachDependency {
+        if (requested.group.startsWith("org.jetbrains.compose") &&
+            requested.version == activeComposeVersion
+        ) {
+            useVersion("1.9.2")
+            because("CPF 0.4.0 does not publish Desktop JVM variants")
+        }
+    }
+}
+
 // KP6+: 安装类型由编译期参数控制 (用户裁决: 不靠 runtime/ 目录嗅探, 改 BuildConfig)
 // gradle property: -Plegado.installType=portable|installed|dev (默认 dev 保护开发流程)
 //   portable  = 数据存 exe 同级 dataDir (便携版, 拷贝即迁移)
@@ -59,10 +75,8 @@ dependencies {
     // shared 模块 commonMain 已声明 kotlinx-serialization-json api, 但 jvm target 传递依赖可能不完整, 显式补
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
-    // Compose Multiplatform 桌面端 UI (material3 + 桌面 swing 集成)
+    // Compose Multiplatform 桌面端 UI (桌面 swing 集成; shared 已用 compose.material, desktop 不引 md3)
     implementation(compose.desktop.currentOs)
-    @Suppress("DEPRECATION")
-    implementation(compose.material3)
     // Compose Multiplatform 资源运行时: 加载 shared/sharedIconResources/drawable/ 下的共享 vector XML 图标
     // (ResourceProvider.jvm.kt 用 painterResource(Res.drawable.xxx) 替代部分 Material Icons, 与 app 端视觉对齐)
     // desktop 单 JVM 模块 (kotlin.jvm 插件) 的 compose extension 不支持 .resources 属性
@@ -86,6 +100,11 @@ dependencies {
     // 设置项(mpvPath)/PATH/常见安装路径探测, 未装时 VideoPlayerScreen 显示引导安装占位。
     // jna 仅用于取 AWT Canvas 原生窗口句柄 (Native.getComponentID) 供 mpv --wid 嵌入。
     implementation("net.java.dev.jna:jna:5.6.0")
+    // P0.3 桌面端真实 WebView slot: JavaFX WebView 经 SwingPanel(JFXPanel) 嵌入 Compose
+    // javafx-web 提供 javafx.scene.web.WebView, javafx-swing 提供 javafx.embed.swing.JFXPanel
+    // OpenJFX 21 默认按当前 OS 解析 classifier (win/linux/mac), 与桌面打包目标一致
+    implementation("org.openjfx:javafx-web:21.0.5")
+    implementation("org.openjfx:javafx-swing:21.0.5")
     // KP2-D: 桌面端 Room 事务支持
     // room-ktx 2.8.4 不发布 jvm 变体 (Android 专属), 桌面端改用 room-runtime 的 useWriterTransaction
     // shared.commonMain 已 api(libs.room.runtime), 桌面端通过传递依赖可见, 无需显式声明

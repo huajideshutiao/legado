@@ -39,6 +39,17 @@ import io.legado.app.utils.toJson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.enable_dangerous_api
+import legado.shared.generated.resources.enable_dangerous_api_confirm
+import legado.shared.generated.resources.exit
+import legado.shared.generated.resources.exit_no_save
+import legado.shared.generated.resources.no
+import legado.shared.generated.resources.non_null_name_url
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.yes
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * AppRoute.BookSourceEdit 路由下沉入口: 桥接 [BookSourceEditScreenModel] 状态与 [BookSourceEditScreen] 渲染。
@@ -61,16 +72,16 @@ fun BookSourceEditRoute(
     val route = entry.route as AppRoute.BookSourceEdit
     val sourceUrl = route.sourceUrl
 
-    val nonNullNameUrlMessage = rememberString("non_null_name_url")
-    val strEnableDangerousApi = rememberString("enable_dangerous_api")
-    val strEnableDangerousApiConfirm = rememberString("enable_dangerous_api_confirm")
-    val strOk = rememberString("ok")
-    val strCancel = rememberString("cancel")
+    val nonNullNameUrlMessage = stringResource(Res.string.non_null_name_url)
+    val strEnableDangerousApi = stringResource(Res.string.enable_dangerous_api)
+    val strEnableDangerousApiConfirm = stringResource(Res.string.enable_dangerous_api_confirm)
+    val strOk = stringResource(Res.string.ok)
+    val strCancel = stringResource(Res.string.cancel)
     // 退出确认对话框文案 (对照 app 端 finish() 内 alert)
-    val strExit = rememberString("exit")
-    val strExitNoSave = rememberString("exit_no_save")
-    val strYes = rememberString("yes")
-    val strNo = rememberString("no")
+    val strExit = stringResource(Res.string.exit)
+    val strExitNoSave = stringResource(Res.string.exit_no_save)
+    val strYes = stringResource(Res.string.yes)
+    val strNo = stringResource(Res.string.no)
 
     // Compose 剪贴板管理器 (KMP 可用, 替代 app 端 getClipText; 对照 ReplaceEditRoute)
     val clipboardManager = LocalClipboardManager.current

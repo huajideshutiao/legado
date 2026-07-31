@@ -11,6 +11,7 @@ import io.legado.app.help.source.SourceCacheProviders
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.help.source.exploreKinds
+import io.legado.app.model.script.JsEngines
 import io.legado.app.model.webBook.WebBook
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -192,10 +193,10 @@ object CheckSourceShared {
             Debug.updateFinalMessage(source.bookSourceUrl, "校验成功")
         }.onFailure {
             currentCoroutineContext().ensureActive()
-            when (it) {
-                is TimeoutCancellationException -> source.addGroup("校验超时")
-                is Exception -> source.addGroup("js失效")
-                !is NoStackTraceException -> source.addGroup("网站失效")
+            when {
+                it is TimeoutCancellationException -> source.addGroup("校验超时")
+                JsEngines.isJsException(it) -> source.addGroup("js失效")
+                it !is NoStackTraceException -> source.addGroup("网站失效")
             }
             source.addErrorComment(it)
             Debug.updateFinalMessage(source.bookSourceUrl, "校验失败:${it.message}")

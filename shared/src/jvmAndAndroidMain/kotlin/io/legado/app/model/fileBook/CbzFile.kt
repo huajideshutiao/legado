@@ -1,5 +1,7 @@
 package io.legado.app.model.fileBook
 
+import com.fleeksoft.charset.Charsets
+import com.fleeksoft.charset.toByteArray
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.Book
@@ -9,6 +11,7 @@ import io.legado.app.utils.AlphanumComparator
 import io.legado.app.utils.EncodingDetect
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
+import kotlinx.serialization.encodeToString
 import com.fleeksoft.ksoup.Ksoup
 import com.fleeksoft.ksoup.parser.Parser
 import java.io.File
@@ -103,7 +106,9 @@ class CbzFile(var book: Book) {
             if (cacheFile.exists()) {
                 cacheFile.inputStream().use {
                     // Phase D: GSON.fromJsonObject<ZipImageCache>(it) InputStream 重载 → 读取为 String 再解析
-                    GSON.fromJsonObject<ZipImageCache>(it.readBytes().toString(Charsets.UTF_8)).getOrNull()
+                    GSON.fromJsonObject<ZipImageCache>(
+                        it.readBytes().toString(kotlin.text.Charsets.UTF_8)
+                    ).getOrNull()
                 }
             } else null
         }.getOrNull()
@@ -156,7 +161,7 @@ class CbzFile(var book: Book) {
             ?.let { EncodingDetect.getEncode(it.toByteArray(Charsets.ISO_8859_1)) }
 
         return charsetName?.let { runCatching { Charset.forName(it) }.getOrNull() }
-            ?: Charsets.UTF_8
+            ?: kotlin.text.Charsets.UTF_8
     }
 
     fun close() {

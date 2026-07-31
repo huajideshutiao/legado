@@ -61,11 +61,25 @@ import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.GridPackLayout
 import io.legado.app.ui.compose.component.toGridPackSpec
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.delete
+import legado.shared.generated.resources.edit
+import legado.shared.generated.resources.explore_empty
+import legado.shared.generated.resources.favorite
+import legado.shared.generated.resources.group
+import legado.shared.generated.resources.ic_arrow_back
+import legado.shared.generated.resources.ic_arrow_right
+import legado.shared.generated.resources.ic_groups
+import legado.shared.generated.resources.login
+import legado.shared.generated.resources.refresh
+import legado.shared.generated.resources.search
+import legado.shared.generated.resources.search_book_source
+import legado.shared.generated.resources.to_top
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /*
  * 下沉所需资源 key 清单 (供 ResourceProvider 各平台 actual 补全)
@@ -217,7 +231,7 @@ fun ExploreScreen(
             val pinned = state.pinned
             if (sources.isEmpty() && state.searchKey.isEmpty()) {
                 Text(
-                    text = rememberString("explore_empty"),
+                    text = stringResource(Res.string.explore_empty),
                     color = colors.secondaryText,
                     modifier = Modifier.align(Alignment.Center),
                 )
@@ -250,7 +264,7 @@ fun ExploreScreen(
 private fun PinnedSection(pinned: List<PinnedExplore>, actions: ExploreUiActions) {
     Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
         Text(
-            text = rememberString("favorite"),
+            text = stringResource(Res.string.favorite),
             color = AppTheme.colors.secondaryText,
             modifier = Modifier.padding(start = 4.dp), // space.xs
         )
@@ -323,7 +337,7 @@ private fun ExploreSourceItem(
                 }
                 // 原 iv_status: 20dp、tint secondaryText
                 Icon(
-                    painter = rememberPainter("ic_arrow_right"),
+                    painter = painterResource(Res.drawable.ic_arrow_right),
                     contentDescription = null,
                     tint = colors.secondaryText,
                     modifier = Modifier.size(20.dp).rotate(arrowRotation),
@@ -405,34 +419,34 @@ private fun ExploreItemMenu(
         DropdownMenuItem(
             onClick = { onDismiss(); actions.onEditSource(item.bookSourceUrl) },
         ) {
-            Text(rememberString("edit"), color = colors.primaryText)
+            Text(stringResource(Res.string.edit), color = colors.primaryText)
         }
         DropdownMenuItem(
             onClick = { onDismiss(); actions.onToTop(item) },
         ) {
-            Text(rememberString("to_top"), color = colors.primaryText)
+            Text(stringResource(Res.string.to_top), color = colors.primaryText)
         }
         if (item.hasLoginUrl) {
             DropdownMenuItem(
                 onClick = { onDismiss(); actions.onLogin(item) },
             ) {
-                Text(rememberString("login"), color = colors.primaryText)
+                Text(stringResource(Res.string.login), color = colors.primaryText)
             }
         }
         DropdownMenuItem(
             onClick = { onDismiss(); actions.onSearchBook(item) },
         ) {
-            Text(rememberString("search"), color = colors.primaryText)
+            Text(stringResource(Res.string.search), color = colors.primaryText)
         }
         DropdownMenuItem(
             onClick = { onDismiss(); actions.onRefreshSource(item) },
         ) {
-            Text(rememberString("refresh"), color = colors.primaryText)
+            Text(stringResource(Res.string.refresh), color = colors.primaryText)
         }
         DropdownMenuItem(
             onClick = { onDismiss(); actions.onDeleteSource(item) },
         ) {
-            Text(rememberString("delete"), color = colors.primaryText)
+            Text(stringResource(Res.string.delete), color = colors.primaryText)
         }
     }
 }
@@ -470,7 +484,7 @@ private fun ExploreTitleBar(
             if (onBack != null) {
                 IconButton(onClick = onBack) {
                     Icon(
-                        painter = rememberPainter("ic_arrow_back"),
+                        painter = painterResource(Res.drawable.ic_arrow_back),
                         contentDescription = null,
                         tint = colors.primaryText,
                     )
@@ -479,7 +493,7 @@ private fun ExploreTitleBar(
             AppSearchField(
                 value = searchKey,
                 onValueChange = onSearch,
-                hint = rememberString("search_book_source"),
+                hint = stringResource(Res.string.search_book_source),
                 modifier = Modifier.weight(1f),
             )
             GroupMenu(groups, onGroup)
@@ -504,8 +518,8 @@ private fun GroupMenu(groups: List<String>, onGroup: (String) -> Unit) {
     Box {
         IconButton(onClick = { expanded = true }) {
             Icon(
-                painter = rememberPainter("ic_groups"),
-                contentDescription = rememberString("group"),
+                painter = painterResource(Res.drawable.ic_groups),
+                contentDescription = stringResource(Res.string.group),
                 tint = colors.primaryText,
             )
         }

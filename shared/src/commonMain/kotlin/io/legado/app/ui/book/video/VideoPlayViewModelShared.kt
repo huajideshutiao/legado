@@ -8,6 +8,9 @@ import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.data.entities.VideoSource
+import io.legado.app.help.AppWebDavShared
+import io.legado.app.help.book.isNotShelf
+import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
@@ -15,6 +18,7 @@ import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.compose.platform.PreferenceStoreProvider
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -66,6 +70,9 @@ class VideoPlayViewModelShared(
     private val scope: CoroutineScope,
     private val prefStore: PreferenceStoreProvider,
 ) {
+    /** 进度同步专用作用域: 不随 UI scope 取消 (对照 ReadBookViewModelShared.progressSyncScope) */
+    private val progressSyncScope = CoroutineScope(SupervisorJob() + IoDispatcher)
+
     /** 当前书籍 (initData 写入, 退出时清空) */
     var curBook: Book? = null
         private set
@@ -133,8 +140,15 @@ class VideoPlayViewModelShared(
      *
      * @param book 待播放的视频书
      * @param initialChapterIndex 初始章节序号 (通常取 book.durChapterIndex)
+     * @param persistProgress 是否在加载初始章节时持久化进度 (对照 [loadChapter] persistProgress)。
+     *   shared 路由入口若已通过 [applyChapterOverride] 写回 chapterIndex/chapterPos,
+     *   传 false 避免覆盖; app 端经 [initWithExternalChapters] 走 false 同理。
      */
-    suspend fun initData(book: Book, initialChapterIndex: Int = book.durChapterIndex) {
+    suspend fun initData(
+        book: Book,
+        initialChapterIndex: Int = book.durChapterIndex,
+        persistProgress: Boolean = true,
+    ) {
         curBook = book
         // 查书源
         curBookSource = withContext(IoDispatcher) {
@@ -155,7 +169,7 @@ class VideoPlayViewModelShared(
         _chapterSize.value = chapterList?.size ?: 0
         // 加载初始章节
         val targetIndex = initialChapterIndex.coerceIn(0, (_chapterSize.value - 1).coerceAtLeast(0))
-        loadChapter(targetIndex)
+        loadChapter(targetIndex, persistProgress)
     }
 
     /**
@@ -403,17 +417,24 @@ class VideoPlayViewModelShared(
      * 避免整行 update 冲掉后台 updateToc/refreshBookInfo 写入的最新元数据
      * (参考 `ReadBookViewModelShared.saveProgress`)。
      *
+     * 同步回写 [curBook] 内存字段, 供 [uploadProgress] 构造 [BookProgress] 使用。
+     *
      * @param index 当前章节序号
+     * @param positionMs 视频位置 (毫秒, 转 Int 写入 durChapterPos; 默认 0 = 章节切换重置)
      */
-    private suspend fun saveRead(index: Int) {
+    private suspend fun saveRead(index: Int, positionMs: Long = 0L) {
         val book = curBook ?: return
         val chapters = chapterList ?: return
         val chapter = chapters.getOrNull(index) ?: return
+        // 写回内存字段, 供 BookProgress 上传使用 (对照 app VideoViewModel.saveRead: curBook.durChapterPos = position)
+        book.durChapterIndex = index
+        book.durChapterPos = positionMs.toInt()
+        book.durChapterTitle = chapter.title
         runCatching {
             AppDbProviders.get().bookDao.updateProgress(
                 bookUrl = book.bookUrl,
                 durChapterIndex = index,
-                durChapterPos = 0,
+                durChapterPos = positionMs.toInt(),
                 durChapterTime = systemCurrentTimeMillis(),
                 durChapterTitle = chapter.title,
             )
@@ -466,6 +487,70 @@ class VideoPlayViewModelShared(
      */
     fun getSavedVideoProgress(bookUrl: String): Long =
         prefStore.getString("video_progress_$bookUrl", "0")?.toLongOrNull() ?: 0L
+
+    /**
+     * 应用书签/目录回传的章节定位 (对照 app `VideoViewModel.initData` override 分支:
+     * curBook.durChapterIndex = overrideIndex; curBook.durChapterPos = overridePos;
+     * saveRead(overridePos.toLong()))。
+     *
+     * 写回 [curBook] 内存字段 + PATCH books 表 + 更新 Preference 视频位置,
+     * 供 [VideoPlayScreenModel] ShowBook / TOC 回填调用。
+     *
+     * @param book 当前书籍 (与 [curBook] 同一引用)
+     * @param chapterIndex 章节序号
+     * @param chapterPos 视频位置 (Int, 对齐 Book.durChapterPos 精度; 0 = 从头播)
+     */
+    suspend fun applyChapterOverride(book: Book, chapterIndex: Int, chapterPos: Int) {
+        curBook = book
+        saveRead(chapterIndex, chapterPos.toLong())
+        saveVideoProgress(book.bookUrl, chapterPos.toLong())
+    }
+
+    /**
+     * 上传阅读进度到 WebDav (对照 app `BaseReadViewModel.uploadProgress` +
+     * `ReadBookViewModelShared.uploadProgressAwait`)。
+     *
+     * 走 [progressSyncScope] (不随 UI scope 取消), 先读 DB 最新行再上传,
+     * 避免内存 book 实体与 DB 不一致。仅在书架内 (非 notShelf) 且开启同步时上传。
+     */
+    fun uploadProgress() {
+        val book = curBook ?: return
+        if (book.isNotShelf) return
+        if (!runCatching { AppConfigProviders.get().syncBookProgress }.getOrDefault(false)) return
+        progressSyncScope.launch {
+            runCatching {
+                val fresh = AppDbProviders.get().bookDao.getBook(book.bookUrl) ?: return@launch
+                AppWebDavShared.uploadBookProgress(fresh)
+            }.onFailure {
+                AppLog.put("上传视频进度失败\n${it.message}", it)
+            }
+        }
+    }
+
+    /**
+     * 退出时保存真实进度 (对照 app `VideoPlayActivity.onPause`:
+     * saveVideoProgressOnExit + saveRead + uploadProgress)。
+     *
+     * 三步编排:
+     * 1. [saveVideoProgressOnExit] Preference 存视频位置 (片尾归零)
+     * 2. [saveRead] books 表存 durChapterPos (片尾 -1 编码"停在章末", 对照 app)
+     * 3. [uploadProgress] WebDav 上传 (书架内且开启同步时)
+     *
+     * @param positionMs 当前播放位置 (毫秒)
+     * @param durationMs 媒体总时长 (毫秒, 0 = 未知时长按原位置存)
+     */
+    fun onExit(positionMs: Long, durationMs: Long) {
+        // 片尾归零: 接近片尾存 0 下次从头播, 否则存当前位置 (对照 app onPause 片尾判断)
+        val atEnd = durationMs > 0 && positionMs > durationMs - 1000L
+        val bookPos = if (atEnd) -1L else positionMs
+        // Preference 视频位置 (精确毫秒)
+        saveVideoProgressOnExit(positionMs, durationMs)
+        // books 表 durChapterPos (Int, 片尾 -1 编码章末); 走 progressSyncScope 不随 UI scope 取消
+        val index = _curChapterIndex.value
+        progressSyncScope.launch { saveRead(index, bookPos) }
+        // WebDav 上传
+        uploadProgress()
+    }
 
     /**
      * 构造视频书签 (不写库, 由调用方决定是否落库)。

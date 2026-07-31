@@ -52,6 +52,7 @@ import io.legado.app.utils.sendToClip
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 内容编辑。正文编辑框保留 View EditText（AndroidView 包裹，照 source/edit CodeView 先例）：

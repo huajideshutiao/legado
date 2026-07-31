@@ -2,9 +2,7 @@ package io.legado.app.ui.book.manage
 
 import androidx.compose.runtime.Composable
 import io.legado.app.ui.preview.AppPreview
-import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
-import io.legado.app.constant.BookType
 import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
@@ -12,13 +10,6 @@ import io.legado.app.ui.preview.LegadoThemePreview
  *
  * 假数据: Book/BookSource 用纯内存对象构造, 不依赖 DB/网络。
  */
-
-private val previewBook = Book(
-    name = "三体",
-    author = "刘慈欣",
-    bookUrl = "preview://book",
-    origin = BookType.localTag,
-)
 
 private val previewSources = listOf(
     BookSource(
@@ -45,10 +36,10 @@ private val previewSources = listOf(
 @Composable
 fun SourcePickerDialogPreview() = LegadoThemePreview {
     SourcePickerDialog(
-        book = previewBook,
         sources = previewSources,
-        selectedSourceUrls = setOf("https://source1.com"),
-        onConfirm = {},
+        initialDelay = 0,
+        onSourceSelected = {},
+        onDelayChange = {},
         onDismiss = {},
     )
 }
@@ -57,10 +48,10 @@ fun SourcePickerDialogPreview() = LegadoThemePreview {
 @Composable
 fun SourcePickerDialogEmptyPreview() = LegadoThemePreview {
     SourcePickerDialog(
-        book = previewBook,
         sources = emptyList(),
-        selectedSourceUrls = emptySet(),
-        onConfirm = {},
+        initialDelay = 0,
+        onSourceSelected = {},
+        onDelayChange = {},
         onDismiss = {},
     )
 }
@@ -69,13 +60,10 @@ fun SourcePickerDialogEmptyPreview() = LegadoThemePreview {
 @Composable
 fun SourcePickerDialogMultiSelectedPreview() = LegadoThemePreview {
     SourcePickerDialog(
-        book = previewBook,
         sources = previewSources,
-        selectedSourceUrls = setOf(
-            "https://source1.com",
-            "https://source2.com",
-        ),
-        onConfirm = {},
+        initialDelay = 2,
+        onSourceSelected = {},
+        onDelayChange = {},
         onDismiss = {},
     )
 }
@@ -84,10 +72,10 @@ fun SourcePickerDialogMultiSelectedPreview() = LegadoThemePreview {
 @Composable
 fun SourcePickerDialogDarkPreview() = LegadoThemePreview(dark = true) {
     SourcePickerDialog(
-        book = previewBook,
         sources = previewSources,
-        selectedSourceUrls = emptySet(),
-        onConfirm = {},
+        initialDelay = 0,
+        onSourceSelected = {},
+        onDelayChange = {},
         onDismiss = {},
     )
 }

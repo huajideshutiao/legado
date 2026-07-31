@@ -28,8 +28,12 @@ import io.legado.app.data.entities.Bookmark
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.OverflowMenu
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.all_bookmark
+import legado.shared.generated.resources.export
+import legado.shared.generated.resources.export_md
+import org.jetbrains.compose.resources.stringResource
 
 // ===== state / actions =====
 
@@ -71,7 +75,7 @@ interface AllBookmarkUiActions {
  * 下沉自 app 端原 `AllBookmarkActivity.Content()` 及其私有 @Composable，
  * 将 `AllBookmarkActivity` 直接依赖拆为 [state] (展示状态) + [actions] (交互回调)，
  * 去除 Android `Context` / `showDialogFragment` / `appDb` 依赖：
- * - 字符串资源 `stringResource(R.string.xxx)` → `rememberString("xxx")` (key-based, 跨平台)
+ * - 字符串资源 `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)` (key-based, 跨平台)
  * - 平台依赖 (showDialogFragment / exportDir.launch / openBookmark 内的 appDb 查询)
  *   通过 [AllBookmarkUiActions] 回调桥接回 app 端
  * - AppTitleBar / OverflowMenu 等组件已在 shared, 直接复用
@@ -89,14 +93,14 @@ fun AllBookmarkScreen(
 ) {
     Column(modifier.fillMaxSize()) {
         AppTitleBar(
-            title = rememberString("all_bookmark"),
+            title = stringResource(Res.string.all_bookmark),
             onBack = { actions.onBack() },
         ) {
             OverflowMenu { dismiss ->
-                MenuItem(rememberString("export")) {
+                MenuItem(stringResource(Res.string.export)) {
                     dismiss(); actions.export()
                 }
-                MenuItem(rememberString("export_md")) {
+                MenuItem(stringResource(Res.string.export_md)) {
                     dismiss(); actions.exportMd()
                 }
             }

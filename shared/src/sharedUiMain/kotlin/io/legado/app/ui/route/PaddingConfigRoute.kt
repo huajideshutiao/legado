@@ -11,10 +11,12 @@ import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.config.PaddingConfigController
 import io.legado.app.ui.book.read.config.PaddingConfigScreen
 import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.padding
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 边距配置 shared 路由入口。
@@ -125,7 +127,7 @@ fun PaddingConfigRoute(
     }
 
     // 顶栏标题 (对照 app 端 R.string.padding, 与 ReadConfigScreen 入口项一致)
-    val titleStr = rememberString("padding")
+    val titleStr = stringResource(Res.string.padding)
 
     Column(Modifier.fillMaxSize()) {
         AppTitleBar(

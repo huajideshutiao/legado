@@ -22,19 +22,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.legado.app.constant.AppLog
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.linkifyText
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.widget.dialog.TextDialog
-import io.legado.app.utils.ScreenInfoProviders
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.clear
+import legado.shared.generated.resources.log
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 应用日志对话框内容 (KMP 共享, app + desktop 复用)。
@@ -60,10 +62,10 @@ fun AppLogDialogContent(
 
     Column(Modifier.fillMaxWidth()) {
         DialogTitleBar(
-            title = rememberString("log"),
+            title = stringResource(Res.string.log),
             onBack = onDismiss,
             actions = {
-                AppTextButton(text = rememberString("clear"), onClick = AppLog::clear)
+                AppTextButton(text = stringResource(Res.string.clear), onClick = AppLog::clear)
             },
         )
         LazyColumn(
@@ -80,7 +82,7 @@ fun AppLogDialogContent(
     // 堆栈信息弹窗 (点击带异常的日志行触发)
     stackTraceItem?.let { item ->
         TextDialog(
-            title = rememberString("log"),
+            title = stringResource(Res.string.log),
             content = item.third?.stackTraceToString() ?: "",
             onConfirm = { stackTraceItem = null },
             onDismiss = { stackTraceItem = null },
@@ -132,13 +134,9 @@ fun AppLogDialog(
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    // 对齐 BaseComposeDialogFragment 宽度: 0.9 屏宽, 上限 800dp; 高度: 0.8 屏高
-    val dialogWidth = with(LocalDensity.current) {
-        (ScreenInfoProviders.get().screenWidthPx * 0.9f).toDp().coerceAtMost(800.dp)
-    }
-    val dialogHeight = with(LocalDensity.current) {
-        (ScreenInfoProviders.get().screenHeightPx * 0.8f).toDp()
-    }
+    // 尺寸基准取当前窗口 (桌面端窗口远小于主屏, 用主屏会撑满屏幕)
+    val dialogWidth = AppDialogSizes.width()
+    val dialogHeight = AppDialogSizes.fullHeight()
     // usePlatformDefaultWidth=false: 让 Dialog 窗口宽度跟随 Surface 固定宽度,
     // 避免平台默认宽度与 Surface 宽度冲突导致滚动时窗口反复重测、越滚越高
     Dialog(

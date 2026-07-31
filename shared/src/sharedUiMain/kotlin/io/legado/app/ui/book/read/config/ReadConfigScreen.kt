@@ -19,10 +19,19 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.aloud_config
+import legado.shared.generated.resources.ic_arrow_right
+import legado.shared.generated.resources.information
+import legado.shared.generated.resources.other_setting
+import legado.shared.generated.resources.padding
+import legado.shared.generated.resources.read_config
+import legado.shared.generated.resources.text_bg_style
+import legado.shared.generated.resources.text_font
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 阅读配置聚合页 (shared 独有入口)。
@@ -32,7 +41,7 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
  * 点击跳转对应 AppRoute (ReadStyle / BgTextConfig / PaddingConfig / TipConfig /
  * MoreConfig / ReadAloudConfig)。
  *
- * 字符串资源 `stringResource(R.string.xxx)` → `rememberString("xxx")` (key-based, 跨平台)。
+ * 字符串资源 `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)` (key-based, 跨平台)。
  */
 @Composable
 fun ReadConfigScreen(
@@ -44,13 +53,13 @@ fun ReadConfigScreen(
     onMoreConfig: () -> Unit,
     onReadAloudConfig: () -> Unit,
 ) {
-    val titleReadConfig = rememberString("read_config")
-    val titleReadStyle = rememberString("text_font")
-    val titleBgText = rememberString("text_bg_style")
-    val titlePadding = rememberString("padding")
-    val titleTip = rememberString("information")
-    val titleMore = rememberString("other_setting")
-    val titleAloud = rememberString("aloud_config")
+    val titleReadConfig = stringResource(Res.string.read_config)
+    val titleReadStyle = stringResource(Res.string.text_font)
+    val titleBgText = stringResource(Res.string.text_bg_style)
+    val titlePadding = stringResource(Res.string.padding)
+    val titleTip = stringResource(Res.string.information)
+    val titleMore = stringResource(Res.string.other_setting)
+    val titleAloud = stringResource(Res.string.aloud_config)
 
     // 入口项顺序对齐 app 端 ReadStyleDialog 顶部入口行 + 更多/朗读独立入口
     val items = listOf(
@@ -113,7 +122,7 @@ private fun ConfigCard(entry: ReadConfigEntry) {
                 modifier = Modifier.weight(1f),
             )
             Icon(
-                painter = rememberPainter("ic_arrow_right"),
+                painter = painterResource(Res.drawable.ic_arrow_right),
                 contentDescription = null,
                 tint = colors.secondaryText,
             )

@@ -25,10 +25,20 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.encodeURI
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.browser_search
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.content_edit_copy_all
+import legado.shared.generated.resources.content_edit_copy_success
+import legado.shared.generated.resources.copy_chapter_title
+import legado.shared.generated.resources.lookup_word
+import legado.shared.generated.resources.select_and_copy_first_hint
+import legado.shared.generated.resources.text_action
+import legado.shared.generated.resources.translate
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 跨端"文字选择"对话框 (desktop / iOS / 鸿蒙共享, 下沉自三份平行实现)。
@@ -73,15 +83,15 @@ fun TextSelectionDialog(
     surfaceModifier: Modifier = Modifier.fillMaxWidth(0.8f),
 ) {
     val colors = AppTheme.colors
-    val cancelText = rememberString("cancel")
-    val copyAllText = rememberString("content_edit_copy_all")
-    val copySuccessText = rememberString("content_edit_copy_success")
-    val copyChapterTitleText = rememberString("copy_chapter_title")
-    val dictText = rememberString("lookup_word")
-    val browserSearchText = rememberString("browser_search")
-    val translateText = rememberString("translate")
-    val titleText = rememberString("text_action")
-    val noSelectionHintText = rememberString("select_and_copy_first_hint")
+    val cancelText = stringResource(Res.string.cancel)
+    val copyAllText = stringResource(Res.string.content_edit_copy_all)
+    val copySuccessText = stringResource(Res.string.content_edit_copy_success)
+    val copyChapterTitleText = stringResource(Res.string.copy_chapter_title)
+    val dictText = stringResource(Res.string.lookup_word)
+    val browserSearchText = stringResource(Res.string.browser_search)
+    val translateText = stringResource(Res.string.translate)
+    val titleText = stringResource(Res.string.text_action)
+    val noSelectionHintText = stringResource(Res.string.select_and_copy_first_hint)
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(

@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.ui.compose.platform.PreferenceStoreProvider
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -42,8 +43,8 @@ import kotlinx.coroutines.launch
  * - 平台能力 (剪贴板/书源变量/书架) 走 [PlatformCapabilityProviders]
  * - 平台专属 (Dialog/Activity 结果) 待 host 注入, 暂空实现
  *
- * [prefStore] 用空实现占位 (视频进度持久化待 host 注入真实 PreferenceStoreProvider);
- * 章节加载/状态管理不依赖 prefStore, 可正常工作。
+ * [prefStore] 由 Route 经 LocalPreferenceStoreProvider 注入真实 PreferenceStoreProvider,
+ * 用于视频进度持久化 (key = `video_progress_{bookUrl}`)。
  */
 interface VideoPlayerController {
     val positionMs: Long
@@ -85,19 +86,11 @@ object VideoPlayPlatformProviders {
     fun getOrNull(): VideoPlayPlatformProvider? = impl
 }
 
-class VideoPlayScreenModel : ScreenModel {
+class VideoPlayScreenModel(
+    private val prefStore: PreferenceStoreProvider,
+) : ScreenModel {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-
-    // 空 prefStore 占位: 视频进度持久化待 host 注入真实实现 (对照 MangaReaderScreenModel 空 imageExtractor)
-    private val prefStore = object : PreferenceStoreProvider {
-        override fun getBoolean(key: String, defValue: Boolean): Boolean = defValue
-        override fun putBoolean(key: String, value: Boolean) = Unit
-        override fun getInt(key: String, defValue: Int): Int = defValue
-        override fun putInt(key: String, value: Int) = Unit
-        override fun getString(key: String, defValue: String?): String? = defValue
-        override fun putString(key: String, value: String?) = Unit
-    }
 
     val shared = VideoPlayViewModelShared(scope = scope, prefStore = prefStore)
     val platform = VideoPlayPlatformProviders.getOrNull()
@@ -108,6 +101,9 @@ class VideoPlayScreenModel : ScreenModel {
 
     private val _state = MutableStateFlow(VideoPlayUiState())
     val state: StateFlow<VideoPlayUiState> = _state.asStateFlow()
+
+    /** onExit 已执行标记: 防 DisposableEffect.onDispose 与 onCleared 重复保存 (释放后位置归零) */
+    private var exited = false
 
     init {
         // 合并 shared 各 StateFlow → 统一 UiState (对照 Activity chapterListData/videoUrl/resolutions observe)
@@ -142,7 +138,14 @@ class VideoPlayScreenModel : ScreenModel {
             is VideoPlayUiEvent.ShowBook -> {
                 // 初始化书籍名 + 章节列表 (对照 Activity viewModel.initData + chapterListData.observe)
                 _state.update { it.copy(bookName = event.book.name) }
-                scope.launch { shared.initData(event.book) }
+                scope.launch {
+                    val targetIndex = event.chapterIndex ?: event.book.durChapterIndex
+                    val targetPos = event.chapterPos ?: 0
+                    // 先写回 chapterIndex/chapterPos 到 Book + 落库 (对照 app initData override 分支)
+                    shared.applyChapterOverride(event.book, targetIndex, targetPos)
+                    // 再加载章节 (persistProgress=false 避免覆盖刚写入的 durChapterPos)
+                    shared.initData(event.book, targetIndex, persistProgress = false)
+                }
             }
 
             is VideoPlayUiEvent.UpdateChapters -> {
@@ -328,23 +331,26 @@ class VideoPlayScreenModel : ScreenModel {
      *  Route 端走导航 push AppRoute.ReviewPost, 此处占位 */
     fun onOpenReview() = Unit
 
-    /** 显示日志 (对照 Activity showAppLog: showDialogFragment<AppLogDialog>)。
-     *  平台专属 Dialog, 待 host 注入 */
-    fun onShowAppLog() = Unit
-
-    /** 添加书签 (对照 Activity addBookmark: createBookmark + showDialogFragment<BookmarkDialog>)。
-     *  平台专属 Dialog, 待 host 注入; 此处仅调 shared.createBookmark 占位 */
-    fun onAddBookmark(positionMs: Long, durationMs: Long) {
+    /** 添加书签 (对照 Activity addBookmark: 取 player 真实位置 + createBookmark + 弹 BookmarkDialog)。
+     *  从 controller 取当前 positionMs/durationMs, 构造书签后置 pendingBookmark,
+     *  由 Route 订阅 state 弹 shared BookmarkDialog 供用户编辑 */
+    fun onAddBookmark() {
         val book = shared.curBook ?: return
-        val chapters = _state.value.chapters
-        val chapter = chapters.getOrNull(book.durChapterIndex)
-        shared.createBookmark(
-            positionMs = positionMs,
-            durationMs = durationMs,
+        val pos = controller?.positionMs ?: 0L
+        val dur = controller?.durationMs?.takeIf { it > 0 } ?: 0L
+        val bookmark = shared.createBookmark(
+            positionMs = pos,
+            durationMs = dur,
             bookName = book.name,
-            chapterIndex = book.durChapterIndex,
-            chapterName = chapter?.title ?: book.durChapterTitle ?: "",
-        )
+            chapterIndex = shared.curChapterIndex.value,
+            chapterName = shared.curChapterTitle.value,
+        ) ?: return
+        _state.update { it.copy(pendingBookmark = bookmark) }
+    }
+
+    /** 清除待编辑书签 (Route 端 BookmarkDialog 关闭后调用) */
+    fun clearPendingBookmark() {
+        _state.update { it.copy(pendingBookmark = null) }
     }
 
     /** 分辨率切换 (对照 Activity switchResolution: 重建 ExoPlayer + seekTo)。
@@ -373,7 +379,26 @@ class VideoPlayScreenModel : ScreenModel {
         }
     }
 
+    /**
+     * 退出时保存真实进度 + 释放播放器 (对照 app `VideoPlayActivity.onPause` + `onDestroy`)。
+     *
+     * 由宿主 [io.legado.app.ui.route.VideoPlayRoute] DisposableEffect.onDispose 调用,
+     * [onCleared] 兜底调用 (防 DisposableEffect 未触发)。先取播放器真实位置保存,
+     * 再释放 controller (位置读取后才有意义)。
+     */
+    fun onExit() {
+        if (exited) return
+        exited = true
+        val pos = controller?.positionMs ?: 0L
+        val dur = controller?.durationMs?.takeIf { it > 0 } ?: 0L
+        // 保存进度: Preference 视频位置 + books 表 durChapterPos + WebDav 上传
+        shared.onExit(pos, dur)
+    }
+
     override fun onCleared() {
+        // 先保存进度 (controller 释放前取真实位置; onExit 已执行则跳过)
+        runCatching { onExit() }
+        // 再释放播放器 (对照 app onDestroy: player.release)
         controller?.release()
         platform?.applyFullscreen(false)
         scope.cancel()
@@ -409,12 +434,19 @@ data class VideoPlayUiState(
     val currentResolutionIndex: Int = 0,
     /** 章节列表 (对照 Activity chapters, 供选集网格使用) */
     val chapters: List<BookChapter> = emptyList(),
+    /** 待编辑书签 (onAddBookmark 构造后由 Route 弹 BookmarkDialog) */
+    val pendingBookmark: Bookmark? = null,
 )
 
 /** 视频播放页事件, 由宿主 (app Activity / desktop Window) 推入。 */
 sealed interface VideoPlayUiEvent {
-    /** 书籍数据更新 (对齐 VideoPlayActivity.titleText/durChapterIndex 初始化) */
-    data class ShowBook(val book: Book) : VideoPlayUiEvent
+    /** 书籍数据更新 (对齐 VideoPlayActivity.titleText/durChapterIndex 初始化)。
+     *  chapterIndex/chapterPos 用于书签/目录回传定位 (对照 AudioPlayUiEvent.Init) */
+    data class ShowBook(
+        val book: Book,
+        val chapterIndex: Int? = null,
+        val chapterPos: Int? = null,
+    ) : VideoPlayUiEvent
 
     /** 章节列表 + 当前索引更新 (对齐 chapterListData observe) */
     data class UpdateChapters(val chapters: List<BookChapter>, val curIndex: Int) : VideoPlayUiEvent

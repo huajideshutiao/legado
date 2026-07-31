@@ -1,8 +1,8 @@
 package io.legado.app.ui.root
 
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.serialization.Serializable
 
 /**
@@ -58,19 +58,13 @@ sealed interface LaunchRequest {
 
 /**
  * 外部请求事件总线 (各端投递侧 → 共享 UI 消费侧)。
- * StateFlow 保证"先投递后订阅"不丢事件, 多次投递取最后一次。
+ * 无限队列保留订阅前请求，并按投递顺序交给唯一应用根消费者。
  */
 object LaunchRequestBus {
-    private val _pending = MutableStateFlow<LaunchRequest?>(null)
-    val pending: StateFlow<LaunchRequest?> = _pending.asStateFlow()
+    private val channel = Channel<LaunchRequest>(Channel.UNLIMITED)
+    val requests: Flow<LaunchRequest> = channel.receiveAsFlow()
 
     fun dispatch(request: LaunchRequest) {
-        _pending.value = request
-    }
-
-    fun consume(): LaunchRequest? {
-        val current = _pending.value
-        _pending.value = null
-        return current
+        check(channel.trySend(request).isSuccess) { "LaunchRequest queue is closed" }
     }
 }

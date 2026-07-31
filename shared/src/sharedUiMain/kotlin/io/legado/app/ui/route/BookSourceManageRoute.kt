@@ -30,18 +30,43 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.dragSelectable
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.widget.dialog.HelpDialog
 import io.legado.app.ui.widget.dialog.OnlineImportUrlDialog
 import io.legado.app.utils.FlowBus
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.add_group
+import legado.shared.generated.resources.check_select_source
+import legado.shared.generated.resources.check_selected_interval
+import legado.shared.generated.resources.disable_explore
+import legado.shared.generated.resources.disable_selection
+import legado.shared.generated.resources.disabled
+import legado.shared.generated.resources.disabled_explore
+import legado.shared.generated.resources.draw
+import legado.shared.generated.resources.enable_explore
+import legado.shared.generated.resources.enable_selection
+import legado.shared.generated.resources.enabled
+import legado.shared.generated.resources.enabled_explore
+import legado.shared.generated.resources.export_selection
+import legado.shared.generated.resources.need_login
+import legado.shared.generated.resources.no
+import legado.shared.generated.resources.no_group
+import legado.shared.generated.resources.remove_group
+import legado.shared.generated.resources.selection_to_bottom
+import legado.shared.generated.resources.selection_to_top
+import legado.shared.generated.resources.share_selected_source
+import legado.shared.generated.resources.sure_del
+import legado.shared.generated.resources.yes
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * AppRoute.BookSourceManage 路由下沉入口: 桥接 [BookSourceScreenModel] 状态与 [BookSourceListScreen] 渲染。
@@ -56,26 +81,26 @@ fun BookSourceManageRoute(
     screenModelStore: ScreenModelStore,
 ) {
     // resolveFilter 所需平台字符串 (对齐 app 端 R.string 比对)
-    val strEnabled = rememberString("enabled")
-    val strDisabled = rememberString("disabled")
-    val strNeedLogin = rememberString("need_login")
-    val strNoGroup = rememberString("no_group")
-    val strEnabledExplore = rememberString("enabled_explore")
-    val strDisabledExplore = rememberString("disabled_explore")
+    val strEnabled = stringResource(Res.string.enabled)
+    val strDisabled = stringResource(Res.string.disabled)
+    val strNeedLogin = stringResource(Res.string.need_login)
+    val strNoGroup = stringResource(Res.string.no_group)
+    val strEnabledExplore = stringResource(Res.string.enabled_explore)
+    val strDisabledExplore = stringResource(Res.string.disabled_explore)
 
     // 批量栏 SelectAction 文案 (预取, 供 onSelectActions 构建)
-    val strEnableSelection = rememberString("enable_selection")
-    val strDisableSelection = rememberString("disable_selection")
-    val strAddGroup = rememberString("add_group")
-    val strRemoveGroup = rememberString("remove_group")
-    val strEnableExplore = rememberString("enable_explore")
-    val strDisableExplore = rememberString("disable_explore")
-    val strSelectionToTop = rememberString("selection_to_top")
-    val strSelectionToBottom = rememberString("selection_to_bottom")
-    val strExportSelection = rememberString("export_selection")
-    val strShareSelectedSource = rememberString("share_selected_source")
-    val strCheckSelectSource = rememberString("check_select_source")
-    val strCheckSelectedInterval = rememberString("check_selected_interval")
+    val strEnableSelection = stringResource(Res.string.enable_selection)
+    val strDisableSelection = stringResource(Res.string.disable_selection)
+    val strAddGroup = stringResource(Res.string.add_group)
+    val strRemoveGroup = stringResource(Res.string.remove_group)
+    val strEnableExplore = stringResource(Res.string.enable_explore)
+    val strDisableExplore = stringResource(Res.string.disable_explore)
+    val strSelectionToTop = stringResource(Res.string.selection_to_top)
+    val strSelectionToBottom = stringResource(Res.string.selection_to_bottom)
+    val strExportSelection = stringResource(Res.string.export_selection)
+    val strShareSelectedSource = stringResource(Res.string.share_selected_source)
+    val strCheckSelectSource = stringResource(Res.string.check_select_source)
+    val strCheckSelectedInterval = stringResource(Res.string.check_selected_interval)
 
     val screenModel = screenModelStore.getOrCreateTyped(entry) {
         BookSourceScreenModel(
@@ -161,6 +186,14 @@ fun BookSourceManageRoute(
         }
     }
 
+    // 书源编辑返回: 重新触发查询刷新源列表 (DB flow 本身响应式, 此处兜底)
+    LaunchedEffect(Unit) {
+        navigator.resultsFor(entry.id).filter { it.key == RouteResults.BOOK_SOURCE_EDIT }.collect {
+            val key = screenModel.state.value.searchKey
+            screenModel.dispatch(BookSourceUiEvent.Search(key))
+        }
+    }
+
     // dispatch 类接入 ScreenModel; 导航类走 navigator; 平台专属委托 PlatformCapabilityProviders
     val callbacks = remember(navigator, screenModel) {
         BookSourceListCallbacks(
@@ -186,7 +219,12 @@ fun BookSourceManageRoute(
             onRevertSelection = { screenModel.dispatch(BookSourceUiEvent.RevertSelection) },
             onMove = { from, to -> screenModel.dispatch(BookSourceUiEvent.Move(from, to)) },
             onPersistOrder = { screenModel.dispatch(BookSourceUiEvent.PersistOrder) },
-            onEdit = { part -> navigator.push(AppRoute.BookSourceEdit(part.bookSourceUrl)) },
+            onEdit = { part ->
+                navigator.push(
+                    AppRoute.BookSourceEdit(part.bookSourceUrl),
+                    RouteResults.BOOK_SOURCE_EDIT
+                )
+            },
             onEnable = { enabled, item ->
                 screenModel.dispatch(
                     BookSourceUiEvent.Enable(
@@ -346,12 +384,12 @@ fun BookSourceManageRoute(
     delTarget?.let { part ->
         AppAlertDialog(
             onDismissRequest = { delTarget = null },
-            title = rememberString("draw"),
-            message = rememberString("sure_del") + "\n" + part.bookSourceName,
-            okButton = AlertButton(rememberString("yes")) {
+            title = stringResource(Res.string.draw),
+            message = stringResource(Res.string.sure_del) + "\n" + part.bookSourceName,
+            okButton = AlertButton(stringResource(Res.string.yes)) {
                 screenModel.dispatch(BookSourceUiEvent.Del(part))
             },
-            cancelButton = AlertButton(rememberString("no")),
+            cancelButton = AlertButton(stringResource(Res.string.no)),
         )
     }
 
@@ -359,12 +397,12 @@ fun BookSourceManageRoute(
     if (showDelSelection) {
         AppAlertDialog(
             onDismissRequest = { showDelSelection = false },
-            title = rememberString("draw"),
-            message = rememberString("sure_del"),
-            okButton = AlertButton(rememberString("yes")) {
+            title = stringResource(Res.string.draw),
+            message = stringResource(Res.string.sure_del),
+            okButton = AlertButton(stringResource(Res.string.yes)) {
                 screenModel.dispatch(BookSourceUiEvent.DelSelection)
             },
-            cancelButton = AlertButton(rememberString("no")),
+            cancelButton = AlertButton(stringResource(Res.string.no)),
         )
     }
 }

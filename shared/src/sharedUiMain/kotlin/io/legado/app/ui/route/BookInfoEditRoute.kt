@@ -5,8 +5,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
-import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.ui.book.info.edit.BookInfoEditScreen
 import io.legado.app.ui.book.info.edit.BookInfoEditScreenModel
 import io.legado.app.ui.book.info.edit.BookInfoEditUiActions
@@ -42,17 +42,18 @@ fun BookInfoEditRoute(
 
     val screenModel = screenModelStore.getOrCreateTyped(entry) {
         BookInfoEditScreenModel(
-            shared = BookInfoEditViewModelShared(scope = scope, readBookUpdater = {}),
+            shared = BookInfoEditViewModelShared(
+                scope = scope,
+                readBookUpdater = ActiveReadBookRegistry::updateIfCurrent,
+            ),
             updateCacheFolder = { oldBook, newBook ->
                 BookStorageProviders.get().updateCacheFolder(oldBook, newBook)
             },
         )
     }
 
-    // 注入待编辑书籍供 shared.loadBook 读取
     LaunchedEffect(bookUrl) {
-        IntentData.book = route.book.asBook()
-        screenModel.loadBook()
+        screenModel.loadBook(route.book.asBook())
     }
 
     val state by screenModel.state.collectAsState()
@@ -62,10 +63,8 @@ fun BookInfoEditRoute(
             navigator.pop()
         }
 
-        // 保存成功后同步 IntentData (供上级页面刷新) + 返回 Ok 结果
         override fun onSave() {
             screenModel.dispatch(BookInfoEditUiEvent.Save {
-                screenModel.book?.let { IntentData.book = it }
                 navigator.pop(RouteResultPayload.Ok)
             })
         }

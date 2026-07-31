@@ -60,6 +60,14 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ColorUtils
 import kotlinx.coroutines.launch
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.ic_stop_black_24dp
+import legado.shared.generated.resources.replace
+import legado.shared.generated.resources.search
+import legado.shared.generated.resources.search_content_size
+import legado.shared.generated.resources.stop
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /*
  * 下沉所需资源 key 清单 (供 ResourceProvider 各平台 actual 补全)
@@ -225,7 +233,7 @@ private fun SearchField(state: SearchContentUiState, actions: SearchContentUiAct
     AppSearchField(
         value = state.query,
         onValueChange = actions::onQueryChange,
-        hint = rememberString("search"),
+        hint = stringResource(Res.string.search),
         onSearch = {
             actions.onSubmitSearch(state.query.trim())
             actions.clearFocus()
@@ -243,7 +251,7 @@ private fun SearchContentActions(state: SearchContentUiState, actions: SearchCon
         DropdownMenuItem(
             onClick = { dismiss(); actions.onToggleReplaceEnabled() },
         ) {
-            Text(rememberString("replace"), color = colors.primaryText)
+            Text(stringResource(Res.string.replace), color = colors.primaryText)
             Spacer(Modifier.weight(1f))
             AppMenuCheckbox(checked = state.replaceEnabled)
         }
@@ -369,8 +377,8 @@ private fun StopFab(
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            painter = rememberPainter("ic_stop_black_24dp"),
-            contentDescription = rememberString("stop"),
+            painter = painterResource(Res.drawable.ic_stop_black_24dp),
+            contentDescription = stringResource(Res.string.stop),
             tint = tint,
             modifier = Modifier.size(24.dp),
         )
@@ -411,7 +419,7 @@ private fun BottomInfoBar(
             contentAlignment = Alignment.CenterStart,
         ) {
             Text(
-                text = rememberString("search_content_size") + ": ${state.resultCount}",
+                text = stringResource(Res.string.search_content_size) + ": ${state.resultCount}",
                 color = btc,
                 fontSize = 12.sp,
                 maxLines = 1,

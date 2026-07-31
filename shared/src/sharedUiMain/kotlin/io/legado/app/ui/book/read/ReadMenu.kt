@@ -7,7 +7,7 @@ package io.legado.app.ui.book.read
  *
  * # 资源访问替换
  *
- * - `stringResource(R.string.xxx)` → `rememberString("xxx")` (key-based, 跨平台)
+ * - `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)` (key-based, 跨平台)
  * - `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")` (key-based, 跨平台)
  * - `colorResource(R.color.xxx)` → `rememberColor("xxx")` (key-based, 跨平台)
  *
@@ -116,6 +116,17 @@ import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ColorUtils
 import kotlin.math.PI
 import kotlin.math.cos
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.dark_theme
+import legado.shared.generated.resources.ic_arrow_back
+import legado.shared.generated.resources.ic_more_vert
+import legado.shared.generated.resources.more_menu
+import legado.shared.generated.resources.next_chapter
+import legado.shared.generated.resources.previous_chapter
+import legado.shared.generated.resources.replace_rule_title
+import legado.shared.generated.resources.search_content
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /** 复刻 View 动画默认 AccelerateDecelerateInterpolator */
 val AccelerateDecelerateEasing = Easing { x ->
@@ -230,6 +241,9 @@ interface ReadMenuState {
     fun longClickReadAloud()
     fun clickFont()
     fun clickSetting()
+
+    /** 刷新当前章节 (顶栏刷新图标短按) */
+    fun onRefresh()
 }
 
 /**
@@ -316,7 +330,7 @@ private fun ReadMenuTopBar(state: ReadMenuState) {
         ) {
             IconButton(onClick = { state.supportFinishAfterTransition() }) {
                 Icon(
-                    painter = rememberPainter("ic_arrow_back"),
+                    painter = painterResource(Res.drawable.ic_arrow_back),
                     contentDescription = null,
                     tint = topText,
                 )
@@ -347,7 +361,7 @@ private fun ReadMenuTopBar(state: ReadMenuState) {
                     iconKey = "ic_refresh_black_24dp",
                     descKey = "refresh",
                     tint = topText,
-                    onClick = { onAction(ReadMenuAction.REFRESH) },
+                    onClick = { state.onRefresh() },
                     longPressMenu = listOf(
                         "menu_refresh_dur" to ReadMenuAction.REFRESH_DUR,
                         "menu_refresh_after" to ReadMenuAction.REFRESH_AFTER,
@@ -499,8 +513,8 @@ private fun TopOverflowMenu(state: ReadMenuState, tint: Color) {
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                painter = rememberPainter("ic_more_vert"),
-                contentDescription = rememberString("more_menu"),
+                painter = painterResource(Res.drawable.ic_more_vert),
+                contentDescription = stringResource(Res.string.more_menu),
                 tint = tint,
                 modifier = Modifier.size(24.dp),
             )
@@ -636,7 +650,7 @@ private fun ReadMenuBottom(state: ReadMenuState) {
         ) {
             ReadMenuFab(
                 iconKey = "ic_search",
-                contentDescription = rememberString("search_content"),
+                contentDescription = stringResource(Res.string.search_content),
                 bg = bg, pressedBg = pressedBg, tint = text,
             ) { state.clickSearch() }
             Spacer(Modifier.weight(1f))
@@ -650,13 +664,13 @@ private fun ReadMenuBottom(state: ReadMenuState) {
             Spacer(Modifier.weight(1f))
             ReadMenuFab(
                 iconKey = "ic_find_replace",
-                contentDescription = rememberString("replace_rule_title"),
+                contentDescription = stringResource(Res.string.replace_rule_title),
                 bg = bg, pressedBg = pressedBg, tint = text,
             ) { state.clickReplaceRule() }
             Spacer(Modifier.weight(1f))
             ReadMenuFab(
                 iconKey = if (state.isNightTheme) "ic_daytime" else "ic_brightness",
-                contentDescription = rememberString("dark_theme"),
+                contentDescription = stringResource(Res.string.dark_theme),
                 bg = bg, pressedBg = pressedBg, tint = text,
             ) { state.clickNightTheme() }
         }
@@ -685,13 +699,13 @@ private fun ReadMenuBottom(state: ReadMenuState) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 ChapterNavText(
-                    text = rememberString("previous_chapter"),
+                    text = stringResource(Res.string.previous_chapter),
                     color = text,
                     enabled = state.prevEnabled,
                 ) { state.clickPre() }
                 ReadSeekBar(state, Modifier.weight(1f))
                 ChapterNavText(
-                    text = rememberString("next_chapter"),
+                    text = stringResource(Res.string.next_chapter),
                     color = text,
                     enabled = state.nextEnabled,
                 ) { state.clickNext() }

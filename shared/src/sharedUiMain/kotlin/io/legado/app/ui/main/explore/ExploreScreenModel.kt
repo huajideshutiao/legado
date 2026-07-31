@@ -69,6 +69,14 @@ class ExploreScreenModel : ScreenModel {
         collectSources()
         observePinnedEvent()
         observeRefreshEvent()
+        // 对照 ExploreFragment.onFragmentCreated 的 upPinned(): 进页主动拉一次,
+        // UP_EXPLORE_PINNED 非 sticky, 只订阅会导致收藏区首帧恒空
+        upPinned()
+    }
+
+    /** 对照 ExploreFragment.upPinned: 从 PinnedExploreHelp 读收藏列表刷入 state */
+    private fun upPinned() {
+        _state.update { it.copy(pinned = PinnedExploreHelp.getPinnedExplores()) }
     }
 
     fun dispatch(event: ExploreUiEvent) {
@@ -120,9 +128,7 @@ class ExploreScreenModel : ScreenModel {
     /** 对照 app 端 FlowBus.with(UP_EXPLORE_PINNED) → upPinned */
     private fun observePinnedEvent() {
         scope.launch {
-            FlowBus.with(EventBus.UP_EXPLORE_PINNED).collect {
-                _state.update { it.copy(pinned = PinnedExploreHelp.getPinnedExplores()) }
-            }
+            FlowBus.with(EventBus.UP_EXPLORE_PINNED).collect { upPinned() }
         }
     }
 

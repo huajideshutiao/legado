@@ -57,6 +57,7 @@ import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
+import org.jetbrains.compose.resources.stringResource
 
 /** 漫画菜单动作(原 R.menu.book_manga) */
 enum class MangaMenuAction {
@@ -380,7 +381,9 @@ private fun OverflowCheckItem(text: String, checked: Boolean, onClick: () -> Uni
         Text(
             text,
             color = AppTheme.colors.primaryText,
-            modifier = Modifier.weight(1f).padding(end = 12.dp),
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 12.dp),
         )
         AppMenuCheckbox(checked = checked)
     }

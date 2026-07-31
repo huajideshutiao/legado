@@ -21,7 +21,7 @@ import io.legado.app.utils.toJson
  * AppRoute.SourceFilterRule 路由下沉入口: 桥接 [SourceFilterRuleScreenModel] 状态与
  * [SourceFilterRuleScreen] 渲染。
  *
- * 平台相关回调 (编辑/新增/导入/导出) 全部走 [AppOverlay.Dialog], 由平台 overlayContent
+ * 平台相关回调 (编辑/新增/导入/导出) 全部走 [AppOverlay.Dialog], 由 shared OverlayContentHost
  * 渲染对应 [io.legado.app.ui.book.filter.SourceFilterEditDialog] / 文件选择 /
  * ImportSourceFilterRuleDialog / 在线导入 URL 弹窗 (ACache 历史)。
  */

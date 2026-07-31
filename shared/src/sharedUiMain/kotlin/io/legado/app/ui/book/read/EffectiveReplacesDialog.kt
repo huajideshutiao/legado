@@ -35,10 +35,17 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.add
+import legado.shared.generated.resources.close
+import legado.shared.generated.resources.effective_replaces
+import legado.shared.generated.resources.empty
+import legado.shared.generated.resources.ic_add
+import legado.shared.generated.resources.source_filter_rule_manage
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 净化替换临时生效对话框 (KMP 共享, app + desktop 复用)。
@@ -107,14 +114,14 @@ fun EffectiveReplacesDialog(
         ) {
             Column(Modifier.fillMaxWidth()) {
                 DialogTitleBar(
-                    title = rememberString("effective_replaces"),
+                    title = stringResource(Res.string.effective_replaces),
                     onBack = onDismiss,
                     actions = {
                         // 右上角"+"按钮 (与原版 IconButton + ic_add 对齐)
                         IconButton(onClick = onAddRule) {
                             Icon(
-                                painter = rememberPainter("ic_add"),
-                                contentDescription = rememberString("add"),
+                                painter = painterResource(Res.drawable.ic_add),
+                                contentDescription = stringResource(Res.string.add),
                                 tint = colors.primaryText,
                             )
                         }
@@ -144,7 +151,7 @@ fun EffectiveReplacesDialog(
                     // 空列表占位 (与原版 EffectiveReplacesScreen empty 分支对齐)
                     if (items.isEmpty()) {
                         Text(
-                            text = rememberString("empty"),
+                            text = stringResource(Res.string.empty),
                             color = colors.secondaryText,
                             modifier = Modifier
                                 .align(Alignment.Center)
@@ -162,12 +169,12 @@ fun EffectiveReplacesDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     AppTextButton(
-                        text = rememberString("close"),
+                        text = stringResource(Res.string.close),
                         color = colors.secondaryText,
                         onClick = onDismiss,
                     )
                     AppTextButton(
-                        text = rememberString("source_filter_rule_manage"),
+                        text = stringResource(Res.string.source_filter_rule_manage),
                         onClick = onManageAll,
                     )
                 }

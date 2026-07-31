@@ -27,8 +27,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.ic_clear_all
+import org.jetbrains.compose.resources.painterResource
 
 /**
  * 复刻 widget.text.AutoCompleteTextView（DialogEditTextBinding 的历史下拉输入框）：
@@ -102,7 +104,7 @@ fun AppAutoCompleteField(
                                         onDelete(item)
                                     }) {
                                         Icon(
-                                            painter = rememberPainter("ic_clear_all"),
+                                            painter = painterResource(Res.drawable.ic_clear_all),
                                             contentDescription = null,
                                             tint = colors.secondaryText,
                                         )

@@ -48,6 +48,8 @@ import io.legado.app.utils.externalFiles
 import io.legado.app.utils.inputStream
 import io.legado.app.utils.readUri
 import io.legado.app.utils.toastOnUi
+import org.jetbrains.compose.resources.stringArrayResource
+import org.jetbrains.compose.resources.stringResource
 import splitties.init.appCtx
 import java.io.FileOutputStream
 import kotlinx.coroutines.runBlocking

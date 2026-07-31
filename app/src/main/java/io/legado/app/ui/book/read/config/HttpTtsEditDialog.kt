@@ -35,6 +35,7 @@ import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.toastOnUi
+import org.jetbrains.compose.resources.stringResource
 
 class HttpTtsEditDialog() : BaseComposeDialogFragment() {
 

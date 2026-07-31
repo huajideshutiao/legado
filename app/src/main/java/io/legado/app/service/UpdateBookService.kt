@@ -64,12 +64,12 @@ class UpdateBookService : BaseService() {
 
     private val notificationBuilder by lazy {
         NotificationCompat.Builder(this, AppConst.channelIdDownload)
-            .setSmallIcon(io.legado.shared.R.drawable.ic_update)
+            .setSmallIcon(R.drawable.ic_update)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentTitle(getString(R.string.update_toc))
             .addAction(
-                io.legado.shared.R.drawable.ic_stop_black_24dp,
+                R.drawable.ic_stop_black_24dp,
                 getString(R.string.cancel),
                 servicePendingIntent<UpdateBookService>(IntentAction.stop)
             )

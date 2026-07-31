@@ -52,8 +52,6 @@ import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.GridPackLayout
 import io.legado.app.ui.compose.component.toGridPackSpec
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
@@ -63,6 +61,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.copy
+import legado.shared.generated.resources.del_login_header
+import legado.shared.generated.resources.ic_arrow_drop_down
+import legado.shared.generated.resources.ic_check
+import legado.shared.generated.resources.ic_more_vert
+import legado.shared.generated.resources.log
+import legado.shared.generated.resources.login_header
+import legado.shared.generated.resources.login_source
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.show_login_header
+import legado.shared.generated.resources.success
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 书源登录对话框 (KMP 共享, app + desktop + iOS 复用)。
@@ -102,14 +114,14 @@ fun SourceLoginDialog(
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
 
-    val titleText = rememberString("login_source", source.getTag())
-    val okText = rememberString("ok")
-    val showLoginHeaderText = rememberString("show_login_header")
-    val delLoginHeaderText = rememberString("del_login_header")
-    val logText = rememberString("log")
-    val loginHeaderText = rememberString("login_header")
-    val copyText = rememberString("copy")
-    val successText = rememberString("success")
+    val titleText = stringResource(Res.string.login_source, source.getTag())
+    val okText = stringResource(Res.string.ok)
+    val showLoginHeaderText = stringResource(Res.string.show_login_header)
+    val delLoginHeaderText = stringResource(Res.string.del_login_header)
+    val logText = stringResource(Res.string.log)
+    val loginHeaderText = stringResource(Res.string.login_header)
+    val copyText = stringResource(Res.string.copy)
+    val successText = stringResource(Res.string.success)
 
     // 表单值以 rowUi.name 为键：text/password 存文本，select 存选中项，toggle 存 "true"/"false"
     val loginData = remember { mutableStateMapOf<String, String>() }
@@ -211,7 +223,7 @@ fun SourceLoginDialog(
         ) {
             IconButton(onClick = { login(getLoginData()) }) {
                 Icon(
-                    painter = rememberPainter("ic_check"),
+                    painter = painterResource(Res.drawable.ic_check),
                     contentDescription = okText,
                     tint = colors.primaryText
                 )
@@ -219,7 +231,7 @@ fun SourceLoginDialog(
             Box {
                 IconButton(onClick = { showOverflow = true }) {
                     Icon(
-                        painter = rememberPainter("ic_more_vert"),
+                        painter = painterResource(Res.drawable.ic_more_vert),
                         contentDescription = null,
                         tint = colors.primaryText
                     )
@@ -392,7 +404,7 @@ private fun SelectRow(
                 trailingIcon = {
                     IconButton(onClick = { expanded = !expanded }) {
                         Icon(
-                            painter = rememberPainter("ic_arrow_drop_down"),
+                            painter = painterResource(Res.drawable.ic_arrow_drop_down),
                             contentDescription = null,
                             tint = colors.secondaryText
                         )

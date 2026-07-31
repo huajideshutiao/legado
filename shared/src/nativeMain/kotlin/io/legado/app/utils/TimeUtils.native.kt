@@ -52,6 +52,17 @@ actual fun midnightSecFromDayKey(dayKey: Int): Long {
 }
 
 /**
+ * 漫画信息条 HH:mm: 纯 Kotlin UTC 换算 (与 yearMonthDayFromMillis 的 UTC 简化一致)。
+ */
+actual fun formatTimeOfDay(epochMillis: Long): String {
+    val millisOfDay = Math.floorMod(epochMillis, 86_400_000L)
+    val totalMinutes = (millisOfDay / 60_000L).toInt()
+    val h = totalMinutes / 60
+    val m = totalMinutes % 60
+    return "%02d:%02d".format(h, m)
+}
+
+/**
  * 获取当前本地时区偏移量 (毫秒)。
  *
  * 纯 Kotlin 实现: 通过 kotlinx-datetime 的 TimeSource / 时区信息不可直接获取,

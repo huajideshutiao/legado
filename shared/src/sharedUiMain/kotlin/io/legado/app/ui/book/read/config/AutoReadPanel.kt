@@ -22,8 +22,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.auto_page_speed
+import legado.shared.generated.resources.chapter_list
+import legado.shared.generated.resources.main_menu
+import legado.shared.generated.resources.setting
+import legado.shared.generated.resources.stop
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 自动翻页速度调节控制器：把 app 端 `ReadBookConfig.autoReadSpeed` 读写抽象为接口，
@@ -72,7 +79,7 @@ interface AutoReadActions {
  * - `AppAlertDialog` 的 content 槽（desktop 端）
  *
  * 资源访问替换：
- * - `stringResource(R.string.xxx)` → `rememberString("xxx")`
+ * - `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)`
  * - `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")`
  * - `ReadBookConfig.autoReadSpeed` → [controller.autoReadSpeed]
  * - `callBack.xxx` + `upTtsSpeechRate()` → [actions.xxx]
@@ -94,7 +101,7 @@ fun AutoReadPanel(
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                rememberString("auto_page_speed"),
+                stringResource(Res.string.auto_page_speed),
                 color = colors.primaryText, fontSize = 14.sp,
                 modifier = Modifier.weight(1f).padding(8.dp),
             )
@@ -119,16 +126,32 @@ fun AutoReadPanel(
             Modifier.fillMaxWidth().padding(top = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            ReadMenuIconButton("ic_toc", rememberString("chapter_list"), colors.primaryText) {
+            ReadMenuIconButton(
+                "ic_toc",
+                stringResource(Res.string.chapter_list),
+                colors.primaryText
+            ) {
                 actions.openChapterList()
             }
-            ReadMenuIconButton("ic_menu", rememberString("main_menu"), colors.primaryText) {
+            ReadMenuIconButton(
+                "ic_menu",
+                stringResource(Res.string.main_menu),
+                colors.primaryText
+            ) {
                 actions.showMenuBar()
             }
-            ReadMenuIconButton("ic_auto_page_stop", rememberString("stop"), colors.primaryText) {
+            ReadMenuIconButton(
+                "ic_auto_page_stop",
+                stringResource(Res.string.stop),
+                colors.primaryText
+            ) {
                 actions.autoPageStop()
             }
-            ReadMenuIconButton("ic_settings", rememberString("setting"), colors.primaryText) {
+            ReadMenuIconButton(
+                "ic_settings",
+                stringResource(Res.string.setting),
+                colors.primaryText
+            ) {
                 actions.showPageAnimConfig()
             }
         }

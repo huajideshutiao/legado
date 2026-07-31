@@ -36,6 +36,7 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.toastOnUi
+import org.jetbrains.compose.resources.stringResource
 import splitties.init.appCtx
 
 object OpenUrlConfirmDialog {

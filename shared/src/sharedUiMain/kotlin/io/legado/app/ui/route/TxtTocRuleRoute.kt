@@ -38,7 +38,7 @@ fun TxtTocRuleRoute(
                 navigator.pop()
             }
 
-            // 对话框类: 规则编辑/在线导入/本地导入/帮助均走 Overlay, 由平台 overlayContent 渲染
+            // 对话框类: 规则编辑/在线导入/本地导入/帮助均走 Overlay, 由 shared OverlayContentHost 渲染
             override fun onAddRule() {
                 navigator.showOverlay(AppOverlay.Dialog(key = "txtTocRuleEdit"))
             }

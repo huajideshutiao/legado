@@ -10,14 +10,18 @@ import androidx.compose.ui.input.key.type
 /**
  * 桌面端无系统返回键, ESC/Backspace 等价于返回按钮
  */
-fun Modifier.handleBackKey(onBack: () -> Unit): Modifier =
-    this.onPreviewKeyEvent { event ->
-        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-        when (event.key) {
-            Key.Escape, Key.Backspace -> {
-                onBack()
-                true
-            }
-            else -> false
+fun Modifier.handleBackKey(
+    onBack: () -> Unit,
+    onRefresh: () -> Boolean = { false },
+): Modifier = this.onPreviewKeyEvent { event ->
+    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+    when (event.key) {
+        Key.Escape, Key.Backspace -> {
+            onBack()
+            true
         }
+
+        Key.F5 -> onRefresh()
+        else -> false
     }
+}

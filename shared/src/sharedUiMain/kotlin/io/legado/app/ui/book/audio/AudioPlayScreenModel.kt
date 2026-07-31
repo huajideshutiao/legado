@@ -1,10 +1,15 @@
 package io.legado.app.ui.book.audio
 
 import androidx.compose.runtime.Composable
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.isNotShelf
+import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.AppWebDavShared
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.ui.root.ScreenModel
 import androidx.compose.ui.Modifier
@@ -42,9 +47,32 @@ interface AudioPlayPlatformProvider {
         onOpenToc: () -> Unit,
         onOpenBookSourceEdit: (String) -> Unit,
         onOpenReview: () -> Unit,
+        overflowActions: AudioPlayOverflowActions,
         onEvent: (AudioPlayUiEvent) -> Unit,
     )
 }
+
+/**
+ * 溢出菜单动作集合 (下沉自 app 端 AudioOverflowMenu)。
+ *
+ * 各端宿主不再自行实现溢出菜单, 统一由 shared [AudioPlayScreenContent] 渲染,
+ * 通过本接口注入回调。
+ */
+data class AudioPlayOverflowActions(
+    val onLogin: () -> Unit,
+    val onCopyAudioUrl: () -> Unit,
+    /** 浏览器打开播放 URL (对照 PlatformCapabilities.openExternalUrl) */
+    val onOpenAudioUrl: () -> Unit,
+    val onSetSourceVariable: () -> Unit,
+    val onSetBookVariable: () -> Unit,
+    val onEditBookSource: () -> Unit,
+    val onAddBookmark: () -> Unit,
+    val onShowAppLog: () -> Unit,
+    /** 是否显示登录项 (对照 source?.hasLogin()) */
+    val hasLogin: Boolean,
+    /** 唤醒锁切换 (Android 专属, null=不显示; 对照 AppConfig.audioPlayUseWakeLock) */
+    val onToggleWakeLock: (() -> Unit)? = null,
+)
 
 object AudioPlayPlatformProviders {
     @Volatile
@@ -179,7 +207,16 @@ class AudioPlayScreenModel : ScreenModel {
                     } else {
                         AudioPlayShared.resetData(event.book)
                     }
-                    _state.update { it.copy(title = event.book.name) }
+                    _state.update {
+                        it.copy(
+                            title = event.book.name,
+                            inShelf = AudioPlayShared.inBookshelf,
+                        )
+                    }
+                    // 初始同步已加载的歌词 (切回页面时 lrc 可能已在 Service 端就绪)
+                    AudioPlayShared.durLrcData?.takeIf { it.isNotEmpty() }?.let { lrc ->
+                        _state.update { it.copy(lrcData = lrc) }
+                    }
                     if (AudioPlayShared.status == Status.STOP) {
                         AudioPlayShared.loadOrUpPlayUrl()
                     }
@@ -226,6 +263,8 @@ class AudioPlayScreenModel : ScreenModel {
             }
 
             AudioPlayUiEvent.CoverClick -> _state.update { it.copy(coverVisible = false) }
+
+            is AudioPlayUiEvent.UpdateInShelf -> _state.update { it.copy(inShelf = event.inShelf) }
         }
     }
 
@@ -234,6 +273,19 @@ class AudioPlayScreenModel : ScreenModel {
         val status = AudioPlayShared.status
         if (status == Status.STOP || status == Status.PAUSE) {
             AudioPlayShared.stop()
+        }
+        // 对照 Activity.onDestroy: 在书架时上传进度到 WebDav (走进程级 scope, 不随 VM 取消)
+        if (AudioPlayShared.inBookshelf) {
+            AudioPlayShared.book?.let { book ->
+                Coroutine.async {
+                    AudioPlayShared.saveRead()
+                    if (AppConfigProviders.get().syncBookProgress) {
+                        AppWebDavShared.uploadBookProgress(book)
+                    }
+                }.onError {
+                    AppLog.put("上传音频进度失败\n${it.message}", it)
+                }
+            }
         }
         scope.cancel()
     }
@@ -262,6 +314,8 @@ data class AudioPlayUiState(
     val nextEnabled: Boolean = true,
     val lrcData: List<Pair<Int, String>>? = null,
     val lrcProgress: Int = -1,
+    /** 是否在书架中 (对照 Activity inBookshelf, 退出时若 false 弹加书架确认) */
+    val inShelf: Boolean = true,
 )
 
 /** 音频播放 UI 事件 (对照 [AudioPlayScreenContent] onXxx 回调) */
@@ -299,4 +353,7 @@ sealed interface AudioPlayUiEvent {
 
     /** 封面点击隐藏 (对照 onCoverClick) */
     object CoverClick : AudioPlayUiEvent
+
+    /** 更新书架状态 (对照 Activity 上架/下架后回写 inBookshelf) */
+    data class UpdateInShelf(val inShelf: Boolean) : AudioPlayUiEvent
 }

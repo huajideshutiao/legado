@@ -2,13 +2,66 @@ package io.legado.app.ui.config
 
 import androidx.compose.runtime.Composable
 import io.legado.app.constant.PreferKey
-import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.platform.rememberStringArray
 import io.legado.app.ui.compose.preference.PreferenceScreen
 import io.legado.app.ui.compose.preference.listPreference
 import io.legado.app.ui.compose.preference.preference
 import io.legado.app.ui.compose.preference.switchPreference
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.add_to_text_context_menu_s
+import legado.shared.generated.resources.add_to_text_context_menu_t
+import legado.shared.generated.resources.auto_check_update
+import legado.shared.generated.resources.bitmap_cache_size
+import legado.shared.generated.resources.book_info_delete_alert_summary
+import legado.shared.generated.resources.book_info_delete_alert_title
+import legado.shared.generated.resources.book_tree_uri_t
+import legado.shared.generated.resources.check_source_config
+import legado.shared.generated.resources.clear_cache
+import legado.shared.generated.resources.clear_cache_summary
+import legado.shared.generated.resources.clear_webview_data
+import legado.shared.generated.resources.clear_webview_data_summary
+import legado.shared.generated.resources.click_book_open_read
+import legado.shared.generated.resources.click_book_open_read_summary
+import legado.shared.generated.resources.custom_page_key
+import legado.shared.generated.resources.default_home_page
+import legado.shared.generated.resources.direct_link_upload_rule
+import legado.shared.generated.resources.direct_link_upload_rule_summary
+import legado.shared.generated.resources.ignore_audio_focus_summary
+import legado.shared.generated.resources.ignore_audio_focus_title
+import legado.shared.generated.resources.language
+import legado.shared.generated.resources.media_button_on_exit_summary
+import legado.shared.generated.resources.media_button_on_exit_title
+import legado.shared.generated.resources.pre_download
+import legado.shared.generated.resources.pref_cronet_summary
+import legado.shared.generated.resources.ps_auto_refresh
+import legado.shared.generated.resources.pt_auto_refresh
+import legado.shared.generated.resources.read_aloud_by_media_button_summary
+import legado.shared.generated.resources.read_aloud_by_media_button_title
+import legado.shared.generated.resources.record_debug_log
+import legado.shared.generated.resources.record_heap_dump_s
+import legado.shared.generated.resources.record_heap_dump_t
+import legado.shared.generated.resources.record_log
+import legado.shared.generated.resources.replace_enable_default_s
+import legado.shared.generated.resources.replace_enable_default_t
+import legado.shared.generated.resources.set_local_password
+import legado.shared.generated.resources.set_local_password_summary
+import legado.shared.generated.resources.show_add_to_shelf_alert_summary
+import legado.shared.generated.resources.show_add_to_shelf_alert_title
+import legado.shared.generated.resources.shrink_database
+import legado.shared.generated.resources.shrink_database_summary
+import legado.shared.generated.resources.threads_num_title
+import legado.shared.generated.resources.update_to_variant_summary
+import legado.shared.generated.resources.update_to_variant_title
+import legado.shared.generated.resources.user_agent
+import legado.shared.generated.resources.web_port_title
+import legado.shared.generated.resources.web_service_wake_lock
+import legado.shared.generated.resources.web_service_wake_lock_summary
+import legado.shared.generated.resources.default_app_variant
+import legado.shared.generated.resources.default_app_variant_value
+import legado.shared.generated.resources.default_home_page_value
+import legado.shared.generated.resources.language_value
+import org.jetbrains.compose.resources.stringArrayResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 其它设置页（迁 pref_config_other.xml）。逐条对齐原条目顺序/key/默认值。
@@ -16,8 +69,8 @@ import io.legado.app.ui.compose.theme.AppTheme
  * 动态 summary 与点击型交互（弹窗/NumberPicker/文件选择）由宿主传入。
  *
  * 下沉 shared/sharedUiMain:
- * - stringResource(R.string.xxx) → rememberString("xxx")
- * - stringArrayResource(R.array.xxx) → rememberStringArray("xxx")
+ * - stringResource(R.string.xxx) → stringResource(Res.string.xxx)
+ * - stringArrayResource(R.array.xxx) → stringArrayResource(Res.array.xxx)
  * - 与 app 端原包名/类名一致, app/desktop 端共用。
  */
 @Composable
@@ -43,61 +96,61 @@ fun OtherConfigScreen(
     onThreadCount: () -> Unit,
     onCustomPageKey: () -> Unit,
 ) {
-    val languageEntries = rememberStringArray("language")
-    val languageValues = rememberStringArray("language_value")
-    val homePageEntries = rememberStringArray("default_home_page")
-    val homePageValues = rememberStringArray("default_home_page_value")
-    val variantEntries = rememberStringArray("default_app_variant")
-    val variantValues = rememberStringArray("default_app_variant_value")
+    val languageEntries = stringArrayResource(Res.array.language)
+    val languageValues = stringArrayResource(Res.array.language_value)
+    val homePageEntries = stringArrayResource(Res.array.default_home_page)
+    val homePageValues = stringArrayResource(Res.array.default_home_page_value)
+    val variantEntries = stringArrayResource(Res.array.default_app_variant)
+    val variantValues = stringArrayResource(Res.array.default_app_variant_value)
 
-    val titleLanguage = rememberString("language")
-    val titleHomePage = rememberString("default_home_page")
-    val titleAutoRefresh = rememberString("pt_auto_refresh")
-    val summaryAutoRefresh = rememberString("ps_auto_refresh")
-    val titleDevFeat = rememberString("click_book_open_read")
-    val summaryDevFeat = rememberString("click_book_open_read_summary")
-    val titleLocalPassword = rememberString("set_local_password")
-    val summaryLocalPassword = rememberString("set_local_password_summary")
-    val titleUserAgent = rememberString("user_agent")
-    val titleWebWakeLock = rememberString("web_service_wake_lock")
-    val summaryWebWakeLock = rememberString("web_service_wake_lock_summary")
-    val titleBookTree = rememberString("book_tree_uri_t")
-    val titleCheckSource = rememberString("check_source_config")
-    val titleUploadRule = rememberString("direct_link_upload_rule")
-    val summaryUploadRule = rememberString("direct_link_upload_rule_summary")
-    val summaryCronet = rememberString("pref_cronet_summary")
-    val titleBitmapCache = rememberString("bitmap_cache_size")
-    val titlePreDownload = rememberString("pre_download")
-    val titleReplaceEnable = rememberString("replace_enable_default_t")
-    val summaryReplaceEnable = rememberString("replace_enable_default_s")
-    val titleMediaButtonExit = rememberString("media_button_on_exit_title")
-    val summaryMediaButtonExit = rememberString("media_button_on_exit_summary")
-    val titleReadAloudMediaButton = rememberString("read_aloud_by_media_button_title")
-    val summaryReadAloudMediaButton = rememberString("read_aloud_by_media_button_summary")
-    val titleIgnoreAudioFocus = rememberString("ignore_audio_focus_title")
-    val summaryIgnoreAudioFocus = rememberString("ignore_audio_focus_summary")
-    val titleAddToShelfAlert = rememberString("show_add_to_shelf_alert_title")
-    val summaryAddToShelfAlert = rememberString("show_add_to_shelf_alert_summary")
-    val titleBookInfoDeleteAlert = rememberString("book_info_delete_alert_title")
-    val summaryBookInfoDeleteAlert = rememberString("book_info_delete_alert_summary")
-    val titleUpdateToVariant = rememberString("update_to_variant_title")
-    val summaryUpdateToVariant = rememberString("update_to_variant_summary")
-    val titleAutoCheckUpdate = rememberString("auto_check_update")
-    val titleWebPort = rememberString("web_port_title")
-    val titleCleanCache = rememberString("clear_cache")
-    val summaryCleanCache = rememberString("clear_cache_summary")
-    val titleClearWebView = rememberString("clear_webview_data")
-    val summaryClearWebView = rememberString("clear_webview_data_summary")
-    val titleShrinkDatabase = rememberString("shrink_database")
-    val summaryShrinkDatabase = rememberString("shrink_database_summary")
-    val titleThreadCount = rememberString("threads_num_title")
-    val titleProcessText = rememberString("add_to_text_context_menu_t")
-    val summaryProcessText = rememberString("add_to_text_context_menu_s")
-    val titleRecordLog = rememberString("record_log")
-    val summaryRecordLog = rememberString("record_debug_log")
-    val titleRecordHeapDump = rememberString("record_heap_dump_t")
-    val summaryRecordHeapDump = rememberString("record_heap_dump_s")
-    val titleCustomPageKey = rememberString("custom_page_key")
+    val titleLanguage = stringResource(Res.string.language)
+    val titleHomePage = stringResource(Res.string.default_home_page)
+    val titleAutoRefresh = stringResource(Res.string.pt_auto_refresh)
+    val summaryAutoRefresh = stringResource(Res.string.ps_auto_refresh)
+    val titleDevFeat = stringResource(Res.string.click_book_open_read)
+    val summaryDevFeat = stringResource(Res.string.click_book_open_read_summary)
+    val titleLocalPassword = stringResource(Res.string.set_local_password)
+    val summaryLocalPassword = stringResource(Res.string.set_local_password_summary)
+    val titleUserAgent = stringResource(Res.string.user_agent)
+    val titleWebWakeLock = stringResource(Res.string.web_service_wake_lock)
+    val summaryWebWakeLock = stringResource(Res.string.web_service_wake_lock_summary)
+    val titleBookTree = stringResource(Res.string.book_tree_uri_t)
+    val titleCheckSource = stringResource(Res.string.check_source_config)
+    val titleUploadRule = stringResource(Res.string.direct_link_upload_rule)
+    val summaryUploadRule = stringResource(Res.string.direct_link_upload_rule_summary)
+    val summaryCronet = stringResource(Res.string.pref_cronet_summary)
+    val titleBitmapCache = stringResource(Res.string.bitmap_cache_size)
+    val titlePreDownload = stringResource(Res.string.pre_download)
+    val titleReplaceEnable = stringResource(Res.string.replace_enable_default_t)
+    val summaryReplaceEnable = stringResource(Res.string.replace_enable_default_s)
+    val titleMediaButtonExit = stringResource(Res.string.media_button_on_exit_title)
+    val summaryMediaButtonExit = stringResource(Res.string.media_button_on_exit_summary)
+    val titleReadAloudMediaButton = stringResource(Res.string.read_aloud_by_media_button_title)
+    val summaryReadAloudMediaButton = stringResource(Res.string.read_aloud_by_media_button_summary)
+    val titleIgnoreAudioFocus = stringResource(Res.string.ignore_audio_focus_title)
+    val summaryIgnoreAudioFocus = stringResource(Res.string.ignore_audio_focus_summary)
+    val titleAddToShelfAlert = stringResource(Res.string.show_add_to_shelf_alert_title)
+    val summaryAddToShelfAlert = stringResource(Res.string.show_add_to_shelf_alert_summary)
+    val titleBookInfoDeleteAlert = stringResource(Res.string.book_info_delete_alert_title)
+    val summaryBookInfoDeleteAlert = stringResource(Res.string.book_info_delete_alert_summary)
+    val titleUpdateToVariant = stringResource(Res.string.update_to_variant_title)
+    val summaryUpdateToVariant = stringResource(Res.string.update_to_variant_summary)
+    val titleAutoCheckUpdate = stringResource(Res.string.auto_check_update)
+    val titleWebPort = stringResource(Res.string.web_port_title)
+    val titleCleanCache = stringResource(Res.string.clear_cache)
+    val summaryCleanCache = stringResource(Res.string.clear_cache_summary)
+    val titleClearWebView = stringResource(Res.string.clear_webview_data)
+    val summaryClearWebView = stringResource(Res.string.clear_webview_data_summary)
+    val titleShrinkDatabase = stringResource(Res.string.shrink_database)
+    val summaryShrinkDatabase = stringResource(Res.string.shrink_database_summary)
+    val titleThreadCount = stringResource(Res.string.threads_num_title)
+    val titleProcessText = stringResource(Res.string.add_to_text_context_menu_t)
+    val summaryProcessText = stringResource(Res.string.add_to_text_context_menu_s)
+    val titleRecordLog = stringResource(Res.string.record_log)
+    val summaryRecordLog = stringResource(Res.string.record_debug_log)
+    val titleRecordHeapDump = stringResource(Res.string.record_heap_dump_t)
+    val summaryRecordHeapDump = stringResource(Res.string.record_heap_dump_s)
+    val titleCustomPageKey = stringResource(Res.string.custom_page_key)
 
     AppTheme {
         PreferenceScreen {

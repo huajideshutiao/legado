@@ -27,7 +27,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
@@ -53,6 +52,8 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 class SearchScopeDialog : BaseComposeDialogFragment() {
 
@@ -205,7 +206,7 @@ class SearchScopeDialog : BaseComposeDialogFragment() {
                 if (!groupMode) {
                     IconButton(onClick = { showScreen = true }) {
                         Icon(
-                            painter = painterResource(io.legado.shared.R.drawable.outline_filter_alt_24),
+                            painter = rememberPainter("outline_filter_alt_24"),
                             contentDescription = stringResource(R.string.screen),
                             tint = colors.primaryText,
                         )

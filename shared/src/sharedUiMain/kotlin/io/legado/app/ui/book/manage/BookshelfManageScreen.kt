@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -44,6 +45,29 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.action_download
+import legado.shared.generated.resources.bookshelf_management
+import legado.shared.generated.resources.custom_export_section
+import legado.shared.generated.resources.delete
+import legado.shared.generated.resources.empty
+import legado.shared.generated.resources.export_all_use_book_source
+import legado.shared.generated.resources.export_config
+import legado.shared.generated.resources.export_folder
+import legado.shared.generated.resources.export_to_web_dav
+import legado.shared.generated.resources.filter_book_type
+import legado.shared.generated.resources.group
+import legado.shared.generated.resources.group_manage
+import legado.shared.generated.resources.ic_clear_all
+import legado.shared.generated.resources.ic_groups
+import legado.shared.generated.resources.log
+import legado.shared.generated.resources.menu_download_after
+import legado.shared.generated.resources.menu_download_all
+import legado.shared.generated.resources.move_to_group
+import legado.shared.generated.resources.replace_purify
+import legado.shared.generated.resources.start
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 书架管理 Screen (KMP 版, 替代 app 端原 BookshelfManageScreen)。
@@ -51,7 +75,7 @@ import io.legado.app.ui.compose.theme.AppTheme
  * 下沉改动:
  * - 去掉对 `BookshelfManageActivity` 的直接依赖, 改为通过 [BookshelfManageState] +
  *   [BookshelfManageCallbacks] 传入状态与回调, 解耦 Composable 与 Android Activity
- * - 字符串资源 `stringResource(R.string.xxx)` → `rememberString("xxx")` (key-based, 跨平台)
+ * - 字符串资源 `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)` (key-based, 跨平台)
  * - 图标资源 `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")` (key-based, 跨平台)
  * - 原 `AndroidView + CoverImageView` 改为 `coverSlot: @Composable (Book) -> Unit` 注入,
  *   app 端用 CoverImageView 承载, desktop 端用各自的封面渲染方案
@@ -62,7 +86,8 @@ import io.legado.app.ui.compose.theme.AppTheme
  * @param callbacks  事件回调 (查询/选中/拖拽/单项操作/批量操作/导航)
  * @param listState  外部传入的 LazyListState, 供 dragSelectable 边缘拖选复用
  * @param listModifier 施加于 LazyColumn 的 modifier (如 dragSelectable)
- * @param coverSlot  封面渲染槽: 由调用方注入 (app 端为 CoverImageView, desktop 端自定义)
+ * @param coverSlot  封面渲染槽: 由调用方注入 (app 端经 LocalBookCoverSlot 绑定 ShelfCover, desktop 端自定义);
+ *   接收 Book 与 Modifier, 内部应将 Modifier 应用到封面根节点以承袭父级尺寸约束
  */
 @Composable
 fun BookshelfManageScreen(
@@ -70,7 +95,7 @@ fun BookshelfManageScreen(
     callbacks: BookshelfManageCallbacks,
     listState: LazyListState,
     listModifier: Modifier,
-    coverSlot: @Composable (Book) -> Unit,
+    coverSlot: @Composable (Book, Modifier) -> Unit,
 ) {
     val selectedSet = state.selected
     // 读取 refreshTick 触发列表随下载/缓存事件重组
@@ -81,10 +106,10 @@ fun BookshelfManageScreen(
         onMove = { from, to -> callbacks.onMove(from, to) },
         listState = listState,
         listModifier = listModifier,
-        emptyText = rememberString("empty"),
+        emptyText = stringResource(Res.string.empty),
         titleBar = {
             AppTitleBar(
-                title = rememberString("bookshelf_management"),
+                title = stringResource(Res.string.bookshelf_management),
                 onBack = callbacks.onBack,
                 titleContent = {
                     AppSearchField(
@@ -102,7 +127,7 @@ fun BookshelfManageScreen(
                 allCount = state.books.size,
                 onSelectAll = callbacks.onSelectAll,
                 onRevertSelection = callbacks.onRevertSelection,
-                mainActionText = rememberString("move_to_group"),
+                mainActionText = stringResource(Res.string.move_to_group),
                 onMainAction = callbacks.onMainAction,
                 actions = callbacks.onSelectActions(),
             )
@@ -193,15 +218,15 @@ private fun BookshelfManageActions(state: BookshelfManageState, callbacks: Books
                 painter = rememberPainter(
                     if (state.downloadRunning) "ic_stop_black_24dp" else "ic_play_24dp"
                 ),
-                contentDescription = rememberString("action_download"),
+                contentDescription = stringResource(Res.string.action_download),
                 tint = colors.primaryText,
             )
         }
         AppDropdownMenu(expanded = showDownload, onDismissRequest = { showDownload = false }) {
-            MenuItem(rememberString("menu_download_after")) {
+            MenuItem(stringResource(Res.string.menu_download_after)) {
                 showDownload = false; callbacks.onDownloadAfter()
             }
-            MenuItem(rememberString("menu_download_all")) {
+            MenuItem(stringResource(Res.string.menu_download_all)) {
                 showDownload = false; callbacks.onDownloadAll()
             }
         }
@@ -210,13 +235,13 @@ private fun BookshelfManageActions(state: BookshelfManageState, callbacks: Books
     Box {
         IconButton(onClick = { showGroup = true }) {
             Icon(
-                painter = rememberPainter("ic_groups"),
-                contentDescription = rememberString("group"),
+                painter = painterResource(Res.drawable.ic_groups),
+                contentDescription = stringResource(Res.string.group),
                 tint = colors.primaryText,
             )
         }
         AppDropdownMenu(expanded = showGroup, onDismissRequest = { showGroup = false }) {
-            MenuItem(rememberString("group_manage")) {
+            MenuItem(stringResource(Res.string.group_manage)) {
                 showGroup = false; callbacks.onShowGroupManage()
             }
             state.groups.forEach { group ->
@@ -236,25 +261,25 @@ private fun BookshelfManageActions(state: BookshelfManageState, callbacks: Books
             FilterItem(state, callbacks, "audio", 3) { dismiss() }
             FilterItem(state, callbacks, "explore_style_video", 4) { dismiss() }
         } else {
-            MenuItem(rememberString("filter_book_type")) { showFilter = true }
-            MenuItem(rememberString("export_all_use_book_source")) {
+            MenuItem(stringResource(Res.string.filter_book_type)) { showFilter = true }
+            MenuItem(stringResource(Res.string.export_all_use_book_source)) {
                 dismiss(); callbacks.onExportAllUseBookSource()
             }
             CheckDropdownItem(
-                text = rememberString("replace_purify"),
+                text = stringResource(Res.string.replace_purify),
                 checked = state.exportUseReplace,
             ) { dismiss(); callbacks.onToggleEnableReplace() }
             CheckDropdownItem(
-                text = rememberString("custom_export_section"),
+                text = stringResource(Res.string.custom_export_section),
                 checked = state.enableCustomExportChecked,
             ) { dismiss(); callbacks.onToggleCustomExport() }
             CheckDropdownItem(
-                text = rememberString("export_to_web_dav"),
+                text = stringResource(Res.string.export_to_web_dav),
                 checked = state.exportToWebDav,
             ) { dismiss(); callbacks.onToggleExportWebDav() }
-            MenuItem(rememberString("export_folder")) { dismiss(); callbacks.onSelectExportFolderMenu() }
-            MenuItem(rememberString("export_config")) { dismiss(); callbacks.onShowExportConfig() }
-            MenuItem(rememberString("log")) { dismiss(); callbacks.onShowLog() }
+            MenuItem(stringResource(Res.string.export_folder)) { dismiss(); callbacks.onSelectExportFolderMenu() }
+            MenuItem(stringResource(Res.string.export_config)) { dismiss(); callbacks.onShowExportConfig() }
+            MenuItem(stringResource(Res.string.log)) { dismiss(); callbacks.onShowLog() }
         }
     }
 }
@@ -304,7 +329,7 @@ private fun RuleItemScope.BookItem(
     callbacks: BookshelfManageCallbacks,
     book: Book,
     checked: Boolean,
-    coverSlot: @Composable (Book) -> Unit,
+    coverSlot: @Composable (Book, Modifier) -> Unit,
 ) {
     val colors = AppTheme.colors
     // 长按=拖拽排序(仅手动排序);点按 root=切换选中;点封面=打开详情(避让长按拖拽,不再 combinedClickable)
@@ -326,7 +351,8 @@ private fun RuleItemScope.BookItem(
             onCheckedChange = { callbacks.onToggle(book, it) },
             modifier = Modifier.align(Alignment.CenterVertically),
         )
-        // 封面槽: 由 host 端注入 (app 端用 CoverImageView, desktop 端自定义)
+        // 封面槽: 由 host 端注入 (app 端经 LocalBookCoverSlot 绑定 ShelfCover, desktop 端自定义)
+        // 把 Box 的尺寸约束通过 fillMaxSize 透传给 coverSlot, 让 ShelfCover 按封面框 60x80dp 渲染
         Box(
             modifier = Modifier
                 .align(Alignment.CenterVertically)
@@ -335,7 +361,7 @@ private fun RuleItemScope.BookItem(
                 .height(80.dp)
                 .clickable { callbacks.onOpenBook(book) },
         ) {
-            coverSlot(book)
+            coverSlot(book, Modifier.fillMaxSize())
         }
         Column(
             Modifier
@@ -398,14 +424,14 @@ private fun RuleItemScope.BookItem(
                     painter = rememberPainter(
                         if (callbacks.isItemDownloading(book)) "ic_stop_black_24dp" else "ic_play_24dp"
                     ),
-                    contentDescription = rememberString("start"),
+                    contentDescription = stringResource(Res.string.start),
                     tint = colors.primaryText,
                     modifier = Modifier.size(20.dp),
                 )
             }
         }
         Text(
-            text = rememberString("group"),
+            text = stringResource(Res.string.group),
             color = colors.secondaryText,
             modifier = Modifier
                 .align(Alignment.Bottom)
@@ -417,8 +443,8 @@ private fun RuleItemScope.BookItem(
             modifier = Modifier.align(Alignment.Bottom),
         ) {
             Icon(
-                painter = rememberPainter("ic_clear_all"),
-                contentDescription = rememberString("delete"),
+                painter = painterResource(Res.drawable.ic_clear_all),
+                contentDescription = stringResource(Res.string.delete),
                 tint = colors.primaryText,
             )
         }

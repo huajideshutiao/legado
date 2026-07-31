@@ -31,8 +31,19 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDetailSeekBar
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppTextButton
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.background
+import legado.shared.generated.resources.close
+import legado.shared.generated.resources.line_size
+import legado.shared.generated.resources.page_anim_cover
+import legado.shared.generated.resources.page_anim_none
+import legado.shared.generated.resources.page_anim_slide
+import legado.shared.generated.resources.page_turn
+import legado.shared.generated.resources.paragraph_size
+import legado.shared.generated.resources.read_config
+import legado.shared.generated.resources.text_size
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 桌面端阅读配置面板 (KP2-D P1)。
@@ -101,11 +112,11 @@ fun ReadConfigPanel(
 
     AppAlertDialog(
         onDismissRequest = onDismissRequest,
-        title = rememberString("read_config"),
+        title = stringResource(Res.string.read_config),
         content = {
             // 字号 (12-36 sp)
             AppDetailSeekBar(
-                title = rememberString("text_size"),
+                title = stringResource(Res.string.text_size),
                 value = textSize,
                 min = 12,
                 max = 36,
@@ -117,7 +128,7 @@ fun ReadConfigPanel(
             )
             // 行距 (内部 10-20, 显示 1.0-2.0)
             AppDetailSeekBar(
-                title = rememberString("line_size"),
+                title = stringResource(Res.string.line_size),
                 value = lineSpacing,
                 min = 10,
                 max = 20,
@@ -129,7 +140,7 @@ fun ReadConfigPanel(
             )
             // 段距 (内部 1-4, 显示 0.5-2.0)
             AppDetailSeekBar(
-                title = rememberString("paragraph_size"),
+                title = stringResource(Res.string.paragraph_size),
                 value = paragraphSpacing,
                 min = 1,
                 max = 4,
@@ -164,7 +175,7 @@ fun ReadConfigPanel(
                 },
             )
         },
-        okButton = AlertButton(rememberString("close")) {
+        okButton = AlertButton(stringResource(Res.string.close)) {
             onDismissRequest()
         },
     )
@@ -190,7 +201,7 @@ private fun BackgroundColorRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = rememberString("background"),
+            text = stringResource(Res.string.background),
             color = colors.primaryText,
             modifier = Modifier.padding(end = 16.dp),
         )
@@ -228,9 +239,9 @@ private fun PageAnimRow(
     val colors = AppTheme.colors
     // 翻页模式标签走 rememberString 缓存 (Composable 顶层一次性求值,
     // PAGE_ANIM_OPTIONS 仅存 key, 渲染时映射为本地标签)
-    val coverLabel = rememberString("page_anim_cover")
-    val slideLabel = rememberString("page_anim_slide")
-    val noneLabel = rememberString("page_anim_none")
+    val coverLabel = stringResource(Res.string.page_anim_cover)
+    val slideLabel = stringResource(Res.string.page_anim_slide)
+    val noneLabel = stringResource(Res.string.page_anim_none)
     val labels = remember(coverLabel, slideLabel, noneLabel) {
         mapOf(
             PageAnim.coverPageAnim to coverLabel,
@@ -246,7 +257,7 @@ private fun PageAnimRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = rememberString("page_turn"),
+            text = stringResource(Res.string.page_turn),
             color = colors.primaryText,
             modifier = Modifier.padding(end = 16.dp),
         )

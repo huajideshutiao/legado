@@ -62,12 +62,33 @@ import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.StringUtils
 import kotlinx.coroutines.launch
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.bookmark
+import legado.shared.generated.resources.chapter_list
+import legado.shared.generated.resources.export
+import legado.shared.generated.resources.export_md
+import legado.shared.generated.resources.go_to_bottom
+import legado.shared.generated.resources.go_to_top
+import legado.shared.generated.resources.ic_arrow_drop_down
+import legado.shared.generated.resources.ic_arrow_drop_up
+import legado.shared.generated.resources.ic_check
+import legado.shared.generated.resources.ic_lock_outline
+import legado.shared.generated.resources.ic_outline_cloud_24
+import legado.shared.generated.resources.ic_sort
+import legado.shared.generated.resources.load_word_count
+import legado.shared.generated.resources.log
+import legado.shared.generated.resources.reverse_toc
+import legado.shared.generated.resources.search
+import legado.shared.generated.resources.split_long_chapter
+import legado.shared.generated.resources.txt_toc_rule
+import legado.shared.generated.resources.use_replace
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 // ===== state / actions =====
 
@@ -182,7 +203,7 @@ fun TocScreen(
                     AppSearchField(
                         value = state.searchKey,
                         onValueChange = { actions.setQuery(it) },
-                        hint = rememberString("search"),
+                        hint = stringResource(Res.string.search),
                         modifier = Modifier.focusRequester(focusRequester),
                     )
                     LaunchedEffect(Unit) {
@@ -193,13 +214,16 @@ fun TocScreen(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.Center,
                     ) {
-                        TocTab(rememberString("chapter_list"), pagerState.currentPage == 0) {
+                        TocTab(
+                            stringResource(Res.string.chapter_list),
+                            pagerState.currentPage == 0
+                        ) {
                             scope.launch {
                                 if (eInk) pagerState.scrollToPage(0)
                                 else pagerState.animateScrollToPage(0)
                             }
                         }
-                        TocTab(rememberString("bookmark"), pagerState.currentPage == 1) {
+                        TocTab(stringResource(Res.string.bookmark), pagerState.currentPage == 1) {
                             scope.launch {
                                 if (eInk) pagerState.scrollToPage(1)
                                 else pagerState.animateScrollToPage(1)
@@ -259,36 +283,36 @@ private fun TocActions(state: TocUiState, actions: TocUiActions, page: Int) {
             painter = rememberPainter(
                 if (state.searching) "ic_baseline_close" else "ic_search"
             ),
-            contentDescription = rememberString("search"),
+            contentDescription = stringResource(Res.string.search),
             tint = colors.primaryText,
         )
     }
     val book = state.book
     OverflowMenu { dismiss ->
         if (page == 1) {
-            MenuItem(rememberString("export")) { dismiss(); actions.exportBookmark() }
-            MenuItem(rememberString("export_md")) { dismiss(); actions.exportBookmarkMd() }
+            MenuItem(stringResource(Res.string.export)) { dismiss(); actions.exportBookmark() }
+            MenuItem(stringResource(Res.string.export_md)) { dismiss(); actions.exportBookmarkMd() }
         } else {
             if (book?.isLocalTxt == true) {
-                MenuItem(rememberString("txt_toc_rule")) {
+                MenuItem(stringResource(Res.string.txt_toc_rule)) {
                     dismiss(); actions.showTocRegexDialog()
                 }
                 CheckItem(
-                    rememberString("split_long_chapter"),
+                    stringResource(Res.string.split_long_chapter),
                     book.config.splitLongChapter,
                 ) { dismiss(); actions.toggleSplitLongChapter() }
             }
-            MenuItem(rememberString("reverse_toc")) {
+            MenuItem(stringResource(Res.string.reverse_toc)) {
                 dismiss(); actions.reverseChapterList()
             }
-            CheckItem(rememberString("use_replace"), state.useReplace) {
+            CheckItem(stringResource(Res.string.use_replace), state.useReplace) {
                 dismiss(); actions.toggleUseReplace()
             }
-            CheckItem(rememberString("load_word_count"), state.countWords) {
+            CheckItem(stringResource(Res.string.load_word_count), state.countWords) {
                 dismiss(); actions.toggleCountWords()
             }
         }
-        MenuItem(rememberString("log")) { dismiss(); actions.showLog() }
+        MenuItem(stringResource(Res.string.log)) { dismiss(); actions.showLog() }
     }
 }
 
@@ -360,7 +384,7 @@ private fun ChapterItem(
     ) {
         if (item.isVip && !item.isPay) {
             Icon(
-                painter = rememberPainter("ic_lock_outline"),
+                painter = painterResource(Res.drawable.ic_lock_outline),
                 contentDescription = null,
                 tint = colors.secondaryText,
                 modifier = Modifier
@@ -419,13 +443,13 @@ private fun ChapterItem(
                 )
 
                 isDur -> Icon(
-                    painter = rememberPainter("ic_check"),
+                    painter = painterResource(Res.drawable.ic_check),
                     contentDescription = null,
                     tint = colors.secondaryText,
                 )
 
                 !cached -> Icon(
-                    painter = rememberPainter("ic_outline_cloud_24"),
+                    painter = painterResource(Res.drawable.ic_outline_cloud_24),
                     contentDescription = null,
                     tint = colors.secondaryText,
                 )
@@ -487,8 +511,8 @@ private fun ChapterInfoBar(
             modifier = Modifier.size(36.dp),
         ) {
             Icon(
-                painter = rememberPainter("ic_arrow_drop_up"),
-                contentDescription = rememberString("go_to_top"),
+                painter = painterResource(Res.drawable.ic_arrow_drop_up),
+                contentDescription = stringResource(Res.string.go_to_top),
                 tint = barText,
             )
         }
@@ -497,8 +521,8 @@ private fun ChapterInfoBar(
             modifier = Modifier.size(36.dp),
         ) {
             Icon(
-                painter = rememberPainter("ic_arrow_drop_down"),
-                contentDescription = rememberString("go_to_bottom"),
+                painter = painterResource(Res.drawable.ic_arrow_drop_down),
+                contentDescription = stringResource(Res.string.go_to_bottom),
                 tint = barText,
             )
         }
@@ -704,14 +728,14 @@ fun TocDrawerContent(
             AppSearchField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                hint = rememberString("search"),
+                hint = stringResource(Res.string.search),
                 modifier = Modifier.weight(1f),
             )
             // 反转按钮
             IconButton(onClick = { reversed = !reversed }) {
                 Icon(
-                    painter = rememberPainter("ic_sort"),
-                    contentDescription = rememberString("reverse_toc"),
+                    painter = painterResource(Res.drawable.ic_sort),
+                    contentDescription = stringResource(Res.string.reverse_toc),
                     tint = if (reversed) colors.accent else colors.primaryText,
                 )
             }
@@ -802,7 +826,7 @@ private fun TocDrawerItem(
                 )
 
                 isCurrent -> Icon(
-                    painter = rememberPainter("ic_check"),
+                    painter = painterResource(Res.drawable.ic_check),
                     contentDescription = null,
                     tint = colors.secondaryText,
                 )

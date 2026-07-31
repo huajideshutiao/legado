@@ -53,10 +53,13 @@ import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ColorUtils
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.ok
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Compose 设置 DSL（对齐 androidx.preference + lib/prefs 视觉/行为）。
@@ -195,16 +198,16 @@ fun LazyListScope.editTextPreference(
             title = title,
             widthFraction = widthFraction,
             okButton = AlertButton(
-                // 替代 stringResource(R.string.ok): commonMain 走 rememberString("ok")
-                text = rememberString("ok"),
+                // 替代 stringResource(R.string.ok): commonMain 走 stringResource(Res.string.ok)
+                text = stringResource(Res.string.ok),
                 onClick = {
                     // 替代 context.putPrefString: 走 PreferenceStoreProvider
                     pref.putString(prefKey, text)
                     onValueChange?.invoke(text)
                 },
             ),
-            // 替代 stringResource(R.string.cancel): commonMain 走 rememberString("cancel")
-            cancelButton = AlertButton(text = rememberString("cancel")),
+            // 替代 stringResource(R.string.cancel): commonMain 走 stringResource(Res.string.cancel)
+            cancelButton = AlertButton(text = stringResource(Res.string.cancel)),
         ) {
             AppOutlinedTextField(
                 value = text,

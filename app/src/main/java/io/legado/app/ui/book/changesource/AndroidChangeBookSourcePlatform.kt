@@ -4,7 +4,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
-import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.SourceConfig
 import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
@@ -13,7 +13,7 @@ import splitties.init.appCtx
  * Android 端 [ChangeBookSourcePlatform] 实现 (顶级类)。
  *
  * 从 [ChangeBookSourceViewModel] 的 inner class 提取, 供 shared Route + app ViewModel 共用。
- * 委托 [AppConfig] / [ContentProcessor] / [BookHelp] / [SourceConfig] / [appCtx.toastOnUi]。
+ * 委托 [AppConfigProviders] / [ContentProcessor] / [BookHelp] / [SourceConfig] / [appCtx.toastOnUi]。
  *
  * 注: 原 inner class 通过 `context` (BaseViewModel 提供) 访问 Android Context 调
  * `context.toastOnUi`; 顶级类无外类 context, 改用 [appCtx] (Application Context),
@@ -23,49 +23,39 @@ class AndroidChangeBookSourcePlatform : ChangeBookSourcePlatform {
 
     // ---- AppConfig 相关 ----
 
-    override val threadCount: Int
-        get() = AppConfig.threadCount
+    private val appConfig get() = AppConfigProviders.get()
 
-    /**
-     * searchGroup 用 var 实现: getter 读 [AppConfig.searchGroup],
-     * setter 写 [AppConfig.searchGroup] (持久化到 SharedPreferences)。
-     *
-     * 注: [setSearchGroup] 默认实现已调 `searchGroup = value` 触发 setter, 无需额外覆盖。
-     */
+    override val threadCount: Int
+        get() = appConfig.threadCount
+
     override var searchGroup: String
-        get() = AppConfig.searchGroup
+        get() = appConfig.searchGroup
         set(value) {
-            AppConfig.searchGroup = value
+            appConfig.searchGroup = value
         }
 
-    /**
-     * changeSourceCheckAuthor: getter 读 [AppConfig.changeSourceCheckAuthor],
-     * setter 写 [AppConfig.changeSourceCheckAuthor] (持久化到 SharedPreferences)。
-     *
-     * app 端 Dialog 直接 `AppConfig.changeSourceCheckAuthor = value` 写回, 走此 setter。
-     */
     override var changeSourceCheckAuthor: Boolean
-        get() = AppConfig.changeSourceCheckAuthor
+        get() = appConfig.changeSourceCheckAuthor
         set(value) {
-            AppConfig.changeSourceCheckAuthor = value
+            appConfig.changeSourceCheckAuthor = value
         }
 
     override var changeSourceLoadInfo: Boolean
-        get() = AppConfig.changeSourceLoadInfo
+        get() = appConfig.changeSourceLoadInfo
         set(value) {
-            AppConfig.changeSourceLoadInfo = value
+            appConfig.changeSourceLoadInfo = value
         }
 
     override var changeSourceLoadToc: Boolean
-        get() = AppConfig.changeSourceLoadToc
+        get() = appConfig.changeSourceLoadToc
         set(value) {
-            AppConfig.changeSourceLoadToc = value
+            appConfig.changeSourceLoadToc = value
         }
 
     override var changeSourceLoadWordCount: Boolean
-        get() = AppConfig.changeSourceLoadWordCount
+        get() = appConfig.changeSourceLoadWordCount
         set(value) {
-            AppConfig.changeSourceLoadWordCount = value
+            appConfig.changeSourceLoadWordCount = value
         }
 
     // ---- BookHelp 相关 ----

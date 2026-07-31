@@ -34,8 +34,10 @@ object NativeVerificationUiProvider : VerificationUiProvider {
         url: String,
         title: String,
         saveResult: Boolean?,
-        refetchAfterSuccess: Boolean?
+        refetchAfterSuccess: Boolean?,
+        asBottomSheet: Boolean = false,
     ) {
+        // native 暂无 BottomSheet 容器, asBottomSheet 降级为普通打开 (忽略半屏语义)
         if (saveResult == true) {
             val msg = "该平台暂不支持此验证方式(需内置浏览器回传网页源码): $title"
             runCatching { Toasters.get().toastLong(msg) }

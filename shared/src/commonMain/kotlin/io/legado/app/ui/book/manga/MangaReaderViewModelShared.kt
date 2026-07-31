@@ -20,6 +20,8 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
+import io.legado.app.ui.book.manga.config.MangaFooterConfig
 import io.legado.app.ui.book.manga.entities.BaseMangaPage
 import io.legado.app.ui.book.manga.entities.MangaChapter
 import io.legado.app.ui.book.manga.entities.MangaContent
@@ -74,11 +76,25 @@ interface MangaImageExtractor {
  * @param hideMangaTitle 是否隐藏漫画标题 (对应 AppConfig.hideMangaTitle), 默认 false
  * @param preDownloadNum 预下载数量 (对应 AppConfig.preDownloadNum), 默认 10
  * @param syncBookProgressPlus 是否启用增强版进度同步 (对应 AppConfig.syncBookProgressPlus), 默认 false
+ * @param horizontal 横向翻页模式 (对应 AppConfig.enableMangaHorizontalScroll), 默认 false
+ * @param autoPageSpeed 自动翻页速度 (对应 AppConfig.mangaAutoPageSpeed), 默认 3
+ * @param grayEnabled 灰度滤镜 (对应 AppConfig.enableMangaGray), 默认 false
+ * @param colorFilterConfig 颜色滤镜矩阵 (对应 AppConfig.mangaColorFilter), 默认无操作
+ * @param gifAutoNext GIF 播完自动翻页 (对应 AppConfig.enableMangaGifAutoNext), 默认 false
+ * @param disablePageAnim 禁用翻页动画 (对应 AppConfig.disableMangaPageAnim), 默认 false
+ * @param footerConfig 页脚信息条配置 (对应 AppConfig.mangaFooterConfig), 默认全显
  */
 data class MangaReaderConfig(
     val hideMangaTitle: Boolean = false,
     val preDownloadNum: Int = 10,
     val syncBookProgressPlus: Boolean = false,
+    val horizontal: Boolean = false,
+    val autoPageSpeed: Int = 3,
+    val grayEnabled: Boolean = false,
+    val colorFilterConfig: MangaColorFilterConfig = MangaColorFilterConfig(),
+    val gifAutoNext: Boolean = false,
+    val disablePageAnim: Boolean = false,
+    val footerConfig: MangaFooterConfig = MangaFooterConfig(),
 ) {
     companion object {
         val DEFAULT = MangaReaderConfig()
@@ -166,6 +182,9 @@ class MangaReaderViewModelShared(
     private val preDownloadSemaphore = Semaphore(2)
     val hasNextChapter: Boolean get() = _durChapterIndex.value < simulatedChapterSize - 1
     // endregion
+
+    /** 当前章节图片数 (对照 app 端 curMangaChapter.imageCount), 供 ScreenModel 信息条/书签使用 */
+    val currentImageCount: Int get() = curMangaChapter?.imageCount ?: 0
 
     /**
      * 初始化数据 (对应 app 端 ReadMangaViewModel.initData)。

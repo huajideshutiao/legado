@@ -47,10 +47,27 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.legado.app.ui.compose.component.AppSelectorDialog
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.bookmark_add
+import legado.shared.generated.resources.chapter_list
+import legado.shared.generated.resources.click_regional_config
+import legado.shared.generated.resources.close
+import legado.shared.generated.resources.ic_baseline_close
+import legado.shared.generated.resources.menu
+import legado.shared.generated.resources.next_chapter
+import legado.shared.generated.resources.next_page
+import legado.shared.generated.resources.prev_page
+import legado.shared.generated.resources.previous_chapter
+import legado.shared.generated.resources.read_aloud_next_paragraph
+import legado.shared.generated.resources.read_aloud_pause_resume
+import legado.shared.generated.resources.read_aloud_prev_paragraph
+import legado.shared.generated.resources.replace_state_change
+import legado.shared.generated.resources.search_content
+import legado.shared.generated.resources.select_action
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 点击区域动作配置 (9 个区域 × 单击动作)。
@@ -116,18 +133,18 @@ fun ClickActionDialog(
         listOf(0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 13)
     }
     val actionNames = listOf(
-        rememberString("menu"),
-        rememberString("next_page"),
-        rememberString("prev_page"),
-        rememberString("next_chapter"),
-        rememberString("previous_chapter"),
-        rememberString("read_aloud_prev_paragraph"),
-        rememberString("read_aloud_next_paragraph"),
-        rememberString("bookmark_add"),
-        rememberString("replace_state_change"),
-        rememberString("chapter_list"),
-        rememberString("search_content"),
-        rememberString("read_aloud_pause_resume"),
+        stringResource(Res.string.menu),
+        stringResource(Res.string.next_page),
+        stringResource(Res.string.prev_page),
+        stringResource(Res.string.next_chapter),
+        stringResource(Res.string.previous_chapter),
+        stringResource(Res.string.read_aloud_prev_paragraph),
+        stringResource(Res.string.read_aloud_next_paragraph),
+        stringResource(Res.string.bookmark_add),
+        stringResource(Res.string.replace_state_change),
+        stringResource(Res.string.chapter_list),
+        stringResource(Res.string.search_content),
+        stringResource(Res.string.read_aloud_pause_resume),
     )
     // 动作值 → 动作名映射, 用于格子显示当前动作
     val actionMap = remember(actionNames) {
@@ -171,15 +188,15 @@ fun ClickActionDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = rememberString("click_regional_config"),
+                        text = stringResource(Res.string.click_regional_config),
                         color = colors.primaryText,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.weight(1f),
                     )
                     Icon(
-                        painter = rememberPainter("ic_baseline_close"),
-                        contentDescription = rememberString("close"),
+                        painter = painterResource(Res.drawable.ic_baseline_close),
+                        contentDescription = stringResource(Res.string.close),
                         tint = colors.primaryText,
                         modifier = Modifier
                             .clickable(onClick = onDismiss)
@@ -243,7 +260,7 @@ fun ClickActionDialog(
     if (targetIndex != null) {
         AppSelectorDialog(
             onDismissRequest = { selectorTargetIndex = null },
-            title = rememberString("select_action"),
+            title = stringResource(Res.string.select_action),
             items = actionNames,
             onItemSelected = { i ->
                 val newValue = actionValues[i]

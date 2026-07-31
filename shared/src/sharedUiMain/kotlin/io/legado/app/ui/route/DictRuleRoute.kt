@@ -23,7 +23,7 @@ import io.legado.app.utils.toJson
  *
  * 对照 app 端 DictRuleActivity 的路由装配, 复用 shared [DictRuleScreen] +
  * [DictRuleScreenModel]; 平台专属逻辑 (HandleFileContract/showDialogFragment/
- * showHelp 等) 通过 [AppOverlay.Dialog] 交由平台 overlayContent 渲染,
+ * showHelp 等) 通过 [AppOverlay.Dialog] 交由 shared OverlayContentHost 渲染,
  * 默认规则导入走 [DefaultDataShared], 业务事件走 [DictRuleScreenModel.dispatch]。
  */
 @Composable

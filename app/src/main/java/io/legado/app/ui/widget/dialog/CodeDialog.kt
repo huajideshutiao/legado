@@ -21,6 +21,7 @@ import io.legado.app.ui.widget.code.addJsPattern
 import io.legado.app.ui.widget.code.addJsonPattern
 import io.legado.app.ui.widget.code.addLegadoPattern
 import io.legado.app.utils.disableEdit
+import org.jetbrains.compose.resources.stringResource
 
 class CodeDialog() : BaseComposeDialogFragment() {
 

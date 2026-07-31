@@ -3,6 +3,7 @@ package io.legado.app.ui.root
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.ui.book.searchContent.SearchResult
 import kotlinx.serialization.Serializable
 
 /**
@@ -10,7 +11,7 @@ import kotlinx.serialization.Serializable
  *
  * 使用方式:
  * - 调用方: `navigator.push(route, resultKey = RouteResults.BOOK_SOURCE_EDIT)`
- * - 监听方: `navigator.results.filter { it.key == RouteResults.BOOK_SOURCE_EDIT }.collect { result -> val payload = result.payload as RouteResultPayload.BookSourceEdit }`
+ * - 监听方: `navigator.resultsFor(entry.id).filter { it.key == RouteResults.BOOK_SOURCE_EDIT }.collect { result -> val payload = result.payload as RouteResultPayload.BookSourceEdit }`
  * - 返回方: `navigator.pop(payload = RouteResultPayload.BookSourceEdit(origin = url))`
  */
 object RouteResults {
@@ -56,6 +57,15 @@ object RouteResults {
 
     // 章节换源 (对齐 ChangeChapterSourceDialog.CallBack.replaceContent 回传 content)
     const val CHANGE_CHAPTER_SOURCE = "change_chapter_source"
+
+    // 阅读器返回 (对齐 ReadBookActivity/AudioPlay/VideoPlay/MangaReader/ReadRss 返回)
+    const val READER = "reader"
+
+    // Overlay 结果 key: 分组选择对话框 (key="group_select" 的 AppOverlay.Dialog 关闭时回传 groupId)
+    const val OVERLAY_GROUP_SELECT = "group_select"
+
+    // Overlay 结果 key: 换封面对话框 (key="change_cover" 的 AppOverlay.Dialog 关闭时回传 coverUrl)
+    const val OVERLAY_CHANGE_COVER = "change_cover"
 }
 
 /**
@@ -96,6 +106,7 @@ sealed interface RouteResultPayload {
     data class SearchContent(
         val searchWord: String?,
         val searchResultIndex: Int,
+        val searchResults: List<SearchResult>,
     ) : RouteResultPayload
 
     /** 段评发布回传 (对齐 ReviewPostActivity) */
@@ -117,5 +128,17 @@ sealed interface RouteResultPayload {
     @Serializable
     data class ChangeChapterContent(
         val content: String,
+    ) : RouteResultPayload
+
+    /** 分组选择对话框回传 (对齐 GroupSelectDialog.CallBack.upGroup, groupId 为位掩码) */
+    @Serializable
+    data class GroupSelect(
+        val groupId: Long,
+    ) : RouteResultPayload
+
+    /** 换封面对话框回传 (对齐 ChangeCoverDialog.CallBack.coverChangeTo, coverUrl 可能为 "use_default_cover") */
+    @Serializable
+    data class ChangeCover(
+        val coverUrl: String,
     ) : RouteResultPayload
 }

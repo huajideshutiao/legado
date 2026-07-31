@@ -26,9 +26,14 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.ic_add
+import legado.shared.generated.resources.ic_reduce
+import legado.shared.generated.resources.plus
+import legado.shared.generated.resources.reduce
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 自绘 MD2 SeekBar（风格锁定，替代 M3 Slider 大把手形态）：2dp track + 16dp 圆 thumb。
@@ -118,8 +123,8 @@ fun AppDetailSeekBar(
         Text(title, color = textColor, maxLines = 1, modifier = Modifier.padding(end = 16.dp))
         IconButton(onClick = { onChanged((value - 1).coerceIn(min, max)) }, modifier = Modifier.size(24.dp)) {
             Icon(
-                painter = rememberPainter("ic_reduce"),
-                contentDescription = rememberString("reduce"),
+                painter = painterResource(Res.drawable.ic_reduce),
+                contentDescription = stringResource(Res.string.reduce),
                 tint = textColor,
             )
         }
@@ -136,8 +141,8 @@ fun AppDetailSeekBar(
         )
         IconButton(onClick = { onChanged((value + 1).coerceIn(min, max)) }, modifier = Modifier.size(24.dp)) {
             Icon(
-                painter = rememberPainter("ic_add"),
-                contentDescription = rememberString("plus"),
+                painter = painterResource(Res.drawable.ic_add),
+                contentDescription = stringResource(Res.string.plus),
                 tint = textColor,
             )
         }

@@ -1,13 +1,21 @@
 package io.legado.app.ui.route
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
@@ -15,19 +23,22 @@ import io.legado.app.help.book.addType
 import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.ui.book.explore.ExploreShowScreen
 import io.legado.app.ui.book.explore.ExploreShowScreenModel
 import io.legado.app.ui.book.explore.ExploreShowUiActions
 import io.legado.app.ui.book.explore.ExploreShowUiEvent
 import io.legado.app.ui.book.search.SearchScope
+import io.legado.app.ui.bookshelf.LocalBookCoverSlot
+import io.legado.app.ui.bookshelf.ShelfVideoItem
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.component.AppFilletTextButton
+import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.ui.explore.ExploreShowViewModelShared
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
-import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.toRouteRef
@@ -35,13 +46,22 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.bottom_line
+import legado.shared.generated.resources.empty
+import legado.shared.generated.resources.error
+import legado.shared.generated.resources.error_load_msg
+import legado.shared.generated.resources.explore_cols
+import legado.shared.generated.resources.retry
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * AppRoute.ExploreShow shared 路由入口。
  *
  * 复用 shared [ExploreShowScreen] + [ExploreShowScreenModel] + [ExploreShowViewModelShared];
- * 路由参数 source/title/exploreUrl 取自 [entry]。L3 平台专属 slot (optionsRow/videoItem/cover)
- * 暂用空实现占位, 待平台注入。
+ * 路由参数 source/title/exploreUrl 取自 [entry]。三 slot 均用 shared 默认实现:
+ * optionsRow 复刻 ExploreOptionView (AppFilletTextButton chip 行), videoItem 复用
+ * [ShelfVideoItem], cover 复用 [LocalBookCoverSlot] (宿主端可覆盖注入平台封面组件)。
  *
  * VM StateFlow → ScreenModel 事件桥接对照 app 端 Activity.observe(ViewModel LiveData)。
  */
@@ -62,11 +82,11 @@ fun ExploreShowRoute(
     }
 
     // footer 文案 (对照 Activity getString(R.string.empty / bottom_line / error_load_msg))
-    val emptyText = rememberString("empty")
-    val bottomLineText = rememberString("bottom_line")
-    val errorLoadText = rememberString("error_load_msg", "点击查看详情")
-    val errorTitle = rememberString("error")
-    val retryText = rememberString("retry")
+    val emptyText = stringResource(Res.string.empty)
+    val bottomLineText = stringResource(Res.string.bottom_line)
+    val errorLoadText = stringResource(Res.string.error_load_msg, "点击查看详情")
+    val errorTitle = stringResource(Res.string.error)
+    val retryText = stringResource(Res.string.retry)
 
     // 标题初始化 (对照原 Activity intent exploreName / discovery)
     LaunchedEffect(route.title) {
@@ -130,6 +150,8 @@ fun ExploreShowRoute(
 
     // 错误详情对话框状态 (对照 Activity.onFooterClickImpl 的 alert)
     var showErrorDialog by remember { mutableStateOf(false) }
+    // 列数选择器 (原走 PlatformCapabilities.showColumnPicker, 仅 Android 有实现; 改用 shared 对话框)
+    var showColumnPicker by remember { mutableStateOf(false) }
 
     val actions = remember(navigator, screenModel, vm) {
         object : ExploreShowUiActions {
@@ -155,11 +177,7 @@ fun ExploreShowRoute(
 
             // 对照 Activity.showColumnPicker: showNumberPicker + setColumnCount
             override fun onShowColumnPicker() {
-                val current = BookSource.exploreStyleCols(vm.exploreStyle).coerceIn(0, 6)
-                PlatformCapabilityProviders.getOrNull()?.showColumnPicker(current) { cols ->
-                    vm.setColumnCount(cols)
-                    screenModel.dispatch(ExploreShowUiEvent.ExploreStyleChanged(vm.exploreStyle))
-                }
+                showColumnPicker = true
             }
 
             // 对照 Activity.showSourceFilterRule: 弹 scoped 列表对话框 (非跳转管理页)
@@ -231,6 +249,29 @@ fun ExploreShowRoute(
         }
     }
 
+    DisposableEffect(entry.id, vm) {
+        navigator.registerRefreshHandler(entry.id) {
+            screenModel.dispatch(ExploreShowUiEvent.ClearBooks)
+            vm.explore(true)
+        }
+        onDispose { navigator.unregisterRefreshHandler(entry.id) }
+    }
+
+    // 列数选择器 (对照 Activity.showColumnPicker → showNumberPicker(min=0, max=6))
+    if (showColumnPicker) {
+        NumberPickerDialog(
+            title = stringResource(Res.string.explore_cols),
+            value = BookSource.exploreStyleCols(vm.exploreStyle).coerceIn(0, 6),
+            range = 0..6,
+            onConfirm = { cols ->
+                vm.setColumnCount(cols)
+                screenModel.dispatch(ExploreShowUiEvent.ExploreStyleChanged(vm.exploreStyle))
+                showColumnPicker = false
+            },
+            onDismiss = { showColumnPicker = false },
+        )
+    }
+
     // 错误详情对话框 (对照 Activity.onFooterClickImpl 的 alert)
     if (showErrorDialog) {
         AppAlertDialog(
@@ -250,8 +291,112 @@ fun ExploreShowRoute(
     ExploreShowScreen(
         state = state,
         actions = actions,
-        optionsRowSlot = {},
-        videoItemSlot = { _, _, _, _ -> },
-        coverSlot = { _, _, _, _ -> },
+        optionsRowSlot = {
+            // 参数 chip 行: 读 vm.exploreOptions, 选中变化调 onExploreOptionChanged 重载
+            ExploreOptionsRow(
+                options = vm.exploreOptions,
+                optionsVersion = state.optionsVersion,
+                onOptionSelected = actions::onExploreOptionChanged,
+            )
+        },
+        // 视频卡: 复用 ShelfVideoItem (item_explore_video 的 shared Compose 版), 封面走 LocalBookCoverSlot
+        videoItemSlot = { book, _, onClick, onLongClick ->
+            ShelfVideoItem(
+                book = book.toBook(),
+                coverReloadTick = state.bookshelfVersion,
+                onClick = onClick,
+                onLongClick = onLongClick,
+                coverSlot = { b, modifier, isVideoCover ->
+                    LocalBookCoverSlot.current(b, modifier, isVideoCover)
+                },
+            )
+        },
+        // 封面: 复用 LocalBookCoverSlot (宿主端注入 ShelfCover, 兜底 SharedBookCover)
+        coverSlot = { book, _, isVideoStyle, modifier ->
+            LocalBookCoverSlot.current(book.toBook(), modifier, isVideoStyle)
+        },
     )
+}
+
+// ===== 参数 chip 行 (对照 app 端 ExploreOptionView.setUpExploreOptions) =====
+
+// chip 透明度: 对照 ExploreOptionView ALPHA_TITLE / ALPHA_SELECTED / ALPHA_UNSELECTED
+private const val EXPLORE_OPTION_ALPHA_TITLE = 0.8f
+private const val EXPLORE_OPTION_ALPHA_SELECTED = 1.0f
+private const val EXPLORE_OPTION_ALPHA_UNSELECTED = 0.5f
+
+/** 单行渲染快照: live [ExploreOption] (供点击变更) + 选中态快照 (供 alpha 渲染)。 */
+private data class ExploreOptionRowView(
+    val option: ExploreOption,
+    val selectedValues: Set<String>,
+    val selectedValue: String,
+)
+
+/**
+ * 发现页参数 chip 行: 每个 [ExploreOption] 一行 (标题 chip + 各选项 chip, 横向滚动)。
+ *
+ * 对照 app 端 `ExploreOptionView.setUpExploreOptions`: 单选 chip 点击即切, 多选 chip 点击 toggle,
+ * 标题 chip 点击重置默认; 任意变化调 [onOptionSelected] (清 books + 重新 explore)。
+ *
+ * [ExploreOption.selectedValue] / [selectedValues] 是普通可变字段, 不被 Compose 跟踪;
+ * 点击后 bump 本地 revision 触发 [remember] 重取快照, 刷新 chip alpha。
+ * 视觉对齐 `item_fillet_text`: 复用 [AppFilletTextButton], 选中态用 alpha 区分。
+ *
+ * @param options vm.exploreOptions (就地变更 selectedValue / selectedValues)
+ * @param optionsVersion 结构变化信号 (新解析出 chip 时 bump, 触发重取快照)
+ * @param onOptionSelected 选中变化回调 (= actions.onExploreOptionChanged)
+ */
+@Composable
+private fun ExploreOptionsRow(
+    options: List<ExploreOption>,
+    optionsVersion: Int,
+    onOptionSelected: () -> Unit,
+) {
+    if (options.isEmpty()) return
+    var revision by remember { mutableIntStateOf(0) }
+    // revision 为 remember 键: 点击 chip 后 ++ 触发重组, 重读选中态刷新 alpha
+    val rows = remember(optionsVersion, revision) {
+        options.map { ExploreOptionRowView(it, it.selectedValues.toSet(), it.selectedValue) }
+    }
+    Column(Modifier.fillMaxWidth()) {
+        rows.forEach { (option, selectedValues, selectedValue) ->
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                // 标题 chip: 点击重置默认 (对照 addTitleChip + resetToDefault)
+                AppFilletTextButton(
+                    text = option.name,
+                    modifier = Modifier.alpha(EXPLORE_OPTION_ALPHA_TITLE),
+                    onClick = {
+                        if (option.resetToDefault()) {
+                            revision++; onOptionSelected()
+                        }
+                    },
+                )
+                option.options.forEach { (label, value) ->
+                    val selected = if (option.multiSelect) {
+                        value in selectedValues
+                    } else {
+                        selectedValue == value
+                    }
+                    AppFilletTextButton(
+                        text = label,
+                        modifier = Modifier.alpha(
+                            if (selected) EXPLORE_OPTION_ALPHA_SELECTED else EXPLORE_OPTION_ALPHA_UNSELECTED
+                        ),
+                        onClick = {
+                            if (option.multiSelect) {
+                                // toggle: add 返回 false 说明已存在, 改为移除
+                                if (!option.selectedValues.add(value)) option.selectedValues.remove(
+                                    value
+                                )
+                                revision++; onOptionSelected()
+                            } else if (option.selectedValue != value) {
+                                option.selectedValue = value
+                                revision++; onOptionSelected()
+                            }
+                        },
+                    )
+                }
+            }
+        }
+    }
 }

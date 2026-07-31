@@ -75,6 +75,7 @@ private class PreviewReadMenuState(
     override fun longClickReadAloud() {}
     override fun clickFont() {}
     override fun clickSetting() {}
+    override fun onRefresh() {}
 }
 
 // ===== ReadMenuOverlay =====

@@ -3,7 +3,7 @@ package io.legado.app.help.config
 import kotlin.concurrent.Volatile
 
 /**
- * AppConfig 跨模块只读访问接口。
+ * AppConfig 跨模块访问接口。
  *
  * AppConfig 依赖 SharedPreferences + appCtx, 留 app 端。本接口暴露 webBook
  * 编排层 (BookChapterList/BookContent) 及下沉的 Book 扩展
@@ -90,6 +90,12 @@ interface AppConfigAccessor {
     /** 预下载数量 (原 AppConfig.preDownloadNum), 默认 10。 */
     val preDownloadNum: Int
 
+    // ---- 换源业务 ----
+    var changeSourceCheckAuthor: Boolean
+    var changeSourceLoadInfo: Boolean
+    var changeSourceLoadToc: Boolean
+    var changeSourceLoadWordCount: Boolean
+
     // ---- 搜索业务 ----
     /**
      * 搜索范围 (原 AppConfig.searchScope), 默认空串。
@@ -144,6 +150,15 @@ interface AppConfigAccessor {
     /** TTS 引擎 (原 AppConfig.ttsEngine), 默认空串。 */
     val ttsEngine: String
 
+    /** 音频播放唤醒锁 (原 AppConfig.audioPlayUseWakeLock), 默认 false。 */
+    val audioPlayUseWakeLock: Boolean get() = false
+
+    /** 持久化音频唤醒锁 (原 AppConfig.audioPlayUseWakeLock = value)。 */
+    fun setAudioPlayUseWakeLock(value: Boolean) {}
+
+    /** 退出未上架书时是否弹加书架确认 (原 AppConfig.showAddToShelfAlert), 默认 true。 */
+    val showAddToShelfAlert: Boolean get() = true
+
     // 持久化 ttsEngine (原 AppConfig.ttsEngine = value), 默认空实现供各端按需覆写
     fun setTtsEngine(value: String?) {}
 
@@ -165,6 +180,12 @@ interface AppConfigAccessor {
 
     /** 是否使用默认封面 (原 AppConfig.useDefaultCover), 默认 false。 */
     val useDefaultCover: Boolean
+
+    /** 默认封面是否绘制书名 (原 AppConfig.coverShowName/coverShowNameN, 按昼夜取), 默认 true。 */
+    val coverDrawBookName: Boolean
+
+    /** 默认封面是否绘制作者 (原 AppConfig.coverShowAuthor/coverShowAuthorN, 按昼夜取), 默认 true。 */
+    val coverDrawBookAuthor: Boolean
 
     // ---- 底栏配置 (桌面端侧栏竖版复用, 底栏高度视为侧栏宽度) ----
     /** 底栏高度 (原 AppConfig.bottomBarHeight), 默认 50, 范围 36..80。桌面端侧栏作为宽度使用。 */
@@ -190,13 +211,13 @@ interface AppConfigAccessor {
 
     // ---- 导入业务 (ImportBookSourceViewModel / ImportBookViewModel 用) ----
     /** 导入书源时是否保留名称 (原 AppConfig.importKeepName), 默认 false。 */
-    val importKeepName: Boolean
+    var importKeepName: Boolean
 
     /** 导入书源时是否保留分组 (原 AppConfig.importKeepGroup), 默认 false。 */
-    val importKeepGroup: Boolean
+    var importKeepGroup: Boolean
 
     /** 导入书源时是否保留启用状态 (原 AppConfig.importKeepEnable), 默认 false。 */
-    val importKeepEnable: Boolean
+    var importKeepEnable: Boolean
 
     /** 本地书导入排序方式 (原 AppConfig.localBookImportSort), 默认 0。 */
     val localBookImportSort: Int

@@ -32,12 +32,29 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.platform.sharedStringTable
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.utils.isAbsUrl
+import kotlinx.coroutines.launch
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.book_source
+import legado.shared.generated.resources.book_type
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.dict_rule
+import legado.shared.generated.resources.draw
+import legado.shared.generated.resources.error
+import legado.shared.generated.resources.name
+import legado.shared.generated.resources.non_null_name_url
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.replace_rule
+import legado.shared.generated.resources.rss_source
+import legado.shared.generated.resources.sure_del
+import legado.shared.generated.resources.tts
+import legado.shared.generated.resources.txt_toc_rule
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * AppRoute.RuleSub 路由下沉入口: 桥接 [RuleSubScreenModel] 状态与 [RuleSubScreen] 渲染。
@@ -82,8 +99,9 @@ fun RuleSubRoute(
             override fun onOpenSubscription(ruleSub: RuleSub) {
                 if (!ruleSub.url.isAbsUrl()) {
                     // 对照 app 端: URL 非法时 toastOnUi(R.string.non_null_name_url)
-                    Toasters.get()
-                        .toast(sharedStringTable["non_null_name_url"] ?: "书源 URL 与名称不能为空")
+                    scope.launch {
+                        Toasters.get().toast(getString(Res.string.non_null_name_url))
+                    }
                     return
                 }
                 val type = when (ruleSub.type) {
@@ -94,7 +112,7 @@ fun RuleSubRoute(
                     5 -> DeepLinkImportType.HTTP_TTS
                     else -> {
                         // 对照 app 端: 未知类型 toastOnUi(R.string.error)
-                        Toasters.get().toast(sharedStringTable["error"] ?: "错误")
+                        scope.launch { Toasters.get().toast(getString(Res.string.error)) }
                         return
                     }
                 }
@@ -145,12 +163,12 @@ fun RuleSubRoute(
     pendingDelete.value?.let { ruleSub ->
         AppAlertDialog(
             onDismissRequest = { pendingDelete.value = null },
-            title = rememberString("draw"),
-            message = rememberString("sure_del") + "\n" + ruleSub.name,
-            okButton = AlertButton(rememberString("ok")) {
+            title = stringResource(Res.string.draw),
+            message = stringResource(Res.string.sure_del) + "\n" + ruleSub.name,
+            okButton = AlertButton(stringResource(Res.string.ok)) {
                 screenModel.dispatch(RuleSubUiEvent.Delete(ruleSub))
             },
-            cancelButton = AlertButton(rememberString("cancel")) {},
+            cancelButton = AlertButton(stringResource(Res.string.cancel)) {},
         )
     }
     // 订阅打开导入对话框, 对照 app 端 showDialogFragment(ImportXxxDialog)
@@ -201,12 +219,12 @@ private fun RuleSubEditDialog(
     var url by remember { mutableStateOf(ruleSub.url) }
     var expanded by remember { mutableStateOf(false) }
     // 校验失败提示 (对照 app 端 okButton 内 toastOnUi(R.string.non_null_name_url))
-    val nonNullNameUrlMsg = rememberString("non_null_name_url")
+    val nonNullNameUrlMsg = stringResource(Res.string.non_null_name_url)
 
     AppAlertDialog(
         onDismissRequest = onDismiss,
         title = rememberString(if (ruleSub.name.isEmpty()) "add" else "edit"),
-        okButton = AlertButton(rememberString("ok"), dismissOnClick = false) {
+        okButton = AlertButton(stringResource(Res.string.ok), dismissOnClick = false) {
             val n = name.trim()
             val u = url.trim()
             if (n.isEmpty() || !u.isAbsUrl()) {
@@ -216,12 +234,12 @@ private fun RuleSubEditDialog(
             onConfirm(n, u, type)
             onDismiss()
         },
-        cancelButton = AlertButton(rememberString("cancel")) {},
+        cancelButton = AlertButton(stringResource(Res.string.cancel)) {},
     ) {
         Column(Modifier.padding(horizontal = 24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    rememberString("book_type"),
+                    stringResource(Res.string.book_type),
                     color = colors.accent,
                     modifier = Modifier.padding(end = 8.dp),
                 )
@@ -245,7 +263,7 @@ private fun RuleSubEditDialog(
             AppOutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = rememberString("name"),
+                label = stringResource(Res.string.name),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -263,10 +281,10 @@ private fun RuleSubEditDialog(
 /** 订阅类型 → 显示名称, 对照 app 端 `RuleSubActivity.typeName`。 */
 @Composable
 private fun typeName(type: Int): String = when (type) {
-    1 -> rememberString("rss_source")
-    2 -> rememberString("replace_rule")
-    3 -> rememberString("txt_toc_rule")
-    4 -> rememberString("dict_rule")
-    5 -> rememberString("tts")
-    else -> rememberString("book_source")
+    1 -> stringResource(Res.string.rss_source)
+    2 -> stringResource(Res.string.replace_rule)
+    3 -> stringResource(Res.string.txt_toc_rule)
+    4 -> stringResource(Res.string.dict_rule)
+    5 -> stringResource(Res.string.tts)
+    else -> stringResource(Res.string.book_source)
 }

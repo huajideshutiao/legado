@@ -5,15 +5,11 @@ plugins {
 
 kotlin {
     jvm()
-    android {
+    androidLibrary {
         namespace = 'com.script.quickjs'
-        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-        }
-        withDeviceTest {}
+        compileSdk = 36
+        minSdk = 26
     }
-
-    // 默认层级与 JVM/Android 编译参数由 legado.kmp.library 统一配置。
 
     sourceSets {
         commonMain {
@@ -21,16 +17,12 @@ kotlin {
                 implementation(libs.kotlin.stdlib)
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.okhttp)
-                // @JsApi 注解已抽到全 target 微型模块 (shared/commonMain 需在 iOS/鸿蒙下可见);
-                // api 让依赖 quickjs 的模块 (app/desktop) 仍能直接 import com.script.jsdispatch.JsApi
                 api project(':modules:js-api')
             }
         }
-
         jvmAndAndroidMain {
             dependsOn(commonMain)
         }
-
         androidMain {
             dependsOn(jvmAndAndroidMain)
             dependencies {
@@ -38,44 +30,25 @@ kotlin {
                 implementation(project(':modules:quickjs-android-native'))
             }
         }
-
         jvmMain {
             dependsOn(jvmAndAndroidMain)
             dependencies {
-                // 桌面 JVM 缺少 Android 内置的 org.json, 用官方 json 库补齐 (API 兼容)
                 implementation("org.json:json:20240303")
-            }
-        }
-
-        androidDeviceTest {
-            dependencies {
-                implementation(libs.bundles.androidTest)
-            }
-        }
-
-        commonTest {
-            dependencies {
-                implementation(libs.junit)
-                implementation(libs.kotlinx.coroutines.core)
             }
         }
     }
 }
 
-// KSP 处理器: Android device test 内 @JsApi fixture 生成分派表,
-// 让行为基准全量跑在"先查表"路径上。
+// 修正 KSP 配置：KMP Android 环境下使用标准 kspAndroid 钩子
 dependencies {
-    kspAndroidDeviceTest project(':modules:quickjs-processor')
+    add("kspAndroid", project(':modules:quickjs-processor'))
 }
 
-// ============ 桌面 JVM native 库构建 (KP1.1) ============
-// 调用系统 cmake 编译 legado_quickjs 为 .dll/.so/.dylib, 输出到 build/libs/jvm/native/
-// 若系统未装 cmake/编译器, task 输出警告但不失败 (Kotlin 代码仍能编译, 仅 native 库缺失)
+// 桌面 JVM native 库由主机 CMake 构建，输出供 desktop:run 与桌面分发复用。
 def jvmNativeDir = layout.buildDirectory.dir("libs/jvm/native").get().asFile
 def jvmNativeBuildDir = layout.buildDirectory.dir("intermediates/cmake-jvm").get().asFile
 def cppDir = project(':modules:quickjs-android-native').file("src/main/cpp")
 
-// 探测主机操作系统对应的 native 库文件名
 String nativeLibName() {
     String osName = System.getProperty("os.name").toLowerCase()
     if (osName.contains("windows")) {
@@ -87,31 +60,22 @@ String nativeLibName() {
     }
 }
 
-// 桌面端 native 库构建 task: 调用系统 cmake 配置 + 编译
-// 不可用 (无 cmake/编译器) 时打印警告而非失败
-// Windows 上无 nmake/MSVC 时自动切换到 MinGW Makefiles 生成器 (需 LLVM-MinGW 或 MinGW-w64)
 tasks.register("buildJvmNativeLib") {
     group = "native"
-    description = "Build legado_quickjs native library for desktop JVM (requires cmake + C/C++ compiler)"
+    description = "Build legado_quickjs native library for desktop JVM"
     def libOutFile = new File(jvmNativeDir, nativeLibName())
-    // 不用 outputs.file, 因为 doFirst 在 cmake 不可用时会 return 不产出文件,
-    // Gradle 误判 up-to-date 导致后续 --rerun-tasks 才能触发
     inputs.dir cppDir
 
     doFirst {
-        // 探测 cmake: 优先 PATH, 其次 Android SDK 自带 cmake (从 local.properties 读 sdk.dir)
         def cmakeCmd = findCmakeExecutable()
         if (cmakeCmd == null) {
-            logger.warn("[quickjs-jvm] cmake not found (PATH 或 Android SDK cmake 都不可用), skipping native build. JS eval will fail at runtime.")
+            logger.warn("[quickjs-jvm] cmake not found, skipping native build. JS eval will fail at runtime.")
             return
         }
 
         jvmNativeDir.mkdirs()
 
-        // CMake 的构建目录会把 -S 源目录写入 CMakeCache.txt。QuickJS native 源码迁移到
-        // quickjs-android-native 后，旧缓存仍指向 modules/quickjs/src/main/cpp，继续配置会报
-        // "source does not match the source used to generate cache"。仅在源目录确实变化时清理
-        // 这个可再生的 CMake 中间目录，避免要求开发者手动删 build 或执行全量 clean。
+        // CMake 缓存绑定源码目录，源码迁移后仅清理失效的可再生中间目录。
         def cmakeCache = new File(jvmNativeBuildDir, "CMakeCache.txt")
         if (cmakeCache.exists()) {
             def homePrefix = "CMAKE_HOME_DIRECTORY:INTERNAL="
@@ -124,19 +88,17 @@ tasks.register("buildJvmNativeLib") {
                         ? cachedPath.equalsIgnoreCase(currentPath)
                         : cachedPath == currentPath
                 if (!sameSource) {
-                    logger.lifecycle("[quickjs-jvm] CMake source changed: ${cachedPath} -> ${currentPath}; resetting stale cache.")
+                    logger.lifecycle("[quickjs-jvm] CMake source changed; resetting stale cache.")
                     project.delete(jvmNativeBuildDir)
                 }
             }
         }
         jvmNativeBuildDir.mkdirs()
 
-        // Windows 上检测是否需要 MinGW 生成器 (无 nmake/MSVC 时)
         def isWindows = System.getProperty("os.name").toLowerCase().contains("windows")
         def useMinGW = false
         def mingwBinDir = null
         if (isWindows) {
-            // 检测 nmake (Visual Studio): 有 nmake 说明 MSVC 工具链可用, 走默认 NMake 生成器
             def hasNmake = false
             try {
                 def proc = ["nmake", "/?"].execute()
@@ -149,15 +111,13 @@ tasks.register("buildJvmNativeLib") {
                 mingwBinDir = findMingwBinDir()
                 if (mingwBinDir != null) {
                     useMinGW = true
-                    logger.lifecycle("[quickjs-jvm] No nmake/MSVC found, using MinGW Makefiles generator: ${mingwBinDir}")
+                    logger.lifecycle("[quickjs-jvm] Using MinGW Makefiles: ${mingwBinDir}")
                 } else {
-                    logger.warn("[quickjs-jvm] No nmake/MSVC and no MinGW found, cmake configure will likely fail.")
+                    logger.warn("[quickjs-jvm] No nmake/MSVC or MinGW found; CMake configure may fail.")
                 }
             }
         }
 
-        // 1. cmake configure: 指向 cpp 目录, 不用 Android toolchain (走主机工具链)
-        //    Windows + 无 MSVC 时用 -G "MinGW Makefiles" (MinGW 的 gcc + mingw32-make)
         def configureCmd = [cmakeCmd]
         if (useMinGW) {
             configureCmd += ["-G", "MinGW Makefiles"]
@@ -166,13 +126,11 @@ tasks.register("buildJvmNativeLib") {
                 "-S", cppDir.absolutePath,
                 "-B", jvmNativeBuildDir.absolutePath,
                 "-DCMAKE_BUILD_TYPE=Release",
-                // 让 .dll/.so/.dylib 直接输出到 jvmNativeDir
                 "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=" + jvmNativeDir.absolutePath,
                 "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=" + jvmNativeDir.absolutePath
         ]
         logger.lifecycle("[quickjs-jvm] cmake configure: ${configureCmd.join(' ')}")
         def configurePB = new ProcessBuilder(configureCmd)
-        // MinGW bin 目录加入 PATH, 让 cmake 找到 gcc/mingw32-make
         if (useMinGW && mingwBinDir != null) {
             def path = configurePB.environment().get("PATH") ?: ""
             configurePB.environment().put("PATH", mingwBinDir + File.pathSeparator + path)
@@ -186,7 +144,6 @@ tasks.register("buildJvmNativeLib") {
             return
         }
 
-        // 2. cmake build
         def buildCmd = [cmakeCmd, "--build", jvmNativeBuildDir.absolutePath, "--config", "Release"]
         def buildPB = new ProcessBuilder(buildCmd)
         if (useMinGW && mingwBinDir != null) {
@@ -205,13 +162,10 @@ tasks.register("buildJvmNativeLib") {
     }
 }
 
-// 探测 cmake 可执行文件: PATH 优先, 其次 Android SDK 自带 cmake
 String findCmakeExecutable() {
-    // 1. 项目属性 -Plegado.cmake.path=...
     def propPath = project.findProperty("legado.cmake.path")
     if (propPath != null && new File(propPath).exists()) return propPath
 
-    // 2. PATH 上的 cmake
     try {
         def proc = ["cmake", "--version"].execute()
         proc.waitFor()
@@ -219,7 +173,6 @@ String findCmakeExecutable() {
     } catch (IOException ignored) {
     }
 
-    // 3. Android SDK 自带 cmake (从 local.properties 读 sdk.dir)
     try {
         def localProps = new Properties()
         def localPropsFile = rootProject.file("local.properties")
@@ -230,10 +183,10 @@ String findCmakeExecutable() {
                 def cmakeBaseDir = new File(sdkDir, "cmake")
                 if (cmakeBaseDir.exists()) {
                     def cmakeDirs = cmakeBaseDir.listFiles()?.sort()?.reverse()
-                    for (def d : cmakeDirs) {
-                        def exe = new File(d, "bin/cmake.exe")
-                        if (!exe.exists()) exe = new File(d, "bin/cmake")
-                        if (exe.exists()) return exe.absolutePath
+                    for (def dir : cmakeDirs) {
+                        def executable = new File(dir, "bin/cmake.exe")
+                        if (!executable.exists()) executable = new File(dir, "bin/cmake")
+                        if (executable.exists()) return executable.absolutePath
                     }
                 }
             }
@@ -244,20 +197,14 @@ String findCmakeExecutable() {
     return null
 }
 
-// 探测 MinGW bin 目录: Windows 上无 nmake/MSVC 时, cmake 用 MinGW Makefiles 生成器
-// 需要 gcc + mingw32-make 在 PATH 中
-// 优先级: 项目属性 > PATH > winget 安装的 LLVM-MinGW
 String findMingwBinDir() {
-    // 1. 项目属性 -Plegado.mingw.path=...
     def propPath = project.findProperty("legado.mingw.path")
     if (propPath != null && new File(propPath, "gcc.exe").exists()) return propPath
 
-    // 2. PATH 上的 gcc (LLVM-MinGW 或 MinGW-w64)
     try {
         def proc = ["gcc", "--version"].execute()
         proc.waitFor()
         if (proc.exitValue() == 0) {
-            // 用 where 找 gcc.exe 的完整路径, 取其所在目录
             def whichProc = ["where", "gcc"].execute()
             whichProc.waitFor()
             def gccPath = whichProc.text.trim().split("[\r\n]")[0].trim()
@@ -268,16 +215,15 @@ String findMingwBinDir() {
     } catch (IOException ignored) {
     }
 
-    // 3. winget 安装的 LLVM-MinGW (用户级 WinGet Packages 目录)
     try {
-        def wingetPkgBase = new File(System.getProperty("user.home"),
-                "AppData/Local/Microsoft/WinGet/Packages")
+        def wingetPkgBase = new File(
+                System.getProperty("user.home"),
+                "AppData/Local/Microsoft/WinGet/Packages"
+        )
         if (wingetPkgBase.exists()) {
-            // 包名形如 MartinStorsjo.LLVM-MinGW.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe
             def pkgDirs = wingetPkgBase.listFiles()?.findAll {
                 it.name.toLowerCase().contains("llvm-mingw")
             }?.sort()?.reverse()
-            // 用 for 循环 (非 each 闭包), 让 return 能从 findMingwBinDir 返回
             for (def pkgDir : pkgDirs) {
                 def subDirs = pkgDir.listFiles()?.findAll { it.isDirectory() }
                 for (def subDir : subDirs) {
@@ -294,7 +240,6 @@ String findMingwBinDir() {
     return null
 }
 
-// jvm JAR 打包前依赖 native 库构建 (允许失败, 不阻塞 Kotlin 编译)
 tasks.named("jvmJar") {
     dependsOn "buildJvmNativeLib"
 }

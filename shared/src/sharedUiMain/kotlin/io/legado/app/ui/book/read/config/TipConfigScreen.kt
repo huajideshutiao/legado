@@ -26,11 +26,33 @@ import io.legado.app.ui.compose.component.AppDetailSeekBar
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.platform.rememberStringArray
 import io.legado.app.ui.compose.preference.ColorPickerDialog
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.hexString
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.body_title
+import legado.shared.generated.resources.footer
+import legado.shared.generated.resources.header
+import legado.shared.generated.resources.header_footer
+import legado.shared.generated.resources.hide
+import legado.shared.generated.resources.hide_when_status_bar_show
+import legado.shared.generated.resources.left
+import legado.shared.generated.resources.middle
+import legado.shared.generated.resources.right
+import legado.shared.generated.resources.show
+import legado.shared.generated.resources.show_hide
+import legado.shared.generated.resources.text_color
+import legado.shared.generated.resources.tip_divider_color
+import legado.shared.generated.resources.title_center
+import legado.shared.generated.resources.title_font_size
+import legado.shared.generated.resources.title_hide
+import legado.shared.generated.resources.title_left
+import legado.shared.generated.resources.title_margin_bottom
+import legado.shared.generated.resources.title_margin_top
+import legado.shared.generated.resources.read_tip
+import legado.shared.generated.resources.tip_color
+import org.jetbrains.compose.resources.stringArrayResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Tip 配置控制器：把 app 端 `ReadBookConfig` / `ReadTipConfig` 的字段读写抽象为接口，
@@ -65,10 +87,10 @@ interface TipConfigController {
  * - `ReadBookConfig` / `ReadTipConfig` 读写通过 [controller] 桥接
  *
  * 资源访问替换：
- * - `stringResource(R.string.xxx)` → `rememberString("xxx")`
- * - `ReadTipConfig.tipNames` (`R.array.read_tip`) → `rememberStringArray("read_tip")`
- * - `ReadTipConfig.tipColorNames` (`R.array.tip_color`) → `rememberStringArray("tip_color")`
- * - `ReadTipConfig.tipDividerColorNames` (`R.array.tip_divider_color`) → `rememberStringArray("tip_divider_color")`
+ * - `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)`
+ * - `ReadTipConfig.tipNames` (`R.array.read_tip`) → `stringArrayResource(Res.array.read_tip)`
+ * - `ReadTipConfig.tipColorNames` (`R.array.tip_color`) → `stringArrayResource(Res.array.tip_color)`
+ * - `ReadTipConfig.tipDividerColorNames` (`R.array.tip_divider_color`) → `stringArrayResource(Res.array.tip_divider_color)`
  * - `ReadTipConfig.getHeaderModes(context)` → 内部用 `rememberString` 构造 LinkedHashMap
  *
  * 行为对齐原 TipConfigDialog：选新值前把重复占用同值的其它信息位重置为"无"，
@@ -87,15 +109,15 @@ fun TipConfigScreen(
     val colors = AppTheme.colors
 
     // tip 名称/值表：常量在 ReadTipConfigShared.companion 中（与 app 端 ReadTipConfig 一致）
-    val tipNames = rememberStringArray("read_tip")
-    val tipColorNames = rememberStringArray("tip_color")
-    val tipDividerColorNames = rememberStringArray("tip_divider_color")
+    val tipNames = stringArrayResource(Res.array.read_tip)
+    val tipColorNames = stringArrayResource(Res.array.tip_color)
+    val tipDividerColorNames = stringArrayResource(Res.array.tip_divider_color)
 
     // 页眉/页脚显示模式映射（替代原 ReadTipConfig.getHeaderModes/getFooterModes(context)）
     // rememberString 是 @Composable, 需先在外部取值再装入 Map, 不能在 remember{} 内调用
-    val hideWhenStatusBarShow = rememberString("hide_when_status_bar_show")
-    val showLabel = rememberString("show")
-    val hideLabel = rememberString("hide")
+    val hideWhenStatusBarShow = stringResource(Res.string.hide_when_status_bar_show)
+    val showLabel = stringResource(Res.string.show)
+    val hideLabel = stringResource(Res.string.hide)
     val headerModes = remember(hideWhenStatusBarShow, showLabel, hideLabel) {
         linkedMapOf(
             0 to hideWhenStatusBarShow,
@@ -197,7 +219,7 @@ fun TipConfigScreen(
 
     Column(Modifier.fillMaxWidth()) {
         DialogTitleBar(
-            title = rememberString("body_title"),
+            title = stringResource(Res.string.body_title),
             onBack = onBack,
         )
         Column(
@@ -213,9 +235,9 @@ fun TipConfigScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 listOf(
-                    rememberString("title_left"),
-                    rememberString("title_center"),
-                    rememberString("title_hide"),
+                    stringResource(Res.string.title_left),
+                    stringResource(Res.string.title_center),
+                    stringResource(Res.string.title_hide),
                 ).forEachIndexed { index, label ->
                     Row(
                         Modifier.clickable { selectTitleMode(index) },
@@ -234,7 +256,7 @@ fun TipConfigScreen(
             val styleAndLoad =
                 listOf(ReadConfigChange.CHAPTER_STYLE, ReadConfigChange.LOAD_CONTENT)
             AppDetailSeekBar(
-                title = rememberString("title_font_size"),
+                title = stringResource(Res.string.title_font_size),
                 value = titleSize,
                 max = 10,
                 onChanged = {
@@ -244,7 +266,7 @@ fun TipConfigScreen(
                 },
             )
             AppDetailSeekBar(
-                title = rememberString("title_margin_top"),
+                title = stringResource(Res.string.title_margin_top),
                 value = titleTop,
                 max = 100,
                 onChanged = {
@@ -254,7 +276,7 @@ fun TipConfigScreen(
                 },
             )
             AppDetailSeekBar(
-                title = rememberString("title_margin_bottom"),
+                title = stringResource(Res.string.title_margin_bottom),
                 value = titleBottom,
                 max = 100,
                 onChanged = {
@@ -264,15 +286,15 @@ fun TipConfigScreen(
                 },
             )
 
-            SectionHeader(rememberString("header"))
-            TipRow(rememberString("show_hide"), headerShowText) {
+            SectionHeader(stringResource(Res.string.header))
+            TipRow(stringResource(Res.string.show_hide), headerShowText) {
                 showSelector(headerModes.values.toList()) { i ->
                     controller.headerMode = headerModes.keys.toList()[i]
                     headerShowText = headerModes[controller.headerMode] ?: ""
                     onPostConfig(listOf(ReadConfigChange.STYLE))
                 }
             }
-            TipRow(rememberString("left"), headerLeftText) {
+            TipRow(stringResource(Res.string.left), headerLeftText) {
                 showSelector(tipNames) { i ->
                     val tipValue = ReadTipConfigShared.tipValues[i]
                     clearRepeat(tipValue)
@@ -281,7 +303,7 @@ fun TipConfigScreen(
                     onPostConfig(listOf(ReadConfigChange.STYLE, ReadConfigChange.UP_CONTENT))
                 }
             }
-            TipRow(rememberString("middle"), headerMiddleText) {
+            TipRow(stringResource(Res.string.middle), headerMiddleText) {
                 showSelector(tipNames) { i ->
                     val tipValue = ReadTipConfigShared.tipValues[i]
                     clearRepeat(tipValue)
@@ -290,7 +312,7 @@ fun TipConfigScreen(
                     onPostConfig(listOf(ReadConfigChange.STYLE, ReadConfigChange.UP_CONTENT))
                 }
             }
-            TipRow(rememberString("right"), headerRightText) {
+            TipRow(stringResource(Res.string.right), headerRightText) {
                 showSelector(tipNames) { i ->
                     val tipValue = ReadTipConfigShared.tipValues[i]
                     clearRepeat(tipValue)
@@ -300,15 +322,15 @@ fun TipConfigScreen(
                 }
             }
 
-            SectionHeader(rememberString("footer"))
-            TipRow(rememberString("show_hide"), footerShowText) {
+            SectionHeader(stringResource(Res.string.footer))
+            TipRow(stringResource(Res.string.show_hide), footerShowText) {
                 showSelector(footerModes.values.toList()) { i ->
                     controller.footerMode = footerModes.keys.toList()[i]
                     footerShowText = footerModes[controller.footerMode] ?: ""
                     onPostConfig(listOf(ReadConfigChange.STYLE))
                 }
             }
-            TipRow(rememberString("left"), footerLeftText) {
+            TipRow(stringResource(Res.string.left), footerLeftText) {
                 showSelector(tipNames) { i ->
                     val tipValue = ReadTipConfigShared.tipValues[i]
                     clearRepeat(tipValue)
@@ -317,7 +339,7 @@ fun TipConfigScreen(
                     onPostConfig(listOf(ReadConfigChange.STYLE, ReadConfigChange.UP_CONTENT))
                 }
             }
-            TipRow(rememberString("middle"), footerMiddleText) {
+            TipRow(stringResource(Res.string.middle), footerMiddleText) {
                 showSelector(tipNames) { i ->
                     val tipValue = ReadTipConfigShared.tipValues[i]
                     clearRepeat(tipValue)
@@ -326,7 +348,7 @@ fun TipConfigScreen(
                     onPostConfig(listOf(ReadConfigChange.STYLE, ReadConfigChange.UP_CONTENT))
                 }
             }
-            TipRow(rememberString("right"), footerRightText) {
+            TipRow(stringResource(Res.string.right), footerRightText) {
                 showSelector(tipNames) { i ->
                     val tipValue = ReadTipConfigShared.tipValues[i]
                     clearRepeat(tipValue)
@@ -336,8 +358,8 @@ fun TipConfigScreen(
                 }
             }
 
-            SectionHeader(rememberString("header_footer"))
-            TipRow(rememberString("text_color"), tipColorLabel) {
+            SectionHeader(stringResource(Res.string.header_footer))
+            TipRow(stringResource(Res.string.text_color), tipColorLabel) {
                 showSelector(tipColorNames) { i ->
                     when (i) {
                         0 -> {
@@ -350,7 +372,7 @@ fun TipConfigScreen(
                     }
                 }
             }
-            TipRow(rememberString("tip_divider_color"), tipDividerLabel) {
+            TipRow(stringResource(Res.string.tip_divider_color), tipDividerLabel) {
                 showSelector(tipDividerColorNames) { i ->
                     when (i) {
                         0, 1 -> {
@@ -370,7 +392,7 @@ fun TipConfigScreen(
     if (showTipColorPicker) {
         ColorPickerDialog(
             initColor = 0xFF000000.toInt(),
-            title = rememberString("text_color"),
+            title = stringResource(Res.string.text_color),
             showAlphaSlider = false,
             onDismissRequest = { showTipColorPicker = false },
             onConfirm = { color ->
@@ -383,7 +405,7 @@ fun TipConfigScreen(
     if (showDividerColorPicker) {
         ColorPickerDialog(
             initColor = 0xFF000000.toInt(),
-            title = rememberString("tip_divider_color"),
+            title = stringResource(Res.string.tip_divider_color),
             showAlphaSlider = false,
             onDismissRequest = { showDividerColorPicker = false },
             onConfirm = { color ->

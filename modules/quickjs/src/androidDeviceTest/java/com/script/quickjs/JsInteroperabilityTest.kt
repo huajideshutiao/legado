@@ -104,6 +104,50 @@ class JsInteroperabilityTest {
         assertEquals("Hello World", sb.toString())
     }
 
+    @Test
+    fun testJavaByteArraySlicePreservesType() {
+        val source = byteArrayOf(1, 2, 3, 4)
+        val result = QuickJsEngine.eval("bytes.slice(-3, -1)") {
+            put("bytes", source)
+        }
+        assertTrue(result is ByteArray)
+        assertTrue(byteArrayOf(2, 3).contentEquals(result as ByteArray))
+    }
+
+    @Test
+    fun testJavaByteArrayMapPreservesType() {
+        val source = byteArrayOf(1, 2, 3)
+        val result = QuickJsEngine.eval("bytes.map(function(value) { return value + 1; })") {
+            put("bytes", source)
+        }
+        assertTrue(result is ByteArray)
+        assertTrue(byteArrayOf(2, 3, 4).contentEquals(result as ByteArray))
+    }
+
+    @Test
+    fun testJavaArrayMapPropagatesCallbackError() {
+        assertThrows(Throwable::class.java) {
+            QuickJsEngine.eval("bytes.map(function() { throw new Error('map failed'); })") {
+                put("bytes", byteArrayOf(1))
+            }
+        }
+    }
+
+    @Test
+    fun testJavaObjectArrayMethodsPreserveType() {
+        val source = arrayOf("a", "b", "c")
+        val sliced = QuickJsEngine.eval("items.slice(1)") {
+            put("items", source)
+        }
+        val mapped = QuickJsEngine.eval("items.map(function(value) { return value + '!'; })") {
+            put("items", source)
+        }
+        assertTrue(sliced is Array<*>)
+        assertEquals(listOf("b", "c"), (sliced as Array<*>).toList())
+        assertTrue(mapped is Array<*>)
+        assertEquals(listOf("a!", "b!", "c!"), (mapped as Array<*>).toList())
+    }
+
     // ============ JavaAdapter 实际回调执行 ============
 
     /**

@@ -33,6 +33,7 @@ namespace {
     jmethodID g_getPropertyInfo = nullptr;
     jmethodID g_setProperty = nullptr;
     jmethodID g_getPropertyNames = nullptr;
+    jmethodID g_newArrayLike = nullptr;
     // 哨兵单例 (JavaObjectBridge.METHOD_MARKER / NULL_FIELD_MARKER 的 global ref)
     // trap 用 IsSameObject 与之对比, 免掉原先 3 槽数组 + 装箱 2 Boolean 的开销。
     jobject g_methodMarker = nullptr;
@@ -117,6 +118,8 @@ namespace {
             // getPropertyNames(obj, dangerousApi): Array<String>
             g_getPropertyNames = env->GetStaticMethodID(g_bridgeCls, "getPropertyNames",
                                                         "(Ljava/lang/Object;Z)[Ljava/lang/String;");
+            g_newArrayLike = env->GetStaticMethodID(g_bridgeCls, "newArrayLike",
+                    "(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;");
 
             // java.util.List (用于 Symbol.iterator 检测: 让 JS for...of 能迭代 Java List)
             // JavaObjectBridge.kt 的 callHotTypeMethod 已对 List 做快速路径,
@@ -197,7 +200,7 @@ namespace {
 
             // 汇总检查放到末尾: Boolean 与 sentinel 在上面才初始化, 提前判会误报。
             if (!g_hasProperty || !g_getPropertyInfo || !g_setProperty || !g_getPropertyNames ||
-                !g_BooleanCls || !g_BooleanValue ||
+                    !g_newArrayLike || !g_BooleanCls || !g_BooleanValue ||
                 !g_methodMarker || !g_nullFieldMarker) {
                 LOGE("JavaObjectBridgeNative methods/Boolean/sentinel not found");
                 env->ExceptionClear();
@@ -380,6 +383,141 @@ namespace {
             return proto;  // proto 本身是 +1 (JS_GetPropertyStr 返回 DupValue)
         }
         return JS_DupValue(ctx, data->arrayProto);
+    }
+
+    JSValue wrapArrayLikeValues(JSContext *ctx, JNIEnv *env, jobject source,
+            jobjectArray values) {
+        if (!g_newArrayLike) {
+            return JS_ThrowInternalError(ctx, "JavaObjectBridgeNative.newArrayLike not bound");
+        }
+        jobject result = env->CallStaticObjectMethod(g_bridgeCls, g_newArrayLike, source, values);
+        if (env->ExceptionCheck()) {
+            jthrowable thr = env->ExceptionOccurred();
+            env->ExceptionClear();
+            if (thr) {
+                JSValue error = JavaObjectClass::wrap(ctx, env, thr);
+                env->DeleteLocalRef(thr);
+                if (JS_IsException(error)) return JS_EXCEPTION;
+                JS_Throw(ctx, error);
+                return JS_EXCEPTION;
+            }
+            return JS_ThrowInternalError(ctx, "Creating Java array result failed");
+        }
+        JSValue wrapped = JavaObjectClass::wrap(ctx, env, result);
+        if (result) env->DeleteLocalRef(result);
+        return wrapped;
+    }
+
+    JSValue jsJavaArraySlice(JSContext *ctx, JSValueConst this_val,
+            int argc, JSValueConst *argv) {
+        JNIEnv *env = getJniEnv();
+        if (!env) return JS_ThrowInternalError(ctx, "JNI env unavailable for array slice");
+        ensureBridgeInited(env);
+        jobject source = JavaObjectClass::getJavaObject(ctx, this_val);
+        if (!source || !isJavaArray(env, source)) {
+            return JS_ThrowTypeError(ctx, "Array.slice called on non-Java array");
+        }
+        if (!g_reflectArrayCls || !g_reflectArrayGetLength || !g_reflectArrayGet || !g_objectCls) {
+            return JS_ThrowInternalError(ctx, "Java array reflection not bound");
+        }
+        jint length = env->CallStaticIntMethod(g_reflectArrayCls, g_reflectArrayGetLength, source);
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            return JS_ThrowInternalError(ctx, "Array.getLength threw");
+        }
+        int64_t start = 0;
+        int64_t end = length;
+        if (argc > 0 && !JS_IsUndefined(argv[0]) && JS_ToInt64(ctx, &start, argv[0]) < 0) {
+            return JS_EXCEPTION;
+        }
+        if (argc > 1 && !JS_IsUndefined(argv[1]) && JS_ToInt64(ctx, &end, argv[1]) < 0) {
+            return JS_EXCEPTION;
+        }
+        start = start < 0 ? length + start : start;
+        end = end < 0 ? length + end : end;
+        if (start < 0) start = 0;
+        if (start > length) start = length;
+        if (end < 0) end = 0;
+        if (end > length) end = length;
+        if (end < start) end = start;
+
+        jobjectArray values = env->NewObjectArray((jsize) (end - start), g_objectCls, nullptr);
+        if (!values) return JS_ThrowOutOfMemory(ctx);
+        for (int64_t i = start; i < end; ++i) {
+            jobject value = env->CallStaticObjectMethod(g_reflectArrayCls, g_reflectArrayGet,
+                    source, (jint) i);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                if (value) env->DeleteLocalRef(value);
+                env->DeleteLocalRef(values);
+                return JS_ThrowInternalError(ctx, "Array.get threw");
+            }
+            env->SetObjectArrayElement(values, (jsize) (i - start), value);
+            if (value) env->DeleteLocalRef(value);
+        }
+        JSValue result = wrapArrayLikeValues(ctx, env, source, values);
+        env->DeleteLocalRef(values);
+        return result;
+    }
+
+    JSValue jsJavaArrayMap(JSContext *ctx, JSValueConst this_val,
+            int argc, JSValueConst *argv) {
+        if (argc < 1 || !JS_IsFunction(ctx, argv[0])) {
+            return JS_ThrowTypeError(ctx, "Array.map callback must be a function");
+        }
+        JNIEnv *env = getJniEnv();
+        if (!env) return JS_ThrowInternalError(ctx, "JNI env unavailable for array map");
+        ensureBridgeInited(env);
+        jobject source = JavaObjectClass::getJavaObject(ctx, this_val);
+        if (!source || !isJavaArray(env, source)) {
+            return JS_ThrowTypeError(ctx, "Array.map called on non-Java array");
+        }
+        if (!g_reflectArrayCls || !g_reflectArrayGetLength || !g_reflectArrayGet || !g_objectCls) {
+            return JS_ThrowInternalError(ctx, "Java array reflection not bound");
+        }
+        jint length = env->CallStaticIntMethod(g_reflectArrayCls, g_reflectArrayGetLength, source);
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            return JS_ThrowInternalError(ctx, "Array.getLength threw");
+        }
+        jobjectArray values = env->NewObjectArray(length, g_objectCls, nullptr);
+        if (!values) return JS_ThrowOutOfMemory(ctx);
+        JSValueConst callbackThis = argc > 1 ? argv[1] : JS_UNDEFINED;
+        for (jint i = 0; i < length; ++i) {
+            jobject element = env->CallStaticObjectMethod(g_reflectArrayCls, g_reflectArrayGet,
+                    source, i);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                if (element) env->DeleteLocalRef(element);
+                env->DeleteLocalRef(values);
+                return JS_ThrowInternalError(ctx, "Array.get threw");
+            }
+            JSValue args[3] = {
+                    JniValueConvert::fromJavaObject(ctx, env, element),
+                    JS_NewInt32(ctx, i),
+                    JS_DupValue(ctx, this_val)
+            };
+            if (element) env->DeleteLocalRef(element);
+            JSValue mapped = JS_Call(ctx, argv[0], callbackThis, 3, args);
+            for (auto &arg: args) JS_FreeValue(ctx, arg);
+            if (JS_IsException(mapped)) {
+                env->DeleteLocalRef(values);
+                return mapped;
+            }
+            jobject mappedValue = JniValueConvert::toJavaObject(ctx, env, mapped);
+            JS_FreeValue(ctx, mapped);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                if (mappedValue) env->DeleteLocalRef(mappedValue);
+                env->DeleteLocalRef(values);
+                return JS_ThrowTypeError(ctx, "Array.map result cannot be converted to Java");
+            }
+            env->SetObjectArrayElement(values, i, mappedValue);
+            if (mappedValue) env->DeleteLocalRef(mappedValue);
+        }
+        JSValue result = wrapArrayLikeValues(ctx, env, source, values);
+        env->DeleteLocalRef(values);
+        return result;
     }
 
     // Symbol.iterator 工厂函数: 把 Java List/Array 转成 JS Array 并返回其迭代器
@@ -708,6 +846,19 @@ JSValue JavaObjectClass::getProperty(JSContext *ctx, JSValueConst obj, JSAtom at
 
     jobject javaObj = getJavaObject(ctx, obj);
     if (!javaObj) return JS_UNDEFINED;
+
+    if (isJavaArray(env, javaObj)) {
+        const char *methodName = atomToCString(ctx, atom);
+        if (!methodName) return JS_EXCEPTION;
+        JSValue arrayMethod = JS_UNDEFINED;
+        if (std::strcmp(methodName, "slice") == 0) {
+            arrayMethod = JS_NewCFunction(ctx, jsJavaArraySlice, "slice", 2);
+        } else if (std::strcmp(methodName, "map") == 0) {
+            arrayMethod = JS_NewCFunction(ctx, jsJavaArrayMap, "map", 1);
+        }
+        JS_FreeCString(ctx, methodName);
+        if (!JS_IsUndefined(arrayMethod)) return arrayMethod;
+    }
 
     // 整数索引 fast path: list[i] / arr[i] 是极热循环 (书源常见 pattern).
     // 直接从 atom 位测得到 uint32 索引, 若 javaObj 是 List/Array, 走 List.get(i) /

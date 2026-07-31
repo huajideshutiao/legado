@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.viewModelScope
 import io.legado.app.base.BaseViewModel
 import io.legado.app.data.entities.Book
+import io.legado.app.help.IntentData
 import io.legado.app.model.ReadBook
 
 /**
@@ -57,7 +58,9 @@ class BookInfoEditViewModel(application: Application) : BaseViewModel(applicatio
     /**
      * 加载书籍 (转发到 [shared.loadBook])。
      */
-    fun loadBook() = shared.loadBook()
+    fun loadBook() {
+        (IntentData.book as? Book)?.let(shared::loadBook)
+    }
 
     /**
      * 保存书籍 (转发到 [shared.saveBook])。

@@ -83,6 +83,8 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 
 /** 视频播放页：标题栏 + 渲染面(AndroidView) + 手势层(pointerInput) + 控制层(Compose) + 选集网格 */

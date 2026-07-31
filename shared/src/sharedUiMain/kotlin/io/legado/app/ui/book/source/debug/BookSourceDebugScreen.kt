@@ -42,9 +42,25 @@ import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.linkifyText
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.book_src
+import legado.shared.generated.resources.content_src
+import legado.shared.generated.resources.debug_book_info_hint
+import legado.shared.generated.resources.debug_content_hint
+import legado.shared.generated.resources.debug_explore_hint
+import legado.shared.generated.resources.debug_search_hint
+import legado.shared.generated.resources.debug_source
+import legado.shared.generated.resources.debug_toc_hint
+import legado.shared.generated.resources.help
+import legado.shared.generated.resources.refresh_explore
+import legado.shared.generated.resources.review_src
+import legado.shared.generated.resources.search_book_key
+import legado.shared.generated.resources.search_src
+import legado.shared.generated.resources.system
+import legado.shared.generated.resources.toc_src
+import org.jetbrains.compose.resources.stringResource
 
 // ===== state / actions =====
 
@@ -142,13 +158,13 @@ fun BookSourceDebugScreen(
     }
     Column(Modifier.fillMaxSize()) {
         AppTitleBar(
-            title = rememberString("debug_source"),
+            title = stringResource(Res.string.debug_source),
             onBack = { actions.onBack() },
             titleContent = {
                 AppSearchField(
                     value = state.query,
                     onValueChange = { actions.onQueryChange(it) },
-                    hint = rememberString("search_book_key"),
+                    hint = stringResource(Res.string.search_book_key),
                     textFieldModifier = Modifier
                         .focusRequester(searchFocus)
                         .onFocusChanged { actions.onSearchFocusChanged(it.isFocused) },
@@ -203,25 +219,25 @@ fun BookSourceDebugScreen(
 @Composable
 private fun DebugActions(actions: BookSourceDebugUiActions) {
     OverflowMenu { dismiss ->
-        MenuItem(rememberString("search_src")) {
+        MenuItem(stringResource(Res.string.search_src)) {
             dismiss(); actions.onShowSearchSrc()
         }
-        MenuItem(rememberString("book_src")) {
+        MenuItem(stringResource(Res.string.book_src)) {
             dismiss(); actions.onShowBookSrc()
         }
-        MenuItem(rememberString("toc_src")) {
+        MenuItem(stringResource(Res.string.toc_src)) {
             dismiss(); actions.onShowTocSrc()
         }
-        MenuItem(rememberString("content_src")) {
+        MenuItem(stringResource(Res.string.content_src)) {
             dismiss(); actions.onShowContentSrc()
         }
-        MenuItem(rememberString("review_src")) {
+        MenuItem(stringResource(Res.string.review_src)) {
             dismiss(); actions.onShowReviewSrc()
         }
-        MenuItem(rememberString("refresh_explore")) {
+        MenuItem(stringResource(Res.string.refresh_explore)) {
             dismiss(); actions.onRefreshExplore()
         }
-        MenuItem(rememberString("help")) {
+        MenuItem(stringResource(Res.string.help)) {
             dismiss(); actions.onShowHelp()
         }
     }
@@ -246,12 +262,12 @@ private fun HelpPanel(state: BookSourceDebugUiState, actions: BookSourceDebugUiA
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
     ) {
-        HelpLabel(rememberString("debug_search_hint"))
+        HelpLabel(stringResource(Res.string.debug_search_hint))
         Row {
             FilletChip(state.textMy) { actions.onChipMyClick() }
-            FilletChip(rememberString("system")) { actions.onChipSystemClick() }
+            FilletChip(stringResource(Res.string.system)) { actions.onChipSystemClick() }
         }
-        HelpLabel(rememberString("debug_explore_hint"))
+        HelpLabel(stringResource(Res.string.debug_explore_hint))
         FilletChip(
             state.textFx,
             onLongClick = { actions.onChipFxLongClick() },
@@ -260,17 +276,17 @@ private fun HelpPanel(state: BookSourceDebugUiState, actions: BookSourceDebugUiA
                 actions.onChipFxClick()
             }
         }
-        HelpLabel(rememberString("debug_book_info_hint"))
+        HelpLabel(stringResource(Res.string.debug_book_info_hint))
         FilletChip("https://m.qidian.com/book/1015609210") {
             if (state.query.isNotBlank()) {
                 actions.onChipDetailClick()
             }
         }
-        HelpLabel(rememberString("debug_toc_hint"))
+        HelpLabel(stringResource(Res.string.debug_toc_hint))
         FilletChip("++https://www.zhaishuyuan.com/read/30394") {
             actions.onChipTocClick()
         }
-        HelpLabel(rememberString("debug_content_hint"))
+        HelpLabel(stringResource(Res.string.debug_content_hint))
         FilletChip("--https://www.zhaishuyuan.com/chapter/30394/20940996") {
             actions.onChipContentClick()
         }

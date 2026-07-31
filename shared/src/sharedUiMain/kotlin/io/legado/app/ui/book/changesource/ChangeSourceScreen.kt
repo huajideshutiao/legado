@@ -44,7 +44,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,6 +51,7 @@ import androidx.compose.ui.window.Dialog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppRadioButton
@@ -64,8 +64,37 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
-import io.legado.app.utils.ScreenInfoProviders
 import kotlinx.coroutines.launch
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.all_source
+import legado.shared.generated.resources.book_source_manage
+import legado.shared.generated.resources.checkAuthor
+import legado.shared.generated.resources.close
+import legado.shared.generated.resources.delete_source
+import legado.shared.generated.resources.disable_source
+import legado.shared.generated.resources.edit_source
+import legado.shared.generated.resources.go_to_bottom
+import legado.shared.generated.resources.go_to_top
+import legado.shared.generated.resources.group
+import legado.shared.generated.resources.ic_arrow_back
+import legado.shared.generated.resources.ic_arrow_down
+import legado.shared.generated.resources.ic_arrow_right
+import legado.shared.generated.resources.ic_check
+import legado.shared.generated.resources.ic_praise
+import legado.shared.generated.resources.like_source
+import legado.shared.generated.resources.load_info
+import legado.shared.generated.resources.load_toc
+import legado.shared.generated.resources.load_word_count
+import legado.shared.generated.resources.not_like_source
+import legado.shared.generated.resources.outline_filter_alt_24
+import legado.shared.generated.resources.refresh_list
+import legado.shared.generated.resources.respondTime
+import legado.shared.generated.resources.screen
+import legado.shared.generated.resources.success
+import legado.shared.generated.resources.to_bottom
+import legado.shared.generated.resources.to_top
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 换源标题栏：复刻 dialog_title_bar + change_source 菜单
@@ -73,7 +102,7 @@ import kotlinx.coroutines.launch
  *
  * 下沉改动:
  * - painterResource(R.drawable.X) → rememberPainter("X")
- * - stringResource(R.string.X) → rememberString("X")
+ * - stringResource(R.string.X) → stringResource(Res.string.X)
  * - colorResource(R.color.X) → rememberColor("X")
  * - 各 internal Composable 改为 public, 供 app 端 ChangeBookSourceDialog /
  *   ChangeChapterSourceDialog 跨模块调用
@@ -109,7 +138,7 @@ fun ChangeSourceTitleBar(
             }
         }) {
             Icon(
-                painter = rememberPainter("ic_arrow_back"),
+                painter = painterResource(Res.drawable.ic_arrow_back),
                 contentDescription = null,
                 tint = colors.primaryText,
             )
@@ -118,7 +147,7 @@ fun ChangeSourceTitleBar(
             AppSearchField(
                 value = screenKey,
                 onValueChange = onScreen,
-                hint = rememberString("screen"),
+                hint = stringResource(Res.string.screen),
                 modifier = Modifier.weight(1f),
                 textFieldModifier = Modifier.focusRequester(focusRequester),
             )
@@ -144,8 +173,8 @@ fun ChangeSourceTitleBar(
             }
             IconButton(onClick = { onSearchModeChange(true) }) {
                 Icon(
-                    painter = rememberPainter("outline_filter_alt_24"),
-                    contentDescription = rememberString("screen"),
+                    painter = painterResource(Res.drawable.outline_filter_alt_24),
+                    contentDescription = stringResource(Res.string.screen),
                     tint = colors.primaryText,
                 )
             }
@@ -201,7 +230,7 @@ fun GroupMenuItem(
         Text(title, color = colors.primaryText)
         Spacer(Modifier.weight(1f))
         Icon(
-            painter = rememberPainter("ic_arrow_right"),
+            painter = painterResource(Res.drawable.ic_arrow_right),
             contentDescription = null,
             tint = colors.secondaryText,
         )
@@ -273,8 +302,8 @@ fun ChangeSourceBottomBar(
                 overflow = TextOverflow.MiddleEllipsis,
             )
         }
-        BottomBarIcon("ic_arrow_drop_up", rememberString("go_to_top"), onTop)
-        BottomBarIcon("ic_arrow_drop_down", rememberString("go_to_bottom"), onBottom)
+        BottomBarIcon("ic_arrow_drop_up", stringResource(Res.string.go_to_top), onTop)
+        BottomBarIcon("ic_arrow_drop_down", stringResource(Res.string.go_to_bottom), onBottom)
     }
 }
 
@@ -318,7 +347,7 @@ fun SearchBookItem(
     var score by remember(book.bookUrl) { mutableIntStateOf(getScore()) }
     var menuExpanded by remember { mutableStateOf(false) }
     // 预取格式化串: rememberString 是 @Composable, 不能在 lambda 里调
-    val strRespondTime = rememberString("respondTime")
+    val strRespondTime = stringResource(Res.string.respondTime)
     Box {
         Row(
             Modifier
@@ -331,7 +360,7 @@ fun SearchBookItem(
                 if (score >= 0) {
                     ScoreIcon(
                         tintColor = rememberColor(if (score > 0) "md_red_A200" else "md_red_100"),
-                        description = rememberString("like_source"),
+                        description = stringResource(Res.string.like_source),
                         flip = false,
                     ) {
                         val new = if (score > 0) 0 else 1
@@ -342,7 +371,7 @@ fun SearchBookItem(
                 if (score <= 0) {
                     ScoreIcon(
                         tintColor = rememberColor(if (score < 0) "md_blue_A200" else "md_blue_100"),
-                        description = rememberString("not_like_source"),
+                        description = stringResource(Res.string.not_like_source),
                         flip = true,
                     ) {
                         val new = if (score < 0) 0 else -1
@@ -399,7 +428,7 @@ fun SearchBookItem(
             Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
                 if (isCurSource) {
                     Icon(
-                        painter = rememberPainter("ic_check"),
+                        painter = painterResource(Res.drawable.ic_check),
                         contentDescription = null,
                         tint = colors.primaryText,
                         modifier = Modifier.size(24.dp),
@@ -409,11 +438,15 @@ fun SearchBookItem(
         }
         // 长按菜单，对照 change_source_item PopupMenu
         AppDropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-            TextMenuItem(rememberString("to_top")) { menuExpanded = false; onTop() }
-            TextMenuItem(rememberString("to_bottom")) { menuExpanded = false; onBottom() }
-            TextMenuItem(rememberString("edit_source")) { menuExpanded = false; onEdit() }
-            TextMenuItem(rememberString("disable_source")) { menuExpanded = false; onDisable() }
-            TextMenuItem(rememberString("delete_source")) { menuExpanded = false; onDelete() }
+            TextMenuItem(stringResource(Res.string.to_top)) { menuExpanded = false; onTop() }
+            TextMenuItem(stringResource(Res.string.to_bottom)) { menuExpanded = false; onBottom() }
+            TextMenuItem(stringResource(Res.string.edit_source)) { menuExpanded = false; onEdit() }
+            TextMenuItem(stringResource(Res.string.disable_source)) {
+                menuExpanded = false; onDisable()
+            }
+            TextMenuItem(stringResource(Res.string.delete_source)) {
+                menuExpanded = false; onDelete()
+            }
         }
     }
 }
@@ -427,7 +460,7 @@ private fun ScoreIcon(tintColor: Color, description: String, flip: Boolean, onCl
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            painter = rememberPainter("ic_praise"),
+            painter = painterResource(Res.drawable.ic_praise),
             contentDescription = description,
             tint = tintColor,
             modifier = Modifier
@@ -474,8 +507,8 @@ fun ChapterTocPanel(
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                painter = rememberPainter("ic_arrow_down"),
-                contentDescription = rememberString("close"),
+                painter = painterResource(Res.drawable.ic_arrow_down),
+                contentDescription = stringResource(Res.string.close),
                 tint = colors.primaryText,
             )
         }
@@ -543,8 +576,8 @@ private fun TocItemRow(chapter: BookChapter, isDur: Boolean, onClick: () -> Unit
         Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
             if (isDur) {
                 Icon(
-                    painter = rememberPainter("ic_check"),
-                    contentDescription = rememberString("success"),
+                    painter = painterResource(Res.drawable.ic_check),
+                    contentDescription = stringResource(Res.string.success),
                     tint = colors.secondaryText,
                     modifier = Modifier.size(16.dp),
                 )
@@ -565,9 +598,7 @@ fun GroupPickerDialog(
     onSelect: (String) -> Unit,
 ) {
     val colors = AppTheme.colors
-    val dialogWidth = with(LocalDensity.current) {
-        (ScreenInfoProviders.get().screenWidthPx * 0.9f).toDp().coerceAtMost(800.dp)
-    }
+    val dialogWidth = AppDialogSizes.width()
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = AppTheme.DesignTokens.dialogShape,
@@ -576,13 +607,13 @@ fun GroupPickerDialog(
         ) {
             Column(Modifier.fillMaxWidth()) {
                 DialogTitleBar(
-                    title = rememberString("group"),
+                    title = stringResource(Res.string.group),
                     onBack = onDismiss,
                 )
                 LazyColumn(Modifier.fillMaxWidth()) {
                     val hasSelected = selectedGroup.isNotEmpty() && groups.contains(selectedGroup)
                     item {
-                        RadioMenuItem(rememberString("all_source"), !hasSelected) {
+                        RadioMenuItem(stringResource(Res.string.all_source), !hasSelected) {
                             onSelect("")
                         }
                     }
@@ -739,38 +770,38 @@ fun ChangeSourceScreen(
             onStartStop = actions::onStartStop,
         ) { dismiss ->
             // 对照 app 端 Dialog.Content 第 179-220 行 8 个菜单项
-            TextMenuItem(rememberString("book_source_manage")) {
+            TextMenuItem(stringResource(Res.string.book_source_manage)) {
                 dismiss(); menuActions.onBookSourceManage()
             }
-            TextMenuItem(rememberString("refresh_list")) {
+            TextMenuItem(stringResource(Res.string.refresh_list)) {
                 dismiss(); menuActions.onRefreshList()
             }
-            CheckMenuItem(rememberString("checkAuthor"), state.checkAuthor) {
+            CheckMenuItem(stringResource(Res.string.checkAuthor), state.checkAuthor) {
                 dismiss()
                 menuActions.onCheckAuthorChange(!state.checkAuthor)
             }
-            CheckMenuItem(rememberString("load_word_count"), state.loadWordCount) {
+            CheckMenuItem(stringResource(Res.string.load_word_count), state.loadWordCount) {
                 dismiss()
                 menuActions.onLoadWordCountChange(!state.loadWordCount)
             }
-            CheckMenuItem(rememberString("load_info"), state.loadInfo) {
+            CheckMenuItem(stringResource(Res.string.load_info), state.loadInfo) {
                 dismiss()
                 menuActions.onLoadInfoChange(!state.loadInfo)
             }
-            CheckMenuItem(rememberString("load_toc"), state.loadToc) {
+            CheckMenuItem(stringResource(Res.string.load_toc), state.loadToc) {
                 dismiss()
                 menuActions.onLoadTocChange(!state.loadToc)
             }
             GroupMenuItem(
                 title = if (searchGroup.isEmpty()) {
-                    rememberString("group")
+                    stringResource(Res.string.group)
                 } else {
-                    rememberString("group") + "($searchGroup)"
+                    stringResource(Res.string.group) + "($searchGroup)"
                 },
                 dismissParent = dismiss,
                 onShowGroupPicker = onShowGroupPicker,
             )
-            TextMenuItem(rememberString("close")) {
+            TextMenuItem(stringResource(Res.string.close)) {
                 dismiss(); menuActions.onClose()
             }
         }

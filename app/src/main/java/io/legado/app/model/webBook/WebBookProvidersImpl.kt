@@ -12,17 +12,12 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.AppCacheManager
-import io.legado.app.help.IntentDataAccessor
 import io.legado.app.help.IntentData
+import io.legado.app.help.IntentDataAccessor
 import io.legado.app.help.IntentDataProviders
-import io.legado.app.help.source.SourceDebugLoggers
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookHelpAccessor
 import io.legado.app.help.book.BookHelpProviders
-import io.legado.app.model.fileBook.BitmapProviderImpl
-import io.legado.app.model.fileBook.BitmapProviders
-import io.legado.app.model.fileBook.ZipFileWrapperFactoryImpl
-import io.legado.app.model.fileBook.ZipFileWrapperFactoryProviders
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.ContentProcessorAccessor
 import io.legado.app.help.book.ContentProcessorProviders
@@ -42,6 +37,10 @@ import io.legado.app.help.source.registerAndroidVerificationUiProvider
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.Debug
 import io.legado.app.model.ReadBook
+import io.legado.app.model.fileBook.BitmapProviderImpl
+import io.legado.app.model.fileBook.BitmapProviders
+import io.legado.app.model.fileBook.ZipFileWrapperFactoryImpl
+import io.legado.app.model.fileBook.ZipFileWrapperFactoryProviders
 import io.legado.app.utils.RegexReplacer
 import io.legado.app.utils.RegexReplacers
 import io.legado.app.utils.replace
@@ -150,6 +149,28 @@ object WebBookProvidersImpl :
     override val autoRefreshBook: Boolean get() = AppConfig.autoRefreshBook
     override val preDownloadNum: Int get() = AppConfig.preDownloadNum
 
+    // ---- 换源业务 ----
+    override var changeSourceCheckAuthor: Boolean
+        get() = AppConfig.changeSourceCheckAuthor
+        set(value) {
+            AppConfig.changeSourceCheckAuthor = value
+        }
+    override var changeSourceLoadInfo: Boolean
+        get() = AppConfig.changeSourceLoadInfo
+        set(value) {
+            AppConfig.changeSourceLoadInfo = value
+        }
+    override var changeSourceLoadToc: Boolean
+        get() = AppConfig.changeSourceLoadToc
+        set(value) {
+            AppConfig.changeSourceLoadToc = value
+        }
+    override var changeSourceLoadWordCount: Boolean
+        get() = AppConfig.changeSourceLoadWordCount
+        set(value) {
+            AppConfig.changeSourceLoadWordCount = value
+        }
+
     // ---- 搜索业务 ----
     // var: 接口要求 var (SearchScope.save() 写回), actual 用 var + setter 写回 AppConfig
     override var searchScope: String
@@ -181,6 +202,12 @@ object WebBookProvidersImpl :
 
     // ---- 朗读业务 ----
     override val ttsEngine: String get() = AppConfig.ttsEngine ?: ""
+    override val audioPlayUseWakeLock: Boolean get() = AppConfig.audioPlayUseWakeLock
+    override fun setAudioPlayUseWakeLock(value: Boolean) {
+        AppConfig.audioPlayUseWakeLock = value
+    }
+
+    override val showAddToShelfAlert: Boolean get() = AppConfig.showAddToShelfAlert
     override val ttsSpeechRate: Int get() = AppConfig.ttsSpeechRate
     override val ttsTimer: Int get() = AppConfig.ttsTimer
 
@@ -190,6 +217,10 @@ object WebBookProvidersImpl :
     override val isNightTheme: Boolean get() = AppConfig.isNightTheme
     override val isEInkMode: Boolean get() = AppConfig.isEInkMode
     override val useDefaultCover: Boolean get() = AppConfig.useDefaultCover
+    override val coverDrawBookName: Boolean
+        get() = if (AppConfig.isNightTheme) AppConfig.coverShowNameN else AppConfig.coverShowName
+    override val coverDrawBookAuthor: Boolean
+        get() = if (AppConfig.isNightTheme) AppConfig.coverShowAuthorN else AppConfig.coverShowAuthor
 
     // ---- 底栏配置 (桌面端侧栏竖版复用, 底栏高度视为侧栏宽度) ----
     override val bottomBarHeight: Int get() = AppConfig.bottomBarHeight
@@ -203,9 +234,21 @@ object WebBookProvidersImpl :
     override val defaultHomePage: String get() = AppConfig.defaultHomePage ?: "bookshelf"
 
     // ---- 导入业务 (ImportBookSourceViewModelShared / ImportBookViewModelShared 用) ----
-    override val importKeepName: Boolean get() = AppConfig.importKeepName
-    override val importKeepGroup: Boolean get() = AppConfig.importKeepGroup
-    override val importKeepEnable: Boolean get() = AppConfig.importKeepEnable
+    override var importKeepName: Boolean
+        get() = AppConfig.importKeepName
+        set(value) {
+            AppConfig.importKeepName = value
+        }
+    override var importKeepGroup: Boolean
+        get() = AppConfig.importKeepGroup
+        set(value) {
+            AppConfig.importKeepGroup = value
+        }
+    override var importKeepEnable: Boolean
+        get() = AppConfig.importKeepEnable
+        set(value) {
+            AppConfig.importKeepEnable = value
+        }
     override val localBookImportSort: Int get() = AppConfig.localBookImportSort
 
     // ---- 远程服务 / 批量管理 ----

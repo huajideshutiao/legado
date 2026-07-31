@@ -40,10 +40,22 @@ import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.AppScrollTabRow
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.add
+import legado.shared.generated.resources.book_variable_tab
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.ic_add
+import legado.shared.generated.resources.ic_baseline_close
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.source_variable_tab
+import legado.shared.generated.resources.variable_edit_title
+import legado.shared.generated.resources.variable_empty
+import legado.shared.generated.resources.variable_key
+import legado.shared.generated.resources.variable_value
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 变量编辑对话框 (KMP 共享, app + desktop 复用)。
@@ -70,15 +82,15 @@ fun VariableDialog(
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    val titleText = rememberString("variable_edit_title")
-    val sourceTabText = rememberString("source_variable_tab")
-    val bookTabText = rememberString("book_variable_tab")
-    val keyLabelText = rememberString("variable_key")
-    val valueLabelText = rememberString("variable_value")
-    val emptyText = rememberString("variable_empty")
-    val addText = rememberString("add")
-    val cancelText = rememberString("cancel")
-    val okText = rememberString("ok")
+    val titleText = stringResource(Res.string.variable_edit_title)
+    val sourceTabText = stringResource(Res.string.source_variable_tab)
+    val bookTabText = stringResource(Res.string.book_variable_tab)
+    val keyLabelText = stringResource(Res.string.variable_key)
+    val valueLabelText = stringResource(Res.string.variable_value)
+    val emptyText = stringResource(Res.string.variable_empty)
+    val addText = stringResource(Res.string.add)
+    val cancelText = stringResource(Res.string.cancel)
+    val okText = stringResource(Res.string.ok)
 
     // 可变变量 Map (初始化自参数)
     val sourceVars = remember { mutableStateMapOf<String, String>().apply { putAll(sourceVariables) } }
@@ -214,7 +226,7 @@ private fun VariableTabContent(
                         modifier = Modifier.padding(start = 4.dp),
                     ) {
                         Icon(
-                            painter = rememberPainter("ic_baseline_close"),
+                            painter = painterResource(Res.drawable.ic_baseline_close),
                             contentDescription = null,
                             tint = colors.secondaryText,
                         )
@@ -260,7 +272,7 @@ private fun VariableTabContent(
                 modifier = Modifier.padding(start = 4.dp),
             ) {
                 Icon(
-                    painter = rememberPainter("ic_add"),
+                    painter = painterResource(Res.drawable.ic_add),
                     contentDescription = addText,
                     tint = DesignTokens.arcoBlue6,
                 )

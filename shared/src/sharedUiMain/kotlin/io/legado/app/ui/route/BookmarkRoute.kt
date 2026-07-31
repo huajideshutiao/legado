@@ -17,7 +17,6 @@ import io.legado.app.ui.book.bookmark.AllBookmarkScreen
 import io.legado.app.ui.book.bookmark.AllBookmarkScreenModel
 import io.legado.app.ui.book.bookmark.AllBookmarkUiActions
 import io.legado.app.ui.book.bookmark.BookmarkDialog
-import io.legado.app.ui.compose.platform.sharedStringTable
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformServiceProviders
@@ -29,6 +28,9 @@ import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.no_book
+import org.jetbrains.compose.resources.getString
 
 /**
  * AppRoute.Bookmark 路由下沉入口。
@@ -128,7 +130,7 @@ fun BookmarkRoute(
                     )
                     if (book == null) {
                         // 对照原 AllBookmarkActivity: book 为空时 toastOnUi(R.string.no_book)
-                        Toasters.get().toast(sharedStringTable["no_book"] ?: "没有书籍")
+                        Toasters.get().toast(getString(Res.string.no_book))
                         return@launch
                     }
                     // 跳转阅读页定位到书签章节位置 (与 TocRoute.openBookmark 一致)

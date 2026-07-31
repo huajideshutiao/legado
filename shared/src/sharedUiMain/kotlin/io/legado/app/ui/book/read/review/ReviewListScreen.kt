@@ -31,8 +31,13 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Review
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.rememberColor
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.bottom_line
+import legado.shared.generated.resources.empty
+import legado.shared.generated.resources.review
+import legado.shared.generated.resources.review_post_hint
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 书评列表页 shared Screen (KMP 共享)。
@@ -82,7 +87,7 @@ fun ReviewListScreen(
 
     Column(Modifier.fillMaxSize()) {
         AppTitleBar(
-            title = rememberString("review"),
+            title = stringResource(Res.string.review),
             onBack = onBack,
         )
         Box(
@@ -122,7 +127,7 @@ fun ReviewListScreen(
                     Modifier.fillMaxSize(), contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = rememberString("empty"),
+                        text = stringResource(Res.string.empty),
                         color = rememberColor("primaryText"),
                         fontSize = 14.sp,
                     )
@@ -202,7 +207,7 @@ private fun ReviewListFooter(state: ReviewListUiState) {
             )
 
             !state.footerHasMore && state.reviews.isNotEmpty() -> Text(
-                text = rememberString("bottom_line"),
+                text = stringResource(Res.string.bottom_line),
                 color = rememberColor("secondaryText"),
                 fontSize = 14.sp,
             )
@@ -224,7 +229,7 @@ private fun PostEntryBar(onPostClick: () -> Unit) {
         contentAlignment = Alignment.CenterStart,
     ) {
         Text(
-            text = rememberString("review_post_hint"),
+            text = stringResource(Res.string.review_post_hint),
             color = rememberColor("secondaryText"),
             fontSize = 14.sp,
             maxLines = 1,

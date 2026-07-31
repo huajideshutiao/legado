@@ -12,7 +12,7 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookGroup
+import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isRss
@@ -26,7 +26,6 @@ import io.legado.app.ui.book.search.SearchScreen
 import io.legado.app.ui.book.search.SearchViewModel
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
@@ -34,6 +33,12 @@ import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.toRouteRef
 import kotlinx.coroutines.launch
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.draw
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.sure_clear_search_history
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * AppRoute.Search shared 路由入口。
@@ -48,8 +53,14 @@ fun SearchRoute(
     navigator: AppNavigator,
     screenModelStore: ScreenModelStore,
 ) {
+    val route = entry.route as AppRoute.Search
     val viewModel = remember { SearchViewModel() }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(route.key, route.searchScope, route.submit) {
+        route.searchScope?.let(viewModel::updateSearchScope)
+        route.key?.let { viewModel.setQuery(it, route.submit) }
+            ?: viewModel.requestFocus()
+    }
     // 对照 Activity.repeatOnLifecycle(RESUMED) { resume(); ... finally { pause() } }
     DisposableEffect(viewModel) {
         viewModel.resume()
@@ -59,10 +70,14 @@ fun SearchRoute(
         }
     }
 
-    // 书源分组列表 (供 SearchScopeDialog 使用)
-    var bookGroups by remember { mutableStateOf<List<BookGroup>>(emptyList()) }
+    // 搜索范围数据与 Android 原版一致，直接来自书源分组和书源列表。
+    var sourceGroups by remember { mutableStateOf<List<String>>(emptyList()) }
+    var bookSources by remember { mutableStateOf<List<BookSourcePart>>(emptyList()) }
     LaunchedEffect(Unit) {
-        AppDbProviders.get().bookGroupDao.flowAll().collect { bookGroups = it }
+        sourceGroups = AppDbProviders.get().bookSourceDao.allEnabledGroups()
+    }
+    LaunchedEffect(Unit) {
+        AppDbProviders.get().bookSourceDao.flowAll().collect { bookSources = it }
     }
 
     // 对话框状态
@@ -150,16 +165,11 @@ fun SearchRoute(
 
     // 搜索范围对话框
     if (showSearchScope) {
-        // 当前选中的分组名 → 映射为分组 ID
-        val scopeNames = viewModel.searchScope.displayNames
-        val selectedIds =
-            bookGroups.filter { it.groupName in scopeNames }.map { it.groupId }.toSet()
         SearchScopeDialog(
-            groups = bookGroups,
-            selectedGroupIds = selectedIds,
-            onConfirm = { ids ->
-                val names = bookGroups.filter { it.groupId in ids }.map { it.groupName }
-                viewModel.onSearchScopeOk(SearchScope(names))
+            groups = sourceGroups,
+            sources = bookSources,
+            onConfirm = { searchScope ->
+                viewModel.onSearchScopeOk(searchScope)
                 showSearchScope = false
             },
             onDismiss = { showSearchScope = false },
@@ -175,12 +185,12 @@ fun SearchRoute(
     if (showClearHistoryConfirm) {
         AppAlertDialog(
             onDismissRequest = { showClearHistoryConfirm = false },
-            title = rememberString("draw"),
-            message = rememberString("sure_clear_search_history"),
-            okButton = AlertButton(rememberString("ok")) {
+            title = stringResource(Res.string.draw),
+            message = stringResource(Res.string.sure_clear_search_history),
+            okButton = AlertButton(stringResource(Res.string.ok)) {
                 viewModel.clearHistory()
             },
-            cancelButton = AlertButton(rememberString("cancel")),
+            cancelButton = AlertButton(stringResource(Res.string.cancel)),
         )
     }
 }

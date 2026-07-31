@@ -34,10 +34,18 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.OverflowMenu
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.action_save
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.content_edit_copy_all
+import legado.shared.generated.resources.content_edit_copy_success
+import legado.shared.generated.resources.content_edit_reset
+import legado.shared.generated.resources.ic_save
+import legado.shared.generated.resources.ok
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 章节正文编辑对话框 (KMP 共享, app + desktop 复用)。
@@ -88,12 +96,12 @@ fun ContentEditDialog(
 ) {
     val colors = AppTheme.colors
     // 所有字符串一次性在 @Composable 主体内 rememberString, 避免 onClick 中误用 @Composable
-    val saveDescText = rememberString("action_save")
-    val resetText = rememberString("content_edit_reset")
-    val copyAllText = rememberString("content_edit_copy_all")
-    val copySuccessText = rememberString("content_edit_copy_success")
-    val cancelText = rememberString("cancel")
-    val okText = rememberString("ok")
+    val saveDescText = stringResource(Res.string.action_save)
+    val resetText = stringResource(Res.string.content_edit_reset)
+    val copyAllText = stringResource(Res.string.content_edit_copy_all)
+    val copySuccessText = stringResource(Res.string.content_edit_copy_success)
+    val cancelText = stringResource(Res.string.cancel)
+    val okText = stringResource(Res.string.ok)
 
     // 本地编辑 state: content 参数变化时 (如 reset 后调用方更新 content) 重新初始化
     var contentState by remember(content) { mutableStateOf(content) }
@@ -126,7 +134,7 @@ fun ContentEditDialog(
                 actions = {
                     IconButton(onClick = { save() }) {
                         Icon(
-                            painter = rememberPainter("ic_save"),
+                            painter = painterResource(Res.drawable.ic_save),
                             contentDescription = saveDescText,
                             tint = DesignTokens.arcoBlue6,
                         )

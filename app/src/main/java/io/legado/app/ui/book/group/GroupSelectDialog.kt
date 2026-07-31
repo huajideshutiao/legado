@@ -34,6 +34,8 @@ import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.showDialogFragment
 import kotlinx.coroutines.flow.conflate
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
 
 
 class GroupSelectDialog() : BaseComposeDialogFragment() {
@@ -89,7 +91,9 @@ class GroupSelectDialog() : BaseComposeDialogFragment() {
             },
             actionBar = {
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Spacer(Modifier.weight(1f))

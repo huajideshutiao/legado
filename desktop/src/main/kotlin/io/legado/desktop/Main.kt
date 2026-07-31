@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.window.Window
+import io.legado.app.ui.compose.platform.rememberString
 import javax.imageio.ImageIO
 import androidx.compose.ui.window.application
 import io.legado.app.data.AppDbProviders
@@ -44,6 +45,14 @@ import io.legado.app.model.script.JsEngines
 import io.legado.app.ui.association.DeepLinkImportHost
 import io.legado.app.ui.association.LegadoDeepLink
 import io.legado.app.ui.association.LegadoDeepLinkHandler
+import io.legado.app.ui.browser.LocalWebViewSlot
+import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
+import io.legado.app.ui.book.info.SharedBlurCoverBgCoil
+import io.legado.desktop.ui.browser.DesktopWebViewSlot
+import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
+import io.legado.app.ui.book.manga.MangaReaderScreenModel
+import io.legado.app.ui.book.read.ReaderPlatformProviders
+import io.legado.app.ui.book.video.VideoPlayPlatformProviders
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
 import io.legado.app.ui.compose.platform.DesktopPreferenceStoreProvider
@@ -53,7 +62,6 @@ import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.jvmGetString
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.desktop.audio.registerDesktopAudioPlayProviders
 import io.legado.desktop.config.registerDesktopConfig
@@ -61,6 +69,7 @@ import io.legado.desktop.data.DesktopAppDbAccessor
 import io.legado.desktop.help.book.DesktopBitmapProvider
 import io.legado.desktop.help.book.DesktopBookHelpAccessor
 import io.legado.desktop.help.book.DesktopZipFileWrapperFactory
+import io.legado.desktop.help.book.registerDesktopBookshelfManagePlatform
 import io.legado.desktop.help.config.registerDesktopPasswordProvider
 import io.legado.desktop.help.DesktopDefaultDataResourceProvider
 import io.legado.desktop.help.SingleInstanceGuard
@@ -68,6 +77,7 @@ import io.legado.desktop.help.http.registerDesktopBackstageWebView
 import io.legado.desktop.help.registerDesktopArchiveProvider
 import io.legado.desktop.help.registerDesktopFileCacheProvider
 import io.legado.desktop.help.registerDesktopAndroidId
+import io.legado.desktop.help.changesource.registerDesktopChangeBookSourcePlatform
 import io.legado.desktop.help.i18n.registerDesktopAppStringProvider
 import io.legado.desktop.help.log.registerDesktopAppLogHost
 import io.legado.desktop.help.registerDesktopDirectLinkUploadProviders
@@ -91,12 +101,20 @@ import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.LegadoApp
 import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.book.source.SourceUiEventBridgeHost
 import io.legado.desktop.ui.DesktopPlatformCapabilities
+import io.legado.desktop.ui.DesktopPlatformServices
+import io.legado.desktop.ui.DesktopWindowHandle
+import io.legado.desktop.ui.platform.DesktopAudioPlayPlatformProvider
+import io.legado.desktop.ui.platform.DesktopMangaReaderPlatform
+import io.legado.desktop.ui.platform.DesktopReaderPlatformProvider
+import io.legado.desktop.ui.platform.DesktopVideoPlayPlatformProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
+import org.jetbrains.compose.resources.painterResource
 import org.jsoup.Jsoup
 import java.awt.Desktop
 import java.io.File
@@ -250,6 +268,27 @@ private fun runDesktopApp() = application {
     BookHelpProviders.register(DesktopBookHelpAccessor())
     // 注册桌面端 PlatformCapabilities (供 shared LegadoApp 经 PlatformCapabilityProviders.get() 取能力)
     PlatformCapabilityProviders.register(DesktopPlatformCapabilities)
+    // 注册桌面端 PlatformServices (对照 app 端 MainActivity.onActivityCreated 同步注册):
+    // shared 路由中 PlatformServiceProviders.getOrNull() ?: return 回退分支不再触发,
+    // 文件选择/分享/窗口控制等不再静默失败
+    // windowHandle 在 Window 组装后由 DisposableEffect 注入 AWT 窗口, 供全屏切换
+    val windowHandle = remember { DesktopWindowHandle() }
+    PlatformServiceProviders.register(
+        DesktopPlatformServices(
+            DesktopPlatformCapabilities,
+            windowHandle
+        )
+    )
+    // 注册桌面端 4 个媒体 PlatformProvider (对照 app 端 MainActivity.onActivityCreated 同步注册),
+    // 避免 Reader/Audio/Manga/Video Route 显示 "platform unavailable":
+    // - Reader: DesktopReadMenuController 功能性菜单 (导航/章节/夜间模式)
+    // - Audio: 复用 shared AudioPlayScreenContent + 桌面端 slots (封面/模糊背景/歌词/对话框)
+    // - Manga: Coil3 AsyncImage 渲染 + ColorMatrix 灰度/颜色滤镜
+    // - Video: MPV 播放器 (SwingPanel + nativeHwnd 桥接, Windows 用 WComponentPeer getHwnd)
+    ReaderPlatformProviders.register(DesktopReaderPlatformProvider())
+    AudioPlayPlatformProviders.register(DesktopAudioPlayPlatformProvider())
+    MangaReaderScreenModel.Providers.register(DesktopMangaReaderPlatform)
+    VideoPlayPlatformProviders.register(DesktopVideoPlayPlatformProvider())
 
     // ==================== 阶段2: 显示窗口 ====================
     // KP2: 桌面端窗口框架——注入 4 个 DesktopXxxProvider + AppTheme 包装 LegadoApp
@@ -279,9 +318,14 @@ private fun runDesktopApp() = application {
     ) {
         // 单实例守卫绑定主窗口: 二次启动转发到达时前置本窗口 (取消最小化 + toFront + 请求焦点);
         // DisposableEffect 保证窗口销毁后解绑, 不让守卫持有已 dispose 的 AWT Window
+        // 同步注入 AWT 窗口句柄到 DesktopWindowHandle, 供 DesktopWindowController 切换全屏
         DisposableEffect(window) {
+            windowHandle.window = window
             SingleInstanceGuard.bindWindow(window)
-            onDispose { SingleInstanceGuard.bindWindow(null) }
+            onDispose {
+                windowHandle.window = null
+                SingleInstanceGuard.bindWindow(null)
+            }
         }
         // ==================== 阶段3: 后台异步注册非首屏 provider ====================
         // 用 LaunchedEffect 在窗口显示后立即启动协程注册, 不阻塞首屏渲染
@@ -299,6 +343,11 @@ private fun runDesktopApp() = application {
             LocalAppConfigProvider provides appConfigProvider,
             LocalEventBusProvider provides eventBusProvider,
             LocalPreferenceStoreProvider provides preferenceStoreProvider,
+            LocalWebViewSlot provides { url, modifier -> DesktopWebViewSlot(url, modifier) },
+            // 注入 Coil3 模糊封面背景到 shared 详情页路由, 覆盖 LocalBlurCoverBgSlot 兜底
+            LocalBlurCoverBgSlot provides { book, coverTick, inBookshelf, isEInkMode, modifier ->
+                SharedBlurCoverBgCoil(book, coverTick, inBookshelf, isEInkMode, modifier)
+            },
         ) {
             AppTheme {
                 // 对照 app 端 App.kt:132 SourceUiEventBridge.init(): desktop 无 Activity,
@@ -400,6 +449,12 @@ private suspend fun registerSecondaryProviders() {
         // 13. AudioPlay (依赖 AppDbProviders + BookHelpProviders + SourceHelpAccessors + WebBookProviders
         //     + JsEngines + OkHttpClientProviders, 必须最后注册)
         registerDesktopAudioPlayProviders()
+        // 13b. ChangeBookSource / BookshelfManage 平台 provider (对照 app 端 App.kt:183/187
+        //      registerAndroidChangeBookSourcePlatform / registerAndroidBookshelfManagePlatform,
+        //      须在 registerDesktopWebBookProviders 之后, 因换源/书架管理依赖 AppDbProviders /
+        //      WebBookProviders / ContentProcessorProviders 已注册)
+        registerDesktopChangeBookSourcePlatform()
+        registerDesktopBookshelfManagePlatform()
         // 14. TTS 引擎 (独立, Windows SAPI / Linux espeak / macOS say)
         TtsEngineProvider.register(DesktopSystemTtsEngine())
         // 14b. HttpTTS 播放器工厂 (KP2-D P0-9: 三端朗读 HttpTTS 路径)

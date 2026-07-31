@@ -54,6 +54,8 @@ import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.launch
 import java.io.File
 import java.net.URLDecoder
+import org.jetbrains.compose.resources.stringArrayResource
+import org.jetbrains.compose.resources.stringResource
 
 class FontSelectDialog : BaseComposeDialogFragment() {
 

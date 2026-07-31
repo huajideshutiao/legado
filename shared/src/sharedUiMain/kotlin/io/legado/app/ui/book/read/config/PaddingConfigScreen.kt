@@ -20,8 +20,17 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDetailSeekBar
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.footer
+import legado.shared.generated.resources.header
+import legado.shared.generated.resources.main_body
+import legado.shared.generated.resources.padding_bottom
+import legado.shared.generated.resources.padding_left
+import legado.shared.generated.resources.padding_right
+import legado.shared.generated.resources.padding_top
+import legado.shared.generated.resources.showLine
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 边距配置控制器：把 app 端 `ReadBookConfig` 的边距/分隔线字段读写抽象为接口，
@@ -57,7 +66,7 @@ interface PaddingConfigController {
  * - `ReadBookConfig` 读写通过 [controller] 桥接
  *
  * 资源访问替换：
- * - `stringResource(R.string.xxx)` → `rememberString("xxx")`
+ * - `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)`
  *
  * 行为对齐原 PaddingConfigDialog：即时写 [controller] 并 postConfig 刷新渲染，
  * 边距配置走 STYLE（仅样式刷新），正文边距走 CHAPTER_LAYOUT + LOAD_CONTENT（重排）。
@@ -81,57 +90,93 @@ fun PaddingConfigScreen(
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        SectionTitle(rememberString("header")) {
+        SectionTitle(stringResource(Res.string.header)) {
             LineCheckbox(showHeaderLine) {
                 showHeaderLine = it
                 controller.showHeaderLine = it
                 onPostConfig(listOf(ReadConfigChange.STYLE))
             }
         }
-        PaddingSeekBar(rememberString("padding_top"), 100, { controller.headerPaddingTop }, {
+        PaddingSeekBar(
+            stringResource(Res.string.padding_top),
+            100,
+            { controller.headerPaddingTop },
+            {
             controller.headerPaddingTop = it
         }, styleOnly, onPostConfig)
-        PaddingSeekBar(rememberString("padding_bottom"), 100, { controller.headerPaddingBottom }, {
+        PaddingSeekBar(
+            stringResource(Res.string.padding_bottom),
+            100,
+            { controller.headerPaddingBottom },
+            {
             controller.headerPaddingBottom = it
         }, styleOnly, onPostConfig)
-        PaddingSeekBar(rememberString("padding_left"), 100, { controller.headerPaddingLeft }, {
+        PaddingSeekBar(
+            stringResource(Res.string.padding_left),
+            100,
+            { controller.headerPaddingLeft },
+            {
             controller.headerPaddingLeft = it
         }, styleOnly, onPostConfig)
-        PaddingSeekBar(rememberString("padding_right"), 100, { controller.headerPaddingRight }, {
+        PaddingSeekBar(
+            stringResource(Res.string.padding_right),
+            100,
+            { controller.headerPaddingRight },
+            {
             controller.headerPaddingRight = it
         }, styleOnly, onPostConfig)
 
-        SectionTitle(rememberString("main_body"))
-        PaddingSeekBar(rememberString("padding_top"), 200, { controller.paddingTop }, {
+        SectionTitle(stringResource(Res.string.main_body))
+        PaddingSeekBar(stringResource(Res.string.padding_top), 200, { controller.paddingTop }, {
             controller.paddingTop = it
         }, layoutAndLoad, onPostConfig)
-        PaddingSeekBar(rememberString("padding_bottom"), 100, { controller.paddingBottom }, {
+        PaddingSeekBar(
+            stringResource(Res.string.padding_bottom),
+            100,
+            { controller.paddingBottom },
+            {
             controller.paddingBottom = it
         }, layoutAndLoad, onPostConfig)
-        PaddingSeekBar(rememberString("padding_left"), 100, { controller.paddingLeft }, {
+        PaddingSeekBar(stringResource(Res.string.padding_left), 100, { controller.paddingLeft }, {
             controller.paddingLeft = it
         }, layoutAndLoad, onPostConfig)
-        PaddingSeekBar(rememberString("padding_right"), 100, { controller.paddingRight }, {
+        PaddingSeekBar(stringResource(Res.string.padding_right), 100, { controller.paddingRight }, {
             controller.paddingRight = it
         }, layoutAndLoad, onPostConfig)
 
-        SectionTitle(rememberString("footer")) {
+        SectionTitle(stringResource(Res.string.footer)) {
             LineCheckbox(showFooterLine) {
                 showFooterLine = it
                 controller.showFooterLine = it
                 onPostConfig(listOf(ReadConfigChange.STYLE))
             }
         }
-        PaddingSeekBar(rememberString("padding_top"), 100, { controller.footerPaddingTop }, {
+        PaddingSeekBar(
+            stringResource(Res.string.padding_top),
+            100,
+            { controller.footerPaddingTop },
+            {
             controller.footerPaddingTop = it
         }, styleOnly, onPostConfig)
-        PaddingSeekBar(rememberString("padding_bottom"), 100, { controller.footerPaddingBottom }, {
+        PaddingSeekBar(
+            stringResource(Res.string.padding_bottom),
+            100,
+            { controller.footerPaddingBottom },
+            {
             controller.footerPaddingBottom = it
         }, styleOnly, onPostConfig)
-        PaddingSeekBar(rememberString("padding_left"), 100, { controller.footerPaddingLeft }, {
+        PaddingSeekBar(
+            stringResource(Res.string.padding_left),
+            100,
+            { controller.footerPaddingLeft },
+            {
             controller.footerPaddingLeft = it
         }, styleOnly, onPostConfig)
-        PaddingSeekBar(rememberString("padding_right"), 100, { controller.footerPaddingRight }, {
+        PaddingSeekBar(
+            stringResource(Res.string.padding_right),
+            100,
+            { controller.footerPaddingRight },
+            {
             controller.footerPaddingRight = it
         }, styleOnly, onPostConfig)
     }
@@ -151,7 +196,7 @@ private fun SectionTitle(text: String, trailing: (@Composable () -> Unit)? = nul
 
 @Composable
 private fun LineCheckbox(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Text(rememberString("showLine"), color = AppTheme.colors.primaryText, fontSize = 14.sp)
+    Text(stringResource(Res.string.showLine), color = AppTheme.colors.primaryText, fontSize = 14.sp)
     AppCheckbox(
         checked = checked,
         onCheckedChange = onCheckedChange,

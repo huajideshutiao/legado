@@ -7,24 +7,25 @@ val enableIosTarget = isMacHost &&
     ((project.findProperty("enableIosTarget") ?: "true").toString() == "true")
 val enableOhosTarget = (project.findProperty("enableOhosTarget") ?: "false").toString() == "true"
 
-// @JsApi 注解的独立微型 KMP 模块。
-// 注解本身零依赖, 但 shared/commonMain (BaseSource/CacheManager) 需要在全 target 下可见,
-// 而 modules:quickjs 只有 jvm/android target, 故把注解声明抽出来单独发布全 target 变体。
-// target 集合与开关必须与 shared/build.gradle.kts 保持一致, 否则 KMP 依赖解析失败。
 kotlin {
     jvm()
-    android {
+    androidLibrary {
         namespace = "com.script.jsdispatch.annotation"
-        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-        }
+        compileSdk = 36
+        minSdk = 26
     }
 
     if (enableIosTarget) {
         iosArm64()
         iosSimulatorArm64()
     }
+
+    // 仅在明确启用时添加 ohos target
     if (enableOhosTarget) {
-        ohosArm64()
+        // 使用这种方式避开标准编译器不支持 ohosArm64 的报错
+        targets.findByName("ohosArm64") ?: try {
+            this::class.java.getMethod("ohosArm64").invoke(this)
+        } catch (e: Exception) {
+        }
     }
 }

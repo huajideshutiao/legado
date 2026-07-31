@@ -3,22 +3,58 @@ package io.legado.app.ui.main.my
 import androidx.compose.runtime.Composable
 import io.legado.app.constant.PreferKey
 import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.platform.rememberStringArray
 import io.legado.app.ui.compose.preference.PreferenceScreen
 import io.legado.app.ui.compose.preference.listPreference
 import io.legado.app.ui.compose.preference.preference
 import io.legado.app.ui.compose.preference.preferenceCategory
 import io.legado.app.ui.compose.preference.switchPreference
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.ic_bookmark
+import legado.shared.generated.resources.ic_cfg_about
+import legado.shared.generated.resources.ic_cfg_backup
+import legado.shared.generated.resources.ic_cfg_other
+import legado.shared.generated.resources.ic_cfg_replace
+import legado.shared.generated.resources.ic_cfg_source
+import legado.shared.generated.resources.ic_cfg_theme
+import legado.shared.generated.resources.ic_cfg_web
+import legado.shared.generated.resources.ic_history
+import legado.shared.generated.resources.ic_import
+import legado.shared.generated.resources.ic_translate
+import legado.shared.generated.resources.ic_web_outline
+import legado.shared.generated.resources.outline_filter_alt_24
+import legado.shared.generated.resources.about
+import legado.shared.generated.resources.backup_restore
+import legado.shared.generated.resources.book_source
+import legado.shared.generated.resources.book_source_manage
+import legado.shared.generated.resources.book_source_manage_desc
+import legado.shared.generated.resources.bookmark
+import legado.shared.generated.resources.dict_rule
+import legado.shared.generated.resources.other
+import legado.shared.generated.resources.other_setting
+import legado.shared.generated.resources.read_record
+import legado.shared.generated.resources.replace_purify
+import legado.shared.generated.resources.rss_sources
+import legado.shared.generated.resources.rule_subscription
+import legado.shared.generated.resources.source_filter_rule
+import legado.shared.generated.resources.theme_mode
+import legado.shared.generated.resources.theme_setting
+import legado.shared.generated.resources.theme_setting_s
+import legado.shared.generated.resources.txt_toc_rule
+import legado.shared.generated.resources.web_dav_set_import_old
+import legado.shared.generated.resources.web_service
+import legado.shared.generated.resources.theme_mode_v
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringArrayResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 我的页设置内容（迁 pref_main.xml）。逐条对齐原条目顺序/key/默认值/图标。
  * themeMode 切换后 applyDayNight、webService 开关/长按/动态 summary 由 [MyTab] 承接。
  *
  * 下沉 shared/sharedUiMain:
- * - stringResource(R.string.xxx) → rememberString("xxx")
- * - stringArrayResource(R.array.xxx) → rememberStringArray("xxx")
+ * - stringResource(R.string.xxx) → stringResource(Res.string.xxx)
+ * - stringArrayResource(R.array.xxx) → stringArrayResource(Res.array.xxx)
  * - painterResource(R.drawable.xxx) → rememberPainter("xxx")
  * - 与 app 端原包名/类名一致, app/desktop 端共用。
  *
@@ -37,7 +73,7 @@ import io.legado.app.ui.compose.theme.AppTheme
  * - `ic_bookmark`         书签
  * - `ic_history`          阅读记录（已注册, 复用）
  * - `ic_cfg_about`        关于
- * - `ic_web_outline`      RSS 源 (仅 showRssEntry=true 时渲染, 桌面端独有)
+ * - `ic_web_outline`      RSS 源 (showRssEntry=true 时渲染)
  *
  * ### String key (string)
  * - `theme_mode`                主题模式（标题）
@@ -49,7 +85,7 @@ import io.legado.app.ui.compose.theme.AppTheme
  * - `book_source_manage` / `book_source_manage_desc`
  * - `replace_purify` / `source_filter_rule` / `txt_toc_rule`
  * - `dict_rule` / `rule_subscription`
- * - `rss_sources`               RSS 源 (仅 showRssEntry=true 时渲染, 桌面端独有)
+ * - `rss_sources`               RSS 源 (showRssEntry=true 时渲染)
  * - `other`                     分类标题
  * - `bookmark` / `read_record` / `about`
  *
@@ -78,51 +114,50 @@ fun MyConfigScreen(
     onBookmark: () -> Unit,
     onReadRecord: () -> Unit,
     onAbout: () -> Unit,
-    // RSS 源入口 (桌面端独有, app 端不传默认 false 不渲染, 避免 app 端 UI 变更)
+    // RSS 源入口开关 (MyConfigRoute 默认启用, 各端共用)
     showRssEntry: Boolean = false,
     onRssSources: () -> Unit = {},
 ) {
-    val themeModeEntries = rememberStringArray("theme_mode")
-    val themeModeValues = rememberStringArray("theme_mode_v")
+    val themeModeEntries = stringArrayResource(Res.array.theme_mode)
+    val themeModeValues = stringArrayResource(Res.array.theme_mode_v)
 
-    val titleThemeMode = rememberString("theme_mode")
-    val titleThemeSetting = rememberString("theme_setting")
-    val summaryThemeSetting = rememberString("theme_setting_s")
-    val titleBackupRestore = rememberString("backup_restore")
-    val summaryWebDav = rememberString("web_dav_set_import_old")
-    val titleWebService = rememberString("web_service")
-    val titleOtherSetting = rememberString("other_setting")
-    val titleBookSource = rememberString("book_source")
-    val titleBookSourceManage = rememberString("book_source_manage")
-    val summaryBookSourceManage = rememberString("book_source_manage_desc")
-    val titleReplacePurify = rememberString("replace_purify")
-    val titleSourceFilterRule = rememberString("source_filter_rule")
-    val titleTxtTocRule = rememberString("txt_toc_rule")
-    val titleDictRule = rememberString("dict_rule")
-    val titleRuleSub = rememberString("rule_subscription")
-    // RSS 源标题 (仅 showRssEntry=true 时取值; app 端无 rss_sources string 资源,
-    // 无条件调用会触发 Resources$NotFoundException, 故用条件组合跳过)
-    val titleRssSources = if (showRssEntry) rememberString("rss_sources") else ""
-    val titleOther = rememberString("other")
-    val titleBookmark = rememberString("bookmark")
-    val titleReadRecord = rememberString("read_record")
-    val titleAbout = rememberString("about")
+    val titleThemeMode = stringResource(Res.string.theme_mode)
+    val titleThemeSetting = stringResource(Res.string.theme_setting)
+    val summaryThemeSetting = stringResource(Res.string.theme_setting_s)
+    val titleBackupRestore = stringResource(Res.string.backup_restore)
+    val summaryWebDav = stringResource(Res.string.web_dav_set_import_old)
+    val titleWebService = stringResource(Res.string.web_service)
+    val titleOtherSetting = stringResource(Res.string.other_setting)
+    val titleBookSource = stringResource(Res.string.book_source)
+    val titleBookSourceManage = stringResource(Res.string.book_source_manage)
+    val summaryBookSourceManage = stringResource(Res.string.book_source_manage_desc)
+    val titleReplacePurify = stringResource(Res.string.replace_purify)
+    val titleSourceFilterRule = stringResource(Res.string.source_filter_rule)
+    val titleTxtTocRule = stringResource(Res.string.txt_toc_rule)
+    val titleDictRule = stringResource(Res.string.dict_rule)
+    val titleRuleSub = stringResource(Res.string.rule_subscription)
+    // RSS 源标题 (仅 showRssEntry=true 时取值)
+    val titleRssSources = if (showRssEntry) stringResource(Res.string.rss_sources) else ""
+    val titleOther = stringResource(Res.string.other)
+    val titleBookmark = stringResource(Res.string.bookmark)
+    val titleReadRecord = stringResource(Res.string.read_record)
+    val titleAbout = stringResource(Res.string.about)
 
     // rememberPainter 是 @Composable，须在此层取值，不能在 LazyListScope 构建 lambda 内调用
-    val iconTheme = rememberPainter("ic_cfg_theme")
-    val iconBackup = rememberPainter("ic_cfg_backup")
-    val iconWeb = rememberPainter("ic_cfg_web")
-    val iconOther = rememberPainter("ic_cfg_other")
-    val iconSource = rememberPainter("ic_cfg_source")
-    val iconReplace = rememberPainter("ic_cfg_replace")
-    val iconFilter = rememberPainter("outline_filter_alt_24")
-    val iconTranslate = rememberPainter("ic_translate")
-    val iconImport = rememberPainter("ic_import")
-    val iconBookmark = rememberPainter("ic_bookmark")
-    val iconHistory = rememberPainter("ic_history")
-    val iconAbout = rememberPainter("ic_cfg_about")
+    val iconTheme = painterResource(Res.drawable.ic_cfg_theme)
+    val iconBackup = painterResource(Res.drawable.ic_cfg_backup)
+    val iconWeb = painterResource(Res.drawable.ic_cfg_web)
+    val iconOther = painterResource(Res.drawable.ic_cfg_other)
+    val iconSource = painterResource(Res.drawable.ic_cfg_source)
+    val iconReplace = painterResource(Res.drawable.ic_cfg_replace)
+    val iconFilter = painterResource(Res.drawable.outline_filter_alt_24)
+    val iconTranslate = painterResource(Res.drawable.ic_translate)
+    val iconImport = painterResource(Res.drawable.ic_import)
+    val iconBookmark = painterResource(Res.drawable.ic_bookmark)
+    val iconHistory = painterResource(Res.drawable.ic_history)
+    val iconAbout = painterResource(Res.drawable.ic_cfg_about)
     // RSS 源图标 (复用 ic_web_outline, 仅 showRssEntry=true 时渲染)
-    val iconRss = rememberPainter("ic_web_outline")
+    val iconRss = painterResource(Res.drawable.ic_web_outline)
 
     AppTheme {
         PreferenceScreen {
@@ -195,7 +230,7 @@ fun MyConfigScreen(
                 icon = iconImport,
                 onClick = onRuleSubManage,
             )
-            // RSS 源入口 (仅桌面端 showRssEntry=true 时渲染; app 端默认 false 跳过, UI 不变)
+            // RSS 源入口 (showRssEntry=true 时渲染)
             if (showRssEntry) {
                 preference(
                     title = titleRssSources,

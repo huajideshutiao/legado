@@ -1,6 +1,7 @@
 package io.legado.app.ui.replace
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,6 +27,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
@@ -34,10 +42,28 @@ import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.OverflowMenu
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.replace.edit.ReplaceEditViewModelShared
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.action_save
+import legado.shared.generated.resources.copy_rule
+import legado.shared.generated.resources.group
+import legado.shared.generated.resources.help
+import legado.shared.generated.resources.ic_help
+import legado.shared.generated.resources.ic_save
+import legado.shared.generated.resources.paste_rule
+import legado.shared.generated.resources.replace_exclude_scope
+import legado.shared.generated.resources.replace_rule
+import legado.shared.generated.resources.replace_rule_edit
+import legado.shared.generated.resources.replace_rule_summary
+import legado.shared.generated.resources.replace_scope
+import legado.shared.generated.resources.replace_to
+import legado.shared.generated.resources.scope_content
+import legado.shared.generated.resources.scope_title
+import legado.shared.generated.resources.timeout_millisecond
+import legado.shared.generated.resources.use_regex
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 替换规则编辑 Screen (KMP 版, commonMain 共享)。
@@ -109,9 +135,36 @@ fun ReplaceEditScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown || !event.isCtrlPressed) {
+                    return@onPreviewKeyEvent false
+                }
+                when {
+                    event.key == Key.Z && event.isShiftPressed -> {
+                        focusedField?.redo()
+                        focusedField != null
+                    }
+
+                    event.key == Key.Z -> {
+                        focusedField?.undo()
+                        focusedField != null
+                    }
+
+                    event.key == Key.Y -> {
+                        focusedField?.redo()
+                        focusedField != null
+                    }
+
+                    else -> false
+                }
+            }
+            .focusable()
+    ) {
         AppTitleBar(
-            title = rememberString("replace_rule_edit"),
+            title = stringResource(Res.string.replace_rule_edit),
             onBack = onBack,
             actions = {
                 IconButton(onClick = {
@@ -119,8 +172,8 @@ fun ReplaceEditScreen(
                     viewModel.save(current, onSaved)
                 }) {
                     Icon(
-                        painter = rememberPainter("ic_save"),
-                        contentDescription = rememberString("action_save"),
+                        painter = painterResource(Res.drawable.ic_save),
+                        contentDescription = stringResource(Res.string.action_save),
                         tint = AppTheme.colors.primaryText,
                     )
                 }
@@ -133,7 +186,10 @@ fun ReplaceEditScreen(
                             }
                         },
                     ) {
-                        Text(rememberString("copy_rule"), color = AppTheme.colors.primaryText)
+                        Text(
+                            stringResource(Res.string.copy_rule),
+                            color = AppTheme.colors.primaryText
+                        )
                     }
                     DropdownMenuItem(
                         onClick = {
@@ -156,7 +212,10 @@ fun ReplaceEditScreen(
                             )
                         },
                     ) {
-                        Text(rememberString("paste_rule"), color = AppTheme.colors.primaryText)
+                        Text(
+                            stringResource(Res.string.paste_rule),
+                            color = AppTheme.colors.primaryText
+                        )
                     }
                 }
             },
@@ -168,15 +227,22 @@ fun ReplaceEditScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 8.dp),
         ) {
-            FormField(name, rememberString("replace_rule_summary")) { focusedField = it }
-            FormField(group, rememberString("group")) { focusedField = it }
-            FormField(pattern, rememberString("replace_rule")) { focusedField = it }
+            FormField(name, stringResource(Res.string.replace_rule_summary)) { focusedField = it }
+            FormField(group, stringResource(Res.string.group)) { focusedField = it }
+            FormField(pattern, stringResource(Res.string.replace_rule)) { focusedField = it }
             UseRegexRow(useRegex, onToggle = { useRegex = !useRegex }, onHelp = onHelp)
-            FormField(replacement, rememberString("replace_to")) { focusedField = it }
+            FormField(replacement, stringResource(Res.string.replace_to)) { focusedField = it }
             ScopeCheckRow(scopeTitle, scopeContent, { scopeTitle = it }, { scopeContent = it })
-            FormField(scopeField, rememberString("replace_scope")) { focusedField = it }
-            FormField(excludeScope, rememberString("replace_exclude_scope")) { focusedField = it }
-            FormField(timeout, rememberString("timeout_millisecond"), number = true) { focusedField = it }
+            FormField(scopeField, stringResource(Res.string.replace_scope)) { focusedField = it }
+            FormField(
+                excludeScope,
+                stringResource(Res.string.replace_exclude_scope)
+            ) { focusedField = it }
+            FormField(
+                timeout,
+                stringResource(Res.string.timeout_millisecond),
+                number = true
+            ) { focusedField = it }
         }
     }
 }
@@ -186,7 +252,7 @@ fun ReplaceEditScreen(
  *
  * 对照 app 端原 FieldState 下沉, 去掉 `insertAtCursor` (依赖 app 端
  * `KeyboardToolbarState.insertAtCursor` 扩展); 保留 undo/redo/onChange/reset 语义。
- * undo/redo 暂未在 KMP Screen 内挂快捷键 (app 端走 KeyboardToolbar), 留待宿主接入。
+ * KMP Screen 统一处理 Ctrl+Z、Ctrl+Y 与 Ctrl+Shift+Z，并定向作用于当前焦点字段。
  */
 class FieldState {
     var value by mutableStateOf(TextFieldValue(""))
@@ -272,15 +338,15 @@ private fun UseRegexRow(
         ) {
             AppCheckbox(checked = useRegex, onCheckedChange = null)
             Text(
-                rememberString("use_regex"),
+                stringResource(Res.string.use_regex),
                 color = colors.primaryText,
                 modifier = Modifier.padding(start = 4.dp),
             )
         }
         IconButton(onClick = onHelp) {
             Icon(
-                painter = rememberPainter("ic_help"),
-                contentDescription = rememberString("help"),
+                painter = painterResource(Res.drawable.ic_help),
+                contentDescription = stringResource(Res.string.help),
                 tint = colors.primaryText,
                 modifier = Modifier.size(24.dp),
             )
@@ -304,7 +370,7 @@ private fun ScopeCheckRow(
         ) {
             AppCheckbox(checked = scopeTitle, onCheckedChange = null)
             Text(
-                rememberString("scope_title"),
+                stringResource(Res.string.scope_title),
                 color = colors.primaryText,
                 modifier = Modifier.padding(start = 4.dp),
             )
@@ -316,7 +382,7 @@ private fun ScopeCheckRow(
         ) {
             AppCheckbox(checked = scopeContent, onCheckedChange = null)
             Text(
-                rememberString("scope_content"),
+                stringResource(Res.string.scope_content),
                 color = colors.primaryText,
                 modifier = Modifier.padding(start = 4.dp),
             )

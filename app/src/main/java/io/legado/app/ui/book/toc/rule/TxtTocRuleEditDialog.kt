@@ -36,6 +36,7 @@ import io.legado.app.utils.sendToClip
 import io.legado.app.utils.toastOnUi
 import java.util.regex.Pattern
 import java.util.regex.PatternSyntaxException
+import org.jetbrains.compose.resources.stringResource
 
 class TxtTocRuleEditDialog() : BaseComposeDialogFragment() {
 

@@ -55,6 +55,8 @@ import io.legado.app.ui.compose.dialogs.selector
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.find
@@ -218,6 +220,8 @@ abstract class BaseReadBookActivity : BaseComposeActivity(imageBg = false), IBot
                     currentBook?.save()
                     viewModel.inBookshelf = true
                     setResult(RESULT_OK)
+                    // 双轨: 同步 RouteResult 通道
+                    AppNavigatorProviders.getOrNull()?.pop(RouteResultPayload.Ok)
                 }
                 noButton { viewModel.removeFromBookshelf { super.finish() } }
             }
@@ -333,7 +337,9 @@ abstract class BaseReadBookActivity : BaseComposeActivity(imageBg = false), IBot
                 customView {
                     // 复刻 dialog_download_choice：章节 [起] 至 [止]
                     Row(
-                        Modifier.fillMaxWidth().padding(16.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center,
                     ) {
@@ -342,14 +348,18 @@ abstract class BaseReadBookActivity : BaseComposeActivity(imageBg = false), IBot
                             value = start.value,
                             onValueChange = { start.value = it },
                             label = getString(R.string.start),
-                            modifier = Modifier.width(90.dp).padding(horizontal = 4.dp),
+                            modifier = Modifier
+                                .width(90.dp)
+                                .padding(horizontal = 4.dp),
                         )
                         Text(getString(R.string.to), color = AppTheme.colors.primaryText, fontSize = 16.sp)
                         AppNumberField(
                             value = end.value,
                             onValueChange = { end.value = it },
                             label = getString(R.string.end),
-                            modifier = Modifier.width(90.dp).padding(horizontal = 4.dp),
+                            modifier = Modifier
+                                .width(90.dp)
+                                .padding(horizontal = 4.dp),
                         )
                     }
                 }
@@ -376,9 +386,13 @@ abstract class BaseReadBookActivity : BaseComposeActivity(imageBg = false), IBot
             customView {
                 // 复刻 dialog_simulated_reading：开关 + 起始日期(日期选择) + 起始章节/每日章数
                 val colors = AppTheme.colors
-                Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Column(Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)) {
                     Row(
-                        Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
@@ -392,7 +406,9 @@ abstract class BaseReadBookActivity : BaseComposeActivity(imageBg = false), IBot
                         )
                     }
                     Row(
-                        Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
@@ -425,7 +441,9 @@ abstract class BaseReadBookActivity : BaseComposeActivity(imageBg = false), IBot
                         )
                     }
                     Row(
-                        Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
@@ -435,7 +453,9 @@ abstract class BaseReadBookActivity : BaseComposeActivity(imageBg = false), IBot
                         AppNumberField(
                             value = startState.value,
                             onValueChange = { startState.value = it },
-                            modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 4.dp),
                         )
                         Text(
                             getString(R.string.daily_chapters),
@@ -444,7 +464,9 @@ abstract class BaseReadBookActivity : BaseComposeActivity(imageBg = false), IBot
                         AppNumberField(
                             value = numState.value,
                             onValueChange = { numState.value = it },
-                            modifier = Modifier.weight(1f).padding(start = 4.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 4.dp),
                         )
                     }
                 }

@@ -76,6 +76,7 @@ import io.legado.app.model.webBook.registerAndroidBookInfoRefresher
 import io.legado.app.model.webBook.registerAndroidWebBookProviders
 import io.legado.app.service.WebService
 import io.legado.app.ui.book.changesource.registerAndroidChangeBookSourcePlatform
+import io.legado.app.ui.book.manage.registerAndroidBookshelfManagePlatform
 import io.legado.app.ui.compose.platform.AndroidPreferenceStoreProvider
 import io.legado.app.ui.platform.registerSharedAppContext
 import io.legado.app.utils.LogUtils
@@ -180,6 +181,10 @@ class App : Application() {
         // ChangeBookSourcePlatformProviders.get() 取 AndroidChangeBookSourcePlatform,
         // 须在 registerAndroidWebBookProviders 之后, 因换源依赖 AppDbProviders / WebBookProviders)
         registerAndroidChangeBookSourcePlatform()
+        // 注册 BookshelfManage 平台 provider (commonMain BookshelfManageViewModelShared 调用
+        // BookshelfManagePlatformProviders.get() 取 AndroidBookshelfManagePlatform,
+        // 须在 registerAndroidWebBookProviders 之后, 因换源依赖 AppDbProviders / WebBookProviders)
+        registerAndroidBookshelfManagePlatform()
         // 注册 CacheBookCallback 桥接 ReadBook 单例 (CacheBookShared 调度核心下沉到 commonMain 后,
         // app 端通过 callback 把下载完成事件回放到 ReadBook.contentLoadFinish / downloadedChapters /
         // downloadFailChapters, 行为与下沉前一致)

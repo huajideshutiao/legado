@@ -12,13 +12,23 @@ import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.copy_url
+import legado.shared.generated.resources.ic_check
+import legado.shared.generated.resources.ic_refresh_black_24dp
+import legado.shared.generated.resources.loading
+import legado.shared.generated.resources.log
+import legado.shared.generated.resources.login
+import legado.shared.generated.resources.open_in_browser
+import legado.shared.generated.resources.refresh
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 书源登录页 (URL/WebView 登录) shared Screen。
@@ -43,12 +53,12 @@ fun LoginScreen(
     platformWebViewSlot: @Composable (String) -> Unit,
 ) {
     val colors = AppTheme.colors
-    val loadingText = rememberString("loading")
-    val refreshText = rememberString("refresh")
-    val openInBrowserText = rememberString("open_in_browser")
-    val copyUrlText = rememberString("copy_url")
-    val loginText = rememberString("login")
-    val logText = rememberString("log")
+    val loadingText = stringResource(Res.string.loading)
+    val refreshText = stringResource(Res.string.refresh)
+    val openInBrowserText = stringResource(Res.string.open_in_browser)
+    val copyUrlText = stringResource(Res.string.copy_url)
+    val loginText = stringResource(Res.string.login)
+    val logText = stringResource(Res.string.log)
 
     val titleText = state.pageTitle.ifBlank { loadingText }
 
@@ -60,7 +70,7 @@ fun LoginScreen(
                 // 确认登录按钮: ic_check 图标 (对照 WebViewActivity menu_ok, always 显示)
                 IconButton(onClick = actions::onLogin) {
                     Icon(
-                        painter = rememberPainter("ic_check"),
+                        painter = painterResource(Res.drawable.ic_check),
                         contentDescription = loginText,
                         tint = colors.primaryText,
                     )
@@ -68,7 +78,7 @@ fun LoginScreen(
                 // 刷新按钮 (对照 WebViewActivity menu_refresh, always 显示)
                 IconButton(onClick = actions::onRefresh) {
                     Icon(
-                        painter = rememberPainter("ic_refresh_black_24dp"),
+                        painter = painterResource(Res.drawable.ic_refresh_black_24dp),
                         contentDescription = refreshText,
                         tint = colors.primaryText,
                     )
@@ -92,7 +102,9 @@ fun LoginScreen(
                 .fillMaxWidth()
                 .weight(1f)
         ) {
-            platformWebViewSlot(state.loginUrl)
+            key(state.webViewReloadKey) {
+                platformWebViewSlot(state.loginUrl)
+            }
         }
     }
 

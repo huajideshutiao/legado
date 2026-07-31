@@ -7,7 +7,7 @@ package io.legado.app.ui.book.read
  *
  * # 资源访问替换
  * - `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")` (key-based, 跨平台)
- * - `stringResource(R.string.xxx)` → `rememberString("xxx")` (key-based, 跨平台)
+ * - `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)` (key-based, 跨平台)
  * - `LocalContext.current.getPrimaryTextColor(isLight)` → `ColorUtils.isColorLight` 判断
  *   0xDE000000 / White（等价 md_light/dark_primary_text，与 shared SearchContentScreen 一致）
  *
@@ -71,6 +71,9 @@ import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ColorUtils
+import legado.shared.generated.resources.Res
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * SearchMenu 状态接口：暴露 shared Composable 所需的状态属性 + 动作回调。

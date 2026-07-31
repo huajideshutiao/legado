@@ -29,12 +29,12 @@ import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.config.AppConfig
+import io.legado.app.ui.compose.platform.rememberPainter
 import kotlinx.coroutines.runBlocking
 import io.legado.app.ui.compose.component.AppAutoCompleteField
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.dialogs.alert
-import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.dialog.CodeDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
@@ -42,6 +42,7 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.showDialogFragment
+import org.jetbrains.compose.resources.getString
 
 /**
  * 导入书源弹出窗口
@@ -171,7 +172,9 @@ class ImportBookSourceDialog() : BaseComposeDialogFragment(), CodeDialog.Callbac
     @Composable
     private fun CheckableMenuItem(text: String, checked: Boolean, onToggle: (Boolean) -> Unit) {
         DropdownMenuItem(onClick = { onToggle(!checked) }) {
-            Text(text, Modifier.weight(1f).padding(end = 12.dp))
+            Text(text, Modifier
+                .weight(1f)
+                .padding(end = 12.dp))
             AppMenuCheckbox(checked = checked)
         }
     }

@@ -167,7 +167,7 @@ class WebService : BaseService() {
     override fun startForegroundNotification() {
         val builder = NotificationCompat.Builder(this, AppConst.channelIdWeb)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setSmallIcon(io.legado.shared.R.drawable.ic_web_service_noti)
+            .setSmallIcon(R.drawable.ic_web_service_noti)
             .setOngoing(true)
             .setContentTitle(getString(R.string.web_service))
             .setContentText(notificationList.joinToString("\n"))
@@ -175,7 +175,7 @@ class WebService : BaseService() {
                 servicePendingIntent<WebService>("copyHostAddress")
             )
         builder.addAction(
-            io.legado.shared.R.drawable.ic_stop_black_24dp,
+            R.drawable.ic_stop_black_24dp,
             getString(R.string.cancel),
             servicePendingIntent<WebService>(IntentAction.stop)
         )

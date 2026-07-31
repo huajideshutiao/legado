@@ -27,9 +27,6 @@ import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
-import io.legado.app.ui.compose.component.PullToRefreshDefaults
-import io.legado.app.ui.compose.component.pullToRefresh
-import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -43,12 +40,24 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.HomeSection
 import io.legado.app.data.entities.HomeTab
 import io.legado.app.data.entities.SearchBook
+import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.ui.compose.component.AppScrollTabRow
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.component.PullToRefreshDefaults
+import io.legado.app.ui.compose.component.pullToRefresh
+import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import kotlinx.coroutines.launch
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.bottom_line
+import legado.shared.generated.resources.home
+import legado.shared.generated.resources.home_manage
+import legado.shared.generated.resources.home_tab_empty
+import legado.shared.generated.resources.home_tab_manage
+import legado.shared.generated.resources.ic_cfg_other
+import legado.shared.generated.resources.ic_groups
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /*
  * 下沉所需资源 key 清单 (供 ResourceProvider 各平台 actual 补全)
@@ -65,12 +74,11 @@ import kotlinx.coroutines.launch
  *   - bottom_line       无更多数据文案
  *
  * L3 不可下沉项 (保留 app 端, 通过 slot 注入):
- *   - SectionBlock (HomeSectionComposables.kt): 内含 AndroidView (LinearLayout+
- *     setUpExploreOptions 参数 chip 行) + ShelfCover (Glide 封面) +
- *     ItemExploreVideoBinding (视频卡), 全 L3
+ *   - SectionBlock (HomeSectionComposables.kt): 内含 ShelfCover (Glide 封面) +
+ *     ItemExploreVideoBinding (视频卡), 全 L3; 参数 chip 行已下沉为
+ *     [HomeSectionOptionsRow] (纯 Compose)
  *     → sectionBlockSlot: @Composable (tabTitle: String, section: HomeSection) -> Unit
  *   - InfiniteHeader (HomeSectionComposables.kt): 同 SectionBlock 标题行+参数 chip 行
- *     (AndroidView), L3
  *     → infiniteHeaderSlot: @Composable (tabTitle: String, section: HomeSection) -> Unit
  *   - InfiniteGridCard (HomeSectionComposables.kt): ShelfCover/视频卡单元, L3
  *     → infiniteGridCardSlot: @Composable (tabTitle: String, section: HomeSection,
@@ -81,10 +89,10 @@ import kotlinx.coroutines.launch
  *     CoverRow/RankColumn/FourRow/NovelCoverCard/RankItem/VideoCardView/SectionOptions
  *     全部依赖 AndroidView/ShelfCover/ItemExploreVideoBinding/colorResource/stringResource
  *   - HomeSectionEditDialog.kt / HomeSectionManageDialog.kt / HomeTabManageDialog.kt /
- *     HomeTabEditDialog.kt: BaseComposeDialogFragment + lifecycleScope + appDb +
- *     HomeTabHelp, 全 L3
- *   - HomeViewModel.kt / HomeEvents.kt / HomeTabState: 依赖 appDb + HomeTabHelp +
- *     LiveData + activity, L3 (HomeTabState 实现 HomeUiActions 桥接)
+ *     HomeTabEditDialog.kt: 已下沉本包 (纯 Compose + HomeTabHelpShared + FlowBus),
+ *     弹窗态由 HomeScreenModel 持有, MainRoute 渲染
+ *   - HomeViewModel.kt / HomeTabState: 依赖 appDb + HomeTabHelp + LiveData + activity, L3
+ *     (HomeTabState 实现 HomeUiActions 桥接); HomeEvents.kt 已下沉 commonMain
  *   - SectionTitleRow: 留在 app HomeSectionComposables.kt (仅该文件使用, 含
  *     R.drawable.ic_arrow_right + R.string.home_more)
  */
@@ -102,6 +110,8 @@ import kotlinx.coroutines.launch
  * - [sectionBooks]: sectionKey(tabTitle + " " + sectionId) -> 该展示项的书籍列表
  * - [sectionLoading]: 同 key -> 该展示项是否加载中
  * - [sectionError]: 同 key -> 该展示项是否加载出错
+ * - [sectionOptions]: 同 key -> 该展示项发现地址的可选参数 (可变 ExploreOption 实例, 点 chip 就地改)
+ * - [sectionOptionsVersion]: options 结构变化信号 (ExploreOption 就地可变, 单靠 map 相等性检测不到重解析)
  * - [infiniteHasMore]: tabTitle -> 该 tab 的无限流是否还有更多
  *
  * 注: [sectionBooks] / [sectionLoading] / [sectionError] 的 key 由 [homeSectionKey]
@@ -114,6 +124,8 @@ data class HomeUiState(
     val sectionBooks: Map<String, List<SearchBook>>,
     val sectionLoading: Map<String, Boolean>,
     val sectionError: Map<String, Boolean>,
+    val sectionOptions: Map<String, List<ExploreOption>>,
+    val sectionOptionsVersion: Int,
     val infiniteHasMore: Map<String, Boolean>,
 )
 
@@ -143,6 +155,9 @@ interface HomeUiActions {
     fun refreshTab(tabTitle: String)
     /** 触底加载更多 (对照原 onScrolled 距末 4 项) */
     fun loadInfinite(tabTitle: String)
+
+    /** 用户切换了某个展示项的参数 chip (对照 HomeSectionAdapter.Callback.onOptionSelected) */
+    fun onSectionOptionSelected(tabTitle: String, section: HomeSection)
 }
 
 /**
@@ -156,10 +171,10 @@ interface HomeUiActions {
  *
  * 视觉/布局/动画/手势/状态管理完全与 app 端原版一致 (宽高/边距/颜色/层级)。
  *
- * @param sectionBlockSlot 非无限流展示项区块 (含 AndroidView+ShelfCover, L3)
- *   - 调用方传入 tabTitle + section, slot 内部自行从 HomeTabState 取书籍/状态/回调
- * @param infiniteHeaderSlot 无限流头部 (含 AndroidView 参数 chip 行, L3)
- *   - 调用方传入 tabTitle + section, slot 内部自行从 HomeTabState 取参数/回调
+ * @param sectionBlockSlot 非无限流展示项区块 (含 ShelfCover, L3)
+ *   - 调用方传入 tabTitle + section, slot 内部自行从 state 取书籍/参数/状态/回调
+ * @param infiniteHeaderSlot 无限流头部 (标题行 + 参数 chip 行)
+ *   - 调用方传入 tabTitle + section, slot 内部自行从 state 取参数/回调
  * @param infiniteGridCardSlot 无限流网格单元 (含 ShelfCover/视频卡, L3)
  *   - 调用方传入 tabTitle + section + book, slot 内部自行处理渲染
  */
@@ -256,7 +271,7 @@ private fun HomeTopBar(
                 }
             } else {
                 Text(
-                    text = rememberString("home"),
+                    text = stringResource(Res.string.home),
                     color = colors.primaryText,
                     fontSize = 20.sp,
                     maxLines = 1,
@@ -265,15 +280,15 @@ private fun HomeTopBar(
             }
             IconButton(onClick = { actions.openManageSection() }) {
                 Icon(
-                    painter = rememberPainter("ic_cfg_other"),
-                    contentDescription = rememberString("home_manage"),
+                    painter = painterResource(Res.drawable.ic_cfg_other),
+                    contentDescription = stringResource(Res.string.home_manage),
                     tint = colors.primaryText,
                 )
             }
             IconButton(onClick = { actions.openManageTab() }) {
                 Icon(
-                    painter = rememberPainter("ic_groups"),
-                    contentDescription = rememberString("home_tab_manage"),
+                    painter = painterResource(Res.drawable.ic_groups),
+                    contentDescription = stringResource(Res.string.home_tab_manage),
                     tint = colors.primaryText,
                 )
             }
@@ -330,7 +345,7 @@ private fun HomeTabPage(
     if (sections.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
-                text = rememberString("home_tab_empty"),
+                text = stringResource(Res.string.home_tab_empty),
                 color = colors.secondaryText,
                 fontSize = 14.sp,
             )
@@ -417,7 +432,7 @@ private fun LoadMoreFooter(loading: Boolean, hasMore: Boolean) {
             )
 
             !hasMore -> Text(
-                text = rememberString("bottom_line"),
+                text = stringResource(Res.string.bottom_line),
                 color = colors.secondaryText,
                 fontSize = 12.sp,
             )

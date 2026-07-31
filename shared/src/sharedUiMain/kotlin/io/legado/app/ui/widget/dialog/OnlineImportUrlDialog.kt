@@ -28,12 +28,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.FileCacheProviders
 import io.legado.app.ui.compose.component.AppTextField
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.splitNotBlank
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.ic_baseline_close
+import legado.shared.generated.resources.import_on_line
+import legado.shared.generated.resources.ok
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 在线导入 URL 输入对话框 (带历史记录, KMP 共享)。
@@ -71,7 +76,7 @@ fun OnlineImportUrlDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = rememberString("import_on_line"),
+                text = stringResource(Res.string.import_on_line),
                 color = colors.primaryText,
                 fontSize = 18.sp,
             )
@@ -116,7 +121,7 @@ fun OnlineImportUrlDialog(
                                 modifier = Modifier.size(28.dp),
                             ) {
                                 Icon(
-                                    painter = rememberPainter("ic_baseline_close"),
+                                    painter = painterResource(Res.drawable.ic_baseline_close),
                                     contentDescription = null,
                                     tint = colors.secondaryText,
                                     modifier = Modifier.size(16.dp),
@@ -138,12 +143,12 @@ fun OnlineImportUrlDialog(
                 onDismiss()
                 if (text.isNotEmpty()) onConfirm(text)
             }) {
-                Text(text = rememberString("ok"), color = DesignTokens.arcoBlue6)
+                Text(text = stringResource(Res.string.ok), color = DesignTokens.arcoBlue6)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(text = rememberString("cancel"), color = colors.secondaryText)
+                Text(text = stringResource(Res.string.cancel), color = colors.secondaryText)
             }
         },
         shape = DesignTokens.dialogShape,

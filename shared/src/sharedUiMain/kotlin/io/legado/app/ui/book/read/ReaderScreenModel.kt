@@ -2,6 +2,8 @@ package io.legado.app.ui.book.read
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.Bookmark
+import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.ReadBookShared
 import io.legado.app.ui.root.ScreenModel
 import kotlinx.coroutines.CoroutineScope
@@ -31,9 +33,26 @@ interface ReaderPlatformProvider {
     /** 当前电池电量 0-100，-1 表示不显示 */
     fun getBatteryLevel(): Int
 
+    /** 路由进入：注册平台窗口副作用（亮屏/系统栏等） */
     fun onEnter(screenModel: ReaderScreenModel) {}
+
+    /** 路由退出：清理 [onEnter] 注册的副作用 */
     fun onExit(screenModel: ReaderScreenModel) {}
+
+    /** 长按页内文字触发选择 (对照 app 端 ReadView.CallBack.onPageLongClick) */
     fun onLongPress(screenModel: ReaderScreenModel) {}
+
+    /**
+     * 平台宿主 onPause（对照 app 端 ReadBookActivity.onPause）：默认空实现，
+     * 平台 actual 在 Activity Lifecycle 中调用 [ReaderScreenModel.onPause]。
+     */
+    fun onPause(screenModel: ReaderScreenModel) {}
+
+    /**
+     * 平台宿主 onResume（对照 app 端 ReadBookActivity.onResume）：默认空实现，
+     * 平台 actual 在 Activity Lifecycle 中调用 [ReaderScreenModel.onResume]。
+     */
+    fun onResume(screenModel: ReaderScreenModel) {}
 }
 
 /**
@@ -62,7 +81,7 @@ interface ReadMenuController {
  * 阅读页平台能力注册中心。
  *
  * 平台入口在系统启动时调用 [register]；shared 路由层通过 [getOrNull] 取用，
- * 未注册时路由退化为空渲染占位（不崩溃），待平台 actual 注册后接入完整阅读页。
+ * 未注册属于启动接线错误，由路由显式失败，避免展示无反馈空页。
  */
 object ReaderPlatformProviders {
     @Volatile
@@ -110,6 +129,7 @@ class ReaderScreenModel(
     )
 
     init {
+        ActiveReadBookRegistry.attach(readBook)
         // 桥接 ReadBookShared 回调到 ReadBookEvents (对照 app 端 ReadBook.CallBack → Activity 方法)
         readBook.callback = object : ReadBookShared.ReadBookCallback {
             override fun onBookChanged(book: Book) = ReadBookEvents.postMenuRefresh()
@@ -161,13 +181,76 @@ class ReaderScreenModel(
         _batteryLevel.value = getBatteryLevel()
     }
 
+    // region 对话框事件 (书签/正文编辑/日志, 由 AndroidReaderMenuState 触发, ReaderRoute 渲染)
+    private val _dialogEvent = MutableStateFlow<ReaderDialogEvent?>(null)
+    val dialogEvent: StateFlow<ReaderDialogEvent?> = _dialogEvent.asStateFlow()
+
+    fun postDialogEvent(event: ReaderDialogEvent) {
+        _dialogEvent.value = event
+    }
+
+    fun clearDialogEvent() {
+        _dialogEvent.value = null
+    }
+    // endregion
+
     /** 显示阅读菜单（对照 app 端 ReadBookActivity.showMenuBar → readMenu.runMenuIn） */
     fun showMenu() {
         menuController.showMenu()
     }
 
+    /**
+     * 跳转到指定章节位置 (对照 app 端 ReadBook.openChapter + applyBookmarkPosition)。
+     * 供 Toc/书签结果回传后调用。
+     */
+    fun openChapter(index: Int, pos: Int? = null) {
+        viewModel.loadChapter(index)
+        if (pos != null) {
+            readBook.updateDurChapterPos(pos)
+        }
+    }
+
     override fun onCleared() {
+        ActiveReadBookRegistry.detach(readBook)
         viewModel.onCleared()
         scope.cancel()
     }
+
+    /**
+     * 平台 onPause 入口（对照 app 端 ReadBookActivity.onPause）。
+     *
+     * 平台 actual 在 Activity Lifecycle ON_PAUSE 时调 [ReaderPlatformProvider.onPause]，
+     * 由其桥接到本方法。完成：
+     * - 落库当前阅读进度（防止 Activity 被销毁时丢进度，对照原版 `ReadBook.saveRead()`）
+     * - 取消预下载任务（对照原版 `ReadBook.cancelPreDownloadTask()`）
+     *
+     * 上传进度交由 [ReadBookViewModelShared.onCleared]（ DisposableEffect.onDispose 触发）
+     * 与切章时的 `uploadProgress()`，与原版 onPause 一致。
+     */
+    fun onPause() {
+        viewModel.saveProgress()
+        viewModel.cancelPreDownloadTask()
+    }
+
+    /**
+     * 平台 onResume 入口（对照 app 端 ReadBookActivity.onResume）。
+     *
+     * shared 端无 onResume 等价副作用（网络监听/广播注册/时间刷新等由平台 actual 接入）；
+     * 预留扩展点供未来下沉云进度同步等逻辑。
+     */
+    fun onResume() {
+        // 占位：当前 shared 端无 onResume 等价副作用
+    }
+}
+
+/** 阅读页对话框事件 (由平台菜单状态触发, Route 层渲染对应 shared Composable 对话框) */
+sealed interface ReaderDialogEvent {
+    /** 添加书签 (携带预填充的 Bookmark) */
+    data class AddBookmark(val bookmark: Bookmark) : ReaderDialogEvent
+
+    /** 编辑正文 */
+    object EditContent : ReaderDialogEvent
+
+    /** 查看日志 */
+    object Log : ReaderDialogEvent
 }

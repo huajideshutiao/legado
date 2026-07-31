@@ -29,9 +29,15 @@ import androidx.compose.ui.window.DialogProperties
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.custom_page_key
+import legado.shared.generated.resources.next_page_key
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.prev_page_key
+import legado.shared.generated.resources.reset
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 自定义翻页按键对话框 (KMP 共享, app + desktop 复用)。
@@ -102,7 +108,7 @@ fun PageKeyDialog(
         ) {
             Column(Modifier.fillMaxWidth()) {
                 DialogTitleBar(
-                    title = rememberString("custom_page_key"),
+                    title = stringResource(Res.string.custom_page_key),
                     onBack = onDismiss,
                 )
                 Column(
@@ -114,14 +120,14 @@ fun PageKeyDialog(
                     AppOutlinedTextField(
                         value = prev,
                         onValueChange = { prev = it },
-                        label = rememberString("prev_page_key"),
+                        label = stringResource(Res.string.prev_page_key),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     AppOutlinedTextField(
                         value = next,
                         onValueChange = { next = it },
-                        label = rememberString("next_page_key"),
+                        label = stringResource(Res.string.next_page_key),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -136,7 +142,7 @@ fun PageKeyDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     AppTextButton(
-                        text = rememberString("reset"),
+                        text = stringResource(Res.string.reset),
                         color = colors.secondaryText,
                         onClick = {
                             prev = ""
@@ -145,7 +151,7 @@ fun PageKeyDialog(
                     )
                     Spacer(Modifier.padding(horizontal = 4.dp))
                     AppTextButton(
-                        text = rememberString("ok"),
+                        text = stringResource(Res.string.ok),
                         onClick = {
                             onConfirm(buildKeyMappings(prev, next))
                         },

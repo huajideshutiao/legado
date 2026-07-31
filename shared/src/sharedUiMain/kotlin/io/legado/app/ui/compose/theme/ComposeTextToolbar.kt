@@ -34,9 +34,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlin.math.roundToInt
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.copy
+import legado.shared.generated.resources.cut
+import legado.shared.generated.resources.paste
+import legado.shared.generated.resources.select_all
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Compose 版文本选择工具栏，复刻阅读页 [io.legado.app.ui.book.read.TextActionMenu] 视觉：
@@ -112,10 +117,10 @@ class ComposeTextToolbar : TextToolbar {
             ToolbarCard(eInk) {
                 // 顺序对齐系统：复制/剪切/粘贴/全选，仅列出回调非空项
                 // 文案走 rememberString 翻译 (原 android.R.string.copy/cut/paste/selectAll)
-                p.onCopy?.let { ToolbarItem(rememberString("copy"), it) }
-                p.onCut?.let { ToolbarItem(rememberString("cut"), it) }
-                p.onPaste?.let { ToolbarItem(rememberString("paste"), it) }
-                p.onSelectAll?.let { ToolbarItem(rememberString("select_all"), it) }
+                p.onCopy?.let { ToolbarItem(stringResource(Res.string.copy), it) }
+                p.onCut?.let { ToolbarItem(stringResource(Res.string.cut), it) }
+                p.onPaste?.let { ToolbarItem(stringResource(Res.string.paste), it) }
+                p.onSelectAll?.let { ToolbarItem(stringResource(Res.string.select_all), it) }
             }
         }
     }

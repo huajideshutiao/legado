@@ -36,7 +36,6 @@ import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.FileFilter
@@ -47,6 +46,20 @@ import io.legado.app.ui.widget.dialog.WaitDialog
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.backup
+import legado.shared.generated.resources.backup_restore
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.restore
+import legado.shared.generated.resources.restore_ignore
+import legado.shared.generated.resources.select_backup_path
+import legado.shared.generated.resources.select_restore_file
+import legado.shared.generated.resources.web_dav_account_s
+import legado.shared.generated.resources.web_dav_pw_s
+import legado.shared.generated.resources.web_dav_url_s
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * BackupConfig 路由下沉函数: 装配 shared [BackupConfigScreenModel] + [BackupConfigScreen]。
@@ -74,18 +87,18 @@ fun BackupConfigRoute(
     val appConfig = remember { AppConfigProviders.get() }
 
     // Summary 占位符 (对照 app 端 getString(R.string.xxx))
-    val webDavUrlSStr = rememberString("web_dav_url_s")
-    val webDavAccountSStr = rememberString("web_dav_account_s")
-    val webDavPwSStr = rememberString("web_dav_pw_s")
-    val selectBackupPathStr = rememberString("select_backup_path")
+    val webDavUrlSStr = stringResource(Res.string.web_dav_url_s)
+    val webDavAccountSStr = stringResource(Res.string.web_dav_account_s)
+    val webDavPwSStr = stringResource(Res.string.web_dav_pw_s)
+    val selectBackupPathStr = stringResource(Res.string.select_backup_path)
     // 顶栏标题 (对照 app 端 R.string.backup_restore)
-    val titleStr = rememberString("backup_restore")
+    val titleStr = stringResource(Res.string.backup_restore)
     // 动作/对话框文案 (对照 app 端 R.string.backup/restore/select_restore_file/ok/cancel)
-    val backupStr = rememberString("backup")
-    val restoreStr = rememberString("restore")
-    val selectRestoreFileStr = rememberString("select_restore_file")
-    val okStr = rememberString("ok")
-    val cancelStr = rememberString("cancel")
+    val backupStr = stringResource(Res.string.backup)
+    val restoreStr = stringResource(Res.string.restore)
+    val selectRestoreFileStr = stringResource(Res.string.select_restore_file)
+    val okStr = stringResource(Res.string.ok)
+    val cancelStr = stringResource(Res.string.cancel)
 
     var showRestoreIgnore by remember { mutableStateOf(false) }
     // WaitDialog 状态 + 后台任务 Job (取消用), 对照 app 端 WaitDialog.from(activity) + onCancelListener
@@ -290,8 +303,8 @@ fun BackupConfigRoute(
                 BackupConfigShared.saveIgnoreConfig()
                 showRestoreIgnore = false
             },
-            title = rememberString("restore_ignore"),
-            okButton = AlertButton(text = rememberString("ok")) {
+            title = stringResource(Res.string.restore_ignore),
+            okButton = AlertButton(text = stringResource(Res.string.ok)) {
                 BackupConfigShared.saveIgnoreConfig()
                 showRestoreIgnore = false
             },

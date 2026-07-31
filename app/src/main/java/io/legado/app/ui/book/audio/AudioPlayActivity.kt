@@ -50,6 +50,7 @@ import io.legado.app.utils.getRepresentativeColor
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.observeEventSticky
 import io.legado.app.utils.sendToClip
+import io.legado.app.utils.openUrl
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toDurationTime
@@ -186,6 +187,12 @@ class AudioPlayActivity : BaseComposeActivity(toolBarTheme = Theme.Dark) {
 
     fun copyAudioUrl() = sendToClip(AudioPlayService.url)
 
+    // 浏览器打开播放 URL (对照 copyAudioUrl, 走 Context.openUrl)
+    fun openAudioUrl() {
+        val url = AudioPlayService.url
+        if (url.isNotEmpty()) openUrl(url)
+    }
+
     fun showSourceVariable() {
         AudioPlay.bookSource?.showSourceVariableDialog(this)
     }
@@ -277,6 +284,8 @@ class AudioPlayActivity : BaseComposeActivity(toolBarTheme = Theme.Dark) {
                     AudioPlay.inBookshelf = true
                     runBlocking { appDb.bookChapterDao.insert(*AudioPlay.chapterList!!.toTypedArray()) }
                     setResult(RESULT_OK)
+                    // 双轨: 同步 RouteResult 通道
+                    AppNavigatorProviders.getOrNull()?.pop(RouteResultPayload.Ok)
                 }
                 noButton {
                     viewModel.removeFromBookshelf { super.finish() }

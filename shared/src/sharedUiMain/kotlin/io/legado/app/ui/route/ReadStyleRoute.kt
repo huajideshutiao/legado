@@ -20,11 +20,13 @@ import io.legado.app.ui.book.read.config.ReadStyleActions
 import io.legado.app.ui.book.read.config.ReadStyleController
 import io.legado.app.ui.book.read.config.ReadStyleScreen
 import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.text_font
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 阅读样式配置 shared 路由入口。
@@ -43,7 +45,7 @@ fun ReadStyleRoute(
     var showFontSelect by remember { mutableStateOf(false) }
     var showChineseConverter by remember { mutableStateOf(false) }
     // 顶栏标题 (对照 app 端 R.string.text_font, 与 ReadConfigScreen 入口项一致)
-    val titleStr = rememberString("text_font")
+    val titleStr = stringResource(Res.string.text_font)
 
     // 退出时持久化 (对齐 app 端 ReadStyleDialog.onDismiss -> ReadBookConfig.save())
     DisposableEffect(Unit) {

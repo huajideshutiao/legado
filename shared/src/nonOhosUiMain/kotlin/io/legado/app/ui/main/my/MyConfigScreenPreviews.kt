@@ -9,7 +9,7 @@ import io.legado.app.ui.preview.LegadoThemePreview
  *
  * MyConfigScreen 内部用 rememberString/rememberStringArray/rememberPainter 取 i18n 资源,
  * jvm Preview 端未识别 key 时 rememberString 返回 key 本身、rememberStringArray 返回空 List、
- * rememberPainter 返回 Icons.Default.Help 占位, 故 Preview 可渲染但部分文案为 key 字符串。
+ * rememberPainter 返回 ic_material_help 占位, 故 Preview 可渲染但部分文案为 key 字符串。
  *
  * MyConfigScreen 自身已用 AppTheme 包裹, 但 LegadoThemePreview 会再包一层 AppTheme
  * (嵌套 AppTheme 仅多套一次 CompositionLocal, 不影响渲染)。

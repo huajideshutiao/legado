@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.support.v4.media.session.MediaSessionCompat
 import androidx.annotation.DrawableRes
 import androidx.core.app.NotificationCompat
+import io.legado.app.R
 
 /**
  * 朗读/音频通用前台播放通知。
@@ -37,7 +38,7 @@ object MediaPlaybackNotification {
     ): NotificationCompat.Builder {
         val builder = NotificationCompat.Builder(context, channelId)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setSmallIcon(io.legado.shared.R.drawable.ic_volume_up)
+            .setSmallIcon(R.drawable.ic_volume_up)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setVibrate(null)

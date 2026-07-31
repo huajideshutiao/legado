@@ -55,6 +55,8 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * txt目录规则选择器：单选 tocRegex + 长按拖拽排序 + 单项启停/编辑/删除，OK 回传选中规则。
@@ -120,7 +122,9 @@ class TxtTocRuleDialog() : BaseComposeDialogFragment(), TxtTocRuleEditDialog.Cal
             },
             actionBar = {
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

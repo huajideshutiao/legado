@@ -44,6 +44,7 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
+import org.jetbrains.compose.resources.stringResource
 import splitties.init.appCtx
 
 /**

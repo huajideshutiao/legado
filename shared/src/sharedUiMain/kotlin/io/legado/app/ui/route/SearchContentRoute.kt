@@ -8,7 +8,6 @@ import androidx.compose.runtime.remember
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.help.IntentData
 import io.legado.app.help.book.chineseS2T
 import io.legado.app.help.book.chineseT2S
 import io.legado.app.ui.book.searchContent.SearchContentScreen
@@ -16,14 +15,15 @@ import io.legado.app.ui.book.searchContent.SearchContentScreenModel
 import io.legado.app.ui.book.searchContent.SearchContentUiActions
 import io.legado.app.ui.book.searchContent.SearchContentUiEvent
 import io.legado.app.ui.book.searchContent.SearchResult
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.utils.FlowBus
-import io.legado.app.utils.postEvent
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.search_content_empty
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * AppRoute.SearchContent shared 路由下沉函数。
@@ -34,7 +34,7 @@ fun SearchContentRoute(
     navigator: AppNavigator,
     screenModelStore: ScreenModelStore,
 ) {
-    val emptyResultText = rememberString("search_content_empty")
+    val emptyResultText = stringResource(Res.string.search_content_empty)
     val screenModel = screenModelStore.getOrCreateTyped(entry) {
         SearchContentScreenModel(
             chineseConverter = { type, text ->
@@ -49,9 +49,12 @@ fun SearchContentRoute(
     }
     // position/searchWord 来自 AppRoute.SearchContent 路由参数
     val routeArgs = entry.route as? AppRoute.SearchContent
-    LaunchedEffect(Unit) {
-        val searchResultList: List<SearchResult>? = IntentData.get("searchResultList")
-        screenModel.init(searchResultList, routeArgs?.index ?: 0, routeArgs?.word)
+    LaunchedEffect(routeArgs) {
+        screenModel.init(
+            routeArgs?.initialResults,
+            routeArgs?.index ?: 0,
+            routeArgs?.word,
+        )
     }
 
     // SAVE_CONTENT 事件触发 cacheChapterNames 更新
@@ -65,11 +68,15 @@ fun SearchContentRoute(
         }
     }
 
-    // 选中结果回传: postEvent 通知 ReadBook 更新 list, IntentData 暂存 list, payload 回传 query+index
+    // 选中结果时将完整搜索上下文随导航结果返回，避免依赖全局临时槽。
     screenModel.onOpenResult = { item, index ->
-        postEvent<List<SearchResult>>(EventBus.SEARCH_RESULT, screenModel.searchResultList)
-        IntentData.put("searchResultList", screenModel.searchResultList)
-        navigator.pop(RouteResultPayload.SearchContent(item.query, index))
+        navigator.pop(
+            RouteResultPayload.SearchContent(
+                searchWord = item.query,
+                searchResultIndex = index,
+                searchResults = screenModel.searchResultList,
+            )
+        )
     }
 
     val state by screenModel.state.collectAsState()

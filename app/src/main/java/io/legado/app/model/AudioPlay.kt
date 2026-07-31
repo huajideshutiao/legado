@@ -2,6 +2,8 @@
 
 package io.legado.app.model
 
+import io.legado.app.R
+
 /**
  * AudioPlay 跨平台 typealias (app 端)。
  *
@@ -36,8 +38,8 @@ typealias AudioPlay = AudioPlayShared
  */
 val AudioPlayShared.PlayMode.iconRes: Int
     get() = when (this) {
-        AudioPlayShared.PlayMode.LIST_END_STOP -> io.legado.shared.R.drawable.ic_play_mode_list_end_stop
-        AudioPlayShared.PlayMode.SINGLE_LOOP -> io.legado.shared.R.drawable.ic_play_mode_single_loop
-        AudioPlayShared.PlayMode.RANDOM -> io.legado.shared.R.drawable.ic_play_mode_random
-        AudioPlayShared.PlayMode.LIST_LOOP -> io.legado.shared.R.drawable.ic_play_mode_list_loop
+        AudioPlayShared.PlayMode.LIST_END_STOP -> R.drawable.ic_play_mode_list_end_stop
+        AudioPlayShared.PlayMode.SINGLE_LOOP -> R.drawable.ic_play_mode_single_loop
+        AudioPlayShared.PlayMode.RANDOM -> R.drawable.ic_play_mode_random
+        AudioPlayShared.PlayMode.LIST_LOOP -> R.drawable.ic_play_mode_list_loop
     }

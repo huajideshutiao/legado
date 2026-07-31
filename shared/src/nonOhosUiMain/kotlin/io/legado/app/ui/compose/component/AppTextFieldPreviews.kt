@@ -14,10 +14,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.preview.AppPreview
 import io.legado.app.ui.preview.LegadoThemePreview
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.ic_baseline_close
+import legado.shared.generated.resources.ic_search
+import org.jetbrains.compose.resources.painterResource
 
 /**
  * [AppTextField] 的 @Preview: 浅色/深色/错误态/禁用态/带图标/占位符/多行。
@@ -117,14 +120,14 @@ fun AppTextFieldWithIconsPreview() = LegadoThemePreview {
             singleLine = true,
             leadingIcon = {
                 Icon(
-                    painter = rememberPainter("ic_search"),
+                    painter = painterResource(Res.drawable.ic_search),
                     contentDescription = null,
                     tint = colors.secondaryText,
                 )
             },
             trailingIcon = {
                 Icon(
-                    painter = rememberPainter("ic_baseline_close"),
+                    painter = painterResource(Res.drawable.ic_baseline_close),
                     contentDescription = null,
                     tint = colors.secondaryText,
                 )

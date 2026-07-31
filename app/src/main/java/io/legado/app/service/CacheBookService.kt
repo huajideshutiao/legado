@@ -48,13 +48,13 @@ class CacheBookService : BaseService() {
     private var mutex = Mutex()
     private val notificationBuilder by lazy {
         val builder = NotificationCompat.Builder(this, AppConst.channelIdDownload)
-            .setSmallIcon(io.legado.shared.R.drawable.ic_download)
+            .setSmallIcon(R.drawable.ic_download)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentTitle(getString(R.string.offline_cache))
             //.setContentIntent(activityPendingIntent<CacheActivity>("cacheActivity"))
         builder.addAction(
-            io.legado.shared.R.drawable.ic_stop_black_24dp,
+            R.drawable.ic_stop_black_24dp,
             getString(R.string.cancel),
             servicePendingIntent<CacheBookService>(IntentAction.stop)
         )
@@ -101,7 +101,7 @@ class CacheBookService : BaseService() {
 
     private fun upCacheBookFinishNotification() {
         val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
-            .setSmallIcon(io.legado.shared.R.drawable.ic_download)
+            .setSmallIcon(R.drawable.ic_download)
             .setContentTitle(getString(R.string.offline_cache))
             .setContentText("缓存完成")
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

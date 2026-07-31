@@ -3,6 +3,9 @@ package io.legado.app.ui.bookshelf
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.TargetedFlingBehavior
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,15 +16,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -30,27 +37,46 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.constant.EventBus
+import io.legado.app.constant.PreferKey
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.ui.compose.component.AppScrollTabRow
-import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
+import io.legado.app.utils.FlowBus
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.bookshelf
+import org.jetbrains.compose.resources.stringResource
+import kotlin.math.abs
 
 /**
  * 书架 Screen (KMP 版, commonMain 共享)。
  *
- * 对照 app 端 `BookshelfScreen1` (style1, 分组 tab + HorizontalPager) +
- * `BookshelfScreen2` (style2, 单列表 + 标题) 的共有骨架, 下沉后融合为一个 Screen:
+ * 按 `AppConfig.bookGroupStyle` 分流 (对照 app 端 MainActivity.getFragmentId):
+ * 1 走 [BookshelfScreen2] (对照 BookshelfFragment2, 单列表 + 分组下钻), 否则走本函数的
+ * 样式1 骨架 (对照 BookshelfFragment1, 分组 tab + HorizontalPager):
  *
  * - **顶栏**: 分组切换 ([AppScrollTabRow]) + 搜索图标 + 溢出菜单槽 ([actions] slot)
  * - **内容区**: [HorizontalPager] 左右滑切换分组 (对照 app 端 style1), 每页复用
@@ -61,9 +87,9 @@ import kotlinx.coroutines.launch
  *
  * # 简化项 (对照 app 端 ShelfBooksContent)
  *
- * - 不接入下拉刷新 (桌面端无下拉手势), refreshEnabled 恒 false
- * - refreshingUrls / coverReloadTick 桌面端暂无 state, 传空省略对应功能
- *   (条目仍渲染, 仅无刷新转圈/封面重载动画)
+ * - 下拉刷新: 启用 (refreshEnabled=true), onRefresh 调 [BookshelfViewModel.upToc]
+ * - refreshingUrls 由 [BookshelfViewModel] 订阅 UP_BOOKSHELF 事件维护,
+ *   coverReloadTick 暂无 state 传 0 (条目转圈生效, 封面重载动画省略)
  * - 封面由 [coverSlot] 注入: 默认取 [LocalBookCoverSlot] (兜底 [SharedBookCover]);
  *   宿主端用 [CompositionLocalProvider] 覆盖注入平台实现 (app: ShelfCover / desktop: DesktopBookCover)
  *
@@ -110,46 +136,35 @@ fun BookshelfScreen(
 ) {
     val colors = AppTheme.colors
     val appConfig = remember { AppConfigProviders.get() }
+    // 分组样式分流 (对照 MainActivity.getFragmentId: bookGroupStyle==1 走 BookshelfFragment2)
+    if (remember { appConfig.bookGroupStyle } == 1) {
+        BookshelfScreen2(
+            viewModel = viewModel,
+            onBookClick = onBookClick,
+            onBookLongClick = onBookLongClick,
+            onGroupLongClick = onGroupLongClick,
+            modifier = modifier,
+            tier = tier,
+            coverSlot = coverSlot,
+            scrollState = scrollState,
+            actions = actions,
+        )
+        return
+    }
     val eInk = LocalEInk.current
     // 封面 slot: 显式传入优先, 否则取 CompositionLocal (宿主端可覆盖注入平台实现, 兜底 SharedBookCover)
     val resolvedCoverSlot: @Composable (Book, Modifier, Boolean) -> Unit =
         coverSlot ?: LocalBookCoverSlot.current
     val groups by viewModel.bookGroups.collectAsState()
     val currentGroupId by viewModel.currentGroupId.collectAsState()
-    val books by viewModel.books.collectAsState()
+    val groupBookCounts = remember { mutableStateMapOf<Long, Int>() }
     val scope = rememberCoroutineScope()
 
-    // tier 决策: 显式传入优先, 否则按 bookshelfLayout (0=LIST, 其他=GRID)
-    val resolvedTier = remember(tier, appConfig.bookshelfLayout) {
-        tier ?: if (appConfig.bookshelfLayout == 0) BookshelfTier.LIST else BookshelfTier.GRID
-    }
-    // 网格列宽 (对照 app 端 bookshelfGridWidth, Adaptive 模式)
-    val gridWidthDp = remember(appConfig.bookshelfGridWidth) {
-        appConfig.bookshelfGridWidth.coerceIn(60, 240)
-    }
     // 顶栏 tab 是否显示分组数量 (对照 app 端 AppConfig.bookshelfShowGroupCount)
     val showGroupCount = remember { appConfig.bookshelfShowGroupCount }
 
-    // 布局 spec 各 pager 页共用, 计算一次
-    val layoutSpec = remember(resolvedTier, gridWidthDp) {
-        when (resolvedTier) {
-            BookshelfTier.LIST -> ShelfLayoutSpec(
-                tier = ShelfTier.LIST,
-                isVideoList = false,
-                cols = 1,
-                fixedWidth = false,
-                gridWidthDp = gridWidthDp,
-            )
-
-            BookshelfTier.GRID -> ShelfLayoutSpec(
-                tier = ShelfTier.GRID,
-                isVideoList = false,
-                cols = 1,
-                fixedWidth = true,
-                gridWidthDp = gridWidthDp,
-            )
-        }
-    }
+    // 布局 spec 各 pager 页共用, 计算一次。
+    val layoutSpec = rememberBookshelfLayoutSpec(tier)
     // 封面 slot 包装 (各页共用, 避免每页重复创建 lambda)
     val bookCoverSlot: @Composable (Book, Modifier, Boolean) -> Unit =
         { book, m, isVideoCover -> resolvedCoverSlot(book, m, isVideoCover) }
@@ -163,15 +178,28 @@ fun BookshelfScreen(
         } else 0,
         pageCount = { groups.size },
     )
-    // pager 滑动结束 (settledPage) → selectGroup 同步 currentGroupId 与 _books (供 bookCount)
-    // 不用 currentPage: 滑动过程中会频繁触发 selectGroup → DB 查询 → 卡顿
+    // pager 滑动结束 (settledPage) → 同步 currentGroupId。
+    // 不用 currentPage，避免手势过程中频繁改写全局选择状态。
+    // 同时持久化 tab 位置 (对照 BookshelfFragment1.onTabSelected: AppConfig.saveTabPosition = position)
+    val prefs = LocalPreferenceStoreProvider.current
     LaunchedEffect(pagerState, groups) {
         if (groups.isEmpty()) return@LaunchedEffect
         snapshotFlow { pagerState.settledPage }.collect { page ->
             groups.getOrNull(page)?.let { group ->
                 viewModel.selectGroup(group.groupId)
+                prefs.putInt(PreferKey.saveTabPosition, page)
             }
         }
+    }
+    // 首次拿到分组后恢复上次 tab (对照 BookshelfFragment1.selectLastTab)。
+    // 位置在组合期读一次, 避免被上面的 settledPage 持久化覆盖后读到 0;
+    // 只改 currentGroupId, 实际滚动交给下面的同步 effect (单一滚动源, 无竞态)。
+    val savedTabPosition = remember { appConfig.saveTabPosition }
+    var tabRestored by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(groups.size) {
+        if (tabRestored || groups.isEmpty()) return@LaunchedEffect
+        tabRestored = true
+        groups.getOrNull(savedTabPosition)?.let { viewModel.selectGroup(it.groupId) }
     }
     // 外部 currentGroupId 变化 → pager 同步 (仅初始化/外部切换, 用 scrollToPage 不触发动画避免循环)
     LaunchedEffect(currentGroupId, groups.size) {
@@ -189,7 +217,7 @@ fun BookshelfScreen(
             groups = groups,
             currentGroupId = displayGroupId,
             showGroupCount = showGroupCount,
-            bookCount = books.size,
+            groupBookCounts = groupBookCounts,
             onGroupClick = { groupId ->
                 // tab 点击 → pager 滚动 → currentPage 变化 → selectGroup (见 LaunchedEffect)
                 val targetIndex = groups.indexOfFirst { it.groupId == groupId }
@@ -204,6 +232,12 @@ fun BookshelfScreen(
             actions = actions,
         )
         if (groups.isEmpty()) {
+            // 对照 BookshelfFragment1.upGroup: 无可见分组时自愈, 启用"全部"分组
+            LaunchedEffect(Unit) {
+                withContext(IoDispatcher) {
+                    AppDbProviders.get().bookGroupDao.enableGroup(BookGroup.IdAll)
+                }
+            }
             // 无分组时显示空状态 (ShelfBooksContent 内部居中提示 bookshelf_empty)
             ShelfBooksContent(
                 items = emptyList(),
@@ -223,11 +257,14 @@ fun BookshelfScreen(
         } else {
             // 初始分组 groupId: 该分组的页用外部 scrollState (保留宿主 gotoTop 入口), 其他页独立 state
             val initialGroupId = remember { currentGroupId }
+            // Pager 与鼠标拖动共用同一 flingBehavior, 保证吸附手感一致
+            val pagerFling = PagerDefaults.flingBehavior(state = pagerState)
             HorizontalPager(
                 state = pagerState,
-                beyondViewportPageCount = 0, // 不预渲染相邻页, 避免滑动时多个 LazyColumn + DB flow 同时活跃导致卡顿
+                beyondViewportPageCount = 1, // 对齐原版 offscreenPageLimit=1，手势开始前相邻页已完成组合
                 key = { index -> groups.getOrNull(index)?.groupId ?: index.toLong() },
-                userScrollEnabled = !eInk && groups.size > 1,
+                flingBehavior = pagerFling,
+                modifier = Modifier.mouseDragPager(pagerState, scope, pagerFling),
             ) { page ->
                 val group = groups.getOrNull(page) ?: return@HorizontalPager
                 GroupBooksPage(
@@ -236,11 +273,104 @@ fun BookshelfScreen(
                     externalScrollState = scrollState,
                     initialGroupId = initialGroupId,
                     viewModel = viewModel,
+                    onBooksLoaded = { groupId, count -> groupBookCounts[groupId] = count },
                     onBookClick = onBookClick,
                     onBookLongClick = onBookLongClick,
                     bookCoverSlot = bookCoverSlot,
                     groupCoverSlot = groupCoverSlot,
+                    onRefresh = { viewModel.upToc() },
                 )
+            }
+        }
+    }
+}
+
+/**
+ * 布局 spec 决策 (两种分组样式共用)。
+ *
+ * 未显式传 [tier] 时走 [rememberShelfLayoutSpec] (对照 BooksFragment/BookshelfFragment2 的
+ * getCols/createAdapter: bookshelfFixedWidthMode 按屏宽换算列数, 否则读 bookshelfLayout 位段)。
+ */
+@Composable
+internal fun rememberBookshelfLayoutSpec(tier: BookshelfTier?): ShelfLayoutSpec {
+    val appConfig = remember { AppConfigProviders.get() }
+    // tier 决策: 显式传入优先, 否则按 bookshelfLayout (0=LIST, 其他=GRID)
+    val resolvedTier = remember(tier, appConfig.bookshelfLayout) {
+        tier ?: if (appConfig.bookshelfLayout == 0) BookshelfTier.LIST else BookshelfTier.GRID
+    }
+    // 网格列宽 (对照 app 端 bookshelfGridWidth, Adaptive 模式)
+    val gridWidthDp = remember(appConfig.bookshelfGridWidth) {
+        appConfig.bookshelfGridWidth.coerceIn(60, 240)
+    }
+    val containerSize = LocalWindowInfo.current.containerSize
+    val density = LocalDensity.current
+    val screenWidthDp = remember(containerSize.width, density) {
+        with(density) { containerSize.width.toDp().value.toInt() }.coerceAtLeast(1)
+    }
+    val autoSpec = rememberShelfLayoutSpec(layoutSpecTick = 0, screenWidthDp = screenWidthDp)
+    return if (tier == null) autoSpec else remember(resolvedTier, gridWidthDp) {
+        when (resolvedTier) {
+            BookshelfTier.LIST -> ShelfLayoutSpec(
+                tier = ShelfTier.LIST,
+                isVideoList = false,
+                cols = 1,
+                fixedWidth = false,
+                gridWidthDp = gridWidthDp,
+            )
+
+            BookshelfTier.GRID -> ShelfLayoutSpec(
+                tier = ShelfTier.GRID,
+                isVideoList = false,
+                cols = 1,
+                fixedWidth = true,
+                gridWidthDp = gridWidthDp,
+            )
+        }
+    }
+}
+
+/**
+ * 补齐鼠标左键拖动横滑: Compose 的 scrollable 用 CanDragCalculation 把 PointerType.Mouse
+ * 排除在拖动之外 (只留滚轮), Pager 自带手势对鼠标不响应。非鼠标事件直接放行, 不影响触摸。
+ * 松手后走 Pager 自身的 flingBehavior, 吸附手感与触摸横滑一致。
+ */
+private fun Modifier.mouseDragPager(
+    pagerState: PagerState,
+    scope: CoroutineScope,
+    flingBehavior: TargetedFlingBehavior,
+): Modifier = pointerInput(pagerState, flingBehavior) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        if (down.type != PointerType.Mouse) return@awaitEachGesture
+        val velocityTracker = VelocityTracker()
+        velocityTracker.addPointerInputChange(down)
+        var dragging = false
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+            if (!change.pressed) break
+            velocityTracker.addPointerInputChange(change)
+            if (!dragging &&
+                abs(change.position.x - down.position.x) > viewConfiguration.touchSlop
+            ) {
+                dragging = true
+            }
+            if (dragging) {
+                // 受限挂起作用域内只能调非挂起 API, 用 dispatchRawDelta 逐帧推进。
+                // Desktop 的 synthetic move 事件 previousPosition 可能是 Offset.Unspecified(NaN),
+                // 交给 PagerState.performScroll 会在 roundToLong 抛 "Cannot round NaN value"。
+                val delta = change.previousPosition.x - change.position.x
+                if (delta.isFinite()) pagerState.dispatchRawDelta(delta)
+                change.consume()
+            }
+        }
+        if (dragging) {
+            // 手势方向与滚动偏移量反向, 速度取负后交给 Pager 原生 fling 吸附
+            val velocity = -velocityTracker.calculateVelocity().x
+            if (velocity.isFinite()) {
+                scope.launch {
+                    pagerState.scroll { with(flingBehavior) { performFling(velocity) } }
+                }
             }
         }
     }
@@ -259,27 +389,43 @@ private fun GroupBooksPage(
     externalScrollState: ShelfScrollState,
     initialGroupId: Long,
     viewModel: BookshelfViewModel,
+    onBooksLoaded: (Long, Int) -> Unit,
     onBookClick: (Book) -> Unit,
     onBookLongClick: (Book) -> Unit,
     bookCoverSlot: @Composable (Book, Modifier, Boolean) -> Unit,
     groupCoverSlot: @Composable (BookGroup, Modifier, Boolean) -> Unit,
+    onRefresh: () -> Unit,
 ) {
     // 每分组一份 scrollState; 初始分组用外部 scrollState (保留宿主 gotoTop 入口)
-    val pageScrollState = remember(group.groupId) {
+    // rememberSaveable: 页销毁重建后恢复滚动位置 (按 groupId 隔离)
+    val pageScrollState = rememberSaveable(group.groupId, saver = ShelfScrollState.Saver) {
         if (group.groupId == initialGroupId) externalScrollState else ShelfScrollState()
     }
-    // 每分组独立订阅 booksByGroup 流 (互不干扰, 页销毁时自动取消)
-    val pageBooksFlow = remember(group.groupId) { viewModel.booksByGroup(group.groupId) }
-    val pageBooks by pageBooksFlow.collectAsState(initial = emptyList())
+    // sortTick: BOOKSHELF_REFRESH (排序配置变更) 时 bump, 重建 flow 让 sortOf 重读配置
+    // (对照 BooksFragment.observeLiveBus 的 BOOKSHELF_REFRESH → notifyDataSetChanged)
+    var sortTick by remember(group.groupId) { mutableStateOf(0) }
+    LaunchedEffect(group.groupId) {
+        FlowBus.with(EventBus.BOOKSHELF_REFRESH).collect { sortTick++ }
+    }
+    val booksFlow = remember(group.groupId, sortTick) { viewModel.booksByGroup(group.groupId) }
+    var books by remember(group.groupId) { mutableStateOf<List<Book>?>(null) }
+    LaunchedEffect(group.groupId, booksFlow) {
+        booksFlow.collect { loaded ->
+            books = loaded
+            onBooksLoaded(group.groupId, loaded.size)
+        }
+    }
+    val refreshingUrls by viewModel.refreshingUrls.collectAsState()
     // 复用 ShelfBooksContent: 享受 contentType / animateItem / timeTick / 滚顶等性能优化
     ShelfBooksContent(
-        items = pageBooks,
+        items = books.orEmpty(),
         spec = spec,
         scroll = pageScrollState,
-        refreshEnabled = false,
-        onRefresh = {},
+        // 对照 BooksFragment: refreshLayout.isEnabled = group.enableRefresh
+        refreshEnabled = group.enableRefresh,
+        onRefresh = onRefresh,
         coverReloadTick = 0,
-        refreshingUrls = emptySet(),
+        refreshingUrls = refreshingUrls,
         onBookClick = onBookClick,
         onBookLongClick = onBookLongClick,
         showLastUpdateTime = true,
@@ -297,20 +443,58 @@ private fun GroupBooksPage(
  * (app 端 onTabReselect 调 gotoTop, 此处简化)。
  *
  * @param showGroupCount 是否在 tab 标题后显示 "(n)" 数量
- * @param bookCount 当前分组书籍数 (showGroupCount=true 时附加到当前 tab 标题)
+ * @param groupBookCounts 已加载分组各自的书籍数；未加载分组显示 ".."
  */
 @Composable
 internal fun BookshelfTopBar(
     groups: List<BookGroup>,
     currentGroupId: Long,
     showGroupCount: Boolean,
-    bookCount: Int,
+    groupBookCounts: Map<Long, Int>,
     onGroupClick: (Long) -> Unit,
     onGroupLongClick: (BookGroup) -> Unit,
     actions: @Composable RowScope.() -> Unit,
 ) {
     val colors = AppTheme.colors
     val eInk = LocalEInk.current
+    BookshelfTopBarContainer(actions) {
+        if (groups.isNotEmpty()) {
+            val selectedIndex = groups.indexOfFirst { it.groupId == currentGroupId }
+                .coerceAtLeast(0)
+            AppScrollTabRow(
+                tabCount = groups.size,
+                selectedIndex = selectedIndex,
+                indicatorColor = colors.accent,
+                modifier = Modifier.weight(1f).padding(start = 16.dp),
+            ) { index ->
+                val group = groups[index]
+                val title = if (showGroupCount) {
+                    "${group.groupName}(${groupBookCounts[group.groupId] ?: ".."})"
+                } else {
+                    group.groupName
+                }
+                GroupTab(
+                    title = title,
+                    selected = index == selectedIndex,
+                    eInk = eInk,
+                    onClick = { onGroupClick(group.groupId) },
+                    onLongClick = { onGroupLongClick(group) },
+                )
+            }
+        } else {
+            // 无分组时占位 (CommonMain 无 R.string.bookshelf, 用 key 兜底返回 key 本身)
+            BookshelfTitleText(stringResource(Res.string.bookshelf))
+        }
+    }
+}
+
+/** 顶栏容器 (两种分组样式共用): 背景 + 56dp 高 Row, 左侧 [content] 右侧 [actions] */
+@Composable
+internal fun BookshelfTopBarContainer(
+    actions: @Composable RowScope.() -> Unit,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val colors = AppTheme.colors
     Box(
         Modifier
             .fillMaxWidth()
@@ -322,43 +506,23 @@ internal fun BookshelfTopBar(
                 .heightIn(min = 56.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (groups.isNotEmpty()) {
-                val selectedIndex = groups.indexOfFirst { it.groupId == currentGroupId }
-                    .coerceAtLeast(0)
-                AppScrollTabRow(
-                    tabCount = groups.size,
-                    selectedIndex = selectedIndex,
-                    indicatorColor = colors.accent,
-                    modifier = Modifier.weight(1f).padding(start = 16.dp),
-                ) { index ->
-                    val group = groups[index]
-                    val title = if (showGroupCount && index == selectedIndex) {
-                        "${group.groupName}($bookCount)"
-                    } else {
-                        group.groupName
-                    }
-                    GroupTab(
-                        title = title,
-                        selected = index == selectedIndex,
-                        eInk = eInk,
-                        onClick = { onGroupClick(group.groupId) },
-                        onLongClick = { onGroupLongClick(group) },
-                    )
-                }
-            } else {
-                // 无分组时占位 (CommonMain 无 R.string.bookshelf, 用 key 兜底返回 key 本身)
-                Text(
-                    text = rememberString("bookshelf"),
-                    color = colors.primaryText,
-                    fontSize = 20.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f).padding(start = 16.dp),
-                )
-            }
+            content()
             actions()
         }
     }
+}
+
+/** 顶栏标题 (对照 app 端 TitleBar 的 toolbar title): 样式2 显示分组名/书架, 样式1 无分组时占位 */
+@Composable
+internal fun RowScope.BookshelfTitleText(title: String) {
+    Text(
+        text = title,
+        color = AppTheme.colors.primaryText,
+        fontSize = 20.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.weight(1f).padding(start = 16.dp),
+    )
 }
 
 /** 单个分组 tab 项 (对照 app 端 style1.GroupTab) */
@@ -414,7 +578,7 @@ internal fun DefaultBookshelfActions(
  * 高度按宽度 3:4 自动计算 (对齐 CoverImageView.onMeasure 按 coverRatio 自适应),
  * 不再硬编码 160dp。
  *
- * @param modifier 外部尺寸约束; 默认 [Modifier] 时 fillMaxWidth + aspectRatio(3:4)
+ * @param modifier 外部尺寸约束; 与 [SharedBookCover] 同法, 高度有界时按比例反推宽度
  */
 @Composable
 fun DefaultBookCoverPlaceholder(book: Book, modifier: Modifier = Modifier) {
@@ -424,8 +588,7 @@ fun DefaultBookCoverPlaceholder(book: Book, modifier: Modifier = Modifier) {
     val firstChar = book.name.firstOrNull() ?: '?'
     Box(
         modifier
-            .fillMaxWidth()
-            .aspectRatio(NOVEL_COVER_RATIO)
+            .aspectRatio(NOVEL_COVER_RATIO, matchHeightConstraintsFirst = true)
             .clip(DesignTokens.shapeSm)
             .background(accent),
         contentAlignment = Alignment.Center,
@@ -475,10 +638,12 @@ fun SharedBookCover(
             onError = { bitmap = null },
         )
     }
-    // aspectRatio 按 coverRatio 自适应高度 (对齐 CoverImageView.onMeasure), 不再硬编码 160dp
+    // 对齐 CoverImageView.onMeasure: 高度有界时按比例反推宽度, 否则按宽度推高度。
+    // 不能硬加 fillMaxWidth() —— 列表条目/发现结果页传的是定高 modifier, 撑满宽度会让封面失控放大。
     val aspectRatio = if (isVideoCover) VIDEO_COVER_RATIO else NOVEL_COVER_RATIO
-    val resolvedModifier =
-        modifier.fillMaxWidth().aspectRatio(aspectRatio).clip(DesignTokens.shapeSm)
+    val resolvedModifier = modifier
+        .aspectRatio(aspectRatio, matchHeightConstraintsFirst = true)
+        .clip(DesignTokens.shapeSm)
     val bmp = bitmap
     if (bmp != null) {
         Image(
@@ -488,31 +653,24 @@ fun SharedBookCover(
             contentScale = ContentScale.Crop,
         )
     } else {
-        Box(
-            resolvedModifier.background(AppTheme.colors.accent),
-            contentAlignment = Alignment.Center,
-        ) {
-            val accent = AppTheme.colors.accent
-            val textColor =
-                if (accent.red * 0.299f + accent.green * 0.587f + accent.blue * 0.114f >= 0.5f) Color(
-                    0xDE000000
-                ) else Color(0xFFFFFFFF)
-            val firstChar = book.name.firstOrNull() ?: '?'
-            Text(
-                text = firstChar.toString(),
-                color = textColor,
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
+        // 默认封面: accent 底 + 竖排书名/作者 (算法与 Android CoverImageView 共用 computeCoverTextLayout)。
+        // 底图不同是唯一保留的平台差异 —— 原版 9-patch 的拉伸区 Compose 无等价能力。
+        Box(resolvedModifier.background(AppTheme.colors.accent)) {
+            CoverNameAuthorOverlay(
+                name = book.name,
+                author = book.author,
+                accent = AppTheme.colors.accent,
+                modifier = Modifier.matchParentSize(),
             )
         }
     }
 }
 
 /** 封面宽高比 (宽/高); 对照 BookCoverShared.CoverRatio: NOVEL=3:4 → 0.75 */
-private const val NOVEL_COVER_RATIO = 3f / 4f
+internal const val NOVEL_COVER_RATIO = 3f / 4f
 
 /** 封面宽高比 (宽/高); 对照 BookCoverShared.CoverRatio: VIDEO=16:9 → 1.78 */
-private const val VIDEO_COVER_RATIO = 16f / 9f
+internal const val VIDEO_COVER_RATIO = 16f / 9f
 
 /**
  * 封面渲染 slot 的 CompositionLocal: 默认兜底 [SharedBookCover]。

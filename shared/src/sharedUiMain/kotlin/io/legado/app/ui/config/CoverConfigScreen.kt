@@ -7,12 +7,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import io.legado.app.constant.PreferKey
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.preference.PreferenceScreen
 import io.legado.app.ui.compose.preference.preference
 import io.legado.app.ui.compose.preference.preferenceCategory
 import io.legado.app.ui.compose.preference.switchPreference
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.bookshelf_cover_height
+import legado.shared.generated.resources.cover_show_author
+import legado.shared.generated.resources.cover_show_author_summary
+import legado.shared.generated.resources.cover_show_name
+import legado.shared.generated.resources.cover_show_name_summary
+import legado.shared.generated.resources.day
+import legado.shared.generated.resources.default_cover
+import legado.shared.generated.resources.night
+import legado.shared.generated.resources.only_wifi
+import legado.shared.generated.resources.only_wifi_summary
+import legado.shared.generated.resources.use_default_cover
+import legado.shared.generated.resources.use_default_cover_s
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 封面设置页（迁 pref_config_cover.xml）。逐条对齐原条目：
@@ -20,7 +33,7 @@ import io.legado.app.ui.compose.theme.AppTheme
  * 点击型（默认封面选择/封面高度）由宿主提供回调（依赖 DialogFragment/NumberPicker）。
  *
  * 下沉 shared/sharedUiMain:
- * - stringResource(R.string.xxx) → rememberString("xxx") (key-based, 跨平台)
+ * - stringResource(R.string.xxx) → stringResource(Res.string.xxx) (key-based, 跨平台)
  * - AppConfig.coverShowName/coverShowNameN → LocalPreferenceStoreProvider.current.getBoolean
  *   (替代 app 端 AppConfig 直读, 跨平台通过 PreferenceStoreProvider 注入)
  * - BookCover.upDefaultCover() → onRefreshCover() 回调注入
@@ -48,18 +61,18 @@ fun CoverConfigScreen(
     var showNameNight by remember { mutableStateOf(pref.getBoolean(PreferKey.coverShowNameN, true)) }
 
     // rememberString 须在 @Composable 上下文取值，LazyListScope 构建 lambda 内不可调用
-    val titleCoverHeight = rememberString("bookshelf_cover_height")
-    val titleOnlyWifi = rememberString("only_wifi")
-    val summaryOnlyWifi = rememberString("only_wifi_summary")
-    val titleUseDefault = rememberString("use_default_cover")
-    val summaryUseDefault = rememberString("use_default_cover_s")
-    val labelDay = rememberString("day")
-    val labelNight = rememberString("night")
-    val titleDefaultCover = rememberString("default_cover")
-    val titleShowName = rememberString("cover_show_name")
-    val summaryShowName = rememberString("cover_show_name_summary")
-    val titleShowAuthor = rememberString("cover_show_author")
-    val summaryShowAuthor = rememberString("cover_show_author_summary")
+    val titleCoverHeight = stringResource(Res.string.bookshelf_cover_height)
+    val titleOnlyWifi = stringResource(Res.string.only_wifi)
+    val summaryOnlyWifi = stringResource(Res.string.only_wifi_summary)
+    val titleUseDefault = stringResource(Res.string.use_default_cover)
+    val summaryUseDefault = stringResource(Res.string.use_default_cover_s)
+    val labelDay = stringResource(Res.string.day)
+    val labelNight = stringResource(Res.string.night)
+    val titleDefaultCover = stringResource(Res.string.default_cover)
+    val titleShowName = stringResource(Res.string.cover_show_name)
+    val summaryShowName = stringResource(Res.string.cover_show_name_summary)
+    val titleShowAuthor = stringResource(Res.string.cover_show_author)
+    val summaryShowAuthor = stringResource(Res.string.cover_show_author_summary)
 
     AppTheme {
         PreferenceScreen {

@@ -50,7 +50,6 @@ import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.fileBook.CbzFile
 import io.legado.app.receiver.NetworkChangedListener
 import io.legado.app.ui.book.bookmark.BookmarkDialog
-import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaColorFilterDialog
 import io.legado.app.ui.book.manga.config.MangaFooterConfig
@@ -76,7 +75,6 @@ import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.number.showNumberPicker
 import io.legado.app.utils.ACache
 import io.legado.app.utils.GSON
-import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.fastBinarySearch
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isNetworkAvailable
@@ -151,17 +149,6 @@ class ReadMangaActivity : BaseComposeActivity(), IBottomDialog,
     var enableAutoPage = false
         private set
 
-    //打开目录返回选择章节返回结果 (LaunchedEffect 收集 RouteResults.TOC)
-    private val bookInfoActivity =
-        registerForActivityResult(StartActivityContract(BookInfoActivity::class.java)) {
-            if (it.resultCode == RESULT_OK) {
-                setResult(RESULT_DELETED)
-                super.finish()
-            } else {
-                viewModel.loadOrUpContent()
-            }
-        }
-
     private var imageSrc: String? = null
     private val saveImage by lazy {
         registerHandleFile { result ->
@@ -193,6 +180,26 @@ class ReadMangaActivity : BaseComposeActivity(), IBottomDialog,
                 ?.collect { result ->
                     val payload = result.payload as? RouteResultPayload.Toc ?: return@collect
                     viewModel.openChapter(payload.chapterIndex, payload.chapterPos)
+                }
+        }
+        // 监听书籍信息路由回传结果 (原 bookInfoActivity registerForActivityResult)
+        LaunchedEffect(Unit) {
+            AppNavigatorProviders.getOrNull()?.results
+                ?.filter { it.key == RouteResults.BOOK_INFO }
+                ?.collect { result ->
+                    when (result.payload) {
+                        is RouteResultPayload.Deleted -> {
+                            setResult(RESULT_DELETED)
+                            super.finish()
+                        }
+
+                        is RouteResultPayload.Ok -> {
+                            setResult(RESULT_DELETED)
+                            super.finish()
+                        }
+
+                        else -> viewModel.loadOrUpContent()
+                    }
                 }
         }
         Box(Modifier.fillMaxSize()) {
@@ -656,11 +663,10 @@ class ReadMangaActivity : BaseComposeActivity(), IBottomDialog,
 
     fun openBookInfoActivity() {
         viewModel.curBook?.let {
-            bookInfoActivity.launch {
-                putExtra("name", it.name)
-                putExtra("author", it.author)
-                IntentData.book = it
-            }
+            AppNavigatorProviders.getOrNull()?.push(
+                AppRoute.BookInfo(it.toRouteRef()),
+                resultKey = RouteResults.BOOK_INFO,
+            )
         }
     }
 
@@ -878,6 +884,8 @@ class ReadMangaActivity : BaseComposeActivity(), IBottomDialog,
                     currentBook?.save()
                     viewModel.inBookshelf = true
                     setResult(RESULT_OK)
+                    // 双轨: 同步 RouteResult 通道
+                    AppNavigatorProviders.getOrNull()?.pop(RouteResultPayload.Ok)
                 }
                 noButton { viewModel.removeFromBookshelf { super.finish() } }
             }

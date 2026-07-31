@@ -43,10 +43,18 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.AppTextButton
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.action_save
+import legado.shared.generated.resources.code
+import legado.shared.generated.resources.file_name
+import legado.shared.generated.resources.ic_save
+import legado.shared.generated.resources.js_edit
+import legado.shared.generated.resources.result
+import legado.shared.generated.resources.run
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * JS 编辑页用户交互回调。
@@ -92,13 +100,13 @@ fun JsEditScreen(
     val colors = AppTheme.colors
     Column(Modifier.fillMaxSize()) {
         AppTitleBar(
-            title = rememberString("js_edit"),
+            title = stringResource(Res.string.js_edit),
             onBack = { actions.onBack() },
             actions = {
                 IconButton(onClick = { actions.onSave(state.code, state.fileName) }) {
                     Icon(
-                        painter = rememberPainter("ic_save"),
-                        contentDescription = rememberString("action_save"),
+                        painter = painterResource(Res.drawable.ic_save),
+                        contentDescription = stringResource(Res.string.action_save),
                         tint = colors.primaryText,
                     )
                 }
@@ -108,7 +116,7 @@ fun JsEditScreen(
         AppTextField(
             value = state.fileName,
             onValueChange = onFileNameChange,
-            label = rememberString("file_name"),
+            label = stringResource(Res.string.file_name),
             singleLine = true,
             modifier = Modifier
                 .fillMaxWidth()
@@ -118,7 +126,7 @@ fun JsEditScreen(
         AppTextField(
             value = state.code,
             onValueChange = onCodeChange,
-            label = rememberString("code"),
+            label = stringResource(Res.string.code),
             singleLine = false,
             maxLines = Int.MAX_VALUE,
             textStyle = TextStyle(
@@ -136,7 +144,7 @@ fun JsEditScreen(
         val errorText = state.error?.stackTraceToString()
         if (resultText != null || errorText != null) {
             ResultSection(
-                title = rememberString("result"),
+                title = stringResource(Res.string.result),
                 content = resultText ?: errorText ?: "",
                 isError = resultText == null,
                 modifier = Modifier
@@ -153,7 +161,7 @@ fun JsEditScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             AppTextButton(
-                text = rememberString("run"),
+                text = stringResource(Res.string.run),
                 enabled = !state.isRunning && state.code.isNotBlank(),
                 onClick = onRun,
             )

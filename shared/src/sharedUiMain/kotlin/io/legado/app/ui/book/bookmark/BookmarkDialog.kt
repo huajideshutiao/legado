@@ -27,9 +27,16 @@ import io.legado.app.data.entities.Bookmark
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.bookmark
+import legado.shared.generated.resources.bookmark_content
+import legado.shared.generated.resources.bookmark_note
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.delete
+import legado.shared.generated.resources.ok
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 书签编辑对话框 (KMP 共享, app + desktop 复用)。
@@ -55,12 +62,12 @@ fun BookmarkDialog(
     onDelete: (() -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
-    val titleText = rememberString("bookmark")
-    val contentLabel = rememberString("bookmark_content")
-    val noteLabel = rememberString("bookmark_note")
-    val deleteText = rememberString("delete")
-    val cancelText = rememberString("cancel")
-    val okText = rememberString("ok")
+    val titleText = stringResource(Res.string.bookmark)
+    val contentLabel = stringResource(Res.string.bookmark_content)
+    val noteLabel = stringResource(Res.string.bookmark_note)
+    val deleteText = stringResource(Res.string.delete)
+    val cancelText = stringResource(Res.string.cancel)
+    val okText = stringResource(Res.string.ok)
 
     var bookText by remember { mutableStateOf(bookmark.bookText) }
     var content by remember { mutableStateOf(bookmark.content) }

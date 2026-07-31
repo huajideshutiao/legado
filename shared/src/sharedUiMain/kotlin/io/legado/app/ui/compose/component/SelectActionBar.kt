@@ -18,9 +18,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.ic_more_vert
+import legado.shared.generated.resources.more_menu
+import legado.shared.generated.resources.revert_selection
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /** SelectActionBar 溢出菜单项：文案 + 点击(点击后自动收起菜单) */
 data class SelectAction(val text: String, val onClick: () -> Unit)
@@ -65,7 +70,7 @@ fun SelectActionBar(
             )
         }
         AppOutlinedButton(
-            text = rememberString("revert_selection"),
+            text = stringResource(Res.string.revert_selection),
             enabled = enabled,
             onClick = onRevertSelection,
         )
@@ -82,8 +87,8 @@ fun SelectActionBar(
             Box {
                 IconButton(onClick = { showMenu = true }, enabled = enabled) {
                     Icon(
-                        painter = rememberPainter("ic_more_vert"),
-                        contentDescription = rememberString("more_menu"),
+                        painter = painterResource(Res.drawable.ic_more_vert),
+                        contentDescription = stringResource(Res.string.more_menu),
                         tint = if (enabled) colors.primaryText else colors.secondaryText.copy(alpha = 0.5f),
                         modifier = Modifier.size(24.dp),
                     )

@@ -40,6 +40,8 @@ import io.legado.app.utils.showDialogFragment
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 展示当前 scope 下命中（已启用且范围覆盖）的屏蔽规则。

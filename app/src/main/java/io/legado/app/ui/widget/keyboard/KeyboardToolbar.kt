@@ -56,6 +56,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Compose 版键盘辅助条状态（原 View 版 KeyboardToolPop 等价件），宿主 Activity 持有。
@@ -273,7 +274,9 @@ private fun FindOption(text: String, checked: Boolean, onClick: () -> Unit) {
         Text(
             text,
             color = colors.primaryText,
-            modifier = Modifier.weight(1f).padding(end = 12.dp),
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 12.dp),
         )
         AppMenuCheckbox(checked = checked)
     }

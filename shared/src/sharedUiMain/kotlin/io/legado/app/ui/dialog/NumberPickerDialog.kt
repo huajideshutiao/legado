@@ -26,9 +26,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.ic_add
+import legado.shared.generated.resources.ic_reduce
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.plus
+import legado.shared.generated.resources.reduce
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 数字选择对话框 (Compose Multiplatform / sharedUiMain)。
@@ -145,8 +152,8 @@ fun NumberPickerDialog(
                         modifier = Modifier.size(40.dp),
                     ) {
                         Icon(
-                            painter = rememberPainter("ic_reduce"),
-                            contentDescription = rememberString("reduce"),
+                            painter = painterResource(Res.drawable.ic_reduce),
+                            contentDescription = stringResource(Res.string.reduce),
                             tint = DesignTokens.arcoBlue6,
                         )
                     }
@@ -161,8 +168,8 @@ fun NumberPickerDialog(
                         modifier = Modifier.size(40.dp),
                     ) {
                         Icon(
-                            painter = rememberPainter("ic_add"),
-                            contentDescription = rememberString("plus"),
+                            painter = painterResource(Res.drawable.ic_add),
+                            contentDescription = stringResource(Res.string.plus),
                             tint = DesignTokens.arcoBlue6,
                         )
                     }
@@ -172,7 +179,7 @@ fun NumberPickerDialog(
         confirmButton = {
             TextButton(onClick = { onConfirm(currentValue) }) {
                 Text(
-                    text = rememberString("ok"),
+                    text = stringResource(Res.string.ok),
                     color = DesignTokens.arcoBlue6,
                 )
             }
@@ -191,7 +198,7 @@ fun NumberPickerDialog(
                 }
                 TextButton(onClick = onDismiss) {
                     Text(
-                        text = rememberString("cancel"),
+                        text = stringResource(Res.string.cancel),
                         color = DesignTokens.arcoBlue6,
                     )
                 }

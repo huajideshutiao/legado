@@ -38,10 +38,37 @@ import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.component.dragSelectable
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.add_replace_rule
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.delete
+import legado.shared.generated.resources.disable_selection
+import legado.shared.generated.resources.draw
+import legado.shared.generated.resources.edit
+import legado.shared.generated.resources.enable_selection
+import legado.shared.generated.resources.export_selection
+import legado.shared.generated.resources.group_manage
+import legado.shared.generated.resources.help
+import legado.shared.generated.resources.ic_edit
+import legado.shared.generated.resources.ic_groups
+import legado.shared.generated.resources.ic_more_vert
+import legado.shared.generated.resources.import_local
+import legado.shared.generated.resources.import_on_line
+import legado.shared.generated.resources.menu_action_group
+import legado.shared.generated.resources.more_menu
+import legado.shared.generated.resources.no_group
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.replace_purify
+import legado.shared.generated.resources.replace_purify_search
+import legado.shared.generated.resources.selection_to_bottom
+import legado.shared.generated.resources.selection_to_top
+import legado.shared.generated.resources.sure_del
+import legado.shared.generated.resources.to_bottom
+import legado.shared.generated.resources.to_top
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 替换规则列表 Screen (KMP 版, commonMain 共享)。
@@ -96,7 +123,7 @@ fun ReplaceRuleListScreen(
         listState = listState,
         titleBar = {
             AppTitleBar(
-                title = rememberString("replace_purify"),
+                title = stringResource(Res.string.replace_purify),
                 onBack = onBack,
                 titleContent = {
                     AppSearchField(
@@ -107,7 +134,7 @@ fun ReplaceRuleListScreen(
                                 if (key.isBlank()) ReplaceQuery.All else ReplaceQuery.Keyword(key)
                             )
                         },
-                        hint = rememberString("replace_purify_search"),
+                        hint = stringResource(Res.string.replace_purify_search),
                     )
                 },
                 actions = { ReplaceRuleActions(viewModel, groups, onAddRule, onImportLocal, onImportOnline, onHelp, onGroupManage) },
@@ -127,22 +154,22 @@ fun ReplaceRuleListScreen(
                 allCount = rules.size,
                 onSelectAll = { viewModel.selectAll(it) },
                 onRevertSelection = { viewModel.revertSelection() },
-                mainActionText = rememberString("delete"),
+                mainActionText = stringResource(Res.string.delete),
                 onMainAction = { showDeleteConfirm = true },
                 actions = listOf(
-                    SelectAction(rememberString("enable_selection")) {
+                    SelectAction(stringResource(Res.string.enable_selection)) {
                         viewModel.enableSelection(true)
                     },
-                    SelectAction(rememberString("disable_selection")) {
+                    SelectAction(stringResource(Res.string.disable_selection)) {
                         viewModel.enableSelection(false)
                     },
-                    SelectAction(rememberString("selection_to_top")) {
+                    SelectAction(stringResource(Res.string.selection_to_top)) {
                         viewModel.topSelect(viewModel.selection())
                     },
-                    SelectAction(rememberString("selection_to_bottom")) {
+                    SelectAction(stringResource(Res.string.selection_to_bottom)) {
                         viewModel.bottomSelect(viewModel.selection())
                     },
-                    SelectAction(rememberString("export_selection")) {
+                    SelectAction(stringResource(Res.string.export_selection)) {
                         onExport(viewModel.selection())
                     },
                 ),
@@ -162,24 +189,24 @@ fun ReplaceRuleListScreen(
     if (showDeleteConfirm) {
         AppAlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = rememberString("draw"),
-            message = rememberString("sure_del"),
-            okButton = AlertButton(rememberString("ok")) {
+            title = stringResource(Res.string.draw),
+            message = stringResource(Res.string.sure_del),
+            okButton = AlertButton(stringResource(Res.string.ok)) {
                 viewModel.deleteSelection()
             },
-            cancelButton = AlertButton(rememberString("cancel")) {},
+            cancelButton = AlertButton(stringResource(Res.string.cancel)) {},
         )
     }
     // 单条删除确认
     pendingDeleteRule.value?.let { rule ->
         AppAlertDialog(
             onDismissRequest = { pendingDeleteRule.value = null },
-            title = rememberString("draw"),
-            message = rememberString("sure_del") + "\n" + rule.name,
-            okButton = AlertButton(rememberString("ok")) {
+            title = stringResource(Res.string.draw),
+            message = stringResource(Res.string.sure_del) + "\n" + rule.name,
+            okButton = AlertButton(stringResource(Res.string.ok)) {
                 viewModel.delete(rule)
             },
-            cancelButton = AlertButton(rememberString("cancel")) {},
+            cancelButton = AlertButton(stringResource(Res.string.cancel)) {},
         )
     }
 }
@@ -206,8 +233,8 @@ private fun ReplaceRuleActions(
     Box {
         IconButton(onClick = { showGroup = true }) {
             Icon(
-                painter = rememberPainter("ic_groups"),
-                contentDescription = rememberString("menu_action_group"),
+                painter = painterResource(Res.drawable.ic_groups),
+                contentDescription = stringResource(Res.string.menu_action_group),
                 tint = colors.primaryText,
             )
         }
@@ -215,7 +242,7 @@ private fun ReplaceRuleActions(
             DropdownMenuItem(
                 onClick = { showGroup = false; onGroupManage() },
             ) {
-                Text(rememberString("group_manage"), color = colors.primaryText)
+                Text(stringResource(Res.string.group_manage), color = colors.primaryText)
             }
             DropdownMenuItem(
                 onClick = {
@@ -223,7 +250,7 @@ private fun ReplaceRuleActions(
                     viewModel.setQuery(ReplaceQuery.NoGroup)
                 },
             ) {
-                Text(rememberString("no_group"), color = colors.primaryText)
+                Text(stringResource(Res.string.no_group), color = colors.primaryText)
             }
             groups.forEach { group ->
                 DropdownMenuItem(
@@ -244,7 +271,7 @@ private fun ReplaceRuleActions(
                 onAddRule()
             },
         ) {
-            Text(rememberString("add_replace_rule"), color = colors.primaryText)
+            Text(stringResource(Res.string.add_replace_rule), color = colors.primaryText)
         }
         DropdownMenuItem(
             onClick = {
@@ -252,7 +279,7 @@ private fun ReplaceRuleActions(
                 onImportLocal()
             },
         ) {
-            Text(rememberString("import_local"), color = colors.primaryText)
+            Text(stringResource(Res.string.import_local), color = colors.primaryText)
         }
         DropdownMenuItem(
             onClick = {
@@ -260,7 +287,7 @@ private fun ReplaceRuleActions(
                 onImportOnline()
             },
         ) {
-            Text(rememberString("import_on_line"), color = colors.primaryText)
+            Text(stringResource(Res.string.import_on_line), color = colors.primaryText)
         }
         DropdownMenuItem(
             onClick = {
@@ -268,7 +295,7 @@ private fun ReplaceRuleActions(
                 onHelp()
             },
         ) {
-            Text(rememberString("help"), color = colors.primaryText)
+            Text(stringResource(Res.string.help), color = colors.primaryText)
         }
     }
 }
@@ -314,16 +341,16 @@ private fun RuleItemScope.ReplaceRuleItem(
         Spacer(Modifier.width(8.dp))
         IconButton(onClick = { onEdit(item.id) }) {
             Icon(
-                painter = rememberPainter("ic_edit"),
-                contentDescription = rememberString("edit"),
+                painter = painterResource(Res.drawable.ic_edit),
+                contentDescription = stringResource(Res.string.edit),
                 tint = colors.primaryText,
             )
         }
         Box {
             IconButton(onClick = { showMenu = true }) {
                 Icon(
-                    painter = rememberPainter("ic_more_vert"),
-                    contentDescription = rememberString("more_menu"),
+                    painter = painterResource(Res.drawable.ic_more_vert),
+                    contentDescription = stringResource(Res.string.more_menu),
                     tint = colors.primaryText,
                     modifier = Modifier.size(24.dp),
                 )
@@ -332,17 +359,17 @@ private fun RuleItemScope.ReplaceRuleItem(
                 DropdownMenuItem(
                     onClick = { showMenu = false; viewModel.toTop(item) },
                 ) {
-                    Text(rememberString("to_top"), color = colors.primaryText)
+                    Text(stringResource(Res.string.to_top), color = colors.primaryText)
                 }
                 DropdownMenuItem(
                     onClick = { showMenu = false; viewModel.toBottom(item) },
                 ) {
-                    Text(rememberString("to_bottom"), color = colors.primaryText)
+                    Text(stringResource(Res.string.to_bottom), color = colors.primaryText)
                 }
                 DropdownMenuItem(
                     onClick = { showMenu = false; onDelete() },
                 ) {
-                    Text(rememberString("delete"), color = colors.primaryText)
+                    Text(stringResource(Res.string.delete), color = colors.primaryText)
                 }
             }
         }

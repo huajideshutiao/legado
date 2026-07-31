@@ -8,13 +8,16 @@ import io.legado.app.ui.book.read.review.ReviewPostScreen
 import io.legado.app.ui.book.read.review.ReviewPostScreenModel
 import io.legado.app.ui.book.read.review.ReviewPostUiActions
 import io.legado.app.ui.book.read.review.ReviewPostUiEvent
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.reply_review_to
+import legado.shared.generated.resources.review_post_hint
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 发表段评/书评页 shared 路由入口。
@@ -49,9 +52,9 @@ fun ReviewPostRoute(
         val trimmed = replyPreview.take(15).let {
             if (replyPreview.length > 15) "$it…" else it
         }
-        rememberString("reply_review_to", trimmed)
+        stringResource(Res.string.reply_review_to, trimmed)
     } else {
-        rememberString("review_post_hint")
+        stringResource(Res.string.review_post_hint)
     }
     LaunchedEffect(hint) {
         screenModel.dispatch(ReviewPostUiEvent.ShowHint(hint))

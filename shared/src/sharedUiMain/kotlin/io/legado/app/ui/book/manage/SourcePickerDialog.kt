@@ -12,18 +12,15 @@
 package io.legado.app.ui.book.manage
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.Icon
+import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.IconButton
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
@@ -40,72 +37,53 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
-import io.legado.app.ui.compose.component.AppCheckbox
-import io.legado.app.ui.compose.component.AppTextButton
+import io.legado.app.ui.compose.component.AppSearchField
+import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.dialog.NumberPickerDialog
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.change_source_delay
+import legado.shared.generated.resources.ic_arrow_back
+import legado.shared.generated.resources.respondTime
+import legado.shared.generated.resources.search_book_source
+import legado.shared.generated.resources.select_book_source
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 换源选择对话框 (KMP 共享, app + desktop 复用)。
  *
- * 对应 app 端 `io.legado.app.ui.book.manage.SourcePickerDialog`,
- * 但去掉对 Android Fragment / appDb.bookSourceDao.flowEnabled / flowSearch /
- * showNumberPicker / AppConfig.batchChangeSourceDelay 的依赖,
- * 改为纯 @Composable + 回调形式:
- * - 调用方传入 [book] (上下文, 用于未来扩展标题展示书名) 与 [sources] (可选用书源列表,
- *   由调用方负责从 appDb 加载, 可含搜索过滤)
- * - 用户勾选/取消勾选书源行, 通过本地状态维护 selectedSourceUrls
- * - 用户点击确认按钮通过 [onConfirm] 回传勾选的书源 URL 集合
- * - [onDismiss] 关闭回调 (与原版 dismissAllowingStateLoss 对齐)
+ * 对照 app 端 `io.legado.app.ui.book.manage.SourcePickerDialog`：
+ * - 搜索框即时筛选启用书源；
+ * - 点击书源后立即回调并关闭；
+ * - 溢出菜单可设置批量换源延迟；
+ * - 列表补充显示 URL 与最近响应时间。
  *
- * # 与原版的差异 (KMP 限制 + 任务要求)
- *
- * - 原版是单选 + 立即切换 (点击行 → callback.sourceOnClick → dismiss),
- *   任务要求"批量勾选后批量切换", 本下沉版本按任务要求改为 Checkbox 多选 + 确认按钮
- *   (与原版 `onSourceClick` 单选语义不同, 但符合任务参数 `selectedSourceUrls: Set<String>`
- *   + `onConfirm: (Set<String>) -> Unit` 的批量语义)
- * - 原版搜索框 (AppSearchField) 依赖 appDb.bookSourceDao.flowSearch, 下沉后由调用方
- *   在外部实现搜索并传入过滤后的 [sources] (本 Dialog 不含搜索 UI)
- * - 原版 OverflowMenu 中的"换源延迟"依赖 showNumberPicker + AppConfig, 下沉后由调用方
- *   在外部实现 (本 Dialog 不含"换源延迟"入口)
- *
- * # 原业务逻辑保留
- *
- * - LazyColumn 列出书源 (与原版 LazyColumn + items 对齐)
- * - 每行显示书源名 (getDisPlayNameGroup) + URL + 最后响应时间 (与任务要求"显示书源名 +
- *   URL + 最后响应时间"对齐)
- * - 顶部标题栏 + 返回箭头 (与原版 Row + IconButton(ic_arrow_back) + Text(选择书源) 对齐)
- * - 底部确认/取消按钮 (与批量模式语义对齐)
- *
- * # 样式 (Arco Design 规范)
- *
- * - 主色 arcoblue-6 (#165DFF): Checkbox 选中色 (走 AppCheckbox 默认 accent)
- * - 圆角 arco_radius_lg = 16dp: Dialog Surface 圆角
- * - 无阴影 (Surface 默认无阴影)
- *
- * @param book 当前书籍 (上下文, 供未来扩展标题展示书名, 当前未使用)
- * @param sources 可选用书源列表 (调用方负责从 appDb 加载, 可含搜索过滤)
- * @param selectedSourceUrls 初始勾选的书源 URL 集合
- * @param onConfirm 确认回调, 携带勾选的书源 URL 集合
- * @param onDismiss 关闭回调
+ * 数据加载与延迟持久化由调用方负责，组件只维护查询和弹窗状态。
  */
 @Composable
 fun SourcePickerDialog(
-    book: Book,
     sources: List<BookSource>,
-    selectedSourceUrls: Set<String>,
-    onConfirm: (Set<String>) -> Unit,
+    initialDelay: Int,
+    onSourceSelected: (BookSource) -> Unit,
+    onDelayChange: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
 
-    // 本地状态: 当前勾选的书源 URL 集合 (与原版 mutableStateOf 对齐, 改为 Set<String> 批量语义)
-    var selected by remember(selectedSourceUrls) { mutableStateOf(selectedSourceUrls.toMutableSet()) }
+    var searchKey by remember { mutableStateOf("") }
+    var showDelayPicker by remember { mutableStateOf(false) }
+    val filteredSources = remember(sources, searchKey) {
+        if (searchKey.isBlank()) sources else sources.filter {
+            it.bookSourceName.contains(searchKey, ignoreCase = true) ||
+                it.bookSourceGroup.orEmpty().contains(searchKey, ignoreCase = true) ||
+                it.bookSourceUrl.contains(searchKey, ignoreCase = true) ||
+                it.bookSourceComment.orEmpty().contains(searchKey, ignoreCase = true)
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -126,19 +104,35 @@ fun SourcePickerDialog(
                 ) {
                     IconButton(onClick = onDismiss) {
                         Icon(
-                            painter = rememberPainter("ic_arrow_back"),
+                            painter = painterResource(Res.drawable.ic_arrow_back),
                             contentDescription = null,
                             tint = colors.primaryText,
                         )
                     }
                     Text(
-                        text = rememberString("select_book_source"),
+                        text = stringResource(Res.string.select_book_source),
                         color = colors.primaryText,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
+                        modifier = Modifier.weight(1f),
                     )
+                    OverflowMenu { dismiss ->
+                        DropdownMenuItem(onClick = {
+                            dismiss()
+                            showDelayPicker = true
+                        }) {
+                            Text(stringResource(Res.string.change_source_delay))
+                        }
+                    }
                 }
+
+                AppSearchField(
+                    value = searchKey,
+                    onValueChange = { searchKey = it },
+                    hint = stringResource(Res.string.search_book_source),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                )
 
                 // 书源列表 (与原版 LazyColumn + items 对齐)
                 FastScrollLazyColumn(
@@ -147,75 +141,55 @@ fun SourcePickerDialog(
                         .fillMaxWidth()
                         .heightIn(max = 400.dp),
                 ) {
-                    items(sources, key = { it.bookSourceUrl }) { source ->
+                    items(filteredSources, key = { it.bookSourceUrl }) { source ->
                         SourceRow(
                             source = source,
-                            checked = source.bookSourceUrl in selected,
-                            onToggle = {
-                                // 勾选/取消勾选 (与原版 clickable + onSourceClick 对齐, 改为批量勾选语义)
-                                val newSelected = selected.toMutableSet()
-                                if (source.bookSourceUrl in newSelected) {
-                                    newSelected.remove(source.bookSourceUrl)
-                                } else {
-                                    newSelected.add(source.bookSourceUrl)
-                                }
-                                selected = newSelected
+                            onClick = {
+                                onSourceSelected(source)
+                                onDismiss()
                             },
                         )
                     }
                 }
-
-                // 底部确认/取消按钮 (与批量模式语义对齐)
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(8.dp),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    AppTextButton(
-                        text = rememberString("cancel"),
-                        color = colors.secondaryText,
-                        onClick = onDismiss,
-                    )
-                    Spacer(Modifier.padding(horizontal = 4.dp))
-                    AppTextButton(
-                        text = rememberString("ok"),
-                        onClick = { onConfirm(selected) },
-                    )
-                }
             }
         }
+    }
+
+    if (showDelayPicker) {
+        NumberPickerDialog(
+            title = stringResource(Res.string.change_source_delay),
+            value = initialDelay,
+            range = 0..9999,
+            onConfirm = {
+                onDelayChange(it)
+                showDelayPicker = false
+            },
+            onDismiss = { showDelayPicker = false },
+        )
     }
 }
 
 /**
- * 书源行: Checkbox + 书源名 + URL + 最后响应时间。
+ * 书源行: 书源名 + URL + 最后响应时间。
  *
  * 复刻自 app 端 `SourcePickerDialog.Content` 中的 Text(item.getDisPlayNameGroup()),
  * 并按任务要求"显示书源名 + URL + 最后响应时间"扩展为多行布局:
- * - 第一行: Checkbox + 书源名 (含分组, 与原版 getDisPlayNameGroup 对齐)
+ * - 第一行: 书源名 (含分组, 与原版 getDisPlayNameGroup 对齐)
  * - 第二行: URL + 响应时间 (任务要求新增)
  */
 @Composable
 private fun SourceRow(
     source: BookSource,
-    checked: Boolean,
-    onToggle: () -> Unit,
+    onClick: () -> Unit,
 ) {
     val colors = AppTheme.colors
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable(onClick = onToggle)
+            .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AppCheckbox(
-            checked = checked,
-            onCheckedChange = { onToggle() },
-        )
-        Spacer(Modifier.size(8.dp))
         Column(Modifier.weight(1f)) {
             // 第一行: 书源名 (含分组, 与原版 getDisPlayNameGroup 对齐)
             Text(
@@ -227,7 +201,12 @@ private fun SourceRow(
             )
             // 第二行: URL + 响应时间 (任务要求新增, 显示书源 URL 与最后响应时间)
             Text(
-                text = rememberString("respondTime", source.respondTime),
+                text = "${source.bookSourceUrl}  ${
+                    stringResource(
+                        Res.string.respondTime,
+                        source.respondTime
+                    )
+                }",
                 color = colors.secondaryText,
                 fontSize = 12.sp,
                 maxLines = 1,

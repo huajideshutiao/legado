@@ -41,6 +41,8 @@ import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 新增 / 编辑过滤规则。作用范围复用 [SearchScopeDialog]。

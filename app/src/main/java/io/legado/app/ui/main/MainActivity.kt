@@ -7,32 +7,48 @@ import android.os.Bundle
 import android.text.format.DateUtils
 import android.view.WindowManager
 import androidx.activity.addCallback
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.AlertDialog
+import androidx.compose.material.ModalBottomSheetLayout
+import androidx.compose.material.ModalBottomSheetValue
+import androidx.compose.material.Text
+import androidx.compose.material.TextButton
+import androidx.compose.material.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.IntentAction
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.appInfo
+import io.legado.app.data.entities.Book
 import io.legado.app.help.AppWebDav
+import io.legado.app.help.book.isImage
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.update.AppUpdate
+import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.model.CoverRatio
 import io.legado.app.service.BaseReadAloudService
+import io.legado.app.service.ExportBookService
 import io.legado.app.ui.about.CrashLogsDialog
 import io.legado.app.ui.association.DeepLinkImportHost
 import io.legado.app.ui.association.LegadoDeepLink
@@ -40,12 +56,20 @@ import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.book.audio.AndroidAudioPlayPlatformProvider
 import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
+import io.legado.app.ui.book.info.BookInfoBlurCoverBg
+import io.legado.app.ui.book.info.BookInfoCover
+import io.legado.app.ui.book.info.BookInfoIntroImage
+import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
+import io.legado.app.ui.book.info.LocalBookInfoCoverSlot
+import io.legado.app.ui.book.info.LocalIntroImageSlot
 import io.legado.app.ui.book.manga.AndroidMangaReaderPlatform
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.read.AndroidReaderPlatformProvider
 import io.legado.app.ui.book.read.ReaderPlatformProviders
 import io.legado.app.ui.book.video.AndroidVideoPlayPlatformProvider
 import io.legado.app.ui.book.video.VideoPlayPlatformProviders
+import io.legado.app.ui.browser.AndroidWebView
+import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.file.HandleFileContract
@@ -61,9 +85,13 @@ import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.widget.dialog.TextDialog
+import io.legado.app.utils.ACache
+import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.registerForActivityResult
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.showExportSuccess
+import io.legado.app.utils.startService
 import io.legado.app.utils.toastOnUi
 import io.legado.app.web.utils.WebAssetSources
 import kotlinx.coroutines.Dispatchers.IO
@@ -82,6 +110,7 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
 
     private var exitTime: Long = 0
     private val EXIT_INTERVAL = 2000L
+    private val exportBookPathKey = "exportBookPath"
 
     /** 换封面源回调暂存: 由 [AndroidPlatformCapabilities.showChangeCoverDialog] 写入,
      *  ChangeCoverDialog 触发 [coverChangeTo] 时消费。 */
@@ -115,6 +144,72 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
     fun launchBookTreeUriPicker() = bookTreeUriSelect.launch {
         title = getString(R.string.select_book_folder)
         mode = HandleFileContract.DIR_SYS
+    }
+
+    /** 书架管理导出: 待导出书籍暂存 (由 [AndroidPlatformCapabilities.selectExportFolder] 写入,
+     *  [exportDir] 回调 value=="cache" 时消费, 启动 ExportBookService)。 */
+    var pendingExportBooks: List<Book>? = null
+
+    /** 书架管理导出: HandleFileContract (对照 BookshelfManageActivity.exportDir)。 */
+    private val exportDir by lazy {
+        registerHandleFile { result ->
+            val uri = result.uri ?: return@registerHandleFile
+            if (result.value == "cache") {
+                // 文件夹选择: 保存路径 + 启动 ExportBookService
+                val dirPath = if (uri.isContentScheme()) uri.toString() else uri.path
+                    ?: return@registerHandleFile
+                ACache.get().put(exportBookPathKey, dirPath)
+                val books = pendingExportBooks
+                pendingExportBooks = null
+                if (books != null && books.isNotEmpty()) {
+                    startExportBooks(dirPath, books)
+                }
+            } else {
+                // 文件导出: 显示成功
+                showExportSuccess(uri)
+            }
+        }
+    }
+
+    /** 暴露给 [AndroidPlatformCapabilities] 启动导出文件选择器 (EXPORT 模式, 对照 exportDir.launch EXPORT)。 */
+    fun launchExportDir(name: String, file: java.io.File, type: String) {
+        exportDir.launch {
+            mode = HandleFileContract.EXPORT
+            fileData = HandleFileContract.FileData(name, file, type)
+        }
+    }
+
+    /** 暴露给 [AndroidPlatformCapabilities] 启动导出文件夹选择器 (对照 selectExportFolder, value="cache")。 */
+    fun launchExportFolderPicker(currentPath: String?) {
+        val default = arrayListOf<SelectItem<Int>>()
+        if (!currentPath.isNullOrEmpty()) {
+            default.add(SelectItem(currentPath, -1))
+        }
+        exportDir.launch {
+            otherActions = default
+            value = "cache"
+        }
+    }
+
+    /** 启动 ExportBookService 批量导出 (对照 BookshelfManageActivity.startExport)。 */
+    internal fun startExportBooks(path: String, books: List<Book>) {
+        if (books.isEmpty()) {
+            toastOnUi(R.string.no_book)
+            return
+        }
+        val defaultType = when (AppConfig.exportType) {
+            1 -> "epub"
+            else -> "txt"
+        }
+        books.forEach { book ->
+            val exportType = if (book.isImage) "cbz" else defaultType
+            startService<ExportBookService> {
+                action = IntentAction.start
+                putExtra("bookUrl", book.bookUrl)
+                putExtra("exportType", exportType)
+                putExtra("exportPath", path)
+            }
+        }
     }
 
     // FilePickerService 桥接: launcher 须在 Activity STARTED 前注册, 交给 AndroidFilePickerService 阻塞等待回调
@@ -155,7 +250,7 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
         val context = LocalContext.current
 
         Box(Modifier.fillMaxSize()) {
-            // 注入 app 端 ShelfCover 到 shared 路由 (书架/详情页), 覆盖 LocalBookCoverSlot 兜底
+            // 注入 app 端 ShelfCover 到 shared 通用封面槽
             CompositionLocalProvider(
                 LocalBookCoverSlot provides { book, modifier, isVideoCover ->
                     ShelfCover(
@@ -167,6 +262,19 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
                         reloadKey = 0,
                         modifier = modifier,
                     )
+                },
+                // 注入 app 端 AndroidWebView 到 shared 路由 (Login/ReadRss/WebView), 覆盖 LocalWebViewSlot 兜底
+                LocalWebViewSlot provides { url, modifier -> AndroidWebView(url, modifier) },
+                // 注入 app 端 BookInfoBlurCoverBg 到 shared 路由 (详情页模糊背景), 覆盖 LocalBlurCoverBgSlot 兜底
+                LocalBlurCoverBgSlot provides { book, coverTick, inBookshelf, isEInkMode, modifier ->
+                    BookInfoBlurCoverBg(book, coverTick, inBookshelf, isEInkMode, modifier)
+                },
+                LocalBookInfoCoverSlot provides { book, coverTick, inBookshelf, modifier ->
+                    BookInfoCover(book, coverTick, inBookshelf, modifier)
+                },
+                // 注入 app 端 BookInfoIntroImage 到 shared 路由 (详情页简介图), 覆盖 LocalIntroImageSlot 兜底
+                LocalIntroImageSlot provides { src, onClick ->
+                    BookInfoIntroImage(src, onClick)
                 },
             ) {
                 LegadoApp(

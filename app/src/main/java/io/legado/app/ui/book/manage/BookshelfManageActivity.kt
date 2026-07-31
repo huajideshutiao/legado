@@ -92,6 +92,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlin.math.max
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 书架管理界面(纯 Compose)
@@ -232,7 +234,7 @@ class BookshelfManageActivity : BaseComposeActivity(),
                 isSelected = { index -> selected.value.contains(books[index].bookUrl) },
                 onSelectedChanged = { index, sel -> toggle(books[index], sel) },
             ),
-            coverSlot = { book -> BookCover(book) },
+            coverSlot = { book, modifier -> BookCover(book, modifier) },
         )
     }
 
@@ -641,7 +643,9 @@ class BookshelfManageActivity : BaseComposeActivity(),
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .toggleable(value = allExport.value, onValueChange = { allExport.value = true })
+                            .toggleable(
+                                value = allExport.value,
+                                onValueChange = { allExport.value = true })
                             .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -652,7 +656,9 @@ class BookshelfManageActivity : BaseComposeActivity(),
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .toggleable(value = !allExport.value, onValueChange = { allExport.value = false })
+                            .toggleable(
+                                value = !allExport.value,
+                                onValueChange = { allExport.value = false })
                             .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -793,7 +799,9 @@ class BookshelfManageActivity : BaseComposeActivity(),
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Row(
                             Modifier
-                                .selectable(selected = !isEpub.value, onClick = { isEpub.value = false })
+                                .selectable(
+                                    selected = !isEpub.value,
+                                    onClick = { isEpub.value = false })
                                 .padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -805,7 +813,9 @@ class BookshelfManageActivity : BaseComposeActivity(),
                         }
                         Row(
                             Modifier
-                                .selectable(selected = isEpub.value, onClick = { isEpub.value = true })
+                                .selectable(
+                                    selected = isEpub.value,
+                                    onClick = { isEpub.value = true })
                                 .padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -855,7 +865,7 @@ class BookshelfManageActivity : BaseComposeActivity(),
      * 沿用 View 版 CoverImageView(Glide + 默认封面自绘), 经 AndroidView 承载。
      */
     @Composable
-    private fun BookCover(book: Book) {
+    private fun BookCover(book: Book, modifier: Modifier = Modifier) {
         AndroidView(
             factory = { CoverImageView(it) },
             update = { iv ->
@@ -868,6 +878,7 @@ class BookshelfManageActivity : BaseComposeActivity(),
                     inBookshelf = true,
                 )
             },
+            modifier = modifier,
         )
     }
 

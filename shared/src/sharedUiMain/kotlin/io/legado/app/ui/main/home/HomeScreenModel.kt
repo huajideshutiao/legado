@@ -1,8 +1,10 @@
 package io.legado.app.ui.main.home
 
+import io.legado.app.constant.EventBus
+import io.legado.app.data.entities.HomeSection
 import io.legado.app.help.HomeTabHelpShared
-import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.ScreenModel
+import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -20,15 +22,12 @@ import kotlinx.coroutines.launch
  * 对照 app 端 [io.legado.app.ui.main.home.HomeTabState] + HomeViewModel 的数据流:
  * - 6 个 LiveData Observer → 6 个 StateFlow collector (过滤初始 null 避免假触发)
  * - onPageVisible/onPageChanged/refreshTab/loadInfinite 直接转发到 [viewModelShared]
- * - openManageSection/openManageTab 为弹窗类操作, 委托 [PlatformCapabilityProviders]
- *   (app 端 actual 启动 L3 Dialog; 其他端空实现)
+ * - openManageSection/openManageTab 只翻转 [manageSectionOf]/[manageTab] 状态,
+ *   由 MainRoute 据此弹 shared Compose 对话框 (HomeSectionManageDialog/HomeTabManageDialog)
  * - HomePageVisible 内 tabSections.getOrPut → StateFlow.update 幂等写入
  *
- * 事件总线 (HOME_TAB/HOME_SECTION) 与 optionsVersion 不在本类处理:
- * - 事件类 (HomeTabEvent/HomeSectionEvent) 仍属 app 端 L3, 未下沉;
- *   管理对话框经 [PlatformCapabilityProviders] 弹出后, 由 app 端自行桥接事件回调
- *   (或后续把事件类下沉到 commonMain 再扩展本类)
- * - sectionOptions 不暴露在 [HomeUiState], slots 占位期间无需重渲染
+ * 事件总线 (HOME_TAB/HOME_SECTION) 对照 HomeFragment/HomeTabFragment 的 observeEvent:
+ * 管理对话框改完经 [FlowBus] 回流到本类, 转发给 [viewModelShared] 做增量更新。
  *
  * 模式参考 [io.legado.app.ui.main.explore.ExploreScreenModel]。
  */
@@ -48,13 +47,24 @@ class HomeScreenModel : ScreenModel, HomeUiActions {
             sectionBooks = emptyMap(),
             sectionLoading = emptyMap(),
             sectionError = emptyMap(),
+            sectionOptions = emptyMap(),
+            sectionOptionsVersion = 0,
             infiniteHasMore = emptyMap(),
         )
     )
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
 
+    /** "管理展示项"对话框的目标 tab (非 null 即显示); 由 MainRoute 订阅后弹 shared 对话框 */
+    private val _manageSectionOf = MutableStateFlow<String?>(null)
+    val manageSectionOf: StateFlow<String?> = _manageSectionOf.asStateFlow()
+
+    /** "管理分组"对话框是否显示; 由 MainRoute 订阅后弹 shared 对话框 */
+    private val _manageTab = MutableStateFlow(false)
+    val manageTab: StateFlow<Boolean> = _manageTab.asStateFlow()
+
     init {
         observeViewModelShared()
+        observeHomeEvents()
         viewModelShared.initTabs()
     }
 
@@ -135,13 +145,73 @@ class HomeScreenModel : ScreenModel, HomeUiActions {
         }
     }
 
+    /**
+     * sectionOptionsChangedFlow: 该展示项的参数选项已就绪/重解析 (对照 HomeSectionAdapter.updateSectionOptions)。
+     * ExploreOption 就地可变且相等性忽略选中态, 靠 version 递增保证 StateFlow 一定发射。
+     */
+    private fun observeSectionOptions() = scope.launch {
+        viewModelShared.sectionOptionsChangedFlow.collect { pair ->
+            if (pair != null) {
+                val (tabTitle, sectionId) = pair
+                val key = homeSectionKey(tabTitle, sectionId)
+                val options = viewModelShared.sectionOptions(tabTitle, sectionId)
+                _state.update {
+                    it.copy(
+                        sectionOptions = it.sectionOptions + (key to options),
+                        sectionOptionsVersion = it.sectionOptionsVersion + 1,
+                    )
+                }
+            }
+        }
+    }
+
     private fun observeViewModelShared() {
         observeTabs()
         observeSections()
         observeSectionUpdated()
         observeSectionLoading()
         observeSectionError()
-        // sectionOptionsChangedFlow: options 不暴露在 HomeUiState, slots 占位期间跳过
+        observeSectionOptions()
+    }
+
+    /**
+     * 管理对话框改完后的事件回流 (对照 HomeFragment/HomeTabFragment 的两处 observeEvent)。
+     * HOME_TAB 走 onTabsChanged (重命名/删除时迁移 TabState); HOME_SECTION 按 action 做增量更新。
+     */
+    private fun observeHomeEvents() {
+        scope.launch {
+            FlowBus.with(EventBus.HOME_TAB).collect { event ->
+                if (event !is HomeTabEvent) return@collect
+                viewModelShared.onTabsChanged(
+                    rename = if (event.action == HomeTabEvent.RENAME &&
+                        event.oldTitle != null && event.newTitle != null
+                    ) {
+                        event.oldTitle to event.newTitle
+                    } else {
+                        null
+                    },
+                    removed = if (event.action == HomeTabEvent.REMOVE) event.oldTitle else null,
+                )
+            }
+        }
+        scope.launch {
+            FlowBus.with(EventBus.HOME_SECTION).collect { event ->
+                if (event !is HomeSectionEvent) return@collect
+                val section = event.section
+                when (event.action) {
+                    HomeSectionEvent.ADD ->
+                        section?.let { viewModelShared.addSection(event.tabTitle, it) }
+
+                    HomeSectionEvent.UPDATE ->
+                        section?.let { viewModelShared.updateSection(event.tabTitle, it) }
+
+                    HomeSectionEvent.REMOVE ->
+                        section?.let { viewModelShared.removeSection(event.tabTitle, it) }
+
+                    HomeSectionEvent.REORDER -> viewModelShared.reorderSections(event.tabTitle)
+                }
+            }
+        }
     }
 
     // ─── HomeUiActions 实现 (对照 HomeTabState 同名方法) ──────────────────────────
@@ -162,15 +232,24 @@ class HomeScreenModel : ScreenModel, HomeUiActions {
         _state.update { it.copy(currentPage = page) }
     }
 
-    /** 打开"管理展示项"对话框: 委托平台能力 (对照 HomeTabState.openManageSection) */
+    /** 打开"管理展示项"对话框: 置状态由 MainRoute 弹窗 (对照 HomeTabState.openManageSection) */
     override fun openManageSection() {
-        val tabTitle = currentTabTitle() ?: return
-        PlatformCapabilityProviders.getOrNull()?.showHomeSectionManageDialog(tabTitle)
+        _manageSectionOf.value = currentTabTitle() ?: return
     }
 
-    /** 打开"管理分组"对话框: 委托平台能力 (对照 HomeTabState.openManageTab) */
+    /** 打开"管理分组"对话框: 置状态由 MainRoute 弹窗 (对照 HomeTabState.openManageTab) */
     override fun openManageTab() {
-        PlatformCapabilityProviders.getOrNull()?.showHomeTabManageDialog()
+        _manageTab.value = true
+    }
+
+    /** 关闭"管理展示项"对话框 */
+    fun closeManageSection() {
+        _manageSectionOf.value = null
+    }
+
+    /** 关闭"管理分组"对话框 */
+    fun closeManageTab() {
+        _manageTab.value = false
     }
 
     /** 下拉刷新该 tab (对照 HomeTabState.refreshTab) */
@@ -183,10 +262,20 @@ class HomeScreenModel : ScreenModel, HomeUiActions {
         scope.launch { viewModelShared.loadInfinite(tabTitle) }
     }
 
+    /** 参数 chip 切换: 清旧 books 并重载第 1 页 (对照 HomeTabFragment.sectionCallback.onOptionSelected) */
+    override fun onSectionOptionSelected(tabTitle: String, section: HomeSection) {
+        scope.launch { viewModelShared.onSectionOptionSelected(tabTitle, section) }
+    }
+
     /** 当前选中 tab 的标题; 用于"管理展示项"快捷入口 (对照 HomeTabState.currentTabTitle) */
     private fun currentTabTitle(): String? {
         val st = _state.value
         return st.tabs.getOrNull(st.currentPage)?.title
+    }
+
+    /** 刷新当前可见 tab (供 F5 等外部刷新入口调用) */
+    fun refreshCurrentTab() {
+        currentTabTitle()?.let { refreshTab(it) }
     }
 
     override fun onCleared() {

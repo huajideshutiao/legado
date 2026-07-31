@@ -6,6 +6,7 @@ import android.content.res.Configuration
 import android.net.Uri
 import android.view.ViewConfiguration
 import androidx.core.net.toUri
+import androidx.fragment.app.commit
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
@@ -17,6 +18,7 @@ import io.legado.app.constant.appInfo
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.CrashHandler
 import io.legado.app.help.IntentHelp
 import io.legado.app.help.book.BookHelp
@@ -41,16 +43,19 @@ import io.legado.app.ui.config.DefaultCoverGalleryDialog
 import io.legado.app.ui.config.DirectLinkUploadConfig
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.toReadRoute
+import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.ui.widget.dialog.showBookVariableDialog
 import io.legado.app.ui.widget.dialog.showSourceVariableDialog
-import io.legado.app.ui.widget.number.showNumberPicker
+import io.legado.app.utils.ACache
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.FlowBus
+import io.legado.app.utils.GSON
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.createFolderIfNotExist
@@ -68,7 +73,9 @@ import io.legado.app.utils.sendToClip
 import io.legado.app.utils.setLightStatusBar
 import io.legado.app.utils.share
 import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.toastOnUi
+import io.legado.app.utils.writeToOutputStream
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -76,8 +83,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import splitties.init.appCtx
 import java.io.File
+import java.io.FileOutputStream
 
 class AndroidPlatformCapabilities(
     private val activity: MainActivity,
@@ -101,6 +116,10 @@ class AndroidPlatformCapabilities(
     override fun shareText(text: String) {
         activity.share(text)
     }
+
+    // 按 bookUrl 查 DB 解析为 BookRef, 供 LaunchRequest.OpenBook/OpenBookInfo/OpenReader 路由导航
+    override suspend fun resolveBookRef(bookUrl: String): BookRef? =
+        appDb.bookDao.getBook(bookUrl)?.toRouteRef()
 
     // 对照 ThemeConfig.applyDayNight
     override fun applyDayNight() {
@@ -169,6 +188,16 @@ class AndroidPlatformCapabilities(
     // 对照 ImportBookActivity.onPickFolder / selectFolder.launch
     override fun pickImportFolder() {
         activity.launchImportFolderPicker()
+    }
+
+    override fun openImportFile(filePath: String) {
+        val uri = Uri.parse(filePath)
+        activity.supportFragmentManager.commit {
+            add(
+                io.legado.app.ui.association.FileAssociationFragment(uri),
+                "FileAssociationFragment",
+            )
+        }
     }
 
     // 对照 ImportBookActivity.onScanFolder / scanFolder
@@ -265,18 +294,6 @@ class AndroidPlatformCapabilities(
         showMdFileInternal(title, fileName)
     }
 
-    // 对照 ExploreShowActivity.showColumnPicker / showNumberPicker
-    override fun showColumnPicker(current: Int, onSelected: (Int) -> Unit) {
-        showNumberPicker(
-            activity,
-            titleResId = R.string.explore_cols,
-            min = 0,
-            max = 6,
-            value = current,
-            onConfirm = onSelected
-        )
-    }
-
     // ===== 书籍详情页平台能力: 对照 BookInfoActivity 同名方法 =====
 
     // 对照 BookInfoActivity.onClearCache / viewModel.clearCache (直接调 BookHelp)
@@ -329,6 +346,11 @@ class AndroidPlatformCapabilities(
         }
     }
 
+    // 对照 BookInfoActivity.upWordCount 内 FileDoc.fromFile(book.bookUrl).size
+    override suspend fun localBookFileSize(bookUrl: String): Long = withContext(IO) {
+        FileDoc.fromFile(bookUrl).size
+    }
+
     // 对照 AppConst.appInfo.versionName
     override fun getAppVersionName(): String? = AppConst.appInfo.versionName
 
@@ -373,6 +395,84 @@ class AndroidPlatformCapabilities(
     // 对照 LocalConfig.deleteBookOriginal 赋值
     override fun setDeleteBookOriginal(value: Boolean) {
         LocalConfig.deleteBookOriginal = value
+    }
+
+    // 对照 BookshelfManageActivity.exportAllUseBookSource / viewModel.saveAllUseBookSourceToFile
+    override fun exportAllUseBookSource() {
+        Coroutine.async {
+            val path = "${appCtx.filesDir}/shareBookSource.json"
+            FileUtils.delete(path)
+            val file = FileUtils.createFileWithReplace(path)
+            val sources = appDb.bookDao.getAllUseBookSource()
+            file.outputStream().buffered().use {
+                GSON.writeToOutputStream(it, sources)
+            }
+            file
+        }.onSuccess { file ->
+            activity.launchExportDir("bookSource.json", file, "application/json")
+        }.onError {
+            activity.toastOnUi(it.stackTraceStr)
+        }
+    }
+
+    // 对照 BookshelfManageActivity.exportAll
+    override fun exportAllBooks(books: List<Book>) {
+        val path = ACache.get().getAsString("exportBookPath")
+        if (path.isNullOrEmpty()) {
+            selectExportFolder(books)
+        } else {
+            activity.startExportBooks(path, books)
+        }
+    }
+
+    // 对照 BookshelfManageActivity.exportBookshelf / viewModel.exportBookshelf
+    @OptIn(ExperimentalSerializationApi::class)
+    override fun exportBookshelf(books: List<Book>) {
+        Coroutine.async {
+            if (books.isEmpty()) throw NoStackTraceException("书籍不能为空")
+            val path = "${appCtx.filesDir}/bookshelf.json"
+            FileUtils.delete(path)
+            val file = FileUtils.createFileWithReplace(path)
+            // 对齐原 GSON 行为: prettyPrint + 2 空格缩进 + 不序列化 null 字段
+            val json = Json { prettyPrint = true; prettyPrintIndent = "  " }
+            val jsonArray = buildJsonArray {
+                books.forEach {
+                    add(buildJsonObject {
+                        put("bookUrl", it.bookUrl)
+                        put("tocUrl", it.tocUrl)
+                        put("origin", it.origin)
+                        put("originName", it.originName)
+                        put("name", it.name)
+                        put("author", it.author)
+                        it.kind?.let { v -> put("kind", v) }
+                        it.coverUrl?.let { v -> put("coverUrl", v) }
+                        it.customCoverUrl?.let { v -> put("customCoverUrl", v) }
+                        it.intro?.let { v -> put("intro", v) }
+                        it.customIntro?.let { v -> put("customIntro", v) }
+                        put("type", it.type)
+                        it.wordCount?.let { v -> put("wordCount", v) }
+                    })
+                }
+            }
+            FileOutputStream(file).use { out ->
+                out.write(
+                    json.encodeToString(JsonArray.serializer(), jsonArray)
+                        .toByteArray(Charsets.UTF_8)
+                )
+            }
+            file
+        }.onSuccess { file ->
+            activity.launchExportDir("bookshelf.json", file, "application/json")
+        }.onError {
+            activity.toastOnUi("导出书籍出错\n${it.localizedMessage}")
+        }
+    }
+
+    // 对照 BookshelfManageActivity.selectExportFolder
+    override fun selectExportFolder(books: List<Book>) {
+        val path = ACache.get().getAsString("exportBookPath")
+        activity.pendingExportBooks = books
+        activity.launchExportFolderPicker(path)
     }
 
     // ===== 书源管理平台能力: 对照 BookSourceActivity 同名方法 =====

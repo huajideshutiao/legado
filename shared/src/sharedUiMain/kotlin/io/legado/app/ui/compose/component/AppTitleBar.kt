@@ -36,11 +36,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.clear
+import legado.shared.generated.resources.ic_arrow_back
+import legado.shared.generated.resources.ic_baseline_close
+import legado.shared.generated.resources.ic_more_vert
+import legado.shared.generated.resources.ic_search
+import legado.shared.generated.resources.more_menu
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Compose 版顶部标题栏，复刻 View TitleBar 视觉：
@@ -87,7 +94,7 @@ fun AppTitleBar(
         ) {
             IconButton(onClick = onBack) {
                 Icon(
-                    painter = rememberPainter("ic_arrow_back"),
+                    painter = painterResource(Res.drawable.ic_arrow_back),
                     contentDescription = null,
                     tint = colors.primaryText,
                 )
@@ -150,7 +157,7 @@ fun AppSearchField(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            painter = rememberPainter("ic_search"),
+            painter = painterResource(Res.drawable.ic_search),
             contentDescription = null,
             tint = colors.secondaryText,
             modifier = Modifier.size(18.dp),
@@ -182,8 +189,8 @@ fun AppSearchField(
         if (value.isNotEmpty()) {
             IconButton(onClick = { onValueChange("") }, modifier = Modifier.size(24.dp)) {
                 Icon(
-                    painter = rememberPainter("ic_baseline_close"),
-                    contentDescription = rememberString("clear"),
+                    painter = painterResource(Res.drawable.ic_baseline_close),
+                    contentDescription = stringResource(Res.string.clear),
                     tint = colors.secondaryText,
                     modifier = Modifier.size(16.dp),
                 )
@@ -203,8 +210,8 @@ fun OverflowMenu(
     Box(modifier) {
         IconButton(onClick = { expanded = true }) {
             Icon(
-                painter = rememberPainter("ic_more_vert"),
-                contentDescription = rememberString("more_menu"),
+                painter = painterResource(Res.drawable.ic_more_vert),
+                contentDescription = stringResource(Res.string.more_menu),
                 tint = colors.primaryText,
             )
         }

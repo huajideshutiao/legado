@@ -31,10 +31,30 @@ import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.add
+import legado.shared.generated.resources.book_source
+import legado.shared.generated.resources.delete
+import legado.shared.generated.resources.dict_rule
+import legado.shared.generated.resources.edit
+import legado.shared.generated.resources.ic_add
+import legado.shared.generated.resources.ic_edit
+import legado.shared.generated.resources.ic_more_vert
+import legado.shared.generated.resources.more_menu
+import legado.shared.generated.resources.replace_rule
+import legado.shared.generated.resources.rss_source
+import legado.shared.generated.resources.rule_sub_empty_msg
+import legado.shared.generated.resources.rule_subscription
+import legado.shared.generated.resources.to_bottom
+import legado.shared.generated.resources.to_top
+import legado.shared.generated.resources.tts
+import legado.shared.generated.resources.txt_toc_rule
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 // ===== state / actions =====
 
@@ -88,7 +108,7 @@ interface RuleSubUiActions {
  * - [RuleSubScreen]: 纯 Composable 渲染入口, 仅依赖 state + actions
  *
  * 下沉改动:
- * - 字符串资源 `stringResource(R.string.xxx)` → `rememberString("xxx")` (key-based, 跨平台)
+ * - 字符串资源 `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)` (key-based, 跨平台)
  * - 图标资源 `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")` (key-based, 跨平台)
  * - 平台依赖 (appDb / showDialogFragment / alert 编辑弹窗) 通过 [RuleSubUiActions] 回调桥接,
  *   编辑弹窗 (`showEditDialog`) 与订阅打开 (`openSubscription`) 仍由 app 端 Activity 持有
@@ -108,16 +128,16 @@ fun RuleSubScreen(
         itemKey = { it.id },
         onMove = { from, to -> actions.onMove(from, to) },
         modifier = modifier,
-        emptyText = rememberString("rule_sub_empty_msg"),
+        emptyText = stringResource(Res.string.rule_sub_empty_msg),
         titleBar = {
             AppTitleBar(
-                title = rememberString("rule_subscription"),
+                title = stringResource(Res.string.rule_subscription),
                 onBack = { actions.onBack() },
                 actions = {
                     IconButton(onClick = { actions.onAdd() }) {
                         Icon(
-                            painter = rememberPainter("ic_add"),
-                            contentDescription = rememberString("add"),
+                            painter = painterResource(Res.drawable.ic_add),
+                            contentDescription = stringResource(Res.string.add),
                             tint = AppTheme.colors.primaryText,
                         )
                     }
@@ -190,16 +210,16 @@ private fun RuleItemScope.RuleSubItem(
         }
         IconButton(onClick = onEdit) {
             Icon(
-                painter = rememberPainter("ic_edit"),
-                contentDescription = rememberString("edit"),
+                painter = painterResource(Res.drawable.ic_edit),
+                contentDescription = stringResource(Res.string.edit),
                 tint = colors.primaryText,
             )
         }
         Box {
             IconButton(onClick = { showMenu = true }) {
                 Icon(
-                    painter = rememberPainter("ic_more_vert"),
-                    contentDescription = rememberString("more_menu"),
+                    painter = painterResource(Res.drawable.ic_more_vert),
+                    contentDescription = stringResource(Res.string.more_menu),
                     tint = colors.primaryText,
                 )
             }
@@ -207,17 +227,17 @@ private fun RuleItemScope.RuleSubItem(
                 DropdownMenuItem(
                     onClick = { showMenu = false; onToTop() },
                 ) {
-                    Text(rememberString("to_top"), color = colors.primaryText)
+                    Text(stringResource(Res.string.to_top), color = colors.primaryText)
                 }
                 DropdownMenuItem(
                     onClick = { showMenu = false; onToBottom() },
                 ) {
-                    Text(rememberString("to_bottom"), color = colors.primaryText)
+                    Text(stringResource(Res.string.to_bottom), color = colors.primaryText)
                 }
                 DropdownMenuItem(
                     onClick = { showMenu = false; onDelete() },
                 ) {
-                    Text(rememberString("delete"), color = colors.primaryText)
+                    Text(stringResource(Res.string.delete), color = colors.primaryText)
                 }
             }
         }
@@ -247,10 +267,10 @@ private fun TypeBadge(text: String) {
  */
 @Composable
 private fun typeName(type: Int): String = when (type) {
-    1 -> rememberString("rss_source")
-    2 -> rememberString("replace_rule")
-    3 -> rememberString("txt_toc_rule")
-    4 -> rememberString("dict_rule")
-    5 -> rememberString("tts")
-    else -> rememberString("book_source")
+    1 -> stringResource(Res.string.rss_source)
+    2 -> stringResource(Res.string.replace_rule)
+    3 -> stringResource(Res.string.txt_toc_rule)
+    4 -> stringResource(Res.string.dict_rule)
+    5 -> stringResource(Res.string.tts)
+    else -> stringResource(Res.string.book_source)
 }

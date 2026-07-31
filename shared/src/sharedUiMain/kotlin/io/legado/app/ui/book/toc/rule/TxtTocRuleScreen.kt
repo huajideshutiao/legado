@@ -37,10 +37,32 @@ import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.component.dragSelectable
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.create
+import legado.shared.generated.resources.delete
+import legado.shared.generated.resources.disable_selection
+import legado.shared.generated.resources.draw
+import legado.shared.generated.resources.edit
+import legado.shared.generated.resources.enable_selection
+import legado.shared.generated.resources.export_selection
+import legado.shared.generated.resources.help
+import legado.shared.generated.resources.ic_add
+import legado.shared.generated.resources.ic_edit
+import legado.shared.generated.resources.ic_more_vert
+import legado.shared.generated.resources.import_default_rule
+import legado.shared.generated.resources.import_local
+import legado.shared.generated.resources.import_on_line
+import legado.shared.generated.resources.more_menu
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.sure_del
+import legado.shared.generated.resources.to_bottom
+import legado.shared.generated.resources.to_top
+import legado.shared.generated.resources.txt_toc_rule
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * TXT 目录规则管理 UI 状态 (KMP 版, commonMain 共享)。
@@ -141,7 +163,7 @@ fun TxtTocRuleScreen(state: TxtTocRuleUiState, actions: TxtTocRuleUiActions) {
         listState = listState,
         titleBar = {
             AppTitleBar(
-                title = rememberString("txt_toc_rule"),
+                title = stringResource(Res.string.txt_toc_rule),
                 onBack = { actions.onBack() },
                 actions = { TxtTocRuleActions(actions) },
             )
@@ -160,16 +182,16 @@ fun TxtTocRuleScreen(state: TxtTocRuleUiState, actions: TxtTocRuleUiActions) {
                 allCount = tocRules.size,
                 onSelectAll = { actions.onSelectAll(it) },
                 onRevertSelection = { actions.onRevertSelection() },
-                mainActionText = rememberString("delete"),
+                mainActionText = stringResource(Res.string.delete),
                 onMainAction = { showDeleteConfirm = true },
                 actions = listOf(
-                    SelectAction(rememberString("enable_selection")) {
+                    SelectAction(stringResource(Res.string.enable_selection)) {
                         actions.onEnableSelection(true)
                     },
-                    SelectAction(rememberString("disable_selection")) {
+                    SelectAction(stringResource(Res.string.disable_selection)) {
                         actions.onEnableSelection(false)
                     },
-                    SelectAction(rememberString("export_selection")) {
+                    SelectAction(stringResource(Res.string.export_selection)) {
                         actions.onExportSelection()
                     },
                 ),
@@ -188,24 +210,24 @@ fun TxtTocRuleScreen(state: TxtTocRuleUiState, actions: TxtTocRuleUiActions) {
     if (showDeleteConfirm) {
         AppAlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = rememberString("draw"),
-            message = rememberString("sure_del"),
-            okButton = AlertButton(rememberString("ok")) {
+            title = stringResource(Res.string.draw),
+            message = stringResource(Res.string.sure_del),
+            okButton = AlertButton(stringResource(Res.string.ok)) {
                 actions.onDelSelection()
             },
-            cancelButton = AlertButton(rememberString("cancel")) {},
+            cancelButton = AlertButton(stringResource(Res.string.cancel)) {},
         )
     }
     // 单条删除确认对话框
     pendingDeleteRule.value?.let { rule ->
         AppAlertDialog(
             onDismissRequest = { pendingDeleteRule.value = null },
-            title = rememberString("draw"),
-            message = rememberString("sure_del") + "\n" + rule.name,
-            okButton = AlertButton(rememberString("ok")) {
+            title = stringResource(Res.string.draw),
+            message = stringResource(Res.string.sure_del) + "\n" + rule.name,
+            okButton = AlertButton(stringResource(Res.string.ok)) {
                 actions.onDel(rule)
             },
-            cancelButton = AlertButton(rememberString("cancel")) {},
+            cancelButton = AlertButton(stringResource(Res.string.cancel)) {},
         )
     }
 }
@@ -219,8 +241,8 @@ private fun TxtTocRuleActions(actions: TxtTocRuleUiActions) {
     val colors = AppTheme.colors
     IconButton(onClick = { actions.onAddRule() }) {
         Icon(
-            painter = rememberPainter("ic_add"),
-            contentDescription = rememberString("create"),
+            painter = painterResource(Res.drawable.ic_add),
+            contentDescription = stringResource(Res.string.create),
             tint = colors.primaryText,
         )
     }
@@ -231,7 +253,7 @@ private fun TxtTocRuleActions(actions: TxtTocRuleUiActions) {
                 actions.onImportLocal()
             },
         ) {
-            Text(rememberString("import_local"), color = colors.primaryText)
+            Text(stringResource(Res.string.import_local), color = colors.primaryText)
         }
         DropdownMenuItem(
             onClick = {
@@ -239,7 +261,7 @@ private fun TxtTocRuleActions(actions: TxtTocRuleUiActions) {
                 actions.onImportOnline()
             },
         ) {
-            Text(rememberString("import_on_line"), color = colors.primaryText)
+            Text(stringResource(Res.string.import_on_line), color = colors.primaryText)
         }
         DropdownMenuItem(
             onClick = {
@@ -247,7 +269,7 @@ private fun TxtTocRuleActions(actions: TxtTocRuleUiActions) {
                 actions.onImportDefault()
             },
         ) {
-            Text(rememberString("import_default_rule"), color = colors.primaryText)
+            Text(stringResource(Res.string.import_default_rule), color = colors.primaryText)
         }
         DropdownMenuItem(
             onClick = {
@@ -255,7 +277,7 @@ private fun TxtTocRuleActions(actions: TxtTocRuleUiActions) {
                 actions.onHelp()
             },
         ) {
-            Text(rememberString("help"), color = colors.primaryText)
+            Text(stringResource(Res.string.help), color = colors.primaryText)
         }
     }
 }
@@ -305,16 +327,16 @@ private fun RuleItemScope.TxtTocRuleItem(
             Spacer(Modifier.width(8.dp))
             IconButton(onClick = { actions.onEditRule(item) }) {
                 Icon(
-                    painter = rememberPainter("ic_edit"),
-                    contentDescription = rememberString("edit"),
+                    painter = painterResource(Res.drawable.ic_edit),
+                    contentDescription = stringResource(Res.string.edit),
                     tint = colors.primaryText,
                 )
             }
             Box {
                 IconButton(onClick = { showMenu = true }) {
                     Icon(
-                        painter = rememberPainter("ic_more_vert"),
-                        contentDescription = rememberString("more_menu"),
+                        painter = painterResource(Res.drawable.ic_more_vert),
+                        contentDescription = stringResource(Res.string.more_menu),
                         tint = colors.primaryText,
                         modifier = Modifier.size(24.dp),
                     )
@@ -323,17 +345,17 @@ private fun RuleItemScope.TxtTocRuleItem(
                     DropdownMenuItem(
                         onClick = { showMenu = false; actions.onToTop(item) },
                     ) {
-                        Text(rememberString("to_top"), color = colors.primaryText)
+                        Text(stringResource(Res.string.to_top), color = colors.primaryText)
                     }
                     DropdownMenuItem(
                         onClick = { showMenu = false; actions.onToBottom(item) },
                     ) {
-                        Text(rememberString("to_bottom"), color = colors.primaryText)
+                        Text(stringResource(Res.string.to_bottom), color = colors.primaryText)
                     }
                     DropdownMenuItem(
                         onClick = { showMenu = false; onDelete() },
                     ) {
-                        Text(rememberString("delete"), color = colors.primaryText)
+                        Text(stringResource(Res.string.delete), color = colors.primaryText)
                     }
                 }
             }

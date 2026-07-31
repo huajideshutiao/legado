@@ -20,10 +20,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppLog
 import io.legado.app.ui.compose.MarkdownContentSelectable
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.web.utils.WebAssetSources
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.help
+import legado.shared.generated.resources.ok
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 帮助文档对话框 (KMP 共享, desktop/iOS/鸿蒙复用)。
@@ -49,7 +52,7 @@ fun HelpDialog(fileName: String, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = rememberString("help"),
+                text = stringResource(Res.string.help),
                 color = colors.primaryText,
                 fontSize = 18.sp,
             )
@@ -66,7 +69,7 @@ fun HelpDialog(fileName: String, onDismiss: () -> Unit) {
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text(text = rememberString("ok"), color = DesignTokens.arcoBlue6)
+                Text(text = stringResource(Res.string.ok), color = DesignTokens.arcoBlue6)
             }
         },
         shape = DesignTokens.dialogShape,

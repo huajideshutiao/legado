@@ -55,7 +55,7 @@ class CheckSourceService : BaseService() {
 
     private val notificationBuilder by lazy {
         NotificationCompat.Builder(this, AppConst.channelIdReadAloud)
-            .setSmallIcon(io.legado.shared.R.drawable.ic_network_check)
+            .setSmallIcon(R.drawable.ic_network_check)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentTitle(getString(R.string.check_book_source))
@@ -65,7 +65,7 @@ class CheckSourceService : BaseService() {
                 }
             )
             .addAction(
-                io.legado.shared.R.drawable.ic_stop_black_24dp,
+                R.drawable.ic_stop_black_24dp,
                 getString(R.string.cancel),
                 servicePendingIntent<CheckSourceService>(IntentAction.stop)
             )

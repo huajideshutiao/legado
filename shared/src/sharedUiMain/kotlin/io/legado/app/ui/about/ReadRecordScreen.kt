@@ -55,6 +55,37 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.all_read_time
+import legado.shared.generated.resources.avg_book_read_time
+import legado.shared.generated.resources.delete_all
+import legado.shared.generated.resources.enable_record
+import legado.shared.generated.resources.ic_arrow_back
+import legado.shared.generated.resources.ic_author
+import legado.shared.generated.resources.ic_baseline_sort_24
+import legado.shared.generated.resources.ic_book_last
+import legado.shared.generated.resources.ic_history
+import legado.shared.generated.resources.last_read_time_sort
+import legado.shared.generated.resources.month_label_format
+import legado.shared.generated.resources.month_read_time
+import legado.shared.generated.resources.next_month
+import legado.shared.generated.resources.prev_month
+import legado.shared.generated.resources.read_book_count
+import legado.shared.generated.resources.read_heatmap_title
+import legado.shared.generated.resources.read_record
+import legado.shared.generated.resources.reading_time_sort
+import legado.shared.generated.resources.search
+import legado.shared.generated.resources.sort
+import legado.shared.generated.resources.sort_by_name
+import legado.shared.generated.resources.time_format_hours
+import legado.shared.generated.resources.time_format_hours_minutes
+import legado.shared.generated.resources.time_format_minutes
+import legado.shared.generated.resources.time_format_minutes_only
+import legado.shared.generated.resources.time_format_seconds
+import legado.shared.generated.resources.today_read_time
+import legado.shared.generated.resources.week_read_time
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 // ===== state / actions =====
 
@@ -158,7 +189,7 @@ interface ReadRecordUiActions {
  * - [ReadRecordScreen]: 纯 Composable 渲染入口, 仅依赖 state + actions + 平台 slot
  *
  * 下沉改动:
- * - 字符串资源 `stringResource(R.string.xxx)` → `rememberString("xxx")` (key-based, 跨平台)
+ * - 字符串资源 `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)` (key-based, 跨平台)
  * - 图标资源 `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")` (key-based, 跨平台)
  * - `AndroidView` (MonthHeatMapView) → [heatmapSlot] 注入, app 端在 slot 内持有 AndroidView + 平台回调
  *   (factory 内 onDayClick/onDayLongClick 直接读 Activity 成员变量, 保持原动态读取行为)
@@ -198,13 +229,13 @@ fun ReadRecordScreen(
     }
     Column(modifier.fillMaxSize()) {
         AppTitleBar(
-            title = rememberString("read_record"),
+            title = stringResource(Res.string.read_record),
             onBack = { actions.onBack() },
             titleContent = {
                 AppSearchField(
                     value = state.searchText,
                     onValueChange = { actions.onSearchChange(it) },
-                    hint = rememberString("search"),
+                    hint = stringResource(Res.string.search),
                     onSearch = { actions.onSearch(state.searchText) },
                     textFieldModifier = Modifier.onFocusChanged {
                         actions.onSearchFocusChanged(it.isFocused)
@@ -232,21 +263,21 @@ private fun TitleActions(state: ReadRecordUiState, actions: ReadRecordUiActions)
     Box {
         IconButton(onClick = { sortExpanded = true }) {
             Icon(
-                painter = rememberPainter("ic_baseline_sort_24"),
-                contentDescription = rememberString("sort"),
+                painter = painterResource(Res.drawable.ic_baseline_sort_24),
+                contentDescription = stringResource(Res.string.sort),
                 tint = colors.primaryText,
             )
         }
         AppDropdownMenu(expanded = sortExpanded, onDismissRequest = { sortExpanded = false }) {
-            SortItem(rememberString("sort_by_name"), 0, state.sortMode) {
+            SortItem(stringResource(Res.string.sort_by_name), 0, state.sortMode) {
                 sortExpanded = false
                 actions.onSortSelect(0)
             }
-            SortItem(rememberString("reading_time_sort"), 1, state.sortMode) {
+            SortItem(stringResource(Res.string.reading_time_sort), 1, state.sortMode) {
                 sortExpanded = false
                 actions.onSortSelect(1)
             }
-            SortItem(rememberString("last_read_time_sort"), 2, state.sortMode) {
+            SortItem(stringResource(Res.string.last_read_time_sort), 2, state.sortMode) {
                 sortExpanded = false
                 actions.onSortSelect(2)
             }
@@ -264,7 +295,7 @@ private fun TitleActions(state: ReadRecordUiState, actions: ReadRecordUiActions)
         ) {
             AppMenuCheckbox(checked = state.enableReadRecord)
             Text(
-                rememberString("enable_record"),
+                stringResource(Res.string.enable_record),
                 color = AppTheme.colors.primaryText,
                 modifier = Modifier.padding(start = 4.dp),
             )
@@ -275,7 +306,7 @@ private fun TitleActions(state: ReadRecordUiState, actions: ReadRecordUiActions)
                 actions.onClearAll()
             },
         ) {
-            Text(rememberString("delete_all"), color = AppTheme.colors.primaryText)
+            Text(stringResource(Res.string.delete_all), color = AppTheme.colors.primaryText)
         }
     }
 }
@@ -383,7 +414,10 @@ private fun RecordList(
                 }
             }
         } else {
-            items(state.items, key = { it.bookName }) { record ->
+            items(
+                items = state.items,
+                key = { "${it.bookName}|${it.day}" },
+            ) { record ->
                 RecordRow(record, state, actions, dateFormat, coverSlot)
             }
         }
@@ -403,28 +437,34 @@ private fun SummaryCard(state: ReadRecordUiState) {
             .padding(vertical = 16.dp),
     ) {
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-            SummaryItem(rememberFormatDuring(state.summaryToday), rememberString("today_read_time"))
+            SummaryItem(
+                rememberFormatDuring(state.summaryToday),
+                stringResource(Res.string.today_read_time)
+            )
             SummaryItem(
                 rememberFormatDuring(state.summaryMonth),
-                rememberString("month_read_time"),
+                stringResource(Res.string.month_read_time),
                 topPadding = 16.dp,
             )
             SummaryItem(
                 state.summaryBookCount.toString(),
-                rememberString("read_book_count"),
+                stringResource(Res.string.read_book_count),
                 topPadding = 16.dp,
             )
         }
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-            SummaryItem(rememberFormatDuring(state.summaryWeek), rememberString("week_read_time"))
+            SummaryItem(
+                rememberFormatDuring(state.summaryWeek),
+                stringResource(Res.string.week_read_time)
+            )
             SummaryItem(
                 rememberFormatDuring(state.summaryAll),
-                rememberString("all_read_time"),
+                stringResource(Res.string.all_read_time),
                 topPadding = 16.dp,
             )
             SummaryItem(
                 rememberFormatDuring(state.summaryAvgRead),
-                rememberString("avg_book_read_time"),
+                stringResource(Res.string.avg_book_read_time),
                 topPadding = 16.dp,
             )
         }
@@ -473,7 +513,7 @@ private fun HeatMapCard(
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = rememberString("read_heatmap_title"),
+                text = stringResource(Res.string.read_heatmap_title),
                 color = colors.primaryText,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
@@ -481,14 +521,18 @@ private fun HeatMapCard(
             )
             IconButton(onClick = { actions.onStepMonth(-1) }, modifier = Modifier.size(32.dp)) {
                 Icon(
-                    painter = rememberPainter("ic_arrow_back"),
-                    contentDescription = rememberString("prev_month"),
+                    painter = painterResource(Res.drawable.ic_arrow_back),
+                    contentDescription = stringResource(Res.string.prev_month),
                     tint = colors.primaryText,
                     modifier = Modifier.size(20.dp),
                 )
             }
             Text(
-                text = rememberString("month_label_format", state.heatmapYear, state.heatmapMonth),
+                text = stringResource(
+                    Res.string.month_label_format,
+                    state.heatmapYear,
+                    state.heatmapMonth
+                ),
                 color = colors.primaryText,
                 fontSize = 13.sp,
                 modifier = Modifier.padding(horizontal = 8.dp),
@@ -504,8 +548,8 @@ private fun HeatMapCard(
                     },
             ) {
                 Icon(
-                    painter = rememberPainter("ic_arrow_back"),
-                    contentDescription = rememberString("next_month"),
+                    painter = painterResource(Res.drawable.ic_arrow_back),
+                    contentDescription = stringResource(Res.string.next_month),
                     tint = colors.primaryText,
                     modifier = Modifier.size(20.dp),
                 )
@@ -600,16 +644,16 @@ private fun RecordRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            InfoLine(rememberPainter("ic_author"), book?.getRealAuthor().orEmpty())
+            InfoLine(painterResource(Res.drawable.ic_author), book?.getRealAuthor().orEmpty())
             InfoLine(
-                rememberPainter("ic_history"),
+                painterResource(Res.drawable.ic_history),
                 rememberString(
                     "read_record_today_total",
                     rememberFormatDuring(dayTime),
                     rememberFormatDuring(totalTime),
                 ),
             )
-            InfoLine(rememberPainter("ic_book_last"), lastText)
+            InfoLine(painterResource(Res.drawable.ic_book_last), lastText)
         }
     }
 }
@@ -679,11 +723,11 @@ fun formatDuring(
 fun rememberFormatDuring(seconds: Long): String {
     return formatDuring(
         seconds = seconds,
-        zeroMinutes = rememberString("time_format_minutes"),
-        hoursMinutes = rememberString("time_format_hours_minutes"),
-        hoursOnly = rememberString("time_format_hours"),
-        minutesOnly = rememberString("time_format_minutes_only"),
-        secondsOnly = rememberString("time_format_seconds"),
+        zeroMinutes = stringResource(Res.string.time_format_minutes),
+        hoursMinutes = stringResource(Res.string.time_format_hours_minutes),
+        hoursOnly = stringResource(Res.string.time_format_hours),
+        minutesOnly = stringResource(Res.string.time_format_minutes_only),
+        secondsOnly = stringResource(Res.string.time_format_seconds),
     )
 }
 

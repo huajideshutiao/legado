@@ -27,13 +27,21 @@ import io.legado.app.ui.config.CoverConfigScreenModel
 import io.legado.app.ui.config.CoverConfigUiEvent
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.utils.FlowBus
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.bookshelf_cover_height
+import legado.shared.generated.resources.bookshelf_cover_height_summary
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.cover_config
+import legado.shared.generated.resources.default_cover_count
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.select_image
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 封面配置 shared 路由入口。
@@ -55,11 +63,11 @@ fun CoverConfigRoute(
     val appConfig = remember { AppConfigProviders.get() }
     var showHeightPicker by remember { mutableStateOf(false) }
     // 预解析 summary 模板 (对照 app 端 R.string.bookshelf_cover_height_summary = "Current: %s")
-    val summaryFormat = rememberString("bookshelf_cover_height_summary")
-    val selectImageStr = rememberString("select_image")
-    val coverCountFormat = rememberString("default_cover_count")
+    val summaryFormat = stringResource(Res.string.bookshelf_cover_height_summary)
+    val selectImageStr = stringResource(Res.string.select_image)
+    val coverCountFormat = stringResource(Res.string.default_cover_count)
     // 顶栏标题 (对照 app 端 R.string.cover_config)
-    val titleStr = rememberString("cover_config")
+    val titleStr = stringResource(Res.string.cover_config)
 
     // 对照 app 端 init: 初始化 3 个动态 summary
     LaunchedEffect(Unit) {
@@ -119,7 +127,12 @@ fun CoverConfigRoute(
         }
         AlertDialog(
             onDismissRequest = { showHeightPicker = false },
-            title = { Text(rememberString("bookshelf_cover_height"), color = colors.primaryText) },
+            title = {
+                Text(
+                    stringResource(Res.string.bookshelf_cover_height),
+                    color = colors.primaryText
+                )
+            },
             text = {
                 OutlinedTextField(
                     value = heightValue,
@@ -141,11 +154,11 @@ fun CoverConfigRoute(
                         FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
                     }
                     showHeightPicker = false
-                }) { Text(rememberString("ok")) }
+                }) { Text(stringResource(Res.string.ok)) }
             },
             dismissButton = {
                 TextButton(onClick = { showHeightPicker = false }) {
-                    Text(rememberString("cancel"))
+                    Text(stringResource(Res.string.cancel))
                 }
             },
             shape = AppTheme.DesignTokens.dialogShape,

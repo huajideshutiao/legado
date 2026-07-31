@@ -2,12 +2,14 @@ package io.legado.app.ui.route
 
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
@@ -17,19 +19,28 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.main.explore.ExploreScreen
 import io.legado.app.ui.main.explore.ExploreScreenModel
 import io.legado.app.ui.main.explore.ExploreUiActions
 import io.legado.app.ui.main.explore.ExploreUiEvent
 import io.legado.app.ui.main.explore.ExploreUiState
+import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.widget.dialog.TextDialog
+import io.legado.app.utils.FlowBus
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.draw
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.sure_del
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * AppRoute.Explore shared 路由入口。
@@ -123,7 +134,7 @@ fun ExploreRoute(
             }
 
             override fun onEditSource(sourceUrl: String) {
-                navigator.push(AppRoute.BookSourceEdit(sourceUrl))
+                navigator.push(AppRoute.BookSourceEdit(sourceUrl), RouteResults.BOOK_SOURCE_EDIT)
             }
 
             override fun onToTop(source: BookSourcePart) {
@@ -137,8 +148,12 @@ fun ExploreRoute(
             }
 
             override fun onSearchBook(source: BookSourcePart) {
-                // SearchScope(source) 暂未下沉到 AppRoute.Search (data object 无参), 走全局搜索
-                navigator.push(AppRoute.Search())
+                navigator.push(
+                    AppRoute.Search(
+                        searchScope = SearchScope(source).toString(),
+                        submit = false,
+                    )
+                )
             }
 
             override fun onRefreshSource(source: BookSourcePart) {
@@ -151,16 +166,23 @@ fun ExploreRoute(
         }
     }
 
+    // 书源编辑返回: 触发发现页刷新当前展开源分类 (sources 列表由 DB flow 自动刷新)
+    LaunchedEffect(Unit) {
+        navigator.resultsFor(entry.id).filter { it.key == RouteResults.BOOK_SOURCE_EDIT }.collect {
+            FlowBus.with(EventBus.REFRESH_EXPLORE).tryEmit("")
+        }
+    }
+
     // 删除书源确认 (对照 ExploreTabState.deleteSource 的 alert)
     pendingDeleteSource?.let { src ->
         AppAlertDialog(
             onDismissRequest = { pendingDeleteSource = null },
-            title = rememberString("draw"),
-            message = rememberString("sure_del") + "\n" + src.bookSourceName,
-            okButton = AlertButton(rememberString("ok")) {
+            title = stringResource(Res.string.draw),
+            message = stringResource(Res.string.sure_del) + "\n" + src.bookSourceName,
+            okButton = AlertButton(stringResource(Res.string.ok)) {
                 screenModel.dispatch(ExploreUiEvent.DeleteSource(src))
             },
-            cancelButton = AlertButton(rememberString("cancel")),
+            cancelButton = AlertButton(stringResource(Res.string.cancel)),
         )
     }
 
@@ -168,12 +190,12 @@ fun ExploreRoute(
     pendingRemovePin?.let { pin ->
         AppAlertDialog(
             onDismissRequest = { pendingRemovePin = null },
-            title = rememberString("draw"),
-            message = rememberString("sure_del") + "\n${pin.sourceName}-${pin.categoryName}",
-            okButton = AlertButton(rememberString("ok")) {
+            title = stringResource(Res.string.draw),
+            message = stringResource(Res.string.sure_del) + "\n${pin.sourceName}-${pin.categoryName}",
+            okButton = AlertButton(stringResource(Res.string.ok)) {
                 screenModel.dispatch(ExploreUiEvent.RemovePinned(pin))
             },
-            cancelButton = AlertButton(rememberString("cancel")),
+            cancelButton = AlertButton(stringResource(Res.string.cancel)),
         )
     }
 

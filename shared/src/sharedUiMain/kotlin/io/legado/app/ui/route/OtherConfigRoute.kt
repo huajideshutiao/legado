@@ -24,7 +24,6 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.ui.dialog.TextInputDialog
 import io.legado.app.ui.root.AppNavigator
@@ -32,6 +31,31 @@ import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import kotlinx.coroutines.launch
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.bitmap_cache_size
+import legado.shared.generated.resources.bitmap_cache_size_summary
+import legado.shared.generated.resources.book_tree_uri_s
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.clear_cache
+import legado.shared.generated.resources.clear_cache_success
+import legado.shared.generated.resources.clear_webview_data
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.other_setting
+import legado.shared.generated.resources.pre_download
+import legado.shared.generated.resources.pre_download_s
+import legado.shared.generated.resources.set_local_password
+import legado.shared.generated.resources.set_local_password_summary
+import legado.shared.generated.resources.shrink_database
+import legado.shared.generated.resources.success
+import legado.shared.generated.resources.sure
+import legado.shared.generated.resources.sure_del
+import legado.shared.generated.resources.threads_num
+import legado.shared.generated.resources.threads_num_title
+import legado.shared.generated.resources.user_agent
+import legado.shared.generated.resources.web_port_summary
+import legado.shared.generated.resources.web_port_title
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 其它设置路由内容: 桥接 [OtherConfigScreenModel] 与 [OtherConfigScreen]。
@@ -56,21 +80,21 @@ fun OtherConfigRoute(
     val platform = remember { PlatformCapabilityProviders.get() }
 
     // 顶栏标题 (对照 app 端 R.string.other_setting)
-    val titleStr = rememberString("other_setting")
+    val titleStr = stringResource(Res.string.other_setting)
 
     // Summary 格式串 (对照 app 端 getString(R.string.xxx, value))
-    val preDownloadFormat = rememberString("pre_download_s")
-    val threadCountFormat = rememberString("threads_num")
-    val webPortFormat = rememberString("web_port_summary")
-    val bitmapCacheFormat = rememberString("bitmap_cache_size_summary")
-    val bookTreeUriSStr = rememberString("book_tree_uri_s")
+    val preDownloadFormat = stringResource(Res.string.pre_download_s)
+    val threadCountFormat = stringResource(Res.string.threads_num)
+    val webPortFormat = stringResource(Res.string.web_port_summary)
+    val bitmapCacheFormat = stringResource(Res.string.bitmap_cache_size_summary)
+    val bookTreeUriSStr = stringResource(Res.string.book_tree_uri_s)
 
     // 弹窗/Toast 文案 (对照 app 端 R.string.xxx, 预解析供非 Composable lambda 使用)
-    val okStr = rememberString("ok")
-    val cancelStr = rememberString("cancel")
-    val sureDelStr = rememberString("sure_del")
-    val clearCacheSuccessStr = rememberString("clear_cache_success")
-    val successStr = rememberString("success")
+    val okStr = stringResource(Res.string.ok)
+    val cancelStr = stringResource(Res.string.cancel)
+    val sureDelStr = stringResource(Res.string.sure_del)
+    val clearCacheSuccessStr = stringResource(Res.string.clear_cache_success)
+    val successStr = stringResource(Res.string.success)
 
     // 弹窗显示状态 (对照 app 端各 showXxx / onXxx 点击型交互)
     var showUserAgentDialog by remember { mutableStateOf(false) }
@@ -206,9 +230,9 @@ fun OtherConfigRoute(
     // User-Agent 编辑对话框 (对照 app 端 showUserAgentDialog: alert + editTextView)
     if (showUserAgentDialog) {
         TextInputDialog(
-            title = rememberString("user_agent"),
+            title = stringResource(Res.string.user_agent),
             initialValue = pref.getString(PreferKey.userAgent) ?: "",
-            hint = rememberString("user_agent"),
+            hint = stringResource(Res.string.user_agent),
             onConfirm = { userAgent ->
                 if (userAgent.isBlank()) {
                     // 对照 app 端 resetUserAgent: 清空让宿主回退默认
@@ -226,7 +250,7 @@ fun OtherConfigRoute(
     // 图片缓存大小 NumberPicker (对照 app 端 onBitmapCacheSize: 1..1024)
     if (showBitmapCachePicker) {
         NumberPickerDialog(
-            title = rememberString("bitmap_cache_size"),
+            title = stringResource(Res.string.bitmap_cache_size),
             value = appConfig.bitmapCacheSize,
             range = 1..1024,
             onConfirm = {
@@ -245,7 +269,7 @@ fun OtherConfigRoute(
     // 预下载数量 NumberPicker (对照 app 端 onPreDownloadNum: 0..9999)
     if (showPreDownloadPicker) {
         NumberPickerDialog(
-            title = rememberString("pre_download"),
+            title = stringResource(Res.string.pre_download),
             value = appConfig.preDownloadNum,
             range = 0..9999,
             onConfirm = {
@@ -264,7 +288,7 @@ fun OtherConfigRoute(
     // Web 端口 NumberPicker (对照 app 端 onWebPort: 1024..60000)
     if (showWebPortPicker) {
         NumberPickerDialog(
-            title = rememberString("web_port_title"),
+            title = stringResource(Res.string.web_port_title),
             value = appConfig.webPort,
             range = 1024..60000,
             onConfirm = {
@@ -283,7 +307,7 @@ fun OtherConfigRoute(
     // 并发线程数 NumberPicker (对照 app 端 onThreadCount: 1..999)
     if (showThreadCountPicker) {
         NumberPickerDialog(
-            title = rememberString("threads_num_title"),
+            title = stringResource(Res.string.threads_num_title),
             value = appConfig.threadCount,
             range = 1..999,
             onConfirm = {
@@ -321,8 +345,8 @@ fun OtherConfigRoute(
     // 本地密码对话框 (对照 app 端 alertLocalPassword: alert + editTextView + LocalConfig.password =)
     if (showLocalPasswordDialog) {
         TextInputDialog(
-            title = rememberString("set_local_password"),
-            message = rememberString("set_local_password_summary"),
+            title = stringResource(Res.string.set_local_password),
+            message = stringResource(Res.string.set_local_password_summary),
             hint = "password",
             onConfirm = { password ->
                 platform.setLocalPassword(password)
@@ -336,7 +360,7 @@ fun OtherConfigRoute(
     if (showCleanCacheConfirm) {
         AppAlertDialog(
             onDismissRequest = { showCleanCacheConfirm = false },
-            title = rememberString("clear_cache"),
+            title = stringResource(Res.string.clear_cache),
             message = sureDelStr,
             okButton = AlertButton(text = okStr) {
                 showCleanCacheConfirm = false
@@ -353,7 +377,7 @@ fun OtherConfigRoute(
     if (showClearWebViewConfirm) {
         AppAlertDialog(
             onDismissRequest = { showClearWebViewConfirm = false },
-            title = rememberString("clear_webview_data"),
+            title = stringResource(Res.string.clear_webview_data),
             message = sureDelStr,
             okButton = AlertButton(text = okStr) {
                 showClearWebViewConfirm = false
@@ -367,8 +391,8 @@ fun OtherConfigRoute(
     if (showShrinkDatabaseConfirm) {
         AppAlertDialog(
             onDismissRequest = { showShrinkDatabaseConfirm = false },
-            title = rememberString("sure"),
-            message = rememberString("shrink_database"),
+            title = stringResource(Res.string.sure),
+            message = stringResource(Res.string.shrink_database),
             okButton = AlertButton(text = okStr) {
                 showShrinkDatabaseConfirm = false
                 scope.launch {

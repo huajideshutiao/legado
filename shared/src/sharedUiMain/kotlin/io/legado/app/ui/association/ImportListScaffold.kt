@@ -23,14 +23,19 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.open
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * association 导入弹窗共享模板：标题栏(+菜单槽) + 加载/错误态 + 列表 + 底部(全选/取消/确定)。
  * 各 Import*Dialog 数据结构不同(allSources/allRules)，故列表项 label/state 与勾选状态回调由调用方提供。
  *
  * 下沉 shared/sharedUiMain 后:
- * - `stringResource(R.string.xxx)` → `rememberString("xxx")` (key-based, 跨平台)
- * - 带参数的 `stringResource(R.string.xxx, *args)` → `rememberString("xxx", *args)`
+ * - `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)` (key-based, 跨平台)
+ * - 带参数的 `stringResource(R.string.xxx, *args)` → `stringResource(Res.string.xxx, *args)`
  *   (与 Android `resources.getString(id, *args)` 行为对齐, 由各平台 actual 实现 Formatter)
  * - AppCheckbox/AppTextButton/DialogTitleBar 走 shared/sharedUiMain 的 component 包
  */
@@ -110,11 +115,11 @@ fun ImportListScaffold(
             )
             Spacer(Modifier.weight(1f))
             AppTextButton(
-                text = rememberString("cancel"),
+                text = stringResource(Res.string.cancel),
                 color = colors.secondaryText,
                 onClick = onCancel,
             )
-            AppTextButton(text = rememberString("ok"), onClick = onOk)
+            AppTextButton(text = stringResource(Res.string.ok), onClick = onOk)
         }
     }
 }
@@ -146,7 +151,7 @@ private fun ImportListItem(
         Spacer(Modifier.weight(1f))
         Text(text = state, color = colors.secondaryText, modifier = Modifier.padding(8.dp))
         Text(
-            text = rememberString("open"),
+            text = stringResource(Res.string.open),
             color = colors.secondaryText,
             modifier = Modifier
                 .clickable(onClick = onOpen)

@@ -32,9 +32,6 @@ import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.platform.rememberStringArray
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.config.ThemeConfigScreen
 import io.legado.app.ui.config.ThemeConfigScreenModel
@@ -45,6 +42,24 @@ import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.btn_default_s
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.explore_cols
+import legado.shared.generated.resources.explore_style
+import legado.shared.generated.resources.font_scale
+import legado.shared.generated.resources.font_scale_summary
+import legado.shared.generated.resources.ic_arrow_drop_down
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.search_layout
+import legado.shared.generated.resources.source_edit_max_line_summary
+import legado.shared.generated.resources.source_edit_text_max_line
+import legado.shared.generated.resources.theme_setting
+import legado.shared.generated.resources.explore_item_style
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringArrayResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 主题设置 shared 路由入口。
@@ -65,11 +80,11 @@ fun ThemeConfigRoute(
     val pref = LocalPreferenceStoreProvider.current
     val appConfig = remember { AppConfigProviders.get() }
 
-    val fontScaleFormat = rememberString("font_scale_summary")
-    val sourceEditMaxLineFormat = rememberString("source_edit_max_line_summary")
-    val defaultStr = rememberString("btn_default_s")
+    val fontScaleFormat = stringResource(Res.string.font_scale_summary)
+    val sourceEditMaxLineFormat = stringResource(Res.string.source_edit_max_line_summary)
+    val defaultStr = stringResource(Res.string.btn_default_s)
     // 顶栏标题 (对照 app 端 R.string.theme_setting)
-    val titleStr = rememberString("theme_setting")
+    val titleStr = stringResource(Res.string.theme_setting)
 
     var showFontScalePicker by remember { mutableStateOf(false) }
     var showSourceEditMaxLinePicker by remember { mutableStateOf(false) }
@@ -149,7 +164,7 @@ fun ThemeConfigRoute(
     // 字体缩放 NumberPicker (对照 app 端 onFontScale: 8..16, 默认 10, neutralButton=默认)
     if (showFontScalePicker) {
         NumberPickerDialog(
-            title = rememberString("font_scale"),
+            title = stringResource(Res.string.font_scale),
             value = 10,
             range = 8..16,
             onConfirm = {
@@ -190,7 +205,7 @@ fun ThemeConfigRoute(
     // 源编辑最大行数 NumberPicker (对照 app 端 onSourceEditMaxLine: 10..MAX_VALUE)
     if (showSourceEditMaxLinePicker) {
         NumberPickerDialog(
-            title = rememberString("source_edit_text_max_line"),
+            title = stringResource(Res.string.source_edit_text_max_line),
             value = appConfig.sourceEditMaxLine,
             range = 10..Int.MAX_VALUE,
             onConfirm = {
@@ -237,7 +252,7 @@ private fun SearchLayoutConfigDialog(
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    val styles = rememberStringArray("explore_item_style")
+    val styles = stringArrayResource(Res.array.explore_item_style)
     var isVideo by remember {
         mutableStateOf(BookSource.exploreStyleIsVideo(currentLayout))
     }
@@ -247,14 +262,14 @@ private fun SearchLayoutConfigDialog(
 
     AppAlertDialog(
         onDismissRequest = onDismiss,
-        title = rememberString("search_layout"),
-        okButton = AlertButton(text = rememberString("ok")) {
+        title = stringResource(Res.string.search_layout),
+        okButton = AlertButton(text = stringResource(Res.string.ok)) {
             // 对照 app 端 makeLayoutStyle: 视频置 EXPLORE_STYLE_VIDEO_FLAG, cols 取低 3 位
             val newLayout = (if (isVideo) BookSource.EXPLORE_STYLE_VIDEO_FLAG else 0) or
                 (selectedCols and BookSource.EXPLORE_STYLE_COLS_MASK)
             onConfirm(newLayout)
         },
-        cancelButton = AlertButton(text = rememberString("cancel")),
+        cancelButton = AlertButton(text = stringResource(Res.string.cancel)),
     ) {
         Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
             // 第一行: explore_style 标签 + 普通/视频 下拉 (对照原 Spinner sp_item_style)
@@ -263,7 +278,7 @@ private fun SearchLayoutConfigDialog(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    rememberString("explore_style"),
+                    stringResource(Res.string.explore_style),
                     color = colors.primaryText,
                     modifier = Modifier.padding(end = 8.dp),
                 )
@@ -282,7 +297,7 @@ private fun SearchLayoutConfigDialog(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    rememberString("explore_cols"),
+                    stringResource(Res.string.explore_cols),
                     color = colors.primaryText,
                 )
                 Box(
@@ -330,7 +345,7 @@ private fun LayoutStyleDropdown(
                 fontSize = 14.sp,
             )
             Icon(
-                painter = rememberPainter("ic_arrow_drop_down"),
+                painter = painterResource(Res.drawable.ic_arrow_drop_down),
                 contentDescription = null,
                 tint = colors.secondaryText,
             )

@@ -23,9 +23,14 @@ import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppOutlinedTextField
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.dialog.PhotoViewDialog
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.captcha_load_failed_hint
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.verification_code
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 跨平台图片验证码对话框 (对照 app 端 `io.legado.app.ui.association.VerificationCodeDialog`)。
@@ -68,7 +73,7 @@ fun VerificationCodeDialog(
 
     AppAlertDialog(
         onDismissRequest = onDismiss,
-        title = rememberString("verification_code"),
+        title = stringResource(Res.string.verification_code),
         content = {
             Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
                 Text(
@@ -91,7 +96,7 @@ fun VerificationCodeDialog(
                 } else {
                     // 加载中/失败降级: 提示手动打开 URL (对照 desktop 原 Swing 版降级文案)
                     Text(
-                        text = rememberString("captcha_load_failed_hint") + "\n" + url,
+                        text = stringResource(Res.string.captcha_load_failed_hint) + "\n" + url,
                         color = colors.secondaryText,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(vertical = 8.dp),
@@ -100,14 +105,14 @@ fun VerificationCodeDialog(
                 AppOutlinedTextField(
                     value = code,
                     onValueChange = { code = it },
-                    label = rememberString("verification_code"),
+                    label = stringResource(Res.string.verification_code),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
         },
-        okButton = AlertButton(text = rememberString("ok")) { onConfirm(code) },
-        cancelButton = AlertButton(text = rememberString("cancel")) { onDismiss() },
+        okButton = AlertButton(text = stringResource(Res.string.ok)) { onConfirm(code) },
+        cancelButton = AlertButton(text = stringResource(Res.string.cancel)) { onDismiss() },
     )
 
     // 点图放大对话框 (验证码同 URL 每次返回不同图, 大图重新拉取与 app 端 PhotoDialog 行为一致)

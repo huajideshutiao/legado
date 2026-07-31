@@ -18,7 +18,6 @@ import io.legado.app.ui.book.read.config.ReadAloudConfigScreen
 import io.legado.app.ui.book.read.config.SpeakEngineDialog
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
@@ -31,6 +30,10 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.aloud_config
+import legado.shared.generated.resources.system_tts
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 朗读设置 shared 路由入口。
@@ -71,7 +74,7 @@ fun ReadAloudConfigRoute(
     }
     var showSpeakEngineDialog by remember { mutableStateOf(false) }
 
-    val systemTtsStr = rememberString("system_tts")
+    val systemTtsStr = stringResource(Res.string.system_tts)
     // 朗读引擎摘要 (对照 app 端 ReadAloudConfigDialog.speakEngineSummary)
     val speakEngineSummary = remember(engines, selectedEngineUrl, systemTtsStr) {
         val url = selectedEngineUrl
@@ -91,7 +94,7 @@ fun ReadAloudConfigRoute(
     }
 
     // 顶栏标题 (对照 app 端 R.string.aloud_config, 与 ReadConfigScreen 入口项一致)
-    val titleStr = rememberString("aloud_config")
+    val titleStr = stringResource(Res.string.aloud_config)
 
     Column(Modifier.fillMaxSize()) {
         AppTitleBar(

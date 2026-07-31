@@ -1,22 +1,29 @@
 package io.legado.app.ui.book.search
 
 import androidx.compose.runtime.Composable
+import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.ui.preview.AppPreview
-import io.legado.app.data.entities.BookGroup
 import io.legado.app.ui.preview.LegadoThemePreview
 
-/**
- * [SearchScopeDialog] 的 @Preview。
- *
- * 假数据: [BookGroup] 列表用纯内存对象构造, 覆盖空选/单选/多选场景。
- */
-
 private val previewGroups = listOf(
-    BookGroup(groupId = 1, groupName = "默认分组"),
-    BookGroup(groupId = 2, groupName = "精校书源"),
-    BookGroup(groupId = 3, groupName = "网络书源"),
-    BookGroup(groupId = 4, groupName = "音频书源"),
-    BookGroup(groupId = 5, groupName = "图片书源"),
+    "默认分组",
+    "精校书源",
+    "网络书源",
+    "音频书源",
+    "图片书源",
+)
+
+private val previewSources = listOf(
+    BookSourcePart(
+        bookSourceUrl = "https://example.com/source-1",
+        bookSourceName = "示例书源一",
+        bookSourceGroup = "默认分组",
+    ),
+    BookSourcePart(
+        bookSourceUrl = "https://example.com/source-2",
+        bookSourceName = "示例书源二",
+        bookSourceGroup = "网络书源",
+    ),
 )
 
 @AppPreview
@@ -24,7 +31,7 @@ private val previewGroups = listOf(
 fun SearchScopeDialogPreview() = LegadoThemePreview {
     SearchScopeDialog(
         groups = previewGroups,
-        selectedGroupIds = setOf(1L, 3L),
+        sources = previewSources,
         onConfirm = {},
         onDismiss = {},
     )
@@ -35,7 +42,7 @@ fun SearchScopeDialogPreview() = LegadoThemePreview {
 fun SearchScopeDialogEmptySelectionPreview() = LegadoThemePreview {
     SearchScopeDialog(
         groups = previewGroups,
-        selectedGroupIds = emptySet(),
+        sources = previewSources,
         onConfirm = {},
         onDismiss = {},
     )
@@ -43,10 +50,10 @@ fun SearchScopeDialogEmptySelectionPreview() = LegadoThemePreview {
 
 @AppPreview
 @Composable
-fun SearchScopeDialogSingleSelectionPreview() = LegadoThemePreview {
+fun SearchScopeDialogSingleSourcePreview() = LegadoThemePreview {
     SearchScopeDialog(
         groups = previewGroups,
-        selectedGroupIds = setOf(2L),
+        sources = previewSources,
         onConfirm = {},
         onDismiss = {},
     )
@@ -57,7 +64,7 @@ fun SearchScopeDialogSingleSelectionPreview() = LegadoThemePreview {
 fun SearchScopeDialogNoGroupsPreview() = LegadoThemePreview {
     SearchScopeDialog(
         groups = emptyList(),
-        selectedGroupIds = emptySet(),
+        sources = emptyList(),
         onConfirm = {},
         onDismiss = {},
     )
@@ -68,7 +75,7 @@ fun SearchScopeDialogNoGroupsPreview() = LegadoThemePreview {
 fun SearchScopeDialogDarkPreview() = LegadoThemePreview(dark = true) {
     SearchScopeDialog(
         groups = previewGroups,
-        selectedGroupIds = setOf(1L, 3L),
+        sources = previewSources,
         onConfirm = {},
         onDismiss = {},
     )

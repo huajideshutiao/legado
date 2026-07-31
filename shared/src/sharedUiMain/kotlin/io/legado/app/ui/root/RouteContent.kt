@@ -58,21 +58,9 @@ import io.legado.app.ui.route.WebViewRoute
 /**
  * shared 统一路由内容分发 (零薄壳方案)。
  *
- * 按 [RouteEntry.route] 类型渲染对应 shared Screen:
- * - 已下沉路由 (返回 true): 调用 `io.legado.app.ui.route` 下的 `XxxRoute` 函数,
- *   由 Route 函数绑定 ScreenModel + 渲染 shared Screen
- * - 暂未创建 XxxRoute 的路由: 用 TODO 占位, 等其他子代理创建后由主代理统一接入
- *
- * # 迁移进度
- *
- * 已实现路由 36 + TODO 占位路由 17 (合计 53)。
- *
- * TODO 占位路由 (17): Association / AudioPlay / BookshelfManage / ChangeChapterSource /
- *   ChangeSource / JsEdit / Login / MangaReader / ReadConfig / Reader / ReadRss /
- *   ReviewList / ReviewPost / RssArticles / RssSources / VideoPlay / WebView。
- *   调用即抛 NotImplementedError, 待对应 shared Screen 下沉后启用。
- *
- * 路由分发本身已由 shared RouteContent 接管, 不再有平台薄壳。
+ * 按 [RouteEntry.route] 类型调用 `io.legado.app.ui.route` 下对应的 `XxxRoute`,
+ * 由 Route 绑定 ScreenModel 并渲染 shared Screen。路由分发由 shared 统一接管,
+ * 不再保留平台平行页面分发薄壳。
  */
 @Composable
 fun RouteContent(
@@ -126,12 +114,10 @@ fun RouteContent(
             BookmarkRoute(entry, navigator, screenModelStore)
             true
         }
-        // 实际为 TODO 占位, 调用即抛 NotImplementedError
         is AppRoute.BookshelfManage -> {
             BookshelfManageRoute(entry, navigator, screenModelStore)
             true
         }
-        // 实际为 TODO 占位, 调用即抛 NotImplementedError
         is AppRoute.ChangeSource -> {
             ChangeSourceRoute(entry, navigator, screenModelStore)
             true
@@ -267,7 +253,7 @@ fun RouteContent(
             true
         }
 
-        // ===== 强平台路由 (调用 shared XxxRoute, 内部 TODO 占位待 Screen 下沉) =====
+        // ===== 阅读、媒体与平台能力路由 =====
         is AppRoute.Reader -> {
             ReaderRoute(entry, navigator, screenModelStore)
             true

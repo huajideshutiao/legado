@@ -22,17 +22,24 @@ import io.legado.app.ui.book.changesource.ChangeChapterSourceUiActions
 import io.legado.app.ui.book.changesource.ChangeChapterSourceUiEvent
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
+import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.throttleLatest
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.loading
+import legado.shared.generated.resources.no
+import legado.shared.generated.resources.search_result_empty
+import legado.shared.generated.resources.yes
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 章节换源 shared 路由入口。
@@ -146,6 +153,13 @@ fun ChangeChapterSourceRoute(
         }
     }
 
+    // 书源编辑返回: 刷新源列表
+    LaunchedEffect(Unit) {
+        navigator.resultsFor(entry.id).filter { it.key == RouteResults.BOOK_SOURCE_EDIT }.collect {
+            viewModel.startRefreshList()
+        }
+    }
+
     // 7. ChangeChapterSourceUiActions
     val actions = object : ChangeChapterSourceUiActions {
         override fun onBack() {
@@ -232,7 +246,7 @@ fun ChangeChapterSourceRoute(
         }
 
         override fun onEdit(book: SearchBook) {
-            navigator.push(AppRoute.BookSourceEdit(book.origin))
+            navigator.push(AppRoute.BookSourceEdit(book.origin), RouteResults.BOOK_SOURCE_EDIT)
         }
 
         override fun onDisable(book: SearchBook) {
@@ -307,7 +321,7 @@ fun ChangeChapterSourceRoute(
     // 12. WaitDialog (toc 加载中, 对照 Dialog.tocLoading 显示)
     WaitDialog(
         visible = state.tocLoading && state.tocVisible,
-        message = rememberString("loading"),
+        message = stringResource(Res.string.loading),
         onDismissRequest = { },
     )
 
@@ -315,15 +329,15 @@ fun ChangeChapterSourceRoute(
     if (showEmptyGroupAlert) {
         AppAlertDialog(
             onDismissRequest = { showEmptyGroupAlert = false },
-            title = rememberString("search_result_empty"),
+            title = stringResource(Res.string.search_result_empty),
             message = "${state.searchGroup}分组搜索结果为空,是否切换到全部分组",
-            okButton = AlertButton(text = rememberString("yes")) {
+            okButton = AlertButton(text = stringResource(Res.string.yes)) {
                 showEmptyGroupAlert = false
                 platform.searchGroup = ""
                 screenModel.dispatch(ChangeChapterSourceUiEvent.SearchGroupChanged(""))
                 viewModel.startSearch()
             },
-            cancelButton = AlertButton(text = rememberString("no")) {
+            cancelButton = AlertButton(text = stringResource(Res.string.no)) {
                 showEmptyGroupAlert = false
             },
         )

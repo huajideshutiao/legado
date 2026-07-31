@@ -129,7 +129,7 @@ class BookInfoActivity :
             }
 
             RESULT_DELETED -> {
-                setResult(RESULT_DELETED)
+                AppNavigatorProviders.getOrNull()?.pop(RouteResultPayload.Deleted)
                 finish()
             }
         }
@@ -516,7 +516,7 @@ class BookInfoActivity :
             if (viewModel.inBookshelf) deleteBook()
             else if (it.isWebFile) showWebFileDownloadAlert()
             else viewModel.addToBookshelf {
-                setResult(RESULT_OK)
+                AppNavigatorProviders.getOrNull()?.pop(RouteResultPayload.Ok)
                 upTvBookshelf()
             }
         }
@@ -606,7 +606,7 @@ class BookInfoActivity :
         viewModel.getBook()?.let { book ->
             if (!AppConfig.bookInfoDeleteAlert) {
                 viewModel.delBook(LocalConfig.deleteBookOriginal) {
-                    setResult(RESULT_DELETED)
+                    AppNavigatorProviders.getOrNull()?.pop(RouteResultPayload.Deleted)
                     finish()
                 }
                 return
@@ -635,7 +635,7 @@ class BookInfoActivity :
                 yesButton {
                     if (book.isLocal) LocalConfig.deleteBookOriginal = deleteFile.value
                     viewModel.delBook(LocalConfig.deleteBookOriginal) {
-                        setResult(RESULT_DELETED)
+                        AppNavigatorProviders.getOrNull()?.pop(RouteResultPayload.Deleted)
                         finish()
                     }
                 }
@@ -724,7 +724,7 @@ class BookInfoActivity :
             book.group = groupId
             if (viewModel.inBookshelf) viewModel.saveBook(book)
             else if (groupId > 0) viewModel.addToBookshelf {
-                setResult(RESULT_OK)
+                AppNavigatorProviders.getOrNull()?.pop(RouteResultPayload.Ok)
                 upTvBookshelf()
             }
         }

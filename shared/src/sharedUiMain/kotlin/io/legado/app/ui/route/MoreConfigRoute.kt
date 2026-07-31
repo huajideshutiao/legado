@@ -17,12 +17,16 @@ import io.legado.app.ui.book.read.config.ClickActionDialog
 import io.legado.app.ui.book.read.config.MoreConfigScreen
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.other_setting
+import legado.shared.generated.resources.page_touch_slop_dialog_title
+import legado.shared.generated.resources.page_touch_slop_summary
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 阅读界面更多设置 shared 路由入口。
@@ -45,9 +49,10 @@ fun MoreConfigRoute(
     val readBookConfig = ReadBookConfigProviders.get()
     // 触摸灵敏度摘要: 系统scaledTouchSlop格式化 (对照 app 端 page_touch_slop_summary)
     val slopSquare = PlatformCapabilityProviders.getOrNull()?.getScaledTouchSlop() ?: 0
-    val pageTouchSlopSummary = rememberString("page_touch_slop_summary", slopSquare.toString())
+    val pageTouchSlopSummary =
+        stringResource(Res.string.page_touch_slop_summary, slopSquare.toString())
     // 顶栏标题 (对照 app 端 R.string.other_setting, 与 ReadConfigScreen 入口项一致)
-    val titleStr = rememberString("other_setting")
+    val titleStr = stringResource(Res.string.other_setting)
     var showPageTouchSlop by remember { mutableStateOf(false) }
     var showClickRegional by remember { mutableStateOf(false) }
 
@@ -94,7 +99,7 @@ fun MoreConfigRoute(
     // 翻页触发距离 NumberPicker (对齐 app 端 pickPageTouchSlop)
     if (showPageTouchSlop) {
         NumberPickerDialog(
-            title = rememberString("page_touch_slop_dialog_title"),
+            title = stringResource(Res.string.page_touch_slop_dialog_title),
             value = pref.getInt(PreferKey.pageTouchSlop, 0),
             range = 0..9999,
             onConfirm = {

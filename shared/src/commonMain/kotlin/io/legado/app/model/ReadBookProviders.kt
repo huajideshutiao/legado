@@ -1,5 +1,8 @@
 package io.legado.app.model
 
+import io.legado.app.data.entities.Book
+import kotlin.concurrent.Volatile
+
 /**
  * 跨平台 ReadBook Provider 注入契约。
  *
@@ -22,4 +25,25 @@ package io.legado.app.model
 interface ReadBookProvider {
     /** 跨平台 ReadBook 状态承载实例 */
     val readBook: ReadBookShared
+}
+
+/** 当前 shared 阅读页的活动阅读状态。 */
+object ActiveReadBookRegistry {
+    @Volatile
+    private var readBook: ReadBookShared? = null
+
+    fun attach(value: ReadBookShared) {
+        readBook = value
+    }
+
+    fun detach(value: ReadBookShared) {
+        if (readBook === value) readBook = null
+    }
+
+    fun updateIfCurrent(book: Book) {
+        val current = readBook ?: return
+        if (current.book.value?.bookUrl == book.bookUrl) {
+            current.loadBook(book)
+        }
+    }
 }

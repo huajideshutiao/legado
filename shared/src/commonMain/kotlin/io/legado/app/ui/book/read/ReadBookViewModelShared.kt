@@ -5,6 +5,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
+import io.legado.app.data.entities.BookSource
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.ContentProcessorProviders
@@ -160,7 +161,36 @@ class ReadBookViewModelShared(
      * [ReadBookShared.updateDurChapterIndex] 推送新值, Compose 自动重组刷新高亮。
      */
     val durChapterIndex: StateFlow<Int> get() = readBook.durChapterIndex
+
+    /** 当前书源 (委托 readBook.bookSource), 供菜单栏显示源名/登录状态 */
+    val bookSource: StateFlow<BookSource?> get() = readBook.bookSource
+
+    /** 模拟章节总数 (卷/合集展开后), 供进度条 seekMax 使用 */
+    val simulatedChapterSize: Int get() = readBook.simulatedChapterSize
+
+    /** 当前章节阅读位置 (委托 readBook.durChapterPos), 供书签记录 */
+    val durChapterPos: StateFlow<Int> get() = readBook.durChapterPos
+
     // endregion
+
+    /**
+     * 刷新当前章节: 删除缓存 → 清滑窗 → 重新装载 (对照 app 端 refreshContentDur)。
+     */
+    fun refreshCurrentChapter() {
+        val book = readBook.book.value ?: return
+        val index = readBook.durChapterIndex.value
+        launchChapterLoad(index) {
+            val chapter = runCatching {
+                AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)
+            }.getOrNull()
+            if (chapter != null) {
+                runCatching { BookStorageProviders.get().delContent(book, chapter) }
+            }
+            readBook.clearTextChapter()
+            removeLoading(index)
+            loadContent(index)
+        }
+    }
 
     /**
      * 打开章节（对照 app 端 `ReadBook.openChapter` + `loadContent(resetPageOffset)`）：

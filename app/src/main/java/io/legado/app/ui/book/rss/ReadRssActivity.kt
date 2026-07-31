@@ -61,6 +61,8 @@ import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.registerHandleFile
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.widget.anima.RefreshProgressBar
 import io.legado.app.utils.ACache
 import io.legado.app.utils.EscapeUtils
@@ -71,6 +73,7 @@ import io.legado.app.utils.share
 import io.legado.app.utils.textArray
 import io.legado.app.utils.toastOnUi
 import com.fleeksoft.ksoup.Ksoup
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * rss阅读界面：外围纯 Compose，WebView 本体走 AndroidView 白名单。
@@ -330,6 +333,8 @@ class ReadRssActivity : BaseComposeActivity() {
                     yesButton {
                         viewModel.delBook {
                             setResult(RESULT_DELETED)
+                            // 双轨: 同步 RouteResult 通道
+                            AppNavigatorProviders.getOrNull()?.pop(RouteResultPayload.Deleted)
                             finish()
                         }
                     }
@@ -338,6 +343,8 @@ class ReadRssActivity : BaseComposeActivity() {
             } else {
                 viewModel.delBook {
                     setResult(RESULT_DELETED)
+                    // 双轨: 同步 RouteResult 通道
+                    AppNavigatorProviders.getOrNull()?.pop(RouteResultPayload.Deleted)
                     finish()
                 }
             }

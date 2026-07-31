@@ -41,6 +41,8 @@ import io.legado.app.model.registerOhosAudioPlayCommanders
 import io.legado.app.model.script.registerOhosJsEngines
 import io.legado.app.model.webBook.registerNativeWebBookProviders
 import io.legado.app.napi.registerOhosNativeBridge
+import io.legado.app.ui.book.changesource.registerOhosChangeBookSourcePlatform
+import io.legado.app.ui.book.manage.registerOhosBookshelfManagePlatform
 import io.legado.app.ui.compose.platform.OhosPreferenceStoreProvider
 import io.legado.app.web.registerNativeWebServerPlatform
 import io.legado.app.web.utils.registerNativeWebAssetSource
@@ -220,6 +222,10 @@ fun registerOhosProviders() {
     registerNativeVerificationUiProvider()
     // 音频播控 Commander (OhosAudioPlayCommander, 与 ServiceLauncher 同级的播放编排入口)
     registerOhosAudioPlayCommanders()
+    // 换源平台 provider (commonMain ChangeBookSourceViewModelShared 调用, 须在 WebBookProviders 之后)
+    registerOhosChangeBookSourcePlatform()
+    // 书架管理平台 provider (commonMain BookshelfManageViewModelShared 调用, 须在 WebBookProviders 之后)
+    registerOhosBookshelfManagePlatform()
 
     // 9. Web 服务 provider (WebAssetSource + WebStrings + WebServerPlatform, iOS/鸿蒙共用 Ktor server 壳)
     // 仅注册平台实现, 不启动服务 (WebServerManager.start 由用户操作触发)

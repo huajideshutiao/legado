@@ -109,6 +109,23 @@ class DesktopAppConfigAccessor : AppConfigAccessor {
     override val preDownloadNum: Int
         get() = prefs.getInt(PreferKey.preDownloadNum, 10)
 
+    // ---- 换源业务 ----
+    override var changeSourceCheckAuthor: Boolean
+        get() = prefs.getBoolean(PreferKey.changeSourceCheckAuthor, true)
+        set(value) = prefs.putBoolean(PreferKey.changeSourceCheckAuthor, value)
+
+    override var changeSourceLoadInfo: Boolean
+        get() = prefs.getBoolean(PreferKey.changeSourceLoadInfo, false)
+        set(value) = prefs.putBoolean(PreferKey.changeSourceLoadInfo, value)
+
+    override var changeSourceLoadToc: Boolean
+        get() = prefs.getBoolean(PreferKey.changeSourceLoadToc, false)
+        set(value) = prefs.putBoolean(PreferKey.changeSourceLoadToc, value)
+
+    override var changeSourceLoadWordCount: Boolean
+        get() = prefs.getBoolean(PreferKey.changeSourceLoadWordCount, false)
+        set(value) = prefs.putBoolean(PreferKey.changeSourceLoadWordCount, value)
+
     // ---- 搜索业务 ----
     // var: 接口要求 var (SearchScope.save() 写回), actual 用 var + setter 写回 prefs
     override var searchScope: String
@@ -185,6 +202,14 @@ class DesktopAppConfigAccessor : AppConfigAccessor {
 
     override val useDefaultCover: Boolean
         get() = prefs.getBoolean(PreferKey.useDefaultCover, false)
+    override val coverDrawBookName: Boolean
+        get() = prefs.getBoolean(
+            if (isNightTheme) PreferKey.coverShowNameN else PreferKey.coverShowName, true
+        )
+    override val coverDrawBookAuthor: Boolean
+        get() = prefs.getBoolean(
+            if (isNightTheme) PreferKey.coverShowAuthorN else PreferKey.coverShowAuthor, true
+        )
 
     // ---- 底栏配置 (桌面端侧栏竖版复用, 底栏高度视为侧栏宽度) ----
     // 默认值与 app 端 AppConfig.BOTTOM_BAR_* 常量一致
@@ -213,14 +238,17 @@ class DesktopAppConfigAccessor : AppConfigAccessor {
         get() = prefs.getString(PreferKey.defaultHomePage, "bookshelf")
 
     // ---- 导入业务 (ImportBookSourceViewModelShared / ImportBookViewModelShared 用) ----
-    override val importKeepName: Boolean
+    override var importKeepName: Boolean
         get() = prefs.getBoolean(PreferKey.importKeepName, false)
+        set(value) = prefs.putBoolean(PreferKey.importKeepName, value)
 
-    override val importKeepGroup: Boolean
+    override var importKeepGroup: Boolean
         get() = prefs.getBoolean(PreferKey.importKeepGroup, false)
+        set(value) = prefs.putBoolean(PreferKey.importKeepGroup, value)
 
-    override val importKeepEnable: Boolean
+    override var importKeepEnable: Boolean
         get() = prefs.getBoolean(PreferKey.importKeepEnable, false)
+        set(value) = prefs.putBoolean(PreferKey.importKeepEnable, value)
 
     override val localBookImportSort: Int
         get() = prefs.getInt(PreferKey.localBookImportSort, 0)

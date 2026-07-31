@@ -11,11 +11,13 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.reorderable.RuleReorderableItem
 import io.legado.app.ui.compose.reorderable.rememberReorderableListState
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.empty
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 「搜索 + 列表 + 多选 + 拖拽排序 + 分组筛选 + 底部批量操作栏」规则管理界面共享骨架(plan P2)。
@@ -39,7 +41,7 @@ fun <T> RuleManageScaffold(
     modifier: Modifier = Modifier,
     titleBar: @Composable () -> Unit = {},
     actionBar: @Composable () -> Unit = {},
-    emptyText: String = rememberString("empty"),
+    emptyText: String = stringResource(Res.string.empty),
     listState: LazyListState = rememberLazyListState(),
     listModifier: Modifier = Modifier,
     fillMaxHeight: Boolean = true,

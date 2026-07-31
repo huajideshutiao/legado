@@ -67,6 +67,8 @@ import io.legado.app.utils.toastOnUi
 import androidx.fragment.app.viewModels
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.withContext
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
 import splitties.init.appCtx
 
 /** 背景/文字样式配置：命名、状态栏图标、下划线、取色、导入导出、背景图 */
@@ -143,9 +145,13 @@ class BgTextConfigDialog : BaseReadBottomComposeDialog() {
         var showTextColorPicker by remember { mutableStateOf(false) }
         var showBgColorPicker by remember { mutableStateOf(false) }
 
-        Column(Modifier.fillMaxWidth().padding(8.dp)) {
+        Column(Modifier
+            .fillMaxWidth()
+            .padding(8.dp)) {
             Row(
-                Modifier.fillMaxWidth().height(40.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .height(40.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.style_name), color = colors.text, fontSize = 16.sp)
@@ -204,7 +210,9 @@ class BgTextConfigDialog : BaseReadBottomComposeDialog() {
                 }
             }
             Row(
-                Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 StrokeTextChip(
@@ -215,7 +223,9 @@ class BgTextConfigDialog : BaseReadBottomComposeDialog() {
                 StrokeTextChip(
                     stringResource(R.string.bg_color),
                     textColor = colors.secondaryText,
-                    modifier = Modifier.weight(5f).padding(start = 8.dp),
+                    modifier = Modifier
+                        .weight(5f)
+                        .padding(start = 8.dp),
                 ) { showBgColorPicker = true }
                 ActionIcon("ic_import", stringResource(R.string.import_str), colors) {
                     selectImportDoc.launch {
@@ -249,7 +259,10 @@ class BgTextConfigDialog : BaseReadBottomComposeDialog() {
                 },
             )
             Text(stringResource(R.string.bg_image), color = colors.text)
-            LazyRow(Modifier.fillMaxWidth().height(100.dp).padding(vertical = 8.dp)) {
+            LazyRow(Modifier
+                .fillMaxWidth()
+                .height(100.dp)
+                .padding(vertical = 8.dp)) {
                 item {
                     BgItem(
                         label = stringResource(R.string.select_image),
@@ -317,7 +330,9 @@ class BgTextConfigDialog : BaseReadBottomComposeDialog() {
         onCheckedChange: (Boolean) -> Unit,
     ) {
         Row(
-            Modifier.fillMaxWidth().height(40.dp),
+            Modifier
+                .fillMaxWidth()
+                .height(40.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(label, color = colors.text, modifier = Modifier.weight(1f))
@@ -360,7 +375,9 @@ class BgTextConfigDialog : BaseReadBottomComposeDialog() {
                 .clickable(onClick = onClick),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Box(Modifier
+                .weight(1f)
+                .fillMaxWidth(), contentAlignment = Alignment.Center) {
                 if (iconKey != null) {
                     Icon(
                         painter = rememberPainter(iconKey),

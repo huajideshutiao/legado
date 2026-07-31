@@ -296,6 +296,9 @@ object OhosNativeBridge {
     /** HttpTTS 朗读播放实例 id (OhosHttpTtsPlayer 使用)。 */
     const val PLAYER_ID_HTTP_TTS: String = "httpTts"
 
+    /** 视频书播放实例 id (OhosVideoPlayerController 使用, 独占 AVPlayer 实例)。 */
+    const val PLAYER_ID_VIDEO_BOOK: String = "videoBook"
+
     /** media threadsafe_function 引用 (Kotlin → ArkTS 发送播放器命令)。 */
     @Volatile
     private var mediaTsfn: TsfnCallback? = null
@@ -722,6 +725,71 @@ object OhosNativeBridge {
      */
     fun isOpenUrlBridgeReady(): Boolean = synchronized(lock) { openUrlTsfn != null }
 
+    // ===== Window tsfn (KMP → ArkTS, fire-and-forget, 同 OpenUrl 模式) =====
+    // 窗口策略 (全屏/常亮/方向/系统栏) 走 ArkTS @ohos.window API (setWindowLayoutFullScreen /
+    // setWindowKeepScreenOn / setPreferredOrientation / setWindowSystemBarEnable), 无 NDK C 接口,
+    // 经 tsfn dispatch 到 ArkTS 主线程执行。命令 fire-and-forget (无返回值), 未注册时降级 println。
+
+    /** window threadsafe_function 引用 (EntryAbility.ets 注册后注入)。 */
+    @Volatile
+    private var windowTsfn: TsfnCallback? = null
+
+    /** 注入 window tsfn (由 legado_napi.cpp RegisterWindowCallback 调用)。 */
+    fun registerWindowFn(tsfn: TsfnCallback) {
+        synchronized(lock) {
+            windowTsfn = tsfn
+        }
+    }
+
+    /** 发送 window 命令到 ArkTS (fire-and-forget)。未注册 tsfn 时降级 println。 */
+    fun sendWindowCommand(commandJson: String) {
+        val tsfn = synchronized(lock) { windowTsfn }
+        if (tsfn != null) {
+            runCatching { tsfn(commandJson) }.onFailure {
+                println("[ohos-window] tsfn call failed: $commandJson")
+            }
+        } else {
+            // 降级: tsfn 未注册
+            println("[ohos-window] tsfn not registered: $commandJson")
+        }
+    }
+
+    /** 切换窗口全屏布局 (对照 @ohos.window setWindowLayoutFullScreen)。 */
+    fun setWindowFullScreenLayout(enabled: Boolean) {
+        sendWindowCommand(
+            KS_JSON.encodeToString(WindowCommand(action = "setFullScreenLayout", enabled = enabled))
+        )
+    }
+
+    /** 切换保持屏幕常亮 (对照 @ohos.window setWindowKeepScreenOn)。 */
+    fun setWindowKeepScreenOn(enabled: Boolean) {
+        sendWindowCommand(
+            KS_JSON.encodeToString(WindowCommand(action = "setKeepScreenOn", enabled = enabled))
+        )
+    }
+
+    /** 设置首选方向 (对照 @ohos.window setPreferredOrientation, orientation 为方向枚举值)。 */
+    fun setWindowPreferredOrientation(orientation: Int) {
+        sendWindowCommand(
+            KS_JSON.encodeToString(
+                WindowCommand(
+                    action = "setPreferredOrientation",
+                    orientation = orientation
+                )
+            )
+        )
+    }
+
+    /** 设置系统栏显隐 (对照 @ohos.window setWindowSystemBarEnable, enabled=true 显示 / false 隐藏)。 */
+    fun setWindowSystemBarEnable(enabled: Boolean) {
+        sendWindowCommand(
+            KS_JSON.encodeToString(WindowCommand(action = "setSystemBarEnable", enabled = enabled))
+        )
+    }
+
+    /** 检查 window 桥是否已就绪 (tsfn 已注入)。 */
+    fun isWindowBridgeReady(): Boolean = synchronized(lock) { windowTsfn != null }
+
     // ===== FilePicker 同步桥 (tsfn + callback, KP8+, 同 Image/Crypto/Http 模式) =====
     // 文件选择 (pickDocuments/pickDocumentContent) 是同步接口, 但 ArkTS @ohos.file.picker.DocumentViewPicker
     // 与 @ohos.file.fs 只能通过 napi 桥接异步调用。采用与 Image 完全一致的
@@ -970,6 +1038,65 @@ object OhosNativeBridge {
      */
     fun isTextCodecBridgeReady(): Boolean = synchronized(lock) { textCodecTsfn != null }
 
+    // ===== Battery 同步桥 (tsfn + callback, 同 Image/Crypto 模式) =====
+    // 阅读页电池电量走 ArkTS @ohos.batteryInfo (无 NDK C 接口), 经 tsfn 同步请求/响应获取。
+    // 调用链: KMP getBatteryLevel → invokeBatterySync("getLevel") → tsfn → ArkTS @ohos.batteryInfo.batterySOC
+    //   → legado.batteryCallback(requestId, {"level":85}) → deferred.complete → 返回缓存值
+    // ArkTS 侧实现为 TODO (legado_napi.cpp registerBatteryCallback + BatteryBridgeHandler.ets)
+
+    /** battery threadsafe_function 引用 (Kotlin → ArkTS 发送电量查询)。 */
+    @Volatile
+    private var batteryTsfn: TsfnCallback? = null
+
+    /** 待响应的 battery 同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
+    private val batteryPendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
+
+    /** battery 请求自增 ID (原子性由 [lock] 保护)。 */
+    private var batteryRequestCounter = 0L
+
+    /** 注入 battery tsfn (由 legado_napi.cpp registerBatteryCallback 调用)。 */
+    fun registerBatteryFn(tsfn: TsfnCallback) {
+        synchronized(lock) {
+            batteryTsfn = tsfn
+        }
+    }
+
+    /** battery 查询结果回调 (由 ArkTS 侧调 @CName legado_battery_callback 触发)。 */
+    fun onBatteryResult(requestId: Long, resultJson: String) {
+        val deferred = synchronized(lock) { batteryPendingRequests.remove(requestId) }
+        deferred?.complete(resultJson)
+    }
+
+    /**
+     * 同步查询电池电量 (阻塞等待 ArkTS 返回)。
+     * 桥未就绪/超时返回 null, 调用方降级返回 -1 (不显示)。
+     */
+    fun invokeBatterySync(action: String, timeoutMs: Long = 2000L): String? {
+        val requestId = synchronized(lock) { ++batteryRequestCounter }
+        val deferred = CompletableDeferred<String>()
+        synchronized(lock) { batteryPendingRequests[requestId] = deferred }
+
+        val requestJson = KS_JSON.encodeToString(
+            BatteryBridgeRequest(requestId = requestId, action = action)
+        )
+        val tsfn = synchronized(lock) { batteryTsfn }
+        if (tsfn == null) {
+            synchronized(lock) { batteryPendingRequests.remove(requestId) }
+            return null
+        }
+        runCatching { tsfn(requestJson) }.onFailure {
+            synchronized(lock) { batteryPendingRequests.remove(requestId) }
+            return null
+        }
+
+        val result = runBlocking { withTimeoutOrNull(timeoutMs) { deferred.await() } }
+        synchronized(lock) { batteryPendingRequests.remove(requestId) }
+        return result
+    }
+
+    /** 检查 battery 桥是否已就绪 (tsfn 已注入)。 */
+    fun isBatteryBridgeReady(): Boolean = synchronized(lock) { batteryTsfn != null }
+
     /** toast 跨语言传递 payload (序列化为 JSON 给 ArkTS)。 */
     @Serializable
     private data class ToastPayload(
@@ -1040,6 +1167,13 @@ object OhosNativeBridge {
         val payload: String,
     )
 
+    /** battery 桥请求 payload (Kotlin → ArkTS, action=getLevel)。 */
+    @Serializable
+    private data class BatteryBridgeRequest(
+        val requestId: Long,
+        val action: String,
+    )
+
     /** openUrl 跨语言传递 payload (序列化为 JSON 给 ArkTS, 同 Toast 模式 fire-and-forget)。 */
     @Serializable
     private data class OpenUrlPayload(
@@ -1048,6 +1182,14 @@ object OhosNativeBridge {
         val sourceKey: String? = null,
         val sourceTag: String? = null,
         val sourceType: Int = 0,
+    )
+
+    /** window 命令 payload (Kotlin → ArkTS, 全屏/常亮/方向/系统栏, fire-and-forget)。 */
+    @Serializable
+    private data class WindowCommand(
+        val action: String,
+        val enabled: Boolean? = null,
+        val orientation: Int? = null,
     )
 
     /** TTS 命令 payload (Kotlin → ArkTS, createEngine/speak/pause/resume/stop/shutdown)。 */

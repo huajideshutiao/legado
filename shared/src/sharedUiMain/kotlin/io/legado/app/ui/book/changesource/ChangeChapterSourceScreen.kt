@@ -19,8 +19,15 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
-import io.legado.app.ui.compose.platform.rememberString
 import kotlinx.coroutines.launch
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.book_source_manage
+import legado.shared.generated.resources.checkAuthor
+import legado.shared.generated.resources.group
+import legado.shared.generated.resources.load_info
+import legado.shared.generated.resources.load_toc
+import legado.shared.generated.resources.load_word_count
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 章节换源 UI 交互回调。
@@ -147,28 +154,28 @@ fun ChangeChapterSourceScreen(
             },
             onStartStop = actions::onStartStop,
         ) { dismiss ->
-            TextMenuItem(rememberString("book_source_manage")) {
+            TextMenuItem(stringResource(Res.string.book_source_manage)) {
                 dismiss()
                 menuActions.onBookSourceManage()
             }
-            CheckMenuItem(rememberString("checkAuthor"), state.checkAuthor) {
+            CheckMenuItem(stringResource(Res.string.checkAuthor), state.checkAuthor) {
                 dismiss()
                 menuActions.onCheckAuthorChange(!state.checkAuthor)
             }
-            CheckMenuItem(rememberString("load_word_count"), state.loadWordCount) {
+            CheckMenuItem(stringResource(Res.string.load_word_count), state.loadWordCount) {
                 dismiss()
                 menuActions.onLoadWordCountChange(!state.loadWordCount)
             }
-            CheckMenuItem(rememberString("load_info"), state.loadInfo) {
+            CheckMenuItem(stringResource(Res.string.load_info), state.loadInfo) {
                 dismiss()
                 menuActions.onLoadInfoChange(!state.loadInfo)
             }
-            CheckMenuItem(rememberString("load_toc"), state.loadToc) {
+            CheckMenuItem(stringResource(Res.string.load_toc), state.loadToc) {
                 dismiss()
                 menuActions.onLoadTocChange(!state.loadToc)
             }
             GroupMenuItem(
-                title = rememberString("group"),
+                title = stringResource(Res.string.group),
                 dismissParent = dismiss,
                 onShowGroupPicker = onShowGroupPicker,
             )

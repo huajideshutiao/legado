@@ -1,33 +1,31 @@
 package io.legado.app.ui.route
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Modifier
+import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
-import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 
 /**
  * WebView shared 路由入口。
  *
- * 强平台页面 (依赖 Android WebView / iOS WKWebView / 鸿蒙 Web_Controller / Desktop JavaFX WebView),
- * 各端 WebView API 差异大, 暂未下沉 shared Screen。
- *
- * 在 WebView 能力抽象下沉前, 降级为调用平台能力用系统浏览器打开 URL 后返回,
- * 覆盖源验证/登录等场景的最小可用路径 (对照 app 端 WebViewActivity 溢出菜单 "浏览器打开")。
+ * 经 [LocalWebViewSlot] 取各端平台实现渲染。Android 与 iOS 使用原生 WebView，
+ * desktop 走系统浏览器，鸿蒙通过 NAPI 桥接平台 Web 能力。
  */
 @Composable
 fun WebViewRoute(
     entry: RouteEntry,
-    navigator: AppNavigator,
+    @Suppress("UNUSED_PARAMETER") navigator: AppNavigator,
     @Suppress("UNUSED_PARAMETER") screenModelStore: ScreenModelStore,
 ) {
     val route = entry.route as AppRoute.WebView
     val url = route.url
-    // shared 端无 WebView 能力, 降级为系统浏览器打开 URL 后返回
-    LaunchedEffect(url) {
-        PlatformCapabilityProviders.get().openExternalUrl(url)
-        navigator.pop()
+    // 平台 slot 渲染 WebView，未注册平台能力时使用 shared 兜底提示。
+    Box(Modifier.fillMaxSize()) {
+        LocalWebViewSlot.current(url, Modifier.fillMaxSize())
     }
 }

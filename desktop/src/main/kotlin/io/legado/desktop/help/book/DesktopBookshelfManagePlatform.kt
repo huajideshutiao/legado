@@ -6,6 +6,7 @@ import io.legado.app.help.book.BookHelpChapterLocator
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.ui.book.manage.BookshelfManagePlatform
+import io.legado.app.ui.book.manage.BookshelfManagePlatformProviders
 import io.legado.app.ui.compose.platform.jvmGetString
 
 /**
@@ -25,10 +26,9 @@ import io.legado.app.ui.compose.platform.jvmGetString
  *   deleteOriginal=false 仅删数据库记录由调用方处理)。
  * - **clearCacheSuccessMessage**: 硬编码 "清缓存成功" (桌面端无 R.string 资源系统)。
  *
- * 使用: 由桌面端 BookshelfManageScreen / ChangeSourceScreen 等调用方直接实例化,
- * 注入 [io.legado.app.ui.book.manage.BookshelfManageViewModelShared] 构造函数或直接调
- * platform 方法 (如 clearCache)。模式参考 [DesktopBookHelpAccessor] / [DesktopSourceHelpAccessor]
- * (那两个是 Provider 注册模式, 本 platform 不需要全局唯一, 调用方按需持有)。
+ * 注册: 经 [registerDesktopBookshelfManagePlatform] 注册到 shared [BookshelfManagePlatformProviders],
+ * 供 [io.legado.app.ui.book.manage.BookshelfManageViewModelShared] 经
+ * `BookshelfManagePlatformProviders.get()` 取用, 与 app 端注册模式一致。
  */
 class DesktopBookshelfManagePlatform : BookshelfManagePlatform {
 
@@ -90,4 +90,15 @@ class DesktopBookshelfManagePlatform : BookshelfManagePlatform {
 
     /** 清缓存成功提示文案 (硬编码, 与 app 端 R.string.clear_cache_success 对应)。 */
     override val clearCacheSuccessMessage: String = jvmGetString("clear_cache_success")
+}
+
+/**
+ * 桌面端注册 BookshelfManage 平台 provider。
+ *
+ * 调用时机: desktop Main.kt, 在 registerDesktopWebBookProviders() 之后
+ * (BookshelfManage 依赖 AppDbProviders / WebBookProviders 已注册)。
+ * 模式参考 [io.legado.app.ui.book.manage.registerAndroidBookshelfManagePlatform]。
+ */
+fun registerDesktopBookshelfManagePlatform() {
+    BookshelfManagePlatformProviders.register(DesktopBookshelfManagePlatform())
 }

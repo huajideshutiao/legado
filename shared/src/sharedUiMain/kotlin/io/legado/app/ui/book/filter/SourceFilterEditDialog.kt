@@ -1,24 +1,19 @@
 package io.legado.app.ui.book.filter
 
-// I18N KEYS (need to register in ResourceProvider.jvm.kt):
-//   "source_filter_rule_edit_name" to "规则名",
-//   "source_filter_rule_edit_pattern" to "规则",
-//   "source_filter_rule_edit_invalid_pattern" to "正则无效或为空",
-//   "source_filter_rule_edit_title_add" to "添加屏蔽规则",
-//   "source_filter_rule_edit_title_edit" to "屏蔽规则"
-
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.Icon
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -28,84 +23,106 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.book.search.SearchScope
+import io.legado.app.ui.book.search.SearchScopeDialog
+import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.add
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.enable
+import legado.shared.generated.resources.ic_arrow_drop_down
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.source_filter_field_author
+import legado.shared.generated.resources.source_filter_field_intro
+import legado.shared.generated.resources.source_filter_field_kind
+import legado.shared.generated.resources.source_filter_field_name
+import legado.shared.generated.resources.source_filter_field_word_count
+import legado.shared.generated.resources.source_filter_rule
+import legado.shared.generated.resources.source_filter_rule_fields
+import legado.shared.generated.resources.source_filter_rule_invalid_pattern
+import legado.shared.generated.resources.source_filter_rule_name
+import legado.shared.generated.resources.source_filter_rule_no_field
+import legado.shared.generated.resources.source_filter_rule_pattern
+import legado.shared.generated.resources.source_filter_rule_scope_label
+import legado.shared.generated.resources.source_filter_rule_scope_summary_all
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
+
+/** 五个作用字段与标签，顺序对齐 app 端 fieldLabels。 */
+private val fieldLabels = listOf(
+    SourceFilterRule.Field.NAME to Res.string.source_filter_field_name,
+    SourceFilterRule.Field.AUTHOR to Res.string.source_filter_field_author,
+    SourceFilterRule.Field.INTRO to Res.string.source_filter_field_intro,
+    SourceFilterRule.Field.KIND to Res.string.source_filter_field_kind,
+    SourceFilterRule.Field.WORD_COUNT to Res.string.source_filter_field_word_count,
+)
 
 /**
  * 书源屏蔽规则编辑对话框 (KMP 共享, app + desktop 复用)。
  *
  * 对应 app 端 `io.legado.app.ui.book.filter.SourceFilterEditDialog` (BaseComposeDialogFragment),
- * 但去掉对 Android Fragment / Bundle / appDb / SearchScopeDialog / toastOnUi 的依赖,
- * 改为纯 @Composable + 回调形式:
- * - 调用方传入 [rule] (null=新增), [onConfirm] / [onDismiss] 回调。
- *
- * # 业务对齐 (对照 app 端原版)
- *
- * - 字段: 规则名 (name) / 规则 (pattern, 正则) / 是否启用 (enabled), 与任务规范一致;
- * - 标题: 新增 = "添加屏蔽规则", 编辑 = "屏蔽规则" (与 app 端 `getString(R.string.add) +
- *   getString(R.string.source_filter_rule)` / `stringResource(R.string.source_filter_rule)` 等价);
- * - 底部按钮栏: 取消 / 确定 (与 app 端 AppTextButton 一致, 取消左 + 确定右);
- * - 校验: pattern 非空 + 正则语法 (与 app 端 `runCatching { Regex(patternStr) }` 完全一致);
- * - 组装 SourceFilterRule: id/order/createTime 编辑时复用原值, 新增时由实体默认值生成
- *   (randomUUIDString / systemCurrentTimeMillis, 与 app 端 `UUID.randomUUID().toString()` /
- *   `System.currentTimeMillis()` 等价);
- * - fields 默认全选 (NAME/AUTHOR/INTRO/KIND/WORD_COUNT), 与 app 端新增分支
- *   `SourceFilterRule.Field.entries.toSet()` 等价 (任务字段简化版不暴露 fields 编辑,
- *   默认全选保留原业务对搜索/发现全字段过滤的语义);
- * - scope 默认空 (全部书源), 与 app 端新增分支 `scope = ""` 等价。
- *
- * # 与 app 端的差异
- *
- * - 不依赖 SearchScopeDialog (桌面端未下沉), scope 字段不可编辑, 默认空 (全部);
- * - 不暴露 fields 勾选 UI (任务字段简化版), 默认全选;
- * - 实际保存时 fields 写入 [SourceFilterRule.formatFields] (全选 5 字段);
- * - onConfirm 由调用方决定后续 DB 写入, 与 app 端 `callback?.onSourceFilterRuleSave(rule, isNew)` 等价。
+ * 去掉 Fragment / Bundle / appDb / toastOnUi 依赖, 改为纯 @Composable + 回调:
+ * - 调用方传入 [rule] (null=新增, 对应 app 端到达端按 id 重查的结果), [onConfirm] / [onDismiss];
+ * - 作用范围仍复用 [SearchScopeDialog] (已下沉), 与 app 端 showDialogFragment<SearchScopeDialog>() 等价。
  *
  * @param rule 待编辑规则 (null=新增)
- * @param onConfirm 用户点击确定按钮且校验通过, 参数为组装后的 SourceFilterRule
- * @param onDismiss 用户取消 (返回按钮 / 点击对话框外部 / 取消按钮)
+ * @param defaultScope 新增时的默认作用范围, 对照 app 端 ARG_DEFAULT_SCOPE (仅规则列表弹窗传入)
+ * @param onConfirm 校验通过后回调组装好的 SourceFilterRule
+ * @param onDismiss 取消 / 关闭
  */
 @Composable
 fun SourceFilterEditDialog(
     rule: SourceFilterRule?,
     onConfirm: (SourceFilterRule) -> Unit,
     onDismiss: () -> Unit,
+    defaultScope: String? = null,
 ) {
     val colors = AppTheme.colors
-    // 所有字符串一次性在 @Composable 主体内 rememberString, 避免 onClick 中误用 @Composable
+    // 所有字符串一次性在 @Composable 主体内取出, 避免 onClick 中误用 @Composable
     val titleText = if (rule == null) {
-        rememberString("source_filter_rule_edit_title_add")
+        stringResource(Res.string.add) + stringResource(Res.string.source_filter_rule)
     } else {
-        rememberString("source_filter_rule_edit_title_edit")
+        stringResource(Res.string.source_filter_rule)
     }
-    val nameLabel = rememberString("source_filter_rule_edit_name")
-    val patternLabel = rememberString("source_filter_rule_edit_pattern")
-    val enableText = rememberString("enable")
-    val cancelText = rememberString("cancel")
-    val okText = rememberString("ok")
-    val invalidPatternText = rememberString("source_filter_rule_edit_invalid_pattern")
+    val nameLabel = stringResource(Res.string.source_filter_rule_name)
+    val patternLabel = stringResource(Res.string.source_filter_rule_pattern)
+    val fieldsLabel = stringResource(Res.string.source_filter_rule_fields)
+    val scopeLabel = stringResource(Res.string.source_filter_rule_scope_label)
+    val scopeSummaryAll = stringResource(Res.string.source_filter_rule_scope_summary_all)
+    val enableText = stringResource(Res.string.enable)
+    val cancelText = stringResource(Res.string.cancel)
+    val okText = stringResource(Res.string.ok)
+    val invalidPatternText = stringResource(Res.string.source_filter_rule_invalid_pattern)
+    val noFieldText = stringResource(Res.string.source_filter_rule_no_field)
 
     var name by remember(rule) { mutableStateOf(rule?.name.orEmpty()) }
     var pattern by remember(rule) { mutableStateOf(rule?.pattern.orEmpty()) }
     var enabled by remember(rule) { mutableStateOf(rule?.enabled ?: true) }
+    // 对照 app 端 onCreate: 编辑读原值, 新增默认全选字段 + 取 defaultScope
+    var fields by remember(rule) {
+        mutableStateOf(
+            rule?.let { SourceFilterRule.parseFields(it.fields) }
+                ?: SourceFilterRule.Field.entries.toSet()
+        )
+    }
+    var scope by remember(rule) {
+        mutableStateOf(rule?.scope ?: defaultScope.orEmpty())
+    }
+    var showScopeDialog by remember { mutableStateOf(false) }
 
     /**
-     * 校验并保存, 与 app 端 onConfirm() 完全等价:
-     * - pattern trim 后非空 + 正则语法校验 (runCatching { Regex(patternStr) });
-     * - 失败 toast "正则无效或为空" (替代 `ctx.toastOnUi(R.string.source_filter_rule_invalid_pattern)`);
-     * - 通过则组装 SourceFilterRule 并回调 [onConfirm] + [onDismiss]。
-     *
-     * fields 默认全选 (NAME/AUTHOR/INTRO/KIND/WORD_COUNT), 与 app 端新增分支
-     * `SourceFilterRule.Field.entries.toSet()` 等价; 编辑分支沿用原 fields (保留原业务)。
+     * 校验并保存, 与 app 端 onConfirm() 等价: pattern 非空 + 正则语法, 作用字段至少一项。
      */
     fun confirm() {
         val patternStr = pattern.trim()
@@ -113,20 +130,19 @@ fun SourceFilterEditDialog(
             Toasters.get().toast(invalidPatternText)
             return
         }
-        val existing = rule
-        // fields: 新增默认全选, 编辑沿用原值 (与 app 端 onCreate 分支一致)
-        val fieldsStr = if (existing == null) {
-            SourceFilterRule.formatFields(SourceFilterRule.Field.entries.toList())
-        } else {
-            existing.fields
+        val pickedFields = fieldLabels.map { it.first }.filter { it in fields }
+        if (pickedFields.isEmpty()) {
+            Toasters.get().toast(noFieldText)
+            return
         }
+        val existing = rule
         val newRule = SourceFilterRule(
             id = existing?.id ?: SourceFilterRule().id, // 走实体默认 randomUUIDString
             name = name.trim(),
             enabled = enabled,
             pattern = patternStr,
-            fields = fieldsStr,
-            scope = existing?.scope ?: "",
+            fields = SourceFilterRule.formatFields(pickedFields),
+            scope = scope,
             order = existing?.order ?: 0,
             createTime = existing?.createTime ?: SourceFilterRule().createTime, // 走实体默认 systemCurrentTimeMillis
         )
@@ -147,6 +163,7 @@ fun SourceFilterEditDialog(
             Column(
                 Modifier
                     .fillMaxWidth()
+                    .weight(1f, fill = false)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
             ) {
@@ -165,7 +182,24 @@ fun SourceFilterEditDialog(
                         .fillMaxWidth()
                         .padding(top = 8.dp),
                 )
-                Spacer(Modifier.heightIn(min = 8.dp))
+                Text(
+                    text = fieldsLabel,
+                    color = colors.secondaryText,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                FieldChecks(
+                    fields = fields,
+                    onToggle = { field ->
+                        fields = if (field in fields) fields - field else fields + field
+                    },
+                )
+                ScopeRow(
+                    scope = scope,
+                    label = scopeLabel,
+                    summaryAll = scopeSummaryAll,
+                    onClick = { showScopeDialog = true },
+                )
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -200,5 +234,92 @@ fun SourceFilterEditDialog(
                 ) { confirm() }
             }
         }
+    }
+
+    // 对照 app 端 showDialogFragment<SearchScopeDialog>() + onSearchScopeOk
+    if (showScopeDialog) {
+        SearchScopeDialog(
+            onConfirm = { searchScope ->
+                scope = searchScope.toString()
+                showScopeDialog = false
+            },
+            onDismiss = { showScopeDialog = false },
+        )
+    }
+}
+
+/** 五个字段勾选平铺一行, 行高固定 40dp (M2 组件 48dp 触摸目标被行高钳制) */
+@Composable
+private fun FieldChecks(
+    fields: Set<SourceFilterRule.Field>,
+    onToggle: (SourceFilterRule.Field) -> Unit,
+) {
+    val colors = AppTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(40.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        fieldLabels.forEach { (field, labelRes) ->
+            Row(
+                Modifier
+                    .weight(1f)
+                    .clickable { onToggle(field) },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AppCheckbox(checked = field in fields, onCheckedChange = null)
+                Text(
+                    text = stringResource(labelRes),
+                    color = colors.primaryText,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/** 作用范围行, 点击弹 SearchScopeDialog; 空范围显示"全部书源"。 */
+@Composable
+private fun ScopeRow(
+    scope: String,
+    label: String,
+    summaryAll: String,
+    onClick: () -> Unit,
+) {
+    val colors = AppTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 40.dp)
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = label,
+                color = colors.secondaryText,
+                fontSize = 13.sp,
+            )
+            Text(
+                text = if (scope.isEmpty()) summaryAll else SearchScope(scope).display,
+                color = colors.primaryText,
+                fontSize = 14.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        Icon(
+            painter = painterResource(Res.drawable.ic_arrow_drop_down),
+            contentDescription = label,
+            tint = colors.secondaryText,
+            modifier = Modifier
+                .padding(start = 8.dp)
+                .size(24.dp),
+        )
     }
 }

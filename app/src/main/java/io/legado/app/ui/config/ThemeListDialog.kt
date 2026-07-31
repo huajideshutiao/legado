@@ -18,7 +18,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import io.legado.app.ui.compose.platform.rememberPainter
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.legado.app.R
@@ -26,12 +25,14 @@ import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
 import io.legado.app.utils.getClipText
 import io.legado.app.utils.share
 import io.legado.app.utils.toastOnUi
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 主题列表（迁 View 版 item_theme_config 手拼列表 → Compose）。

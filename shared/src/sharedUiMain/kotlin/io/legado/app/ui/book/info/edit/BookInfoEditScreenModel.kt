@@ -45,9 +45,9 @@ class BookInfoEditScreenModel(
     val book: Book? get() = shared.book
 
     /** 加载书籍并初始化编辑态 (对照原 BookInfoEditActivity.upView)。 */
-    fun loadBook() {
-        shared.loadBook()
-        shared.book?.let(::upView)
+    fun loadBook(book: Book) {
+        shared.loadBook(book)
+        upView(book)
     }
 
     private fun upView(book: Book) {

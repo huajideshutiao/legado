@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -68,6 +69,7 @@ import com.fleeksoft.ksoup.Ksoup
 import com.fleeksoft.ksoup.nodes.Element
 import com.fleeksoft.ksoup.nodes.TextNode
 import io.legado.app.data.entities.Book
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.isWebFile
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppMenuCheckbox
@@ -78,6 +80,39 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.splitNotBlank
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.allow_update
+import legado.shared.generated.resources.author
+import legado.shared.generated.resources.book_info
+import legado.shared.generated.resources.book_intro
+import legado.shared.generated.resources.book_name
+import legado.shared.generated.resources.clear_cache
+import legado.shared.generated.resources.copy_book_url
+import legado.shared.generated.resources.copy_toc_url
+import legado.shared.generated.resources.download_to_local
+import legado.shared.generated.resources.edit
+import legado.shared.generated.resources.ic_arrow_back
+import legado.shared.generated.resources.ic_book_last
+import legado.shared.generated.resources.ic_edit
+import legado.shared.generated.resources.ic_more_vert
+import legado.shared.generated.resources.ic_share
+import legado.shared.generated.resources.loading
+import legado.shared.generated.resources.log
+import legado.shared.generated.resources.login
+import legado.shared.generated.resources.more_menu
+import legado.shared.generated.resources.other
+import legado.shared.generated.resources.read_dur_progress
+import legado.shared.generated.resources.reading
+import legado.shared.generated.resources.refresh
+import legado.shared.generated.resources.review
+import legado.shared.generated.resources.set_book_variable
+import legado.shared.generated.resources.set_source_variable
+import legado.shared.generated.resources.share
+import legado.shared.generated.resources.split_long_chapter
+import legado.shared.generated.resources.to_top
+import legado.shared.generated.resources.upload_to_remote
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /*
  * 下沉所需资源 key 清单 (供 ResourceProvider 各平台 actual 补全)
@@ -411,10 +446,10 @@ private fun InfoTitleBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = { actions.onBack() }) {
-            Icon(rememberPainter("ic_arrow_back"), null, tint = contentColor)
+            Icon(painterResource(Res.drawable.ic_arrow_back), null, tint = contentColor)
         }
         Text(
-            text = rememberString("book_info"),
+            text = stringResource(Res.string.book_info),
             color = contentColor,
             fontSize = 20.sp,
             maxLines = 1,
@@ -424,16 +459,16 @@ private fun InfoTitleBar(
         if (state.inBookshelf) {
             IconButton(onClick = { actions.onEdit() }) {
                 Icon(
-                    rememberPainter("ic_edit"),
-                    rememberString("edit"),
+                    painterResource(Res.drawable.ic_edit),
+                    stringResource(Res.string.edit),
                     tint = contentColor,
                 )
             }
         }
         IconButton(onClick = { actions.onShare() }) {
             Icon(
-                rememberPainter("ic_share"),
-                rememberString("share"),
+                painterResource(Res.drawable.ic_share),
+                stringResource(Res.string.share),
                 tint = contentColor,
             )
         }
@@ -451,8 +486,8 @@ private fun InfoOverflowMenu(
     Box {
         IconButton(onClick = { expanded = true }) {
             Icon(
-                rememberPainter("ic_more_vert"),
-                rememberString("more_menu"),
+                painterResource(Res.drawable.ic_more_vert),
+                stringResource(Res.string.more_menu),
                 tint = tint,
             )
         }
@@ -460,54 +495,57 @@ private fun InfoOverflowMenu(
             // 展开时求值可见性,对照 onMenuOpened
             val menu = state.menuState
             val dismiss = { expanded = false }
+            MenuItem(stringResource(Res.string.refresh)) {
+                dismiss(); actions.onRefresh()
+            }
             if (menu.isLocal) {
-                MenuItem(rememberString("upload_to_remote")) {
+                MenuItem(stringResource(Res.string.upload_to_remote)) {
                     dismiss(); actions.onUploadBook()
                 }
             }
             if (menu.isWebDav) {
-                MenuItem(rememberString("download_to_local")) {
+                MenuItem(stringResource(Res.string.download_to_local)) {
                     dismiss(); actions.onDownloadToLocal()
                 }
             }
-            MenuItem(rememberString("to_top")) { dismiss(); actions.onTopBook() }
+            MenuItem(stringResource(Res.string.to_top)) { dismiss(); actions.onTopBook() }
             if (menu.sourceHasLogin) {
-                MenuItem(rememberString("login")) { dismiss(); actions.onLogin() }
+                MenuItem(stringResource(Res.string.login)) { dismiss(); actions.onLogin() }
             }
             if (menu.sourceHasReviewRule) {
-                MenuItem(rememberString("review")) {
+                MenuItem(stringResource(Res.string.review)) {
                     dismiss(); actions.onOpenCommentDialog()
                 }
             }
             if (menu.hasSource) {
-                MenuItem(rememberString("set_source_variable")) {
+                MenuItem(stringResource(Res.string.set_source_variable)) {
                     dismiss(); actions.onSetSourceVariable()
                 }
-                MenuItem(rememberString("set_book_variable")) {
+                MenuItem(stringResource(Res.string.set_book_variable)) {
                     dismiss(); actions.onSetBookVariable()
                 }
             }
-            MenuItem(rememberString("copy_book_url")) {
+            MenuItem(stringResource(Res.string.copy_book_url)) {
                 dismiss(); menu.bookUrl?.let { actions.onCopyBookUrl() }
             }
-            MenuItem(rememberString("copy_toc_url")) {
+            MenuItem(stringResource(Res.string.copy_toc_url)) {
                 dismiss(); menu.tocUrl?.let { actions.onCopyTocUrl() }
             }
             if (menu.hasSource) {
-                CheckMenuItem(rememberString("allow_update"), menu.canUpdate) {
+                CheckMenuItem(stringResource(Res.string.allow_update), menu.canUpdate) {
                     dismiss(); actions.onToggleCanUpdate()
                 }
             }
             if (menu.isLocalTxt) {
                 CheckMenuItem(
-                    rememberString("split_long_chapter"),
+                    stringResource(Res.string.split_long_chapter),
                     menu.splitLongChapter,
                 ) {
                     dismiss(); actions.onToggleSplitLongChapter()
                 }
             }
-            MenuItem(rememberString("clear_cache")) { dismiss(); actions.onClearCache() }
-            MenuItem(rememberString("log")) {
+            MenuItem(stringResource(Res.string.clear_cache)) { dismiss(); actions.onClearCache() }
+            MenuItem(stringResource(Res.string.log)) {
                 dismiss(); actions.onShowLog()
             }
         }
@@ -591,7 +629,7 @@ private fun TopSectionHorizontal(
 private fun NameText(state: BookInfoUiState, align: TextAlign, maxLines: Int) {
     val actions = LocalBookInfoActions.current
     Text(
-        text = state.book?.name ?: rememberString("book_name"),
+        text = state.book?.name ?: stringResource(Res.string.book_name),
         color = AppTheme.colors.primaryText,
         fontSize = 20.sp,
         textAlign = align,
@@ -619,8 +657,8 @@ private fun LastedRow(state: BookInfoUiState, modifier: Modifier) {
     val iconSize = with(LocalDensity.current) { 18.sp.toDp() }
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Icon(
-            rememberPainter("ic_book_last"),
-            rememberString("read_dur_progress"),
+            painterResource(Res.drawable.ic_book_last),
+            stringResource(Res.string.read_dur_progress),
             tint = rememberColor("tv_text_summary"),
             modifier = Modifier
                 .size(iconSize)
@@ -644,10 +682,14 @@ private fun InfoCover(
     modifier: Modifier,
 ) {
     val actions = LocalBookInfoActions.current
+    val book = state.book
+    // 对照 CoverImageView.onMeasure: 高固定 144dp, 宽按比例反推 (视频 16:9, 小说 3:4)
+    val coverRatio = if (book?.isVideo == true) 16f / 9f else 3f / 4f
     coverSlot(
-        state.book,
+        book,
         modifier
             .height(144.dp)
+            .aspectRatio(coverRatio, matchHeightConstraintsFirst = true)
             .clip(DesignTokens.shapeDefault)
             .then(
                 if (cardBg) Modifier.background(AppTheme.colors.bottomBackground)
@@ -687,7 +729,7 @@ private fun ActionsRow(
         if (book?.isWebFile != true) {
             ActionCell(
                 iconKey = "ic_folder_open",
-                text = state.tocText ?: rememberString("loading"),
+                text = state.tocText ?: stringResource(Res.string.loading),
                 modifier = Modifier.weight(1f),
                 onClick = { actions.onTocClick() },
             )
@@ -705,7 +747,7 @@ private fun AuthorActionCell(
     Box(modifier) {
         ActionCell(
             iconKey = "ic_author",
-            text = state.book?.getRealAuthor() ?: rememberString("author"),
+            text = state.book?.getRealAuthor() ?: stringResource(Res.string.author),
             modifier = Modifier.fillMaxWidth(),
             onClick = {
                 val book = state.book
@@ -780,7 +822,7 @@ private fun KindsSection(
     actions: BookInfoUiActions,
     modifier: Modifier,
 ) {
-    val otherLabel = rememberString("other")
+    val otherLabel = stringResource(Res.string.other)
     val groups = remember(state.bookTick) {
         buildKindGroups(state.book?.kind, otherLabel)
     }
@@ -888,7 +930,7 @@ private fun IntroSection(
     if (intro.isNullOrBlank() || !intro.contains('<')) {
         SelectionContainer(modifier.fillMaxWidth()) {
             Text(
-                text = intro ?: rememberString("book_intro"),
+                text = intro ?: stringResource(Res.string.book_intro),
                 color = AppTheme.colors.secondaryText,
                 fontSize = 14.sp,
             )
@@ -1032,7 +1074,7 @@ private fun BottomButtons(
                 .padding(start = 16.dp, end = 16.dp),
         ) { actions.onShelfClick() }
         ArcoSolidButton(
-            text = rememberString("reading"),
+            text = stringResource(Res.string.reading),
             bg = colors.accent,
             textColor = if (ColorUtils.isColorLight(AppTheme.colors.accent.toArgb())) Color.Black else Color.White,
             modifier = Modifier

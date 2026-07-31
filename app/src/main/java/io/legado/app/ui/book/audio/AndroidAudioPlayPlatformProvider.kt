@@ -11,6 +11,7 @@ class AndroidAudioPlayPlatformProvider : AudioPlayPlatformProvider {
         onOpenToc: () -> Unit,
         onOpenBookSourceEdit: (String) -> Unit,
         onOpenReview: () -> Unit,
+        overflowActions: AudioPlayOverflowActions,
         onEvent: (AudioPlayUiEvent) -> Unit,
     ) {
         AudioPlayAndroidContent(
@@ -20,6 +21,7 @@ class AndroidAudioPlayPlatformProvider : AudioPlayPlatformProvider {
             onOpenToc = onOpenToc,
             onOpenBookSourceEdit = onOpenBookSourceEdit,
             onOpenReview = onOpenReview,
+            overflowActions = overflowActions,
             onEvent = onEvent,
         )
     }

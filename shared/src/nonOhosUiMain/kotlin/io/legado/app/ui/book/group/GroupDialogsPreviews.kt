@@ -56,9 +56,11 @@ fun GroupManageDialogPreview() = LegadoThemePreview {
     GroupManageDialog(
         groups = previewGroups,
         onAddGroup = {},
-        onRenameGroup = { _, _ -> },
-        onDeleteGroup = {},
+        onEditGroup = {},
+        onUpdateGroup = {},
+        onPersistOrder = {},
         onDismiss = {},
+        canAddGroup = { true },
     )
 }
 
@@ -68,9 +70,11 @@ fun GroupManageDialogEmptyPreview() = LegadoThemePreview {
     GroupManageDialog(
         groups = emptyList(),
         onAddGroup = {},
-        onRenameGroup = { _, _ -> },
-        onDeleteGroup = {},
+        onEditGroup = {},
+        onUpdateGroup = {},
+        onPersistOrder = {},
         onDismiss = {},
+        canAddGroup = { true },
     )
 }
 
@@ -80,8 +84,10 @@ fun GroupManageDialogDarkPreview() = LegadoThemePreview(dark = true) {
     GroupManageDialog(
         groups = previewGroups,
         onAddGroup = {},
-        onRenameGroup = { _, _ -> },
-        onDeleteGroup = {},
+        onEditGroup = {},
+        onUpdateGroup = {},
+        onPersistOrder = {},
         onDismiss = {},
+        canAddGroup = { true },
     )
 }

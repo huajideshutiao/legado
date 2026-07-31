@@ -1,10 +1,13 @@
 package io.legado.app.model
 
+import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.PreferenceProvider
+import io.legado.app.model.BookCoverShared.bakedPath
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.toJson
 import kotlinx.serialization.Serializable
+import kotlin.random.Random
 
 /**
  * BookCover 中可跨平台共享的纯逻辑部分。
@@ -167,6 +170,29 @@ object BookCoverShared {
         prefs.putString(prefKey, "")
         return existing
     }
+
+    /**
+     * 按 seed 稳定挑选默认封面下标 (1:1 下沉 app 端 BookCover.newDefaultDrawable 的选图逻辑)。
+     *
+     * seed 一般是书名, 保证同一本书每次拿到同一张; 空则随机。
+     * 返回 -1 表示图集为空, 调用方应回落到内置 image_cover_default。
+     */
+    fun pickDefaultCoverIndex(size: Int, seed: String?): Int {
+        if (size <= 0) return -1
+        if (seed.isNullOrBlank()) return Random.nextInt(size)
+        return (seed.hashCode().rem(size) + size).rem(size)
+    }
+
+    /**
+     * 取当前昼夜对应的图集 (对照 app 端 BookCover.currentCovers)。
+     */
+    fun currentDefaultCovers(
+        prefs: PreferenceProvider,
+        isNightTheme: Boolean,
+    ): List<DefaultCoverEntry> = listDefaultCovers(
+        prefs,
+        if (isNightTheme) PreferKey.defaultCoverDark else PreferKey.defaultCover,
+    )
 }
 
 /**

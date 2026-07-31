@@ -32,13 +32,17 @@ import io.legado.app.ui.book.import.remote.ServersDialog
 import io.legado.app.ui.book.import.remote.ServersViewModelShared
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.dialog.HelpDialog
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.no
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.yes
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 远程书籍 shared 路由入口。
@@ -286,17 +290,17 @@ fun RemoteBookRoute(
     reAddTarget?.let { target ->
         AppAlertDialog(
             onDismissRequest = { reAddTarget = null },
-            title = rememberString("ok"),
+            title = stringResource(Res.string.ok),
             message = "是否重新加入书架？",
             okButton = AlertButton(
-                text = rememberString("yes"),
+                text = stringResource(Res.string.yes),
                 onClick = {
                     shared.addSelectionToBookshelf(setOf(target)) {
                         reAddTarget = null
                     }
                 },
             ),
-            cancelButton = AlertButton(text = rememberString("no")),
+            cancelButton = AlertButton(text = stringResource(Res.string.no)),
         )
     }
 }

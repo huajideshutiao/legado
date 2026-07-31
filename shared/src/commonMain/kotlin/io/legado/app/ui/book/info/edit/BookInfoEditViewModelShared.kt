@@ -3,7 +3,6 @@ package io.legado.app.ui.book.info.edit
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
-import io.legado.app.help.IntentData
 import io.legado.app.help.coroutine.IoDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,7 +16,7 @@ import kotlinx.coroutines.withContext
  *
  * 对照 app 端原 `BookInfoEditViewModel(application: Application) : BaseViewModel(application)`:
  * - 核心业务 (loadBook / saveBook) 不依赖 Android 专属 API, 仅依赖 [AppDbProviders] /
- *   [IntentData] / 协程 + 一个 `ReadBook.book` 同步副作用 (通过 [readBookUpdater] lambda 注入),
+ *   协程 + 一个当前阅读状态同步副作用 (通过 [readBookUpdater] lambda 注入),
  *   可以下沉 commonMain 供多端复用。
  * - DAO 访问走 [AppDbProviders.get] (宿主启动时注册), 替代 app 端 `appDb` 单例。
  * - 原 `execute { ... }.onSuccess { success?.invoke() }.onError { AppLog.put(...) }`
@@ -33,7 +32,7 @@ import kotlinx.coroutines.withContext
  * 未下沉。下沉后改由 [readBookUpdater] lambda 注入:
  * - app 端实现: `{ if (ReadBook.book?.bookUrl == it.bookUrl) ReadBook.book = it }`,
  *   语义与原完全一致 (含 bookUrl 相等判断, 不相等时不写)。
- * - desktop 端阅读流未与编辑流联动, 传 `{}` no-op。
+ * - shared 路由通过活动阅读状态注册表同步当前阅读的同一本书。
  *
  * # SQLiteConstraintException 处理 (不直接引用 android.database.sqlite)
  *
@@ -53,8 +52,7 @@ import kotlinx.coroutines.withContext
  *
  * @param scope 协程作用域, actual 平台注入
  *   (Android = `viewModelScope` / 桌面 = 应用主作用域 / 窗口 scope)
- * @param readBookUpdater 同步 ReadBook 单例的 lambda (app 端实现内含 bookUrl 相等判断,
- *   desktop 端 no-op)
+ * @param readBookUpdater 同步当前阅读状态的 lambda，调用方负责 bookUrl 相等判断。
  */
 class BookInfoEditViewModelShared(
     private val scope: CoroutineScope,
@@ -64,23 +62,13 @@ class BookInfoEditViewModelShared(
     /** DAO 容器 (宿主启动时由 app 端注册 AppDbAccessorImpl)。 */
     private val appDb get() = AppDbProviders.get()
 
-    /**
-     * 当前编辑的书籍 (对照原 app 端 `BookInfoEditViewModel.book`)。
-     *
-     * 由 [loadBook] 写入 (从 [IntentData.book] 取), 由 [BookInfoEditActivity.upView] /
-     * 桌面端 LaunchedEffect 读取初始化编辑态。
-     */
+    /** 当前编辑的书籍。 */
     var book: Book? = null
         private set
 
-    /**
-     * 加载书籍 (对照原 BookInfoEditViewModel.loadBook)。
-     *
-     * 原 `book = IntentData.book as? Book` 改为同语义赋值, 行为完全一致。
-     * 注: IntentData.book 类型为 `BaseBook?`, 这里强转 Book (与原 `as? Book` 一致)。
-     */
-    fun loadBook() {
-        book = IntentData.book as? Book
+    /** 以路由或平台入口直接传入的实体初始化编辑状态。 */
+    fun loadBook(value: Book) {
+        book = value
     }
 
     /**

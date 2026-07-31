@@ -34,12 +34,16 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.dateFormat
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppMenuCheckbox
-import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.ConvertUtils
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.ic_book_has
+import legado.shared.generated.resources.ic_folder
+import legado.shared.generated.resources.ic_folder_open
+import org.jetbrains.compose.resources.painterResource
 
 /*
  * 下沉所需资源 key 清单 (供 ResourceProvider 各平台 actual 补全)
@@ -161,15 +165,25 @@ fun ImportFileRow(
     ) {
         Box(Modifier.size(52.dp)) {
             when {
-                isUpDir -> RowIcon(rememberPainter("ic_folder_open"), Modifier.align(Alignment.Center))
-                isDir -> RowIcon(rememberPainter("ic_folder"), Modifier.align(Alignment.Center))
+                isUpDir -> RowIcon(
+                    painterResource(Res.drawable.ic_folder_open),
+                    Modifier.align(Alignment.Center)
+                )
+
+                isDir -> RowIcon(
+                    painterResource(Res.drawable.ic_folder),
+                    Modifier.align(Alignment.Center)
+                )
                 checkable -> AppCheckbox(
                     checked = checked,
                     onCheckedChange = null,
                     modifier = Modifier.align(Alignment.Center),
                 )
 
-                onBookShelf -> RowIcon(rememberPainter("ic_book_has"), Modifier.align(Alignment.Center))
+                onBookShelf -> RowIcon(
+                    painterResource(Res.drawable.ic_book_has),
+                    Modifier.align(Alignment.Center)
+                )
             }
         }
         Column(

@@ -7,6 +7,7 @@ import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
+import io.legado.app.ui.book.searchContent.SearchResult
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -81,7 +82,11 @@ sealed interface AppRoute {
 
     @Serializable
     @SerialName("video_play")
-    data class VideoPlay(val book: BookRef) : AppRoute
+    data class VideoPlay(
+        val book: BookRef,
+        val chapterIndex: Int? = null,
+        val chapterPos: Int? = null,
+    ) : AppRoute
 
     @Serializable
     @SerialName("manga_reader")
@@ -167,18 +172,19 @@ sealed interface AppRoute {
     // 三端合并: 书架/搜索/导入类
     @Serializable
     @SerialName("bookshelf_manage")
-    data object BookshelfManage : AppRoute
+    data class BookshelfManage(val groupId: Long = -1L) : AppRoute
 
     @Serializable
     @SerialName("search_content")
     data class SearchContent(
         val index: Int = 0,
         val word: String? = null,
+        val initialResults: List<SearchResult>? = null,
     ) : AppRoute
 
     @Serializable
     @SerialName("import_book")
-    data object ImportBook : AppRoute
+    data class ImportBook(val filePath: String? = null) : AppRoute
 
     // 三端合并: RSS 类 (sourceUrl 定位源)
     @Serializable
@@ -297,12 +303,18 @@ fun Book.toRouteRef(): BookRef = BookRef.Stored(copy())
 fun SearchBook.toRouteRef(): BookRef = BookRef.Search(copy())
 
 // 按 app 端 startActivityForBook 逻辑分流阅读类路由 (Audio/Video/Manga/Rss/Reader)
-fun Book.toReadRoute(): AppRoute = when {
-    isAudio -> AppRoute.AudioPlay(toRouteRef())
-    isVideo -> AppRoute.VideoPlay(toRouteRef())
-    isImage -> AppRoute.MangaReader(toRouteRef())
-    isRss -> AppRoute.ReadRss(toRouteRef())
-    else -> AppRoute.Reader(toRouteRef())
+fun Book.toReadRoute(): AppRoute = toRouteRef().toReadRoute()
+
+// 由 BookRef 构造阅读类路由, 保留 chapterIndex/chapterPos (供 OpenBook/OpenReader 外部启动定位章节)
+fun BookRef.toReadRoute(chapterIndex: Int? = null, chapterPos: Int? = null): AppRoute {
+    val book = asBook()
+    return when {
+        book.isAudio -> AppRoute.AudioPlay(this, chapterIndex, chapterPos)
+        book.isVideo -> AppRoute.VideoPlay(this, chapterIndex, chapterPos)
+        book.isImage -> AppRoute.MangaReader(this, chapterIndex, chapterPos)
+        book.isRss -> AppRoute.ReadRss(this)
+        else -> AppRoute.Reader(this, chapterIndex, chapterPos)
+    }
 }
 
 fun BookRef.asBook(): Book = when (this) {

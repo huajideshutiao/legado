@@ -47,10 +47,23 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.create
+import legado.shared.generated.resources.delete
+import legado.shared.generated.resources.draw
+import legado.shared.generated.resources.edit
+import legado.shared.generated.resources.ic_add
+import legado.shared.generated.resources.ic_clear_all
+import legado.shared.generated.resources.ic_edit
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.server_config
+import legado.shared.generated.resources.sure_del
+import legado.shared.generated.resources.text_default
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 服务器列表选择对话框 (KMP 共享, app/desktop/iOS 复用)。
@@ -116,13 +129,13 @@ fun ServersDialog(
         ) {
             Column {
                 DialogTitleBar(
-                    title = rememberString("server_config"),
+                    title = stringResource(Res.string.server_config),
                     onBack = onDismiss,
                     actions = {
                         IconButton(onClick = onAddServer) {
                             Icon(
-                                painter = rememberPainter("ic_add"),
-                                contentDescription = rememberString("create"),
+                                painter = painterResource(Res.drawable.ic_add),
+                                contentDescription = stringResource(Res.string.create),
                                 tint = colors.primaryText,
                             )
                         }
@@ -147,10 +160,15 @@ fun ServersDialog(
                         .padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    AppTextButton(text = rememberString("text_default"), onClick = onSelectDefault)
+                    AppTextButton(
+                        text = stringResource(Res.string.text_default),
+                        onClick = onSelectDefault
+                    )
                     Spacer(Modifier.weight(1f))
-                    AppTextButton(text = rememberString("cancel"), onClick = onDismiss)
-                    AppTextButton(text = rememberString("ok"), onClick = { onConfirm(selectServerId) })
+                    AppTextButton(text = stringResource(Res.string.cancel), onClick = onDismiss)
+                    AppTextButton(
+                        text = stringResource(Res.string.ok),
+                        onClick = { onConfirm(selectServerId) })
                 }
             }
         }
@@ -160,17 +178,17 @@ fun ServersDialog(
     deletingServer?.let { server ->
         AppAlertDialog(
             onDismissRequest = { deletingServer = null },
-            title = rememberString("draw"),
-            message = rememberString("sure_del"),
+            title = stringResource(Res.string.draw),
+            message = stringResource(Res.string.sure_del),
             okButton = AlertButton(
-                text = rememberString("ok"),
+                text = stringResource(Res.string.ok),
                 onClick = {
                     onDeleteServer(server)
                     deletingServer = null
                 },
             ),
             cancelButton = AlertButton(
-                text = rememberString("cancel"),
+                text = stringResource(Res.string.cancel),
             ),
         )
     }
@@ -216,15 +234,15 @@ private fun ServerItem(
         }
         IconButton(onClick = onEdit) {
             Icon(
-                painter = rememberPainter("ic_edit"),
-                contentDescription = rememberString("edit"),
+                painter = painterResource(Res.drawable.ic_edit),
+                contentDescription = stringResource(Res.string.edit),
                 tint = colors.primaryText,
             )
         }
         IconButton(onClick = onDelete) {
             Icon(
-                painter = rememberPainter("ic_clear_all"),
-                contentDescription = rememberString("delete"),
+                painter = painterResource(Res.drawable.ic_clear_all),
+                contentDescription = stringResource(Res.string.delete),
                 tint = colors.primaryText,
             )
         }

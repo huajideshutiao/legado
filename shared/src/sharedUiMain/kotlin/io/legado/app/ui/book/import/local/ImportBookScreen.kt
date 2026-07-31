@@ -19,9 +19,23 @@ import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.SelectActionBar
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.add_to_bookshelf
+import legado.shared.generated.resources.empty_msg_import_book
+import legado.shared.generated.resources.ic_baseline_sort_24
+import legado.shared.generated.resources.ic_folder_open
+import legado.shared.generated.resources.import_file_name
+import legado.shared.generated.resources.local_book
+import legado.shared.generated.resources.scan_folder
+import legado.shared.generated.resources.screen
+import legado.shared.generated.resources.select_folder
+import legado.shared.generated.resources.sort
+import legado.shared.generated.resources.sort_by_name
+import legado.shared.generated.resources.sort_by_size
+import legado.shared.generated.resources.sort_by_time
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /*
  * 下沉所需资源 key 清单 (供 ResourceProvider 各平台 actual 补全)
@@ -115,17 +129,17 @@ fun <T : ImportFileItem> ImportBookScreen(
         path = state.path,
         loading = state.loading,
         emptyVisible = state.emptyMsgVisible,
-        emptyText = rememberString("empty_msg_import_book"),
+        emptyText = stringResource(Res.string.empty_msg_import_book),
         titleBar = {
             AppTitleBar(
-                title = rememberString("local_book"),
+                title = stringResource(Res.string.local_book),
                 onBack = { actions.onBack() },
                 titleContent = {
                     AppSearchField(
                         value = state.searchKey,
                         onValueChange = { actions.onUpSearchKey(it) },
-                        hint = rememberString("screen") + " • " +
-                            rememberString("local_book"),
+                        hint = stringResource(Res.string.screen) + " • " +
+                            stringResource(Res.string.local_book),
                     )
                 },
                 actions = { ImportBookActions(state, actions) },
@@ -137,7 +151,7 @@ fun <T : ImportFileItem> ImportBookScreen(
                 allCount = state.checkableCount,
                 onSelectAll = { actions.onSelectAll(it) },
                 onRevertSelection = { actions.onRevertSelection() },
-                mainActionText = rememberString("add_to_bookshelf"),
+                mainActionText = stringResource(Res.string.add_to_bookshelf),
                 onMainAction = { actions.onAddSelectionToBookshelf() },
             )
         },
@@ -169,8 +183,8 @@ private fun <T : ImportFileItem> ImportBookActions(
     val colors = AppTheme.colors
     IconButton(onClick = { actions.onPickFolder() }) {
         Icon(
-            painter = rememberPainter("ic_folder_open"),
-            contentDescription = rememberString("select_folder"),
+            painter = painterResource(Res.drawable.ic_folder_open),
+            contentDescription = stringResource(Res.string.select_folder),
             tint = colors.primaryText,
         )
     }
@@ -178,28 +192,28 @@ private fun <T : ImportFileItem> ImportBookActions(
         var showSort by remember { mutableStateOf(false) }
         IconButton(onClick = { showSort = true }) {
             Icon(
-                painter = rememberPainter("ic_baseline_sort_24"),
-                contentDescription = rememberString("sort"),
+                painter = painterResource(Res.drawable.ic_baseline_sort_24),
+                contentDescription = stringResource(Res.string.sort),
                 tint = colors.primaryText,
             )
         }
         AppDropdownMenu(expanded = showSort, onDismissRequest = { showSort = false }) {
-            ImportSortItem(rememberString("sort_by_name"), state.sortState == 0) {
+            ImportSortItem(stringResource(Res.string.sort_by_name), state.sortState == 0) {
                 showSort = false; actions.onUpSort(0)
             }
-            ImportSortItem(rememberString("sort_by_size"), state.sortState == 1) {
+            ImportSortItem(stringResource(Res.string.sort_by_size), state.sortState == 1) {
                 showSort = false; actions.onUpSort(1)
             }
-            ImportSortItem(rememberString("sort_by_time"), state.sortState == 2) {
+            ImportSortItem(stringResource(Res.string.sort_by_time), state.sortState == 2) {
                 showSort = false; actions.onUpSort(2)
             }
         }
     }
     OverflowMenu { dismiss ->
-        ImportMenuItem(rememberString("scan_folder")) {
+        ImportMenuItem(stringResource(Res.string.scan_folder)) {
             dismiss(); actions.onScanFolder()
         }
-        ImportMenuItem(rememberString("import_file_name")) {
+        ImportMenuItem(stringResource(Res.string.import_file_name)) {
             dismiss(); actions.onAlertImportFileName()
         }
     }

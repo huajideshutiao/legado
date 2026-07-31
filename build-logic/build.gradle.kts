@@ -3,10 +3,10 @@ plugins {
 }
 
 repositories {
-    maven("https://maven.eazytec-cloud.com/nexus/repository/maven-public/")
     google()
-    gradlePluginPortal()
     mavenCentral()
+    gradlePluginPortal()
+    maven("https://maven.eazytec-cloud.com/nexus/repository/maven-public/")
 }
 
 group = "io.legado.buildlogic"
@@ -18,14 +18,10 @@ java {
 }
 
 dependencies {
-    implementation(libs.plugins.android.application.toPluginDependency())
-    implementation(libs.plugins.android.library.toPluginDependency())
-    implementation(libs.plugins.android.kmp.library.toPluginDependency())
-    implementation(libs.plugins.kotlin.android.toPluginDependency())
-    implementation(libs.plugins.kotlin.multiplatform.toPluginDependency())
-    implementation(libs.plugins.kotlin.jvm.toPluginDependency())
-    implementation(libs.plugins.compose.multiplatform.toPluginDependency())
-    implementation(libs.plugins.compose.compiler.toPluginDependency())
+    // 与主构建工具链对齐，避免约定插件向子项目注入旧版 Kotlin/Compose 插件。
+    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.21")
+    implementation("com.android.tools.build:gradle:8.13.2")
+    implementation("org.jetbrains.compose:compose-gradle-plugin:1.9.2")
 }
 
 gradlePlugin {
@@ -47,8 +43,4 @@ gradlePlugin {
             implementationClass = "io.legado.buildlogic.ComposeConventionPlugin"
         }
     }
-}
-
-private fun Provider<PluginDependency>.toPluginDependency(): Provider<String> = map {
-    "${it.pluginId}:${it.pluginId}.gradle.plugin:${it.version}"
 }

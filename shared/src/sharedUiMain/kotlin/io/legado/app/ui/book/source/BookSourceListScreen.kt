@@ -46,10 +46,52 @@ import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.add_book_source
+import legado.shared.generated.resources.book_source
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.debug
+import legado.shared.generated.resources.delete
+import legado.shared.generated.resources.disable_explore
+import legado.shared.generated.resources.disabled
+import legado.shared.generated.resources.disabled_explore
+import legado.shared.generated.resources.edit
+import legado.shared.generated.resources.empty
+import legado.shared.generated.resources.enable_explore
+import legado.shared.generated.resources.enabled
+import legado.shared.generated.resources.enabled_explore
+import legado.shared.generated.resources.group_manage
+import legado.shared.generated.resources.group_sources_by_domain
+import legado.shared.generated.resources.help
+import legado.shared.generated.resources.ic_edit
+import legado.shared.generated.resources.ic_groups
+import legado.shared.generated.resources.ic_more_vert
+import legado.shared.generated.resources.ic_sort
+import legado.shared.generated.resources.import_local
+import legado.shared.generated.resources.import_on_line
+import legado.shared.generated.resources.is_enabled
+import legado.shared.generated.resources.login
+import legado.shared.generated.resources.menu_action_group
+import legado.shared.generated.resources.more_menu
+import legado.shared.generated.resources.need_login
+import legado.shared.generated.resources.no_group
+import legado.shared.generated.resources.search
+import legado.shared.generated.resources.search_book_source
+import legado.shared.generated.resources.sort
+import legado.shared.generated.resources.sort_auto
+import legado.shared.generated.resources.sort_by_lastUpdateTime
+import legado.shared.generated.resources.sort_by_name
+import legado.shared.generated.resources.sort_by_respondTime
+import legado.shared.generated.resources.sort_by_url
+import legado.shared.generated.resources.sort_desc
+import legado.shared.generated.resources.sort_manual
+import legado.shared.generated.resources.to_bottom
+import legado.shared.generated.resources.to_top
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 书源列表 Screen (KMP 版, 替代 app 端 `io.legado.app.ui.book.source.manage.BookSourceScreen`)。
@@ -57,7 +99,7 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
  * 下沉改动:
  * - 去掉对 `BookSourceActivity` 的直接依赖, 改为通过 [BookSourceListState] + [BookSourceListCallbacks]
  *   传入状态与回调, 解耦 Composable 与 Android Activity
- * - 字符串资源 `stringResource(R.string.xxx)` → `rememberString("xxx")` (key-based, 跨平台)
+ * - 字符串资源 `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)` (key-based, 跨平台)
  * - 图标资源 `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")` (key-based, 跨平台)
  * - 复用 shared/commonMain 已下沉的 16 个通用组件 (RuleManageScaffold / AppTitleBar /
  *   SelectActionBar / AppDropdownMenu / AppCheckbox / AppSwitch / AppMenuCheckbox /
@@ -105,16 +147,16 @@ fun BookSourceListScreen(
         modifier = modifier,
         listState = listState,
         listModifier = listModifier,
-        emptyText = rememberString("empty"),
+        emptyText = stringResource(Res.string.empty),
         titleBar = {
             AppTitleBar(
-                title = rememberString("book_source"),
+                title = stringResource(Res.string.book_source),
                 onBack = callbacks.onBack,
                 titleContent = {
                     AppSearchField(
                         value = state.searchKey,
                         onValueChange = callbacks.onQueryChange,
-                        hint = rememberString("search_book_source"),
+                        hint = stringResource(Res.string.search_book_source),
                     )
                 },
                 actions = { BookSourceActions(state, callbacks) },
@@ -133,7 +175,7 @@ fun BookSourceListScreen(
                     allCount = state.sources.size,
                     onSelectAll = callbacks.onSelectAll,
                     onRevertSelection = callbacks.onRevertSelection,
-                    mainActionText = rememberString("delete"),
+                    mainActionText = stringResource(Res.string.delete),
                     onMainAction = callbacks.onDelSelection,
                     actions = callbacks.onSelectActions(),
                 )
@@ -210,33 +252,33 @@ private fun BookSourceActions(state: BookSourceListState, callbacks: BookSourceL
     var showSort by remember { mutableStateOf(false) }
     var showGroup by remember { mutableStateOf(false) }
     // 预取字面串, 供菜单项点击回调 (lambda) 中使用 (rememberString 是 @Composable, 不能在 lambda 里调)
-    val strSortDesc = rememberString("sort_desc")
-    val strSortManual = rememberString("sort_manual")
-    val strSortAuto = rememberString("sort_auto")
-    val strSortByName = rememberString("sort_by_name")
-    val strSortByUrl = rememberString("sort_by_url")
-    val strSortByLastUpdate = rememberString("sort_by_lastUpdateTime")
-    val strSortByRespond = rememberString("sort_by_respondTime")
-    val strIsEnabled = rememberString("is_enabled")
-    val strEnabled = rememberString("enabled")
-    val strDisabled = rememberString("disabled")
-    val strNeedLogin = rememberString("need_login")
-    val strNoGroup = rememberString("no_group")
-    val strEnabledExplore = rememberString("enabled_explore")
-    val strDisabledExplore = rememberString("disabled_explore")
-    val strGroupManage = rememberString("group_manage")
-    val strAddBookSource = rememberString("add_book_source")
-    val strImportLocal = rememberString("import_local")
-    val strImportOnline = rememberString("import_on_line")
-    val strGroupSourcesByDomain = rememberString("group_sources_by_domain")
-    val strHelp = rememberString("help")
+    val strSortDesc = stringResource(Res.string.sort_desc)
+    val strSortManual = stringResource(Res.string.sort_manual)
+    val strSortAuto = stringResource(Res.string.sort_auto)
+    val strSortByName = stringResource(Res.string.sort_by_name)
+    val strSortByUrl = stringResource(Res.string.sort_by_url)
+    val strSortByLastUpdate = stringResource(Res.string.sort_by_lastUpdateTime)
+    val strSortByRespond = stringResource(Res.string.sort_by_respondTime)
+    val strIsEnabled = stringResource(Res.string.is_enabled)
+    val strEnabled = stringResource(Res.string.enabled)
+    val strDisabled = stringResource(Res.string.disabled)
+    val strNeedLogin = stringResource(Res.string.need_login)
+    val strNoGroup = stringResource(Res.string.no_group)
+    val strEnabledExplore = stringResource(Res.string.enabled_explore)
+    val strDisabledExplore = stringResource(Res.string.disabled_explore)
+    val strGroupManage = stringResource(Res.string.group_manage)
+    val strAddBookSource = stringResource(Res.string.add_book_source)
+    val strImportLocal = stringResource(Res.string.import_local)
+    val strImportOnline = stringResource(Res.string.import_on_line)
+    val strGroupSourcesByDomain = stringResource(Res.string.group_sources_by_domain)
+    val strHelp = stringResource(Res.string.help)
 
     // 排序菜单 (降序开关 + 单选各排序方式 + 按域名分组开关)
     Box {
         IconButton(onClick = { showSort = true }) {
             Icon(
-                painter = rememberPainter("ic_sort"),
-                contentDescription = rememberString("sort"),
+                painter = painterResource(Res.drawable.ic_sort),
+                contentDescription = stringResource(Res.string.sort),
                 tint = colors.primaryText,
             )
         }
@@ -258,8 +300,8 @@ private fun BookSourceActions(state: BookSourceListState, callbacks: BookSourceL
     Box {
         IconButton(onClick = { showGroup = true }) {
             Icon(
-                painter = rememberPainter("ic_groups"),
-                contentDescription = rememberString("menu_action_group"),
+                painter = painterResource(Res.drawable.ic_groups),
+                contentDescription = stringResource(Res.string.menu_action_group),
                 tint = colors.primaryText,
             )
         }
@@ -335,16 +377,16 @@ private fun RuleItemScope.BookSourceItem(
         debugMsg.isNotEmpty() &&
         !debugMsg.contains(Regex("成功|失败"))
     // 预取单项菜单文案
-    val strToTop = rememberString("to_top")
-    val strToBottom = rememberString("to_bottom")
-    val strLogin = rememberString("login")
-    val strSearch = rememberString("search")
-    val strDebug = rememberString("debug")
-    val strDelete = rememberString("delete")
-    val strEnableExplore = rememberString("enable_explore")
-    val strDisableExplore = rememberString("disable_explore")
-    val strEdit = rememberString("edit")
-    val strMoreMenu = rememberString("more_menu")
+    val strToTop = stringResource(Res.string.to_top)
+    val strToBottom = stringResource(Res.string.to_bottom)
+    val strLogin = stringResource(Res.string.login)
+    val strSearch = stringResource(Res.string.search)
+    val strDebug = stringResource(Res.string.debug)
+    val strDelete = stringResource(Res.string.delete)
+    val strEnableExplore = stringResource(Res.string.enable_explore)
+    val strDisableExplore = stringResource(Res.string.disable_explore)
+    val strEdit = stringResource(Res.string.edit)
+    val strMoreMenu = stringResource(Res.string.more_menu)
 
     Column(
         Modifier
@@ -392,7 +434,7 @@ private fun RuleItemScope.BookSourceItem(
             Spacer(Modifier.width(8.dp))
             IconButton(onClick = { callbacks.onEdit(item) }) {
                 Icon(
-                    painter = rememberPainter("ic_edit"),
+                    painter = painterResource(Res.drawable.ic_edit),
                     contentDescription = strEdit,
                     tint = colors.primaryText,
                 )
@@ -400,7 +442,7 @@ private fun RuleItemScope.BookSourceItem(
             Box {
                 IconButton(onClick = { showMenu = true }) {
                     Icon(
-                        painter = rememberPainter("ic_more_vert"),
+                        painter = painterResource(Res.drawable.ic_more_vert),
                         contentDescription = strMoreMenu,
                         tint = colors.primaryText,
                         modifier = Modifier.size(24.dp),
@@ -534,7 +576,7 @@ private fun CheckSourceProgress(msg: String, onCancel: () -> Unit) {
             modifier = Modifier.weight(1f),
         )
         Text(
-            text = rememberString("cancel"),
+            text = stringResource(Res.string.cancel),
             color = colors.accent,
             fontSize = 14.sp,
             modifier = Modifier.clickable { onCancel() },

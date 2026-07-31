@@ -20,8 +20,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.close
+import legado.shared.generated.resources.default_font
+import legado.shared.generated.resources.select_font
+import org.jetbrains.compose.resources.stringResource
 
 /** 字体文件正则（对齐 app 端 `FontSelectDialog.fontRegex`：.ttf / .otf，大小写不敏感）。 */
 val fontFileRegex: Regex = Regex("(?i).*\\.[ot]tf")
@@ -79,7 +83,7 @@ fun FontSelectDialog(
 
     AppAlertDialog(
         onDismissRequest = onDismiss,
-        title = rememberString("select_font"),
+        title = stringResource(Res.string.select_font),
         widthFraction = widthFraction,
         content = {
             // 顶部"默认字体"按钮（对齐 app 端 dialog_title_bar 的默认字体按钮）
@@ -88,7 +92,7 @@ fun FontSelectDialog(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = rememberString("default_font"),
+                    text = stringResource(Res.string.default_font),
                     color = colors.primaryText,
                     fontSize = 15.sp,
                     modifier = Modifier
@@ -127,7 +131,7 @@ fun FontSelectDialog(
                 }
             }
         },
-        okButton = AlertButton(text = rememberString("close")) { onDismiss() },
+        okButton = AlertButton(text = stringResource(Res.string.close)) { onDismiss() },
     )
 }
 

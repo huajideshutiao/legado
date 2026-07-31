@@ -5,12 +5,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.import.local.ImportBookScreen
 import io.legado.app.ui.book.import.local.ImportBookScreenModel
 import io.legado.app.ui.book.import.local.ImportBookUiActions
 import io.legado.app.ui.book.import.local.ImportBookUiEvent
 import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
@@ -32,6 +34,7 @@ fun ImportBookRoute(
     navigator: AppNavigator,
     screenModelStore: ScreenModelStore,
 ) {
+    val route = entry.route as AppRoute.ImportBook
     val screenModel = screenModelStore.getOrCreateTyped(entry) { ImportBookScreenModel() }
     val platform = PlatformCapabilityProviders.get()
 
@@ -46,10 +49,13 @@ fun ImportBookRoute(
         screenModel.updatePlatformState(items, path, loading, emptyMsgVisible)
     }
 
-    // 对照 onActivityCreated: sortState = viewModel.sort (读持久化排序) + initData
-    LaunchedEffect(Unit) {
+    // 对照 onActivityCreated: sortState = viewModel.sort；文件关联时直接处理目标文件，否则初始化默认目录。
+    LaunchedEffect(route.filePath) {
         screenModel.dispatch(ImportBookUiEvent.SetSort(AppConfigProviders.get().localBookImportSort))
-        platform.initImportBookData()
+        route.filePath?.let { filePath ->
+            runCatching { platform.openImportFile(filePath) }
+                .onFailure { Toasters.get().toast(it.message ?: "无法打开文件") }
+        } ?: platform.initImportBookData()
     }
 
     val state by screenModel.state.collectAsState()

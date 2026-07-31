@@ -2,6 +2,7 @@ package io.legado.app.ui.route
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
@@ -23,6 +24,11 @@ fun AssociationRoute(
     navigator: AppNavigator,
     screenModelStore: ScreenModelStore,
 ) {
-    // AppRoute.Association 为 data object, 无参数; 透明占位, 关联逻辑由平台入口处理
+    // 关联请求已由平台入口分派，本过渡路由只负责立即返回，避免透明空页滞留。
+    LaunchedEffect(entry.id) {
+        if (navigator.currentEntry.id == entry.id) {
+            navigator.pop()
+        }
+    }
     Box {}
 }

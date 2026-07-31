@@ -68,6 +68,23 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.chapter_list
+import legado.shared.generated.resources.flow_sys
+import legado.shared.generated.resources.main_menu
+import legado.shared.generated.resources.next_chapter
+import legado.shared.generated.resources.next_sentence
+import legado.shared.generated.resources.prev_sentence
+import legado.shared.generated.resources.previous_chapter
+import legado.shared.generated.resources.read_aloud_speed
+import legado.shared.generated.resources.set_timer
+import legado.shared.generated.resources.setting
+import legado.shared.generated.resources.stop
+import legado.shared.generated.resources.timer_m
+import legado.shared.generated.resources.to_backstage
+import legado.shared.generated.resources.tts_speech_add
+import legado.shared.generated.resources.tts_speech_reduce
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 朗读控制面板对话框 (KMP 共享, app + desktop 复用)。
@@ -193,7 +210,7 @@ fun ReadAloudDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = rememberString("previous_chapter"),
+                        text = stringResource(Res.string.previous_chapter),
                         color = colors.primaryText,
                         fontSize = 14.sp,
                         modifier = Modifier
@@ -203,7 +220,7 @@ fun ReadAloudDialog(
                     Spacer(Modifier.weight(1f))
                     AloudIcon(
                         iconKey = "ic_skip_previous",
-                        description = rememberString("prev_sentence"),
+                        description = stringResource(Res.string.prev_sentence),
                         tint = colors.primaryText,
                         onClick = onPrevParagraph,
                     )
@@ -215,7 +232,7 @@ fun ReadAloudDialog(
                     )
                     AloudIcon(
                         iconKey = "ic_stop_black_24dp",
-                        description = rememberString("stop"),
+                        description = stringResource(Res.string.stop),
                         tint = colors.primaryText,
                         onClick = {
                             onStop()
@@ -224,13 +241,13 @@ fun ReadAloudDialog(
                     )
                     AloudIcon(
                         iconKey = "ic_skip_next",
-                        description = rememberString("next_sentence"),
+                        description = stringResource(Res.string.next_sentence),
                         tint = colors.primaryText,
                         onClick = onNextParagraph,
                     )
                     Spacer(Modifier.weight(1f))
                     Text(
-                        text = rememberString("next_chapter"),
+                        text = stringResource(Res.string.next_chapter),
                         color = colors.primaryText,
                         fontSize = 14.sp,
                         modifier = Modifier
@@ -249,7 +266,7 @@ fun ReadAloudDialog(
                     // 定时图标: 点击保存当前定时 (与原版 AloudIcon(time_add) + AppConfig.ttsTimer = timer 对齐)
                     AloudIcon(
                         iconKey = "ic_time_add_24dp",
-                        description = rememberString("set_timer"),
+                        description = stringResource(Res.string.set_timer),
                         tint = colors.primaryText,
                         onClick = { onSetTimer(timer) },
                     )
@@ -275,7 +292,7 @@ fun ReadAloudDialog(
                     // 当前时间显示 + 点击弹选时菜单 (与原版 Text(timer_m) + context.selector 对齐)
                     Box {
                         Text(
-                            text = rememberString("timer_m", timer.coerceAtLeast(0)),
+                            text = stringResource(Res.string.timer_m, timer.coerceAtLeast(0)),
                             color = colors.primaryText,
                             modifier = Modifier.clickable { timerMenuExpanded = true },
                         )
@@ -293,7 +310,7 @@ fun ReadAloudDialog(
                                         onSetTimer(t)
                                     },
                                 ) {
-                                    Text(rememberString("timer_m", t))
+                                    Text(stringResource(Res.string.timer_m, t))
                                 }
                             }
                         }
@@ -308,7 +325,7 @@ fun ReadAloudDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = rememberString("read_aloud_speed"),
+                        text = stringResource(Res.string.read_aloud_speed),
                         color = colors.primaryText,
                         fontSize = 14.sp,
                     )
@@ -322,7 +339,7 @@ fun ReadAloudDialog(
                     }
                     Spacer(Modifier.weight(1f))
                     Text(
-                        text = rememberString("flow_sys"),
+                        text = stringResource(Res.string.flow_sys),
                         color = colors.primaryText,
                         fontSize = 14.sp,
                     )
@@ -344,7 +361,7 @@ fun ReadAloudDialog(
                 ) {
                     AloudIcon(
                         iconKey = "ic_reduce",
-                        description = rememberString("tts_speech_reduce"),
+                        description = stringResource(Res.string.tts_speech_reduce),
                         tint = if (followSys) colors.secondaryText else colors.primaryText,
                         enabled = !followSys,
                         onClick = {
@@ -375,7 +392,7 @@ fun ReadAloudDialog(
                     )
                     AloudIcon(
                         iconKey = "ic_add",
-                        description = rememberString("tts_speech_add"),
+                        description = stringResource(Res.string.tts_speech_add),
                         tint = if (followSys) colors.secondaryText else colors.primaryText,
                         enabled = !followSys,
                         onClick = {
@@ -394,12 +411,12 @@ fun ReadAloudDialog(
                 ) {
                     BottomIconButton(
                         iconKey = "ic_toc",
-                        label = rememberString("chapter_list"),
+                        label = stringResource(Res.string.chapter_list),
                         onClick = onOpenChapterList,
                     )
                     BottomIconButton(
                         iconKey = "ic_menu",
-                        label = rememberString("main_menu"),
+                        label = stringResource(Res.string.main_menu),
                         onClick = {
                             onShowMenuBar()
                             onDismiss()
@@ -407,12 +424,12 @@ fun ReadAloudDialog(
                     )
                     BottomIconButton(
                         iconKey = "ic_visibility_off",
-                        label = rememberString("to_backstage"),
+                        label = stringResource(Res.string.to_backstage),
                         onClick = onBackstage,
                     )
                     BottomIconButton(
                         iconKey = "ic_settings",
-                        label = rememberString("setting"),
+                        label = stringResource(Res.string.setting),
                         onClick = onOpenSettings,
                     )
                 }

@@ -38,6 +38,7 @@ import kotlinx.coroutines.launch
  * KMP-pure 双指缩放/平移 Modifier，复刻 TouchImageView 交互语义：
  * 双指捏合以质心为锚缩放、拖拽平移、缩放态钳制到边界、双击在 1x/[doubleTapScale] 间循环。
  * 松手后按速度做 fling 衰减；E-Ink 下禁用 fling 与双击动画。[onLongPress] 供长按保存等场景使用。
+ * [onTap] 供全屏看图单击关闭等场景使用，与双击互斥（超时判定后才回调）。
  */
 @Composable
 fun Modifier.zoomable(
@@ -45,6 +46,7 @@ fun Modifier.zoomable(
     doubleTapScale: Float = 2f,
     contentAspectRatio: Float? = null,
     onLongPress: (() -> Unit)? = null,
+    onTap: (() -> Unit)? = null,
 ): Modifier {
     val eInk = LocalEInk.current
     val scope = rememberCoroutineScope()
@@ -194,6 +196,7 @@ fun Modifier.zoomable(
         .pointerInput(Unit) {
             detectTapGestures(
                 onLongPress = onLongPress?.let { { _: Offset -> it() } },
+                onTap = onTap?.let { { _: Offset -> it() } },
                 onDoubleTap = { tap ->
                     cancelFling()
                     val s0 = scale

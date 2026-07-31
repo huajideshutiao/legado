@@ -62,6 +62,21 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.bottom_line
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.delete
+import legado.shared.generated.resources.ic_arrow_drop_down
+import legado.shared.generated.resources.ic_more_vert
+import legado.shared.generated.resources.ic_review_close
+import legado.shared.generated.resources.menu
+import legado.shared.generated.resources.review_replies_count
+import legado.shared.generated.resources.review_sort_hot
+import legado.shared.generated.resources.review_sort_latest
+import legado.shared.generated.resources.vote_down
+import legado.shared.generated.resources.vote_up
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 评论列表对话框内容 (KMP 共享, app + desktop 复用)。
@@ -195,8 +210,8 @@ fun ReviewListDialog(
                 modifier = Modifier.size(48.dp),
             ) {
                 Icon(
-                    painter = rememberPainter("ic_review_close"),
-                    contentDescription = rememberString("cancel"),
+                    painter = painterResource(Res.drawable.ic_review_close),
+                    contentDescription = stringResource(Res.string.cancel),
                     tint = rememberColor("primaryText"),
                     modifier = Modifier.size(24.dp),
                 )
@@ -270,7 +285,7 @@ private fun ListHeader(
                     fontSize = 13.sp,
                 )
                 Icon(
-                    painter = rememberPainter("ic_arrow_drop_down"),
+                    painter = painterResource(Res.drawable.ic_arrow_drop_down),
                     contentDescription = null,
                     // 跟随夜间主题: 与相邻排序文本同色
                     tint = rememberColor("secondaryText"),
@@ -284,7 +299,7 @@ private fun ListHeader(
                     onClick = { sortMenuOpen = false; onChangeSort(0) },
                 ) {
                     Text(
-                        rememberString("review_sort_hot"),
+                        stringResource(Res.string.review_sort_hot),
                         color = AppTheme.colors.primaryText,
                     )
                 }
@@ -292,7 +307,7 @@ private fun ListHeader(
                     onClick = { sortMenuOpen = false; onChangeSort(1) },
                 ) {
                     Text(
-                        rememberString("review_sort_latest"),
+                        stringResource(Res.string.review_sort_latest),
                         color = AppTheme.colors.primaryText,
                     )
                 }
@@ -397,8 +412,8 @@ private fun ReviewItem(
                     Box(contentAlignment = Alignment.Center) {
                         var menuOpen by remember { mutableStateOf(false) }
                         Icon(
-                            painter = rememberPainter("ic_more_vert"),
-                            contentDescription = rememberString("menu"),
+                            painter = painterResource(Res.drawable.ic_more_vert),
+                            contentDescription = stringResource(Res.string.menu),
                             // 跟随夜间主题: 与相邻昵称/extra 同色
                             tint = rememberColor("secondaryText"),
                             modifier = Modifier
@@ -413,7 +428,7 @@ private fun ReviewItem(
                                 onClick = { menuOpen = false; onDeleteClick(item) },
                             ) {
                                 Text(
-                                    rememberString("delete"),
+                                    stringResource(Res.string.delete),
                                     color = AppTheme.colors.primaryText,
                                 )
                             }
@@ -481,7 +496,7 @@ private fun ReviewItem(
                     painter = rememberPainter(
                         if (isVoted) "ic_review_thumb_up_filled" else "ic_review_thumb_up"
                     ),
-                    contentDescription = rememberString("vote_up"),
+                    contentDescription = stringResource(Res.string.vote_up),
                     // 跟随夜间主题: 已点赞=review_voted(与计数文本同色), 未点赞=secondaryText
                     tint = if (isVoted) rememberColor("review_voted") else rememberColor("secondaryText"),
                     modifier = Modifier
@@ -498,7 +513,7 @@ private fun ReviewItem(
                 ) {
                     Text(
                         text = if (displayVoteCount > 0) displayVoteCount.toString()
-                        else rememberString("vote_up"),
+                        else stringResource(Res.string.vote_up),
                         color = if (isVoted) rememberColor("review_voted")
                         else rememberColor("secondaryText"),
                         fontSize = 12.sp,
@@ -509,7 +524,7 @@ private fun ReviewItem(
                     painter = rememberPainter(
                         if (isVotedDown) "ic_review_thumb_down_filled" else "ic_review_thumb_down"
                     ),
-                    contentDescription = rememberString("vote_down"),
+                    contentDescription = stringResource(Res.string.vote_down),
                     // 跟随夜间主题: 已点踩=review_voted(与计数文本同色), 未点踩=secondaryText
                     tint = if (isVotedDown) rememberColor("review_voted") else rememberColor("secondaryText"),
                     modifier = Modifier
@@ -531,7 +546,7 @@ private fun ReviewItem(
                     contentAlignment = Alignment.CenterStart,
                 ) {
                     Text(
-                        text = rememberString("review_replies_count", item.replyCount),
+                        text = stringResource(Res.string.review_replies_count, item.replyCount),
                         color = AppTheme.colors.accent,
                         fontSize = 12.sp,
                     )
@@ -559,7 +574,7 @@ private fun LoadMoreFooter(footerLoading: Boolean, footerHasMore: Boolean) {
             )
 
             !footerHasMore -> Text(
-                text = rememberString("bottom_line"),
+                text = stringResource(Res.string.bottom_line),
                 color = rememberColor("secondaryText"),
                 fontSize = 14.sp,
                 maxLines = 1,

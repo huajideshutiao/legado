@@ -3,16 +3,19 @@ package io.legado.app.ui.compose.platform
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.ic_material_help
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringArrayResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 跨平台资源访问器。
  *
- * commonMain 用 expect 声明, 各平台 actual 提供:
- * - Android: 走 painterResource/stringResource/colorResource + R.drawable/R.string/R.color
- *   (通过 Resources.getIdentifier 动态查 id, 消费方传约定 key 字符串)
- * - 桌面 JVM: 走 Material Icons 内置图标 + 字面量 Map<String, String> / Map<String, Color>
- *   (无需 classpath 资源文件, 桌面端零额外配置)
- * - iOS/鸿蒙: stub 占位 (后续 KP3/KP4 替换为各平台资源系统)
+ * 字符串/字符串数组四端统一走 Compose Resources 按 key 索引的映射表 (见 [findStringResource]);
+ * Painter/Color 仍是 expect/actual: 图标源在 Android 走 AAPT 原生 drawable、其余端走 Compose
+ * Resources (见 shared/build.gradle.kts 的 nonAndroidIconMain customDirectory), 颜色则无
+ * Compose Resources 对应 API。
  *
  * 调用方用 [rememberPainter] / [rememberString] / [rememberColor] 替代
  * painterResource/stringResource/colorResource, 由 B 类 Composable 下沉时统一调用。
@@ -75,36 +78,34 @@ import androidx.compose.ui.graphics.painter.Painter
  * - `tv_text_summary`   次文本色 (= arco_text_3: #FF909090 light/dark 相同) (Preferences)
  * - `btn_bg`            按钮背景色 (= btn_bg: light #100e0e0e / dark #14e0e0e0) (TocScreen 卷名背景)
  *
- * 各平台 actual 负责将 key 映射到本地资源; 未识别的 key:
- * - Painter: 返回占位图标 (Android 走 0 让 painterResource 抛出前兜底; jvm 走 Icons.Default.Help)
+ * 各平台未识别的 key:
+ * - Painter: 返回占位图标 `ic_material_help`
  * - String: 返回 key 本身
  * - Color: 返回 Color.Unspecified (调用方应保证 key 命中, 否则不绘制)
  */
 @Composable
-expect fun rememberPainter(key: String): Painter
+fun rememberPainter(key: String): Painter {
+    val resource = findDrawableResource(key) ?: Res.drawable.ic_material_help
+    return painterResource(resource)
+}
 
 /**
- * 取字符串资源; [formatArgs] 非空时按 [String.format] 规则填充占位符,
- * 与 Android `stringResource(id, *formatArgs)` 行为对齐。
- * - formatArgs 为空时: 等价 Android `stringResource(id)` (不做格式化, 保留原始 %1$d 等占位符)
- * - formatArgs 非空时: 等价 Android `stringResource(id, *formatArgs)` (Formatter 填充占位符)
+ * 取字符串资源; 四端统一走 Compose Resources 按 key 索引的映射表 ([findStringResource])。
+ * - formatArgs 为空时不做格式化, 保留原始 %1$d 等占位符
+ * - formatArgs 非空时由 Compose Resources 填充, 但它只认索引式 %1$s/%1$d;
+ *   无索引的 %s/%d 会原样留下, 故带参调用的文案必须写成索引式
+ * - key 缺失返回 key 本身
  */
 @Composable
-expect fun rememberString(key: String, vararg formatArgs: Any): String
+fun rememberString(key: String, vararg formatArgs: Any): String {
+    val resource = findStringResource(key) ?: return key
+    return if (formatArgs.isEmpty()) stringResource(resource)
+    else stringResource(resource, *formatArgs)
+}
 
 /**
- * 跨平台 string-array 资源访问。
- *
- * 替代 `stringArrayResource(R.array.xxx)`, 调用方传约定 key 字符串。
- * 各平台 actual 行为:
- * - Android: 走 `Resources.getIdentifier` + `stringArrayResource`, 与 app 端 R.array.xxx 等价
- * - 桌面 JVM: 走字面量 `Map<String, List<String>>` (与 app 端 values-zh 默认中文值对齐)
- * - iOS: stub 返回空 List (后续 KP3 替换为 iOS 资源系统)
- *
- * 未识别的 key:
- * - Android: getIdentifier 返回 0, stringArrayResource(0) 抛 Resources$NotFoundException (开发期暴露缺失)
- * - jvm: 返回空 List (调用方按需处理空态)
- * - iOS: 返回空 List
+ * 跨平台 string-array 资源访问; 四端统一走 [findStringArrayResource]。
+ * key 缺失返回空 List (调用方按需处理空态)。
  *
  * ## 支持的 key (来源: app 端 B 类 Composable 实际使用清单)
  *
@@ -121,7 +122,10 @@ expect fun rememberString(key: String, vararg formatArgs: Any): String
  * - `tip_divider_color`     tip 分隔线颜色名称 (TipConfigScreen: 默认/跟随内容/自定义)
  */
 @Composable
-expect fun rememberStringArray(key: String): List<String>
+fun rememberStringArray(key: String): List<String> {
+    val resource = findStringArrayResource(key) ?: return emptyList()
+    return stringArrayResource(resource)
+}
 
 /**
  * 加载 Launcher 图标预览 Painter 列表 (ThemeConfigScreen 换图标用)。

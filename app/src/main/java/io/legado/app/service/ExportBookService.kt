@@ -141,7 +141,7 @@ class ExportBookService : BaseService() {
     @SuppressLint("MissingPermission")
     override fun startForegroundNotification() {
         val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
-            .setSmallIcon(io.legado.shared.R.drawable.ic_export)
+            .setSmallIcon(R.drawable.ic_export)
             .setSubText(getString(R.string.export_book))
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setGroup(groupKey)
@@ -151,7 +151,7 @@ class ExportBookService : BaseService() {
 
     private fun upExportNotification(finish: Boolean = false) {
         val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
-            .setSmallIcon(io.legado.shared.R.drawable.ic_export)
+            .setSmallIcon(R.drawable.ic_export)
             .setSubText(getString(R.string.export_book))
             .setContentIntent(activityPendingIntent<BookshelfManageActivity>("bookshelfManageActivity"))
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -165,7 +165,7 @@ class ExportBookService : BaseService() {
             // 不挂 ProgressStyle; 若系统判定不可提升会自动降级为普通通知, 无副作用。
             notification.setLiveOngoing()
             notification.addAction(
-                io.legado.shared.R.drawable.ic_stop_black_24dp,
+                R.drawable.ic_stop_black_24dp,
                 getString(R.string.cancel),
                 servicePendingIntent<ExportBookService>(IntentAction.stop)
             )

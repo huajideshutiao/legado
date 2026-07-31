@@ -87,7 +87,12 @@ fun RssArticlesRoute(
             }
 
             override fun onArticleClick(article: BookChapter) {
-                book?.let { navigator.push(AppRoute.ReadRss(it.toRouteRef())) }
+                // 点击文章时更新 durChapterIndex, ReadRssRoute 据此加载正文
+                book?.let { b ->
+                    b.durChapterIndex = article.index
+                    b.durChapterTitle = article.title
+                    navigator.push(AppRoute.ReadRss(b.toRouteRef()))
+                }
             }
         }
     }

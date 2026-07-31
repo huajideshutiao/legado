@@ -38,8 +38,6 @@ import io.legado.app.ui.association.ImportReplaceRuleViewModelShared
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.replace.ReplaceRuleListScreen
@@ -56,6 +54,18 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.add
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.delete
+import legado.shared.generated.resources.edit
+import legado.shared.generated.resources.group_manage
+import legado.shared.generated.resources.group_name
+import legado.shared.generated.resources.ic_add
+import legado.shared.generated.resources.import_replace_rule
+import legado.shared.generated.resources.ok
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 替换规则管理 shared 路由入口。
@@ -180,7 +190,7 @@ fun ReplaceRuleRoute(
     importVm?.let { vm ->
         if (showImportDialog) {
             ImportItemsDialog(
-                title = rememberString("import_replace_rule"),
+                title = stringResource(Res.string.import_replace_rule),
                 vm = remember(vm) { ImportReplaceRuleItemsVm(vm) },
                 onDismiss = {
                     showImportDialog = false
@@ -221,13 +231,13 @@ private fun ReplaceGroupManageDialog(
         ) {
             Column {
                 DialogTitleBar(
-                    title = rememberString("group_manage"),
+                    title = stringResource(Res.string.group_manage),
                     onBack = onDismiss,
                     actions = {
                         IconButton(onClick = { editing = null to "" }) {
                             Icon(
-                                painter = rememberPainter("ic_add"),
-                                contentDescription = rememberString("add"),
+                                painter = painterResource(Res.drawable.ic_add),
+                                contentDescription = stringResource(Res.string.add),
                                 tint = colors.primaryText,
                             )
                         }
@@ -238,7 +248,7 @@ private fun ReplaceGroupManageDialog(
                         AppOutlinedTextField(
                             value = editing!!.second,
                             onValueChange = { editing = editing!!.first to it },
-                            label = rememberString("group_name"),
+                            label = stringResource(Res.string.group_name),
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
@@ -246,9 +256,11 @@ private fun ReplaceGroupManageDialog(
                             Modifier.fillMaxWidth().padding(top = 8.dp),
                             horizontalArrangement = Arrangement.End,
                         ) {
-                            AppTextButton(text = rememberString("cancel")) { editing = null }
+                            AppTextButton(text = stringResource(Res.string.cancel)) {
+                                editing = null
+                            }
                             AppTextButton(
-                                text = rememberString("ok"),
+                                text = stringResource(Res.string.ok),
                                 enabled = editing!!.second.isNotBlank(),
                             ) {
                                 val (old, new) = editing!!
@@ -273,14 +285,14 @@ private fun ReplaceGroupManageDialog(
                                     modifier = Modifier.weight(1f),
                                 )
                                 Text(
-                                    text = rememberString("edit"),
+                                    text = stringResource(Res.string.edit),
                                     color = colors.secondaryText,
                                     fontSize = 14.sp,
                                     modifier = Modifier.clickable { editing = group to group }
                                         .padding(8.dp),
                                 )
                                 Text(
-                                    text = rememberString("delete"),
+                                    text = stringResource(Res.string.delete),
                                     color = colors.secondaryText,
                                     fontSize = 14.sp,
                                     modifier = Modifier.clickable { onDeleteGroup(group) }
@@ -293,7 +305,7 @@ private fun ReplaceGroupManageDialog(
                         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.End,
                     ) {
-                        AppTextButton(text = rememberString("ok"), onClick = onDismiss)
+                        AppTextButton(text = stringResource(Res.string.ok), onClick = onDismiss)
                     }
                 }
             }

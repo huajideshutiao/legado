@@ -2,16 +2,29 @@ package io.legado.app.ui.about
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.preference.PreferenceScreen
 import io.legado.app.ui.compose.preference.preference
 import io.legado.app.ui.compose.preference.preferenceCategory
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.check_update
+import legado.shared.generated.resources.contributors
+import legado.shared.generated.resources.contributors_summary
+import legado.shared.generated.resources.crash_log
+import legado.shared.generated.resources.create_heap_dump
+import legado.shared.generated.resources.disclaimer
+import legado.shared.generated.resources.join_telegram_group
+import legado.shared.generated.resources.license
+import legado.shared.generated.resources.other
+import legado.shared.generated.resources.privacy_policy
+import legado.shared.generated.resources.save_log
+import legado.shared.generated.resources.update_log
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 关于页 (迁 about.xml)。逐条对齐原条目/key/点击行为。
  * qqGroup 原 isPreferenceVisible=false 恒隐藏，故不渲染；update_log 仅显版本 summary、无点击。
  *
- * 下沉 shared/sharedUiMain: stringResource(R.string.xxx) → rememberString("xxx"),
+ * 下沉 shared/sharedUiMain: stringResource(R.string.xxx) → stringResource(Res.string.xxx),
  * 与 app 端原包名/类名一致, app/desktop 端共用。
  *
  * 三段式 API:
@@ -29,18 +42,18 @@ fun AboutScreen(
     actions: AboutUiActions,
     modifier: Modifier = Modifier,
 ) {
-    val titleContributors = rememberString("contributors")
-    val summaryContributors = rememberString("contributors_summary")
-    val titleTelegram = rememberString("join_telegram_group")
-    val titleUpdateLog = rememberString("update_log")
-    val titleCheckUpdate = rememberString("check_update")
-    val titleOther = rememberString("other")
-    val titleCrashLog = rememberString("crash_log")
-    val titleSaveLog = rememberString("save_log")
-    val titleCreateHeapDump = rememberString("create_heap_dump")
-    val titlePrivacyPolicy = rememberString("privacy_policy")
-    val titleLicense = rememberString("license")
-    val titleDisclaimer = rememberString("disclaimer")
+    val titleContributors = stringResource(Res.string.contributors)
+    val summaryContributors = stringResource(Res.string.contributors_summary)
+    val titleTelegram = stringResource(Res.string.join_telegram_group)
+    val titleUpdateLog = stringResource(Res.string.update_log)
+    val titleCheckUpdate = stringResource(Res.string.check_update)
+    val titleOther = stringResource(Res.string.other)
+    val titleCrashLog = stringResource(Res.string.crash_log)
+    val titleSaveLog = stringResource(Res.string.save_log)
+    val titleCreateHeapDump = stringResource(Res.string.create_heap_dump)
+    val titlePrivacyPolicy = stringResource(Res.string.privacy_policy)
+    val titleLicense = stringResource(Res.string.license)
+    val titleDisclaimer = stringResource(Res.string.disclaimer)
 
     PreferenceScreen(modifier = modifier) {
         preference(

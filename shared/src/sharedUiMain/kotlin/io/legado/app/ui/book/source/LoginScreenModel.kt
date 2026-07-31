@@ -39,6 +39,7 @@ class LoginScreenModel : ScreenModel {
         when (event) {
             is LoginUiEvent.Init -> init(event.sourceUrl)
             LoginUiEvent.LoginComplete -> loginComplete()
+            LoginUiEvent.Refresh -> _state.update { it.copy(webViewReloadKey = it.webViewReloadKey + 1) }
             LoginUiEvent.ShowAppLog -> _state.update { it.copy(showAppLog = true) }
             LoginUiEvent.DismissAppLogDialog -> _state.update { it.copy(showAppLog = false) }
         }
@@ -78,6 +79,7 @@ class LoginScreenModel : ScreenModel {
  * @param loading 书源加载中
  * @param loggedIn 用户确认登录完成 (触发 Route pop)
  * @param showAppLog 是否展示日志对话框
+ * @param webViewReloadKey 平台 WebView 重建序号
  */
 data class LoginUiState(
     val source: BaseSource? = null,
@@ -87,6 +89,7 @@ data class LoginUiState(
     val loading: Boolean = true,
     val loggedIn: Boolean = false,
     val showAppLog: Boolean = false,
+    val webViewReloadKey: Int = 0,
 )
 
 sealed interface LoginUiEvent {
@@ -95,6 +98,9 @@ sealed interface LoginUiEvent {
 
     /** 用户点击确认登录: 确认登录完成 */
     object LoginComplete : LoginUiEvent
+
+    /** 重建平台 WebView 以加载当前地址 */
+    object Refresh : LoginUiEvent
 
     /** 溢出菜单: 查看日志 */
     object ShowAppLog : LoginUiEvent

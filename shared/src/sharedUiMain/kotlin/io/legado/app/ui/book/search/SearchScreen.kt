@@ -91,11 +91,30 @@ import io.legado.app.ui.compose.component.RadioChip
 import io.legado.app.ui.compose.component.StrokeTextChip
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ColorUtils
 import kotlinx.coroutines.flow.distinctUntilChanged
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.all_source
+import legado.shared.generated.resources.book_source_manage
+import legado.shared.generated.resources.bookshelf
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.clear
+import legado.shared.generated.resources.groups_or_source
+import legado.shared.generated.resources.log
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.precision_search
+import legado.shared.generated.resources.search
+import legado.shared.generated.resources.searchHistory
+import legado.shared.generated.resources.search_book_key
+import legado.shared.generated.resources.search_result_empty
+import legado.shared.generated.resources.search_result_empty_close_precision
+import legado.shared.generated.resources.search_result_empty_switch_all
+import legado.shared.generated.resources.source_filter_rule
+import legado.shared.generated.resources.stop
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 搜索界面导航回调 (KMP 版)。
@@ -336,7 +355,7 @@ private fun SearchField(
     AppSearchField(
         value = query,
         onValueChange = onQueryChange,
-        hint = rememberString("search_book_key"),
+        hint = stringResource(Res.string.search_book_key),
         onSearch = onQuerySubmit,
         modifier = modifier,
         textFieldModifier = Modifier
@@ -371,22 +390,22 @@ private fun SearchActions(
         names.forEach { name ->
             CheckMenuItem(name, checked = true) { dismiss(); viewModel.removeScopeName(name) }
         }
-        CheckMenuItem(rememberString("all_source"), checked = names.isEmpty()) {
+        CheckMenuItem(stringResource(Res.string.all_source), checked = names.isEmpty()) {
             dismiss(); viewModel.selectScopeAll()
         }
-        CheckMenuItem(rememberString("precision_search"), precisionSearch) {
+        CheckMenuItem(stringResource(Res.string.precision_search), precisionSearch) {
             dismiss(); viewModel.togglePrecisionSearch()
         }
-        TextMenuItem(rememberString("book_source_manage")) {
+        TextMenuItem(stringResource(Res.string.book_source_manage)) {
             dismiss(); navCallbacks.onManageBookSources()
         }
-        TextMenuItem(rememberString("groups_or_source")) {
+        TextMenuItem(stringResource(Res.string.groups_or_source)) {
             dismiss(); navCallbacks.onAlertSearchScope()
         }
-        TextMenuItem(rememberString("source_filter_rule")) {
+        TextMenuItem(stringResource(Res.string.source_filter_rule)) {
             dismiss(); navCallbacks.onShowSourceFilterRule()
         }
-        TextMenuItem(rememberString("log")) { dismiss(); navCallbacks.onShowAppLog() }
+        TextMenuItem(stringResource(Res.string.log)) { dismiss(); navCallbacks.onShowAppLog() }
     }
 }
 
@@ -430,7 +449,7 @@ private fun ColumnScope.InputHelp(
     val navPad = rememberNavigationBarPaddingValues()
     if (bookshelfBooks.isNotEmpty()) {
         Text(
-            text = rememberString("bookshelf"),
+            text = stringResource(Res.string.bookshelf),
             color = colors.primaryText,
             fontSize = 14.sp,
             modifier = Modifier
@@ -508,7 +527,7 @@ private fun ColumnScope.InputHelp(
     } else {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = rememberString("searchHistory"),
+                text = stringResource(Res.string.searchHistory),
                 color = colors.primaryText,
                 fontSize = 14.sp,
                 modifier = Modifier
@@ -517,7 +536,7 @@ private fun ColumnScope.InputHelp(
             )
             if (historyKeys.isNotEmpty()) {
                 Text(
-                    text = rememberString("clear"),
+                    text = stringResource(Res.string.clear),
                     color = colors.primaryText,
                     fontSize = 14.sp,
                     modifier = Modifier
@@ -662,12 +681,12 @@ private fun MultiSelectOptionDialog(
     AppAlertDialog(
         onDismissRequest = onDismiss,
         title = option.name,
-        neutralButton = AlertButton(rememberString("clear"), dismissOnClick = false) {
+        neutralButton = AlertButton(stringResource(Res.string.clear), dismissOnClick = false) {
             working = emptySet()
         },
-        cancelButton = AlertButton(rememberString("cancel")),
+        cancelButton = AlertButton(stringResource(Res.string.cancel)),
         okButton = AlertButton(
-            text = rememberString("ok"),
+            text = stringResource(Res.string.ok),
             dismissOnClick = false,
             onClick = { onConfirm(working) },
         ),
@@ -675,7 +694,7 @@ private fun MultiSelectOptionDialog(
         AppSearchField(
             value = query,
             onValueChange = { query = it },
-            hint = rememberString("search"),
+            hint = stringResource(Res.string.search),
             modifier = Modifier.padding(start = 24.dp, top = 8.dp, bottom = 4.dp),
         )
         LazyColumn(
@@ -745,7 +764,7 @@ private fun ColumnScope.ResultArea(
                 .fillMaxWidth()
                 .weight(1f),
         ) {
-            items(books, key = { "${it.name}|${it.author}" }) { book ->
+            items(books, key = { "${it.origin}|${it.bookUrl}" }) { book ->
                 val isVideoStyle = styleCols == 0 && styleIsVideo
                 SearchListItem(
                     book = book,
@@ -781,7 +800,7 @@ private fun ColumnScope.ResultArea(
                 .fillMaxWidth()
                 .weight(1f),
         ) {
-            items(books, key = { "${it.name}|${it.author}" }) { book ->
+            items(books, key = { "${it.origin}|${it.bookUrl}" }) { book ->
                 val displayBook = remember(book) { book.toBook() }
                 val cover: @Composable (Book, Modifier, Boolean) -> Unit = { _, modifier, isVideoCover ->
                     if (coverSlot != null) {
@@ -1027,7 +1046,7 @@ private fun StartStopFab(
     ) {
         Icon(
             painter = rememberPainter(if (showStop) "ic_stop_black_24dp" else "ic_play_24dp"),
-            contentDescription = rememberString("stop"),
+            contentDescription = stringResource(Res.string.stop),
             tint = tint,
             modifier = Modifier.size(24.dp),
         )
@@ -1045,20 +1064,20 @@ private fun SearchEmptyAlertDialog(
     onDismiss: () -> Unit,
 ) {
     val message = if (precision) {
-        rememberString("search_result_empty_close_precision", scopeDisplay)
+        stringResource(Res.string.search_result_empty_close_precision, scopeDisplay)
     } else {
-        rememberString("search_result_empty_switch_all", scopeDisplay)
+        stringResource(Res.string.search_result_empty_switch_all, scopeDisplay)
     }
     io.legado.app.ui.compose.component.AppAlertDialog(
         onDismissRequest = onDismiss,
-        title = rememberString("search_result_empty"),
+        title = stringResource(Res.string.search_result_empty),
         message = message,
         okButton = io.legado.app.ui.compose.component.AlertButton(
-            text = rememberString("ok"),
+            text = stringResource(Res.string.ok),
             onClick = if (precision) onDisablePrecision else onSwitchAll,
         ),
         cancelButton = io.legado.app.ui.compose.component.AlertButton(
-            text = rememberString("cancel"),
+            text = stringResource(Res.string.cancel),
             onClick = null,
         ),
     )

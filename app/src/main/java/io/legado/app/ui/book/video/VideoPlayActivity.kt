@@ -46,16 +46,15 @@ import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
-import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.read.ReadBookActivity.Companion.RESULT_DELETED
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
+import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.dialog.showBookVariableDialog
 import io.legado.app.ui.widget.dialog.showSourceVariableDialog
 import io.legado.app.ui.compose.dialogs.alert
-import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
@@ -104,20 +103,6 @@ class VideoPlayActivity : BaseComposeActivity() {
         private set
     private val player get() = exoPlayer
 
-    private val bookInfoResult =
-        registerForActivityResult(StartActivityContract(BookInfoActivity::class.java)) { result ->
-            when (result.resultCode) {
-                RESULT_DELETED -> {
-                    setResult(RESULT_DELETED)
-                    super.finish()
-                }
-
-                RESULT_OK -> {
-                    setResult(RESULT_OK)
-                    inShelf = true
-                }
-            }
-        }
     private val progressTimeFormat by lazy {
         SimpleDateFormat("mm:ss", Locale.getDefault())
     }
@@ -293,6 +278,26 @@ class VideoPlayActivity : BaseComposeActivity() {
                 ?.collect { result ->
                     if (result.payload is RouteResultPayload.BookSourceEdit) {
                         viewModel.upSource()
+                    }
+                }
+        }
+        // 监听书籍信息路由回传结果 (原 bookInfoResult registerForActivityResult)
+        LaunchedEffect(Unit) {
+            AppNavigatorProviders.getOrNull()?.results
+                ?.filter { it.key == RouteResults.BOOK_INFO }
+                ?.collect { result ->
+                    when (result.payload) {
+                        is RouteResultPayload.Deleted -> {
+                            setResult(RESULT_DELETED)
+                            super.finish()
+                        }
+
+                        is RouteResultPayload.Ok -> {
+                            setResult(RESULT_OK)
+                            inShelf = true
+                        }
+
+                        else -> Unit
                     }
                 }
         }
@@ -489,6 +494,8 @@ class VideoPlayActivity : BaseComposeActivity() {
                     yesButton {
                         viewModel.delBook {
                             setResult(RESULT_DELETED)
+                            // 双轨: 同步 RouteResult 通道
+                            AppNavigatorProviders.getOrNull()?.pop(RouteResultPayload.Deleted)
                             finish()
                         }
                     }
@@ -497,6 +504,8 @@ class VideoPlayActivity : BaseComposeActivity() {
             } else {
                 viewModel.delBook {
                     setResult(RESULT_DELETED)
+                    // 双轨: 同步 RouteResult 通道
+                    AppNavigatorProviders.getOrNull()?.pop(RouteResultPayload.Deleted)
                     finish()
                 }
             }
@@ -563,10 +572,12 @@ class VideoPlayActivity : BaseComposeActivity() {
     }
 
     fun onTitleClick() {
-        bookInfoResult.launch {
-            IntentData.book = viewModel.curBook
-            IntentData.chapterList = viewModel.chapterListData.value
-            player?.pause()
+        player?.pause()
+        viewModel.curBook?.let {
+            AppNavigatorProviders.getOrNull()?.push(
+                AppRoute.BookInfo(it.toRouteRef()),
+                resultKey = RouteResults.BOOK_INFO,
+            )
         }
     }
 

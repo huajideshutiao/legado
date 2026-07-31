@@ -3,12 +3,21 @@ package io.legado.app.ui.route
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookProgress
+import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.book.bookmark.BookmarkDialog
+import io.legado.app.ui.book.read.ContentEditDialog
 import io.legado.app.ui.book.read.ReadBookEvents
+import io.legado.app.ui.book.read.ReaderDialogEvent
 import io.legado.app.ui.book.read.ReaderPlatformProviders
 import io.legado.app.ui.book.read.ReaderScreen
 import io.legado.app.ui.book.read.ReaderScreenModel
@@ -17,19 +26,27 @@ import io.legado.app.ui.book.read.ReaderUiState
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.RouteResultPayload
+import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cloud_progress_exceeds_current
+import legado.shared.generated.resources.no
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.sync_book_progress_t
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 小说阅读器 shared 路由入口。
  *
  * 通过 [ScreenModelStore] 复用 [ReaderScreenModel]，渲染 [ReaderScreen]。
- * [ReadMenuState] 等平台依赖经 [ReaderPlatformProviders] 注入；未注册时退化为
- * 空渲染占位（不崩溃），待平台 actual 注册后接入完整阅读页。
+ * [ReadMenuState] 等平台依赖经 [ReaderPlatformProviders] 注入；各端入口必须在进入路由前注册。
  *
  * 对照 [TocRoute] 的 ScreenModel + dispatch + Screen 组合模式。
  */
@@ -41,10 +58,9 @@ fun ReaderRoute(
 ) {
     val route = entry.route as AppRoute.Reader
     val book = route.book.asBook()
-    val provider = ReaderPlatformProviders.getOrNull()
-
-    // 平台未注册 ReaderPlatformProvider，保持空渲染占位（不崩溃）
-    if (provider == null) return
+    val provider = requireNotNull(ReaderPlatformProviders.getOrNull()) {
+        "ReaderPlatformProvider must be registered before opening ReaderRoute"
+    }
 
     val screenModel = screenModelStore.getOrCreateTyped(entry) {
         ReaderScreenModel(
@@ -89,6 +105,8 @@ fun ReaderRoute(
         }
     }
 
+    val scope = rememberCoroutineScope()
+
     ReaderScreen(state = state, actions = actions)
 
     // 云进度同步确认对话框 (对照 app 端 ReadBookActivity.sureNewProgress)
@@ -104,13 +122,119 @@ fun ReaderRoute(
                 screenModel.viewModel.dismissSyncProgress()
                 syncProgress = null
             },
-            title = rememberString("sync_book_progress_t"),
-            message = rememberString("cloud_progress_exceeds_current"),
-            okButton = AlertButton(rememberString("ok")) {
+            title = stringResource(Res.string.sync_book_progress_t),
+            message = stringResource(Res.string.cloud_progress_exceeds_current),
+            okButton = AlertButton(stringResource(Res.string.ok)) {
                 screenModel.viewModel.confirmSyncProgress(progress)
                 syncProgress = null
             },
-            cancelButton = AlertButton(rememberString("no")) {},
+            cancelButton = AlertButton(stringResource(Res.string.no)) {
+                screenModel.viewModel.dismissSyncProgress()
+                syncProgress = null
+            },
         )
     }
+
+    // region 路由结果订阅 (目录跳转/换源/书源编辑/书籍信息)
+
+    LaunchedEffect(screenModel, entry.id) {
+        navigator.resultsFor(entry.id).collect { result ->
+            when (result.key) {
+                RouteResults.TOC -> {
+                    val payload = result.payload as? RouteResultPayload.Toc ?: return@collect
+                    screenModel.openChapter(payload.chapterIndex, payload.chapterPos)
+                }
+
+                RouteResults.CHANGE_SOURCE -> {
+                    val payload =
+                        result.payload as? RouteResultPayload.ChangeSource ?: return@collect
+                    screenModel.initBook(payload.book, null, null)
+                }
+
+                RouteResults.BOOK_SOURCE_EDIT -> screenModel.viewModel.refreshCurrentChapter()
+
+                RouteResults.BOOK_INFO -> when (result.payload) {
+                    is RouteResultPayload.Deleted -> navigator.pop()
+                    is RouteResultPayload.Ok -> navigator.pop(RouteResultPayload.Deleted)
+                    else -> Unit
+                }
+
+                RouteResults.CHANGE_CHAPTER_SOURCE -> {
+                    val payload = result.payload as? RouteResultPayload.ChangeChapterContent
+                        ?: return@collect
+                    val book = screenModel.currentBook ?: return@collect
+                    val chapter = screenModel.currentChapter ?: withContext(IoDispatcher) {
+                        AppDbProviders.get().bookChapterDao.getChapter(
+                            book.bookUrl,
+                            screenModel.viewModel.durChapterIndex.value,
+                        )
+                    } ?: return@collect
+                    scope.launch {
+                        runCatching {
+                            BookStorageProviders.get().saveText(book, chapter, payload.content)
+                        }
+                        screenModel.viewModel.refreshCurrentChapter()
+                    }
+                }
+
+                RouteResults.SEARCH_CONTENT -> {
+                    val payload = result.payload as? RouteResultPayload.SearchContent
+                        ?: return@collect
+                    val searchResult = payload.searchResults.getOrNull(payload.searchResultIndex)
+                        ?: return@collect
+                    screenModel.openChapter(searchResult.chapterIndex)
+                }
+            }
+        }
+    }
+    // endregion
+
+    // region 对话框渲染 (书签/正文编辑/日志, 由 AndroidReaderMenuState 触发)
+    val dialogEvent by screenModel.dialogEvent.collectAsState()
+    when (val event = dialogEvent) {
+        is ReaderDialogEvent.AddBookmark -> {
+            BookmarkDialog(
+                bookmark = event.bookmark,
+                showDelete = false,
+                onConfirm = { updated ->
+                    scope.launch {
+                        runCatching {
+                            AppDbProviders.get().bookmarkDao.insert(updated)
+                        }
+                    }
+                    screenModel.clearDialogEvent()
+                },
+                onDismiss = { screenModel.clearDialogEvent() },
+            )
+        }
+
+        is ReaderDialogEvent.EditContent -> {
+            val chapter = screenModel.currentChapter
+            ContentEditDialog(
+                chapterName = chapter?.title ?: "",
+                content = screenModel.currentChapterText,
+                onSubmit = { edited ->
+                    val book = screenModel.viewModel.book.value
+                    if (book != null && chapter != null) {
+                        scope.launch {
+                            runCatching {
+                                BookStorageProviders.get().saveText(book, chapter, edited)
+                            }
+                            screenModel.viewModel.refreshCurrentChapter()
+                        }
+                    }
+                    screenModel.clearDialogEvent()
+                },
+                onDismiss = { screenModel.clearDialogEvent() },
+                onReset = { screenModel.viewModel.refreshCurrentChapter() },
+            )
+        }
+
+        is ReaderDialogEvent.Log -> {
+            AppLogDialog(onDismiss = { screenModel.clearDialogEvent() })
+        }
+
+        null -> Unit
+    }
+    // endregion
 }

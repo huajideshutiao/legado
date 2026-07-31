@@ -12,7 +12,10 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppOutlinedTextField
-import io.legado.app.ui.compose.platform.rememberString
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.ok
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 通用单行文本输入对话框 (sharedUiMain, 供 Android/Desktop/iOS 复用)。
@@ -41,10 +44,10 @@ fun TextInputDialog(
         onDismissRequest = onDismiss,
         title = title,
         message = message,
-        okButton = AlertButton(text = rememberString("ok")) {
+        okButton = AlertButton(text = stringResource(Res.string.ok)) {
             onConfirm(text)
         },
-        cancelButton = AlertButton(text = rememberString("cancel")),
+        cancelButton = AlertButton(text = stringResource(Res.string.cancel)),
     ) {
         // 输入框: padding 在 fillMaxWidth 前, 让 OutlinedTextField 含边框与 title/message 的 24dp 对齐
         AppOutlinedTextField(

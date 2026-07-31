@@ -31,10 +31,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.action_save
+import legado.shared.generated.resources.code_view
+import legado.shared.generated.resources.ic_save
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 代码查看/编辑对话框内容 (KMP 共享, desktop / iOS 复用)。
@@ -72,8 +76,8 @@ fun CodeDialogContent(
 ) {
     val colors = AppTheme.colors
     // 标题: disableEdit=true → "code view", 否则空串 (对齐 app 端逻辑)
-    val title = if (disableEdit) rememberString("code_view") else ""
-    val saveDesc = rememberString("action_save")
+    val title = if (disableEdit) stringResource(Res.string.code_view) else ""
+    val saveDesc = stringResource(Res.string.action_save)
     // 可编辑模式持有本地编辑状态 (初始化自 code)
     var editCode by remember(code) { mutableStateOf(code) }
 
@@ -85,7 +89,7 @@ fun CodeDialogContent(
             if (!disableEdit && onSave != null) {
                 IconButton(onClick = { onSave(editCode) }) {
                     Icon(
-                        painter = rememberPainter("ic_save"),
+                        painter = painterResource(Res.drawable.ic_save),
                         contentDescription = saveDesc,
                         tint = colors.primaryText,
                     )

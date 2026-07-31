@@ -40,6 +40,7 @@ import io.legado.app.ui.widget.number.showNumberPicker
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 书源选择

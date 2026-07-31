@@ -22,8 +22,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.post_review
+import legado.shared.generated.resources.rating
+import legado.shared.generated.resources.review_post_hint
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 发表段评/书评 shared Screen。
@@ -44,7 +48,7 @@ fun ReviewPostScreen(
     val colors = AppTheme.colors
     Column(Modifier.fillMaxSize()) {
         DialogTitleBar(
-            title = rememberString("post_review"),
+            title = stringResource(Res.string.post_review),
             onBack = { actions.onBack() },
         )
         Column(
@@ -60,7 +64,7 @@ fun ReviewPostScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 120.dp),
-                placeholder = state.hint.ifBlank { rememberString("review_post_hint") },
+                placeholder = state.hint.ifBlank { stringResource(Res.string.review_post_hint) },
                 maxLines = 8,
             )
             // 评分条: 0..5 步长 0.5, steps=9 表示 9 个中间点共 11 个值
@@ -72,7 +76,7 @@ fun ReviewPostScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
-                    text = rememberString("rating"),
+                    text = stringResource(Res.string.rating),
                     color = colors.primaryText,
                     fontSize = 14.sp,
                 )
@@ -114,7 +118,7 @@ fun ReviewPostScreen(
                     )
                 }
                 Text(
-                    text = rememberString("post_review"),
+                    text = stringResource(Res.string.post_review),
                     color = colors.bottomBackground,
                 )
             }

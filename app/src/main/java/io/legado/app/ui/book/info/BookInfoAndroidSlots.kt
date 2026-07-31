@@ -13,6 +13,7 @@ import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -30,8 +31,7 @@ import io.legado.app.R
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.isVideo
 import io.legado.app.model.blurConfig
-import io.legado.app.model.CoverRatio
-import io.legado.app.ui.main.bookshelf.ShelfCover
+import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 
 /*
  * BookInfoScreen 下沉到 shared 后, app 端保留的 L3 (Android 专属) Composable。
@@ -41,7 +41,7 @@ import io.legado.app.ui.main.bookshelf.ShelfCover
  *
  * 包含:
  * - [BookInfoBlurCoverBg]: 模糊封面背景 (Coil3 + BookInfoBgTransformation + AndroidView)
- * - [BookInfoCover]: 书籍封面 (AndroidView + CoverImageView + Glide, 包装 ShelfCover)
+ * - [BookInfoCover]: 书籍封面 (转发 LocalBookCoverSlot → ShelfCover → CoverImageView)
  * - [BookInfoIntroImage]: 简介内整宽图 (Coil3 execute suspend 取 Bitmap)
  *
  * 原 app 端 BookInfoScreen.kt 中的对应私有 Composable 已删除, 视觉/逻辑完全等价保留。
@@ -93,15 +93,13 @@ fun BookInfoBlurCoverBg(
 }
 
 /**
- * 书籍封面: 包装 [ShelfCover] (AndroidView + CoverImageView + Glide)。
+ * 书籍封面: 复用书架通用封面槽 [LocalBookCoverSlot] (app 端注入 ShelfCover → CoverImageView)。
  *
- * 替代原 `InfoCover` 中 ShelfCover 调用部分。modifier 由 shared 端构造时已包含
- * height(144.dp)/clip/background/clickable, 本函数只负责把 (book, reloadKey, inBookshelf)
- * 透传给 ShelfCover。
+ * 详情页不再自建一套封面渲染, [coverTick] 变化时经 key 强制重建触发重载。
  *
  * @param book 当前书籍 (可能为 null)
  * @param coverTick 封面重载 key (对照 activity.coverTick)
- * @param inBookshelf 是否在书架中 (对照 activity.viewModel.inBookshelf)
+ * @param inBookshelf 是否在书架中 (保留签名对齐 slot 契约, 封面渲染不参与)
  * @param modifier shared 端构造的 modifier (含尺寸/形状/点击)
  */
 @Composable
@@ -111,18 +109,11 @@ fun BookInfoCover(
     inBookshelf: Boolean,
     modifier: Modifier,
 ) {
-    val ratio = if (book?.isVideo == true) CoverRatio.VIDEO
-    else CoverRatio.NOVEL
-    ShelfCover(
-        path = book?.getDisplayCover(),
-        name = book?.name,
-        author = book?.getRealAuthor(),
-        origin = book?.origin,
-        ratio = ratio,
-        reloadKey = coverTick,
-        inBookshelf = inBookshelf,
-        modifier = modifier,
-    )
+    book ?: return
+    val coverSlot = LocalBookCoverSlot.current
+    key(book.bookUrl, coverTick) {
+        coverSlot(book, modifier, book.isVideo)
+    }
 }
 
 /**

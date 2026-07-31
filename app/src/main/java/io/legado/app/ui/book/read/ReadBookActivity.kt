@@ -50,7 +50,6 @@ import io.legado.app.help.book.removeType
 import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.help.searchResultList
 import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.theme.accentColor
@@ -64,7 +63,6 @@ import io.legado.app.receiver.TimeBatteryReceiver
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
-import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.read.config.AutoReadDialog
 import io.legado.app.ui.book.read.config.MoreConfigDialog
 import io.legado.app.ui.book.read.config.ReadAloudDialog
@@ -90,7 +88,6 @@ import io.legado.app.ui.widget.PopupAction
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.LogUtils
-import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.dismissDialogFragment
 import io.legado.app.utils.invisible
@@ -141,14 +138,14 @@ class ReadBookActivity : BaseReadBookActivity(),
     }
     private val cursorLeft: ImageView by lazy {
         ImageView(this).apply {
-            setImageResource(io.legado.shared.R.drawable.ic_cursor_left)
+            setImageResource(R.drawable.ic_cursor_left)
             contentDescription = getString(R.string.select_start)
             visibility = View.INVISIBLE
         }
     }
     private val cursorRight: ImageView by lazy {
         ImageView(this).apply {
-            setImageResource(io.legado.shared.R.drawable.ic_cursor_right)
+            setImageResource(R.drawable.ic_cursor_right)
             contentDescription = getString(R.string.select_end)
             visibility = View.INVISIBLE
         }
@@ -222,7 +219,11 @@ class ReadBookActivity : BaseReadBookActivity(),
                 ?.collect { result ->
                     val payload = result.payload as? RouteResultPayload.SearchContent
                         ?: return@collect
-                    onSearchContentResult(payload.searchWord, payload.searchResultIndex)
+                    onSearchContentResult(
+                        payload.searchWord,
+                        payload.searchResultIndex,
+                        payload.searchResults,
+                    )
                 }
         }
         // 监听替换规则编辑路由回传结果 (原 replaceActivity RESULT_OK)
@@ -240,6 +241,26 @@ class ReadBookActivity : BaseReadBookActivity(),
                     viewModel.openChapter(payload.chapterIndex, payload.chapterPos)
                 }
         }
+        // 监听书籍信息路由回传结果 (原 bookInfoActivity registerForActivityResult)
+        LaunchedEffect(Unit) {
+            AppNavigatorProviders.getOrNull()?.results
+                ?.filter { it.key == RouteResults.BOOK_INFO }
+                ?.collect { result ->
+                    when (result.payload) {
+                        is RouteResultPayload.Deleted -> {
+                            setResult(RESULT_DELETED)
+                            super.finish()
+                        }
+
+                        is RouteResultPayload.Ok -> {
+                            setResult(RESULT_DELETED)
+                            super.finish()
+                        }
+
+                        else -> ReadBook.loadOrUpContent()
+                    }
+                }
+        }
         Box(Modifier.fillMaxSize()) {
             AndroidView(factory = { renderLayer }, modifier = Modifier.fillMaxSize())
             ReadMenuOverlay(readMenu)
@@ -248,15 +269,6 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
     }
 
-    private val bookInfoActivity =
-        registerForActivityResult(StartActivityContract(BookInfoActivity::class.java)) {
-            if (it.resultCode == RESULT_OK) {
-                setResult(RESULT_DELETED)
-                super.finish()
-            } else {
-                ReadBook.loadOrUpContent()
-            }
-        }
     private val selectImageDir = registerHandleFile {
         it.uri?.let { uri ->
             ACache.get().put(AppConst.imagePathKey, uri.toString())
@@ -831,11 +843,10 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun openBookInfoActivity() {
         ReadBook.book?.let {
-            bookInfoActivity.launch {
-                putExtra("name", it.name)
-                putExtra("author", it.author)
-                IntentData.book = it
-            }
+            AppNavigatorProviders.getOrNull()?.push(
+                AppRoute.BookInfo(it.toRouteRef()),
+                resultKey = RouteResults.BOOK_INFO,
+            )
         }
     }
 
@@ -866,15 +877,13 @@ class ReadBookActivity : BaseReadBookActivity(),
     override fun openSearchActivity(searchWord: String?) {
         val book = ReadBook.book ?: return
         IntentData.book = book
-        viewModel.searchResultList?.first()?.let {
-            if (it.query == viewModel.searchContentQuery) {
-                IntentData.searchResultList = viewModel.searchResultList
-            }
-        }
+        val initialResults = viewModel.searchResultList
+            ?.takeIf { results -> results.firstOrNull()?.query == viewModel.searchContentQuery }
         AppNavigatorProviders.getOrNull()?.push(
             AppRoute.SearchContent(
                 index = viewModel.searchResultIndex,
                 word = searchWord ?: viewModel.searchContentQuery,
+                initialResults = initialResults,
             ),
             resultKey = RouteResults.SEARCH_CONTENT,
         )
@@ -883,8 +892,11 @@ class ReadBookActivity : BaseReadBookActivity(),
     /**
      * 正文搜索路由回传: 跳转到选中结果 (原 searchContentActivity RESULT_OK 回调)
      */
-    private fun onSearchContentResult(searchWord: String?, index: Int) {
-        val searchResultList = IntentData.searchResultList ?: return
+    private fun onSearchContentResult(
+        searchWord: String?,
+        index: Int,
+        searchResultList: List<SearchResult>,
+    ) {
         viewModel.searchContentQuery = searchWord.orEmpty()
         searchMenu.upSearchResultList(searchResultList)
         isShowingSearchResult = true
@@ -1360,12 +1372,9 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
 
         /**
-         * 音量键翻页
+         * 音量键翻页 (按 project_memory 规则: 音量键始终用于翻页, 移除 volumeKeyPageOnPlay 守卫)
          */
         private fun volumeKeyPage(direction: PageDirection): Boolean {
-            if (!AppConfig.volumeKeyPageOnPlay && BaseReadAloudService.isPlay()) {
-                return false
-            }
             handleKeyPage(direction)
             return true
         }
@@ -1629,9 +1638,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                         }
                     }
                 }
-            }
-            observeEvent<List<SearchResult>>(EventBus.SEARCH_RESULT) {
-                viewModel.searchResultList = it
             }
             ReadBookEvents.configChange.observe(this@ReadBookActivity) { changes ->
                 changes.forEach { change ->

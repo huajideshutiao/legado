@@ -1,141 +1,315 @@
 package io.legado.app.ui.book.search
 
-// I18N KEYS (need to register in ResourceProvider.jvm.kt):
-//   "search_scope" to "搜索范围"
-
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import io.legado.app.data.entities.BookGroup
+import androidx.compose.ui.window.DialogProperties
+import io.legado.app.constant.AppLog
+import io.legado.app.data.AppDbProviders
+import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.compose.component.AppCheckbox
+import io.legado.app.ui.compose.component.AppRadioButton
+import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTextButton
-import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.FastScrollLazyColumn
-import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.component.RadioChip
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.all_source
+import legado.shared.generated.resources.book_source
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.group
+import legado.shared.generated.resources.ic_arrow_back
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.outline_filter_alt_24
+import legado.shared.generated.resources.screen
+import legado.shared.generated.resources.search_scope
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
- * 搜索范围选择对话框 (KMP 共享, app + desktop 复用)。
+ * 搜索范围选择对话框。
  *
- * 对应 app 端 `io.legado.app.ui.book.search.SearchScopeDialog`, 但去掉对
- * BaseComposeDialogFragment / appDb / flowWithLifecycleAndDatabaseChange 的依赖,
- * 改为纯 @Composable + 回调形式:
- * - 调用方传入 [groups] (书源分组列表) 和 [selectedGroupIds] (已选分组 ID 集合)
- * - LazyColumn + Checkbox 列出所有分组, 勾选/取消勾选
- * - "全部书源" 按钮: 清空选择, 调用 [onConfirm] 传空集 (对齐原 SearchScope("") 语义)
- * - 确定时把选中的分组 ID 集合通过 [onConfirm] 回传
+ * 结构、尺寸和交互对齐 Android 原版：90% 窗口宽度且不超过 800dp、80% 窗口高度，
+ * 标题栏下方保留“分组/书源”双模式，书源模式提供标题栏筛选入口。
  *
- * 原 app 端还支持书源模式 (RadioChip 切换 + 搜索筛选), 该模式依赖 appDb.bookSourceDao
- * 的 flow 查询, 无法 KMP 化, 由调用方在 app 端单独处理。
- *
- * @param groups 所有可选的书源分组列表
- * @param selectedGroupIds 初始已选中的分组 ID 集合
- * @param onConfirm 用户点击确定, 参数为选中的分组 ID 集合 (空集 = 全部书源)
- * @param onDismiss 用户取消 (返回按钮 / 点击对话框外部 / 取消按钮)
+ * @param groups 分组列表，null=自行读库（对照 app 端 allEnabledGroups）
+ * @param sources 书源列表，null=自行读库并按筛选词走 flowSearch（对照 app 端 flowAll/flowSearch）
  */
 @Composable
 fun SearchScopeDialog(
-    groups: List<BookGroup>,
-    selectedGroupIds: Set<Long>,
-    onConfirm: (Set<Long>) -> Unit,
+    groups: List<String>? = null,
+    sources: List<BookSourcePart>? = null,
+    onConfirm: (SearchScope) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    val titleText = rememberString("search_scope")
-    val allSourceText = rememberString("all_source")
-    val cancelText = rememberString("cancel")
-    val okText = rememberString("ok")
+    // 原版每次打开都默认分组模式，选择状态不从已保存范围预填。
+    var groupMode by remember { mutableStateOf(true) }
+    var screenText by remember { mutableStateOf("") }
+    var showScreen by remember { mutableStateOf(false) }
+    var selectedGroups by remember { mutableStateOf<List<String>>(emptyList()) }
+    var selectedSource by remember { mutableStateOf<BookSourcePart?>(null) }
+    var dbGroups by remember { mutableStateOf<List<String>>(emptyList()) }
+    var dbSources by remember { mutableStateOf<List<BookSourcePart>>(emptyList()) }
+    if (groups == null) {
+        LaunchedEffect(Unit) {
+            dbGroups = withContext(IoDispatcher) {
+                AppDbProviders.get().bookSourceDao.allEnabledGroups()
+            }
+        }
+    }
+    // 自行读库时筛选走 DAO（覆盖名称/分组/地址/注释），与 app 端 upBookSource 一致
+    if (sources == null) {
+        LaunchedEffect(screenText) {
+            val dao = AppDbProviders.get().bookSourceDao
+            when {
+                screenText.isEmpty() -> dao.flowAll()
+                else -> dao.flowSearch(screenText)
+            }.catch {
+                AppLog.put("多分组/书源界面更新书源出错", it)
+            }.flowOn(IoDispatcher).conflate().collect { data ->
+                dbSources = data
+            }
+        }
+    }
+    // 调用方注入列表时无法走 DAO 查询，退化为本地筛选
+    val injectedSources = remember(sources, screenText) {
+        val key = screenText.trim()
+        val list = sources.orEmpty()
+        if (key.isEmpty()) list else list.filter { source ->
+            source.bookSourceName.contains(key, ignoreCase = true) ||
+                source.bookSourceUrl.contains(key, ignoreCase = true) ||
+                source.bookSourceGroup.orEmpty().contains(key, ignoreCase = true)
+        }
+    }
+    val visibleGroups = groups ?: dbGroups
+    val visibleSources = if (sources == null) dbSources else injectedSources
 
-    // 可变的选中集合 (对齐原 selectGroups, 保留勾选顺序)
-    var selectedIds by remember { mutableStateOf(selectedGroupIds.toMutableSet()) }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = DesignTokens.dialogShape,
-            color = colors.background,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(Modifier.fillMaxWidth()) {
-                DialogTitleBar(
-                    title = titleText,
-                    onBack = onDismiss,
-                )
-
-                // 分组列表: LazyColumn + Checkbox (任务要求)
-                FastScrollLazyColumn(
-                    state = rememberLazyListState(),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 400.dp),
-                ) {
-                    items(groups, key = { it.groupId }) { group ->
-                        val checked = group.groupId in selectedIds
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .toggleable(
-                                    value = checked,
-                                    role = Role.Checkbox,
-                                ) { isChecked ->
-                                    selectedIds = if (isChecked) {
-                                        // LinkedHashSet 保留勾选顺序 (对齐原 selectGroups + group 顺序)
-                                        LinkedHashSet(selectedIds).apply { add(group.groupId) }
-                                    } else {
-                                        selectedIds.filterNot { it == group.groupId }.toMutableSet()
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            Surface(
+                shape = DesignTokens.shapeDefault,
+                color = colors.fillet,
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .widthIn(max = 800.dp)
+                    .height(maxHeight * 0.8f)
+                    .align(Alignment.Center),
+            ) {
+                Column(Modifier.fillMaxWidth()) {
+                    ScopeTitleBar(
+                        groupMode = groupMode,
+                        showScreen = showScreen,
+                        screenText = screenText,
+                        onScreenTextChange = { screenText = it },
+                        onShowScreenChange = { show ->
+                            showScreen = show
+                            if (!show) screenText = ""
+                        },
+                    )
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        RadioChip(
+                            text = stringResource(Res.string.group),
+                            checked = groupMode,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            groupMode = true
+                            showScreen = false
+                            screenText = ""
+                        }
+                        RadioChip(
+                            text = stringResource(Res.string.book_source),
+                            checked = !groupMode,
+                            modifier = Modifier.weight(1f),
+                        ) { groupMode = false }
+                    }
+                    Box(Modifier.fillMaxWidth().weight(1f)) {
+                        if (groupMode) {
+                            LazyColumn(Modifier.fillMaxWidth()) {
+                                items(visibleGroups, key = { it }) { group ->
+                                    val checked = group in selectedGroups
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .toggleable(
+                                                value = checked,
+                                                role = Role.Checkbox,
+                                            ) { isChecked ->
+                                                selectedGroups = if (isChecked) {
+                                                    selectedGroups + group
+                                                } else {
+                                                    selectedGroups - group
+                                                }
+                                            }
+                                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        AppCheckbox(checked = checked, onCheckedChange = null)
+                                        Text(
+                                            text = group,
+                                            color = colors.primaryText,
+                                            modifier = Modifier.padding(start = 8.dp),
+                                        )
                                     }
                                 }
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            AppCheckbox(checked = checked, onCheckedChange = null)
-                            Text(
-                                text = group.groupName,
-                                color = colors.primaryText,
-                                fontSize = 16.sp,
-                                modifier = Modifier.padding(start = 8.dp),
-                            )
+                            }
+                        } else {
+                            LazyColumn(Modifier.fillMaxWidth()) {
+                                items(visibleSources, key = { it.bookSourceUrl }) { source ->
+                                    val selected =
+                                        selectedSource?.bookSourceUrl == source.bookSourceUrl
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .selectable(
+                                                selected = selected,
+                                                role = Role.RadioButton,
+                                            ) { selectedSource = source }
+                                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        AppRadioButton(selected = selected, onClick = null)
+                                        Text(
+                                            text = source.bookSourceName,
+                                            color = colors.primaryText,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.padding(start = 8.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AppTextButton(text = stringResource(Res.string.all_source)) {
+                            onConfirm(SearchScope(""))
+                        }
+                        Spacer(Modifier.weight(1f))
+                        AppTextButton(
+                            text = stringResource(Res.string.cancel),
+                            color = colors.secondaryText,
+                            onClick = onDismiss,
+                        )
+                        AppTextButton(text = stringResource(Res.string.ok)) {
+                            val scope = if (groupMode) {
+                                SearchScope(selectedGroups)
+                            } else {
+                                selectedSource?.let(::SearchScope) ?: SearchScope("")
+                            }
+                            onConfirm(scope)
                         }
                     }
                 }
+            }
+        }
+    }
+}
 
-                // 底部按钮栏: 全部书源 | 弹性间距 | 取消 | 确定
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(colors.bottomBackground)
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // "全部书源" 按钮: 清空选择并确认 (对齐原 callback.onSearchScopeOk(SearchScope("")))
-                    AppTextButton(text = allSourceText, color = DesignTokens.arcoBlue6) {
-                        onConfirm(emptySet())
-                    }
-                    Spacer(Modifier.weight(1f))
-                    AppTextButton(text = cancelText, color = colors.secondaryText) { onDismiss() }
-                    AppTextButton(text = okText, color = DesignTokens.arcoBlue6) {
-                        onConfirm(selectedIds.toSet())
-                    }
+@Composable
+private fun ScopeTitleBar(
+    groupMode: Boolean,
+    showScreen: Boolean,
+    screenText: String,
+    onScreenTextChange: (String) -> Unit,
+    onShowScreenChange: (Boolean) -> Unit,
+) {
+    val colors = AppTheme.colors
+    val focusRequester = remember { FocusRequester() }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(colors.bottomBackground)
+            // 56dp 对照原 TitleBar minHeight=actionBarSize
+            .heightIn(min = 56.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (!groupMode && showScreen) {
+            IconButton(onClick = { onShowScreenChange(false) }) {
+                Icon(
+                    painter = painterResource(Res.drawable.ic_arrow_back),
+                    contentDescription = null,
+                    tint = colors.primaryText,
+                )
+            }
+            AppSearchField(
+                value = screenText,
+                onValueChange = onScreenTextChange,
+                hint = stringResource(Res.string.screen),
+                modifier = Modifier.weight(1f),
+                textFieldModifier = Modifier.focusRequester(focusRequester),
+            )
+            LaunchedEffect(Unit) { focusRequester.requestFocus() }
+        } else {
+            Text(
+                text = stringResource(Res.string.search_scope),
+                color = colors.primaryText,
+                fontSize = 20.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 16.dp),
+            )
+            if (!groupMode) {
+                IconButton(onClick = { onShowScreenChange(true) }) {
+                    Icon(
+                        painter = painterResource(Res.drawable.outline_filter_alt_24),
+                        contentDescription = stringResource(Res.string.screen),
+                        tint = colors.primaryText,
+                    )
                 }
             }
         }

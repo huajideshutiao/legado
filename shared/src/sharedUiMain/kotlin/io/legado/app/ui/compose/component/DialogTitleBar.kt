@@ -17,8 +17,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.ic_arrow_back
+import org.jetbrains.compose.resources.painterResource
 
 /**
  * Dialog 通用标题栏，复刻 dialog_title_bar：底栏色背景 + 返回箭头(dismiss) + 标题 + 右侧菜单槽。
@@ -43,7 +45,7 @@ fun DialogTitleBar(
         if (onBack != null) {
             IconButton(onClick = onBack) {
                 Icon(
-                    painter = rememberPainter("ic_arrow_back"),
+                    painter = painterResource(Res.drawable.ic_arrow_back),
                     contentDescription = null,
                     tint = colors.primaryText,
                 )

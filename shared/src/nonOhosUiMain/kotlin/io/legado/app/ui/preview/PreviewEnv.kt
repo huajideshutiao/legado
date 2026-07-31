@@ -129,6 +129,11 @@ private class StubAppConfigAccessor : AppConfigAccessor {
     override val autoRefreshBook: Boolean = false
     override val preDownloadNum: Int = 10
 
+    override var changeSourceCheckAuthor: Boolean = true
+    override var changeSourceLoadInfo: Boolean = false
+    override var changeSourceLoadToc: Boolean = false
+    override var changeSourceLoadWordCount: Boolean = false
+
     override var searchScope: String = ""
     override var searchGroup: String = ""
     override val searchLayout: Int = 1
@@ -152,6 +157,8 @@ private class StubAppConfigAccessor : AppConfigAccessor {
     override val isNightTheme: Boolean = false
     override val isEInkMode: Boolean = false
     override val useDefaultCover: Boolean = false
+    override val coverDrawBookName: Boolean = true
+    override val coverDrawBookAuthor: Boolean = true
 
     override val bottomBarHeight: Int = 50
     override val bottomBarIconSize: Int = 24
@@ -161,9 +168,9 @@ private class StubAppConfigAccessor : AppConfigAccessor {
     override val bottomNavItemOrder: String = ""
     override val defaultHomePage: String = "bookshelf"
 
-    override val importKeepName: Boolean = false
-    override val importKeepGroup: Boolean = false
-    override val importKeepEnable: Boolean = false
+    override var importKeepName: Boolean = false
+    override var importKeepGroup: Boolean = false
+    override var importKeepEnable: Boolean = false
     override val localBookImportSort: Int = 0
 
     override val remoteServerId: Long = 0L

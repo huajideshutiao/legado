@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.CircularProgressIndicator
+import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
@@ -50,13 +51,35 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.model.AudioPlayShared
+import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.platform.handleMediaKeys
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.toDurationTime
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.audio_play
+import legado.shared.generated.resources.audio_play_wake_lock
+import legado.shared.generated.resources.back
+import legado.shared.generated.resources.change_origin
+import legado.shared.generated.resources.chapter_list
+import legado.shared.generated.resources.ic_arrow_back
+import legado.shared.generated.resources.ic_exchange
+import legado.shared.generated.resources.ic_more_vert
+import legado.shared.generated.resources.more_menu
+import legado.shared.generated.resources.next_chapter
+import legado.shared.generated.resources.play_mode
+import legado.shared.generated.resources.previous_chapter
+import legado.shared.generated.resources.set_timer
+import legado.shared.generated.resources.speed
+import legado.shared.generated.resources.stop
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 音频播放页主体内容 (模糊封面背景 + 遮罩 + 标题栏 + 副标题 + 封面/歌词区 + 进度条 + 播放控制排)。
@@ -145,6 +168,7 @@ fun AudioPlayScreenContent(
     onSetTimer: (Int) -> Unit,
     onSetSpeed: (Float) -> Unit,
     onStop: (() -> Unit)? = null,
+    overflowActions: AudioPlayOverflowActions? = null,
     coverSlot: @Composable (String?, Modifier) -> Unit,
     blurBgSlot: (@Composable (String?, Modifier) -> Unit)? = null,
     lrcSlot: @Composable (Modifier) -> Unit,
@@ -196,6 +220,7 @@ fun AudioPlayScreenContent(
                 title = title,
                 onBack = onBack,
                 onOpenChangeSource = onOpenChangeSource,
+                overflowActions = overflowActions,
                 trailingSlot = titleBarTrailingSlot,
                 horizontalPadding = titleBarHorizontalPadding,
             )
@@ -297,6 +322,7 @@ private fun AudioTitleBar(
     title: String,
     onBack: () -> Unit,
     onOpenChangeSource: () -> Unit,
+    overflowActions: AudioPlayOverflowActions?,
     trailingSlot: @Composable RowScope.() -> Unit,
     horizontalPadding: Dp,
 ) {
@@ -310,8 +336,8 @@ private fun AudioTitleBar(
     ) {
         IconButton(onClick = onBack) {
             Icon(
-                painter = rememberPainter("ic_arrow_back"),
-                contentDescription = rememberString("back"),
+                painter = painterResource(Res.drawable.ic_arrow_back),
+                contentDescription = stringResource(Res.string.back),
                 tint = Color.White,
             )
         }
@@ -325,12 +351,101 @@ private fun AudioTitleBar(
         )
         IconButton(onClick = onOpenChangeSource) {
             Icon(
-                painter = rememberPainter("ic_exchange"),
-                contentDescription = rememberString("change_origin"),
+                painter = painterResource(Res.drawable.ic_exchange),
+                contentDescription = stringResource(Res.string.change_origin),
                 tint = Color.White,
             )
         }
+        // 平台尾部槽 (review 钮等)
         trailingSlot()
+        // 共享溢出菜单 (登录/复制URL/源变量/书变量/编辑书源/书签/日志)
+        if (overflowActions != null) {
+            AudioPlayOverflowMenu(actions = overflowActions)
+        }
+    }
+}
+
+// ---- 溢出菜单 (下沉自 app 端 AudioOverflowMenu) ----
+
+@Composable
+private fun AudioPlayOverflowMenu(actions: AudioPlayOverflowActions) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(
+                painter = painterResource(Res.drawable.ic_more_vert),
+                contentDescription = stringResource(Res.string.more_menu),
+                tint = Color.White,
+            )
+        }
+        AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            val dismiss = { expanded = false }
+            if (actions.hasLogin) {
+                AudioOverflowItem("login") {
+                    dismiss()
+                    actions.onLogin()
+                }
+            }
+            AudioOverflowItem("copy_play_url") {
+                dismiss()
+                actions.onCopyAudioUrl()
+            }
+            // 浏览器打开播放 URL (对照 PlatformCapabilities.openExternalUrl)
+            AudioOverflowItem("open_in_browser") {
+                dismiss()
+                actions.onOpenAudioUrl()
+            }
+            AudioOverflowItem("set_source_variable") {
+                dismiss()
+                actions.onSetSourceVariable()
+            }
+            AudioOverflowItem("set_book_variable") {
+                dismiss()
+                actions.onSetBookVariable()
+            }
+            AudioOverflowItem("edit_book_source") {
+                dismiss()
+                actions.onEditBookSource()
+            }
+            // 唤醒锁 (Android 专属, onToggleWakeLock != null 时显示, 对照 app 端 audio_play_wake_lock)
+            if (actions.onToggleWakeLock != null) {
+                DropdownMenuItem(onClick = {
+                    dismiss()
+                    actions.onToggleWakeLock.invoke()
+                }) {
+                    Text(
+                        stringResource(Res.string.audio_play_wake_lock),
+                        color = AppTheme.colors.primaryText,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 12.dp),
+                    )
+                    AppMenuCheckbox(
+                        checked = runCatching {
+                            AppConfigProviders.get().audioPlayUseWakeLock
+                        }.getOrDefault(false),
+                    )
+                }
+            }
+            AudioOverflowItem("bookmark_add") {
+                dismiss()
+                actions.onAddBookmark()
+            }
+            AudioOverflowItem("log") {
+                dismiss()
+                actions.onShowAppLog()
+            }
+        }
+    }
+}
+
+@Composable
+private fun AudioOverflowItem(textKey: String, onClick: () -> Unit) {
+    DropdownMenuItem(onClick = onClick) {
+        Text(
+            rememberString(textKey),
+            color = AppTheme.colors.primaryText,
+        )
     }
 }
 
@@ -525,7 +640,7 @@ private fun PlayMenu(
         Box {
             PlayMenuButton(
                 iconKey = timerIconKey,
-                contentDescription = rememberString("set_timer"),
+                contentDescription = stringResource(Res.string.set_timer),
                 pressedBgEnabled = playMenuButtonPressedBgEnabled,
             ) { showTimer = true }
             if (showTimer) {
@@ -537,7 +652,7 @@ private fun PlayMenu(
         Box {
             PlayMenuButton(
                 iconKey = speedIconKey,
-                contentDescription = rememberString("speed"),
+                contentDescription = stringResource(Res.string.speed),
                 pressedBgEnabled = playMenuButtonPressedBgEnabled,
             ) { showSpeed = true }
             if (showSpeed) {
@@ -548,7 +663,7 @@ private fun PlayMenu(
         // 上一章
         PlayMenuButton(
             iconKey = "ic_skip_previous",
-            contentDescription = rememberString("previous_chapter"),
+            contentDescription = stringResource(Res.string.previous_chapter),
             enabled = prevEnabled,
             pressedBgEnabled = playMenuButtonPressedBgEnabled,
         ) { onPrev() }
@@ -566,7 +681,7 @@ private fun PlayMenu(
             ) {
                 Icon(
                     painter = rememberPainter(if (isPlaying) "ic_pause_24dp" else "ic_play_24dp"),
-                    contentDescription = rememberString("audio_play"),
+                    contentDescription = stringResource(Res.string.audio_play),
                     tint = Color.Black,
                     modifier = Modifier.size(24.dp),
                 )
@@ -581,7 +696,7 @@ private fun PlayMenu(
         // 下一章
         PlayMenuButton(
             iconKey = "ic_skip_next",
-            contentDescription = rememberString("next_chapter"),
+            contentDescription = stringResource(Res.string.next_chapter),
             enabled = nextEnabled,
             pressedBgEnabled = playMenuButtonPressedBgEnabled,
         ) { onNext() }
@@ -590,7 +705,7 @@ private fun PlayMenu(
         if (onStop != null) {
             PlayMenuButton(
                 iconKey = "ic_stop_black_24dp",
-                contentDescription = rememberString("stop"),
+                contentDescription = stringResource(Res.string.stop),
                 pressedBgEnabled = playMenuButtonPressedBgEnabled,
             ) { onStop() }
             Spacer(Modifier.weight(1f))
@@ -598,7 +713,7 @@ private fun PlayMenu(
         // 播放模式
         PlayMenuButton(
             iconKey = playModeIconKey(playMode),
-            contentDescription = rememberString("play_mode"),
+            contentDescription = stringResource(Res.string.play_mode),
             iconPadding = playModeIconPadding,
             pressedBgEnabled = playMenuButtonPressedBgEnabled,
         ) { onChangePlayMode() }
@@ -606,7 +721,7 @@ private fun PlayMenu(
         // 目录
         PlayMenuButton(
             iconKey = chapterListIconKey,
-            contentDescription = rememberString("chapter_list"),
+            contentDescription = stringResource(Res.string.chapter_list),
             pressedBgEnabled = playMenuButtonPressedBgEnabled,
         ) { onOpenToc() }
     }

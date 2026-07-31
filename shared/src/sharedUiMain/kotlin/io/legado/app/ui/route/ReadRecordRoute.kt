@@ -13,16 +13,25 @@ import io.legado.app.ui.about.ReadRecordScreen
 import io.legado.app.ui.about.ReadRecordScreenModel
 import io.legado.app.ui.about.ReadRecordUiActions
 import io.legado.app.ui.about.ReadRecordUiEvent
+import io.legado.app.ui.about.SharedMonthHeatMap
+import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.toReadRoute
-import io.legado.app.ui.root.toRouteRef
+import io.legado.app.utils.systemCurrentTimeMillis
+import io.legado.app.utils.yearMonthDayFromMillis
 import kotlinx.coroutines.launch
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.delete
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.sure_del
+import legado.shared.generated.resources.sure_del_any
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * AppRoute.ReadRecord 路由下沉入口: 桥接 [ReadRecordScreenModel] 状态与 [ReadRecordScreen] 渲染。
@@ -30,8 +39,10 @@ import kotlinx.coroutines.launch
  * 排序模式经 [PreferenceProviders] 持久化 (key "readRecordSort"); 搜索/排序/月份切换等
  * 事件 dispatch 给 ScreenModel; openBook 经 bookMap → appDb 回退查书后按书籍类型分流阅读路由
  * (对照 startActivityForBook: Audio/Video/Manga/Rss/Reader), 未命中跳 Search。
- * 清空/单条删除确认弹窗用 [AppAlertDialog] 声明式实现, 确认后 dispatch 对应事件;
- * 平台专属 slot (heatmapSlot MonthHeatMapView / coverSlot ShelfCover) 待平台注入, 暂空实现占位。
+ * 清空/单条删除/热力图按日删除确认弹窗用 [AppAlertDialog] 声明式实现。
+ *
+ * 热力图 slot 由 shared 纯 Compose [SharedMonthHeatMap] 渲染 (替代 app 端 AndroidView);
+ * 封面 slot 取 [LocalBookCoverSlot] (app 端注入 ShelfCover, 其他端兜底 SharedBookCover)。
  */
 @Composable
 fun ReadRecordRoute(
@@ -53,6 +64,12 @@ fun ReadRecordRoute(
     // 删除/清空确认弹窗状态 (对照 app 端 alert R.string.delete / R.string.sure_del)
     val pendingClearAll = remember { mutableStateOf(false) }
     val pendingDeleteItem = remember { mutableStateOf<ReadRecordShow?>(null) }
+    val pendingDeleteDay = remember { mutableStateOf<Int?>(null) }
+
+    // 今日日期 (供热力图 today 高亮; 年/月复用 state 中的 todayYear/todayMonth)
+    val todayDay = remember {
+        yearMonthDayFromMillis(systemCurrentTimeMillis()).third
+    }
 
     val actions = object : ReadRecordUiActions {
         // 对照 Activity.finish(): 搜索框聚焦时先收焦再返回, 否则直接 pop
@@ -68,9 +85,7 @@ fun ReadRecordRoute(
             screenModel.dispatch(ReadRecordUiEvent.SearchChanged(text))
         }
 
-        // 对照 Activity.onSearch: cancel debounce + clearSearchFocus + initData;
-        // ClearSearchFocus 同步置 searchFocused=false + 递增 clearFocusToken 触发 Screen 内 focusManager.clearFocus();
-        // SearchSubmitted 内部 cancel debounce + initData
+        // 对照 Activity.onSearch: cancel debounce + clearSearchFocus + initData
         override fun onSearch(text: String) {
             screenModel.dispatch(ReadRecordUiEvent.ClearSearchFocus)
             screenModel.dispatch(ReadRecordUiEvent.SearchSubmitted(text))
@@ -88,7 +103,7 @@ fun ReadRecordRoute(
             screenModel.dispatch(ReadRecordUiEvent.ToggleEnableRecord)
         }
 
-        // 弹出清空确认弹窗, 确认后 dispatch ClearAll (对照 app 端 onClearAll alert + clear)
+        // 弹出清空确认弹窗, 确认后 dispatch ClearAll
         override fun onClearAll() {
             pendingClearAll.value = true
         }
@@ -115,7 +130,7 @@ fun ReadRecordRoute(
             }
         }
 
-        // 弹出单条删除确认弹窗, 确认后 dispatch DeleteByName (对照 app 端 sureDelAlert)
+        // 弹出单条删除确认弹窗, 确认后 dispatch DeleteByName
         override fun sureDelAlert(item: ReadRecordShow) {
             pendingDeleteItem.value = item
         }
@@ -125,37 +140,77 @@ fun ReadRecordRoute(
         }
     }
 
+    // 封面 slot: 取 LocalBookCoverSlot (app 端注入 ShelfCover, 其他端兜底 SharedBookCover)
+    val bookCoverSlot = LocalBookCoverSlot.current
+
     ReadRecordScreen(
         state = state,
         actions = actions,
-        // 平台专属 slot (MonthHeatMapView) 待平台注入下沉, 暂空实现占位 (与 BookInfoRoute coverSlot 一致)
-        heatmapSlot = { _ -> },
-        // 平台专属 slot (ShelfCover) 待平台注入下沉, 暂空实现占位
-        coverSlot = { _, _, _ -> },
+        // 热力图: 纯 Compose 渲染, 点击切选/长按删日
+        heatmapSlot = { modifier ->
+            SharedMonthHeatMap(
+                year = state.heatmapYear,
+                month = state.heatmapMonth,
+                data = state.heatmapData,
+                selectedDay = state.heatmapSelectedDay,
+                todayYear = state.todayYear,
+                todayMonth = state.todayMonth,
+                todayDay = todayDay,
+                onDayClick = { day, _, _ ->
+                    // 切换选中: 已选中再点同日则取消 (dayKey=0)
+                    val dayKey = if (state.heatmapSelectedDay == day) 0
+                    else state.heatmapYear * 10000 + state.heatmapMonth * 100 + day
+                    screenModel.dispatch(ReadRecordUiEvent.SelectHeatmapDay(dayKey))
+                },
+                onDayLongClick = { day, _ ->
+                    val dayKey = state.heatmapYear * 10000 + state.heatmapMonth * 100 + day
+                    pendingDeleteDay.value = dayKey
+                },
+                modifier = modifier,
+            )
+        },
+        // 封面: book 非空调 bookCoverSlot (平台注入), book 为空走占位
+        coverSlot = { _, book, modifier ->
+            if (book != null) {
+                bookCoverSlot(book, modifier, false)
+            }
+        },
     )
 
-    // 清空全部阅读记录确认弹窗 (对照 app 端 onClearAll alert)
+    // 清空全部阅读记录确认弹窗
     if (pendingClearAll.value) {
         AppAlertDialog(
             onDismissRequest = { pendingClearAll.value = false },
-            title = rememberString("delete"),
-            message = rememberString("sure_del"),
-            okButton = AlertButton(rememberString("ok")) {
+            title = stringResource(Res.string.delete),
+            message = stringResource(Res.string.sure_del),
+            okButton = AlertButton(stringResource(Res.string.ok)) {
                 screenModel.dispatch(ReadRecordUiEvent.ClearAll)
             },
-            cancelButton = AlertButton(rememberString("cancel")) {},
+            cancelButton = AlertButton(stringResource(Res.string.cancel)) {},
         )
     }
-    // 单条删除确认弹窗 (对照 app 端 sureDelAlert alert + deleteByName)
+    // 单条删除确认弹窗
     pendingDeleteItem.value?.let { item ->
         AppAlertDialog(
             onDismissRequest = { pendingDeleteItem.value = null },
-            title = rememberString("delete"),
-            message = rememberString("sure_del_any", item.bookName),
-            okButton = AlertButton(rememberString("ok")) {
+            title = stringResource(Res.string.delete),
+            message = stringResource(Res.string.sure_del_any, item.bookName),
+            okButton = AlertButton(stringResource(Res.string.ok)) {
                 screenModel.dispatch(ReadRecordUiEvent.DeleteByName(item.bookName))
             },
-            cancelButton = AlertButton(rememberString("cancel")) {},
+            cancelButton = AlertButton(stringResource(Res.string.cancel)) {},
+        )
+    }
+    // 热力图长按按日删除确认弹窗 (对照 app 端 sureDelAlert + deleteByDay)
+    pendingDeleteDay.value?.let { dayKey ->
+        AppAlertDialog(
+            onDismissRequest = { pendingDeleteDay.value = null },
+            title = stringResource(Res.string.delete),
+            message = stringResource(Res.string.sure_del),
+            okButton = AlertButton(stringResource(Res.string.ok)) {
+                screenModel.dispatch(ReadRecordUiEvent.DeleteDay(dayKey))
+            },
+            cancelButton = AlertButton(stringResource(Res.string.cancel)) {},
         )
     }
 }

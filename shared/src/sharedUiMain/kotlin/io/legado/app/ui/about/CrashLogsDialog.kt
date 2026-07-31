@@ -26,18 +26,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.utils.ScreenInfoProviders
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.clear
+import legado.shared.generated.resources.copy
+import legado.shared.generated.resources.crash_log
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.text_too_large
+import org.jetbrains.compose.resources.stringResource
 
 /** 超长崩溃日志截断阈值, 对齐 TextDialog 的 32KB 上限。 */
 private const val MAX_TEXT_LENGTH = 32 * 1024
@@ -78,10 +84,10 @@ fun CrashLogsDialogContent(
 
     Column(Modifier.fillMaxWidth()) {
         DialogTitleBar(
-            title = rememberString("crash_log"),
+            title = stringResource(Res.string.crash_log),
             onBack = onDismiss,
             actions = {
-                AppTextButton(text = rememberString("clear")) { onClear() }
+                AppTextButton(text = stringResource(Res.string.clear)) { onClear() }
             },
         )
         LazyColumn(
@@ -139,15 +145,13 @@ private fun CrashLogViewDialog(
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    val okText = rememberString("ok")
-    val cancelText = rememberString("cancel")
-    val copyText = rememberString("copy")
-    val tooLargeText = rememberString("text_too_large")
+    val okText = stringResource(Res.string.ok)
+    val cancelText = stringResource(Res.string.cancel)
+    val copyText = stringResource(Res.string.copy)
+    val tooLargeText = stringResource(Res.string.text_too_large)
     val clipboard = LocalClipboardManager.current
-    // 对齐 BaseComposeDialogFragment 宽度: 0.9 屏宽, 上限 800dp
-    val dialogWidth = with(LocalDensity.current) {
-        (ScreenInfoProviders.get().screenWidthPx * 0.9f).toDp().coerceAtMost(800.dp)
-    }
+    // 尺寸基准取当前窗口 (桌面端窗口远小于主屏, 用主屏会撑满屏幕)
+    val dialogWidth = AppDialogSizes.width()
 
     Dialog(onDismissRequest = onDismiss) {
         // 圆角/底色对齐 BaseComposeDialogFragment.filletBackground + alert DSL AppAlertDialogContent

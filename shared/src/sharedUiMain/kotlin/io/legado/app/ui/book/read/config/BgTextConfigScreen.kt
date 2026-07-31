@@ -32,10 +32,28 @@ import io.legado.app.ui.compose.component.AppDetailSeekBar
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.StrokeTextChip
 import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.preference.ColorPickerDialog
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.ColorUtils
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.bg_alpha
+import legado.shared.generated.resources.bg_color
+import legado.shared.generated.resources.bg_image
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.dark_status_icon
+import legado.shared.generated.resources.delete
+import legado.shared.generated.resources.edit
+import legado.shared.generated.resources.export_str
+import legado.shared.generated.resources.ic_edit
+import legado.shared.generated.resources.import_str
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.restore
+import legado.shared.generated.resources.select_image
+import legado.shared.generated.resources.style_name
+import legado.shared.generated.resources.text_color
+import legado.shared.generated.resources.text_underline
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 背景/文字样式配置控制器：把 app 端 `ReadBookConfig.durConfig` 的字段读写抽象为接口，
@@ -155,7 +173,7 @@ data class BgImageItem(
  * - `AppAlertDialog` 的 content 槽（desktop 端）
  *
  * 资源访问替换：
- * - `stringResource(R.string.xxx)` → `rememberString("xxx")`
+ * - `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)`
  * - `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")`
  * - `ReadBookConfig.durConfig.xxx` → [controller.xxx]
  * - `selectXxx.launch` / `RemoteAssetsUtils.xxx` → [actions.xxx]
@@ -187,21 +205,21 @@ fun BgTextConfigScreen(
 ) {
     val colors = AppTheme.colors
     // 资源 key 在 Composable 顶层一次性求值（avoid calling @Composable in remember initializer）
-    val styleNameStr = rememberString("style_name")
-    val darkStatusIconStr = rememberString("dark_status_icon")
-    val textUnderlineStr = rememberString("text_underline")
-    val textColorStr = rememberString("text_color")
-    val bgColorStr = rememberString("bg_color")
-    val importStr = rememberString("import_str")
-    val exportStr = rememberString("export_str")
-    val deleteStr = rememberString("delete")
-    val bgAlphaStr = rememberString("bg_alpha")
-    val bgImageStr = rememberString("bg_image")
-    val selectImageStr = rememberString("select_image")
-    val restoreStr = rememberString("restore")
-    val editStr = rememberString("edit")
-    val okStr = rememberString("ok")
-    val cancelStr = rememberString("cancel")
+    val styleNameStr = stringResource(Res.string.style_name)
+    val darkStatusIconStr = stringResource(Res.string.dark_status_icon)
+    val textUnderlineStr = stringResource(Res.string.text_underline)
+    val textColorStr = stringResource(Res.string.text_color)
+    val bgColorStr = stringResource(Res.string.bg_color)
+    val importStr = stringResource(Res.string.import_str)
+    val exportStr = stringResource(Res.string.export_str)
+    val deleteStr = stringResource(Res.string.delete)
+    val bgAlphaStr = stringResource(Res.string.bg_alpha)
+    val bgImageStr = stringResource(Res.string.bg_image)
+    val selectImageStr = stringResource(Res.string.select_image)
+    val restoreStr = stringResource(Res.string.restore)
+    val editStr = stringResource(Res.string.edit)
+    val okStr = stringResource(Res.string.ok)
+    val cancelStr = stringResource(Res.string.cancel)
 
     // 恢复预设布局后整体重读配置（对齐原 initData）
     var refresh by remember { mutableIntStateOf(0) }
@@ -233,7 +251,7 @@ fun BgTextConfigScreen(
                 modifier = Modifier.padding(horizontal = 8.dp),
             )
             Icon(
-                painter = rememberPainter("ic_edit"),
+                painter = painterResource(Res.drawable.ic_edit),
                 contentDescription = editStr,
                 tint = colors.secondaryText,
                 modifier = Modifier

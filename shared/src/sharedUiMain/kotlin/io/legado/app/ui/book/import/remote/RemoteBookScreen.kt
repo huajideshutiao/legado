@@ -19,9 +19,23 @@ import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.SelectActionBar
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.add_to_bookshelf
+import legado.shared.generated.resources.empty
+import legado.shared.generated.resources.help
+import legado.shared.generated.resources.ic_baseline_sort_24
+import legado.shared.generated.resources.ic_refresh_black_24dp
+import legado.shared.generated.resources.log
+import legado.shared.generated.resources.refresh
+import legado.shared.generated.resources.remote_book
+import legado.shared.generated.resources.screen
+import legado.shared.generated.resources.server_config
+import legado.shared.generated.resources.sort
+import legado.shared.generated.resources.sort_by_lastUpdateTime
+import legado.shared.generated.resources.sort_by_name
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /*
  * 下沉所需资源 key 清单 (供 ResourceProvider 各平台 actual 补全)
@@ -115,17 +129,17 @@ fun <T : ImportFileItem> RemoteBookScreen(
         path = state.path,
         loading = state.loading,
         emptyVisible = state.emptyMsgVisible,
-        emptyText = rememberString("empty"),
+        emptyText = stringResource(Res.string.empty),
         titleBar = {
             AppTitleBar(
-                title = rememberString("remote_book"),
+                title = stringResource(Res.string.remote_book),
                 onBack = { actions.onBack() },
                 titleContent = {
                     AppSearchField(
                         value = state.searchKey,
                         onValueChange = { actions.onUpSearchKey(it) },
-                        hint = rememberString("screen") + " • " +
-                            rememberString("remote_book"),
+                        hint = stringResource(Res.string.screen) + " • " +
+                            stringResource(Res.string.remote_book),
                     )
                 },
                 actions = { RemoteBookActions(state, actions) },
@@ -137,7 +151,7 @@ fun <T : ImportFileItem> RemoteBookScreen(
                 allCount = state.checkableCount,
                 onSelectAll = { actions.onSelectAll(it) },
                 onRevertSelection = { actions.onRevertSelection() },
-                mainActionText = rememberString("add_to_bookshelf"),
+                mainActionText = stringResource(Res.string.add_to_bookshelf),
                 onMainAction = { actions.onAddSelectionToBookshelf() },
             )
         },
@@ -169,8 +183,8 @@ private fun <T : ImportFileItem> RemoteBookActions(
     val colors = AppTheme.colors
     IconButton(onClick = { actions.onUpPath() }) {
         Icon(
-            painter = rememberPainter("ic_refresh_black_24dp"),
-            contentDescription = rememberString("refresh"),
+            painter = painterResource(Res.drawable.ic_refresh_black_24dp),
+            contentDescription = stringResource(Res.string.refresh),
             tint = colors.primaryText,
         )
     }
@@ -178,20 +192,20 @@ private fun <T : ImportFileItem> RemoteBookActions(
         var showSort by remember { mutableStateOf(false) }
         IconButton(onClick = { showSort = true }) {
             Icon(
-                painter = rememberPainter("ic_baseline_sort_24"),
-                contentDescription = rememberString("sort"),
+                painter = painterResource(Res.drawable.ic_baseline_sort_24),
+                contentDescription = stringResource(Res.string.sort),
                 tint = colors.primaryText,
             )
         }
         AppDropdownMenu(expanded = showSort, onDismissRequest = { showSort = false }) {
             ImportSortItem(
-                text = rememberString("sort_by_name"),
+                text = stringResource(Res.string.sort_by_name),
                 checked = state.sortKeyState == RemoteBookSort.Name,
             ) {
                 showSort = false; actions.onSortCheck(RemoteBookSort.Name)
             }
             ImportSortItem(
-                text = rememberString("sort_by_lastUpdateTime"),
+                text = stringResource(Res.string.sort_by_lastUpdateTime),
                 checked = state.sortKeyState == RemoteBookSort.Default,
             ) {
                 showSort = false; actions.onSortCheck(RemoteBookSort.Default)
@@ -199,13 +213,13 @@ private fun <T : ImportFileItem> RemoteBookActions(
         }
     }
     OverflowMenu { dismiss ->
-        ImportMenuItem(rememberString("server_config")) {
+        ImportMenuItem(stringResource(Res.string.server_config)) {
             dismiss(); actions.onShowServersDialog()
         }
-        ImportMenuItem(rememberString("help")) {
+        ImportMenuItem(stringResource(Res.string.help)) {
             dismiss(); actions.onShowWebDavHelp()
         }
-        ImportMenuItem(rememberString("log")) {
+        ImportMenuItem(stringResource(Res.string.log)) {
             dismiss(); actions.onShowLogDialog()
         }
     }

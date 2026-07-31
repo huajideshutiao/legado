@@ -32,10 +32,20 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.action_save
+import legado.shared.generated.resources.copy_rule
+import legado.shared.generated.resources.dict_rule
+import legado.shared.generated.resources.dict_rule_edit_copy_success
+import legado.shared.generated.resources.dict_rule_edit_name
+import legado.shared.generated.resources.dict_rule_edit_show_rule
+import legado.shared.generated.resources.dict_rule_edit_url_rule
+import legado.shared.generated.resources.ic_save
+import legado.shared.generated.resources.paste_rule
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 字典规则编辑对话框 (KMP 共享, app + desktop 复用)。
@@ -78,14 +88,14 @@ fun DictRuleEditDialog(
 ) {
     val colors = AppTheme.colors
     // 所有字符串一次性在 @Composable 主体内 rememberString, 避免 onClick 中误用 @Composable
-    val titleText = rememberString("dict_rule")
-    val nameLabelText = rememberString("dict_rule_edit_name")
-    val urlRuleLabelText = rememberString("dict_rule_edit_url_rule")
-    val showRuleLabelText = rememberString("dict_rule_edit_show_rule")
-    val saveDescText = rememberString("action_save")
-    val copyRuleText = rememberString("copy_rule")
-    val pasteRuleText = rememberString("paste_rule")
-    val copySuccessText = rememberString("dict_rule_edit_copy_success")
+    val titleText = stringResource(Res.string.dict_rule)
+    val nameLabelText = stringResource(Res.string.dict_rule_edit_name)
+    val urlRuleLabelText = stringResource(Res.string.dict_rule_edit_url_rule)
+    val showRuleLabelText = stringResource(Res.string.dict_rule_edit_show_rule)
+    val saveDescText = stringResource(Res.string.action_save)
+    val copyRuleText = stringResource(Res.string.copy_rule)
+    val pasteRuleText = stringResource(Res.string.paste_rule)
+    val copySuccessText = stringResource(Res.string.dict_rule_edit_copy_success)
 
     // 构造 Shared VM (委托 save/copyRule/pasteRule 业务逻辑, 与 app 端 ViewModel 内部持有 shared 模式对齐)
     val scope = rememberCoroutineScope()
@@ -146,7 +156,7 @@ fun DictRuleEditDialog(
                 actions = {
                     IconButton(onClick = { save() }) {
                         Icon(
-                            painter = rememberPainter("ic_save"),
+                            painter = painterResource(Res.drawable.ic_save),
                             contentDescription = saveDescText,
                             tint = DesignTokens.arcoBlue6,
                         )

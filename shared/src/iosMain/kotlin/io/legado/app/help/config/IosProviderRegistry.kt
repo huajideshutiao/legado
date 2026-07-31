@@ -41,6 +41,8 @@ import io.legado.app.model.registerIosAudioPlayCommanders
 import io.legado.app.model.registerNativeCacheBookCallback
 import io.legado.app.model.script.registerIosJsEngines
 import io.legado.app.model.webBook.registerNativeWebBookProviders
+import io.legado.app.ui.book.changesource.registerIosChangeBookSourcePlatform
+import io.legado.app.ui.book.manage.registerIosBookshelfManagePlatform
 import io.legado.app.ui.compose.platform.IosPreferenceStoreProvider
 import io.legado.app.web.registerNativeWebServerPlatform
 import io.legado.app.web.utils.registerNativeWebAssetSource
@@ -238,6 +240,10 @@ fun registerIosProviders() {
     registerIosServiceLauncher()
     // 音频播控 Commander (IosAudioPlayCommander, 与 ServiceLauncher 同级的播放编排入口)
     registerIosAudioPlayCommanders()
+    // 换源平台 provider (commonMain ChangeBookSourceViewModelShared 调用, 须在 WebBookProviders 之后)
+    registerIosChangeBookSourcePlatform()
+    // 书架管理平台 provider (commonMain BookshelfManageViewModelShared 调用, 须在 WebBookProviders 之后)
+    registerIosBookshelfManagePlatform()
 
     // 10. Web 服务 provider (WebAssetSource + WebStrings + WebServerPlatform, iOS/鸿蒙共用 Ktor server 壳)
     // 仅注册平台实现, 不启动服务 (WebServerManager.start 由用户操作触发)

@@ -25,11 +25,11 @@ import io.legado.app.ui.book.changesource.ChangeSourceUiActions
 import io.legado.app.ui.book.changesource.ChangeSourceUiEvent
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
+import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.widget.dialog.WaitDialog
@@ -37,7 +37,21 @@ import io.legado.app.utils.eventObservable
 import io.legado.app.utils.throttleLatest
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.book_type_different
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.change_source_progress
+import legado.shared.generated.resources.draw
+import legado.shared.generated.resources.load_toc
+import legado.shared.generated.resources.no
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.search_result_empty
+import legado.shared.generated.resources.soure_change_source
+import legado.shared.generated.resources.sure_del
+import legado.shared.generated.resources.yes
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 整书换源 shared 路由入口。
@@ -84,7 +98,7 @@ fun ChangeSourceRoute(
     // endregion
 
     // 预取格式化串 (rememberString 是 @Composable, 不能在 lambda 里调)
-    val progressFormat = rememberString("change_source_progress")
+    val progressFormat = stringResource(Res.string.change_source_progress)
 
     // region LaunchedEffect: 初始化 + 桥接 Flow
 
@@ -163,6 +177,13 @@ fun ChangeSourceRoute(
     DisposableEffect(Unit) {
         onDispose {
             viewModel.searchFinishCallback = null
+        }
+    }
+
+    // 书源编辑返回: 刷新源列表
+    LaunchedEffect(Unit) {
+        navigator.resultsFor(entry.id).filter { it.key == RouteResults.BOOK_SOURCE_EDIT }.collect {
+            viewModel.startRefreshList()
         }
     }
     // endregion
@@ -301,7 +322,7 @@ fun ChangeSourceRoute(
         }
 
         override fun onEdit(book: SearchBook) {
-            navigator.push(AppRoute.BookSourceEdit(book.origin))
+            navigator.push(AppRoute.BookSourceEdit(book.origin), RouteResults.BOOK_SOURCE_EDIT)
         }
 
         override fun onDisable(book: SearchBook) {
@@ -349,7 +370,7 @@ fun ChangeSourceRoute(
     // WaitDialog: 切源加载目录 (对照 app 端 waitDialog + load_toc)
     WaitDialog(
         visible = showWaitDialog,
-        message = rememberString("load_toc"),
+        message = stringResource(Res.string.load_toc),
         onDismissRequest = {
             // 对照 app 端 waitDialog.onCancelListener = { coroutine.cancel() }
             showWaitDialog = false
@@ -362,10 +383,10 @@ fun ChangeSourceRoute(
     if (showEmptyGroupAlert) {
         AppAlertDialog(
             onDismissRequest = { showEmptyGroupAlert = false },
-            title = rememberString("search_result_empty"),
+            title = stringResource(Res.string.search_result_empty),
             message = "${platform.searchGroup}分组搜索结果为空,是否切换到全部分组",
-            cancelButton = AlertButton(rememberString("cancel")) { },
-            okButton = AlertButton(rememberString("ok")) {
+            cancelButton = AlertButton(stringResource(Res.string.cancel)) { },
+            okButton = AlertButton(stringResource(Res.string.ok)) {
                 platform.searchGroup = ""
                 screenModel.dispatch(ChangeSourceUiEvent.SearchGroupChanged(""))
                 viewModel.startSearch()
@@ -380,10 +401,10 @@ fun ChangeSourceRoute(
                 showBookTypeDifferentAlert = false
                 pendingChangeBook = null
             },
-            title = rememberString("book_type_different"),
-            message = rememberString("soure_change_source"),
-            cancelButton = AlertButton(rememberString("cancel")) { },
-            okButton = AlertButton(rememberString("ok")) {
+            title = stringResource(Res.string.book_type_different),
+            message = stringResource(Res.string.soure_change_source),
+            cancelButton = AlertButton(stringResource(Res.string.cancel)) { },
+            okButton = AlertButton(stringResource(Res.string.ok)) {
                 pendingChangeBook?.let { changeSource(it) }
             },
         )
@@ -396,10 +417,11 @@ fun ChangeSourceRoute(
                 showDeleteConfirmAlert = false
                 pendingDeleteBook = null
             },
-            title = rememberString("draw"),
-            message = rememberString("sure_del") + "\n" + (pendingDeleteBook?.originName ?: ""),
-            cancelButton = AlertButton(rememberString("no")) { },
-            okButton = AlertButton(rememberString("yes")) {
+            title = stringResource(Res.string.draw),
+            message = stringResource(Res.string.sure_del) + "\n" + (pendingDeleteBook?.originName
+                ?: ""),
+            cancelButton = AlertButton(stringResource(Res.string.no)) { },
+            okButton = AlertButton(stringResource(Res.string.yes)) {
                 pendingDeleteBook?.let { deleteSource(it) }
             },
         )

@@ -13,6 +13,11 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.platform.rememberString
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.deep_link_type_not_supported
+import legado.shared.generated.resources.import_complete
+import legado.shared.generated.resources.wrong_format
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * legado:// deep link 导入宿主 (iOS/鸿蒙共用, 对照 desktop `DesktopDeepLinkImportHost`,
@@ -39,7 +44,7 @@ fun DeepLinkImportHost() {
         DeepLinkImportContent(req, onImported = { importedCount = it })
     }
     importedCount?.let { count ->
-        val importCompleteText = rememberString("import_complete", count)
+        val importCompleteText = stringResource(Res.string.import_complete, count)
         LaunchedEffect(count) {
             Toasters.get().toast(importCompleteText)
             importedCount = null
@@ -59,7 +64,8 @@ private fun DeepLinkImportContent(
 
     if (target == null) {
         // ADD_TO_BOOKSHELF / READ_CONFIG / UNKNOWN: 依赖未下沉 (详见 DeepLinkImportTarget KDoc)
-        val notSupportedText = rememberString("deep_link_type_not_supported", req.type.name)
+        val notSupportedText =
+            stringResource(Res.string.deep_link_type_not_supported, req.type.name)
         LaunchedEffect(req) {
             Toasters.get().toast(notSupportedText)
             AppLog.put("legado:// 导入类型暂未支持: type=${req.type} src=${req.src}")
@@ -69,7 +75,7 @@ private fun DeepLinkImportContent(
     }
 
     var showDialog by remember(req) { mutableStateOf(false) }
-    val wrongFormatText = rememberString("wrong_format")
+    val wrongFormatText = stringResource(Res.string.wrong_format)
 
     // 触发下载 → 解析 → 与本地库比对; 解析成功弹勾选对话框, 无结果/出错则 toast 后消费
     LaunchedEffect(target) {

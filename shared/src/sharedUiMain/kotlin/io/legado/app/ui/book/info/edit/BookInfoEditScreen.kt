@@ -35,9 +35,24 @@ import io.legado.app.ui.compose.component.AppOutlinedButton
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.platform.rememberStringArray
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.action_save
+import legado.shared.generated.resources.author
+import legado.shared.generated.resources.book_info_edit
+import legado.shared.generated.resources.book_intro
+import legado.shared.generated.resources.book_name
+import legado.shared.generated.resources.book_type
+import legado.shared.generated.resources.book_url
+import legado.shared.generated.resources.change_cover_source
+import legado.shared.generated.resources.cover_path
+import legado.shared.generated.resources.ic_arrow_drop_down
+import legado.shared.generated.resources.ic_save
+import legado.shared.generated.resources.refresh_cover
+import legado.shared.generated.resources.select_local_image
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringArrayResource
+import org.jetbrains.compose.resources.stringResource
 
 // ===== state / actions =====
 
@@ -106,8 +121,8 @@ interface BookInfoEditUiActions {
  * - [BookInfoEditScreen]: 纯 Composable 渲染入口, 仅依赖 state + actions + coverSlot
  *
  * 下沉改动:
- * - 字符串资源 `stringResource(R.string.xxx)` → `rememberString("xxx")` (key-based, 跨平台)
- * - 字符串数组 `stringArrayResource(R.array.book_type)` → `rememberStringArray("book_type")`
+ * - 字符串资源 `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)` (key-based, 跨平台)
+ * - 字符串数组 `stringArrayResource(R.array.book_type)` → `stringArrayResource(Res.array.book_type)`
  * - 图标资源 `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")` (key-based, 跨平台)
  * - 平台依赖 (HandleFileContract / ChangeCoverDialog / FileUtils / MD5Utils 等)
  *   通过 [BookInfoEditUiActions] 回调桥接, 选图与换源弹窗仍由 app 端 Activity 持有
@@ -132,13 +147,13 @@ fun BookInfoEditScreen(
             .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime)),
     ) {
         AppTitleBar(
-            title = rememberString("book_info_edit"),
+            title = stringResource(Res.string.book_info_edit),
             onBack = { actions.onBack() },
             actions = {
                 IconButton(onClick = { actions.onSave() }) {
                     Icon(
-                        painter = rememberPainter("ic_save"),
-                        contentDescription = rememberString("action_save"),
+                        painter = painterResource(Res.drawable.ic_save),
+                        contentDescription = stringResource(Res.string.action_save),
                         tint = AppTheme.colors.primaryText,
                     )
                 }
@@ -154,14 +169,14 @@ fun BookInfoEditScreen(
                 AppOutlinedTextField(
                     value = state.name,
                     onValueChange = { actions.onNameChange(it) },
-                    label = rememberString("book_name"),
+                    label = stringResource(Res.string.book_name),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 AppOutlinedTextField(
                     value = state.author,
                     onValueChange = { actions.onAuthorChange(it) },
-                    label = rememberString("author"),
+                    label = stringResource(Res.string.author),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -176,29 +191,29 @@ fun BookInfoEditScreen(
             AppOutlinedTextField(
                 value = state.coverUrl,
                 onValueChange = { actions.onCoverUrlChange(it) },
-                label = rememberString("cover_path"),
+                label = stringResource(Res.string.cover_path),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 4.dp),
             )
             Row(Modifier.padding(horizontal = 4.dp)) {
-                AppOutlinedButton(rememberString("select_local_image")) {
+                AppOutlinedButton(stringResource(Res.string.select_local_image)) {
                     actions.onSelectCover()
                 }
                 AppOutlinedButton(
-                    rememberString("change_cover_source"),
+                    stringResource(Res.string.change_cover_source),
                     modifier = Modifier.padding(horizontal = 12.dp),
                 ) {
                     actions.onChangeCoverSource()
                 }
-                AppOutlinedButton(rememberString("refresh_cover")) {
+                AppOutlinedButton(stringResource(Res.string.refresh_cover)) {
                     actions.onRefreshCover()
                 }
             }
             AppOutlinedTextField(
                 value = state.intro,
                 onValueChange = { actions.onIntroChange(it) },
-                label = rememberString("book_intro"),
+                label = stringResource(Res.string.book_intro),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 4.dp),
@@ -206,7 +221,7 @@ fun BookInfoEditScreen(
             AppOutlinedTextField(
                 value = state.bookUrl,
                 onValueChange = { actions.onBookUrlChange(it) },
-                label = rememberString("book_url"),
+                label = stringResource(Res.string.book_url),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -224,14 +239,14 @@ private fun TypeSelector(
     state: BookInfoEditUiState,
     actions: BookInfoEditUiActions,
 ) {
-    val types = rememberStringArray("book_type")
+    val types = stringArrayResource(Res.array.book_type)
     var expanded by remember { mutableStateOf(false) }
     Row(
         Modifier.padding(start = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            rememberString("book_type"),
+            stringResource(Res.string.book_type),
             color = AppTheme.colors.primaryText,
             fontSize = 14.sp,
         )
@@ -248,7 +263,7 @@ private fun TypeSelector(
                     fontSize = 14.sp,
                 )
                 Icon(
-                    rememberPainter("ic_arrow_drop_down"),
+                    painterResource(Res.drawable.ic_arrow_drop_down),
                     null,
                     tint = AppTheme.colors.secondaryText,
                     modifier = Modifier.size(24.dp),

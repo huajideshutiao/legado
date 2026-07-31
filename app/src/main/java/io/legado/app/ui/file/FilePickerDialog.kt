@@ -42,6 +42,7 @@ import io.legado.app.ui.file.HandleFileContract.Companion.FILE
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.toastOnUi
 import java.io.File
+import org.jetbrains.compose.resources.stringResource
 
 class FilePickerDialog : BaseComposeDialogFragment() {
 

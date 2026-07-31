@@ -7,7 +7,6 @@ import org.gradle.api.Project
 import org.gradle.kotlin.dsl.configure
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension
-import org.jetbrains.kotlin.gradle.dsl.KotlinBaseExtension
 
 class AndroidApplicationConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) = with(target) {
@@ -16,8 +15,8 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
         // Retain kotlin-android only until the AGP version upgrade; AGP 9 will remove this line.
         pluginManager.apply("org.jetbrains.kotlin.android")
 
-        extensions.findByType(KotlinBaseExtension::class.java)?.jvmToolchain(17)
         extensions.findByType(KotlinAndroidProjectExtension::class.java)?.apply {
+            jvmToolchain(17)
             compilerOptions.jvmTarget.set(JvmTarget.JVM_17)
         }
 

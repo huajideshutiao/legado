@@ -50,3 +50,9 @@ expect fun prevDayKey(dayKey: Int): Int
  * @see io.legado.app.help.storage.RestoreShared
  */
 expect fun midnightSecFromDayKey(dayKey: Int): Long
+
+/**
+ * 将 epoch 毫秒格式化为本地时区 HH:mm (漫画信息条用)。
+ * JVM 半区用 java.util.Calendar 本地时区; native 半区按 UTC 简化 (与 yearMonthDayFromMillis 一致)。
+ */
+expect fun formatTimeOfDay(epochMillis: Long): String

@@ -30,11 +30,15 @@ import androidx.compose.ui.window.DialogProperties
 import io.legado.app.data.entities.Server
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.KS_JSON
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.action_save
+import legado.shared.generated.resources.ic_save
+import legado.shared.generated.resources.name
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 服务器配置编辑对话框 (KMP 共享, app/desktop/iOS 复用)。
@@ -116,8 +120,8 @@ fun ServerConfigDialog(
                     actions = {
                         IconButton(onClick = { onSave(getServer()) }) {
                             Icon(
-                                painter = rememberPainter("ic_save"),
-                                contentDescription = rememberString("action_save"),
+                                painter = painterResource(Res.drawable.ic_save),
+                                contentDescription = stringResource(Res.string.action_save),
                                 tint = colors.primaryText,
                             )
                         }
@@ -132,7 +136,7 @@ fun ServerConfigDialog(
                     AppOutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
-                        label = rememberString("name"),
+                        label = stringResource(Res.string.name),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )

@@ -1,20 +1,14 @@
-// I18N KEYS (均已存在 jvmMain ResourceProvider):
-// - change_cover_source: "更换封面源" (标题)
-// - stop: "停止" (搜索中按钮 contentDescription)
-// - refresh: "刷新" (非搜索中按钮 contentDescription)
-//
-// PAINTER KEYS (均已存在 jvmMain ResourceProvider):
-// - ic_stop_black_24dp: 停止搜索图标
-// - ic_refresh_black_24dp: 刷新/开始搜索图标
-
 package io.legado.app.ui.book.changecover
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -39,11 +33,17 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.throttleLatest
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.change_cover_source
+import legado.shared.generated.resources.ic_refresh_black_24dp
+import legado.shared.generated.resources.ic_stop_black_24dp
+import legado.shared.generated.resources.refresh
+import legado.shared.generated.resources.stop
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 换封面搜索对话框 (KMP 共享, app + desktop 复用)。
@@ -75,19 +75,18 @@ import io.legado.app.utils.throttleLatest
  *   下沉版用 `LaunchedEffect + collect` 收集 [ChangeCoverViewModelShared.searchState] (StateFlow)。
  * - **AndroidView → coverSlot**: 原版 `CoverItem` 内嵌 `AndroidView { CoverImageView }`;
  *   下沉版改为 [coverSlot] 注入, 解耦平台专属封面渲染。
- * - **stringResource → rememberString / painterResource → rememberPainter**:
- *   KMP 资源访问走 `ResourceProvider` (commonMain expect + 各平台 actual)。
- * - **isFullHeight**: 原版 `isFullHeight = true` 让 Dialog 全屏; 下沉版用
- *   `DialogProperties(usePlatformDefaultWidth = false)` + `Modifier.fillMaxSize()` (Dialog 内部 Column)
- *   让 Dialog 内容自适应窗口 (与 SpeakEngineDialog 模式一致, 不强制全屏, 桌面端更合理)。
+ * - **资源访问**: 走 compose-resources (`Res.string` / `Res.drawable`)。
+ * - **窗口尺寸**: 对齐原 `BaseComposeDialogFragment` 的全高模式：0.9 窗口宽、最大 800dp、
+ *   0.8 窗口高；不是铺满整个窗口。
  *
  * # 样式 (Arco Design 规范)
  *
  * - 圆角 arco_radius_lg = 16dp: Dialog Surface 圆角 (与 SpeakEngineDialog 一致)
  * - 无阴影 (Surface 默认无阴影)
  * - 标题栏用 [DialogTitleBar] (复用 shared 组件)
- * - 进度条 LinearProgressIndicator 高 2dp (对照 app 端原实现)
- * - 网格 LazyVerticalGrid(GridCells.Fixed(3)) (对照 app 端原实现)
+ * - 进度条高 2dp, 非搜索态留同高占位 (对照原 RefreshProgressBar 常驻不跳变)
+ * - 网格 LazyVerticalGrid(GridCells.Fixed(3)) (对照原 GridLayoutManager(3))
+ * - 条目对照 item_bookshelf_grid.xml: 封面 12dp 外边距 + 3:4, 源名 8dp 上边距 / 12sp / 2 行
  *
  * @param viewModel 换封面 ViewModel 共享核心 (调用方持有, 已 initData)
  * @param onCoverSelected 用户点击搜索结果回调 (参数为 item.coverUrl, 可能为 "use_default_cover")
@@ -126,29 +125,31 @@ fun ChangeCoverDialog(
         Surface(
             shape = DesignTokens.dialogShape,
             color = colors.background,
-            // 原版 isFullHeight=true 全屏; 下沉版用 fillMaxSize 让 Dialog 内容自适应窗口
-            // (桌面端非全屏更合理, 与 SpeakEngineDialog 模式一致)
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .widthIn(max = 800.dp)
+                .fillMaxHeight(0.8f),
         ) {
             Column(Modifier.fillMaxSize()) {
                 DialogTitleBar(
-                    title = rememberString("change_cover_source"),
+                    title = stringResource(Res.string.change_cover_source),
                     onBack = onDismiss,
                 ) {
-                    // 启停搜索按钮 (对照原 IconButton + startOrStopSearch)
+                    // 启停搜索按钮 (对照原 menu_start_stop + startOrStopSearch)
                     IconButton(onClick = { viewModel.startOrStopSearch() }) {
                         Icon(
-                            painter = rememberPainter(
-                                if (searching) "ic_stop_black_24dp" else "ic_refresh_black_24dp"
+                            painter = painterResource(
+                                if (searching) Res.drawable.ic_stop_black_24dp
+                                else Res.drawable.ic_refresh_black_24dp
                             ),
-                            contentDescription = rememberString(
-                                if (searching) "stop" else "refresh"
+                            contentDescription = stringResource(
+                                if (searching) Res.string.stop else Res.string.refresh
                             ),
                             tint = colors.primaryText,
                         )
                     }
                 }
-                // 搜索中显示进度条 (对照原 LinearProgressIndicator, 高 2dp)
+                // 搜索中显示进度条 (对照原 RefreshProgressBar, 高 2dp; 非搜索中占位保持高度不跳变)
                 if (searching) {
                     LinearProgressIndicator(
                         color = colors.accent,
@@ -157,6 +158,8 @@ fun ChangeCoverDialog(
                             .fillMaxWidth()
                             .height(2.dp),
                     )
+                } else {
+                    Spacer(Modifier.fillMaxWidth().height(2.dp))
                 }
                 // 搜索结果网格 (对照原 LazyVerticalGrid(GridCells.Fixed(3)))
                 LazyVerticalGrid(
@@ -167,9 +170,8 @@ fun ChangeCoverDialog(
                 ) {
                     items(items, key = { it.bookUrl }) { item ->
                         CoverItem(item, coverSlot = coverSlot) {
-                            // 点击 item: 回调 coverUrl + 关闭 Dialog (对照原 callBack.coverChangeTo + dismiss)
+                            // 由回调携带结果并关闭 Overlay，避免结果关闭后再次 dismiss 同一实例
                             onCoverSelected(item.coverUrl ?: "")
-                            onDismiss()
                         }
                     }
                 }
@@ -179,18 +181,17 @@ fun ChangeCoverDialog(
 }
 
 /**
- * 单个封面项: 封面图 + 源名 (对照原 CoverItem)。
+ * 单个封面项 (对照原 CoverAdapter + item_bookshelf_grid.xml)。
  *
- * - Column(fillMaxWidth + padding(4.dp) + clickable)
- *   - [coverSlot] (fillMaxWidth + aspectRatio(0.66f)): 封面渲染槽, 由调用方注入
- *   - Text(originName, 12.sp, maxLines=2, ellipsis, center, padding(top=8.dp)): 源名
+ * 布局: 封面 (arco_spacing_md=12dp 外边距, 3:4 小说比例) + 源名
+ * (arco_spacing_default=8dp 上边距, 12sp, 居中, 最多 2 行省略)。
  *
  * 与原版差异: 原版用 `AndroidView { CoverImageView }` 渲染封面, 下沉版改为 [coverSlot] 注入,
- * 解耦平台专属封面渲染 (app 端 CoverImageView + Glide / 桌面端 DesktopBookCover + ImageIO)。
+ * 解耦平台专属封面渲染 (app 端 CoverImageView / 桌面端 DesktopBookCover)。
  *
  * @param item 搜索结果 (含 coverUrl / name / author / originName)
  * @param coverSlot 封面渲染槽 (由上层 ChangeCoverDialog 透传)
- * @param onClick 点击回调 (上层调 onCoverSelected + onDismiss)
+ * @param onClick 点击回调 (上层调 onCoverSelected)
  */
 @Composable
 private fun CoverItem(
@@ -201,17 +202,17 @@ private fun CoverItem(
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(4.dp)
             .clickable(onClick = onClick)
     ) {
-        // 封面渲染槽 (对照原 AndroidView + CoverImageView, fillMaxWidth + aspectRatio(0.66f))
+        // 封面: 对照 item_bookshelf_grid.xml 的 layout_margin=arco_spacing_md(12dp) + CoverImageView 3:4
         coverSlot(
             item,
             Modifier
                 .fillMaxWidth()
-                .aspectRatio(0.66f)
+                .padding(12.dp)
+                .aspectRatio(3f / 4f)
         )
-        // 源名 (对照原 Text, 12.sp, maxLines=2, ellipsis, center, padding(top=8.dp))
+        // 源名: 对照 tv_name (marginTop=arco_spacing_default(8dp), 12sp, maxLines=2, 居中省略)
         Text(
             text = item.originName,
             color = AppTheme.colors.primaryText,
@@ -221,7 +222,8 @@ private fun CoverItem(
             textAlign = TextAlign.Center,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 8.dp)
+                .padding(horizontal = 12.dp)
+                .padding(top = 8.dp, bottom = 12.dp)
         )
     }
 }

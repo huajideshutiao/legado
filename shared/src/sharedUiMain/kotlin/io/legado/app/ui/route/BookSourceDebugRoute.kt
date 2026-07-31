@@ -13,13 +13,26 @@ import io.legado.app.ui.book.source.debug.BookSourceDebugScreenModel
 import io.legado.app.ui.book.source.debug.BookSourceDebugUiActions
 import io.legado.app.ui.book.source.debug.BookSourceDebugUiEvent
 import io.legado.app.ui.compose.component.AppSelectorDialog
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.widget.dialog.HelpDialog
 import io.legado.app.ui.widget.dialog.TextDialog
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.book_src
+import legado.shared.generated.resources.content_src
+import legado.shared.generated.resources.debug_explore_error
+import legado.shared.generated.resources.debug_explore_json_error
+import legado.shared.generated.resources.debug_fx_default
+import legado.shared.generated.resources.my
+import legado.shared.generated.resources.no_source_found
+import legado.shared.generated.resources.review_src
+import legado.shared.generated.resources.search_src
+import legado.shared.generated.resources.select_explore
+import legado.shared.generated.resources.system
+import legado.shared.generated.resources.toc_src
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * AppRoute.BookSourceDebug 路由下沉入口: 桥接 [BookSourceDebugScreenModel] 状态与 [BookSourceDebugScreen] 渲染。
@@ -37,21 +50,21 @@ fun BookSourceDebugRoute(
     val sourceUrl = route.sourceUrl
 
     // ScreenModel 构造所需平台字符串 (对齐 app 端 R.string 注入)
-    val defaultTextMy = rememberString("my")
-    val defaultTextFx = rememberString("debug_fx_default")
-    val systemText = rememberString("system")
-    val exploreErrorTemplate = rememberString("debug_explore_error")
-    val exploreJsonErrorTemplate = rememberString("debug_explore_json_error")
+    val defaultTextMy = stringResource(Res.string.my)
+    val defaultTextFx = stringResource(Res.string.debug_fx_default)
+    val systemText = stringResource(Res.string.system)
+    val exploreErrorTemplate = stringResource(Res.string.debug_explore_error)
+    val exploreJsonErrorTemplate = stringResource(Res.string.debug_explore_json_error)
 
     // 对话框标题文案 (对照 app 端 DebugActions 菜单项)
-    val strSelectExplore = rememberString("select_explore")
-    val strSearchSrc = rememberString("search_src")
-    val strBookSrc = rememberString("book_src")
-    val strTocSrc = rememberString("toc_src")
-    val strContentSrc = rememberString("content_src")
-    val strReviewSrc = rememberString("review_src")
+    val strSelectExplore = stringResource(Res.string.select_explore)
+    val strSearchSrc = stringResource(Res.string.search_src)
+    val strBookSrc = stringResource(Res.string.book_src)
+    val strTocSrc = stringResource(Res.string.toc_src)
+    val strContentSrc = stringResource(Res.string.content_src)
+    val strReviewSrc = stringResource(Res.string.review_src)
     // 调试失败提示 (对照 app 端 toastOnUi(R.string.no_source_found))
-    val noSourceFoundText = rememberString("no_source_found")
+    val noSourceFoundText = stringResource(Res.string.no_source_found)
 
     val screenModel = screenModelStore.getOrCreateTyped(entry) {
         BookSourceDebugScreenModel(

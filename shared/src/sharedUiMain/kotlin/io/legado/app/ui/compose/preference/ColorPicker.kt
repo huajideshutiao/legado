@@ -43,12 +43,16 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialogContent
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ColorUtils
 import androidx.compose.foundation.lazy.LazyListScope
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.ic_check
+import legado.shared.generated.resources.ok
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 取色项：行尾颜色格子（复刻 cpv 预览方块），点击进自绘取色盘。复刻 ColorPreference。
@@ -166,10 +170,12 @@ fun ColorPickerDialogContent(
     AppAlertDialogContent(
         onDismissRequest = onDismissRequest,
         title = title,
-        // 替代 stringResource(R.string.ok): commonMain 走 rememberString("ok")
-        okButton = AlertButton(text = rememberString("ok"), onClick = { onConfirm(current()) }),
-        // 替代 stringResource(R.string.cancel): commonMain 走 rememberString("cancel")
-        cancelButton = AlertButton(text = rememberString("cancel")),
+        // 替代 stringResource(R.string.ok): commonMain 走 stringResource(Res.string.ok)
+        okButton = AlertButton(
+            text = stringResource(Res.string.ok),
+            onClick = { onConfirm(current()) }),
+        // 替代 stringResource(R.string.cancel): commonMain 走 stringResource(Res.string.cancel)
+        cancelButton = AlertButton(text = stringResource(Res.string.cancel)),
     ) {
         Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
             // SV 面板
@@ -266,8 +272,8 @@ fun ColorPickerDialogContent(
                     ) {
                         if (selected) {
                             Icon(
-                                // 替代 painterResource(R.drawable.ic_check): commonMain 走 rememberPainter("ic_check")
-                                painter = rememberPainter("ic_check"),
+                                // 替代 painterResource(R.drawable.ic_check): commonMain 走 painterResource(Res.drawable.ic_check)
+                                painter = painterResource(Res.drawable.ic_check),
                                 contentDescription = null,
                                 tint = if (ColorUtils.isColorLight(preset)) Color.Black else Color.White,
                                 modifier = Modifier.size(18.dp),

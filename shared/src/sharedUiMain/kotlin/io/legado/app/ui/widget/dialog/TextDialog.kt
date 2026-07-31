@@ -20,9 +20,14 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.copy
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.text_too_large
+import org.jetbrains.compose.resources.stringResource
 
 /** 超长文本截断阈值, 对齐 app 端原 TextDialog 的 32KB 上限。 */
 private const val MAX_TEXT_LENGTH = 32 * 1024
@@ -56,10 +61,10 @@ fun TextDialog(
     onNeutral: (() -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
-    val okText = rememberString("ok")
-    val cancelText = rememberString("cancel")
-    val copyText = rememberString("copy")
-    val tooLargeText = rememberString("text_too_large")
+    val okText = stringResource(Res.string.ok)
+    val cancelText = stringResource(Res.string.cancel)
+    val copyText = stringResource(Res.string.copy)
+    val tooLargeText = stringResource(Res.string.text_too_large)
     val clipboard = LocalClipboardManager.current
 
     AlertDialog(

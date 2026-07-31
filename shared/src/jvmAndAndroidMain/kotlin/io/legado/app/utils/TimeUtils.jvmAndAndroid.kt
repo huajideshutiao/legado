@@ -47,3 +47,12 @@ actual fun midnightSecFromDayKey(dayKey: Int): Long {
     cal.set(dayKey / 10000, (dayKey / 100) % 100 - 1, dayKey % 100)
     return cal.timeInMillis / 1000
 }
+
+/**
+ * 漫画信息条 HH:mm: 用 java.util.Calendar 本地时区读取 HOUR_OF_DAY/MINUTE。
+ */
+actual fun formatTimeOfDay(epochMillis: Long): String {
+    val cal = Calendar.getInstance()
+    cal.timeInMillis = epochMillis
+    return "%02d:%02d".format(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
+}

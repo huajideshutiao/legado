@@ -50,6 +50,8 @@ import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 点击区域设置：全屏 3x3 半透明网格，点击各格弹动作选择。
@@ -165,10 +167,14 @@ class ClickActionConfigDialog : DialogFragment() {
         )
         val states = remember { values.map { mutableIntStateOf(it) } }
 
-        Box(Modifier.fillMaxSize().background(translucent)) {
+        Box(Modifier
+            .fillMaxSize()
+            .background(translucent)) {
             Column(Modifier.fillMaxSize()) {
                 repeat(3) { row ->
-                    Row(Modifier.fillMaxWidth().weight(1f)) {
+                    Row(Modifier
+                        .fillMaxWidth()
+                        .weight(1f)) {
                         repeat(3) { col ->
                             val index = row * 3 + col
                             var value by states[index]

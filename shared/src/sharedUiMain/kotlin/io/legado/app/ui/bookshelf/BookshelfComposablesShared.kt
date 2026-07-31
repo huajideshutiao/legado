@@ -67,6 +67,12 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.toTimeAgo
 import kotlinx.coroutines.delay
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.bookshelf_empty
+import legado.shared.generated.resources.ic_search
+import legado.shared.generated.resources.search
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 书架共享组件 (KMP 版, 替代 app 端 `BookshelfComposables.kt` 中除 ShelfCover 外的所有组件)。
@@ -76,7 +82,7 @@ import kotlinx.coroutines.delay
  * - **包名**: 保持与 app 端原包名一致 `io.legado.app.ui.bookshelf`
  *   (app 端原 `io.legado.app.ui.main.bookshelf` 包内的 BookshelfScreen1/2 等调用方
  *   仅需改 import 路径为 `io.legado.app.ui.bookshelf` 即可复用)
- * - **资源访问**: `stringResource(R.string.xxx)` → `rememberString("xxx")`;
+ * - **资源访问**: `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)`;
  *   `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")` (key-based, 跨平台)
  * - **Android API 替换**:
  *   - `LocalContext` → 删除, 改用回调注入
@@ -366,7 +372,7 @@ fun ShelfBooksContent(
         }
         if (items.isEmpty()) {
             Text(
-                text = rememberString("bookshelf_empty"),
+                text = stringResource(Res.string.bookshelf_empty),
                 color = colors.secondaryText,
                 fontSize = 14.sp,
                 modifier = Modifier.align(Alignment.Center),
@@ -432,8 +438,8 @@ fun BookshelfActions(callbacks: BookshelfActionsCallbacks) {
     val colors = AppTheme.colors
     IconButton(onClick = callbacks.onOpenSearch) {
         Icon(
-            painter = rememberPainter("ic_search"),
-            contentDescription = rememberString("search"),
+            painter = painterResource(Res.drawable.ic_search),
+            contentDescription = stringResource(Res.string.search),
             tint = colors.primaryText,
         )
     }

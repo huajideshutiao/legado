@@ -3,10 +3,13 @@ package io.legado.app.ui.book.read.config
 import androidx.compose.runtime.Composable
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.compose.component.AppSelectorDialog
-import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.platform.rememberStringArray
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.TransType
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.chinese_converter
+import legado.shared.generated.resources.chinese_mode
+import org.jetbrains.compose.resources.stringArrayResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 跨平台"简繁转换"选择器对话框（对照 app 端 `ChineseUtils.showConverterSelector`）。
@@ -39,11 +42,11 @@ fun ChineseConverterSelectorDialog(
     onDismiss: () -> Unit,
 ) {
     // 与 app 端 values-zh/arrays.xml chinese_mode 对齐
-    val modes = rememberStringArray("chinese_mode").ifEmpty {
+    val modes = stringArrayResource(Res.array.chinese_mode).ifEmpty {
         listOf("关闭", "繁体转简体", "简体转繁体")
     }
     // 与 app 端 values-zh/strings.xml chinese_converter 对齐
-    val title = rememberString("chinese_converter").let {
+    val title = stringResource(Res.string.chinese_converter).let {
         if (it == "chinese_converter") "繁简转换" else it
     }
     AppSelectorDialog(

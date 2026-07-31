@@ -18,9 +18,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.loading
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 加载等待对话框内容 (KMP 共享, app + desktop + iOS 复用)。
@@ -79,7 +81,7 @@ fun WaitDialogContent(
 @Composable
 fun WaitDialog(
     visible: Boolean,
-    message: String = rememberString("loading"),
+    message: String = stringResource(Res.string.loading),
     onDismissRequest: () -> Unit,
 ) {
     if (!visible) return

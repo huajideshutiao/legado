@@ -7,13 +7,36 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfigProviders
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.preference.PreferenceScreen
 import io.legado.app.ui.compose.preference.editTextPreference
 import io.legado.app.ui.compose.preference.preference
 import io.legado.app.ui.compose.preference.preferenceCategory
 import io.legado.app.ui.compose.preference.switchPreference
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.auto_check_new_backup_s
+import legado.shared.generated.resources.auto_check_new_backup_t
+import legado.shared.generated.resources.backup
+import legado.shared.generated.resources.backup_path
+import legado.shared.generated.resources.backup_restore
+import legado.shared.generated.resources.backup_summary
+import legado.shared.generated.resources.only_latest_backup_s
+import legado.shared.generated.resources.only_latest_backup_t
+import legado.shared.generated.resources.restore
+import legado.shared.generated.resources.restore_ignore
+import legado.shared.generated.resources.restore_ignore_summary
+import legado.shared.generated.resources.restore_summary
+import legado.shared.generated.resources.sub_dir
+import legado.shared.generated.resources.sync_book_progress_plus_s
+import legado.shared.generated.resources.sync_book_progress_plus_t
+import legado.shared.generated.resources.sync_book_progress_s
+import legado.shared.generated.resources.sync_book_progress_t
+import legado.shared.generated.resources.web_dav_account
+import legado.shared.generated.resources.web_dav_pw
+import legado.shared.generated.resources.web_dav_set
+import legado.shared.generated.resources.web_dav_url
+import legado.shared.generated.resources.webdav_device_name
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 备份设置页（迁 pref_config_backup.xml）。逐条对齐原条目顺序/key/默认值。
@@ -21,7 +44,7 @@ import io.legado.app.ui.compose.theme.AppTheme
  * 动态 summary 用 state 承接；备份/恢复动作（含长按本地备份/恢复）与文件选择/权限 launcher 逐字保留在宿主。
  *
  * 下沉 shared/sharedUiMain:
- * - stringResource(R.string.xxx) → rememberString("xxx")
+ * - stringResource(R.string.xxx) → stringResource(Res.string.xxx)
  * - AppConfig.syncBookProgress/webDavDir/webDavDeviceName → AppConfigProviders.get().xxx
  *   (AppConfigAccessor 接口已扩展 webDavDir/webDavDeviceName 字段, 各平台 actual 注入)
  * - 与 app 端原包名/类名一致, app/desktop 端共用。
@@ -48,28 +71,28 @@ fun BackupConfigScreen(
         mutableStateOf(AppConfigProviders.get().syncBookProgress)
     }
 
-    val titleWebDavSet = rememberString("web_dav_set")
-    val titleWebDavUrl = rememberString("web_dav_url")
-    val titleWebDavAccount = rememberString("web_dav_account")
-    val titleWebDavPw = rememberString("web_dav_pw")
-    val titleSubDir = rememberString("sub_dir")
-    val titleDeviceName = rememberString("webdav_device_name")
-    val titleSyncProgress = rememberString("sync_book_progress_t")
-    val summarySyncProgress = rememberString("sync_book_progress_s")
-    val titleSyncProgressPlus = rememberString("sync_book_progress_plus_t")
-    val summarySyncProgressPlus = rememberString("sync_book_progress_plus_s")
-    val titleBackupRestore = rememberString("backup_restore")
-    val titleBackupPath = rememberString("backup_path")
-    val titleBackup = rememberString("backup")
-    val summaryBackup = rememberString("backup_summary")
-    val titleRestore = rememberString("restore")
-    val summaryRestore = rememberString("restore_summary")
-    val titleRestoreIgnore = rememberString("restore_ignore")
-    val summaryRestoreIgnore = rememberString("restore_ignore_summary")
-    val titleOnlyLatest = rememberString("only_latest_backup_t")
-    val summaryOnlyLatest = rememberString("only_latest_backup_s")
-    val titleAutoCheckNewBackup = rememberString("auto_check_new_backup_t")
-    val summaryAutoCheckNewBackup = rememberString("auto_check_new_backup_s")
+    val titleWebDavSet = stringResource(Res.string.web_dav_set)
+    val titleWebDavUrl = stringResource(Res.string.web_dav_url)
+    val titleWebDavAccount = stringResource(Res.string.web_dav_account)
+    val titleWebDavPw = stringResource(Res.string.web_dav_pw)
+    val titleSubDir = stringResource(Res.string.sub_dir)
+    val titleDeviceName = stringResource(Res.string.webdav_device_name)
+    val titleSyncProgress = stringResource(Res.string.sync_book_progress_t)
+    val summarySyncProgress = stringResource(Res.string.sync_book_progress_s)
+    val titleSyncProgressPlus = stringResource(Res.string.sync_book_progress_plus_t)
+    val summarySyncProgressPlus = stringResource(Res.string.sync_book_progress_plus_s)
+    val titleBackupRestore = stringResource(Res.string.backup_restore)
+    val titleBackupPath = stringResource(Res.string.backup_path)
+    val titleBackup = stringResource(Res.string.backup)
+    val summaryBackup = stringResource(Res.string.backup_summary)
+    val titleRestore = stringResource(Res.string.restore)
+    val summaryRestore = stringResource(Res.string.restore_summary)
+    val titleRestoreIgnore = stringResource(Res.string.restore_ignore)
+    val summaryRestoreIgnore = stringResource(Res.string.restore_ignore_summary)
+    val titleOnlyLatest = stringResource(Res.string.only_latest_backup_t)
+    val summaryOnlyLatest = stringResource(Res.string.only_latest_backup_s)
+    val titleAutoCheckNewBackup = stringResource(Res.string.auto_check_new_backup_t)
+    val summaryAutoCheckNewBackup = stringResource(Res.string.auto_check_new_backup_s)
 
     AppTheme {
         PreferenceScreen {

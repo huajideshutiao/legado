@@ -1,6 +1,7 @@
 package io.legado.app.ui.route
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -30,24 +31,36 @@ import io.legado.app.ui.book.info.BookInfoScreen
 import io.legado.app.ui.book.info.BookInfoScreenModel
 import io.legado.app.ui.book.info.BookInfoUiActions
 import io.legado.app.ui.book.info.BookInfoUiEvent
-import io.legado.app.ui.bookshelf.LocalBookCoverSlot
-import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
+import io.legado.app.ui.book.info.LocalBookInfoCoverSlot
+import io.legado.app.ui.book.info.LocalIntroImageSlot
+import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.RouteResultPayload
+import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.toRouteRef
+import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.error_load_toc
+import legado.shared.generated.resources.lasted_show
+import legado.shared.generated.resources.need_more_time_load_content
+import legado.shared.generated.resources.no_group
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 书籍详情页 shared 路由入口。
@@ -68,9 +81,10 @@ fun BookInfoRoute(
     val scope = rememberCoroutineScope()
 
     // 状态初始化 (对照 BookInfoActivity.onActivityCreated + showBook + upWordCount + upGroup)
-    val lastedTitle = rememberString("lasted_show", book.latestChapterTitle ?: "")
-    val noGroupLabel = rememberString("no_group")
-    val needMoreTimeLabel = rememberString("need_more_time_load_content")
+    val lastedTitle = stringResource(Res.string.lasted_show, book.latestChapterTitle ?: "")
+    val noGroupLabel = stringResource(Res.string.no_group)
+    val errorLoadTocLabel = stringResource(Res.string.error_load_toc)
+    val needMoreTimeLabel = stringResource(Res.string.need_more_time_load_content)
     LaunchedEffect(book.bookUrl) {
         screenModel.dispatch(BookInfoUiEvent.ShowBook(book, lastedTitle))
         scope.launch(IoDispatcher) {
@@ -85,21 +99,46 @@ fun BookInfoRoute(
             }
             screenModel.dispatch(BookInfoUiEvent.UpdateGroup(groupName.takeIf { it.isNotEmpty() }
                 ?: noGroupLabel))
-            // 字数信息 (对照 Activity upWordCount: 本地文件大小需平台 FileDoc, 此处仅取 book.wordCount + 兜底)
-            val wordCountRaw = book.wordCount?.takeIf { it.isNotBlank() }
+            // 字数信息 (对照 Activity upWordCount: 字数 + 本地书文件大小, 逗号拼接)
+            val wordCounts = arrayListOf<String>()
+            book.wordCount?.takeIf { it.isNotBlank() }?.let { wordCounts.add(it) }
+            if (book.isLocal) {
+                val size = try {
+                    if (book.bookUrl.startsWith("http", true) ||
+                        book.bookUrl.startsWith("dav", true)
+                    ) 0L
+                    else PlatformCapabilityProviders.getOrNull()
+                        ?.localBookFileSize(book.bookUrl) ?: 0L
+                } catch (_: Exception) {
+                    0L
+                }
+                if (size > 0) wordCounts.add(ConvertUtils.formatFileSize(size))
+            }
             val wordCountText = when {
-                !wordCountRaw.isNullOrBlank() -> wordCountRaw
+                wordCounts.isNotEmpty() -> wordCounts.joinToString(",")
                 book.isLocal -> ""
                 else -> null
             }
             screenModel.dispatch(BookInfoUiEvent.UpdateWordCount(wordCountText))
-            // 目录: 用当前阅读章节标题占位 (实际章节加载依赖平台 BaseReadViewModel)
+            val chapters = AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
             screenModel.dispatch(
                 BookInfoUiEvent.UpdateToc(
-                    tocText = book.durChapterTitle ?: "",
-                    lastedTitle = null,
+                    tocText = if (chapters.isEmpty()) errorLoadTocLabel else book.durChapterTitle.orEmpty(),
+                    lastedTitle = if (chapters.isEmpty()) null else lastedTitle,
                 )
             )
+        }
+    }
+
+    // 加载书源 (对照 Activity viewModel.curBookSource, 供菜单与标签搜索限定当前书源)
+    var bookSource by remember { mutableStateOf<BookSource?>(null) }
+    LaunchedEffect(book.origin) {
+        if (book.isLocal) {
+            bookSource = null
+        } else {
+            bookSource = withContext(IoDispatcher) {
+                AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
+            }
         }
     }
 
@@ -111,7 +150,7 @@ fun BookInfoRoute(
 
         // 编辑: 复用路由持有的同一 BookRef (原地编辑需反映回详情)
         override fun onEdit() {
-            navigator.push(AppRoute.BookInfoEdit(route.book))
+            navigator.push(AppRoute.BookInfoEdit(route.book), RouteResults.BOOK_INFO_EDIT)
         }
 
         // 阅读: 按类型分发到对应阅读路由; webFile 需下载导入, 平台专属
@@ -131,23 +170,23 @@ fun BookInfoRoute(
                 b.isRss -> AppRoute.ReadRss(b.toRouteRef())
                 else -> AppRoute.Reader(b.toRouteRef())
             }
-            navigator.push(target)
+            navigator.push(target, RouteResults.READER)
         }
 
         // 来源点击: 编辑书源 (对照 Activity editSourceResult, 非 ChangeSource)
         override fun onOriginClick() {
             if (book.isLocal) return
-            navigator.push(AppRoute.BookSourceEdit(book.origin))
+            navigator.push(AppRoute.BookSourceEdit(book.origin), RouteResults.BOOK_SOURCE_EDIT)
         }
 
         // 来源长按: 换源
         override fun onOriginLongClick() {
-            navigator.push(AppRoute.ChangeSource(book.toRouteRef()))
+            navigator.push(AppRoute.ChangeSource(book.toRouteRef()), RouteResults.CHANGE_SOURCE)
         }
 
         // 目录
         override fun onTocClick() {
-            navigator.push(AppRoute.Toc(book.toRouteRef()))
+            navigator.push(AppRoute.Toc(book.toRouteRef()), RouteResults.TOC)
         }
 
         // 分享: 构建书籍信息 JSON, 通过平台能力分享
@@ -171,11 +210,9 @@ fun BookInfoRoute(
             PlatformCapabilityProviders.get().shareText("[$json]")
         }
 
-        // 刷新: 标记加载中 + 委托平台拉取数据
+        // 刷新: 重新拉取书籍信息 + 目录
         override fun onRefresh() {
-            val b = state.book ?: book
-            screenModel.dispatch(BookInfoUiEvent.Refresh)
-            PlatformCapabilityProviders.getOrNull()?.refreshBookInfo(b)
+            screenModel.refresh(state.book ?: book, bookSource, lastedTitle, errorLoadTocLabel)
         }
 
         // 上传: 委托平台 (依赖确认弹窗 + WebDav)
@@ -240,14 +277,13 @@ fun BookInfoRoute(
             }
         }
 
-        // 切换拆分长章: 修改 config + 驱动重组 + 标记加载中 + 委托平台重载
+        // 切换拆分长章: 修改 config + 驱动重组 + 重新加载书籍信息
         override fun onToggleSplitLongChapter() {
             val b = state.book ?: return
             val newValue = !b.config.splitLongChapter
             b.config.splitLongChapter = newValue
             screenModel.dispatch(BookInfoUiEvent.BumpBookTick)
-            screenModel.dispatch(BookInfoUiEvent.Refresh)
-            PlatformCapabilityProviders.getOrNull()?.reloadBookInfo(b)
+            screenModel.refresh(b, bookSource, lastedTitle, errorLoadTocLabel)
             if (!newValue) Toasters.get().toastLong(needMoreTimeLabel)
         }
 
@@ -261,9 +297,9 @@ fun BookInfoRoute(
             navigator.showOverlay(AppOverlay.Dialog(key = "app_log"))
         }
 
-        // 书名点击: 跳搜索 (AppRoute.Search 暂不支持传 key, 待路由参数扩展)
+        // 书名点击：按原版带入书名并立即搜索。
         override fun onNameClick() {
-            navigator.push(AppRoute.Search())
+            navigator.push(AppRoute.Search(key = (state.book ?: book).name, submit = true))
         }
 
         // 封面点击: 查看大图
@@ -296,7 +332,7 @@ fun BookInfoRoute(
             val b = state.book ?: book
             PlatformCapabilityProviders.getOrNull()
                 ?.toggleBookshelf(b, state.inBookshelf) { result ->
-                    if (result == null) navigator.pop()
+                    if (result == null) navigator.pop(RouteResultPayload.Deleted)
                     else screenModel.dispatch(BookInfoUiEvent.UpdateBookshelf(result))
                 }
         }
@@ -314,24 +350,32 @@ fun BookInfoRoute(
                     }
                 }
             } else {
-                navigator.push(AppRoute.Search())
+                navigator.push(
+                    AppRoute.Search(
+                        key = tmp[0],
+                        searchScope = bookSource?.takeIf { it.searchUrl != null }
+                            ?.let { SearchScope(it).toString() },
+                        submit = submit,
+                    )
+                )
             }
         }
 
-        // 搜索分类: :: 探索需 BookSource, 加载后跳 ExploreShow; 普通搜索跳 Search
+        // 搜索分类: :: 探索需 BookSource, 加载后跳 ExploreShow; 普通搜索限定当前书源
         override fun onSearchKind(kind: String, submit: Boolean) {
             val tmp = kind.split("::", limit = 2)
             if (tmp.size > 1) {
-                val b = state.book ?: book
-                scope.launch(IoDispatcher) {
-                    val source =
-                        AppDbProviders.get().bookSourceDao.getBookSource(b.origin) ?: return@launch
-                    withContext(Dispatchers.Main) {
-                        navigator.push(AppRoute.ExploreShow(source, tmp[0], tmp[1]))
-                    }
-                }
+                val source = bookSource ?: return
+                navigator.push(AppRoute.ExploreShow(source, tmp[0], tmp[1]))
             } else {
-                navigator.push(AppRoute.Search())
+                navigator.push(
+                    AppRoute.Search(
+                        key = tmp[0],
+                        searchScope = bookSource?.takeIf { it.searchUrl != null }
+                            ?.let { SearchScope(it).toString() },
+                        submit = submit,
+                    )
+                )
             }
         }
 
@@ -347,23 +391,117 @@ fun BookInfoRoute(
         }
     }
 
+    DisposableEffect(entry.id, actions) {
+        navigator.registerRefreshHandler(entry.id, actions::onRefresh)
+        onDispose { navigator.unregisterRefreshHandler(entry.id) }
+    }
+
+    // 换封面对话框返回：同步当前书籍封面并驱动详情封面、模糊背景重载。
+    LaunchedEffect(Unit) {
+        navigator.overlayResults
+            .filter { it.key == RouteResults.OVERLAY_CHANGE_COVER }
+            .collect { result ->
+                val coverUrl = (result.payload as? RouteResultPayload.ChangeCover)?.coverUrl
+                    ?: return@collect
+                val b = screenModel.state.value.book ?: book
+                b.customCoverUrl = coverUrl
+                if (screenModel.state.value.inBookshelf) {
+                    withContext(IoDispatcher) { AppDbProviders.get().bookDao.update(b) }
+                }
+                screenModel.dispatch(BookInfoUiEvent.BumpCoverTick)
+            }
+    }
+
     // 对照 Activity observeLiveBus: EventBus.REFRESH_BOOK_INFO → refreshBook
     LaunchedEffect(Unit) {
         FlowBus.with(EventBus.REFRESH_BOOK_INFO).collect {
             val b = screenModel.state.value.book ?: book
-            screenModel.dispatch(BookInfoUiEvent.Refresh)
-            PlatformCapabilityProviders.getOrNull()?.refreshBookInfo(b)
+            screenModel.refresh(b, bookSource, lastedTitle, errorLoadTocLabel)
         }
     }
 
-    // 加载书源 (对照 Activity viewModel.curBookSource, 供 menuState 判断)
-    var bookSource by remember { mutableStateOf<BookSource?>(null) }
-    LaunchedEffect(book.origin) {
-        if (book.isLocal) {
-            bookSource = null
-        } else {
+    // 书籍信息编辑返回: 重新加载 book info (对照 app 端 viewModel.upEditBook, 仅 Ok 触发)
+    LaunchedEffect(Unit) {
+        navigator.resultsFor(entry.id).filter { it.key == RouteResults.BOOK_INFO_EDIT }
+            .collect { result ->
+                if (result.payload !is RouteResultPayload.Ok) return@collect
+                val b = screenModel.state.value.book ?: book
+                // 编辑可能改封面/书名, 驱动封面与模糊背景重载
+                screenModel.dispatch(BookInfoUiEvent.BumpCoverTick)
+                screenModel.refresh(b, bookSource, lastedTitle, errorLoadTocLabel)
+            }
+    }
+
+    // 书源编辑返回: 按回传 origin 重新加载 bookSource
+    LaunchedEffect(Unit) {
+        navigator.resultsFor(entry.id).filter { it.key == RouteResults.BOOK_SOURCE_EDIT }
+            .collect { result ->
+                val origin =
+                    (result.payload as? RouteResultPayload.BookSourceEdit)?.origin ?: return@collect
+                scope.launch(IoDispatcher) {
+                    bookSource = AppDbProviders.get().bookSourceDao.getBookSource(origin)
+                }
+        }
+    }
+
+    // 整书换源返回: 同步新书源 + 用新源刷新 book info
+    LaunchedEffect(Unit) {
+        navigator.resultsFor(entry.id).filter { it.key == RouteResults.CHANGE_SOURCE }
+            .collect { result ->
+                val payload = result.payload as? RouteResultPayload.ChangeSource ?: return@collect
+                // bookSource 由 LaunchedEffect(book.origin) 按路由书籍加载, 换源后不会自动更新
+                bookSource = payload.source
+                screenModel.dispatch(BookInfoUiEvent.ShowBook(payload.book, lastedTitle))
+                screenModel.refresh(payload.book, payload.source, lastedTitle, errorLoadTocLabel)
+            }
+    }
+
+    // 目录返回: 选章节跳阅读, 未选则删书 (对照 app 端 BookInfoActivity tocActivityResult)
+    LaunchedEffect(Unit) {
+        navigator.resultsFor(entry.id).filter { it.key == RouteResults.TOC }.collect { result ->
+            val payload = result.payload as? RouteResultPayload.Toc
+            val b = screenModel.state.value.book ?: book
+            if (payload != null) {
+                scope.launch(IoDispatcher) {
+                    b.durChapterIndex = payload.chapterIndex
+                    b.durChapterPos = payload.chapterPos
+                    AppDbProviders.get().bookDao.update(b)
+                }
+                val target = when {
+                    b.isAudio -> AppRoute.AudioPlay(b.toRouteRef())
+                    b.isVideo -> AppRoute.VideoPlay(b.toRouteRef())
+                    b.isImage -> AppRoute.MangaReader(b.toRouteRef())
+                    b.isRss -> AppRoute.ReadRss(b.toRouteRef())
+                    else -> AppRoute.Reader(b.toRouteRef())
+                }
+                navigator.push(target, RouteResults.READER)
+            } else if (!screenModel.state.value.inBookshelf) {
+                // 未选章节且不在书架: 删书 (对照 app 端 viewModel.delBook)
+                PlatformCapabilityProviders.getOrNull()
+                    ?.toggleBookshelf(b, false) { navigator.pop(RouteResultPayload.Deleted) }
+            }
+        }
+    }
+
+    // 阅读器返回: 刷新阅读进度 + 书架状态 (对照 app 端 readBookResult launcher)
+    LaunchedEffect(Unit) {
+        navigator.resultsFor(entry.id).filter { it.key == RouteResults.READER }.collect { result ->
+            val b = screenModel.state.value.book ?: book
+            // 书籍可能在阅读中被加入书架/删除, 重新查询 DB 同步状态
             scope.launch(IoDispatcher) {
-                bookSource = AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
+                val inShelf = AppDbProviders.get().bookDao.getBook(b.bookUrl) != null
+                screenModel.dispatch(BookInfoUiEvent.UpdateBookshelf(inShelf))
+                // 刷新目录文案为当前阅读章节 (对照 Activity upLoading(false, listOf()))
+                screenModel.dispatch(
+                    BookInfoUiEvent.UpdateToc(
+                        tocText = b.durChapterTitle ?: "",
+                        lastedTitle = null,
+                    )
+                )
+            }
+            // 阅读器返回 Deleted: 透传删除 (对照 Activity RESULT_DELETED)
+            if (result.payload is RouteResultPayload.Deleted) {
+                navigator.pop(RouteResultPayload.Deleted)
             }
         }
     }
@@ -399,16 +537,23 @@ fun BookInfoRoute(
         isDarkTheme = isDarkTheme,
     )
 
-    // L3: 模糊封面背景 / 封面 / 简介图依赖平台 Glide/AndroidView, 由平台注入
-    // 封面: 取 LocalBookCoverSlot (宿主端注入平台实现, 兜底 SharedBookCover), 适配 (Book?, Modifier) 签名
-    val bookCoverSlot = LocalBookCoverSlot.current
+    // L3: 模糊封面背景 / 封面 / 简介图依赖平台 Glide/AndroidView, 由平台通过 CompositionLocal 注入
+    val isEInkMode = AppConfigProviders.get().isEInkMode
+    val bookInfoCoverSlot = LocalBookInfoCoverSlot.current
+    val blurCoverBgSlot = LocalBlurCoverBgSlot.current
+    val introImageSlot = LocalIntroImageSlot.current
     BookInfoScreen(
         state = screenState,
         actions = actions,
-        blurCoverBgSlot = {},
-        coverSlot = { book, modifier ->
-            book?.let { bookCoverSlot(it, modifier, false) }
+        blurCoverBgSlot = { modifier ->
+            // 适配 (Modifier)->Unit 到 (Book?,Int,Boolean,Boolean,Modifier)->Unit 签名
+            blurCoverBgSlot(currentBook, state.coverTick, state.inBookshelf, isEInkMode, modifier)
         },
-        introImageSlot = { _, _ -> },
+        coverSlot = { book, modifier ->
+            bookInfoCoverSlot(book, state.coverTick, state.inBookshelf, modifier)
+        },
+        introImageSlot = { src, onClick ->
+            introImageSlot(src, onClick)
+        },
     )
 }

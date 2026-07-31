@@ -4,8 +4,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import io.legado.app.ui.preview.AppPreview
-import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.preview.LegadoThemePreview
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.ic_check
+import legado.shared.generated.resources.ic_more_vert
+import legado.shared.generated.resources.ic_search
+import org.jetbrains.compose.resources.painterResource
 
 /**
  * [Preferences.kt] 中 Preference DSL 的 @Preview。
@@ -87,9 +91,9 @@ fun PreferenceScreenDarkPreview() = LegadoThemePreview(dark = true) {
 @Composable
 fun PreferenceScreenWithIconListPreview() = LegadoThemePreview {
     val icons = listOf(
-        rememberPainter("ic_check"),
-        rememberPainter("ic_search"),
-        rememberPainter("ic_more_vert"),
+        painterResource(Res.drawable.ic_check),
+        painterResource(Res.drawable.ic_search),
+        painterResource(Res.drawable.ic_more_vert),
     )
     PreferenceScreen(modifier = Modifier.fillMaxWidth()) {
         iconListPreference(

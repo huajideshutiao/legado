@@ -4,6 +4,7 @@ import io.legado.app.help.file.desktopAppRootDir
 import io.legado.app.ui.association.LegadoDeepLink
 import io.legado.app.ui.association.LegadoDeepLinkHandler
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.awt.Frame
 import java.io.File

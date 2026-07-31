@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.TransType
 import io.legado.app.R
@@ -60,12 +61,13 @@ import io.legado.app.ui.compose.component.RadioChip
 import io.legado.app.ui.compose.component.StrokeTextChip
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.dialogs.selector
-import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.font.FontSelectDialog
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.showConverterSelector
 import io.legado.app.utils.showDialogFragment
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
 
 /** 阅读样式设置：字重/字体/缩进/简繁/边距/信息 + 排版滑条 + 翻页动画 + 背景样式列表 */
 class ReadStyleDialog : BaseReadBottomComposeDialog(), FontSelectDialog.CallBack {
@@ -113,10 +115,14 @@ class ReadStyleDialog : BaseReadBottomComposeDialog(), FontSelectDialog.CallBack
             callBack?.showBgTextConfig()
         }
 
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Column(Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)) {
             // 顶部功能小按钮行
             Row(
-                Modifier.fillMaxWidth().padding(top = 16.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 SegmentChip(
@@ -229,7 +235,9 @@ class ReadStyleDialog : BaseReadBottomComposeDialog(), FontSelectDialog.CallBack
                         text = stringResource(res),
                         checked = pageAnim == index,
                         textColor = colors.text,
-                        modifier = Modifier.weight(1f).padding(4.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(4.dp),
                     ) {
                         ReadBookConfig.pageAnim = index
                         pageAnim = index
@@ -258,7 +266,9 @@ class ReadStyleDialog : BaseReadBottomComposeDialog(), FontSelectDialog.CallBack
                 )
             }
             LazyRow(
-                Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 16.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp, bottom = 16.dp),
                 contentPadding = PaddingValues(horizontal = 8.dp),
             ) {
                 items(ReadBookConfig.configList.size) { index ->
@@ -352,7 +362,11 @@ class ReadStyleDialog : BaseReadBottomComposeDialog(), FontSelectDialog.CallBack
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .matchParentSize()
-                    .border(DesignTokens.strokeThin, if (selected) accent else textColor, CircleShape),
+                    .border(
+                        DesignTokens.strokeThin,
+                        if (selected) accent else textColor,
+                        CircleShape
+                    ),
             )
             Text(
                 text = name,

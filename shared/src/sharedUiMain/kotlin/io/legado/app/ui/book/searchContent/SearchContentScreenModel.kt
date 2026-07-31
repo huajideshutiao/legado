@@ -64,16 +64,16 @@ class SearchContentScreenModel(
     )
     val state: StateFlow<SearchContentUiState> = _state.asStateFlow()
 
-    /** 暴露搜索结果列表 (供 Activity 路由跳转时 IntentData.put/postEvent 使用) */
+    /** 暴露搜索结果列表，供类型化路由结果完整回传。 */
     val searchResultList: MutableList<SearchResult>
         get() = shared.searchResultList
 
     // ===== 初始化 (对照 Activity.onActivityCreated) =====
 
     /**
-     * @param searchResultList IntentData.searchResultList (app 端扩展属性, 由宿主读取传入)
-     * @param position intent extra searchResultIndex
-     * @param searchWord intent extra searchWord
+     * @param searchResultList 路由参数携带的已有搜索结果，用于恢复列表。
+     * @param position 当前选中结果索引。
+     * @param searchWord 当前搜索词。
      */
     fun init(searchResultList: List<SearchResult>?, position: Int, searchWord: String?) {
         val noSearchResult = searchResultList == null

@@ -359,6 +359,9 @@ class ReadMenu(internal val activity: ReadBookActivity) : ReadMenuState {
 
     override fun clickSetting() = runMenuOut { callBack.showMoreSetting() }
 
+    // 刷新当前章节: 复用 onTopMenuAction(REFRESH) 路径 (app 端 menuHandler 统一处理)
+    override fun onRefresh() = activity.onTopMenuAction(ReadMenuAction.REFRESH)
+
     // ---- 宿主桥接（原 Composable 直接访问 state.activity.xxx）----
 
     override fun openBookInfoActivity() = activity.openBookInfoActivity()

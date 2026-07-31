@@ -54,6 +54,13 @@ import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.ic_bookmark
+import legado.shared.generated.resources.intro_show_null
+import legado.shared.generated.resources.source_filter_rule
+import legado.shared.generated.resources.switchLayout
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /*
  * 下沉所需资源 key 清单 (供 ResourceProvider 各平台 actual 补全)
@@ -248,7 +255,7 @@ private fun ExploreActions(state: ExploreShowUiState, actions: ExploreShowUiActi
                     "ic_layout_video"
                 }
             ),
-            contentDescription = rememberString("switchLayout"),
+            contentDescription = stringResource(Res.string.switchLayout),
             tint = colors.primaryText,
         )
     }
@@ -256,7 +263,7 @@ private fun ExploreActions(state: ExploreShowUiState, actions: ExploreShowUiActi
         DropdownMenuItem(
             onClick = { dismiss(); actions.onShowSourceFilterRule() },
         ) {
-            Text(rememberString("source_filter_rule"), color = colors.primaryText)
+            Text(stringResource(Res.string.source_filter_rule), color = colors.primaryText)
         }
     }
 }
@@ -494,7 +501,7 @@ private fun ExploreListItem(
             // trimIntro 内联: intro?.trim() 非空则展示, 否则回退 intro_show_null 文案
             // 对照 app 端 SearchBook.trimIntro(context): 始终渲染 (空简介显示占位文案)
             val intro = book.intro?.trim()?.takeIf { it.isNotEmpty() }
-                ?: rememberString("intro_show_null")
+                ?: stringResource(Res.string.intro_show_null)
             Text(
                 text = intro,
                 color = colors.secondaryText,
@@ -557,7 +564,7 @@ private fun ExploreGridItem(
         }
         if (inBookshelf) {
             Image(
-                painter = rememberPainter("ic_bookmark"),
+                painter = painterResource(Res.drawable.ic_bookmark),
                 contentDescription = null,
                 modifier = Modifier
                     .align(Alignment.TopStart)

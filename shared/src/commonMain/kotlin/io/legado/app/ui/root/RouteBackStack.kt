@@ -22,17 +22,27 @@ class RouteBackStack(
 
     fun peek(): RouteEntry? = _backStack.value.lastOrNull()
 
-    fun push(route: AppRoute, resultKey: String? = null): RouteEntryId {
+    fun push(
+        route: AppRoute,
+        resultKey: String? = null,
+        resultTargetEntryId: RouteEntryId? = null,
+    ): RouteEntryId {
         val current = _backStack.value.lastOrNull()
-        if (current?.route == route && current.resultKey == resultKey) return current.id
-        val entry = newEntry(route, resultKey)
+        if (
+            current?.route == route &&
+            current.resultKey == resultKey &&
+            current.resultTargetEntryId == resultTargetEntryId
+        ) {
+            return current.id
+        }
+        val entry = newEntry(route, resultKey, resultTargetEntryId)
         _backStack.value += entry
         return entry.id
     }
 
     fun replace(route: AppRoute): RouteEntryId {
         val old = _backStack.value.last()
-        val entry = newEntry(route, old.resultKey)
+        val entry = newEntry(route, old.resultKey, old.resultTargetEntryId)
         _backStack.value = _backStack.value.dropLast(1) + entry
         return entry.id
     }
@@ -64,9 +74,14 @@ class RouteBackStack(
         nextEntryId = nextEntryId,
     )
 
-    private fun newEntry(route: AppRoute, resultKey: String?): RouteEntry = RouteEntry(
+    private fun newEntry(
+        route: AppRoute,
+        resultKey: String?,
+        resultTargetEntryId: RouteEntryId? = null,
+    ): RouteEntry = RouteEntry(
         id = RouteEntryId(nextEntryId++),
         route = route,
         resultKey = resultKey,
+        resultTargetEntryId = resultTargetEntryId,
     )
 }

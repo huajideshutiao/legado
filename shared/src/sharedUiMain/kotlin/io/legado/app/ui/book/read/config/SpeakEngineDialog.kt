@@ -44,10 +44,20 @@ import io.legado.app.data.entities.HttpTTS
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.add
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.delete
+import legado.shared.generated.resources.edit
+import legado.shared.generated.resources.ic_add
+import legado.shared.generated.resources.ic_clear_all
+import legado.shared.generated.resources.ic_edit
+import legado.shared.generated.resources.speak_engine
+import legado.shared.generated.resources.system_default
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 朗读引擎选择对话框 (KMP 共享, app + desktop 复用)。
@@ -122,15 +132,15 @@ fun SpeakEngineDialog(
         ) {
             Column(Modifier.fillMaxWidth()) {
                 DialogTitleBar(
-                    title = rememberString("speak_engine"),
+                    title = stringResource(Res.string.speak_engine),
                     onBack = onDismiss,
                     actions = {
                         // 右上角"+"按钮 (与原版 IconButton + ic_add 对齐)
                         // 参数 null: 表示新增 (与行"编辑"按钮的非 null 参数区分)
                         IconButton(onClick = { onEditEngines(null) }) {
                             Icon(
-                                painter = rememberPainter("ic_add"),
-                                contentDescription = rememberString("add"),
+                                painter = painterResource(Res.drawable.ic_add),
+                                contentDescription = stringResource(Res.string.add),
                                 tint = colors.primaryText,
                             )
                         }
@@ -148,7 +158,7 @@ fun SpeakEngineDialog(
                     // 桌面端无系统 TTS 引擎列表, 仅保留"系统默认"占位行
                     item(key = "sysDefault") {
                         EngineRow(
-                            name = rememberString("system_default"),
+                            name = stringResource(Res.string.system_default),
                             checked = selected == null,
                             onSelect = {
                                 selected = null
@@ -181,7 +191,7 @@ fun SpeakEngineDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     AppTextButton(
-                        text = rememberString("cancel"),
+                        text = stringResource(Res.string.cancel),
                         color = colors.secondaryText,
                         onClick = onDismiss,
                     )
@@ -227,8 +237,8 @@ private fun EngineRow(
         if (onEdit != null) {
             IconButton(onClick = onEdit, modifier = Modifier.size(40.dp)) {
                 Icon(
-                    painter = rememberPainter("ic_edit"),
-                    contentDescription = rememberString("edit"),
+                    painter = painterResource(Res.drawable.ic_edit),
+                    contentDescription = stringResource(Res.string.edit),
                     tint = colors.primaryText,
                     modifier = Modifier.size(24.dp),
                 )
@@ -237,8 +247,8 @@ private fun EngineRow(
         if (onDelete != null) {
             IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
                 Icon(
-                    painter = rememberPainter("ic_clear_all"),
-                    contentDescription = rememberString("delete"),
+                    painter = painterResource(Res.drawable.ic_clear_all),
+                    contentDescription = stringResource(Res.string.delete),
                     tint = colors.primaryText,
                     modifier = Modifier.size(24.dp),
                 )

@@ -7,13 +7,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import io.legado.app.ui.compose.component.AppSelectorDialog
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.main.my.MyConfigScreen
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.copy_url
+import legado.shared.generated.resources.open_in_browser
+import legado.shared.generated.resources.web_service
+import legado.shared.generated.resources.web_service_desc
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 我的页设置 shared 路由入口: 渲染 [MyConfigScreen] 并桥接各子条目路由跳转。
@@ -35,7 +40,7 @@ fun MyConfigRoute(
     val caps = PlatformCapabilityProviders.getOrNull()
     // 进入时以服务实际运行态校准 (对照 MyTab 初始化 mutableStateOf(WebService.isRun))
     var webServiceChecked by remember { mutableStateOf(caps?.isWebServiceRunning() ?: false) }
-    val webServiceDesc = rememberString("web_service_desc")
+    val webServiceDesc = stringResource(Res.string.web_service_desc)
     var webServiceSummary by remember {
         mutableStateOf(
             if (webServiceChecked) caps?.getWebServiceUrl().orEmpty() else webServiceDesc
@@ -86,6 +91,8 @@ fun MyConfigRoute(
         onBookmark = { navigator.push(AppRoute.Bookmark()) },
         onReadRecord = { navigator.push(AppRoute.ReadRecord) },
         onAbout = { navigator.push(AppRoute.About) },
+        // RSS 源入口: 各端共用 (string/drawable 资源已在 shared 与 app 端注册)
+        showRssEntry = true,
         onRssSources = { navigator.push(AppRoute.RssSources) },
     )
 
@@ -94,8 +101,11 @@ fun MyConfigRoute(
         val url = PlatformCapabilityProviders.getOrNull()?.getWebServiceUrl()
         AppSelectorDialog(
             onDismissRequest = { showWebServiceMenu = false },
-            title = rememberString("web_service"),
-            items = listOf(rememberString("copy_url"), rememberString("open_in_browser")),
+            title = stringResource(Res.string.web_service),
+            items = listOf(
+                stringResource(Res.string.copy_url),
+                stringResource(Res.string.open_in_browser)
+            ),
             onItemSelected = { i ->
                 when (i) {
                     0 -> url?.let { PlatformCapabilityProviders.getOrNull()?.copyToClipboard(it) }

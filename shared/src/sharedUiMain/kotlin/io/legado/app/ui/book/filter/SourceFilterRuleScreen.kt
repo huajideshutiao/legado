@@ -36,10 +36,36 @@ import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.component.dragSelectable
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.add
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.delete
+import legado.shared.generated.resources.delete_all
+import legado.shared.generated.resources.disable_selection
+import legado.shared.generated.resources.draw
+import legado.shared.generated.resources.edit
+import legado.shared.generated.resources.enable_selection
+import legado.shared.generated.resources.export_selection
+import legado.shared.generated.resources.ic_add
+import legado.shared.generated.resources.ic_edit
+import legado.shared.generated.resources.ic_more_vert
+import legado.shared.generated.resources.import_local
+import legado.shared.generated.resources.import_on_line
+import legado.shared.generated.resources.more_menu
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.search
+import legado.shared.generated.resources.selection_to_bottom
+import legado.shared.generated.resources.selection_to_top
+import legado.shared.generated.resources.source_filter_rule
+import legado.shared.generated.resources.source_filter_rule_delete_all_confirm
+import legado.shared.generated.resources.source_filter_rule_empty
+import legado.shared.generated.resources.sure_del
+import legado.shared.generated.resources.to_bottom
+import legado.shared.generated.resources.to_top
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 源过滤规则列表 Screen (KMP 版, sharedUiMain 共享)。
@@ -156,17 +182,17 @@ fun SourceFilterRuleScreen(
         items = rules,
         itemKey = { it.id },
         onMove = { from, to -> actions.onMoveItem(from, to) },
-        emptyText = rememberString("source_filter_rule_empty"),
+        emptyText = stringResource(Res.string.source_filter_rule_empty),
         listState = listState,
         titleBar = {
             AppTitleBar(
-                title = rememberString("source_filter_rule"),
+                title = stringResource(Res.string.source_filter_rule),
                 onBack = { actions.onBack() },
                 titleContent = {
                     AppSearchField(
                         value = state.searchKey,
                         onValueChange = { actions.onSearchKeyChange(it) },
-                        hint = rememberString("search"),
+                        hint = stringResource(Res.string.search),
                     )
                 },
                 actions = {
@@ -191,22 +217,22 @@ fun SourceFilterRuleScreen(
                 allCount = rules.size,
                 onSelectAll = { actions.onSelectAll(it) },
                 onRevertSelection = { actions.onRevertSelection() },
-                mainActionText = rememberString("delete"),
+                mainActionText = stringResource(Res.string.delete),
                 onMainAction = { showDeleteSelectionConfirm = true },
                 actions = listOf(
-                    SelectAction(rememberString("enable_selection")) {
+                    SelectAction(stringResource(Res.string.enable_selection)) {
                         actions.onEnableSelection()
                     },
-                    SelectAction(rememberString("disable_selection")) {
+                    SelectAction(stringResource(Res.string.disable_selection)) {
                         actions.onDisableSelection()
                     },
-                    SelectAction(rememberString("selection_to_top")) {
+                    SelectAction(stringResource(Res.string.selection_to_top)) {
                         actions.onTopSelect()
                     },
-                    SelectAction(rememberString("selection_to_bottom")) {
+                    SelectAction(stringResource(Res.string.selection_to_bottom)) {
                         actions.onBottomSelect()
                     },
-                    SelectAction(rememberString("export_selection")) {
+                    SelectAction(stringResource(Res.string.export_selection)) {
                         actions.onExportSelection()
                     },
                 ),
@@ -225,36 +251,36 @@ fun SourceFilterRuleScreen(
     if (showDeleteSelectionConfirm) {
         AppAlertDialog(
             onDismissRequest = { showDeleteSelectionConfirm = false },
-            title = rememberString("draw"),
-            message = rememberString("sure_del"),
-            okButton = AlertButton(rememberString("ok")) {
+            title = stringResource(Res.string.draw),
+            message = stringResource(Res.string.sure_del),
+            okButton = AlertButton(stringResource(Res.string.ok)) {
                 actions.onDeleteSelection()
             },
-            cancelButton = AlertButton(rememberString("cancel")) {},
+            cancelButton = AlertButton(stringResource(Res.string.cancel)) {},
         )
     }
     // 删除全部确认
     if (showDeleteAllConfirm) {
         AppAlertDialog(
             onDismissRequest = { showDeleteAllConfirm = false },
-            title = rememberString("delete_all"),
-            message = rememberString("source_filter_rule_delete_all_confirm"),
-            okButton = AlertButton(rememberString("ok")) {
+            title = stringResource(Res.string.delete_all),
+            message = stringResource(Res.string.source_filter_rule_delete_all_confirm),
+            okButton = AlertButton(stringResource(Res.string.ok)) {
                 actions.onDeleteAll()
             },
-            cancelButton = AlertButton(rememberString("cancel")) {},
+            cancelButton = AlertButton(stringResource(Res.string.cancel)) {},
         )
     }
     // 单条删除确认
     pendingDeleteRule.value?.let { rule ->
         AppAlertDialog(
             onDismissRequest = { pendingDeleteRule.value = null },
-            title = rememberString("draw"),
-            message = rememberString("sure_del") + "\n" + rule.name,
-            okButton = AlertButton(rememberString("ok")) {
+            title = stringResource(Res.string.draw),
+            message = stringResource(Res.string.sure_del) + "\n" + rule.name,
+            okButton = AlertButton(stringResource(Res.string.ok)) {
                 actions.onDeleteRule(rule)
             },
-            cancelButton = AlertButton(rememberString("cancel")) {},
+            cancelButton = AlertButton(stringResource(Res.string.cancel)) {},
         )
     }
 }
@@ -275,8 +301,8 @@ private fun SourceFilterRuleActions(
     val colors = AppTheme.colors
     IconButton(onClick = { actions.onAddRule() }) {
         Icon(
-            painter = rememberPainter("ic_add"),
-            contentDescription = rememberString("add"),
+            painter = painterResource(Res.drawable.ic_add),
+            contentDescription = stringResource(Res.string.add),
             tint = colors.primaryText,
         )
     }
@@ -285,19 +311,19 @@ private fun SourceFilterRuleActions(
             dismiss()
             actions.onImportLocal()
         }) {
-            Text(rememberString("import_local"), color = colors.primaryText)
+            Text(stringResource(Res.string.import_local), color = colors.primaryText)
         }
         DropdownMenuItem(onClick = {
             dismiss()
             actions.onImportOnline()
         }) {
-            Text(rememberString("import_on_line"), color = colors.primaryText)
+            Text(stringResource(Res.string.import_on_line), color = colors.primaryText)
         }
         DropdownMenuItem(onClick = {
             dismiss()
             onRequestDeleteAll()
         }) {
-            Text(rememberString("delete_all"), color = colors.primaryText)
+            Text(stringResource(Res.string.delete_all), color = colors.primaryText)
         }
     }
 }
@@ -342,29 +368,29 @@ private fun RuleItemScope.SourceFilterRuleItem(
         Spacer(Modifier.width(8.dp))
         IconButton(onClick = { actions.onEditRule(item) }) {
             Icon(
-                painter = rememberPainter("ic_edit"),
-                contentDescription = rememberString("edit"),
+                painter = painterResource(Res.drawable.ic_edit),
+                contentDescription = stringResource(Res.string.edit),
                 tint = colors.primaryText,
             )
         }
         Box {
             IconButton(onClick = { showMenu = true }) {
                 Icon(
-                    painter = rememberPainter("ic_more_vert"),
-                    contentDescription = rememberString("more_menu"),
+                    painter = painterResource(Res.drawable.ic_more_vert),
+                    contentDescription = stringResource(Res.string.more_menu),
                     tint = colors.primaryText,
                     modifier = Modifier.size(24.dp),
                 )
             }
             AppDropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                 DropdownMenuItem(onClick = { showMenu = false; actions.onToTop(item) }) {
-                    Text(rememberString("to_top"), color = colors.primaryText)
+                    Text(stringResource(Res.string.to_top), color = colors.primaryText)
                 }
                 DropdownMenuItem(onClick = { showMenu = false; actions.onToBottom(item) }) {
-                    Text(rememberString("to_bottom"), color = colors.primaryText)
+                    Text(stringResource(Res.string.to_bottom), color = colors.primaryText)
                 }
                 DropdownMenuItem(onClick = { showMenu = false; onDelete() }) {
-                    Text(rememberString("delete"), color = colors.primaryText)
+                    Text(stringResource(Res.string.delete), color = colors.primaryText)
                 }
             }
         }

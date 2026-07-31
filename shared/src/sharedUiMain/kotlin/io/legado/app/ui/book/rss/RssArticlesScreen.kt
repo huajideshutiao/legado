@@ -21,9 +21,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.empty
+import legado.shared.generated.resources.ic_refresh_black_24dp
+import legado.shared.generated.resources.refresh
+import legado.shared.generated.resources.rss_source
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * RSS 文章列表交互回调 (Route 层桥接到 navigator + ViewModelShared)。
@@ -46,7 +51,7 @@ fun RssArticlesScreen(
 ) {
     val colors = AppTheme.colors
     // book 未加载完时用通用 RSS 文案兜底
-    val fallbackTitle = rememberString("rss_source")
+    val fallbackTitle = stringResource(Res.string.rss_source)
     Column(Modifier.fillMaxSize()) {
         AppTitleBar(
             title = title.ifEmpty { fallbackTitle },
@@ -54,8 +59,8 @@ fun RssArticlesScreen(
             actions = {
                 IconButton(onClick = actions::onRefresh) {
                     Icon(
-                        painter = rememberPainter("ic_refresh_black_24dp"),
-                        contentDescription = rememberString("refresh"),
+                        painter = painterResource(Res.drawable.ic_refresh_black_24dp),
+                        contentDescription = stringResource(Res.string.refresh),
                         tint = colors.primaryText,
                     )
                 }
@@ -76,7 +81,11 @@ fun RssArticlesScreen(
 
             state.articles.isEmpty() -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(rememberString("empty"), color = colors.secondaryText, fontSize = 14.sp)
+                    Text(
+                        stringResource(Res.string.empty),
+                        color = colors.secondaryText,
+                        fontSize = 14.sp
+                    )
                 }
             }
 

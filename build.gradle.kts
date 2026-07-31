@@ -9,11 +9,26 @@ plugins {
     alias(libs.plugins.kotlin.parcelize) apply false
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.room) apply false
-    // 桌面端入口模块需要
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.kotlin.serialization) apply false
     alias(libs.plugins.compose.multiplatform) apply false
     alias(libs.plugins.compose.compiler) apply false
+}
+
+val isHarmonyMode = providers.gradleProperty("enableOhosTarget").getOrNull() == "true"
+
+subprojects {
+    configurations.all {
+        // 彻底移除 Material Icons 依赖，满足“只允许用共享 XML”的要求
+        exclude(group = "androidx.compose.material", module = "material-icons-core")
+        exclude(group = "androidx.compose.material", module = "material-icons-extended")
+
+        resolutionStrategy.eachDependency {
+            if (isHarmonyMode && requested.group == "org.jetbrains.kotlin") {
+                useVersion("2.2.21-0.4.0")
+            }
+        }
+    }
 }
 
 tasks.register<Delete>("clean") {

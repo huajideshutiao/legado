@@ -19,9 +19,18 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.add
+import legado.shared.generated.resources.close
+import legado.shared.generated.resources.effective_replaces
+import legado.shared.generated.resources.empty
+import legado.shared.generated.resources.ic_add
+import legado.shared.generated.resources.source_filter_rule_manage
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 展示当前章节起效的替换规则对话框正文 Composable。
@@ -37,8 +46,8 @@ import io.legado.app.ui.compose.theme.AppTheme
  *   项后桥接（chineseConvert 项作为 items 的一部分由 wrapper 构造时附加）
  *
  * 资源访问替换：
- * - `getString(R.string.effective_replaces)` → `rememberString("effective_replaces")`
- * - `painterResource(R.drawable.ic_add)` → `rememberPainter("ic_add")`
+ * - `getString(R.string.effective_replaces)` → `stringResource(Res.string.effective_replaces)`
+ * - `painterResource(R.drawable.ic_add)` → `painterResource(Res.drawable.ic_add)`
  * - `stringResource(R.string.add/empty/close/source_filter_rule_manage)` → `rememberString(...)`
  *
  * @param items 当前章节起效的替换规则列表（含 chineseConvert 项时由 wrapper 附加）
@@ -58,13 +67,13 @@ fun EffectiveReplacesScreen(
     val colors = AppTheme.colors
     Column(Modifier.fillMaxWidth()) {
         DialogTitleBar(
-            title = rememberString("effective_replaces"),
+            title = stringResource(Res.string.effective_replaces),
             onBack = onDismiss,
             actions = {
                 IconButton(onClick = onAddRule) {
                     Icon(
-                        painter = rememberPainter("ic_add"),
-                        contentDescription = rememberString("add"),
+                        painter = painterResource(Res.drawable.ic_add),
+                        contentDescription = stringResource(Res.string.add),
                         tint = colors.primaryText,
                     )
                 }
@@ -90,7 +99,7 @@ fun EffectiveReplacesScreen(
             }
             if (items.isEmpty()) {
                 Text(
-                    text = rememberString("empty"),
+                    text = stringResource(Res.string.empty),
                     color = colors.secondaryText,
                     modifier = Modifier
                         .align(Alignment.Center)
@@ -106,12 +115,12 @@ fun EffectiveReplacesScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             AppTextButton(
-                text = rememberString("close"),
+                text = stringResource(Res.string.close),
                 color = colors.secondaryText,
                 onClick = onDismiss,
             )
             AppTextButton(
-                text = rememberString("source_filter_rule_manage"),
+                text = stringResource(Res.string.source_filter_rule_manage),
                 onClick = onManageAll,
             )
         }

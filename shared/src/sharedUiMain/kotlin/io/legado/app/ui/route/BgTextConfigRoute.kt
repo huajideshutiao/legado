@@ -27,7 +27,6 @@ import io.legado.app.ui.book.read.config.BgTextConfigScreen
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
@@ -38,6 +37,12 @@ import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.import_on_line
+import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.text_bg_style
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 背景文字配置 shared 路由入口。
@@ -61,7 +66,7 @@ fun BgTextConfigRoute(
     val scope = rememberCoroutineScope()
     var showUrlInput by remember { mutableStateOf(false) }
     // 顶栏标题 (对照 app 端 R.string.text_bg_style, 与 ReadConfigScreen 入口项一致)
-    val titleStr = rememberString("text_bg_style")
+    val titleStr = stringResource(Res.string.text_bg_style)
 
     val controller = remember {
         object : BgTextConfigController {
@@ -266,7 +271,12 @@ private fun UrlInputDialog(
     var url by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(rememberString("import_on_line"), color = AppTheme.colors.primaryText) },
+        title = {
+            Text(
+                stringResource(Res.string.import_on_line),
+                color = AppTheme.colors.primaryText
+            )
+        },
         text = {
             AppOutlinedTextField(
                 value = url,
@@ -278,12 +288,12 @@ private fun UrlInputDialog(
         },
         confirmButton = {
             AppTextButton(
-                text = rememberString("ok"),
+                text = stringResource(Res.string.ok),
                 enabled = url.isNotBlank(),
             ) { onConfirm(url.trim()) }
         },
         dismissButton = {
-            AppTextButton(text = rememberString("cancel"), onClick = onDismiss)
+            AppTextButton(text = stringResource(Res.string.cancel), onClick = onDismiss)
         },
         shape = DesignTokens.dialogShape,
         backgroundColor = AppTheme.colors.background,

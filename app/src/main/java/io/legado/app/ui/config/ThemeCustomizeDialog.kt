@@ -61,6 +61,8 @@ import io.legado.app.utils.inputStream
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.readUri
 import io.legado.app.utils.toastOnUi
+import org.jetbrains.compose.resources.getString
+import org.jetbrains.compose.resources.stringResource
 import splitties.init.appCtx
 import java.io.FileOutputStream
 

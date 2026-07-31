@@ -1,6 +1,7 @@
 package io.legado.app.ui.widget.dialog
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -14,9 +15,12 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.image.ImageBitmapLoader
@@ -25,7 +29,10 @@ import io.legado.app.help.image.rememberAnimatedImageBitmap
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.zoomable
-import io.legado.app.ui.compose.platform.rememberString
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.close
+import legado.shared.generated.resources.loading
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 跨平台大图查看内容件 (对照 app 端 [io.legado.app.ui.widget.dialog.PhotoDialog] 的 Content)。
@@ -56,7 +63,8 @@ fun PhotoDialogContent(
     book: Book? = null,
     bookSource: BookSource? = null,
     onLongPress: (() -> Unit)? = null,
-    loadingContent: @Composable () -> Unit = { Text(rememberString("loading")) },
+    onTap: (() -> Unit)? = null,
+    loadingContent: @Composable () -> Unit = { Text(stringResource(Res.string.loading)) },
 ) {
     val bitmap by produceState<ImageBitmap?>(null, src) {
         value = runCatching {
@@ -84,6 +92,7 @@ fun PhotoDialogContent(
                     .zoomable(
                         contentAspectRatio = b.width.toFloat() / b.height,
                         onLongPress = onLongPress,
+                        onTap = onTap,
                     ),
             )
         } ?: loadingContent()
@@ -109,7 +118,7 @@ fun PhotoViewDialog(
 ) {
     AppAlertDialog(
         onDismissRequest = onDismiss,
-        okButton = AlertButton(rememberString("close")),
+        okButton = AlertButton(stringResource(Res.string.close)),
     ) {
         Column(Modifier.padding(horizontal = 24.dp)) {
             PhotoDialogContent(
@@ -119,5 +128,43 @@ fun PhotoViewDialog(
                 bookSource = bookSource,
             )
         }
+    }
+}
+
+/**
+ * 大图查看 Overlay: 全屏铺满 + 黑色半透明底色, 图片加载和缩放复用 [PhotoDialogContent]。
+ *
+ * @param src 图片路径 (http(s):// / file:// / 绝对路径 / data URI)
+ * @param onDismiss 关闭回调 (返回键 / 单击)
+ * @param book 当前书籍, 可空 (透传 [PhotoDialogContent])
+ * @param bookSource 书源 (网络图防盗链), 可空 (透传 [PhotoDialogContent])
+ */
+@Composable
+fun PhotoViewOverlayDialog(
+    src: String,
+    onDismiss: () -> Unit,
+    book: Book? = null,
+    bookSource: BookSource? = null,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = false,
+        ),
+    ) {
+        PhotoDialogContent(
+            src = src,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.85f)),
+            imageModifier = Modifier.fillMaxSize(),
+            book = book,
+            bookSource = bookSource,
+            onLongPress = null,
+            onTap = onDismiss,
+            loadingContent = { Text(stringResource(Res.string.loading), color = Color.White) },
+        )
     }
 }

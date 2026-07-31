@@ -2,6 +2,7 @@ package io.legado.desktop.ui.component
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -132,7 +133,7 @@ object DesktopBookCover {
      *
      * @param src 图片 URL/路径 (简介内 <img src="..."> 的值, 通常为网络绝对 URL)
      * @param modifier 外部尺寸约束 (默认 Modifier, 内部仍 fillMaxWidth + 120dp 保持原视觉)
-     * @param onClick 点击回调 (供后续接入大图查看器, 当前暂未挂到节点上)
+     * @param onClick 点击回调，打开与 Android 一致的大图查看器
      */
     @Composable
     fun IntroImage(src: String, modifier: Modifier = Modifier, onClick: () -> Unit = {}) {
@@ -143,6 +144,7 @@ object DesktopBookCover {
             .fillMaxWidth()
             .height(120.dp)
             .clip(DesignTokens.shapeSm)
+            .clickable(onClick = onClick)
         if (state is AsyncImagePainter.State.Success) {
             Image(
                 painter = painter,
@@ -164,9 +166,6 @@ object DesktopBookCover {
                 )
             }
         }
-        // onClick 暂未挂到节点 (后续接入大图查看器时挂 combinedClickable)
-        @Suppress("UNUSED_PARAMETER")
-        val _unused = onClick
     }
 }
 
