@@ -3,9 +3,6 @@ package io.legado.app.ui.bookshelf
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.TargetedFlingBehavior
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,12 +13,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.PagerDefaults
-import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -39,16 +35,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.PointerType
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.util.VelocityTracker
-import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.EventBus
@@ -69,7 +62,9 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.FlowBus
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
@@ -77,7 +72,6 @@ import legado.shared.generated.resources.bookshelf
 import legado.shared.generated.resources.image_cover_default
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import kotlin.math.abs
 
 /**
  * 书架 Screen (KMP 版, commonMain 共享)。
@@ -189,9 +183,8 @@ fun BookshelfScreen(
     val layoutSpec = rememberBookshelfLayoutSpec(tier)
     // 各分组页的滚动状态 (对照 BookshelfFragment1.fragmentMap): 滚顶要作用于当前分组页
     val pageScrollStates = remember { mutableStateMapOf<Long, ShelfScrollState>() }
-    // 封面 slot 包装 (各页共用, 避免每页重复创建 lambda)
-    val bookCoverSlot: @Composable (Book, Modifier, Boolean) -> Unit =
-        { book, m, isVideoCover -> resolvedCoverSlot(book, m, isVideoCover) }
+    // 封面 slot 直接透传 (原来外面再包一层 lambda: 每次重组换实例, 会让所有可见条目一起重组)
+    val bookCoverSlot: @Composable (Book, Modifier, Boolean) -> Unit = resolvedCoverSlot
     val groupCoverSlot: @Composable (BookGroup, Modifier, Boolean) -> Unit =
         { _, m, _ -> Box(m) }
 
@@ -290,14 +283,10 @@ fun BookshelfScreen(
         } else {
             // 初始分组 groupId: 该分组的页用外部 scrollState (保留宿主 gotoTop 入口), 其他页独立 state
             val initialGroupId = remember { currentGroupId }
-            // Pager 与鼠标拖动共用同一 flingBehavior, 保证吸附手感一致
-            val pagerFling = PagerDefaults.flingBehavior(state = pagerState)
             HorizontalPager(
                 state = pagerState,
                 beyondViewportPageCount = 1, // 对齐原版 offscreenPageLimit=1，手势开始前相邻页已完成组合
                 key = { index -> groups.getOrNull(index)?.groupId ?: index.toLong() },
-                flingBehavior = pagerFling,
-                modifier = Modifier.mouseDragPager(pagerState, scope, pagerFling),
             ) { page ->
                 val group = groups.getOrNull(page) ?: return@HorizontalPager
                 GroupBooksPage(
@@ -359,53 +348,6 @@ internal fun rememberBookshelfLayoutSpec(tier: BookshelfTier?): ShelfLayoutSpec 
                 fixedWidth = true,
                 gridWidthDp = gridWidthDp,
             )
-        }
-    }
-}
-
-/**
- * 补齐鼠标左键拖动横滑: Compose 的 scrollable 用 CanDragCalculation 把 PointerType.Mouse
- * 排除在拖动之外 (只留滚轮), Pager 自带手势对鼠标不响应。非鼠标事件直接放行, 不影响触摸。
- * 松手后走 Pager 自身的 flingBehavior, 吸附手感与触摸横滑一致。
- */
-private fun Modifier.mouseDragPager(
-    pagerState: PagerState,
-    scope: CoroutineScope,
-    flingBehavior: TargetedFlingBehavior,
-): Modifier = pointerInput(pagerState, flingBehavior) {
-    awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-        if (down.type != PointerType.Mouse) return@awaitEachGesture
-        val velocityTracker = VelocityTracker()
-        velocityTracker.addPointerInputChange(down)
-        var dragging = false
-        while (true) {
-            val event = awaitPointerEvent(PointerEventPass.Initial)
-            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-            if (!change.pressed) break
-            velocityTracker.addPointerInputChange(change)
-            if (!dragging &&
-                abs(change.position.x - down.position.x) > viewConfiguration.touchSlop
-            ) {
-                dragging = true
-            }
-            if (dragging) {
-                // 受限挂起作用域内只能调非挂起 API, 用 dispatchRawDelta 逐帧推进。
-                // Desktop 的 synthetic move 事件 previousPosition 可能是 Offset.Unspecified(NaN),
-                // 交给 PagerState.performScroll 会在 roundToLong 抛 "Cannot round NaN value"。
-                val delta = change.previousPosition.x - change.position.x
-                if (delta.isFinite()) pagerState.dispatchRawDelta(delta)
-                change.consume()
-            }
-        }
-        if (dragging) {
-            // 手势方向与滚动偏移量反向, 速度取负后交给 Pager 原生 fling 吸附。
-            // 速度非有限 (synthetic move 事件的 NaN) 时按 0 吸附, 避免停在半页
-            val raw = -velocityTracker.calculateVelocity().x
-            val velocity = if (raw.isFinite()) raw else 0f
-            scope.launch {
-                pagerState.scroll { with(flingBehavior) { performFling(velocity) } }
-            }
         }
     }
 }
@@ -682,36 +624,32 @@ fun SharedBookCover(
     val loader = remember { BookImageLoaders.getOrNull() }
     // useDefaultCover 时跳过网络加载, 直接走默认封面链 (对照 app 端 CoverImageView 行为)
     val useDefaultCover = remember { AppConfigProviders.get().useDefaultCover }
-    val ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL
-    // 用户图集选图: seed 同 app 端 defaultCoverSeed() (书名优先, 否则封面路径), 图集为空返回 null
-    val defaultCoverPath = remember(book.name, cover, ratio) {
-        defaultCoverFilePath(seed = book.name.takeIf { it.isNotBlank() } ?: cover, ratio = ratio)
-    }
-    var bitmap by remember(cover, book.origin) { mutableStateOf<ImageBitmap?>(null) }
-    // 已加载位图是否默认封面 (决定是否画竖排书名/作者)
-    var bitmapIsDefault by remember(cover, book.origin) { mutableStateOf(false) }
-    LaunchedEffect(cover, book.origin, loader, useDefaultCover, defaultCoverPath) {
+    // 位图与"是否默认封面"合成一个 state: 一次加载只引发一次重组
+    var coverState by remember(cover, book.origin) { mutableStateOf(NoCoverBitmap) }
+    // 实际显示尺寸 (px): 用 StateFlow 而非 snapshot state 承接量出的尺寸, 量尺寸不触发重组
+    // (同 coil ConstraintsSizeResolver 的做法)
+    val displaySize = remember { MutableStateFlow(IntSize.Zero) }
+    LaunchedEffect(cover, book.origin, loader, useDefaultCover, isVideoCover) {
         if (loader == null) return@LaunchedEffect
-        val loadDefault = {
-            if (defaultCoverPath != null) {
-                loader.loadImage(
-                    url = defaultCoverPath,
-                    sourceOrigin = null,
-                    onSuccess = { bitmap = it; bitmapIsDefault = true },
-                    onError = { bitmap = null },
-                )
+        val ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL
+        displaySize.map(::coverDecodeSize).distinctUntilChanged().collect { size ->
+            if (size.width <= 0 || size.height <= 0) return@collect
+            // 默认封面链要读 prefs + 解 JSON, 挪到真用得上时才算 (有封面的书零开销)
+            suspend fun loadDefault() {
+                val path = defaultCoverFilePath(
+                    seed = book.name.takeIf { it.isNotBlank() } ?: cover,
+                    ratio = ratio,
+                ) ?: return
+                val bmp = loader.loadImageOrNull(path, null, size.width, size.height)
+                coverState = if (bmp == null) NoCoverBitmap else CoverBitmap(bmp, true)
             }
+            if (useDefaultCover || cover.isNullOrBlank()) {
+                loadDefault()
+                return@collect
+            }
+            val bmp = loader.loadCoverOrNull(cover, book.origin, size.width, size.height)
+            if (bmp != null) coverState = CoverBitmap(bmp, false) else loadDefault()
         }
-        if (useDefaultCover || cover.isNullOrBlank()) {
-            loadDefault()
-            return@LaunchedEffect
-        }
-        loader.loadImage(
-            url = cover,
-            sourceOrigin = book.origin,
-            onSuccess = { bitmap = it; bitmapIsDefault = false },
-            onError = { loadDefault() },
-        )
     }
     // 对齐 CoverImageView.onMeasure: 高度有界时按比例反推宽度, 否则按宽度推高度。
     // 不能硬加 fillMaxWidth() —— 列表条目/发现结果页传的是定高 modifier, 撑满宽度会让封面失控放大。
@@ -719,8 +657,9 @@ fun SharedBookCover(
     val resolvedModifier = modifier
         .aspectRatio(aspectRatio, matchHeightConstraintsFirst = true)
         .clip(DesignTokens.shapeSm)
-    val bmp = bitmap
-    if (bmp != null && !bitmapIsDefault) {
+        .onSizeChanged { displaySize.value = it }
+    val bmp = coverState.bitmap
+    if (bmp != null && !coverState.isDefault) {
         Image(
             bitmap = bmp,
             contentDescription = book.name,
@@ -754,6 +693,22 @@ fun SharedBookCover(
             modifier = Modifier.matchParentSize(),
         )
     }
+}
+
+/** 封面位图 + 是否默认封面 (决定要不要叠竖排书名/作者) */
+@Immutable
+private class CoverBitmap(val bitmap: ImageBitmap?, val isDefault: Boolean)
+
+private val NoCoverBitmap = CoverBitmap(null, false)
+
+/**
+ * 解码目标尺寸: 向上取到 64 的倍数, 让相邻列宽/微小布局抖动共用同一份内存缓存,
+ * 也避免尺寸每变一像素就重新解一次。
+ */
+private fun coverDecodeSize(size: IntSize): IntSize {
+    if (size.width <= 0 || size.height <= 0) return IntSize.Zero
+    fun step(px: Int) = (px + 63) / 64 * 64
+    return IntSize(step(size.width), step(size.height))
 }
 
 /**

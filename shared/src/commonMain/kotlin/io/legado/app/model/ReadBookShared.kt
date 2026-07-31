@@ -1199,7 +1199,7 @@ open class ReadBookShared : CoroutineScope {
             -1 -> prevChapter = textChapter
             0 -> {
                 curChapter = textChapter
-                callback?.onContentChanged()
+                callback?.onBookContentChanged()
             }
 
             1 -> nextChapter = textChapter
@@ -1211,7 +1211,7 @@ open class ReadBookShared : CoroutineScope {
         prevChapter = curChapter
         curChapter = nextChapter
         nextChapter = null
-        callback?.onContentChanged()
+        callback?.onBookContentChanged()
     }
 
     /** 滑窗后移: next=cur, cur=prev, prev=null (对照原版 moveToPrevChapter 的窗口平移段) */
@@ -1219,7 +1219,7 @@ open class ReadBookShared : CoroutineScope {
         nextChapter = curChapter
         curChapter = prevChapter
         prevChapter = null
-        callback?.onContentChanged()
+        callback?.onBookContentChanged()
     }
 
     /** 解析到书源后调用 (对照原版 ReadBook.upWebBook 的 bookSource 赋值, 本地书传 null) */
@@ -1316,6 +1316,6 @@ open class ReadBookShared : CoroutineScope {
         fun onChapterListChanged(chapterList: List<BookChapter>) {}
 
         /** 当前章节正文加载完成 / 内容刷新后触发 ([updateCurTextChapter]) */
-        fun onContentChanged() {}
+        fun onBookContentChanged() {}
     }
 }

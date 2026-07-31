@@ -12,8 +12,12 @@ import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.WebBook.getBookListAwait
 import io.legado.app.model.webBook.parseExploreOptionsFromUrl
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
@@ -40,8 +44,9 @@ import kotlinx.coroutines.launch
  *   [HomeTabHelpShared.getSections] (由 app 端下沉, 调用方语义不变)
  * - `BaseViewModel.execute { ... }.onError {}.onFinally {}` → [Coroutine.async] (scope) {}.onError {}.onFinally {}
  *   (BaseViewModel.execute 即 Coroutine.async 包装, 行为一致)
- * - `androidx.lifecycle.MutableLiveData` → [MutableStateFlow]
- * - `LiveData.postValue(x)` → `MutableStateFlow.value = x`
+ * - `androidx.lifecycle.MutableLiveData` → 事件信号用 [MutableSharedFlow] (replay=1), 纯状态用 [MutableStateFlow]
+ * - `LiveData.postValue(x)` → `MutableSharedFlow.tryEmit(x)` (StateFlow 会吞掉与上次相等的值,
+ *   同一 section 的 loading 开/关投递的是同一个 Pair, 用 StateFlow 转圈就永远停不下来)
  * - `viewModelScope.launch { withContext(IO) { ... } }` → `scope.launch(Dispatchers.IO) { ... }`
  *   (StateFlow.value 线程安全, 不必切回 Main)
  *
@@ -52,14 +57,14 @@ import kotlinx.coroutines.launch
  * / [io.legado.app.ui.explore.ExploreShowViewModelShared]):
  * - app 端 HomeViewModel `extends BaseViewModel`, 内部持有本类实例;
  * - 通过构造函数注入 [scope] (app 端 = `viewModelScope`);
- * - 6 个 LiveData 改为 6 个 StateFlow (可空, 初始 null, app 端桥接时过滤 null 避免初始假触发);
+ * - 6 个 LiveData 改为 tabs 用 StateFlow (纯状态) + 5 个事件 SharedFlow;
  * - 调用方法直接转发到本类, 子类签名/语义不变。
  *
  * # 状态桥接
  *
- * 6 个原 LiveData 字段对应 6 个 StateFlow (均可空, 初始 null, app 端桥接时过滤 null):
+ * 6 个原 LiveData 字段对应:
  * - `tabsLiveData` (原 `MutableLiveData<List<HomeTab>>`) → [tabsFlow] (`StateFlow<List<HomeTab>?>`)
- * - `sectionsLiveData` (原 `MutableLiveData<String>`) → [sectionsFlow] (`StateFlow<String?>`)
+ * - `sectionsLiveData` (原 `MutableLiveData<String>`) → [sectionsFlow] (`SharedFlow<String>`)
  * - `sectionUpdated` (原 `MutableLiveData<Pair<String, String>>`) → [sectionUpdatedFlow]
  * - `sectionLoadingChanged` (原 `MutableLiveData<Pair<String, String>>`) → [sectionLoadingChangedFlow]
  * - `sectionErrorChanged` (原 `MutableLiveData<Pair<String, String>>`) → [sectionErrorChangedFlow]
@@ -91,30 +96,45 @@ class HomeViewModelShared(
         val infiniteBookSet = linkedSetOf<SearchBook>()
     }
 
-    // region 状态流: 外部只读 StateFlow, 适配 Compose 重组 / Android asLiveData 桥接
+    // region 状态流: 外部只读 Flow, 适配 Compose 重组 / Android asLiveData 桥接
+
+    /**
+     * 事件流工厂: replay=1 + DROP_OLDEST, 语义对齐 LiveData.postValue。
+     *
+     * 不能用 StateFlow: StateFlow 按值去重, 同一 section 的 loading 开/关投递的是相等的 Pair,
+     * 第二次会被吞掉, 转圈就永远停不下来。
+     */
+    private fun <T> signalFlow() = MutableSharedFlow<T>(
+        replay = 1,
+        extraBufferCapacity = 8,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
 
     private val _tabsFlow = MutableStateFlow<List<HomeTab>?>(null)
     val tabsFlow: StateFlow<List<HomeTab>?> = _tabsFlow.asStateFlow()
 
     /** 携带 tabTitle: 该 tab 的 sections 列表已变更 (顺序/增删/样式) */
-    private val _sectionsFlow = MutableStateFlow<String?>(null)
-    val sectionsFlow: StateFlow<String?> = _sectionsFlow.asStateFlow()
+    private val _sectionsFlow = signalFlow<String>()
+    val sectionsFlow: SharedFlow<String> = _sectionsFlow.asSharedFlow()
 
     /** 携带 tabTitle + sectionId: 该展示项书籍数据已更新 */
-    private val _sectionUpdatedFlow = MutableStateFlow<Pair<String, String>?>(null)
-    val sectionUpdatedFlow: StateFlow<Pair<String, String>?> = _sectionUpdatedFlow.asStateFlow()
+    private val _sectionUpdatedFlow = signalFlow<Pair<String, String>>()
+    val sectionUpdatedFlow: SharedFlow<Pair<String, String>> = _sectionUpdatedFlow.asSharedFlow()
 
     /** 携带 tabTitle + sectionId: 该展示项加载状态变化 */
-    private val _sectionLoadingChangedFlow = MutableStateFlow<Pair<String, String>?>(null)
-    val sectionLoadingChangedFlow: StateFlow<Pair<String, String>?> = _sectionLoadingChangedFlow.asStateFlow()
+    private val _sectionLoadingChangedFlow = signalFlow<Pair<String, String>>()
+    val sectionLoadingChangedFlow: SharedFlow<Pair<String, String>> =
+        _sectionLoadingChangedFlow.asSharedFlow()
 
     /** 携带 tabTitle + sectionId: 该展示项书源失效, UI 需展示错误占位 */
-    private val _sectionErrorChangedFlow = MutableStateFlow<Pair<String, String>?>(null)
-    val sectionErrorChangedFlow: StateFlow<Pair<String, String>?> = _sectionErrorChangedFlow.asStateFlow()
+    private val _sectionErrorChangedFlow = signalFlow<Pair<String, String>>()
+    val sectionErrorChangedFlow: SharedFlow<Pair<String, String>> =
+        _sectionErrorChangedFlow.asSharedFlow()
 
     /** 携带 tabTitle + sectionId: 该展示项的参数选项已就绪/已变更, UI 需重渲染 chip 行 */
-    private val _sectionOptionsChangedFlow = MutableStateFlow<Pair<String, String>?>(null)
-    val sectionOptionsChangedFlow: StateFlow<Pair<String, String>?> = _sectionOptionsChangedFlow.asStateFlow()
+    private val _sectionOptionsChangedFlow = signalFlow<Pair<String, String>>()
+    val sectionOptionsChangedFlow: SharedFlow<Pair<String, String>> =
+        _sectionOptionsChangedFlow.asSharedFlow()
 
     // endregion
 
@@ -163,18 +183,18 @@ class HomeViewModelShared(
         // 无限流也走这里: 解析后存入 map, loadInfinite 读取 selectedOptions
         if (state.sectionOptionsMap[section.id] == null) {
             state.sectionOptionsMap[section.id] = parseExploreOptionsFromUrl(section.exploreUrl)
-            _sectionOptionsChangedFlow.value = tabTitle to section.id
+            _sectionOptionsChangedFlow.tryEmit(tabTitle to section.id)
         }
         if (section.style == HomeSection.STYLE_INFINITE_GRID) {
             loadInfinite(tabTitle, resetPage = true)
             return
         }
         state.loadingSet.add(section.id)
-        _sectionLoadingChangedFlow.value = tabTitle to section.id
+        _sectionLoadingChangedFlow.tryEmit(tabTitle to section.id)
         Coroutine.async(scope) {
             val source = appDb.bookSourceDao.getBookSource(section.sourceUrl)
             if (source == null) {
-                _sectionErrorChangedFlow.value = tabTitle to section.id
+                _sectionErrorChangedFlow.tryEmit(tabTitle to section.id)
                 return@async
             }
             // 与 ExploreShowViewModel.explore 一致: 把 resolvedValue 通过 selectedOptions 传出
@@ -186,13 +206,13 @@ class HomeViewModelShared(
                 selectedOptions = selectedOptions
             )
             state.sectionBooksMap[section.id] = result.books
-            _sectionUpdatedFlow.value = tabTitle to section.id
+            _sectionUpdatedFlow.tryEmit(tabTitle to section.id)
         }.onError {
             AppLog.put("主页[$tabTitle]展示项[${section.title}]加载失败", it)
-            _sectionErrorChangedFlow.value = tabTitle to section.id
+            _sectionErrorChangedFlow.tryEmit(tabTitle to section.id)
         }.onFinally {
             state.loadingSet.remove(section.id)
-            _sectionLoadingChangedFlow.value = tabTitle to section.id
+            _sectionLoadingChangedFlow.tryEmit(tabTitle to section.id)
         }
     }
 
@@ -204,7 +224,7 @@ class HomeViewModelShared(
     fun onSectionOptionSelected(tabTitle: String, section: HomeSection) {
         val state = stateOf(tabTitle)
         state.sectionBooksMap.remove(section.id)
-        _sectionUpdatedFlow.value = tabTitle to section.id
+        _sectionUpdatedFlow.tryEmit(tabTitle to section.id)
         loadSection(tabTitle, section)
     }
 
@@ -220,7 +240,7 @@ class HomeViewModelShared(
         }
         state.infiniteLoading = true
         state.loadingSet.add(section.id)
-        _sectionLoadingChangedFlow.value = tabTitle to section.id
+        _sectionLoadingChangedFlow.tryEmit(tabTitle to section.id)
         Coroutine.async(scope) {
             val source = appDb.bookSourceDao.getBookSource(section.sourceUrl)
                 ?: return@async
@@ -236,13 +256,13 @@ class HomeViewModelShared(
             state.infiniteHasMore = result.hasNextPage && result.books.isNotEmpty()
             state.sectionBooksMap[section.id] = state.infiniteBookSet.toList()
             state.infinitePage++
-            _sectionUpdatedFlow.value = tabTitle to section.id
+            _sectionUpdatedFlow.tryEmit(tabTitle to section.id)
         }.onError {
             AppLog.put("主页[$tabTitle]无限流[${section.title}]加载失败", it)
         }.onFinally {
             state.infiniteLoading = false
             state.loadingSet.remove(section.id)
-            _sectionLoadingChangedFlow.value = tabTitle to section.id
+            _sectionLoadingChangedFlow.tryEmit(tabTitle to section.id)
         }
     }
 
@@ -253,7 +273,7 @@ class HomeViewModelShared(
         if (section.style == HomeSection.STYLE_INFINITE_GRID) {
             state.infiniteSection = section
         }
-        _sectionsFlow.value = tabTitle
+        _sectionsFlow.tryEmit(tabTitle)
         loadSection(tabTitle, section)
     }
 
@@ -270,7 +290,7 @@ class HomeViewModelShared(
                 state.infiniteBookSet.clear()
             }
         }
-        _sectionsFlow.value = tabTitle
+        _sectionsFlow.tryEmit(tabTitle)
         if (sourceChanged) {
             if (section.style == HomeSection.STYLE_INFINITE_GRID) {
                 state.infiniteBookSet.clear()
@@ -293,11 +313,11 @@ class HomeViewModelShared(
             state.infiniteSection = null
             state.infiniteBookSet.clear()
         }
-        _sectionsFlow.value = tabTitle
+        _sectionsFlow.tryEmit(tabTitle)
     }
 
     fun reorderSections(tabTitle: String) {
-        _sectionsFlow.value = tabTitle
+        _sectionsFlow.tryEmit(tabTitle)
     }
 
     // ─── Tab 结构变化 ─────────────────────────────────────────────────────

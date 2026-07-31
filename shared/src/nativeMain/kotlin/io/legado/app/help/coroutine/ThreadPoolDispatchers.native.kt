@@ -2,6 +2,7 @@ package io.legado.app.help.coroutine
 
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 
 /**
  * Native (iOS/鸿蒙) actual: 用 [Dispatchers.Default] 兜底。

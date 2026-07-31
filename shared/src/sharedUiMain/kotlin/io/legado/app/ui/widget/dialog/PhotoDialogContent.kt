@@ -2,6 +2,7 @@ package io.legado.app.ui.widget.dialog
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -15,8 +16,10 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -80,8 +83,23 @@ fun PhotoDialogContent(
         }.getOrNull()?.takeIf { isGifBytes(it) }
     }
     val animatedFrame = rememberAnimatedImageBitmap(gifBytes)
-    Box(modifier, contentAlignment = Alignment.Center) {
-        (animatedFrame ?: bitmap)?.let { b ->
+    val image = animatedFrame ?: bitmap
+    Box(
+        // 占位态没有图片可挂 zoomable, 单击/长按要挂到容器上, 否则加载中/加载失败时全屏
+        // 看图层没有任何可点区域, 点不掉也退不出 (对照原 PhotoDialog 点击即关)
+        modifier = if (image == null) {
+            modifier.pointerInput(onTap, onLongPress) {
+                detectTapGestures(
+                    onTap = onTap?.let { { _: Offset -> it() } },
+                    onLongPress = onLongPress?.let { { _: Offset -> it() } },
+                )
+            }
+        } else {
+            modifier
+        },
+        contentAlignment = Alignment.Center,
+    ) {
+        image?.let { b ->
             Image(
                 bitmap = b,
                 contentDescription = null,

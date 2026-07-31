@@ -3,8 +3,10 @@
 package io.legado.app.help.image
 
 import io.legado.app.utils.Base64Lenient
+import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.readBytes
 import kotlinx.cinterop.useContents
+import kotlinx.cinterop.usePinned
 import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGSizeMake
 import platform.Foundation.NSData
@@ -15,8 +17,7 @@ import platform.UIKit.UIImageJPEGRepresentation
 import platform.UIKit.UIImagePNGRepresentation
 import platform.UIKit.UIGraphicsBeginImageContextWithOptions
 import platform.UIKit.UIGraphicsEndImageContext
-import platform.UIKit.UIGraphicsImageFromCurrentImageContext
-import platform.UIKit.drawInRect
+import platform.UIKit.UIGraphicsGetImageFromCurrentImageContext
 
 /**
  * iOS 端 [ImageOps] 真实实现 (KP4)。
@@ -50,7 +51,7 @@ import platform.UIKit.drawInRect
  * ```
  *   UIGraphicsBeginImageContextWithOptions(CGSizeMake(w, h), false, 1.0)
  *   image.drawInRect(CGRectMake(-x, -y, fullW, fullH))  // 平移, 不缩放
- *   val sub = UIGraphicsImageFromCurrentImageContext()
+ *   val sub = UIGraphicsGetImageFromCurrentImageContext()
  *   UIGraphicsEndImageContext()
  * ```
  * 上下文只截取 (0,0,w,h) 区域, 等价裁剪原图 (x,y,w,h); 比直接调
@@ -89,7 +90,7 @@ object IosImageOps : ImageOps {
     override fun decode(bytes: ByteArray): ImageRef {
         // UIImage(data:) 解码 JPEG/PNG/WebP/HEIC 等 (iOS 系统解码能力, 与 IosBookCover 验证图片有效性一致)
         // 失败返回 nil -> 抛异常 (与 ImageOps.decode 契约一致: "失败抛异常")
-        val nsData = NSData.create(bytes)
+        val nsData = bytes.toNSData()
         val image = UIImage(data = nsData)
             ?: throw IllegalArgumentException("image.decode: 无法解码图片字节(${bytes.size} bytes)")
         return IosImageRef(image)
@@ -172,8 +173,8 @@ object IosImageOps : ImageOps {
                 img.drawInRect(rect)
                 offset += if (horizontal) w else h
             }
-            val result = UIGraphicsImageFromCurrentImageContext()
-                ?: throw IllegalStateException("image.stitch: UIGraphicsImageFromCurrentImageContext 返回 nil")
+            val result = UIGraphicsGetImageFromCurrentImageContext()
+                ?: throw IllegalStateException("image.stitch: UIGraphicsGetImageFromCurrentImageContext 返回 nil")
             return IosImageRef(result)
         } finally {
             UIGraphicsEndImageContext()
@@ -213,8 +214,8 @@ object IosImageOps : ImageOps {
         return try {
             // 原图按原尺寸画到偏移 (-x,-y): 上下文 (0,0,w,h) 截取原图 (x,y,w,h) 区域
             image.drawInRect(CGRectMake(-x, -y, fullW, fullH))
-            UIGraphicsImageFromCurrentImageContext()
-                ?: throw IllegalStateException("image: UIGraphicsImageFromCurrentImageContext 返回 nil")
+            UIGraphicsGetImageFromCurrentImageContext()
+                ?: throw IllegalStateException("image: UIGraphicsGetImageFromCurrentImageContext 返回 nil")
         } finally {
             UIGraphicsEndImageContext()
         }
@@ -238,5 +239,13 @@ object IosImageOps : ImageOps {
         val size = this.length.toInt()
         if (size == 0) return ByteArray(0)
         return this.bytes?.readBytes(size) ?: ByteArray(0)
+    }
+
+    /** ByteArray → NSData (`NSData.create(bytes:length:)` 只收 CPointer, 需先 pin)。 */
+    private fun ByteArray.toNSData(): NSData {
+        if (isEmpty()) return NSData()
+        return usePinned { pinned ->
+            NSData.create(bytes = pinned.addressOf(0), length = size.toULong())
+        }
     }
 }

@@ -3,6 +3,7 @@ package io.legado.desktop.image
 import io.legado.app.help.image.ImageOps
 import io.legado.app.help.image.ImageRef
 import io.legado.app.ui.compose.platform.jvmGetString
+import java.awt.Color
 import java.awt.Graphics
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
@@ -22,7 +23,8 @@ import javax.imageio.ImageIO
  * 桌面端冒烟测试至少要能跑 JS, 故必须注册一个 [ImageOps] 实现, 哪怕 KP1 阶段不实际用 image 解密。
  *
  * # 实现
- * 内持 `java.awt.image.BufferedImage`, 用 `javax.imageio.ImageIO` 编解码 (JDK 内置, 无外部依赖)。
+ * 内持 `java.awt.image.BufferedImage`, 用 `javax.imageio.ImageIO` 编解码。
+ * webp 编解码靠 `com.github.gotson:webp-imageio` 的 ImageIO SPI (classpath 即生效)。
  * 对应 app 端 `BitmapImageOps` 内持 `android.graphics.Bitmap`。
  *
  * # 覆盖范围
@@ -49,17 +51,42 @@ object DesktopImageOps : ImageOps {
         val formatName = when (format.lowercase()) {
             "png" -> "png"
             "jpg", "jpeg" -> "jpg"
-            "webp" -> "webp" // JDK 内置 ImageIO 不支持 webp 编码, 会抛 IIOException; 桌面端暂不支持
+            // webp 编码由 com.github.gotson:webp-imageio 的 ImageIO SPI 提供 (jar 内置各平台 native)
+            "webp" -> "webp"
             else -> throw IllegalArgumentException(jvmGetString("image_encode_unsupported_format", format))
         }
         val out = ByteArrayOutputStream()
-        val image = bufferedImageOf(img)
+        // webp native writer 只认 INT_RGB/INT_ARGB 光栅, jpg 不支持 alpha, 均需先归一化
+        val image = normalizeForWrite(bufferedImageOf(img), formatName)
         // 注意: javax.imageio 不直接支持 quality 参数 (需 ImageWriter + ImageWriteParam),
         // 桌面端冒烟阶段用默认质量, 后续 KP2 若有需要再补 quality 控制
         if (!ImageIO.write(image, formatName, out)) {
             throw IllegalStateException(jvmGetString("image_encode_write_failed", formatName))
         }
         return out.toByteArray()
+    }
+
+    /** 按目标格式把图转成 writer 能接受的 raster 类型; 已匹配时原样返回。 */
+    private fun normalizeForWrite(image: BufferedImage, formatName: String): BufferedImage {
+        val target = when (formatName) {
+            "jpg" -> BufferedImage.TYPE_INT_RGB
+            "webp" -> BufferedImage.TYPE_INT_ARGB
+            else -> return image // png writer 通吃, 不必转换
+        }
+        if (image.type == target) return image
+        val copy = BufferedImage(image.width, image.height, target)
+        val g = copy.createGraphics()
+        try {
+            if (target == BufferedImage.TYPE_INT_RGB) {
+                // jpg 无 alpha 通道, 透明区先铺白底再绘制, 否则会变黑块
+                g.color = Color.WHITE
+                g.fillRect(0, 0, image.width, image.height)
+            }
+            g.drawImage(image, 0, 0, null)
+        } finally {
+            g.dispose()
+        }
+        return copy
     }
 
     override fun split(img: ImageRef, rows: Int, cols: Int): List<ImageRef> {

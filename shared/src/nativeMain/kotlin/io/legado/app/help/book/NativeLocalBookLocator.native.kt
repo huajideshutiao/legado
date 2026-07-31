@@ -2,6 +2,8 @@ package io.legado.app.help.book
 
 import io.legado.app.data.entities.Book
 import kotlin.concurrent.Volatile
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import io.legado.app.utils.File
 
 /**
@@ -46,13 +48,15 @@ class NativeLocalBookLocator : LocalBookLocator {
     @Volatile
     private var pathCache: MutableMap<String, String> = mutableMapOf()
 
+    private val cacheLock = SynchronizedObject()
+
     override fun getLocalPath(book: Book): String? {
         if (!book.isLocal) return null
-        synchronized(pathCache) {
+        synchronized(cacheLock) {
             pathCache[book.bookUrl]?.let { return it }
         }
         val path = parseLocalPath(book.bookUrl) ?: return null
-        synchronized(pathCache) {
+        synchronized(cacheLock) {
             pathCache[book.bookUrl] = path
         }
         return path
@@ -66,13 +70,13 @@ class NativeLocalBookLocator : LocalBookLocator {
     }
 
     override fun cacheLocalPath(book: Book, path: String) {
-        synchronized(pathCache) {
+        synchronized(cacheLock) {
             pathCache[book.bookUrl] = path
         }
     }
 
     override fun removeLocalPathCache(book: Book) {
-        synchronized(pathCache) {
+        synchronized(cacheLock) {
             pathCache.remove(book.bookUrl)
         }
     }

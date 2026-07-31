@@ -28,6 +28,7 @@ import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
 import coil3.size.Size
 import io.legado.app.data.entities.Book
+import io.legado.app.help.image.coverDiskCacheKey
 import io.legado.app.help.image.sourceOrigin
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -69,7 +70,7 @@ object DesktopBookCover {
      */
     @Composable
     fun BlurCoverBg(book: Book?, modifier: Modifier = Modifier) {
-        val painter = rememberCoverPainter(book?.getDisplayCover(), book?.origin)
+        val painter = rememberCoverPainter(book?.getDisplayCover(), book?.origin, persistent = true)
         val state by painter.state.collectAsState()
         Box(modifier) {
             if (state is AsyncImagePainter.State.Success) {
@@ -97,7 +98,7 @@ object DesktopBookCover {
      */
     @Composable
     fun InfoCover(book: Book?, modifier: Modifier = Modifier) {
-        val painter = rememberCoverPainter(book?.getDisplayCover(), book?.origin)
+        val painter = rememberCoverPainter(book?.getDisplayCover(), book?.origin, persistent = true)
         val state by painter.state.collectAsState()
         if (state is AsyncImagePainter.State.Success) {
             Image(
@@ -181,13 +182,23 @@ object DesktopBookCover {
  * 调用方按 `painter.state` 是否 Success 决定绘制图片还是原占位。
  */
 @Composable
-fun rememberCoverPainter(src: String?, sourceOrigin: String? = null): AsyncImagePainter {
-    val model = remember(src, sourceOrigin) {
+fun rememberCoverPainter(
+    src: String?,
+    sourceOrigin: String? = null,
+    persistent: Boolean = false,
+): AsyncImagePainter {
+    val model = remember(src, sourceOrigin, persistent) {
         val data = src?.takeIf { it.isNotBlank() }?.let { coverModel(it) }
         ImageRequest.Builder(PlatformContext.INSTANCE)
             .data(data)
             .sourceOrigin(sourceOrigin)
-            .apply { if (data is String) memoryCacheKey(data) }
+            .apply {
+                if (data is String) {
+                    memoryCacheKey(data)
+                    // 书籍封面落持久磁盘分区 (数据目录), 清缓存/系统清理不该抹掉
+                    if (persistent) diskCacheKey(coverDiskCacheKey(data))
+                }
+            }
             .size(Size.ORIGINAL)
             .build()
     }

@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLSession
+import platform.Foundation.dataTaskWithURL
 import platform.UIKit.UIImage
 import platform.UIKit.UIViewContentMode
 import platform.UIKit.UIImageView
@@ -41,11 +42,12 @@ object IosMangaReaderPlatform : MangaReaderScreenModel.Platform {
         UIKitView(
             factory = { UIImageView() },
             update = { view ->
-                view.contentMode = UIViewContentMode.ScaleAspectFit
+                view.contentMode = UIViewContentMode.UIViewContentModeScaleAspectFit
                 view.clipsToBounds = true
                 // 未加载时异步拉取图片 (主线程刷新 UIImage)
                 if (view.image == null) {
-                    NSURLSession.sharedSession.dataTaskWithURL(NSURL(url)) { data, _, _ ->
+                    val nsUrl = NSURL.URLWithString(url) ?: return@UIKitView
+                    NSURLSession.sharedSession.dataTaskWithURL(nsUrl) { data, _, _ ->
                         data?.let { bytes ->
                             dispatch_async(dispatch_get_main_queue()) {
                                 view.image = UIImage.imageWithData(bytes)

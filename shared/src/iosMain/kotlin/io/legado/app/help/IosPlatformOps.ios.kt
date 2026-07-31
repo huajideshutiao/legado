@@ -7,7 +7,6 @@ import platform.UIKit.UIApplication
 import platform.UIKit.UIPasteboard
 import platform.UIKit.UIViewController
 import platform.UIKit.UIWindow
-import platform.UIKit.sharedApplication
 
 // iOS 平台 openURL / 剪贴板 / 顶层 vc 查找 工具 (对照 desktop java.awt.Desktop / Toolkit.systemClipboard)
 

@@ -27,6 +27,8 @@ interface BookImageLoader {
     /**
      * 异步加载图片为 [ImageBitmap]。
      *
+     * 注: 走实现方自己的 CoroutineScope, 调用方取消不了; 列表条目请改用 [loadImageOrNull]。
+     *
      * @param url 图片 URL
      * @param sourceOrigin 书源 bookUrl (可为 null), 用于防盗链 header 注入
      * @param onSuccess 成功回调
@@ -38,6 +40,35 @@ interface BookImageLoader {
         onSuccess: (ImageBitmap) -> Unit,
         onError: (Throwable) -> Unit
     )
+
+    /**
+     * 挂起版加载: 在调用方协程里执行, 随之取消 (列表条目滚出视口即中止下载/解码)。
+     *
+     * [widthPx]/[heightPx] 均 > 0 时按目标尺寸降采样解码 (Scale.FILL + Precision.INEXACT,
+     * 对齐消费端的 ContentScale.Crop); 否则解原图 —— 同屏几十张封面时决定性的开销差别。
+     *
+     * @return 失败返回 null (不抛)
+     */
+    suspend fun loadImageOrNull(
+        url: String,
+        sourceOrigin: String?,
+        widthPx: Int = 0,
+        heightPx: Int = 0,
+    ): ImageBitmap?
+
+    /**
+     * 书籍封面加载: 同 [loadImageOrNull], 但磁盘缓存落**持久区** (应用数据目录),
+     * 系统清缓存/用户清缓存都清不掉 —— 书源失效后封面不可重获, 对齐原版 Glide
+     * `MultiDiskCacheFactory` 的 `filesDir/covers` 分区。
+     *
+     * 默认实现等同 [loadImageOrNull] (未分区的平台按原行为走)。
+     */
+    suspend fun loadCoverOrNull(
+        url: String,
+        sourceOrigin: String?,
+        widthPx: Int = 0,
+        heightPx: Int = 0,
+    ): ImageBitmap? = loadImageOrNull(url, sourceOrigin, widthPx, heightPx)
 }
 
 /**

@@ -12,7 +12,6 @@ import platform.Foundation.dataWithContentsOfURL
 import platform.UIKit.UIDocumentPickerDelegateProtocol
 import platform.UIKit.UIDocumentPickerMode
 import platform.UIKit.UIDocumentPickerViewController
-import platform.UIKit.presentViewController
 import platform.darwin.NSObject
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
@@ -66,7 +65,7 @@ suspend fun pickDocuments(
         @Suppress("DEPRECATION")
         val picker = UIDocumentPickerViewController(
             documentTypes = contentTypes,
-            inMode = UIDocumentPickerMode.Import,
+            inMode = UIDocumentPickerMode.UIDocumentPickerModeImport,
         )
         picker.allowsMultipleSelection = allowsMultiple
         pickerRef = picker
@@ -138,7 +137,7 @@ suspend fun pickDirectory(): NSURL? = suspendCancellableCoroutine { block ->
         @Suppress("DEPRECATION")
         val picker = UIDocumentPickerViewController(
             documentTypes = listOf("public.folder"),
-            inMode = UIDocumentPickerMode.Open,
+            inMode = UIDocumentPickerMode.UIDocumentPickerModeOpen,
         )
         picker.allowsMultipleSelection = false
         pickerRef = picker

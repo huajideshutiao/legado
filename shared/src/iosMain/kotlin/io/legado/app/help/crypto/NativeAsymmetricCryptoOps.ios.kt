@@ -4,6 +4,8 @@ package io.legado.app.help.crypto
 
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.pointed
+import kotlinx.cinterop.value
 import platform.CoreFoundation.CFRelease
 import platform.CoreFoundation.CFStringRef
 import platform.Security.SecKeyCreateDecryptedData
@@ -77,10 +79,10 @@ actual object NativeAsymmetricCryptoOps {
                 ?: throw UnsupportedOperationException("iOS crypto: CFDataCreate returned null")
             try {
                 memScoped {
-                    val err = IosCryptoNative.allocCFError()
+                    val err = allocCFError()
                     val cipher = SecKeyCreateEncryptedData(secKey, alg, plainData, err)
                     if (cipher == null) {
-                        IosCryptoNative.throwIosCryptoError("SecKeyCreateEncryptedData($algorithm)", err.pointed?.value)
+                        IosCryptoNative.throwIosCryptoError("SecKeyCreateEncryptedData($algorithm)", err.pointed.value)
                     }
                     val bytes = IosCryptoNative.cfDataToBytes(cipher)
                     CFRelease(cipher)
@@ -118,10 +120,10 @@ actual object NativeAsymmetricCryptoOps {
                 ?: throw UnsupportedOperationException("iOS crypto: CFDataCreate returned null")
             try {
                 memScoped {
-                    val err = IosCryptoNative.allocCFError()
+                    val err = allocCFError()
                     val plain = SecKeyCreateDecryptedData(secKey, alg, cipherData, err)
                     if (plain == null) {
-                        IosCryptoNative.throwIosCryptoError("SecKeyCreateDecryptedData($algorithm)", err.pointed?.value)
+                        IosCryptoNative.throwIosCryptoError("SecKeyCreateDecryptedData($algorithm)", err.pointed.value)
                     }
                     val bytes = IosCryptoNative.cfDataToBytes(plain)
                     CFRelease(plain)
@@ -136,7 +138,7 @@ actual object NativeAsymmetricCryptoOps {
     }
 
     /** RSA 加密算法字符串 → SecKeyAlgorithm (CFStringRef)。 */
-    private fun rsaEncryptionAlgorithm(algorithm: String): CFStringRef {
+    private fun rsaEncryptionAlgorithm(algorithm: String): CFStringRef? {
         // 归一化: 大写 + 去空格; 拆 ALGO/MODE/PADDING
         val parts = algorithm.uppercase().replace(" ", "").split("/")
         val algo = parts.getOrNull(0) ?: throw algoError(algorithm)

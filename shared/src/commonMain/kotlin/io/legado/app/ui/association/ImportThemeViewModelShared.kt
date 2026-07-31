@@ -18,9 +18,10 @@ import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.isJsonObject
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 
 /**
  * 导入主题配置 VM 共享核心 (KMP 版, commonMain)。
@@ -74,9 +75,9 @@ import kotlinx.coroutines.flow.asStateFlow
  *   newCallResponseBody / decompressed / text 均为 commonMain 扩展)。
  * - **context.getString(R.string.wrong_format)**: commonMain 无 R.string 资源,
  *   改为直接抛 `NoStackTraceException("格式不对")` (与 shared 端其他下沉 VM
- *   文案一致, 错误经 `_errorState.value = "ImportError:${it.message}"` 推送)。
- * - **androidx.lifecycle.MutableLiveData**: 不可 KMP, 改为 [MutableStateFlow] + [asStateFlow]
- *   (对照 [ImportBookSourceViewModelShared] 的 2 个 StateFlow 模式)。
+ *   文案一致, 错误经 `_errorState.tryEmit("ImportError:${it.message}")` 推送)。
+ * - **androidx.lifecycle.MutableLiveData**: 不可 KMP, 改为 [MutableSharedFlow] (replay=1) + [asSharedFlow]
+ *   (对照 [ImportBookSourceViewModelShared] 的事件流模式)。
  *
  * # 设计选择 (组合委托)
  *
@@ -100,22 +101,34 @@ class ImportThemeViewModelShared(
 ) {
 
     /**
+     * 事件流工厂: replay=1 + DROP_OLDEST, 语义对齐 LiveData.postValue。
+     *
+     * 不能用 StateFlow: 按值去重会吞掉重复投递 (同一个错误串重试后再次失败),
+     * 导入弹窗的加载态就永远停在转圈。
+     */
+    private fun <T> signalFlow() = MutableSharedFlow<T>(
+        replay = 1,
+        extraBufferCapacity = 8,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    /**
      * 导入错误信息流 (对照原 `errorLiveData: MutableLiveData<String>`)。
      *
-     * 初始 null (与原 LiveData 默认 null 一致), app 端桥接时过滤 null 避免初始假触发。
+     * 事件流 (replay=1): 每次失败都投递, 重复的相同错误串也不会被吞。
      * 值格式 `"ImportError:${localizedMessage}"`, 与 app 端原 `errorLiveData.postValue(...)` 一致。
      */
-    private val _errorState = MutableStateFlow<String?>(null)
-    val errorState: StateFlow<String?> = _errorState.asStateFlow()
+    private val _errorState = signalFlow<String>()
+    val errorState: SharedFlow<String> = _errorState.asSharedFlow()
 
     /**
      * 导入成功信号流 (对照原 `successLiveData: MutableLiveData<Int>`)。
      *
      * 值为 allSources.size (导入的主题配置总数), 0 表示解析无结果。
-     * 初始 null, app 端桥接时过滤 null 避免初始假触发。
+     * 事件流 (replay=1): 每次解析完成都投递, 数量与上次相同也不会被吞。
      */
-    private val _successState = MutableStateFlow<Int?>(null)
-    val successState: StateFlow<Int?> = _successState.asStateFlow()
+    private val _successState = signalFlow<Int>()
+    val successState: SharedFlow<Int> = _successState.asSharedFlow()
 
     /** 解析出的待导入主题配置列表 (importSourceAwait 累积, comparisonSource 比对, importSelect 写入)。 */
     val allSources = arrayListOf<ThemeConfigData>()
@@ -185,7 +198,7 @@ class ImportThemeViewModelShared(
      *   `mText.isUri()`, 是 Uri 则读取文本后转发到本类, 否则直接转发到本类。
      *   本类仅处理纯文本 (URL/JSON) 分支。
      * - 调 [importSourceAwait] 处理 isJsonObject / isJsonArray / isAbsUrl 分支;
-     * - `onError`: 推送 `_errorState.value = "ImportError:${localizedMessage}"`
+     * - `onError`: 推送 `_errorState.tryEmit("ImportError:${localizedMessage}")`
      *   + `AppLog.put(...)` (替代 `errorLiveData.postValue(...)`, 行为等价);
      * - `onSuccess`: 调 [comparisonSource] 比对本地已有主题配置 (与 app 端原
      *   `onSuccess { comparisonSource() }` 一致)。
@@ -198,7 +211,7 @@ class ImportThemeViewModelShared(
         Coroutine.async(scope = scope) {
             importSourceAwait(text.trim())
         }.onError {
-            _errorState.value = "ImportError:${it.message}"
+            _errorState.tryEmit("ImportError:${it.message}")
             AppLog.put("ImportError:${it.message}", it)
         }.onSuccess {
             comparisonSource()
@@ -281,7 +294,7 @@ class ImportThemeViewModelShared(
      *   (与 app 端原 `selectStatus.add(source == null || source != config)` 完全一致,
      *   这里 `source != config` 走 [ThemeConfigData.equals] 重写, 6 个字段逐一比较,
      *   与 app 端 ThemeConfig.Config.equals 行为一致);
-     * - 推送 `_successState.value = allSources.size` (替代 `successLiveData.postValue(allSources.size)`)。
+     * - 推送 `_successState.tryEmit(allSources.size)` (替代 `successLiveData.postValue(allSources.size)`)。
      *
      * 业务在 IO 跑 (configList 读 + 比对), 与 BaseViewModel.execute 默认值一致。
      */
@@ -295,7 +308,7 @@ class ImportThemeViewModelShared(
                 checkSources.add(source)
                 selectStatus.add(source == null || source != config)
             }
-            _successState.value = allSources.size
+            _successState.tryEmit(allSources.size)
         }
     }
 }

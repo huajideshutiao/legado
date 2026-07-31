@@ -1,21 +1,19 @@
 package io.legado.app.ui.book.video
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.interop.ArkUIView2
+import androidx.compose.ui.napi.js
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.utils.KS_JSON
 import kotlinx.serialization.Serializable
 
 /**
  * 鸿蒙端 [VideoPlayPlatformProvider]: 控制器经 napi Media 桥操作 AVPlayer (playerId "videoBook"),
- * 渲染层为 cinterop/NAPI 桥接骨架 (TODO: 接入 ArkTS Video/XComponent 原生渲染)。
+ * 画面经 CPF [ArkUIView2] interop 混排 ArkTS XComponent surface。
  *
  * 控制器复用 [OhosNativeBridge] 的 media tsfn + @CName legado_media_event 事件回调,
  * 与 OhosAudioPlayCommander ("audioBook") / OhosHttpTtsPlayer ("httpTts") 各持独立 AVPlayer 实例。
@@ -27,8 +25,16 @@ object OhosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
         onPlaybackEnded: () -> Unit,
     ): VideoPlayerController = OhosVideoPlayerController(onPlaybackEnded)
 
-    // 渲染骨架: 视频画面需 ArkTS 侧 Video/XComponent 原生渲染
-    // TODO: 接入 cinterop/NAPI 桥接 ArkTS @ohos.multimedia.media Video 组件或 XComponent Surface
+    /**
+     * 画面渲染: 经 CPF interop 把 ArkTS 的 XComponent(type:'surface') 混排进 Compose 层级。
+     *
+     * ArkTS 侧需以 [ARKUI_BUILDER_VIDEO_SURFACE] 为 key 调 `registerComposeInteropBuilder`
+     * 注册一个 @Builder, 内部 `XComponent({type:'surface'}).onLoad{}` 取到 surfaceId 后
+     * 交给 MediaBridgeHandler 上对应 playerId 的 AVPlayer (`player.surfaceId = id`)。
+     * 播控命令仍走既有 media tsfn 通道, 与本视图无耦合。
+     *
+     * interactive=false: 触摸留给 Compose 控件层 (进度条/手势), ArkUI 侧不参与触摸测试。
+     */
     @Composable
     override fun Render(
         controller: VideoPlayerController,
@@ -39,14 +45,17 @@ object OhosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
         LaunchedEffect(url) {
             if (url != null) (controller as? OhosVideoPlayerController)?.loadUrl(url)
         }
-        // 占位: 真实视频画面待 napi 桥接 ArkTS Video 组件
-        Box(
-            modifier = modifier.fillMaxSize().background(Color.Black),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("视频播放器", color = Color.White)
-        }
+        ArkUIView2(
+            name = ARKUI_BUILDER_VIDEO_SURFACE,
+            modifier = modifier.fillMaxSize(),
+            parameter = js { "playerId"(OhosNativeBridge.PLAYER_ID_VIDEO_BOOK) },
+            background = Color.Black,
+            interactive = false,
+        )
     }
+
+    /** ArkTS 侧 `registerComposeInteropBuilder` 的注册 key (需与 ets 端字面量一致)。 */
+    const val ARKUI_BUILDER_VIDEO_SURFACE: String = "legadoVideoSurface"
 
     override fun applyFullscreen(enabled: Boolean) {
         OhosNativeBridge.setWindowFullScreenLayout(enabled)

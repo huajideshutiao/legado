@@ -1,6 +1,7 @@
 package io.legado.app.model.webBook
 
-import androidx.room.withTransaction
+import androidx.room3.immediateTransaction
+import androidx.room3.useWriterConnection
 import io.legado.app.api.controller.BookControllerImageProviderImpl
 import io.legado.app.api.controller.ImageControllerProviders
 import io.legado.app.api.controller.ReadBookStateProviderImpl
@@ -98,21 +99,19 @@ object WebBookProvidersImpl :
     override val bookmarkDao get() = appDb.bookmarkDao
 
     // ---- AppDbAccessor 事务 ----
-    // RoomDatabase.runInTransaction 接收 Runnable 返回 Unit, 无法透传泛型 R;
-    // 用 var 暂存 block() 结果, 事务结束后返回 (与 withTransaction { block() } 行为等价)
+    // Room 3 移除了同步的 runInTransaction (事务入口只剩 suspend 的 useWriterConnection);
+    // 用 runBlocking 包裹会与 block 内自己的 runBlocking 争抢写连接而死锁, 故保持直通,
+    // 每个 DAO 操作本身原子 (与桌面端 DesktopAppDbAccessor 一致)。
     override fun <R> runInTransaction(block: () -> R): R {
-        var result: R? = null
-        appDb.runInTransaction {
-            result = block()
-        }
-        @Suppress("UNCHECKED_CAST")
-        return result as R
+        return block()
     }
 
-    // suspend 版本: 用 room-ktx appDb.withTransaction (Android 专属, 桌面/Native 降级为直接执行)
-    // 供 UpdateBookShared 等 suspend 调用方使用, block 内可直接调 suspend DAO, 无需 runBlocking
+    // suspend 版本走 Room 真事务: useWriterConnection 把写连接放进协程上下文,
+    // block 内的 suspend DAO 复用同一连接; immediateTransaction 对应 BEGIN IMMEDIATE, 异常自动回滚。
     override suspend fun <R> runInTransactionSuspending(block: suspend () -> R): R {
-        return appDb.withTransaction { block() }
+        return appDb.useWriterConnection { transactor ->
+            transactor.immediateTransaction { block() }
+        }
     }
 
     // ---- AppConfigAccessor ----

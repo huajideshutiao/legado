@@ -1,0 +1,245 @@
+name: iOS Build
+
+# ⚠️ 只手动触发: macOS runner 计费是 Linux 的 10 倍, 不挂 push/PR。
+# stage 控制深度, 调试 YAML/脚本语法时用 klib 即可, 不必每次跑完整 ipa。
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: '构建深度: klib=只编 Kotlin iOS klib / link=编静态库+链接 framework / ipa=完整出未签名 ipa'
+        required: true
+        default: 'klib'
+        type: choice
+        options:
+          - klib
+          - link
+          - ipa
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version
+        id: ver
+        run: echo "version=$(TZ=Asia/Shanghai date +3.%y.%m%d%H%M)" >> $GITHUB_OUTPUT
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # ===== 环境诊断: 一次跑完就能定位环境类问题, 避免为查 SDK 路径再开一轮 =====
+      - name: Environment diagnostics
+        id: diag
+        continue-on-error: true
+        run: |
+          set -x
+          mkdir -p "$GITHUB_WORKSPACE/ci-logs"
+          exec > >(tee -a "$GITHUB_WORKSPACE/ci-logs/00-diagnostics.log") 2>&1
+          echo "===== stage = ${{ inputs.stage }} ====="
+          sw_vers || true
+          xcodebuild -version || true
+          xcode-select -p || true
+          xcrun --sdk iphoneos --show-sdk-path || true
+          xcrun --sdk iphoneos --show-sdk-version || true
+          xcrun --sdk iphonesimulator --show-sdk-path || true
+          xcrun --sdk iphoneos --find clang || true
+          java -version || true
+          df -h || true
+          sysctl -n hw.ncpu || true
+          echo "===== konan ====="
+          ls -la ~/.konan 2>/dev/null || echo "(no ~/.konan yet)"
+          grep -n "kotlin *=" gradle/libs.versions.toml || true
+
+      # Kotlin/Native 工具链 (~1GB) 缓存, 省掉每轮重新下载
+      - name: Cache Kotlin/Native toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: konan-${{ runner.os }}-
+
+      # 静态库只依赖 C 源与构建脚本, 命中即跳过 (quickjs.c 2MB, -O2 编译约 1~2 分钟)
+      - name: Cache iOS native static libs
+        id: cache-native
+        if: inputs.stage != 'klib'
+        uses: actions/cache@v4
+        with:
+          path: shared/build/iosNativeLibs
+          key: ios-native-${{ runner.os }}-${{ hashFiles('shared/src/cinterop/quickjs-ng/**', 'shared/src/cinterop/mbedtls/**', 'scripts/build-ios-native.sh') }}
+
+      - name: Build iOS native static libs (quickjs-ng + mbedtls)
+        id: native
+        if: inputs.stage != 'klib' && steps.cache-native.outputs.cache-hit != 'true'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          mkdir -p "$GITHUB_WORKSPACE/ci-logs"
+          chmod +x scripts/build-ios-native.sh
+          ./scripts/build-ios-native.sh ios_arm64 ios_simulator_arm64 2>&1 \
+            | tee "$GITHUB_WORKSPACE/ci-logs/10-build-ios-native.log"
+
+      - name: Verify static libs
+        if: inputs.stage != 'klib'
+        continue-on-error: true
+        run: |
+          set -x
+          ls -lR shared/build/iosNativeLibs || true
+          for a in $(find shared/build/iosNativeLibs -name '*.a'); do
+            lipo -info "$a" || true
+          done
+
+      # ===== Kotlin 侧编译 =====
+      # --continue: 一个 task 失败仍继续其他 task, 一轮拿到全部错误 (Kotlin 编译器本身也一次报全部错误)
+      - name: List iOS gradle tasks
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew :shared:tasks --all --console=plain 2>&1 \
+            | grep -i -E "ios|cinterop|framework" \
+            | tee "$GITHUB_WORKSPACE/ci-logs/20-ios-tasks.log" || true
+
+      - name: Compile shared iOS klib
+        id: klib
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew :shared:compileKotlinIosArm64 \
+            --info --stacktrace --warning-mode all --continue --console=plain 2>&1 \
+            | tee "$GITHUB_WORKSPACE/ci-logs/30-compile-klib.log"
+
+      - name: Link shared framework
+        id: link
+        if: inputs.stage != 'klib'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          if [ "${{ inputs.stage }}" = "ipa" ]; then
+            TASK=":shared:linkReleaseFrameworkIosArm64"
+          else
+            TASK=":shared:linkDebugFrameworkIosArm64"
+          fi
+          echo "===== gradle $TASK ====="
+          ./gradlew "$TASK" \
+            --info --stacktrace --warning-mode all --continue --console=plain 2>&1 \
+            | tee "$GITHUB_WORKSPACE/ci-logs/40-link-framework.log"
+          echo "===== framework 产物 ====="
+          find shared/build/bin -maxdepth 4 -name "*.framework" -exec ls -ld {} \; || true
+
+      # ===== ipa (未签名, 供 SideStore/AltStore/Xcode 自签侧载) =====
+      - name: Install XcodeGen
+        if: inputs.stage == 'ipa'
+        continue-on-error: true
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        if: inputs.stage == 'ipa'
+        continue-on-error: true
+        working-directory: iosApp/
+        run: |
+          set -o pipefail
+          xcodegen generate 2>&1 | tee "$GITHUB_WORKSPACE/ci-logs/50-xcodegen.log"
+
+      - name: Archive (unsigned)
+        id: archive
+        if: inputs.stage == 'ipa'
+        continue-on-error: true
+        working-directory: iosApp/
+        run: |
+          set -o pipefail
+          # 无 Apple 证书: 关掉全部签名。CODE_SIGN_STYLE=Manual 是为了绕开
+          # Automatic 在 DEVELOPMENT_TEAM 为空时的 "requires a development team" 报错。
+          xcodebuild archive \
+            -project iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/iosApp.xcarchive \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" 2>&1 \
+            | tee "$GITHUB_WORKSPACE/ci-logs/60-archive.log"
+
+      - name: Package unsigned IPA
+        id: ipa
+        if: inputs.stage == 'ipa'
+        continue-on-error: true
+        working-directory: iosApp/
+        run: |
+          set -ex
+          # 未签名 ipa 不走 xcodebuild -exportArchive (它一定要签名身份+描述文件),
+          # 直接按 ipa 规范打 Payload/ zip —— 侧载工具会自行重签。
+          APP_PATH="$(find build/iosApp.xcarchive/Products/Applications -maxdepth 1 -name '*.app' | head -1)"
+          test -n "$APP_PATH"
+          rm -rf build/ipa && mkdir -p build/ipa/Payload
+          cp -R "$APP_PATH" build/ipa/Payload/
+          cd build/ipa
+          zip -qry "legado-${{ steps.ver.outputs.version }}-ios-unsigned.ipa" Payload
+          rm -rf Payload
+          ls -lh *.ipa
+          unzip -l *.ipa | head -30
+
+      - name: Upload IPA artifact
+        if: inputs.stage == 'ipa'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa-unsigned
+          path: ${{ github.workspace }}/iosApp/build/ipa/*.ipa
+          if-no-files-found: ignore
+
+      # 失败时最需要日志, 故 always()
+      - name: Collect logs
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/ci-logs"
+          cp -R "$HOME/.konan/kotlin-native-prebuilt"*/konan/konan.properties "$GITHUB_WORKSPACE/ci-logs/" 2>/dev/null || true
+          find "$GITHUB_WORKSPACE/shared/build/reports" -type f 2>/dev/null | head -50 || true
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-logs
+          path: |
+            ${{ github.workspace }}/ci-logs/**
+            ${{ github.workspace }}/shared/build/reports/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # 各步都是 continue-on-error, 这里统一判定成败, 保证一轮跑完能同时看到所有失败点
+      - name: Summarize result
+        if: always()
+        run: |
+          FAILED=0
+          report() {
+            echo "- $1: $2"
+            echo "- $1: $2" >> $GITHUB_STEP_SUMMARY
+            if [ "$2" = "failure" ]; then FAILED=1; fi
+          }
+          echo "## iOS build (stage=${{ inputs.stage }}) 结果" >> $GITHUB_STEP_SUMMARY
+          report "native static libs" "${{ steps.native.outcome || 'skipped' }}"
+          report "compile klib" "${{ steps.klib.outcome || 'skipped' }}"
+          report "link framework" "${{ steps.link.outcome || 'skipped' }}"
+          report "xcodebuild archive" "${{ steps.archive.outcome || 'skipped' }}"
+          report "package ipa" "${{ steps.ipa.outcome || 'skipped' }}"
+          if [ "$FAILED" = "1" ]; then
+            echo "有步骤失败, 详见 ios-build-logs artifact"
+            exit 1
+          fi

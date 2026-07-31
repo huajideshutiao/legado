@@ -54,6 +54,7 @@ import io.legado.app.napi.quickjs.qjs_ValueGetBool
 import io.legado.app.napi.quickjs.qjs_ValueGetFloat64
 import io.legado.app.napi.quickjs.qjs_ValueGetInt
 import io.legado.app.napi.quickjs.qjs_ValueGetTag
+import kotlin.concurrent.Volatile
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.CPointerVar

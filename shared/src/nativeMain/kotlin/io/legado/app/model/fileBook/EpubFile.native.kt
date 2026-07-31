@@ -27,6 +27,8 @@ import com.fleeksoft.ksoup.nodes.Element
 import com.fleeksoft.ksoup.select.Elements
 import kotlin.concurrent.Volatile
 import kotlin.coroutines.EmptyCoroutineContext
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 /**
  * EpubFile epub 解析 (nativeMain, iOS/鸿蒙共用, 纯 Kotlin 实现)。
@@ -61,9 +63,11 @@ import kotlin.coroutines.EmptyCoroutineContext
 class EpubFile(var book: Book) {
 
     companion object : BaseFileBook {
+        // Kotlin/Native 无 @Synchronized, 以 atomicfu SynchronizedObject 替代 (同 TextFile.native.kt)
+        private val lock = SynchronizedObject()
         private var eFile: EpubFile? = null
 
-        private fun getEFile(book: Book): EpubFile = synchronized(this) {
+        private fun getEFile(book: Book): EpubFile = synchronized(lock) {
             if (eFile == null || eFile?.book?.bookUrl != book.bookUrl) {
                 eFile = EpubFile(book)
                 return@synchronized eFile!!
@@ -84,7 +88,7 @@ class EpubFile(var book: Book) {
             return getEFile(book).getImage(href)
         }
 
-        override fun upBookInfo(book: Book) = synchronized(this) {
+        override fun upBookInfo(book: Book) = synchronized(lock) {
             getEFile(book).upBookInfo()
         }
 
@@ -93,17 +97,20 @@ class EpubFile(var book: Book) {
         }
     }
 
+    // 实例级懒加载锁 (Kotlin/Native 无 synchronized(this))
+    private val instanceLock = SynchronizedObject()
+
     // EPUB 解析结果 (内存缓存, 构造期触发 readEpub)
     @Volatile
     private var epubBook: EpubBook? = null
-        get() = field ?: synchronized(this) {
+        get() = field ?: synchronized(instanceLock) {
             field ?: readEpub().also { field = it }
         }
 
     // spine 阅读顺序资源 (对应 jvm 端 epubBookContents)
     @Volatile
     private var spineContents: List<EpubResource>? = null
-        get() = field ?: synchronized(this) {
+        get() = field ?: synchronized(instanceLock) {
             field ?: epubBook?.spine?.also { field = it }
         }
 
@@ -135,7 +142,7 @@ class EpubFile(var book: Book) {
                 }
             }
         }.onFailure {
-            AppLog.put("读取Epub文件失败\n${it.localizedMessage}", it)
+            AppLog.put("读取Epub文件失败\n${it.message}", it)
             it.printStackTraceOnDebug()
         }.getOrNull()
     }
@@ -322,7 +329,7 @@ class EpubFile(var book: Book) {
                 } ?: AppLog.putDebug("Epub: 封面获取为空. path: ${book.bookUrl}")
             }
         } catch (e: Exception) {
-            AppLog.put("加载书籍封面失败\n${e.localizedMessage}", e)
+            AppLog.put("加载书籍封面失败\n${e.message}", e)
             e.printStackTraceOnDebug()
         }
     }

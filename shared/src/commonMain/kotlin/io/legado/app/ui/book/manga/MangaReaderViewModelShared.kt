@@ -38,9 +38,13 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.toList
@@ -157,9 +161,18 @@ class MangaReaderViewModelShared(
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
 
-    /** 错误信息 + 是否可重试 (对应 app 端 loadFailLiveData Pair<String, Boolean>)。 */
-    private val _error = MutableStateFlow<Pair<String, Boolean>?>(null)
-    val error: StateFlow<Pair<String, Boolean>?> = _error.asStateFlow()
+    /**
+     * 错误信息 + 是否可重试 (对应 app 端 loadFailLiveData Pair<String, Boolean>)。
+     *
+     * 用 SharedFlow 而非 StateFlow: 原版 postValue 每次都回调, StateFlow 按值去重,
+     * 重试后同一个错误串不会再发, 转圈就停不下来。
+     */
+    private val _error = MutableSharedFlow<Pair<String, Boolean>>(
+        replay = 1,
+        extraBufferCapacity = 8,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val error: SharedFlow<Pair<String, Boolean>> = _error.asSharedFlow()
     // endregion
 
     // region 内部状态 (对应 app 端 ReadMangaViewModel 字段)
@@ -218,7 +231,7 @@ class MangaReaderViewModelShared(
                     }
                     initManga(_book.value!!, isSameBook)
                 } else {
-                    _error.value = "没有找到书" to true
+                    _error.tryEmit("没有找到书" to true)
                 }
             }.onSuccess {
                 success()
@@ -407,18 +420,18 @@ class MangaReaderViewModelShared(
         when (val offset = chapter.index - _durChapterIndex.value) {
             0 -> {
                 if (content == null) {
-                    _error.value = errorMsg to true
+                    _error.tryEmit(errorMsg to true)
                     _loading.value = false
                     return
                 }
                 if (content.isEmpty() && !chapter.isVolume) {
-                    _error.value = "正文内容为空" to true
+                    _error.tryEmit("正文内容为空" to true)
                     _loading.value = false
                     return
                 }
                 val mangaChapter = getManageChapter(chapter, content)
                 if (mangaChapter.imageCount == 0 && !chapter.isVolume) {
-                    _error.value = "正文没有图片" to true
+                    _error.tryEmit("正文没有图片" to true)
                     _loading.value = false
                     return
                 }
@@ -762,7 +775,7 @@ class MangaReaderViewModelShared(
                         if (nextMangaChapter == null) loadContent(_durChapterIndex.value + 1)
                     }
                 }.onFailure {
-                    _error.value = "目录加载失败" to true
+                    _error.tryEmit("目录加载失败" to true)
                 }
             }
         }

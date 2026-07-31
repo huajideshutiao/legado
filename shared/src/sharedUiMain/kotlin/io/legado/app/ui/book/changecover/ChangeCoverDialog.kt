@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.Icon
@@ -32,6 +31,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
+import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.throttleLatest
@@ -84,7 +84,7 @@ import org.jetbrains.compose.resources.stringResource
  * - 无阴影 (Surface 默认无阴影)
  * - 标题栏用 [DialogTitleBar] (复用 shared 组件)
  * - 进度条高 2dp, 非搜索态留同高占位 (对照原 RefreshProgressBar 常驻不跳变)
- * - 网格 LazyVerticalGrid(GridCells.Fixed(3)) (对照原 GridLayoutManager(3))
+ * - 网格 LazyVerticalGrid(响应式 3 列) (对照原 GridLayoutManager(3))
  * - 条目对照 item_bookshelf_grid.xml: 封面 12dp 外边距 + 3:4, 源名 8dp 上边距 / 12sp / 2 行
  *
  * @param viewModel 换封面 ViewModel 共享核心 (调用方持有, 已 initData)
@@ -158,9 +158,9 @@ fun ChangeCoverDialog(
                 } else {
                     Spacer(Modifier.fillMaxWidth().height(2.dp))
                 }
-                // 搜索结果网格 (对照原 LazyVerticalGrid(GridCells.Fixed(3)))
+                // 搜索结果网格 (对照原 GridLayoutManager(3), 宽屏按参考宽度加列)
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
+                    columns = rememberResponsiveColumns(3),
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),

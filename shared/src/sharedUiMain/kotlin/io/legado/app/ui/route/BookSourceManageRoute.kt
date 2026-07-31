@@ -188,9 +188,7 @@ fun BookSourceManageRoute(
         val vm = importVm ?: return@LaunchedEffect
         kotlinx.coroutines.coroutineScope {
             launch {
-                vm.successState.collect { count ->
-                    if (count != null) showImportDialog = true
-                }
+                vm.successState.collect { showImportDialog = true }
             }
         }
     }

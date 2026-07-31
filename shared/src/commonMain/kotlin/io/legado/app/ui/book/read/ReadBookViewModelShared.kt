@@ -22,6 +22,7 @@ import io.legado.app.ui.book.read.page.PageDelegateShared
 import io.legado.app.ui.book.read.page.entities.TextChapterShared
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.provider.ChapterContentParserShared
+import io.legado.app.ui.book.read.page.provider.ImageResolverProviders
 import io.legado.app.ui.book.read.page.provider.SimpleChapterLayout
 import io.legado.app.ui.book.read.page.provider.SimpleTextMeasurer
 import io.legado.app.ui.book.read.page.provider.TextMeasurerProviders
@@ -457,6 +458,10 @@ class ReadBookViewModelShared(
             chapterSize = readBook.chapterSize,
             reviewCountMap = reviewCountMap,
             parsedParagraphs = parsedParagraphs,
+            // 内嵌图片：解析器由平台注册（sharedUiMain ReaderImageResolver），未注册时跳过图片行
+            imageResolver = ImageResolverProviders.createOrNull(
+                book, chapter, readBook.bookSource.value,
+            ),
             imageStyle = book.config.imageStyle,
         )
         val textChapter = TextChapterShared(

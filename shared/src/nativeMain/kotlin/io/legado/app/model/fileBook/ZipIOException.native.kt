@@ -17,7 +17,7 @@ package io.legado.app.model.fileBook
  * 注: 两端不二进制兼容 (彼端 typealias 到 java.io.IOException), 但经 expect/actual
  * 在 commonMain 视角下类型统一, 不影响 commonMain 编译与跨平台异常处理语义。
  *
- * iOS/鸿蒙均走 Kotlin/Native target, 不能用 java.lang.*/java.util.*,
+ * iOS/鸿蒙均走 Kotlin/Native target, 不能用 java.lang / java.util 包,
  * 纯 Kotlin Exception 子类编译通过, 两端 actual 实现策略一致, 下沉到 nativeMain 共用。
  */
 actual open class ZipIOException actual constructor(message: String) : Exception(message)

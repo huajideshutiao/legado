@@ -100,8 +100,21 @@ dependencies {
     // 全量 HTTP header 透传选项 (Cookie 防盗链无解), mpv --http-header-fields-append 直达
     // HLS 分片。运行时需用户机器已安装 mpv (winget/scoop/官网), MpvDetector 按
     // 设置项(mpvPath)/PATH/常见安装路径探测, 未装时 VideoPlayerScreen 显示引导安装占位。
-    // jna 仅用于取 AWT Canvas 原生窗口句柄 (Native.getComponentID) 供 mpv --wid 嵌入。
+    // jna 用于取 AWT Canvas 原生窗口句柄 (Native.getComponentID) 供 mpv --wid 嵌入。
     implementation("net.java.dev.jna:jna:5.17.0")
+    // jna-platform 提供 Win32 COM 基础设施 (Ole32/Guid/HRESULT), 供 WindowsFileDialogs 直调
+    // IFileDialog 取现代文件对话框 (AWT FileDialog 在 Windows 上是 comdlg32 旧版样式)。
+    implementation("net.java.dev.jna:jna-platform:5.17.0")
+    // webp 编码: ImageIO SPI 插件 (jar 内置 win/linux/mac native writer; TwelveMonkeys 只读不写)
+    implementation("com.github.gotson:webp-imageio:0.2.2")
+    // 本地书格式: PDF 渲染 (对照 app 端 PdfRenderer 语义)
+    implementation("org.apache.pdfbox:pdfbox:3.0.8")
+    // 压缩包: 7z/tar/gz/bz2/xz (xz 库是 7z LZMA2 默认压缩方法的必需依赖, 非只为 .xz)
+    implementation("org.apache.commons:commons-compress:1.28.0")
+    implementation("org.tukaani:xz:1.12")
+    // rar4/rar5 (junrar 8.x 已支持 RAR5); slf4j-nop 消 junrar 传递依赖的无绑定警告
+    implementation("com.github.junrar:junrar:8.0.0")
+    implementation("org.slf4j:slf4j-nop:2.0.17")
     // P0.3 桌面端真实 WebView slot: JavaFX WebView 经 SwingPanel(JFXPanel) 嵌入 Compose
     // javafx-web 提供 javafx.scene.web.WebView, javafx-swing 提供 javafx.embed.swing.JFXPanel
     // OpenJFX 21 默认按当前 OS 解析 classifier (win/linux/mac), 与桌面打包目标一致

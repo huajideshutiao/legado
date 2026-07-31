@@ -26,9 +26,10 @@ import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.parseJsonElement
 import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
@@ -69,9 +70,9 @@ import kotlinx.serialization.json.JsonPrimitive
  * - **context.getString(R.string.wrong_format)**: commonMain 无 R.string 资源,
  *   改为直接抛 `NoStackTraceException("格式不对")` (与 shared 端其他下沉 VM
  *   如 ReplaceEditViewModelShared/TxtTocRuleEditViewModelShared 文案一致,
- *   错误经 `_errorState.value = "ImportError:${it.message}"` 推送)。
- * - **androidx.lifecycle.MutableLiveData**: 不可 KMP, 改为 [MutableStateFlow] + [asStateFlow]
- *   (对照 [io.legado.app.ui.explore.ExploreShowViewModelShared] 的 7 个 StateFlow 模式)。
+ *   错误经 `_errorState.tryEmit("ImportError:${it.message}")` 推送)。
+ * - **androidx.lifecycle.MutableLiveData**: 不可 KMP, 改为 [MutableSharedFlow] (replay=1) + [asSharedFlow]
+ *   (对照 [io.legado.app.ui.explore.ExploreShowViewModelShared] 的事件流模式)。
  *
  * # 设计选择 (组合委托)
  *
@@ -105,22 +106,34 @@ class ImportBookSourceViewModelShared(
     var groupName: String? = null
 
     /**
+     * 事件流工厂: replay=1 + DROP_OLDEST, 语义对齐 LiveData.postValue。
+     *
+     * 不能用 StateFlow: 按值去重会吞掉重复投递 (同一个错误串重试后再次失败),
+     * 导入弹窗的加载态就永远停在转圈。
+     */
+    private fun <T> signalFlow() = MutableSharedFlow<T>(
+        replay = 1,
+        extraBufferCapacity = 8,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    /**
      * 导入错误信息流 (对照原 `errorLiveData: MutableLiveData<String>`)。
      *
-     * 初始 null (与原 LiveData 默认 null 一致), app 端桥接时过滤 null 避免初始假触发。
+     * 事件流 (replay=1): 每次失败都投递, 重复的相同错误串也不会被吞。
      * 值格式 `"ImportError:${localizedMessage}"`, 与 app 端原 `errorLiveData.postValue(...)` 一致。
      */
-    private val _errorState = MutableStateFlow<String?>(null)
-    val errorState: StateFlow<String?> = _errorState.asStateFlow()
+    private val _errorState = signalFlow<String>()
+    val errorState: SharedFlow<String> = _errorState.asSharedFlow()
 
     /**
      * 导入成功信号流 (对照原 `successLiveData: MutableLiveData<Int>`)。
      *
      * 值为 allSources.size (导入的书源总数), 0 表示解析无结果。
-     * 初始 null, app 端桥接时过滤 null 避免初始假触发。
+     * 事件流 (replay=1): 每次解析完成都投递, 数量与上次相同也不会被吞。
      */
-    private val _successState = MutableStateFlow<Int?>(null)
-    val successState: StateFlow<Int?> = _successState.asStateFlow()
+    private val _successState = signalFlow<Int>()
+    val successState: SharedFlow<Int> = _successState.asSharedFlow()
 
     /** 解析出的待导入书源列表 (importFromJson 累积, comparisonSource 比对, importSelect 写入)。 */
     val allSources = arrayListOf<BookSource>()
@@ -229,7 +242,7 @@ class ImportBookSourceViewModelShared(
      * - isJsonObject || isJsonArray: 走 [importFromJson] 本地 JSON 解析;
      * - else: 抛 `NoStackTraceException("格式不对")` (替代 `context.getString(R.string.wrong_format)`,
      *   与 shared 端其他下沉 VM 文案一致)。
-     * - `onError`: 推送 `_errorState.value = "ImportError:${localizedMessage}"`
+     * - `onError`: 推送 `_errorState.tryEmit("ImportError:${localizedMessage}")`
      *   + `AppLog.put(...)` (替代 `errorLiveData.postValue(...)`, 行为等价);
      * - `onSuccess`: 调 [comparisonSource] 比对本地已有书源 (与 app 端原 `onSuccess { comparisonSource() }` 一致)。
      *
@@ -255,7 +268,7 @@ class ImportBookSourceViewModelShared(
                 else -> throw NoStackTraceException("格式不对")
             }
         }.onError {
-            _errorState.value = "ImportError:${it.message}"
+            _errorState.tryEmit("ImportError:${it.message}")
             AppLog.put("ImportError:${it.message}", it)
         }.onSuccess {
             comparisonSource()
@@ -350,7 +363,7 @@ class ImportBookSourceViewModelShared(
      * - selectStatus: source 为 null 或本地 lastUpdateTime < 新源 lastUpdateTime 时选中 (新增/更新默认选);
      * - newSourceStatus: source == null (新增);
      * - updateSourceStatus: source != null 且本地 lastUpdateTime < 新源 lastUpdateTime (更新);
-     * - 推送 `_successState.value = allSources.size` (替代 `successLiveData.postValue(allSources.size)`)。
+     * - 推送 `_successState.tryEmit(allSources.size)` (替代 `successLiveData.postValue(allSources.size)`)。
      *
      * 业务在 IO 跑 (DAO 查询必须 IO), 与 BaseViewModel.execute 默认值一致。
      */
@@ -363,7 +376,7 @@ class ImportBookSourceViewModelShared(
                 newSourceStatus.add(source == null)
                 updateSourceStatus.add(source != null && source.lastUpdateTime < it.lastUpdateTime)
             }
-            _successState.value = allSources.size
+            _successState.tryEmit(allSources.size)
         }
     }
 }

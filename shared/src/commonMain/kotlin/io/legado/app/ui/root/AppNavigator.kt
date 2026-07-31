@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -98,11 +99,14 @@ class AppNavigator(
         return entryId
     }
 
-    /** 接收只属于指定调用页面的导航结果。每个页面应只收集一次。 */
+    /**
+     * 接收只属于指定调用页面的导航结果。每个页面应只收集一次。
+     *
+     * 页面已出栈时返回空流而不是抛异常: 本函数在各 Route 的 LaunchedEffect 里调用,
+     * 抛出会连坐整个 Recomposer (桌面端表现为窗口还能重排但键鼠全失灵)。
+     */
     fun resultsFor(entryId: RouteEntryId): Flow<RouteResult> {
-        check(backStack.value.any { it.id == entryId }) {
-            "RouteEntry $entryId is not active"
-        }
+        if (backStack.value.none { it.id == entryId }) return emptyFlow()
         return targetedResults
             .getOrPut(entryId) { Channel(Channel.UNLIMITED) }
             .receiveAsFlow()

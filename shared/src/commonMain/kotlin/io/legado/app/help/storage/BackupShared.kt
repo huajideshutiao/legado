@@ -114,7 +114,8 @@ object BackupShared {
     /**
      * 备份执行入口 (互斥锁保护)。
      *
-     * @param destinationPath 本地备份目录。为空时回退到应用 externalFilesDir/filesDir;
+     * @param destinationPath 本地备份目录。为空时回退到平台默认落地目录
+     *                        ([DataStorage.defaultBackupDir]), 再回退应用 externalFilesDir/filesDir;
      *                        Android 的 content:// 目录由 [BackupRestoreHook.copyBackupTo] 处理。
      * @param uploadToWebDav 是否上传到 WebDav
      * @return 已保留在本地的备份 zip 绝对路径
@@ -217,7 +218,9 @@ object BackupShared {
                         }.getOrDefault(value.toString())
                     }
 
-                    else -> value?.let { configMap[key] = it }
+                    // Set<String> (SharedPreferences 合法值类型) 转 List 再序列化,
+                    // 否则 toJsonElement 走 toString() 分支写成字符串, 与原版 Gson 的数组不兼容
+                    else -> value?.let { configMap[key] = if (it is Set<*>) it.toList() else it }
                 }
             }
         }
@@ -245,6 +248,7 @@ object BackupShared {
             zipFileName
         }
         val localDirectory = destinationPath?.takeIf { it.isNotBlank() }
+            ?: usableDefaultBackupDir()
             ?: AppFilesDirs.get().externalFilesDir
             ?: AppFilesDirs.get().filesDir
         val localZipPath = localDirectory.trimEnd('/', '\\') +
@@ -271,6 +275,18 @@ object BackupShared {
         // 6. 宿主收尾 (app 端: 上传阅读背景图到 WebDav)
         hooks.onBackupFinished(uploadToWebDav)
         return localZipPath
+    }
+
+    /**
+     * 平台默认落地目录 ([DataStorage.defaultBackupDir], 桌面=文档目录下的 legado/backup)。
+     * 平台要求用户先选目录 (Android SAF) 或目录建不出来时返回 null, 交回应用目录兜底。
+     */
+    private fun usableDefaultBackupDir(): String? {
+        val dir = DataStorageProviders.getOrNull()?.defaultBackupDir ?: return null
+        return runCatching {
+            BackupFileOps.createFolderIfNotExist(dir)
+            dir.takeIf { BackupFileOps.exists(it) }
+        }.getOrNull()
     }
 
     /** 写入 List<Any> 为 JSON 到 [backupPath]/[fileName]。空列表跳过 (与原版一致)。 */

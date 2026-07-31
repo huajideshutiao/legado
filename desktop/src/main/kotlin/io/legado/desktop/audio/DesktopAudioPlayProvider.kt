@@ -42,7 +42,7 @@ import kotlinx.coroutines.runBlocking
  * # 与 app 端 AudioPlayService 行为对照
  * - play/pause/resume/stop: 直接调 [DesktopAudioPlayer] 对应方法 + postEvent(AUDIO_STATE)
  * - adjustProgress: player.seekTo (MP3 重新拉流跳帧, 比 ExoPlayer SimpleCache 慢)
- * - adjustSpeed: player.setSpeed (jlayer 改采样率变速, 音调会变)
+ * - adjustSpeed: player.setSpeed (SonicAudioDevice 在 PCM 层做 Sonic 变速, 保音高)
  * - loadPlayUrl: 用 [WebBook.getContentAwait] 拿直链 URL (与 app 端一致),
  *   跳过 AnalyzeUrl 二次解析 (app 端用 AnalyzeUrl.getMediaItem 主要为 setCookie + headers,
  *   桌面端用直链 + 默认 UA 即可; 需 cookie/header 的书源可能播放失败, 属已知限制)
@@ -97,11 +97,12 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
                 if (startPos > 0) {
                     player.seekTo(startPos.toLong())
                 }
-                // 真正开始播放
-                player.play()
+                // 真正开始播放 (先应用倍速, 播放线程建 SonicAudioDevice 时即带上)
                 player.setSpeed(playSpeed)
+                player.play()
                 AudioPlayShared.status = Status.PLAY
                 postEvent(EventBus.AUDIO_STATE, Status.PLAY)
+                postEvent(EventBus.AUDIO_SPEED, playSpeed)
                 startProgressReport()
             }
 

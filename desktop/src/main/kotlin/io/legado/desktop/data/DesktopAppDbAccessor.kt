@@ -1,5 +1,7 @@
 package io.legado.desktop.data
 
+import androidx.room3.immediateTransaction
+import androidx.room3.useWriterConnection
 import io.legado.app.data.AppDatabase
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.AppDbAccessor
@@ -17,12 +19,8 @@ import io.legado.app.data.AppDbAccessor
  * # 与 app 端 [io.legado.app.model.webBook.WebBookProvidersImpl] 区别
  * - app 端 `runInTransaction` 走 `RoomDatabase.runInTransaction(Runnable)` (Android Room
  *   非 suspend API, 直接阻塞当前线程)
- * - KMP Room 的 `RoomDatabase` 不暴露 `runInTransaction(Runnable)` (Android 专属),
- *   也不可用 `androidx.room.withTransaction` (room-ktx 2.8.4 不发布 jvm 变体);
- *   改用 `RoomDatabase.useWriterTransaction` suspend 扩展函数 (room-runtime 中) + `runBlocking` 包裹,
- *   保持接口 `fun <R> runInTransaction(block: () -> R): R` 非 suspend 语义不变
- *   (调用方如 SourceHelp.deleteBookSourcesByKeys 在 block 内用 runBlocking 调 suspend DAO,
- *   嵌套 runBlocking 各自独立事件循环, 不会死锁)
+ * - KMP Room 的事务入口只有 suspend 的 `useWriterConnection` + `immediateTransaction`,
+ *   故 suspend 版本走真事务, 非 suspend 版本只能直通 (见方法注释)
  *
  * # DAO 成员清单 (与 AppDbAccessor 接口一致)
  * bookDao / bookSourceDao / bookChapterDao / replaceRuleDao / readRecordDao /
@@ -64,19 +62,21 @@ class DesktopAppDbAccessor : AppDbAccessor {
     override val bookmarkDao get() = appDb.bookmarkDao
 
     // ---- AppDbAccessor 事务 ----
-    // KMP Room 无 RoomDatabase.runInTransaction(Runnable) (Android 专属),
-    // room-ktx 2.8.4 也不发布 jvm 变体 (androidx.room.withTransaction 不可用),
-    // room-runtime 的 useWriterTransaction 在 androidx.sqlite 包中也不可用;
-    // P0 阶段降级: 直接执行 block 不做事务包裹, 每个 DAO 操作本身原子, 最坏情况部分失败
+    // 非 suspend 版本无法接真事务: Room KMP 的事务入口 (useWriterConnection) 是 suspend,
+    // 用 runBlocking 包裹会让 block 内调用方自己的 runBlocking 落到另一个协程上下文,
+    // 拿不到 ConnectionElement 而去重新申请写连接 —— 写连接已被外层占用, 必然死锁。
+    // 故保持直通: 每个 DAO 操作本身原子, 最坏情况部分失败
     // (调用方 SourceHelp.deleteBookSourcesByKeys 内部已有 runBlocking + chunked 兜底, 影响可控)
-    // TODO: 后续引入 room-ktx jvm 变体或用 openHelper 原生事务 API 恢复事务语义
     override fun <R> runInTransaction(block: () -> R): R {
         return block()
     }
 
-    // suspend 版本: 桌面端无 room-ktx, 降级为直接执行 block (与非 suspend 版本行为一致)
-    // 供 UpdateBookShared 等 suspend 调用方使用, block 内可直接调 suspend DAO, 无需 runBlocking
+    // suspend 版本走 Room KMP 真事务: useWriterConnection 把写连接放进协程上下文
+    // (ConnectionElement), block 内的 suspend DAO 会复用同一连接加入事务;
+    // immediateTransaction 对应 BEGIN IMMEDIATE, 抛异常自动回滚。
     override suspend fun <R> runInTransactionSuspending(block: suspend () -> R): R {
-        return block()
+        return appDb.useWriterConnection { transactor ->
+            transactor.immediateTransaction { block() }
+        }
     }
 }

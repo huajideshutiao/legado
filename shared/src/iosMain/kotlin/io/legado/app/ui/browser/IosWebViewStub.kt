@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.interop.UIKitView
 import io.legado.app.help.http.CookieStoreProviders
 import platform.CoreGraphics.CGRectMake
+import platform.Foundation.NSHTTPCookie
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
 import platform.WebKit.WKNavigation
@@ -45,7 +46,7 @@ fun IosWebViewSlot(url: String, modifier: Modifier = Modifier) {
         update = { view ->
             val cur = view.URL?.absoluteString
             if (cur != url) {
-                view.loadRequest(NSURLRequest(NSURL(url)))
+                NSURL.URLWithString(url)?.let { view.loadRequest(NSURLRequest(it)) }
             }
         },
     )
@@ -57,13 +58,16 @@ fun IosWebViewSlot(url: String, modifier: Modifier = Modifier) {
 private class WebViewNavDelegate : NSObject(), WKNavigationDelegateProtocol {
     override fun webView(
         webView: WKWebView,
-        didFinishNavigation navigation: WKNavigation?,
+        didFinishNavigation: WKNavigation?,
     ) {
         val url = webView.URL?.absoluteString ?: return
         val store = webView.configuration.websiteDataStore.httpCookieStore
         store.getAllCookies { cookies ->
             // 拼接 "k=v; k=v" 形式 (对照 Android CookieManager.getCookie 输出格式)
-            val cookieString = cookies.joinToString("; ") { "${it.name}=${it.value}" }
+            val cookieString = cookies.orEmpty().joinToString("; ") {
+                val cookie = it as NSHTTPCookie
+                "${cookie.name}=${cookie.value}"
+            }
             if (cookieString.isNotBlank()) {
                 CookieStoreProviders.get()?.replaceCookie(url, cookieString)
             }

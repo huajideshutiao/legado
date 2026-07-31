@@ -24,13 +24,14 @@ import io.legado.app.utils.File
  * - DEFLATE 解压 (RFC 1951 inflate, 支持 stored / fixed Huffman / 动态 Huffman 三种块)
  * - ZIP 文件格式读取 (解析 End of Central Directory + Central Directory + Local File Header,
  *   支持 STORED method=0 与 DEFLATE method=8)
- * - ZIP 文件格式写入 (仅 STORED 无压缩, 生成的 zip 可被 JVM/Android/桌面/标准工具解压)
+ * - ZIP 文件格式写入 (DEFLATE 固定 Huffman, 不划算时回落 STORED;
+ *   生成的 zip 可被 JVM/Android/桌面/标准工具解压)
  *
  * # 压缩策略
- * 仅用 STORED (无压缩)。原因: 实现 deflate (LZ77 + Huffman 编码) 复杂度远高于 inflate,
- * 且备份场景以 JSON 文本为主, 体积代价可接受; 重点是解除阻塞让备份/恢复链路打通。
- * 生成的 zip 与 jvmAndAndroidMain [io.legado.app.utils.compress.ZipUtils.zipFiles] 输出
- * 在解压层面互通 (JVM 端 ZipInputStream 可解压 STORED zip)。
+ * 写入用 [deflateFixed] (LZ77 + RFC 1951 固定 Huffman 表)。不做动态 Huffman: 建树/传树的收益
+ * 相对固定表有限, 而实现与出错面大得多; 备份以 JSON 文本为主, 固定表已能压掉大半。
+ * 每个 entry 压完立刻用本文件已验证的 [inflate] 回读比对, 不一致或压不小就退回 STORED —
+ * 备份是用户数据, 宁可大也不能坏。
  *
  * # 解压策略
  * 同时支持 STORED 与 DEFLATE, 可解压 JVM 端 ZipUtils (默认 DEFLATE) 生成的备份 zip,
@@ -39,7 +40,6 @@ import io.legado.app.utils.File
  *
  * # 局限 (TODO)
  * - 不支持 ZIP64 (文件 > 4GB / entry 数 > 65535); 备份场景不会触发
- * - 不支持 deflate 压缩 (仅 STORED); 生成的 zip 较大
  * - 不支持加密 zip / zip 注释
  *
  * 参考:
@@ -54,7 +54,7 @@ internal object NativeZipCodec {
     // ============================================================
 
     /**
-     * 把多个文件/目录压成 zip (STORED 无压缩)。
+     * 把多个文件/目录压成 zip (DEFLATE 固定 Huffman, 不划算时回落 STORED)。
      *
      * 行为对齐 jvmAndAndroidMain [ZipUtils.zipFiles]:
      * - 目录递归遍历, entry 名用相对路径 (相对于 srcPath 父目录, 保留 srcPath 本身名字)
@@ -83,33 +83,36 @@ internal object NativeZipCodec {
                     val crc = crc32(data)
                     val localHeaderOffset = out.size()
                     val nameBytes = entryName.encodeToByteArray()
+                    // 压缩不划算或回读校验不过时退回 STORED (payload = 原数据)
+                    val payload = compressOrStore(data)
+                    val method = if (payload === data) METHOD_STORED else METHOD_DEFLATE
 
                     // 本地文件头 (Local File Header)
                     writeU32LE(out, LFH_SIGNATURE)
                     writeU16LE(out, VERSION_NEEDED)      // 解压所需版本 2.0
                     writeU16LE(out, 0)                   // 标志位 (无加密)
-                    writeU16LE(out, METHOD_STORED)       // 压缩方法: STORED
+                    writeU16LE(out, method)              // 压缩方法
                     writeU16LE(out, 0)                   // 修改时间 (DOS, 0 = 00:00:00)
                     writeU16LE(out, 0)                   // 修改日期 (DOS, 0 = 1980-01-01)
-                    writeU32LE(out, crc)                 // CRC-32
-                    writeU32LE(out, data.size)           // 压缩大小 = 原大小 (STORED)
+                    writeU32LE(out, crc)                 // CRC-32 (恒为原始数据的 CRC)
+                    writeU32LE(out, payload.size)        // 压缩后大小
                     writeU32LE(out, data.size)           // 未压缩大小
                     writeU16LE(out, nameBytes.size)      // 文件名长度
                     writeU16LE(out, 0)                   // 额外字段长度
                     out.add(nameBytes)
-                    // 文件数据 (STORED 原样写入)
-                    out.add(data)
+                    // 文件数据
+                    out.add(payload)
 
                     // 中央目录头 (Central Directory Header)
                     writeU32LE(centralDir, CDH_SIGNATURE)
                     writeU16LE(centralDir, VERSION_MADE_BY)  // 制作版本 2.0
                     writeU16LE(centralDir, VERSION_NEEDED)   // 解压所需版本 2.0
                     writeU16LE(centralDir, 0)                // 标志位
-                    writeU16LE(centralDir, METHOD_STORED)    // 压缩方法
+                    writeU16LE(centralDir, method)           // 压缩方法
                     writeU16LE(centralDir, 0)                // 修改时间
                     writeU16LE(centralDir, 0)                // 修改日期
                     writeU32LE(centralDir, crc)              // CRC-32
-                    writeU32LE(centralDir, data.size)        // 压缩大小
+                    writeU32LE(centralDir, payload.size)     // 压缩后大小
                     writeU32LE(centralDir, data.size)        // 未压缩大小
                     writeU16LE(centralDir, nameBytes.size)   // 文件名长度
                     writeU16LE(centralDir, 0)                // 额外字段长度
@@ -384,6 +387,123 @@ internal object NativeZipCodec {
     }
 
     // ============================================================
+    // DEFLATE 压缩 (RFC 1951, LZ77 + 固定 Huffman)
+    // ============================================================
+
+    /**
+     * 压缩 entry 数据; 压不小或回读校验失败时原样返回 [data] (调用方据引用相等判定 STORED)。
+     *
+     * 回读校验用本文件已被 JVM 产物验证过的 [inflate], 是把未经真机验证的编码器投产的前提。
+     */
+    private fun compressOrStore(data: ByteArray): ByteArray {
+        if (data.size < MIN_DEFLATE_SIZE) return data
+        val deflated = runCatching { deflateFixed(data) }.getOrNull() ?: return data
+        if (deflated.size >= data.size) return data
+        val verified = runCatching {
+            inflate(deflated, 0, deflated.size).contentEquals(data)
+        }.getOrDefault(false)
+        return if (verified) deflated else data
+    }
+
+    /**
+     * 生成 raw DEFLATE 流 (RFC 1951, 无 zlib/gzip 包裹), 单个 final 固定 Huffman 块。
+     *
+     * 等价 JVM 端 `java.util.zip.Deflater(level, nowrap=true)` 的输出格式 (码表固定, 压缩率略低)。
+     * 匹配查找用 3 字节哈希链, 窗口 32KB, 链长上限 [MAX_CHAIN] 控制最坏耗时。
+     */
+    private fun deflateFixed(data: ByteArray): ByteArray {
+        val out = ByteBuilder(data.size / 2 + 64)
+        val writer = BitWriter(out)
+        writer.writeBits(1, 1)  // BFINAL = 1 (单块到底)
+        writer.writeBits(1, 2)  // BTYPE = 01 (固定 Huffman)
+
+        val head = IntArray(HASH_SIZE) { -1 }
+        val prev = IntArray(if (data.isEmpty()) 1 else data.size) { -1 }
+        var pos = 0
+        while (pos < data.size) {
+            var bestLen = 0
+            var bestDist = 0
+            if (pos + MIN_MATCH <= data.size) {
+                val maxLen = minOf(MAX_MATCH, data.size - pos)
+                val h = hash3(data, pos)
+                var candidate = head[h]
+                var chain = 0
+                while (candidate >= 0 && chain < MAX_CHAIN) {
+                    val dist = pos - candidate
+                    // 链上后续候选只会更远, 越窗即可整体停
+                    if (dist <= 0 || dist > MAX_DISTANCE) break
+                    var len = 0
+                    while (len < maxLen && data[candidate + len] == data[pos + len]) len++
+                    if (len > bestLen) {
+                        bestLen = len
+                        bestDist = dist
+                        if (len >= maxLen) break
+                    }
+                    candidate = prev[candidate]
+                    chain++
+                }
+                prev[pos] = head[h]
+                head[h] = pos
+            }
+            if (bestLen >= MIN_MATCH) {
+                writeLengthCode(writer, bestLen)
+                writeDistanceCode(writer, bestDist)
+                // 匹配跨过的位置也要入链, 否则后续匹配率骤降
+                for (k in 1 until bestLen) {
+                    val p = pos + k
+                    if (p + MIN_MATCH > data.size) break
+                    val h2 = hash3(data, p)
+                    prev[p] = head[h2]
+                    head[h2] = p
+                }
+                pos += bestLen
+            } else {
+                writeLiteralCode(writer, data[pos].toInt() and 0xFF)
+                pos++
+            }
+        }
+        writeLiteralCode(writer, 256)  // 块结束标记
+        writer.flush()
+        return out.toArray()
+    }
+
+    /** 3 字节滚动哈希 (对齐 zlib 的 hash chain 思路)。 */
+    private fun hash3(data: ByteArray, pos: Int): Int {
+        val a = data[pos].toInt() and 0xFF
+        val b = data[pos + 1].toInt() and 0xFF
+        val c = data[pos + 2].toInt() and 0xFF
+        return ((a shl 10) xor (b shl 5) xor c) and (HASH_SIZE - 1)
+    }
+
+    /** 写字面/长度符号的固定 Huffman 码 (RFC 1951 §3.2.6 码表)。 */
+    private fun writeLiteralCode(writer: BitWriter, sym: Int) {
+        when {
+            sym <= 143 -> writer.writeCode(0x30 + sym, 8)
+            sym <= 255 -> writer.writeCode(0x190 + sym - 144, 9)
+            sym <= 279 -> writer.writeCode(sym - 256, 7)
+            else -> writer.writeCode(0xC0 + sym - 280, 8)
+        }
+    }
+
+    /** 写长度码 (符号 257-285) + 额外位。 */
+    private fun writeLengthCode(writer: BitWriter, length: Int) {
+        var idx = LENGTH_BASE.size - 1
+        while (idx > 0 && LENGTH_BASE[idx] > length) idx--
+        writeLiteralCode(writer, 257 + idx)
+        val extra = LENGTH_EXTRA[idx]
+        if (extra > 0) writer.writeBits(length - LENGTH_BASE[idx], extra)
+    }
+
+    /** 写距离码 (固定表恒 5 位) + 额外位。 */
+    private fun writeDistanceCode(writer: BitWriter, distance: Int) {
+        var idx = DIST_BASE.size - 1
+        while (idx > 0 && DIST_BASE[idx] > distance) idx--
+        writer.writeCode(idx, 5)
+        val extra = DIST_EXTRA[idx]
+        if (extra > 0) writer.writeBits(distance - DIST_BASE[idx], extra)
+    }
+
+    // ============================================================
     // ZIP 文件格式辅助
     // ============================================================
 
@@ -488,6 +608,16 @@ internal object NativeZipCodec {
     private const val EOCD_MIN_SIZE = 22
     private const val EOCD_MAX_SIZE = 22 + 65535
 
+    // DEFLATE 编码参数
+    /** 小于此字节数不压 (头部开销大于收益)。 */
+    private const val MIN_DEFLATE_SIZE = 64
+    private const val MIN_MATCH = 3
+    private const val MAX_MATCH = 258
+    private const val MAX_DISTANCE = 32768
+    private const val HASH_SIZE = 1 shl 15
+    /** 单个位置最多回溯的候选数, 压缩率与耗时的折中。 */
+    private const val MAX_CHAIN = 128
+
     /** CRC-32 查表 (多项式 0xEDB88320, 反射形式)。 */
     private val CRC_TABLE = IntArray(256) { i ->
         var c = i
@@ -570,9 +700,47 @@ private class ByteBuilder(initialCapacity: Int = 256) {
     }
 }
 
+/**
+ * DEFLATE 位流写入器 (与 [BitReader] 镜像)。
+ *
+ * RFC 1951 §3.1.1 的两种位序: 数值型字段 (块头/额外位) LSB first, Huffman 码 MSB first。
+ */
+private class BitWriter(private val out: ByteBuilder) {
+    private var bitBuf = 0
+    private var bitCount = 0
+
+    /** 写 count 位数值 (LSB first)。 */
+    fun writeBits(value: Int, count: Int) {
+        for (i in 0 until count) {
+            bitBuf = bitBuf or (((value ushr i) and 1) shl bitCount)
+            bitCount++
+            if (bitCount == 8) {
+                out.add(bitBuf)
+                bitBuf = 0
+                bitCount = 0
+            }
+        }
+    }
+
+    /** 写 Huffman 码字 (MSB first)。 */
+    fun writeCode(code: Int, length: Int) {
+        for (i in length - 1 downTo 0) {
+            writeBits((code ushr i) and 1, 1)
+        }
+    }
+
+    /** 补零对齐到字节边界 (块写完必须调用)。 */
+    fun flush() {
+        if (bitCount > 0) {
+            out.add(bitBuf)
+            bitBuf = 0
+            bitCount = 0
+        }
+    }
+}
+
 /** DEFLATE 位流读取器 (LSB first, RFC 1951 §3.1.1)。 */
-private class BitReader(private val data: ByteArray, private val start: Int, private val end: Int) {
-    private var bytePos = start
+private class BitReader(private val data: ByteArray, private val start: Int, private val end: Int) {    private var bytePos = start
     private var bitPos = 0  // 当前字节中已消费的位数 (0..7)
 
     fun readBit(): Int {

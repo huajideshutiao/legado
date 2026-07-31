@@ -2,6 +2,11 @@ name: Delete All Workflow Runs
 on:
   workflow_dispatch: # 允许手动触发
 
+# 删除 workflow run 记录需要 actions: write
+permissions:
+  actions: write
+  contents: read
+
 jobs:
   del_runs:
     runs-on: ubuntu-latest

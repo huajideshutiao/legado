@@ -263,6 +263,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val streamReadAloudAudio by boolPref(PreferKey.streamReadAloudAudio, false)
     val doublePageHorizontal by stringPref(PreferKey.doublePageHorizontal)
     val progressBarBehavior by stringPref(PreferKey.progressBarBehavior, "page")
+    val volumeKeyPage by boolPref(PreferKey.volumeKeyPage, true)
     val volumeKeyPageOnPlay by boolPref(PreferKey.volumeKeyPageOnPlay, true)
     val mouseWheelPage by boolPref(PreferKey.mouseWheelPage, true)
     var prevKeys by stringPref(PreferKey.prevKeys)

@@ -1,6 +1,6 @@
 package io.legado.app.data
 
-import androidx.room.migration.Migration
+import androidx.room3.migration.Migration
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 import java.util.Calendar
@@ -14,13 +14,13 @@ object DatabaseMigrations {
     }
 
     private val migration_80_81 = object : Migration(80, 81) {
-        override fun migrate(connection: SQLiteConnection) {
+        override suspend fun migrate(connection: SQLiteConnection) {
             connection.execSQL("DROP TABLE IF EXISTS searchBooks")
         }
     }
 
     private val migration_82_83 = object : Migration(82, 83) {
-        override fun migrate(connection: SQLiteConnection) {
+        override suspend fun migrate(connection: SQLiteConnection) {
             data class OldRow(
                 val bookName: String,
                 val day: Int,
@@ -104,7 +104,7 @@ object DatabaseMigrations {
     }
 
     private val migration_81_82 = object : Migration(81, 82) {
-        override fun migrate(connection: SQLiteConnection) {
+        override suspend fun migrate(connection: SQLiteConnection) {
             // 旧 readRecord: (deviceId, bookName, readTime累计, lastRead毫秒)
             // 新 readRecord: (bookName, day yyyyMMdd, readTime增量, lastRead毫秒) PK(bookName, day)
             //

@@ -29,9 +29,11 @@ import io.legado.app.ui.book.search.SearchViewModel
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.AppBackHandler
+import io.legado.app.ui.compose.platform.AppShortcutHandler
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.GlobalShortcuts
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.toRouteRef
@@ -85,6 +87,11 @@ fun SearchRoute(
     val backStack by navigator.backStack.collectAsState()
     val isTopEntry = backStack.lastOrNull()?.id == entry.id
     AppBackHandler(enabled = isTopEntry && fieldFocused) { focusManager.clearFocus() }
+
+    // 已在搜索页时 Ctrl/Cmd+F 改为聚焦搜索框 (页面级注册, 优先于全局的"跳搜索页")
+    AppShortcutHandler(GlobalShortcuts.Search, enabled = { isTopEntry }) {
+        viewModel.requestFocus()
+    }
 
     val navCallbacks = remember(navigator, scope) {
         object : SearchNavCallbacks {

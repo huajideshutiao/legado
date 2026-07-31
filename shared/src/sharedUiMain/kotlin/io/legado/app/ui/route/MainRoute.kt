@@ -829,12 +829,11 @@ private fun BookshelfTabContent(
     )
     // 添加网址 / 导入书架进度 (对照 BaseBookshelfFragment.observeLiveBus + ensureWaitDialog:
     // count<0 关闭, 否则 "添加中... (n)"; 取消时 cancel addBookJob)
-    val addBookProgress by addVm.addBookProgress.collectAsState()
-    val addBookRunning by addVm.addBookRunning.collectAsState()
-    if (addBookRunning) {
+    val addBookProgress by addVm.addBookProgress.collectAsState(initial = -1)
+    if (addBookProgress >= 0) {
         WaitDialog(
             visible = true,
-            message = if (addBookProgress >= 0) "添加中... ($addBookProgress)" else "添加中...",
+            message = "添加中... ($addBookProgress)",
             onDismissRequest = { addVm.cancelAddBook() },
         )
     }

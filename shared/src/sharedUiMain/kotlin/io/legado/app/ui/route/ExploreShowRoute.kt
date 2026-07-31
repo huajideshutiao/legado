@@ -90,31 +90,27 @@ fun ExploreShowRoute(
         vm.initData(route.source, route.title, route.exploreUrl)
     }
 
-    // VM StateFlow → ScreenModel 事件桥接 (对照 Activity.observe LiveData)
+    // VM 事件流 → ScreenModel 事件桥接 (对照 Activity.observe LiveData)
     LaunchedEffect(vm) {
         vm.booksFlow.collect { books ->
-            if (books != null) {
-                screenModel.dispatch(
-                    ExploreShowUiEvent.BooksLoaded(
-                        books = books,
-                        hasNextPage = vm.hasNextPage,
-                        emptyText = emptyText,
-                        bottomLineText = bottomLineText,
-                    )
+            screenModel.dispatch(
+                ExploreShowUiEvent.BooksLoaded(
+                    books = books,
+                    hasNextPage = vm.hasNextPage,
+                    emptyText = emptyText,
+                    bottomLineText = bottomLineText,
                 )
-            }
+            )
         }
     }
     LaunchedEffect(vm) {
         vm.errorFlow.collect { msg ->
-            if (msg != null) {
-                screenModel.dispatch(ExploreShowUiEvent.ErrorLoaded(msg, errorLoadText))
-            }
+            screenModel.dispatch(ExploreShowUiEvent.ErrorLoaded(msg, errorLoadText))
         }
     }
     LaunchedEffect(vm) {
         vm.upAdapterFlow.collect {
-            if (it != null) screenModel.dispatch(ExploreShowUiEvent.BookshelfVersionBump)
+            screenModel.dispatch(ExploreShowUiEvent.BookshelfVersionBump)
         }
     }
     LaunchedEffect(vm) {
@@ -128,12 +124,12 @@ fun ExploreShowRoute(
     }
     LaunchedEffect(vm) {
         vm.sourceReadyFlow.collect {
-            if (it != null) screenModel.dispatch(ExploreShowUiEvent.ExploreStyleChanged(vm.exploreStyle))
+            screenModel.dispatch(ExploreShowUiEvent.ExploreStyleChanged(vm.exploreStyle))
         }
     }
     LaunchedEffect(vm) {
         vm.optionsReadyFlow.collect {
-            if (it != null) screenModel.dispatch(ExploreShowUiEvent.OptionsVersionBump)
+            screenModel.dispatch(ExploreShowUiEvent.OptionsVersionBump)
         }
     }
 

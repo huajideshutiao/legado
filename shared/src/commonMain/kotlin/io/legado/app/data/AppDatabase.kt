@@ -1,10 +1,10 @@
 package io.legado.app.data
 
-import androidx.room.AutoMigration
-import androidx.room.Database
-import androidx.room.RoomDatabase
-import androidx.room.TypeConverters
-import androidx.room.migration.AutoMigrationSpec
+import androidx.room3.AutoMigration
+import androidx.room3.Database
+import androidx.room3.RoomDatabase
+import androidx.room3.ColumnTypeConverters
+import androidx.room3.migration.AutoMigrationSpec
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 import io.legado.app.data.dao.BookChapterDao
@@ -47,7 +47,7 @@ import io.legado.app.data.entities.TxtTocRule
  * K5-c Phase 5: AppDatabase 主体下沉 commonMain。
  *
  * - @Database 注解 + abstract DAO 属性 + companion 常量 在 commonMain (平台无关)
- * - appDb 单例 + dbCallback 留 app 端 (依赖 appCtx + SupportSQLiteConnection + Locale.CHINESE + DefaultData)
+ * - appDb 单例 + dbCallback 留 app 端 (依赖 appCtx + AndroidSQLiteConnection + Locale.CHINESE + DefaultData)
  * - Migration84To85 (AutoMigrationSpec) 随 @Database 下沉 (autoMigrations 引用)
  * - DatabaseMigrations (手写 Migration 数组) 留 app 端 (依赖 java.util.Calendar)
  */
@@ -70,7 +70,7 @@ import io.legado.app.data.entities.TxtTocRule
 // DATABASE 作用域注册 Book.Converters: iOS/ohos KSP 处理 BookChapter.ForeignKey 跨实体解析时,
 // 需在 Database 级可见 ReadConfig <-> String 转换链 (与 Book 实体上的 ENTITY 作用域双重注册,
 // 详见 Book.kt 顶部注释)。缺此注册会导致 iOS/ohos KSP 报 ReadConfig 类型链解析失败。
-@TypeConverters(Book.Converters::class)
+@ColumnTypeConverters(Book.Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract val bookDao: BookDao
@@ -105,7 +105,7 @@ abstract class AppDatabase : RoomDatabase() {
 // 实际只需对存量数据执行一次，借 84→85 自动迁移的 onPostMigrate 一次性完成。
 // K5-c Phase 5: 随 @Database 下沉 commonMain (autoMigrations spec 引用, 依赖 BookGroup 已在 commonMain)
 class Migration84To85 : AutoMigrationSpec {
-    override fun onPostMigrate(connection: SQLiteConnection) {
+    override suspend fun onPostMigrate(connection: SQLiteConnection) {
         // 移除已废弃的分组：音频(-3)、本地未分组(-5)
         connection.execSQL("delete from book_groups where groupId in (-3, -5)")
         // 网络未分组(-4)统一重命名为未分组

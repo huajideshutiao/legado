@@ -56,12 +56,30 @@
 import SwiftUI
 import shared  // Kotlin Multiplatform shared framework (deep link 入口)
 
+/// UIApplicationDelegate 适配器。
+///
+/// `BGTaskScheduler.registerForTaskWithIdentifier` 必须在 `didFinishLaunching` 返回前调用,
+/// SwiftUI 生命周期没有等价钩子, 故用 `@UIApplicationDelegateAdaptor` 把 delegate 挂回来。
+class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        // 缓存书籍的后台续跑 (退后台收尾窗口 + BGProcessingTask 链式续约),
+        // 实现见 shared iosMain help/service/IosBackgroundTasks.kt
+        IosBackgroundTasksKt.registerIosBackgroundTasks()
+        return true
+    }
+}
+
 /// SwiftUI App 入口 (iOS 14+ 生命周期)。
 ///
 /// 用 `@main` 声明为 App 启动点, SwiftUI 框架自动调用 `body` 渲染根视图。
 /// 根视图为 `ContentView` (用 `UIViewControllerRepresentable` 包装 Kotlin 端 `MainViewController`)。
 @main
 struct iOSApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
     /// SwiftUI App 入口, 根视图为 ContentView。
     var body: some Scene {
         WindowGroup {

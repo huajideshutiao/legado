@@ -1,6 +1,6 @@
 package io.legado.app.data.entities
 
-import androidx.room.DatabaseView
+import androidx.room3.DatabaseView
 import io.legado.app.constant.AppPattern
 import io.legado.app.utils.splitNotBlank
 

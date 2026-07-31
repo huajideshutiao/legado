@@ -31,11 +31,11 @@ import io.legado.app.data.dao.TxtTocRuleDao
  * # runInTransaction 行为 (两端共用 stub 待真实化)
  *
  * KMP Room 无 `RoomDatabase.runInTransaction(Runnable)` (Android 专属),
- * room-ktx 2.8.4 也不发布 ios / linuxArm64 变体 (androidx.room.withTransaction 不可用),
+ * Room 3 已无 ktx 制品 (withTransaction 扩展不复存在),
  * room-runtime 的 useWriterTransaction 在 androidx.sqlite 包中也不不可用;
  * P0 阶段降级: 直接执行 block 不做事务包裹, 每个 DAO 操作本身原子, 最坏情况部分失败
  * (调用方 SourceHelp.deleteBookSourcesByKeys 内部已有 runBlocking + chunked 兜底, 影响可控)。
- * TODO: 后续引入 room-ktx ios/linuxArm64 变体或用 openHelper 原生事务 API 恢复事务语义。
+ * TODO: 改用 useWriterConnection + immediateTransaction 恢复事务语义 (需调用方 suspend 化)。
  *
  * 模式参考 desktop `DesktopAppDbAccessor` 实现。
  */
@@ -74,7 +74,7 @@ class NativeAppDbAccessor : AppDbAccessor {
     // ---- AppDbAccessor 事务 ----
     // KMP Room 无 RoomDatabase.runInTransaction(Runnable) (Android 专属),
     // P0 阶段降级: 直接执行 block 不做事务包裹 (与桌面端 DesktopAppDbAccessor 行为一致)
-    // TODO: 后续引入 room-ktx ios/linuxArm64 变体或用 openHelper 原生事务 API 恢复事务语义
+    // TODO: 改用 useWriterConnection + immediateTransaction 恢复事务语义 (需调用方 suspend 化)
     override fun <R> runInTransaction(block: () -> R): R {
         return block()
     }

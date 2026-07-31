@@ -23,6 +23,7 @@ import io.legado.app.lib.theme.radius
 import io.legado.app.model.BookCover
 import io.legado.app.model.CoverRatio
 import io.legado.app.model.computeCoverTextLayout
+import io.legado.app.model.bookshelfCoverCache
 import io.legado.app.model.coverConfig
 import io.legado.app.utils.textHeight
 
@@ -262,6 +263,8 @@ class CoverImageView @JvmOverloads constructor(
                     loadOnlyWifi = loadOnlyWifi,
                     onLoadFinish = onLoadFinish,
                 )
+                // 书架书的封面落持久磁盘分区, 清缓存不该把书架清成一片默认封面
+                if (inBookshelf) bookshelfCoverCache(path)
                 placeholder(BookCover.newDefaultDrawable(coverRatio, defaultCoverSeed()))
                 listener(
                     onSuccess = { _, _ ->

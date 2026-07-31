@@ -81,22 +81,18 @@ private fun DeepLinkImportContent(
     LaunchedEffect(target) {
         launch {
             target.successState.collectLatest { count ->
-                if (count != null) {
-                    if (count > 0) {
-                        showDialog = true
-                    } else {
-                        Toasters.get().toast(wrongFormatText)
-                        LegadoDeepLinkHandler.consume()
-                    }
+                if (count > 0) {
+                    showDialog = true
+                } else {
+                    Toasters.get().toast(wrongFormatText)
+                    LegadoDeepLinkHandler.consume()
                 }
             }
         }
         launch {
             target.errorState.collectLatest { err ->
-                if (err != null) {
-                    Toasters.get().toast(err.substringAfter("ImportError:"))
-                    LegadoDeepLinkHandler.consume()
-                }
+                Toasters.get().toast(err.substringAfter("ImportError:"))
+                LegadoDeepLinkHandler.consume()
             }
         }
         target.startImport(req.src)

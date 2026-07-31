@@ -1,12 +1,12 @@
 package io.legado.app.data.entities
 
-import androidx.room.ColumnInfo
-import androidx.room.Entity
-import androidx.room.Ignore
-import androidx.room.Index
-import androidx.room.PrimaryKey
-import androidx.room.TypeConverter
-import androidx.room.TypeConverters
+import androidx.room3.ColumnInfo
+import androidx.room3.Entity
+import androidx.room3.Ignore
+import androidx.room3.Index
+import androidx.room3.PrimaryKey
+import androidx.room3.ColumnTypeConverter
+import androidx.room3.ColumnTypeConverters
 import io.legado.app.constant.BookType
 import io.legado.app.help.book.getFolderNameNoCache
 import io.legado.app.utils.decodeStringMapOrNull
@@ -28,7 +28,7 @@ import kotlinx.serialization.json.Json
 //   2. AppDatabase 上 (DATABASE 作用域): 处理 BookChapter.ForeignKey 跨实体解析时的 ReadConfig 类型链 (iOS/ohos KSP 需要)
 // 缺一不可: 只在 AppDatabase 上会导致 JVM KSP 处理 Book 实体时找不到 converter;
 //          只在 Book 上会导致 iOS/ohos KSP 处理 ForeignKey 跨实体时不应用 converter
-@TypeConverters(Book.Converters::class)
+@ColumnTypeConverters(Book.Converters::class)
 @Serializable
 @Entity(
     tableName = "books",
@@ -258,13 +258,13 @@ data class Book(
 
     class Converters {
 
-        @TypeConverter
+        @ColumnTypeConverter
         fun readConfigToString(config: ReadConfig?): String? {
             if (config == null || config == ReadConfig()) return null
             return readConfigJson.encodeToString(config)
         }
 
-        @TypeConverter
+        @ColumnTypeConverter
         fun stringToReadConfig(json: String?): ReadConfig? {
             json ?: return null
             return kotlin.runCatching {

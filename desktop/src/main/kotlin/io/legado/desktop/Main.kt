@@ -5,10 +5,15 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.window.LocalWindowExceptionHandlerFactory
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowExceptionHandler
+import androidx.compose.ui.window.WindowExceptionHandlerFactory
 import androidx.compose.ui.window.application
+import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.BundledDatabaseDriver
@@ -28,6 +33,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.file.registerDesktopAppFilesDir
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.image.registerJvmBookImageLoader
+import io.legado.app.help.image.registerReaderImageResolver
 import io.legado.app.help.notification.registerDesktopNotificationProgress
 import io.legado.app.help.service.registerDesktopServiceLauncher
 import io.legado.app.help.source.SourceHelp
@@ -35,6 +41,11 @@ import io.legado.app.help.source.SourceHelpAccessors
 import io.legado.app.help.storage.registerJvmDataStorage
 import io.legado.app.help.toast.registerDesktopToaster
 import io.legado.app.help.tts.TtsEngineProvider
+import io.legado.app.help.config.LocalReadConfigProviders
+import io.legado.app.help.config.ReadConfigProviders
+import io.legado.app.help.config.ReadTipConfigShared
+import io.legado.app.model.DesktopReadBookProvider
+import io.legado.app.model.LocalReadBookProvider
 import io.legado.app.model.fileBook.BitmapProviders
 import io.legado.app.model.fileBook.ZipFileWrapperFactoryProviders
 import io.legado.app.model.script.JsEngines
@@ -76,6 +87,7 @@ import io.legado.desktop.config.registerDesktopConfig
 import io.legado.desktop.data.DesktopAppDbAccessor
 import io.legado.desktop.help.DesktopDefaultDataResourceProvider
 import io.legado.desktop.help.SingleInstanceGuard
+import io.legado.desktop.help.initDesktopDefaultData
 import io.legado.desktop.help.book.DesktopBitmapProvider
 import io.legado.desktop.help.book.DesktopBookHelpAccessor
 import io.legado.desktop.help.book.DesktopZipFileWrapperFactory
@@ -94,6 +106,7 @@ import io.legado.desktop.help.registerDesktopScreenInfoProvider
 import io.legado.desktop.help.source.DesktopSourceHelpAccessor
 import io.legado.desktop.help.source.registerDesktopSourceProviders
 import io.legado.desktop.help.source.registerDesktopVerificationUiProvider
+import io.legado.desktop.help.storage.registerDesktopBackupRestoreHook
 import io.legado.desktop.help.ui.registerDesktopOpenUrlProvider
 import io.legado.desktop.help.ui.registerDesktopToastProvider
 import io.legado.desktop.help.ui.registerDesktopUserAgentProvider
@@ -101,12 +114,15 @@ import io.legado.desktop.http.registerDesktopHttpProvider
 import io.legado.desktop.js.registerDesktopJsEngines
 import io.legado.desktop.model.DesktopCacheBook
 import io.legado.desktop.model.fileBook.registerDesktopFileBookAccessor
+import io.legado.desktop.model.registerDesktopReadBookPlatform
 import io.legado.desktop.model.webBook.registerDesktopWebBookProviders
 import io.legado.desktop.tts.DesktopHttpTtsPlayer
 import io.legado.desktop.tts.DesktopSystemTtsEngine
+import io.legado.desktop.ui.DesktopDialogHost
 import io.legado.desktop.ui.DesktopPlatformCapabilities
 import io.legado.desktop.ui.DesktopPlatformServices
 import io.legado.desktop.ui.DesktopWindowHandle
+import io.legado.desktop.ui.tray.DesktopMediaTray
 import io.legado.desktop.ui.browser.DesktopWebViewSlot
 import io.legado.desktop.ui.platform.DesktopAudioPlayPlatformProvider
 import io.legado.desktop.ui.platform.DesktopMangaReaderPlatform
@@ -198,7 +214,7 @@ private fun handleDeepLinkArgs(args: Array<String>) {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 private fun runDesktopApp() = application {
     // ==================== 阶段1: 首屏必需 provider 同步注册 (窗口显示前) ====================
     // 目标: 只注册首屏 (BookshelfScreen) 渲染依赖的 provider, 让窗口尽快显示。
@@ -232,7 +248,8 @@ private fun runDesktopApp() = application {
     // 用 remember 构造 DesktopPreferenceStoreProvider 实例, 同一实例在 Window 内复用,
     // 保证 UI 样式配置与备份逻辑状态同步
     val preferenceStoreProvider = remember { DesktopPreferenceStoreProvider() }
-    registerDesktopConfig(preferenceStoreProvider)
+    // 接住返回值: LocalReadConfigProviders 必须与全局 ReadBookConfigProviders 同实例, 否则配置写读分家
+    val desktopReadBookConfig = remember { registerDesktopConfig(preferenceStoreProvider) }
     // 注入 HomeTabHelpShared 的 prefs provider (commonMain 下沉的主页分组持久化)
     // 复用已创建的 DesktopPreferenceStoreProvider, 对齐 app 端 App.kt 的 HomeTabHelpShared.prefs 注入
     HomeTabHelpShared.prefs = preferenceStoreProvider
@@ -282,6 +299,14 @@ private fun runDesktopApp() = application {
             windowHandle
         )
     )
+    // 系统托盘: 音频/朗读活跃时给播放控制菜单 (最小化后仍可控), 同时承载 toast/进度气泡
+    DisposableEffect(Unit) {
+        DesktopMediaTray.install(
+            windowProvider = { windowHandle.window },
+            exitAction = ::exitApplication,
+        )
+        onDispose { DesktopMediaTray.uninstall() }
+    }
     // 注册桌面端 4 个媒体 PlatformProvider (对照 app 端 MainActivity.onActivityCreated 同步注册),
     // 避免 Reader/Audio/Manga/Video Route 显示 "platform unavailable":
     // - Reader: DesktopReadMenuController 功能性菜单 (导航/章节/夜间模式)
@@ -289,11 +314,16 @@ private fun runDesktopApp() = application {
     // - Manga: Coil3 AsyncImage 渲染 + ColorMatrix 灰度/颜色滤镜
     // - Video: MPV 播放器 (SwingPanel + nativeHwnd 桥接, Windows 用 WComponentPeer getHwnd)
     ReaderPlatformProviders.register(DesktopReaderPlatformProvider())
+    // ReadBookShared 的平台钩子 (缓存运行态 / 本地 txt 分章缓存; 朗读与图片缓存为空实现,
+    // 见 DesktopReadBookPlatform 注释)。须早于任何阅读页打开
+    registerDesktopReadBookPlatform()
     // 阅读排版度量: 注册 Skia 真实字形度量, 取代 SimpleTextMeasurer 等宽近似
     // (字形来源与 PageContentCanvas 的 Compose FontFamily.Default 同源)
     TextMeasurerProviders.register { textSizePx, letterSpacingPx ->
         SkiaTextMeasurer(textSizePx = textSizePx, letterSpacingPx = letterSpacingPx)
     }
+    // 阅读页内嵌图片 (PDF 单图页 / EPUB 插图): 排版取尺寸 + 绘制取位图
+    registerReaderImageResolver()
     AudioPlayPlatformProviders.register(DesktopAudioPlayPlatformProvider())
     MangaReaderScreenModel.Providers.register(DesktopMangaReaderPlatform)
     VideoPlayPlatformProviders.register(DesktopVideoPlayPlatformProvider())
@@ -317,6 +347,14 @@ private fun runDesktopApp() = application {
     // AppNavigator: 零薄壳导航唯一状态源 (替代旧 DesktopApp 的 20+ 并行状态字段)
     val navigator = remember { AppNavigator(AppRoute.Main()) }
     val screenModelStore = remember { ScreenModelStore() }
+    // Compose 未捕获异常兜底: CMP 默认工厂 (DefaultWindowExceptionHandlerFactory) 弹的是
+    // 模态 JOptionPane —— 模态窗口会禁用主窗口输入却不影响重绘, 又常被置顶的 Dialog 图层
+    // 或全屏窗口遮住, 表现就是"窗口还能 resize 重排, 键鼠全部失灵"。改为只记日志不弹窗。
+    CompositionLocalProvider(
+        LocalWindowExceptionHandlerFactory provides WindowExceptionHandlerFactory {
+            WindowExceptionHandler { AppLog.put("Compose 未捕获异常", it) }
+        }
+    ) {
     Window(
         onCloseRequest = ::exitApplication,
         // 返回键由 shared LegadoApp 内部 handleBackKey 统一处理, desktop Window 不消费
@@ -346,11 +384,22 @@ private fun runDesktopApp() = application {
         val appConfigProvider = remember { DesktopAppConfigProvider() }
         val eventBusProvider = remember { DesktopEventBusProvider() }
         // preferenceStoreProvider 复用顶层 remember 实例 (与 ReadBookConfigProviders 共享同一实例)
+        // 阅读器注入: ReaderRoute/ReaderDrawStyle/PageViewComposable 消费, 缺省值是 error()
+        // —— 未注入时打开阅读器即抛异常, 被 DesktopCoroutineExceptionHandler 吞掉后表现为输入冻结
+        val readConfigProviders = remember {
+            object : ReadConfigProviders {
+                override val readBookConfig = desktopReadBookConfig
+                override val readTipConfig = ReadTipConfigShared(desktopReadBookConfig)
+            }
+        }
+        val readBookProvider = remember { DesktopReadBookProvider() }
         CompositionLocalProvider(
             LocalThemeStoreProvider provides themeStoreProvider,
             LocalAppConfigProvider provides appConfigProvider,
             LocalEventBusProvider provides eventBusProvider,
             LocalPreferenceStoreProvider provides preferenceStoreProvider,
+            LocalReadConfigProviders provides readConfigProviders,
+            LocalReadBookProvider provides readBookProvider,
             LocalWebViewSlot provides { url, modifier -> DesktopWebViewSlot(url, modifier) },
             // 注入 Coil3 模糊封面背景到 shared 详情页路由, 覆盖 LocalBlurCoverBgSlot 兜底
             LocalBlurCoverBgSlot provides { book, coverTick, inBookshelf, isEInkMode, modifier ->
@@ -362,6 +411,8 @@ private fun runDesktopApp() = application {
                 // 改用 Composable 宿主订阅 FlowBus(SOURCE_UI_REQUEST) 弹 Compose Dialog
                 // (实现见 shared/sharedUiMain 的 SourceUiEventBridgeHost)
                 SourceUiEventBridgeHost()
+                // 桌面端命令式对话框宿主: PlatformCapabilities 的同步方法经 DesktopDialogs 推请求
+                DesktopDialogHost()
                 // legado:// deep link 导入对话框宿主: 消费 main(args)/OpenURIHandler 经
                 // LegadoDeepLinkHandler 记录的待导入请求 (对照 app 端 AssociationActivity 分发)
                 DeepLinkImportHost()
@@ -373,6 +424,7 @@ private fun runDesktopApp() = application {
                 )
             }
         }
+    }
     }
 }
 
@@ -402,12 +454,16 @@ private suspend fun registerSecondaryProviders() {
         // - DirectLinkUploadProviders: 供 BackupShared/RestoreShared 备份恢复 directLinkUploadRule.json
         registerDesktopPasswordProvider()
         registerDesktopDirectLinkUploadProviders()
+        // - BackupRestoreHooks: 备份/恢复的平台收尾 (lastBackup 时间戳 + 恢复完成提示);
+        //   zip 复制/解压走 shared 默认文件分支, 桌面端无 SAF
+        registerDesktopBackupRestoreHook()
         // 2. HTTP 层 (OkHttp + CookieJarBridge, 独立)
         registerDesktopHttpProvider()
         // jsoup 走宿主共享 OkHttpClient (对照 app 端 App.kt:138 Jsoup.clientFactory = { okHttpClient })
         // 让 jsoup 解析继承 CookieJar/限流/Cronet 拦截器, 不绕过 shared HTTP 层
         Jsoup.clientFactory = { OkHttpClientProviders.get().okHttpClient }
-        // 3. BackstageWebView stub (独立, create 抛 UnsupportedOperationException 由调用方 runCatching 回退)
+        // 3. BackstageWebView (内嵌浏览器引擎: Windows 走系统自带 WebView2 Runtime;
+        //    引擎缺失时 create 仍抛 UnsupportedOperationException 由调用方 runCatching 回退 HTTP)
         registerDesktopBackstageWebView()
         // 4. 本地书定位器 (独立, 供 DesktopBookshelfManagePlatform.deleteLocalBook 用)
         LocalBookLocators.register(JvmLocalBookLocator())
@@ -473,15 +529,15 @@ private suspend fun registerSecondaryProviders() {
         // 异常由 Coroutine 内部 printOnDebug 吞没, 与 app 端语义一致
         Coroutine.async { SourceHelp.adjustSortNumber() }
         // LogUtils.init 为 Android 专属, desktop 用 registerDesktopAppLogHost 替代
-        // 注: app 端 App.kt:144 DefaultData.upVersion() 未补齐 — DefaultData object 在 app 模块,
-        // 依赖 LocalConfig (SharedPreferences) + AppConst.appInfo (PackageManager), 均 Android 专属,
-        // desktop 无对应下沉实现; 首次启动默认数据导入待下沉到 shared LegadoApp 内部 (见下方 TODO)。
+        // 对照 app 端 App.kt:144 DefaultData.upVersion() + dbCallback.onCreate 预置数据:
+        // 桌面端 Room KMP 无 Callback, 首启/升级的默认数据统一在这里幂等补齐
+        initDesktopDefaultData()
         // 注: app 端 App.kt:171 BookCover.toString() 未补齐 — BookCover object 依赖 Android
         // Glide/Bitmap/Drawable/appCtx, desktop 用独立的 DesktopBookCover (JDK ImageIO + OkHttp),
         // 无对应下沉的封面缓存初始化逻辑。
 
-        // 16. 启动期默认数据加载 + 缓存清理 + WebDav 进度同步
-        // (对照 app 端 MainActivity.onPostCreate viewModel.postLoad + App.kt onCreate Coroutine.async 块)
+        // 16. 启动期缓存清理 + WebDav 进度同步
+        // (对照 app 端 MainActivity.onPostCreate viewModel.postLoad)
         // TODO: 待下沉到 shared LegadoApp 内部统一编排 (原 DesktopStartupTasks 已删除, 避免临时 scope 泄漏)
 
         // 冒烟测试: 仅在 debug 模式执行 (生产环境不执行, 避免启动期阻塞)

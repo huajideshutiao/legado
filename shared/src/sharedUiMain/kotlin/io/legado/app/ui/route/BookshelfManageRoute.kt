@@ -143,9 +143,11 @@ fun BookshelfManageRoute(
         FlowBus.with(EventBus.EXPORT_BOOK).collect { refreshTick++ }
     }
     LaunchedEffect(Unit) {
-        FlowBus.with(EventBus.SAVE_CONTENT).collect {
-            manageVm.upAdapter.collect { refreshTick++ }
-        }
+        FlowBus.with(EventBus.SAVE_CONTENT).collect { refreshTick++ }
+    }
+    // 单本书缓存扫描完成 (对照 app 端 upAdapterLiveData.observe → notifyItemChanged)
+    LaunchedEffect(Unit) {
+        manageVm.upAdapter.collect { refreshTick++ }
     }
 
     // 目录选择目标书: TocRoute 回传后用于定位更新哪本书的进度

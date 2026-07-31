@@ -89,6 +89,7 @@ object JsSecurityPolicy {
             "android.database",
             "androidx.sqlite.db",
             "androidx.room",
+            "androidx.room3",
             "cn.hutool.core.io",
             "cn.hutool.core.bean",
             "cn.hutool.core.lang.reflect",

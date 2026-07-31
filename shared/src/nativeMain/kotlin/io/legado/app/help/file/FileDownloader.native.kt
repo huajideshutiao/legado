@@ -53,22 +53,24 @@ class NativeFileDownloader : FileDownloader {
                 try {
                     val response = client.get(url)
                     if (!response.status.isSuccess()) {
-                        return@try false
-                    }
-                    val bytes = response.bodyAsBytes()
+                        false
+                    } else {
+                        val bytes = response.bodyAsBytes()
 
-                    // 原子写入: 先写 .tmp 再 renameTo 目标 (替代 NSData.writeToFile(atomically=true))
-                    // 失败路径: tmpFile 残留不污染目标文件, 下次成功下载会覆盖
-                    val targetPath = if (destPath.endsWith("/")) "$destPath$fileName" else "$destPath/$fileName"
-                    val targetFile = File(targetPath)
-                    val tmpFile = File("$targetPath.tmp")
-                    tmpFile.writeBytes(bytes)
-                    // renameTo 失败兜底: 删除 tmpFile 避免残留, 返回 false
-                    if (!tmpFile.renameTo(targetFile)) {
-                        tmpFile.delete()
-                        return@try false
+                        // 原子写入: 先写 .tmp 再 renameTo 目标 (替代 NSData.writeToFile(atomically=true))
+                        // 失败路径: tmpFile 残留不污染目标文件, 下次成功下载会覆盖
+                        val targetPath = if (destPath.endsWith("/")) "$destPath$fileName" else "$destPath/$fileName"
+                        val targetFile = File(targetPath)
+                        val tmpFile = File("$targetPath.tmp")
+                        tmpFile.writeBytes(bytes)
+                        // renameTo 失败兜底: 删除 tmpFile 避免残留, 返回 false
+                        if (!tmpFile.renameTo(targetFile)) {
+                            tmpFile.delete()
+                            false
+                        } else {
+                            true
+                        }
                     }
-                    true
                 } finally {
                     client.close()
                 }

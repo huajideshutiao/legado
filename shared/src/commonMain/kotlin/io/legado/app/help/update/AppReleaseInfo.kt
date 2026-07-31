@@ -42,12 +42,25 @@ data class GithubRelease(
     val body: String,
     @SerialName("prerelease")
     val isPreRelease: Boolean,
+    @SerialName("html_url")
+    val htmlUrl: String? = null,
 ) {
-    fun gitReleaseToAppReleaseInfo(): List<AppReleaseInfo> {
+    /** beta 是滚动 tag, 版本号取 release name; 正式版取 tag_name。 */
+    val releaseVersion: String
+        get() = if (tagName == "beta") name.orEmpty() else tagName.orEmpty()
+
+    /**
+     * 取 [platform] 对应的安装包资产。
+     *
+     * 原实现按 `content_type == apk` 硬筛, 非 Android 产物 (msi/dmg/deb/ipa/hap)
+     * 会被整体丢掉; 改为按平台后缀匹配 (GitHub 对非 apk 多返回 application/octet-stream)。
+     */
+    fun gitReleaseToAppReleaseInfo(
+        platform: UpdatePlatform = UpdatePlatform.ANDROID
+    ): List<AppReleaseInfo> {
         assets ?: throw NoStackTraceException("获取新版本出错")
-        val releaseVersion = if (tagName == "beta") name.orEmpty() else tagName.orEmpty()
         return assets
-            .filter { it.isValid }
+            .filter { it.isValidFor(platform) }
             .map { it.assetToAppReleaseInfo(body, releaseVersion, tagName == "beta") }
     }
 }
@@ -68,7 +81,14 @@ data class Asset(
     val url: String
 ) {
     val isValid: Boolean
-        get() = (contentType == "application/vnd.android.package-archive") && (state == "uploaded")
+        get() = isValidFor(UpdatePlatform.ANDROID)
+
+    /** 资产已上传且后缀属于 [platform]。 */
+    fun isValidFor(platform: UpdatePlatform): Boolean {
+        if (state != "uploaded") return false
+        val lower = name.lowercase()
+        return platform.assetSuffixes.any { lower.endsWith(it) }
+    }
 
     fun assetToAppReleaseInfo(
         note: String,

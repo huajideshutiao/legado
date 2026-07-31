@@ -10,6 +10,8 @@ import coil3.memory.MemoryCache
 import coil3.network.ktor3.KtorNetworkFetcherFactory
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import coil3.size.Precision
+import coil3.size.Scale
 import coil3.toBitmap
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.http.OkHttpClientProviders
@@ -47,22 +49,36 @@ class IosBookImageLoader : BookImageLoader {
     ) {
         coroutineScope.launch {
             try {
-                val request = ImageRequest.Builder(PlatformContext.INSTANCE)
-                    .data(url)
-                    .sourceOrigin(sourceOrigin)
-                    .build()
-                val result = iosCoilImageLoader.execute(request)
-                if (result is SuccessResult) {
-                    val bitmap = result.image?.toBitmap()
-                        ?: error("Coil3 SuccessResult.image 为 null")
-                    onSuccess(bitmap.asComposeImageBitmap())
-                } else {
-                    error("Coil3 加载失败: $result")
-                }
+                onSuccess(
+                    loadImageOrNull(url, sourceOrigin) ?: error("Coil3 加载失败: $url")
+                )
             } catch (t: Throwable) {
                 onError(t)
             }
         }
+    }
+
+    override suspend fun loadImageOrNull(
+        url: String,
+        sourceOrigin: String?,
+        widthPx: Int,
+        heightPx: Int,
+    ): ImageBitmap? {
+        val request = ImageRequest.Builder(PlatformContext.INSTANCE)
+            .data(url)
+            .sourceOrigin(sourceOrigin)
+            .apply {
+                // 按显示尺寸降采样; FILL 对齐消费端 ContentScale.Crop, INEXACT 允许复用更大的内存缓存项
+                if (widthPx > 0 && heightPx > 0) {
+                    size(widthPx, heightPx)
+                    scale(Scale.FILL)
+                    precision(Precision.INEXACT)
+                }
+            }
+            .build()
+        val result = iosCoilImageLoader.execute(request)
+        val bitmap = (result as? SuccessResult)?.image?.toBitmap() ?: return null
+        return bitmap.asComposeImageBitmap()
     }
 }
 

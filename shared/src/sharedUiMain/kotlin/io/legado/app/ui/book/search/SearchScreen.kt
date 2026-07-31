@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -89,6 +88,7 @@ import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.RadioChip
 import io.legado.app.ui.compose.component.StrokeTextChip
+import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
@@ -207,14 +207,14 @@ fun SearchScreen(
     val inputHelpVisible by viewModel.inputHelpVisible.collectAsState()
     val historyKeys by viewModel.historyKeys.collectAsState()
     val bookshelfBooks by viewModel.bookshelfBooks.collectAsState()
-    val resultBooks by viewModel.searchBooks.collectAsState()
+    val resultBooks by viewModel.searchBooks.collectAsState(initial = emptyList())
     val isSearching by viewModel.isSearching.collectAsState()
     val hasMore by viewModel.hasMore.collectAsState()
     val focusEpoch by viewModel.focusEpoch.collectAsState()
     val scopeVersion by viewModel.scopeVersion.collectAsState()
     val bookshelfVersion by viewModel.bookshelfVersion.collectAsState()
     val precisionSearch by viewModel.precisionSearch.collectAsState()
-    val searchFinishEmpty by viewModel.searchFinishEmpty.collectAsState()
+
     val searchOptionsVersion by viewModel.searchOptionsVersion.collectAsState()
 
     // 搜索布局: 低 4 位=列数 (0/1 单列; 2..6 N 列网格), bit 4 (0x10)=视频标志
@@ -223,24 +223,26 @@ fun SearchScreen(
     val styleIsVideo = BookSource.exploreStyleIsVideo(searchStyle)
     val spanCount = if (styleCols <= 1) 1 else styleCols
 
-    // 搜索结果为空时弹出"切换全部/关闭精准"对话框 (对齐原 observeLiveBus searchFinishLiveData)
-    val pendingEmptyScope = remember(searchFinishEmpty) {
-        searchFinishEmpty == true && !viewModel.searchScope.isAll()
+    // 搜索结果为空时弹出"切换全部/关闭精准"对话框 (对齐原 searchFinishLiveData.observe)
+    var pendingEmptyScope by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        viewModel.searchFinishEmpty.collect { isEmpty ->
+            pendingEmptyScope = isEmpty && !viewModel.searchScope.isAll()
+        }
     }
     if (pendingEmptyScope) {
         SearchEmptyAlertDialog(
             scopeDisplay = viewModel.searchScope.display,
             precision = precisionSearch,
             onSwitchAll = {
+                pendingEmptyScope = false
                 viewModel.onSearchEmptyConfirmSwitchAll()
             },
             onDisablePrecision = {
+                pendingEmptyScope = false
                 viewModel.onSearchEmptyConfirmDisablePrecision()
             },
-            onDismiss = {
-                // 仅消费一次, 重新触发 search 把 searchFinishEmpty 置 null
-                viewModel.search("")
-            },
+            onDismiss = { pendingEmptyScope = false },
         )
     }
 
@@ -260,7 +262,7 @@ fun SearchScreen(
                     focusEpoch = focusEpoch,
                     onCleared = {
                         // 搜索中或已有结果时不弹回输入帮助 (对齐原 onFieldFocusChanged 的 autoLoading/有结果分支)
-                        if (!viewModel.isSearching.value && viewModel.searchBooks.value.isEmpty()) {
+                        if (!viewModel.isSearching.value && resultBooks.isEmpty()) {
                             viewModel.showInputHelp(true)
                         }
                     },
@@ -490,7 +492,7 @@ private fun ColumnScope.InputHelp(
             }
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Fixed(spanCount),
+                columns = rememberResponsiveColumns(spanCount),
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
@@ -794,7 +796,7 @@ private fun ColumnScope.ResultArea(
                 }
         }
         FastScrollLazyVerticalGrid(
-            columns = GridCells.Fixed(spanCount),
+            columns = rememberResponsiveColumns(spanCount),
             state = state,
             modifier = Modifier
                 .fillMaxWidth()

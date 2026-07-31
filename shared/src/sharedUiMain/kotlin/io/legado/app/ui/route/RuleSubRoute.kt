@@ -189,8 +189,9 @@ private fun ImportTargetDialog(
     target: DeepLinkImportTarget,
     onDismiss: () -> Unit,
 ) {
-    val error by target.errorState.collectAsState()
-    val success by target.successState.collectAsState()
+    // SharedFlow 无初始值, 用 null 表示"还没收到解析结果"(原 StateFlow 初始 null 的等价物)
+    val error by target.errorState.collectAsState(initial = null)
+    val success by target.successState.collectAsState(initial = null)
     ImportItemsDialog(
         title = rememberString(target.titleKey),
         vm = target.items,

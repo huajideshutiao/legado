@@ -9,11 +9,6 @@ import platform.UserNotifications.UNAuthorizationOptionSound
 import platform.UserNotifications.UNMutableNotificationContent
 import platform.UserNotifications.UNNotificationRequest
 import platform.UserNotifications.UNUserNotificationCenter
-import platform.UserNotifications.addNotificationRequest
-import platform.UserNotifications.currentNotificationCenter
-import platform.UserNotifications.removeDeliveredNotificationsWithIdentifiers
-import platform.UserNotifications.removePendingNotificationRequestsWithIdentifiers
-import platform.UserNotifications.requestAuthorizationWithOptions
 
 /**
  * [NotificationProgress] 的 iOS 真实实现 (KP4)。
@@ -67,13 +62,11 @@ class IosNotificationProgress : NotificationProgress {
         runCatching {
             val center = UNUserNotificationCenter.currentNotificationCenter()
             val contentObj = UNMutableNotificationContent().apply {
-                this.title = title
-                this.body = progressText
+                setTitle(title)
+                setBody(progressText)
             }
             // trigger=null 立即触发 (非定时); 固定 identifier 覆盖式更新 (与 Android 通知 ID 复用一致)
-            // 注: 若 Kotlin/Native 把 requestWithIdentifier: 工厂方法映射为 companion 函数,
-            //     改 UNNotificationRequest.requestWithIdentifier(identifier=..., content=..., trigger=null)
-            val request = UNNotificationRequest(
+            val request = UNNotificationRequest.requestWithIdentifier(
                 identifier = NOTIFICATION_ID,
                 content = contentObj,
                 trigger = null,

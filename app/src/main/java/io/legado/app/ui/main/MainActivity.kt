@@ -35,7 +35,14 @@ import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.isImage
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.ReadBookConfig
+import io.legado.app.help.config.ReadBookConfigProviders
+import io.legado.app.help.config.ReadConfigProviders
+import io.legado.app.help.config.ReadTipConfigShared
+import io.legado.app.help.image.registerReaderImageResolver
+import io.legado.app.model.AndroidReadBookProvider
+import io.legado.app.model.LocalReadBookProvider
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.update.AppUpdate
 import io.legado.app.lib.dialogs.SelectItem
@@ -244,9 +251,21 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
         val screenModelStore = remember { ScreenModelStore() }
         val context = LocalContext.current
 
+        // 阅读器注入: ReaderRoute/ReaderDrawStyle 消费, 缺省值是 error() 会崩;
+        // readBookConfig 必须与全局 ReadBookConfigProviders 同实例, 否则配置写读分家
+        val readConfigProviders = remember {
+            object : ReadConfigProviders {
+                override val readBookConfig = ReadBookConfigProviders.get()
+                override val readTipConfig = ReadTipConfigShared(readBookConfig)
+            }
+        }
+        val readBookProvider = remember { AndroidReadBookProvider() }
+
         Box(Modifier.fillMaxSize()) {
             // 注入 app 端 ShelfCover 到 shared 通用封面槽
             CompositionLocalProvider(
+                LocalReadConfigProviders provides readConfigProviders,
+                LocalReadBookProvider provides readBookProvider,
                 LocalBookCoverSlot provides { book, modifier, isVideoCover ->
                     ShelfCover(
                         path = book.getDisplayCover(),
@@ -321,6 +340,8 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
                 letterSpacing = if (textSizePx > 0f) letterSpacingPx / textSizePx else 0f
             })
         }
+        // 共享阅读器的内嵌图片 (排版取尺寸 + Canvas 取位图); app 端自绘阅读页仍走 ImageProvider
+        registerReaderImageResolver()
 
         // 返回键: navigator.pop 优先 (导航栈有内容时返回上一页), 失败后走双击退出
         onBackPressedDispatcher.addCallback(this) {

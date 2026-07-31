@@ -17,9 +17,10 @@ import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.splitNotBlank
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 
 /**
  * 导入替换规则 VM 共享核心 (KMP 版, commonMain)。
@@ -63,8 +64,8 @@ import kotlinx.coroutines.flow.asStateFlow
  *   newCallResponseBody / decompressed / text 均为 commonMain 扩展)。
  * - **ReplaceAnalyzer**: 已下沉 commonMain, 直接复用 (与 app 端原调用一致);
  * - **AppPattern.splitGroupRegex**: 已下沉 commonMain, 直接复用;
- * - **androidx.lifecycle.MutableLiveData**: 不可 KMP, 改为 [MutableStateFlow] + [asStateFlow]
- *   (对照 [ImportBookSourceViewModelShared] 的 2 个 StateFlow 模式)。
+ * - **androidx.lifecycle.MutableLiveData**: 不可 KMP, 改为 [MutableSharedFlow] (replay=1) + [asSharedFlow]
+ *   (对照 [ImportBookSourceViewModelShared] 的事件流模式)。
  *
  * # 设计选择 (组合委托)
  *
@@ -98,22 +99,34 @@ class ImportReplaceRuleViewModelShared(
     var groupName: String? = null
 
     /**
+     * 事件流工厂: replay=1 + DROP_OLDEST, 语义对齐 LiveData.postValue。
+     *
+     * 不能用 StateFlow: 按值去重会吞掉重复投递 (同一个错误串重试后再次失败),
+     * 导入弹窗的加载态就永远停在转圈。
+     */
+    private fun <T> signalFlow() = MutableSharedFlow<T>(
+        replay = 1,
+        extraBufferCapacity = 8,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    /**
      * 导入错误信息流 (对照原 `errorLiveData: MutableLiveData<String>`)。
      *
-     * 初始 null (与原 LiveData 默认 null 一致), app 端桥接时过滤 null 避免初始假触发。
+     * 事件流 (replay=1): 每次失败都投递, 重复的相同错误串也不会被吞。
      * 值格式 `"ImportError:${localizedMessage}"`, 与 app 端原 `errorLiveData.postValue(...)` 一致。
      */
-    private val _errorState = MutableStateFlow<String?>(null)
-    val errorState: StateFlow<String?> = _errorState.asStateFlow()
+    private val _errorState = signalFlow<String>()
+    val errorState: SharedFlow<String> = _errorState.asSharedFlow()
 
     /**
      * 导入成功信号流 (对照原 `successLiveData: MutableLiveData<Int>`)。
      *
      * 值为 allRules.size (导入的替换规则总数), 0 表示解析无结果。
-     * 初始 null, app 端桥接时过滤 null 避免初始假触发。
+     * 事件流 (replay=1): 每次解析完成都投递, 数量与上次相同也不会被吞。
      */
-    private val _successState = MutableStateFlow<Int?>(null)
-    val successState: StateFlow<Int?> = _successState.asStateFlow()
+    private val _successState = signalFlow<Int>()
+    val successState: SharedFlow<Int> = _successState.asSharedFlow()
 
     /** 解析出的待导入替换规则列表 (importAwait 累积, comparisonSource 比对, importSelect 写入)。 */
     val allRules = arrayListOf<ReplaceRule>()
@@ -201,7 +214,7 @@ class ImportReplaceRuleViewModelShared(
      *   `mText.isUri()`, 是 Uri 则读取文本后转发到本类, 否则直接转发到本类。
      *   本类仅处理纯文本 (URL/JSON) 分支。
      * - 调 [importAwait] 处理 isAbsUrl / isJsonArray / isJsonObject 分支;
-     * - `onError`: 推送 `_errorState.value = "ImportError:${localizedMessage}"`
+     * - `onError`: 推送 `_errorState.tryEmit("ImportError:${localizedMessage}")`
      *   + `AppLog.put(...)` (替代 `errorLiveData.postValue(...)`, 行为等价);
      * - `onSuccess`: 调 [comparisonSource] 比对本地已有替换规则 (与 app 端原
      *   `onSuccess { comparisonSource() }` 一致)。
@@ -214,7 +227,7 @@ class ImportReplaceRuleViewModelShared(
         Coroutine.async(scope = scope) {
             importAwait(text.trim())
         }.onError {
-            _errorState.value = "ImportError:${it.message}"
+            _errorState.tryEmit("ImportError:${it.message}")
             AppLog.put("ImportError:${it.message}", it)
         }.onSuccess {
             comparisonSource()
@@ -291,7 +304,7 @@ class ImportReplaceRuleViewModelShared(
      *
      * - 遍历 [allRules], 调 `appDb.replaceRuleDao.findById(it.id)` 查本地;
      * - selectStatus: rule 为 null (本地不存在) 时选中 (新增默认选);
-     * - `onSuccess` 推送 `_successState.value = allRules.size` (与 app 端
+     * - `onSuccess` 推送 `_successState.tryEmit(allRules.size)` (与 app 端
      *   `onSuccess { successLiveData.postValue(allRules.size) }` 一致, 注意原版
      *   comparisonSource 是 onSuccess 才推送 successState, 与其他 VM 直接推送不同,
      *   本类保留原版 onSuccess 嵌套结构)。
@@ -306,7 +319,7 @@ class ImportReplaceRuleViewModelShared(
                 selectStatus.add(rule == null)
             }
         }.onSuccess {
-            _successState.value = allRules.size
+            _successState.tryEmit(allRules.size)
         }
     }
 }

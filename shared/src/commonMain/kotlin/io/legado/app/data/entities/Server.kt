@@ -1,7 +1,7 @@
 package io.legado.app.data.entities
 
-import androidx.room.Entity
-import androidx.room.PrimaryKey
+import androidx.room3.Entity
+import androidx.room3.PrimaryKey
 import io.legado.app.utils.decodeOrNull
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.serialization.Serializable

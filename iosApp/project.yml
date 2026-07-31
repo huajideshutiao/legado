@@ -45,6 +45,37 @@ targets:
       path: Info.plist
       properties:
         CFBundleDisplayName: legado
+        # 状态栏 (Compose Multiplatform 自管理)
+        UIStatusBarStyle: UIStatusBarStyleDefault
+        UIStatusBarHidden: false
+        UIViewControllerBasedStatusBarAppearance: true
+        # 屏幕方向: 阅读类 App, 竖屏 + 横屏
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UILaunchStoryboardName: ""
+        # Compose 自处理 safeArea, 窗口铺满
+        UIRequiresFullScreen: false
+        # 书源 URL 常为 http://, ATS 默认强制 https 会阻塞抓取与封面加载
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        # audio: TTS 朗读后台继续; processing: 缓存书籍的 BGProcessingTask
+        UIBackgroundModes:
+          - audio
+          - processing
+        # BGTaskScheduler 任务标识, 必须与 shared IosBackgroundTasks.kt 的
+        # CACHE_BOOK_TASK_ID 编译期常量逐字一致 (对不上 register 直接崩), 故写死不用变量
+        BGTaskSchedulerPermittedIdentifiers:
+          - io.legado.app.ios.cachebook
+        # 沙盒 Documents 在"文件"App 与 Finder 可见 (导出/另存为落地点)
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
         # legado:// / yuedu:// deep link (一键导入书源/替换规则/主题等),
         # 对照 app 端 AndroidManifest AssociationActivity intent-filter (scheme legado/yuedu)。
         # 回调链: SwiftUI onOpenURL (iOSApp.swift) → shared framework

@@ -42,7 +42,7 @@ import io.legado.app.ui.dict.rule.DictRuleEditDialog
 import io.legado.app.ui.widget.dialog.HelpDialog
 import io.legado.app.ui.widget.dialog.OnlineImportUrlDialog
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
@@ -257,17 +257,13 @@ private fun RuleImportDialogContent(
     LaunchedEffect(target) {
         launch {
             target.successState.collect { count ->
-                if (count != null) {
-                    if (count > 0) showDialog = true else navigator.dismissOverlay(overlay.key)
-                }
+                if (count > 0) showDialog = true else navigator.dismissOverlay(overlay.key)
             }
         }
         launch {
             target.errorState.collect { err ->
-                if (err != null) {
-                    Toasters.get().toast(err.substringAfter("ImportError:"))
-                    navigator.dismissOverlay(overlay.key)
-                }
+                Toasters.get().toast(err.substringAfter("ImportError:"))
+                navigator.dismissOverlay(overlay.key)
             }
         }
         // 文件分支: 平台文件选择器取路径后读文本 (对照 app 端 uri.readText); 取消选择即关闭
@@ -346,8 +342,8 @@ private fun RuleImportKind.importTitle(): String = when (this) {
 /** 归一化三种 Import*ViewModelShared (入口方法名与列表适配器不同), 对照 DeepLinkImportTarget。 */
 private class RuleImportTarget(
     val items: ImportItemsVm,
-    val errorState: StateFlow<String?>,
-    val successState: StateFlow<Int?>,
+    val errorState: SharedFlow<String>,
+    val successState: SharedFlow<Int>,
     private val startImportFn: (String) -> Unit,
 ) {
     fun startImport(text: String) = startImportFn(text)

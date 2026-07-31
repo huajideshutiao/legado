@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Density
@@ -34,9 +35,12 @@ import io.legado.app.ui.book.read.ReaderScreen
 import io.legado.app.ui.book.read.ReaderScreenModel
 import io.legado.app.ui.book.read.ReaderUiActions
 import io.legado.app.ui.book.read.ReaderUiState
+import io.legado.app.ui.book.read.page.entities.PageDirectionShared
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.platform.AppShortcut
+import io.legado.app.ui.compose.platform.AppShortcutHandler
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
@@ -144,6 +148,36 @@ fun ReaderRoute(
     }
 
     val scope = rememberCoroutineScope()
+
+    // region 阅读页快捷键 (对照 app 端 ReadBookKeyHandler.onKeyDown)
+    // 栈内页面全部留在组合中, 故非栈顶时必须失效, 否则目录/换源等子页里按方向键会翻背景的书;
+    // 翻页键菜单可见时不响应 (原版 menuLayoutIsVisible 分支), 字号增减不受菜单影响
+    val isTopEntry = { navigator.backStack.value.lastOrNull()?.id == entry.id }
+    AppShortcutHandler(
+        shortcuts = ReaderShortcuts.pageTurn,
+        enabled = { isTopEntry() && !screenModel.menuState.isVisible },
+    ) { shortcut ->
+        val direction = if (shortcut in ReaderShortcuts.prevPage) {
+            PageDirectionShared.PREV
+        } else {
+            PageDirectionShared.NEXT
+        }
+        screenModel.viewModel.pageDelegate?.keyTurnPage(direction)
+    }
+    AppShortcutHandler(ReaderShortcuts.textSize, enabled = isTopEntry) { shortcut ->
+        val delta = if (shortcut == ReaderShortcuts.increaseTextSize) 1 else -1
+        val newSize = (readBookConfig.textSize + delta).coerceIn(MIN_TEXT_SIZE, MAX_TEXT_SIZE)
+        if (newSize != readBookConfig.textSize) {
+            readBookConfig.textSize = newSize
+            readBookConfig.save()
+            // 与 ReadStyleScreen 字号 seekBar 一致的重排事件
+            ReadBookEvents.postConfig(
+                ReadConfigChange.CHAPTER_STYLE,
+                ReadConfigChange.LOAD_CONTENT,
+            )
+        }
+    }
+    // endregion
 
     ReaderScreen(state = state, actions = actions)
 
@@ -279,6 +313,33 @@ fun ReaderRoute(
 
 /** 视口尺寸去抖窗口（ms），对照原版 upViewSize 的 postDelayed(300) 量级。 */
 private const val VIEW_SIZE_DEBOUNCE_MS = 200L
+
+/** 字号可调范围，对照 ReadStyleScreen 字号 seekBar（内部 0..45，展示值 +5）。 */
+private const val MIN_TEXT_SIZE = 5
+private const val MAX_TEXT_SIZE = 50
+
+/**
+ * 阅读页快捷键。PageUp/PageDown/空格为原版键位 (app 端 ReadBookKeyHandler);
+ * 方向键是桌面端新增, 替代原版没有的音量键翻页。均无修饰键, 走冒泡阶段分发。
+ */
+private object ReaderShortcuts {
+    val prevPage = listOf(
+        AppShortcut(Key.PageUp),
+        AppShortcut(Key.DirectionLeft),
+        AppShortcut(Key.DirectionUp),
+    )
+    val nextPage = listOf(
+        AppShortcut(Key.PageDown),
+        AppShortcut(Key.DirectionRight),
+        AppShortcut(Key.DirectionDown),
+        AppShortcut(Key.Spacebar),
+    )
+    val pageTurn = prevPage + nextPage
+
+    val increaseTextSize = AppShortcut(Key.Equals, command = true)
+    val decreaseTextSize = AppShortcut(Key.Minus, command = true)
+    val textSize = listOf(increaseTextSize, decreaseTextSize)
+}
 
 /**
  * 触发重排的配置事件：原版这些分支都落到 `ChapterProvider.upStyle/upLayout` +

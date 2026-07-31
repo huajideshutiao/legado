@@ -1,5 +1,6 @@
 package io.legado.app.help.config
 
+import io.legado.app.constant.PreferKey
 import kotlin.concurrent.Volatile
 
 /**
@@ -242,8 +243,16 @@ interface AppConfigAccessor {
     /** 欢迎页展示时长毫秒 (原 AppConfig.welcomeShowTime), 默认 600, 范围 0..3000。 */
     val welcomeShowTime: Int
 
-    /** 是否启用开发特性 (原 AppConfig.devFeat), 默认 false。 */
-    val devFeat: Boolean get() = false
+    /**
+     * 是否启用开发特性 (原 AppConfig.devFeat), 默认 false。
+     *
+     * 各端 Accessor 都没覆写这一项, 曾写死 false 让"按书籍类型分流"(视频/RSS 直达播放页)
+     * 变成死代码; 直接读设置界面写入的同一个 pref key 兜底。
+     */
+    val devFeat: Boolean
+        get() = runCatching {
+            PreferenceProviders.get().getBoolean(PreferKey.devFeat, false)
+        }.getOrDefault(false)
 
     /** 书籍详情页横向布局开关 (原 AppConfig.bookInfoHorizontalLayout), 默认 false。
      *  BookInfoRoute 据此计算 useDevFeat (与 isVideo/isLandscape 组合)。 */

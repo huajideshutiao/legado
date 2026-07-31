@@ -5,7 +5,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
@@ -48,9 +50,15 @@ fun LoginRoute(
 
     val state by screenModel.state.collectAsState()
 
-    // 用户确认登录完成 -> 返回
-    LaunchedEffect(state.loggedIn) {
-        if (state.loggedIn) navigator.pop()
+    // 用户确认登录完成 -> 返回 (信号流, 重复点击也每次都投递)
+    LaunchedEffect(screenModel) {
+        screenModel.loginCompleteFlow.collect { navigator.pop() }
+    }
+
+    // 刷新: 自增序号重建平台 WebView slot
+    var webViewReloadKey by remember { mutableIntStateOf(0) }
+    LaunchedEffect(screenModel) {
+        screenModel.refreshFlow.collect { webViewReloadKey++ }
     }
 
     val actions =
@@ -92,5 +100,6 @@ fun LoginRoute(
         state = state,
         actions = actions,
         platformWebViewSlot = { url -> LocalWebViewSlot.current(url, Modifier.fillMaxSize()) },
+        webViewReloadKey = webViewReloadKey,
     )
 }

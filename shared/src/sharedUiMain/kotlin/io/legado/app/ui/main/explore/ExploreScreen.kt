@@ -340,7 +340,12 @@ private fun ExploreSourceItem(
                     painter = painterResource(Res.drawable.ic_arrow_right),
                     contentDescription = null,
                     tint = colors.secondaryText,
-                    modifier = Modifier.size(20.dp).rotate(arrowRotation),
+                    // 收起态旋转恒 0, 不挂 rotate 省掉一层 graphicsLayer (整屏几十项)
+                    modifier = if (arrowRotation == 0f) {
+                        Modifier.size(20.dp)
+                    } else {
+                        Modifier.size(20.dp).rotate(arrowRotation)
+                    },
                 )
             }
             // 锚点对齐 llTitle 左上角 (复刻原 PopupMenu(view=llTitle) 行为)
@@ -360,7 +365,9 @@ private fun ExploreSourceItem(
             }
             if (eInk) {
                 if (expanded) kindContent()
-            } else {
+            } else if (expanded || kindPair != null) {
+                // 从没展开过的项不建 AnimatedVisibility 的 Transition (整屏几十项都要建一份);
+                // 首次展开时它以 visible=false 建立再翻 true, 进场动画与原来一致
                 AnimatedVisibility(
                     visible = expanded && kindPair != null,
                     enter = expandVertically(tween(EXPAND_DURATION_MS, easing = FastOutSlowInEasing)) +
@@ -384,7 +391,8 @@ private fun ExploreSourceItem(
  */
 @Composable
 private fun KindFlow(actions: ExploreUiActions, source: BookSource, kinds: List<ExploreKind>) {
-    val specs = kinds.map { it.style().toGridPackSpec() }
+    // 占格规格随 kinds 走, 别每次重组重建一遍列表
+    val specs = remember(kinds) { kinds.map { it.style().toGridPackSpec() } }
     GridPackLayout(
         specs = specs,
         rowUnitMinHeight = 40.dp, // 原 tv.minimumHeight = 40dp × rows (viewHeight.large)

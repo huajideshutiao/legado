@@ -44,6 +44,8 @@ import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.linkifyText
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.book_src
 import legado.shared.generated.resources.content_src
@@ -71,7 +73,7 @@ import org.jetbrains.compose.resources.stringResource
  * 数据更新时 copy 出新实例以触发 Compose 重组; [logs] 透传 SnapshotStateList 引用以保留 item 级响应。
  *
  * 字段语义对照原 `BookSourceDebugActivity` 同名字段:
- * - [logs] / [query] / [helpVisible] / [loading] / [textMy] / [textFx] / [clearFocusTick]:
+ * - [logs] / [query] / [helpVisible] / [loading] / [textMy] / [textFx]:
  *   与 Activity 同名字段一一对应, 含义见各字段 KDoc。
  */
 data class BookSourceDebugUiState(
@@ -87,8 +89,6 @@ data class BookSourceDebugUiState(
     val textMy: String,
     /** 调试发现示例文本 ("title::url" 形式, ERROR: 前缀表示出错) */
     val textFx: String,
-    /** 清焦信号量: Activity 提交/出错后自增以触发 LaunchedEffect 收键盘失焦 */
-    val clearFocusTick: Int,
 )
 
 /**
@@ -142,19 +142,22 @@ interface BookSourceDebugUiActions {
  * - [BookSourceDebugUiState]: 不可变展示状态, 由宿主端 (Activity/桌面) 持有 mutableStateOf 并 copy
  * - [BookSourceDebugUiActions]: 交互回调集合, 宿主端实现接口
  * - [BookSourceDebugScreen]: 纯 Composable 渲染入口, 仅依赖 state + actions
+ *
+ * @param clearFocusSignal 清焦信号流 (对照 app 端 searchView.clearFocus()), 每次提交搜索投递一次
  */
 @Composable
 fun BookSourceDebugScreen(
     state: BookSourceDebugUiState,
     actions: BookSourceDebugUiActions,
+    clearFocusSignal: Flow<Unit> = emptyFlow(),
 ) {
     val colors = AppTheme.colors
     val focusManager = LocalFocusManager.current
     val searchFocus = remember { FocusRequester() }
     // 对齐 onActionViewExpanded：进入即聚焦搜索框弹出键盘、展示帮助
     LaunchedEffect(Unit) { searchFocus.requestFocus() }
-    LaunchedEffect(state.clearFocusTick) {
-        if (state.clearFocusTick > 0) focusManager.clearFocus()
+    LaunchedEffect(clearFocusSignal) {
+        clearFocusSignal.collect { focusManager.clearFocus() }
     }
     Column(Modifier.fillMaxSize()) {
         AppTitleBar(

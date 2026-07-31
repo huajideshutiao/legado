@@ -140,6 +140,9 @@ class MangaReaderScreenModel : ScreenModel {
     val platformRenderer: Platform? get() = platform
     val readerConfig: MangaReaderConfig get() = platform?.config ?: MangaReaderConfig.DEFAULT
 
+    // shared.error 是事件流 (replay=1), 直接进 combine 会在未发射时卡住整条链, 先转本地状态
+    private val errorMsg = MutableStateFlow<String?>(null)
+
     // 信息条: 电池电量 (对照 ReaderScreenModel._batteryLevel)
     private val _batteryLevel = MutableStateFlow(platform?.getBatteryLevel() ?: -1)
     val batteryLevel: StateFlow<Int> = _batteryLevel.asStateFlow()
@@ -172,8 +175,8 @@ class MangaReaderScreenModel : ScreenModel {
                 pageCount = imageCount,
                 loading = loading,
             )
-        }.combine(shared.error) { uiState, error ->
-            uiState.copy(error = error?.first)
+        }.combine(errorMsg) { uiState, error ->
+            uiState.copy(error = error)
         }.combine(shared.durChapterPos) { uiState, pos ->
             val imageCount = shared.currentImageCount
             uiState.copy(
@@ -183,6 +186,11 @@ class MangaReaderScreenModel : ScreenModel {
                 ),
             )
         }.onEach { _state.value = it }.launchIn(scope)
+
+        // 事件流转本地状态: 新一轮加载先清空, 保证同一个错误重试后仍能再次点亮重试页
+        // (对照 app 端 showLoading 隐藏 llRetry + loadFailLiveData.observe)
+        scope.launch { shared.error.collect { (msg, _) -> errorMsg.value = msg } }
+        scope.launch { shared.loading.collect { if (it) errorMsg.value = null } }
 
         // 系统时间每分钟刷新 (对照 app 端 ACTION_TIME_TICK 广播)
         scope.launch {
@@ -295,9 +303,16 @@ class MangaReaderScreenModel : ScreenModel {
             MangaReaderUiEvent.NextChapter -> shared.moveToNextChapter(true)
             MangaReaderUiEvent.PrevChapter -> shared.moveToPrevChapter(true)
             is MangaReaderUiEvent.OpenChapter -> shared.openChapter(event.index, event.position)
-            MangaReaderUiEvent.Retry -> shared.loadOrUpContent()
+            // 对照 app 端 tvRetry 点击: 先隐藏重试页再重新加载
+            MangaReaderUiEvent.Retry -> {
+                errorMsg.value = null
+                shared.loadOrUpContent()
+            }
             // 刷新当前章: 删缓存后重载 (对照 app 端 MangaMenuAction.REFRESH)
-            MangaReaderUiEvent.Refresh -> currentBook?.let { shared.refreshContentDur(it) }
+            MangaReaderUiEvent.Refresh -> currentBook?.let {
+                errorMsg.value = null
+                shared.refreshContentDur(it)
+            }
             // 换源回填: 复用 shared.onSourceChanged 直接装载新源/目录
             is MangaReaderUiEvent.ChangeSource -> {
                 IntentData.book = event.book

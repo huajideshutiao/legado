@@ -3,8 +3,9 @@ plugins {
 }
 
 val isMacHost = System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
-val enableIosTarget = isMacHost &&
-    ((project.findProperty("enableIosTarget") ?: "true").toString() == "true")
+// 非 mac 也可显式开启 (-PenableIosTarget=true): klib 编译不需要 Xcode, 只有 link 才需要 (同 shared)
+val enableIosTarget = (project.findProperty("enableIosTarget")?.toString()
+    ?: isMacHost.toString()) == "true"
 val enableOhosTarget = (project.findProperty("enableOhosTarget") ?: "false").toString() == "true"
 
 kotlin {

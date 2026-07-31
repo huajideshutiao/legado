@@ -23,8 +23,12 @@ import io.legado.app.utils.concurrent.newConcurrentSet
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.mapLatest
@@ -59,9 +63,10 @@ import kotlinx.coroutines.launch
  * - `appDb.bookDao.flowAll()` → `AppDbProviders.get().bookDao.flowAll()`
  * - `ConcurrentHashMap.newKeySet()` → [newConcurrentSet] expect/actual
  *   (jvm/android: ConcurrentHashMap.newKeySet(); iOS: mutableSetOf())
- * - `androidx.lifecycle.MutableLiveData` → [MutableStateFlow] (StateFlow 内部 atomic, 行为等价)
- * - `LiveData.postValue(x)` → `MutableStateFlow.value = x` (同步赋值, 经 app 端
- *   `collect { postValue }` 桥接后 LiveData observer 在下一帧收到, 与原 postValue 等价)
+ * - `androidx.lifecycle.MutableLiveData` → 事件类信号用 [MutableSharedFlow] (replay=1),
+ *   纯状态用 [MutableStateFlow]
+ * - `LiveData.postValue(x)` → `MutableSharedFlow.tryEmit(x)`: StateFlow 会吞掉与上次相等的值,
+ *   而 postValue 每次都投递 (重试后错误串相同就收不到事件, 加载态永远悬空)
  *
  * # 设计选择 (组合委托)
  *
@@ -76,12 +81,13 @@ import kotlinx.coroutines.launch
  *
  * # 状态桥接
  *
- * 7 个原 LiveData 字段对应 7 个 StateFlow (均可空, 初始 null, app 端桥接时过滤 null 避免初始假触发):
- * - [upAdapterLiveData] (原 `MutableLiveData<String>`) → [upAdapterFlow] (`StateFlow<String?>`)
- * - [booksData] (原 `MutableLiveData<List<SearchBook>>`) → [booksFlow] (`StateFlow<List<SearchBook>>`)
- * - [errorLiveData] (原 `MutableLiveData<String>`) → [errorFlow] (`StateFlow<String?>`)
- * - [sourceReadyLiveData] (原 `MutableLiveData<Unit>`) → [sourceReadyFlow] (`StateFlow<Unit?>`)
- * - [optionsReadyLiveData] (原 `MutableLiveData<Unit>`) → [optionsReadyFlow] (`StateFlow<Unit?>`)
+ * 原 LiveData 字段对应同名 Flow。信号类 (books/error/upAdapter/sourceReady/optionsReady) 用
+ * replay=1 的 SharedFlow 保留 postValue "每次都投递" 语义; 纯状态 upStar 仍用 StateFlow:
+ * - [upAdapterLiveData] (原 `MutableLiveData<String>`) → [upAdapterFlow] (`SharedFlow<String>`)
+ * - [booksData] (原 `MutableLiveData<List<SearchBook>>`) → [booksFlow] (`SharedFlow<List<SearchBook>>`)
+ * - [errorLiveData] (原 `MutableLiveData<String>`) → [errorFlow] (`SharedFlow<String>`)
+ * - [sourceReadyLiveData] (原 `MutableLiveData<Unit>`) → [sourceReadyFlow] (`SharedFlow<Unit>`)
+ * - [optionsReadyLiveData] (原 `MutableLiveData<Unit>`) → [optionsReadyFlow] (`SharedFlow<Unit>`)
  * - [upStarLiveData] (原 `MutableLiveData<Boolean>`) → [upStarFlow] (`StateFlow<Boolean?>`)
  *
  * @param scope 协程作用域, actual 平台注入
@@ -98,7 +104,19 @@ class ExploreShowViewModelShared(
     /** 书架书籍 key 集合, 用于 [isInBookShelf] 判断 (原 `bookshelf: MutableSet<String>`)。 */
     val bookshelf: MutableSet<String> = newConcurrentSet()
 
-    // region 状态流: 外部只读 StateFlow, 适配 Compose 重组 / Android asLiveData 桥接
+    // region 状态流: 外部只读 Flow, 适配 Compose 重组 / Android asLiveData 桥接
+
+    /**
+     * 事件流工厂: replay=1 + DROP_OLDEST, 语义对齐 LiveData.postValue。
+     *
+     * 不能用 StateFlow: StateFlow 按值去重, 重复投递相同值 (同一个错误串重试后再次失败 /
+     * 上拉后结果列表未变) 不会触发下游, 加载态就永远停在转圈。
+     */
+    private fun <T> signalFlow() = MutableSharedFlow<T>(
+        replay = 1,
+        extraBufferCapacity = 8,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
 
     /**
      * 书架变化信号 (对照原 `upAdapterLiveData: MutableLiveData<String>`)。
@@ -106,29 +124,29 @@ class ExploreShowViewModelShared(
      * 值固定为 `"isInBookshelf"` (与原 `upAdapterLiveData.postValue("isInBookshelf")` 一致),
      * app 端 observe 后 `bookshelfVersion++` 驱动列表重组。
      */
-    private val _upAdapterFlow = MutableStateFlow<String?>(null)
-    val upAdapterFlow: StateFlow<String?> = _upAdapterFlow.asStateFlow()
+    private val _upAdapterFlow = signalFlow<String>()
+    val upAdapterFlow: SharedFlow<String> = _upAdapterFlow.asSharedFlow()
 
     /**
      * 当前发现结果列表 (对照原 `booksData: MutableLiveData<List<SearchBook>>`)。
      *
-     * 初始值为 null (与原 LiveData 默认 null 一致), 宿主桥接时过滤 null 避免初始假触发
-     * (StateFlow 是 hot flow, collect 时立即收到当前值; null 过滤后等价于原 LiveData cold 行为)。
+     * 每次成功加载都投递一次 (即便列表内容与上次相同), 与 [errorFlow] 构成
+     * "一次请求必出一个结果" 的配对, 保证 footer 转圈总能被关掉。
      */
-    private val _booksFlow = MutableStateFlow<List<SearchBook>?>(null)
-    val booksFlow: StateFlow<List<SearchBook>?> = _booksFlow.asStateFlow()
+    private val _booksFlow = signalFlow<List<SearchBook>>()
+    val booksFlow: SharedFlow<List<SearchBook>> = _booksFlow.asSharedFlow()
 
     /** 加载错误信息 (对照原 `errorLiveData: MutableLiveData<String>`)。 */
-    private val _errorFlow = MutableStateFlow<String?>(null)
-    val errorFlow: StateFlow<String?> = _errorFlow.asStateFlow()
+    private val _errorFlow = signalFlow<String>()
+    val errorFlow: SharedFlow<String> = _errorFlow.asSharedFlow()
 
     /** 书源就绪信号 (对照原 `sourceReadyLiveData: MutableLiveData<Unit>`)。 */
-    private val _sourceReadyFlow = MutableStateFlow<Unit?>(null)
-    val sourceReadyFlow: StateFlow<Unit?> = _sourceReadyFlow.asStateFlow()
+    private val _sourceReadyFlow = signalFlow<Unit>()
+    val sourceReadyFlow: SharedFlow<Unit> = _sourceReadyFlow.asSharedFlow()
 
     /** 参数 chip 就绪信号 (对照原 `optionsReadyLiveData: MutableLiveData<Unit>`)。 */
-    private val _optionsReadyFlow = MutableStateFlow<Unit?>(null)
-    val optionsReadyFlow: StateFlow<Unit?> = _optionsReadyFlow.asStateFlow()
+    private val _optionsReadyFlow = signalFlow<Unit>()
+    val optionsReadyFlow: SharedFlow<Unit> = _optionsReadyFlow.asSharedFlow()
 
     /** 收藏状态变化信号 (对照原 `upStarLiveData: MutableLiveData<Boolean>`)。 */
     private val _upStarFlow = MutableStateFlow<Boolean?>(null)
@@ -182,8 +200,8 @@ class ExploreShowViewModelShared(
             }.collect {
                 bookshelf.clear()
                 bookshelf.addAll(it)
-                // 原 upAdapterLiveData.postValue("isInBookshelf"), 改为 StateFlow.value 赋值
-                _upAdapterFlow.value = "isInBookshelf"
+                // 原 upAdapterLiveData.postValue("isInBookshelf")
+                _upAdapterFlow.tryEmit("isInBookshelf")
             }
         }
     }
@@ -216,9 +234,9 @@ class ExploreShowViewModelShared(
                     ?: return@launch
             }
             parseExploreOptions()
-            _sourceReadyFlow.value = Unit
+            _sourceReadyFlow.tryEmit(Unit)
             if (exploreOptions.isNotEmpty()) {
-                _optionsReadyFlow.value = Unit
+                _optionsReadyFlow.tryEmit(Unit)
             }
             _upStarFlow.value = isFavorite()
             explore()
@@ -241,9 +259,9 @@ class ExploreShowViewModelShared(
             this@ExploreShowViewModelShared.exploreName = exploreName
             bookSource = source
             parseExploreOptions()
-            _sourceReadyFlow.value = Unit
+            _sourceReadyFlow.tryEmit(Unit)
             if (exploreOptions.isNotEmpty()) {
-                _optionsReadyFlow.value = Unit
+                _optionsReadyFlow.tryEmit(Unit)
             }
             _upStarFlow.value = isFavorite()
             explore()
@@ -343,7 +361,7 @@ class ExploreShowViewModelShared(
                     val oldSize = exploreOptions.size
                     mergeOptions(parseExploreOptionsFromUrl(analyzeUrl.urlAfterJs))
                     if (exploreOptions.size > oldSize) {
-                        _optionsReadyFlow.value = Unit
+                        _optionsReadyFlow.tryEmit(Unit)
                     }
                 },
                 selectedOptions = selectedOptions,
@@ -359,11 +377,11 @@ class ExploreShowViewModelShared(
             books.addAll(items)
             // 兜底: 翻到第二页起, 去重后整体未增长则视为到底; 防止 hasMoreRule 缺失或配错时无限触底
             hasNextPage = pageResult.hasNextPage && (page == 1 || books.size > prevSize)
-            _booksFlow.value = books.toList()
+            _booksFlow.tryEmit(books.toList())
             page++
         }.onError {
             it.printStackTraceOnDebug()
-            _errorFlow.value = it.stackTraceStr
+            _errorFlow.tryEmit(it.stackTraceStr)
         }
     }
 

@@ -2,8 +2,10 @@
 
 package io.legado.app.help.tts
 
+import kotlin.concurrent.Volatile
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.cinterop.useContents
 import platform.AVFAudio.AVSpeechBoundary
 import platform.AVFAudio.AVSpeechSynthesizer
@@ -97,6 +99,7 @@ class IosSystemTtsEngine : SystemTtsEngine {
      */
     // 类型留给编译器推断 (NSObject ∩ 协议), 显式标 NSObject 会让 delegate 赋值不过协议类型检查
     private val delegate = object : NSObject(), AVSpeechSynthesizerDelegateProtocol {
+        @ObjCSignatureOverride
         override fun speechSynthesizer(
             synthesizer: AVSpeechSynthesizer,
             didStartSpeechUtterance: AVSpeechUtterance
@@ -105,6 +108,7 @@ class IosSystemTtsEngine : SystemTtsEngine {
             listenerField?.onStart(currentUtteranceId)
         }
 
+        @ObjCSignatureOverride
         override fun speechSynthesizer(
             synthesizer: AVSpeechSynthesizer,
             didFinishSpeechUtterance: AVSpeechUtterance
@@ -115,6 +119,7 @@ class IosSystemTtsEngine : SystemTtsEngine {
             listenerField?.onDone(currentUtteranceId)
         }
 
+        @ObjCSignatureOverride
         override fun speechSynthesizer(
             synthesizer: AVSpeechSynthesizer,
             didCancelSpeechUtterance: AVSpeechUtterance
@@ -125,6 +130,7 @@ class IosSystemTtsEngine : SystemTtsEngine {
             pausedState = false
         }
 
+        @ObjCSignatureOverride
         override fun speechSynthesizer(
             synthesizer: AVSpeechSynthesizer,
             didPauseSpeechUtterance: AVSpeechUtterance
@@ -133,6 +139,7 @@ class IosSystemTtsEngine : SystemTtsEngine {
             pausedState = true
         }
 
+        @ObjCSignatureOverride
         override fun speechSynthesizer(
             synthesizer: AVSpeechSynthesizer,
             didContinueSpeechUtterance: AVSpeechUtterance

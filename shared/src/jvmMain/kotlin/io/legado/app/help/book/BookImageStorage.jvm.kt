@@ -4,6 +4,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.SvgRasterizer
 import io.legado.app.utils.UrlUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -28,6 +29,10 @@ import javax.imageio.ImageIO
  * 不保留 BufferedImage (与 Android 端 BitmapFactory.Options.inJustDecodeBounds 行为对齐,
  * 仅做有效性判断后立即丢弃解码结果)。
  *
+ * SVG: 对照 Android 端 SvgUtils 兜底, ImageIO 失败时改由 [SvgRasterizer] 解析。
+ * 与 Android 端存原始 SVG 字节不同, 桌面读取侧 (ImageIO / Coil3) 无 SVG 解码器,
+ * 故落盘的是栅格化后的 PNG 字节 (文件名仍按 url 后缀派生, 消费方按魔数识别)。
+ *
  * 下载: 通过 [OkHttpClientProviders] 取 OkHttpClient 同步 GET, 在 [Dispatchers.IO] 并发下载。
  *
  * 注册: desktop 模块启动时通过 [BookImageStorageProviders.register] 注入。
@@ -44,11 +49,11 @@ class JvmBookImageStorage(
     private val cacheRoot: Path = Paths.get(cacheRootPath)
 
     override fun saveImage(book: Book, chapter: BookChapter, url: String, bytes: ByteArray): String? {
-        // 与 Android BookHelp.checkImage 行为对齐: 校验字节流是否为有效图, 失败返回 null
-        if (!isValidImage(bytes)) return null
+        // 与 Android BookHelp.checkImage 行为对齐: 先按栅格图校验, 失败再试 SVG, 都不是则返回 null
+        val data = if (isValidImage(bytes)) bytes else SvgRasterizer.toPng(bytes) ?: return null
         val file = resolveImageFile(book, url)
         Files.createDirectories(file.parent)
-        Files.write(file, bytes)
+        Files.write(file, data)
         return file.toString()
     }
 
@@ -117,14 +122,14 @@ class JvmBookImageStorage(
     }
 
     /**
-     * 校验字节流是否为有效图片。
+     * 校验字节流是否为有效栅格图。
      *
      * 用 [ImageIO.read] 尝试解码, 返回 null 视为损坏 (与 Android 端
      * BitmapFactory.decodeByteArray + `outWidth < 1 && outHeight < 1` 判断对齐)。
      * 不保留 BufferedImage, 仅做有效性判断后立即丢弃。
      *
-     * 注意: ImageIO 不支持 SVG, 与 Android 端 SvgUtils 兜底有差异;
-     * 桌面端暂不支持 SVG 图片缓存, 后续如有需要可补 Batik 库。
+     * SVG 不被 ImageIO 识别, 由 [saveImage] 回落到 [SvgRasterizer] (对照 Android 端
+     * BitmapFactory 失败后试 SvgUtils.getSize 的兜底顺序)。
      */
     private fun isValidImage(bytes: ByteArray): Boolean {
         return try {

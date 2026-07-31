@@ -19,12 +19,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
@@ -48,9 +45,9 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.bookshelf.KindLabels
 import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
@@ -295,88 +292,57 @@ private fun ResultArea(
     val cols = BookSource.exploreStyleCols(style)
     val spanCount = if (cols <= 1) 1 else cols
     val navPad = WindowInsets.navigationBars.asPaddingValues()
-    if (spanCount == 1) {
-        val state_ = rememberLazyListState()
-        LaunchedEffect(state.scrollTopEpoch) {
-            if (state.scrollTopEpoch > 0) state_.animateScrollToItem(0)
+    val gridState = rememberLazyGridState()
+    LaunchedEffect(state.scrollTopEpoch) {
+        if (state.scrollTopEpoch > 0) gridState.animateScrollToItem(0)
+    }
+    // 触底预加载 (对齐原 findLastVisibleItemPosition >= itemCount - 2)
+    LaunchedEffect(gridState) {
+        snapshotFlow {
+            gridState.layoutInfo.totalItemsCount to
+                (gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1)
+        }.collect { (total, last) ->
+            if (total > 0 && last >= total - 2) actions.onScrollToBottom()
         }
-        // 触底预加载 (对齐原 findLastVisibleItemPosition >= itemCount - 2)
-        LaunchedEffect(state_) {
-            snapshotFlow {
-                state_.layoutInfo.totalItemsCount to
-                    (state_.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1)
-            }.collect { (total, last) ->
-                if (total > 0 && last >= total - 2) actions.onScrollToBottom()
+    }
+    FastScrollLazyVerticalGrid(
+        // 单列档(横向列表项/视频大卡)也响应式拆列: 400dp→1 列, 800dp→2 列, 条目内部布局不变
+        columns = rememberResponsiveColumns(spanCount),
+        state = gridState,
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = navPad,
+    ) {
+        items(books, key = { it.bookUrl }) { book ->
+            when {
+                // cols>=1 且视频 = 视频卡 (1 列大卡 / 多列网格卡), cols==0 才是视频行样式
+                isVideo && cols >= 1 -> videoItemSlot(
+                    book,
+                    actions.isInBookshelf(book),
+                    { actions.onBookClick(book, false) },
+                    { actions.onBookClick(book, true) },
+                )
+
+                spanCount == 1 -> ExploreListItem(
+                    book = book,
+                    isVideoStyle = cols == 0 && isVideo,
+                    inBookshelf = actions.isInBookshelf(book),
+                    coverSlot = coverSlot,
+                    onClick = { actions.onBookClick(book, false) },
+                    onLongClick = { actions.onBookClick(book, true) },
+                )
+
+                else -> ExploreGridItem(
+                    book = book,
+                    inBookshelf = actions.isInBookshelf(book),
+                    coverSlot = coverSlot,
+                    onClick = { actions.onBookClick(book, false) },
+                    onLongClick = { actions.onBookClick(book, true) },
+                )
             }
         }
-        FastScrollLazyColumn(
-            state = state_,
-            modifier = modifier.fillMaxWidth(),
-            contentPadding = navPad,
-        ) {
-            items(books, key = { it.bookUrl }) { book ->
-                if (cols == 1 && isVideo) {
-                    videoItemSlot(
-                        book,
-                        actions.isInBookshelf(book),
-                        { actions.onBookClick(book, false) },
-                        { actions.onBookClick(book, true) },
-                    )
-                } else {
-                    ExploreListItem(
-                        book = book,
-                        isVideoStyle = cols == 0 && isVideo,
-                        inBookshelf = actions.isInBookshelf(book),
-                        coverSlot = coverSlot,
-                        onClick = { actions.onBookClick(book, false) },
-                        onLongClick = { actions.onBookClick(book, true) },
-                    )
-                }
-            }
-            // footer 不设 key: 首屏仅 footer 可见时, keyed 锚定会让视口跟随 footer 被顶到列表末尾;
-            // 无 key 走位置锚定, 数据到达后停在顶部 (对齐 RecyclerView)
-            item { LoadMoreFooter(state, actions) }
-        }
-    } else {
-        val state_ = rememberLazyGridState()
-        LaunchedEffect(state.scrollTopEpoch) {
-            if (state.scrollTopEpoch > 0) state_.animateScrollToItem(0)
-        }
-        LaunchedEffect(state_) {
-            snapshotFlow {
-                state_.layoutInfo.totalItemsCount to
-                    (state_.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1)
-            }.collect { (total, last) ->
-                if (total > 0 && last >= total - 2) actions.onScrollToBottom()
-            }
-        }
-        FastScrollLazyVerticalGrid(
-            columns = GridCells.Fixed(spanCount),
-            state = state_,
-            modifier = modifier.fillMaxWidth(),
-            contentPadding = navPad,
-        ) {
-            items(books, key = { it.bookUrl }) { book ->
-                if (isVideo) {
-                    videoItemSlot(
-                        book,
-                        actions.isInBookshelf(book),
-                        { actions.onBookClick(book, false) },
-                        { actions.onBookClick(book, true) },
-                    )
-                } else {
-                    ExploreGridItem(
-                        book = book,
-                        inBookshelf = actions.isInBookshelf(book),
-                        coverSlot = coverSlot,
-                        onClick = { actions.onBookClick(book, false) },
-                        onLongClick = { actions.onBookClick(book, true) },
-                    )
-                }
-            }
-            // footer 不设 key: 同上, 防首载后视口跟随 footer 跳底
-            item(span = { GridItemSpan(maxLineSpan) }) { LoadMoreFooter(state, actions) }
-        }
+        // footer 不设 key: 首屏仅 footer 可见时, keyed 锚定会让视口跟随 footer 被顶到列表末尾;
+        // 无 key 走位置锚定, 数据到达后停在顶部 (对齐 RecyclerView)
+        item(span = { GridItemSpan(maxLineSpan) }) { LoadMoreFooter(state, actions) }
     }
 }
 

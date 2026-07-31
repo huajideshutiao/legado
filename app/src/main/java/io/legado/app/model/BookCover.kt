@@ -21,6 +21,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.glide.BlurTransformation
+import io.legado.app.help.image.coverDiskCacheKey
 import io.legado.app.help.image.sourceOrigin
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
@@ -271,6 +272,7 @@ object BookCover {
         val request = ImageRequest.Builder(context as PlatformContext)
             .data(path)
             .sourceOrigin(sourceOrigin)
+            .bookshelfCoverCache(path)
             .build()
         val result = loader.execute(request)
         return if (result is SuccessResult) {
@@ -325,6 +327,15 @@ fun ImageRequest.Builder.coverConfig(
             onError = { _, _ -> onLoadFinish() },
         )
     }
+}
+
+/**
+ * 书架封面走**持久**磁盘缓存分区 (应用数据目录, 系统/用户清缓存都清不掉)。
+ * 对照原版 `ImageLoader.load(.., inBookshelf = true)` 的 `.signature(ObjectKey("covers"))`
+ * + `MultiDiskCacheFactory` 分流。
+ */
+fun ImageRequest.Builder.bookshelfCoverCache(path: String?): ImageRequest.Builder = apply {
+    if (!path.isNullOrBlank()) diskCacheKey(coverDiskCacheKey(path))
 }
 
 /**

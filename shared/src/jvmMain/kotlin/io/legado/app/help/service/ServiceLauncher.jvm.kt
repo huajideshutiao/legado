@@ -1,8 +1,11 @@
 package io.legado.app.help.service
 
 import io.legado.app.constant.EventBus
+import io.legado.app.data.AppDbProviders
 import io.legado.app.help.file.FileDownloaders
 import io.legado.app.help.file.desktopAppRootDir
+import io.legado.app.help.notification.NotificationProgresses
+import io.legado.app.help.toast.Toasters
 import io.legado.app.model.CacheBookShared
 import io.legado.app.utils.postEvent
 import kotlinx.coroutines.CoroutineScope
@@ -24,8 +27,9 @@ import java.nio.file.Paths
  * - **removeCacheBookService**: 调 [CacheBookShared.cacheBookMap][bookUrl]?.stop] +
  *   postEvent (对照 app 端 CacheBookService.removeDownload, 桌面端无 stopSelf)
  * - **stopCacheBookService**: 调 [CacheBookShared.close] (对照 app 端 CacheBookService.onDestroy)
- * - **startUpdateBookService / stopUpdateBookService**: UpdateBook 编排暂未下沉,
- *   当前仅记录日志, TODO: KP3 后续把 UpdateBook 协程化下沉到 commonMain 后接入
+ * - **startUpdateBookService / stopUpdateBookService**: 接入已下沉的 [UpdateBookShared],
+ *   start 从 DB 查全部书调 [UpdateBookShared.scheduleAutoUpdate], stop 调
+ *   [UpdateBookShared.cancelRefreshJobs] (对照 app 端 MainViewModel 同名方法)
  * - **startDownloadService**: 真实下载, 用 [FileDownloaders] 写文件到
  *   `{desktopAppRootDir}/downloads/fileName`
  *
@@ -44,6 +48,14 @@ import java.nio.file.Paths
 class DesktopServiceLauncher(
     private val scope: CoroutineScope,
 ) : ServiceLauncher {
+
+    /**
+     * UpdateBook 编排核心 (commonMain 下沉件), 跨 start/stopUpdateBookService 复用同一实例
+     * (与 app 端 MainViewModel 持有 UpdateBookShared 一致)。
+     */
+    private val updateBookShared: UpdateBookShared by lazy {
+        UpdateBookShared(scope, UpdateBookCallbacks.getDefault() ?: DesktopUpdateBookCallback)
+    }
 
     override fun startCacheBookService(bookUrl: String, start: Int, end: Int) {
         // 接入已下沉的 CacheBookShared: 创建模型 + 入队 + 启动处理 job
@@ -78,15 +90,17 @@ class DesktopServiceLauncher(
     }
 
     override fun startUpdateBookService() {
-        // TODO: KP3 把 UpdateBook 协程化下沉到 commonMain 后, 这里 launch 真实任务
+        // 接入已下沉的 UpdateBookShared (commonMain 编排核心): 从 DB 查所有书后调
+        // scheduleAutoUpdate 触发自动更新 (内部按 canUpdate + lastCheckTime 时间窗过滤)。
         scope.launch {
-            println("[DesktopServiceLauncher] startUpdateBookService stub")
+            val books = AppDbProviders.get().bookDao.all()
+            updateBookShared.scheduleAutoUpdate(books)
         }
     }
 
     override fun stopUpdateBookService() {
-        // TODO: 后续接入 UpdateBook 协程后, cancel 对应 job
-        println("[DesktopServiceLauncher] stopUpdateBookService stub")
+        // 对照 app 端 MainViewModel.cancelRefreshJobs (桌面端无 stopService)
+        updateBookShared.cancelRefreshJobs()
     }
 
     override fun startDownloadService(url: String, fileName: String) {
@@ -98,6 +112,37 @@ class DesktopServiceLauncher(
                 System.err.println("[DesktopServiceLauncher] download failed: url=$url fileName=$fileName")
             }
         }
+    }
+}
+
+/**
+ * [UpdateBookCallback] 的桌面实现: 把进度/提示桥接到已注册的 [NotificationProgresses]
+ * (SystemTray 通知) 与 [Toasters]。文案与 nativeMain `NativeUpdateBookCallback` 一致。
+ */
+object DesktopUpdateBookCallback : UpdateBookCallback {
+
+    override fun onProgressUpdate(active: Boolean, title: String, content: String, count: Int, total: Int) {
+        if (!active) {
+            runCatching { NotificationProgresses.get().cancel() }
+            return
+        }
+        runCatching { NotificationProgresses.get().showProgress(title, content, count, total) }
+    }
+
+    override fun onProgressCancel() {
+        runCatching { NotificationProgresses.get().cancel() }
+    }
+
+    override fun toastForceRefreshBusy() {
+        runCatching { Toasters.get().toast("正在刷新中, 请稍后再试") }
+    }
+
+    override fun toastForceRefreshStart(count: Int) {
+        runCatching { Toasters.get().toast("开始强制刷新 $count 本") }
+    }
+
+    override fun toastForceRefreshDone() {
+        runCatching { Toasters.get().toast("刷新完成") }
     }
 }
 

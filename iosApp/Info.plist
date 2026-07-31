@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <!-- ⚠️ 本文件与 project.yml 的 info.properties 是双写关系: `xcodegen generate`
+         会用 project.yml 重写本文件 (不读原内容)。改这里必须同步改 project.yml, 否则一 generate 就丢。 -->
     <!-- App 元信息 -->
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
@@ -63,10 +65,41 @@
         <true/>
     </dict>
 
-    <!-- 后台模式: TTS 朗读需要在后台继续播放音频 -->
+    <!-- 后台模式: TTS 朗读需要在后台继续播放音频; processing 供缓存书籍的 BGProcessingTask -->
     <key>UIBackgroundModes</key>
     <array>
         <string>audio</string>
+        <string>processing</string>
+    </array>
+
+    <!-- BGTaskScheduler 允许的任务标识 (缓存书籍后台续跑, 见 shared IosBackgroundTasks.kt)。
+         这里刻意写死而不用 $(PRODUCT_BUNDLE_IDENTIFIER).cachebook: Xcode 虽然会展开该变量,
+         但 Kotlin 侧 CACHE_BOOK_TASK_ID 是编译期常量, 两边必须逐字一致, 对不上 register 直接崩。 -->
+    <key>BGTaskSchedulerPermittedIdentifiers</key>
+    <array>
+        <string>io.legado.app.ios.cachebook</string>
+    </array>
+
+    <!-- 文件共享: 沙盒 Documents 在"文件"App 与 Finder/iTunes 可见 (导出/另存为落地点) -->
+    <key>UIFileSharingEnabled</key>
+    <true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
+
+    <!-- legado:// / yuedu:// deep link (对照 app 端 AssociationActivity intent-filter) -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>io.legado.app.deeplink</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>legado</string>
+                <string>yuedu</string>
+            </array>
+        </dict>
     </array>
 </dict>
 </plist>

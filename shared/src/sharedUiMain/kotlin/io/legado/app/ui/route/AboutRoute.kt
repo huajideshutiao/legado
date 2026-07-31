@@ -8,12 +8,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import io.legado.app.help.update.AppUpdateManager
 import io.legado.app.ui.about.AboutHeaderCard
 import io.legado.app.ui.about.AboutScreen
 import io.legado.app.ui.about.AboutScreenModel
 import io.legado.app.ui.about.AboutUiActions
 import io.legado.app.ui.about.AboutUiState
+import io.legado.app.ui.about.UpdateAvailableDialog
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
@@ -21,9 +24,12 @@ import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
+import kotlinx.coroutines.launch
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.about
+import legado.shared.generated.resources.already_latest_version
 import legado.shared.generated.resources.app_share_description
+import legado.shared.generated.resources.check_update_failed_no_msg
 import legado.shared.generated.resources.contributors_url
 import legado.shared.generated.resources.ic_share
 import legado.shared.generated.resources.share
@@ -60,6 +66,8 @@ fun AboutRoute(
     val strAbout = stringResource(Res.string.about)
     val strShare = stringResource(Res.string.share)
     val strAppShareDescription = stringResource(Res.string.app_share_description)
+    val strLatestVersion = stringResource(Res.string.already_latest_version)
+    val strCheckFailed = stringResource(Res.string.check_update_failed_no_msg)
     LaunchedEffect(Unit) {
         val versionName = PlatformCapabilityProviders.getOrNull()?.getAppVersionName().orEmpty()
         screenModel.updateState(
@@ -68,10 +76,13 @@ fun AboutRoute(
                 updateLogSummary = if (versionName.isEmpty()) "" else "$strVersion $versionName",
                 contributorsUrl = strContributorsUrl,
                 telegramGroupUrl = strTelegramGroupUrl,
+                // 未注册 AppUpdateEnvironment 的端 (未接更新能力) 隐藏入口
+                showCheckUpdate = AppUpdateManager.isAvailable(),
             )
         )
     }
 
+    val scope = rememberCoroutineScope()
     val actions = object : AboutUiActions {
         // 外链统一走平台 BrowserService
         override fun onOpenUrl(url: String) {
@@ -83,9 +94,9 @@ fun AboutRoute(
             PlatformServiceProviders.getOrNull()?.sharing?.shareText(strAppShareDescription)
         }
 
-        // 检查更新: 委托平台能力 (app: AppUpdate.check; desktop: DesktopAppUpdate)
+        // 检查更新: 检测走 shared (AppUpdateManager + UpdateStrategies), 执行由平台执行器分派
         override fun onCheckUpdate() {
-            PlatformCapabilityProviders.getOrNull()?.checkUpdate()
+            scope.launch { screenModel.checkUpdate(strLatestVersion, strCheckFailed) }
         }
 
         // 显示崩溃日志: 委托平台能力 (app: CrashLogsDialog Fragment; desktop: 共享 CrashLogsDialog)
@@ -126,5 +137,15 @@ fun AboutRoute(
         )
         AboutHeaderCard()
         AboutScreen(state = state, actions = actions)
+    }
+
+    val pendingUpdate by screenModel.pendingUpdate.collectAsState()
+    pendingUpdate?.let { pending ->
+        UpdateAvailableDialog(
+            info = pending.info,
+            action = pending.action,
+            onDismiss = { screenModel.dismissUpdate() },
+            onConfirm = { scope.launch { screenModel.confirmUpdate() } },
+        )
     }
 }

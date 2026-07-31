@@ -109,10 +109,10 @@ fun ReplaceRuleRoute(
         val vm = importVm ?: return@LaunchedEffect
         kotlinx.coroutines.coroutineScope {
             launch {
-                vm.successState.collect { count -> if (count != null) showImportDialog = true }
+                vm.successState.collect { showImportDialog = true }
             }
             launch {
-                vm.errorState.collect { err -> if (err != null) importError = err }
+                vm.errorState.collect { err -> importError = err }
             }
         }
     }

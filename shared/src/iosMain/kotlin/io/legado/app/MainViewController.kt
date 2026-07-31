@@ -12,9 +12,13 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.window.ComposeUIViewController
 import io.legado.app.help.config.registerIosProviders
+import io.legado.app.help.config.LocalReadConfigProviders
+import io.legado.app.help.config.ReadConfigProviders
+import io.legado.app.model.IosReadBookProvider
+import io.legado.app.model.LocalReadBookProvider
 import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
 import io.legado.app.ui.book.info.SharedBlurCoverBgCoil
-import io.legado.app.ui.browser.IosWebViewStub
+import io.legado.app.ui.browser.IosWebViewSlot
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.IosPlatformCapabilities
 import io.legado.app.ui.IosPlatformServices
@@ -69,6 +73,11 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
     val eventBusProvider = remember { IosEventBusProvider() }
     val preferenceStoreProvider = remember { IosPreferenceStoreProvider() }
 
+    // 阅读页两个注入点: 未注入时 LocalReadConfigProviders/LocalReadBookProvider 取值即 error,
+    // 阅读页与 EffectiveReplaces 路由会崩 (二者默认值均为 error 而非兜底实现)
+    val readConfigProviders = remember { ReadConfigProviders(preferenceStoreProvider) }
+    val readBookProvider = remember { IosReadBookProvider() }
+
     // 零薄壳: AppNavigator + ScreenModelStore 是唯一状态源 (对照 desktop Main.kt line 346-347)
     val navigator = remember { AppNavigator(AppRoute.Main()) }
     val screenModelStore = remember { ScreenModelStore() }
@@ -83,7 +92,9 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
         LocalAppConfigProvider provides appConfigProvider,
         LocalEventBusProvider provides eventBusProvider,
         LocalPreferenceStoreProvider provides preferenceStoreProvider,
-        LocalWebViewSlot provides { url, modifier -> IosWebViewStub(url, modifier) },
+        LocalReadConfigProviders provides readConfigProviders,
+        LocalReadBookProvider provides readBookProvider,
+        LocalWebViewSlot provides { url, modifier -> IosWebViewSlot(url, modifier) },
         // 注入 Coil3 模糊封面背景到 shared 详情页路由, 覆盖 LocalBlurCoverBgSlot 兜底
         LocalBlurCoverBgSlot provides { book, coverTick, inBookshelf, isEInkMode, modifier ->
             SharedBlurCoverBgCoil(book, coverTick, inBookshelf, isEInkMode, modifier)

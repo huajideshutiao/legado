@@ -22,7 +22,6 @@ private val previewState = BookSourceDebugUiState(
     loading = true,
     textMy = "我的",
     textFx = "https://www.test.com/explore",
-    clearFocusTick = 0,
 )
 
 private val previewStateHelp = previewState.copy(helpVisible = true, loading = false)
@@ -34,7 +33,6 @@ private val previewStateEmpty = BookSourceDebugUiState(
     loading = false,
     textMy = "我的",
     textFx = "",
-    clearFocusTick = 0,
 )
 
 /** no-op actions, 所有回调空实现 */

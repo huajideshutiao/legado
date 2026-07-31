@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.ImageColumn
@@ -57,6 +58,8 @@ fun PageContentCanvas(
     val textMeasurer: TextMeasurer = rememberTextMeasurer()
 
     Canvas(modifier = modifier) {
+        // 读位图就绪计数建立快照订阅：图片异步加载完成后本页自动重绘（值本身不参与绘制）
+        if (ReaderImageCache.version < 0) return@Canvas
         drawPageContent(
             textPage = textPage,
             textMeasurer = textMeasurer,
@@ -114,6 +117,7 @@ private fun DrawScope.drawPageContent(
                     column = column,
                     lineTop = lineTop,
                     lineHeight = lineHeight,
+                    placeholderColor = style.textColor,
                 )
                 is ReviewColumn -> drawReviewColumn(
                     column = column,
@@ -207,8 +211,11 @@ private fun DrawScope.drawTextColumn(
 /**
  * 绘制图片列：对应 app 端 `ColumnRender.drawImageColumn`。
  *
- * ImageBitmap 从 [ImageColumn.renderCache] 取（actual 平台填充）；
- * 若 renderCache 为 null 则跳过绘制（与 app 端 bitmap=null 兜底一致）。
+ * 位图取自 [ReaderImageCache]（排版时 `ImageResolver.getImageSize` 已解码入缓存），
+ * 被 LRU 淘汰时就地发起异步补加载，加载完成自增 version 触发本页重绘。
+ * app 端 actual 侧填过 [ImageColumn.renderCache] 时优先用它。
+ *
+ * 加载中画灰色占位块，取图失败画带叉的错误占位（对照 app 端 ImageProvider 的 errorBitmap）。
  *
  * 缩放比例：保持原图宽高比，按 containerW/containerH 中较小者缩放，
  * 居中放置（与 app 端 `ImageDrawCache.updateDrawCache` 算法一致）。
@@ -217,10 +224,17 @@ private fun DrawScope.drawImageColumn(
     column: ImageColumn,
     lineTop: Float,
     lineHeight: Float,
+    placeholderColor: Color,
 ) {
-    val bitmap = column.renderCache as? ImageBitmap ?: return
     val containerW = column.end - column.start
     val containerH = lineHeight
+    val bitmap = column.renderCache as? ImageBitmap ?: ReaderImageCache.peek(column.src)
+    if (bitmap == null) {
+        val failed = ReaderImageCache.isFailed(column.src)
+        if (!failed) ReaderImageCache.requestAsync(column.src)
+        drawImagePlaceholder(column.start, lineTop, containerW, containerH, placeholderColor, failed)
+        return
+    }
     val bW = bitmap.width.toFloat()
     val bH = bitmap.height.toFloat()
     if (bW <= 0f || bH <= 0f) return
@@ -239,6 +253,43 @@ private fun DrawScope.drawImageColumn(
             width = finalW.toInt().coerceAtLeast(1),
             height = finalH.toInt().coerceAtLeast(1),
         ),
+    )
+}
+
+/** 图片占位：加载中为浅色实块，失败时再叠一个叉。 */
+private fun DrawScope.drawImagePlaceholder(
+    left: Float,
+    top: Float,
+    width: Float,
+    height: Float,
+    color: Color,
+    failed: Boolean,
+) {
+    if (width <= 0f || height <= 0f) return
+    drawRect(
+        color = color.copy(alpha = 0.08f),
+        topLeft = Offset(left, top),
+        size = Size(width, height),
+    )
+    if (!failed) return
+    val stroke = 1.dp.toPx()
+    drawRect(
+        color = color.copy(alpha = 0.3f),
+        topLeft = Offset(left, top),
+        size = Size(width, height),
+        style = Stroke(width = stroke),
+    )
+    drawLine(
+        color = color.copy(alpha = 0.3f),
+        start = Offset(left, top),
+        end = Offset(left + width, top + height),
+        strokeWidth = stroke,
+    )
+    drawLine(
+        color = color.copy(alpha = 0.3f),
+        start = Offset(left + width, top),
+        end = Offset(left, top + height),
+        strokeWidth = stroke,
     )
 }
 

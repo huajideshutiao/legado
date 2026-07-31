@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.isFinite
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
@@ -212,10 +213,10 @@ class SimulationPageDelegateCompose(
             ) * 180.0 / PI
             ).toFloat()
 
-        pointsValid = mBezierEnd1.isFinite() && mBezierEnd2.isFinite() &&
-            mBezierVertex1.isFinite() && mBezierVertex2.isFinite() &&
-            mBezierStart1.isFinite() && mBezierStart2.isFinite() &&
-            mBezierControl1.isFinite() && mBezierControl2.isFinite()
+        pointsValid = mBezierEnd1.isFinite && mBezierEnd2.isFinite &&
+            mBezierVertex1.isFinite && mBezierVertex2.isFinite &&
+            mBezierStart1.isFinite && mBezierStart2.isFinite &&
+            mBezierControl1.isFinite && mBezierControl2.isFinite
         if (pointsValid) buildPaths()
     }
 

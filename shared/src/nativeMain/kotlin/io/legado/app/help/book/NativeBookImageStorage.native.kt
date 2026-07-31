@@ -100,9 +100,12 @@ class NativeBookImageStorage(
                     val client = HttpClient(CIO)
                     try {
                         val response = client.get(url)
-                        if (!response.status.isSuccess()) return@try false
-                        val bytes = response.bodyAsBytes()
-                        saveImage(book, chapter, url, bytes) != null
+                        if (!response.status.isSuccess()) {
+                            false
+                        } else {
+                            val bytes = response.bodyAsBytes()
+                            saveImage(book, chapter, url, bytes) != null
+                        }
                     } finally {
                         client.close()
                     }

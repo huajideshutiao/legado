@@ -1,8 +1,8 @@
 package io.legado.app.data.entities
 
-import androidx.room.ColumnInfo
-import androidx.room.Entity
-import androidx.room.PrimaryKey
+import androidx.room3.ColumnInfo
+import androidx.room3.Entity
+import androidx.room3.PrimaryKey
 import io.legado.app.utils.randomUUIDString
 import io.legado.app.utils.splitNotBlank
 import io.legado.app.utils.systemCurrentTimeMillis

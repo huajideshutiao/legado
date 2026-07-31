@@ -39,6 +39,7 @@ import coil3.request.placeholder
 import io.legado.app.R
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.blurConfig
+import io.legado.app.model.bookshelfCoverCache
 import io.legado.app.model.coverConfig
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -242,6 +243,7 @@ private fun CoverSlot(coverUrl: String?, modifier: Modifier) {
                         seed = AudioPlay.book?.name,
                         sourceOrigin = AudioPlay.bookSource?.bookSourceUrl,
                     )
+                    bookshelfCoverCache(coverUrl)
                     placeholder(iv.drawable)
                 }
             }

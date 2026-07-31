@@ -6,11 +6,9 @@ import io.legado.app.help.topMostViewController
 import io.legado.app.ui.compose.platform.sharedStringTable
 import platform.Foundation.NSLog
 import platform.UIKit.UIAlertAction
-import platform.UIKit.UIAlertActionStyle
+import platform.UIKit.UIAlertActionStyleDefault
 import platform.UIKit.UIAlertController
-import platform.UIKit.UIAlertControllerStyle
-import platform.UIKit.addAction
-import platform.UIKit.presentViewController
+import platform.UIKit.UIAlertControllerStyleAlert
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 
@@ -75,15 +73,15 @@ class IosToaster : Toaster {
                 return@dispatch_async
             }
             // 弹出 UIAlertController (.Alert 风格, 单个"确定"按钮自动 dismiss)
-            val alert = UIAlertController(
+            val alert = UIAlertController.alertControllerWithTitle(
                 title = null,
                 message = message,
-                preferredStyle = UIAlertControllerStyle.Alert,
+                preferredStyle = UIAlertControllerStyleAlert,
             )
             alert.addAction(
-                UIAlertAction(
+                UIAlertAction.actionWithTitle(
                     title = sharedStringTable["ok"],
-                    style = UIAlertActionStyle.Default,
+                    style = UIAlertActionStyleDefault,
                     handler = { _ -> },
                 )
             )

@@ -173,7 +173,11 @@ fun BookSourceDebugRoute(
         }
     }
 
-    BookSourceDebugScreen(state = state, actions = actions)
+    BookSourceDebugScreen(
+        state = state,
+        actions = actions,
+        clearFocusSignal = screenModel.clearFocusFlow,
+    )
 
     // 发现分类长按选择器 (对照 app 端 onChipFxLongClick / selector)
     if (showFxSelector) {

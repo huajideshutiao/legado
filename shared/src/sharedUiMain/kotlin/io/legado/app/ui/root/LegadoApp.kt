@@ -42,8 +42,8 @@ import io.legado.app.ui.book.group.GroupViewModelShared
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.compose.platform.PlatformBackHandler
-import io.legado.app.ui.compose.platform.dispatchBackKey
 import io.legado.app.ui.compose.platform.handleBackKey
+import io.legado.app.ui.compose.platform.performBack
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.dialog.PhotoViewOverlayDialog
 import kotlinx.coroutines.flow.conflate
@@ -87,10 +87,14 @@ fun LegadoApp(
         val currentEntry = entries.lastOrNull()
         val currentRoute = currentEntry?.route
 
-        // 应用当前路由对应的窗口策略
+        // 应用当前路由对应的窗口策略。只在策略真变了才下发: 桌面端 setFullscreen 会调
+        // AWT GraphicsDevice.setFullScreenWindow, 每次重组都下发等于持续折腾窗口本体
         val windowPolicy =
             currentRoute?.let { WindowPolicies.forRoute(it) } ?: WindowPolicies.Default
-        SideEffect { applyWindowPolicy(windowPolicy) }
+        LaunchedEffect(windowPolicy) {
+            runCatching { applyWindowPolicy(windowPolicy) }
+                .onFailure { AppLog.put("应用窗口策略失败", it) }
+        }
 
         // ScreenModel 生命周期与栈绑定 (清理已出栈的 ScreenModel)
         LaunchedEffect(entries) {
@@ -104,16 +108,14 @@ fun LegadoApp(
         val overlays by navigator.overlays.collectAsState()
 
         // ESC/BackSpace 返回键由 shared 统一处理 (替代三端入口 onPreviewKeyEvent 重复实现)
+        AppGlobalShortcuts(navigator)
         Box(
             Modifier
                 .fillMaxSize()
                 .background(AppTheme.colors.background)
                 .handleBackKey(
-                    // 先关顶层 Overlay, 再让页面级 AppBackHandler 拦截 (如书源编辑未保存确认), 最后才出栈
-                    onBack = {
-                        if (!navigator.dismissTopOverlay() && !dispatchBackKey()) navigator.pop()
-                    },
-                    onRefresh = navigator::refreshCurrent,
+                    onBack = { performBack(navigator) },
+                    onRefresh = { runCatching { navigator.refreshCurrent() }.getOrDefault(false) },
                 )
         ) {
             // 栈内页面保持在同一 Composition 中，返回时直接复用 remember/Effect/协程和节点树。

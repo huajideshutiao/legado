@@ -40,13 +40,13 @@ import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.UrlUtil
+import io.legado.desktop.help.archive.DesktopArchiveCodec
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.FileNotFoundException
 import java.nio.file.Paths
 import java.util.Locale
-import java.util.zip.ZipFile
 
 /**
  * 桌面端 [FileBookAccessor] 最小化实现。
@@ -58,8 +58,9 @@ import java.util.zip.ZipFile
  * 需注册本最小化实现。
  *
  * # 与 app 端行为差异
- * - 压缩包: 无 libarchive, 仅支持 zip (JDK [ZipFile]); rar/7z/tar 等抛异常
- * - PDF: [io.legado.app.model.fileBook.PdfFile] 未下沉, [getHandler] 对 .pdf 抛异常
+ * - 压缩包: 无 native libarchive, 走 [DesktopArchiveCodec] (commons-compress + junrar);
+ *   7z 的 BCJ2 编码不支持 (commons-compress 限制), 其余格式对齐
+ * - PDF: [DesktopPdfFile] (PDFBox) 替代 app 端 `PdfFile` (android PdfRenderer)
  * - 文件保存: 无 SAF, 落 `{desktopAppRootDir}/books`
  *
  * 模式参考 [io.legado.desktop.help.book.DesktopBookHelpAccessor]。
@@ -82,10 +83,10 @@ class DesktopFileBookAccessor : FileBookAccessor {
     }
 
     override fun getHandler(book: Book): BaseFileBook {
-        // 分派逻辑对齐 app 端 FileBookAccessorImpl.getHandler; PdfFile 未下沉, .pdf 显式报错
+        // 分派逻辑对齐 app 端 FileBookAccessorImpl.getHandler (PdfFile → PDFBox 版 DesktopPdfFile)
         val originName = book.originName.lowercase(Locale.getDefault())
         return when {
-            book.isPdf -> throw NoStackTraceException("PDF 桌面端暂不支持")
+            book.isPdf -> DesktopPdfFile
             book.isEpub -> EpubFile
             book.isLocal && (originName.endsWith(".cbz") || originName.endsWith(".zip") && book.isImage) -> CbzFile
             else -> TextFile
@@ -173,50 +174,19 @@ class DesktopFileBookAccessor : FileBookAccessor {
      * 解压到 `{desktopAppCacheDir}/ArchiveTemp/{md5_16(uri)}` 并返回解出的文件。
      *
      * 对齐 app 端 `ArchiveUtils.deCompress` + `LibArchiveUtils.unArchive` 语义
-     * (md5(uri) 命名工作目录 / 路径穿越校验 / filter 过滤条目), 但用 JDK [ZipFile]
-     * 随机访问替代 libarchive (桌面端无 libarchive 绑定, 故仅支持 zip)。
+     * (md5(uri) 命名工作目录 / 路径穿越校验 / filter 过滤条目), 底层换
+     * [DesktopArchiveCodec] (commons-compress + junrar) 替代 native libarchive。
      */
     private fun deCompress(
         archiveUri: String,
         archiveFile: File,
         filter: ((String) -> Boolean)?
     ): List<File> {
-        val name = archiveFile.name
-        checkArchive(name)
+        DesktopArchiveCodec.checkArchive(archiveFile.name)
         val destDir = Paths.get(
             desktopAppCacheDir(), archiveTempFolderName, MD5Utils.md5Encode16(archiveUri)
         ).toFile().apply { mkdirs() }
-        val destCanonical = destDir.canonicalPath
-        val files = mutableListOf<File>()
-        ZipFile(archiveFile, Charsets.UTF_8).use { zip ->
-            for (entry in zip.entries()) {
-                val entryFile = File(destDir, entry.name)
-                if (!entryFile.canonicalPath.startsWith(destCanonical)) {
-                    throw SecurityException("压缩文件只能解压到指定路径")
-                }
-                if (entry.isDirectory) {
-                    entryFile.mkdirs()
-                    continue
-                }
-                entryFile.parentFile?.mkdirs()
-                if (filter != null && !filter(entry.name)) continue
-                zip.getInputStream(entry).use { input ->
-                    entryFile.outputStream().use { output -> input.copyTo(output) }
-                }
-                files.add(entryFile)
-            }
-        }
-        return files
-    }
-
-    /** 压缩包格式校验 (对齐 app 端 `ArchiveUtils.checkArchive`, 附加 desktop 的 zip-only 限制)。 */
-    private fun checkArchive(name: String) {
-        if (!AppPattern.archiveFileRegex.matches(name)) {
-            throw IllegalArgumentException("Unexpected file suffix")
-        }
-        if (!name.endsWith(".zip", true)) {
-            throw NoStackTraceException("desktop 无 libarchive, 仅支持 zip 压缩包, 不支持 $name")
-        }
+        return DesktopArchiveCodec.unArchive(archiveFile, destDir, filter)
     }
 
     override fun importLocalFile(uriStr: String): Book {
@@ -252,13 +222,17 @@ class DesktopFileBookAccessor : FileBookAccessor {
         )
     }
 
-    /** 遍历压缩包获取条目名 (对齐 app 端 `ArchiveUtils.getArchiveFilesName`, 读取失败返回空列表)。 */
+    /**
+     * 遍历压缩包获取条目名 (读取失败返回空列表)。
+     *
+     * 注: app 端 `LibArchiveUtils.getFilesName` 在 filter 为 null 时恒返回空列表
+     * (`filter != null && filter(name)`), 桌面端保持"无 filter 即全量"的既有行为,
+     * 否则 [importLocalFile] 的压缩包内选书会失效。
+     */
     private fun getArchiveFilesName(archiveFile: File): List<String> {
-        checkArchive(archiveFile.name)
+        DesktopArchiveCodec.checkArchive(archiveFile.name)
         return runCatching {
-            ZipFile(archiveFile, Charsets.UTF_8).use { zip ->
-                zip.entries().asSequence().filter { !it.isDirectory }.map { it.name }.toList()
-            }
+            DesktopArchiveCodec.getFilesName(archiveFile, null)
         }.getOrElse { emptyList() }
     }
 
@@ -460,14 +434,17 @@ class DesktopFileBookAccessor : FileBookAccessor {
     override fun getUrlSuffix(name: String): String = UrlUtil.getSuffix(name)
 
     /** 解析 bookUrl 为 [File] (与 LocalEpubResource.jvm.kt 的 resolveLocalFile 逻辑一致)。 */
-    private fun resolveLocalFile(bookUrl: String): File {
-        return when {
-            bookUrl.startsWith("file:") -> {
-                val path = java.net.URI(bookUrl).path ?: bookUrl.removePrefix("file:")
-                File(path)
-            }
-            else -> File(bookUrl)
+    private fun resolveLocalFile(bookUrl: String): File = resolveLocalBookFile(bookUrl)
+}
+
+/** 解析 bookUrl 为 [File] (file: URI 或裸路径), 供本包内 accessor / [DesktopPdfFile] 共用。 */
+internal fun resolveLocalBookFile(bookUrl: String): File {
+    return when {
+        bookUrl.startsWith("file:") -> {
+            val path = java.net.URI(bookUrl).path ?: bookUrl.removePrefix("file:")
+            File(path)
         }
+        else -> File(bookUrl)
     }
 }
 

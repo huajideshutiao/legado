@@ -45,12 +45,14 @@ import org.jetbrains.compose.resources.stringResource
  * @param state 登录页展示状态
  * @param actions 用户交互回调
  * @param platformWebViewSlot 平台 WebView 渲染槽, 参数为待加载 URL
+ * @param webViewReloadKey WebView 重建序号, Route 收到刷新信号后自增
  */
 @Composable
 fun LoginScreen(
     state: LoginUiState,
     actions: LoginUiActions,
     platformWebViewSlot: @Composable (String) -> Unit,
+    webViewReloadKey: Int = 0,
 ) {
     val colors = AppTheme.colors
     val loadingText = stringResource(Res.string.loading)
@@ -102,7 +104,7 @@ fun LoginScreen(
                 .fillMaxWidth()
                 .weight(1f)
         ) {
-            key(state.webViewReloadKey) {
+            key(webViewReloadKey) {
                 platformWebViewSlot(state.loginUrl)
             }
         }

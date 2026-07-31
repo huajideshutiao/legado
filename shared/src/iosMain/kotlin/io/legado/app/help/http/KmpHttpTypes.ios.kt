@@ -9,6 +9,7 @@ import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.header
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
+import io.ktor.client.request.url
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.http.ContentType
@@ -93,7 +94,7 @@ actual class KmpHttpClient {
     private var callTimeoutMillis: Long = 0L
 
     // 给 expect class 匹配的 public 无参 constructor (commonMain 不直接调用)
-    actual constructor()
+    constructor()
 
     internal constructor(
         ktorClient: HttpClient,
@@ -172,7 +173,7 @@ actual class KmpRequest {
     internal var body: KmpRequestBody? = null
         private set
 
-    actual constructor()
+    constructor()
 
     internal constructor(
         urlStr: String,
@@ -202,7 +203,7 @@ actual class KmpRequest {
         get() = KmpHttpUrl(urlStr)
 }
 
-actual class KmpRequestBuilder() {
+actual class KmpRequestBuilder actual constructor() {
     internal var urlStr: String = "http://localhost/"
     internal var method: String = "GET"
     internal val headers: MutableList<Pair<String, String>> = mutableListOf()
@@ -287,13 +288,13 @@ actual class KmpResponse : Closeable {
     internal var requestVal: KmpRequest = KmpRequest()
         private set
 
-    actual constructor()
+    constructor()
 
     // 给 Ktor 实际请求构造: body 立即读到内存
     internal constructor(ktorResponse: HttpResponse, request: KmpRequest) {
         codeVal = ktorResponse.status.value
         messageVal = ktorResponse.status.description
-        headersVal = ktorResponse.headers.entries().associate { it.name to it.value }
+        headersVal = ktorResponse.headers.entries().associate { it.key to it.value }
         contentTypeStr = ktorResponse.headers[HttpHeaders.ContentType]
         bodyBytes = runCatching { runBlocking { ktorResponse.bodyAsBytes() } }.getOrNull()
         requestVal = request
@@ -351,7 +352,7 @@ actual fun KmpResponse.header(name: String, defaultValue: String?): String? {
         ?: defaultValue
 }
 
-actual class KmpResponseBuilder() {
+actual class KmpResponseBuilder actual constructor() {
     internal var codeVal: Int = 200
     internal var messageVal: String = "OK"
     internal val headersVal: MutableMap<String, List<String>> = LinkedHashMap()
@@ -427,9 +428,9 @@ actual abstract class KmpResponseBody : Closeable {
  */
 internal class NativeKmpResponseBody(
     internal val bytesValue: ByteArray,
-    private val contentTypeStr: String?
+    internal val contentTypeValue: String?
 ) : KmpResponseBody() {
-    override fun contentType(): KmpMediaType? = contentTypeStr?.let { NativeKmpMediaType(it) }
+    override fun contentType(): KmpMediaType? = contentTypeValue?.let { NativeKmpMediaType(it) }
 }
 // endregion
 
@@ -498,7 +499,7 @@ actual interface KmpCallback {
 // endregion
 
 // region FormBody / HttpUrl / MediaType / RequestBody / Headers / Protocol
-actual class KmpFormBodyBuilder() {
+actual class KmpFormBodyBuilder actual constructor() {
     private val entries: MutableList<Pair<String, String>> = mutableListOf()
 
     actual fun add(name: String, value: String): KmpFormBodyBuilder {
@@ -542,7 +543,7 @@ actual class KmpHttpUrl {
     internal var urlStr: String? = null
         private set
 
-    actual constructor()
+    constructor()
 
     internal constructor(urlStr: String) {
         this.urlStr = urlStr
@@ -602,11 +603,11 @@ actual class KmpHttpUrlBuilder {
     }
 }
 
-actual class KmpMediaType {
+actual open class KmpMediaType {
     internal var value: String = ""
         private set
 
-    actual constructor()
+    constructor()
 
     internal constructor(value: String) {
         this.value = value
@@ -631,7 +632,7 @@ internal class NativeKmpRequestBody(
 actual class KmpHeaders {
     private var map: Map<String, List<String>> = emptyMap()
 
-    actual constructor()
+    constructor()
 
     constructor(map: Map<String, List<String>>) {
         this.map = map
@@ -751,6 +752,4 @@ private fun urlEncodeQuery(s: String): String {
  * String.ifNotEmpty 扩展 (Kotlin stdlib 没有这个, 自己定义)。
  */
 private inline fun String.ifNotEmpty(block: (String) -> Unit) {
-    if (isNotEmpty()) block(this)
-}
-// endregion
+    if (isNotEm

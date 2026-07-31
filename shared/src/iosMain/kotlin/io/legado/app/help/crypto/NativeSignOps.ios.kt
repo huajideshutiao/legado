@@ -4,6 +4,8 @@ package io.legado.app.help.crypto
 
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.pointed
+import kotlinx.cinterop.value
 import platform.CoreFoundation.CFRelease
 import platform.CoreFoundation.CFStringRef
 import platform.Security.SecKeyCreateSignature
@@ -68,10 +70,10 @@ actual object NativeSignOps {
                 ?: throw UnsupportedOperationException("iOS crypto: CFDataCreate returned null")
             try {
                 memScoped {
-                    val err = IosCryptoNative.allocCFError()
+                    val err = allocCFError()
                     val sig = SecKeyCreateSignature(secKey, alg, msgData, err)
                     if (sig == null) {
-                        IosCryptoNative.throwIosCryptoError("SecKeyCreateSignature($algorithm)", err.pointed?.value)
+                        IosCryptoNative.throwIosCryptoError("SecKeyCreateSignature($algorithm)", err.pointed.value)
                     }
                     val bytes = IosCryptoNative.cfDataToBytes(sig)
                     CFRelease(sig)
@@ -108,10 +110,10 @@ actual object NativeSignOps {
             }
             try {
                 memScoped {
-                    val err = IosCryptoNative.allocCFError()
+                    val err = allocCFError()
                     val ok = SecKeyVerifySignature(secKey, alg, msgData, sigData, err)
                     // 验签失败 err 会被填充 (errSecAuthFailed 等), 释放后返回 false (不抛异常, 对齐 JCA verify 返回 false)
-                    err.pointed?.value?.let { CFRelease(it) }
+                    err.pointed.value?.let { CFRelease(it) }
                     ok
                 }
             } finally {
@@ -124,7 +126,7 @@ actual object NativeSignOps {
     }
 
     /** 算法字符串 → (keyType, SecKeyAlgorithm)。 */
-    private fun resolveSignAlgorithm(algorithm: String): Pair<CFStringRef, CFStringRef> {
+    private fun resolveSignAlgorithm(algorithm: String): Pair<CFStringRef?, CFStringRef?> {
         // 归一化: 大写; 容忍 SHA-256 / SHA256, RSA/PSS, with 大小写
         val upper = algorithm.uppercase().replace(" ", "").replace("-", "")
         return when {
@@ -134,7 +136,7 @@ actual object NativeSignOps {
         }
     }
 
-    private fun resolveRsaOrEcdsa(upper: String, original: String): Pair<CFStringRef, CFStringRef> {
+    private fun resolveRsaOrEcdsa(upper: String, original: String): Pair<CFStringRef?, CFStringRef?> {
         val isPss = upper.contains("WITHRSA/PSS")
         val isEcdsa = upper.contains("WITHECDSA")
         val hash = when {

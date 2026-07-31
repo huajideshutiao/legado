@@ -8,36 +8,63 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import io.legado.app.constant.AppLog
+import io.legado.app.ui.root.AppNavigator
 
 /**
- * 桌面端无系统返回键, ESC/Backspace 等价于返回按钮
+ * 桌面端无系统返回键, ESC 等价于返回按钮; 同时作为全应用快捷键的分发入口。
+ * (Backspace 刻意不映射: 根节点 preview 阶段拦截会吞掉全应用输入框的删字键)
+ *
+ * 两阶段分发: 捕获阶段只放带修饰键/功能键的组合 (不可能是文本输入),
+ * 无修饰的方向键/翻页键/空格走冒泡阶段, 聚焦的输入框先消费后才轮到快捷键。
  */
 fun Modifier.handleBackKey(
     onBack: () -> Unit,
     onRefresh: () -> Boolean = { false },
-): Modifier = this.onPreviewKeyEvent { event ->
-    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-    when (event.key) {
-        Key.Escape, Key.Backspace -> {
-            onBack()
-            true
-        }
+): Modifier = this
+    .onPreviewKeyEvent { event ->
+        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+        when (event.key) {
+            Key.Escape -> {
+                onBack()
+                true
+            }
 
-        Key.F5 -> onRefresh()
-        else -> false
+            Key.F5 -> onRefresh()
+            else -> dispatchShortcut(event, preemptive = true)
+        }
     }
+    .onKeyEvent { event ->
+        if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+        dispatchShortcut(event, preemptive = false)
+    }
+
+/**
+ * 统一返回动作: 先关顶层 Overlay, 再让页面级 [AppBackHandler] 拦截, 最后才出栈。
+ *
+ * runCatching: 返回链上任何异常都会连坐 Recomposer (桌面端表现为窗口能重排但键鼠全失灵)。
+ */
+fun performBack(navigator: AppNavigator) {
+    runCatching {
+        if (!navigator.dismissTopOverlay() && !dispatchBackKey()) navigator.pop()
+    }.onFailure { AppLog.put("返回键处理异常", it) }
 }
 
 /** 页面级返回拦截器栈, 按注册顺序存放, 分发时栈顶 (最后注册的页面) 优先。 */
 private val backInterceptors = mutableListOf<() -> Boolean>()
 
+/** 分发中标记: 拦截器 onBack 里再触发返回时直接放行, 避免递归分发。 */
+private var dispatching = false
+
 /**
  * 页面级返回拦截: 同时覆盖 Android 系统返回键与桌面 ESC/Backspace。
  *
- * [PlatformBackHandler] 只在 Android 生效, 桌面/iOS/鸿蒙的返回键走
- * [handleBackKey] → [dispatchBackKey], 故这里额外注册到拦截器栈。
+ * [PlatformBackHandler] 在 Android 与鸿蒙生效 (鸿蒙经 ArkUIViewController 的
+ * OnBackPressedDispatcher), 桌面/iOS 的返回键走 [handleBackKey] → [dispatchBackKey],
+ * 故这里额外注册到拦截器栈。
  */
 @Composable
 fun AppBackHandler(enabled: Boolean, onBack: () -> Unit) {
@@ -57,5 +84,28 @@ fun AppBackHandler(enabled: Boolean, onBack: () -> Unit) {
     }
 }
 
-/** 把返回键分发给拦截器栈, 返回 true 表示已消费 (调用方不再出栈)。 */
-fun dispatchBackKey(): Boolean = backInterceptors.asReversed().any { it() }
+/**
+ * 把返回键分发给拦截器栈, 返回 true 表示已消费 (调用方不再出栈)。
+ *
+ * 拦截器 onBack 抛异常会连坐 Recomposer (桌面端表现为窗口能重排但键鼠全失灵), 故逐个 catch;
+ * 遍历前先取快照: onBack 里 pop 会触发 onDispose 改栈, 直接迭代原表会 ConcurrentModificationException。
+ */
+fun dispatchBackKey(): Boolean {
+    if (dispatching) return false
+    dispatching = true
+    try {
+        val snapshot = backInterceptors.toList()
+        for (index in snapshot.indices.reversed()) {
+            val interceptor = snapshot[index]
+            // 已随页面出栈注销的拦截器不再调用 (拦截器可能持有已销毁页面的回调)
+            if (interceptor !in backInterceptors) continue
+            val consumed = runCatching { interceptor() }
+                .onFailure { AppLog.put("返回键拦截器异常", it) }
+                .getOrDefault(false)
+            if (consumed) return true
+        }
+        return false
+    } finally {
+        dispatching = false
+    }
+}

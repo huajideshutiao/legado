@@ -19,11 +19,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
@@ -53,12 +51,12 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.getUnreadChapterNum
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfigProviders
-import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.PullToRefreshDefaults
 import io.legado.app.ui.compose.component.pullToRefresh
 import io.legado.app.ui.compose.component.rememberPullToRefreshState
+import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
@@ -128,7 +126,8 @@ class ShelfScrollState(
     gridIndex: Int = 0,
     gridOffset: Int = 0,
 ) {
-    val list = LazyListState(listIndex, listOffset)
+    /** LIST 档也走 LazyVerticalGrid (响应式多列列表), 故两档都是网格状态; 分开存以保留各档位置 */
+    val list = LazyGridState(listIndex, listOffset)
     val grid = LazyGridState(gridIndex, gridOffset)
 
     companion object {
@@ -183,8 +182,11 @@ private fun shelfItemKey(item: Any): Any = when (item) {
 
 private fun shelfItemType(item: Any): Any = if (item is BookGroup) "group" else "book"
 
+/** 网格列数: 固定宽度模式仍走 Adaptive, 否则用户列数按参考宽度响应式加列 */
+@Composable
 private fun shelfGridCells(spec: ShelfLayoutSpec): GridCells =
-    if (spec.fixedWidth) GridCells.Adaptive(spec.gridWidthDp.dp) else GridCells.Fixed(spec.cols)
+    if (spec.fixedWidth) GridCells.Adaptive(spec.gridWidthDp.dp)
+    else rememberResponsiveColumns(spec.cols)
 
 /** 计算封面高度 (对照 app 端 shelfCoverHeightDp, 视频模式按 0.75 收窄) */
 private fun shelfCoverHeightDp(isVideoStyle: Boolean): Int {
@@ -205,7 +207,7 @@ interface BookshelfTabController {
 }
 
 /**
- * 书架内容区: 下拉刷新 + 空提示 + 按 tier 选 LazyColumn/LazyVerticalGrid.
+ * 书架内容区: 下拉刷新 + 空提示 + 按 tier 选行内布局 (三档都是 LazyVerticalGrid).
  * key=bookUrl 稳定; 固定宽度模式网格用 Adaptive(固定宽) 自适应列数.
  *
  * shared 版本改动:
@@ -241,8 +243,11 @@ fun ShelfBooksContent(
 ) {
     val colors = AppTheme.colors
     val pullState = rememberPullToRefreshState()
-    val isRefreshing = items.any { item ->
-        item is Book && item.bookUrl in refreshingUrls
+    // 全表扫描, 别每次重组都跑一遍 (书架上千本时很贵); 无人刷新时直接短路
+    val isRefreshing = remember(items, refreshingUrls) {
+        refreshingUrls.isNotEmpty() && items.any { item ->
+            item is Book && item.bookUrl in refreshingUrls
+        }
     }
     // 锁定 refreshingUrls 引用, 避免子项无谓重组
     val refreshingUrlsSet = remember(refreshingUrls) { refreshingUrls }
@@ -281,7 +286,9 @@ fun ShelfBooksContent(
         // 复刻原 RecyclerView 默认 ItemAnimator 的 move 动画(阅读返回重排→条目平移)；E-Ink 关
         val eInk = LocalEInk.current
         when (spec.tier) {
-            ShelfTier.LIST -> FastScrollLazyColumn(
+            ShelfTier.LIST -> FastScrollLazyVerticalGrid(
+                // 列表档也响应式拆列: 400dp→1 列, 800dp→2 列多列列表 (行内布局不变)
+                columns = rememberResponsiveColumns(1),
                 state = scroll.list,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 8.dp),
@@ -522,12 +529,15 @@ fun KindLabels(kinds: List<String>) {
                 maxLines = 1,
                 modifier = Modifier
                     .padding(end = 2.dp)
-                    .background(colors.accent, RoundedCornerShape(2.dp))
+                    .background(colors.accent, KindLabelShape)
                     .padding(horizontal = 3.dp),
             )
         }
     }
 }
+
+/** 标签圆角: 预建一份, 免得每个标签每次重组都 new 一个 shape */
+private val KindLabelShape = RoundedCornerShape(2.dp)
 
 @Composable
 fun ShelfRowIcon(painterKey: String) {
@@ -606,7 +616,7 @@ fun ShelfListItem(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ShelfRowIcon("ic_author")
                 Text(
-                    text = book.getRealAuthor(),
+                    text = remember(book.author) { book.getRealAuthor() },
                     color = colors.secondaryText,
                     fontSize = 13.sp,
                     maxLines = 1,
@@ -618,7 +628,8 @@ fun ShelfListItem(
                 }
             }
             if (showKindIntro && appConfig.bookshelfListShowKind) {
-                val kinds = book.getKindList()
+                // 正则切分 + 净化, 别每次重组重算
+                val kinds = remember(book.kind, book.wordCount) { book.getKindList() }
                 if (kinds.isNotEmpty()) KindLabels(kinds)
             }
             if (!book.durChapterTitle.isNullOrEmpty()) {
@@ -758,11 +769,12 @@ fun ShelfVideoItem(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 8.dp),
         )
-        val kinds = book.getKindList()
+        // 正则切分 + 净化 / 作者拆分, 别每次重组重算
+        val kinds = remember(book.kind, book.wordCount) { book.getKindList() }
         if (kinds.isNotEmpty()) {
             Box(Modifier.padding(top = 2.dp)) { KindLabels(kinds) }
         }
-        val author = book.getRealAuthor()
+        val author = remember(book.author) { book.getRealAuthor() }
         if (author.isNotBlank()) {
             Text(
                 text = author,

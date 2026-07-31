@@ -14,8 +14,12 @@ import io.legado.app.ui.root.ScreenModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -74,10 +78,24 @@ class BookSourceDebugScreenModel(
             loading = false,
             textMy = defaultTextMy,
             textFx = defaultTextFx,
-            clearFocusTick = 0,
         )
     )
     val uiState: StateFlow<BookSourceDebugUiState> = _uiState.asStateFlow()
+
+    /**
+     * 事件流工厂: replay=1 + DROP_OLDEST, 语义对齐 LiveData.postValue。
+     *
+     * 不能用 StateFlow: StateFlow 按值去重, 重复投递相同值不会触发下游。
+     */
+    private fun <T> signalFlow() = MutableSharedFlow<T>(
+        replay = 1,
+        extraBufferCapacity = 8,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    /** 清焦信号 (对照 app 端 searchView.clearFocus()), 每次提交搜索都投递一次。 */
+    private val _clearFocusFlow = signalFlow<Unit>()
+    val clearFocusFlow: SharedFlow<Unit> = _clearFocusFlow.asSharedFlow()
 
     // ===== 调试状态机 (迁自 BookSourceDebugModel) =====
 
@@ -186,7 +204,8 @@ class BookSourceDebugScreenModel(
     private fun setQuery(text: String, submit: Boolean) {
         _uiState.update { it.copy(query = text) }
         if (submit) {
-            _uiState.update { it.copy(helpVisible = false, clearFocusTick = it.clearFocusTick + 1) }
+            _uiState.update { it.copy(helpVisible = false) }
+            _clearFocusFlow.tryEmit(Unit)
             val key = text.ifBlank { defaultTextMy }
             startSearch(key)
         }

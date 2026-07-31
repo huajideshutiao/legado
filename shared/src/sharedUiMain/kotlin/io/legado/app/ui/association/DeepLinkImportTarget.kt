@@ -1,7 +1,7 @@
 package io.legado.app.ui.association
 
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharedFlow
 
 /**
  * legado:// deep link 导入目标: 按 [DeepLinkImportType] 归一化各 Import*ViewModelShared 的差异,
@@ -23,9 +23,9 @@ class DeepLinkImportTarget private constructor(
     /** 对话框标题 key (交调用方 rememberString 取文案)。 */
     val titleKey: String,
     /** 错误流, 值格式 `"ImportError:${msg}"`, 与手动导入同源。 */
-    val errorState: StateFlow<String?>,
+    val errorState: SharedFlow<String>,
     /** 成功流, 值为解析出的条目数, 0 表示格式错误。 */
-    val successState: StateFlow<Int?>,
+    val successState: SharedFlow<Int>,
     private val startImportFn: (String) -> Unit,
     /** 书源类型时非 null, 调用方改用 [ImportBookSourceItemsDialog] 以带上"选中新增/更新源"菜单。 */
     val bookSourceVm: ImportBookSourceViewModelShared? = null,

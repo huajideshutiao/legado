@@ -15,7 +15,7 @@ import kotlin.concurrent.Volatile
  * 让未来切换底层驱动 (Room KMP -> SQLDelight, 或 AndroidSQLiteDriver -> BundledSQLiteDriver)
  * 时, commonMain 调用方零改动:
  *
- * - androidMain actual: [RoomDatabaseDriver] 委托 androidx.room.RoomDatabase
+ * - androidMain actual: [RoomDatabaseDriver] 委托 androidx.room3.RoomDatabase
  *   (现状: 包装 app 端已构造的 appDb 单例)
  * - jvmMain actual: [BundledDatabaseDriver] 基于 Room KMP + BundledSQLiteDriver (KP1.2 桌面端落地)
  * - 未来 iOS/HarmonyOS actual: 可用 SQLDelight 实现 (与 Room 共存或逐步替换)
@@ -51,8 +51,8 @@ interface DatabaseDriverProvider {
     /**
      * 返回平台原生数据库句柄。
      *
-     * - Android: androidx.room.RoomDatabase (实际为 AppDatabase 实例)
-     * - JVM: androidx.room.RoomDatabase (实际为 AppDatabase 实例, 由 BundledSQLiteDriver 构造)
+     * - Android: androidx.room3.RoomDatabase (实际为 AppDatabase 实例)
+     * - JVM: androidx.room3.RoomDatabase (实际为 AppDatabase 实例, 由 BundledSQLiteDriver 构造)
      * - iOS/HarmonyOS (未来): SQLDelight Database 实例
      *
      * commonMain 不假定具体类型, 仅作 [Any] 传递; 由 actual 端强转使用。

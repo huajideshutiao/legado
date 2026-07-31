@@ -7,6 +7,7 @@ import io.legado.app.model.script.JsBindings
 import io.legado.app.model.script.JsEngines
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select

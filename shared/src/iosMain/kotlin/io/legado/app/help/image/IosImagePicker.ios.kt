@@ -8,7 +8,6 @@ import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSItemProvider
-import platform.Foundation.NSObject
 import platform.Foundation.NSURL
 import platform.Foundation.NSUUID
 import platform.PhotosUI.PHPickerConfiguration
@@ -16,6 +15,7 @@ import platform.PhotosUI.PHPickerFilter
 import platform.PhotosUI.PHPickerResult
 import platform.PhotosUI.PHPickerViewController
 import platform.PhotosUI.PHPickerViewControllerDelegateProtocol
+import platform.darwin.NSObject
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 import kotlin.coroutines.resume
@@ -83,10 +83,10 @@ private class PickerDelegate(
     private val cont: CancellableContinuation<NSURL?>,
 ) : NSObject(), PHPickerViewControllerDelegateProtocol {
 
-    override fun picker(picker: PHPickerViewController, didFinishPicking results: List<PHPickerResult>) {
+    override fun picker(picker: PHPickerViewController, didFinishPicking: List<*>) {
         picker.dismissViewControllerAnimated(true, completion = null)
         PickerHolder.delegate = null
-        val provider = results.firstOrNull()?.itemProvider
+        val provider = (didFinishPicking.firstOrNull() as? PHPickerResult)?.itemProvider
         if (provider == null || !provider.hasItemConformingToTypeIdentifier("public.image")) {
             // 用户取消 (空 results) 或 item 不支持图片类型
             if (cont.isActive) cont.resume(null)

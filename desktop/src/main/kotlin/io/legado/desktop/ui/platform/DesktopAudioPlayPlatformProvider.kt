@@ -113,7 +113,7 @@ class DesktopAudioPlayPlatformProvider : AudioPlayPlatformProvider {
 
 @Composable
 private fun DesktopCoverSlot(coverUrl: String?, modifier: Modifier) {
-    val painter = rememberCoverPainter(coverUrl)
+    val painter = rememberCoverPainter(coverUrl, persistent = true)
     val state by painter.state.collectAsState()
     Box(modifier.clip(CircleShape).background(Color(0xFF165DFF))) {
         if (state is AsyncImagePainter.State.Success) {
@@ -131,7 +131,7 @@ private fun DesktopCoverSlot(coverUrl: String?, modifier: Modifier) {
 
 @Composable
 private fun DesktopBlurBgSlot(coverUrl: String?, modifier: Modifier) {
-    val painter = rememberCoverPainter(coverUrl)
+    val painter = rememberCoverPainter(coverUrl, persistent = true)
     val state by painter.state.collectAsState()
     Box(modifier) {
         if (state is AsyncImagePainter.State.Success) {

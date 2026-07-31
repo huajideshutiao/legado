@@ -1,6 +1,6 @@
 package io.legado.app.data.entities
 
-import androidx.room.Entity
+import androidx.room3.Entity
 import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.app.utils.yearMonthDayFromMillis
 

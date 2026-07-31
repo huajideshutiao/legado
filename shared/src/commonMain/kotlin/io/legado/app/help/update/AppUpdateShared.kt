@@ -1,23 +1,15 @@
 package io.legado.app.help.update
 
-import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.help.http.OkHttpClientProviders
-import io.legado.app.help.http.newCallResponse
-import io.legado.app.help.http.text
-import io.legado.app.utils.KS_JSON
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.serialization.decodeFromString
 
 /**
- * AppUpdate 纯逻辑下沉 commonMain:
- * - ABI 匹配 + 版本号比较 + GitHub Releases 拉取
- * - 通过 [AbiProvider] 注入 SUPPORTED_ABIS (app 端 Build.SUPPORTED_ABIS, desktop 端空数组或 JVM 架构)
- * - 通过 [OkHttpClientProviders] 取 okHttpClient (已下沉 shared)
- * - 通过 [KS_JSON] 解析 (已下沉 shared)
+ * app 端"检查更新"入口 (纯逻辑, 下沉 commonMain)。
  *
- * app 端 [io.legado.app.help.update.AppUpdate] 仅保留 UI 部分 (WaitDialog/UpdateDialog/toast),
- * 委托本类完成检查。
+ * 检测与执行已拆成两层: 检测走 [UpdateChecker] (当前四端共用 [GitHubReleaseChecker]),
+ * 执行走 [UpdateExecutor] / [UpdateAction], 组合关系见 [UpdateStrategies]。
+ * 本对象只保留 app 端历史签名 (Coroutine + [AbiProvider]), 内部委托新分层;
+ * desktop/iOS/鸿蒙统一走 [AppUpdateManager]。
  */
 object AppUpdateShared {
 
@@ -25,44 +17,10 @@ object AppUpdateShared {
         val tagName: String,
         val updateLog: String,
         val downloadUrl: String,
-        val fileName: String
+        val fileName: String,
+        /** release 页面地址, 无本平台产物时用于降级跳转。 */
+        val releasePageUrl: String = "",
     )
-
-    fun check(
-        scope: CoroutineScope,
-        abiProvider: AbiProvider,
-        updateToVariant: String,
-        currentVersionName: String,
-        currentAppVariant: AppVariant
-    ): Coroutine<UpdateInfo?> {
-        return Coroutine.async(scope) {
-            val supportedAbis = abiProvider.supportedAbis
-            val checkVariant = getCheckVariant(updateToVariant, currentAppVariant)
-            getLatestRelease(checkVariant)
-                .filter { it.appVariant == checkVariant }
-                .filter { it.versionName > currentVersionName }
-                .minByOrNull { info ->
-                    when {
-                        supportedAbis.any { abi ->
-                            val shortAbi = when {
-                                abi.startsWith("arm64") -> "arm64"
-                                abi.startsWith("armeabi-v7") -> "armv7"
-                                abi.startsWith("x86_64") -> "x64"
-                                else -> abi
-                            }
-                            info.name.contains(shortAbi, ignoreCase = true)
-                        } -> 0
-
-                        info.name.contains("all", ignoreCase = true) -> 1
-                        else -> 2
-                    }
-                }
-                ?.let {
-                    return@async UpdateInfo(it.versionName, it.note, it.downloadUrl, it.name)
-                }
-            return@async null
-        }.timeout(10000)
-    }
 
     fun getCheckVariant(
         updateToVariant: String,
@@ -78,17 +36,44 @@ object AppUpdateShared {
         }
     }
 
-    suspend fun getLatestRelease(checkVariant: AppVariant): List<AppReleaseInfo> {
-        val url = if (checkVariant.isBeta()) {
-            "https://api.github.com/repos/huajideshutiao/legado/releases/tags/beta"
-        } else {
-            "https://api.github.com/repos/huajideshutiao/legado/releases/latest"
-        }
-        val res = OkHttpClientProviders.get().okHttpClient.newCallResponse { url(url) }
-        if (!res.isSuccessful) throw NoStackTraceException("获取新版本出错(${res.code})")
-        val body = res.body.text()
-        if (body.isBlank()) throw NoStackTraceException("获取新版本出错")
-        return KS_JSON.decodeFromString<GithubRelease>(body)
-            .gitReleaseToAppReleaseInfo()
+    suspend fun getLatestRelease(checkVariant: AppVariant): List<AppReleaseInfo> =
+        GitHubReleaseChecker().fetchRelease(checkVariant).gitReleaseToAppReleaseInfo()
+
+    /** app 端入口: 返回 null 表示已是最新版, 失败抛异常 (由 onError 分支处理)。 */
+    fun check(
+        scope: CoroutineScope,
+        abiProvider: AbiProvider,
+        updateToVariant: String,
+        currentVersionName: String,
+        currentAppVariant: AppVariant
+    ): Coroutine<UpdateInfo?> {
+        return Coroutine.async(scope) {
+            val result = UpdateStrategies.of(UpdatePlatform.ANDROID).checker.check(
+                UpdateCheckRequest(
+                    platform = UpdatePlatform.ANDROID,
+                    currentVersionName = currentVersionName,
+                    currentAppVariant = currentAppVariant,
+                    updateToVariant = updateToVariant,
+                    supportedAbis = abiProvider.supportedAbis.toList(),
+                )
+            )
+            when (result) {
+                // 无匹配 apk 时返回 null (等同旧实现 minByOrNull 落空 → "已是最新版本"),
+                // app 端 UpdateDialog 的下载按钮依赖非空直链
+                is UpdateCheckResult.NewVersion ->
+                    result.info.takeIf { it.hasAsset }?.toUpdateInfo()
+
+                is UpdateCheckResult.Failed -> throw result.error
+                UpdateCheckResult.UpToDate -> null
+            }
+        }.timeout(10000)
     }
 }
+
+fun UpdateCheckInfo.toUpdateInfo(): AppUpdateShared.UpdateInfo = AppUpdateShared.UpdateInfo(
+    tagName = versionName,
+    updateLog = releaseNote,
+    downloadUrl = downloadUrl,
+    fileName = fileName,
+    releasePageUrl = landingUrl,
+)

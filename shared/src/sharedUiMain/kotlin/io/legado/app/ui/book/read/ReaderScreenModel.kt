@@ -144,7 +144,7 @@ class ReaderScreenModel(
             override fun onChapterListChanged(chapterList: List<BookChapter>) =
                 ReadBookEvents.postMenuRefresh()
 
-            override fun onContentChanged() {
+            override fun onBookContentChanged() {
                 ReadBookEvents.postSeekBarChange()
                 ReadBookEvents.postMenuRefresh()
             }

@@ -3,6 +3,7 @@
 package io.legado.app.help.tts
 
 import io.legado.app.help.media.AvPlayerItemStatusObserver
+import kotlin.concurrent.Volatile
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem

@@ -25,6 +25,7 @@ import io.legado.app.model.audio.AudioPlayManager
 import io.legado.app.model.audio.AudioPlayManagerListener
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlin.concurrent.Volatile
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +39,14 @@ import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemDidPlayToEndTimeNotification
 import platform.AVFoundation.AVPlayerItemFailedToPlayToEndTimeNotification
 import platform.AVFoundation.AVURLAsset
+import platform.AVFoundation.currentTime
+import platform.AVFoundation.duration
+import platform.AVFoundation.pause
+import platform.AVFoundation.play
+import platform.AVFoundation.rate
+import platform.AVFoundation.replaceCurrentItemWithPlayerItem
+import platform.AVFoundation.seekToTime
+import platform.AVFoundation.setRate
 import platform.CoreMedia.CMTimeGetSeconds
 import platform.CoreMedia.CMTimeMake
 import platform.Foundation.NSNotificationCenter

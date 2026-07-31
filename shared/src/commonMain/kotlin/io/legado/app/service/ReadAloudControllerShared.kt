@@ -14,8 +14,12 @@ import io.legado.app.help.tts.TtsProgressListener
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlin.concurrent.Volatile
@@ -139,6 +143,17 @@ class ReadAloudControllerShared(
     // region 状态流: 外部只读 StateFlow (适配 Compose 重组)
 
     /**
+     * 事件流工厂: replay=1 + DROP_OLDEST, 语义对齐 LiveData.postValue。
+     *
+     * 不能用 StateFlow: StateFlow 按值去重, 同一个错误串重复投递不会触发下游。
+     */
+    private fun <T> signalFlow() = MutableSharedFlow<T>(
+        replay = 1,
+        extraBufferCapacity = 8,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    /**
      * 当前朗读状态。
      *
      * - [ReadAloudState.IDLE]: 未开始
@@ -167,9 +182,13 @@ class ReadAloudControllerShared(
     private val _currentText = MutableStateFlow("")
     val currentText: StateFlow<String> = _currentText.asStateFlow()
 
-    /** 最近一次错误信息 (供 UI 显示 toast)。 */
-    private val _lastError = MutableStateFlow<String?>(null)
-    val lastError: StateFlow<String?> = _lastError.asStateFlow()
+    /**
+     * 最近一次错误信息 (供 UI 显示 toast)。
+     *
+     * 事件语义: 用 SharedFlow 而非 StateFlow, 否则重试后错误串相同会被去重吞掉, toast 只弹一次。
+     */
+    private val _lastError = signalFlow<String>()
+    val lastError: SharedFlow<String> = _lastError.asSharedFlow()
 
     /**
      * 朗读语速倍率 (KP2-D P1 新增)。
@@ -211,7 +230,7 @@ class ReadAloudControllerShared(
         }
 
         override fun onError(utteranceId: String, errorCode: Int) {
-            _lastError.value = "TTS 朗读出错 (code=$errorCode, utteranceId=$utteranceId)"
+            _lastError.tryEmit("TTS 朗读出错 (code=$errorCode, utteranceId=$utteranceId)")
             _state.value = ReadAloudState.ERROR
         }
 
@@ -236,7 +255,7 @@ class ReadAloudControllerShared(
         override fun onEndOfMedia() = onParagraphDone()
 
         override fun onError(message: String) {
-            _lastError.value = "HttpTTS 播放出错: $message"
+            _lastError.tryEmit("HttpTTS 播放出错: $message")
             _state.value = ReadAloudState.ERROR
         }
 
@@ -262,7 +281,7 @@ class ReadAloudControllerShared(
             // 系统 TTS 路径: 注入 progressListener (幂等, 引擎实例可能复用)
             val engine = engineProvider()
             if (engine == null) {
-                _lastError.value = "未注册 TTS 引擎, 无法朗读"
+                _lastError.tryEmit("未注册 TTS 引擎, 无法朗读")
                 _state.value = ReadAloudState.ERROR
                 return
             }
@@ -281,12 +300,12 @@ class ReadAloudControllerShared(
         val paragraphs = runCatching {
             navigator.loadChapterParagraphs(chapterIndex)
         }.getOrElse {
-            _lastError.value = "加载章节内容失败: ${it.message}"
+            _lastError.tryEmit("加载章节内容失败: ${it.message}")
             _state.value = ReadAloudState.ERROR
             return
         }
         if (paragraphs.isEmpty()) {
-            _lastError.value = "章节内容为空"
+            _lastError.tryEmit("章节内容为空")
             _state.value = ReadAloudState.ERROR
             return
         }
@@ -341,7 +360,7 @@ class ReadAloudControllerShared(
      * 桌面命令行 TTS (SAPI/espeak/say) 无真暂停能力, 实际等于 stop;
      * 各平台 actual 若支持真暂停 (如 Android TextToSpeech), 由引擎自行实现。
      *
-     * 暂停后 [resume] 从当前段落起点重读 (而非中断位置)。
+     * 暂停后 [resume] 续读: 引擎支持真暂停时从中断处继续, 否则从当前段落起点重读。
      */
     fun pause() {
         if (_state.value != ReadAloudState.PLAYING) return
@@ -349,9 +368,11 @@ class ReadAloudControllerShared(
             // HttpTTS 路径: 真暂停 (各平台 actual 支持)
             httpTtsPlayer?.pause()
         } else {
-            engineProvider()?.pause()
-            // 桌面命令行 TTS 不支持真暂停, 这里调 stop 让后台朗读线程退出
-            engineProvider()?.stop()
+            val engine = engineProvider()
+            engine?.pause()
+            // 引擎无真暂停能力时 (isPaused 未置位, 如命令行 say/espeak) 退化为 stop 让朗读线程退出;
+            // 真暂停引擎 (Windows SAPI) 保留位置, resume 走 engine.resume() 续读
+            if (engine?.isPaused != true) engine?.stop()
         }
         _state.value = ReadAloudState.PAUSED
     }
@@ -359,7 +380,7 @@ class ReadAloudControllerShared(
     /**
      * 恢复朗读。
      *
-     * 从当前段落起点重读 (与 [pause] 配对, 桌面端简化为重读当前段)。
+     * 引擎真暂停时从中断处续读, 否则从当前段落起点重读 (与 [pause] 配对)。
      */
     fun resume() {
         if (_state.value != ReadAloudState.PAUSED) return
@@ -369,9 +390,10 @@ class ReadAloudControllerShared(
             httpTtsPlayer?.play()
         } else {
             // KP2-D P1: 恢复时同步语速到引擎 (用户在 pause 期间拖了滑杆, resume 后生效新速度)
-            engineProvider()?.speechRate = _speechRate.value
+            val engine = engineProvider()
+            engine?.speechRate = _speechRate.value
             _state.value = ReadAloudState.PLAYING
-            playCurrent()
+            if (engine?.isPaused == true) engine.resume() else playCurrent()
         }
     }
 
@@ -519,7 +541,7 @@ class ReadAloudControllerShared(
             playHttpTtsCurrent(text)
         } else {
             val engine = engineProvider() ?: run {
-                _lastError.value = "未注册 TTS 引擎"
+                _lastError.tryEmit("未注册 TTS 引擎")
                 _state.value = ReadAloudState.ERROR
                 return
             }
@@ -540,12 +562,12 @@ class ReadAloudControllerShared(
      */
     private fun playHttpTtsCurrent(text: String) {
         val player = httpTtsPlayer ?: run {
-            _lastError.value = "未注册 HttpTTS 播放器"
+            _lastError.tryEmit("未注册 HttpTTS 播放器")
             _state.value = ReadAloudState.ERROR
             return
         }
         val config = httpTtsConfig ?: run {
-            _lastError.value = "未设置 HttpTTS 源配置"
+            _lastError.tryEmit("未设置 HttpTTS 源配置")
             _state.value = ReadAloudState.ERROR
             return
         }
@@ -561,7 +583,7 @@ class ReadAloudControllerShared(
             player.setUrl(analyzeUrl.url, analyzeUrl.headerMap)
             player.prepare()
         }.onFailure {
-            _lastError.value = "HttpTTS url 求值失败: ${it.message}"
+            _lastError.tryEmit("HttpTTS url 求值失败: ${it.message}")
             _state.value = ReadAloudState.ERROR
         }
     }

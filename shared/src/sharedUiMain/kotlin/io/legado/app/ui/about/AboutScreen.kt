@@ -1,6 +1,10 @@
 package io.legado.app.ui.about
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import io.legado.app.ui.compose.preference.PreferenceScreen
 import io.legado.app.ui.compose.preference.preference
@@ -13,6 +17,8 @@ import legado.shared.generated.resources.crash_log
 import legado.shared.generated.resources.create_heap_dump
 import legado.shared.generated.resources.disclaimer
 import legado.shared.generated.resources.join_telegram_group
+import legado.shared.generated.resources.keyboard_shortcuts
+import legado.shared.generated.resources.keyboard_shortcuts_s
 import legado.shared.generated.resources.license
 import legado.shared.generated.resources.other
 import legado.shared.generated.resources.privacy_policy
@@ -54,6 +60,10 @@ fun AboutScreen(
     val titlePrivacyPolicy = stringResource(Res.string.privacy_policy)
     val titleLicense = stringResource(Res.string.license)
     val titleDisclaimer = stringResource(Res.string.disclaimer)
+    val titleShortcuts = stringResource(Res.string.keyboard_shortcuts)
+    val summaryShortcuts = stringResource(Res.string.keyboard_shortcuts_s)
+    // 快捷键一览是纯展示, 不经 AboutUiActions, 免得各端宿主都要实现一遍
+    var showShortcuts by remember { mutableStateOf(false) }
 
     PreferenceScreen(modifier = modifier) {
         preference(
@@ -69,12 +79,20 @@ fun AboutScreen(
             title = titleUpdateLog,
             summary = state.updateLogSummary,
         )
-        preference(
-            title = titleCheckUpdate,
-            onClick = { actions.onCheckUpdate() },
-        )
+        if (state.showCheckUpdate) {
+            preference(
+                title = titleCheckUpdate,
+                enabled = !state.checkingUpdate,
+                onClick = { actions.onCheckUpdate() },
+            )
+        }
 
         preferenceCategory(titleOther)
+        preference(
+            title = titleShortcuts,
+            summary = summaryShortcuts,
+            onClick = { showShortcuts = true },
+        )
         preference(
             title = titleCrashLog,
             onClick = { actions.onShowCrashLogs() },
@@ -99,5 +117,9 @@ fun AboutScreen(
             title = titleDisclaimer,
             onClick = { actions.onShowMdFile(titleDisclaimer, "disclaimer.md") },
         )
+    }
+
+    if (showShortcuts) {
+        KeyboardShortcutsDialog(onDismiss = { showShortcuts = false })
     }
 }

@@ -684,6 +684,14 @@
     <string name="prev_sentence">上一句</string>
     <string name="next_sentence">下一句</string>
     <string name="audio_play">播放</string>
+    <string name="audio_play_t">正在播放</string>
+    <string name="audio_pause">播放暂停</string>
+    <string name="audio_play_s">点击打开播放界面</string>
+    <string name="read_aloud_t">正在朗读</string>
+    <string name="read_aloud_pause">朗读暂停</string>
+    <string name="read_aloud_s">点击打开阅读界面</string>
+    <string name="resume">继续</string>
+    <string name="audio">音频</string>
     <string name="set_timer">设定时间</string>
     <string name="timer_m">%1$d 分钟</string>
     <string name="read_aloud_speed">语速</string>
@@ -1442,4 +1450,7 @@
     <string name="regular_expression">正则表达式</string>
     <string name="match_whole_word">全词匹配</string>
     <string name="match_case">区分大小写</string>
+    <string name="keyboard_shortcuts">键盘快捷键</string>
+    <string name="keyboard_shortcuts_s">桌面端与外接键盘可用的按键一览</string>
+    <string name="keyboard_shortcuts_global">全局</string>
 </resources>

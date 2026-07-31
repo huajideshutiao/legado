@@ -15,8 +15,12 @@ import io.legado.app.model.webBook.WebBook
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
@@ -58,7 +62,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * 原 app 端三个 MutableLiveData:
  * - `batchChangeSourceState: MutableLiveData<Boolean>` → [_batchChangeSourceState] (StateFlow);
  * - `batchChangeSourceProcessLiveData: MutableLiveData<String>` → [_batchChangeSourceProcess] (StateFlow);
- * - `upAdapterLiveData: MutableLiveData<String>` → [_upAdapter] (StateFlow)。
+ * - `upAdapterLiveData: MutableLiveData<String>` → [_upAdapter] (SharedFlow, 事件语义)。
  *
  * StateFlow 不可直接被 Android LiveData observe, app 端 ViewModel 用 `viewModelScope.launch
  * { collect { liveData.postValue(it) } }` 桥接, 与原行为一致 (参考
@@ -136,11 +140,15 @@ class BookshelfManageViewModelShared(
     /**
      * 章节缓存列表更新通知流 (对照原 `upAdapterLiveData: MutableLiveData<String>`)。
      *
-     * [loadCacheFiles] 完成单本书缓存扫描后推送 bookUrl, app 端桥接到 LiveData 后
-     * Activity observe 触发 `refreshTick++` 重组。
+     * [loadCacheFiles] 完成单本书缓存扫描后推送 bookUrl, 对应原版 notifyItemChanged。
+     * 用 SharedFlow: 同一本书重复扫描推同一个 bookUrl, StateFlow 会去重导致该行不再刷新。
      */
-    private val _upAdapter = MutableStateFlow("")
-    val upAdapter: StateFlow<String> = _upAdapter.asStateFlow()
+    private val _upAdapter = MutableSharedFlow<String>(
+        replay = 1,
+        extraBufferCapacity = 8,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val upAdapter: SharedFlow<String> = _upAdapter.asSharedFlow()
 
     /**
      * 当前缓存加载协程 (对照原 `private var loadChapterCoroutine: Coroutine<Unit>?`)。
@@ -365,7 +373,7 @@ class BookshelfManageViewModelShared(
                     cacheChapters[book.bookUrl] = chapterCaches
                     // 缓存大小统计: 平台遍历缓存目录求和 (任务要求"展示每本书缓存大小")
                     cacheSizes[book.bookUrl] = platform.getCacheSize(book)
-                    _upAdapter.value = book.bookUrl
+                    _upAdapter.tryEmit(book.bookUrl)
                 }
                 ensureActive()
             }

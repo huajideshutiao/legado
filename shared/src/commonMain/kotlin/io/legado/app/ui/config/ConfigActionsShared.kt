@@ -1,7 +1,7 @@
 package io.legado.app.ui.config
 
-import androidx.room.execSQL
-import androidx.room.useWriterConnection
+import androidx.room3.executeSQL
+import androidx.room3.useWriterConnection
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.book.BookStorageProviders
@@ -43,7 +43,7 @@ object ConfigActionsShared {
      *
      * 1. 删除不在书架的书籍章节: `bookChapterDao.deleteNotShelfBookChapters()`
      * 2. 删除不在书架的书籍: `bookDao.deleteNotShelfBook()`
-     * 3. VACUUM 回收空间: `useWriterConnection { it.execSQL("VACUUM") }`
+     * 3. VACUUM 回收空间: `useWriterConnection { it.executeSQL("VACUUM") }`
      *
      * 成功后调用方应 toast `success`。
      */
@@ -54,8 +54,8 @@ object ConfigActionsShared {
             appDb.bookDao.deleteNotShelfBook()
             // 配置 SQLiteDriver 后 openHelper 不可用, 走 driver 连接执行
             // useWriterConnection 的 block 接收 Transactor (继承 PooledConnection)
-            // PooledConnection.execSQL 是 androidx.room 的 suspend 扩展
-            appDb.useWriterConnection { it.execSQL("VACUUM") }
+            // PooledConnection.executeSQL 是 androidx.room3 的 suspend 扩展
+            appDb.useWriterConnection { it.executeSQL("VACUUM") }
         }
     }
 }

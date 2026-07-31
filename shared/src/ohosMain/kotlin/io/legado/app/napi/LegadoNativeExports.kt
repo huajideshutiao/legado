@@ -3,6 +3,7 @@
 
 package io.legado.app.napi
 
+import io.legado.app.OhosLaunchRequests
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
@@ -933,5 +934,123 @@ object LegadoNativeExports {
     @CName("legado_text_codec_callback")
     fun textCodecCallback(requestId: Long, result: CPointer<ByteVar>) {
         OhosNativeBridge.onTextCodecResult(requestId, result.toKString())
+    }
+
+    // ===== Window / Battery tsfn 注入 (此前 OhosNativeBridge 已备桥, 缺 C ABI 入口) =====
+
+    /**
+     * 注入 window dispatch 函数指针 (由 legado_napi.cpp RegisterWindowCallback 调用)。
+     *
+     * 未注入时 [OhosNativeBridge.sendWindowCommand] 恒降级 println, 全屏/常亮/方向/系统栏全部失效。
+     *
+     * @param dispatch C++ tsfn dispatch 入口 (`ohos_window_dispatch`), 类型 `void(*)(const char*)`
+     */
+    @CName("legado_register_window_fn")
+    fun registerWindowFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>) -> Unit>>) {
+        OhosNativeBridge.registerWindowFn { json ->
+            memScoped {
+                dispatch(json.cstr.getPointer(this))
+            }
+        }
+    }
+
+    /**
+     * 注入 battery dispatch 函数指针 (由 legado_napi.cpp RegisterBatteryCallback 调用)。
+     *
+     * @param dispatch C++ tsfn dispatch 入口 (`ohos_battery_dispatch`), 类型 `void(*)(const char*)`
+     */
+    @CName("legado_register_battery_fn")
+    fun registerBatteryFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>) -> Unit>>) {
+        OhosNativeBridge.registerBatteryFn { json ->
+            memScoped {
+                dispatch(json.cstr.getPointer(this))
+            }
+        }
+    }
+
+    /**
+     * ArkTS → Kotlin 电量查询结果回调 (由 legado_napi.cpp BatteryCallback 调用)。
+     *
+     * @param result `{ ok: true, level: 85 }` 或 `{ ok: false, error: "..." }`
+     */
+    @CName("legado_battery_callback")
+    fun batteryCallback(requestId: Long, result: CPointer<ByteVar>) {
+        OhosNativeBridge.onBatteryResult(requestId, result.toKString())
+    }
+
+    // ===== Share / Keyboard / Permission tsfn 注入 (PlatformServices 能力补齐) =====
+
+    /**
+     * 注入 share dispatch 函数指针 (由 legado_napi.cpp RegisterShareCallback 调用)。
+     *
+     * 未注入时 [io.legado.app.OhosPlatformServices] 的分享降级为写剪贴板 + toast。
+     *
+     * @param dispatch C++ tsfn dispatch 入口 (`ohos_share_dispatch`), 类型 `void(*)(const char*)`
+     */
+    @CName("legado_register_share_fn")
+    fun registerShareFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>) -> Unit>>) {
+        OhosNativeBridge.registerShareFn { json ->
+            memScoped {
+                dispatch(json.cstr.getPointer(this))
+            }
+        }
+    }
+
+    /**
+     * 注入 keyboard dispatch 函数指针 (由 legado_napi.cpp RegisterKeyboardCallback 调用)。
+     *
+     * @param dispatch C++ tsfn dispatch 入口 (`ohos_keyboard_dispatch`), 类型 `void(*)(const char*)`
+     */
+    @CName("legado_register_keyboard_fn")
+    fun registerKeyboardFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>) -> Unit>>) {
+        OhosNativeBridge.registerKeyboardFn { json ->
+            memScoped {
+                dispatch(json.cstr.getPointer(this))
+            }
+        }
+    }
+
+    /**
+     * 注入 permission dispatch 函数指针 (由 legado_napi.cpp RegisterPermissionCallback 调用)。
+     *
+     * ArkTS 处理完成后通过 [permissionCallback] (@CName legado_permission_callback) 回送结果。
+     *
+     * @param dispatch C++ tsfn dispatch 入口 (`ohos_permission_dispatch`), 类型 `void(*)(const char*)`
+     */
+    @CName("legado_register_permission_fn")
+    fun registerPermissionFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>) -> Unit>>) {
+        OhosNativeBridge.registerPermissionFn { json ->
+            memScoped {
+                dispatch(json.cstr.getPointer(this))
+            }
+        }
+    }
+
+    /**
+     * ArkTS → Kotlin 权限查询/申请结果回调 (由 legado_napi.cpp PermissionCallback 调用)。
+     *
+     * @param result `{ ok: true, granted: true }` 或 `{ ok: false, error: "..." }`
+     */
+    @CName("legado_permission_callback")
+    fun permissionCallback(requestId: Long, result: CPointer<ByteVar>) {
+        OhosNativeBridge.onPermissionResult(requestId, result.toKString())
+    }
+
+    // ===== 外部启动请求投递 (ArkTS → Kotlin, 同 legado_handle_deep_link 模式) =====
+
+    /**
+     * 投递外部启动 Want (ArkTS EntryAbility.onCreate/onNewWant 调用)。
+     *
+     * 与 [handleDeepLink] 的分工: 前者只认 legado:// / yuedu:// 导入链接并弹勾选对话框;
+     * 本函数覆盖完整的 Want → [io.legado.app.ui.root.LaunchRequest] 映射 (文件关联 / 通知
+     * route / 处理文本 / 其他 scheme deep link), 对齐 app 端 `Intent.toLaunchRequest`。
+     *
+     * @param uri Want.uri (UTF-8 C 字符串); 通知点击可传 `route:<AppRoute 序列化串>`
+     * @return 1=已识别并投递到 LaunchRequestBus; 0=无法识别 (ArkTS 可自行处理)
+     */
+    @CName("legado_handle_launch_request")
+    fun handleLaunchRequest(uri: CPointer<ByteVar>): Int {
+        val request = OhosLaunchRequests.parse(uri.toKString()) ?: return 0
+        return if (OhosLaunchRequests.post(request)) 1 else 0
     }
 }

@@ -10,8 +10,12 @@ import io.legado.app.ui.root.ScreenModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -24,7 +28,7 @@ import kotlinx.coroutines.launch
  * - cookie 持久化由平台 WebView slot 在 onPageFinished 内调
  *   `CookieStoreProviders.get().setCookie(source.getKey(), cookie)` 完成,
  *   本 Model 不直接操作平台 WebView;
- * - [loginComplete] 设置 loggedIn=true, 由 Route pop。
+ * - [loginComplete] 投递 [loginCompleteFlow] 信号, 由 Route pop。
  *
  * 与 [SourceLoginDialog] (form 登录, loginUi 非空) 互补: 本类仅处理 URL 登录场景。
  */
@@ -35,11 +39,30 @@ class LoginScreenModel : ScreenModel {
     private val _state = MutableStateFlow(LoginUiState())
     val state: StateFlow<LoginUiState> = _state.asStateFlow()
 
+    /**
+     * 事件流工厂: replay=1 + DROP_OLDEST, 语义对齐 LiveData.postValue。
+     *
+     * 不能用 StateFlow: StateFlow 按值去重, 重复投递相同值不会触发下游。
+     */
+    private fun <T> signalFlow() = MutableSharedFlow<T>(
+        replay = 1,
+        extraBufferCapacity = 8,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    /** 刷新信号: 每次点刷新都投递一次, 由 Route 重建平台 WebView。 */
+    private val _refreshFlow = signalFlow<Unit>()
+    val refreshFlow: SharedFlow<Unit> = _refreshFlow.asSharedFlow()
+
+    /** 登录完成信号 (对照 app 端 menu_ok 后 finish()), 由 Route pop。 */
+    private val _loginCompleteFlow = signalFlow<Unit>()
+    val loginCompleteFlow: SharedFlow<Unit> = _loginCompleteFlow.asSharedFlow()
+
     fun dispatch(event: LoginUiEvent) {
         when (event) {
             is LoginUiEvent.Init -> init(event.sourceUrl)
             LoginUiEvent.LoginComplete -> loginComplete()
-            LoginUiEvent.Refresh -> _state.update { it.copy(webViewReloadKey = it.webViewReloadKey + 1) }
+            LoginUiEvent.Refresh -> _refreshFlow.tryEmit(Unit)
             LoginUiEvent.ShowAppLog -> _state.update { it.copy(showAppLog = true) }
             LoginUiEvent.DismissAppLogDialog -> _state.update { it.copy(showAppLog = false) }
         }
@@ -61,7 +84,7 @@ class LoginScreenModel : ScreenModel {
     }
 
     private fun loginComplete() {
-        _state.update { it.copy(loggedIn = true) }
+        _loginCompleteFlow.tryEmit(Unit)
     }
 
     override fun onCleared() {
@@ -77,9 +100,7 @@ class LoginScreenModel : ScreenModel {
  * @param sourceName 源标签 (source.getTag()), 供标题栏副标题
  * @param pageTitle WebView 页面标题 (onPageFinished 回传, 初始空 → 显示 "loading")
  * @param loading 书源加载中
- * @param loggedIn 用户确认登录完成 (触发 Route pop)
  * @param showAppLog 是否展示日志对话框
- * @param webViewReloadKey 平台 WebView 重建序号
  */
 data class LoginUiState(
     val source: BaseSource? = null,
@@ -87,9 +108,7 @@ data class LoginUiState(
     val sourceName: String = "",
     val pageTitle: String = "",
     val loading: Boolean = true,
-    val loggedIn: Boolean = false,
     val showAppLog: Boolean = false,
-    val webViewReloadKey: Int = 0,
 )
 
 sealed interface LoginUiEvent {

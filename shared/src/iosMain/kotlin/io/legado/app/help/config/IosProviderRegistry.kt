@@ -13,6 +13,7 @@ import io.legado.app.help.book.registerNativeLocalBookLocator
 import io.legado.app.help.book.registerNativeContentProcessorAccessor
 import io.legado.app.help.file.registerIosAppFilesDir
 import io.legado.app.help.file.registerNativeFileDownloader
+import io.legado.app.help.http.registerIosBackstageWebView
 import io.legado.app.help.image.IosBitmapProvider
 import io.legado.app.help.image.registerIosBookImageLoader
 import io.legado.app.help.http.registerDefaultIosCookieStoreProvider
@@ -29,6 +30,7 @@ import io.legado.app.help.service.registerNativeUpdateBookCallback
 import io.legado.app.help.source.registerNativeSourceHelpAccessor
 import io.legado.app.help.source.registerNativeSourceProviders
 import io.legado.app.help.source.registerNativeVerificationUiProvider
+import io.legado.app.help.storage.registerIosBackupRestoreHook
 import io.legado.app.help.toast.registerIosToaster
 import io.legado.app.help.tts.IosHttpTtsPlayer
 import io.legado.app.help.tts.TtsEngineProvider
@@ -39,12 +41,14 @@ import io.legado.app.help.ui.registerIosUserAgentProvider
 import io.legado.app.model.fileBook.BitmapProviders
 import io.legado.app.model.fileBook.registerNativeFileBookAccessor
 import io.legado.app.model.registerIosAudioPlayCommanders
+import io.legado.app.model.registerIosReadBookPlatform
 import io.legado.app.model.registerNativeCacheBookCallback
 import io.legado.app.model.script.registerIosJsEngines
 import io.legado.app.model.webBook.registerNativeWebBookProviders
 import io.legado.app.ui.book.changesource.registerIosChangeBookSourcePlatform
 import io.legado.app.ui.book.manage.registerIosBookshelfManagePlatform
 import io.legado.app.ui.compose.platform.IosPreferenceStoreProvider
+import io.legado.app.utils.registerIosScreenInfoProvider
 import io.legado.app.web.registerNativeWebServerPlatform
 import io.legado.app.web.utils.registerNativeWebAssetSource
 import io.legado.app.web.utils.registerNativeWebStrings
@@ -210,6 +214,10 @@ fun registerIosProviders() {
     // (NativeRegexReplacer 的 @js: 分支依赖已注册的 JsEngines)
     registerNativeWebBookProviders()
 
+    // 7.3 后台 WebView (隐藏 WKWebView 异步桥; sourceRegex 资源嗅探无等价能力仍抛
+    // UnsupportedOperationException 让调用方 runCatching 回退 HTTP; 须在任何 webView 规则解析之前)
+    registerIosBackstageWebView()
+
     // 7.5 BitmapProvider (CbzFile/EpubFile 封面提取用, 委托 IosImageOps 的 UIImage 解码/编码)
     // 必须在任何封面提取调用之前 (BitmapProviders 未注册时 get() 抛 IllegalStateException)
     BitmapProviders.register(IosBitmapProvider)
@@ -226,6 +234,13 @@ fun registerIosProviders() {
 
     // 9. 其余业务 provider (顺序无关)
     registerNativeFileDownloader()
+    // 屏幕尺寸 provider (UIScreen.nativeBounds): sharedUiMain AppDialogSizes 在容器尺寸未知时
+    // 取 ScreenInfoProviders.get() 兜底, 未注册会 error 导致所有对话框崩溃
+    registerIosScreenInfoProvider()
+    // 阅读编排平台钩子 (图片/分章缓存清理真实, 朗读与缓存服务运行态待接入)
+    registerIosReadBookPlatform()
+    // 备份/恢复钩子 (lastBackup 时间戳 + 恢复完成提示; zip 复制/解压走 BackupFileOps 默认实现)
+    registerIosBackupRestoreHook()
     registerIosToaster()
     registerIosNotificationProgress()
     // UI provider (Toast/OpenUrl/UserAgent), 供 JsExtensionsCommon 调用, 顺序无关, 须在任何 JS eval 之前

@@ -251,7 +251,6 @@ dependencies {
     implementation(libs.splitties.views)
 
     implementation(libs.room.runtime)
-    implementation(libs.room.ktx)
     androidTestImplementation(libs.room.testing)
 
     implementation(libs.ksoup)

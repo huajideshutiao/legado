@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
@@ -61,6 +60,7 @@ import io.legado.app.ui.book.manga.render.webtoonGestures
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSlider
+import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.handleReadPageKeys
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -895,7 +895,7 @@ private fun MangaThumbnailGridOverlay(
                 }
             }
             LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
+                columns = rememberResponsiveColumns(3),
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),

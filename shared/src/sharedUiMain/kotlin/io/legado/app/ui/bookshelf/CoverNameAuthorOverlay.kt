@@ -47,36 +47,51 @@ internal fun CoverNameAuthorOverlay(
     val measurer = rememberTextMeasurer()
     Box(
         modifier.drawWithCache {
-            val glyphs = computeCoverTextLayout(
-                width = size.width,
-                height = size.height,
-                name = cleanName,
-                author = cleanAuthor,
-                drawName = drawName,
-                drawAuthor = drawAuthor,
-                // 原版 textHeight = descent - ascent + leading, 单行实测高度等价;
-                // 书名粗体 / 作者常规, 对照原版 namePaint(DEFAULT_BOLD) 与 authorPaint(DEFAULT)
-                textHeightOf = { px ->
-                    measurer.measure("测", glyphStyle(px.toSp(), FontWeight.Bold))
-                        .size.height.toFloat()
-                },
-                authorTextHeightOf = { px ->
-                    measurer.measure("测", glyphStyle(px.toSp(), FontWeight.Normal))
-                        .size.height.toFloat()
-                },
-            )
-            val prepared = glyphs.map { g ->
-                // 作者列非粗体 (原版 authorPaint.typeface = Typeface.DEFAULT)
-                val weight = if (g.isAuthor) FontWeight.Normal else FontWeight.Bold
-                val style = glyphStyle(g.textSize.toSp(), weight)
-                PreparedGlyph(
-                    glyph = g,
-                    stroke = measurer.measure(
-                        g.text,
-                        style.copy(drawStyle = Stroke(width = g.strokeWidth)),
-                    ),
-                    fill = measurer.measure(g.text, style),
+            // 一个封面要测 (书名+作者) 每字 ×2 (描边/填充) 份文本布局, 同屏几十张就是上千次 Paragraph 构建;
+            // drawWithCache 的缓存块在每次重组都会失效重跑, 故按尺寸+文案做一层跨条目的共享缓存
+            val prepared = CoverGlyphCache.getOrPut(
+                CoverGlyphKey(
+                    width = size.width,
+                    height = size.height,
+                    name = cleanName,
+                    author = cleanAuthor,
+                    drawName = drawName,
+                    drawAuthor = drawAuthor,
+                    density = density,
+                    fontScale = fontScale,
                 )
+            ) {
+                val glyphs = computeCoverTextLayout(
+                    width = size.width,
+                    height = size.height,
+                    name = cleanName,
+                    author = cleanAuthor,
+                    drawName = drawName,
+                    drawAuthor = drawAuthor,
+                    // 原版 textHeight = descent - ascent + leading, 单行实测高度等价;
+                    // 书名粗体 / 作者常规, 对照原版 namePaint(DEFAULT_BOLD) 与 authorPaint(DEFAULT)
+                    textHeightOf = { px ->
+                        measurer.measure("测", glyphStyle(px.toSp(), FontWeight.Bold))
+                            .size.height.toFloat()
+                    },
+                    authorTextHeightOf = { px ->
+                        measurer.measure("测", glyphStyle(px.toSp(), FontWeight.Normal))
+                            .size.height.toFloat()
+                    },
+                )
+                glyphs.map { g ->
+                    // 作者列非粗体 (原版 authorPaint.typeface = Typeface.DEFAULT)
+                    val weight = if (g.isAuthor) FontWeight.Normal else FontWeight.Bold
+                    val style = glyphStyle(g.textSize.toSp(), weight)
+                    PreparedGlyph(
+                        glyph = g,
+                        stroke = measurer.measure(
+                            g.text,
+                            style.copy(drawStyle = Stroke(width = g.strokeWidth)),
+                        ),
+                        fill = measurer.measure(g.text, style),
+                    )
+                }
             }
             onDrawWithContent {
                 drawContent()
@@ -106,3 +121,34 @@ private class PreparedGlyph(
     val stroke: TextLayoutResult,
     val fill: TextLayoutResult,
 )
+
+private data class CoverGlyphKey(
+    val width: Float,
+    val height: Float,
+    val name: String?,
+    val author: String?,
+    val drawName: Boolean,
+    val drawAuthor: Boolean,
+    val density: Float,
+    val fontScale: Float,
+)
+
+/**
+ * 已测好的默认封面文字布局, 跨条目共享 (列表回滚复用, 不重测)。
+ * 只在绘制线程访问; 超出容量按插入序淘汰最旧的一份。
+ */
+private object CoverGlyphCache {
+
+    private const val MAX_ENTRIES = 64
+    private val entries = LinkedHashMap<CoverGlyphKey, List<PreparedGlyph>>()
+
+    fun getOrPut(key: CoverGlyphKey, build: () -> List<PreparedGlyph>): List<PreparedGlyph> {
+        entries[key]?.let { return it }
+        val value = build()
+        if (entries.size >= MAX_ENTRIES) {
+            entries.keys.firstOrNull()?.let(entries::remove)
+        }
+        entries[key] = value
+        return value
+    }
+}

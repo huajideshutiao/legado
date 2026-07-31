@@ -11,6 +11,8 @@ import coil3.gif.GifDecoder
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import coil3.size.Precision
+import coil3.size.Scale
 import coil3.toBitmap
 import io.legado.app.help.http.OkHttpClientProviders
 import kotlinx.coroutines.CoroutineScope
@@ -19,6 +21,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import androidx.compose.ui.graphics.ImageBitmap
+import java.io.File
 
 /**
  * [BookImageLoader] 的 Android Coil3 实现。
@@ -48,21 +51,53 @@ class AndroidBookImageLoader(
     ) {
         coroutineScope.launch {
             try {
-                val request = ImageRequest.Builder(context as PlatformContext)
-                    .data(url)
-                    .sourceOrigin(sourceOrigin)
-                    .build()
-                val result = imageLoader.execute(request)
-                if (result is SuccessResult) {
-                    val bitmap = result.image.toBitmap()
-                    onSuccess(bitmap.asImageBitmap())
-                } else {
-                    error("Coil3 加载失败: $result")
-                }
+                onSuccess(
+                    loadImageOrNull(url, sourceOrigin) ?: error("Coil3 加载失败: $url")
+                )
             } catch (t: Throwable) {
                 onError(t)
             }
         }
+    }
+
+    override suspend fun loadImageOrNull(
+        url: String,
+        sourceOrigin: String?,
+        widthPx: Int,
+        heightPx: Int,
+    ): ImageBitmap? = execute(url, sourceOrigin, widthPx, heightPx, persistent = false)
+
+    override suspend fun loadCoverOrNull(
+        url: String,
+        sourceOrigin: String?,
+        widthPx: Int,
+        heightPx: Int,
+    ): ImageBitmap? = execute(url, sourceOrigin, widthPx, heightPx, persistent = true)
+
+    /** [persistent] 为 true 时改写 diskCacheKey, 由 [MultiDiskCache] 分流到封面持久区。 */
+    private suspend fun execute(
+        url: String,
+        sourceOrigin: String?,
+        widthPx: Int,
+        heightPx: Int,
+        persistent: Boolean,
+    ): ImageBitmap? {
+        val request = ImageRequest.Builder(context as PlatformContext)
+            .data(url)
+            .sourceOrigin(sourceOrigin)
+            .apply {
+                if (persistent) diskCacheKey(coverDiskCacheKey(url))
+                // 按显示尺寸降采样; FILL 对齐消费端 ContentScale.Crop, INEXACT 允许复用更大的内存缓存项
+                if (widthPx > 0 && heightPx > 0) {
+                    size(widthPx, heightPx)
+                    scale(Scale.FILL)
+                    precision(Precision.INEXACT)
+                }
+            }
+            .build()
+        val result = imageLoader.execute(request)
+        val bitmap = (result as? SuccessResult)?.image?.toBitmap() ?: return null
+        return bitmap.asImageBitmap()
     }
 
 }
@@ -87,6 +122,9 @@ fun registerAndroidBookImageLoader(context: Context) {
  *
  * [additionalComponents] 必须在这里追加到同一个注册表；对返回的 loader 调
  * `newBuilder().components { ... }` 会替换已有注册表，导致封面解密等基础组件失效。
+ *
+ * diskCache 走双区 [buildImageDiskCache]: 书架封面落 `filesDir/covers` (与原版 Glide
+ * `MultiDiskCacheFactory` 同址), 其余图片落 `cacheDir/image_cache`。
  */
 fun buildBookImageLoader(
     context: Context,
@@ -109,6 +147,9 @@ fun buildBookImageLoader(
                 add(GifDecoder.Factory())
             }
             additionalComponents()
+        }
+        .diskCache {
+            buildImageDiskCache(File(context.cacheDir, "image_cache").absolutePath)
         }
         .build()
 }

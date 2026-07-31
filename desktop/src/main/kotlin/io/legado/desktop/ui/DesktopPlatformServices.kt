@@ -1,6 +1,7 @@
 package io.legado.desktop.ui
 
 import io.legado.app.constant.AppLog
+import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.ui.root.BrowserService
 import io.legado.app.ui.root.ExternalRequestService
 import io.legado.app.ui.root.FileFilter
@@ -23,6 +24,7 @@ import java.awt.GraphicsDevice
 import java.awt.Toolkit
 import java.awt.Window
 import java.awt.datatransfer.StringSelection
+import java.io.File
 import java.net.URI
 
 /**
@@ -58,21 +60,33 @@ class DesktopPlatformServices(
     override val externalRequests: ExternalRequestService = DesktopExternalRequestService()
 }
 
-// 走 AWT FileDialog (复用 desktop 现有 FileDialogs 统一入口)
+// Windows 走 COM IFileDialog 现代对话框, macOS/Linux 走 AWT (统一入口 FileDialogs)
 private class DesktopFilePickerService : FilePickerService {
     override fun pickFile(filter: FileFilter): String? =
         FileDialogs.pickOpenFile(extensions = filter.extensions)?.absolutePath
 
     override fun pickFiles(filter: FileFilter): List<String> =
-        // FileDialog 单次只选一个, 多选暂用单选兜底
+        // 多选暂用单选兜底 (FileDialogs 已具备多选能力, 待调用方需要时再放开)
         listOfNotNull(pickFile(filter))
 
+    // 调用方没给目录时起始目录用用户可见产物目录 (桌面/legado), 别落在应用数据目录
     override fun saveFile(suggestedName: String, defaultDir: String?): String? =
-        FileDialogs.pickSaveFile(defaultName = suggestedName)?.absolutePath
+        FileDialogs.pickSaveFile(
+            defaultName = suggestedName,
+            initialDir = (defaultDir ?: userExportDir())?.let(::File)?.takeIf { it.isDirectory },
+        )?.absolutePath
 
     override fun pickDirectory(): String? =
-        FileDialogs.pickDirectory()?.absolutePath
+        FileDialogs.pickDirectory(
+            initialDir = userExportDir()?.let(::File)?.takeIf { it.isDirectory },
+        )?.absolutePath
 }
+
+/** 用户可见产物目录 (不存在则创建), 取不到返回 null 让对话框用系统默认起始目录。 */
+private fun userExportDir(): String? = runCatching {
+    val dir = File(DataStorageProviders.get().userExportDir)
+    if (dir.isDirectory || dir.mkdirs()) dir.absolutePath else null
+}.getOrNull()
 
 // shareText 走系统剪贴板; shareFile 桌面端无系统分享面板, no-op + TODO
 private class DesktopShareService : ShareService {

@@ -1097,6 +1097,166 @@ object OhosNativeBridge {
     /** 检查 battery 桥是否已就绪 (tsfn 已注入)。 */
     fun isBatteryBridgeReady(): Boolean = synchronized(lock) { batteryTsfn != null }
 
+    // ===== Share tsfn (KMP → ArkTS, fire-and-forget, 同 OpenUrl 模式) =====
+    // 系统分享走 ArkTS @ohos.share.systemShare (SharePanel), 无 NDK C 接口。
+    // 分享面板由用户操作, 结果对调用方无意义, 故 fire-and-forget。
+
+    /** share threadsafe_function 引用。 */
+    @Volatile
+    private var shareTsfn: TsfnCallback? = null
+
+    /** 注入 share tsfn (由 legado_napi.cpp RegisterShareCallback 调用)。 */
+    fun registerShareFn(tsfn: TsfnCallback) {
+        synchronized(lock) {
+            shareTsfn = tsfn
+        }
+    }
+
+    /** 分享纯文本 (对照 Android Intent.ACTION_SEND text/plain)。 */
+    fun shareText(text: String) {
+        sendShareCommand(KS_JSON.encodeToString(SharePayload(action = "text", text = text)))
+    }
+
+    /** 分享文件 (filePath 为沙盒绝对路径, ArkTS 侧转 fileUri 后交给 SharePanel)。 */
+    fun shareFile(filePath: String, mimeType: String) {
+        sendShareCommand(
+            KS_JSON.encodeToString(
+                SharePayload(action = "file", filePath = filePath, mimeType = mimeType)
+            )
+        )
+    }
+
+    private fun sendShareCommand(json: String) {
+        val tsfn = synchronized(lock) { shareTsfn }
+        if (tsfn != null) {
+            runCatching { tsfn(json) }.onFailure { println("[ohos-share] tsfn call failed: $json") }
+        } else {
+            println("[ohos-share] tsfn not registered: $json")
+        }
+    }
+
+    /** 检查 share 桥是否已就绪; 未就绪时调用方降级到剪贴板 (对照 desktop shareText)。 */
+    fun isShareBridgeReady(): Boolean = synchronized(lock) { shareTsfn != null }
+
+    // ===== Keyboard tsfn (KMP → ArkTS, fire-and-forget, 同 Window 模式) =====
+    // 软键盘显隐走 @ohos.inputMethod.getController().stopInputSession / showSoftKeyboard,
+    // 输入法避让策略走 UIContext.setKeyboardAvoidMode, 均只有 ArkTS API。
+
+    /** keyboard threadsafe_function 引用。 */
+    @Volatile
+    private var keyboardTsfn: TsfnCallback? = null
+
+    /** 注入 keyboard tsfn (由 legado_napi.cpp RegisterKeyboardCallback 调用)。 */
+    fun registerKeyboardFn(tsfn: TsfnCallback) {
+        synchronized(lock) {
+            keyboardTsfn = tsfn
+        }
+    }
+
+    private fun sendKeyboardCommand(json: String) {
+        val tsfn = synchronized(lock) { keyboardTsfn }
+        if (tsfn != null) {
+            runCatching { tsfn(json) }.onFailure { println("[ohos-keyboard] tsfn call failed: $json") }
+        } else {
+            println("[ohos-keyboard] tsfn not registered: $json")
+        }
+    }
+
+    /** 收起软键盘 (对照 inputMethod.getController().stopInputSession)。 */
+    fun hideSoftInput() {
+        sendKeyboardCommand(KS_JSON.encodeToString(KeyboardCommand(action = "hide")))
+    }
+
+    /** 拉起软键盘 (对照 inputMethod.getController().showSoftKeyboard)。 */
+    fun showSoftInput() {
+        sendKeyboardCommand(KS_JSON.encodeToString(KeyboardCommand(action = "show")))
+    }
+
+    /**
+     * 设置键盘避让模式 (对照 UIContext.setKeyboardAvoidMode)。
+     *
+     * @param mode 0=OFFSET (页面整体上推, 对齐 Android ADJUST_PAN),
+     *   1=RESIZE (页面收缩, 对齐 ADJUST_RESIZE), 2=NONE (不避让)
+     */
+    fun setKeyboardAvoidMode(mode: Int) {
+        sendKeyboardCommand(
+            KS_JSON.encodeToString(KeyboardCommand(action = "setAvoidMode", mode = mode))
+        )
+    }
+
+    /** 检查 keyboard 桥是否已就绪。 */
+    fun isKeyboardBridgeReady(): Boolean = synchronized(lock) { keyboardTsfn != null }
+
+    // ===== Permission 同步桥 (tsfn + callback, 同 Pasteboard 模式) =====
+    // 权限查询/申请走 @ohos.abilityAccessCtrl (checkAccessTokenSync / requestPermissionsFromUser),
+    // 查询需返回值故走同步请求/响应模式; 申请只回"是否成功发起"(与 Android 同语义)。
+
+    /** permission threadsafe_function 引用。 */
+    @Volatile
+    private var permissionTsfn: TsfnCallback? = null
+
+    /** 待响应的 permission 同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
+    private val permissionPendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
+
+    /** permission 请求自增 ID (原子性由 [lock] 保护)。 */
+    private var permissionRequestCounter = 0L
+
+    /** 注入 permission tsfn (由 legado_napi.cpp RegisterPermissionCallback 调用)。 */
+    fun registerPermissionFn(tsfn: TsfnCallback) {
+        synchronized(lock) {
+            permissionTsfn = tsfn
+        }
+    }
+
+    /**
+     * permission 结果回调 (由 ArkTS 侧调 @CName legado_permission_callback 触发)。
+     *
+     * @param requestId 对应 [invokePermissionSync] 生成的请求 ID
+     * @param resultJson `{ ok: true, granted: boolean }` 或 `{ ok: false, error: "..." }`
+     */
+    fun onPermissionResult(requestId: Long, resultJson: String) {
+        val deferred = synchronized(lock) { permissionPendingRequests.remove(requestId) }
+        deferred?.complete(resultJson)
+    }
+
+    /**
+     * 同步调用权限操作 (阻塞等待 ArkTS 返回结果)。
+     *
+     * @param action "check" (checkAccessTokenSync) / "request" (requestPermissionsFromUser)
+     * @param payloadJson `{"permission":"ohos.permission.XXX"}`
+     * @param timeoutMs check 极快, request 需用户操作故给 60s
+     * @return 结果 JSON; 桥未就绪或超时返回 null (调用方按"无权限"降级)
+     */
+    fun invokePermissionSync(
+        action: String,
+        payloadJson: String,
+        timeoutMs: Long = 60000L,
+    ): String? {
+        val requestId = synchronized(lock) { ++permissionRequestCounter }
+        val deferred = CompletableDeferred<String>()
+        synchronized(lock) { permissionPendingRequests[requestId] = deferred }
+
+        val requestJson = KS_JSON.encodeToString(
+            PermissionBridgeRequest(requestId = requestId, action = action, payload = payloadJson)
+        )
+        val tsfn = synchronized(lock) { permissionTsfn }
+        if (tsfn == null) {
+            synchronized(lock) { permissionPendingRequests.remove(requestId) }
+            return null
+        }
+        runCatching { tsfn(requestJson) }.onFailure {
+            synchronized(lock) { permissionPendingRequests.remove(requestId) }
+            return null
+        }
+
+        val result = runBlocking { withTimeoutOrNull(timeoutMs) { deferred.await() } }
+        synchronized(lock) { permissionPendingRequests.remove(requestId) }
+        return result
+    }
+
+    /** 检查 permission 桥是否已就绪。 */
+    fun isPermissionBridgeReady(): Boolean = synchronized(lock) { permissionTsfn != null }
+
     /** toast 跨语言传递 payload (序列化为 JSON 给 ArkTS)。 */
     @Serializable
     private data class ToastPayload(
@@ -1172,6 +1332,30 @@ object OhosNativeBridge {
     private data class BatteryBridgeRequest(
         val requestId: Long,
         val action: String,
+    )
+
+    /** permission 桥请求 payload (Kotlin → ArkTS, 同 ImageBridgeRequest 结构, action=check/request)。 */
+    @Serializable
+    private data class PermissionBridgeRequest(
+        val requestId: Long,
+        val action: String,
+        val payload: String,
+    )
+
+    /** share payload (Kotlin → ArkTS, action=text/file, fire-and-forget)。 */
+    @Serializable
+    private data class SharePayload(
+        val action: String,
+        val text: String? = null,
+        val filePath: String? = null,
+        val mimeType: String? = null,
+    )
+
+    /** keyboard 命令 payload (Kotlin → ArkTS, action=show/hide/setAvoidMode)。 */
+    @Serializable
+    private data class KeyboardCommand(
+        val action: String,
+        val mode: Int? = null,
     )
 
     /** openUrl 跨语言传递 payload (序列化为 JSON 给 ArkTS, 同 Toast 模式 fire-and-forget)。 */

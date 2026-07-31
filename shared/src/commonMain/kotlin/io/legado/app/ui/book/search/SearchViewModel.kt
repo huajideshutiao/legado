@@ -20,7 +20,11 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
@@ -41,7 +45,8 @@ import io.legado.app.utils.systemCurrentTimeMillis
  *
  * 下沉自 app 端 `SearchViewModel(application: Application) : BaseViewModel(application)`,
  * 替换 Android 专属依赖:
- * - `androidx.lifecycle.LiveData / MutableLiveData / asLiveData` → `kotlinx.coroutines.flow.MutableStateFlow / asStateFlow`
+ * - `androidx.lifecycle.LiveData / MutableLiveData / asLiveData` → 纯状态用 `MutableStateFlow`,
+ *   事件 (结果列表 / 搜索结束) 用 `MutableSharedFlow(replay=1)` 对齐 postValue 的"每次都投递"
  * - `viewModelScope` → 构造参数 [scope] (默认 `SupervisorJob() + Dispatchers.Default`),
  *   宿主可注入生命周期 scope (桌面端窗口 scope / app 端 viewModelScope)
  * - `BaseViewModel.execute { ... }.onError { ... }` → `scope.launch { ... }` + try/catch
@@ -69,15 +74,32 @@ class SearchViewModel(
     private val _isSearching = MutableStateFlow(false)
     val isSearching = _isSearching.asStateFlow()
 
-    private val _searchBooks = MutableStateFlow<List<SearchBook>>(emptyList())
-    val searchBooks = _searchBooks.asStateFlow()
+    /**
+     * 搜索结果列表 (对照原 `_searchBookFlow: MutableSharedFlow<List<SearchBook>>`)。
+     *
+     * 必须是 SharedFlow: SearchBook 只按 bookUrl 比相等, 增量合并后列表常与上次相等,
+     * 用 StateFlow 会被吞掉, 新增的书源数/最新章就刷不出来。
+     */
+    private val _searchBooks = signalFlow<List<SearchBook>>()
+    val searchBooks: SharedFlow<List<SearchBook>> = _searchBooks.asSharedFlow()
 
     private val _hasMore = MutableStateFlow(true)
     val hasMore = _hasMore.asStateFlow()
 
-    /** 搜索结束时的空结果标志, null 表示未结束或被重置。UI 据此触发"结果为空"对话框。 */
-    private val _searchFinishEmpty = MutableStateFlow<Boolean?>(null)
-    val searchFinishEmpty = _searchFinishEmpty.asStateFlow()
+    /**
+     * 搜索结束信号, 值为"结果是否为空" (对照原 `searchFinishLiveData.postValue(isEmpty)`)。
+     *
+     * 事件语义: UI 收到 true 弹一次"结果为空"对话框, 不是持续渲染的状态。
+     */
+    private val _searchFinishEmpty = signalFlow<Boolean>()
+    val searchFinishEmpty: SharedFlow<Boolean> = _searchFinishEmpty.asSharedFlow()
+
+    /** 事件流工厂: replay=1 + DROP_OLDEST, 语义对齐 LiveData.postValue。 */
+    private fun <T> signalFlow() = MutableSharedFlow<T>(
+        replay = 1,
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
 
     /** searchOptions 结构版本号, UI 监听此变化以重组选项行。 */
     private val _searchOptionsVersion = MutableStateFlow(0)
@@ -146,13 +168,13 @@ class SearchViewModel(
         }
 
         override fun onSearchSuccess(searchBooks: List<SearchBook>) {
-            _searchBooks.value = searchBooks
+            _searchBooks.tryEmit(searchBooks)
         }
 
         override fun onSearchFinish(isEmpty: Boolean, hasMore: Boolean) {
             _hasMore.value = hasMore
             _isSearching.value = false
-            _searchFinishEmpty.value = isEmpty
+            _searchFinishEmpty.tryEmit(isEmpty)
             if (filteredCount > 0) {
                 // 原 R.string.source_filter_rule_filtered_count 文案
                 runCatching { Toasters.get().toast("已过滤 $filteredCount 本") }
@@ -351,10 +373,9 @@ class SearchViewModel(
             if ((searchKey == key) || key.isNotEmpty()) {
                 searchModel.cancelSearch()
                 searchID = systemCurrentTimeMillis()
-                _searchBooks.value = emptyList()
+                _searchBooks.tryEmit(emptyList())
                 searchKey = key
                 _hasMore.value = true
-                _searchFinishEmpty.value = null
                 if (resetOptions && searchOptions.isNotEmpty()) {
                     searchOptions.clear()
                     _searchOptionsVersion.value++

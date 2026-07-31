@@ -3,8 +3,6 @@ package io.legado.desktop.audio
 import io.legado.app.help.http.OkHttpClientProviders
 import javazoom.jl.decoder.Bitstream
 import javazoom.jl.decoder.Header
-import javazoom.jl.player.AudioDevice
-import javazoom.jl.player.FactoryRegistry
 import javazoom.jl.player.advanced.AdvancedPlayer
 import javazoom.jl.player.advanced.PlaybackEvent
 import javazoom.jl.player.advanced.PlaybackListener
@@ -28,9 +26,8 @@ import java.io.InputStream
  *   (AdvancedPlayer 是阻塞模型, stop 后不可复用, resume 需重新 new)
  * - seek: MP3 不支持随机 seek, 通过重新 OkHttp 请求 + skipFrames(targetFrame) 跳帧实现
  *   (开销大于 ExoPlayer SimpleCache, 但桌面端 seek 不频繁, 可接受)
- * - speed: jlayer AdvancedPlayer 1.0.1 不支持运行时变速 (无 setPlayBackRate API);
- *   [setSpeed] 仅更新 speed 字段用于 currentPosition 估算 + 状态推送,
- *   实际播放速率不变 (与 app 端 ExoPlayer.setPlaybackParameters 真正变速有差异, 已知限制)
+ * - speed: [SonicAudioDevice] 在 jlayer PCM 输出层插入 Sonic 变速 (保音高),
+ *   与 app 端 ExoPlayer.setPlaybackParameters 行为一致; speed 同时用于 currentPosition 估算
  * - duration: 从第一帧 MP3 Header + HTTP Content-Length 估算 (bitrate 反推)
  * - position: 用墙钟估算 (playbackStartMs + speed), 不依赖 jlayer 内部 frame 计数
  *
@@ -69,7 +66,7 @@ class DesktopAudioPlayer {
     /** InputStream 包装 OkHttp body stream, 支持 mark/reset (seek 时回退到开头跳帧) */
     @Volatile private var rawStream: InputStream? = null
     @Volatile private var advancedPlayer: AdvancedPlayer? = null
-    @Volatile private var audioDevice: AudioDevice? = null
+    @Volatile private var audioDevice: SonicAudioDevice? = null
 
     @Volatile private var prepareThread: Thread? = null
     @Volatile private var playbackThread: Thread? = null
@@ -267,10 +264,9 @@ class DesktopAudioPlayer {
                     try { stream.reset() } catch (_: Exception) {}
                 }
                 // resume 时 stream 位置已对, 不能 reset (会回到开头跳过已播放部分)
-                val device = FactoryRegistry.systemRegistry().createAudioDevice()
+                // SonicAudioDevice 在 PCM 输出层做保音高变速; 建线程时就带上当前 speed, 避免与 setSpeed 竞争
+                val device = SonicAudioDevice().apply { speed = this@DesktopAudioPlayer.speed }
                 val player = AdvancedPlayer(stream, device)
-                // jlayer 1.0.1 AdvancedPlayer 不支持运行时变速 (无 setPlayBackRate API),
-                // speed 仅影响 currentPosition 估算, 实际播放速率固定为 1.0x
                 player.setPlayBackListener(object : PlaybackListener() {
                     override fun playbackStarted(evt: PlaybackEvent?) {
                         // jlayer 在 play 开始时回调, evt.frame 通常是 fromFrame
@@ -343,6 +339,8 @@ class DesktopAudioPlayer {
         try { advancedPlayer?.stop() } catch (_: Exception) {}
         try { advancedPlayer?.close() } catch (_: Exception) {}
         advancedPlayer = null
+        // 丢弃 Sonic 内残留样本, 避免 seek 后串音
+        try { audioDevice?.resetSonic() } catch (_: Exception) {}
         try { audioDevice?.close() } catch (_: Exception) {}
         audioDevice = null
 
@@ -364,15 +362,16 @@ class DesktopAudioPlayer {
     /**
      * 设置播放速率。对应 app 端 ExoPlayer.setPlaybackParameters(speed)。
      *
-     * 注意: jlayer AdvancedPlayer 1.0.1 不支持运行时变速 (无 setPlayBackRate API),
-     * 此处仅更新 speed 字段用于 [currentPosition] 估算 + 让调用方感知状态变化;
-     * 实际播放速率固定为 1.0x (与 app 端 ExoPlayer 真正变速有差异, 已知限制)。
+     * 由 [SonicAudioDevice] 在 PCM 输出层用 Sonic 变速 (保音高), 立即作用于当前播放;
+     * speed 同时用于 [currentPosition] 的墙钟估算。
      */
     fun setSpeed(rate: Float) {
-        speed = rate
-        // 重新校准墙钟基准, 避免 currentPosition 跳变
+        // 先按旧 speed 结算已播放帧, 再切换, 避免 currentPosition 跳变
         playbackStartFrame = estimateCurrentFrame()
         playbackStartMs = System.currentTimeMillis()
+        // 与 SonicAudioDevice 用同一钳制, 保证 currentPosition 估算与实际播放速率一致
+        speed = SonicAudioDevice.coerceSpeed(rate)
+        audioDevice?.speed = speed
     }
 
     /** 释放所有资源 (OkHttp Response / InputStream / AdvancedPlayer / AudioDevice)。 */
@@ -445,6 +444,8 @@ class DesktopAudioPlayer {
         try { advancedPlayer?.stop() } catch (_: Exception) {}
         try { advancedPlayer?.close() } catch (_: Exception) {}
         advancedPlayer = null
+        // 换章/停止后丢弃 Sonic 残留样本
+        try { audioDevice?.resetSonic() } catch (_: Exception) {}
         try { audioDevice?.close() } catch (_: Exception) {}
         audioDevice = null
         if (clearState) {

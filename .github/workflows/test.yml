@@ -24,6 +24,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# 默认最小权限; 需要写 Release/tag 的 job 单独提权 (见 build.permissions)
+permissions:
+  contents: read
+
 jobs:
 
   prepare:
@@ -48,9 +52,48 @@ jobs:
             echo "telegram=yes" >> $GITHUB_OUTPUT
           fi
 
+  # ===== 单元测试 + shared/desktop 编译校验 (与 build 并行, 快速反馈) =====
+  # 此前 workflow 名为 "Test Build" 却从不跑任何测试; app/src/test 与
+  # shared/src/jvmAndAndroidTest 下 30+ 个测试类长期无人执行, 故补此 job。
+  # 不作为 build 的前置依赖: 测试挂了立刻红叉可见, 但不阻塞 beta 产物发布。
+  check:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Compile shared (jvm) & desktop
+        # 本机常跑的两条验证线; app 侧编译由 build job 的 assemble 覆盖
+        run: |
+          chmod +x gradlew
+          ./gradlew :shared:compileKotlinJvm :desktop:compileKotlin --build-cache --parallel --daemon --warning-mode all
+      - name: Run unit tests (shared jvm + app)
+        # :shared:jvmTest 覆盖 jvmAndAndroidTest 源集; :app:testAppDebugUnitTest 覆盖 app 侧 (flavor=app)
+        run: ./gradlew :shared:jvmTest :app:testAppDebugUnitTest --build-cache --parallel --daemon --warning-mode all
+      - name: Upload test reports
+        # 失败时最需要报告, 故 always()
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            ${{ github.workspace }}/shared/build/reports/tests/
+            ${{ github.workspace }}/app/build/reports/tests/
+          if-no-files-found: ignore
+          retention-days: 7
+
   build:
     needs: prepare
     runs-on: ubuntu-latest
+    # 本 job 要删除/发布 beta Release, 必须显式提权 (仓库默认 token 可能只读)
+    permissions:
+      contents: write
     env:
       product: app
       VERSION: ${{ needs.prepare.outputs.version }}
@@ -65,6 +108,11 @@ jobs:
           distribution: 'temurin'
           java-version: 17
       - name: Release Apk Sign
+        # ⚠️ 安全提示: 签名库 .github/workflows/legado.jks 直接提交在仓库里, 且口令
+        # (gedoor_legado) 明文硬编码在下方 sed 中 —— 任何人 clone 即可签出「看起来官方」的包。
+        # 这是上游 gedoor/legado 的历史做法, 本 fork 沿用。beta 测试包用它尚可接受,
+        # 但不应与 release.yml 的正式签名 (走 RELEASE_KEY_STORE secret) 混用。
+        # 建议 (需用户拍板, 未擅自改动): 改为 secrets 注入, 或明确它只是「公开测试密钥」。
         run: |
           echo "给apk增加签名"
           cp $GITHUB_WORKSPACE/.github/workflows/legado.jks $GITHUB_WORKSPACE/app/legado.jks
@@ -303,9 +351,10 @@ jobs:
             ${{ github.workspace }}/linux/*.rpm
           if-no-files-found: ignore
 
-  # ===== macOS DMG + iOS 编译验证 (与 Android build 并行) =====
+  # ===== macOS DMG (与 Android build 并行) =====
   # macOS DMG: macOS runner 上 jpackage 打包
-  # iOS: 仅验证 shared iOS target 能编过 (klib), 不做 link/archive
+  # iOS 编译/出包已迁出到独立的 .github/workflows/ios.yml (仅 workflow_dispatch 手动触发):
+  # macOS runner 计费是 Linux 的 10 倍, iOS 链路不适合每次 push 都跑。
   macos-build:
     needs: prepare
     runs-on: macos-latest
@@ -343,19 +392,6 @@ jobs:
           name: desktop.dmg
           path: ${{ github.workspace }}/dmg/*.dmg
           if-no-files-found: ignore
-      - name: Compile iOS klib (验证编译, 不导 ipa)
-        # 仅验证 shared iOS target (iosArm64) 能编过, 不做 link/xcodebuild archive/export
-        # shared/build.gradle.kts 已声明 binaries.framework (baseName "shared", isStatic=false),
-        # linkDebugFrameworkIosArm64 任务存在, 但此处刻意仍用 compileKotlinIosArm64 (klib):
-        #   link 阶段要把 quickjs/mbedtls cinterop 的 C 符号真正解析掉, 而 cinterop 只编 .def 内的
-        #   wrapper, 不编 src/cinterop/quickjs-ng/ 与 src/cinterop/mbedtls/ 的 C 源, 缺 iosArm64 .a
-        #   → link 必然未定义符号失败。
-        # 升回 linkDebugFrameworkIosArm64 的条件 (三选一, 满足后改本步 run 并加 framework 产物上传):
-        #   1. 加一步在 macOS runner 上用 Xcode clang 把 quickjs-ng/mbedtls C 源编成 iosArm64 静态库,
-        #      再在 def 里 staticLibraries + libraryPaths 引入; 或
-        #   2. 改用 cmake/CocoaPods 预构建 .a 并提交/缓存; 或
-        #   3. 把 quickjs/mbedtls C 源纳入 cinterop 的 compilerOpts 直编 (需拆分编译单元)。
-        run: ./gradlew :shared:compileKotlinIosArm64 --warning-mode all
 
   # ===== 鸿蒙 .so (debug) (与 Android build 并行) =====
   # 鸿蒙 HAP 需自托管 runner (见下面注释块 ohos-hap), 这里只编译 shared ohosArm64 .so
@@ -429,28 +465,3 @@ jobs:
   #       with:
   #         name: ohos.hap
   #         path: ohosApp/entry/build/default/outputs/default/*.hap
-
-  test_Branch:
-    needs: [ prepare, build ]
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'pull_request' && github.actor == 'gedoor' }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/download-artifact@v4
-        with:
-          path: apk/
-      - working-directory: apk/
-        run: mv */*.apk . ;rm -rf */
-      - name: Push To "test" Branch
-        run: |
-          cd $GITHUB_WORKSPACE/apk/
-          git init
-          git checkout -b test
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote add origin "https://${{ github.actor }}:${{ secrets.ACTIONS_TOKEN }}@github.com/${{ github.actor }}/release"
-          git add *.apk
-          git commit -m "${{ needs.prepare.outputs.versionL }}"
-          git push -f -u origin test

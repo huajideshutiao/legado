@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
  * 单个 [HomeUiState] StateFlow, 并实现 [HomeUiActions]。
  *
  * 对照 app 端 [io.legado.app.ui.main.home.HomeTabState] + HomeViewModel 的数据流:
- * - 6 个 LiveData Observer → 6 个 StateFlow collector (过滤初始 null 避免假触发)
+ * - 6 个 LiveData Observer → tabs 用 StateFlow, 5 个事件用 SharedFlow collector
  * - onPageVisible/onPageChanged/refreshTab/loadInfinite 直接转发到 [viewModelShared]
  * - openManageSection/openManageTab 只翻转 [manageSectionOf]/[manageTab] 状态,
  *   由 MainRoute 据此弹 shared Compose 对话框 (HomeSectionManageDialog/HomeTabManageDialog)
@@ -84,63 +84,52 @@ class HomeScreenModel : ScreenModel, HomeUiActions {
     /** sectionsFlow: 该 tab 的展示项列表已变更 (对照 HomeTabState.onSectionsChanged) */
     private fun observeSections() = scope.launch {
         viewModelShared.sectionsFlow.collect { tabTitle ->
-            if (tabTitle != null) {
-                val sections = HomeTabHelpShared.getSections(tabTitle)
-                _state.update { it.copy(tabSections = it.tabSections + (tabTitle to sections)) }
-            }
+            val sections = HomeTabHelpShared.getSections(tabTitle)
+            _state.update { it.copy(tabSections = it.tabSections + (tabTitle to sections)) }
         }
     }
 
     /** sectionUpdatedFlow: 该展示项书籍已更新, 同时清除 error (对照 HomeTabState.onSectionUpdated) */
     private fun observeSectionUpdated() = scope.launch {
-        viewModelShared.sectionUpdatedFlow.collect { pair ->
-            if (pair != null) {
-                val (tabTitle, sectionId) = pair
-                val key = homeSectionKey(tabTitle, sectionId)
-                val books = viewModelShared.sectionBooks(tabTitle, sectionId)
-                _state.update {
-                    it.copy(
-                        sectionBooks = it.sectionBooks + (key to books),
-                        sectionError = it.sectionError + (key to false),
-                    )
-                }
+        viewModelShared.sectionUpdatedFlow.collect { (tabTitle, sectionId) ->
+            val key = homeSectionKey(tabTitle, sectionId)
+            val books = viewModelShared.sectionBooks(tabTitle, sectionId)
+            _state.update {
+                it.copy(
+                    sectionBooks = it.sectionBooks + (key to books),
+                    sectionError = it.sectionError + (key to false),
+                )
             }
         }
     }
 
     /** sectionLoadingChangedFlow: 加载态变化; 若为无限流 section 同步刷新 hasMore (对照 onSectionLoadingChanged) */
     private fun observeSectionLoading() = scope.launch {
-        viewModelShared.sectionLoadingChangedFlow.collect { pair ->
-            if (pair != null) {
-                val (tabTitle, sectionId) = pair
-                val key = homeSectionKey(tabTitle, sectionId)
-                val loading = viewModelShared.isLoading(tabTitle, sectionId)
-                val infiniteSection = viewModelShared.infiniteSection(tabTitle)
-                _state.update { st ->
-                    val newLoading = st.sectionLoading + (key to loading)
-                    val newHasMore = if (infiniteSection?.id == sectionId) {
-                        st.infiniteHasMore + (tabTitle to viewModelShared.hasMoreInfinite(tabTitle))
-                    } else {
-                        st.infiniteHasMore
-                    }
-                    st.copy(sectionLoading = newLoading, infiniteHasMore = newHasMore)
+        viewModelShared.sectionLoadingChangedFlow.collect { (tabTitle, sectionId) ->
+            val key = homeSectionKey(tabTitle, sectionId)
+            val loading = viewModelShared.isLoading(tabTitle, sectionId)
+            val infiniteSection = viewModelShared.infiniteSection(tabTitle)
+            _state.update { st ->
+                val newLoading = st.sectionLoading + (key to loading)
+                val newHasMore = if (infiniteSection?.id == sectionId) {
+                    st.infiniteHasMore + (tabTitle to viewModelShared.hasMoreInfinite(tabTitle))
+                } else {
+                    st.infiniteHasMore
                 }
+                st.copy(sectionLoading = newLoading, infiniteHasMore = newHasMore)
             }
         }
     }
 
     /** sectionErrorChangedFlow: 加载失败, 置 error + 清 loading (对照 HomeTabState.onSectionError) */
     private fun observeSectionError() = scope.launch {
-        viewModelShared.sectionErrorChangedFlow.collect { pair ->
-            if (pair != null) {
-                val (tabTitle, sectionId) = pair
-                val key = homeSectionKey(tabTitle, sectionId)
-                _state.update {
-                    it.copy(
-                        sectionError = it.sectionError + (key to true),
-                        sectionLoading = it.sectionLoading + (key to false),
-                    )
-                }
+        viewModelShared.sectionErrorChangedFlow.collect { (tabTitle, sectionId) ->
+            val key = homeSectionKey(tabTitle, sectionId)
+            _state.update {
+                it.copy(
+                    sectionError = it.sectionError + (key to true),
+                    sectionLoading = it.sectionLoading + (key to false),
+                )
             }
         }
     }
@@ -150,17 +139,14 @@ class HomeScreenModel : ScreenModel, HomeUiActions {
      * ExploreOption 就地可变且相等性忽略选中态, 靠 version 递增保证 StateFlow 一定发射。
      */
     private fun observeSectionOptions() = scope.launch {
-        viewModelShared.sectionOptionsChangedFlow.collect { pair ->
-            if (pair != null) {
-                val (tabTitle, sectionId) = pair
-                val key = homeSectionKey(tabTitle, sectionId)
-                val options = viewModelShared.sectionOptions(tabTitle, sectionId)
-                _state.update {
-                    it.copy(
-                        sectionOptions = it.sectionOptions + (key to options),
-                        sectionOptionsVersion = it.sectionOptionsVersion + 1,
-                    )
-                }
+        viewModelShared.sectionOptionsChangedFlow.collect { (tabTitle, sectionId) ->
+            val key = homeSectionKey(tabTitle, sectionId)
+            val options = viewModelShared.sectionOptions(tabTitle, sectionId)
+            _state.update {
+                it.copy(
+                    sectionOptions = it.sectionOptions + (key to options),
+                    sectionOptionsVersion = it.sectionOptionsVersion + 1,
+                )
             }
         }
     }

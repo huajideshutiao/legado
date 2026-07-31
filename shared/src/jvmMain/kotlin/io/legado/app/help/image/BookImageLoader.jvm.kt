@@ -5,10 +5,11 @@ import androidx.compose.ui.graphics.asComposeImageBitmap
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
-import coil3.disk.DiskCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import coil3.size.Precision
+import coil3.size.Scale
 import coil3.toBitmap
 import io.legado.app.help.file.desktopAppCacheDir
 import io.legado.app.help.http.OkHttpClientProviders
@@ -17,7 +18,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
-import okio.Path.Companion.toPath
 import java.io.File
 
 /**
@@ -26,8 +26,8 @@ import java.io.File
  * - 拦截器/Fetcher/Keyer 全套复用 jvmAndAndroidMain 现成件 (失败跳过/封面解密/防盗链 header)
  * - 网络层: OkHttp 后端, callFactory 惰性取 [OkHttpClientProviders] 共享 client
  *   (继承 CookieJar/限流; 惰性求值避免装配时机早于 HTTP provider 注册)
- * - diskCache: [desktopAppCacheDir]/image_cache (Coil3 JVM 默认落系统临时目录 coil3_disk_cache,
- *   显式定向到应用缓存目录; 尺寸走 Builder 默认策略)
+ * - diskCache: 双区 [buildImageDiskCache] —— 书架封面落数据目录 `filesDir/covers`,
+ *   其余图片落 [desktopAppCacheDir]/image_cache (Coil3 JVM 默认落系统临时目录, 显式定向)
  *
  * 进程内单实例: DiskCache 同目录不可多实例 (okio 文件锁冲突),
  * [SingletonImageLoader] 与 [JvmBookImageLoader] 共用本 lazy。
@@ -46,9 +46,7 @@ private val jvmBookImageLoader: ImageLoader by lazy {
             }))
         }
         .diskCache {
-            DiskCache.Builder()
-                .directory(File(desktopAppCacheDir(), "image_cache").absolutePath.toPath())
-                .build()
+            buildImageDiskCache(File(desktopAppCacheDir(), "image_cache").absolutePath)
         }
         .build()
 }
@@ -75,22 +73,53 @@ class JvmBookImageLoader : BookImageLoader {
     ) {
         coroutineScope.launch {
             try {
-                val request = ImageRequest.Builder(PlatformContext.INSTANCE)
-                    .data(url)
-                    .sourceOrigin(sourceOrigin)
-                    .build()
-                val result = jvmBookImageLoader.execute(request)
-                if (result is SuccessResult) {
-                    val bitmap = result.image?.toBitmap()
-                        ?: error("Coil3 SuccessResult.image 为 null")
-                    onSuccess(bitmap.asComposeImageBitmap())
-                } else {
-                    error("Coil3 加载失败: $result")
-                }
+                onSuccess(
+                    loadImageOrNull(url, sourceOrigin) ?: error("Coil3 加载失败: $url")
+                )
             } catch (t: Throwable) {
                 onError(t)
             }
         }
+    }
+
+    override suspend fun loadImageOrNull(
+        url: String,
+        sourceOrigin: String?,
+        widthPx: Int,
+        heightPx: Int,
+    ): ImageBitmap? = execute(url, sourceOrigin, widthPx, heightPx, persistent = false)
+
+    override suspend fun loadCoverOrNull(
+        url: String,
+        sourceOrigin: String?,
+        widthPx: Int,
+        heightPx: Int,
+    ): ImageBitmap? = execute(url, sourceOrigin, widthPx, heightPx, persistent = true)
+
+    /** [persistent] 为 true 时改写 diskCacheKey, 由 [MultiDiskCache] 分流到封面持久区。 */
+    private suspend fun execute(
+        url: String,
+        sourceOrigin: String?,
+        widthPx: Int,
+        heightPx: Int,
+        persistent: Boolean,
+    ): ImageBitmap? {
+        val request = ImageRequest.Builder(PlatformContext.INSTANCE)
+            .data(url)
+            .sourceOrigin(sourceOrigin)
+            .apply {
+                if (persistent) diskCacheKey(coverDiskCacheKey(url))
+                // 按显示尺寸降采样; FILL 对齐消费端 ContentScale.Crop, INEXACT 允许复用更大的内存缓存项
+                if (widthPx > 0 && heightPx > 0) {
+                    size(widthPx, heightPx)
+                    scale(Scale.FILL)
+                    precision(Precision.INEXACT)
+                }
+            }
+            .build()
+        val result = jvmBookImageLoader.execute(request)
+        val bitmap = (result as? SuccessResult)?.image?.toBitmap() ?: return null
+        return bitmap.asComposeImageBitmap()
     }
 }
 

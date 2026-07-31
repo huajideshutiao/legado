@@ -11,12 +11,20 @@ on:
       - '**/modules/web/**'
   workflow_dispatch:
 
-env:
-  UPSTREAM_REPOSITORY: huajideshutiao/legado
+# 同分支只跑一个实例, 避免两次 web 构建并发 auto-commit 打架
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # git-auto-commit-action 需要回写仓库
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -43,6 +51,9 @@ jobs:
       - uses: actions/cache@v4
         name: Setup pnpm cache
         with:
+          # 注: modules/web 里只有 package-lock.json (npm), 没有 pnpm-lock.yaml,
+          # 所以这里只能按 package.json 做 key, 且 `pnpm i` 无法用 --frozen-lockfile 锁版本。
+          # 要可复现构建, 应补一个 pnpm-lock.yaml 并改用 pnpm i --frozen-lockfile。
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/web/package.json') }}
           restore-keys: |
@@ -53,12 +64,9 @@ jobs:
         run: |
           pnpm i
           # 确保使用生产模式构建，启用代码压缩和优化
+          # 产物落位由 package.json 的 build 脚本末尾 node ./scripts/sync.js 负责,
+          # 同步到 shared/src/commonMain/composeResources/files/web/ (即下方 file_pattern)
           NODE_ENV=production pnpm build
-          # 优化字体文件
-          if [ -d "dist/assets" ]; then
-            # 压缩字体文件（如果有）
-            find dist/assets -name "*.woff" -o -name "*.ttf" | xargs -I {} gzip -9 -c {} > {}.gz || true
-          fi
           # 显示构建产物大小
           echo "构建产物大小："
           du -sh dist/

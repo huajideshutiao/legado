@@ -1,13 +1,13 @@
 package io.legado.app.data
 
-import androidx.room.RoomDatabase
+import androidx.room3.RoomDatabase
 
 /**
  * Android 端 [DatabaseDriverProvider] 实现: 委托给 Room。
  *
  * # 设计要点
  * - **不直接构造 RoomDatabase**: 那仍由 app 端 [appDb] 单例负责
- *   (依赖 appCtx + FrameworkSQLiteOpenHelperFactory + DefaultData + Locale.CHINESE)
+ *   (依赖 appCtx + AndroidSQLiteDriver + DefaultData + Locale.CHINESE)
  * - 本类作为"已构造的 Room 数据库"的包装, 暴露给 commonMain 经 [DatabaseDriverProvider] 契约访问
  * - [rawDatabase] 返回 [RoomDatabase] (实际为 [AppDatabase] 实例), commonMain 端只看到 [Any]
  *
@@ -30,19 +30,18 @@ class RoomDatabaseDriver(
         get() = AppDatabase.DATABASE_NAME
 
     override val databaseVersion: Int
-        // app 端 appDb 走框架 SupportSQLiteOpenHelper, version 与 @Database(version=86) 同步
+        // app 端 appDb 走 AndroidSQLiteDriver, version 与 @Database(version=86) 同步
         get() = 86
 
     override val isInitialized: Boolean
-        get() = db.isOpen
+        // Room 3 移除了 SupportSQLite 系的 isOpen; 实例由构造方传入, 存在即已初始化
+        get() = true
 
     override val rawDatabase: Any
         get() = db
 
     override fun close() {
         // 幂等: RoomDatabase.close() 内部已处理重复调用
-        if (db.isOpen) {
-            db.close()
-        }
+        db.close()
     }
 }

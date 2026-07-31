@@ -42,14 +42,26 @@ package io.legado.app.ui.main
  */
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import io.legado.app.constant.BottomNavTag
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -57,8 +69,11 @@ import kotlinx.coroutines.flow.SharedFlow
 
 /**
  * 主界面(附录 H): HorizontalPager 四 tab(等价 ViewPager offscreenPageLimit=3 全驻留 + 横滑)
- * + 自绘底栏。四 tab 均为纯 composable, 由调用方经 lambda 注入; pager 跳转/重选经回调
+ * + 自绘导航栏。四 tab 均为纯 composable, 由调用方经 lambda 注入; pager 跳转/重选经回调
  * 回传给宿主(供返回键/reselect/recreate 调用)。
+ *
+ * 导航栏按窗口宽度切换方位: ≥[MainNavRailMinWindowWidth] 用左侧 [MainNavRail], 否则用底部
+ * [MainBottomBar]; 两者视觉/配置项完全一致, 只差排列方向。
  *
  * @param visibleTags 可见 tag 列表(BottomNavTag 字符串, 顺序含配置校验)
  * @param initialPage 首页落点(等价旧 upHomePage, 仅初始组合时消费)
@@ -107,14 +122,23 @@ fun MainScreen(
     // 父级消费 statusBars 后, 子 Tab 顶栏自带的 statusBarsPadding() 拿到 0 inset, 不会双倍 padding。
     val eInk = LocalEInk.current
     val insetsModifier = if (eInk) Modifier else Modifier.platformStatusBarPadding()
-    Column(Modifier.fillMaxSize().then(insetsModifier)) {
+
+    // 窗口宽度决定导航栏方位: 宽窗口(桌面/平板横屏)走左侧竖排, 窄窗口维持底栏。
+    // derivedStateOf: 拖动窗口时 containerSize 每帧变化, 只在越过阈值时才重组
+    val windowInfo = LocalWindowInfo.current
+    val density = LocalDensity.current
+    val useNavRail by remember(windowInfo, density) {
+        derivedStateOf {
+            with(density) { windowInfo.containerSize.width.toDp() } >= MainNavRailMinWindowWidth
+        }
+    }
+
+    val pager: @Composable (Modifier) -> Unit = { modifier ->
         HorizontalPager(
             state = pagerState,
             beyondViewportPageCount = 3,
             key = { i -> visibleTags[i] },
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
+            modifier = modifier,
         ) { page ->
             when (visibleTags[page]) {
                 BottomNavTag.HOME -> homeTab()
@@ -124,14 +148,41 @@ fun MainScreen(
                 else -> myTab()
             }
         }
-        MainBottomBar(
-            tags = visibleTags,
-            selectedIndex = pagerState.currentPage,
-            onSelect = { onSelectPage(it, true) },
-            onReselect = onReselect,
-            iconSize = bottomBarIconSize,
-            barHeight = bottomBarHeight,
-            labelMode = bottomBarLabelMode,
-        )
+    }
+
+    if (useNavRail) {
+        Row(Modifier.fillMaxSize().then(insetsModifier)) {
+            MainNavRail(
+                tags = visibleTags,
+                selectedIndex = pagerState.currentPage,
+                onSelect = { onSelectPage(it, true) },
+                onReselect = onReselect,
+                iconSize = bottomBarIconSize,
+                itemHeight = bottomBarHeight,
+                labelMode = bottomBarLabelMode,
+            )
+            // 底栏移走后内容延伸到窗口底部, 需自行避让系统导航条 (左侧那份由侧栏消费)
+            pager(
+                Modifier
+                    .fillMaxHeight()
+                    .weight(1f)
+                    .windowInsetsPadding(
+                        WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)
+                    )
+            )
+        }
+    } else {
+        Column(Modifier.fillMaxSize().then(insetsModifier)) {
+            pager(Modifier.fillMaxWidth().weight(1f))
+            MainBottomBar(
+                tags = visibleTags,
+                selectedIndex = pagerState.currentPage,
+                onSelect = { onSelectPage(it, true) },
+                onReselect = onReselect,
+                iconSize = bottomBarIconSize,
+                barHeight = bottomBarHeight,
+                labelMode = bottomBarLabelMode,
+            )
+        }
     }
 }

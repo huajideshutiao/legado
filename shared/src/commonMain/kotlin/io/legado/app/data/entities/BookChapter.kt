@@ -1,8 +1,8 @@
 package io.legado.app.data.entities
 
-import androidx.room.Entity
-import androidx.room.ForeignKey
-import androidx.room.Ignore
+import androidx.room3.Entity
+import androidx.room3.ForeignKey
+import androidx.room3.Ignore
 import io.legado.app.help.RuleBigDataProviders
 import io.legado.app.model.analyzeRule.RuleDataInterface
 import io.legado.app.utils.MD5Utils

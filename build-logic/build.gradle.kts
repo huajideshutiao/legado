@@ -17,11 +17,25 @@ java {
     }
 }
 
+// 官方 KGP 没有 ohosArm64 target，只有 CPF 分支有；开关打开时整条插件工具链切到 CPF 版本。
+val enableOhosTarget = providers.gradleProperty("enableOhosTarget").orNull?.toBoolean() ?: false
+val catalog = extensions.getByType<VersionCatalogsExtension>().named("libs")
+fun version(alias: String) = catalog.findVersion(alias).get().requiredVersion
+val kotlinVersion = version(if (enableOhosTarget) "kotlin-ohos" else "kotlin")
+val composeVersion = version(if (enableOhosTarget) "composeMultiplatform-ohos" else "composeMultiplatform")
+
 dependencies {
     // 与主构建工具链对齐，避免约定插件向子项目注入旧版 Kotlin/Compose 插件。
-    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:2.2.21")
-    implementation("com.android.tools.build:gradle:8.13.2")
-    implementation("org.jetbrains.compose:compose-gradle-plugin:1.9.2")
+    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
+    implementation("com.android.tools.build:gradle:${version("agp")}")
+    implementation("org.jetbrains.compose:compose-gradle-plugin:$composeVersion")
+}
+
+// ohosArm64 DSL 只在 CPF KGP 上存在，关闭时整个源码目录不参与编译。
+if (enableOhosTarget) {
+    sourceSets.named("main") {
+        kotlin.srcDir("src/ohos/kotlin")
+    }
 }
 
 gradlePlugin {
@@ -41,6 +55,12 @@ gradlePlugin {
         register("compose") {
             id = "legado.compose"
             implementationClass = "io.legado.buildlogic.ComposeConventionPlugin"
+        }
+        if (enableOhosTarget) {
+            register("kmpOhos") {
+                id = "legado.kmp.ohos"
+                implementationClass = "io.legado.buildlogic.OhosTargetConventionPlugin"
+            }
         }
     }
 }

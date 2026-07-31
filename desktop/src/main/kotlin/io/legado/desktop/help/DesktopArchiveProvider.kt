@@ -1,22 +1,18 @@
 package io.legado.desktop.help
 
-import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.archive.ArchiveProvider
 import io.legado.app.help.archive.ArchiveProviders
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.utils.MD5Utils
-import java.io.ByteArrayInputStream
+import io.legado.desktop.help.archive.DesktopArchiveCodec
 import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
 
 /**
  * [ArchiveProvider] 桌面 JVM 实现。
  *
- * zip 走 JDK [ZipInputStream]; rar/7z 无 native libarchive, 抛 [NoStackTraceException]。
- * 在 desktop Main.kt 经 [registerDesktopArchiveProvider] 注入, 供 JsExtensionsCommon 压缩方法跨端调用。
+ * 解压委托 [DesktopArchiveCodec] (commons-compress + junrar), 覆盖 zip/7z/tar/gz/bz2/xz/lzma
+ * 与 rar4/5/7。在 desktop Main.kt 经 [registerDesktopArchiveProvider] 注入,
+ * 供 JsExtensionsCommon 压缩方法跨端调用。
  *
  * 解压临时目录对齐 app 端 ArchiveUtils: `cacheDir/{tempFolderName}/{md5(basename)}`。
  */
@@ -30,61 +26,13 @@ object DesktopArchiveProvider : ArchiveProvider {
         val cachePath = AppFilesDirs.get().cacheDir
         val workDir = File(cachePath, tempFolderName).resolve(MD5Utils.md5Encode16(name))
         workDir.mkdirs()
-
-        val ext = archivePath.substringAfterLast('.', "").lowercase()
-        return when (ext) {
-            "zip" -> unzipTo(archivePath, workDir)
-            "rar", "7z" -> throw NoStackTraceException(
-                "desktop 无 libarchive, 暂不支持 $ext 解压"
-            )
-            else -> throw IllegalArgumentException("Unexpected file suffix: $ext")
-        }
+        return DesktopArchiveCodec.unArchive(File(archivePath), workDir, null)
+            .map { it.absolutePath }
     }
 
     override fun getByteArrayContent(bytes: ByteArray, path: String): ByteArray? {
-        // 桌面端无 libarchive, 仅尝试 zip 解析; 非 zip (rar/7z) 返回 null 由调用方回退
-        return runCatching {
-            ByteArrayInputStream(bytes).use { input ->
-                ZipInputStream(input).use { zis ->
-                    var entry: ZipEntry? = zis.nextEntry
-                    while (entry != null) {
-                        if (!entry.isDirectory && entry.name == path) {
-                            return@use zis.readBytes()
-                        }
-                        zis.closeEntry()
-                        entry = zis.nextEntry
-                    }
-                    null
-                }
-            }
-        }.getOrNull()
-    }
-
-    // 解压 zip 到 workDir, 防 Zip Slip (entry.name 含 ../ 跳出 workDir)
-    private fun unzipTo(archivePath: String, workDir: File): List<String> {
-        val extracted = mutableListOf<String>()
-        val canonicalWorkDir = workDir.canonicalPath
-        FileInputStream(archivePath).use { fis ->
-            ZipInputStream(fis).use { zis ->
-                while (true) {
-                    val entry = zis.nextEntry ?: break
-                    if (!entry.isDirectory) {
-                        val outFile = File(workDir, entry.name)
-                        // Zip Slip 防护: 解压目标必须仍在 workDir 内
-                        if (!outFile.canonicalPath.startsWith(canonicalWorkDir + File.separator) &&
-                            outFile.canonicalPath != canonicalWorkDir
-                        ) {
-                            throw SecurityException("Zip slip detected: ${entry.name}")
-                        }
-                        outFile.parentFile?.mkdirs()
-                        FileOutputStream(outFile).use { fos -> zis.copyTo(fos) }
-                        extracted.add(outFile.absolutePath)
-                    }
-                    zis.closeEntry()
-                }
-            }
-        }
-        return extracted
+        // 格式由魔数嗅探, 解析失败返回 null 由调用方回退 (对齐原 zip-only 实现的容错语义)
+        return runCatching { DesktopArchiveCodec.getByteArrayContent(bytes, path) }.getOrNull()
     }
 }
 

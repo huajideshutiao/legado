@@ -53,6 +53,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
 import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.all
 import legado.shared.generated.resources.close
 import legado.shared.generated.resources.match_case
 import legado.shared.generated.resources.match_whole_word

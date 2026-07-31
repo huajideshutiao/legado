@@ -2,17 +2,20 @@
 
 package io.legado.app.help.crypto
 
-import kotlinx.cinterop.CPointerVar
+import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.MemScope
 import kotlinx.cinterop.UByteVar
+import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
-import kotlinx.cinterop.cValuesOf
+import kotlinx.cinterop.allocArrayOf
 import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.pointed
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.readBytes
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
+import kotlinx.cinterop.value
 import platform.CoreFoundation.CFDataCreate
 import platform.CoreFoundation.CFDataGetBytePtr
 import platform.CoreFoundation.CFDataGetLength
@@ -80,8 +83,8 @@ internal object IosCryptoNative {
             memScoped {
                 val attrs = CFDictionaryCreate(
                     kCFAllocatorDefault,
-                    cValuesOf(*keys),
-                    cValuesOf(*values),
+                    allocArrayOf(keys.toList()),
+                    allocArrayOf(values.toList()),
                     keys.size.toLong(),
                     kCFTypeDictionaryKeyCallBacks.ptr,
                     kCFTypeDictionaryValueCallBacks.ptr
@@ -90,7 +93,7 @@ internal object IosCryptoNative {
                 val secKey = SecKeyCreateWithData(keyData, attrs, err)
                 attrs?.let { CFRelease(it) }
                 if (secKey == null) {
-                    throwIosCryptoError("SecKeyCreateWithData", err.pointed?.value)
+                    throwIosCryptoError("SecKeyCreateWithData", err.pointed.value)
                 }
                 secKey
             }
@@ -99,9 +102,6 @@ internal object IosCryptoNative {
         }
     }
 
-    /** memScoped 内 alloc 一个 CFErrorRef 输出槽 (CPointer<CFErrorRefVar>), 直接传给 SecKey* 的 error 参数, 用 .pointed.value 读 CFErrorRef。 */
-    fun MemScope.allocCFError(): kotlinx.cinterop.CPointer<CFErrorRefVar> = alloc()
-
     /** 读 CFError code 抛异常 (CFErrorGetCode); CFError 由系统在 err 槽内分配, 此处 CFRelease。 */
     fun throwIosCryptoError(op: String, err: CFErrorRef?): Nothing {
         val code = if (err != null) CFErrorGetCode(err).toString() else "null"
@@ -109,3 +109,7 @@ internal object IosCryptoNative {
         throw UnsupportedOperationException("iOS crypto $op failed (errSecCode=$code)")
     }
 }
+
+/** memScoped 内 alloc 一个 CFErrorRef 输出槽 (CPointer<CFErrorRefVar>), 直接传给 SecKey* 的 error 参数, 用 .pointed.value 读 CFErrorRef。 */
+@OptIn(ExperimentalForeignApi::class)
+internal fun MemScope.allocCFError(): CPointer<CFErrorRefVar> = alloc<CFErrorRefVar>().ptr

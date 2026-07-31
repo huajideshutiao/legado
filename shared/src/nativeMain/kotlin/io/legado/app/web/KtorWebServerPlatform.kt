@@ -9,6 +9,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.web.utils.AssetsWeb
 import io.legado.app.web.utils.WebStringsProviders
+import kotlin.concurrent.Volatile
 import kotlinx.cinterop.CPointerVar
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.alloc
@@ -73,12 +74,12 @@ abstract class KtorWebServerPlatform : WebServerPlatform {
             WebServerStartResult(getLocalIPv4Addresses().map { "http://$it:$port" })
         } catch (e: Exception) {
             // 对齐 JvmWebServerPlatform catch: AppLog + 清理半启动状态 + 异常信息回传
-            AppLog.put("startServers failed: ${e.localizedMessage}", e)
+            AppLog.put("startServers failed: ${e.message}", e)
             runCatching { httpEngine.stop(1000, 2000) }
             runCatching { wsEngine.stop(1000, 2000) }
             this.httpEngine = null
             this.wsEngine = null
-            WebServerStartResult(errorMsg = e.localizedMessage ?: "")
+            WebServerStartResult(errorMsg = e.message ?: "")
         }
     }
 

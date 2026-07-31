@@ -10,6 +10,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# 默认最小权限; 各 job 按需单独提 contents: write
+permissions:
+  contents: read
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -182,6 +186,11 @@ jobs:
           name: ${{ env.VERSION }}
           tag: ${{ env.VERSION }}
           allowUpdates: true
+          # 追加资产时不要回写 body/name: 本 step 没传 bodyFile, 若不 omit,
+          # ncipollo 会把 build job 生成的 RELEASE_NOTES.md 覆盖成空白。
+          # (desktop/linux/macos/ios/ohos 多个 job 并行更新同一 tag, 每个都会踩)
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
           artifacts: ${{ github.workspace }}/msi/*.msi
       # Windows 便携版 zip: 复用 createDistributable 产物 (MSI 上游), 仅打 zip 不经安装器
       - name: Build portable zip
@@ -206,6 +215,11 @@ jobs:
           name: ${{ env.VERSION }}
           tag: ${{ env.VERSION }}
           allowUpdates: true
+          # 追加资产时不要回写 body/name: 本 step 没传 bodyFile, 若不 omit,
+          # ncipollo 会把 build job 生成的 RELEASE_NOTES.md 覆盖成空白。
+          # (desktop/linux/macos/ios/ohos 多个 job 并行更新同一 tag, 每个都会踩)
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
           artifacts: ${{ github.workspace }}/portable/*.zip
 
   # Linux DEB/RPM: Ubuntu runner 上 jpackage 调 dpkg-deb / rpmbuild
@@ -260,6 +274,11 @@ jobs:
           name: ${{ env.VERSION }}
           tag: ${{ env.VERSION }}
           allowUpdates: true
+          # 追加资产时不要回写 body/name: 本 step 没传 bodyFile, 若不 omit,
+          # ncipollo 会把 build job 生成的 RELEASE_NOTES.md 覆盖成空白。
+          # (desktop/linux/macos/ios/ohos 多个 job 并行更新同一 tag, 每个都会踩)
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
           artifacts: |
             ${{ github.workspace }}/linux/*.deb
             ${{ github.workspace }}/linux/*.rpm
@@ -311,10 +330,17 @@ jobs:
           name: ${{ env.VERSION }}
           tag: ${{ env.VERSION }}
           allowUpdates: true
+          # 追加资产时不要回写 body/name: 本 step 没传 bodyFile, 若不 omit,
+          # ncipollo 会把 build job 生成的 RELEASE_NOTES.md 覆盖成空白。
+          # (desktop/linux/macos/ios/ohos 多个 job 并行更新同一 tag, 每个都会踩)
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
           artifacts: ${{ github.workspace }}/dmg/*.dmg
 
-  # iOS IPA: macOS runner 上完整 archive + export 流程, 追加到 Release
-  # 流程: 1.编 shared.framework(release) 2.xcodegen 生成工程 3.xcodebuild archive 4.xcodebuild -exportArchive 导 IPA
+  # iOS IPA (未签名): macOS runner 上 archive + 打包, 追加到 Release
+  # 流程: 1.预编 quickjs-ng/mbedtls iOS 静态库 2.link release framework 3.xcodegen 生成工程
+  #       4.xcodebuild archive (全程关签名) 5.按 Payload/ 规范打未签名 ipa
+  # 未签名是刻意的: 本项目不上架 App Store, ipa 供 SideStore/AltStore/Xcode 自签侧载, 不碰签名 secrets。
   ios-build:
     needs: [ prepare, build ]
     runs-on: macos-latest
@@ -333,73 +359,89 @@ jobs:
           java-version: 17
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-      - name: Compile shared iOS klib (验证编译)
-        # 1. shared/build.gradle.kts 已声明 binaries.framework (baseName "shared", isStatic=false),
-        #    linkReleaseFrameworkIosArm64 任务存在, 但此处刻意仍用 compileKotlinIosArm64 (klib):
-        #    link 要解析 quickjs/mbedtls cinterop 的 C 符号, 而 cinterop 只编 .def 内 wrapper,
-        #    不编 src/cinterop/quickjs-ng/ 与 src/cinterop/mbedtls/ 的 C 源, 缺 iosArm64 .a → link 必失败。
-        #    故此处只保证 Kotlin 侧编译无回归; 缺 shared.framework 时后续 archive 会失败 (已 continue-on-error)。
-        #    升回 linkReleaseFrameworkIosArm64 (从而打通完整 IPA 流程) 的条件 (三选一):
-        #      a. macOS runner 上用 Xcode clang 预编 quickjs-ng/mbedtls 为 iosArm64 静态库,
-        #         .def 里 staticLibraries + libraryPaths 引入; 或
-        #      b. cmake/CocoaPods 预构建 .a 并提交/缓存; 或
-        #      c. 把 C 源纳入 cinterop compilerOpts 直编 (需拆分编译单元)。
-        run: ./gradlew :shared:compileKotlinIosArm64 --warning-mode all
-      - name: Install XcodeGen
-        # 2. 用 xcodegen 从 project.yml 生成 .xcodeproj (避免二进制工程文件冲突)
-        run: brew install xcodegen
-      - name: Patch project.yml for release framework
-        # 3. project.yml 中 dependencies.framework 硬编码 debugFramework, release 构建前改成 releaseFramework
-        #    只替换 dependencies 那一行 (含 "framework: " 前缀), 不影响 preBuildScripts 里的 if 判断
+      - name: Cache Kotlin/Native toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: konan-${{ runner.os }}-
+      - name: Cache iOS native static libs
+        # 只依赖 C 源与构建脚本; key 与 ios.yml 不同 (那边编真机+模拟器两套, 这里只要真机)
+        id: cache-native
+        uses: actions/cache@v4
+        with:
+          path: shared/build/iosNativeLibs
+          key: ios-native-device-${{ runner.os }}-${{ hashFiles('shared/src/cinterop/quickjs-ng/**', 'shared/src/cinterop/mbedtls/**', 'scripts/build-ios-native.sh') }}
+      - name: Build iOS native static libs (quickjs-ng + mbedtls)
+        # cinterop 只编 .def 内 wrapper, C 源目标码要单独出 .a, 否则 framework link 报未定义符号
+        if: steps.cache-native.outputs.cache-hit != 'true'
         run: |
-          sed -i '' "s|framework: ../shared/build/bin/iosArm64/debugFramework/shared.framework|framework: ../shared/build/bin/iosArm64/releaseFramework/shared.framework|" $GITHUB_WORKSPACE/iosApp/project.yml
+          chmod +x scripts/build-ios-native.sh
+          ./scripts/build-ios-native.sh ios_arm64
+      - name: Link shared framework (release)
+        run: ./gradlew :shared:linkReleaseFrameworkIosArm64 --stacktrace --warning-mode all --continue
+      - name: Install XcodeGen
+        # 用 xcodegen 从 project.yml 生成 .xcodeproj (避免二进制工程文件冲突)
+        run: brew install xcodegen
       - name: Generate Xcode project
         working-directory: iosApp/
         run: xcodegen generate
-      - name: Archive
-        # 4. xcodebuild archive 生成 .xcarchive
-        #    CODE_SIGNING_ALLOWED=NO: CI 无 Apple 证书, 跳过签名生成未签名 archive
-        #    continue-on-error: 无证书时 archive 可能失败, 不阻塞其他产物发布
+      - name: Archive (unsigned)
+        # 无 Apple 证书: 关掉全部签名。CODE_SIGN_STYLE=Manual 是为了绕开 Automatic
+        # 在 DEVELOPMENT_TEAM 为空时的 "requires a development team" 报错。
+        # framework 由 project.yml 的 preBuildScript (embedAndSignAppleFrameworkForXcode) 嵌入。
         working-directory: iosApp/
         run: |
           xcodebuild archive \
+            -project iosApp.xcodeproj \
             -scheme iosApp \
             -configuration Release \
+            -destination 'generic/platform=iOS' \
             -archivePath build/iosApp.xcarchive \
-            -destination "generic/platform=iOS" \
-            CODE_SIGNING_ALLOWED=NO
-        continue-on-error: true
-      - name: Export IPA
-        # 5. xcodebuild -exportArchive 导出 IPA (需 ExportOptions.plist)
-        #    先用 sed 把 ExportOptions.plist 里的 ${APPLE_TEAM_ID} 占位符替换成实际 secret
-        #    无证书/无 teamID 时导出可能失败, continue-on-error 不阻塞
-        working-directory: iosApp/
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER=""
+      - name: Package unsigned IPA
+        id: ipa
+        # 不用 xcodebuild -exportArchive: 它必须有签名身份+描述文件。
+        # 未签名 ipa 就是 Payload/xxx.app 的 zip, 侧载工具自行重签。
         run: |
-          sed -i '' "s|\${APPLE_TEAM_ID}|${{ secrets.APPLE_TEAM_ID }}|" ExportOptions.plist
-          xcodebuild -exportArchive \
-            -archivePath build/iosApp.xcarchive \
-            -exportPath build/ipa \
-            -exportOptionsPlist ExportOptions.plist \
-            CODE_SIGNING_ALLOWED=NO
-        continue-on-error: true
-      - name: Collect IPA
-        # archive/export 失败时 build/ipa 目录不存在, find 会非零退出; 兜底不让整个 job 失败
-        run: |
-          mkdir -p ${{ github.workspace }}/ipa/
-          find ${{ github.workspace }}/iosApp/build/ipa -name "*.ipa" -exec mv {} ${{ github.workspace }}/ipa/ \; 2>/dev/null || true
+          set -e
+          APP_PATH="$(find ${{ github.workspace }}/iosApp/build/iosApp.xcarchive/Products/Applications -maxdepth 1 -name '*.app' | head -1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "未找到 .app, 跳过 ipa 打包"
+            exit 1
+          fi
+          rm -rf ${{ github.workspace }}/ipa
+          mkdir -p ${{ github.workspace }}/ipa/Payload
+          cp -R "$APP_PATH" ${{ github.workspace }}/ipa/Payload/
+          cd ${{ github.workspace }}/ipa
+          zip -qry "legado-${{ env.VERSION }}-ios-unsigned.ipa" Payload
+          rm -rf Payload
+          ls -lh *.ipa
+          echo "found=yes" >> $GITHUB_OUTPUT
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ios.ipa
+          name: ios.ipa.unsigned
           path: ${{ github.workspace }}/ipa/*.ipa
           if-no-files-found: ignore
       - name: Upload IPA to Release
-        # 追加 IPA 到同一 Release (有证书时产出 IPA, 无证书时无文件跳过)
+        # 追加 IPA 到同一 Release; 打包失败时不跑, 免得 ncipollo 因找不到资产报错
+        if: steps.ipa.outputs.found == 'yes'
         uses: ncipollo/release-action@v1
         with:
           name: ${{ env.VERSION }}
           tag: ${{ env.VERSION }}
           allowUpdates: true
+          # 追加资产时不要回写 body/name: 本 step 没传 bodyFile, 若不 omit,
+          # ncipollo 会把 build job 生成的 RELEASE_NOTES.md 覆盖成空白。
+          # (desktop/linux/macos/ios/ohos 多个 job 并行更新同一 tag, 每个都会踩)
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
           artifacts: ${{ github.workspace }}/ipa/*.ipa
 
   # 鸿蒙 .so (release): Ubuntu runner 上编译 shared ohosArm64 .so, 追加到 Release
@@ -445,6 +487,11 @@ jobs:
           name: ${{ env.VERSION }}
           tag: ${{ env.VERSION }}
           allowUpdates: true
+          # 追加资产时不要回写 body/name: 本 step 没传 bodyFile, 若不 omit,
+          # ncipollo 会把 build job 生成的 RELEASE_NOTES.md 覆盖成空白。
+          # (desktop/linux/macos/ios/ohos 多个 job 并行更新同一 tag, 每个都会踩)
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
           artifacts: ${{ github.workspace }}/ohos/*.so
 
   # ===== 鸿蒙 HAP (自托管 runner, 默认禁用) =====
@@ -494,4 +541,9 @@ jobs:
           name: ${{ env.VERSION }}
           tag: ${{ env.VERSION }}
           allowUpdates: true
+          # 追加资产时不要回写 body/name: 本 step 没传 bodyFile, 若不 omit,
+          # ncipollo 会把 build job 生成的 RELEASE_NOTES.md 覆盖成空白。
+          # (desktop/linux/macos/ios/ohos 多个 job 并行更新同一 tag, 每个都会踩)
+          omitBodyDuringUpdate: true
+          omitNameDuringUpdate: true
           artifacts: ${{ github.workspace }}/hap/*.hap

@@ -310,7 +310,7 @@ actual open class WebDav actual constructor(
             }
         }.onFailure {
             currentCoroutineContext().ensureActive()
-            AppLog.put("WebDav创建目录失败\n${it.localizedMessage}", it)
+            AppLog.put("WebDav创建目录失败\n${it.message}", it)
         }.isSuccess
     }
 
@@ -362,7 +362,7 @@ actual open class WebDav actual constructor(
             }
         }.onFailure {
             currentCoroutineContext().ensureActive()
-            throw WebDavException("WebDav下载失败\n${it.localizedMessage}")
+            throw WebDavException("WebDav下载失败\n${it.message}")
         }.getOrThrow()
     }
 
@@ -409,8 +409,8 @@ actual open class WebDav actual constructor(
             }
         }.onFailure {
             currentCoroutineContext().ensureActive()
-            AppLog.put("WebDav上传失败\n${it.localizedMessage}", it)
-            throw WebDavException("WebDav上传失败\n${it.localizedMessage}")
+            AppLog.put("WebDav上传失败\n${it.message}", it)
+            throw WebDavException("WebDav上传失败\n${it.message}")
         }
     }
 
@@ -431,7 +431,7 @@ actual open class WebDav actual constructor(
             }
         }.onFailure {
             currentCoroutineContext().ensureActive()
-            throw WebDavException("WebDav下载失败\n${it.localizedMessage}")
+            throw WebDavException("WebDav下载失败\n${it.message}")
         }.getOrThrow()
         return bytes.toInputStream()
     }
@@ -450,7 +450,7 @@ actual open class WebDav actual constructor(
             }.let { checkResult(it) }
         }.onFailure {
             currentCoroutineContext().ensureActive()
-            AppLog.put("WebDav删除失败\n${it.localizedMessage}", it)
+            AppLog.put("WebDav删除失败\n${it.message}", it)
         }.isSuccess
     }
 

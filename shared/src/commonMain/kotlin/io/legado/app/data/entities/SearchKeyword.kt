@@ -2,9 +2,9 @@
 
 package io.legado.app.data.entities
 
-import androidx.room.Entity
-import androidx.room.Index
-import androidx.room.PrimaryKey
+import androidx.room3.Entity
+import androidx.room3.Index
+import androidx.room3.PrimaryKey
 import kotlin.time.Clock
 import kotlinx.serialization.Serializable
 

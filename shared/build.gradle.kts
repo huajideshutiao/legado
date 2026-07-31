@@ -8,7 +8,7 @@ plugins {
     id("legado.compose")
 }
 
-room {
+room3 {
     schemaDirectory("$projectDir/schemas")
 }
 
@@ -17,9 +17,15 @@ compose.resources {
 }
 
 val isMacHost = System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
-val enableIosTarget = isMacHost &&
-    (providers.gradleProperty("enableIosTarget").orNull?.toBoolean() ?: true)
+// 非 mac 也可显式开启 (-PenableIosTarget=true): Kotlin/Native 的 Windows 分发自带 Apple platform klib,
+// klib 编译 (语法/类型/签名校验) 不需要 Xcode; 只有 link 成 framework 才必须 mac。
+val enableIosTarget = providers.gradleProperty("enableIosTarget").orNull?.toBoolean() ?: isMacHost
 val enableOhosTarget = providers.gradleProperty("enableOhosTarget").orNull?.toBoolean() ?: false
+
+// ohosArm64 只存在于 CPF 分支 KGP, 本脚本无法静态引用, 交给 build-logic 的约定插件声明。
+if (enableOhosTarget) {
+    pluginManager.apply("legado.kmp.ohos")
+}
 
 kotlin {
     jvm()
@@ -32,10 +38,16 @@ kotlin {
 
     if (enableIosTarget) {
         val configureNativeCinterops: KotlinNativeTarget.() -> Unit = {
+            // quickjs-ng / mbedtls 的 C 目标码由 scripts/build-ios-native.sh 预编译 (cinterop 只编 .def 内 wrapper),
+            // 按 konanTarget 名分目录, 缺 .a 时 link 阶段报未定义符号。
+            val nativeLibDir = file("${projectDir}/build/iosNativeLibs/${konanTarget.name}")
             binaries {
                 framework {
                     baseName = "shared"
                     isStatic = false
+                }
+                all {
+                    linkerOpts("-L${nativeLibDir.absolutePath}", "-lquickjs", "-lmbedtls")
                 }
             }
             compilations.getByName("main").cinterops {
@@ -57,10 +69,6 @@ kotlin {
         }
         iosArm64(configureNativeCinterops)
         iosSimulatorArm64(configureNativeCinterops)
-    }
-
-    if (enableOhosTarget) {
-        apply(from = "ohos.gradle.kts")
     }
 
     sourceSets {
@@ -117,7 +125,6 @@ kotlin {
             dependencies {
                 implementation(libs.kotlinx.coroutines.android)
                 api(libs.androidx.documentfile)
-                implementation(libs.room.ktx)
                 implementation(libs.core.ktx)
                 implementation(libs.coil3.gif)
                 implementation(libs.compose.foundation.android)
@@ -133,6 +140,8 @@ kotlin {
                 implementation("net.sf.kxml:kxml2:2.3.0")
                 implementation(libs.androidx.sqlite.bundled)
                 implementation(compose.components.uiToolingPreview)
+                // SVG 栅格化 (SvgRasterizer): 纯 Java 轻量渲染器, 替代 Android 端 SvgUtils 兜底
+                implementation("com.github.weisj:jsvg:2.0.0")
             }
         }
         val nativeMain = if (enableIosTarget || enableOhosTarget) {

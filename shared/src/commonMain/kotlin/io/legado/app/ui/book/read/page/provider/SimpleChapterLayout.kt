@@ -28,31 +28,6 @@ data class ParsedParagraph(
     val images: List<ImgData> = emptyList(),
 )
 
-/** 图片原始尺寸（px）。 */
-data class ImageSize(val width: Int, val height: Int)
-
-/**
- * 图片尺寸解析接口（commonMain，供平台注入）。
- *
- * app 端 `ImageProvider.getImageSize` 重度依赖 android Bitmap / 网络下载，无法下沉。
- * 本接口抽象「取图片原始尺寸」+「图片是否已缓存」两个原语，由各平台 actual 实现：
- * - Android: 委托 `ImageProvider.getImageSize` / `BookHelp.isImageExist`
- * - Desktop / iOS / 鸿蒙: 走平台图片缓存 / 网络下载
- *
- * 未注入（null）时 [SimpleChapterLayout.setTypeImage] 直接跳过图片排版（退化为准文本），
- * 与原简化版行为一致，保证无图片能力平台仍可跑通文字排版链路。
- */
-interface ImageResolver {
-    /** 图片是否已缓存到本地（对应 app 端 `BookHelp.isImageExist`）。 */
-    fun isImageExist(src: String): Boolean
-
-    /**
-     * 取图片原始尺寸，无效图返回 [ImageSize]`(0, 0)`（对应 app 端 `ImageProvider.getImageSize`）。
-     * suspend 因 Android 实现内部可能触发缓存下载；commonMain 调用方应在协程内调用。
-     */
-    suspend fun getImageSize(src: String): ImageSize
-}
-
 /**
  * 章节排版器（commonMain 纯 Kotlin，无 android 依赖）。
  *
@@ -71,7 +46,7 @@ interface ImageResolver {
  * # 功能对齐 app 端 [TextChapterLayout]（KP2-D P2 起）
  *
  * - **图片排版**：[setTypeImage] + [ImageColumn] 构造，依赖注入的 [ImageResolver]
- *   提供「取尺寸 / 判缓存」原语；[layout] 传 [ParsedParagraph] 列表时走图片排版路径，
+ *   提供「取尺寸（内部含下载 / 缓存）」原语；[layout] 传 [ParsedParagraph] 列表时走图片排版路径，
  *   按 [srcReplaceChar] 分割文本段与图片段，支持 SINGLE / FULL / TEXT / DEFAULT 四种风格。
  * - **段评**：[SimpleColumnFactory] 识别 [reviewChar] 占位符构造 [ReviewColumn]，
  *   段评计数从 [layout] 的 `reviewCountMap` 参数查询（按逻辑段号 [currentParagraphIndex]）。
@@ -593,8 +568,9 @@ class SimpleChapterLayout(
      * 排版一张块状图片（SINGLE/FULL/DEFAULT 风格）。
      *
      * 流程对照 app 端 [TextChapterLayout.setTypeImage]：
-     * 1. [imageResolver] 为 null 或图片未缓存 → 跳过（返回 false，退化为准文本）
-     * 2. 取原始尺寸，[getFitSize] 等比缩放进可视区
+     * 1. [imageResolver] 为 null → 跳过（返回 false，退化为纯文本）
+     * 2. 取原始尺寸（原版一律调 getImageSize 触发缓存下载，不先判是否已缓存），
+     *    [getFitSize] 等比缩放进可视区
      * 3. 按风格调整：
      *    - FULL：宽满可视区，高超则换页并重新 fit
      *    - SINGLE：换新页，垂直居中
@@ -602,7 +578,7 @@ class SimpleChapterLayout(
      * 4. [addImageLine] 构造 [ImageColumn] 入列
      * 5. SINGLE 模式占满本页剩余空间（durY=visibleHeight），其他模式按段间距累积
      *
-     * @return true=图片已排版入列；false=跳过（无 resolver / 未缓存 / 无效尺寸）
+     * @return true=图片已排版入列；false=跳过（无 resolver / 无效尺寸）
      */
     private suspend fun setTypeImage(
         engine: TextLayoutEngine,
@@ -612,7 +588,6 @@ class SimpleChapterLayout(
         imageResolver: ImageResolver?,
     ): Boolean {
         if (imageResolver == null) return false
-        if (!imageResolver.isImageExist(img.src)) return false
 
         val rawSize = imageResolver.getImageSize(img.src)
         if (rawSize.width <= 0 || rawSize.height <= 0) return false

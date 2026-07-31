@@ -13,6 +13,7 @@ import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.model.ReadBookShared
 import kotlinx.coroutines.runBlocking
 import io.legado.app.utils.File
+import kotlin.concurrent.Volatile
 
 /**
  * nativeMain: [ImageControllerProvider] 的 iOS/鸿蒙最小真实实现。

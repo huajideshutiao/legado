@@ -8,8 +8,12 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
@@ -101,13 +105,19 @@ class BookInfoViewModelShared(
     /**
      * 动作事件 (替代原 app 端 `MutableLiveData<String>`)。
      *
-     * - `null` 表示无事件 (默认值), 桥接到 LiveData 时跳过 null 避免初始假触发。
-     * - 典型值: `"selectBooksDir"` (importWebFile / downloadWebFile 抛
-     *   `NoBooksDirException` 时下发, 由 BookInfoActivity observe 后启动
-     *   `localBookTreeSelect.launch` 选默认书目录)。
+     * 典型值: `"selectBooksDir"` (importWebFile / downloadWebFile 抛
+     * `NoBooksDirException` 时下发, 由 BookInfoActivity observe 后启动
+     * `localBookTreeSelect.launch` 选默认书目录)。
+     *
+     * 用 SharedFlow 对齐 postValue: 连续两次同一个 action (再次导入还是缺书目录)
+     * 用 StateFlow 会被去重, 第二次就再也弹不出目录选择。
      */
-    private val _actionLive = MutableStateFlow<String?>(null)
-    val actionLive: StateFlow<String?> = _actionLive.asStateFlow()
+    private val _actionLive = MutableSharedFlow<String>(
+        replay = 1,
+        extraBufferCapacity = 8,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val actionLive: SharedFlow<String> = _actionLive.asSharedFlow()
     // endregion
 
     // region 状态写入接口 (供 app 端 BookInfoViewModel 调用)
@@ -144,7 +154,7 @@ class BookInfoViewModelShared(
      * observe 后启动 `localBookTreeSelect.launch` 选默认书目录)。
      */
     fun postAction(action: String) {
-        _actionLive.value = action
+        _actionLive.tryEmit(action)
     }
     // endregion
 

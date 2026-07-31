@@ -23,7 +23,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.Book
@@ -36,6 +38,7 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.debounce
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bookshelf
@@ -158,18 +161,19 @@ fun SharedGroupCover(
     // useDefaultCover 时跳过加载, 直接走占位 (对照 app 端 CoverImageView.load 行为)
     val useDefaultCover = remember { AppConfigProviders.get().useDefaultCover }
     var bitmap by remember(cover) { mutableStateOf<ImageBitmap?>(null) }
+    // 显示尺寸走 StateFlow (量尺寸不触发重组), 按尺寸降采样解码而非解原图
+    val displaySize = remember { MutableStateFlow(IntSize.Zero) }
     LaunchedEffect(cover, loader, useDefaultCover) {
         if (useDefaultCover || cover.isNullOrBlank() || loader == null) return@LaunchedEffect
-        loader.loadImage(
-            url = cover,
-            sourceOrigin = null,
-            onSuccess = { bitmap = it },
-            onError = { bitmap = null },
-        )
+        displaySize.collect { size ->
+            if (size.width <= 0 || size.height <= 0) return@collect
+            bitmap = loader.loadImageOrNull(cover, null, size.width, size.height)
+        }
     }
     val aspectRatio = if (isVideoCover) VIDEO_COVER_RATIO else NOVEL_COVER_RATIO
-    val resolvedModifier =
-        modifier.fillMaxWidth().aspectRatio(aspectRatio).clip(DesignTokens.shapeSm)
+    val resolvedModifier = modifier.fillMaxWidth().aspectRatio(aspectRatio)
+        .clip(DesignTokens.shapeSm)
+        .onSizeChanged { displaySize.value = it }
     val bmp = bitmap
     if (bmp != null) {
         Image(

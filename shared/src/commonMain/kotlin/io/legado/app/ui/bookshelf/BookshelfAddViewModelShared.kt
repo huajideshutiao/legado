@@ -23,10 +23,11 @@ import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonArray
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -35,7 +36,7 @@ import kotlinx.coroutines.sync.withPermit
  * 书架"添加网址"/"导入书架" (KMP 版, 下沉自 app 端 `BookshelfViewModel`)。
  *
  * app 原版依赖 Application/LiveData/toastOnUi, 此处改为自管 [scope] +
- * [addBookProgress] StateFlow + [Toasters], 其余流程逐行对齐原版。
+ * [addBookProgress] 事件流 + [Toasters], 其余流程逐行对齐原版。
  * `Book.migrateTo` / `Book.save` 走已有 provider (前者 [BookshelfManagePlatformProviders],
  * 后者内联 removeType + insert/update, 对照 BookController.saveBook)。
  */
@@ -43,18 +44,19 @@ class BookshelfAddViewModelShared(private val scope: CoroutineScope) {
 
     private val appDb get() = AppDbProviders.get()
 
-    /** 添加进度 (对照原 addBookProgressLiveData): -1 = 无任务, >=0 = 已成功条数 */
-    private val _addBookProgress = MutableStateFlow(-1)
-    val addBookProgress: StateFlow<Int> = _addBookProgress.asStateFlow()
-
     /**
-     * 是否有添加任务在跑, 供宿主显示等待对话框 (对照原 BaseBookshelfFragment 的 waitDialog 显隐)。
+     * 添加进度事件 (对照原 addBookProgressLiveData): -1 = 任务结束, >=0 = 已成功条数。
      *
-     * 原版靠 LiveData 每次 postValue 都回调来关闭对话框; StateFlow 相同值不重发,
-     * 故单独用本状态表示任务生命周期。
+     * 语义对齐 LiveData.postValue: 每次投递都要驱动宿主对话框, 故用 replay=1 的
+     * SharedFlow 而非按值去重的 StateFlow (否则一次未成功的添加只发 -1, 与上次的 -1
+     * 相同被吞掉, 对话框关不掉; 重复添加同一网址亦然)。
      */
-    private val _addBookRunning = MutableStateFlow(false)
-    val addBookRunning: StateFlow<Boolean> = _addBookRunning.asStateFlow()
+    private val _addBookProgress = MutableSharedFlow<Int>(
+        replay = 1,
+        extraBufferCapacity = 8,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val addBookProgress: SharedFlow<Int> = _addBookProgress.asSharedFlow()
 
     /** 当前添加任务 (对照原 addBookJob), 供 [cancelAddBook] 取消 */
     private var addBookJob: Job? = null
@@ -69,7 +71,7 @@ class BookshelfAddViewModelShared(private val scope: CoroutineScope) {
         var successCount = 0
         val urls = bookUrls.split("\n")
         addBookJob = scope.launch {
-            _addBookRunning.value = true
+            _addBookProgress.tryEmit(0)
             try {
                 for (url in urls) {
                     val bookUrl = url.trim()
@@ -90,7 +92,7 @@ class BookshelfAddViewModelShared(private val scope: CoroutineScope) {
                         appDb.bookDao.insert(book)
                         appDb.bookChapterDao.insert(*toc.toTypedArray())
                         successCount++
-                        _addBookProgress.value = successCount
+                        _addBookProgress.tryEmit(successCount)
                     } catch (e: Throwable) {
                         AppLog.put("添加 $bookUrl 失败\n${e.message}", e, true)
                     }
@@ -99,8 +101,7 @@ class BookshelfAddViewModelShared(private val scope: CoroutineScope) {
                     if (successCount > 0) "$successCount/${urls.size} 成功" else "添加网址失败"
                 )
             } finally {
-                _addBookProgress.value = -1
-                _addBookRunning.value = false
+                _addBookProgress.tryEmit(-1)
             }
         }
     }
@@ -109,8 +110,7 @@ class BookshelfAddViewModelShared(private val scope: CoroutineScope) {
     fun importBookshelf(str: String, groupId: Long) {
         var successCount = 0
         addBookJob = scope.launch {
-            _addBookRunning.value = true
-            _addBookProgress.value = 0
+            _addBookProgress.tryEmit(0)
             try {
                 val text = str.trim()
                 val json = if (text.isAbsUrl()) {
@@ -128,14 +128,13 @@ class BookshelfAddViewModelShared(private val scope: CoroutineScope) {
                 if (!json.isJsonArray()) throw NoStackTraceException("格式不对")
                 importBookshelfByJsonAwait(json, groupId) {
                     successCount++
-                    _addBookProgress.value = successCount
+                    _addBookProgress.tryEmit(successCount)
                 }
                 Toasters.get().toast("成功")
             } catch (e: Throwable) {
                 Toasters.get().toast(e.message ?: "ERROR")
             } finally {
-                _addBookProgress.value = -1
-                _addBookRunning.value = false
+                _addBookProgress.tryEmit(-1)
             }
         }
     }

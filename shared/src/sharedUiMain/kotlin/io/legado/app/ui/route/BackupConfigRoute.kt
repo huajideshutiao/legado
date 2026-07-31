@@ -26,6 +26,7 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.storage.BackupConfigShared
 import io.legado.app.help.storage.BackupShared
+import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.storage.RestoreShared
 import io.legado.app.ui.config.BackupConfigScreen
 import io.legado.app.ui.config.BackupConfigScreenModel
@@ -132,13 +133,18 @@ fun BackupConfigRoute(
     lateinit var screenModel: BackupConfigScreenModel
     screenModel = screenModelStore.getOrCreateTyped(entry) {
         BackupConfigScreenModel(
-            // 备份: 读 backupPath, 空则先 SAF 选目录再备份; 非空直接 BackupShared.backupLocked + WaitDialog
+            // 备份: 读 backupPath, 空则用平台默认落地目录 (桌面=文档目录), 平台要求选目录时先 SAF 选;
+            // 非空直接 BackupShared.backupLocked + WaitDialog
             // (对照 app 端 BackupConfigHost.backup + viewModel.backup + WaitDialog)
             onBackup = { uploadToWebDav ->
                 val services = PlatformServiceProviders.getOrNull()
                 if (services != null) {
                     val backupPath = pref.getString(PreferKey.backupPath)
-                    if (backupPath.isNullOrBlank()) {
+                    val defaultDir = DataStorageProviders.getOrNull()?.defaultBackupDir
+                    if (backupPath.isNullOrBlank() && defaultDir != null) {
+                        // 桌面/iOS: 有平台惯例目录, 不打扰用户 (不写 prefs, 设置项仍显示"未设置")
+                        startBackup(defaultDir, uploadToWebDav)
+                    } else if (backupPath.isNullOrBlank()) {
                         // 没设路径: SAF 选目录, 选完写 prefs + 立即备份 (对照 app 端 backupDir.launch)
                         scope.launch {
                             val path = withContext(IoDispatcher) { services.files.pickDirectory() }
@@ -257,9 +263,12 @@ fun BackupConfigRoute(
             )
         }
         if (state.backupPathSummary.isEmpty()) {
+            // 未设置时显示平台默认落地目录 (桌面=文档目录), 让用户知道备份实际存在哪
             screenModel.dispatch(
                 BackupConfigUiEvent.UpdateBackupPathSummary(
-                    pref.getString(PreferKey.backupPath) ?: selectBackupPathStr
+                    pref.getString(PreferKey.backupPath)?.takeIf { it.isNotBlank() }
+                        ?: DataStorageProviders.getOrNull()?.defaultBackupDir
+                        ?: selectBackupPathStr
                 )
             )
         }
