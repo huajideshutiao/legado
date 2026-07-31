@@ -9,6 +9,7 @@ import io.legado.app.ui.book.filter.SourceFilterRuleScreen
 import io.legado.app.ui.book.filter.SourceFilterRuleScreenModel
 import io.legado.app.ui.book.filter.SourceFilterRuleUiActions
 import io.legado.app.ui.book.filter.SourceFilterRuleUiEvent
+import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.RouteEntry
@@ -154,4 +155,10 @@ fun SourceFilterRuleRoute(
     }
 
     SourceFilterRuleScreen(state = state, actions = actions)
+
+    // 系统返回/ESC 走与标题栏返回同一条路径, 否则 dirty 时丢 RESULT_OK 回传
+    // (对照 app 端 observe(): dataInit 后数据变更即 setResult(RESULT_OK))
+    val backStack by navigator.backStack.collectAsState()
+    val isTopEntry = backStack.lastOrNull()?.id == entry.id
+    AppBackHandler(enabled = isTopEntry, onBack = actions::onBack)
 }

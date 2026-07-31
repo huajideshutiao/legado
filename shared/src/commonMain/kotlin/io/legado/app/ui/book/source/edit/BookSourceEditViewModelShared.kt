@@ -40,8 +40,8 @@ import kotlinx.coroutines.CoroutineScope
  *
  * - **Intent 解析留 app 端**: 原 `initData(intent: Intent, onFinally)` 用
  *   `intent.getStringExtra("sourceUrl")` 解析 Bundle, 并读 `IntentData.source as? BookSource`,
- *   下沉后改为接收已解析的显式参数 [sourceUrl]/[source]
- *   (字段名与 app 端 intent key / IntentData 字段一一对应, 不"改变实现逻辑")。
+ *   下沉后改为接收已解析的 [sourceUrl]; IntentData 对象直传在 KMP 路由 (只传稳定 ID/URL)
+ *   下无对应物, 统一按 URL 查 DB。
  * - **剪贴板访问**: 原 `getClipText()` (Android ClipboardManager) 不能下沉,
  *   通过构造函数 lambda [clipTextProvider] 注入:
  *   - app 端实现 `{ getClipText() }` (委托 utils.ContextExtensions.getClipText);
@@ -134,21 +134,23 @@ class BookSourceEditViewModelShared(
      * - sourceUrl 非空: 走 `appDb.bookSourceDao.getBookSource(sourceUrl)` 加载已有书源,
      *   为 null 时提前 return (与 app 端 `?: return@execute` 完全一致, 不回调 onFinally
      *   之外的逻辑);
-     * - sourceUrl 为空: 用传入的 [source] (app 端由 `IntentData.source as? BookSource` 解析后传入);
+     * - sourceUrl 为空: 新建空书源, bookSource 保持 null (app 端此处取
+     *   `IntentData.source as? BookSource`, 即书源管理页"编辑"直传对象少查一次 DB;
+     *   KMP 的 [io.legado.app.ui.root.AppRoute] 明确只传稳定 ID/URL 以支持序列化恢复,
+     *   全部调用方都改传 bookSourceUrl 由本方法查 DB, 故不再有对象入参);
      * - 加载完成后回调 [onFinally] (与 app 端 `onFinally { onFinally() }` 等价, 无参回调,
      *   无论 bookSource 是否为 null 均回调, 与 app 端一致)。
      *
      * 业务在 IO 跑, 回调在 mainDispatcher 跑 (与 BaseViewModel.execute 默认值一致)。
      *
      * @param sourceUrl 书源 URL (app 端 `intent.getStringExtra("sourceUrl")`), 非空时按 URL 查 DAO
-     * @param source 已解析的书源对象 (app 端 `IntentData.source as? BookSource`), sourceUrl 为空时使用
      * @param onFinally 加载完成回调 (无参, 与 app 端 onFinally 一致, 始终触发)
      */
-    fun initData(sourceUrl: String?, source: BookSource?, onFinally: () -> Unit) {
+    fun initData(sourceUrl: String?, onFinally: () -> Unit) {
         Coroutine.async(scope = this.scope) {
-            bookSource = if (sourceUrl != null) {
-                appDb.bookSourceDao.getBookSource(sourceUrl) ?: return@async
-            } else source
+            if (sourceUrl != null) {
+                bookSource = appDb.bookSourceDao.getBookSource(sourceUrl) ?: return@async
+            }
         }.onFinally {
             onFinally()
         }

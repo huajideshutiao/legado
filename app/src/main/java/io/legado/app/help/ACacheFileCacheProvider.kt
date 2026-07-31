@@ -14,24 +14,27 @@ import io.legado.app.utils.ACache
  */
 object ACacheFileCacheProvider : FileCacheProvider {
 
-    override fun put(key: String, value: String, saveTime: Int) {
-        ACache.get().put(key, value, saveTime)
+    /** persistent 走 filesDir (对应原 app 端 `ACache.get(cacheDir = false)`), 否则走 cacheDir。 */
+    private fun aCache(persistent: Boolean) = ACache.get(cacheDir = !persistent)
+
+    override fun put(key: String, value: String, saveTime: Int, persistent: Boolean) {
+        aCache(persistent).put(key, value, saveTime)
     }
 
-    override fun getAsString(key: String): String? {
-        return ACache.get().getAsString(key)
+    override fun getAsString(key: String, persistent: Boolean): String? {
+        return aCache(persistent).getAsString(key)
     }
 
-    override fun put(key: String, value: ByteArray, saveTime: Int) {
-        ACache.get().put(key, value, saveTime)
+    override fun put(key: String, value: ByteArray, saveTime: Int, persistent: Boolean) {
+        aCache(persistent).put(key, value, saveTime)
     }
 
-    override fun getAsBinary(key: String): ByteArray? {
-        return ACache.get().getAsBinary(key)
+    override fun getAsBinary(key: String, persistent: Boolean): ByteArray? {
+        return aCache(persistent).getAsBinary(key)
     }
 
-    override fun remove(key: String) {
-        ACache.get().remove(key)
+    override fun remove(key: String, persistent: Boolean) {
+        aCache(persistent).remove(key)
     }
 }
 

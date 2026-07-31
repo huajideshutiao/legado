@@ -40,12 +40,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.utils.TransType
 import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
+import io.legado.app.help.config.ReadStyleConfig
+import io.legado.app.help.config.curBgDrawable
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.ReadBookEvents
@@ -61,13 +60,14 @@ import io.legado.app.ui.compose.component.RadioChip
 import io.legado.app.ui.compose.component.StrokeTextChip
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.dialogs.selector
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.font.FontSelectDialog
 import io.legado.app.utils.ChineseUtils
+import io.legado.app.utils.TransType
 import io.legado.app.utils.showConverterSelector
 import io.legado.app.utils.showDialogFragment
-import org.jetbrains.compose.resources.getString
-import org.jetbrains.compose.resources.stringResource
 
 /** 阅读样式设置：字重/字体/缩进/简繁/边距/信息 + 排版滑条 + 翻页动画 + 背景样式列表 */
 class ReadStyleDialog : BaseReadBottomComposeDialog(), FontSelectDialog.CallBack {
@@ -339,7 +339,7 @@ class ReadStyleDialog : BaseReadBottomComposeDialog(), FontSelectDialog.CallBack
         name: String,
         textColor: Color,
         bgKey: Int,
-        bg: ReadBookConfig.Config,
+        bg: ReadStyleConfig,
         selected: Boolean,
         onClick: () -> Unit,
         onLongClick: () -> Unit,

@@ -11,6 +11,10 @@ import io.legado.app.data.entities.rule.SearchRule
 import io.legado.app.data.entities.rule.TocRule
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.ui.widget.text.EditEntity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,10 +26,17 @@ import kotlinx.coroutines.flow.update
  * 落库核心委托 [BookSourceEditViewModelShared] (initData / save / pasteSource / clearCookie)。
  * 宿主 Activity 负责表单字段 ([BookSourceEditState]) + 平台专属行为
  * (IntentData / showDialogFragment / 路由跳转 / CookieStore 等)。
+ *
+ * @param sharedFactory 用本类自管的 scope 构造 shared VM (对照 ReplaceEditScreenModel: scope
+ *   随 ScreenModel 生命周期, [onCleared] 时取消)
  */
 class BookSourceEditScreenModel(
-    private val shared: BookSourceEditViewModelShared,
+    sharedFactory: (CoroutineScope) -> BookSourceEditViewModelShared,
 ) : ScreenModel {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    private val shared: BookSourceEditViewModelShared = sharedFactory(scope)
 
     private val _state = MutableStateFlow(BookSourceEditUiState())
     val state: StateFlow<BookSourceEditUiState> = _state.asStateFlow()
@@ -43,6 +54,8 @@ class BookSourceEditScreenModel(
     private val reviewEntities = mutableListOf<EditEntity>()
 
     // 图片样式选项 (对照 app 端 imageStyleSelections)
+    // first 是展示名: "text_default" 为资源 key (对照 getString(R.string.text_default)),
+    // 其余为字面值, 由 SpinnerField 的 rememberString 统一解析
     private val imageStyleSelections = listOf(
         "text_default" to null,
         Book.imgStyleFull to Book.imgStyleFull,
@@ -50,9 +63,13 @@ class BookSourceEditScreenModel(
         Book.imgStyleSingle to Book.imgStyleSingle,
     )
 
+    override fun onCleared() {
+        scope.cancel()
+    }
+
     fun dispatch(event: BookSourceEditUiEvent) {
         when (event) {
-            is BookSourceEditUiEvent.Init -> shared.initData(event.sourceUrl, event.source) {
+            is BookSourceEditUiEvent.Init -> shared.initData(event.sourceUrl) {
                 _state.update {
                     it.copy(
                         bookSource = shared.bookSource,
@@ -403,9 +420,9 @@ data class BookSourceEditUiState(
 )
 
 sealed interface BookSourceEditUiEvent {
+    /** sourceUrl 为 null 表示新建 (对照 app 端 intent 无 sourceUrl extra)。 */
     data class Init(
         val sourceUrl: String?,
-        val source: BookSource?,
         val onFinally: () -> Unit,
     ) : BookSourceEditUiEvent
 

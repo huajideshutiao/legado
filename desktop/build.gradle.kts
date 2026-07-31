@@ -74,6 +74,8 @@ dependencies {
     implementation(project(":shared"))
     // shared 模块 commonMain 已声明 kotlinx-serialization-json api, 但 jvm target 传递依赖可能不完整, 显式补
     implementation(libs.kotlinx.coroutines.core)
+    // JVM 的 Dispatchers.Main 由本 artifact 经 ServiceLoader 注册到 EDT, 缺失则 withContext(Main) 抛异常
+    implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.kotlinx.serialization.json)
     // Compose Multiplatform 桌面端 UI (桌面 swing 集成; shared 已用 compose.material, desktop 不引 md3)
     implementation(compose.desktop.currentOs)
@@ -99,7 +101,7 @@ dependencies {
     // HLS 分片。运行时需用户机器已安装 mpv (winget/scoop/官网), MpvDetector 按
     // 设置项(mpvPath)/PATH/常见安装路径探测, 未装时 VideoPlayerScreen 显示引导安装占位。
     // jna 仅用于取 AWT Canvas 原生窗口句柄 (Native.getComponentID) 供 mpv --wid 嵌入。
-    implementation("net.java.dev.jna:jna:5.6.0")
+    implementation("net.java.dev.jna:jna:5.17.0")
     // P0.3 桌面端真实 WebView slot: JavaFX WebView 经 SwingPanel(JFXPanel) 嵌入 Compose
     // javafx-web 提供 javafx.scene.web.WebView, javafx-swing 提供 javafx.embed.swing.JFXPanel
     // OpenJFX 21 默认按当前 OS 解析 classifier (win/linux/mac), 与桌面打包目标一致

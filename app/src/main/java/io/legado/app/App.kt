@@ -60,6 +60,7 @@ import io.legado.app.help.service.registerAndroidServiceLauncher
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceUiEventBridge
 import io.legado.app.help.storage.Backup
+import io.legado.app.help.storage.registerAndroidBackupRestoreHook
 import io.legado.app.help.storage.registerAndroidPasswordProvider
 import io.legado.app.help.toast.registerAndroidToaster
 import io.legado.app.help.ui.registerAndroidOpenUrlProvider
@@ -191,8 +192,11 @@ class App : Application() {
         CacheBook.registerCallback()
         registerAndroidPreferenceProvider()
         registerAndroidDirectLinkUploadProviders()
-        // 注册 ReadBookConfigProviders 防 BackupShared/RestoreShared 走到 error() (Android 主路径
-        // 走 app 端 Backup/Restore, 此注册仅兜底; 非 app 端 ReadBookConfig 桥接, 桥接待 KP2-H)
+        // 注册备份/恢复的 Android 钩子 (SAF 复制解压 / config.xml 旧格式 / 主题与图标刷新)
+        registerAndroidBackupRestoreHook()
+        // 注册 ReadBookConfigProviders: app 端 ReadBookConfig 已收敛为薄壳, 全部转发到这里
+        // 注册的 ReadBookConfigShared 实例 (shared UI / BackupShared 也共用同一实例)。
+        // 须在 registerAndroidAppFilesDir + registerAndroidWebBookProviders(AppConfigProviders) 之后。
         ReadBookConfigProviders.register(
             AndroidReadConfigProviders(AndroidPreferenceStoreProvider()).readBookConfig
         )

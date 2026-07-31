@@ -18,7 +18,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDetailSeekBar
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
@@ -61,11 +63,14 @@ fun MangaColorFilterDialog(
     var b by remember { mutableStateOf(config.b) }
     var gray by remember { mutableStateOf(grayEnabled) }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = AppDialogSizes.properties(),
+    ) {
         Surface(
             shape = DesignTokens.dialogShape,
             color = colors.background,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.appDialogSize(),
         ) {
             Column(Modifier.fillMaxWidth()) {
                 DialogTitleBar(

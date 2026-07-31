@@ -27,7 +27,7 @@ import io.legado.app.ui.book.read.page.entities.column.TextColumn
  *
  * 内部结构：`Box(background) { PageContentCanvas + HeaderTip + FooterTip + BatteryIndicator }`
  * 与 app 端 PageView 布局一一对应：
- * - 背景：从 [LocalReadConfigProviders] 取 `readBookConfig.config.bgMeanColor`，用 [Modifier.background] 渲染纯色
+ * - 背景：从 [ReaderDrawStyle] 取 `bgMeanColor`，用 [Modifier.background] 渲染纯色
  * - 主内容：[PageContentCanvas] fillMaxSize
  * - 顶部 tip：[HeaderTip] 显示章节标题/时间/电池（按 [ReadTipConfigShared] 6 槽位配置）
  * - 底部 tip：[FooterTip] 显示页码/进度（按 [ReadTipConfigShared] 6 槽位配置）
@@ -48,16 +48,14 @@ fun PageViewComposable(
     onLongClick: (TextColumn?) -> Unit = {},
 ) {
     val providers = LocalReadConfigProviders.current
-    val readBookConfig = providers.readBookConfig
     val readTipConfig = providers.readTipConfig
-    val bgColor = readBookConfig.config.bgMeanColor
-    val textColor = readBookConfig.config.textColor
-    val tipColor = if (readTipConfig.tipColor == 0) textColor else readTipConfig.tipColor
+    // 颜色/字号/字体统一走 ReaderDrawStyle（内部订阅 ReadBookEvents.configChange 重建）
+    val style = rememberReaderDrawStyle()
 
     Box(
         modifier = modifier
             // commonMain 无 Brush.solidColor，Modifier.background 有 Color 重载，直接传纯色
-            .background(Color(bgColor))
+            .background(style.bgColor)
             .fillMaxSize()
     ) {
         // 主内容
@@ -65,6 +63,7 @@ fun PageViewComposable(
             PageContentCanvas(
                 textPage = it,
                 modifier = Modifier.fillMaxSize(),
+                style = style,
                 onClick = onClick,
                 onLongClick = onLongClick,
             )
@@ -74,7 +73,7 @@ fun PageViewComposable(
         HeaderTip(
             textPage = textPage,
             readTipConfig = readTipConfig,
-            textColor = Color(tipColor),
+            textColor = style.tipColor,
             batteryLevel = batteryLevel,
         )
 
@@ -82,7 +81,7 @@ fun PageViewComposable(
         FooterTip(
             textPage = textPage,
             readTipConfig = readTipConfig,
-            textColor = Color(tipColor),
+            textColor = style.tipColor,
             batteryLevel = batteryLevel,
         )
     }

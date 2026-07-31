@@ -1,10 +1,7 @@
 package io.legado.app.ui.main.home
 
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Surface
@@ -16,14 +13,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.HomeSection
 import io.legado.app.help.HomeTabHelpShared
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.FlowBus
@@ -84,15 +81,13 @@ fun HomeSectionManageDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        properties = AppDialogSizes.properties(),
     ) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            // isFullHeight=true → 高度锁定 0.8 屏高 (对照 BaseDialogFragment.onStart)
+        Box(Modifier.fillMaxSize()) {
+            // 全高型: 高度锁定 0.8 屏高
             Surface(
                 modifier = Modifier
-                    .fillMaxWidth(0.9f)
-                    .widthIn(max = 800.dp)
-                    .heightIn(min = maxHeight * 0.8f, max = maxHeight * 0.8f)
+                    .appDialogSize(fullHeight = true)
                     .align(Alignment.Center),
                 shape = DesignTokens.shapeDefault,
                 color = colors.fillet,

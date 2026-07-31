@@ -112,9 +112,10 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
     /**
      * 合并颜色滤镜 (colorFilterConfig + grayEnabled) 为单个 [ColorFilter]。
      *
-     * - 仅 grayEnabled: 灰度矩阵 (对照 app 端 Coil3 灰度变换)
+     * - 仅 grayEnabled: 灰度矩阵 (对照 app 端 Coil3 GrayscaleTransformation)
      * - 仅 colorFilterConfig: 配置矩阵 (对照 app 端 ColorMatrixColorFilter)
-     * - 两者均启用: 合并矩阵 (灰度 × 配置, 先灰度后调色)
+     * - 两者均启用: 配置矩阵 × 灰度矩阵。app 端灰度在解码期变换像素, 调色在绘制期作用于
+     *   已灰度的图, 故顺序是先灰度后调色
      * - 均不启用: null
      */
     private fun buildColorFilter(
@@ -125,30 +126,34 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
         if (cfgNoOp && !grayEnabled) return null
         if (cfgNoOp && grayEnabled) return ColorFilter.colorMatrix(ColorMatrix(GRAYSCALE_MATRIX))
         if (!grayEnabled) return ColorFilter.colorMatrix(ColorMatrix(config.toColorMatrix()))
-        // 两者均启用: 合并 (灰度矩阵 × 配置矩阵)
+        // 两者均启用: 先灰度后调色 = 配置矩阵 × 灰度矩阵
         return ColorFilter.colorMatrix(
             ColorMatrix(
                 mergeMatrices(
-                    GRAYSCALE_MATRIX,
-                    config.toColorMatrix()
+                    config.toColorMatrix(),
+                    GRAYSCALE_MATRIX
                 )
             )
         )
     }
 
-    /** 4x5 矩阵乘法 (result = a × b), 用于合并灰度 + 颜色滤镜 */
+    /** 4x5 矩阵合成 (result = a × b, 即先 b 后 a), 第 5 列为平移项 */
     private fun mergeMatrices(a: FloatArray, b: FloatArray): FloatArray {
         val out = FloatArray(20)
         for (row in 0..3) {
-            for (col in 0..4) {
+            for (col in 0..3) {
                 var sum = 0f
                 for (k in 0..3) {
-                    val bVal = if (col == 4) 0f else b[row * 5 + k] * (if (col < 4) 0f else 1f)
                     sum += a[row * 5 + k] * b[k * 5 + col]
                 }
-                // col==4 时 b 的第 4 列是平移项, 直接取 b[row*5+4]
-                out[row * 5 + col] = if (col < 4) sum else (sum + b[row * 5 + 4])
+                out[row * 5 + col] = sum
             }
+            // 平移列: a 的线性部分作用于 b 的平移量, 再叠加 a 自身平移
+            var offset = a[row * 5 + 4]
+            for (k in 0..3) {
+                offset += a[row * 5 + k] * b[k * 5 + 4]
+            }
+            out[row * 5 + 4] = offset
         }
         return out
     }

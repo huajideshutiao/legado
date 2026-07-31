@@ -25,6 +25,7 @@ import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.coroutine.mainDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.info.BookInfoMenuState
 import io.legado.app.ui.book.info.BookInfoScreen
@@ -39,6 +40,7 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
@@ -49,7 +51,6 @@ import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.systemCurrentTimeMillis
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -57,7 +58,6 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.error_load_toc
-import legado.shared.generated.resources.lasted_show
 import legado.shared.generated.resources.need_more_time_load_content
 import legado.shared.generated.resources.no_group
 import org.jetbrains.compose.resources.stringResource
@@ -80,20 +80,45 @@ fun BookInfoRoute(
     val state by screenModel.state.collectAsState()
     val scope = rememberCoroutineScope()
 
-    // 状态初始化 (对照 BookInfoActivity.onActivityCreated + showBook + upWordCount + upGroup)
-    val lastedTitle = stringResource(Res.string.lasted_show, book.latestChapterTitle ?: "")
+    // 搜索结果进入的书 (对照 app 端 BaseReadViewModel.upBook 的 isSearchBook)
+    val isSearchBook = route.book is BookRef.Search
+
+    // 加载书源 (对照 Activity viewModel.curBookSource, 供菜单与标签搜索限定当前书源)
+    // 自动加载依赖它, 故在初始化 effect 内同步查好再用
+    var bookSource by remember { mutableStateOf<BookSource?>(null) }
+
+    // 状态初始化 (对照 BaseReadViewModel.upBook + Activity showBook + upWordCount + upGroup)
     val noGroupLabel = stringResource(Res.string.no_group)
     val errorLoadTocLabel = stringResource(Res.string.error_load_toc)
     val needMoreTimeLabel = stringResource(Res.string.need_more_time_load_content)
     LaunchedEffect(book.bookUrl) {
-        screenModel.dispatch(BookInfoUiEvent.ShowBook(book, lastedTitle))
+        screenModel.dispatch(
+            BookInfoUiEvent.ShowBook(book, screenModel.lastedTitleOf(book))
+        )
         scope.launch(IoDispatcher) {
-            // 检查是否在书架
-            val inShelf = AppDbProviders.get().bookDao.getBook(book.bookUrl) != null
+            val db = AppDbProviders.get()
+            val source = if (book.isLocal) null else db.bookSourceDao.getBookSource(book.origin)
+            bookSource = source
+            // 检查是否在书架 (对照 upBook: 按 url 查不到再按书名+作者兜底)
+            val dbBook = db.bookDao.getBook(book.bookUrl)
+                ?: db.bookDao.getBook(book.name, book.author)
+            val inShelf = dbBook != null
             screenModel.dispatch(BookInfoUiEvent.UpdateBookshelf(inShelf))
+            // 搜索来源的书已在书架时改用书架那本 (保留阅读进度/分组等)
+            val curBook = if (isSearchBook) dbBook ?: book else book
+            // rss 书 url 换位 (对照 upBook)
+            if (curBook.isRss) {
+                curBook.tocUrl = curBook.bookUrl
+                curBook.bookUrl = "data:"
+            }
+            if (curBook !== book) {
+                screenModel.dispatch(
+                    BookInfoUiEvent.ShowBook(curBook, screenModel.lastedTitleOf(curBook))
+                )
+            }
             // 加载分组名 (对照 Activity upGroup: 空→no_group)
             val groupName = try {
-                AppDbProviders.get().bookGroupDao.getGroupNames(book.group).joinToString(",")
+                db.bookGroupDao.getGroupNames(curBook.group).joinToString(",")
             } catch (e: Throwable) {
                 ""
             }
@@ -101,14 +126,14 @@ fun BookInfoRoute(
                 ?: noGroupLabel))
             // 字数信息 (对照 Activity upWordCount: 字数 + 本地书文件大小, 逗号拼接)
             val wordCounts = arrayListOf<String>()
-            book.wordCount?.takeIf { it.isNotBlank() }?.let { wordCounts.add(it) }
-            if (book.isLocal) {
+            curBook.wordCount?.takeIf { it.isNotBlank() }?.let { wordCounts.add(it) }
+            if (curBook.isLocal) {
                 val size = try {
-                    if (book.bookUrl.startsWith("http", true) ||
-                        book.bookUrl.startsWith("dav", true)
+                    if (curBook.bookUrl.startsWith("http", true) ||
+                        curBook.bookUrl.startsWith("dav", true)
                     ) 0L
                     else PlatformCapabilityProviders.getOrNull()
-                        ?.localBookFileSize(book.bookUrl) ?: 0L
+                        ?.localBookFileSize(curBook.bookUrl) ?: 0L
                 } catch (_: Exception) {
                     0L
                 }
@@ -116,28 +141,33 @@ fun BookInfoRoute(
             }
             val wordCountText = when {
                 wordCounts.isNotEmpty() -> wordCounts.joinToString(",")
-                book.isLocal -> ""
+                curBook.isLocal -> ""
                 else -> null
             }
             screenModel.dispatch(BookInfoUiEvent.UpdateWordCount(wordCountText))
-            val chapters = AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
-            screenModel.dispatch(
-                BookInfoUiEvent.UpdateToc(
-                    tocText = if (chapters.isEmpty()) errorLoadTocLabel else book.durChapterTitle.orEmpty(),
-                    lastedTitle = if (chapters.isEmpty()) null else lastedTitle,
+            // 自动加载书籍信息/目录 (对照 upBook 的 tocUrl 分支)
+            when {
+                curBook.tocUrl.isEmpty() -> screenModel.refresh(
+                    curBook, source, errorLoadTocLabel,
+                    runPreUpdateJs = inShelf, isSearchBook = isSearchBook,
                 )
-            )
-        }
-    }
 
-    // 加载书源 (对照 Activity viewModel.curBookSource, 供菜单与标签搜索限定当前书源)
-    var bookSource by remember { mutableStateOf<BookSource?>(null) }
-    LaunchedEffect(book.origin) {
-        if (book.isLocal) {
-            bookSource = null
-        } else {
-            bookSource = withContext(IoDispatcher) {
-                AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
+                !inShelf || curBook.totalChapterNum == 0 ->
+                    screenModel.loadToc(curBook, source, errorLoadTocLabel)
+
+                else -> {
+                    val chapters = db.bookChapterDao.getChapterList(curBook.bookUrl)
+                    if (chapters.isEmpty()) {
+                        screenModel.loadToc(curBook, source, errorLoadTocLabel)
+                    } else {
+                        screenModel.dispatch(
+                            BookInfoUiEvent.UpdateToc(
+                                tocText = curBook.durChapterTitle.orEmpty(),
+                                lastedTitle = screenModel.lastedTitleOf(curBook),
+                            )
+                        )
+                    }
+                }
             }
         }
     }
@@ -212,7 +242,9 @@ fun BookInfoRoute(
 
         // 刷新: 重新拉取书籍信息 + 目录
         override fun onRefresh() {
-            screenModel.refresh(state.book ?: book, bookSource, lastedTitle, errorLoadTocLabel)
+            screenModel.refresh(
+                state.book ?: book, bookSource, errorLoadTocLabel, isSearchBook = isSearchBook
+            )
         }
 
         // 上传: 委托平台 (依赖确认弹窗 + WebDav)
@@ -283,7 +315,7 @@ fun BookInfoRoute(
             val newValue = !b.config.splitLongChapter
             b.config.splitLongChapter = newValue
             screenModel.dispatch(BookInfoUiEvent.BumpBookTick)
-            screenModel.refresh(b, bookSource, lastedTitle, errorLoadTocLabel)
+            screenModel.refresh(b, bookSource, errorLoadTocLabel, isSearchBook = isSearchBook)
             if (!newValue) Toasters.get().toastLong(needMoreTimeLabel)
         }
 
@@ -345,7 +377,7 @@ fun BookInfoRoute(
                 scope.launch(IoDispatcher) {
                     val source =
                         AppDbProviders.get().bookSourceDao.getBookSource(b.origin) ?: return@launch
-                    withContext(Dispatchers.Main) {
+                    withContext(mainDispatcher) {
                         navigator.push(AppRoute.ExploreShow(source, tmp[0], tmp[1]))
                     }
                 }
@@ -416,7 +448,7 @@ fun BookInfoRoute(
     LaunchedEffect(Unit) {
         FlowBus.with(EventBus.REFRESH_BOOK_INFO).collect {
             val b = screenModel.state.value.book ?: book
-            screenModel.refresh(b, bookSource, lastedTitle, errorLoadTocLabel)
+            screenModel.refresh(b, bookSource, errorLoadTocLabel, isSearchBook = isSearchBook)
         }
     }
 
@@ -428,7 +460,7 @@ fun BookInfoRoute(
                 val b = screenModel.state.value.book ?: book
                 // 编辑可能改封面/书名, 驱动封面与模糊背景重载
                 screenModel.dispatch(BookInfoUiEvent.BumpCoverTick)
-                screenModel.refresh(b, bookSource, lastedTitle, errorLoadTocLabel)
+                screenModel.refresh(b, bookSource, errorLoadTocLabel, isSearchBook = isSearchBook)
             }
     }
 
@@ -451,8 +483,16 @@ fun BookInfoRoute(
                 val payload = result.payload as? RouteResultPayload.ChangeSource ?: return@collect
                 // bookSource 由 LaunchedEffect(book.origin) 按路由书籍加载, 换源后不会自动更新
                 bookSource = payload.source
-                screenModel.dispatch(BookInfoUiEvent.ShowBook(payload.book, lastedTitle))
-                screenModel.refresh(payload.book, payload.source, lastedTitle, errorLoadTocLabel)
+                screenModel.dispatch(
+                    BookInfoUiEvent.ShowBook(
+                        payload.book,
+                        screenModel.lastedTitleOf(payload.book)
+                    )
+                )
+                screenModel.refresh(
+                    payload.book, payload.source, errorLoadTocLabel,
+                    isSearchBook = isSearchBook,
+                )
             }
     }
 

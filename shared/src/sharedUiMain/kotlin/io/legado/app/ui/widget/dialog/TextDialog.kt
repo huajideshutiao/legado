@@ -20,6 +20,8 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
@@ -69,6 +71,10 @@ fun TextDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        // 原版 isFullHeight = true; M2 AlertDialog 固定高会在短文本时留空白,
+        // 改为自适应 + 正文滚动区放宽到 0.8 屏高, 长文本效果等同全高
+        modifier = Modifier.appDialogSize(),
+        properties = AppDialogSizes.properties(),
         title = {
             Text(
                 text = title,
@@ -90,7 +96,7 @@ fun TextDialog(
                     fontSize = 15.sp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 400.dp)
+                        .heightIn(max = AppDialogSizes.fullHeight())
                         .verticalScroll(rememberScrollState()),
                 )
             }

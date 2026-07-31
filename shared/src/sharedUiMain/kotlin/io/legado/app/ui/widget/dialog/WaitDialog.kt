@@ -85,6 +85,7 @@ fun WaitDialog(
     onDismissRequest: () -> Unit,
 ) {
     if (!visible) return
+    // 原版特例: 转圈小窗不走 AppDialogSizes 的 0.9 屏宽钳制, 保持内容自适应
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(

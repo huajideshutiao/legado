@@ -15,8 +15,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -30,11 +30,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.ReplaceRule
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
@@ -105,14 +106,15 @@ fun EffectiveReplacesDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        properties = AppDialogSizes.properties(),
     ) {
         Surface(
             shape = DesignTokens.dialogShape,
             color = colors.background,
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            // 原版 isFullHeight = true, 高度固定 0.8 屏高
+            modifier = Modifier.appDialogSize(fullHeight = true).padding(16.dp),
         ) {
-            Column(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxSize()) {
                 DialogTitleBar(
                     title = stringResource(Res.string.effective_replaces),
                     onBack = onDismiss,
@@ -128,11 +130,11 @@ fun EffectiveReplacesDialog(
                     },
                 )
 
-                // 命中规则列表 (与原版 LazyColumn + itemsIndexed 对齐)
+                // 命中规则列表 (与原版 LazyColumn + itemsIndexed 对齐; 全高对话框下撑满剩余高度)
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 400.dp),
+                        .weight(1f),
                 ) {
                     LazyColumn(Modifier.fillMaxWidth()) {
                         itemsIndexed(items) { _, item ->

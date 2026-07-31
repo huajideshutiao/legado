@@ -5,11 +5,13 @@ import android.os.ParcelFileDescriptor
 import androidx.documentfile.provider.DocumentFile
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
-import io.legado.app.constant.EventBus
-import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.book.BookHelp.clearCacheExtra
+import io.legado.app.help.book.BookHelp.clearInvalidBookFolders
+import io.legado.app.help.book.BookHelp.clearInvalidCache
+import io.legado.app.help.book.BookHelp.getCacheFile
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.fileBook.FileBook
@@ -19,8 +21,6 @@ import io.legado.app.ui.book.read.page.provider.ChapterContentParser
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.ImageUtils
-import io.legado.app.utils.MD5Utils
-import io.legado.app.utils.StringUtils
 import io.legado.app.utils.SvgUtils
 import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.exists
@@ -28,7 +28,6 @@ import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getFile
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.onEachParallel
-import io.legado.app.utils.postEvent
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -38,7 +37,6 @@ import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
@@ -72,18 +70,16 @@ object BookHelp {
     }
 
     fun updateCacheFolder(oldBook: Book, newBook: Book) {
-        val oldFolderName = oldBook.getFolderNameNoCache()
-        val newFolderName = newBook.getFolderNameNoCache()
-        if (oldFolderName == newFolderName) return
+        if (!BookHelpShared.shouldUpdateCacheFolder(oldBook, newBook)) return
         val oldFolderPath = FileUtils.getPath(
             downloadDir,
             cacheFolderName,
-            oldFolderName
+            oldBook.getFolderNameNoCache()
         )
         val newFolderPath = FileUtils.getPath(
             downloadDir,
             cacheFolderName,
-            newFolderName
+            newBook.getFolderNameNoCache()
         )
         FileUtils.move(oldFolderPath, newFolderPath)
     }
@@ -189,28 +185,20 @@ object BookHelp {
         }
     }
 
+    /** 保存正文并发通知, 逻辑下沉 [BookHelpShared.saveContent] (bookSource 仅保留签名兼容)。 */
     fun saveContent(
         bookSource: BookSource,
         book: Book,
         bookChapter: BookChapter,
         content: String
     ) {
-        try {
-            saveText(book, bookChapter, content)
-            //saveImages(bookSource, book, bookChapter, content)
-            postEvent(EventBus.SAVE_CONTENT, Pair(book, bookChapter))
-        } catch (e: Exception) {
-            e.printStackTrace()
-            AppLog.put("保存正文失败 ${book.name} ${bookChapter.title}", e)
-        }
+        BookHelpShared.saveContent(book, bookChapter, content)
     }
 
     /**
      * 保存章节正文到缓存文件。
      *
-     * 字数统计的 upWordCount 用 [runBlocking]: Room KMP 禁止 commonMain DAO 声明非 suspend 查询,
-     * 无同步重载可用; saveText 自身不能改 suspend (调用面含 BookStorage 同步接口)。
-     * 全部调用方 (ContentEditDialog/ReadBookViewModel/saveContent/getContent) 均在 IO 协程内, 不阻塞主线程。
+     * 字数统计下沉 [BookHelpShared.upWordCount] (内部 runBlocking 写库, 全部调用方均在 IO 协程内)。
      */
     fun saveText(
         book: Book,
@@ -225,13 +213,7 @@ object BookHelp {
             book.getFolderName(),
             bookChapter.getFileName(),
         ).writeText(content)
-        if (book.isOnLineTxt && AppConfig.tocCountWords) {
-            val wordCount = StringUtils.wordCountFormat(content.length)
-            bookChapter.wordCount = wordCount
-            runBlocking {
-                appDb.bookChapterDao.upWordCount(bookChapter.bookUrl, bookChapter.url, wordCount)
-            }
-        }
+        BookHelpShared.upWordCount(book, bookChapter, content)
     }
 
     fun flowImages(bookChapter: BookChapter, content: String): Flow<String> {
@@ -306,7 +288,7 @@ object BookHelp {
             cacheFolderName,
             book.getFolderName(),
             cacheImageFolderName,
-            "${MD5Utils.md5Encode16(src)}.${getImageSuffix(src)}"
+            BookHelpLogic.imageFileName(src)
         )
     }
 
@@ -383,7 +365,7 @@ object BookHelp {
 
     fun getChapterFiles(book: Book): HashSet<String> {
         val fileNames = hashSetOf<String>()
-        if (book.isLocalTxt || book.isVideo || book.isAudio) {
+        if (BookHelpShared.shouldSkipChapterFiles(book)) {
             return fileNames
         }
         FileUtils.createFolderIfNotExist(
@@ -396,12 +378,27 @@ object BookHelp {
     }
 
     /**
+     * 书籍缓存目录下按文件名取文件 (`.nr` 标记等), 供 [AndroidBookStorage] 的 cache-file 原语委托。
+     */
+    fun getCacheFile(book: Book, fileName: String): File {
+        return downloadDir.getFile(cacheFolderName, book.getFolderName(), fileName)
+    }
+
+    /** 同 [getCacheFile], 但确保文件及父目录已创建。 */
+    fun createCacheFile(book: Book, fileName: String): File {
+        return FileUtils.createFileIfNotExist(
+            downloadDir,
+            cacheFolderName,
+            book.getFolderName(),
+            fileName
+        )
+    }
+
+    /**
      * 检测该章节是否下载
      */
     fun hasContent(book: Book, bookChapter: BookChapter): Boolean {
-        return if (book.isLocalTxt ||
-            (bookChapter.isVolume && bookChapter.url.startsWith(bookChapter.title))
-        ) {
+        return if (BookHelpShared.shouldSkipHasContent(book, bookChapter)) {
             true
         } else {
             downloadDir.exists(
@@ -455,29 +452,11 @@ object BookHelp {
     }
 
     /**
-     * 读取章节内容
+     * 读取章节内容, 逻辑下沉 [BookHelpShared.getContent]
+     * (缓存文件读取经 [AndroidBookStorage] 回落到本类的 cache-file 原语)。
      */
     fun getContent(book: Book, bookChapter: BookChapter): String? {
-        val file = downloadDir.getFile(
-            cacheFolderName,
-            book.getFolderName(),
-            bookChapter.getFileName()
-        )
-        if (file.exists()) {
-            val string = file.readText()
-            if (string.isEmpty()) {
-                return null
-            }
-            return string
-        }
-        if (book.isLocal) {
-            val string = FileBook.getContent(book, bookChapter)
-            if (string != null && book.isEpub) {
-                saveText(book, bookChapter, string)
-            }
-            return string
-        }
-        return null
+        return BookHelpShared.getContent(book, bookChapter)
     }
 
     /**
@@ -494,44 +473,25 @@ object BookHelp {
 
     /**
      * 设置是否禁用正文的去除重复标题,针对单个章节
+     *
+     * 标记文件读写下沉 [BookHelpShared.setRemoveSameTitleMarker], 本端另同步 ContentProcessor 缓存。
      */
     fun setRemoveSameTitle(book: Book, bookChapter: BookChapter, removeSameTitle: Boolean) {
         val fileName = bookChapter.getFileName("nr")
         val contentProcessor = ContentProcessor.get(book)
+        BookHelpShared.setRemoveSameTitleMarker(book, bookChapter, removeSameTitle)
         if (removeSameTitle) {
-            val path = FileUtils.getPath(
-                downloadDir,
-                cacheFolderName,
-                book.getFolderName(),
-                fileName
-            )
             contentProcessor.removeSameTitleCache.remove(fileName)
-            File(path).delete()
         } else {
-            FileUtils.createFileIfNotExist(
-                downloadDir,
-                cacheFolderName,
-                book.getFolderName(),
-                fileName
-            )
             contentProcessor.removeSameTitleCache.add(fileName)
         }
     }
 
     /**
      * 获取是否去除重复标题
-     *
-     * 不委托 [BookHelpShared.removeSameTitle]: 后者经 getChapterFiles 判断 `.nr` 标记,
-     * 而 [getChapterFiles] 对本地 txt / 视频 / 音频书直接返回空集, 会把已禁用去重的章节误判为需去重。
      */
     fun removeSameTitle(book: Book, bookChapter: BookChapter): Boolean {
-        val path = FileUtils.getPath(
-            downloadDir,
-            cacheFolderName,
-            book.getFolderName(),
-            bookChapter.getFileName("nr")
-        )
-        return !File(path).exists()
+        return BookHelpShared.removeSameTitle(book, bookChapter)
     }
 
     /**

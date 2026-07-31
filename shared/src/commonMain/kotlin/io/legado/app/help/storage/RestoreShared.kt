@@ -25,8 +25,9 @@ import io.legado.app.help.book.upType
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
-import io.legado.app.help.parseDirectLinkUploadRule
 import io.legado.app.help.ruleFileName
+import io.legado.app.help.storage.RestoreShared.restoreLocked
+import io.legado.app.help.storage.RestoreShared.restoreOldRecord
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.GSON
 import io.legado.app.utils.decodeAnyMapOrNull
@@ -41,49 +42,27 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * 恢复流程的 KMP 共享版 (与 [AppWebDavShared] / [BackupShared] 配套)。
+ * 恢复流程 (KMP 共享版, 全平台唯一实现)。
  *
- * # 背景
- * app 端 [io.legado.app.help.storage.Restore] 单例依赖大量 Android-specific 类
- * (Context / Uri / SQLiteConstraintException / XmlPullParser / FileDoc /
- * ACache / FileBook / LauncherIconHelp / ThemeConfig.applyDayNight(appCtx) /
- * defaultSharedPreferences.edit / appCtx.toastOnUi / R.string / BuildConfig.DEBUG 等),
- * 不能直接下沉 shared/commonMain。本 KMP 版抽掉 Android 专属依赖, 仅保留核心恢复流程
- * (zip 解压 → JSON → DAO 批量 insert + config.json 写回 prefs), 桌面端 / iOS 端可直接复用。
+ * # 职责
+ * 解压后的 JSON 读取 / 批量写库 / 配置文件回写 / prefs 写回全部在这里,
+ * app 端 [io.legado.app.help.storage.Restore] 只剩 Android 钩子 (SAF content://
+ * 解压、config.xml 旧格式解析、主题重载、恢复后 toast/图标/日夜间刷新),
+ * 经 [BackupRestoreHooks] 注入, 保证 WebDav 与本地恢复走同一条核心路径。
  *
- * # 与 app 端 [io.legado.app.help.storage.Restore] 的差异
- * - **不依赖 Context / Uri**: 仅接受解压后的本地 [path] 目录, 由 [BackupFileOps] 跨平台访问
- * - **不依赖 XmlPullParser**: 不兼容旧版本 XML 备份 (config.xml), 仅支持 JSON 格式
- *   (桌面端是新接入, 无历史 XML 备份; app 端如需仍用原 [io.legado.app.help.storage.Restore])
- * - **不依赖 ACache / FileBook / LauncherIconHelp / ThemeConfig.applyDayNight**:
- *   这些子项的恢复保留在 app 端 [io.legado.app.help.storage.Restore]
- * - **不依赖 defaultSharedPreferences.edit**: 配置写回走 [PreferenceProviders]
- *   (支持 String/Int/Boolean/Long/Float 类型, 与 app 端 SharedPreferences 类型映射一致)
- * - **简化 restoreReadRecord**: 仅支持新格式 (startSec/endSec), 旧格式 (readTime/lastRead)
- *   跳过并 AppLog 提示 (桌面端无历史旧备份, app 端如需仍用原 [Restore])
- * - **不调用 appCtx.toastOnUi(R.string.restore_success)**: 成功提示由调用方决定
- *   (desktop UI 用 Compose state 自行处理)
- *
- * # 命名后缀 Shared
- * 与 app 端 [io.legado.app.help.storage.Restore] 同包同名会与 app 模块冲突
- * (shared androidMain target 被 app 模块依赖), 故加 `Shared` 后缀避免歧义,
- * 同时表明这是 KMP 共享版本。
- *
- * # 模式参考
- * - app 端 [io.legado.app.help.storage.Restore] (业务对照原型)
- * - shared/commonMain `io.legado.app.model.webBook.WebBook` (KMP 业务编排层下沉先例)
+ * # 与原 app 端实现的对应
+ * - 恢复顺序、忽略项判断、servers.json 解密、prefs 类型映射均与原版逐项一致
+ * - java.util.Calendar 的旧格式阅读记录迁移算法改用 [prevDayKey] / [midnightSecFromDayKey]
  */
 object RestoreShared {
 
-    /** 互斥锁, 防止并发恢复 (与 app 端 [io.legado.app.help.storage.Restore.mutex] 同语义)。 */
+    private const val TAG = "Restore"
+
+    /** 互斥锁, 防止并发恢复 (与原版 mutex 同语义)。 */
     private val mutex = Mutex()
 
     /**
      * 恢复入口 (互斥锁保护)。
-     *
-     * 与 app 端 [io.legado.app.help.storage.Restore.restoreLocked] 同语义:
-     * - 调用方先解压 zip 到 [path] (由 [AppWebDavShared.restoreWebDav] 完成)
-     * - 本函数从 [path] 读 JSON → 批量 insert DAO + 写回 prefs
      *
      * @param path 已解压的备份目录绝对路径 (对应 [BackupShared.backupPath])
      */
@@ -96,38 +75,50 @@ object RestoreShared {
     /**
      * 从本地 zip 文件恢复 (解压 → [restoreLocked])。
      *
-     * 与 app 端 [io.legado.app.help.storage.Restore.restore](context, uri) 的
-     * "解压到 backupPath → restoreLocked" 流程同语义: 先清空备份工作目录残留,
-     * 解压 zip 到 [BackupShared.backupPath], 再走 [restoreLocked]。
+     * 与原版 `Restore.restore(context, uri)` 同语义: 先清空备份工作目录残留, 解压 zip 到
+     * [BackupShared.backupPath] 再恢复; Android 的 content:// 由
+     * [BackupRestoreHook.unZipBackup] 处理。
      *
-     * 供桌面端本地恢复复用 (替代 inline 的 unZipToPath + restoreLocked),
-     * content scheme 由调用方先解析为本地路径。
-     *
-     * @param zipPath 本地 zip 文件绝对路径
+     * @param zipPath 本地 zip 文件路径 (Android 可为 content:// uri)
      */
     suspend fun restoreFromZip(zipPath: String) {
+        val hooks = BackupRestoreHooks.get()
         val destPath = BackupShared.backupPath
-        BackupFileOps.delete(destPath)
-        BackupFileOps.unZipToPath(zipPath, destPath)
-        restoreLocked(destPath)
+        runCatching {
+            BackupFileOps.delete(destPath)
+            if (!hooks.unZipBackup(zipPath, destPath)) {
+                BackupFileOps.unZipToPath(zipPath, destPath)
+            }
+        }.onFailure {
+            AppLog.put("复制解压文件出错\n${it.message}", it, tag = TAG)
+            return
+        }
+        runCatching {
+            restoreLocked(destPath)
+            hooks.onRestoreFromZipFinished()
+        }.onFailure {
+            AppLog.put("恢复备份出错\n${it.message}", it, toast = true, tag = TAG)
+        }
     }
 
     /**
      * 实际恢复逻辑 (不加锁, 由 [restoreLocked] 包装)。
      *
-     * 步骤:
-     * 1. 逐个 JSON 文件 → DAO 批量 insert
-     * 2. servers.json 解密 (若加密) → serverDao.insert
-     * 3. config.json → PreferenceProviders 写回 (过滤 ignorePrefKeys)
+     * 步骤与原版逐项对应:
+     * 1. 逐个 JSON 文件 → DAO 批量 insert (含阅读记录新旧格式)
+     * 2. servers.json 解密 → serverDao
+     * 3. 直链上传规则 / 主题配置 / 阅读界面配置 (忽略项生效)
+     * 4. config.json (无则 config.xml) → prefs 写回
+     * 5. 阅读配置项从 prefs 刷新 + 宿主 UI 钩子
      */
     private suspend fun restore(path: String) {
+        val hooks = BackupRestoreHooks.get()
         val aes = BackupAES()
         val appDb = AppDatabaseProviders.get().appDb
         val sep = BackupFileOps.separator
 
-        // 1. DAO 数据恢复 (与 app 端顺序一致)
+        // 1. DAO 数据恢复 (与原版顺序一致)
         fileToListT<Book>(path, "bookshelf.json")?.let { books ->
-            // 与 app 端 Restore.kt 一致: 先刷 type, 本地书封面路径重算, 再按 ignoreLocalBook 过滤
             books.forEach { book -> book.upType() }
             books.filter { book -> book.isLocal }
                 .forEach { book -> book.coverUrl = FileBook.getCoverPath(book.bookUrl) }
@@ -138,6 +129,7 @@ object RestoreShared {
                     return@forEach
                 }
                 if (appDb.bookDao.has(book.bookUrl)) {
+                    // 原版捕获 SQLiteConstraintException 后改 insert; commonMain 无该类型, 按异常回退
                     runCatching { appDb.bookDao.update(book) }
                         .onFailure { appDb.bookDao.insert(book) }
                 } else {
@@ -186,7 +178,7 @@ object RestoreShared {
         currentCoroutineContext().ensureActive()
         restoreReadRecord(path)
 
-        // 2. servers.json 解密 (若加密, 与 app 端同逻辑)
+        // 2. servers.json 解密 (若加密, 与原版同逻辑)
         runCatching {
             val serversFile = path + sep + "servers.json"
             if (BackupFileOps.exists(serversFile)) {
@@ -199,16 +191,35 @@ object RestoreShared {
                 }
             }
         }.onFailure {
-            AppLog.put("RestoreShared 恢复服务器配置出错\n${it.message}", it)
+            AppLog.put("恢复服务器配置出错\n${it.message}", it, tag = TAG)
         }
 
         currentCoroutineContext().ensureActive()
 
-        // 2.1 app 端独有配置文件恢复 (与 app 端 Restore.kt:180-217 同语义)
-        // readConfig.json / shareReadConfig.json: 复制回 filesDir 后重载入 (落盘, 非仅内存)
-        // themeConfig.json: 解析 JSON → 通过 ThemeConfigProvider.addConfig 逐个写入
-        // directLinkUploadRule.json: 桌面端无 DirectLinkUpload, 跳过
-        // 与 app 端 Restore.kt 一致: 备份忽略项勾选「阅读界面」时不恢复阅读界面配置
+        // 3.1 直链上传规则 (原版: ACache.put(ruleFileName, json) 原样写回)
+        runCatching {
+            val ruleFile = path + sep + ruleFileName
+            if (BackupFileOps.exists(ruleFile)) {
+                DirectLinkUploadStoreProviders.get()
+                    ?.putConfigJson(BackupFileOps.readText(ruleFile))
+            }
+        }.onFailure {
+            AppLog.put("恢复直链上传出错\n${it.message}", it, tag = TAG)
+        }
+
+        // 3.2 主题配置: 覆盖 themeConfig.json 后重载 (原版 delete + copyTo + ThemeConfig.upConfig())
+        runCatching {
+            val themeConfigFile = path + sep + BackupShared.THEME_CONFIG_FILE_NAME
+            if (BackupFileOps.exists(themeConfigFile)) {
+                BackupFileOps.delete(BackupShared.themeConfigFilePath)
+                BackupFileOps.copyFile(themeConfigFile, BackupShared.themeConfigFilePath)
+                hooks.onThemeConfigRestored()
+            }
+        }.onFailure {
+            AppLog.put("恢复主题出错\n${it.message}", it, tag = TAG)
+        }
+
+        // 3.3 阅读界面配置 (备份忽略项勾选「阅读界面」时跳过, 与原版一致)
         if (!BackupConfigShared.ignoreReadConfig) {
             runCatching {
                 val readConfigFile = path + sep + ReadBookConfigShared.configFileName
@@ -219,7 +230,7 @@ object RestoreShared {
                     readBookConfig.initConfigs()
                 }
             }.onFailure {
-                AppLog.put("RestoreShared 恢复阅读界面出错\n${it.message}", it)
+                AppLog.put("恢复阅读界面出错\n${it.message}", it, tag = TAG)
             }
             runCatching {
                 val shareConfigFile = path + sep + ReadBookConfigShared.shareConfigFileName
@@ -230,68 +241,62 @@ object RestoreShared {
                     readBookConfig.initShareConfig()
                 }
             }.onFailure {
-                AppLog.put("RestoreShared 恢复阅读界面出错\n${it.message}", it)
+                AppLog.put("恢复阅读界面出错\n${it.message}", it, tag = TAG)
             }
-        }
-        runCatching {
-            val themeConfigFile = path + sep + "themeConfig.json"
-            if (BackupFileOps.exists(themeConfigFile)) {
-                val json = BackupFileOps.readText(themeConfigFile)
-                GSON.fromJsonArray<io.legado.app.help.config.ThemeConfigData>(json)
-                    .getOrNull()?.let { themes ->
-                        val themeProvider = io.legado.app.help.config.ThemeConfigProviders.get()
-                        themes.forEach { themeProvider.addConfig(it) }
-                    }
-            }
-        }.onFailure {
-            AppLog.put("RestoreShared 恢复 themeConfig 出错\n${it.message}", it)
-        }
-        // directLinkUploadRule.json (与 app 端 Restore.kt ACache.put(ruleFileName, json) 同语义)
-        // 解析 JSON → DirectLinkUploadRule, 通过 DirectLinkUploadStoreProviders.putConfig 写回
-        runCatching {
-            val ruleFile = path + sep + ruleFileName
-            if (BackupFileOps.exists(ruleFile)) {
-                val json = BackupFileOps.readText(ruleFile)
-                parseDirectLinkUploadRule(json)?.let { rule ->
-                    DirectLinkUploadStoreProviders.get()?.putConfig(rule)
-                }
-            }
-        }.onFailure {
-            AppLog.put("RestoreShared 恢复 directLinkUploadRule 出错\n${it.message}", it)
         }
 
         currentCoroutineContext().ensureActive()
 
-        // 3. config.json → PreferenceProviders 写回 (支持 String/Int/Boolean/Long/Float/Double)
+        // 4. config.json → prefs 写回; 无 config.json 时读旧版 config.xml (宿主钩子)
         runCatching {
+            val configMap = mutableMapOf<String, Any?>()
             val configFile = path + sep + "config.json"
             if (BackupFileOps.exists(configFile)) {
-                val json = BackupFileOps.readText(configFile)
-                val configMap = decodeAnyMapOrNull(json)
-                val prefs = PreferenceProviders.get()
-                configMap?.forEach { (key, value) ->
-                    if (BackupConfigShared.keyIsNotIgnore(key)) {
-                        when (key) {
-                            PreferKey.webDavPassword -> {
-                                runCatching { aes.decryptStr(value.toString()) }
-                                    .getOrNull()?.let { prefs.putString(key, it) }
-                                    ?: run {
-                                        // 解密失败: 若当前 prefs 中 webDavPassword 也为空, 用密文兜底
-                                        if (prefs.getString(PreferKey.webDavPassword, "").isBlank()) {
-                                            prefs.putString(key, value.toString())
-                                        }
+                decodeAnyMapOrNull(BackupFileOps.readText(configFile))?.let { configMap.putAll(it) }
+            } else {
+                hooks.readLegacyConfig(path)?.let { configMap.putAll(it) }
+            }
+            val prefs = PreferenceProviders.get()
+            configMap.forEach { (key, value) ->
+                if (BackupConfigShared.keyIsNotIgnore(key)) {
+                    when (key) {
+                        PreferKey.webDavPassword -> {
+                            runCatching { aes.decryptStr(value.toString()) }
+                                .getOrNull()?.let { prefs.putString(key, it) }
+                                ?: run {
+                                    // 解密失败: 若当前 webDavPassword 也为空, 用密文兜底
+                                    if (prefs.getString(PreferKey.webDavPassword, "").isBlank()) {
+                                        prefs.putString(key, value.toString())
                                     }
-                            }
-                            else -> putPrefByType(prefs, key, value)
+                                }
                         }
+
+                        else -> putPrefByType(prefs, key, value)
                     }
                 }
             }
         }.onFailure {
-            AppLog.put("RestoreShared 恢复 config.json 出错\n${it.message}", it)
+            AppLog.put("恢复配置出错\n${it.message}", it, tag = TAG)
+        }
+
+        // 5. 阅读配置项从 prefs 刷新 (与原版 ReadBookConfig.apply { ... } 一致)
+        runCatching {
+            val prefs = PreferenceProviders.get()
+            ReadBookConfigProviders.get().apply {
+                comicStyleSelect = prefs.getInt(PreferKey.comicStyleSelect, 0)
+                readStyleSelect = prefs.getInt(PreferKey.readStyleSelect, 0)
+                shareLayout = prefs.getBoolean(PreferKey.shareLayout, false)
+                hideStatusBar = prefs.getBoolean(PreferKey.hideStatusBar, false)
+                hideNavigationBar = prefs.getBoolean(PreferKey.hideNavigationBar, false)
+                autoReadSpeed = prefs.getInt(PreferKey.autoReadSpeed, 46)
+            }
+        }.onFailure {
+            AppLog.put("刷新阅读配置出错\n${it.message}", it, tag = TAG)
         }
 
         currentCoroutineContext().ensureActive()
+        // 6. 宿主 UI 钩子 (app 端: toast 成功 + 图标切换 + 日夜间应用)
+        hooks.onRestoreFinished()
     }
 
     /**
@@ -359,16 +364,19 @@ object RestoreShared {
     /**
      * 通用: 读 JSON 文件 → 反序列化为 List<T>。
      *
-     * 文件不存在 / 解析失败均返回 null (走 AppLog 记录, 不抛)。
+     * 文件不存在返回 null; 解析失败记录日志并 toast (与原版一致), 不抛。
      */
     private inline fun <reified T> fileToListT(path: String, fileName: String): List<T>? {
         return runCatching {
             val file = path + BackupFileOps.separator + fileName
-            if (!BackupFileOps.exists(file)) return null
+            if (!BackupFileOps.exists(file)) {
+                AppLog.putDebug("阅读恢复备份 $fileName 文件不存在", tag = TAG)
+                return null
+            }
             val json = BackupFileOps.readText(file)
             GSON.fromJsonArray<T>(json).getOrThrow()
         }.onFailure {
-            AppLog.put("$fileName\n读取解析出错\n${it.message}", it)
+            AppLog.put("$fileName\n读取解析出错\n${it.message}", it, toast = true, tag = TAG)
         }.getOrNull()
     }
 

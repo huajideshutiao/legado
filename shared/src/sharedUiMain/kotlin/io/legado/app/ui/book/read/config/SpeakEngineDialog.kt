@@ -18,9 +18,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -39,11 +39,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import io.legado.app.data.entities.HttpTTS
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
@@ -123,14 +124,15 @@ fun SpeakEngineDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        properties = AppDialogSizes.properties(),
     ) {
         Surface(
             shape = DesignTokens.dialogShape,
             color = colors.background,
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            // 原版 isFullHeight = true, 高度固定 0.8 屏高
+            modifier = Modifier.appDialogSize(fullHeight = true).padding(16.dp),
         ) {
-            Column(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxSize()) {
                 DialogTitleBar(
                     title = stringResource(Res.string.speak_engine),
                     onBack = onDismiss,
@@ -147,12 +149,11 @@ fun SpeakEngineDialog(
                     },
                 )
 
-                // 引擎列表 (与原版 LazyColumn + sysDefault item + items 对齐)
+                // 引擎列表 (与原版 LazyColumn + sysDefault item + items 对齐; 全高对话框下撑满剩余高度)
                 LazyColumn(
                     Modifier
                         .fillMaxWidth()
-                        .weight(1f, fill = false)
-                        .heightIn(max = 400.dp),
+                        .weight(1f),
                 ) {
                     // 系统默认行 (与原版 sysDefault item 对齐)
                     // 桌面端无系统 TTS 引擎列表, 仅保留"系统默认"占位行

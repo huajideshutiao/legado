@@ -14,23 +14,22 @@ import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
-// MD2 TextField (filled 形态, indicator/container 透明)
-import androidx.compose.material.TextField
-import androidx.compose.material.TextFieldDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.appDialogSize
+import io.legado.app.ui.compose.component.code.CodeTextField
+import io.legado.app.ui.compose.component.code.KeyboardToolbar
+import io.legado.app.ui.compose.component.code.KeyboardToolbarState
+import io.legado.app.ui.compose.component.code.rememberCodeEditorState
+import io.legado.app.ui.compose.component.code.rememberFullCodeSyntax
+import io.legado.app.ui.compose.component.code.rememberHighlightedCode
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
@@ -43,17 +42,14 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * 代码查看/编辑对话框内容 (KMP 共享, desktop / iOS 复用)。
  *
- * 对应 app 端 `io.legado.app.ui.widget.dialog.CodeDialog` 的 UI 结构, 去掉对 Android
- * CodeView (语法高亮 EditText) / BaseComposeDialogFragment / IntentData 的依赖, 改为
- * 纯 @Composable + 回调形式:
+ * 对应 app 端 `io.legado.app.ui.widget.dialog.CodeDialog` 的 UI 结构, 去掉对
+ * BaseDialogFragment / IntentData 的依赖, 改为纯 @Composable + 回调形式:
  * - 标题栏: [DialogTitleBar] (disableEdit=true 时标题 "code view", 否则空串), 右侧保存按钮
  *   (仅可编辑模式显示, 图标 ic_save + contentDescription action_save)
- * - 代码区: 可编辑模式用 [TextField] (等宽字体 + 垂直滚动); 只读模式用 [SelectionContainer]
- *   + [Text] (等宽字体 + 垂直滚动, 支持文本选择复制)
+ * - 代码区: 可编辑模式用 [CodeTextField] (语法高亮 + 等宽 + 垂直滚动) + [KeyboardToolbar];
+ *   只读模式用 [SelectionContainer] + [Text] (同样着色, 支持文本选择复制)
  *
  * 与 app 端差异 (平台限制, 严禁改变可编辑/只读的交互语义):
- * - app 端用 CodeView 自带语法高亮 (addLegadoPattern/addJsonPattern/addJsPattern);
- *   KMP 版无等价跨平台语法高亮组件, 暂用纯文本 + 等宽字体呈现 (功能完整性优先, 高亮待后续)。
  * - app 端通过 Fragment arguments + IntentData 传 code; KMP 版由调用方直接传参。
  * - app 端 onSave 通过 parentFragment/activity 的 Callback 回调; KMP 版用 [onSave] lambda。
  *
@@ -73,13 +69,15 @@ fun CodeDialogContent(
     disableEdit: Boolean,
     onDismiss: () -> Unit,
     onSave: ((String) -> Unit)? = null,
+    onShowKeyboardConfig: () -> Unit = {},
 ) {
     val colors = AppTheme.colors
     // 标题: disableEdit=true → "code view", 否则空串 (对齐 app 端逻辑)
     val title = if (disableEdit) stringResource(Res.string.code_view) else ""
     val saveDesc = stringResource(Res.string.action_save)
-    // 可编辑模式持有本地编辑状态 (初始化自 code)
-    var editCode by remember(code) { mutableStateOf(code) }
+    // 语法高亮: legado + json + js 三组全开, 对齐 app 端 CodeDialog 的三连 addXxxPattern
+    val syntax = rememberFullCodeSyntax()
+    val editor = rememberCodeEditorState(code, key = code)
 
     Column(Modifier.fillMaxWidth()) {
         DialogTitleBar(
@@ -87,7 +85,7 @@ fun CodeDialogContent(
             onBack = onDismiss,
         ) {
             if (!disableEdit && onSave != null) {
-                IconButton(onClick = { onSave(editCode) }) {
+                IconButton(onClick = { onSave(editor.value.text) }) {
                     Icon(
                         painter = painterResource(Res.drawable.ic_save),
                         contentDescription = saveDesc,
@@ -100,7 +98,7 @@ fun CodeDialogContent(
         if (disableEdit) {
             SelectionContainer {
                 Text(
-                    text = code,
+                    text = rememberHighlightedCode(code, syntax),
                     color = colors.primaryText,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 13.sp,
@@ -111,27 +109,25 @@ fun CodeDialogContent(
                 )
             }
         } else {
-            // MD2 TextField (filled 形态, indicator/container 透明)
-            TextField(
-                value = editCode,
-                onValueChange = { editCode = it },
+            // 无边框无背景 (showIndicator=false), 对齐 app 端 CodeView 内嵌呈现
+            CodeTextField(
+                value = editor.value,
+                onValueChange = { editor.onValueChange(it) },
+                syntax = syntax,
+                showIndicator = false,
+                fontSize = 13.sp,
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 480.dp)
                     .verticalScroll(rememberScrollState()),
-                textStyle = TextStyle(
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 13.sp,
-                ),
-                // 无边框无背景, 对齐 app 端 CodeView 内嵌呈现
-                colors = TextFieldDefaults.textFieldColors(
-                    textColor = colors.primaryText,
-                    cursorColor = colors.accent,
-                    backgroundColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
-                ),
+            )
+            val keyboardState = remember { KeyboardToolbarState() }
+            KeyboardToolbar(
+                state = keyboardState,
+                onSendText = { editor.insertAtCursor(it) },
+                onUndo = { editor.undo() },
+                onRedo = { editor.redo() },
+                onShowConfig = onShowKeyboardConfig,
             )
         }
     }
@@ -154,10 +150,11 @@ fun CodeDialog(
     disableEdit: Boolean,
     onDismiss: () -> Unit,
     onSave: ((String) -> Unit)? = null,
+    onShowKeyboardConfig: () -> Unit = {},
 ) {
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(
+        properties = AppDialogSizes.properties(
             dismissOnBackPress = true,
             dismissOnClickOutside = true,
         ),
@@ -165,12 +162,14 @@ fun CodeDialog(
         Surface(
             shape = DesignTokens.dialogShape,
             color = AppTheme.colors.background,
+            modifier = Modifier.appDialogSize(),
         ) {
             CodeDialogContent(
                 code = code,
                 disableEdit = disableEdit,
                 onDismiss = onDismiss,
                 onSave = onSave,
+                onShowKeyboardConfig = onShowKeyboardConfig,
             )
         }
     }

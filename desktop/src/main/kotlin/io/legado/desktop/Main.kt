@@ -8,11 +8,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.window.Window
-import io.legado.app.ui.compose.platform.rememberString
-import javax.imageio.ImageIO
 import androidx.compose.ui.window.application
-import io.legado.app.data.AppDbProviders
 import io.legado.app.data.AppDatabaseProviders
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.BundledDatabaseDriver
 import io.legado.app.data.DatabaseDriverProviders
 import io.legado.app.data.DesktopAppDatabaseProvider
@@ -27,32 +25,32 @@ import io.legado.app.help.book.JvmBookStorage
 import io.legado.app.help.book.JvmLocalBookLocator
 import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.help.image.registerJvmBookImageLoader
-import io.legado.app.model.fileBook.BitmapProviders
-import io.legado.app.model.fileBook.ZipFileWrapperFactoryProviders
 import io.legado.app.help.file.registerDesktopAppFilesDir
 import io.legado.app.help.http.OkHttpClientProviders
+import io.legado.app.help.image.registerJvmBookImageLoader
 import io.legado.app.help.notification.registerDesktopNotificationProgress
 import io.legado.app.help.service.registerDesktopServiceLauncher
-import io.legado.app.web.registerDesktopWebServerPlatform
-import io.legado.app.web.utils.registerDesktopWebAssetSource
-import io.legado.app.web.utils.registerDesktopWebStrings
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceHelpAccessors
+import io.legado.app.help.storage.registerJvmDataStorage
 import io.legado.app.help.toast.registerDesktopToaster
 import io.legado.app.help.tts.TtsEngineProvider
+import io.legado.app.model.fileBook.BitmapProviders
+import io.legado.app.model.fileBook.ZipFileWrapperFactoryProviders
 import io.legado.app.model.script.JsEngines
 import io.legado.app.ui.association.DeepLinkImportHost
 import io.legado.app.ui.association.LegadoDeepLink
 import io.legado.app.ui.association.LegadoDeepLinkHandler
-import io.legado.app.ui.browser.LocalWebViewSlot
+import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
 import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
 import io.legado.app.ui.book.info.SharedBlurCoverBgCoil
-import io.legado.desktop.ui.browser.DesktopWebViewSlot
-import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.read.ReaderPlatformProviders
+import io.legado.app.ui.book.read.page.provider.SkiaTextMeasurer
+import io.legado.app.ui.book.read.page.provider.TextMeasurerProviders
+import io.legado.app.ui.book.source.SourceUiEventBridgeHost
 import io.legado.app.ui.book.video.VideoPlayPlatformProviders
+import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
 import io.legado.app.ui.compose.platform.DesktopPreferenceStoreProvider
@@ -62,33 +60,43 @@ import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.LegadoApp
+import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.ui.root.ScreenModelStore
+import io.legado.app.web.registerDesktopWebServerPlatform
+import io.legado.app.web.utils.registerDesktopWebAssetSource
+import io.legado.app.web.utils.registerDesktopWebStrings
 import io.legado.desktop.audio.registerDesktopAudioPlayProviders
 import io.legado.desktop.config.registerDesktopConfig
 import io.legado.desktop.data.DesktopAppDbAccessor
+import io.legado.desktop.help.DesktopDefaultDataResourceProvider
+import io.legado.desktop.help.SingleInstanceGuard
 import io.legado.desktop.help.book.DesktopBitmapProvider
 import io.legado.desktop.help.book.DesktopBookHelpAccessor
 import io.legado.desktop.help.book.DesktopZipFileWrapperFactory
 import io.legado.desktop.help.book.registerDesktopBookshelfManagePlatform
-import io.legado.desktop.help.config.registerDesktopPasswordProvider
-import io.legado.desktop.help.DesktopDefaultDataResourceProvider
-import io.legado.desktop.help.SingleInstanceGuard
-import io.legado.desktop.help.http.registerDesktopBackstageWebView
-import io.legado.desktop.help.registerDesktopArchiveProvider
-import io.legado.desktop.help.registerDesktopFileCacheProvider
-import io.legado.desktop.help.registerDesktopAndroidId
 import io.legado.desktop.help.changesource.registerDesktopChangeBookSourcePlatform
+import io.legado.desktop.help.config.registerDesktopPasswordProvider
+import io.legado.desktop.help.http.registerDesktopBackstageWebView
 import io.legado.desktop.help.i18n.registerDesktopAppStringProvider
 import io.legado.desktop.help.log.registerDesktopAppLogHost
+import io.legado.desktop.help.registerDesktopAndroidId
+import io.legado.desktop.help.registerDesktopArchiveProvider
 import io.legado.desktop.help.registerDesktopDirectLinkUploadProviders
+import io.legado.desktop.help.registerDesktopFileCacheProvider
 import io.legado.desktop.help.registerDesktopRegexErrorHandler
 import io.legado.desktop.help.registerDesktopScreenInfoProvider
-import io.legado.desktop.help.ui.registerDesktopOpenUrlProvider
-import io.legado.desktop.help.ui.registerDesktopToastProvider
-import io.legado.desktop.help.ui.registerDesktopUserAgentProvider
 import io.legado.desktop.help.source.DesktopSourceHelpAccessor
 import io.legado.desktop.help.source.registerDesktopSourceProviders
 import io.legado.desktop.help.source.registerDesktopVerificationUiProvider
+import io.legado.desktop.help.ui.registerDesktopOpenUrlProvider
+import io.legado.desktop.help.ui.registerDesktopToastProvider
+import io.legado.desktop.help.ui.registerDesktopUserAgentProvider
 import io.legado.desktop.http.registerDesktopHttpProvider
 import io.legado.desktop.js.registerDesktopJsEngines
 import io.legado.desktop.model.DesktopCacheBook
@@ -96,17 +104,10 @@ import io.legado.desktop.model.fileBook.registerDesktopFileBookAccessor
 import io.legado.desktop.model.webBook.registerDesktopWebBookProviders
 import io.legado.desktop.tts.DesktopHttpTtsPlayer
 import io.legado.desktop.tts.DesktopSystemTtsEngine
-import io.legado.app.help.config.AppConfigProviders
-import io.legado.app.ui.root.AppNavigator
-import io.legado.app.ui.root.AppRoute
-import io.legado.app.ui.root.LegadoApp
-import io.legado.app.ui.root.PlatformCapabilityProviders
-import io.legado.app.ui.root.PlatformServiceProviders
-import io.legado.app.ui.root.ScreenModelStore
-import io.legado.app.ui.book.source.SourceUiEventBridgeHost
 import io.legado.desktop.ui.DesktopPlatformCapabilities
 import io.legado.desktop.ui.DesktopPlatformServices
 import io.legado.desktop.ui.DesktopWindowHandle
+import io.legado.desktop.ui.browser.DesktopWebViewSlot
 import io.legado.desktop.ui.platform.DesktopAudioPlayPlatformProvider
 import io.legado.desktop.ui.platform.DesktopMangaReaderPlatform
 import io.legado.desktop.ui.platform.DesktopReaderPlatformProvider
@@ -114,10 +115,10 @@ import io.legado.desktop.ui.platform.DesktopVideoPlayPlatformProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
-import org.jetbrains.compose.resources.painterResource
 import org.jsoup.Jsoup
 import java.awt.Desktop
 import java.io.File
+import javax.imageio.ImageIO
 
 // Debug 日志开关: -Dlegado.desktop.debug=true 开启 stdout 调试输出
 // 生产环境静默, 减少 println 同步 flush 开销 (启动期 initDesktopRuntimeEnvironment 等)
@@ -259,6 +260,8 @@ private fun runDesktopApp() = application {
     AppDatabaseProviders.register(DesktopAppDatabaseProvider(dbDriver))
     // KP2-D: 注册桌面端 BookStorage provider (首屏书架/阅读用, ~/.legado/book_cache)
     // ReadBookViewModelShared.loadChapter 通过 BookStorageProviders.get().getContent 读章节缓存正文
+    // 存储路径集中 provider 须先注册 (JvmBookStorage 构造时取 chapterCacheDir)
+    registerJvmDataStorage()
     BookStorageProviders.register(JvmBookStorage())
     // 注: BookImageStorageProviders (漫画图片缓存) 非首屏必需, 延迟到阶段3 registerSecondaryProviders 注册
     // KP2-D: 注册桌面端 AppDbAccessor / BookHelpAccessor provider (首屏书架间接访问)
@@ -286,6 +289,11 @@ private fun runDesktopApp() = application {
     // - Manga: Coil3 AsyncImage 渲染 + ColorMatrix 灰度/颜色滤镜
     // - Video: MPV 播放器 (SwingPanel + nativeHwnd 桥接, Windows 用 WComponentPeer getHwnd)
     ReaderPlatformProviders.register(DesktopReaderPlatformProvider())
+    // 阅读排版度量: 注册 Skia 真实字形度量, 取代 SimpleTextMeasurer 等宽近似
+    // (字形来源与 PageContentCanvas 的 Compose FontFamily.Default 同源)
+    TextMeasurerProviders.register { textSizePx, letterSpacingPx ->
+        SkiaTextMeasurer(textSizePx = textSizePx, letterSpacingPx = letterSpacingPx)
+    }
     AudioPlayPlatformProviders.register(DesktopAudioPlayPlatformProvider())
     MangaReaderScreenModel.Providers.register(DesktopMangaReaderPlatform)
     VideoPlayPlatformProviders.register(DesktopVideoPlayPlatformProvider())

@@ -14,6 +14,7 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.TextUnit
 import io.legado.app.constant.AppPattern
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.model.CoverGlyph
@@ -26,8 +27,7 @@ import io.legado.app.model.computeCoverTextLayout
  * 这里只用 Compose drawText 消费 glyph —— 先白色描边再 accent 填充, 同原版 drawTextWithStroke。
  * 文字测量在 drawWithCache 的缓存阶段完成, 尺寸不变时不重测。
  *
- * 唯一保留的平台差异是底图: Android 走 image_cover_default.9.png (9-patch 拉伸区,
- * Compose 无等价能力), 其他端走 accent 纯色底。
+ * 底图由调用方铺 (用户图集烘焙图或内置 image_cover_default), 本组件只叠字。
  */
 @Composable
 internal fun CoverNameAuthorOverlay(
@@ -54,17 +54,21 @@ internal fun CoverNameAuthorOverlay(
                 author = cleanAuthor,
                 drawName = drawName,
                 drawAuthor = drawAuthor,
-                // 原版 textHeight = descent - ascent + leading, 单行实测高度等价
+                // 原版 textHeight = descent - ascent + leading, 单行实测高度等价;
+                // 书名粗体 / 作者常规, 对照原版 namePaint(DEFAULT_BOLD) 与 authorPaint(DEFAULT)
                 textHeightOf = { px ->
-                    measurer.measure("测", TextStyle(fontSize = px.toSp())).size.height.toFloat()
+                    measurer.measure("测", glyphStyle(px.toSp(), FontWeight.Bold))
+                        .size.height.toFloat()
+                },
+                authorTextHeightOf = { px ->
+                    measurer.measure("测", glyphStyle(px.toSp(), FontWeight.Normal))
+                        .size.height.toFloat()
                 },
             )
             val prepared = glyphs.map { g ->
-                val style = TextStyle(
-                    fontSize = g.textSize.toSp(),
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                )
+                // 作者列非粗体 (原版 authorPaint.typeface = Typeface.DEFAULT)
+                val weight = if (g.isAuthor) FontWeight.Normal else FontWeight.Bold
+                val style = glyphStyle(g.textSize.toSp(), weight)
                 PreparedGlyph(
                     glyph = g,
                     stroke = measurer.measure(
@@ -77,10 +81,11 @@ internal fun CoverNameAuthorOverlay(
             onDrawWithContent {
                 drawContent()
                 prepared.forEach { p ->
-                    // 原版 textAlign=CENTER 且 y 为基线; Compose drawText 以左上角为锚, 故回退
+                    // 原版 textAlign=CENTER 且 y 为基线; Compose drawText 以左上角为锚,
+                    // 故按 firstBaseline (而非整段高度) 回退
                     val topLeft = Offset(
                         p.glyph.x - p.fill.size.width / 2f,
-                        p.glyph.y - p.fill.size.height,
+                        p.glyph.y - p.fill.firstBaseline,
                     )
                     drawText(p.stroke, color = Color.White, topLeft = topLeft)
                     drawText(p.fill, color = accent, topLeft = topLeft)
@@ -89,6 +94,12 @@ internal fun CoverNameAuthorOverlay(
         }
     )
 }
+
+private fun glyphStyle(fontSize: TextUnit, weight: FontWeight) = TextStyle(
+    fontSize = fontSize,
+    fontWeight = weight,
+    textAlign = TextAlign.Center,
+)
 
 private class PreparedGlyph(
     val glyph: CoverGlyph,

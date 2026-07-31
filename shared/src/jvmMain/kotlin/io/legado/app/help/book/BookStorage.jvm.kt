@@ -2,7 +2,7 @@ package io.legado.app.help.book
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.help.file.desktopAppRootDir
+import io.legado.app.help.storage.DataStorageProviders
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -42,6 +42,28 @@ class JvmBookStorage(
                 .map { it.fileName.toString() }
                 .collect(Collectors.toList())
         }
+    }
+
+    override fun hasCacheFile(book: Book, fileName: String): Boolean {
+        return Files.isRegularFile(resolveCacheFile(book, fileName))
+    }
+
+    override fun readCacheFile(book: Book, fileName: String): String? {
+        val file = resolveCacheFile(book, fileName)
+        if (!Files.isRegularFile(file)) return null
+        return Files.readAllBytes(file).toString(Charsets.UTF_8)
+    }
+
+    override fun createCacheFile(book: Book, fileName: String) {
+        val file = resolveCacheFile(book, fileName)
+        Files.createDirectories(file.parent)
+        if (!Files.exists(file)) {
+            Files.createFile(file)
+        }
+    }
+
+    override fun deleteCacheFile(book: Book, fileName: String) {
+        Files.deleteIfExists(resolveCacheFile(book, fileName))
     }
 
     override fun saveText(book: Book, chapter: BookChapter, text: String) {
@@ -164,14 +186,18 @@ class JvmBookStorage(
         return rootDir.resolve(getFolderName(book)).resolve(chapter.getFileName())
     }
 
+    /** 解析书籍缓存目录下任意文件路径 (`.nr` 标记等)。 */
+    private fun resolveCacheFile(book: Book, fileName: String): Path {
+        return rootDir.resolve(getFolderName(book)).resolve(fileName)
+    }
+
     companion object {
         /**
-         * 默认章节缓存根路径: `{desktopAppRootDir}/book_cache`。
-         *
-         * 便携/安装模式的根目录解析见 [desktopAppRootDir]; 与桌面端数据库路径同源。
+         * 默认章节缓存根路径, 取 [DataStorageProviders] 的 `chapterCacheDir`
+         * (= `{desktopAppRootDir}/book_cache`), 保证与其他存储路径单一事实源。
          */
         fun defaultRootPath(): String {
-            return Paths.get(desktopAppRootDir(), "book_cache").toString()
+            return DataStorageProviders.get().chapterCacheDir
         }
     }
 }

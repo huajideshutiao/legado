@@ -6,7 +6,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.help.book.BookContent
-import io.legado.app.ui.book.read.page.entities.TextChapterRef
 import io.legado.app.ui.book.read.page.provider.LayoutProgressListener
 import io.legado.app.ui.book.read.page.provider.TextChapterLayout
 import io.legado.app.utils.fastBinarySearchBy
@@ -29,7 +28,7 @@ data class TextChapter(
     val isPay: Boolean,
     //起效的替换规则
     val effectiveReplaceRules: List<ReplaceRule>?
-) : LayoutProgressListener, TextChapterRef {
+) : LayoutProgressListener, TextChapterContract {
 
     private val textPages = arrayListOf<TextPage>()
     val pages: List<TextPage> get() = textPages
@@ -38,7 +37,7 @@ data class TextChapter(
 
     val layoutChannel get() = layout!!.channel
 
-    fun getPage(index: Int): TextPage? {
+    override fun getPage(index: Int): TextPage? {
         return pages.getOrNull(index)
     }
 
@@ -50,13 +49,13 @@ data class TextChapter(
 
     val lastIndex: Int get() = pages.lastIndex
 
-    val lastReadLength: Int get() = getReadLength(lastIndex)
+    override val lastReadLength: Int get() = getReadLength(lastIndex)
 
     override val pageSize: Int get() = pages.size
 
     var listener: LayoutProgressListener? = null
 
-    var isCompleted = false
+    override var isCompleted = false
 
     val paragraphs by lazy {
         paragraphsInternal
@@ -99,7 +98,7 @@ data class TextChapter(
      * @param index 页数
      * @return 是否是最后一页
      */
-    fun isLastIndex(index: Int): Boolean {
+    override fun isLastIndex(index: Int): Boolean {
         return isCompleted && index >= pages.size - 1
     }
 
@@ -111,7 +110,7 @@ data class TextChapter(
      * @param pageIndex 页数
      * @return 已读长度
      */
-    fun getReadLength(pageIndex: Int): Int {
+    override fun getReadLength(pageIndex: Int): Int {
         if (pageIndex < 0) return 0
         return pages[min(pageIndex, lastIndex)].chapterPosition
         /*
@@ -128,7 +127,7 @@ data class TextChapter(
      * @param length 当前页面文字在章节中的位置
      * @return 下一页位置,如果没有下一页返回-1
      */
-    fun getNextPageLength(length: Int): Int {
+    override fun getNextPageLength(length: Int): Int {
         val pageIndex = getPageIndexByCharIndex(length)
         if (pageIndex + 1 >= pageSize) {
             return -1
@@ -140,7 +139,7 @@ data class TextChapter(
      * @param length 当前页面文字在章节中的位置
      * @return 上一页位置,如果没有上一页返回-1
      */
-    fun getPrevPageLength(length: Int): Int {
+    override fun getPrevPageLength(length: Int): Int {
         val pageIndex = getPageIndexByCharIndex(length)
         if (pageIndex - 1 < 0) {
             return -1
@@ -224,7 +223,7 @@ data class TextChapter(
     /**
      * @return 根据索引位置获取所在页
      */
-    fun getPageIndexByCharIndex(charIndex: Int): Int {
+    override fun getPageIndexByCharIndex(charIndex: Int): Int {
         val pageSize = pages.size
         if (pageSize == 0) {
             return -1
@@ -255,7 +254,7 @@ data class TextChapter(
         */
     }
 
-    fun clearSearchResult() {
+    override fun clearSearchResult() {
         for (i in pages.indices) {
             val page = pages[i]
             page.searchResult.forEach {
@@ -310,7 +309,7 @@ data class TextChapter(
         listener = null
     }
 
-    fun cancelLayout() {
+    override fun cancelLayout() {
         layout?.cancel()
         listener = null
     }
@@ -319,10 +318,10 @@ data class TextChapter(
      * 排版开始时段评数 map 是否已就绪并用上。
      * false 代表排版按「无段评」走的，count 后到了需要触发整章重排。
      */
-    val reviewCountApplied: Boolean
+    override val reviewCountApplied: Boolean
         get() = layout?.reviewCountMap != null
 
-    fun notifyPageChanged() {
+    override fun notifyPageChanged() {
         layout?.notifyPageChanged()
     }
 

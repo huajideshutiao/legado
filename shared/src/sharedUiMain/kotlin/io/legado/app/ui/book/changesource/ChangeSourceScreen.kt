@@ -59,6 +59,7 @@ import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
@@ -598,12 +599,11 @@ fun GroupPickerDialog(
     onSelect: (String) -> Unit,
 ) {
     val colors = AppTheme.colors
-    val dialogWidth = AppDialogSizes.width()
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
         Surface(
             shape = AppTheme.DesignTokens.dialogShape,
             color = colors.background,
-            modifier = Modifier.width(dialogWidth),
+            modifier = Modifier.appDialogSize(),
         ) {
             Column(Modifier.fillMaxWidth()) {
                 DialogTitleBar(

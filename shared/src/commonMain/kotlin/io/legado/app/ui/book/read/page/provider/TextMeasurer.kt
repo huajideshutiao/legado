@@ -1,5 +1,7 @@
 package io.legado.app.ui.book.read.page.provider
 
+import kotlin.concurrent.Volatile
+
 /**
  * 排版测量面收口：把 TextChapterLayout/ZhLayout 消费的平台测量原语抽象出来。
  * 已下沉 shared commonMain（跨端共用）；安卓实现 AndroidTextMeasurer 留在 app。
@@ -30,4 +32,24 @@ interface TextMeasurer {
      * 不再持 android.graphics 类型。
      */
     val descent: Float
+}
+
+/**
+ * 平台真实字形度量注册处：未注册时排版回退等宽近似 [SimpleTextMeasurer]。
+ *
+ * desktop 在 `Main.kt` 注册 `SkiaTextMeasurer`；iOS / 鸿蒙暂未注册（走 fallback）。
+ */
+object TextMeasurerProviders {
+
+    @Volatile
+    private var factory: ((textSizePx: Float, letterSpacingPx: Float) -> TextMeasurer)? = null
+
+    /** 宿主启动早期注册一次（任何章节排版之前）。 */
+    fun register(factory: (textSizePx: Float, letterSpacingPx: Float) -> TextMeasurer) {
+        this.factory = factory
+    }
+
+    /** 未注册返回 null，由调用方回退 [SimpleTextMeasurer]。 */
+    fun createOrNull(textSizePx: Float, letterSpacingPx: Float): TextMeasurer? =
+        factory?.invoke(textSizePx, letterSpacingPx)
 }

@@ -4,7 +4,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -33,7 +31,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
@@ -45,12 +42,14 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.component.AppCheckbox
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.postEvent
@@ -260,15 +259,13 @@ fun HomeSectionEditDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        properties = AppDialogSizes.properties(),
     ) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            // isFullHeight=false → 内容自适应高度, 上限 0.8 屏高 (对照 BaseDialogFragment.onStart)
+        Box(Modifier.fillMaxSize()) {
+            // 自适应高度, 上限 0.8 屏高
             Surface(
                 modifier = Modifier
-                    .fillMaxWidth(0.9f)
-                    .widthIn(max = 800.dp)
-                    .heightIn(max = maxHeight * 0.8f)
+                    .appDialogSize()
                     .align(Alignment.Center),
                 shape = DesignTokens.shapeDefault,
                 color = colors.fillet,
@@ -488,14 +485,12 @@ private fun <T> HomeSearchPickDialog(
     }
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        properties = AppDialogSizes.properties(),
     ) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
             Surface(
                 modifier = Modifier
-                    .fillMaxWidth(0.9f)
-                    .widthIn(max = 800.dp)
-                    .heightIn(max = maxHeight * 0.8f)
+                    .appDialogSize()
                     .align(Alignment.Center),
                 shape = DesignTokens.shapeDefault,
                 color = colors.fillet,

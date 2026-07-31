@@ -4,111 +4,64 @@ import android.content.Context
 import android.net.Uri
 import androidx.core.net.toUri
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.PreferKey
-import io.legado.app.data.appDb
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
-import io.legado.app.help.DirectLinkUpload
-import io.legado.app.help.ruleFileName
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ReadBookConfig
-import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.utils.FileDoc
-import io.legado.app.utils.FileUtils
-import io.legado.app.utils.GSON
-import io.legado.app.utils.toJson
-import io.legado.app.utils.LogUtils
-import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.createFileIfNotExist
-import io.legado.app.utils.createFolderIfNotExist
-import io.legado.app.utils.defaultSharedPreferences
 import io.legado.app.utils.delete
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.find
 import io.legado.app.utils.getFile
 import io.legado.app.utils.isContentScheme
-import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.openOutputStream
-import io.legado.app.utils.outputStream
-import io.legado.app.utils.writeToOutputStream
 import kotlinx.coroutines.Dispatchers.IO
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import java.io.File
 import java.io.FileInputStream
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
- * 备份
+ * 备份 (app 端薄壳)。
+ *
+ * 条目收集 / 序列化 / zip / 上传全部在 [BackupShared], 本 object 只留 Android 专属段:
+ * autoBack 调度 + SAF(content://) 复制 + LocalConfig.lastBackup + 背景图上传,
+ * 经 [AndroidBackupRestoreHook] 注入 shared, 保证与桌面/iOS 走同一条核心路径。
  */
 object Backup {
 
-    val backupPath: String by lazy {
-        appCtx.filesDir.getFile("backup").createFolderIfNotExist().absolutePath
-    }
-    val zipFilePath = "${appCtx.externalFiles.absolutePath}${File.separator}tmp_backup.zip"
+    /** 备份工作目录 (filesDir/backup), 与 [BackupShared.backupPath] 同一路径。 */
+    val backupPath: String get() = BackupShared.backupPath
 
-    private const val TAG = "Backup"
+    /** 备份 zip 临时文件, 与 [BackupShared.zipFilePath] 同一路径。 */
+    val zipFilePath: String get() = BackupShared.zipFilePath
 
+    /** autoBack 自身的互斥, 避免多入口并发触发自动备份。 */
     private val mutex = Mutex()
-
-    private val backupFileNames by lazy {
-        arrayOf(
-            "bookshelf.json",
-            "bookmark.json",
-            "bookGroup.json",
-            "bookSource.json",
-            "replaceRule.json",
-            "readRecord.json",
-            "searchHistory.json",
-            "sourceSub.json",
-            "txtTocRule.json",
-            "httpTTS.json",
-            "keyboardAssists.json",
-            "dictRule.json",
-            "sourceFilterRule.json",
-            "servers.json",
-            ruleFileName,
-            ReadBookConfig.configFileName,
-            ReadBookConfig.shareConfigFileName,
-            ThemeConfig.configFileName,
-            "config.json"
-        )
-    }
-
-    private fun getNowZipFileName(): String {
-        val backupDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            .format(Date(System.currentTimeMillis()))
-        val deviceName = AppConfig.webDavDeviceName
-        return if (deviceName?.isNotBlank() == true) {
-            "backup${backupDate}-${deviceName}.zip"
-        } else {
-            "backup${backupDate}.zip"
-        }.normalizeFileName()
-    }
 
     private fun shouldBackup(): Boolean {
         val lastBackup = LocalConfig.lastBackup
         return lastBackup + TimeUnit.DAYS.toMillis(1) < System.currentTimeMillis()
     }
 
+    /**
+     * 自动备份 (距上次备份超过一天时触发, 云端已有当日备份则只更新时间戳)。
+     */
+    @Suppress("UNUSED_PARAMETER")
     fun autoBack(context: Context) {
         if (shouldBackup()) {
             Coroutine.async {
                 mutex.withLock {
                     if (shouldBackup()) {
-                        val backupZipFileName = getNowZipFileName()
+                        val backupZipFileName = BackupShared.nowZipFileName()
                         if (!AppWebDav.hasBackUp(backupZipFileName)) {
-                            backup(context, AppConfig.backupPath)
+                            BackupShared.backupLocked(AppConfig.backupPath)
                         } else {
                             LocalConfig.lastBackup = System.currentTimeMillis()
                         }
@@ -120,148 +73,22 @@ object Backup {
         }
     }
 
+    @Suppress("UNUSED_PARAMETER")
     suspend fun backupLocked(context: Context, path: String?, uploadToWebDav: Boolean = true) {
-        mutex.withLock {
-            withContext(IO) {
-                backup(context, path, uploadToWebDav)
-            }
-        }
-    }
-
-    private suspend fun backup(context: Context, path: String?, uploadToWebDav: Boolean = true) {
-        LogUtils.d(TAG, "开始备份 path:$path")
-        LocalConfig.lastBackup = System.currentTimeMillis()
-        val aes = BackupAES()
-        FileUtils.delete(backupPath)
-        writeListToJson(appDb.bookDao.all(), "bookshelf.json", backupPath)
-        writeListToJson(appDb.bookmarkDao.all(), "bookmark.json", backupPath)
-        writeListToJson(appDb.bookGroupDao.all(), "bookGroup.json", backupPath)
-        writeListToJson(appDb.bookSourceDao.all(), "bookSource.json", backupPath)
-        writeListToJson(appDb.replaceRuleDao.all(), "replaceRule.json", backupPath)
-        writeListToJson(appDb.readRecordDao.all(), "readRecord.json", backupPath)
-        writeListToJson(appDb.searchKeywordDao.all(), "searchHistory.json", backupPath)
-        writeListToJson(appDb.ruleSubDao.all(), "sourceSub.json", backupPath)
-        writeListToJson(appDb.txtTocRuleDao.all(), "txtTocRule.json", backupPath)
-        writeListToJson(appDb.httpTTSDao.all(), "httpTTS.json", backupPath)
-        writeListToJson(appDb.keyboardAssistsDao.all(), "keyboardAssists.json", backupPath)
-        writeListToJson(appDb.dictRuleDao.all(), "dictRule.json", backupPath)
-        writeListToJson(appDb.sourceFilterRuleDao.all(), "sourceFilterRule.json", backupPath)
-        GSON.toJson(appDb.serverDao.all()).let { json ->
-            aes.runCatching {
-                encryptBase64(json)
-            }.getOrDefault(json).let {
-                FileUtils.createFileIfNotExist(backupPath + File.separator + "servers.json")
-                    .writeText(it)
-            }
-        }
-        currentCoroutineContext().ensureActive()
-        GSON.toJson(ReadBookConfig.configList).let {
-            FileUtils.createFileIfNotExist(backupPath + File.separator + ReadBookConfig.configFileName)
-                .writeText(it)
-        }
-        GSON.toJson(ReadBookConfig.shareConfig).let {
-            FileUtils.createFileIfNotExist(backupPath + File.separator + ReadBookConfig.shareConfigFileName)
-                .writeText(it)
-        }
-        GSON.toJson(ThemeConfig.configList).let {
-            FileUtils.createFileIfNotExist(backupPath + File.separator + ThemeConfig.configFileName)
-                .writeText(it)
-        }
-        DirectLinkUpload.getConfig()?.let {
-            FileUtils.createFileIfNotExist(backupPath + File.separator + ruleFileName)
-                .writeText(GSON.toJson(it))
-        }
-        currentCoroutineContext().ensureActive()
-        val configMap = mutableMapOf<String, Any>()
-        appCtx.defaultSharedPreferences.all.forEach { (key, value) ->
-            if (BackupConfigShared.keyIsNotIgnore(key)) {
-                when (key) {
-                    PreferKey.webDavPassword -> {
-                        configMap[key] = aes.runCatching {
-                            encryptBase64(value.toString())
-                        }.getOrDefault(value.toString())
-                    }
-
-                    else -> value?.let {
-                        configMap[key] = it
-                    }
-                }
-            }
-        }
-        val configFile = File(backupPath, "config.json")
-        FileUtils.createFileIfNotExist(configFile).writeText(GSON.toJson(configMap))
-        currentCoroutineContext().ensureActive()
-        val zipFileName = getNowZipFileName()
-        val paths = arrayListOf(*backupFileNames)
-        for (i in 0 until paths.size) {
-            paths[i] = backupPath + File.separator + paths[i]
-        }
-        FileUtils.delete(zipFilePath)
-        FileUtils.delete(zipFilePath.replace("tmp_", ""))
-        val backupFileName = if (AppConfig.onlyLatestBackup) {
-            "backup.zip"
-        } else {
-            zipFileName
-        }
-        if (ZipUtils.zipFiles(paths, zipFilePath)) {
-            when {
-                path.isNullOrBlank() -> {
-                    copyBackup(context.getExternalFilesDir(null)!!, backupFileName)
-                }
-
-                path.isContentScheme() -> {
-                    copyBackup(path.toUri(), backupFileName)
-                }
-
-                else -> {
-                    copyBackup(File(path), backupFileName)
-                }
-            }
-            // 仅在需要时上传到 WebDav
-            if (uploadToWebDav) {
-                try {
-                    AppWebDav.backUpWebDav(zipFileName)
-                } catch (e: Exception) {
-                    AppLog.put("上传备份至webdav失败\n$e", e)
-                }
-            }
-        }
-        FileUtils.delete(backupPath)
-        FileUtils.delete(zipFilePath)
-        currentCoroutineContext().ensureActive()
-        // 仅在需要时上传背景图片到 WebDav
-        if (uploadToWebDav) {
-            ReadBookConfig.getAllPicBgStr().map {
-                if (it.contains(File.separator)) {
-                    File(it)
-                } else {
-                    appCtx.externalFiles.getFile("bg", it)
-                }
-            }.let {
-                AppWebDav.upBgs(it.toTypedArray())
-            }
-        }
-    }
-
-    private suspend fun writeListToJson(list: List<Any>, fileName: String, path: String) {
-        currentCoroutineContext().ensureActive()
         withContext(IO) {
-            if (list.isNotEmpty()) {
-                LogUtils.d(TAG, "阅读备份 $fileName 列表大小 ${list.size}")
-                val file = FileUtils.createFileIfNotExist(path + File.separator + fileName)
-                file.outputStream().buffered().use {
-                    GSON.writeToOutputStream(it, list)
-                }
-                LogUtils.d(TAG, "阅读备份 $fileName 写入大小 ${file.length()}")
-            } else {
-                LogUtils.d(TAG, "阅读备份 $fileName 列表为空")
-            }
+            BackupShared.backupLocked(path, uploadToWebDav)
         }
     }
 
+    fun clearCache() {
+        BackupShared.clearCache()
+    }
+
+    /**
+     * 复制备份 zip 到 SAF 目录 (content scheme 专用, 与原实现一致)。
+     */
     @Throws(Exception::class)
-    @Suppress("SameParameterValue")
-    private fun copyBackup(uri: Uri, fileName: String) {
+    fun copyBackup(srcZipPath: String, uri: Uri, fileName: String) {
         val treeDoc = FileDoc.fromDir(uri)
         treeDoc.find(fileName)?.delete()
         val fileDoc = kotlin.runCatching {
@@ -274,21 +101,63 @@ object Backup {
             throw it
         }
         outputS.use {
-            FileInputStream(zipFilePath).use { inputS ->
+            FileInputStream(srcZipPath).use { inputS ->
                 inputS.copyTo(outputS)
             }
         }
     }
+}
 
-    @Throws(Exception::class)
-    @Suppress("SameParameterValue")
-    private fun copyBackup(rootFile: File, fileName: String) {
-        // 复用下沉的 BackupFileOps.copyFile 纯文件复制 (与原 FileInputStream+FileOutputStream+copyTo 等价)
-        BackupFileOps.copyFile(zipFilePath, File(rootFile, fileName).absolutePath)
+/**
+ * 备份/恢复流程中 Android 专属环节的实现, 由 App 启动早期注册到 [BackupRestoreHooks]。
+ */
+object AndroidBackupRestoreHook : BackupRestoreHook {
+
+    override fun onBackupStart() {
+        LocalConfig.lastBackup = System.currentTimeMillis()
     }
 
-    fun clearCache() {
-        FileUtils.delete(backupPath)
-        FileUtils.delete(zipFilePath)
+    /** content:// 目录走 SAF 复制; 普通路径交回 shared 的文件复制。 */
+    override fun copyBackupTo(zipFilePath: String, destination: String, fileName: String): Boolean {
+        if (!destination.isContentScheme()) return false
+        Backup.copyBackup(zipFilePath, destination.toUri(), fileName)
+        return true
     }
+
+    /** 上传阅读背景图到 WebDav (依赖 Array<File> + 网络判断, 未下沉)。 */
+    override suspend fun onBackupFinished(uploadToWebDav: Boolean) {
+        if (!uploadToWebDav) return
+        ReadBookConfig.getAllPicBgStr().map {
+            if (it.contains(File.separator)) {
+                File(it)
+            } else {
+                appCtx.externalFiles.getFile("bg", it)
+            }
+        }.let {
+            AppWebDav.upBgs(it.toTypedArray())
+        }
+    }
+
+    override fun unZipBackup(zipPath: String, destDir: String): Boolean =
+        Restore.unZipBackup(zipPath, destDir)
+
+    override fun onRestoreFromZipFinished() {
+        LocalConfig.lastBackup = System.currentTimeMillis()
+    }
+
+    override fun readLegacyConfig(dirPath: String): Map<String, Any?>? =
+        Restore.readLegacyConfigXml(dirPath)
+
+    override fun onThemeConfigRestored() {
+        Restore.upThemeConfig()
+    }
+
+    override suspend fun onRestoreFinished() {
+        Restore.onRestoreFinished()
+    }
+}
+
+/** 宿主启动早期注册一次 (任何备份/恢复之前)。 */
+fun registerAndroidBackupRestoreHook() {
+    BackupRestoreHooks.register(AndroidBackupRestoreHook)
 }

@@ -2,15 +2,6 @@ package io.legado.desktop.help.video
 
 import io.legado.app.constant.AppLog
 import io.legado.app.ui.compose.platform.jvmGetString
-import java.io.File
-import java.io.RandomAccessFile
-import java.net.StandardProtocolFamily
-import java.net.UnixDomainSocketAddress
-import java.nio.channels.Channels
-import java.nio.channels.SocketChannel
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
@@ -21,7 +12,15 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.put
+import java.io.File
+import java.io.RandomAccessFile
+import java.net.StandardProtocolFamily
+import java.net.UnixDomainSocketAddress
+import java.nio.channels.Channels
+import java.nio.channels.SocketChannel
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * mpv 外部进程播放器 (desktop 视频 all-in mpv 方案的核心)。
@@ -94,6 +93,12 @@ class MpvPlayer(
     /** IPC 未就绪时的命令暂存队列 (连接建立后按序补发) */
     private val pending = ArrayDeque<String>()
 
+    /** mpv 错误输出尾部 (最近 20 行), 启动失败时随原因上报, 避免"白屏无因" */
+    private val outputTail = ArrayDeque<String>()
+
+    @Volatile
+    private var drainThread: Thread? = null
+
     /** IPC 端点: Windows 命名管道 / Unix domain socket 文件 */
     private val ipcPath: String = if (MpvDetector.isWindows) {
         "\\\\.\\pipe\\legado-mpv-${ProcessHandle.current().pid()}-${SEQ.incrementAndGet()}"
@@ -135,8 +140,11 @@ class MpvPlayer(
             add("--force-window=yes") // 网络慢/无视频轨时也先建窗口 (黑底占位)
             add("--osc=yes") // mpv 内建 OSC 控制层
             add("--input-default-bindings=yes") // mpv 原生快捷键 (点击视频区获焦后可用)
+            // 嵌入子窗口不该自己全屏 (用户 mpv.conf 的 fullscreen=yes 会盖住整个界面)
+            add("--fullscreen=no")
             add("--keep-open=no") // 播完即 end-file(eof) → 进程退出 → 调用方切下一章
-            add("--really-quiet")
+            add("--input-terminal=no") // 不读 stdin (ProcessBuilder 给的管道不会关, 避免误判按键/阻塞)
+            add("--msg-level=all=error") // 只留错误行, 供 outputTail 捕获后随失败原因上报
             add("--title=$windowTitle")
             add("--force-media-title=$mediaTitle")
             if (startMs > 0) add("--start=${startMs / 1000.0}")
@@ -161,9 +169,9 @@ class MpvPlayer(
         }
         val p = ProcessBuilder(cmd).redirectErrorStream(true).start()
         process = p
-        // drain stdout 防缓冲塞满 (--really-quiet 后输出极少, 兜底)
-        Thread({ runCatching { p.inputStream.readAllBytes() } }, "legado-mpv-drain")
-            .apply { isDaemon = true }.start()
+        // 收集 mpv 错误输出尾部 (顺带 drain 防缓冲塞满), 失败时随原因一起上报
+        drainThread = Thread({ drainOutput(p) }, "legado-mpv-drain")
+            .apply { isDaemon = true; start() }
         // IPC 连接 + 事件读循环
         Thread({ runIpc(p) }, "legado-mpv-ipc").apply { isDaemon = true }.start()
         // 进程退出监视: 落存进度 + 异常退出上报
@@ -212,6 +220,26 @@ class MpvPlayer(
                 }
             }
         }, "legado-mpv-quit").apply { isDaemon = true }.start()
+    }
+
+    // ---- 内部: 进程输出 ----
+
+    private fun drainOutput(p: Process) {
+        runCatching {
+            p.inputStream.bufferedReader(Charsets.UTF_8).forEachLine { line ->
+                if (line.isBlank()) return@forEachLine
+                synchronized(outputTail) {
+                    if (outputTail.size >= 20) outputTail.removeFirst()
+                    outputTail.addLast(line)
+                }
+            }
+        }
+    }
+
+    /** 错误原因拼上 mpv 输出尾部 (有则附加), 供 UI 展示 */
+    private fun withOutputTail(reason: String): String {
+        val tail = synchronized(outputTail) { outputTail.joinToString("\n") }
+        return if (tail.isBlank()) reason else "$reason\n$tail"
     }
 
     // ---- 内部: IPC ----
@@ -303,7 +331,11 @@ class MpvPlayer(
 
                 "error" -> {
                     if (errorOnce.compareAndSet(false, true)) {
-                        onPlayError(obj["file_error"]?.jsonPrimitive?.contentOrNull ?: "end-file error")
+                        onPlayError(
+                            withOutputTail(
+                                obj["file_error"]?.jsonPrimitive?.contentOrNull ?: "end-file error"
+                            )
+                        )
                     }
                 }
             }
@@ -312,6 +344,8 @@ class MpvPlayer(
 
     private fun waitExit(p: Process) {
         val exit = runCatching { p.waitFor() }.getOrDefault(-1)
+        // 等 drain 收完尾部输出再报错, 否则错误原因可能是空的
+        runCatching { drainThread?.join(500) }
         synchronized(writeLock) { ipcReady = false }
         runCatching { connection?.close() }
         if (!MpvDetector.isWindows) runCatching { File(ipcPath).delete() }
@@ -323,7 +357,7 @@ class MpvPlayer(
         if (exit != 0 && !quitRequested.get() && !eofSeen && !discarded &&
             errorOnce.compareAndSet(false, true)
         ) {
-            onPlayError("mpv 退出码 $exit")
+            onPlayError(withOutputTail("mpv 退出码 $exit"))
         }
     }
 

@@ -34,15 +34,24 @@ import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.component.AppTextButton
+import io.legado.app.ui.compose.component.code.CodeTextField
+import io.legado.app.ui.compose.component.code.KeyboardToolbar
+import io.legado.app.ui.compose.component.code.KeyboardToolbarState
+import io.legado.app.ui.compose.component.code.rememberCodeEditorState
+import io.legado.app.ui.compose.component.code.rememberCodeSyntax
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
@@ -79,7 +88,8 @@ interface JsEditUiActions {
  *
  * - 标题栏: 返回 + 保存图标 (复用 [AppTitleBar] actions 槽)
  * - 文件名: 单行 [AppTextField]
- * - 代码区: 多行 [AppTextField] (普通 TextField, 不依赖 app 端 CodeView 平台库)
+ * - 代码区: [io.legado.app.ui.compose.component.code.CodeTextField] (js 组语法高亮 + 等宽字体)
+ * - 键盘辅助条: [io.legado.app.ui.compose.component.code.KeyboardToolbar] (辅助键/撤销/重做/查找替换)
  * - 运行结果: 可滚动文本区, 显示 JS eval 返回值或异常栈
  * - 运行按钮: [AppTextButton], 触发 [JsEditUiEvent.Run] (由 ScreenModel 走 JsEngines eval)
  *
@@ -96,6 +106,7 @@ fun JsEditScreen(
     onRun: () -> Unit,
     onCodeChange: (String) -> Unit,
     onFileNameChange: (String) -> Unit,
+    onShowKeyboardConfig: () -> Unit = {},
 ) {
     val colors = AppTheme.colors
     Column(Modifier.fillMaxSize()) {
@@ -122,18 +133,23 @@ fun JsEditScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 4.dp),
         )
-        // 代码编辑区 (普通 TextField, 多行填满主区域)
-        AppTextField(
-            value = state.code,
-            onValueChange = onCodeChange,
+        // 代码编辑区 (语法高亮 CodeTextField, 多行填满主区域)
+        val editor = rememberCodeEditorState(state.code)
+        // 只在外部重新载入 (打开文件) 时同步; 记录自己回写的文本, 避免 state 异步滞后时被回卷
+        var lastEmitted by remember { mutableStateOf(state.code) }
+        LaunchedEffect(state.code) {
+            if (state.code != lastEmitted) {
+                editor.setText(state.code)
+                lastEmitted = state.code
+            }
+        }
+        val emit: (String) -> Unit = { lastEmitted = it; onCodeChange(it) }
+        CodeTextField(
+            value = editor.value,
+            onValueChange = { editor.onValueChange(it); emit(it.text) },
+            syntax = rememberCodeSyntax(js = true),
             label = stringResource(Res.string.code),
-            singleLine = false,
-            maxLines = Int.MAX_VALUE,
-            textStyle = TextStyle(
-                color = colors.primaryText,
-                fontSize = 14.sp,
-                fontFamily = FontFamily.Monospace,
-            ),
+            fontSize = 14.sp,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
@@ -166,6 +182,15 @@ fun JsEditScreen(
                 onClick = onRun,
             )
         }
+        // 键盘辅助条 (软键盘弹出时出现): 辅助键插入/撤销/重做走 editor
+        val keyboardState = remember { KeyboardToolbarState() }
+        KeyboardToolbar(
+            state = keyboardState,
+            onSendText = { editor.insertAtCursor(it); emit(editor.value.text) },
+            onUndo = { editor.undo(); emit(editor.value.text) },
+            onRedo = { editor.redo(); emit(editor.value.text) },
+            onShowConfig = onShowKeyboardConfig,
+        )
     }
 }
 

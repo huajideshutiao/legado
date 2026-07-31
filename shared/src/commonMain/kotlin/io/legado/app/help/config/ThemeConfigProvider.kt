@@ -5,9 +5,9 @@ import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
-import kotlin.concurrent.Volatile
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import kotlin.concurrent.Volatile
 
 /**
  * 主题配置数据类 (KMP 版, commonMain)。
@@ -199,6 +199,13 @@ interface ThemeConfigProvider {
      * 桌面/iOS/鸿蒙 ([FileThemeConfigProvider]) 同样写 `{filesDir}/themeConfig.json` (格式互通)。
      */
     fun save()
+
+    /**
+     * 从磁盘重载 configList (对照 app 端 `ThemeConfig.upConfig()`)。
+     *
+     * 恢复备份覆盖 themeConfig.json 后调用, 默认无操作 (由实现按需覆写)。
+     */
+    fun upConfig() {}
 
     /**
      * 清理主题背景图片缓存 (对照 app 端 `ThemeConfig.clearBg`)。

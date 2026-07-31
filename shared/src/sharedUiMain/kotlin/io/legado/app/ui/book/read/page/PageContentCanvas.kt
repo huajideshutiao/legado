@@ -9,17 +9,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.ImageColumn
@@ -40,7 +37,10 @@ import io.legado.app.ui.book.read.page.entities.column.TextColumn
  *    - [TextColumn]: drawText(charData) + 选中/搜索结果高亮 drawRect
  *    - [ImageColumn]: drawImage(renderCache as? ImageBitmap, srcSize, dstSize)
  *    - [ReviewColumn]: drawCircle + drawText(countText)
- * 3. 朗读/搜索下划线：drawLine（与 app 端 `TextLine.drawTextLine` 的 E-Ink 分支对齐）
+ * 3. 朗读/搜索下划线（E-Ink）与 `ReadBookConfig.underline` 下划线：drawLine
+ *
+ * 样式取值由 [ReaderDrawStyle] 统一从 `ReadBookConfigShared` 读出（对应 app 端
+ * `TextStyleProvider.upStyle` 的 titlePaint/contentPaint/reviewPaint）。
  *
  * 文字位置口径：与 app 端 `ColumnRender.drawTextColumn` 一致，x = column.start + letterSpacingHalf，
  * y = line.lineBase - baselineOffset（drawText 的 topLeft 是文本框左上角，需把行基线折算回框顶）。
@@ -50,40 +50,17 @@ import io.legado.app.ui.book.read.page.entities.column.TextColumn
 fun PageContentCanvas(
     textPage: TextPage,
     modifier: Modifier = Modifier,
+    style: ReaderDrawStyle = rememberReaderDrawStyle(),
     onClick: (TextColumn?) -> Unit = {},
     onLongClick: (TextColumn?) -> Unit = {},
 ) {
     val textMeasurer: TextMeasurer = rememberTextMeasurer()
-    val density: Density = LocalDensity.current
-    val layoutDirection: LayoutDirection = LocalLayoutDirection.current
-
-    // 颜色：默认值与 app 端 ThemeStore.accentColor(0xFF165DFF) / ReadBookConfig.textColor(0xFF3E3D3B) 对齐
-    // 后续 ReadConfigProviders actual 注入后改为读取配置（TODO: 接入 LocalReadConfigProviders）
-    val textColor: Color = Color(0xFF3E3D3B)
-    val accentColor: Color = Color(0xFF165DFF)
-    val selectedColor: Color = Color(0x80165DFF)
-    val searchColor: Color = Color(0x66165DFF)
-    val underlineColor: Color = textColor
-
-    // 默认文字样式（与 app 端 ChapterProvider.contentPaint 默认值对齐：textSize=20sp, letterSpacing=0.1）
-    val textStyle: TextStyle = TextStyle(
-        color = textColor,
-        fontSize = 20.sp,
-        letterSpacing = 0.1.sp,
-    )
 
     Canvas(modifier = modifier) {
         drawPageContent(
             textPage = textPage,
             textMeasurer = textMeasurer,
-            textStyle = textStyle,
-            textColor = textColor,
-            accentColor = accentColor,
-            selectedColor = selectedColor,
-            searchColor = searchColor,
-            underlineColor = underlineColor,
-            density = density,
-            layoutDirection = layoutDirection,
+            style = style,
         )
     }
 }
@@ -94,23 +71,22 @@ fun PageContentCanvas(
 private fun DrawScope.drawPageContent(
     textPage: TextPage,
     textMeasurer: TextMeasurer,
-    textStyle: TextStyle,
-    textColor: Color,
-    accentColor: Color,
-    selectedColor: Color,
-    searchColor: Color,
-    underlineColor: Color,
-    density: Density,
-    layoutDirection: LayoutDirection,
+    style: ReaderDrawStyle,
 ) {
-    // DrawScope 实现了 Density，letterSpacing.toPx() 直接用本 scope 即可
-    val letterSpacingPx = textStyle.letterSpacing.toPx()
-    val letterSpacingHalf = letterSpacingPx * 0.5f
     // baseline 折算：drawText 的 topLeft 是文本框左上角，行基线 lineBase 需减去首行 baseline 偏移得到框顶 y。
-    // 与 app 端 Android Canvas.drawText(x, lineBase) 直接用 baseline 不同。
-    val baselineOffset = textMeasurer.measure("水", textStyle).getLineBaseline(0)
+    // 与 app 端 Android Canvas.drawText(x, lineBase) 直接用 baseline 不同。标题/正文两套字号各测一次。
+    val contentBaseline = textMeasurer.measure("水", style.contentStyle).getLineBaseline(0)
+    val titleBaseline = textMeasurer.measure("水", style.titleStyle).getLineBaseline(0)
+    // letterSpacing 是 em（字号倍数），折算像素补偿量：fontSizePx * em * 0.5
+    val contentSpacingHalf = style.contentStyle.fontSize.toPx() * style.letterSpacingEm * 0.5f
+    val titleSpacingHalf = style.titleStyle.fontSize.toPx() * style.letterSpacingEm * 0.5f
+    val underlineWidth = 1.dp.toPx()
     for (lineIndex in textPage.lines.indices) {
         val textLine = textPage.lines[lineIndex]
+        val isTitle = textLine.isTitle
+        val lineStyle = if (isTitle) style.titleStyle else style.contentStyle
+        val baselineOffset = if (isTitle) titleBaseline else contentBaseline
+        val letterSpacingHalf = if (isTitle) titleSpacingHalf else contentSpacingHalf
         val lineTop = textLine.lineTop
         val lineBase = textLine.lineBase
         val lineHeight = textLine.lineBottom - textLine.lineTop
@@ -120,10 +96,14 @@ private fun DrawScope.drawPageContent(
                 is TextColumn -> drawTextColumn(
                     column = column,
                     textMeasurer = textMeasurer,
-                    textStyle = textStyle,
-                    textColor = if (textLine.isReadAloud || column.isSearchResult) accentColor else textColor,
-                    selectedColor = selectedColor,
-                    searchColor = searchColor,
+                    textStyle = lineStyle,
+                    textColor = if (textLine.isReadAloud || column.isSearchResult) {
+                        style.accentColor
+                    } else {
+                        style.textColor
+                    },
+                    selectedColor = style.selectedColor,
+                    searchColor = style.searchColor,
                     letterSpacingHalf = letterSpacingHalf,
                     lineTop = lineTop,
                     lineBase = lineBase,
@@ -138,25 +118,45 @@ private fun DrawScope.drawPageContent(
                 is ReviewColumn -> drawReviewColumn(
                     column = column,
                     textMeasurer = textMeasurer,
-                    textStyle = textStyle,
-                    accentColor = accentColor,
+                    textStyle = lineStyle,
+                    reviewColor = style.reviewColor,
+                    reviewTextSize = style.reviewTextSize,
                     lineTop = lineTop,
                     lineHeight = lineHeight,
-                    baselineOffset = baselineOffset,
                 )
                 else -> Unit // ButtonColumn 等暂无绘制
             }
         }
-        // 朗读/搜索结果下划线（与 app 端 E-Ink 模式对齐）
-        if (textLine.isReadAloud || textLine.searchResultColumnCount > 0) {
-            drawLine(
-                color = underlineColor,
-                start = Offset(textLine.lineStart + textLine.indentWidth, lineTop + lineHeight - 1f),
-                end = Offset(textLine.lineEnd, lineTop + lineHeight - 1f),
-                strokeWidth = 1f,
+        // 墨水屏模式下的朗读/搜索下划线（与 app 端 TextLine.drawTextLine 的 isEInkMode 分支一致）
+        if (style.isEInk && (textLine.isReadAloud || textLine.searchResultColumnCount > 0)) {
+            drawLineUnderline(
+                textLine.lineStart + textLine.indentWidth, textLine.lineEnd,
+                lineTop + lineHeight - underlineWidth, style.textColor, underlineWidth
+            )
+        }
+        // 配置项下划线（与 app 端 ReadBookConfig.underline → drawUnderline 一致，图片行不画）
+        if (style.underline && !textLine.isImage) {
+            drawLineUnderline(
+                textLine.lineStart + textLine.indentWidth, textLine.lineEnd,
+                lineTop + lineHeight - underlineWidth, style.textColor, underlineWidth
             )
         }
     }
+}
+
+private fun DrawScope.drawLineUnderline(
+    startX: Float,
+    endX: Float,
+    y: Float,
+    color: Color,
+    strokeWidth: Float,
+) {
+    drawLine(
+        color = color,
+        start = Offset(startX, y),
+        end = Offset(endX, y),
+        strokeWidth = strokeWidth,
+    )
 }
 
 /**
@@ -247,15 +247,16 @@ private fun DrawScope.drawImageColumn(
  *
  * 简化版：用 drawCircle 画外圈（与 app 端 ReviewIcon 椭圆形状近似），
  * 居中绘制 count 文字。app 端精确的胶囊气泡 + 数字字号缓存留待后续下沉。
+ * 颜色/字号取 [ReaderDrawStyle]（对应 app 端 reviewPaint = 正文色 60% + 0.45 倍字号）。
  */
 private fun DrawScope.drawReviewColumn(
     column: ReviewColumn,
     textMeasurer: TextMeasurer,
     textStyle: TextStyle,
-    accentColor: Color,
+    reviewColor: Color,
+    reviewTextSize: TextUnit,
     lineTop: Float,
     lineHeight: Float,
-    baselineOffset: Float,
 ) {
     if (column.count == 0) return
     val containerW = column.end - column.start
@@ -263,19 +264,19 @@ private fun DrawScope.drawReviewColumn(
     val centerX = column.start + containerW / 2f
     val centerY = lineTop + lineHeight / 2f
     drawCircle(
-        color = accentColor.copy(alpha = 0.2f),
+        color = reviewColor.copy(alpha = reviewColor.alpha * 0.33f),
         radius = radius,
         center = Offset(centerX, centerY),
     )
     drawCircle(
-        color = accentColor,
+        color = reviewColor,
         radius = radius,
         center = Offset(centerX, centerY),
         style = Stroke(width = 1.5f),
     )
     // 数字居中绘制：drawText topLeft 是文本框左上角，
     // 用 baselineOffset 折算到圆心上方使文字视觉居中。
-    val countTextStyle = textStyle.copy(color = accentColor, fontSize = textStyle.fontSize * 0.6f)
+    val countTextStyle = textStyle.copy(color = reviewColor, fontSize = reviewTextSize)
     val countBaseline = textMeasurer.measure(column.countText, countTextStyle).getLineBaseline(0)
     drawText(
         textMeasurer = textMeasurer,

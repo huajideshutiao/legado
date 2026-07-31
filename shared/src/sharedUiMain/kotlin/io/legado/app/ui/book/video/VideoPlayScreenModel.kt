@@ -6,11 +6,16 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.VideoResolution
+import io.legado.app.help.book.ContentProcessorProviders
+import io.legado.app.help.book.getDisplayTitle
+import io.legado.app.help.book.getUseReplaceRule
+import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.compose.platform.PreferenceStoreProvider
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.ScreenModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -105,8 +110,15 @@ class VideoPlayScreenModel(
     /** onExit 已执行标记: 防 DisposableEffect.onDispose 与 onCleared 重复保存 (释放后位置归零) */
     private var exited = false
 
+    /** 标题净化计算任务 (章节列表变更时重算, 旧任务取消) */
+    private var displayTitleJob: Job? = null
+
+    /** 上次算过标题的章节列表 (按引用比较, 防重复重算) */
+    private var lastTitledChapters: List<BookChapter>? = null
+
     init {
         // 合并 shared 各 StateFlow → 统一 UiState (对照 Activity chapterListData/videoUrl/resolutions observe)
+        // chapters 随每次发射一并取回, 避免与其它写入交错时丢失章节列表
         combine(
             shared.curChapterIndex, shared.chapterSize, shared.curChapterTitle,
             shared.loading, shared.error,
@@ -117,8 +129,16 @@ class VideoPlayScreenModel(
                 chapterTitle = title,
                 loading = loading,
                 error = error,
+                chapters = shared.chapters,
             )
-        }.onEach { _state.value = it }.launchIn(scope)
+        }.onEach {
+            _state.value = it
+            // 章节列表换了才重算标题 (对照 Activity chapterListData.observe → upDisplayTitles)
+            if (it.chapters !== lastTitledChapters) {
+                lastTitledChapters = it.chapters
+                upDisplayTitles(it.chapters)
+            }
+        }.launchIn(scope)
 
         // 分辨率列表 + 当前索引 → resolutionText/hasMultiResolution (对照 Activity resolutions.observe + updateResolutionText)
         combine(shared.resolutions, shared.videoSource) { resolutions, _ ->
@@ -131,6 +151,22 @@ class VideoPlayScreenModel(
                 } else null,
             )
         }.onEach { _state.value = it }.launchIn(scope)
+    }
+
+    /** 标题净化规则后台计算 (对照 app VideoChapterGrid 内 upDisplayTitles) */
+    private fun upDisplayTitles(chapters: List<BookChapter>) {
+        val book = shared.curBook ?: return
+        displayTitleJob?.cancel()
+        displayTitleJob = scope.launch {
+            val useReplace = runCatching {
+                AppConfigProviders.get().tocUiUseReplace
+            }.getOrDefault(false) && book.getUseReplaceRule()
+            val replaceRules = runCatching {
+                ContentProcessorProviders.get().getTitleReplaceRules(book)
+            }.getOrNull().orEmpty()
+            val titles = chapters.map { it.getDisplayTitle(replaceRules, useReplace) }
+            _state.update { it.copy(displayTitles = titles) }
+        }
     }
 
     fun dispatch(event: VideoPlayUiEvent) {
@@ -434,6 +470,8 @@ data class VideoPlayUiState(
     val currentResolutionIndex: Int = 0,
     /** 章节列表 (对照 Activity chapters, 供选集网格使用) */
     val chapters: List<BookChapter> = emptyList(),
+    /** 章节显示标题 (与 [chapters] 同序, 已过标题净化规则) */
+    val displayTitles: List<String> = emptyList(),
     /** 待编辑书签 (onAddBookmark 构造后由 Route 弹 BookmarkDialog) */
     val pendingBookmark: Bookmark? = null,
 )

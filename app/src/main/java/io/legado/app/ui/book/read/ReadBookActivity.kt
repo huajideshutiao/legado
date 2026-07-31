@@ -63,6 +63,7 @@ import io.legado.app.receiver.TimeBatteryReceiver
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
+import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.read.config.AutoReadDialog
 import io.legado.app.ui.book.read.config.MoreConfigDialog
 import io.legado.app.ui.book.read.config.ReadAloudDialog
@@ -88,6 +89,7 @@ import io.legado.app.ui.widget.PopupAction
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.LogUtils
+import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.dismissDialogFragment
 import io.legado.app.utils.invisible
@@ -241,26 +243,6 @@ class ReadBookActivity : BaseReadBookActivity(),
                     viewModel.openChapter(payload.chapterIndex, payload.chapterPos)
                 }
         }
-        // 监听书籍信息路由回传结果 (原 bookInfoActivity registerForActivityResult)
-        LaunchedEffect(Unit) {
-            AppNavigatorProviders.getOrNull()?.results
-                ?.filter { it.key == RouteResults.BOOK_INFO }
-                ?.collect { result ->
-                    when (result.payload) {
-                        is RouteResultPayload.Deleted -> {
-                            setResult(RESULT_DELETED)
-                            super.finish()
-                        }
-
-                        is RouteResultPayload.Ok -> {
-                            setResult(RESULT_DELETED)
-                            super.finish()
-                        }
-
-                        else -> ReadBook.loadOrUpContent()
-                    }
-                }
-        }
         Box(Modifier.fillMaxSize()) {
             AndroidView(factory = { renderLayer }, modifier = Modifier.fillMaxSize())
             ReadMenuOverlay(readMenu)
@@ -275,6 +257,18 @@ class ReadBookActivity : BaseReadBookActivity(),
             viewModel.saveImage(it.value, uri)
         }
     }
+
+    // 本 Activity 只会被独立启动(朗读通知/桌面快捷方式/startActivityForBook), 不在 Main 路由栈内,
+    // 故书籍详情走 Activity 结果回调而非 navigator
+    private val bookInfoActivity =
+        registerForActivityResult(StartActivityContract(BookInfoActivity::class.java)) {
+            if (it.resultCode == RESULT_OK) {
+                setResult(RESULT_DELETED)
+                super.finish()
+            } else {
+                ReadBook.loadOrUpContent()
+            }
+        }
     private val keyHandler = ReadBookKeyHandler()
     private val menuHandler = ReadBookMenuHandler()
     private val eventHandler = ReadBookEventHandler()
@@ -843,10 +837,11 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     override fun openBookInfoActivity() {
         ReadBook.book?.let {
-            AppNavigatorProviders.getOrNull()?.push(
-                AppRoute.BookInfo(it.toRouteRef()),
-                resultKey = RouteResults.BOOK_INFO,
-            )
+            bookInfoActivity.launch {
+                putExtra("name", it.name)
+                putExtra("author", it.author)
+                IntentData.book = it
+            }
         }
     }
 
@@ -898,6 +893,8 @@ class ReadBookActivity : BaseReadBookActivity(),
         searchResultList: List<SearchResult>,
     ) {
         viewModel.searchContentQuery = searchWord.orEmpty()
+        // 缓存整份结果, 重进搜索页时作为 initialResults (原 EventBus.SEARCH_RESULT 观察者)
+        viewModel.searchResultList = searchResultList
         searchMenu.upSearchResultList(searchResultList)
         isShowingSearchResult = true
         viewModel.searchResultIndex = index
@@ -1372,9 +1369,15 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
 
         /**
-         * 音量键翻页 (按 project_memory 规则: 音量键始终用于翻页, 移除 volumeKeyPageOnPlay 守卫)
+         * 音量键翻页
          */
         private fun volumeKeyPage(direction: PageDirection): Boolean {
+            if (!AppConfig.volumeKeyPage) {
+                return false
+            }
+            if (!AppConfig.volumeKeyPageOnPlay && BaseReadAloudService.isPlay()) {
+                return false
+            }
             handleKeyPage(direction)
             return true
         }

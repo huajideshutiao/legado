@@ -3,33 +3,25 @@ package io.legado.app.ui.main
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Typeface
+import android.os.Build
 import android.os.Bundle
+import android.text.TextPaint
 import android.text.format.DateUtils
 import android.view.WindowManager
 import androidx.activity.addCallback
-import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.AlertDialog
-import androidx.compose.material.ModalBottomSheetLayout
-import androidx.compose.material.ModalBottomSheetValue
-import androidx.compose.material.Text
-import androidx.compose.material.TextButton
-import androidx.compose.material.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.BuildConfig
 import io.legado.app.R
@@ -43,6 +35,7 @@ import io.legado.app.help.AppWebDav
 import io.legado.app.help.book.isImage
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
+import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.update.AppUpdate
 import io.legado.app.lib.dialogs.SelectItem
@@ -66,11 +59,13 @@ import io.legado.app.ui.book.manga.AndroidMangaReaderPlatform
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.read.AndroidReaderPlatformProvider
 import io.legado.app.ui.book.read.ReaderPlatformProviders
+import io.legado.app.ui.book.read.page.provider.AndroidTextMeasurer
+import io.legado.app.ui.book.read.page.provider.TextMeasurerProviders
 import io.legado.app.ui.book.video.AndroidVideoPlayPlatformProvider
 import io.legado.app.ui.book.video.VideoPlayPlatformProviders
+import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.browser.AndroidWebView
 import io.legado.app.ui.browser.LocalWebViewSlot
-import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
@@ -317,6 +312,15 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
         AudioPlayPlatformProviders.register(AndroidAudioPlayPlatformProvider())
         MangaReaderScreenModel.Providers.register(AndroidMangaReaderPlatform)
         VideoPlayPlatformProviders.register(AndroidVideoPlayPlatformProvider(this))
+        // 排版度量走真实字形（对照 TextStyleProvider.getPaints 的 contentPaint）
+        TextMeasurerProviders.register { textSizePx, letterSpacingPx ->
+            AndroidTextMeasurer(TextPaint().apply {
+                isAntiAlias = true
+                typeface = readerContentTypeface()
+                textSize = textSizePx
+                letterSpacing = if (textSizePx > 0f) letterSpacingPx / textSizePx else 0f
+            })
+        }
 
         // 返回键: navigator.pop 优先 (导航栈有内容时返回上一页), 失败后走双击退出
         onBackPressedDispatcher.addCallback(this) {
@@ -492,4 +496,25 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
         }
     }
 
+}
+
+/** 正文度量字体：ReadBookConfig.textFont + textBold，对照 TextStyleProvider.getPaints 的 textFont。 */
+private fun readerContentTypeface(): Typeface {
+    val base = runCatching {
+        if (ReadBookConfig.textFont.isNotEmpty()) {
+            Typeface.createFromFile(ReadBookConfig.textFont)
+        } else {
+            Typeface.SANS_SERIF
+        }
+    }.getOrDefault(Typeface.SANS_SERIF)
+    return when (ReadBookConfig.textBold) {
+        1 -> Typeface.create(base, Typeface.BOLD)
+        2 -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            Typeface.create(base, 300, false)
+        } else {
+            Typeface.create(base, Typeface.NORMAL)
+        }
+
+        else -> Typeface.create(base, Typeface.NORMAL)
+    }
 }

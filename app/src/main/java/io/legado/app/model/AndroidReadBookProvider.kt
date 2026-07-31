@@ -7,7 +7,7 @@ package io.legado.app.model
  * 供 Compose 入口通过 [io.legado.app.model.LocalReadBookProvider] 注入到共享 UI。
  *
  * # 设计
- * - app 端 `ReadBook` 仍为状态源真, `ReadBook.shared` 以 one-way 同步方式接收状态
+ * - 编排逻辑已下沉 [ReadBookShared], `ReadBook.shared` 即状态源真, app 端 `ReadBook` 只是转发壳
  * - 本类仅作 Compose 注入适配, 不持有额外状态, `readBook` 直接取 `ReadBook.shared`
  * - 桌面端对应 `DesktopReadBookProvider` 直接 `new ReadBookShared()`, 与本类对称
  *

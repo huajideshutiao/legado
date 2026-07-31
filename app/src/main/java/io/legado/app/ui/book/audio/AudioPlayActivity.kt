@@ -37,6 +37,7 @@ import io.legado.app.model.AudioPlayShared
 import io.legado.app.service.AudioPlayService
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
+import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteResultPayload
@@ -44,13 +45,12 @@ import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.dialog.showBookVariableDialog
 import io.legado.app.ui.widget.dialog.showSourceVariableDialog
-import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.getRepresentativeColor
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.observeEventSticky
-import io.legado.app.utils.sendToClip
 import io.legado.app.utils.openUrl
+import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toDurationTime
@@ -284,8 +284,6 @@ class AudioPlayActivity : BaseComposeActivity(toolBarTheme = Theme.Dark) {
                     AudioPlay.inBookshelf = true
                     runBlocking { appDb.bookChapterDao.insert(*AudioPlay.chapterList!!.toTypedArray()) }
                     setResult(RESULT_OK)
-                    // 双轨: 同步 RouteResult 通道
-                    AppNavigatorProviders.getOrNull()?.pop(RouteResultPayload.Ok)
                 }
                 noButton {
                     viewModel.removeFromBookshelf { super.finish() }

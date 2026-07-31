@@ -33,10 +33,12 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -77,6 +79,9 @@ import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.bookshelf.ShelfScrollState
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.ExploreOptionsRow
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -90,7 +95,6 @@ import io.legado.app.ui.main.explore.ExploreUiState
 import io.legado.app.ui.main.home.HomeScreen
 import io.legado.app.ui.main.home.HomeScreenModel
 import io.legado.app.ui.main.home.HomeSectionManageDialog
-import io.legado.app.ui.main.home.HomeSectionOptionsRow
 import io.legado.app.ui.main.home.HomeTabManageDialog
 import io.legado.app.ui.main.home.homeSectionKey
 import io.legado.app.ui.main.my.MyConfigScreen
@@ -106,6 +110,7 @@ import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.dialog.HelpDialog
 import io.legado.app.ui.widget.dialog.TextDialog
+import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.CoroutineScope
@@ -177,6 +182,9 @@ fun MainRoute(
     // 对照 MainActivity.bookshelfReselected/exploreReselected: 300ms 双击 reselect
     var bookshelfReselected by remember { mutableLongStateOf(0L) }
     var exploreReselected by remember { mutableLongStateOf(0L) }
+    // 书架滚顶信号 (对照 BookshelfTabController.gotoTop): 具体滚哪个状态由 BookshelfScreen
+    // 按"当前分组页 + 布局档位"决定, 此处只发信号
+    var bookshelfGotoTopTick by remember { mutableIntStateOf(0) }
 
     // ScreenModelStore 持有 BookshelfViewModel + ExploreScreenModel, 生命周期随 entry
     val mainScreenModel = screenModelStore.getOrCreateTyped(entry) { MainScreenModel() }
@@ -186,11 +194,13 @@ fun MainRoute(
     }
     val scope = rememberCoroutineScope()
 
-    // F5 刷新: 四个 tab 共享同一 entry, 按当前页分发到对应 tab 的刷新入口
-    // (书架/首页有下拉刷新, 发现/我的无)
-    DisposableEffect(entry.id, visibleTags, currentPage) {
+    // F5 刷新: 四个 tab 共享同一 entry, 故只在此处唯一注册, 按当前页分发到对应 tab 的刷新入口
+    // (书架 upToc / 首页 refreshCurrentTab; 发现、我的无刷新动作)。
+    // 当前页用 rememberUpdatedState 透传, 保证 handler 只注册/注销一次。
+    val refreshTag = rememberUpdatedState(visibleTags.getOrNull(currentPage))
+    DisposableEffect(entry.id) {
         navigator.registerRefreshHandler(entry.id) {
-            when (visibleTags.getOrNull(currentPage)) {
+            when (refreshTag.value) {
                 BottomNavTag.BOOKSHELF -> mainScreenModel.bookshelfViewModel.upToc()
                 BottomNavTag.HOME -> mainScreenModel.homeScreenModel.refreshCurrentTab()
                 else -> Unit
@@ -213,23 +223,9 @@ fun MainRoute(
                     if (now - bookshelfReselected > 300) {
                         bookshelfReselected = now
                     } else {
-                        // 对照 BookshelfTabController.gotoTop: tab 双击滚顶
-                        // tier 决策与 BookshelfScreen 一致 (bookshelfLayout==0 → LIST, 否则 GRID)
-                        scope.launch {
-                            if (appConfig.bookshelfLayout == 0) {
-                                if (appConfig.isEInkMode) {
-                                    bookshelfScrollState.list.scrollToItem(0)
-                                } else {
-                                    bookshelfScrollState.list.animateScrollToItem(0)
-                                }
-                            } else {
-                                if (appConfig.isEInkMode) {
-                                    bookshelfScrollState.grid.scrollToItem(0)
-                                } else {
-                                    bookshelfScrollState.grid.animateScrollToItem(0)
-                                }
-                            }
-                        }
+                        // 对照 BookshelfFragment1.gotoTop: 滚顶作用于"当前分组页", 且档位判定
+                        // 与布局 spec 同源, 故只发信号, 由 BookshelfScreen 决定滚哪个状态
+                        bookshelfGotoTopTick++
                     }
                 }
 
@@ -252,13 +248,13 @@ fun MainRoute(
                 }
             }
         },
-        homeTab = { HomeTabContent(entry, mainScreenModel.homeScreenModel, navigator) },
+        homeTab = { HomeTabContent(mainScreenModel.homeScreenModel, navigator) },
         bookshelfTab = {
             BookshelfTabContent(
-                entry,
                 mainScreenModel.bookshelfViewModel,
                 navigator,
                 bookshelfScrollState,
+                bookshelfGotoTopTick,
             )
         },
         exploreTab = {
@@ -339,7 +335,6 @@ private fun computeHomePageIndex(visibleTags: List<String>, defaultHomePage: Str
  */
 @Composable
 private fun HomeTabContent(
-    entry: RouteEntry,
     screenModel: HomeScreenModel,
     navigator: AppNavigator
 ) {
@@ -349,13 +344,6 @@ private fun HomeTabContent(
     val manageSectionOf by screenModel.manageSectionOf.collectAsState()
     val manageTab by screenModel.manageTab.collectAsState()
 
-    val currentTabTitle = state.tabs.getOrNull(state.currentPage)?.title
-    DisposableEffect(entry.id, currentTabTitle, screenModel) {
-        navigator.registerRefreshHandler(entry.id) {
-            currentTabTitle?.let { screenModel.refreshTab(it) }
-        }
-        onDispose { navigator.unregisterRefreshHandler(entry.id) }
-    }
     // 对照 HomeTabFragment.sectionCallback.onBookClick 的分流
     val onBook: (SearchBook, HomeSection, Boolean) -> Unit = { book, section, longClick ->
         openHomeBook(book, section, longClick, navigator, scope)
@@ -478,7 +466,7 @@ private fun HomeSectionBlock(
     val colors = AppTheme.colors
     Column(Modifier.fillMaxWidth()) {
         HomeSectionTitleRow(section.title, onMoreClick)
-        HomeSectionOptionsRow(options, optionsVersion, onOptionSelected)
+        ExploreOptionsRow(options, optionsVersion, onOptionSelected)
         when {
             error -> Box(
                 Modifier.fillMaxWidth().height(80.dp),
@@ -582,8 +570,9 @@ private fun HomeCoverRow(
     isVideoStyle: Boolean,
 ) {
     val colors = AppTheme.colors
-    val coverHeight = AppConfigProviders.get().bookshelfCoverHeight
-        .let { if (isVideoStyle) (it * 0.75f).toInt() else it }
+    // 对照 item_home_cover_card.xml + CoverCardVH.bind: 封面固定高 160dp (视频 120dp),
+    // 宽度由 CoverImageView 按 coverRatio 反推, 不读书架封面高度配置
+    val coverHeight = if (isVideoStyle) 120.dp else 160.dp
     Row(
         Modifier
             .fillMaxWidth()
@@ -605,7 +594,7 @@ private fun HomeCoverRow(
                     book.toBook(),
                     Modifier
                         .fillMaxWidth()
-                        .height(coverHeight.dp),
+                        .height(coverHeight),
                     isVideoStyle,
                 )
                 Text(
@@ -736,7 +725,7 @@ private fun HomeInfiniteHeader(
 ) {
     Column(Modifier.fillMaxWidth()) {
         HomeSectionTitleRow(section.title, onMoreClick)
-        HomeSectionOptionsRow(options, optionsVersion, onOptionSelected)
+        ExploreOptionsRow(options, optionsVersion, onOptionSelected)
     }
 }
 
@@ -790,18 +779,11 @@ private fun HomeInfiniteGridCard(
  */
 @Composable
 private fun BookshelfTabContent(
-    entry: RouteEntry,
     viewModel: BookshelfViewModel,
     navigator: AppNavigator,
     scrollState: ShelfScrollState,
+    gotoTopTick: Int,
 ) {
-    DisposableEffect(entry.id, viewModel) {
-        navigator.registerRefreshHandler(entry.id) {
-            viewModel.upToc()
-        }
-        onDispose { navigator.unregisterRefreshHandler(entry.id) }
-    }
-
     var showAppLog by remember { mutableStateOf(false) }
     // 分组长按或管理列表编辑 → GroupEditDialog。
     var editingGroup by remember { mutableStateOf<BookGroup?>(null) }
@@ -843,7 +825,19 @@ private fun BookshelfTabContent(
         onGroupLongClick = { group -> editingGroup = group },
         bookshelfActionsCallbacks = callbacks,
         scrollState = scrollState,
+        gotoTopTick = gotoTopTick,
     )
+    // 添加网址 / 导入书架进度 (对照 BaseBookshelfFragment.observeLiveBus + ensureWaitDialog:
+    // count<0 关闭, 否则 "添加中... (n)"; 取消时 cancel addBookJob)
+    val addBookProgress by addVm.addBookProgress.collectAsState()
+    val addBookRunning by addVm.addBookRunning.collectAsState()
+    if (addBookRunning) {
+        WaitDialog(
+            visible = true,
+            message = if (addBookProgress >= 0) "添加中... ($addBookProgress)" else "添加中...",
+            onDismissRequest = { addVm.cancelAddBook() },
+        )
+    }
     // 应用日志对话框 (对照 SearchRoute / LoginRoute 同名状态)
     if (showAppLog) {
         AppLogDialog(onDismiss = { showAppLog = false })
@@ -1132,6 +1126,8 @@ private fun MyTabContent(navigator: AppNavigator) {
         val url = PlatformCapabilityProviders.getOrNull()?.getWebServiceUrl()
         AlertDialog(
             onDismissRequest = { showWebServiceMenu = false },
+            modifier = Modifier.appDialogSize(),
+            properties = AppDialogSizes.properties(),
             title = { Text(stringResource(Res.string.web_service), color = colors.primaryText) },
             text = {
                 Column {

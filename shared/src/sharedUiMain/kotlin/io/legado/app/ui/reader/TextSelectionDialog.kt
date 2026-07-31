@@ -22,9 +22,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.encodeURI
@@ -68,8 +70,7 @@ import org.jetbrains.compose.resources.stringResource
  * @param openUrl 打开外链 (desktop browseUrl / iOS openURL / 鸿蒙 OpenUrlProviders)
  * @param onDict 查词回调 (读剪贴板内容为关键字后触发, 由调用方弹出 DictDialog;
  *   默认空实现不影响现有调用, 避免本文件直接依赖 DictDialog 造成耦合)
- * @param surfaceModifier 对话框 Surface 宽度约束 (iOS/鸿蒙默认 0.8 屏宽;
- *   desktop 传 widthIn(max = DialogSizes.dialogMaxWidth()) 保持原样式)
+ * @param surfaceModifier 对话框 Surface 尺寸约束 (默认统一钳制: 宽 0.9 屏宽上限 800dp, 高不超 0.8 屏高)
  */
 @Composable
 fun TextSelectionDialog(
@@ -80,7 +81,7 @@ fun TextSelectionDialog(
     clipTextSink: (String) -> Unit,
     openUrl: (String) -> Unit,
     onDict: (String) -> Unit = {},
-    surfaceModifier: Modifier = Modifier.fillMaxWidth(0.8f),
+    surfaceModifier: Modifier = Modifier.appDialogSize(),
 ) {
     val colors = AppTheme.colors
     val cancelText = stringResource(Res.string.cancel)
@@ -93,7 +94,10 @@ fun TextSelectionDialog(
     val titleText = stringResource(Res.string.text_action)
     val noSelectionHintText = stringResource(Res.string.select_and_copy_first_hint)
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = AppDialogSizes.properties(),
+    ) {
         Surface(
             shape = DesignTokens.dialogShape,
             color = colors.background,

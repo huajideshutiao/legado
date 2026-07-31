@@ -21,9 +21,11 @@ import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,8 +57,12 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.image.BookImageLoaders
+import io.legado.app.help.storage.DataStorageProviders
+import io.legado.app.model.BookCoverShared
+import io.legado.app.model.BookCoverShared.CoverRatio
 import io.legado.app.ui.compose.component.AppScrollTabRow
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
@@ -68,6 +74,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bookshelf
+import legado.shared.generated.resources.image_cover_default
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
 
@@ -113,7 +121,9 @@ import kotlin.math.abs
  *   (app: ShelfCover / desktop: DesktopBookCover), 也可直接由此参数显式传入
  * @param bookshelfActionsCallbacks 顶栏溢出菜单回调集合 (书架管理/添加本地/远程书籍/分组管理/日志等), 默认空实现; 宿主端注入后菜单项生效
  * @param actions 顶栏右侧溢出菜单槽, 默认 [DefaultBookshelfActions] (搜索图标 + 完整溢出菜单)
- * @param scrollState 外部注入的滚动状态; 默认内部 remember 新建。宿主端注入后可触发滚顶 (tab reselect)
+ * @param scrollState 外部注入的滚动状态; 默认内部 remember 新建。样式2 / 无分组时的滚动位置载体
+ * @param gotoTopTick 滚顶信号 (对照 BookshelfTabController.gotoTop), 宿主端每次 tab 双击 +1;
+ *   实际滚哪个状态由本函数按"当前分组页 + [ShelfLayoutSpec.tier]"决定
  */
 @Composable
 fun BookshelfScreen(
@@ -133,11 +143,21 @@ fun BookshelfScreen(
         )
     },
     scrollState: ShelfScrollState = remember { ShelfScrollState() },
+    gotoTopTick: Int = 0,
 ) {
     val colors = AppTheme.colors
     val appConfig = remember { AppConfigProviders.get() }
+    // 配置项每次变更后重读 (对照原版: 分组样式变更走 NOTIFY_MAIN 重建 Fragment,
+    // 数量开关变更走 BOOKSHELF_REFRESH 重绑 tab)
+    var configTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        FlowBus.with(EventBus.NOTIFY_MAIN).collect { configTick++ }
+    }
+    LaunchedEffect(Unit) {
+        FlowBus.with(EventBus.BOOKSHELF_REFRESH).collect { configTick++ }
+    }
     // 分组样式分流 (对照 MainActivity.getFragmentId: bookGroupStyle==1 走 BookshelfFragment2)
-    if (remember { appConfig.bookGroupStyle } == 1) {
+    if (remember(configTick) { appConfig.bookGroupStyle } == 1) {
         BookshelfScreen2(
             viewModel = viewModel,
             onBookClick = onBookClick,
@@ -148,6 +168,8 @@ fun BookshelfScreen(
             coverSlot = coverSlot,
             scrollState = scrollState,
             actions = actions,
+            gotoTopTick = gotoTopTick,
+            configTick = configTick,
         )
         return
     }
@@ -161,10 +183,12 @@ fun BookshelfScreen(
     val scope = rememberCoroutineScope()
 
     // 顶栏 tab 是否显示分组数量 (对照 app 端 AppConfig.bookshelfShowGroupCount)
-    val showGroupCount = remember { appConfig.bookshelfShowGroupCount }
+    val showGroupCount = remember(configTick) { appConfig.bookshelfShowGroupCount }
 
     // 布局 spec 各 pager 页共用, 计算一次。
     val layoutSpec = rememberBookshelfLayoutSpec(tier)
+    // 各分组页的滚动状态 (对照 BookshelfFragment1.fragmentMap): 滚顶要作用于当前分组页
+    val pageScrollStates = remember { mutableStateMapOf<Long, ShelfScrollState>() }
     // 封面 slot 包装 (各页共用, 避免每页重复创建 lambda)
     val bookCoverSlot: @Composable (Book, Modifier, Boolean) -> Unit =
         { book, m, isVideoCover -> resolvedCoverSlot(book, m, isVideoCover) }
@@ -211,6 +235,15 @@ fun BookshelfScreen(
     }
     // tab 选中位置直接跟随 pagerState.currentPage (无 selectGroup 一帧延迟)
     val displayGroupId = groups.getOrNull(pagerState.currentPage)?.groupId ?: currentGroupId
+
+    // tab 双击滚顶 (对照 BookshelfFragment1.gotoTop → fragmentMap[groupId]?.gotoTop):
+    // 取当前分组页的滚动状态, 档位与 layoutSpec 同源
+    LaunchedEffect(gotoTopTick) {
+        if (gotoTopTick == 0) return@LaunchedEffect
+        val target = groups.getOrNull(pagerState.currentPage)
+            ?.let { pageScrollStates[it.groupId] } ?: scrollState
+        target.gotoTop(layoutSpec.tier, eInk)
+    }
 
     Column(modifier.fillMaxSize().background(colors.background)) {
         BookshelfTopBar(
@@ -272,6 +305,7 @@ fun BookshelfScreen(
                     spec = layoutSpec,
                     externalScrollState = scrollState,
                     initialGroupId = initialGroupId,
+                    scrollStates = pageScrollStates,
                     viewModel = viewModel,
                     onBooksLoaded = { groupId, count -> groupBookCounts[groupId] = count },
                     onBookClick = onBookClick,
@@ -365,14 +399,26 @@ private fun Modifier.mouseDragPager(
             }
         }
         if (dragging) {
-            // 手势方向与滚动偏移量反向, 速度取负后交给 Pager 原生 fling 吸附
-            val velocity = -velocityTracker.calculateVelocity().x
-            if (velocity.isFinite()) {
-                scope.launch {
-                    pagerState.scroll { with(flingBehavior) { performFling(velocity) } }
-                }
+            // 手势方向与滚动偏移量反向, 速度取负后交给 Pager 原生 fling 吸附。
+            // 速度非有限 (synthetic move 事件的 NaN) 时按 0 吸附, 避免停在半页
+            val raw = -velocityTracker.calculateVelocity().x
+            val velocity = if (raw.isFinite()) raw else 0f
+            scope.launch {
+                pagerState.scroll { with(flingBehavior) { performFling(velocity) } }
             }
         }
+    }
+}
+
+/**
+ * 滚顶 (对照 BooksFragment/BookshelfFragment2.gotoTop: E-Ink 直接跳, 否则平滑滚动)。
+ * 滚列表还是网格由 [tier] 决定, 与 [ShelfBooksContent] 的取用保持同源。
+ */
+internal suspend fun ShelfScrollState.gotoTop(tier: ShelfTier, eInk: Boolean) {
+    if (tier == ShelfTier.LIST) {
+        if (eInk) list.scrollToItem(0) else list.animateScrollToItem(0)
+    } else {
+        if (eInk) grid.scrollToItem(0) else grid.animateScrollToItem(0)
     }
 }
 
@@ -380,7 +426,8 @@ private fun Modifier.mouseDragPager(
  * 单个分组页 (对照 app 端 BookshelfScreen1 的 GroupBooksPage)。
  *
  * 每页独立订阅 [BookshelfViewModel.booksByGroup] 加载该分组书籍,
- * 每页独立 [ShelfScrollState] 保留滚动位置 (初始分组复用外部 scrollState 保留 gotoTop 入口)。
+ * 每页独立 [ShelfScrollState] 保留滚动位置 (初始分组复用外部 scrollState),
+ * 并登记到 [scrollStates] 供宿主滚顶按当前页取用。
  */
 @Composable
 private fun GroupBooksPage(
@@ -388,6 +435,7 @@ private fun GroupBooksPage(
     spec: ShelfLayoutSpec,
     externalScrollState: ShelfScrollState,
     initialGroupId: Long,
+    scrollStates: MutableMap<Long, ShelfScrollState>,
     viewModel: BookshelfViewModel,
     onBooksLoaded: (Long, Int) -> Unit,
     onBookClick: (Book) -> Unit,
@@ -396,10 +444,14 @@ private fun GroupBooksPage(
     groupCoverSlot: @Composable (BookGroup, Modifier, Boolean) -> Unit,
     onRefresh: () -> Unit,
 ) {
-    // 每分组一份 scrollState; 初始分组用外部 scrollState (保留宿主 gotoTop 入口)
+    // 每分组一份 scrollState; 初始分组用外部 scrollState (与宿主保存的位置连续)
     // rememberSaveable: 页销毁重建后恢复滚动位置 (按 groupId 隔离)
     val pageScrollState = rememberSaveable(group.groupId, saver = ShelfScrollState.Saver) {
         if (group.groupId == initialGroupId) externalScrollState else ShelfScrollState()
+    }
+    DisposableEffect(group.groupId, pageScrollState) {
+        scrollStates[group.groupId] = pageScrollState
+        onDispose { scrollStates.remove(group.groupId) }
     }
     // sortTick: BOOKSHELF_REFRESH (排序配置变更) 时 bump, 重建 flow 让 sortOf 重读配置
     // (对照 BooksFragment.observeLiveBus 的 BOOKSHELF_REFRESH → notifyDataSetChanged)
@@ -604,10 +656,12 @@ fun DefaultBookCoverPlaceholder(book: Book, modifier: Modifier = Modifier) {
 
 /**
  * 共享封面加载: 走 [BookImageLoaders] (各端注入 coil3 实现) 加载实际封面,
- * 加载中/失败/无 cover URL/未注册 loader/[AppConfigAccessor.useDefaultCover] 时回退到占位。
+ * 加载中/失败/无 cover URL/未注册 loader/[AppConfigAccessor.useDefaultCover] 时走默认封面。
  *
- * 视觉与 [DefaultBookCoverPlaceholder] 一致 (fillMaxWidth + shapeSm 圆角 + 按 coverRatio 自适应高度),
- * 加载成功时以 [ContentScale.Crop] 填满同尺寸区域, 不改变占位 footprint。
+ * 默认封面链对齐 app 端 `BookCover.newDefaultDrawable`: 用户图集非空时按 seed (书名, 无则封面
+ * 路径) 稳定选一张烘焙图, 从 [DataStorageProviders] 的 coversDir 读本地文件; 图集为空回落内置
+ * `image_cover_default` (.9 图当普通图拉伸)。竖排书名/作者 overlay 只画在默认封面上,
+ * 对照原版 `defaultCover=true` 才 drawNameAuthor。
  *
  * 高度按 [isVideoCover] 选 16:9 / 3:4 由宽度自动算出 (对齐 CoverImageView.onMeasure 按 coverRatio
  * 自适应, 不再硬编码 160dp)。
@@ -616,7 +670,7 @@ fun DefaultBookCoverPlaceholder(book: Book, modifier: Modifier = Modifier) {
  * @param modifier 外部尺寸约束; 默认 [Modifier] 时 fillMaxWidth + aspectRatio + shapeSm
  * @param isVideoCover 是否视频封面 (true: 16:9, false: 3:4; 对照 CoverRatio.VIDEO/NOVEL)
  *
- * ohos 未注册 [BookImageLoaders], 恒走占位 (与替换前行为一致)。
+ * ohos 未注册 [BookImageLoaders], 恒走内置图 + overlay (与替换前占位语义一致)。
  */
 @Composable
 fun SharedBookCover(
@@ -626,16 +680,37 @@ fun SharedBookCover(
 ) {
     val cover = book.getDisplayCover()
     val loader = remember { BookImageLoaders.getOrNull() }
-    // useDefaultCover 时跳过加载, 直接走占位 (对照 app 端 CoverImageView 行为)
+    // useDefaultCover 时跳过网络加载, 直接走默认封面链 (对照 app 端 CoverImageView 行为)
     val useDefaultCover = remember { AppConfigProviders.get().useDefaultCover }
+    val ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL
+    // 用户图集选图: seed 同 app 端 defaultCoverSeed() (书名优先, 否则封面路径), 图集为空返回 null
+    val defaultCoverPath = remember(book.name, cover, ratio) {
+        defaultCoverFilePath(seed = book.name.takeIf { it.isNotBlank() } ?: cover, ratio = ratio)
+    }
     var bitmap by remember(cover, book.origin) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(cover, book.origin, loader, useDefaultCover) {
-        if (useDefaultCover || cover.isNullOrBlank() || loader == null) return@LaunchedEffect
+    // 已加载位图是否默认封面 (决定是否画竖排书名/作者)
+    var bitmapIsDefault by remember(cover, book.origin) { mutableStateOf(false) }
+    LaunchedEffect(cover, book.origin, loader, useDefaultCover, defaultCoverPath) {
+        if (loader == null) return@LaunchedEffect
+        val loadDefault = {
+            if (defaultCoverPath != null) {
+                loader.loadImage(
+                    url = defaultCoverPath,
+                    sourceOrigin = null,
+                    onSuccess = { bitmap = it; bitmapIsDefault = true },
+                    onError = { bitmap = null },
+                )
+            }
+        }
+        if (useDefaultCover || cover.isNullOrBlank()) {
+            loadDefault()
+            return@LaunchedEffect
+        }
         loader.loadImage(
             url = cover,
             sourceOrigin = book.origin,
-            onSuccess = { bitmap = it },
-            onError = { bitmap = null },
+            onSuccess = { bitmap = it; bitmapIsDefault = false },
+            onError = { loadDefault() },
         )
     }
     // 对齐 CoverImageView.onMeasure: 高度有界时按比例反推宽度, 否则按宽度推高度。
@@ -645,25 +720,56 @@ fun SharedBookCover(
         .aspectRatio(aspectRatio, matchHeightConstraintsFirst = true)
         .clip(DesignTokens.shapeSm)
     val bmp = bitmap
-    if (bmp != null) {
+    if (bmp != null && !bitmapIsDefault) {
         Image(
             bitmap = bmp,
             contentDescription = book.name,
             modifier = resolvedModifier,
             contentScale = ContentScale.Crop,
         )
-    } else {
-        // 默认封面: accent 底 + 竖排书名/作者 (算法与 Android CoverImageView 共用 computeCoverTextLayout)。
-        // 底图不同是唯一保留的平台差异 —— 原版 9-patch 的拉伸区 Compose 无等价能力。
-        Box(resolvedModifier.background(AppTheme.colors.accent)) {
-            CoverNameAuthorOverlay(
-                name = book.name,
-                author = book.author,
-                accent = AppTheme.colors.accent,
+        return
+    }
+    Box(resolvedModifier) {
+        if (bmp != null) {
+            // 用户图集里的烘焙图 (已按 ratio 裁好)
+            Image(
+                bitmap = bmp,
+                contentDescription = book.name,
                 modifier = Modifier.matchParentSize(),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            // 图集为空 / 读盘失败: 内置 image_cover_default (原 .9 图, 这里当普通图拉伸)
+            Image(
+                painter = painterResource(Res.drawable.image_cover_default),
+                contentDescription = book.name,
+                modifier = Modifier.matchParentSize(),
+                contentScale = ContentScale.FillBounds,
             )
         }
+        CoverNameAuthorOverlay(
+            name = book.name,
+            author = book.author,
+            accent = AppTheme.colors.accent,
+            modifier = Modifier.matchParentSize(),
+        )
     }
+}
+
+/**
+ * 用户自定义默认封面集选图 (对照 app 端 `BookCover.newDefaultDrawable` 的选图段)。
+ *
+ * 图集为空或 [DataStorageProviders] 未注册时返回 null, 调用方回落内置图。
+ */
+private fun defaultCoverFilePath(seed: String?, ratio: CoverRatio): String? {
+    val coversDir = DataStorageProviders.getOrNull()?.coversDir ?: return null
+    val covers = BookCoverShared.currentDefaultCovers(
+        PreferenceProviders.get(),
+        AppConfigProviders.get().isNightTheme,
+    )
+    val index = BookCoverShared.pickDefaultCoverIndex(covers.size, seed)
+    if (index < 0) return null
+    return BookCoverShared.bakedPath(coversDir, covers[index], ratio)
 }
 
 /** 封面宽高比 (宽/高); 对照 BookCoverShared.CoverRatio: NOVEL=3:4 → 0.75 */

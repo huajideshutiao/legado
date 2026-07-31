@@ -2,6 +2,8 @@ package io.legado.app.help.book
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.book.AndroidBookStorage.clearInvalidCache
+import io.legado.app.help.storage.DataStorageProviders
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -18,9 +20,9 @@ import kotlinx.coroutines.runBlocking
  */
 object AndroidBookStorage : BookStorage {
 
-    /** 章节缓存根路径 (`appCtx.externalFiles/book_cache`), 对应 [BookHelp.cachePath]。 */
+    /** 章节缓存根路径, 取 [DataStorageProviders] 的 `chapterCacheDir` (= [BookHelp.cachePath])。 */
     override val rootPath: String
-        get() = BookHelp.cachePath
+        get() = DataStorageProviders.get().chapterCacheDir
 
     /** 获取书籍缓存文件夹名, 委托 [Book.getFolderName]。 */
     override fun getFolderName(book: Book): String = book.getFolderName()
@@ -28,6 +30,26 @@ object AndroidBookStorage : BookStorage {
     /** 列出书籍缓存文件夹下所有章节文件名, 委托 [BookHelp.getChapterFiles]。 */
     override fun getChapterFiles(book: Book): List<String> =
         BookHelp.getChapterFiles(book).toList()
+
+    /** 缓存目录下按文件名判断存在性, 委托 [BookHelp.getCacheFile] (直查文件系统, 不走 getChapterFiles 短路)。 */
+    override fun hasCacheFile(book: Book, fileName: String): Boolean =
+        BookHelp.getCacheFile(book, fileName).exists()
+
+    /** 缓存目录下按文件名读文本, 文件不存在返回 null。 */
+    override fun readCacheFile(book: Book, fileName: String): String? {
+        val file = BookHelp.getCacheFile(book, fileName)
+        return if (file.exists()) file.readText() else null
+    }
+
+    /** 创建空标记文件, 委托 [BookHelp.createCacheFile] (已存在则保留)。 */
+    override fun createCacheFile(book: Book, fileName: String) {
+        BookHelp.createCacheFile(book, fileName)
+    }
+
+    /** 删除缓存目录下指定文件。 */
+    override fun deleteCacheFile(book: Book, fileName: String) {
+        BookHelp.getCacheFile(book, fileName).delete()
+    }
 
     /** 保存章节正文到缓存文件, 委托 [BookHelp.saveText]。 */
     override fun saveText(book: Book, chapter: BookChapter, text: String) {

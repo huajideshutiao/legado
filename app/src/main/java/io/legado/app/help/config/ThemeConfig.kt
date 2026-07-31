@@ -11,7 +11,6 @@ import android.util.DisplayMetrics
 import androidx.annotation.ColorRes
 import androidx.annotation.Keep
 import androidx.appcompat.app.AppCompatDelegate
-import kotlinx.serialization.Serializable
 import androidx.core.graphics.drawable.toDrawable
 import androidx.core.graphics.toColorInt
 import io.legado.app.R
@@ -22,12 +21,9 @@ import io.legado.app.constant.Theme
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.model.BookCover
 import io.legado.app.utils.BitmapUtils
-import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
-import io.legado.app.utils.toJson
 import io.legado.app.utils.centerCrop
 import io.legado.app.utils.externalFiles
-import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getCompatColor
 import io.legado.app.utils.getFile
@@ -35,25 +31,27 @@ import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.hexString
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.putPrefString
 import io.legado.app.utils.removePref
 import io.legado.app.utils.stackBlur
+import io.legado.app.utils.toJson
+import kotlinx.serialization.Serializable
 import splitties.init.appCtx
-import java.io.File
 
 @Keep
 object ThemeConfig {
-    const val configFileName = "themeConfig.json"
-    val configFilePath = FileUtils.getPath(appCtx.filesDir, configFileName)
+    const val configFileName = ThemeConfigStore.configFileName
+
+    /** 与 shared 同一路径实现, 保证四端 themeConfig.json 互读 */
+    val configFilePath: String get() = ThemeConfigStore.configFilePath
 
     private var bgDrawableCache: Drawable? = null
     private var bgCacheKey: String? = null
 
     // 存档库：仅存储用户自定义/导入的主题
     val configList: ArrayList<Config> by lazy {
-        ArrayList(getConfigsFromDisk() ?: emptyList())
+        ArrayList(getConfigsFromDisk())
     }
 
     fun getTheme() = when {
@@ -293,9 +291,7 @@ object ThemeConfig {
     }
 
     fun save() {
-        val json = GSON.toJson(configList)
-        FileUtils.delete(configFilePath)
-        FileUtils.createFileIfNotExist(configFilePath).writeText(json)
+        ThemeConfigStore.save(configList.map { it.toThemeConfigData() })
     }
 
     fun delConfig(index: Int) {
@@ -306,9 +302,7 @@ object ThemeConfig {
 
     fun upConfig() {
         configList.clear()
-        getConfigsFromDisk()?.let {
-            configList.addAll(it)
-        }
+        configList.addAll(getConfigsFromDisk())
     }
 
     fun clearBg() {
@@ -353,6 +347,7 @@ object ThemeConfig {
         save()
     }
 
+    /** 保留 androidx toColorInt (支持颜色名), 不走 shared 的纯 hex 解析, 避免收窄已有主题的可用范围 */
     private fun validateConfig(config: Config): Boolean {
         try {
             config.primaryColor.toColorInt()
@@ -365,18 +360,17 @@ object ThemeConfig {
         }
     }
 
-    private fun getConfigsFromDisk(): List<Config>? {
-        val configFile = File(configFilePath)
-        if (configFile.exists()) {
-            kotlin.runCatching {
-                val json = configFile.readText()
-                return GSON.fromJsonArray<Config>(json).getOrThrow()
-            }.onFailure {
-                it.printOnDebug()
-            }
-        }
-        return null
-    }
+    private fun getConfigsFromDisk(): List<Config> =
+        ThemeConfigStore.load().map { it.toConfig() }
+
+    /** Config ↔ ThemeConfigData 字段一一对应, 仅用于走 shared 的读写实现 */
+    private fun Config.toThemeConfigData() = ThemeConfigData(
+        themeName, isNightTheme, primaryColor, accentColor, backgroundColor, bottomBackground
+    )
+
+    private fun ThemeConfigData.toConfig() = Config(
+        themeName, isNightTheme, primaryColor, accentColor, backgroundColor, bottomBackground
+    )
 
     private fun applyConfigToPrefs(context: Context, config: Config) {
         val accent = config.accentColor.toColorInt()

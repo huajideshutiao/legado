@@ -45,8 +45,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSelectorDialog
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
@@ -171,12 +172,12 @@ fun ClickActionDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        properties = AppDialogSizes.properties(),
     ) {
         Surface(
             shape = DesignTokens.dialogShape,
             color = colors.background,
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier.appDialogSize().padding(16.dp),
         ) {
             Column(Modifier.fillMaxWidth()) {
                 // 顶部标题栏: 标题 + 关闭按钮 (与原版 R.string.click_regional_config + ic_baseline_close 对齐)

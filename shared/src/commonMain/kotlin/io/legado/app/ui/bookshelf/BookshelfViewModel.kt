@@ -6,6 +6,7 @@ import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.service.UpdateBookCallback
@@ -26,6 +27,7 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
 /**
@@ -191,7 +193,8 @@ class BookshelfViewModel {
      * - 2: 书名 (cnCompare 拼音序)
      * - 3: 手动 (order 正序)
      * - 4: 综合时间 (max(latestChapterTime, durChapterTime) 倒序)
-     * - 5: 作者 (cnCompare 拼音序)
+     * - 5: 作者 (cnCompare 拼音序); 原版只有 style1 的 BooksFragment 有该档,
+     *   style2 落 else 按阅读时间, 此处统一取 style1 的超集
      */
     private fun sortBooks(list: List<Book>, sort: Int): List<Book> = when (sort) {
         1 -> list.sortedByDescending { it.latestChapterTime }
@@ -203,11 +206,11 @@ class BookshelfViewModel {
     }
 
     /**
-     * 返回指定分组的书籍流 (对照 app 端 GroupBooksPage 的 observeGroupBooks),
+     * 返回指定分组的书籍流 (对照 app 端 MainViewModel.observeGroupBooks),
      * 供 HorizontalPager 各页独立订阅, 互不干扰。
      *
      * 排序键取分组自身 [BookGroup.bookSort], < 0 时回退全局 [AppConfigAccessor.bookshelfSort]
-     * (与 [observeBooks] 语义一致)。
+     * (与 [observeBooks] 语义一致); onEach 内对照原版触发该分组的自动更新目录。
      */
     fun booksByGroup(groupId: Long): kotlinx.coroutines.flow.Flow<List<Book>> =
         bookDao.flowByGroup(groupId)
@@ -216,6 +219,20 @@ class BookshelfViewModel {
             .flowOn(IoDispatcher)
             .conflate()
             .map { list -> sortBooks(list, sortOf(groupId)) }
+            .onEach { list -> autoUpdateGroup(groupId, list) }
+
+    /**
+     * 进分组时自动更新目录 (对照 app 端 observeGroupBooks 的 onEach:
+     * `markGroupAutoUpdated(groupId) && AppConfig.autoRefreshBook` 才 scheduleAutoUpdate)。
+     *
+     * markGroupAutoUpdated 每分组每进程只返回一次 true, 避免重组/翻页反复触发。
+     */
+    private fun autoUpdateGroup(groupId: Long, books: List<Book>) {
+        val shared = updateBookShared ?: return
+        if (shared.markGroupAutoUpdated(groupId) && appConfig.autoRefreshBook) {
+            shared.scheduleAutoUpdate(books)
+        }
+    }
 
     /**
      * 切换当前分组, 重启书籍数据流订阅。
@@ -244,10 +261,12 @@ class BookshelfViewModel {
      */
     fun upToc(books: List<Book>) {
         if (books.isEmpty()) return
-        // 标记待刷新条目 (UP_BOOKSHELF 事件到达后逐个移除)
-        _refreshingUrls.value = _refreshingUrls.value + books.map { it.bookUrl }
         val shared = updateBookShared
         if (shared != null) {
+            // 只标记会被实际刷新的书 (过滤条件与 UpdateBookShared.upToc 一致),
+            // 否则本地书/不可更新书等不到 UP_BOOKSHELF 事件, 转圈永不消失
+            _refreshingUrls.value = _refreshingUrls.value +
+                books.filter { !it.isLocal && it.canUpdate }.map { it.bookUrl }
             shared.upToc(books)
         } else {
             // 平台未接入 UpdateBookShared: 重启 DB 订阅触发回填, 立即清空转圈
@@ -267,8 +286,9 @@ class BookshelfViewModel {
         if (books.isEmpty()) return
         val shared = updateBookShared
         if (shared != null) {
-            // 标记待刷新条目 (UP_BOOKSHELF 事件到达后逐个移除)
-            _refreshingUrls.value = _refreshingUrls.value + books.map { it.bookUrl }
+            // 只标记会被实际刷新的书 (UpdateBookShared.forceRefresh 跳过本地书)
+            _refreshingUrls.value = _refreshingUrls.value +
+                books.filterNot { it.isLocal }.map { it.bookUrl }
             shared.forceRefresh(books)
         } else {
             // 平台未接入 UpdateBookShared: 重启 DB 订阅触发回填

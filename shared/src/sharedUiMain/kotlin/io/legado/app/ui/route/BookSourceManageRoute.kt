@@ -30,6 +30,7 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.dragSelectable
+import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -125,6 +126,14 @@ fun BookSourceManageRoute(
     val state by screenModel.state.collectAsState()
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+
+    // 搜索态下返回先清空关键字 (对照 app 端 finish(): query 非空时 setQuery("", true));
+    // 非栈顶时不拦截, 栈内页面全程留在 Composition
+    val backStack by navigator.backStack.collectAsState()
+    val isTopEntry = backStack.lastOrNull()?.id == entry.id
+    AppBackHandler(enabled = isTopEntry && state.searchKey.isNotEmpty()) {
+        screenModel.dispatch(BookSourceUiEvent.Search(""))
+    }
 
     // 对话框状态 (对照 app 端 Activity 内 showDialogFragment 调用)
     var showHelp by remember { mutableStateOf(false) }

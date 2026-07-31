@@ -34,12 +34,16 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
 
     // 本地书文件字节数 (对照 app 端 FileDoc.fromFile(bookUrl).size; bookUrl 形如 file:///path)
     override suspend fun localBookFileSize(bookUrl: String): Long = withContext(Dispatchers.IO) {
-        val path = if (bookUrl.startsWith("file:")) {
-            URI(bookUrl).path ?: bookUrl.removePrefix("file:")
-        } else {
-            bookUrl
-        }
-        File(path).length()
+        runCatching {
+            val file = if (bookUrl.startsWith("file:")) {
+                // Windows 上 URI.path 是 "/C:/..." 不是合法路径, 必须交给 File(URI) 解析盘符
+                runCatching { File(URI(bookUrl)) }
+                    .getOrElse { File(bookUrl.removePrefix("file:")) }
+            } else {
+                File(bookUrl)
+            }
+            file.length()
+        }.getOrDefault(0L)
     }
 
     override fun openImportFile(filePath: String) {

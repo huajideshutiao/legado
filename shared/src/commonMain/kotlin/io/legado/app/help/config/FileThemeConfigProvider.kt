@@ -3,57 +3,50 @@ package io.legado.app.help.config
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
-import io.legado.app.help.file.AppFilesDirs
-import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.lib.theme.ThemeStorePrefKeys
 import io.legado.app.ui.compose.platform.sharedStringTable
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FlowBus
-import io.legado.app.utils.GSON
-import io.legado.app.utils.fromJsonArray
-import io.legado.app.utils.toJson
 
 /**
  * 文件持久化版 [ThemeConfigProvider] (commonMain, 桌面/iOS/鸿蒙可共用)。
  *
  * 对照 app 端原版 `ThemeConfig` object:
- * - configList 持久化到 `{filesDir}/themeConfig.json` (同名同格式, 备份/恢复互通);
- * - applyConfig/applyBuiltin 写 [PreferKey] 自定义色 + themeMode + [ThemeStorePrefKeys]
- *   主题色 (等价原版 applyConfigToPrefs + AppConfig.isNightTheme + applyTheme →
- *   ThemeStore.saveTheme), 再发 [EventBus.RECREATE] (等价 postEvent);
- * - 文件 IO 走 [AppFilesDirs] + [BackupFileOps] 跨平台抽象, 不依赖 JVM 专属 API。
+ * - configList 持久化经 [ThemeConfigStore] (与 app 端同一份实现, 路径/格式互通);
+ * - applyConfig/applyBuiltin 等价原版 applyConfigToPrefs + `AppConfig.isNightTheme = x` +
+ *   applyTheme (→ ThemeStore.saveTheme) + postEvent(RECREATE)。
  *
- * 所有磁盘/prefs 访问懒执行, 构造时不触碰 [AppFilesDirs] (注册顺序无关)。
+ * 所有磁盘/prefs 访问懒执行, 构造时不触碰 [ThemeConfigStore] (注册顺序无关)。
  */
 class FileThemeConfigProvider : ThemeConfigProvider {
 
-    private val configFilePath: String
-        get() = AppFilesDirs.get().filesDir + BackupFileOps.separator + CONFIG_FILE_NAME
-
     /** 存档库: 仅存储用户自定义/导入的主题 (对照原版 configList lazy 读盘) */
     private val configs: MutableList<ThemeConfigData> by lazy {
-        loadFromDisk().toMutableList()
+        ThemeConfigStore.load().toMutableList()
     }
 
     override fun getConfigList(): List<ThemeConfigData> = configs.toList()
 
-    /** 对照原版 addConfig: 校验色值 + 按 themeName 同名覆盖/追加 + save */
+    /** 对照原版 addConfig: 校验色值 + 同名覆盖(只改内存) / 追加后 save */
     override fun addConfig(config: ThemeConfigData) {
-        if (!validateConfig(config)) return
+        if (!ThemeConfigStore.validate(config)) return
         val index = configs.indexOfFirst { it.themeName == config.themeName }
-        if (index >= 0) configs[index] = config else configs.add(config)
-        // 原版仅追加分支 save (覆盖依赖进程内存); 桌面/iOS 常重启, 覆盖也落盘避免恢复数据丢失
+        if (index >= 0) {
+            configs[index] = config
+            return
+        }
+        configs.add(config)
         save()
     }
 
-    /** 对照原版 delConfig: removeAt + save (applyTheme 不改当前色, 非 Android 端省略) */
+    /** 对照原版 delConfig: removeAt + save (原版随后的 applyTheme 不改当前色, 此处省略) */
     override fun delConfig(index: Int) {
         if (index !in configs.indices) return
         configs.removeAt(index)
         save()
     }
 
-    /** 对照原版 applyBuiltin: 清 6 个自定义 pref → 写 themeMode → 默认色写 ThemeStore 键 → RECREATE */
+    /** 对照原版 applyBuiltin: 清 6 个自定义 pref → isNightTheme → applyTheme → RECREATE */
     override fun applyBuiltin(isNight: Boolean) {
         val prefs = PreferenceProviders.get()
         if (isNight) {
@@ -71,12 +64,8 @@ class FileThemeConfigProvider : ThemeConfigProvider {
             prefs.remove(PreferKey.bgImage)
             prefs.remove(PreferKey.bgImageBlurring)
         }
-        prefs.putString(PreferKey.themeMode, if (isNight) "2" else "1")
-        if (isNight) {
-            saveThemeStore(NIGHT_ACCENT, NIGHT_BG, NIGHT_BBG)
-        } else {
-            saveThemeStore(DAY_ACCENT, DAY_BG, DAY_BBG)
-        }
+        setNightTheme(isNight)
+        applyTheme()
         FlowBus.with(EventBus.RECREATE).tryEmit("")
     }
 
@@ -98,8 +87,8 @@ class FileThemeConfigProvider : ThemeConfigProvider {
                 prefs.putInt(PreferKey.cBackground, bg)
                 prefs.putInt(PreferKey.cBBackground, bbg)
             }
-            prefs.putString(PreferKey.themeMode, if (config.isNightTheme) "2" else "1")
-            saveThemeStore(accent, bg, bbg)
+            setNightTheme(config.isNightTheme)
+            applyTheme()
             FlowBus.with(EventBus.RECREATE).tryEmit("")
         }.onFailure { e ->
             AppLog.put("设置主题出错\n$e", e, true)
@@ -108,7 +97,8 @@ class FileThemeConfigProvider : ThemeConfigProvider {
 
     /**
      * 对照原版 getBuiltinConfigs: 前置到主题列表最前的两个虚拟条目, 不写盘、不进 configList。
-     * 色值从原版 arco_default_accent/bg/bbg (values / values-night) 硬编码搬。
+     * 色值搬自原版 arco_default_accent/bg/bbg (values / values-night), 小写十六进制与
+     * 原版 `"#${Int.hexString}"` 输出一致。
      */
     override fun getBuiltinConfigs(): List<ThemeConfigData> = listOf(
         ThemeConfigData(
@@ -130,15 +120,50 @@ class FileThemeConfigProvider : ThemeConfigProvider {
     )
 
     /** 对照原版 save: configList 序列化覆盖写 themeConfig.json */
-    override fun save() {
-        runCatching {
-            BackupFileOps.writeText(configFilePath, GSON.toJson(configs))
-        }.onFailure { e ->
-            AppLog.put("保存 themeConfig.json 出错\n${e.message}", e)
+    override fun save() = ThemeConfigStore.save(configs)
+
+    /** 对照原版 upConfig: 清空内存列表后从磁盘重读 (恢复备份覆盖文件后调用) */
+    override fun upConfig() {
+        configs.clear()
+        configs.addAll(ThemeConfigStore.load())
+    }
+
+    /**
+     * 等价原版 `AppConfig.isNightTheme = value`: 仅当生效值变化时才写 themeMode,
+     * 否则 E-Ink("3") / 跟随系统("0") 会被误改。
+     */
+    private fun setNightTheme(value: Boolean) {
+        if (AppConfigProviders.get().isNightTheme != value) {
+            PreferenceProviders.get().putString(PreferKey.themeMode, if (value) "2" else "1")
         }
     }
 
-    /** 等价原版 applyTheme → ThemeStore.saveTheme(bg, accent, bg, bbg); status/nav 同步写避免残留旧值 */
+    /**
+     * 等价原版 applyTheme: E-Ink 强制黑白, 否则按当前日夜模式读自定义色
+     * (0 视为未设置, 回落 XML 默认色), 再 ThemeStore.saveTheme(bg, accent, bg, bbg)。
+     */
+    private fun applyTheme() {
+        val appConfig = AppConfigProviders.get()
+        if (appConfig.isEInkMode) {
+            saveThemeStore(accent = BLACK, bg = WHITE, bbg = WHITE)
+            return
+        }
+        val prefs = PreferenceProviders.get()
+        val isNight = appConfig.isNightTheme
+        val accent = prefs.getInt(if (isNight) PreferKey.cNAccent else PreferKey.cAccent)
+            .let { if (it == 0) (if (isNight) NIGHT_ACCENT else DAY_ACCENT) else it }
+        val bg = prefs.getInt(if (isNight) PreferKey.cNBackground else PreferKey.cBackground)
+            .let { if (it == 0) (if (isNight) NIGHT_BG else DAY_BG) else it }
+        val bbg = prefs.getInt(if (isNight) PreferKey.cNBBackground else PreferKey.cBBackground)
+            .let { if (it == 0) (if (isNight) NIGHT_BBG else DAY_BBG) else it }
+        saveThemeStore(accent, bg, bbg)
+    }
+
+    /**
+     * 等价原版 ThemeStore.saveTheme(bg, accent, bg, bbg)。
+     * status/nav 两键为非 Android 端专属: 桌面/iOS/鸿蒙 applyColors 会写它们,
+     * 不同步刷新会残留旧值 (Android 端从不写这两键, 故原版无此步)。
+     */
     private fun saveThemeStore(accent: Int, bg: Int, bbg: Int) {
         val prefs = PreferenceProviders.get()
         prefs.putInt(ThemeStorePrefKeys.KEY_PRIMARY_COLOR, bg)
@@ -149,29 +174,7 @@ class FileThemeConfigProvider : ThemeConfigProvider {
         prefs.putInt(ThemeStorePrefKeys.KEY_NAVIGATION_BAR_COLOR, bbg)
     }
 
-    /** 对照原版 validateConfig: 4 个色值可解析才有效 */
-    private fun validateConfig(config: ThemeConfigData): Boolean = runCatching {
-        ColorUtils.parseColor(config.primaryColor)
-        ColorUtils.parseColor(config.accentColor)
-        ColorUtils.parseColor(config.backgroundColor)
-        ColorUtils.parseColor(config.bottomBackground)
-    }.isSuccess
-
-    /** 对照原版 getConfigsFromDisk: 文件不存在/解析失败返回空列表 */
-    private fun loadFromDisk(): List<ThemeConfigData> = runCatching {
-        if (BackupFileOps.exists(configFilePath)) {
-            GSON.fromJsonArray<ThemeConfigData>(BackupFileOps.readText(configFilePath)).getOrThrow()
-        } else {
-            emptyList()
-        }
-    }.getOrElse { e ->
-        AppLog.putDebug("读取 themeConfig.json 出错\n${e.message}", e)
-        emptyList()
-    }
-
     private companion object {
-        const val CONFIG_FILE_NAME = "themeConfig.json"
-
         // 原版 readDefaultColors 的 XML 实时值: values(日) / values-night(夜)
         // arco_default_accent=arco_primary, arco_default_bg=arco_bg_page/arco_fill_1, arco_default_bbg=arco_fill_2
         val DAY_ACCENT = 0xFF165DFF.toInt()
@@ -181,11 +184,15 @@ class FileThemeConfigProvider : ThemeConfigProvider {
         val NIGHT_BG = 0xFF171717.toInt()
         val NIGHT_BBG = 0xFF232323.toInt()
 
-        const val DAY_ACCENT_HEX = "#FF165DFF"
-        const val DAY_BG_HEX = "#FFF8F8F8"
-        const val DAY_BBG_HEX = "#FFF3F3F3"
-        const val NIGHT_ACCENT_HEX = "#FF3C7EFF"
-        const val NIGHT_BG_HEX = "#FF171717"
-        const val NIGHT_BBG_HEX = "#FF232323"
+        /** 原版 E-Ink 分支 ThemeStore.saveTheme(WHITE, BLACK, WHITE, WHITE) 的黑白 */
+        val WHITE = 0xFFFFFFFF.toInt()
+        val BLACK = 0xFF000000.toInt()
+
+        const val DAY_ACCENT_HEX = "#ff165dff"
+        const val DAY_BG_HEX = "#fff8f8f8"
+        const val DAY_BBG_HEX = "#fff3f3f3"
+        const val NIGHT_ACCENT_HEX = "#ff3c7eff"
+        const val NIGHT_BG_HEX = "#ff171717"
+        const val NIGHT_BBG_HEX = "#ff232323"
     }
 }

@@ -7,7 +7,6 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Picture
 import android.graphics.Typeface
-import android.graphics.drawable.Drawable
 import android.text.TextPaint
 import android.util.AttributeSet
 import androidx.appcompat.widget.AppCompatImageView
@@ -23,9 +22,9 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.radius
 import io.legado.app.model.BookCover
 import io.legado.app.model.CoverRatio
+import io.legado.app.model.computeCoverTextLayout
 import io.legado.app.model.coverConfig
 import io.legado.app.utils.textHeight
-import io.legado.app.utils.toStringArray
 
 /**
  * 封面
@@ -174,65 +173,29 @@ class CoverImageView @JvmOverloads constructor(
     }
 
     private fun recordNameAuthor(canvas: Canvas) {
-        val nameArr = if (BookCover.drawBookName) name?.toStringArray() else null
-        val authorArr = if (BookCover.drawBookAuthor) author?.toStringArray() else null
-        if (nameArr.isNullOrEmpty() && authorArr.isNullOrEmpty()) return
-
-        val topMargin = viewHeight * 0.05f
-        val bottomMargin = viewHeight * 0.95f
-
-        nameArr?.let { nameList ->
-            namePaint.textSize = viewWidth / 6
-            namePaint.strokeWidth = namePaint.textSize / 5
-            var colX = viewWidth * 0.1f + namePaint.textSize / 2
-            var curY = topMargin + namePaint.textHeight
-            var colNum = 1
-
-            for (i in nameList.indices) {
-                val isLastCharOfName = i == nameList.size - 1
-                val isLastSlotInColumn = curY + namePaint.textHeight > bottomMargin
-
-                if (colNum == 3 && isLastSlotInColumn && !isLastCharOfName) {
-                    drawTextWithStroke(canvas, "…", colX, curY, namePaint)
-                    break
-                }
-
-                drawTextWithStroke(canvas, nameList[i], colX, curY, namePaint)
-
-                if (!isLastCharOfName) {
-                    if (isLastSlotInColumn) {
-                        colNum++
-                        colX += namePaint.textSize
-                        namePaint.textSize = viewWidth / 10
-                        namePaint.strokeWidth = namePaint.textSize / 5
-
-                        val remaining = nameList.size - i - 1
-                        val neededHeight = remaining * namePaint.textHeight
-                        curY = if (neededHeight < (bottomMargin - topMargin)) {
-                            (viewHeight - neededHeight) / 2 + namePaint.textHeight
-                        } else {
-                            topMargin + namePaint.textHeight
-                        }
-                    } else {
-                        curY += namePaint.textHeight
-                    }
-                }
-            }
-        }
-
-        authorArr?.let { authorList ->
-            authorPaint.textSize = viewWidth / 10
-            authorPaint.strokeWidth = authorPaint.textSize / 5
-            val colX = viewWidth * 0.85f
-            val neededHeight = authorList.size * authorPaint.textHeight
-            var curY = maxOf(viewHeight * 0.95f - neededHeight, viewHeight * 0.2f)
-
-            authorList.forEach { char ->
-                curY = maxOf(curY, topMargin + authorPaint.textHeight)
-                if (curY > viewHeight * 0.98f) return@forEach
-                drawTextWithStroke(canvas, char, colX, curY, authorPaint)
-                curY += authorPaint.textHeight
-            }
+        // 布局算法与其他端共用 commonMain 的 computeCoverTextLayout;
+        // 书名/作者 typeface 不同 (BOLD/DEFAULT), 故两支 paint 各自提供行高度量。
+        val glyphs = computeCoverTextLayout(
+            width = viewWidth,
+            height = viewHeight,
+            name = name,
+            author = author,
+            drawName = BookCover.drawBookName,
+            drawAuthor = BookCover.drawBookAuthor,
+            textHeightOf = { size ->
+                namePaint.textSize = size
+                namePaint.textHeight
+            },
+            authorTextHeightOf = { size ->
+                authorPaint.textSize = size
+                authorPaint.textHeight
+            },
+        )
+        glyphs.forEach { g ->
+            val paint = if (g.isAuthor) authorPaint else namePaint
+            paint.textSize = g.textSize
+            paint.strokeWidth = g.strokeWidth
+            drawTextWithStroke(canvas, g.text, g.x, g.y, paint)
         }
     }
 

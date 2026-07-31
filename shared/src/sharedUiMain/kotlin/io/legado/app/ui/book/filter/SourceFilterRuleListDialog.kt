@@ -1,15 +1,13 @@
 package io.legado.app.ui.book.filter
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
@@ -27,17 +25,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.source.SearchBookFilter
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.launch
@@ -98,14 +97,13 @@ fun SourceFilterRuleListDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        properties = AppDialogSizes.properties(),
     ) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
             Surface(
+                // 原版 isFullHeight = true, 高度固定 0.8 屏高
                 modifier = Modifier
-                    .fillMaxWidth(0.9f)
-                    .widthIn(max = 800.dp)
-                    .heightIn(max = maxHeight * 0.9f)
+                    .appDialogSize(fullHeight = true)
                     .align(Alignment.Center),
                 shape = DesignTokens.shapeDefault,
                 color = colors.fillet,
@@ -171,14 +169,12 @@ fun SourceFilterRuleListDialog(
                 addingNew = false
                 editing = null
             },
-            properties = DialogProperties(usePlatformDefaultWidth = false),
+            properties = AppDialogSizes.properties(),
         ) {
-            BoxWithConstraints(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize()) {
                 Surface(
                     modifier = Modifier
-                        .fillMaxWidth(0.9f)
-                        .widthIn(max = 800.dp)
-                        .heightIn(max = maxHeight * 0.9f)
+                        .appDialogSize()
                         .align(Alignment.Center),
                     shape = DesignTokens.shapeDefault,
                     color = colors.fillet,

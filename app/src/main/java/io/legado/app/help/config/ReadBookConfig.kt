@@ -12,110 +12,116 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.NinePatchDrawable
 import androidx.annotation.Keep
 import androidx.core.graphics.drawable.toDrawable
-import kotlinx.serialization.Serializable
 import androidx.core.graphics.toColorInt
 import io.legado.app.R
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.PageAnim
-import io.legado.app.constant.PreferKey
-import io.legado.app.help.DefaultData
+import io.legado.app.help.config.ReadBookConfig.Config
+import io.legado.app.help.config.ReadBookConfig.bg
+import io.legado.app.help.config.ReadBookConfig.bgMeanColor
+import io.legado.app.help.config.ReadBookConfig.upBg
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
+import io.legado.app.ui.compose.platform.AndroidPreferenceStoreProvider
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.FileUtils
-import io.legado.app.utils.GSON
-import io.legado.app.utils.toJson
 import io.legado.app.utils.RemoteAssetsUtils
 import io.legado.app.utils.centerCrop
-import io.legado.app.utils.compress.ZipUtils
-import io.legado.app.utils.createFolderReplace
-import io.legado.app.utils.externalCache
 import io.legado.app.utils.externalFiles
-import io.legado.app.utils.fromJsonArray
-import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.getCompatColor
-import io.legado.app.utils.getFile
-import io.legado.app.utils.getPrefBoolean
-import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getRepresentativeColor
-import io.legado.app.utils.hexString
 import io.legado.app.utils.printOnDebug
-import io.legado.app.utils.putPrefBoolean
-import io.legado.app.utils.putPrefInt
 import splitties.init.appCtx
 import java.io.File
 
 /**
- * 阅读界面配置
+ * 阅读界面配置 (app 端薄壳)。
+ *
+ * 数据/持久化/导入导出已下沉 [ReadBookConfigShared]（configList + shareConfig +
+ * readConfig.json/shareReadConfig.json 读写 + zip 导入导出），本 object 只做转发，
+ * 保证 app 消费方 `ReadBookConfig.xxx` 写法不变。
+ *
+ * 留在 app 端的只有 Android 独占的背景渲染：[bg] / [bgMeanColor] / [upBg] /
+ * [curBgDrawable]（Drawable / NinePatch / BitmapUtils / RemoteAssetsUtils）。
+ *
+ * `ReadBookConfig.Config` 类型已并入 [ReadStyleConfig]（Kotlin 2.2 的嵌套 typealias
+ * 仍需编译器开关，故用同名工厂函数 [Config] 兼容 `ReadBookConfig.Config()` 构造写法）。
  */
 @Suppress("ConstPropertyName")
 @Keep
 object ReadBookConfig {
-    const val configFileName = "readConfig.json"
-    const val shareConfigFileName = "shareReadConfig.json"
-    val configFilePath = FileUtils.getPath(appCtx.filesDir, configFileName)
-    val shareConfigFilePath = FileUtils.getPath(appCtx.filesDir, shareConfigFileName)
-    val configList: ArrayList<Config> = arrayListOf()
-    lateinit var shareConfig: Config
-    var durConfig
-        get() = getConfig(styleSelect)
+
+    /**
+     * 下沉实现。App.onCreate 已 `ReadBookConfigProviders.register(...)`，
+     * 未注册时自建并回填，避免注册前的早期访问直接崩溃。
+     */
+    private val shared: ReadBookConfigShared
+        get() = ReadBookConfigProviders.getOrNull() ?: fallbackShared
+
+    private val fallbackShared: ReadBookConfigShared by lazy {
+        ReadBookConfigShared(AndroidPreferenceStoreProvider())
+            .also { ReadBookConfigProviders.register(it) }
+    }
+
+    const val configFileName = ReadBookConfigShared.configFileName
+    const val shareConfigFileName = ReadBookConfigShared.shareConfigFileName
+    val configFilePath get() = shared.configFilePath
+    val shareConfigFilePath get() = shared.shareConfigFilePath
+
+    val configList get() = shared.configList
+    var shareConfig
+        get() = shared.shareConfig
         set(value) {
-            configList[styleSelect] = value
-            if (shareLayout) {
-                shareConfig = value
-            }
+            shared.shareConfig = value
+        }
+    var durConfig
+        get() = shared.durConfig
+        set(value) {
+            shared.durConfig = value
+        }
+    val config get() = shared.config
+
+    var isComic
+        get() = shared.isComic
+        set(value) {
+            shared.isComic = value
         }
 
-    var isComic: Boolean = false
+    /** 当前背景 Drawable（Android 渲染态，由 [upBg] 刷新）。 */
     var bg: Drawable? = null
+
+    /** 背景主色（状态栏/导航栏/仿真翻页取色用）。 */
     var bgMeanColor: Int = 0
-    val textColor: Int get() = durConfig.curTextColor()
 
-    init {
-        initConfigs()
-        initShareConfig()
-    }
+    val textColor: Int get() = shared.textColor
 
-    @Synchronized
-    fun getConfig(index: Int): Config {
-        if (configList.size < 5) {
-            resetAll()
-        }
-        return configList.getOrNull(index) ?: configList[0]
-    }
+    /** `ReadBookConfig.Config()` 兼容工厂，等价于 `ReadStyleConfig()`。 */
+    @Suppress("FunctionName")
+    fun Config(): ReadStyleConfig = ReadStyleConfig()
 
-    fun initConfigs() {
-        val configFile = File(configFilePath)
-        var configs: List<Config>? = null
-        if (configFile.exists()) {
-            try {
-                val json = configFile.readText()
-                configs = GSON.fromJsonArray<Config>(json).getOrThrow()
-            } catch (e: Exception) {
-                AppLog.put("读取排版配置文件出错", e)
-            }
-        }
-        (configs ?: DefaultData.readConfigs).let {
-            configList.clear()
-            configList.addAll(it)
-        }
-    }
+    fun getConfig(index: Int): ReadStyleConfig = shared.getConfig(index)
 
-    fun initShareConfig() {
-        val configFile = File(shareConfigFilePath)
-        var c: Config? = null
-        if (configFile.exists()) {
-            try {
-                val json = configFile.readText()
-                c = GSON.fromJsonObject<Config>(json).getOrThrow()
-            } catch (e: Exception) {
-                e.printOnDebug()
-            }
-        }
-        shareConfig = c ?: configList.getOrNull(5) ?: Config()
-    }
+    fun initConfigs() = shared.initConfigs()
 
+    fun initShareConfig() = shared.initShareConfig()
+
+    fun save() = shared.save()
+
+    fun getAllPicBgStr(): List<String> = shared.getAllPicBgStr()
+
+    fun deleteDur(): Boolean = shared.deleteDur()
+
+    fun clearBgAndCache() = shared.clearBgAndCache()
+
+    fun getExportConfig(): ReadStyleConfig = shared.getExportConfig()
+
+    fun import(byteArray: ByteArray): ReadStyleConfig = shared.import(byteArray)
+
+    /**
+     * 刷新背景 Drawable 与 [bgMeanColor]，回收上一张 Bitmap。
+     *
+     * 位图背景取底部 30% 区域的代表色后各通道 +3（沿用原实现的微调）。
+     */
     fun upBg(width: Int, height: Int) {
         val drawable = durConfig.curBgDrawable(width, height)
         if (drawable is BitmapDrawable && drawable.bitmap != null && !drawable.bitmap.isRecycled) {
@@ -123,9 +129,7 @@ object ReadBookConfig {
                 val bitmap = drawable.bitmap
                 val cropHeight = (bitmap.height * 0.3).toInt()
                 val cropTop = bitmap.height - cropHeight
-                // 复用优化后的取色工具，仅处理底部 30% 区域
                 val it = bitmap.getRepresentativeColor(0, cropTop, bitmap.width, cropHeight)
-                // 保留原有的微调巧思
                 rgb(
                     (red(it) + 3).coerceAtMost(255),
                     (green(it) + 3).coerceAtMost(255),
@@ -143,685 +147,306 @@ object ReadBookConfig {
         (tmp as? BitmapDrawable)?.bitmap?.recycle()
     }
 
-    fun save() {
-        Coroutine.async {
-            synchronized(this) {
-                GSON.toJson(configList).let {
-                    FileUtils.delete(configFilePath)
-                    FileUtils.createFileIfNotExist(configFilePath).writeText(it)
-                }
-                GSON.toJson(shareConfig).let {
-                    FileUtils.delete(shareConfigFilePath)
-                    FileUtils.createFileIfNotExist(shareConfigFilePath).writeText(it)
-                }
-            }
-        }
-    }
-
-    fun getAllPicBgStr(): ArrayList<String> {
-        val list = arrayListOf<String>()
-        configList.forEach {
-            if (it.bgType == 2) {
-                list.add(it.bgStr)
-            }
-            if (it.bgTypeNight == 2) {
-                list.add(it.bgStrNight)
-            }
-            if (it.bgTypeEInk == 2) {
-                list.add(it.bgStrEInk)
-            }
-        }
-        return list
-    }
-
-    fun deleteDur(): Boolean {
-        if (configList.size > 5) {
-            val removeIndex = styleSelect
-            configList.removeAt(removeIndex)
-            if (removeIndex <= readStyleSelect) {
-                readStyleSelect -= 1
-            }
-            if (removeIndex <= comicStyleSelect) {
-                comicStyleSelect -= 1
-            }
-            return true
-        }
-        return false
-    }
-
-    fun clearBgAndCache() {
-        val bgs = hashSetOf<String>()
-        configList.forEach { config ->
-            repeat(3) {
-                config.getBgPath(it)?.let { path ->
-                    bgs.add(path)
-                }
-            }
-        }
-        appCtx.externalFiles.getFile("bg").listFiles()?.forEach {
-            if (!bgs.contains(it.absolutePath)) {
-                it.delete()
-            }
-        }
-        FileUtils.delete(appCtx.externalCache.getFile("readConfig"))
-        val configZipPath = FileUtils.getPath(appCtx.externalCache, "readConfig.zip")
-        FileUtils.delete(configZipPath)
-    }
-
-    private fun resetAll() {
-        DefaultData.readConfigs.let {
-            configList.clear()
-            configList.addAll(it)
-            save()
-        }
-    }
-
     //配置写入读取
-    var autoReadSpeed = appCtx.getPrefInt(PreferKey.autoReadSpeed, 10)
+    var autoReadSpeed
+        get() = shared.autoReadSpeed
         set(value) {
-            field = value
-            appCtx.putPrefInt(PreferKey.autoReadSpeed, value)
+            shared.autoReadSpeed = value
         }
-    var styleSelect: Int
-        get() = if (isComic) comicStyleSelect else readStyleSelect
+    var styleSelect
+        get() = shared.styleSelect
         set(value) {
-            if (isComic) {
-                comicStyleSelect = value
-            } else {
-                readStyleSelect = value
-            }
+            shared.styleSelect = value
         }
-    var readStyleSelect = appCtx.getPrefInt(PreferKey.readStyleSelect)
+    var readStyleSelect
+        get() = shared.readStyleSelect
         set(value) {
-            field = value
-            if (appCtx.getPrefInt(PreferKey.readStyleSelect) != value) {
-                appCtx.putPrefInt(PreferKey.readStyleSelect, value)
-            }
+            shared.readStyleSelect = value
         }
-    var comicStyleSelect = appCtx.getPrefInt(PreferKey.comicStyleSelect, readStyleSelect)
+    var comicStyleSelect
+        get() = shared.comicStyleSelect
         set(value) {
-            field = value
-            if (appCtx.getPrefInt(PreferKey.comicStyleSelect) != value) {
-                appCtx.putPrefInt(PreferKey.comicStyleSelect, value)
-            }
+            shared.comicStyleSelect = value
         }
-    var shareLayout = appCtx.getPrefBoolean(PreferKey.shareLayout)
+    var shareLayout
+        get() = shared.shareLayout
         set(value) {
-            field = value
-            if (appCtx.getPrefBoolean(PreferKey.shareLayout) != value) {
-                appCtx.putPrefBoolean(PreferKey.shareLayout, value)
-            }
+            shared.shareLayout = value
         }
 
     /**
      * 两端对齐
      */
-    val textFullJustify get() = appCtx.getPrefBoolean(PreferKey.textFullJustify, true)
+    val textFullJustify get() = shared.textFullJustify
 
     /**
      * 底部对齐
      */
-    val textBottomJustify get() = appCtx.getPrefBoolean(PreferKey.textBottomJustify, true)
-    var hideStatusBar = appCtx.getPrefBoolean(PreferKey.hideStatusBar)
-    var hideNavigationBar = appCtx.getPrefBoolean(PreferKey.hideNavigationBar)
-    var useZhLayout = appCtx.getPrefBoolean(PreferKey.useZhLayout)
+    val textBottomJustify get() = shared.textBottomJustify
+    var hideStatusBar
+        get() = shared.hideStatusBar
+        set(value) {
+            shared.hideStatusBar = value
+        }
+    var hideNavigationBar
+        get() = shared.hideNavigationBar
+        set(value) {
+            shared.hideNavigationBar = value
+        }
+    var useZhLayout
+        get() = shared.useZhLayout
+        set(value) {
+            shared.useZhLayout = value
+        }
 
     /** 设置页直写 pref 后同步缓存字段 */
-    fun reloadHideBarPrefs() {
-        hideStatusBar = appCtx.getPrefBoolean(PreferKey.hideStatusBar)
-        hideNavigationBar = appCtx.getPrefBoolean(PreferKey.hideNavigationBar)
-    }
+    fun reloadHideBarPrefs() = shared.reloadHideBarPrefs()
 
-    val config get() = if (shareLayout) shareConfig else durConfig
-
-    var bgAlpha: Int
-        get() = config.bgAlpha
+    var bgAlpha
+        get() = shared.bgAlpha
         set(value) {
-            config.bgAlpha = value
+            shared.bgAlpha = value
         }
 
-    var pageAnim: Int
-        get() = config.curPageAnim()
+    var pageAnim
+        get() = shared.pageAnim
         set(@PageAnim.Anim value) {
-            config.setCurPageAnim(value)
+            shared.pageAnim = value
         }
 
-    var textFont: String
-        get() = config.textFont
+    var textFont
+        get() = shared.textFont
         set(value) {
-            config.textFont = value
+            shared.textFont = value
         }
 
-    var textBold: Int
-        get() = config.textBold
+    var textBold
+        get() = shared.textBold
         set(value) {
-            config.textBold = value
+            shared.textBold = value
         }
 
-    var textSize: Int
-        get() = config.textSize
+    var textSize
+        get() = shared.textSize
         set(value) {
-            config.textSize = value
+            shared.textSize = value
         }
 
-    var letterSpacing: Float
-        get() = config.letterSpacing
+    var letterSpacing
+        get() = shared.letterSpacing
         set(value) {
-            config.letterSpacing = value
+            shared.letterSpacing = value
         }
 
-    var lineSpacingExtra: Int
-        get() = config.lineSpacingExtra
+    var lineSpacingExtra
+        get() = shared.lineSpacingExtra
         set(value) {
-            config.lineSpacingExtra = value
+            shared.lineSpacingExtra = value
         }
 
-    var paragraphSpacing: Int
-        get() = config.paragraphSpacing
+    var paragraphSpacing
+        get() = shared.paragraphSpacing
         set(value) {
-            config.paragraphSpacing = value
+            shared.paragraphSpacing = value
         }
 
     /**
      * 标题位置 0:居左 1:居中 2:隐藏
      */
-    var titleMode: Int
-        get() = config.titleMode
+    var titleMode
+        get() = shared.titleMode
         set(value) {
-            config.titleMode = value
+            shared.titleMode = value
         }
-    var titleSize: Int
-        get() = config.titleSize
+    var titleSize
+        get() = shared.titleSize
         set(value) {
-            config.titleSize = value
+            shared.titleSize = value
         }
 
     /**
      * 是否标题居中
      */
-    val isMiddleTitle get() = titleMode == 1
+    val isMiddleTitle get() = shared.isMiddleTitle
 
-    var titleTopSpacing: Int
-        get() = config.titleTopSpacing
+    var titleTopSpacing
+        get() = shared.titleTopSpacing
         set(value) {
-            config.titleTopSpacing = value
+            shared.titleTopSpacing = value
         }
 
-    var titleBottomSpacing: Int
-        get() = config.titleBottomSpacing
+    var titleBottomSpacing
+        get() = shared.titleBottomSpacing
         set(value) {
-            config.titleBottomSpacing = value
+            shared.titleBottomSpacing = value
         }
 
-    var paragraphIndent: String
-        get() = config.paragraphIndent
+    var paragraphIndent
+        get() = shared.paragraphIndent
         set(value) {
-            config.paragraphIndent = value
+            shared.paragraphIndent = value
         }
 
-    var underline: Boolean
-        get() = config.underline
+    var underline
+        get() = shared.underline
         set(value) {
-            config.underline = value
+            shared.underline = value
         }
 
-    var paddingBottom: Int
-        get() = config.paddingBottom
+    var paddingBottom
+        get() = shared.paddingBottom
         set(value) {
-            config.paddingBottom = value
+            shared.paddingBottom = value
         }
 
-    var paddingLeft: Int
-        get() = config.paddingLeft
+    var paddingLeft
+        get() = shared.paddingLeft
         set(value) {
-            config.paddingLeft = value
+            shared.paddingLeft = value
         }
 
-    var paddingRight: Int
-        get() = config.paddingRight
+    var paddingRight
+        get() = shared.paddingRight
         set(value) {
-            config.paddingRight = value
+            shared.paddingRight = value
         }
 
-    var paddingTop: Int
-        get() = config.paddingTop
+    var paddingTop
+        get() = shared.paddingTop
         set(value) {
-            config.paddingTop = value
+            shared.paddingTop = value
         }
 
-    var headerPaddingBottom: Int
-        get() = config.headerPaddingBottom
+    var headerPaddingBottom
+        get() = shared.headerPaddingBottom
         set(value) {
-            config.headerPaddingBottom = value
+            shared.headerPaddingBottom = value
         }
 
-    var headerPaddingLeft: Int
-        get() = config.headerPaddingLeft
+    var headerPaddingLeft
+        get() = shared.headerPaddingLeft
         set(value) {
-            config.headerPaddingLeft = value
+            shared.headerPaddingLeft = value
         }
 
-    var headerPaddingRight: Int
-        get() = config.headerPaddingRight
+    var headerPaddingRight
+        get() = shared.headerPaddingRight
         set(value) {
-            config.headerPaddingRight = value
+            shared.headerPaddingRight = value
         }
 
-    var headerPaddingTop: Int
-        get() = config.headerPaddingTop
+    var headerPaddingTop
+        get() = shared.headerPaddingTop
         set(value) {
-            config.headerPaddingTop = value
+            shared.headerPaddingTop = value
         }
 
-    var footerPaddingBottom: Int
-        get() = config.footerPaddingBottom
+    var footerPaddingBottom
+        get() = shared.footerPaddingBottom
         set(value) {
-            config.footerPaddingBottom = value
+            shared.footerPaddingBottom = value
         }
 
-    var footerPaddingLeft: Int
-        get() = config.footerPaddingLeft
+    var footerPaddingLeft
+        get() = shared.footerPaddingLeft
         set(value) {
-            config.footerPaddingLeft = value
+            shared.footerPaddingLeft = value
         }
 
-    var footerPaddingRight: Int
-        get() = config.footerPaddingRight
+    var footerPaddingRight
+        get() = shared.footerPaddingRight
         set(value) {
-            config.footerPaddingRight = value
+            shared.footerPaddingRight = value
         }
 
-    var footerPaddingTop: Int
-        get() = config.footerPaddingTop
+    var footerPaddingTop
+        get() = shared.footerPaddingTop
         set(value) {
-            config.footerPaddingTop = value
+            shared.footerPaddingTop = value
         }
 
-    var showHeaderLine: Boolean
-        get() = config.showHeaderLine
+    var showHeaderLine
+        get() = shared.showHeaderLine
         set(value) {
-            config.showHeaderLine = value
+            shared.showHeaderLine = value
         }
 
-    var showFooterLine: Boolean
-        get() = config.showFooterLine
+    var showFooterLine
+        get() = shared.showFooterLine
         set(value) {
-            config.showFooterLine = value
+            shared.showFooterLine = value
         }
+}
 
-    fun getExportConfig(): Config {
-        val exportConfig = durConfig.copy()
-        if (shareLayout) {
-            exportConfig.textFont = shareConfig.textFont
-            exportConfig.textBold = shareConfig.textBold
-            exportConfig.textSize = shareConfig.textSize
-            exportConfig.letterSpacing = shareConfig.letterSpacing
-            exportConfig.lineSpacingExtra = shareConfig.lineSpacingExtra
-            exportConfig.paragraphSpacing = shareConfig.paragraphSpacing
-            exportConfig.titleMode = shareConfig.titleMode
-            exportConfig.titleSize = shareConfig.titleSize
-            exportConfig.titleTopSpacing = shareConfig.titleTopSpacing
-            exportConfig.titleBottomSpacing = shareConfig.titleBottomSpacing
-            exportConfig.paddingBottom = shareConfig.paddingBottom
-            exportConfig.paddingLeft = shareConfig.paddingLeft
-            exportConfig.paddingRight = shareConfig.paddingRight
-            exportConfig.paddingTop = shareConfig.paddingTop
-            exportConfig.headerPaddingBottom = shareConfig.headerPaddingBottom
-            exportConfig.headerPaddingLeft = shareConfig.headerPaddingLeft
-            exportConfig.headerPaddingRight = shareConfig.headerPaddingRight
-            exportConfig.headerPaddingTop = shareConfig.headerPaddingTop
-            exportConfig.footerPaddingBottom = shareConfig.footerPaddingBottom
-            exportConfig.footerPaddingLeft = shareConfig.footerPaddingLeft
-            exportConfig.footerPaddingRight = shareConfig.footerPaddingRight
-            exportConfig.footerPaddingTop = shareConfig.footerPaddingTop
-            exportConfig.showHeaderLine = shareConfig.showHeaderLine
-            exportConfig.showFooterLine = shareConfig.showFooterLine
-            exportConfig.tipHeaderLeft = shareConfig.tipHeaderLeft
-            exportConfig.tipHeaderMiddle = shareConfig.tipHeaderMiddle
-            exportConfig.tipHeaderRight = shareConfig.tipHeaderRight
-            exportConfig.tipFooterLeft = shareConfig.tipFooterLeft
-            exportConfig.tipFooterMiddle = shareConfig.tipFooterMiddle
-            exportConfig.tipFooterRight = shareConfig.tipFooterRight
-            exportConfig.tipColor = shareConfig.tipColor
-            exportConfig.headerMode = shareConfig.headerMode
-            exportConfig.footerMode = shareConfig.footerMode
-        }
-        return exportConfig
+/**
+ * 当前生效背景的 Drawable（Android 独占，原 `ReadBookConfig.Config.curBgDrawable`）。
+ *
+ * bgType: 0 纯色, 1 内置背景（[RemoteAssetsUtils] 远端缓存，未就绪时下载并回放 BG 事件），
+ * 2 用户图片（`{externalFiles}/bg` 下文件名或绝对路径）。九宫格图走 [NinePatchDrawable]，
+ * 其余 centerCrop 到视口尺寸。
+ */
+fun ReadStyleConfig.curBgDrawable(width: Int, height: Int): Drawable {
+    if (width == 0 || height == 0) {
+        return appCtx.getCompatColor(R.color.background).toDrawable()
     }
-
-    fun import(byteArray: ByteArray): Config {
-        val configZipPath = FileUtils.getPath(appCtx.externalCache, "readConfig.zip")
-        FileUtils.delete(configZipPath)
-        val zipFile = FileUtils.createFileIfNotExist(configZipPath)
-        zipFile.writeBytes(byteArray)
-        val configDir = appCtx.externalCache.getFile("readConfig")
-        configDir.createFolderReplace()
-        ZipUtils.unZipToPath(zipFile, configDir)
-        val configFile = configDir.getFile(configFileName)
-        val config: Config = GSON.fromJsonObject<Config>(configFile.readText()).getOrThrow()
-        if (config.textFont.isNotEmpty()) {
-            val fontName = config.textFont
-            val fontPath =
-                FileUtils.getPath(appCtx.externalFiles, "font", fontName)
-            val fontFile = configDir.getFile(fontName)
-            if (fontFile.exists()) {
-                if (!FileUtils.exist(fontPath)) {
-                    fontFile.copyTo(File(fontPath))
-                }
-                config.textFont = fontPath
-            } else {
-                config.textFont = ""
-            }
-        }
-        if (config.bgType == 2) {
-            val bgName = FileUtils.getName(config.bgStr)
-            config.bgStr = bgName
-            val bgPath = FileUtils.getPath(appCtx.externalFiles, "bg", bgName)
-            if (!FileUtils.exist(bgPath)) {
-                val bgFile = configDir.getFile(bgName)
-                if (bgFile.exists()) {
-                    bgFile.copyTo(File(bgPath))
-                }
-            }
-            config.bgStr = bgPath
-        } else if (config.bgType == 0) {
-            config.bgStr.toColorInt()
-        }
-        if (config.bgTypeNight == 2) {
-            val bgName = FileUtils.getName(config.bgStrNight)
-            config.bgStrNight = bgName
-            val bgPath = FileUtils.getPath(appCtx.externalFiles, "bg", bgName)
-            if (!FileUtils.exist(bgPath)) {
-                val bgFile = configDir.getFile(bgName)
-                if (bgFile.exists()) {
-                    bgFile.copyTo(File(bgPath))
-                }
-            }
-            config.bgStrNight = bgPath
-        } else if (config.bgTypeNight == 0) {
-            config.bgStrNight.toColorInt()
-        }
-        if (config.bgTypeEInk == 2) {
-            val bgName = FileUtils.getName(config.bgStrEInk)
-            config.bgStrEInk = bgName
-            val bgPath = FileUtils.getPath(appCtx.externalFiles, "bg", bgName)
-            if (!FileUtils.exist(bgPath)) {
-                val bgFile = configDir.getFile(bgName)
-                if (bgFile.exists()) {
-                    bgFile.copyTo(File(bgPath))
-                }
-            }
-            config.bgStrEInk = bgPath
-        } else if (config.bgTypeEInk == 0) {
-            config.bgStrEInk.toColorInt()
-        }
-        config.curTextColor()
-        return config
-    }
-
-    @Keep
-    @Serializable
-    data class Config(
-        var name: String = "",
-        var bgStr: String = "#EEEEEE",//白天背景
-        var bgStrNight: String = "#000000",//夜间背景
-        var bgStrEInk: String = "#FFFFFF",//EInk背景
-        var bgAlpha: Int = 100,//背景透明度
-        var bgType: Int = 0,//白天背景类型 0:颜色, 1:assets图片, 2其它图片
-        var bgTypeNight: Int = 0,//夜间背景类型
-        var bgTypeEInk: Int = 0,//EInk背景类型
-        private var darkStatusIcon: Boolean = true,//白天是否暗色状态栏
-        private var darkStatusIconNight: Boolean = false,//晚上是否暗色状态栏
-        private var darkStatusIconEInk: Boolean = true,
-        private var textColor: String = "#3E3D3B",//白天文字颜色
-        private var textColorNight: String = "#ADADAD",//夜间文字颜色
-        private var textColorEInk: String = "#000000",
-        private var pageAnim: Int = 0,//翻页动画
-        private var pageAnimEInk: Int = 4,
-        var textFont: String = "",//字体
-        var textBold: Int = 0,//是否粗体字 0:正常, 1:粗体, 2:细体
-        var textSize: Int = 20,//文字大小
-        var letterSpacing: Float = 0.1f,//字间距
-        var lineSpacingExtra: Int = 12,//行间距
-        var paragraphSpacing: Int = 2,//段距
-        var titleMode: Int = 0,//标题位置 0:居左 1:居中 2:隐藏
-        var titleSize: Int = 0,
-        var titleTopSpacing: Int = 0,
-        var titleBottomSpacing: Int = 0,
-        var paragraphIndent: String = "　　",//段落缩进
-        var underline: Boolean = false, //下划线
-        var paddingBottom: Int = 6,
-        var paddingLeft: Int = 16,
-        var paddingRight: Int = 16,
-        var paddingTop: Int = 6,
-        var headerPaddingBottom: Int = 0,
-        var headerPaddingLeft: Int = 16,
-        var headerPaddingRight: Int = 16,
-        var headerPaddingTop: Int = 0,
-        var footerPaddingBottom: Int = 6,
-        var footerPaddingLeft: Int = 16,
-        var footerPaddingRight: Int = 16,
-        var footerPaddingTop: Int = 6,
-        var showHeaderLine: Boolean = false,
-        var showFooterLine: Boolean = true,
-        var tipHeaderLeft: Int = ReadTipConfig.time,
-        var tipHeaderMiddle: Int = ReadTipConfig.none,
-        var tipHeaderRight: Int = ReadTipConfig.battery,
-        var tipFooterLeft: Int = ReadTipConfig.chapterTitle,
-        var tipFooterMiddle: Int = ReadTipConfig.none,
-        var tipFooterRight: Int = ReadTipConfig.pageAndTotal,
-        var tipColor: Int = 0,
-        var tipDividerColor: Int = -1,
-        var headerMode: Int = 0,
-        var footerMode: Int = 0
-    ) {
-
-        @kotlin.jvm.Transient
-        @kotlinx.serialization.Transient
-        private var textColorIntEInk = -1
-
-        @kotlin.jvm.Transient
-        @kotlinx.serialization.Transient
-        private var textColorIntNight = -1
-
-        @kotlin.jvm.Transient
-        @kotlinx.serialization.Transient
-        private var textColorInt = -1
-
-        @kotlin.jvm.Transient
-        @kotlinx.serialization.Transient
-        private var initColorInt = false
-
-        private fun initColorInt() {
-            textColorIntEInk = textColorEInk.toColorInt()
-            textColorIntNight = textColorNight.toColorInt()
-            textColorInt = textColor.toColorInt()
-            initColorInt = true
-        }
-
-        fun setCurTextColor(color: Int) {
-            when {
-                AppConfig.isEInkMode -> {
-                    textColorEInk = "#${color.hexString}"
-                    textColorIntEInk = color
-                }
-
-                AppConfig.isNightTheme -> {
-                    textColorNight = "#${color.hexString}"
-                    textColorIntNight = color
-                }
-
-                else -> {
-                    textColor = "#${color.hexString}"
-                    textColorInt = color
-                }
-            }
-        }
-
-        fun curTextColor(): Int {
-            if (!initColorInt) {
-                initColorInt()
-            }
-            return when {
-                AppConfig.isEInkMode -> textColorIntEInk
-                AppConfig.isNightTheme -> textColorIntNight
-                else -> textColorInt
-            }
-        }
-
-        fun setCurStatusIconDark(isDark: Boolean) {
-            when {
-                AppConfig.isEInkMode -> darkStatusIconEInk = isDark
-                AppConfig.isNightTheme -> darkStatusIconNight = isDark
-                else -> darkStatusIcon = isDark
-            }
-        }
-
-        fun curStatusIconDark(): Boolean {
-            return when {
-                AppConfig.isEInkMode -> darkStatusIconEInk
-                AppConfig.isNightTheme -> darkStatusIconNight
-                else -> darkStatusIcon
-            }
-        }
-
-        fun setCurPageAnim(@PageAnim.Anim anim: Int) {
-            when {
-                AppConfig.isEInkMode -> pageAnimEInk = anim
-                else -> pageAnim = anim
-            }
-        }
-
-        fun curPageAnim(): Int {
-            return when {
-                AppConfig.isEInkMode -> pageAnimEInk
-                else -> pageAnim
-            }
-        }
-
-        fun setCurBg(bgType: Int, bg: String) {
-            when {
-                AppConfig.isEInkMode -> {
-                    bgTypeEInk = bgType
-                    bgStrEInk = bg
-                }
-
-                AppConfig.isNightTheme -> {
-                    bgTypeNight = bgType
-                    bgStrNight = bg
-                }
-
-                else -> {
-                    this.bgType = bgType
-                    bgStr = bg
-                }
-            }
-        }
-
-        fun curBgStr(): String {
-            return when {
-                AppConfig.isEInkMode -> bgStrEInk
-                AppConfig.isNightTheme -> bgStrNight
-                else -> bgStr
-            }
-        }
-
-        fun curBgType(): Int {
-            return when {
-                AppConfig.isEInkMode -> bgTypeEInk
-                AppConfig.isNightTheme -> bgTypeNight
-                else -> bgType
-            }
-        }
-
-        fun curBgDrawable(width: Int, height: Int): Drawable {
-            if (width == 0 || height == 0) {
-                return appCtx.getCompatColor(R.color.background).toDrawable()
-            }
-            var bgDrawable: Drawable? = null
-            val resources = appCtx.resources
-            try {
-                bgDrawable = when (curBgType()) {
-                    0 -> curBgStr().toColorInt().toDrawable()
-                    1 -> {
-                        val bgName = curBgStr()
-                        val cacheFile = RemoteAssetsUtils.getBgCachePath(bgName)
-                        val bitmap = if (cacheFile.exists() && cacheFile.length() > 0) {
-                            BitmapUtils.decodeBitmap(cacheFile.absolutePath, width, height)
-                        } else {
-                            Coroutine.async {
-                                val downloaded = RemoteAssetsUtils.downloadBgIfNeeded(bgName)
-                                if (downloaded != null) {
-                                    ReadBookEvents.postConfig(ReadConfigChange.BG)
-                                }
-                            }
-                            val previewBytes = RemoteAssetsUtils.getBgPreviewBytes(bgName)
-                            if (previewBytes != null) {
-                                BitmapUtils.decodeBitmap(previewBytes, width, height)
-                            } else {
-                                null
-                            }
-                        }
-                        bitmap?.let {
-                            val chunk = it.ninePatchChunk
-                            if (chunk != null && NinePatch.isNinePatchChunk(chunk)) {
-                                NinePatchDrawable(resources, it, chunk, Rect(), null)
-                            } else {
-                                val result = it.centerCrop(width, height)
-                                if (result != it) it.recycle()
-                                result.toDrawable(resources)
-                            }
+    var bgDrawable: Drawable? = null
+    val resources = appCtx.resources
+    try {
+        bgDrawable = when (curBgType()) {
+            0 -> curBgStr().toColorInt().toDrawable()
+            1 -> {
+                val bgName = curBgStr()
+                val cacheFile = RemoteAssetsUtils.getBgCachePath(bgName)
+                val bitmap = if (cacheFile.exists() && cacheFile.length() > 0) {
+                    BitmapUtils.decodeBitmap(cacheFile.absolutePath, width, height)
+                } else {
+                    Coroutine.async {
+                        val downloaded = RemoteAssetsUtils.downloadBgIfNeeded(bgName)
+                        if (downloaded != null) {
+                            ReadBookEvents.postConfig(ReadConfigChange.BG)
                         }
                     }
-
-                    else -> {
-                        val path = curBgStr().let {
-                            if (it.contains(File.separator)) it
-                            else FileUtils.getPath(appCtx.externalFiles, "bg", curBgStr())
-                        }
-                        val bitmap = BitmapUtils.decodeBitmap(path, width, height)
-                        bitmap?.let {
-                            val chunk = it.ninePatchChunk
-                            if (chunk != null && NinePatch.isNinePatchChunk(chunk)) {
-                                NinePatchDrawable(resources, it, chunk, Rect(), null)
-                            } else {
-                                val result = it.centerCrop(width, height)
-                                if (result != it) it.recycle()
-                                result.toDrawable(resources)
-                            }
-                        }
+                    val previewBytes = RemoteAssetsUtils.getBgPreviewBytes(bgName)
+                    if (previewBytes != null) {
+                        BitmapUtils.decodeBitmap(previewBytes, width, height)
+                    } else {
+                        null
                     }
                 }
-            } catch (e: OutOfMemoryError) {
-                e.printOnDebug()
-            } catch (e: Exception) {
-                e.printOnDebug()
+                bitmap?.let {
+                    val chunk = it.ninePatchChunk
+                    if (chunk != null && NinePatch.isNinePatchChunk(chunk)) {
+                        NinePatchDrawable(resources, it, chunk, Rect(), null)
+                    } else {
+                        val result = it.centerCrop(width, height)
+                        if (result != it) it.recycle()
+                        result.toDrawable(resources)
+                    }
+                }
             }
-            return bgDrawable ?: appCtx.getCompatColor(R.color.background).toDrawable()
-        }
 
-        fun getBgPath(bgIndex: Int): String? {
-            val bgType = when (bgIndex) {
-                0 -> bgType
-                1 -> bgTypeNight
-                2 -> bgTypeEInk
-                else -> error("unknown bgIndex: $bgIndex")
+            else -> {
+                val path = curBgStr().let {
+                    if (it.contains(File.separator)) it
+                    else FileUtils.getPath(appCtx.externalFiles, "bg", curBgStr())
+                }
+                val bitmap = BitmapUtils.decodeBitmap(path, width, height)
+                bitmap?.let {
+                    val chunk = it.ninePatchChunk
+                    if (chunk != null && NinePatch.isNinePatchChunk(chunk)) {
+                        NinePatchDrawable(resources, it, chunk, Rect(), null)
+                    } else {
+                        val result = it.centerCrop(width, height)
+                        if (result != it) it.recycle()
+                        result.toDrawable(resources)
+                    }
+                }
             }
-            if (bgType != 2) {
-                return null
-            }
-            val bgStr = when (bgIndex) {
-                0 -> bgStr
-                1 -> bgStrNight
-                2 -> bgStrEInk
-                else -> error("unknown bgIndex: $bgIndex")
-            }
-            val path = if (bgStr.contains(File.separator)) {
-                bgStr
-            } else {
-                FileUtils.getPath(appCtx.externalFiles, "bg", bgStr)
-            }
-            return path
         }
+    } catch (e: OutOfMemoryError) {
+        e.printOnDebug()
+    } catch (e: Exception) {
+        e.printOnDebug()
     }
+    return bgDrawable ?: appCtx.getCompatColor(R.color.background).toDrawable()
 }

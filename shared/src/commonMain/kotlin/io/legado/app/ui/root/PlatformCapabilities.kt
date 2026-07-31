@@ -264,9 +264,6 @@ interface PlatformCapabilities {
     /** 书源变量编辑 (对照 setSourceVariable, 先保存后弹 showSourceVariableDialog) */
     fun showBookSourceVariableDialog(source: BookSource) = unsupported("编辑书源变量")
 
-    /** 代码自动缩进 (对照 autoIndent, 需平台 CodeView) */
-    fun autoIndentCode() = unsupported("代码自动缩进")
-
     /** 危险 API 开关点击 (对照 onDangerousApiClick, 含 SharedJsScope.remove + alert 确认) */
     fun onEnableDangerousApiClick(
         isChecked: Boolean,

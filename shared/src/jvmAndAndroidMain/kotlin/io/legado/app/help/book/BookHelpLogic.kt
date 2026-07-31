@@ -4,6 +4,7 @@ package io.legado.app.help.book
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.UrlUtil
 
 /**
@@ -31,6 +32,11 @@ object BookHelpLogic {
      */
     fun getImageSuffix(src: String): String {
         return UrlUtil.getSuffix(src, "jpg")
+    }
+
+    /** 图片缓存文件名派生规则: `md5_16(src).后缀` (对照 app 端 BookHelp.getImage)。 */
+    fun imageFileName(src: String): String {
+        return "${MD5Utils.md5Encode16(src)}.${getImageSuffix(src)}"
     }
 
     /**

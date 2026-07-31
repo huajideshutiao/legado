@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -34,6 +33,7 @@ import androidx.compose.ui.window.Dialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
@@ -150,15 +150,13 @@ private fun CrashLogViewDialog(
     val copyText = stringResource(Res.string.copy)
     val tooLargeText = stringResource(Res.string.text_too_large)
     val clipboard = LocalClipboardManager.current
-    // 尺寸基准取当前窗口 (桌面端窗口远小于主屏, 用主屏会撑满屏幕)
-    val dialogWidth = AppDialogSizes.width()
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
         // 圆角/底色对齐 BaseComposeDialogFragment.filletBackground + alert DSL AppAlertDialogContent
         Surface(
             shape = DesignTokens.shapeDefault,
             color = colors.fillet,
-            modifier = Modifier.width(dialogWidth),
+            modifier = Modifier.appDialogSize(),
         ) {
             Column(Modifier.fillMaxWidth()) {
                 DialogTitleBar(
@@ -213,12 +211,12 @@ fun CrashLogsDialog(
     onShare: (CrashLogItem) -> Unit,
 ) {
     val colors = AppTheme.colors
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
         // 圆角/底色对齐 BaseComposeDialogFragment.filletBackground + alert DSL AppAlertDialogContent
         Surface(
             shape = DesignTokens.shapeDefault,
             color = colors.fillet,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.appDialogSize(),
         ) {
             CrashLogsDialogContent(logs, onDismiss, onClear, onReadFile, onShare)
         }

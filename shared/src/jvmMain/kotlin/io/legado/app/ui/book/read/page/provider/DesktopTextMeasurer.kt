@@ -6,6 +6,9 @@ import androidx.compose.ui.unit.Density
 // 注：TextUnit.toPx() 是 Density 的成员扩展，with(density){} 内可直接调用，无需单独 import
 
 /**
+ * 已被 [SkiaTextMeasurer] 取代（本类需 Composable 上下文才能拿到 `rememberTextMeasurer()`/
+ * `LocalDensity`，而排版跑在协程里）；保留供 Compose 内的一次性度量场景使用。
+ *
  * [TextMeasurer] 桌面 JVM 实现：用 Compose Multiplatform 的 [androidx.compose.ui.text.TextMeasurer] /
  * [androidx.compose.ui.text.TextLayoutResult] 替代 app 端 `TextPaint` 测量原语。
  *

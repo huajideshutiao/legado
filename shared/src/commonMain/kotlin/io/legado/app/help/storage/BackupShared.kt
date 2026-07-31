@@ -9,9 +9,12 @@ import io.legado.app.help.DirectLinkUploadStoreProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
+import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.ruleFileName
+import io.legado.app.help.storage.BackupShared.backupLocked
+import io.legado.app.help.storage.BackupShared.backupPath
 import io.legado.app.utils.GSON
 import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.systemCurrentTimeMillis
@@ -22,40 +25,30 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * 备份流程的 KMP 共享版 (与 [AppWebDavShared] / [RestoreShared] 配套)。
+ * 备份流程 (KMP 共享版, 全平台唯一实现)。
  *
- * # 背景
- * app 端 [io.legado.app.help.storage.Backup] 单例依赖大量 Android-specific 类
- * (Context / Uri / FileDoc / defaultSharedPreferences / DirectLinkUpload /
- * ReadBookConfig / ThemeConfig / Coroutine / LocalConfig / externalFiles /
- * ZipUtils / FileUtils 等), 不能直接下沉 shared/commonMain。本 KMP 版抽掉
- * Android 专属依赖, 仅保留核心备份流程 (DAO → JSON → zip → upload WebDav),
- * 桌面端 / iOS 端可直接复用。
+ * # 职责
+ * 条目收集 / JSON 序列化 / zip 打包 / 本地复制 / WebDav 上传全部在这里,
+ * app 端 [io.legado.app.help.storage.Backup] 只剩 autoBack 调度与 Android 钩子
+ * (SAF content:// 复制、LocalConfig.lastBackup、背景图上传), 经
+ * [BackupRestoreHooks] 注入, 保证各端走同一条核心路径。
  *
- * # 与 app 端 [io.legado.app.help.storage.Backup] 的差异
- * - **不依赖 Context**: 路径用 [AppFilesDirs.get] (provider 注入) 替代 appCtx
- * - **不依赖 SharedPreferences.all**: 配置 dump 走 [PreferenceProviders.get().getAll]
- * - **不依赖 DirectLinkUpload / ReadBookConfig / ThemeConfig**: 这些子项配置文件
- *   的备份保留在 app 端 [io.legado.app.help.storage.Backup], 桌面端如需可后续补
- * - **不实现 copyBackup(Uri/File)**: 依赖 Android FileDoc 的本地复制路径
- *   (path 是 content scheme / File), 桌面端如需可后续补
- * - **不实现 autoBack**: 依赖 app 端 [io.legado.app.help.coroutine.Coroutine] +
- *   [io.legado.app.help.config.LocalConfig.lastBackup], 由 app 端原 [Backup]
- *   继续承担, 本 KMP 版仅暴露 [backupLocked] 供宿主主动调用
- * - **BackupConfig**: 复用同包公共 [BackupConfigShared] (完整版, 含 ignoreConfig
- *   动态分支 + 持久化), 桌面端默认 ignoreConfig 为空时行为等价于「仅过滤 ignorePrefKeys」;
- *   app 端直接使用同包 [BackupConfigShared]
- *
- * # 命名后缀 Shared
- * 与 app 端 [io.legado.app.help.storage.Backup] 同包同名会与 app 模块冲突
- * (shared androidMain target 被 app 模块依赖), 故加 `Shared` 后缀避免歧义,
- * 同时表明这是 KMP 共享版本。
- *
- * # 模式参考
- * - app 端 [io.legado.app.help.storage.Backup] (业务对照原型)
- * - shared/commonMain `io.legado.app.model.webBook.WebBook` (KMP 业务编排层下沉先例)
+ * # 与原 app 端实现的对应
+ * - 路径: [AppFilesDirs] 替代 appCtx.filesDir / externalFiles (同值)
+ * - 配置 dump: [PreferenceProviders.getAll] 替代 defaultSharedPreferences.all (Android 同源)
+ * - 文件 IO / zip: [BackupFileOps] 替代 FileUtils / ZipUtils (jvm actual 即原实现)
+ * - 备份文件名/内容/顺序与原版逐项一致, 老备份文件可直接恢复
  */
 object BackupShared {
+
+    private const val TAG = "Backup"
+
+    /** 主题配置文件名 (与 app 端 `ThemeConfig.configFileName` 一致)。 */
+    const val THEME_CONFIG_FILE_NAME = "themeConfig.json"
+
+    /** 主题配置落盘路径 (与 app 端 `ThemeConfig.configFilePath` 同值)。 */
+    val themeConfigFilePath: String
+        get() = AppFilesDirs.get().filesDir + BackupFileOps.separator + THEME_CONFIG_FILE_NAME
 
     /** 备份工作目录名 (相对于 [AppFilesDirs.filesDir])。 */
     private const val BACKUP_DIR_NAME = "backup"
@@ -95,7 +88,7 @@ object BackupShared {
             return base + BackupFileOps.separator + ZIP_FILE_NAME
         }
 
-    /** 备份时需要导出的所有 JSON 文件名 (与 app 端 [io.legado.app.help.storage.Backup.backupFileNames] 完全一致, 19 个)。 */
+    /** 备份时需要导出的所有文件名 (与原版 backupFileNames 逐项一致, 19 个)。 */
     private val backupFileNames: Array<String> = arrayOf(
         "bookshelf.json",
         "bookmark.json",
@@ -111,24 +104,18 @@ object BackupShared {
         "dictRule.json",
         "sourceFilterRule.json",
         "servers.json",
-        // 以下 4 个为 app 端独有配置文件 (桌面端按需写入, 可能留空)
-        "directLinkUploadRule.json",
-        "readConfig.json",
-        "shareReadConfig.json",
-        "themeConfig.json",
+        ruleFileName,
+        ReadBookConfigShared.configFileName,
+        ReadBookConfigShared.shareConfigFileName,
+        THEME_CONFIG_FILE_NAME,
         "config.json"
     )
 
     /**
      * 备份执行入口 (互斥锁保护)。
      *
-     * 与 app 端 [io.legado.app.help.storage.Backup.backupLocked] 同语义:
-     * - 通过 [BackupFileOps] 完成 zip + 文件 IO (跨平台抽象)
-     * - 通过 [AppDatabaseProviders.get].appDb 拿全部 DAO (Room KMP)
-     * - 通过 [PreferenceProviders.get].getAll dump 配置
-     * - 完成后调用 [AppWebDavShared.backUpWebDav] 上传到云端
-     *
-     * @param destinationPath 本地备份目录。为空时回退到应用 externalFilesDir/filesDir。
+     * @param destinationPath 本地备份目录。为空时回退到应用 externalFilesDir/filesDir;
+     *                        Android 的 content:// 目录由 [BackupRestoreHook.copyBackupTo] 处理。
      * @param uploadToWebDav 是否上传到 WebDav
      * @return 已保留在本地的备份 zip 绝对路径
      */
@@ -137,38 +124,31 @@ object BackupShared {
         uploadToWebDav: Boolean = true,
     ): String {
         return mutex.withLock {
-            try {
-                backup(destinationPath, uploadToWebDav)
-            } finally {
-                BackupFileOps.delete(backupPath)
-                BackupFileOps.delete(zipFilePath)
-                currentCoroutineContext().ensureActive()
-            }
+            backup(destinationPath, uploadToWebDav)
         }
     }
 
     /**
      * 实际备份逻辑 (不加锁, 由 [backupLocked] 包装)。
      *
-     * 步骤:
-     * 1. 清空 backupPath + zipFilePath 残留
+     * 步骤与原版逐项对应:
+     * 1. 清空 backupPath 残留
      * 2. 逐个 DAO 导出为 JSON 写入 backupPath
-     * 3. dump PreferenceProviders 全量配置 → config.json
-     * 4. zip 所有 JSON 文件为 zipFilePath
-     * 5. 复制 zip 到本地备份目录
-     * 6. 上传到 WebDav (若 [uploadToWebDav] = true)
-     * 7. 清理临时文件
+     * 3. servers.json 加密 / 阅读配置 / 主题配置 / 直链上传规则
+     * 4. dump 全量配置 → config.json
+     * 5. zip 打包 → 复制到本地目录 → 上传 WebDav
+     * 6. 清理临时文件, 再走宿主收尾钩子 (背景图上传)
      */
     private suspend fun backup(destinationPath: String?, uploadToWebDav: Boolean): String {
-        AppLog.put(
-            "BackupShared 开始备份 destinationPath=$destinationPath uploadToWebDav=$uploadToWebDav"
-        )
+        val hooks = BackupRestoreHooks.get()
+        AppLog.putDebug("开始备份 path:$destinationPath", tag = TAG)
+        hooks.onBackupStart()
         val aes = BackupAES()
         BackupFileOps.delete(backupPath)
         BackupFileOps.createFolderIfNotExist(backupPath)
         val appDb = AppDatabaseProviders.get().appDb
 
-        // 1. DAO 数据导出 (与 app 端顺序一致)
+        // 1. DAO 数据导出 (与原版顺序一致)
         writeListToJson(appDb.bookDao.all(), "bookshelf.json")
         writeListToJson(appDb.bookmarkDao.all(), "bookmark.json")
         writeListToJson(appDb.bookGroupDao.all(), "bookGroup.json")
@@ -183,9 +163,7 @@ object BackupShared {
         writeListToJson(appDb.dictRuleDao.all(), "dictRule.json")
         writeListToJson(appDb.sourceFilterRuleDao.all(), "sourceFilterRule.json")
 
-        currentCoroutineContext().ensureActive()
-
-        // 2. servers.json 加密 (与 app 端一致, 密码 webDavPassword 用 AES 加密)
+        // 2. servers.json 加密 (与原版一致)
         GSON.toJson(appDb.serverDao.all()).let { json ->
             val encrypted = aes.runCatching { encryptBase64(json) }.getOrDefault(json)
             BackupFileOps.writeText(backupPath + BackupFileOps.separator + "servers.json", encrypted)
@@ -193,32 +171,28 @@ object BackupShared {
 
         currentCoroutineContext().ensureActive()
 
-        // 2.1 app 端独有配置文件备份 (与 app 端 Backup.kt:158-173 同语义)
-        // readConfig.json / shareReadConfig.json: ReadBookConfigShared.configList / shareConfig
-        // themeConfig.json: ThemeConfigProviders.get().getConfigList()
-        // directLinkUploadRule.json: DirectLinkUploadStoreProviders.get().getConfig() (Android=ACache, desktop=java.util.prefs)
+        // 3. 阅读界面配置 / 主题配置 / 直链上传规则 (与原版 ReadBookConfig + ThemeConfig + DirectLinkUpload 段一致)
         runCatching {
             val readBookConfig = ReadBookConfigProviders.get()
             BackupFileOps.writeText(
-                backupPath + BackupFileOps.separator + "readConfig.json",
+                backupPath + BackupFileOps.separator + ReadBookConfigShared.configFileName,
                 GSON.toJson(readBookConfig.configList)
             )
             BackupFileOps.writeText(
-                backupPath + BackupFileOps.separator + "shareReadConfig.json",
+                backupPath + BackupFileOps.separator + ReadBookConfigShared.shareConfigFileName,
                 GSON.toJson(readBookConfig.shareConfig)
             )
         }.onFailure {
-            AppLog.put("BackupShared 备份 readConfig 出错\n${it.message}", it)
+            AppLog.put("备份 readConfig 出错\n${it.message}", it)
         }
         runCatching {
             BackupFileOps.writeText(
-                backupPath + BackupFileOps.separator + "themeConfig.json",
+                backupPath + BackupFileOps.separator + THEME_CONFIG_FILE_NAME,
                 GSON.toJson(ThemeConfigProviders.get().getConfigList())
             )
         }.onFailure {
-            AppLog.put("BackupShared 备份 themeConfig 出错\n${it.message}", it)
+            AppLog.put("备份 themeConfig 出错\n${it.message}", it)
         }
-        // directLinkUploadRule.json (与 app 端 Backup.kt DirectLinkUpload.getConfig() 备份同语义)
         runCatching {
             DirectLinkUploadStoreProviders.get()?.getConfig()?.let { rule ->
                 BackupFileOps.writeText(
@@ -227,15 +201,14 @@ object BackupShared {
                 )
             }
         }.onFailure {
-            AppLog.put("BackupShared 备份 directLinkUploadRule 出错\n${it.message}", it)
+            AppLog.put("备份 directLinkUploadRule 出错\n${it.message}", it)
         }
 
         currentCoroutineContext().ensureActive()
 
-        // 3. config.json dump PreferenceProviders 全量 (过滤 ignorePrefKeys)
-        val configMap = mutableMapOf<String, Any?>()
-        val allPrefs = PreferenceProviders.get().getAll()
-        allPrefs.forEach { (key, value) ->
+        // 4. config.json dump 全量配置 (过滤忽略项, webDavPassword 加密, 与原版一致)
+        val configMap = mutableMapOf<String, Any>()
+        PreferenceProviders.get().getAll().forEach { (key, value) ->
             if (BackupConfigShared.keyIsNotIgnore(key)) {
                 when (key) {
                     PreferKey.webDavPassword -> {
@@ -243,9 +216,8 @@ object BackupShared {
                             encryptBase64(value.toString())
                         }.getOrDefault(value.toString())
                     }
-                    else -> {
-                        if (value != null) configMap[key] = value
-                    }
+
+                    else -> value?.let { configMap[key] = it }
                 }
             }
         }
@@ -256,15 +228,15 @@ object BackupShared {
 
         currentCoroutineContext().ensureActive()
 
-        // 4. zip 所有 JSON 文件 (过滤不存在的文件, 如 directLinkUploadRule.json 桌面端无此数据)
+        // 5. zip 打包 (不存在的文件先过滤, jvm 端 ZipUtils 本就跳过, 打包结果一致)
+        val zipFileName = nowZipFileName()
         val paths = backupFileNames.mapNotNull { name ->
             val p = backupPath + BackupFileOps.separator + name
             if (BackupFileOps.exists(p)) p else null
         }
         BackupFileOps.delete(zipFilePath)
         BackupFileOps.delete(zipFilePath.replace("tmp_", ""))
-        // WebDav 始终使用带日期的文件名；onlyLatestBackup 仅控制本地副本名称。
-        val zipFileName = getNowZipFileName()
+        // WebDav 始终使用带日期的文件名; onlyLatestBackup 仅控制本地副本名称
         val localFileName = if (
             PreferenceProviders.get().getBoolean(PreferKey.onlyLatestBackup, true)
         ) {
@@ -275,39 +247,53 @@ object BackupShared {
         val localDirectory = destinationPath?.takeIf { it.isNotBlank() }
             ?: AppFilesDirs.get().externalFilesDir
             ?: AppFilesDirs.get().filesDir
-        require(localDirectory.trimEnd('/', '\\') != backupPath.trimEnd('/', '\\')) {
-            "备份目标目录不能是临时工作目录"
-        }
         val localZipPath = localDirectory.trimEnd('/', '\\') +
             BackupFileOps.separator + localFileName
 
-        check(BackupFileOps.zipFiles(paths, zipFilePath)) {
-            "BackupShared zip 打包失败"
+        if (BackupFileOps.zipFiles(paths, zipFilePath)) {
+            if (!hooks.copyBackupTo(zipFilePath, localDirectory, localFileName)) {
+                BackupFileOps.copyFile(zipFilePath, localZipPath)
+            }
+            if (uploadToWebDav) {
+                try {
+                    AppWebDavShared.backUpWebDav(zipFileName)
+                } catch (e: Exception) {
+                    currentCoroutineContext().ensureActive()
+                    AppLog.put("上传备份至webdav失败\n$e", e)
+                }
+            }
+        } else {
+            AppLog.put("备份 zip 打包失败")
         }
-        BackupFileOps.createFolderIfNotExist(localDirectory)
-        BackupFileOps.copyFile(zipFilePath, localZipPath)
-
-        if (uploadToWebDav) {
-            AppWebDavShared.backUpWebDav(zipFileName)
-        }
+        BackupFileOps.delete(backupPath)
+        BackupFileOps.delete(zipFilePath)
+        currentCoroutineContext().ensureActive()
+        // 6. 宿主收尾 (app 端: 上传阅读背景图到 WebDav)
+        hooks.onBackupFinished(uploadToWebDav)
         return localZipPath
     }
 
-    /** 写入 List<Any> 为 JSON 到 [backupPath]/[fileName]。空列表跳过。 */
+    /** 写入 List<Any> 为 JSON 到 [backupPath]/[fileName]。空列表跳过 (与原版一致)。 */
     private suspend fun writeListToJson(list: List<Any>, fileName: String) {
         currentCoroutineContext().ensureActive()
-        if (list.isEmpty()) return
-        val json = GSON.toJson(list)
-        BackupFileOps.writeText(backupPath + BackupFileOps.separator + fileName, json)
+        if (list.isEmpty()) {
+            AppLog.putDebug("阅读备份 $fileName 列表为空", tag = TAG)
+            return
+        }
+        AppLog.putDebug("阅读备份 $fileName 列表大小 ${list.size}", tag = TAG)
+        BackupFileOps.writeText(
+            backupPath + BackupFileOps.separator + fileName,
+            GSON.toJson(list)
+        )
     }
 
     /**
-     * 生成当前备份 zip 文件名 (与 app 端 [io.legado.app.help.storage.Backup.getNowZipFileName] 一致)。
+     * 生成当前备份 zip 文件名 (与原版 getNowZipFileName 一致)。
      *
      * 始终为带日期的文件名: `backup{yyyy-MM-dd}.zip` / `backup{yyyy-MM-dd}-{deviceName}.zip`;
      * onlyLatestBackup 只影响本地副本命名, 不影响 WebDav 上传名 (云端保留历史备份)。
      */
-    private fun getNowZipFileName(): String {
+    fun nowZipFileName(): String {
         val backupDate = datePattern.format(systemCurrentTimeMillis())
         val deviceName = AppConfigProviders.get().webDavDeviceName
         return if (deviceName.isNotBlank()) {
@@ -317,7 +303,7 @@ object BackupShared {
         }.normalizeFileName()
     }
 
-    /** 清理备份工作目录与 zip 临时文件 (与 app 端 [io.legado.app.help.storage.Backup.clearCache] 同语义)。 */
+    /** 清理备份工作目录与 zip 临时文件 (与原版 clearCache 同语义)。 */
     fun clearCache() {
         BackupFileOps.delete(backupPath)
         BackupFileOps.delete(zipFilePath)

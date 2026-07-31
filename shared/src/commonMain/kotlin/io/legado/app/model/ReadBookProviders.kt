@@ -43,7 +43,8 @@ object ActiveReadBookRegistry {
     fun updateIfCurrent(book: Book) {
         val current = readBook ?: return
         if (current.book.value?.bookUrl == book.bookUrl) {
-            current.loadBook(book)
+            // 对照 app 端 `ReadBook.book = it` (元数据刷新, 不走 initData 的切书重置)
+            current.bookValue = book
         }
     }
 }

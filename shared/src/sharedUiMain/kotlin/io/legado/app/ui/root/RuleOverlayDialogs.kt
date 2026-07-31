@@ -1,10 +1,7 @@
 package io.legado.app.ui.root
 
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -17,9 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.DictRule
 import io.legado.app.data.entities.SourceFilterRule
@@ -39,6 +34,8 @@ import io.legado.app.ui.association.ImportTxtTocRuleViewModelShared
 import io.legado.app.ui.book.filter.SourceFilterEditDialog
 import io.legado.app.ui.book.filter.SourceFilterRuleListDialog
 import io.legado.app.ui.book.toc.rule.TxtTocRuleEditDialog
+import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.dict.rule.DictRuleEditDialog
@@ -70,14 +67,12 @@ import org.jetbrains.compose.resources.stringResource
 private fun EditDialogHost(onDismiss: () -> Unit, content: @Composable () -> Unit) {
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = AppDialogSizes.properties()
     ) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize()) {
             Surface(
                 modifier = Modifier
-                    .fillMaxWidth(0.9f)
-                    .widthIn(max = 800.dp)
-                    .heightIn(max = maxHeight * 0.9f)
+                    .appDialogSize()
                     .align(Alignment.Center),
                 shape = DesignTokens.shapeDefault,
                 color = AppTheme.colors.fillet,

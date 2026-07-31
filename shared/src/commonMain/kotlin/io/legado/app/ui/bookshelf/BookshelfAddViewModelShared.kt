@@ -22,6 +22,7 @@ import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonArray
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -46,11 +47,29 @@ class BookshelfAddViewModelShared(private val scope: CoroutineScope) {
     private val _addBookProgress = MutableStateFlow(-1)
     val addBookProgress: StateFlow<Int> = _addBookProgress.asStateFlow()
 
+    /**
+     * 是否有添加任务在跑, 供宿主显示等待对话框 (对照原 BaseBookshelfFragment 的 waitDialog 显隐)。
+     *
+     * 原版靠 LiveData 每次 postValue 都回调来关闭对话框; StateFlow 相同值不重发,
+     * 故单独用本状态表示任务生命周期。
+     */
+    private val _addBookRunning = MutableStateFlow(false)
+    val addBookRunning: StateFlow<Boolean> = _addBookRunning.asStateFlow()
+
+    /** 当前添加任务 (对照原 addBookJob), 供 [cancelAddBook] 取消 */
+    private var addBookJob: Job? = null
+
+    /** 取消添加 (对照 waitDialog.onCancelListener → viewModel.addBookJob?.cancel()) */
+    fun cancelAddBook() {
+        addBookJob?.cancel()
+    }
+
     /** 对照原 BookshelfViewModel.addBookByUrl: 逐行 URL 抓详情+目录后入库 */
     fun addBookByUrl(bookUrls: String) {
         var successCount = 0
         val urls = bookUrls.split("\n")
-        scope.launch {
+        addBookJob = scope.launch {
+            _addBookRunning.value = true
             try {
                 for (url in urls) {
                     val bookUrl = url.trim()
@@ -81,6 +100,7 @@ class BookshelfAddViewModelShared(private val scope: CoroutineScope) {
                 )
             } finally {
                 _addBookProgress.value = -1
+                _addBookRunning.value = false
             }
         }
     }
@@ -88,7 +108,8 @@ class BookshelfAddViewModelShared(private val scope: CoroutineScope) {
     /** 对照原 BookshelfViewModel.importBookshelf: url 下载或直接 json, 校验后逐条导入 */
     fun importBookshelf(str: String, groupId: Long) {
         var successCount = 0
-        scope.launch {
+        addBookJob = scope.launch {
+            _addBookRunning.value = true
             _addBookProgress.value = 0
             try {
                 val text = str.trim()
@@ -114,6 +135,7 @@ class BookshelfAddViewModelShared(private val scope: CoroutineScope) {
                 Toasters.get().toast(e.message ?: "ERROR")
             } finally {
                 _addBookProgress.value = -1
+                _addBookRunning.value = false
             }
         }
     }

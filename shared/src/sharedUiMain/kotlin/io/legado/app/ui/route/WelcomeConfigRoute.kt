@@ -16,15 +16,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import io.legado.app.constant.PreferKey
+import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppTextField
+import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.appDialogSize
+import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
+import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.config.WelcomeConfigScreen
 import io.legado.app.ui.config.WelcomeConfigScreenModel
 import io.legado.app.ui.config.WelcomeConfigUiEvent
 import io.legado.app.ui.config.WelcomeConfigUiState
-import io.legado.app.ui.compose.component.AppTextField
-import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
-import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.PlatformServiceProviders
@@ -102,6 +104,8 @@ fun WelcomeConfigRoute(
         var timeValue by remember { mutableStateOf(state.welcomeShowTime.toString()) }
         AlertDialog(
             onDismissRequest = { showTimePicker = false },
+            modifier = Modifier.appDialogSize(),
+            properties = AppDialogSizes.properties(),
             title = {
                 Text(
                     stringResource(Res.string.welcome_show_time),

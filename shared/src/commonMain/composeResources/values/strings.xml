@@ -758,18 +758,18 @@
     <string name="enable_manga_horizontal_scroll">横向翻页</string>
     <string name="disable_manga_page_anim">禁用翻页动画</string>
     <string name="enable_auto_page_scroll">自动翻页</string>
-    <string name="manga_auto_page_speed">翻页速度 %1$d 秒</string>
+    <string name="manga_auto_page_speed">翻页速度 %1$d</string>
     <string name="setting_manga_auto_page_speed">设置自动翻页速度</string>
     <string name="hide_manga_title">隐藏漫画标题</string>
-    <string name="pre_download_m">预下载 %1$d 张</string>
+    <string name="pre_download_m">预下载 %1$d 页</string>
     <string name="manga_gif_auto_next">GIF 播完翻页</string>
-    <string name="manga_check_chapter_label">章节标签</string>
-    <string name="manga_check_chapter">章节</string>
+    <string name="manga_check_chapter_label">前缀&quot;章.&quot;</string>
+    <string name="manga_check_chapter">序号</string>
     <string name="manga_check_chapter_name">章节名</string>
-    <string name="manga_check_page_label">页码标签</string>
-    <string name="manga_check_page_number">页码</string>
-    <string name="manga_check_progress_label">进度标签</string>
-    <string name="manga_check_progress">进度</string>
+    <string name="manga_check_page_label">前缀&quot;页.&quot;</string>
+    <string name="manga_check_page_number">数值</string>
+    <string name="manga_check_progress_label">前缀&quot;进度.&quot;</string>
+    <string name="manga_check_progress">百分比</string>
     <string name="manga_header_footer">显示页脚</string>
     <string name="manga_header_chapter">章节</string>
     <string name="manga_header_page">页码</string>
@@ -1177,7 +1177,7 @@
     <string name="error_get_book_info">书籍信息获取失败</string>
     <string name="error_get_chapter_list">目录获取失败</string>
     <string name="error_load_toc">加载目录失败</string>
-    <string name="error_load_msg">Failed to load\n%1$s</string>
+    <string name="error_load_msg">加载失败\n%1$s</string>
     <string name="delete_book_file">删除源文件</string>
     <string name="cloud_progress_exceeds_current">云端进度超过本地进度，是否同步？</string>
     <string name="reply_review_to">回复: %1$s</string>
@@ -1436,4 +1436,10 @@
     <string name="disable_update">禁止更新</string>
     <string name="export_bookshelf">导出书单</string>
     <string name="select_one_book">请选择一本书</string>
+    <string name="all">全部</string>
+    <string name="skip_previous">上一个</string>
+    <string name="skip_next">下一个</string>
+    <string name="regular_expression">正则表达式</string>
+    <string name="match_whole_word">全词匹配</string>
+    <string name="match_case">区分大小写</string>
 </resources>

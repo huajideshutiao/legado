@@ -13,13 +13,13 @@ import androidx.compose.material.RadioButton
 import androidx.compose.material.RadioButtonDefaults
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.close
@@ -111,9 +111,9 @@ fun FontSelectDialog(
 
             extraTopContent?.invoke()
 
-            // 字体列表（LazyColumn 限高，避免列表过长撑爆对话框）
+            // 字体列表限高 0.8 屏高 (原版 isFullHeight = true, 长列表效果等同全高)
             LazyColumn(
-                Modifier.fillMaxWidth().heightIn(max = 400.dp),
+                Modifier.fillMaxWidth().heightIn(max = AppDialogSizes.fullHeight()),
             ) {
                 items(fontItems, key = { it.path }) { item ->
                     FontRow(

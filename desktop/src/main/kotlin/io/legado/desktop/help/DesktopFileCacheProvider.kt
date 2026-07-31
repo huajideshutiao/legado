@@ -34,17 +34,22 @@ object DesktopFileCacheProvider : FileCacheProvider {
         File(AppFilesDirs.get().cacheDir, "file_cache").apply { mkdirs() }
     }
 
-    override fun put(key: String, value: String, saveTime: Int) {
-        val data = if (saveTime == 0) value else createDateInfo(saveTime) + value
-        putBytes(key, data.toByteArray(Charsets.UTF_8))
+    /** 持久根目录 (对应 app 端 `ACache.get(cacheDir = false)` 的 filesDir), 清缓存不受影响。 */
+    private val filesDir: File by lazy {
+        File(AppFilesDirs.get().filesDir, "file_cache").apply { mkdirs() }
     }
 
-    override fun getAsString(key: String): String? {
-        val bytes = getBytes(key) ?: return null
+    override fun put(key: String, value: String, saveTime: Int, persistent: Boolean) {
+        val data = if (saveTime == 0) value else createDateInfo(saveTime) + value
+        putBytes(key, data.toByteArray(Charsets.UTF_8), persistent)
+    }
+
+    override fun getAsString(key: String, persistent: Boolean): String? {
+        val bytes = getBytes(key, persistent) ?: return null
         return clearDateInfo(bytes).toString(Charsets.UTF_8)
     }
 
-    override fun put(key: String, value: ByteArray, saveTime: Int) {
+    override fun put(key: String, value: ByteArray, saveTime: Int, persistent: Boolean) {
         val data = if (saveTime == 0) value else {
             val header = createDateInfo(saveTime).toByteArray(Charsets.UTF_8)
             ByteArray(header.size + value.size).also { ret ->
@@ -52,25 +57,25 @@ object DesktopFileCacheProvider : FileCacheProvider {
                 System.arraycopy(value, 0, ret, header.size, value.size)
             }
         }
-        putBytes(key, data)
+        putBytes(key, data, persistent)
     }
 
-    override fun getAsBinary(key: String): ByteArray? {
-        val bytes = getBytes(key) ?: return null
+    override fun getAsBinary(key: String, persistent: Boolean): ByteArray? {
+        val bytes = getBytes(key, persistent) ?: return null
         return clearDateInfo(bytes)
     }
 
-    override fun remove(key: String) {
-        runCatching { file(key).delete() }
+    override fun remove(key: String, persistent: Boolean) {
+        runCatching { file(key, persistent).delete() }
     }
 
-    private fun putBytes(key: String, data: ByteArray) {
-        runCatching { file(key).writeBytes(data) }
+    private fun putBytes(key: String, data: ByteArray, persistent: Boolean) {
+        runCatching { file(key, persistent).writeBytes(data) }
     }
 
     /** 读取原始字节 (含日期头), 不存在/已过期/读取失败返回 null。 */
-    private fun getBytes(key: String): ByteArray? {
-        val file = file(key)
+    private fun getBytes(key: String, persistent: Boolean): ByteArray? {
+        val file = file(key, persistent)
         if (!file.exists()) return null
         return try {
             val bytes = file.readBytes()
@@ -85,7 +90,8 @@ object DesktopFileCacheProvider : FileCacheProvider {
         }
     }
 
-    private fun file(key: String): File = File(cacheDir, key.hashCode().toString())
+    private fun file(key: String, persistent: Boolean): File =
+        File(if (persistent) filesDir else cacheDir, key.hashCode().toString())
 
     // ---- ACache 兼容的日期头格式 (与 app 端 ACache.Utils 一致, 保证两端文件格式相同) ----
 

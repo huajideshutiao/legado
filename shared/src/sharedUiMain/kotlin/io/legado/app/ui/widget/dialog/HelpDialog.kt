@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppLog
 import io.legado.app.ui.compose.MarkdownContentSelectable
+import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.web.utils.WebAssetSources
@@ -50,6 +52,8 @@ fun HelpDialog(fileName: String, onDismiss: () -> Unit) {
     }
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.appDialogSize(),
+        properties = AppDialogSizes.properties(),
         title = {
             Text(
                 text = stringResource(Res.string.help),

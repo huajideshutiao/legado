@@ -8,19 +8,20 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -29,9 +30,6 @@ import androidx.compose.material.AlertDialog
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
-import androidx.compose.material.IconButton
-import androidx.compose.material.MaterialTheme
-import androidx.compose.foundation.focusable
 import androidx.compose.material.RadioButton
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
@@ -58,22 +56,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.VideoResolution
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.handleMediaKeys
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import kotlin.math.abs
 import legado.shared.generated.resources.Res
-import legado.shared.generated.resources.back
 import legado.shared.generated.resources.cancel
-import legado.shared.generated.resources.change_source
-import legado.shared.generated.resources.chapter_list
-import legado.shared.generated.resources.ic_arrow_back
-import legado.shared.generated.resources.ic_exchange
 import legado.shared.generated.resources.ic_skip_next
 import legado.shared.generated.resources.ic_skip_previous
-import legado.shared.generated.resources.ic_toc
 import legado.shared.generated.resources.loading
 import legado.shared.generated.resources.next_chapter
 import legado.shared.generated.resources.pause
@@ -83,24 +79,24 @@ import legado.shared.generated.resources.reload
 import legado.shared.generated.resources.resolution
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.abs
 
 /**
- * 视频播放页主体内容 (标题栏 + 渲染槽 + 章节控制栏)。
+ * 视频播放页主体内容 (标题栏 + 渲染槽 + 选集网格), 逐项对照 app 端 VideoPlayScreen。
  *
  * 平台渲染层通过 [videoRenderSlot] 注入: desktop 传 SwingPanel(AWT Canvas, mpv --wid 嵌入,
  * 控制层用 mpv 内建 OSC); app 传 AndroidView(PlayerView) + 自有控件层。槽内自管
  * 渲染面 + 控件叠加 + 加载/错误态, 复用本文件导出的 Composable。
  *
- * 键盘事件: 最外层 Box 消费共享 handleMediaKeys (空格/←/→/↑/↓/Esc), 回调由调用方注入
- * (与 [VideoControlsOverlay] 按钮共用同一 lambda)。新参数均带默认值, 保持 desktop 现有调用不报错。
+ * 布局对照 app: 非全屏才显示标题栏; 章节数 > 1 时视频区固定 16:9 + 下方选集网格,
+ * 否则视频区撑满 (全屏亦然)。
  *
- * @param bookName 书名
- * @param chapterTitle 当前章节标题
+ * 键盘事件: 最外层 Box 消费共享 handleMediaKeys (空格/←/→/↑/↓/Esc), 回调由调用方注入
+ * (与 [VideoControlsOverlay] 按钮共用同一 lambda)。
+ *
+ * @param bookName 书名 (标题栏文字, 对照 Activity titleText)
  * @param curChapterIndex 当前章节索引 (0-based)
- * @param chapterSize 章节总数
  * @param onBack 返回回调
- * @param onOpenToc 打开目录回调
- * @param onOpenChangeSource 打开换源回调
  * @param onPrevChapter 上一章回调
  * @param onNextChapter 下一章回调
  * @param videoRenderSlot 平台渲染层槽 (接收 Modifier, 内部叠加控件/加载/错误)
@@ -109,18 +105,19 @@ import org.jetbrains.compose.resources.stringResource
  * @param onSpeedChange 倍速切换 (长按 → 触发 2x, 松开恢复 1x)
  * @param controlsVisible 控制层可见状态 (键盘事件感知)
  * @param onToggleControls 显隐控制层 (Escape 触发)
- * @param onTitleClick 标题区点击回调 (对照 Activity onTitleClick, 默认空保持向后兼容)
- * @param titleActions 标题栏右侧额外 actions (由 Route 注入 refresh/shelf/overflowMenu, 默认空)
+ * @param onTitleClick 标题区点击回调 (对照 Activity onTitleClick)
+ * @param titleActions 标题栏右侧 actions (由 Route 注入 refresh/shelf/overflowMenu)
+ * @param isFullScreen 全屏态 (隐藏标题栏与选集网格, 对照 Activity isFullScreen)
+ * @param chapters 章节列表 (选集网格数据源)
+ * @param displayTitles 章节显示标题 (与 [chapters] 同序)
+ * @param countWords 是否显示章节字数 (对照 AppConfig.tocCountWords)
+ * @param onOpenChapter 选集点击回调 (章节索引)
  */
 @Composable
 fun VideoPlayerScreenContent(
     bookName: String,
-    chapterTitle: String,
     curChapterIndex: Int,
-    chapterSize: Int,
     onBack: () -> Unit,
-    onOpenToc: () -> Unit,
-    onOpenChangeSource: () -> Unit,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
     videoRenderSlot: @Composable (Modifier) -> Unit,
@@ -132,22 +129,16 @@ fun VideoPlayerScreenContent(
     onToggleControls: () -> Unit = {},
     // 平台自定义顶栏 (null = 用 shared VideoTitleBar; 传 {} 隐藏)
     topBarSlot: (@Composable () -> Unit)? = null,
-    // 标题区点击 + 标题栏右侧额外 actions (默认空保持向后兼容, 仅 topBarSlot=null 时生效)
+    // 标题区点击 + 标题栏右侧 actions (仅 topBarSlot=null 时生效)
     onTitleClick: () -> Unit = {},
     titleActions: @Composable RowScope.() -> Unit = {},
-    // 平台自定义底栏 (默认 shared VideoControlBar; 传 {} 隐藏; ColumnScope 允许 weight)
-    bottomBarSlot: @Composable ColumnScope.() -> Unit = {
-        VideoControlBar(
-            curIndex = curChapterIndex,
-            size = chapterSize,
-            onPrev = onPrevChapter,
-            onNext = onNextChapter,
-        )
-    },
-    // 视频区填充模式 (true = weight(1f) 撑满; false = aspectRatio(16:9) 固定比例)
-    videoAreaFill: Boolean = true,
-    // 容器背景 (desktop 默认黑底; app 传 Color.Unspecified 让 activity 主题背景透出)
-    containerColor: Color = Color(0xFF000000),
+    isFullScreen: Boolean = false,
+    chapters: List<BookChapter> = emptyList(),
+    displayTitles: List<String> = emptyList(),
+    countWords: Boolean = false,
+    onOpenChapter: (Int) -> Unit = {},
+    // 容器背景 (对照 app: 页面走主题背景色, 黑底只在视频渲染区内)
+    containerColor: Color = AppTheme.colors.background,
 ) {
     val scope = rememberCoroutineScope()
     // 键盘事件焦点: onPreviewKeyEvent 需焦点路径上有节点持焦才触发, 进入即取焦点
@@ -177,99 +168,76 @@ fun VideoPlayerScreenContent(
             .focusable()
     ) {
         Column(Modifier.fillMaxSize()) {
-            if (topBarSlot != null) {
-                topBarSlot()
-            } else {
-                VideoTitleBar(
-                    bookName = bookName,
-                    chapterTitle = chapterTitle,
-                    onBack = onBack,
-                    onOpenToc = onOpenToc,
-                    onOpenChangeSource = onOpenChangeSource,
-                    onTitleClick = onTitleClick,
-                    actions = titleActions,
-                )
+            if (!isFullScreen) {
+                if (topBarSlot != null) {
+                    topBarSlot()
+                } else {
+                    VideoTitleBar(
+                        bookName = bookName,
+                        onBack = onBack,
+                        onTitleClick = onTitleClick,
+                        actions = titleActions,
+                    )
+                }
             }
+            val showGrid = !isFullScreen && chapters.size > 1
             Box(
-                if (videoAreaFill) Modifier.fillMaxSize().weight(1f)
-                else Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                if (showGrid) Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                else Modifier.fillMaxWidth().weight(1f)
             ) {
                 videoRenderSlot(Modifier.matchParentSize())
             }
-            bottomBarSlot()
+            if (showGrid) {
+                VideoChapterGrid(
+                    chapters = chapters,
+                    displayTitles = displayTitles,
+                    durIndex = curChapterIndex,
+                    onClick = onOpenChapter,
+                    countWords = countWords,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                )
+            }
         }
     }
 }
 
 // ---- 顶部标题栏 ----
 
-/** 视频标题栏 (56dp, 返回 + 书名/章节名 + 目录 + 换源, 黑底白字)。
+/** 视频标题栏 (对照 app 端 VideoPlayScreen: AppTitleBar + 标题区整体可点进书籍详情)。
  *
- *  对照 app 端 [io.legado.app.ui.book.video.VideoPlayActivity.onTitleClick]:
- *  标题区整体可点进书籍详情, 由 [onTitleClick] 桥接 navigator.push(BookInfo)。
- *
- *  @param onTitleClick 标题区点击回调 (默认空, 向后兼容 desktop)
- *  @param actions 右侧额外 action 区 (默认空, 由 Route 注入 refresh/shelf/overflowMenu)
+ *  @param onTitleClick 标题区点击回调, 由 Route 桥接 navigator.push(BookInfo)
+ *  @param actions 右侧 action 区 (由 Route 注入 refresh/shelf/overflowMenu)
  */
 @Composable
 fun VideoTitleBar(
     bookName: String,
-    chapterTitle: String,
     onBack: () -> Unit,
-    onOpenToc: () -> Unit,
-    onOpenChangeSource: () -> Unit,
     onTitleClick: () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    Row(
-        Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconButton(onClick = onBack) {
-            Icon(
-                painter = painterResource(Res.drawable.ic_arrow_back),
-                contentDescription = stringResource(Res.string.back),
-                tint = Color.White,
-            )
-        }
-        Column(
-            Modifier
-                .weight(1f)
-                .clickable { onTitleClick() }
-        ) {
-            Text(
-                text = bookName,
-                color = Color.White,
-                fontSize = 18.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (chapterTitle.isNotEmpty()) {
+    val colors = AppTheme.colors
+    AppTitleBar(
+        title = "",
+        onBack = onBack,
+        titleContent = {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .heightIn(min = 56.dp)
+                    .clickable { onTitleClick() },
+                contentAlignment = Alignment.CenterStart,
+            ) {
                 Text(
-                    text = chapterTitle,
-                    color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 12.sp,
+                    text = bookName,
+                    color = colors.primaryText,
+                    fontSize = 20.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-        }
-        actions()
-        IconButton(onClick = onOpenToc) {
-            Icon(
-                painter = painterResource(Res.drawable.ic_toc),
-                contentDescription = stringResource(Res.string.chapter_list),
-                tint = Color.White,
-            )
-        }
-        IconButton(onClick = onOpenChangeSource) {
-            Icon(
-                painter = painterResource(Res.drawable.ic_exchange),
-                contentDescription = stringResource(Res.string.change_source),
-                tint = Color.White,
-            )
-        }
-    }
+        },
+        actions = actions,
+    )
 }
 
 // ---- 播放控制层 ----
@@ -304,9 +272,10 @@ fun VideoControlsOverlay(
     onSeek: (Long) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onSwitchResolution: (Int) -> Unit,
-    accentColor: Color = MaterialTheme.colors.primary,
-    secondaryTextColor: Color = MaterialTheme.colors.onSurface,
-    speeds: List<Float> = listOf(0.5f, 1f, 1.5f, 2f),
+    // 颜色走 ThemeStore 动态色, 倍速档位对齐 app SpeedButton
+    accentColor: Color = AppTheme.colors.accent,
+    secondaryTextColor: Color = AppTheme.colors.primaryText,
+    speeds: List<Float> = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f),
     controller: VideoControlsController? = null,
     bufferedMs: Long = 0L,
     onSeekDragStateChange: (Boolean) -> Unit = {},
@@ -321,7 +290,7 @@ fun VideoControlsOverlay(
     val effectiveDurationMs = controller?.durationMs ?: durationMs
     val effectiveBufferedMs = controller?.bufferedMs ?: bufferedMs
     val effectiveBufferColor =
-        if (controller != null) MaterialTheme.colors.primary.copy(alpha = 0.5f)
+        if (controller != null) accentColor.copy(alpha = 0.5f)
         else Color.Unspecified
     AnimatedVisibility(
         visible = visible,
@@ -496,20 +465,20 @@ fun VideoCircleIconButton(
 }
 
 /**
- * 中央播放/暂停钮 (64dp 圆形 + 图标)。
+ * 中央播放/暂停钮 (64dp 点击区 + 图标), 对照 app 端 PlayPauseButton (白图标 48dp, 无底色)。
  *
- * @param iconTint 图标 tint (默认黑色, app 端可传白色)
- * @param iconSize 图标尺寸 (默认 36dp, app 端可传 48dp)
- * @param backgroundColor 背景色 (默认白底, app 端可传 Transparent 透明)
+ * @param iconTint 图标 tint
+ * @param iconSize 图标尺寸
+ * @param backgroundColor 背景色 (默认透明, 同 app)
  */
 @Composable
 fun PlayPauseButton(
     isPlaying: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    iconTint: Color = Color.Black,
-    iconSize: Dp = 36.dp,
-    backgroundColor: Color = Color.White,
+    iconTint: Color = Color.White,
+    iconSize: Dp = 48.dp,
+    backgroundColor: Color = Color.Transparent,
 ) {
     Box(
         modifier
@@ -617,7 +586,7 @@ fun VideoSeekBar(
 /**
  * 倍速钮 (文字 + AppDropdownMenu, 可配置档位/颜色)。
  *
- * @param speeds 倍速档位 (默认 4 档, app 端可传 7 档)
+ * @param speeds 倍速档位 (默认对齐 app 端 7 档)
  * @param currentSpeedColor 当前选中档位文字色
  * @param otherSpeedColor 未选中档位文字色
  */
@@ -625,9 +594,9 @@ fun VideoSeekBar(
 fun SpeedButton(
     currentSpeed: Float,
     onSpeedChange: (Float) -> Unit,
-    speeds: List<Float> = listOf(0.5f, 1f, 1.5f, 2f),
-    currentSpeedColor: Color = MaterialTheme.colors.primary,
-    otherSpeedColor: Color = MaterialTheme.colors.onSurface,
+    speeds: List<Float> = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f),
+    currentSpeedColor: Color = AppTheme.colors.accent,
+    otherSpeedColor: Color = AppTheme.colors.primaryText,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box {
@@ -729,6 +698,10 @@ fun ResolutionButton(
                     Text(stringResource(Res.string.cancel))
                 }
             },
+            modifier = Modifier.appDialogSize(),
+            properties = AppDialogSizes.properties(),
+            shape = DesignTokens.dialogShape,
+            backgroundColor = AppTheme.colors.background,
         )
     }
 }
@@ -789,46 +762,3 @@ fun ErrorOverlay(error: String, onRetry: () -> Unit) {
     }
 }
 
-// ---- 底部章节控制栏 ----
-
-/**
- * 底部章节控制栏: 上一章 / 进度 / 下一章 (黑底白字, 与标题栏风格一致)。
- */
-@Composable
-fun VideoControlBar(
-    curIndex: Int,
-    size: Int,
-    onPrev: () -> Unit,
-    onNext: () -> Unit,
-) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .height(56.dp)
-            .background(Color(0xFF000000))
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconButton(onClick = onPrev, enabled = curIndex > 0) {
-            Icon(
-                painter = painterResource(Res.drawable.ic_skip_previous),
-                contentDescription = stringResource(Res.string.previous_chapter),
-                tint = if (curIndex > 0) Color.White else Color.White.copy(alpha = 0.3f),
-            )
-        }
-        Text(
-            text = "${curIndex + 1}/$size",
-            color = Color.White,
-            fontSize = 16.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.weight(1f),
-        )
-        IconButton(onClick = onNext, enabled = curIndex < size - 1) {
-            Icon(
-                painter = painterResource(Res.drawable.ic_skip_next),
-                contentDescription = stringResource(Res.string.next_chapter),
-                tint = if (curIndex < size - 1) Color.White else Color.White.copy(alpha = 0.3f),
-            )
-        }
-    }
-}

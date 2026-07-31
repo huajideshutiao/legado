@@ -22,12 +22,14 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.model.BookCoverShared
+import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.appDialogSize
+import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.config.CoverConfigScreen
 import io.legado.app.ui.config.CoverConfigScreenModel
 import io.legado.app.ui.config.CoverConfigUiEvent
-import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
-import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
@@ -127,6 +129,8 @@ fun CoverConfigRoute(
         }
         AlertDialog(
             onDismissRequest = { showHeightPicker = false },
+            modifier = Modifier.appDialogSize(),
+            properties = AppDialogSizes.properties(),
             title = {
                 Text(
                     stringResource(Res.string.bookshelf_cover_height),

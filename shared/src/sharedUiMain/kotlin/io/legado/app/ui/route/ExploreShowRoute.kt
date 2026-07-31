@@ -1,21 +1,13 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
@@ -23,7 +15,6 @@ import io.legado.app.help.book.addType
 import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfigProviders
-import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.ui.book.explore.ExploreShowScreen
 import io.legado.app.ui.book.explore.ExploreShowScreenModel
 import io.legado.app.ui.book.explore.ExploreShowUiActions
@@ -33,7 +24,7 @@ import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.bookshelf.ShelfVideoItem
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.component.AppFilletTextButton
+import io.legado.app.ui.compose.component.ExploreOptionsRow
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.ui.explore.ExploreShowViewModelShared
 import io.legado.app.ui.root.AppNavigator
@@ -60,8 +51,8 @@ import org.jetbrains.compose.resources.stringResource
  *
  * 复用 shared [ExploreShowScreen] + [ExploreShowScreenModel] + [ExploreShowViewModelShared];
  * 路由参数 source/title/exploreUrl 取自 [entry]。三 slot 均用 shared 默认实现:
- * optionsRow 复刻 ExploreOptionView (AppFilletTextButton chip 行), videoItem 复用
- * [ShelfVideoItem], cover 复用 [LocalBookCoverSlot] (宿主端可覆盖注入平台封面组件)。
+ * optionsRow 复用公共 [ExploreOptionsRow] (与主页展示项同一份 ExploreOptionView 复刻),
+ * videoItem 复用 [ShelfVideoItem], cover 复用 [LocalBookCoverSlot] (宿主端可覆盖注入平台封面组件)。
  *
  * VM StateFlow → ScreenModel 事件桥接对照 app 端 Activity.observe(ViewModel LiveData)。
  */
@@ -316,87 +307,4 @@ fun ExploreShowRoute(
             LocalBookCoverSlot.current(book.toBook(), modifier, isVideoStyle)
         },
     )
-}
-
-// ===== 参数 chip 行 (对照 app 端 ExploreOptionView.setUpExploreOptions) =====
-
-// chip 透明度: 对照 ExploreOptionView ALPHA_TITLE / ALPHA_SELECTED / ALPHA_UNSELECTED
-private const val EXPLORE_OPTION_ALPHA_TITLE = 0.8f
-private const val EXPLORE_OPTION_ALPHA_SELECTED = 1.0f
-private const val EXPLORE_OPTION_ALPHA_UNSELECTED = 0.5f
-
-/** 单行渲染快照: live [ExploreOption] (供点击变更) + 选中态快照 (供 alpha 渲染)。 */
-private data class ExploreOptionRowView(
-    val option: ExploreOption,
-    val selectedValues: Set<String>,
-    val selectedValue: String,
-)
-
-/**
- * 发现页参数 chip 行: 每个 [ExploreOption] 一行 (标题 chip + 各选项 chip, 横向滚动)。
- *
- * 对照 app 端 `ExploreOptionView.setUpExploreOptions`: 单选 chip 点击即切, 多选 chip 点击 toggle,
- * 标题 chip 点击重置默认; 任意变化调 [onOptionSelected] (清 books + 重新 explore)。
- *
- * [ExploreOption.selectedValue] / [selectedValues] 是普通可变字段, 不被 Compose 跟踪;
- * 点击后 bump 本地 revision 触发 [remember] 重取快照, 刷新 chip alpha。
- * 视觉对齐 `item_fillet_text`: 复用 [AppFilletTextButton], 选中态用 alpha 区分。
- *
- * @param options vm.exploreOptions (就地变更 selectedValue / selectedValues)
- * @param optionsVersion 结构变化信号 (新解析出 chip 时 bump, 触发重取快照)
- * @param onOptionSelected 选中变化回调 (= actions.onExploreOptionChanged)
- */
-@Composable
-private fun ExploreOptionsRow(
-    options: List<ExploreOption>,
-    optionsVersion: Int,
-    onOptionSelected: () -> Unit,
-) {
-    if (options.isEmpty()) return
-    var revision by remember { mutableIntStateOf(0) }
-    // revision 为 remember 键: 点击 chip 后 ++ 触发重组, 重读选中态刷新 alpha
-    val rows = remember(optionsVersion, revision) {
-        options.map { ExploreOptionRowView(it, it.selectedValues.toSet(), it.selectedValue) }
-    }
-    Column(Modifier.fillMaxWidth()) {
-        rows.forEach { (option, selectedValues, selectedValue) ->
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                // 标题 chip: 点击重置默认 (对照 addTitleChip + resetToDefault)
-                AppFilletTextButton(
-                    text = option.name,
-                    modifier = Modifier.alpha(EXPLORE_OPTION_ALPHA_TITLE),
-                    onClick = {
-                        if (option.resetToDefault()) {
-                            revision++; onOptionSelected()
-                        }
-                    },
-                )
-                option.options.forEach { (label, value) ->
-                    val selected = if (option.multiSelect) {
-                        value in selectedValues
-                    } else {
-                        selectedValue == value
-                    }
-                    AppFilletTextButton(
-                        text = label,
-                        modifier = Modifier.alpha(
-                            if (selected) EXPLORE_OPTION_ALPHA_SELECTED else EXPLORE_OPTION_ALPHA_UNSELECTED
-                        ),
-                        onClick = {
-                            if (option.multiSelect) {
-                                // toggle: add 返回 false 说明已存在, 改为移除
-                                if (!option.selectedValues.add(value)) option.selectedValues.remove(
-                                    value
-                                )
-                                revision++; onOptionSelected()
-                            } else if (option.selectedValue != value) {
-                                option.selectedValue = value
-                                revision++; onOptionSelected()
-                            }
-                        },
-                    )
-                }
-            }
-        }
-    }
 }

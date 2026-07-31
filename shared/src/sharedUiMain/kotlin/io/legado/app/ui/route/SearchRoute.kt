@@ -3,16 +3,19 @@ package io.legado.app.ui.route
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
 import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isRss
@@ -20,12 +23,12 @@ import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.search.SearchNavCallbacks
-import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.search.SearchScopeDialog
 import io.legado.app.ui.book.search.SearchScreen
 import io.legado.app.ui.book.search.SearchViewModel
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
@@ -70,20 +73,18 @@ fun SearchRoute(
         }
     }
 
-    // 搜索范围数据与 Android 原版一致，直接来自书源分组和书源列表。
-    var sourceGroups by remember { mutableStateOf<List<String>>(emptyList()) }
-    var bookSources by remember { mutableStateOf<List<BookSourcePart>>(emptyList()) }
-    LaunchedEffect(Unit) {
-        sourceGroups = AppDbProviders.get().bookSourceDao.allEnabledGroups()
-    }
-    LaunchedEffect(Unit) {
-        AppDbProviders.get().bookSourceDao.flowAll().collect { bookSources = it }
-    }
-
     // 对话框状态
     var showSearchScope by remember { mutableStateOf(false) }
     var showAppLog by remember { mutableStateOf(false) }
     var showClearHistoryConfirm by remember { mutableStateOf(false) }
+
+    // 搜索框有焦点时返回先收焦点/键盘, 再次返回才出栈
+    // (对照 app 端 finish(): searchView.hasFocus() 时 clearFocus() 并 return)
+    val focusManager = LocalFocusManager.current
+    var fieldFocused by remember { mutableStateOf(false) }
+    val backStack by navigator.backStack.collectAsState()
+    val isTopEntry = backStack.lastOrNull()?.id == entry.id
+    AppBackHandler(enabled = isTopEntry && fieldFocused) { focusManager.clearFocus() }
 
     val navCallbacks = remember(navigator, scope) {
         object : SearchNavCallbacks {
@@ -161,13 +162,15 @@ fun SearchRoute(
         }
     }
 
-    SearchScreen(viewModel = viewModel, navCallbacks = navCallbacks)
+    SearchScreen(
+        viewModel = viewModel,
+        navCallbacks = navCallbacks,
+        modifier = Modifier.onFocusChanged { fieldFocused = it.hasFocus },
+    )
 
-    // 搜索范围对话框
+    // 搜索范围对话框: 不注入列表, 由对话框自行读库 (筛选走 DAO, 覆盖书源注释)
     if (showSearchScope) {
         SearchScopeDialog(
-            groups = sourceGroups,
-            sources = bookSources,
             onConfirm = { searchScope ->
                 viewModel.onSearchScopeOk(searchScope)
                 showSearchScope = false

@@ -33,6 +33,7 @@ import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.ui.compose.platform.PlatformBackHandler
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
@@ -51,6 +52,8 @@ import org.jetbrains.compose.resources.stringResource
  * 布局档位与样式1 同源 ([rememberBookshelfLayoutSpec])。
  *
  * @param scrollState 外部注入的滚动状态, 宿主端用于 tab 双击滚顶 (对照 gotoTop)
+ * @param gotoTopTick 滚顶信号, 宿主端每次 tab 双击 +1 (对照 BookshelfFragment2.gotoTop)
+ * @param configTick 配置变更信号, bump 后重读 bookshelfShowGroupCount (对照 BOOKSHELF_REFRESH)
  */
 @OptIn(FlowPreview::class)
 @Composable
@@ -64,14 +67,17 @@ internal fun BookshelfScreen2(
     tier: BookshelfTier? = null,
     coverSlot: (@Composable (Book, Modifier, Boolean) -> Unit)? = null,
     scrollState: ShelfScrollState = remember { ShelfScrollState() },
+    gotoTopTick: Int = 0,
+    configTick: Int = 0,
 ) {
     val colors = AppTheme.colors
+    val eInk = LocalEInk.current
     val appConfig = remember { AppConfigProviders.get() }
     val bookCoverSlot = coverSlot ?: LocalBookCoverSlot.current
     val groupCoverSlot = LocalGroupCoverSlot.current
     val layoutSpec = rememberBookshelfLayoutSpec(tier)
     // 标题是否拼接书籍数量 (对照 app 端 AppConfig.bookshelfShowGroupCount)
-    val showGroupCount = remember { appConfig.bookshelfShowGroupCount }
+    val showGroupCount = remember(configTick) { appConfig.bookshelfShowGroupCount }
     val groups by viewModel.bookGroups.collectAsState()
     val refreshingUrls by viewModel.refreshingUrls.collectAsState()
 
@@ -102,6 +108,12 @@ internal fun BookshelfScreen2(
 
     // 对照 BookshelfFragment2.back(): 分组内消费返回事件回根级, 根级不消费 (交给宿主双击退出)
     PlatformBackHandler(enabled = groupId != BookGroup.IdRoot) { groupId = BookGroup.IdRoot }
+
+    // tab 双击滚顶 (对照 BookshelfFragment2.gotoTop), 档位与 layoutSpec 同源
+    LaunchedEffect(gotoTopTick) {
+        if (gotoTopTick == 0) return@LaunchedEffect
+        scrollState.gotoTop(layoutSpec.tier, eInk)
+    }
 
     Column(modifier.fillMaxSize().background(colors.background)) {
         BookshelfTopBarContainer(actions) {

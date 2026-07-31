@@ -1,5 +1,7 @@
 package io.legado.app.help.config
 
+import io.legado.app.help.config.ReadBookConfigProviders.get
+import io.legado.app.help.config.ReadBookConfigProviders.register
 import kotlin.concurrent.Volatile
 
 /**
@@ -44,4 +46,12 @@ object ReadBookConfigProviders {
      */
     fun get(): ReadBookConfigShared =
         impl ?: error("ReadBookConfigProviders not registered")
+
+    /**
+     * 获取已注册实例, 未注册返回 null。
+     *
+     * app 端薄壳 `ReadBookConfig` 用它做兜底: App.onCreate 注册之前若有代码提前访问,
+     * 自建实例并回填, 避免直接崩溃。
+     */
+    fun getOrNull(): ReadBookConfigShared? = impl
 }

@@ -1,5 +1,6 @@
 package io.legado.desktop.help
 
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.archive.ArchiveProvider
 import io.legado.app.help.archive.ArchiveProviders
 import io.legado.app.help.file.AppFilesDirs
@@ -14,7 +15,7 @@ import java.util.zip.ZipInputStream
 /**
  * [ArchiveProvider] 桌面 JVM 实现。
  *
- * zip 走 JDK [ZipInputStream]; rar/7z 暂未实现 (无 native libarchive, 用 TODO 占位)。
+ * zip 走 JDK [ZipInputStream]; rar/7z 无 native libarchive, 抛 [NoStackTraceException]。
  * 在 desktop Main.kt 经 [registerDesktopArchiveProvider] 注入, 供 JsExtensionsCommon 压缩方法跨端调用。
  *
  * 解压临时目录对齐 app 端 ArchiveUtils: `cacheDir/{tempFolderName}/{md5(basename)}`。
@@ -33,7 +34,9 @@ object DesktopArchiveProvider : ArchiveProvider {
         val ext = archivePath.substringAfterLast('.', "").lowercase()
         return when (ext) {
             "zip" -> unzipTo(archivePath, workDir)
-            "rar", "7z" -> TODO("rar/7z 暂未实现, 需引入外部库 (libarchive / commons-compress)")
+            "rar", "7z" -> throw NoStackTraceException(
+                "desktop 无 libarchive, 暂不支持 $ext 解压"
+            )
             else -> throw IllegalArgumentException("Unexpected file suffix: $ext")
         }
     }

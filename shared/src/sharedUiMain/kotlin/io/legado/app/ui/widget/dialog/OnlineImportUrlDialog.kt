@@ -27,7 +27,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.FileCacheProviders
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextField
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.isAbsUrl
@@ -46,6 +48,7 @@ import org.jetbrains.compose.resources.stringResource
  * 对应 app 端 `showImportDialog()` (ReplaceRuleActivity 等): editTextView 的
  * filterValues 历史下拉 + onDelete 删除 + okButton 记录合法 URL。
  * 历史走 [FileCacheProviders] (app 端 ACache 的 KMP 抽象), 逗号拼接持久化。
+ * persistent = true 对齐原版 `ACache.get(cacheDir = false)`, 清缓存不丢历史。
  *
  * @param recordKey 历史记录缓存 key (与 app 端一致, 如 "replaceRuleRecordKey")
  * @param onConfirm 用户确认非空 URL (历史记录已在内部处理)
@@ -62,18 +65,20 @@ fun OnlineImportUrlDialog(
     var url by remember { mutableStateOf("") }
     // 历史列表 (对照 app 端 cacheUrls: 读缓存逗号拆分, defaultUrl 不在列表时插首位)
     val cacheUrls = remember {
-        val urls = FileCacheProviders.impl?.getAsString(recordKey)
+        val urls = FileCacheProviders.impl?.getAsString(recordKey, persistent = true)
             ?.splitNotBlank(",")?.toMutableList() ?: mutableListOf()
         if (defaultUrl != null && !urls.contains(defaultUrl)) urls.add(0, defaultUrl)
         urls.toMutableStateList()
     }
 
     fun persist() {
-        FileCacheProviders.impl?.put(recordKey, cacheUrls.joinToString(","))
+        FileCacheProviders.impl?.put(recordKey, cacheUrls.joinToString(","), persistent = true)
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        modifier = Modifier.appDialogSize(),
+        properties = AppDialogSizes.properties(),
         title = {
             Text(
                 text = stringResource(Res.string.import_on_line),

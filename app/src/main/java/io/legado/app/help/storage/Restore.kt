@@ -1,341 +1,74 @@
 package io.legado.app.help.storage
 
 import android.content.Context
-import android.database.sqlite.SQLiteConstraintException
 import android.net.Uri
-import androidx.core.content.edit
+import androidx.core.net.toUri
 import io.legado.app.BuildConfig
 import io.legado.app.R
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
-import io.legado.app.data.appDb
-import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.BookGroup
-import io.legado.app.data.entities.BookSource
-import io.legado.app.data.entities.Bookmark
-import io.legado.app.data.entities.DictRule
-import io.legado.app.data.entities.HttpTTS
-import io.legado.app.data.entities.KeyboardAssist
-import io.legado.app.data.entities.OldRssSource
-import io.legado.app.data.entities.ReadRecord
-import io.legado.app.data.entities.ReplaceRule
-import io.legado.app.data.entities.RuleSub
-import io.legado.app.data.entities.SearchKeyword
-import io.legado.app.data.entities.Server
-import io.legado.app.data.entities.SourceFilterRule
-import io.legado.app.data.entities.TxtTocRule
-import io.legado.app.data.entities.toBookSource
-import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.LauncherIconHelp
-import io.legado.app.help.ruleFileName
-import io.legado.app.help.book.isLocal
-import io.legado.app.help.book.upType
-import io.legado.app.help.config.LocalConfig
-import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig
-import io.legado.app.model.fileBook.FileBook
-import io.legado.app.utils.ACache
 import io.legado.app.utils.FileDoc
-import io.legado.app.utils.FileUtils
-import io.legado.app.utils.GSON
-import io.legado.app.utils.LogUtils
 import io.legado.app.utils.compress.ZipUtils
-import io.legado.app.utils.decodeAnyMapOrNull
-import io.legado.app.utils.defaultSharedPreferences
-import io.legado.app.utils.fromJsonArray
-import io.legado.app.utils.getPrefBoolean
-import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.isContentScheme
-import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.openInputStream
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.Main
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import splitties.init.appCtx
 import java.io.File
 
 /**
- * 恢复
+ * 恢复 (app 端薄壳)。
+ *
+ * 读 JSON / 写库 / 配置回写全部在 [RestoreShared], 本 object 只留 Android 专属段:
+ * SAF(content://) 解压、旧版 config.xml 解析、主题重载、恢复后 toast/图标/日夜间刷新,
+ * 由 [AndroidBackupRestoreHook] 转调, 保证 WebDav 与本地恢复走同一条核心路径。
  */
 object Restore {
 
-    private val mutex = Mutex()
-
-    private const val TAG = "Restore"
-
+    /** 从 zip 恢复 (content:// 与本地路径都支持), 与原实现同流程。 */
+    @Suppress("UNUSED_PARAMETER")
     suspend fun restore(context: Context, uri: Uri) {
-        LogUtils.d(TAG, "开始恢复备份 uri:$uri")
-        kotlin.runCatching {
-            FileUtils.delete(Backup.backupPath)
-            if (uri.isContentScheme()) {
-                FileDoc.fromUri(uri, false).openInputStream().getOrThrow().use {
-                    ZipUtils.unZipToPath(it, Backup.backupPath)
-                }
-            } else {
-                ZipUtils.unZipToPath(File(uri.path!!), Backup.backupPath)
-            }
-        }.onFailure {
-            AppLog.put("复制解压文件出错\n${it.localizedMessage}", it)
-            return
-        }
-        kotlin.runCatching {
-            restoreLocked(Backup.backupPath)
-            LocalConfig.lastBackup = System.currentTimeMillis()
-        }.onFailure {
-            appCtx.toastOnUi("恢复备份出错\n${it.localizedMessage}")
-            AppLog.put("恢复备份出错\n${it.localizedMessage}", it)
-        }
+        RestoreShared.restoreFromZip(uri.toString())
     }
 
     suspend fun restoreLocked(path: String) {
-        mutex.withLock {
-            restore(path)
-        }
+        RestoreShared.restoreLocked(path)
     }
 
-    private suspend fun restore(path: String) {
-        val aes = BackupAES()
-        fileToListT<Book>(path, "bookshelf.json")?.let {
-            it.forEach { book ->
-                book.upType()
+    /**
+     * 解压备份 zip: content:// 走 FileDoc 输入流, file:// 取真实路径。
+     *
+     * @return true 表示已处理, false 交回 shared 按普通文件路径解压
+     */
+    fun unZipBackup(zipPath: String, destDir: String): Boolean {
+        if (zipPath.isContentScheme()) {
+            FileDoc.fromUri(zipPath.toUri(), false).openInputStream().getOrThrow().use {
+                ZipUtils.unZipToPath(it, destDir)
             }
-            it.filter { book -> book.isLocal }
-                .forEach { book ->
-                    book.coverUrl = FileBook.getCoverPath(book.bookUrl)
-                }
-            val newBooks = arrayListOf<Book>()
-            val ignoreLocalBook = BackupConfigShared.ignoreLocalBook
-            it.forEach { book ->
-                if (ignoreLocalBook && book.isLocal) {
-                    return@forEach
-                }
-                if (appDb.bookDao.has(book.bookUrl)) {
-                    try {
-                        appDb.bookDao.update(book)
-                    } catch (_: SQLiteConstraintException) {
-                        appDb.bookDao.insert(book)
-                    }
-                } else {
-                    newBooks.add(book)
-                }
-            }
-            appDb.bookDao.insert(*newBooks.toTypedArray())
+            return true
         }
-        fileToListT<Bookmark>(path, "bookmark.json")?.let {
-            appDb.bookmarkDao.insert(*it.toTypedArray())
+        val uri = zipPath.toUri()
+        if (uri.scheme == "file") {
+            ZipUtils.unZipToPath(File(uri.path!!), destDir)
+            return true
         }
-        fileToListT<BookGroup>(path, "bookGroup.json")?.let {
-            appDb.bookGroupDao.insert(*it.toTypedArray())
-        }
-        fileToListT<BookSource>(path, "bookSource.json")?.let {
-            appDb.bookSourceDao.insert(*it.toTypedArray())
-        }
-        fileToListT<OldRssSource>(path, "rssSources.json")?.let {
-            appDb.bookSourceDao.insert(*it.map { oldRss -> oldRss.toBookSource() }.toTypedArray())
-        }
-        fileToListT<ReplaceRule>(path, "replaceRule.json")?.let {
-            appDb.replaceRuleDao.insert(*it.toTypedArray())
-        }
-        fileToListT<SearchKeyword>(path, "searchHistory.json")?.let {
-            appDb.searchKeywordDao.insert(*it.toTypedArray())
-        }
-        fileToListT<RuleSub>(path, "sourceSub.json")?.let {
-            appDb.ruleSubDao.insert(*it.toTypedArray())
-        }
-        fileToListT<TxtTocRule>(path, "txtTocRule.json")?.let {
-            appDb.txtTocRuleDao.insert(*it.toTypedArray())
-        }
-        fileToListT<HttpTTS>(path, "httpTTS.json")?.let {
-            appDb.httpTTSDao.insert(*it.toTypedArray())
-        }
-        fileToListT<DictRule>(path, "dictRule.json")?.let {
-            appDb.dictRuleDao.insert(*it.toTypedArray())
-        }
-        fileToListT<SourceFilterRule>(path, "sourceFilterRule.json")?.let {
-            appDb.sourceFilterRuleDao.insert(*it.toTypedArray())
-        }
-        fileToListT<KeyboardAssist>(path, "keyboardAssists.json")?.let {
-            appDb.keyboardAssistsDao.insert(*it.toTypedArray())
-        }
-        restoreReadRecord(path)
-        File(path, "servers.json").takeIf {
-            it.exists()
-        }?.runCatching {
-            var json = readText()
-            if (!json.isJsonArray()) {
-                json = aes.decryptStr(json)
-            }
-            GSON.fromJsonArray<Server>(json).getOrNull()?.let {
-                appDb.serverDao.insert(*it.toTypedArray())
-            }
-        }?.onFailure {
-            AppLog.put("恢复服务器配置出错\n${it.localizedMessage}", it)
-        }
-        File(path, ruleFileName).takeIf {
-            it.exists()
-        }?.runCatching {
-            val json = readText()
-            ACache.get(cacheDir = false).put(ruleFileName, json)
-        }?.onFailure {
-            AppLog.put("恢复直链上传出错\n${it.localizedMessage}", it)
-        }
-        //恢复主题配置
-        File(path, ThemeConfig.configFileName).takeIf {
-            it.exists()
-        }?.runCatching {
-            FileUtils.delete(ThemeConfig.configFilePath)
-            copyTo(File(ThemeConfig.configFilePath))
-            ThemeConfig.upConfig()
-        }?.onFailure {
-            AppLog.put("恢复主题出错\n${it.localizedMessage}", it)
-        }
-        if (!BackupConfigShared.ignoreReadConfig) {
-            //恢复阅读界面配置
-            File(path, ReadBookConfig.configFileName).takeIf {
-                it.exists()
-            }?.runCatching {
-                FileUtils.delete(ReadBookConfig.configFilePath)
-                copyTo(File(ReadBookConfig.configFilePath))
-                ReadBookConfig.initConfigs()
-            }?.onFailure {
-                AppLog.put("恢复阅读界面出错\n${it.localizedMessage}", it)
-            }
-            File(path, ReadBookConfig.shareConfigFileName).takeIf {
-                it.exists()
-            }?.runCatching {
-                FileUtils.delete(ReadBookConfig.shareConfigFilePath)
-                copyTo(File(ReadBookConfig.shareConfigFilePath))
-                ReadBookConfig.initShareConfig()
-            }?.onFailure {
-                AppLog.put("恢复阅读界面出错\n${it.localizedMessage}", it)
-            }
-        }
-        //AppWebDav.downBgs()
-        val configMap = mutableMapOf<String, Any?>()
-        val configFile = File(path, "config.json")
-        if (configFile.exists()) {
-            val json = configFile.readText()
-            decodeAnyMapOrNull(json)?.let {
-                configMap.putAll(it)
-            }
-        } else {
-            val xmlFile = File(path, "config.xml")
-            if (xmlFile.exists()) {
-                // 兼容旧版本 XML 备份，使用 XmlPullParser 稳健解析
-                kotlin.runCatching {
-                    val factory = XmlPullParserFactory.newInstance()
-                    val parser = factory.newPullParser()
-                    parser.setInput(xmlFile.inputStream(), "UTF-8")
-                    var eventType = parser.eventType
-                    while (eventType != XmlPullParser.END_DOCUMENT) {
-                        if (eventType == XmlPullParser.START_TAG) {
-                            val tag = parser.name
-                            if (tag != "map" && tag != "xml") {
-                                val name = parser.getAttributeValue(null, "name")
-                                if (name != null) {
-                                    when (tag) {
-                                        "string" -> configMap[name] = parser.nextText()
-                                        "int" -> configMap[name] =
-                                            parser.getAttributeValue(null, "value")?.toInt()
+        return false
+    }
 
-                                        "boolean" -> configMap[name] =
-                                            parser.getAttributeValue(null, "value")?.toBoolean()
+    /** 恢复主题配置文件后重载内存列表。 */
+    fun upThemeConfig() {
+        ThemeConfig.upConfig()
+    }
 
-                                        "long" -> configMap[name] =
-                                            parser.getAttributeValue(null, "value")?.toLong()
-
-                                        "float" -> configMap[name] =
-                                            parser.getAttributeValue(null, "value")?.toFloat()
-
-                                        "set" -> {
-                                            val set = mutableSetOf<String>()
-                                            val depth = parser.depth
-                                            while (!(parser.next() == XmlPullParser.END_TAG && parser.depth == depth)) {
-                                                if (parser.eventType == XmlPullParser.START_TAG && parser.name == "string") {
-                                                    set.add(parser.nextText())
-                                                }
-                                            }
-                                            configMap[name] = set
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        eventType = parser.next()
-                    }
-                }.onFailure {
-                    it.printOnDebug()
-                }
-            }
-        }
-
-        if (configMap.isNotEmpty()) {
-            appCtx.defaultSharedPreferences.edit {
-                configMap.forEach { (key, value) ->
-                    if (BackupConfigShared.keyIsNotIgnore(key)) {
-                        when (key) {
-                            PreferKey.webDavPassword -> {
-                                kotlin.runCatching {
-                                    aes.decryptStr(value.toString())
-                                }.getOrNull()?.let {
-                                    putString(key, it)
-                                } ?: let {
-                                    if (appCtx.getPrefString(PreferKey.webDavPassword)
-                                            .isNullOrBlank()
-                                    ) {
-                                        putString(key, value.toString())
-                                    }
-                                }
-                            }
-
-                            else -> when (value) {
-                                is Int -> putInt(key, value)
-                                is Boolean -> putBoolean(key, value)
-                                is Long -> {
-                                    if (value >= Int.MIN_VALUE && value <= Int.MAX_VALUE) {
-                                        putInt(key, value.toInt())
-                                    } else {
-                                        putLong(key, value)
-                                    }
-                                }
-
-                                is Float -> putFloat(key, value)
-                                is Double -> {
-                                    if (value == value.toLong().toDouble()) {
-                                        val longValue = value.toLong()
-                                        if (longValue >= Int.MIN_VALUE && longValue <= Int.MAX_VALUE) {
-                                            putInt(key, longValue.toInt())
-                                        } else {
-                                            putLong(key, longValue)
-                                        }
-                                    } else {
-                                        putFloat(key, value.toFloat())
-                                    }
-                                }
-
-                                is String -> putString(key, value)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        ReadBookConfig.apply {
-            comicStyleSelect = appCtx.getPrefInt(PreferKey.comicStyleSelect)
-            readStyleSelect = appCtx.getPrefInt(PreferKey.readStyleSelect)
-            shareLayout = appCtx.getPrefBoolean(PreferKey.shareLayout)
-            hideStatusBar = appCtx.getPrefBoolean(PreferKey.hideStatusBar)
-            hideNavigationBar = appCtx.getPrefBoolean(PreferKey.hideNavigationBar)
-            autoReadSpeed = appCtx.getPrefInt(PreferKey.autoReadSpeed, 46)
-        }
+    /** 恢复完成: 提示 + 切换图标 + 应用日夜间 (与原实现一致)。 */
+    suspend fun onRestoreFinished() {
         appCtx.toastOnUi(R.string.restore_success)
         withContext(Main) {
             delay(100)
@@ -346,96 +79,59 @@ object Restore {
         }
     }
 
-    private inline fun <reified T> fileToListT(path: String, fileName: String): List<T>? {
-        try {
-            val file = File(path, fileName)
-            if (file.exists()) {
-                LogUtils.d(TAG, "阅读恢复备份 $fileName 文件大小 ${file.length()}")
-                // Phase D: GSON.fromJsonArray(Reader) 重载不存在于 kotlinx-serialization, 改用 file.readText() 一次性读取
-                return GSON.fromJsonArray<T>(file.readText()).getOrThrow().also { list ->
-                    LogUtils.d(TAG, "阅读恢复备份 $fileName 列表大小 ${list.size}")
-                }
-            } else {
-                LogUtils.d(TAG, "阅读恢复备份 $fileName 文件不存在")
-            }
-        } catch (e: Exception) {
-            AppLog.put("$fileName\n读取解析出错\n${e.localizedMessage}", e)
-            appCtx.toastOnUi("$fileName\n读取文件出错\n${e.localizedMessage}")
-        }
-        return null
-    }
-
     /**
-     * 兼容三种备份格式：
-     * 1. 最旧格式：day==0，readTime 毫秒累计
-     * 2. v82 格式：有 day，readTime 毫秒，lastRead 毫秒
-     * 3. 新格式：有 startSec/endSec（秒）
+     * 兼容旧版本 XML 备份 (config.xml), 用 XmlPullParser 稳健解析。
+     *
+     * @return 解析出的配置 map, 文件不存在返回 null
      */
-    @Serializable
-    private data class ReadRecordBackup(
-        val bookName: String = "",
-        val day: Int = 0,
-        val startSec: Long = 0,
-        val endSec: Long = 0,
-        // 旧字段，仅用于兼容旧备份
-        val readTime: Long = 0,
-        val lastRead: Long = 0
-    )
+    fun readLegacyConfigXml(dirPath: String): Map<String, Any?>? {
+        val xmlFile = File(dirPath, "config.xml")
+        if (!xmlFile.exists()) return null
+        val configMap = mutableMapOf<String, Any?>()
+        kotlin.runCatching {
+            val factory = XmlPullParserFactory.newInstance()
+            val parser = factory.newPullParser()
+            parser.setInput(xmlFile.inputStream(), "UTF-8")
+            var eventType = parser.eventType
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                if (eventType == XmlPullParser.START_TAG) {
+                    val tag = parser.name
+                    if (tag != "map" && tag != "xml") {
+                        val name = parser.getAttributeValue(null, "name")
+                        if (name != null) {
+                            when (tag) {
+                                "string" -> configMap[name] = parser.nextText()
+                                "int" -> configMap[name] =
+                                    parser.getAttributeValue(null, "value")?.toInt()
 
-    private suspend fun restoreReadRecord(path: String) {
-        val backups = fileToListT<ReadRecordBackup>(path, "readRecord.json") ?: return
-        if (backups.isEmpty()) return
-        val dao = appDb.readRecordDao
-        val nowSec = System.currentTimeMillis() / 1000
-        backups.forEach { b ->
-            if (b.bookName.isEmpty()) return@forEach
-            if (b.startSec > 0 && b.endSec > b.startSec) {
-                // 新格式：直接插入
-                dao.insertSession(ReadRecord(b.bookName, b.day, b.startSec, b.endSec))
-            } else if (b.readTime > 0) {
-                // 旧格式：用迁移算法还原为时间段
-                val endSec0 = if (b.lastRead > 0) b.lastRead / 1000 else nowSec
-                val day0 = if (b.day != 0) b.day else ReadRecord.dayKey(endSec0)
-                restoreOldRecord(dao, b.bookName, day0, b.readTime / 1000, endSec0)
+                                "boolean" -> configMap[name] =
+                                    parser.getAttributeValue(null, "value")?.toBoolean()
+
+                                "long" -> configMap[name] =
+                                    parser.getAttributeValue(null, "value")?.toLong()
+
+                                "float" -> configMap[name] =
+                                    parser.getAttributeValue(null, "value")?.toFloat()
+
+                                "set" -> {
+                                    val set = mutableSetOf<String>()
+                                    val depth = parser.depth
+                                    while (!(parser.next() == XmlPullParser.END_TAG && parser.depth == depth)) {
+                                        if (parser.eventType == XmlPullParser.START_TAG && parser.name == "string") {
+                                            set.add(parser.nextText())
+                                        }
+                                    }
+                                    configMap[name] = set
+                                }
+                            }
+                        }
+                    }
+                }
+                eventType = parser.next()
             }
+        }.onFailure {
+            it.printOnDebug()
         }
+        return configMap
     }
-
-    private suspend fun restoreOldRecord(
-        dao: io.legado.app.data.dao.ReadRecordDao,
-        bookName: String, day: Int, remainingSecs: Long, endSec: Long
-    ) {
-        var remaining = remainingSecs
-        var curDay = day
-        val cal = java.util.Calendar.getInstance()
-
-        fun midnightSec(d: Int): Long {
-            cal.clear(); cal.set(d / 10000, (d / 100) % 100 - 1, d % 100)
-            return cal.timeInMillis / 1000
-        }
-
-        fun prevDay(d: Int): Int {
-            cal.clear(); cal.set(d / 10000, (d / 100) % 100 - 1, d % 100)
-            cal.add(java.util.Calendar.DAY_OF_MONTH, -1)
-            return cal.get(java.util.Calendar.YEAR) * 10000 + (cal.get(java.util.Calendar.MONTH) + 1) * 100 + cal.get(
-                java.util.Calendar.DAY_OF_MONTH
-            )
-        }
-
-        val maxBack = minOf(16L * 3600, (endSec - midnightSec(curDay)).coerceAtLeast(0))
-        val seg0 = minOf(remaining, maxBack)
-        if (seg0 > 0) {
-            dao.insertSession(ReadRecord(bookName, curDay, endSec - seg0, endSec))
-            remaining -= seg0
-        }
-        curDay = prevDay(curDay)
-        while (remaining > 0) {
-            val winEnd = midnightSec(curDay) + 20L * 3600
-            val seg = minOf(remaining, 16L * 3600)
-            dao.insertSession(ReadRecord(bookName, curDay, winEnd - seg, winEnd))
-            remaining -= seg
-            curDay = prevDay(curDay)
-        }
-    }
-
 }

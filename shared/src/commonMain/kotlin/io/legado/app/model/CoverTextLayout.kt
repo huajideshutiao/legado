@@ -12,10 +12,13 @@ data class CoverGlyph(
     val y: Float,
     val textSize: Float,
     val strokeWidth: Float,
+    /** true = 作者段, false = 书名段; 供两支 paint 不同的平台 (Android BOLD/DEFAULT) 分流绘制。 */
+    val isAuthor: Boolean = false,
 )
 
 /**
- * @param textHeightOf 给定字号返回行高 (原版 = fontMetrics.descent - ascent + leading)
+ * @param textHeightOf 给定字号返回书名行高 (原版 = fontMetrics.descent - ascent + leading)
+ * @param authorTextHeightOf 作者行高; 默认同 [textHeightOf], Android 端需传 authorPaint 的度量
  */
 fun computeCoverTextLayout(
     width: Float,
@@ -25,6 +28,7 @@ fun computeCoverTextLayout(
     drawName: Boolean,
     drawAuthor: Boolean,
     textHeightOf: (textSize: Float) -> Float,
+    authorTextHeightOf: (textSize: Float) -> Float = textHeightOf,
 ): List<CoverGlyph> {
     if (width <= 0f || height <= 0f) return emptyList()
     val nameArr = if (drawName) name?.toCharStrings() else null
@@ -71,14 +75,14 @@ fun computeCoverTextLayout(
 
     authorArr?.let { authorList ->
         val textSize = width / 10
-        val lineHeight = textHeightOf(textSize)
+        val lineHeight = authorTextHeightOf(textSize)
         val colX = width * 0.85f
         val neededHeight = authorList.size * lineHeight
         var curY = maxOf(height * 0.95f - neededHeight, height * 0.2f)
         for (char in authorList) {
             curY = maxOf(curY, topMargin + lineHeight)
             if (curY > height * 0.98f) break
-            out += CoverGlyph(char, colX, curY, textSize, textSize / 5)
+            out += CoverGlyph(char, colX, curY, textSize, textSize / 5, isAuthor = true)
             curY += lineHeight
         }
     }

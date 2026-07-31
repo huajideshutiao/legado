@@ -2,8 +2,6 @@ package io.legado.app.ui.compose.component
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -49,7 +49,7 @@ fun AppAlertDialog(
     okButton: AlertButton? = null,
     cancelButton: AlertButton? = null,
     neutralButton: AlertButton? = null,
-    properties: DialogProperties = DialogProperties(),
+    properties: DialogProperties = AppDialogSizes.properties(),
     // 对话框宽度占窗口宽度的比例 (默认 1f 占满)。
     // 桌面端窗口较宽, 备份相关对话框传 0.8f 避免占满难看 (对齐用户反馈 "对话框宽度应占 0.8 窗口宽度")。
     // app 端手机屏幕窄, 保持 1f 默认值 (占满屏幕宽度符合移动端习惯)。
@@ -64,7 +64,8 @@ fun AppAlertDialog(
             okButton = okButton,
             cancelButton = cancelButton,
             neutralButton = neutralButton,
-            widthFraction = widthFraction,
+            // 窗口尺寸统一收口: 宽 0.9 上限 800dp, 高自适应但不超 0.8 屏高 (对齐原版 BaseComposeDialogFragment)
+            modifier = Modifier.appDialogSize(widthFraction = widthFraction),
             content = content,
         )
     }
@@ -84,11 +85,13 @@ fun AppAlertDialogContent(
     neutralButton: AlertButton? = null,
     // 对话框宽度占窗口宽度的比例 (默认 1f 占满, 桌面端备份相关对话框传 0.8f)
     widthFraction: Float = 1f,
+    // 窗口尺寸由调用方决定: [AppAlertDialog] 传 appDialogSize, 命令式宿主沿用窗口自身尺寸
+    modifier: Modifier = Modifier.fillMaxWidth(widthFraction),
     content: (@Composable () -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
     Surface(
-        modifier = Modifier.fillMaxWidth(widthFraction),
+        modifier = modifier,
         shape = DesignTokens.shapeDefault,
         color = colors.fillet,
     ) {

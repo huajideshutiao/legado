@@ -7,12 +7,10 @@ import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.KeyboardAssist
 import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.help.config.LocalConfig
-import io.legado.app.help.config.ReadBookConfig
+import io.legado.app.help.config.ReadConfigDefaults
+import io.legado.app.help.config.ReadStyleConfig
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.utils.GSON
-import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.printOnDebug
-import splitties.init.appCtx
 
 /**
  * composeResources 打进 assets 的 defaultData 目录前缀 (含模块限定名, 由插件按模块生成)。
@@ -32,8 +30,8 @@ internal const val DEFAULT_DATA_ASSET_PREFIX =
  * importDefaultTocRules/importDefaultDictRules 方法) 已下沉到 shared commonMain [DefaultDataShared]。
  * 本 object 仅保留 app 端特有部分:
  *
- * - `readConfigs`: 依赖 app 端 [ReadBookConfig.Config] data class (含 Drawable 等 Android 类型),
- *   无法下沉 commonMain。
+ * - `readConfigs`: 委托 shared 的 [ReadConfigDefaults] (readConfig.json 已内联下沉),
+ *   仅保留转发。
  * - `upVersion()`: 依赖 app 端 [LocalConfig] (SharedPreferences) + [AppConst.appInfo]
  *   (PackageManager), 无法下沉 commonMain。
  *
@@ -65,20 +63,10 @@ object DefaultData {
     }
 
     /**
-     * 默认阅读配置列表 (读 readConfig.json)。
-     *
-     * 依赖 app 端 [ReadBookConfig.Config] data class, 未下沉 commonMain,
-     * 故直读 assets 而不经 DefaultDataResourceProvider。
+     * 默认阅读配置列表 (委托 [ReadConfigDefaults], 同一份 readConfig.json 已内联下沉)。
      */
-    val readConfigs: List<ReadBookConfig.Config> by lazy {
-        val json = String(
-            appCtx.assets
-                .open("$DEFAULT_DATA_ASSET_PREFIX${ReadBookConfig.configFileName}")
-                .readBytes()
-        )
-        GSON.fromJsonArray<ReadBookConfig.Config>(json).getOrNull()
-            ?: emptyList()
-    }
+    val readConfigs: List<ReadStyleConfig>
+        get() = ReadConfigDefaults.readConfigs
 
     /** 默认 HttpTTS 列表 (委托 [DefaultDataShared])。 */
     val httpTTS: List<HttpTTS>

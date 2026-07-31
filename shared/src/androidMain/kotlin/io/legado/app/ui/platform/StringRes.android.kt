@@ -14,9 +14,9 @@ import android.content.Context
  * 模式参考 `Toaster.android.kt` 的 `registerAndroidToaster`。
  */
 
-/** ApplicationContext holder, 由 [registerSharedAppContext] 注入。 */
+/** ApplicationContext holder, 由 [registerSharedAppContext] 注入; shared androidMain 内共用。 */
 @Volatile
-private var context: Context? = null
+internal var sharedAppContext: Context? = null
 
 /**
  * 安卓宿主启动早期注册 ApplicationContext。
@@ -26,9 +26,9 @@ private var context: Context? = null
  * @param ctx 任意 Context (推荐传 `appCtx`), 内部只用其 applicationContext
  */
 fun registerSharedAppContext(ctx: Context) {
-    context = ctx.applicationContext
+    sharedAppContext = ctx.applicationContext
 }
 
 actual fun stringRes(resId: Int): String {
-    return context?.getString(resId) ?: ""
+    return sharedAppContext?.getString(resId) ?: ""
 }

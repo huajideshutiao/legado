@@ -1,6 +1,5 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
@@ -14,17 +13,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.Color
 import io.legado.app.data.AppDbProviders
+import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.video.VideoPlayScreenModel
 import io.legado.app.ui.book.video.VideoPlayUiEvent
 import io.legado.app.ui.book.video.VideoPlayerScreenContent
-import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
@@ -39,17 +40,17 @@ import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bookmark_add
 import legado.shared.generated.resources.copy_play_url
 import legado.shared.generated.resources.edit_book_source
-import legado.shared.generated.resources.favorites
 import legado.shared.generated.resources.full_screen
-import legado.shared.generated.resources.ic_more_vert
 import legado.shared.generated.resources.ic_refresh_black_24dp
+import legado.shared.generated.resources.in_favorites
 import legado.shared.generated.resources.log
 import legado.shared.generated.resources.login
-import legado.shared.generated.resources.more_menu
+import legado.shared.generated.resources.out_favorites
 import legado.shared.generated.resources.refresh
 import legado.shared.generated.resources.review
 import legado.shared.generated.resources.set_book_variable
 import legado.shared.generated.resources.set_source_variable
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -153,15 +154,12 @@ fun VideoPlayRoute(
             navigator.pop()
         }
     }
-    val onOpenToc: () -> Unit =
-        { navigator.push(AppRoute.Toc(book.toRouteRef()), resultKey = RouteResults.TOC) }
-    val onOpenChangeSource: () -> Unit =
-        {
-            navigator.push(
-                AppRoute.ChangeSource(book.toRouteRef()),
-                resultKey = RouteResults.CHANGE_SOURCE
-            )
-        }
+    // 全屏时系统返回先退全屏 (对照 Activity onBackPressedDispatcher: isFullScreen -> applyFullScreen(false));
+    // 非栈顶不拦截 (栈内页面全程留在 Composition)
+    val backStack by navigator.backStack.collectAsState()
+    val isTopEntry = backStack.lastOrNull()?.id == entry.id
+    AppBackHandler(enabled = isTopEntry && state.isFullScreen) { screenModel.setFullScreen(false) }
+
     // 对照 Activity onTitleClick: bookInfoResult.launch(IntentData.book=...)
     val onTitleClick: () -> Unit =
         { navigator.push(AppRoute.BookInfo(book.toRouteRef()), resultKey = RouteResults.BOOK_INFO) }
@@ -180,14 +178,14 @@ fun VideoPlayRoute(
     // 平台对话框状态 (对照 TocRoute showLogDialog/editingBookmark)
     var showLogDialog by remember { mutableStateOf(false) }
 
+    // 选集字数显示 (对照 app VideoChapterItem 读 AppConfig.tocCountWords)
+    val countWords =
+        remember { runCatching { AppConfigProviders.get().tocCountWords }.getOrDefault(false) }
+
     VideoPlayerScreenContent(
         bookName = state.bookName,
-        chapterTitle = state.chapterTitle,
         curChapterIndex = state.curChapterIndex,
-        chapterSize = state.chapterSize,
         onBack = onBack,
-        onOpenToc = onOpenToc,
-        onOpenChangeSource = onOpenChangeSource,
         onPrevChapter = screenModel::onPrevChapter,
         onNextChapter = screenModel::onNextChapter,
         videoRenderSlot = { modifier ->
@@ -203,13 +201,18 @@ fun VideoPlayRoute(
         controlsVisible = state.controlsVisible,
         onToggleControls = screenModel::onToggleControls,
         onTitleClick = onTitleClick,
+        isFullScreen = state.isFullScreen,
+        chapters = state.chapters,
+        displayTitles = state.displayTitles,
+        countWords = countWords,
+        onOpenChapter = screenModel::onOpenChapter,
         titleActions = {
-            // 对照 Activity VideoTitleActions: refresh + shelf + OverflowMenu
+            // 对照 app VideoTitleActions: refresh + shelf + OverflowMenu
             IconButton(onClick = screenModel::onRefreshChapter) {
                 Icon(
                     painter = painterResource(Res.drawable.ic_refresh_black_24dp),
                     contentDescription = stringResource(Res.string.refresh),
-                    tint = Color.White,
+                    tint = AppTheme.colors.primaryText,
                 )
             }
             IconButton(onClick = screenModel::onToggleShelf) {
@@ -217,8 +220,10 @@ fun VideoPlayRoute(
                     painter = rememberPainter(
                         if (state.inShelf) "ic_star" else "ic_star_border"
                     ),
-                    contentDescription = stringResource(Res.string.favorites),
-                    tint = Color.White,
+                    contentDescription = stringResource(
+                        if (state.inShelf) Res.string.in_favorites else Res.string.out_favorites
+                    ),
+                    tint = AppTheme.colors.primaryText,
                 )
             }
             VideoOverflowMenu(
@@ -258,7 +263,6 @@ fun VideoPlayRoute(
 
 /**
  * 视频页溢出菜单 (对照 app 端 VideoTitleActions 中的 OverflowMenu)。
- * 黑底白字风格, 与 [io.legado.app.ui.book.video.VideoTitleBar] 一致。
  */
 @Composable
 private fun VideoOverflowMenu(
@@ -274,48 +278,26 @@ private fun VideoOverflowMenu(
     onAddBookmark: () -> Unit,
     onAppLog: () -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { expanded = true }) {
-            Icon(
-                painter = painterResource(Res.drawable.ic_more_vert),
-                contentDescription = stringResource(Res.string.more_menu),
-                tint = Color.White,
-            )
+    OverflowMenu { dismiss ->
+        VideoMenuItem(Res.string.full_screen) { dismiss(); onFullScreen() }
+        if (hasLogin) {
+            VideoMenuItem(Res.string.login) { dismiss(); onLogin() }
         }
-        AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            val dismiss = { expanded = false }
-            DropdownMenuItem(onClick = { dismiss(); onFullScreen() }) {
-                Text(stringResource(Res.string.full_screen))
-            }
-            if (hasLogin) {
-                DropdownMenuItem(onClick = { dismiss(); onLogin() }) {
-                    Text(stringResource(Res.string.login))
-                }
-            }
-            DropdownMenuItem(onClick = { dismiss(); onCopyPlayUrl() }) {
-                Text(stringResource(Res.string.copy_play_url))
-            }
-            DropdownMenuItem(onClick = { dismiss(); onSourceVariable() }) {
-                Text(stringResource(Res.string.set_source_variable))
-            }
-            DropdownMenuItem(onClick = { dismiss(); onBookVariable() }) {
-                Text(stringResource(Res.string.set_book_variable))
-            }
-            DropdownMenuItem(onClick = { dismiss(); onEditSource() }) {
-                Text(stringResource(Res.string.edit_book_source))
-            }
-            if (hasReview) {
-                DropdownMenuItem(onClick = { dismiss(); onReview() }) {
-                    Text(stringResource(Res.string.review))
-                }
-            }
-            DropdownMenuItem(onClick = { dismiss(); onAddBookmark() }) {
-                Text(stringResource(Res.string.bookmark_add))
-            }
-            DropdownMenuItem(onClick = { dismiss(); onAppLog() }) {
-                Text(stringResource(Res.string.log))
-            }
+        VideoMenuItem(Res.string.copy_play_url) { dismiss(); onCopyPlayUrl() }
+        VideoMenuItem(Res.string.set_source_variable) { dismiss(); onSourceVariable() }
+        VideoMenuItem(Res.string.set_book_variable) { dismiss(); onBookVariable() }
+        VideoMenuItem(Res.string.edit_book_source) { dismiss(); onEditSource() }
+        if (hasReview) {
+            VideoMenuItem(Res.string.review) { dismiss(); onReview() }
         }
+        VideoMenuItem(Res.string.bookmark_add) { dismiss(); onAddBookmark() }
+        VideoMenuItem(Res.string.log) { dismiss(); onAppLog() }
+    }
+}
+
+@Composable
+private fun VideoMenuItem(text: StringResource, onClick: () -> Unit) {
+    DropdownMenuItem(onClick = onClick) {
+        Text(stringResource(text), color = AppTheme.colors.primaryText)
     }
 }

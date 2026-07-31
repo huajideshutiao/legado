@@ -1,13 +1,21 @@
 package io.legado.app.help.book
 
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
+import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.RuleBigDataProviders
+import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.coroutine.runBlockingInScope
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.utils.MD5Utils
+import io.legado.app.utils.StringUtils
+import io.legado.app.utils.postEvent
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.math.min
 
 /**
@@ -84,18 +92,79 @@ object BookHelpShared {
      * 是否去除重复标题 (对照 app 端 `BookHelp.removeSameTitle`)。
      *
      * 算法: `.nr` 标记文件存在 = 禁用去除重复标题, 故返回 `!exists`。
-     * 文件存在性通过 [BookStorageProviders.get].getChapterFiles 列出的文件名集合判断,
-     * 与 app 端 `!File(path).exists()` 行为等价
-     * (getChapterFiles 列出书籍缓存目录下所有文件, 含 `.nr` 标记文件)。
-     *
-     * @param book 书籍
-     * @param chapter 章节
-     * @return true 表示去除重复标题 (无 `.nr` 标记); false 表示保留 (有 `.nr` 标记)
+     * 存在性走 [BookStorage.hasCacheFile] 直查文件系统, 与 app 端原版
+     * `!File(path).exists()` 一致 (不能用 getChapterFiles: 它对本地 txt /
+     * 视频 / 音频书直接返回空集, 会把已禁用去重的章节误判为需去重)。
      */
     fun removeSameTitle(book: Book, chapter: BookChapter): Boolean {
-        val nrFileName = chapter.getFileName("nr")
-        val cachedFiles = BookStorageProviders.get().getChapterFiles(book)
-        return !cachedFiles.contains(nrFileName)
+        return !BookStorageProviders.get().hasCacheFile(book, chapter.getFileName("nr"))
+    }
+
+    /**
+     * 写入 / 删除 `.nr` 标记文件 (对照 app 端 `BookHelp.setRemoveSameTitle` 的文件部分)。
+     *
+     * 去重开启 = 删除标记文件; 关闭 = 创建空标记文件。
+     * ContentProcessor 的 removeSameTitleCache 同步由各端调用方负责。
+     */
+    fun setRemoveSameTitleMarker(book: Book, chapter: BookChapter, removeSameTitle: Boolean) {
+        val storage = BookStorageProviders.get()
+        val fileName = chapter.getFileName("nr")
+        if (removeSameTitle) {
+            storage.deleteCacheFile(book, fileName)
+        } else {
+            storage.createCacheFile(book, fileName)
+        }
+    }
+
+    /**
+     * 保存章节正文并通知阅读页 (对照 app 端 `BookHelp.saveContent`)。
+     *
+     * 失败只记日志不抛出, 与 app 端一致。
+     */
+    fun saveContent(book: Book, chapter: BookChapter, content: String) {
+        try {
+            BookStorageProviders.get().saveText(book, chapter, content)
+            postEvent(EventBus.SAVE_CONTENT, Pair(book, chapter))
+        } catch (e: Exception) {
+            AppLog.put("保存正文失败 ${book.name} ${chapter.title}", e)
+        }
+    }
+
+    /**
+     * 读取章节正文 (对照 app 端 `BookHelp.getContent`)。
+     *
+     * 缓存文件存在则直接返回 (空文件视为无内容返回 null, 不回退本地解析);
+     * 无缓存且为本地书时走 [FileBook] 解析, epub 结果顺带写回缓存。
+     */
+    fun getContent(book: Book, chapter: BookChapter): String? {
+        val storage = BookStorageProviders.get()
+        val cached = storage.readCacheFile(book, chapter.getFileName())
+        if (cached != null) {
+            return cached.ifEmpty { null }
+        }
+        if (book.isLocal) {
+            val string = FileBook.getContent(book, chapter)
+            if (string != null && book.isEpub) {
+                storage.saveText(book, chapter, string)
+            }
+            return string
+        }
+        return null
+    }
+
+    /**
+     * 在线 txt 章节字数统计并写库 (对照 app 端 `BookHelp.saveText` 后半段)。
+     *
+     * 用 [runBlockingInScope]: Room KMP 禁止非 suspend 查询, 而调用方 saveText
+     * 不能改 suspend (BookStorage 同步接口); 全部调用方均在 IO 协程内。
+     */
+    fun upWordCount(book: Book, chapter: BookChapter, content: String) {
+        if (!book.isOnLineTxt || !AppConfigProviders.get().tocCountWords) return
+        val wordCount = StringUtils.wordCountFormat(content.length)
+        chapter.wordCount = wordCount
+        runBlockingInScope(EmptyCoroutineContext) {
+            AppDbProviders.get().bookChapterDao.upWordCount(chapter.bookUrl, chapter.url, wordCount)
+        }
     }
 
     /** hasContent 前置分支: 本地 txt / 卷宗章节直接视为已缓存, 不查文件 (对照 app 端 BookHelp.hasContent)。 */

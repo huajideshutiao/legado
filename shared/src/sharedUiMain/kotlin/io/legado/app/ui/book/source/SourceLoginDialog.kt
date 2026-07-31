@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
@@ -40,6 +39,7 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.rule.FlexChildStyle
 import io.legado.app.data.entities.rule.RowUi
+import io.legado.app.help.coroutine.mainDispatcher
 import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.script.runScriptWithContext
@@ -201,12 +201,12 @@ fun SourceLoginDialog(
         scope.launch(Dispatchers.IO) {
             if (loginData.isEmpty()) {
                 source.removeLoginInfo()
-                withContext(Dispatchers.Main) { onDismiss() }
+                withContext(mainDispatcher) { onDismiss() }
             } else if (source.putLoginInfo(GSON.toJson(loginData))) {
                 try {
                     runScriptWithContext { source.login() }
                     Toasters.get().toast(successText)
-                    withContext(Dispatchers.Main) { onDismiss() }
+                    withContext(mainDispatcher) { onDismiss() }
                 } catch (e: Exception) {
                     AppLog.put("登录出错\n${e.localizedMessage}", e)
                     Toasters.get().toast("登录出错\n${e.localizedMessage}")

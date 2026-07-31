@@ -85,6 +85,8 @@ kotlin {
                 implementation(compose.ui)
             }
         }
+        // 鸿蒙无变体三方库隔离层: coil3-compose / reorderable / multiplatformMarkdown。
+        // fork 生态补齐这些库的 ohosArm64 变体后, 本源集即可并回 sharedUiMain 删除。
         val nonOhosUiMain by creating {
             dependsOn(sharedUiMain)
             dependencies {
@@ -133,11 +135,6 @@ kotlin {
                 implementation(compose.components.uiToolingPreview)
             }
         }
-        val nonAndroidIconMain by creating {
-            dependsOn(commonMain.get())
-        }
-        jvmMain.get().dependsOn(nonAndroidIconMain)
-
         val nativeMain = if (enableIosTarget || enableOhosTarget) {
             maybeCreate("nativeMain").apply {
                 dependencies {
@@ -150,7 +147,6 @@ kotlin {
 
         if (enableIosTarget) maybeCreate("iosMain").apply {
             dependsOn(nonOhosUiMain)
-            dependsOn(nonAndroidIconMain)
             dependencies {
                 implementation(libs.androidx.sqlite.framework)
                 implementation(libs.krypto)

@@ -7,9 +7,12 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.book.addType
+import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
+import io.legado.app.help.book.updateTo
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.fileBook.FileBook
@@ -28,6 +31,7 @@ import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.error_get_book_info
 import legado.shared.generated.resources.error_get_chapter_list
 import legado.shared.generated.resources.error_no_source
+import legado.shared.generated.resources.lasted_show
 import org.jetbrains.compose.resources.getString
 
 /**
@@ -115,35 +119,68 @@ class BookInfoScreenModel : ScreenModel {
     }
 
     /**
-     * 刷新书籍信息 + 目录 (对照 app 端 BaseReadViewModel.loadBookInfo)。
+     * 刷新书籍信息 + 目录 (对照 app 端 BookInfoViewModel.refreshBook + BaseReadViewModel.loadBookInfo)。
      * [bookSource] 由调用方查好传入; 无论成功失败都会 dispatch UpdateToc 解除加载中状态。
      */
     fun refresh(
         book: Book,
         bookSource: BookSource?,
-        lastedTitle: String,
         errorLoadToc: String,
         canReName: Boolean = true,
         runPreUpdateJs: Boolean = true,
+        isSearchBook: Boolean = false,
     ) {
         dispatch(BookInfoUiEvent.Refresh)
         scope.launch(IoDispatcher) {
+            // 对照 app 端 refreshBook 前置: 本地非漫画书拉 WebDav 远端更新, 其余同步书源名。
+            // TODO refreshWebDavBook 依赖仅 app 端有的 AppWebDav.defaultBookWebDav(RemoteBookWebDav)
+            if (!(book.isLocal && !book.isImage)) {
+                bookSource?.let {
+                    if (book.originName != it.bookSourceName) book.originName = it.bookSourceName
+                }
+            }
             val toc = try {
-                loadBookInfo(book, bookSource, canReName, runPreUpdateJs)
+                loadBookInfo(book, bookSource, canReName, runPreUpdateJs, isSearchBook)
             } catch (e: Throwable) {
                 AppLog.put("获取书籍信息失败\n${e.message}", e)
                 Toasters.get().toast(getString(Res.string.error_get_book_info))
                 emptyList()
             }
             // 对照 app 端 showBook + upLoading(false, chapterList)
-            dispatch(BookInfoUiEvent.ShowBook(book, lastedTitle))
-            dispatch(
-                BookInfoUiEvent.UpdateToc(
-                    tocText = if (toc.isEmpty()) errorLoadToc else book.durChapterTitle.orEmpty(),
-                    lastedTitle = if (toc.isEmpty()) null else lastedTitle,
-                )
-            )
+            upShowBook(book, toc, errorLoadToc)
         }
+    }
+
+    /**
+     * 仅拉目录 (对照 app 端 BaseReadViewModel.upBook 中 tocUrl 非空时的 loadChapterList 分支)。
+     */
+    fun loadToc(
+        book: Book,
+        bookSource: BookSource?,
+        errorLoadToc: String,
+        runPreUpdateJs: Boolean = true,
+    ) {
+        dispatch(BookInfoUiEvent.Refresh)
+        scope.launch(IoDispatcher) {
+            val toc = loadChapterList(book, bookSource, runPreUpdateJs)
+            upShowBook(book, toc, errorLoadToc)
+        }
+    }
+
+    /** 最新章节文案按 book 现值构造 (对照 Activity showBook/upLoading 每次读 curBook.latestChapterTitle)。 */
+    suspend fun lastedTitleOf(book: Book): String =
+        getString(Res.string.lasted_show, book.latestChapterTitle ?: "")
+
+    /** 加载完成后回填书籍与目录文案 (对照 Activity showBook + upLoading(false, chapterList))。 */
+    private suspend fun upShowBook(book: Book, toc: List<BookChapter>, errorLoadToc: String) {
+        val lasted = lastedTitleOf(book)
+        dispatch(BookInfoUiEvent.ShowBook(book, lasted))
+        dispatch(
+            BookInfoUiEvent.UpdateToc(
+                tocText = if (toc.isEmpty()) errorLoadToc else book.durChapterTitle.orEmpty(),
+                lastedTitle = if (toc.isEmpty()) null else lasted,
+            )
+        )
     }
 
     /** 对照 app 端 BaseReadViewModel.loadBookInfo。 */
@@ -152,6 +189,7 @@ class BookInfoScreenModel : ScreenModel {
         bookSource: BookSource?,
         canReName: Boolean,
         runPreUpdateJs: Boolean,
+        isSearchBook: Boolean,
     ): List<BookChapter> {
         if (book.isLocal) {
             val tmp = book.copy()
@@ -168,6 +206,19 @@ class BookInfoScreenModel : ScreenModel {
         }
         return try {
             WebBook.getBookInfoAwait(source, book, canReName)
+            if (isSearchBook) {
+                val dbBook = appDb.bookDao.getBook(book.bookUrl)
+                    ?: appDb.bookDao.getBook(book.name, book.author)
+                // 搜索来源的书加载详情后书名可能变化, 同源则并回书架那本, 异源则标记不在书架
+                // (对照 app 端 loadBookInfo, 上游 #3652 #4619 #3149)
+                if (dbBook != null && dbBook.origin == book.origin) {
+                    dbBook.updateTo(book)
+                    dispatch(BookInfoUiEvent.UpdateBookshelf(true))
+                } else {
+                    book.addType(BookType.notShelf)
+                    dispatch(BookInfoUiEvent.UpdateBookshelf(false))
+                }
+            }
             if (_state.value.inBookshelf) saveBook(book)
             // app 端 webFile 走 loadWebFile 下载导入 (平台专属), shared 只读已入库目录
             if (book.isWebFile) {

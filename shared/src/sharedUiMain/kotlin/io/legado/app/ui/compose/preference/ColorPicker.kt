@@ -9,13 +9,13 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -33,20 +33,20 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.graphics.drawscope.Stroke
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialogContent
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.ColorUtils
-import androidx.compose.foundation.lazy.LazyListScope
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.ic_check
@@ -124,7 +124,7 @@ fun ColorPickerDialog(
     showAlphaSlider: Boolean = false,
     presets: List<Int> = MaterialPresets,
 ) {
-    Dialog(onDismissRequest = onDismissRequest) {
+    Dialog(onDismissRequest = onDismissRequest, properties = AppDialogSizes.properties()) {
         ColorPickerDialogContent(
             initColor = initColor,
             title = title,
@@ -132,6 +132,7 @@ fun ColorPickerDialog(
             onConfirm = onConfirm,
             showAlphaSlider = showAlphaSlider,
             presets = presets,
+            modifier = Modifier.appDialogSize(),
         )
     }
 }
@@ -145,6 +146,7 @@ fun ColorPickerDialogContent(
     onConfirm: (Int) -> Unit,
     showAlphaSlider: Boolean = false,
     presets: List<Int> = MaterialPresets,
+    modifier: Modifier = Modifier,
 ) {
     // 替代 android.graphics.Color.colorToHSV: commonMain 用纯 Kotlin ColorUtils.colorToHSV
     val hsv = remember { FloatArray(3).also { ColorUtils.colorToHSV(initColor, it) } }
@@ -176,6 +178,7 @@ fun ColorPickerDialogContent(
             onClick = { onConfirm(current()) }),
         // 替代 stringResource(R.string.cancel): commonMain 走 stringResource(Res.string.cancel)
         cancelButton = AlertButton(text = stringResource(Res.string.cancel)),
+        modifier = modifier,
     ) {
         Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
             // SV 面板

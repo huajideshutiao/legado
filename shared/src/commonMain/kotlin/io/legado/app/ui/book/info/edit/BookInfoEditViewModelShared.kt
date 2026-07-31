@@ -4,8 +4,8 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.coroutine.mainDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -87,7 +87,7 @@ class BookInfoEditViewModelShared(
      * 原 `execute { ... }.onSuccess { ... }` 的 onSuccess 在 `executeContext = Main` 调度器
      * 执行 (见 [io.legado.app.help.coroutine.Coroutine] 默认 executeContext = mainDispatcher)。
      * app 端 BookInfoEditActivity 的 success 回调内调 `setResult` / `finish`, 必须在 Main 线程。
-     * 故 shared 内用 `withContext(Dispatchers.Main) { success?.invoke() }` 切回 Main,
+     * 故 shared 内用 `withContext(mainDispatcher) { success?.invoke() }` 切回 Main,
      * 行为与原完全一致。desktop 端 onSaved 回调 (路由切换) 在 Main 调度器执行也无问题。
      *
      * 步骤:
@@ -96,7 +96,7 @@ class BookInfoEditViewModelShared(
      * 2. bookUrl 变更 (非 null 且与 book.bookUrl 不同): delete 旧 + 修改 bookUrl + insert 新
      *    (主键 bookUrl 变更, 不能直接 update);
      * 3. bookUrl 未变更: 直接 update;
-     * 4. 成功回调 [success] (切到 [Dispatchers.Main], 与原 onSuccess 调度器一致);
+     * 4. 成功回调 [success] (切到 [mainDispatcher], 与原 onSuccess 调度器一致);
      * 5. 异常按 [isSQLiteConstraintException] 区分日志文案 (相同书名作者 vs 通用失败)。
      *
      * @param book 待保存的书籍 (调用前已修改 name/author/type/coverUrl/intro 等字段)
@@ -117,10 +117,10 @@ class BookInfoEditViewModelShared(
                 } else {
                     appDb.bookDao.update(book)
                 }
-                // 4. 成功回调 (切到 Main 调度器, 与原 execute.onSuccess 在 executeContext=Main 一致;
+                // 4. 成功回调 (切到 mainDispatcher, 与原 execute.onSuccess 在 executeContext=Main 一致;
                 //    app 端 success 内调 setResult/finish 必须在 Main 线程)
                 if (success != null) {
-                    withContext(Dispatchers.Main) { success.invoke() }
+                    withContext(mainDispatcher) { success.invoke() }
                 }
             } catch (e: Throwable) {
                 // 5. 异常日志: 按 SQLiteConstraintException 区分文案 (类名匹配, 不直接引用 android.database.sqlite)

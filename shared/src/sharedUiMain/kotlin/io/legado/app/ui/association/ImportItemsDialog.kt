@@ -32,8 +32,10 @@ import io.legado.app.help.config.ThemeConfigData
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppCheckbox
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.widget.dialog.CodeDialog
@@ -98,8 +100,8 @@ fun ImportItemsDialog(
     // iOS/鸿蒙在调用点解析完成后才弹本对话框, 走默认值)
     loading: Boolean = false,
     errorText: String? = null,
-    // 容器 Surface 附加约束 (desktop 传 widthIn/heightIn 限制对话框尺寸)
-    surfaceModifier: Modifier = Modifier,
+    // 容器 Surface 尺寸约束 (默认统一窗口尺寸, 调用方可覆盖)
+    surfaceModifier: Modifier = Modifier.appDialogSize(),
     titleActions: @Composable RowScope.(invalidate: () -> Unit) -> Unit = {},
 ) {
     // selectStatus 是普通 ArrayList, 修改不触发重组, 用 version 自增驱动 (与 app 端一致)
@@ -111,7 +113,7 @@ fun ImportItemsDialog(
     val stateUpdate = stringResource(Res.string.import_state_update)
     val stateExisting = stringResource(Res.string.import_state_existing)
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
         Surface(
             shape = DesignTokens.dialogShape,
             color = AppTheme.colors.background,

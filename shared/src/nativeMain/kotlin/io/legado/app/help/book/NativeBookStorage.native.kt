@@ -2,7 +2,7 @@ package io.legado.app.help.book
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.utils.File
 
 /**
@@ -52,6 +52,30 @@ class NativeBookStorage(
         // 与 JVM Files.list + Files.isRegularFile / iOS contentsOfDirectoryAtPath + isRegularFile 行为对齐
         val files = dir.listFiles() ?: return emptyList()
         return files.filter { it.isFile }.map { it.name }
+    }
+
+    override fun hasCacheFile(book: Book, fileName: String): Boolean {
+        return File(resolveCacheFile(book, fileName)).exists()
+    }
+
+    override fun readCacheFile(book: Book, fileName: String): String? {
+        val file = File(resolveCacheFile(book, fileName))
+        if (!file.exists()) return null
+        return runCatching { file.readText() }.getOrNull()
+    }
+
+    override fun createCacheFile(book: Book, fileName: String) {
+        val file = File(resolveCacheFile(book, fileName))
+        if (file.exists()) return
+        file.parentFile?.mkdirs()
+        file.writeText("")
+    }
+
+    override fun deleteCacheFile(book: Book, fileName: String) {
+        val file = File(resolveCacheFile(book, fileName))
+        if (file.exists()) {
+            file.delete()
+        }
     }
 
     override fun saveText(book: Book, chapter: BookChapter, text: String) {
@@ -184,6 +208,11 @@ class NativeBookStorage(
         return "$rootPath/${getFolderName(book)}"
     }
 
+    /** 解析书籍缓存目录下任意文件路径 (`.nr` 标记等)。 */
+    private fun resolveCacheFile(book: Book, fileName: String): String {
+        return "${resolveBookDir(book)}/$fileName"
+    }
+
     /**
      * 计算目录总大小 (字节)。
      *
@@ -201,15 +230,11 @@ class NativeBookStorage(
 
     companion object {
         /**
-         * 默认章节缓存根路径: `{AppFilesDirs.filesDir}/book_cache`。
-         *
-         * - iOS 沙盒 Documents 目录 / 鸿蒙应用沙盒 filesDir (持久化)
-         * - 与桌面端 `~/.legado/book_cache` 行为等价 (持久化 + 用户可访问)
-         * - 路径分隔符恒为 "/" (POSIX 文件系统)
+         * 默认章节缓存根路径, 取 [DataStorageProviders] 的 `chapterCacheDir`
+         * (= `{AppFilesDirs.filesDir}/book_cache`), 保证与其他存储路径单一事实源。
          */
         fun defaultRootPath(): String {
-            val filesDir = AppFilesDirs.get().filesDir
-            return if (filesDir.endsWith("/")) "${filesDir}book_cache" else "$filesDir/book_cache"
+            return DataStorageProviders.get().chapterCacheDir
         }
     }
 }

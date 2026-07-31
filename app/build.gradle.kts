@@ -265,12 +265,7 @@ dependencies {
     implementation(libs.play.services.cronet)
     implementation(libs.cronet.api)
     implementation(libs.cronet.embedded)
-    implementation(libs.protobuf.javalite)
 
-    implementation(libs.glide.glide)
-    implementation(libs.glide.okhttp)
-    ksp(libs.glide.ksp)
-    implementation(libs.glide.recyclerview)
     implementation(libs.coil3.compose)
     implementation(libs.coil3.gif)
     implementation(libs.coil3.network.okhttp)
@@ -279,11 +274,6 @@ dependencies {
     implementation(libs.nanohttpd.nanohttpd)
     implementation(libs.nanohttpd.websocket)
     implementation(libs.libarchive)
-
-    implementation(libs.markwon.core)
-    implementation(libs.markwon.image.glide)
-    implementation(libs.markwon.ext.tables)
-    implementation(libs.markwon.html)
 
     implementation(libs.quick.chinese.transfer.core)
     implementation(libs.hutool.crypto)

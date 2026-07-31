@@ -17,14 +17,16 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.CacheBookShared
 import io.legado.app.model.ReadBookShared
 import io.legado.app.model.webBook.WebBook
-import io.legado.app.utils.systemCurrentTimeMillis
+import io.legado.app.ui.book.read.ReadBookViewModelShared.LayoutConfig.Companion.DEFAULT
 import io.legado.app.ui.book.read.page.PageDelegateShared
 import io.legado.app.ui.book.read.page.entities.TextChapterShared
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.provider.ChapterContentParserShared
 import io.legado.app.ui.book.read.page.provider.SimpleChapterLayout
 import io.legado.app.ui.book.read.page.provider.SimpleTextMeasurer
+import io.legado.app.ui.book.read.page.provider.TextMeasurerProviders
 import io.legado.app.ui.book.searchContent.SearchResult
+import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
@@ -68,14 +70,18 @@ import kotlin.math.min
  *
  * @param readBook 跨平台阅读状态承载类（已下沉 commonMain）
  * @param scope 协程作用域，actual 平台注入（Android=viewModelScope / 桌面=应用主作用域）
- * @param layoutConfig 排版几何 / 字号配置，actual 平台按窗口尺寸 / ReadBookConfig 注入；
- *   默认 [LayoutConfig.DEFAULT] 为桌面 720x1080 等价近似值，确保无注入时也能跑通
+ * @param layoutConfig 排版几何 / 字号配置初值；UI 层取到真实窗口尺寸 / ReadBookConfig 后
+ *   调 [updateLayoutConfig] 覆盖，默认 [LayoutConfig.DEFAULT] 仅作无注入时的兜底
  */
 class ReadBookViewModelShared(
     private val readBook: ReadBookShared,
     private val scope: CoroutineScope,
-    private val layoutConfig: LayoutConfig = LayoutConfig.DEFAULT,
+    layoutConfig: LayoutConfig = LayoutConfig.DEFAULT,
 ) {
+    /** 排版配置：窗口尺寸 / 阅读配置变化时由 UI 层调 [updateLayoutConfig] 推新值。 */
+    private val _layoutConfig = MutableStateFlow(layoutConfig)
+    val layoutConfig: StateFlow<LayoutConfig> = _layoutConfig.asStateFlow()
+
     // region 页面状态流：外部只读 StateFlow，适配 Compose 重组
     private val _curTextPage = MutableStateFlow<TextPage?>(null)
     val curTextPage: StateFlow<TextPage?> = _curTextPage.asStateFlow()
@@ -172,6 +178,35 @@ class ReadBookViewModelShared(
     val durChapterPos: StateFlow<Int> get() = readBook.durChapterPos
 
     // endregion
+
+    /**
+     * 推入新排版配置并按新参数重排（对照原版 `ChapterProvider.upStyle` / `upViewSize` 后
+     * 发 LOAD_CONTENT → `ReadBook.loadContent(resetPageOffset = false)`）。
+     * 视口无效或配置未变时不重排。
+     */
+    fun updateLayoutConfig(config: LayoutConfig) {
+        if (config.visibleWidth <= 0 || config.visibleHeight <= 0) return
+        if (_layoutConfig.value == config) return
+        _layoutConfig.value = config
+        relayoutCurrentChapter()
+    }
+
+    /**
+     * 三章滑窗按当前排版参数重排：durChapterPos 不动，排版完成后
+     * [applyCurChapterPages] 按字符位置回到原页（对照原版 resetPageOffset=false 的保进度语义）。
+     */
+    fun relayoutCurrentChapter() {
+        if (readBook.book.value == null) return
+        val index = readBook.durChapterIndex.value
+        readBook.clearTextChapter()
+        for (i in intArrayOf(index, index + 1, index - 1)) {
+            launchChapterLoad(i) {
+                // 上一轮任务被 cancel 后其 finally 可能迟到，先清守卫免得本次装载被挡
+                removeLoading(i)
+                loadContent(i)
+            }
+        }
+    }
 
     /**
      * 刷新当前章节: 删除缓存 → 清滑窗 → 重新装载 (对照 app 端 refreshContentDur)。
@@ -730,15 +765,17 @@ class ReadBookViewModelShared(
      * 用 [layoutConfig] 构造 [SimpleChapterLayout] 实例。
      *
      * 每次调用新建（排版参数可能动态变化，如窗口尺寸变化后）。
-     * 测量器用 [SimpleTextMeasurer] 等宽近似实现，后续 actual 平台可替换为更精确实现。
+     * 度量器优先取 [TextMeasurerProviders] 注册的平台真实字形实现（desktop = SkiaTextMeasurer），
+     * 未注册（iOS / 鸿蒙）才回退 [SimpleTextMeasurer] 等宽近似。
      */
     private fun buildLayout(): SimpleChapterLayout {
-        val cfg = layoutConfig
-        val measurer = SimpleTextMeasurer(
-            textSizePx = cfg.textSizePx,
-            letterSpacingPx = cfg.letterSpacingPx,
-            descent = cfg.textSizePx * 0.2f,
-        )
+        val cfg = _layoutConfig.value
+        val measurer = TextMeasurerProviders.createOrNull(cfg.textSizePx, cfg.letterSpacingPx)
+            ?: SimpleTextMeasurer(
+                textSizePx = cfg.textSizePx,
+                letterSpacingPx = cfg.letterSpacingPx,
+                descent = cfg.textSizePx * 0.2f,
+            )
         return SimpleChapterLayout(
             measurer = measurer,
             visibleWidth = cfg.visibleWidth,
@@ -746,7 +783,7 @@ class ReadBookViewModelShared(
             paddingLeft = cfg.paddingLeft,
             paddingTop = cfg.paddingTop,
             textHeight = cfg.textSizePx * cfg.lineSpacingExtra,
-            descent = cfg.textSizePx * 0.2f,
+            descent = measurer.descent,
             lineSpacingExtra = cfg.lineSpacingExtra,
             paragraphSpacing = cfg.paragraphSpacing,
             titleTopSpacing = cfg.titleTopSpacing,
@@ -754,6 +791,8 @@ class ReadBookViewModelShared(
             paragraphIndent = cfg.paragraphIndent,
             textFullJustify = cfg.textFullJustify,
             useZhLayout = cfg.useZhLayout,
+            viewWidth = cfg.viewWidth,
+            textBottomJustify = cfg.textBottomJustify,
             reviewChar = "▨",
             srcReplaceChar = ChapterContentParserShared.srcReplaceChar,
         )
@@ -970,20 +1009,23 @@ class ReadBookViewModelShared(
     /**
      * 排版几何 / 字号配置。
      *
-     * actual 平台按窗口尺寸 / ReadBookConfig 注入；默认 [DEFAULT] 为桌面 720x1080
-     * 等价近似值，确保无注入时也能跑通排版链路。
+     * UI 层按窗口视口 + ReadBookConfig 构造后调 [updateLayoutConfig] 推入；默认 [DEFAULT]
+     * 为桌面 720x1080 等价近似值，仅作无注入时的兜底。
      *
      * @param viewWidth 视图总宽（含 padding，px）
      * @param viewHeight 视图总高（含 padding，px）
-     * @param paddingLeft/Top/Right/Bottom 内边距（px）
+     * @param paddingLeft/Top/Right/Bottom 内边距（px，对应 `ReadBookConfig.paddingXxx` dp 折算）
      * @param textSizePx 文字大小（px，对应 app 端 `ChapterProvider.contentPaint.textSize`）
-     * @param letterSpacingPx 字间距（px，默认 0）
-     * @param lineSpacingExtra 行高乘数（如 1.2，对应 app 端 `ChapterProvider.lineSpacingExtra`）
+     * @param titleSizePx 标题字号（px，= `(textSize + titleSize)` sp 折算；
+     *   [SimpleChapterLayout] 目前单 measurer，标题仍按正文度量，本字段供后续分离标题度量用）
+     * @param letterSpacingPx 字间距（px，= `ReadBookConfig.letterSpacing * textSizePx`）
+     * @param lineSpacingExtra 行高乘数（= `ReadBookConfig.lineSpacingExtra / 10`）
      * @param paragraphSpacing 段间距（对应 app 端 `ChapterProvider.paragraphSpacing`）
      * @param titleTopSpacing 标题顶部留白（px）
      * @param titleBottomSpacing 标题底部留白（px）
      * @param paragraphIndent 段落缩进字符串（默认全角空格 `　　`）
      * @param textFullJustify 是否两端对齐
+     * @param textBottomJustify 是否底部对齐
      * @param useZhLayout 是否启用 ZhLineBreaker 中文避头尾断行
      */
     data class LayoutConfig(
@@ -994,6 +1036,7 @@ class ReadBookViewModelShared(
         val paddingRight: Int = 32,
         val paddingBottom: Int = 24,
         val textSizePx: Float = 40f,
+        val titleSizePx: Float = 40f,
         val letterSpacingPx: Float = 0f,
         val lineSpacingExtra: Float = 1.2f,
         val paragraphSpacing: Int = 2,
@@ -1001,6 +1044,7 @@ class ReadBookViewModelShared(
         val titleBottomSpacing: Int = 24,
         val paragraphIndent: String = "　　",
         val textFullJustify: Boolean = true,
+        val textBottomJustify: Boolean = false,
         val useZhLayout: Boolean = true,
     ) {
         /** 可视区宽度（px，扣除左右内边距） */

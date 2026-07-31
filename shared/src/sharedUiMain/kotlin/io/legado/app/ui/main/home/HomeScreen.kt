@@ -76,7 +76,7 @@ import org.jetbrains.compose.resources.stringResource
  * L3 不可下沉项 (保留 app 端, 通过 slot 注入):
  *   - SectionBlock (HomeSectionComposables.kt): 内含 ShelfCover (Glide 封面) +
  *     ItemExploreVideoBinding (视频卡), 全 L3; 参数 chip 行已下沉为
- *     [HomeSectionOptionsRow] (纯 Compose)
+ *     [io.legado.app.ui.compose.component.ExploreOptionsRow] (纯 Compose)
  *     → sectionBlockSlot: @Composable (tabTitle: String, section: HomeSection) -> Unit
  *   - InfiniteHeader (HomeSectionComposables.kt): 同 SectionBlock 标题行+参数 chip 行
  *     → infiniteHeaderSlot: @Composable (tabTitle: String, section: HomeSection) -> Unit

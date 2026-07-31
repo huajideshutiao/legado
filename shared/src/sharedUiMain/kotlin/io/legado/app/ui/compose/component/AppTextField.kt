@@ -193,8 +193,9 @@ fun AppTextField(
 /**
  * MD2 filled 系 TextFieldDefaults.textFieldColors + backgroundColor=Transparent = 下划线形态取色。
  * 下划线 = indicator 系参数 (非 outlined 的 border 系); 单一 cursorColor + errorCursorColor。
+ * internal: 供 component/code 的 CodeTextField 复用同一套取色。
  */
-private val AppFieldColors: TextFieldColors
+internal val AppFieldColors: TextFieldColors
     @Composable get() = AppTheme.colors.let { colors ->
         TextFieldDefaults.textFieldColors(
             textColor = colors.primaryText,
@@ -218,7 +219,7 @@ private val AppFieldColors: TextFieldColors
 /** 两个重载共享的装饰盒: label 浮动/占位符/图标排版走 M2 默认, 仅水平 contentPadding 收窄至 4dp */
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
-private fun AppDecorationBox(
+internal fun AppDecorationBox(
     text: String,
     innerTextField: @Composable () -> Unit,
     enabled: Boolean,
@@ -255,7 +256,7 @@ private fun AppDecorationBox(
 
 /** 两个重载共享的容器: 下划线输入框 + 线下错误文案 */
 @Composable
-private fun AppTextFieldImpl(
+internal fun AppTextFieldImpl(
     modifier: Modifier,
     isError: Boolean,
     errorMessage: String?,

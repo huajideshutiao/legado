@@ -1,6 +1,9 @@
 package io.legado.app.help
 
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.DirectLinkUpload.getConfig
+import io.legado.app.help.DirectLinkUpload.putConfig
+import io.legado.app.help.DirectLinkUpload.upLoad
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.utils.ACache
@@ -115,6 +118,11 @@ object DirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUploadDefault
 
     override fun putConfig(rule: DirectLinkUploadRule) {
         ACache.get(cacheDir = false).put(ruleFileName, GSON.toJson(rule))
+    }
+
+    /** 恢复备份时原样写回 JSON, 与原 Restore 的 ACache.put(ruleFileName, json) 一致。 */
+    override fun putConfigJson(json: String) {
+        ACache.get(cacheDir = false).put(ruleFileName, json)
     }
 
     override fun getDefaultRules(): List<DirectLinkUploadRule> = defaultRulesCache

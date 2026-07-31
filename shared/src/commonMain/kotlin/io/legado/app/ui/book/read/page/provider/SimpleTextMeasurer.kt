@@ -5,17 +5,13 @@ package io.legado.app.ui.book.read.page.provider
  *
  * # 设计目的
  *
- * 桌面 / iOS / 鸿蒙端 [io.legado.app.ui.book.read.ReadBookViewModelShared] 在调用
- * [SimpleChapterLayout] 排版时需要 [TextMeasurer] 提供逐字宽度。app 端用
- * `AndroidTextMeasurer`（基于 `TextPaint.getTextWidthsCompat`）实现，
- * 桌面 JVM 端虽然有 `DesktopTextMeasurer`（基于 Compose `TextMeasurer`），
- * 但它只能在 Composable 上下文里构造（需要 `rememberTextMeasurer()` / `LocalDensity`），
- * 而 `ReadBookViewModelShared.loadChapter` 跑在协程里、脱离 Composable 重组。
+ * **fallback 专用**：仅在 [TextMeasurerProviders] 未注册平台真实字形度量时兜底。
+ * Android 走 `AndroidTextMeasurer`（TextPaint），desktop 走 `SkiaTextMeasurer`（Skia Font），
+ * 都是真实字形；本类是等宽近似，精度低于两者（西文 / 标点宽度估算偏差）。
  *
- * 因此本类提供 **等宽近似** 实现，仅依赖 [textSizePx] / [letterSpacingPx] 两个标量，
- * 任何平台都能 new 出来直接用，让"读章节 → 排版 → 显示"链路在无 Compose 上下文时
- * 也能跑通。代价是排版精度低于 `AndroidTextMeasurer`（西文 / 标点宽度估算偏差），
- * 后续若需精确可由 actual 平台注入更精确的 [TextMeasurer]。
+ * TODO(iOS / 鸿蒙)：两端尚未注册真实度量，仍走本类。
+ * iOS 可用 CoreText（CTFont advances）或 skiko 的 `SkiaTextMeasurer` 同款实现，
+ * 鸿蒙需 napi 桥接 ArkUI 文本度量；本机无法编译验证，留待各端接入时替换。
  *
  * # 等宽口径
  *

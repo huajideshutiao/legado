@@ -3,12 +3,13 @@ package io.legado.desktop.model.fileBook
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
 import io.legado.app.constant.PreferKey
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
-import io.legado.app.data.AppDbProviders
 import io.legado.app.exception.EmptyFileException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.archiveName
 import io.legado.app.help.book.getRemoteUrl
@@ -42,6 +43,7 @@ import io.legado.app.utils.UrlUtil
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
 import java.io.File
+import java.io.FileNotFoundException
 import java.nio.file.Paths
 import java.util.Locale
 import java.util.zip.ZipFile
@@ -70,6 +72,10 @@ class DesktopFileBookAccessor : FileBookAccessor {
     /** 封面缓存目录: `{desktopAppRootDir}/covers` (对齐 app 端 `externalFiles/covers`)。 */
     private val coversDir: String = Paths.get(desktopAppRootDir(), "covers").toString()
 
+    /** 书籍保存目录: `{desktopAppRootDir}/books` (对齐 app 端 `AppConfig.defaultBookTreeUri`)。 */
+    private val booksDir: File
+        get() = Paths.get(desktopAppRootDir(), "books").toFile().apply { mkdirs() }
+
     override fun getCoverPath(bookUrl: String): String {
         // 与 app 端 FileBookAccessorImpl.getCoverPath 一致: md516(bookUrl).jpg
         return Paths.get(coversDir, "${MD5Utils.md5Encode16(bookUrl)}.jpg").toString()
@@ -87,10 +93,51 @@ class DesktopFileBookAccessor : FileBookAccessor {
     }
 
     override fun getBookInputStream(book: Book): InputStream {
-        // desktop 端 bookUrl 为 file:// 或绝对路径, 解析为 File 后打开 FileInputStream
-        // InputStream 是 java.io.InputStream 的 typealias (jvmAndAndroidMain), 无需包装
-        val file = resolveLocalFile(book.bookUrl)
-        return file.inputStream()
+        // 对齐 app 端 FileBookAccessorImpl.getBookInputStream: 文件失效时回退
+        // "重新解压压缩包" → "下载远程文件", 全失败才抛 FileNotFoundException
+        val inputStream = openLocalFile(book) ?: run {
+            LocalBookLocators.get().removeLocalPathCache(book)
+            val archiveFile = findArchiveFile(book)
+            val webDavUrl = book.getRemoteUrl()
+            if (archiveFile != null) {
+                importFromArchive(archiveFile.toURI().toString(), book.originName) {
+                    it.contains(book.originName)
+                }.firstOrNull()?.let { getBookInputStream(it) }
+            } else if (webDavUrl != null && downloadRemoteBook(book)) {
+                getBookInputStream(book)
+            } else {
+                null
+            }
+        }
+        if (inputStream != null) return inputStream
+        LocalBookLocators.get().removeLocalPathCache(book)
+        throw FileNotFoundException("${book.bookUrl} 文件不存在")
+    }
+
+    /**
+     * 打开 bookUrl 指向的本地文件, 不存在时在 books 目录按 originName 兜底查找。
+     *
+     * 兜底对齐 app 端 `Book.getLocalUri()` 的"书籍保存目录搜索"(设备间路径不一致时用),
+     * 命中后写入 [LocalBookLocators] 路径缓存, 不改 bookUrl (bookUrl 是 Book 主键)。
+     */
+    private fun openLocalFile(book: Book): InputStream? {
+        val locator = LocalBookLocators.get()
+        val path = runCatching { locator.getLocalPath(book) }.getOrNull()
+        val file = if (path != null) File(path) else resolveLocalFile(book.bookUrl)
+        if (file.isFile) return file.inputStream()
+        val fallback = File(booksDir, book.originName)
+        if (fallback.isFile) {
+            locator.cacheLocalPath(book, fallback.absolutePath)
+            return fallback.inputStream()
+        }
+        return null
+    }
+
+    /** 压缩包子书: 在 books 目录按 archiveName 找回原压缩包 (对齐 app 端 `Book.getArchiveUri`)。 */
+    private fun findArchiveFile(book: Book): File? {
+        if (!book.isArchive) return null
+        val name = runCatching { book.archiveName }.getOrNull() ?: return null
+        return File(booksDir, name).takeIf { it.isFile }
     }
 
     override fun getLastModified(book: Book): Result<Long> {
@@ -270,13 +317,16 @@ class DesktopFileBookAccessor : FileBookAccessor {
 
     override fun saveBookFile(inputStream: InputStream, fileName: String): String {
         // desktop 无 SAF, 用 {desktopAppRootDir}/books + java.io.File (app 端走 defaultBookTreeUri + DocumentFile)
-        val booksDir = Paths.get(desktopAppRootDir(), "books").toFile().apply { mkdirs() }
         val file = File(booksDir, fileName)
         inputStream.use { input ->
             file.outputStream().use { output -> input.copyTo(output) }
         }
         return file.toURI().toString()
     }
+
+    /** web 上传临时文件落盘 (对齐 app 端: 委托 inputStream 重载)。 */
+    override fun saveBookFileFromPath(filePath: String, fileName: String): String =
+        saveBookFile(File(filePath).inputStream(), fileName)
 
     override fun downloadRemoteBook(book: Book): Boolean {
         // app 端走 SAF + FileDoc; desktop 走 saveBookFile(str) + importFromArchive + bookDao.update

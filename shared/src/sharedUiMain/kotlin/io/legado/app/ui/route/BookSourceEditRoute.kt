@@ -2,7 +2,9 @@ package io.legado.app.ui.route
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -25,8 +27,7 @@ import io.legado.app.ui.book.source.edit.BookSourceEditUiEvent
 import io.legado.app.ui.book.source.edit.BookSourceEditViewModelShared
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
-import io.legado.app.ui.compose.component.AppOutlinedTextField
-import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -34,11 +35,10 @@ import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.widget.dialog.HelpDialog
+import io.legado.app.ui.widget.text.EditEntity
+import io.legado.app.utils.CodeFormatter
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.enable_dangerous_api
@@ -55,13 +55,14 @@ import org.jetbrains.compose.resources.stringResource
  * AppRoute.BookSourceEdit 路由下沉入口: 桥接 [BookSourceEditScreenModel] 状态与 [BookSourceEditScreen] 渲染。
  *
  * sourceUrl 取自路由, dispatch Init 触发书源加载; 保存/调试/搜索通过导航器跳转。
- * 实体列表由 [BookSourceEditScreenModel.editEntities] 提供; codeEditorSlot 用跨平台
- * [AppOutlinedTextField] 默认实现 (app 端通过自身 Activity 注入 CodeView); bottomBar 桌面端省略。
+ * 实体列表由 [BookSourceEditScreenModel.editEntities] 提供; 代码字段与键盘辅助条由 Screen
+ * 内部的共享 CodeTextField / KeyboardToolbar 直接渲染, 无平台注入。
  *
  * 对照 app 端 `BookSourceEditActivity`: 所有菜单动作 (save/debug/login/search/clearCookie/
  * copySource/pasteSource/autoIndent/setSourceVariable/shareSourceStr/help) 与 header 状态变更
- * 均通过 [BookSourceEditCallbacks] 接入; 平台专属行为 (登录弹窗/源变量弹窗/CodeView 缩进/剪贴板/
- * 分享) 通过 [PlatformCapabilityProviders] 委托; 危险 API 确认对话框用 shared [AppAlertDialog]。
+ * 均通过 [BookSourceEditCallbacks] 接入; 自动缩进走已下沉的 [CodeFormatter]; 平台专属行为
+ * (登录弹窗/源变量弹窗/剪贴板/分享) 通过 [PlatformCapabilityProviders] 委托;
+ * 危险 API 确认对话框用 shared [AppAlertDialog]。
  */
 @Composable
 fun BookSourceEditRoute(
@@ -86,9 +87,9 @@ fun BookSourceEditRoute(
     // Compose 剪贴板管理器 (KMP 可用, 替代 app 端 getClipText; 对照 ReplaceEditRoute)
     val clipboardManager = LocalClipboardManager.current
     val screenModel = screenModelStore.getOrCreateTyped(entry) {
-        BookSourceEditScreenModel(
+        BookSourceEditScreenModel { scope ->
             BookSourceEditViewModelShared(
-                scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+                scope = scope,
                 // 剪贴板: Compose LocalClipboardManager (替代 app 端 getClipText)
                 clipTextProvider = { clipboardManager.getText()?.text },
                 // SourceConfig 已下沉 commonMain, 直接调用 (替代 app 端 SourceConfig.removeSource)
@@ -97,10 +98,16 @@ fun BookSourceEditRoute(
                 cookieRemover = { url -> CookieStoreProviders.get()?.removeCookie(url) },
                 nonNullNameUrlMessage = { nonNullNameUrlMessage },
             )
-        )
+        }
     }
 
     val editState = remember { BookSourceEditState() }
+
+    // 字段文本快照: EditEntity.value 不是 Compose State, 自动缩进这类外部改写要靠它触发重组
+    val fieldTexts = remember(editState.sourceVersion) { mutableStateMapOf<String, String>() }
+    // 最后获得焦点的字段 (对照 app 端 lastActiveCodeView), 自动缩进作用于它
+    val activeField =
+        remember(editState.sourceVersion) { mutableStateOf<Pair<String, EditEntity>?>(null) }
 
     // 对话框状态 (对照 app 端 Activity 内 showHelp / alert 调用)
     var helpFileName by remember { mutableStateOf<String?>(null) }
@@ -110,7 +117,8 @@ fun BookSourceEditRoute(
 
     // 初始化: 加载书源后填充 header 表单 (对照 app 端 upSourceView header 部分)
     LaunchedEffect(sourceUrl) {
-        screenModel.dispatch(BookSourceEditUiEvent.Init(sourceUrl, null) {
+        // 空 url = 新建 (对照 app 端 intent 无 sourceUrl extra 时 getStringExtra 返回 null)
+        screenModel.dispatch(BookSourceEditUiEvent.Init(sourceUrl.ifBlank { null }) {
             screenModel.bookSource?.let { bs ->
                 applySourceToEditState(bs, editState)
             }
@@ -130,18 +138,28 @@ fun BookSourceEditRoute(
         if (!isLastHelp) helpFileName = "ruleHelp"
     }
 
-    val callbacks = remember(navigator, screenModel) {
+    // 退出请求 (对照 app 端 finish() 覆写): source 变更未保存时弹确认, 未变更直接退出。
+    // 标题栏箭头 / 系统返回键 / 桌面 ESC 三条退出路径共用, 与原版 finish() 覆盖范围一致。
+    val requestExit: () -> Unit = remember(navigator, screenModel) {
+        {
+            val source = screenModel.getSource(editState)
+            val original = screenModel.bookSource ?: BookSource()
+            if (!source.equal(original)) {
+                showExitConfirm = true
+            } else {
+                navigator.pop()
+            }
+        }
+    }
+
+    // 确认框已弹出时不再重复拦截; 非栈顶时也不拦截 (栈内页面全程留在 Composition)
+    val backStack by navigator.backStack.collectAsState()
+    val isTopEntry = backStack.lastOrNull()?.id == entry.id
+    AppBackHandler(enabled = isTopEntry && !showExitConfirm, onBack = requestExit)
+
+    val callbacks = remember(navigator, screenModel, fieldTexts, activeField) {
         BookSourceEditCallbacks(
-            onBack = {
-                // 对照 app 端 finish(): source 变更未保存时弹退出确认, 未变更直接退出
-                val source = screenModel.getSource(editState)
-                val original = screenModel.bookSource ?: BookSource()
-                if (!source.equal(original)) {
-                    showExitConfirm = true
-                } else {
-                    navigator.pop()
-                }
-            },
+            onBack = requestExit,
             onSave = {
                 // 对照 app 端 saveSource: setResult(RESULT_OK, origin) + finish()
                 val source = screenModel.getSource(editState)
@@ -189,8 +207,15 @@ fun BookSourceEditRoute(
                 })
             },
             onAutoIndent = {
-                // 对照 app 端 autoIndent: getActiveCodeView()?.reFormat()
-                PlatformCapabilityProviders.getOrNull()?.autoIndentCode()
+                // 对照 app 端 autoIndent: getActiveCodeView()?.reFormat(), 作用于最后获得焦点的字段
+                activeField.value?.let { (fieldId, entity) ->
+                    val old = fieldTexts[fieldId] ?: entity.value.orEmpty()
+                    val formatted = CodeFormatter.reFormat(old)
+                    if (formatted != old) {
+                        fieldTexts[fieldId] = formatted
+                        entity.value = formatted
+                    }
+                }
             },
             onSetSourceVariable = {
                 // 对照 app 端 setSourceVariable: viewModel.save(getSource()) { source.showSourceVariableDialog(this) }
@@ -238,18 +263,9 @@ fun BookSourceEditRoute(
         state = editState,
         callbacks = callbacks,
         editEntities = { tab -> screenModel.editEntities(tab) },
-        codeEditorSlot = { entity, modifier ->
-            // 跨平台默认实现: app 端通过自身 Activity 注入 CodeView, 桌面端用 OutlinedTextField
-            AppOutlinedTextField(
-                value = entity.value.orEmpty(),
-                onValueChange = { entity.value = it },
-                modifier = modifier,
-                label = rememberString(entity.hint),
-            )
-        },
-        bottomBar = {
-            // 桌面端无 KeyboardToolbar, 省略; app 端通过自身 Activity 注入
-        },
+        onFieldFocus = { fieldId, entity -> activeField.value = fieldId to entity },
+        onFieldTextChange = { fieldId, text -> fieldTexts[fieldId] = text },
+        fieldTextOverride = { fieldId -> fieldTexts[fieldId] },
     )
 
     // 帮助对话框 (对照 app 端 showHelp(fileName))

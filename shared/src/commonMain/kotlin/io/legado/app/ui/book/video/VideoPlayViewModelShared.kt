@@ -4,8 +4,8 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.data.entities.VideoSource
 import io.legado.app.help.AppWebDavShared
@@ -83,6 +83,9 @@ class VideoPlayViewModelShared(
 
     /** 章节列表 (内存缓存, 首次加载章节内容时拉取, 后续章节切换直接查) */
     private var chapterList: List<BookChapter>? = null
+
+    /** 章节列表只读视图 (供选集网格渲染, 随 [chapterSize] 变更一并刷新) */
+    val chapters: List<BookChapter> get() = chapterList.orEmpty()
 
     // ---- 章节状态 (UI 订阅) ----
 

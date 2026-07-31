@@ -1,62 +1,55 @@
 package io.legado.app.ui.book.read.page.delegate
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Matrix
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
-import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.cos
 import kotlin.math.hypot
+import kotlin.math.min
+import kotlin.math.sin
 
 /**
  * 仿真翻页 delegate（sharedUiMain，Compose Multiplatform 版）。
  *
  * 与 app 端 `io.legado.app.ui.book.read.page.delegate.SimulationPageDelegate` 对应，
- * 用 Compose 跨平台 API 替代 Android `Path` + `Matrix` + `ColorMatrixColorFilter` +
- * `GradientDrawable` + `Canvas.clipPath/clipOutPath` + `CanvasRecorder.screenshot`。
+ * 绘制流程逐项对齐原版 `onDraw`：
  *
- * # 与 app 端原版的架构适配
+ * | app 端（Android Canvas）                        | KMP 版（Compose / Skia）                              |
+ * | ---                                            | ---                                                   |
+ * | `CanvasRecorder.screenshot` 三页截 Bitmap        | [rememberGraphicsLayer] + `record` 录一次当前页        |
+ * | `drawCurrentPageArea`（clipOutPath(mPath0)）    | `clipPath(mPath0, ClipOp.Difference)` + `drawLayer`   |
+ * | `drawNextPageAreaAndShadow`（clip 0∩1 + 阴影）   | 嵌套 `clipPath` + `drawContent` + 背面阴影 Brush        |
+ * | `drawCurrentBackArea`（镜像矩阵 + 折痕阴影）      | `withTransform { transform(matrix) }` + `drawLayer`   |
+ * | `drawCurrentPageShadow`（翻起页前面两道阴影）      | [drawShadow] 内两次 clip + rotate + Brush              |
+ * | `GradientDrawable` + `setBounds`               | `Brush.horizontalGradient/verticalGradient` + drawRect |
  *
- * app 端 `SimulationPageDelegate` 核心绘制流程：
- * 1. `CanvasRecorder.screenshot(prevPage/curPage/nextPage)` 截图成 Bitmap
- * 2. `calcPoints()` 计算贝塞尔曲线控制点（纯数学，跨平台兼容）
- * 3. `Canvas.clipPath(mPath0)` + `canvas.drawBitmap(curBitmap)` 绘制当前页（剪裁掉翻起部分）
- * 4. `Canvas.clipPath(mPath1)` + `canvas.drawBitmap(nextBitmap)` + `canvas.rotate(mDegrees)` 绘制翻起页 + 阴影
- * 5. `mMatrix` 矩阵变换 + `mColorMatrixFilter` 颜色过滤绘制翻起页背面
- * 6. `GradientDrawable` 绘制 4 种阴影（前/后/左/右）
+ * 背面颜色：原版 `mColorMatrixFilter` 在 origin/quickjs 是**单位矩阵**（不变暗），
+ * 背面的暗部完全由折痕阴影渐变（0x00333333 → 0xB0333333）提供，此处照搬，不额外加 alpha。
  *
- * KMP 版核心差异（**Compose 无 CanvasRecorder 等价物，无法对 Composable 截图**）：
- * - 截图 → 直接渲染 Composable，用 `Modifier.graphicsLayer` 实现 3D 变换
- * - `canvas.drawBitmap(bitmap, matrix, paint)` → `Modifier.graphicsLayer { rotationY = mDegrees }` 实现 3D 翻转
- * - `ColorMatrixColorFilter` 背面变暗 → `Modifier.graphicsLayer { alpha = 0.85f }` 近似（简化）
- * - `GradientDrawable` 阴影 → `Brush.horizontalGradient/verticalGradient` + `drawRect` + `drawPath`
- *
- * # 保留的核心视觉特征
- *
- * - 贝塞尔曲线计算（[calcPoints] / [calcCornerXY] / [getCross]）：完整移植 app 端纯数学逻辑
- * - 翻起页 3D 翻转：用 `graphicsLayer { rotationY = mDegrees }` 实现（与 app 端 `canvas.rotate(mDegrees)` 对应）
- * - 阴影渐变：用 `Brush` + `Path` 实现（与 app 端 `GradientDrawable` + `canvas.clipPath` 对应）
- *
- * # 简化项（标注 TODO，后续迭代补全）
- *
- * - 翻起页背面颜色过滤（`ColorMatrixColorFilter`）：KMP 版用 `graphicsLayer.alpha` 近似，不做精确颜色矩阵变换
- * - `mMatrix` 矩阵变换：KMP 版用 `rotationY` 替代，不保留 app 端的反射矩阵
- * - 贝塞尔剪裁（`canvas.clipPath(mPath0/mPath1)`）：KMP 版暂不实现 Composable 的 Path 剪裁，
- *   因为 Compose 的 `drawWithContent + clipPath` 在动画过程中时序复杂；后续可引入 `Modifier.clip(GenericShape)`
- *   或自定义 `DrawModifierNode` 实现等价效果
+ * 性能：4 条 [Path] 与镜像 [Matrix] 均为字段复用，每帧只 `reset` 不新建。
  *
  * @param viewModel 阅读 ViewModel
  * @param scope 协程作用域
@@ -81,11 +74,15 @@ class SimulationPageDelegateCompose(
     private var mCornerX = 1
     private var mCornerY = 1
 
-    // 贝塞尔曲线路径（与 app 端 mPath0/mPath1 对应，Compose Path API 等价）
-    // mPath0: 当前页未翻起部分的边界路径
-    // mPath1: 翻起页的边界路径
-    private val mPath0: Path = Path()
-    private val mPath1: Path = Path()
+    // 复用的路径对象（对应原版 mPath0/mPath1，原版 mPath1 被三处轮流 reset 复用，
+    // Compose 侧三块绘制在不同的 draw lambda 中，故拆成三条独立路径避免时序耦合）
+    private val mPath0: Path = Path()      // 当前页翻起区域边界（原版 clipOutPath 用）
+    private val mPathNext: Path = Path()   // 翻起后露出的下一页区域
+    private val mPathBack: Path = Path()   // 翻起页背面区域
+    private val mPathShadow: Path = Path() // 翻起页前面阴影区域（每帧两次 reset 复用）
+
+    // 镜像矩阵（对应原版 mMatrix + mMatrixArray）
+    private val mMirrorMatrix: Matrix = Matrix()
 
     // 贝塞尔曲线起始点（用 Offset 替代 app 端 PointF，跨平台兼容）
     private var mBezierStart1 = Offset.Zero
@@ -103,6 +100,9 @@ class SimulationPageDelegateCompose(
     private var mMiddleY = 0f
     private var mDegrees = 0f
     private var mTouchToCornerDis = 0f
+
+    // 交点求解可能除零，产出 NaN/Inf 时跳过曲面绘制，退化为整页直出
+    private var pointsValid = false
 
     // 是否属于右上左下
     private var mIsRtOrLb = false
@@ -204,19 +204,26 @@ class SimulationPageDelegateCompose(
             y = (2 * mBezierControl2.y + mBezierStart2.y + mBezierEnd2.y) / 4,
         )
 
-        // 同步构建 Path（与 app 端 drawCurrentPageArea/drawNextPageAreaAndShadow 内 mPath0/mPath1 构建对应）
-        buildPaths()
+        // 与 app 端 drawNextPageAreaAndShadow 内 mDegrees 计算对应（Math.toDegrees 手动换算）
+        mDegrees = (
+            atan2(
+                (mBezierControl1.x - mCornerX).toDouble(),
+                (mBezierControl2.y - mCornerY).toDouble(),
+            ) * 180.0 / PI
+            ).toFloat()
+
+        pointsValid = mBezierEnd1.isFinite() && mBezierEnd2.isFinite() &&
+            mBezierVertex1.isFinite() && mBezierVertex2.isFinite() &&
+            mBezierStart1.isFinite() && mBezierStart2.isFinite() &&
+            mBezierControl1.isFinite() && mBezierControl2.isFinite()
+        if (pointsValid) buildPaths()
     }
 
     /**
-     * 构建 [mPath0] / [mPath1] 贝塞尔曲线路径。
-     *
-     * 与 app 端 `drawCurrentPageArea` 内 mPath0 构建 + `drawNextPageAreaAndShadow` 内 mPath1 构建 对应。
-     * - mPath0: 当前页未翻起部分的边界（贝塞尔曲线 + 触摸点 + 角点）
-     * - mPath1: 翻起页的边界（贝塞尔曲线 + 触摸点 + 角点）
+     * 构建三条区域路径，与 app 端各绘制函数内的 mPath0/mPath1 构建逐行对应。
      */
     private fun buildPaths() {
-        // mPath0: 当前页未翻起部分（与 app 端 drawCurrentPageArea 内 mPath0.reset + moveTo/quadTo/lineTo 对应）
+        // 原版 drawCurrentPageArea：翻起区域边界（当前页用 clipOutPath 挖掉这块）
         mPath0.reset()
         mPath0.moveTo(mBezierStart1.x, mBezierStart1.y)
         mPath0.quadraticTo(
@@ -232,14 +239,54 @@ class SimulationPageDelegateCompose(
         mPath0.lineTo(mCornerX.toFloat(), mCornerY.toFloat())
         mPath0.close()
 
-        // mPath1: 翻起页（与 app 端 drawNextPageAreaAndShadow 内 mPath1.reset + moveTo/lineTo 对应）
-        mPath1.reset()
-        mPath1.moveTo(mBezierStart1.x, mBezierStart1.y)
-        mPath1.lineTo(mBezierVertex1.x, mBezierVertex1.y)
-        mPath1.lineTo(mBezierVertex2.x, mBezierVertex2.y)
-        mPath1.lineTo(mBezierStart2.x, mBezierStart2.y)
-        mPath1.lineTo(mCornerX.toFloat(), mCornerY.toFloat())
-        mPath1.close()
+        // 原版 drawNextPageAreaAndShadow：露出的下一页区域
+        mPathNext.reset()
+        mPathNext.moveTo(mBezierStart1.x, mBezierStart1.y)
+        mPathNext.lineTo(mBezierVertex1.x, mBezierVertex1.y)
+        mPathNext.lineTo(mBezierVertex2.x, mBezierVertex2.y)
+        mPathNext.lineTo(mBezierStart2.x, mBezierStart2.y)
+        mPathNext.lineTo(mCornerX.toFloat(), mCornerY.toFloat())
+        mPathNext.close()
+
+        // 原版 drawCurrentBackArea：翻起页背面区域
+        mPathBack.reset()
+        mPathBack.moveTo(mBezierVertex2.x, mBezierVertex2.y)
+        mPathBack.lineTo(mBezierVertex1.x, mBezierVertex1.y)
+        mPathBack.lineTo(mBezierEnd1.x, mBezierEnd1.y)
+        mPathBack.lineTo(mTouchX, mTouchY)
+        mPathBack.lineTo(mBezierEnd2.x, mBezierEnd2.y)
+        mPathBack.close()
+    }
+
+    /**
+     * 背面镜像矩阵：与 app 端 `drawCurrentBackArea` 内 mMatrixArray + preTranslate/postTranslate 等价。
+     *
+     * 原版是绕 mBezierControl1 的反射变换 `T(c1)·R·T(-c1)`，此处直接把平移量算进
+     * Compose 4x4 矩阵的 TranslateX/Y，省掉两次矩阵连乘。
+     */
+    private fun updateMirrorMatrix() {
+        val dis = hypot(
+            (mCornerX - mBezierControl1.x).toDouble(),
+            (mBezierControl2.y - mCornerY).toDouble(),
+        ).toFloat()
+        if (dis == 0f) {
+            mMirrorMatrix.reset()
+            return
+        }
+        val f8 = (mCornerX - mBezierControl1.x) / dis
+        val f9 = (mBezierControl2.y - mCornerY) / dis
+        val scaleX = 1 - 2 * f9 * f9
+        val skew = 2 * f8 * f9
+        val scaleY = 1 - 2 * f8 * f8
+        val cx = mBezierControl1.x
+        val cy = mBezierControl1.y
+        mMirrorMatrix.reset()
+        mMirrorMatrix.values[Matrix.ScaleX] = scaleX
+        mMirrorMatrix.values[Matrix.SkewX] = skew
+        mMirrorMatrix.values[Matrix.SkewY] = skew
+        mMirrorMatrix.values[Matrix.ScaleY] = scaleY
+        mMirrorMatrix.values[Matrix.TranslateX] = cx - (scaleX * cx + skew * cy)
+        mMirrorMatrix.values[Matrix.TranslateY] = cy - (skew * cx + scaleY * cy)
     }
 
     /**
@@ -269,6 +316,7 @@ class SimulationPageDelegateCompose(
 
     override fun onDown(x: Float, y: Float) {
         super.onDown(x, y)
+        startY = y
         // 与 app 端 SimulationPageDelegate.onTouch ACTION_DOWN 对应
         calcCornerXY(x, y)
     }
@@ -332,7 +380,7 @@ class SimulationPageDelegateCompose(
 
     // endregion
 
-    // region Compose 渲染（3D 翻转 + 阴影）
+    // region Compose 渲染（曲面剪裁 + 背面镜像 + 阴影）
 
     @Composable
     override fun renderPages(
@@ -349,109 +397,268 @@ class SimulationPageDelegateCompose(
             return
         }
 
-        // 计算贝塞尔曲线控制点（与 app 端 onDraw 内 calcPoints 调用对应）
+        // 与 app 端 onDraw 内 calcPoints 调用对应
         calcPoints()
-        // 计算 3D 翻转角度（与 app 端 drawNextPageAreaAndShadow 内 mDegrees 计算对应）
-        // app 端用 Math.toDegrees，KMP 版用 kotlin.math.PI 手动换算
-        mDegrees = (atan2(
-            (mBezierControl1.x - mCornerX).toDouble(),
-            (mBezierControl2.y - mCornerY).toDouble(),
-        ) * 180.0 / PI).toFloat()
+        updateMirrorMatrix()
+        if (!pointsValid) {
+            curContent()
+            return
+        }
 
-        when (direction) {
-            PageDirectionShared.NEXT -> {
-                // 底层：当前页（剪裁掉翻起部分）
-                // 与 app 端 drawCurrentPageArea + canvas.clipOutPath(mPath0) 对应
-                // KMP 版暂不实现贝塞尔剪裁（见类注释简化项），直接渲染 curContent
-                Box(modifier = Modifier.fillMaxSize()) {
-                    curContent()
+        // 与 app 端 onDraw 的两个分支一致：翻动的是「底页」，露出的是「另一页」
+        // NEXT: 底页=当前页、露出=下一页；PREV: 底页=上一页、露出=当前页
+        val baseContent = if (direction == PageDirectionShared.NEXT) curContent else prevContent
+        val revealContent = if (direction == PageDirectionShared.NEXT) nextContent else curContent
+        val bgColor = Color(LocalReadConfigProviders.current.readBookConfig.config.bgMeanColor)
+
+        // 替代原版 CanvasRecorder.screenshot：底页只渲染一次，正面 / 背面镜像共用这份 layer
+        val baseLayer = rememberGraphicsLayer()
+        // draw lambda 捕获 currentOffset：每帧值变化才会重建 lambda 触发重绘，
+        // 不能只依赖 delegate 字段（字段不是 Compose state，改了不失效）
+        val frame = currentOffset
+
+        // 1. 当前页未翻起部分（原版 drawCurrentPageArea：clipOutPath(mPath0) + drawBitmap）
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithContent {
+                    baseLayer.record { this@drawWithContent.drawContent() }
+                    if (frame == 0f) {
+                        drawLayer(baseLayer)
+                        return@drawWithContent
+                    }
+                    clipPath(mPath0, ClipOp.Difference) { drawLayer(baseLayer) }
+                },
+        ) {
+            baseContent()
+        }
+
+        // 2. 翻起后露出的下一页 + 背面阴影（原版 drawNextPageAreaAndShadow）
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawWithContent {
+                    if (frame == 0f) return@drawWithContent
+                    clipPath(mPath0) {
+                        clipPath(mPathNext) {
+                            this@drawWithContent.drawContent()
+                            drawBackShadow()
+                        }
+                    }
+                },
+        ) {
+            revealContent()
+        }
+
+        // 3. 翻起页背面：底色 + 镜像页面 + 折痕阴影（原版 drawCurrentBackArea）
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            if (frame == 0f) return@Canvas
+            clipPath(mPath0) {
+                clipPath(mPathBack) {
+                    drawRect(color = bgColor)
+                    withTransform({ transform(mMirrorMatrix) }) { drawLayer(baseLayer) }
+                    drawFolderShadow()
                 }
-                // 上层：翻起的下一页（3D 翻转 + alpha 近似背面变暗）
-                // 与 app 端 drawNextPageAreaAndShadow + canvas.drawBitmap(nextBitmap) +
-                //      canvas.rotate(mDegrees) + mColorMatrixFilter 对应
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            // 与 app 端 canvas.rotate(mDegrees, mBezierStart1.x, mBezierStart1.y) 对应
-                            rotationY = mDegrees
-                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(
-                                pivotFractionX = if (pageWidthPx > 0) {
-                                    (mBezierStart1.x / pageWidthPx).coerceIn(0f, 1f)
-                                } else 0.5f,
-                                pivotFractionY = if (viewHeight > 0) {
-                                    (mBezierStart1.y / viewHeight).coerceIn(0f, 1f)
-                                } else 0.5f,
-                            )
-                            // 简化：用 alpha 近似背面变暗（app 端用 ColorMatrixColorFilter）
-                            alpha = 0.85f
-                        },
-                ) {
-                    nextContent()
-                }
-            }
-            PageDirectionShared.PREV -> {
-                // 底层：上一页（当前显示的 prevPage）
-                Box(modifier = Modifier.fillMaxSize()) {
-                    prevContent()
-                }
-                // 上层：翻起的当前页
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            rotationY = mDegrees
-                            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(
-                                pivotFractionX = if (pageWidthPx > 0) {
-                                    (mBezierStart1.x / pageWidthPx).coerceIn(0f, 1f)
-                                } else 0.5f,
-                                pivotFractionY = if (viewHeight > 0) {
-                                    (mBezierStart1.y / viewHeight).coerceIn(0f, 1f)
-                                } else 0.5f,
-                            )
-                            alpha = 0.85f
-                        },
-                ) {
-                    curContent()
-                }
-            }
-            // NONE 已在函数入口处提前 return，此处不会执行到，仅为满足 when 穷尽性
-            PageDirectionShared.NONE -> {
-                curContent()
             }
         }
     }
 
     /**
-     * 绘制仿真翻页阴影（与 app 端 `drawCurrentPageShadow` + `drawNextPageAreaAndShadow` +
-     * `drawCurrentBackArea` 三层阴影叠加对应）。
-     *
-     * KMP 版用 [mPath1] 贝塞尔路径绘制翻起页阴影：
-     * - 沿翻起页边缘绘制渐变阴影（与 app 端 mBackShadowDrawableLR/RL 对应）
-     * - 阴影宽度用 mTouchToCornerDis / 4（与 app 端 setBounds 计算对应）
+     * 背面阴影：原版 `drawNextPageAreaAndShadow` 内 mBackShadowDrawableLR/RL。
+     * 在露出页的剪裁区内、绕 mBezierStart1 旋转 mDegrees 后画一条渐变带。
+     */
+    private fun DrawScope.drawBackShadow() {
+        val left: Float
+        val right: Float
+        val colors: List<Color>
+        if (mIsRtOrLb) {
+            left = mBezierStart1.x
+            right = mBezierStart1.x + mTouchToCornerDis / 4
+            colors = backShadowLR
+        } else {
+            left = mBezierStart1.x - mTouchToCornerDis / 4
+            right = mBezierStart1.x
+            colors = backShadowRL
+        }
+        if (right <= left) return
+        withTransform({ rotate(mDegrees, Offset(mBezierStart1.x, mBezierStart1.y)) }) {
+            drawRect(
+                brush = Brush.horizontalGradient(colors, startX = left, endX = right),
+                topLeft = Offset(left, mBezierStart1.y),
+                size = Size(right - left, mMaxLength),
+            )
+        }
+    }
+
+    /**
+     * 折痕阴影：原版 `drawCurrentBackArea` 内 mFolderShadowDrawableLR/RL，
+     * 宽度取两条贝塞尔弦长的较小值（原版 f3 = min(f1, f2)）。
+     */
+    private fun DrawScope.drawFolderShadow() {
+        val f1 = abs((mBezierStart1.x + mBezierControl1.x) / 2 - mBezierControl1.x)
+        val f2 = abs((mBezierStart2.y + mBezierControl2.y) / 2 - mBezierControl2.y)
+        val f3 = min(f1, f2)
+        val left: Float
+        val right: Float
+        val colors: List<Color>
+        if (mIsRtOrLb) {
+            left = mBezierStart1.x - 1
+            right = mBezierStart1.x + f3 + 1
+            colors = folderShadowLR
+        } else {
+            left = mBezierStart1.x - f3 - 1
+            right = mBezierStart1.x + 1
+            colors = folderShadowRL
+        }
+        withTransform({ rotate(mDegrees, Offset(mBezierStart1.x, mBezierStart1.y)) }) {
+            drawRect(
+                brush = Brush.horizontalGradient(colors, startX = left, endX = right),
+                topLeft = Offset(left, mBezierStart1.y),
+                size = Size(right - left, mMaxLength),
+            )
+        }
+    }
+
+    /**
+     * 翻起页正面的两道阴影，与 app 端 `drawCurrentPageShadow` 逐行对应：
+     * 都在「当前页未翻起区域」内（clipOut(mPath0)）再与阴影三角形取交集，
+     * 分别绕 mBezierControl1 / mBezierControl2 旋转后画渐变带。
      */
     override fun DrawScope.drawShadow(currentOffset: Float, viewWidth: Int) {
-        if (mDirection == PageDirectionShared.NONE) return
-        // 用 mTouchToCornerDis 控制阴影宽度（与 app 端 mTouchToCornerDis / 4 对应）
-        val shadowWidth = (mTouchToCornerDis / 4).coerceAtLeast(1f)
-        // 与 app 端 shadowColors = intArrayOf(0x66111111, 0x00000000) 对应
-        val shadowColors = listOf(Color(0x66111111), Color(0x00000000))
-        // 在 mBezierStart1 位置绘制背面阴影（与 app 端 mBackShadowDrawable.setBounds 对应）
-        val shadowLeft = if (mIsRtOrLb) {
-            mBezierStart1.x
+        if (mDirection == PageDirectionShared.NONE || !pointsValid) return
+
+        // 阴影顶点与 touch 点的距离（原版 25 * 1.414 * cos/sin）
+        val degree = if (mIsRtOrLb) {
+            PI / 4 - atan2(
+                (mBezierControl1.y - mTouchY).toDouble(),
+                (mTouchX - mBezierControl1.x).toDouble()
+            )
         } else {
-            mBezierStart1.x - shadowWidth
+            PI / 4 - atan2(
+                (mTouchY - mBezierControl1.y).toDouble(),
+                (mTouchX - mBezierControl1.x).toDouble()
+            )
         }
-        drawRect(
-            brush = Brush.horizontalGradient(
-                colors = shadowColors,
-                startX = shadowLeft,
-                endX = shadowLeft + shadowWidth,
-            ),
-            topLeft = Offset(shadowLeft, mBezierStart1.y),
-            size = Size(shadowWidth, mMaxLength),
-        )
+        val d1 = SHADOW_SIZE * 1.414 * cos(degree)
+        val d2 = SHADOW_SIZE * 1.414 * sin(degree)
+        val x = (mTouchX + d1).toFloat()
+        val y = if (mIsRtOrLb) (mTouchY + d2).toFloat() else (mTouchY - d2).toFloat()
+
+        // 第一道：绕 mBezierControl1 旋转的竖向渐变带
+        mPathShadow.reset()
+        mPathShadow.moveTo(x, y)
+        mPathShadow.lineTo(mTouchX, mTouchY)
+        mPathShadow.lineTo(mBezierControl1.x, mBezierControl1.y)
+        mPathShadow.lineTo(mBezierStart1.x, mBezierStart1.y)
+        mPathShadow.close()
+        clipPath(mPath0, ClipOp.Difference) {
+            clipPath(mPathShadow) {
+                val left: Float
+                val right: Float
+                val colors: List<Color>
+                if (mIsRtOrLb) {
+                    left = mBezierControl1.x
+                    right = mBezierControl1.x + SHADOW_SIZE
+                    colors = frontShadowLR
+                } else {
+                    left = mBezierControl1.x - SHADOW_SIZE
+                    right = mBezierControl1.x + 1
+                    colors = frontShadowRL
+                }
+                val rotateDegrees = (
+                    atan2(
+                        (mTouchX - mBezierControl1.x).toDouble(),
+                        (mBezierControl1.y - mTouchY).toDouble(),
+                    ) * 180.0 / PI
+                    ).toFloat()
+                withTransform({
+                    rotate(rotateDegrees, Offset(mBezierControl1.x, mBezierControl1.y))
+                }) {
+                    drawRect(
+                        brush = Brush.horizontalGradient(colors, startX = left, endX = right),
+                        topLeft = Offset(left, mBezierControl1.y - mMaxLength),
+                        size = Size(right - left, mMaxLength),
+                    )
+                }
+            }
+        }
+
+        // 第二道：绕 mBezierControl2 旋转的横向渐变带
+        mPathShadow.reset()
+        mPathShadow.moveTo(x, y)
+        mPathShadow.lineTo(mTouchX, mTouchY)
+        mPathShadow.lineTo(mBezierControl2.x, mBezierControl2.y)
+        mPathShadow.lineTo(mBezierStart2.x, mBezierStart2.y)
+        mPathShadow.close()
+        clipPath(mPath0, ClipOp.Difference) {
+            clipPath(mPathShadow) {
+                val top: Float
+                val bottom: Float
+                val colors: List<Color>
+                if (mIsRtOrLb) {
+                    top = mBezierControl2.y
+                    bottom = mBezierControl2.y + SHADOW_SIZE
+                    colors = frontShadowTB
+                } else {
+                    top = mBezierControl2.y - SHADOW_SIZE
+                    bottom = mBezierControl2.y + 1
+                    colors = frontShadowBT
+                }
+                val rotateDegrees = (
+                    atan2(
+                        (mBezierControl2.y - mTouchY).toDouble(),
+                        (mBezierControl2.x - mTouchX).toDouble(),
+                    ) * 180.0 / PI
+                    ).toFloat()
+                // 原版：control2.y < 0 时按 viewHeight 折算，hmg 超过对角线则整条带右移
+                val temp = if (mBezierControl2.y < 0) {
+                    (mBezierControl2.y - viewHeight).toDouble()
+                } else {
+                    mBezierControl2.y.toDouble()
+                }
+                val hmg = hypot(mBezierControl2.x.toDouble(), temp).toFloat()
+                val left = if (hmg > mMaxLength) {
+                    mBezierControl2.x - SHADOW_SIZE - hmg
+                } else {
+                    mBezierControl2.x - mMaxLength
+                }
+                val right = if (hmg > mMaxLength) {
+                    mBezierControl2.x + mMaxLength - hmg
+                } else {
+                    mBezierControl2.x
+                }
+                withTransform({
+                    rotate(rotateDegrees, Offset(mBezierControl2.x, mBezierControl2.y))
+                }) {
+                    drawRect(
+                        brush = Brush.verticalGradient(colors, startY = top, endY = bottom),
+                        topLeft = Offset(left, top),
+                        size = Size(right - left, bottom - top),
+                    )
+                }
+            }
+        }
     }
 
     // endregion
+
+    private companion object {
+        // 原版硬编码的阴影带宽度（px）
+        const val SHADOW_SIZE = 25f
+
+        // 原版 GradientDrawable 的颜色组：LR = colors[0] 在左，RL = colors[0] 在右（列表反转等价）
+        // mBackShadowColors = intArrayOf(-0xeeeeef, 0x111111) → 0xFF111111 → 0x00111111
+        val backShadowLR = listOf(Color(0xFF111111), Color(0x00111111))
+        val backShadowRL = backShadowLR.asReversed()
+
+        // color = intArrayOf(0x333333, -0x4fcccccd) → 0x00333333 → 0xB0333333
+        val folderShadowLR = listOf(Color(0x00333333), Color(0xB0333333))
+        val folderShadowRL = folderShadowLR.asReversed()
+
+        // mFrontShadowColors = intArrayOf(-0x7feeeeef, 0x111111) → 0x80111111 → 0x00111111
+        val frontShadowLR = listOf(Color(0x80111111), Color(0x00111111))
+        val frontShadowRL = frontShadowLR.asReversed()
+        val frontShadowTB = frontShadowLR
+        val frontShadowBT = frontShadowRL
+    }
 }

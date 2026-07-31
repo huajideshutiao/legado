@@ -55,8 +55,6 @@ import io.legado.app.ui.compose.dialogs.selector
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
-import io.legado.app.ui.root.AppNavigatorProviders
-import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.find
@@ -220,8 +218,6 @@ abstract class BaseReadBookActivity : BaseComposeActivity(imageBg = false), IBot
                     currentBook?.save()
                     viewModel.inBookshelf = true
                     setResult(RESULT_OK)
-                    // 双轨: 同步 RouteResult 通道
-                    AppNavigatorProviders.getOrNull()?.pop(RouteResultPayload.Ok)
                 }
                 noButton { viewModel.removeFromBookshelf { super.finish() } }
             }

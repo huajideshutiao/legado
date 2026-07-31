@@ -45,6 +45,27 @@ interface BookStorage {
     fun getChapterFiles(book: Book): List<String>
 
     /**
+     * 判断书籍缓存目录下某个文件是否存在 (按文件名, 不含路径)。
+     *
+     * 与 [getChapterFiles] 不同: 不做本地 txt / 视频 / 音频短路, 直查文件系统,
+     * 对应 Android 端原 `File(path).exists()`。供 `.nr` 标记等非章节正文文件使用。
+     */
+    fun hasCacheFile(book: Book, fileName: String): Boolean
+
+    /**
+     * 读取书籍缓存目录下指定文件的文本; 文件不存在返回 null (空文件返回空串)。
+     *
+     * 与 [getContent] 不同: 不做 "空内容视为 null" 归一, 由调用方区分。
+     */
+    fun readCacheFile(book: Book, fileName: String): String?
+
+    /** 在书籍缓存目录下创建空文件 (父目录自动创建, 已存在则保留原内容)。 */
+    fun createCacheFile(book: Book, fileName: String)
+
+    /** 删除书籍缓存目录下指定文件 (不存在则忽略)。 */
+    fun deleteCacheFile(book: Book, fileName: String)
+
+    /**
      * 保存章节正文到缓存文件 (覆盖写)。
      *
      * 对应 Android 端 [io.legado.app.help.book.BookHelp.saveText]。

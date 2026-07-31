@@ -42,6 +42,7 @@ import io.legado.app.ui.book.group.GroupViewModelShared
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.compose.platform.PlatformBackHandler
+import io.legado.app.ui.compose.platform.dispatchBackKey
 import io.legado.app.ui.compose.platform.handleBackKey
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.dialog.PhotoViewOverlayDialog
@@ -108,7 +109,10 @@ fun LegadoApp(
                 .fillMaxSize()
                 .background(AppTheme.colors.background)
                 .handleBackKey(
-                    onBack = { navigator.pop() },
+                    // 先关顶层 Overlay, 再让页面级 AppBackHandler 拦截 (如书源编辑未保存确认), 最后才出栈
+                    onBack = {
+                        if (!navigator.dismissTopOverlay() && !dispatchBackKey()) navigator.pop()
+                    },
                     onRefresh = navigator::refreshCurrent,
                 )
         ) {

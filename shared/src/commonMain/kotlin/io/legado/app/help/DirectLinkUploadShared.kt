@@ -1,10 +1,11 @@
 package io.legado.app.help
 
+import io.legado.app.help.DirectLinkUploadStoreProviders.get
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.toJson
-import kotlin.concurrent.Volatile
 import kotlinx.serialization.Serializable
+import kotlin.concurrent.Volatile
 
 /**
  * 直链上传规则的 KMP 共享版 (与 [RestoreShared] / [BackupShared] 配套)。
@@ -84,6 +85,15 @@ interface DirectLinkUploadStoreProvider {
 
     /** 保存规则 (与 app 端 `DirectLinkUpload.putConfig(rule)` 行为一致)。 */
     fun putConfig(rule: DirectLinkUploadRule)
+
+    /**
+     * 保存规则的原始 JSON (恢复备份用)。
+     *
+     * 默认先解析再 [putConfig]; app 端覆写为原样写入, 与原 `ACache.put(ruleFileName, json)` 逐字一致。
+     */
+    fun putConfigJson(json: String) {
+        parseDirectLinkUploadRule(json)?.let { putConfig(it) }
+    }
 }
 
 /**

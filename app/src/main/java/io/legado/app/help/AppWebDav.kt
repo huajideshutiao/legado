@@ -6,17 +6,20 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.AppWebDav.bgWebDavUrl
+import io.legado.app.help.AppWebDav.defaultBookWebDav
+import io.legado.app.help.AppWebDav.exportWebDav
+import io.legado.app.help.AppWebDav.exportsWebDavUrl
+import io.legado.app.help.AppWebDav.upBgs
+import io.legado.app.help.AppWebDav.upConfig
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.storage.Backup
-import io.legado.app.help.storage.Restore
+import io.legado.app.help.storage.RestoreShared
 import io.legado.app.lib.webdav.Authorization
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavException
 import io.legado.app.lib.webdav.WebDavFile
 import io.legado.app.lib.webdav.upload
 import io.legado.app.model.remote.RemoteBookWebDav
-import io.legado.app.utils.FileUtils
-import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.isNetworkAvailable
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.currentCoroutineContext
@@ -132,19 +135,11 @@ object AppWebDav {
     suspend fun getBackupNames(): ArrayList<String> = AppWebDavShared.getBackupNames()
 
     /**
-     * WebDav 恢复: 下载解压后走 app 端 [Restore] 完整路径 (含书架 upType/本地书封面修正、
-     * config.xml 旧格式兼容、恢复后 ReadBookConfig 刷新 / 图标 / 日夜间等钩子)。
+     * WebDav 恢复: 转发 [AppWebDavShared.restoreWebDav] (下载 → 解压 → [RestoreShared]),
+     * 与本地恢复、桌面端同一条核心路径; Android 专属钩子经 BackupRestoreHooks 注入。
      */
     @Throws(WebDavException::class)
-    suspend fun restoreWebDav(name: String) {
-        AppWebDavShared.authorization?.let {
-            val webDav = WebDav(rootWebDavUrl + name, it)
-            webDav.downloadTo(Backup.zipFilePath, true)
-            FileUtils.delete(Backup.backupPath)
-            ZipUtils.unZipToPath(File(Backup.zipFilePath), Backup.backupPath)
-            Restore.restoreLocked(Backup.backupPath)
-        }
-    }
+    suspend fun restoreWebDav(name: String) = AppWebDavShared.restoreWebDav(name)
 
     suspend fun hasBackUp(backUpName: String): Boolean = AppWebDavShared.hasBackUp(backUpName)
 

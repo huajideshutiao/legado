@@ -34,6 +34,8 @@ import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.source.SourceHelpAccessor
 import io.legado.app.help.source.SourceHelpAccessors
 import io.legado.app.help.source.registerAndroidVerificationUiProvider
+import io.legado.app.help.storage.AndroidDataStorage
+import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.Debug
 import io.legado.app.model.ReadBook
@@ -458,6 +460,8 @@ object WebBookProvidersImpl :
  */
 fun registerAndroidWebBookProviders() {
     val impl = WebBookProvidersImpl
+    // 存储路径集中 provider: 须早于任何 BookStorage.rootPath / 封面目录访问
+    DataStorageProviders.register(AndroidDataStorage)
     AppDbProviders.register(impl)
     AppConfigProviders.register(impl)
     ContentProcessorProviders.register(impl)
