@@ -1,80 +1,29 @@
 package io.legado.app.help.http
 
-import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.help.CacheManager
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.splitNotBlank
-import okhttp3.Cookie
-import okhttp3.Headers
-import okhttp3.HttpUrl
-import okhttp3.Request
-import okhttp3.Response
-
 import kotlinx.coroutines.runBlocking
 
 @Suppress("ConstPropertyName")
-object CookieManager : CookieJarBridge {
+object CookieManager {
     /**
      * <domain>_session_cookie 会话期 cookie，应用重启后失效
      * <domain>_cookie cookies 缓存
      */
 
     /**
+     * CookieJarBridge (saveResponse / loadRequest) 已下沉 shared commonMain
+     * (见 SharedCookieJarBridge, 1:1 复刻本 object 原实现, 经 CookieStoreProvider 间接访问
+     * 各端 cookie 存储)。app 端在 App.onCreate 经 registerSharedCookieJarBridge 注册。
+     *
      * cookieJarHeader / mergeCookies / mergeCookiesToMap 三个纯函数已下沉 shared
-     * (见 modules/shared/src/jvmAndAndroidMain/kotlin/io/legado/app/help/http/CookieUtils.kt),
+     * (见 modules/shared/src/commonMain/kotlin/io/legado/app/help/http/CookieUtils.kt),
      * 跨模块同包名合并, 消费方 import 零改动。本 object 仅保留安卓绑定方法。
      *
      * P0-0c: 为 AnalyzeUrl 主体下沉 shared 做前置。
      */
-
-    /**
-     * 从响应中保存Cookies
-     */
-    override fun saveResponse(response: Response) {
-        val url = response.request.url
-        saveCookiesFromHeaders(url, response.headers)
-    }
-
-    private fun saveCookiesFromHeaders(url: HttpUrl, headers: Headers) {
-        val domain = NetworkUtils.getSubDomain(url.toString())
-        val cookies = Cookie.parseAll(url, headers)
-        if (cookies.isEmpty()) return
-
-        val (persistent, session) = cookies.partition { it.persistent }
-
-        if (session.isNotEmpty()) {
-            updateSessionCookie(domain, session.toCookieString())
-        }
-
-        if (persistent.isNotEmpty()) {
-            CookieStore.replaceCookie(domain, persistent.toCookieString())
-        }
-    }
-
-    /**
-     * 加载Cookies到请求中
-     */
-    override fun loadRequest(request: Request): Request {
-        val urlString = request.url.toString()
-        val domain = NetworkUtils.getSubDomain(urlString)
-
-        val storeCookie = CookieStore.getCookie(domain)
-        val requestCookie = request.header("Cookie")
-
-        val newCookie = mergeCookies(requestCookie, storeCookie) ?: return request
-
-        return try {
-            request.newBuilder()
-                .header("Cookie", newCookie)
-                .build()
-        } catch (e: Exception) {
-            CookieStore.removeCookie(urlString)
-            val msg = "设置cookie出错，已清除cookie $domain cookie:$newCookie"
-            AppLog.put(msg, e)
-            request
-        }
-    }
 
     private fun getSessionCookieMap(domain: String): MutableMap<String, String>? {
         return getSessionCookie(domain)?.let { CookieStore.cookieToMap(it) }
@@ -84,7 +33,7 @@ object CookieManager : CookieJarBridge {
         return CacheManager.getFromMemory("${domain}_session_cookie") as? String
     }
 
-    private fun updateSessionCookie(domain: String, cookies: String) {
+    fun updateSessionCookie(domain: String, cookies: String) {
         val cacheKey = "${domain}_session_cookie"
         val sessionCookie = CacheManager.getFromMemory(cacheKey) as? String
         val ck =
@@ -141,9 +90,5 @@ object CookieManager : CookieJarBridge {
             webManager.setCookie(baseUrl, it)
         }
         webManager.flush()
-    }
-
-    private fun List<Cookie>.toCookieString(): String {
-        return joinToString("; ") { "${it.name}=${it.value}" }
     }
 }

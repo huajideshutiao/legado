@@ -140,3 +140,12 @@
 -dontwarn javax.annotation.**
 -dontwarn org.codehaus.**
 -dontwarn java.lang.invoke.StringConcatFactory
+
+############################
+# @file:JvmName 合成类跨模块引用加固（顶级 Kotlin 函数宿主类）
+############################
+-keep class io.legado.app.utils.GsonStreamExtensions { *; }
+-keep class io.legado.app.utils.EventBusObserveExtensions { *; }
+-keep class io.legado.app.utils.ConvertExtensionsAndroid { *; }
+-keep class io.legado.app.help.IntentDataAndroid { *; }
+-keep class io.legado.app.help.storage.BackupAESAndroid { *; }

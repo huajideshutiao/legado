@@ -40,15 +40,9 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.IntentData
 import io.legado.app.help.IntentHelp
-import io.legado.app.help.book.isAudio
-import io.legado.app.help.book.isImage
-import io.legado.app.help.book.isRss
-import io.legado.app.help.book.isVideo
-import io.legado.app.ui.book.audio.AudioPlayActivity
-import io.legado.app.ui.book.manga.ReadMangaActivity
-import io.legado.app.ui.book.read.ReadBookActivity
-import io.legado.app.ui.book.rss.ReadRssActivity
-import io.legado.app.ui.book.video.VideoPlayActivity
+import io.legado.app.ui.main.MainActivity
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.toReadRoute
 import splitties.systemservices.clipboardManager
 import splitties.systemservices.connectivityManager
 import splitties.systemservices.uiModeManager
@@ -62,23 +56,28 @@ inline fun <reified A : Activity> Context.startActivity(configIntent: Intent.() 
     startActivity(intent)
 }
 
-// 工具函数:内部导航迁移点在调用方(navigator)
+// 工具函数:优先走 shared 路由, navigator 未注册时兜底启动 MainActivity + LaunchRequest
 fun Context.startActivityForBook(
     book: BaseBook,
+    chapterIndex: Int? = null,
+    chapterPos: Int? = null,
     configIntent: Intent.() -> Unit = {},
 ) {
     IntentData.book = book
     val book = if (book is SearchBook)book.toBook() else book as Book
-    val cls = when {
-        book.isAudio -> AudioPlayActivity::class.java
-        book.isVideo -> VideoPlayActivity::class.java
-        book.isImage -> ReadMangaActivity::class.java
-        book.isRss -> ReadRssActivity::class.java
-        else -> ReadBookActivity::class.java
+    val navigator = AppNavigatorProviders.getOrNull()
+    if (navigator != null) {
+        navigator.push(book.toReadRoute())
+        return
     }
-    val intent = Intent(this, cls)
-    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    intent.apply(configIntent)
+    // navigator 未注册: 启动 MainActivity 携带 bookUrl extra, 由 toLaunchRequest → OpenReader 分发到 shared ReaderRoute
+    val intent = Intent(this, MainActivity::class.java).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        putExtra("bookUrl", book.bookUrl)
+        chapterIndex?.let { putExtra("chapterIndex", it) }
+        chapterPos?.let { putExtra("chapterPos", it) }
+        configIntent()
+    }
     startActivity(intent)
 }
 

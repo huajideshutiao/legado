@@ -9,35 +9,37 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.registerOhosProviders
 import io.legado.app.ui.association.LegadoDeepLinkHandler
-import io.legado.app.ui.book.manga.OhosMangaImageExtractor
+import io.legado.app.ui.book.manga.OhosMangaReaderPlatform
 import io.legado.app.ui.explore.ExploreViewModelShared
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.MD5Utils
-import io.legado.app.utils.formatPercentUs
+import io.legado.app.utils.formatPercentUs as formatPercentUsValue
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CFunction
 import kotlinx.cinterop.CPointer
+import kotlinx.cinterop.allocArrayOf
 import kotlinx.cinterop.cstr
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.nativeHeap
 import kotlinx.cinterop.toKString
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import kotlin.experimental.CName
+import kotlin.native.CName
 
 /**
  * KP5 鸿蒙 napi 桥接层: Kotlin/Native 导出的 C ABI 函数。
@@ -95,11 +97,16 @@ object LegadoNativeExports {
 
     // 发现页 VM 共享核心 (topSource/deleteSource 转发到此, scope=应用级 IO 协程)
     private val exploreVmShared = ExploreViewModelShared(
-        CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        CoroutineScope(SupervisorJob() + IoDispatcher)
     )
 
-    // 漫画图片 URL 提取器 (复用 commonMain MangaImageExtractorShared 纯字符串扫描)
-    private val mangaExtractor = OhosMangaImageExtractor()
+    // 漫画空图片列表兜底 (buildJsonArray 无空参重载, 直接用字面量)
+    private const val EMPTY_MANGA_IMAGES = """{"images":[]}"""
+
+    private fun allocateCString(value: String): CPointer<ByteVar> {
+        val bytes = value.encodeToByteArray()
+        return nativeHeap.allocArrayOf(bytes + byteArrayOf(0))
+    }
 
     // ===== 工具类函数 (KP4 已存在) =====
 
@@ -113,7 +120,7 @@ object LegadoNativeExports {
     fun chineseT2S(input: CPointer<ByteVar>): CPointer<ByteVar> {
         val inputStr = input.toKString()
         val result = ChineseUtils.t2s(inputStr)
-        return result.cstr.getPointer(nativeHeap)
+        return allocateCString(result)
     }
 
     /**
@@ -123,7 +130,7 @@ object LegadoNativeExports {
     fun chineseS2T(input: CPointer<ByteVar>): CPointer<ByteVar> {
         val inputStr = input.toKString()
         val result = ChineseUtils.s2t(inputStr)
-        return result.cstr.getPointer(nativeHeap)
+        return allocateCString(result)
     }
 
     /**
@@ -133,7 +140,7 @@ object LegadoNativeExports {
     fun md5Encode(input: CPointer<ByteVar>): CPointer<ByteVar> {
         val inputStr = input.toKString()
         val result = MD5Utils.md5Encode(inputStr)
-        return result.cstr.getPointer(nativeHeap)
+        return allocateCString(result)
     }
 
     /**
@@ -141,8 +148,8 @@ object LegadoNativeExports {
      */
     @CName("legado_format_percent_us")
     fun formatPercentUs(value: Double): CPointer<ByteVar> {
-        val result = formatPercentUs(value)
-        return result.cstr.getPointer(nativeHeap)
+        val result = formatPercentUsValue(value)
+        return allocateCString(result)
     }
 
     /**
@@ -192,7 +199,7 @@ object LegadoNativeExports {
                 KS_JSON.encodeToString(ListSerializer(Book.serializer()), books)
             }
         }.getOrNull() ?: "[]"
-        return json.cstr.getPointer(nativeHeap)
+        return allocateCString(json)
     }
 
     /**
@@ -221,7 +228,7 @@ object LegadoNativeExports {
                 KS_JSON.encodeToString(ListSerializer(Book.serializer()), books)
             }
         }.getOrNull() ?: "[]"
-        return json.cstr.getPointer(nativeHeap)
+        return allocateCString(json)
     }
 
     /**
@@ -256,7 +263,7 @@ object LegadoNativeExports {
                 BookStorageProviders.get().getContent(book, chapter) ?: ""
             }
         }.getOrNull() ?: ""
-        return content.cstr.getPointer(nativeHeap)
+        return allocateCString(content)
     }
 
     /**
@@ -289,7 +296,7 @@ object LegadoNativeExports {
                 }.toString()
             }
         }.getOrNull() ?: "[]"
-        return json.cstr.getPointer(nativeHeap)
+        return allocateCString(json)
     }
 
     /**
@@ -331,7 +338,8 @@ object LegadoNativeExports {
      * 1. `AppDbProviders.get().bookDao.getBook(bookUrl)` 取书籍
      * 2. `AppDbProviders.get().bookChapterDao.getChapterList(bookUrl)` 取章节列表
      * 3. `BookStorageProviders.get().getContent(book, chapter)` 读本地缓存正文
-     * 4. `mangaExtractor.flowImages(chapter, content).distinctUntilChanged().toList()` 提取图片 URL
+     * 4. `OhosMangaReaderPlatform.flowImages(chapter, content)` 提取图片 URL
+     *    (与鸿蒙漫画阅读界面同一入口, 内部走 MangaImageExtractorShared 纯字符串扫描)
      *
      * 同步语义: 同 [loadChapter], 内部 [runBlocking] 转 suspend, napi 层应在 worker 线程调用。
      *
@@ -346,20 +354,22 @@ object LegadoNativeExports {
         val bookUrlStr = bookUrl.toKString()
         val json = runCatching {
             runBlocking {
-                val book = AppDbProviders.get().bookDao.getBook(bookUrlStr) ?: return@runBlocking
+                val book = AppDbProviders.get().bookDao.getBook(bookUrlStr)
+                    ?: return@runBlocking EMPTY_MANGA_IMAGES
                 val chapterList = AppDbProviders.get().bookChapterDao.getChapterList(bookUrlStr)
-                val chapter = chapterList.getOrNull(chapterIndex) ?: return@runBlocking
+                val chapter = chapterList.getOrNull(chapterIndex)
+                    ?: return@runBlocking EMPTY_MANGA_IMAGES
                 // 读本地缓存正文 (对齐 loadChapter), 由该 content 提取图片 URL
                 val content = BookStorageProviders.get().getContent(book, chapter) ?: ""
-                val images = mangaExtractor.flowImages(chapter, content)
+                val images = OhosMangaReaderPlatform.flowImages(chapter, content)
                     .distinctUntilChanged()
                     .toList()
                 buildJsonObject {
                     put("images", buildJsonArray { images.forEach { add(it) } })
                 }.toString()
             }
-        }.getOrNull() ?: buildJsonObject { put("images", buildJsonArray()) }.toString()
-        return json.cstr.getPointer(nativeHeap)
+        }.getOrNull() ?: EMPTY_MANGA_IMAGES
+        return allocateCString(json)
     }
 
     /**
@@ -399,7 +409,7 @@ object LegadoNativeExports {
                 }.toString()
             }
         }.getOrNull() ?: "[]"
-        return json.cstr.getPointer(nativeHeap)
+        return allocateCString(json)
     }
 
     /**
@@ -435,7 +445,7 @@ object LegadoNativeExports {
      *
      * 调用链:
      * 1. `AppDbProviders.get().bookSourceDao.getBookSourcePart(sourceUrl)` 取 BookSourcePart
-     * 2. `exploreVmShared.topSource(part)` → 内部 `scope.launch(Dispatchers.IO) { ... }`
+     * 2. `exploreVmShared.topSource(part)` → 内部 `scope.launch(IoDispatcher) { ... }`
      *    把 customOrder 改为 minOrder - 1 后 upOrder
      *
      * 同步语义: 仅步骤 1 同步 (runBlocking), 步骤 2 fire-and-forget (VM 内部 launch)。
@@ -461,7 +471,7 @@ object LegadoNativeExports {
      *
      * 调用链:
      * 1. `AppDbProviders.get().bookSourceDao.getBookSourcePart(sourceUrl)` 取 BookSourcePart
-     * 2. `exploreVmShared.deleteSource(part)` → 内部 `scope.launch(Dispatchers.IO) { ... }`
+     * 2. `exploreVmShared.deleteSource(part)` → 内部 `scope.launch(IoDispatcher) { ... }`
      *    调 SourceHelp.deleteBookSource(part.bookSourceUrl)
      *
      * 同步语义: 同 [topExploreSource], 仅步骤 1 同步, 步骤 2 fire-and-forget。

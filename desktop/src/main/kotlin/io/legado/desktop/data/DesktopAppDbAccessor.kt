@@ -7,7 +7,7 @@ import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.AppDbAccessor
 
 /**
- * 桌面端 [AppDbAccessor] 实现: 委托 [AppDatabaseProviders.get].appDb 的 9 个 DAO
+ * 桌面端 [AppDbAccessor] 实现: 委托 [AppDatabaseProviders.get].appDb 的全部 17 个 DAO
  * + `runInTransaction`, 供 shared commonMain 中下沉的 webBook 编排层 / SourceHelp /
  * SearchBookFilter / ReadBookViewModelShared 等通过 [io.legado.app.data.AppDbProviders]
  * 间接访问 appDb。
@@ -40,7 +40,7 @@ class DesktopAppDbAccessor : AppDbAccessor {
     private val appDb: AppDatabase
         get() = AppDatabaseProviders.get().appDb
 
-    // ---- 10 个 DAO 属性: 直接转发 appDb 的 abstract val ----
+    // ---- 17 个 DAO 属性: 直接转发 appDb 的 abstract val ----
     override val bookDao get() = appDb.bookDao
     override val bookSourceDao get() = appDb.bookSourceDao
     override val bookChapterDao get() = appDb.bookChapterDao
@@ -60,6 +60,12 @@ class DesktopAppDbAccessor : AppDbAccessor {
     override val ruleSubDao get() = appDb.ruleSubDao
     // AllBookmarkViewModelShared / TocViewModel.saveBookmark 用 (书签导出/保存)
     override val bookmarkDao get() = appDb.bookmarkDao
+
+    // SearchViewModel 用 (搜索历史)
+    override val searchKeywordDao get() = appDb.searchKeywordDao
+
+    // KeyboardToolbar / 备份恢复用 (键盘助手)
+    override val keyboardAssistsDao get() = appDb.keyboardAssistsDao
 
     // ---- AppDbAccessor 事务 ----
     // suspend 版本走 Room KMP 真事务: useWriterConnection 把写连接放进协程上下文

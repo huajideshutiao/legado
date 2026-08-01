@@ -7,6 +7,8 @@ import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.ui.config.ConfigActionsShared.clearCache
+import io.legado.app.ui.config.ConfigActionsShared.shrinkDatabase
 import kotlinx.coroutines.withContext
 
 /**
@@ -49,6 +51,8 @@ object ConfigActionsShared {
      */
     suspend fun shrinkDatabase() {
         withContext(IoDispatcher) {
+            // VACUUM 需完整 Room API (useWriterConnection), 不走 AppDbProviders;
+            // DAO 访问同理走同一 appDb 实例, 保持单入口
             val appDb = AppDatabaseProviders.get().appDb
             appDb.bookChapterDao.deleteNotShelfBookChapters()
             appDb.bookDao.deleteNotShelfBook()

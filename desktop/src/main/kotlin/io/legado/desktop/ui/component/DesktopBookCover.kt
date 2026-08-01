@@ -29,6 +29,7 @@ import coil3.request.ImageRequest
 import coil3.size.Size
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.isNotShelf
+import io.legado.app.help.image.PersistentCoverKey
 import io.legado.app.help.image.coverDiskCacheKey
 import io.legado.app.help.image.sourceOrigin
 import io.legado.app.ui.compose.platform.rememberString
@@ -184,7 +185,7 @@ object DesktopBookCover {
  * 图片 painter (Coil3, 走共享 SingletonImageLoader), 桌面封面/头像/配图统一入口。
  *
  * - `http(s)://`: String model + memoryCacheKey 按 url (缓存键随 url 隔离);
- *   [sourceOrigin] 非空时由 SourceOriginHeaderInterceptor 注入书源防盗链 header
+ *   [sourceOrigin] 非空时由 fetcher 层 (SourceOriginHeaderFetcher) 注入书源防盗链 header
  * - `file://` / 绝对路径 (含 Windows 盘符): [File] model (默认 key 含 mtime, 封面文件更新可感知)
  * - 相对路径/未知协议/空白: model 置 null, painter 走 Error 态 (调用方显示占位)
  * - size ORIGINAL: 原图解码一次全消费点共享 (对齐替换前 LRU 行为, 模糊背景与封面同 Bitmap)
@@ -206,7 +207,10 @@ fun rememberCoverPainter(
                 if (data is String) {
                     memoryCacheKey(data)
                     // 书籍封面落持久磁盘分区 (数据目录), 清缓存/系统清理不该抹掉
-                    if (persistent) diskCacheKey(coverDiskCacheKey(data))
+                    if (persistent) {
+                        diskCacheKey(coverDiskCacheKey(data))
+                        extras.set(PersistentCoverKey, true)
+                    }
                 }
             }
             .size(Size.ORIGINAL)

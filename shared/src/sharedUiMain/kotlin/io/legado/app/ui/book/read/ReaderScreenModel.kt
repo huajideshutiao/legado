@@ -3,6 +3,7 @@ package io.legado.app.ui.book.read
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.Status
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -13,10 +14,11 @@ import io.legado.app.help.book.migrateTo
 import io.legado.app.help.book.removeType
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.ReadBookShared
+import io.legado.app.ui.book.read.ReaderPlatformProviders.getOrNull
+import io.legado.app.ui.book.read.ReaderPlatformProviders.register
 import io.legado.app.ui.book.searchContent.SearchResult
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.utils.FlowBus
-import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,6 +27,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 
 /**
  * 阅读页平台能力注入接口。
@@ -219,6 +222,32 @@ class ReaderScreenModel(
                 ReadBookEvents.postMenuRefresh()
             }
         }
+        // region ReadBookEvents 订阅 (对照 app 端 ReadBookActivity.observeLiveBus 的 EventBus 观察者)
+        // 朗读状态: STOP/PAUSE 时清当前页朗读 span (对照 app 端 ALOUD_STATE 观察者)
+        scope.launch {
+            ReadBookEvents.aloudState.collect { state ->
+                if (state == Status.STOP || state == Status.PAUSE) {
+                    viewModel.clearAloudSpanForCurrentPage()
+                }
+            }
+        }
+        // 媒体按钮: 按菜单可见性分流, 可见时弹朗读面板否则直切 (对照 app 端 MEDIA_BUTTON 观察者)
+        scope.launch {
+            ReadBookEvents.mediaButton.collect { _ ->
+                if (menuState.isVisible) {
+                    postDialogEvent(ReaderDialogEvent.ReadAloud)
+                } else {
+                    viewModel.toggleReadAloud()
+                }
+            }
+        }
+        // 朗读进度推进 (对照 app 端 TTS_PROGRESS sticky 观察者, replay=1 会在订阅时重放最后进度)
+        scope.launch {
+            ReadBookEvents.ttsProgress.collect { chapterStart ->
+                viewModel.onTtsProgress(chapterStart)
+            }
+        }
+        // endregion
     }
 
     val menuState: ReadMenuState get() = menuController.state
@@ -366,4 +395,25 @@ sealed interface ReaderDialogEvent {
 
     /** 朗读控制面板 (对照原版 ReadMenu 朗读按钮长按 → showReadAloudDialog) */
     object ReadAloud : ReaderDialogEvent
+
+    /** 更多设置 (对照原版 设置按钮 → MoreConfigDialog) */
+    object MoreConfig : ReaderDialogEvent
+
+    /** 界面/样式设置 (对照原版 界面按钮 → ReadStyleDialog) */
+    object ReadStyle : ReaderDialogEvent
+
+    /** 起效的替换规则 (对照原版 替换按钮 → EffectiveReplacesDialog) */
+    object EffectiveReplaces : ReaderDialogEvent
+
+    /** 朗读设置 (对照原版 朗读面板设置按钮 → ReadAloudConfigDialog) */
+    object ReadAloudConfig : ReaderDialogEvent
+
+    /** 编辑 HTTP TTS (对照原版 SpeakEngineDialog 中 "+" 按钮 → HttpTtsEditDialog, 默认新增) */
+    data object HttpTtsEdit : ReaderDialogEvent
+
+    /** 选择朗读引擎 (对照原版 朗读面板选择引擎 → SpeakEngineDialog) */
+    data object SpeakEngine : ReaderDialogEvent
+
+    /** 翻页键配置 (对照原版 更多设置 → PageKeyDialog) */
+    data object PageKey : ReaderDialogEvent
 }

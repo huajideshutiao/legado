@@ -114,8 +114,6 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ColorUtils
-import kotlin.math.PI
-import kotlin.math.cos
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.dark_theme
 import legado.shared.generated.resources.ic_arrow_back
@@ -127,6 +125,8 @@ import legado.shared.generated.resources.replace_rule_title
 import legado.shared.generated.resources.search_content
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.PI
+import kotlin.math.cos
 
 /** 复刻 View 动画默认 AccelerateDecelerateInterpolator */
 val AccelerateDecelerateEasing = Easing { x ->
@@ -244,6 +244,24 @@ interface ReadMenuState {
 
     /** 刷新当前章节 (顶栏刷新图标短按) */
     fun onRefresh()
+
+    // region ReadBookEvents 订阅回调 (对照 app 端 readMenu.reset/upSeekBar + upMenuView)
+
+    /** 重建菜单/顶栏 (对照 app 端 actionBarChange → `readMenu.reset()`)。待平台 actual 覆盖。 */
+    fun reset() {
+        // 待实现：平台 actual 重建菜单视图
+    }
+
+    /** 更新进度条 (对照 app 端 seekBarChange → `readMenu.upSeekBar()`)。待平台 actual 覆盖。 */
+    fun upSeekBar() {
+        // 待实现：平台 actual 刷新进度条 seekMax/seekValue
+    }
+
+    /** 刷新菜单数据 (对照 app 端 menuRefresh → `upMenuView()`)。待平台 actual 覆盖。 */
+    fun refresh() {
+        // 待实现：平台 actual 刷新顶栏/底栏展示数据
+    }
+    // endregion
 }
 
 /**

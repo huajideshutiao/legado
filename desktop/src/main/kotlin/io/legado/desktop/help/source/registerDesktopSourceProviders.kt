@@ -6,18 +6,18 @@ import io.legado.app.help.ExploreKindsCacheProvider
 import io.legado.app.help.ExploreKindsCacheProviders
 import io.legado.app.help.RuleBigDataProviders
 import io.legado.app.help.RuleBigDataShared
+import io.legado.app.help.UserAgentProvider
+import io.legado.app.help.UserAgentProviders
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.http.SharedCookieStore
+import io.legado.app.help.registerDesktopJsExtFactory
 import io.legado.app.help.source.SourceCacheProvider
 import io.legado.app.help.source.SourceCacheProviders
 import io.legado.app.help.source.SourceDebugLogger
 import io.legado.app.help.source.SourceDebugLoggers
-import io.legado.app.help.http.SharedCookieStore
 import io.legado.app.help.source.SourceNetworkProvider
 import io.legado.app.help.source.SourceNetworkProviders
-import io.legado.app.help.UserAgentProvider
-import io.legado.app.help.UserAgentProviders
-import io.legado.app.help.config.PreferenceProviders
-import io.legado.app.help.registerDesktopJsExtFactory
 import io.legado.app.model.Debug
 import io.legado.app.utils.ACacheBase
 import io.legado.desktop.http.DesktopHttpProvider
@@ -129,7 +129,7 @@ private class DesktopACache(cacheDir: File) : ACacheBase(
 /**
  * 桌面端 [SourceNetworkProvider]: 桥接 commonMain [SharedCookieStore]
  * (对照 app 端 JsEnginesAndroid 中桥接 CookieStore 单例; 原 in-memory Map 版与
- * DesktopCookieJarBridge/业务层三份存储互相隔离, 现统一为 Room 持久化同一份)。
+ * 桥接层/业务层三份存储互相隔离, 现统一为 Room 持久化同一份)。
  */
 private object DesktopSourceNetworkProvider : SourceNetworkProvider {
     override fun getCookie(tag: String): String = SharedCookieStore.getCookie(tag)

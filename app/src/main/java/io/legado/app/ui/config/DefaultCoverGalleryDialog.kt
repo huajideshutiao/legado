@@ -23,14 +23,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toDrawable
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.BaseComposeDialogFragment
+import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.model.BookCover
 import io.legado.app.model.CoverRatio
@@ -42,12 +43,12 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
+import io.legado.app.utils.FlowBus
 import io.legado.app.utils.readUri
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.jetbrains.compose.resources.stringResource
 import splitties.init.appCtx
 import java.io.File
 
@@ -96,6 +97,8 @@ class DefaultCoverGalleryDialog() : BaseComposeDialogFragment() {
                     }
                 }.onFailure { appCtx.toastOnUi(it.localizedMessage) }
                 dataVersion++
+                // 通知封面配置页刷新 summary (对照 app 端 CoverConfigFragment prefs 监听)
+                FlowBus.with(EventBus.DEFAULT_COVER_CHANGED).tryEmit(prefKey)
             }
         }
     }
@@ -184,6 +187,7 @@ class DefaultCoverGalleryDialog() : BaseComposeDialogFragment() {
                         BookCover.removeDefaultCover(prefKey, entry.id)
                     }
                     dataVersion++
+                    FlowBus.with(EventBus.DEFAULT_COVER_CHANGED).tryEmit(prefKey)
                 }
             }
             noButton()

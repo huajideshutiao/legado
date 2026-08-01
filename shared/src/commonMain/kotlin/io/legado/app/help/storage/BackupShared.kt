@@ -3,7 +3,7 @@ package io.legado.app.help.storage
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.ThreadSafeDateFormat
-import io.legado.app.data.AppDatabaseProviders
+import io.legado.app.data.AppDbProviders
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.DirectLinkUploadStoreProviders
 import io.legado.app.help.config.AppConfigProviders
@@ -147,7 +147,7 @@ object BackupShared {
         val aes = BackupAES()
         BackupFileOps.delete(backupPath)
         BackupFileOps.createFolderIfNotExist(backupPath)
-        val appDb = AppDatabaseProviders.get().appDb
+        val appDb = AppDbProviders.get()
 
         // 1. DAO 数据导出 (与原版顺序一致)
         writeListToJson(appDb.bookDao.all(), "bookshelf.json")

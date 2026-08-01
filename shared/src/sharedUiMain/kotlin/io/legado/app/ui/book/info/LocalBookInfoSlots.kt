@@ -11,8 +11,8 @@ import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -71,7 +71,7 @@ val LocalBookInfoCoverSlot =
             if (book != null) {
                 val coverSlot = LocalBookCoverSlot.current
                 key(book.bookUrl, coverTick) {
-                    coverSlot(book, modifier, book.isVideo)
+                    coverSlot(book, modifier, book.isVideo, 0)
                 }
             }
         }

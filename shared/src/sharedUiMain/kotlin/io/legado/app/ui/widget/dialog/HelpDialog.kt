@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.AlertDialog
-import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
@@ -16,7 +15,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppLog
 import io.legado.app.ui.compose.MarkdownContentSelectable
@@ -62,10 +60,11 @@ fun HelpDialog(fileName: String, onDismiss: () -> Unit) {
             )
         },
         text = {
+            // 滚动区上限 = 0.8 锚点高 - 标题/按钮 (对齐原版 isFullHeight 内容区; 无约束时 wrap 对话框随内容漂移)
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 400.dp)
+                    .heightIn(max = AppDialogSizes.textAreaMaxHeight())
                     .verticalScroll(rememberScrollState()),
             ) {
                 MarkdownContentSelectable(content)
@@ -77,6 +76,6 @@ fun HelpDialog(fileName: String, onDismiss: () -> Unit) {
             }
         },
         shape = DesignTokens.dialogShape,
-        backgroundColor = MaterialTheme.colors.surface,
+        backgroundColor = colors.fillet,
     )
 }

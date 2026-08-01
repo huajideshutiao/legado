@@ -93,7 +93,8 @@ fun WaitDialog(
             dismissOnClickOutside = false,
         ),
     ) {
-        Surface(shape = DesignTokens.dialogShape) {
+        val colors = AppTheme.colors
+        Surface(shape = DesignTokens.dialogShape, color = colors.fillet) {
             WaitDialogContent(message = message)
         }
     }

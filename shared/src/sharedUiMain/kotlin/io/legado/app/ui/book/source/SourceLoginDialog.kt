@@ -39,6 +39,7 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.rule.FlexChildStyle
 import io.legado.app.data.entities.rule.RowUi
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.mainDispatcher
 import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.toast.Toasters
@@ -57,8 +58,6 @@ import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.toJson
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -176,7 +175,7 @@ fun SourceLoginDialog(
     }
 
     fun handleButtonClick(rowUi: RowUi) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             if (rowUi.action.isAbsUrl()) {
                 onOpenUrl(rowUi.action!!)
             } else if (rowUi.action != null) {
@@ -199,7 +198,7 @@ fun SourceLoginDialog(
     }
 
     fun login(loginData: HashMap<String, String>) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             if (loginData.isEmpty()) {
                 source.removeLoginInfo()
                 withContext(mainDispatcher) { onDismiss() }

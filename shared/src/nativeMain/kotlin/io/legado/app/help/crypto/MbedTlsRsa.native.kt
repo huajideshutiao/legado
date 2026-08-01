@@ -28,6 +28,7 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
+import kotlinx.cinterop.value
 
 /**
  * pk_parse 封装: DER 与 PEM 都吃 (PEM 按 mbedTLS 要求补 NUL 终止), PKCS#1/PKCS#8/SPKI 自动识别;

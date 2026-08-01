@@ -16,11 +16,12 @@ import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
-import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
+import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
+import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.toRouteRef
@@ -57,7 +58,7 @@ class FileAssociationFragment() : Fragment() {
         }
     }
 
-    private val isShell get() = activity is AssociationActivity
+    private val isShell get() = activity is MainActivity
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

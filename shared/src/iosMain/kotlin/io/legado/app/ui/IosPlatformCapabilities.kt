@@ -20,14 +20,12 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.help.topMostViewController
 import io.legado.app.model.CheckSourceShared
 import io.legado.app.model.Debug
-import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.source.manage.BookSourceViewModelShared
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.PlatformServiceProviders
-import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.File
 import io.legado.app.utils.FlowBus
@@ -93,12 +91,9 @@ object IosPlatformCapabilities : PlatformCapabilities {
         copyTextToClipboard(text)
     }
 
+    // 完整分发链 (压缩包/JSON 一键导入/书籍文件) 见 NativeFileAssociationDispatch, 与鸿蒙共用
     override fun openImportFile(filePath: String) {
-        scope.launch {
-            runCatching { FileBook.importLocalFile(filePath) }
-                .onSuccess { AppNavigatorProviders.getOrNull()?.push(it.toReadRoute()) }
-                .onFailure { error -> AppLog.put("导入关联书籍失败: ${error.message}", error) }
-        }
+        scope.launch { NativeFileAssociationDispatch.dispatch(filePath) }
     }
 
     // 按 bookUrl 查 DB 解析 BookRef, 供 deep link / 文件关联的路由导航
@@ -195,7 +190,13 @@ object IosPlatformCapabilities : PlatformCapabilities {
     }
 
     // 上架/下架 (对照 desktop toggleBookshelf, 无删除确认弹窗)
-    override fun toggleBookshelf(book: Book, inBookshelf: Boolean, onComplete: (Boolean?) -> Unit) {
+    override fun toggleBookshelf(
+        book: Book,
+        inBookshelf: Boolean,
+        onComplete: (Boolean?) -> Unit,
+        onWaitDialog: (Boolean) -> Unit,
+        onAction: (String) -> Unit,
+    ) {
         scope.launch {
             runCatching {
                 if (inBookshelf) {

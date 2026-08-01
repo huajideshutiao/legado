@@ -122,7 +122,19 @@ object VerificationUiProviderImpl : VerificationUiProvider {
             // BottomSheet 半屏方式打开 (对照 JsActivity BottomSheetDialog peekHeight=60%)
             navigator.showOverlay(AppOverlay.Sheet(key = "web_view", payload = url))
         } else {
-            navigator.push(AppRoute.WebView(url))
+            // 对照原 WebViewActivity 的 intent extras: 验证回传参数 (saveResult/refetchAfterSuccess)
+            // 与书源信息 (headerMap 注入用) 全量传入路由
+            navigator.push(
+                AppRoute.WebView(
+                    url = url,
+                    title = title,
+                    sourceKey = source.getKey(),
+                    sourceName = source.getTag(),
+                    sourceType = source.getSourceType(),
+                    saveResult = saveResult ?: false,
+                    refetchAfterSuccess = refetchAfterSuccess ?: true,
+                )
+            )
         }
     }
 }

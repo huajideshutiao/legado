@@ -294,8 +294,8 @@ fun ExploreShowRoute(
                 coverReloadTick = state.bookshelfVersion,
                 onClick = onClick,
                 onLongClick = onLongClick,
-                coverSlot = { b, modifier, isVideoCover ->
-                    LocalBookCoverSlot.current(b, modifier, isVideoCover)
+                coverSlot = { b, modifier, isVideoCover, coverReloadTick ->
+                    LocalBookCoverSlot.current(b, modifier, isVideoCover, coverReloadTick)
                 },
             )
         },
@@ -306,6 +306,7 @@ fun ExploreShowRoute(
                 remember(book, inBookshelf) { book.toCoverBook(inBookshelf) },
                 modifier,
                 isVideoStyle,
+                0,
             )
         },
     )

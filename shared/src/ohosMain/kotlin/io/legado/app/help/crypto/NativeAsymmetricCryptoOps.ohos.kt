@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
 
 /**
- * 鸿蒙 actual: 非对称加解密。主实现 mbedTLS [MbedTlsRsa] (v1.5/OAEP + 私钥加密/公钥解密反向 +
+ * 鸿蒙 actual: 非对称加解密。主实现 mbedTLS ([MbedTlsOps], v1.5/OAEP + 私钥加密/公钥解密反向 +
  * hutool 同款分块, 无 UI 线程往返), 任意异常回落既有 @ohos.security.cryptoFramework napi 桥接。
  *
  * # napi 回落调用链
@@ -37,7 +37,7 @@ actual object NativeAsymmetricCryptoOps {
         publicKey: ByteArray?,
         data: ByteArray
     ): ByteArray = mbedTlsOrFallback(
-        { MbedTlsRsa.encrypt(algorithm, usePublicKey, privateKey, publicKey, data) },
+        { MbedTlsOps.rsaEncrypt(algorithm, usePublicKey, privateKey, publicKey, data) },
         { invokeAsyCrypto("encrypt", algorithm, usePublicKey, privateKey, publicKey, data) }
     )
 
@@ -48,7 +48,7 @@ actual object NativeAsymmetricCryptoOps {
         publicKey: ByteArray?,
         data: ByteArray
     ): ByteArray = mbedTlsOrFallback(
-        { MbedTlsRsa.decrypt(algorithm, usePublicKey, privateKey, publicKey, data) },
+        { MbedTlsOps.rsaDecrypt(algorithm, usePublicKey, privateKey, publicKey, data) },
         { invokeAsyCrypto("decrypt", algorithm, usePublicKey, privateKey, publicKey, data) }
     )
 

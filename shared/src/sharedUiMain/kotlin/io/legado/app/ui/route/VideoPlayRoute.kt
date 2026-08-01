@@ -28,6 +28,7 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
@@ -181,8 +182,13 @@ fun VideoPlayRoute(
             )
         }
     }
-    // 对照 Activity openReview: viewModel.openCommentDialog
-    val onOpenReview: () -> Unit = { navigator.push(AppRoute.ReviewPost(book.toRouteRef())) }
+    // 对照 Activity openReview: viewModel.openCommentDialog → ReviewListDialog(book, chapter, 0)
+    val onOpenReview: () -> Unit = {
+        val chapter = state.chapters.getOrNull(state.curChapterIndex)
+        if (!PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)) {
+            navigator.push(AppRoute.ReviewPost(book.toRouteRef()))
+        }
+    }
 
     // 平台对话框状态 (对照 TocRoute showLogDialog/editingBookmark)
     var showLogDialog by remember { mutableStateOf(false) }

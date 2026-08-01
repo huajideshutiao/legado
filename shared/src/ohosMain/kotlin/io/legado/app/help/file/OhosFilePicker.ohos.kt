@@ -188,7 +188,7 @@ private data class SaveDocumentPayload(
 
 /** pickDirectory 请求 payload (Kotlin → ArkTS, 无参数)。 */
 @Serializable
-private data class PickDirectoryPayload
+private class PickDirectoryPayload
 
 /**
  * FilePicker 响应 (ArkTS → Kotlin)。

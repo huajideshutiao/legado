@@ -19,15 +19,23 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookProgress
+import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.toast.Toasters
+import io.legado.app.model.LocalReadBookProvider
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.read.ContentEditDialog
+import io.legado.app.ui.book.read.EffectiveReplacesDialog
+import io.legado.app.ui.book.read.EffectiveReplacesScreenModel
+import io.legado.app.ui.book.read.EffectiveReplacesUiEvent
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.ReadConfigChange
@@ -38,7 +46,12 @@ import io.legado.app.ui.book.read.ReaderScreen
 import io.legado.app.ui.book.read.ReaderScreenModel
 import io.legado.app.ui.book.read.ReaderUiActions
 import io.legado.app.ui.book.read.ReaderUiState
+import io.legado.app.ui.book.read.config.ChineseConverterSelectorDialog
+import io.legado.app.ui.book.read.config.HttpTtsEditDialog
+import io.legado.app.ui.book.read.config.HttpTtsEditViewModelShared
+import io.legado.app.ui.book.read.config.PageKeyDialog
 import io.legado.app.ui.book.read.config.ReadAloudDialog
+import io.legado.app.ui.book.read.config.SpeakEngineDialog
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.book.read.page.turnPage
@@ -46,20 +59,34 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.AppShortcut
 import io.legado.app.ui.compose.platform.AppShortcutHandler
+import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
+import io.legado.app.ui.widget.text.EditEntity
+import io.legado.app.utils.KS_JSON
+import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cloud_progress_exceeds_current
+import legado.shared.generated.resources.concurrent_rate
+import legado.shared.generated.resources.login_check_js
+import legado.shared.generated.resources.login_ui
+import legado.shared.generated.resources.login_url
+import legado.shared.generated.resources.name
 import legado.shared.generated.resources.no
 import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.source_http_header
 import legado.shared.generated.resources.sync_book_progress_t
 import org.jetbrains.compose.resources.stringResource
 
@@ -148,10 +175,12 @@ fun ReaderRoute(
             }
 
             // 非翻页类点击动作，对照 app 端 ReadView.click 走 callBack 的分支
-            // (5/6 朗读上下段无 shared 接口，暂不接)
+            // 5/6 朗读上下段，已通过 provider 接入（对照 app 端 ReadAloud.prevParagraph/nextParagraph）
             override fun onPageAction(action: Int) {
                 val menu = screenModel.menuState
                 when (action) {
+                    5 -> provider.readAloudControls(navigator, screenModel)?.prevParagraph()
+                    6 -> provider.readAloudControls(navigator, screenModel)?.nextParagraph()
                     7 -> menu.onTopMenuAction(ReadMenuAction.ADD_BOOKMARK)
                     9 -> menu.clickReplaceRule()
                     10 -> menu.clickCatalog()
@@ -220,6 +249,26 @@ fun ReaderRoute(
 
     ReaderScreen(state = state, actions = actions, focusRequester = keyFocusRequester)
 
+    // region ReadBookEvents 订阅 (对照 app 端 ReadBookActivity.observeLiveBus 的 ReadBookEvents 收集)
+    LaunchedEffect(screenModel) {
+        // 菜单/顶栏重建 (对照 app 端 actionBarChange → readMenu.reset())
+        launch { ReadBookEvents.actionBarChange.collect { screenModel.menuState.reset() } }
+        // 进度条刷新 (对照 app 端 seekBarChange → readMenu.upSeekBar())
+        launch { ReadBookEvents.seekBarChange.collect { screenModel.menuState.upSeekBar() } }
+        // 屏幕超时设置变更 (对照 app 端 keepLightChange → upScreenTimeOut)
+        // 待实现: ReaderPlatformProvider.onKeepLightChange 接口尚未提供, 平台 actual 落地后补桥接
+        launch { ReadBookEvents.keepLightChange.collect { } }
+        // 菜单数据刷新 (对照 app 端 menuRefresh → upMenuView())
+        launch { ReadBookEvents.menuRefresh.collect { screenModel.menuState.refresh() } }
+        // 请求重载目录 (对照 app 端 loadChapterList → viewModel.loadChapterList(book))
+        launch {
+            ReadBookEvents.loadChapterList.collect { book ->
+                screenModel.viewModel.loadChapterList(book)
+            }
+        }
+    }
+    // endregion
+
     // 云进度同步确认对话框 (对照 app 端 ReadBookActivity.sureNewProgress)
     var syncProgress by remember { mutableStateOf<BookProgress?>(null) }
     LaunchedEffect(screenModel) {
@@ -263,7 +312,12 @@ fun ReaderRoute(
                     screenModel.changeTo(payload.source, payload.book, payload.toc)
                 }
 
-                RouteResults.BOOK_SOURCE_EDIT -> screenModel.viewModel.refreshCurrentChapter()
+                RouteResults.BOOK_SOURCE_EDIT -> {
+                    screenModel.viewModel.upBookSource()
+                    screenModel.menuState.refresh()
+                }
+
+                RouteResults.REPLACE_EDIT -> screenModel.viewModel.replaceRuleChanged()
 
                 RouteResults.BOOK_INFO -> when (result.payload) {
                     is RouteResultPayload.Deleted -> navigator.pop()
@@ -350,6 +404,81 @@ fun ReaderRoute(
             AppLogDialog(onDismiss = { screenModel.clearDialogEvent() })
         }
 
+        // 更多设置 (对照原版 设置按钮 → MoreConfigDialog 底部弹窗)
+        is ReaderDialogEvent.MoreConfig -> {
+            MoreConfigDialogHost(
+                onDismiss = { screenModel.clearDialogEvent() },
+            )
+        }
+
+        // 界面/样式设置 (对照原版 界面按钮 → ReadStyleDialog 底部弹窗)
+        is ReaderDialogEvent.ReadStyle -> {
+            ReadStyleDialogHost(
+                onDismiss = { screenModel.clearDialogEvent() },
+                onShowPaddingConfig = { navigator.push(AppRoute.PaddingConfig) },
+                onShowTipConfig = { navigator.push(AppRoute.TipConfig) },
+                onShowBgTextConfig = { navigator.push(AppRoute.BgTextConfig) },
+            )
+        }
+
+        // 起效的替换规则 (对照原版 替换按钮 → EffectiveReplacesDialog)
+        is ReaderDialogEvent.EffectiveReplaces -> {
+            val readBook = LocalReadBookProvider.current.readBook
+            val replacesModel = remember {
+                EffectiveReplacesScreenModel(
+                    getEffectiveReplaceRules = {
+                        readBook.curTextChapter.value?.effectiveReplaceRules ?: emptyList()
+                    },
+                )
+            }
+            LaunchedEffect(Unit) {
+                replacesModel.dispatch(EffectiveReplacesUiEvent.Init)
+            }
+            val replacesState by replacesModel.state.collectAsState()
+            var showChineseConverter by remember { mutableStateOf(false) }
+            val currentBook = screenModel.currentBook
+            if (currentBook != null) {
+                EffectiveReplacesDialog(
+                    book = currentBook,
+                    items = replacesState.items,
+                    onAddRule = {
+                        navigator.push(AppRoute.ReplaceEdit())
+                        screenModel.clearDialogEvent()
+                    },
+                    onItemClick = { rule ->
+                        if (rule === replacesModel.chineseConvert) {
+                            showChineseConverter = true
+                        } else {
+                            navigator.push(AppRoute.ReplaceEdit(rule.id))
+                            screenModel.clearDialogEvent()
+                        }
+                    },
+                    onManageAll = {
+                        navigator.push(AppRoute.ReplaceRule)
+                        screenModel.clearDialogEvent()
+                    },
+                    onDismiss = { screenModel.clearDialogEvent() },
+                )
+            }
+            // 繁简转换选择器 (对照 EffectiveReplacesRoute)
+            if (showChineseConverter) {
+                ChineseConverterSelectorDialog(
+                    currentType = AppConfigProviders.get().chineseConverterType,
+                    onChanged = {
+                        replacesModel.dispatch(EffectiveReplacesUiEvent.Init)
+                    },
+                    onDismiss = { showChineseConverter = false },
+                )
+            }
+        }
+
+        // 朗读设置 (对照原版 朗读面板设置按钮 → ReadAloudConfigDialog)
+        is ReaderDialogEvent.ReadAloudConfig -> {
+            ReadAloudConfigDialogHost(
+                onDismiss = { screenModel.clearDialogEvent() },
+            )
+        }
+
         // 朗读控制面板 (对照原版 ReadMenu 朗读按钮长按 → ReadAloudDialog)
         is ReaderDialogEvent.ReadAloud -> {
             val controls = remember(provider, navigator, screenModel) {
@@ -399,6 +528,31 @@ fun ReaderRoute(
                     onDismiss = { screenModel.clearDialogEvent() },
                 )
             }
+        }
+
+        // 编辑 HTTP TTS (对照原版 SpeakEngineDialog 中"+"按钮 → HttpTtsEditDialog)
+        is ReaderDialogEvent.HttpTtsEdit -> {
+            HttpTtsEditDialogHost(
+                onDismiss = { screenModel.clearDialogEvent() },
+            )
+        }
+
+        // 选择朗读引擎 (对照原版 朗读面板选择引擎 → SpeakEngineDialog)
+        is ReaderDialogEvent.SpeakEngine -> {
+            SpeakEngineDialogHost(
+                onDismiss = { screenModel.clearDialogEvent() },
+                onEditEngine = { engine ->
+                    // 引擎编辑入口: 走平台能力 (app 端 HttpTtsEditDialog, engine=null 新增)
+                    PlatformCapabilityProviders.get().showHttpTtsEditDialog(engine)
+                },
+            )
+        }
+
+        // 翻页键配置 (对照原版 更多设置 → PageKeyDialog)
+        is ReaderDialogEvent.PageKey -> {
+            PageKeyDialogHost(
+                onDismiss = { screenModel.clearDialogEvent() },
+            )
         }
 
         null -> Unit
@@ -476,7 +630,278 @@ private fun buildLayoutConfig(
         textFullJustify = config.textFullJustify,
         textBottomJustify = config.textBottomJustify,
         useZhLayout = config.useZhLayout,
+        titleMode = config.titleMode,
         // 度量侧字体与 ReaderDrawStyle 的 loadReaderFontFamily 同一路径，避免度量/绘制不同字体
         textFontPath = config.textFont,
     )
+}
+
+/**
+ * HttpTTS 编辑对话框 Host (对照 app 端 HttpTtsEditDialog Fragment 壳)。
+ *
+ * 包装 shared [HttpTtsEditDialog] Composable, 内部构建 [HttpTtsEditViewModelShared]
+ * + 表单 [EditEntity] 列表, 桥接平台能力 (帮助 / 日志 / 剪贴板写入)。
+ *
+ * 当前事件 [ReaderDialogEvent.HttpTtsEdit] 不携带 id, 默认新增 (id=null)。
+ * 剪贴板读写统一经平台能力注入。
+ */
+@Composable
+private fun HttpTtsEditDialogHost(
+    onDismiss: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val platform = PlatformCapabilityProviders.get()
+    // 预解析表单 label, 避免 @Composable 在 LaunchedEffect 中误用
+    val nameLabel = stringResource(Res.string.name)
+    val concurrentRateLabel = stringResource(Res.string.concurrent_rate)
+    val loginUrlLabel = stringResource(Res.string.login_url)
+    val loginUiLabel = stringResource(Res.string.login_ui)
+    val loginCheckJsLabel = stringResource(Res.string.login_check_js)
+    val headerLabel = stringResource(Res.string.source_http_header)
+
+    // HttpTTS 编辑 VM 共享核心: scope + 平台剪贴板提供者 + TTS 引擎变更通知
+    val viewModel = remember {
+        HttpTtsEditViewModelShared(
+            scope = scope,
+            clipTextProvider = { platform.getClipboardText() },
+            onTtsChanged = { /* TTS 引擎刷新由平台端自行处理, 此处空实现避免循环 */ },
+        )
+    }
+    var editEntities by remember { mutableStateOf<List<EditEntity>>(emptyList()) }
+    var showLog by remember { mutableStateOf(false) }
+
+    // 加载初始 HttpTTS (id=null 新建, 回调空 HttpTTS 表单)
+    LaunchedEffect(Unit) {
+        viewModel.initData(id = null) { httpTTS ->
+            editEntities = buildHttpTtsEditEntities(
+                httpTTS, nameLabel, concurrentRateLabel,
+                loginUrlLabel, loginUiLabel, loginCheckJsLabel, headerLabel,
+            )
+        }
+    }
+
+    HttpTtsEditDialog(
+        editEntities = editEntities,
+        onBack = onDismiss,
+        onSave = {
+            val httpTTS = collectHttpTtsFromEntities(editEntities, viewModel.id)
+            viewModel.save(httpTTS) {
+                Toasters.get().toast("保存成功")
+                onDismiss()
+            }
+        },
+        onLogin = {
+            val httpTts = collectHttpTtsFromEntities(editEntities, viewModel.id)
+            if (httpTts.hasLogin()) {
+                viewModel.save(httpTts) { httpTts.showLoginDialog() }
+            } else {
+                Toasters.get().toast("没有登陆界面")
+            }
+        },
+        onShowLoginHeader = {
+            val httpTts = collectHttpTtsFromEntities(editEntities, viewModel.id)
+            val header = httpTts.getLoginHeader()
+            if (header.isNullOrBlank()) Toasters.get().toast("无登录请求头")
+            else Toasters.get().toast(header)
+        },
+        onDeleteLoginHeader = {
+            collectHttpTtsFromEntities(editEntities, viewModel.id).removeLoginHeader()
+            Toasters.get().toast("已删除")
+        },
+        onCopySource = {
+            val httpTts = collectHttpTtsFromEntities(editEntities, viewModel.id)
+            platform.copyToClipboard(KS_JSON.encodeToString(httpTts))
+        },
+        onPasteSource = {
+            // 剪贴板读取为 KMP 限制, importFromClip 内部会 toast "剪贴板为空"
+            viewModel.importFromClip { imported ->
+                editEntities = buildHttpTtsEditEntities(
+                    imported, nameLabel, concurrentRateLabel,
+                    loginUrlLabel, loginUiLabel, loginCheckJsLabel, headerLabel,
+                )
+            }
+        },
+        onShowLog = { showLog = true },
+        onShowHelp = { platform.showMdFile("帮助", "httpTTSHelp") },
+        onDismiss = onDismiss,
+    )
+
+    // 日志对话框 (嵌套 Overlay, 对照 app 端 showDialogFragment<AppLogDialog>)
+    if (showLog) {
+        AppLogDialog(onDismiss = { showLog = false })
+    }
+}
+
+/**
+ * 朗读引擎选择对话框 Host (对照 app 端 SpeakEngineDialog Fragment 壳)。
+ *
+ * 包装 shared [SpeakEngineDialog] Composable, 内部从 [AppDbProviders] 加载 HttpTTS
+ * 引擎列表, 选中后写入 [AppConfigProviders] 的 ttsEngine 字段。
+ *
+ * @param onEditEngine 引擎编辑入口 (新增/编辑), 由调用方决定走平台 Fragment 还是 Overlay
+ */
+@Composable
+private fun SpeakEngineDialogHost(
+    onDismiss: () -> Unit,
+    onEditEngine: (HttpTTS?) -> Unit,
+) {
+    val appDb = remember { AppDbProviders.get() }
+    val appConfig = remember { AppConfigProviders.get() }
+    val scope = rememberCoroutineScope()
+
+    // HttpTTS 引擎列表 (对照 app 端 SpeakEngineDialog.LaunchedEffect { flowAll().collect })
+    var engines by remember { mutableStateOf(emptyList<HttpTTS>()) }
+    LaunchedEffect(Unit) {
+        appDb.httpTTSDao.flowAll()
+            .catch { /* 静默, 与 ReadAloudConfigRoute 一致 */ }
+            .flowOn(IoDispatcher)
+            .conflate()
+            .collect { engines = it }
+    }
+
+    // 当前选中引擎 (null=系统默认)
+    var selectedEngineUrl by remember {
+        mutableStateOf(appConfig.ttsEngine.ifBlank { null })
+    }
+
+    SpeakEngineDialog(
+        engines = engines,
+        selectedEngineUrl = selectedEngineUrl,
+        onSelectEngine = { url ->
+            selectedEngineUrl = url
+            appConfig.setTtsEngine(url)
+        },
+        onEditEngines = onEditEngine,
+        onDeleteEngine = { httpTTS ->
+            scope.launch(IoDispatcher) {
+                appDb.httpTTSDao.delete(httpTTS)
+            }
+        },
+        onDismiss = onDismiss,
+    )
+}
+
+/**
+ * 翻页键配置对话框 Host (对照 app 端 PageKeyDialog Fragment 壳)。
+ *
+ * 包装 shared [PageKeyDialog] Composable, 从 [LocalPreferenceStoreProvider] 读写
+ * prevKeys / nextKeys 偏好, 与 OtherConfigRoute 内嵌 PageKeyDialog 行为一致。
+ */
+@Composable
+private fun PageKeyDialogHost(
+    onDismiss: () -> Unit,
+) {
+    val pref = LocalPreferenceStoreProvider.current
+    // 从偏好读取 prev/next 字符串, 反序列化为 Map<Int, String>
+    val keyMappings = remember {
+        val prev = pref.getString(PreferKey.prevKeys) ?: ""
+        val next = pref.getString(PreferKey.nextKeys) ?: ""
+        parsePageKeyMappings(prev, next)
+    }
+    PageKeyDialog(
+        keyMappings = keyMappings,
+        onConfirm = { mappings ->
+            val (prev, next) = splitPageKeyMappings(mappings)
+            pref.putString(PreferKey.prevKeys, prev)
+            pref.putString(PreferKey.nextKeys, next)
+            onDismiss()
+        },
+        onDismiss = onDismiss,
+    )
+}
+
+/**
+ * 从 [HttpTTS] 构建 [EditEntity] 表单字段列表 (对照 app 端 HttpTtsEditDialog.initView)。
+ *
+ * 字段顺序 / ViewType / codePatterns 与 app 端 1:1 对齐, label 由调用方预解析传入
+ * (避免 @Composable 在非 Composable 上下文中误用)。
+ */
+private fun buildHttpTtsEditEntities(
+    httpTTS: HttpTTS,
+    nameLabel: String,
+    concurrentRateLabel: String,
+    loginUrlLabel: String,
+    loginUiLabel: String,
+    loginCheckJsLabel: String,
+    headerLabel: String,
+): List<EditEntity> = listOf(
+    EditEntity("name", httpTTS.name, nameLabel),
+    EditEntity(
+        key = "url",
+        value = httpTTS.url,
+        hint = "url",
+        viewType = EditEntity.ViewType.code,
+        codePatterns = EditEntity.CodePattern.all,
+    ),
+    EditEntity("contentType", httpTTS.contentType, "Content-Type"),
+    EditEntity("concurrentRate", httpTTS.concurrentRate, concurrentRateLabel),
+    EditEntity(
+        key = "loginUrl",
+        value = httpTTS.loginUrl,
+        hint = loginUrlLabel,
+        viewType = EditEntity.ViewType.code,
+        codePatterns = EditEntity.CodePattern.all,
+    ),
+    EditEntity(
+        key = "loginUi",
+        value = httpTTS.loginUi,
+        hint = loginUiLabel,
+        viewType = EditEntity.ViewType.code,
+        codePatterns = EditEntity.CodePattern.json,
+    ),
+    EditEntity(
+        key = "loginCheckJs",
+        value = httpTTS.loginCheckJs,
+        hint = loginCheckJsLabel,
+        viewType = EditEntity.ViewType.code,
+        codePatterns = EditEntity.CodePattern.js,
+    ),
+    EditEntity(
+        key = "header",
+        value = httpTTS.header,
+        hint = headerLabel,
+        viewType = EditEntity.ViewType.code,
+        codePatterns = EditEntity.CodePattern.all,
+    ),
+)
+
+/**
+ * 从表单字段收集回 [HttpTTS] 实例 (对照 app 端 HttpTtsEditDialog.dataFromView)。
+ */
+private fun collectHttpTtsFromEntities(
+    entities: List<EditEntity>,
+    id: Long?,
+): HttpTTS = HttpTTS(id = id ?: systemCurrentTimeMillis()).also { httpTTS ->
+    entities.forEach {
+        when (it.key) {
+            "name" -> httpTTS.name = it.text.orEmpty()
+            "url" -> httpTTS.url = it.text.orEmpty()
+            "contentType" -> httpTTS.contentType = it.text
+            "concurrentRate" -> httpTTS.concurrentRate = it.text
+            "loginUrl" -> httpTTS.loginUrl = it.text
+            "loginUi" -> httpTTS.loginUi = it.text
+            "loginCheckJs" -> httpTTS.loginCheckJs = it.text
+            "header" -> httpTTS.header = it.text
+        }
+    }
+}
+
+/**
+ * 解析 prevKeys/nextKeys 字符串为 PageKeyDialog 需要的 Map<Int, String>
+ * (与 PageKeyDialog 内部 buildKeyMappings 反向逻辑对齐, 同 OtherConfigRoute)。
+ */
+private fun parsePageKeyMappings(prevKeys: String, nextKeys: String): Map<Int, String> {
+    val map = mutableMapOf<Int, String>()
+    prevKeys.split(",").mapNotNull { it.trim().toIntOrNull() }.forEach { map[it] = "prev_page" }
+    nextKeys.split(",").mapNotNull { it.trim().toIntOrNull() }.forEach { map[it] = "next_page" }
+    return map
+}
+
+/**
+ * 将 Map<Int, String> 反序列化为 prevKeys/nextKeys 字符串写回 prefs (同 OtherConfigRoute)。
+ */
+private fun splitPageKeyMappings(mappings: Map<Int, String>): Pair<String, String> {
+    val prev = mappings.filter { it.value == "prev_page" }.keys.joinToString(",") { it.toString() }
+    val next = mappings.filter { it.value == "next_page" }.keys.joinToString(",") { it.toString() }
+    return prev to next
 }

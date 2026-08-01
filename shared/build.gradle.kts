@@ -21,6 +21,62 @@ val isMacHost = System.getProperty("os.name").startsWith("Mac", ignoreCase = tru
 // klib 编译 (语法/类型/签名校验) 不需要 Xcode; 只有 link 成 framework 才必须 mac。
 val enableIosTarget = providers.gradleProperty("enableIosTarget").orNull?.toBoolean() ?: isMacHost
 val enableOhosTarget = providers.gradleProperty("enableOhosTarget").orNull?.toBoolean() ?: false
+val composeVersion = libs.versions.composeMultiplatformOfficial.get()
+val nativeInteropSourcePatterns = listOf(
+    "io/legado/app/help/crypto/MbedTls*.native.kt",
+    "io/legado/app/help/crypto/MbedTlsOps.native.kt",
+    "io/legado/app/model/script/*.native.kt",
+)
+val nativeInteropSourceRoot = file("src/nativeMain/kotlin")
+val stageNativeInteropForIos = if (enableIosTarget) {
+    tasks.register<org.gradle.api.tasks.Sync>("stageNativeInteropForIos") {
+        from(nativeInteropSourceRoot) {
+            include(*nativeInteropSourcePatterns.toTypedArray())
+        }
+        into(layout.buildDirectory.dir("generated/nativeInterop/iosLeaf"))
+    }
+} else null
+val stageNativeInteropForOhos = if (enableOhosTarget) {
+    tasks.register<org.gradle.api.tasks.Sync>("stageNativeInteropForOhos") {
+        from(nativeInteropSourceRoot) {
+            include(*nativeInteropSourcePatterns.toTypedArray())
+        }
+        into(layout.buildDirectory.dir("generated/nativeInterop/ohosArm64Main"))
+        doLast {
+            val outputRoot = layout.buildDirectory
+                .dir("generated/nativeInterop/ohosArm64Main")
+                .get()
+                .asFile
+            val quickJsAliases = outputRoot.resolve(
+                "io/legado/app/napi/quickjs/CNamesAliases.kt"
+            )
+            quickJsAliases.parentFile.mkdirs()
+            quickJsAliases.writeText(
+                """
+                @file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
+                package io.legado.app.napi.quickjs
+
+                typealias JSContext = cnames.structs.JSContext
+                typealias JSRuntime = cnames.structs.JSRuntime
+                """.trimIndent() + "\n"
+            )
+            val mbedTlsAliases = outputRoot.resolve(
+                "io/legado/app/nativecrypto/mbedtls/CNamesAliases.kt"
+            )
+            mbedTlsAliases.parentFile.mkdirs()
+            mbedTlsAliases.writeText(
+                """
+                @file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
+                package io.legado.app.nativecrypto.mbedtls
+
+                typealias mbedtls_md_info_t = cnames.structs.mbedtls_md_info_t
+                """.trimIndent() + "\n"
+            )
+        }
+    }
+} else null
 
 // ohosArm64 只存在于 CPF 分支 KGP, 本脚本无法静态引用, 交给 build-logic 的约定插件声明。
 if (enableOhosTarget) {
@@ -81,25 +137,36 @@ kotlin {
     }
 
     sourceSets {
-        commonMain.dependencies {
-            implementation(libs.kotlin.stdlib)
-            api(project(":modules:js-api"))
-            implementation(libs.kotlinx.coroutines.core)
-            implementation(libs.kotlinx.atomicfu)
-            api(libs.okio)
-            api(libs.room.common)
-            api(libs.room.runtime)
-            implementation(libs.ksoup)
-            implementation(libs.kotlinx.serialization.json)
-            api(compose.components.resources)
+        commonMain {
+            if (enableOhosTarget) {
+                kotlin.srcDir("src/ohosCompatMain/kotlin")
+            }
+            dependencies {
+                implementation(libs.kotlin.stdlib)
+                api(project(":modules:js-api"))
+                implementation(libs.kotlinx.coroutines.core)
+                implementation(libs.kotlinx.atomicfu)
+                api(libs.okio)
+                api(libs.room.common)
+                api(libs.room.runtime)
+                if (enableOhosTarget) {
+                    implementation(project(":modules:ksoup-ohos"))
+                } else {
+                    implementation(libs.ksoup)
+                }
+                implementation(libs.kotlinx.serialization.json)
+                api("org.jetbrains.compose.components:components-resources:$composeVersion")
+            }
         }
         val sharedUiMain by creating {
             dependsOn(commonMain.get())
             dependencies {
-                implementation(compose.runtime)
-                implementation(compose.foundation)
-                implementation(compose.material)
-                implementation(compose.ui)
+                implementation("org.jetbrains.compose.runtime:runtime:$composeVersion")
+                implementation("org.jetbrains.compose.foundation:foundation:$composeVersion")
+                implementation("org.jetbrains.compose.material:material:$composeVersion")
+                implementation("org.jetbrains.compose.ui:ui:$composeVersion")
+                // 书架 DB 流门控 (repeatOnLifecycle); ohos 依赖链不含本源集, 不受 fork 影响
+                implementation(libs.compose.lifecycle.runtime.multiplatform)
             }
         }
         // 鸿蒙无变体三方库隔离层: coil3-compose / reorderable / multiplatformMarkdown。
@@ -138,7 +205,11 @@ kotlin {
                 implementation(libs.coil3.gif)
                 implementation(libs.compose.foundation.android)
                 implementation(libs.compose.activity)
-                implementation(compose.components.uiToolingPreview)
+                implementation("org.jetbrains.compose.components:components-ui-tooling-preview:$composeVersion")
+                // SVG 解码 (ImageProvider.android.kt 内联 SvgDecode 依赖 androidsvg)
+                implementation(libs.androidsvg)
+                // AndroidWebView slot 的夜间模式 (原 WebViewUtil.applyCommonSettings → setDarkeningAllowed)
+                implementation(libs.androidx.webkit)
             }
         }
         jvmMain {
@@ -148,7 +219,7 @@ kotlin {
             dependencies {
                 implementation("net.sf.kxml:kxml2:2.3.0")
                 implementation(libs.androidx.sqlite.bundled)
-                implementation(compose.components.uiToolingPreview)
+                implementation("org.jetbrains.compose.components:components-ui-tooling-preview:$composeVersion")
                 // SVG 栅格化 (SvgRasterizer): 纯 Java 轻量渲染器, 替代 Android 端 SvgUtils 兜底
                 implementation("com.github.weisj:jsvg:2.0.0")
             }
@@ -156,6 +227,11 @@ kotlin {
         val nativeMain = if (enableIosTarget || enableOhosTarget) {
             maybeCreate("nativeMain").apply {
                 dependsOn(commonMain.get())
+                kotlin.exclude(
+                    "io/legado/app/model/ImageProvider.native.kt",
+                    *nativeInteropSourcePatterns.toTypedArray(),
+                    "io/legado/app/help/crypto/NativeMbedTlsOps.native.kt",
+                )
                 dependencies {
                     implementation("io.ktor:ktor-server-core:3.1.0")
                     implementation("io.ktor:ktor-server-cio:3.1.0")
@@ -165,8 +241,14 @@ kotlin {
         } else null
 
         if (enableIosTarget) {
+            val iosImageProviderMain = maybeCreate("iosImageProviderMain").apply {
+                dependsOn(commonMain.get())
+                kotlin.srcDir("src/nativeMain/kotlin/io/legado/app/model")
+                kotlin.include("ImageProvider.native.kt")
+            }
             val iosMain = maybeCreate("iosMain").apply {
                 dependsOn(nativeMain!!)
+                dependsOn(iosImageProviderMain)
                 dependsOn(nonOhosUiMain)
                 dependencies {
                     implementation(libs.androidx.sqlite.framework)
@@ -178,12 +260,29 @@ kotlin {
             }
             // 显式 dependsOn 会让 KGP 回退到 pre-1.9.20 默认边 (只连 commonMain),
             // 中间源集 nativeMain/iosMain 不会自动挂到 leaf, 须手工连。
-            maybeCreate("iosArm64Main").dependsOn(iosMain)
-            maybeCreate("iosSimulatorArm64Main").dependsOn(iosMain)
+            maybeCreate("iosArm64Main").apply {
+                dependsOn(iosMain)
+                kotlin.srcDir(layout.buildDirectory.dir("generated/nativeInterop/iosLeaf"))
+            }
+            maybeCreate("iosSimulatorArm64Main").apply {
+                dependsOn(iosMain)
+                kotlin.srcDir(layout.buildDirectory.dir("generated/nativeInterop/iosLeaf"))
+            }
         }
         if (enableOhosTarget) {
-            maybeCreate("ohosMain").dependsOn(nativeMain!!)
-            maybeCreate("ohosArm64Main").dependsOn(maybeCreate("ohosMain"))
+            maybeCreate("ohosMain").apply {
+                dependsOn(nativeMain!!)
+                dependsOn(sharedUiMain)
+                dependencies {
+                    implementation("androidx.sqlite:sqlite-framework:2.7.0-alpha01-0.3.0")
+                    implementation("io.ktor:ktor-client-core:3.1.0")
+                    implementation("io.ktor:ktor-client-cio:3.1.0")
+                }
+            }
+            maybeCreate("ohosArm64Main").apply {
+                dependsOn(maybeCreate("ohosMain"))
+                kotlin.srcDir(layout.buildDirectory.dir("generated/nativeInterop/ohosArm64Main"))
+            }
         }
 
         val jvmAndAndroidTest by creating {
@@ -212,17 +311,34 @@ tasks.matching {
     }
 }
 
+if (enableOhosTarget) {
+    tasks.configureEach {
+        if (name == "kspKotlinOhosArm64") {
+            dependsOn("composeGenerateKnRenderBackendOhosArm64")
+        }
+    }
+}
+
+if (enableIosTarget) {
+    tasks.matching {
+        it.name == "compileKotlinIosArm64" || it.name == "compileKotlinIosSimulatorArm64"
+    }.configureEach {
+        stageNativeInteropForIos?.let { dependsOn(it) }
+    }
+}
+
+if (enableOhosTarget) {
+    tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
+        stageNativeInteropForOhos?.let { dependsOn(it) }
+    }
+}
+
 dependencies {
+    add("kspCommonMainMetadata", libs.room.compiler)
     add("kspAndroid", libs.room.compiler)
     add("kspJvm", libs.room.compiler)
     if (enableIosTarget) {
         add("kspIosArm64", libs.room.compiler)
         add("kspIosSimulatorArm64", libs.room.compiler)
-    }
-    if (enableOhosTarget) {
-        // 构建鸿蒙时自动适配 configuration 名
-        configurations.matching { it.name == "kspOhosArm64" }.all {
-            add(name, libs.room.compiler)
-        }
     }
 }

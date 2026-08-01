@@ -1,6 +1,7 @@
 package io.legado.desktop.config
 
 import io.legado.app.help.config.PreferenceProvider
+import java.util.prefs.PreferenceChangeListener
 import java.util.prefs.Preferences
 
 /**
@@ -69,4 +70,10 @@ class DesktopPreferenceProvider : PreferenceProvider {
 
     override fun getAll(): Map<String, *> =
         prefs.keys().associateWith { prefs.get(it, "") }
+
+    override fun addPreferenceChangeListener(listener: (key: String) -> Unit): () -> Unit {
+        val prefsListener = PreferenceChangeListener { event -> listener(event.key) }
+        prefs.addPreferenceChangeListener(prefsListener)
+        return { prefs.removePreferenceChangeListener(prefsListener) }
+    }
 }

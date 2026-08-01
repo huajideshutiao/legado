@@ -1,10 +1,16 @@
 package io.legado.app.ui.root
 
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.data.entities.HttpTTS
+import io.legado.app.data.entities.Review
+import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.toast.Toasters
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.import.ImportFileItem
+import io.legado.app.ui.book.read.config.FontItem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -27,6 +33,17 @@ interface PlatformCapabilities {
     // 剪贴板: 复制文本 (对照 app 端 sendToClip)
     fun copyToClipboard(text: String) = unsupported("copyToClipboard")
 
+    fun getClipboardText(): String? = null
+
+    fun testDirectLinkUpload(
+        rule: DirectLinkUploadRule,
+        onSuccess: (String) -> Unit,
+        onError: (String) -> Unit,
+    ) = unsupported("测试直链上传")
+
+    // 处理尚未下沉的 deep link 类型 (平台可保留原生兼容链)
+    fun handleDeepLinkImport(type: String, src: String): Boolean = false
+
     // Web 服务: 获取当前运行地址 (对照 app 端 WebService.hostAddress)
     fun getWebServiceUrl(): String? = null
 
@@ -44,6 +61,15 @@ interface PlatformCapabilities {
     fun showChangeCoverDialog(book: Book, onCoverSelected: (String) -> Unit) =
         unsupported("更换封面源")
 
+    // 评论列表对话框 (对照 app 端 ReviewListDialog BottomSheetDialogFragment)
+    // 返回 true 表示平台已弹出对话框; false 时调用方回退共享列表页
+    fun showReviewListDialog(
+        book: Book,
+        chapter: BookChapter?,
+        paragraphIndex: Int,
+        parentReview: Review? = null,
+    ): Boolean = false
+
     // 默认封面画廊弹窗 (对照 app 端 DefaultCoverGalleryDialog)
     fun showDefaultCoverGallery(isNight: Boolean) = unsupported("选择默认封面")
 
@@ -52,6 +78,9 @@ interface PlatformCapabilities {
 
     // 跳转系统 TTS 设置页 (app 端 IntentHelp.openTTSSetting)
     fun openTtsSettings() = unsupported("系统 TTS 设置")
+
+    /** 弹出 HttpTTS 引擎新增/编辑对话框 (对照 app 端 HttpTtsEditDialog, engine=null 新增) */
+    fun showHttpTtsEditDialog(engine: HttpTTS?) = unsupported("编辑 TTS 引擎")
 
     // 获取系统字体缩放值 (对照 app 端 AppContextWrapper.getFontScale), 默认 null 供各端按需覆写
     fun getFontScale(): String? = null
@@ -110,10 +139,11 @@ interface PlatformCapabilities {
     // 书籍详情页平台能力 (各端按需 override, 未实现端统一给出明确提示)
     // 对照 app 端 BookInfoActivity 同名方法
     /** 上传书籍到远程 (对照 onUploadBook) */
-    fun uploadBook(book: Book) = unsupported("上传书籍")
+    fun uploadBook(book: Book, success: (() -> Unit)? = null) = unsupported("上传书籍")
 
     /** 下载到本地 (对照 onDownloadToLocal) */
-    fun downloadBookToLocal(book: Book) = unsupported("下载书籍到本地")
+    fun downloadBookToLocal(book: Book, success: (() -> Unit)? = null) =
+        unsupported("下载书籍到本地")
 
     /** 源变量弹窗 (对照 onSetSourceVariable) */
     fun showSourceVariableDialog(book: Book) = unsupported("编辑书源变量")
@@ -125,12 +155,65 @@ interface PlatformCapabilities {
     fun clearBookCache(book: Book) = unsupported("清除书籍缓存")
 
     /** 书架操作: 上架/下架 (对照 onShelfClick, onComplete: null=删除, true=已上架, false=取消) */
-    fun toggleBookshelf(book: Book, inBookshelf: Boolean, onComplete: (Boolean?) -> Unit) {
+    fun toggleBookshelf(
+        book: Book,
+        inBookshelf: Boolean,
+        onComplete: (Boolean?) -> Unit,
+        onWaitDialog: (Boolean) -> Unit = {},
+        onAction: (String) -> Unit = {},
+    ) {
         unsupported("书架操作")
     }
 
+    // webFile 下载导入相关 (对照 BookInfoViewModel.importWebFile 等方法)
+    /** 导入 webFile 到本地书籍 (对照 BookInfoViewModel.importWebFile) */
+    fun importWebFile(
+        book: Book,
+        webFile: FileBook.WebFile,
+        onWaitDialog: (Boolean) -> Unit = {},
+        onAction: (String) -> Unit = {},
+        success: ((Book) -> Unit)? = null,
+    ) = unsupported("导入 Web 文件")
+
+    /** 下载 webFile 返回文件路径 (对照 BookInfoViewModel.downloadWebFile) */
+    fun downloadWebFile(
+        book: Book,
+        webFile: FileBook.WebFile,
+        onWaitDialog: (Boolean) -> Unit = {},
+        onAction: (String) -> Unit = {},
+        success: ((String) -> Unit)? = null,
+    ) = unsupported("下载 Web 文件")
+
+    /** 获取压缩包内文件名列表 (对照 BookInfoViewModel.getArchiveFilesName) */
+    fun getArchiveFilesName(archiveFilePath: String, onSuccess: (List<String>) -> Unit) =
+        unsupported("获取压缩包文件名")
+
+    /** 从压缩包导入书籍 (对照 BookInfoViewModel.importBookFromArchive) */
+    fun importBookFromArchive(
+        archiveFilePath: String,
+        archiveEntryName: String,
+        book: Book,
+        onWaitDialog: (Boolean) -> Unit = {},
+        success: ((Book) -> Unit)? = null,
+    ) = unsupported("从压缩包导入书籍")
+
+    /** 异步刷新 WebDav 书籍 (对照 BookInfoViewModel.refreshWebDavBook) */
+    fun refreshWebDavBook(book: Book, success: (() -> Unit)? = null) =
+        unsupported("刷新 WebDav 书籍")
+
+    /** 本地书合并并加载章节 (对照 BookInfoViewModel.changeToLocalBook) */
+    fun changeToLocalBook(book: Book): Book {
+        unsupported("本地书合并")
+        return book
+    }
+
     /** webFile 下载导入后阅读 (对照 onReadClick isWebFile 分支) */
-    fun handleWebFileRead(book: Book) = unsupported("下载并阅读 Web 文件")
+    fun handleWebFileRead(
+        book: Book,
+        onWaitDialog: (Boolean) -> Unit = {},
+        onAction: (String) -> Unit = {},
+        onSuccess: ((Book) -> Unit)? = null,
+    ) = unsupported("下载并阅读 Web 文件")
 
     /** 简介动作 JS 派发 (对照 onDispatchIntroAction / source.evalJS) */
     fun evalIntroAction(book: Book, js: String) = unsupported("执行简介动作")
@@ -229,6 +312,11 @@ interface PlatformCapabilities {
         error("Importing associated files is not supported on this platform: $filePath")
     }
 
+    // 阅读样式平台能力 (各端按需 override, 未实现端返回空列表)
+    // 对照 app 端 FontSelectDialog.loadFontFiles: 字体目录 + 本地字体合并去重排序
+    /** 扫描字体文件列表 (对照 app 端 FontSelectDialog, 未实现端空列表) */
+    suspend fun scanFontItems(): List<FontItem> = emptyList()
+
     // 书源管理平台能力 (各端按需 override, 未实现端统一给出明确提示)
     // 对照 app 端 BookSourceActivity 同名方法
     /** 新建书源 (对照 addBookSource / startActivity<BookSourceEditActivity>()) */
@@ -292,6 +380,15 @@ interface PlatformCapabilities {
 
     /** 显示主题列表对话框 (对照 ThemeListDialog) */
     fun showThemeListDialog() = unsupported("主题列表")
+
+    /**
+     * 显示主题自定义编辑对话框 (对照 ThemeCustomizeDialog)。
+     *
+     * - configIndex != null: 编辑指定索引的自定义主题
+     * - configIndex == null: 新建主题, isNight 指定日间/夜间
+     */
+    fun showThemeCustomizeDialog(configIndex: Int?, isNight: Boolean = false) =
+        unsupported("自定义主题")
 
     /** 显示自定义日间主题对话框 (对照 ThemeCustomizeDialog.editPrefs(false)) */
     fun showCustomizeDayThemeDialog() = unsupported("自定义日间主题")

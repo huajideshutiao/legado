@@ -18,6 +18,7 @@ import io.legado.app.help.image.IosBitmapProvider
 import io.legado.app.help.image.registerIosBookImageLoader
 import io.legado.app.help.http.registerDefaultIosCookieStoreProvider
 import io.legado.app.help.http.registerIosHttpProvider
+import io.legado.app.help.http.registerSharedCookieJarBridge
 import io.legado.app.help.notification.registerIosNotificationProgress
 import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.registerNativeDefaultDataResourceProvider
@@ -80,7 +81,7 @@ import platform.UIKit.UIDevice
  *    表现为书源变量缓存失效)
  *    [registerNativeFileCacheProvider] 紧随 SourceCacheProvider (CacheManager 文件/二进制层
  *    getFile/putFile/getByteArray/put(ByteArray)/delete 委托 FileCacheProviders; 持久化目录从
- *    AppFilesDirs.cacheDir 派生; 亦经 @JsApi 暴露给 JS, 未注册时文件层静默 no-op)
+ *    AppFilesDirs.cacheDir 派生; 亦经 @JsApi 暴露给 JS, 未注册时文件层抛 IllegalStateException)
  * 7. [registerIosJsEngines] (JS 引擎 + IosImageOps 真实像素操作) 在任何 JS eval / JsBindings 构造之前
  *    (JsBindings 构造时访问 JsBindingInjector.image, 未注册会 checkNotNull 失败;
  *     JsEngines.get() 未注册 provider 会抛 IllegalStateException)
@@ -101,7 +102,7 @@ import platform.UIKit.UIDevice
  * - HTTP provider: IosHttpProvider (Ktor CIO engine 包装 KmpHttpClient, 注册到
  *   OkHttpClientProviders + OkHttpProxyClientProviders), 解除 iOS 端 HTTP 层缺失阻塞
  *   (IosBookCover / AnalyzeUrlCore 等通过 provider 取客户端)
- * - 数据访问 provider: IosAppDbAccessor (委托 AppDatabaseProviders 取 9 个 DAO) /
+ * - 数据访问 provider: IosAppDbAccessor (委托 AppDatabaseProviders 取全部 17 个 DAO) /
  *   IosBookHelpAccessor (委托 BookStorageProviders.saveText 落盘) /
  *   IosSourceHelpAccessor (委托已下沉 commonMain 的 SourceConfig + AppCacheManager, 依赖 PreferenceProviders)
  * - 缓存 provider: IosSourceCacheProvider (基于 NSFileManager + AppFilesDirs.filesDir 的文件持久化,
@@ -160,6 +161,9 @@ fun registerIosProviders() {
     // 注册业务层 CookieStoreProvider (commonMain SharedCookieStore, Room cookieDao 持久化)
     // 与 desktop registerDefaultJvmCookieStoreProvider / app registerAndroidCookieStoreProvider 对齐
     registerDefaultIosCookieStoreProvider()
+    // 注册 CookieJarBridge (commonMain SharedCookieJarBridge, 1:1 复刻 app CookieManager)
+    // 须在 CookieStoreProvider 之后 (bridge 通过 CookieStoreProviders.get() 间接访问存储)
+    registerSharedCookieJarBridge()
 
     // 3.5 Coil3 图片加载 (BookImageLoaders + SingletonImageLoader, 对齐 app 端 App.onCreate 的
     // registerAndroidBookImageLoader + setSafe): 网络后端复用 IosHttpProvider 的 Ktor client,
@@ -177,7 +181,7 @@ fun registerIosProviders() {
     registerNativeLocalBookLocator()
 
     // 6. 数据访问 provider (依赖 AppDatabaseProviders / BookStorageProviders)
-    // AppDbAccessor: 委托 AppDatabaseProviders 取 9 个 DAO (供 WebBook/SourceHelp 等编排层用)
+    // AppDbAccessor: 委托 AppDatabaseProviders 取全部 17 个 DAO (供 WebBook/SourceHelp 等编排层用)
     // BookHelpAccessor: 委托 BookStorageProviders.saveText 落盘章节正文 (供 BookContent 用)
     // ContentProcessorAccessor: 复用 commonMain 的 ContentProcessorShared 提供完整正文处理
     // (替换规则 / 简繁 / 段落重排 / 去重标题, 依赖 AppDbProviders 已就绪)
@@ -192,8 +196,8 @@ fun registerIosProviders() {
     //   kotlin.io.File 持久化 + in-memory HashMap 内存层); 让 BaseSource.getLoginHeader/setVariable
     //   等持久层调用可用, 以及 JS bindings["cache"] 绑定不为 null
     // - FileCacheProvider: CacheManager 文件/二进制层 (getFile/putFile/getByteArray/put(ByteArray)/
-    //   delete 文件部分) 委托 FileCacheProviders; 未注册时静默 no-op (getFile 永远 null,
-    //   put(ByteArray) 丢弃); 亦经 @JsApi 暴露给 JS, 须在 JS 引擎之前注册
+    //   delete 文件部分) 委托 FileCacheProviders; 未注册时抛 IllegalStateException;
+    //   亦经 @JsApi 暴露给 JS, 须在 JS 引擎之前注册
     registerNativeSourceCacheProvider()
     registerNativeFileCacheProvider()
     // 发现规则缓存 (对应 app 端 ACache.get("explore"), 让 @js: 发现规则解析结果落盘复用)

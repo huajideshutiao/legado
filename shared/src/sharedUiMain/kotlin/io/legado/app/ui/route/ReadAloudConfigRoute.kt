@@ -2,6 +2,8 @@ package io.legado.app.ui.route
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -10,20 +12,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.book.read.config.ReadAloudConfigScreen
 import io.legado.app.ui.book.read.config.SpeakEngineDialog
+import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
+import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
@@ -51,6 +58,51 @@ fun ReadAloudConfigRoute(
     navigator: AppNavigator,
     screenModelStore: ScreenModelStore,
 ) {
+    // 顶栏标题 (对照 app 端 R.string.aloud_config, 与 ReadConfigScreen 入口项一致)
+    val titleStr = stringResource(Res.string.aloud_config)
+
+    Column(Modifier.fillMaxSize()) {
+        AppTitleBar(
+            title = titleStr,
+            onBack = { navigator.pop() },
+        )
+        ReadAloudConfigContent(
+            onSysTtsConfig = { PlatformCapabilityProviders.get().openTtsSettings() },
+        )
+    }
+}
+
+/**
+ * 朗读设置对话框形态 (对照原版 ReadAloudConfigDialog: BasePrefDialogFragment 居中对话框,
+ * 背景用 backgroundColor, 无标题栏)。由朗读控制面板"设置"按钮弹起, 行为与 [ReadAloudConfigRoute] 一致。
+ */
+@Composable
+fun ReadAloudConfigDialogHost(
+    onDismiss: () -> Unit,
+) {
+    AppDialog(
+        onDismissRequest = onDismiss,
+        properties = AppDialogSizes.properties(),
+    ) {
+        AppTheme {
+            Surface(
+                shape = DesignTokens.dialogShape,
+                color = AppTheme.colors.background,
+                modifier = Modifier.appDialogSize().padding(16.dp),
+            ) {
+                ReadAloudConfigContent(
+                    onSysTtsConfig = { PlatformCapabilityProviders.get().openTtsSettings() },
+                )
+            }
+        }
+    }
+}
+
+/** 朗读设置正文 (Screen + 内嵌对话框), 路由/弹窗两形态共用 */
+@Composable
+private fun ReadAloudConfigContent(
+    onSysTtsConfig: () -> Unit,
+) {
     // 对照 app 端 pausePhoneCallsEnabled = AppConfig.ignoreAudioFocus
     val pref = LocalPreferenceStoreProvider.current
     val pausePhoneCallsEnabled = remember { pref.getBoolean(PreferKey.ignoreAudioFocus) }
@@ -64,7 +116,7 @@ fun ReadAloudConfigRoute(
     LaunchedEffect(Unit) {
         appDb.httpTTSDao.flowAll()
             .catch { /* 对照 app 端 catch 记日志, 此处静默 */ }
-            .flowOn(Dispatchers.IO)
+            .flowOn(IoDispatcher)
             .conflate()
             .collect { engines = it }
     }
@@ -94,21 +146,12 @@ fun ReadAloudConfigRoute(
         }
     }
 
-    // 顶栏标题 (对照 app 端 R.string.aloud_config, 与 ReadConfigScreen 入口项一致)
-    val titleStr = stringResource(Res.string.aloud_config)
-
-    Column(Modifier.fillMaxSize()) {
-        AppTitleBar(
-            title = titleStr,
-            onBack = { navigator.pop() },
-        )
-        ReadAloudConfigScreen(
-            pausePhoneCallsEnabled = pausePhoneCallsEnabled,
-            speakEngineSummary = speakEngineSummary,
-            onTtsEngine = { showSpeakEngineDialog = true },
-            onSysTtsConfig = { PlatformCapabilityProviders.get().openTtsSettings() },
-        )
-    }
+    ReadAloudConfigScreen(
+        pausePhoneCallsEnabled = pausePhoneCallsEnabled,
+        speakEngineSummary = speakEngineSummary,
+        onTtsEngine = { showSpeakEngineDialog = true },
+        onSysTtsConfig = onSysTtsConfig,
+    )
 
     if (showSpeakEngineDialog) {
         SpeakEngineDialog(
@@ -118,10 +161,12 @@ fun ReadAloudConfigRoute(
                 selectedEngineUrl = url
                 appConfig.setTtsEngine(url)
             },
-            // HttpTtsEditDialog 仅 app 端, shared 端暂不提供编辑入口
-            onEditEngines = { },
+            // 新增/编辑引擎走平台能力 (app 端 HttpTtsEditDialog, engine=null 新增)
+            onEditEngines = { engine ->
+                PlatformCapabilityProviders.get().showHttpTtsEditDialog(engine)
+            },
             onDeleteEngine = { httpTTS ->
-                scope.launch(Dispatchers.IO) {
+                scope.launch(IoDispatcher) {
                     appDb.httpTTSDao.delete(httpTTS)
                 }
             },

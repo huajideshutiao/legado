@@ -1,6 +1,5 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -65,6 +64,7 @@ import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.FlowBus
+import io.legado.app.utils.format
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import legado.shared.generated.resources.Res
@@ -89,7 +89,6 @@ import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.screen
 import legado.shared.generated.resources.sure_del
 import org.jetbrains.compose.resources.stringResource
-import io.legado.app.utils.format
 
 /**
  * 书架管理 shared 路由入口。
@@ -304,7 +303,7 @@ fun BookshelfManageRoute(
         callbacks = callbacks,
         listState = listState,
         listModifier = Modifier,
-        coverSlot = { book, modifier -> bookCoverSlot(book, modifier, false) },
+        coverSlot = { book, modifier -> bookCoverSlot(book, modifier, false, 0) },
     )
 
     // 日志对话框

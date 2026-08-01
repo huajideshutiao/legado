@@ -18,6 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
+import io.legado.app.ui.browser.WebViewCallbacks
+import io.legado.app.ui.browser.WebViewConfig
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.desktop.help.webview.DesktopWebViewEngine
 import io.legado.desktop.help.webview.DesktopWebViewEngines
@@ -29,7 +31,7 @@ import java.net.URI
 /**
  * Desktop WebView slot (登录页 / RSS / WebView 路由共用)。
  *
- * 有内嵌引擎时开一个**独立浏览器窗口**加载 [url]; 引擎每次导航完成把 cookie 写回
+ * 有内嵌引擎时开一个**独立浏览器窗口**加载 [config.url]; 引擎每次导航完成把 cookie 写回
  * CookieStore (对齐 shared androidMain `AndroidWebView` 的 onPageFinished→cookie 落库),
  * 于是登录态能被 OkHttp 复用, 闭合了原先"跳系统浏览器拿不回 cookie"的缺口。
  *
@@ -38,9 +40,19 @@ import java.net.URI
  * 登录/验证本就是弹窗语义, 独立窗口可接受。
  *
  * 引擎不可用时保持原行为: 直接调系统默认浏览器 (cookie 无法回收, 但不崩)。
+ *
+ * TODO(desktop): 验证回传 (WebViewConfig.saveResult) 未接线 — 独立窗口无 evaluateJavascript/
+ * onPageFinished 回传通道 (WebViewCallbacks.host 恒 null), 验证结果只能走 WebViewRoute
+ * 的 refetch 兜底分支 (OkHttp 重拉页面 HTML); 等待引擎窗口加"完成"按钮 + 结果回传
+ * (对照 AndroidWebView), 才能支持 outerHTML 抓取与 CF 挑战自动检测。
  */
 @Composable
-fun DesktopWebViewSlot(url: String, modifier: Modifier = Modifier) {
+fun DesktopWebViewSlot(
+    config: WebViewConfig,
+    modifier: Modifier = Modifier,
+    callbacks: WebViewCallbacks = WebViewCallbacks(),
+) {
+    val url = config.url
     val engine = remember { DesktopWebViewEngines.get() }
     if (engine == null) {
         SystemBrowserFallback(url, modifier)

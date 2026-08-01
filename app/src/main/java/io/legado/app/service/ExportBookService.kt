@@ -27,7 +27,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.setLiveOngoing
 import io.legado.app.model.ReadBook
 import io.legado.app.model.fileBook.FileBook
-import io.legado.app.ui.book.manage.BookshelfManageActivity
+import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.createFileIfNotExist
@@ -127,7 +127,11 @@ class ExportBookService : BaseService() {
         val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
             .setSmallIcon(R.drawable.ic_export)
             .setSubText(getString(R.string.export_book))
-            .setContentIntent(activityPendingIntent<BookshelfManageActivity>("bookshelfManageActivity"))
+            // BookshelfManageActivity 已被 shared BookshelfManageRoute 替代,
+            // 通知点击 → NavigateTo("bookshelf_manage") 打开书架管理页面
+            .setContentIntent(activityPendingIntent<MainActivity>("bookshelfManageActivity") {
+                putExtra("route", "bookshelf_manage")
+            })
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentText(notificationContentText)
             .setDeleteIntent(servicePendingIntent<ExportBookService>(IntentAction.stop))

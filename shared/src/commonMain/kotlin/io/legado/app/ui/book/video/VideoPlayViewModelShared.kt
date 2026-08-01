@@ -262,29 +262,40 @@ class VideoPlayViewModelShared(
         _curChapterTitle.value = chapter.title
         scope.launch {
             try {
-                // 拉章节内容 (needSave=false: 视频内容是 URL 字符串非文件, 不写本地缓存)
-                val nextChapterUrl = chapters.getOrNull(clampedIndex + 1)?.url
-                val content = runCatching {
-                    WebBook.getContentAwait(source, book, chapter, nextChapterUrl, needSave = false)
-                }.onFailure {
-                    AppLog.put("加载章节内容出错\n${it.message}", it)
-                    _error.value = "加载失败: ${it.message}"
-                }.getOrNull()
-                if (content == null) {
-                    return@launch
+                // 拉取管线挪 IO: getContentAwait 内部无 withContext (AnalyzeUrl 构造 +
+                // header @js: 求值 + 规则解析均同步), 跑主线程会卡住进入转场窗口。
+                // StateFlow 写入线程安全, withContext 返回后 finally 在主线程落 loading。
+                withContext(IoDispatcher) {
+                    // 拉章节内容 (needSave=false: 视频内容是 URL 字符串非文件, 不写本地缓存)
+                    val nextChapterUrl = chapters.getOrNull(clampedIndex + 1)?.url
+                    val content = runCatching {
+                        WebBook.getContentAwait(
+                            source,
+                            book,
+                            chapter,
+                            nextChapterUrl,
+                            needSave = false
+                        )
+                    }.onFailure {
+                        AppLog.put("加载章节内容出错\n${it.message}", it)
+                        _error.value = "加载失败: ${it.message}"
+                    }.getOrNull()
+                    if (content == null) {
+                        return@withContext
+                    }
+                    if (content.isEmpty()) {
+                        _error.value = "未获取到资源链接"
+                        return@withContext
+                    }
+                    // 解析视频源 (复用同包工具函数)
+                    parseVideoContent(content, source)
+                    // 持久化阅读进度
+                    if (persistProgress) {
+                        saveRead(clampedIndex)
+                    }
+                    // 新章节加载成功, 重置错误重试标记
+                    hasRetriedOnError = false
                 }
-                if (content.isEmpty()) {
-                    _error.value = "未获取到资源链接"
-                    return@launch
-                }
-                // 解析视频源 (复用同包工具函数)
-                parseVideoContent(content, source)
-                // 持久化阅读进度
-                if (persistProgress) {
-                    saveRead(clampedIndex)
-                }
-                // 新章节加载成功, 重置错误重试标记
-                hasRetriedOnError = false
             } catch (e: Exception) {
                 AppLog.put("加载章节出错\n${e.message}", e)
                 _error.value = "加载出错: ${e.message}"

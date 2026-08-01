@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
 
 /**
- * 鸿蒙 actual: 签名/验签。主实现 mbedTLS [MbedTlsSign] (RSA v1.5 含 MD5withRSA、PSS、NONEwithRSA,
+ * 鸿蒙 actual: 签名/验签。主实现 mbedTLS ([MbedTlsOps], RSA v1.5 含 MD5withRSA、PSS、NONEwithRSA,
  * 无 UI 线程往返), 任意异常回落既有 @ohos.security.cryptoFramework napi 桥接;
  * ECDSA 在 mbedTLS 裁剪外 (无 ECP), 主实现点名抛异常后由 napi 回落承接。
  *
@@ -30,7 +30,7 @@ import kotlin.io.encoding.Base64
 actual object NativeSignOps {
 
     actual fun sign(algorithm: String, privateKey: ByteArray?, data: ByteArray): ByteArray = mbedTlsOrFallback(
-        { MbedTlsSign.sign(algorithm, privateKey, data) },
+        { MbedTlsOps.sign(algorithm, privateKey, data) },
         { napiSign(algorithm, privateKey, data) }
     )
 
@@ -40,7 +40,7 @@ actual object NativeSignOps {
         data: ByteArray,
         signature: ByteArray
     ): Boolean = mbedTlsOrFallback(
-        { MbedTlsSign.verify(algorithm, publicKey, data, signature) },
+        { MbedTlsOps.verify(algorithm, publicKey, data, signature) },
         { napiVerify(algorithm, publicKey, data, signature) }
     )
 

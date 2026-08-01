@@ -54,7 +54,6 @@ import io.legado.app.napi.quickjs.qjs_ValueGetBool
 import io.legado.app.napi.quickjs.qjs_ValueGetFloat64
 import io.legado.app.napi.quickjs.qjs_ValueGetInt
 import io.legado.app.napi.quickjs.qjs_ValueGetTag
-import kotlin.concurrent.Volatile
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.CPointerVar
@@ -70,8 +69,10 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.useContents
+import kotlinx.cinterop.value
+import kotlinx.atomicfu.atomic
+import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.ensureActive
 
 /**
  * native 端 (iOS/鸿蒙) JS 引擎实现：基于 quickjs-ng C 源码 (cinterop 编译),与 Android/Desktop 端
@@ -152,7 +153,7 @@ object NativeJsEngine : JsEngine {
     override val type: JsEngineType = JsEngineType.QUICKJS
 
     /** 当前线程的 JS 执行上下文 (ThreadLocal), 对应 quickjs 的 QuickJsContext.threadLocalContext。 */
-    private val threadLocalScope: ThreadLocal<NativeJsScope?> = ThreadLocal()
+    private val threadLocalScope = atomic<NativeJsScope?>(null)
 
     /** JS 递归深度上限, 对齐 QuickJsContext.MAX_RECURSION。 */
     private const val MAX_RECURSION = 10
@@ -1006,7 +1007,7 @@ class NativeJsScope(
     /** quickjs JSContext 指针 (CPointer<JSContext>), 由 JS_NewContext 创建。null = 已 close。 */
     val ctx: CPointer<JSContext>?,
     /** native 上 dangerousApi 语义为 no-op (无 Java 反射可旁路), 保留字段仅为接口对齐 */
-    @Volatile var dangerousApi: Boolean = false
+    var dangerousApi: Boolean = false
 ) : JsScope {
 
     override var coroutineContext: CoroutineContext? = null

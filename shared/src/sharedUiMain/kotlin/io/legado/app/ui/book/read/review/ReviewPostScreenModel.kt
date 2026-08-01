@@ -13,9 +13,6 @@ import kotlinx.coroutines.flow.update
  * 实际提交由调用方 (ReviewListDialog) 处理; shared 版本同样仅托管输入态,
  * 提交动作通过 [ReviewPostUiActions.onSubmit] 回调由 Route 层 navigator.pop 回传结果。
  *
- * 评分 (rating) 为 shared 端新增字段, app 端原 BottomSheet 输入面板不含评分,
- * 桌面/iOS 全功能页面需要评分条入口。
- *
  * hint (placeholder) 对照 Activity onCreate:
  * - replyPreview 非空 → "回复 %s: " % replyPreview.take(15) + (省略号)
  * - 否则 → review_post_hint
@@ -32,10 +29,6 @@ class ReviewPostScreenModel : ScreenModel {
                 it.copy(content = event.content)
             }
 
-            is ReviewPostUiEvent.RatingChange -> _state.update {
-                it.copy(rating = event.rating)
-            }
-
             ReviewPostUiEvent.SubmitStart -> _state.update { it.copy(submitting = true) }
             ReviewPostUiEvent.SubmitEnd -> _state.update { it.copy(submitting = false) }
             is ReviewPostUiEvent.ShowHint -> _state.update { it.copy(hint = event.hint) }
@@ -45,8 +38,6 @@ class ReviewPostScreenModel : ScreenModel {
 
 data class ReviewPostUiState(
     val content: String = "",
-    // 0..5 步长 0.5,0 表示未评分
-    val rating: Float = 0f,
     val submitting: Boolean = false,
     /** 输入框 placeholder (对照 Activity hint, 默认 review_post_hint) */
     val hint: String = "",
@@ -54,7 +45,6 @@ data class ReviewPostUiState(
 
 sealed interface ReviewPostUiEvent {
     data class ContentChange(val content: String) : ReviewPostUiEvent
-    data class RatingChange(val rating: Float) : ReviewPostUiEvent
     object SubmitStart : ReviewPostUiEvent
     object SubmitEnd : ReviewPostUiEvent
 

@@ -172,7 +172,7 @@ fun ReadRecordRoute(
         // 封面: book 非空调 bookCoverSlot (平台注入), book 为空走占位
         coverSlot = { _, book, modifier ->
             if (book != null) {
-                bookCoverSlot(book, modifier, false)
+                bookCoverSlot(book, modifier, false, 0)
             }
         },
     )

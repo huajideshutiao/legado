@@ -12,10 +12,14 @@ import kotlinx.coroutines.flow.SharedFlow
  * - 列表适配器: 各自的 Import*ItemsVm (字段名 allSources/allRules 不同);
  * - 对话框标题 key。
  *
- * 不支持的类型返回 null (由调用方 toast 声明), 与 desktop 一致:
- * - ADD_TO_BOOKSHELF: app 端 AddToBookshelfHelper 依赖 Activity 弹窗链, 未下沉;
- * - READ_CONFIG: app 端 ReadBookConfig.import(zip bytes), ReadBookConfig 未下沉;
- * - UNKNOWN: app 端 determineType 下载嗅探 (zip→排版, json→importJson), 未下沉。
+ * 三个特殊类型不走这套"列表勾选导入"模型 (加书架是直接跳详情页, 排版配置是一步导入完成,
+ * 都没有"勾选新增/更新条目"的对话框), 由 [DeepLinkImportHost] 直接调
+ * [SchemeImportOps.determineType] / [AddToBookshelfShared] / [SchemeImportOps.importReadConfig]
+ * 分流处理, 不在本类构造 [DeepLinkImportTarget]:
+ * - ADD_TO_BOOKSHELF: 直接跳 [io.legado.app.ui.root.AppRoute.BookInfo], 无列表;
+ * - READ_CONFIG: 一步导入完成 (覆盖/追加 configList), 无列表;
+ * - UNKNOWN: 先 [SchemeImportOps.determineType] 嗅探, zip 分支直接完成 (同 READ_CONFIG),
+ *   JSON 分支嗅探出具体类型后递归为对应枚举, 才落到本类。
  */
 class DeepLinkImportTarget private constructor(
     /** 勾选列表适配器, 直接传给 [ImportItemsDialog]。 */

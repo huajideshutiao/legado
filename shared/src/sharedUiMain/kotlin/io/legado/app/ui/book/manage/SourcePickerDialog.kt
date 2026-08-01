@@ -89,7 +89,7 @@ fun SourcePickerDialog(
     ) {
         Surface(
             shape = DesignTokens.dialogShape,
-            color = colors.background,
+            color = colors.fillet,
             modifier = Modifier.appDialogSize(fullHeight = true).padding(16.dp),
         ) {
             Column(Modifier.fillMaxSize()) {

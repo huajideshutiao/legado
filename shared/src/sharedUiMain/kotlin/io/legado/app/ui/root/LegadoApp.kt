@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -29,29 +30,49 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookGroup
+import io.legado.app.data.entities.BookSource
+import io.legado.app.data.entities.Bookmark
+import io.legado.app.help.IntentData
 import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.about.CrashLogItem
+import io.legado.app.ui.about.CrashLogsDialog
+import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.book.changecover.ChangeCoverPlatformProviders
 import io.legado.app.ui.book.changecover.ChangeCoverViewModelShared
 import io.legado.app.ui.book.group.GroupEditDialog
+import io.legado.app.ui.book.group.GroupManageDialog
 import io.legado.app.ui.book.group.GroupSelectDialog
 import io.legado.app.ui.book.group.GroupViewModelShared
+import io.legado.app.ui.book.manage.SourcePickerDialog
+import io.legado.app.ui.book.read.ReadBookEvents
+import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.source.SourceLoginDialog
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.browser.LocalWebViewSlot
+import io.legado.app.ui.browser.WebViewCallbacks
+import io.legado.app.ui.browser.WebViewConfig
+import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.platform.PlatformBackHandler
 import io.legado.app.ui.compose.platform.handleBackKey
 import io.legado.app.ui.compose.platform.performBack
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.config.CheckSourceConfigDialog
+import io.legado.app.ui.config.DirectLinkUploadConfigDialog
+import io.legado.app.ui.config.ThemeListDialog
 import io.legado.app.ui.widget.dialog.PhotoViewOverlayDialog
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.launch
 
 /**
  * 四端统一应用根 Composable：整合 AppNavigator + ScreenModelStore + PlatformServices + WindowPolicy。
@@ -105,11 +126,37 @@ fun LegadoApp(
 
         // 应用当前路由对应的窗口策略。只在策略真变了才下发: 桌面端 setFullscreen 会调
         // AWT GraphicsDevice.setFullScreenWindow, 每次重组都下发等于持续折腾窗口本体
-        val windowPolicy =
-            currentRoute?.let { WindowPolicies.forRoute(it) } ?: WindowPolicies.Default
+        // 阅读页系统栏跟随 hideStatusBar/hideNavigationBar 配置 (对照原版 upSystemUiVisibility),
+        // 默认(关闭隐藏)时状态栏须可见
+        val windowPolicy = currentRoute?.let { route ->
+            if (route is AppRoute.Reader) {
+                WindowPolicies.Reader.copy(systemBars = readerSystemBarsPolicy(menuVisible = false))
+            } else {
+                WindowPolicies.forRoute(route)
+            }
+        } ?: WindowPolicies.Default
         LaunchedEffect(windowPolicy) {
             runCatching { applyWindowPolicy(windowPolicy) }
                 .onFailure { AppLog.put("应用窗口策略失败", it) }
+        }
+        // 阅读页隐藏状态栏/导航栏开关在对话框里切换后重应用系统栏策略 (原版 SharedPreference
+        // 监听 → upSystemUiVisibility); 用 rememberUpdatedState 取最新路由
+        val currentRouteState = rememberUpdatedState(currentRoute)
+        LaunchedEffect(Unit) {
+            ReadBookEvents.configChange.collect { changes ->
+                if (changes.any { it == ReadConfigChange.SYSTEM_UI }) {
+                    val route = currentRouteState.value
+                    val policy = if (route is AppRoute.Reader) {
+                        WindowPolicies.Reader.copy(
+                            systemBars = readerSystemBarsPolicy(menuVisible = false)
+                        )
+                    } else {
+                        route?.let { WindowPolicies.forRoute(it) } ?: WindowPolicies.Default
+                    }
+                    runCatching { applyWindowPolicy(policy) }
+                        .onFailure { AppLog.put("应用窗口策略失败", it) }
+                }
+            }
         }
 
         DisposableEffect(screenModelStore) {
@@ -326,6 +373,15 @@ private suspend fun handleLaunchRequest(
 
         is LaunchRequest.NavigateTo -> when (request.routeName) {
             "book_source_manage" -> navigator.push(AppRoute.BookSourceManage)
+            "bookshelf_manage" -> navigator.push(AppRoute.BookshelfManage())
+            // 最近阅读: 桌面快捷方式/朗读通知点击 → 打开最近阅读书籍 (对照 app 端 lastRead 快捷方式)
+            "last_read" -> {
+                val book = AppDbProviders.get().bookDao.lastReadBook()
+                // 无最近阅读或 bookResolver 未提供时, 降级到书架主页
+                if (book != null) navigator.push(book.toReadRoute())
+                else navigator.push(AppRoute.Main(MainTab.BOOKSHELF))
+            }
+
             else -> Unit
         }
     }
@@ -351,6 +407,9 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
     when (overlay.key) {
         "photo" -> PhotoOverlayDialogContent(overlay, navigator)
         "group_select" -> GroupSelectDialogContent(overlay, navigator)
+        "group_manage" -> GroupManageDialogContent(overlay, navigator)
+        "source_picker" -> SourcePickerDialogContent(overlay, navigator)
+        "bookmark" -> BookmarkDialogContent(overlay, navigator)
         "sourceLogin" -> SourceLoginOverlayDialogContent(overlay, navigator)
         "change_cover" -> ChangeCoverDialogContent(overlay, navigator)
         "app_log" -> AppLogOverlayDialogContent(overlay, navigator)
@@ -358,6 +417,21 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
         // 帮助: key="help" 时 payload 为 md 文件名, dictRuleHelp 为固定文档
         "help" -> HelpDialogContent(overlay, navigator, overlay.payload.orEmpty())
         "dictRuleHelp" -> HelpDialogContent(overlay, navigator, "dictRuleHelp")
+
+        // 崩溃日志 (对照 app 端 CrashLogsDialog Fragment)
+        "crash_logs" -> CrashLogsOverlayDialogContent(overlay, navigator)
+
+        // 主题列表 (对照 app 端 ThemeListDialog Fragment)
+        "theme_list" -> ThemeListOverlayDialogContent(overlay, navigator)
+
+        // 校验设置 (对照 app 端 CheckSourceConfig Fragment)
+        "check_source_config" -> CheckSourceConfigOverlayDialogContent(overlay, navigator)
+
+        // 直链上传配置 (对照 app 端 DirectLinkUploadConfig Fragment)
+        "direct_link_upload_config" -> DirectLinkUploadConfigOverlayDialogContent(
+            overlay,
+            navigator
+        )
 
         // 字典规则
         "dictRuleEdit" -> DictRuleEditDialogContent(overlay, navigator)
@@ -479,6 +553,106 @@ private fun GroupSelectDialogContent(overlay: AppOverlay.Dialog, navigator: AppN
     }
 }
 
+// 分组管理 (key="group_manage", 无 payload)
+// 对照 app 端 GroupManageDialog: 全高分组的增/删/改/排序/显示开关, 内嵌 GroupEditDialog
+@Composable
+private fun GroupManageDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
+    val scope = rememberCoroutineScope()
+    val groupViewModel = remember(scope) { GroupViewModelShared(scope) }
+    var groups by remember { mutableStateOf<List<BookGroup>>(emptyList()) }
+    var editingGroup by remember { mutableStateOf<BookGroup?>(null) }
+    var addingGroup by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        AppDbProviders.get().bookGroupDao.flowAll()
+            .catch { AppLog.put("分组管理获取分组数据失败\n${it.message}", it) }
+            .flowOn(IoDispatcher)
+            .conflate()
+            .collect { groups = it }
+    }
+    GroupManageDialog(
+        groups = groups,
+        onAddGroup = { addingGroup = true },
+        onEditGroup = { editingGroup = it },
+        onUpdateGroup = { groupViewModel.upGroup(it) },
+        onPersistOrder = { ordered -> groupViewModel.upGroup(*ordered.toTypedArray()) },
+        onDismiss = { navigator.dismissOverlay(overlay.key) },
+        canAddGroup = { AppDbProviders.get().bookGroupDao.canAddGroup() },
+    )
+    if (addingGroup || editingGroup != null) {
+        GroupEditDialog(
+            group = editingGroup,
+            onConfirm = { updated ->
+                if (addingGroup) {
+                    groupViewModel.addGroup(
+                        updated.groupName,
+                        updated.bookSort,
+                        updated.enableRefresh,
+                        updated.cover,
+                    ) { addingGroup = false }
+                } else {
+                    groupViewModel.upGroup(updated) { editingGroup = null }
+                }
+            },
+            onDismiss = {
+                addingGroup = false
+                editingGroup = null
+            },
+            onDelete = { group ->
+                groupViewModel.delGroup(group) { editingGroup = null }
+            },
+        )
+    }
+}
+
+// 书源选择 (key="source_picker", 无 payload)
+// 对照 app 端 SourcePickerDialog: 加载启用书源, 选中后回传 BookSource
+@Composable
+private fun SourcePickerDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
+    var sources by remember { mutableStateOf<List<BookSource>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        sources = AppDbProviders.get().bookSourceDao.enabled()
+    }
+    SourcePickerDialog(
+        sources = sources,
+        initialDelay = AppConfigProviders.get().batchChangeSourceDelay,
+        onSourceSelected = { source ->
+            navigator.dismissOverlay(
+                overlay.key,
+                RouteResultPayload.SourcePicker(source),
+            )
+        },
+        onDelayChange = { delay ->
+            PreferenceProviders.get().putInt(PreferKey.batchChangeSourceDelay, delay)
+        },
+        onDismiss = { navigator.dismissOverlay(overlay.key) },
+    )
+}
+
+// 书签编辑 (key="bookmark", payload=IntentData key)
+// 对照 app 端 BookmarkDialog: 新建书签的插入, showDelete=false (所有 app 调用点均为新建)
+@Composable
+private fun BookmarkDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
+    val scope = rememberCoroutineScope()
+    val bookmark = remember(overlay.payload) {
+        IntentData.get<Bookmark>(overlay.payload)
+    }
+    if (bookmark == null) {
+        LaunchedEffect(Unit) { navigator.dismissOverlay(overlay.key) }
+        return
+    }
+    BookmarkDialog(
+        bookmark = bookmark,
+        showDelete = false,
+        onConfirm = { updated ->
+            scope.launch(IoDispatcher) {
+                runCatching { AppDbProviders.get().bookmarkDao.insert(updated) }
+            }
+            navigator.dismissOverlay(overlay.key)
+        },
+        onDismiss = { navigator.dismissOverlay(overlay.key) },
+    )
+}
+
 // 换封面 (key="change_cover", payload="name\nauthor")
 @Composable
 private fun ChangeCoverDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
@@ -515,7 +689,7 @@ private fun ChangeCoverDialogContent(overlay: AppOverlay.Dialog, navigator: AppN
         coverSlot = { searchBook, modifier ->
             // SearchBook → Book 适配 LocalBookCoverSlot 签名; 候选封面恒走临时缓存区
             // (对照原版 CoverAdapter 的 ivCover.load(..) 默认 inBookshelf = false)
-            bookCoverSlot(searchBook.toCoverBook(), modifier, false)
+            bookCoverSlot(searchBook.toCoverBook(), modifier, false, 0)
         },
     )
 }
@@ -532,6 +706,123 @@ private fun FallbackDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavi
     LaunchedEffect(overlay.key) {
         AppLog.put("未接线的 Overlay Dialog key: ${overlay.key}")
         navigator.dismissOverlay(overlay.key)
+    }
+}
+
+// 崩溃日志对话框 (对照 app 端 CrashLogsDialog Fragment 壳)
+// 包装 shared CrashLogsDialogContent, 通过 CrashLogProvider 提供数据/回调
+@Composable
+private fun CrashLogsOverlayDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
+    val services = PlatformServiceProviders.getOrNull()
+    val provider = services?.crashLogs
+    if (provider == null) {
+        LaunchedEffect(Unit) { navigator.dismissOverlay(overlay.key) }
+        return
+    }
+    val scope = rememberCoroutineScope()
+    var logs by remember { mutableStateOf<List<CrashLogProvider.CrashLogEntry>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        logs = provider.loadCrashLogs()
+    }
+
+    CrashLogsDialog(
+        logs = logs.map { CrashLogItem(it.name) },
+        onDismiss = { navigator.dismissOverlay(overlay.key) },
+        onClear = {
+            scope.launch {
+                provider.clearCrashLogs()
+                logs = provider.loadCrashLogs()
+            }
+        },
+        onReadFile = { item, cb ->
+            scope.launch {
+                val content = provider.readCrashLog(item.name)
+                if (content != null) cb(content)
+            }
+        },
+        onShare = { item -> provider.shareCrashLog(item.name) },
+    )
+}
+
+// 主题列表对话框 (对照 app 端 ThemeListDialog Fragment 壳)
+// 包装 shared ThemeListDialog Composable, 通过 PlatformServices 提供剪贴板/分享能力,
+// ThemeCustomizeDialog 仍走平台 Fragment (ThemeCustomizeDialog 未下沉 shared)
+@Composable
+private fun ThemeListOverlayDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
+    val services = PlatformServiceProviders.getOrNull()
+    val platform = PlatformCapabilityProviders.getOrNull()
+
+    ThemeListDialog(
+        onDismiss = { navigator.dismissOverlay(overlay.key) },
+        onEditConfig = { configIndex ->
+            // 编辑主题: 委托平台能力 (app 端 ThemeCustomizeDialog Fragment)
+            platform?.showThemeCustomizeDialog(configIndex)
+        },
+        onNewConfig = { isNight ->
+            // 新建主题: 委托平台能力 (app 端 ThemeCustomizeDialog Fragment)
+            platform?.showThemeCustomizeDialog(null, isNight)
+        },
+        onImportFromClip = {
+            platform?.getClipboardText()
+        },
+        onShare = { json ->
+            // 分享: 通过 ShareService
+            services?.sharing?.shareText(json)
+        },
+    )
+}
+
+// 校验设置对话框 (对照 app 端 CheckSourceConfig Fragment 壳)
+// Toast 通过 shared Toasters (各端 actual: app=toastOnUi, desktop=Toasters)
+@Composable
+private fun CheckSourceConfigOverlayDialogContent(
+    overlay: AppOverlay.Dialog,
+    navigator: AppNavigator
+) {
+    CheckSourceConfigDialog(
+        onDismiss = { navigator.dismissOverlay(overlay.key) },
+        onToast = { msg -> io.legado.app.help.toast.Toasters.get().toast(msg) },
+    )
+}
+
+// 直链上传配置对话框 (对照 app 端 DirectLinkUploadConfig Fragment 壳)
+// 平台能力通过 PlatformServices/PlatformCapabilities 注入
+@Composable
+private fun DirectLinkUploadConfigOverlayDialogContent(
+    overlay: AppOverlay.Dialog,
+    navigator: AppNavigator,
+) {
+    val platform = PlatformCapabilityProviders.getOrNull()
+    var selectorItems by remember { mutableStateOf<List<String>?>(null) }
+    var selectorCallback by remember { mutableStateOf<((Int) -> Unit)?>(null) }
+
+    DirectLinkUploadConfigDialog(
+        onDismiss = { navigator.dismissOverlay(overlay.key) },
+        onToast = { msg -> io.legado.app.help.toast.Toasters.get().toast(msg) },
+        onGetClip = { platform?.getClipboardText() },
+        onSetClip = { text -> platform?.copyToClipboard(text) },
+        onSelector = { items, callback ->
+            if (items.isNotEmpty()) {
+                selectorItems = items
+                selectorCallback = callback
+            }
+        },
+        onTest = { rule, onSuccess, onError ->
+            platform?.testDirectLinkUpload(rule, onSuccess, onError)
+                ?: onError("当前平台暂不支持测试直链上传")
+        },
+    )
+
+    selectorItems?.let { items ->
+        AppSelectorDialog(
+            onDismissRequest = {
+                selectorItems = null
+                selectorCallback = null
+            },
+            items = items,
+            onItemSelected = { index -> selectorCallback?.invoke(index) },
+        )
     }
 }
 
@@ -554,7 +845,11 @@ private fun SheetOverlayContent(overlay: AppOverlay.Sheet, navigator: AppNavigat
             when (overlay.key) {
                 "web_view" -> {
                     val url = overlay.payload ?: return@ModalBottomSheetLayout
-                    LocalWebViewSlot.current(url, Modifier.fillMaxWidth())
+                    LocalWebViewSlot.current(
+                        WebViewConfig(url = url),
+                        Modifier.fillMaxWidth(),
+                        WebViewCallbacks(),
+                    )
                 }
                 // 其他 sheet key 由 OverlayDialogs 子代理接入
                 else -> overlay.payload?.let { Text(it) }

@@ -4,11 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import io.legado.app.model.CoverRatio
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.widget.image.CoverImageView
-import org.jetbrains.compose.resources.painterResource
-import org.jetbrains.compose.resources.stringResource
 
 /*
  * 书架 Composable app 端保留区。
@@ -26,10 +22,11 @@ import org.jetbrains.compose.resources.stringResource
  *   painterResource(R.drawable.xxx) → rememberPainter("xxx")
  * - Android API: LocalContext/LocalConfiguration/AppConfig/ThemeConfig/ColorUtils →
  *   provider 间接访问 + 回调注入 + 内联实现
- * - 封面: AndroidView + CoverImageView (Glide) → coverSlot: @Composable (Book, Modifier, isVideoCover: Boolean) -> Unit
+ * - 封面: AndroidView + CoverImageView (Glide) → coverSlot: @Composable (Book, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit
  *   参数注入, app 端调用 shared 版条目时用本文件 ShelfCover 包装注入;
  *   isVideoCover 由条目按 tier 决定 (List=isVideoStyle, Grid=false, Video=true,
- *   GroupList=false, GroupGrid=false, GroupVideo=true), 对照原 adapter 的 coverRatio 赋值
+ *   GroupList=false, GroupGrid=false, GroupVideo=true), 对照原 adapter 的 coverRatio 赋值;
+ *   coverReloadTick 作为 reloadKey 传给 ShelfCover (配置变更时强制重载封面)
  * - Lifecycle: repeatOnLifecycle(RESUMED) → LaunchedEffect + while(true) + delay
  *   (shared 不依赖 androidx.lifecycle)
  *

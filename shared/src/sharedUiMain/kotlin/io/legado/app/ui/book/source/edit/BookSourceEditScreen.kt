@@ -37,13 +37,14 @@ import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.code.CodeEditorState
+import io.legado.app.ui.compose.component.code.CodeSearchHighlightState
 import io.legado.app.ui.compose.component.code.CodeSyntaxScheme
 import io.legado.app.ui.compose.component.code.CodeTextField
 import io.legado.app.ui.compose.component.code.KeyboardToolbar
 import io.legado.app.ui.compose.component.code.KeyboardToolbarState
 import io.legado.app.ui.compose.component.code.KeyboardToolbarTarget
+import io.legado.app.ui.compose.component.code.buildSearchRanges
 import io.legado.app.ui.compose.component.code.insertAtCursor
-import io.legado.app.ui.compose.component.code.rememberCodeEditorState
 import io.legado.app.ui.compose.component.code.rememberFullCodeSyntax
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberString
@@ -164,6 +165,8 @@ fun BookSourceEditScreen(
     // 焦点字段的编辑器状态 (对照 app 端 lastActiveCodeView): 辅助键插入/撤销/重做/查找替换的目标
     var activeEditor by remember { mutableStateOf<CodeEditorState?>(null) }
     val keyboardState = remember { KeyboardToolbarState() }
+    // 查找高亮状态: 供聚焦字段的 CodeTextField 叠加全量黄底 + 当前命中强调色 (对齐原版 CodeView 查找高亮)
+    val searchHighlight = remember { CodeSearchHighlightState() }
     val focusManager = LocalFocusManager.current
     Column(modifier.fillMaxSize()) {
         AppTitleBar(
@@ -183,10 +186,18 @@ fun BookSourceEditScreen(
         EditFields(
             state = state,
             editEntities = editEntities,
+            activeEditor = activeEditor,
+            searchHighlight = searchHighlight,
             onFieldFocus = onFieldFocus,
             onFieldTextChange = onFieldTextChange,
             fieldTextOverride = fieldTextOverride,
-            onEditorActive = { activeEditor = it },
+            onEditorActive = { editor ->
+                if (activeEditor != editor) {
+                    // 对齐原版 onCodeViewFocus: 切换到别的字段时清空上一字段的查找高亮
+                    searchHighlight.clear()
+                    activeEditor = editor
+                }
+            },
             modifier = Modifier.weight(1f),
         )
         KeyboardToolbar(
@@ -196,7 +207,9 @@ fun BookSourceEditScreen(
             onRedo = { activeEditor?.redo() },
             onShowConfig = onShowKeyboardConfig,
             target = {
-                activeEditor?.let { CodeEditorSearchTarget(it) { focusManager.clearFocus() } }
+                activeEditor?.let {
+                    CodeEditorSearchTarget(it, searchHighlight) { focusManager.clearFocus() }
+                }
             },
         )
     }
@@ -468,6 +481,8 @@ private fun TabBar(state: BookSourceEditState, callbacks: BookSourceEditCallback
 private fun EditFields(
     state: BookSourceEditState,
     editEntities: (Int) -> List<EditEntity>,
+    activeEditor: CodeEditorState?,
+    searchHighlight: CodeSearchHighlightState,
     onFieldFocus: (String, EditEntity) -> Unit,
     onFieldTextChange: (String, String) -> Unit,
     fieldTextOverride: (String) -> String?,
@@ -491,16 +506,22 @@ private fun EditFields(
                 key(entity.key) {
                     when (entity.viewType) {
                         EditEntity.ViewType.spinner -> SpinnerField(entity)
-                        else -> CodeField(
-                            // fieldId 带 tab 前缀: 同一 key 在多个 tab 重复出现 (如 name / bookList)
-                            fieldId = "$tab/${entity.key}",
-                            entity = entity,
-                            syntax = syntax,
-                            onFieldFocus = onFieldFocus,
-                            onFieldTextChange = onFieldTextChange,
-                            fieldTextOverride = fieldTextOverride,
-                            onEditorActive = onEditorActive,
-                        )
+                        else -> {
+                            val editor = editorOf(entity)
+                            CodeField(
+                                // fieldId 带 tab 前缀: 同一 key 在多个 tab 重复出现 (如 name / bookList)
+                                fieldId = "$tab/${entity.key}",
+                                entity = entity,
+                                editor = editor,
+                                syntax = syntax,
+                                active = editor === activeEditor,
+                                searchHighlight = searchHighlight,
+                                onFieldFocus = onFieldFocus,
+                                onFieldTextChange = onFieldTextChange,
+                                fieldTextOverride = fieldTextOverride,
+                                onEditorActive = onEditorActive,
+                            )
+                        }
                     }
                 }
             }
@@ -513,13 +534,15 @@ private fun EditFields(
 private fun CodeField(
     fieldId: String,
     entity: EditEntity,
+    editor: CodeEditorState,
     syntax: CodeSyntaxScheme,
+    active: Boolean,
+    searchHighlight: CodeSearchHighlightState,
     onFieldFocus: (String, EditEntity) -> Unit,
     onFieldTextChange: (String, String) -> Unit,
     fieldTextOverride: (String) -> String?,
     onEditorActive: (CodeEditorState) -> Unit,
 ) {
-    val editor = rememberCodeEditorState(entity.value.orEmpty())
     // 外部改写 (自动缩进/粘贴源) 同步回编辑器
     val override = fieldTextOverride(fieldId)
     if (override != null && override != editor.value.text) editor.setText(override)
@@ -529,11 +552,18 @@ private fun CodeField(
             editor.onValueChange(it)
             entity.value = it.text
             onFieldTextChange(fieldId, it.text)
+            // 查找面板开着且本字段聚焦时, 跟随文本变化刷新匹配高亮 (对齐原版 afterTextChanged 的
+            // updateSearchHighlightIncremental; 替换等由面板触发的编辑走 target 内部重算)
+            if (active && searchHighlight.keyword.isNotEmpty()) searchHighlight.refresh(it.text)
         },
         syntax = syntax,
         label = rememberString(entity.hint),
         // 对照原版 CodeView: 书源编辑条目开行号 (isLineNumberEnabled=true)
         showLineNumbers = true,
+        // 对照原版 CodeView: EditText 默认 16sp (原版未设 textSize)
+        fontSize = 16.sp,
+        // 查找高亮只叠加在聚焦字段上 (原版查找作用于 lastActiveCodeView)
+        searchHighlight = if (active) searchHighlight else null,
         modifier = Modifier
             .fillMaxWidth()
             .onFocusChanged {
@@ -546,16 +576,28 @@ private fun CodeField(
 }
 
 /**
+ * 字段的编辑器状态: 按组合位置记忆, 由外层 key(version, tab) + key(entity.key) 分组隔离
+ * (不能用 entity 作 remember key — EditEntity 是 data class, 跨字段等值会串状态)。
+ * 外部整体重建 (粘贴源/重新加载) 后值可能变化, 同步回编辑器。
+ */
+@Composable
+private fun editorOf(entity: EditEntity): CodeEditorState {
+    val value = entity.value.orEmpty()
+    val editor = remember { CodeEditorState(value) }
+    if (editor.value.text != value) editor.setText(value)
+    return editor
+}
+
+/**
  * 把 [CodeEditorState] 适配成辅助键条的查找替换目标 (对齐原 CodeView 的 find/replace/replaceAll)。
- * 匹配定位靠选区高亮 (Compose 无 BackgroundColorSpan 等价物, 选中即视觉高亮)。
+ * 匹配区间写入 [searchHighlight], 由聚焦字段的 CodeTextField 叠加渲染
+ * (全量黄底 + 当前命中强调色, 对齐原版 BackgroundColorSpan 高亮); 同时移动选区定位。
  */
 private class CodeEditorSearchTarget(
     private val editor: CodeEditorState,
+    private val searchHighlight: CodeSearchHighlightState,
     private val onClearFocus: () -> Unit,
 ) : KeyboardToolbarTarget {
-
-    /** 最近一次 [matches] 编译出的正则, replaceAll 复用 */
-    private var lastRegex: Regex? = null
 
     override fun clearFocus() = onClearFocus()
 
@@ -566,17 +608,49 @@ private class CodeEditorSearchTarget(
         wholeWord: Boolean,
         forward: Boolean?,
     ) {
-        val ranges = matches(keyword, useRegex, matchCase, wholeWord)
-        if (ranges.isEmpty()) return
-        val cursor = editor.value.selection.min
-        // forward=null (输入防抖触发) 按原版当作向上定位: 光标前最后一个匹配
-        val target = if (forward == true) {
-            ranges.firstOrNull { it.first > cursor } ?: ranges.first()
-        } else {
-            ranges.lastOrNull { it.second <= cursor } ?: ranges.last()
+        if (keyword.isEmpty()) {
+            // 对齐原版 find("") → clearSearch
+            searchHighlight.clear()
+            return
         }
+        // 对齐原版 needRecompute: 参数没变且已有匹配时按 currentMatchIndex 顺延, 否则从光标定位
+        val needRecompute = searchHighlight.keyword != keyword ||
+            searchHighlight.useRegex != useRegex ||
+            searchHighlight.matchCase != matchCase ||
+            searchHighlight.wholeWord != wholeWord ||
+            searchHighlight.ranges.isEmpty() ||
+            searchHighlight.currentIndex !in searchHighlight.ranges.indices
+        val index: Int
+        if (needRecompute) {
+            val ranges =
+                buildSearchRanges(keyword, useRegex, matchCase, wholeWord, editor.value.text)
+            if (ranges.isEmpty()) {
+                searchHighlight.update(keyword, useRegex, matchCase, wholeWord, emptyList(), -1)
+                return
+            }
+            val cursor = editor.value.selection.min
+            index = if (forward == true) {
+                // forward=null (输入防抖触发) 按原版当作向上定位: 光标前最后一个匹配
+                ranges.indexOfFirst { it.first >= cursor }.let { if (it == -1) 0 else it }
+            } else {
+                ranges.indexOfLast { it.last <= cursor }
+                    .let { if (it == -1) ranges.size - 1 else it }
+            }
+            searchHighlight.update(keyword, useRegex, matchCase, wholeWord, ranges, index)
+        } else {
+            val size = searchHighlight.ranges.size
+            index = if (forward == true) {
+                (searchHighlight.currentIndex + 1) % size
+            } else {
+                (searchHighlight.currentIndex - 1 + size) % size
+            }
+            searchHighlight.update(
+                keyword, useRegex, matchCase, wholeWord, searchHighlight.ranges, index
+            )
+        }
+        val range = searchHighlight.ranges[index]
         editor.onValueChange(
-            editor.value.copy(selection = TextRange(target.first, target.second))
+            editor.value.copy(selection = TextRange(range.first, range.last + 1))
         )
     }
 
@@ -588,52 +662,52 @@ private class CodeEditorSearchTarget(
         replacement: String,
     ) {
         val selection = editor.value.selection
-        val ranges = matches(keyword, useRegex, matchCase, wholeWord)
+        val ranges = buildSearchRanges(keyword, useRegex, matchCase, wholeWord, editor.value.text)
         // 当前选区正好落在某个匹配上才替换, 否则先定位 (对齐原版 needFind 分支)
-        val hit = ranges.any { it.first == selection.min && it.second == selection.max }
+        val hit = ranges.any { it.first == selection.min && it.last + 1 == selection.max }
         if (!hit || selection.collapsed) {
             find(keyword, useRegex, matchCase, wholeWord, forward = true)
             return
         }
         editor.onValueChange(editor.value.insertAtCursor(replacement))
+        // 文本已变, 强制重算匹配区间再定位下一个 (对齐原版 replace 后 find(forward=true))
+        val fresh = buildSearchRanges(keyword, useRegex, matchCase, wholeWord, editor.value.text)
+        searchHighlight.update(keyword, useRegex, matchCase, wholeWord, fresh, -1)
         find(keyword, useRegex, matchCase, wholeWord, forward = true)
     }
 
     override fun replaceAll(replacement: String) {
-        val regex = lastRegex ?: return
+        if (searchHighlight.keyword.isEmpty()) return
         val text = editor.value.text
-        // lambda 形式的返回值按字面量使用, 与原版 Editable.replace 一致 (不解释 $1)
-        val replaced = regex.replace(text) { replacement }
+        val ranges = buildSearchRanges(
+            searchHighlight.keyword, searchHighlight.useRegex,
+            searchHighlight.matchCase, searchHighlight.wholeWord, text
+        )
+        if (ranges.isEmpty()) return
+        // 倒序替换避免坐标错位 (对齐原版 replaceAll), 替换内容按字面量使用 (不解释 $1)
+        var replaced = text
+        for (i in ranges.indices.reversed()) {
+            replaced = replaced.replaceRange(ranges[i].first, ranges[i].last + 1, replacement)
+        }
         if (replaced != text) {
             editor.onValueChange(
                 editor.value.copy(
                     text = replaced,
-                    selection = TextRange(editor.value.selection.min.coerceAtMost(replaced.length)),
+                    selection = TextRange(
+                        editor.value.selection.min.coerceAtMost(replaced.length)
+                    ),
                 )
             )
         }
-    }
-
-    /** 构造匹配区间 (对齐原版 getSearchPattern: 非正则走 quote, 全词加 \b, 忽略大小写走 flag) */
-    private fun matches(
-        keyword: String,
-        useRegex: Boolean,
-        matchCase: Boolean,
-        wholeWord: Boolean,
-    ): List<Pair<Int, Int>> {
-        if (keyword.isEmpty()) {
-            lastRegex = null
-            return emptyList()
-        }
-        var pattern = if (useRegex) keyword else Regex.escape(keyword)
-        if (wholeWord) pattern = "\\b$pattern\\b"
-        val regex = try {
-            if (matchCase) Regex(pattern) else Regex(pattern, RegexOption.IGNORE_CASE)
-        } catch (_: Exception) {
-            null
-        }
-        lastRegex = regex ?: return emptyList()
-        return regex.findAll(editor.value.text).map { it.range.first to it.range.last + 1 }.toList()
+        // 对齐原版 replaceAll 末尾的 reHighlightSearch: 当前命中态清空, 匹配区间重算
+        val fresh = buildSearchRanges(
+            searchHighlight.keyword, searchHighlight.useRegex,
+            searchHighlight.matchCase, searchHighlight.wholeWord, replaced
+        )
+        searchHighlight.update(
+            searchHighlight.keyword, searchHighlight.useRegex,
+            searchHighlight.matchCase, searchHighlight.wholeWord, fresh, -1
+        )
     }
 }
 

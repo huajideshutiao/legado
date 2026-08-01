@@ -165,14 +165,16 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 
-    kotlinOptions {
-        jvmTarget = "21"
-    }
-
     packaging {
         resources.excludes.add("META-INF/*")
         resources.excludes.add("META-INF/androidx/**")
+        resources.excludes.add("META-INF/jsoup/**")
+        resources.excludes.add("META-INF/native-image/**")
         resources.excludes.add("google/protobuf/**")
+        resources.excludes.add("kotlin/**")
+        resources.excludes.add("META-INF/versions/**")
+        // quick-transfer-core 的 tc 词典(1.2MB)运行时不读: 走 RemoteAssetsUtils 缓存/远程下载
+        resources.excludes.add("tc/*")
         jniLibs.excludes.add("lib/*/libcronet*.so")
     }
 
@@ -219,14 +221,11 @@ dependencies {
 
     implementation(libs.reorderable)
     implementation(libs.androidx.constraintlayout)
-    implementation(libs.androidx.swiperefreshlayout)
     implementation(libs.androidx.recyclerview)
-    implementation(libs.androidx.viewpager2)
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.documentfile)
 
     implementation(libs.material)
-    implementation(libs.flexbox)
 
     implementation(libs.lifecycle.service)
 

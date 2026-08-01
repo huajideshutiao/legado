@@ -331,6 +331,12 @@
     <string name="direct_link_upload_rule">直链上传规则</string>
     <string name="direct_link_upload_rule_summary">用于导出书源书单时生成直链 URL</string>
     <string name="check_source_config">校验设置</string>
+    <string name="check_source_timeout">超时时间(秒)</string>
+    <string name="check_source_item">校验项目</string>
+    <string name="cannot_empty">不能为空</string>
+    <string name="less_than">不能小于</string>
+    <string name="seconds">秒</string>
+    <string name="timeout">超时</string>
     <string name="contributors">开发人员</string>
     <string name="contributors_summary">gedoor、Invinciblelee 和 Xwite 等，详情请在 GitHub 中查看</string>
     <string name="join_telegram_group">加入 Telegram 群</string>
@@ -379,7 +385,7 @@
     <string name="new_theme">新建</string>
     <string name="theme_customize_title">编辑主题</string>
     <string name="select_image">选择图片</string>
-    <string name="default_cover_count">已选 %1$d 张</string>
+    <string name="default_cover_count">已选 %d 张</string>
     <string name="background_image_blurring">背景图片虚化</string>
     <string name="day_background_too_dark">白天背景不能太暗</string>
     <string name="night_background_too_light">夜间背景不能太亮</string>
@@ -1434,11 +1440,11 @@
     <string name="bg_alpha">背景透明度</string>
     <string name="bg_color">背景颜色</string>
     <string name="bg_image">背景图片</string>
-    <string name="bitmap_cache_size_summary">当前最大缓存 %1$s MB</string>
+    <string name="bitmap_cache_size_summary">当前最大缓存 %s MB</string>
     <string name="book_info_edit">书籍信息编辑</string>
     <string name="book_tree_uri_s">从其它应用打开的书籍保存位置</string>
     <string name="book_url">书籍地址</string>
-    <string name="bookshelf_cover_height_summary">当前高度：%1$s</string>
+    <string name="bookshelf_cover_height_summary">当前高度：%s</string>
     <string name="change_origin">换源</string>
     <string name="checkAuthor">校验作者</string>
     <string name="check_select_source">校验所选</string>
@@ -1452,10 +1458,14 @@
     <string name="enable_dangerous_api">高危API</string>
     <string name="enable_dangerous_api_confirm">注意，允许未知来源的源使用高危API会造成无法预测的结果，最严重的情况下会导致软件数据被清除、泄露，本地可访问文件泄露等，请确保你审计代码并信任该源，否则请不要启用。</string>
     <string name="export_str">导出</string>
-    <string name="font_scale_summary">当前字体大小：%1$.1f</string>
+    <string name="font_scale_summary">当前字体大小：%s</string>
     <string name="font_weight_text">中/粗/细</string>
     <string name="full_screen">全屏</string>
     <string name="import_default_rule">导入默认规则</string>
+    <string name="upload_url">上传Url</string>
+    <string name="is_compress">是否压缩</string>
+    <string name="test">测试</string>
+    <string name="summary">注释</string>
     <string name="import_str">导入</string>
     <string name="information">信息</string>
     <string name="lasted_show">最新：%1$s</string>
@@ -1466,7 +1476,7 @@
     <string name="page_anim">翻页动画</string>
     <string name="page_anim_scroll">滚动</string>
     <string name="page_anim_simulation">仿真</string>
-    <string name="pre_download_s">预先下载 %1$s 章正文</string>
+    <string name="pre_download_s">预先下载 %s 章正文</string>
     <string name="privacy_policy">用户隐私与协议</string>
     <string name="refresh_cover">刷新封面</string>
     <string name="refresh_list">刷新列表</string>
@@ -1479,7 +1489,7 @@
     <string name="setting">设置</string>
     <string name="share_layout">共用布局</string>
     <string name="share_selected_source">分享选中源</string>
-    <string name="source_edit_max_line_summary">%1$s,设置行数小于屏幕可显示的最大行数可以更方便的滑动到其他的字段进行编辑</string>
+    <string name="source_edit_max_line_summary">%s,设置行数小于屏幕可显示的最大行数可以更方便的滑动到其他的字段进行编辑</string>
     <string name="source_filter_rule_delete_all_confirm">删除全部屏蔽规则？</string>
     <string name="source_filter_rule_empty">还没有屏蔽规则，点右上角 + 添加</string>
     <string name="style_name">样式名称：</string>
@@ -1493,13 +1503,13 @@
     <string name="text_indent">缩进</string>
     <string name="text_letter_spacing">字距</string>
     <string name="text_underline">文字下划线</string>
-    <string name="threads_num">当前线程数 %1$s</string>
+    <string name="threads_num">当前线程数 %s</string>
     <string name="tts">TTS</string>
     <string name="version">版本</string>
     <string name="web_dav_account_s">输入你的 WebDav 账号</string>
     <string name="web_dav_pw_s">输入你的 WebDav 授权密码</string>
     <string name="web_dav_url_s">输入你的服务器地址</string>
-    <string name="web_port_summary">当前端口 %1$s</string>
+    <string name="web_port_summary">当前端口 %s</string>
     <string name="web_service_desc">用浏览器写源或看书</string>
     <string name="wrong_format">格式不对</string>
     <!-- 迁移期新增: 原版无对应 key, no_source_found/select_explore 沿用 SharedStringTable 既定文案 -->

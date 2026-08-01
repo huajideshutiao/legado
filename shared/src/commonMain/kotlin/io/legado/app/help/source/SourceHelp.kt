@@ -105,7 +105,9 @@ object SourceHelp {
 
     suspend fun enableSource(key: String, type: Int, enable: Boolean) {
         when (type) {
-            SourceType.book, SourceType.rss -> AppDbProviders.get().bookSourceDao.enable(key, enable)
+            SourceType.book, SourceType.rss -> {
+                AppDbProviders.get().bookSourceDao.enable(key, enable)
+            }
             SourceType.tts -> Unit
         }
     }

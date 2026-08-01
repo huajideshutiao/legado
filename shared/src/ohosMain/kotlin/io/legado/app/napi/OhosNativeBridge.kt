@@ -3,11 +3,16 @@
 package io.legado.app.napi
 
 import io.legado.app.utils.KS_JSON
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
+import kotlin.concurrent.Volatile
+
+typealias OhosTsfnCallback = (String) -> Unit
 
 /**
  * 鸿蒙 napi 桥接基础设施: Kotlin → ArkTS 反向调用 (KP7+)。
@@ -38,28 +43,26 @@ import kotlinx.serialization.encodeToString
 object OhosNativeBridge {
 
     /** tsfn 注入回调类型: 接收 JSON 字符串, 内部 dispatch 到 ArkTS 主线程。 */
-    private typealias TsfnCallback = (String) -> Unit
-
     /** tsfn 引用保护锁 (与 NativeLocalBookLocator.pathCache 同模式)。 */
-    private val lock = Any()
+    private val lock = SynchronizedObject()
 
     /** toast threadsafe_function 引用 (EntryAbility.ets 注册后注入)。 */
     @Volatile
-    private var toastTsfn: TsfnCallback? = null
+    private var toastTsfn: OhosTsfnCallback? = null
 
     /** notification threadsafe_function 引用。 */
     @Volatile
-    private var notificationTsfn: TsfnCallback? = null
+    private var notificationTsfn: OhosTsfnCallback? = null
 
     /** 注入 toast tsfn (由 legado_napi.cpp registerToastCallback 调用)。 */
-    fun registerToastFn(tsfn: TsfnCallback) {
+    fun registerToastFn(tsfn: OhosTsfnCallback) {
         synchronized(lock) {
             toastTsfn = tsfn
         }
     }
 
     /** 注入 notification tsfn。 */
-    fun registerNotificationFn(tsfn: TsfnCallback) {
+    fun registerNotificationFn(tsfn: OhosTsfnCallback) {
         synchronized(lock) {
             notificationTsfn = tsfn
         }
@@ -209,7 +212,7 @@ object OhosNativeBridge {
 
     /** image threadsafe_function 引用 (Kotlin → ArkTS 发送图片操作请求)。 */
     @Volatile
-    private var imageTsfn: TsfnCallback? = null
+    private var imageTsfn: OhosTsfnCallback? = null
 
     /** 待响应的图片同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
     private val imagePendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
@@ -218,7 +221,7 @@ object OhosNativeBridge {
     private var imageRequestCounter = 0L
 
     /** 注入 image tsfn (由 legado_napi.cpp registerImageCallback 调用)。 */
-    fun registerImageFn(tsfn: TsfnCallback) {
+    fun registerImageFn(tsfn: OhosTsfnCallback) {
         synchronized(lock) {
             imageTsfn = tsfn
         }
@@ -301,7 +304,7 @@ object OhosNativeBridge {
 
     /** media threadsafe_function 引用 (Kotlin → ArkTS 发送播放器命令)。 */
     @Volatile
-    private var mediaTsfn: TsfnCallback? = null
+    private var mediaTsfn: OhosTsfnCallback? = null
 
     /** media 事件监听器 Map<playerId, listener> (由各播放器按固定 id 注册)。 */
     private val mediaEventListeners = mutableMapOf<String, MediaEventListener>()
@@ -315,7 +318,7 @@ object OhosNativeBridge {
     }
 
     /** 注入 media tsfn (由 legado_napi.cpp registerMediaCallback 调用)。 */
-    fun registerMediaFn(tsfn: TsfnCallback) {
+    fun registerMediaFn(tsfn: OhosTsfnCallback) {
         synchronized(lock) {
             mediaTsfn = tsfn
         }
@@ -406,7 +409,7 @@ object OhosNativeBridge {
 
     /** tts threadsafe_function 引用 (Kotlin → ArkTS 发送 TTS 命令)。 */
     @Volatile
-    private var ttsTsfn: TsfnCallback? = null
+    private var ttsTsfn: OhosTsfnCallback? = null
 
     /** tts 事件监听器 (由 [OhosSystemTtsEngine] 设置, 接收 ArkTS 推送的 TTS 事件)。 */
     @Volatile
@@ -421,7 +424,7 @@ object OhosNativeBridge {
     }
 
     /** 注入 tts tsfn (由 legado_napi.cpp registerTtsCallback 调用)。 */
-    fun registerTtsFn(tsfn: TsfnCallback) {
+    fun registerTtsFn(tsfn: OhosTsfnCallback) {
         synchronized(lock) {
             ttsTsfn = tsfn
         }
@@ -522,7 +525,7 @@ object OhosNativeBridge {
 
     /** crypto threadsafe_function 引用 (Kotlin → ArkTS 发送 crypto 操作请求)。 */
     @Volatile
-    private var cryptoTsfn: TsfnCallback? = null
+    private var cryptoTsfn: OhosTsfnCallback? = null
 
     /** 待响应的 crypto 同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
     private val cryptoPendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
@@ -531,7 +534,7 @@ object OhosNativeBridge {
     private var cryptoRequestCounter = 0L
 
     /** 注入 crypto tsfn (由 legado_napi.cpp registerCryptoCallback 调用)。 */
-    fun registerCryptoFn(tsfn: TsfnCallback) {
+    fun registerCryptoFn(tsfn: OhosTsfnCallback) {
         synchronized(lock) {
             cryptoTsfn = tsfn
         }
@@ -608,7 +611,7 @@ object OhosNativeBridge {
 
     /** http threadsafe_function 引用 (Kotlin → ArkTS 发送 HTTP 请求)。 */
     @Volatile
-    private var httpTsfn: TsfnCallback? = null
+    private var httpTsfn: OhosTsfnCallback? = null
 
     /** 待响应的 http 同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
     private val httpPendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
@@ -617,7 +620,7 @@ object OhosNativeBridge {
     private var httpRequestCounter = 0L
 
     /** 注入 http tsfn (由 legado_napi.cpp registerHttpCallback 调用)。 */
-    fun registerHttpFn(tsfn: TsfnCallback) {
+    fun registerHttpFn(tsfn: OhosTsfnCallback) {
         synchronized(lock) {
             httpTsfn = tsfn
         }
@@ -679,10 +682,10 @@ object OhosNativeBridge {
 
     /** openUrl threadsafe_function 引用 (EntryAbility.ets 注册后注入)。 */
     @Volatile
-    private var openUrlTsfn: TsfnCallback? = null
+    private var openUrlTsfn: OhosTsfnCallback? = null
 
     /** 注入 openUrl tsfn (由 legado_napi.cpp RegisterOpenUrlCallback 调用)。 */
-    fun registerOpenUrlFn(tsfn: TsfnCallback) {
+    fun registerOpenUrlFn(tsfn: OhosTsfnCallback) {
         synchronized(lock) {
             openUrlTsfn = tsfn
         }
@@ -732,10 +735,10 @@ object OhosNativeBridge {
 
     /** window threadsafe_function 引用 (EntryAbility.ets 注册后注入)。 */
     @Volatile
-    private var windowTsfn: TsfnCallback? = null
+    private var windowTsfn: OhosTsfnCallback? = null
 
     /** 注入 window tsfn (由 legado_napi.cpp RegisterWindowCallback 调用)。 */
-    fun registerWindowFn(tsfn: TsfnCallback) {
+    fun registerWindowFn(tsfn: OhosTsfnCallback) {
         synchronized(lock) {
             windowTsfn = tsfn
         }
@@ -809,7 +812,7 @@ object OhosNativeBridge {
 
     /** filePicker threadsafe_function 引用 (Kotlin → ArkTS 发送文件选择请求)。 */
     @Volatile
-    private var filePickerTsfn: TsfnCallback? = null
+    private var filePickerTsfn: OhosTsfnCallback? = null
 
     /** 待响应的 filePicker 同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
     private val filePickerPendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
@@ -818,7 +821,7 @@ object OhosNativeBridge {
     private var filePickerRequestCounter = 0L
 
     /** 注入 filePicker tsfn (由 legado_napi.cpp RegisterFilePickerCallback 调用)。 */
-    fun registerFilePickerFn(tsfn: TsfnCallback) {
+    fun registerFilePickerFn(tsfn: OhosTsfnCallback) {
         synchronized(lock) {
             filePickerTsfn = tsfn
         }
@@ -894,7 +897,7 @@ object OhosNativeBridge {
 
     /** pasteboard threadsafe_function 引用 (Kotlin → ArkTS 发送剪贴板请求)。 */
     @Volatile
-    private var pasteboardTsfn: TsfnCallback? = null
+    private var pasteboardTsfn: OhosTsfnCallback? = null
 
     /** 待响应的 pasteboard 同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
     private val pasteboardPendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
@@ -903,7 +906,7 @@ object OhosNativeBridge {
     private var pasteboardRequestCounter = 0L
 
     /** 注入 pasteboard tsfn (由 legado_napi.cpp RegisterPasteboardCallback 调用)。 */
-    fun registerPasteboardFn(tsfn: TsfnCallback) {
+    fun registerPasteboardFn(tsfn: OhosTsfnCallback) {
         synchronized(lock) {
             pasteboardTsfn = tsfn
         }
@@ -974,7 +977,7 @@ object OhosNativeBridge {
 
     /** textCodec threadsafe_function 引用 (Kotlin → ArkTS 发送编解码请求)。 */
     @Volatile
-    private var textCodecTsfn: TsfnCallback? = null
+    private var textCodecTsfn: OhosTsfnCallback? = null
 
     /** 待响应的 textCodec 同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
     private val textCodecPendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
@@ -983,7 +986,7 @@ object OhosNativeBridge {
     private var textCodecRequestCounter = 0L
 
     /** 注入 textCodec tsfn (由 legado_napi.cpp RegisterTextCodecCallback 调用)。 */
-    fun registerTextCodecFn(tsfn: TsfnCallback) {
+    fun registerTextCodecFn(tsfn: OhosTsfnCallback) {
         synchronized(lock) {
             textCodecTsfn = tsfn
         }
@@ -1046,7 +1049,7 @@ object OhosNativeBridge {
 
     /** battery threadsafe_function 引用 (Kotlin → ArkTS 发送电量查询)。 */
     @Volatile
-    private var batteryTsfn: TsfnCallback? = null
+    private var batteryTsfn: OhosTsfnCallback? = null
 
     /** 待响应的 battery 同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
     private val batteryPendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
@@ -1055,7 +1058,7 @@ object OhosNativeBridge {
     private var batteryRequestCounter = 0L
 
     /** 注入 battery tsfn (由 legado_napi.cpp registerBatteryCallback 调用)。 */
-    fun registerBatteryFn(tsfn: TsfnCallback) {
+    fun registerBatteryFn(tsfn: OhosTsfnCallback) {
         synchronized(lock) {
             batteryTsfn = tsfn
         }
@@ -1103,10 +1106,10 @@ object OhosNativeBridge {
 
     /** share threadsafe_function 引用。 */
     @Volatile
-    private var shareTsfn: TsfnCallback? = null
+    private var shareTsfn: OhosTsfnCallback? = null
 
     /** 注入 share tsfn (由 legado_napi.cpp RegisterShareCallback 调用)。 */
-    fun registerShareFn(tsfn: TsfnCallback) {
+    fun registerShareFn(tsfn: OhosTsfnCallback) {
         synchronized(lock) {
             shareTsfn = tsfn
         }
@@ -1144,10 +1147,10 @@ object OhosNativeBridge {
 
     /** keyboard threadsafe_function 引用。 */
     @Volatile
-    private var keyboardTsfn: TsfnCallback? = null
+    private var keyboardTsfn: OhosTsfnCallback? = null
 
     /** 注入 keyboard tsfn (由 legado_napi.cpp RegisterKeyboardCallback 调用)。 */
-    fun registerKeyboardFn(tsfn: TsfnCallback) {
+    fun registerKeyboardFn(tsfn: OhosTsfnCallback) {
         synchronized(lock) {
             keyboardTsfn = tsfn
         }
@@ -1193,7 +1196,7 @@ object OhosNativeBridge {
 
     /** permission threadsafe_function 引用。 */
     @Volatile
-    private var permissionTsfn: TsfnCallback? = null
+    private var permissionTsfn: OhosTsfnCallback? = null
 
     /** 待响应的 permission 同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
     private val permissionPendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
@@ -1202,7 +1205,7 @@ object OhosNativeBridge {
     private var permissionRequestCounter = 0L
 
     /** 注入 permission tsfn (由 legado_napi.cpp RegisterPermissionCallback 调用)。 */
-    fun registerPermissionFn(tsfn: TsfnCallback) {
+    fun registerPermissionFn(tsfn: OhosTsfnCallback) {
         synchronized(lock) {
             permissionTsfn = tsfn
         }

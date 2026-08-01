@@ -27,7 +27,6 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
-import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.config.AppConfigProviders
@@ -36,10 +35,7 @@ import io.legado.app.ui.compose.platform.PlatformBackHandler
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
-import io.legado.app.utils.FlowBus
-import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.debounce
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bookshelf
 import org.jetbrains.compose.resources.stringResource
@@ -58,7 +54,6 @@ import org.jetbrains.compose.resources.stringResource
  * @param gotoTopTick 滚顶信号, 宿主端每次 tab 双击 +1 (对照 BookshelfFragment2.gotoTop)
  * @param configTick 配置变更信号, bump 后重读 bookshelfShowGroupCount (对照 BOOKSHELF_REFRESH)
  */
-@OptIn(FlowPreview::class)
 @Composable
 internal fun BookshelfScreen2(
     viewModel: BookshelfViewModel,
@@ -68,7 +63,7 @@ internal fun BookshelfScreen2(
     actions: @Composable RowScope.() -> Unit,
     modifier: Modifier = Modifier,
     tier: BookshelfTier? = null,
-    coverSlot: (@Composable (Book, Modifier, Boolean) -> Unit)? = null,
+    coverSlot: (@Composable (Book, Modifier, Boolean, Int) -> Unit)? = null,
     scrollState: ShelfScrollState = remember { ShelfScrollState() },
     gotoTopTick: Int = 0,
     configTick: Int = 0,
@@ -83,20 +78,14 @@ internal fun BookshelfScreen2(
     val showGroupCount = remember(configTick) { appConfig.bookshelfShowGroupCount }
     val groups by viewModel.bookGroups.collectAsState()
     val refreshingUrls by viewModel.refreshingUrls.collectAsState()
+    // 单一数据源: 根级=IdRoot 未分组书, 分组内=该组书 (读 VM 缓存切片, 无独立 Room 流)
+    val booksCache by viewModel.booksCache.collectAsState()
 
     // 当前层级: IdRoot=根级, 其他=已进入的分组 (对照 BookshelfFragment2.groupId)
     var groupId by remember { mutableStateOf(BookGroup.IdRoot) }
-    // 排序配置变更 (BOOKSHELF_REFRESH) 时重建 flow 让 sortOf 重读配置 (对照 upSort → initBooksData)
-    var sortTick by remember { mutableStateOf(0) }
-    LaunchedEffect(Unit) {
-        FlowBus.with(EventBus.BOOKSHELF_REFRESH).collect { sortTick++ }
-    }
-    val booksFlow = remember(groupId, sortTick) { viewModel.booksByGroup(groupId) }
-    var books by remember { mutableStateOf<List<Book>>(emptyList()) }
-    LaunchedEffect(booksFlow) {
-        // debounce(100) 对照 BookshelfFragment2.initBooksData
-        booksFlow.debounce(100).collect { books = it }
-    }
+    // 层级变化驱动 VM 重启当前分组书籍流 (排序配置由 VM.upSort 重启时重读)
+    LaunchedEffect(groupId) { viewModel.selectGroup(groupId) }
+    val books = booksCache[groupId].orEmpty()
 
     // 对照 getItems(): 根级 = 分组 + 未分组书籍, 分组内 = 只有书籍
     val items: List<Any> = remember(groupId, groups, books) {
@@ -129,7 +118,7 @@ internal fun BookshelfScreen2(
             refreshEnabled = refreshEnabled,
             // 对照 refreshLayout.setOnRefreshListener: activityViewModel.upToc(books)
             onRefresh = { viewModel.upToc(books) },
-            coverReloadTick = 0,
+            coverReloadTick = configTick,
             refreshingUrls = refreshingUrls,
             onBookClick = onBookClick,
             onBookLongClick = onBookLongClick,
@@ -158,8 +147,9 @@ fun SharedGroupCover(
 ) {
     val cover = group.cover
     val loader = remember { BookImageLoaders.getOrNull() }
-    // useDefaultCover 时跳过加载, 直接走占位 (对照 app 端 CoverImageView.load 行为)
-    val useDefaultCover = remember { AppConfigProviders.get().useDefaultCover }
+    // useDefaultCover 时跳过加载, 直接走占位 (对照 app 端 CoverImageView.load 行为);
+    // 每次组合读 prefs (不 remember): 配置变更后条目重组时读到最新值
+    val useDefaultCover = AppConfigProviders.get().useDefaultCover
     var bitmap by remember(cover) { mutableStateOf<ImageBitmap?>(null) }
     // 仅以首次有效布局尺寸降采样；窗口 resize 不重新发起图片请求。
     val displaySize = remember { MutableStateFlow(IntSize.Zero) }
@@ -209,8 +199,8 @@ fun SharedGroupCover(
  * (如 app 端 ShelfCover 走 CoverImageView)。
  */
 val LocalGroupCoverSlot =
-    staticCompositionLocalOf<@Composable (BookGroup, Modifier, Boolean) -> Unit> {
-        @Composable { group, modifier, isVideoCover ->
+    staticCompositionLocalOf<@Composable (BookGroup, Modifier, Boolean, Int) -> Unit> {
+        @Composable { group, modifier, isVideoCover, _ ->
             SharedGroupCover(group, modifier, isVideoCover)
         }
     }

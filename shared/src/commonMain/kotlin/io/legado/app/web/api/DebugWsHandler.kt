@@ -1,12 +1,12 @@
 package io.legado.app.web.api
 
-import io.legado.app.data.AppDatabaseProviders
+import io.legado.app.data.AppDbProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.model.Debug
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isJson
-import io.legado.app.help.coroutine.printStackTraceOnDebug
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
@@ -46,7 +46,7 @@ class DebugWsHandler(
                         session.close("调试结束")
                         return@launch
                     }
-                    AppDatabaseProviders.get().appDb.bookSourceDao.getBookSource(tag)?.let {
+                    AppDbProviders.get().bookSourceDao.getBookSource(tag)?.let {
                         Debug.callback = this@DebugWsHandler
                         Debug.startDebug(this, it, key)
                     }

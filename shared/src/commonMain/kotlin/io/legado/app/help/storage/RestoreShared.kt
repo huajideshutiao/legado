@@ -2,7 +2,7 @@ package io.legado.app.help.storage
 
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
-import io.legado.app.data.AppDatabaseProviders
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
@@ -114,7 +114,7 @@ object RestoreShared {
     private suspend fun restore(path: String) {
         val hooks = BackupRestoreHooks.get()
         val aes = BackupAES()
-        val appDb = AppDatabaseProviders.get().appDb
+        val appDb = AppDbProviders.get()
         val sep = BackupFileOps.separator
 
         // 1. DAO 数据恢复 (与原版顺序一致)
@@ -310,7 +310,7 @@ object RestoreShared {
     private suspend fun restoreReadRecord(path: String) {
         val backups = fileToListT<ReadRecordBackup>(path, "readRecord.json") ?: return
         if (backups.isEmpty()) return
-        val dao = AppDatabaseProviders.get().appDb.readRecordDao
+        val dao = AppDbProviders.get().readRecordDao
         val nowSec = systemCurrentTimeMillis() / 1000
         backups.forEach { b ->
             if (b.bookName.isEmpty()) return@forEach

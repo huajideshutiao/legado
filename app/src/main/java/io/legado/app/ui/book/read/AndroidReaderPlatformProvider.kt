@@ -1,22 +1,38 @@
 package io.legado.app.ui.book.read
 
+import android.app.DatePickerDialog
 import android.os.BatteryManager
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
+import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.SourceLoginContext
+import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
+import io.legado.app.help.book.save
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig
@@ -24,15 +40,28 @@ import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.model.ReadAloud
 import io.legado.app.service.BaseReadAloudService
+import io.legado.app.ui.compose.component.AppNumberField
+import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.dialogs.selector
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.openUrl
+import io.legado.app.utils.showDialogFragment
+import io.legado.app.utils.showHelp
+import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import splitties.init.appCtx
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 class AndroidReaderPlatformProvider(
     private val activity: MainActivity,
@@ -164,7 +193,8 @@ private class AndroidReadAloudControls(
     }
 
     override fun openSettings() {
-        navigator.push(AppRoute.ReadAloudConfig)
+        // 对照原版 ReadAloudDialog 设置按钮 → ReadAloudConfigDialog
+        screenModel.postDialogEvent(ReaderDialogEvent.ReadAloudConfig)
     }
 
     override fun toBackstage() {
@@ -244,10 +274,14 @@ private class AndroidReaderMenuState(
         upTopMenu()
         isNightTheme = AppConfig.isNightTheme
         visibleState.targetState = true
+        // 菜单显示时状态栏/导航栏恢复显示 (对照原版 runMenuIn → upSystemUiVisibility)
+        activity.upReaderSystemBars(menuVisible = true)
     }
 
     fun hide() {
         visibleState.targetState = false
+        // 菜单收起后按 hideStatusBar/hideNavigationBar 配置恢复
+        activity.upReaderSystemBars(menuVisible = false)
     }
 
     // 沉浸式色彩配置 (对照 app 端 ReadMenu.upColorConfig)
@@ -299,7 +333,14 @@ private class AndroidReaderMenuState(
         if (AppConfig.readUrlInBrowser) {
             activity.openUrl(url.substringBefore(",{"))
         } else {
-            navigator.push(AppRoute.WebView(url))
+            // 传原始 chapterUrl (可能含 `,{...}` 请求头) + 书源信息, 由 WebViewRoute 解析
+            navigator.push(
+                AppRoute.WebView(
+                    url = url,
+                    sourceKey = book.origin,
+                    sourceName = book.originName,
+                )
+            )
         }
     }
 
@@ -336,7 +377,15 @@ private class AndroidReaderMenuState(
                     screenModel.currentBook,
                     screenModel.currentChapter,
                 )
-                navigator.push(AppRoute.Login(source.getKey(), dataKey))
+                if (source.loginUi.isNullOrEmpty()) {
+                    // URL 登录: 对照原版 showLoginDialog 的 WebViewActivity 分支, 开登录页
+                    navigator.push(AppRoute.Login(source.getKey(), dataKey))
+                } else {
+                    // 表单登录: 对照原版 showDialogFragment<SourceLoginDialog>, Overlay 弹对话框
+                    navigator.showOverlay(
+                        AppOverlay.Dialog(key = "sourceLogin", payload = dataKey)
+                    )
+                }
             }
 
             SourceAction.EDIT_SOURCE -> {
@@ -388,9 +437,261 @@ private class AndroidReaderMenuState(
 
             ReadMenuAction.LOG -> screenModel.postDialogEvent(ReaderDialogEvent.Log)
 
+            // ===== 溢出菜单动作 (对照原版 ReadBookActivity.menuHandler.onMenuAction) =====
+
+            // 翻页动画: 6 项选择器, 选中后刷新 (对照原版 showPageAnimConfig:
+            // 选择器回调忽略索引, 实际动画值在界面设置弹窗配置, 此处只触发 upPageAnim + 重载)
+            ReadMenuAction.PAGE_ANIM -> {
+                val items = arrayListOf(
+                    activity.getString(R.string.btn_default_s),
+                    activity.getString(R.string.page_anim_cover),
+                    activity.getString(R.string.page_anim_slide),
+                    activity.getString(R.string.page_anim_simulation),
+                    activity.getString(R.string.page_anim_scroll),
+                    activity.getString(R.string.page_anim_none),
+                )
+                activity.selector(R.string.page_anim, items) { _, _ ->
+                    ReadBookEvents.postConfig(
+                        ReadConfigChange.PAGE_ANIM, ReadConfigChange.LOAD_CONTENT
+                    )
+                }
+            }
+
+            // 模拟阅读: 开关 + 起始日期 + 起始章节/每日章数 (对照原版 showSimulatedReading)
+            ReadMenuAction.SIMULATED_READING -> showSimulatedReading()
+
+            // 启用替换: 翻转 useReplaceRule + 刷新替换规则缓存 (对照原版 changeReplaceRuleState)
+            ReadMenuAction.ENABLE_REPLACE -> {
+                val book = screenModel.viewModel.book.value ?: return
+                book.config.useReplaceRule = !book.getUseReplaceRule()
+                upTopMenu()
+                activity.lifecycleScope.launch(IO) {
+                    runCatching {
+                        ContentProcessor.get(book).upReplaceRules()
+                        appDb.bookDao.update(book)
+                    }
+                    // 对照原版 ReadBook.loadContent(resetPageOffset = false): 同章重载保留进度
+                    screenModel.viewModel.loadChapter(screenModel.viewModel.durChapterIndex.value)
+                }
+            }
+
+            // 去重: 无重复标题可去时提示, 然后翻转当前章去重标记 (对照原版 menu_same_title_removed)
+            ReadMenuAction.SAME_TITLE_REMOVED -> {
+                val vm = screenModel.viewModel
+                val book = vm.book.value ?: return
+                val textChapter = vm.curTextChapter.value ?: return
+                val chapter = vm.chapterList.value.getOrNull(textChapter.chapterIndex)
+                    ?: runBlocking {
+                        appDb.bookChapterDao.getChapter(book.bookUrl, textChapter.chapterIndex)
+                    } ?: return
+                val contentProcessor = ContentProcessor.get(book)
+                if (!textChapter.sameTitleRemoved
+                    && !contentProcessor.removeSameTitleCache.contains(
+                        chapter.getFileName("nr")
+                    )
+                ) {
+                    activity.toastOnUi("未找到可移除的重复标题")
+                }
+                BookHelp.setRemoveSameTitle(book, chapter, !textChapter.sameTitleRemoved)
+                vm.loadChapter(textChapter.chapterIndex)
+            }
+
+            // 重新分段: 翻转 reSegment (对照原版 menu_re_segment)
+            ReadMenuAction.RE_SEGMENT -> {
+                val book = screenModel.viewModel.book.value ?: return
+                book.config.reSegment = !book.config.reSegment
+                upTopMenu()
+                activity.lifecycleScope.launch(IO) {
+                    appDb.bookDao.update(book)
+                    screenModel.viewModel.loadChapter(screenModel.viewModel.durChapterIndex.value)
+                }
+            }
+
+            // 图片样式: 4 项选择器, 单选样式后重载 (对照原版 menu_image_style;
+            // SINGLE 样式需要重建翻页委托)
+            ReadMenuAction.IMAGE_STYLE -> {
+                val imgStyles = arrayListOf(
+                    Book.imgStyleDefault, Book.imgStyleFull, Book.imgStyleText, Book.imgStyleSingle
+                )
+                activity.selector(R.string.image_style, imgStyles) { _, index ->
+                    val imageStyle = imgStyles[index]
+                    val book = screenModel.viewModel.book.value ?: return@selector
+                    book.config.imageStyle = imageStyle
+                    activity.lifecycleScope.launch(IO) {
+                        appDb.bookDao.update(book)
+                        if (imageStyle == Book.imgStyleSingle) {
+                            ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM)
+                        }
+                        screenModel.viewModel.loadChapter(screenModel.viewModel.durChapterIndex.value)
+                    }
+                }
+            }
+
+            // 更新目录: 清解析缓存后回源重拉目录 (对照原版 menu_update_toc)
+            ReadMenuAction.UPDATE_TOC -> screenModel.viewModel.updateToc()
+
+            // 云进度: 手动同步, 上传成功/已同步 toast (对照原版 menu_sync_progress)
+            ReadMenuAction.SYNC_PROGRESS -> screenModel.viewModel.syncProgressManual(
+                uploadSuccessAction = { activity.toastOnUi(R.string.upload_book_success) },
+                syncSuccessAction = { activity.toastOnUi(R.string.sync_book_progress_success) },
+            )
+
+            // 段评: 章节级评论对话框 (对照原版 menu_review → viewModel.openCommentDialog)
+            ReadMenuAction.REVIEW -> {
+                val book = screenModel.viewModel.book.value ?: return
+                val chapter = screenModel.currentChapter
+                if (chapter != null) {
+                    activity.showDialogFragment(ReviewListDialog(book, chapter, 0))
+                }
+            }
+
+            // 帮助 (对照原版 menu_help → showHelp("readMenuHelp"))
+            ReadMenuAction.HELP -> activity.showHelp("readMenuHelp")
+
+            // epub 去除 ruby/h 标签: 全章清缓存重载 (对照原版 menu_del_ruby_tag / menu_del_h_tag)
+            ReadMenuAction.DEL_RUBY_TAG -> toggleDelTag(Book.rubyTag)
+            ReadMenuAction.DEL_H_TAG -> toggleDelTag(Book.hTag)
+
             else -> Unit
         }
     }
+
+    /** 翻转去除标签配置并全章重载 (对照原版 DEL_RUBY_TAG/DEL_H_TAG 分支) */
+    private fun toggleDelTag(tag: Long) {
+        val book = screenModel.viewModel.book.value ?: return
+        if (book.config.delTag and tag == tag) {
+            book.config.delTag = book.config.delTag and tag.inv()
+        } else {
+            book.config.delTag = book.config.delTag or tag
+        }
+        upTopMenu()
+        activity.lifecycleScope.launch(IO) {
+            appDb.bookDao.update(book)
+            screenModel.viewModel.refreshContentAll()
+        }
+    }
+
+    /** 模拟阅读配置弹窗 (对照原版 BaseReadBookActivity.showSimulatedReading) */
+    private fun showSimulatedReading() {
+        val book = screenModel.viewModel.book.value ?: return
+        val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+        val enabledState = mutableStateOf(book.config.readSimulating)
+        val startState = mutableStateOf(book.getStartChapter().toString())
+        val numState = mutableStateOf(book.config.dailyChapters.toString())
+        val dateState = mutableStateOf(book.getStartDate()?.format(dateFormatter).orEmpty())
+        activity.alert(R.string.simulated_reading) {
+            customView {
+                val colors = AppTheme.colors
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            activity.getString(R.string.switch_on),
+                            color = colors.primaryText,
+                            fontSize = 16.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        AppSwitch(
+                            checked = enabledState.value,
+                            onCheckedChange = { enabledState.value = it },
+                        )
+                    }
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            activity.getString(R.string.start_from),
+                            color = colors.primaryText,
+                            fontSize = 16.sp,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                        Text(
+                            text = dateState.value.ifEmpty { "Select date" },
+                            color = if (dateState.value.isEmpty()) colors.secondaryText
+                            else colors.primaryText,
+                            fontSize = 16.sp,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    val localStartDate = runCatching {
+                                        LocalDate.parse(dateState.value)
+                                    }.getOrDefault(LocalDate.now())
+                                    DatePickerDialog(
+                                        activity,
+                                        { _, yy, mm, dayOfMonth ->
+                                            dateState.value = LocalDate.of(yy, mm + 1, dayOfMonth)
+                                                .format(dateFormatter)
+                                        },
+                                        localStartDate.year,
+                                        localStartDate.monthValue - 1,
+                                        localStartDate.dayOfMonth,
+                                    ).show()
+                                }
+                                .padding(vertical = 8.dp),
+                        )
+                    }
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            activity.getString(R.string.start_chapter),
+                            color = colors.primaryText,
+                            fontSize = 16.sp,
+                        )
+                        AppNumberField(
+                            value = startState.value,
+                            onValueChange = { startState.value = it },
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 4.dp),
+                        )
+                        Text(
+                            activity.getString(R.string.daily_chapters),
+                            color = colors.primaryText,
+                            fontSize = 16.sp,
+                        )
+                        AppNumberField(
+                            value = numState.value,
+                            onValueChange = { numState.value = it },
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 4.dp),
+                        )
+                    }
+                }
+            }
+            okButton {
+                val date = dateState.value.let {
+                    if (it.isEmpty()) LocalDate.now()
+                    else LocalDate.parse(it, dateFormatter)
+                }
+                book.config.startDate = date
+                book.config.dailyChapters = numState.value.intOr(book.totalChapterNum)
+                book.config.startChapter = startState.value.intOr(0)
+                book.config.readSimulating = enabledState.value
+                // 对照原版 book.save() + viewModel.initData: 落库并重装使模拟章节总数生效
+                book.save()
+                screenModel.initBook(book, book.durChapterIndex)
+            }
+            cancelButton()
+        }
+    }
+
+    private fun String.intOr(default: Int): Int = toIntOrNull() ?: default
 
     override fun onSeekDragStart() = Unit
     override fun onSeekStop(progress: Int) {
@@ -418,7 +719,9 @@ private class AndroidReaderMenuState(
     }
 
     override fun clickReplaceRule() {
-        navigator.push(AppRoute.EffectiveReplaces)
+        // 对照原版 openReplaceRule → EffectiveReplacesDialog (runMenuOut 先收菜单)
+        hide()
+        screenModel.postDialogEvent(ReaderDialogEvent.EffectiveReplaces)
     }
 
     // 夜间主题切换 (对照 app 端 ReadMenu.clickNightTheme)
@@ -461,11 +764,15 @@ private class AndroidReaderMenuState(
     }
 
     override fun clickFont() {
-        navigator.push(AppRoute.ReadStyle)
+        // 对照原版 showReadStyle → ReadStyleDialog (底部弹窗, runMenuOut 先收菜单)
+        hide()
+        screenModel.postDialogEvent(ReaderDialogEvent.ReadStyle)
     }
 
     override fun clickSetting() {
-        navigator.push(AppRoute.MoreConfig)
+        // 对照原版 showMoreSetting → MoreConfigDialog (底部弹窗, runMenuOut 先收菜单)
+        hide()
+        screenModel.postDialogEvent(ReaderDialogEvent.MoreConfig)
     }
 
     // 刷新当前章节 (顶栏刷新图标短按)

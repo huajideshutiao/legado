@@ -11,6 +11,67 @@ import androidx.compose.ui.text.style.TextAlign
 import io.legado.app.ui.compose.theme.AppTheme
 
 /**
+ * WebView 加载配置 (对应原 app 端 WebViewModel 的 baseUrl/headerMap/html/saveResult 等状态)。
+ *
+ * 由 [io.legado.app.ui.route.WebViewRoute] 按原 WebViewModel.initData 逻辑预取生成:
+ * - [headerMap]: 书源 header 注入 (loadUrl(url, headers)), 含 `,{...}` URL 级请求头;
+ * - [html]: 非空时以 loadDataWithBaseURL 方式加载 (POST body 预拉 / data: 前缀解包 / 纯 HTML url);
+ * - [saveResult] + [refetchAfterSuccess]: 源验证场景, 对应原 WebViewActivity 的
+ *   sourceVerificationEnable/refetchAfterSuccess, 由 WebViewRoute 执行回传。
+ */
+data class WebViewConfig(
+    val url: String,
+    val headerMap: Map<String, String> = emptyMap(),
+    val html: String? = null,
+    val title: String = "",
+    val isLogin: Boolean = false,
+    val saveResult: Boolean = false,
+    val refetchAfterSuccess: Boolean = true,
+    val sourceKey: String = "",
+)
+
+/**
+ * 平台 WebView 能力抽象, 供 [WebViewRoute] 执行原 WebViewActivity 的验证回传:
+ * evaluateJavascript (outerHTML 抓取 / CF 挑战检测) 与页面后退。
+ * 平台注入失败 (desktop/鸿蒙 TODO) 时验证回传降级为 refetch 分支。
+ */
+interface WebViewHost {
+    fun evaluateJavascript(script: String, onResult: (String?) -> Unit)
+    fun canGoBack(): Boolean
+    fun goBack()
+}
+
+/**
+ * 路由 ↔ 平台 WebView 事件桥:
+ * 平台实现填充 [host] 并在页面加载完成时回调 [onPageFinished]。
+ */
+class WebViewCallbacks {
+    var host: WebViewHost? = null
+    var onPageFinished: ((String?) -> Unit)? = null
+
+    /**
+     * 页面标题变化 (对照原 ReadRssActivity 在 onPageFinished 里读 `view.title` 更新标题栏)。
+     * 平台实现在 WebChromeClient.onReceivedTitle 触发。
+     */
+    var onReceivedTitle: ((String?) -> Unit)? = null
+
+    /**
+     * 进入/退出全屏 (HTML5 `<video>` 全屏播放, 对照原 CommonWebChromeClient 的
+     * onShowCustomView / onHideCustomView)。平台实现负责把 custom view 铺满自己的容器,
+     * 这里只上报状态供路由隐藏标题栏。
+     */
+    var onFullScreenChanged: ((Boolean) -> Unit)? = null
+
+    /**
+     * URL 跳转拦截 (对照原 BaseWebViewClient.interceptUrl → 书源
+     * `contentRule.shouldOverrideUrlLoading` JS)。返回 true 表示已处理, WebView 不再加载。
+     *
+     * 注意: 平台实现会在 WebView 线程同步调用, 回调内不要做耗时 IO。
+     */
+    var shouldOverrideUrl: ((String) -> Boolean)? = null
+}
+
+/**
  * WebView 渲染 slot 的 CompositionLocal: 默认兜底 [SharedWebViewPlaceholder]。
  *
  * 宿主端用 [CompositionLocalProvider] 覆盖注入 Android WebView、iOS WKWebView、
@@ -18,13 +79,19 @@ import io.legado.app.ui.compose.theme.AppTheme
  * 供 shared 路由 ([io.legado.app.ui.route.LoginRoute] / [io.legado.app.ui.route.ReadRssRoute] /
  * [io.legado.app.ui.route.WebViewRoute]) 渲染 WebView, 避免 shared 路由硬编码平台 WebView 组件。
  *
- * 签名 `(String, Modifier) -> Unit`: 参数为待加载 URL + 外部 Modifier。
- * cookie 持久化 (onPageFinished) 由平台 actual 内部处理, slot 调用方无需传回调。
+ * 签名 `(WebViewConfig, Modifier, WebViewCallbacks) -> Unit`: 待加载 URL/header/html 配置
+ * + 外部 Modifier + 路由↔平台事件桥。cookie 持久化 (onPageFinished) 由平台 actual 内部处理。
  *
  * 模式参考 [io.legado.app.ui.bookshelf.LocalBookCoverSlot]。
  */
-val LocalWebViewSlot = staticCompositionLocalOf<@Composable (String, Modifier) -> Unit> {
-    @Composable { url, modifier -> SharedWebViewPlaceholder(url, modifier) }
+val LocalWebViewSlot = staticCompositionLocalOf<@Composable (
+    WebViewConfig,
+    Modifier,
+    WebViewCallbacks,
+) -> Unit> {
+    @Composable { config, modifier, _ ->
+        SharedWebViewPlaceholder(config.url, modifier)
+    }
 }
 
 /**

@@ -58,6 +58,12 @@ class DesktopTextMeasurer(
             return layout.getLineBottom(0) - layout.getLineBaseline(0)
         }
 
+    override val ascent: Float
+        get() {
+            val layout = textMeasurer.measure("水", textStyle)
+            return layout.getLineTop(0) - layout.getLineBaseline(0)
+        }
+
     /**
      * 逐字素簇宽度写入 [widths]（口径 = TextPaint.getTextWidthsCompat，
      * 含 API35 letterSpacing 首末补偿）。

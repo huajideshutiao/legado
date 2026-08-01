@@ -71,6 +71,8 @@ object AppCacheManager {
  * - 持久层 (String KV) 直接走 [AppDbProviders.get].cacheDao (4 端 Room KMP 都有 cacheDao),
  *   不再委托 SourceCacheProviders。
  * - 文件/二进制层 (ByteArray/String 文件缓存) 委托 [FileCacheProviders] (app 端 ACacheFileCacheProvider)。
+ *   未注册时 [FileCacheProviders.get] 与其他 provider 一致抛 IllegalStateException
+ *   (4 端均在启动早期注册, 静默丢弃会掩盖注册遗漏)。
  * - 内存层 自持 [memoryLruCache] (CommonLruCache, 替代 androidx.collection.LruCache)。
  *
  * SourceCacheProviders 保留给 BaseSource/CheckSourceShared 等已有调用方使用,
@@ -105,7 +107,7 @@ object CacheManager {
         val deadline =
             if (saveTime == 0) 0L else systemCurrentTimeMillis() + saveTime * 1000
         when (value) {
-            is ByteArray -> FileCacheProviders.impl?.put(key, value, saveTime)
+            is ByteArray -> FileCacheProviders.get().put(key, value, saveTime)
             else -> {
                 val cache = Cache(key, value.toString(), deadline)
                 // @JsApi 暴露给 JS 引擎, 不能 suspend; 详见 object 级 runBlockingInScope 保留说明
@@ -153,23 +155,23 @@ object CacheManager {
     }
 
     fun getByteArray(key: String): ByteArray? {
-        return FileCacheProviders.impl?.getAsBinary(key)
+        return FileCacheProviders.get().getAsBinary(key)
     }
 
     fun putFile(key: String, value: String) = putFile(key, value, 0)
 
     fun putFile(key: String, value: String, saveTime: Int = 0) {
-        FileCacheProviders.impl?.put(key, value, saveTime)
+        FileCacheProviders.get().put(key, value, saveTime)
     }
 
     fun getFile(key: String): String? {
-        return FileCacheProviders.impl?.getAsString(key)
+        return FileCacheProviders.get().getAsString(key)
     }
 
     fun delete(key: String) {
         // @JsApi 暴露给 JS 引擎, 不能 suspend; 详见 object 级 runBlockingInScope 保留说明
         runBlockingInScope(EmptyCoroutineContext) { AppDbProviders.get().cacheDao.delete(key) }
         deleteMemory(key)
-        FileCacheProviders.impl?.remove(key)
+        FileCacheProviders.get().remove(key)
     }
 }

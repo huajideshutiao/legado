@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -171,28 +172,13 @@ fun ReviewListDialog(
 ) {
     val listState = rememberLazyListState()
 
-    // rememberUpdatedState: LaunchedEffect 内读最新参数值, 避免捕获过期闭包
-    val reviewsRef = rememberUpdatedState(reviews)
-    val footerHasMoreRef = rememberUpdatedState(footerHasMore)
-    val footerLoadingRef = rememberUpdatedState(footerLoading)
-    val onLoadMoreRef = rememberUpdatedState(onLoadMore)
-
-    // 翻到底触发 loadMore, 对照原 OnScrollListener
-    LaunchedEffect(listState) {
-        snapshotFlow {
-            // 带 totalItemsCount: 追加一页后 footer 仍在视口时也要重新判定
-            val info = listState.layoutInfo
-            val atEnd = info.totalItemsCount > 0 &&
-                info.visibleItemsInfo.lastOrNull()?.index == info.totalItemsCount - 1
-            atEnd to info.totalItemsCount
-        }.collect { (atEnd, _) ->
-            if (atEnd && reviewsRef.value.isNotEmpty() &&
-                footerHasMoreRef.value && !footerLoadingRef.value
-            ) {
-                onLoadMoreRef.value()
-            }
-        }
-    }
+    ReviewListLoadMoreEffect(
+        listState = listState,
+        reviews = reviews,
+        footerHasMore = footerHasMore,
+        footerLoading = footerLoading,
+        onLoadMore = onLoadMore,
+    )
 
     Column(
         modifier
@@ -224,33 +210,164 @@ fun ReviewListDialog(
                 modifier = Modifier.align(Alignment.Center),
             )
         }
-        LazyColumn(
-            state = listState,
-            // 嵌套滚动桥接: 列表到顶后继续下拉交还 BottomSheetBehavior 收起 (Android 端注入)
+        ReviewListBody(
+            listState = listState,
+            parentReview = parentReview,
+            listTitleText = listTitleText,
+            repliesTitleText = repliesTitleText,
+            reviews = reviews,
+            sortState = sortState,
+            footerLoading = footerLoading,
+            footerHasMore = footerHasMore,
+            expandedKeys = expandedKeys,
+            votedIds = votedIds,
+            votedDownIds = votedDownIds,
+            onLoadMore = onLoadMore,
+            onChangeSort = onChangeSort,
+            onReviewClick = onReviewClick,
+            onReviewLongClick = onReviewLongClick,
+            onToggleExpand = onToggleExpand,
+            onVoteUp = onVoteUp,
+            onVoteDown = onVoteDown,
+            onDeleteClick = onDeleteClick,
+            onOpenReplies = onOpenReplies,
+            onAvatarClick = onAvatarClick,
+            onImageClick = onImageClick,
+            avatarSlot = avatarSlot,
+            imageSlot = imageSlot,
             modifier = lazyListModifier
                 .weight(1f)
                 .fillMaxWidth(),
-            contentPadding = PaddingValues(bottom = 8.dp),
-        ) {
-            if (parentReview != null) {
-                // 回复模式: 顶部楼主原评论 + "全部回复·N" 分隔条
-                item { ReviewItem(parentReview, isParent = true, expandedKeys = expandedKeys, votedIds = votedIds, votedDownIds = votedDownIds, onReviewClick = onReviewClick, onReviewLongClick = onReviewLongClick, onToggleExpand = onToggleExpand, onVoteUp = onVoteUp, onVoteDown = onVoteDown, onDeleteClick = onDeleteClick, onOpenReplies = onOpenReplies, onAvatarClick = onAvatarClick, onImageClick = onImageClick, avatarSlot = avatarSlot, imageSlot = imageSlot) }
-                item { RepliesHeader(repliesTitleText) }
-            } else {
-                item { ListHeader(listTitleText, sortState, onChangeSort) }
-            }
-            items(reviews.size) { index ->
-                ReviewItem(reviews[index], isParent = false, expandedKeys = expandedKeys, votedIds = votedIds, votedDownIds = votedDownIds, onReviewClick = onReviewClick, onReviewLongClick = onReviewLongClick, onToggleExpand = onToggleExpand, onVoteUp = onVoteUp, onVoteDown = onVoteDown, onDeleteClick = onDeleteClick, onOpenReplies = onOpenReplies, onAvatarClick = onAvatarClick, onImageClick = onImageClick, avatarSlot = avatarSlot, imageSlot = imageSlot)
-            }
-            item { LoadMoreFooter(footerLoading, footerHasMore) }
-        }
+        )
         InputBar(inputHint, onPostClick)
+    }
+}
+
+/**
+ * 评论列表主体 (header + items + footer), Dialog 与整页 Screen 共用。
+ *
+ * 外壳差异 (BottomSheet 圆角+关闭钮 / 整页 AppTitleBar+返回) 由调用方各自提供。
+ * [listState] 由调用方持有以便自行挂翻页监听 (见 [ReviewListDialog] 的 snapshotFlow)。
+ */
+@Composable
+internal fun ReviewListBody(
+    listState: LazyListState,
+    parentReview: Review?,
+    listTitleText: String,
+    repliesTitleText: String,
+    reviews: List<Review>,
+    sortState: Int,
+    footerLoading: Boolean,
+    footerHasMore: Boolean,
+    expandedKeys: Set<String>,
+    votedIds: Set<String>,
+    votedDownIds: Set<String>,
+    onLoadMore: () -> Unit,
+    onChangeSort: (Int) -> Unit,
+    onReviewClick: (Review) -> Unit,
+    onReviewLongClick: (Review) -> Unit,
+    onToggleExpand: (String) -> Unit,
+    onVoteUp: (Review) -> Unit,
+    onVoteDown: (Review) -> Unit,
+    onDeleteClick: (Review) -> Unit,
+    onOpenReplies: (Review) -> Unit,
+    onAvatarClick: (String?) -> Unit,
+    onImageClick: (String) -> Unit,
+    avatarSlot: @Composable (String?, Modifier) -> Unit,
+    imageSlot: @Composable (String, Modifier) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(
+        state = listState,
+        modifier = modifier,
+        contentPadding = PaddingValues(bottom = 8.dp),
+    ) {
+        if (parentReview != null) {
+            // 回复模式: 顶部楼主原评论 + "全部回复·N" 分隔条
+            item {
+                ReviewItem(
+                    parentReview,
+                    isParent = true,
+                    expandedKeys = expandedKeys,
+                    votedIds = votedIds,
+                    votedDownIds = votedDownIds,
+                    onReviewClick = onReviewClick,
+                    onReviewLongClick = onReviewLongClick,
+                    onToggleExpand = onToggleExpand,
+                    onVoteUp = onVoteUp,
+                    onVoteDown = onVoteDown,
+                    onDeleteClick = onDeleteClick,
+                    onOpenReplies = onOpenReplies,
+                    onAvatarClick = onAvatarClick,
+                    onImageClick = onImageClick,
+                    avatarSlot = avatarSlot,
+                    imageSlot = imageSlot,
+                )
+            }
+            item { RepliesHeader(repliesTitleText) }
+        } else {
+            item { ListHeader(listTitleText, sortState, onChangeSort) }
+        }
+        items(reviews.size) { index ->
+            ReviewItem(
+                reviews[index],
+                isParent = false,
+                expandedKeys = expandedKeys,
+                votedIds = votedIds,
+                votedDownIds = votedDownIds,
+                onReviewClick = onReviewClick,
+                onReviewLongClick = onReviewLongClick,
+                onToggleExpand = onToggleExpand,
+                onVoteUp = onVoteUp,
+                onVoteDown = onVoteDown,
+                onDeleteClick = onDeleteClick,
+                onOpenReplies = onOpenReplies,
+                onAvatarClick = onAvatarClick,
+                onImageClick = onImageClick,
+                avatarSlot = avatarSlot,
+                imageSlot = imageSlot,
+            )
+        }
+        item { LoadMoreFooter(footerLoading, footerHasMore) }
+    }
+}
+
+/**
+ * 翻到底触发 [onLoadMore] (对照 app 原版 OnScrollListener), Dialog 与 Screen 共用。
+ */
+@Composable
+internal fun ReviewListLoadMoreEffect(
+    listState: LazyListState,
+    reviews: List<Review>,
+    footerHasMore: Boolean,
+    footerLoading: Boolean,
+    onLoadMore: () -> Unit,
+) {
+    // rememberUpdatedState: LaunchedEffect 内读最新参数值, 避免捕获过期闭包
+    val reviewsRef = rememberUpdatedState(reviews)
+    val footerHasMoreRef = rememberUpdatedState(footerHasMore)
+    val footerLoadingRef = rememberUpdatedState(footerLoading)
+    val onLoadMoreRef = rememberUpdatedState(onLoadMore)
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            // 带 totalItemsCount: 追加一页后 footer 仍在视口时也要重新判定
+            val info = listState.layoutInfo
+            val atEnd = info.totalItemsCount > 0 &&
+                info.visibleItemsInfo.lastOrNull()?.index == info.totalItemsCount - 1
+            atEnd to info.totalItemsCount
+        }.collect { (atEnd, _) ->
+            if (atEnd && reviewsRef.value.isNotEmpty() &&
+                footerHasMoreRef.value && !footerLoadingRef.value
+            ) {
+                onLoadMoreRef.value()
+            }
+        }
     }
 }
 
 /** 段评模式头部: "全部评论·N" + 排序选择 */
 @Composable
-private fun ListHeader(
+internal fun ListHeader(
     listTitleText: String,
     sortState: Int,
     onChangeSort: (Int) -> Unit,
@@ -340,7 +457,7 @@ private fun RepliesHeader(repliesTitleText: String) {
 
 /** 单条评论; isParent = 回复详情页楼主原评论 (展开全文、无菜单/展开钮/回复入口) */
 @Composable
-private fun ReviewItem(
+internal fun ReviewItem(
     item: Review,
     isParent: Boolean,
     expandedKeys: Set<String>,
@@ -557,7 +674,7 @@ private fun ReviewItem(
 }
 
 @Composable
-private fun LoadMoreFooter(footerLoading: Boolean, footerHasMore: Boolean) {
+internal fun LoadMoreFooter(footerLoading: Boolean, footerHasMore: Boolean) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -586,7 +703,7 @@ private fun LoadMoreFooter(footerLoading: Boolean, footerHasMore: Boolean) {
 
 /** 底部"输入栏"只是个触发器, 点击后弹出输入面板; 回复详情页默认回复楼主 */
 @Composable
-private fun InputBar(inputHint: String, onPostClick: () -> Unit) {
+internal fun InputBar(inputHint: String, onPostClick: () -> Unit) {
     Box(
         Modifier
             .fillMaxWidth()

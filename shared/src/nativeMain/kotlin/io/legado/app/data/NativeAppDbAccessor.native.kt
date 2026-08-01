@@ -9,22 +9,24 @@ import io.legado.app.data.dao.CacheDao
 import io.legado.app.data.dao.CookieDao
 import io.legado.app.data.dao.DictRuleDao
 import io.legado.app.data.dao.HttpTTSDao
+import io.legado.app.data.dao.KeyboardAssistsDao
 import io.legado.app.data.dao.ReadRecordDao
 import io.legado.app.data.dao.ReplaceRuleDao
 import io.legado.app.data.dao.RuleSubDao
+import io.legado.app.data.dao.SearchKeywordDao
 import io.legado.app.data.dao.ServerDao
 import io.legado.app.data.dao.SourceFilterRuleDao
 import io.legado.app.data.dao.TxtTocRuleDao
 
 /**
  * iOS/鸿蒙 (Native target) 共用 [AppDbAccessor] 实现:
- * 委托 [AppDatabaseProviders.get].appDb 的 10 个 DAO,
+ * 委托 [AppDatabaseProviders.get].appDb 的全部 17 个 DAO,
  * 供 shared commonMain 中下沉的 webBook 编排层 (WebBook/BookContent/
  * SourceHelp/SearchBookFilter/ReadBookViewModelShared 等) 通过 [AppDbProviders]
  * 间接访问 appDb。
  *
  * # 共用原因
- * iOS 与鸿蒙两端 AppDbAccessor 主体实现完全一致 (10 个 DAO 直接转发 appDb 的 abstract val),
+ * iOS 与鸿蒙两端 AppDbAccessor 主体实现完全一致 (17 个 DAO 直接转发 appDb 的 abstract val),
  * 仅类名 (IosAppDbAccessor / OhosAppDbAccessor)
  * 与注册函数不同, 故下沉到 nativeMain 共用, 平台源集用 typealias 别名 + 各自 register 函数。
  *
@@ -48,7 +50,7 @@ class NativeAppDbAccessor : AppDbAccessor {
     private val appDb: AppDatabase
         get() = AppDatabaseProviders.get().appDb
 
-    // ---- 10 个 DAO 属性: 直接转发 appDb 的 abstract val ----
+    // ---- 17 个 DAO 属性: 直接转发 appDb 的 abstract val ----
     override val bookDao: BookDao get() = appDb.bookDao
     override val bookSourceDao: BookSourceDao get() = appDb.bookSourceDao
     override val bookChapterDao: BookChapterDao get() = appDb.bookChapterDao
@@ -68,6 +70,12 @@ class NativeAppDbAccessor : AppDbAccessor {
     override val ruleSubDao: RuleSubDao get() = appDb.ruleSubDao
     // AllBookmarkViewModelShared / TocViewModel.saveBookmark 用 (书签导出/保存)
     override val bookmarkDao: BookmarkDao get() = appDb.bookmarkDao
+
+    // SearchViewModel 用 (搜索历史)
+    override val searchKeywordDao: SearchKeywordDao get() = appDb.searchKeywordDao
+
+    // KeyboardToolbar / 备份恢复用 (键盘助手)
+    override val keyboardAssistsDao: KeyboardAssistsDao get() = appDb.keyboardAssistsDao
 
     // ---- AppDbAccessor 事务 ----
     // suspend 版本: Native 端无 room-ktx, 降级为直接执行 block (与非 suspend 版本行为一致)

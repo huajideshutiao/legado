@@ -2,7 +2,6 @@ package io.legado.app.help.coroutine
 
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
 
 /**
  * Native (iOS/鸿蒙) actual: 用 [Dispatchers.Default] 兜底。
@@ -16,8 +15,8 @@ import kotlinx.coroutines.IO
  */
 actual fun newFixedThreadPoolDispatcher(size: Int): CoroutineDispatcher = Dispatchers.Default
 
-/** Native actual: 直接转发 [Dispatchers.IO] (coroutines 1.7+ 在 Native 可用)。 */
-actual val IoDispatcher: CoroutineDispatcher get() = Dispatchers.IO
+/** Native actual: 使用 [Dispatchers.Default]，兼容 iOS 与 OHOS。 */
+actual val IoDispatcher: CoroutineDispatcher get() = Dispatchers.Default
 
 /**
  * Native actual: no-op。

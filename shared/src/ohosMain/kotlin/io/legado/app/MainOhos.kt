@@ -15,7 +15,6 @@ import androidx.compose.ui.window.ComposeArkUIViewController
 import io.legado.app.help.config.registerOhosProviders
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.browser.OhosWebViewSlot
-import io.legado.app.ui.AppBackground
 import io.legado.app.ui.OhosPlatformCapabilities
 import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
 import io.legado.app.ui.book.audio.OhosAudioPlayPlatformProvider
@@ -91,10 +90,12 @@ fun MainOhos() {
         LocalAppConfigProvider provides appConfigProvider,
         LocalEventBusProvider provides eventBusProvider,
         LocalPreferenceStoreProvider provides preferenceStoreProvider,
-        LocalWebViewSlot provides { url, modifier -> OhosWebViewSlot(url, modifier) },
+        LocalWebViewSlot provides { config, modifier, callbacks ->
+            OhosWebViewSlot(config, modifier, callbacks)
+        },
     ) {
         AppTheme {
-            Surface(modifier = Modifier.fillMaxSize(), color = AppBackground) {
+            Surface(modifier = Modifier.fillMaxSize(), color = AppTheme.colors.background) {
                 val rootFocusRequester = remember { FocusRequester() }
                 LaunchedEffect(Unit) {
                     runCatching { rootFocusRequester.requestFocus() }

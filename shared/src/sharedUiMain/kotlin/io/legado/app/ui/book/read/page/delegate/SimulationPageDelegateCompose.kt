@@ -445,7 +445,7 @@ class SimulationPageDelegateCompose(
         // NEXT: 底页=当前页、露出=下一页；PREV: 底页=上一页、露出=当前页
         val baseContent = if (direction == PageDirectionShared.NEXT) curContent else prevContent
         val revealContent = if (direction == PageDirectionShared.NEXT) nextContent else curContent
-        val bgColor = Color(LocalReadConfigProviders.current.readBookConfig.config.bgMeanColor)
+        val bgColor = Color(LocalReadConfigProviders.current.readBookConfig.config.curBgColor())
 
         // 替代原版 CanvasRecorder.screenshot：底页只渲染一次，正面 / 背面镜像共用这份 layer
         val baseLayer = rememberGraphicsLayer()

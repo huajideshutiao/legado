@@ -1,6 +1,11 @@
+@file:OptIn(kotlin.time.ExperimentalTime::class)
+
 package io.legado.app.help.tts
 
+import kotlin.concurrent.Volatile
+
 import io.legado.app.help.book.NativeBookStorage
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.KmpRequestBuilder
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.napi.OhosNativeBridge
@@ -8,8 +13,6 @@ import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.MD5Utils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -150,7 +153,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
             return
         }
 
-        val newScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val newScope = CoroutineScope(SupervisorJob() + IoDispatcher)
         scope = newScope
         downloadJob = newScope.launch {
             try {
@@ -327,7 +330,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
                 headers.forEach { (name, value) -> addHeader(name, value) }
             }
             .build()
-        val response = OkHttpClientProviders.get().newCall(request).execute()
+        val response = OkHttpClientProviders.get().okHttpClient.newCall(request).execute()
         try {
             if (!response.isSuccessful) {
                 throw IllegalStateException("HTTP ${response.code}: $url")
@@ -354,7 +357,7 @@ class OhosHttpTtsPlayer : HttpTtsPlayer, OhosNativeBridge.MediaEventListener {
         runCatching {
             val cacheDir = File("${NativeBookStorage.defaultRootPath()}/$TTS_CACHE_DIR")
             if (!cacheDir.exists()) return
-            val now = System.currentTimeMillis()
+            val now = kotlin.time.Clock.System.now().toEpochMilliseconds()
             cacheDir.listFiles()?.forEach { file ->
                 if (file.isFile && now - file.lastModified() > 600000L) {
                     runCatching { file.delete() }

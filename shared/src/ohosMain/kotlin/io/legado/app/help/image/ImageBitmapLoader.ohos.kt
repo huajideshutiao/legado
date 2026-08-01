@@ -5,13 +5,13 @@ import androidx.compose.ui.graphics.toComposeImageBitmap
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.KmpRequestBuilder
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.utils.ImageUtils
 import io.legado.app.utils.File
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
 
@@ -39,12 +39,12 @@ import kotlinx.coroutines.withContext
 actual class ImageBitmapLoader actual constructor() {
 
     actual suspend fun loadBitmap(url: String, book: Book?, bookSource: BookSource?): ImageBitmap? =
-        withContext(Dispatchers.IO) {
+        withContext(IoDispatcher) {
             ohosLoadImageBytes(url, book, bookSource)?.let { ohosDecodeImageBytes(it) }
         }
 
     actual suspend fun loadBytes(url: String, book: Book?, bookSource: BookSource?): ByteArray? =
-        withContext(Dispatchers.IO) {
+        withContext(IoDispatcher) {
             ohosLoadImageBytes(url, book, bookSource)
         }
 }

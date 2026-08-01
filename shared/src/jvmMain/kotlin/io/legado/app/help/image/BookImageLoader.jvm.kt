@@ -13,6 +13,7 @@ import coil3.size.Scale
 import coil3.toBitmap
 import io.legado.app.help.file.desktopAppCacheDir
 import io.legado.app.help.http.OkHttpClientProviders
+import io.legado.app.model.manga.MangaModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -23,7 +24,7 @@ import java.io.File
 /**
  * 桌面 JVM 共享 Coil3 ImageLoader (对照 androidMain [buildBookImageLoader])。
  *
- * - 拦截器/Fetcher/Keyer 全套复用 jvmAndAndroidMain 现成件 (失败跳过/封面解密/防盗链 header)
+ * - Fetcher/Keyer 全套复用 jvmAndAndroidMain 现成件 (封面解密/失败跳过/防盗链 header)
  * - 网络层: OkHttp 后端, callFactory 惰性取 [OkHttpClientProviders] 共享 client
  *   (继承 CookieJar/限流; 惰性求值避免装配时机早于 HTTP provider 注册)
  * - diskCache: 双区 [buildImageDiskCache] —— 书架封面落数据目录 `filesDir/covers`,
@@ -35,17 +36,23 @@ import java.io.File
 private val jvmBookImageLoader: ImageLoader by lazy {
     ImageLoader.Builder(PlatformContext.INSTANCE)
         .components {
-            // 失败 url 跳过 + coverDecodeJs 解密: 复刻原 Glide OkHttpStreamFetcher 语义
-            add(FailedUrlSkipInterceptor())
-            add(CoverDecodeInterceptor())
+            // 封面解密 + 失败 url 跳过 + 防盗链 header: 全部下沉 fetcher 层 (对齐原 Glide
+            // OkHttpStreamFetcher: 缓存命中不解析不解密, 取数据时跑 IO 线程)。
+            // 外层 CoverDecodeFetcher → 中层 SourceOriginHeaderFetcher → 内层 OkHttp 网络 fetcher
             add(DecodedCoverKeyer(), DecodedCoverBytes::class)
             add(DecodedCoverFetcher.Factory(), DecodedCoverBytes::class)
-            add(SourceOriginHeaderInterceptor())
             // 漫画页: 经图片缓存 + AnalyzeUrl 下载 + 解密取字节 (与 app 端同一条链路)
+            add(MangaModelKeyer(), MangaModel::class)
             add(MangaModelFetcher.Factory())
-            add(OkHttpNetworkFetcherFactory(callFactory = {
-                OkHttpClientProviders.get().okHttpClient as OkHttpClient
-            }))
+            add(
+                CoverDecodeFetcher.Factory(
+                    SourceOriginHeaderFetcher.Factory(
+                        OkHttpNetworkFetcherFactory(callFactory = {
+                            OkHttpClientProviders.get().okHttpClient as OkHttpClient
+                        })
+                    )
+                )
+            )
         }
         .diskCache {
             buildImageDiskCache(File(desktopAppCacheDir(), "image_cache").absolutePath)
@@ -56,9 +63,9 @@ private val jvmBookImageLoader: ImageLoader by lazy {
 /**
  * [BookImageLoader] 的桌面 JVM Coil3 实现。
  *
- * - ImageLoader 共用进程级 [jvmBookImageLoader] (拦截器/缓存配置见其 KDoc)
- * - 书源防盗链 header: 通过 [SourceOriginHeaderInterceptor] 在 Coil3 chain 内自动解析注入
- *   (消费点 [loadImage] / AsyncImage 只传 sourceOrigin), 对齐 app 端行为
+ * - ImageLoader 共用进程级 [jvmBookImageLoader] (fetcher/缓存配置见其 KDoc)
+ * - 书源防盗链 header: 在 fetcher 层自动解析注入 (消费点 [loadImage] / AsyncImage 只传
+ *   sourceOrigin, 缓存命中不解析, 取数据时跑 IO 线程), 对齐 app 端行为
  * - 成功结果转 [ImageBitmap] 回调 (Image.toBitmap → skia Bitmap.asComposeImageBitmap)
  *
  * 注册: desktop Main.kt 调用 [registerJvmBookImageLoader]。
@@ -110,7 +117,10 @@ class JvmBookImageLoader : BookImageLoader {
             .data(url)
             .sourceOrigin(sourceOrigin)
             .apply {
-                if (persistent) diskCacheKey(coverDiskCacheKey(url))
+                if (persistent) {
+                    diskCacheKey(coverDiskCacheKey(url))
+                    extras.set(PersistentCoverKey, true)
+                }
                 // 按显示尺寸降采样; FILL 对齐消费端 ContentScale.Crop, INEXACT 允许复用更大的内存缓存项
                 if (widthPx > 0 && heightPx > 0) {
                     size(widthPx, heightPx)

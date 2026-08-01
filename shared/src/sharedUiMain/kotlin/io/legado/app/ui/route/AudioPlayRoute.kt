@@ -246,7 +246,13 @@ fun AudioPlayRoute(
                 resultKey = RouteResults.BOOK_SOURCE_EDIT
             )
         },
-        onOpenReview = { navigator.push(AppRoute.ReviewPost(book.toRouteRef())) },
+        onOpenReview = {
+            // 对照 Activity openReview: viewModel.openCommentDialog → ReviewListDialog(book, chapter, 0)
+            val chapter = AudioPlayShared.durChapter
+            if (!PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)) {
+                navigator.push(AppRoute.ReviewPost(book.toRouteRef()))
+            }
+        },
         overflowActions = overflowActions,
         onEvent = screenModel::dispatch,
     )

@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 import kotlin.io.encoding.Base64
 
 /**
- * 鸿蒙 actual: 摘要 / HMAC / AES。主实现 mbedTLS ([MbedTlsDigest]/[MbedTlsCipher]/[MbedTlsRng],
+ * 鸿蒙 actual: 摘要 / HMAC / AES。主实现 mbedTLS ([MbedTlsOps],
  * 全模式/全 padding 且不走 UI 线程往返), 任意异常回落既有 @ohos.security.cryptoFramework napi 桥接
  * (桥仅支持 AES ECB+PKCS7)。
  *
@@ -21,7 +21,7 @@ import kotlin.io.encoding.Base64
 actual object NativeDigestOps {
 
     actual fun digest(algorithm: String, data: ByteArray): ByteArray = mbedTlsOrFallback(
-        { MbedTlsDigest.digest(algorithm, data) },
+        { MbedTlsOps.digest(algorithm, data) },
         {
             val payload = KS_JSON.encodeToString(
                 DigestPayload(algorithm = algorithm, data = Base64.encode(data))
@@ -34,7 +34,7 @@ actual object NativeDigestOps {
 actual object NativeHmacOps {
 
     actual fun hmac(algorithm: String, key: ByteArray, data: ByteArray): ByteArray = mbedTlsOrFallback(
-        { MbedTlsDigest.hmac(algorithm, key, data) },
+        { MbedTlsOps.hmac(algorithm, key, data) },
         {
             val payload = KS_JSON.encodeToString(
                 HmacPayload(
@@ -63,7 +63,7 @@ actual object NativeAesOps {
         padding: String,
         iv: ByteArray?
     ): ByteArray = mbedTlsOrFallback(
-        { MbedTlsCipher.encrypt("AES", mode, padding, key, iv, data) },
+        { MbedTlsOps.cipherEncrypt("AES", mode, padding, key, iv, data) },
         {
             requireEcbPkcs7(mode, padding)
             napiAes("aesEncrypt", key, data)
@@ -77,7 +77,7 @@ actual object NativeAesOps {
         padding: String,
         iv: ByteArray?
     ): ByteArray = mbedTlsOrFallback(
-        { MbedTlsCipher.decrypt("AES", mode, padding, key, iv, data) },
+        { MbedTlsOps.cipherDecrypt("AES", mode, padding, key, iv, data) },
         {
             requireEcbPkcs7(mode, padding)
             napiAes("aesDecrypt", key, data)
@@ -86,7 +86,7 @@ actual object NativeAesOps {
 
     /** 主走 mbedTLS CTR_DRBG; 回落 K/N Random (鸿蒙走平台熵源, 同 UuidUtils.native.kt 先例)。 */
     actual fun randomKey(size: Int): ByteArray = mbedTlsOrFallback(
-        { MbedTlsRng.random(size) },
+        { MbedTlsOps.random(size) },
         { kotlin.random.Random.Default.nextBytes(ByteArray(size)) }
     )
 

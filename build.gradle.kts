@@ -16,9 +16,19 @@ plugins {
 }
 
 val isHarmonyMode = providers.gradleProperty("enableOhosTarget").getOrNull() == "true"
+val ohosDependencyVersions = mapOf(
+    "org.jetbrains.kotlinx:kotlinx-coroutines-core" to "1.10.2-0.4.0",
+    "org.jetbrains.kotlinx:atomicfu" to "0.31.0-0.4.0",
+    "com.squareup.okio:okio" to "3.16.4-0.4.0",
+    "org.jetbrains.kotlinx:kotlinx-serialization-core" to "1.9.1-0.4.0",
+    "org.jetbrains.kotlinx:kotlinx-serialization-json" to "1.9.1-0.4.0",
+    "androidx.room3:room3-common" to "3.0.0-alpha01-0.3.0",
+    "androidx.room3:room3-runtime" to "3.0.0-alpha01-0.3.0",
+)
 
 subprojects {
     configurations.all {
+        val isOhosConfiguration = name.contains("ohos", ignoreCase = true)
         // 彻底移除 Material Icons 依赖，满足“只允许用共享 XML”的要求
         exclude(group = "androidx.compose.material", module = "material-icons-core")
         exclude(group = "androidx.compose.material", module = "material-icons-extended")
@@ -26,6 +36,23 @@ subprojects {
         resolutionStrategy.eachDependency {
             if (isHarmonyMode && requested.group == "org.jetbrains.kotlin") {
                 useVersion("2.2.21-0.4.0")
+            }
+            if (isHarmonyMode && isOhosConfiguration && !name.startsWith(
+                    "ksp",
+                    ignoreCase = true
+                )
+            ) {
+                val coordinate = "${requested.group}:${requested.name}"
+                ohosDependencyVersions[coordinate]?.let { useVersion(it) }
+                if (requested.group == "io.ktor") {
+                    useVersion("3.3.3-0.3.0")
+                }
+                if (requested.group?.startsWith("org.jetbrains.compose") == true) {
+                    useVersion("1.9.2-0.4.0")
+                }
+                if (requested.group == "org.jetbrains.androidx") {
+                    useVersion("2.9.4-0.4.0")
+                }
             }
         }
     }

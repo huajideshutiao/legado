@@ -6,16 +6,17 @@ import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
 import io.legado.app.R
-import io.legado.app.ui.association.AssociationActivity
-import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.main.MainActivity
 
 object ShortCuts {
 
-    private inline fun <reified T> buildIntent(context: Context): Intent {
+    private inline fun <reified T> buildIntent(
+        context: Context,
+        configIntent: Intent.() -> Unit = {},
+    ): Intent {
         val intent = Intent(context, T::class.java)
         intent.action = Intent.ACTION_VIEW
-        return intent
+        return intent.apply(configIntent)
     }
 
     private fun buildBookShelfShortCutInfo(context: Context): ShortcutInfoCompat {
@@ -30,7 +31,10 @@ object ShortCuts {
 
     private fun buildReadBookShortCutInfo(context: Context): ShortcutInfoCompat {
         val bookShelfIntent = buildIntent<MainActivity>(context)
-        val readBookIntent = buildIntent<ReadBookActivity>(context)
+        // 路由 extra 经 MainActivity → NavigateTo("last_read") 打开最近阅读书籍
+        val readBookIntent = buildIntent<MainActivity>(context) {
+            putExtra("route", "last_read")
+        }
         return ShortcutInfoCompat.Builder(context, "lastRead")
             .setShortLabel(context.getString(R.string.last_read))
             .setLongLabel(context.getString(R.string.last_read))
@@ -40,7 +44,8 @@ object ShortCuts {
     }
 
     private fun buildReadAloudShortCutInfo(context: Context): ShortcutInfoCompat {
-        val readAloudIntent = buildIntent<AssociationActivity>(context)
+        // AssociationActivity 的 intent-filter 已迁移到 MainActivity
+        val readAloudIntent = buildIntent<MainActivity>(context)
         readAloudIntent.putExtra("action", "readAloud")
         return ShortcutInfoCompat.Builder(context, "readAloud")
             .setShortLabel(context.getString(R.string.read_aloud))

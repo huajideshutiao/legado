@@ -1,5 +1,9 @@
 package io.legado.app.help.tts
 
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlin.concurrent.Volatile
+
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.utils.KS_JSON
 import kotlinx.serialization.Serializable
@@ -224,7 +228,7 @@ class OhosSystemTtsEngine : SystemTtsEngine, OhosNativeBridge.TtsEventListener {
  * `TtsEngineProvider.register(DesktopSystemTtsEngine())` 位置一致),
  * 见 [io.legado.app.help.config.OhosProviderRegistry]。
  */
-private val ttsRegistrationLock = Any()
+private val ttsRegistrationLock = SynchronizedObject()
 
 fun registerOhosSystemTtsEngine() {
     synchronized(ttsRegistrationLock) {

@@ -3,7 +3,7 @@ package io.legado.app.help
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.PreferKey
-import io.legado.app.data.AppDatabaseProviders
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.exception.NoStackTraceException
@@ -312,7 +312,7 @@ object AppWebDavShared {
             .putAttribute("serverID", serverID)
             .toString()
         book.lastCheckTime = systemCurrentTimeMillis()
-        AppDatabaseProviders.get().appDb.bookDao.update(book)
+        AppDbProviders.get().bookDao.update(book)
     }
 
     /**
@@ -401,7 +401,7 @@ object AppWebDavShared {
         val bookProgressFiles = WebDav(bookProgressUrl, auth).listFiles()
         val map = hashMapOf<String, WebDavFile>()
         bookProgressFiles.forEach { map[it.displayName] = it }
-        AppDatabaseProviders.get().appDb.bookDao.all().forEach { book ->
+        AppDbProviders.get().bookDao.all().forEach { book ->
             val progressFileName = getProgressFileName(book.name, book.author)
             val webDavFile = map[progressFileName] ?: return@forEach
             if (webDavFile.lastModify <= book.syncTime) {
@@ -418,7 +418,7 @@ object AppWebDavShared {
                     book.durChapterTitle = bookProgress.durChapterTitle
                     book.durChapterTime = bookProgress.durChapterTime
                     book.syncTime = systemCurrentTimeMillis()
-                    AppDatabaseProviders.get().appDb.bookDao.update(book)
+                    AppDbProviders.get().bookDao.update(book)
                 }
             }
         }

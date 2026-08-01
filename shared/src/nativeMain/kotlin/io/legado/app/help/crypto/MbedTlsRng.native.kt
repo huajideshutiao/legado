@@ -29,18 +29,6 @@ internal fun mbedCheck(op: String, ret: Int) {
     if (ret != 0) throw MbedTlsException(op, ret)
 }
 
-/** mbedTLS 主实现优先, 任意异常回落 [fallback]; 双失败时抛主实现异常并 suppress 回落异常。 */
-internal inline fun <T> mbedTlsOrFallback(primary: () -> T, fallback: () -> T): T = try {
-    primary()
-} catch (primaryError: Throwable) {
-    try {
-        fallback()
-    } catch (fallbackError: Throwable) {
-        primaryError.addSuppressed(fallbackError)
-        throw primaryError
-    }
-}
-
 /** usePinned 禁止对空数组取址: 空输入用 1 字节占位指针 + len=0 传给 C (与 iOS ccSha224 先例一致)。 */
 internal inline fun <T> ByteArray.usePinnedInput(block: (CPointer<UByteVar>, ULong) -> T): T {
     val buf = if (isEmpty()) ByteArray(1) else this

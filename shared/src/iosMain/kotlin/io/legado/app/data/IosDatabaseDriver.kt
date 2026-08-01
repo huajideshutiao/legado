@@ -64,6 +64,8 @@ class IosDatabaseDriver(
             // 若后续 schema 升级与本地文件不匹配 (如 shared 模块升级后 @Database version 提升),
             // 兜底重建 (dropAllTables=true), 让 iOS 端自动恢复到可用状态。
             .fallbackToDestructiveMigration(dropAllTables = true)
+            // 预置分组 + 键盘助手 (对照 app 端 dbCallback)
+            .addCallback(AppDatabaseDefaults)
             .build()
     }
 

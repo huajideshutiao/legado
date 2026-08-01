@@ -604,7 +604,7 @@ fun GroupPickerDialog(
     AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
         Surface(
             shape = AppTheme.DesignTokens.dialogShape,
-            color = colors.background,
+            color = colors.fillet,
             modifier = Modifier.appDialogSize(),
         ) {
             Column(Modifier.fillMaxWidth()) {

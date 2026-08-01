@@ -1,41 +1,25 @@
 package io.legado.app.ui.book.read.config
 
 import android.os.Bundle
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.DropdownMenuItem
-import androidx.compose.material.Icon
-import androidx.compose.material.IconButton
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import androidx.fragment.app.viewModels
 import io.legado.app.R
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.data.entities.HttpTTS
-import io.legado.app.ui.about.AppLogDialog
-import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.FormEditFields
-import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.dialogs.alert
-import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.widget.text.EditEntity
 import io.legado.app.ui.widget.text.EditEntity.CodePattern
 import io.legado.app.ui.widget.text.EditEntity.ViewType
 import io.legado.app.utils.GSON
-import io.legado.app.utils.toJson
 import io.legado.app.utils.sendToClip
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
+import io.legado.app.utils.toJson
 import io.legado.app.utils.toastOnUi
-import org.jetbrains.compose.resources.stringResource
 
 class HttpTtsEditDialog() : BaseComposeDialogFragment() {
 
@@ -57,53 +41,28 @@ class HttpTtsEditDialog() : BaseComposeDialogFragment() {
 
     @Composable
     override fun Content() {
-        val colors = AppTheme.colors
-        Column(Modifier.fillMaxWidth()) {
-            DialogTitleBar(
-                title = "",
-                onBack = { dismissAllowingStateLoss() },
-                actions = {
-                    IconButton(onClick = {
-                        viewModel.save(dataFromView()) {
-                            toastOnUi("保存成功")
-                        }
-                    }) {
-                        Icon(
-                            painter = rememberPainter("ic_save"),
-                            contentDescription = stringResource(R.string.action_save),
-                            tint = colors.primaryText,
-                        )
-                    }
-                    OverflowMenu { dismissMenu ->
-                        @Composable
-                        fun item(textRes: Int, onClick: () -> Unit) {
-                            DropdownMenuItem(
-                                onClick = { dismissMenu(); onClick() },
-                            ) { Text(stringResource(textRes), color = colors.primaryText) }
-                        }
-                        item(R.string.login) { login() }
-                        item(R.string.show_login_header) { showLoginHeader() }
-                        item(R.string.del_login_header) { dataFromView().removeLoginHeader() }
-                        item(R.string.copy_source) {
-                            context?.sendToClip(GSON.toJson(dataFromView()))
-                        }
-                        item(R.string.paste_source) {
-                            viewModel.importFromClip { initView(it) }
-                        }
-                        item(R.string.log) { showDialogFragment<AppLogDialog>() }
-                        item(R.string.help) { showHelp("httpTTSHelp") }
-                    }
-                },
-            )
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .weight(1f, fill = false)
-                    .verticalScroll(rememberScrollState()),
-            ) {
-                FormEditFields(editEntities)
-            }
-        }
+        HttpTtsEditDialogContent(
+            editEntities = editEntities,
+            onBack = { dismissAllowingStateLoss() },
+            onSave = {
+                viewModel.save(dataFromView()) {
+                    toastOnUi("保存成功")
+                }
+            },
+            onLogin = { login() },
+            onShowLoginHeader = { showLoginHeader() },
+            onDeleteLoginHeader = { dataFromView().removeLoginHeader() },
+            onCopySource = {
+                context?.sendToClip(GSON.toJson(dataFromView()))
+            },
+            onPasteSource = {
+                viewModel.importFromClip { initView(it) }
+            },
+            onShowLog = {
+                AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("app_log"))
+            },
+            onShowHelp = { showHelp("httpTTSHelp") },
+        )
     }
 
     private fun login() = dataFromView().let { httpTts ->

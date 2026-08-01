@@ -19,7 +19,7 @@ import platform.Security.kSecKeyAlgorithmRSAEncryptionOAEPSHA512
 import platform.Security.kSecKeyAlgorithmRSAEncryptionPKCS1
 
 /**
- * iOS actual: 非对称加解密。主实现 mbedTLS [MbedTlsRsa] (v1.5/OAEP + 私钥加密/公钥解密反向 +
+ * iOS actual: 非对称加解密。主实现 mbedTLS [MbedTlsOps] (v1.5/OAEP + 私钥加密/公钥解密反向 +
  * hutool 同款分块), 任意异常回落既有 Security.framework 路径 (仅公钥加密/私钥解密单向)。
  * 原 "iOS 私钥加密向 Security 无解" 的缺口由 mbedTLS 主实现补上。
  *
@@ -40,7 +40,7 @@ actual object NativeAsymmetricCryptoOps {
         publicKey: ByteArray?,
         data: ByteArray
     ): ByteArray = mbedTlsOrFallback(
-        { MbedTlsRsa.encrypt(algorithm, usePublicKey, privateKey, publicKey, data) },
+        { MbedTlsOps.rsaEncrypt(algorithm, usePublicKey, privateKey, publicKey, data) },
         { legacyEncrypt(algorithm, usePublicKey, publicKey, data) }
     )
 
@@ -51,7 +51,7 @@ actual object NativeAsymmetricCryptoOps {
         publicKey: ByteArray?,
         data: ByteArray
     ): ByteArray = mbedTlsOrFallback(
-        { MbedTlsRsa.decrypt(algorithm, usePublicKey, privateKey, publicKey, data) },
+        { MbedTlsOps.rsaDecrypt(algorithm, usePublicKey, privateKey, publicKey, data) },
         { legacyDecrypt(algorithm, usePublicKey, privateKey, data) }
     )
 

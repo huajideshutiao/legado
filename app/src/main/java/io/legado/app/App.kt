@@ -45,13 +45,13 @@ import io.legado.app.help.config.registerAndroidPreferenceProvider
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.registerAndroidDebugState
 import io.legado.app.help.file.registerAndroidAppFilesDir
-import io.legado.app.help.http.CookieJarBridgeHolder
-import io.legado.app.help.http.CookieManager
 import io.legado.app.help.http.Cronet
 import io.legado.app.help.http.ObsoleteUrlFactory
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.http.registerAndroidBackstageWebView
 import io.legado.app.help.http.registerAndroidCookieStoreProvider
+import io.legado.app.help.http.registerAndroidCronetProvider
+import io.legado.app.help.http.registerSharedCookieJarBridge
 import io.legado.app.help.i18n.registerAndroidAppStringProvider
 import io.legado.app.help.image.registerAndroidBookImageLoader
 import io.legado.app.help.registerAndroidDirectLinkUploadProviders
@@ -142,6 +142,10 @@ class App : Application() {
         // 供 shared jvmAndAndroidMain 的 RegexReplacerImpl 在替换超时分支调用;
         // 须在 registerAndroidWebBookProviders 之前 (任何 RegexReplacers.get().replace 之前)
         registerAndroidRegexErrorHandler()
+        // 注册 CronetProvider (桥接 app 端 Cronet object 与 AppConfig.isCronet);
+        // 须在 registerAndroidWebBookProviders 之前 (OkHttpClientProviders 注册后,
+        // shared okHttpClient 首次 lazy 初始化会读 CronetProviders.get())
+        registerAndroidCronetProvider()
         registerAndroidWebBookProviders()
         // 注册 Coil3 BookImageLoader (Compose 图片加载, 替代 Glide 迁移批 1 共享面接线)
         // 依赖 OkHttpClientProviders (上一步 registerAndroidWebBookProviders 已注册),
@@ -151,7 +155,7 @@ class App : Application() {
         // app 端委托 ArchiveUtils/LibArchiveUtils (libarchive 全格式)
         ArchiveProviders.register(AndroidArchiveProvider)
         // Coil3 批 2: 设置 SingletonImageLoader.Factory, 让 app 端 AsyncImage / imageView.load 默认走
-        // 注册了 SourceOriginHeaderInterceptor + 共享 OkHttpClient 的 ImageLoader (防盗链 header 自动注入)
+        // fetcher 层注册防盗链 header 注入 + 共享 OkHttpClient 的 ImageLoader
         // MangaModelFetcher 已随漫画图片链路下沉到 buildBookImageLoader 内部注册
         coil3.SingletonImageLoader.setSafe {
             io.legado.app.help.image.buildBookImageLoader(it)
@@ -235,10 +239,11 @@ class App : Application() {
                     LogUtils.d("App", "GMS Cronet not available: ${it.message}")
                 }
             }
-            // 注册 CookieJarBridge, 让 shared 端 ObsoleteUrlFactory 能调用 app 端 CookieManager
-            CookieJarBridgeHolder.register(CookieManager)
             // 注册 CookieStoreProvider, 让 shared 端业务层能跨平台调用 app 端 CookieStore/CookieManager
             registerAndroidCookieStoreProvider()
+            // 注册 CookieJarBridge (commonMain SharedCookieJarBridge, 1:1 复刻 app CookieManager)
+            // 须在 CookieStoreProvider 之后 (bridge 通过 CookieStoreProviders.get() 间接访问存储)
+            registerSharedCookieJarBridge()
             URL.setURLStreamHandlerFactory(ObsoleteUrlFactory(okHttpClient))
             launch { installGmsTlsProvider(appCtx) }
             initQuickJs()

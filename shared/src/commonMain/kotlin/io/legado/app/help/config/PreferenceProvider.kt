@@ -32,6 +32,15 @@ interface PreferenceProvider {
     fun remove(key: String)
     fun contains(key: String): Boolean
     fun getAll(): Map<String, *>
+
+    /**
+     * 注册值变更监听: 任一 key 被 put/remove 时回调该 key (供 [CachedPrefValue] 等内存缓存刷新)。
+     *
+     * 返回注销函数。默认空实现 (Android 端 AppConfig 自带缓存监听, 不依赖本接口);
+     * desktop (java.util.prefs 节点监听) / iOS (NSUserDefaults 变更通知, 通知不含 key,
+     * 回调空串) / ohos (写入自通知) 各自实现。
+     */
+    fun addPreferenceChangeListener(listener: (key: String) -> Unit): () -> Unit = {}
 }
 
 /**

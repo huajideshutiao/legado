@@ -21,7 +21,7 @@ import platform.CoreCrypto.CC_SHA224
 import platform.CoreCrypto.CC_SHA384
 
 /**
- * iOS actual: 摘要 / HMAC / AES。主实现 mbedTLS ([MbedTlsDigest]/[MbedTlsCipher]/[MbedTlsRng]),
+ * iOS actual: 摘要 / HMAC / AES。主实现 mbedTLS ([MbedTlsOps]),
  * 任意异常回落既有 krypto (korlibs.crypto) + CommonCrypto (SHA-224/384) 路径。
  *
  * 注意: mbedTLS 目标码需 mac 侧编 libmbedtls.a 链入 (见 shared/src/cinterop/mbedtls/README.md);
@@ -32,7 +32,7 @@ import platform.CoreCrypto.CC_SHA384
 actual object NativeDigestOps {
 
     actual fun digest(algorithm: String, data: ByteArray): ByteArray = mbedTlsOrFallback(
-        { MbedTlsDigest.digest(algorithm, data) },
+        { MbedTlsOps.digest(algorithm, data) },
         { kryptoDigest(algorithm, data) }
     )
 }
@@ -40,7 +40,7 @@ actual object NativeDigestOps {
 actual object NativeHmacOps {
 
     actual fun hmac(algorithm: String, key: ByteArray, data: ByteArray): ByteArray = mbedTlsOrFallback(
-        { MbedTlsDigest.hmac(algorithm, key, data) },
+        { MbedTlsOps.hmac(algorithm, key, data) },
         { kryptoHmac(algorithm, key, data) }
     )
 }
@@ -60,7 +60,7 @@ actual object NativeAesOps {
         padding: String,
         iv: ByteArray?
     ): ByteArray = mbedTlsOrFallback(
-        { MbedTlsCipher.encrypt("AES", mode, padding, key, iv, data) },
+        { MbedTlsOps.cipherEncrypt("AES", mode, padding, key, iv, data) },
         { aes(key, toMode(mode), toPadding(padding), iv).encrypt(data) }
     )
 
@@ -71,13 +71,13 @@ actual object NativeAesOps {
         padding: String,
         iv: ByteArray?
     ): ByteArray = mbedTlsOrFallback(
-        { MbedTlsCipher.decrypt("AES", mode, padding, key, iv, data) },
+        { MbedTlsOps.cipherDecrypt("AES", mode, padding, key, iv, data) },
         { aes(key, toMode(mode), toPadding(padding), iv).decrypt(data) }
     )
 
     /** 主走 mbedTLS CTR_DRBG; 回落 krypto SecureRandom (SecRandomCopyBytes)。 */
     actual fun randomKey(size: Int): ByteArray = mbedTlsOrFallback(
-        { MbedTlsRng.random(size) },
+        { MbedTlsOps.random(size) },
         { SecureRandom.nextBytes(size) }
     )
 

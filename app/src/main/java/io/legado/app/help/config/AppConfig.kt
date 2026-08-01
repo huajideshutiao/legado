@@ -24,15 +24,6 @@ import splitties.init.appCtx
 @Suppress("MemberVisibilityCanBePrivate", "ConstPropertyName")
 object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
-    const val BOTTOM_BAR_HEIGHT_MIN = 36
-    const val BOTTOM_BAR_HEIGHT_MAX = 80
-    const val BOTTOM_BAR_HEIGHT_DEFAULT = 50
-    const val BOTTOM_BAR_ICON_MIN = 18
-    const val BOTTOM_BAR_ICON_MAX = 36
-    const val BOTTOM_BAR_ICON_DEFAULT = 24
-    const val BOTTOM_BAR_LABEL_DEFAULT = 0
-    const val defaultSpeechRate = 5
-
     // 缓存字段：热路径读取，监听器中重载
     var isCronet by cachedBoolPref(PreferKey.cronet)
     var userAgent by cachedPref(
@@ -101,19 +92,23 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
 
     var bottomBarHeight by intPref(
         PreferKey.bottomBarHeight,
-        BOTTOM_BAR_HEIGHT_DEFAULT,
-        BOTTOM_BAR_HEIGHT_MIN..BOTTOM_BAR_HEIGHT_MAX,
+        AppConfigConstants.BOTTOM_BAR_HEIGHT_DEFAULT,
+        AppConfigConstants.BOTTOM_BAR_HEIGHT_MIN..AppConfigConstants.BOTTOM_BAR_HEIGHT_MAX,
     )
     var bottomBarIconSize by intPref(
         PreferKey.bottomBarIconSize,
-        BOTTOM_BAR_ICON_DEFAULT,
-        BOTTOM_BAR_ICON_MIN..BOTTOM_BAR_ICON_MAX,
+        AppConfigConstants.BOTTOM_BAR_ICON_DEFAULT,
+        AppConfigConstants.BOTTOM_BAR_ICON_MIN..AppConfigConstants.BOTTOM_BAR_ICON_MAX,
     )
 
     /**
      * 0 = unlabeled, 1 = labeled, 2 = selected, 3 = auto
      */
-    var bottomBarLabelMode by intPref(PreferKey.bottomBarLabelMode, BOTTOM_BAR_LABEL_DEFAULT, 0..3)
+    var bottomBarLabelMode by intPref(
+        PreferKey.bottomBarLabelMode,
+        AppConfigConstants.BOTTOM_BAR_LABEL_DEFAULT,
+        0..3
+    )
 
     var bookshelfShowGroupCount by boolPref(PreferKey.bookshelfShowGroupCount, true)
 
@@ -171,7 +166,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     var importBookPath by stringPrefClearOnEmpty("importBookPath")
 
     var ttsFlowSys by boolPref(PreferKey.ttsFollowSys, true)
-    var ttsSpeechRate by intPref(PreferKey.ttsSpeechRate, defaultSpeechRate)
+    var ttsSpeechRate by intPref(PreferKey.ttsSpeechRate, AppConfigConstants.defaultSpeechRate)
     var ttsTimer by intPref(PreferKey.ttsTimer, 0)
 
     val readAloudWakeLock by boolPref(PreferKey.readAloudWakeLock, false)
@@ -179,7 +174,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val mediaButtonPerNext by boolPref("mediaButtonPerNext", false)
     val systemMediaControlCompatibilityChange by boolPref("systemMediaControlCompatibilityChange")
 
-    val speechRatePlay: Int get() = if (ttsFlowSys) defaultSpeechRate else ttsSpeechRate
+    val speechRatePlay: Int get() = if (ttsFlowSys) AppConfigConstants.defaultSpeechRate else ttsSpeechRate
 
     var chineseConverterType by intPref(PreferKey.chineseConverterType)
     var systemTypefaces by intPref(PreferKey.systemTypefaces)

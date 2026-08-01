@@ -24,6 +24,7 @@ import io.legado.app.ui.book.read.config.ClickActionDialog
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
@@ -194,7 +195,13 @@ fun MangaReaderRoute(
         onOpenPreDownloadNum = { showPreDownloadDialog = true },
         onOpenAutoPageSpeed = { showAutoPageSpeedDialog = true },
         onOpenClickRegionConfig = { showClickRegionDialog = true },
-        onOpenReview = { navigator.push(AppRoute.ReviewPost(book.toRouteRef())) },
+        onOpenReview = {
+            // 对照 Activity openReview: viewModel.openCommentDialog → ReviewListDialog(book, chapter, 0)
+            val chapter = screenModel.currentChapter
+            if (!PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)) {
+                navigator.push(AppRoute.ReviewPost(book.toRouteRef()))
+            }
+        },
         preloadImage = screenModel.preloadImage,
         imageSlot = { url, modifier, horizontal, colorFilterConfig, grayEnabled ->
             screenModel.platformRenderer?.Image(

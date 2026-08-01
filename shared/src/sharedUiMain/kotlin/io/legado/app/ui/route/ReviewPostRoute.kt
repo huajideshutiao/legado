@@ -69,10 +69,6 @@ fun ReviewPostRoute(
             screenModel.dispatch(ReviewPostUiEvent.ContentChange(content))
         }
 
-        override fun onRatingChange(rating: Float) {
-            screenModel.dispatch(ReviewPostUiEvent.RatingChange(rating))
-        }
-
         // 提交: trim 后回传 content, 由上层 (ReviewListDialog/ReviewViewModel) 处理网络提交
         // 对照 Activity submit: setResult(RESULT_OK, Intent().putExtra(RESULT_CONTENT, trimmed)) + finish
         override fun onSubmit() {

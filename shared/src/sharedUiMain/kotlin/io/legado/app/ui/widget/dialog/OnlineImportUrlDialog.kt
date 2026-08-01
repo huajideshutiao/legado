@@ -12,7 +12,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.AlertDialog
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
-import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
@@ -65,14 +64,14 @@ fun OnlineImportUrlDialog(
     var url by remember { mutableStateOf("") }
     // 历史列表 (对照 app 端 cacheUrls: 读缓存逗号拆分, defaultUrl 不在列表时插首位)
     val cacheUrls = remember {
-        val urls = FileCacheProviders.impl?.getAsString(recordKey, persistent = true)
+        val urls = FileCacheProviders.get().getAsString(recordKey, persistent = true)
             ?.splitNotBlank(",")?.toMutableList() ?: mutableListOf()
         if (defaultUrl != null && !urls.contains(defaultUrl)) urls.add(0, defaultUrl)
         urls.toMutableStateList()
     }
 
     fun persist() {
-        FileCacheProviders.impl?.put(recordKey, cacheUrls.joinToString(","), persistent = true)
+        FileCacheProviders.get().put(recordKey, cacheUrls.joinToString(","), persistent = true)
     }
 
     AlertDialog(
@@ -157,6 +156,6 @@ fun OnlineImportUrlDialog(
             }
         },
         shape = DesignTokens.dialogShape,
-        backgroundColor = MaterialTheme.colors.surface,
+        backgroundColor = colors.fillet,
     )
 }

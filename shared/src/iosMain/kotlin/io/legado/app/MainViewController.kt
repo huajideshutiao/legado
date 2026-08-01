@@ -94,7 +94,9 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
         LocalPreferenceStoreProvider provides preferenceStoreProvider,
         LocalReadConfigProviders provides readConfigProviders,
         LocalReadBookProvider provides readBookProvider,
-        LocalWebViewSlot provides { url, modifier -> IosWebViewSlot(url, modifier) },
+        LocalWebViewSlot provides { config, modifier, callbacks ->
+            IosWebViewSlot(config, modifier, callbacks)
+        },
         // 注入 Coil3 模糊封面背景到 shared 详情页路由, 覆盖 LocalBlurCoverBgSlot 兜底
         LocalBlurCoverBgSlot provides { book, coverTick, inBookshelf, isEInkMode, modifier ->
             SharedBlurCoverBgCoil(book, coverTick, inBookshelf, isEInkMode, modifier)

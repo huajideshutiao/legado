@@ -14,16 +14,17 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.ui.book.read.ReadAloudControls
 import io.legado.app.ui.book.read.ReadMenuAction
 import io.legado.app.ui.book.read.ReadMenuController
 import io.legado.app.ui.book.read.ReadMenuState
-import io.legado.app.ui.book.read.ReadAloudControls
 import io.legado.app.ui.book.read.ReaderDialogEvent
 import io.legado.app.ui.book.read.ReaderPlatformProvider
 import io.legado.app.ui.book.read.ReaderScreenModel
 import io.legado.app.ui.book.read.SourceAction
 import io.legado.app.ui.book.read.TopMenuState
 import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.toRouteRef
@@ -123,7 +124,8 @@ private class DesktopReadAloudControls(
     }
 
     override fun openSettings() {
-        navigator.push(AppRoute.ReadAloudConfig)
+        // 对照原版 ReadAloudDialog 设置按钮 → ReadAloudConfigDialog
+        screenModel.postDialogEvent(ReaderDialogEvent.ReadAloudConfig)
     }
 
     override fun toBackstage() {
@@ -229,7 +231,14 @@ private class DesktopReadMenuState(
         val book = screenModel.viewModel.book.value ?: return
         if (book.isLocal) return
         val url = chapterUrl.orEmpty()
-        navigator.push(AppRoute.WebView(url.substringBefore(",{")))
+        // 传原始 chapterUrl (可能含 `,{...}` 请求头) + 书源信息, 由 WebViewRoute 解析
+        navigator.push(
+            AppRoute.WebView(
+                url = url,
+                sourceKey = book.origin,
+                sourceName = book.originName,
+            )
+        )
     }
 
     override fun onChapterViewLongClick() = Unit
@@ -255,7 +264,15 @@ private class DesktopReadMenuState(
                     screenModel.currentBook,
                     screenModel.currentChapter,
                 )
-                navigator.push(AppRoute.Login(source.getKey(), dataKey))
+                if (source.loginUi.isNullOrEmpty()) {
+                    // URL 登录: 对照原版 showLoginDialog 的 WebViewActivity 分支, 开登录页
+                    navigator.push(AppRoute.Login(source.getKey(), dataKey))
+                } else {
+                    // 表单登录: 对照原版 showDialogFragment<SourceLoginDialog>, Overlay 弹对话框
+                    navigator.showOverlay(
+                        AppOverlay.Dialog(key = "sourceLogin", payload = dataKey)
+                    )
+                }
             }
 
             SourceAction.EDIT_SOURCE -> {
@@ -334,7 +351,9 @@ private class DesktopReadMenuState(
     }
 
     override fun clickReplaceRule() {
-        navigator.push(AppRoute.EffectiveReplaces)
+        // 对照原版 openReplaceRule → EffectiveReplacesDialog (runMenuOut 先收菜单)
+        hide()
+        screenModel.postDialogEvent(ReaderDialogEvent.EffectiveReplaces)
     }
 
     // 夜间主题切换 (对照 app 端 clickNightTheme, 无 ThemeConfig.applyDayNight)
@@ -371,11 +390,15 @@ private class DesktopReadMenuState(
     }
 
     override fun clickFont() {
-        navigator.push(AppRoute.ReadStyle)
+        // 对照原版 showReadStyle → ReadStyleDialog (底部弹窗, runMenuOut 先收菜单)
+        hide()
+        screenModel.postDialogEvent(ReaderDialogEvent.ReadStyle)
     }
 
     override fun clickSetting() {
-        navigator.push(AppRoute.MoreConfig)
+        // 对照原版 showMoreSetting → MoreConfigDialog (底部弹窗, runMenuOut 先收菜单)
+        hide()
+        screenModel.postDialogEvent(ReaderDialogEvent.MoreConfig)
     }
 
     // 刷新当前章节 (顶栏刷新图标短按)

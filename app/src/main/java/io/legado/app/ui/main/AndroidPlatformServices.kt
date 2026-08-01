@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.media.MediaPlayer
 import android.net.Uri
 import android.view.View
 import android.view.WindowManager
@@ -16,7 +17,10 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import io.legado.app.constant.AppLog
+import io.legado.app.help.IntentData
+import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.root.BrowserService
+import io.legado.app.ui.root.CrashLogProvider
 import io.legado.app.ui.root.ExternalRequestService
 import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.FilePickerService
@@ -33,8 +37,14 @@ import io.legado.app.ui.root.SoftInputPolicy
 import io.legado.app.ui.root.SystemBarsPolicy
 import io.legado.app.ui.root.WindowController
 import io.legado.app.utils.ActivityResultLauncherAwait
+import io.legado.app.utils.FileDoc
+import io.legado.app.utils.FileUtils
+import io.legado.app.utils.delete
+import io.legado.app.utils.find
 import io.legado.app.utils.fullScreen
+import io.legado.app.utils.getFile
 import io.legado.app.utils.keepScreenOn
+import io.legado.app.utils.list
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.share
 import kotlinx.coroutines.Dispatchers
@@ -82,6 +92,8 @@ class AndroidPlatformServices(
     override val notifications: NotificationService = AndroidNotificationService()
 
     override val externalRequests: ExternalRequestService = AndroidExternalRequestService()
+
+    override val crashLogs: CrashLogProvider = AndroidCrashLogProvider(activity)
 }
 
 // SAF 文件选择/保存桥接: launcher 由 MainActivity 在 STARTED 前注册传入,
@@ -94,12 +106,15 @@ private class AndroidFilePickerService(
 ) : FilePickerService {
 
     override fun pickFile(filter: FileFilter): String? = runBlocking {
-        withContext(Dispatchers.Main) { openDocumentPicker.launch(filter.toMimeTypes()) }?.toString()
+        withContext(Dispatchers.Main) { openDocumentPicker.launch(filter.toMimeTypes()) }
+            ?.toString()
+            ?.takeIf { filter.matchesUri(it) }
     }
 
     override fun pickFiles(filter: FileFilter): List<String> = runBlocking {
         withContext(Dispatchers.Main) { openDocumentsPicker.launch(filter.toMimeTypes()) }
             .map { it.toString() }
+            .filter { filter.matchesUri(it) }
     }
 
     override fun saveFile(suggestedName: String, defaultDir: String?): String? = runBlocking {
@@ -125,6 +140,14 @@ private class AndroidFilePickerService(
     // OpenDocument 仅接受 MIME 过滤, 缺省回落 */*
     private fun FileFilter.toMimeTypes(): Array<String> =
         if (mimeTypes.isNotEmpty()) mimeTypes.toTypedArray() else arrayOf("*/*")
+
+    private fun FileFilter.matchesUri(uriString: String): Boolean {
+        if (extensions.isEmpty()) return true
+        val path = Uri.parse(uriString).lastPathSegment ?: return true
+        val name = path.substringAfterLast(':').substringAfterLast('/')
+        val extension = name.substringAfterLast('.', "").lowercase()
+        return extension.isEmpty() || extensions.any { it.trimStart('.').lowercase() == extension }
+    }
 }
 
 private class AndroidShareService(
@@ -216,6 +239,17 @@ private class AndroidWindowController(
                 controller.systemBarsBehavior =
                     WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
+
+            // 阅读页 hideStatusBar/hideNavigationBar 独立配置 (对照原版 insetsController 分栏处理)
+            SystemBarsPolicy.HiddenStatusBar -> {
+                controller.hide(WindowInsetsCompat.Type.statusBars())
+                controller.show(WindowInsetsCompat.Type.navigationBars())
+            }
+
+            SystemBarsPolicy.HiddenNavigationBar -> {
+                controller.show(WindowInsetsCompat.Type.statusBars())
+                controller.hide(WindowInsetsCompat.Type.navigationBars())
+            }
         }
     }
 }
@@ -247,18 +281,45 @@ private class AndroidKeyboardController(
     }
 }
 
-// 简单实现: 暂不接入 MediaPlayer, 后续可委托 AudioPlay/ExoPlayer
 private class AndroidMediaService : MediaService {
+    private var player: MediaPlayer? = null
+
     override fun playMedia(url: String, headers: Map<String, String>) {
-        AppLog.put("AndroidMediaService.playMedia: 暂未实现")
+        stopMedia()
+        val newPlayer = MediaPlayer()
+        player = newPlayer
+        runCatching {
+            newPlayer.setOnPreparedListener { it.start() }
+            newPlayer.setOnCompletionListener { completed ->
+                completed.release()
+                if (player === completed) player = null
+            }
+            newPlayer.setOnErrorListener { failed, what, extra ->
+                AppLog.put("AndroidMediaService 播放失败: what=$what extra=$extra")
+                failed.release()
+                if (player === failed) player = null
+                true
+            }
+            newPlayer.setDataSource(appCtx, Uri.parse(url), headers)
+            newPlayer.prepareAsync()
+        }.onFailure {
+            AppLog.put("AndroidMediaService.playMedia 失败: ${it.localizedMessage}")
+            newPlayer.release()
+            if (player === newPlayer) player = null
+        }
     }
 
     override fun pauseMedia() {
-        AppLog.put("AndroidMediaService.pauseMedia: 暂未实现")
+        runCatching { player?.takeIf { it.isPlaying }?.pause() }
+            .onFailure { AppLog.put("AndroidMediaService.pauseMedia 失败: ${it.localizedMessage}") }
     }
 
     override fun stopMedia() {
-        AppLog.put("AndroidMediaService.stopMedia: 暂未实现")
+        player?.let { current ->
+            runCatching { current.stop() }
+            current.release()
+        }
+        player = null
     }
 }
 
@@ -305,24 +366,116 @@ private class AndroidExternalRequestService : ExternalRequestService {
  * scheme 区分:
  * - content/file/app → [LaunchRequest.ImportFile] (走导入书籍流程)
  * - legado/yuedu/其他 → [LaunchRequest.DeepLink] (legado 系由 [LegadoDeepLinkHandler] 进一步接管导入对话框)
+ *
+ * 内部 startActivityForBook 兜底入口: bookUrl extra → [LaunchRequest.OpenReader],
+ * 由 MainActivity 透传到 shared ReaderRoute 分发 (替代原 ReadBookActivity 直启)。
  */
 fun Intent.toLaunchRequest(): LaunchRequest? {
     // 通知/外部入口携带 route extra: 转为 NavigateTo 请求
     getStringExtra("route")?.let { return LaunchRequest.NavigateTo(it) }
-    return when (action) {
+    // startActivityForBook 兜底: bookUrl extra → OpenReader (chapterIndex/chapterPos 可选)
+    getStringExtra("bookUrl")?.takeIf { it.isNotEmpty() }?.let { url ->
+        // 同步消费 IntentData.book, 避免残留数据污染后续无关 Intent 解析
+        IntentData.book
+        return LaunchRequest.OpenReader(
+            bookUrl = url,
+            chapterIndex = getIntExtra("chapterIndex", -1).takeIf { it >= 0 },
+            chapterPos = getIntExtra("chapterPos", -1).takeIf { it >= 0 },
+        )
+    }
+    when (action) {
         Intent.ACTION_VIEW -> dataString?.let { url ->
-            when (data?.scheme) {
+            return when (data?.scheme) {
                 "content", "file", "app" -> LaunchRequest.ImportFile(url)
                 else -> LaunchRequest.DeepLink(url)
             }
         }
 
         Intent.ACTION_PROCESS_TEXT ->
-            getStringExtra(Intent.EXTRA_PROCESS_TEXT)?.let { LaunchRequest.ProcessText(it) }
+            getStringExtra(Intent.EXTRA_PROCESS_TEXT)?.let { return LaunchRequest.ProcessText(it) }
 
-        Intent.ACTION_SEND ->
-            getStringExtra(Intent.EXTRA_TEXT)?.let { LaunchRequest.ProcessText(it) }
+        Intent.ACTION_SEND -> {
+            @Suppress("DEPRECATION")
+            getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.let {
+                return LaunchRequest.ImportFile(it.toString())
+            }
+            getStringExtra(Intent.EXTRA_TEXT)?.let { return LaunchRequest.ProcessText(it) }
+        }
+    }
+    // 过渡期: 未带 bookUrl extra 的旧调用方仍走 IntentData.book → 转 bookUrl 走 OpenReader
+    return IntentData.book?.let { book -> LaunchRequest.OpenReader(bookUrl = book.bookUrl) }
+}
 
-        else -> null
+/**
+ * 崩溃日志提供者 Android 实现 (对照 app 端 CrashLogsDialog.CrashViewModel)。
+ *
+ * - loadCrashLogs: 从 externalCacheDir/crash 和备份路径收集崩溃日志文件
+ * - readCrashLog: 读取单个崩溃日志文件内容
+ * - clearCrashLogs: 删除所有崩溃日志文件
+ * - shareCrashLog: 通过 Intent 分享文件
+ */
+private class AndroidCrashLogProvider(
+    private val activity: MainActivity,
+) : CrashLogProvider {
+
+    override suspend fun loadCrashLogs(): List<CrashLogProvider.CrashLogEntry> =
+        withContext(Dispatchers.IO) {
+            val list = arrayListOf<FileDoc>()
+            // 外部缓存目录 crash 子目录 (对照 CrashViewModel.initData)
+            activity.externalCacheDir?.getFile("crash")?.listFiles { it.isFile }?.forEach {
+                list.add(FileDoc.fromFile(it))
+            }
+            // 备份路径下的 crash 目录 (对照 CrashViewModel.initData backupPath 分支)
+            val backupPath = AppConfig.backupPath
+            if (!backupPath.isNullOrEmpty()) {
+                val uri = backupPath.toUri()
+                FileDoc.fromUri(uri, true).find("crash")?.list { !it.isDir }?.let {
+                    list.addAll(it)
+                }
+            }
+            list.sortedByDescending { it.name }.distinctBy { it.name }
+                .map { CrashLogProvider.CrashLogEntry(it.name) }
+        }
+
+    override suspend fun readCrashLog(name: String): String? = withContext(Dispatchers.IO) {
+        val fileDoc = findCrashFile(name) ?: return@withContext null
+        runCatching { String(fileDoc.readBytes()) }.getOrNull()
+    }
+
+    override suspend fun clearCrashLogs() = withContext(Dispatchers.IO) {
+        // 删外部缓存目录 crash 子目录
+        activity.externalCacheDir?.getFile("crash")?.let { dir ->
+            FileUtils.delete(dir, false)
+        }
+        // 删备份路径下的 crash 目录
+        val backupPath = AppConfig.backupPath
+        if (!backupPath.isNullOrEmpty()) {
+            val uri = backupPath.toUri()
+            FileDoc.fromUri(uri, true).find("crash")?.delete()
+        }
+    }
+
+    override fun shareCrashLog(name: String) {
+        val fileDoc = runBlocking { findCrashFile(name) } ?: return
+        fileDoc.asFile()?.let {
+            activity.share(it, title = "share")
+        } ?: activity.share(fileDoc.uri, title = "share")
+    }
+
+    /** 按 name 查找崩溃日志 FileDoc (先查缓存目录, 再查备份路径) */
+    private suspend fun findCrashFile(name: String): FileDoc? = withContext(Dispatchers.IO) {
+        // 查缓存目录
+        activity.externalCacheDir?.getFile("crash")?.listFiles { it.isFile }
+            ?.firstOrNull { it.name == name }
+            ?.let { return@withContext FileDoc.fromFile(it) }
+        // 查备份路径
+        val backupPath = AppConfig.backupPath
+        if (!backupPath.isNullOrEmpty()) {
+            val uri = backupPath.toUri()
+            FileDoc.fromUri(uri, true).find("crash")?.list { !it.isDir }
+                ?.firstOrNull { it.name == name }
+                ?.let { return@withContext it }
+        }
+        null
     }
 }

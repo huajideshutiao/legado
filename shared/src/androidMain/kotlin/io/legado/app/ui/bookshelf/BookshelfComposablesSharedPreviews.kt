@@ -64,7 +64,8 @@ private val previewBookGroupEmpty = BookGroup(
 
 /** 占位封面 slot (灰色 Box + "封面" 文本), 接受外部 modifier 控制尺寸 (对照真实 ShelfCover)。
  * isVideoCover 对照 CoverRatio: NOVEL=3:4 (0.75), VIDEO=16:9。 */
-private val bookCoverSlot: @Composable (Book, Modifier, isVideoCover: Boolean) -> Unit = { book, modifier, isVideoCover ->
+private val bookCoverSlot: @Composable (Book, Modifier, isVideoCover: Boolean, Int) -> Unit =
+    { book, modifier, isVideoCover, _ ->
     val ratio = if (isVideoCover) 16f / 9f else 0.75f
     Box(
         modifier
@@ -78,7 +79,8 @@ private val bookCoverSlot: @Composable (Book, Modifier, isVideoCover: Boolean) -
 
 /** 占位封面 slot (BookGroup 用), 接受外部 modifier 控制尺寸。
  * isVideoCover 对照 CoverRatio: NOVEL=3:4 (0.75), VIDEO=16:9。 */
-private val groupCoverSlot: @Composable (BookGroup, Modifier, isVideoCover: Boolean) -> Unit = { group, modifier, isVideoCover ->
+private val groupCoverSlot: @Composable (BookGroup, Modifier, isVideoCover: Boolean, Int) -> Unit =
+    { group, modifier, isVideoCover, _ ->
     val ratio = if (isVideoCover) 16f / 9f else 0.75f
     Box(
         modifier

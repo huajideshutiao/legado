@@ -29,6 +29,7 @@ class SimpleTextMeasurer(
     override val textSizePx: Float,
     override val letterSpacingPx: Float = 0f,
     override val descent: Float = textSizePx * 0.2f,
+    override val ascent: Float = -textSizePx * 0.8f,
     private val halfWidthRatio: Float = 0.5f,
 ) : TextMeasurer {
 

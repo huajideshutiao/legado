@@ -72,8 +72,8 @@ class IosHttpProvider : OkHttpClientProvider, OkHttpProxyClientProvider {
  * 注: 桌面端还会注册 HttpClients + CookieJarBridgeHolder, iOS P0 阶段:
  * - HttpClients (HttpClient 接口) 在 commonMain 中暂无调用方 (IosBookCover 直接用 OkHttpClientProviders),
  *   不注册;
- * - CookieJarBridge (cookieJarHeader 桥接) iOS 端暂无实现, 调用方 AnalyzeUrlCore 在桥接未注册时
- *   自动跳过 cookie 注入 (与桌面端 bridge=null 行为一致), 不阻塞主流程。
+ * - CookieJarBridge (cookieJarHeader 桥接) iOS 端经 registerSharedCookieJarBridge 注册
+ *   commonMain SharedCookieJarBridge (在 registerIosProviders 中调用)。
  */
 fun registerIosHttpProvider() {
     val provider = IosHttpProvider()

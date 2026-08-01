@@ -40,7 +40,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppLog
-import io.legado.app.data.AppDatabaseProviders
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.KeyboardAssist
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.compose.component.AppDropdownMenu
@@ -198,7 +198,7 @@ private fun AssistKeyRow(
     onShowConfig: () -> Unit,
 ) {
     val items by produceState(emptyList<KeyboardAssist>()) {
-        AppDatabaseProviders.get().appDb.keyboardAssistsDao.flowByType(0).catch {
+        AppDbProviders.get().keyboardAssistsDao.flowByType(0).catch {
             AppLog.put("键盘帮助组件获取数据失败\n${it.message}", it)
         }.flowOn(IoDispatcher).collect { value = it }
     }

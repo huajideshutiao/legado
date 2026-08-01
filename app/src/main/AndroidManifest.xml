@@ -61,10 +61,6 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme.Light"
         tools:ignore="AllowBackup,GoogleAppIndexingWarning,UnusedAttribute">
-        <activity
-            android:name=".ui.book.video.VideoPlayActivity"
-            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
-            android:launchMode="standard" />
         <!-- 主入口 -->
         <activity
             android:name=".ui.welcome.WelcomeActivity"
@@ -181,46 +177,10 @@
                 <data android:pathPattern=".*\\.7z" />
                 <data android:pathPattern=".*\\.7Z" />
             </intent-filter>
-        </activity> <!-- 阅读界面 -->
-        <activity
-            android:name=".ui.book.read.ReadBookActivity"
-            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
-            android:exported="true"
-            android:launchMode="singleTask" /> <!-- 阅读漫画界面 -->
-        <activity
-            android:name=".ui.book.manga.ReadMangaActivity"
-            android:exported="false"
-            android:launchMode="singleTask" /> <!-- 书籍详情页 -->
-        <activity
-            android:name=".ui.book.info.BookInfoActivity"
-            android:launchMode="singleTop"
-            android:windowSoftInputMode="adjustNothing" /> <!-- 音频播放界面 -->
-        <activity
-            android:name=".ui.book.audio.AudioPlayActivity"
-            android:launchMode="singleTask" /> <!-- 授权界面 -->
+        </activity> <!-- 阅读界面 (已收编到 shared ReaderRoute) -->
         <activity
             android:name=".lib.permission.PermissionActivity"
             android:theme="@style/Activity.Permission" />
-        <!-- 书籍管理 -->
-        <activity
-            android:name=".ui.book.manage.BookshelfManageActivity"
-            android:launchMode="singleTop"
-            android:screenOrientation="behind"
-            tools:ignore="DiscouragedApi" /> <!-- RSS阅读 -->
-        <activity
-            android:name=".ui.book.rss.ReadRssActivity"
-            android:configChanges="orientation|screenSize"
-            android:hardwareAccelerated="true"
-            android:launchMode="singleTop" /> <!-- 选择文件 -->
-        <!-- 关联入口: intent-filter 已迁移到 MainActivity, Activity 暂保留 (shared AssociationRoute 待落地) -->
-        <activity
-            android:name=".ui.association.AssociationActivity"
-            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
-            android:excludeFromRecents="true"
-            android:exported="true"
-            android:label="@string/app_name"
-            android:launchMode="singleTask"
-            android:theme="@style/AppTheme.Transparent" />
 
         <!-- 文本处理入口 alias 到 MainActivity -->
         <activity-alias
@@ -237,6 +197,11 @@
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
             </intent-filter>
         </activity-alias>
 

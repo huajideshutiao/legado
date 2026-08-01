@@ -1,5 +1,6 @@
 package io.legado.app.ui.root
 
+import io.legado.app.constant.SourceType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
@@ -249,9 +250,22 @@ sealed interface AppRoute {
     data object ReadStyle : AppRoute
 
     // 三端合并: 工具类 (WebView/登录/JS/关联)
+    // 字段对应原 app 端 WebViewActivity 的 intent extras:
+    // title/sourceName/sourceKey/sourceType (initData 取书源 headerMap 用),
+    // saveResult/refetchAfterSuccess (原 sourceVerificationEnable/refetchAfterSuccess, 验证回传用),
+    // isLogin (原登录模式: 回传 cookie 到书源)。
     @Serializable
     @SerialName("web_view")
-    data class WebView(val url: String) : AppRoute
+    data class WebView(
+        val url: String,
+        val title: String = "",
+        val sourceName: String = "",
+        val sourceKey: String = "",
+        val sourceType: Int = SourceType.book,
+        val isLogin: Boolean = false,
+        val saveResult: Boolean = false,
+        val refetchAfterSuccess: Boolean = true,
+    ) : AppRoute
 
     /**
      * 书源登录页。
@@ -268,10 +282,6 @@ sealed interface AppRoute {
     @Serializable
     @SerialName("js_edit")
     data object JsEdit : AppRoute
-
-    @Serializable
-    @SerialName("association")
-    data object Association : AppRoute
 }
 
 @Serializable

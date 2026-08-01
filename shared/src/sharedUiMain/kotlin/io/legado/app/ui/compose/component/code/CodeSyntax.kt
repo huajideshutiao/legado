@@ -89,14 +89,14 @@ fun rememberHighlightedCode(text: String, syntax: CodeSyntaxScheme): AnnotatedSt
     remember(text, syntax) { buildHighlightedCode(text, syntax.rules) }
 
 /**
- * 生成着色后的 AnnotatedString。
+ * 全 pattern 匹配汇总, 按 (start 升序, end 降序) 排序, 再顺序保留 `end > 已覆盖最大 end` 的 span。
  *
- * 去重规则 1:1 复刻 CodeView.highlightSyntax: 全 pattern 匹配汇总后按
- * (start 升序, end 降序) 排序, 再顺序保留 `end > 已覆盖最大 end` 的 span。
+ * 去重规则 1:1 复刻 CodeView.highlightSyntax; [CodeTextField] 的增量着色也复用本函数
+ * (只对变更区间所在行调用, 再平移回全文坐标)。
  */
-internal fun buildHighlightedCode(text: String, rules: List<CodeSyntaxRule>): AnnotatedString {
-    if (rules.isEmpty() || text.isEmpty()) return AnnotatedString(text)
+internal fun matchCodeSpans(text: String, rules: List<CodeSyntaxRule>): ArrayList<CodeSpan> {
     val spans = ArrayList<CodeSpan>()
+    if (text.isEmpty()) return spans
     for (rule in rules) {
         for (m in rule.regex.findAll(text)) {
             val start = m.range.first
@@ -105,14 +105,26 @@ internal fun buildHighlightedCode(text: String, rules: List<CodeSyntaxRule>): An
         }
     }
     spans.sortWith(compareBy({ it.start }, { -it.end }))
+    val filtered = ArrayList<CodeSpan>(spans.size)
+    var lastMaxEnd = -1
+    for (span in spans) {
+        if (span.end > lastMaxEnd) {
+            filtered.add(span)
+            lastMaxEnd = span.end
+        }
+    }
+    return filtered
+}
+
+/** 生成着色后的 AnnotatedString (全量, 供只读展示用)。 */
+internal fun buildHighlightedCode(text: String, rules: List<CodeSyntaxRule>): AnnotatedString {
+    if (rules.isEmpty()) return AnnotatedString(text)
+    val spans = matchCodeSpans(text, rules)
+    if (spans.isEmpty()) return AnnotatedString(text)
     return buildAnnotatedString {
         append(text)
-        var lastMaxEnd = -1
         for (span in spans) {
-            if (span.end > lastMaxEnd) {
-                addStyle(SpanStyle(color = span.color), span.start, span.end)
-                lastMaxEnd = span.end
-            }
+            addStyle(SpanStyle(color = span.color), span.start, span.end)
         }
     }
 }

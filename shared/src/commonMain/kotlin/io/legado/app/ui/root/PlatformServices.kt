@@ -17,6 +17,7 @@ interface PlatformServices {
     val media: MediaService
     val notifications: NotificationService
     val externalRequests: ExternalRequestService
+    val crashLogs: CrashLogProvider
 }
 
 object PlatformServiceProviders {
@@ -102,6 +103,37 @@ interface ExternalRequestService {
     fun handleLaunchRequest(request: LaunchRequest): Boolean
 }
 
+/**
+ * 崩溃日志提供者：读取崩溃日志文件列表、读文件内容、清空、分享。
+ *
+ * 对照 app 端 CrashLogsDialog.CrashViewModel 的逻辑:
+ * - initData: 从 externalCacheDir/crash 和备份路径收集崩溃日志文件
+ * - readFile: 读取单个崩溃日志文件内容
+ * - clearCrashLog: 删除所有崩溃日志文件
+ * - 分享: 通过 ShareService 分享文件
+ *
+ * 各端 actual 实现:
+ * - androidMain: 外部缓存目录 + SAF 备份路径
+ * - desktopMain: 用户目录/logs/crash
+ * - iOS/鸿蒙: 暂返回空列表 (后续按需实现)
+ */
+interface CrashLogProvider {
+    /** 崩溃日志条目 (仅文件名, 与 CrashLogItem 一致) */
+    data class CrashLogEntry(val name: String)
+
+    /** 收集崩溃日志文件列表 (对照 CrashViewModel.initData) */
+    suspend fun loadCrashLogs(): List<CrashLogEntry>
+
+    /** 读取单个崩溃日志文件内容 (对照 CrashViewModel.readFile) */
+    suspend fun readCrashLog(name: String): String?
+
+    /** 清空所有崩溃日志 (对照 CrashViewModel.clearCrashLog) */
+    suspend fun clearCrashLogs()
+
+    /** 分享单个崩溃日志文件 (对照 CrashLogsDialog.shareFile) */
+    fun shareCrashLog(name: String)
+}
+
 /** 文件类型过滤：MIME 与扩展名任一命中即接受。 */
 data class FileFilter(
     val mimeTypes: List<String> = emptyList(),
@@ -122,6 +154,14 @@ data class FileFilter(
 
 enum class OrientationPolicy { Unspecified, Portrait, Landscape, Sensor }
 
-enum class SystemBarsPolicy { Default, Hidden, Visible, Immersive }
+enum class SystemBarsPolicy {
+    Default, Hidden, Visible, Immersive,
+
+    /** 仅隐藏状态栏（阅读页 hideStatusBar 独立配置） */
+    HiddenStatusBar,
+
+    /** 仅隐藏导航栏（阅读页 hideNavigationBar 独立配置） */
+    HiddenNavigationBar,
+}
 
 enum class SoftInputPolicy { Default, Resize, Pan, Hidden }

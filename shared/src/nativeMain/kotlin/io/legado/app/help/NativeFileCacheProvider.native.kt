@@ -17,8 +17,8 @@ import io.legado.app.utils.systemCurrentTimeMillis
  * commonMain 的 [CacheManager] 文件/二进制层 (getFile/putFile/getByteArray/put(ByteArray)/
  * delete 文件部分) 委托 [FileCacheProviders]。app 端注册 [ACacheFileCacheProvider] (委托 ACache),
  * desktop 端注册 [io.legado.desktop.help.DesktopFileCacheProvider] (基于 java.io.File)。
- * iOS/鸿蒙端未注册时 [FileCacheProviders].impl 为 null, CacheManager 文件层调用静默 no-op
- * (background 所述 P0: getFile 永远返回 null, put(ByteArray) 丢弃, delete 文件部分空操作)。
+ * iOS/鸿蒙端未注册时 [FileCacheProviders.get] 与其他 provider 一致抛 IllegalStateException
+ * (不再静默 no-op, 注册遗漏立即暴露)。
  *
  * # 存储
  * - 根目录: `{AppFilesDirs.cacheDir}/file_cache/` (与 desktop DesktopFileCacheProvider 同名子目录,

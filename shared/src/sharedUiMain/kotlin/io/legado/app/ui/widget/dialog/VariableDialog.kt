@@ -104,7 +104,7 @@ fun VariableDialog(
     AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
         Surface(
             shape = DesignTokens.dialogShape,
-            color = colors.background,
+            color = colors.fillet,
             modifier = Modifier.appDialogSize(),
         ) {
             Column(Modifier.fillMaxWidth()) {

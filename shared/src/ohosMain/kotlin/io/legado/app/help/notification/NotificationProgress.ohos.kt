@@ -1,5 +1,7 @@
 package io.legado.app.help.notification
 
+import kotlin.concurrent.Volatile
+
 import io.legado.app.napi.OhosNativeBridge
 
 /**

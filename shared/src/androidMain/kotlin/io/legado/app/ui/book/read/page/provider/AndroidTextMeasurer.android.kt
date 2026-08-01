@@ -30,4 +30,7 @@ class AndroidTextMeasurer(private val paint: TextPaint) : TextMeasurer {
 
     override val descent: Float
         get() = paint.fontMetrics.descent
+
+    override val ascent: Float
+        get() = paint.fontMetrics.ascent
 }

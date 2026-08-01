@@ -44,6 +44,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
@@ -66,6 +69,7 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.FlowBus
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -97,7 +101,7 @@ import org.jetbrains.compose.resources.stringResource
  *
  * - 下拉刷新: 启用 (refreshEnabled=true), onRefresh 调 [BookshelfViewModel.upToc]
  * - refreshingUrls 由 [BookshelfViewModel] 订阅 UP_BOOKSHELF 事件维护,
- *   coverReloadTick 暂无 state 传 0 (条目转圈生效, 封面重载动画省略)
+ *   coverReloadTick 跟随 configTick (设置变更时可见条目重组重载封面)
  * - 封面由 [coverSlot] 注入: 默认取 [LocalBookCoverSlot] (兜底 [SharedBookCover]);
  *   宿主端用 [CompositionLocalProvider] 覆盖注入平台实现 (app: ShelfCover / desktop: DesktopBookCover)
  *
@@ -110,6 +114,8 @@ import org.jetbrains.compose.resources.stringResource
  * - [actions]: 顶栏右侧溢出菜单槽 (添加书/书架管理/分组管理等, 由宿主端注入)
  *
  * @param viewModel 书架 VM (持有 groups/books/currentGroupId state)
+ * @param active 书架 tab 是否激活 (MainRoute 按当前页推导); 激活且窗口生命周期 RESUMED
+ *   时 VM 才订阅 DB 流, 否则零消费 (对照原版 flowWithLifecycle 的"页面可见才订阅")
  * @param onBookClick 书籍点击回调
  * @param onBookLongClick 书籍长按回调 (默认空)
  * @param onSearchClick 搜索图标点击回调 (默认空)
@@ -118,7 +124,8 @@ import org.jetbrains.compose.resources.stringResource
  * @param tier 布局档位; null = 按 [AppConfigAccessor.bookshelfLayout] 决定 (0=LIST, 其他=GRID)
  * @param coverSlot 封面渲染 slot, 默认取 [LocalBookCoverSlot] (兜底 [SharedBookCover]);
  *   宿主端可通过 [CompositionLocalProvider] 覆盖 [LocalBookCoverSlot] 注入平台实现
- *   (app: ShelfCover / desktop: DesktopBookCover), 也可直接由此参数显式传入
+ *   (app: ShelfCover / desktop: DesktopBookCover), 也可直接由此参数显式传入;
+ *   第 4 参为封面重载 tick (configTick), 配置变更时可见条目重载封面
  * @param bookshelfActionsCallbacks 顶栏溢出菜单回调集合 (书架管理/添加本地/远程书籍/分组管理/日志等), 默认空实现; 宿主端注入后菜单项生效
  * @param actions 顶栏右侧溢出菜单槽, 默认 [DefaultBookshelfActions] (搜索图标 + 完整溢出菜单)
  * @param scrollState 外部注入的滚动状态; 默认内部 remember 新建。样式2 / 无分组时的滚动位置载体
@@ -128,13 +135,14 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun BookshelfScreen(
     viewModel: BookshelfViewModel,
+    active: Boolean,
     onBookClick: (Book) -> Unit,
     onBookLongClick: (Book) -> Unit = {},
     onSearchClick: () -> Unit = {},
     onGroupLongClick: (BookGroup) -> Unit = {},
     modifier: Modifier = Modifier,
     tier: BookshelfTier? = null,
-    coverSlot: (@Composable (Book, Modifier, Boolean) -> Unit)? = null,
+    coverSlot: (@Composable (Book, Modifier, Boolean, Int) -> Unit)? = null,
     bookshelfActionsCallbacks: BookshelfActionsCallbacks = BookshelfActionsCallbacks(),
     actions: @Composable RowScope.() -> Unit = {
         DefaultBookshelfActions(
@@ -146,6 +154,23 @@ fun BookshelfScreen(
     gotoTopTick: Int = 0,
 ) {
     val colors = AppTheme.colors
+    // 订阅门控 (对照原版 flowWithLifecycle): tab 激活 + 生命周期 RESUMED 双条件成立
+    // 才开 VM 的 DB 订阅; 切走/后台即取消, 书架不可见时 books 写入零查询零全表流。
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(active, lifecycleOwner) {
+        if (!active) {
+            viewModel.setBookshelfActive(false)
+        } else {
+            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                viewModel.setBookshelfActive(true)
+                try {
+                    awaitCancellation()
+                } finally {
+                    viewModel.setBookshelfActive(false)
+                }
+            }
+        }
+    }
     val appConfig = remember { AppConfigProviders.get() }
     // 配置项每次变更后重读 (对照原版: 分组样式变更走 NOTIFY_MAIN 重建 Fragment,
     // 数量开关变更走 BOOKSHELF_REFRESH 重绑 tab)
@@ -174,12 +199,15 @@ fun BookshelfScreen(
         return
     }
     val eInk = LocalEInk.current
-    // 封面 slot: 显式传入优先, 否则取 CompositionLocal (宿主端可覆盖注入平台实现, 兜底 SharedBookCover)
-    val resolvedCoverSlot: @Composable (Book, Modifier, Boolean) -> Unit =
+    // 封面 slot: 显式传入优先, 否则取 CompositionLocal (宿主端可覆盖注入平台实现, 兜底 SharedBookCover);
+    // 第 4 参为封面重载 tick (configTick 变化时条目重组并重载封面, 应用 useDefaultCover 等配置变更)
+    val resolvedCoverSlot: @Composable (Book, Modifier, Boolean, Int) -> Unit =
         coverSlot ?: LocalBookCoverSlot.current
     val groups by viewModel.bookGroups.collectAsState()
     val currentGroupId by viewModel.currentGroupId.collectAsState()
-    val groupBookCounts = remember { mutableStateMapOf<Long, Int>() }
+    // 单一数据源: 页数据/顶栏计数均读 VM 缓存切片 (未访问过的分组无条目, 顶栏显示 "..")
+    val booksCache by viewModel.booksCache.collectAsState()
+    val groupBookCounts = remember(booksCache) { booksCache.mapValues { it.value.size } }
     val scope = rememberCoroutineScope()
 
     // 顶栏 tab 是否显示分组数量 (对照 app 端 AppConfig.bookshelfShowGroupCount)
@@ -190,8 +218,9 @@ fun BookshelfScreen(
     // 各分组页的滚动状态 (对照 BookshelfFragment1.fragmentMap): 滚顶要作用于当前分组页
     val pageScrollStates = remember { mutableStateMapOf<Long, ShelfScrollState>() }
     // 封面 slot 直接透传 (原来外面再包一层 lambda: 每次重组换实例, 会让所有可见条目一起重组)
-    val bookCoverSlot: @Composable (Book, Modifier, Boolean) -> Unit = resolvedCoverSlot
-    val groupCoverSlot: @Composable (BookGroup, Modifier, Boolean) -> Unit = DefaultGroupCoverSlot
+    val bookCoverSlot: @Composable (Book, Modifier, Boolean, Int) -> Unit = resolvedCoverSlot
+    val groupCoverSlot: @Composable (BookGroup, Modifier, Boolean, Int) -> Unit =
+        DefaultGroupCoverSlot
 
     // HorizontalPager (对照 app 端 BookshelfScreen1, pageCount 动态跟随 groups)
     val pagerState = rememberPagerState(
@@ -301,7 +330,8 @@ fun BookshelfScreen(
                     initialGroupId = initialGroupId,
                     scrollStates = pageScrollStates,
                     viewModel = viewModel,
-                    onBooksLoaded = { groupId, count -> groupBookCounts[groupId] = count },
+                    configTick = configTick,
+                    books = booksCache[group.groupId],
                     onBookClick = onBookClick,
                     onBookLongClick = onBookLongClick,
                     bookCoverSlot = bookCoverSlot,
@@ -372,9 +402,9 @@ internal suspend fun ShelfScrollState.gotoTop(tier: ShelfTier, eInk: Boolean) {
 /**
  * 单个分组页 (对照 app 端 BookshelfScreen1 的 GroupBooksPage)。
  *
- * 每页独立订阅 [BookshelfViewModel.booksByGroup] 加载该分组书籍,
- * 每页独立 [ShelfScrollState] 保留滚动位置 (初始分组复用外部 scrollState),
- * 并登记到 [scrollStates] 供宿主滚顶按当前页取用。
+ * 数据取 [BookshelfViewModel.booksCache] 单一数据源切片 (当前分组流由 VM 按
+ * selectGroup 维护, 页不再独立开 Room 流), 每页独立 [ShelfScrollState] 保留
+ * 滚动位置 (初始分组复用外部 scrollState), 并登记到 [scrollStates] 供宿主滚顶按当前页取用。
  */
 @Composable
 private fun GroupBooksPage(
@@ -384,11 +414,12 @@ private fun GroupBooksPage(
     initialGroupId: Long,
     scrollStates: MutableMap<Long, ShelfScrollState>,
     viewModel: BookshelfViewModel,
-    onBooksLoaded: (Long, Int) -> Unit,
+    configTick: Int,
+    books: List<Book>?,
     onBookClick: (Book) -> Unit,
     onBookLongClick: (Book) -> Unit,
-    bookCoverSlot: @Composable (Book, Modifier, Boolean) -> Unit,
-    groupCoverSlot: @Composable (BookGroup, Modifier, Boolean) -> Unit,
+    bookCoverSlot: @Composable (Book, Modifier, Boolean, Int) -> Unit,
+    groupCoverSlot: @Composable (BookGroup, Modifier, Boolean, Int) -> Unit,
     onRefresh: () -> Unit,
 ) {
     // 每分组一份 scrollState; 初始分组用外部 scrollState (与宿主保存的位置连续)
@@ -400,20 +431,6 @@ private fun GroupBooksPage(
         scrollStates[group.groupId] = pageScrollState
         onDispose { scrollStates.remove(group.groupId) }
     }
-    // sortTick: BOOKSHELF_REFRESH (排序配置变更) 时 bump, 重建 flow 让 sortOf 重读配置
-    // (对照 BooksFragment.observeLiveBus 的 BOOKSHELF_REFRESH → notifyDataSetChanged)
-    var sortTick by remember(group.groupId) { mutableStateOf(0) }
-    LaunchedEffect(group.groupId) {
-        FlowBus.with(EventBus.BOOKSHELF_REFRESH).collect { sortTick++ }
-    }
-    val booksFlow = remember(group.groupId, sortTick) { viewModel.booksByGroup(group.groupId) }
-    var books by remember(group.groupId) { mutableStateOf<List<Book>?>(null) }
-    LaunchedEffect(group.groupId, booksFlow) {
-        booksFlow.collect { loaded ->
-            books = loaded
-            onBooksLoaded(group.groupId, loaded.size)
-        }
-    }
     val refreshingUrls by viewModel.refreshingUrls.collectAsState()
     // 复用 ShelfBooksContent: 享受 contentType / animateItem / timeTick / 滚顶等性能优化
     ShelfBooksContent(
@@ -423,7 +440,7 @@ private fun GroupBooksPage(
         // 对照 BooksFragment: refreshLayout.isEnabled = group.enableRefresh
         refreshEnabled = group.enableRefresh,
         onRefresh = onRefresh,
-        coverReloadTick = 0,
+        coverReloadTick = configTick,
         refreshingUrls = refreshingUrls,
         onBookClick = onBookClick,
         onBookLongClick = onBookLongClick,
@@ -487,7 +504,7 @@ internal fun BookshelfTopBar(
     }
 }
 
-/** 顶栏容器 (两种分组样式共用): 背景 + 56dp 高 Row, 左侧 [content] 右侧 [actions] */
+/** 顶栏容器 (两种分组样式共用): 背景 + 48dp 高 Row (原版 TabLayout 默认高), 左侧 [content] 右侧 [actions] */
 @Composable
 internal fun BookshelfTopBarContainer(
     actions: @Composable RowScope.() -> Unit,
@@ -502,7 +519,7 @@ internal fun BookshelfTopBarContainer(
         Row(
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = 56.dp),
+                .heightIn(min = 48.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             content()
@@ -536,7 +553,7 @@ internal fun GroupTab(
     val colors = AppTheme.colors
     Box(
         Modifier
-            .heightIn(min = 56.dp)
+            .heightIn(min = 48.dp)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center,
@@ -627,8 +644,9 @@ fun SharedBookCover(
 ) {
     val cover = book.getDisplayCover()
     val loader = remember { BookImageLoaders.getOrNull() }
-    // useDefaultCover 时跳过网络加载, 直接走默认封面链 (对照 app 端 CoverImageView 行为)
-    val useDefaultCover = remember { AppConfigProviders.get().useDefaultCover }
+    // useDefaultCover 时跳过网络加载, 直接走默认封面链 (对照 app 端 CoverImageView 行为);
+    // 每次组合读 prefs (不 remember): 宿主重组触发 LaunchedEffect 重启时读到的是最新配置
+    val useDefaultCover = AppConfigProviders.get().useDefaultCover
     // 位图与"是否默认封面"合成一个 state: 一次加载只引发一次重组
     var coverState by remember(cover, book.origin) { mutableStateOf(NoCoverBitmap) }
     // 尺寸只用于首次按显示大小降采样；后续窗口 resize 不应重新发起封面请求。
@@ -658,7 +676,9 @@ fun SharedBookCover(
         } else {
             loader.loadCoverOrNull(cover, book.origin, decodeSize.width, decodeSize.height)
         }
-        if (bmp != null) coverState = CoverBitmap(bmp, false) else loadDefault()
+        if (bmp != null) {
+            coverState = CoverBitmap(bmp, false)
+        } else loadDefault()
     }
     // 对齐 CoverImageView.onMeasure: 高度有界时按比例反推宽度, 否则按宽度推高度。
     // 不能硬加 fillMaxWidth() —— 列表条目/发现结果页传的是定高 modifier, 撑满宽度会让封面失控放大。
@@ -711,8 +731,8 @@ private class CoverBitmap(val bitmap: ImageBitmap?, val isDefault: Boolean)
 private val NoCoverBitmap = CoverBitmap(null, false)
 
 /** 默认分组封面 slot: 空白占位 (分组无独立封面, 仅占位以对齐 bookCoverSlot 签名) */
-private val DefaultGroupCoverSlot: @Composable (BookGroup, Modifier, Boolean) -> Unit =
-    { _, m, _ -> Box(m) }
+private val DefaultGroupCoverSlot: @Composable (BookGroup, Modifier, Boolean, Int) -> Unit =
+    { _, m, _, _ -> Box(m) }
 
 /**
  * 解码目标尺寸: 向上取到 64 的倍数, 让相邻列宽/微小布局抖动共用同一份内存缓存,
@@ -765,8 +785,11 @@ internal const val VIDEO_COVER_RATIO = 16f / 9f
  * 签名 `(Book, Modifier, Boolean) -> Unit` 对齐 [ShelfBooksContent] 的 `bookCoverSlot`
  * (book / modifier / isVideoCover), modifier 与 isVideoCover 不被丢弃。
  */
-val LocalBookCoverSlot = staticCompositionLocalOf<@Composable (Book, Modifier, Boolean) -> Unit> {
-    @Composable { book, modifier, isVideoCover -> SharedBookCover(book, modifier, isVideoCover) }
+val LocalBookCoverSlot =
+    staticCompositionLocalOf<@Composable (Book, Modifier, Boolean, Int) -> Unit> {
+        @Composable { book, modifier, isVideoCover, _ ->
+            SharedBookCover(book, modifier, isVideoCover)
+        }
 }
 
 /**

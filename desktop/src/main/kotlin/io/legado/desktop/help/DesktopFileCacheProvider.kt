@@ -11,8 +11,8 @@ import java.io.File
  * commonMain 的 [io.legado.app.help.CacheManager] 通过 [FileCacheProviders] 注入访问文件/磁盘缓存,
  * desktop 端注册本对象 (在 Main.registerSecondaryProviders 经 [registerDesktopFileCacheProvider]) 后,
  * CacheManager.getFile/putFile/getByteArray/put(ByteArray)/delete 等方法转发到本实现,
- * 行为对齐 app 端 ACacheFileCacheProvider (委托 ACache)。未注册时 [FileCacheProviders].impl 为 null,
- * CacheManager 文件层调用静默 no-op (背景所述 P0 问题)。
+ * 行为对齐 app 端 ACacheFileCacheProvider (委托 ACache)。未注册时 [FileCacheProviders.get]
+ * 抛 IllegalStateException (不再静默丢弃, 注册遗漏立即暴露)。
  *
  * # 存储
  * - 根目录: `{AppFilesDirs.cacheDir}/file_cache/` (cacheDir 桌面端为系统临时目录

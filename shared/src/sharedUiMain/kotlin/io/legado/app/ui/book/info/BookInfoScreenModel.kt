@@ -22,8 +22,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -76,6 +80,26 @@ class BookInfoScreenModel : ScreenModel {
         )
     )
     val state: StateFlow<BookInfoUiState> = _state.asStateFlow()
+
+    // 等待对话框显隐 (对照 BookInfoViewModelShared._waitDialogData, webFile 流程的加载指示)
+    private val _waitDialog = MutableStateFlow<Boolean?>(null)
+    val waitDialog: StateFlow<Boolean?> = _waitDialog.asStateFlow()
+
+    // 动作事件 (对照 BookInfoViewModelShared._actionLive, webFile 流程的 selectBooksDir 回调)
+    private val _actionLive = MutableSharedFlow<String>(
+        replay = 1,
+        extraBufferCapacity = 8,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val actionLive: SharedFlow<String> = _actionLive.asSharedFlow()
+
+    fun upWaitDialog(show: Boolean) {
+        _waitDialog.value = show
+    }
+
+    fun postAction(action: String) {
+        _actionLive.tryEmit(action)
+    }
 
     /**
      * 最近一次解析到的目录（对照 app 端 `BookInfoViewModel.chapterListData`）。

@@ -18,6 +18,7 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
+import kotlinx.cinterop.value
 
 /**
  * mbedTLS pk 层签名/验签 (iOS/鸿蒙主实现, 失败由 actual 回落 Security/napi)。

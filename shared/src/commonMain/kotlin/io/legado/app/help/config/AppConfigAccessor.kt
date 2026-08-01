@@ -160,13 +160,12 @@ interface AppConfigAccessor {
     /**
      * 退出未上架书时是否弹加书架确认 (原 AppConfig.showAddToShelfAlert), 默认 true。
      *
-     * 同 [devFeat]: 只有 app 端 Accessor 覆写, 桌面/iOS/鸿蒙曾恒为 true 让
-     * OtherConfigScreen 的关闭开关失效; 直接读同一个 pref key 兜底。
+     * 桌面/iOS/鸿蒙端 Accessor 均覆写为缓存字段 (设置界面经 PreferenceStore 直写
+     * 同一个 pref key, 由变更监听刷新); 本默认实现仅作兜底, 未注册时与其他字段
+     * 一致抛 IllegalStateException (不再静默返回 true)。
      */
     val showAddToShelfAlert: Boolean
-        get() = runCatching {
-            PreferenceProviders.get().getBoolean(PreferKey.showAddToShelfAlert, true)
-        }.getOrDefault(true)
+        get() = PreferenceProviders.get().getBoolean(PreferKey.showAddToShelfAlert, true)
 
     // 持久化 ttsEngine (原 AppConfig.ttsEngine = value), 默认空实现供各端按需覆写
     fun setTtsEngine(value: String?) {}
@@ -245,6 +244,9 @@ interface AppConfigAccessor {
     /** 图片缓存大小 MB (原 AppConfig.bitmapCacheSize), 默认 50。 */
     val bitmapCacheSize: Int
 
+    /** 持久化 bitmapCacheSize (原 AppConfig.bitmapCacheSize = value), 供 ImageProvider 下沉后修正非法值。 */
+    fun setBitmapCacheSize(value: Int) {}
+
     /** 源编辑最大行数 (原 AppConfig.sourceEditMaxLine): 存储值 <10 视为不限制, 返回 Int.MAX_VALUE。 */
     val sourceEditMaxLine: Int
 
@@ -254,25 +256,25 @@ interface AppConfigAccessor {
     /**
      * 是否启用开发特性 (原 AppConfig.devFeat), 默认 false。
      *
-     * 各端 Accessor 都没覆写这一项, 曾写死 false 让"按书籍类型分流"(视频/RSS 直达播放页)
-     * 变成死代码; 直接读设置界面写入的同一个 pref key 兜底。
+     * 各端 Accessor 均覆写: app 端读 AppConfig.devFeat (boolPref 直读),
+     * 桌面/iOS/鸿蒙读设置界面 (OtherConfigScreen) 写入的同一个 pref key (缓存字段)。
+     * 本默认实现仅作兜底, 未注册时与其他字段一致抛 IllegalStateException
+     * (不再静默返回 false)。
      */
     val devFeat: Boolean
-        get() = runCatching {
-            PreferenceProviders.get().getBoolean(PreferKey.devFeat, false)
-        }.getOrDefault(false)
+        get() = PreferenceProviders.get().getBoolean(PreferKey.devFeat, false)
 
     /**
      * 书籍详情页横向布局开关 (原 AppConfig.bookInfoHorizontalLayout), 默认 false。
      * BookInfoRoute 据此计算 useDevFeat (与 isVideo/isLandscape 组合)。
      *
-     * 同 [devFeat]: 只有 app 端 Accessor 覆写, 桌面/iOS/鸿蒙曾恒为 false,
-     * 直接读设置界面 (ThemeConfigScreen) 写入的同一个 pref key 兜底。
+     * 各端 Accessor 均覆写: app 端读 AppConfig.bookInfoHorizontalLayout,
+     * 桌面/iOS/鸿蒙读设置界面 (ThemeConfigScreen) 写入的同一个 pref key (缓存字段)。
+     * 本默认实现仅作兜底, 未注册时与其他字段一致抛 IllegalStateException
+     * (不再静默返回 false)。
      */
     val bookInfoHorizontalLayout: Boolean
-        get() = runCatching {
-            PreferenceProviders.get().getBoolean(PreferKey.bookInfoHorizontalLayout, false)
-        }.getOrDefault(false)
+        get() = PreferenceProviders.get().getBoolean(PreferKey.bookInfoHorizontalLayout, false)
 }
 
 /**

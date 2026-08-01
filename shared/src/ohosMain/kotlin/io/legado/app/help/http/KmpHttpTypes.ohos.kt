@@ -16,8 +16,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
-import kotlin.experimental.ExperimentalEncodingApi
 import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.reflect.KClass
 import kotlin.time.Duration
 
@@ -85,7 +85,8 @@ actual class KmpHttpClient {
     internal var readTimeoutMillis: Long = 0L
         private set
 
-    actual constructor()
+    // expect class 未显式声明 constructor (隐式无参), actual 侧不能带 actual 修饰
+    constructor()
 
     internal constructor(callTimeoutMillis: Long, readTimeoutMillis: Long) {
         this.callTimeoutMillis = callTimeoutMillis
@@ -129,7 +130,7 @@ actual class KmpRequest {
     internal var body: KmpRequestBody? = null
         private set
 
-    actual constructor()
+    constructor()
 
     internal constructor(
         urlStr: String,
@@ -159,7 +160,7 @@ actual class KmpRequest {
         get() = KmpHttpUrl(urlStr)
 }
 
-actual class KmpRequestBuilder() {
+actual class KmpRequestBuilder actual constructor() {
     internal var urlStr: String = "http://localhost/"
     internal var method: String = "GET"
     internal val headers: MutableList<Pair<String, String>> = mutableListOf()
@@ -231,7 +232,7 @@ actual class KmpResponse : Closeable {
     internal var requestVal: KmpRequest = KmpRequest()
         private set
 
-    actual constructor()
+    constructor()
 
     internal constructor(
         code: Int,
@@ -284,7 +285,7 @@ actual fun KmpResponse.header(name: String, defaultValue: String?): String? {
         ?: defaultValue
 }
 
-actual class KmpResponseBuilder() {
+actual class KmpResponseBuilder actual constructor() {
     internal var codeVal: Int = 200
     internal var messageVal: String = "OK"
     internal val headersVal: MutableMap<String, List<String>> = LinkedHashMap()
@@ -345,9 +346,9 @@ actual abstract class KmpResponseBody : Closeable {
 
 internal class OhosKmpResponseBody(
     internal val bytesValue: ByteArray,
-    private val contentTypeStr: String?
+    internal val contentTypeValue: String?
 ) : KmpResponseBody() {
-    override fun contentType(): KmpMediaType? = contentTypeStr?.let { OhosKmpMediaType(it) }
+    override fun contentType(): KmpMediaType? = contentTypeValue?.let { OhosKmpMediaType(it) }
 }
 // endregion
 
@@ -428,7 +429,7 @@ internal class OhosKmpCall(
 // endregion
 
 // region FormBody / HttpUrl / MediaType / RequestBody / Headers / Protocol
-actual class KmpFormBodyBuilder() {
+actual class KmpFormBodyBuilder actual constructor() {
     private val entries: MutableList<Pair<String, String>> = mutableListOf()
 
     actual fun add(name: String, value: String): KmpFormBodyBuilder {
@@ -463,7 +464,7 @@ actual class KmpHttpUrl {
     internal var urlStr: String? = null
         private set
 
-    actual constructor()
+    constructor()
 
     internal constructor(urlStr: String) {
         this.urlStr = urlStr
@@ -522,11 +523,12 @@ actual class KmpHttpUrlBuilder {
     }
 }
 
-actual class KmpMediaType {
+// open: OhosKmpMediaType 需继承 (expect final → actual open 允许)
+actual open class KmpMediaType {
     internal var value: String = ""
         private set
 
-    actual constructor()
+    constructor()
 
     internal constructor(value: String) {
         this.value = value
@@ -546,7 +548,7 @@ internal class OhosKmpRequestBody(
 actual class KmpHeaders {
     private var map: Map<String, List<String>> = emptyMap()
 
-    actual constructor()
+    constructor()
 
     constructor(map: Map<String, List<String>>) {
         this.map = map

@@ -320,13 +320,15 @@ class VideoPlayScreenModel(
         val book = shared.curBook ?: return
         val inShelf = _state.value.inShelf
         runCatching {
-            PlatformCapabilityProviders.getOrNull()?.toggleBookshelf(book, inShelf) { result ->
-                if (result == true) {
-                    _state.update { it.copy(inShelf = true) }
-                } else if (result == false) {
-                    _state.update { it.copy(inShelf = false) }
+            PlatformCapabilityProviders.getOrNull()?.toggleBookshelf(
+                book, inShelf, onComplete = { result ->
+                    if (result == true) {
+                        _state.update { it.copy(inShelf = true) }
+                    } else if (result == false) {
+                        _state.update { it.copy(inShelf = false) }
+                    }
                 }
-            }
+            )
         }
     }
 

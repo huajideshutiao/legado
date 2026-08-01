@@ -7,6 +7,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
@@ -22,8 +23,8 @@ import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
-import io.legado.app.utils.GSON
 import io.legado.app.utils.FlowBus
+import io.legado.app.utils.GSON
 import io.legado.app.utils.decodeStringMapOrNull
 import io.legado.app.utils.encodeStringMap
 import io.legado.app.utils.toJson
@@ -44,6 +45,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.awt.Desktop
 import java.awt.Toolkit
+import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
 import java.io.File
 import java.net.URI
@@ -69,6 +71,27 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
 
     override fun copyToClipboard(text: String) {
         shareText(text)
+    }
+
+    override fun getClipboardText(): String? = runCatching {
+        val clipboard = Toolkit.getDefaultToolkit().systemClipboard
+        if (!clipboard.isDataFlavorAvailable(DataFlavor.stringFlavor)) return null
+        clipboard.getData(DataFlavor.stringFlavor) as? String
+    }.getOrNull()
+
+    override fun testDirectLinkUpload(
+        rule: DirectLinkUploadRule,
+        onSuccess: (String) -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        scope.launch {
+            runCatching {
+                io.legado.desktop.help.DesktopDirectLinkUpload.upLoad(
+                    "test.json", "{}", "application/json", rule,
+                )
+            }.onSuccess { onSuccess(it) }
+                .onFailure { onError(it.localizedMessage ?: it.toString()) }
+        }
     }
 
     // 按 bookUrl 查 DB 解析 BookRef, 供 deep link / 文件关联的路由导航
@@ -193,7 +216,13 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
     }
 
     // 上架/下架 (对照 app 端 BaseReadViewModel.addToBookshelf / delBook, 桌面端无删除确认弹窗)
-    override fun toggleBookshelf(book: Book, inBookshelf: Boolean, onComplete: (Boolean?) -> Unit) {
+    override fun toggleBookshelf(
+        book: Book,
+        inBookshelf: Boolean,
+        onComplete: (Boolean?) -> Unit,
+        onWaitDialog: (Boolean) -> Unit,
+        onAction: (String) -> Unit,
+    ) {
         scope.launch {
             runCatching {
                 if (inBookshelf) {

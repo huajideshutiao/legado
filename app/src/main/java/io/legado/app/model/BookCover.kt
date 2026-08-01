@@ -10,7 +10,6 @@ import androidx.collection.LruCache
 import androidx.core.graphics.drawable.toBitmap
 import androidx.core.graphics.drawable.toDrawable
 import coil3.PlatformContext
-import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.transformations
@@ -21,18 +20,21 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.glide.BlurTransformation
+import io.legado.app.help.image.LoadOnlyWifiKey
+import io.legado.app.help.image.PersistentCoverKey
 import io.legado.app.help.image.coverDiskCacheKey
 import io.legado.app.help.image.sourceOrigin
+import io.legado.app.model.BookCover.loadCoverBitmap
+import io.legado.app.model.BookCover.upDefaultCover
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
-import io.legado.app.utils.toJson
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.centerCrop
 import io.legado.app.utils.externalFiles
 import io.legado.app.utils.fromJsonArray
 import io.legado.app.utils.getPrefString
-import io.legado.app.utils.isWifiConnect
 import io.legado.app.utils.putPrefString
+import io.legado.app.utils.toJson
 import io.legado.app.utils.topCrop
 import kotlinx.coroutines.CoroutineScope
 import splitties.init.appCtx
@@ -319,9 +321,9 @@ fun ImageRequest.Builder.coverConfig(
     onLoadFinish: (() -> Unit)? = null,
 ): ImageRequest.Builder = apply {
     sourceOrigin(sourceOrigin)
-    if (loadOnlyWifi && !appCtx.isWifiConnect) {
-        networkCachePolicy(CachePolicy.DISABLED)
-    }
+    // fetcher 层短路网络获取 (对齐原版 OkHttpStreamFetcher: 只拦 fetch, 缓存命中仍显示);
+    // 不能用 networkCachePolicy(DISABLED), 那会连磁盘/内存缓存读取一起禁掉
+    if (loadOnlyWifi) extras.set(LoadOnlyWifiKey, true)
     if (onLoadFinish != null) {
         listener(
             onSuccess = { _, _ -> onLoadFinish() },
@@ -336,7 +338,11 @@ fun ImageRequest.Builder.coverConfig(
  * + `MultiDiskCacheFactory` 分流。
  */
 fun ImageRequest.Builder.bookshelfCoverCache(path: String?): ImageRequest.Builder = apply {
-    if (!path.isNullOrBlank()) diskCacheKey(coverDiskCacheKey(path))
+    if (!path.isNullOrBlank()) {
+        diskCacheKey(coverDiskCacheKey(path))
+        // 让 CoverDecodeFetcher 的 decodeJs 解密字节也落持久区 (与 Coil 解码条目同区回读命中)
+        extras.set(PersistentCoverKey, true)
+    }
 }
 
 /**

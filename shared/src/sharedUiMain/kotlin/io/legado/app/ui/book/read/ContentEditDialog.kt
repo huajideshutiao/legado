@@ -31,8 +31,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.toast.Toasters
-import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.AppTextField
+import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -124,7 +124,7 @@ fun ContentEditDialog(
 
     Surface(
         shape = DesignTokens.dialogShape,
-        color = colors.background,
+        color = colors.fillet,
         modifier = Modifier.fillMaxWidth().padding(8.dp),
     ) {
         Column(Modifier.fillMaxWidth()) {

@@ -1,5 +1,7 @@
 package io.legado.app.help.config
 
+import kotlin.concurrent.Volatile
+
 import io.legado.app.help.file.AppFilesDirs
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -92,6 +94,7 @@ class OhosPreferenceProvider(
             // null 等价于移除 (与 SharedPreferences.Editor.remove 行为一致)
         }
         persist()
+        notifyChanged(key)
     }
 
     override fun putInt(key: String, value: Int) {
@@ -100,6 +103,7 @@ class OhosPreferenceProvider(
             put(key, value)
         }
         persist()
+        notifyChanged(key)
     }
 
     override fun putBoolean(key: String, value: Boolean) {
@@ -108,6 +112,7 @@ class OhosPreferenceProvider(
             put(key, value)
         }
         persist()
+        notifyChanged(key)
     }
 
     override fun putLong(key: String, value: Long) {
@@ -116,6 +121,7 @@ class OhosPreferenceProvider(
             put(key, value)
         }
         persist()
+        notifyChanged(key)
     }
 
     override fun putFloat(key: String, value: Float) {
@@ -124,6 +130,7 @@ class OhosPreferenceProvider(
             put(key, value)
         }
         persist()
+        notifyChanged(key)
     }
 
     override fun remove(key: String) {
@@ -131,11 +138,26 @@ class OhosPreferenceProvider(
             cache.forEach { (k, v) -> if (k != key) put(k, v) }
         }
         persist()
+        notifyChanged(key)
     }
 
     override fun contains(key: String): Boolean = cache.containsKey(key)
 
     override fun getAll(): Map<String, *> = cache
+
+    // ---- 变更监听 (供 CachedPref 等内存缓存刷新) ----
+    // 鸿蒙端所有写入都经本实例 (设置界面走 OhosPreferenceStoreProvider 委托本实例),
+    // 自通知即可覆盖; 监听注册在启动早期, 之后不再增删。
+    private val changeListeners = mutableListOf<(String) -> Unit>()
+
+    override fun addPreferenceChangeListener(listener: (key: String) -> Unit): () -> Unit {
+        changeListeners.add(listener)
+        return { changeListeners.remove(listener) }
+    }
+
+    private fun notifyChanged(key: String) {
+        changeListeners.toList().forEach { it(key) }
+    }
 }
 
 /**

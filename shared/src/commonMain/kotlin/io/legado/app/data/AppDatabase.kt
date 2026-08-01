@@ -1,14 +1,11 @@
 package io.legado.app.data
 
 import androidx.room3.AutoMigration
+import androidx.room3.ColumnTypeConverters
 import androidx.room3.ConstructedBy
 import androidx.room3.Database
 import androidx.room3.RoomDatabase
 import androidx.room3.RoomDatabaseConstructor
-import androidx.room3.ColumnTypeConverters
-import androidx.room3.migration.AutoMigrationSpec
-import androidx.sqlite.SQLiteConnection
-import androidx.sqlite.execSQL
 import io.legado.app.data.dao.BookChapterDao
 import io.legado.app.data.dao.BookDao
 import io.legado.app.data.dao.BookGroupDao
@@ -50,7 +47,6 @@ import io.legado.app.data.entities.TxtTocRule
  *
  * - @Database 注解 + abstract DAO 属性 + companion 常量 在 commonMain (平台无关)
  * - appDb 单例 + dbCallback 留 app 端 (依赖 appCtx + AndroidSQLiteConnection + Locale.CHINESE + DefaultData)
- * - Migration84To85 (AutoMigrationSpec) 随 @Database 下沉 (autoMigrations 引用)
  * - DatabaseMigrations (手写 Migration 数组) 留 app 端 (依赖 java.util.Calendar)
  */
 @Database(
@@ -65,7 +61,6 @@ import io.legado.app.data.entities.TxtTocRule
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 83, to = 84),
-        AutoMigration(from = 84, to = 85, spec = Migration84To85::class),
         AutoMigration(from = 85, to = 86),
     ]
 )
@@ -109,24 +104,4 @@ abstract class AppDatabase : RoomDatabase() {
 @Suppress("KotlinNoActualForExpect")
 expect object AppDatabaseConstructor : RoomDatabaseConstructor<AppDatabase> {
     override fun initialize(): AppDatabase
-}
-
-// 历史数据清洗：原本写在 AppDatabase.onOpen 里，每次打开库都会跑，
-// 实际只需对存量数据执行一次，借 84→85 自动迁移的 onPostMigrate 一次性完成。
-// K5-c Phase 5: 随 @Database 下沉 commonMain (autoMigrations spec 引用, 依赖 BookGroup 已在 commonMain)
-class Migration84To85 : AutoMigrationSpec {
-    override suspend fun onPostMigrate(connection: SQLiteConnection) {
-        // 移除已废弃的分组：音频(-3)、本地未分组(-5)
-        connection.execSQL("delete from book_groups where groupId in (-3, -5)")
-        // 网络未分组(-4)统一重命名为未分组
-        connection.execSQL(
-            "update book_groups set groupName = '未分组' " +
-                "where groupId = ${BookGroup.IdUngrouped} " +
-                "and groupName = '网络未分组'"
-        )
-        // 旧版误把字符串 'null' 当作 loginUi 写入
-        connection.execSQL("update book_sources set loginUi = null where loginUi = 'null'")
-        connection.execSQL("update httpTTS set loginUi = null where loginUi = 'null'")
-        connection.execSQL("update httpTTS set concurrentRate = '0' where concurrentRate is null")
-    }
 }

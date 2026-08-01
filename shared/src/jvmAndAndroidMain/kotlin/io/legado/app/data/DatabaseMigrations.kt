@@ -158,5 +158,3 @@ object DatabaseMigrations {
     }
 
 }
-
-// K5-c Phase 5: Migration84To85 已随 @Database 下沉 shared/commonMain (autoMigrations spec 引用)

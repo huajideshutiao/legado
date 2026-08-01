@@ -123,7 +123,7 @@ fun BookInfoEditRoute(
         state = state,
         actions = actions,
         coverSlot = { book, modifier ->
-            book?.let { bookCoverSlot(it, modifier, false) }
+            book?.let { bookCoverSlot(it, modifier, false, 0) }
         },
     )
 }

@@ -2,7 +2,6 @@
 package io.legado.app.ui.book.info
 
 import android.graphics.Bitmap
-import android.graphics.drawable.Drawable
 import android.widget.ImageView
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.compose.foundation.Image
@@ -112,7 +111,7 @@ fun BookInfoCover(
     book ?: return
     val coverSlot = LocalBookCoverSlot.current
     key(book.bookUrl, coverTick) {
-        coverSlot(book, modifier, book.isVideo)
+        coverSlot(book, modifier, book.isVideo, 0)
     }
 }
 

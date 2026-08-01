@@ -161,7 +161,7 @@ fun CodeDialog(
     ) {
         Surface(
             shape = DesignTokens.dialogShape,
-            color = AppTheme.colors.background,
+            color = AppTheme.colors.fillet,
             modifier = Modifier.appDialogSize(),
         ) {
             CodeDialogContent(

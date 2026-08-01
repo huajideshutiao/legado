@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.AlertDialog
-import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
@@ -34,6 +33,8 @@ import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.ok
@@ -41,8 +42,6 @@ import legado.shared.generated.resources.select_image
 import legado.shared.generated.resources.welcome_show_time
 import legado.shared.generated.resources.welcome_style
 import org.jetbrains.compose.resources.stringResource
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * 启动闪屏配置 shared 路由入口。
@@ -148,7 +147,7 @@ fun WelcomeConfigRoute(
                 }) { Text(stringResource(Res.string.cancel)) }
             },
             shape = DesignTokens.dialogShape,
-            backgroundColor = MaterialTheme.colors.surface,
+            backgroundColor = colors.fillet,
         )
     }
 }

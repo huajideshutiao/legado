@@ -30,3 +30,13 @@ actual fun isNetworkAvailable(): Boolean {
     }
     return false
 }
+
+/** [isWifiConnect] 的 Android actual: 对齐原版 `appCtx.isWifiConnect` (仅当活动网络为 WIFI)。 */
+actual fun isWifiConnect(): Boolean {
+    val connectivityManager = sharedAppContext
+        ?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        ?: return false
+    val network = connectivityManager.activeNetwork ?: return false
+    val nc = connectivityManager.getNetworkCapabilities(network) ?: return false
+    return nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+}

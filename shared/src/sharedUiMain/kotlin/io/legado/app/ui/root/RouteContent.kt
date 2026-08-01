@@ -2,6 +2,7 @@ package io.legado.app.ui.root
 
 import androidx.compose.runtime.Composable
 import io.legado.app.ui.route.AboutRoute
+import io.legado.app.ui.route.AudioPlayRoute
 import io.legado.app.ui.route.BackupConfigRoute
 import io.legado.app.ui.route.BgTextConfigRoute
 import io.legado.app.ui.route.BookInfoEditRoute
@@ -10,8 +11,6 @@ import io.legado.app.ui.route.BookSourceDebugRoute
 import io.legado.app.ui.route.BookSourceEditRoute
 import io.legado.app.ui.route.BookSourceManageRoute
 import io.legado.app.ui.route.BookmarkRoute
-import io.legado.app.ui.route.AssociationRoute
-import io.legado.app.ui.route.AudioPlayRoute
 import io.legado.app.ui.route.BookshelfManageRoute
 import io.legado.app.ui.route.ChangeChapterSourceRoute
 import io.legado.app.ui.route.ChangeSourceRoute
@@ -49,9 +48,9 @@ import io.legado.app.ui.route.TipConfigRoute
 import io.legado.app.ui.route.TocRoute
 import io.legado.app.ui.route.TxtTocRuleRoute
 import io.legado.app.ui.route.VideoPlayRoute
-import io.legado.app.ui.route.WelcomeConfigRoute
 import io.legado.app.ui.route.WebDavConfigRoute
 import io.legado.app.ui.route.WebViewRoute
+import io.legado.app.ui.route.WelcomeConfigRoute
 
 /**
  * shared 统一路由内容分发 (零薄壳方案)。
@@ -314,11 +313,6 @@ fun RouteContent(
 
         is AppRoute.JsEdit -> {
             JsEditRoute(entry, navigator, screenModelStore)
-            true
-        }
-
-        is AppRoute.Association -> {
-            AssociationRoute(entry, navigator, screenModelStore)
             true
         }
     }

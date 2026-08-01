@@ -1,5 +1,7 @@
 package io.legado.app.ui.book.video
 
+import kotlin.concurrent.Volatile
+
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect

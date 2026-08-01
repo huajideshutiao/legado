@@ -176,7 +176,7 @@ fun ClickActionDialog(
     ) {
         Surface(
             shape = DesignTokens.dialogShape,
-            color = colors.background,
+            color = colors.fillet,
             modifier = Modifier.appDialogSize().padding(16.dp),
         ) {
             Column(Modifier.fillMaxWidth()) {

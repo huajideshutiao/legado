@@ -100,7 +100,7 @@ fun TextSelectionDialog(
     ) {
         Surface(
             shape = DesignTokens.dialogShape,
-            color = colors.background,
+            color = colors.fillet,
             modifier = surfaceModifier,
         ) {
             Column(Modifier.fillMaxWidth()) {

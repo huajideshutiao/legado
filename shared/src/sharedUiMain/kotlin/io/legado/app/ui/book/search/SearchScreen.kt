@@ -197,7 +197,7 @@ fun SearchScreen(
     navCallbacks: SearchNavCallbacks = NoOpSearchNavCallbacks,
     modifier: Modifier = Modifier,
     coverSlot: (@Composable (SearchBook, Modifier, isVideoCover: Boolean) -> Unit)? = null,
-    shelfCoverSlot: (@Composable (Book, Modifier, isVideoCover: Boolean) -> Unit)? = null,
+    shelfCoverSlot: (@Composable (Book, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
 
@@ -216,6 +216,7 @@ fun SearchScreen(
                     remember(book, inShelf) { book.toCoverBook(inShelf) },
                     coverModifier,
                     isVideoCover,
+                    0,
                 )
             }
         }
@@ -468,10 +469,22 @@ private fun ColumnScope.InputHelp(
     styleIsVideo: Boolean,
     styleCols: Int,
     bookshelfVersion: Int,
-    shelfCoverSlot: @Composable (Book, Modifier, isVideoCover: Boolean) -> Unit,
+    shelfCoverSlot: @Composable (Book, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit,
 ) {
     val colors = AppTheme.colors
     val navPad = rememberNavigationBarPaddingValues()
+    // 3 参 → 4 参适配 (补 coverReloadTick, 本区恒 0); remember 保实例稳定, 条目才能跳过重组
+    val tickedShelfCoverSlot: @Composable (Book, Modifier, isVideoCover: Boolean, Int) -> Unit =
+        remember(shelfCoverSlot) {
+            { book, modifier, isVideoCover, tick ->
+                shelfCoverSlot(
+                    book,
+                    modifier,
+                    isVideoCover,
+                    tick
+                )
+            }
+        }
     if (bookshelfBooks.isNotEmpty()) {
         Text(
             text = stringResource(Res.string.bookshelf),
@@ -503,7 +516,7 @@ private fun ColumnScope.InputHelp(
                         forceShowIntro = true,
                         forceShowUpdateTime = true,
                         hideUnread = true,
-                        coverSlot = shelfCoverSlot,
+                        coverSlot = tickedShelfCoverSlot,
                         lastUpdateTextSlot = {
                             ShelfLastUpdateText(
                                 book.durChapterTime,
@@ -527,7 +540,7 @@ private fun ColumnScope.InputHelp(
                             coverReloadTick = bookshelfVersion,
                             onClick = { navCallbacks.onBookClick(book) },
                             onLongClick = { navCallbacks.onBookClick(book, true) },
-                            coverSlot = shelfCoverSlot,
+                            coverSlot = tickedShelfCoverSlot,
                         )
                     } else {
                         ShelfGridItem(
@@ -536,7 +549,7 @@ private fun ColumnScope.InputHelp(
                             refreshingUrls = emptySet(),
                             onClick = { navCallbacks.onBookClick(book) },
                             onLongClick = { navCallbacks.onBookClick(book, true) },
-                            coverSlot = shelfCoverSlot,
+                            coverSlot = tickedShelfCoverSlot,
                         )
                     }
                 }
@@ -829,7 +842,8 @@ private fun ColumnScope.ResultArea(
                 key = { "${it.origin}|${it.bookUrl}" },
                 contentType = { "searchBook" }) { book ->
                 val displayBook = remember(book) { book.toBook() }
-                val cover: @Composable (Book, Modifier, Boolean) -> Unit = { _, modifier, isVideoCover ->
+                val cover: @Composable (Book, Modifier, Boolean, Int) -> Unit =
+                    { _, modifier, isVideoCover, _ ->
                     coverSlot(book, modifier, isVideoCover)
                 }
                 if (styleIsVideo) {

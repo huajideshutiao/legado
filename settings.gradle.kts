@@ -44,3 +44,6 @@ include(":modules:quickjs-android-native")
 include(":modules:quickjs-processor")
 include(":shared")
 include(":desktop")
+if (enableOhosTarget) {
+    include(":modules:ksoup-ohos")
+}

@@ -39,8 +39,8 @@ import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.receiver.MediaButtonReceiver
-import io.legado.app.ui.book.read.ReadBookActivity
 import io.legado.app.ui.book.read.page.entities.TextChapter
+import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.broadcastPendingIntent
@@ -477,7 +477,10 @@ abstract class BaseReadAloudService : BaseService() {
             title = title,
             subtitle = subtitle,
             cover = cover,
-            contentIntent = activityPendingIntent<ReadBookActivity>("activity"),
+            // 路由 extra 经 MainActivity → NavigateTo("last_read") 打开最近阅读书籍
+            contentIntent = activityPendingIntent<MainActivity>("activity") {
+                putExtra("route", "last_read")
+            },
             actions = listOf(
                 MediaPlaybackNotification.Action(
                     R.drawable.ic_time_add_24dp,

@@ -17,6 +17,8 @@ class TextChapterShared(
     override val reviewCountApplied: Boolean = false,
     // 本章起效的替换规则，对照 app 端 TextChapter.effectiveReplaceRules，供 EffectiveReplaces 对话框读取
     val effectiveReplaceRules: List<ReplaceRule>? = null,
+    /** 本章正文是否已移除重复标题 (对照 app 端 TextChapter.sameTitleRemoved, 供"去重"菜单切换) */
+    val sameTitleRemoved: Boolean = false,
 ) : TextChapterContract {
 
     override val pageSize: Int get() = pages.size

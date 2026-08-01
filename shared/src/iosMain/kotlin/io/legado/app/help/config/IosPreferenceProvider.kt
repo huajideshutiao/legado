@@ -1,6 +1,9 @@
 package io.legado.app.help.config
 
+import platform.Foundation.NSNotificationCenter
+import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSUserDefaults
+import platform.Foundation.NSUserDefaultsDidChangeNotification
 
 /**
  * [PreferenceProvider] 的 iOS 真实实现 (基于 NSUserDefaults)。
@@ -122,6 +125,23 @@ class IosPreferenceProvider(
      */
     private fun NSUserDefaults.objectHasKey(key: String): Boolean {
         return this.objectForKey(key) != null
+    }
+
+    /**
+     * 监听 NSUserDefaults 变更通知: 覆盖本实例写入之外的直写路径
+     * (IosPreferenceStoreProvider / IosThemeStoreProvider 直接写 standardUserDefaults)。
+     *
+     * 通知不含变更 key, 回调空串由监听方按"任意 key 变更"处理。
+     */
+    override fun addPreferenceChangeListener(listener: (key: String) -> Unit): () -> Unit {
+        val observer = NSNotificationCenter.defaultCenter.addObserverForName(
+            NSUserDefaultsDidChangeNotification,
+            `object` = null,
+            queue = NSOperationQueue.mainQueue,
+        ) {
+            listener("")
+        }
+        return { NSNotificationCenter.defaultCenter.removeObserver(observer) }
     }
 }
 

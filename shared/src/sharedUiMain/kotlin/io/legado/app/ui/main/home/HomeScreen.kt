@@ -253,7 +253,7 @@ private fun HomeTopBar(
     }
     Box(Modifier.fillMaxWidth().background(bg).then(insetsModifier)) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 16.dp),
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (tabs.size > 1) {
@@ -311,8 +311,8 @@ private fun HomeTabItem(title: String, selected: Boolean, onClick: () -> Unit) {
     val colors = AppTheme.colors
     Box(
         Modifier
-            // 56dp 撑满顶栏 (原 TabLayout match_parent 于 Toolbar), 8dp 对照 tabPaddingStart/End
-            .heightIn(min = 56.dp)
+            // 48dp 对照原版 TabLayout 默认高 (DEFAULT_HEIGHT), 8dp 对照 tabPaddingStart/End
+            .heightIn(min = 48.dp)
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center,

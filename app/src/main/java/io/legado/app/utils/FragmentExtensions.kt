@@ -13,16 +13,6 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import io.legado.app.R
 import io.legado.app.data.entities.Book
-import io.legado.app.help.IntentData
-import io.legado.app.help.book.isAudio
-import io.legado.app.help.book.isImage
-import io.legado.app.help.book.isRss
-import io.legado.app.help.book.isVideo
-import io.legado.app.ui.book.audio.AudioPlayActivity
-import io.legado.app.ui.book.manga.ReadMangaActivity
-import io.legado.app.ui.book.read.ReadBookActivity
-import io.legado.app.ui.book.rss.ReadRssActivity
-import io.legado.app.ui.book.video.VideoPlayActivity
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.web.utils.WebAssetSources
 import kotlinx.coroutines.runBlocking
@@ -92,23 +82,14 @@ inline fun <reified T : Activity> Fragment.startActivity(
     startActivity(Intent(requireContext(), T::class.java).apply(configIntent))
 }
 
-// 工具函数:内部导航迁移点在调用方(navigator)
+// 工具函数: 转调 Context 版本, 由其优先走 shared 路由或兜底 MainActivity + LaunchRequest
 fun Fragment.startActivityForBook(
     book: Book,
+    chapterIndex: Int? = null,
+    chapterPos: Int? = null,
     configIntent: Intent.() -> Unit = {},
 ) {
-    val cls = when {
-        book.isAudio -> AudioPlayActivity::class.java
-        book.isVideo -> VideoPlayActivity::class.java
-        book.isImage -> ReadMangaActivity::class.java
-        book.isRss -> ReadRssActivity::class.java
-        else -> ReadBookActivity::class.java
-    }
-    val intent = Intent(requireActivity(), cls)
-    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    IntentData.book = book
-    intent.apply(configIntent)
-    startActivity(intent)
+    requireContext().startActivityForBook(book, chapterIndex, chapterPos, configIntent)
 }
 
 fun Fragment.showHelp(fileName: String) {

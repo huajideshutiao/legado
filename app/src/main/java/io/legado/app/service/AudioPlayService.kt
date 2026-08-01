@@ -43,7 +43,7 @@ import io.legado.app.model.audio.AudioPlayManager
 import io.legado.app.model.audio.AudioPlayManagerListener
 import io.legado.app.model.audio.ExoPlayerAudioPlayController
 import io.legado.app.receiver.MediaButtonReceiver
-import io.legado.app.ui.book.audio.AudioPlayActivity
+import io.legado.app.ui.main.MainActivity
 import io.legado.app.utils.activityPendingIntent
 import io.legado.app.utils.broadcastPendingIntent
 import io.legado.app.utils.postEvent
@@ -483,7 +483,11 @@ class AudioPlayService : BaseService(), AudioPlayControllerListener, AudioPlayMa
             title = title,
             subtitle = subtitle,
             cover = cover,
-            contentIntent = activityPendingIntent<AudioPlayActivity>("activity"),
+            contentIntent = activityPendingIntent<MainActivity>("activity") {
+                // 点击通知 → 打开当前播放书籍的音频界面 (经 toLaunchRequest → OpenReader → toReadRoute → AudioPlay)
+                putExtra("bookUrl", AudioPlay.book?.bookUrl ?: "")
+                putExtra("chapterIndex", AudioPlay.durChapterIndex)
+            },
             actions = listOf(
                 MediaPlaybackNotification.Action(
                     R.drawable.ic_time_add_24dp,

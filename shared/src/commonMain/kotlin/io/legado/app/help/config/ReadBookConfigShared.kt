@@ -992,6 +992,19 @@ data class ReadStyleConfig(
         else -> bgType
     }
 
+    /**
+     * 当前生效背景色（ARGB，各端 Canvas/Compose 渲染用）。
+     * 纯色背景（bgType==0）按 [curBgStr] 解析并按 [bgAlpha] 折算透明度；
+     * 图片背景用 [bgMeanColor]（代表色，各端渲染背景图后写入，未渲染时为 0）。
+     * 对应 app 端 `ReadBookConfig.upBg()` 产出的 `bgMeanColor` + `bg.alpha`。
+     */
+    fun curBgColor(): Int {
+        if (curBgType() != 0) return bgMeanColor
+        val alpha = (bgAlpha / 100f * 255).toInt().coerceIn(0, 255)
+        return runCatching { ColorUtils.parseColor(curBgStr()) }.getOrDefault(0)
+            .let { (it and 0x00FFFFFF) or (alpha shl 24) }
+    }
+
     fun setCurBg(bgType: Int, bg: String) {
         when {
             isEInk -> {

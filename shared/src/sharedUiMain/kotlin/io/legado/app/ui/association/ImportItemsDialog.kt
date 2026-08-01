@@ -50,6 +50,7 @@ import legado.shared.generated.resources.diy_source_group
 import legado.shared.generated.resources.group_name
 import legado.shared.generated.resources.ic_more_vert
 import legado.shared.generated.resources.import_book_source
+import legado.shared.generated.resources.import_replace_rule
 import legado.shared.generated.resources.import_state_existing
 import legado.shared.generated.resources.import_state_new
 import legado.shared.generated.resources.import_state_update
@@ -116,7 +117,7 @@ fun ImportItemsDialog(
     AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
         Surface(
             shape = DesignTokens.dialogShape,
-            color = AppTheme.colors.background,
+            color = AppTheme.colors.fillet,
             modifier = surfaceModifier,
         ) {
             ImportListScaffold(
@@ -178,6 +179,8 @@ fun ImportBookSourceItemsDialog(
     vm: ImportBookSourceViewModelShared,
     onDismiss: () -> Unit,
     onImported: (selectCount: Int) -> Unit = {},
+    loading: Boolean = false,
+    errorText: String? = null,
 ) {
     val adapter = remember(vm) { ImportBookSourceItemsVm(vm) }
     val config = AppConfigProviders.get()
@@ -190,6 +193,8 @@ fun ImportBookSourceItemsDialog(
         vm = adapter,
         onDismiss = onDismiss,
         onImported = onImported,
+        loading = loading,
+        errorText = errorText,
         titleActions = { invalidate ->
             var showMenu by remember { mutableStateOf(false) }
             Box {
@@ -282,8 +287,61 @@ private fun ImportOptionMenuItem(
     }
 }
 
+/**
+ * 替换规则勾选导入对话框, 保留原版的自定义分组菜单 (对照 app 端 ImportReplaceRuleDialog)。
+ */
 @Composable
-private fun ImportSourceGroupDialog(
+fun ImportReplaceRuleItemsDialog(
+    vm: ImportReplaceRuleViewModelShared,
+    onDismiss: () -> Unit,
+    onImported: (selectCount: Int) -> Unit = {},
+    loading: Boolean = false,
+    errorText: String? = null,
+) {
+    val adapter = remember(vm) { ImportReplaceRuleItemsVm(vm) }
+    var showGroupDialog by remember { mutableStateOf(false) }
+    ImportItemsDialog(
+        title = stringResource(Res.string.import_replace_rule),
+        vm = adapter,
+        onDismiss = onDismiss,
+        onImported = onImported,
+        loading = loading,
+        errorText = errorText,
+        titleActions = {
+            val group = vm.groupName?.takeIf { it.isNotBlank() }
+            val title = if (group == null) {
+                stringResource(Res.string.diy_source_group)
+            } else if (vm.isAddGroup) {
+                "+${stringResource(Res.string.diy_edit_source_group)}: $group"
+            } else {
+                "${stringResource(Res.string.diy_edit_source_group)}: $group"
+            }
+            Text(
+                text = title,
+                color = AppTheme.colors.primaryText,
+                modifier = Modifier
+                    .align(Alignment.CenterVertically)
+                    .clickable { showGroupDialog = true }
+                    .padding(horizontal = 8.dp),
+            )
+        },
+    )
+    if (showGroupDialog) {
+        ImportSourceGroupDialog(
+            initialGroup = vm.groupName.orEmpty(),
+            initialAddGroup = vm.isAddGroup,
+            onConfirm = { groupName, addGroup ->
+                vm.groupName = groupName.ifBlank { null }
+                vm.isAddGroup = addGroup
+                showGroupDialog = false
+            },
+            onDismiss = { showGroupDialog = false },
+        )
+    }
+}
+
+@Composable
+internal fun ImportSourceGroupDialog(
     initialGroup: String,
     initialAddGroup: Boolean,
     onConfirm: (String, Boolean) -> Unit,

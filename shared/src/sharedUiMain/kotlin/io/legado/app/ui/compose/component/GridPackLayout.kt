@@ -72,6 +72,35 @@ private fun fits(highWater: IntArray, row: Int, start: Int, end: Int): Boolean {
 }
 
 /**
+ * 预估 GridPackLayout 的最终高度（行数 × 行单位高度），不需等待实际测量。
+ *
+ * 用于发现界面展开动画提前知道目标高度，避免动画期间高度跳变。
+ *
+ * 算法（对照补充.txt思路）：
+ * - 非 JSON 发现（style=null，默认 cols=3）：每个 item 占 12/3=4 列宽，
+ *   总行数 = ceil(item数 / (12/4)) = ceil(item数 / 3)
+ * - JSON 发现（有 style）：每个 item 占 12/cols 列宽，
+ *   总行数 = ceil(总权重 / 12) 其中总权重 = sum(每个item的 12/cols)
+ * - 纵跨项(rows>1)会抬高水位，需要跑 packGridCells 精确计算
+ *
+ * @param specs 各项的占格规格
+ * @param rowUnitMinHeight 每行最小高度
+ * @param columnCount 列总数（默认 12）
+ * @return 预估高度（dp）
+ */
+fun estimateGridHeight(
+    specs: List<GridPackSpec>,
+    rowUnitMinHeight: Dp,
+    columnCount: Int = FlexChildStyle.BASE_COLUMN_COUNT,
+): Dp {
+    if (specs.isEmpty()) return 0.dp
+    // 精确计算：跑 packGridCells 取最终行数
+    val cells = packGridCells(specs, columnCount)
+    val rowCount = cells.maxOfOrNull { it.row + it.rowSpan } ?: 0
+    return rowUnitMinHeight * rowCount
+}
+
+/**
  * 网格占格布局：按 [packGridCells] 结果放置 content 各子项（与 [specs] 一一对应）。
  * 列宽 = 可用宽 × colSpan/12（同行 cols 之和不足 12 时右侧留白）；
  * 行高取行内容最大自然高，子项最小格高 [rowUnitMinHeight]×rowSpan；

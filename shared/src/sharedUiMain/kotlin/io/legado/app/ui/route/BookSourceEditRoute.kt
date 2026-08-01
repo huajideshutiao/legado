@@ -1,5 +1,10 @@
 package io.legado.app.ui.route
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -8,6 +13,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import io.legado.app.constant.BookSourceType
 import io.legado.app.data.entities.BookSource
@@ -282,6 +288,12 @@ fun BookSourceEditRoute(
         onFieldFocus = { fieldId, entity -> activeField.value = fieldId to entity },
         onFieldTextChange = { fieldId, text -> fieldTexts[fieldId] = text },
         fieldTextOverride = { fieldId -> fieldTexts[fieldId] },
+        // Android 15+ 强制 edge-to-edge 不再随键盘 resize, 底部辅助条须自行避让
+        // 键盘/导航条 (对齐原版 Activity 的 adjustResize + initialPadding 定位, 见
+        // BookSourceEditScreen KDoc; desktop/iOS 上 ime inset 为 0, 此 padding 为 no-op)
+        modifier = Modifier.windowInsetsPadding(
+            WindowInsets.navigationBars.union(WindowInsets.ime)
+        ),
     )
 
     // 帮助对话框 (对照 app 端 showHelp(fileName))

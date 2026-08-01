@@ -42,21 +42,20 @@ import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.config.ReadTipConfigShared
 import io.legado.app.help.image.registerReaderImageResolver
-import io.legado.app.model.AndroidReadBookProvider
-import io.legado.app.model.LocalReadBookProvider
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.update.AppUpdate
 import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.model.AndroidReadBookProvider
 import io.legado.app.model.CoverRatio
+import io.legado.app.model.LocalReadBookProvider
+import io.legado.app.receiver.MediaButtonReceiver
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.ExportBookService
-import io.legado.app.ui.about.CrashLogsDialog
 import io.legado.app.ui.association.DeepLinkImportHost
 import io.legado.app.ui.association.LegadoDeepLink
 import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.book.audio.AndroidAudioPlayPlatformProvider
 import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
-import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.book.info.BookInfoBlurCoverBg
 import io.legado.app.ui.book.info.BookInfoCover
 import io.legado.app.ui.book.info.BookInfoIntroImage
@@ -81,6 +80,7 @@ import io.legado.app.ui.main.bookshelf.ShelfCover
 import io.legado.app.ui.reader.TextSelectionDialog
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.LaunchRequest
 import io.legado.app.ui.root.LaunchRequestBus
 import io.legado.app.ui.root.LegadoApp
@@ -107,7 +107,7 @@ import kotlin.coroutines.resume
  * 主界面：零薄壳入口。Content 调用 shared [LegadoApp]，由 shared RouteContent 统一渲染。
  * 保留启动期逻辑（版本更新/本地密码/崩溃通知/备份同步）和平台专属回调（换封面/导入选目录）。
  */
-class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
+class MainActivity : BaseComposeActivity() {
 
     val viewModel by viewModels<MainViewModel>()
 
@@ -129,10 +129,18 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
     private lateinit var capabilities: AndroidPlatformCapabilities
     private lateinit var services: AndroidPlatformServices
 
-    /** 导入书籍: SAF 选根目录 (对照 ImportBookActivity.selectFolder, 仅写 pref, 不触发 initRootDoc)。 */
+    /** 导入书籍: SAF 选根目录 (对照 ImportBookActivity.selectFolder: 写 pref 后 initRootDoc(true))。 */
     private val importSelectFolder = registerHandleFile { result ->
-        result.uri?.let { AppConfig.importBookPath = it.toString() }
+        if (result.uri != null) {
+            AppConfig.importBookPath = result.uri.toString()
+            // 取消选择时不动当前 rootDoc (对照原版 selectFolder 回调 uri==null 直接 return)
+            pendingImportFolderCallback?.invoke()
+            pendingImportFolderCallback = null
+        }
     }
+
+    /** 由 [AndroidPlatformCapabilities.pickImportFolder] 设置: 选完目录后重建 rootDoc 并加载。 */
+    var pendingImportFolderCallback: (() -> Unit)? = null
 
     /** 暴露给 [AndroidPlatformCapabilities] 启动 SAF 选目录。 */
     fun launchImportFolderPicker() = importSelectFolder.launch()
@@ -215,6 +223,11 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
         }
     }
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        initializePlatform()
+        super.onCreate(savedInstanceState)
+    }
+
     // FilePickerService 桥接: launcher 须在 Activity STARTED 前注册, 交给 AndroidFilePickerService 阻塞等待回调
     private val openDocumentPicker =
         registerForActivityResult(ActivityResultContracts.OpenDocument())
@@ -227,7 +240,7 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
     private val openDocumentTreePicker =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree())
 
-    override fun coverChangeTo(coverUrl: String) {
+    private fun coverChangeTo(coverUrl: String) {
         pendingCoverChangeCallback?.invoke(coverUrl)
         pendingCoverChangeCallback = null
     }
@@ -238,12 +251,22 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
 
     fun enterReaderWindow() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        services.window.setSystemBars(io.legado.app.ui.root.SystemBarsPolicy.Immersive)
+        upReaderSystemBars(menuVisible = false)
     }
 
     fun exitReaderWindow() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         services.window.setSystemBars(io.legado.app.ui.root.SystemBarsPolicy.Default)
+    }
+
+    /**
+     * 阅读页系统栏刷新：跟随 hideStatusBar/hideNavigationBar 配置与菜单显隐
+     * (对照原版 upSystemUiVisibility 的 toolBarHide 语义)。
+     */
+    fun upReaderSystemBars(menuVisible: Boolean) {
+        services.window.setSystemBars(
+            io.legado.app.ui.root.readerSystemBarsPolicy(menuVisible)
+        )
     }
 
     @Composable
@@ -267,14 +290,14 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
             CompositionLocalProvider(
                 LocalReadConfigProviders provides readConfigProviders,
                 LocalReadBookProvider provides readBookProvider,
-                LocalBookCoverSlot provides { book, modifier, isVideoCover ->
+                LocalBookCoverSlot provides { book, modifier, isVideoCover, coverReloadTick ->
                     ShelfCover(
                         path = book.getDisplayCover(),
                         name = book.name,
                         author = book.author,
                         origin = book.origin,
                         ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL,
-                        reloadKey = 0,
+                        reloadKey = coverReloadTick,
                         // 书架态决定封面落持久区还是临时区 (对照原 ExploreShowAdapter 的
                         // inBookshelf = callBack.isInBookshelf(item)); 搜索/发现结果带 notShelf 标记
                         inBookshelf = !book.isNotShelf,
@@ -282,7 +305,9 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
                     )
                 },
                 // 注入 app 端 AndroidWebView 到 shared 路由 (Login/ReadRss/WebView), 覆盖 LocalWebViewSlot 兜底
-                LocalWebViewSlot provides { url, modifier -> AndroidWebView(url, modifier) },
+                LocalWebViewSlot provides { config, modifier, callbacks ->
+                    AndroidWebView(config, modifier, callbacks)
+                },
                 // 注入 app 端 BookInfoBlurCoverBg 到 shared 路由 (详情页模糊背景), 覆盖 LocalBlurCoverBgSlot 兜底
                 LocalBlurCoverBgSlot provides { book, coverTick, inBookshelf, isEInkMode, modifier ->
                     BookInfoBlurCoverBg(book, coverTick, inBookshelf, isEInkMode, modifier)
@@ -321,9 +346,8 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
         }
     }
 
-    override fun onActivityCreated(savedInstanceState: Bundle?) {
-        // 同步创建并注册平台能力与服务, 修复 LaunchedEffect 异步注册时序问题
-        // Route 首次组合时即可能调用 PlatformCapabilityProviders.get()
+    private fun initializePlatform() {
+        // Content 在 BaseComposeActivity.onCreate 内首次组合，平台依赖必须先注册
         capabilities = AndroidPlatformCapabilities(this)
         services = AndroidPlatformServices(
             this, capabilities,
@@ -346,6 +370,9 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
         }
         // 共享阅读器的内嵌图片 (排版取尺寸 + Canvas 取位图); app 端自绘阅读页仍走 ImageProvider
         registerReaderImageResolver()
+    }
+
+    override fun onActivityCreated(savedInstanceState: Bundle?) {
 
         // 返回键: navigator.pop 优先 (导航栈有内容时返回上一页), 失败后走双击退出
         onBackPressedDispatcher.addCallback(this) {
@@ -381,6 +408,10 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
      * - PROCESS_TEXT / SEND → [LaunchRequest.ProcessText] → 搜索
      */
     private fun handleExternalIntent(intent: Intent?) {
+        if (intent?.getStringExtra("action") == "readAloud") {
+            MediaButtonReceiver.readAloud(this, false)
+            return
+        }
         val request = intent?.toLaunchRequest() ?: return
         when (request) {
             is LaunchRequest.DeepLink -> {
@@ -479,7 +510,7 @@ class MainActivity : BaseComposeActivity(), ChangeCoverDialog.CallBack {
         LocalConfig.appCrash = false
         alert(getString(R.string.draw), "检测到阅读发生了崩溃，是否打开崩溃日志以便报告问题？") {
             yesButton {
-                showDialogFragment<CrashLogsDialog>()
+                AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("crash_logs"))
             }
             noButton()
         }

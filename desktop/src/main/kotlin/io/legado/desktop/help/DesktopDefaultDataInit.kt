@@ -1,7 +1,7 @@
 package io.legado.desktop.help
 
 import io.legado.app.constant.AppLog
-import io.legado.app.data.AppDatabaseProviders
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.DefaultDataShared
 import io.legado.app.help.config.HelpVersion
@@ -32,7 +32,7 @@ suspend fun initDesktopDefaultData() {
 /** 预置分组: 全部 / 本地 / 未分组 / 更新失败 (id + 名称 + order 与 app 端 dbCallback 一致)。 */
 private suspend fun ensurePresetBookGroups() {
     runCatching {
-        val dao = AppDatabaseProviders.get().appDb.bookGroupDao
+        val dao = AppDbProviders.get().bookGroupDao
         val presets = listOf(
             BookGroup(BookGroup.IdAll, "全部", order = -10, enableRefresh = true, show = true),
             BookGroup(BookGroup.IdLocal, "本地", order = -9, enableRefresh = false, show = true),
@@ -48,7 +48,7 @@ private suspend fun ensurePresetBookGroups() {
 /** 键盘助手: 空表时导入默认值 (对照 app 端 dbCallback 的 insert or replace)。 */
 private suspend fun ensureKeyboardAssists() {
     runCatching {
-        val dao = AppDatabaseProviders.get().appDb.keyboardAssistsDao
+        val dao = AppDbProviders.get().keyboardAssistsDao
         if (dao.all().isEmpty()) {
             dao.insert(*DefaultDataShared.keyboardAssists.toTypedArray())
         }

@@ -61,6 +61,7 @@ import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.GridPackLayout
+import io.legado.app.ui.compose.component.estimateGridHeight
 import io.legado.app.ui.compose.component.toGridPackSpec
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
@@ -260,13 +261,26 @@ fun ExploreScreen(
             }
             // 展开后内容过高: 等展开动画结束, 把该项推到列表顶部尽量显示
             // (对照 origin/master ExploreAdapter.ensureExpandedItemVisible)
+            // 优化: 预估高度可用时提前计算目标位置, 动画期间并行滚动 (不等动画结束)
             LaunchedEffect(state.expandedUrl, state.expandedKinds[state.expandedUrl]) {
                 val url = state.expandedUrl ?: return@LaunchedEffect
-                if (state.expandedKinds[url] == null) return@LaunchedEffect
-                val listState = state.listState
-                // eInk 无展开动画, 等一帧读布局; 普通模式等动画跑完 (动画期间高度在变)
-                if (eInk) delay(32L) else delay(EXPAND_DURATION_MS + 32L)
-                ensureExpandedItemVisible(listState, url)
+                val kindPair = state.expandedKinds[url] ?: return@LaunchedEffect
+                val (_, kinds) = kindPair
+                // 预估展开内容高度, 提前通知 LazyList 即将增高的项 (改善动画体验)
+                if (kinds.isNotEmpty()) {
+                    val specs = kinds.map { it.style().toGridPackSpec() }
+                    val estimatedH = estimateGridHeight(specs, rowUnitMinHeight = 40.dp)
+                    // 预估高度 > 0 时, 动画期间也开始预滚动, 不必等完整展开
+                    if (estimatedH > 0.dp) {
+                        // eInk 无展开动画, 等一帧; 普通模式等半程 (动画进行中就开始滚)
+                        if (eInk) delay(32L) else delay(EXPAND_DURATION_MS / 2 + 16L)
+                        ensureExpandedItemVisible(state.listState, url)
+                    }
+                } else {
+                    // kinds 为空, 无需等动画
+                    if (eInk) delay(32L) else delay(EXPAND_DURATION_MS + 32L)
+                    ensureExpandedItemVisible(state.listState, url)
+                }
             }
         }
     }
@@ -404,12 +418,25 @@ private fun ExploreSourceItem(
             } else if (expanded || kindPair != null) {
                 // 从没展开过的项不建 AnimatedVisibility 的 Transition (整屏几十项都要建一份);
                 // 首次展开时它以 visible=false 建立再翻 true, 进场动画与原来一致
+                // 预估高度: 用 estimateGridHeight 提前算出目标高度, 展开动画从 0 到目标高度
+                // 平滑过渡, 避免动画期间高度随测量逐步跳变 (对照补充.txt 思路)
+                val estimatedHeight = kindPair?.let { (_, kinds) ->
+                    if (kinds.isNotEmpty()) {
+                        val specs = remember(kinds) { kinds.map { it.style().toGridPackSpec() } }
+                        estimateGridHeight(specs, rowUnitMinHeight = 40.dp)
+                    } else 0.dp
+                } ?: 0.dp
                 AnimatedVisibility(
                     visible = expanded && kindPair != null,
-                    enter = expandVertically(tween(EXPAND_DURATION_MS, easing = FastOutSlowInEasing)) +
-                        fadeIn(tween(EXPAND_DURATION_MS)),
-                    exit = shrinkVertically(tween(EXPAND_DURATION_MS, easing = FastOutSlowInEasing)) +
-                        fadeOut(tween(EXPAND_DURATION_MS)),
+                    enter = expandVertically(
+                        tween(EXPAND_DURATION_MS, easing = FastOutSlowInEasing),
+                        expandFrom = Alignment.Top,
+                        initialHeight = { 0 },
+                    ) + fadeIn(tween(EXPAND_DURATION_MS)),
+                    exit = shrinkVertically(
+                        tween(EXPAND_DURATION_MS, easing = FastOutSlowInEasing),
+                        shrinkTowards = Alignment.Top,
+                    ) + fadeOut(tween(EXPAND_DURATION_MS)),
                 ) {
                     // 刷新分类时内容高度变化平滑过渡 (对照原 animateRefreshHeight)
                     Box(Modifier.animateContentSize(tween(EXPAND_DURATION_MS, easing = FastOutSlowInEasing))) {

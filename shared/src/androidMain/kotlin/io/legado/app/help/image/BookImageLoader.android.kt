@@ -2,6 +2,7 @@ package io.legado.app.help.image
 
 import android.content.Context
 import android.os.Build
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import coil3.ComponentRegistry
 import coil3.ImageLoader
@@ -15,12 +16,12 @@ import coil3.size.Precision
 import coil3.size.Scale
 import coil3.toBitmap
 import io.legado.app.help.http.OkHttpClientProviders
+import io.legado.app.model.manga.MangaModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
-import androidx.compose.ui.graphics.ImageBitmap
 import java.io.File
 
 /**
@@ -28,9 +29,8 @@ import java.io.File
  *
  * - ImageLoader 用 Coil3 + OkHttp 网络后端 (OkHttpNetworkFetcherFactory),
  *   OkHttpClient 走项目共享 [OkHttpClientProviders] (继承 CookieJar/限流/Cronet)。
- * - 书源防盗链 header: 通过 [SourceOriginHeaderInterceptor] 在 Coil3 chain 内自动解析注入
- *   (消费点 [loadImage] / AsyncImage 只传 sourceOrigin, Interceptor suspend 解析 headerMap),
- *   对齐 app 端 Glide OkHttpModelLoader.sourceOriginOption 行为。
+ * - 书源防盗链 header: 在 fetcher 层自动解析注入 (对齐原 Glide OkHttpModelLoader:
+ *   消费点 [loadImage] / AsyncImage 只传 sourceOrigin, 缓存命中不解析, 取数据时跑 IO 线程)。
  * - 成功结果转 [ImageBitmap] 回调 (Image.toBitmap → Bitmap.asImageBitmap)。
  *
  * 注册: app 端 App.onCreate 调用 [registerAndroidBookImageLoader]。
@@ -86,7 +86,10 @@ class AndroidBookImageLoader(
             .data(url)
             .sourceOrigin(sourceOrigin)
             .apply {
-                if (persistent) diskCacheKey(coverDiskCacheKey(url))
+                if (persistent) {
+                    diskCacheKey(coverDiskCacheKey(url))
+                    extras.set(PersistentCoverKey, true)
+                }
                 // 按显示尺寸降采样; FILL 对齐消费端 ContentScale.Crop, INEXACT 允许复用更大的内存缓存项
                 if (widthPx > 0 && heightPx > 0) {
                     size(widthPx, heightPx)
@@ -114,7 +117,7 @@ fun registerAndroidBookImageLoader(context: Context) {
 }
 
 /**
- * 构建共享 Coil3 ImageLoader (注册 [SourceOriginHeaderInterceptor] + 共享 OkHttpClient),
+ * 构建共享 Coil3 ImageLoader (fetcher 层注册防盗链 header + 共享 OkHttpClient),
  * 供 [AndroidBookImageLoader] 和 app 端 [coil3.SingletonImageLoader.Factory] 共用。
  *
  * app 端 AsyncImage 默认走 SingletonImageLoader, 需在 App.onCreate 设置 Factory 返回此 loader,
@@ -133,15 +136,21 @@ fun buildBookImageLoader(
     val sharedClient = OkHttpClientProviders.get().okHttpClient as OkHttpClient
     return ImageLoader.Builder(context as PlatformContext)
         .components {
-            // 失败 url 跳过 + coverDecodeJs 解密: 复刻原 Glide OkHttpStreamFetcher 语义
-            add(FailedUrlSkipInterceptor())
-            add(CoverDecodeInterceptor())
+            // 封面解密 + 失败 url 跳过 + 防盗链 header: 全部下沉 fetcher 层 (对齐原 Glide
+            // OkHttpStreamFetcher: 缓存命中不解析不解密, 取数据时跑 IO 线程)。
+            // 外层 CoverDecodeFetcher → 中层 SourceOriginHeaderFetcher → 内层 OkHttp 网络 fetcher
             add(DecodedCoverKeyer(), DecodedCoverBytes::class)
             add(DecodedCoverFetcher.Factory(), DecodedCoverBytes::class)
-            add(SourceOriginHeaderInterceptor())
             // 漫画页: 经 BookHelp 缓存 + AnalyzeUrl 下载 + 解密取字节 (裸 url 走不通防盗链/解密站点)
+            add(MangaModelKeyer(), MangaModel::class)
             add(MangaModelFetcher.Factory())
-            add(OkHttpNetworkFetcherFactory(callFactory = { sharedClient }))
+            add(
+                CoverDecodeFetcher.Factory(
+                    SourceOriginHeaderFetcher.Factory(
+                        OkHttpNetworkFetcherFactory(callFactory = { sharedClient })
+                    )
+                )
+            )
             // GIF: API 28+ 用 AnimatedImageDecoder(还支持 animated WebP/HEIF), 低版本用 GifDecoder(Movie)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 add(AnimatedImageDecoder.Factory())

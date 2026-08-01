@@ -69,8 +69,8 @@ actual fun midnightSecFromDayKey(dayKey: Int): Long {
     val y = dayKey / 10000
     val m = (dayKey / 100) % 100
     val d = dayKey % 100
-    val days = daysFromCivil(y, m, d) - 719_468L
-    return days * 86_400L
+    // daysFromCivil 已返回"自 1970-01-01 起的天数", 不能再减一次纪元偏移
+    return daysFromCivil(y, m, d) * 86_400L
 }
 
 /**
@@ -128,7 +128,8 @@ private fun civilFromDays(daysSinceEpoch: Long): Triple<Int, Int, Int> {
  */
 private fun daysFromCivil(year: Int, month: Int, day: Int): Long {
     val y = if (month <= 2) year - 1 else year
-    val m = if (month > 2) month else month + 9
+    // Hinnant 的 mp = m>2 ? m-3 : m+9; 下面 doy 里再减 3, 故这里对 1/2 月加 12
+    val m = if (month > 2) month else month + 12
     val era = if (y >= 0) y / 400 else (y - 399) / 400
     val yoe = y - era * 400
     val doy = (153 * (m - 3) + 2) / 5 + day - 1

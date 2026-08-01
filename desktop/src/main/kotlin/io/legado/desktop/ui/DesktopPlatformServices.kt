@@ -3,6 +3,7 @@ package io.legado.desktop.ui
 import io.legado.app.constant.AppLog
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.ui.root.BrowserService
+import io.legado.app.ui.root.CrashLogProvider
 import io.legado.app.ui.root.ExternalRequestService
 import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.FilePickerService
@@ -58,6 +59,7 @@ class DesktopPlatformServices(
     override val media: MediaService = DesktopMediaService()
     override val notifications: NotificationService = DesktopNotificationService()
     override val externalRequests: ExternalRequestService = DesktopExternalRequestService()
+    override val crashLogs: CrashLogProvider = DesktopCrashLogProvider()
 }
 
 // Windows 走 COM IFileDialog 现代对话框, macOS/Linux 走 AWT (统一入口 FileDialogs)
@@ -88,15 +90,34 @@ private fun userExportDir(): String? = runCatching {
     if (dir.isDirectory || dir.mkdirs()) dir.absolutePath else null
 }.getOrNull()
 
-// shareText 走系统剪贴板; shareFile 桌面端无系统分享面板, no-op + TODO
+// shareText 走系统剪贴板; shareFile 用系统文件管理器定位文件
 private class DesktopShareService : ShareService {
     override fun shareText(text: String) {
         Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
     }
 
     override fun shareFile(filePath: String, mimeType: String) {
-        // TODO: desktop 无系统分享面板, 暂 no-op
-        AppLog.put("DesktopShareService.shareFile: desktop 无系统分享面板, 已忽略: $filePath")
+        val file = File(filePath)
+        if (!file.isFile) {
+            AppLog.put("DesktopShareService.shareFile: 文件不存在: " + filePath)
+            return
+        }
+        runCatching {
+            val absolutePath = file.absolutePath
+            val osName = System.getProperty("os.name").lowercase()
+            when {
+                osName.contains("win") ->
+                    Runtime.getRuntime().exec(arrayOf("explorer", "/select,", absolutePath))
+
+                osName.contains("mac") ->
+                    Runtime.getRuntime().exec(arrayOf("open", "-R", absolutePath))
+
+                else ->
+                    Runtime.getRuntime().exec(arrayOf("xdg-open", file.parentFile.absolutePath))
+            }
+        }.onFailure {
+            AppLog.put("DesktopShareService.shareFile: 打开文件位置失败: " + it.localizedMessage)
+        }
     }
 }
 
@@ -176,4 +197,59 @@ private class DesktopNotificationService : NotificationService {
 private class DesktopExternalRequestService : ExternalRequestService {
     override fun parseLaunchRequest(request: Any): LaunchRequest? = null
     override fun handleLaunchRequest(request: LaunchRequest): Boolean = false
+}
+
+// 桌面端崩溃日志提供者: 从用户数据目录/logs/crash 读取
+private class DesktopCrashLogProvider : CrashLogProvider {
+    private val crashDir by lazy {
+        File(DataStorageProviders.get().userExportDir, "logs/crash")
+    }
+
+    override suspend fun loadCrashLogs(): List<CrashLogProvider.CrashLogEntry> {
+        if (!crashDir.isDirectory) return emptyList()
+        return crashDir.listFiles { it.isFile }
+            ?.sortedByDescending { it.name }
+            ?.distinctBy { it.name }
+            ?.map { CrashLogProvider.CrashLogEntry(it.name) }
+            ?: emptyList()
+    }
+
+    override suspend fun readCrashLog(name: String): String? {
+        val file = File(crashDir, name)
+        return if (file.isFile) file.readText() else null
+    }
+
+    override suspend fun clearCrashLogs() {
+        if (crashDir.isDirectory) {
+            crashDir.listFiles()?.forEach { it.delete() }
+        }
+    }
+
+    override fun shareCrashLog(name: String) {
+        // desktop 无系统分享面板, 改为打开文件所在目录并选中
+        val file = File(crashDir, name)
+        if (file.isFile) {
+            kotlin.runCatching {
+                // 跨平台打开文件管理器并选中文件 (Windows: explorer /select; macOS: open -R; Linux: xdg-open)
+                val osName = System.getProperty("os.name").lowercase()
+                when {
+                    osName.contains("win") -> {
+                        Runtime.getRuntime()
+                            .exec(arrayOf("explorer", "/select,", file.absolutePath))
+                    }
+
+                    osName.contains("mac") -> {
+                        Runtime.getRuntime().exec(arrayOf("open", "-R", file.absolutePath))
+                    }
+
+                    else -> {
+                        // Linux: 打开文件所在目录
+                        Runtime.getRuntime().exec(arrayOf("xdg-open", crashDir.absolutePath))
+                    }
+                }
+            }.onFailure {
+                AppLog.put("DesktopCrashLogProvider.shareCrashLog: 打开文件失败: ${it.localizedMessage}")
+            }
+        }
+    }
 }

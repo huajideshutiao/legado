@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.preference.PreferenceScreen
@@ -12,6 +13,7 @@ import io.legado.app.ui.compose.preference.preference
 import io.legado.app.ui.compose.preference.preferenceCategory
 import io.legado.app.ui.compose.preference.switchPreference
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.utils.FlowBus
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bookshelf_cover_height
 import legado.shared.generated.resources.cover_show_author
@@ -92,6 +94,8 @@ fun CoverConfigScreen(
                 title = titleUseDefault,
                 summary = summaryUseDefault,
                 defaultValue = false,
+                // 通知书架重读封面配置 (对照原版 CoverConfigFragment 封面类变更发 BOOKSHELF_REFRESH)
+                onCheckedChange = { FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("") },
             )
 
             preferenceCategory(labelDay)

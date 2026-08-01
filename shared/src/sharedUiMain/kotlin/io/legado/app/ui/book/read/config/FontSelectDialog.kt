@@ -30,12 +30,7 @@ import org.jetbrains.compose.resources.stringResource
 /** 字体文件正则（对齐 app 端 `FontSelectDialog.fontRegex`：.ttf / .otf，大小写不敏感）。 */
 val fontFileRegex: Regex = Regex("(?i).*\\.[ot]tf")
 
-/**
- * 字体项：绝对路径 + 文件名（显示用）。
- *
- * 下沉到 shared/sharedUiMain 供 iOS / 桌面端复用。
- */
-data class FontItem(val path: String, val name: String)
+// FontItem 数据类已下沉 commonMain (同包名 FontItem.kt), 供 PlatformCapabilities 引用。
 
 /**
  * 跨平台"字体选择"对话框（对照 app 端 `io.legado.app.ui.font.FontSelectDialog`）。

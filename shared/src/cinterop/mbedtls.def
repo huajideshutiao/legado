@@ -1,11 +1,6 @@
 package = io.legado.app.nativecrypto.mbedtls
-headers = mbedtls/build_info.h mbedtls/platform.h mbedtls/platform_util.h mbedtls/error.h \
-    mbedtls/md.h mbedtls/md5.h mbedtls/ripemd160.h mbedtls/sha1.h mbedtls/sha256.h mbedtls/sha512.h \
-    mbedtls/aes.h mbedtls/des.h mbedtls/cipher.h mbedtls/gcm.h mbedtls/ccm.h \
-    mbedtls/bignum.h mbedtls/rsa.h mbedtls/oid.h mbedtls/asn1.h mbedtls/asn1write.h \
-    mbedtls/pk.h mbedtls/pem.h mbedtls/base64.h mbedtls/entropy.h mbedtls/ctr_drbg.h
+headers = mbedtls/build_info.h mbedtls/platform.h mbedtls/platform_util.h mbedtls/error.h mbedtls/md.h mbedtls/md5.h mbedtls/ripemd160.h mbedtls/sha1.h mbedtls/sha256.h mbedtls/sha512.h mbedtls/aes.h mbedtls/des.h mbedtls/cipher.h mbedtls/gcm.h mbedtls/ccm.h mbedtls/bignum.h mbedtls/rsa.h mbedtls/oid.h mbedtls/asn1.h mbedtls/asn1write.h mbedtls/pk.h mbedtls/pem.h mbedtls/base64.h mbedtls/entropy.h mbedtls/ctr_drbg.h
 headerFilter = mbedtls/*
-compilerOpts = -DMBEDTLS_CONFIG_FILE="legado_mbedtls_config.h"
 
 ---
 

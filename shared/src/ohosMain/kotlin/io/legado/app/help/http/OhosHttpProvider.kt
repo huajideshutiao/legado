@@ -69,8 +69,8 @@ class OhosHttpProvider : OkHttpClientProvider, OkHttpProxyClientProvider {
  *
  * 注: 桌面端还会注册 HttpClients + CookieJarBridgeHolder, 鸿蒙 P0 阶段:
  * - HttpClients (HttpClient 接口) 在 commonMain 中暂无调用方, 不注册;
- * - CookieJarBridge (cookieJarHeader 桥接) 鸿蒙端由 registerDefaultOhosCookieStoreProvider
- *   单独注册 stub, 不在此处处理。
+ * - CookieJarBridge (cookieJarHeader 桥接) 鸿蒙端经 registerSharedCookieJarBridge 注册
+ *   commonMain SharedCookieJarBridge (在 registerOhosProviders 中调用)。
  */
 fun registerOhosHttpProvider() {
     val provider = OhosHttpProvider()

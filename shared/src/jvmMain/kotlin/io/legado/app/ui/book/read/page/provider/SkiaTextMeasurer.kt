@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.read.page.provider
 
 import io.legado.app.ui.book.read.page.provider.SkiaTextMeasurer.Companion.defaultReaderTypeface
+import io.legado.app.ui.book.read.page.provider.SkiaTextMeasurer.Companion.readerTypeface
 import org.jetbrains.skia.Font
 import org.jetbrains.skia.FontMgr
 import org.jetbrains.skia.FontStyle
@@ -67,6 +68,8 @@ class SkiaTextMeasurer(
     private val primaryFamily: String? = typeface?.familyName
 
     override val descent: Float get() = font.metrics.descent
+
+    override val ascent: Float get() = font.metrics.ascent
 
     override fun measureGlyphWidths(text: String, widths: FloatArray) {
         forEachGlyphWidth(text) { index, width -> if (index < widths.size) widths[index] = width }

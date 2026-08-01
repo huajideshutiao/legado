@@ -1,5 +1,7 @@
 package io.legado.app.ui.browser
 
+import kotlin.concurrent.Volatile
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.Text
@@ -45,15 +47,21 @@ import io.legado.app.ui.compose.theme.AppTheme
  * 对照 app 端 AndroidWebView / iOS IosWebViewSlot / desktop DesktopWebViewSlot 真实实现。
  */
 @Composable
-fun OhosWebViewSlot(url: String, modifier: Modifier = Modifier) {
+fun OhosWebViewSlot(
+    config: WebViewConfig,
+    modifier: Modifier = Modifier,
+    callbacks: WebViewCallbacks = WebViewCallbacks(),
+) {
     // 触发 bridge 调用 (当前 NoOp, napi 桥接完成后改为真实 loadUrl + 占位透明 Box)
-    OhosWebViewBridge.get()?.loadUrl(url)
+    OhosWebViewBridge.get()?.loadUrl(config.url)
+    // TODO(ohos): NAPI 桥接接入后填充 callbacks.host (evaluateJavascript/canGoBack/goBack)
+    // 与 callbacks.onPageFinished, 否则验证回传降级为 refetch 分支 (见 WebViewRoute)
     Box(
         modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "ohos WebView 待 NAPI 桥接\n$url",
+            text = "ohos WebView 待 NAPI 桥接\n${config.url}",
             color = AppTheme.colors.secondaryText,
             textAlign = TextAlign.Center,
         )

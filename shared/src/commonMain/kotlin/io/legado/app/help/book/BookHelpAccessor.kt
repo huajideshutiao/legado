@@ -3,6 +3,7 @@ package io.legado.app.help.book
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
+import io.legado.app.utils.File
 import kotlin.concurrent.Volatile
 
 /**
@@ -46,6 +47,44 @@ interface BookHelpAccessor {
         bookChapter: BookChapter,
         content: String,
         concurrency: Int
+    ) {
+        // 默认 no-op: 桌面端/iOS/鸿蒙无图片缓存管理
+    }
+
+    /**
+     * 获取图片缓存文件路径 (对应 BookHelp.getImage)。
+     *
+     * 返回 images 目录下按 src 派生文件名的 File, 不保证文件存在。
+     * 供 [io.legado.app.model.ImageProvider] 下沉后调用 (原 app 端直接 BookHelp.getImage)。
+     *
+     * 默认抛出: 桌面/iOS/鸿蒙端 ImageProvider 为 stub 不会调用本方法
+     * (与 [saveImages] 默认 no-op 模式一致, 此处返回 File 故用 error)。
+     */
+    fun getImage(book: Book, src: String): File =
+        error("BookHelpAccessor.getImage not implemented; desktop/native/ohos use ReaderImageResolver")
+
+    /**
+     * 判断图片是否已缓存 (对应 BookHelp.isImageExist)。
+     *
+     * 供 [io.legado.app.model.ImageProvider] 下沉后调用。
+     * 默认 false: 桌面/iOS/鸿蒙端无图片缓存 (与 [hasImageContent] 默认 false 一致)。
+     */
+    fun isImageExist(book: Book, src: String): Boolean = false
+
+    /**
+     * 下载并保存单张图片 (对应 BookHelp.saveImage)。
+     *
+     * 带书源防盗链 header / cookie / charset / JS, 加密图片走 ImageUtils.decode 解密。
+     * 失败只记日志不抛出 (与 app 端一致)。chapter 仅用于日志。
+     * 供 [io.legado.app.model.ImageProvider] 下沉后调用。
+     *
+     * 默认 no-op: 桌面/iOS/鸿蒙端无图片缓存管理 (与 [saveImages] 默认 no-op 一致)。
+     */
+    suspend fun saveImage(
+        bookSource: BookSource?,
+        book: Book,
+        src: String,
+        chapter: BookChapter? = null
     ) {
         // 默认 no-op: 桌面端/iOS/鸿蒙无图片缓存管理
     }

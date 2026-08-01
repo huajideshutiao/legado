@@ -3,15 +3,17 @@ package io.legado.app.data
 import io.legado.app.data.dao.BookChapterDao
 import io.legado.app.data.dao.BookDao
 import io.legado.app.data.dao.BookGroupDao
-import io.legado.app.data.dao.BookmarkDao
 import io.legado.app.data.dao.BookSourceDao
+import io.legado.app.data.dao.BookmarkDao
 import io.legado.app.data.dao.CacheDao
 import io.legado.app.data.dao.CookieDao
 import io.legado.app.data.dao.DictRuleDao
 import io.legado.app.data.dao.HttpTTSDao
+import io.legado.app.data.dao.KeyboardAssistsDao
 import io.legado.app.data.dao.ReadRecordDao
 import io.legado.app.data.dao.ReplaceRuleDao
 import io.legado.app.data.dao.RuleSubDao
+import io.legado.app.data.dao.SearchKeywordDao
 import io.legado.app.data.dao.ServerDao
 import io.legado.app.data.dao.SourceFilterRuleDao
 import io.legado.app.data.dao.TxtTocRuleDao
@@ -34,8 +36,11 @@ import kotlin.concurrent.Volatile
  * 下沉 SearchModel/SearchScope/SearchBookFilter/SourceHelp 时新增
  * sourceFilterRuleDao/httpTTSDao/cacheDao 3 个 DAO 暴露点。
  *
- * 下沉 BookInfoViewModelShared.loadGroup 时新增 bookGroupDao 暴露点
- * (BookshelfViewModel 仍走 AppDatabaseProviders.get().appDb 直接访问, 两条路径等价)。
+ * 下沉 BookInfoViewModelShared.loadGroup 时新增 bookGroupDao 暴露点。
+ *
+ * 全部 17 个 DAO 均已暴露: shared 业务代码统一走本接口 (AppDbProviders.get()),
+ * AppDatabaseProviders 仅保留给 AppDbAccessor 实现与需要完整 Room API
+ * (useWriterConnection / VACUUM) 的场景。
  */
 interface AppDbAccessor {
     val bookDao: BookDao
@@ -70,6 +75,12 @@ interface AppDbAccessor {
 
     /** 书签 DAO (AllBookmarkViewModelShared 用: exportBookmark/exportBookmarkMd; TocViewModel.saveBookmark)。 */
     val bookmarkDao: BookmarkDao
+
+    /** 搜索历史 DAO (SearchViewModel 用: flowByTime/flowSearch/delete/deleteAll)。 */
+    val searchKeywordDao: SearchKeywordDao
+
+    /** 键盘助手 DAO (KeyboardToolbar / 备份恢复用)。 */
+    val keyboardAssistsDao: KeyboardAssistsDao
 
     /**
      * suspend 版本的事务执行 (KMP 安全, Native 端无死锁风险)。

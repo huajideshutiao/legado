@@ -180,6 +180,12 @@ private class StubAppConfigAccessor : AppConfigAccessor {
     override val bitmapCacheSize: Int = 50
     override val sourceEditMaxLine: Int = Int.MAX_VALUE
     override val welcomeShowTime: Int = 600
+
+    // 设置界面直写 pref 的开关: Preview 无 PreferenceProviders 注册,
+    // 覆写默认值避免走接口默认实现 (未注册时抛异常)
+    override val devFeat: Boolean = false
+    override val bookInfoHorizontalLayout: Boolean = false
+    override val showAddToShelfAlert: Boolean = true
 }
 
 /** Preview 期一次性注册 stub AppConfigAccessor (幂等)。 */

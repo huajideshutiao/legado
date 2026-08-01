@@ -125,7 +125,8 @@ private fun buildReaderDrawStyle(
         // 与 app 端 reviewPaint 一致：正文色 60% 透明度 + 0.45 倍字号
         reviewColor = textColor.copy(alpha = 0.6f),
         reviewTextSize = contentSize * 0.45f,
-        bgColor = Color(readBookConfig.config.bgMeanColor),
+        // 纯色背景按 bgStr + bgAlpha 折算，图片背景用 bgMeanColor（对应 app 端 upBg 产物）
+        bgColor = Color(readBookConfig.config.curBgColor()),
         tipColor = Color(if (readTipConfig.tipColor == 0) readBookConfig.textColor else readTipConfig.tipColor),
         underline = readBookConfig.underline,
         isEInk = isEInk,

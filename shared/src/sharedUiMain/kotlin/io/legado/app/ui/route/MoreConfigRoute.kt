@@ -2,21 +2,31 @@ package io.legado.app.ui.route
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.ReadBookConfigProviders
+import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.config.ClickActionConfig
 import io.legado.app.ui.book.read.config.ClickActionDialog
 import io.legado.app.ui.book.read.config.MoreConfigScreen
+import io.legado.app.ui.compose.component.AppBottomSheetDialog
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
+import io.legado.app.ui.compose.platform.PreferenceStoreProvider
+import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -47,54 +57,97 @@ fun MoreConfigRoute(
 ) {
     val pref = LocalPreferenceStoreProvider.current
     val readBookConfig = ReadBookConfigProviders.get()
-    // 触摸灵敏度摘要: 系统scaledTouchSlop格式化 (对照 app 端 page_touch_slop_summary)
-    val slopSquare = PlatformCapabilityProviders.getOrNull()?.getScaledTouchSlop() ?: 0
-    val pageTouchSlopSummary =
-        stringResource(Res.string.page_touch_slop_summary, slopSquare.toString())
     // 顶栏标题 (对照 app 端 R.string.other_setting, 与 ReadConfigScreen 入口项一致)
     val titleStr = stringResource(Res.string.other_setting)
-    var showPageTouchSlop by remember { mutableStateOf(false) }
-    var showClickRegional by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
         AppTitleBar(
             title = titleStr,
             onBack = { navigator.pop() },
         )
-        MoreConfigScreen(
-            pageTouchSlopSummary = pageTouchSlopSummary,
-            onPageTouchSlop = { showPageTouchSlop = true },
-            onClickRegionalConfig = { showClickRegional = true },
-            onPrefChange = { key ->
-                // 对照 app 端 MoreConfigDialog.onSharedPreferenceChanged
-                when (key) {
-                    PreferKey.hideStatusBar, PreferKey.hideNavigationBar -> {
-                        readBookConfig.reloadHideBarPrefs()
-                        ReadBookEvents.postConfig(
-                            ReadConfigChange.SYSTEM_UI, ReadConfigChange.STYLE
-                        )
-                    }
-
-                    PreferKey.keepLight -> ReadBookEvents.postKeepLightChange()
-                    PreferKey.textFullJustify,
-                    PreferKey.textBottomJustify,
-                    PreferKey.useZhLayout -> {
-                        ReadBookEvents.postConfig(ReadConfigChange.LOAD_CONTENT)
-                    }
-
-                    PreferKey.doublePageHorizontal -> {
-                        // app 端: ChapterProvider.upLayout() + ReadBook.loadContent(false)
-                        // shared 端无 ChapterProvider/ReadBook 单例, 走 LOAD_CONTENT 通知读者刷新
-                        ReadBookEvents.postConfig(ReadConfigChange.LOAD_CONTENT)
-                    }
-
-                    PreferKey.showReadTitleAddition -> ReadBookEvents.postActionBarChange()
-                    PreferKey.progressBarBehavior -> ReadBookEvents.postSeekBarChange()
-                    // screenOrientation 需 ReadBookActivity.setOrientation, 平台专属, 此处不处理
-                }
-            },
+        MoreConfigBody(
+            pref = pref,
+            readBookConfig = readBookConfig,
         )
     }
+}
+
+/**
+ * 阅读界面更多设置底部弹窗形态 (对照原版 MoreConfigDialog:
+ * BasePrefDialogFragment + setupAsBottomDialog(480dp), 无标题栏)。
+ * 由阅读菜单"设置"按钮弹起, 行为与 [MoreConfigRoute] 一致。
+ */
+@Composable
+fun MoreConfigDialogHost(
+    onDismiss: () -> Unit,
+) {
+    val pref = LocalPreferenceStoreProvider.current
+    val readBookConfig = ReadBookConfigProviders.get()
+    AppBottomSheetDialog(
+        onDismissRequest = onDismiss,
+        properties = AppDialogSizes.properties(),
+    ) {
+        AppTheme {
+            Surface(
+                shape = DesignTokens.dialogShape,
+                color = AppTheme.colors.bottomBackground,
+                modifier = Modifier.appDialogSize().padding(16.dp),
+            ) {
+                MoreConfigBody(
+                    pref = pref,
+                    readBookConfig = readBookConfig,
+                )
+            }
+        }
+    }
+}
+
+/** 更多设置正文 (Screen + 内嵌对话框), 路由/弹窗两形态共用 */
+@Composable
+private fun MoreConfigBody(
+    pref: PreferenceStoreProvider,
+    readBookConfig: ReadBookConfigShared,
+) {
+    // 触摸灵敏度摘要: 系统scaledTouchSlop格式化 (对照 app 端 page_touch_slop_summary)
+    val slopSquare = PlatformCapabilityProviders.getOrNull()?.getScaledTouchSlop() ?: 0
+    val pageTouchSlopSummary =
+        stringResource(Res.string.page_touch_slop_summary, slopSquare.toString())
+    var showPageTouchSlop by remember { mutableStateOf(false) }
+    var showClickRegional by remember { mutableStateOf(false) }
+
+    MoreConfigScreen(
+        pageTouchSlopSummary = pageTouchSlopSummary,
+        onPageTouchSlop = { showPageTouchSlop = true },
+        onClickRegionalConfig = { showClickRegional = true },
+        onPrefChange = { key ->
+            // 对照 app 端 MoreConfigDialog.onSharedPreferenceChanged
+            when (key) {
+                PreferKey.hideStatusBar, PreferKey.hideNavigationBar -> {
+                    readBookConfig.reloadHideBarPrefs()
+                    ReadBookEvents.postConfig(
+                        ReadConfigChange.SYSTEM_UI, ReadConfigChange.STYLE
+                    )
+                }
+
+                PreferKey.keepLight -> ReadBookEvents.postKeepLightChange()
+                PreferKey.textFullJustify,
+                PreferKey.textBottomJustify,
+                PreferKey.useZhLayout -> {
+                    ReadBookEvents.postConfig(ReadConfigChange.LOAD_CONTENT)
+                }
+
+                PreferKey.doublePageHorizontal -> {
+                    // app 端: ChapterProvider.upLayout() + ReadBook.loadContent(false)
+                    // shared 端无 ChapterProvider/ReadBook 单例, 走 LOAD_CONTENT 通知读者刷新
+                    ReadBookEvents.postConfig(ReadConfigChange.LOAD_CONTENT)
+                }
+
+                PreferKey.showReadTitleAddition -> ReadBookEvents.postActionBarChange()
+                PreferKey.progressBarBehavior -> ReadBookEvents.postSeekBarChange()
+                // screenOrientation 需 ReadBookActivity.setOrientation, 平台专属, 此处不处理
+            }
+        },
+    )
 
     // 翻页触发距离 NumberPicker (对齐 app 端 pickPageTouchSlop)
     if (showPageTouchSlop) {

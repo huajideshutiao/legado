@@ -1,5 +1,15 @@
 package io.legado.app.help.http
 
+import io.legado.app.help.http.AndroidCookieStoreProvider.clear
+import io.legado.app.help.http.AndroidCookieStoreProvider.getCookie
+import io.legado.app.help.http.AndroidCookieStoreProvider.getCookieNoSession
+import io.legado.app.help.http.AndroidCookieStoreProvider.getKey
+import io.legado.app.help.http.AndroidCookieStoreProvider.getSessionCookie
+import io.legado.app.help.http.AndroidCookieStoreProvider.removeCookie
+import io.legado.app.help.http.AndroidCookieStoreProvider.replaceCookie
+import io.legado.app.help.http.AndroidCookieStoreProvider.setCookie
+
+
 /**
  * Android 端 [CookieStoreProvider] 实现: 委托给现有 [CookieStore] / [CookieManager] 单例。
  *
@@ -46,6 +56,9 @@ object AndroidCookieStoreProvider : CookieStoreProvider {
 
     override fun getSessionCookie(domain: String): String? =
         CookieManager.getSessionCookie(domain)
+
+    override fun updateSessionCookie(domain: String, cookies: String) =
+        CookieManager.updateSessionCookie(domain, cookies)
 
     override fun clear() =
         CookieStore.clear()

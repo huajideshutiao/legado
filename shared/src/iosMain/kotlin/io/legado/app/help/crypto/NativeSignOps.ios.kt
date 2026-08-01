@@ -26,7 +26,7 @@ import platform.Security.kSecKeyAlgorithmRSASignatureMessagePSSSHA384
 import platform.Security.kSecKeyAlgorithmRSASignatureMessagePSSSHA512
 
 /**
- * iOS actual: 签名/验签。主实现 mbedTLS [MbedTlsSign] (RSA v1.5 含 MD5withRSA/RIPEMD160withRSA、
+ * iOS actual: 签名/验签。主实现 mbedTLS [MbedTlsOps] (RSA v1.5 含 MD5withRSA/RIPEMD160withRSA、
  * PSS、NONEwithRSA), 任意异常回落既有 Security.framework 路径; ECDSA 在 mbedTLS 裁剪外
  * (无 ECP) 主实现点名抛异常后由本回落承接 (Security 支持 ECDSA)。
  *
@@ -43,7 +43,7 @@ import platform.Security.kSecKeyAlgorithmRSASignatureMessagePSSSHA512
 actual object NativeSignOps {
 
     actual fun sign(algorithm: String, privateKey: ByteArray?, data: ByteArray): ByteArray = mbedTlsOrFallback(
-        { MbedTlsSign.sign(algorithm, privateKey, data) },
+        { MbedTlsOps.sign(algorithm, privateKey, data) },
         { legacySign(algorithm, privateKey, data) }
     )
 
@@ -53,7 +53,7 @@ actual object NativeSignOps {
         data: ByteArray,
         signature: ByteArray
     ): Boolean = mbedTlsOrFallback(
-        { MbedTlsSign.verify(algorithm, publicKey, data, signature) },
+        { MbedTlsOps.verify(algorithm, publicKey, data, signature) },
         { legacyVerify(algorithm, publicKey, data, signature) }
     )
 

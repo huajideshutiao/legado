@@ -25,7 +25,6 @@ import androidx.compose.material.AlertDialog
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
-import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
@@ -188,6 +187,8 @@ fun MainRoute(
     // 书架滚顶信号 (对照 BookshelfTabController.gotoTop): 具体滚哪个状态由 BookshelfScreen
     // 按"当前分组页 + 布局档位"决定, 此处只发信号
     var bookshelfGotoTopTick by remember { mutableIntStateOf(0) }
+    // 书架 tab 激活态: 书架 DB 订阅开关 (tab 切走即取消订阅, 零全表流)
+    val bookshelfActive = visibleTags.getOrNull(currentPage) == BottomNavTag.BOOKSHELF
 
     // ScreenModelStore 持有 BookshelfViewModel + ExploreScreenModel, 生命周期随 entry
     val mainScreenModel = screenModelStore.getOrCreateTyped(entry) { MainScreenModel() }
@@ -258,6 +259,7 @@ fun MainRoute(
                 navigator,
                 bookshelfScrollState,
                 bookshelfGotoTopTick,
+                bookshelfActive,
             )
         },
         exploreTab = {
@@ -599,6 +601,7 @@ private fun HomeCoverRow(
                         .fillMaxWidth()
                         .height(coverHeight),
                     isVideoStyle,
+                    0,
                 )
                 Text(
                     text = book.name,
@@ -693,7 +696,7 @@ private fun HomeRankItem(
         }
         // 封面固定 70dp 高 (对照 XML iv_cover height=70dp), 恒 NOVEL 比例
         Box(Modifier.height(70.dp).padding(start = if (showRank) 8.dp else 0.dp)) {
-            LocalBookCoverSlot.current(book.toCoverBook(), Modifier.fillMaxHeight(), false)
+            LocalBookCoverSlot.current(book.toCoverBook(), Modifier.fillMaxHeight(), false, 0)
         }
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Text(
@@ -756,6 +759,7 @@ private fun HomeInfiniteGridCard(
                     .padding(start = 12.dp, top = 12.dp, end = 12.dp)
                     .height(coverHeight.dp),
                 false,
+                0,
             )
             Text(
                 text = book.name,
@@ -786,6 +790,7 @@ private fun BookshelfTabContent(
     navigator: AppNavigator,
     scrollState: ShelfScrollState,
     gotoTopTick: Int,
+    active: Boolean,
 ) {
     var showAppLog by remember { mutableStateOf(false) }
     // 分组长按或管理列表编辑 → GroupEditDialog。
@@ -796,7 +801,9 @@ private fun BookshelfTabContent(
     val scope = rememberCoroutineScope()
     val groups by viewModel.bookGroups.collectAsState()
     var manageableGroups by remember { mutableStateOf<List<BookGroup>>(emptyList()) }
-    LaunchedEffect(Unit) {
+    // 分组管理对话框数据流, 随 tab 激活启停 (不可见时零订阅)
+    LaunchedEffect(active) {
+        if (!active) return@LaunchedEffect
         AppDbProviders.get().bookGroupDao.flowAll()
             .distinctUntilChanged()
             .conflate()
@@ -826,6 +833,7 @@ private fun BookshelfTabContent(
     }
     BookshelfScreen(
         viewModel = viewModel,
+        active = active,
         onBookClick = { book -> navigator.push(book.toReadRoute()) },
         onBookLongClick = { book -> navigator.push(AppRoute.BookInfo(book.toRouteRef())) },
         onSearchClick = { navigator.push(AppRoute.Search()) },
@@ -1157,7 +1165,7 @@ private fun MyTabContent(navigator: AppNavigator) {
                 }
             },
             shape = AppTheme.DesignTokens.dialogShape,
-            backgroundColor = MaterialTheme.colors.surface,
+            backgroundColor = colors.fillet,
         )
     }
 }

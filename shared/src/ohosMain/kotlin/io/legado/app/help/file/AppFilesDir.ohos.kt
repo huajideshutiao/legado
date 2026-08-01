@@ -65,14 +65,13 @@ class OhosAppFilesDir : AppFilesDir {
     /**
      * 解析相对路径为绝对路径并确保目录存在。
      *
-     * - base 取 `System.getProperty("user.dir")` (POSIX getcwd, Kotlin/Native linuxArm64 标准库支持)
+     * - filesDir 尚未注入时退化到当前目录下的 `legado_data`
      * - base 缺失时退化为 "." (当前工作目录), 与 [OhosDatabaseDriver] defaultDbPath 退化策略一致
      * - [File.mkdirs] 失败静默 (退化路径可能无写权限, 不阻断构造流程,
      *   后续真实 I/O 时再报错更易定位, 与 [OhosDatabaseDriver] dbFile.apply 同模式)
      */
     private fun resolveDir(relative: String): String {
-        val base = runCatching { System.getProperty("user.dir") }.getOrNull()
-            ?.takeIf { it.isNotEmpty() } ?: "."
+        val base = "."
         val path = if (base.endsWith("/")) "$base$relative" else "$base/$relative"
         // 启动时确保目录存在 (与 iOS 沙盒保证 Documents/Caches 存在行为对齐)
         runCatching { File(path).mkdirs() }

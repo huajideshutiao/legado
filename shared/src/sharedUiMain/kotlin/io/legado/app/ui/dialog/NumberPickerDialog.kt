@@ -1,33 +1,42 @@
 package io.legado.app.ui.dialog
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.AlertDialog
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
-import androidx.compose.material.MaterialTheme
+import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Slider
 import androidx.compose.material.SliderDefaults
 import androidx.compose.material.Text
-import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.appDialogSize
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
@@ -100,6 +109,20 @@ fun NumberPickerDialog(
     require(range.first <= range.last) { "Invalid range: $range (first > last)" }
     val initial = value.coerceIn(range.first, range.last)
     var currentValue by remember { mutableIntStateOf(initial) }
+    // 点按数字进入编辑态: 键盘直接输入 (对照原版 NumberPicker 内嵌 EditText 行为)
+    var editing by remember { mutableStateOf(false) }
+    var editText by remember { mutableStateOf(initial.toString()) }
+
+    fun commitEdit() {
+        editText.toIntOrNull()?.let { typed ->
+            val clamped = typed.coerceIn(range.first, range.last)
+            if (clamped != currentValue) {
+                currentValue = clamped
+                onValueChange(clamped)
+            }
+        }
+        editing = false
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -112,20 +135,46 @@ fun NumberPickerDialog(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                // 当前值居中显示 (大字体 + arcoblue-6 主色, 便于确认)
-                Text(
-                    text = currentValue.toString(),
-                    color = DesignTokens.arcoBlue6,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                // 当前值: 点按数字进入键盘编辑 (对照原版 NumberPicker 点数字可输入)
+                if (editing) {
+                    OutlinedTextField(
+                        value = editText,
+                        onValueChange = { editText = it.filter { c -> c.isDigit() } },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number,
+                            imeAction = ImeAction.Done,
+                        ),
+                        keyboardActions = KeyboardActions(onDone = { commitEdit() }),
+                        textStyle = TextStyle(
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            color = DesignTokens.arcoBlue6,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    Text(
+                        text = currentValue.toString(),
+                        color = DesignTokens.arcoBlue6,
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                editText = currentValue.toString()
+                                editing = true
+                            },
+                    )
+                }
                 // Slider 拖动调整 (连续值, 适合大范围)
                 // colors 显式指定 arcoblue-6, 不走 MaterialTheme.colors.primary (默认值非 arco)
                 Slider(
                     value = currentValue.toFloat(),
                     onValueChange = {
+                        editing = false
                         val newValue = it.toInt().coerceIn(range.first, range.last)
                         if (newValue != currentValue) {
                             currentValue = newValue
@@ -148,6 +197,7 @@ fun NumberPickerDialog(
                 ) {
                     IconButton(
                         onClick = {
+                            editing = false
                             if (currentValue > range.first) {
                                 currentValue--
                                 onValueChange(currentValue)
@@ -164,6 +214,7 @@ fun NumberPickerDialog(
                     Spacer(modifier = Modifier.width(16.dp))
                     IconButton(
                         onClick = {
+                            editing = false
                             if (currentValue < range.last) {
                                 currentValue++
                                 onValueChange(currentValue)
@@ -178,38 +229,43 @@ fun NumberPickerDialog(
                         )
                     }
                 }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(currentValue) }) {
-                Text(
-                    text = stringResource(Res.string.ok),
-                    color = DesignTokens.arcoBlue6,
-                )
-            }
-        },
-        dismissButton = {
-            // 布局对齐 AlertDialog: neutral 靠左, cancel 靠右
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (neutralButtonText != null && onNeutral != null) {
-                    TextButton(onClick = onNeutral) {
-                        Text(
+                // 底部按钮行: 默认/取消/确定 等宽等距 (对齐原版 AlertDialog 三按钮等权按钮条)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (neutralButtonText != null && onNeutral != null) {
+                        AppTextButton(
                             text = neutralButtonText,
+                            onClick = onNeutral,
                             color = DesignTokens.arcoBlue6,
+                            modifier = Modifier.weight(1f),
                         )
                     }
-                    Spacer(modifier = Modifier.width(4.dp))
-                }
-                TextButton(onClick = onDismiss) {
-                    Text(
+                    AppTextButton(
                         text = stringResource(Res.string.cancel),
+                        onClick = onDismiss,
                         color = DesignTokens.arcoBlue6,
+                        modifier = Modifier.weight(1f),
+                    )
+                    AppTextButton(
+                        text = stringResource(Res.string.ok),
+                        onClick = {
+                            commitEdit()
+                            onConfirm(currentValue)
+                        },
+                        color = DesignTokens.arcoBlue6,
+                        modifier = Modifier.weight(1f),
                     )
                 }
             }
         },
+        confirmButton = {},
+        dismissButton = {},
         shape = DesignTokens.dialogShape,
         // 显式容器色, 避免默认色与项目其他对话框 (8dp 圆角) 视觉割裂
-        backgroundColor = MaterialTheme.colors.surface,
+        backgroundColor = AppTheme.colors.fillet,
     )
 }

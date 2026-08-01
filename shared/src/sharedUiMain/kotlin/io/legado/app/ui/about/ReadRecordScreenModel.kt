@@ -7,6 +7,7 @@ import io.legado.app.data.entities.ReadRecord
 import io.legado.app.data.entities.ReadRecordShow
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.prevDayKey
@@ -14,7 +15,6 @@ import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.app.utils.yearMonthDayFromMillis
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -99,7 +99,7 @@ class ReadRecordScreenModel(
 
             is ReadRecordUiEvent.DeleteDay -> {
                 scope.launch {
-                    withContext(Dispatchers.IO) {
+                    withContext(IoDispatcher) {
                         AppDbProviders.get().readRecordDao.deleteByDay(event.dayKey)
                     }
                     // 内存缓存直接同步删除, 避免重新查 DAO.all
@@ -111,7 +111,7 @@ class ReadRecordScreenModel(
 
             is ReadRecordUiEvent.DeleteByName -> {
                 scope.launch {
-                    withContext(Dispatchers.IO) {
+                    withContext(IoDispatcher) {
                         AppDbProviders.get().readRecordDao.deleteByName(event.name)
                     }
                     allRecords = allRecords?.filterNot { it.bookName == event.name }
@@ -122,7 +122,7 @@ class ReadRecordScreenModel(
 
             ReadRecordUiEvent.ClearAll -> {
                 scope.launch {
-                    withContext(Dispatchers.IO) {
+                    withContext(IoDispatcher) {
                         AppDbProviders.get().readRecordDao.clear()
                     }
                     // 直接清空内存缓存, initData 会基于空列表算出全 0 的 summary
@@ -234,7 +234,7 @@ class ReadRecordScreenModel(
         val perDayMode = currentSortMode == 2 && day == 0
         initDataJob?.cancel()
         initDataJob = scope.launch {
-            val result = withContext(Dispatchers.IO) {
+            val result = withContext(IoDispatcher) {
                 val records =
                     allRecords ?: AppDbProviders.get().readRecordDao.all().also { allRecords = it }
                 // 单遍聚合: 搜索过滤 + 总时长/最近阅读时间 + 当日时长 + 筛选日存在性

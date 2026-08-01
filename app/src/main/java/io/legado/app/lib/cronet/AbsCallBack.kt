@@ -1,7 +1,7 @@
 package io.legado.app.lib.cronet
 
 import androidx.annotation.Keep
-import io.legado.app.help.http.CookieManager
+import io.legado.app.help.http.CookieJarBridgeHolder
 import io.legado.app.help.http.cookieJarHeader
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.utils.LogUtils
@@ -132,7 +132,7 @@ abstract class AbsCallBack(
         } else {
             val response = toResponse(originalRequest, info, urlResponseInfoChain)
             if (enableCookieJar) {
-                CookieManager.saveResponse(response)
+                CookieJarBridgeHolder.get()?.saveResponse(response)
             }
             redirectRequest = buildRedirectRequest(response, originalRequest.method, newLocationUrl)
         }
@@ -154,7 +154,7 @@ abstract class AbsCallBack(
         }
 
         if (enableCookieJar) {
-            CookieManager.saveResponse(response)
+            CookieJarBridgeHolder.get()?.saveResponse(response)
         }
 
         mResponse = response
@@ -210,7 +210,8 @@ abstract class AbsCallBack(
         if (followRedirect) {
             followRedirect = false
             val nextRequest = if (enableCookieJar) {
-                val newRequest = CookieManager.loadRequest(redirectRequest!!)
+                val newRequest =
+                    CookieJarBridgeHolder.get()?.loadRequest(redirectRequest!!) ?: redirectRequest!!
                 buildRequest(newRequest, this)
             } else {
                 buildRequest(redirectRequest!!, this)

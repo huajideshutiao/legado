@@ -1,7 +1,7 @@
 package io.legado.app.ui.book.search
 
 import io.legado.app.constant.AppLog
-import io.legado.app.data.AppDatabaseProviders
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
@@ -52,8 +52,8 @@ import kotlinx.coroutines.launch
  *   宿主可注入生命周期 scope (桌面端窗口 scope / app 端 viewModelScope)
  * - `BaseViewModel.execute { ... }.onError { ... }` → `scope.launch { ... }` + try/catch
  *   (Coroutine 容器仍可用, 但 StateFlow 已无观察者调度需求, 直接 launch 更直接)
- * - `appDb.searchKeywordDao` (app 端单例) → `AppDatabaseProviders.get().appDb.searchKeywordDao`
- * - `appDb.bookDao.flowShelfBookKeys / searchShelfBooks` → 同上经 `AppDatabaseProviders`
+ * - `appDb.searchKeywordDao` (app 端单例) → `AppDbProviders.get().searchKeywordDao`
+ * - `appDb.bookDao.flowShelfBookKeys / searchShelfBooks` → 同上经 `AppDbProviders`
  * - `context.toastOnUi(...)` → `Toasters.get().toast(...)` (provider 注入, 各平台 actual 实现)
  * - `Handler(Looper.getMainLooper())` (原代码声明但未使用) → 直接删除
  *
@@ -239,7 +239,7 @@ class SearchViewModel(
 
         // 订阅书架书籍 key, 用于 isInBookShelf 判断 (对齐原 init { execute { ... } })
         scope.launch {
-            AppDatabaseProviders.get().appDb.bookDao.flowShelfBookKeys().mapLatest { shelfBooks ->
+            AppDbProviders.get().bookDao.flowShelfBookKeys().mapLatest { shelfBooks ->
                 val keys = arrayListOf<String>()
                 shelfBooks.forEach {
                     keys.add("${it.name}-${it.author}")
@@ -275,7 +275,7 @@ class SearchViewModel(
                 .distinctUntilChanged()
                 .flatMapLatest { firstKey ->
                     if (firstKey.isBlank()) flowOf(emptyList())
-                    else AppDatabaseProviders.get().appDb.bookDao.searchShelfBooks(firstKey)
+                    else AppDbProviders.get().bookDao.searchShelfBooks(firstKey)
                 }
 
             combine(dbFlow, keysFlow) { list, keys -> list to keys }
@@ -364,21 +364,21 @@ class SearchViewModel(
     /** 删除单条历史记录。 */
     fun deleteHistory(searchKeyword: SearchKeyword) {
         scope.launch(IoDispatcher) {
-            AppDatabaseProviders.get().appDb.searchKeywordDao.delete(searchKeyword)
+            AppDbProviders.get().searchKeywordDao.delete(searchKeyword)
         }
     }
 
     /** 清空所有搜索历史。 */
     fun clearHistory() {
         scope.launch(IoDispatcher) {
-            AppDatabaseProviders.get().appDb.searchKeywordDao.deleteAll()
+            AppDbProviders.get().searchKeywordDao.deleteAll()
         }
     }
 
     /** 保存搜索关键字 (usage +1 / lastUseTime 更新)。 */
     fun saveSearchKey(key: String) {
         scope.launch(IoDispatcher) {
-            val dao = AppDatabaseProviders.get().appDb.searchKeywordDao
+            val dao = AppDbProviders.get().searchKeywordDao
             dao.get(key)?.let {
                 it.usage += 1
                 it.lastUseTime = systemCurrentTimeMillis()
@@ -509,7 +509,7 @@ class SearchViewModel(
         booksFlowJob?.cancel()
         booksFlowJob = scope.launch {
             delay(300)
-            val dao = AppDatabaseProviders.get().appDb.searchKeywordDao
+            val dao = AppDbProviders.get().searchKeywordDao
             (if (key.isNullOrBlank()) dao.flowByTime()
             else dao.flowSearch(key)).catch {
                 AppLog.put("搜索界面获取本地数据失败\n${it.message}", it)

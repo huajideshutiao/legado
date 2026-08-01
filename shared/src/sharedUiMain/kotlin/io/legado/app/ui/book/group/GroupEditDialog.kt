@@ -28,7 +28,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.BookGroup
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.bookshelf.SharedGroupCover
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppCheckbox
@@ -42,7 +44,10 @@ import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.root.FileFilter
+import io.legado.app.ui.root.PlatformServiceProviders
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.allow_drop_down_refresh
 import legado.shared.generated.resources.book_sort_author
@@ -78,9 +83,9 @@ import org.jetbrains.compose.resources.stringResource
  *
  * # KMP 化取舍
  *
- * - 封面选择: 原 registerHandleFile + ShelfCover 依赖 Android API, 改由 [coverSlot]
- *   (封面渲染) + [onPickCover] (选图落盘返回路径) 注入; 两者均缺省 null 时不显示封面区
- *   (兼容未接入的调用方), cover 字段保留原值
+ * - 封面: 恒显示封面区 (对照原版 ivCover)。渲染缺省走 [SharedGroupCover] (平台图片加载
+ *   未注册时回退组名首字占位), 可用 [coverSlot] 覆盖注入平台实现; 选图缺省走
+ *   [PlatformServiceProviders] 文件选择器, 可用 [onPickCover] 覆盖
  * - 排序选项原用 stringArrayResource(R.array.book_sort), 该数组未在 rememberStringArray
  *   注册且不能修改 ResourceProvider.jvm.kt, 在文件内用 7 个新 key 硬编码 (值与 app 端
  *   values-zh/strings.xml 对齐)
@@ -122,6 +127,11 @@ fun GroupEditDialog(
     }
     var enableRefresh by remember(group) { mutableStateOf(editingGroup.enableRefresh) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    // 选图缺省: 平台文件选择器 (对照 BookInfoEditRoute.onSelectCover 同款; 阻塞式须切 IO)
+    val pickCover = onPickCover ?: remember {
+        val files = PlatformServiceProviders.getOrNull()?.files
+        if (files == null) null else suspend { withContext(IoDispatcher) { files.pickFile(FileFilter.Images) } }
+    }
 
     val titleKey = if (isNew) "group_add" else "group_edit"
     // 7 项排序, 对应 app 端 R.array.book_sort (values-zh 中文值)
@@ -142,7 +152,8 @@ fun GroupEditDialog(
         // 不能套 fillMaxSize: 撑满窗口会让整窗都算"框内", 点外部永远关不掉; 居中由 RootMeasurePolicy 负责。
         Surface(
             shape = DesignTokens.shapeDefault,
-            color = colors.background,
+            // 对话框根背景 = 底栏色 (fillet 即 bottomBackground, 对照原版 filletBackground)
+            color = colors.fillet,
             modifier = Modifier.appDialogSize(),
         ) {
             Column(Modifier.fillMaxWidth()) {
@@ -155,24 +166,30 @@ fun GroupEditDialog(
                         .fillMaxWidth()
                         .padding(16.dp),
                 ) {
-                    if (coverSlot != null) {
-                        Box(
-                            Modifier
-                                .width(110.dp)
-                                .aspectRatio(3f / 4f)
-                                .let { modifier ->
-                                    if (onPickCover == null) modifier else modifier.clickable {
-                                        scope.launch { onPickCover()?.let { cover = it } }
-                                    }
-                                },
-                        ) {
+                    // 封面区恒显示 (对照原版 ivCover: 新分组为占位, 编辑态显示 cover)
+                    Box(
+                        Modifier
+                            .width(110.dp)
+                            .aspectRatio(3f / 4f)
+                            .let { modifier ->
+                                if (pickCover == null) modifier else modifier.clickable {
+                                    scope.launch { pickCover()?.let { cover = it } }
+                                }
+                            },
+                    ) {
+                        if (coverSlot != null) {
                             coverSlot(cover, Modifier.fillMaxSize())
+                        } else {
+                            SharedGroupCover(
+                                remember(cover) { editingGroup.copy(cover = cover) },
+                                Modifier.fillMaxSize(),
+                            )
                         }
                     }
                     Column(
                         Modifier
                             .weight(1f)
-                            .let { if (coverSlot != null) it.padding(start = 8.dp) else it },
+                            .padding(start = 8.dp),
                     ) {
                         AppOutlinedTextField(
                             value = groupName,

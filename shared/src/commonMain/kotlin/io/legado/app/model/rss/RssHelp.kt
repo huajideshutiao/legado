@@ -1,14 +1,21 @@
 package io.legado.app.model.rss
 
+import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.addType
-import io.legado.app.help.book.isRss
 import io.legado.app.help.book.removeType
+import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
+import io.legado.app.model.rss.RssHelp.clHtml
+import io.legado.app.model.rss.RssHelp.loadRssContent
+import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.utils.NetworkUtils
+import kotlinx.coroutines.currentCoroutineContext
 
 /**
  * RSS 业务编排层 (shared commonMain, 供多端复用)。
@@ -88,13 +95,14 @@ object RssHelp {
      * 拉取 RSS 文章正文。
      *
      * 分支 (对照 app 端 ReadRssViewModel.initData):
-     * 1. `book.originName == "RSS" && !book.intro.isNullOrBlank()` → 直接返回 intro (RSS 源简介)
-     * 2. `source.contentRule.content` 为空 → 返回 [RssContentResult.Empty] (无正文规则, UI 提示用浏览器打开)
+     * 1. `book.originName == "RSS" && !book.intro.isNullOrBlank()` → 直接返回 intro (RSS 源简介),
+     *    baseUrl 取 `book.tocUrl` (与原版一致, 不解析绝对地址)
+     * 2. `source.contentRule.content` 为空 → [RssContentResult.Url]: 无正文规则, 走 AnalyzeUrl
+     *    解析出真实地址 + 请求头交 WebView `loadUrl(url, headerMap)`
      * 3. 否则 [WebBook.getContentAwait] 拉正文 → [RssContentResult.Content]
      *
-     * 注意: 返回的 [RssContentResult.Content.body] 为原始 HTML, 调用方按平台方式渲染:
-     * - app 端: `clHtml(body)` 包 HTML 给 WebView
-     * - 桌面端: `HtmlFormatter.format(body)` 转纯文本
+     * 返回的 [RssContentResult.Content.html] 已经过 [clHtml] 包装 (webJs 脚本或图片/视频自适应样式),
+     * 调用方直接交 WebView `loadDataWithBaseURL(baseUrl, html, ...)` 即可, 与原版渲染一致。
      *
      * 失败时返回 [RssContentResult.Error] (内部已记录 [AppLog]), 不会抛异常, 调用方无需 try-catch。
      *
@@ -106,26 +114,78 @@ object RssHelp {
         return try {
             val source = appDb.bookSourceDao.getBookSource(book.origin)
                 ?: throw IllegalStateException("未找到书源 (origin=${book.origin})")
+            val intro = book.intro
+            // 对照 ReadRssViewModel.initData: originName=="RSS" && intro 非空 → 直接显示 intro
+            if (book.originName == "RSS" && !intro.isNullOrBlank()) {
+                return RssContentResult.Content(
+                    html = clHtml(source, intro),
+                    baseUrl = book.tocUrl,
+                    userAgent = readUserAgent(source),
+                    chapter = null,
+                )
+            }
             val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, chapterIndex)
                 ?: throw IllegalStateException("未找到章节 (index=$chapterIndex)")
-            when {
-                // 对照 ReadRssViewModel.initData: originName=="RSS" && intro 非空 → 直接显示 intro
-                book.originName == "RSS" && !book.intro.isNullOrBlank() ->
-                    RssContentResult.Content(book.intro!!, chapter)
-                // 对照 ReadRssViewModel.initData: contentRule.content 为空 → 无正文规则
-                source.contentRule.content.isNullOrEmpty() ->
-                    RssContentResult.Empty(chapter)
-                else -> {
-                    val body = WebBook.getContentAwait(source, book, chapter)
-                    if (body.isBlank()) RssContentResult.Empty(chapter)
-                    else RssContentResult.Content(body, chapter)
-                }
+            // 对照 ReadRssViewModel.initData: baseUrl 按是否 RSS 源在书源地址与目录地址间二选一
+            val baseUrl = if (book.originName == "RSS") source.bookSourceUrl else book.tocUrl
+            if (source.contentRule.content.isNullOrBlank()) {
+                // 无正文规则: 原版走 AnalyzeUrl(hasLoginHeader=false) 后 loadUrl(url, headerMap)
+                val analyzeUrl = AnalyzeUrlFactories.create(
+                    rawUrl = chapter.url,
+                    baseUrl = baseUrl,
+                    source = source,
+                    coroutineContext = currentCoroutineContext(),
+                    hasLoginHeader = false,
+                )
+                return RssContentResult.Url(
+                    url = analyzeUrl.url,
+                    headerMap = analyzeUrl.headerMap.toMap(),
+                    userAgent = analyzeUrl.getUserAgent(),
+                    chapter = chapter,
+                )
             }
+            val body = WebBook.getContentAwait(source, book, chapter)
+            RssContentResult.Content(
+                html = clHtml(source, body),
+                baseUrl = NetworkUtils.getAbsoluteURL(baseUrl, chapter.url),
+                userAgent = readUserAgent(source),
+                chapter = chapter,
+            )
         } catch (e: Throwable) {
             // 协程取消需向上抛出, 不被 catch 吞掉
             if (e is kotlinx.coroutines.CancellationException) throw e
             AppLog.put("RSS 正文加载失败\n${e.message}", e)
-            RssContentResult.Error(e.message ?: "加载失败", null)
+            RssContentResult.Error(e.message ?: "加载正文失败", null)
+        }
+    }
+
+    /** 书源 header 里的 UA (对照 `runScriptWithContext { source.getHeaderMap()[UA_NAME] }`)。 */
+    private suspend fun readUserAgent(source: BookSource): String? =
+        runCatching { runScriptWithContext { source.getHeaderMap()[AppConst.UA_NAME] } }.getOrNull()
+
+    /**
+     * 正文 HTML 包装 (逐行对照 app 端 ReadRssViewModel.clHtml)。
+     *
+     * 书源配了 webJs 就把它塞进 `<script>`, 否则给一段图片/视频自适应宽度的样式。
+     */
+    fun clHtml(source: BookSource?, content: String): String {
+        val webJs = source?.contentRule?.webJs
+        return if (!webJs.isNullOrEmpty()) {
+            """
+                <script>
+                    $webJs
+                </script>
+                $content
+            """.trimIndent()
+        } else {
+            """
+                <style>
+                    img{max-width:100% !important; width:auto; height:auto;}
+                    video{object-fit:fill; max-width:100% !important; width:auto; height:auto;}
+                    body{word-wrap:break-word; height:auto;max-width: 100%; width:auto;}
+                </style>
+                $content
+            """.trimIndent()
         }
     }
 }
@@ -134,19 +194,31 @@ object RssHelp {
  * RSS 正文加载结果 (三态 sealed class)。
  *
  * 供 UI 层 `when` 穷尽分支渲染:
- * - [Content]: 拿到正文 (intro 或 WebBook 拉取的原始 HTML body), 调用方按平台格式化渲染
- * - [Empty]: 无正文规则或内容为空, UI 提示 "无正文规则, 请用浏览器打开"
- * - [Error]: 加载失败, [Error.message] 供 UI 显示; [Error.chapter] 可能为 null (加载章节本身失败时)
+ * - [Content]: 正文 HTML (已 clHtml 包装), WebView `loadDataWithBaseURL(baseUrl, html, ...)`
+ * - [Url]: 无正文规则, WebView `loadUrl(url, headerMap)`
+ * - [Error]: 加载失败, [Error.message] 供 UI 显示
+ *
+ * [chapter] 供 UI 显示标题 + "浏览器打开"; intro 分支与 Error 分支可能为 null。
  */
 sealed class RssContentResult {
-    /** 关联的章节 (供 UI 显示标题 + 浏览器打开 chapter.url; Error 态可能为 null) */
+    /** 关联的章节 (intro 分支与 Error 分支为 null) */
     abstract val chapter: BookChapter?
 
-    /** 正文 (intro 或 WebBook.getContentAwait 返回的原始 HTML body, 非空) */
-    data class Content(val body: String, override val chapter: BookChapter) : RssContentResult()
+    /** 正文 HTML (已 clHtml 包装), 交 WebView loadDataWithBaseURL */
+    data class Content(
+        val html: String,
+        val baseUrl: String,
+        val userAgent: String?,
+        override val chapter: BookChapter?,
+    ) : RssContentResult()
 
-    /** 无正文规则或内容为空 (UI 提示用浏览器打开) */
-    data class Empty(override val chapter: BookChapter) : RssContentResult()
+    /** 无正文规则: WebView 直接 loadUrl(url, headerMap) */
+    data class Url(
+        val url: String,
+        val headerMap: Map<String, String>,
+        val userAgent: String?,
+        override val chapter: BookChapter,
+    ) : RssContentResult()
 
     /** 加载失败 (message 供 UI 显示; chapter 可能为 null) */
     data class Error(val message: String, override val chapter: BookChapter?) : RssContentResult()

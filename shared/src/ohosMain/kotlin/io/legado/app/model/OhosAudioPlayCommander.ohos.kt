@@ -1,5 +1,7 @@
 package io.legado.app.model
 
+import kotlin.concurrent.Volatile
+
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
@@ -9,6 +11,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.NativeBookStorage
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.book.removeType
 import io.legado.app.help.http.KmpRequestBuilder
 import io.legado.app.help.http.OkHttpClientProviders
@@ -31,7 +34,6 @@ import kotlin.coroutines.CoroutineContext
 import io.legado.app.utils.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
@@ -433,7 +435,7 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
     // ===== 下载缓存 (桥仅支持本地 fd 源, 参考 OhosHttpTtsPlayer.downloadToTempFile) =====
 
     private suspend fun downloadToCache(url: String, headers: Map<String, String>): File =
-        withContext(Dispatchers.IO) {
+        withContext(IoDispatcher) {
             val request = KmpRequestBuilder()
                 .url(url)
                 .get()
@@ -441,7 +443,7 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
                     headers.forEach { (name, value) -> addHeader(name, value) }
                 }
                 .build()
-            val response = OkHttpClientProviders.get().newCall(request).execute()
+            val response = OkHttpClientProviders.get().okHttpClient.newCall(request).execute()
             try {
                 if (!response.isSuccessful) {
                     throw IllegalStateException("HTTP ${response.code}: $url")
@@ -475,7 +477,7 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
     // ===== AudioPlayBookBridge (对应 app 端 BookExtensions, 直接走 DAO) =====
 
     override fun saveRead(book: Book) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             runCatching {
                 book.durChapterTime = systemCurrentTimeMillis()
                 AppDbProviders.get().bookDao.updateProgress(
@@ -491,7 +493,7 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
     }
 
     override fun save(book: Book) {
-        scope.launch(Dispatchers.IO) {
+        scope.launch(IoDispatcher) {
             runCatching {
                 book.removeType(BookType.notShelf)
                 val dao = AppDbProviders.get().bookDao
@@ -500,7 +502,7 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
         }
     }
 
-    override suspend fun getBookSource(book: Book): BookSource? = withContext(Dispatchers.IO) {
+    override suspend fun getBookSource(book: Book): BookSource? = withContext(IoDispatcher) {
         runCatching {
             AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
         }.onFailure {

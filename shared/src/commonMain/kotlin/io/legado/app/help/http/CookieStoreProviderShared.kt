@@ -1,5 +1,6 @@
 package io.legado.app.help.http
 
+import io.legado.app.help.http.CookieStoreProviders.get
 import kotlin.concurrent.Volatile
 
 /**
@@ -100,6 +101,17 @@ interface CookieStoreProvider {
      * @return session cookie 字符串, 不存在返回 null
      */
     fun getSessionCookie(domain: String): String?
+
+    /**
+     * 更新会话期 cookie (对应 app 端 `CookieManager.updateSessionCookie`)。
+     *
+     * CookieJarBridge.saveResponse 解析响应 Set-Cookie 后, 会话期 cookie 经此方法写入
+     * CacheManager 内存缓存 (`<domain>_session_cookie`), 与已有 session cookie 合并。
+     *
+     * @param domain 二级域名
+     * @param cookies 会话期 cookie 字符串 ("k1=v1; k2=v2")
+     */
+    fun updateSessionCookie(domain: String, cookies: String)
 
     /**
      * 清除所有 cookie (对应 app 端 `CookieStore.clear`)。

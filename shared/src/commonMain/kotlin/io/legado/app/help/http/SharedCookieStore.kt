@@ -5,6 +5,10 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Cookie
 import io.legado.app.help.CacheManager
 import io.legado.app.help.coroutine.runBlockingInScope
+import io.legado.app.help.http.SharedCookieStore.getCookieNoSession
+import io.legado.app.help.http.SharedCookieStore.getSessionCookie
+import io.legado.app.help.http.SharedCookieStore.removeCookie
+import io.legado.app.help.http.SharedCookieStore.updateSessionCookie
 import io.legado.app.utils.NetworkUtils
 import kotlin.coroutines.EmptyCoroutineContext
 
@@ -85,7 +89,7 @@ object SharedCookieStore : CookieStoreBase(), CookieStoreProvider {
     }
 
     /** 对照 app 端 CookieManager.updateSessionCookie (CookieJar saveResponse 会话分支用)。 */
-    fun updateSessionCookie(domain: String, cookies: String) {
+    override fun updateSessionCookie(domain: String, cookies: String) {
         val cacheKey = "${domain}_session_cookie"
         val sessionCookie = CacheManager.getFromMemory(cacheKey) as? String
         val ck =

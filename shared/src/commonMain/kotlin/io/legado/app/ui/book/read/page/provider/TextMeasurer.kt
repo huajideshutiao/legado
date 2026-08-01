@@ -32,6 +32,12 @@ interface TextMeasurer {
      * 不再持 android.graphics 类型。
      */
     val descent: Float
+
+    /**
+     * ascent（px，基线以上为负）：配合 [descent] 还原真实字体高度
+     * （`descent - ascent` = app 端 `paint.textHeight`，排版行盒高度与行距基准用）。
+     */
+    val ascent: Float
 }
 
 /**

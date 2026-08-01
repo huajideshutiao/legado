@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import io.legado.app.constant.AppLog
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import legado.shared.generated.resources.Res
@@ -18,6 +19,53 @@ import legado.shared.generated.resources.deep_link_type_not_supported
 import legado.shared.generated.resources.import_complete
 import legado.shared.generated.resources.wrong_format
 import org.jetbrains.compose.resources.stringResource
+
+/**
+ * 无"勾选列表"的三型 deep link: 平台优先, 共享实现兜底。
+ * [DeepLinkImportTarget.of] 对这三型返回 null (见其 KDoc), 不再进"不支持"提示分支。
+ */
+private val schemeOnlyTypes = setOf(
+    DeepLinkImportType.ADD_TO_BOOKSHELF,
+    DeepLinkImportType.READ_CONFIG,
+    DeepLinkImportType.UNKNOWN,
+)
+
+/**
+ * 共享兜底实现 (平台 handleDeepLinkImport 返回 false 时走这里)。
+ * - ADD_TO_BOOKSHELF: 直接跳详情页;
+ * - READ_CONFIG: 一步导入完成;
+ * - UNKNOWN: 下载嗅探 —— zip 当排版配置一步完成, JSON 识别出具体类型后转生新请求
+ *   (对照 app 端 determineType 的分流, 转生后 pending 不再是 [req], 本函数不再负责消费)。
+ */
+private suspend fun runSchemeImport(req: DeepLinkImportRequest) {
+    when (req.type) {
+        DeepLinkImportType.ADD_TO_BOOKSHELF -> runCatching { AddToBookshelfShared.add(req.src) }
+            .onFailure {
+                AppLog.put("添加书籍 ${req.src} 出错", it)
+                Toasters.get().toast(it.message ?: "")
+            }
+
+        DeepLinkImportType.READ_CONFIG -> runCatching { SchemeImportOps.importReadConfig(req.src) }
+            .onSuccess { Toasters.get().toast("导入排版成功: $it") }
+            .onFailure { Toasters.get().toast(it.message ?: "导入排版失败") }
+
+        DeepLinkImportType.UNKNOWN -> runCatching { SchemeImportOps.determineType(req.src) }
+            .onSuccess { result ->
+                when (result) {
+                    is SchemeImportOps.DetermineResult.ReadConfig ->
+                        Toasters.get().toast("导入排版成功: ${result.configName}")
+
+                    is SchemeImportOps.DetermineResult.Json ->
+                        LegadoDeepLinkHandler.handleResolved(
+                            DeepLinkImportRequest(result.type, result.json)
+                        )
+                }
+            }
+            .onFailure { Toasters.get().toast(it.message ?: "格式不对") }
+
+        else -> Unit
+    }
+}
 
 /**
  * legado:// deep link 导入宿主 (iOS/鸿蒙共用, 对照 desktop `DesktopDeepLinkImportHost`,
@@ -52,23 +100,50 @@ fun DeepLinkImportHost() {
     }
 }
 
-/** 单条 deep link 请求的导入流程 (VM 生命周期与请求同寿, 请求变化时整块重建)。 */
+/**
+ * 单条 deep link 请求的导入流程 (VM 生命周期与请求同寿, 请求变化时整块重建)。
+ *
+ * [DeepLinkImportType.ADD_TO_BOOKSHELF] / [DeepLinkImportType.READ_CONFIG] /
+ * [DeepLinkImportType.UNKNOWN] 三型无"勾选列表"环节, 在进入 [DeepLinkImportTarget.of] 之前先分流
+ * (对照 app 端 `FileAssociationFragment.handleOnLineImport` 的 `/addToBookshelf` / `/readConfig` / else 分支)。
+ *
+ * 分流时优先让平台自己处理 ([io.legado.app.ui.root.PlatformCapabilities.handleDeepLinkImport]):
+ * Android 端有 WaitDialog 与 alert 结果弹窗, 比共享实现的 toast 细致, 不能被这里抢掉;
+ * 平台没接 (desktop/iOS/鸿蒙返回 false) 才走 [SchemeImportOps] 的共享实现。
+ */
 @Composable
 private fun DeepLinkImportContent(
     req: DeepLinkImportRequest,
     onImported: (selectCount: Int) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+
+    if (req.type in schemeOnlyTypes) {
+        LaunchedEffect(req) {
+            val handled = PlatformCapabilityProviders.getOrNull()
+                ?.handleDeepLinkImport(req.type.name, req.src) == true
+            if (!handled) runSchemeImport(req)
+            // JSON 嗅探分支会把 pending 换成新请求, 此时不能再 consume (否则刚升级的请求被清掉)
+            if (LegadoDeepLinkHandler.pending.value == req) {
+                LegadoDeepLinkHandler.consume()
+            }
+        }
+        return
+    }
+
     // 每条请求新建 VM (避免 success/error state 残留, 与各 Screen 网络导入一致)
     val target = remember(req) { DeepLinkImportTarget.of(req.type, scope) }
 
     if (target == null) {
-        // ADD_TO_BOOKSHELF / READ_CONFIG / UNKNOWN: 依赖未下沉 (详见 DeepLinkImportTarget KDoc)
         val notSupportedText =
             stringResource(Res.string.deep_link_type_not_supported, req.type.name)
         LaunchedEffect(req) {
-            Toasters.get().toast(notSupportedText)
-            AppLog.put("legado:// 导入类型暂未支持: type=${req.type} src=${req.src}")
+            val handled = PlatformCapabilityProviders.getOrNull()
+                ?.handleDeepLinkImport(req.type.name, req.src) == true
+            if (!handled) {
+                Toasters.get().toast(notSupportedText)
+                AppLog.put("legado:// 导入类型暂未支持: type=" + req.type + " src=" + req.src)
+            }
             LegadoDeepLinkHandler.consume()
         }
         return

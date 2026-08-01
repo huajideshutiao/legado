@@ -10,6 +10,9 @@ import io.legado.app.utils.formatNative
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonObject
 import kotlinx.coroutines.runBlocking
+import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.serialization.decodeFromString
 import kotlin.coroutines.CoroutineContext
 
@@ -36,7 +39,7 @@ object NativeQuickJsSharedJsScopeProvider : SharedJsScopeProvider {
     private class CtxEntry(val scope: NativeJsScope, val version: Long)
 
     /** 全局源码缓存 (对应 app/desktop bytecodeCache), synchronized(sourceLock) 保护。 */
-    private val sourceLock = Any()
+    private val sourceLock = SynchronizedObject()
     private val sourceCache = HashMap<String, SourceEntry>()
     private var versionSeq = 0L
 
@@ -44,7 +47,7 @@ object NativeQuickJsSharedJsScopeProvider : SharedJsScopeProvider {
     private val jsLibContentCache = HashMap<String, String>()
 
     /** 每线程 ctx 级 LRU 缓存 (ThreadLocal 线程独占, 与 NativeJsEngine.threadLocalScope 同机制)。 */
-    private val threadCache: ThreadLocal<LruScopeCache?> = ThreadLocal()
+    private val threadCache = atomic<LruScopeCache?>(null)
 
     override fun getScope(
         jsLib: String?,

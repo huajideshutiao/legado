@@ -1,7 +1,7 @@
 package io.legado.app.help.sync
 
 import io.legado.app.constant.AppLog
-import io.legado.app.data.AppDatabaseProviders
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.help.config.AppConfigProviders
@@ -88,7 +88,7 @@ object IosICloudProgressSync {
         if (!IosICloud.enabled) return
         if (!runCatching { AppConfigProviders.get().syncBookProgress }.getOrDefault(false)) return
         store.synchronize()
-        AppDatabaseProviders.get().appDb.bookDao.all().forEach { book ->
+        AppDbProviders.get().bookDao.all().forEach { book ->
             applyRemoteProgress(book.bookUrl, getBookProgress(book))
         }
     }
@@ -126,7 +126,7 @@ object IosICloudProgressSync {
         if (!IosICloud.enabled) return
         if (!runCatching { AppConfigProviders.get().syncBookProgress }.getOrDefault(false)) return
         runCatching {
-            AppDatabaseProviders.get().appDb.bookDao.all().forEach { book ->
+            AppDbProviders.get().bookDao.all().forEach { book ->
                 if (progressKey(book.name, book.author) !in changedKeys) return@forEach
                 applyRemoteProgress(book.bookUrl, getBookProgress(book))
             }
@@ -143,7 +143,7 @@ object IosICloudProgressSync {
      */
     private suspend fun applyRemoteProgress(bookUrl: String, progress: BookProgress?) {
         progress ?: return
-        val dao = AppDatabaseProviders.get().appDb.bookDao
+        val dao = AppDbProviders.get().bookDao
         val book = dao.getBook(bookUrl) ?: return
         if (progress.durChapterTime <= book.durChapterTime) return
         val ahead = progress.durChapterIndex > book.durChapterIndex ||

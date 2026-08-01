@@ -5,13 +5,13 @@ import androidx.compose.ui.Modifier
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.IntentData
-import io.legado.app.constant.PreferKey
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.migrateTo
 import io.legado.app.help.book.removeType
@@ -22,7 +22,9 @@ import io.legado.app.ui.book.manga.entities.BaseMangaPage
 import io.legado.app.ui.book.read.config.ClickActionConfig
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.utils.FlowBus
-import kotlin.concurrent.Volatile
+import io.legado.app.utils.format
+import io.legado.app.utils.formatTimeOfDay
+import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -31,16 +33,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import io.legado.app.utils.formatTimeOfDay
-import io.legado.app.utils.systemCurrentTimeMillis
-import io.legado.app.utils.format
+import kotlin.concurrent.Volatile
 
 /**
  * 漫画阅读页 shared ScreenModel: 适配 [MangaReaderViewModelShared] 各 StateFlow
@@ -169,6 +169,7 @@ class MangaReaderScreenModel : ScreenModel {
     )
     val state: StateFlow<MangaReaderUiState> = _state.asStateFlow()
     val currentBook: Book? get() = shared.book.value
+    val currentChapter: BookChapter? get() = shared.durChapter.value
     val currentSource get() = shared.bookSource.value
     val platformRenderer: Platform? get() = platform
     val readerConfig: MangaReaderConfig get() = platform?.config ?: MangaReaderConfig.DEFAULT

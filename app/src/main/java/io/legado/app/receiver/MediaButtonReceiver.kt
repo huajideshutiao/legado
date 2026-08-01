@@ -13,8 +13,8 @@ import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.service.AudioPlayService
 import io.legado.app.service.BaseReadAloudService
-import io.legado.app.ui.book.audio.AudioPlayActivity
-import io.legado.app.ui.book.read.ReadBookActivity
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppRoute
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.postEvent
 import kotlinx.coroutines.runBlocking
@@ -113,10 +113,8 @@ class MediaButtonReceiver : BroadcastReceiver() {
                     // break
                 }
 
-                LifecycleHelp.isExistActivity(ReadBookActivity::class.java) ->
-                    postEvent(EventBus.MEDIA_BUTTON, true)
-
-                LifecycleHelp.isExistActivity(AudioPlayActivity::class.java) ->
+                // AudioPlay 已下沉为共享路由, 栈顶为该路由时由页面响应媒体键事件
+                AppNavigatorProviders.getOrNull()?.currentRoute is AppRoute.AudioPlay ->
                     postEvent(EventBus.MEDIA_BUTTON, true)
 
                 else -> if (AppConfig.mediaButtonOnExit || LifecycleHelp.activitySize() > 0 || !isMediaKey) {

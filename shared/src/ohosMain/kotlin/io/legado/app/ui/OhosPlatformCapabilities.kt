@@ -9,19 +9,18 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.LocalConfigKeys
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.copyToClipboard as copyTextToClipboard
 import io.legado.app.help.openURL
 import io.legado.app.help.source.OhosCheckSource
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.Debug
-import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.PlatformServiceProviders
-import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.File
 import io.legado.app.utils.FlowBus
@@ -29,7 +28,6 @@ import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
 import io.legado.app.web.WebServerManager
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,7 +40,7 @@ import kotlinx.coroutines.withContext
  * 鸿蒙端尚无命令式对话框宿主, 需先补 Compose 对话框层。
  */
 object OhosPlatformCapabilities : PlatformCapabilities {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + IoDispatcher)
 
     private val appDb get() = AppDbProviders.get()
     private val prefs get() = PreferenceProviders.get()
@@ -147,7 +145,13 @@ object OhosPlatformCapabilities : PlatformCapabilities {
     }
 
     // 上架/下架 (对照 desktop toggleBookshelf, 无删除确认弹窗)
-    override fun toggleBookshelf(book: Book, inBookshelf: Boolean, onComplete: (Boolean?) -> Unit) {
+    override fun toggleBookshelf(
+        book: Book,
+        inBookshelf: Boolean,
+        onComplete: (Boolean?) -> Unit,
+        onWaitDialog: (Boolean) -> Unit,
+        onAction: (String) -> Unit,
+    ) {
         scope.launch {
             runCatching {
                 if (inBookshelf) {
@@ -173,7 +177,7 @@ object OhosPlatformCapabilities : PlatformCapabilities {
     }
 
     // 本地书文件字节数 (bookUrl 形如 file:///path, 鸿蒙沙盒为 POSIX 路径, 去 scheme 即可)
-    override suspend fun localBookFileSize(bookUrl: String): Long = withContext(Dispatchers.IO) {
+    override suspend fun localBookFileSize(bookUrl: String): Long = withContext(IoDispatcher) {
         runCatching { File(bookUrl.removePrefix("file://")).length() }.getOrDefault(0L)
     }
 
@@ -275,12 +279,9 @@ object OhosPlatformCapabilities : PlatformCapabilities {
 
     // ===== 文件关联 =====
 
+    // 完整分发链 (压缩包/JSON 一键导入/书籍文件) 见 NativeFileAssociationDispatch, 与 iOS 共用
     override fun openImportFile(filePath: String) {
-        scope.launch {
-            runCatching { FileBook.importLocalFile(filePath) }
-                .onSuccess { AppNavigatorProviders.getOrNull()?.push(it.toReadRoute()) }
-                .onFailure { error -> AppLog.put("导入关联书籍失败: ${error.message}", error) }
-        }
+        scope.launch { NativeFileAssociationDispatch.dispatch(filePath) }
     }
 
     // ===== 私有辅助 =====

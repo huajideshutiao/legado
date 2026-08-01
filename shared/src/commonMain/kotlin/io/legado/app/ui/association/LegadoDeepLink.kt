@@ -1,5 +1,9 @@
 package io.legado.app.ui.association
 
+import io.legado.app.ui.association.LegadoDeepLink.parse
+import io.legado.app.ui.association.LegadoDeepLinkHandler.consume
+import io.legado.app.ui.association.LegadoDeepLinkHandler.handle
+import io.legado.app.ui.association.LegadoDeepLinkHandler.pending
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -199,5 +203,18 @@ object LegadoDeepLinkHandler {
     /** 消费完成 (导入对话框关闭) 后清空待处理请求。 */
     fun consume() {
         _pending.value = null
+    }
+
+    /**
+     * 用已解析出具体类型的请求替换当前待处理请求 (对照 app 端 `determineType` 内嗅探出
+     * JSON 类型后直接 `showImportDialog(...)`, 不再是"未识别 path"了)。
+     *
+     * 供 [io.legado.app.ui.association.SchemeImportOps.determineType] 嗅探 UNKNOWN 类型的
+     * 下载内容后, 把 `DeepLinkImportType.UNKNOWN` 请求"升级"为具体类型请求 (`src` 直接是
+     * 已下载的 JSON 文本, 而非再次触发下载的 URL —— Import*ViewModelShared 的
+     * `importSource`/`import` 均接受纯 JSON 文本, 与接受 URL 是同一入口)。
+     */
+    fun handleResolved(request: DeepLinkImportRequest) {
+        _pending.value = request
     }
 }

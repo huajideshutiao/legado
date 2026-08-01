@@ -98,6 +98,12 @@ object WebBookProvidersImpl :
     // AllBookmarkViewModelShared / TocViewModel.saveBookmark 用 (书签导出/保存)
     override val bookmarkDao get() = appDb.bookmarkDao
 
+    // SearchViewModel 用 (搜索历史)
+    override val searchKeywordDao get() = appDb.searchKeywordDao
+
+    // KeyboardToolbar / 备份恢复用 (键盘助手)
+    override val keyboardAssistsDao get() = appDb.keyboardAssistsDao
+
     // ---- AppDbAccessor 事务 ----
     // suspend 版本走 Room 真事务: useWriterConnection 把写连接放进协程上下文,
     // block 内的 suspend DAO 复用同一连接; immediateTransaction 对应 BEGIN IMMEDIATE, 异常自动回滚。
@@ -252,11 +258,19 @@ object WebBookProvidersImpl :
     // ---- Web 服务 / 其他 ----
     override val webPort: Int get() = AppConfig.webPort
     override val bitmapCacheSize: Int get() = AppConfig.bitmapCacheSize
+
+    // ImageProvider 下沉新增: 持久化 bitmapCacheSize (原 AppConfig.bitmapCacheSize = value)
+    override fun setBitmapCacheSize(value: Int) {
+        AppConfig.bitmapCacheSize = value
+    }
     override val sourceEditMaxLine: Int get() = AppConfig.sourceEditMaxLine
     override val welcomeShowTime: Int get() = AppConfig.welcomeShowTime
 
     // 书籍详情页横向布局开关, BookInfoRoute 计算 useDevFeat 用
     override val bookInfoHorizontalLayout: Boolean get() = AppConfig.bookInfoHorizontalLayout
+
+    // 开发者功能开关, SearchRoute/MainRoute/ExploreShowRoute 按书籍类型分流用
+    override val devFeat: Boolean get() = AppConfig.devFeat
 
     // ---- ContentProcessorAccessor ----
     override fun getTitleReplaceRules(
@@ -334,6 +348,28 @@ object WebBookProvidersImpl :
         book: io.legado.app.data.entities.Book,
         bookChapter: io.legado.app.data.entities.BookChapter
     ): Boolean = BookHelp.hasImageContent(book, bookChapter)
+
+    // ImageProvider 下沉新增: 图片缓存文件路径 (委托 BookHelp.getImage)
+    override fun getImage(
+        book: io.legado.app.data.entities.Book,
+        src: String
+    ): java.io.File = BookHelp.getImage(book, src)
+
+    // ImageProvider 下沉新增: 图片是否已缓存 (委托 BookHelp.isImageExist)
+    override fun isImageExist(
+        book: io.legado.app.data.entities.Book,
+        src: String
+    ): Boolean = BookHelp.isImageExist(book, src)
+
+    // ImageProvider 下沉新增: 下载保存单张图片 (委托 BookHelp.saveImage)
+    override suspend fun saveImage(
+        bookSource: io.legado.app.data.entities.BookSource?,
+        book: io.legado.app.data.entities.Book,
+        src: String,
+        chapter: io.legado.app.data.entities.BookChapter?
+    ) {
+        BookHelp.saveImage(bookSource, book, src, chapter)
+    }
 
     // CacheBookShared 下沉新增: 读取已缓存正文 (委托 BookHelp.getContent, 与 BookStorage 等价)
     override fun getContent(

@@ -4,12 +4,14 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.service.ExportBookDeps
+import io.legado.app.service.ExportBookEpubShared
 import io.legado.app.service.ExportBookShared
 import io.legado.app.service.ExportFileHandle
 import io.legado.app.ui.compose.platform.jvmGetString
@@ -43,6 +45,28 @@ private object DesktopExportBookDeps : ExportBookDeps {
     override val exportNoChapterName: Boolean get() = prefs.getBoolean(PreferKey.exportNoChapterName, false)
 
     override fun getExportFileName(book: Book, suffix: String): String = book.getExportFileName(suffix)
+
+    override fun getExportFileName(book: Book, suffix: String, index: Int): String =
+        book.getExportFileName(suffix, index)
+
+    override suspend fun getCoverImageBytes(book: Book): ByteArray? = null
+
+    override fun getBuiltinAsset(assetPath: String): ByteArray =
+        javaClass.classLoader.getResourceAsStream(assetPath)?.use { it.readBytes() }
+            ?: File("app/src/main/assets", assetPath).takeIf { it.isFile }?.readBytes()
+            ?: error("内置 EPUB 资源不存在: " + assetPath)
+
+    override fun listTemplateFiles(dirPath: String): List<ExportBookEpubShared.TemplateFileInfo>? {
+        val assetDir = File(dirPath, "Asset").takeIf { it.isDirectory } ?: return null
+        return assetDir.listFiles()?.map { it.toTemplateFileInfo() } ?: emptyList()
+    }
+
+    override fun getTitleReplaceRules(book: Book): List<ReplaceRule> =
+        ContentProcessorProviders.get().getTitleReplaceRules(book)
+
+    override fun strImgCover(): String = jvmGetString("img_cover")
+
+    override fun strBookIntro(): String = jvmGetString("book_intro")
 
     override fun prepareExportFile(dirPath: String, filename: String): ExportFileHandle {
         val dir = File(dirPath).apply { mkdirs() }
@@ -90,4 +114,17 @@ private object DesktopExportBookDeps : ExportBookDeps {
         chineseConvert = chineseConvert,
         reSegment = reSegment,
     ).textList.joinToString("\n")
+
+    private fun File.toTemplateFileInfo(): ExportBookEpubShared.TemplateFileInfo =
+        ExportBookEpubShared.TemplateFileInfo(
+            name = name,
+            isDir = isDirectory,
+            children = if (isDirectory) {
+                listFiles()?.map { it.toTemplateFileInfo() } ?: emptyList()
+            } else {
+                emptyList()
+            },
+            readText = { readText() },
+            readBytes = { readBytes() },
+        )
 }

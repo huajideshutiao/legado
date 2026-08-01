@@ -152,7 +152,7 @@ fun SourceFilterEditDialog(
 
     Surface(
         shape = DesignTokens.dialogShape,
-        color = colors.background,
+        color = colors.fillet,
         modifier = Modifier.fillMaxWidth().padding(8.dp),
     ) {
         Column(Modifier.fillMaxWidth()) {

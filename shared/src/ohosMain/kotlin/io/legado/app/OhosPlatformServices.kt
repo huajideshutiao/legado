@@ -10,6 +10,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.ui.OhosPlatformCapabilities
 import io.legado.app.ui.root.BrowserService
+import io.legado.app.ui.root.CrashLogProvider
 import io.legado.app.ui.root.ExternalRequestService
 import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.FilePickerService
@@ -173,6 +174,16 @@ object OhosPlatformServices : PlatformServices {
 
         // 实际处理由 LegadoApp 经 LaunchRequestBus 消费 (对照 Android 端同为 false)
         override fun handleLaunchRequest(request: LaunchRequest): Boolean = false
+    }
+
+    override val crashLogs: CrashLogProvider = object : CrashLogProvider {
+        override suspend fun loadCrashLogs(): List<CrashLogProvider.CrashLogEntry> = emptyList()
+
+        override suspend fun readCrashLog(name: String): String? = null
+
+        override suspend fun clearCrashLogs() = Unit
+
+        override fun shareCrashLog(name: String) = Unit
     }
 }
 

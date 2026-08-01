@@ -50,6 +50,7 @@ import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.toRouteRef
+import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.systemCurrentTimeMillis
@@ -193,7 +194,24 @@ fun BookInfoRoute(
         override fun onReadClick() {
             val b = state.book ?: book
             if (b.isWebFile) {
-                PlatformCapabilityProviders.getOrNull()?.handleWebFileRead(b)
+                // webFile: 下载导入后跳阅读 (对照 onReadClick isWebFile + readBook)
+                PlatformCapabilityProviders.getOrNull()?.handleWebFileRead(
+                    b,
+                    onWaitDialog = { screenModel.upWaitDialog(it) },
+                    onAction = { screenModel.postAction(it) },
+                    onSuccess = { navBook ->
+                        scope.launch {
+                            screenModel.dispatch(
+                                BookInfoUiEvent.ShowBook(
+                                    navBook,
+                                    screenModel.lastedTitleOf(navBook)
+                                )
+                            )
+                        }
+                        screenModel.dispatch(BookInfoUiEvent.UpdateBookshelf(true))
+                        navigator.push(AppRoute.Reader(navBook.toRouteRef()), RouteResults.READER)
+                    }
+                )
                 return
             }
             if (!state.inBookshelf) {
@@ -287,8 +305,9 @@ fun BookInfoRoute(
             navigator.push(AppRoute.Login(source?.getKey() ?: b.origin, dataKey))
         }
 
-        // 评论: 跳转书评列表页
+        // 评论: Android 恢复原版 BottomSheet 对话框 (全功能交互+提交), 其余平台回退共享列表页
         override fun onOpenCommentDialog() {
+            if (PlatformCapabilityProviders.get().showReviewListDialog(book, null, -1)) return
             navigator.push(AppRoute.ReviewList(book.toRouteRef()))
         }
 
@@ -377,10 +396,15 @@ fun BookInfoRoute(
         override fun onShelfClick() {
             val b = state.book ?: book
             PlatformCapabilityProviders.getOrNull()
-                ?.toggleBookshelf(b, state.inBookshelf) { result ->
-                    if (result == null) navigator.pop(RouteResultPayload.Deleted)
-                    else screenModel.dispatch(BookInfoUiEvent.UpdateBookshelf(result))
-                }
+                ?.toggleBookshelf(
+                    b, state.inBookshelf,
+                    onComplete = { result ->
+                        if (result == null) navigator.pop(RouteResultPayload.Deleted)
+                        else screenModel.dispatch(BookInfoUiEvent.UpdateBookshelf(result))
+                    },
+                    onWaitDialog = { screenModel.upWaitDialog(it) },
+                    onAction = { screenModel.postAction(it) },
+                )
         }
 
         // 搜索作者: :: 探索需 BookSource, 加载后跳 ExploreShow; 普通搜索跳 Search
@@ -544,9 +568,11 @@ fun BookInfoRoute(
                             // 未选章节且不在书架: 删书 (对照 app 端 viewModel.delBook)
                             PlatformCapabilityProviders.getOrNull()
                                 ?.toggleBookshelf(
-                                    b,
-                                    false
-                                ) { navigator.pop(RouteResultPayload.Deleted) }
+                                    b, false,
+                                    onComplete = { navigator.pop(RouteResultPayload.Deleted) },
+                                    onWaitDialog = { screenModel.upWaitDialog(it) },
+                                    onAction = { screenModel.postAction(it) },
+                                )
                         }
                     }
             }
@@ -625,5 +651,12 @@ fun BookInfoRoute(
         introImageSlot = { src, onClick ->
             introImageSlot(src, onClick)
         },
+    )
+
+    // 等待对话框 (对照 app 端 BookInfoActivity.upWaitDialogStatus, webFile 流程加载指示)
+    val waitDialogVisible by screenModel.waitDialog.collectAsState()
+    WaitDialog(
+        visible = waitDialogVisible == true,
+        onDismissRequest = { screenModel.upWaitDialog(false) },
     )
 }

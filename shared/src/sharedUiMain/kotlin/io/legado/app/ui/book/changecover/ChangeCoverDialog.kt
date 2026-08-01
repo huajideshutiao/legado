@@ -124,7 +124,7 @@ fun ChangeCoverDialog(
         // 全高型: 高度锁定 0.8 屏高
         Surface(
             shape = DesignTokens.dialogShape,
-            color = colors.background,
+            color = colors.fillet,
             modifier = Modifier.appDialogSize(fullHeight = true),
         ) {
             Column(Modifier.fillMaxSize()) {

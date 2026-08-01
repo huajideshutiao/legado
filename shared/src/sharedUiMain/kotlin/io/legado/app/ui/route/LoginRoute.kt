@@ -19,6 +19,8 @@ import io.legado.app.ui.book.source.LoginUiActions
 import io.legado.app.ui.book.source.LoginUiEvent
 import io.legado.app.ui.book.source.SourceLoginDialog
 import io.legado.app.ui.browser.LocalWebViewSlot
+import io.legado.app.ui.browser.WebViewCallbacks
+import io.legado.app.ui.browser.WebViewConfig
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
@@ -123,7 +125,13 @@ fun LoginRoute(
         else -> LoginScreen(
             state = state,
             actions = actions,
-            platformWebViewSlot = { url -> LocalWebViewSlot.current(url, Modifier.fillMaxSize()) },
+            platformWebViewSlot = { url ->
+                LocalWebViewSlot.current(
+                    WebViewConfig(url = url),
+                    Modifier.fillMaxSize(),
+                    WebViewCallbacks(),
+                )
+            },
             webViewReloadKey = webViewReloadKey,
         )
     }

@@ -41,5 +41,6 @@ object EventBus {
     const val STOP_UP_BOOK = "stopUpBook"
     const val HOME_TAB = "homeTab"
     const val HOME_SECTION = "homeSection"
+    const val DEFAULT_COVER_CHANGED = "defaultCoverChanged"
     const val SOURCE_UI_REQUEST = "sourceUiRequest"
 }

@@ -1,238 +1,226 @@
 package io.legado.app.ui.book.read.review
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.Card
-import androidx.compose.material.CircularProgressIndicator
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.snapshotFlow
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Review
+import io.legado.app.help.image.BookImageLoaders
+import io.legado.app.ui.book.read.InputBar
+import io.legado.app.ui.book.read.ReviewListBody
+import io.legado.app.ui.book.read.ReviewListLoadMoreEffect
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.rememberColor
-import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.platform.rememberPainter
 import legado.shared.generated.resources.Res
-import legado.shared.generated.resources.bottom_line
-import legado.shared.generated.resources.empty
 import legado.shared.generated.resources.review
-import legado.shared.generated.resources.review_post_hint
 import org.jetbrains.compose.resources.stringResource
 
 /**
  * 书评列表页 shared Screen (KMP 共享)。
  *
- * 对照 app 端 ReviewListDialog (BottomSheetDialogFragment), 简化为 Screen 形态:
- * - 顶部标题栏 (AppTitleBar, 返回按钮 + "评论" 标题)
- * - LazyColumn 评论项 (Card + Text 基本布局)
- * - 翻到底触发 [onLoadMore] 翻页 (snapshotFlow, 对照原 OnScrollListener)
- * - 底部发布评论入口 (点击触发 [onPostClick])
- *
- * 简化项 (待后续下沉): 点赞/点踩/回复/删除/排序/展开折叠/头像与配图渲染槽。
+ * 列表主体 (排序头 / 单条评论 / 点赞点踩 / 展开折叠 / 菜单删除 / 回复入口 / footer) 与底部输入栏
+ * 全部复用 app 原版下沉的 [ReviewListBody] + [InputBar],
+ * 本 Screen 只提供整页外壳 (AppTitleBar + 返回), 与 BottomSheet 形态的
+ * [io.legado.app.ui.book.read.ReviewListDialog] 共用同一套 item 渲染。
  *
  * @param state 列表状态
- * @param onBack 返回
- * @param onPostClick 点击底部发布入口
- * @param onLoadMore 翻到底加载更多
+ * @param actions 用户交互回调
  */
 @Composable
 fun ReviewListScreen(
     state: ReviewListUiState,
-    onBack: () -> Unit,
-    onPostClick: () -> Unit,
-    onLoadMore: () -> Unit,
+    actions: ReviewListUiActions,
 ) {
     val listState = rememberLazyListState()
-    // rememberUpdatedState: LaunchedEffect 内读最新值, 避免捕获过期闭包
-    val reviewsRef = rememberUpdatedState(state.reviews)
-    val footerHasMoreRef = rememberUpdatedState(state.footerHasMore)
-    val footerLoadingRef = rememberUpdatedState(state.footerLoading)
-    val onLoadMoreRef = rememberUpdatedState(onLoadMore)
 
-    // 翻到底触发 loadMore, 对照原 OnScrollListener
-    LaunchedEffect(listState) {
-        snapshotFlow {
-            val info = listState.layoutInfo
-            val atEnd = info.totalItemsCount > 0 &&
-                info.visibleItemsInfo.lastOrNull()?.index == info.totalItemsCount - 1
-            atEnd to info.totalItemsCount
-        }.collect { (atEnd, _) ->
-            if (atEnd && reviewsRef.value.isNotEmpty() &&
-                footerHasMoreRef.value && !footerLoadingRef.value
-            ) {
-                onLoadMoreRef.value()
-            }
-        }
-    }
+    ReviewListLoadMoreEffect(
+        listState = listState,
+        reviews = state.reviews,
+        footerHasMore = state.footerHasMore,
+        footerLoading = state.footerLoading,
+        onLoadMore = actions::onLoadMore,
+    )
 
-    Column(Modifier.fillMaxSize()) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(rememberColor("background"))
+    ) {
         AppTitleBar(
             title = stringResource(Res.string.review),
-            onBack = onBack,
+            onBack = actions::onBack,
         )
-        Box(
-            Modifier
+        ReviewListBody(
+            listState = listState,
+            // 整页路由仅书评列表模式 (无楼主原评论)
+            parentReview = null,
+            listTitleText = state.listTitleText,
+            repliesTitleText = "",
+            reviews = state.reviews,
+            sortState = state.sortState,
+            footerLoading = state.footerLoading,
+            footerHasMore = state.footerHasMore,
+            expandedKeys = state.expandedKeys,
+            votedIds = state.votedIds,
+            votedDownIds = state.votedDownIds,
+            onLoadMore = actions::onLoadMore,
+            onChangeSort = actions::onChangeSort,
+            onReviewClick = actions::onReviewClick,
+            onReviewLongClick = actions::onReviewLongClick,
+            onToggleExpand = actions::onToggleExpand,
+            onVoteUp = actions::onVoteUp,
+            onVoteDown = actions::onVoteDown,
+            onDeleteClick = actions::onDeleteClick,
+            onOpenReplies = actions::onOpenReplies,
+            onAvatarClick = actions::onAvatarClick,
+            onImageClick = actions::onImageClick,
+            avatarSlot = { url, modifier -> SharedReviewAvatar(url, modifier) },
+            imageSlot = { url, modifier -> SharedReviewImage(url, modifier) },
+            modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth()
-        ) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(vertical = 8.dp),
-            ) {
-                items(state.reviews) { review ->
-                    ReviewCard(review)
-                }
-                item { ReviewListFooter(state) }
-            }
-            // 首屏 loading / 空态 / 错误 覆盖层
-            when {
-                state.loading && state.reviews.isEmpty() -> Box(
-                    Modifier.fillMaxSize(), contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = AppTheme.colors.accent)
-                }
-
-                state.error != null && state.reviews.isEmpty() -> Box(
-                    Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = state.error,
-                        color = rememberColor("primaryText"),
-                        fontSize = 14.sp,
-                    )
-                }
-
-                !state.loading && state.reviews.isEmpty() && state.error == null -> Box(
-                    Modifier.fillMaxSize(), contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = stringResource(Res.string.empty),
-                        color = rememberColor("primaryText"),
-                        fontSize = 14.sp,
-                    )
-                }
-            }
-        }
-        PostEntryBar(onPostClick)
+                .fillMaxWidth(),
+        )
+        InputBar(state.inputHint, actions::onPostClick)
     }
 }
 
-/** 单条评论: Card + Text 基本布局 (昵称/时间/正文/点赞数) */
+/**
+ * 头像渲染槽默认实现: 走 [BookImageLoaders] 加载, 未注册/失败时回退圆形占位图。
+ *
+ * 对照 app 端 Coil3 `iv.load(url) { placeholder(ic_bottom_person); error(ic_bottom_person) }`;
+ * 鸿蒙未注册 loader 时恒走占位 (模式同 [io.legado.app.ui.book.info.SharedIntroImage])。
+ */
 @Composable
-private fun ReviewCard(review: Review) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
-        backgroundColor = rememberColor("background_card"),
-    ) {
-        Column(Modifier.padding(12.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = review.name.orEmpty(),
-                    color = rememberColor("primaryText"),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    text = review.postTime.orEmpty(),
-                    color = rememberColor("secondaryText"),
-                    fontSize = 12.sp,
-                )
-            }
-            Text(
-                text = review.content,
-                color = rememberColor("primaryText"),
-                fontSize = 15.sp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-            )
-            if (review.voteUpCount > 0) {
-                Text(
-                    text = "${review.voteUpCount}",
-                    color = rememberColor("secondaryText"),
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-        }
+fun SharedReviewAvatar(url: String?, modifier: Modifier) {
+    val loader = remember { BookImageLoaders.getOrNull() }
+    var bitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(url, loader) {
+        if (url.isNullOrBlank() || loader == null) return@LaunchedEffect
+        bitmap = loader.loadImageOrNull(url = url, sourceOrigin = null)
     }
-}
-
-/** 列表底部: 翻页 loading / 无更多 */
-@Composable
-private fun ReviewListFooter(state: ReviewListUiState) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = 52.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        when {
-            state.footerLoading -> CircularProgressIndicator(
-                color = AppTheme.colors.accent,
-                strokeWidth = 2.dp,
-                modifier = Modifier
-                    .padding(8.dp)
-                    .size(36.dp),
-            )
-
-            !state.footerHasMore && state.reviews.isNotEmpty() -> Text(
-                text = stringResource(Res.string.bottom_line),
-                color = rememberColor("secondaryText"),
-                fontSize = 14.sp,
-            )
-        }
-    }
-}
-
-/** 底部发布评论入口 (点击触发回调, 输入面板由调用方实现) */
-@Composable
-private fun PostEntryBar(onPostClick: () -> Unit) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .heightIn(min = 40.dp)
-            .background(rememberColor("background_card"))
-            .clickable { onPostClick() }
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Text(
-            text = stringResource(Res.string.review_post_hint),
-            color = rememberColor("secondaryText"),
-            fontSize = 14.sp,
-            maxLines = 1,
+    val bmp = bitmap
+    if (bmp != null) {
+        Image(
+            bitmap = bmp,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = modifier,
+        )
+    } else {
+        // 占位: 与 app 端 placeholder/error 同一张人像图 (调用方 modifier 已带 CircleShape 裁剪)
+        Image(
+            painter = rememberPainter("ic_bottom_person_e"),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = modifier,
         )
     }
+}
+
+/**
+ * 配图渲染槽默认实现: 走 [BookImageLoaders] 加载, 未注册/失败时回退浅灰占位。
+ *
+ * 对照 app 端 `iv.load(url) { size(120dp) }` + FIT_CENTER。
+ */
+@Composable
+fun SharedReviewImage(url: String, modifier: Modifier) {
+    val loader = remember { BookImageLoaders.getOrNull() }
+    var bitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
+    // 按 120dp 目标尺寸降采样 (对照 app 端 size(120.dpToPx()))
+    val sizePx = with(LocalDensity.current) { 120.dp.roundToPx() }
+    LaunchedEffect(url, loader, sizePx) {
+        if (url.isBlank() || loader == null) return@LaunchedEffect
+        bitmap = loader.loadImageOrNull(
+            url = url,
+            sourceOrigin = null,
+            widthPx = sizePx,
+            heightPx = sizePx,
+        )
+    }
+    val bmp = bitmap
+    if (bmp != null) {
+        Image(
+            bitmap = bmp,
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = modifier,
+        )
+    } else {
+        Box(modifier.background(rememberColor("background_card")))
+    }
+}
+
+/** 评论列表页 UI 状态 (immutable)。 */
+data class ReviewListUiState(
+    val reviews: List<Review> = emptyList(),
+    /** footer 转圈 (对照 app 原版 footerLoading = vm.loading) */
+    val footerLoading: Boolean = true,
+    val footerHasMore: Boolean = true,
+    /** 排序 0=最热 1=最新 */
+    val sortState: Int = 0,
+    val expandedKeys: Set<String> = emptySet(),
+    val votedIds: Set<String> = emptySet(),
+    val votedDownIds: Set<String> = emptySet(),
+    /** "全部评论 · N"; 书源未配总数规则时为空 */
+    val listTitleText: String = "",
+    /** 底部输入栏提示 */
+    val inputHint: String = "",
+)
+
+/** 评论列表页用户交互回调 (对照 app 原版 ReviewListDialog 的各 onXxx)。 */
+interface ReviewListUiActions {
+
+    /** 返回 */
+    fun onBack()
+
+    /** 翻到底加载更多 */
+    fun onLoadMore()
+
+    /** 切换排序 (0=最热, 1=最新) */
+    fun onChangeSort(sort: Int)
+
+    /** 点击单条 = 回复该条 */
+    fun onReviewClick(review: Review)
+
+    /** 长按单条 = 复制内容 */
+    fun onReviewLongClick(review: Review)
+
+    /** 展开/折叠正文 */
+    fun onToggleExpand(key: String)
+
+    /** 点赞 */
+    fun onVoteUp(review: Review)
+
+    /** 点踩 */
+    fun onVoteDown(review: Review)
+
+    /** 删除 (弹二次确认) */
+    fun onDeleteClick(review: Review)
+
+    /** 打开回复详情 */
+    fun onOpenReplies(review: Review)
+
+    /** 点击底部输入栏 = 发书评 */
+    fun onPostClick()
+
+    /** 点击头像看大图 */
+    fun onAvatarClick(url: String?)
+
+    /** 点击配图看大图 */
+    fun onImageClick(url: String)
 }

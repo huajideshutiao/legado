@@ -2,7 +2,7 @@ package io.legado.app.data
 
 import androidx.room3.Room
 import androidx.room3.RoomDatabase
-import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import androidx.sqlite.driver.NativeSQLiteDriver
 import io.legado.app.data.AppDatabase.Companion.DATABASE_NAME
 import io.legado.app.help.file.AppFilesDirs
 import kotlinx.coroutines.Dispatchers
@@ -10,15 +10,13 @@ import kotlinx.coroutines.IO
 import io.legado.app.utils.File
 
 /**
- * 鸿蒙 (OHOS) 端 [DatabaseDriverProvider] 实现: **Room KMP + BundledSQLiteDriver 真实数据库**。
+ * 鸿蒙 (OHOS) 端 [DatabaseDriverProvider] 实现: **Room KMP + NativeSQLiteDriver 真实数据库**。
  *
  * KP5: 鸿蒙端 DatabaseDriver 落地, 与 [IosDatabaseDriver] / jvmMain [BundledDatabaseDriver] 行为对齐。
- * 鸿蒙 KMP 复用 linuxArm64 target (OpenHarmony arm64 triple `aarch64-linux-ohos` 与 linuxArm64 ABI 兼容),
- * Room KMP + BundledSQLiteDriver 在 linuxArm64 上即可构造真实 SQLite 数据库。
+ * 鸿蒙 KMP 使用 CPF 的 ohosArm64 目标，并通过 sqlite-framework 的 OHOS 变体接入系统 SQLite。
  *
  * # 实现要点 (与 jvmMain BundledDatabaseDriver / iosMain IosDatabaseDriver 行为对齐)
- * - **驱动**: [BundledSQLiteDriver] (androidx.sqlite:sqlite-bundled 跨平台 SQLite, 内嵌原生库)
- *   鸿蒙端 BundledSQLiteDriver 内部用 sqlite-bundled commonMain KMP 发布的 linuxArm64 原生库
+ * - **驱动**: [NativeSQLiteDriver] (CPF `androidx.sqlite:sqlite-framework` 的 OHOS 变体)
  * - **数据库路径**: 默认 `{AppFilesDirs.filesDir}/legado.db` (鸿蒙应用沙盒 filesDir 下, 持久化)
  * - **查询协程上下文**: [Dispatchers.IO] (鸿蒙端 Ktor CIO + Dispatchers.IO 可用, 与 iOS 端一致)
  * - **迁移策略**: 鸿蒙首启动即此版本 (86), 无历史迁移; 若 schema 与文件不匹配,
@@ -42,22 +40,8 @@ import io.legado.app.utils.File
  * 故本文件直接采用真实实现而非 stub。若后续在 DevEco 环境验证时发现 Room KSP 仍有问题,
  * 可临时回退为 stub (各方法抛 UnsupportedOperationException + TODO 标注)。
  *
- * # KP6 sqlite-bundled linuxArm64 变体验证 (任务 9 标注)
- * 任务 9 前提假设 "BundledSQLiteDriver 是 JVM 库, 鸿蒙 linuxArm64 无法直接跑" 经查证**不成立**:
- * - `androidx.sqlite:sqlite-bundled:2.7.0` 是真正的 KMP 跨平台库 (非 JVM 专属),
- *   其 Gradle metadata (`sqlite-bundled-2.7.0.module`) 显式发布 `linuxArm64ApiElements-published`
- *   变体, 子模块 `sqlite-bundled-linuxarm64` 内嵌 `linux_arm64` 原生 SQLite 库。
- * - [BundledSQLiteDriver] 类定义在 commonMain (`androidx.sqlite.driver.bundled`),
- *   鸿蒙 linuxArm64 target 可直接引用, 编译期 KMP 依赖解析通过。
- * - 鸿蒙 OpenHarmony arm64 triple `aarch64-linux-ohos` 与 `linuxArm64` ABI 兼容,
- *   sqlite-bundled 的 linuxArm64 原生库可在鸿蒙 runtime 加载。
- *
- * **结论**: 鸿蒙端无需 napi 调 `@ohos.data.relationalStore` 替代方案, [BundledSQLiteDriver] 直接可用。
- *
- * **运行时验证注意**: 编译期已确认变体可用, 真机/模拟器首次运行需观察 hilog 是否有 sqlite
- * native 库加载错误 (符号缺失 / libc 差异)。万一加载失败, 替代方案为通过 napi 桥接
- * 鸿蒙原生 `@ohos.data.relationalStore` 实现 `androidx.sqlite.SQLiteDriver` 接口替换之,
- * 详见 ohosApp/INTEROP.md 第 10.4 节。
+ * CPF 的 `sqlite-framework` OHOS 变体通过 CInterop 绑定鸿蒙侧 SQLite，避免把 Linux 原生
+ * sqlite-bundled 库误认为可以直接加载到 OHOS 进程。最终仍需 HAP/真机运行时验证数据库打开、迁移和关闭。
  *
  * # 共享实例
  * [appDatabase] lazy 单例, 同一实例供 [AppDatabaseProviders] + [DatabaseDriverProviders] 共享
@@ -85,19 +69,21 @@ class OhosDatabaseDriver(
     /**
      * 鸿蒙端 [AppDatabase] 单例 (真实 Room 数据库)。
      *
-     * lazy 构造: 首次访问时执行 `Room.databaseBuilder<AppDatabase>` + `BundledSQLiteDriver`。
+     * lazy 构造: 首次访问时执行 `Room.databaseBuilder<AppDatabase>` + `NativeSQLiteDriver`。
      * 与 iosMain IosDatabaseDriver.appDatabase 行为完全一致, 仅数据库路径与父目录创建方式不同。
      */
-    val appDatabase: AppDatabase by lazy {
+    override val appDatabase: AppDatabase by lazy {
         Room.databaseBuilder<AppDatabase>(
             name = dbFile
         )
-            .setDriver(BundledSQLiteDriver())
+            .setDriver(NativeSQLiteDriver())
             .setQueryCoroutineContext(Dispatchers.IO)
             // 鸿蒙首启动空库即 version 86, 无 Android 端 83→86 的 autoMigration 历史。
             // 若后续 schema 升级与本地文件不匹配 (如 shared 模块升级后 @Database version 提升),
             // 兜底重建 (dropAllTables=true), 让鸿蒙端自动恢复到可用状态。
             .fallbackToDestructiveMigration(dropAllTables = true)
+            // 预置分组 + 键盘助手 (对照 app 端 dbCallback)
+            .addCallback(AppDatabaseDefaults)
             .build()
     }
 
@@ -142,18 +128,15 @@ class OhosDatabaseDriver(
          *   符合 [DatabaseDriverProvider.databaseName] 接口契约)
          *
          * 退化策略: 当 [AppFilesDirs.filesDir] 为空串 ([OhosAppFilesDir] stub 默认状态) 时,
-         * 退化为 `{System.getProperty("user.dir")}/legado_data/legado.db`
-         * (POSIX getcwd 解析当前工作目录, Kotlin/Native linuxArm64 标准库支持);
+         * 退化为当前工作目录下的 `legado_data/legado.db`；真实宿主应在启动时注册有效的
+         * 沙盒 `filesDir`，因此该分支只用于早期骨架和编译验证。
          * 真实接入鸿蒙原生 `@ohos.file.fs` 后此分支不再触发。
          */
         fun defaultDbPath(): String {
             val filesDir = AppFilesDirs.get().filesDir
             val baseDir = if (filesDir.isEmpty()) {
-                // OhosAppFilesDir stub 默认空串, 退化为当前工作目录下 legado_data/
-                // (Kotlin/Native System.getProperty 基于 POSIX, user.dir 在 linuxArm64 上可用)
-                val cwd = runCatching { System.getProperty("user.dir") }.getOrNull()
-                    ?.takeIf { it.isNotEmpty() } ?: "."
-                "$cwd/legado_data"
+                // OhosAppFilesDir stub 默认空串；OHOS CPF 不提供 JVM 的 System.getProperty。
+                "./legado_data"
             } else {
                 filesDir
             }

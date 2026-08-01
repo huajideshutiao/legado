@@ -85,7 +85,8 @@ data class ParsedParagraph(
  * @param visibleHeight 可视区高度（px，已扣除上下边距）
  * @param paddingLeft 左边距（px，用于 `absStartX` 初始化）
  * @param paddingTop 上边距（px，用于 `lineTop` 折算）
- * @param textHeight 行高（px，对应 app 端 `contentPaintTextHeight`）
+ * @param textHeight 行高（px，对应 app 端 `contentPaintTextHeight` = 真实字体高度
+ *   `descent - ascent`；行距 = `textHeight * lineSpacingExtra`）
  * @param descent 文字下行度量（px，对应 app 端 `contentPaintDescent`）
  * @param lineSpacingExtra 行间距乘数（如 1.2，对应 app 端
  *   `ChapterProvider.lineSpacingExtra`，注意 app 端该字段已经是乘数）
@@ -106,6 +107,12 @@ data class ParsedParagraph(
  * @param indentCharWidth 缩进单字宽（px，>0 启用 [addIndentChars] 几何缩进；
  *   0 走字符串拼接，默认 0 向后兼容；app 端 `ChapterProvider.indentCharWidth`）
  * @param indentChar 缩进占位字符（默认全角空格 `　`，app 端 `ChapterProvider.indentChar`）
+ * @param titleMode 标题位置 0:居左 1:居中 2:隐藏（对应 `ReadBookConfig.titleMode`；
+ *   居中判定另含空章 / SINGLE 图片风格，与 app 端 shouldCenterTitle 一致）
+ * @param titleMeasurer 标题度量器（默认复用 [measurer]；调用方应传入按
+ *   `(textSize + titleSize)` 字号构造的实例，对应 app 端 titleMeasurer/titlePaint）
+ * @param titleTextHeight 标题行高（px，对应 app 端 `titlePaintTextHeight`）
+ * @param titleDescent 标题下行度量（px，对应 app 端 `titlePaintDescent`）
  * @param reviewChar 段评占位符（空串=不启用段评；app 端 `ChapterProvider.reviewChar` = `▨`）
  * @param srcReplaceChar 图片占位符（空串=不启用图片占位识别；app 端
  *   `ChapterProvider.srcReplaceChar` = `▩`）
@@ -132,6 +139,10 @@ class SimpleChapterLayout(
     private val textBottomJustify: Boolean = false,
     private val indentCharWidth: Float = 0f,
     private val indentChar: String = "　",
+    private val titleMode: Int = 0,
+    private val titleMeasurer: TextMeasurer = measurer,
+    private val titleTextHeight: Float = textHeight,
+    private val titleDescent: Float = descent,
     private val reviewChar: String = "",
     private val srcReplaceChar: String = "",
 ) {
@@ -260,12 +271,20 @@ class SimpleChapterLayout(
         ).also { engineRef = it }
         engine.absStartX = paddingLeft
 
-        // 2. 排版标题
-        if (displayTitle.isNotEmpty()) {
+        // 2. 排版标题（titleMode=2 隐藏，正文为空时仍显示；对照 app 端
+        //    `if (titleMode != 2 || contents.isEmpty())` 分支）
+        //    标题居中条件 = titleMode==1（isMiddleTitle）|| 空章 || SINGLE 图片风格，
+        //    对应 app 端 shouldCenterTitle
+        val centerTitle = titleMode == 1 || contents.isEmpty() ||
+            imageStyle?.uppercase() == Book.imgStyleSingle
+        if (displayTitle.isNotEmpty() && (titleMode != 2 || contents.isEmpty())) {
             engine.durY += titleTopSpacing
             displayTitle.split("\n").forEach { titleLine ->
                 if (titleLine.isBlank()) return@forEach
-                setTypeText(engine, pages, titleLine, isTitle = true, paragraphNum = 0)
+                setTypeText(
+                    engine, pages, titleLine,
+                    isTitle = true, paragraphNum = 0, centerTitle = centerTitle,
+                )
                 // 标题行视为段落末尾
                 engine.pendingTextPage.lines.lastOrNull()?.isParagraphEnd = true
                 engine.stringBuilder.append("\n")
@@ -293,7 +312,6 @@ class SimpleChapterLayout(
                 setTypeText(engine, pages, line, isTitle = false, paragraphNum = paragraphSeq, isFirstLine = true)
                 engine.pendingTextPage.lines.lastOrNull()?.isParagraphEnd = true
                 engine.stringBuilder.append("\n")
-                engine.durY += textHeight * paragraphSpacing / 10f
             }
         }
 
@@ -463,18 +481,22 @@ class SimpleChapterLayout(
      * 排版一段文本（标题或正文段）。
      *
      * 流程对照 app 端 [TextChapterLayout.setTypeText]：
-     * 1. 测量字素簇宽度（[TextMeasurer.measureGlyphWidths] + [measureTextSplit] 聚簇）
+     * 1. 测量字素簇宽度（[TextMeasurer.measureGlyphWidths] + [measureTextSplit] 聚簇）；
+     *    标题走 [titleMeasurer]（`textSize + titleSize` 字号），正文走 [measurer]
      * 2. [ZhLineBreaker] 断行（按 [useZhLayout] 决定是否启用；否则按累积宽度退化为最简断行）
      * 3. 对每行调 [TextLayoutEngine.prepareNextPageIfNeed] 检查分页
      * 4. 段落首行几何缩进（[indentCharWidth] > 0 且 [isFirstLine] 且非标题）：[addIndentChars]
      *    替代前 [paragraphIndent.length] 个字，剩余 words/widths 从 indentLength 开始
-     * 5. 末行 / 标题行调 [TextLayoutEngine.addCharsToLineNatural]（自然行），
+     * 5. 居中标题 / 末行 / 未开两端对齐调 [TextLayoutEngine.addCharsToLineNatural]（自然行），
      *    中间行调 [TextLayoutEngine.addCharsToLineMiddle]（两端对齐，受 [textFullJustify] 控制）
-     * 6. 更新行几何（`lineTop` / `lineBottom` / `lineBase`）+ `engine.pendingTextPage.addLine`
-     *    + `engine.durY += textHeight * lineSpacingExtra`
+     * 6. 更新行几何（`lineTop` / `lineBottom` / `lineBase`，标题用 [titleTextHeight] /
+     *    [titleDescent]）+ `engine.pendingTextPage.addLine`
+     *    + `engine.durY += 行高 * lineSpacingExtra`
      * 7. [calcChapterPosition] 写入 [TextLine.chapterPosition]（朗读高亮定位用）
      *
      * @param isFirstLine 是否段落首行（影响几何缩进；标题传 true 但 isTitle=true 时不缩进）
+     * @param centerTitle 标题是否居中（[titleMode]==1 / 空章 / SINGLE 图片风格时 true，
+     *   对应 app 端 shouldCenterTitle；false 时标题居左）
      * @param imgList 内联图片队列（TEXT 风格图片占位符由 ColumnFactory 从此队列取）；
      *   null=纯文本行
      */
@@ -485,11 +507,16 @@ class SimpleChapterLayout(
         isTitle: Boolean,
         paragraphNum: Int,
         isFirstLine: Boolean = true,
+        centerTitle: Boolean = false,
         imgList: ArrayDeque<ImgData>? = null,
     ) {
         if (text.isEmpty()) return
+        // 标题走独立度量器（标题字号 = textSize + titleSize，行盒高 = 标题字体高度）
+        val m = if (isTitle) titleMeasurer else measurer
+        val th = if (isTitle) titleTextHeight else textHeight
+        val d = if (isTitle) titleDescent else descent
         val widthsArray = FloatArray(text.length)
-        measurer.measureGlyphWidths(text, widthsArray)
+        m.measureGlyphWidths(text, widthsArray)
         val split = measureTextSplit(text, widthsArray)
         val words = split.words
         val widths = split.widths
@@ -497,7 +524,7 @@ class SimpleChapterLayout(
 
         // 断行：useZhLayout=true 用 ZhLineBreaker（避头尾），否则退化为按累积宽度的最简断行
         val lineRanges: List<IntRange> = if (useZhLayout) {
-            breakByZh(words, widths)
+            breakByZh(words, widths, m)
         } else {
             breakByAccumulateWidth(words, widths)
         }
@@ -511,7 +538,7 @@ class SimpleChapterLayout(
             val textLine = TextLine(isTitle = isTitle)
             textLine.paragraphNum = paragraphNum
             // 分页判定：当前行加进去超过 visibleHeight 时换页
-            engine.prepareNextPageIfNeed(engine.durY + textHeight)
+            engine.prepareNextPageIfNeed(engine.durY + th)
 
             // 段落首行几何缩进：用 addIndentChars 等宽 TextColumn 替代字符串拼接的缩进字符
             // （indentCharWidth>0 启用；与 app 端 addIndentChars 几何计算对齐）
@@ -530,16 +557,18 @@ class SimpleChapterLayout(
 
             val desiredWidth = adjustedWidths.fastSum()
             val isLastLine = lineIdx == lineRanges.lastIndex
-            // 标题居中（与 app 端 isMiddleTitle 行为对齐，简化版标题一律居中）
-            val startX = if (isTitle) (visibleWidth - desiredWidth) / 2 else indentStartX
+            // 标题按 centerTitle 决定居中/居左（对照 app 端 shouldCenterTitle 分支）；
+            // 非居中标题中间行与正文一致参与两端对齐
+            val shouldCenter = isTitle && centerTitle
+            val startX = if (shouldCenter) (visibleWidth - desiredWidth) / 2 else indentStartX
 
-            if (isLastLine || isTitle || !textFullJustify) {
-                // 自然行（标题/末行/未开启两端对齐）
+            if (shouldCenter || isLastLine || !textFullJustify) {
+                // 自然行（居中标题/末行/未开启两端对齐）
                 engine.addCharsToLineNatural(textLine, adjustedWords, startX, adjustedWidths, imgList)
             } else {
                 // 两端对齐
                 engine.addCharsToLineMiddle(
-                    textLine, adjustedWords, measurer, desiredWidth, startX, adjustedWidths, imgList,
+                    textLine, adjustedWords, m, desiredWidth, startX, adjustedWidths, imgList,
                 )
             }
 
@@ -550,18 +579,21 @@ class SimpleChapterLayout(
             val lineText = lineWords.joinToString("")
             textLine.text = lineText
             textLine.lineTop = paddingTop + engine.durY
-            textLine.lineBottom = textLine.lineTop + textHeight
-            textLine.lineBase = textLine.lineBottom - descent
+            textLine.lineBottom = textLine.lineTop + th
+            textLine.lineBase = textLine.lineBottom - d
             // 朗读高亮：写入章节内字符偏移（替代原 stringBuilder.length 近似）
             textLine.chapterPosition = calcChapterPosition(pages, engine.stringBuilder.length)
             textLine.pagePosition = engine.stringBuilder.length
             engine.stringBuilder.append(lineText)
             engine.pendingTextPage.addLine(textLine)
-            engine.durY += textHeight * lineSpacingExtra
+            engine.durY += th * lineSpacingExtra
             if (engine.pendingTextPage.height < engine.durY) {
                 engine.pendingTextPage.height = engine.durY
             }
         }
+        // 段间距：每次 setTypeText 调用累积一次（对应 app 端 setTypeText 末尾
+        // `durY += textHeight * paragraphSpacing / 10f`；标题/正文段/图片路径的文本段都走这里）
+        engine.durY += th * paragraphSpacing / 10f
     }
 
     /**
@@ -725,14 +757,15 @@ class SimpleChapterLayout(
     private fun breakByZh(
         words: List<String>,
         widths: List<Float>,
+        m: TextMeasurer,
     ): List<IntRange> {
         val breaker = ZhLineBreaker(
             words = words,
             widths = widths,
             indentSize = 0, // 缩进已在调用前拼接到 text 前部（几何缩进则在 setTypeText 内 addIndentChars 处理）
             width = visibleWidth,
-            cnCharWidth = measurer.textSizePx,
-            letterSpacingPx = measurer.letterSpacingPx,
+            cnCharWidth = m.textSizePx,
+            letterSpacingPx = m.letterSpacingPx,
         )
         val result = arrayListOf<IntRange>()
         for (i in 0 until breaker.lineCount) {

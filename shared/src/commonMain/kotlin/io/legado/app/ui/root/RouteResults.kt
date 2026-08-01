@@ -66,6 +66,9 @@ object RouteResults {
 
     // Overlay 结果 key: 换封面对话框 (key="change_cover" 的 AppOverlay.Dialog 关闭时回传 coverUrl)
     const val OVERLAY_CHANGE_COVER = "change_cover"
+
+    // Overlay 结果 key: 书源选择对话框 (key="source_picker" 的 AppOverlay.Dialog 关闭时回传选中的 BookSource)
+    const val OVERLAY_SOURCE_PICKER = "source_picker"
 }
 
 /**
@@ -140,5 +143,11 @@ sealed interface RouteResultPayload {
     @Serializable
     data class ChangeCover(
         val coverUrl: String,
+    ) : RouteResultPayload
+
+    /** 书源选择对话框回传 (对齐 SourcePickerDialog.Callback.sourceOnClick) */
+    @Serializable
+    data class SourcePicker(
+        val source: BookSource,
     ) : RouteResultPayload
 }

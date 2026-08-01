@@ -17,6 +17,7 @@ import io.legado.app.help.file.registerNativeFileDownloader
 import io.legado.app.help.image.OhosBitmapProvider
 import io.legado.app.help.http.registerDefaultOhosCookieStoreProvider
 import io.legado.app.help.http.registerOhosHttpProvider
+import io.legado.app.help.http.registerSharedCookieJarBridge
 import io.legado.app.help.notification.registerOhosNotificationProgress
 import io.legado.app.help.registerNativeDefaultDataResourceProvider
 import io.legado.app.help.registerNativeDirectLinkUploadProviders
@@ -214,6 +215,9 @@ fun registerOhosProviders() {
     // 与 desktop registerDefaultJvmCookieStoreProvider / app registerAndroidCookieStoreProvider
     // / iOS registerDefaultIosCookieStoreProvider 对齐
     registerDefaultOhosCookieStoreProvider()
+    // 注册 CookieJarBridge (commonMain SharedCookieJarBridge, 1:1 复刻 app CookieManager)
+    // 须在 CookieStoreProvider 之后 (bridge 通过 CookieStoreProviders.get() 间接访问存储)
+    registerSharedCookieJarBridge()
 
     // 8.7 UI provider (Toast / OpenUrl / UserAgent, JsExtensionsCommon 在 JS eval 时回调)
     // 必须在任何 JS 执行之前 (JS eval 在本函数返回后由业务代码触发); stub 实现, 真实实现需 tsfn 桥接 ArkTS

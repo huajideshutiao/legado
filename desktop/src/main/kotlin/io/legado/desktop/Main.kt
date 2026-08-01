@@ -8,6 +8,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.window.LocalWindowExceptionHandlerFactory
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowExceptionHandler
@@ -62,6 +64,7 @@ import io.legado.app.ui.book.read.page.provider.TextMeasurerProviders
 import io.legado.app.ui.book.source.SourceUiEventBridgeHost
 import io.legado.app.ui.book.video.VideoPlayPlatformProviders
 import io.legado.app.ui.browser.LocalWebViewSlot
+import io.legado.app.ui.compose.component.LocalDialogAnchorSize
 import io.legado.app.ui.compose.platform.DesktopAppConfigProvider
 import io.legado.app.ui.compose.platform.DesktopEventBusProvider
 import io.legado.app.ui.compose.platform.DesktopPreferenceStoreProvider
@@ -408,14 +411,23 @@ private fun runDesktopApp() = application {
             }
         }
         val readBookProvider = remember { DesktopReadBookProvider() }
+        // 对话框尺寸锚点: 主窗口尺寸 (场景根处读取, 非对话框层; 随 resize 自动重组刷新)
+        val dialogAnchor = LocalWindowInfo.current.containerSize
         CompositionLocalProvider(
+            LocalDialogAnchorSize provides
+                (if (dialogAnchor.width > 0) IntSize(
+                    dialogAnchor.width,
+                    dialogAnchor.height
+                ) else null),
             LocalThemeStoreProvider provides themeStoreProvider,
             LocalAppConfigProvider provides appConfigProvider,
             LocalEventBusProvider provides eventBusProvider,
             LocalPreferenceStoreProvider provides preferenceStoreProvider,
             LocalReadConfigProviders provides readConfigProviders,
             LocalReadBookProvider provides readBookProvider,
-            LocalWebViewSlot provides { url, modifier -> DesktopWebViewSlot(url, modifier) },
+            LocalWebViewSlot provides { config, modifier, callbacks ->
+                DesktopWebViewSlot(config, modifier, callbacks)
+            },
             // 注入 Coil3 模糊封面背景到 shared 详情页路由, 覆盖 LocalBlurCoverBgSlot 兜底
             LocalBlurCoverBgSlot provides { book, coverTick, inBookshelf, isEInkMode, modifier ->
                 SharedBlurCoverBgCoil(book, coverTick, inBookshelf, isEInkMode, modifier)
@@ -461,8 +473,8 @@ private fun runDesktopApp() = application {
 private suspend fun registerSecondaryProviders() {
     withContext(Dispatchers.Default) {
         // 0. FileCacheProvider (CacheManager 文件/二进制层, 依赖 AppFilesDirs 已同步注册)
-        // 未注册时 CacheManager.getFile/putFile/getByteArray/put(ByteArray)/delete 文件层静默 no-op,
-        // source 变量 / loginHeader / userInfo 等文件缓存全失效 (P0)
+        // 未注册时 CacheManager 文件层抛 IllegalStateException (不再静默 no-op),
+        // 且须在 JS 引擎 (第12步) 之前注册, 否则首次 JS 文件缓存调用即崩
         registerDesktopFileCacheProvider()
         // 1. 备份/直链相关 (依赖 PreferenceProviders, 已同步注册)
         // - PasswordProvider: 供 BackupAES 无参构造经 PasswordProviders 反向获取 password
@@ -660,7 +672,7 @@ private fun testDesktopHttp() {
  */
 private fun testDesktopDatabase() {
     try {
-        val appDb = AppDatabaseProviders.get().appDb
+        val appDb = AppDbProviders.get()
         debugLog("=== KP1.2 Desktop Database Test (Room KMP + BundledSQLiteDriver) ===")
         debugLog("databaseName=${DatabaseDriverProviders.get().databaseName}")
         debugLog("databaseVersion=${DatabaseDriverProviders.get().databaseVersion}")

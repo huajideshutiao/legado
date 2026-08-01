@@ -6,6 +6,7 @@ import coil3.decode.ImageSource
 import coil3.fetch.FetchResult
 import coil3.fetch.Fetcher
 import coil3.fetch.SourceFetchResult
+import coil3.key.Keyer
 import coil3.request.Options
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.manga.MangaModel
@@ -46,4 +47,12 @@ class MangaModelFetcher(
             imageLoader: ImageLoader,
         ): Fetcher = MangaModelFetcher(data, options.fileSystem)
     }
+}
+
+/**
+ * [MangaModel] 的内存缓存 Keyer: 按 url 稳定命中 (对齐原版 Glide `ObjectKey(model.url)`)。
+ * 缺 Keyer 时 Coil3 内存缓存 key 无效, 预加载 (WRITE_ONLY) 结果无法被翻页请求命中。
+ */
+class MangaModelKeyer : Keyer<MangaModel> {
+    override fun key(data: MangaModel, options: Options): String = data.url
 }
