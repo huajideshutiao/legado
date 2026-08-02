@@ -10,7 +10,7 @@ data class EditEntity(
     val selections: List<Pair<String, String?>>? = null,
     val span: Int = 2,
     /**
-     * CodeView 语法高亮 pattern 位掩码，仅 [ViewType.code] 类型生效。
+     * 代码字段的语法高亮 pattern 位掩码，仅 [ViewType.code] 类型生效；具体渲染器由平台 UI 选择。
      * 取值见 [CodePattern]，默认 0 表示无 pattern。
      */
     val codePatterns: Int = 0
@@ -54,7 +54,7 @@ data class EditEntity(
     }
 
     /**
-     * CodeView 语法高亮 pattern 位掩码常量。
+     * 代码字段语法高亮 pattern 位掩码常量。
      * 用法：`codePatterns = CodePattern.legado or CodePattern.js`
      */
     object CodePattern {

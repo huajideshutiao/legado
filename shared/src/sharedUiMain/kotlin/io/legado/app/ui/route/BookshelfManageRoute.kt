@@ -395,6 +395,8 @@ fun BookshelfManageRoute(
                 sources = sources,
                 initialDelay = AppConfigProviders.get().batchChangeSourceDelay,
                 onSourceSelected = { source ->
+                    // 选中后关闭选择层；否则桌面端会保留已失效的独立换源界面。
+                    showSourcePicker = false
                     manageVm.changeSource(selection, source)
                 },
                 onDelayChange = { delay ->

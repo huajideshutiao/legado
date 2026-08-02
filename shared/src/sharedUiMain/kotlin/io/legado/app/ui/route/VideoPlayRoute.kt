@@ -254,7 +254,7 @@ fun VideoPlayRoute(
                 hasLogin = screenModel.shared.curBookSource?.hasLogin() == true,
                 hasReview = !screenModel.shared.curBookSource?.reviewRule?.reviewUrl.isNullOrBlank(),
                 onExpandedChange = { menuExpanded = it },
-                onFullScreen = screenModel::onToggleFullScreen,
+                onFullScreen = screenModel::onToggleSystemFullScreen,
                 onLogin = screenModel::onShowLogin,
                 onCopyPlayUrl = screenModel::onCopyPlayUrl,
                 onSourceVariable = screenModel::onShowSourceVariable,

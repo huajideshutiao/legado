@@ -205,7 +205,7 @@ interface ReadRecordUiActions {
  * 仅将平台依赖替换为 state + actions + slot; 宽高/边距/字号/圆角/颜色全部保持原值。
  *
  * 顶部统计卡与热力图卡布局基于可用宽度自适应 (BoxWithConstraints), 不做平台判断:
- * 宽度 >= [SUMMARY_HEATMAP_ROW_MIN_WIDTH] 时同行排列 (各占一半), 否则纵向堆叠;
+ * 宽度 > [SUMMARY_HEATMAP_ROW_MIN_WIDTH] 时同行排列 (各占一半), 否则纵向堆叠;
  * 下方记录列表用 `rememberResponsiveColumns(1)` 随宽度拆列, 窄屏仍是单列。
  *
  * @param state       展示状态
@@ -341,13 +341,8 @@ private fun SortItem(
 
 // ---- 列表 (header 统计卡/热力图卡 + 记录行 + 日期分段) ----
 
-/**
- * 顶部统计卡与热力图卡同行排列的最小可用宽度阈值 (基于 BoxWithConstraints.maxWidth)。
- *
- * 取 840dp 档 (MainNavRailMinWindowWidth 600dp 的上一档): 同行时两卡各 420dp,
- * 高于响应式参考宽度 400dp, 统计卡 2 列文案与热力图 7 列网格都不会被压窄。
- */
-private val SUMMARY_HEATMAP_ROW_MIN_WIDTH = 840.dp
+/** 顶部统计卡与热力图卡同行排列的最小可用宽度阈值。 */
+private val SUMMARY_HEATMAP_ROW_MIN_WIDTH = 400.dp
 
 /**
  * 列表: 头部统计卡 + 热力图卡 + 记录行 (perDayMode 时按天分段)。
@@ -388,7 +383,7 @@ private fun RecordList(
         //  与 SummaryCard 顶部对齐, 纵向布局下由 SummaryCard bottom 提供间距, 保持原值)
         item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
             BoxWithConstraints {
-                if (maxWidth >= SUMMARY_HEATMAP_ROW_MIN_WIDTH) {
+                if (maxWidth > SUMMARY_HEATMAP_ROW_MIN_WIDTH) {
                     Row(Modifier.fillMaxWidth()) {
                         Box(Modifier.weight(1f)) {
                             SummaryCard(state)

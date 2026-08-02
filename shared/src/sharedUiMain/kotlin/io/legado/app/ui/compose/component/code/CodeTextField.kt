@@ -137,7 +137,10 @@ fun buildSearchRanges(
 }
 
 /**
- * 语法高亮代码输入框 (KMP 共享), 替代 app 端 `ui/widget/code/CodeView` (EditText 子类)。
+ * 语法高亮代码输入框 (KMP 次一级实现)。
+ *
+ * Android 仍保留 `ui/widget/code/CodeView` 作为 View 专项编辑器，提供自动补全、滚动窗口
+ * 高亮、原生撤销/重做和 ActionMode 集成；本组件供共享界面及非 Android 平台使用。
  *
  * 视觉对齐 [io.legado.app.ui.compose.component.AppTextField]: 透明容器 + 底部下划线
  * (未聚焦 controlNormal / 聚焦 accent), 差异仅在等宽字体与语法着色。
@@ -384,7 +387,7 @@ private fun rememberCodeHighlightTransformation(
                     val len = text.text.length
                     searchOverlay.ranges.forEachIndexed { i, range ->
                         val s = range.first.coerceAtMost(len)
-                        val e = range.last.coerceAtMost(len)
+                        val e = (range.last + 1).coerceAtMost(len)
                         if (s < e) {
                             addStyle(
                                 SpanStyle(

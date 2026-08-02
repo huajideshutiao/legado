@@ -18,6 +18,7 @@ import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.source.manage.BookSourceViewModelShared
 import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.PlatformCapabilities
@@ -100,6 +101,14 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
 
     // 桌面端 AppTheme 直接订阅 ThemeStore/AppConfig, 日夜切换即重组, 无 Activity.recreate 需求
     override fun applyDayNight() = Unit
+
+    override fun showThemeListDialog() {
+        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("theme_list"))
+    }
+
+    override fun showThemeCustomizeDialog(configIndex: Int?, isNight: Boolean) {
+        Toasters.get().toast("当前平台暂不支持：自定义主题")
+    }
 
     override fun getAppVersionName(): String? = DesktopAppInfo.versionName
 

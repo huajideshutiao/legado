@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -47,7 +48,6 @@ import io.legado.app.ui.bookshelf.KindLabels
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.OverflowMenu
-import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
@@ -306,8 +306,7 @@ private fun ResultArea(
         }
     }
     FastScrollLazyVerticalGrid(
-        // 单列档(横向列表项/视频大卡)也响应式拆列: 400dp→1 列, 800dp→2 列, 条目内部布局不变
-        columns = rememberResponsiveColumns(spanCount),
+        columns = GridCells.Fixed(spanCount),
         state = gridState,
         modifier = modifier.fillMaxWidth(),
         contentPadding = navPad,

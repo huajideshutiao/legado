@@ -214,15 +214,27 @@ fun OverflowMenu(
     var expanded by remember { mutableStateOf(false) }
     LaunchedEffect(expanded) { onExpandedChange(expanded) }
     Box(modifier) {
-        IconButton(onClick = { expanded = true }) {
+        IconButton(onClick = {
+            onExpandedChange(true)
+            expanded = true
+        }) {
             Icon(
                 painter = painterResource(Res.drawable.ic_more_vert),
                 contentDescription = stringResource(Res.string.more_menu),
                 tint = colors.primaryText,
             )
         }
-        AppDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            content { expanded = false }
+        AppDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = {
+                expanded = false
+                onExpandedChange(false)
+            },
+        ) {
+            content {
+                expanded = false
+                onExpandedChange(false)
+            }
         }
     }
 }

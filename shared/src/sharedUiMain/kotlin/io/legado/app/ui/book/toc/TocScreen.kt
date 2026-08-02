@@ -377,7 +377,7 @@ private fun ChapterItem(
     Row(
         Modifier
             .fillMaxWidth()
-            .height(DesignTokens.viewHeightLarge)
+            .wrapContentHeight()
             .then(
                 // 卷名突出显示，普通章节保持 ripple
                 if (item.isVolume) Modifier.background(rememberColor("btn_bg")) else Modifier

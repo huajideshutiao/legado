@@ -26,6 +26,7 @@ import io.legado.app.ui.book.read.TopMenuState
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.toRouteRef
 import io.legado.desktop.help.tts.DesktopReadAloudHost
@@ -321,6 +322,13 @@ private class DesktopReadMenuState(
             }
 
             ReadMenuAction.EDIT_CONTENT -> screenModel.postDialogEvent(ReaderDialogEvent.EditContent)
+            ReadMenuAction.REVIEW -> screenModel.currentBook?.let { book ->
+                val chapter = screenModel.currentChapter
+                if (!PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)) {
+                    navigator.push(AppRoute.ReviewList(book.toRouteRef()))
+                }
+            }
+
             ReadMenuAction.LOG -> screenModel.postDialogEvent(ReaderDialogEvent.Log)
             else -> Unit
         }
@@ -379,9 +387,12 @@ private class DesktopReadMenuState(
         }
     }
 
-    // 朗读: 桥接 DesktopReadAloudHost (对照 app 端 clickReadAloud 的三分支)
+    // 桌面端短按直接打开面板并开始/继续朗读。
     override fun clickReadAloud() {
-        DesktopReadAloudHost.toggle()
+        if (!DesktopReadAloudHost.isRun || DesktopReadAloudHost.isPause) {
+            DesktopReadAloudHost.toggle()
+        }
+        screenModel.postDialogEvent(ReaderDialogEvent.ReadAloud)
     }
 
     // 长按朗读: 弹共享朗读控制面板 (对照原版 ReadMenu 长按 → showReadAloudDialog)

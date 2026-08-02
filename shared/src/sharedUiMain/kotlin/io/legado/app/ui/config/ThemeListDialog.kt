@@ -3,7 +3,6 @@ package io.legado.app.ui.config
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -24,7 +23,10 @@ import io.legado.app.help.config.ThemeConfigData
 import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.GSON
@@ -65,6 +67,28 @@ fun ThemeListDialog(
     onImportFromClip: () -> String?,
     onShare: (json: String) -> Unit,
 ) {
+    AppDialog(
+        onDismissRequest = onDismiss,
+        properties = AppDialogSizes.properties(),
+    ) {
+        ThemeListDialogContent(
+            onDismiss = onDismiss,
+            onEditConfig = onEditConfig,
+            onNewConfig = onNewConfig,
+            onImportFromClip = onImportFromClip,
+            onShare = onShare,
+        )
+    }
+}
+
+@Composable
+private fun ThemeListDialogContent(
+    onDismiss: () -> Unit,
+    onEditConfig: (configIndex: Int) -> Unit,
+    onNewConfig: (isNight: Boolean) -> Unit,
+    onImportFromClip: () -> String?,
+    onShare: (json: String) -> Unit,
+) {
     val colors = AppTheme.colors
     // 数据版本号：增删改后自增触发重组重取列表
     var dataVersion by remember { mutableIntStateOf(0) }
@@ -77,7 +101,7 @@ fun ThemeListDialog(
     val items = builtins + customs
     val builtinCount = builtins.size
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.appDialogSize(fullHeight = true)) {
         DialogTitleBar(
             title = stringResource(Res.string.theme_list),
             onBack = onDismiss,

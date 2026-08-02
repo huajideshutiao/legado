@@ -121,6 +121,13 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
         colorFilterConfig: MangaColorFilterConfig,
         grayEnabled: Boolean,
     ) {
+        // MangaModel 必须带书籍上下文; 空 book 时 Coil 会接受 null data 并保持 Empty/Loading。
+        if (book == null) {
+            Box(modifier.background(Color.Black), contentAlignment = Alignment.Center) {
+                Text("漫画图片缺少书籍上下文", color = Color.White)
+            }
+            return
+        }
         // 重试计数进 remember key: 变化即重建 ImageRequest, 重新走一次 fetch (对照 app 端 retry())
         var retryTick by remember(url) { mutableStateOf(0) }
         val request = remember(url, book, source, retryTick) {

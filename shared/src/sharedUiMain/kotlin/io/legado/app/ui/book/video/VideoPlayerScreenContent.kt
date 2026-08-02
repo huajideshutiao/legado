@@ -14,6 +14,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -189,21 +191,28 @@ fun VideoPlayerScreenContent(
                 }
             }
             val showGrid = !isFullScreen && chapters.size > 1
-            Box(
-                if (showGrid) Modifier.fillMaxWidth().aspectRatio(16f / 9f)
-                else Modifier.fillMaxWidth().weight(1f)
-            ) {
-                videoRenderSlot(Modifier.matchParentSize())
-            }
             if (showGrid) {
-                VideoChapterGrid(
-                    chapters = chapters,
-                    displayTitles = displayTitles,
-                    durIndex = curChapterIndex,
-                    onClick = onOpenChapter,
-                    countWords = countWords,
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                )
+                BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+                    val maxVideoHeight = maxHeight * 2f / 3f
+                    val videoWidth = minOf(maxWidth, maxVideoHeight * 16f / 9f)
+                    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(Modifier.width(videoWidth).aspectRatio(16f / 9f)) {
+                            videoRenderSlot(Modifier.matchParentSize())
+                        }
+                        VideoChapterGrid(
+                            chapters = chapters,
+                            displayTitles = displayTitles,
+                            durIndex = curChapterIndex,
+                            onClick = onOpenChapter,
+                            countWords = countWords,
+                            modifier = Modifier.fillMaxWidth().weight(1f),
+                        )
+                    }
+                }
+            } else {
+                Box(Modifier.fillMaxWidth().weight(1f)) {
+                    videoRenderSlot(Modifier.matchParentSize())
+                }
             }
         }
     }

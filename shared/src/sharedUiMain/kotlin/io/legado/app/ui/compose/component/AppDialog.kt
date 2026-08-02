@@ -5,6 +5,7 @@ import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -85,7 +86,8 @@ fun AppBottomSheetDialog(
 ) {
     if (AppConfigProviders.get().isEInkMode) {
         Dialog(onDismissRequest = onDismissRequest, properties = properties) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) { content() }
+            // Keep the window wrap-content so clicks outside the sheet reach Dialog.
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) { content() }
         }
         return
     }
@@ -107,7 +109,7 @@ fun AppBottomSheetDialog(
         val slideHeightPx = with(LocalDensity.current) { AppDialogSizes.fullHeight().toPx() }
         Box(
             Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
                 .graphicsLayer {
                     translationY = slideHeightPx * (1f - p)
                     alpha = p

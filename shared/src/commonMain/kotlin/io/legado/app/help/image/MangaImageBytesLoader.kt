@@ -46,7 +46,7 @@ object MangaImageBytesLoader {
             if (bookUrl.startsWith("file://", true) || bookUrl.isContentScheme() ||
                 bookUrl.isFilePath()
             ) {
-                return embedded
+                return embedded ?: throw ImageLoadException("本地书图片不存在: $imageUrl")
             }
             if (embedded != null) {
                 storage.saveImage(book, chapter, imageUrl, embedded)
@@ -58,11 +58,13 @@ object MangaImageBytesLoader {
         ).getByteArrayAwait()
         val decodedBytes = runScriptWithContext {
             ImageUtils.decode(imageUrl, bytes, isCover = false, bookSource, book)
-        } ?: return null
+        } ?: throw ImageLoadException("图片解码失败: $imageUrl")
         // 先写磁盘 (同步), 再返回。避免协程持有 decodedBytes 导致 OOM
         storage.saveImage(book, chapter, imageUrl, decodedBytes)
         return decodedBytes
     }
+
+    class ImageLoadException(message: String) : IllegalStateException(message)
 }
 
 /** 读全流并关闭 (commonMain 的 [InputStream] 门面没有 kotlin.io 的 readBytes 扩展)。 */

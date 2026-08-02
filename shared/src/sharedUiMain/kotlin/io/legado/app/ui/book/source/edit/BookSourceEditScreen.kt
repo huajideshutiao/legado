@@ -88,8 +88,8 @@ import org.jetbrains.compose.resources.stringResource
  * - 图标资源 `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")` (key-based, 跨平台)
  * - 颜色资源 `colorResource(R.color.xxx)` → `rememberColor("xxx")` (key-based, 跨平台)
  * - 数组资源 `stringArrayResource(R.array.xxx)` → `stringArrayResource(Res.array.xxx)` (key-based, 跨平台)
- * - CodeView (Android 专属语法高亮控件) → 共享 [CodeTextField] (等宽 + 语法高亮 VisualTransformation),
- *   全平台同一实现, 无平台注入
+ * - Android 的 CodeView 专项能力 (自动补全、原生 View 滚动/绘制和 ActionMode) 留在 Android View 层;
+ *   shared/non-Android 使用 [CodeTextField] 的等宽文本、语法高亮、行号和查找替换能力
  * - KeyboardToolbar (原依赖 CodeView + appDb.keyboardAssistsDao) → 共享
  *   [io.legado.app.ui.compose.component.code.KeyboardToolbar], 内部直连 keyboardAssistsDao
  * - 去掉 `WindowInsets.ime/navigationBars` (Android 专属 inset 概念, 见 ReplaceEditScreen

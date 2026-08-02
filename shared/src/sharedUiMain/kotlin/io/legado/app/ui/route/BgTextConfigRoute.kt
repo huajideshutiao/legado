@@ -3,9 +3,8 @@ package io.legado.app.ui.route
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material.AlertDialog
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,9 +23,11 @@ import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.config.BgTextConfigActions
 import io.legado.app.ui.book.read.config.BgTextConfigController
 import io.legado.app.ui.book.read.config.BgTextConfigScreen
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialogContent
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppOutlinedTextField
-import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
@@ -230,6 +231,12 @@ fun BgTextConfigRoute(
         )
     }
 
+    // 离开时持久化 (对照 app 端 BgTextConfigViewModel.onCleared → readBookConfig.save,
+    // 与 TipConfigRoute / ReadStyleRoute / PaddingConfigRoute 保持一致)
+    DisposableEffect(Unit) {
+        onDispose { readBookConfig.save() }
+    }
+
     if (showUrlInput) {
         UrlInputDialog(
             onConfirm = { url ->
@@ -271,17 +278,21 @@ private fun UrlInputDialog(
     onDismiss: () -> Unit,
 ) {
     var url by remember { mutableStateOf("") }
-    AlertDialog(
+    AppDialog(
         onDismissRequest = onDismiss,
-        modifier = Modifier.appDialogSize(),
         properties = AppDialogSizes.properties(),
-        title = {
-            Text(
-                stringResource(Res.string.import_on_line),
-                color = AppTheme.colors.primaryText
-            )
-        },
-        text = {
+    ) {
+        AppAlertDialogContent(
+            onDismissRequest = onDismiss,
+            title = stringResource(Res.string.import_on_line),
+            okButton = AlertButton(
+                text = stringResource(Res.string.ok),
+                enabled = url.isNotBlank(),
+                onClick = { onConfirm(url.trim()) },
+            ),
+            cancelButton = AlertButton(text = stringResource(Res.string.cancel)),
+            modifier = Modifier.appDialogSize(),
+        ) {
             AppOutlinedTextField(
                 value = url,
                 onValueChange = { url = it },
@@ -289,17 +300,6 @@ private fun UrlInputDialog(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
-        },
-        confirmButton = {
-            AppTextButton(
-                text = stringResource(Res.string.ok),
-                enabled = url.isNotBlank(),
-            ) { onConfirm(url.trim()) }
-        },
-        dismissButton = {
-            AppTextButton(text = stringResource(Res.string.cancel), onClick = onDismiss)
-        },
-        shape = DesignTokens.dialogShape,
-        backgroundColor = AppTheme.colors.background,
-    )
+        }
+    }
 }

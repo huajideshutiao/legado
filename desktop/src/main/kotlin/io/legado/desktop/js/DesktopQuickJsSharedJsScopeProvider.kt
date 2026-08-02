@@ -3,6 +3,7 @@ package io.legado.desktop.js
 import androidx.collection.LruCache
 import com.script.quickjs.QuickJsEngine
 import com.script.quickjs.ScriptBindings
+import com.script.quickjs.ScriptException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.http.newCallStrResponse
@@ -55,8 +56,14 @@ object DesktopQuickJsSharedJsScopeProvider : SharedJsScopeProvider {
     private val jsLibContentCache = ConcurrentHashMap<String, String>()
 
     private class BytecodeEntry(
-        val bytecodes: List<ByteArray>,
+        val bytecodes: List<JsLibBytecode>,
         val version: Long,
+    )
+
+    private data class JsLibBytecode(
+        val bytecode: ByteArray,
+        val label: String,
+        val source: String,
     )
 
     private class CtxEntry(val ctx: com.script.quickjs.QuickJsContext, val version: Long)
@@ -92,7 +99,7 @@ object DesktopQuickJsSharedJsScopeProvider : SharedJsScopeProvider {
             }
         )
         for (bc in bytecodeEntry.bytecodes) {
-            QuickJsEngine.evalBytecode(bc, scope, coroutineContext)
+            evalJsLibBytecode(bc, scope, coroutineContext)
         }
         // LRU 淘汰仅放手强引用, 不显式 close (与 app 端一致, 旧 ctx 由 GC + PhantomReference 兜底)
         perThread.put(key, CtxEntry(scope, bytecodeEntry.version))
@@ -119,17 +126,47 @@ object DesktopQuickJsSharedJsScopeProvider : SharedJsScopeProvider {
         }
     }
 
+    private fun evalJsLibBytecode(
+        entry: JsLibBytecode,
+        scope: com.script.quickjs.QuickJsContext,
+        coroutineContext: CoroutineContext?,
+    ) {
+        try {
+            QuickJsEngine.evalBytecode(entry.bytecode, scope, coroutineContext)
+        } catch (e: ScriptException) {
+            throw ScriptException(
+                buildJsLibErrorMessage(entry.label, entry.source, e),
+                e,
+                e.fileName ?: entry.label,
+                e.lineNumber,
+                e.columnNumber,
+            )
+        }
+    }
+
+    private fun buildJsLibErrorMessage(label: String, source: String, e: ScriptException): String {
+        val base = e.message?.takeIf { it.isNotBlank() } ?: e.toString()
+        val line = e.lineNumber.takeIf { it > 0 } ?: return "$base\njsLib: $label"
+        val snippet = source.lines().getOrNull(line - 1)?.trim()?.takeIf { it.isNotEmpty() }
+        return buildString {
+            append(base)
+            append("\njsLib: ").append(label).append(':').append(line)
+            if (e.columnNumber > 0) append(':').append(e.columnNumber)
+            if (snippet != null) append("\n> ").append(snippet.take(240))
+        }
+    }
+
     /**
      * 编译 jsLib 为 bytecode 列表。
      *
      * - JSON Map 形式 `{"name1": "url1"}`: 按 url 下载 js 文件 (in-memory 缓存) 后分别编译
      * - 普通 JS 字符串: 直接编译为单个 bytecode
      */
-    private fun compileJsLib(jsLib: String): List<ByteArray> {
+    private fun compileJsLib(jsLib: String): List<JsLibBytecode> {
         if (jsLib.isJsonObject()) {
             val jsMap: Map<String, String> = KS_JSON.decodeFromString(jsLib)
-            val out = ArrayList<ByteArray>(jsMap.size)
-            jsMap.values.forEach { value ->
+            val out = ArrayList<JsLibBytecode>(jsMap.size)
+            jsMap.forEach { (name, value) ->
                 if (value.isAbsUrl()) {
                     val fileName = MD5Utils.md5Encode(value)
                     // in-memory 缓存优先, 未命中走 HTTP 下载
@@ -146,11 +183,11 @@ object DesktopQuickJsSharedJsScopeProvider : SharedJsScopeProvider {
                             throw NoStackTraceException(jvmGetString("download_jslib_failed", value))
                         }
                     }
-                    out.add(QuickJsEngine.compile(js).bytecode)
+                    out.add(JsLibBytecode(QuickJsEngine.compile(js).bytecode, "$name<$value>", js))
                 }
             }
             return out
         }
-        return listOf(QuickJsEngine.compile(jsLib).bytecode)
+        return listOf(JsLibBytecode(QuickJsEngine.compile(jsLib).bytecode, "inline-jsLib", jsLib))
     }
 }

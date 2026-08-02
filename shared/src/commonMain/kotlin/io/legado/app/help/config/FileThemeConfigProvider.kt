@@ -33,6 +33,7 @@ class FileThemeConfigProvider : ThemeConfigProvider {
         val index = configs.indexOfFirst { it.themeName == config.themeName }
         if (index >= 0) {
             configs[index] = config
+            save()
             return
         }
         configs.add(config)

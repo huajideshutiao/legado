@@ -323,8 +323,8 @@ fun MangaReaderScreenContent(
             ErrorOverlay(error = error, onRetry = onRetry)
         }
 
-        // 底部信息条: 按 footerConfig 格式化进度文字 (对照 app 端 MangaInfoBar + upInfoBar)
-        if (!footerConfig.hideFooter) {
+        // 底部信息条: 加载完成后才显示, 对齐原版 curFinish 后 upInfoBar。
+        if (!footerConfig.hideFooter && !loading && error == null && curFinish && pageCount > 0) {
             MangaInfoBarOverlay(
                 footerConfig = footerConfig,
                 chapterName = chapterTitle,
