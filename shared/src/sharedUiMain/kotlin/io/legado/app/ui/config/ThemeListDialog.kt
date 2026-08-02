@@ -12,6 +12,7 @@ import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -19,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import io.legado.app.constant.EventBus
 import io.legado.app.help.config.ThemeConfigData
 import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.ui.compose.component.AlertButton
@@ -29,6 +31,7 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
 import legado.shared.generated.resources.Res
@@ -94,6 +97,12 @@ private fun ThemeListDialogContent(
     var dataVersion by remember { mutableIntStateOf(0) }
     // 读 dataVersion 让增删改能触发重组重取
     dataVersion
+
+    // 对照 app 端 setFragmentResultListener(RESULT_CONFIG_CHANGED):
+    // ThemeCustomizeDialog 保存后 (桌面 overlay 场景) 通知刷新列表
+    LaunchedEffect(Unit) {
+        FlowBus.with(EventBus.THEME_CONFIG_CHANGED).collect { dataVersion++ }
+    }
 
     val provider = ThemeConfigProviders.get()
     val builtins = remember(dataVersion) { provider.getBuiltinConfigs() }

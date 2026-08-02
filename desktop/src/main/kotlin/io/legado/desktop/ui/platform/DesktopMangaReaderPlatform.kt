@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +47,7 @@ import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaFooterConfig
 import io.legado.app.ui.book.manga.config.isNoOp
 import io.legado.app.ui.book.manga.config.toColorMatrix
+import io.legado.app.ui.book.manga.entities.MangaCellState
 import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
@@ -120,6 +122,8 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
         source: BookSource?,
         colorFilterConfig: MangaColorFilterConfig,
         grayEnabled: Boolean,
+        onLoadState: (MangaCellState) -> Unit,
+        retryTick: Int,
     ) {
         // MangaModel 必须带书籍上下文; 空 book 时 Coil 会接受 null data 并保持 Empty/Loading。
         if (book == null) {
@@ -128,9 +132,9 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
             }
             return
         }
-        // 重试计数进 remember key: 变化即重建 ImageRequest, 重新走一次 fetch (对照 app 端 retry())
-        var retryTick by remember(url) { mutableStateOf(0) }
-        val request = remember(url, book, source, retryTick) {
+        // 内部重试计数保留原有"重新加载"按钮; shared 单元格的 retryTick 变化同样重建 ImageRequest
+        var internalRetryTick by remember(url) { mutableStateOf(0) }
+        val request = remember(url, book, source, internalRetryTick, retryTick) {
             ImageRequest.Builder(PlatformContext.INSTANCE)
                 // MangaModel 走 MangaModelFetcher: 图片缓存 + AnalyzeUrl(防盗链 header) + 解密,
                 // 与 app 端同一条链路; 裸 url 直连对需要处理的源必然全失败
@@ -143,6 +147,16 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
         }
         val painter = rememberAsyncImagePainter(request)
         val state by painter.state.collectAsState()
+        // 上报加载状态给 shared 单元格 (对齐 app 端 onStateChange, 失败时单元格显示"重新加载")
+        LaunchedEffect(state) {
+            onLoadState(
+                when (state) {
+                    is AsyncImagePainter.State.Success -> MangaCellState.SUCCESS
+                    is AsyncImagePainter.State.Error -> MangaCellState.ERROR
+                    else -> MangaCellState.LOADING
+                }
+            )
+        }
         // 合并颜色滤镜: colorFilterConfig 矩阵 + 灰度矩阵 (对照 app 端 view.colorFilter + loadPageImage gray)
         val colorFilter = remember(colorFilterConfig, grayEnabled) {
             buildColorFilter(colorFilterConfig, grayEnabled)
@@ -157,14 +171,14 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
                     contentScale = if (horizontal) ContentScale.Fit else ContentScale.FillBounds,
                     colorFilter = colorFilter,
                 )
-                // 对照 app 端 item_book_manga_page: 转圈 / 失败换 "重新加载"
+                // 失败/加载中占位由 shared 单元格覆盖层统一展示, 此处保留兜底
                 is AsyncImagePainter.State.Error -> Text(
                     text = "重新加载",
                     color = Color.White,
                     fontSize = 18.sp,
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .clickable { retryTick++ }
+                        .clickable { internalRetryTick++ }
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 )
 

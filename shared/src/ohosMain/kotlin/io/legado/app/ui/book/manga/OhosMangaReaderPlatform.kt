@@ -23,6 +23,7 @@ import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.help.image.MangaImageBytesLoader
 import io.legado.app.help.image.ohosDecodeImageBytes
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
+import io.legado.app.ui.book.manga.entities.MangaCellState
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
@@ -46,13 +47,26 @@ object OhosMangaReaderPlatform : MangaReaderScreenModel.Platform {
         source: BookSource?,
         colorFilterConfig: MangaColorFilterConfig,
         grayEnabled: Boolean,
+        onLoadState: (MangaCellState) -> Unit,
+        retryTick: Int,
     ) {
         var bitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
         var failed by remember(url) { mutableStateOf(false) }
 
-        LaunchedEffect(url) {
+        // retryTick 变化即重新取字节 (shared 单元格"重新加载"点击驱动)
+        LaunchedEffect(url, retryTick) {
             bitmap = loadMangaBitmap(url, book, source)
             if (bitmap == null) failed = true
+        }
+        // 上报加载状态给 shared 单元格 (对齐 app 端 onStateChange, 失败时单元格显示"重新加载")
+        LaunchedEffect(bitmap, failed) {
+            onLoadState(
+                when {
+                    bitmap != null -> MangaCellState.SUCCESS
+                    failed -> MangaCellState.ERROR
+                    else -> MangaCellState.LOADING
+                }
+            )
         }
 
         val bmp = bitmap

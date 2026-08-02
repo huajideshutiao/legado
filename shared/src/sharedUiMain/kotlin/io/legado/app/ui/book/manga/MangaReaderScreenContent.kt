@@ -36,7 +36,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
@@ -48,6 +47,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaFooterConfig
 import io.legado.app.ui.book.manga.entities.BaseMangaPage
+import io.legado.app.ui.book.manga.entities.MangaCellState
 import io.legado.app.ui.book.manga.entities.MangaPage
 import io.legado.app.ui.book.manga.render.MangaReaderBackground
 import io.legado.app.ui.book.manga.render.MangaRenderLayer
@@ -135,7 +135,8 @@ import org.jetbrains.compose.resources.stringResource
  * @param onSaveImage 长按图片保存 (参数为图片 url)
  * @param onToggleHorizontal 切换横/纵向翻页
  * @param preloadImage 图片预加载执行体 (对照 app 端 Coil3 WRITE_ONLY 预载, 未提供则不预载)
- * @param imageSlot 平台图片渲染插槽：(url, modifier, horizontal, colorFilterConfig, grayEnabled) -> Compose 图片组件
+ * @param imageSlot 平台图片渲染插槽：(url, modifier, horizontal, colorFilterConfig, grayEnabled, onLoadState, retryTick) -> Compose 图片组件;
+ *    onLoadState 由平台上报单元格加载状态, retryTick 供"重新加载"点击驱动平台重试 (对照 app 端 MangaPageImageView.retry())
  */
 @Composable
 fun MangaReaderScreenContent(
@@ -190,7 +191,10 @@ fun MangaReaderScreenContent(
     onOpenClickRegionConfig: () -> Unit = {},
     onOpenReview: () -> Unit = {},
     preloadImage: (suspend (String, Book, BookSource?) -> Unit)? = null,
-    imageSlot: @Composable (String, Modifier, Boolean, MangaColorFilterConfig, Boolean) -> Unit,
+    imageSlot: @Composable (
+        String, Modifier, Boolean, MangaColorFilterConfig, Boolean,
+        (MangaCellState) -> Unit, Int
+    ) -> Unit,
 ) {
     // 键盘事件焦点: onPreviewKeyEvent 需节点持有焦点才触发, 进入即取焦点
     val keyFocusRequester = remember { FocusRequester() }
@@ -862,32 +866,31 @@ private fun ChapterNavText(text: String, color: Color, onClick: () -> Unit) {
 private fun LazyItemScope.MangaPageCell(
     url: String,
     horizontal: Boolean,
-    imageSlot: @Composable (String, Modifier, Boolean, MangaColorFilterConfig, Boolean) -> Unit,
+    imageSlot: @Composable (
+        String, Modifier, Boolean, MangaColorFilterConfig, Boolean,
+        (MangaCellState) -> Unit, Int
+    ) -> Unit,
     colorFilterConfig: MangaColorFilterConfig,
     grayEnabled: Boolean,
 ) {
-    // 图片是否已量出高度; 未出图时整格占满一屏并转圈, 对照 app 端 MangaPageCell 的
-    // fillParentMaxHeight + MangaCellState.LOADING 覆盖层 (平台图片槽不上报状态, 以量得的高度代替)
-    var imageHeight by remember(url) { mutableStateOf(0) }
+    // 图片加载状态驱动转圈/占位/重试 (对照 app 端 MangaRenderScreen.MangaPageCell);
+    // 状态完全由平台图片槽经 onLoadState 上报 (Android onStateChange / Coil LaunchedEffect),
+    // 不设 onSizeChanged 兜底 —— 兜底会在 LOADING 时把占位高度误判为出图, 与平台上报互相
+    // 覆写导致"转圈闪现/ERROR 被盖/高度 H↔内容 抖动" (桌面端"一直加载中"观感)
+    var load by remember(url) { mutableStateOf(MangaCellState.LOADING) }
+    // 重试计数: "重新加载"点击自增, 平台图片槽据此重试 (Android 直接调 MangaPageImageView.retry())
+    var retryTick by remember(url) { mutableStateOf(0) }
     val cellModifier = when {
         horizontal -> Modifier.fillParentMaxSize()
-        imageHeight > 0 -> Modifier.fillMaxWidth()
+        load == MangaCellState.SUCCESS -> Modifier.fillMaxWidth()
         else -> Modifier.fillMaxWidth().fillParentMaxHeight()
     }
     Box(
         cellModifier.background(MangaReaderBackground),
         contentAlignment = Alignment.Center,
     ) {
-        if (imageHeight == 0 && !horizontal) {
-            CircularProgressIndicator(
-                color = Color.White,
-                strokeWidth = 4.dp,
-                modifier = Modifier.size(48.dp),
-            )
-        }
         Box(
-            (if (horizontal) Modifier.fillMaxSize() else Modifier.fillMaxWidth())
-                .onSizeChanged { imageHeight = it.height },
+            if (horizontal) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
             contentAlignment = Alignment.Center,
         ) {
             imageSlot(
@@ -896,7 +899,35 @@ private fun LazyItemScope.MangaPageCell(
                 horizontal,
                 colorFilterConfig,
                 grayEnabled,
+                { load = it },
+                retryTick,
             )
+        }
+        if (load != MangaCellState.SUCCESS) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .background(MangaReaderBackground),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (load == MangaCellState.LOADING) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        strokeWidth = 4.dp,
+                        modifier = Modifier.size(48.dp),
+                    )
+                } else {
+                    Text(
+                        text = stringResource(Res.string.reload),
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { retryTick++ }
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+            }
         }
     }
 }

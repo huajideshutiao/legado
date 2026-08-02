@@ -99,7 +99,8 @@ fun AppAlertDialogContent(
                 Text(
                     text = it,
                     color = colors.primaryText,
-                    fontSize = 18.sp,
+                    // 对齐原版 Material AlertDialog 标题 (TextAppearance.MaterialComponents.Headline6 = 20sp)
+                    fontSize = 20.sp,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
                 )
             }

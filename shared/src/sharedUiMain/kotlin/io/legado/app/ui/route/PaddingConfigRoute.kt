@@ -2,15 +2,24 @@ package io.legado.app.ui.route
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.config.PaddingConfigController
 import io.legado.app.ui.book.read.config.PaddingConfigScreen
+import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.appDialogSize
+import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
@@ -20,11 +29,7 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * 边距配置 shared 路由入口。
- *
- * [PaddingConfigController] 桥接 [ReadBookConfigProviders] (shared 版 ReadBookConfig),
- * onPostConfig 经 [ReadBookEvents.postConfig] 通知渲染刷新;
- * Route 退出时 [io.legado.app.help.config.ReadBookConfigShared.save] 持久化,
- * 对齐 app 端 PaddingConfigDialog.onDismiss -> ReadBookConfig.save()。
+ * 通过 [PaddingConfigContent] 复用配置屏幕, 本路由负责标题栏 + 导航 (pop)。
  */
 @Composable
 fun PaddingConfigRoute(
@@ -32,6 +37,56 @@ fun PaddingConfigRoute(
     navigator: AppNavigator,
     screenModelStore: ScreenModelStore,
 ) {
+    val titleStr = stringResource(Res.string.padding)
+    Column(Modifier.fillMaxSize()) {
+        AppTitleBar(
+            title = titleStr,
+            onBack = { navigator.pop() },
+        )
+        PaddingConfigContent()
+    }
+}
+
+/**
+ * 边距配置弹窗形态 (对照原版 PaddingConfigDialog)。
+ * 由界面设置弹窗"边距"入口弹起。
+ */
+@Composable
+fun PaddingConfigDialogHost(
+    onDismiss: () -> Unit,
+) {
+    AppDialog(
+        onDismissRequest = onDismiss,
+        properties = AppDialogSizes.properties(),
+    ) {
+        AppTheme {
+            Surface(
+                shape = DesignTokens.dialogShape,
+                color = AppTheme.colors.background,
+                modifier = Modifier.appDialogSize().padding(16.dp),
+            ) {
+                Column {
+                    DialogTitleBar(
+                        title = stringResource(Res.string.padding),
+                        onBack = onDismiss,
+                    )
+                    PaddingConfigContent()
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 边距配置正文 (路由/弹窗两形态共用)。
+ *
+ * [PaddingConfigController] 桥接 [ReadBookConfigProviders] (shared 版 ReadBookConfig),
+ * onPostConfig 经 [ReadBookEvents.postConfig] 通知渲染刷新;
+ * 退出时 [io.legado.app.help.config.ReadBookConfigShared.save] 持久化,
+ * 对齐 app 端 PaddingConfigDialog.onDismiss -> ReadBookConfig.save()。
+ */
+@Composable
+fun PaddingConfigContent() {
     val readBookConfig = ReadBookConfigProviders.get()
     val controller = remember {
         object : PaddingConfigController {
@@ -126,17 +181,8 @@ fun PaddingConfigRoute(
         onDispose { readBookConfig.save() }
     }
 
-    // 顶栏标题 (对照 app 端 R.string.padding, 与 ReadConfigScreen 入口项一致)
-    val titleStr = stringResource(Res.string.padding)
-
-    Column(Modifier.fillMaxSize()) {
-        AppTitleBar(
-            title = titleStr,
-            onBack = { navigator.pop() },
-        )
-        PaddingConfigScreen(
-            controller = controller,
-            onPostConfig = { changes -> ReadBookEvents.postConfig(changes) },
-        )
-    }
+    PaddingConfigScreen(
+        controller = controller,
+        onPostConfig = { changes -> ReadBookEvents.postConfig(changes) },
+    )
 }

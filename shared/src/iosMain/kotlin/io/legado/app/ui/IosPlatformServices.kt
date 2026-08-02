@@ -9,6 +9,7 @@ import io.legado.app.help.file.pickDirectory as pickDirectoryDocument
 import io.legado.app.help.openURL
 import io.legado.app.help.topMostViewController
 import io.legado.app.ui.root.BrowserService
+import io.legado.app.ui.root.CrashLogProvider
 import io.legado.app.ui.root.ExternalRequestService
 import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.FilePickerService
@@ -72,6 +73,15 @@ object IosPlatformServices : PlatformServices {
     override val media: MediaService = IosMediaService
     override val notifications: NotificationService = IosNotificationService
     override val externalRequests: ExternalRequestService = IosExternalRequestService
+    override val crashLogs: CrashLogProvider = object : CrashLogProvider {
+        override suspend fun loadCrashLogs(): List<CrashLogProvider.CrashLogEntry> = emptyList()
+
+        override suspend fun readCrashLog(name: String): String? = null
+
+        override suspend fun clearCrashLogs() = Unit
+
+        override fun shareCrashLog(name: String) = Unit
+    }
 }
 
 private object IosFilePickerService : FilePickerService {

@@ -20,6 +20,7 @@ import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.ReadTimeRecorder
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaFooterConfig
@@ -37,10 +38,10 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -262,11 +263,57 @@ class MangaReaderViewModelShared(
         }.getOrNull()
         _bookSource.value = source
         onBookSourceChanged()
-        // 加载章节列表 (对应 app 端 chapterListData.postValue(appDb.bookChapterDao.getChapterList))
-        val chapterList = runCatching {
+        // 加载章节列表 (对照 app 端 upBook 的 loadChapterList 兜底分支):
+        // DB 有目录直接用; DB 空时本地书走 FileBook / 网络书走 getChapterListAwait 拉取。
+        // 缺失不拉会让 chapterSize=0 → loadContent 早退 (index < simulatedChapterSize 为
+        // false 连 upToc 都不触发) → _loading 永久 true, 整页"加载中"永不消失
+        // (桌面端导入/深链添加的目录未入库的书必现)。
+        val dbList = runCatching {
             AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
         }.getOrDefault(emptyList())
-        _chapterList.value = chapterList
+        if (dbList.isNotEmpty()) {
+            _chapterList.value = dbList
+        } else {
+            fetchChapterList(book, source)
+        }
+    }
+
+    /**
+     * 拉取目录并入库 (对应 app 端 BaseReadViewModel.loadChapterList)。
+     *
+     * - 本地书: FileBook.getChapterList (同步 IO, 切 IoDispatcher 执行)
+     * - 网络书: WebBook.getChapterListAwait (书源目录规则解析)
+     * - 书架书入库 (对照原版 inBookshelf 分支); 失败发错误, UI 显示重试层而非永久转圈
+     *   (原版失败时 Toast 提示, shared 用 ErrorOverlay 表达同一意图)
+     */
+    private suspend fun fetchChapterList(book: Book, source: BookSource?) {
+        val fetched = if (book.isLocal) {
+            withContext(IoDispatcher) {
+                runCatching { FileBook.getChapterList(book) }.getOrNull()
+            }
+        } else {
+            val bs = source
+            if (bs == null) {
+                _error.tryEmit("获取目录失败: 未找到书源" to true)
+                return
+            }
+            WebBook.getChapterListAwait(bs, book).getOrNull()
+        }
+        if (fetched == null) {
+            _error.tryEmit("获取目录失败" to true)
+            return
+        }
+        if (!book.isNotShelf) {
+            // 对照原版 loadChapterList 的 inBookshelf 分支: 更新 book 字段 + 重插目录;
+            // 非书架不入库, 目录随阅读进度重新拉取
+            runCatching {
+                val db = AppDbProviders.get()
+                db.bookDao.update(book)
+                db.bookChapterDao.delByBook(book.bookUrl)
+                db.bookChapterDao.insert(*fetched.toTypedArray())
+            }
+        }
+        _chapterList.value = fetched
     }
 
     /** 书源变更回调 (对应 app 端 BaseReadViewModel.onBookSourceChanged), 子类可扩展。 */
@@ -981,7 +1028,11 @@ class MangaReaderViewModelShared(
      * 调 [buildMangaContent] 并写入 StateFlow, 减少 UI/VM 往返。
      */
     private fun upContent() {
-        _mangaContent.value = buildMangaContent()
-        _loading.value = false
+        val content = buildMangaContent()
+        _mangaContent.value = content
+        // 对照原版 ReadMangaActivity.upContent: 仅当前章加载完成 (curFinish) 才收起整页
+        // loading; 无条件收起会在当前章未就绪时提前暴露空白列表
+        // (如 setProgress 同章刷新时 cur 尚未加载完成)
+        if (content.curFinish) _loading.value = false
     }
 }

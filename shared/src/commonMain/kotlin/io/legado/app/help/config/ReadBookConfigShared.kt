@@ -1025,6 +1025,35 @@ data class ReadStyleConfig(
     }
 
     /**
+     * 一次性写入白天/夜间背景与文字颜色 (对照原版预设: 每套样式都有
+     * bgStr+textColor 与 bgStrNight+textColorNight 两套字段)。
+     *
+     * 与 [setCurTextColor] / [setCurBg] 只写当前日/夜/EInk 分支不同, 这里两套一起写并同步
+     * 各自的 Int 缓存, 保证切换日/夜主题后 [curTextColor] / [curBgColor] 不残留上一套颜色;
+     * 同时把日/夜背景类型置为 0 (纯色), 避免残留图片背景类型时 curBgColor 走 bgMeanColor 分支。
+     * (阅读配置面板预设切换用, 对照原版 ReadStyleDialog 切换主题整包替换配置)
+     */
+    fun setPresetColor(
+        bgStr: String,
+        bgStrNight: String,
+        textColorStr: String,
+        textColorStrNight: String,
+        textColor: Int,
+        textColorNight: Int,
+        bgMeanColor: Int,
+    ) {
+        this.bgStr = bgStr
+        this.bgStrNight = bgStrNight
+        this.textColorStr = textColorStr
+        this.textColorStrNight = textColorStrNight
+        this.textColor = textColor
+        textColorIntNight = textColorNight
+        this.bgMeanColor = bgMeanColor
+        bgType = 0
+        bgTypeNight = 0
+    }
+
+    /**
      * 取指定索引的背景图片路径 (对照 app 端 `ReadBookConfig.Config.getBgPath`)。
      *
      * @param bgIndex 0:白天 1:夜间 2:E-Ink

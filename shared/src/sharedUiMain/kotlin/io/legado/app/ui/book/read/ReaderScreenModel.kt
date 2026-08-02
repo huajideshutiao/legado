@@ -9,23 +9,34 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.migrateTo
 import io.legado.app.help.book.removeType
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.ReadBookShared
+import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.ui.book.read.ReaderPlatformProviders.getOrNull
 import io.legado.app.ui.book.read.ReaderPlatformProviders.register
 import io.legado.app.ui.book.searchContent.SearchResult
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.utils.FlowBus
+import io.legado.app.utils.formatTimeOfDay
+import io.legado.app.utils.isAbsUrl
+import io.legado.app.utils.isTrue
+import io.legado.app.utils.stackTraceStr
+import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
 
@@ -247,12 +258,96 @@ class ReaderScreenModel(
                 viewModel.onTtsProgress(chapterStart)
             }
         }
+        // 时间/电池刷新 (对照 app 端 TIME_CHANGED/BATTERY_CHANGED 观察者 → PageView.upTime/upBattery):
+        // 平台广播经 ReadBookEvents 推送, 订阅者更新 StateFlow 驱动 tip 槽位重组
+        scope.launch {
+            ReadBookEvents.timeChanged.collect {
+                _clockText.value = formatTimeOfDay(systemCurrentTimeMillis())
+            }
+        }
+        // 无 ACTION_TIME_TICK 的平台 (桌面/iOS/鸿蒙) 每分钟兜底刷新 (对照 MangaReaderScreenModel 轮询)
+        scope.launch {
+            while (isActive) {
+                delay(60_000L)
+                _clockText.value = formatTimeOfDay(systemCurrentTimeMillis())
+            }
+        }
+        scope.launch {
+            ReadBookEvents.batteryChanged.collect { level ->
+                _batteryLevel.value = level
+            }
+        }
         // endregion
     }
 
     val menuState: ReadMenuState get() = menuController.state
     val currentBook: Book? get() = viewModel.book.value
     val currentChapter get() = viewModel.chapterList.value.getOrNull(viewModel.durChapterIndex.value)
+
+    /** 书源登录入口是否可见 (对照原版 ReadMenu: menu_login.isVisible = hasLogin) */
+    fun sourceLoginVisible(): Boolean = viewModel.bookSource.value?.hasLogin() == true
+
+    /** 购买按钮是否可见 (对照原版 ReadMenu: menu_chapter_pay.isVisible = hasLogin && isVip && !isPay) */
+    fun sourcePayVisible(): Boolean =
+        viewModel.bookSource.value?.hasLogin() == true &&
+            currentChapter?.isVip == true &&
+            currentChapter?.isPay != true
+
+    /** 书源变量对话框 (对照原版 ReadMenu.showSourceVariableDialog, 走平台能力) */
+    fun showSourceVariableDialog() {
+        val source = viewModel.bookSource.value ?: return
+        PlatformCapabilityProviders.getOrNull()?.showBookSourceVariableDialog(source)
+    }
+
+    /** 书籍变量对话框 (对照原版 ReadMenu.showBookVariableDialog, 走平台能力) */
+    fun showBookVariableDialog() {
+        val book = viewModel.book.value ?: return
+        PlatformCapabilityProviders.getOrNull()?.showBookVariableDialog(book)
+    }
+
+    /**
+     * 书源下拉展开时的菜单可见性刷新 (对照原版 ReadMenu sourceMenu.show 前逐项赋 isVisible)。
+     * 段评入口仅在书源配置了 reviewUrl 时显示。
+     */
+    fun updateSourceMenu() {
+        menuState.topMenu.reviewVisible =
+            viewModel.bookSource.value?.reviewRule?.reviewUrl.isNullOrBlank() == false
+    }
+
+    /**
+     * 购买当前章 (对照原版 ReadBookActivity.payAction):
+     * 执行书源 contentRule.payAction JS → 返回 URL 时交 [onOpenUrl] 打开支付页 (各端打开 WebView/浏览器);
+     * 返回 true 时清本章内容缓存 + 刷新目录 (章节 isPay 随之更新)。
+     * 确认弹窗由调用方 (ReaderRoute ChapterPay 对话框) 负责。
+     */
+    fun payChapter(onOpenUrl: (String) -> Unit) {
+        val book = viewModel.book.value ?: return
+        if (book.isLocal) return
+        val chapter = currentChapter ?: return
+        val source = viewModel.bookSource.value ?: return
+        scope.launch {
+            runCatching {
+                val payAction = source.contentRule.payAction
+                if (payAction.isNullOrBlank()) error("no pay action")
+                // 工厂经各端注册的 AnalyzeRule 子类, 保平台 JS 扩展面 (对照原版 new AnalyzeRule(book, source))
+                val analyzeRule = AnalyzeRuleFactories.create(source = source)
+                analyzeRule.setBaseUrl(chapter.url)
+                analyzeRule.chapter = chapter
+                analyzeRule.evalJS(payAction).toString()
+            }.onSuccess { result ->
+                when {
+                    result.isAbsUrl() -> onOpenUrl(result)
+                    result.isTrue() -> {
+                        // 购买成功后刷新目录 (对照原版: curTextChapter=null + delContent + loadChapterList)
+                        BookStorageProviders.get().delContent(book, chapter)
+                        viewModel.loadChapterList(book)
+                    }
+                }
+            }.onFailure {
+                AppLog.put("执行购买操作出错\n${it.stackTraceStr}", it, true)
+            }
+        }
+    }
     val currentChapterText: String
         get() = viewModel.curTextPage.value?.lines?.joinToString("\n") { line ->
             line.columns.filterIsInstance<io.legado.app.ui.book.read.page.entities.column.TextColumn>()
@@ -261,6 +356,9 @@ class ReaderScreenModel(
 
     private val _batteryLevel = MutableStateFlow(getBatteryLevel())
     val batteryLevel: StateFlow<Int> = _batteryLevel.asStateFlow()
+
+    private val _clockText = MutableStateFlow(formatTimeOfDay(systemCurrentTimeMillis()))
+    val clockText: StateFlow<String> = _clockText.asStateFlow()
 
     // 搜索内容页的结果缓存, 返回阅读器后再次进入时免重搜
     // (对照 app 端 ReadBookActivity.viewModel.searchResultList/searchContentQuery/searchResultIndex)
@@ -416,4 +514,16 @@ sealed interface ReaderDialogEvent {
 
     /** 翻页键配置 (对照原版 更多设置 → PageKeyDialog) */
     data object PageKey : ReaderDialogEvent
+
+    /** 章节购买确认 (对照原版 ReadBookActivity.payAction 的 alert 确认, 确认后执行 payAction JS) */
+    data object ChapterPay : ReaderDialogEvent
+
+    /** 目录 (对照原版 目录按钮 → TocDialog, 全高底部弹窗) */
+    object Toc : ReaderDialogEvent
+
+    /** 整书换源 (对照原版 换源按钮 → ChangeBookSourceDialog, 全高底部弹窗) */
+    object ChangeSource : ReaderDialogEvent
+
+    /** 章节换源 (对照原版 换源图标长按 → ChangeChapterSourceDialog, 全高底部弹窗) */
+    object ChangeChapterSource : ReaderDialogEvent
 }

@@ -1,5 +1,10 @@
 package io.legado.app.napi.quickjs
 
+// 导出 quickjs.h 的全部 extern API (JS_Eval / JS_GetPropertyStr / JS_GetLength /
+// JS_GetOwnPropertyNames / JSPropertyEnum / JSAtom / JSValueTag 枚举等),
+// 供 nativeMain 的 JS 桥接源码 (stage 进 leaf 后) 直接调用。
+headers = quickjs.h
+
 ---
 
 #include "quickjs.h"
@@ -42,3 +47,10 @@ const char *qjs_ToCString(JSContext *ctx, JSValueConst val) { return JS_ToCStrin
 
 // ---- JSAtom 转字符串 (quickjs.h 中为 static inline, 调用 JS_AtomToCStringLen) ----
 const char *qjs_AtomToCString(JSContext *ctx, JSAtom atom) { return JS_AtomToCString(ctx, atom); }
+
+// ---- JS_FreeCString 适配: 其 const char* 参数被 cinterop 映射为 String?, 无法接收
+// qjs_ToCString/qjs_AtomToCString 返回的 CPointer<ByteVar>?, 改走 void* 参数 (COpaquePointer?) ----
+void qjs_FreeCString(JSContext *ctx, void *ptr) { JS_FreeCString(ctx, (const char *)ptr); }
+
+// ---- 宏常量 (cinterop 不绑定带参数宏; 无参宏/字面量也非可调用符号, 统一 wrapper) ----
+int qjs_EvalTypeGlobal(void) { return JS_EVAL_TYPE_GLOBAL; }

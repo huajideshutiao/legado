@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.Icon
@@ -38,6 +37,7 @@ import io.legado.app.model.CoverRatio
 import io.legado.app.model.DefaultCoverEntry
 import io.legado.app.model.bakedPath
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
@@ -116,7 +116,7 @@ class DefaultCoverGalleryDialog() : BaseComposeDialogFragment() {
                 onBack = { dismissAllowingStateLoss() },
             )
             LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
+                columns = rememberResponsiveColumns(3),
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)

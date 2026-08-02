@@ -155,6 +155,17 @@ interface ThemeConfigProvider {
     fun delConfig(index: Int)
 
     /**
+     * 替换指定索引的主题配置 (对照 ThemeCustomizeDialog.saveToConfig 的
+     * `configList[index] = ...` + `save()`)。
+     *
+     * 与 [addConfig] 的区别: 按位置替换而非按主题名覆盖, 主题改名时不产生残留旧条目。
+     *
+     * @param index 待替换的配置索引
+     * @param config 替换后的主题配置
+     */
+    fun replaceConfig(index: Int, config: ThemeConfigData)
+
+    /**
      * 应用内置默认主题 (对照 `ThemeConfig.applyBuiltin(context: Context, isNight: Boolean)`)。
      *
      * app 端实现内部: 清 6 个 pref → `AppConfig.isNightTheme = isNight` → `applyDayNight(context)`
@@ -181,6 +192,19 @@ interface ThemeConfigProvider {
      * @param config 待应用的主题配置 (KMP 版数据类)
      */
     fun applyConfig(config: ThemeConfigData)
+
+    /**
+     * 切换日/夜模式并应用 (对照 app 端 `AppConfig.isNightTheme = isNight` +
+     * `ThemeConfig.applyDayNight(context)` 的组合, 不清自定义色 pref)。
+     *
+     * 供阅读页夜间按钮等「只切日夜、不动自定义主题色」的场景使用:
+     * - app 端实现: `AppConfig.isNightTheme = isNight` + `ThemeConfig.applyDayNight(context)`;
+     * - 桌面/iOS/鸿蒙 ([FileThemeConfigProvider]): 写 themeMode + 按目标模式读已配置色
+     *   (未配置回落默认) 写 ThemeStore 色 + 触发全局重组 (FlowBus RECREATE)。
+     *
+     * @param isNight 目标是否夜间模式
+     */
+    fun applyDayNight(isNight: Boolean) {}
 
     /**
      * 返回内置主题配置列表 (对照 `ThemeConfig.getBuiltinConfigs(context: Context): List<Config>`)。

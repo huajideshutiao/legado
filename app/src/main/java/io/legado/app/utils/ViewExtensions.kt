@@ -4,6 +4,7 @@ package io.legado.app.utils
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -315,4 +316,12 @@ fun android.widget.CompoundButton.setOnUserCheckedChangeListener(listener: (isCh
     setOnClickListener {
         listener(isChecked)
     }
+}
+
+// 替代已删除的 TintHelper.setTintAuto(background=true)，供恢复的原版 CodeView 控件使用
+fun View.applyTint(
+    @ColorInt color: Int,
+    isDark: Boolean = AppConfig.isNightTheme
+) {
+    backgroundTintList = ColorStateList.valueOf(color)
 }

@@ -6,15 +6,17 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
-import io.legado.app.help.book.isNotShelf
-import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.AppWebDavShared
+import io.legado.app.help.book.isNotShelf
+import io.legado.app.help.book.simulatedTotalChapterNum
+import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.toast.Toasters
+import io.legado.app.model.AudioPlayBookBridges
 import io.legado.app.model.AudioPlayShared
+import io.legado.app.ui.book.read.fetchChapterListFromSource
 import io.legado.app.ui.root.ScreenModel
-import androidx.compose.ui.Modifier
 import io.legado.app.utils.FlowBus
-import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,6 +26,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 
 /**
  * 音频播放页 shared ScreenModel。
@@ -203,10 +206,27 @@ class AudioPlayScreenModel : ScreenModel {
                 // 对照 viewModel.initData: upBook → upData/resetData → loadOrUpPlayUrl
                 scope.launch {
                     AudioPlayShared.inBookshelf = !event.book.isNotShelf
-                    if (AudioPlayShared.book?.bookUrl == event.book.bookUrl) {
-                        AudioPlayShared.upData(event.book)
+                    val book = event.book
+                    // 对照原版 initData 的 upBook: 目录缺失时 loadChapterList 网络拉取,
+                    // 再 AudioPlay.chapterList = chapterListData.value。shared 版此前只读
+                    // DB, 目录缺失 (未入架书/目录未入库) 时 durChapter==null → loadPlayUrl
+                    // 静默 return, 播放按钮无反应 (搜索书直接听书必现)
+                    val dbList = runCatching {
+                        AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
+                    }.getOrDefault(emptyList())
+                    AudioPlayShared.chapterList = if (dbList.isNotEmpty()) {
+                        dbList
                     } else {
-                        AudioPlayShared.resetData(event.book)
+                        // 复用文本阅读器同款回源拉取 (书架书落库, 失败 emptyList)
+                        fetchChapterListFromSource(
+                            book,
+                            AudioPlayBookBridges.get().getBookSource(book),
+                        ).ifEmpty { null }
+                    }
+                    if (AudioPlayShared.book?.bookUrl == book.bookUrl) {
+                        AudioPlayShared.upData(book)
+                    } else {
+                        AudioPlayShared.resetData(book)
                     }
                     _state.update {
                         it.copy(
@@ -220,6 +240,29 @@ class AudioPlayScreenModel : ScreenModel {
                     }
                     if (AudioPlayShared.status == Status.STOP) {
                         AudioPlayShared.loadOrUpPlayUrl()
+                    }
+                    // 对照原版 initData 末尾: curBook?.takeIf { inBookshelf }?.let { syncBookProgress(it) }
+                    // —— 拉取云端进度, 云端较新时自动应用 (原版 applyProgress → AudioPlay.setProgress);
+                    // 云端旧走 alertSync 但原版 AudioPlay 未传 → 静默; 相等忽略; 失败记日志
+                    if (AudioPlayShared.inBookshelf && AppConfigProviders.get().syncBookProgress) {
+                        scope.launch {
+                            runCatching {
+                                val progress = AppWebDavShared.getBookProgress(book)
+                                    ?: return@launch
+                                val newer = progress.durChapterIndex > book.durChapterIndex ||
+                                    (progress.durChapterIndex == book.durChapterIndex &&
+                                        progress.durChapterPos > book.durChapterPos)
+                                // 对照原版: 云端较新且未越界才自动应用 (getSyncProgressMsg toast)
+                                if (newer &&
+                                    progress.durChapterIndex < book.simulatedTotalChapterNum()
+                                ) {
+                                    AudioPlayShared.setProgress(progress)
+                                    Toasters.get().toast("已同步最新音频播放进度")
+                                }
+                            }.onFailure {
+                                AppLog.put("拉取阅读进度失败《${book.name}》\n${it.message}", it)
+                            }
+                        }
                     }
                     // 对照 app 端 applyBookmarkPosition: chapterIndex + chapterPos 跳转
                     val targetIndex = event.chapterIndex ?: -1

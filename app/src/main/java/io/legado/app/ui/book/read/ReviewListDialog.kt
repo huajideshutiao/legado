@@ -8,7 +8,6 @@ import android.widget.ImageView
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -43,16 +42,11 @@ import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.root.AppNavigatorProviders
-import io.legado.app.ui.root.AppRoute
-import io.legado.app.ui.root.RouteResultPayload
-import io.legado.app.ui.root.RouteResults
-import io.legado.app.ui.root.toRouteRef
+import io.legado.app.ui.route.ReviewPostDialogHost
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.sendToClip
 import io.legado.app.utils.showDialogFragment
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 
 /**
@@ -67,7 +61,7 @@ import kotlinx.coroutines.launch
  * - BottomSheetDialogFragment 壳 (透明容器 + 撑高 + 默认展开)
  * - [ReviewViewModelShared] 实例化与输入灌入
  * - Glide 图片渲染槽 (avatarSlot / imageSlot)
- * - 平台专属行为: alert 删除确认 / ReviewPost 路由发书评 / PhotoDialog 查看大图 / sendToClip 复制
+ * - 平台专属行为: alert 删除确认 / ReviewPostDialogHost 弹窗发书评 / PhotoDialog 查看大图 / sendToClip 复制
  */
 class ReviewListDialog() : BottomSheetDialogFragment() {
 
@@ -95,18 +89,15 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
     private var repliesTitleText by mutableStateOf("")
     private var inputHintRes by mutableIntStateOf(R.string.review_post_hint)
 
-    private fun launchPostActivity(replyPreview: String?) {
-        val book = viewModel?.book ?: return
-        AppNavigatorProviders.getOrNull()?.push(
-            AppRoute.ReviewPost(book.toRouteRef(), replyPreview),
-            resultKey = RouteResults.REVIEW_POST,
-        )
-    }
+    // 发布输入弹窗状态 (对照原版 ReviewPostActivity 底部输入面板): preview 非空 = 回复该条
+    private var postReplyPreview by mutableStateOf<String?>(null)
+    private var showPostDialog by mutableStateOf(false)
 
-    /** 点击单条段评 → 弹回复输入框，replyTo 暂存为该条 */
+    /** 点击单条段评 → 弹回复输入面板，replyTo 暂存为该条 */
     private fun onReviewClicked(review: Review) {
         replyToReview = review
-        launchPostActivity(review.content)
+        postReplyPreview = review.content
+        showPostDialog = true
     }
 
     private fun confirmDelete(review: Review) {
@@ -149,16 +140,6 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                     val vm = viewModel
                     // viewModel 在 onViewCreated 中赋值，compose 首帧在 onViewCreated 之后才组合
                     if (vm == null) return@AppTheme
-                    // 接收 ReviewPost 路由回传的段评内容
-                    LaunchedEffect(Unit) {
-                        AppNavigatorProviders.getOrNull()?.results
-                            ?.filter { it.key == RouteResults.REVIEW_POST }
-                            ?.collect { result ->
-                                val payload = result.payload as? RouteResultPayload.ReviewPost
-                                    ?: return@collect
-                                if (payload.content.isNotBlank()) submitPost(payload.content)
-                            }
-                    }
                     val reviews by vm.reviews.collectAsState()
                     val loading by vm.loading.collectAsState()
                     val hasMore by vm.hasMore.collectAsState()
@@ -193,7 +174,8 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                         onOpenReplies = { openReplies(it) },
                         onPostClick = {
                             replyToReview = parentReview
-                            launchPostActivity(parentReview?.content)
+                            postReplyPreview = parentReview?.content
+                            showPostDialog = true
                         },
                         onAvatarClick = { url -> url?.let { showDialogFragment(PhotoDialog(it)) } },
                         onImageClick = { showDialogFragment(PhotoDialog(it)) },
@@ -201,6 +183,18 @@ class ReviewListDialog() : BottomSheetDialogFragment() {
                         imageSlot = { url, modifier -> GlideImage(url, modifier) },
                         lazyListModifier = lazyListModifier,
                     )
+
+                    // 发布输入弹窗 (对照原版 ReviewPostActivity 底部输入面板): 提交后由
+                    // submitPost 走网络, 对齐原 launchPostActivity + REVIEW_POST 结果收集
+                    if (showPostDialog) {
+                        ReviewPostDialogHost(
+                            replyPreview = postReplyPreview,
+                            onPosted = { content ->
+                                if (content.isNotBlank()) submitPost(content)
+                            },
+                            onDismiss = { showPostDialog = false },
+                        )
+                    }
                 }
             }
         }

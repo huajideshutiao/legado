@@ -7,6 +7,7 @@ import io.legado.app.utils.EncoderUtils
 import io.legado.app.utils.isHex
 import java.io.InputStream
 import java.nio.charset.Charset
+import javax.crypto.spec.SecretKeySpec
 
 // KMP 化: 追加 `: SymmetricCrypto` (commonMain interface) 实现标记。
 // class 名 `SymmetricCryptoAndroid` 与 commonMain interface `SymmetricCrypto` 名字不同, 不冲突。
@@ -15,10 +16,20 @@ import java.nio.charset.Charset
 // 不暴露到 commonMain interface, 避免 commonMain 引用 java.io.InputStream / java.nio.charset.Charset。
 //
 // @Keep 移除：shared 无 androidx.annotation 依赖，JS 桥反射保活改由 consumer-rules.pro -keep 登记（照 JsURL/StrResponse 先例）。
+//
+// key 构造说明: 不能用 hutool SymmetricCrypto(algorithm, key: ByteArray?) 构造器——
+// 其内部 KeyUtil.generateKey 把完整 transformation ("AES/ECB/PKCS5Padding") 原样传给
+// SecretKeySpec 作算法名, Android BC/Conscrypt 不校验, 但桌面端 JVM SunJCE 严格校验
+// (InvalidKeyException: Wrong algorithm: AES or Rijndael required)。
+// 改用 (algorithm, SecretKey) 构造器: key 算法名取 transformation 的 '/' 前主算法,
+// Cipher 实例化仍用完整 transformation, 三端行为与 Android 一致。
 class SymmetricCryptoAndroid(
     algorithm: String,
     key: ByteArray?,
-) : SymmetricCrypto(algorithm, key), io.legado.app.help.crypto.SymmetricCrypto {
+) : SymmetricCrypto(
+    algorithm,
+    key?.let { SecretKeySpec(it, algorithm.substringBefore('/')) }
+), io.legado.app.help.crypto.SymmetricCrypto {
 
     // 新接口方法 encrypt/encryptHex: hutool 父类已有同签名实现 (encrypt(byte[]) 具体方法,
     // 其余 SymmetricEncryptor default 方法), 一行 super 直通仅作 override 标记。

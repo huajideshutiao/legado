@@ -8,12 +8,14 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.addType
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.removeType
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.rss.RssHelp.clHtml
 import io.legado.app.model.rss.RssHelp.loadRssContent
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.ui.book.read.fetchChapterListFromSource
 import io.legado.app.utils.NetworkUtils
 import kotlinx.coroutines.currentCoroutineContext
 
@@ -124,7 +126,15 @@ object RssHelp {
                     chapter = null,
                 )
             }
+            // 对照原版 ReadRssViewModel.initData: upBook 拉取目录后从 chapterList 取章;
+            // DB 无目录时回源拉取 (书架书落库; runPerJs 对照原版 loadChapterList 的
+            // inBookshelf 参数), 避免"未入架/目录未入库的书 → 未找到章节"功能退化
             val chapter = appDb.bookChapterDao.getChapter(book.bookUrl, chapterIndex)
+                ?: fetchChapterListFromSource(
+                    book,
+                    source,
+                    runPerJs = !book.isNotShelf,
+                ).getOrNull(chapterIndex)
                 ?: throw IllegalStateException("未找到章节 (index=$chapterIndex)")
             // 对照 ReadRssViewModel.initData: baseUrl 按是否 RSS 源在书源地址与目录地址间二选一
             val baseUrl = if (book.originName == "RSS") source.bookSourceUrl else book.tocUrl

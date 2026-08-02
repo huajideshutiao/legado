@@ -125,14 +125,7 @@ sealed interface AppRoute {
     @SerialName("bookmark")
     data class Bookmark(val book: BookRef? = null) : AppRoute
 
-    @Serializable
-    @SerialName("review_post")
-    data class ReviewPost(
-        val book: BookRef,
-        val replyPreview: String? = null,
-    ) : AppRoute
-
-    // 段评/书评列表页 (与 ReviewPost 区别: 列表查看 vs 发布)
+    // 段评/书评列表页 (发布入口为弹窗形态 ReviewPostDialogHost, 对照原版 ReviewPostActivity)
     @Serializable
     @SerialName("review_list")
     data class ReviewList(val book: BookRef) : AppRoute

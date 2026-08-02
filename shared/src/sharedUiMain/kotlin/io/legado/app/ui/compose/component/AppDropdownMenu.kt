@@ -134,22 +134,24 @@ private fun MenuContainer(
     ) { if (it) 1f else 0f }
     Surface(
         modifier = modifier
-            .shadow(
-                elevation = 4.dp,
-                shape = AppTheme.DesignTokens.shapeDefault,
-                ambientColor = Color.Black.copy(alpha = 0.3f),
-                spotColor = Color.Black.copy(alpha = 0.3f),
-            )
             .onKeyEvent(onKeyEvent)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
                 this.alpha = alpha
                 transformOrigin = transformOriginState.value
-            },
+            }
+            .shadow(
+                // 阴影须在 graphicsLayer 内层随动画一起淡入/缩放, 否则弹出瞬间先闪出阴影框
+                // 8dp: 4dp 时阴影仅边缘露出 1~2dp, 被不透明菜单本体盖住几乎不可见
+                elevation = 8.dp,
+                shape = AppTheme.DesignTokens.shapeDefault,
+                ambientColor = Color.Black.copy(alpha = 0.5f),
+                spotColor = Color.Black.copy(alpha = 0.5f),
+            ),
         shape = AppTheme.DesignTokens.shapeDefault,
         color = AppTheme.colors.bottomBackground,
-        // 用户拍板: 保留轻阴影 (4dp + 半透明, 视觉轻于 8dp 不透明黑)
+        // 阴影由 Modifier.shadow 单独控制 (8dp+半透明), Surface 自身不再叠加 elevation 阴影
         elevation = 0.dp,
     ) {
         Column(

@@ -566,6 +566,8 @@ private fun CodeField(
         searchHighlight = if (active) searchHighlight else null,
         modifier = Modifier
             .fillMaxWidth()
+            // 对齐原版 BookSourceEditAdapter: TextInputLayout setPadding(0, space.xs, 0, 0)
+            .padding(top = 4.dp)
             .onFocusChanged {
                 if (it.isFocused) {
                     onEditorActive(editor)

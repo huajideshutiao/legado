@@ -10,6 +10,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
@@ -189,7 +190,8 @@ object IosPlatformCapabilities : PlatformCapabilities {
         }
     }
 
-    // 上架/下架 (对照 desktop toggleBookshelf, 无删除确认弹窗)
+    // 上架/下架 (DB 逻辑统一走 shared toggleBookshelfCore, 与桌面/鸿蒙/Android 一致;
+    // 无删除确认弹窗, 无平台专属前后处理)
     override fun toggleBookshelf(
         book: Book,
         inBookshelf: Boolean,
@@ -198,22 +200,8 @@ object IosPlatformCapabilities : PlatformCapabilities {
         onAction: (String) -> Unit,
     ) {
         scope.launch {
-            runCatching {
-                if (inBookshelf) {
-                    appDb.bookChapterDao.delByBook(book.bookUrl)
-                    appDb.bookDao.delete(book)
-                    null
-                } else {
-                    if (book.order == 0) book.order = appDb.bookDao.minOrder() - 1
-                    appDb.bookDao.getBook(book.name, book.author)?.let {
-                        book.durChapterIndex = it.durChapterIndex
-                        book.durChapterPos = it.durChapterPos
-                        book.durChapterTitle = it.durChapterTitle
-                    }
-                    appDb.bookDao.insert(book)
-                    true
-                }
-            }.onSuccess { onComplete(it) }
+            runCatching { book.toggleBookshelfCore(inBookshelf) }
+                .onSuccess { onComplete(it) }
                 .onFailure {
                     AppLog.put("书架操作失败\n${it.message}", it)
                     onComplete(false)

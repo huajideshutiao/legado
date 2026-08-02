@@ -2,19 +2,20 @@ package io.legado.app.ui.compose.platform
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.lib.theme.ThemeStorePrefKeys
-import kotlinx.coroutines.channels.BufferOverflow
+import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.map
 import platform.Foundation.NSUserDefaults
 
 /**
  * iOS 端 Provider 真实实现。
  *
  * 主题色 / AppConfig / Preferences 基于 NSUserDefaults 持久化 (等价 Android
- * SharedPreferences / ThemeStore), 事件总线沿用本地 SharedFlow (与桌面端一致,
- * 跨平台等价 FlowBus.with(EventBus.RECREATE))。
+ * SharedPreferences / ThemeStore), 事件总线委托 commonMain [FlowBus]`[EventBus.RECREATE]`
+ * (与桌面端一致)。
  *
  * 颜色以 Android ColorInt (ARGB packed Int) 持久化, 读取后通过 Color(Int) 转换为
  * Compose Color (与 AndroidThemeStoreProvider 一致)。
@@ -92,23 +93,17 @@ class IosAppConfigProvider(
 }
 
 /**
- * iOS 事件总线: 本地 MutableSharedFlow (与 DesktopEventBusProvider 一致)。
- *
- * recreateEvent 用于主题切换后触发 AppTheme 重组 (collect 后重读 ThemeStore)。
- * 跨平台等价于 Android FlowBus.with(EventBus.RECREATE); SharedFlow 是 commonMain
- * 跨平台实现, 无需平台特殊行为。emitRecreate 供未来 iOS 主题切换 UI 调用。
+ * iOS 事件总线: 委托 commonMain [FlowBus]`[EventBus.RECREATE]` (与 DesktopEventBusProvider
+ * 同模式)。多处 new 的实例共享同一全局 bus, [FileThemeConfigProvider] 等非 UI 层
+ * 发出的 recreate 也能到达 AppTheme。
  */
 class IosEventBusProvider : EventBusProvider {
-    private val flow = MutableSharedFlow<Unit>(
-        replay = 0,
-        extraBufferCapacity = 64,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
-    override val recreateEvent: Flow<Unit> = flow
+    /** 对照 postEvent(EventBus.RECREATE, "") */
+    override val recreateEvent: Flow<Unit> = FlowBus.with(EventBus.RECREATE).map { }
 
     /** 主题切换后由调用方 emit 触发 AppTheme 重组 (对齐 DesktopEventBusProvider.emitRecreate) */
     override fun emitRecreate() {
-        flow.tryEmit(Unit)
+        FlowBus.with(EventBus.RECREATE).tryEmit("")
     }
 }
 

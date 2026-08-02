@@ -604,11 +604,116 @@ void throwJsNativeException(JSContext *ctx, JNIEnv *env, JSValue exc, const char
     std::free(msgStr);
 }
 
+// 非 Error 抛出值 (throw {obj} / throw "str" / throw null 等) 没有自动生成的 stack,
+// 无法提供出错位置。对 plain object 枚举可枚举属性生成 "{k: v, ...}" 文本,
+// 让用户至少能看出抛的是什么值 (对齐 rhino: 这类 throw 同样无位置信息)。
+static const int kMaxThrownProps = 10;
+
+static char *buildObjectPropsText(JSContext *ctx, JSValue obj) {
+    JSPropertyEnum *ptab = nullptr;
+    uint32_t plen = 0;
+    int ret = JS_GetOwnPropertyNames(ctx, &ptab, &plen, obj,
+            JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY);
+    if (ret != 0 || plen == 0) {
+        if (ptab) js_free(ctx, ptab);
+        return nullptr;
+    }
+    // 预分配: "{" + 每属性约 64B + "}" + NUL, 不够时 realloc 翻倍
+    size_t cap = 64 + (size_t) plen * 64;
+    char *out = (char *) std::malloc(cap);
+    if (!out) {
+        for (uint32_t i = 0; i < plen; i++) JS_FreeAtom(ctx, ptab[i].atom);
+        js_free(ctx, ptab);
+        return nullptr;
+    }
+    size_t pos = 0;
+    out[pos++] = '{';
+    uint32_t shown = 0;
+    for (uint32_t i = 0; i < plen && shown < kMaxThrownProps; i++) {
+        const char *key = JS_AtomToCString(ctx, ptab[i].atom);
+        if (!key) continue; // atom 统一在最后释放, 避免此处 continue/下方 break 路径 double-free
+        JSValue val = JS_GetProperty(ctx, obj, ptab[i].atom);
+        const char *valStr = nullptr;
+        if (JS_IsException(val)) {
+            // getter/trap 抛异常: 清理异常槽, 值显示为 <unprintable>
+            JSValue e2 = JS_GetException(ctx);
+            JS_FreeValue(ctx, e2);
+        } else {
+            valStr = JS_ToCString(ctx, val);
+            if (!valStr) {
+                // toString 失败 (OOM 等): 清理可能的新异常
+                JSValue e2 = JS_GetException(ctx);
+                JS_FreeValue(ctx, e2);
+            }
+        }
+        const char *valSafe = valStr ? valStr : "<unprintable>";
+        size_t keyLen = std::strlen(key);
+        size_t valLen = std::strlen(valSafe);
+        size_t need = keyLen + 2 + valLen + 8; // "key: value" + 分隔/收尾 + 尾部余量(ellipsis/}/NUL)
+        if (pos + need > cap) {
+            size_t newCap = cap * 2;
+            char *grown = (char *) std::realloc(out, newCap);
+            if (!grown) {
+                JS_FreeCString(ctx, key);
+                if (valStr) JS_FreeCString(ctx, valStr);
+                JS_FreeValue(ctx, val);
+                break;
+            }
+            out = grown;
+            cap = newCap;
+        }
+        if (shown > 0) {
+            out[pos++] = ',';
+            out[pos++] = ' ';
+        }
+        std::memcpy(out + pos, key, keyLen);
+        pos += keyLen;
+        out[pos++] = ':';
+        out[pos++] = ' ';
+        std::memcpy(out + pos, valSafe, valLen);
+        pos += valLen;
+        shown++;
+        JS_FreeCString(ctx, key);
+        if (valStr) JS_FreeCString(ctx, valStr);
+        JS_FreeValue(ctx, val);
+    }
+    if (shown < plen) {
+        static const char kEllipsis[] = ", ...";
+        std::memcpy(out + pos, kEllipsis, sizeof(kEllipsis) - 1);
+        pos += sizeof(kEllipsis) - 1;
+    }
+    out[pos++] = '}';
+    out[pos] = '\0';
+    for (uint32_t i = 0; i < plen; i++) JS_FreeAtom(ctx, ptab[i].atom);
+    js_free(ctx, ptab);
+    return out;
+}
+
 char *JniValueConvert::buildExceptionMessage(JSContext *ctx, JSValue exc) {
     // 1. 获取 message (toString), 如 "TypeError: xxx" / "SyntaxError: ... at line 1 col 6"
     const char *msg = JS_ToCString(ctx, exc);
     const char *msgSafe = msg ? msg : "JS Exception";
     size_t msgLen = std::strlen(msgSafe);
+
+    // 1.1 toString 失败 (OOM / 自定义 toString 或 getter 抛异常): JS_ToCString 返回
+    //     null 且 ctx 的 current_exception 已被 toString 抛出的新异常替换, 取出来转
+    //     文本附加到 message, 避免用户只看到裸 "JS Exception" 无法区分是脚本问题
+    //     还是引擎桥接问题。
+    char *toStringErr = nullptr;
+    if (!msg) {
+        JSValue newExc = JS_GetException(ctx);
+        if (!JS_IsUndefined(newExc) && !JS_IsNull(newExc)) {
+            const char *newMsg = JS_ToCString(ctx, newExc);
+            if (newMsg) {
+                size_t n = std::strlen(newMsg);
+                toStringErr = (char *) std::malloc(n + 1);
+                if (toStringErr) std::memcpy(toStringErr, newMsg, n + 1);
+                JS_FreeCString(ctx, newMsg);
+            }
+        }
+        JS_FreeValue(ctx, newExc);
+    }
+    size_t toStringErrLen = toStringErr ? std::strlen(toStringErr) : 0;
 
     // 2. 若是 Error 对象 (含子类 SyntaxError/TypeError 等), 附加 stack 属性
     //    stack 含调用位置信息, 如 "    at foo (<eval>:3)\n    at <eval>:5"
@@ -626,17 +731,59 @@ char *JniValueConvert::buildExceptionMessage(JSContext *ctx, JSValue exc) {
         }
     }
 
-    // 3. 拼接 message + '\n' + trimmed stack 到单次 malloc 里
-    size_t total = msgLen + (stackKept > 0 ? 1 + stackKept : 0) + 1;
+    // 3. 非 Error 抛出值 (throw "str" / throw {obj} / throw null 等): QuickJS 不会
+    //    自动生成 stack, 没有出错位置。附加说明 + 对 plain object 枚举可枚举属性,
+    //    让用户能看出抛的是什么值, 而不是面对裸 "JS Exception" 无从下手。
+    //    (JavaObject 走 exotic trap, 枚举可能触发反射, 跳过只留说明)
+    const bool isError = JS_IsError(exc);
+    const char *nonErrorNote = isError ? "" : "(thrown value is not an Error object, no call stack)";
+    size_t nonErrorLen = std::strlen(nonErrorNote);
+    char *propsStr = nullptr;
+    size_t propsLen = 0;
+    if (!isError && JS_IsObject(exc) && !JS_IsFunction(ctx, exc) &&
+            !JS_IsArray(exc) && !JavaObjectClass::isInstance(ctx, exc)) {
+        propsStr = buildObjectPropsText(ctx, exc);
+        propsLen = propsStr ? std::strlen(propsStr) : 0;
+    }
+
+    // 4. 拼接 message [+ toStringErr] [+ nonErrorNote] [+ props] + '\n' + trimmed stack
+    static const char kToStringPrefix[] = "\n  (toString threw: ";
+    size_t toStringPrefixLen = sizeof(kToStringPrefix) - 1;
+    size_t total = msgLen
+            + (toStringErrLen > 0 ? toStringPrefixLen + toStringErrLen + 1 : 0)   // +1 收尾 ')'
+            + (nonErrorLen > 0 ? ((msgLen > 0 || toStringErrLen > 0) ? 1 : 0) + nonErrorLen : 0)
+            + (propsLen > 0 ? 1 + propsLen : 0)
+            + (stackKept > 0 ? 1 + stackKept : 0)
+            + 1;
     char *out = (char *) std::malloc(total);
     if (!out) {
+        std::free(toStringErr);
+        std::free(propsStr);
         if (stackStr) JS_FreeCString(ctx, stackStr);
         if (!JS_IsUndefined(stack)) JS_FreeValue(ctx, stack);
         if (msg) JS_FreeCString(ctx, msg);
         return nullptr;
     }
+    size_t pos = 0;
     std::memcpy(out, msgSafe, msgLen);
-    size_t pos = msgLen;
+    pos += msgLen;
+    if (toStringErrLen > 0) {
+        std::memcpy(out + pos, kToStringPrefix, toStringPrefixLen);
+        pos += toStringPrefixLen;
+        std::memcpy(out + pos, toStringErr, toStringErrLen);
+        pos += toStringErrLen;
+        out[pos++] = ')';
+    }
+    if (nonErrorLen > 0) {
+        if (pos > 0 && out[pos - 1] != '\n') out[pos++] = ' ';
+        std::memcpy(out + pos, nonErrorNote, nonErrorLen);
+        pos += nonErrorLen;
+    }
+    if (propsLen > 0) {
+        out[pos++] = '\n';
+        std::memcpy(out + pos, propsStr, propsLen);
+        pos += propsLen;
+    }
     if (stackKept > 0) {
         out[pos++] = '\n';
         std::memcpy(out + pos, stackStr, stackKept);
@@ -644,6 +791,8 @@ char *JniValueConvert::buildExceptionMessage(JSContext *ctx, JSValue exc) {
     }
     out[pos] = '\0';
 
+    std::free(toStringErr);
+    std::free(propsStr);
     if (stackStr) JS_FreeCString(ctx, stackStr);
     if (!JS_IsUndefined(stack)) JS_FreeValue(ctx, stack);
     if (msg) JS_FreeCString(ctx, msg);

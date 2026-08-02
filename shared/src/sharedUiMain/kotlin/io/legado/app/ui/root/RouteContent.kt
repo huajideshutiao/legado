@@ -38,7 +38,6 @@ import io.legado.app.ui.route.RemoteBookRoute
 import io.legado.app.ui.route.ReplaceEditRoute
 import io.legado.app.ui.route.ReplaceRuleRoute
 import io.legado.app.ui.route.ReviewListRoute
-import io.legado.app.ui.route.ReviewPostRoute
 import io.legado.app.ui.route.RuleSubRoute
 import io.legado.app.ui.route.SearchContentRoute
 import io.legado.app.ui.route.SearchRoute
@@ -278,11 +277,6 @@ fun RouteContent(
 
         is AppRoute.ChangeChapterSource -> {
             ChangeChapterSourceRoute(entry, navigator, screenModelStore)
-            true
-        }
-
-        is AppRoute.ReviewPost -> {
-            ReviewPostRoute(entry, navigator, screenModelStore)
             true
         }
 

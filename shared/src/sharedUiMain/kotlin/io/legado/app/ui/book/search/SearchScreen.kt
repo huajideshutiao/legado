@@ -27,7 +27,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
@@ -84,7 +83,6 @@ import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.RadioChip
@@ -494,14 +492,27 @@ private fun ColumnScope.InputHelp(
                 .fillMaxWidth()
                 .padding(8.dp),
         )
-        if (styleCols == 0 || (styleCols == 1 && !styleIsVideo)) {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-            ) {
-                items(bookshelfBooks, key = { it.bookUrl }) { book ->
-                    ShelfListItem(
+        // 宽屏按参考宽度自动加列: 行/卡片样式 item 在网格格内自适应 (对齐书架 LIST 档 /
+        // 阅读记录页 / 发现页 rememberResponsiveColumns 行为), 不再分 LazyColumn 单列分支
+        LazyVerticalGrid(
+            columns = rememberResponsiveColumns(spanCount),
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+        ) {
+            items(bookshelfBooks, key = { it.bookUrl }) { book ->
+                when {
+                    // 视频网格卡 (cols>=1 且视频, 对照 ExploreShow 视频卡分支)
+                    styleIsVideo && styleCols >= 1 -> ShelfVideoItem(
+                        book = book,
+                        coverReloadTick = bookshelfVersion,
+                        onClick = { navCallbacks.onBookClick(book) },
+                        onLongClick = { navCallbacks.onBookClick(book, true) },
+                        coverSlot = tickedShelfCoverSlot,
+                    )
+
+                    // 单列行 (cols 0/1; 宽屏经 rememberResponsiveColumns(1) 自动加列, 行内布局不变)
+                    spanCount == 1 -> ShelfListItem(
                         book = book,
                         isVideoStyle = styleCols == 0 && styleIsVideo,
                         coverReloadTick = bookshelfVersion,
@@ -524,34 +535,16 @@ private fun ColumnScope.InputHelp(
                             )
                         },
                     )
-                }
-            }
-        } else {
-            LazyVerticalGrid(
-                columns = rememberResponsiveColumns(spanCount),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-            ) {
-                items(bookshelfBooks, key = { it.bookUrl }) { book ->
-                    if (styleIsVideo) {
-                        ShelfVideoItem(
-                            book = book,
-                            coverReloadTick = bookshelfVersion,
-                            onClick = { navCallbacks.onBookClick(book) },
-                            onLongClick = { navCallbacks.onBookClick(book, true) },
-                            coverSlot = tickedShelfCoverSlot,
-                        )
-                    } else {
-                        ShelfGridItem(
-                            book = book,
-                            coverReloadTick = bookshelfVersion,
-                            refreshingUrls = emptySet(),
-                            onClick = { navCallbacks.onBookClick(book) },
-                            onLongClick = { navCallbacks.onBookClick(book, true) },
-                            coverSlot = tickedShelfCoverSlot,
-                        )
-                    }
+
+                    // 多列网格卡 (cols>=2 非视频)
+                    else -> ShelfGridItem(
+                        book = book,
+                        coverReloadTick = bookshelfVersion,
+                        refreshingUrls = emptySet(),
+                        onClick = { navCallbacks.onBookClick(book) },
+                        onLongClick = { navCallbacks.onBookClick(book, true) },
+                        coverSlot = tickedShelfCoverSlot,
+                    )
                 }
             }
         }
@@ -776,77 +769,42 @@ private fun ColumnScope.ResultArea(
     coverSlot: @Composable (SearchBook, Modifier, isVideoCover: Boolean) -> Unit,
 ) {
     @Suppress("UNUSED_EXPRESSION") bookshelfVersion // 书架增删时重组刷新绿点
-    if (styleCols == 0 || (styleCols == 1 && !styleIsVideo)) {
-        val state = rememberLazyListState()
-        // 新批次插到头部时回顶 (对齐原 AdapterDataObserver 的 positionStart==0);
-        // 仅列表停在顶部时才回顶, 滚动中不打断 (对照书架 ShelfBooksContent 的 firstKey 守卫)
-        val firstKey = books.firstOrNull()?.let { "${it.name}|${it.author}" }
-        LaunchedEffect(firstKey) {
-            if (firstKey != null && state.firstVisibleItemIndex <= 1) state.scrollToItem(0)
-        }
-        // 触底续搜 (对齐原 canScrollVertically(1)==false -> scrollToBottom)
-        LaunchedEffect(state) {
-            snapshotFlow { state.layoutInfo.totalItemsCount to state.canScrollForward }
-                .distinctUntilChanged()
-                .collect { (count, forward) ->
-                    if (count > 0 && !forward) viewModel.scrollToBottom()
-                }
-        }
-        FastScrollLazyColumn(
-            state = state,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-        ) {
-            items(
-                books,
-                key = { "${it.origin}|${it.bookUrl}" },
-                contentType = { "searchBook" }) { book ->
-                val isVideoStyle = styleCols == 0 && styleIsVideo
-                SearchListItem(
-                    book = book,
-                    isVideoStyle = isVideoStyle,
-                    inBookshelf = viewModel.isInBookShelf(book),
-                    showShelfDot = true,
-                    originCount = book.origins.size,
-                    intro = book.intro,
-                    onClick = { navCallbacks.onBookClick(book) },
-                    onLongClick = { navCallbacks.onBookClick(book, true) },
-                    coverSlot = { modifier -> coverSlot(book, modifier, isVideoStyle) },
-                )
+    // 统一响应式网格: 列数 0/1 走行样式 item, 宽屏经 rememberResponsiveColumns(1) 自动加列
+    // (对齐书架 LIST 档 / 阅读记录页 / 发现页), 不再分 LazyColumn 单列分支
+    val state = rememberLazyGridState()
+    // 新批次插到头部时回顶 (对齐原 AdapterDataObserver 的 positionStart==0);
+    // 仅列表停在顶部时才回顶, 滚动中不打断 (对照书架 ShelfBooksContent 的 firstKey 守卫)
+    val firstKey = books.firstOrNull()?.let { "${it.name}|${it.author}" }
+    LaunchedEffect(firstKey) {
+        if (firstKey != null && state.firstVisibleItemIndex <= 1) state.scrollToItem(0)
+    }
+    // 触底续搜 (对齐原 canScrollVertically(1)==false -> scrollToBottom)
+    LaunchedEffect(state) {
+        snapshotFlow { state.layoutInfo.totalItemsCount to state.canScrollForward }
+            .distinctUntilChanged()
+            .collect { (count, forward) ->
+                if (count > 0 && !forward) viewModel.scrollToBottom()
             }
-        }
-    } else {
-        val state = rememberLazyGridState()
-        // 同列表分支: 仅停在顶部附近时回顶, 滚动中不打断
-        val firstKey = books.firstOrNull()?.let { "${it.name}|${it.author}" }
-        LaunchedEffect(firstKey) {
-            if (firstKey != null && state.firstVisibleItemIndex <= 1) state.scrollToItem(0)
-        }
-        LaunchedEffect(state) {
-            snapshotFlow { state.layoutInfo.totalItemsCount to state.canScrollForward }
-                .distinctUntilChanged()
-                .collect { (count, forward) ->
-                    if (count > 0 && !forward) viewModel.scrollToBottom()
-                }
-        }
-        FastScrollLazyVerticalGrid(
-            columns = rememberResponsiveColumns(spanCount),
-            state = state,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-        ) {
-            items(
-                books,
-                key = { "${it.origin}|${it.bookUrl}" },
-                contentType = { "searchBook" }) { book ->
-                val displayBook = remember(book) { book.toBook() }
-                val cover: @Composable (Book, Modifier, Boolean, Int) -> Unit =
-                    { _, modifier, isVideoCover, _ ->
-                    coverSlot(book, modifier, isVideoCover)
-                }
-                if (styleIsVideo) {
+    }
+    FastScrollLazyVerticalGrid(
+        columns = rememberResponsiveColumns(spanCount),
+        state = state,
+        modifier = Modifier
+            .fillMaxWidth()
+            .weight(1f),
+    ) {
+        items(
+            books,
+            key = { "${it.origin}|${it.bookUrl}" },
+            contentType = { "searchBook" }) { book ->
+            when {
+                // 视频网格卡 (cols>=1 且视频, 对照 ExploreShow 视频卡分支)
+                styleIsVideo && styleCols >= 1 -> {
+                    val displayBook = remember(book) { book.toBook() }
+                    val cover: @Composable (Book, Modifier, Boolean, Int) -> Unit =
+                        { _, modifier, isVideoCover, _ ->
+                            coverSlot(book, modifier, isVideoCover)
+                        }
                     ShelfVideoItem(
                         book = displayBook,
                         coverReloadTick = 0,
@@ -854,7 +812,31 @@ private fun ColumnScope.ResultArea(
                         onLongClick = { navCallbacks.onBookClick(book, true) },
                         coverSlot = cover,
                     )
-                } else {
+                }
+
+                // 单列行 (cols 0/1; 宽屏经 rememberResponsiveColumns(1) 自动加列, 行内布局不变)
+                spanCount == 1 -> {
+                    val isVideoStyle = styleCols == 0 && styleIsVideo
+                    SearchListItem(
+                        book = book,
+                        isVideoStyle = isVideoStyle,
+                        inBookshelf = viewModel.isInBookShelf(book),
+                        showShelfDot = true,
+                        originCount = book.origins.size,
+                        intro = book.intro,
+                        onClick = { navCallbacks.onBookClick(book) },
+                        onLongClick = { navCallbacks.onBookClick(book, true) },
+                        coverSlot = { modifier -> coverSlot(book, modifier, isVideoStyle) },
+                    )
+                }
+
+                // 多列网格卡 (cols>=2 非视频)
+                else -> {
+                    val displayBook = remember(book) { book.toBook() }
+                    val cover: @Composable (Book, Modifier, Boolean, Int) -> Unit =
+                        { _, modifier, isVideoCover, _ ->
+                            coverSlot(book, modifier, isVideoCover)
+                        }
                     ShelfGridItem(
                         book = displayBook,
                         coverReloadTick = 0,

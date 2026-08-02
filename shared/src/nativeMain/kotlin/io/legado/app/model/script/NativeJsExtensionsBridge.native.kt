@@ -1,4 +1,4 @@
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+﻿@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
 
 package io.legado.app.model.script
 
@@ -17,12 +17,11 @@ import io.legado.app.utils.JsURL
 import io.legado.app.utils.toJson
 import io.legado.app.napi.quickjs.JSContext
 import io.legado.app.napi.quickjs.JSValue
-import io.legado.app.napi.quickjs.JSValueVar
-import io.legado.app.napi.quickjs.JS_EVAL_TYPE_GLOBAL
+import io.legado.app.napi.quickjs.qjs_EvalTypeGlobal
 import io.legado.app.napi.quickjs.JS_Eval
 import io.legado.app.napi.quickjs.JS_TAG_NULL
 import io.legado.app.napi.quickjs.JS_TAG_UNDEFINED
-import io.legado.app.napi.quickjs.JS_FreeCString
+import io.legado.app.napi.quickjs.qjs_FreeCString
 import io.legado.app.napi.quickjs.JS_FreeValue
 import io.legado.app.napi.quickjs.JS_GetLength
 import io.legado.app.napi.quickjs.JS_GetPropertyUint32
@@ -165,19 +164,15 @@ object NativeJsExtensionsBridge {
             else -> "__createJavaObj"
         }
         val js = "$factoryFn($handle)"
-        memScoped {
-            val cstr = js.cstr.ptr
-            // JS_Eval 执行工厂函数, 返回 JS 对象
-            val result = JS_Eval(
-                ctx, cstr, js.length.toULong(), "<bridge>".cstr.ptr,
-                JS_EVAL_TYPE_GLOBAL
-            )
-            // result 是 JS 对象, 调用方负责 JS_FreeValue
-            // 但我们在 toJsValue 中返回它, 由 JS_SetPropertyStr 转移所有权
-            // 如果 eval 异常, result 是 exception, 调用方会得到异常 JSValue
-            // 此处不检查异常 (toJsValue 不检查), 让上层 eval 时暴露
-            return result
-        }
+        // JS_Eval 执行工厂函数, 返回 JS 对象
+        val result = JS_Eval(
+            ctx, js, js.length.toULong(), "<bridge>", qjs_EvalTypeGlobal()
+        )
+        // result 是 JS 对象, 调用方负责 JS_FreeValue
+        // 但我们在 toJsValue 中返回它, 由 JS_SetPropertyStr 转移所有权
+        // 如果 eval 异常, result 是 exception, 调用方会得到异常 JSValue
+        // 此处不检查异常 (toJsValue 不检查), 让上层 eval 时暴露
+        return result
     }
 
     // ============ native dispatch C 函数 (staticCFunction, 不捕获上下文) ============
@@ -195,7 +190,7 @@ object NativeJsExtensionsBridge {
      * JSCFunction* 参数兼容 (cinterop 绑定 JSCFunction 为同名函数类型)。
      */
     internal val nativeDispatchFn =
-        staticCFunction { ctx: CPointer<JSContext>?, thisVal: CValue<JSValue>?, argc: Int, argv: CPointer<JSValueVar>? ->
+        staticCFunction { ctx: CPointer<JSContext>?, thisVal: CValue<JSValue>, argc: Int, argv: CPointer<JSValue>? ->
             nativeDispatchImpl(ctx, thisVal, argc, argv)
         }
 
@@ -204,16 +199,16 @@ object NativeJsExtensionsBridge {
      */
     private fun nativeDispatchImpl(
         ctx: CPointer<JSContext>?,
-        @Suppress("UNUSED_PARAMETER") thisVal: CValue<JSValue>?,
+        @Suppress("UNUSED_PARAMETER") thisVal: CValue<JSValue>,
         argc: Int,
-        argv: CPointer<JSValueVar>?
+        argv: CPointer<JSValue>?
     ): CValue<JSValue> {
         val ctxNotNull = ctx ?: return jsUndefined()
         if (argc < 3 || argv == null) return jsUndefined()
         try {
-            val handle = qjs_ValueGetFloat64(argv[0]!!).toLong()
-            val methodId = qjs_ValueGetInt(argv[1]!!)
-            val argsArray = argv[2]!!
+            val handle = qjs_ValueGetFloat64(argv!![0L].readValue()).toLong()
+            val methodId = qjs_ValueGetInt(argv!![1L].readValue())
+            val argsArray = argv!![2L].readValue()
             val obj = getObject(handle) ?: return jsUndefined()
             return dispatch(ctxNotNull, obj, methodId, argsArray)
         } catch (t: Throwable) {
@@ -1071,21 +1066,19 @@ function __createJsUrlObj(handle) {
         return arr
     }
 
-    /** String → JSValue (qjs_NewString, memScoped 内分配 C 字符串) */
+    /** String → JSValue (qjs_NewString, 直接传 Kotlin String, cinterop 内部转 C 字符串) */
     private fun stringToJsValue(ctx: CPointer<JSContext>, s: String?): CValue<JSValue> {
         if (s == null) return jsNull()
-        memScoped {
-            return qjs_NewString(ctx, s.cstr.ptr)
-        }
+        return qjs_NewString(ctx, s)
     }
 
-    /** JSValue → String (qjs_ToCString + JS_FreeCString) */
+    /** JSValue → String (qjs_ToCString + qjs_FreeCString) */
     private fun jsValueToString(ctx: CPointer<JSContext>, v: CValue<JSValue>): String {
         val cstr = qjs_ToCString(ctx, v) ?: return ""
         return try {
             cstr.toKString()
         } finally {
-            JS_FreeCString(ctx, cstr)
+            qjs_FreeCString(ctx, cstr)
         }
     }
 
@@ -1149,3 +1142,4 @@ function __createJsUrlObj(handle) {
         else -> null
     }
 }
+

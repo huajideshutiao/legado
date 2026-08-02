@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -26,6 +27,8 @@ import io.legado.app.constant.PageAnim
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.help.config.ReadStyleConfig
+import io.legado.app.ui.book.read.ReadBookEvents
+import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDetailSeekBar
@@ -64,20 +67,23 @@ import org.jetbrains.compose.resources.stringResource
  * - **段距** (0.5-2.0): 映射到 [ReadBookConfigShared.paragraphSpacing] (整数 1-4)
  *   显示时 /2 得浮点值, 与 app 端 paragraphSpacing 等比缩放
  * - **背景色** (白/黄/绿/黑 4 预设): 写入 [ReadStyleConfig] 的
- *   bgStr/textColorStr/textColor/bgMeanColor
- *   对照 app 端 ReadBookConfig.configList 5 个默认主题, P1 简化为 4 个固定预设
+ *   bgStr/bgStrNight/textColorStr/textColorStrNight/textColor/bgMeanColor
+ *   (含夜间字段, 对照原版每套默认主题都有 bgStrNight/textColorStrNight, P1 简化为 4 个固定预设)
  * - **翻页模式** (覆盖/滑动/无动画): 写入 [ReadBookConfigShared.pageAnim] +
  *   通过 [onPageAnimChange] 回调让宿主切换 pageDelegate
  *
  * # 持久化
  *
- * 简单值 (textSize/lineSpacingExtra/paragraphSpacing/pageAnim) 走 prefs, 进程内持久;
- * 背景色写入 configList[0] (内存), 进程结束丢失 (与其他桌面 Provider 一致)。
+ * 简单值 (textSize/lineSpacingExtra/paragraphSpacing/pageAnim) 走 configList (内存),
+ * 面板关闭时经 DisposableEffect onDispose 统一 [ReadBookConfigShared.save] 落盘
+ * (对照原版 ReadStyleDialog.onDismiss -> ReadBookConfig.save);
+ * 背景色预设选择后除 onDispose 外还立即 save + postConfig (重启不丢, 阅读页即时刷新)。
  *
  * # 即时生效范围 (P1 简化)
  *
  * - 翻页模式: 即时切换 pageDelegate (通过 [onPageAnimChange] 回调)
- * - 字号/行距/段距/背景色: 仅持久化, 下次启动 ReaderScreen 时由
+ * - 背景色: 选择即 save + postConfig, 阅读页即时重绘
+ * - 字号/行距/段距: 仅持久化, 下次启动 ReaderScreen 时由
  *   `io.legado.desktop.ui.reader.ReaderScreen` 读取 readBookConfig 初始化
  *   viewModel/LayoutConfig 后生效 (与任务约束 "启动时读取配置初始化" 一致)
  *
@@ -94,7 +100,8 @@ fun ReadConfigPanel(
     val providers = LocalReadConfigProviders.current
     val readBookConfig = providers.readBookConfig
 
-    // 本地状态: 启动时从 readBookConfig 读取, 修改时同步写回 (走 prefs 持久化)
+    // 本地状态: 启动时从 readBookConfig 读取, 修改时同步写回 (configList 内存,
+    // 关闭时 onDispose save 统一落盘)
     var textSize by remember { mutableIntStateOf(readBookConfig.textSize.coerceIn(12, 36)) }
     var lineSpacing by remember { mutableIntStateOf(readBookConfig.lineSpacingExtra.coerceIn(10, 20)) }
     var paragraphSpacing by remember { mutableIntStateOf(readBookConfig.paragraphSpacing.coerceIn(1, 4)) }
@@ -157,10 +164,27 @@ fun ReadConfigPanel(
                     bgPresetIndex = index
                     val preset = BG_PRESETS[index]
                     val cfg = readBookConfig.configList[0]
-                    cfg.bgStr = preset.bgStr
-                    cfg.textColorStr = preset.textColorStr
-                    cfg.textColor = preset.textColor
-                    cfg.bgMeanColor = preset.bgMeanColor
+                    // 预设整包写日/夜两套背景+文字色并同步 Int 缓存 (对照原版每套样式含
+                    // bgStrNight/textColorStrNight), 避免夜间主题残留上一套颜色
+                    cfg.setPresetColor(
+                        bgStr = preset.bgStr,
+                        bgStrNight = preset.bgStrNight,
+                        textColorStr = preset.textColorStr,
+                        textColorStrNight = preset.textColorStrNight,
+                        textColor = preset.textColor,
+                        textColorNight = preset.textColorNight,
+                        bgMeanColor = preset.bgMeanColor,
+                    )
+                    // 选择即落盘 (save 异步写 readConfig.json, 重启不丢; 对照原版 onDismiss -> save)
+                    readBookConfig.save()
+                    // 背景/文字色都变了: 对照原版 BgTextConfig 取色 TEXT_COLOR [2,6,9,11] + BG [1]
+                    ReadBookEvents.postConfig(
+                        ReadConfigChange.BG,
+                        ReadConfigChange.STYLE,
+                        ReadConfigChange.UP_CONTENT,
+                        ReadConfigChange.INVALIDATE_TEXT_PAGE,
+                        ReadConfigChange.RENDER_TASK,
+                    )
                 },
             )
             // 翻页模式
@@ -179,11 +203,17 @@ fun ReadConfigPanel(
             onDismissRequest()
         },
     )
+
+    // 关闭时统一落盘 (对照原版 ReadStyleDialog.onDismiss -> ReadBookConfig.save,
+    // 覆盖字号/行距/段距/翻页模式等所有面板改动)
+    DisposableEffect(Unit) {
+        onDispose { readBookConfig.save() }
+    }
 }
 
 /**
  * 背景色预设行: 4 个圆形色块 (白/黄/绿/黑), 点击切换 [ReadStyleConfig] 的
- * bgStr/textColorStr/textColor/bgMeanColor。
+ * bgStr/bgStrNight/textColorStr/textColorStrNight/textColor/bgMeanColor。
  *
  * 对照 app 端 ReadStyleDialog 的 LazyRow 样式列表 (configList), 桌面端 P1 简化为 4 个固定预设,
  * 不支持自定义颜色 / 图片背景 (留待 P2)。
@@ -299,24 +329,64 @@ private val PAGE_ANIM_OPTIONS: List<Pair<Int, String>> = listOf(
  * - 黄: #F5DEB3 (wheat 护眼黄) / 文字 #5B4636
  * - 绿: #C7EDCC (护眼绿) / 文字 #3E3D3B
  * - 黑: #000000 / 文字 #ADADAD
+ * 每个预设含白天/夜间两套背景+文字色 (对照原版默认主题均有 bgStrNight/textColorStrNight;
+ * 夜间值取 app 端默认主题口径: 深灰底 #3C3F43 + 亮色文字)。
  *
- * @param bgStr 背景颜色 hex 字符串 (写入 [ReadStyleConfig.bgStr])
- * @param textColorStr 文字颜色 hex 字符串 (写入 [ReadStyleConfig.textColorStr])
- * @param textColor 文字颜色 Int ARGB (写入 [ReadStyleConfig.textColor],
+ * @param bgStr 白天背景颜色 hex 字符串 (写入 [ReadStyleConfig.bgStr])
+ * @param bgStrNight 夜间背景颜色 hex 字符串 (写入 [ReadStyleConfig.bgStrNight])
+ * @param textColorStr 白天文字颜色 hex 字符串 (写入 [ReadStyleConfig.textColorStr])
+ * @param textColorStrNight 夜间文字颜色 hex 字符串 (写入 [ReadStyleConfig.textColorStrNight])
+ * @param textColor 白天文字颜色 Int ARGB (写入 [ReadStyleConfig.textColor],
  *   由 PageViewComposable 用 Color(textColor) 渲染)
+ * @param textColorNight 夜间文字颜色 Int ARGB (同步 [ReadStyleConfig] 夜间 Int 缓存)
  * @param bgMeanColor 背景颜色 Int ARGB (写入 [ReadStyleConfig.bgMeanColor],
  *   由 PageViewComposable 用 Color(bgMeanColor) 渲染背景)
  */
 private data class BgPreset(
     val bgStr: String,
+    val bgStrNight: String,
     val textColorStr: String,
+    val textColorStrNight: String,
     val textColor: Int,
+    val textColorNight: Int,
     val bgMeanColor: Int,
 )
 
 private val BG_PRESETS: List<BgPreset> = listOf(
-    BgPreset("#FFFFFF", "#3E3D3B", 0xFF3E3D3B.toInt(), 0xFFFFFFFF.toInt()),
-    BgPreset("#F5DEB3", "#5B4636", 0xFF5B4636.toInt(), 0xFFF5DEB3.toInt()),
-    BgPreset("#C7EDCC", "#3E3D3B", 0xFF3E3D3B.toInt(), 0xFFC7EDCC.toInt()),
-    BgPreset("#000000", "#ADADAD", 0xFFADADAD.toInt(), 0xFF000000.toInt()),
+    BgPreset(
+        "#FFFFFF",
+        "#000000",
+        "#3E3D3B",
+        "#ADADAD",
+        0xFF3E3D3B.toInt(),
+        0xFFADADAD.toInt(),
+        0xFFFFFFFF.toInt()
+    ),
+    BgPreset(
+        "#F5DEB3",
+        "#3C3F43",
+        "#5B4636",
+        "#DCDFE1",
+        0xFF5B4636.toInt(),
+        0xFFDCDFE1.toInt(),
+        0xFFF5DEB3.toInt()
+    ),
+    BgPreset(
+        "#C7EDCC",
+        "#3C3F43",
+        "#3E3D3B",
+        "#88C16F",
+        0xFF3E3D3B.toInt(),
+        0xFF88C16F.toInt(),
+        0xFFC7EDCC.toInt()
+    ),
+    BgPreset(
+        "#000000",
+        "#000000",
+        "#ADADAD",
+        "#ADADAD",
+        0xFFADADAD.toInt(),
+        0xFFADADAD.toInt(),
+        0xFF000000.toInt()
+    ),
 )

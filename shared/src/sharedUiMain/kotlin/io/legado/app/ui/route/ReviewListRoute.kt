@@ -6,6 +6,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import io.legado.app.data.entities.Review
 import io.legado.app.ui.book.read.review.ReviewListScreen
 import io.legado.app.ui.book.read.review.ReviewListScreenModel
@@ -17,11 +18,8 @@ import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
-import io.legado.app.ui.root.RouteResultPayload
-import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
-import kotlinx.coroutines.flow.filter
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.confirm_delete_review
 import legado.shared.generated.resources.delete
@@ -38,7 +36,8 @@ import org.jetbrains.compose.resources.stringResource
  * 仅 book 级评论 (paragraphIndex = -1, chapter = null)。
  *
  * 平台专属行为对照 app 端 ReviewListDialog:
- * - 发布/回复: 跳 [AppRoute.ReviewPost] (resultKey=REVIEW_POST), 回传内容走 submit;
+ * - 发布/回复: 弹 [ReviewPostDialogHost] (对照原版 ReviewPostActivity 底部输入面板),
+ *   提交内容直连 screenModel.submit (原 REVIEW_POST 路由回传结果处理逻辑);
  *   点击单条先 setReplyTo 暂存该条并带 replyPreview (对照 onReviewClicked)
  * - 删除: [AppAlertDialog] 二次确认 (对照 alert(R.string.delete, R.string.confirm_delete_review))
  * - 长按: 复制内容 (对照 sendToClip)
@@ -71,16 +70,9 @@ fun ReviewListRoute(
         screenModel.setTexts(listTitleText, inputHint)
     }
 
-    // 接收 ReviewPost 路由回传的评论内容并提交 (对照 app 端 dialog LaunchedEffect)
-    LaunchedEffect(entry.id) {
-        navigator.resultsFor(entry.id)
-            .filter { it.key == RouteResults.REVIEW_POST }
-            .collect { result ->
-                val payload = result.payload as? RouteResultPayload.ReviewPost
-                    ?: return@collect
-                if (payload.content.isNotBlank()) screenModel.submit(payload.content)
-            }
-    }
+    // 发布输入弹窗状态 (对照原版 ReviewPostActivity): preview 非空 = 回复该条
+    var showPostDialog by remember { mutableStateOf(false) }
+    var postReplyPreview by remember { mutableStateOf<String?>(null) }
 
     val pendingDelete = remember { mutableStateOf<Review?>(null) }
 
@@ -98,13 +90,11 @@ fun ReviewListRoute(
             screenModel.changeSort(sort)
         }
 
-        // 点击单条 = 回复该条: 暂存 replyTo, 跳发布页并带原文预览
+        // 点击单条 = 回复该条: 暂存 replyTo, 弹发布输入面板并带原文预览
         override fun onReviewClick(review: Review) {
             screenModel.setReplyTo(review)
-            navigator.push(
-                AppRoute.ReviewPost(route.book, review.content),
-                resultKey = RouteResults.REVIEW_POST,
-            )
+            postReplyPreview = review.content
+            showPostDialog = true
         }
 
         override fun onReviewLongClick(review: Review) {
@@ -130,9 +120,11 @@ fun ReviewListRoute(
         // 回复详情: AppRoute 无对应路由, 按约束不新造, 暂空实现 (见本文件 KDoc)
         override fun onOpenReplies(review: Review) = Unit
 
+        // 发书评: 清空 replyTo, 弹发布输入面板
         override fun onPostClick() {
             screenModel.setReplyTo(null)
-            navigator.push(AppRoute.ReviewPost(route.book), resultKey = RouteResults.REVIEW_POST)
+            postReplyPreview = null
+            showPostDialog = true
         }
 
         override fun onAvatarClick(url: String?) {
@@ -147,6 +139,16 @@ fun ReviewListRoute(
     }
 
     ReviewListScreen(state = state, actions = actions)
+
+    // 发布输入弹窗 (对照原版 ReviewPostActivity 底部输入面板): 提交内容直连原 REVIEW_POST
+    // 路由回传结果处理逻辑 (submit → shared VM 网络提交 + 列表重载)
+    if (showPostDialog) {
+        ReviewPostDialogHost(
+            replyPreview = postReplyPreview,
+            onPosted = { content -> if (content.isNotBlank()) screenModel.submit(content) },
+            onDismiss = { showPostDialog = false },
+        )
+    }
 
     // 删除二次确认 (对照 app 端 alert(delete, confirm_delete_review) + yesButton/noButton)
     pendingDelete.value?.let { review ->

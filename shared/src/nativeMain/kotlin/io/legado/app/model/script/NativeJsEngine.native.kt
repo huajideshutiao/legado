@@ -1,4 +1,4 @@
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+﻿@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
 
 package io.legado.app.model.script
 
@@ -13,10 +13,13 @@ import io.legado.app.napi.quickjs.JS_TAG_FLOAT64
 import io.legado.app.napi.quickjs.JS_TAG_INT
 import io.legado.app.napi.quickjs.JS_TAG_NULL
 import io.legado.app.napi.quickjs.JS_TAG_UNDEFINED
-import io.legado.app.napi.quickjs.JS_EVAL_TYPE_GLOBAL
+import io.legado.app.napi.quickjs.qjs_EvalTypeGlobal
+import io.legado.app.napi.quickjs.JS_Eval
 import io.legado.app.napi.quickjs.JS_FreeAtom
+import io.legado.app.napi.quickjs.JS_GetLength
+import io.legado.app.napi.quickjs.JS_GetPropertyStr
 import io.legado.app.napi.quickjs.JS_FreeContext
-import io.legado.app.napi.quickjs.JS_FreeCString
+import io.legado.app.napi.quickjs.qjs_FreeCString
 import io.legado.app.napi.quickjs.JS_FreePropertyEnum
 import io.legado.app.napi.quickjs.JS_FreeRuntime
 import io.legado.app.napi.quickjs.JS_FreeValue
@@ -66,6 +69,8 @@ import kotlinx.cinterop.alloc
 import kotlinx.cinterop.cValue
 import kotlinx.cinterop.cstr
 import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.plus
+import kotlinx.cinterop.pointed
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.useContents
@@ -226,10 +231,10 @@ object NativeJsEngine : JsEngine {
                 val fn = qjs_NewCFunction(
                     ctx,
                     NativeJsExtensionsBridge.nativeDispatchFn,
-                    "__nativeDispatch".cstr.ptr,
+                    "__nativeDispatch",
                     3
                 )
-                JS_SetPropertyStr(ctx, global, "__nativeDispatch".cstr.ptr, fn)
+                JS_SetPropertyStr(ctx, global, "__nativeDispatch", fn)
             }
         } finally {
             JS_FreeValue(ctx, global)
@@ -381,8 +386,7 @@ object NativeJsEngine : JsEngine {
                         if (!isValidVarName(key)) continue
                         val jsValue = toJsValue(ctx, value) ?: continue
                         // JS_SetPropertyStr 转移 jsValue 所有权, 不需要 JS_FreeValue(jsValue)
-                        val keyCstr = key.cstr.ptr
-                        JS_SetPropertyStr(ctx, global, keyCstr, jsValue)
+                        JS_SetPropertyStr(ctx, global, key, jsValue)
                         injectedKeys.add(key)
                     }
                 }
@@ -487,9 +491,7 @@ object NativeJsEngine : JsEngine {
         checkException: Boolean
     ): Any? {
         memScoped {
-            val inputCstr = js.cstr.ptr
-            val filenameCstr = filename.cstr.ptr
-            val result = JS_Eval(ctx, inputCstr, js.length.toULong(), filenameCstr, JS_EVAL_TYPE_GLOBAL)
+            val result = JS_Eval(ctx, js, js.length.toULong(), filename, qjs_EvalTypeGlobal())
             try {
                 if (qjs_IsException(result) != 0) {
                     if (checkException) {
@@ -501,9 +503,9 @@ object NativeJsEngine : JsEngine {
                             JS_FreeValue(ctx, exc)
                         }
                     }
-                    return@memScoped null
+                    return null
                 }
-                return@memScoped fromJsValue(ctx, result)
+                return fromJsValue(ctx, result)
             } finally {
                 JS_FreeValue(ctx, result)
             }
@@ -522,14 +524,17 @@ object NativeJsEngine : JsEngine {
             if (JS_IsError(exc)) {
                 // Error 对象: 取 stack 属性 (quickjs Error 自动带 stack)
                 memScoped {
-                    val stackCstr = "stack".cstr.ptr
-                    val stackVal = JS_GetPropertyStr(ctx, exc, stackCstr) ?: return@memScoped jsValueToString(ctx, exc)
+                    val stackVal = JS_GetPropertyStr(ctx, exc, "stack")
                     try {
+                        if (qjs_IsException(stackVal) != 0) return@memScoped jsValueToString(
+                            ctx,
+                            exc
+                        )
                         if (qjs_IsString(stackVal) != 0 || qjs_IsUndefined(stackVal) == 0) {
                             val stackCstrVal = qjs_ToCString(ctx, stackVal)
                             if (stackCstrVal != null) {
                                 val s = stackCstrVal.toKString()
-                                JS_FreeCString(ctx, stackCstrVal)
+                                qjs_FreeCString(ctx, stackCstrVal)
                                 return@memScoped s.ifEmpty { jsValueToString(ctx, exc) }
                             }
                         }
@@ -552,7 +557,7 @@ object NativeJsEngine : JsEngine {
         return try {
             cstr.toKString()
         } finally {
-            JS_FreeCString(ctx, cstr)
+            qjs_FreeCString(ctx, cstr)
         }
     }
 
@@ -564,7 +569,7 @@ object NativeJsEngine : JsEngine {
      * - undefined/null → null
      * - boolean → Boolean (qjs_ValueGetBool)
      * - number → Int (JS_TAG_INT) 或 Double (JS_TAG_FLOAT64)
-     * - string → String (qjs_ToCString + JS_FreeCString)
+     * - string → String (qjs_ToCString + qjs_FreeCString)
      * - array → List (递归, JS_GetLength + JS_GetPropertyUint32)
      * - object → [NativeNativeObject] (递归, JS_GetOwnPropertyNames + JS_GetProperty)
      * - 其他 → null (fallback)
@@ -590,7 +595,7 @@ object NativeJsEngine : JsEngine {
             return try {
                 cstr.toKString()
             } finally {
-                JS_FreeCString(ctx, cstr)
+                qjs_FreeCString(ctx, cstr)
             }
         }
         if (qjs_IsObject(v) != 0) {
@@ -605,7 +610,7 @@ object NativeJsEngine : JsEngine {
         return try {
             cstr.toKString()
         } finally {
-            JS_FreeCString(ctx, cstr)
+            qjs_FreeCString(ctx, cstr)
         }
     }
 
@@ -642,12 +647,12 @@ object NativeJsEngine : JsEngine {
             val tab = pTab.value ?: return@memScoped
             try {
                 for (i in 0 until count) {
-                    val atom = tab[i].useContents { atom }
+                    val atom = tab[i.toLong()].atom
                     try {
                         val keyCstr = qjs_AtomToCString(ctx, atom)
                         if (keyCstr != null) {
                             val key = keyCstr.toKString()
-                            JS_FreeCString(ctx, keyCstr)
+                            qjs_FreeCString(ctx, keyCstr)
                             // 用 atom 取属性值 (避免再次通过 C 字符串解析)
                             val value = JS_GetProperty(ctx, obj, atom)
                             try {
@@ -699,10 +704,7 @@ object NativeJsEngine : JsEngine {
                 if (d.isNaN() || d.isInfinite()) jsNullValue() else qjs_NewFloat64(ctx, d)
             }
             is String -> {
-                memScoped {
-                    val cstr = converted.cstr.ptr
-                    qjs_NewString(ctx, cstr)
-                }
+                qjs_NewString(ctx, converted)
             }
             is Map<*, *> -> {
                 @Suppress("UNCHECKED_CAST")
@@ -728,9 +730,8 @@ object NativeJsEngine : JsEngine {
             for ((k, v) in map) {
                 val keyStr = k as? String ?: continue
                 val jsV = toJsValue(ctx, v) ?: continue
-                val keyCstr = keyStr.cstr.ptr
                 // JS_SetPropertyStr 转移 jsV 所有权, 不需要 JS_FreeValue(jsV)
-                JS_SetPropertyStr(ctx, obj, keyCstr, jsV)
+                JS_SetPropertyStr(ctx, obj, keyStr, jsV)
             }
         }
         return obj
@@ -1100,15 +1101,14 @@ class NativeJsCompiledScript(val source: String) : JsCompiledScript {
  * 业务代码可用 `is NativeNativeObject` 区分 JS 返回的对象与其他来源的 Map
  * (与 quickjs 的 `is NativeObject` / 原 `is IosNativeObject` / `is OhosNativeObject` 行为一致)。
  *
- * 继承 LinkedHashMap 保持 Map 兼容性, 业务代码可直接当 Map 使用。
+ * K/N 的 LinkedHashMap 为 final 不可继承, 改用接口委托保持 Map 兼容性,
+ * 业务代码可直接当 Map 使用。
  *
  * 注: 类名 NativeNativeObject 中第一个 Native 指 nativeMain 源集 (iOS/鸿蒙共用),
  * 第二个 Native 对齐 quickjs 的 NativeObject 命名 (JS 原生对象标记)。
  */
-class NativeNativeObject : LinkedHashMap<String, Any?> {
-    constructor() : super()
-    constructor(initialCapacity: Int) : super(initialCapacity)
-}
+class NativeNativeObject(initialCapacity: Int = 0) :
+    MutableMap<String, Any?> by LinkedHashMap(initialCapacity)
 
 /**
  * native 端 (iOS/鸿蒙) [NativeNativeObject] 的 [JsObject] 包装。
@@ -1127,3 +1127,4 @@ class NativeJsObject(val delegate: NativeNativeObject) : JsObject,
  * `is Exception` 可匹配。
  */
 class NativeScriptException(message: String) : Exception(message)
+

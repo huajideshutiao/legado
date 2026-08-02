@@ -34,7 +34,6 @@ object WindowPolicies {
         pictureInPicture = true
     )
     val AudioPlay = WindowPolicy(keepScreenOn = true)
-    val ReviewPost = WindowPolicy(softInput = SoftInputPolicy.Resize)
 
     // 编辑页文本域在页面底部, 固定 adjustResize: 避免 adjustUnspecified 对 Compose 层级
     // 判不可滚动而落 adjustPan, 弹键盘时整页(含标题栏)被顶起 (对照原 BookInfoEditActivity 可滚动布局→resize)
@@ -48,7 +47,6 @@ object WindowPolicies {
         is AppRoute.MangaReader -> Manga
         is AppRoute.VideoPlay -> VideoPlayer
         is AppRoute.AudioPlay -> AudioPlay
-        is AppRoute.ReviewPost -> ReviewPost
         is AppRoute.BookInfoEdit -> BookInfoEdit
         is AppRoute.WebView -> WebView
         else -> Normal

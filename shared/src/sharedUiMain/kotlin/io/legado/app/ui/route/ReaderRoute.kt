@@ -27,6 +27,7 @@ import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
+import io.legado.app.help.config.ReadTipConfigShared
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.LocalReadBookProvider
@@ -54,6 +55,7 @@ import io.legado.app.ui.book.read.config.ReadAloudDialog
 import io.legado.app.ui.book.read.config.SpeakEngineDialog
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
+import io.legado.app.ui.book.read.page.tipRowHeightPx
 import io.legado.app.ui.book.read.page.turnPage
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
@@ -78,6 +80,8 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.chapter_pay
 import legado.shared.generated.resources.cloud_progress_exceeds_current
 import legado.shared.generated.resources.concurrent_rate
 import legado.shared.generated.resources.login_check_js
@@ -126,6 +130,7 @@ fun ReaderRoute(
     // region 排版参数注入（对照原版 ChapterProvider.upViewSize + TextStyleProvider.upStyle）
     val density = LocalDensity.current
     val readBookConfig = LocalReadConfigProviders.current.readBookConfig
+    val readTipConfig = LocalReadConfigProviders.current.readTipConfig
     val containerSize = LocalWindowInfo.current.containerSize
     // 拖动窗口时 containerSize 每帧变化，停稳后再重排（对照原版 upViewSize 的 postDelayed 去抖）
     var layoutSize by remember { mutableStateOf(containerSize) }
@@ -142,9 +147,10 @@ fun ReaderRoute(
             if (changes.any { it in relayoutChanges }) configVersion++
         }
     }
-    LaunchedEffect(screenModel, layoutSize, configVersion, density, readBookConfig) {
+    // readTipConfig 进 key: 页眉/页脚显隐与内边距变化时重建排版视口
+    LaunchedEffect(screenModel, layoutSize, configVersion, density, readBookConfig, readTipConfig) {
         screenModel.viewModel.updateLayoutConfig(
-            buildLayoutConfig(layoutSize, density, readBookConfig)
+            buildLayoutConfig(layoutSize, density, readBookConfig, readTipConfig)
         )
     }
     // endregion
@@ -159,6 +165,7 @@ fun ReaderRoute(
             viewModel = screenModel.viewModel,
             menuState = screenModel.menuState,
             batteryLevel = screenModel.batteryLevel,
+            clockText = screenModel.clockText,
         )
     }
 
@@ -362,6 +369,37 @@ fun ReaderRoute(
     // region 对话框渲染 (书签/正文编辑/日志, 由 AndroidReaderMenuState 触发)
     val dialogEvent by screenModel.dialogEvent.collectAsState()
     when (val event = dialogEvent) {
+        is ReaderDialogEvent.ChapterPay -> {
+            // 章节购买确认 (对照原版 ReadBookActivity.payAction 的 alert 确认)
+            val book = screenModel.currentBook
+            val chapter = screenModel.currentChapter
+            if (book == null || chapter == null) {
+                screenModel.clearDialogEvent()
+            } else {
+                AppAlertDialog(
+                    onDismissRequest = { screenModel.clearDialogEvent() },
+                    title = stringResource(Res.string.chapter_pay),
+                    message = chapter.title,
+                    okButton = AlertButton(stringResource(Res.string.ok)) {
+                        screenModel.clearDialogEvent()
+                        screenModel.payChapter { url ->
+                            // 支付页 URL 打开方式与 onChapterViewClick 一致 (内嵌 WebView 路由)
+                            navigator.push(
+                                AppRoute.WebView(
+                                    url = url,
+                                    sourceKey = book.origin,
+                                    sourceName = book.originName,
+                                )
+                            )
+                        }
+                    },
+                    cancelButton = AlertButton(stringResource(Res.string.cancel)) {
+                        screenModel.clearDialogEvent()
+                    },
+                )
+            }
+        }
+
         is ReaderDialogEvent.AddBookmark -> {
             BookmarkDialog(
                 bookmark = event.bookmark,
@@ -411,13 +449,10 @@ fun ReaderRoute(
             )
         }
 
-        // 界面/样式设置 (对照原版 界面按钮 → ReadStyleDialog 底部弹窗)
+        // 界面/样式设置 (对照原版 界面按钮 → ReadStyleDialog 底部弹窗; 子配置在弹窗内叠层)
         is ReaderDialogEvent.ReadStyle -> {
             ReadStyleDialogHost(
                 onDismiss = { screenModel.clearDialogEvent() },
-                onShowPaddingConfig = { navigator.push(AppRoute.PaddingConfig) },
-                onShowTipConfig = { navigator.push(AppRoute.TipConfig) },
-                onShowBgTextConfig = { navigator.push(AppRoute.BgTextConfig) },
             )
         }
 
@@ -555,6 +590,85 @@ fun ReaderRoute(
             )
         }
 
+        // 目录 (对照原版 目录按钮 → TocDialog 全高底部弹窗; 选章节直接跳阅读)
+        is ReaderDialogEvent.Toc -> {
+            val book = screenModel.currentBook
+            if (book != null) {
+                TocDialogHost(
+                    book = book,
+                    onOpenChapter = { index, pos ->
+                        screenModel.clearDialogEvent()
+                        screenModel.openChapter(index, pos)
+                    },
+                    onShowTocRegexDialog = { navigator.push(AppRoute.TxtTocRule) },
+                    onDismiss = { screenModel.clearDialogEvent() },
+                )
+            } else {
+                LaunchedEffect(screenModel) { screenModel.clearDialogEvent() }
+            }
+        }
+
+        // 整书换源 (对照原版 换源按钮 → ChangeBookSourceDialog 全高底部弹窗)
+        is ReaderDialogEvent.ChangeSource -> {
+            val book = screenModel.currentBook
+            if (book != null) {
+                ChangeSourceDialogHost(
+                    book = book,
+                    onSourceChanged = { source, newBook, toc ->
+                        screenModel.clearDialogEvent()
+                        screenModel.changeTo(source, newBook, toc)
+                    },
+                    onEditSource = { origin ->
+                        navigator.push(
+                            AppRoute.BookSourceEdit(origin),
+                            RouteResults.BOOK_SOURCE_EDIT
+                        )
+                    },
+                    onBookSourceManage = { navigator.push(AppRoute.BookSourceManage) },
+                    onDismiss = { screenModel.clearDialogEvent() },
+                )
+            } else {
+                LaunchedEffect(screenModel) { screenModel.clearDialogEvent() }
+            }
+        }
+
+        // 章节换源 (对照原版 换源图标长按 → ChangeChapterSourceDialog 全高底部弹窗)
+        is ReaderDialogEvent.ChangeChapterSource -> {
+            val book = screenModel.currentBook
+            val chapter = screenModel.currentChapter
+            if (book != null && chapter != null) {
+                ChangeChapterSourceDialogHost(
+                    book = book,
+                    chapterIndex = chapter.index,
+                    chapterTitle = chapter.title,
+                    onChapterChanged = { content ->
+                        screenModel.clearDialogEvent()
+                        // 对照 RouteResults.CHANGE_CHAPTER_SOURCE: 落库 + 刷新当前章
+                        scope.launch {
+                            runCatching {
+                                BookStorageProviders.get().saveText(book, chapter, content)
+                            }
+                            screenModel.viewModel.refreshCurrentChapter()
+                        }
+                    },
+                    onSourceChanged = { source, newBook, toc ->
+                        screenModel.clearDialogEvent()
+                        screenModel.changeTo(source, newBook, toc)
+                    },
+                    onEditSource = { origin ->
+                        navigator.push(
+                            AppRoute.BookSourceEdit(origin),
+                            RouteResults.BOOK_SOURCE_EDIT
+                        )
+                    },
+                    onBookSourceManage = { navigator.push(AppRoute.BookSourceManage) },
+                    onDismiss = { screenModel.clearDialogEvent() },
+                )
+            } else {
+                LaunchedEffect(screenModel) { screenModel.clearDialogEvent() }
+            }
+        }
+
         null -> Unit
     }
     // endregion
@@ -609,13 +723,20 @@ private fun buildLayoutConfig(
     size: IntSize,
     density: Density,
     config: ReadBookConfigShared,
+    tipConfig: ReadTipConfigShared,
 ): ReadBookViewModelShared.LayoutConfig = with(density) {
     val textSizePx = config.textSize.sp.toPx()
+    // 页眉/页脚 tip 高度（隐藏时为 0）：排版视口预留，正文不钻进 tip 区。
+    // 对照 app 端 contentTextView 被 header/footer 占位挤小后的实际尺寸。
+    val headerTip = if (tipConfig.headerMode == 2) 0
+    else tipRowHeightPx(density, config.headerPaddingTop, config.headerPaddingBottom)
+    val footerTip = if (tipConfig.footerMode == 1) 0
+    else tipRowHeightPx(density, config.footerPaddingTop, config.footerPaddingBottom)
     ReadBookViewModelShared.LayoutConfig(
         viewWidth = size.width,
-        viewHeight = size.height,
+        viewHeight = size.height - footerTip,
         paddingLeft = config.paddingLeft.dp.roundToPx(),
-        paddingTop = config.paddingTop.dp.roundToPx(),
+        paddingTop = headerTip + config.paddingTop.dp.roundToPx(),
         paddingRight = config.paddingRight.dp.roundToPx(),
         paddingBottom = config.paddingBottom.dp.roundToPx(),
         textSizePx = textSizePx,

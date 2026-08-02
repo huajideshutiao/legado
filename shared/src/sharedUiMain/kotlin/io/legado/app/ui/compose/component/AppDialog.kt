@@ -3,6 +3,8 @@ package io.legado.app.ui.compose.component
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -74,9 +76,16 @@ private val DecelerateEasing = Easing { 1f - (1f - it) * (1f - it) }
 
 /**
  * 底部弹层对话框 (对照原版 BaseBottomDialogFragment gravity=Bottom 语义):
- * 内容对齐窗口底部, 进入从下方滑入 200ms + 淡入, 退出 150ms 下滑淡出;
- * E-Ink 模式跳过动画。尺寸由 [AppDialogSizes.properties] 控制 (窗口随内容包裹,
- * 内容侧用 fillMaxSize 撑满后 align BottomCenter)。
+ * 内容对齐容器底部, 进入从下方滑入 200ms + 淡入, 退出 150ms 下滑淡出;
+ * E-Ink 模式跳过动画。
+ *
+ * # 跨平台贴底实现
+ *
+ * CMP 的 [Dialog] 在桌面端是主窗口内的 ComposeSceneLayer 并默认居中放置, 直接
+ * `fillMaxWidth + BottomCenter` 在 wrap 内容里没有视觉效果, 表现为居中卡片。
+ * 这里把内容铺满整个容器 ([fillMaxSize]) —— 层随内容铺满后坐标归 (0,0) ——
+ * 再靠 `align(BottomCenter)` 把 sheet 贴到底部。铺满后点击都在层内,
+ * `dismissOnClickOutside` 不再触发, 用透明点击层手动关闭 (scrim 由 Dialog 层自带)。
  */
 @Composable
 fun AppBottomSheetDialog(
@@ -86,8 +95,7 @@ fun AppBottomSheetDialog(
 ) {
     if (AppConfigProviders.get().isEInkMode) {
         Dialog(onDismissRequest = onDismissRequest, properties = properties) {
-            // Keep the window wrap-content so clicks outside the sheet reach Dialog.
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) { content() }
+            BottomSheetScaffold(onDismissRequest = onDismissRequest) { content() }
         }
         return
     }
@@ -107,13 +115,40 @@ fun AppBottomSheetDialog(
         }
         val p = progress.value
         val slideHeightPx = with(LocalDensity.current) { AppDialogSizes.fullHeight().toPx() }
+        BottomSheetScaffold(
+            onDismissRequest = onDismissRequest,
+            modifier = Modifier.graphicsLayer {
+                translationY = slideHeightPx * (1f - p)
+                alpha = p
+            },
+        ) { content() }
+    }
+}
+
+/**
+ * 底部弹层骨架: 透明点击层铺满 (点击关闭) + sheet 内容贴底。
+ * 需作为 Dialog 内容的根, 内容 fillMaxSize 让弹层覆盖整个容器。
+ */
+@Composable
+private fun BottomSheetScaffold(
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(Modifier.fillMaxSize()) {
+        // 透明点击层: 铺满全窗, 点击关闭 sheet (铺满后 dismissOnClickOutside 不触发)
         Box(
             Modifier
-                .fillMaxWidth()
-                .graphicsLayer {
-                    translationY = slideHeightPx * (1f - p)
-                    alpha = p
-                },
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) { onDismissRequest() }
+        )
+        Box(
+            modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(),
             contentAlignment = Alignment.BottomCenter,
         ) { content() }
     }

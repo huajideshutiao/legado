@@ -438,6 +438,13 @@ object WebBookProvidersImpl :
         ThemeConfig.delConfig(index)
     }
 
+    /** 对照 ThemeCustomizeDialog.saveToConfig: configList[index] = ... + save() */
+    override fun replaceConfig(index: Int, config: ThemeConfigData) {
+        if (index !in ThemeConfig.configList.indices) return
+        ThemeConfig.configList[index] = config.toThemeConfig()
+        ThemeConfig.save()
+    }
+
     /** 包装 ThemeConfig.applyBuiltin (清 pref + applyDayNight 含 postEvent) */
     override fun applyBuiltin(isNight: Boolean) {
         ThemeConfig.applyBuiltin(appCtx, isNight)
@@ -446,6 +453,12 @@ object WebBookProvidersImpl :
     /** 包装 ThemeConfig.applyConfig (applyConfigToPrefs + applyDayNight 含 postEvent) */
     override fun applyConfig(config: ThemeConfigData) {
         ThemeConfig.applyConfig(appCtx, config.toThemeConfig())
+    }
+
+    /** 包装 reader 夜间按钮: AppConfig.isNightTheme = isNight + applyDayNight (含 applyTheme + postEvent) */
+    override fun applyDayNight(isNight: Boolean) {
+        AppConfig.isNightTheme = isNight
+        ThemeConfig.applyDayNight(appCtx)
     }
 
     /** 包装 ThemeConfig.getBuiltinConfigs (默认日间 + 默认夜间, isBuiltin=true) */

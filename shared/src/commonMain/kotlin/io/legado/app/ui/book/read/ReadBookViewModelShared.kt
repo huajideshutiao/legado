@@ -405,34 +405,9 @@ class ReadBookViewModelShared(
      * 未加入书架的书只更新内存章节表，不落库（与原版 inBookshelf 守卫一致，也避免外键失败）。
      */
     private suspend fun loadChapterListFromSource(book: Book): List<BookChapter> {
-        val oldBook = book.copy()
-        val list: List<BookChapter> = try {
-            if (book.isLocal) {
-                withContext(IoDispatcher) { FileBook.getChapterList(book) }
-            } else {
-                val source = readBook.bookSource.value ?: return emptyList()
-                WebBook.getChapterListAwait(source, book, true).getOrThrow()
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            AppLog.put("获取目录失败\n${e.message}", e)
-            return emptyList()
-        }
-        if (!book.isNotShelf) {
-            runCatching {
-                val appDb = AppDbProviders.get()
-                // runPreUpdateJs 有可能改掉 bookUrl，此时按新 url 迁移书与缓存目录
-                if (oldBook.bookUrl == book.bookUrl) {
-                    appDb.bookDao.update(book)
-                } else {
-                    appDb.bookDao.replace(oldBook, book)
-                    BookStorageProviders.get().updateCacheFolder(oldBook, book)
-                }
-                appDb.bookChapterDao.delByBook(oldBook.bookUrl)
-                appDb.bookChapterDao.insert(*list.toTypedArray())
-            }.onFailure { AppLog.put("目录落库失败\n${it.message}", it) }
-        }
+        // 核心逻辑提取为顶层 [fetchChapterListFromSource] (供音频/RSS 等复用), 此处保留
+        // readBook.updateChapterList 成员写入
+        val list = fetchChapterListFromSource(book, readBook.bookSource.value)
         readBook.updateChapterList(list)
         return list
     }
@@ -638,7 +613,12 @@ class ReadBookViewModelShared(
                 applyCurChapterPages(textChapter)
                 scheduleReviewRelayoutIfNeeded(countDeferred, chapter, textChapter)
             }
-            -1, 1 -> readBook.updateTextChapter(offset, textChapter)
+            -1, 1 -> {
+                readBook.updateTextChapter(offset, textChapter)
+                // 相邻章装载完成：刷新页面流，替换章边界的"加载数据中…"占位页
+                // （对照原版 upContent 后 pageFactory.nextPage/prevPage 立即取到新章页面）
+                syncPageFlows()
+            }
         }
     }
 
@@ -679,7 +659,11 @@ class ReadBookViewModelShared(
                 syncPageFlows()
             }
 
-            -1, 1 -> readBook.updateTextChapter(offset, textChapter)
+            -1, 1 -> {
+                readBook.updateTextChapter(offset, textChapter)
+                // 相邻章重排完成：刷新页面流，替换章边界的"加载数据中…"占位页
+                syncPageFlows()
+            }
         }
     }
 
@@ -1286,9 +1270,39 @@ class ReadBookViewModelShared(
     private fun syncPageFlows() {
         pageIndex = readBook.durPageIndexValue.coerceIn(0, (pageList.size - 1).coerceAtLeast(0))
         _curTextPage.value = pageList.getOrNull(pageIndex)
+        // 对照原版 TextPageFactory.prevPage/nextPage：章首/章末的相邻页跨章节取
+        // - prevPage = 上一章末页（prevChapter.lastPage），nextPage = 下一章首页（nextChapter.getPage(0)）
+        // - 相邻章尚未装载时给"加载数据中…"占位页（原版 loadingTextPage）
+        // 修复翻页动画：prev/next 流为 null 时 ReadViewComposable 的 prevContent/nextContent
+        // lambda 什么都不渲染，滑入层只有阴影扫过、页面内容不跟着动（原版三页流永远有值）
+        val prevChapter = readBook.prevTextChapter.value
+        val nextChapter = readBook.nextTextChapter.value
         _prevTextPage.value = pageList.getOrNull(pageIndex - 1)
+            ?: prevChapter?.pages?.lastOrNull()
+                ?: if (pageIndex == 0 && canMoveToPrevChapter()) {
+                loadingPlaceholderPage(readBook.durChapterIndex.value - 1)
+            } else {
+                null
+            }
         _nextTextPage.value = pageList.getOrNull(pageIndex + 1)
+            ?: nextChapter?.pages?.firstOrNull()
+                ?: if (pageIndex == pageList.lastIndex && canMoveToNextChapter()) {
+                loadingPlaceholderPage(readBook.durChapterIndex.value + 1)
+            } else {
+                null
+            }
     }
+
+    /**
+     * "加载数据中…"占位页（对照原版 TextPageFactory.loadingTextPage，文案同 R.string.data_loading）。
+     * 相邻章尚未装载时填充 prev/next 流，保证翻页动画滑入层始终有内容。
+     */
+    private fun loadingPlaceholderPage(chapterIndex: Int): TextPage = placeholderPage(
+        msg = "加载数据中…",
+        chapterIndex = chapterIndex,
+        chapterSize = readBook.chapterSize,
+        title = "加载数据中…",
+    )
 
     /** 展示占位提示章（原版错误文案同样经 contentLoadFinish 成章展示） */
     private fun showMessageChapter(
@@ -1698,4 +1712,50 @@ fun searchResultPositions(
         charIndex2 = charIndex + queryLength - curLineLength - 1
     }
     return SearchPosition(pageIndex, lineIndex, charIndex, addLine, charIndex2)
+}
+
+/**
+ * 回源拉取目录 (提取自 [ReadBookViewModelShared.loadChapterListFromSource], 供音频播放 /
+ * RSS 阅读等下沉模块复用, 消除"目录缺失时只读 DB → 内容加载静默失败"的同类回归):
+ *
+ * - 本地书: FileBook.getChapterList (重解析文件)
+ * - 网络书: WebBook.getChapterListAwait (书源目录规则; [runPerJs] 对照原版 loadChapterList
+ *   的 runPreUpdateJs 参数, 文本阅读场景 true, RSS 未入架书 false)
+ * - 书架书落库 (对照原版 inBookshelf 守卫; runPreUpdateJs 改 bookUrl 时按新 url 迁移)
+ * - 失败返回 emptyList 并记录日志 (不抛异常, 调用方自行决定错误展示)
+ */
+internal suspend fun fetchChapterListFromSource(
+    book: Book,
+    source: BookSource?,
+    runPerJs: Boolean = true,
+): List<BookChapter> {
+    val oldBook = book.copy()
+    val list: List<BookChapter> = try {
+        if (book.isLocal) {
+            withContext(IoDispatcher) { FileBook.getChapterList(book) }
+        } else {
+            source ?: return emptyList()
+            WebBook.getChapterListAwait(source, book, runPerJs).getOrThrow()
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        AppLog.put("获取目录失败\n${e.message}", e)
+        return emptyList()
+    }
+    if (!book.isNotShelf) {
+        runCatching {
+            val appDb = AppDbProviders.get()
+            // runPreUpdateJs 有可能改掉 bookUrl，此时按新 url 迁移书与缓存目录
+            if (oldBook.bookUrl == book.bookUrl) {
+                appDb.bookDao.update(book)
+            } else {
+                appDb.bookDao.replace(oldBook, book)
+                BookStorageProviders.get().updateCacheFolder(oldBook, book)
+            }
+            appDb.bookChapterDao.delByBook(oldBook.bookUrl)
+            appDb.bookChapterDao.insert(*list.toTypedArray())
+        }.onFailure { AppLog.put("目录落库失败\n${it.message}", it) }
+    }
+    return list
 }

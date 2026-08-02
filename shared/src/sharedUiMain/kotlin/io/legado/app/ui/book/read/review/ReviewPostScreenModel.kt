@@ -11,12 +11,13 @@ import kotlinx.coroutines.flow.update
  *
  * 下沉自 app 端 `ReviewPostActivity`: Activity 仅采集输入文本并以 setResult 回传,
  * 实际提交由调用方 (ReviewListDialog) 处理; shared 版本同样仅托管输入态,
- * 提交动作通过 [ReviewPostUiActions.onSubmit] 回调由 Route 层 navigator.pop 回传结果。
+ * 提交动作通过 [ReviewPostUiActions.onSubmit] 回调上抛, 由弹窗 Host
+ * ([io.legado.app.ui.route.ReviewPostDialogHost]) 回传调用方。
  *
  * hint (placeholder) 对照 Activity onCreate:
  * - replyPreview 非空 → "回复 %s: " % replyPreview.take(15) + (省略号)
  * - 否则 → review_post_hint
- * Route 层根据 AppRoute.ReviewPost.replyPreview 决定, 通过 [ReviewPostUiEvent.ShowHint] 注入。
+ * 弹窗 Host 根据 replyPreview 决定, 通过 [ReviewPostUiEvent.ShowHint] 注入。
  */
 class ReviewPostScreenModel : ScreenModel {
 

@@ -43,4 +43,7 @@ object EventBus {
     const val HOME_SECTION = "homeSection"
     const val DEFAULT_COVER_CHANGED = "defaultCoverChanged"
     const val SOURCE_UI_REQUEST = "sourceUiRequest"
+
+    /** 主题配置增改后通知刷新主题列表 (对照 app 端 ThemeCustomizeDialog.RESULT_CONFIG_CHANGED) */
+    const val THEME_CONFIG_CHANGED = "themeConfigChanged"
 }

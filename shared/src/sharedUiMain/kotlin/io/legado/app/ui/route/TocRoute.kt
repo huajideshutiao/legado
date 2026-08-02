@@ -1,6 +1,9 @@
 package io.legado.app.ui.route
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -8,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
@@ -24,7 +28,11 @@ import io.legado.app.ui.book.toc.TocScreen
 import io.legado.app.ui.book.toc.TocScreenModel
 import io.legado.app.ui.book.toc.TocUiActions
 import io.legado.app.ui.book.toc.TocUiEvent
+import io.legado.app.ui.compose.component.AppBottomSheetDialog
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.platform.PlatformBackHandler
+import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformServiceProviders
@@ -40,7 +48,9 @@ import kotlinx.serialization.json.Json
 
 /**
  * 目录页 shared 路由入口。
- * 通过 [ScreenModelStore] 复用 [TocScreenModel], 渲染 [TocScreen]。
+ * 通过 [TocContent] 复用目录屏幕, 本路由只负责导航语义:
+ * - resultKey 非空: 调用方 (详情页/阅读页) 期望结果回传, pop payload (对照 TocActivity.setResult+finish)
+ * - resultKey 为空: 直接跳阅读页
  */
 @Composable
 fun TocRoute(
@@ -51,14 +61,94 @@ fun TocRoute(
     val route = entry.route as AppRoute.Toc
     // asBook() 每次 copy() 新实例, remember(route) 固定后 LaunchedEffect(book) 只在换路由时重启
     val book = remember(route) { route.book.asBook() }
+    val resultKey = entry.resultKey
+    TocContent(
+        book = book,
+        onBack = { navigator.pop() },
+        onOpenChapter = { chapterIndex, chapterPos, chapterChanged ->
+            if (resultKey != null) {
+                navigator.pop(
+                    payload = RouteResultPayload.Toc(
+                        chapterIndex = chapterIndex,
+                        chapterPos = chapterPos,
+                        chapterChanged = chapterChanged,
+                    )
+                )
+            } else {
+                navigator.push(AppRoute.Reader(route.book, chapterIndex, chapterPos))
+            }
+        },
+        onShowTocRegexDialog = { navigator.push(AppRoute.TxtTocRule) },
+    )
+}
+
+/**
+ * 目录弹窗形态 (对照原版 TocListDialog / TocDialog: 全高底部弹窗)。
+ * 由阅读页"目录"按钮弹起, 选章节经 [onOpenChapter] 回传并关闭。
+ */
+@Composable
+fun TocDialogHost(
+    book: Book,
+    onOpenChapter: (chapterIndex: Int, chapterPos: Int) -> Unit,
+    onShowTocRegexDialog: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AppBottomSheetDialog(
+        onDismissRequest = onDismiss,
+        properties = AppDialogSizes.properties(),
+    ) {
+        AppTheme {
+            Surface(
+                shape = DesignTokens.dialogShape,
+                color = AppTheme.colors.background,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                TocContent(
+                    book = book,
+                    onBack = onDismiss,
+                    onOpenChapter = { chapterIndex, chapterPos, _ ->
+                        onOpenChapter(chapterIndex, chapterPos)
+                    },
+                    onShowTocRegexDialog = {
+                        onDismiss()
+                        onShowTocRegexDialog()
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 目录屏幕共享正文 (路由/弹窗两形态共用)。
+ *
+ * 内部自建 [TocScreenModel] + 事件接线, 导航类动作 (返回/选章节/TXT 目录规则) 经回调外抛,
+ * 由宿主 (TocRoute 或 [TocDialogHost]) 决定 pop/push 或 dismiss。
+ *
+ * @param book 当前书籍
+ * @param onBack 返回 (路由=pop, 弹窗=dismiss)
+ * @param onOpenChapter 选中章节 (chapterIndex, chapterPos, chapterChanged)
+ * @param onShowTocRegexDialog 打开 TXT 目录规则管理
+ */
+@Composable
+fun TocContent(
+    book: Book,
+    onBack: () -> Unit,
+    onOpenChapter: (chapterIndex: Int, chapterPos: Int, chapterChanged: Boolean) -> Unit,
+    onShowTocRegexDialog: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
-    val screenModel = screenModelStore.getOrCreateTyped(entry) {
+    val screenModel = remember(book.bookUrl) {
         TocScreenModel(getChapterFiles = { b ->
             BookStorageProviders.get().getChapterFiles(b).toSet()
         })
     }
     val state by screenModel.state.collectAsState()
     val waitDialogVisible by screenModel.waitDialog.collectAsState()
+    // 弹窗关闭时释放 ScreenModel 的协程 (对照 screenModelStore.onCleared)
+    DisposableEffect(screenModel) {
+        onDispose { screenModel.onCleared() }
+    }
 
     // 初始化书籍数据
     LaunchedEffect(book) {
@@ -83,28 +173,18 @@ fun TocRoute(
     var showLogDialog by remember { mutableStateOf(false) }
     var editingBookmark by remember { mutableStateOf<Bookmark?>(null) }
 
-    // resultKey 非空: 调用方 (Android Activity) 期望结果回传, pop payload (对照 TocActivity.setResult+finish)
-    // resultKey 为空: shared/desktop 直接跳阅读页
-    val resultKey = entry.resultKey
-    val actions = remember(navigator, route, screenModel, scope, resultKey) {
+    val actions = remember(screenModel, scope, onBack, onOpenChapter, onShowTocRegexDialog) {
         object : TocUiActions {
             override fun onBack() {
-                navigator.pop()
+                onBack()
             }
 
-            // 章节点击: resultKey 模式回传定位; 否则跳阅读页
+            // 章节点击: 回传定位 (弹窗关闭由宿主 onOpenChapter 处理)
             override fun openChapter(chapter: BookChapter) {
-                if (resultKey != null) {
-                    navigator.pop(
-                        payload = RouteResultPayload.Toc(
-                            chapterIndex = chapter.index,
-                            chapterPos = 0,
-                            chapterChanged = chapter.index != screenModel.state.value.durChapterIndex,
-                        )
-                    )
-                } else {
-                    navigator.push(AppRoute.Reader(route.book, chapter.index, null))
-                }
+                onOpenChapter(
+                    chapter.index, 0,
+                    chapter.index != screenModel.state.value.durChapterIndex,
+                )
             }
 
             override fun setSearchMode(active: Boolean) {
@@ -154,13 +234,12 @@ fun TocRoute(
                 screenModel.dispatch(TocUiEvent.UpBookTocRule(curBook))
             }
 
-            // 跳转 TXT 目录规则管理页 (app 端用对话框, shared 用列表页替代)
+            // 跳转 TXT 目录规则管理页
             override fun showTocRegexDialog() {
-                navigator.push(AppRoute.TxtTocRule)
+                onShowTocRegexDialog()
             }
 
             // 导出书签 JSON: 平台文件选择器 + BackupFileOps 写文件 (对照 viewModel.saveBookmark)
-            // scope 是 rememberCoroutineScope (主线程调度), 选择器与写文件都得切 IO
             override fun exportBookmark() {
                 val curBook = screenModel.state.value.book ?: return
                 scope.launch {
@@ -214,25 +293,12 @@ fun TocRoute(
                 showLogDialog = true
             }
 
-            // 书签点击: resultKey 模式回传定位; 否则跳阅读页
+            // 书签点击: 回传定位 (对照 openChapter)
             override fun openBookmark(bookmark: Bookmark) {
-                if (resultKey != null) {
-                    navigator.pop(
-                        payload = RouteResultPayload.Toc(
-                            chapterIndex = bookmark.chapterIndex,
-                            chapterPos = bookmark.chapterPos,
-                            chapterChanged = false,
-                        )
-                    )
-                } else {
-                    navigator.push(
-                        AppRoute.Reader(
-                            route.book,
-                            bookmark.chapterIndex,
-                            bookmark.chapterPos
-                        )
-                    )
-                }
+                onOpenChapter(
+                    bookmark.chapterIndex, bookmark.chapterPos,
+                    false,
+                )
             }
 
             // 弹出书签编辑对话框 (shared BookmarkDialog)

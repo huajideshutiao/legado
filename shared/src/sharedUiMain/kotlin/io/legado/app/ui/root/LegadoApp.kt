@@ -65,8 +65,12 @@ import io.legado.app.ui.compose.platform.PlatformBackHandler
 import io.legado.app.ui.compose.platform.handleBackKey
 import io.legado.app.ui.compose.platform.performBack
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.config.BookshelfLayoutConfigDialog
+import io.legado.app.ui.config.BottomNavConfigDialog
 import io.legado.app.ui.config.CheckSourceConfigDialog
 import io.legado.app.ui.config.DirectLinkUploadConfigDialog
+import io.legado.app.ui.config.MODE_EDIT_PREFS
+import io.legado.app.ui.config.ThemeCustomizeDialog
 import io.legado.app.ui.config.ThemeListDialog
 import io.legado.app.ui.widget.dialog.PhotoViewOverlayDialog
 import kotlinx.coroutines.flow.catch
@@ -424,6 +428,15 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
         // 主题列表 (对照 app 端 ThemeListDialog Fragment)
         "theme_list" -> ThemeListOverlayDialogContent(overlay, navigator)
 
+        // 主题定制 (对照 app 端 ThemeCustomizeDialog Fragment, 背景图功能不下沉)
+        // payload 形如 "mode,configIndex,isNight"
+        "theme_customize" -> ThemeCustomizeOverlayDialogContent(overlay, navigator)
+
+        // 书架布局配置 / 底栏配置 (对照 app 端 ThemeConfigFragment 对话框;
+        // app 端仍走原 Fragment 实现, 其他端经平台能力弹此 shared 对话框)
+        "bookshelf_layout" -> BookshelfLayoutOverlayDialogContent(overlay, navigator)
+        "bottom_nav_config" -> BottomNavConfigOverlayDialogContent(overlay, navigator)
+
         // 校验设置 (对照 app 端 CheckSourceConfig Fragment)
         "check_source_config" -> CheckSourceConfigOverlayDialogContent(overlay, navigator)
 
@@ -770,6 +783,51 @@ private fun ThemeListOverlayDialogContent(overlay: AppOverlay.Dialog, navigator:
             // 分享: 通过 ShareService
             services?.sharing?.shareText(json)
         },
+    )
+}
+
+// 主题定制对话框 (对照 app 端 ThemeCustomizeDialog Fragment 壳)
+// payload 形如 "mode,configIndex,isNight"; Toast 通过 shared Toasters
+@Composable
+private fun ThemeCustomizeOverlayDialogContent(
+    overlay: AppOverlay.Dialog,
+    navigator: AppNavigator,
+) {
+    val parts = overlay.payload.orEmpty().split(",")
+    val mode = parts.getOrNull(0)?.toIntOrNull() ?: MODE_EDIT_PREFS
+    val configIndex = parts.getOrNull(1)?.toIntOrNull() ?: -1
+    val isNight = parts.getOrNull(2)?.toBooleanStrictOrNull() ?: false
+
+    ThemeCustomizeDialog(
+        onDismiss = { navigator.dismissOverlay(overlay.key) },
+        onToast = { msg -> io.legado.app.help.toast.Toasters.get().toast(msg) },
+        mode = mode,
+        configIndex = configIndex,
+        initIsNight = isNight,
+    )
+}
+
+// 书架布局配置对话框 (对照 app 端 ThemeConfigHost.configBookshelf + dialog_bookshelf_config.xml)
+// shared 实现; 变更事件走 FlowBus (NOTIFY_MAIN / BOOKSHELF_REFRESH / RECREATE)
+@Composable
+private fun BookshelfLayoutOverlayDialogContent(
+    overlay: AppOverlay.Dialog,
+    navigator: AppNavigator,
+) {
+    BookshelfLayoutConfigDialog(
+        onDismiss = { navigator.dismissOverlay(overlay.key) },
+    )
+}
+
+// 底栏配置对话框 (对照 app 端 ThemeConfigHost.configBottomNav + dialog_bottom_nav_config.xml)
+// shared 实现; 变更后 emitRecreate() 触发全局重组
+@Composable
+private fun BottomNavConfigOverlayDialogContent(
+    overlay: AppOverlay.Dialog,
+    navigator: AppNavigator,
+) {
+    BottomNavConfigDialog(
+        onDismiss = { navigator.dismissOverlay(overlay.key) },
     )
 }
 

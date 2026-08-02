@@ -402,9 +402,10 @@ internal suspend fun ShelfScrollState.gotoTop(tier: ShelfTier, eInk: Boolean) {
 /**
  * 单个分组页 (对照 app 端 BookshelfScreen1 的 GroupBooksPage)。
  *
- * 数据取 [BookshelfViewModel.booksCache] 单一数据源切片 (当前分组流由 VM 按
- * selectGroup 维护, 页不再独立开 Room 流), 每页独立 [ShelfScrollState] 保留
- * 滚动位置 (初始分组复用外部 scrollState), 并登记到 [scrollStates] 供宿主滚顶按当前页取用。
+ * 数据经 [BookshelfViewModel.booksCache] 单一数据源切片 (pager 组合中的分组页
+ * 各自持有 Room 流, 由 VM 按页组合/离开维护, 见 [BookshelfViewModel.onGroupPageComposed]),
+ * 每页独立 [ShelfScrollState] 保留滚动位置 (初始分组复用外部 scrollState), 并登记到
+ * [scrollStates] 供宿主滚顶按当前页取用。
  */
 @Composable
 private fun GroupBooksPage(
@@ -426,6 +427,12 @@ private fun GroupBooksPage(
     // rememberSaveable: 页销毁重建后恢复滚动位置 (按 groupId 隔离)
     val pageScrollState = rememberSaveable(group.groupId, saver = ShelfScrollState.Saver) {
         if (group.groupId == initialGroupId) externalScrollState else ShelfScrollState()
+    }
+    // 页组合即订阅该分组数据流 (对齐原版 fragment 各自订阅, 相邻页数据预加载),
+    // 离开组合取消 → 活跃流 = 当前 + 相邻共 ≤3 个
+    DisposableEffect(group.groupId) {
+        viewModel.onGroupPageComposed(group.groupId)
+        onDispose { viewModel.onGroupPageDisposed(group.groupId) }
     }
     DisposableEffect(group.groupId, pageScrollState) {
         scrollStates[group.groupId] = pageScrollState
@@ -726,13 +733,16 @@ fun SharedBookCover(
 
 /** 封面位图 + 是否默认封面 (决定要不要叠竖排书名/作者) */
 @Immutable
-private class CoverBitmap(val bitmap: ImageBitmap?, val isDefault: Boolean)
+internal class CoverBitmap(val bitmap: ImageBitmap?, val isDefault: Boolean)
 
-private val NoCoverBitmap = CoverBitmap(null, false)
+internal val NoCoverBitmap = CoverBitmap(null, false)
 
-/** 默认分组封面 slot: 空白占位 (分组无独立封面, 仅占位以对齐 bookCoverSlot 签名) */
+/**
+ * 默认分组封面 slot: 与书架同源 (转 [LocalGroupCoverSlot] → [SharedGroupCover]),
+ * 分组封面渲染与书架 style2 条目/编辑分组对话框一致, 不再空白占位。
+ */
 private val DefaultGroupCoverSlot: @Composable (BookGroup, Modifier, Boolean, Int) -> Unit =
-    { _, m, _, _ -> Box(m) }
+    { group, m, isVideoCover, tick -> LocalGroupCoverSlot.current(group, m, isVideoCover, tick) }
 
 /**
  * 解码目标尺寸: 向上取到 64 的倍数, 让相邻列宽/微小布局抖动共用同一份内存缓存,
@@ -758,7 +768,7 @@ internal suspend fun firstValidCoverDecodeSize(sizes: Flow<IntSize>): IntSize =
  *
  * 图集为空或 [DataStorageProviders] 未注册时返回 null, 调用方回落内置图。
  */
-private fun defaultCoverFilePath(seed: String?, ratio: CoverRatio): String? {
+internal fun defaultCoverFilePath(seed: String?, ratio: CoverRatio): String? {
     val coversDir = DataStorageProviders.getOrNull()?.coversDir ?: return null
     val covers = BookCoverShared.currentDefaultCovers(
         PreferenceProviders.get(),

@@ -3,6 +3,8 @@ package io.legado.app.ui.route
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -11,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadConfigDefaults
 import io.legado.app.help.coroutine.IoDispatcher
@@ -29,6 +32,7 @@ import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -49,6 +53,56 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * 背景文字配置 shared 路由入口。
+ * 通过 [BgTextConfigContent] 复用配置屏幕, 本路由负责标题栏 + 导航 (pop)。
+ */
+@Composable
+fun BgTextConfigRoute(
+    entry: RouteEntry,
+    navigator: AppNavigator,
+    screenModelStore: ScreenModelStore,
+) {
+    val titleStr = stringResource(Res.string.text_bg_style)
+    Column(Modifier.fillMaxSize()) {
+        AppTitleBar(
+            title = titleStr,
+            onBack = { navigator.pop() },
+        )
+        BgTextConfigContent()
+    }
+}
+
+/**
+ * 背景文字配置弹窗形态 (对照原版 BgTextConfigDialog)。
+ * 由界面设置弹窗"背景文字"入口弹起。
+ */
+@Composable
+fun BgTextConfigDialogHost(
+    onDismiss: () -> Unit,
+) {
+    AppDialog(
+        onDismissRequest = onDismiss,
+        properties = AppDialogSizes.properties(),
+    ) {
+        AppTheme {
+            Surface(
+                shape = DesignTokens.dialogShape,
+                color = AppTheme.colors.background,
+                modifier = Modifier.appDialogSize().padding(16.dp),
+            ) {
+                Column {
+                    DialogTitleBar(
+                        title = stringResource(Res.string.text_bg_style),
+                        onBack = onDismiss,
+                    )
+                    BgTextConfigContent()
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 背景文字配置正文 (路由/弹窗两形态共用)。
  *
  * 暂无对应 ScreenModel, [BgTextConfigController] / [BgTextConfigActions] 直接接入
  * [ReadBookConfigProviders] / [PlatformServiceProviders] / [ReadBookEvents],
@@ -60,16 +114,10 @@ import org.jetbrains.compose.resources.stringResource
  * - 配置变更通知走 [ReadBookEvents.postConfig]
  */
 @Composable
-fun BgTextConfigRoute(
-    entry: RouteEntry,
-    navigator: AppNavigator,
-    screenModelStore: ScreenModelStore,
-) {
+fun BgTextConfigContent() {
     val readBookConfig = ReadBookConfigProviders.get()
     val scope = rememberCoroutineScope()
     var showUrlInput by remember { mutableStateOf(false) }
-    // 顶栏标题 (对照 app 端 R.string.text_bg_style, 与 ReadConfigScreen 入口项一致)
-    val titleStr = stringResource(Res.string.text_bg_style)
 
     val controller = remember {
         object : BgTextConfigController {
@@ -77,23 +125,30 @@ fun BgTextConfigRoute(
                 get() = readBookConfig.durConfig.name
                 set(value) {
                     readBookConfig.durConfig.name = value
+                    // 改名即落盘 (对照原版 BgTextConfigDialog.onDismiss -> ReadBookConfig.save,
+                    // 这里提前到确认时, 防进程被杀丢配置)
+                    readBookConfig.save()
                 }
 
             override fun darkStatusIcon(): Boolean =
                 readBookConfig.durConfig.curStatusIconDark()
 
-            override fun setCurStatusIconDark(value: Boolean) =
+            override fun setCurStatusIconDark(value: Boolean) {
                 readBookConfig.durConfig.setCurStatusIconDark(value)
+                readBookConfig.save()
+            }
 
             override fun underline(): Boolean = readBookConfig.durConfig.underline
 
             override fun setUnderline(value: Boolean) {
                 readBookConfig.durConfig.underline = value
+                readBookConfig.save()
             }
 
             override fun bgAlpha(): Int = readBookConfig.bgAlpha
 
             override fun setBgAlpha(value: Int) {
+                // 滑条连续回调, 不逐帧落盘; 关闭时经 onDispose save 统一持久化
                 readBookConfig.bgAlpha = value
             }
 
@@ -103,14 +158,25 @@ fun BgTextConfigRoute(
 
             override fun curBgStr(): String = readBookConfig.durConfig.curBgStr()
 
-            override fun setCurTextColor(color: Int) =
+            override fun setCurTextColor(color: Int) {
                 readBookConfig.durConfig.setCurTextColor(color)
+                // 取色确认即落盘 (对照原版 BgTextConfigDialog.onDismiss -> save,
+                // 这里提前到确认时, 防进程被杀丢配置)
+                readBookConfig.save()
+            }
 
-            override fun setCurBg(type: Int, value: String) =
+            override fun setCurBg(type: Int, value: String) {
                 readBookConfig.durConfig.setCurBg(type, value)
+                // 取色/选背景图确认即落盘 (同上)
+                readBookConfig.save()
+            }
 
             // 删除当前主题 (对照 app 端 ReadBookConfig.deleteDur)
-            override fun deleteDur(): Boolean = readBookConfig.deleteDur()
+            override fun deleteDur(): Boolean {
+                val deleted = readBookConfig.deleteDur()
+                if (deleted) readBookConfig.save()
+                return deleted
+            }
 
             // 持久化配置 (对照 app 端 ReadBookConfig.save)
             override fun save() = readBookConfig.save()
@@ -122,13 +188,13 @@ fun BgTextConfigRoute(
             // 恢复预设布局 (对照 app 端 ReadBookConfig.durConfig = defaultConfigs[i].copy())
             override fun restorePreset(index: Int) {
                 readBookConfig.durConfig = ReadConfigDefaults.readConfigs[index].copy()
+                readBookConfig.save()
             }
         }
     }
 
     val actions = object : BgTextConfigActions {
         // 导入配置 zip: 平台文件选择器选 zip → importFromPath → 更新 durConfig → postConfig
-        // 对照 app 端 selectImportDoc.launch + BgTextConfigViewModel.importConfig
         override fun onImportConfig() {
             val services = PlatformServiceProviders.getOrNull() ?: return
             scope.launch {
@@ -140,6 +206,8 @@ fun BgTextConfigRoute(
                         readBookConfig.importFromPath(path)
                     }
                     readBookConfig.durConfig = config
+                    // 导入后立即落盘 (对照原版 onDismiss -> save, 提前到导入完成时)
+                    readBookConfig.save()
                 }.onSuccess {
                     ReadBookEvents.postConfig(
                         ReadConfigChange.BG, ReadConfigChange.STYLE, ReadConfigChange.LOAD_CONTENT
@@ -152,7 +220,6 @@ fun BgTextConfigRoute(
         }
 
         // 导出配置 zip: exportConfigZip 生成临时 zip → 平台文件选择器选保存路径 → 复制 → 提示
-        // 对照 app 端 selectExportDir.launch + BgTextConfigViewModel.exportConfig
         override fun onExportConfig() {
             val services = PlatformServiceProviders.getOrNull() ?: return
             scope.launch {
@@ -185,7 +252,6 @@ fun BgTextConfigRoute(
         }
 
         // 选择背景图: 平台文件选择器选图 → setBgFromPath 复制到 bg 目录 → setCurBg(2, fileName) → postConfig
-        // 对照 app 端 selectBgImage.launch + BgTextConfigViewModel.setBgFromUri
         override fun onSelectBgImage() {
             val services = PlatformServiceProviders.getOrNull() ?: return
             scope.launch {
@@ -217,19 +283,13 @@ fun BgTextConfigRoute(
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
-        AppTitleBar(
-            title = titleStr,
-            onBack = { navigator.pop() },
-        )
-        BgTextConfigScreen(
-            controller = controller,
-            actions = actions,
-            isImageBook = false,
-            bgImageList = emptyList(),
-            bgImagePreviewSlot = { _, _ -> },
-        )
-    }
+    BgTextConfigScreen(
+        controller = controller,
+        actions = actions,
+        isImageBook = false,
+        bgImageList = emptyList(),
+        bgImagePreviewSlot = { _, _ -> },
+    )
 
     // 离开时持久化 (对照 app 端 BgTextConfigViewModel.onCleared → readBookConfig.save,
     // 与 TipConfigRoute / ReadStyleRoute / PaddingConfigRoute 保持一致)
@@ -252,6 +312,8 @@ fun BgTextConfigRoute(
                             readBookConfig.import(bytes)
                         }
                         readBookConfig.durConfig = config
+                        // 导入后立即落盘 (对照原版 onDismiss -> save, 提前到导入完成时)
+                        readBookConfig.save()
                     }.onSuccess {
                         ReadBookEvents.postConfig(
                             ReadConfigChange.BG,

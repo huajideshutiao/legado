@@ -1,11 +1,17 @@
 package io.legado.desktop
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -126,6 +132,7 @@ import io.legado.desktop.ui.DesktopDialogHost
 import io.legado.desktop.ui.DesktopPlatformCapabilities
 import io.legado.desktop.ui.DesktopPlatformServices
 import io.legado.desktop.ui.DesktopWindowHandle
+import io.legado.desktop.ui.DesktopWindowTitleBarSync
 import io.legado.desktop.ui.browser.DesktopWebViewSlot
 import io.legado.desktop.ui.platform.DesktopAudioPlayPlatformProvider
 import io.legado.desktop.ui.platform.DesktopMangaReaderPlatform
@@ -268,6 +275,23 @@ private fun runDesktopApp() = application {
     // setSafe 晚于首个 rememberAsyncImagePainter/AsyncImage 的 get 会抛 IllegalStateException。
     // 注册零开销 (ImageLoader lazy, OkHttpClient 惰性到首次网络 fetch, 无启动期网络栈初始化)
     registerJvmBookImageLoader()
+    // HTTP 层 (OkHttp + CookieJarBridge, 独立): 提前到阶段1, 与 JS 引擎同批就绪,
+    // 消除"窗口显示后、阶段2异步注册完成前首次 JS eval 触发网络请求 → OkHttpClientProviders
+    // 未注册"的启动竞态 (registerDesktopJsEngines 在前, 书源 JS 里 java.ajax 依赖此层)
+    registerDesktopHttpProvider()
+    // jsoup 走宿主共享 OkHttpClient (对照 app 端 App.kt:138 Jsoup.clientFactory = { okHttpClient })
+    Jsoup.clientFactory = { OkHttpClientProviders.get().okHttpClient }
+    // 漫画图片缓存 provider (webBook 漫画取图链路 BookImageStorageProviders.get() 的依赖):
+    // 提前到阶段1同步注册, 消除"窗口显示后阶段2异步注册前打开漫画页 → get() 抛 not registered
+    // → 图片全部加载失败"的启动竞态 (OkHttpClient 惰性到首次下载)。
+    // 注意: JvmBookImageStorage 构造会取 defaultRootPath → DataStorageProviders.get(),
+    // 必须先 registerJvmDataStorage() (注册本身零开销, 只 new JvmDataStorage)。
+    registerJvmDataStorage()
+    BookImageStorageProviders.register(JvmBookImageStorage())
+    // JS 引擎 provider (JsEngines/SharedJsScope/简繁词典): 提前到阶段1同步注册, 任何页面/协程
+    // 首次 eval 前必然就绪 (原阶段2第12步异步注册存在"先开漫画/详情页 → JS 规则失效"竞态);
+    // 注册本身零开销 (native 库在首次 eval 时才加载)
+    registerDesktopJsEngines()
     // 注册桌面端 DefaultDataResourceProvider (actual 实现由另一子代理处理, 这里只负责 register)
     // 必须在 AppDatabaseProviders.register 之前注册 (首次建库 dbCallback.onCreate →
     // DefaultData.keyboardAssists → DefaultDataResourceProviders.get().readResource("keyboardAssists.json")),
@@ -282,8 +306,7 @@ private fun runDesktopApp() = application {
     AppDatabaseProviders.register(DesktopAppDatabaseProvider(dbDriver))
     // KP2-D: 注册桌面端 BookStorage provider (首屏书架/阅读用, ~/.legado/book_cache)
     // ReadBookViewModelShared.loadChapter 通过 BookStorageProviders.get().getContent 读章节缓存正文
-    // 存储路径集中 provider 须先注册 (JvmBookStorage 构造时取 chapterCacheDir)
-    registerJvmDataStorage()
+    // 存储路径集中 provider 已在上方 registerJvmDataStorage() 提前注册 (JvmBookStorage 构造时取 chapterCacheDir)
     BookStorageProviders.register(JvmBookStorage())
     // 注: BookImageStorageProviders (漫画图片缓存) 非首屏必需, 延迟到阶段3 registerSecondaryProviders 注册
     // KP2-D: 注册桌面端 AppDbAccessor / BookHelpAccessor provider (首屏书架间接访问)
@@ -327,7 +350,8 @@ private fun runDesktopApp() = application {
     // - Audio: 复用 shared AudioPlayScreenContent + 桌面端 slots (封面/模糊背景/歌词/对话框)
     // - Manga: Coil3 AsyncImage 渲染 + ColorMatrix 灰度/颜色滤镜
     // - Video: MPV 播放器 (SwingPanel + nativeHwnd 桥接, Windows 用 WComponentPeer getHwnd)
-    ReaderPlatformProviders.register(DesktopReaderPlatformProvider())
+    val desktopReaderProvider = remember { DesktopReaderPlatformProvider() }
+    ReaderPlatformProviders.register(desktopReaderProvider)
     // ReadBookShared 的平台钩子 (朗读宿主 / 缓存运行态 / 本地 txt 分章缓存; 图片缓存为空实现,
     // 见 DesktopReadBookPlatform 注释)。须早于任何阅读页打开
     registerDesktopReadBookPlatform()
@@ -434,21 +458,39 @@ private fun runDesktopApp() = application {
             },
         ) {
             AppTheme {
+                // Windows 原生标题栏跟随应用主题 (修复: 深色主题下标题栏仍是系统浅色):
+                // 订阅 AppTheme 派生色, 深浅/夜间模式切换 (eventBus.emitRecreate → AppTheme
+                // 重组) 时 LaunchedEffect key 变化自动重跑, 实时同步 DWM 标题栏
+                DesktopWindowTitleBarSync(windowHandle)
                 // 对照 app 端 App.kt:132 SourceUiEventBridge.init(): desktop 无 Activity,
                 // 改用 Composable 宿主订阅 FlowBus(SOURCE_UI_REQUEST) 弹 Compose Dialog
                 // (实现见 shared/sharedUiMain 的 SourceUiEventBridgeHost)
                 SourceUiEventBridgeHost()
                 // 桌面端命令式对话框宿主: PlatformCapabilities 的同步方法经 DesktopDialogs 推请求
                 DesktopDialogHost()
+                // 阅读页长按文字选择对话框宿主 (对照 app 端 MainActivity.readerSelection 分支)
+                desktopReaderProvider.TextSelectionHost()
                 // legado:// deep link 导入对话框宿主: 消费 main(args)/OpenURIHandler 经
                 // LegadoDeepLinkHandler 记录的待导入请求 (对照 app 端 AssociationActivity 分发)
                 DeepLinkImportHost()
                 // 零薄壳: shared LegadoApp 统一管理导航栈 + ScreenModel 生命周期,
                 // 所有路由由 shared RouteContent 直接渲染
-                LegadoApp(
-                    navigator = navigator,
-                    screenModelStore = screenModelStore,
-                )
+                // 根级焦点包装 (对照 iOS/ohos 入口同款): handleBackKey 的 onPreviewKeyEvent
+                // 走 Compose 焦点系统, 组合内无节点持焦时 Esc 根本不会派发;
+                // 根节点持焦后 Esc 在任何界面都触发 performBack → pop
+                val rootFocusRequester = remember { FocusRequester() }
+                LaunchedEffect(Unit) { runCatching { rootFocusRequester.requestFocus() } }
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .focusRequester(rootFocusRequester)
+                        .focusable()
+                ) {
+                    LegadoApp(
+                        navigator = navigator,
+                        screenModelStore = screenModelStore,
+                    )
+                }
             }
         }
     }
@@ -484,11 +526,8 @@ private suspend fun registerSecondaryProviders() {
         // - BackupRestoreHooks: 备份/恢复的平台收尾 (lastBackup 时间戳 + 恢复完成提示);
         //   zip 复制/解压走 shared 默认文件分支, 桌面端无 SAF
         registerDesktopBackupRestoreHook()
-        // 2. HTTP 层 (OkHttp + CookieJarBridge, 独立)
-        registerDesktopHttpProvider()
-        // jsoup 走宿主共享 OkHttpClient (对照 app 端 App.kt:138 Jsoup.clientFactory = { okHttpClient })
-        // 让 jsoup 解析继承 CookieJar/限流/Cronet 拦截器, 不绕过 shared HTTP 层
-        Jsoup.clientFactory = { OkHttpClientProviders.get().okHttpClient }
+        // 2. HTTP 层已提前到阶段1同步注册 (OkHttp + CookieJarBridge, 独立)
+        // 注: jsoup clientFactory 亦随 HTTP 层提前, 书源 JS 首次 eval 前网络栈必就绪
         // 3. BackstageWebView (内嵌浏览器引擎: Windows 走系统自带 WebView2 Runtime;
         //    引擎缺失时 create 仍抛 UnsupportedOperationException 由调用方 runCatching 回退 HTTP)
         registerDesktopBackstageWebView()
@@ -497,11 +536,8 @@ private suspend fun registerSecondaryProviders() {
         // 5. CbzFile 相关 (独立, 漫画解析用)
         BitmapProviders.register(DesktopBitmapProvider)
         ZipFileWrapperFactoryProviders.register(DesktopZipFileWrapperFactory)
-        // 5b. BookImageStorage provider (webBook 漫画图片缓存, 非首屏必需, 从阶段1延迟到此)
-        //     供 shared commonMain webBook 编排层通过 BookImageStorageProviders.get() 间接调用;
-        //     saveImages 运行时依赖 OkHttpClientProviders (第2步已注册), 注册顺序无强约束
-        BookImageStorageProviders.register(JvmBookImageStorage())
-        // 注: Coil3 BookImageLoader/SingletonImageLoader 已提前到阶段1 注册 (setSafe 时机约束)
+        // 注: BookImageStorageProviders (漫画图片缓存) 与 JS 引擎已提前到阶段1同步注册,
+        // 消除"早开漫画页未注册"启动竞态
         // 6. EpubFile 相关 (依赖 AppDbProviders, 已同步注册)
         registerDesktopFileBookAccessor()
         // 7. SourceHelp (独立, 供 shared SourceHelp.saveSource/deleteBookSource 调用)
@@ -535,8 +571,7 @@ private suspend fun registerSecondaryProviders() {
         //      依赖 OkHttpClientProviders (第2步, 拉验证码图片) + ToastProviders (上一行);
         //      未注册时 JS 触发验证会 IllegalStateException 裸抛
         registerDesktopVerificationUiProvider()
-        // 12. JS 引擎 (native 库在首次 eval 时加载, 注册本身不耗时)
-        registerDesktopJsEngines()
+        // 注: JS 引擎 (JsEngines/SharedJsScope) 已提前到阶段1同步注册
         // 13. AudioPlay (依赖 AppDbProviders + BookHelpProviders + SourceHelpAccessors + WebBookProviders
         //     + JsEngines + OkHttpClientProviders, 必须最后注册)
         registerDesktopAudioPlayProviders()

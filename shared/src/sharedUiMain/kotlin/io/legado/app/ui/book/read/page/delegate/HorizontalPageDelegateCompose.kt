@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
@@ -78,9 +77,11 @@ abstract class HorizontalPageDelegateCompose(
     override fun onScroll(x: Float, y: Float) {
         if (!isMoved) {
             val deltaX = x - startX
-            // Compose detectDragGestures 已在内部 awaitPointerSlop 消耗系统 touchSlop 后才回调
-            // onDragStart(收到的是越过 slop 时的点) 与 onScroll, 首个 onScroll 即已越过 slop,
-            // 这里不再叠加 TOUCH_SLOP_PX 二次判定——原版两层判定共享按下点基准, 叠加是迁移失真。
+            // detectDragGestures 的 onDragStart 与首个 onDrag 收到同一位置（都是越过 slop 的点），
+            // 首次 deltaX 恒为 0，据此定方向会恒判 NEXT（向右拖应上一页也被吞成取消）。
+            // 跳过本次，等真实位移事件再定方向（拖动手势帧率下最多滞后一个事件）。
+            if (deltaX == 0f) return
+            // 原版两层判定共享按下点基准；Compose 已在内部消耗 touchSlop，不再叠加二次判定
             isMoved = true
             if (deltaX > 0) {
                 // 向右滑 → PREV，校验是否有上一页 / 上一章

@@ -23,9 +23,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.AlertDialog
@@ -91,14 +91,20 @@ import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
 
 /**
+ * 手机 vs 平板/桌面断点 (smallestScreenWidth >= 600dp 视为平板/桌面)。
+ * 手机横屏才让视频全屏; 平板/桌面无论方向都走 2/3 + 选集网格。
+ */
+private val PhoneTabletBreakpoint = 600.dp
+
+/**
  * 视频播放页主体内容 (标题栏 + 渲染槽 + 选集网格), 逐项对照 app 端 VideoPlayScreen。
  *
  * 平台渲染层通过 [videoRenderSlot] 注入: desktop 传 SwingPanel(AWT Canvas, mpv --wid 嵌入,
  * 控制层用 mpv 内建 OSC); app 传 AndroidView(PlayerView) + 自有控件层。槽内自管
  * 渲染面 + 控件叠加 + 加载/错误态, 复用本文件导出的 Composable。
  *
- * 布局对照 app: 非全屏才显示标题栏; 章节数 > 1 时视频区固定 16:9 + 下方选集网格,
- * 否则视频区撑满 (全屏亦然)。
+ * 布局对照 app: 非全屏才显示标题栏; 手机横屏视频全屏不列列表; 手机竖屏与平板/桌面 (任意方向)
+ * 视频最大高 2/3 + 下方选集网格; 全屏/无列表时视频撑满。
  *
  * 键盘事件: 最外层 Box 消费共享 handleMediaKeys (空格/←/→/↑/↓/Esc), 回调由调用方注入
  * (与 [VideoControlsOverlay] 按钮共用同一 lambda)。
@@ -193,20 +199,33 @@ fun VideoPlayerScreenContent(
             val showGrid = !isFullScreen && chapters.size > 1
             if (showGrid) {
                 BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
-                    val maxVideoHeight = maxHeight * 2f / 3f
-                    val videoWidth = minOf(maxWidth, maxVideoHeight * 16f / 9f)
-                    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(Modifier.width(videoWidth).aspectRatio(16f / 9f)) {
+                    // 手机 vs 平板/桌面断点 (shortest side < 600dp 视为手机)
+                    val isPhone = minOf(maxWidth, maxHeight) < PhoneTabletBreakpoint
+                    if (isPhone && maxWidth > maxHeight) {
+                        // 手机横屏: 视频全屏不缩窄不列列表 (对照 app 横屏强制全屏并隐藏网格)
+                        Box(Modifier.fillMaxSize()) {
                             videoRenderSlot(Modifier.matchParentSize())
                         }
-                        VideoChapterGrid(
-                            chapters = chapters,
-                            displayTitles = displayTitles,
-                            durIndex = curChapterIndex,
-                            onClick = onOpenChapter,
-                            countWords = countWords,
-                            modifier = Modifier.fillMaxWidth().weight(1f),
-                        )
+                    } else {
+                        // 手机竖屏 / 平板/桌面 (任意方向): 视频最大高 2/3, 宽度按 16:9 收窄, 下方选集网格
+                        val maxVideoHeight = maxHeight * 2f / 3f
+                        val videoWidth = minOf(maxWidth, maxVideoHeight * 16f / 9f)
+                        Column(
+                            Modifier.fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(Modifier.width(videoWidth).aspectRatio(16f / 9f)) {
+                                videoRenderSlot(Modifier.matchParentSize())
+                            }
+                            VideoChapterGrid(
+                                chapters = chapters,
+                                displayTitles = displayTitles,
+                                durIndex = curChapterIndex,
+                                onClick = onOpenChapter,
+                                countWords = countWords,
+                                modifier = Modifier.fillMaxWidth().weight(1f),
+                            )
+                        }
                     }
                 }
             } else {

@@ -1,5 +1,6 @@
 package com.script.quickjs
 
+import com.script.jsdispatch.JsDispatchRegistry
 import com.script.quickjs.JavaObjectBridge.METHOD_MARKER
 import com.script.quickjs.JavaObjectBridge.NO_RESULT
 import com.script.quickjs.JavaObjectBridge.NULL_FIELD_MARKER
@@ -21,7 +22,6 @@ import com.script.quickjs.JavaObjectBridge.loadJavaClass
 import com.script.quickjs.JavaObjectBridge.releaseNewHandles
 import com.script.quickjs.JavaObjectBridge.releaseScope
 import com.script.quickjs.JavaObjectBridge.setInstanceField
-import com.script.jsdispatch.JsDispatchRegistry
 import org.json.JSONException
 import org.json.JSONObject
 import java.lang.reflect.InvocationHandler
@@ -339,18 +339,25 @@ object JavaObjectBridge {
                 "Cannot instantiate ${clazz.name}: no constructor with ${args.size} args"
             )
         }
-        // 找第一个参数类型全兼容的构造器
-        for (ctor in candidates) {
-            if (isArgsCompatible(ctor.parameterTypes, args)) {
-                ctor.isAccessible = true
-                return ctor.newInstance(*coerceArgs(ctor.parameterTypes, args, ctor.isVarArgs))
-            }
+        // 找参数类型全兼容的构造器;多个兼容时按参数类型具体程度选最优,
+        // 与 findMethodImpl 的重载选择一致。否则 String 参数会匹配到
+        // JSONObject(Object) 而非 JSONObject(String) (JVM 版 org.json 构造器声明顺序
+        // Object 在前, Android 内置 org.json 无 Object 构造器所以不受影响)。
+        val compatible = candidates.filter { isArgsCompatible(it.parameterTypes, args) }
+        if (compatible.isEmpty()) {
+            // 对齐 rhino: 有匹配参数个数的构造器但参数类型不兼容
+            throw IllegalStateException(
+                "Cannot instantiate ${clazz.name}: no constructor with ${args.size} args " +
+                    "matching types ${args.map { it?.javaClass?.simpleName }}"
+            )
         }
-        // 对齐 rhino: 有匹配参数个数的构造器但参数类型不兼容
-        throw IllegalStateException(
-            "Cannot instantiate ${clazz.name}: no constructor with ${args.size} args " +
-                "matching types ${args.map { it?.javaClass?.simpleName }}"
-        )
+        val ctor = compatible.minByOrNull { ctor ->
+            ctor.parameterTypes.indices.sumOf { i ->
+                paramSpecificityScore(ctor.parameterTypes[i], args[i])
+            }
+        } ?: compatible.first()
+        ctor.isAccessible = true
+        return ctor.newInstance(*coerceArgs(ctor.parameterTypes, args, ctor.isVarArgs))
     }
 
     /**

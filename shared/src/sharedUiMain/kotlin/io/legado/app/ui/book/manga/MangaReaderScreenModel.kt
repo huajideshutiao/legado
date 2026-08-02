@@ -19,6 +19,8 @@ import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaFooterConfig
 import io.legado.app.ui.book.manga.entities.BaseMangaPage
+import io.legado.app.ui.book.manga.entities.MangaCellState
+import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.config.ClickActionConfig
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.utils.FlowBus
@@ -123,6 +125,8 @@ class MangaReaderScreenModel : ScreenModel {
             source: BookSource?,
             colorFilterConfig: MangaColorFilterConfig,
             grayEnabled: Boolean,
+            onLoadState: (MangaCellState) -> Unit,
+            retryTick: Int,
         )
     }
 
@@ -226,7 +230,12 @@ class MangaReaderScreenModel : ScreenModel {
         scope.launch { shared.error.collect { (msg, _) -> errorMsg.value = msg } }
         scope.launch { shared.loading.collect { if (it) errorMsg.value = null } }
 
-        // 系统时间每分钟刷新 (对照 app 端 ACTION_TIME_TICK 广播)
+        // 系统时间刷新 (对照 ReaderScreenModel: 平台广播经 ReadBookEvents.timeChanged 推送,
+        // 订阅者更新 StateFlow 驱动信息条重组; 无 ACTION_TIME_TICK 的平台由下方轮询兜底)
+        scope.launch {
+            ReadBookEvents.timeChanged.collect { _systemTime.value = formatTime() }
+        }
+        // 无 ACTION_TIME_TICK 的平台 (桌面/iOS/鸿蒙) 每分钟兜底刷新 (对照 ReaderScreenModel 轮询)
         scope.launch {
             while (isActive) {
                 delay(60_000L)

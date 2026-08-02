@@ -1,16 +1,24 @@
 package io.legado.app.ui.compose.component.code
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.LocalTextStyle
+import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.material.TextFieldDefaults
 import androidx.compose.material.TextFieldDefaults.indicatorLine
@@ -21,26 +29,32 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.takeOrElse
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.takeOrElse
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import io.legado.app.ui.compose.component.AppDecorationBox
 import io.legado.app.ui.compose.component.AppFieldColors
 import io.legado.app.ui.compose.component.AppTextFieldImpl
@@ -52,6 +66,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 /** 后台着色前的等待, 对齐 CodeView 的 postDelayed(highlightRunnable, 150) */
 private const val AsyncHighlightDelayMs = 150L
@@ -61,6 +76,9 @@ private val SearchMatchBackground = Color(0x80FFFF00)
 
 /** 行号分隔线 alpha, 对齐 CodeView `lineNumberTextColor and 0x00FFFFFF or 0x60000000` */
 private val LineDividerAlpha = 0x60 / 255f
+
+/** MD2 TextField 默认水平内边距 16dp (对照 MD2 TextField contentPadding 起点) */
+private val TextFieldHorizontalPadding = 16.dp
 
 /** 查找面板开着时编辑器文本变化的即时刷新上限, 超长文本等下次面板操作再算 (原版为增量更新) */
 private const val SearchRefreshMaxLength = 20000
@@ -142,9 +160,12 @@ fun buildSearchRanges(
  * Android 仍保留 `ui/widget/code/CodeView` 作为 View 专项编辑器，提供自动补全、滚动窗口
  * 高亮、原生撤销/重做和 ActionMode 集成；本组件供共享界面及非 Android 平台使用。
  *
- * 视觉对齐 [io.legado.app.ui.compose.component.AppTextField]: 透明容器 + 底部下划线
- * (未聚焦 controlNormal / 聚焦 accent), 差异仅在等宽字体与语法着色。
- * [showIndicator] = false 时去掉下划线, 用于对话框内嵌 (对齐原版 CodeDialog 无边框呈现)。
+ * MD2 纯下划线风格 (对照 MD2 TextField): 无填充底、无圆角盒、无边框, 仅底部下划线
+ * indicatorLine (未聚焦 controlNormal / 聚焦 accent / 错误 error) + hint (label/placeholder)
+ * + MD2 TextField 默认 16dp 水平边距, 字体跟随主题默认, 差异仅在语法着色。
+ * [showIndicator] = false 时连下划线也不画, 用于对话框内嵌 (对齐原版 CodeDialog 无边框呈现)。
+ * [autoComplete] 轻量自动补全 (对齐原版 CodeView 的 AutoCompleteAdapter 词表 + fuzzy 匹配,
+ * 弹层锚定光标, 默认开启)。
  *
  * @param syntax 着色规则集, 由调用方按字段类型传 (见 [rememberCodeSyntax])
  * @param searchHighlight 查找高亮叠加 (由外部屏幕持有, 传 null 不叠加), 对齐原版 CodeView
@@ -171,53 +192,130 @@ fun CodeTextField(
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     searchHighlight: CodeSearchHighlightState? = null,
+    autoComplete: Boolean = true,
 ) {
     val transformation = rememberCodeHighlightTransformation(syntax, searchHighlight)
+    val colors = AppFieldColors
+    // 字体跟随主题默认 (原版 CodeView 未设置等宽字体, 用系统默认字体)
+    val baseStyle = LocalTextStyle.current.copy(fontSize = fontSize)
+    // 行号列与文本同处滚动容器, 需统一行高: 默认字体下 CJK 回退与拉丁字符的自然行高不一致,
+    // 强制固定行高才能保证逐行对齐 (对齐原版 Canvas 逐行画号不受行高变化影响)。
+    // 行号列只在文本含换行时出现 (对齐原版 enterPosSize > 0 条件), 单行字段走自然行高。
+    val gutterShown = showLineNumbers && value.text.contains('\n')
+    val codeStyle =
+        if (gutterShown) baseStyle.copy(lineHeight = fontSize * 1.5f) else baseStyle
+    val textColor = codeStyle.color.takeOrElse { colors.textColor(enabled).value }
+    // MD2 纯下划线: contentPadding 走 MD2 TextField 默认 16dp 水平起点;
+    // showIndicator=false (CodeDialog 内嵌) 维持 0dp 水平边距
+    val horizontalPadding = if (showIndicator) TextFieldHorizontalPadding else 0.dp
+    val contentPadding = if (label == null) {
+        TextFieldDefaults.textFieldWithoutLabelPadding(
+            start = horizontalPadding,
+            end = horizontalPadding,
+            bottom = 4.dp
+        )
+    } else {
+        TextFieldDefaults.textFieldWithLabelPadding(
+            start = horizontalPadding,
+            end = horizontalPadding,
+            bottom = 4.dp
+        )
+    }
+    // 轻量自动补全: 聚焦且光标处 token 非空时, 按词表 + 行内词 fuzzy 匹配出候选
+    // (对齐原版 AutoCompleteAdapter/performFiltering; 行号可不上, 自动补全保留)
+    val isFocused by interactionSource.collectIsFocusedAsState()
+    val autoMatches = remember(value.text, value.selection, isFocused, autoComplete, readOnly) {
+        if (!autoComplete || !isFocused || readOnly || !value.selection.collapsed) {
+            emptyList()
+        } else {
+            val text = value.text
+            val cursor = value.selection.start
+            val tokenStart = findTokenStart(text, cursor)
+            val token = text.substring(tokenStart, cursor)
+            if (token.isEmpty() || shouldSuppressCompletion(text, cursor)) {
+                emptyList()
+            } else {
+                val lineStart = text.lastIndexOf('\n', cursor - 1) + 1
+                var lineEnd = text.indexOf('\n', cursor)
+                if (lineEnd == -1) lineEnd = text.length
+                findCodeCompletions(token, text.substring(lineStart, lineEnd))
+            }
+        }
+    }
+    // 弹层锚点: 光标所在行 Y + 近似 X (按默认字体近似估算: ASCII 按 0.6em, 全角按 1em)
+    val density = LocalDensity.current
+    val popupOffset = if (autoMatches.isEmpty()) {
+        IntOffset.Zero
+    } else {
+        val text = value.text
+        val cursor = value.selection.start
+        val cursorLine = text.take(cursor).count { it == '\n' }
+        val lineStart = text.lastIndexOf('\n', cursor - 1) + 1
+        val lineHeight = codeStyle.lineHeight.takeOrElse { fontSize * 1.5f }
+        val y = with(density) {
+            contentPadding.calculateTopPadding().toPx() + cursorLine * lineHeight.toPx()
+        }.roundToInt()
+        var x = with(density) {
+            contentPadding.calculateStartPadding(LayoutDirection.Ltr).toPx()
+        }.roundToInt()
+        val charWidthPx = with(density) { (fontSize * 0.6f).toPx() }.roundToInt()
+        val wideWidthPx = with(density) { fontSize.toPx() }.roundToInt()
+        for (i in lineStart until cursor) {
+            x += if (isFullWidthChar(text[i])) wideWidthPx else charWidthPx
+        }
+        IntOffset(x, y)
+    }
     AppTextFieldImpl(
         modifier = modifier,
         isError = isError,
         errorMessage = errorMessage,
     ) {
-        val colors = AppFieldColors
-        val baseStyle = LocalTextStyle.current.copy(
-            fontSize = fontSize,
-            fontFamily = FontFamily.Monospace,
-        )
-        // 行号列与文本同处滚动容器, 需统一行高: 等宽字体对 CJK 回退字体的自然行高不一致,
-        // 强制固定行高才能保证逐行对齐 (对齐原版 Canvas 逐行画号不受行高变化影响)。
-        // 行号列只在文本含换行时出现 (对齐原版 enterPosSize > 0 条件), 单行字段走自然行高。
-        val gutterShown = showLineNumbers && value.text.contains('\n')
-        val codeStyle =
-            if (gutterShown) baseStyle.copy(lineHeight = fontSize * 1.5f) else baseStyle
-        val textColor = codeStyle.color.takeOrElse { colors.textColor(enabled).value }
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(
-                    if (showIndicator) {
-                        Modifier.indicatorLine(enabled, isError, interactionSource, colors)
-                    } else {
-                        Modifier
+        Box(Modifier.fillMaxWidth()) {
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (showIndicator) {
+                            // MD2 纯下划线: 仅底部 indicatorLine, 无填充底/圆角盒/边框
+                            Modifier.indicatorLine(enabled, isError, interactionSource, colors)
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .defaultMinSize(minWidth = TextFieldDefaults.MinWidth, minHeight = minHeight),
+                enabled = enabled,
+                readOnly = readOnly,
+                textStyle = codeStyle.copy(color = textColor),
+                keyboardOptions = keyboardOptions,
+                keyboardActions = keyboardActions,
+                singleLine = false,
+                maxLines = Int.MAX_VALUE,
+                visualTransformation = transformation,
+                interactionSource = interactionSource,
+                cursorBrush = SolidColor(colors.cursorColor(isError).value),
+                decorationBox = { innerTextField ->
+                    // 行号列包在 innerTextField 外层, 随文本同步滚动; label/placeholder 由
+                    // AppDecorationBox 全宽渲染 (hint 从 contentPadding 起点 16dp 开始, 不被
+                    // CodeView gutter 挤开; LineNumberGutter 的 5dp/11dp/6dp 几何在 16dp 水平
+                    // 边距下与 CodeView.onDraw 的 paddingLeft-11dp / paddingLeft-6dp 对齐)
+                    val fieldContent: @Composable () -> Unit = {
+                        if (gutterShown) {
+                            Row(Modifier.fillMaxWidth()) {
+                                LineNumberGutter(
+                                    lineCount = value.text.count { it == '\n' } + 1,
+                                    textStyle = codeStyle,
+                                )
+                                Box(Modifier.weight(1f)) { innerTextField() }
+                            }
+                        } else {
+                            innerTextField()
+                        }
                     }
-                )
-                .defaultMinSize(minWidth = TextFieldDefaults.MinWidth, minHeight = minHeight),
-            enabled = enabled,
-            readOnly = readOnly,
-            textStyle = codeStyle.copy(color = textColor),
-            keyboardOptions = keyboardOptions,
-            keyboardActions = keyboardActions,
-            singleLine = false,
-            maxLines = Int.MAX_VALUE,
-            visualTransformation = transformation,
-            interactionSource = interactionSource,
-            cursorBrush = SolidColor(colors.cursorColor(isError).value),
-            decorationBox = { innerTextField ->
-                val decoration: @Composable () -> Unit = {
                     AppDecorationBox(
                         text = value.text,
-                        innerTextField = innerTextField,
+                        innerTextField = fieldContent,
                         enabled = enabled,
                         singleLine = false,
                         // 装饰盒仅用于测量/占位, 着色已在 BasicTextField 内生效
@@ -229,42 +327,31 @@ fun CodeTextField(
                         leadingIcon = null,
                         trailingIcon = null,
                         colors = colors,
+                        contentPadding = contentPadding,
                     )
-                }
-                if (gutterShown) {
-                    // 行号列与文本同处 decorationBox (BasicTextField 滚动容器) 内, 随文本同步滚动
-                    val contentPadding = if (label == null) {
-                        TextFieldDefaults.textFieldWithoutLabelPadding(
-                            start = 0.dp,
-                            end = 0.dp,
-                            bottom = 4.dp
+                },
+            )
+            if (autoMatches.isNotEmpty()) {
+                AutoCompletePopup(
+                    matches = autoMatches,
+                    offset = popupOffset,
+                    onSelect = { item ->
+                        val (newText, newSelection) = applyCompletion(
+                            value.text,
+                            value.selection,
+                            item
                         )
-                    } else {
-                        TextFieldDefaults.textFieldWithLabelPadding(
-                            start = 0.dp,
-                            end = 0.dp,
-                            bottom = 4.dp
-                        )
-                    }
-                    Row(Modifier.fillMaxWidth()) {
-                        LineNumberGutter(
-                            lineCount = value.text.count { it == '\n' } + 1,
-                            textStyle = codeStyle,
-                            topPadding = contentPadding.calculateTopPadding(),
-                            bottomPadding = contentPadding.calculateBottomPadding(),
-                        )
-                        Box(Modifier.weight(1f)) { decoration() }
-                    }
-                } else {
-                    decoration()
-                }
-            },
-        )
+                        onValueChange(value.copy(text = newText, selection = newSelection))
+                    },
+                )
+            }
+        }
     }
 }
 
 /**
- * 行号列, 布局数值对齐原版 CodeView.onDraw:
+ * 行号列, 布局数值对齐原版 CodeView.onDraw (列自身在 16dp 水平边距之后, 与 CodeView
+ * 位于 TextInputLayout 16dp 内容起点一致):
  * - 行号字号 = 文本字号 * 0.6f (lineNumberTextSize = textSize * 0.6f), 次要文字色右对齐
  * - 行号右边缘距文本 11dp (x = paddingLeft - 11f*density)
  * - 分隔线在行号右边缘右侧 5dp (lineX = paddingLeft - 6f*density), 1dp 宽,
@@ -276,13 +363,11 @@ fun CodeTextField(
 private fun LineNumberGutter(
     lineCount: Int,
     textStyle: TextStyle,
-    topPadding: Dp,
-    bottomPadding: Dp,
 ) {
     val colors = AppTheme.colors
     Box(
         Modifier
-            .padding(start = 5.dp, top = topPadding, bottom = bottomPadding)
+            .padding(start = 5.dp)
             .drawBehind {
                 val dividerX = size.width - 6.dp.toPx()
                 drawLine(
@@ -310,6 +395,61 @@ private fun buildLineNumbers(lineCount: Int): String = buildString {
     }
 }
 
+/** 全角字符 (CJK/假名/全角符号): 自动补全弹层 X 估算时按 1em 计, 其余按 0.6em */
+private fun isFullWidthChar(c: Char): Boolean {
+    val code = c.code
+    return code >= 0x1100 && (
+        code <= 0x115F ||
+            code in 0x2E80..0xA4CF ||
+            code in 0xAC00..0xD7A3 ||
+            code in 0xF900..0xFAFF ||
+            code in 0xFE30..0xFE4F ||
+            code in 0xFF00..0xFF60 ||
+            code >= 0x20000
+        )
+}
+
+/**
+ * 自动补全候选弹层 (对齐原版 AutoCompleteTextView 下拉): 小字 + 次要文字色列表,
+ * 点击插入到光标处 ([applyCompletion])。focusable=false 不抢焦点, 字段保持可继续输入。
+ */
+@Composable
+private fun AutoCompletePopup(
+    matches: List<String>,
+    offset: IntOffset,
+    onSelect: (String) -> Unit,
+) {
+    val colors = AppTheme.colors
+    Popup(
+        alignment = Alignment.TopStart,
+        offset = offset,
+        properties = PopupProperties(focusable = false),
+        onDismissRequest = {},
+    ) {
+        Surface(
+            color = colors.fillet,
+            shape = AppTheme.DesignTokens.shapeDefault,
+            elevation = 4.dp,
+            modifier = Modifier.width(220.dp),
+        ) {
+            LazyColumn(Modifier.heightIn(max = 200.dp)) {
+                items(matches) { item ->
+                    Text(
+                        item,
+                        color = colors.primaryText,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(item) }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
 /** [CodeTextField] 的 String 重载: 无需保留选区/composition 的场景 */
 @Composable
 fun CodeTextField(
@@ -328,6 +468,7 @@ fun CodeTextField(
     minHeight: Dp = 56.dp,
     fontSize: TextUnit = 14.sp,
     searchHighlight: CodeSearchHighlightState? = null,
+    autoComplete: Boolean = true,
 ) {
     var fieldValue by remember { mutableStateOf(TextFieldValue(value)) }
     // 外部值被改写 (如撤销/重载) 时同步回本地状态
@@ -351,6 +492,7 @@ fun CodeTextField(
         minHeight = minHeight,
         fontSize = fontSize,
         searchHighlight = searchHighlight,
+        autoComplete = autoComplete,
     )
 }
 

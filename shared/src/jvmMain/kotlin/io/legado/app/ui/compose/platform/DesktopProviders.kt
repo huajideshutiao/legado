@@ -15,38 +15,31 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 /**
- * 桌面 JVM 端 Provider 实现。主题色用 mutableStateOf 持有触发重组，
+ * 桌面 JVM 端 Provider 实现。主题色与 iOS/鸿蒙一致: 从 [PreferenceProviders] 持久层动态读取
+ * (无 Compose 内存态), AppTheme 经 [EventBusProvider.recreateEvent] 重组后重读新色。
  * 读写经 [PreferenceProviders] 持久化 (对照 Android ThemeStore.saveTheme 语义)，
  * 初始值从持久层恢复，无记录时回退 arcoblue 浅色主题 (accentColor = #165DFF)。
+ *
+ * 切换日夜走 [io.legado.app.help.config.FileThemeConfigProvider.applyDayNight] 写
+ * ThemeStore 色 + themeMode 并 emit RECREATE; 本类无需再缓存 Compose 状态。
  */
-
-/** 桌面端主题状态：用 var 实现 ThemeStoreProvider 的 val 接口，触发重组 */
 class DesktopThemeStoreProvider : ThemeStoreProvider {
-    /** 是否深色主题（影响 background/bottomBackground/statusBar 等派生色），初始从 themeMode 恢复 */
-    var isDark: Boolean by mutableStateOf(readInitDark())
-
-    override var accentColor: Color by mutableStateOf(
-        readInitColor(ThemeStorePrefKeys.KEY_ACCENT_COLOR) ?: Color(0xFF165DFF)
-    )
-        private set
-    override var backgroundColor: Color by mutableStateOf(
-        readInitColor(ThemeStorePrefKeys.KEY_BACKGROUND_COLOR)
+    override val accentColor: Color
+        get() = readColor(ThemeStorePrefKeys.KEY_ACCENT_COLOR) ?: Color(0xFF165DFF)
+    override val backgroundColor: Color
+        get() = readColor(ThemeStorePrefKeys.KEY_BACKGROUND_COLOR)
             ?: if (isDark) Color(0xFF121212) else Color(0xFFFFFFFF)
-    )
-        private set
-    override var bottomBackground: Color by mutableStateOf(
-        readInitColor(ThemeStorePrefKeys.KEY_BOTTOM_BACKGROUND)
+    override val bottomBackground: Color
+        get() = readColor(ThemeStorePrefKeys.KEY_BOTTOM_BACKGROUND)
             ?: if (isDark) Color(0xFF1F1F1F) else Color(0xFFF7F8FA)
-    )
-        private set
-    override var statusBarColor: Color by mutableStateOf(
-        readInitColor(ThemeStorePrefKeys.KEY_STATUS_BAR_COLOR) ?: backgroundColor
-    )
-        private set
-    override var navigationBarColor: Color by mutableStateOf(
-        readInitColor(ThemeStorePrefKeys.KEY_NAVIGATION_BAR_COLOR) ?: bottomBackground
-    )
-        private set
+    override val statusBarColor: Color
+        get() = readColor(ThemeStorePrefKeys.KEY_STATUS_BAR_COLOR) ?: backgroundColor
+    override val navigationBarColor: Color
+        get() = readColor(ThemeStorePrefKeys.KEY_NAVIGATION_BAR_COLOR) ?: bottomBackground
+
+    /** 是否深色主题 (从 themeMode 计算), 影响 background/bottomBackground 等派生色 */
+    val isDark: Boolean
+        get() = prefsOrNull()?.getString(PreferKey.themeMode, "0") == "2"
 
     /** 对照 ThemeConfig.curBgImagePath：按日/夜模式读持久层背景图路径，空白视为无壁纸 */
     override val bgImagePath: String?
@@ -57,61 +50,55 @@ class DesktopThemeStoreProvider : ThemeStoreProvider {
             }
             ?.takeUnless { it.isBlank() }
 
-    /** 切换深/浅色主题；派生色同步刷新 */
+    /** 切换深/浅色主题；写默认深/浅色 + themeMode 并触发全局重组 */
     fun toggleDark() = updateDark(!isDark)
 
-    /** 显式设置深/浅色主题 (不与 var isDark 自动 setter 冲突, 故改名 updateDark) */
+    /** 显式设置深/浅色主题 (与 isDark 计算属性解耦, 直接落盘派生色) */
     fun updateDark(dark: Boolean) {
         if (isDark == dark) return
-        isDark = dark
-        if (dark) {
-            backgroundColor = Color(0xFF121212)
-            bottomBackground = Color(0xFF1F1F1F)
-            statusBarColor = Color(0xFF121212)
-            navigationBarColor = Color(0xFF1F1F1F)
-        } else {
-            backgroundColor = Color(0xFFFFFFFF)
-            bottomBackground = Color(0xFFF7F8FA)
-            statusBarColor = Color(0xFFFFFFFF)
-            navigationBarColor = Color(0xFFF7F8FA)
-        }
-        persist()
+        val p = prefsOrNull() ?: return
+        p.putInt(
+            ThemeStorePrefKeys.KEY_PRIMARY_COLOR,
+            if (dark) 0xFF121212.toInt() else 0xFFFFFFFF.toInt()
+        )
+        p.putInt(
+            ThemeStorePrefKeys.KEY_BACKGROUND_COLOR,
+            if (dark) 0xFF121212.toInt() else 0xFFFFFFFF.toInt()
+        )
+        p.putInt(
+            ThemeStorePrefKeys.KEY_BOTTOM_BACKGROUND,
+            if (dark) 0xFF1F1F1F.toInt() else 0xFFF7F8FA.toInt()
+        )
+        p.putInt(
+            ThemeStorePrefKeys.KEY_STATUS_BAR_COLOR,
+            if (dark) 0xFF121212.toInt() else 0xFFFFFFFF.toInt()
+        )
+        p.putInt(
+            ThemeStorePrefKeys.KEY_NAVIGATION_BAR_COLOR,
+            if (dark) 0xFF1F1F1F.toInt() else 0xFFF7F8FA.toInt()
+        )
+        p.putString(PreferKey.themeMode, if (dark) "2" else "1")
+        FlowBus.with(EventBus.RECREATE).tryEmit("")
     }
 
     /**
      * 应用自定义主题色 (供桌面端 ThemeCustomizeDialog / ThemeListDialog 调用)。
      *
-     * - 与 [updateDark] 不同, 本方法允许外部传入完整三色 (accent/bg/bbg),
-     *   用于主题定制/主题列表的应用主题操作;
-     * - 派生色 (statusBar/navigationBar) 跟随 background/bottomBackground;
-     * - 更新内存状态后经 [persist] 落盘 (对照 Android ThemeConfig.applyConfig → ThemeStore.saveTheme)。
+     * 写完整三色到持久层后 emit RECREATE 触发 AppTheme 重组重读。
      */
     override fun applyColors(accent: Color, bg: Color, bbg: Color, isNight: Boolean) {
-        isDark = isNight
-        accentColor = accent
-        backgroundColor = bg
-        bottomBackground = bbg
-        statusBarColor = bg
-        navigationBarColor = bbg
-        persist()
-    }
-
-    /** 当前主题色写入持久层 (键对齐 ThemeStore.saveTheme, themeMode 对齐 AppConfig.isNightTheme setter) */
-    private fun persist() {
         val p = prefsOrNull() ?: return
-        p.putInt(ThemeStorePrefKeys.KEY_PRIMARY_COLOR, backgroundColor.toArgb())
-        p.putInt(ThemeStorePrefKeys.KEY_ACCENT_COLOR, accentColor.toArgb())
-        p.putInt(ThemeStorePrefKeys.KEY_BACKGROUND_COLOR, backgroundColor.toArgb())
-        p.putInt(ThemeStorePrefKeys.KEY_BOTTOM_BACKGROUND, bottomBackground.toArgb())
-        p.putInt(ThemeStorePrefKeys.KEY_STATUS_BAR_COLOR, statusBarColor.toArgb())
-        p.putInt(ThemeStorePrefKeys.KEY_NAVIGATION_BAR_COLOR, navigationBarColor.toArgb())
-        p.putString(PreferKey.themeMode, if (isDark) "2" else "1")
+        p.putInt(ThemeStorePrefKeys.KEY_PRIMARY_COLOR, bg.toArgb())
+        p.putInt(ThemeStorePrefKeys.KEY_ACCENT_COLOR, accent.toArgb())
+        p.putInt(ThemeStorePrefKeys.KEY_BACKGROUND_COLOR, bg.toArgb())
+        p.putInt(ThemeStorePrefKeys.KEY_BOTTOM_BACKGROUND, bbg.toArgb())
+        p.putInt(ThemeStorePrefKeys.KEY_STATUS_BAR_COLOR, bg.toArgb())
+        p.putInt(ThemeStorePrefKeys.KEY_NAVIGATION_BAR_COLOR, bbg.toArgb())
+        p.putString(PreferKey.themeMode, if (isNight) "2" else "1")
+        FlowBus.with(EventBus.RECREATE).tryEmit("")
     }
 
-    private fun readInitDark(): Boolean =
-        prefsOrNull()?.getString(PreferKey.themeMode, "0") == "2"
-
-    private fun readInitColor(key: String): Color? =
+    private fun readColor(key: String): Color? =
         prefsOrNull()?.let { p -> if (p.contains(key)) Color(p.getInt(key)) else null }
 
     /** PreferenceProviders 未注册时返回 null (测试/预览场景), 主流程 Main.kt 已先注册 */

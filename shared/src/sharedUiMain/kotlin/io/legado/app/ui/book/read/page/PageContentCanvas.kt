@@ -186,6 +186,11 @@ private fun DrawScope.drawTextColumn(
 ) {
     val x = column.start + letterSpacingHalf
     val y = lineBase - baselineOffset
+    // 越界保护 (对照原版 Android Canvas.drawText: 越界不绘制也不崩):
+    // Compose drawText 内部用 `scopeSize - topLeft` 算文本约束, topLeft 超出画布时
+    // 约束为负直接抛 IllegalArgumentException (maxWidth must be >= minWidth)。
+    // 窗口 resize / 翻页动画期间旧排版数据可能暂时超出画布, 完全越界时跳过, 部分可见时正常画。
+    if (x >= size.width || y >= size.height) return
     drawText(
         textMeasurer = textMeasurer,
         text = column.charData,
@@ -329,13 +334,16 @@ private fun DrawScope.drawReviewColumn(
     // 用 baselineOffset 折算到圆心上方使文字视觉居中。
     val countTextStyle = textStyle.copy(color = reviewColor, fontSize = reviewTextSize)
     val countBaseline = textMeasurer.measure(column.countText, countTextStyle).getLineBaseline(0)
+    val countTopLeft = Offset(
+        centerX - radius * 0.5f,
+        centerY - countBaseline * 0.5f,
+    )
+    // 越界保护：同 [drawTextColumn]，约束为负会抛异常（resize/翻页动画期间旧排版可能越界）
+    if (countTopLeft.x >= size.width || countTopLeft.y >= size.height) return
     drawText(
         textMeasurer = textMeasurer,
         text = column.countText,
         style = countTextStyle,
-        topLeft = Offset(
-            centerX - radius * 0.5f,
-            centerY - countBaseline * 0.5f,
-        ),
+        topLeft = countTopLeft,
     )
 }

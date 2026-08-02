@@ -114,14 +114,19 @@ fun NumberPickerDialog(
     var editText by remember { mutableStateOf(initial.toString()) }
 
     fun commitEdit() {
-        editText.toIntOrNull()?.let { typed ->
-            val clamped = typed.coerceIn(range.first, range.last)
-            if (clamped != currentValue) {
-                currentValue = clamped
-                onValueChange(clamped)
+        // 只在编辑态 (用户点数字进入输入) 时才用 editText 覆盖 currentValue;
+        // 否则 Slider 拖动 / +/- 步进调过的值会被陈旧的 editText (仍为初始值)
+        // 覆盖回 range 起点, 表现为"调节无效" (如发现页列数、漫画翻页速度等)。
+        if (editing) {
+            editText.toIntOrNull()?.let { typed ->
+                val clamped = typed.coerceIn(range.first, range.last)
+                if (clamped != currentValue) {
+                    currentValue = clamped
+                    onValueChange(clamped)
+                }
             }
+            editing = false
         }
-        editing = false
     }
 
     AlertDialog(
@@ -178,6 +183,8 @@ fun NumberPickerDialog(
                         val newValue = it.toInt().coerceIn(range.first, range.last)
                         if (newValue != currentValue) {
                             currentValue = newValue
+                            // 同步编辑框文本, 避免后续进入编辑态时显示陈旧值
+                            editText = newValue.toString()
                             onValueChange(newValue)
                         }
                     },
@@ -200,6 +207,8 @@ fun NumberPickerDialog(
                             editing = false
                             if (currentValue > range.first) {
                                 currentValue--
+                                // 同步编辑框文本 (同 Slider 分支)
+                                editText = currentValue.toString()
                                 onValueChange(currentValue)
                             }
                         },
@@ -217,6 +226,8 @@ fun NumberPickerDialog(
                             editing = false
                             if (currentValue < range.last) {
                                 currentValue++
+                                // 同步编辑框文本 (同 Slider 分支)
+                                editText = currentValue.toString()
                                 onValueChange(currentValue)
                             }
                         },

@@ -143,6 +143,8 @@ fun AudioPlayRoute(
     // 平台对话框状态 (对照 VideoPlayRoute showLogDialog / pendingBookmark)
     var showLogDialog by remember { mutableStateOf(false) }
     var pendingBookmark by remember { mutableStateOf<Bookmark?>(null) }
+    // 发布输入弹窗 (对照原版 ReviewPostActivity 底部输入面板): 书籍级书评 (无回复预览)
+    var showPostDialog by remember { mutableStateOf(false) }
 
     // 退出加书架确认弹窗 (对照 Activity.finish: !inBookshelf 时弹确认)
     var showAddToShelfDialog by remember { mutableStateOf(false) }
@@ -250,7 +252,7 @@ fun AudioPlayRoute(
             // 对照 Activity openReview: viewModel.openCommentDialog → ReviewListDialog(book, chapter, 0)
             val chapter = AudioPlayShared.durChapter
             if (!PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)) {
-                navigator.push(AppRoute.ReviewPost(book.toRouteRef()))
+                showPostDialog = true
             }
         },
         overflowActions = overflowActions,
@@ -260,6 +262,16 @@ fun AudioPlayRoute(
     // 日志对话框 (对照 VideoPlayRoute AppLogDialog)
     if (showLogDialog) {
         AppLogDialog(onDismiss = { showLogDialog = false })
+    }
+
+    // 发布输入弹窗 (对照原版 ReviewPostActivity 底部输入面板)
+    if (showPostDialog) {
+        ReviewPostDialogHost(
+            replyPreview = null,
+            // 原 push ReviewPost 无 resultKey/结果处理, 内容不提交, 保持等价
+            onPosted = { },
+            onDismiss = { showPostDialog = false },
+        )
     }
 
     // 书签编辑对话框 (对照 VideoPlayRoute BookmarkDialog + app addBookmark)

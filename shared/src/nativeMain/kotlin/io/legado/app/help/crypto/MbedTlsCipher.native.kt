@@ -327,3 +327,29 @@ internal object MbedTlsCipher {
         return n
     }
 }
+
+/**
+ * [MbedTlsCipherOps] 的 leaf actual (mbedTLS cipher 实现)。
+ *
+ * expect 声明在 nativeMain 的 MbedTlsCipherOps.kt, 本 actual 随文件 stage 进 leaf 后配对;
+ * iOS/鸿蒙两侧共用同一实现。
+ */
+internal actual object MbedTlsCipherOps {
+    actual fun encrypt(
+        algorithm: String,
+        mode: String,
+        padding: String,
+        key: ByteArray,
+        iv: ByteArray?,
+        data: ByteArray
+    ): ByteArray = MbedTlsCipher.encrypt(algorithm, mode, padding, key, iv, data)
+
+    actual fun decrypt(
+        algorithm: String,
+        mode: String,
+        padding: String,
+        key: ByteArray,
+        iv: ByteArray?,
+        data: ByteArray
+    ): ByteArray = MbedTlsCipher.decrypt(algorithm, mode, padding, key, iv, data)
+}

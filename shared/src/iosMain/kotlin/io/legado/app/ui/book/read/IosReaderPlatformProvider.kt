@@ -6,7 +6,6 @@ import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.SourceLoginContext
@@ -15,7 +14,7 @@ import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.config.AppConfigProviders
-import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
@@ -155,15 +154,13 @@ private class IosReadMenuState(
     override fun onChapterViewLongClick() = Unit
 
     override fun onOverflowOpened() {
-        val source = screenModel.viewModel.bookSource.value
-        topMenu.reviewVisible = source?.reviewRule?.reviewUrl.isNullOrBlank() == false
+        screenModel.updateSourceMenu()
     }
 
-    override fun sourceLoginVisible(): Boolean =
-        screenModel.viewModel.bookSource.value?.hasLogin() == true
+    override fun sourceLoginVisible(): Boolean = screenModel.sourceLoginVisible()
 
-    override fun sourcePayVisible(): Boolean =
-        screenModel.viewModel.bookSource.value?.hasLogin() == true
+    // 购买按钮显示条件已下沉 ReaderScreenModel.sourcePayVisible (对照原版 ReadMenu)
+    override fun sourcePayVisible(): Boolean = screenModel.sourcePayVisible()
 
     override fun onSourceAction(action: SourceAction) {
         when (action) {
@@ -192,6 +189,15 @@ private class IosReadMenuState(
             }
 
             SourceAction.DISABLE_SOURCE -> screenModel.viewModel.disableSource()
+
+            // 购买当前章: 确认弹窗由 ReaderRoute ChapterPay 渲染, 确认后执行书源 payAction JS
+            // (对照原版 ReadMenu menu_chapter_pay -> payAction)
+            SourceAction.CHAPTER_PAY ->
+                screenModel.postDialogEvent(ReaderDialogEvent.ChapterPay)
+
+            // 源/书变量编辑 (对照原版 ReadMenu showSourceVariableDialog/showBookVariableDialog)
+            SourceAction.SET_SOURCE_VARIABLE -> screenModel.showSourceVariableDialog()
+            SourceAction.SET_BOOK_VARIABLE -> screenModel.showBookVariableDialog()
             else -> Unit
         }
     }
@@ -209,12 +215,14 @@ private class IosReadMenuState(
     override fun onTopMenuAction(action: ReadMenuAction) {
         when (action) {
             ReadMenuAction.CHANGE_SOURCE,
-            ReadMenuAction.BOOK_CHANGE_SOURCE -> screenModel.currentBook?.let {
-                navigator.push(AppRoute.ChangeSource(it.toRouteRef()), RouteResults.CHANGE_SOURCE)
+            ReadMenuAction.BOOK_CHANGE_SOURCE -> {
+                // 对照原版 换源 → ChangeBookSourceDialog 底部弹窗
+                screenModel.postDialogEvent(ReaderDialogEvent.ChangeSource)
             }
 
-            ReadMenuAction.CHAPTER_CHANGE_SOURCE -> screenModel.currentBook?.let {
-                navigator.push(AppRoute.ChangeChapterSource(it.toRouteRef()))
+            ReadMenuAction.CHAPTER_CHANGE_SOURCE -> {
+                // 对照原版 章节换源 → ChangeChapterSourceDialog 底部弹窗
+                screenModel.postDialogEvent(ReaderDialogEvent.ChangeChapterSource)
             }
 
             ReadMenuAction.REFRESH_DUR -> screenModel.viewModel.refreshCurrentChapter()
@@ -266,11 +274,10 @@ private class IosReadMenuState(
         screenModel.postDialogEvent(ReaderDialogEvent.EffectiveReplaces)
     }
 
-    // 夜间主题切换: isNightTheme 由 themeMode 计算, 写 themeMode ("2"=夜间 / "1"=日间)
+    // 夜间主题切换 (对照 app 端 clickNightTheme, 经 ThemeConfigProviders 应用主题色 + 触发重组)
     override fun clickNightTheme() {
-        val config = AppConfigProviders.get()
-        val newNight = !config.isNightTheme
-        PreferenceProviders.get().putString(PreferKey.themeMode, if (newNight) "2" else "1")
+        val newNight = !isNightTheme
+        ThemeConfigProviders.get().applyDayNight(newNight)
         isNightTheme = newNight
     }
 
@@ -283,9 +290,9 @@ private class IosReadMenuState(
     }
 
     override fun clickCatalog() {
-        screenModel.currentBook?.let {
-            navigator.push(AppRoute.Toc(it.toRouteRef()), RouteResults.TOC)
-        }
+        // 对照原版 目录按钮 → TocDialog 底部弹窗 (runMenuOut 先收菜单)
+        hide()
+        screenModel.postDialogEvent(ReaderDialogEvent.Toc)
     }
 
     // TODO: 待 ReadAloudControllerShared 接入阅读页后启动朗读 (引擎已注册: IosSystemTtsEngine)

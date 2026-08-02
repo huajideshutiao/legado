@@ -19,12 +19,14 @@ import kotlinx.coroutines.flow.StateFlow
  * 对照 app 端 [ReadBookActivity.Content] 的渲染输入：
  * - [viewModel] 驱动 [ReadViewComposable]（三页流 + pageDelegate）
  * - [menuState] 驱动 [ReadMenuOverlay]（顶/底栏菜单）
- * - [batteryLevel] 传给 [ReadViewComposable] 显示状态栏电量
+ * - [batteryLevel] 传给 [ReadViewComposable] 显示页眉/页脚电量
+ * - [clockText] 传给 [ReadViewComposable] 显示页眉/页脚时间
  */
 data class ReaderUiState(
     val viewModel: ReadBookViewModelShared,
     val menuState: ReadMenuState,
     val batteryLevel: StateFlow<Int>,
+    val clockText: StateFlow<String>,
 )
 
 /**
@@ -73,6 +75,7 @@ fun ReaderScreen(
     focusRequester: FocusRequester? = null,
 ) {
     val batteryLevel by state.batteryLevel.collectAsState()
+    val clockText by state.clockText.collectAsState()
     Box(
         modifier
             .fillMaxSize()
@@ -84,6 +87,7 @@ fun ReaderScreen(
         ReadViewComposable(
             viewModel = state.viewModel,
             batteryLevel = batteryLevel,
+            clockText = clockText,
             onClick = { column -> actions.onPageClick(column) },
             onLongClick = { column -> actions.onPageLongClick(column) },
             onAction = { action -> actions.onPageAction(action) },

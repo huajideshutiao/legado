@@ -532,11 +532,29 @@ class ReadAloudControllerShared(
      * [HttpTtsPlayerListener.onEndOfMedia] (HttpTTS) 推进。
      */
     private fun playCurrent() {
-        val text: String = synchronized(queueLock) {
-            val t = queue.contentList.getOrNull(queue.nowSpeak) ?: return
-            _paragraphIndex.value = queue.nowSpeak
-            _currentText.value = t
-            t
+        val text: String? = synchronized(queueLock) {
+            // 对照原版 buildSpeakPlan / TTSUtteranceListener.onStart: 纯标点/空白段不交给引擎。
+            // SAPI 对这类文本瞬间完成, 轮询观察不到"朗读中"状态, 直接朗读会卡住推进;
+            // 原版也是跳过 notReadAloudRegex 段 (buildSpeakPlan continue), 行为对齐。
+            var current: String? = queue.contentList.getOrNull(queue.nowSpeak)
+            while (current?.matches(AppPattern.notReadAloudRegex) == true) {
+                if (!queue.advanceToNextSpeakable()) {
+                    // 章内已无可朗读段
+                    current = null
+                    break
+                }
+                current = queue.contentList.getOrNull(queue.nowSpeak)
+            }
+            current?.let {
+                _paragraphIndex.value = queue.nowSpeak
+                _currentText.value = it
+            }
+            current
+        }
+        if (text == null) {
+            // 章内已无可朗读段 → 切下一章 (对照原版 play() 的 contentList.isEmpty → nextChapter)
+            nextChapter()
+            return
         }
         if (useHttpTts) {
             playHttpTtsCurrent(text)
@@ -595,22 +613,22 @@ class ReadAloudControllerShared(
      * 在引擎后台线程触发, 需注意与 [stop] / [nextParagraph] 的竞态:
      * - 用 [state] 校验: 仅 PLAYING 时推进
      * - 用 [queue] 锁保护段级状态
+     * - 切章在锁外调 (对照原版 TTSUtteranceListener.nextParagraph: advanceToNextSpeakable
+     *   返回 false 才 nextChapter; 这里不能无条件 nextChapter, 否则每段读完都切章,
+     *   表现为"每章只念标题")
      */
     private fun onParagraphDone() {
         if (_state.value != ReadAloudState.PLAYING) return
-        synchronized(queueLock) {
-            if (!queue.stepNextOrEnd()) {
-                // 本章节末段已朗读完 → 切下一章并续读
-                _state.value = _state.value // 保持 PLAYING 状态切到下一章
-                // 通知主线程切章 (在 synchronized 块外调, 避免 navigator 回调持锁)
-            } else {
-                // 还有段落, 朗读下一段
-                playCurrent()
-                return@synchronized
-            }
+        val hasNext = synchronized(queueLock) {
+            queue.stepNextOrEnd()
         }
-        // 走到这里说明本章节已朗读完, 触发切章
-        nextChapter()
+        if (hasNext) {
+            // 还有段落, 朗读下一段 (playCurrent 内自持锁)
+            playCurrent()
+        } else {
+            // 本章节末段已朗读完 → 切下一章并续读 (锁外调, 避免 navigator 回调持锁)
+            nextChapter()
+        }
     }
 
     /**

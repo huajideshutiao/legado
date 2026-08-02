@@ -6,6 +6,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookSourceType
 import io.legado.app.constant.BookType
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -166,6 +167,39 @@ fun BaseBook.releaseHtmlData() {
  */
 fun BaseBook.primaryStr(): String {
     return origin + bookUrl
+}
+
+/**
+ * 上架/下架统一核心 (四端共用, 避免各端维护多份拷贝)。
+ *
+ * 对照原 app 端 [io.legado.app.base.BaseReadViewModel.addToBookshelf] → `Book.save()`
+ * 与 `delBook` 的 DB 部分, 从桌面/iOS/鸿蒙的 toggleBookshelf 实现提炼下沉:
+ * - 下架: 删章节 + 删书 (desktop/iOS/ohos 原有行为)
+ * - 上架: 补 order + 合并同名书阅读进度 + 去 notShelf 标记后按 bookUrl 存在性 update/insert
+ *   (对照原 addToBookshelf; 去 notShelf 不可省略, 否则书架查询与发现页绿点会过滤掉该书)
+ *
+ * 平台专属行为 (删除确认弹窗 / 本地文件删除 / 缓存清理) 由各端在调用前后自行处理。
+ *
+ * @return null = 下架成功 (书已从书架删除); true = 上架成功; false = 操作失败
+ */
+suspend fun Book.toggleBookshelfCore(inBookshelf: Boolean): Boolean? {
+    val appDb = AppDbProviders.get()
+    return if (inBookshelf) {
+        appDb.bookChapterDao.delByBook(bookUrl)
+        appDb.bookDao.delete(this)
+        null
+    } else {
+        if (order == 0) order = appDb.bookDao.minOrder() - 1
+        appDb.bookDao.getBook(name, author)?.let {
+            durChapterIndex = it.durChapterIndex
+            durChapterPos = it.durChapterPos
+            durChapterTitle = it.durChapterTitle
+        }
+        removeType(BookType.notShelf)
+        if (appDb.bookDao.has(bookUrl)) appDb.bookDao.update(this)
+        else appDb.bookDao.insert(this)
+        true
+    }
 }
 
 /**

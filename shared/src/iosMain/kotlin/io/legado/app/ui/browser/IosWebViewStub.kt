@@ -11,6 +11,7 @@ import io.legado.app.help.http.CookieStoreProviders
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSHTTPCookie
 import platform.Foundation.NSMutableURLRequest
+import platform.Foundation.setValue
 import platform.Foundation.NSNumber
 import platform.Foundation.NSURL
 import platform.WebKit.WKNavigation
@@ -76,13 +77,13 @@ fun IosWebViewSlot(
 /** 带 headerMap 的请求加载 (loadRequest 请求头注入, 对照 Android loadUrl(url, headers))。 */
 private fun loadWithHeaders(webView: WKWebView, config: WebViewConfig) {
     val nsUrl = NSURL.URLWithString(config.url) ?: return
-    val request = NSMutableURLRequest.requestWithURL(nsUrl)
+    val request = NSMutableURLRequest(uRL = nsUrl)
     config.headerMap.forEach { (key, value) -> request.setValue(value, forHTTPHeaderField = key) }
     webView.loadRequest(request)
 }
 
-/** html 模式已加载标记 (避免每次重组重复 loadHTMLString)。 */
-private const val HTML_LOADED_TAG = 1
+/** html 模式已加载标记 (避免每次重组重复 loadHTMLString); UIView.tag 为 NSInteger (Long)。 */
+private const val HTML_LOADED_TAG = 1L
 
 /**
  * WKNavigationDelegate: 仅监听 didFinish, 取 WKHTTPCookieStore cookie 同步到业务层 store,
@@ -129,5 +130,7 @@ private class WebViewHostImpl(private val webView: WKWebView) : WebViewHost {
 
     override fun canGoBack(): Boolean = webView.canGoBack
 
-    override fun goBack() = webView.goBack()
+    override fun goBack() {
+        webView.goBack()
+    }
 }

@@ -100,9 +100,10 @@ class ScrollPageDelegateCompose(
     override fun onScroll(x: Float, y: Float) {
         if (!isMoved) {
             val deltaY = y - startY
-            // Compose detectDragGestures 已在内部 awaitPointerSlop 消耗系统 touchSlop 后才回调
-            // onDragStart(收到的是越过 slop 时的点) 与 onScroll, 首个 onScroll 即已越过 slop,
-            // 这里不再叠加 TOUCH_SLOP_PX 二次判定——原版两层判定共享按下点基准, 叠加是迁移失真。
+            // 与横向委托同一问题：onDragStart 与首个 onDrag 收到同一位置，首次 deltaY 恒为 0，
+            // 据此定方向会恒判 PREV。跳过本次，等真实位移事件再定方向。
+            if (deltaY == 0f) return
+            // 原版两层判定共享按下点基准；Compose 已在内部消耗 touchSlop，不再叠加二次判定
             isMoved = true
             if (deltaY < 0) {
                 // 向上滑 → NEXT，校验是否有下一页 / 下一章

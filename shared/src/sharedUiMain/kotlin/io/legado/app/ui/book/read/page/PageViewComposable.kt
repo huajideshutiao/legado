@@ -8,19 +8,25 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.ReadTipConfigShared
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
+import io.legado.app.ui.compose.platform.rememberColor
+import io.legado.app.utils.formatTimeOfDay
+import io.legado.app.utils.systemCurrentTimeMillis
 
 /**
  * KMP 版阅读页面视图：用 Compose 替代 app 端 `PageView` (FrameLayout + ViewBookPageBinding)。
@@ -38,19 +44,44 @@ import io.legado.app.ui.book.read.page.entities.column.TextColumn
  *
  * @param textPage 当前页内容，null 时显示加载占位
  * @param batteryLevel 电池电量 0-100，传 -1 表示不显示
+ * @param clockText 当前系统时间 HH:mm，随 timeChanged 刷新
  */
 @Composable
 fun PageViewComposable(
     textPage: TextPage?,
     modifier: Modifier = Modifier,
     batteryLevel: Int = -1,
+    clockText: String = formatTimeOfDay(systemCurrentTimeMillis()),
     onClick: (TextColumn?) -> Unit = {},
     onLongClick: (TextColumn?) -> Unit = {},
 ) {
     val providers = LocalReadConfigProviders.current
     val readTipConfig = providers.readTipConfig
+    val readBookConfig = providers.readBookConfig
     // 颜色/字号/字体统一走 ReaderDrawStyle（内部订阅 ReadBookEvents.configChange 重建）
     val style = rememberReaderDrawStyle()
+    // tip 行高与排版视口预留同源（ReaderRoute.buildLayoutConfig 用同一 tipRowHeightPx 公式），
+    // 隐藏模式高度为 0，正文排版区随之扩展（对照 app 端 isGone 后 onSizeChanged 重排）
+    val density = LocalDensity.current
+    val headerTipHeight = if (readTipConfig.headerMode == 2) 0
+    else tipRowHeightPx(
+        density,
+        readBookConfig.headerPaddingTop,
+        readBookConfig.headerPaddingBottom
+    )
+    val footerTipHeight = if (readTipConfig.footerMode == 1) 0
+    else tipRowHeightPx(
+        density,
+        readBookConfig.footerPaddingTop,
+        readBookConfig.footerPaddingBottom
+    )
+    // 分割线颜色：对照 app 端 PageView.upStyle 的 tipDividerColor 解析
+    // (-1 主题 divider 色 / 0 正文色 / 其他 自定义色)
+    val tipDividerColor = when (readTipConfig.tipDividerColor) {
+        -1 -> rememberColor("divider")
+        0 -> style.textColor
+        else -> Color(readTipConfig.tipDividerColor)
+    }
 
     Box(
         modifier = modifier
@@ -69,22 +100,69 @@ fun PageViewComposable(
             )
         }
 
-        // 顶部 tip
+        // 顶部 tip：锚定顶部，行高 = 排版预留的页眉高度
         HeaderTip(
             textPage = textPage,
             readTipConfig = readTipConfig,
             textColor = style.tipColor,
             batteryLevel = batteryLevel,
+            clockText = clockText,
+            heightPx = headerTipHeight,
+            startPaddingDp = readBookConfig.headerPaddingLeft,
+            endPaddingDp = readBookConfig.headerPaddingRight,
+            modifier = Modifier.align(Alignment.TopCenter),
         )
 
-        // 底部 tip
+        // 页眉分割线：贴合页眉底边（对照 app 端 vw_top_divider）
+        if (readTipConfig.headerMode != 2 && readBookConfig.showHeaderLine) {
+            TipDivider(
+                color = tipDividerColor,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = with(density) { headerTipHeight.toDp() }),
+            )
+        }
+
+        // 底部 tip：锚定底部，行高 = 排版预留的页脚高度
         FooterTip(
             textPage = textPage,
             readTipConfig = readTipConfig,
             textColor = style.tipColor,
             batteryLevel = batteryLevel,
+            clockText = clockText,
+            heightPx = footerTipHeight,
+            startPaddingDp = readBookConfig.footerPaddingLeft,
+            endPaddingDp = readBookConfig.footerPaddingRight,
+            modifier = Modifier.align(Alignment.BottomCenter),
         )
+
+        // 页脚分割线：贴合页脚顶边（对照 app 端 vw_bottom_divider）
+        if (readTipConfig.footerMode != 1 && readBookConfig.showFooterLine) {
+            TipDivider(
+                color = tipDividerColor,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = with(density) { footerTipHeight.toDp() }),
+            )
+        }
     }
+}
+
+/**
+ * 页眉/页脚分割线：对应 app 端 view_book_page.xml 的 vw_top_divider / vw_bottom_divider。
+ * 纯视觉叠加（1dp），不参与 tip 行排版高度（app 原版 0.5dp 同样忽略不计）。
+ */
+@Composable
+private fun TipDivider(
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    Spacer(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(color),
+    )
 }
 
 /**
@@ -101,12 +179,18 @@ private fun HeaderTip(
     readTipConfig: ReadTipConfigShared,
     textColor: Color,
     batteryLevel: Int,
+    clockText: String,
+    heightPx: Int,
+    startPaddingDp: Int,
+    endPaddingDp: Int,
+    modifier: Modifier = Modifier,
 ) {
     if (readTipConfig.headerMode == 2) return
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .height(with(LocalDensity.current) { heightPx.toDp() })
+            .padding(start = startPaddingDp.dp, end = endPaddingDp.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -115,6 +199,7 @@ private fun HeaderTip(
             textPage = textPage,
             textColor = textColor,
             batteryLevel = batteryLevel,
+            clockText = clockText,
             modifier = Modifier.weight(1f),
         )
         TipSlot(
@@ -122,6 +207,7 @@ private fun HeaderTip(
             textPage = textPage,
             textColor = textColor,
             batteryLevel = batteryLevel,
+            clockText = clockText,
             modifier = Modifier.weight(1f),
             align = Alignment.CenterHorizontally,
         )
@@ -130,6 +216,7 @@ private fun HeaderTip(
             textPage = textPage,
             textColor = textColor,
             batteryLevel = batteryLevel,
+            clockText = clockText,
             modifier = Modifier.weight(1f),
             align = Alignment.End,
         )
@@ -149,12 +236,18 @@ private fun FooterTip(
     readTipConfig: ReadTipConfigShared,
     textColor: Color,
     batteryLevel: Int,
+    clockText: String,
+    heightPx: Int,
+    startPaddingDp: Int,
+    endPaddingDp: Int,
+    modifier: Modifier = Modifier,
 ) {
     if (readTipConfig.footerMode == 1) return
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .height(with(LocalDensity.current) { heightPx.toDp() })
+            .padding(start = startPaddingDp.dp, end = endPaddingDp.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -163,6 +256,7 @@ private fun FooterTip(
             textPage = textPage,
             textColor = textColor,
             batteryLevel = batteryLevel,
+            clockText = clockText,
             modifier = Modifier.weight(1f),
         )
         TipSlot(
@@ -170,6 +264,7 @@ private fun FooterTip(
             textPage = textPage,
             textColor = textColor,
             batteryLevel = batteryLevel,
+            clockText = clockText,
             modifier = Modifier.weight(1f),
             align = Alignment.CenterHorizontally,
         )
@@ -178,6 +273,7 @@ private fun FooterTip(
             textPage = textPage,
             textColor = textColor,
             batteryLevel = batteryLevel,
+            clockText = clockText,
             modifier = Modifier.weight(1f),
             align = Alignment.End,
         )
@@ -190,7 +286,7 @@ private fun FooterTip(
  * 与 app 端 PageView.getTipView 对应，但用 when + Composable 替代 BatteryView 多态：
  * - [ReadTipConfigShared.none]: 空 Spacer 占位
  * - [ReadTipConfigShared.chapterTitle]: textPage.title
- * - [ReadTipConfigShared.time]: HH:mm（简化用 "HH:mm" 字符串，actual 平台可注入实际时间）
+ * - [ReadTipConfigShared.time]: HH:mm（当前系统时间，随 timeChanged 刷新）
  * - [ReadTipConfigShared.battery] / [ReadTipConfigShared.batteryPercentage]: 电池图标 / 百分比文字
  * - [ReadTipConfigShared.page] / [ReadTipConfigShared.pageAndTotal]: 页码
  * - [ReadTipConfigShared.totalProgress] / [ReadTipConfigShared.totalProgress1]: 进度百分比
@@ -203,6 +299,7 @@ private fun TipSlot(
     textPage: TextPage?,
     textColor: Color,
     batteryLevel: Int,
+    clockText: String,
     modifier: Modifier = Modifier,
     align: Alignment.Horizontal = Alignment.Start,
 ) {
@@ -215,7 +312,7 @@ private fun TipSlot(
     val text: String = when (tipType) {
         ReadTipConfigShared.none -> ""
         ReadTipConfigShared.chapterTitle -> textPage?.title ?: ""
-        ReadTipConfigShared.time -> "--:--"
+        ReadTipConfigShared.time -> clockText
         ReadTipConfigShared.battery -> if (batteryLevel >= 0) "$batteryLevel%" else ""
         ReadTipConfigShared.batteryPercentage -> if (batteryLevel >= 0) "$batteryLevel%" else ""
         ReadTipConfigShared.page -> textPage?.let { "${it.index + 1}/${it.pageSize.takeIf { p -> p > 0 } ?: "-"}" } ?: ""
@@ -226,8 +323,8 @@ private fun TipSlot(
             "${it.index + 1}/$ps  ${it.readProgress}"
         } ?: ""
         ReadTipConfigShared.bookName -> textPage?.title ?: ""
-        ReadTipConfigShared.timeBattery -> if (batteryLevel >= 0) "--:-- $batteryLevel%" else "--:--"
-        ReadTipConfigShared.timeBatteryPercentage -> if (batteryLevel >= 0) "--:-- $batteryLevel%" else "--:--"
+        ReadTipConfigShared.timeBattery -> if (batteryLevel >= 0) "$clockText $batteryLevel%" else clockText
+        ReadTipConfigShared.timeBatteryPercentage -> if (batteryLevel >= 0) "$clockText $batteryLevel%" else clockText
         else -> ""
     }
 
@@ -244,6 +341,8 @@ private fun TipSlot(
             color = textColor,
             fontSize = 12.sp,
             textAlign = textAlign,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = modifier,
         )
     } else {
@@ -273,6 +372,8 @@ private fun BatteryIndicator(
             text = "$safeLevel%",
             color = color,
             fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

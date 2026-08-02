@@ -7,7 +7,10 @@ import android.graphics.ColorMatrixColorFilter
 import android.os.BatteryManager
 import android.widget.ImageView
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.node.Ref
 import androidx.compose.ui.viewinterop.AndroidView
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -19,12 +22,13 @@ import io.legado.app.ui.book.manga.config.MangaColorFilterConfig
 import io.legado.app.ui.book.manga.config.MangaFooterConfig
 import io.legado.app.ui.book.manga.config.isNoOp
 import io.legado.app.ui.book.manga.config.toColorMatrix
+import io.legado.app.ui.book.manga.entities.MangaCellState
 import io.legado.app.ui.book.manga.render.MangaPageImageView
+import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.toJson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
-import io.legado.app.utils.fromJsonObject
-import io.legado.app.utils.toJson
 import java.io.FileInputStream
 
 object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
@@ -119,18 +123,46 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
         source: BookSource?,
         colorFilterConfig: MangaColorFilterConfig,
         grayEnabled: Boolean,
+        onLoadState: (MangaCellState) -> Unit,
+        retryTick: Int,
     ) {
+        val viewRef = remember { Ref<MangaPageImageView>() }
+        // 重试: shared 单元格"重新加载"点击 → retryTick 自增 → 直接调 MangaPageImageView.retry() (对照 app 端 MangaRenderScreen)
+        LaunchedEffect(retryTick) {
+            if (retryTick > 0) viewRef.value?.retry()
+        }
+        if (book == null) {
+            // 缺少书籍上下文: loadPageImage 会 book ?: return 而永不回调, 这里不再静默, 直接上报错误态
+            LaunchedEffect(Unit) { onLoadState(MangaCellState.ERROR) }
+            return
+        }
         AndroidView(
             factory = { MangaPageImageView(it) },
             modifier = modifier,
             onReset = { it.recycle() },
             onRelease = { it.recycle() },
             update = { view ->
+                viewRef.value = view
                 view.scaleType =
                     if (horizontal) ImageView.ScaleType.FIT_CENTER else ImageView.ScaleType.FIT_XY
                 // 颜色滤镜: 复用 shared toColorMatrix, 全 0 时清除 (对照 app 端 MangaRenderScreen.toColorFilter)
                 view.colorFilter = if (colorFilterConfig.isNoOp()) null
                 else ColorMatrixColorFilter(ColorMatrix(colorFilterConfig.toColorMatrix()))
+                // 上报加载状态给 shared 单元格 (对齐 app 端 MangaRenderScreen: v.onStateChange = { load = it })
+                view.onStateChange = { state ->
+                    onLoadState(
+                        when (state) {
+                            io.legado.app.ui.book.manga.render.MangaCellState.LOADING ->
+                                MangaCellState.LOADING
+
+                            io.legado.app.ui.book.manga.render.MangaCellState.SUCCESS ->
+                                MangaCellState.SUCCESS
+
+                            io.legado.app.ui.book.manga.render.MangaCellState.ERROR ->
+                                MangaCellState.ERROR
+                        }
+                    )
+                }
                 // GIF 由 Coil3 自动识别解码 (coil3-gif MovieDrawable/AnimatedImageDrawable), 无需 isGif 标记
                 view.loadPageImage(url, book, source, grayEnabled)
             },

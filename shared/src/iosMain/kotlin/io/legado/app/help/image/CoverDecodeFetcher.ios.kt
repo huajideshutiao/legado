@@ -83,7 +83,7 @@ class CoverDecodeFetcher(
             throw NoStackTraceException("跳过加载失败的图片")
         }
         // 只在 wifi 加载图片: 只拦网络获取, 内存/磁盘缓存命中仍正常显示 (对齐原版 OkHttpStreamFetcher)
-        if (options.extras[LoadOnlyWifiKey] && !isWifiConnect()) {
+        if (options.extras[LoadOnlyWifiKey] == true && !isWifiConnect()) {
             throw NoStackTraceException("只在wifi加载图片")
         }
         val sourceOrigin = options.extras[SourceOriginKey]

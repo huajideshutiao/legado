@@ -1,5 +1,7 @@
 package io.legado.app.ui.route
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -9,9 +11,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.book.primaryStr
 import io.legado.app.help.coroutine.Coroutine
@@ -25,16 +31,23 @@ import io.legado.app.ui.book.changesource.ChangeSourceUiActions
 import io.legado.app.ui.book.changesource.ChangeSourceUiEvent
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppBottomSheetDialog
+import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.RouteResult
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.eventObservable
+import io.legado.app.utils.format
 import io.legado.app.utils.throttleLatest
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
@@ -52,23 +65,10 @@ import legado.shared.generated.resources.soure_change_source
 import legado.shared.generated.resources.sure_del
 import legado.shared.generated.resources.yes
 import org.jetbrains.compose.resources.stringResource
-import io.legado.app.utils.format
 
 /**
  * 整书换源 shared 路由入口。
- *
- * 对照 app 端 [io.legado.app.ui.book.changesource.ChangeBookSourceDialog] 完整下沉:
- * - 实例化 [ChangeBookSourceViewModelShared] (组合委托模式, scope + platform 注入);
- * - 桥接 searchDataFlow / searchState / changeSourceProgress / flowEnabledGroups 到
- *   [ChangeSourceScreenModel] 状态;
- * - 桥接 searchFinishCallback + EventBus.SOURCE_CHANGED;
- * - 实现 [ChangeSourceUiActions] / [ChangeSourceMenuActions] / [ChangeSourceItemActions]
- *   将 navigator + viewModel + platform 串联;
- * - 渲染 [ChangeSourceScreen] + WaitDialog (切源加载目录) + 3 个确认 alert
- *   (空结果切换全部分组 / 书类型不同确认换源 / 删除书源确认)。
- *
- * 与 [ChangeChapterSourceRoute] (章节换源) 不同: 本路由 pop 时回传
- * [RouteResultPayload.ChangeSource] (source + book + toc), 由宿主处理整书换源。
+ * 通过 [ChangeSourceContent] 复用换源屏幕, 本路由负责导航语义 (切源 pop 回传 / 编辑书源)。
  */
 @Composable
 fun ChangeSourceRoute(
@@ -77,14 +77,98 @@ fun ChangeSourceRoute(
     screenModelStore: ScreenModelStore,
 ) {
     val route = entry.route as AppRoute.ChangeSource
-    val book = route.book.asBook()
-    val screenModel = screenModelStore.getOrCreateTyped(entry) { ChangeSourceScreenModel() }
+    val book = remember(route) { route.book.asBook() }
+    ChangeSourceContent(
+        book = book,
+        onBack = { navigator.pop() },
+        onSourceChanged = { source, newBook, toc ->
+            navigator.pop(RouteResultPayload.ChangeSource(source, newBook, toc))
+        },
+        onEditSource = { origin ->
+            navigator.push(AppRoute.BookSourceEdit(origin), RouteResults.BOOK_SOURCE_EDIT)
+        },
+        onBookSourceManage = { navigator.push(AppRoute.BookSourceManage) },
+        // 书源编辑返回时刷新源列表 (对照原版 resultsFor 订阅)
+        bookSourceEditFlow = navigator.resultsFor(entry.id)
+            .filter { it.key == RouteResults.BOOK_SOURCE_EDIT },
+    )
+}
+
+/**
+ * 整书换源弹窗形态 (对照原版 ChangeBookSourceDialog: 全高底部弹窗)。
+ * 由阅读页"换源"按钮弹起; 切源成功经 [onSourceChanged] 回传 (宿主负责 changeTo 落地 + 关闭)。
+ */
+@Composable
+fun ChangeSourceDialogHost(
+    book: Book,
+    onSourceChanged: (source: BookSource, newBook: Book, toc: List<BookChapter>) -> Unit,
+    onEditSource: (origin: String) -> Unit,
+    onBookSourceManage: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AppBottomSheetDialog(
+        onDismissRequest = onDismiss,
+        properties = AppDialogSizes.properties(),
+    ) {
+        AppTheme {
+            Surface(
+                shape = DesignTokens.dialogShape,
+                color = AppTheme.colors.background,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                ChangeSourceContent(
+                    book = book,
+                    onBack = onDismiss,
+                    onSourceChanged = onSourceChanged,
+                    onEditSource = { origin ->
+                        onDismiss()
+                        onEditSource(origin)
+                    },
+                    onBookSourceManage = {
+                        onDismiss()
+                        onBookSourceManage()
+                    },
+                    bookSourceEditFlow = null,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 换源屏幕共享正文 (路由/弹窗两形态共用)。
+ *
+ * 对照 app 端 [io.legado.app.ui.book.changesource.ChangeBookSourceDialog] 完整下沉:
+ * - 实例化 [ChangeBookSourceViewModelShared] + [ChangeSourceScreenModel] 并桥接各 Flow;
+ * - 切源/删除/编辑动作经回调外抛, 由宿主决定 pop/push 或 dismiss。
+ *
+ * @param book 当前书籍
+ * @param onBack 返回 (路由=pop, 弹窗=dismiss)
+ * @param onSourceChanged 切源成功 (source, newBook, toc)
+ * @param onEditSource 编辑书源 (origin)
+ * @param onBookSourceManage 打开书源管理
+ * @param bookSourceEditFlow 书源编辑返回事件流 (路由形态传入, 弹窗形态已 dismiss 无需刷新)
+ */
+@Composable
+fun ChangeSourceContent(
+    book: Book,
+    onBack: () -> Unit,
+    onSourceChanged: (source: BookSource, newBook: Book, toc: List<BookChapter>) -> Unit,
+    onEditSource: (origin: String) -> Unit,
+    onBookSourceManage: () -> Unit,
+    bookSourceEditFlow: Flow<RouteResult>? = null,
+) {
+    val screenModel = remember(book.bookUrl) { ChangeSourceScreenModel() }
     val state by screenModel.state.collectAsState()
 
     val scope = rememberCoroutineScope()
     val platform = ChangeBookSourcePlatformProviders.get()
-    val viewModel = remember(entry) {
+    val viewModel = remember(book.bookUrl) {
         ChangeBookSourceViewModelShared(scope = scope, platform = platform)
+    }
+    // 释放搜索线程池 (对照 app 端 ViewModel.onCleared)
+    DisposableEffect(viewModel) {
+        onDispose { viewModel.onCleared() }
     }
 
     // region 对话框状态 (对照 app 端 alert 调用 + waitDialog)
@@ -104,13 +188,11 @@ fun ChangeSourceRoute(
     // region LaunchedEffect: 初始化 + 桥接 Flow
 
     // 对照 Dialog.onViewCreated 第 102-109 行: initData + curBookUrl + durText + 4 开关 + searchGroup
-    // 同时桥接 searchDataFlow (对照 Dialog.Content 第 135-138 行), 确保 initData 先于 collect 执行
-    LaunchedEffect(route.book) {
+    LaunchedEffect(book) {
         viewModel.initData(book.name, book.author, fromReadBookActivity = false, oldBook = book)
         screenModel.dispatch(ChangeSourceUiEvent.BookInitialized(book))
         screenModel.dispatch(ChangeSourceUiEvent.CurBookUrlChanged(book.bookUrl))
         screenModel.dispatch(ChangeSourceUiEvent.DurTextChanged(book.originName))
-        // 初始化 4 个开关 + searchGroup (对照 app 端 remember { mutableStateOf(AppConfig.X) })
         screenModel.dispatch(ChangeSourceUiEvent.CheckAuthorChanged(platform.changeSourceCheckAuthor))
         screenModel.dispatch(ChangeSourceUiEvent.LoadInfoChanged(platform.changeSourceLoadInfo))
         screenModel.dispatch(ChangeSourceUiEvent.LoadTocChanged(platform.changeSourceLoadToc))
@@ -181,10 +263,10 @@ fun ChangeSourceRoute(
         }
     }
 
-    // 书源编辑返回: 刷新源列表
-    LaunchedEffect(Unit) {
-        navigator.resultsFor(entry.id).filter { it.key == RouteResults.BOOK_SOURCE_EDIT }.collect {
-            viewModel.startRefreshList()
+    // 书源编辑返回: 刷新源列表 (弹窗形态传 null, 编辑前已 dismiss)
+    if (bookSourceEditFlow != null) {
+        LaunchedEffect(bookSourceEditFlow) {
+            bookSourceEditFlow.collect { viewModel.startRefreshList() }
         }
     }
     // endregion
@@ -192,7 +274,7 @@ fun ChangeSourceRoute(
     // region 切源流程 (对照 Dialog.changeTo + changeSource 第 284-345 行)
 
     /**
-     * 切源核心: 显示 WaitDialog -> getToc -> 成功 pop(payload) / 失败 AppLog。
+     * 切源核心: 显示 WaitDialog -> getToc -> 成功 onSourceChanged / 失败 AppLog。
      * 对照 app 端 changeSource(searchBook, onSuccess)。
      */
     fun changeSource(searchBook: SearchBook) {
@@ -203,7 +285,7 @@ fun ChangeSourceRoute(
             onSuccess = { toc, source ->
                 showWaitDialog = false
                 tocCoroutine = null
-                navigator.pop(RouteResultPayload.ChangeSource(source, targetBook, toc))
+                onSourceChanged(source, targetBook, toc)
             },
             onError = { e ->
                 showWaitDialog = false
@@ -237,7 +319,7 @@ fun ChangeSourceRoute(
         if (currentState.curBookUrl == searchBook.bookUrl) {
             val oldBookType = currentState.book?.type
             viewModel.autoChangeSource(oldBookType) { newBook, toc, source ->
-                navigator.pop(RouteResultPayload.ChangeSource(source, newBook, toc))
+                onSourceChanged(source, newBook, toc)
             }
         }
     }
@@ -247,7 +329,7 @@ fun ChangeSourceRoute(
 
     val actions = object : ChangeSourceUiActions {
         override fun onBack() {
-            navigator.pop()
+            onBack()
         }
 
         override fun onStartStop() {
@@ -260,7 +342,6 @@ fun ChangeSourceRoute(
 
         override fun onSearchModeChange(enabled: Boolean) {
             // searchMode 为 Screen 本地 rememberSaveable 状态, 此回调无额外动作
-            // (对照 app 端 onSearchModeChange 仅赋值本地 searchMode)
         }
 
         override fun onItemClick(book: SearchBook) {
@@ -273,7 +354,7 @@ fun ChangeSourceRoute(
 
     val menuActions = object : ChangeSourceMenuActions {
         override fun onBookSourceManage() {
-            navigator.push(AppRoute.BookSourceManage)
+            onBookSourceManage()
         }
 
         override fun onRefreshList() {
@@ -303,7 +384,7 @@ fun ChangeSourceRoute(
         }
 
         override fun onClose() {
-            navigator.pop()
+            onBack()
         }
     }
 
@@ -323,7 +404,7 @@ fun ChangeSourceRoute(
         }
 
         override fun onEdit(book: SearchBook) {
-            navigator.push(AppRoute.BookSourceEdit(book.origin), RouteResults.BOOK_SOURCE_EDIT)
+            onEditSource(book.origin)
         }
 
         override fun onDisable(book: SearchBook) {

@@ -230,7 +230,6 @@ kotlin {
                 kotlin.exclude(
                     "io/legado/app/model/ImageProvider.native.kt",
                     *nativeInteropSourcePatterns.toTypedArray(),
-                    "io/legado/app/help/crypto/NativeMbedTlsOps.native.kt",
                 )
                 dependencies {
                     implementation("io.ktor:ktor-server-core:3.1.0")
@@ -321,14 +320,17 @@ if (enableOhosTarget) {
 
 if (enableIosTarget) {
     tasks.matching {
-        it.name == "compileKotlinIosArm64" || it.name == "compileKotlinIosSimulatorArm64"
+        it.name == "compileKotlinIosArm64" || it.name == "compileKotlinIosSimulatorArm64" ||
+            it.name == "kspKotlinIosArm64" || it.name == "kspKotlinIosSimulatorArm64"
     }.configureEach {
         stageNativeInteropForIos?.let { dependsOn(it) }
     }
 }
 
 if (enableOhosTarget) {
-    tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
+    tasks.matching {
+        it.name == "compileKotlinOhosArm64" || it.name == "kspKotlinOhosArm64"
+    }.configureEach {
         stageNativeInteropForOhos?.let { dependsOn(it) }
     }
 }

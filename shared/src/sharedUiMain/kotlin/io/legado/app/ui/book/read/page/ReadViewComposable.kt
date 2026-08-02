@@ -11,6 +11,8 @@ import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.page.delegate.rememberPageDelegate
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
+import io.legado.app.utils.formatTimeOfDay
+import io.legado.app.utils.systemCurrentTimeMillis
 import kotlin.math.roundToInt
 
 /**
@@ -35,6 +37,7 @@ import kotlin.math.roundToInt
  *
  * @param viewModel 阅读 ViewModel，提供 prevTextPage/curTextPage/nextTextPage 流
  * @param batteryLevel 电池电量 0-100，传 -1 表示不显示
+ * @param clockText 当前系统时间 HH:mm，随 timeChanged 刷新
  * @param onClick 单击回调（动作 0=菜单，由调用方处理；翻页/切章在本 Composable 内消费）
  * @param onLongClick 长按回调（用于文字选择）
  * @param onAction 非翻页类点击动作（书签/目录/搜索等），对照 app 端 ReadView.click 的 callBack 分支
@@ -44,6 +47,7 @@ fun ReadViewComposable(
     viewModel: ReadBookViewModelShared,
     modifier: Modifier = Modifier,
     batteryLevel: Int = -1,
+    clockText: String = formatTimeOfDay(systemCurrentTimeMillis()),
     onClick: (TextColumn?) -> Unit = {},
     onLongClick: (TextColumn?) -> Unit = {},
     onAction: (Int) -> Unit = {},
@@ -86,6 +90,7 @@ fun ReadViewComposable(
                         textPage = page,
                         modifier = Modifier.fillMaxSize(),
                         batteryLevel = batteryLevel,
+                        clockText = clockText,
                         onClick = onClick,
                         onLongClick = onLongClick,
                     )
@@ -97,6 +102,7 @@ fun ReadViewComposable(
                         textPage = page,
                         modifier = Modifier.fillMaxSize(),
                         batteryLevel = batteryLevel,
+                        clockText = clockText,
                         onClick = onClick,
                         onLongClick = onLongClick,
                     )
@@ -108,6 +114,7 @@ fun ReadViewComposable(
                         textPage = page,
                         modifier = Modifier.fillMaxSize(),
                         batteryLevel = batteryLevel,
+                        clockText = clockText,
                         onClick = onClick,
                         onLongClick = onLongClick,
                     )

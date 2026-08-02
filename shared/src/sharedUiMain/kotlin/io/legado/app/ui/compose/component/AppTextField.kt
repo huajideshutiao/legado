@@ -3,6 +3,7 @@ package io.legado.app.ui.compose.component
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -220,7 +221,8 @@ internal val AppFieldColors: TextFieldColors
         )
     }
 
-/** 两个重载共享的装饰盒: label 浮动/占位符/图标排版走 M2 默认, 仅水平 contentPadding 收窄至 4dp */
+/** 两个重载共享的装饰盒: label 浮动/占位符/图标排版走 M2 默认, 仅水平 contentPadding 收窄至 4dp。
+ *  [contentPadding] 可覆写: CodeTextField 盒模式传入含 16dp 盒内边距的 padding */
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
 internal fun AppDecorationBox(
@@ -236,6 +238,11 @@ internal fun AppDecorationBox(
     leadingIcon: @Composable (() -> Unit)?,
     trailingIcon: @Composable (() -> Unit)?,
     colors: TextFieldColors,
+    contentPadding: PaddingValues = if (label == null) {
+        TextFieldDefaults.textFieldWithoutLabelPadding(start = 0.dp, end = 0.dp, bottom = 4.dp)
+    } else {
+        TextFieldDefaults.textFieldWithLabelPadding(start = 0.dp, end = 0.dp, bottom = 4.dp)
+    },
 ) {
     TextFieldDefaults.TextFieldDecorationBox(
         value = text,
@@ -250,11 +257,7 @@ internal fun AppDecorationBox(
         leadingIcon = leadingIcon,
         trailingIcon = trailingIcon,
         colors = colors,
-        contentPadding = if (label == null) {
-            TextFieldDefaults.textFieldWithoutLabelPadding(start = 0.dp, end = 0.dp, bottom = 4.dp)
-        } else {
-            TextFieldDefaults.textFieldWithLabelPadding(start = 0.dp, end = 0.dp, bottom = 4.dp)
-        },
+        contentPadding = contentPadding,
     )
 }
 

@@ -1,6 +1,7 @@
 package io.legado.desktop.ui.platform
 
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -14,6 +15,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.ui.book.read.ReadAloudControls
 import io.legado.app.ui.book.read.ReadMenuAction
 import io.legado.app.ui.book.read.ReadMenuController
@@ -23,6 +25,7 @@ import io.legado.app.ui.book.read.ReaderPlatformProvider
 import io.legado.app.ui.book.read.ReaderScreenModel
 import io.legado.app.ui.book.read.SourceAction
 import io.legado.app.ui.book.read.TopMenuState
+import io.legado.app.ui.reader.TextSelectionDialog
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
@@ -30,6 +33,7 @@ import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.toRouteRef
 import io.legado.desktop.help.tts.DesktopReadAloudHost
+import io.legado.desktop.ui.DesktopPlatformCapabilities
 
 /**
  * desktop 端 [ReaderPlatformProvider] 真实实现: 菜单可见/可切, 导航经 [AppNavigator] 桥接。
@@ -45,10 +49,15 @@ import io.legado.desktop.help.tts.DesktopReadAloudHost
  * - ReadAloud (朗读): app 端走 ReadAloud + BaseReadAloudService, desktop 无 Service,
  *   改由 [DesktopReadAloudHost] 驱动 ReadAloudControllerShared; 长按弹共享朗读控制面板
  * - ThemeConfig.applyDayNight: app 端切夜间主题后调 Activity 重启 UI, desktop 经
- *   [AppConfigProviders] 切换 isNightTheme 标记即可 (AppTheme 已订阅 themeMode 变化)
+ *   [io.legado.app.help.config.ThemeConfigProviders] (FileThemeConfigProvider.applyDayNight)
+ *   写 ThemeStore 色 + themeMode 并 emit RECREATE, AppTheme 重组重读新色
  * - 沉浸式色彩 (immersive/bgColor/textColor): desktop 无阅读背景图/纯色定制, 用 AppTheme 默认色
  */
 class DesktopReaderPlatformProvider : ReaderPlatformProvider {
+
+    /** 长按文字选择请求 (对照 app 端 MainActivity.readerSelection, 由 [TextSelectionHost] 渲染)。 */
+    internal var readerSelection by mutableStateOf<ReaderTextSelection?>(null)
+        private set
 
     override fun createMenuController(
         navigator: AppNavigator,
@@ -57,11 +66,46 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
 
     override fun getBatteryLevel(): Int = -1
 
+    override fun onLongPress(screenModel: ReaderScreenModel) {
+        // 对照 app 端 AndroidReaderPlatformProvider.onLongPress: 携带章节名 + 整章正文,
+        // 由共享 TextSelectionDialog (SelectionContainer 包 Text) 承载拖选/复制/查词
+        readerSelection = ReaderTextSelection(
+            chapterName = screenModel.currentChapter?.title.orEmpty(),
+            content = screenModel.currentChapterText,
+        )
+    }
+
+    /**
+     * 长按文字选择对话框宿主 (挂在桌面 Compose 根, 对照 app 端 MainActivity 的
+     * `readerSelection?.let { TextSelectionDialog(...) }` 分支)。剪贴板读写 / 打开外链
+     * 走 [DesktopPlatformCapabilities], 复用共享 [TextSelectionDialog] 不另写一套。
+     */
+    @Composable
+    fun TextSelectionHost() {
+        val selection = readerSelection
+        if (selection != null) {
+            TextSelectionDialog(
+                chapterName = selection.chapterName,
+                content = selection.content,
+                onDismiss = { readerSelection = null },
+                clipTextProvider = { DesktopPlatformCapabilities.getClipboardText() },
+                clipTextSink = { DesktopPlatformCapabilities.copyToClipboard(it) },
+                openUrl = { DesktopPlatformCapabilities.openExternalUrl(it) },
+            )
+        }
+    }
+
     override fun readAloudControls(
         navigator: AppNavigator,
         screenModel: ReaderScreenModel,
     ): ReadAloudControls = DesktopReadAloudControls(navigator, screenModel)
 }
+
+/** 长按文字选择请求载荷: 章节名 + 整章正文。 */
+internal data class ReaderTextSelection(
+    val chapterName: String,
+    val content: String,
+)
 
 /**
  * 桌面端朗读控制桥: 面板动作落到 [DesktopReadAloudHost] + 偏好项。
@@ -119,9 +163,8 @@ private class DesktopReadAloudControls(
     }
 
     override fun openChapterList() {
-        screenModel.currentBook?.let {
-            navigator.push(AppRoute.Toc(it.toRouteRef()), RouteResults.TOC)
-        }
+        // 对照原版 朗读面板目录按钮 → TocDialog 底部弹窗
+        screenModel.postDialogEvent(ReaderDialogEvent.Toc)
     }
 
     override fun openSettings() {
@@ -178,7 +221,14 @@ private class DesktopReadMenuState(
         private set
     override var sourceActionVisible by mutableStateOf(false)
         private set
-    override val titleBarAdditionVisible: Boolean get() = false
+
+    // 顶栏下方的章节名/章节链接行 (对照 app 端 AndroidReaderMenuState:
+    // titleBarAdditionVisible = AppConfig.showReadTitleBarAddition, 默认 true;
+    // 桌面端无对应设置页入口, 读同一 pref, 缺失回落 true 恢复显示)
+    override val titleBarAdditionVisible: Boolean
+        get() = runCatching {
+            PreferenceProviders.get().getBoolean(PreferKey.showReadTitleAddition, true)
+        }.getOrDefault(true)
     override val topMenu = TopMenuState()
 
     // 底栏: 进度条 + 上/下章 + 自动翻页 + 夜间主题
@@ -245,15 +295,13 @@ private class DesktopReadMenuState(
     override fun onChapterViewLongClick() = Unit
 
     override fun onOverflowOpened() {
-        val source = screenModel.viewModel.bookSource.value
-        topMenu.reviewVisible = source?.reviewRule?.reviewUrl.isNullOrBlank() == false
+        screenModel.updateSourceMenu()
     }
 
-    override fun sourceLoginVisible(): Boolean =
-        screenModel.viewModel.bookSource.value?.hasLogin() == true
+    override fun sourceLoginVisible(): Boolean = screenModel.sourceLoginVisible()
 
-    override fun sourcePayVisible(): Boolean =
-        screenModel.viewModel.bookSource.value?.hasLogin() == true
+    // 购买按钮显示条件已下沉 ReaderScreenModel.sourcePayVisible (对照原版 ReadMenu)
+    override fun sourcePayVisible(): Boolean = screenModel.sourcePayVisible()
 
     override fun onSourceAction(action: SourceAction) {
         when (action) {
@@ -282,6 +330,15 @@ private class DesktopReadMenuState(
             }
 
             SourceAction.DISABLE_SOURCE -> screenModel.viewModel.disableSource()
+
+            // 购买当前章: 确认弹窗由 ReaderRoute ChapterPay 渲染, 确认后执行书源 payAction JS
+            // (对照原版 ReadMenu menu_chapter_pay -> payAction)
+            SourceAction.CHAPTER_PAY ->
+                screenModel.postDialogEvent(ReaderDialogEvent.ChapterPay)
+
+            // 源/书变量编辑 (对照原版 ReadMenu showSourceVariableDialog/showBookVariableDialog)
+            SourceAction.SET_SOURCE_VARIABLE -> screenModel.showSourceVariableDialog()
+            SourceAction.SET_BOOK_VARIABLE -> screenModel.showBookVariableDialog()
             else -> Unit
         }
     }
@@ -299,12 +356,14 @@ private class DesktopReadMenuState(
     override fun onTopMenuAction(action: ReadMenuAction) {
         when (action) {
             ReadMenuAction.CHANGE_SOURCE,
-            ReadMenuAction.BOOK_CHANGE_SOURCE -> screenModel.currentBook?.let {
-                navigator.push(AppRoute.ChangeSource(it.toRouteRef()), RouteResults.CHANGE_SOURCE)
+            ReadMenuAction.BOOK_CHANGE_SOURCE -> {
+                // 对照原版 换源 → ChangeBookSourceDialog 底部弹窗
+                screenModel.postDialogEvent(ReaderDialogEvent.ChangeSource)
             }
 
-            ReadMenuAction.CHAPTER_CHANGE_SOURCE -> screenModel.currentBook?.let {
-                navigator.push(AppRoute.ChangeChapterSource(it.toRouteRef()))
+            ReadMenuAction.CHAPTER_CHANGE_SOURCE -> {
+                // 对照原版 章节换源 → ChangeChapterSourceDialog 底部弹窗
+                screenModel.postDialogEvent(ReaderDialogEvent.ChangeChapterSource)
             }
 
             ReadMenuAction.REFRESH_DUR -> screenModel.viewModel.refreshCurrentChapter()
@@ -364,12 +423,10 @@ private class DesktopReadMenuState(
         screenModel.postDialogEvent(ReaderDialogEvent.EffectiveReplaces)
     }
 
-    // 夜间主题切换 (对照 app 端 clickNightTheme, 无 ThemeConfig.applyDayNight)
+    // 夜间主题切换 (对照 app 端 clickNightTheme, 经 ThemeConfigProviders 应用主题色 + 触发重组)
     override fun clickNightTheme() {
-        val config = AppConfigProviders.get()
-        val newNight = !config.isNightTheme
-        // isNightTheme 由 themeMode 计算, 写 themeMode ("2"=夜间 / "1"=日间)
-        PreferenceProviders.get().putString(PreferKey.themeMode, if (newNight) "2" else "1")
+        val newNight = !isNightTheme
+        ThemeConfigProviders.get().applyDayNight(newNight)
         isNightTheme = newNight
     }
 
@@ -382,9 +439,9 @@ private class DesktopReadMenuState(
     }
 
     override fun clickCatalog() {
-        screenModel.currentBook?.let {
-            navigator.push(AppRoute.Toc(it.toRouteRef()), RouteResults.TOC)
-        }
+        // 对照原版 目录按钮 → TocDialog 底部弹窗 (runMenuOut 先收菜单)
+        hide()
+        screenModel.postDialogEvent(ReaderDialogEvent.Toc)
     }
 
     // 桌面端短按直接打开面板并开始/继续朗读。

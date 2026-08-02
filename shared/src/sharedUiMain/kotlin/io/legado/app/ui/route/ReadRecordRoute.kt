@@ -1,11 +1,17 @@
 package io.legado.app.ui.route
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.ReadRecordShow
 import io.legado.app.help.config.PreferenceProviders
@@ -14,9 +20,12 @@ import io.legado.app.ui.about.ReadRecordScreenModel
 import io.legado.app.ui.about.ReadRecordUiActions
 import io.legado.app.ui.about.ReadRecordUiEvent
 import io.legado.app.ui.about.SharedMonthHeatMap
+import io.legado.app.ui.bookshelf.CoverNameAuthorOverlay
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
@@ -28,9 +37,11 @@ import kotlinx.coroutines.launch
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.delete
+import legado.shared.generated.resources.image_cover_default
 import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.sure_del
 import legado.shared.generated.resources.sure_del_any
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -44,6 +55,34 @@ import org.jetbrains.compose.resources.stringResource
  * 热力图 slot 由 shared 纯 Compose [SharedMonthHeatMap] 渲染 (替代 app 端 AndroidView);
  * 封面 slot 取 [LocalBookCoverSlot] (app 端注入 ShelfCover, 其他端兜底 SharedBookCover)。
  */
+
+/**
+ * 记录条目无 [Book] 时的默认封面: 内置 image_cover_default + 竖排书名。
+ *
+ * 对照原版 RecordAdapter.convert 的 `ivCover.load(book?.getDisplayCover(), ...)`:
+ * 封面为空/书不在书架时 CoverImageView 走默认封面链 (内置图 + 书名), 条目封面从不隐藏。
+ */
+@Composable
+private fun ReadRecordDefaultCover(name: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .clip(DesignTokens.shapeSm)
+            .background(AppTheme.colors.background),
+    ) {
+        Image(
+            painter = painterResource(Res.drawable.image_cover_default),
+            contentDescription = name,
+            modifier = Modifier.matchParentSize(),
+            contentScale = ContentScale.FillBounds,
+        )
+        CoverNameAuthorOverlay(
+            name = name,
+            author = null,
+            accent = AppTheme.colors.accent,
+            modifier = Modifier.matchParentSize(),
+        )
+    }
+}
 @Composable
 fun ReadRecordRoute(
     entry: RouteEntry,
@@ -169,10 +208,14 @@ fun ReadRecordRoute(
                 modifier = modifier,
             )
         },
-        // 封面: book 非空调 bookCoverSlot (平台注入), book 为空走占位
-        coverSlot = { _, book, modifier ->
+        // 封面: book 非空调 bookCoverSlot (平台注入); book 为空 (书已不在书架/从未入库)
+        // 显示默认封面 + 书名, 不隐藏 (对照原版 RecordAdapter: ivCover.load(null 封面)
+        // 走 ShelfCover 默认封面链, 空封面/加载失败同样落默认封面)
+        coverSlot = { item, book, modifier ->
             if (book != null) {
                 bookCoverSlot(book, modifier, false, 0)
+            } else {
+                ReadRecordDefaultCover(item.bookName, modifier)
             }
         },
     )

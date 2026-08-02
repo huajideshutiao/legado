@@ -89,7 +89,8 @@ import org.jetbrains.compose.resources.stringResource
  * - 用户交互通过回调上抛 (onVoteUp / onToggleExpand / onReviewClick / onPostClick 等);
  * - 图片渲染通过 [avatarSlot] / [imageSlot] 注入 (app 端 Glide / 桌面端各平台 ImageLoader);
  * - 删除确认对话框由调用方处理 (onDeleteClick 回调内自行弹 alert / AppAlertDialog);
- * - 发书评入口由调用方处理 (onPostClick 回调内自行启 ReviewPostActivity / 桌面端输入框)。
+ * - 发书评入口由调用方处理 (onPostClick 回调内自行弹 ReviewPostDialogHost, 对照原版
+ *   ReviewPostActivity 底部输入面板)。
  *
  * # 业务对齐 (对照 app 端原版 ReviewListDialog.ReviewListContent)
  *

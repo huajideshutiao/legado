@@ -1,6 +1,10 @@
 package io.legado.app.ui.book.read
 
 import android.app.DatePickerDialog
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.BatteryManager
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.foundation.clickable
@@ -17,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.toColorInt
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -36,6 +41,7 @@ import io.legado.app.help.book.save
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig
+import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.model.ReadAloud
@@ -71,6 +77,9 @@ class AndroidReaderPlatformProvider(
     // onEnter 注册、onExit 解注册；ON_PAUSE 落库+取消预下载，ON_RESUME 留扩展点
     private var lifecycleObserver: DefaultLifecycleObserver? = null
 
+    // 时间/电池广播接收器: 阅读页打开期间注册, 桥接 ACTION_TIME_TICK / ACTION_BATTERY_CHANGED → ReadBookEvents
+    private var batteryReceiver: BroadcastReceiver? = null
+
     override fun createMenuController(
         navigator: AppNavigator,
         screenModel: ReaderScreenModel,
@@ -92,6 +101,29 @@ class AndroidReaderPlatformProvider(
 
     override fun onEnter(screenModel: ReaderScreenModel) {
         activity.enterReaderWindow()
+        // 注册时间/电池广播: 桥接系统广播到 ReadBookEvents (对照原版 TimeBatteryReceiver),
+        // 时间/电池槽位由 shared ReaderScreenModel 订阅对应事件刷新
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    Intent.ACTION_TIME_TICK -> ReadBookEvents.postTimeChanged()
+                    Intent.ACTION_BATTERY_CHANGED -> {
+                        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                        ReadBookEvents.postBatteryChanged(level)
+                    }
+                }
+            }
+        }
+        ContextCompat.registerReceiver(
+            activity,
+            receiver,
+            IntentFilter().apply {
+                addAction(Intent.ACTION_TIME_TICK)
+                addAction(Intent.ACTION_BATTERY_CHANGED)
+            },
+            ContextCompat.RECEIVER_EXPORTED,
+        )
+        batteryReceiver = receiver
         // 注册生命周期观察者: 桥接 Activity onPause/onResume 到 shared ScreenModel
         val observer = object : DefaultLifecycleObserver {
             override fun onPause(owner: LifecycleOwner) {
@@ -108,6 +140,8 @@ class AndroidReaderPlatformProvider(
 
     override fun onExit(screenModel: ReaderScreenModel) {
         activity.exitReaderWindow()
+        batteryReceiver?.let { activity.unregisterReceiver(it) }
+        batteryReceiver = null
         lifecycleObserver?.let { activity.lifecycle.removeObserver(it) }
         lifecycleObserver = null
     }
@@ -187,9 +221,8 @@ private class AndroidReadAloudControls(
     }
 
     override fun openChapterList() {
-        screenModel.currentBook?.let {
-            navigator.push(AppRoute.Toc(it.toRouteRef()), RouteResults.TOC)
-        }
+        // 对照原版 朗读面板目录按钮 → TocDialog 底部弹窗
+        screenModel.postDialogEvent(ReaderDialogEvent.Toc)
     }
 
     override fun openSettings() {
@@ -357,15 +390,13 @@ private class AndroidReaderMenuState(
 
     // 溢出菜单展开时刷新动态项 (对照 app 端 ReadMenu.onOverflowOpened)
     override fun onOverflowOpened() {
-        val source = screenModel.viewModel.bookSource.value
-        topMenu.reviewVisible = source?.reviewRule?.reviewUrl.isNullOrBlank() == false
+        screenModel.updateSourceMenu()
     }
 
-    override fun sourceLoginVisible(): Boolean =
-        screenModel.viewModel.bookSource.value?.hasLogin() == true
+    override fun sourceLoginVisible(): Boolean = screenModel.sourceLoginVisible()
 
-    override fun sourcePayVisible(): Boolean =
-        screenModel.viewModel.bookSource.value?.hasLogin() == true
+    // 购买按钮显示条件已下沉 ReaderScreenModel.sourcePayVisible (对照原版 ReadMenu)
+    override fun sourcePayVisible(): Boolean = screenModel.sourcePayVisible()
 
     override fun onSourceAction(action: SourceAction) {
         when (action) {
@@ -394,6 +425,15 @@ private class AndroidReaderMenuState(
             }
 
             SourceAction.DISABLE_SOURCE -> screenModel.viewModel.disableSource()
+
+            // 购买当前章: 确认弹窗由 ReaderRoute ChapterPay 渲染, 确认后执行书源 payAction JS
+            // (对照原版 ReadMenu menu_chapter_pay -> payAction)
+            SourceAction.CHAPTER_PAY ->
+                screenModel.postDialogEvent(ReaderDialogEvent.ChapterPay)
+
+            // 源/书变量编辑 (对照原版 ReadMenu showSourceVariableDialog/showBookVariableDialog)
+            SourceAction.SET_SOURCE_VARIABLE -> screenModel.showSourceVariableDialog()
+            SourceAction.SET_BOOK_VARIABLE -> screenModel.showBookVariableDialog()
             else -> Unit
         }
     }
@@ -411,12 +451,14 @@ private class AndroidReaderMenuState(
     override fun onTopMenuAction(action: ReadMenuAction) {
         when (action) {
             ReadMenuAction.CHANGE_SOURCE,
-            ReadMenuAction.BOOK_CHANGE_SOURCE -> screenModel.currentBook?.let {
-                navigator.push(AppRoute.ChangeSource(it.toRouteRef()), RouteResults.CHANGE_SOURCE)
+            ReadMenuAction.BOOK_CHANGE_SOURCE -> {
+                // 对照原版 换源 → ChangeBookSourceDialog 底部弹窗
+                screenModel.postDialogEvent(ReaderDialogEvent.ChangeSource)
             }
 
-            ReadMenuAction.CHAPTER_CHANGE_SOURCE -> screenModel.currentBook?.let {
-                navigator.push(AppRoute.ChangeChapterSource(it.toRouteRef()))
+            ReadMenuAction.CHAPTER_CHANGE_SOURCE -> {
+                // 对照原版 章节换源 → ChangeChapterSourceDialog 底部弹窗
+                screenModel.postDialogEvent(ReaderDialogEvent.ChangeChapterSource)
             }
 
             ReadMenuAction.REFRESH_DUR -> screenModel.viewModel.refreshCurrentChapter()
@@ -726,9 +768,9 @@ private class AndroidReaderMenuState(
 
     // 夜间主题切换 (对照 app 端 ReadMenu.clickNightTheme)
     override fun clickNightTheme() {
-        AppConfig.isNightTheme = !AppConfig.isNightTheme
-        isNightTheme = AppConfig.isNightTheme
-        ThemeConfig.applyDayNight(activity)
+        val newNight = !isNightTheme
+        ThemeConfigProviders.get().applyDayNight(newNight)
+        isNightTheme = newNight
     }
 
     override fun clickPre() {
@@ -740,9 +782,9 @@ private class AndroidReaderMenuState(
     }
 
     override fun clickCatalog() {
-        screenModel.currentBook?.let {
-            navigator.push(AppRoute.Toc(it.toRouteRef()), RouteResults.TOC)
-        }
+        // 对照原版 目录按钮 → TocDialog 底部弹窗 (runMenuOut 先收菜单)
+        hide()
+        screenModel.postDialogEvent(ReaderDialogEvent.Toc)
     }
 
     // 朗读: 未运行→开始, 暂停→恢复, 运行→暂停 (对照 app 端 ReadBookActivity.onClickReadAloud)

@@ -8,8 +8,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
-/** 参考宽度: 用户设置的"列数"被定义为这个宽度下的列数 */
-val ResponsiveReferenceWidth: Dp = 500.dp
+/** 参考宽度: 用户设置的"列数"被定义为这个宽度下的列数; 低于此宽度的手机严格按用户列数, 高于此宽度按比例加列, 400dp 为用户确认的折算起点 */
+val ResponsiveReferenceWidth: Dp = 400.dp
 
 /**
  * 响应式列数: 用户设置的列数 N 只描述"参考宽度下的列数", 容器更宽时按比例加列。

@@ -376,6 +376,31 @@
     <string name="use_default_cover_s">总是显示默认封面（不显示网络封面）</string>
     <string name="bottom_nav_config">底栏设置</string>
     <string name="bottom_nav_config_summary">调整底栏高度、图标大小与文本显示方式</string>
+    <string name="bottom_bar_items_order">入口顺序</string>
+    <string name="bottom_bar_height">底栏高度</string>
+    <string name="bottom_bar_icon_size">图标大小</string>
+    <string name="bottom_bar_label_mode">文本显示</string>
+    <string name="bottom_bar_label_unlabeled">不显示</string>
+    <string name="bottom_bar_label_labeled">始终显示</string>
+    <string name="bottom_bar_label_selected">仅显示选中</string>
+    <string name="bottom_bar_label_auto">自动</string>
+    <string name="group_style">分组样式</string>
+    <string name="show_unread">显示未读标志</string>
+    <string name="bookshelf_show_group_count">分组显示书籍数</string>
+    <string name="fixed_width_mode">固定宽度模式</string>
+    <string name="view">视图</string>
+    <string name="column_count">列数</string>
+    <string name="bookshelf_list_show_kind">显示分类</string>
+    <string name="bookshelf_list_show_intro">显示简介</string>
+    <string name="bookshelf_list_intro_lines">简介行数</string>
+    <string name="show_last_update_time">显示上次更新时间</string>
+    <string name="grid_width_dp">宽度</string>
+    <string name="bookshelf_px_0">按阅读时间</string>
+    <string name="bookshelf_px_1">按更新时间</string>
+    <string name="bookshelf_px_2">按书名</string>
+    <string name="bookshelf_px_3">手动排序</string>
+    <string name="bookshelf_px_4">综合排序</string>
+    <string name="bookshelf_px_5">按作者</string>
     <string name="theme_list">主题列表</string>
     <string name="theme_list_summary">使用、保存、导入或分享主题</string>
     <string name="accent">强调色</string>
@@ -1379,6 +1404,10 @@
     <string-array name="explore_item_style">
         <item>普通</item>
         <item>视频</item>
+    </string-array>
+    <string-array name="group_style">
+        <item>页签</item>
+        <item>文件夹</item>
     </string-array>
     <string-array name="icon_names">
         <item>iconMain</item>

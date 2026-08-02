@@ -2,26 +2,28 @@ package io.legado.app.ui.compose.platform
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.lib.theme.ThemeStorePrefKeys
-import kotlinx.coroutines.channels.BufferOverflow
+import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.map
 
 /**
  * 鸿蒙 (OHOS) 端 Provider 真实实现。
  *
  * 主题色 / AppConfig / Preferences 基于 [PreferenceProviders] (底层 [OhosPreferenceProvider]
- * 文件持久化 legado_config.json), 事件总线沿用本地 SharedFlow (与桌面/iOS 端一致)。
+ * 文件持久化 legado_config.json), 事件总线委托 commonMain [FlowBus]`[EventBus.RECREATE]`
+ * (与桌面/iOS 端一致)。
  *
  * 颜色以 Android ColorInt (ARGB packed Int) 持久化, 读取后通过 Color(Int) 转换为
  * Compose Color (与 iOS [IosThemeStoreProvider] 一致)。
  *
  * # 与 iOS/Desktop 端的差异
  *
- * - 持久化: iOS 用 NSUserDefaults / 桌面用内存 Map / 鸿蒙用文件 JSON (OhosPreferenceProvider)
- * - 事件总线: 三端一致 (本地 MutableSharedFlow, 跨平台等价 FlowBus.with(EventBus.RECREATE))
+ * - 持久化: iOS 用 NSUserDefaults / 桌面用 java.util.prefs / 鸿蒙用文件 JSON (OhosPreferenceProvider)
+ * - 事件总线: 三端一致 (FlowBus.with(EventBus.RECREATE))
  * - Compose 注入: iOS/Desktop 经 CompositionLocal 注入 4 个 Provider; 鸿蒙端当前由
  *   [io.legado.app.MainOhos] 顶层注入 (后续 ThemeListDialog/ThemeCustomizeDialog 下沉后启用)
  */
@@ -82,21 +84,17 @@ class OhosAppConfigProvider : AppConfigProvider {
 }
 
 /**
- * 鸿蒙事件总线: 本地 MutableSharedFlow (与 [DesktopEventBusProvider] / [IosEventBusProvider] 一致)。
- *
- * recreateEvent 用于主题切换后触发 AppTheme 重组 (collect 后重读 ThemeStore)。
+ * 鸿蒙事件总线: 委托 commonMain [FlowBus]`[EventBus.RECREATE]` (与 DesktopEventBusProvider
+ * 同模式)。多处 new 的实例共享同一全局 bus, [FileThemeConfigProvider] 等非 UI 层
+ * 发出的 recreate 也能到达 AppTheme。
  */
 class OhosEventBusProvider : EventBusProvider {
-    private val flow = MutableSharedFlow<Unit>(
-        replay = 0,
-        extraBufferCapacity = 64,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
-    override val recreateEvent: Flow<Unit> = flow
+    /** 对照 postEvent(EventBus.RECREATE, "") */
+    override val recreateEvent: Flow<Unit> = FlowBus.with(EventBus.RECREATE).map { }
 
-    /** 主题切换后由调用方 emit 触发 AppTheme 重组 (对齐 Desktop/iOS emitRecreate) */
+    /** 主题切换后由调用方 emit 触发 AppTheme 重组 (对齐 DesktopEventBusProvider.emitRecreate) */
     override fun emitRecreate() {
-        flow.tryEmit(Unit)
+        FlowBus.with(EventBus.RECREATE).tryEmit("")
     }
 }
 

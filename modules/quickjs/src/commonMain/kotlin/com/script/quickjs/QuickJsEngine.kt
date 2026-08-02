@@ -127,7 +127,9 @@ object QuickJsEngine {
                 val result = QuickJsNative.nativeEval(scope.ctxPtr, js)
                 unwrapReturnValue(result)
             } catch (e: JsNativeException) {
-                throw ScriptException(e.message, e.fileName, e.lineNumber, e.columnNumber)
+                // 保留 cause: JsNativeException 的 Java/JNI 调用栈用于区分 JS 脚本问题
+                // 与引擎桥接问题 (JS 报错看 message/fileName/lineNumber, 引擎问题看 cause 栈)
+                throw ScriptException(e.message, e, e.fileName, e.lineNumber, e.columnNumber)
             }
         }
     }
@@ -171,7 +173,8 @@ object QuickJsEngine {
                 val result = QuickJsNative.nativeEvalBytecode(scope.ctxPtr, bytecode)
                 unwrapReturnValue(result)
             } catch (e: JsNativeException) {
-                throw ScriptException(e.message, e.fileName, e.lineNumber, e.columnNumber)
+                // 保留 cause, 见 [eval] 同位置注释
+                throw ScriptException(e.message, e, e.fileName, e.lineNumber, e.columnNumber)
             }
         }
     }
@@ -369,8 +372,8 @@ object QuickJsEngine {
             QuickJsNative.nativeCompile(ctxPtr, script)
         } catch (e: JsNativeException) {
             // native 层编译失败 (如语法错误) 会抛 JsNativeException 携带实际错误信息,
-            // 转为 ScriptException 保持与 eval 路径一致的异常类型
-            throw ScriptException(e.message, e.fileName, e.lineNumber, e.columnNumber)
+            // 转为 ScriptException 保持与 eval 路径一致的异常类型; 保留 cause 便于排查引擎侧问题
+            throw ScriptException(e.message, e, e.fileName, e.lineNumber, e.columnNumber)
         }
         bytecode ?: throw ScriptException("Compile failed", null)
         CompiledScript(bytecode)

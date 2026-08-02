@@ -11,7 +11,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.config.LocalReadConfigProviders
@@ -21,6 +23,7 @@ import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
+import kotlin.math.roundToInt
 
 /**
  * 阅读画布的样式快照，对应 app 端 `TextStyleProvider.upStyle` 产出的
@@ -135,3 +138,19 @@ private fun buildReaderDrawStyle(
 
 /** 选中态底色，对齐 app 端 `ContentTextView.selectedPaint` 取的 `@color/btn_bg_press_2`。 */
 private val selectedHighlightColor = Color(0x20000000)
+
+/** 页眉/页脚 tip 文本字号（sp），与 PageViewComposable 的 TipSlot 渲染字号一致。 */
+const val READ_TIP_TEXT_SIZE_SP = 12
+
+/**
+ * 页眉/页脚 tip 行高度（px）。
+ *
+ * ReaderRoute.buildLayoutConfig（排版视口预留）与 PageViewComposable（tip 行渲染）
+ * 共用此函数，保证两处同源不漂移。行盒按 1.6 倍字号折算，覆盖 CJK/拉丁字体行高差异，
+ * 避免 tip 文字在固定行高内被裁切。
+ */
+fun tipRowHeightPx(density: Density, paddingTopDp: Int, paddingBottomDp: Int): Int =
+    with(density) {
+        (paddingTopDp.dp.toPx() + paddingBottomDp.dp.toPx() +
+            READ_TIP_TEXT_SIZE_SP.sp.toPx() * 1.6f).roundToInt()
+    }

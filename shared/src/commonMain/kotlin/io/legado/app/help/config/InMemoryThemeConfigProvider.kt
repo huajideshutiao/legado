@@ -23,6 +23,11 @@ open class InMemoryThemeConfigProvider : ThemeConfigProvider {
         if (index in configs.indices) configs.removeAt(index)
     }
 
+    /** 对照 ThemeCustomizeDialog.saveToConfig: 按索引替换 (主题改名不残留旧条目) */
+    override fun replaceConfig(index: Int, config: ThemeConfigData) {
+        if (index in configs.indices) configs[index] = config
+    }
+
     override fun applyBuiltin(isNight: Boolean) { /* no-op */ }
     override fun applyConfig(config: ThemeConfigData) { /* no-op */ }
     override fun getBuiltinConfigs(): List<ThemeConfigData> = emptyList()

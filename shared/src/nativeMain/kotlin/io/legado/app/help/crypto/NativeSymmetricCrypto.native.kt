@@ -107,8 +107,8 @@ class NativeSymmetricCrypto(
             if (encrypt) NativeAesOps.encrypt(keyBytes, bytes, mode, padding, realIv)
             else NativeAesOps.decrypt(keyBytes, bytes, mode, padding, realIv)
         } else {
-            if (encrypt) MbedTlsCipher.encrypt(algorithm, mode, padding, keyBytes, realIv, bytes)
-            else MbedTlsCipher.decrypt(algorithm, mode, padding, keyBytes, realIv, bytes)
+            if (encrypt) MbedTlsCipherOps.encrypt(algorithm, mode, padding, keyBytes, realIv, bytes)
+            else MbedTlsCipherOps.decrypt(algorithm, mode, padding, keyBytes, realIv, bytes)
         }
     }
 

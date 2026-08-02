@@ -140,6 +140,15 @@ dependencies {
 // Compose Desktop 统一配置入口 (mainClass + nativeDistributions)
 // 注: 不使用 Gradle application 插件, 避免与 compose.desktop.application{} 注册的 run task 冲突
 
+// 桌面端编译目标 Java 21 (JvmApplicationConventionPlugin jvmToolchain(21)), 但 Compose 插件的
+// run/jpackage 任务默认用 Gradle daemon 的 JVM (System.getProperty("java.home")), 不跟工具链走:
+// daemon 是 17 时 :desktop:run 启动即抛 UnsupportedClassVersionError (class file v65)。
+// 这里把 javaHome 显式指到 Java 21 工具链 launcher (与 compileKotlin 同一 JDK, 已在
+// ~/.gradle/jdks 自动供给), 保证 run/打包统一用 21。
+val desktopJavaHome = javaToolchains.launcherFor {
+    languageVersion.set(JavaLanguageVersion.of(21))
+}.map { it.metadata.installationPath.asFile.absolutePath }
+
 // KP6: 把 legado_quickjs native 库纳入 jpackage 产物 (便携版 / MSI 安装版)
 // 背景: jpackage 默认只把 classpath jar 打进 app 目录, 不会纳入 -Djava.library.path 指向的
 // 外部 native 库; 打包后 System.load 找不到 legado_quickjs.dll, JS 引擎初始化失败。
@@ -171,6 +180,8 @@ val copyQuickjsNativeToResources by tasks.registering(Copy::class) {
 compose.desktop {
     application {
         mainClass = "io.legado.desktop.MainKt"
+        // 修复: 默认随 Gradle daemon JVM 走 (可能 17), 显式用 Java 21 工具链, 见上方 desktopJavaHome
+        javaHome = desktopJavaHome.get()
         // KP6 修复: 删除 -Djava.library.path jvmArg。
         // 根因: Windows 绝对路径 C:\...\jvm\native 中的 \n 被 jpackage cfg 文件解析器
         // 当成换行符, 把 "native" 拆成下一行 "ative" 当主类名, 启动报

@@ -13,8 +13,11 @@ import io.legado.app.model.SharedJsScope
  * 两端仅 imageOps 参数不同 (IosImageOps / OhosImageOps), 其余注册逻辑完全一致。
  *
  * 调用方: registerIosJsEngines(IosImageOps) / registerOhosJsEngines(OhosImageOps)
+ *
+ * 本函数为 JsEngineRegistration.kt 中 expect 的 leaf actual (引用 [NativeJsEngine] 等
+ * leaf 类, 随文件 stage 进 leaf); expect 声明在 nativeMain, ios/ohos 入口直接调用 expect。
  */
-fun registerNativeJsEngines(imageOps: ImageOps) {
+actual fun registerNativeJsEngines(imageOps: ImageOps) {
     // 1. 注册 image 实现到 JsBindingInjector (JsBindings 构造时访问, 必须先注册)
     JsBindingInjector.registerImageOps(imageOps)
 

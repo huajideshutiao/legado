@@ -43,7 +43,7 @@ class ScriptException : Exception {
      */
     override fun toString(): String {
         val sb = StringBuilder()
-        val msg = message?.trim() ?: ""
+        val msg = message?.trim().orEmpty()
         sb.append(msg)
         if (fileName != null && lineNumber != -1) {
             // message 已含 JS stack trace (如 "TypeError: ...\n    at <eval> (<input>:40:365)"),
@@ -55,6 +55,14 @@ class ScriptException : Exception {
             if (columnNumber != -1) {
                 sb.append(':').append(columnNumber)
             }
+        } else if (msg.isBlank() || msg == "JS Exception" || msg == "Eval bytecode failed") {
+            // 引擎侧拿不到 JS 错误详情: 抛出值非 Error 对象 (无 stack 无位置) / toString 失败 / 内存不足。
+            // 单独标注,便于区分 JS 脚本问题与引擎/桥接问题 (引擎问题可看 cause 栈)。
+            if (msg.isNotEmpty()) {
+                sb.append('\n')
+            }
+            sb.append("[错误详情缺失: JS 抛出非 Error 值或引擎无法序列化错误, 无位置信息; ")
+                .append("若与具体书源脚本无关而反复出现, 可能是引擎/桥接问题, 请附 cause 栈排查]")
         }
         return sb.toString()
     }

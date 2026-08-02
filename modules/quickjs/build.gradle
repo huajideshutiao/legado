@@ -36,6 +36,12 @@ kotlin {
                 implementation("org.json:json:20240303")
             }
         }
+        jvmTest {
+            dependencies {
+                implementation(libs.junit)
+                implementation("org.jetbrains.kotlin:kotlin-test")
+            }
+        }
     }
 }
 

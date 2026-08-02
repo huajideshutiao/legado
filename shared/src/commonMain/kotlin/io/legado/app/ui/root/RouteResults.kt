@@ -40,15 +40,6 @@ object RouteResults {
     // 搜索结果屏蔽规则 (对齐 SourceFilterRuleActivity 回传 RESULT_OK)
     const val SOURCE_FILTER_RULE = "source_filter_rule"
 
-    // 段评发布 (对齐 ReviewPostActivity 回传 content)
-    const val REVIEW_POST = "review_post"
-
-    // Intent extra: 回复预览文本
-    const val EXTRA_REPLY_PREVIEW = "replyPreview"
-
-    // 结果数据 key: 回传段评正文
-    const val RESULT_CONTENT = "content"
-
     // 书籍信息编辑 (对齐 BookInfoEditActivity 回传 RESULT_OK)
     const val BOOK_INFO_EDIT = "book_info_edit"
 
@@ -110,13 +101,6 @@ sealed interface RouteResultPayload {
         val searchWord: String?,
         val searchResultIndex: Int,
         val searchResults: List<SearchResult>,
-    ) : RouteResultPayload
-
-    /** 段评发布回传 (对齐 ReviewPostActivity) */
-    @Serializable
-    data class ReviewPost(
-        val content: String,
-        val replyPreview: String? = null,
     ) : RouteResultPayload
 
     /** 整书换源回传 (对齐 ChangeBookSourceDialog.CallBack.changeTo(source, book, toc)) */

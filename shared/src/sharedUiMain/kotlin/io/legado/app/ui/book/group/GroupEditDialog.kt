@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.bookshelf.LocalGroupCoverSlot
 import io.legado.app.ui.bookshelf.SharedGroupCover
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
@@ -83,9 +84,11 @@ import org.jetbrains.compose.resources.stringResource
  *
  * # KMP 化取舍
  *
- * - 封面: 恒显示封面区 (对照原版 ivCover)。渲染缺省走 [SharedGroupCover] (平台图片加载
- *   未注册时回退组名首字占位), 可用 [coverSlot] 覆盖注入平台实现; 选图缺省走
- *   [PlatformServiceProviders] 文件选择器, 可用 [onPickCover] 覆盖
+ * - 封面: 恒显示封面区 (对照原版 ivCover)。渲染缺省取书架同源槽 [LocalGroupCoverSlot]
+ *   (与书架 style2 分组条目同一实现, 默认 [SharedGroupCover], 行为以书架封面为准:
+ *   真封面 → 加载失败/无封面/useDefaultCover 时走用户图集/内置默认封面图),
+ *   可用 [coverSlot] 覆盖注入平台实现; 选图缺省走 [PlatformServiceProviders] 文件选择器,
+ *   可用 [onPickCover] 覆盖
  * - 排序选项原用 stringArrayResource(R.array.book_sort), 该数组未在 rememberStringArray
  *   注册且不能修改 ResourceProvider.jvm.kt, 在文件内用 7 个新 key 硬编码 (值与 app 端
  *   values-zh/strings.xml 对齐)
@@ -101,7 +104,8 @@ import org.jetbrains.compose.resources.stringResource
  * @param onConfirm 用户点击确定按钮, 参数为更新后的 group (新增态为 new BookGroup())
  * @param onDismiss 用户取消 (返回按钮 / 取消按钮)
  * @param onDelete 可选, 删除回调; 编辑态且 groupId 合法时显示删除按钮, 二次确认后调用
- * @param coverSlot 可选, 分组封面渲染槽 (path 可空; 对照 app 端 ShelfCover 110dp NOVEL 比例)
+ * @param coverSlot 可选, 分组封面渲染槽 (path 可空; 缺省取 [LocalGroupCoverSlot] 书架同源实现,
+ *   即 3:4 NOVEL 比例 + 默认封面链)
  * @param onPickCover 可选, 选图回调 (平台自行弹选择器+落盘, 返回封面路径, 取消返回 null)
  */
 @Composable
@@ -134,6 +138,9 @@ fun GroupEditDialog(
     }
 
     val titleKey = if (isNew) "group_add" else "group_edit"
+    // 分组封面渲染槽: 与书架同源 (LocalGroupCoverSlot → SharedGroupCover), 保持行为一致;
+    // 显式 coverSlot 参数仍可覆盖 (桌面等宿主注入平台实现)
+    val groupCoverSlot = LocalGroupCoverSlot.current
     // 7 项排序, 对应 app 端 R.array.book_sort (values-zh 中文值)
     val sortEntries = listOf(
         stringResource(Res.string.book_sort_default),
@@ -180,9 +187,12 @@ fun GroupEditDialog(
                         if (coverSlot != null) {
                             coverSlot(cover, Modifier.fillMaxSize())
                         } else {
-                            SharedGroupCover(
+                            // 与书架分组条目同款渲染 (3:4, 默认封面链); tick 恒 0 (对话框无配置变更重载)
+                            groupCoverSlot(
                                 remember(cover) { editingGroup.copy(cover = cover) },
                                 Modifier.fillMaxSize(),
+                                false,
+                                0,
                             )
                         }
                     }

@@ -47,6 +47,14 @@ class FileThemeConfigProvider : ThemeConfigProvider {
         save()
     }
 
+    /** 对照 ThemeCustomizeDialog.saveToConfig: 按索引替换 + save (主题改名不残留旧条目) */
+    override fun replaceConfig(index: Int, config: ThemeConfigData) {
+        if (index !in configs.indices) return
+        if (!ThemeConfigStore.validate(config)) return
+        configs[index] = config
+        save()
+    }
+
     /** 对照原版 applyBuiltin: 清 6 个自定义 pref → isNightTheme → applyTheme → RECREATE */
     override fun applyBuiltin(isNight: Boolean) {
         val prefs = PreferenceProviders.get()
@@ -94,6 +102,26 @@ class FileThemeConfigProvider : ThemeConfigProvider {
         }.onFailure { e ->
             AppLog.put("设置主题出错\n$e", e, true)
         }
+    }
+
+    /**
+     * 切换日/夜模式并应用: 写 themeMode + 按目标模式读已配置色 (未配置回落默认) 写 ThemeStore +
+     * 触发全局重组。不清自定义色 pref (区别于 [applyBuiltin])。
+     *
+     * 颜色计算直接以参数 [isNight] 为准, 不读 AppConfigProviders (iOS 端 pref 变更监听异步,
+     * 写 themeMode 后缓存可能未刷新)。
+     */
+    override fun applyDayNight(isNight: Boolean) {
+        PreferenceProviders.get().putString(PreferKey.themeMode, if (isNight) "2" else "1")
+        val prefs = PreferenceProviders.get()
+        val accent = prefs.getInt(if (isNight) PreferKey.cNAccent else PreferKey.cAccent)
+            .let { if (it == 0) (if (isNight) NIGHT_ACCENT else DAY_ACCENT) else it }
+        val bg = prefs.getInt(if (isNight) PreferKey.cNBackground else PreferKey.cBackground)
+            .let { if (it == 0) (if (isNight) NIGHT_BG else DAY_BG) else it }
+        val bbg = prefs.getInt(if (isNight) PreferKey.cNBBackground else PreferKey.cBBackground)
+            .let { if (it == 0) (if (isNight) NIGHT_BBG else DAY_BBG) else it }
+        saveThemeStore(accent, bg, bbg)
+        FlowBus.with(EventBus.RECREATE).tryEmit("")
     }
 
     /**

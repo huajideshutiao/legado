@@ -1,5 +1,6 @@
 package io.legado.desktop.tts
 
+import com.sun.jna.Pointer
 import com.sun.jna.WString
 import com.sun.jna.platform.win32.COM.COMLateBindingObject
 import com.sun.jna.platform.win32.COM.IDispatch
@@ -10,7 +11,6 @@ import com.sun.jna.platform.win32.OleAuto
 import com.sun.jna.platform.win32.Variant
 import com.sun.jna.platform.win32.Variant.VARIANT
 import com.sun.jna.platform.win32.WinDef
-import com.sun.jna.Pointer
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -136,10 +136,17 @@ internal class WindowsSapiTtsBackend : DesktopTtsBackend {
         val gen = generation.incrementAndGet()
         postCom { sp ->
             if (generation.get() != gen) return@postCom
-            // PURGEBEFORESPEAK 保证上一段被立刻丢弃, IS_NOT_XML 避免正文里的尖括号被当标记
+            // 对照原版 Android TTS: 段间串行推进用 QUEUE_ADD 追加队列, 只有主动跳段才 flush。
+            // 这里同样不在 speak 里带 PURGEBEFORESPEAK —— 实测带 PURGE 时 SAPI 每次 speak
+            // 都复用同一个 stream 号, Status.CurrentStreamNumber 在新段开读前短暂停留在上一段
+            // 的 DONE 值, 新段的轮询线程会把"还没开始读"误判成"已读完"并提前 onDone,
+            // 段被瞬间 purge 跳过 (现象: 只听到章节标题, 正文全部被静默消费)。
+            // 需要打断当前段的路径 (stop / nextParagraph / prevParagraph / 切章重开) 都先经
+            // [stop] 显式 purge, 串行推进的上一段已 DONE, 新段自然排在队尾且 stream 号递增。
+            // IS_NOT_XML 避免正文里的尖括号被当标记
             sp.setRate(rateToSapi(rate))
             listener.onStart(utteranceId)
-            val flags = SPF_ASYNC or SPF_PURGEBEFORESPEAK or SPF_IS_NOT_XML
+            val flags = SPF_ASYNC or SPF_IS_NOT_XML
             val stream = runCatching { sp.speak(text, flags) }.getOrElse {
                 listener.onError(utteranceId, ERROR_SPEAK_FAILED)
                 return@postCom
@@ -166,19 +173,29 @@ internal class WindowsSapiTtsBackend : DesktopTtsBackend {
     ) {
         Thread({
             var lastStart = -1
+            // 本段是否已被观察到进入"朗读中"状态。实测 SAPI 段末有 IS_SPEAKING|DONE 同时置位
+            // 的过渡态 (RunningState=3), 且段间切换时上一段的 DONE 残留可能被新段轮询读到 ——
+            // 必须等本段真正开始朗读后才接受 DONE, 且 DONE 时须已离开朗读中状态, 否则段落会
+            // 被提前判完 (表现: 第一段标题读完, 其余段落全部被瞬间跳过)。
+            var startedSpeaking = false
             while (alive.get() && generation.get() == gen) {
                 val st = onCom(timeoutMs = 2000) { it.status() } ?: break
                 if (generation.get() != gen) return@Thread
-                // 本段已被后来的 speak 顶掉
+                // 本段已被后来的 speak 顶掉 (stop/跳段 purge 或新段 stream 接管)
                 if (st.currentStream > streamNumber) break
                 // currentStream 追上本段才说明 SAPI 已经开始读它
                 if (st.currentStream == streamNumber) {
+                    if ((st.running and SPRS_IS_SPEAKING) != 0) {
+                        startedSpeaking = true
+                    }
                     if (st.wordLength > 0 && st.wordPos != lastStart) {
                         lastStart = st.wordPos
                         val end = (st.wordPos + st.wordLength).coerceAtMost(textLength)
                         listener.onWord(utteranceId, st.wordPos, end)
                     }
-                    if (st.running and SPRS_DONE != 0) {
+                    if (startedSpeaking && (st.running and SPRS_DONE) != 0 &&
+                        (st.running and SPRS_IS_SPEAKING) == 0
+                    ) {
                         if (generation.get() == gen) listener.onDone(utteranceId)
                         return@Thread
                     }
@@ -381,8 +398,10 @@ internal class WindowsSapiTtsBackend : DesktopTtsBackend {
         const val SPF_PURGEBEFORESPEAK = 0x0002
         const val SPF_IS_NOT_XML = 0x0010
 
-        /** RunningState 位: 1=读完, 2=朗读中; 暂停时两位都不置 (实测为 0)。 */
+        /** RunningState 位: 1=读完, 2=朗读中; 暂停时两位都不置 (实测为 0);
+         * 段末过渡时可能 3=朗读中|读完 同时置位。 */
         const val SPRS_DONE = 0x1
+        const val SPRS_IS_SPEAKING = 0x2
         const val DISPID_PROPERTYPUT = -3
         const val POLL_INTERVAL_MS = 50L
         const val ERROR_SPEAK_FAILED = -3

@@ -9,6 +9,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.storage.DataStorageProviders
@@ -17,6 +18,9 @@ import io.legado.app.model.Debug
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.source.manage.BookSourceViewModelShared
+import io.legado.app.ui.config.MODE_EDIT_CONFIG
+import io.legado.app.ui.config.MODE_EDIT_PREFS
+import io.legado.app.ui.config.MODE_NEW_CONFIG
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
@@ -106,8 +110,30 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
         AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("theme_list"))
     }
 
+    // 书架布局 / 底栏配置: shared Compose 对话框 (BookshelfNavConfigDialogs.kt)
+    override fun showBookshelfLayoutDialog() {
+        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("bookshelf_layout"))
+    }
+
+    override fun showBottomNavConfigDialog() {
+        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("bottom_nav_config"))
+    }
+
     override fun showThemeCustomizeDialog(configIndex: Int?, isNight: Boolean) {
-        Toasters.get().toast("当前平台暂不支持：自定义主题")
+        val mode = if (configIndex == null) MODE_NEW_CONFIG else MODE_EDIT_CONFIG
+        val index = configIndex ?: -1
+        AppNavigatorProviders.getOrNull()
+            ?.showOverlay(AppOverlay.Dialog("theme_customize", payload = "$mode,$index,$isNight"))
+    }
+
+    override fun showCustomizeDayThemeDialog() {
+        AppNavigatorProviders.getOrNull()
+            ?.showOverlay(AppOverlay.Dialog("theme_customize", payload = "$MODE_EDIT_PREFS,-1,false"))
+    }
+
+    override fun showCustomizeNightThemeDialog() {
+        AppNavigatorProviders.getOrNull()
+            ?.showOverlay(AppOverlay.Dialog("theme_customize", payload = "$MODE_EDIT_PREFS,-1,true"))
     }
 
     override fun getAppVersionName(): String? = DesktopAppInfo.versionName
@@ -224,7 +250,8 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
         }
     }
 
-    // 上架/下架 (对照 app 端 BaseReadViewModel.addToBookshelf / delBook, 桌面端无删除确认弹窗)
+    // 上架/下架 (DB 逻辑统一走 shared toggleBookshelfCore, 与 iOS/鸿蒙/Android 一致;
+    // 桌面端无删除确认弹窗, 无平台专属前后处理)
     override fun toggleBookshelf(
         book: Book,
         inBookshelf: Boolean,
@@ -233,22 +260,8 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
         onAction: (String) -> Unit,
     ) {
         scope.launch {
-            runCatching {
-                if (inBookshelf) {
-                    appDb.bookChapterDao.delByBook(book.bookUrl)
-                    appDb.bookDao.delete(book)
-                    null
-                } else {
-                    if (book.order == 0) book.order = appDb.bookDao.minOrder() - 1
-                    appDb.bookDao.getBook(book.name, book.author)?.let {
-                        book.durChapterIndex = it.durChapterIndex
-                        book.durChapterPos = it.durChapterPos
-                        book.durChapterTitle = it.durChapterTitle
-                    }
-                    appDb.bookDao.insert(book)
-                    true
-                }
-            }.onSuccess { onComplete(it) }
+            runCatching { book.toggleBookshelfCore(inBookshelf) }
+                .onSuccess { onComplete(it) }
                 .onFailure {
                     AppLog.put("书架操作失败\n${it.message}", it)
                     onComplete(false)

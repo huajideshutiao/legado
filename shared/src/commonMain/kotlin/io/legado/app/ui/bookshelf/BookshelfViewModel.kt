@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -105,7 +106,8 @@ class BookshelfViewModel {
 
     /**
      * 各分组最近一次发射的书籍列表快照 (唯一数据源: 分组页/样式2 读本流切片渲染,
-     * 不再各自开 Room 流; 重进首帧同步渲染, 免空态帧 + Room 查询延迟)
+     * 不再各自开 Room 流; 重进首帧同步渲染, 免空态帧 + Room 查询延迟)。
+     * 未访问过的分组无条目, 顶栏计数显示 ".."。
      */
     private val _booksCache = MutableStateFlow<Map<Long, List<Book>>>(emptyMap())
     val booksCache: StateFlow<Map<Long, List<Book>>> = _booksCache.asStateFlow()
@@ -122,8 +124,15 @@ class BookshelfViewModel {
     val currentGroup: BookGroup?
         get() = _bookGroups.value.find { it.groupId == _currentGroupId.value }
 
-    /** 当前分组书籍流订阅 job, 切换分组/失活时取消 (对齐 app 端 observeGroupBooks 语义) */
-    private var booksFlowJob: Job? = null
+    /**
+     * 各分组书籍流订阅 jobs (对齐原版 fragment 各自订阅语义: pager 组合中的分组页
+     * 当前 + 相邻各 1, 即最多 3 个分组各自持有 Room 流, 数据持续实时)。
+     * 切换分组不取消其他流, 页离开组合/书架失活时才取消。
+     */
+    private val booksFlowJobs = mutableMapOf<Long, Job>()
+
+    /** 组合中的分组页登记 (UI DisposableEffect 维护), 失活→激活时据此恢复全部订阅 */
+    private val composedGroupIds = mutableSetOf<Long>()
 
     /** 分组列表流订阅 job */
     private var bookGroupsJob: Job? = null
@@ -163,12 +172,14 @@ class BookshelfViewModel {
         this.active = active
         if (active) {
             startBookGroupsFlow()
-            startBooksFlow()
+            // 恢复订阅: 当前分组 + 组合中的相邻分组页
+            ensureGroupFlow(_currentGroupId.value)
+            composedGroupIds.forEach { ensureGroupFlow(it) }
         } else {
             bookGroupsJob?.cancel()
             bookGroupsJob = null
-            booksFlowJob?.cancel()
-            booksFlowJob = null
+            booksFlowJobs.values.forEach { it.cancel() }
+            booksFlowJobs.clear()
         }
     }
 
@@ -189,26 +200,73 @@ class BookshelfViewModel {
     }
 
     /**
-     * (重新)订阅当前分组书籍流, 书架唯一的书籍数据源 (页/样式2 经 [booksCache] 读切片)。
-     * 对照 app 端 observeGroupBooks: 排序 + distinctUntilChanged + debounce(100) 聚合刷新风暴。
+     * 启动指定分组的书籍流, 严格对齐原版 observeGroupBooks + flowWithLifecycle 语义:
+     *
+     * - 当前分组: 持续订阅, DB 变更实时刷新 (对齐原版 RESUMED 持续收集)
+     * - 非当前分组: 仅查一次初始值填缓存即结束, 不持续订阅 (对齐原版 STARTED 相邻页
+     *   `flowWithLifecycleAndDatabaseChangeFirst` 的 `firstOrNull()` 一次查询);
+     *   DB 变更在切回时由 [selectGroup] 重启流重新获取
+     *
+     * 排序 + distinctUntilChanged + debounce(100) 聚合刷新风暴同原版。
+     * 任意分组的发射都回填 [booksCache] 快照; 只有当前分组同步 [_books]。
      */
     @OptIn(FlowPreview::class)
-    private fun startBooksFlow() {
-        booksFlowJob?.cancel()
-        if (!active) return
-        val groupId = _currentGroupId.value
-        booksFlowJob = scope.launch {
-            // 过滤内容相同的重复 emit, 避免无关 DAO 触发重排与重组
-            bookDao.flowByGroup(groupId).distinctUntilChanged().catch {
-                AppLog.put("书架书籍数据加载出错 groupId=$groupId", it)
-            }.map { list -> sortBooks(list, sortOf(groupId)) }
-                .debounce(100)
-                .flowOn(IoDispatcher).conflate().collect { list ->
-                    _books.value = list
-                    updateBooksCache(groupId, list)
-                    autoUpdateGroup(groupId, list)
+    private fun startGroupFlow(groupId: Long) {
+        if (booksFlowJobs.containsKey(groupId)) return
+        val isCurrent = groupId == _currentGroupId.value
+        booksFlowJobs[groupId] = scope.launch {
+            try {
+                // 过滤内容相同的重复 emit, 避免无关 DAO 触发重排与重组
+                val source = bookDao.flowByGroup(groupId).distinctUntilChanged().catch {
+                    AppLog.put("书架书籍数据加载出错 groupId=$groupId", it)
+                }.map { list -> sortBooks(list, sortOf(groupId)) }
+                    .debounce(100)
+                    .flowOn(IoDispatcher).conflate()
+                if (isCurrent) {
+                    source.collect { list -> onGroupBooks(groupId, list) }
+                } else {
+                    source.first { list ->
+                        onGroupBooks(groupId, list)
+                        true
+                    }
                 }
+            } finally {
+                // 持续流被取消 / one-shot 取完首值, 均从活跃表移除
+                booksFlowJobs.remove(groupId)
+            }
         }
+    }
+
+    /** 分组书籍流发射回调: 回填缓存, 触发自动更新, 当前分组同步 [_books] */
+    private fun onGroupBooks(groupId: Long, list: List<Book>) {
+        updateBooksCache(groupId, list)
+        autoUpdateGroup(groupId, list)
+        if (groupId == _currentGroupId.value) {
+            _books.value = list
+        }
+    }
+
+    /** 组合中的分组页登记并确保其数据流在跑 (当前 + 相邻页共 ≤3 个流, 对齐原版) */
+    fun onGroupPageComposed(groupId: Long) {
+        composedGroupIds += groupId
+        ensureGroupFlow(groupId)
+    }
+
+    /** 分组页离开组合, 取消对应数据流 (对齐原版 fragment 销毁取消订阅) */
+    fun onGroupPageDisposed(groupId: Long) {
+        composedGroupIds -= groupId
+        releaseGroupFlow(groupId)
+    }
+
+    /** 书架激活时确保流在跑 (active 门控: 不可见时零 DB 订阅) */
+    fun ensureGroupFlow(groupId: Long) {
+        if (!active) return
+        startGroupFlow(groupId)
+    }
+
+    /** 取消指定分组流 (页离开组合/排序重启前), 缓存快照保留 */
+    fun releaseGroupFlow(groupId: Long) {
+        booksFlowJobs.remove(groupId)?.cancel()
     }
 
     /**
@@ -256,13 +314,22 @@ class BookshelfViewModel {
     }
 
     /**
-     * 切换当前分组, 重启书籍数据流订阅。
-     * 对照 app 端 BookshelfState2.openGroup + style1 的 pagerState.scrollToPage。
+     * 切换当前分组, 严格对齐原版 ViewPager setCurrentItem + fragment 生命周期语义:
+     *
+     * - 旧当前分组降级: 取消其持续流 (对齐原版切走后 repeatOnLifecycle 挂起收集),
+     *   页内数据由缓存快照继续显示, DB 变更不再推送, 切回时重启流重新获取
+     * - 新当前分组: 取消可能仍在跑的 one-shot 预加载流, 重启为持续订阅 (对齐原版
+     *   切到 RESUMED 后恢复持续收集)
+     * - 切换瞬间用缓存快照回填 [_books], 免掉重启流前的一帧空态
      */
     fun selectGroup(groupId: Long) {
         if (_currentGroupId.value == groupId) return
+        val previous = _currentGroupId.value
         _currentGroupId.value = groupId
-        startBooksFlow()
+        _books.value = booksCache.value[groupId].orEmpty()
+        booksFlowJobs.remove(previous)?.cancel()
+        booksFlowJobs.remove(groupId)?.cancel()
+        startGroupFlow(groupId)
     }
 
     /**
@@ -291,7 +358,7 @@ class BookshelfViewModel {
             shared.upToc(books)
         } else {
             // 平台未接入 UpdateBookShared: 重启 DB 订阅触发回填, 立即清空转圈
-            startBooksFlow()
+            ensureGroupFlow(_currentGroupId.value)
             _refreshingUrls.value = emptySet()
         }
     }
@@ -313,7 +380,7 @@ class BookshelfViewModel {
             shared.forceRefresh(books)
         } else {
             // 平台未接入 UpdateBookShared: 重启 DB 订阅触发回填
-            startBooksFlow()
+            ensureGroupFlow(_currentGroupId.value)
         }
     }
 
@@ -324,7 +391,12 @@ class BookshelfViewModel {
      * 页数据经 [booksCache] 单一数据源随流重启自动更新。
      */
     fun upSort() {
-        startBooksFlow()
+        // 排序配置变更: 重启当前分组持续流 + 组合中相邻页的预加载流 (对齐原版 adapter
+        // 全量重绑, 已实例化 fragment 均 upRecyclerData 重订阅)
+        (composedGroupIds + _currentGroupId.value).forEach {
+            booksFlowJobs.remove(it)?.cancel()
+            startGroupFlow(it)
+        }
         FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
     }
 

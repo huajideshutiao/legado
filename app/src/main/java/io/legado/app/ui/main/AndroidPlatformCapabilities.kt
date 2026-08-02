@@ -78,13 +78,13 @@ import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.IntentData
 import io.legado.app.help.IntentHelp
 import io.legado.app.help.book.BookHelp
-import io.legado.app.help.book.delete
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.getRemoteUrl
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.save
+import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.AppConfigConstants
 import io.legado.app.help.config.LocalConfig
@@ -255,7 +255,7 @@ class AndroidPlatformCapabilities(
         activity.sendToClip(text)
     }
 
-    override fun getClipboardText(): String? = activity.getClipText()
+    override fun getClipboardText(): String? = getClipText()
 
     override fun testDirectLinkUpload(
         rule: io.legado.app.help.DirectLinkUploadRule,
@@ -611,8 +611,16 @@ class AndroidPlatformCapabilities(
             // webFile: 弹下载导入选择框, 导入完成后标记已上架 (对照 onShelfClick isWebFile 分支)
             handleWebFileRead(book, onWaitDialog, onAction) { onComplete(true) }
         } else {
-            AddToBookshelfHelper.add(AppNavigatorProviders.get(), activity, book.bookUrl)
-            onComplete(true)
+            // 上架走 shared 统一核心 toggleBookshelfCore (对照原 addToBookshelf → Book.save),
+            // 与 desktop/iOS/ohos 一致, 避免各端维护多份拷贝
+            activity.lifecycleScope.launch(IO) {
+                runCatching { book.toggleBookshelfCore(false) }
+                    .onSuccess { onComplete(it) }
+                    .onFailure {
+                        AppLog.put("书架操作失败\n${it.message}", it)
+                        onComplete(false)
+                    }
+            }
         }
     }
 
@@ -657,11 +665,17 @@ class AndroidPlatformCapabilities(
     // 对照 BookInfoViewModel.delBook (BaseReadViewModel): 删章节/DB + 清缓存 + 本地书删原文件
     private fun delBook(book: Book, deleteOriginal: Boolean, onComplete: (Boolean?) -> Unit) {
         activity.lifecycleScope.launch(IO) {
-            appDb.bookChapterDao.delByBook(book.bookUrl)
-            book.delete()
-            BookHelp.clearCache(book)
-            if (book.isLocal) FileBook.deleteBook(book, deleteOriginal)
-            activity.runOnUiThread { onComplete(null) }
+            runCatching {
+                // DB 部分 (章节+书籍删除) 走 shared 统一核心 toggleBookshelfCore;
+                // 平台专属仅剩缓存与本地文件清理
+                book.toggleBookshelfCore(true)
+                BookHelp.clearCache(book)
+                if (book.isLocal) FileBook.deleteBook(book, deleteOriginal)
+            }.onSuccess { activity.runOnUiThread { onComplete(null) } }
+                .onFailure {
+                    AppLog.put("删除书籍失败\n${it.message}", it)
+                    activity.runOnUiThread { onComplete(false) }
+                }
         }
     }
 

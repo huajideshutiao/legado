@@ -72,15 +72,14 @@ fun ReadStyleRoute(
 
 /**
  * 阅读样式设置底部弹窗形态 (对照原版 ReadStyleDialog: BaseBottomDialogFragment, 无标题栏)。
- * 由阅读菜单"界面"按钮弹起, 行为与 [ReadStyleRoute] 一致。
+ * 由阅读菜单"界面"按钮弹起; 内嵌子配置 (边距/提示/背景文字) 在此以对话框叠层打开,
+ * 不再 push 整屏路由 (对照原版 showDialogFragment<TipConfigDialog> 等)。
  */
 @Composable
 fun ReadStyleDialogHost(
     onDismiss: () -> Unit,
-    onShowPaddingConfig: () -> Unit,
-    onShowTipConfig: () -> Unit,
-    onShowBgTextConfig: (Int) -> Unit,
 ) {
+    var subConfig by remember { mutableStateOf(ReadStyleSubConfig.NONE) }
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
@@ -92,14 +91,29 @@ fun ReadStyleDialogHost(
                 modifier = Modifier.appDialogSize().padding(16.dp),
             ) {
                 ReadStyleContent(
-                    onShowPaddingConfig = onShowPaddingConfig,
-                    onShowTipConfig = onShowTipConfig,
-                    onShowBgTextConfig = onShowBgTextConfig,
+                    onShowPaddingConfig = { subConfig = ReadStyleSubConfig.PADDING },
+                    onShowTipConfig = { subConfig = ReadStyleSubConfig.TIP },
+                    onShowBgTextConfig = { subConfig = ReadStyleSubConfig.BG_TEXT },
                 )
             }
         }
     }
+    when (subConfig) {
+        ReadStyleSubConfig.PADDING ->
+            PaddingConfigDialogHost(onDismiss = { subConfig = ReadStyleSubConfig.NONE })
+
+        ReadStyleSubConfig.TIP ->
+            TipConfigDialogHost(onDismiss = { subConfig = ReadStyleSubConfig.NONE })
+
+        ReadStyleSubConfig.BG_TEXT ->
+            BgTextConfigDialogHost(onDismiss = { subConfig = ReadStyleSubConfig.NONE })
+
+        ReadStyleSubConfig.NONE -> Unit
+    }
 }
+
+/** 界面设置弹窗内可叠层的子配置 (对照原版 边距/提示/背景文字 三个对话框)。 */
+private enum class ReadStyleSubConfig { NONE, PADDING, TIP, BG_TEXT }
 
 /** 阅读样式正文 (Screen + 内嵌对话框), 路由/弹窗两形态共用 */
 @Composable
