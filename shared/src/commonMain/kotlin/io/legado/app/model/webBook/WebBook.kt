@@ -11,14 +11,13 @@ import io.legado.app.data.entities.ReviewPage
 import io.legado.app.data.entities.rule.ReviewRule
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.IntentDataProviders
-import io.legado.app.help.source.SourceDebugLoggers
+import io.legado.app.help.book.getAbsoluteURL
 import io.legado.app.help.http.StrResponse
+import io.legado.app.help.source.SourceDebugLoggers
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.analyzeRule.RuleData
-import io.legado.app.model.webBook.replaceExploreOptionsInUrl
-import io.legado.app.help.book.getAbsoluteURL
 import io.legado.app.model.analyzeRule.UrlOptionSerializer
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.NetworkUtils
@@ -28,7 +27,7 @@ import kotlinx.coroutines.ensureActive
 /**
  * webBook 编排层入口。
  *
- * W3-f: 从 app 下沉到 shared jvmAndAndroidMain, 现下沉到 commonMain。
+ * 从 app 下沉到 shared jvmAndAndroidMain, 现下沉到 commonMain。
  * - appDb (app 端单例) → AppDbProviders.get() provider 间接
  * - IntentData.source = ... → IntentDataProviders.get().setSource(...) provider 间接
  * - AnalyzeRule → AnalyzeRuleFactories.create (各端注册工厂返回平台子类补全 JsExtensions 面, 未注册端裸 AnalyzeRuleCore)
@@ -132,7 +131,7 @@ object WebBook {
             ?: throw NoStackTraceException("书籍地址格式不对")
         val urlMatch = AnalyzeUrlCore.paramPattern.find(bookUrl)
         val source = if (urlMatch != null) {
-            // Phase D: GSON.fromJsonObject<AnalyzeUrlCore.UrlOption>(...).getOrNull() → KS_JSON.decodeFromString(UrlOptionSerializer, ...).getOrNull()
+            // GSON.fromJsonObject<AnalyzeUrlCore.UrlOption>(...).getOrNull() → KS_JSON.decodeFromString(UrlOptionSerializer, ...).getOrNull()
             // Pattern.matcher → Regex.find: urlMatch.range.last + 1 对应 matcher.end()
             val opt = try {
                 KS_JSON.decodeFromString(

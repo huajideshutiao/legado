@@ -144,7 +144,7 @@ export interface LegadoNativeBridge {
   // ===== Image / Media tsfn 回调注册 + ArkTS → Kotlin 回调 (KP8+ 新增) =====
 
   /**
-   * 注册 Image 回调 (KMP → ArkTS 跨线程 dispatch, 图片操作请求)。
+   * 注册 Image 回调 (KMP → ArkTS 跨线程 dispatch, 图片操作请求, 混合协议)。
    *
    * C++ 侧创建 napi_threadsafe_function 包装 [callback], 并通过 @CName legado_register_image_fn
    * 把 dispatch 函数指针注入 Kotlin OhosNativeBridge.imageTsfn。此后 KMP 调用
@@ -152,16 +152,20 @@ export interface LegadoNativeBridge {
    * 由 ArkTS 调 @ohos.multimedia.image (createImageSource/createPixelMap/createImagePacker 等)。
    * 处理完成后通过 [imageCallback] 回送结果给 Kotlin。
    *
-   * @param callback 接收 JSON 请求 `{ requestId, action, payload }`:
-   *   - action='decode':  payload=`{ bytes: '<base64>' }` → 创建 PixelMap, 回送 `{ ok, pixelMapId }`
-   *   - action='encode':  payload=`{ pixelMapId, format, quality }` → packing, 回送 `{ ok, data: '<base64>' }`
+   * # 混合协议 (KP9+, 同 WebView 桥思路)
+   * 大字节面走裸参数: decode 的图片字节由 C++ 用 napi external ArrayBuffer 零拷贝包装,
+   * 作为第二参数 [bytes] 传入 (其余 action 为 undefined); 控制面小字段留在 JSON。
+   *
+   * @param callback 接收 (json, bytes?): json 为请求 JSON `{ requestId, action, payload }`:
+   *   - action='decode':  bytes=图片字节 ArrayBuffer → 创建 PixelMap, 回送 `{ ok, pixelMapId }`
+   *   - action='encode':  payload=`{ pixelMapId, format, quality }` → packing, 回送 `{ ok }` + packed 字节 (imageCallback 第三参)
    *   - action='size':    payload=`{ pixelMapId }` → getImageInfo, 回送 `{ ok, width, height }`
    *   - action='crop':    payload=`{ pixelMapId, x, y, w, h }` → crop, 回送 `{ ok, pixelMapId }`
    *   - action='split':   payload=`{ pixelMapId, rows, cols }` → 循环 crop, 回送 `{ ok, pixelMapIds: [] }`
    *   - action='stitch':  payload=`{ pixelMapIds: [], direction }` → 合并, 回送 `{ ok, pixelMapId }`
    *   - action='release': payload=`{ pixelMapId }` → 释放 PixelMap, 回送 `{ ok }`
    */
-  registerImageCallback(callback: (json: string) => void): void;
+  registerImageCallback(callback: (json: string, bytes: ArrayBuffer | undefined) => void): void;
 
   /**
    * 注册 Media 回调 (KMP → ArkTS 跨线程 dispatch, AVPlayer 命令)。
@@ -185,15 +189,17 @@ export interface LegadoNativeBridge {
   registerMediaCallback(callback: (json: string) => void): void;
 
   /**
-   * Image 操作结果回调 (ArkTS → Kotlin)。
+   * Image 操作结果回调 (ArkTS → Kotlin, 混合协议)。
    *
-   * ArkTS 侧处理完 decode/encode/size/crop/split/stitch 后, 通过此方法把结果 JSON
+   * ArkTS 侧处理完 decode/encode/size/crop/split/stitch 后, 通过此方法把结果
    * 回送给 Kotlin, 唤醒 OhosNativeBridge.invokeImageSync 中阻塞的 CompletableDeferred。
    *
    * @param requestId 请求 ID (与 invokeImageSync 生成的 requestId 对应)
-   * @param result 结果 JSON, 如 `{ ok: true, pixelMapId: 1 }` 或 `{ ok: false, error: '...' }`
+   * @param result 控制面结果 JSON, 如 `{ ok: true, pixelMapId: 1 }` 或 `{ ok: false, error: '...' }`
+   *   (encode 成功为 `{ ok: true }`, packed 字节走 [body] 裸参)
+   * @param body 数据面裸字节 (encode 的 packed 图片; 无字节面时可省略)
    */
-  imageCallback(requestId: number, result: string): void;
+  imageCallback(requestId: number, result: string, body?: ArrayBuffer): void;
 
   /**
    * Media 事件回调 (ArkTS → Kotlin)。
@@ -276,7 +282,7 @@ export interface LegadoNativeBridge {
   // ===== Http tsfn 回调注册 + ArkTS → Kotlin 回调 (KP8+ 新增, 同 Image/Crypto 模式) =====
 
   /**
-   * 注册 Http 回调 (KMP → ArkTS 跨线程 dispatch, HTTP 请求)。
+   * 注册 Http 回调 (KMP → ArkTS 跨线程 dispatch, HTTP 请求, 混合协议)。
    *
    * C++ 侧创建 napi_threadsafe_function 包装 [callback], 并通过 @CName legado_register_http_fn
    * 把 dispatch 函数指针注入 Kotlin OhosNativeBridge.httpTsfn。此后 KMP 调用
@@ -284,26 +290,33 @@ export interface LegadoNativeBridge {
    * 由 ArkTS 调 @ohos.net.http (http.createHttp().request)。
    * 处理完成后通过 [httpCallback] 回送结果给 Kotlin。
    *
-   * @param callback 接收 JSON 请求 `{ requestId, action, payload }`:
-   *   - action='execute': payload=`{ url, method, headers, body?, contentType?, timeoutMs }` (body base64)
-   *                       → http.createHttp().request(url, options, cb), 回送 HttpResponsePayload
+   * # 混合协议 (KP9+, 同 WebView 桥思路)
+   * 请求 body 字节由 C++ 用 napi external ArrayBuffer 零拷贝包装, 作为第二参数 [body] 传入
+   * (无 body 时为 undefined); 控制面小字段 (url/method/headers/超时/代理) 留在 JSON。
+   *
+   * @param callback 接收 (json, body?): json 为请求 JSON `{ requestId, action, payload }`:
+   *   - action='execute': payload=`{ url, method, headers, contentType?, timeoutMs }` (不含 body)
+   *                       + body=请求体 ArrayBuffer → http.createHttp().request(url, options, cb),
+   *                       回送 HttpResponsePayload (控制面) + 响应 body (httpCallback 第三参)
    *   - action='cancel':  payload=空 → 销毁对应 httpRequest, 回送 `{ ok: true }`
    */
-  registerHttpCallback(callback: (json: string) => void): void;
+  registerHttpCallback(callback: (json: string, body: ArrayBuffer | undefined) => void): void;
 
   /**
-   * Http 请求结果回调 (ArkTS → Kotlin)。
+   * Http 请求结果回调 (ArkTS → Kotlin, 混合协议)。
    *
-   * ArkTS 侧处理完 execute/cancel 后, 通过此方法把结果 JSON
+   * ArkTS 侧处理完 execute/cancel 后, 通过此方法把结果
    * 回送给 Kotlin, 唤醒 OhosNativeBridge.invokeHttpSync 中阻塞的 CompletableDeferred。
    *
    * @param requestId 请求 ID (与 invokeHttpSync 生成的 requestId 对应)
-   * @param result 结果 JSON:
-   *   - execute 成功: `{ ok: true, code: <int>, message: '<string>', headers: [...], body: '<base64>' }`
+   * @param result 控制面结果 JSON:
+   *   - execute 成功: `{ ok: true, code: <int>, message: '<string>', headers: [...] }`
+   *     (响应 body 走 [body] 裸参, 不经 base64)
    *   - 失败: `{ ok: false, error: '<string>' }`
    *   - cancel: `{ ok: true }`
+   * @param body 数据面响应 body 裸字节 (二进制保真; 无 body 时可省略)
    */
-  httpCallback(requestId: number, result: string): void;
+  httpCallback(requestId: number, result: string, body?: ArrayBuffer): void;
 
   // ===== OpenUrl tsfn 回调注册 (KP8+ 新增, 同 Toast 模式, fire-and-forget dispatch) =====
 
@@ -413,6 +426,39 @@ export interface LegadoNativeBridge {
    *   - 失败:       `{ ok: false, error: '<string>' }`
    */
   textCodecCallback(requestId: number, result: string): void;
+
+  // ===== WebView tsfn 回调注册 + ArkTS → Kotlin 回调 (后台 WebView 抓取, 混合协议) =====
+
+  /**
+   * 注册 WebView 回调 (KMP → ArkTS 跨线程 dispatch, 后台 WebView 抓取请求)。
+   *
+   * C++ 侧创建 napi_threadsafe_function 包装 [callback], 并通过 @CName legado_register_webview_fn
+   * 把 dispatch 函数指针注入 Kotlin OhosNativeBridge.webViewTsfn。此后 KMP 调用
+   * OhosNativeBridge.invokeWebViewSync 时, 混合协议双参数跨线程 dispatch 到此 [callback]:
+   * 控制面 JSON + 数据面裸 html (大段 HTML 不经 JSON 转义, 避免转义膨胀与双端编解码拷贝)。
+   * 处理完成后通过 [webViewCallback] 回送结果给 Kotlin。
+   *
+   * @param callback 接收两个参数:
+   *   - jsonControl (string): JSON 请求 `{ requestId, action: 'request', payload: '<WebViewRequestPayload JSON, 不含 html>' }`
+   *     payload 字段: url/encode/tag/headers/sourceRegex/overrideUrlRegex/js/delayTime/cookie
+   *   - htmlRaw (string): 数据面裸 HTML 入参 (与 url 二选一, 空串=无)
+   */
+  registerWebViewCallback(callback: (jsonControl: string, htmlRaw: string) => void): void;
+
+  /**
+   * WebView 后台抓取结果回调 (ArkTS → Kotlin, 混合协议三参数)。
+   *
+   * ArkTS 侧完成页面加载 + JS 执行 (或嗅探命中) 后, 通过此方法把结果回送给 Kotlin,
+   * 唤醒 OhosNativeBridge.invokeWebViewSync 中阻塞的 CompletableDeferred。
+   *
+   * @param requestId 请求 ID (与 invokeWebViewSync 生成的 requestId 对应)
+   * @param result 控制面结果 JSON (不含 body):
+   *   - 成功:      `{ ok: true, url: '<finalUrl>', cookie: '<k=v; ...>' }`
+   *   - 命中嗅探:  `{ ok: true, url: '<原始url>' }`
+   *   - 失败:      `{ ok: false, error: '<原因>' }`
+   * @param bodyRaw 数据面裸字符串: 源码 HTML / 命中 URL (失败或空结果时为空串 '')
+   */
+  webViewCallback(requestId: number, result: string, bodyRaw: string): void;
 
   // ===== 发现页 (DiscoverTab) 桥接函数 =====
   // C++ 侧已实现 (KP5+):

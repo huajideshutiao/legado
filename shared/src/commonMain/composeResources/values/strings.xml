@@ -159,6 +159,7 @@
     <string name="replace_enable_default_s">新加入书架的书是否启用替换净化</string>
     <string name="replace_enable_default_t">默认启用替换净化</string>
     <string name="replace">替换</string>
+    <string name="browser">浏览器</string>
     <string name="scope_title">作用于标题</string>
     <string name="scope_content">作用于正文</string>
     <string name="use_regex">使用正则表达式</string>
@@ -320,6 +321,9 @@
     <string name="shrink_database">压缩数据库</string>
     <string name="shrink_database_summary">减小数据库文件的大小</string>
     <string name="auto_check_update">自动检查更新</string>
+    <string name="update_url_title">自定义更新地址</string>
+    <string name="update_url_summary">留空使用 GitHub 检查更新</string>
+    <string name="update_url_hint">更新源地址, JSON 数组或单个 URL</string>
     <string name="check_update">检查更新</string>
     <string name="update_to_variant_title">检查更新查找版本</string>
     <string name="update_to_variant_summary">检查更新时查找其他签名版本</string>
@@ -1024,7 +1028,6 @@
     <string name="copy_chapter_title">复制章节标题</string>
     <string name="lookup_word">查词</string>
     <string name="browser_search">浏览器搜索</string>
-    <string name="translate">翻译</string>
     <string name="select_and_copy_first_hint">请先选中并复制文字</string>
     <string name="replace_rule_copied_to_clipboard">替换规则已复制到剪贴板</string>
     <string name="dict_rule_load_failed">字典规则界面获取数据失败&#10;%1$s</string>
@@ -1437,6 +1440,11 @@
         <item>关闭</item>
         <item>繁体转简体</item>
         <item>简体转繁体</item>
+    </string-array>
+    <string-array name="system_typefaces">
+        <item>系统默认字体</item>
+        <item>系统衬线字体</item>
+        <item>系统等宽字体</item>
     </string-array>
     <string-array name="text_font_weight">
         <item>正常</item>

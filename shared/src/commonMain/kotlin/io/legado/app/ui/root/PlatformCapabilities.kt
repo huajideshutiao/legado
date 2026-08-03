@@ -70,6 +70,9 @@ interface PlatformCapabilities {
         parentReview: Review? = null,
     ): Boolean = false
 
+    // 图片预览对话框 (对照 app 端 PhotoDialog, 阅读页点图预览), 未实现端提示不支持
+    fun showImagePreview(url: String) = unsupported("图片预览")
+
     // 默认封面画廊弹窗 (对照 app 端 DefaultCoverGalleryDialog)
     fun showDefaultCoverGallery(isNight: Boolean) = unsupported("选择默认封面")
 

@@ -249,14 +249,21 @@ fun ColorPickerDialogContent(
                 label = "Hex",
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             )
-            // 预设色格
+            // 预设色格：选中色属色板时补黑色第 20 格
+            // （对照 colorpicker 1.1.0 loadPresets：isMaterialColors && presets.length == 19
+            //   → pushIfNotExists(black)，即选中色在 material 色板内才追加黑格）
+            val currentStripped = ColorUtils.stripAlpha(current())
+            val displayPresets =
+                if (presets.any { ColorUtils.stripAlpha(it) == currentStripped }) {
+                    presets + 0xFF000000.toInt()
+                } else presets
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(44.dp),
                 modifier = Modifier.fillMaxWidth().height(120.dp).padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(presets) { preset ->
+                items(displayPresets) { preset ->
                     val selected = ColorUtils.stripAlpha(preset) == ColorUtils.stripAlpha(current())
                     Box(
                         Modifier
@@ -334,10 +341,13 @@ private val HueColors = listOf(
     Color(0xFF00FFFF), Color(0xFF0000FF), Color(0xFFFF00FF), Color(0xFFFF0000),
 )
 
-/** 对齐 ColorPickerDialog.MATERIAL_COLORS 的预设范围（material 500 系） */
+/** 对齐 ColorPickerDialog.MATERIAL_COLORS 的预设范围（material 500 系，19 色） */
+// colorpicker 1.1.0 源码：RED/PINK/LIGHT PINK(0xFFFF2C93)/PURPLE/DEEP PURPLE/INDIGO/BLUE/
+// LIGHT BLUE/CYAN/TEAL/GREEN/LIGHT GREEN/LIME/YELLOW/AMBER/ORANGE/BROWN/BLUE GREY/GREY
+// （黑色第 20 格由对话框按"选中色属色板"动态追加，见 ColorPickerDialogContent）
 val MaterialPresets = listOf(
-    0xFFF44336, 0xFFE91E63, 0xFF9C27B0, 0xFF673AB7, 0xFF3F51B5,
+    0xFFF44336, 0xFFE91E63, 0xFFFF2C93, 0xFF9C27B0, 0xFF673AB7, 0xFF3F51B5,
     0xFF2196F3, 0xFF03A9F4, 0xFF00BCD4, 0xFF009688, 0xFF4CAF50,
     0xFF8BC34A, 0xFFCDDC39, 0xFFFFEB3B, 0xFFFFC107, 0xFFFF9800,
-    0xFFFF5722, 0xFF795548, 0xFF9E9E9E, 0xFF607D8B,
+    0xFF795548, 0xFF607D8B, 0xFF9E9E9E,
 ).map { it.toInt() }

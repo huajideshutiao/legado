@@ -14,61 +14,24 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * 替换规则编辑 VM 共享核心 (KMP 版, commonMain)。
+ * 替换规则编辑 VM 共享核心 (commonMain)。
  *
- * # 背景
+ * 对照 app 端 `ReplaceEditViewModel(app) : BaseViewModel(app)`: 三个方法
+ * (initData/pasteRule/save) 仅依赖 DAO + 协程 + Toasters + 剪贴板, 可下沉多端复用。
+ * DAO 走 [AppDbProviders.get].replaceRuleDao; `execute{...}` 链式回调下沉为直接调
+ * [Coroutine.async] (业务 IO / 回调 mainDispatcher, 行为等价)。
  *
- * 对照 app 端原 `ReplaceEditViewModel(application: Application) : BaseViewModel(application)`:
- * - 三个方法 (initData / pasteRule / save) 仅依赖 DAO + 协程 + Toasters + 剪贴板文本,
- *   可以下沉 commonMain 供多端复用 (Android / Desktop / iOS / 鸿蒙)。
- * - DAO 访问走 [AppDbProviders.get].replaceRuleDao (宿主启动时由 app 端注册
- *   AppDbAccessorImpl, 已暴露 dictRuleDao/replaceRuleDao 等 DAO)。
- * - 原 `execute { ... }.onSuccess { ... }.onError { ... }.onFinally { ... }`
- *   (BaseViewModel 内委托 [Coroutine.async]) 下沉后直接调 [Coroutine.async],
- *   保留链式 onSuccess/onError/onFinally 回调结构, 行为等价 (业务 context=IO,
- *   回调 executeContext=mainDispatcher, 与 BaseViewModel.execute 默认值一致)。
+ * Android 专属依赖替换: Intent 解析留 app 端 (下沉后接收已解析的 [id]/[pattern]/[isRegex]/
+ * [scope], 字段名与 app 端 intent key 一一对应); 剪贴板经 [clipTextProvider] 注入
+ * (desktop 用 AWT Toolkit); Toast → [Toasters.get]; 错误日志走 [printStackTraceOnDebug]。
  *
- * # Android 专属依赖替换
+ * 设计: 组合委托 (BaseViewModel 是 AndroidViewModel 不能继承)。
+ * 与 [io.legado.app.ui.replace.ReplaceEditViewModel] (旧版) 区别: 旧版是早期下沉的独立
+ * KMP VM, 自带 scope 用回调暴露结果; 本类 scope 由宿主注入, 与 ReplaceRuleViewModelShared /
+ * DictRuleViewModelShared 统一规范, 便于多端接管生命周期。
  *
- * - **Intent 解析留 app 端**: 原 `initData(intent: Intent, ...)` 用
- *   `intent.getLongExtra("id", -1)` / `getStringExtra("pattern")` /
- *   `getBooleanExtra("isRegex", false)` / `getStringExtra("scope")` 解析 Bundle,
- *   下沉后改为接收已解析的显式参数 [id]/[pattern]/[isRegex]/[scope]
- *   (字段名与 app 端 intent key 一一对应, 不"改变实现逻辑")。
- * - **剪贴板访问**: 原 `getClipText()` (Android ClipboardManager) 不能下沉,
- *   通过构造函数 lambda [clipTextProvider] 注入:
- *   - app 端实现 `{ getClipText() }` (委托 utils.ContextExtensions.getClipText);
- *   - desktop 端实现用 `Toolkit.getDefaultToolkit().systemClipboard.getData(...)`;
- *   - iOS/鸿蒙留宿主自实现。
- * - **Toast 提示**: 原 `context.toastOnUi(msg)` → [Toasters.get].toast(msg)
- *   (Toaster 接口已下沉 commonMain, androidMain 注册的实现内部切主线程,
- *   与 `context.toastOnUi` 行为等价)。
- * - **错误日志**: 原 `it.printStackTraceOnDebug()` 走 [printStackTraceOnDebug] 扩展 (已下沉 commonMain,
- *   各平台 actual 决定是否打栈, 行为对齐)。
- *
- * # 设计选择 (组合委托)
- *
- * 不采用 `expect abstract class` 让 app 端子类继承: BaseViewModel 是 AndroidViewModel,
- * commonMain 不可用, Kotlin 单继承会冲突。改用组合委托模式 (对照
- * [io.legado.app.ui.replace.ReplaceRuleViewModelShared] / DictRuleViewModelShared):
- * - app 端 `ReplaceEditViewModel(application)` `extends BaseViewModel(application)`,
- *   内部持有本类实例, 通过 `viewModelScope` + `{ getClipText() }` 注入;
- * - desktop 端在 Compose `remember` 中构造本类, 注入应用 scope + AWT Clipboard lambda。
- *
- * # 与 [io.legado.app.ui.replace.ReplaceEditViewModel] 区别
- *
- * - [io.legado.app.ui.replace.ReplaceEditViewModel] (旧版, commonMain) 是早期下沉的
- *   独立 KMP VM, 自带 SupervisorJob scope, 用回调 (success/error) 暴露结果, 供
- *   sharedUiMain `ReplaceEditScreen` 直接订阅;
- * - 本类 (Shared) 走组合委托模式, scope 由宿主注入 (Android=viewModelScope /
- *   desktop=应用 scope), 与 ReplaceRuleViewModelShared / DictRuleViewModelShared 一致,
- *   统一下沉规范, 便于多端宿主接管生命周期。
- *
- * @param scope 协程作用域, actual 平台注入
- *   (Android = `viewModelScope` / 桌面 = 应用主作用域 / 窗口 scope)
- * @param clipTextProvider 剪贴板文本提供者 (替代 `getClipText()`):
- *   - app 端实现 `{ getClipText() }`
- *   - desktop 端实现 `Toolkit.getDefaultToolkit().systemClipboard.getData(DataFlavor.stringFlavor) as? String`
+ * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
+ * @param clipTextProvider 剪贴板文本提供者 (替代 `getClipText()`)
  */
 class ReplaceEditViewModelShared(
     private val scope: CoroutineScope,

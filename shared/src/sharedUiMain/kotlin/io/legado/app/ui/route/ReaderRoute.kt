@@ -30,13 +30,17 @@ import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.help.config.ReadTipConfigShared
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
+import io.legado.app.model.CacheBookShared
 import io.legado.app.model.LocalReadBookProvider
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
+import io.legado.app.ui.book.read.CharsetDialog
 import io.legado.app.ui.book.read.ContentEditDialog
+import io.legado.app.ui.book.read.DownloadDialog
 import io.legado.app.ui.book.read.EffectiveReplacesDialog
 import io.legado.app.ui.book.read.EffectiveReplacesScreenModel
 import io.legado.app.ui.book.read.EffectiveReplacesUiEvent
+import io.legado.app.ui.book.read.ImageStyleDialog
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.ReadConfigChange
@@ -47,6 +51,7 @@ import io.legado.app.ui.book.read.ReaderScreen
 import io.legado.app.ui.book.read.ReaderScreenModel
 import io.legado.app.ui.book.read.ReaderUiActions
 import io.legado.app.ui.book.read.ReaderUiState
+import io.legado.app.ui.book.read.SimulatedReadingDialog
 import io.legado.app.ui.book.read.config.ChineseConverterSelectorDialog
 import io.legado.app.ui.book.read.config.HttpTtsEditDialog
 import io.legado.app.ui.book.read.config.HttpTtsEditViewModelShared
@@ -181,6 +186,10 @@ fun ReaderRoute(
                 provider.onLongPress(screenModel)
             }
 
+            override fun onTextSelection(text: String) {
+                provider.onTextSelected(screenModel, text)
+            }
+
             // 非翻页类点击动作，对照 app 端 ReadView.click 走 callBack 的分支
             // 5/6 朗读上下段，已通过 provider 接入（对照 app 端 ReadAloud.prevParagraph/nextParagraph）
             override fun onPageAction(action: Int) {
@@ -227,6 +236,9 @@ fun ReaderRoute(
     // 栈内页面全部留在组合中, 故非栈顶时必须失效, 否则目录/换源等子页里按方向键会翻背景的书;
     // 翻页键菜单可见时不响应 (原版 menuLayoutIsVisible 分支), 字号增减不受菜单影响
     val isTopEntry = { navigator.backStack.value.lastOrNull()?.id == entry.id }
+    // 翻页键 200ms 去抖 (对照原版 ReadBookKeyHandler.keyPageDebounce: wait=200/maxWait=200,
+    // leading 语义: 200ms 内重复触发只翻一页, 长按不连翻)
+    val pageTurnThrottle = remember { PageTurnThrottle() }
     AppShortcutHandler(
         shortcuts = ReaderShortcuts.pageTurn,
         enabled = { isTopEntry() && !screenModel.menuState.isVisible },
@@ -236,8 +248,24 @@ fun ReaderRoute(
         } else {
             PageDirectionShared.NEXT
         }
-        // turnPage 内部优先走 pageDelegate.keyTurnPage(带动画), 无委托时直接位移页码
-        screenModel.viewModel.turnPage(direction)
+        pageTurnThrottle.tryTurn {
+            // turnPage 内部优先走 pageDelegate.keyTurnPage(带动画), 无委托时直接位移页码
+            screenModel.viewModel.turnPage(direction)
+        }
+    }
+    // 音量键翻页 (对照原版 ReadBookKeyHandler VOLUME_UP/DOWN 分支, 默认开启;
+    // 开关走平台配置 AppConfig.volumeKeyPage, 关闭时不拦截让系统调音量)
+    // 2026-08-04: 用户决策——音量键翻页功能保留恒生效, 仅删 volumeKeyPageOnPlay 配置项。
+    AppShortcutHandler(
+        shortcuts = ReaderShortcuts.volumePageTurn,
+        enabled = { isTopEntry() && !screenModel.menuState.isVisible && provider.volumeKeyPage },
+    ) { shortcut ->
+        pageTurnThrottle.tryTurn {
+            screenModel.viewModel.turnPage(
+                if (shortcut.key == Key.VolumeUp) PageDirectionShared.PREV
+                else PageDirectionShared.NEXT
+            )
+        }
     }
     AppShortcutHandler(ReaderShortcuts.textSize, enabled = isTopEntry) { shortcut ->
         val delta = if (shortcut == ReaderShortcuts.increaseTextSize) 1 else -1
@@ -263,8 +291,7 @@ fun ReaderRoute(
         // 进度条刷新 (对照 app 端 seekBarChange → readMenu.upSeekBar())
         launch { ReadBookEvents.seekBarChange.collect { screenModel.menuState.upSeekBar() } }
         // 屏幕超时设置变更 (对照 app 端 keepLightChange → upScreenTimeOut)
-        // 待实现: ReaderPlatformProvider.onKeepLightChange 接口尚未提供, 平台 actual 落地后补桥接
-        launch { ReadBookEvents.keepLightChange.collect { } }
+        launch { ReadBookEvents.keepLightChange.collect { provider.onKeepLightChange(screenModel) } }
         // 菜单数据刷新 (对照 app 端 menuRefresh → upMenuView())
         launch { ReadBookEvents.menuRefresh.collect { screenModel.menuState.refresh() } }
         // 请求重载目录 (对照 app 端 loadChapterList → viewModel.loadChapterList(book))
@@ -435,6 +462,11 @@ fun ReaderRoute(
                 },
                 onDismiss = { screenModel.clearDialogEvent() },
                 onReset = { screenModel.viewModel.refreshCurrentChapter() },
+                // 标题栏点击改章节标题 (对照原版 ContentEditDialog.editTitle: 落库 + 重载)
+                onRenameChapter = { newTitle ->
+                    val index = screenModel.viewModel.durChapterIndex.value
+                    screenModel.viewModel.renameChapter(index, newTitle)
+                },
             )
         }
 
@@ -669,6 +701,101 @@ fun ReaderRoute(
             }
         }
 
+        // 模拟阅读配置 (对照原版 menu_simulated_reading → showSimulatedReading)
+        is ReaderDialogEvent.SimulatedReading -> {
+            val book = screenModel.currentBook
+            if (book != null) {
+                SimulatedReadingDialog(
+                    book = book,
+                    onApply = {
+                        screenModel.clearDialogEvent()
+                        scope.launch {
+                            runCatching { AppDbProviders.get().bookDao.update(book) }
+                            // 对照 app 端 book.save() + viewModel.initData: 落库后重装使模拟章节总数生效
+                            screenModel.initBook(book, book.durChapterIndex)
+                        }
+                    },
+                    onDismiss = { screenModel.clearDialogEvent() },
+                )
+            } else {
+                LaunchedEffect(screenModel) { screenModel.clearDialogEvent() }
+            }
+        }
+
+        // 图片样式选择器 (对照原版 menu_image_style: 单选后落库 + 单页样式发配置事件 + 重载当前章)
+        is ReaderDialogEvent.ImageStyle -> {
+            val book = screenModel.currentBook
+            if (book != null) {
+                ImageStyleDialog(
+                    book = book,
+                    onApply = { imageStyle ->
+                        screenModel.clearDialogEvent()
+                        book.config.imageStyle = imageStyle
+                        scope.launch {
+                            runCatching { AppDbProviders.get().bookDao.update(book) }
+                            if (imageStyle == io.legado.app.data.entities.Book.imgStyleSingle) {
+                                ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM)
+                            }
+                            screenModel.viewModel.loadChapter(screenModel.viewModel.durChapterIndex.value)
+                        }
+                    },
+                    onDismiss = { screenModel.clearDialogEvent() },
+                )
+            } else {
+                LaunchedEffect(screenModel) { screenModel.clearDialogEvent() }
+            }
+        }
+
+        // 离线缓存 (对照原版 menu_download → showDownloadDialog → CacheBook.start)
+        is ReaderDialogEvent.Download -> {
+            val book = screenModel.currentBook
+            if (book != null) {
+                DownloadDialog(
+                    book = book,
+                    onApply = { start, end ->
+                        screenModel.clearDialogEvent()
+                        val bookSource = screenModel.viewModel.bookSource.value
+                        val cacheBook = bookSource?.let {
+                            runCatching { CacheBookShared.getOrCreate(it, book) }.getOrNull()
+                        }
+                        if (cacheBook == null) {
+                            Toasters.get().toast("离线缓存启动失败: 书源不可用")
+                        } else {
+                            // 与原版一致: 输入为章节号, CacheBook 下标从 0 起 (start-1/end-1),
+                            // 结束章节 clamp 到 lastChapterIndex (原版在 CacheBookService.addDownloadData 内)
+                            cacheBook.addDownload(
+                                (start - 1).coerceAtLeast(0),
+                                end - 1
+                            )
+                            scope.launch(IoDispatcher) {
+                                CacheBookShared.startProcessJob(coroutineContext)
+                            }
+                        }
+                    },
+                    onDismiss = { screenModel.clearDialogEvent() },
+                )
+            } else {
+                LaunchedEffect(screenModel) { screenModel.clearDialogEvent() }
+            }
+        }
+
+        // 文本编码选择器 (对照原版 menu_set_charset → showCharsetConfig → ReadBook.setCharset)
+        is ReaderDialogEvent.SetCharset -> {
+            val book = screenModel.currentBook
+            if (book != null) {
+                CharsetDialog(
+                    book = book,
+                    onApply = { charset ->
+                        screenModel.clearDialogEvent()
+                        screenModel.viewModel.setCharset(charset)
+                    },
+                    onDismiss = { screenModel.clearDialogEvent() },
+                )
+            } else {
+                LaunchedEffect(screenModel) { screenModel.clearDialogEvent() }
+            }
+        }
+
         null -> Unit
     }
     // endregion
@@ -685,6 +812,22 @@ private const val MAX_TEXT_SIZE = 50
  * 阅读页快捷键。PageUp/PageDown/空格为原版键位 (app 端 ReadBookKeyHandler);
  * 方向键是桌面端新增, 替代原版没有的音量键翻页。均无修饰键, 走冒泡阶段分发。
  */
+/**
+ * 翻页快捷键 200ms 去抖 (对照原版 ReadBookKeyHandler.keyPageDebounce 的 Throttle
+ * wait=200/maxWait=200/leading=true/trailing=false: 首次按键立即翻页, 200ms 内
+ * 重复按键 (含系统按键 repeat) 丢弃, 长按不会连翻)。
+ */
+private class PageTurnThrottle(private val intervalMs: Long = 200L) {
+    private var lastTurnTime = 0L
+
+    fun tryTurn(block: () -> Unit) {
+        val now = systemCurrentTimeMillis()
+        if (now - lastTurnTime < intervalMs) return
+        lastTurnTime = now
+        block()
+    }
+}
+
 private object ReaderShortcuts {
     val prevPage = listOf(
         AppShortcut(Key.PageUp),
@@ -698,6 +841,12 @@ private object ReaderShortcuts {
         AppShortcut(Key.Spacebar),
     )
     val pageTurn = prevPage + nextPage
+
+    /** 音量键翻页 (对照原版 ReadBookKeyHandler VOLUME_UP/DOWN) */
+    val volumePageTurn = listOf(
+        AppShortcut(Key.VolumeUp),
+        AppShortcut(Key.VolumeDown),
+    )
 
     val increaseTextSize = AppShortcut(Key.Equals, command = true)
     val decreaseTextSize = AppShortcut(Key.Minus, command = true)
@@ -747,6 +896,8 @@ private fun buildLayoutConfig(
         paragraphSpacing = config.paragraphSpacing,
         titleTopSpacing = config.titleTopSpacing.dp.roundToPx(),
         titleBottomSpacing = config.titleBottomSpacing.dp.roundToPx(),
+        // 末页底部留白 (对照 app 端 getTextChapter 末尾 20.dpToPx())
+        endPadding = 20.dp.roundToPx(),
         paragraphIndent = config.paragraphIndent,
         textFullJustify = config.textFullJustify,
         textBottomJustify = config.textBottomJustify,

@@ -12,53 +12,19 @@ import java.nio.charset.Charset
 /**
  * 导出书籍业务逻辑下沉 (shared jvmAndAndroidMain)。
  *
- * # 背景
+ * 背景: app 端 [ExportBookService] 是 Android Service (EPUB/CBZ/TXT 导出), Service 框架
+ * (onStartCommand/通知/lifecycleScope) 不可下沉, 但导出业务逻辑可下沉供 desktop/iOS/鸿蒙复用。
+ * 本类提取不依赖 FileDoc/Glide/appCtx.assets/BookHelp.getImage/FileBook/ReadBook 的纯业务
+ * 方法: [setEpubMetadata] (纯 epublib domain 操作) / [exportTxt] (OutputStream 写入 + WebDav 上传)。
+ * 正文拼接纯逻辑 (getAllContents/getExportData) 已进一步下沉 commonMain [ExportBookContentShared]。
  *
- * app 端 [ExportBookService] 是 Android Service, 包含 EPUB/CBZ/TXT 导出逻辑。
- * Service 框架 (onStartCommand / 通知 / lifecycleScope) 不可下沉, 但导出业务
- * 逻辑可下沉到 shared 供 desktop / iOS / 鸿蒙 复用。
+ * 平台依赖经 [ExportBookDeps] 注入: R.string 文案 / AppConfig (exportCharset 等) /
+ * ContentProcessor (WeakReference 缓存) / getExportFileName / FileDoc / EventBus 进度 /
+ * AppWebDav (android.net.Uri)。
  *
- * 本类提取 [ExportBookService] 中**不依赖 FileDoc / Glide / appCtx.assets /
- * BookHelp.getImage / FileBook / ReadBook** 的纯业务方法:
- * - [setEpubMetadata]: 设置 EpubBook 元数据 (纯 epublib domain 操作)
- * - [exportTxt]: TXT 导出主流程 (OutputStream 写入 + WebDav 上传)
- *
- * 正文拼接纯逻辑 (getAllContents / getExportData) 已进一步下沉到 commonMain
- * [ExportBookContentShared], 本类通过 [contentShared] 委托调用, 供 iOS / 鸿蒙复用。
- *
- * # 平台依赖注入
- *
- * 以下 Android 专属 / 未下沉依赖通过 [ExportBookDeps] 注入:
- * - 字符串资源 (R.string.author_show / intro_show): app 端 getString
- * - AppConfig (exportCharset / exportUseReplace / exportNoChapterName /
- *   exportToWebDav): app 端 AppConfig 单例
- * - ContentProcessor (getContent / getTitleReplaceRules): app 端
- *   ContentProcessor.get(book) (WeakReference 缓存)
- * - getExportFileName: app 端 Book.getExportFileName 扩展 (未下沉)
- * - 文件输出 (FileDoc): app 端 FileDoc + 扩展 (未下沉, 通过 [ExportBookDeps.prepareExportFile])
- * - 事件 / 进度 (EventBus / exportProgress / exportMsg): app 端单例
- * - WebDav 上传 (AppWebDav): app 端 (android.net.Uri)
- *
- * # 未下沉的方法 (保留 app 端 ExportBookService)
- *
- * 以下方法强依赖未下沉的 Android API, 保留在 [ExportBookService]:
- * - exportEpub: setCover (Glide) + setAssets (appCtx.assets) + setEpubContent (fixPic)
- * - exportCbz: extractCbzPages (BookHelp.getImage / FileBook.getImage)
- * - setEpubContent / fixPic: BookHelp.getImage (File) + FileResourceProvider
- * - setAssets / setAssetsExternal / setCover: FileDoc + assets + Glide
- * - ensureChapterList: FileBook.getChapterList + ReadBook.onChapterListUpdated
- * - CustomExporter: 依赖上述 setEpubContent / setCover / setAssets / fixPic
- *
- * 后续 FileDoc / BookHelp.getImage / ImageLoader 等下沉后, 可进一步把
- * exportEpub / exportCbz / CustomExporter 下沉到本类。
- *
- * # 已复用的 shared 下沉件
- *
- * - [ExportBookContentShared]: shared commonMain (正文拼接纯逻辑, 由 [contentShared] 委托)
- * - [ExportBookDeps] 继承 [ExportBookContentDeps], 复用同一份平台 deps 实现
- *
- * commonMain 侧 (ExportBookContentShared) 复用: AppDbProviders / BookHelpProviders /
- * AppConst.MAX_THREAD / HtmlFormatter / mapAsync / collectIndexed。
+ * 未下沉 (保留 app 端): exportEpub (Glide+assets)、exportCbz (BookHelp.getImage)、
+ * setEpubContent/fixPic、setAssets/setCover、ensureChapterList、CustomExporter;
+ * 后续 FileDoc/BookHelp.getImage/ImageLoader 下沉后可继续迁移。
  *
  * @see ExportBookDeps 平台依赖注入接口
  */

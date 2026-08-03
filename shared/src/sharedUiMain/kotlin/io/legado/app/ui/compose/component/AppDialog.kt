@@ -8,6 +8,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -21,6 +22,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.ui.compose.platform.PlatformDialogDim
 
 /**
  * 对话框统一窗口, 带 app 版 Animation.Dialog 动画: 进入 200ms decelerate 中心缩放
@@ -42,6 +44,8 @@ fun AppDialog(
     }
     var dismissing by remember { mutableStateOf(false) }
     Dialog(onDismissRequest = { dismissing = true }, properties = properties) {
+        // Android 补平台 dim 0.6 (对齐桌面/iOS 0.6 scrim); E-Ink 分支在上方已跳过 (对齐原版 E-Ink 清 dim)
+        PlatformDialogDim()
         val progress = remember { Animatable(0f) }
         // 进入: 缩放 0.96→1 + 淡入 (对齐 dialog_enter.xml)
         LaunchedEffect(Unit) {
@@ -101,6 +105,8 @@ fun AppBottomSheetDialog(
     }
     var dismissing by remember { mutableStateOf(false) }
     Dialog(onDismissRequest = { dismissing = true }, properties = properties) {
+        // Android 补平台 dim 0.6; E-Ink 分支在上方已跳过
+        PlatformDialogDim()
         val progress = remember { Animatable(0f) }
         // 进入: 从底部滑入 + 淡入 (对齐原版底部弹层动画)
         LaunchedEffect(Unit) {
@@ -116,7 +122,8 @@ fun AppBottomSheetDialog(
         val p = progress.value
         val slideHeightPx = with(LocalDensity.current) { AppDialogSizes.fullHeight().toPx() }
         BottomSheetScaffold(
-            onDismissRequest = onDismissRequest,
+            // 外部点击与返回键一致走 dismissing 退出动画路径
+            onDismissRequest = { dismissing = true },
             modifier = Modifier.graphicsLayer {
                 translationY = slideHeightPx * (1f - p)
                 alpha = p
@@ -148,7 +155,8 @@ private fun BottomSheetScaffold(
         Box(
             modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .heightIn(max = AppDialogSizes.fullHeight()),
             contentAlignment = Alignment.BottomCenter,
         ) { content() }
     }

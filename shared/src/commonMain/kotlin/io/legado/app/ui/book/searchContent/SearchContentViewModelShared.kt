@@ -14,57 +14,23 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
 /**
- * 书内全文搜索 ViewModel 共享核心 (KMP 版, commonMain)。
+ * 书内全文搜索 ViewModel 共享核心 (commonMain)。
  *
- * # 背景
+ * 对照 app 端 `SearchContentViewModel(app) : BaseViewModel(app)`: 核心搜索逻辑
+ * (initBook/searchChapter/searchPosition/getResultAndQueryIndex) 不依赖 Android 专属 API,
+ * 可下沉多端复用。DAO 走 [AppDbProviders.get]; 章节正文缓存走 [BookStorageProviders.get]
+ * (替代 BookHelp, 重 Android 依赖留 app 端); 正文处理走 [ContentProcessorProviders.get];
+ * 简繁转换配置走 [AppConfigProviders.get].chineseConverterType。
  *
- * 对照 app 端原 `SearchContentViewModel(application: Application) : BaseViewModel(application)`:
- * - 核心搜索逻辑 (initBook / searchChapter / searchPosition / getResultAndQueryIndex)
- *   不依赖 Android 专属 API, 仅依赖 [AppDbProviders] / [IntentData] /
- *   [BookStorageProviders] / [ContentProcessorProviders] / [AppConfigProviders] + 协程,
- *   可以下沉 commonMain 供多端复用。
- * - DAO 访问走 [AppDbProviders.get] (宿主启动时注册), 替代 app 端 `appDb` 单例。
- * - 章节正文缓存走 [BookStorageProviders.get].getContent, 替代 app 端 `BookHelp.getContent`
- *   (BookHelp 重 Android 依赖留 app 端, BookStorage 跨平台抽象)。
- * - 正文处理走 [ContentProcessorProviders.get].getContent, 替代
- *   app 端 `ContentProcessor.get(name, origin).getContent(...)`
- *   (ContentProcessor 重 Android 依赖留 app 端)。
- * - 简繁转换配置走 [AppConfigProviders.get].chineseConverterType, 替代
- *   app 端 `AppConfig.chineseConverterType`。
- * - [IntentData] 已下沉 commonMain, 直接复用跨 Activity 临时大数据传递容器。
+ * 简繁转换经 lambda [chineseConverter] 注入 (ChineseUtils 依赖 quick-transfer 库 + 反射,
+ * 各端实现不同; 不直接 import 以解耦, 便于单测 stub): 签名 `(type: Int, text: String) -> String`,
+ * shared 按 chineseConverterType 分发, 0=不转换原样返回, 1=t2s, 2=s2t。
  *
- * # 留 app 端实现的部分 (Android-specific)
+ * 设计: 组合委托 (BaseViewModel 是 AndroidViewModel 不能继承), 仅注入 [scope] +
+ * [chineseConverter] 两个参数, 可变状态字段供宿主直接读写 (Activity 访问模式不变)。
  *
- * 简繁转换 [ChineseUtils.t2s] / [ChineseUtils.s2t] 通过 lambda 注入:
- * - app 端实现 `{ ChineseUtils.t2s(it) }` 或 `{ ChineseUtils.s2t(it) }`
- *   (ChineseUtils 主体依赖 quick-transfer 库 + 反射 + 字典缓存);
- * - 桌面端实现可走 shared jvmAndAndroidMain 的 ChineseUtils actual
- *   (本任务桌面端仅注入 no-op 桥接, 与桌面端简化策略一致);
- * - iOS/鸿蒙端可走 commonMain/iosMain/ohosMain 的 ChineseUtils actual。
- *
- * 不在 commonMain 直接 import ChineseUtils 以保持 ViewModelShared 与下层工具解耦,
- * 由宿主按需注入转换策略, 便于单测替换为 stub。
- *
- * # 设计选择 (组合委托)
- *
- * 不采用 `expect abstract class` 让 app 端子类继承: BaseViewModel 是 AndroidViewModel,
- * commonMain 不可用, Kotlin 单继承会冲突。改用组合委托模式:
- * - app 端 SearchContentViewModel `extends BaseViewModel`, 内部持有
- *   [SearchContentViewModelShared] 实例;
- * - 仅注入 [scope] + [chineseConverter] 两个参数 (Android = `viewModelScope` + ChineseUtils 实现);
- * - 转发 initBook / searchChapter 等方法到 shared;
- * - 暴露 book / bookUrl / replaceEnabled / searchResultList / searchResultCounts /
- *   cacheChapterNames / lastQuery 等可变状态字段供宿主读写 (Activity 直接访问模式不变)。
- *
- * @param scope 协程作用域, actual 平台注入
- *   (Android = `viewModelScope` / 桌面 = 应用主作用域 / 窗口 scope)
- * @param chineseConverter 平台专属: 章节标题简繁转换
- *   - 入参 (类型 Int): AppConfig.chineseConverterType 的值 (0=不转换, 1=t2s, 2=s2t);
- *     由 shared 内部根据 chineseConverterType 选择性调用, 实现端无需关心分支。
- *   - 入参 (原字符串): 待转换的章节标题
- *   - 返回值: 转换后的标题 (chineseConverterType=0 时实现端可原样返回)
- *   - 注: 为简化 lambda 签名, 实际签名改为 `(type: Int, text: String) -> String`,
- *     shared 内部按 type 分发; app 端用 when(type) 调用 t2s/s2t, type=0 时原样返回。
+ * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
+ * @param chineseConverter 章节标题简繁转换, 入参 (type: 0/1/2, text), 返回转换后标题
  */
 class SearchContentViewModelShared(
     private val scope: CoroutineScope,

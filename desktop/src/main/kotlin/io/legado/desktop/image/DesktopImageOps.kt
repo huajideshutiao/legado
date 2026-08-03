@@ -9,10 +9,12 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.util.Base64
+import javax.imageio.IIOImage
 import javax.imageio.ImageIO
+import javax.imageio.ImageWriteParam
 
 /**
- * 桌面 JVM 端 [ImageOps] 实现 (KP1.1)。
+ * 桌面 JVM 端 [ImageOps] 实现。
  *
  * # 为什么需要
  * [io.legado.app.model.script.JsBindings] 构造时统一注入 `platform` / `image`,
@@ -20,7 +22,7 @@ import javax.imageio.ImageIO
  * JsBindings init 调 `JsBindingInjector.image` getter, 未注册时 `checkNotNull` 抛异常,
  * 导致任何 `JsEngine.eval(js, bindingsConfig)` 都无法执行 (因为内部 new JsBindings())。
  *
- * 桌面端冒烟测试至少要能跑 JS, 故必须注册一个 [ImageOps] 实现, 哪怕 KP1 阶段不实际用 image 解密。
+ * 桌面端冒烟测试至少要能跑 JS, 故必须注册一个 [ImageOps] 实现。
  *
  * # 实现
  * 内持 `java.awt.image.BufferedImage`, 用 `javax.imageio.ImageIO` 编解码。
@@ -28,7 +30,7 @@ import javax.imageio.ImageIO
  * 对应 app 端 `BitmapImageOps` 内持 `android.graphics.Bitmap`。
  *
  * # 覆盖范围
- * KP1 仅做基础解码/编码/split/stitch/crop/size, 满足 JS `image.*` API 契约即可。
+ * 仅做基础解码/编码/split/stitch/crop/size, 满足 JS `image.*` API 契约即可。
  * 复杂场景 (如 base64 含 data:image/...;base64, 前缀) 已处理, 与 BitmapImageOps 行为对齐。
  */
 object DesktopImageOps : ImageOps {
@@ -58,12 +60,40 @@ object DesktopImageOps : ImageOps {
         val out = ByteArrayOutputStream()
         // webp native writer 只认 INT_RGB/INT_ARGB 光栅, jpg 不支持 alpha, 均需先归一化
         val image = normalizeForWrite(bufferedImageOf(img), formatName)
-        // 注意: javax.imageio 不直接支持 quality 参数 (需 ImageWriter + ImageWriteParam),
-        // 桌面端冒烟阶段用默认质量, 后续 KP2 若有需要再补 quality 控制
-        if (!ImageIO.write(image, formatName, out)) {
+        // quality 映射: jpg 用 ImageWriter + JPEG ImageWriteParam 压缩比 (0..1),
+        // 与 app 端 Bitmap.compress(JPEG, quality) 语义一致; png/webp 无质量概念忽略
+        // (app 端 PNG 同样忽略 quality), webp writer 不支持压缩参数时走默认质量
+        if (!writeWithQuality(image, formatName, quality, out)) {
             throw IllegalStateException(jvmGetString("image_encode_write_failed", formatName))
         }
         return out.toByteArray()
+    }
+
+    /**
+     * ImageIO.write 不支持 quality 参数, 这里改用 ImageWriter + ImageWriteParam:
+     * jpg 设 MODE_EXPLICIT + compressionQuality = quality/100; 其余格式用默认参数。
+     */
+    private fun writeWithQuality(
+        image: BufferedImage,
+        formatName: String,
+        quality: Int,
+        out: ByteArrayOutputStream,
+    ): Boolean {
+        val writers = ImageIO.getImageWritersByFormatName(formatName)
+        if (!writers.hasNext()) return false
+        val writer = writers.next()
+        try {
+            val param = writer.defaultWriteParam
+            if (formatName == "jpg" && param.canWriteCompressed()) {
+                param.compressionMode = ImageWriteParam.MODE_EXPLICIT
+                param.compressionQuality = quality.coerceIn(0, 100) / 100f
+            }
+            writer.output = ImageIO.createImageOutputStream(out)
+            writer.write(null, IIOImage(image, null, null), param)
+        } finally {
+            writer.dispose()
+        }
+        return true
     }
 
     /** 按目标格式把图转成 writer 能接受的 raster 类型; 已匹配时原样返回。 */

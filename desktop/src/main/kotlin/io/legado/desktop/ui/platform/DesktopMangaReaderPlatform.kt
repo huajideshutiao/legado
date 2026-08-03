@@ -52,6 +52,7 @@ import io.legado.app.utils.FileUtilsBase
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.toJson
+import io.legado.desktop.help.DesktopBattery
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
@@ -71,7 +72,9 @@ import java.io.File
  *   colorFilter 用 Compose [ColorFilter.colorMatrix] (与 app 端 ColorMatrixColorFilter 同矩阵),
  *   grayEnabled 用灰度 ColorMatrix (对照 app 端 Coil3 灰度变换)
  * - toggle/update*: 写回 [PreferenceProviders] 同 key (与 app 端 AppConfig = value 等价)
- * - getBatteryLevel: 桌面端无电池概念, 返回 -1 (信息条不显示电量)
+ * - getBatteryLevel: Windows 经 kernel32 (JNA) / macOS 经 `pmset -g batt` /
+ *   Linux 经 sysfs BAT/
+capacity 读真实电量, 失败 -1 (信息条不显示电量, 正常降级)
  * - saveImage: 本地缓存 → 本地书 FileBook → 按书源下载, 写入 destPath
  */
 object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
@@ -101,8 +104,8 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
             }.getOrNull() ?: MangaFooterConfig(),
         )
 
-    // 桌面端无电池概念
-    override fun getBatteryLevel(): Int = -1
+    // Windows 经 kernel32 GetSystemPowerStatus 读真实电量; 其他平台 -1 (信息条不显示)
+    override fun getBatteryLevel(): Int = DesktopBattery.getBatteryLevel()
 
     override fun toggleHorizontal(): Boolean {
         val enable = !prefs.getBoolean(PreferKey.enableMangaHorizontalScroll, false)

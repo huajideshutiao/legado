@@ -13,10 +13,11 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.webBook.WebBook
+import io.legado.app.ui.book.manage.BookshelfManagePlatformProviders.get
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -25,70 +26,25 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * 书架管理 ViewModel 共享核心 (KMP 版, commonMain)。
+ * 书架管理 ViewModel 共享核心 (commonMain)。
  *
- * # 背景
+ * 对照 app 端 `BookshelfManageViewModel(app) : BaseViewModel(app)`: 核心批量管理方法
+ * (upCanUpdate/updateBook/deleteBook/changeSource/clearCache/loadCacheFiles) 仅依赖
+ * DAO + 协程 + WebBook + BookHelp + Book.migrateTo + FileBook.deleteBook, 可下沉多端复用。
+ * DAO/AppConfig 走 [AppDbProviders.get]/[AppConfigProviders.get]; `execute{...}` 链式回调
+ * 下沉为直接调 [Coroutine.async], 行为等价。
  *
- * 对照 app 端原 `BookshelfManageViewModel(application: Application) : BaseViewModel(application)`:
- * - 核心批量管理方法 (upCanUpdate / updateBook / deleteBook / changeSource / clearCache /
- *   loadCacheFiles) 仅依赖 DAO + 协程 + WebBook + BookHelp.clearCache/getChapterFiles +
- *   Book.migrateTo + FileBook.deleteBook + AppConfig.batchChangeSourceDelay, 可以下沉
- *   commonMain 供多端复用 (Android / Desktop / iOS / 鸿蒙)。
- * - DAO 访问走 [AppDbProviders.get] (宿主启动时由 app 端注册 AppDbAccessorImpl);
- * - AppConfig 读取走 [AppConfigProviders.get] (宿主启动时注册);
- * - 原 `execute { ... }.onSuccess { ... }.onError { ... }.onFinally { ... }`
- *   (BaseViewModel 内委托 [Coroutine.async]) 下沉后直接调 [Coroutine.async],
- *   保留链式 onSuccess/onError/onFinally/onStart 回调结构, 行为等价。
+ * 平台专属逻辑经 [BookshelfManagePlatform] 注入: BookHelp.clearCache/getChapterFiles、
+ * FileBook.deleteBook (DocumentFile/ContentResolver) 留 app 端, 本地书删除经
+ * deleteLocalBook 委托; toast 文案 (R.string.clear_cache_success) 在 app 端解析成字符串。
  *
- * # Android 专属依赖替换 (平台注入)
+ * 状态桥接: batchChangeSourceState/Process → StateFlow, upAdapter → SharedFlow (事件语义);
+ * app 端 VM 用 viewModelScope.launch { collect { liveData.postValue(it) } } 桥接。
  *
- * 以下平台专属逻辑通过 [BookshelfManagePlatform] 聚合接口注入, 不在 commonMain 硬编码:
- * - **Book.migrateTo(newBook, toc)**: 已下沉 commonMain,
- *   [BookshelfManagePlatform.migrateBook] 默认实现直接调它, 各端无需再实现。
- * - **BookHelp.clearCache(book)**: 同上, BookHelp 留 app 端, 通过
- *   [BookshelfManagePlatform.clearCache] 委托。
- * - **BookHelp.getChapterFiles(book)**: 同上, 通过
- *   [BookshelfManagePlatform.getChapterFiles] 委托。
- * - **FileBook.deleteBook(book, deleteOriginal)**: 依赖 Android 文件系统 (DocumentFile /
- *   ContentResolver), 留 app 端。deleteBook 中本地书删除通过
- *   [BookshelfManagePlatform.deleteLocalBook] 委托。
- * - **toast 提示**: 原 `context.toastOnUi(R.string.clear_cache_success)` 走平台专属的
- *   Android 资源 ID, 不能下沉。通过 [BookshelfManagePlatform.clearCacheSuccessMessage]
- *   在 app 端解析为字符串, 再调 [Toasters.get].toast 显示 (行为等价)。
+ * 设计: 组合委托 (BaseViewModel 是 AndroidViewModel 不能继承); saveAllUseBookSourceToFile /
+ * exportBookshelf 留 app 端 (依赖 context.filesDir + 文件流)。
  *
- * # 状态桥接 (LiveData → StateFlow)
- *
- * 原 app 端三个 MutableLiveData:
- * - `batchChangeSourceState: MutableLiveData<Boolean>` → [_batchChangeSourceState] (StateFlow);
- * - `batchChangeSourceProcessLiveData: MutableLiveData<String>` → [_batchChangeSourceProcess] (StateFlow);
- * - `upAdapterLiveData: MutableLiveData<String>` → [_upAdapter] (SharedFlow, 事件语义)。
- *
- * StateFlow 不可直接被 Android LiveData observe, app 端 ViewModel 用 `viewModelScope.launch
- * { collect { liveData.postValue(it) } }` 桥接, 与原行为一致 (参考
- * [io.legado.app.ui.book.changesource.ChangeBookSourceViewModel.searchStateData] 桥接模式)。
- *
- * # 设计选择 (组合委托)
- *
- * 不采用 `expect abstract class` 让 app 端子类继承: BaseViewModel 是 AndroidViewModel,
- * commonMain 不可用, Kotlin 单继承会冲突。改用组合委托模式 (对照
- * [io.legado.app.ui.book.changesource.ChangeBookSourceViewModelShared] /
- * [io.legado.app.ui.replace.edit.ReplaceEditViewModelShared]):
- * - app 端 `BookshelfManageViewModel(application)` `extends BaseViewModel(application)`,
- *   内部持有本类实例, 通过 `viewModelScope` + `AndroidBookshelfManagePlatform()` 注入;
- * - 转发 `upCanUpdate / updateBook / deleteBook / changeSource / clearCache /
- *   loadCacheFiles` 到本类;
- * - `saveAllUseBookSourceToFile / exportBookshelf` 留 app 端 (依赖 context.filesDir +
- *   文件流 + GSON + kotlinx.serialization + FileOutputStream, Android 专属)。
- *
- * # 留 app 端的方法 (Android-specific)
- *
- * - **saveAllUseBookSourceToFile**: 用 `context.filesDir` + `FileUtils.createFileWithReplace`
- *   + `GSON.writeToOutputStream`, 文件 I/O + GSON 序列化均未下沉, 留 app 端。
- * - **exportBookshelf**: 用 `context.filesDir` + `FileUtils` + `FileOutputStream` +
- *   `kotlinx.serialization.json.Json`, 文件 I/O 未下沉, 留 app 端。
- *
- * @param scope 协程作用域, actual 平台注入
- *   (Android = `viewModelScope` / 桌面 = 应用主作用域 / 窗口 scope)
+ * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
  * @param platform 平台专属依赖聚合 (Book.migrateTo + BookHelp.clearCache/getChapterFiles +
  *   FileBook.deleteBook + clearCacheSuccessMessage 字符串)
  */

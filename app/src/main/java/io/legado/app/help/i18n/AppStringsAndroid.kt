@@ -46,4 +46,6 @@ private val AppStringKey.resId: Int
         AppStringKey.bookshelf_layout -> R.string.bookshelf_layout
         AppStringKey.thread_count -> R.string.thread_count
         AppStringKey.local_book -> R.string.local_book
+        AppStringKey.force_refresh_book -> R.string.force_refresh_book
+        AppStringKey.update_toc -> R.string.update_toc
     }

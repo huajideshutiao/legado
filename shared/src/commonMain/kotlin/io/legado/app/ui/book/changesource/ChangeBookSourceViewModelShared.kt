@@ -49,59 +49,24 @@ import kotlinx.coroutines.withTimeout
 import kotlin.math.min
 
 /**
- * 换源 ViewModel 共享核心 (KMP 版, commonMain)。
+ * 换源 ViewModel 共享核心 (commonMain)。
  *
- * # 背景
+ * 对照 app 端 `ChangeBookSourceViewModel(app) : BaseViewModel(app)`: 核心业务编排
+ * (书源加载/并发搜索/排序/字数加载/切源/评分/置顶置底/禁用删除/自动换源/刷新/筛选)
+ * 不依赖 Android 专属 API, 仅依赖 [AppDbProviders]/[WebBook]/[SourceHelp]/[Coroutine],
+ * 可下沉多端复用; [Coroutine.async] 替代 BaseViewModel.execute, 行为等价; LiveData →
+ * StateFlow, Android 宿主 collect { postValue } 桥接。
  *
- * 对照 app 端原 `ChangeBookSourceViewModel(application: Application) : BaseViewModel(application)`:
- * - 核心业务编排 (书源加载 / 并发搜索 / 排序 / 字数加载 / 切源 / 评分 / 置顶置底 / 禁用删除 /
- *   自动换源 / 刷新列表 / 筛选) 不依赖 Android 专属 API, 仅依赖 [AppDbProviders] /
- *   [WebBook] / [SourceHelp] / [Coroutine] / 协程, 可以下沉 commonMain 供多端复用。
- * - 状态用 [MutableStateFlow] 替代 `androidx.lifecycle.MutableLiveData` (LiveData 不可 KMP)。
- *   Android 宿主用 `viewModelScope.launch { shared.searchState.collect { ... } }` 把 StateFlow
- *   转发到 MutableLiveData, 调用方 `observe` 用法不变 (项目未引入 lifecycle-livedata-ktx,
- *   不用 `StateFlow.asLiveData()` 扩展)。
- * - DAO 访问走 [AppDbProviders.get] (宿主启动时注册), 替代 app 端 `appDb` 单例。
- * - [Coroutine.async] (commonMain 版, 已下沉) 替代 `BaseViewModel.execute`, 行为等价
- *   (内部都是 SupervisorJob + Dispatchers.IO + 链式 onSuccess/onError 回调切到 mainDispatcher)。
+ * 平台专属逻辑经 [ChangeBookSourcePlatform] 注入: AppConfig 4 个换源开关 + threadCount +
+ * searchGroup 读写 (SharedPreferences, AppConfigAccessor 未含这些字段); BookHelp.getDurChapter
+ * 与 ContentProcessor.getContent (重 Android 依赖) 留 app 端; SourceConfig 评分 3 方法已下沉
+ * (走 PreferenceProviders), 仍经 platform 注入保持聚合一致; toastOnUi Context 专属。
  *
- * # 留 app 端实现的部分 (Android-specific)
+ * 设计: 组合委托 (参考 [TocViewModelShared]); app 端 ChangeChapterSourceViewModel 继承
+ * ChangeBookSourceViewModel 覆盖 initData, 本类不接收 Bundle——app 端保留原签名解析后
+ * 转发 (name/author/fromReadBookActivity/oldBook), 子类签名不变。
  *
- * 以下平台专属逻辑通过 [ChangeBookSourcePlatform] 聚合接口注入, 不在 commonMain 硬编码:
- * - **AppConfig 4 个换源开关** + threadCount + searchGroup 读写:
- *   `AppConfig.changeSourceCheckAuthor / changeSourceLoadInfo / changeSourceLoadToc /
- *   changeSourceLoadWordCount / threadCount / searchGroup` 依赖 SharedPreferences + appCtx,
- *   未下沉 (AppConfigAccessor 接口暂未包含 4 个 changeSource* 字段)。
- * - **BookHelp.getDurChapter**: 依赖 `EscapeUtils.jaccardSimilarity` + `StringUtils.fullToHalf`
- *   + `Pattern` 等字符串处理, BookHelp 重 Android 依赖 (BitmapFactory/ParcelFileDescriptor 等),
- *   留 app 端。
- * - **ContentProcessor.getContent**: 依赖 `appDb.replaceRuleDao` + `BookHelp` + `Pattern` 等,
- *   ContentProcessor 重 Android 依赖, 留 app 端。
- * - **SourceConfig 评分 3 个方法** (getBookScore/setBookScore/getSourceScore):
- *   SourceConfig 已下沉 commonMain (走 PreferenceProviders), 各端 platform 实现直接调用;
- *   仍通过 [ChangeBookSourcePlatform] 注入以保持与 getDurChapter/processContent 等聚合一致。
- * - **toastOnUi**: Android Context 专属。
- *
- * # 设计选择 (避免超多继承与参数传递)
- *
- * 不采用 `expect abstract class` 让 app 端子类继承: BaseViewModel 是 AndroidViewModel,
- * commonMain 不可用, Kotlin 单继承会冲突。改用**组合委托**模式 (参考 [TocViewModelShared]):
- * - app 端 ChangeBookSourceViewModel `extends BaseViewModel`, 内部持有本类实例;
- * - 通过 [ChangeBookSourcePlatform] 聚合接口注入平台专属依赖, 仅 1 个参数不算"超多";
- * - 转发 `initData / startSearch / refresh / screen / getToc / disableSource / topSource /
- *   bottomSource / del / autoChangeSource / setBookScore / getBookScore / startRefreshList /
- *   stopSearch / startOrStopSearch / onLoadWordCountChecked` 到本类;
- * - Android 专属部分 (initData 解析 Bundle / toastOnUi) 在 app 端 ViewModel 处理后转发。
- *
- * # ChangeChapterSourceViewModel 兼容
- *
- * app 端 [ChangeChapterSourceViewModel] 继承 [ChangeBookSourceViewModel], 覆盖 initData
- * 调用 super.initData 添加 chapterIndex/chapterTitle 解析。本类 initData 不接收 Bundle,
- * app 端 ChangeBookSourceViewModel.initData 保留 (Bundle?, Book?, Boolean) 签名, 解析后
- * 转发到本类 (name, author, fromReadBookActivity, oldBook), 子类签名不变。
- *
- * @param scope 协程作用域, actual 平台注入
- *   (Android = `viewModelScope` / 桌面 = 应用主作用域 / 窗口 scope)
+ * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
  * @param platform 平台专属依赖聚合 (AppConfig 4 开关 + threadCount + searchGroup 读写 +
  *   BookHelp.getDurChapter + ContentProcessor.getContent + SourceConfig 评分 3 方法 +
  *   toastOnUi)

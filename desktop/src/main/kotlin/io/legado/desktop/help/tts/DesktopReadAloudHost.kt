@@ -13,6 +13,13 @@ import io.legado.app.service.ReadAloudChapterNavigator
 import io.legado.app.service.ReadAloudControllerShared
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
 import io.legado.app.ui.book.read.ReadBookEvents
+import io.legado.desktop.help.tts.DesktopReadAloudHost.controller
+import io.legado.desktop.help.tts.DesktopReadAloudHost.pause
+import io.legado.desktop.help.tts.DesktopReadAloudHost.pendingStartPos
+import io.legado.desktop.help.tts.DesktopReadAloudHost.play
+import io.legado.desktop.help.tts.DesktopReadAloudHost.resume
+import io.legado.desktop.help.tts.DesktopReadAloudHost.stop
+import io.legado.desktop.help.tts.DesktopReadAloudHost.syncReadPosition
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -285,6 +292,8 @@ object DesktopReadAloudHost {
             val chapter = readBook.curChapter ?: return
             val pageIndex = readBook.durPageIndexValue
             chapter.getPage(pageIndex)?.upPageAloudSpan(pos - chapter.getReadLength(pageIndex))
+            // 高亮是页对象原地修改，StateFlow 去重不重发；自增版本驱动 Compose Canvas 重绘
+            viewModel.bumpPageContentVersion()
         }.onFailure { AppLog.put("同步朗读位置出错", it) }
     }
 
@@ -309,6 +318,8 @@ object DesktopReadAloudHost {
         val readBook = ActiveReadBookRegistry.current ?: return
         runCatching {
             readBook.curChapter?.getPage(readBook.durPageIndexValue)?.removePageAloudSpan()
+            // 原地修改需自增版本驱动 Compose Canvas 重绘 (与 syncReadPosition 同口径)
+            ActiveReadBookRegistry.currentViewModel?.bumpPageContentVersion()
         }
     }
 

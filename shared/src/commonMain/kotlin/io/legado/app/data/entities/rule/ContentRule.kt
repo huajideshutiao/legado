@@ -10,7 +10,7 @@ import kotlinx.serialization.json.JsonNames
  *
  * subContent 字段挂 KS @SerialName + @JsonNames:
  * 旧书源 JSON 用 "lrcRule" 作为键时, KS (经 RulePolymorphicSerializer) 能正确反序列化到 subContent。
- * (Phase D: Gson @SerializedName(alternate) 路径已随 Gson 完全移除, 仅保留 KS 路径)
+ * (Gson @SerializedName(alternate) 路径已随 Gson 移除, 仅保留 KS 路径)
  */
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
@@ -33,7 +33,7 @@ data class ContentRule(
 ) {
 
     companion object {
-        // Phase D: 原 Gson jsonDeserializer 已移除, 反序列化由 RulePolymorphicSerializer 复刻
+        // 原 Gson jsonDeserializer 已移除, 反序列化由 RulePolymorphicSerializer 复刻
     }
 
 }

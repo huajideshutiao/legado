@@ -16,7 +16,7 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 
 /**
- * `image` 别名端到端测试（KJ1-b）。
+ * `image` 别名端到端测试。
  *
  * 验证 quickjs 桥对 app 侧 `bindings["image"] = BitmapImageOps` 注入模式的完整链路:
  * - Java 对象注入 + 方法重载分派 (decode(ByteArray) vs decode(String))
@@ -265,7 +265,7 @@ class ImageOpsAliasTest {
         assertEquals(Color.GREEN, cropped.getPixel(10, 10))
     }
 
-    /** platform 注入为纯 String, 值 android (KJ1-a)。 */
+    /** platform 注入为纯 String, 值 android。 */
     @Test
     fun testPlatformBindingIsAndroidString() {
         val result = evalWithImageAlias("typeof platform + ':' + platform;")

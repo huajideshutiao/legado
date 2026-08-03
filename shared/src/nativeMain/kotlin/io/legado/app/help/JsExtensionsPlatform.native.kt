@@ -5,6 +5,9 @@ import io.legado.app.utils.Base64Lenient
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.encodeURI
 
+/** 平台主线程判定 (iOS: NSThread / 鸿蒙: pthread_self 捕获比对, 见 iosMain/ohosMain actual)。 */
+internal expect fun isMainThreadPlatform(): Boolean
+
 /**
  * JsExtensionsCommon 平台相关 actual (iOS / 鸿蒙)。
  *
@@ -71,8 +74,17 @@ internal actual object JsExtensionsPlatform {
             .joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
     }
 
-    actual fun isMainThread(): Boolean = false
+    actual fun isMainThread(): Boolean = isMainThreadPlatform()
 }
+
+/**
+ * 平台主线程判定 (nativeMain 无法统一实现):
+ * - iOS: `NSThread.isMainThread` (platform.Foundation)
+ * - 鸿蒙: 启动期 (主线程) 捕获 pthread_self 后比对 (ohosMain, 见 OhosMainThreadDetector)
+ *
+ * 注: `kotlin.native.Platform` 无 isMainThread 属性 (已核实 Kotlin 2.3.20 stdlib 元数据),
+ * 只能走平台 API。
+ */
 
 /**
  * 纯 Kotlin SimpleDateFormat 子集实现 (UTC 时区)。

@@ -114,7 +114,7 @@ object BindingHandler {
                 )
             }
 
-            // ============ JavaAdapter (Phase 3 完整实现) ============
+            // ============ JavaAdapter (完整实现) ============
             // 返回原始 Java 代理对象, native 层包装为 JavaObject
 
             "__newJavaAdapter" -> {

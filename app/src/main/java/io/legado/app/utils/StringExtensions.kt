@@ -1,7 +1,6 @@
 package io.legado.app.utils
 
 import android.net.Uri
-import android.text.Editable
 import androidx.core.net.toUri
 import java.io.File
 
@@ -13,10 +12,8 @@ import java.io.File
  * 跨模块同包名同签名扩展自动合并, 消费方 import 零改动。
  *
  * cnCompare 已下沉 shared commonMain (StringCnCompare.kt, expect/actual 分派 ICU),
- * 本文件仅保留安卓绑定方法 (toEditable/parseToUri/isUri)。
+ * 本文件仅保留安卓绑定方法 (parseToUri/isUri)。
  */
-
-fun String.toEditable(): Editable = Editable.Factory.getInstance().newEditable(this)
 
 fun String.parseToUri(): Uri {
     return if (isUri()) this.toUri() else {

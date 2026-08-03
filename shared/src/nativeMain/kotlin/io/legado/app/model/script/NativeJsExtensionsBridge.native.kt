@@ -3,6 +3,7 @@
 package io.legado.app.model.script
 
 import io.legado.app.help.JsEncodeUtilsDefaults
+import io.legado.app.data.entities.BaseSource
 import io.legado.app.help.JsExtensionsCommon
 import io.legado.app.help.crypto.AsymmetricCrypto
 import io.legado.app.help.crypto.NativeAsymmetricCrypto
@@ -11,6 +12,8 @@ import io.legado.app.help.crypto.Sign
 import io.legado.app.help.crypto.SymmetricCrypto
 import io.legado.app.help.crypto.NativeSymmetricCrypto
 import io.legado.app.help.http.StrResponse
+import io.legado.app.model.analyzeRule.AnalyzeRuleCore
+import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.QueryTTF
 import io.legado.app.utils.GSON
 import io.legado.app.utils.JsURL
@@ -27,6 +30,8 @@ import io.legado.app.napi.quickjs.JS_GetLength
 import io.legado.app.napi.quickjs.JS_GetPropertyUint32
 import io.legado.app.napi.quickjs.JS_IsArray
 import io.legado.app.napi.quickjs.JS_NewArray
+import io.legado.app.napi.quickjs.JS_NewObject
+import io.legado.app.napi.quickjs.JS_SetPropertyStr
 import io.legado.app.napi.quickjs.JS_SetPropertyUint32
 import io.legado.app.napi.quickjs.qjs_IsBool
 import io.legado.app.napi.quickjs.qjs_IsNull
@@ -84,6 +89,7 @@ import kotlinx.cinterop.value
  *
  * # 补齐的方法 (methodId)
  * - 1-99: JsExtensionsCommon 纯函数面 (base64Encode/base64Decode/strToBytes/bytesToStr/hex/encodeURI/htmlFormat/timeFormat/randomUUID/t2s/s2t)
+ * - 23-28: 规则引擎核心补齐 (getSource/put/get/evalJS/getString/getStringList, 对齐 JVM @JsApi 分派表)
  * - 100-199: JsEncodeUtilsDefaults 摘要/HMAC 面 (md5Encode/md5Encode16/digestHex/digestBase64Str/HMacHex/HMacBase64)
  * - 200-299: 工厂方法 (createSymmetricCrypto/createAsymmetricCrypto/createSign) 返回 handle (Float64)
  * - 1000-1099: SymmetricCrypto 对象方法 (encryptBase64/decryptStr/decrypt/setIv/encrypt/encryptHex)
@@ -94,7 +100,8 @@ import kotlinx.cinterop.value
  * - 400-499: UI/杂项 (refreshUi/log/logType/toast/longToast/androidId/openUrl/startBrowser 系/getVerificationCode)
  * - 500-599: 字体族 (queryTTF/queryBase64TTF/replaceFont)
  * - 600-699: 文件/压缩族 (getFile/readFile/readTxtFile/deleteFile/解压全族/downloadFile/cacheFile/importScript)
- * - 1300-1399: QueryTTF 对象方法; 1400-1499: StrResponse 对象方法; 1500-1599: JsURL 对象属性
+ * - 1300-1399: QueryTTF 对象方法; 1400-1499: StrResponse 对象方法; 1500-1599: JsURL 对象属性;
+ *   1600-1699: BaseSource 对象方法 (getKey/getTag/getSourceType/getHeaderMap/getLoginUrl/getHeader/getLoginJs/getConcurrentRate/getJsLib)
  *
  * 注: AnalyzeUrlCore/AnalyzeRuleCore 实现 JsExtensionsCommon 但不实现 JsEncodeUtilsDefaults,
  * 故 md5Encode 等摘要方法在 AnalyzeUrlCore/AnalyzeRuleCore 路径下不可用 (JS 调用返回 undefined);
@@ -340,6 +347,56 @@ object NativeJsExtensionsBridge {
                 // toURL(url[, baseUrl]) → JsURL handle (JS 层包装为属性对象)
                 val jsUrl = obj.toURL(args.getString(0), args.getOrNull(1) as? String)
                 qjs_NewFloat64(ctx, registerObject(jsUrl).toDouble())
+            }
+            obj is JsExtensionsCommon && methodId == 23 -> {
+                // getSource() → BaseSource handle (0 = null, JS 层 __createBaseSourceObj 包装)
+                val source = when (obj) {
+                    is AnalyzeRuleCore -> obj.getSource()
+                    is AnalyzeUrlCore -> obj.getSource()
+                    is BaseSource -> obj // BaseSource.getSource() 返回自身 (与 JVM 行为一致)
+                    else -> null
+                }
+                qjs_NewFloat64(ctx, (source?.let { registerObject(it) } ?: 0L).toDouble())
+            }
+
+            obj is JsExtensionsCommon && methodId == 24 -> {
+                // put(key, value) → value (AnalyzeRuleCore/AnalyzeUrlCore 共用, 保存变量)
+                stringToJsValue(ctx, obj.corePut(args.getString(0), args.getString(1)))
+            }
+
+            obj is JsExtensionsCommon && methodId == 25 -> {
+                // get(key) → String (读取变量)
+                stringToJsValue(ctx, obj.coreGet(args.getString(0)))
+            }
+
+            obj is JsExtensionsCommon && methodId == 26 -> {
+                // evalJS(jsStr) → 任意值 (String/Number/Boolean/Map/List → JS 值)
+                val result = obj.coreEvalJS(args.getString(0))
+                anyToJs(ctx, result)
+            }
+
+            obj is AnalyzeRuleCore && methodId == 27 -> {
+                // getString(rule, content[, isUrl]) → String (规则解析, 与 JVM AnalyzeRule.getString 对齐)
+                val isUrl = (args.getOrNull(2) as? Boolean) ?: false
+                stringToJsValue(
+                    ctx,
+                    obj.getString(args.getOrNull(0) as? String, args.getOrNull(1), isUrl)
+                )
+            }
+
+            obj is AnalyzeRuleCore && methodId == 28 -> {
+                // getStringList(rule, content[, isUrl]) → String[] (null → JS null)
+                val isUrl = (args.getOrNull(2) as? Boolean) ?: false
+                val list = obj.getStringList(args.getOrNull(0) as? String, args.getOrNull(1), isUrl)
+                if (list == null) {
+                    jsNull()
+                } else {
+                    val arr = JS_NewArray(ctx)
+                    list.forEachIndexed { i, s ->
+                        JS_SetPropertyUint32(ctx, arr, i.toUInt(), stringToJsValue(ctx, s))
+                    }
+                    arr
+                }
             }
 
             // ============ JsEncodeUtilsDefaults 摘要/HMAC 面 (100-199) ============
@@ -810,6 +867,21 @@ object NativeJsExtensionsBridge {
                 obj.searchParams?.let { stringToJsValue(ctx, GSON.toJson(it)) } ?: jsNull()
             }
 
+            // ============ BaseSource 对象方法 (1600-1699, getSource() 返回对象) ============
+            obj is BaseSource && methodId == 1601 -> stringToJsValue(ctx, obj.getKey())
+            obj is BaseSource && methodId == 1602 -> stringToJsValue(ctx, obj.getTag())
+            obj is BaseSource && methodId == 1603 -> qjs_NewInt32(ctx, obj.getSourceType())
+            obj is BaseSource && methodId == 1604 -> {
+                // getHeaderMap() → JSON 对象 (null → JS null)
+                obj.getHeaderMap()?.let { stringToJsValue(ctx, GSON.toJson(it)) } ?: jsNull()
+            }
+
+            obj is BaseSource && methodId == 1605 -> stringToJsValue(ctx, obj.loginUrl)
+            obj is BaseSource && methodId == 1606 -> stringToJsValue(ctx, obj.header)
+            obj is BaseSource && methodId == 1607 -> stringToJsValue(ctx, obj.getLoginJs())
+            obj is BaseSource && methodId == 1608 -> stringToJsValue(ctx, obj.concurrentRate)
+            obj is BaseSource && methodId == 1609 -> stringToJsValue(ctx, obj.jsLib)
+
             else -> jsUndefined()
         }
     }
@@ -888,6 +960,13 @@ function __createJavaObj(handle) {
     obj.timeFormatUTC = function(time, format, sh) { return __nativeDispatch(handle, 20, [time, format, sh]); };
     obj.toNumChapter = function(s) { return __nativeDispatch(handle, 21, [s]); };
     obj.toURL = function(url, baseUrl) { return __createJsUrlObj(__nativeDispatch(handle, 22, [url, baseUrl])); };
+    // ============ 规则引擎核心补齐 (23-28, 对齐 JVM @JsApi 分派表) ============
+    obj.getSource = function() { var h = __nativeDispatch(handle, 23, []); return h ? __createBaseSourceObj(h) : null; };
+    obj.put = function(key, value) { return __nativeDispatch(handle, 24, [key, value]); };
+    obj.get = function(key) { return __nativeDispatch(handle, 25, [key]); };
+    obj.evalJS = function(jsStr) { return __nativeDispatch(handle, 26, [jsStr]); };
+    obj.getString = function(rule, content, isUrl) { return __nativeDispatch(handle, 27, [rule, content, isUrl]); };
+    obj.getStringList = function(rule, content, isUrl) { return __nativeDispatch(handle, 28, [rule, content, isUrl]); };
     // ============ 网络族 (300-399) ============
     obj.ajax = function(url) { return __nativeDispatch(handle, 301, [url]); };
     obj.ajaxAll = function(urlList) {
@@ -1027,6 +1106,25 @@ function __createJsUrlObj(handle) {
     } });
     return obj;
 }
+function __createBaseSourceObj(handle) {
+    if (!handle || handle <= 0) return null;
+    // BaseSource 实现 JsExtensionsCommon, 继承完整 java 方法面 (ajax/getHeaderMap/put/get 等)
+    var obj = __createJavaObj(handle);
+    obj.__h = handle;
+    obj.getKey = function() { return __nativeDispatch(handle, 1601, []); };
+    obj.getTag = function() { return __nativeDispatch(handle, 1602, []); };
+    obj.getSourceType = function() { return __nativeDispatch(handle, 1603, []); };
+    obj.getHeaderMap = function() {
+        var s = __nativeDispatch(handle, 1604, []);
+        return (s === null || s === undefined) ? null : JSON.parse(s);
+    };
+    obj.getLoginUrl = function() { return __nativeDispatch(handle, 1605, []); };
+    obj.getHeader = function() { return __nativeDispatch(handle, 1606, []); };
+    obj.getLoginJs = function() { return __nativeDispatch(handle, 1607, []); };
+    obj.getConcurrentRate = function() { return __nativeDispatch(handle, 1608, []); };
+    obj.getJsLib = function() { return __nativeDispatch(handle, 1609, []); };
+    return obj;
+}
     """.trimIndent()
 
     // ============ 工具方法: JSValue ↔ Kotlin 转换 ============
@@ -1140,6 +1238,60 @@ function __createJsUrlObj(handle) {
         is String -> encodeToByteArray()
         is List<*> -> ByteArray(size) { (this[it] as? Number)?.toInt()?.toByte() ?: 0 }
         else -> null
+    }
+
+    // ============ 规则引擎核心方法 (AnalyzeRuleCore / AnalyzeUrlCore 共用, [X4] 补齐) ============
+
+    private fun Any.corePut(key: String, value: String): String = when (this) {
+        is AnalyzeRuleCore -> put(key, value)
+        is AnalyzeUrlCore -> put(key, value)
+        else -> value
+    }
+
+    private fun Any.coreGet(key: String): String = when (this) {
+        is AnalyzeRuleCore -> get(key)
+        is AnalyzeUrlCore -> get(key)
+        else -> ""
+    }
+
+    private fun Any.coreEvalJS(jsStr: String): Any? = when (this) {
+        is AnalyzeRuleCore -> evalJS(jsStr)
+        is AnalyzeUrlCore -> evalJS(jsStr)
+        else -> null
+    }
+
+    /**
+     * 任意 Kotlin 值 → JSValue (evalJS 返回值用):
+     * 基本类型直转; Map/List 递归构造 JS 对象/数组 (JS_SetProperty 转移所有权, 不额外 free);
+     * 其余对象 toString 降级 (与 JVM 反射包装的差异, 复杂对象不可桥接)。
+     */
+    private fun anyToJs(ctx: CPointer<JSContext>, value: Any?): CValue<JSValue> = when (value) {
+        null -> jsNull()
+        is String -> stringToJsValue(ctx, value)
+        is Boolean -> qjs_NewBool(ctx, if (value) 1 else 0)
+        is Number -> {
+            val d = value.toDouble()
+            if (d.isNaN() || d.isInfinite()) jsNull() else qjs_NewFloat64(ctx, d)
+        }
+
+        is Map<*, *> -> {
+            val obj = JS_NewObject(ctx)
+            for ((k, v) in value) {
+                val key = k?.toString() ?: continue
+                JS_SetPropertyStr(ctx, obj, key, anyToJs(ctx, v))
+            }
+            obj
+        }
+
+        is List<*> -> {
+            val arr = JS_NewArray(ctx)
+            value.forEachIndexed { i, v ->
+                JS_SetPropertyUint32(ctx, arr, i.toUInt(), anyToJs(ctx, v))
+            }
+            arr
+        }
+
+        else -> stringToJsValue(ctx, value.toString())
     }
 }
 

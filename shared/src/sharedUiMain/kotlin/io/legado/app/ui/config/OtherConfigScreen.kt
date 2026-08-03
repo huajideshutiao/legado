@@ -23,12 +23,16 @@ import legado.shared.generated.resources.clear_webview_data_summary
 import legado.shared.generated.resources.click_book_open_read
 import legado.shared.generated.resources.click_book_open_read_summary
 import legado.shared.generated.resources.custom_page_key
+import legado.shared.generated.resources.default_app_variant
+import legado.shared.generated.resources.default_app_variant_value
 import legado.shared.generated.resources.default_home_page
+import legado.shared.generated.resources.default_home_page_value
 import legado.shared.generated.resources.direct_link_upload_rule
 import legado.shared.generated.resources.direct_link_upload_rule_summary
 import legado.shared.generated.resources.ignore_audio_focus_summary
 import legado.shared.generated.resources.ignore_audio_focus_title
 import legado.shared.generated.resources.language
+import legado.shared.generated.resources.language_value
 import legado.shared.generated.resources.media_button_on_exit_summary
 import legado.shared.generated.resources.media_button_on_exit_title
 import legado.shared.generated.resources.pre_download
@@ -52,14 +56,12 @@ import legado.shared.generated.resources.shrink_database_summary
 import legado.shared.generated.resources.threads_num_title
 import legado.shared.generated.resources.update_to_variant_summary
 import legado.shared.generated.resources.update_to_variant_title
+import legado.shared.generated.resources.update_url_summary
+import legado.shared.generated.resources.update_url_title
 import legado.shared.generated.resources.user_agent
 import legado.shared.generated.resources.web_port_title
 import legado.shared.generated.resources.web_service_wake_lock
 import legado.shared.generated.resources.web_service_wake_lock_summary
-import legado.shared.generated.resources.default_app_variant
-import legado.shared.generated.resources.default_app_variant_value
-import legado.shared.generated.resources.default_home_page_value
-import legado.shared.generated.resources.language_value
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -95,6 +97,9 @@ fun OtherConfigScreen(
     onShrinkDatabase: () -> Unit,
     onThreadCount: () -> Unit,
     onCustomPageKey: () -> Unit,
+    updateUrlSummary: String = "",
+    showUpdateUrl: Boolean = false,
+    onUpdateUrl: () -> Unit = {},
 ) {
     val languageEntries = stringArrayResource(Res.array.language)
     val languageValues = stringArrayResource(Res.array.language_value)
@@ -136,6 +141,8 @@ fun OtherConfigScreen(
     val titleUpdateToVariant = stringResource(Res.string.update_to_variant_title)
     val summaryUpdateToVariant = stringResource(Res.string.update_to_variant_summary)
     val titleAutoCheckUpdate = stringResource(Res.string.auto_check_update)
+    val titleUpdateUrl = stringResource(Res.string.update_url_title)
+    val summaryUpdateUrlEmpty = stringResource(Res.string.update_url_summary)
     val titleWebPort = stringResource(Res.string.web_port_title)
     val titleCleanCache = stringResource(Res.string.clear_cache)
     val summaryCleanCache = stringResource(Res.string.clear_cache_summary)
@@ -276,6 +283,15 @@ fun OtherConfigScreen(
                 title = titleAutoCheckUpdate,
                 defaultValue = true,
             )
+            // 自定义更新地址: 仅接入 AppUpdateManager 的端显示 (当前仅桌面端),
+            // 与 AboutRoute 的"检查更新"入口同一 gate (AppUpdateManager.isAvailable)
+            if (showUpdateUrl) {
+                preference(
+                    title = titleUpdateUrl,
+                    summary = updateUrlSummary.ifEmpty { summaryUpdateUrlEmpty },
+                    onClick = onUpdateUrl,
+                )
+            }
             preference(
                 title = titleWebPort,
                 summary = webPortSummary,

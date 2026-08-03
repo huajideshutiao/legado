@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.ThreadSafeDateFormat
 import io.legado.app.data.AppDbProviders
+import io.legado.app.data.dao.sortedByLocalizedOrder
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.storage.BackupFileOps
@@ -28,7 +29,6 @@ import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.no_book
@@ -80,7 +80,7 @@ fun BookmarkRoute(
                             val bookmarks = if (book != null) {
                                 dao.getByBook(book.name, book.author)
                             } else {
-                                dao.all()
+                                dao.all().sortedByLocalizedOrder()
                             }
                             BackupFileOps.writeText(path, Json.encodeToString(bookmarks))
                         }
@@ -107,7 +107,7 @@ fun BookmarkRoute(
                             val bookmarks = if (book != null) {
                                 dao.getByBook(book.name, book.author)
                             } else {
-                                dao.all()
+                                dao.all().sortedByLocalizedOrder()
                             }
                             val sb = StringBuilder()
                             var name = ""

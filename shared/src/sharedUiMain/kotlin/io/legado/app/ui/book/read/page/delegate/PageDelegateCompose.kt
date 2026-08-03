@@ -9,12 +9,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import io.legado.app.ui.book.read.ReadBookViewModelShared
+import io.legado.app.ui.book.read.page.AutoPagerCompose
 import io.legado.app.ui.book.read.page.PageDelegateShared
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
 
 /**
  * 翻页动画委托基类（sharedUiMain，Compose Multiplatform 版）。
@@ -185,9 +185,39 @@ abstract class PageDelegateCompose(
     }
 
     /**
+     * 自动翻页控制器（由 [io.legado.app.ui.book.read.page.AutoPagerCompose] 挂载）。
+     *
+     * 手势暂停/恢复/翻页复位钩子：手势按下（[abortAnim]）→ pause，动画结束
+     * （[resetState]）→ resume，实际换页（onAnimStop/abortAnim 补页分支）→ reset。
+     * 用 `mutableStateOf` 承载，渲染侧（ReadViewComposable 揭示覆盖层）订阅变化。
+     */
+    var autoPager: AutoPagerCompose? by mutableStateOf(null)
+
+    /**
+     * 自动翻页连续滚动驱动（滚动模式）：按推进量滚动（px，正值 = 内容上移露出下一页）。
+     *
+     * 基类默认忽略（非滚动模式由 AutoPagerCompose 的揭示动画覆盖层承担）；
+     * [ScrollPageDelegateCompose] 覆写为走行级 scroll 折算（页边界翻页/钳制，
+     * 对照旧 AutoPager 每帧 curPage.scroll(-scrollOffset)）。
+     *
+     * @return false = 命中硬边界（书首/书末），调用方应停止自动翻页
+     */
+    open fun onAutoScrollBy(deltaPx: Float): Boolean = true
+
+    /** 滚动视口高度（px），自动翻页按 height / autoReadSpeed 秒换算每拍推进量 */
+    open val autoScrollHeight: Int get() = viewHeight
+
+    /**
+     * 自动翻页结束复位：清除滚动驱动留下的状态（由 [AutoPagerCompose.stop] 调用）。
+     * 基类默认空实现；需要回滚偏移的子类覆写。
+     */
+    open fun onAutoScrollEnd() {}
+
+    /**
      * 重置状态字段（与 app 端 stopScroll 行为对应）。
      *
      * 子类 [onAnimStop] 在 finally 块中调用，确保动画结束后状态归零。
+     * 动画结束同时恢复自动翻页推进（对照原版 onScrollAnimStop → autoPager.resume）。
      */
     protected fun resetState() {
         isStarted = false
@@ -197,6 +227,7 @@ abstract class PageDelegateCompose(
         mDirection = PageDirectionShared.NONE
         _currentOffset = 0f
         animJob = null
+        autoPager?.resume()
     }
 
     // endregion
@@ -218,7 +249,7 @@ abstract class PageDelegateCompose(
      * @param curContent 当前页内容
      * @param nextContent 下一页内容
      * @param onClick 单击回调（delegate 内部 [onTap] 判定中心区域后转发，左右区域直接翻页不转发）
-     * @param onLongClick 长按回调（用于文字选择 / 朗读菜单）
+     * @param onLongClick 长按回调（x/y 落点坐标，用于页内文字选择命中判定）
      */
     @Composable
     abstract fun renderPageAnimation(
@@ -228,7 +259,7 @@ abstract class PageDelegateCompose(
         curContent: @Composable () -> Unit,
         nextContent: @Composable () -> Unit,
         onClick: (TextColumn?) -> Unit,
-        onLongClick: (TextColumn?) -> Unit,
+        onLongClick: (Float, Float) -> Unit,
     )
 
     /**

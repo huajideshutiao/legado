@@ -19,6 +19,7 @@ import io.legado.app.model.Download
 import io.legado.app.ui.compose.MarkdownContentSelectable
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.utils.openUrl
 import io.legado.app.utils.toastOnUi
 
 /**
@@ -34,6 +35,7 @@ class UpdateDialog() : BaseComposeDialogFragment() {
             putString("updateBody", updateInfo.updateLog)
             putString("url", updateInfo.downloadUrl)
             putString("name", updateInfo.fileName)
+            putString("releasePageUrl", updateInfo.releasePageUrl)
         }
     }
 
@@ -58,6 +60,12 @@ class UpdateDialog() : BaseComposeDialogFragment() {
                         if (url != null && name != null) {
                             Download.start(url, name)
                             toastOnUi(R.string.download_start)
+                        }
+                    }
+                    val releasePageUrl = arguments?.getString("releasePageUrl").orEmpty()
+                    if (releasePageUrl.isNotBlank()) {
+                        AppTextButton(text = stringResource(R.string.open_release_page)) {
+                            requireContext().openUrl(releasePageUrl)
                         }
                     }
                 },

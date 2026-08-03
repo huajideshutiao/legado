@@ -61,7 +61,7 @@ object UpdateStrategies {
 }
 
 /**
- * 当前端的运行时信息 (平台/版本号/渠道/架构), 由各端启动时注册。
+ * 当前端的运行时信息 (平台/版本号/渠道/架构/自建更新源), 由各端启动时注册。
  *
  * Android 端不走这里 (AboutActivity 直接用 [AppUpdateShared.check]);
  * desktop/iOS/鸿蒙在入口注册后, shared 的关于页即可自行完成"检查更新"全流程。
@@ -72,6 +72,12 @@ interface AppUpdateEnvironment {
     val currentAppVariant: AppVariant get() = AppVariant.OFFICIAL
     val supportedAbis: List<String> get() = listOf("arm64")
     val updateToVariant: String get() = "default_version"
+
+    /**
+     * 自建更新源配置 (app 端 `AppConfig.updateUrl` JSON 协议, 见 [CustomUrlUpdateChecker]);
+     * 空串 = 走默认策略的检测器 ([GitHubReleaseChecker])。
+     */
+    val updateUrl: String get() = ""
 }
 
 /**
@@ -95,7 +101,12 @@ object AppUpdateManager {
         val env = environment ?: return UpdateCheckResult.Failed(
             IllegalStateException("AppUpdateManager 未注册 AppUpdateEnvironment")
         )
-        return UpdateStrategies.of(env.platform).checker.check(
+        val strategy = UpdateStrategies.of(env.platform)
+        // updateUrl 非空 → 自定义源; 为空回退默认策略 (GitHubReleaseChecker), 与 app 端一致
+        val updateUrls = CustomUrlUpdateChecker.parseUrls(env.updateUrl)
+        val checker =
+            if (updateUrls.isEmpty()) strategy.checker else CustomUrlUpdateChecker(updateUrls)
+        return checker.check(
             UpdateCheckRequest(
                 platform = env.platform,
                 currentVersionName = env.currentVersionName,

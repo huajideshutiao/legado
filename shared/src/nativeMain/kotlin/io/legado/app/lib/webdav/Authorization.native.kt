@@ -2,6 +2,7 @@ package io.legado.app.lib.webdav
 
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Server.WebDavConfig
+import io.legado.app.utils.textCharsetCodec
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.coroutines.runBlocking
@@ -15,11 +16,9 @@ import kotlinx.coroutines.runBlocking
  * 详见 commonMain/kotlin/io/legado/app/lib/webdav/Authorization.kt expect 注释。
  *
  * - 用 [Base64] (kotlin.io.encoding 标准库, KMP 可用) 实现 Basic 认证
- * - 与 jvmAndAndroidMain 的差异: 编码 charset 不同
- *   - jvmAndAndroidMain: okhttp3.Credentials.basic(username, password, StandardCharsets.ISO_8859_1)
- *   - nativeMain: "$username:$password".encodeToByteArray() (UTF-8)
- *   - ASCII 用户名/密码场景两者完全一致; 非 ASCII 场景可能与服务端期望的 ISO_8859_1 解码不一致
- *     (功能降级, 与 nativeMain commonMain 无 ISO_8859_1 charset 限制一致, 见 PlatformEncoding.kt)
+ * - 与 jvmAndAndroidMain 完全一致: okhttp3.Credentials.basic(username, password, ISO_8859_1)
+ *   ↔ 本端 [textCharsetCodec]("ISO-8859-1").encode("$username:$password") 后 Base64
+ *   (Latin1Codec 与 JVM REPLACE 模式一致: 不可映射字符替换为 '?')
  * - `Authorization(serverID)` 走 AppDbProviders (commonMain 已可用, iOS/鸿蒙端数据库驱动由宿主注册)
  *
  * 注: nativeMain 不依赖任何平台专属 API (iOS Foundation / 鸿蒙 napi), 纯 KMP 标准库实现。
@@ -33,9 +32,11 @@ actual class Authorization actual constructor(
     actual var name: String = "Authorization"
         private set
 
-    // Basic 认证头: "Basic <base64(username:password)>"
-    // 注: UTF-8 编码, 与 jvmAndAndroidMain 的 ISO_8859_1 在 ASCII 场景一致; 非 ASCII 场景为已知降级
-    actual var data: String = "Basic " + Base64.encode("$username:$password".encodeToByteArray())
+    // Basic 认证头: "Basic <base64(ISO_8859_1(username:password))>", 与 jvm 端 ISO_8859_1 字节一致
+    // (Kotlin/Native 无 Charset 类型, 复用 TextCharsetCodec 的 Latin1Codec: 逐字符取低 8 位, 超范围替换 '?')
+    actual var data: String = "Basic " + Base64.encode(
+        textCharsetCodec("ISO-8859-1").encode("$username:$password")
+    )
         private set
 
     actual constructor(serverID: Long) : this(

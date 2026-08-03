@@ -32,11 +32,13 @@ object ColorUtils {
     }
 
     /**
-     * 输出 #AARRGGBB 8 位大写。
+     * 输出 #RRGGBB 6 位大写 (对齐原版 `String.format("#%06X", 0xFFFFFF and intColor)`;
+     * String.format 是 JVM-only API, commonMain 用纯 Kotlin 等价实现, 输出完全一致)。
+     * alpha 被屏蔽, 半透明色只显示 RGB 部分 (原版行为)。
      */
     fun intToString(intColor: Int): String {
-        // 用 toUInt() 避免 Int.toString(16) 在负数时输出带 `-` 的字符串
-        val hex = intColor.toUInt().toString(16).uppercase().padStart(8, '0')
+        // 0xFFFFFF and 保证 6 位且无负数符号 (原 String.format %X 对负数补 F 的语义)
+        val hex = (0xFFFFFF and intColor).toString(16).uppercase().padStart(6, '0')
         return "#$hex"
     }
 

@@ -11,6 +11,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
+import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
@@ -20,7 +21,10 @@ import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.manga.MangaReaderUiEvent
 import io.legado.app.ui.book.manga.config.MangaColorFilterDialog
 import io.legado.app.ui.book.manga.config.MangaFooterSettingDialog
+import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.config.ClickActionDialog
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
@@ -36,8 +40,12 @@ import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.cloud_progress_exceeds_current
+import legado.shared.generated.resources.no
+import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.pre_download
 import legado.shared.generated.resources.setting_manga_auto_page_speed
+import legado.shared.generated.resources.sync_book_progress_t
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -106,6 +114,32 @@ fun MangaReaderRoute(
     DisposableEffect(Unit) {
         screenModel.onEnter()
         onDispose { screenModel.onLeave() }
+    }
+
+    // 云进度同步确认对话框 (对照 app 端 ReadMangaActivity.sureNewProgress)
+    var syncProgress by remember { mutableStateOf<BookProgress?>(null) }
+    LaunchedEffect(screenModel) {
+        ReadBookEvents.newProgressConfirm.collect { progress ->
+            syncProgress = progress
+        }
+    }
+    syncProgress?.let { progress ->
+        AppAlertDialog(
+            onDismissRequest = {
+                screenModel.dismissSyncProgress()
+                syncProgress = null
+            },
+            title = stringResource(Res.string.sync_book_progress_t),
+            message = stringResource(Res.string.cloud_progress_exceeds_current),
+            okButton = AlertButton(stringResource(Res.string.ok)) {
+                screenModel.confirmSyncProgress(progress)
+                syncProgress = null
+            },
+            cancelButton = AlertButton(stringResource(Res.string.no)) {
+                screenModel.dismissSyncProgress()
+                syncProgress = null
+            },
+        )
     }
 
     // 返回栈由导航器统一管理; 目录派发独立 BookRef 快照 + resultKey

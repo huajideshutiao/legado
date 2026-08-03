@@ -9,11 +9,10 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.serializer
 
 /**
- * Gson Phase D 兼容层: 保留 app 模块原有 GSON API 表面, 内部转发到 kotlinx-serialization。
+ * Gson 兼容层: 保留 app 模块原有 GSON API 表面, 内部转发到 kotlinx-serialization。
  *
  * - [GSON]/[GSONStrict]: 别名, 复用 shared 模块的 [KS_JSON]/[KS_JSON_STRICT] 实例
  * - [toJson]/[fromJsonObject]/[fromJsonArray]: 扩展函数, 复刻原 GsonExtensions.shared.kt 的语义

@@ -7,7 +7,7 @@ import org.junit.Test
 /**
  * KS_JSON / AnyMapSerializer 行为锁: 复刻原 GsonInstancesTest 的语义验证。
  *
- * Phase D: 原 GsonInstancesTest 用 GSON.fromJson 验证 MapDeserializerDoubleAsIntFix
+ * 原 GsonInstancesTest 用 GSON.fromJson 验证 MapDeserializerDoubleAsIntFix
  * (整值 Double→Long) + INITIAL_GSON 数字策略 + GSONStrict 继承。
  * 现改为验证 [AnyMapSerializer] (复刻 MapDeserializerDoubleAsIntFix) 与
  * [KS_JSON]/[KS_JSON_STRICT] 的宽松/严格策略差异, 行为等价。

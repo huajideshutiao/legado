@@ -8,9 +8,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
-import java.io.BufferedReader
-import java.io.InputStream
-import java.io.InputStreamReader
 
 /**
  * ConvertExtensions Android 部分 (Bitmap/Drawable/Resources/dpPx/spPx 等 Android 依赖).
@@ -50,25 +47,6 @@ private fun toDrawable(bitmap: Bitmap?): Drawable? {
 
 fun ConvertUtils.toDrawable(bytes: ByteArray): Drawable? {
     return toDrawable(toBitmap(bytes))
-}
-
-@JvmOverloads
-fun ConvertUtils.toString(`is`: InputStream, charset: String = "utf-8"): String {
-    val sb = StringBuilder()
-    kotlin.runCatching {
-        val reader = BufferedReader(InputStreamReader(`is`, charset))
-        while (true) {
-            val line = reader.readLine()
-            if (line == null) {
-                break
-            } else {
-                sb.append(line).append("\n")
-            }
-        }
-        reader.close()
-        `is`.close()
-    }
-    return sb.toString()
 }
 
 fun Int.dpToPx(): Int = this.toFloat().dpToPx().toInt()

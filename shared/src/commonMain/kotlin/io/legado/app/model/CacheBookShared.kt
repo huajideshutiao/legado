@@ -12,11 +12,14 @@ import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.CompositeCoroutine
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.model.CacheBookCallbacks.get
+import io.legado.app.model.CacheBookShared.cacheBookMap
+import io.legado.app.model.CacheBookShared.close
+import io.legado.app.model.CacheBookShared.startProcessJob
 import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.utils.concurrent.newConcurrentMap
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
-import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
@@ -35,61 +38,26 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlin.concurrent.Volatile
 import kotlin.coroutines.CoroutineContext
 
 /**
- * 跨平台 CacheBook 调度核心 (shared commonMain 版本)。
+ * 跨平台 CacheBook 调度核心 (commonMain): 章节预下载调度。
  *
- * # 背景
+ * 背景: app 端 CacheBook (object 单例) + CacheBookService (Android Service 前台下载 +
+ * 通知栏进度), 桌面端用 DesktopCacheBook (协程模拟 Service) 重复实现; 本类把非平台特有
+ * 逻辑下沉供 app/desktop/iOS/鸿蒙复用。
  *
- * app 端 `io.legado.app.model.CacheBook` 是 object 单例, 负责章节预下载调度;
- * `io.legado.app.service.CacheBookService` 是 Android Service 前台运行下载任务并显示
- * 通知栏进度。桌面端无 Service, 用 `DesktopCacheBook` (独立协程模拟 Service)。
+ * 平台差异经 [CacheBookCallback] + [CacheBookCallbacks] 注入:
+ * - start/remove/stop (Context.startService) 保留 app 端薄壳 (走 ServiceLaunchers), 不下沉
+ * - ReadBook 单例回调 (contentLoadFinish/downloadedChapters/downloadFailChapters) →
+ *   callback 抽象; 桌面端 callback 用 postEvent 通知阅读页自行重载
+ * - BookHelp (BitmapFactory 等重 Android) → [BookHelpProviders]/[BookStorageProviders];
+ *   桌面端 saveImages/hasImageContent 默认 no-op/false (与原 DesktopCacheBook 跳过图片一致)
+ * - appDb/AppConfig → [AppDbProviders.get()]/[AppConfigProviders.get().threadCount]
  *
- * 本类把两者**非平台特有**的调度逻辑下沉到 commonMain, 供 app / desktop / iOS / 鸿蒙
- * 复用。平台差异通过 [CacheBookCallback] + [CacheBookCallbacks] provider 注入抽象:
- * - app 端 callback 桥接到 `io.legado.app.model.ReadBook` 单例
- *   (contentLoadFinish / downloadedChapters / downloadFailChapters)
- * - 桌面端 callback 用 postEvent 通知阅读页 Composable 自行重载
- *   (无 ReadBook 单例)
- *
- * # 平台差异处理 (对照 app 端 CacheBook)
- *
- * - **不依赖 Context / Service**: app 端 `CacheBook.start(Context, ...) / remove(Context, ...) /
- *   stop(Context, ...)` 通过 `Context.startService<CacheBookService>` 启 Service, 是 Android 专属。
- *   这三个方法保留在 app 端 `CacheBook` 薄壳中 (走 [io.legado.app.help.service.ServiceLaunchers]),
- *   不下沉到 commonMain。其余纯调度逻辑全部下沉到本类。
- * - **不依赖 ReadBook 单例**: app 端 `CacheBookModel.downloadFinish` 调
- *   `ReadBook.contentLoadFinish(book, chapter, content, ...)`, `downloadAwait` /
- *   `download(scope, chapter, ...)` 操作 `ReadBook.downloadedChapters` /
- *   `ReadBook.downloadFailChapters`。这些 app 专属, 通过 [CacheBookCallback] 抽象:
- *     - [CacheBookCallback.onContentLoadFinish] 替代 `ReadBook.contentLoadFinish`
- *     - [CacheBookCallback.markDownloaded] 替代 `ReadBook.downloadedChapters.add`
- *     - [CacheBookCallback.markDownloadFailed] 替代 `ReadBook.downloadFailChapters[index]++`
- * - **不依赖 BookHelp 直接调用**: app 端 `BookHelp.saveImages / hasImageContent / getContent /
- *   hasContent` 重 Android 依赖 (BitmapFactory 等), 通过 [BookHelpProviders] /
- *   [BookStorageProviders] 间接调用。桌面端 `BookHelpAccessor.saveImages` /
- *   `hasImageContent` 默认 no-op / false (与原 DesktopCacheBook 跳过图片缓存行为一致)。
- * - **不依赖 appDb 直接调用**: 用 [AppDbProviders.get()] 间接 (bookDao / bookSourceDao /
- *   bookChapterDao), 各端 actual 自行注入。
- * - **不依赖 AppConfig 直接调用**: 用 [AppConfigProviders.get().threadCount] 替代
- *   `AppConfig.threadCount`。
- *
- * # 已复用的 shared commonMain 下沉件
- *
- * - [Coroutine.async] / [CompositeCoroutine]: shared help/coroutine 已下沉
- * - [ConcurrentException]: shared exception 已下沉 (onPreError 区分并发冲突)
- * - [WebBook.getContentAwait]: shared model/webBook 已下沉
- * - [BookHelpProviders.get().saveContent / saveImages / hasImageContent / getContent]:
- *   shared help/book 已下沉 (saveImages/hasImageContent/getContent 本任务新增)
- * - [BookStorageProviders.get().hasContent]: 检测章节是否已缓存
- * - [onEachParallel] / [postEvent]: shared FlowExtensions / FlowBus 已下沉
- *
- * # 生命周期
- *
- * object 单例, 进程内全局共享 (与 app 端 CacheBook 一致)。
- * [close] 由宿主 (app 端 CacheBookService.onDestroy / 桌面端阅读 VM) 调用
- * 清理所有任务 + 清空 map。
+ * 生命周期: object 单例进程内全局共享; [close] 由宿主 (CacheBookService.onDestroy /
+ * 桌面阅读 VM) 调用。
  */
 object CacheBookShared {
 

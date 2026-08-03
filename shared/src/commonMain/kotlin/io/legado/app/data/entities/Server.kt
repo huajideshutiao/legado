@@ -9,9 +9,9 @@ import kotlinx.serialization.Serializable
 /**
  * 服务器
  *
- * K5-c Phase 4: 已从 androidMain 下沉 commonMain。
- * 原 getConfigJsonObject() 依赖 org.json.JSONObject (Android 平台特有),
- * 已抽取到 androidMain/ServerExt.kt 作为扩展函数, commonMain 只保留纯数据模型。
+ * 已从 androidMain 下沉 commonMain; 原 getConfigJsonObject() 依赖 org.json.JSONObject
+ * (Android 平台特有), 已抽取到 androidMain/ServerExt.kt 作为扩展函数,
+ * commonMain 只保留纯数据模型。
  */
 @Serializable
 @Entity(tableName = "servers")
@@ -40,7 +40,7 @@ data class Server(
     }
 
     fun getWebDavConfig(): WebDavConfig? {
-        // Phase D: GSON.fromJsonObject<WebDavConfig>(config).getOrNull() → KS_JSON.decodeOrNull<WebDavConfig>(config)
+        // GSON.fromJsonObject<WebDavConfig>(config).getOrNull() → KS_JSON.decodeOrNull<WebDavConfig>(config)
         return if (type == TYPE.WEBDAV) decodeOrNull<WebDavConfig>(config) else null
     }
 

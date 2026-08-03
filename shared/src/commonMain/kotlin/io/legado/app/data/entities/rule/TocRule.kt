@@ -16,7 +16,7 @@ data class TocRule(
 ) {
 
     companion object {
-        // Phase D: 原 Gson jsonDeserializer 已移除, 反序列化由 RulePolymorphicSerializer 复刻
+        // 原 Gson jsonDeserializer 已移除, 反序列化由 RulePolymorphicSerializer 复刻
     }
 
 }

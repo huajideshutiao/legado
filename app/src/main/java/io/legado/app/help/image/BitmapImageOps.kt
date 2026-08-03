@@ -107,7 +107,7 @@ object BitmapImageOps : ImageOps {
 
     /**
      * 解出句柄内的 Bitmap。
-     * 注: rhino 已弃用并删除 (2026-07-17 KMP 裁决), 不再处理 NativeJavaObject 包装;
+     * 注: rhino 已弃用并删除, 不再处理 NativeJavaObject 包装;
      * quickjs 下 JS 数组元素直接是 Java 对象, 无需 unwrap。
      */
     private fun bitmapOf(ref: Any?): Bitmap {

@@ -2,6 +2,8 @@ package io.legado.app.model.fileBook
 
 import com.fleeksoft.charset.Charsets
 import com.fleeksoft.charset.toByteArray
+import com.fleeksoft.ksoup.Ksoup
+import com.fleeksoft.ksoup.parser.Parser
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.Book
@@ -11,9 +13,6 @@ import io.legado.app.utils.AlphanumComparator
 import io.legado.app.utils.EncodingDetect
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
-import kotlinx.serialization.encodeToString
-import com.fleeksoft.ksoup.Ksoup
-import com.fleeksoft.ksoup.parser.Parser
 import java.io.File
 import java.nio.charset.Charset
 
@@ -105,7 +104,7 @@ class CbzFile(var book: Book) {
         val cache = runCatching {
             if (cacheFile.exists()) {
                 cacheFile.inputStream().use {
-                    // Phase D: GSON.fromJsonObject<ZipImageCache>(it) InputStream 重载 → 读取为 String 再解析
+                    // GSON.fromJsonObject<ZipImageCache>(it) InputStream 重载 → 读取为 String 再解析
                     GSON.fromJsonObject<ZipImageCache>(
                         it.readBytes().toString(kotlin.text.Charsets.UTF_8)
                     ).getOrNull()
@@ -148,7 +147,7 @@ class CbzFile(var book: Book) {
         runCatching {
             cacheFile.parentFile?.mkdirs()
             cacheFile.bufferedWriter().use {
-                // Phase D: GSON.toJson(newCache, it) Writer 流式 → encodeToString 一次性写入
+                // GSON.toJson(newCache, it) Writer 流式 → encodeToString 一次性写入
                 it.write(GSON.encodeToString(newCache))
             }
         }

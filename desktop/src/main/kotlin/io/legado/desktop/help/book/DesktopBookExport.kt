@@ -1,7 +1,9 @@
 package io.legado.desktop.help.book
 
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.ReplaceRule
@@ -10,28 +12,45 @@ import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.toast.Toasters
 import io.legado.app.service.ExportBookDeps
 import io.legado.app.service.ExportBookEpubShared
 import io.legado.app.service.ExportBookShared
 import io.legado.app.service.ExportFileHandle
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.utils.postEvent
+import kotlinx.coroutines.runBlocking
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 桌面端导出书籍 (TXT), 复用 shared [ExportBookShared] 的导出主流程,
- * 平台差异 (文件写出 / 配置 / 正文处理) 由本文件的 [DesktopExportBookDeps] 注入。
- *
- * 未实现 EPUB / CBZ: shared 只下沉了 TXT 分支 (EPUB 依赖未下沉的 Glide/assets/FileDoc)。
+ * 桌面端导出书籍, 复用 shared [ExportBookShared] / [ExportBookEpubShared] 的导出主流程,
+ * 平台差异 (文件写出 / 配置 / 正文处理 / 内置 EPUB 模板) 由本文件的 [DesktopExportBookDeps] 注入。
  */
 object DesktopBookExport {
 
     private val shared by lazy { ExportBookShared(DesktopExportBookDeps) }
+    private val epubShared by lazy { ExportBookEpubShared(DesktopExportBookDeps, shared) }
 
     /** 导出到 [dir] 目录, 每本书一个 txt (对照 app 端 ExportBookService 的 txt 分支)。 */
     suspend fun exportTxt(dir: String, books: List<Book>) {
         File(dir).mkdirs()
         books.forEach { shared.exportTxt(dir, it) }
+    }
+
+    /** 导出到 [dir] 目录, 每本书一个 epub (对照 app 端 ExportBookService 的 epub 分支)。 */
+    suspend fun exportEpub(dir: String, books: List<Book>) {
+        File(dir).mkdirs()
+        books.forEach { epubShared.exportEpub(dir, it) }
+    }
+
+    /** 导出图片书到 [dir] 目录, 每本书一个 cbz (对照 app 端 ExportBookService 的 cbz 分支)。 */
+    suspend fun exportCbz(dir: String, books: List<Book>) {
+        File(dir).mkdirs()
+        books.forEach { book ->
+            val chapters = AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
+            epubShared.exportCbz(dir, book, chapters)
+        }
     }
 }
 
@@ -80,11 +99,49 @@ private object DesktopExportBookDeps : ExportBookDeps {
         runCatching { File(uri).delete() }
     }
 
-    // 桌面端无导出进度/消息面板 (app 端是通知栏 + Service 状态 Map), 留空
-    override fun removeExportProgress(bookUrl: String) = Unit
-    override fun setExportProgress(bookUrl: String, progress: Int) = Unit
-    override fun setExportMsg(bookUrl: String, msg: String) = Unit
-    override fun removeExportMsg(bookUrl: String) = Unit
+    // 导出进度/消息: 桌面端无通知栏, 按百分比步进 toast + AppLog 落日志
+    // (app 端是 Service 通知栏进度)。TXT/CBZ 的 progress 是章节下标 (0..total-1),
+    // 用章节总数换算百分比; EPUB save2Drive 阶段 progress 已是 0..100, 直接透传。
+    private val exportTotals = ConcurrentHashMap<String, Int>()
+    private val exportLastPercent = ConcurrentHashMap<String, Int>()
+
+    private fun exportPercentOf(bookUrl: String, progress: Int): Int {
+        val total = exportTotals.computeIfAbsent(bookUrl) {
+            runCatching {
+                runBlocking { AppDbProviders.get().bookChapterDao.getChapterCount(bookUrl) }
+            }.getOrDefault(0)
+        }
+        return if (total > 0 && progress <= total) {
+            (progress * 100 / total).coerceIn(0, 100)
+        } else {
+            // progress 本身已是 0..100 百分比 (EPUB save2Drive 分支)
+            progress.coerceIn(0, 100)
+        }
+    }
+
+    override fun removeExportProgress(bookUrl: String) {
+        exportTotals.remove(bookUrl)
+        exportLastPercent.remove(bookUrl)
+    }
+
+    override fun setExportProgress(bookUrl: String, progress: Int) {
+        val percent = exportPercentOf(bookUrl, progress)
+        val last = exportLastPercent.getOrDefault(bookUrl, -1)
+        if (percent - last >= 20 || (percent >= 100 && last < 100)) {
+            exportLastPercent[bookUrl] = percent
+            AppLog.put("导出进度 $percent% (${bookUrl.substringAfterLast('/').take(20)})")
+            Toasters.get().toast("导出进度 $percent%")
+        }
+    }
+
+    override fun setExportMsg(bookUrl: String, msg: String) {
+        Toasters.get().toast(msg)
+    }
+
+    override fun removeExportMsg(bookUrl: String) {
+        // 每本书导出开始时调用: 顺带重置该书的进度缓存
+        removeExportProgress(bookUrl)
+    }
 
     // uri 即本地文件绝对路径 (见 prepareExportFile), 直接交给 WebDav 上传
     override suspend fun exportToWebDav(uri: String, filename: String) =

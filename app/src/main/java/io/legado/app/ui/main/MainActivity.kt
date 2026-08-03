@@ -6,6 +6,8 @@ import android.content.Intent
 import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.TextPaint
 import android.text.format.DateUtils
 import android.view.WindowManager
@@ -95,6 +97,7 @@ import io.legado.app.utils.registerForActivityResult
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showExportSuccess
 import io.legado.app.utils.startService
+import io.legado.app.utils.sysScreenOffTime
 import io.legado.app.utils.toastOnUi
 import io.legado.app.web.utils.WebAssetSources
 import kotlinx.coroutines.Dispatchers.IO
@@ -123,7 +126,16 @@ class MainActivity : BaseComposeActivity() {
      *  [bookTreeUriSelect] 回调时消费。 */
     var pendingBookTreeUriCallback: ((String?) -> Unit)? = null
 
-    private var readerSelection by mutableStateOf<Pair<String, String>?>(null)
+    /** 文字选择对话框数据 + 选中文本动作回调 (由阅读页长按触发, AndroidReaderPlatformProvider 注入) */
+    private var readerSelection by mutableStateOf<ReaderTextSelection?>(null)
+
+    // 阅读页屏幕常亮管理 (对照原版 ReadBookEventHandler.upScreenTimeOut/screenOffTimerStart)
+    private val keepScreenOnHandler by lazy { Handler(Looper.getMainLooper()) }
+    private val screenOffRunnable = Runnable {
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+    private var readerWindowActive = false
+    private var readerScreenTimeOut = 0L
 
     // 平台能力与服务: onActivityCreated 同步创建并注册, 修复 LaunchedEffect 异步注册时序问题
     private lateinit var capabilities: AndroidPlatformCapabilities
@@ -245,18 +257,70 @@ class MainActivity : BaseComposeActivity() {
         pendingCoverChangeCallback = null
     }
 
-    fun showReaderTextSelection(chapterName: String, content: String) {
-        readerSelection = chapterName to content
+    fun showReaderTextSelection(
+        chapterName: String,
+        content: String,
+        selectedText: String? = null,
+        onReplace: (String) -> Unit = {},
+        onBookmark: (String) -> Unit = {},
+        onReadAloud: (String) -> Unit = {},
+        onSearchContent: (String) -> Unit = {},
+        onShare: (String) -> Unit = {},
+    ) {
+        readerSelection = ReaderTextSelection(
+            chapterName, content, selectedText, onReplace, onBookmark, onReadAloud,
+            onSearchContent, onShare,
+        )
     }
 
     fun enterReaderWindow() {
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        readerWindowActive = true
+        upScreenTimeOut()
         upReaderSystemBars(menuVisible = false)
     }
 
     fun exitReaderWindow() {
+        readerWindowActive = false
+        keepScreenOnHandler.removeCallbacks(screenOffRunnable)
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         services.window.setSystemBars(io.legado.app.ui.root.SystemBarsPolicy.Default)
+    }
+
+    /**
+     * 阅读页屏幕超时管理 (对照原版 upScreenTimeOut):
+     * AppConfig.keepLight 取值秒数 (0=跟随系统, 正数=常亮秒数, -1=永不熄屏)。
+     */
+    fun upScreenTimeOut() {
+        val keepLightPrefer = runCatching { (AppConfig.keepLight ?: "0").toInt() }.getOrDefault(0)
+        readerScreenTimeOut = keepLightPrefer * 1000L
+        screenOffTimerStart()
+    }
+
+    /**
+     * 重置阅读页常亮计时 (对照原版 screenOffTimerStart):
+     * keepLight<0 恒常亮; keepLight 大于系统息屏时间时常亮并定时移除, 否则交还系统息屏。
+     */
+    fun screenOffTimerStart() {
+        keepScreenOnHandler.removeCallbacks(screenOffRunnable)
+        if (readerScreenTimeOut < 0) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            return
+        }
+        val t = readerScreenTimeOut - sysScreenOffTime
+        if (t > 0) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            keepScreenOnHandler.postDelayed(screenOffRunnable, readerScreenTimeOut)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        // 阅读页内触摸重置常亮计时 (对照原版 ReadView.onTouchEvent → callBack.screenOffTimerStart)
+        if (readerWindowActive) {
+            screenOffTimerStart()
+        }
     }
 
     /**
@@ -329,10 +393,10 @@ class MainActivity : BaseComposeActivity() {
             }
             // legado:// deep link 导入对话框宿主 (对照 iOS/鸿蒙 MainViewController 末尾挂载)
             DeepLinkImportHost()
-            readerSelection?.let { (chapterName, content) ->
+            readerSelection?.let { sel ->
                 TextSelectionDialog(
-                    chapterName = chapterName,
-                    content = content,
+                    chapterName = sel.chapterName,
+                    content = sel.content,
                     onDismiss = { readerSelection = null },
                     clipTextProvider = {
                         val clipboard =
@@ -341,6 +405,12 @@ class MainActivity : BaseComposeActivity() {
                     },
                     clipTextSink = { capabilities.copyToClipboard(it) },
                     openUrl = capabilities::openExternalUrl,
+                    selectedText = sel.selectedText,
+                    onReplace = sel.onReplace,
+                    onBookmark = sel.onBookmark,
+                    onReadAloud = sel.onReadAloud,
+                    onSearchContent = sel.onSearchContent,
+                    onShare = sel.onShare,
                 )
             }
         }
@@ -448,6 +518,8 @@ class MainActivity : BaseComposeActivity() {
     override fun onPostCreate(savedInstanceState: Bundle?) {
         super.onPostCreate(savedInstanceState)
         lifecycleScope.launch {
+            //隐私协议
+            if (!privacyPolicy()) return@launch
             //版本更新
             upVersion()
             //设置本地密码
@@ -461,6 +533,29 @@ class MainActivity : BaseComposeActivity() {
             }
         }
         viewModel.postLoad()
+    }
+
+    /**
+     * 用户隐私与协议 (对照原版 MainActivity.privacyPolicy):
+     * 未同意时弹隐私协议对话框, 同意则 [LocalConfig.privacyPolicyOk] 置 true, 拒绝则退出应用。
+     * 已同意直接返回 true (仅首启生效)。
+     */
+    private suspend fun privacyPolicy(): Boolean = suspendCancellableCoroutine sc@{ block ->
+        if (LocalConfig.privacyPolicyOk) {
+            block.resume(true)
+            return@sc
+        }
+        val privacyPolicy = String(assets.open("privacyPolicy.md").readBytes())
+        alert(getString(R.string.privacy_policy), privacyPolicy) {
+            positiveButton(R.string.agree) {
+                LocalConfig.privacyPolicyOk = true
+                block.resume(true)
+            }
+            negativeButton(R.string.refuse) {
+                finish()
+                block.resume(false)
+            }
+        }
     }
 
     /**
@@ -553,6 +648,22 @@ class MainActivity : BaseComposeActivity() {
     }
 
 }
+
+/**
+ * 文字选择对话框数据 + 选中文本动作回调。
+ * 动作回调由阅读页平台提供方 (AndroidReaderPlatformProvider.onLongPress) 注入,
+ * 持有 ReaderScreenModel 完成替换规则/书签/朗读/全文搜索/分享等业务。
+ */
+private data class ReaderTextSelection(
+    val chapterName: String,
+    val content: String,
+    val selectedText: String?,
+    val onReplace: (String) -> Unit,
+    val onBookmark: (String) -> Unit,
+    val onReadAloud: (String) -> Unit,
+    val onSearchContent: (String) -> Unit,
+    val onShare: (String) -> Unit,
+)
 
 /**
  * 正文度量字体：[fontPath] = `ReadBookConfig.textFont`，与绘制侧 `loadReaderFontFamily`

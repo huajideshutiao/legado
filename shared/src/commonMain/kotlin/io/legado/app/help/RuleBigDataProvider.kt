@@ -3,7 +3,7 @@ package io.legado.app.help
 import kotlin.concurrent.Volatile
 
 /**
- * RuleBigDataHelp 的注入接口 (K5-c Phase 4: 已从 jvmAndAndroidMain 下沉 commonMain)。
+ * RuleBigDataHelp 的注入接口 (已从 jvmAndAndroidMain 下沉 commonMain)。
  *
  * app 端 RuleBigDataHelp 实现本接口, 在 App.onCreate 注册到 RuleBigDataProviders.impl。
  * shared 侧实体类 (BaseBook/BookChapter, commonMain) 通过本接口访问大变量存储。

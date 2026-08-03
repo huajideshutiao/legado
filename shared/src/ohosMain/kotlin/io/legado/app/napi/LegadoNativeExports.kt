@@ -22,13 +22,17 @@ import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.formatPercentUs as formatPercentUsValue
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CFunction
+import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.allocArrayOf
 import kotlinx.cinterop.cstr
 import kotlinx.cinterop.invoke
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.nativeHeap
+import kotlinx.cinterop.readBytes
+import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.toKString
+import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -107,6 +111,43 @@ object LegadoNativeExports {
     private fun allocateCString(value: String): CPointer<ByteVar> {
         val bytes = value.encodeToByteArray()
         return nativeHeap.allocArrayOf(bytes + byteArrayOf(0))
+    }
+
+    /**
+     * 二进制混合协议 dispatch 公共包装 (Http/Image 桥): 控制面 JSON + 数据面裸字节 → C++。
+     *
+     * 字节用 [usePinned] 零拷贝直传 (pinned 期间调用 [dispatch], C++ 侧同步 malloc 深拷贝后返回,
+     * 故 pinned 块内安全); 无字节面时传 null 指针 + 长度 0。
+     *
+     * @param dispatch C++ tsfn dispatch 入口 `void(*)(const char*, const void*, size_t)`
+     * @param json 控制面 JSON 字符串
+     * @param bytes 数据面裸字节 (null/空数组 = 无字节面)
+     */
+    private fun dispatchBinary(
+        dispatch: CPointer<CFunction<(CPointer<ByteVar>, COpaquePointer?, ULong) -> Unit>>,
+        json: String,
+        bytes: ByteArray?,
+    ) {
+        if (bytes == null || bytes.isEmpty()) {
+            memScoped {
+                dispatch(json.cstr.getPointer(this), null, 0uL)
+            }
+        } else {
+            bytes.usePinned { pinned ->
+                memScoped {
+                    dispatch(json.cstr.getPointer(this), pinned.addressOf(0), bytes.size.toULong())
+                }
+            }
+        }
+    }
+
+    /**
+     * 把 ArkTS → Kotlin 回调传来的数据面裸字节指针拷成 [ByteArray]。
+     * null 指针 / 长度 0 / 长度超 Int 上限时返回 null (调用方按"无字节面"处理)。
+     */
+    private fun COpaquePointer?.toByteArrayOrNull(len: ULong): ByteArray? {
+        if (this == null || len == 0uL || len > Int.MAX_VALUE.toULong()) return null
+        return reinterpret<ByteVar>().readBytes(len.toInt())
     }
 
     // ===== 工具类函数 (KP4 已存在) =====
@@ -612,38 +653,62 @@ object LegadoNativeExports {
      * 使 KMP [OhosNativeBridge.invokeImageSync] 能跨线程 dispatch 图片操作请求到 ArkTS。
      * ArkTS 处理完成后通过 [imageCallback] (@CName legado_image_callback) 回送结果。
      *
-     * @param dispatch C++ tsfn dispatch 入口 (`ohos_image_dispatch`), 类型 `void(*)(const char*)`
+     * # 混合协议 (JSON + 裸字节, 同 WebView 桥思路)
+     * [dispatch] 接收控制面 JSON (requestId/action/payload) + 数据面裸字节 (decode 的图片字节)。
+     * 字节经 usePinned 零拷贝直传 C++ (ohos_image_dispatch 内 malloc 深拷贝, 因 tsfn 异步投递
+     * 原指针生命周期不可控), C++ 用 napi_create_external_arraybuffer 包成 ArrayBuffer 传给 ArkTS,
+     * 不经 base64 (避免 33% 体积膨胀 + 双端编解码拷贝), 二进制保真。
+     *
+     * @param dispatch C++ tsfn dispatch 入口 (`ohos_image_dispatch`),
+     *   类型 `void(*)(const char*, const void*, size_t)` (JSON + 裸字节 + 长度)
      */
     @CName("legado_register_image_fn")
-    fun registerImageFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>) -> Unit>>) {
-        OhosNativeBridge.registerImageFn { json ->
-            memScoped {
-                dispatch(json.cstr.getPointer(this))
-            }
+    fun registerImageFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>, COpaquePointer?, ULong) -> Unit>>) {
+        OhosNativeBridge.registerImageFn { json, bytes ->
+            dispatchBinary(dispatch, json, bytes)
         }
     }
 
     /**
-     * ArkTS → Kotlin 图片操作结果回调 (由 legado_napi.cpp ImageCallback 调用)。
+     * ArkTS → Kotlin 图片操作结果回调 (由 legado_napi.cpp ImageCallback 调用, 混合协议)。
      *
-     * 调用链: `ArkTS imageCallback(requestId, resultJson)` → napi (legado_napi.cpp ImageCallback) →
+     * 调用链: `ArkTS imageCallback(requestId, resultJson, body?)` → napi (legado_napi.cpp ImageCallback) →
      * dlsym("legado_image_callback") → 本函数 → [OhosNativeBridge.onImageResult] →
      * 唤醒 [OhosNativeBridge.invokeImageSync] 中阻塞的 CompletableDeferred。
      *
      * # 跨语言传递
      * - [requestId]: 64 位整数, 与 [OhosNativeBridge.invokeImageSync] 生成的 requestId 一致
-     * - [result]: UTF-8 C 字符串, JSON 格式 (含 ok/result 或 ok/error)
+     * - [result]: 控制面结果 JSON (不含字节):
+     *   - decode/crop/stitch 成功: `{ ok: true, pixelMapId: <number> }`
+     *   - split 成功: `{ ok: true, pixelMapIds: [...] }`
+     *   - size 成功: `{ ok: true, width, height }`
+     *   - encode 成功: `{ ok: true }` (packed 字节走 [bytes] 裸参)
+     *   - 失败: `{ ok: false, error: "..." }`
+     * - [bytes]: 数据面裸字节 (C++ 用 napi_get_arraybuffer_info 零拷贝取 ArrayBuffer 数据指针;
+     *   仅 encode 回传 packed 图片, 其余操作/失败为 null)
+     * - [bytesLen]: [bytes] 长度 (无字节面时为 0)
      *
      * # 线程语义
      * ArkTS 主线程调用 napi → C++ dlsym → 本函数, 运行在 ArkTS 主线程;
      * CompletableDeferred.complete 线程安全, 可安全唤醒 JS 引擎线程的 runBlocking。
      *
      * @param requestId 请求 ID (与 invokeImageSync 生成的 requestId 对应)
-     * @param result ArkTS 返回的结果 JSON 字符串 (UTF-8 C 字符串)
+     * @param result ArkTS 返回的控制面结果 JSON 字符串 (UTF-8 C 字符串)
+     * @param bytes ArkTS 返回的数据面裸字节指针 (ArrayBuffer data, 无字节面时为 null)
+     * @param bytesLen 数据面字节长度 (无字节面时为 0)
      */
     @CName("legado_image_callback")
-    fun imageCallback(requestId: Long, result: CPointer<ByteVar>) {
-        OhosNativeBridge.onImageResult(requestId, result.toKString())
+    fun imageCallback(
+        requestId: Long,
+        result: CPointer<ByteVar>,
+        bytes: COpaquePointer?,
+        bytesLen: ULong
+    ) {
+        OhosNativeBridge.onImageResult(
+            requestId,
+            result.toKString(),
+            bytes.toByteArrayOrNull(bytesLen)
+        )
     }
 
     // ===== Media tsfn 注入 + ArkTS → Kotlin 事件回调 (KP8+) =====
@@ -780,36 +845,104 @@ object LegadoNativeExports {
      * 使 KMP [OhosNativeBridge.invokeHttpSync] 能跨线程 dispatch HTTP 请求到 ArkTS。
      * ArkTS HttpBridgeHandler 处理完成后通过 [httpCallback] (@CName legado_http_callback) 回送结果。
      *
-     * @param dispatch C++ tsfn dispatch 入口 (`ohos_http_dispatch`), 类型 `void(*)(const char*)`
+     * # 混合协议 (JSON + 裸字节, 同 WebView 桥思路)
+     * [dispatch] 接收控制面 JSON (requestId/action/payload) + 数据面裸字节 (请求 body)。
+     * 字节经 usePinned 零拷贝直传 C++ (ohos_http_dispatch 内 malloc 深拷贝, 因 tsfn 异步投递
+     * 原指针生命周期不可控), C++ 用 napi_create_external_arraybuffer 包成 ArrayBuffer 传给 ArkTS,
+     * 不经 base64 (避免 33% 体积膨胀 + 双端编解码拷贝), 二进制保真。
+     *
+     * @param dispatch C++ tsfn dispatch 入口 (`ohos_http_dispatch`),
+     *   类型 `void(*)(const char*, const void*, size_t)` (JSON + 裸字节 + 长度)
      */
     @CName("legado_register_http_fn")
-    fun registerHttpFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>) -> Unit>>) {
-        OhosNativeBridge.registerHttpFn { json ->
-            memScoped {
-                dispatch(json.cstr.getPointer(this))
-            }
+    fun registerHttpFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>, COpaquePointer?, ULong) -> Unit>>) {
+        OhosNativeBridge.registerHttpFn { json, bytes ->
+            dispatchBinary(dispatch, json, bytes)
         }
     }
 
     /**
-     * ArkTS → Kotlin HTTP 请求结果回调 (由 legado_napi.cpp HttpCallback 调用)。
+     * ArkTS → Kotlin HTTP 请求结果回调 (由 legado_napi.cpp HttpCallback 调用, 混合协议)。
      *
-     * 调用链: `ArkTS httpCallback(requestId, resultJson)` → napi (legado_napi.cpp HttpCallback) →
+     * 调用链: `ArkTS httpCallback(requestId, resultJson, body?)` → napi (legado_napi.cpp HttpCallback) →
      * dlsym("legado_http_callback") → 本函数 → [OhosNativeBridge.onHttpResult] →
      * 唤醒 [OhosNativeBridge.invokeHttpSync] 中阻塞的 CompletableDeferred。
      *
      * # 跨语言传递
      * - [requestId]: 64 位整数, 与 [OhosNativeBridge.invokeHttpSync] 生成的 requestId 一致
-     * - [result]: UTF-8 C 字符串, JSON 格式 (HttpResponsePayload):
-     *   - 成功: `{ ok: true, code: <int>, message: "<string>", headers: [...], body: "<base64>" }`
+     * - [result]: 控制面结果 JSON (HttpResponsePayload, 不含 body):
+     *   - 成功: `{ ok: true, code: <int>, message: "<string>", headers: [...] }`
      *   - 失败: `{ ok: false, error: "<string>" }`
+     * - [bytes]: 数据面响应 body 裸字节 (C++ 用 napi_get_arraybuffer_info 零拷贝取
+     *   ArrayBuffer 数据指针; 无 body 时为 null)
+     * - [bytesLen]: [bytes] 长度 (无 body 时为 0)
      *
      * @param requestId 请求 ID (与 invokeHttpSync 生成的 requestId 对应)
-     * @param result ArkTS 返回的结果 JSON 字符串 (UTF-8 C 字符串)
+     * @param result ArkTS 返回的控制面结果 JSON 字符串 (UTF-8 C 字符串)
+     * @param bytes ArkTS 返回的数据面响应 body 指针 (ArrayBuffer data, 无 body 时为 null)
+     * @param bytesLen 数据面字节长度 (无 body 时为 0)
      */
     @CName("legado_http_callback")
-    fun httpCallback(requestId: Long, result: CPointer<ByteVar>) {
-        OhosNativeBridge.onHttpResult(requestId, result.toKString())
+    fun httpCallback(
+        requestId: Long,
+        result: CPointer<ByteVar>,
+        bytes: COpaquePointer?,
+        bytesLen: ULong
+    ) {
+        OhosNativeBridge.onHttpResult(
+            requestId,
+            result.toKString(),
+            bytes.toByteArrayOrNull(bytesLen)
+        )
+    }
+
+    // ===== WebView tsfn 注入 + ArkTS → Kotlin 结果回调 (同 Http/Image 模式) =====
+
+    /**
+     * 注入 webView dispatch 函数指针 (由 legado_napi.cpp RegisterWebViewCallback 调用)。
+     *
+     * 同 [registerHttpFn], 注入到 [OhosNativeBridge.webViewTsfn],
+     * 使 KMP [OhosNativeBridge.invokeWebViewSync] 能跨线程 dispatch 后台 WebView 请求到 ArkTS。
+     * ArkTS WebViewBridgeHandler 用隐藏 Web 组件加载页面 + 执行 JS 取源码,
+     * 完成后通过 [webViewCallback] (@CName legado_webview_callback) 回送结果。
+     *
+     * # 混合协议 (双字符串参数)
+     * [dispatch] 接收两个 C 字符串: 控制面 JSON (requestId/action/payload) + 数据面裸 html。
+     * html 不经 JSON 转义, 避免大段 HTML 的转义膨胀与双端编解码拷贝 (见 OhosNativeBridge
+     * [OhosNativeBridge.OhosWebViewTsfnCallback] 注释)。
+     *
+     * @param dispatch C++ tsfn dispatch 入口 (`ohos_webview_dispatch`), 类型 `void(*)(const char*, const char*)`
+     */
+    @CName("legado_register_webview_fn")
+    fun registerWebViewFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>, CPointer<ByteVar>) -> Unit>>) {
+        OhosNativeBridge.registerWebViewFn { json, html ->
+            memScoped {
+                dispatch(json.cstr.getPointer(this), html.cstr.getPointer(this))
+            }
+        }
+    }
+
+    /**
+     * ArkTS → Kotlin webView 后台抓取结果回调 (由 legado_napi.cpp WebViewCallback 调用, 混合协议)。
+     *
+     * 调用链: `ArkTS webViewCallback(requestId, resultJson, bodyRaw)` → napi (legado_napi.cpp WebViewCallback) →
+     * dlsym("legado_webview_callback") → 本函数 → [OhosNativeBridge.onWebViewResult] →
+     * 唤醒 [OhosNativeBridge.invokeWebViewSync] 中阻塞的 CompletableDeferred。
+     *
+     * # 跨语言传递
+     * - [requestId]: 64 位整数, 与 [OhosNativeBridge.invokeWebViewSync] 生成的 requestId 一致
+     * - [result]: 控制面结果 JSON (WebViewResult 格式, 不含 body):
+     *   - 成功: `{ ok: true, url, cookie? }`
+     *   - 失败: `{ ok: false, error }`
+     * - [body]: 数据面裸源码/命中 URL (不经 JSON 转义, UTF-8 C 字符串, 失败时为空串)
+     *
+     * @param requestId 请求 ID (与 invokeWebViewSync 生成的 requestId 对应)
+     * @param result ArkTS 返回的控制面结果 JSON 字符串 (UTF-8 C 字符串)
+     * @param body ArkTS 返回的数据面裸源码字符串 (UTF-8 C 字符串)
+     */
+    @CName("legado_webview_callback")
+    fun webViewCallback(requestId: Long, result: CPointer<ByteVar>, body: CPointer<ByteVar>) {
+        OhosNativeBridge.onWebViewResult(requestId, result.toKString(), body.toKString())
     }
 
     // ===== OpenUrl tsfn 注入 (KP8+, 同 Toast 模式, fire-and-forget dispatch) =====

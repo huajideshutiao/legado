@@ -4,6 +4,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.ThreadSafeDateFormat
 import io.legado.app.data.AppDbProviders
+import io.legado.app.data.dao.sortedByLocalizedOrder
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.DirectLinkUploadStoreProviders
 import io.legado.app.help.config.AppConfigProviders
@@ -151,7 +152,7 @@ object BackupShared {
 
         // 1. DAO 数据导出 (与原版顺序一致)
         writeListToJson(appDb.bookDao.all(), "bookshelf.json")
-        writeListToJson(appDb.bookmarkDao.all(), "bookmark.json")
+        writeListToJson(appDb.bookmarkDao.all().sortedByLocalizedOrder(), "bookmark.json")
         writeListToJson(appDb.bookGroupDao.all(), "bookGroup.json")
         writeListToJson(appDb.bookSourceDao.all(), "bookSource.json")
         writeListToJson(appDb.replaceRuleDao.all(), "replaceRule.json")

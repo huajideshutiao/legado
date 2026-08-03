@@ -26,7 +26,7 @@ import kotlin.coroutines.CoroutineContext
  * 注册 10 个 binding 供 JS 调用 Kotlin。
  *
  * 架构 A (自封装 native QuickJS):
- * - 不再依赖 quickjs-kt 的 QuickJs (Phase 5 已移除)
+ * - 不再依赖 quickjs-kt 的 QuickJs (已移除)
  * - 所有 JS 操作通过 [QuickJsNative] 调用 native API
  * - binding 回调由 native 层统一分发到 [BindingHandler.call]
  *

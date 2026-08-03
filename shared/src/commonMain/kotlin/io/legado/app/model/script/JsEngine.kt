@@ -1,8 +1,7 @@
 /**
  * JS 引擎抽象面（KMP commonMain）。
  *
- * - **引擎选择**：硬编码 QUICKJS（见 [JsEngines.type]），RHINO 实现保留但不进产物
- *   （KMP 裁决 2026-07-17，详见 [JsEngines]）。切换入口已撤。
+ * - **引擎选择**：硬编码 QUICKJS（见 [JsEngines.type]），RHINO 实现保留但不进产物。切换入口已撤。
  * - **主调方向**：业务层（AnalyzeRule / BaseSource / AnalyzeUrl / SharedJsScope）
  *   通过 [JsEngine.eval] / [JsEngine.getRuntimeScope] 等方法执行 JS。
  * - **被调方向**：JS 回调 Kotlin 对象方法（如 `image.decode(...)`）由 `@JsApi` 注解 +
@@ -34,7 +33,7 @@ enum class JsEngineType { RHINO, QUICKJS }
  *
  * [dangerousApi] 控制是否旁路引擎安全名单（由 BaseSource.enableDangerousApi 控制）。
  *
- * KJ1: 构造时统一注入 platform/image，覆盖全部 JsBindings 构造点
+ * 构造时统一注入 platform/image，覆盖全部 JsBindings 构造点
  * （buildScriptBindings / 引擎 bindingsConfig eval / RegexExtensions / FileBook）。
  * 两个值均为常量/单例引用，零额外分配；平台渗漏集中在 [JsBindingInjector]（宿主启动注册）。
  */

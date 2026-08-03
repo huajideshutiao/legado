@@ -1,8 +1,6 @@
 package io.legado.app.api
 
 import io.legado.app.utils.toJsonElement
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
@@ -40,7 +38,7 @@ class ReturnData {
     }
 
     /**
-     * Phase D: 替代 `Gson().toJson(this)` / `GSON.toJson(this)`, 用 kotlinx-serialization 手动构造 JSON。
+     * 替代 `Gson().toJson(this)` / `GSON.toJson(this)`, 用 kotlinx-serialization 手动构造 JSON。
      *
      * data 字段为 Any?, 用 [Any?.toJsonElement] 处理常见类型 (String/Boolean/Number/ByteArray/List/@Serializable)。
      * 输出结构与原 Gson 反射序列化等价: {"isSuccess":...,"errorMsg":"...","data":...}。

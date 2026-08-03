@@ -5,7 +5,7 @@ import io.legado.app.utils.cnCompare
 import io.legado.app.utils.splitNotBlank
 
 /*
- * K5-c Phase 2: DAO 接口下沉前置——dealGroups 由 app 端 DaoUtils.kt 迁入 shared。
+ * DAO 接口下沉前置——dealGroups 由 app 端 DaoUtils.kt 迁入 shared。
  *
  * 公共逻辑放 commonMain (仅依赖 splitNotBlank + AppPattern.splitGroupRegex, 均 commonMain-ready);
  * 排序走已下沉的 [cnCompare] (commonMain expect/actual, 见 utils/StringCnCompare.kt)。

@@ -31,55 +31,24 @@ import kotlinx.coroutines.withTimeout
 import kotlin.math.min
 
 /**
- * 换封面 ViewModel 共享核心 (KMP 版, commonMain)。
+ * 换封面 ViewModel 共享核心 (commonMain)。
  *
- * # 背景
+ * 对照 app 端 `ChangeCoverViewModel(app) : BaseViewModel(app)`: 核心业务编排 (启用书源
+ * 加载/过滤 searchRule.coverUrl 非空/并发搜索/命中 name+author+coverUrl 时回调/默认封面
+ * 占位) 不依赖 Android 专属 API, 可下沉多端复用。DAO 走 [AppDbProviders.get];
+ * [Coroutine.async] 替代 BaseViewModel.execute。
  *
- * 对照 app 端原 `ChangeCoverViewModel(application: Application) : BaseViewModel(application)`:
- * - 核心业务编排 (启用书源加载 / 过滤 searchRule.coverUrl 非空 / 并发搜索 /
- *   命中 name==name && author==author && coverUrl 非空 时回调 / 默认封面占位项) 不依赖
- *   Android 专属 API, 仅依赖 [AppDbProviders] / [WebBook] / [mapParallelSafe] / 协程,
- *   可以下沉 commonMain 供多端复用。
- * - 状态用 [MutableStateFlow] 替代 `androidx.lifecycle.MutableLiveData` (LiveData 不可 KMP)。
- *   Android 宿主用 `viewModelScope.launch { collect { ... } }` 把 StateFlow 转发到
- *   MutableLiveData, 调用方 `observe` 用法不变。
- * - DAO 访问走 [AppDbProviders.get] (宿主启动时注册), 替代 app 端 `appDb` 单例。
- * - [Coroutine.async] (commonMain 版, 已下沉) 替代 `BaseViewModel.execute`, 行为等价
- *   (内部都是 SupervisorJob + Dispatchers.IO + 链式 onSuccess/onError 回调切到 mainDispatcher)。
- *   换封面无 onSuccess/onError 链式回调, 仅用 Coroutine.async 启动协程即可。
+ * 平台专属逻辑经 [ChangeCoverPlatform] 注入: AppConfig.threadCount (SharedPreferences 未下沉);
+ * cleanAuthor——AppPattern 已下沉但为保持注入风格一致 (与 ChangeBookSourcePlatform 一致)
+ * 仍经 platform 注入。
  *
- * # 留 app 端实现的部分 (Android-specific)
+ * 与 app 端原实现的差异: initData(Bundle?) → initData(name, author) (app 端解析 Bundle 转发,
+ * author 清洗在本类内完成); searchStateData → [MutableStateFlow]; dataFlow (callbackFlow)
+ * 保留, searchSuccess/upAdapter 回调机制与 flowOn(IO) 不变; execute → Coroutine.async。
  *
- * 以下平台专属逻辑通过 [ChangeCoverPlatform] 聚合接口注入, 不在 commonMain 硬编码:
- * - **AppConfig.threadCount**: 依赖 SharedPreferences + appCtx, 未下沉;
- * - **AppPattern.authorRegex 清洗 author**: AppPattern 已下沉 commonMain, 但为保持
- *   注入风格一致 (与 [io.legado.app.ui.book.changesource.ChangeBookSourcePlatform] 一致),
- *   通过 [ChangeCoverPlatform.cleanAuthor] 注入, Android/桌面两端均直接用 AppPattern.authorRegex。
+ * 设计: 组合委托 (BaseViewModel 是 AndroidViewModel 不能继承)。
  *
- * # 设计选择 (组合委托模式)
- *
- * 不采用 `expect abstract class` 让 app 端子类继承: BaseViewModel 是 AndroidViewModel,
- * commonMain 不可用, Kotlin 单继承会冲突。改用**组合委托**模式 (参考
- * [io.legado.app.ui.book.changesource.ChangeBookSourceViewModelShared]):
- * - app 端 ChangeCoverViewModel `extends BaseViewModel`, 内部持有本类实例;
- * - 通过 [ChangeCoverPlatform] 聚合接口注入平台专属依赖, 仅 1 个参数不算"超多";
- * - 转发 `initData / startSearch / startOrStopSearch / stopSearch / onCleared` 到本类;
- * - Android 专属部分 (initData 解析 Bundle) 在 app 端 ViewModel 处理后转发。
- *
- * # 与 app 端原实现的差异
- *
- * - `initData(arguments: Bundle?)` 改为 `initData(name: String, author: String)`:
- *   commonMain 无 Bundle, 由 app 端解析 Bundle 后转发; author 清洗通过
- *   [ChangeCoverPlatform.cleanAuthor] 在本类内完成 (app 端原在 initData 内用
- *   `author.replace(AppPattern.authorRegex, "")`)。
- * - `searchStateData: MutableLiveData<Boolean>` 改为 `searchState: MutableStateFlow<Boolean>`:
- *   app 端用 `viewModelScope.launch { collect { searchStateData.postValue(it) } }` 桥接。
- * - `dataFlow` (callbackFlow) 保留, 内部 `searchSuccess` / `upAdapter` 回调机制不变;
- *   `flowOn(IO)` 保留。
- * - `execute { ... }` 改为 `Coroutine.async(scope) { ... }`: 行为等价, 无 onSuccess/onError 链。
- *
- * @param scope 协程作用域, actual 平台注入
- *   (Android = `viewModelScope` / 桌面 = 应用主作用域 / 窗口 scope)
+ * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
  * @param platform 平台专属依赖聚合 (threadCount + cleanAuthor)
  */
 @Suppress("MemberVisibilityCanBePrivate")

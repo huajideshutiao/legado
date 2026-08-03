@@ -17,7 +17,6 @@ import io.legado.app.help.http.StrResponse
 import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.ui.OpenUrlProviders
 import io.legado.app.help.ui.ToastProviders
-import io.legado.app.help.ui.UserAgentProviders
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.analyzeRule.CustomUrl
@@ -455,7 +454,7 @@ interface JsExtensionsCommon {
      * 获取 WebView 默认 UserAgent (走 [UserAgentProviders], 由宿主端注册)
      */
     fun getWebViewUA(): String {
-        return UserAgentProviders.get().getWebViewUA()
+        return UserAgentProviders.getWebViewUA()
     }
 
     /**

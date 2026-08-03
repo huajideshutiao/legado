@@ -37,63 +37,24 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.launch
 
 /**
- * 发现页展示 VM 共享核心 (KMP 版, commonMain)。
+ * 发现页展示 VM 共享核心 (commonMain)。
  *
- * # 背景
+ * 对照 app 端 `ExploreShowViewModel(app) : BaseViewModel(app)`: 核心业务编排
+ * (initData/收藏/分页加载/书架 key 维护/列数与样式切换) 不依赖 Android 专属 API,
+ * 仅依赖 [AppDbProviders]/[IntentData]/[PinnedExploreHelp]/[WebBook]/[SearchBookFilter],
+ * 可下沉多端复用。
  *
- * 对照 app 端原 `ExploreShowViewModel(application: Application) : BaseViewModel(application)`:
- * - 核心业务编排 (initData / 收藏 / 分页加载 / 书架 key 维护 / 列数与样式切换) 不依赖 Android 专属 API,
- *   仅依赖 [AppDbProviders] / [IntentData] / [PinnedExploreHelp] / [WebBook] / [SearchBookFilter] /
- *   [Coroutine] / 协程, 可以下沉 commonMain 供多端复用。
- * - 状态用 [MutableStateFlow] 替代 `androidx.lifecycle.MutableLiveData` (LiveData 不可 KMP)。
- *   Android 宿主用 `viewModelScope.launch { shared.xxx.collect { ... } }` 把 StateFlow
- *   转发到 MutableLiveData, 调用方 `observe` 用法不变 (项目未引入 lifecycle-livedata-ktx,
- *   不用 `StateFlow.asLiveData()` 扩展)。
- * - DAO 访问走 [AppDbProviders.get] (宿主启动时注册), 替代 app 端 `appDb` 单例。
- * - [IntentData] / [PinnedExploreHelp] / [WebBook] / [SearchBookFilter] / [Coroutine] /
- *   [AppLog] / [printStackTraceOnDebug] / [stackTraceStr] 均已下沉 commonMain, 直接复用。
+ * Android 专属依赖替换: toast 文案 (R.string.source_filter_rule_filtered_count) →
+ * `Toasters.get().toast("已过滤 $n 本")`; BuildConfig.DEBUG → false 兜底 (桌面无 BuildConfig);
+ * ConcurrentHashMap.newKeySet() → [newConcurrentSet] expect/actual (iOS: mutableSetOf());
+ * LiveData → 信号类 [MutableSharedFlow] (replay=1, 保留 postValue 每次都投递语义——
+ * StateFlow 会吞掉相等值, 重试后错误串相同就收不到事件, 加载态永远悬空), 纯状态用 StateFlow。
  *
- * # Android 专属依赖替换
+ * 设计: 组合委托 (BaseViewModel 是 AndroidViewModel 不能继承); app 端 VM 持本类实例,
+ * 7 个 LiveData 改为 7 个 Flow 后经 viewModelScope.launch { collect { postValue } } 桥接;
+ * initData(intent) 在 app 端解析 Intent 后转发到本类 (exploreName/exploreUrl/sourceUrl)。
  *
- * - `IntentData.source as? BookSource` → 直接用 (IntentData 已下沉)
- * - `context.toastOnUi(context.getString(R.string.source_filter_rule_filtered_count, n))`
- *   → `Toasters.get().toast("已过滤 $n 本")` (与 [io.legado.app.ui.book.search.SearchViewModel]
- *   回调内 `"已过滤 $filteredCount 本"` 文案一致, commonMain 无 R.string 资源)
- * - `BuildConfig.DEBUG` → 直接 `false` 兜底 (桌面端无 BuildConfig, 走非 DEBUG 分支 =
- *   `.timeout(timeLimit)` 行为)
- * - `appDb.bookSourceDao.getBookSource(...)` → `AppDbProviders.get().bookSourceDao.getBookSource(...)`
- * - `appDb.bookDao.flowAll()` → `AppDbProviders.get().bookDao.flowAll()`
- * - `ConcurrentHashMap.newKeySet()` → [newConcurrentSet] expect/actual
- *   (jvm/android: ConcurrentHashMap.newKeySet(); iOS: mutableSetOf())
- * - `androidx.lifecycle.MutableLiveData` → 事件类信号用 [MutableSharedFlow] (replay=1),
- *   纯状态用 [MutableStateFlow]
- * - `LiveData.postValue(x)` → `MutableSharedFlow.tryEmit(x)`: StateFlow 会吞掉与上次相等的值,
- *   而 postValue 每次都投递 (重试后错误串相同就收不到事件, 加载态永远悬空)
- *
- * # 设计选择 (组合委托)
- *
- * 不采用 `expect abstract class` 让 app 端子类继承: BaseViewModel 是 AndroidViewModel,
- * commonMain 不可用, Kotlin 单继承会冲突。改用组合委托模式 (参考 [BookInfoViewModelShared]):
- * - app 端 ExploreShowViewModel `extends BaseViewModel`, 内部持有本类实例;
- * - 通过构造函数注入 [scope] (app 端 = `viewModelScope`);
- * - 7 个 LiveData 改为 7 个 StateFlow, app 端 ViewModel 用 `viewModelScope.launch { collect { postValue } }`
- *   桥接到 LiveData, 调用方 `observe` 用法不变;
- * - `initData(intent: Intent)` 在 app 端解析 Intent 后转发到本类
- *   `initData(exploreName, exploreUrl, sourceUrl)`, 子类签名不变。
- *
- * # 状态桥接
- *
- * 原 LiveData 字段对应同名 Flow。信号类 (books/error/upAdapter/sourceReady/optionsReady) 用
- * replay=1 的 SharedFlow 保留 postValue "每次都投递" 语义; 纯状态 upStar 仍用 StateFlow:
- * - [upAdapterLiveData] (原 `MutableLiveData<String>`) → [upAdapterFlow] (`SharedFlow<String>`)
- * - [booksData] (原 `MutableLiveData<List<SearchBook>>`) → [booksFlow] (`SharedFlow<List<SearchBook>>`)
- * - [errorLiveData] (原 `MutableLiveData<String>`) → [errorFlow] (`SharedFlow<String>`)
- * - [sourceReadyLiveData] (原 `MutableLiveData<Unit>`) → [sourceReadyFlow] (`SharedFlow<Unit>`)
- * - [optionsReadyLiveData] (原 `MutableLiveData<Unit>`) → [optionsReadyFlow] (`SharedFlow<Unit>`)
- * - [upStarLiveData] (原 `MutableLiveData<Boolean>`) → [upStarFlow] (`StateFlow<Boolean?>`)
- *
- * @param scope 协程作用域, actual 平台注入
- *   (Android = `viewModelScope` / 桌面 = 应用主作用域 / 窗口 scope)
+ * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ExploreShowViewModelShared(

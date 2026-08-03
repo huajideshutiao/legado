@@ -367,6 +367,9 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
                 val pos = player.currentPosition.toInt()
                 AudioPlayShared.durChapterPos = pos
                 postEvent(EventBus.AUDIO_PROGRESS, pos)
+                // jlayer 无独立缓冲概念 (边解码边播), 缓冲条用已播位置近似 (对照 app 端
+                // ExoPlayer bufferedPosition; 原 desktop 不 post 导致缓冲条恒空)
+                postEvent(EventBus.AUDIO_BUFFER_PROGRESS, pos)
                 // 同步推进歌词高亮 (AUDIO_LRCPROGRESS 约定发行下标, 不是毫秒)
                 val lrc = AudioPlayShared.durLrcData
                 if (!lrc.isNullOrEmpty()) {

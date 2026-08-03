@@ -9,6 +9,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.IntentData
@@ -462,6 +463,12 @@ class MangaReaderScreenModel : ScreenModel {
 
     /** 离开阅读页 (对照 app 端 onPause): 结束计时 + 落库 + 上传进度 + 取消预下载 */
     fun onLeave() = shared.onLeave()
+
+    /** 用户确认同步云端进度 (对照 app 端 ReadMangaActivity.sureNewProgress okButton → viewModel.setProgress) */
+    fun confirmSyncProgress(progress: BookProgress) = shared.confirmSyncProgress(progress)
+
+    /** 用户取消同步云端进度 (对照 app 端 noButton) */
+    fun dismissSyncProgress() = shared.dismissSyncProgress()
 
     override fun onCleared() {
         shared.onCleared()

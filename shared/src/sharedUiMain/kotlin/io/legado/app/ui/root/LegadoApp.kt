@@ -26,6 +26,7 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
@@ -914,6 +915,9 @@ private fun SheetOverlayContent(overlay: AppOverlay.Sheet, navigator: AppNavigat
             }
         },
         sheetElevation = 0.dp,
+        // 原版 BaseBottomDialogFragment 清 FLAG_DIM_BEHIND: 弹层不压暗底层。
+        // Transparent 而非 Unspecified: 保留 scrim 的点击收起 (下滑收起之外的外部点击路径)。
+        scrimColor = Color.Transparent,
         content = { Box(Modifier.fillMaxSize()) },
     )
     // 初始 Hidden 再滑入展开: 对齐 app 版底部菜单滑入动画 (E-Ink 已起步 Expanded, 无动画)

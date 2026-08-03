@@ -1,6 +1,8 @@
 package io.legado.app.help.ui
 
 import android.webkit.WebSettings
+import io.legado.app.help.UserAgentProvider
+import io.legado.app.help.UserAgentProviders
 import splitties.init.appCtx
 
 /**
@@ -10,6 +12,10 @@ import splitties.init.appCtx
  * 在 App.onCreate 经 [registerAndroidUserAgentProvider] 注册到 [UserAgentProviders]。
  */
 object AndroidUserAgentProvider : UserAgentProvider {
+
+    // 合并后接口要求 get(); 本对象经 register() 注册进 WebView UA 槽位,
+    // 容器 get() (HTTP 语义) 不会走到这里, 直接复用 WebView UA 作为兜底。
+    override fun get(): String = getWebViewUA()
 
     override fun getWebViewUA(): String {
         return WebSettings.getDefaultUserAgent(appCtx)

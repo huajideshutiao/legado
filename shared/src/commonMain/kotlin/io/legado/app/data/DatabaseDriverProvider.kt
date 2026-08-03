@@ -1,13 +1,14 @@
 package io.legado.app.data
 
+import io.legado.app.data.DatabaseDriverProviders.get
 import kotlin.concurrent.Volatile
 
 /**
  * 跨平台 SQLite 数据库驱动提供者接口。
  *
  * # 设计目的
- * K5-c Phase 5 之后, AppDatabase 主体 (@Database 注解 + 17 个 DAO + companion 常量)
- * 已下沉 shared/commonMain, 但仍依赖 Room KMP (room-runtime/room-ktx/room-common);
+ * AppDatabase 主体 (@Database 注解 + 17 个 DAO + companion 常量) 已下沉 shared/commonMain,
+ * 但仍依赖 Room KMP (room-runtime/room-ktx/room-common);
  * 真正的 [appDb] 单例 (依赖 AndroidSQLiteDriver + appCtx + DefaultData + Locale.CHINESE)
  * 留 app 端 [io.legado.app.data.AppDatabase.kt] (app/src/main/...).
  *
@@ -17,7 +18,7 @@ import kotlin.concurrent.Volatile
  *
  * - androidMain actual: [RoomDatabaseDriver] 委托 androidx.room3.RoomDatabase
  *   (现状: 包装 app 端已构造的 appDb 单例)
- * - jvmMain actual: [BundledDatabaseDriver] 基于 Room KMP + BundledSQLiteDriver (KP1.2 桌面端落地)
+ * - jvmMain actual: [BundledDatabaseDriver] 基于 Room KMP + BundledSQLiteDriver (桌面端)
  * - 未来 iOS/HarmonyOS actual: 可用 SQLDelight 实现 (与 Room 共存或逐步替换)
  *
  * # 现状注意

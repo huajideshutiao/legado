@@ -2,6 +2,7 @@ package io.legado.app.ui.widget.text
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.res.ColorStateList
 import android.os.Build
 import android.util.AttributeSet
 import android.view.LayoutInflater
@@ -14,7 +15,6 @@ import android.widget.TextView
 import androidx.appcompat.widget.AppCompatAutoCompleteTextView
 import io.legado.app.R
 import io.legado.app.lib.theme.accentColor
-import io.legado.app.utils.applyTint
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
 
@@ -27,7 +27,8 @@ class AutoCompleteTextView @JvmOverloads constructor(
     var delCallBack: ((value: String) -> Unit)? = null
 
     init {
-        applyTint(context.accentColor)
+        // 原独立扩展 View.applyTint 内联: backgroundTintList 单色 (原 TintHelper.setTintAuto(background=true) 简化)
+        backgroundTintList = ColorStateList.valueOf(context.accentColor)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
             isLocalePreferredLineHeightForMinimumUsed = false
         }

@@ -21,7 +21,7 @@ import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.book.read.page.entities.column.refreshLayout
-import io.legado.app.ui.book.read.page.render.upTopBottom
+import io.legado.app.ui.book.read.page.entities.upTopBottom
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.fastSum
 import io.legado.app.utils.splitNotBlank
@@ -722,7 +722,7 @@ class TextChapterLayout(
         if (doublePage) textLine.isLeftLine = engine.absStartX < viewWidth / 2
         calcTextLinePosition(textPages, textLine, engine.stringBuilder.length)
         engine.stringBuilder.append(lineText)
-        textLine.upTopBottom(engine.durY, textHeight, descent)
+        textLine.upTopBottom(engine.durY, textHeight, descent, paddingTop.toFloat())
         engine.pendingTextPage.addLine(textLine)
         engine.durY += textHeight * lineSpacingExtra
         if (engine.pendingTextPage.height < engine.durY) engine.pendingTextPage.height = engine.durY

@@ -16,57 +16,21 @@ import kotlinx.coroutines.launch
 /**
  * [ServiceLauncher] 的 Native (iOS / 鸿蒙) 共用 actual 实现。
  *
- * # 下沉说明 (nativeMain 共用)
- * 原 `iosMain/.../ServiceLauncher.ios.kt` 与 `ohosMain/.../ServiceLauncher.ohos.kt`
- * 是几乎逐字节相同的 actual 实现, 仅日志 API 不同 (iOS 用 `NSLog`, 鸿蒙用 `println`),
- * 满足 "平台 actual 严禁直接拷贝" 硬约束 — 必须通过 nativeMain 中间源集共用。
- * 三条业务线现均为真实实现: CacheBookShared 调度 + UpdateBookShared 自动更新
- * (原 stub 已替换, 见下文) + FileDownloader 下载。
+ * 原 iosMain/ohosMain 两份 actual 几乎逐字节相同 (仅日志 API 不同), 下沉 nativeMain 共用,
+ * 平台端经 [registerIosServiceLauncher] / [registerOhosServiceLauncher] 注册。
+ * 日志统一用 println (iOS 端 println 进 NSLog 是 Kotlin/Native 默认行为, 与原实现等价)。
  *
- * 本文件下沉到 nativeMain 后, iosMain / ohosMain 不再持有 actual 实现类,
- * iOS / 鸿蒙 target 通过 nativeMain 共用 [NativeServiceLauncher] + 两个注册入口
- * ([registerIosServiceLauncher] / [registerOhosServiceLauncher])。
+ * 设计要点 (对照 jvmMain DesktopServiceLauncher): 持有 [CoroutineScope]
+ * (SupervisorJob + Default dispatcher, 子任务异常不互相影响);
+ * start/remove/stopCacheBookService 接入已下沉的 [CacheBookShared] (对照 app 端
+ * CacheBookService); start/stopUpdateBookService 接入 [UpdateBookShared]
+ * (Native 无 MainViewModel, 从 DB 查所有书后 scheduleAutoUpdate);
+ * startDownloadService 用 [FileDownloaders] 写文件 (iOS 沙盒 Documents 替代 user.home,
+ * 鸿蒙 {user.dir}/legado_data/files)。
  *
- * 日志统一用 `println` (iOS 端 println 进 NSLog 是 Kotlin/Native 默认行为,
- * 与原 iosMain 用 NSLog 等价; 鸿蒙端 println 与原 ohosMain 一致)。
- *
- * # 设计要点 (对照 jvmMain DesktopServiceLauncher / iosMain 原 IosServiceLauncher)
- * - 持有 [CoroutineScope] (SupervisorJob + Default dispatcher), 子任务异常不互相影响
- * - **startCacheBookService**: 接入已下沉的 [CacheBookShared], 创建 CacheBookModelShared +
- *   addDownload + 在 scope 内 launch startProcessJob (对照 app 端 CacheBookService.addDownloadData +
- *   download)
- * - **removeCacheBookService**: 调 [CacheBookShared.cacheBookMap][bookUrl]?.stop] +
- *   postEvent (对照 app 端 CacheBookService.removeDownload, Native 端无 stopSelf)
- * - **stopCacheBookService**: 调 [CacheBookShared.close] (对照 app 端 CacheBookService.onDestroy)
- * - **startUpdateBookService / stopUpdateBookService**: 接入已下沉的 [UpdateBookShared]
- *   (commonMain 编排核心), startUpdateBookService 从 DB 查所有书后调
- *   [UpdateBookShared.scheduleAutoUpdate] 触发自动更新 (替代原 stub);
- *   stopUpdateBookService 调 [UpdateBookShared.cancelRefreshJobs] 取消所有任务
- * - **startDownloadService**: 真实下载, 用 [FileDownloaders] 写文件到
- *   `AppFilesDirs.get().filesDir/downloads/fileName` (对照桌面端 `~/legado/downloads/fileName`,
- *   iOS 端用沙盒 Documents 目录替代 user.home, 鸿蒙端用 `{user.dir}/legado_data/files`)
- *
- * # 协程调度
- * 所有后台任务均经 [scope.launch] 在 [CoroutineScope] (SupervisorJob + Default dispatcher) 内启动:
- * - 子任务异常不互相影响 (SupervisorJob)
- * - Native 端无 Android Service 生命周期, 协程生命周期 = scope 生命周期
- *   (scope 由 [registerIosServiceLauncher] / [registerOhosServiceLauncher] 创建,
- *   app 进程退出时随进程结束)
- * - 与 jvmMain DesktopServiceLauncher 完全对齐 (同一套协程调度模型)
- *
- * # UpdateBook 接入 (任务1: UpdateBookShared 下沉后)
- * Native 端无 MainViewModel, [NativeServiceLauncher] 内部持有 [UpdateBookShared] 实例,
- * startUpdateBookService 直接调 `updateBookShared.scheduleAutoUpdate(allBooks)` 触发全书架
- * 自动更新 (从 DB 查所有书, scheduleAutoUpdate 内部按 canUpdate + lastCheckTime 时间窗过滤)。
- *
- * 平台差异通过 callback 注入:
- * - iOS / 鸿蒙: 共用 nativeMain 真实化 [NativeUpdateBookCallback], 经 [registerNativeUpdateBookCallback]
- *   注册到 [UpdateBookCallbacks], 桥接 [io.legado.app.help.notification.NotificationProgresses]
- *   (iOS: UNUserNotificationCenter / 鸿蒙: notificationManager) +
- *   [io.legado.app.help.toast.Toasters] (iOS: UIAlertController / 鸿蒙: promptAction.showToast),
- *   两端 provider 均已真实化 (KP7+ 鸿蒙 napi 桥接 / KP4 iOS UIKit)
- *
- * 模式参考 nativeMain 已有下沉件: `ThreadBridge.native.kt` / `PlatformDispatchers.native.kt`。
+ * Native 端无 Android Service 生命周期, 协程生命周期 = scope 生命周期 (进程退出时结束)。
+ * 平台差异经 callback 注入: [NativeUpdateBookCallback] 桥接 NotificationProgresses +
+ * Toasters (iOS: UNUserNotificationCenter / 鸿蒙: notificationManager)。
  */
 class NativeServiceLauncher(
     private val scope: CoroutineScope,

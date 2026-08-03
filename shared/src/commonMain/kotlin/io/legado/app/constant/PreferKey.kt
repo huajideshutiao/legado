@@ -155,6 +155,9 @@ object PreferKey {
     const val mouseWheelPage = "mouseWheelPage"
     const val recordHeapDump = "recordHeapDump"
     const val updateToVariant = "updateToVariant"
+
+    /** 自建更新源地址 (app 端 JSON 数组协议, 空 = 走 GitHub)。 */
+    const val updateUrl = "updateUrl"
     const val streamReadAloudAudio = "streamReadAloudAudio"
     const val pauseReadAloudWhilePhoneCalls = "pauseReadAloudWhilePhoneCalls"
     const val readAloudByMediaButton = "readAloudByMediaButton"

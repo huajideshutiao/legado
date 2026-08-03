@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.update
 /**
  * 其它设置页 UI 状态 (immutable)。
  *
- * 7 个动态 summary (userAgent/bookTreeUri/checkSource/bitmapCache/preDownload/webPort/threadCount)
+ * 8 个动态 summary (userAgent/bookTreeUri/checkSource/bitmapCache/preDownload/webPort/threadCount/updateUrl)
  * 由宿主在 OnSharedPreferenceChangeListener 回调或 Dialog 确认后通过
  * [OtherConfigScreenModel.dispatch] 推入 [OtherConfigUiEvent.UpdateXxxSummary];
  * 宿主负责解析平台资源 (R.string.pre_download_s 等) 后传字符串进来。
@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.update
  * @param preDownloadSummary  预下载数量 summary
  * @param webPortSummary      Web 服务端口 summary
  * @param threadCountSummary  并发线程数 summary
+ * @param updateUrlSummary    自定义更新地址 summary (仅桌面端显示, 未设置时用提示文案)
  */
 data class OtherConfigUiState(
     val userAgentSummary: String = "",
@@ -32,6 +33,7 @@ data class OtherConfigUiState(
     val preDownloadSummary: String = "",
     val webPortSummary: String = "",
     val threadCountSummary: String = "",
+    val updateUrlSummary: String = "",
 )
 
 /**
@@ -50,6 +52,7 @@ sealed interface OtherConfigUiEvent {
     data class UpdatePreDownloadSummary(val summary: String) : OtherConfigUiEvent
     data class UpdateWebPortSummary(val summary: String) : OtherConfigUiEvent
     data class UpdateThreadCountSummary(val summary: String) : OtherConfigUiEvent
+    data class UpdateUpdateUrlSummary(val summary: String) : OtherConfigUiEvent
     object LocalPassword : OtherConfigUiEvent
     object UserAgent : OtherConfigUiEvent
     object BookTreeUri : OtherConfigUiEvent
@@ -63,6 +66,7 @@ sealed interface OtherConfigUiEvent {
     object ShrinkDatabase : OtherConfigUiEvent
     object ThreadCount : OtherConfigUiEvent
     object CustomPageKey : OtherConfigUiEvent
+    object UpdateUrl : OtherConfigUiEvent
 }
 
 // ===== ScreenModel =====
@@ -88,6 +92,7 @@ sealed interface OtherConfigUiEvent {
  * @param onShrinkDatabase     收缩数据库
  * @param onThreadCount        并发线程数 NumberPicker
  * @param onCustomPageKey      自定义翻页按键 Dialog
+ * @param onUpdateUrl          编辑自定义更新地址 (仅桌面端显示入口)
  */
 class OtherConfigScreenModel(
     private val onLocalPassword: () -> Unit,
@@ -103,6 +108,7 @@ class OtherConfigScreenModel(
     private val onShrinkDatabase: () -> Unit,
     private val onThreadCount: () -> Unit,
     private val onCustomPageKey: () -> Unit,
+    private val onUpdateUrl: () -> Unit,
 ) : ScreenModel {
 
     private val _state = MutableStateFlow(OtherConfigUiState())
@@ -131,6 +137,9 @@ class OtherConfigScreenModel(
             is OtherConfigUiEvent.UpdateThreadCountSummary ->
                 _state.update { it.copy(threadCountSummary = event.summary) }
 
+            is OtherConfigUiEvent.UpdateUpdateUrlSummary ->
+                _state.update { it.copy(updateUrlSummary = event.summary) }
+
             OtherConfigUiEvent.LocalPassword -> onLocalPassword()
             OtherConfigUiEvent.UserAgent -> onUserAgent()
             OtherConfigUiEvent.BookTreeUri -> onBookTreeUri()
@@ -144,6 +153,7 @@ class OtherConfigScreenModel(
             OtherConfigUiEvent.ShrinkDatabase -> onShrinkDatabase()
             OtherConfigUiEvent.ThreadCount -> onThreadCount()
             OtherConfigUiEvent.CustomPageKey -> onCustomPageKey()
+            OtherConfigUiEvent.UpdateUrl -> onUpdateUrl()
         }
     }
 }

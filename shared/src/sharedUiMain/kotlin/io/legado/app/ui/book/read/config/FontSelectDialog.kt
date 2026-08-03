@@ -13,18 +13,28 @@ import androidx.compose.material.RadioButton
 import androidx.compose.material.RadioButtonDefaults
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.constant.PreferKey
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AppSelectorDialog
+import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.close
 import legado.shared.generated.resources.default_font
 import legado.shared.generated.resources.select_font
+import legado.shared.generated.resources.system_typeface
+import legado.shared.generated.resources.system_typefaces
+import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
 
 /** 字体文件正则（对齐 app 端 `FontSelectDialog.fontRegex`：.ttf / .otf，大小写不敏感）。 */
@@ -49,6 +59,9 @@ val fontFileRegex: Regex = Regex("(?i).*\\.[ot]tf")
  *   桌面端注入 JFileChooser 入口）
  * - 字体预览走 [fontPreview] 槽（FontFamily(Font(file=...)) 属 JVM 桌面特殊行为，桌面端注入）
  * - 不含"系统内置字体样式"选择器（app 端 R.array.system_typefaces + AppConfig.systemTypefaces 未下沉）
+ *   → 已恢复：点"默认字体"弹 [AppSelectorDialog] 枚举 [Res.array.system_typefaces]，选后写
+ *     [PreferKey.systemTypefaces] + 触发 [onSelectDefault]（对齐 app 端
+ *     `AppConfig.systemTypefaces = i; onDefaultFontChange()`）
  *
  * @param fontItems 字体文件列表（由调用方扫描后注入）
  * @param curFontPath 当前字体路径（用于 RadioButton 选中状态判定）
@@ -75,6 +88,12 @@ fun FontSelectDialog(
     fontPreview: (@Composable (FontItem) -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
+    // 系统内置字体样式列表 (对照 app 端 R.array.system_typefaces)
+    val systemTypefaces = stringArrayResource(Res.array.system_typefaces)
+    // 系统内置字体样式选择器开关 (对照 app 端 menu_default → alert(system_typefaces))
+    var showTypefaceDialog by remember { mutableStateOf(false) }
+    // 组合期捕获，供事件回调内写 systemTypefaces（CompositionLocal 只能在组合期读取）
+    val prefs = LocalPreferenceStoreProvider.current
 
     AppAlertDialog(
         onDismissRequest = onDismiss,
@@ -92,11 +111,17 @@ fun FontSelectDialog(
                     fontSize = 15.sp,
                     modifier = Modifier
                         .clickable {
-                            // 默认字体：触发回调 + dismiss（对齐 app 端 onDefaultFontChange）
-                            if (curFontPath.isNotEmpty()) {
-                                onSelectDefault()
+                            if (systemTypefaces.isEmpty()) {
+                                // 无系统字体样式列表的平台: 保持原行为直接选默认字体
+                                // 默认字体：触发回调 + dismiss（对齐 app 端 onDefaultFontChange）
+                                if (curFontPath.isNotEmpty()) {
+                                    onSelectDefault()
+                                }
+                                onDismiss()
+                            } else {
+                                // 弹系统内置字体样式选择器（对齐 app 端 menu_default）
+                                showTypefaceDialog = true
                             }
-                            onDismiss()
                         }
                         .padding(vertical = 8.dp, horizontal = 12.dp),
                 )
@@ -128,6 +153,21 @@ fun FontSelectDialog(
         },
         okButton = AlertButton(text = stringResource(Res.string.close)) { onDismiss() },
     )
+
+    // 系统内置字体样式选择器（对齐 app 端 alert(system_typefaces)：选后存 AppConfig.systemTypefaces
+    // + onDefaultFontChange → selectFont("") + dismissAllowingStateLoss）
+    if (showTypefaceDialog) {
+        AppSelectorDialog(
+            onDismissRequest = { showTypefaceDialog = false },
+            title = stringResource(Res.string.system_typeface),
+            items = systemTypefaces,
+            onItemSelected = { i ->
+                prefs.putInt(PreferKey.systemTypefaces, i)
+                onSelectDefault()
+                onDismiss()
+            },
+        )
+    }
 }
 
 /**

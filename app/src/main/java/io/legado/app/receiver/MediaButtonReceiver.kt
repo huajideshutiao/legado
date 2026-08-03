@@ -13,6 +13,7 @@ import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.service.AudioPlayService
 import io.legado.app.service.BaseReadAloudService
+import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.utils.LogUtils
@@ -116,6 +117,11 @@ class MediaButtonReceiver : BroadcastReceiver() {
                 // AudioPlay 已下沉为共享路由, 栈顶为该路由时由页面响应媒体键事件
                 AppNavigatorProviders.getOrNull()?.currentRoute is AppRoute.AudioPlay ->
                     postEvent(EventBus.MEDIA_BUTTON, true)
+
+                // Reader 阅读页在栈顶时由页面响应媒体键事件 (对照原版 ReadBookActivity 分支
+                // postEvent(EventBus.MEDIA_BUTTON, true) 语义, 桥接到 shared 阅读层处理)
+                AppNavigatorProviders.getOrNull()?.currentRoute is AppRoute.Reader ->
+                    ReadBookEvents.postMediaButton(true)
 
                 else -> if (AppConfig.mediaButtonOnExit || LifecycleHelp.activitySize() > 0 || !isMediaKey) {
                     ReadAloud.upReadAloudClass()

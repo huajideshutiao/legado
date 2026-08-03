@@ -95,7 +95,7 @@ actual fun KmpRequestBuilder.postMultipart(type: String?, form: Map<String, Any>
                     }
 
                     else -> {
-                        // Phase D: GSON.toJson(file) 用反射序列化任意对象;
+                        // GSON.toJson(file) 用反射序列化任意对象;
                         // 此分支仅在前三种类型 (File/ByteArray/String) 都不匹配时执行, 实际不会触发。
                         // 改用 file.toString() 保留行为 (输出对象字符串表示), 避免引入新依赖。
                         file.toString().toRequestBody(mediaType)

@@ -8,6 +8,8 @@ import com.sun.jna.platform.win32.User32
 import com.sun.jna.platform.win32.WinDef
 import com.sun.jna.platform.win32.WinUser
 import io.legado.app.constant.AppLog
+import io.legado.desktop.help.webview.win.WebView2Loop.WM_RUN_TASK
+import io.legado.desktop.help.webview.win.WebView2Loop.tasks
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -137,15 +139,21 @@ internal object WebView2Loop {
      * 建窗口。[visible] = false 时不给 WS_VISIBLE 且摆到屏幕外:
      * 窗口全程不显示 (无头), 但仍是真 HWND, 消息与 WebView2 渲染都正常。
      */
-    fun createWindow(visible: Boolean, title: String): WinDef.HWND {
+    fun createWindow(
+        visible: Boolean,
+        title: String,
+        bounds: WindowBounds = WindowBounds()
+    ): WinDef.HWND {
         val style = if (visible) WinUser.WS_OVERLAPPEDWINDOW else WinUser.WS_POPUP
-        val position = if (visible) CW_USEDEFAULT else OFFSCREEN
+        // 无头窗口必须摆到屏幕外 (bounds 是给可见窗口用的)
+        val posX = if (visible) bounds.x else OFFSCREEN
+        val posY = if (visible) bounds.y else OFFSCREEN
         val hwnd = User32.INSTANCE.CreateWindowEx(
             0,
             WINDOW_CLASS,
             title.ifBlank { "legado" },
             style,
-            position, position, DEFAULT_WIDTH, DEFAULT_HEIGHT,
+            posX, posY, bounds.width, bounds.height,
             null, null,
             Kernel32.INSTANCE.GetModuleHandle(null),
             null,
@@ -180,6 +188,14 @@ internal object WebView2Loop {
 
     private const val DEFAULT_WIDTH = 1100
     private const val DEFAULT_HEIGHT = 800
+
+    /** CreateWindowEx 窗口矩形参数 (默认 = 系统居中 + 原默认尺寸)。 */
+    class WindowBounds(
+        val x: Int = CW_USEDEFAULT,
+        val y: Int = CW_USEDEFAULT,
+        val width: Int = DEFAULT_WIDTH,
+        val height: Int = DEFAULT_HEIGHT,
+    )
 
     /** 消息泵启动等待上限。 */
     private const val START_TIMEOUT_SECONDS = 30L

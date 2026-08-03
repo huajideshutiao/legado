@@ -20,61 +20,23 @@ import platform.UIKit.UIGraphicsEndImageContext
 import platform.UIKit.UIGraphicsGetImageFromCurrentImageContext
 
 /**
- * iOS 端 [ImageOps] 真实实现 (KP4)。
+ * iOS 端 [ImageOps] 真实实现 (基于 UIKit `UIImage` + `UIGraphics` 图形上下文)。
  *
- * # 存在意义
- * [io.legado.app.model.script.JsBindings] 构造时访问 [io.legado.app.model.script.JsBindingInjector.image],
- * 未注册会 checkNotNull 失败, 导致任何 `JsEngine.eval` 都跑不了。
- * iOS 端 JS 引擎 ([io.legado.app.model.script.IosJsEngine]) 解阻塞必须先注册一个 [ImageOps] 实现。
+ * [JsBindings] 构造时访问 [JsBindingInjector.image], 未注册会 checkNotNull 失败,
+ * iOS 端 JS 引擎解阻塞必须先注册一个 [ImageOps] 实现。
  *
- * # 当前实现 (KP4 真实化, 基于 UIKit `UIImage` + `UIGraphics` 图形上下文)
+ * 内部句柄 [IosImageRef] 持有 [UIImage]: decode 走 UIImage(data:) (JPEG/PNG/WebP/HEIC,
+ * 失败抛 IllegalArgumentException); encode 用 PNG/JPEGRepresentation (webp 不支持编码,
+ * 与 desktop ImageIO 一致); split 按行优先 + 余数并入末行/列; stitch 用大尺寸 UIGraphics
+ * 上下文 drawInRect 平铺; crop 用 renderSubImage 裁剪; size 读 UIImage.size。
  *
- * 内部句柄 [IosImageRef] 持有 [UIImage] (替代原 P0 的 ByteArray 占位),
- * 所有像素操作走 UIKit/UIKit Graphics API:
+ * UIGraphics 裁剪技巧: renderSubImage 创建 w×h 上下文后把原图按原尺寸画到偏移 (-x,-y),
+ * 等价裁剪 (x,y,w,h); 比 CGImageCreateWithImageInRect 更高层 (不依赖 CGImageRef C 指针,
+ * 规避 cinterop 类型不确定性)。算法/契约与 desktop DesktopImageOps 对齐。
  *
- * - [decode(bytes)]: `UIImage(data:)` 解码 JPEG/PNG/WebP/HEIC 等格式 (iOS 系统解码能力);
- *   失败抛 [IllegalArgumentException] (与 [ImageOps.decode] 契约一致: "失败抛异常")
- * - [decode(base64)]: 复用 commonMain [Base64Lenient.decode] (容忍 `data:image/...;base64,` 前缀)
- *   后走 [decode] (ByteArray)
- * - [encode]: `UIImagePNGRepresentation` (PNG 无损) / `UIImageJPEGRepresentation(quality/100.0)`
- *   真实编码; webp iOS 不支持编码, 抛异常 (与 desktop DesktopImageOps 一致, JDK ImageIO 也不支持 webp 编码)
- * - [split]: 按行优先切分, 每个 cell 用 [renderSubImage] 裁剪; 余数并入最后一行/列
- *   (算法与 desktop DesktopImageOps.split 一致)
- * - [stitch]: 创建大尺寸 `UIGraphics` 图形上下文, 逐个 `UIImage.drawInRect` 平铺
- *   (对照 desktop BufferedImage + Graphics.drawImage)
- * - [crop]: [renderSubImage] 裁剪 (x,y) 起点的 w×h 区域
- * - [size]: 读 `UIImage.size` (decode 来的图 scale=1.0, size 即像素尺寸)
- *
- * # UIGraphics 裁剪技巧 (renderSubImage)
- * [renderSubImage] 用 `UIGraphicsBeginImageContextWithOptions(CGSizeMake(w,h), false, 1.0)`
- * 创建 w×h 的位图上下文, 然后把原图按原尺寸画到偏移 (-x,-y) 的位置:
- * ```
- *   UIGraphicsBeginImageContextWithOptions(CGSizeMake(w, h), false, 1.0)
- *   image.drawInRect(CGRectMake(-x, -y, fullW, fullH))  // 平移, 不缩放
- *   val sub = UIGraphicsGetImageFromCurrentImageContext()
- *   UIGraphicsEndImageContext()
- * ```
- * 上下文只截取 (0,0,w,h) 区域, 等价裁剪原图 (x,y,w,h); 比直接调
- * `CGImageCreateWithImageInRect` 更高层 (不依赖 CGImageRef C 指针, 规避 cinterop 类型不确定性)。
- *
- * # 影响
- * - 书源 JS 中 `image.decode/encode/split/stitch/crop/size` 在 iOS 上全部真实工作,
- *   真实像素操作 (切分/裁剪/格式转换) 可用 (替代原 P0 降级占位)
- * - 与 desktop DesktopImageOps 行为对齐 (算法/契约一致, 仅平台 API 不同)
- *
- * # 替代原 P0 降级占位 (KP3)
- * 原 P0 占位 [encode]/[split]/[stitch]/[crop]/[size] 返回原图/空 map (不抛异常让 JS 调用链不崩),
- * 本次 KP4 替换为真实 UIKit 实现。
- *
- * 参考: desktop [io.legado.desktop.image.DesktopImageOps] (BufferedImage + ImageIO, 算法参考);
- * base64 解码复用 commonMain [Base64Lenient] (iosMain actual 已实现);
- * UIKit 桥接模式参考 [io.legado.app.ui.bookshelf.IosBookCover] (UIImage + UIImagePNGRepresentation + NSData.create)。
- *
- * # macOS 编译验证 (Windows 无法编译 iOS target)
- * ```
- * ./gradlew :shared:compileKotlinIosArm64
- * ./gradlew :shared:compileKotlinIosSimulatorArm64
- * ```
+ * 参考: base64 解码复用 commonMain [Base64Lenient] (容忍 data:image/...;base64, 前缀)。
+ * macOS 编译验证 (Windows 无法编译 iOS target):
+ * ./gradlew :shared:compileKotlinIosArm64 / compileKotlinIosSimulatorArm64
  */
 object IosImageOps : ImageOps {
 

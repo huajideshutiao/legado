@@ -18,62 +18,24 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * 书籍详情页 ViewModel 共享核心 (KMP 版, commonMain)。
+ * 书籍详情页 ViewModel 共享核心 (commonMain)。
  *
- * # 背景
+ * 对照 app 端 `BookInfoViewModel(app) : BaseReadViewModel(app)`: 核心业务编排
+ * (loadGroup/topBook/refreshBookSourceName/upEditBook) 不依赖 Android 专属 API,
+ * 仅依赖 [AppDbProviders]/[IntentData]/协程, 可下沉多端复用; LiveData → [MutableStateFlow],
+ * Android 宿主用 collect { postValue } 桥接 (未引入 lifecycle-livedata-ktx)。
  *
- * 对照 app 端原 `BookInfoViewModel(application: Application) : BaseReadViewModel(application)`:
- * - 核心业务编排 (loadGroup / topBook / refreshBookSourceName / upEditBook) 不依赖 Android 专属 API,
- *   仅依赖 [AppDbProviders] / [IntentData] / 协程, 可以下沉 commonMain 供多端复用。
- * - 状态用 [MutableStateFlow] 替代 `androidx.lifecycle.MutableLiveData` (LiveData 不可 KMP)。
- *   Android 宿主用 `viewModelScope.launch { shared.bookData.collect { ... } }` 把 StateFlow
- *   转发到 MutableLiveData, 调用方 `observe` / `.value` 用法不变 (项目未引入
- *   lifecycle-livedata-ktx, 不用 `StateFlow.asLiveData()` 扩展)。
- * - DAO 访问走 [AppDbProviders.get] (宿主启动时注册), 替代 app 端 `appDb` 单例。
- * - [IntentData] 已下沉 commonMain, 直接复用跨 Activity 临时大数据传递容器。
+ * 留 app 端的部分 (Android-specific): initData (依赖 FileBook/ImageLoader)、refreshBook
+ * (Uri.isContentScheme + loadBookInfo)、importWebFile/importBookFromArchive (android.net.Uri)、
+ * saveBook/downloadToLocal/uploadBook/clearCache (toastOnUi/BookHelp.clearCache)、
+ * changeToLocalBook (FileBook.mergeBook)、openCommentDialog (Fragment)。
  *
- * # 留 app 端实现的部分 (Android-specific)
+ * 设计: 组合委托 (BaseReadViewModel 是 AndroidViewModel 不能继承), 仅注入 [scope]。
+ * BaseReadViewModel.curBook 与 shared._bookData 的关系: app 端重写 curBook getter/setter
+ * 读写 [shared._bookData], 使 BaseReadViewModel 方法访问的就是 shared 状态源;
+ * 读时同步拿最新值 (比原 MutableLiveData 异步缓存更可靠, 原代码 setter 后不立即读, 行为兼容)。
  *
- * 以下方法涉及 Android 专属依赖 (Uri / FileBook / AppWebDav / Toast / ReadBook),
- * 整个方法保留 app 端 BookInfoViewModel 实现:
- * - initData: 调 BaseReadViewModel.upBook (依赖 FileBook / ImageLoader 等未下沉)
- * - refreshBook: 用 executeLazy + refreshWebDavBook (`Uri.isContentScheme` / `uri.path`)
- *   + loadBookInfo (BaseReadViewModel, 依赖 FileBook / WebBook / execute)
- * - importWebFile / downloadWebFile / getArchiveFilesName / importBookFromArchive:
- *   入参或返回 `android.net.Uri`, 且依赖 FileBook (Epub/Jar/Txt 解析器) / ArchiveUtils
- * - saveBook / getBook / downloadToLocal / uploadBook / clearCache:
- *   依赖 `context.toastOnUi` / BookHelp.clearCache / ReadBook.clearTextChapter
- * - changeToLocalBook: 调 FileBook.mergeBook + loadChapterList (BaseReadViewModel)
- * - openCommentDialog: 用 AppCompatActivity / showDialogFragment / ReviewListDialog
- *
- * # 设计选择 (避免超多继承与参数传递)
- *
- * 不采用 `expect abstract class` 让 app 端子类继承: BaseReadViewModel 是 AndroidViewModel,
- * commonMain 不可用, Kotlin 单继承会冲突。改用**组合委托**模式:
- * - app 端 BookInfoViewModel `extends BaseReadViewModel`, 内部持有 [BookInfoViewModelShared] 实例;
- * - 仅注入 [scope] 一个参数 (Android = `viewModelScope`), 不算"超多";
- * - 转发 loadGroup / topBook / refreshBookSourceName / upEditBook 到 shared;
- * - Android 专属方法保留在 BookInfoViewModel。
- *
- * # BaseReadViewModel.curBook 与 shared._bookData 的关系
- *
- * BaseReadViewModel 的方法 (loadBookInfo / loadChapterList / addToBookshelf / delBook)
- * 会通过抽象 `curBook` setter 写 book 状态。BookInfoViewModel 重写 curBook getter/setter,
- * 内部读写 [shared._bookData], 使 BaseReadViewModel 的方法访问的就是 shared 的状态源:
- * - getter: 读 `shared.bookData.value` (同步, 线程安全)
- * - setter: 写 `shared.upBook(value)` (同步, 线程安全, StateFlow 内部 atomic)
- * 然后 app 端 `_bookData` (LiveData) 通过 `viewModelScope.launch { collect { postValue } }`
- * 异步镜像, 供 BookInfoActivity.observe 使用, 与原 LiveData.postValue 行为等价。
- *
- * 与原 `MutableLiveData.postValue` 的细微差异:
- * - postValue 在主线程下一帧派发 (异步);
- * - StateFlow.value 立即更新, 经 app 端 `collect { postValue }` 桥接后,
- *   LiveData observer 在下一帧收到, 与原 postValue 等价。
- * - BaseReadViewModel 的方法读 curBook 时拿到的是最新值 (同步), 比原 MutableLiveData
- *   读取 `value` (异步缓存) 更可靠, 但原代码 curBook setter 后不立即读 curBook, 行为兼容。
- *
- * @param scope 协程作用域, actual 平台注入
- *   (Android = `viewModelScope` / 桌面 = 应用主作用域 / 窗口 scope)
+ * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
  */
 class BookInfoViewModelShared(
     private val scope: CoroutineScope,

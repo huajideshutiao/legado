@@ -1,5 +1,8 @@
 package io.legado.app.help.ui
 
+import io.legado.app.help.UserAgentProvider
+import io.legado.app.help.UserAgentProviders
+
 /**
  * [UserAgentProvider] 鸿蒙端 stub 实现。
  *
@@ -11,6 +14,10 @@ object OhosUserAgentProviderImpl : UserAgentProvider {
     private const val OHOS_WEBVIEW_UA =
         "Mozilla/5.0 (Linux; Android 12; HarmonyOS) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/99.0.4844.88 HuaweiBrowser/14.0.2.300 Mobile Safari/537.36"
+
+    // 合并后接口要求 get(); 本对象经 register() 注册进 WebView UA 槽位,
+    // 容器 get() (HTTP 语义) 不会走到这里, 直接复用 WebView UA 作为兜底。
+    override fun get(): String = getWebViewUA()
 
     override fun getWebViewUA(): String = OHOS_WEBVIEW_UA
 }

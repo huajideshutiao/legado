@@ -225,7 +225,7 @@ open class AnalyzeUrlCore(
         NetworkUtils.getBaseUrl(url)?.let { baseUrl = it }
         if (urlOptionEnd != -1) {
             val urlOptionStr = tmpUrl.substring(urlOptionEnd)
-            // Phase D: GSONStrict/GSON.fromJsonObject<UrlOption>(urlOptionStr) 双栈 → KS_JSON_STRICT/KS_JSON.decodeFromString(UrlOptionSerializer)
+            // GSONStrict/GSON.fromJsonObject<UrlOption>(urlOptionStr) 双栈 → KS_JSON_STRICT/KS_JSON.decodeFromString(UrlOptionSerializer)
             // 复刻原双栈语义: 先严格解析, 失败则降级到宽松 (并打 log 提示 JSON 格式不规范)
             option = try {
                 KS_JSON_STRICT.decodeFromString(UrlOptionSerializer, urlOptionStr)
@@ -621,7 +621,7 @@ open class AnalyzeUrlCore(
         var useWebView: Boolean = false
 
         companion object {
-            // Phase D: 原 Gson jsonDeserializer/jsonSerializer + flexString/flexNumber/flexBool/parseAsJsonContainer
+            // 原 Gson jsonDeserializer/jsonSerializer + flexString/flexNumber/flexBool/parseAsJsonContainer
             // 已移除, 序列化/反序列化由 [UrlOptionSerializer] 复刻 (KSerializer 自定义实现)
         }
     }

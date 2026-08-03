@@ -17,14 +17,13 @@ import kotlin.coroutines.CoroutineContext
  * 供 shared commonMain [io.legado.app.model.audio.AudioPlayManager] 注入使用。
  *
  * # 与 ExoPlayer 行为差异
- * - bufferedPosition: jlayer 流式解码无独立缓冲概念, 恒返回 0
- *   (desktop 原 startProgressReport 不 post AUDIO_BUFFER_PROGRESS, 缓冲条恒 0;
- *   此处保持一致避免 UI 视觉变化)
+ * - bufferedPosition: jlayer 流式解码无独立缓冲概念 (边解码边播, 已读即已播),
+ *   返回 [DesktopAudioPlayer.currentPosition] 作近似, 让音频页缓冲条不恒空
  * - playbackState: jlayer 无显式状态机, 由 isPlaying 派生
  *   (STATE_READY=播放中, STATE_IDLE=暂停/停止/未启动);
  *   shared upPlayProgressForLrc 用 STATE_IDLE 守卫切歌中场景
- * - playWhenReady: jlayer 无对应概念, desktop 显式调 play(), 恒 false
- * - release: DesktopAudioPlayer 无 release API, no-op
+ * - playWhenReady: 映射到实际播放态 (isPlaying); setter 转 play()/pause()
+ * - release: 转发 [DesktopAudioPlayer.release] 释放流/线程/音频设备
  * - listener: shared AudioPlayManager 不经 controller.listener 感知状态
  *   (app 端由 ExoPlayerAudioPlayController 转发 ExoPlayer 回调),
  *   desktop 状态由 DesktopAudioPlayProvider 直接订阅 DesktopAudioPlayer.Listener,
@@ -43,18 +42,20 @@ class DesktopAudioPlayController(private val player: DesktopAudioPlayer) : Audio
     override val currentPosition: Long
         get() = player.currentPosition
 
-    // jlayer 流式解码无独立缓冲概念; 返回 0 保持 desktop 原 UI 行为 (缓冲条不显示)
+    // jlayer 流式解码无独立缓冲概念 (边解码边播); 用已播位置近似, 缓冲条至少不恒空
     override val bufferedPosition: Long
-        get() = 0L
+        get() = player.currentPosition
 
     // jlayer 无显式状态机; 播放中=READY, 否则=IDLE (upPlayProgressForLrc 用 IDLE 守卫切歌)
     override val playbackState: Int
         get() = if (player.isPlaying) AudioPlayController.STATE_READY else AudioPlayController.STATE_IDLE
 
-    // jlayer 无 playWhenReady 概念, desktop 显式调 play()
+    // jlayer 无 playWhenReady 概念, 映射到实际播放态; 写值转 play()/pause()
     override var playWhenReady: Boolean
-        get() = false
-        set(value) { /* no-op */ }
+        get() = player.isPlaying
+        set(value) {
+            if (value) player.play() else player.pause()
+        }
 
     override fun play() = player.play()
     override fun pause() = player.pause()
@@ -62,7 +63,9 @@ class DesktopAudioPlayController(private val player: DesktopAudioPlayer) : Audio
     override fun seekTo(position: Long) = player.seekTo(position)
     override fun setPlaybackSpeed(speed: Float) = player.setSpeed(speed)
     override fun prepare() = player.prepare()
-    override fun release() { /* DesktopAudioPlayer 无 release API, no-op */ }
+
+    // 换源/退出时释放: 停线程/关流/关音频设备 (DesktopAudioPlayer.release 幂等)
+    override fun release() = player.release()
 }
 
 /**

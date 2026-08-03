@@ -1,17 +1,14 @@
 package io.legado.app.utils
 
 import android.net.Uri
-import android.os.Environment
 import android.util.Base64
 import android.webkit.MimeTypeMap
 import android.webkit.URLUtil
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.fileNameFormat
-import splitties.init.appCtx
 import java.io.Closeable
 import java.io.File
 import java.io.FileInputStream
-import java.io.IOException
 import java.io.InputStream
 import java.util.regex.Pattern
 
@@ -38,20 +35,6 @@ object FileUtils {
 
     fun getPath(root: File, vararg subDirFiles: String): String =
         FileUtilsBase.getPath(root, *subDirFiles)
-
-    fun getCachePath(): String {
-        return appCtx.externalCache.absolutePath
-    }
-
-    fun getSdCardPath(): String {
-        var sdCardDirectory = Environment.getExternalStorageDirectory().absolutePath
-        try {
-            sdCardDirectory = File(sdCardDirectory).canonicalPath
-        } catch (e: IOException) {
-            e.printOnDebug()
-        }
-        return sdCardDirectory
-    }
 
     /**
      * 将目录分隔符统一为平台默认的分隔符，并为目录结尾添加分隔符
@@ -369,7 +352,7 @@ object FileUtils {
             is File -> data.readBytes()
             is ByteArray -> data
             is String -> data.toByteArray()
-            // Phase D: GSON.toJson(data) 反射序列化 Any → toJsonElement().toString() 处理任意类型
+            // GSON.toJson(data) 反射序列化 Any → toJsonElement().toString() 处理任意类型
             else -> data.toJsonElement().toString().toByteArray()
         }
         return if (dirUri.isContentScheme()) {

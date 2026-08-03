@@ -9,7 +9,7 @@ package com.script.quickjs
  *
  * 架构 A (自封装 native QuickJS):
  * - 持有 [context] (QuickJsContext), 通过 [QuickJsNative.nativeEval] 执行 JS
- * - 不再依赖 quickjs-kt 的 QuickJs (Phase 5 已移除)
+ * - 不再依赖 quickjs-kt 的 QuickJs (已移除)
  *
  * 线程模型: [call] 在调用方线程同步执行 nativeEval,
  * 并在调用前设置 [QuickJsContext.threadLocalContext],

@@ -25,7 +25,7 @@ interface SystemTtsEngine {
     /**
      * 是否暂停中。
      *
-     * KP2-D P0-6 新增: 配合 [pause] / [resume] 状态机, 让 [ReadAloudControllerShared]
+     * 配合 [pause] / [resume] 状态机, 让 [ReadAloudControllerShared]
      * 能区分"真停止"与"暂停恢复"。
      */
     val isPaused: Boolean
@@ -39,7 +39,7 @@ interface SystemTtsEngine {
     /**
      * 显式初始化引擎。
      *
-     * KP2-D P0-6 新增: 用于引擎需要异步 init 的平台 (如 Android TextToSpeech 需等待
+     * 用于引擎需要异步 init 的平台 (如 Android TextToSpeech 需等待
      * onInit 回调)。桌面端 SAPI 在首次 speak 时按需 init, 此方法可 no-op。
      *
      * 默认空实现, 各 actual 按需重写。
@@ -60,7 +60,7 @@ interface SystemTtsEngine {
     /**
      * 暂停当前朗读 (保留朗读位置)。
      *
-     * KP2-D P0-6 新增: 与 [stop] 区分 —— pause 后可 [resume] 从中断处继续,
+     * 与 [stop] 区分 —— pause 后可 [resume] 从中断处继续,
      * stop 则清空状态。
      *
      * 默认空实现: 桌面 SAPI / Linux espeak / macOS say 等命令行驱动无法暂停,
@@ -73,7 +73,7 @@ interface SystemTtsEngine {
     /**
      * 恢复暂停后的朗读。
      *
-     * KP2-D P0-6 新增: 默认空实现, 与 [pause] 配对。
+     * 默认空实现, 与 [pause] 配对。
      */
     fun resume() {
         // 默认空实现: 不支持暂停的引擎 no-op
@@ -88,7 +88,7 @@ interface SystemTtsEngine {
     /**
      * 合成文本到内存 Buffer (不播放)。
      *
-     * KP2-D P0-6 新增: 用于预渲染 / 离线 TTS / HttpTTS 上传等场景。
+     * 用于预渲染 / 离线 TTS / HttpTTS 上传等场景。
      * 返回 PCM/WAV 字节数据, 调用方可写入文件或交给播放器。
      *
      * 默认返回 null: 表示该平台不支持合成到 Buffer, 调用方应降级为直接 [speak]。

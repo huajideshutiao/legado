@@ -32,7 +32,10 @@ import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.toRouteRef
+import io.legado.desktop.help.DesktopBattery
 import io.legado.desktop.help.tts.DesktopReadAloudHost
+import io.legado.desktop.ui.DesktopDialogRequest
+import io.legado.desktop.ui.DesktopDialogs
 import io.legado.desktop.ui.DesktopPlatformCapabilities
 
 /**
@@ -40,7 +43,9 @@ import io.legado.desktop.ui.DesktopPlatformCapabilities
  *
  * 对照 app 端 [io.legado.app.ui.book.read.AndroidReaderPlatformProvider]:
  * - createMenuController: 返回真实 [DesktopReadMenuController] (visibleState 可切, 非恒 false)
- * - getBatteryLevel: 返回 -1 (JVM 无统一电池 API, 与 iOS 端 UIDevice 不一致, 桌面端不显示电量)
+ * - getBatteryLevel: Windows 经 kernel32 (JNA) / macOS 经 `pmset -g batt` /
+ *   Linux 经 sysfs BAT/
+capacity 读真实电量, 失败 -1 (信息条不显示电量, 正常降级)
  * - 顶/底栏菜单 UI 由 shared [io.legado.app.ui.book.read.ReadMenuOverlay] 渲染, 此处只持有状态
  * - 导航回调 (clickCatalog/clickSearch/clickFont/clickSetting 等) 经 [AppNavigator] 跳 shared Route
  * - 章节导航 (clickPre/clickNext/onSeekStop) 委托 [ReaderScreenModel.viewModel]
@@ -64,14 +69,26 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         screenModel: ReaderScreenModel,
     ): ReadMenuController = DesktopReadMenuController(navigator, screenModel)
 
-    override fun getBatteryLevel(): Int = -1
+    override fun getBatteryLevel(): Int = DesktopBattery.getBatteryLevel()
 
     override fun onLongPress(screenModel: ReaderScreenModel) {
         // 对照 app 端 AndroidReaderPlatformProvider.onLongPress: 携带章节名 + 整章正文,
-        // 由共享 TextSelectionDialog (SelectionContainer 包 Text) 承载拖选/复制/查词
+        // 由共享 TextSelectionDialog (SelectionContainer 包 Text) 承载拖选/复制/查词。
+        // 文字长按已由页内选择接管 (ReadViewComposable → onTextSelected); 此处为图片/
+        // 空白长按回落路径。
         readerSelection = ReaderTextSelection(
             chapterName = screenModel.currentChapter?.title.orEmpty(),
             content = screenModel.currentChapterText,
+        )
+    }
+
+    /** 页内文字选择完成: 复用共享 [TextSelectionDialog], 注入选中文本 (对照 app 端 onTextSelected) */
+    override fun onTextSelected(screenModel: ReaderScreenModel, text: String) {
+        if (text.isBlank()) return
+        readerSelection = ReaderTextSelection(
+            chapterName = screenModel.currentChapter?.title.orEmpty(),
+            content = screenModel.currentChapterText,
+            selectedText = text,
         )
     }
 
@@ -91,6 +108,7 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
                 clipTextProvider = { DesktopPlatformCapabilities.getClipboardText() },
                 clipTextSink = { DesktopPlatformCapabilities.copyToClipboard(it) },
                 openUrl = { DesktopPlatformCapabilities.openExternalUrl(it) },
+                selectedText = selection.selectedText,
             )
         }
     }
@@ -101,10 +119,11 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
     ): ReadAloudControls = DesktopReadAloudControls(navigator, screenModel)
 }
 
-/** 长按文字选择请求载荷: 章节名 + 整章正文。 */
+/** 长按文字选择请求载荷: 章节名 + 整章正文 (+ 可选页内选中文本, null=整章拖选形态)。 */
 internal data class ReaderTextSelection(
     val chapterName: String,
     val content: String,
+    val selectedText: String? = null,
 )
 
 /**
@@ -282,6 +301,11 @@ private class DesktopReadMenuState(
         val book = screenModel.viewModel.book.value ?: return
         if (book.isLocal) return
         val url = chapterUrl.orEmpty()
+        // 长按可切换浏览器/应用内打开方式 (对照 app 端 ReadMenu.onChapterViewClick)
+        if (PreferenceProviders.get().getBoolean(PreferKey.readUrlOpenInBrowser, false)) {
+            DesktopPlatformCapabilities.openExternalUrl(url.substringBefore(",{"))
+            return
+        }
         // 传原始 chapterUrl (可能含 `,{...}` 请求头) + 书源信息, 由 WebViewRoute 解析
         navigator.push(
             AppRoute.WebView(
@@ -292,7 +316,26 @@ private class DesktopReadMenuState(
         )
     }
 
-    override fun onChapterViewLongClick() = Unit
+    // 章节链接长按: 弹选择框切换浏览器/应用内打开 (对照 app 端 ReadMenu.onChapterViewLongClick
+    // 的 activity.alert, 写同一 PreferKey.readUrlOpenInBrowser)
+    override fun onChapterViewLongClick() {
+        val book = screenModel.viewModel.book.value ?: return
+        if (book.isLocal) return
+        DesktopDialogs.show(
+            DesktopDialogRequest.Confirm(
+                title = "打开方式",
+                message = "是否使用外部浏览器打开？",
+                okText = "是",
+                noText = "否",
+                onOk = {
+                    PreferenceProviders.get().putBoolean(PreferKey.readUrlOpenInBrowser, true)
+                },
+                onNo = {
+                    PreferenceProviders.get().putBoolean(PreferKey.readUrlOpenInBrowser, false)
+                },
+            )
+        )
+    }
 
     override fun onOverflowOpened() {
         screenModel.updateSourceMenu()

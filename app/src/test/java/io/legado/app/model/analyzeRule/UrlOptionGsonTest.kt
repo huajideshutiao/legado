@@ -12,7 +12,7 @@ import org.junit.Test
  * 复刻原 Gson jsonDeserializer/jsonSerializer 语义, 覆盖 序列化(空值省略/webView 仅 true 输出/body JSON 还原)
  * 与反序列化(flex 取值)往返。
  *
- * Phase D: 原 UrlOptionGsonTest 用 GSON.toJson/fromJson + registerAppGsonAdapters,
+ * 原 UrlOptionGsonTest 用 GSON.toJson/fromJson + registerAppGsonAdapters,
  * 现迁移到 KS_JSON + UrlOptionSerializer (kotlinx-serialization)。
  */
 class UrlOptionGsonTest {

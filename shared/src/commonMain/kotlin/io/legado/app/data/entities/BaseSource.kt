@@ -5,14 +5,14 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.androidId
 import io.legado.app.data.entities.rule.RowUi
-import io.legado.app.help.crypto.CryptoHelper
 import io.legado.app.help.JsExtProviders
+import io.legado.app.help.JsExtensionsCommon
+import io.legado.app.help.UserAgentProviders
+import io.legado.app.help.coroutine.printStackTraceOnDebug
+import io.legado.app.help.crypto.CryptoHelper
 import io.legado.app.help.source.SourceCacheProviders
 import io.legado.app.help.source.SourceDebugLoggers
 import io.legado.app.help.source.SourceNetworkProviders
-import io.legado.app.help.UserAgentProviders
-import io.legado.app.help.JsExtensionsCommon
-import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.source.getShareScope
 import io.legado.app.model.script.JsBindings
 import io.legado.app.model.script.JsEngines
@@ -129,7 +129,7 @@ interface BaseSource : JsExtensionsCommon {
     fun login() {
         val loginJs = getLoginJs()
         if (!loginJs.isNullOrBlank()) {
-            // K5-c Phase 4: 移除 @Language("js") (org.intellij.lang.annotations 为 JDK 注解, commonMain 不可用)
+            // 移除 @Language("js") (org.intellij.lang.annotations 为 JDK 注解, commonMain 不可用)
             val js = """$loginJs
                 if(typeof login=='function'){
                     login.apply(this);
@@ -223,7 +223,7 @@ interface BaseSource : JsExtensionsCommon {
     /**
      * 获取用户信息,可以用来登录
      * 用户信息采用aes加密存储
-     * K5-c Phase 4: AES 解密下沉到 CryptoHelper (expect/actual), commonMain 不再引用 javax.crypto
+     * AES 解密下沉到 CryptoHelper (expect/actual), commonMain 不再引用 javax.crypto
      */
     fun getLoginInfo(): String? {
         return try {
@@ -243,7 +243,7 @@ interface BaseSource : JsExtensionsCommon {
 
     /**
      * 保存用户信息,aes加密
-     * K5-c Phase 4: AES 加密下沉到 CryptoHelper (expect/actual), commonMain 不再引用 javax.crypto
+     * AES 加密下沉到 CryptoHelper (expect/actual), commonMain 不再引用 javax.crypto
      */
     fun putLoginInfo(info: String): Boolean {
         return try {

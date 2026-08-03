@@ -23,67 +23,25 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
 /**
- * 导入替换规则 VM 共享核心 (KMP 版, commonMain)。
+ * 导入替换规则 VM 共享核心 (commonMain)。
  *
- * # 背景
+ * 对照 app 端 `ImportReplaceRuleViewModel(app) : BaseViewModel(app)`: 2 个公开方法
+ * (importSelect/import) + importAwait/importUrl/comparisonSource, 仅依赖 DAO + 协程 +
+ * okHttpClient + ReplaceAnalyzer + AppPattern, 可下沉多端复用。DAO 走
+ * [AppDbProviders.get].replaceRuleDao; `execute{...}` 链式回调下沉为直接调 [Coroutine.async]。
+ * 方法行为与 app 端一致: importSelect 按 [groupName]/[isAddGroup] 处理分组覆盖/追加
+ * (linkedSetOf 去重); importAwait 分支 isAbsUrl/isJsonArray/isJsonObject;
+ * URL 以 `#requestWithoutUA` 结尾时截断并设 `User-Agent: null` 头。
  *
- * 对照 app 端原 `ImportReplaceRuleViewModel(app: Application) : BaseViewModel(app)`:
- * - 2 个公开方法 (importSelect / import) + 2 个 private suspend (importAwait / importUrl)
- *   + 1 个 private (comparisonSource), 仅依赖 DAO + 协程 + okHttpClient +
- *   ReplaceAnalyzer + AppPattern, 可以下沉 commonMain 供多端复用
- *   (Android / Desktop / iOS / 鸿蒙)。
- * - DAO 访问走 [AppDbProviders.get].replaceRuleDao (宿主启动时由 app 端注册
- *   AppDbAccessorImpl, 已暴露 replaceRuleDao DAO)。
- * - 原 `execute { ... }.onError { ... }.onSuccess { ... }.onFinally { ... }`
- *   (BaseViewModel 内委托 [Coroutine.async]) 下沉后直接调 [Coroutine.async],
- *   保留链式 onError/onSuccess/onFinally 回调结构, 行为等价。
+ * Android 专属依赖替换: Uri 读取留 app 端 (app 端 import 先判 isUri 读文本再转发);
+ * okHttpClient → [OkHttpClientProviders.get]; ReplaceAnalyzer/AppPattern 已下沉直接复用;
+ * MutableLiveData → [MutableSharedFlow] (replay=1)。
  *
- * # 方法清单对照 (与 app 端原 VM 完全一致)
+ * 设计: 组合委托 (BaseViewModel 是 AndroidViewModel 不能继承), app 端持有本类实例,
+ * errorLiveData/successLiveData 在 init 块桥接 [errorState]/[successState];
+ * isAddGroup/groupName 通过 var getter/setter 委托。
  *
- * - importSelect(finally): 遍历 selectStatus 选中的 ReplaceRule, 按 [groupName]/[isAddGroup]
- *   处理分组覆盖/追加 (linkedSetOf 去重), 批量 insert 到 replaceRuleDao;
- * - import(text): 入口方法 (注意 app 端原方法名是 `import` 不是 `importSource`),
- *   调 importAwait 处理 URL/JSON 分支, 成功后调 comparisonSource 比对本地;
- * - importAwait(text) [private suspend]: isAbsUrl→importUrl / isJsonArray→
- *   ReplaceAnalyzer.jsonToReplaceRules / isJsonObject→ReplaceAnalyzer.jsonToReplaceRule;
- * - importUrl(url) [private suspend]: okHttpClient.newCallResponseBody, URL 以
- *   `#requestWithoutUA` 结尾时截断并设 `User-Agent: null` 头;
- * - comparisonSource() [private]: 遍历 allRules 调 replaceRuleDao.findById(id),
- *   本地不存在的选中, 推送 successState。
- *
- * # Android 专属依赖替换
- *
- * - **Uri 读取留 app 端**: 原 `importAwait(text)` 内 `text.isUri()` 分支 +
- *   `text.toUri().readText(appCtx)` 是 Android ContentResolver 专属, commonMain 不可用。
- *   下沉后 app 端 `ImportReplaceRuleViewModel.import(text)` 先判断 isUri, 若是 Uri
- *   则先读取文本再传入本类 [import]; 否则直接转发到本类 [import]。
- *   URL/JSON 解析逻辑全部下沉到本类。
- * - **appDb.replaceRuleDao**: 改为 [AppDbProviders.get].replaceRuleDao (宿主注册)。
- * - **okHttpClient**: 改为 [OkHttpClientProviders.get].okHttpClient
- *   (shared 内 KmpHttpClient 经 typealias 等价 okhttp3.OkHttpClient,
- *   newCallResponseBody / decompressed / text 均为 commonMain 扩展)。
- * - **ReplaceAnalyzer**: 已下沉 commonMain, 直接复用 (与 app 端原调用一致);
- * - **AppPattern.splitGroupRegex**: 已下沉 commonMain, 直接复用;
- * - **androidx.lifecycle.MutableLiveData**: 不可 KMP, 改为 [MutableSharedFlow] (replay=1) + [asSharedFlow]
- *   (对照 [ImportBookSourceViewModelShared] 的事件流模式)。
- *
- * # 设计选择 (组合委托)
- *
- * 不采用 `expect abstract class` 让 app 端子类继承: BaseViewModel 是 AndroidViewModel,
- * commonMain 不可用, Kotlin 单继承会冲突。改用组合委托模式 (对照
- * [ImportBookSourceViewModelShared] / [io.legado.app.ui.replace.edit.ReplaceEditViewModelShared]):
- * - app 端 `ImportReplaceRuleViewModel(application)` `extends BaseViewModel(application)`,
- *   内部持有本类实例, 通过 `viewModelScope` 注入;
- * - app 端 errorLiveData / successLiveData (MutableLiveData) 在 init 块内
- *   `viewModelScope.launch { collect { postValue } }` 桥接本类的 [errorState] / [successState],
- *   调用方 `observe` 用法不变;
- * - allRules / checkRules / selectStatus 等 MutableList 直接 getter 转发到本类
- *   (同实例引用);
- * - isAddGroup / groupName 通过 var getter/setter 委托本类 (修改同步反映到本类);
- * - importSelect / import 转发 (import 先处理 Uri 分支)。
- *
- * @param scope 协程作用域, actual 平台注入
- *   (Android = `viewModelScope` / 桌面 = 应用主作用域 / 窗口 scope)
+ * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
  */
 class ImportReplaceRuleViewModelShared(
     private val scope: CoroutineScope,

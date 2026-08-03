@@ -5,6 +5,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.utils.NetworkUtils
+import io.legado.desktop.help.webview.JavaFXWebViewEngine.isAvailable
 import javafx.application.Platform
 import javafx.concurrent.Worker
 import javafx.embed.swing.JFXPanel
@@ -20,6 +21,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import java.awt.BorderLayout
+import java.awt.Toolkit
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import java.util.concurrent.CompletableFuture
@@ -270,8 +272,16 @@ private class JavaFxWindowHandle(
                 override fun windowClosing(e: WindowEvent) = close()
             })
             f.contentPane.add(p, BorderLayout.CENTER)
-            f.setSize(1000, 700)
-            f.setLocationRelativeTo(null)
+            if (request.bottomSheet) {
+                // 置底半屏语义 (对照 app 端 BottomSheetDialog): 高取屏幕一半, 贴屏幕底部居中
+                val screen = Toolkit.getDefaultToolkit().screenSize
+                val height = (screen.height / 2).coerceAtLeast(400)
+                f.setSize(screen.width, height)
+                f.setLocation(0, screen.height - height)
+            } else {
+                f.setSize(1000, 700)
+                f.setLocationRelativeTo(null)
+            }
             f.isVisible = true
             p to f
         }
@@ -293,11 +303,11 @@ private class JavaFxWindowHandle(
         }.onFailure { AppLog.put("JavaFX 窗口 cookie 注入失败", it) }
     }
 
-    override suspend fun currentHtml(): String? {
+    override suspend fun currentHtml(): String? = evaluateJavascript(JavaFXWebViewEngine.DEFAULT_JS)
+
+    override suspend fun evaluateJavascript(script: String): String? {
         val target = engine ?: return null
-        return JavaFXWebViewEngine.runOnFx {
-            JavaFXWebViewEngine.executeScript(target, JavaFXWebViewEngine.DEFAULT_JS)
-        }
+        return runOnFx { JavaFXWebViewEngine.executeScript(target, script) }
     }
 
     override fun reload() {

@@ -1,10 +1,13 @@
 package io.legado.desktop.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -15,12 +18,15 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.AppDbProviders
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.dialog.TextInputDialog
 import io.legado.app.ui.widget.dialog.VariableDialog
@@ -58,6 +64,21 @@ sealed interface DesktopDialogRequest {
     data object BookSourceGroupManage : DesktopDialogRequest
 
     /**
+     * 双按钮确认框 (替代 app 端 `activity.alert` 的 ok/no 弹窗)。
+     *
+     * 用于阅读页章节链接长按的“浏览器/应用内打开”选择 (对照 app 端
+     * `AndroidReaderPlatformProvider.onChapterViewLongClick` 的 alert)。
+     */
+    data class Confirm(
+        val title: String,
+        val message: String? = null,
+        val okText: String,
+        val noText: String,
+        val onOk: () -> Unit,
+        val onNo: () -> Unit,
+    ) : DesktopDialogRequest
+
+    /**
      * 跳转确认 (对照 app 端 `OpenUrlConfirmDialog.display`)。
      *
      * 书源 JS 调 `java.openUrl` 拉起外部浏览器/程序前必须经用户确认, 顺带给出禁用/删除该源的出口。
@@ -68,6 +89,17 @@ sealed interface DesktopDialogRequest {
         val sourceName: String?,
         val sourceType: Int,
         val onConfirm: () -> Unit,
+    ) : DesktopDialogRequest
+
+    /**
+     * 导出配置 (对照 app 端 showExportConfig 的导出类型单选 txt|epub)。
+     *
+     * @param currentType 0=txt 1=epub (与 app 端 AppConfig.exportType 取值一致);
+     *    cbz 由图片书自动选择, 不在此配置
+     */
+    data class ExportConfig(
+        val currentType: Int,
+        val onConfirm: (Int) -> Unit,
     ) : DesktopDialogRequest
 }
 
@@ -119,10 +151,76 @@ fun DesktopDialogHost() {
             onDismiss = { DesktopDialogs.dismiss() },
         )
 
+        is DesktopDialogRequest.Confirm -> AppAlertDialog(
+            onDismissRequest = {
+                current.onNo()
+                DesktopDialogs.dismiss()
+            },
+            title = current.title,
+            message = current.message,
+            okButton = AlertButton(text = current.okText) {
+                current.onOk()
+                DesktopDialogs.dismiss()
+            },
+            cancelButton = AlertButton(text = current.noText) {
+                current.onNo()
+                DesktopDialogs.dismiss()
+            },
+        )
+
         is DesktopDialogRequest.OpenUrlConfirm -> OpenUrlConfirmDialog(
             request = current,
             onDismiss = { DesktopDialogs.dismiss() },
         )
+
+        is DesktopDialogRequest.ExportConfig -> ExportConfigDialog(
+            request = current,
+            onDismiss = { DesktopDialogs.dismiss() },
+        )
+    }
+}
+
+/**
+ * 导出类型选择 (对照 app 端 showExportConfig 的 txt|epub 单选)。
+ * 只存类型, 导出目录仍由导出时的文件夹选择器决定; 图片书自动走 cbz。
+ */
+@Composable
+private fun ExportConfigDialog(
+    request: DesktopDialogRequest.ExportConfig,
+    onDismiss: () -> Unit,
+) {
+    var type by remember { mutableStateOf(request.currentType) }
+    AppAlertDialog(
+        onDismissRequest = onDismiss,
+        title = "导出配置",
+        okButton = AlertButton(text = "确定") {
+            request.onConfirm(type)
+            onDismiss()
+        },
+        cancelButton = AlertButton(text = "取消") { onDismiss() },
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .selectableGroup(),
+        ) {
+            listOf("txt" to 0, "epub" to 1).forEach { (label, value) ->
+                Row(
+                    Modifier
+                        .selectable(
+                            selected = type == value,
+                            role = Role.RadioButton,
+                            onClick = { type = value },
+                        )
+                        .padding(top = 4.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AppRadioButton(selected = type == value, onClick = null)
+                    Text(label, modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+        }
     }
 }
 

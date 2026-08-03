@@ -34,6 +34,28 @@ object FileDialogs {
             ).firstOrNull()
         }
         return showAwtDialog(title, FileDialog.LOAD, fileMode = false, extensions, extensionDesc)
+            .firstOrNull()
+    }
+
+    /** 选多个文件（打开）。Windows 走 IFileDialog 多选；macOS/Linux 走 AWT 多选模式。 */
+    fun pickOpenFiles(
+        title: String? = null,
+        extensions: List<String> = emptyList(),
+        extensionDesc: String? = null,
+    ): List<File> {
+        if (WindowsFileDialogs.isSupported) {
+            return WindowsFileDialogs.show(
+                title = title,
+                multiSelect = true,
+                extensions = extensions,
+                extensionDesc = extensionDesc,
+                owner = ownerWindow(),
+            )
+        }
+        return showAwtDialog(
+            title, FileDialog.LOAD, fileMode = false, extensions, extensionDesc,
+            multiSelect = true,
+        )
     }
 
     /** 选文件（保存）。返回用户选定的 File（调用方自行保证后缀）。 */
@@ -58,7 +80,7 @@ object FileDialogs {
         return showAwtDialog(
             title, FileDialog.SAVE, fileMode = false,
             extensions, extensionDesc, defaultName, initialDir,
-        )
+        ).firstOrNull()
     }
 
     /** 选目录。Windows 走 FOS_PICKFOLDERS 现代目录选择器；其他平台沿用 AWT 兜底。 */
@@ -72,6 +94,7 @@ object FileDialogs {
             ).firstOrNull()
         }
         return showAwtDialog(title, FileDialog.LOAD, fileMode = true, initialDir = initialDir)
+            .firstOrNull()
     }
 
     // 选图片并读取字节，返回 (bytes, fileName) 供调用方做扩展名判断（如 .9.png），取消返回 null
@@ -85,7 +108,7 @@ object FileDialogs {
                 owner = ownerWindow(),
             ).firstOrNull()
         } else {
-            showAwtDialog(null, FileDialog.LOAD, fileMode = false, extensions)
+            showAwtDialog(null, FileDialog.LOAD, fileMode = false, extensions).firstOrNull()
         } ?: return null
         return file.readBytes() to file.name
     }
@@ -103,7 +126,8 @@ object FileDialogs {
         extensionDesc: String? = null,
         defaultName: String? = null,
         initialDir: File? = null,
-    ): File? {
+        multiSelect: Boolean = false,
+    ): List<File> {
         // 属主优先用当前应用窗口; 取不到才造临时 Frame, 用完必须 dispose 否则每次调用泄漏一个原生窗口
         val parent = ownerWindow() as? Frame
         val temp = if (parent == null) Frame() else null
@@ -120,11 +144,21 @@ object FileDialogs {
                 }
             }
             defaultName?.let { dialog.file = it }
+            // 多选模式 (macOS NSOpenPanel / Linux GTK 均支持); Windows 走 WindowsFileDialogs 分支不至此
+            if (multiSelect && mode == FileDialog.LOAD) {
+                dialog.isMultipleMode = true
+            }
             // 模态 show: 在 EDT 上 AWT 自行开二级事件循环 (UI 不冻结), 其它线程上只阻塞该线程
             dialog.isVisible = true
-            val dir = dialog.directory ?: return null
-            val file = dialog.file ?: return null
-            return File(dir, file).takeIf { it.exists() || mode == FileDialog.SAVE }
+            val dir = dialog.directory ?: return emptyList()
+            return if (multiSelect && dialog.isMultipleMode) {
+                dialog.files
+                    .filter { it.exists() }
+                    .map { File(it.absolutePath) }
+            } else {
+                val file = dialog.file ?: return emptyList()
+                listOfNotNull(File(dir, file).takeIf { it.exists() || mode == FileDialog.SAVE })
+            }
         } finally {
             dialog.dispose()
             temp?.dispose()

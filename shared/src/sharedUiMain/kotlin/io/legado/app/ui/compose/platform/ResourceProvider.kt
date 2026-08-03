@@ -10,78 +10,16 @@ import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 跨平台资源访问器。
- *
- * 字符串/字符串数组/Painter 四端统一走 Compose Resources 按 key 索引的映射表
- * (见 ComposeResourceLookup 的 [findStringResource] / [findDrawableResource]);
+ * 跨平台资源访问器: 字符串/字符串数组/Painter 四端统一走 Compose Resources 按 key 索引的
+ * 映射表 (见 ComposeResourceLookup 的 [findStringResource]/[findDrawableResource]);
  * 仅 [rememberColor] 与 [rememberLauncherIconPainters] 是 expect/actual —— 前者无
  * Compose Resources 对应 API, 后者 Android 需处理 AdaptiveIconDrawable。
- *
- * 调用方用 [rememberPainter] / [rememberString] / [rememberColor] 替代
+ * 调用方用 [rememberPainter]/[rememberString]/[rememberColor] 替代
  * painterResource/stringResource/colorResource, 由 B 类 Composable 下沉时统一调用。
  *
- * ## 支持的 key (来源: app 端 B 类 Composable 实际使用清单)
- *
- * ### Painter key (drawable)
- * - `ic_arrow_back`     返回箭头 (AppTitleBar / DialogTitleBar)
- * - `ic_search`         搜索图标 (AppTitleBar)
- * - `ic_more_vert`      更多菜单 (AppTitleBar / SelectActionBar)
- * - `ic_baseline_close` 关闭按钮 (AppTitleBar)
- * - `ic_clear_all`      清除全部 (AppAutoCompleteField)
- * - `ic_check`          勾选 (ColorPicker / TocScreen)
- * - `ic_add`            增加 (AppSlider)
- * - `ic_reduce`         减少 (AppSlider)
- * - `ic_sort`           排序/反转 (TocDrawerContent)
- * - `ic_lock_outline`   VIP 锁 (TocScreen)
- * - `ic_expand_more`    展开箭头 (TocScreen 卷折叠)
- * - `ic_expand_less`    折叠箭头 (TocScreen 卷折叠)
- * - `ic_outline_cloud_24` 云朵 (TocScreen 未缓存)
- * - `ic_arrow_drop_up`  顶部箭头 (TocScreen 底栏)
- * - `ic_arrow_drop_down` 底部箭头 (TocScreen 底栏)
- * - `ic_author`         作者图标 (BookshelfComposablesShared 书架列表行)
- * - `ic_history`        历史图标 (BookshelfComposablesShared 阅读进度行)
- * - `ic_book_last`      最新章节图标 (BookshelfComposablesShared 最新章节行)
- * - `ic_review_close`   评论对话框关闭按钮 (ReviewListDialog)
- * - `ic_review_thumb_up` / `ic_review_thumb_up_filled` 评论点赞图标 (ReviewListDialog)
- * - `ic_review_thumb_down` / `ic_review_thumb_down_filled` 评论点踩图标 (ReviewListDialog)
- *
- * ### String key (string)
- * - `ok`                确定
- * - `cancel`            取消
- * - `reduce`            减少 (AppSlider contentDescription)
- * - `plus`              增加 (AppSlider contentDescription)
- * - `clear`             清除 (AppTitleBar contentDescription)
- * - `more_menu`         更多菜单 (AppTitleBar / SelectActionBar contentDescription)
- * - `empty`             空状态文案 (RuleManageScaffold / EffectiveReplacesScreen)
- * - `revert_selection`  反选 (SelectActionBar)
- * - `open`              打开 (ImportListScaffold)
- * - `select_all_count`             全选（%1$d/%2$d）(ImportListScaffold, 带 formatArgs)
- * - `select_cancel_count`          取消全选（%1$d/%2$d）(ImportListScaffold, 带 formatArgs)
- * - 阅读更多设置/朗读设置相关 key: 见 MoreConfigScreen / ReadAloudConfigScreen
- * - TocScreen 相关 key: `search` / `chapter_list` / `bookmark` / `export` / `export_md` /
- *   `txt_toc_rule` / `split_long_chapter` / `reverse_toc` /
- *   `use_replace` / `load_word_count` / `log` / `go_to_top` / `go_to_bottom`
- * - TipConfigScreen 相关 key: `body_title` / `title_left` / `title_center` / `title_hide` /
- *   `title_font_size` / `title_margin_top` / `title_margin_bottom` / `header` / `footer` /
- *   `header_footer` (值含 `&`) / `show_hide` / `left` / `middle` / `right` /
- *   `text_color` / `tip_divider_color` / `show` / `hide` / `hide_when_status_bar_show`
- * - PaddingConfigScreen 相关 key: `main_body` / `showLine` / `padding_top` /
- *   `padding_bottom` / `padding_left` / `padding_right` (复用 `header` / `footer`)
- * - EffectiveReplacesScreen 相关 key: `effective_replaces` / `add` / `close` /
- *   `source_filter_rule_manage` (复用 `empty` / `ic_add` Painter key)
- * - BookshelfComposablesShared 相关 key: `bookshelf` / `bookshelf_empty` / `book_local` /
- *   `add_url` / `add_book_url` / `force_refresh_book` / `select_file` / `add_remote_book`
- *   (复用 `search` / `group_manage` / `bookshelf_management` / `import_bookshelf` / `log`)
- *
- * ### Color key (color)
- * - `primaryText`       主文本色 (= arco_text_1: light #FF212121 / dark #FFF8F8F8) (Preferences)
- * - `tv_text_summary`   次文本色 (= arco_text_3: #FF909090 light/dark 相同) (Preferences)
- * - `btn_bg`            按钮背景色 (= btn_bg: light #100e0e0e / dark #14e0e0e0) (TocScreen 卷名背景)
- *
- * 各平台未识别的 key:
- * - Painter: 返回占位图标 `ic_material_help`
- * - String: 返回 key 本身
- * - Color: 返回 Color.Unspecified (调用方应保证 key 命中, 否则不绘制)
+ * 支持 key 清单 (来源: app 端 B 类 Composable 实际使用清单) 见 ComposeResourceLookup;
+ * 未识别 key 兜底: Painter → 占位图标 `ic_material_help`; String → key 本身;
+ * Color → Color.Unspecified (调用方应保证 key 命中, 否则不绘制)。
  */
 @Composable
 fun rememberPainter(key: String): Painter {

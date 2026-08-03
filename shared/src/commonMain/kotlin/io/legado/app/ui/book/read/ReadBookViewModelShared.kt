@@ -22,6 +22,7 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.CacheBookShared
+import io.legado.app.model.ReadBookPlatforms
 import io.legado.app.model.ReadBookShared
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.fileBook.FileBookProviders
@@ -29,6 +30,7 @@ import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.read.ReadBookViewModelShared.LayoutConfig.Companion.DEFAULT
 import io.legado.app.ui.book.read.page.PageDelegateShared
 import io.legado.app.ui.book.read.page.entities.TextChapterShared
+import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.provider.ChapterContentParserShared
 import io.legado.app.ui.book.read.page.provider.ImageResolver
@@ -101,6 +103,21 @@ class ReadBookViewModelShared(
 
     private val _nextTextPage = MutableStateFlow<TextPage?>(null)
     val nextTextPage: StateFlow<TextPage?> = _nextTextPage.asStateFlow()
+
+    /**
+     * 页内容原地变更版本号（朗读高亮等对 TextPage/TextLine 的原地修改）。
+     *
+     * 修改不改变 data class 相等性，StateFlow 去重后不会重发，Compose 侧 Canvas
+     * 不会重绘。订阅者（PageViewComposable/PageContentCanvas）消费本值强制重绘，
+     * 对照 app 端 `upContent` 后的 invalidate 路径。
+     */
+    private val _pageContentVersion = MutableStateFlow(0)
+    val pageContentVersion: StateFlow<Int> get() = _pageContentVersion
+
+    /** 页内容原地变更后自增，触发 Compose 阅读页重绘（朗读高亮/清除）。 */
+    fun bumpPageContentVersion() {
+        _pageContentVersion.value++
+    }
     // endregion
 
     /**
@@ -220,7 +237,7 @@ class ReadBookViewModelShared(
     /**
      * 当前章节索引 (委托 [readBook.durChapterIndex])。
      *
-     * KP2-D P1: 桌面端 TocDrawerContent 用其高亮当前章节 + 跳转后自动滚动定位。
+     * 桌面端 TocDrawerContent 用其高亮当前章节 + 跳转后自动滚动定位。
      * 切章时 [moveToPrevChapter] / [moveToNextChapter] / [loadChapter] 会通过
      * [ReadBookShared.updateDurChapterIndex] 推送新值, Compose 自动重组刷新高亮。
      */
@@ -237,6 +254,74 @@ class ReadBookViewModelShared(
 
     /** 当前章排版结果 (委托 readBook.curTextChapter), 供"去重"菜单读 sameTitleRemoved */
     val curTextChapter: StateFlow<TextChapterShared?> get() = readBook.curTextChapter
+
+    /** 当前页索引 (委托 readBook.durPageIndex), 供进度条 page 模式 seekValue 使用 */
+    val durPageIndex: StateFlow<Int> get() = readBook.durPageIndex
+
+    /** 是否滚动翻页模式 (对照 app 端 `ReadBook.isScroll`), 朗读起点定位等滚动分支使用 */
+    val isScrollPageAnim: Boolean get() = readBook.isScroll
+
+    // region 滚动模式行级偏移 (对照 app 端 ContentTextView.pageOffset)
+    /**
+     * 滚动翻页模式的行级滚动偏移 (px, 恒 ≤ 0)。
+     *
+     * 语义与 app 端 `ContentTextView.pageOffset` 一致: 可视区顶相对当前页内容顶的位置,
+     * 范围 (-当前页高, 0]; 页边界 (0 / -页高) 处由 ScrollPageDelegateCompose 在滚动过程中
+     * 即时翻页并把偏移折算到新页 (旧 scroll() 的 moveToPrev/moveToNext 分支)。
+     * 仅滚动模式有行级滚动; 整页/非滚动模式偏移恒为 0 (只有滚动 delegate 写入本状态)。
+     *
+     * 与页面流同步: 切章/重排/跳页时 [resetScrollOffset] 归零 (对照旧 resetPageOffset),
+     * 章内翻页 (nextPage/prevPage) 保留偏移以维持内容连续性。
+     */
+    private val _scrollOffset = MutableStateFlow(0)
+    val scrollOffset: StateFlow<Int> = _scrollOffset.asStateFlow()
+
+    /** 更新滚动偏移 (仅 ScrollPageDelegateCompose 手势/动画写入) */
+    fun updateScrollOffset(offset: Int) {
+        _scrollOffset.value = offset
+    }
+
+    /** 重置滚动偏移 (切章/重排/跳页时, 对照 app 端 resetPageOffset) */
+    private fun resetScrollOffset() {
+        _scrollOffset.value = 0
+    }
+    // endregion
+
+    /**
+     * 跳转到指定页 (对照 app 端 `ReadBook.skipToPage`)。
+     * 进度条 page 模式松手后按页索引跳转, 跨章时由排版层自动接续。
+     */
+    fun skipToPage(index: Int) {
+        resetScrollOffset()
+        readBook.skipToPage(index)
+    }
+
+    /**
+     * 更新章节标题并落库 (对照原版 ContentEditDialog.editTitle:
+     * `bookChapterDao.update(chapter)` + `ReadBook.loadContent(resetPageOffset = false)`)。
+     *
+     * 同步替换内存目录项 (StateFlow 换新列表实例触发重组), 使菜单/目录立即显示新标题;
+     * 然后按当前进度重载正文 (标题变化影响页内显示标题)。
+     */
+    fun renameChapter(index: Int, newTitle: String) {
+        val book = readBook.book.value ?: return
+        scope.launch {
+            runCatching {
+                val chapter = AppDbProviders.get().bookChapterDao
+                    .getChapter(book.bookUrl, index) ?: return@launch
+                chapter.title = newTitle
+                AppDbProviders.get().bookChapterDao.update(chapter)
+                // 内存目录同步替换 (data class 新实例, 不影响其他字段引用)
+                readBook.chapterListValue = readBook.chapterListValue?.map { c ->
+                    if (c.index == index) chapter else c
+                }
+            }.onFailure {
+                AppLog.put("重命名章节失败\n${it.message}", it)
+            }
+            ReadBookEvents.postMenuRefresh()
+            loadContent(index)
+        }
+    }
 
     /**
      * 跳到章内字符位置并刷新页面流。
@@ -389,8 +474,6 @@ class ReadBookViewModelShared(
                 readBook.updateDurChapterIndex(index)
                 readBook.updateDurChapterPos(0)
                 clearExpiredChapterLoadingJobs()
-                // 落库 + WebDav 上传（上传时机 shared 折中为章节切换，见 uploadProgress KDoc）
-                uploadProgress()
             }
 
             // 5. 当前章优先装载，前后章异步预载（对照 app 端 loadContent 三章同载）
@@ -653,6 +736,8 @@ class ReadBookViewModelShared(
                 // 纯 UI 重排：只更新页状态，不触发 preDownload（避免网络请求/JS执行）
                 pageList.clear()
                 pageList.addAll(textChapter.pages)
+                // 重排后行几何整体变化，滚动偏移归零 (对照旧 LOAD_CONTENT → resetPageOffset)
+                resetScrollOffset()
                 if (readBook.durChapterPos.value == Int.MAX_VALUE) {
                     readBook.updateDurChapterPos(textChapter.lastReadLength)
                 }
@@ -708,8 +793,6 @@ class ReadBookViewModelShared(
                 launchChapterLoad(curIndex + 1) { loadContent(curIndex + 1) }
             }
             launchChapterLoad(curIndex + 2) { loadContent(curIndex + 2) }
-            // 落库 + WebDav 上传（上传时机 shared 折中为章节切换，见 uploadProgress KDoc）
-            uploadProgress()
             return true
         }
         return false
@@ -766,8 +849,6 @@ class ReadBookViewModelShared(
                 launchChapterLoad(curIndex - 1) { loadContent(curIndex - 1) }
             }
             launchChapterLoad(curIndex - 2) { loadContent(curIndex - 2) }
-            // 落库 + WebDav 上传（上传时机 shared 折中为章节切换，见 uploadProgress KDoc）
-            uploadProgress()
             return true
         }
         return false
@@ -885,8 +966,8 @@ class ReadBookViewModelShared(
     /**
      * 落库并上传当前阅读进度（原版 BaseReadViewModel.uploadProgress）。
      *
-     * 上传时机与原版差异：app 在 ReadBookActivity.onPause 统一上传；shared 无 onPause 等价
-     * 生命周期，折中为「章节切换 + [onCleared]」两处触发。
+     * 上传时机与原版一致：平台 onPause（Activity 生命周期桥接，见 ReaderScreenModel.onPause）
+     * 与退出阅读（[onCleared]）时触发，不再切章即上传。
      */
     fun uploadProgress() {
         val bookUrl = readBook.book.value?.bookUrl ?: return
@@ -956,28 +1037,136 @@ class ReadBookViewModelShared(
 
     /**
      * 切换朗读播放/暂停 (对照 app 端 MEDIA_BUTTON isDown=false 分支 `ReadBook.readAloud(!BaseReadAloudService.pause)`)。
-     * 待实现：朗读服务由平台 actual 注入，shared 端无 BaseReadAloudService 等价。
+     *
+     * 由 ReaderScreenModel 在媒体键事件中先停自动翻页 (autoPageStop) 再调本方法,
+     * 对齐 app 端 ReadBookActivity.onClickReadAloud 的 autoPageStop + 朗读切换顺序。
+     * 滚动模式未运行时从可视区首行定位起点 (旧语义: getReadAloudPos → durChapterPos +
+     * openChapter → readAloud(startPos))。
      */
     fun toggleReadAloud() {
-        // 待实现：桥接到平台朗读服务切换播放/暂停
+        val platform = ReadBookPlatforms.get()
+        when {
+            // 未运行: 从当前进度开始朗读 (滚动模式定位到可视区首行)
+            !platform.isReadAloudRun -> {
+                if (isScrollPageAnim) {
+                    readAloudFromVisibleStart()
+                } else {
+                    readBook.readAloud()
+                }
+            }
+
+            // 暂停: 恢复播放
+            platform.isReadAloudPause -> readBook.readAloud(play = true)
+
+            // 运行中: 暂停
+            else -> platform.pauseReadAloud()
+        }
     }
+
+    /**
+     * 滚动模式朗读起点定位 (对照 app 端 ContentTextView.getReadAloudPos :466-484)。
+     *
+     * 基于 [scrollOffset] 与 TextPage.lines 的 isVisible 算法: 从当前页 (相对偏移 =
+     * scrollOffset) 起找第一个可见行, 页内容未填满视口时再扫下一页 (相对偏移 =
+     * scrollOffset + 当前页高, 对照旧 relativeOffset(1)); 下一页顶已到视口底之下即止。
+     *
+     * @return (章节索引, 平移后的可见行); 无可视行时 null (旧语义: null → 从当前进度朗读)
+     */
+    fun getReadAloudPos(): Pair<Int, TextLine>? {
+        if (!isScrollPageAnim) return null
+        val curPage = _curTextPage.value ?: return null
+        if (curPage.lines.isEmpty()) return null
+        val visibleHeight = curPage.visibleHeight
+        // 当前页 (对照旧 relativePage(0) + relativeOffset(0) = pageOffset)
+        val curLine = findFirstVisibleLine(curPage, _scrollOffset.value.toFloat())
+        if (curLine != null) return curPage.chapterIndex to curLine
+        // 下一页: 仅当页内容未填满视口时可能有可见行 (对照旧 relativePos>0 的 break 条件)
+        val nextPage = _nextTextPage.value ?: return null
+        val nextOffset = _scrollOffset.value.toFloat() + curPage.height
+        if (nextOffset >= visibleHeight) return null
+        val nextLine = findFirstVisibleLine(nextPage, nextOffset)
+        return if (nextLine != null) nextPage.chapterIndex to nextLine else null
+    }
+
+    /** 找页内第一个可见行, 返回平移后的副本 (对照旧 getReadAloudPos 的 copy + lineTop/lineBottom 平移) */
+    private fun findFirstVisibleLine(
+        page: TextPage,
+        relativeOffset: Float,
+    ): TextLine? {
+        val lines = page.lines
+        for (i in lines.indices) {
+            val textLine = lines[i]
+            if (textLine.isVisible(relativeOffset)) {
+                return textLine.copy().apply {
+                    lineTop += relativeOffset
+                    lineBottom += relativeOffset
+                }
+            }
+        }
+        return null
+    }
+
+    /**
+     * 滚动模式朗读起点: 从可视区首行开始朗读 (对照原版 onClickReadAloud 的
+     * getReadAloudPos + durChapterPos/openChapter + readAloud(startPos) 分支)。
+     *
+     * 定位行语义: durChapterPos = line.chapterPosition, readAloud(startPos =
+     * line.pagePosition) → 服务端 readAloudNumber = getReadLength(durPageIndex) + startPos
+     * = 该行章节位置。跨章时 openChapter 跳章, 排版完成后经 [applyCurChapterPages]
+     * 触发延迟朗读 (对照原版 openChapter success 回调时机); 无可视行回落当前进度。
+     */
+    fun readAloudFromVisibleStart() {
+        val pos = getReadAloudPos()
+        if (pos != null) {
+            val (index, line) = pos
+            if (readBook.durChapterIndex.value != index) {
+                pendingReadAloudStart = line.pagePosition
+                openChapter(index, line.chapterPosition)
+            } else {
+                readBook.updateDurChapterPos(line.chapterPosition)
+                readBook.readAloud(startPos = line.pagePosition)
+            }
+        } else {
+            readBook.readAloud()
+        }
+    }
+
+    /** 跨章朗读起点: 目标章排版完成待触发的页内偏移 (对照原版 openChapter success 时机) */
+    private var pendingReadAloudStart: Int? = null
 
     /**
      * 清除当前页朗读高亮 span 并刷新内容 (对照 app 端 ALOUD_STATE STOP/PAUSE 分支:
      * `page.removePageAloudSpan()` + `readView.upContent(resetPageOffset = false)`)。
-     * 待实现：TextPage 的 aloudSpan 在 shared 排版层尚无等价字段。
+     *
+     * 原版按 `durChapterPos` 定位所在页 (getPageByReadPos)，shared 等价为
+     * `durPageIndexValue` 对应页；高亮是原地修改，额外自增 [pageContentVersion]
+     * 驱动 Compose 重绘（等价 upContent 的 invalidate）。
      */
     fun clearAloudSpanForCurrentPage() {
-        // 待实现：清除当前页朗读 span + upContent
+        val page = readBook.curTextChapter.value?.getPage(readBook.durPageIndexValue) ?: return
+        page.removePageAloudSpan()
+        bumpPageContentVersion()
     }
 
     /**
      * 朗读进度推进 (对照 app 端 TTS_PROGRESS sticky 观察者:
      * `ReadBook.durChapterPos = chapterStart` + `page.upPageAloudSpan(aloudSpanStart)` + `upContent()`)。
-     * 待实现：依赖朗读服务 isPlay 判定 + TextPage.upPageAloudSpan。
+     *
+     * - 仅朗读播放中推进（原版守卫 `BaseReadAloudService.isPlay()`，忽略停止/暂停后的粘性重放）
+     * - `updateReadPosition` 等价原版 `durChapterPos = chapterStart` + `upContent`：
+     *   跨页时页面流随之翻到朗读页（原版 pageIndex 由 durChapterPos 派生）
+     * - `aloudSpanStart = chapterStart - getReadLength(pageIndex)` 为页内字符偏移，
+     *   交给 [io.legado.app.ui.book.read.page.entities.TextPage.upPageAloudSpan] 按段落置高亮行
      */
     fun onTtsProgress(chapterStart: Int) {
-        // 待实现：更新 durChapterPos + upPageAloudSpan + upContent
+        val platform = ReadBookPlatforms.get()
+        if (!platform.isReadAloudRun || platform.isReadAloudPause) return
+        val textChapter = readBook.curTextChapter.value ?: return
+        updateReadPosition(chapterStart)
+        val pageIndex = readBook.durPageIndexValue
+        val aloudSpanStart = chapterStart - textChapter.getReadLength(pageIndex)
+        textChapter.getPage(pageIndex)?.upPageAloudSpan(aloudSpanStart)
+        bumpPageContentVersion()
     }
     // endregion
 
@@ -1201,6 +1390,7 @@ class ReadBookViewModelShared(
             paragraphSpacing = cfg.paragraphSpacing,
             titleTopSpacing = cfg.titleTopSpacing,
             titleBottomSpacing = cfg.titleBottomSpacing,
+            endPadding = cfg.endPadding,
             paragraphIndent = cfg.paragraphIndent,
             textFullJustify = cfg.textFullJustify,
             useZhLayout = cfg.useZhLayout,
@@ -1257,6 +1447,13 @@ class ReadBookViewModelShared(
     private fun applyCurChapterPages(textChapter: TextChapterShared) {
         pageList.clear()
         pageList.addAll(textChapter.pages)
+        // 切章/重排/刷新后滚动偏移归零 (对照旧 upContent(resetPageOffset=true) → resetPageOffset)
+        resetScrollOffset()
+        // 跨章朗读起点: 目标章排版完成即触发 (对照原版 openChapter success 回调时机)
+        pendingReadAloudStart?.let { startPos ->
+            pendingReadAloudStart = null
+            readBook.readAloud(startPos = startPos)
+        }
         // toLast 且上一章未预载时的 Int.MAX_VALUE 哨兵：落到末页后归一为该页页首
         if (readBook.durChapterPos.value == Int.MAX_VALUE) {
             readBook.updateDurChapterPos(textChapter.lastReadLength)
@@ -1487,6 +1684,63 @@ class ReadBookViewModelShared(
         }
     }
 
+    // ===== 阅读菜单配置开关 (对照 app 端 ReadMenu.onTopMenuAction 各分支, iOS/鸿蒙共用) =====
+
+    /**
+     * 翻转替换规则开关 (对照 app 端 ENABLE_REPLACE 分支：changeReplaceRuleState)。
+     * book.config.useReplaceRule 取反 → 落库 → 刷新替换规则缓存 → 同章重载保留进度。
+     */
+    fun toggleUseReplaceRule() {
+        val book = readBook.book.value ?: return
+        book.config.useReplaceRule = !book.getUseReplaceRule()
+        scope.launch {
+            runCatching {
+                ContentProcessorProviders.get().upReplaceRules()
+                AppDbProviders.get().bookDao.update(book)
+            }.onFailure { AppLog.put("切换替换规则失败\n${it.message}", it) }
+            loadChapter(readBook.durChapterIndex.value)
+        }
+    }
+
+    /**
+     * 翻转重新分段 (对照 app 端 RE_SEGMENT 分支)：reSegment 取反 → 落库 → 同章重载保留进度。
+     */
+    fun toggleReSegment() {
+        val book = readBook.book.value ?: return
+        book.config.reSegment = !book.config.reSegment
+        scope.launch {
+            runCatching { AppDbProviders.get().bookDao.update(book) }
+                .onFailure { AppLog.put("切换重新分段失败\n${it.message}", it) }
+            loadChapter(readBook.durChapterIndex.value)
+        }
+    }
+
+    /**
+     * 翻转去除标签配置并全章清缓存重载 (对照 app 端 DEL_RUBY_TAG/DEL_H_TAG 的 toggleDelTag)。
+     *
+     * @param tag 标签位掩码 ([Book.rubyTag] / [Book.hTag])
+     */
+    fun toggleDelTag(tag: Long) {
+        val book = readBook.book.value ?: return
+        book.config.delTag = if (book.config.delTag and tag == tag) {
+            book.config.delTag and tag.inv()
+        } else {
+            book.config.delTag or tag
+        }
+        scope.launch {
+            runCatching { AppDbProviders.get().bookDao.update(book) }
+                .onFailure { AppLog.put("切换标签删除失败\n${it.message}", it) }
+            refreshContentAll()
+        }
+    }
+
+    /**
+     * 设置书籍文本编码 (对照 app 端 `ReadBook.setCharset`): 写 book.charset
+     * 并发 [ReadBookEvents.postLoadChapterList] 触发目录重载, 按新编码重新解析。
+     * 供顶栏"设置编码"菜单动作使用 (必须走本实例, app 端 ReadBook 单例与阅读器非同一实例)。
+     */
+    fun setCharset(charset: String) = readBook.setCharset(charset)
+
     /**
      * 手动同步云进度（对照 app 端 BaseReadViewModel.syncProgress, manual=true）。
      *
@@ -1605,6 +1859,8 @@ class ReadBookViewModelShared(
         val textFullJustify: Boolean = true,
         // 默认值与 ReadBookConfig 一致（textBottomJustify=true / useZhLayout=false / titleMode=0）
         val textBottomJustify: Boolean = true,
+        /** 末页底部留白 px（对照 app 端 getTextChapter 末尾 20dp；DEFAULT 按 2x 密度折算 40px） */
+        val endPadding: Int = 40,
         val useZhLayout: Boolean = false,
         val titleMode: Int = 0,
         val textFontPath: String = "",

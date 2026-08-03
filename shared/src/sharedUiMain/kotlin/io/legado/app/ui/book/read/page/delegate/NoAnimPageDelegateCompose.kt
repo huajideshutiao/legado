@@ -4,7 +4,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
-import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import kotlinx.coroutines.CoroutineScope
 
 /**
@@ -44,7 +43,9 @@ class NoAnimPageDelegateCompose(
      */
     override fun onAnimStart(animationSpeed: Int) {
         if (!isMoved || mDirection == PageDirectionShared.NONE) {
-            // 未移动或方向未定，不翻页（与基类 onAnimStart 守卫一致）
+            // 未移动或方向未定，不翻页（与基类 onAnimStart 守卫一致）。
+            // 手势未成形同样恢复自动翻页，避免 abortAnim 的 pause 悬挂
+            autoPager?.resume()
             return
         }
         // 立即翻页（不启动动画协程），与 app 端 stopScroll + fillPage 等价

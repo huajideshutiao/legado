@@ -50,7 +50,7 @@ import io.legado.app.utils.replace
 import splitties.init.appCtx
 
 /**
- * webBook 编排层下沉 (W3-f) 配套 provider 安卓实现。
+ * webBook 编排层下沉配套 provider 安卓实现。
  *
  * 6 个 provider 接口 (AppDbAccessor/AppConfigAccessor/ContentProcessorAccessor/
  * BookHelpAccessor/IntentDataAccessor/RegexReplacer) 在 shared 中定义, 由本文件
@@ -517,7 +517,7 @@ fun registerAndroidWebBookProviders() {
     SourceHelpAccessors.register(impl)
     // ImportThemeViewModelShared 下沉新增: 注册 ThemeConfigProvider (桥接 ThemeConfig.configList 读 + addConfig 写)
     ThemeConfigProviders.register(impl)
-    // KP1.2: 注册 AppDatabase 单例 provider (app 端委托 appDb lazy 单例)
+    // 注册 AppDatabase 单例 provider (app 端委托 appDb lazy 单例)
     AppDatabaseProviders.register(AndroidAppDatabaseProvider)
     // SourceVerificationHelp 下沉新增: 注册 VerificationUiProvider (桥接 VerificationCodeDialog/WebViewActivity)
     registerAndroidVerificationUiProvider()

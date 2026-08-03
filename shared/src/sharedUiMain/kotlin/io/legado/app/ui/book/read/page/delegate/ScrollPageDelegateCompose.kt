@@ -1,64 +1,72 @@
 package io.legado.app.ui.book.read.page.delegate
 
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.animation.core.AnimationState
+import androidx.compose.animation.core.DecayAnimationSpec
+import androidx.compose.animation.core.animateDecay
+import androidx.compose.animation.splineBasedDecay
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
+import androidx.compose.ui.platform.LocalDensity
+import io.legado.app.data.entities.Book
+import io.legado.app.help.book.isImage
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
+import kotlin.math.abs
+import kotlin.math.min
 
 /**
- * 滚动翻页 delegate（sharedUiMain，Compose Multiplatform 版）。
+ * 滚动翻页 delegate（sharedUiMain，Compose Multiplatform 版，行级滚动）。
  *
- * 与 app 端 `io.legado.app.ui.book.read.page.delegate.ScrollPageDelegate` 对应，
- * 用 Compose 跨平台 API 替代 Android `Scroller` + `VelocityTracker` + `Canvas`。
+ * 与 app 端 `io.legado.app.ui.book.read.page.delegate.ScrollPageDelegate` +
+ * `ContentTextView.scroll/drawPage` 对应，语义逐项对照：
  *
- * # 与 app 端原版的语义差异（架构适配）
+ * # 行级滚动模型（对照旧 ContentTextView.pageOffset）
  *
- * app 端 ScrollPageDelegate 是 **单页内文字滚动**（保留一行）：
- * - 用 `VelocityTracker` 追踪速度 + `Scroller.fling` 惯性滚动
- * - `calcNextPageOffset` 保留最后一行行首在视口顶部
- *   （依赖 `ChapterProvider.visibleHeight` + `Book.config.imageStyle` + `visiblePage.lines`）
- * - `curPage.scroll(deltaY)` 内部调用 `ChapterProvider` 的行级排版 API
+ * 偏移 [_currentOffset] 恒 ≤ 0：可视区顶相对当前页内容顶的位置，范围 (-当前页高, 0]。
+ * - 拖过页顶 (offset > 0) → 立即切上一页，offset -= 新当前页高（旧 scroll 的
+ *   `pageOffset > 0 → moveToPrev(true) → pageOffset -= textPage.height`）
+ * - 拖过页底 (offset < -页高) → 立即切下一页，offset += 旧页高（旧 `pageOffset <
+ *   -textPage.height → moveToNext(true) → pageOffset += height`，保持内容连续）
+ * - 末页底部钳制：无下一页时 `offset = min(0, visibleHeight - 页高)`（旧末页分支），
+ *   书首/书末硬边界返回 false 并中止惯性
  *
- * KMP 版 [SimpleChapterLayout][io.legado.app.ui.book.read.page.provider.SimpleChapterLayout]
- * 尚未暴露行级 API（lines/lineTop/lineBottom），无法完整移植"保留一行"语义。
- * 改为 **整页垂直滑动切换**（与 [HorizontalPageDelegate] 对称，方向改垂直）：
- * - 手指上滑 → 下一页（nextContent 从下方滑入）
- * - 手指下滑 → 上一页（prevContent 从上方滑入）
- * - `Animatable` 驱动 _currentOffset 从 0 → ±viewHeight
- * - fling 惯性用 `Animatable.animateTo` + `tween` 近似（无需 VelocityTracker）
+ * # 渲染（对照旧 drawPage 三页连排）
  *
- * 这是必要的架构适配，不是降级——app 端行级滚动依赖 ChapterProvider 的 TextPage.lines 行级排版，
- * KMP 版 SimpleChapterLayout 目前只产出整页 TextPage，不暴露行级 API。
- * 后续若 SimpleChapterLayout 补全行级 API，可在本 delegate 内恢复"保留一行"语义。
+ * 当前页 + 下一页连排：下一页绘制位置 = offset + 当前页高（旧 relativeOffset(1)）。
+ * 平移经 [io.legado.app.ui.book.read.page.PageViewComposable] 的 contentTranslationY
+ * 提供者应用（graphicsLayer 绘制阶段读取，不触发重组），视口裁剪对照旧
+ * `canvas.clipRect(visibleRect)`。页眉/页脚 tip 固定不随内容滚动（旧 PageView 布局）。
  *
- * # 翻页方向语义
+ * # 保留一行翻页（对照旧 ScrollPageDelegate.calcNextPageOffset/calcPrevPageOffset）
  *
- * - **NEXT**（手指上滑，currentOffset < 0）：nextPage 从下方滑入，curPage 静止
- *   - currentOffset 从 0 → -viewHeight（nextPage 偏移 = viewHeight + currentOffset，从 viewHeight → 0）
- * - **PREV**（手指下滑，currentOffset > 0）：prevPage 从上方滑入，curPage 静止
- *   - currentOffset 从 0 → +viewHeight（prevPage 偏移 = -viewHeight + currentOffset，从 -viewHeight → 0）
+ * 点击/快捷键翻页（[nextPageByAnim]/[prevPageByAnim]，经 keyTurnPage 供九宫格点击复用）：
+ * - 下一页：滚动到当前页末行对齐视口顶（图片页滚动整页可视高），页索引不变
+ * - 上一页：先切上一页，再滚动到上一页末行对齐视口底
  *
- * # 章节边界联动
+ * # 惯性滚动（对照旧 Scroller.fling + VelocityTracker）
  *
- * [onAnimStop] 内按 mDirection 调 viewModel.nextPage/prevPage；
- * 返回 false（章节末页/首页）时调 moveToNextChapter/moveToPrevChapter 切章。
+ * 手势用 [VelocityTracker] 追踪速度，松手后 [AnimationState.animateDecay] 衰减；
+ * 衰减期间逐帧走同一套边界/翻页折算（旧 fling 由 computeScroll 驱动 scroll()）。
+ * 惯性停止后对齐到最近行边界（对照旧 scrollToLine 的行对齐语义）。
+ *
+ * # 手势与点击共存（对照旧 ReadView.onTouchEvent）
+ *
+ * 自定义 drag 循环越过 touchSlop 才开始消费并滚动（旧 isMove 判定）；未越过 slop 的
+ * 事件不消费，detectTapGestures 正常触发单击/长按（旧 !isMoved → click 分支）。
  *
  * @param viewModel 阅读 ViewModel
  * @param scope 协程作用域
@@ -70,79 +78,261 @@ class ScrollPageDelegateCompose(
     animationSpeed: Int = DEFAULT_ANIMATION_SPEED,
 ) : PageDelegateCompose(viewModel, scope, animationSpeed) {
 
-    // region 触摸点状态（垂直方向，与 app 端 ScrollPageDelegate touchY/lastY 对应；startY 在基类）
+    companion object {
+        /** 惯性停止后行对齐动画时长 (ms) */
+        private const val LINE_SNAP_MS = 150
+
+        /** 单帧内最大翻页折算次数 (防御性上限, 正常单帧只跨一页) */
+        private const val MAX_PAGE_TRANSITIONS = 64
+    }
+
+    // region 状态
+    /** 惯性衰减 (splineBasedDecay, 由 renderPageAnimation 组合期注入) */
+    private var decaySpec: DecayAnimationSpec<Float>? = null
+
     private var lastY: Float = 0f
     // endregion
 
-    // region PageDelegateShared 接口实现（垂直翻页逻辑）
+    init {
+        // 滚动 delegate 创建即新会话: 滚动偏移归零 (对照旧 upContent(resetPageOffset=true))
+        viewModel.updateScrollOffset(0)
+    }
+
+    /**
+     * 当前滚动偏移 (px, ≤ 0)。供 ReadViewComposable 注入 PageViewComposable 的
+     * contentTranslationY 提供者: 在 graphicsLayer 绘制阶段读取, 不触发重组。
+     */
+    val contentOffset: Float get() = _currentOffset
+
+    /**
+     * 下一页内容平移量 (px) = 当前偏移 + 当前页高 (对照旧 drawPage 的 relativeOffset(1))。
+     * 供 ReadViewComposable 注入 nextContent 的 contentTranslationY 提供者。
+     */
+    val nextContentOffset: Float
+        get() = _currentOffset + (viewModel.curTextPage.value?.height ?: 0f)
+
+    /**
+     * 自动翻页连续滚动驱动：按推进量走行级 scroll 折算（对照原版 AutoPager 每帧
+     * `curPage.scroll(-scrollOffset)`）。正 deltaPx = 内容上移露出下一页；
+     * 负值（上一页方向）同样折算，但自动翻页只推进正值。
+     *
+     * @return false = 命中硬边界（书首/书末），调用方应停止自动翻页
+     */
+    override fun onAutoScrollBy(deltaPx: Float): Boolean = applyScrollDelta(-deltaPx)
+
+    // region 滚动核心算法 (对照旧 ContentTextView.scroll :138-170)
+
+    /**
+     * 应用滚动增量并折算页边界 (对照旧 scroll() 的四个分支, 顺序一致):
+     * 1. offset > 0 → 切上一页 (本章无上一页时切章), offset -= 新当前页高
+     * 2. 无下一页且页底已到视口底之上 → 钳制 offset = min(0, visibleHeight - 页高)
+     * 3. offset < -页高 → 切下一页 (章末切章), offset += 旧当前页高
+     *
+     * @return false = 命中硬边界 (书首/书末), 调用方应停止惯性并复位手势
+     */
+    private fun applyScrollDelta(delta: Float): Boolean {
+        var offset = _currentOffset + delta
+        var transitions = 0
+        while (transitions++ < MAX_PAGE_TRANSITIONS) {
+            val cur = viewModel.curTextPage.value
+            if (cur == null) {
+                offset = 0f
+                break
+            }
+            val h = cur.height.toFloat()
+            when {
+                // 拖过页顶: 上一页从上方滑入 (旧 moveToPrev 分支, 内容连续性由 offset 折算保证)
+                offset > 0f -> {
+                    val oldOffset = offset
+                    if (!viewModel.prevPage() && !viewModel.moveToPrevChapter()) {
+                        // 书首: 归零并中止 (旧 !hasPrev → pageOffset = 0 + abortAnim)
+                        offset = 0f
+                        _currentOffset = offset
+                        viewModel.updateScrollOffset(offset.toInt())
+                        return false
+                    }
+                    // 新当前页高折算 (旧 pageOffset -= textPage.height, 此时 textPage 已换为新页)
+                    offset = oldOffset - (viewModel.curTextPage.value?.height ?: 0f)
+                }
+
+                // 末页底部钳制 (旧 !hasNext 分支): 末行对齐视口底后不再上滚
+                !hasNext() && offset < 0f && offset + h < cur.visibleHeight.toFloat() -> {
+                    offset = min(0f, cur.visibleHeight.toFloat() - h)
+                    _currentOffset = offset
+                    viewModel.updateScrollOffset(offset.toInt())
+                    return false
+                }
+
+                // 拖过页底: 下一页从下方滑入 (旧 moveToNext 分支)
+                offset < -h -> {
+                    val oldHeight = h
+                    if (!viewModel.nextPage() && !viewModel.moveToNextChapter()) {
+                        // 全书末: 钳制到页底 (旧 moveToNext 失败 → pageOffset = -height)
+                        offset = -oldHeight
+                        _currentOffset = offset
+                        viewModel.updateScrollOffset(offset.toInt())
+                        return false
+                    }
+                    // 旧页高折算 (旧 pageOffset += textPage.height, height 在 moveToNext 前取值)
+                    offset += oldHeight
+                }
+
+                else -> break
+            }
+        }
+        _currentOffset = offset
+        viewModel.updateScrollOffset(offset.toInt())
+        return true
+    }
+
+    /**
+     * 惯性停止后对齐到最近行边界 (对照旧 scrollToLine 的行对齐语义)。
+     * 候选 = 页顶 (offset 0) + 各行行顶对齐视口顶, 取距当前视口顶最近者。
+     */
+    private fun snapToLine(): Boolean {
+        val cur = viewModel.curTextPage.value ?: return false
+        val lines = cur.lines
+        if (lines.isEmpty()) return false
+        val viewTop = -_currentOffset // 视口顶在页内容中的位置 (durY 坐标)
+        var target = 0f // 候选: 页顶对齐
+        var bestDist = abs(viewTop)
+        for (i in lines.indices) {
+            val lineTop = lines[i].lineTop - cur.paddingTop
+            val dist = abs(lineTop - viewTop)
+            if (dist < bestDist) {
+                bestDist = dist
+                target = -lineTop
+            }
+        }
+        if (target == _currentOffset) return false
+        // 末页底部钳制同样约束行对齐 (对照旧 scroll 末页分支: 页底不能高于视口底)
+        if (!hasNext()) {
+            val minOffset = min(0f, cur.visibleHeight.toFloat() - cur.height)
+            if (target < minOffset) target = minOffset
+            if (target == _currentOffset) return false
+        }
+        isStarted = true
+        isRunning = true
+        animJob?.cancel()
+        animJob = scope.launch {
+            animateOffsetTo(target, LINE_SNAP_MS)
+        }
+        return true
+    }
+
+    // endregion
+
+    // region 保留一行翻页 (对照旧 ScrollPageDelegate.calcNextPageOffset/calcPrevPageOffset :139-157)
+
+    /** 点击下一页目标偏移: 当前页末行对齐视口顶 (图片页滚动整页可视高) */
+    private fun calcNextPageOffset(): Float {
+        val cur = viewModel.curTextPage.value ?: return 0f
+        val book = viewModel.book.value
+        val isTextStyle = book?.config?.imageStyle?.equals(
+            Book.imgStyleText, true
+        ) == true
+        if ((book == null || book.isImage) || (!isTextStyle && cur.hasImageOrEmpty())) {
+            return -cur.visibleHeight.toFloat()
+        }
+        if (cur.lines.isEmpty()) return -cur.visibleHeight.toFloat()
+        val lastLineTop = cur.lines.last().lineTop
+        return -(lastLineTop - cur.paddingTop)
+    }
+
+    /** 点击上一页目标偏移: 当前页首行对齐视口底 (配合切页, 保留上一页末行) */
+    private fun calcPrevPageOffset(): Float {
+        val cur = viewModel.curTextPage.value ?: return 0f
+        val book = viewModel.book.value
+        val isTextStyle = book?.config?.imageStyle?.equals(
+            Book.imgStyleText, true
+        ) == true
+        if ((book == null || book.isImage) || (!isTextStyle && cur.hasImageOrEmpty())) {
+            return cur.visibleHeight.toFloat()
+        }
+        if (cur.lines.isEmpty()) return cur.visibleHeight.toFloat()
+        val firstLineBottom = cur.lines.first().lineBottom
+        return cur.visibleHeight.toFloat() - (firstLineBottom - cur.paddingTop)
+    }
+
+    // endregion
+
+    // region PageDelegateShared 接口实现 (行级滚动)
 
     override fun onDown(x: Float, y: Float) {
-        // 与 app 端 PageDelegate.onTouch ACTION_DOWN 分支先 abortAnim() 对应:
-        // 动画进行中按下立即中断, 否则旧动画协程会继续写 _currentOffset 与新手势冲突
-        // (滚动委托原版 abortAnim 只取消不补页, 见 ScrollPageDelegate.abortAnim)
+        // 动画进行中按下立即中断 (对照旧 onTouch ACTION_DOWN 分支 abortAnim)
         abortAnim()
-        // 与 app 端 PageDelegate.onDown 对应：重置状态字段
         isMoved = false
         noNext = false
         isRunning = false
         isCancel = false
         setDirection(PageDirectionShared.NONE)
-        // 记录起始触碰点（垂直翻页关注 y 坐标）
         startX = x
         startY = y
         lastY = y
         touchX = x
         touchY = y
-        // 重置偏移
-        _currentOffset = 0f
+        // 滚动偏移保持 (行级滚动位置不随按下重置, 对照旧 pageOffset 不被 onDown 清零)
     }
 
     override fun onScroll(x: Float, y: Float) {
         if (!isMoved) {
             val deltaY = y - startY
-            // 与横向委托同一问题：onDragStart 与首个 onDrag 收到同一位置，首次 deltaY 恒为 0，
-            // 据此定方向会恒判 PREV。跳过本次，等真实位移事件再定方向。
             if (deltaY == 0f) return
-            // 原版两层判定共享按下点基准；Compose 已在内部消耗 touchSlop，不再叠加二次判定
             isMoved = true
-            if (deltaY < 0) {
-                // 向上滑 → NEXT，校验是否有下一页 / 下一章
-                if (!hasNext()) {
-                    noNext = true
-                    return
-                }
-                setDirection(PageDirectionShared.NEXT)
-            } else {
-                // 向下滑 → PREV，校验是否有上一页 / 上一章
-                if (!hasPrev()) {
-                    noNext = true
-                    return
-                }
-                setDirection(PageDirectionShared.PREV)
-            }
-            // 重设 startY 为当前点，避免初始 slop 偏移带入 currentOffset
+            // 滚动模式双向滚动, 无方向判定 (对照旧 ScrollPageDelegate.onScroll 只追踪移动)
             startY = y
             lastY = y
         }
         if (isMoved) {
-            // 反向移动判定取消（与 app 端 ScrollPageDelegate 判定一致）
-            isCancel = if (mDirection == PageDirectionShared.NEXT) y > lastY else y < lastY
             isRunning = true
             touchY = y
-            // 计算 currentOffset 并 clamp 到合法范围（垂直方向）
-            // 与 app 端 curPage.scroll((touchY - lastY).toInt()) 对应，但 KMP 版用绝对偏移
-            val rawOffset = y - startY
-            _currentOffset = when (mDirection) {
-                PageDirectionShared.PREV -> rawOffset.coerceIn(0f, viewHeight.toFloat())
-                PageDirectionShared.NEXT -> rawOffset.coerceIn(-viewHeight.toFloat(), 0f)
-                else -> 0f
+            val delta = y - lastY
+            if (delta != 0f) {
+                if (!applyScrollDelta(delta)) {
+                    // 硬边界 (书首/书末): 复位手势, 后续移动重新起算 (对照旧 abortAnim 后重新追踪)
+                    isMoved = false
+                    isRunning = false
+                }
             }
             lastY = y
         }
     }
 
+    /**
+     * 松手惯性滚动 (对照旧 ScrollPageDelegate.onAnimStart 的
+     * `fling(0, touchY, 0, mVelocity.yVelocity, ...)`): 以手势末速度衰减,
+     * 逐帧走 [applyScrollDelta] (翻页折算/边界钳制), 停止后对齐行边界。
+     */
+    private fun onFling(velocityY: Float) {
+        if (!isMoved || abs(velocityY) <= 0f) {
+            // 无有效速度: 直接行对齐 (慢速拖放/边界复位后)
+            snapToLine()
+            // 手势结束恢复自动翻页推进 (无动画路径)
+            autoPager?.resume()
+            return
+        }
+        isStarted = true
+        isRunning = true
+        animJob?.cancel()
+        animJob = scope.launch {
+            val decay = decaySpec
+            if (decay != null) {
+                AnimationState(_currentOffset, velocityY).animateDecay(decay) {
+                    if (!applyScrollDelta(value - _currentOffset)) {
+                        cancelAnimation()
+                    }
+                }
+            }
+            // 惯性停止 → 对齐行边界
+            snapToLine()
+            // 惯性结束恢复自动翻页推进 (对照原版 computeScroll → onAnimStop → resume)
+            autoPager?.resume()
+        }
+    }
+
     override fun onTap(x: Float, y: Float): Boolean {
-        // 优先走宿主注入的九宫格分发（对照 app 端 ReadView.clickArea + click）
+        // 优先走宿主注入的九宫格分发 (对照 app 端 ReadView.clickArea + click);
+        // 滚动模式下动作 1/2 (翻页) 经 turnPage → keyTurnPage → nextPageByAnim 走保留一行滚动
         onTapAt?.let { dispatch ->
             dispatch(x, y)
             return true
@@ -164,95 +354,82 @@ class ScrollPageDelegateCompose(
     }
 
     override fun abortAnim() {
-        // 取消正在执行的动画协程
+        // 取消正在执行的动画协程 (对照旧 abortAnim: 只取消 scroller, 不动滚动偏移)
+        // 手动翻页手势开始：暂停自动翻页推进 (对照原版 onScrollAnimStart → autoPager.pause)
+        autoPager?.pause()
         animJob?.cancel()
         animJob = null
         isStarted = false
         isMoved = false
         isRunning = false
-        _currentOffset = 0f
     }
 
     override fun onAnimStart(animationSpeed: Int) {
-        if (!isMoved || mDirection == PageDirectionShared.NONE) {
-            // 未移动或方向未定，不启动动画（与 app 端 onTouch ACTION_UP 后判定一致）
+        // 滚动模式动画由手势速度驱动 (onFling), 此入口无额外动作
+    }
+
+    override fun onAnimStop() {
+        // 滚动模式翻页在滚动过程中完成 (applyScrollDelta), 动画结束仅复位状态, 不清偏移
+        isStarted = false
+        isMoved = false
+        isRunning = false
+        isCancel = false
+        mDirection = PageDirectionShared.NONE
+        animJob = null
+        // 动画结束恢复自动翻页推进 (对照原版 onScrollAnimStop → autoPager.resume)
+        autoPager?.resume()
+    }
+
+    override fun nextPageByAnim(animDurationMs: Int) {
+        // 对照旧 ScrollPageDelegate.nextPageByAnim: 保留一行滚动 (页索引不变)
+        if (isRunning) return
+        if (!hasNext()) return
+        abortAnim()
+        val target = calcNextPageOffset()
+        if (target == _currentOffset) {
+            // 无动画路径：恢复自动翻页，避免 abortAnim 的 pause 悬挂
+            autoPager?.resume()
             return
         }
         isStarted = true
         isRunning = true
-        // 计算目标偏移：取消 → 回弹 0；否则滑到 ±viewHeight（完全滑入/露出）
-        // 与 app 端 ScrollPageDelegate.onAnimStart 的 fling 目标计算等价
-        val target = when {
-            isCancel -> 0f
-            mDirection == PageDirectionShared.NEXT -> -viewHeight.toFloat()
-            mDirection == PageDirectionShared.PREV -> viewHeight.toFloat()
-            else -> 0f
-        }
-        // 启动动画协程（替代 Android Scroller.fling + invalidate 驱动）
-        animJob?.cancel()
         animJob = scope.launch {
-            animateOffsetTo(target, animationSpeed)
+            animateOffsetTo(target, scrollDuration(target, animDurationMs))
         }
-    }
-
-    override fun onAnimStop() {
-        try {
-            if (!isCancel) {
-                // 非取消：实际翻页（与 app 端 readView.fillPage(mDirection) 对应）
-                // 章节边界联动 - nextPage/prevPage 返回 false 时切章
-                when (mDirection) {
-                    PageDirectionShared.NEXT -> {
-                        if (!viewModel.nextPage()) {
-                            viewModel.moveToNextChapter()
-                        }
-                    }
-                    PageDirectionShared.PREV -> {
-                        if (!viewModel.prevPage()) {
-                            viewModel.moveToPrevChapter()
-                        }
-                    }
-                    else -> Unit
-                }
-            }
-        } finally {
-            // 重置状态（与 app 端 stopScroll 行为对应）
-            resetState()
-        }
-    }
-
-    override fun nextPageByAnim(animDurationMs: Int) {
-        // 与 app 端 ScrollPageDelegate.nextPageByAnim 对应：末尾统一走 onAnimStart
-        if (isRunning) return
-        if (!hasNext()) return
-        abortAnim()
-        setDirection(PageDirectionShared.NEXT)
-        // 模拟从底部按下，向上滑（与 app 端 setStartPoint(0, viewHeight, false) 对应）
-        startY = viewHeight.toFloat()
-        lastY = startY
-        touchY = startY
-        isMoved = true
-        isCancel = false
-        onAnimStart(animDurationMs)
     }
 
     override fun prevPageByAnim(animDurationMs: Int) {
-        // 与 app 端 ScrollPageDelegate.prevPageByAnim 对应
+        // 对照旧 ScrollPageDelegate.prevPageByAnim: 先切上一页, 再滚动保留上一页末行
         if (isRunning) return
         if (!hasPrev()) return
         abortAnim()
-        setDirection(PageDirectionShared.PREV)
-        // 模拟从顶部按下，向下滑（与 app 端 setStartPoint(0, 0, false) 对应）
-        startY = 0f
-        lastY = 0f
-        touchY = 0f
-        isMoved = true
-        isCancel = false
-        onAnimStart(animDurationMs)
+        val target = calcPrevPageOffset()
+        if (!viewModel.prevPage() && !viewModel.moveToPrevChapter()) {
+            // 无动画路径：恢复自动翻页，避免 abortAnim 的 pause 悬挂
+            autoPager?.resume()
+            return
+        }
+        // 新当前页 (旧 prev) 从视口顶上方滑入: 起点 = -新页高 (旧 scroller 首帧折算结果)
+        val hNew = viewModel.curTextPage.value?.height ?: 0f
+        _currentOffset = -hNew
+        viewModel.updateScrollOffset(_currentOffset.toInt())
+        isStarted = true
+        isRunning = true
+        animJob = scope.launch {
+            animateOffsetTo(target - hNew, scrollDuration(target, animDurationMs))
+        }
+    }
+
+    /** 动画时长折算 (对照旧 startScroll: duration = animationSpeed * abs(dy) / viewHeight) */
+    private fun scrollDuration(target: Float, animDurationMs: Int): Int {
+        val distance = abs(target - _currentOffset)
+        if (viewHeight <= 0) return animDurationMs
+        return (animDurationMs * distance / viewHeight).toInt().coerceAtLeast(1)
     }
 
     // endregion
 
-    // region Compose 渲染骨架（垂直翻页）
+    // region Compose 渲染骨架 (行级滚动)
 
     @Composable
     override fun renderPageAnimation(
@@ -262,148 +439,111 @@ class ScrollPageDelegateCompose(
         curContent: @Composable () -> Unit,
         nextContent: @Composable () -> Unit,
         onClick: (TextColumn?) -> Unit,
-        onLongClick: (TextColumn?) -> Unit,
+        onLongClick: (Float, Float) -> Unit,
     ) {
         // 尺寸变化时同步（与 app 端 setViewSize 调用时机对应）
         if (viewWidth != pageWidthPx || viewHeight != pageHeightPx) {
             setViewSize(pageWidthPx, pageHeightPx)
         }
+        // 惯性衰减规格组合期注入 (splineBasedDecay 依赖 density)
+        if (decaySpec == null) {
+            decaySpec = splineBasedDecay(LocalDensity.current)
+        }
 
-        val currentOffsetValue = _currentOffset  // 读取状态触发重组
-        val direction = mDirection
+        // 与 viewModel.scrollOffset 同步: 切章/重排重置归零时本 delegate 跟随
+        // (applyScrollDelta 已双写, 此处只消费外部重置, 同值写入不触发重绘)
+        LaunchedEffect(viewModel) {
+            viewModel.scrollOffset.collect { offset ->
+                if (_currentOffset != offset.toFloat()) {
+                    _currentOffset = offset.toFloat()
+                }
+            }
+        }
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                // 拖拽手势：转发到 onDown / onScroll / onAnimStart
+                // 滚动手势: 越过 touchSlop 才消费 (与 detectTapGestures 共存, 对照旧 isMove 判定)
                 .pointerInput(Unit) {
-                    detectDragGestures(
-                        onDragStart = { offset ->
-                            onDown(offset.x, offset.y)
-                        },
-                        onDrag = { change, _ ->
-                            change.consume()
-                            onScroll(change.position.x, change.position.y)
-                        },
-                        onDragEnd = {
-                            // 松手启动动画（与 app 端 onTouch ACTION_UP → onAnimStart 对应）
-                            onAnimStart(animationSpeed)
-                        },
-                        onDragCancel = {
-                            // 取消手势：回弹到原位
-                            isCancel = true
-                            onAnimStart(animationSpeed)
-                        },
-                    )
+                    scrollDragGesture()
                 }
-                // 单击/长按手势：转发到 onTap / onLongClick
+                // 单击/长按手势: 转发到 onTap / onLongClick (携带落点坐标, 供页内文字选择命中判定)
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { offset ->
-                            // onTap 返回 false 表示中心区域未消费，转发给上层 onClick
+                            // onTap 返回 false 表示中心区域未消费, 转发给上层 onClick
                             if (!onTap(offset.x, offset.y)) {
                                 onClick(null)
                             }
                         },
-                        onLongPress = { _ ->
-                            onLongClick(null)
+                        onLongPress = { offset ->
+                            onLongClick(offset.x, offset.y)
                         },
                     )
                 },
         ) {
-            // 底层：当前页（位置始终为 0，被上层覆盖时不可见）
-            // 与 app 端 ScrollPageDelegate.onDraw 中 curRecorder.draw(canvas) 在底层对应
+            // 当前页: 行级平移在 PageViewComposable 内部 (contentTranslationY 提供者 +
+            // 固定视口裁剪, 对照旧 drawPage 的 translate + clipRect(visibleRect))
             curContent()
 
-            // 上层：根据方向显示 prev / next 页，用 offset 控制垂直滑入位置
-            when (direction) {
-                PageDirectionShared.PREV -> {
-                    // prevPage 从上方滑入覆盖 curPage
-                    // 偏移 = -viewHeight + currentOffset（currentOffset 从 0→viewHeight 时，偏移从 -viewHeight→0）
-                    Box(
-                        modifier = Modifier
-                            .offset {
-                                IntOffset(
-                                    x = 0,
-                                    y = (-pageHeightPx + currentOffsetValue).roundToInt(),
-                                )
-                            }
-                            .fillMaxSize(),
-                    ) {
-                        prevContent()
-                    }
-                }
-                PageDirectionShared.NEXT -> {
-                    // nextPage 从下方滑入覆盖 curPage
-                    // 偏移 = viewHeight + currentOffset（currentOffset 从 0→-viewHeight 时，偏移从 viewHeight→0）
-                    Box(
-                        modifier = Modifier
-                            .offset {
-                                IntOffset(
-                                    x = 0,
-                                    y = (pageHeightPx + currentOffsetValue).roundToInt(),
-                                )
-                            }
-                            .fillMaxSize(),
-                    ) {
-                        nextContent()
-                    }
-                }
-                else -> Unit
-            }
+            // 下一页: 连排在当前页内容之后, 绘制位置 = offset + 当前页高
+            // (对照旧 drawPage 的 relativeOffset(1) = pageOffset + textPage.height;
+            // 整页滑出视口时由内部裁剪自然不可见, 无每帧可见性判定)
+            nextContent()
+        }
+    }
 
-            // 阴影叠加层：在滑入页面与底层页面的水平交界处绘制
-            if (direction != PageDirectionShared.NONE && currentOffsetValue != 0f) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    drawShadow(currentOffsetValue, pageWidthPx)
+    /**
+     * 滚动手势循环: 追踪速度, 越过 touchSlop 后开始滚动并消费事件。
+     *
+     * 对照旧 ReadView.onTouchEvent + ScrollPageDelegate.onTouch:
+     * - ACTION_DOWN → [onDown] (中止动画 + 记录起点)
+     * - ACTION_MOVE → 越过 slop 判定 isMove 后 [onScroll]
+     * - ACTION_UP/CANCEL → [onFling] (带末速度)
+     */
+    private suspend fun PointerInputScope.scrollDragGesture() {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            onDown(down.position.x, down.position.y)
+            val tracker = VelocityTracker()
+            tracker.addPointerInputChange(down)
+            val slop = viewConfiguration.touchSlop
+            var lastPos = down.position
+            var dragging = false
+            while (true) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                if (!change.pressed) break
+                // 事件已被其他手势消费 (文字选择扩选层) → 终止本次滚动, 避免与选择争抢
+                // (对照 detectDragGestures 的 awaitTouchSlopOrCancellation 对消费事件的处理)
+                if (change.isConsumed) break
+                if (!dragging) {
+                    val delta = change.position - down.position
+                    if (abs(delta.x) > slop || abs(delta.y) > slop) {
+                        dragging = true
+                        // 越过 slop 后重置基准, 避免 slop 位移带入滚动 (对照旧 setStartPoint)
+                        lastPos = change.position
+                    }
                 }
+                if (dragging) {
+                    tracker.addPointerInputChange(change)
+                    if (change.position != lastPos) {
+                        onScroll(change.position.x, change.position.y)
+                    }
+                    change.consume()
+                }
+                lastPos = change.position
+            }
+            if (dragging) {
+                onFling(tracker.calculateVelocity().y)
             }
         }
     }
 
     /**
-     * 绘制垂直翻页阴影：在滑入页面与底层页面的水平交界处。
-     *
-     * 阴影位置：在滑入页面与视口的交界处
-     * - PREV：prevPage 下边缘（位置 = currentOffset）向上展开 shadowWidth
-     *   - 渐变方向：上浅下深（让 prevPage 下边缘有阴影投在 curPage 上）
-     * - NEXT：nextPage 上边缘（位置 = viewHeight + currentOffset）向下展开 shadowWidth
-     *   - 渐变方向：上深下浅（让 nextPage 上边缘有阴影投在 curPage 上）
+     * 滚动模式无阴影叠加 (对照旧 ScrollPageDelegate.onDraw: nothing)。
      */
-    override fun DrawScope.drawShadow(currentOffset: Float, viewWidth: Int) {
-        val shadowWidth = SHADOW_WIDTH_PX.toFloat()
-        val height = size.height  // 从 DrawScope 取实际高度
-        val shadowTop = when (mDirection) {
-            PageDirectionShared.PREV -> {
-                // prevPage 下边缘 = -viewHeight + currentOffset + viewHeight = currentOffset
-                // 阴影在 prevPage 下边缘（currentOffset 位置）向上展开 shadowWidth
-                currentOffset - shadowWidth
-            }
-            PageDirectionShared.NEXT -> {
-                // nextPage 上边缘 = viewHeight + currentOffset
-                // 阴影在 nextPage 上边缘向下展开 shadowWidth
-                height + currentOffset
-            }
-            else -> return
-        }
-        // 与 app 端 shadowColors = intArrayOf(0x66111111, 0x00000000) 对应（垂直渐变）
-        // PREV 方向：阴影在 prevPage 下边缘，上浅下深（让 prevPage 边缘有阴影投在 curPage 上）
-        // NEXT 方向：阴影在 nextPage 上边缘，上深下浅（让 nextPage 边缘有阴影投在 curPage 上）
-        val (startColor, endColor) = when (mDirection) {
-            PageDirectionShared.PREV -> Color(0x00000000) to Color(0x66111111)
-            PageDirectionShared.NEXT -> Color(0x66111111) to Color(0x00000000)
-            else -> return
-        }
-        drawRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(startColor, endColor),
-                startY = shadowTop,
-                endY = shadowTop + shadowWidth,
-            ),
-            topLeft = Offset(0f, shadowTop),
-            size = Size(viewWidth.toFloat(), shadowWidth),
-        )
-    }
+    override fun DrawScope.drawShadow(currentOffset: Float, viewWidth: Int) = Unit
 
     // endregion
 }

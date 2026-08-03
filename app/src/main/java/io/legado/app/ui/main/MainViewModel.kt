@@ -89,18 +89,7 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
         setMaxRecycledViews(0, 100)
     }
 
-    /**
-     * 本次应用进程内已触发过自动更新的分组ID, 避免 fragment 回收重建后再次触发。
-     *
-     * 注: [UpdateBookShared] 内部也持有同名状态 (供 Native 端使用), app 端保留独立状态
-     * 与原行为一致 ([markGroupAutoUpdated] 转发到 [updateBookShared] 后, 本地集合仅作
-     * UI 层快速判断; 实际去重由 [updateBookShared] 内部保证)。
-     */
-    private val autoUpdatedGroups = java.util.concurrent.ConcurrentHashMap.newKeySet<Long>()
-
     fun markGroupAutoUpdated(groupId: Long): Boolean {
-        // 双写: 本地集合 (UI 层快速判断) + UpdateBookShared (Native 端共用)
-        autoUpdatedGroups.add(groupId)
         return updateBookShared.markGroupAutoUpdated(groupId)
     }
 
@@ -229,10 +218,8 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
             }
             context.startService<UpdateBookService>()
             if (NotificationManagerCompat.from(appCtx).areNotificationsEnabled()) {
-                // title/content 已由 UpdateBookShared 计算 ("更新目录" / "强制刷新" + "count/total"),
-                // 这里直接用, 与原 updateUpdateNotification 内 R.string.update_toc / R.string.force_refresh_book 等价
-                // (原 title 用 R.string.update_toc = "更新目录", R.string.force_refresh_book = "强制刷新",
-                //  UpdateBookShared 内硬编码 "更新目录" / "强制刷新" 与之对齐)
+                // title/content 已由 UpdateBookShared 计算 (appString(AppStringKey.update_toc / force_refresh_book)
+                // → R.string.update_toc / R.string.force_refresh_book 多语言文案 + "count/total"), 这里直接用
                 val notificationBuilder =
                     NotificationCompat.Builder(context, AppConst.channelIdDownload)
                         .setSmallIcon(R.drawable.ic_update)

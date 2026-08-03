@@ -9,6 +9,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.book.isImage
 import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
@@ -35,7 +36,6 @@ import io.legado.app.utils.encodeStringMap
 import io.legado.app.utils.toJson
 import io.legado.app.web.WebServerManager
 import io.legado.desktop.constant.DesktopAppInfo
-import io.legado.desktop.help.DesktopAppUpdate
 import io.legado.desktop.help.book.DesktopBookExport
 import io.legado.desktop.help.source.DesktopCheckSource
 import io.legado.desktop.model.fileBook.DesktopImportBook
@@ -168,17 +168,8 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
     override val webServiceState: StateFlow<Boolean>? get() = webServiceRunningState
 
     // ===== 关于页 =====
-
-    override fun checkUpdate() {
-        scope.launch {
-            DesktopAppUpdate.check { info ->
-                // 桌面端无自动安装 (无 Intent/DownloadManager), 提示后打开下载页
-                Toasters.get().toast("发现新版本 ${info.latestVersion}, 正在打开下载页")
-                val url = info.downloadUrl.ifEmpty { "https://github.com/gedoor/legado/releases/latest" }
-                runCatching { openExternalUrl(url) }
-            }
-        }
-    }
+    // 检查更新不再走这里: shared AboutRoute 直接调 AboutScreenModel.checkUpdate →
+    // AppUpdateManager (环境/执行器由 registerDesktopAppUpdate 注册, 见 DesktopAppUpdate.kt)
 
     // 桌面端无 assets, 直接打开仓库上的文档 (对照 app 端 showMdFile 读不到资源时的回退分支)
     override fun showMdFile(title: String, fileName: String) {
@@ -318,7 +309,8 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
         scope.launch { saveJsonToPickedFile("bookshelf.json", GSON.toJson(books.map { it.toShelfJsonMap() })) }
     }
 
-    // 导出书籍正文 (TXT), 目录来自 pref 或现选
+    // 导出书籍正文, 格式取导出配置 (0=txt 1=epub, 对照 app 端 AppConfig.exportType;
+    // 图片书自动走 cbz), 目录来自 pref 或现选
     override fun exportAllBooks(books: List<Book>) {
         if (books.isEmpty()) return
         val cached = prefs.getString(KEY_EXPORT_BOOK_PATH, "").takeIf { File(it).isDirectory }
@@ -347,10 +339,38 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
         if (dir.isDirectory || dir.mkdirs()) dir.absolutePath else null
     }.getOrNull()
 
+    // 导出配置弹窗 (对照 app 端 showExportConfig): 导出类型 txt|epub (cbz 按 app 端语义
+    // 由图片书自动选择, 无需用户配置)
+    override fun showExportConfig() {
+        DesktopDialogs.show(
+            DesktopDialogRequest.ExportConfig(
+                currentType = prefs.getInt(PreferKey.exportType, 0),
+                onConfirm = { type -> prefs.putInt(PreferKey.exportType, type) },
+            )
+        )
+    }
+
     private fun startExport(dir: String, books: List<Book>) {
+        val type = prefs.getInt(PreferKey.exportType, 0)
         scope.launch {
             Toasters.get().toast("开始导出 ${books.size} 本")
-            runCatching { DesktopBookExport.exportTxt(dir, books) }
+            runCatching {
+                // 对照 app 端 MainActivity.startExportBooks: 图片书一律导出 cbz,
+                // 其余按配置类型 (0=txt 1=epub)
+                val txtBooks = arrayListOf<Book>()
+                val epubBooks = arrayListOf<Book>()
+                val cbzBooks = arrayListOf<Book>()
+                books.forEach { book ->
+                    when {
+                        book.isImage -> cbzBooks.add(book)
+                        type == 1 -> epubBooks.add(book)
+                        else -> txtBooks.add(book)
+                    }
+                }
+                if (txtBooks.isNotEmpty()) DesktopBookExport.exportTxt(dir, txtBooks)
+                if (epubBooks.isNotEmpty()) DesktopBookExport.exportEpub(dir, epubBooks)
+                if (cbzBooks.isNotEmpty()) DesktopBookExport.exportCbz(dir, cbzBooks)
+            }
                 .onSuccess { Toasters.get().toast("导出完成\n$dir") }
                 .onFailure {
                     AppLog.put("导出书籍出错\n${it.message}", it)

@@ -2,6 +2,7 @@ package io.legado.app.ui.book.bookmark
 
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
+import io.legado.app.data.dao.sortedByLocalizedOrder
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.ui.root.ScreenModel
@@ -44,7 +45,7 @@ class AllBookmarkScreenModel(
             }
             flow.catch { AppLog.put("所有书签界面获取数据失败\n${it.message}", it) }
                 .flowOn(Dispatchers.Default)
-                .collect { _state.value = AllBookmarkUiState(it) }
+                .collect { _state.value = AllBookmarkUiState(it.sortedByLocalizedOrder()) }
         }
     }
 

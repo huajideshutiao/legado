@@ -1,13 +1,15 @@
 @file:Suppress("unused")
-@file:OptIn(ExperimentalEncodingApi::class)
 
 package io.legado.app.help.http
 
+import io.legado.app.constant.AppConst
+import io.legado.app.help.UserAgentProviders
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.utils.Closeable
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.toInputStream
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -16,8 +18,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.reflect.KClass
 import kotlin.time.Duration
 
@@ -30,9 +30,13 @@ import kotlin.time.Duration
  *
  * 详见 commonMain/kotlin/io/legado/app/help/http/KmpHttpTypes.kt expect 注释。
  *
- * ## 请求/响应跨语言协议 (与 HttpBridgeHandler.ets 对齐)
- * - 请求 payload (Kotlin → ArkTS): [HttpRequestPayload], body 用 base64 编码
- * - 响应 payload (ArkTS → Kotlin): [HttpResponsePayload], body 用 base64 编码
+ * ## 请求/响应跨语言协议 (与 HttpBridgeHandler.ets 对齐, 混合协议: 控制面 JSON + 数据面裸字节)
+ * - 请求 payload (Kotlin → ArkTS): [HttpRequestPayload] 只含控制面小字段
+ *   (url/method/headers/contentType/timeout/代理), **不含 body**;
+ *   body 字节作为 invokeHttpSync 裸参数经 napi ArrayBuffer 直传 (不经 base64, 二进制保真)
+ * - 响应 payload (ArkTS → Kotlin): [HttpResponsePayload] 只含控制面小字段
+ *   (ok/code/message/headers/error), **不含 body**;
+ *   body 字节经 httpCallback 第三参数 ArrayBuffer 裸传 (不经 base64, 二进制保真)
  *
  * ## 与 nativeMain (iosMain) 的差异
  * - iosMain 用 Ktor HttpClient (CIO engine, 纯 Kotlin 协程发起请求);
@@ -48,12 +52,16 @@ internal data class HttpRequestPayload(
     val url: String,
     val method: String,
     val headers: List<HttpHeader>,
-    val body: String? = null,
     val contentType: String? = null,
     // callTimeout 作为 ArkTS 端 connectTimeout (整体连接阶段上限)
     val timeoutMs: Long = 0L,
     // readTimeout 单独透传, 0 时 ArkTS 端回退用 timeoutMs (与 OkHttp readTimeout 语义对齐)
-    val readTimeoutMs: Long = 0L
+    val readTimeoutMs: Long = 0L,
+    // 代理 (仅 http/https; @ohos.net.http 不支持 SOCKS): 非空时 ArkTS 侧设 usingProxy
+    val proxyHost: String? = null,
+    val proxyPort: Int = 0,
+    val proxyUsername: String? = null,
+    val proxyPassword: String? = null
 )
 
 @Serializable
@@ -62,7 +70,6 @@ internal data class HttpResponsePayload(
     val code: Int = 0,
     val message: String = "",
     val headers: List<HttpHeader> = emptyList(),
-    val body: String? = null,
     val error: String? = null
 )
 // endregion
@@ -84,13 +91,32 @@ actual class KmpHttpClient {
         private set
     internal var readTimeoutMillis: Long = 0L
         private set
+    internal var proxyHost: String? = null
+        private set
+    internal var proxyPort: Int = 0
+        private set
+    internal var proxyUsername: String? = null
+        private set
+    internal var proxyPassword: String? = null
+        private set
 
     // expect class 未显式声明 constructor (隐式无参), actual 侧不能带 actual 修饰
     constructor()
 
-    internal constructor(callTimeoutMillis: Long, readTimeoutMillis: Long) {
+    internal constructor(
+        callTimeoutMillis: Long,
+        readTimeoutMillis: Long,
+        proxyHost: String? = null,
+        proxyPort: Int = 0,
+        proxyUsername: String? = null,
+        proxyPassword: String? = null
+    ) {
         this.callTimeoutMillis = callTimeoutMillis
         this.readTimeoutMillis = readTimeoutMillis
+        this.proxyHost = proxyHost
+        this.proxyPort = proxyPort
+        this.proxyUsername = proxyUsername
+        this.proxyPassword = proxyPassword
     }
 
     actual fun newCall(request: KmpRequest): KmpCall = OhosKmpCall(this, request)
@@ -98,12 +124,20 @@ actual class KmpHttpClient {
     actual fun newBuilder(): KmpHttpClientBuilder = KmpHttpClientBuilder().also {
         it.callTimeoutMillis = callTimeoutMillis
         it.readTimeoutMillis = readTimeoutMillis
+        it.proxyHost = proxyHost
+        it.proxyPort = proxyPort
+        it.proxyUsername = proxyUsername
+        it.proxyPassword = proxyPassword
     }
 }
 
 actual class KmpHttpClientBuilder {
     internal var readTimeoutMillis: Long = 0L
     internal var callTimeoutMillis: Long = 0L
+    internal var proxyHost: String? = null
+    internal var proxyPort: Int = 0
+    internal var proxyUsername: String? = null
+    internal var proxyPassword: String? = null
 
     actual fun readTimeout(duration: Duration): KmpHttpClientBuilder {
         readTimeoutMillis = duration.inWholeMilliseconds
@@ -115,7 +149,37 @@ actual class KmpHttpClientBuilder {
         return this
     }
 
-    actual fun build(): KmpHttpClient = KmpHttpClient(callTimeoutMillis, readTimeoutMillis)
+    /**
+     * 配置 HTTP 代理 (仅 http/https; @ohos.net.http 只支持 HttpProxy, 不支持 SOCKS, 见 OhosHttpProvider)。
+     *
+     * 代理账号密码经 HttpRequestPayload 透传给 ArkTS @ohos.net.http HttpProxy (API 12+, 原生支持认证)。
+     */
+    internal fun proxy(
+        host: String,
+        port: Int,
+        username: String?,
+        password: String?
+    ): KmpHttpClientBuilder {
+        proxyHost = host
+        proxyPort = port
+        proxyUsername = username
+        proxyPassword = password
+        return this
+    }
+
+    actual fun build(): KmpHttpClient {
+        // 与 Android HttpHelper 对齐: connect/read/write/call 默认均 15s; 0 = 未显式配置 → 默认 15s
+        // (AnalyzeUrlCore 规则显式 readTimeout/callTimeout 时经上面 setter 覆盖, 显式值优先;
+        // ArkTS 侧 connectTimeout=timeoutMs, readTimeout=readTimeoutMs; writeTimeout 无等价物)
+        return KmpHttpClient(
+            callTimeoutMillis = if (callTimeoutMillis > 0) callTimeoutMillis else DEFAULT_TIMEOUT_MS,
+            readTimeoutMillis = if (readTimeoutMillis > 0) readTimeoutMillis else DEFAULT_TIMEOUT_MS,
+            proxyHost = proxyHost,
+            proxyPort = proxyPort,
+            proxyUsername = proxyUsername,
+            proxyPassword = proxyPassword
+        )
+    }
 }
 // endregion
 
@@ -328,7 +392,7 @@ actual class KmpResponseBuilder actual constructor() {
     }
 }
 
-// 包装已缓存的字节数组 (ArkTS 侧响应 body 经 base64 解码后一次性读到内存)
+// 包装已缓存的字节数组 (ArkTS 侧响应 body 经 napi ArrayBuffer 裸传后一次性读到内存)
 actual abstract class KmpResponseBody : Closeable {
     actual fun bytes(): ByteArray = (this as OhosKmpResponseBody).bytesValue
     actual fun byteStream(): InputStream = (this as OhosKmpResponseBody).bytesValue.toInputStream()
@@ -397,33 +461,62 @@ internal class OhosKmpCall(
     }
 
     override fun execute(): KmpResponse {
-        // 构造请求 payload (body base64 编码)
-        val bodyBytes = (request.body as? OhosKmpRequestBody)?.bytes
+        // 应用层拦截器等价逻辑 (UA 注入 / Keep-Alive / Cache-Control / Accept-Encoding 不上行 /
+        // CookieJar 标记移除 + CookieJarBridge.loadRequest), 与 iOS nativeMain 实现一致
+        val enableCookieJar = request.header(cookieJarHeader) != null
+        val prepared = request.prepareForSend()
+        val response = try {
+            executeOnce(prepared)
+        } catch (e: Exception) {
+            // retryOnConnectionFailure(true) 等价: 非超时/取消类错误重试一次
+            if (e.isRetryableTransportError()) executeOnce(prepared) else throw e
+        }
+        if (enableCookieJar) {
+            // 响应回写 cookie (对齐 Android 拦截器 CookieJarBridgeHolder.saveResponse)
+            CookieJarBridgeHolder.get()?.saveResponse(response)
+        }
+        return response
+    }
+
+    private fun executeOnce(prepared: KmpRequest): KmpResponse {
+        // 构造请求 payload (控制面小字段 JSON; body 字节走 invokeHttpSync 裸参数 ArrayBuffer)
+        val bodyBytes = (prepared.body as? OhosKmpRequestBody)?.bytes
         val payload = HttpRequestPayload(
-            url = request.urlStr,
-            method = request.method,
-            headers = request.headers.map { HttpHeader(it.first, it.second) },
-            body = bodyBytes?.let { Base64.encode(it) },
-            contentType = (request.body as? OhosKmpRequestBody)?.contentType?.toString(),
+            url = prepared.urlStr,
+            method = prepared.method,
+            headers = prepared.headers.map { HttpHeader(it.first, it.second) },
+            contentType = (prepared.body as? OhosKmpRequestBody)?.contentType?.toString(),
             timeoutMs = client.callTimeoutMillis,
-            readTimeoutMs = client.readTimeoutMillis
+            readTimeoutMs = client.readTimeoutMillis,
+            proxyHost = client.proxyHost,
+            proxyPort = client.proxyPort,
+            proxyUsername = client.proxyUsername,
+            proxyPassword = client.proxyPassword
         )
         val payloadJson = KS_JSON.encodeToString(payload)
-        // 桥接超时: 取用户配置的 call/read timeout 较大者 + 10s 缓冲; 都为 0 (未配置) 用 5min 默认允许大文件下载
+        // 桥接超时: 取用户配置的 call/read timeout 较大者 + 10s 缓冲 (默认 15s → 25s)
         val effectiveTimeout = maxOf(client.callTimeoutMillis, client.readTimeoutMillis)
-        val bridgeTimeoutMs = if (effectiveTimeout > 0) effectiveTimeout + 10_000L else 300_000L
-        // 同步等待 ArkTS 返回 (invokeHttpSync 内部 runBlocking)
-        val resultJson = OhosNativeBridge.invokeHttpSync("execute", payloadJson, bridgeTimeoutMs)
+        val bridgeTimeoutMs = effectiveTimeout + 10_000L
+        // 同步等待 ArkTS 返回 (invokeHttpSync 内部 runBlocking; 响应 body 走裸字节面)
+        val reply =
+            OhosNativeBridge.invokeHttpSync("execute", payloadJson, bodyBytes, bridgeTimeoutMs)
             ?: throw okio.IOException("HTTP bridge not ready or timeout")
-        val resp = KS_JSON.decodeFromString<HttpResponsePayload>(resultJson)
+        val resp = KS_JSON.decodeFromString<HttpResponsePayload>(reply.json)
         if (!resp.ok) {
             throw okio.IOException(resp.error ?: "HTTP request failed")
         }
-        // 解析响应 (body base64 解码)
-        val respBody = resp.body?.let { Base64.decode(it) } ?: ByteArray(0)
+        // 响应 body: 数据面裸字节 (控制面 JSON 已不含 body)
+        val respBody = reply.bytes ?: ByteArray(0)
         val contentType = resp.headers.firstOrNull { it.name.equals("Content-Type", true) }?.value
         val headersMap = resp.headers.groupBy({ it.name }, { it.value })
-        return KmpResponse(resp.code, resp.message, headersMap, respBody, contentType, request)
+        return KmpResponse(resp.code, resp.message, headersMap, respBody, contentType, prepared)
+    }
+
+    private fun Exception.isRetryableTransportError(): Boolean {
+        if (this is CancellationException) return false
+        val msg = message?.lowercase() ?: return true
+        // ArkTS 侧错误消息含 timeout/cancel 时不重试 (对齐 OkHttp 超时/取消不重试)
+        return "timeout" !in msg && "cancel" !in msg
     }
 }
 // endregion
@@ -539,7 +632,7 @@ actual open class KmpMediaType {
 
 actual abstract class KmpRequestBody
 
-// ohosMain 端 KmpRequestBody 真实实现: 持有字节数据 + MediaType (在 OhosKmpCall 中 base64 编码传给 ArkTS)
+// ohosMain 端 KmpRequestBody 真实实现: 持有字节数据 + MediaType (在 OhosKmpCall 中裸传给 ArkTS, 不经 base64)
 internal class OhosKmpRequestBody(
     internal val bytes: ByteArray,
     internal val contentType: KmpMediaType?
@@ -618,4 +711,37 @@ private fun urlEncodeQuery(s: String): String {
 private inline fun String.ifNotEmpty(block: (String) -> Unit) {
     if (isNotEmpty()) block(this)
 }
+
+/**
+ * 应用层拦截器等价逻辑 (与 iOS nativeMain 的 KmpHttpTypes.ios.kt 同款, 对照 Android
+ * HttpHelper.createOkHttpClient 的 app 拦截器):
+ * - UA 注入: 无 UA 头时填 UserAgentProviders.get(); UA 值为 "null" 时移除 (Android 同款);
+ * - Keep-Alive / Connection / Cache-Control 固定头 (Android 拦截器逐请求添加);
+ * - "CookieJar" 标记头移除 (Android 拦截器在启用 cookieJar 时移除, 标记绝不上行给服务器);
+ * - cookieJar 启用时经 [CookieJarBridgeHolder.loadRequest] 注入 Cookie 头 (Android 拦截器同款)。
+ *
+ * 注: 不加 Accept-Encoding (@ohos.net.http 不透明解压; 加了 gzip 会拿到未解压的乱码响应,
+ * 与 Android DecompressInterceptor 的行为差异已在文件头说明)。
+ */
+private fun KmpRequest.prepareForSend(): KmpRequest {
+    val builder = newBuilder()
+    val ua = header(AppConst.UA_NAME)
+    if (ua == null) {
+        builder.addHeader(AppConst.UA_NAME, UserAgentProviders.get())
+    } else if (ua == "null") {
+        builder.removeHeader(AppConst.UA_NAME)
+    }
+    builder.addHeader("Keep-Alive", "300")
+    builder.addHeader("Connection", "Keep-Alive")
+    builder.addHeader("Cache-Control", "no-cache")
+
+    if (header(cookieJarHeader) != null) {
+        builder.removeHeader(cookieJarHeader)
+        return CookieJarBridgeHolder.get()?.loadRequest(builder.build()) ?: builder.build()
+    }
+    return builder.build()
+}
+
+/** 默认超时 (对齐 Android HttpHelper: connect/read/write/call 均 15s) */
+private const val DEFAULT_TIMEOUT_MS = 15_000L
 // endregion

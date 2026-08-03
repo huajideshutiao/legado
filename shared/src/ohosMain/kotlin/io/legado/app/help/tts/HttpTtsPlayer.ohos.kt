@@ -49,7 +49,7 @@ import io.legado.app.utils.File
  * [isPlaying]/[duration]/[currentPosition] 由 ArkTS 事件更新, Kotlin 侧缓存返回
  * (AVPlayer 状态在 ArkTS 侧, Kotlin 无法同步查询, 用事件推送 + 缓存模式)。
  *
- * # 降级策略 (桥接未就绪时, 与 KP2-H 占位行为一致)
+ * # 降级策略 (桥接未就绪时, 与占位行为一致)
  * [OhosNativeBridge.isMediaBridgeReady] 返回 false (tsfn 未注入) 时, 降级为
  * "网络下载已就绪, 播放占位" 模式 (play/pause/stop 仅维护标志 + println, 不出声),
  * 让 [ReadAloudController] 状态机能正常推进 (onReady/onEndOfMedia 触发段落推进)。

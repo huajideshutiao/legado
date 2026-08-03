@@ -6,7 +6,7 @@ import io.legado.app.utils.defaultSharedPreferences
 import splitties.init.appCtx
 
 /**
- * [PreferenceProvider] 安卓端实现（KP1.4）。
+ * [PreferenceProvider] 安卓端实现。
  *
  * 委托 [defaultSharedPreferences]（`<packageName>_preferences`）, 与 [AppConfig] / 设置界面
  * 同一份 SP 文件: shared 侧读 webPort / webDav* 等配置时必须看到用户在设置界面改的值,

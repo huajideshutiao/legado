@@ -130,6 +130,7 @@ import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
+import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.ui.widget.dialog.showBookVariableDialog
 import io.legado.app.ui.widget.dialog.showSourceVariableDialog
@@ -373,6 +374,11 @@ class AndroidPlatformCapabilities(
     ): Boolean {
         activity.showDialogFragment(ReviewListDialog(book, chapter, paragraphIndex, parentReview))
         return true
+    }
+
+    // 图片预览 (对照原版 ContentTextView.click 的 PhotoDialog 分支)
+    override fun showImagePreview(url: String) {
+        activity.showDialogFragment(PhotoDialog(url))
     }
 
     // 对照 DefaultCoverGalleryDialog

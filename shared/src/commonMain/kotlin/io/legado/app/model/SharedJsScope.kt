@@ -1,5 +1,6 @@
 package io.legado.app.model
 
+import io.legado.app.model.SharedJsScope.clearAll
 import io.legado.app.model.script.JsEngineType
 import io.legado.app.model.script.JsEngines
 import io.legado.app.model.script.JsScope
@@ -67,7 +68,7 @@ object SharedJsScope {
     /**
      * 清空所有缓存（切换引擎时调用）。
      *
-     * rhino 已弃用（2026-07-17 KMP 裁决），仅清空 QUICKJS provider 的缓存。
+     * rhino 已弃用，仅清空 QUICKJS provider 的缓存。
      * stale ctx 由各引擎的 GC/PhantomReference 兜底释放。
      */
     fun clearAll() {

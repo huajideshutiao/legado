@@ -13,7 +13,7 @@ import com.script.jsdispatch.JsValueConverters
  *   内部调用 JavaObjectBridge 的 Raw 方法, 返回原始 Java 对象 (非句柄 Map),
  *   供 native 层用 JavaObjectClass.wrap 包装为 JSValue。
  * - method callable 回调 (callMethodByObj) 接受 jobject, 返回原始 Java 对象。
- * - 静态成员/JavaAdapter 供 Phase 3 bootstrap 调用。
+ * - 静态成员/JavaAdapter 供 bootstrap 调用。
  *
  * 类型处理:
  * - Map: getProperty 返回 map[key], getPropertyNames 返回 keySet()
@@ -140,7 +140,7 @@ object JavaObjectBridgeNative {
         return JsValueConverters.convertAll(raw)
     }
 
-    // ============ 静态成员 (Phase 3 JavaClass trap 用) ============
+    // ============ 静态成员 (JavaClass trap 用) ============
     // 提供两套重载: 按 Class 对象 / 按 classHandle (Long)
     // 均返回原始 Java 对象 (非句柄 Map), 供 native 层 JniValueConvert.fromJavaObject 包装
 
@@ -263,7 +263,7 @@ object JavaObjectBridgeNative {
             )
     }
 
-    // ============ 类加载 (Phase 3 Packages/JavaImporter 用) ============
+    // ============ 类加载 (Packages/JavaImporter 用) ============
 
     /**
      * 按完整类名加载 Class。
@@ -296,7 +296,7 @@ object JavaObjectBridgeNative {
         return classObj.isInterface
     }
 
-    // ============ JavaAdapter (Phase 3 用) ============
+    // ============ JavaAdapter ============
     // newJavaAdapterRaw 已在上方"静态成员"区域定义 (按 classHandle 调用)
 
     // ============ 辅助函数 ============

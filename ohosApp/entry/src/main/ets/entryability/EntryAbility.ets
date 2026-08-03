@@ -17,6 +17,8 @@ import { handleHttpRequest } from '../bridge/HttpBridgeHandler';
 import { handleFilePickerRequest } from '../bridge/FilePickerBridgeHandler';
 import { handlePasteboardRequest } from '../bridge/PasteboardBridgeHandler';
 import { handleTextCodecRequest } from '../bridge/TextCodecBridgeHandler';
+// 后台 WebView 桥接处理器 (隐藏 Web 组件 + runJavaScript 取源码, 书源 webView 规则)
+import { handleWebViewRequest } from '../bridge/WebViewBridgeHandler';
 // KP8+ System 桥接处理器 (ArkTS 侧 promptAction.showToast + context.startAbility 真实实现)
 import { initSystemBridge, handleShowToast, handleOpenUrl } from '../bridge/SystemBridgeHandler';
 
@@ -197,15 +199,16 @@ export default class EntryAbility extends UIAbility {
     // KP8+: 注册 Image/Media tsfn 回调 (KMP → ArkTS 跨线程 dispatch)。
     // Image: KMP OhosNativeBridge.invokeImageSync 发图片操作请求 (decode/encode/size/crop/split/stitch),
     //        ArkTS 侧 ImageBridgeHandler 调 @ohos.multimedia.image 执行真实像素操作,
-    //        完成后调 legado.imageCallback(requestId, resultJson) 回送结果唤醒 KMP 侧 CompletableDeferred。
+    //        完成后调 legado.imageCallback(requestId, resultJson, body?) 回送结果唤醒 KMP 侧 CompletableDeferred
+    //        (混合协议: 控制面 JSON + 数据面裸字节 ArrayBuffer, decode 入参图片字节 / encode 出参 packed 字节)。
     // Media: KMP OhosNativeBridge.sendMediaCommand 发播放器命令 (setSource/play/pause/stop/seekTo/release),
     //        ArkTS 侧 MediaBridgeHandler 调 @ohos.multimedia.media AVPlayer 执行真实播放,
     //        AVPlayer 事件通过 legado.mediaEvent(eventJson) 回送给 KMP 侧 MediaEventListener。
     try {
-      // Image: 注册 tsfn 回调, 请求 JSON dispatch 到 handleImageRequest
-      legado.registerImageCallback((json: string): void => {
-        handleImageRequest(json, (requestId: number, resultJson: string): void => {
-          legado.imageCallback(requestId, resultJson);
+      // Image: 注册 tsfn 回调, 请求 JSON + 裸字节 dispatch 到 handleImageRequest
+      legado.registerImageCallback((json: string, bytes: ArrayBuffer | undefined): void => {
+        handleImageRequest(json, bytes, (requestId: number, resultJson: string, body: ArrayBuffer | undefined): void => {
+          legado.imageCallback(requestId, resultJson, body);
         });
       });
       console.info('[Legado] image tsfn callback registered via napi');
@@ -258,19 +261,37 @@ export default class EntryAbility extends UIAbility {
       console.error('[Legado] registerCryptoCallback failed: ' + JSON.stringify(e));
     }
 
-    // Http tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 同 Crypto 模式)
+    // Http tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 同 Crypto 模式, 混合协议)
     // KMP OhosNativeBridge.invokeHttpSync 发 HTTP 请求 (execute/cancel),
     // ArkTS 侧 HttpBridgeHandler 调 @ohos.net.http 执行真实请求,
-    // 完成后调 legado.httpCallback(requestId, resultJson) 回送结果唤醒 KMP 侧 CompletableDeferred。
+    // 完成后调 legado.httpCallback(requestId, resultJson, body?) 回送结果唤醒 KMP 侧 CompletableDeferred
+    // (混合协议: 控制面 JSON + 数据面响应 body 裸字节 ArrayBuffer; 请求 body 同样裸传)。
     try {
-      legado.registerHttpCallback((json: string): void => {
-        handleHttpRequest(json, (requestId: number, resultJson: string): void => {
-          legado.httpCallback(requestId, resultJson);
+      legado.registerHttpCallback((json: string, body: ArrayBuffer | undefined): void => {
+        handleHttpRequest(json, body, (requestId: number, resultJson: string, respBody: ArrayBuffer | undefined): void => {
+          legado.httpCallback(requestId, resultJson, respBody);
         });
       });
       console.info('[Legado] http tsfn callback registered via napi');
     } catch (e) {
       console.error('[Legado] registerHttpCallback failed: ' + JSON.stringify(e));
+    }
+
+    // 后台 WebView tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 同 Http 模式, 混合协议)
+    // KMP OhosNativeBridge.invokeWebViewSync(jsonControl, htmlRaw) 发后台抓取请求
+    // (书源 webView/webViewGetSource 规则), 控制面 JSON 与数据面裸 html 双参数 dispatch 到
+    // ArkTS 侧 WebViewBridgeHandler, 用隐藏 Web 组件 (Index.ets 挂载) 加载页面 + runJavaScript 取源码,
+    // 完成后调 legado.webViewCallback(requestId, resultJson, bodyRaw) 回送结果
+    // (resultJson 为控制面小字段, bodyRaw 为裸源码/命中 URL) 唤醒 KMP 侧 CompletableDeferred。
+    try {
+      legado.registerWebViewCallback((json: string, htmlRaw: string): void => {
+        handleWebViewRequest(json, htmlRaw, (requestId: number, resultJson: string, bodyRaw: string): void => {
+          legado.webViewCallback(requestId, resultJson, bodyRaw);
+        });
+      });
+      console.info('[Legado] webView tsfn callback registered via napi');
+    } catch (e) {
+      console.error('[Legado] registerWebViewCallback failed: ' + JSON.stringify(e));
     }
 
     // legado:// deep link 冷启动投递 (放 onCreate 最尾: 须在 registerOhosProviders 之后,

@@ -1,7 +1,7 @@
 package io.legado.app.help.image
 
 /**
- * JS `image` 别名的图片解密 API（KJ1-b），只服务解密/反爬重排场景，不做通用图片库。
+ * JS `image` 别名的图片解密 API，只服务解密/反爬重排场景，不做通用图片库。
  *
  * 纯签名面（ByteArray/String/Int/List/Map 与不透明句柄 [ImageRef]）落 commonMain；
  * 平台实现（android=Bitmap，ios=CoreGraphics，ohos=PixelMap）经

@@ -17,6 +17,8 @@ import io.legado.app.R
  * - Float 形参（如 GradientDrawable.cornerRadius）用 `xxx.radius.defaultF`
  *
  * @see MaterialValueHelper
+ *
+ * 2026-08-04: 统一尺寸/颜色常量基础设施, 用户确认保留(即使当前零引用)。
  */
 
 // ===== Context 扩展 =====

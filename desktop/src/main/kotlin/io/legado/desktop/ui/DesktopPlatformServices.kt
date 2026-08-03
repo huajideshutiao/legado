@@ -2,6 +2,7 @@ package io.legado.desktop.ui
 
 import io.legado.app.constant.AppLog
 import io.legado.app.help.storage.DataStorageProviders
+import io.legado.app.help.toast.DesktopTrayNotifier
 import io.legado.app.ui.root.BrowserService
 import io.legado.app.ui.root.CrashLogProvider
 import io.legado.app.ui.root.ExternalRequestService
@@ -68,8 +69,8 @@ private class DesktopFilePickerService : FilePickerService {
         FileDialogs.pickOpenFile(extensions = filter.extensions)?.absolutePath
 
     override fun pickFiles(filter: FileFilter): List<String> =
-        // 多选暂用单选兜底 (FileDialogs 已具备多选能力, 待调用方需要时再放开)
-        listOfNotNull(pickFile(filter))
+        // Windows IFileDialog 原生多选; macOS/Linux AWT FileDialog 多选模式
+        FileDialogs.pickOpenFiles(extensions = filter.extensions).map { it.absolutePath }
 
     // 调用方没给目录时起始目录用用户可见产物目录 (桌面/legado), 别落在应用数据目录
     override fun saveFile(suggestedName: String, defaultDir: String?): String? =
@@ -174,20 +175,26 @@ private class DesktopKeyboardController : KeyboardController {
     override fun setSoftInputPolicy(policy: SoftInputPolicy) = Unit
 }
 
-// 媒体播放: 桌面端 MediaService 暂未接入, no-op + TODO
+// 媒体播放: 已核实 commonMain 无调用方 (MediaService 接口仅声明, 桌面端朗读/音频走
+// 独立的 TtsEngineProvider / DesktopHttpTtsPlayer), 保持 no-op, 待音频路由接入时再接线
 private class DesktopMediaService : MediaService {
     override fun playMedia(url: String, headers: Map<String, String>) {
-        // TODO: 待接入桌面媒体播放
+        // TODO: 待接入桌面媒体播放 (当前无调用方)
     }
 
     override fun pauseMedia() = Unit
     override fun stopMedia() = Unit
 }
 
-// 通知: 桌面端 SystemTray 通知由 registerDesktopNotificationProgress 单独承载, 此处 no-op + TODO
+// 通知: 经 DesktopTrayNotifier 委托宿主托盘图标显示气泡 (与 toast 同通道),
+// 托盘未注册 (无头 / 无托盘) 时落 stdout; 气泡由系统自动超时消失, cancel 为 no-op
 private class DesktopNotificationService : NotificationService {
     override fun notify(id: Int, title: String, content: String) {
-        // TODO: 可接入 SystemTray 通知
+        val message = "$title | $content"
+        val sent = runCatching {
+            DesktopTrayNotifier.sender?.invoke(message) == true
+        }.getOrDefault(false)
+        if (!sent) println("[notification] $message")
     }
 
     override fun cancelNotification(id: Int) = Unit

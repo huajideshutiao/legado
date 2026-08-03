@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * 架构 A (native trap + 极简 bootstrap):
  * - 持有 [ctxPtr] (native JSContext 指针), 通过 [QuickJsNative.nativeEval] 执行 JS
- * - 不再依赖 quickjs-kt 的 QuickJs (Phase 5 已移除)
+ * - 不再依赖 quickjs-kt 的 QuickJs (已移除)
  *
  * 线程模型说明:
  * - native JSRuntime 单线程, JS 执行必须在持有 ctx 的线程

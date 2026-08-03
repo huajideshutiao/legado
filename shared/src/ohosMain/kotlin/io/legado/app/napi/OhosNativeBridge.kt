@@ -15,6 +15,46 @@ import kotlin.concurrent.Volatile
 typealias OhosTsfnCallback = (String) -> Unit
 
 /**
+ * webView 桥专用 tsfn 回调类型 (混合协议): 控制面 JSON + 数据面裸 html 字符串。
+ *
+ * 与 [OhosTsfnCallback] 的单字符串不同, 书源 webView 规则可能携带大段 HTML
+ * (整章/整页, 数百 KB~数 MB)。若把 html 塞进 JSON payload, KS_JSON 转义会膨胀体积
+ * (引号/反斜杠/换行 → \\uXXXX 等) 且 K/N 与 ArkTS 双端各多一次编码/解码拷贝。
+ * 故 html 作为第二参数裸字符串经 napi_create_string_utf8 直接传递, 不做任何 JSON 转义。
+ *
+ * @param jsonControl 控制面 JSON 字符串 (含 requestId/action/payload, payload 为
+ *   WebViewRequestPayload 但不含 html 字段)
+ * @param htmlRaw 数据面裸 HTML 字符串 (html 入参, 空串表示无 html)
+ */
+typealias OhosWebViewTsfnCallback = (jsonControl: String, htmlRaw: String) -> Unit
+
+/**
+ * Http/Image 桥专用 tsfn 回调类型 (混合协议): 控制面 JSON + 数据面裸字节。
+ *
+ * 与 [OhosWebViewTsfnCallback] (裸 html 字符串) 同思路, 但 HTTP 请求/响应 body 与图片字节是
+ * **任意二进制** (下载场景可能是图片/压缩包等), 不能走 UTF-8 字符串保真, 故用 napi ArrayBuffer:
+ * C++ tsfn call-js 回调把 [bytes] 用 napi_create_external_arraybuffer 包装成 ArrayBuffer
+ * 作为第二参数传给 ArkTS 回调, 不经 base64 (避免 33% 体积膨胀 + 双端编解码拷贝)。
+ *
+ * @param jsonControl 控制面 JSON 字符串 (含 requestId/action/payload, payload 不含大字节字段)
+ * @param bytes 数据面裸字节 (null 表示无字节面, C++ 侧转成 undefined 参数)
+ */
+typealias OhosBinaryTsfnCallback = (jsonControl: String, bytes: ByteArray?) -> Unit
+
+/**
+ * Http/Image 同步桥统一响应 (混合协议): 控制面 JSON + 数据面裸字节。
+ * ArkTS → Kotlin 经 @CName legado_xxx_callback(requestId, resultJson, arrayBuffer) 回传,
+ * C++ 用 napi_get_arraybuffer_info 零拷贝取 ArrayBuffer 数据指针, Kotlin 侧拷入 ByteArray。
+ *
+ * @param json 控制面结果 JSON (ok/error 等小字段, 不含大字节)
+ * @param bytes 数据面裸字节 (HTTP 响应 body / encode 的 packed 图片; 无字节面时为 null)
+ */
+data class OhosBinaryBridgeResponse(
+    val json: String,
+    val bytes: ByteArray? = null,
+)
+
+/**
  * 鸿蒙 napi 桥接基础设施: Kotlin → ArkTS 反向调用 (KP7+)。
  *
  * # 设计目的
@@ -192,65 +232,85 @@ object OhosNativeBridge {
     /** 读取已注入的 cacheDir 路径, 未注入返回 null。 */
     fun getCacheDir(): String? = synchronized(lock) { cacheDirPath }
 
-    // ===== Image 同步桥 (tsfn + callback, KP8+) =====
+    // ===== Image 同步桥 (tsfn + callback, 混合协议: 控制面 JSON + 数据面裸字节, KP8+) =====
     // 图片操作 (decode/encode/size/crop/split/stitch) 是同步接口, 但 ArkTS @ohos.multimedia.image
-    // 只能通过 napi 桥接异步调用。采用 "tsfn 发请求 + @CName 回调返回结果" 的同步等待模式:
+    // 只能通过 napi 桥接异步调用。采用 "tsfn 发请求 + @CName 回调返回结果" 的同步等待模式,
+    // 传输为混合协议 (同 WebView 桥思路, 大字节面改走 napi 裸参数):
+    //
+    // 请求侧 (Kotlin → ArkTS):
+    //   - 控制面: ImageBridgeRequest(requestId, action, payload) JSON (小字段);
+    //   - 数据面: decode 的图片字节作为 tsfn 回调第二参数 napi ArrayBuffer 裸传
+    //     (不经 base64, 避免 33% 膨胀 + 双端编解码拷贝; 图片是任意二进制, ArrayBuffer 保真);
+    // 结果侧 (ArkTS → Kotlin):
+    //   - 控制面: resultJson ({ok,pixelMapId,...} / {ok:false,error}, 不含字节);
+    //   - 数据面: encode 的 packed 字节作为 legado.imageCallback 第三参数 ArrayBuffer 回传。
     //
     // 调用链 (以 decode 为例):
     // KMP OhosImageOps.decode(bytes)
-    //   → invokeImageSync("decode", json)
-    //   → 生成 requestId, 存入 imagePendingRequests (CompletableDeferred)
-    //   → imageTsfn(requestJson)  (fire-and-forget, dispatch 到 ArkTS 主线程)
+    //   → invokeImageSync("decode", json, bytes)
+    //   → 生成 requestId, 存入 imagePendingRequests (CompletableDeferred<OhosBinaryBridgeResponse>)
+    //   → imageTsfn(requestJson, bytes)  (fire-and-forget, dispatch 到 ArkTS 主线程)
     //   → runBlocking { deferred.await() }  (阻塞 JS 引擎线程等待结果)
-    //   → [ArkTS 主线程] image callback 收到 requestJson
+    //   → [ArkTS 主线程] image callback 收到 (requestJson, bytesArrayBuffer)
     //   → image.createImageSource(bytes).createPixelMap() → 存入 pixelMaps Map<id, PixelMap>
-    //   → legado.imageCallback(requestId, resultJson)  (napi → @CName legado_image_callback)
-    //   → onImageResult(requestId, resultJson) → deferred.complete(resultJson)
+    //   → legado.imageCallback(requestId, resultJson, packed?)  (napi → @CName legado_image_callback)
+    //   → onImageResult(requestId, resultJson, bodyBytes) → deferred.complete(OhosBinaryBridgeResponse)
     //   → runBlocking 返回, OhosImageOps.decode 返回 ImageRef(pixelMapId)
     //
     // 线程安全: JS 引擎线程阻塞等待, ArkTS 主线程回调 complete, 不同线程无死锁。
 
-    /** image threadsafe_function 引用 (Kotlin → ArkTS 发送图片操作请求)。 */
+    /** image threadsafe_function 引用 (Kotlin → ArkTS 发送图片操作请求, 混合协议双参)。 */
     @Volatile
-    private var imageTsfn: OhosTsfnCallback? = null
+    private var imageTsfn: OhosBinaryTsfnCallback? = null
 
-    /** 待响应的图片同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
-    private val imagePendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
+    /** 待响应的图片同步请求 Map<requestId, CompletableDeferred<OhosBinaryBridgeResponse>>。 */
+    private val imagePendingRequests =
+        mutableMapOf<Long, CompletableDeferred<OhosBinaryBridgeResponse>>()
 
     /** 图片请求自增 ID (原子性由 [lock] 保护)。 */
     private var imageRequestCounter = 0L
 
     /** 注入 image tsfn (由 legado_napi.cpp registerImageCallback 调用)。 */
-    fun registerImageFn(tsfn: OhosTsfnCallback) {
+    fun registerImageFn(tsfn: OhosBinaryTsfnCallback) {
         synchronized(lock) {
             imageTsfn = tsfn
         }
     }
 
     /**
-     * 图片操作结果回调 (由 ArkTS 侧调 @CName legado_image_callback 触发)。
-     * ArkTS 完成 decode/encode/size/crop/split/stitch 后, 把结果 JSON 通过 napi 回调推送给 Kotlin,
-     * 唤醒 [invokeImageSync] 中阻塞的 CompletableDeferred。
+     * 图片操作结果回调 (由 ArkTS 侧调 @CName legado_image_callback 触发, 混合协议)。
+     * ArkTS 完成 decode/encode/size/crop/split/stitch 后, 把控制面结果 JSON 与数据面
+     * 裸字节 (encode 的 packed 图片) 分两路推送给 Kotlin, 唤醒 [invokeImageSync] 中阻塞的
+     * CompletableDeferred。
      *
      * @param requestId 对应 [invokeImageSync] 生成的请求 ID
-     * @param resultJson ArkTS 返回的结果 JSON (含 ok/result 或 ok/error 字段)
+     * @param resultJson 控制面结果 JSON (含 ok/pixelMapId 或 ok/error 字段, 不含字节)
+     * @param bodyBytes 数据面裸字节 (encode 时非空; 其余操作/失败时为 null)
      */
-    fun onImageResult(requestId: Long, resultJson: String) {
+    fun onImageResult(requestId: Long, resultJson: String, bodyBytes: ByteArray? = null) {
         val deferred = synchronized(lock) { imagePendingRequests.remove(requestId) }
-        deferred?.complete(resultJson)
+        deferred?.complete(OhosBinaryBridgeResponse(resultJson, bodyBytes))
     }
 
     /**
-     * 同步调用图片操作 (阻塞等待 ArkTS 返回结果)。
+     * 同步调用图片操作 (阻塞等待 ArkTS 返回结果, 混合协议)。
      *
      * @param action 操作类型: "decode" / "encode" / "size" / "crop" / "split" / "stitch" / "release"
-     * @param payloadJson 操作参数 JSON (由调用方序列化, 如 `{"bytes":"<base64>"}`)
+     * @param payloadJson 操作参数 JSON (由调用方序列化, 控制面小字段; decode 的图片字节
+     *   改走 [bytes] 裸参数, 不再 base64 进 JSON)
+     * @param bytes 数据面裸字节 (仅 decode 传图片字节; 其余操作传 null)
      * @param timeoutMs 超时毫秒 (默认 15s, 防止 ArkTS 无响应永久阻塞)
-     * @return ArkTS 返回的结果 JSON; tsfn 未注册或超时返回 null (调用方降级处理)
+     * @return ArkTS 返回的 [OhosBinaryBridgeResponse] (控制面 JSON + 数据面裸字节);
+     *         tsfn 未注册或超时返回 null (调用方降级处理)
      */
-    fun invokeImageSync(action: String, payloadJson: String, timeoutMs: Long = 15000L): String? {
+    fun invokeImageSync(
+        action: String,
+        payloadJson: String,
+        bytes: ByteArray? = null,
+        timeoutMs: Long = 15000L,
+    ): OhosBinaryBridgeResponse? {
         val requestId = synchronized(lock) { ++imageRequestCounter }
-        val deferred = CompletableDeferred<String>()
+        val deferred = CompletableDeferred<OhosBinaryBridgeResponse>()
         synchronized(lock) { imagePendingRequests[requestId] = deferred }
 
         val requestJson = KS_JSON.encodeToString(
@@ -262,7 +322,7 @@ object OhosNativeBridge {
             synchronized(lock) { imagePendingRequests.remove(requestId) }
             return null
         }
-        runCatching { tsfn(requestJson) }.onFailure {
+        runCatching { tsfn(requestJson, bytes) }.onFailure {
             // tsfn 调用失败 (module 卸载 / 线程异常), 移除 pending 请求返回 null
             synchronized(lock) { imagePendingRequests.remove(requestId) }
             return null
@@ -593,60 +653,82 @@ object OhosNativeBridge {
      */
     fun isCryptoBridgeReady(): Boolean = synchronized(lock) { cryptoTsfn != null }
 
-    // ===== Http 同步桥 (tsfn + callback, KP8+) =====
+    // ===== Http 同步桥 (tsfn + callback, 混合协议: 控制面 JSON + 数据面裸字节, KP8+) =====
     // KmpHttpClient 的 newCall/execute 是同步接口, 但 ArkTS @ohos.net.http 只能通过 napi 桥接异步调用。
-    // 采用与 Image/Crypto 完全一致的 "tsfn 发请求 + @CName 回调返回结果" 的同步等待模式:
+    // 采用与 Image/Crypto 完全一致的 "tsfn 发请求 + @CName 回调返回结果" 的同步等待模式,
+    // 传输为混合协议 (同 WebView 桥思路, 大字节面改走 napi 裸参数):
+    //
+    // 请求侧 (Kotlin → ArkTS):
+    //   - 控制面: HttpBridgeRequest(requestId, action, payload) JSON (url/method/headers/timeout 等小字段);
+    //   - 数据面: 请求 body 字节作为 tsfn 回调第二参数 napi ArrayBuffer 裸传
+    //     (不经 base64, 避免 33% 膨胀 + 双端编解码拷贝; body 是任意二进制, ArrayBuffer 保真);
+    // 结果侧 (ArkTS → Kotlin):
+    //   - 控制面: resultJson ({ok,code,message,headers} / {ok:false,error}, 不含 body);
+    //   - 数据面: 响应 body 作为 legado.httpCallback 第三参数 ArrayBuffer 回传。
     //
     // 调用链 (以 execute 为例):
     // KMP OhosKmpCall.execute
-    //   → invokeHttpSync("execute", json)
-    //   → 生成 requestId, 存入 httpPendingRequests (CompletableDeferred)
-    //   → httpTsfn(requestJson)  (fire-and-forget, dispatch 到 ArkTS 主线程)
+    //   → invokeHttpSync("execute", json, bodyBytes)
+    //   → 生成 requestId, 存入 httpPendingRequests (CompletableDeferred<OhosBinaryBridgeResponse>)
+    //   → httpTsfn(requestJson, bodyBytes)  (fire-and-forget, dispatch 到 ArkTS 主线程)
     //   → runBlocking { deferred.await() }  (阻塞等待结果)
-    //   → [ArkTS 主线程] HttpBridgeHandler.handleHttpRequest
+    //   → [ArkTS 主线程] HttpBridgeHandler.handleHttpRequest(requestJson, bodyArrayBuffer)
     //   → http.createHttp().request(url, options, callback)
-    //   → legado.httpCallback(requestId, resultJson)  (napi → @CName legado_http_callback)
-    //   → onHttpResult(requestId, resultJson) → deferred.complete(resultJson)
+    //   → legado.httpCallback(requestId, resultJson, bodyArrayBuffer)  (napi → @CName legado_http_callback)
+    //   → onHttpResult(requestId, resultJson, bodyBytes) → deferred.complete(OhosBinaryBridgeResponse)
     //   → runBlocking 返回, OhosKmpCall 解析响应
 
-    /** http threadsafe_function 引用 (Kotlin → ArkTS 发送 HTTP 请求)。 */
+    /** http threadsafe_function 引用 (Kotlin → ArkTS 发送 HTTP 请求, 混合协议双参)。 */
     @Volatile
-    private var httpTsfn: OhosTsfnCallback? = null
+    private var httpTsfn: OhosBinaryTsfnCallback? = null
 
-    /** 待响应的 http 同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
-    private val httpPendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
+    /** 待响应的 http 同步请求 Map<requestId, CompletableDeferred<OhosBinaryBridgeResponse>>。 */
+    private val httpPendingRequests =
+        mutableMapOf<Long, CompletableDeferred<OhosBinaryBridgeResponse>>()
 
     /** http 请求自增 ID (原子性由 [lock] 保护)。 */
     private var httpRequestCounter = 0L
 
     /** 注入 http tsfn (由 legado_napi.cpp registerHttpCallback 调用)。 */
-    fun registerHttpFn(tsfn: OhosTsfnCallback) {
+    fun registerHttpFn(tsfn: OhosBinaryTsfnCallback) {
         synchronized(lock) {
             httpTsfn = tsfn
         }
     }
 
     /**
-     * http 请求结果回调 (由 ArkTS 侧调 @CName legado_http_callback 触发)。
-     * ArkTS 完成 HTTP 请求后, 把结果 JSON 通过 napi 回调推送给 Kotlin,
+     * http 请求结果回调 (由 ArkTS 侧调 @CName legado_http_callback 触发, 混合协议)。
+     * ArkTS 完成 HTTP 请求后, 把控制面结果 JSON 与数据面响应 body 分两路推送给 Kotlin,
      * 唤醒 [invokeHttpSync] 中阻塞的 CompletableDeferred。
+     *
+     * @param requestId 对应 [invokeHttpSync] 生成的请求 ID
+     * @param resultJson 控制面结果 JSON (含 ok/code/message/headers 或 ok/error, 不含 body)
+     * @param bodyBytes 数据面响应 body 字节 (二进制保真; 无 body 时为 null)
      */
-    fun onHttpResult(requestId: Long, resultJson: String) {
+    fun onHttpResult(requestId: Long, resultJson: String, bodyBytes: ByteArray? = null) {
         val deferred = synchronized(lock) { httpPendingRequests.remove(requestId) }
-        deferred?.complete(resultJson)
+        deferred?.complete(OhosBinaryBridgeResponse(resultJson, bodyBytes))
     }
 
     /**
-     * 同步调用 http 操作 (阻塞等待 ArkTS 返回结果)。
+     * 同步调用 http 操作 (阻塞等待 ArkTS 返回结果, 混合协议)。
      *
      * @param action 操作类型: "execute" / "cancel"
-     * @param payloadJson 操作参数 JSON (由调用方序列化, 含 url/method/headers/body 等)
+     * @param payloadJson 操作参数 JSON (由调用方序列化, 控制面小字段: url/method/headers/超时/代理;
+     *   不含 body, body 字节改走 [bodyBytes] 裸参数)
+     * @param bodyBytes 数据面请求 body 字节 (napi ArrayBuffer 裸传; 无 body 时传 null)
      * @param timeoutMs 超时毫秒 (默认 60s, HTTP 请求可能较慢)
-     * @return ArkTS 返回的结果 JSON; tsfn 未注册或超时返回 null (调用方抛异常)
+     * @return ArkTS 返回的 [OhosBinaryBridgeResponse] (控制面 JSON + 数据面响应 body);
+     *         tsfn 未注册或超时返回 null (调用方抛异常)
      */
-    fun invokeHttpSync(action: String, payloadJson: String, timeoutMs: Long = 60000L): String? {
+    fun invokeHttpSync(
+        action: String,
+        payloadJson: String,
+        bodyBytes: ByteArray? = null,
+        timeoutMs: Long = 60000L,
+    ): OhosBinaryBridgeResponse? {
         val requestId = synchronized(lock) { ++httpRequestCounter }
-        val deferred = CompletableDeferred<String>()
+        val deferred = CompletableDeferred<OhosBinaryBridgeResponse>()
         synchronized(lock) { httpPendingRequests[requestId] = deferred }
 
         val requestJson = KS_JSON.encodeToString(
@@ -658,7 +740,7 @@ object OhosNativeBridge {
             synchronized(lock) { httpPendingRequests.remove(requestId) }
             return null
         }
-        runCatching { tsfn(requestJson) }.onFailure {
+        runCatching { tsfn(requestJson, bodyBytes) }.onFailure {
             // tsfn 调用失败 (module 卸载 / 线程异常), 移除 pending 请求返回 null
             synchronized(lock) { httpPendingRequests.remove(requestId) }
             return null
@@ -675,6 +757,113 @@ object OhosNativeBridge {
      * KmpHttpClientBuilder.build 据此判断走真实 @ohos.net.http 实现还是抛异常。
      */
     fun isHttpBridgeReady(): Boolean = synchronized(lock) { httpTsfn != null }
+
+    // ===== WebView 同步桥 (tsfn + callback, 混合协议: 控制面 JSON + 数据面裸字符串) =====
+    // 后台 WebView (书源 webView/webViewGetSource 规则) 在 ArkTS 侧用隐藏 Web 组件承载
+    // (K/N 无法直接实例化 ArkUI Web 组件), 采用与 Image/Http 一致的
+    // "tsfn 发请求 + @CName 回调返回结果" 的同步等待模式, 但传输格式为混合协议:
+    //
+    // 请求侧 (Kotlin → ArkTS):
+    //   - 控制面: WebViewBridgeRequest(requestId, action, payload) JSON,
+    //     payload = WebViewRequestPayload (仅 url/tag/encode/headers/sourceRegex/overrideUrlRegex/js/delayTime/cookie, 不含 html);
+    //   - 数据面: html 作为 tsfn 回调第二参数裸字符串 (不经 JSON 转义,
+    //     避免大段 HTML 的转义膨胀 + 双端 JSON 编解码拷贝);
+    // 结果侧 (ArkTS → Kotlin):
+    //   - 控制面: resultJson ({ok,url,cookie} / {ok:false,error}, 不含 body);
+    //   - 数据面: 源码/命中 URL 作为 legado.webViewCallback 第三参数裸字符串回传。
+    //
+    // 调用链:
+    // KMP OhosBackstageWebViewHandle.getStrResponse
+    //   → invokeWebViewSync(jsonControl, htmlRaw)
+    //   → 生成 requestId, 存入 webViewPendingRequests (CompletableDeferred<WebViewBridgeResponse>)
+    //   → webViewTsfn(requestJson, htmlRaw)  (fire-and-forget, dispatch 到 ArkTS 主线程)
+    //   → runBlocking { deferred.await() }  (阻塞 JS 引擎线程等待结果)
+    //   → [ArkTS 主线程] WebViewBridgeHandler.handleWebViewRequest(requestJson, htmlRaw)
+    //   → 隐藏 Web 组件 loadUrl/loadData + onPageEnd 后 runJavaScript 取源码
+    //   → legado.webViewCallback(requestId, resultJson, bodyRaw)  (napi → @CName legado_webview_callback)
+    //   → onWebViewResult(requestId, resultJson, bodyRaw) → deferred.complete(WebViewBridgeResponse)
+    //   → runBlocking 返回, OhosBackstageWebViewHandle 解析响应
+    //
+    // 未注册 tsfn (宿主未接入 WebViewBridgeHandler) 时 invokeWebViewSync 返回 null,
+    // 调用方抛带明确说明的异常 (规则层 runCatching 成书源错误, 不再裸崩 IllegalStateException)。
+
+    /** webView threadsafe_function 引用 (Kotlin → ArkTS 发送后台 WebView 请求, 混合协议双参)。 */
+    @Volatile
+    private var webViewTsfn: OhosWebViewTsfnCallback? = null
+
+    /** 待响应的 webView 同步请求 Map<requestId, CompletableDeferred<WebViewBridgeResponse>>。 */
+    private val webViewPendingRequests =
+        mutableMapOf<Long, CompletableDeferred<WebViewBridgeResponse>>()
+
+    /** webView 请求自增 ID (原子性由 [lock] 保护)。 */
+    private var webViewRequestCounter = 0L
+
+    /** 注入 webView tsfn (由 legado_napi.cpp registerWebViewCallback 调用)。 */
+    fun registerWebViewFn(tsfn: OhosWebViewTsfnCallback) {
+        synchronized(lock) {
+            webViewTsfn = tsfn
+        }
+    }
+
+    /**
+     * webView 请求结果回调 (由 ArkTS 侧调 @CName legado_webview_callback 触发, 混合协议)。
+     * ArkTS 完成页面加载 + JS 执行后, 把控制面结果 JSON 与数据面裸源码分两路推送给 Kotlin,
+     * 唤醒 [invokeWebViewSync] 中阻塞的 CompletableDeferred。
+     *
+     * @param requestId 对应 [invokeWebViewSync] 生成的请求 ID
+     * @param resultJson 控制面结果 JSON (`{ok:true,url,cookie}` / `{ok:false,error}`, 不含 body)
+     * @param bodyRaw 数据面裸源码/命中 URL (不经 JSON 转义; 失败或空结果时为空串)
+     */
+    fun onWebViewResult(requestId: Long, resultJson: String, bodyRaw: String) {
+        val deferred = synchronized(lock) { webViewPendingRequests.remove(requestId) }
+        deferred?.complete(WebViewBridgeResponse(resultJson = resultJson, bodyRaw = bodyRaw))
+    }
+
+    /**
+     * 同步调用后台 WebView 请求 (阻塞等待 ArkTS 返回结果, 混合协议)。
+     *
+     * @param jsonControl 控制面 JSON (WebViewRequestPayload, 不含 html 字段)
+     * @param htmlRaw 数据面裸 HTML 入参 (null/空串表示无 html, 走 url 加载)
+     * @param timeoutMs 超时毫秒 (默认 [io.legado.app.constant.AppConst.timeLimit] 15s)
+     * @return ArkTS 返回的 [WebViewBridgeResponse] (控制面 JSON + 裸源码);
+     *         tsfn 未注册或超时返回 null (调用方抛明确异常)
+     */
+    fun invokeWebViewSync(
+        jsonControl: String,
+        htmlRaw: String?,
+        timeoutMs: Long = 15000L
+    ): WebViewBridgeResponse? {
+        val requestId = synchronized(lock) { ++webViewRequestCounter }
+        val deferred = CompletableDeferred<WebViewBridgeResponse>()
+        synchronized(lock) { webViewPendingRequests[requestId] = deferred }
+
+        val requestJson = KS_JSON.encodeToString(
+            WebViewBridgeRequest(requestId = requestId, action = "request", payload = jsonControl)
+        )
+        val tsfn = synchronized(lock) { webViewTsfn }
+        if (tsfn == null) {
+            // 降级: tsfn 未注册 (宿主未接入 WebViewBridgeHandler), 移除 pending 请求返回 null
+            synchronized(lock) { webViewPendingRequests.remove(requestId) }
+            return null
+        }
+        // html 裸传: 空串等价无 html (ArkTS 侧按 length==0 判定), C 边界不出现 null 指针
+        runCatching { tsfn(requestJson, htmlRaw ?: "") }.onFailure {
+            // tsfn 调用失败 (module 卸载 / 线程异常), 移除 pending 请求返回 null
+            synchronized(lock) { webViewPendingRequests.remove(requestId) }
+            return null
+        }
+
+        // 阻塞等待 ArkTS 回调 (JS 引擎线程阻塞, ArkTS 主线程回调 complete, 不同线程无死锁)
+        val result = runBlocking { withTimeoutOrNull(timeoutMs) { deferred.await() } }
+        synchronized(lock) { webViewPendingRequests.remove(requestId) }
+        return result
+    }
+
+    /**
+     * 检查 webView 桥是否已就绪 (tsfn 已注入)。
+     * OhosBackstageWebViewHandle 据此判断走真实隐藏 Web 组件还是抛明确失败信息。
+     */
+    fun isWebViewBridgeReady(): Boolean = synchronized(lock) { webViewTsfn != null }
 
     // ===== OpenUrl tsfn (KMP → ArkTS, fire-and-forget, 同 Toast 模式) =====
     // OhosOpenUrlProvider.openUrl 经 tsfn dispatch 到 ArkTS, 由 SystemBridgeHandler.handleOpenUrl
@@ -1304,6 +1493,69 @@ object OhosNativeBridge {
         val requestId: Long,
         val action: String,
         val payload: String,
+    )
+
+    /** webView 桥请求 payload (Kotlin → ArkTS, 同 HttpBridgeRequest 结构, action=request)。 */
+    @Serializable
+    private data class WebViewBridgeRequest(
+        val requestId: Long,
+        val action: String,
+        val payload: String,
+    )
+
+    /**
+     * webView 后台抓取控制面 payload (Kotlin → ArkTS, 与 ArkTS WebViewBridgeHandler 对齐)。
+     * 字段语义对齐 [io.legado.app.help.http.BackstageWebViewFactory.create]。
+     *
+     * # 混合协议 (html 不在本 JSON 中)
+     * html 入参可能携带大段 HTML (整章/整页, 数百 KB~数 MB), JSON 转义会膨胀体积且
+     * 双端多两次编解码拷贝; 故 html 字段已移出, 作为 [invokeWebViewSync] 第二参数裸字符串
+     * 经 tsfn 直接传 (见 [OhosWebViewTsfnCallback])。ArkTS 侧据回调第二参数取 html。
+     */
+    @Serializable
+    data class WebViewRequestPayload(
+        val url: String? = null,
+        val encode: String? = null,
+        val tag: String? = null,
+        val headers: List<WebViewHeader>? = null,
+        val sourceRegex: String? = null,
+        val overrideUrlRegex: String? = null,
+        val js: String? = null,
+        val delayTime: Long = 1000L,
+        /** 加载前注入的业务层 cookie ("k1=v1; k2=v2")。 */
+        val cookie: String? = null,
+    )
+
+    /** 请求头单项 (Kotlin → ArkTS)。 */
+    @Serializable
+    data class WebViewHeader(
+        val name: String,
+        val value: String,
+    )
+
+    /**
+     * webView 后台抓取控制面结果 (ArkTS → Kotlin, 混合协议)。
+     * - 成功: `{ ok: true, url, cookie? }` (cookie 为页面 host 域 cookie, 供 Kotlin 回写业务层;
+     *   源码/命中 URL 走 [WebViewBridgeResponse.bodyRaw] 裸字符串, 不在本 JSON 中)
+     * - 失败: `{ ok: false, error }`
+     */
+    @Serializable
+    data class WebViewResult(
+        val ok: Boolean,
+        val url: String? = null,
+        val cookie: String? = null,
+        val error: String? = null,
+    )
+
+    /**
+     * webView 桥同步响应 (ArkTS → Kotlin, 混合协议)。
+     *
+     * @param resultJson 控制面结果 JSON (WebViewResult 格式, 不含 body)
+     * @param bodyRaw 数据面裸源码/命中 URL (不经 JSON 转义; 失败或空结果时为空串)
+     */
+    data class WebViewBridgeResponse(
+        val resultJson: String,
+        val bodyRaw: String,
     )
 
     /** filePicker 桥请求 payload (Kotlin → ArkTS, 同 ImageBridgeRequest 结构, action=pickDocuments/pickDocumentContent)。 */

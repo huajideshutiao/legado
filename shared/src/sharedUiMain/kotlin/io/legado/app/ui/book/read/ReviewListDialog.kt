@@ -82,32 +82,17 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * 评论列表对话框内容 (KMP 共享, app + desktop 复用)。
  *
- * 对应 app 端 `io.legado.app.ui.book.read.ReviewListDialog` (BottomSheetDialogFragment),
- * 但去掉对 Android Fragment / ViewModel / LiveData / Glide / IntentData / alert DSL 的依赖,
- * 改为纯 @Composable + 回调形式:
- * - 调用方持有全部状态 (reviews 列表 / 排序 / 展开键 / 点赞键 / footer 状态) 并传入;
- * - 用户交互通过回调上抛 (onVoteUp / onToggleExpand / onReviewClick / onPostClick 等);
- * - 图片渲染通过 [avatarSlot] / [imageSlot] 注入 (app 端 Glide / 桌面端各平台 ImageLoader);
- * - 删除确认对话框由调用方处理 (onDeleteClick 回调内自行弹 alert / AppAlertDialog);
- * - 发书评入口由调用方处理 (onPostClick 回调内自行弹 ReviewPostDialogHost, 对照原版
- *   ReviewPostActivity 底部输入面板)。
+ * 对应 app 端 ReviewListDialog (BottomSheetDialogFragment), 去掉对 Android Fragment /
+ * ViewModel / LiveData / Glide / IntentData / alert DSL 的依赖, 改纯 @Composable + 回调:
+ * 调用方持有全部状态传入; 交互经回调上抛; 图片渲染经 [avatarSlot]/[imageSlot] 注入
+ * (app 端 Glide); 删除确认 / 发书评 / 查看大图由调用方实现平台专属行为。
  *
- * # 业务对齐 (对照 app 端原版 ReviewListDialog.ReviewListContent)
+ * 业务对齐 (对照 app 端原版 ReviewListContent): 顶部关闭按钮 + 居中标题; LazyColumn 列表,
+ * 段评模式顶部"全部评论·N"+ 排序, 回复模式顶部 parentReview 原文; 单条评论含头像/昵称/
+ * 正文 6 行折叠/点赞/点踩/回复入口; footer loading/noMore; 翻底触发 onLoadMore。
  *
- * - 顶部栏: 关闭按钮 (ic_review_close) + 居中标题;
- * - 列表区: LazyColumn, 段评模式顶部 ListHeader (全部评论·N + 排序选择),
- *   回复模式顶部 parentReview 原文 + RepliesHeader (全部回复·N 分隔条);
- * - 单条评论: 头像 + 昵称 + extra + 菜单 + 正文 (6 行折叠/展开) + 配图 + 时间 + 点赞/点踩 + 回复入口;
- * - footer: loading 转圈 / noMore "我是有底线的";
- * - 底部输入栏: 点击触发 onPostClick;
- * - 翻到底触发 onLoadMore (对照原 OnScrollListener / snapshotFlow)。
- *
- * # 与 app 端的差异
- *
- * - nestedScrollInteropConnection (BottomSheet 滚动交还) 通过 [lazyListModifier] 由调用方注入
- *   (Android 端传 Modifier.nestedScroll(rememberNestedScrollInteropConnection()), 桌面端传 Modifier);
- * - 图片加载 (Glide) 通过 [avatarSlot] / [imageSlot] 注入, 不直接依赖 ImageLoader;
- * - 删除确认 / 发书评 / 查看大图 均通过回调上抛, 由调用方实现平台专属行为。
+ * 与 app 端差异: BottomSheet 滚动交还的 nestedScrollInteropConnection 经 [lazyListModifier]
+ * 由调用方注入 (Android 传 rememberNestedScrollInteropConnection(), 桌面传 Modifier)。
  *
  * @param title 顶部标题文本
  * @param parentReview 回复模式的楼主原评论; null = 段评/章节评论模式

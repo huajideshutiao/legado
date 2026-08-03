@@ -3,7 +3,7 @@ package io.legado.app.help.config
 import kotlin.concurrent.Volatile
 
 /**
- * 跨平台 SharedPreferences 抽象（KP1.4）。
+ * 跨平台 SharedPreferences 抽象。
  *
  * 安卓端 SharedPreferences 依赖 `android.content.Context`, 不能下沉 shared commonMain。
  * 桌面端需要读写配置（书源线程数、简繁转换类型等 AppConfig 项），通过本接口注入

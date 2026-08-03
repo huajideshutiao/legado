@@ -133,4 +133,10 @@ private class WebViewHostImpl(private val webView: WKWebView) : WebViewHost {
     override fun goBack() {
         webView.goBack()
     }
+
+    override fun getUrl(): String? = webView.URL?.absoluteString
+
+    override fun reload() {
+        webView.reload()
+    }
 }

@@ -14,6 +14,8 @@ import io.legado.app.utils.ColorUtils
  * 主题相关的 Context / Fragment 扩展属性。
  *
  * @author Karim Abou Zeid (kabouzeid)
+ *
+ * 2026-08-04: 统一尺寸/颜色常量基础设施, 用户确认保留(即使当前零引用)。
  */
 
 // ===== 文字颜色函数（按背景明暗返回对应色） =====

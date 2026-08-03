@@ -9,61 +9,29 @@ import io.legado.app.model.CacheBookCallbacks
 import io.legado.app.model.CacheBookShared
 import io.legado.app.model.CacheBookShared.CacheBookModelShared
 import io.legado.app.utils.postEvent
+import io.legado.desktop.model.DesktopCacheBook.DesktopCacheBookCallback.markDownloadFailed
+import io.legado.desktop.model.DesktopCacheBook.DesktopCacheBookCallback.markDownloadSuccess
+import io.legado.desktop.model.DesktopCacheBook.DesktopCacheBookCallback.markDownloaded
+import io.legado.desktop.model.DesktopCacheBook.close
 import kotlin.coroutines.CoroutineContext
 
 /**
  * 桌面端 CacheBook 薄壳 (委托 [CacheBookShared])。
  *
- * # 背景
+ * 原桌面端 DesktopCacheBook 含完整调度逻辑 (cacheBookMap/getOrCreate/startProcessJob/
+ * CacheBookModel 等), 与 app 端 CacheBook 重复; 调度核心已下沉 [CacheBookShared],
+ * 本 object 仅保留: ① 桌面端 [CacheBookCallback] 注册 (postEvent 通知阅读页自行重载,
+ * 桌面无 ReadBook 单例); ② 对外 API 委托, 调用点不变。
  *
- * 原本桌面端 [DesktopCacheBook] object 含完整章节预下载调度逻辑 (cacheBookMap /
- * getOrCreate / startProcessJob / CacheBookModel 等), 与 app 端 `CacheBook` 重复实现。
- * 现已把**非平台特有**的调度核心下沉到 shared commonMain [CacheBookShared],
- * 本 object 仅保留:
+ * 平台差异 (对照 app 端 CacheBook):
+ * - 无 CacheBookService: 协程直接处理, ReadBookViewModelShared 在协程内调 startProcessJob
+ * - 不下载图片: BookHelpProviders.saveImages 桌面端 no-op/false
+ * - hasContent 已缓存分支仍调 saveImages (no-op) + getContent, 行为等价 (仅多一次空调用)
+ * - addDownload 不 clamp (与 app 端一致, 由调用方负责; ReadBookViewModelShared 下载前
+ *   clamp endIndex 到 lastChapterIndex)
  *
- * 1. **桌面端 [CacheBookCallback] 注册**, 用 postEvent 通知阅读页 Composable 监听
- *    自行重载 (桌面端无 ReadBook 单例, 与 app 端 callback 桥接 ReadBook 区别)
- * 2. **对外 API 委托** [CacheBookShared], 保持桌面端调用点不变
- *
- * 调度核心逻辑 (cacheBookMap / getOrCreate / startProcessJob / downloadSummary /
- * CacheBookModel 等) 全部委托 [CacheBookShared], 行为与下沉前完全一致。
- *
- * # 平台差异 (对照 app 端 CacheBook)
- *
- * - **不依赖 CacheBookService (Android Service)**: 桌面端用协程直接处理,
- *   [ReadBookViewModelShared] 下载流程在协程内调 [startProcessJob]
- * - **不依赖 ReadBook 单例 (app 专属)**: app 端 callback 桥接
- *   `ReadBook.contentLoadFinish` / `downloadedChapters` / `downloadFailChapters`;
- *   桌面端 callback 用 postEvent 通知阅读页 Composable 监听自行重载
- *   ([DesktopCacheBookCallback.onContentLoadFinish] postEvent UP_DOWNLOAD + SAVE_CONTENT)
- * - **不下载图片 (桌面端无 BitmapFactory/BookHelp.saveImages)**: [CacheBookShared] 内
- *   调 `BookHelpProviders.get().saveImages` / `hasImageContent`, 桌面端
- *   [DesktopBookHelpAccessor] 用默认 no-op / false (与原 DesktopCacheBook 跳过图片一致)
- * - **hasContent 已缓存时跳过 saveImages**: 原 DesktopCacheBook 已缓存分支直接 onSuccess
- *   跳过; 下沉后 [CacheBookModelShared] 已缓存分支调 saveImages (桌面端 no-op) +
- *   getContent (返回正文), 行为等价 (仅多一次空 saveImages 调用)
- * - **addDownload clamp**: 原 DesktopCacheBook.addDownload 内部 clamp
- *   `min(end, book.lastChapterIndex)`; 下沉后 [CacheBookModelShared.addDownload] 不 clamp
- *   (与 app 端 CacheBookModel 一致, 由调用方负责 clamp)。
- *   [ReadBookViewModelShared] 下载调用前 clamp endIndex 到 lastChapterIndex
- *
- * # 已复用的 shared commonMain 下沉件
- *
- * - [CacheBookShared]: 调度核心 (本任务下沉)
- * - [CacheBookCallback] / [CacheBookCallbacks]: 回调抽象 (本任务下沉)
- * - [Coroutine.async] / [CompositeCoroutine]: shared help/coroutine 已下沉
- * - [ConcurrentException]: shared exception 已下沉
- * - [WebBook.getContentAwait]: shared model/webBook 已下沉
- * - [BookHelpProviders.get().saveContent / saveImages / hasImageContent / getContent]:
- *   shared help/book 已下沉 (saveImages/hasImageContent/getContent 本任务新增)
- * - [BookStorageProviders.get().hasContent]: 检测章节是否已缓存
- * - [onEachParallel] / [postEvent]: shared FlowExtensions / FlowBus 已下沉
- *
- * # 生命周期
- *
- * object 单例, 进程内全局共享 (与 app 端 CacheBook 一致)。
- * [close] 由 [ReadBookViewModelShared.onCleared] 调用清理所有任务 + 清空 map
- * (实际原桌面端注释提到"不调 close, 单例跨 VM 保留", 保持原行为, 由调用方决定)。
+ * 生命周期: object 单例; [close] 由 ReadBookViewModelShared.onCleared 调用
+ * (原注释提到"不调 close, 单例跨 VM 保留", 保持原行为, 由调用方决定)。
  */
 object DesktopCacheBook {
 

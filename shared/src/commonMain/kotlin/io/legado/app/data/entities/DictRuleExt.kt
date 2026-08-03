@@ -3,12 +3,11 @@ package io.legado.app.data.entities
 import io.legado.app.constant.AppConst
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
-import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import kotlinx.coroutines.currentCoroutineContext
 
 /**
- * K5-c Phase 4: DictRule.search 扩展函数。
+ * DictRule.search 扩展函数。
  *
  * DictRule 下沉 commonMain 后, search 方法依赖 AnalyzeUrlCore/AnalyzeRuleCore (已 commonMain 化),
  * 抽取为扩展函数。调用方式不变, 仅需 import 本包。

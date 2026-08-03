@@ -1,5 +1,8 @@
 package io.legado.desktop.constant
 
+import io.legado.desktop.constant.DesktopAppInfo.FALLBACK_VERSION_NAME
+import io.legado.desktop.constant.DesktopAppInfo.versionCode
+import io.legado.desktop.constant.DesktopAppInfo.versionName
 import java.util.jar.Manifest
 
 /**
@@ -30,8 +33,8 @@ import java.util.jar.Manifest
 object DesktopAppInfo {
 
     /**
-     * 应用版本名 (如 "1.0.0"), 供 About 页显示 +
-     * [io.legado.desktop.help.DesktopAppUpdate] 版本比对。
+     * 应用版本名 (如 "1.0.0"), 供 About 页显示 + shared 检查更新链路
+     * ([io.legado.app.help.update.AppUpdateEnvironment] / [io.legado.desktop.help.registerDesktopAppUpdate]) 版本比对。
      *
      * 读取优先级:
      * 1. `META-INF/MANIFEST.MF` 的 `Implementation-Version` (jpackage 产物 / Gradle jar task 写入)

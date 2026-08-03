@@ -48,6 +48,7 @@ import io.legado.app.model.script.registerIosJsEngines
 import io.legado.app.model.webBook.registerNativeWebBookProviders
 import io.legado.app.ui.book.changesource.registerIosChangeBookSourcePlatform
 import io.legado.app.ui.book.manage.registerIosBookshelfManagePlatform
+import io.legado.app.ui.book.read.page.provider.registerIosTextMeasurer
 import io.legado.app.ui.compose.platform.IosPreferenceStoreProvider
 import io.legado.app.utils.registerIosScreenInfoProvider
 import io.legado.app.web.registerNativeWebServerPlatform
@@ -58,70 +59,27 @@ import platform.UIKit.UIDevice
 /**
  * iOS 宿主启动早期的统一 provider 注册入口。
  *
- * iOS app (SwiftUI / UIKit) 在 application(_:didFinishLaunchingWithOptions:) 早期
- * 通过 Kotlin/Native 桥接调用本函数, 一次性完成所有 commonMain provider 的注入,
- * 之后即可调用 shared 业务代码。
+ * iOS app 在 didFinishLaunchingWithOptions 早期经 Kotlin/Native 桥接调用本函数,
+ * 一次性完成所有 commonMain provider 注入。
  *
- * 注册顺序约束 (与 desktop `Main.kt` / [registerOhosProviders] 对齐):
- * 1. [registerIosAppFilesDir] 必须最先 (其他 provider 持久化目录依赖 [io.legado.app.help.file.AppFilesDirs])
- * 2. [registerIosPreferenceProvider] 在 [registerNativeAppConfigAccessor] 之前
- *    (IosAppConfigAccessor 委托 PreferenceProvider)
- * 3. [registerIosHttpProvider] 在数据库/书籍缓存之前 (BookImageStorage/FileDownloader/IosBookCover
- *    通过 OkHttpClientProviders 取 KmpHttpClient; AnalyzeUrlCore 通过 OkHttpProxyClientProviders 取代理客户端)
- * 4. [registerIosDatabaseDriver] 在文件目录之后
- *    (IosDatabaseDriver 默认 dbPath 从 AppFilesDirs.filesDir 派生)
- * 5. [registerNativeBookStorage] / [registerNativeBookImageStorage] / [registerNativeLocalBookLocator] 在文件目录之后
- *    (rootPath / cacheRootPath 从 AppFilesDirs.filesDir 派生)
- * 6. [registerIosAppDbAccessor] 在数据库之后 (本文件通过 `AppDatabaseProviders.get().appDb` 取 DAO)
- *    [registerNativeBookHelpAccessor] 在 BookStorage 之后 (本文件通过 `BookStorageProviders.get().saveText` 落盘)
- *    [registerNativeSourceHelpAccessor] 顺序紧跟 AppDbAccessor (与 desktop Main.kt 顺序一致)
- *    [registerNativeSourceCacheProvider] 在 AppFilesDirs 之后、JS 引擎之前 (持久化目录从
- *    AppFilesDirs.filesDir 派生; JS eval 时 bindings["cache"] = SourceCacheProviders.impl?.asBinding(),
- *    未注册时 bindings["cache"] 为 null, JS 调用 cache.get/put 会失败被 runCatching 吞掉,
- *    表现为书源变量缓存失效)
- *    [registerNativeFileCacheProvider] 紧随 SourceCacheProvider (CacheManager 文件/二进制层
- *    getFile/putFile/getByteArray/put(ByteArray)/delete 委托 FileCacheProviders; 持久化目录从
- *    AppFilesDirs.cacheDir 派生; 亦经 @JsApi 暴露给 JS, 未注册时文件层抛 IllegalStateException)
- * 7. [registerIosJsEngines] (JS 引擎 + IosImageOps 真实像素操作) 在任何 JS eval / JsBindings 构造之前
- *    (JsBindings 构造时访问 JsBindingInjector.image, 未注册会 checkNotNull 失败;
- *     JsEngines.get() 未注册 provider 会抛 IllegalStateException)
- * 7.5 [BitmapProviders.register]([IosBitmapProvider]) 在任何 CbzFile/EpubFile 封面提取调用之前
- *    (委托 IosImageOps; 未注册时 BitmapProviders.get() 抛 IllegalStateException)
- * 8. [registerIosSystemTtsEngine] (AVSpeechSynthesizer) 在 JsEngines 之后
- *    (与 desktop Main.kt 中 TtsEngineProvider.register 在 registerDesktopJsEngines 之后对齐)
- * 9. 其余 provider ([registerNativeFileDownloader] / [registerIosToaster] /
- *    [registerIosNotificationProgress]) 顺序无关; 但 [registerNativeUpdateBookCallback] 须在
- *    Toaster + NotificationProgress 之后 (委托这两个 provider)、[registerIosServiceLauncher]
- *    之前 (NativeServiceLauncher.updateBookShared lazy 构造时取 UpdateBookCallbacks.getDefault)
+ * 注册顺序约束 (与 desktop Main.kt / registerOhosProviders 对齐):
+ * 1. registerIosAppFilesDir 最先 (其他 provider 持久化目录依赖 AppFilesDirs)
+ * 2. registerIosPreferenceProvider 在 AppConfigAccessor 之前 (委托 PreferenceProvider)
+ * 3. registerIosHttpProvider 在数据库/书籍缓存之前
+ * 4. registerIosDatabaseDriver / BookStorage / BookImageStorage / LocalBookLocator 在文件目录之后
+ *    (路径从 AppFilesDirs 派生)
+ * 5. AppDbAccessor / BookHelpAccessor / SourceHelpAccessor / SourceCacheProvider /
+ *    FileCacheProvider 在数据库之后; SourceCache 未注册时 JS cache.get/put 失败被
+ *    runCatching 吞掉 (书源变量缓存失效), FileCache 未注册时文件层抛 IllegalStateException
+ * 6. registerIosJsEngines 在任何 JS eval / JsBindings 构造之前 (未注册会 checkNotNull 失败)
+ * 7. registerIosSystemTtsEngine 在 JsEngines 之后; UpdateBookCallback 须在 Toaster +
+ *    NotificationProgress 之后、ServiceLauncher 之前
  *
- * # 当前实现状态 (KP4 真实化后)
- * - 真实持久化的 provider: IosPreferenceProvider (NSUserDefaults) /
- *   IosDatabaseDriver (Room KMP + NativeSQLiteDriver) / IosBookStorage (NSFileManager) /
- *   IosBookImageStorage (NSFileManager + Ktor) / IosLocalBookLocator (NSFileManager) /
- *   IosFileDownloader (NSFileManager + Ktor) / BackupFileOps (actual object, NSFileManager)
- * - HTTP provider: IosHttpProvider (Ktor CIO engine 包装 KmpHttpClient, 注册到
- *   OkHttpClientProviders + OkHttpProxyClientProviders), 解除 iOS 端 HTTP 层缺失阻塞
- *   (IosBookCover / AnalyzeUrlCore 等通过 provider 取客户端)
- * - 数据访问 provider: IosAppDbAccessor (委托 AppDatabaseProviders 取全部 17 个 DAO) /
- *   IosBookHelpAccessor (委托 BookStorageProviders.saveText 落盘) /
- *   IosSourceHelpAccessor (委托已下沉 commonMain 的 SourceConfig + AppCacheManager, 依赖 PreferenceProviders)
- * - 缓存 provider: IosSourceCacheProvider (基于 NSFileManager + AppFilesDirs.filesDir 的文件持久化,
- *   替代 app 端 CacheManager 的 cacheDao + LruCache 双层缓存; 内存层用 in-memory HashMap,
- *   对应 CacheManager.putMemory 语义; 让 BaseSource.getLoginHeader/setVariable 等持久层调用可用);
- *   IosFileCacheProvider (委托 nativeMain 共用的 NativeFileCacheProvider, 基于 kotlin.io.File +
- *   AppFilesDirs.cacheDir/file_cache/ 的文件持久化, 替代 app 端 ACache; TTL 头格式与 app/desktop 一致,
- *   让 CacheManager.getFile/putFile/getByteArray/put(ByteArray) 文件层可用)
- * - JS 引擎 provider: IosJsEngine (基于 quickjs-ng C 源码 cinterop 编译, 与 Android/Desktop 端 quickjs 统一,
- *   解除 iOS 端 JS 引擎缺失阻塞) + IosImageOps (KP4 已真实化: 基于 UIKit UIImage + UIGraphics 真实像素操作,
- *   decode/encode/split/stitch/crop/size 全部可用; 替代原 P0 降级占位)
- * - TTS provider: IosSystemTtsEngine (AVSpeechSynthesizer, 替代 desktop 命令行 TTS)
- * - 业务 provider (KP4 已真实化):
- *   IosToaster (dispatch_async 主线程 + UIAlertController present, NSLog 兜底; 替代原 P0 NSLog 降级);
- *   IosNotificationProgress (UNUserNotificationCenter 本地通知 + 权限请求, NSLog 兜底; 替代原 P0 NSLog 降级);
- *   IosServiceLauncher (kotlinx.coroutines 协程 + CacheBookShared 真实调度; UpdateBook 经
- *   NativeUpdateBookCallback (已下沉 nativeMain 共用) 桥接 NotificationProgresses + Toasters 真实化, 与 desktop DesktopServiceLauncher 同步)
- *
- * 模式参考 desktop `Main.kt` / [registerOhosProviders] / Android 端 `App.onCreate` 中的 provider 注册序列。
+ * 各 provider 均为真实实现: Preference (NSUserDefaults) / Database (Room KMP +
+ * NativeSQLiteDriver) / HTTP (Ktor CIO 包装 KmpHttpClient) / 缓存 (NSFileManager) /
+ * JS 引擎 (quickjs cinterop, 与 Android/Desktop 统一) + ImageOps (UIKit 真实像素) /
+ * TTS (AVSpeechSynthesizer) / Toaster / NotificationProgress / ServiceLauncher
+ * (NativeUpdateBookCallback 桥接 NotificationProgresses + Toasters, 与 desktop 同步)。
  */
 fun registerIosProviders() {
     // 1. 文件系统目录 (其他 provider 持久化依赖)
@@ -233,7 +191,7 @@ fun registerIosProviders() {
     // 8. TTS 引擎 provider (AVSpeechSynthesizer), 供 ReadAloudControllerShared 用
     // (对齐 desktop Main.kt 中 TtsEngineProvider.register 在 registerDesktopJsEngines 之后)
     registerIosSystemTtsEngine()
-    // 8b. HttpTTS 播放器工厂 (KP2-D P0-9: 三端朗读 HttpTTS 路径, AVPlayer actual)
+    // 8b. HttpTTS 播放器工厂 (三端朗读 HttpTTS 路径, AVPlayer actual)
     TtsEngineProvider.registerHttpTtsPlayerFactory { IosHttpTtsPlayer() }
 
     // 9. 其余业务 provider (顺序无关)
@@ -266,6 +224,10 @@ fun registerIosProviders() {
     registerIosChangeBookSourcePlatform()
     // 书架管理平台 provider (commonMain BookshelfManageViewModelShared 调用, 须在 WebBookProviders 之后)
     registerIosBookshelfManagePlatform()
+
+    // 9.5 阅读排版真实字形度量器 (Skia Font 度量, 取代 SimpleTextMeasurer 等宽近似;
+    // 须在任何章节排版之前, 依赖 skiko 随 compose ui 已就绪)
+    registerIosTextMeasurer()
 
     // 10. Web 服务 provider (WebAssetSource + WebStrings + WebServerPlatform, iOS/鸿蒙共用 Ktor server 壳)
     // 仅注册平台实现, 不启动服务 (WebServerManager.start 由用户操作触发)

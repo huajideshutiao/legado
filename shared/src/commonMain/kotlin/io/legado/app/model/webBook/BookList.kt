@@ -7,9 +7,9 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.rule.BookListRule
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.source.SourceDebugLoggers
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
+import io.legado.app.help.source.SourceDebugLoggers
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
@@ -303,7 +303,7 @@ object BookList {
         if (json.isEmpty()) {
             return
         }
-        // Phase D: GSONStrict.fromJsonArray<ExploreKind>(json).getOrNull() ?: GSON.fromJsonArray<ExploreKind>(json).getOrNull() 双栈
+        // GSONStrict.fromJsonArray<ExploreKind>(json).getOrNull() ?: GSON.fromJsonArray<ExploreKind>(json).getOrNull() 双栈
         // decodeListWithFallbackOrNull 复刻: 先严格, 严格失败但宽松成功才提示格式不规范
         // 仅为校验/打日志, 解析结果不消费 (原代码也只是 getOrNull()?.let { log(...) })
         decodeListWithFallbackOrNull<ExploreKind>(json) {

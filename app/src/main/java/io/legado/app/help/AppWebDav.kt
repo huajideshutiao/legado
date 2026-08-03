@@ -7,10 +7,8 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.help.AppWebDav.defaultBookWebDav
 import io.legado.app.help.AppWebDav.exportWebDav
-import io.legado.app.help.AppWebDav.exportsWebDavUrl
 import io.legado.app.help.AppWebDav.upBgs
 import io.legado.app.help.AppWebDav.upConfig
-import io.legado.app.help.config.AppConfig
 import io.legado.app.help.storage.RestoreShared
 import io.legado.app.lib.webdav.Authorization
 import io.legado.app.lib.webdav.WebDav
@@ -53,10 +51,9 @@ import java.io.File
  * - app 端 [io.legado.app.model.AudioPlay] (typealias 委托 shared)
  */
 object AppWebDav {
-    private const val defaultWebDavUrl = "https://dav.jianguoyun.com/dav/"
 
-    /** 书籍导出 URL (与 [AppWebDavShared] 内部 exportsWebDavUrl 同值), 供 [exportWebDav] 使用。 */
-    private val exportsWebDavUrl get() = "${rootWebDavUrl}books/"
+    /** 书籍导出 URL (转发自 [AppWebDavShared.exportsWebDavUrl])。 */
+    private val exportsWebDavUrl get() = AppWebDavShared.exportsWebDavUrl
 
     /** 当前认证信息, 转发自 [AppWebDavShared.authorization]。 */
     val authorization: Authorization? get() = AppWebDavShared.authorization
@@ -81,23 +78,12 @@ object AppWebDav {
     }
 
     /**
-     * WebDav 根 URL (含子目录, 末尾带 /), 与 [AppWebDavShared] 内部 rootWebDavUrl 同语义。
+     * WebDav 根 URL (含子目录, 末尾带 /), 直接委托 [AppWebDavShared.rootWebDavUrl]
+     * (原先的拼接逻辑已在 shared 端, 此处不再重复)。
      *
-     * 保留在 app 端用于 [defaultBookWebDav] / [exportsWebDavUrl] / [bgWebDavUrl] 拼接
-     * (shared 内部 rootWebDavUrl 为 private, 无法直接复用)。
+     * 保留在 app 端供 [defaultBookWebDav] 拼接 books 子目录。
      */
-    private val rootWebDavUrl: String
-        get() {
-            val configUrl = AppConfig.webDavUrl
-            var url = if (configUrl.isNullOrEmpty()) defaultWebDavUrl else configUrl
-            if (!url.endsWith("/")) url = "${url}/"
-            AppConfig.webDavDir?.trim()?.let {
-                if (it.isNotEmpty()) {
-                    url = "${url}${it}/"
-                }
-            }
-            return url
-        }
+    private val rootWebDavUrl: String get() = AppWebDavShared.rootWebDavUrl
 
     /**
      * 刷新配置: 委托 [AppWebDavShared.upConfig] 完成 WebDav 认证 + 子目录创建,

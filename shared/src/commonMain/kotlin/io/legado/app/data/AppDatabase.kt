@@ -43,7 +43,7 @@ import io.legado.app.data.entities.SourceFilterRule
 import io.legado.app.data.entities.TxtTocRule
 
 /**
- * K5-c Phase 5: AppDatabase 主体下沉 commonMain。
+ * AppDatabase 主体下沉 commonMain。
  *
  * - @Database 注解 + abstract DAO 属性 + companion 常量 在 commonMain (平台无关)
  * - appDb 单例 + dbCallback 留 app 端 (依赖 appCtx + AndroidSQLiteConnection + Locale.CHINESE + DefaultData)
@@ -61,6 +61,7 @@ import io.legado.app.data.entities.TxtTocRule
     views = [BookSourcePart::class],
     autoMigrations = [
         AutoMigration(from = 83, to = 84),
+        AutoMigration(from = 84, to = 85, spec = Migration84To85::class),
         AutoMigration(from = 85, to = 86),
     ]
 )

@@ -27,19 +27,26 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.BundledDatabaseDriver
 import io.legado.app.data.DatabaseDriverProviders
 import io.legado.app.data.DesktopAppDatabaseProvider
+import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.DefaultDataResourceProviders
 import io.legado.app.help.HomeTabHelpShared
 import io.legado.app.help.PinnedExploreHelp
 import io.legado.app.help.book.BookHelpProviders
+import io.legado.app.help.book.BookHelpShared
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.JvmBookImageStorage
 import io.legado.app.help.book.JvmBookStorage
 import io.legado.app.help.book.JvmLocalBookLocator
 import io.legado.app.help.book.LocalBookLocators
+import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.LocalReadConfigProviders
+import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.config.ReadTipConfigShared
+import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.file.registerDesktopAppFilesDir
 import io.legado.app.help.http.OkHttpClientProviders
@@ -49,6 +56,7 @@ import io.legado.app.help.notification.registerDesktopNotificationProgress
 import io.legado.app.help.service.registerDesktopServiceLauncher
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceHelpAccessors
+import io.legado.app.help.storage.BackupShared
 import io.legado.app.help.storage.registerJvmDataStorage
 import io.legado.app.help.toast.registerDesktopToaster
 import io.legado.app.help.tts.TtsEngineProvider
@@ -107,6 +115,7 @@ import io.legado.desktop.help.i18n.registerDesktopAppStringProvider
 import io.legado.desktop.help.initDesktopDefaultData
 import io.legado.desktop.help.log.registerDesktopAppLogHost
 import io.legado.desktop.help.registerDesktopAndroidId
+import io.legado.desktop.help.registerDesktopAppUpdate
 import io.legado.desktop.help.registerDesktopArchiveProvider
 import io.legado.desktop.help.registerDesktopDirectLinkUploadProviders
 import io.legado.desktop.help.registerDesktopFileCacheProvider
@@ -146,6 +155,7 @@ import okhttp3.Request
 import org.jsoup.Jsoup
 import java.awt.Desktop
 import java.io.File
+import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
 
 // Debug 日志开关: -Dlegado.desktop.debug=true 开启 stdout 调试输出
@@ -157,7 +167,7 @@ private fun debugLog(msg: String) {
 }
 
 /**
- * 桌面端入口 (plan 附录 J: desktop/jvm 走 CMP 桌面官方 JVM)。
+ * 桌面端入口 (desktop/jvm 走 CMP 桌面官方 JVM)。
  *
  * 目的: 证明 KMP shared 模块下沉的纯 Kotlin 业务逻辑可在任意 JVM (Win/Linux/macOS) 直接运行,
  * 无 Android 依赖。Compose Multiplatform 桌面窗口展示 shared jvm target 暴露的 API 调用结果,
@@ -166,7 +176,7 @@ private fun debugLog(msg: String) {
  * 1. MD5 摘要 (commonMain 纯 Kotlin 实现, 无 java.security 依赖)
  * 2. AES/HMAC/摘要 (jvmAndAndroidMain hutool 实现, 桌面端白捡 JVM 兼容)
  * 3. 简繁转换 (jvmAndAndroidMain quick-transfer 实现, 桌面端白捡)
- * 4. Room KMP 数据库 (KP1.2: BundledSQLiteDriver 跨平台 SQLite, 桌面端可跑数据库)
+ * 4. Room KMP 数据库 (BundledSQLiteDriver 跨平台 SQLite, 桌面端可跑数据库)
  *
  * 跑法: .\gradlew :desktop:run
  *
@@ -177,15 +187,29 @@ private fun debugLog(msg: String) {
  * 冒烟测试 (testDesktopHttp/testDesktopDatabase/testDesktopJsEngine) 改为 debug 模式才执行
  * (通过 -Dlegado.desktop.smokeTest=true 开启), 生产环境不执行, 避免启动期阻塞
  */
+/**
+ * 进程启动参数 (main() 入口保存, 剔除重启等待标记后), 供桌面端重启
+ * ([io.legado.desktop.help.DesktopRegexErrorHandler] 的 ProcessBuilder 复用)。
+ */
+@Volatile
+var startupArgs: Array<String> = emptyArray()
+
+/** 重启等待标记前缀: 新进程凭它等到旧进程退出后再抢单实例锁。 */
+private const val RESTART_WAIT_PREFIX = "--legado-restart-wait="
+
 fun main(args: Array<String>) {
     // KP6: 便携模式检测 + native 库加载。必须最先执行 (早于 SingleInstanceGuard):
     // 它设置的 legado.portable.root 决定 desktopAppRootDir() 的解析结果, 而后者进程内 lazy
     // 只解析一次 —— 单实例守卫要在数据目录写 instance.lock, 提前读会把便携模式的根目录定位歪。
     initDesktopRuntimeEnvironment()
+    // 重启场景: 先等旧进程退出 (旧进程退出时 shutdown hook 才释放单实例锁),
+    // 避免新进程把启动参数转发给正在退出的旧进程后自杀 (表现为“应用直接消失”)
+    val effectiveArgs = waitForOldProcessIfRestart(args)
+    startupArgs = effectiveArgs
     // 单实例守卫: 已有实例存活时把 args 转发过去 + 前置其窗口, 本进程 exitProcess(0) 不返回
     // (对照 app 端 AssociationActivity singleTask)。必须在 handleDeepLinkArgs 与任何
     // provider/数据库初始化之前, 否则二次启动进程会先碰同一个 SQLite 库再退出。
-    SingleInstanceGuard.ensureSingleInstance(args)
+    SingleInstanceGuard.ensureSingleInstance(effectiveArgs)
     // legado:// deep link 启动参数处理 (对照 app 端 AssociationActivity intent-filter):
     // 系统级 URL protocol 注册 (注册表/.desktop/Info.plist) 属安装器配置, 见 handleDeepLinkArgs KDoc
     handleDeepLinkArgs(args)
@@ -219,6 +243,30 @@ fun main(args: Array<String>) {
  *   jpackage 17+ 可用 `--mac-url-scheme legado --mac-url-scheme yuedu` 生成;
  *   运行时回调走 Apple Event, 由 main() 里的 Desktop.setOpenURIHandler 承接 (非 argv)。
  */
+/**
+ * 重启场景: 新进程启动参数里带 `--legado-restart-wait=<pid>` 时, 等到旧进程退出再继续。
+ *
+ * 旧进程 [io.legado.desktop.help.DesktopRegexErrorHandler.restartApp] 会先拉起本进程再
+ * `exitProcess(0)`; 单实例锁 (instance.lock) 由旧进程的 shutdown hook 在退出时释放, 故新进程
+ * 必须先等旧进程死掉, 否则 [SingleInstanceGuard.ensureSingleInstance] 会把参数转发给正在退出的
+ * 旧进程后自杀。最多等 [RESTART_WAIT_TIMEOUT_MS], 超时后继续 (残留进程按陈旧 lock 接管)。
+ */
+private fun waitForOldProcessIfRestart(args: Array<String>): Array<String> {
+    val waitArg = args.firstOrNull { it.startsWith(RESTART_WAIT_PREFIX) } ?: return args
+    val rest = args.filterNot { it.startsWith(RESTART_WAIT_PREFIX) }.toTypedArray()
+    val pid = waitArg.substringAfter('=').toLongOrNull() ?: return rest
+    val old = runCatching { ProcessHandle.of(pid) }.getOrNull()?.orElse(null) ?: return rest
+    if (old.isAlive) {
+        val deadline = System.currentTimeMillis() + RESTART_WAIT_TIMEOUT_MS
+        while (old.isAlive && System.currentTimeMillis() < deadline) {
+            Thread.sleep(100)
+        }
+    }
+    return rest
+}
+
+private const val RESTART_WAIT_TIMEOUT_MS = 30_000L
+
 private fun handleDeepLinkArgs(args: Array<String>) {
     val url = args.firstOrNull { LegadoDeepLink.isDeepLink(it) } ?: return
     if (!LegadoDeepLinkHandler.handle(url)) {
@@ -254,8 +302,8 @@ private fun runDesktopApp() = application {
     // SystemTray 需在主线程初始化, 故同步注册
     registerDesktopToaster()
     registerDesktopNotificationProgress()
-    // KP1.4 + 备份格式兼容性: 注册桌面端 config provider
-    // - PreferenceProvider + AppConfigAccessor (KP1.4)
+    // 备份格式兼容性: 注册桌面端 config provider
+    // - PreferenceProvider + AppConfigAccessor
     // - ReadBookConfigProviders + ThemeConfigProviders (备份格式兼容性补齐, 供 BackupShared 用)
     // 用 remember 构造 DesktopPreferenceStoreProvider 实例, 同一实例在 Window 内复用,
     // 保证 UI 样式配置与备份逻辑状态同步
@@ -268,7 +316,12 @@ private fun runDesktopApp() = application {
     // 注入 PinnedExploreHelp 的 prefs provider (commonMain 下沉的发现页收藏分类持久化)
     // 与 HomeTabHelpShared 同源, 对齐 app 端 App.kt 的 PinnedExploreHelp.prefs 注入
     PinnedExploreHelp.prefs = preferenceStoreProvider
-    // KP1.4 补: 注册桌面端 AppFilesDir (~/.legado/files), 供 BackupShared/RestoreShared 用
+    // 注册桌面端更新能力 (AppUpdateEnvironment + UpdateExecutor, 薄壳转发 shared AppUpdateManager):
+    // 依赖 PreferenceProviders (上方 registerDesktopConfig) + DesktopAppInfo, 与平台服务解耦
+    // (执行器运行时才取 PlatformServiceProviders.browser), 故可提前到阶段1同步注册,
+    // 避免"窗口显示后、异步注册完成前打开关于页 → 检查更新入口不显示"的竞态
+    registerDesktopAppUpdate()
+    // 注册桌面端 AppFilesDir (~/.legado/files), 供 BackupShared/RestoreShared 用
     registerDesktopAppFilesDir()
     // Coil3 图片栈: 注册 BookImageLoader + SingletonImageLoader.setSafe (共享 ImageLoader,
     // 拦截器/diskCache 装配见 shared BookImageLoader.jvm.kt)。必须在阶段1:
@@ -298,18 +351,18 @@ private fun runDesktopApp() = application {
     // 否则首次建库时 dbCallback.onCreate 抛 IllegalStateException 被 runCatching 吞掉,
     // 表现为 keyboardAssists 表无默认数据。
     DefaultDataResourceProviders.register(DesktopDefaultDataResourceProvider())
-    // KP1.2: 注册桌面端 AppDatabase provider (首屏 BookshelfScreen 通过 AppDbProviders 访问 bookDao)
+    // 注册桌面端 AppDatabase provider (首屏 BookshelfScreen 通过 AppDbProviders 访问 bookDao)
     // BundledDatabaseDriver 用 Room.databaseBuilder + BundledSQLiteDriver 构造 AppDatabase
     // (~/.legado/legado.db), 同一实例供 AppDatabaseProviders + DatabaseDriverProviders 共享
     val dbDriver = BundledDatabaseDriver()
     DatabaseDriverProviders.register(dbDriver)
     AppDatabaseProviders.register(DesktopAppDatabaseProvider(dbDriver))
-    // KP2-D: 注册桌面端 BookStorage provider (首屏书架/阅读用, ~/.legado/book_cache)
+    // 注册桌面端 BookStorage provider (首屏书架/阅读用, ~/.legado/book_cache)
     // ReadBookViewModelShared.loadChapter 通过 BookStorageProviders.get().getContent 读章节缓存正文
     // 存储路径集中 provider 已在上方 registerJvmDataStorage() 提前注册 (JvmBookStorage 构造时取 chapterCacheDir)
     BookStorageProviders.register(JvmBookStorage())
     // 注: BookImageStorageProviders (漫画图片缓存) 非首屏必需, 延迟到阶段3 registerSecondaryProviders 注册
-    // KP2-D: 注册桌面端 AppDbAccessor / BookHelpAccessor provider (首屏书架间接访问)
+    // 注册桌面端 AppDbAccessor / BookHelpAccessor provider (首屏书架间接访问)
     // 供 shared commonMain 中下沉的 webBook 编排层通过 AppDbProviders.get() / BookHelpProviders.get()
     // 间接访问 appDb 的 9 个 DAO / saveContent; 未注册时阅读流/搜索/书源管理全失效
     AppDbProviders.register(DesktopAppDbAccessor())
@@ -583,7 +636,7 @@ private suspend fun registerSecondaryProviders() {
         registerDesktopBookshelfManagePlatform()
         // 14. TTS 引擎 (独立, Windows SAPI / Linux espeak / macOS say)
         TtsEngineProvider.register(DesktopSystemTtsEngine())
-        // 14b. HttpTTS 播放器工厂 (KP2-D P0-9: 三端朗读 HttpTTS 路径)
+        // 14b. HttpTTS 播放器工厂 (三端朗读 HttpTTS 路径)
         TtsEngineProvider.registerHttpTtsPlayerFactory { DesktopHttpTtsPlayer() }
 
         // 15. 启动期异步任务 (对照 app 端 App.kt onCreate 的 Coroutine.async 块)
@@ -599,8 +652,25 @@ private suspend fun registerSecondaryProviders() {
         // 无对应下沉的封面缓存初始化逻辑。
 
         // 16. 启动期缓存清理 + WebDav 进度同步
-        // (对照 app 端 MainActivity.onPostCreate viewModel.postLoad)
-        // TODO: 待下沉到 shared LegadoApp 内部统一编排 (原 DesktopStartupTasks 已删除, 避免临时 scope 泄漏)
+        // (对照 app 端 App.kt onCreate 的两个 Coroutine.async 块:
+        //  - 缓存清理: 距上次备份超过 1 天才执行 (lastBackup 由桌面备份 hook 写入),
+        //    清 cacheDao 过期条目 + 无效书籍缓存 + 备份/阅读背景/主题背景缓存;
+        //  - 进度同步: syncBookProgress 开启时从 WebDav 拉取所有书籍进度写回本地)
+        Coroutine.async {
+            val lastBackup = PreferenceProviders.get().getLong(LocalConfigKeys.lastBackup, 0L)
+            if (lastBackup + TimeUnit.DAYS.toMillis(1) < System.currentTimeMillis()) {
+                AppDbProviders.get().cacheDao.clearDeadline(System.currentTimeMillis())
+                BookHelpShared.clearInvalidCache()
+                BackupShared.clearCache()
+                ReadBookConfigProviders.get().clearBgAndCache()
+                ThemeConfigProviders.get().clearBg()
+            }
+        }
+        Coroutine.async {
+            if (AppConfigProviders.get().syncBookProgress) {
+                AppWebDavShared.downloadAllBookProgress()
+            }
+        }
 
         // 冒烟测试: 仅在 debug 模式执行 (生产环境不执行, 避免启动期阻塞)
         // 开启方式: java -Dlegado.desktop.smokeTest=true -jar ... 或在 build.gradle.kts jvmArgs 添加
@@ -613,11 +683,11 @@ private suspend fun registerSecondaryProviders() {
 }
 
 /**
- * KP1.1 桌面端 JS 引擎冒烟测试。
+ * 桌面端 JS 引擎冒烟测试。
  *
  * 通过 [JsEngines.get] 取当前 JS 引擎 (应为 QuickJsJsEngine), 执行三组测试:
  * 1. 纯算术: `1 + 2 * 3` 期望 7
- * 2. 字符串拼接: `"Hello, " + platform` 期望 "Hello, android" (AppConst.JS_PLATFORM 当前固定 "android")
+ * 2. 字符串拼接: `"Hello, " + platform` 期望 "Hello, desktop" (AppConst.JS_PLATFORM 经 expect/actual 按平台取值, jvmMain actual="desktop")
  * 3. JSON 解析: `JSON.stringify({a:1,b:2})` 期望 `{"a":1,"b":2}`
  *
  * 任何一步抛异常 (含 native 库缺失 UnsatisfiedLinkError) 都打印 stack trace 但不中断主流程,
@@ -642,7 +712,7 @@ private fun testDesktopJsEngine() {
         debugLog("1+2*3 = $arithmetic (expect 7)")
 
         // 2. 字符串拼接 + 读取 bindings 中的 platform 变量
-        //    JsBindings init 注入 platform="android" / image=DesktopImageOps,
+        //    JsBindings init 注入 platform="desktop" (AppConst.JS_PLATFORM 按平台 expect/actual 取值) / image=DesktopImageOps,
         //    JS 顶层 eval 可直接访问 platform
         val greeting = engine.eval("'Hello, ' + platform")
         debugLog("Hello, platform = $greeting")
@@ -663,7 +733,7 @@ private fun testDesktopJsEngine() {
 }
 
 /**
- * KP1.3 桌面端 HTTP 层冒烟测试。
+ * 桌面端 HTTP 层冒烟测试。
  *
  * 通过 [OkHttpClientProviders] 取桌面端 OkHttpClient, 同步 GET https://www.baidu.com,
  * 打印响应 code 与 body 前 200 字符到 stdout, 验证 SSL/拦截器链/解压全链路工作。
@@ -692,7 +762,7 @@ private fun testDesktopHttp() {
 }
 
 /**
- * KP1.2 桌面端 Room KMP 数据库冒烟测试 (真实 BundledSQLiteDriver)。
+ * 桌面端 Room KMP 数据库冒烟测试 (真实 BundledSQLiteDriver)。
  *
  * # 实现状态
  * 17 个 DAO 完成 suspend 迁移 + 启用 kspJvm 后, [BundledDatabaseDriver.appDatabase] 是真 Room,

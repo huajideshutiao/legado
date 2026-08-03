@@ -6,14 +6,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.ThemeConfigProviders
+import io.legado.app.help.toast.Toasters
 import io.legado.app.napi.OhosNativeBridge
+import io.legado.app.ui.book.read.ReadBookEvents
+import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
@@ -132,6 +137,11 @@ private class OhosReadMenuState(
         topMenu.reSegmentChecked = book.config.reSegment
         topMenu.delRubyChecked = book.config.delTag and Book.rubyTag == Book.rubyTag
         topMenu.delHChecked = book.config.delTag and Book.hTag == Book.hTag
+        // 去重勾选态 (对照原版 onMenuOpened → menu_same_title_removed.isChecked)
+        topMenu.sameTitleRemovedChecked =
+            screenModel.viewModel.curTextChapter.value?.sameTitleRemoved == true
+        // 云进度同步可见性 (对照原版 onMenuOpened: ReadBook.inBookshelf && AppWebDav.isOk)
+        topMenu.syncProgressVisible = !book.isNotShelf && AppWebDavShared.isOk
     }
 
     override fun onTransitionIdle(shown: Boolean) = Unit
@@ -241,6 +251,71 @@ private class OhosReadMenuState(
 
             ReadMenuAction.EDIT_CONTENT -> screenModel.postDialogEvent(ReaderDialogEvent.EditContent)
             ReadMenuAction.LOG -> screenModel.postDialogEvent(ReaderDialogEvent.Log)
+
+            // ===== 溢出菜单动作 (对照 app 端 AndroidReaderMenuState.onTopMenuAction 各分支,
+            // 全部接到 shared 能力: viewModel / 事件广播 / 导航 / 弹窗事件) =====
+
+            // 刷新后续章节 (对照原版 menu_refresh_after → viewModel.refreshContentAfter)
+            ReadMenuAction.REFRESH_AFTER -> {
+                val book = screenModel.viewModel.book.value ?: return
+                screenModel.viewModel.refreshContentAfter(book)
+            }
+
+            // 刷新全部 (对照原版 menu_refresh_all → viewModel.refreshContentAll)
+            ReadMenuAction.REFRESH_ALL -> screenModel.viewModel.refreshContentAll()
+
+            // 离线缓存 (对照原版 menu_download → DownloadDialog 弹窗 → CacheBookShared.start)
+            ReadMenuAction.DOWNLOAD ->
+                screenModel.postDialogEvent(ReaderDialogEvent.Download)
+
+            // 本地 TXT 目录正则 (对照原版 menu_toc_regex → TxtTocRule 路由)
+            ReadMenuAction.TOC_REGEX -> navigator.push(AppRoute.TxtTocRule)
+
+            // 设置编码 (对照原版 menu_set_charset → CharsetDialog 弹窗 → viewModel.setCharset)
+            ReadMenuAction.SET_CHARSET ->
+                screenModel.postDialogEvent(ReaderDialogEvent.SetCharset)
+
+            // 翻页动画: 选择器回调忽略索引, 实际动画值在界面设置弹窗配置,
+            // 此处直接发配置事件触发重载 (与 app 端 showPageAnimConfigSelector 等价)
+            ReadMenuAction.PAGE_ANIM ->
+                ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM, ReadConfigChange.LOAD_CONTENT)
+
+            // 模拟阅读 (对照原版 menu_simulated_reading → SimulatedReadingDialog)
+            ReadMenuAction.SIMULATED_READING ->
+                screenModel.postDialogEvent(ReaderDialogEvent.SimulatedReading)
+
+            // 启用替换: 翻转 useReplaceRule + 刷新替换规则缓存 + 同章重载
+            ReadMenuAction.ENABLE_REPLACE -> screenModel.viewModel.toggleUseReplaceRule()
+
+            // 去重: 翻转当前章去重标记并重载 (shared viewModel 已含未找到重复标题的提示语义)
+            ReadMenuAction.SAME_TITLE_REMOVED -> screenModel.viewModel.reverseRemoveSameTitle()
+
+            // 重新分段: 翻转 reSegment + 落库 + 同章重载
+            ReadMenuAction.RE_SEGMENT -> screenModel.viewModel.toggleReSegment()
+
+            // 图片样式 (对照原版 menu_image_style → ImageStyleDialog)
+            ReadMenuAction.IMAGE_STYLE ->
+                screenModel.postDialogEvent(ReaderDialogEvent.ImageStyle)
+
+            // 更新目录: 清解析缓存后回源重拉目录
+            ReadMenuAction.UPDATE_TOC -> screenModel.viewModel.updateToc()
+
+            // 云进度手动同步 (上传/同步成功 toast; 项仅在 syncProgressVisible 时渲染)
+            ReadMenuAction.SYNC_PROGRESS -> screenModel.viewModel.syncProgressManual(
+                uploadSuccessAction = { Toasters.get().toast("上传成功") },
+                syncSuccessAction = { Toasters.get().toast("同步成功") },
+            )
+
+            // 段评: iOS/鸿蒙无 ReviewListDialog (Android 专属 Fragment), 且 reviewVisible 恒 false
+            // 不渲染该项; 保留分支仅为穷尽枚举
+            ReadMenuAction.REVIEW -> Unit
+
+            // 帮助: 原版 showHelp 打开本地 web 帮助页 (依赖 Android 资源), iOS/鸿蒙未移植
+            ReadMenuAction.HELP -> Unit
+
+            // epub 去除 ruby/h 标签: 翻转 delTag + 落库 + 全章清缓存重载
+            ReadMenuAction.DEL_RUBY_TAG -> screenModel.viewModel.toggleDelTag(Book.rubyTag)
+            ReadMenuAction.DEL_H_TAG -> screenModel.viewModel.toggleDelTag(Book.hTag)
             else -> Unit
         }
     }

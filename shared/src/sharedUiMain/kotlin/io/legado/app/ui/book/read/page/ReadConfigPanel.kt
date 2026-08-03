@@ -49,7 +49,7 @@ import legado.shared.generated.resources.text_size
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 桌面端阅读配置面板 (KP2-D P1)。
+ * 桌面端阅读配置面板。
  *
  * # 对照
  *

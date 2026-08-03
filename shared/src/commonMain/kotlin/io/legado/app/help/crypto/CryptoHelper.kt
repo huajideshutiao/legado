@@ -1,7 +1,7 @@
 package io.legado.app.help.crypto
 
 /**
- * K5-c Phase 4: BaseSource 下沉 commonMain 的 AES/Base64 加解密桥接。
+ * BaseSource 下沉 commonMain 的 AES/Base64 加解密桥接。
  *
  * commonMain 不允许直接引用 javax.crypto.Cipher / java.util.Base64; 经 expect/actual
  * 把 BaseSource.getLoginInfo/putLoginInfo 的加解密调用下沉到各端 actual 实现,

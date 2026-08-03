@@ -17,6 +17,7 @@ import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.isSameNameAuthor
 import io.legado.app.help.book.readSimulating
 import io.legado.app.help.book.simulatedTotalChapterNum
+import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.ReadTimeRecorder
@@ -29,6 +30,7 @@ import io.legado.app.ui.book.manga.entities.MangaChapter
 import io.legado.app.ui.book.manga.entities.MangaContent
 import io.legado.app.ui.book.manga.entities.MangaPage
 import io.legado.app.ui.book.manga.entities.ReaderLoading
+import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.utils.mapIndexed
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -127,7 +129,7 @@ data class MangaReaderConfig(
  *
  * 不下沉部分 (留 app 端薄壳):
  * - initData(intent: Intent) 的 Intent 解包 (Android 特有)
- * - syncProgress/syncBookProgress/autoChangeSource (BaseReadViewModel 基类, 复杂进度同步留 app 端)
+ * - syncBookProgress (非 plus 路径, 云端新进度自动应用) / autoChangeSource (BaseReadViewModel 基类)
  * - onSourceChanged/applyProgress 回调 (BaseReadViewModel 模板方法)
  *
  * @param scope 协程作用域, actual 平台注入 (Android=viewModelScope / 桌面=应用主作用域)
@@ -200,6 +202,9 @@ class MangaReaderViewModelShared(
 
     /** 退出时落库/上传专用作用域: UI scope 取消不打断 (对照 ReadBookViewModelShared.progressSyncScope) */
     private val progressSyncScope = CoroutineScope(SupervisorJob() + IoDispatcher)
+
+    /** 已触发过云进度拉取的 bookUrl：每本书打开只拉一次 (原版 initManga 仅入口同步一次)。 */
+    private var cloudSyncedBookUrl: String? = null
     private val preDownloadSemaphore = Semaphore(2)
     val hasNextChapter: Boolean get() = _durChapterIndex.value < simulatedChapterSize - 1
     // endregion
@@ -381,8 +386,12 @@ class MangaReaderViewModelShared(
             // 有章节跳转不同步阅读进度
             chapterChanged = false
         } else if (!book.isNotShelf) {
-            // 进度同步留 app 端薄壳 (syncProgress/syncBookProgress 依赖 BaseReadViewModel 复杂逻辑)
-            // actual 平台可在 initData 成功回调中触发 syncProgress
+            // 进度同步 (对照 app 端 initManga: syncBookProgressPlus → syncProgress 三路比对 + 确认框;
+            // 非 plus 路径的 syncBookProgress 自动应用仍留 app 端薄壳)
+            if (cloudSyncedBookUrl != book.bookUrl) {
+                cloudSyncedBookUrl = book.bookUrl
+                pullCloudProgress(book)
+            }
         }
         // 自动换源留 app 端薄壳 (autoChangeSource 依赖 BaseReadViewModel)
     }
@@ -673,10 +682,73 @@ class MangaReaderViewModelShared(
         if (book != null && !book.isNotShelf) {
             progressSyncScope.launch {
                 saveReadAwait()
-                uploadProgressAwait(book.bookUrl)
+                // 原版 onPause: syncBookProgressPlus → syncProgress() 三路比对 (云端较新则不上传,
+                // 避免旧进度覆盖云端); 未开启 → 无条件上传
+                if (config.syncBookProgressPlus) {
+                    syncProgressOnLeave(book)
+                } else {
+                    uploadProgressAwait(book.bookUrl)
+                }
             }
         }
         cancelPreDownloadTask()
+    }
+
+    /**
+     * 退出阅读时的云进度比对 (原版 ReadMangaActivity.onPause 的 syncProgress() 无 newProgressAction):
+     * 云端无进度或本地较新 → 上传; 云端较新/相等 → 不上传。
+     */
+    private suspend fun syncProgressOnLeave(book: Book) {
+        if (!runCatching { AppConfigProviders.get().syncBookProgress }.getOrDefault(false)) return
+        val progress = AppWebDavShared.getBookProgress(book)
+        if (progress == null || progress.durChapterIndex < book.durChapterIndex ||
+            (progress.durChapterIndex == book.durChapterIndex
+                && progress.durChapterPos < book.durChapterPos)
+        ) {
+            uploadProgressAwait(book.bookUrl)
+        }
+    }
+
+    /**
+     * 打开书时拉取云进度并三路比对 (原版 BaseReadViewModel.syncProgress, syncBookProgressPlus 路径):
+     * - 云端无进度或本地较新 → 上传本地进度
+     * - 云端较新 → 发 [ReadBookEvents.newProgressConfirm] 确认事件 (replay=1),
+     *   UI 弹窗后由 [confirmSyncProgress] / [dismissSyncProgress] 收尾
+     * - 相等 → 无操作
+     *
+     * 网络/解析失败 [AppWebDavShared.getBookProgress] 内部已捕获返回 null, 走上传分支由
+     * 上传自身的失败捕获兜底 (与文本阅读器 ReadBookViewModelShared.pullCloudProgress 同口径)。
+     */
+    private fun pullCloudProgress(book: Book) {
+        if (!config.syncBookProgressPlus) return
+        if (!runCatching { AppConfigProviders.get().syncBookProgress }.getOrDefault(false)) return
+        progressSyncScope.launch {
+            val progress = AppWebDavShared.getBookProgress(book)
+            if (progress == null || progress.durChapterIndex < book.durChapterIndex ||
+                (progress.durChapterIndex == book.durChapterIndex
+                    && progress.durChapterPos < book.durChapterPos)
+            ) {
+                uploadProgressAwait(book.bookUrl)
+            } else if (progress.durChapterIndex > book.durChapterIndex ||
+                progress.durChapterPos > book.durChapterPos
+            ) {
+                ReadBookEvents.postConfirmNewProgress(progress)
+            }
+        }
+    }
+
+    /**
+     * 用户确认同步云端进度 (原版 ReadMangaActivity.sureNewProgress okButton → viewModel.setProgress)：
+     * 清事件 replay 缓存后按云端进度跳转 (setProgress 自带越界/未变守卫)。
+     */
+    fun confirmSyncProgress(progress: BookProgress) {
+        ReadBookEvents.clearNewProgressConfirm()
+        setProgress(progress)
+    }
+
+    /** 用户取消同步云端进度：仅清事件 replay 缓存，避免 UI 重建时重复弹窗。 */
+    fun dismissSyncProgress() {
+        ReadBookEvents.clearNewProgressConfirm()
     }
 
     /** 上传进度: 读 DB 最新行构造 BookProgress 上传 (对照 app 端 BaseReadViewModel.uploadProgress)。 */

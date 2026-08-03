@@ -5,7 +5,7 @@ import java.util.prefs.PreferenceChangeListener
 import java.util.prefs.Preferences
 
 /**
- * [PreferenceProvider] 桌面端实现（KP1.4）。
+ * [PreferenceProvider] 桌面端实现。
  *
  * 内部委托 `java.util.prefs.Preferences.userNodeForPackage(PreferenceProvider::class.java)`,
  * 配置存储在用户级注册表 (Windows) / ~/.java/.userPrefs (Linux/macOS)。

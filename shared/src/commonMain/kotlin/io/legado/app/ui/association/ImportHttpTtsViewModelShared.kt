@@ -21,66 +21,23 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
 /**
- * 导入 HttpTTS 语音源 VM 共享核心 (KMP 版, commonMain)。
+ * 导入 HttpTTS 语音源 VM 共享核心 (commonMain)。
  *
- * # 背景
+ * 对照 app 端 `ImportHttpTtsViewModel(app) : BaseViewModel(app)`: 3 个公开方法
+ * (importSelect/importSource) + importSourceAwait/importSourceUrl/comparisonSource,
+ * 仅依赖 DAO + 协程 + okHttpClient + KS_JSON, 可下沉多端复用。DAO 走
+ * [AppDbProviders.get].httpTTSDao; `execute{...}` 链式回调下沉为直接调 [Coroutine.async]。
+ * 方法行为与 app 端一致: URL/JSON 分支解析, URL 以 `#requestWithoutUA` 结尾时截断并设
+ * `User-Agent: null` 头; comparisonSource 按 lastUpdateTime 判断新旧。
  *
- * 对照 app 端原 `ImportHttpTtsViewModel(app: Application) : BaseViewModel(app)`:
- * - 3 个公开方法 (importSelect / importSource) + 2 个 private suspend
- *   (importSourceAwait / importSourceUrl) + 1 个 private (comparisonSource),
- *   仅依赖 DAO + 协程 + okHttpClient + KS_JSON, 可以下沉 commonMain 供多端复用
- *   (Android / Desktop / iOS / 鸿蒙)。
- * - DAO 访问走 [AppDbProviders.get].httpTTSDao (宿主启动时由 app 端注册
- *   AppDbAccessorImpl, 已暴露 httpTTSDao DAO)。
- * - 原 `execute { ... }.onError { ... }.onSuccess { ... }.onFinally { ... }`
- *   (BaseViewModel 内委托 [Coroutine.async]) 下沉后直接调 [Coroutine.async],
- *   保留链式 onError/onSuccess/onFinally 回调结构, 行为等价。
+ * Android 专属依赖替换: Uri 读取留 app 端 (app 端 importSource 先判 isUri 读文本再转发);
+ * okHttpClient → [OkHttpClientProviders.get]; R.string 文案 → 直接抛
+ * `NoStackTraceException("格式不对")`; MutableLiveData → [MutableSharedFlow] (replay=1)。
  *
- * # 方法清单对照 (与 app 端原 VM 完全一致)
+ * 设计: 组合委托 (BaseViewModel 是 AndroidViewModel 不能继承), app 端持有本类实例,
+ * errorLiveData/successLiveData 在 init 块桥接 [errorState]/[successState]。
  *
- * - importSelect(finally): 遍历 selectStatus 选中的 HttpTTS, 批量 insert 到 httpTTSDao;
- * - importSource(text): 入口方法, 调 importSourceAwait 处理 URL/JSON 分支, 成功后
- *   调 comparisonSource 比对本地;
- * - importSourceAwait(text) [private suspend]: isJsonObject→KS_JSON.decodeFromString
- *   单对象 / isJsonArray→decodeFromString List / isAbsUrl→importSourceUrl;
- * - importSourceUrl(url) [private suspend]: okHttpClient.newCallResponseBody,
- *   URL 以 `#requestWithoutUA` 结尾时截断并设 `User-Agent: null` 头;
- * - comparisonSource() [private]: 遍历 allSources 调 httpTTSDao.get(id), 老的或新源
- *   lastUpdateTime 更新则选中, 推送 successState。
- *
- * # Android 专属依赖替换
- *
- * - **Uri 读取留 app 端**: 原 `importSourceAwait(text)` 内 `text.isUri()` 分支 +
- *   `text.toUri().readText(appCtx)` 是 Android ContentResolver 专属, commonMain 不可用。
- *   下沉后 app 端 `ImportHttpTtsViewModel.importSource(text)` 先判断 isUri, 若是 Uri
- *   则先读取文本再传入本类 [importSource]; 否则直接转发到本类 [importSource]。
- *   URL/JSON 解析逻辑全部下沉到本类。
- * - **appDb.httpTTSDao**: 改为 [AppDbProviders.get].httpTTSDao (宿主注册)。
- * - **okHttpClient**: 改为 [OkHttpClientProviders.get].okHttpClient
- *   (shared 内 KmpHttpClient 经 typealias 等价 okhttp3.OkHttpClient,
- *   newCallResponseBody / decompressed / text 均为 commonMain 扩展)。
- * - **context.getString(R.string.wrong_format)**: commonMain 无 R.string 资源,
- *   改为直接抛 `NoStackTraceException("格式不对")` (与 shared 端其他下沉 VM
- *   文案一致, 错误经 `_errorState.tryEmit("ImportError:${it.message}")` 推送)。
- * - **androidx.lifecycle.MutableLiveData**: 不可 KMP, 改为 [MutableSharedFlow] (replay=1) + [asSharedFlow]
- *   (对照 [ImportBookSourceViewModelShared] 的事件流模式)。
- *
- * # 设计选择 (组合委托)
- *
- * 不采用 `expect abstract class` 让 app 端子类继承: BaseViewModel 是 AndroidViewModel,
- * commonMain 不可用, Kotlin 单继承会冲突。改用组合委托模式 (对照
- * [ImportBookSourceViewModelShared] / [io.legado.app.ui.replace.edit.ReplaceEditViewModelShared]):
- * - app 端 `ImportHttpTtsViewModel(application)` `extends BaseViewModel(application)`,
- *   内部持有本类实例, 通过 `viewModelScope` 注入;
- * - app 端 errorLiveData / successLiveData (MutableLiveData) 在 init 块内
- *   `viewModelScope.launch { collect { postValue } }` 桥接本类的 [errorState] / [successState],
- *   调用方 `observe` 用法不变;
- * - allSources / checkSources / selectStatus 等 MutableList 直接 getter 转发到本类
- *   (同实例引用, app 端 `selectStatus[index] = checked` 与 shared 端读取一致);
- * - importSelect / importSource 转发 (importSource 先处理 Uri 分支)。
- *
- * @param scope 协程作用域, actual 平台注入
- *   (Android = `viewModelScope` / 桌面 = 应用主作用域 / 窗口 scope)
+ * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
  */
 class ImportHttpTtsViewModelShared(
     private val scope: CoroutineScope,

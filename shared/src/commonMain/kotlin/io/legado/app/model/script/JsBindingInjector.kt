@@ -2,10 +2,12 @@ package io.legado.app.model.script
 
 import io.legado.app.constant.AppConst
 import io.legado.app.help.image.ImageOps
+import io.legado.app.model.script.JsBindingInjector.image
+import io.legado.app.model.script.JsBindingInjector.registerImageOps
 import kotlin.concurrent.Volatile
 
 /**
- * JsBindings 的平台注入点：`platform` 名 + `image` 实现（附录 J KJ1-a/b）。
+ * JsBindings 的平台注入点：`platform` 名 + `image` 实现。
  *
  * 集中 [JsBindings] 与各引擎 SharedJsScope provider 的两处平台渗漏。
  * [image] 走 provider 注册而非 expect/actual：平台差异只在「谁供 [ImageOps] 实现」
@@ -17,7 +19,7 @@ import kotlin.concurrent.Volatile
  */
 object JsBindingInjector {
 
-    /** 平台名 String（android/ios/ohos/jvm）。 */
+    /** 平台名 String（android/desktop/ios/ohos）。 */
     val platform: Any = AppConst.JS_PLATFORM
 
     @Volatile

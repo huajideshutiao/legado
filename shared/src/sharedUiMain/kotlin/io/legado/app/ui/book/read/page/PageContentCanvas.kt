@@ -46,6 +46,11 @@ import io.legado.app.ui.book.read.page.entities.column.TextColumn
  * 文字位置口径：与 app 端 `ColumnRender.drawTextColumn` 一致，x = column.start + letterSpacingHalf，
  * y = line.lineBase - baselineOffset（drawText 的 topLeft 是文本框左上角，需把行基线折算回框顶）。
  * letterSpacingHalf 仅 API35+ 补偿；KMP 版统一补偿以保持视觉一致。
+ *
+ * @param drawTick 页内容原地变更版本号（朗读高亮等）：变更时强制本 Canvas 重绘，
+ *   不参与绘制逻辑（对照 [ReaderImageCache.version] 的读值订阅模式）
+ * @param selection 页内文字选择状态：绘制块内读 [PageSelectionState.tick] 建立快照订阅，
+ *   拖拽扩选只失效本 Canvas 重绘、不触发任何重组；高亮本身读 `TextColumn.selected` 数据
  */
 @Composable
 fun PageContentCanvas(
@@ -54,12 +59,19 @@ fun PageContentCanvas(
     style: ReaderDrawStyle = rememberReaderDrawStyle(),
     onClick: (TextColumn?) -> Unit = {},
     onLongClick: (TextColumn?) -> Unit = {},
+    drawTick: Int = 0,
+    selection: PageSelectionState? = null,
 ) {
     val textMeasurer: TextMeasurer = rememberTextMeasurer()
 
     Canvas(modifier = modifier) {
         // 读位图就绪计数建立快照订阅：图片异步加载完成后本页自动重绘（值本身不参与绘制）
         if (ReaderImageCache.version < 0) return@Canvas
+        // 朗读高亮等原地变更（isReadAloud 不在 data class 相等性内，StateFlow 去重不重发）：
+        // 消费 drawTick 使本绘制块在版本自增后重新执行（值本身不参与绘制）
+        if (drawTick < 0) return@Canvas
+        // 文字选择起止变化：draw 阶段读 tick 建立订阅，只重绘不重组（拖拽热路径）
+        if (selection != null && selection.tick < 0) return@Canvas
         drawPageContent(
             textPage = textPage,
             textMeasurer = textMeasurer,

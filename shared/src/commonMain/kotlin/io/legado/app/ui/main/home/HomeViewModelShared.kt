@@ -22,57 +22,21 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
- * 主页 ViewModel 共享核心 (KMP 版, commonMain)。
+ * 主页 ViewModel 共享核心 (commonMain)。
  *
- * 对照 app 端原 `HomeViewModel(application: Application) : BaseViewModel(application)`:
- * - 核心编排 (initTabs / initTab / refreshTab / loadSection / loadInfinite /
- *   addSection / updateSection / removeSection / reorderSections / onTabsChanged)
- *   不依赖 Android 专属 API, 仅依赖 [AppDbProviders] / [HomeTabHelpShared] / [WebBook] /
- *   [Coroutine] / 协程, 可以下沉 commonMain 供多端复用。
- * - 状态用 [MutableStateFlow] 替代 `androidx.lifecycle.MutableLiveData` (LiveData 不可 KMP)。
- *   Android 宿主用 `viewModelScope.launch { collect { postValue } }` 把 StateFlow
- *   转发到 MutableLiveData, 调用方 `observe` 用法不变 (项目未引入 lifecycle-livedata-ktx,
- *   不用 `StateFlow.asLiveData()` 扩展)。
- * - DAO 访问走 [AppDbProviders.get] (宿主启动时注册), 替代 app 端 `appDb` 单例。
- * - [HomeTabHelpShared] (app 端 HomeTabHelp 下沉版) / [WebBook] / [Coroutine] / [AppLog]
- *   均已 commonMain, 直接复用。
+ * 对照 app 端 `HomeViewModel(app) : BaseViewModel(app)`: 核心编排 (initTabs/initTab/
+ * refreshTab/loadSection/loadInfinite/addSection/updateSection/removeSection/
+ * reorderSections/onTabsChanged) 不依赖 Android 专属 API, 仅依赖 [AppDbProviders] /
+ * [HomeTabHelpShared]/[WebBook]/[Coroutine], 可下沉多端复用。DAO 走 [AppDbProviders.get];
+ * LiveData → 事件信号用 [MutableSharedFlow] (replay=1), 纯状态用 [MutableStateFlow]
+ * (postValue → tryEmit: StateFlow 会吞掉相等值, 同一 section 的 loading 开/关投递同一个
+ * Pair, 用 StateFlow 转圈就永远停不下来); StateFlow.value 线程安全, 不必切回 Main。
  *
- * # Android 专属依赖替换
+ * 设计: 组合委托 (BaseViewModel 是 AndroidViewModel 不能继承), 注入 [scope];
+ * 6 个 LiveData → tabs 用 StateFlow + 5 个事件 SharedFlow; 宿主自管生命周期,
+ * 本类不持有 onCleared。
  *
- * - `appDb.bookSourceDao.getBookSource(...)` → `AppDbProviders.get().bookSourceDao.getBookSource(...)`
- * - `HomeTabHelp.getTabs()` / `getSections(tabTitle)` → [HomeTabHelpShared.getTabs] /
- *   [HomeTabHelpShared.getSections] (由 app 端下沉, 调用方语义不变)
- * - `BaseViewModel.execute { ... }.onError {}.onFinally {}` → [Coroutine.async] (scope) {}.onError {}.onFinally {}
- *   (BaseViewModel.execute 即 Coroutine.async 包装, 行为一致)
- * - `androidx.lifecycle.MutableLiveData` → 事件信号用 [MutableSharedFlow] (replay=1), 纯状态用 [MutableStateFlow]
- * - `LiveData.postValue(x)` → `MutableSharedFlow.tryEmit(x)` (StateFlow 会吞掉与上次相等的值,
- *   同一 section 的 loading 开/关投递的是同一个 Pair, 用 StateFlow 转圈就永远停不下来)
- * - `viewModelScope.launch { withContext(IO) { ... } }` → `scope.launch(Dispatchers.IO) { ... }`
- *   (StateFlow.value 线程安全, 不必切回 Main)
- *
- * # 设计选择 (组合委托)
- *
- * 不采用 `expect abstract class` 让 app 端子类继承: BaseViewModel 是 AndroidViewModel,
- * commonMain 不可用, Kotlin 单继承会冲突。改用组合委托模式 (参考 [io.legado.app.ui.bookshelf.BookshelfViewModel]
- * / [io.legado.app.ui.explore.ExploreShowViewModelShared]):
- * - app 端 HomeViewModel `extends BaseViewModel`, 内部持有本类实例;
- * - 通过构造函数注入 [scope] (app 端 = `viewModelScope`);
- * - 6 个 LiveData 改为 tabs 用 StateFlow (纯状态) + 5 个事件 SharedFlow;
- * - 调用方法直接转发到本类, 子类签名/语义不变。
- *
- * # 状态桥接
- *
- * 6 个原 LiveData 字段对应:
- * - `tabsLiveData` (原 `MutableLiveData<List<HomeTab>>`) → [tabsFlow] (`StateFlow<List<HomeTab>?>`)
- * - `sectionsLiveData` (原 `MutableLiveData<String>`) → [sectionsFlow] (`SharedFlow<String>`)
- * - `sectionUpdated` (原 `MutableLiveData<Pair<String, String>>`) → [sectionUpdatedFlow]
- * - `sectionLoadingChanged` (原 `MutableLiveData<Pair<String, String>>`) → [sectionLoadingChangedFlow]
- * - `sectionErrorChanged` (原 `MutableLiveData<Pair<String, String>>`) → [sectionErrorChangedFlow]
- * - `sectionOptionsChanged` (原 `MutableLiveData<Pair<String, String>>`) → [sectionOptionsChangedFlow]
- *
- * @param scope 协程作用域, actual 平台注入
- *   (Android = `viewModelScope` / 桌面 = 应用主作用域 / 窗口 scope); 宿主自管生命周期,
- *   本类不持有 onCleared (与 ExploreShowViewModelShared 一致)。
+ * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
  */
 class HomeViewModelShared(
     private val scope: CoroutineScope,

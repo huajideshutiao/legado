@@ -17,7 +17,7 @@ import javax.sound.sampled.SourceDataLine
 import javax.sound.sampled.UnsupportedAudioFileException
 
 /**
- * [HttpTtsPlayer] 的桌面端 (JVM) actual 实现 (KP2-H)。
+ * [HttpTtsPlayer] 的桌面端 (JVM) actual 实现。
  *
  * **平台 API**:
  * - 网络拉流: [OkHttpClientProviders] 注入的 OkHttpClient (与 Android 端共用同套拦截器/SSL/超时配置)
@@ -239,13 +239,19 @@ class DesktopHttpTtsPlayer : HttpTtsPlayer {
     }
 
     /**
-     * 流式 HTTP 场景下不支持精确 seek, no-op。
+     * 流式 HTTP 场景下不支持精确 seek, 保持 no-op。
      *
-     * 若需支持 seek, 可改为: 关闭当前流 -> 用 Range 请求头重新拉流 -> 重新 prepare。
-     * 与 app 端 Media3 SimpleCache 精确 seek 不同, 此处简化。
+     * # 可行性核实 (与 app 端 Media3 SimpleCache 精确 seek 的差异)
+     * - 共享朗读编排层 ([ReadAloudControllerShared]) 从不调用本方法: 段/章重读走
+     *   [DesktopReadAloudHost] 按 startPos 裁剪段落表 + setUrl/prepare 重拉, seekTo 无调用方。
+     * - 实现 seek 需关闭当前流 → 带 `Range: bytes=` 重新拉流 → 重新解析格式 + 重开
+     *   SourceDataLine (与 DesktopAudioPlayer.seekTo 的重新请求模式同构), 但 TTS 源
+     *   (edge-tts 等) 返回的通常是**一次性会话 URL + MP3** —— MP3 连 AudioSystem 都解析
+     *   不了 (JDK 默认无 MP3 SPI), Range 也多数不生效, 重拉只会回到开头且可能失效。
+     * 故保持 no-op, 由上层段落级重读覆盖; 若未来引入本地缓存音频再实现精确 seek。
      */
     override fun seekTo(position: Long) {
-        // no-op: 流式播放不支持 seek
+        // no-op: 见方法 KDoc (共享编排层无调用方 + TTS 一次性流不支持 Range 重拉)
     }
 
     // ===== 内部实现 =====

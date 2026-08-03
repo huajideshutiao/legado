@@ -10,62 +10,21 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 书架分组管理 ViewModel 共享核心 (KMP 版, commonMain)。
+ * 书架分组管理 ViewModel 共享核心 (commonMain)。
  *
- * # 背景
+ * 对照 app 端 `GroupViewModel(app) : BaseViewModel(app)`: 全部方法都是纯 DAO 写操作
+ * (bookGroupDao.update/insert/delete/getUnusedId/maxOrder/getByID + bookDao.removeGroup),
+ * 不依赖 Android 专属 API, 可下沉多端复用。DAO 走 [AppDbProviders.get]。
  *
- * 对照 app 端原 `GroupViewModel(application: Application) : BaseViewModel(application)`:
- * - 全部方法都是纯 DAO 写操作 (bookGroupDao.update/insert/delete/getUnusedId/maxOrder/getByID +
- *   bookDao.removeGroup), 不依赖 Android 专属 API, 可以下沉 commonMain 供多端复用。
- * - DAO 访问走 [AppDbProviders.get] (宿主启动时注册), 替代 app 端 `appDb` 单例。
- * - [BookGroup] 实体已下沉 commonMain, bookGroupDao / bookDao 已在 [AppDbAccessor] 暴露,
- *   直接复用。
+ * onFinally 模式: 原 `execute { dao }.onFinally { finally }` (IO 执行 + mainDispatcher 回调)
+ * 下沉为 `scope.launch(Dispatchers.IO) { try { dao } catch { printStackTraceOnDebug() }
+ * finally { withContext(mainDispatcher) { finally?.invoke() } } }`, 行为等价
+ * (finally 典型为 dismiss() 必须在主线程; cancel 时抛 CancellationException 同样进 finally)。
  *
- * # onFinally 模式对照
+ * 设计: 组合委托 (BaseViewModel 是 AndroidViewModel 不能继承), 仅注入 [scope],
+ * 调用方 (GroupEditDialog 等) 代码零改动。
  *
- * 原 app 端:
- * ```
- * fun upGroup(vararg bookGroup: BookGroup, finally: (() -> Unit)? = null) {
- *     execute { appDb.bookGroupDao.update(*bookGroup) }.onFinally { finally?.invoke() }
- * }
- * ```
- * 下沉后:
- * ```
- * fun upGroup(vararg bookGroup: BookGroup, finally: (() -> Unit)? = null) {
- *     scope.launch(Dispatchers.IO) {
- *         try {
- *             appDb.bookGroupDao.update(*bookGroup)
- *         } catch (e: Throwable) {
- *             e.printStackTraceOnDebug()
- *         } finally {
- *             if (finally != null) withContext(mainDispatcher) { finally.invoke() }
- *         }
- *     }
- * }
- * ```
- * 行为等价:
- * - 原 `execute` 默认 `context = Dispatchers.IO` 执行 DAO 写;
- * - 原 `onFinally` 默认 `executeContext = mainDispatcher` (Main) 调 finally 回调,
- *   调用方 finally 回调典型为 `dismiss()` (GroupEditDialog), 必须在主线程;
- *   shared 用 [withContext]([mainDispatcher]) 切到 Main 调 finally, 行为完全一致;
- * - 原 catch 块无 `onError`, [Coroutine] 默认 `e.printStackTraceOnDebug()` (DEBUG 才打栈),
- *   shared 端直接调 [printStackTraceOnDebug] expect fun, 行为完全一致;
- * - 原 `onFinally` 在 [Coroutine.executeInternal] 的 finally 块中执行,
- *   无论成功 / 失败 / cancel 都会执行 (除非 NonCancellable); shared 端 Kotlin
- *   `try { } catch { } finally { }` 同样无论成功 / 失败都执行, cancel 时由协程机制
- *   抛 CancellationException 进入 catch + finally, 行为等价。
- *
- * # 设计选择 (组合委托)
- *
- * 不采用 `expect abstract class` 让 app 端子类继承: BaseViewModel 是 AndroidViewModel,
- * commonMain 不可用, Kotlin 单继承会冲突。改用组合委托模式:
- * - app 端 GroupViewModel `extends BaseViewModel`, 内部持有本类实例;
- * - 仅注入 [scope] 一个参数 (Android = `viewModelScope`), 不算"超多";
- * - 转发全部方法到 shared, 调用方 (GroupEditDialog / GroupManageDialog /
- *   GroupSelectDialog) 代码零改动。
- *
- * @param scope 协程作用域, actual 平台注入
- *   (Android = `viewModelScope` / 桌面 = 应用主作用域 / 窗口 scope)
+ * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
  */
 class GroupViewModelShared(
     private val scope: CoroutineScope,

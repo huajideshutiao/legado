@@ -6,35 +6,45 @@ import buffer from '@ohos.buffer';
  *
  * 接收 Kotlin OhosNativeBridge.invokeHttpSync 通过 tsfn dispatch 过来的 HTTP 请求,
  * 调用 @ohos.net.http (createHttp + request) 执行真实请求,
- * 完成后通过 legado.httpCallback(requestId, resultJson) 回送结果给 Kotlin。
+ * 完成后通过 legado.httpCallback(requestId, resultJson, body?) 回送结果给 Kotlin。
  *
- * # JSON 协议 (与 KmpHttpTypes.ohos.kt 对齐)
+ * # 混合协议 (与 KmpHttpTypes.ohos.kt 对齐, 同 WebView 桥思路: 大字节面走 napi 裸参数)
  *
- * ## 请求 (Kotlin → ArkTS, 由 OhosNativeBridge.HttpBridgeRequest 序列化)
+ * ## 请求 (Kotlin → ArkTS, 由 OhosNativeBridge.HttpBridgeRequest 序列化 + tsfn 第二参数)
+ * ```
+ * handleHttpRequest(requestJson, bodyArrayBuffer)
  * {
  *   "requestId": <number>,
  *   "action": "execute" | "cancel",
  *   "payload": "<JSON string, HttpRequestPayload>"
  * }
+ * ```
+ * - 控制面: requestJson 内 payload (HttpRequestPayload) 只含小字段 (url/method/headers/超时/代理), 不含 body
+ * - 数据面: bodyArrayBuffer 为请求体裸字节 (tsfn call-js 用 napi external ArrayBuffer 零拷贝包装;
+ *   无 body 时为 undefined, 二进制保真)
  *
  * ## execute payload (HttpRequestPayload)
  * {
  *   "url": "<string>",
  *   "method": "GET" | "POST" | "PUT" | "DELETE" | "HEAD" | "OPTIONS" | "PATCH",
  *   "headers": [{"name":"<string>","value":"<string>"}],
- *   "body": "<base64>?",              // null 表示无 body
  *   "contentType": "<string>?",       // body 的 content type
  *   "timeoutMs": <number>,            // callTimeout, 0 表示用默认; 作为 connectTimeout
  *   "readTimeoutMs": <number>?        // readTimeout, 0/缺省时回退用 timeoutMs
  * }
  *
  * ## 响应 (ArkTS → Kotlin, 由 legado.httpCallback 推送)
- * - 成功: `{ ok: true, code: <number>, message: "<string>", headers: [{"name":"<string>","value":"<string>"}], body: "<base64>" }`
- * - 失败: `{ ok: false, error: "<string>" }`
+ * ```
+ * httpCallback(requestId, resultJson, bodyArrayBuffer)
+ * ```
+ * - 成功: `{ ok: true, code: <number>, message: "<string>", headers: [{"name":"<string>","value":"<string>"}] }`
+ *   (body 走第三参数 ArrayBuffer 裸传, 不经 base64)
+ * - 失败: `{ ok: false, error: "<string>" }` (无 body)
  *
  * # 设计说明
- * - body 用 base64 传输 (与 CryptoBridgeHandler 一致), ArkTS 侧解码为 ArrayBuffer 传给 @ohos.net.http,
- *   响应 body 统一用 HttpDataType.ARRAY_BUFFER 接收, 编码为 base64 回送 Kotlin。
+ * - body 用 napi ArrayBuffer 裸传 (与 WebView 桥裸字符串同思路; body 是任意二进制,
+ *   ArrayBuffer 保真), ArkTS 侧直接作为 extraData 传给 @ohos.net.http,
+ *   响应 body 统一用 HttpDataType.ARRAY_BUFFER 接收, 原样回传 Kotlin (零拷贝)。
  * - method 字符串映射到 http.RequestMethod 枚举。
  * - timeoutMs 作为 connectTimeout, readTimeoutMs 作为 readTimeout (缺省回退 timeoutMs),
  *   与 OkHttp callTimeout/readTimeout 双超时语义对齐。
@@ -60,10 +70,14 @@ interface HttpRequestPayload {
   url: string;
   method: string;
   headers: HttpHeader[];
-  body?: string;
   contentType?: string;
   timeoutMs: number;
   readTimeoutMs?: number;
+  // 代理 (仅 http/https; @ohos.net.http 不支持 SOCKS): proxyHost 非空时设 usingProxy
+  proxyHost?: string;
+  proxyPort?: number;
+  proxyUsername?: string;
+  proxyPassword?: string;
 }
 
 interface HttpResponse {
@@ -71,23 +85,23 @@ interface HttpResponse {
   code?: number;
   message?: string;
   headers?: HttpHeader[];
-  body?: string;
   error?: string;
 }
 
-// 由 EntryAbility 注入的结果回送函数类型 (内部调 legado.httpCallback)
-export type HttpCallback = (requestId: number, resultJson: string) => void;
+// 由 EntryAbility 注入的结果回送函数类型 (内部调 legado.httpCallback; body 为数据面裸字节 ArrayBuffer)
+export type HttpCallback = (requestId: number, resultJson: string, body: ArrayBuffer | undefined) => void;
 
 // 活跃的 httpRequest 对象 Map<requestId, http.HttpRequest>, 供 cancel action 使用
 const activeRequests = new Map<number, http.HttpRequest>();
 
 /**
- * 处理来自 Kotlin 的 HTTP 请求 (由 EntryAbility 注册的 tsfn 回调调用)。
+ * 处理来自 Kotlin 的 HTTP 请求 (由 EntryAbility 注册的 tsfn 回调调用, 混合协议)。
  *
- * @param requestJson 请求 JSON 字符串 (含 requestId/action/payload)
+ * @param requestJson 请求 JSON 字符串 (含 requestId/action/payload 控制面)
+ * @param body 请求体裸字节 ArrayBuffer (tsfn 第二参数; 无 body 时为 undefined)
  * @param callback 回送结果的函数 (EntryAbility 注入 legado.httpCallback)
  */
-export function handleHttpRequest(requestJson: string, callback: HttpCallback): void {
+export function handleHttpRequest(requestJson: string, body: ArrayBuffer | undefined, callback: HttpCallback): void {
   let req: HttpBridgeRequest;
   try {
     req = JSON.parse(requestJson) as HttpBridgeRequest;
@@ -97,17 +111,17 @@ export function handleHttpRequest(requestJson: string, callback: HttpCallback): 
   }
 
   // 异步处理, 完成后回调 (与 CryptoBridgeHandler.ets 同模式)
-  handleAction(req, callback).catch((err: Error) => {
+  handleAction(req, body, callback).catch((err: Error) => {
     const resp: HttpResponse = { ok: false, error: err.message ?? String(err) };
     callback(req.requestId, JSON.stringify(resp));
   });
 }
 
 // 根据 action 分发到具体处理函数
-async function handleAction(req: HttpBridgeRequest, callback: HttpCallback): Promise<void> {
+async function handleAction(req: HttpBridgeRequest, body: ArrayBuffer | undefined, callback: HttpCallback): Promise<void> {
   switch (req.action) {
     case 'execute':
-      return await handleExecute(req.requestId, req.payload, callback);
+      return await handleExecute(req.requestId, req.payload, body, callback);
     case 'cancel':
       return await handleCancel(req.requestId, callback);
     default: {
@@ -118,7 +132,9 @@ async function handleAction(req: HttpBridgeRequest, callback: HttpCallback): Pro
 }
 
 // ===== execute: http.createHttp + request(url, options, callback) =====
-async function handleExecute(requestId: number, payloadJson: string, callback: HttpCallback): Promise<void> {
+async function handleExecute(
+  requestId: number, payloadJson: string, body: ArrayBuffer | undefined, callback: HttpCallback
+): Promise<void> {
   let p: HttpRequestPayload;
   try {
     p = JSON.parse(payloadJson) as HttpRequestPayload;
@@ -145,18 +161,27 @@ async function handleExecute(requestId: number, payloadJson: string, callback: H
   if (p.readTimeoutMs != null && p.readTimeoutMs > 0) {
     options.readTimeout = p.readTimeoutMs;
   }
-  // body: base64 → ArrayBuffer (作为 extraData); GET/HEAD 不应携带 body (RFC 7231)
-  const methodNoBody = p.method === 'GET' || p.method === 'HEAD';
-  if (!methodNoBody && p.body != null && p.body.length > 0) {
-    try {
-      const buf = buffer.from(p.body, 'base64');
-      options.extraData = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length);
-    } catch (e) {
-      const resp: HttpResponse = { ok: false, error: 'decode body failed: ' + String(e) };
-      cleanupRequest(requestId);
-      callback(requestId, JSON.stringify(resp));
-      return;
+  // 代理: @ohos.net.http 支持 HttpProxy (host/port/username/password, API 12+);
+  // SOCKS 代理 OS API 不支持 (与 Android Proxy.Type.SOCKS 行为差异, 见 OhosHttpProvider 注释)
+  if (p.proxyHost != null && p.proxyHost.length > 0 && p.proxyPort != null && p.proxyPort > 0) {
+    const proxy: http.HttpProxy = {
+      host: p.proxyHost,
+      port: p.proxyPort,
+      exclusionList: [],
+    };
+    if (p.proxyUsername != null && p.proxyUsername.length > 0) {
+      proxy.username = p.proxyUsername;
     }
+    if (p.proxyPassword != null && p.proxyPassword.length > 0) {
+      proxy.password = p.proxyPassword;
+    }
+    options.usingProxy = proxy;
+  }
+  // body: napi ArrayBuffer 裸字节直接作为 extraData (不经 base64, 二进制保真);
+  // GET/HEAD 不应携带 body (RFC 7231)
+  const methodNoBody = p.method === 'GET' || p.method === 'HEAD';
+  if (!methodNoBody && body != null && body.byteLength > 0) {
+    options.extraData = body;
   }
 
   httpRequest.request(p.url, options, (err, data) => {
@@ -166,25 +191,27 @@ async function handleExecute(requestId: number, payloadJson: string, callback: H
       callback(requestId, JSON.stringify(resp));
       return;
     }
-    // 响应 body: ArrayBuffer → base64
-    let bodyBase64 = '';
+    // 响应 body: HttpDataType.ARRAY_BUFFER 接收, ArrayBuffer 原样裸传 (零拷贝, 二进制保真);
+    // 非 ArrayBuffer 结果 (string/其他) 兜底转 ArrayBuffer
     const result = data.result;
+    let respBody: ArrayBuffer | undefined;
     if (result instanceof ArrayBuffer) {
-      bodyBase64 = buffer.from(new Uint8Array(result)).toString('base64');
+      respBody = result;
     } else if (typeof result === 'string') {
-      bodyBase64 = buffer.from(result, 'utf-8').toString('base64');
+      const b = buffer.from(result, 'utf-8');
+      respBody = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
     } else if (result != null) {
       // 兜底: 其他类型转 string 再编码
-      bodyBase64 = buffer.from(String(result), 'utf-8').toString('base64');
+      const b = buffer.from(String(result), 'utf-8');
+      respBody = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
     }
     const resp: HttpResponse = {
       ok: true,
       code: data.responseCode,
       message: statusText(data.responseCode),
       headers: headerMapToList(data.header),
-      body: bodyBase64,
     };
-    callback(requestId, JSON.stringify(resp));
+    callback(requestId, JSON.stringify(resp), respBody);
   });
 }
 

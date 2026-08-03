@@ -8,7 +8,7 @@ import io.legado.app.help.http.registerDefaultJvmCookieStoreProvider
 import io.legado.app.help.http.registerSharedCookieJarBridge
 
 /**
- * 桌面端 HTTP 层注册入口 (KP1.3)。
+ * 桌面端 HTTP 层注册入口。
  *
  * 在 desktop Main 启动早期调用一次, 完成四件事:
  * 1. 构造 [DesktopHttpProvider] 并注册到 [OkHttpClientProviders] / [OkHttpProxyClientProviders]

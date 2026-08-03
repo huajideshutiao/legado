@@ -15,15 +15,15 @@ import java.nio.file.Files
 import java.nio.file.Paths
 
 /**
- * 桌面端 JS 引擎注册入口 (KP1.1)。
+ * 桌面端 JS 引擎注册入口。
  *
  * 在 desktop Main 启动早期调用一次, 完成 4 件事:
  * 1. 注册 [DesktopImageOps] 到 [JsBindingInjector]
  *    (JsBindings 构造时访问 `JsBindingInjector.image` getter, 未注册会 checkNotNull 失败,
  *    任何 `JsEngine.eval` 都跑不了);
  * 2. 注册 [QuickJsJsEngine] 到 [JsEngines] 作为 QUICKJS 引擎实现
- *    (QuickJsJsEngine 已在 KP1.1 下沉到 `modules/shared/src/jvmAndAndroidMain`,
- *    委托 `modules:quickjs` KMP 化后的 commonMain QuickJsEngine API,
+ *    (QuickJsJsEngine 已下沉到 `modules/shared/src/jvmAndAndroidMain`,
+ *    委托 `modules:quickjs` 的 commonMain QuickJsEngine API,
  *    Android 端 `JsEnginesAndroid.kt` 也注册同一个 object, 行为完全一致);
  * 3. 注册 [DesktopQuickJsSharedJsScopeProvider] 到 [SharedJsScope]
  *    (jsLib 共享 scope 缓存, 三层结构 bytecodeCache + ThreadLocal LRU + versionSeq,

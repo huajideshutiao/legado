@@ -25,80 +25,18 @@ import kotlinx.coroutines.runBlocking
 import kotlin.concurrent.Volatile
 
 /**
- * 跨平台朗读控制器（KMP commonMain 版, KP2-D P0-8 新增）。
+ * 跨平台朗读控制器 (commonMain): 在 [io.legado.app.help.tts.ReadAloudController] 段级协调
+ * (队列推进 + 选路 TTS + 状态广播) 之上补章节联动——“当前章节朗读完 → 自动切下一章”。
+ * 对照 app 端 `TTSReadAloudService` 编排 (Service/Notification/MediaSession 强依赖 Android,
+ * 无法下沉), 行为对齐 `TTSUtteranceListener.nextParagraph()` + `BaseReadAloudService.nextChapter()`。
  *
- * # 设计动机
- *
- * app 端朗读编排链路为 `ReadAloud` (静态门面) + `BaseReadAloudService` (Service 编排)
- * + `TTSReadAloudService` / `HttpReadAloudService` (actual 引擎), 强依赖 Android
- * Service / Notification / MediaSession / PhoneStateListener, 无法直接下沉到 commonMain。
- *
- * commonMain 已有 [io.legado.app.help.tts.ReadAloudController] 做段级协调 (队列推进 +
- * 选择哪路 TTS + 状态广播), 但**缺章节联动** —— 它的 onComplete 由调用方驱动, 没把
- * "当前章节朗读完 → 自动切下一章" 这一层抽象出来。
- *
- * 本类在 [io.legado.app.help.tts.ReadAloudController] 基础上补章节联动:
- * - 持有当前 [chapterIndex] / [paragraphIndex]
- * - 通过 [ReadAloudChapterNavigator] 接口注入章节内容获取 + 章节切换能力
- *   (实际由调用方桥接到 [io.legado.app.ui.book.read.ReadBookViewModelShared])
- * - 通过 [TtsEngineProvider] 取 [SystemTtsEngine] 实例 (默认查 Provider, 支持测试注入)
- * - 通过 [TtsProgressListener] 监听引擎 onDone 触发段级推进
- * - 段落末尾 → [ReadAloudChapterNavigator.moveToNextChapter] 切下一章并续读
- *
- * # 与既有抽象的关系
- *
- * - **不修改** [io.legado.app.help.tts.ReadAloudController]: 该类是 KP2-H 留下的
- *   段级协调器, 行为稳定且不含章节概念, 不应在本任务中改动其 API
- * - **不替换**: 本类与 [io.legado.app.help.tts.ReadAloudController] 并存, 后者留给
- *   需要细粒度段级控制但不需章节联动的场景 (如 HttpTTS 自管 URL 拼装)
- * - **复用** [ReadAloudQueue]: 纯状态机, 章节无关, 本类直接组合使用
- *
- * # 章节联动流程 (与 app 端 `TTSReadAloudService` 对照)
- *
- * ```
- *   start(chapterIndex=3)
- *     ↓
- *   navigator.loadChapterParagraphs(3) → ["第一段", "第二段", ...]
- *     ↓
- *   queue.contentList = paragraphs; queue.nowSpeak = 0
- *     ↓
- *   engine.speak("第一段", "0")  ← 异步, 立即返回
- *     ↓
- *   (引擎朗读完毕)
- *     ↓
- *   progressListener.onDone("0")  ← 在引擎后台线程触发
- *     ↓
- *   queue.stepNextOrEnd() → true (还有段落)
- *     ↓
- *   engine.speak("第二段", "1")
- *     ↓
- *   (...)
- *     ↓
- *   progressListener.onDone("lastIndex")
- *     ↓
- *   queue.stepNextOrEnd() → false (本章节末段)
- *     ↓
- *   navigator.moveToNextChapter()  ← 调 viewModel.moveToNextChapter()
- *     ↓
- *   start(chapterIndex=4)  ← 递归续读下一章
- * ```
- *
- * 与 app 端 `TTSReadAloudService.TTSUtteranceListener.nextParagraph()` +
- * `BaseReadAloudService.nextChapter()` 行为对齐。
- *
- * # 线程模型
- *
- * - 本类自身方法在调用方线程执行 (通常 Compose 主线程)
- * - [TtsProgressListener] 回调由引擎在工作线程触发, 本类内部用 `@Volatile` 状态字段
- *   + synchronized 块保护段级推进, 避免竞态 (stop 时 onDone 仍触发)
- * - [ReadAloudChapterNavigator] 实现方需自行处理跨线程 (如 Compose 主线程调度)
- *
- * # 简化项
- *
- * - 不支持暂停后从段落中间位置续读 (与桌面命令行 TTS 限制一致); pause 实际等于 stop,
- *   resume 重新从头朗读当前段
- * - 不支持 HttpTTS (本类专注系统 TTS, HttpTTS 走 [io.legado.app.help.tts.ReadAloudController])
- * - 不实现睡眠定时 / 通知 / 媒体会话 / 音频焦点 (这些是 app 端 Service 职责)
+ * - [ReadAloudChapterNavigator] 注入章节内容获取 + 切换 (调用方桥接 ReadBookViewModelShared)
+ * - 不修改/不替换既有 [ReadAloudController], 二者并存 (后者留给细粒度段级控制场景);
+ *   复用 [ReadAloudQueue] 纯状态机
+ * - 线程: 本类方法在调用方线程执行; 引擎 onDone 在工作线程回调, 用 @Volatile + synchronized
+ *   保护段级推进 (stop 时 onDone 仍触发); navigator 实现方自行处理跨线程
+ * - 简化项: pause 实际等于 stop (桌面 TTS 限制, resume 从头读当前段); 不支持 HttpTTS
+ *   (走 [ReadAloudController]); 不实现睡眠定时/通知/媒体会话/音频焦点 (app 端 Service 职责)
  *
  * @param navigator 章节导航器, 由调用方桥接到 ViewModel
  * @param engineProvider TTS 引擎提供者, 默认查 [TtsEngineProvider]; 测试时可注入 mock
@@ -121,7 +59,7 @@ class ReadAloudControllerShared(
     // atomicfu 锁对象 (Native target 必须用 SynchronizedObject, 不能用普通类实例当锁)
     private val queueLock = SynchronizedObject()
 
-    // region HttpTTS 路由状态 (KP2-D P0-9 新增)
+    // region HttpTTS 路由状态
 
     /** 本次朗读是否走 HttpTTS; start 时由 [resolveEngine] 决定。 */
     @Volatile
@@ -191,7 +129,7 @@ class ReadAloudControllerShared(
     val lastError: SharedFlow<String> = _lastError.asSharedFlow()
 
     /**
-     * 朗读语速倍率 (KP2-D P1 新增)。
+     * 朗读语速倍率。
      *
      * - 默认 1.0x (正常语速)
      * - 范围 0.5x ~ 2.0x (与桌面端各平台命令速度参数范围对齐, 见 [SystemTtsEngine.speechRate])
@@ -240,7 +178,7 @@ class ReadAloudControllerShared(
     }
 
     /**
-     * HttpTTS 播放器回调桥接器 (KP2-D P0-9 新增)。
+     * HttpTTS 播放器回调桥接器。
      *
      * 对标 [io.legado.app.help.tts.ReadAloudController] 的 init 块 listener:
      * - onReady: prepare 完成 → play (仅当当前 state 为 PLAYING, 与系统 TTS onDone 用同一判断对齐)
@@ -268,7 +206,7 @@ class ReadAloudControllerShared(
      * @param chapterIndex 章节序号 (0-based); 越界时 state 置 ERROR
      */
     fun start(chapterIndex: Int) {
-        // KP2-D P0-9: 决定本次走 HttpTTS 还是系统 TTS (基于 ttsEngineConfigProvider)
+        // 决定本次走 HttpTTS 还是系统 TTS (基于 ttsEngineConfigProvider)
         useHttpTts = resolveEngine()
 
         // 切章前先停掉当前朗读 (避免 onDone 触发推进与新章节竞态)
@@ -286,7 +224,7 @@ class ReadAloudControllerShared(
                 return
             }
             engine.progressListener = progressListener
-            // KP2-D P1: 同步朗读语速到引擎 (start 路径, 每次开始朗读都把当前 speechRate 灌进去)
+            // 同步朗读语速到引擎 (start 路径, 每次开始朗读都把当前 speechRate 灌进去)
             engine.speechRate = _speechRate.value
         }
 
@@ -323,7 +261,7 @@ class ReadAloudControllerShared(
     }
 
     /**
-     * 决定本次朗读走 HttpTTS 还是系统 TTS (KP2-D P0-9 新增)。
+     * 决定本次朗读走 HttpTTS 还是系统 TTS。
      *
      * 读 [ttsEngineConfigProvider] 取配置 (Book.ttsEngine 优先, 否则 AppConfig.ttsEngine),
      * isNumeric → 用 [httpTtsConfigLoader] 查 DAO 拿 [HttpTTS] → 用 [httpTtsPlayerFactory] 造 player。
@@ -389,7 +327,7 @@ class ReadAloudControllerShared(
             _state.value = ReadAloudState.PLAYING
             httpTtsPlayer?.play()
         } else {
-            // KP2-D P1: 恢复时同步语速到引擎 (用户在 pause 期间拖了滑杆, resume 后生效新速度)
+            // 恢复时同步语速到引擎 (用户在 pause 期间拖了滑杆, resume 后生效新速度)
             val engine = engineProvider()
             engine?.speechRate = _speechRate.value
             _state.value = ReadAloudState.PLAYING
@@ -408,7 +346,7 @@ class ReadAloudControllerShared(
     }
 
     /**
-     * 设置朗读语速 (KP2-D P1 新增)。
+     * 设置朗读语速。
      *
      * UI 滑杆拖动时调用, 实时同步到引擎; 朗读中下一段 speak 即生效新速度。
      *
@@ -427,7 +365,7 @@ class ReadAloudControllerShared(
     }
 
     /**
-     * 恢复上次持久化的朗读章节索引 (KP2-D P1 新增)。
+     * 恢复上次持久化的朗读章节索引。
      *
      * 仅供启动时从 PreferenceStore 恢复使用 —— 仅设 [_chapterIndex] StateFlow
      * 用于 UI 显示"上次朗读 X 章", **不触发切章 / loadChapter** (避免与
@@ -570,7 +508,7 @@ class ReadAloudControllerShared(
     }
 
     /**
-     * HttpTTS 路径播放当前段 (KP2-D P0-9 新增)。
+     * HttpTTS 路径播放当前段。
      *
      * 对标 [io.legado.app.help.tts.ReadAloudController.playHttpTts]:
      * [AnalyzeUrlFactories.create] 求值源 url 模板 (注入 speakText/speakSpeed 变量,
@@ -653,7 +591,7 @@ class ReadAloudControllerShared(
     }
 
     /**
-     * 释放 HttpTTS 播放器资源 (KP2-D P0-9 新增)。
+     * 释放 HttpTTS 播放器资源。
      *
      * stop + release + 清空字段; 切章 (start 重建) 与退出 ReaderScreen (stop) 时调用。
      */

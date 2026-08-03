@@ -6,12 +6,10 @@ import androidx.core.app.NotificationManagerCompat
 import io.legado.app.R
 import io.legado.app.base.BaseService
 import io.legado.app.constant.AppConst
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
 import io.legado.app.help.setLiveOngoing
-import io.legado.app.help.setLiveProgress
 import io.legado.app.service.UpdateBookService.Companion.isRun
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.servicePendingIntent
@@ -47,13 +45,6 @@ import io.legado.app.utils.servicePendingIntent
  * - **用户取消**: 通知栏 "取消" 按钮 → PendingIntent → [onStartCommand] (action=stop)
  *   → postEvent(STOP_UP_BOOK) → UpdateBookShared 监听器取消任务 → callback.onProgressCancel
  *   → stopService<UpdateBookService> → [onDestroy] 取消通知
- *
- * # updateNotification 方法
- *
- * [updateNotification] 保留用于兼容历史调用方, 但当前 app 端 MainViewModel 改造后
- * 已不调用本方法 (直接用 `NotificationManagerCompat.notify` 刷写同一通知 ID, 与
- * UpdateBookShared.updateProgress → callback.onProgressUpdate 流程对齐)。
- * 桌面端无 Service, 直接用 `NotificationProgresses.showProgress`。
  */
 class UpdateBookService : BaseService() {
 
@@ -102,23 +93,5 @@ class UpdateBookService : BaseService() {
 
     override fun startForegroundNotification() {
         startForeground(NotificationId.UpdateBookService, notificationBuilder.build())
-    }
-
-    @Suppress("unused")
-    fun updateNotification(title: String, content: String, progress: Int, total: Int) {
-        if (NotificationManagerCompat.from(this).areNotificationsEnabled()) {
-            notificationBuilder.setContentTitle(title)
-            notificationBuilder.setContentText(content)
-            notificationBuilder.setLiveProgress(
-                progress, total,
-                shortText = if (total > 0) "$progress/$total" else null
-            )
-            try {
-                NotificationManagerCompat.from(this)
-                    .notify(NotificationId.UpdateBookService, notificationBuilder.build())
-            } catch (e: Exception) {
-                AppLog.put("更新通知失败\n${e.localizedMessage}", e)
-            }
-        }
     }
 }

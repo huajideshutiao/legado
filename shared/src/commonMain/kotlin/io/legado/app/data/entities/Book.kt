@@ -1,12 +1,12 @@
 package io.legado.app.data.entities
 
 import androidx.room3.ColumnInfo
+import androidx.room3.ColumnTypeConverter
+import androidx.room3.ColumnTypeConverters
 import androidx.room3.Entity
 import androidx.room3.Ignore
 import androidx.room3.Index
 import androidx.room3.PrimaryKey
-import androidx.room3.ColumnTypeConverter
-import androidx.room3.ColumnTypeConverters
 import io.legado.app.constant.BookType
 import io.legado.app.help.book.getFolderNameNoCache
 import io.legado.app.utils.decodeStringMapOrNull
@@ -14,13 +14,12 @@ import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
-// K5-c Phase 4: 移除 import java.time.LocalDate, 使用同 package 的 expect class LocalDate
+
+// 不使用 import java.time.LocalDate, 用同 package 的 expect class LocalDate
 // (commonMain 定义 expect, androidMain/jvmMain actual typealias 到 java.time.LocalDate)
 
 // @TypeConverters 双重注册:
@@ -164,7 +163,7 @@ data class Book(
 
     fun getStartDate(): LocalDate? {
         if (!config.readSimulating || config.startDate == null) {
-            // K5-c Phase 4: java.time.LocalDate.now() 在 commonMain 经 expect fun 桥接 (无 companion object)
+            // java.time.LocalDate.now() 在 commonMain 经 expect fun 桥接 (无 companion object)
             return localDateNow()
         }
         return config.startDate
@@ -240,7 +239,7 @@ data class Book(
         override val descriptor: SerialDescriptor = Surrogate.serializer().descriptor
 
         override fun serialize(encoder: Encoder, value: LocalDate) {
-            // K5-c Phase 4: commonMain 不能直接访问 java.time.LocalDate 的 year/monthValue/dayOfMonth 属性
+            // commonMain 不能直接访问 java.time.LocalDate 的 year/monthValue/dayOfMonth 属性
             // (actual typealias 到 Java 类时 getter 不被识别为 expect class val 成员), 改用 expect 扩展函数
             val (year, month, day) = value.toYearMonthDay()
             encoder.encodeSerializableValue(
@@ -251,7 +250,7 @@ data class Book(
 
         override fun deserialize(decoder: Decoder): LocalDate {
             val s = decoder.decodeSerializableValue(Surrogate.serializer())
-            // K5-c Phase 4: java.time.LocalDate.of(...) 在 commonMain 经 expect fun 桥接 (无 companion object)
+            // java.time.LocalDate.of(...) 在 commonMain 经 expect fun 桥接 (无 companion object)
             return localDateOf(s.year, s.month, s.day)
         }
     }

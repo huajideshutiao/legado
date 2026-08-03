@@ -90,6 +90,19 @@ typedef void (*legado_cstr_void_fn)(const char*);
 typedef void (*legado_cstr_cstr_void_fn)(const char*, const char*);
 typedef void (*legado_int64_cstr_void_fn)(int64_t, const char*);
 
+typedef void (*legado_int64_cstr_cstr_void_fn)(int64_t, const char *, const char *);
+
+// 二进制混合协议 (KP9+: Http/Image 大字节面裸传, napi ArrayBuffer, 同 WebView 混合协议思路):
+// - 注册函数注入的 dispatch 入口: 控制面 JSON + 数据面裸字节指针 + 长度
+//   (Kotlin usePinned 零拷贝直传, C++ malloc 深拷贝后经 tsfn 异步投递)
+// - ArkTS → Kotlin 回调: requestId + 控制面 JSON + 数据面裸字节指针 + 长度
+//   (C++ napi_get_arraybuffer_info 零拷贝取 ArrayBuffer 数据指针)
+typedef void (*legado_bin_dispatch_fn)(const char *, const void *, size_t);
+
+typedef void (*legado_register_bin_dispatch_fn)(legado_bin_dispatch_fn);
+
+typedef void (*legado_int64_cstr_bin_void_fn)(int64_t, const char *, const void *, size_t);
+
 // dlsym 加载的函数指针 - 工具类 (KP4)
 static legado_str_str_fn g_chinese_t2s = nullptr;
 static legado_str_str_fn g_chinese_s2t = nullptr;
@@ -129,14 +142,19 @@ typedef void (*legado_register_dispatch_fn)(legado_cstr_void_fn);
 static legado_register_dispatch_fn g_register_toast_fn = nullptr;
 static legado_register_dispatch_fn g_register_notification_fn = nullptr;
 
+// WebView 混合协议注册函数类型: C++ 注入双字符串 dispatch 入口 (控制面 JSON + 数据面裸 html)
+typedef void (*legado_register_webview_dispatch_fn)(legado_cstr_cstr_void_fn);
+
 // dlsym 加载的函数指针 - Image/Media tsfn 注入 (KP8+ 新增, 同 Toast/Notification 模式)
-static legado_register_dispatch_fn g_register_image_fn = nullptr;
+// Image 桥 KP9+ 升级为二进制混合协议 (JSON + 裸字节), 用 legado_register_bin_dispatch_fn
+static legado_register_bin_dispatch_fn g_register_image_fn = nullptr;
 static legado_register_dispatch_fn g_register_media_fn = nullptr;
 
 // dlsym 加载的函数指针 - Image/Media ArkTS → Kotlin 回调 (KP8+ 新增, 同 FileDir @CName 模式)
-// ArkTS 侧 imageCallback(requestId, resultJson) / mediaEvent(eventJson) 通过 napi 调 C++,
+// ArkTS 侧 imageCallback(requestId, resultJson, body?) / mediaEvent(eventJson) 通过 napi 调 C++,
 // C++ 通过 dlsym 调 Kotlin @CName 函数, 把结果/事件推送给 Kotlin。
-static legado_int64_cstr_void_fn g_image_callback = nullptr;
+// Image 桥 KP9+ 升级为二进制混合协议 (JSON + 裸字节), 用 legado_int64_cstr_bin_void_fn
+static legado_int64_cstr_bin_void_fn g_image_callback = nullptr;
 static legado_cstr_void_fn g_media_event = nullptr;
 
 // dlsym 加载的函数指针 - TTS tsfn 注入 + ArkTS → Kotlin 回调 (KP8+ 新增, 同 Image/Media 模式)
@@ -148,8 +166,10 @@ static legado_register_dispatch_fn g_register_crypto_fn = nullptr;
 static legado_int64_cstr_void_fn g_crypto_callback = nullptr;
 
 // dlsym 加载的函数指针 - Http tsfn 注入 + ArkTS → Kotlin 回调 (KP8+ 新增, 同 Image/Crypto 模式, execute/cancel)
-static legado_register_dispatch_fn g_register_http_fn = nullptr;
-static legado_int64_cstr_void_fn g_http_callback = nullptr;
+// Http 桥 KP9+ 升级为二进制混合协议 (JSON + 裸字节), 用 legado_register_bin_dispatch_fn /
+// legado_int64_cstr_bin_void_fn
+static legado_register_bin_dispatch_fn g_register_http_fn = nullptr;
+static legado_int64_cstr_bin_void_fn g_http_callback = nullptr;
 
 // dlsym 加载的函数指针 - OpenUrl tsfn 注入 (KP8+ 新增, 同 Toast 模式, fire-and-forget dispatch)
 static legado_register_dispatch_fn g_register_open_url_fn = nullptr;
@@ -166,6 +186,10 @@ static legado_int64_cstr_void_fn g_pasteboard_callback = nullptr;
 static legado_register_dispatch_fn g_register_text_codec_fn = nullptr;
 static legado_int64_cstr_void_fn g_text_codec_callback = nullptr;
 
+// dlsym 加载的函数指针 - WebView tsfn 注入 + ArkTS → Kotlin 回调 (混合协议: 控制面 JSON + 数据面裸字符串, 后台 WebView 抓取)
+static legado_register_webview_dispatch_fn g_register_webview_fn = nullptr;
+static legado_int64_cstr_cstr_void_fn g_webview_callback = nullptr;
+
 // Toast/Notification/Image/Media/TTS/Crypto/Http/OpenUrl/FilePicker/Pasteboard threadsafe_function 引用 (C++ 侧持有, ArkTS registerXxxCallback 时创建)
 static napi_threadsafe_function g_toast_tsfn = nullptr;
 static napi_threadsafe_function g_notification_tsfn = nullptr;
@@ -178,6 +202,7 @@ static napi_threadsafe_function g_open_url_tsfn = nullptr;
 static napi_threadsafe_function g_file_picker_tsfn = nullptr;
 static napi_threadsafe_function g_pasteboard_tsfn = nullptr;
 static napi_threadsafe_function g_text_codec_tsfn = nullptr;
+static napi_threadsafe_function g_webview_tsfn = nullptr;
 
 // liblegado_shared.so 句柄
 static void* g_legado_so = nullptr;
@@ -228,9 +253,9 @@ static bool load_legado_shared() {
     g_register_notification_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_notification_fn");
 
     // 解析 @CName 导出符号 - Image/Media tsfn 注入 + ArkTS → Kotlin 回调 (KP8+ 新增)
-    g_register_image_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_image_fn");
+    g_register_image_fn = (legado_register_bin_dispatch_fn) dlsym(g_legado_so, "legado_register_image_fn");
     g_register_media_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_media_fn");
-    g_image_callback = (legado_int64_cstr_void_fn)dlsym(g_legado_so, "legado_image_callback");
+    g_image_callback = (legado_int64_cstr_bin_void_fn) dlsym(g_legado_so, "legado_image_callback");
     g_media_event = (legado_cstr_void_fn)dlsym(g_legado_so, "legado_media_event");
 
     // 解析 @CName 导出符号 - TTS tsfn 注入 + ArkTS → Kotlin 回调 (KP8+ 新增, 同 Image/Media 模式)
@@ -242,8 +267,8 @@ static bool load_legado_shared() {
     g_crypto_callback = (legado_int64_cstr_void_fn)dlsym(g_legado_so, "legado_crypto_callback");
 
     // 解析 @CName 导出符号 - Http tsfn 注入 + ArkTS → Kotlin 回调 (KP8+ 新增, 同 Image/Crypto 模式)
-    g_register_http_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_http_fn");
-    g_http_callback = (legado_int64_cstr_void_fn)dlsym(g_legado_so, "legado_http_callback");
+    g_register_http_fn = (legado_register_bin_dispatch_fn) dlsym(g_legado_so, "legado_register_http_fn");
+    g_http_callback = (legado_int64_cstr_bin_void_fn) dlsym(g_legado_so, "legado_http_callback");
 
     // 解析 @CName 导出符号 - OpenUrl tsfn 注入 (KP8+ 新增, 同 Toast 模式, fire-and-forget dispatch)
     g_register_open_url_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_open_url_fn");
@@ -259,6 +284,10 @@ static bool load_legado_shared() {
     // 解析 @CName 导出符号 - TextCodec tsfn 注入 + ArkTS → Kotlin 回调 (同 Pasteboard 模式)
     g_register_text_codec_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_text_codec_fn");
     g_text_codec_callback = (legado_int64_cstr_void_fn)dlsym(g_legado_so, "legado_text_codec_callback");
+
+    // 解析 @CName 导出符号 - WebView tsfn 注入 + ArkTS → Kotlin 回调 (混合协议: 控制面 JSON + 数据面裸字符串)
+    g_register_webview_fn = (legado_register_webview_dispatch_fn) dlsym(g_legado_so, "legado_register_webview_fn");
+    g_webview_callback = (legado_int64_cstr_cstr_void_fn) dlsym(g_legado_so, "legado_webview_callback");
 
     OH_LOG_INFO(LOG_APP, "liblegado_shared.so loaded, symbols resolved (KP5: + bookshelfList/searchBook/loadChapter/chapterList/importBookSource; KP5+: + loadMangaChapter/exploreList/openExplore/editExploreSource/topExploreSource/deleteExploreSource; KP7+: + registerFileDir/registerCacheDir/registerToastFn/registerNotificationFn; KP8+: + registerImageFn/registerMediaFn/imageCallback/mediaEvent/registerTtsFn/ttsEvent/registerCryptoFn/cryptoCallback/registerHttpFn/httpCallback/registerOpenUrlFn/registerFilePickerFn/filePickerCallback/registerPasteboardFn/pasteboardCallback/registerTextCodecFn/textCodecCallback)");
     return true;
@@ -846,23 +875,92 @@ static napi_value RegisterNotificationCallback(napi_env env, napi_callback_info 
     return ret;
 }
 
+// ============ 二进制混合协议 tsfn 传输基建 (KP9+: Http/Image 大字节面裸传, napi ArrayBuffer) ============
+// 与 WebView 混合协议 (双裸字符串) 同思路: 控制面 JSON 走字符串, 大字节数据面 (HTTP body /
+// 图片字节) 走 napi ArrayBuffer 裸传, 不经 base64 (避免 33% 体积膨胀 + 双端编解码拷贝),
+// 二进制保真。
+// 生命周期: Kotlin 侧 usePinned 零拷贝直传 → ohos_xxx_dispatch malloc 深拷贝 (tsfn 异步投递,
+// 原指针生命周期不可控) → call-js 回调 (ArkTS 主线程) 把 bytes 用 external ArrayBuffer 包装
+// (零拷贝, 所有权转移给 JS, GC 时 finalize 释放)。
+
+// tsfn 跨线程传输数据: 控制面 JSON + 可选数据面裸字节
+struct DispatchBinaryData {
+    char *json;          // malloc 分配, CallJsWithBinary 统一释放
+    uint8_t *bytes;      // malloc 分配 (可为 null); 非空且长度>0 时所有权转移给 external ArrayBuffer
+    size_t bytes_len;
+};
+
+// external ArrayBuffer 被 GC 回收时释放对应 malloc 内存
+static void DispatchBinaryFinalize(napi_env /*env*/, void *data, void * /*hint*/) {
+    free(data);
+}
+
+// 通用 call-js 回调体: 把 (JSON, bytes) 包成 (napi string, napi ArrayBuffer|undefined) 两个参数
+// 调 ArkTS 回调; bytes_len>0 时 external ArrayBuffer 零拷贝包装 (无二次拷贝)
+static void CallJsWithBinary(napi_env env, napi_value js_cb, void *data) {
+    if (js_cb == nullptr || data == nullptr) return;
+    DispatchBinaryData *d = static_cast<DispatchBinaryData *>(data);
+    napi_value args[2];
+    napi_create_string_utf8(env, d->json, NAPI_AUTO_LENGTH, &args[0]);
+    if (d->bytes != nullptr && d->bytes_len > 0) {
+        napi_status st = napi_create_external_arraybuffer(
+                env, d->bytes, d->bytes_len, DispatchBinaryFinalize, nullptr, &args[1]);
+        if (st != napi_ok) {
+            // 包装失败 (极罕见): 释放字节, 降级传 undefined (调用方按无字节面处理)
+            free(d->bytes);
+            napi_get_undefined(env, &args[1]);
+        }
+    } else {
+        napi_get_undefined(env, &args[1]);
+    }
+    napi_call_function(env, js_cb, 2, args, nullptr);
+    free(d->json);
+    free(d);
+}
+
+// 通用 dispatch 入口: 深拷贝 JSON + 可选字节后投递给 tsfn (napi_call_threadsafe_function 异步,
+// 调用方指针生命周期不可控, 必须拷贝; 拷贝由 call-js 回调 / external ArrayBuffer finalize 释放)
+static void DispatchBinaryCommon(napi_threadsafe_function tsfn, const char *json,
+        const void *bytes, size_t bytes_len) {
+    if (tsfn == nullptr || json == nullptr) return;
+    DispatchBinaryData *d = (DispatchBinaryData *) malloc(sizeof(DispatchBinaryData));
+    if (d == nullptr) return;
+    d->bytes = nullptr;
+    d->bytes_len = bytes_len;
+    size_t json_len = strlen(json) + 1;
+    d->json = (char *) malloc(json_len);
+    if (d->json == nullptr) {
+        free(d);
+        return;
+    }
+    memcpy(d->json, json, json_len);
+    if (bytes != nullptr && bytes_len > 0) {
+        d->bytes = (uint8_t *) malloc(bytes_len);
+        if (d->bytes == nullptr) {
+            free(d->json);
+            free(d);
+            return;
+        }
+        memcpy(d->bytes, bytes, bytes_len);
+    }
+    napi_status status = napi_call_threadsafe_function(tsfn, d, napi_tsfn_nonblocking);
+    if (status != napi_ok) {
+        free(d->json);
+        free(d->bytes);
+        free(d);
+    }
+}
+
 // ============ Image/Media/TTS tsfn 接线 (KP8+ 新增, 同 Toast/Notification 模式) ============
 // 设计与 Toast/Notification 完全一致:
 // - KMP 通过 OhosNativeBridge.invokeImageSync / sendMediaCommand / speakTts 发请求
 // - 请求经 C++ dispatch 函数 → napi_call_threadsafe_function → ArkTS 主线程回调
 // - ArkTS 处理后通过 imageCallback/mediaEvent/ttsEvent (napi → @CName) 回送结果/事件给 Kotlin
 
-// C++ dispatch 入口: 由 Kotlin lambda (注入到 OhosNativeBridge.imageTsfn/mediaTsfn/ttsTsfn) 调用
-extern "C" void ohos_image_dispatch(const char* json) {
-    if (g_image_tsfn == nullptr || json == nullptr) return;
-    size_t len = strlen(json) + 1;
-    char* json_dup = (char*)malloc(len);
-    if (json_dup == nullptr) return;
-    memcpy(json_dup, json, len);
-    napi_status status = napi_call_threadsafe_function(g_image_tsfn, json_dup, napi_tsfn_nonblocking);
-    if (status != napi_ok) {
-        free(json_dup);
-    }
+// C++ dispatch 入口: 由 Kotlin lambda (注入到 OhosNativeBridge.imageTsfn) 调用
+// 混合协议双参: 控制面 JSON + 数据面裸字节 (decode 的图片字节, 可为 null)
+extern "C" void ohos_image_dispatch(const char *json, const void *bytes, size_t bytes_len) {
+    DispatchBinaryCommon(g_image_tsfn, json, bytes, bytes_len);
 }
 
 extern "C" void ohos_media_dispatch(const char* json) {
@@ -889,14 +987,10 @@ extern "C" void ohos_tts_dispatch(const char* json) {
     }
 }
 
-// tsfn call-js 回调: 在 ArkTS 主线程执行, 把 data (JSON 串) 包成 napi string 后调用 ArkTS 回调
+// tsfn call-js 回调: 在 ArkTS 主线程执行, 把 data (JSON + 裸字节) 包成
+// (napi string, napi ArrayBuffer|undefined) 后调用 ArkTS 回调
 static void ImageCallJs(napi_env env, napi_value js_cb, void* /*context*/, void* data) {
-    if (js_cb == nullptr || data == nullptr) return;
-    char* json = static_cast<char*>(data);
-    napi_value json_arg;
-    napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
-    free(json);
+    CallJsWithBinary(env, js_cb, data);
 }
 
 static void MediaCallJs(napi_env env, napi_value js_cb, void* /*context*/, void* data) {
@@ -917,8 +1011,9 @@ static void TtsCallJs(napi_env env, napi_value js_cb, void* /*context*/, void* d
     free(json);
 }
 
-// napi 包装: registerImageCallback(callback: (json: string) => void): void
+// napi 包装: registerImageCallback(callback: (json: string, bytes?: ArrayBuffer) => void): void
 // ArkTS 注册 image 回调; C++ 创建 tsfn, 通过 legado_register_image_fn 注入 ohos_image_dispatch 到 Kotlin
+// (混合协议: 第二参数 bytes 为 decode 图片字节的 external ArrayBuffer, 无字节面时 undefined)
 static napi_value RegisterImageCallback(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {nullptr};
@@ -1050,25 +1145,35 @@ static napi_value RegisterTtsCallback(napi_env env, napi_callback_info info) {
 // ArkTS 侧处理完图片操作/AVPlayer/TTS 事件后, 通过这三个 napi 方法把结果/事件回送给 Kotlin。
 // C++ 通过 dlsym 调 Kotlin @CName 函数 (legado_image_callback / legado_media_event / legado_tts_event)。
 
-// napi 包装: imageCallback(requestId: number, result: string): void
-// ArkTS → Kotlin 图片操作结果回调 (decode/encode/size/crop/split/stitch 完成后调用)
+// napi 包装: imageCallback(requestId: number, result: string, body?: ArrayBuffer): void
+// ArkTS → Kotlin 图片操作结果回调 (decode/encode/size/crop/split/stitch 完成后调用, 混合协议)
 static napi_value ImageCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 2;
-    napi_value args[2] = {nullptr};
+    size_t argc = 3;
+    napi_value args[3] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
     // args[0]: requestId (number, int64)
     int64_t request_id = 0;
     napi_get_value_int64(env, args[0], &request_id);
 
-    // args[1]: resultJson (string)
+    // args[1]: resultJson (string, 控制面: 不含字节的结果 JSON)
     size_t str_len = 0;
     napi_get_value_string_utf8(env, args[1], nullptr, 0, &str_len);
     char* buf = new char[str_len + 1];
     napi_get_value_string_utf8(env, args[1], buf, str_len + 1, &str_len);
 
+    // args[2]: body (ArrayBuffer, 数据面: encode 的 packed 字节; 无字节面时 undefined)
+    // napi_get_arraybuffer_info 零拷贝取数据指针, 调用期间 ArrayBuffer 由 JS 引擎持有, 生命周期安全
+    const void *bytes = nullptr;
+    size_t bytes_len = 0;
+    bool is_ab = false;
+    if (argc >= 3 && args[2] != nullptr &&
+            napi_is_arraybuffer(env, args[2], &is_ab) == napi_ok && is_ab) {
+        napi_get_arraybuffer_info(env, args[2], (void **) &bytes, &bytes_len);
+    }
+
     if (load_legado_shared() && g_image_callback != nullptr) {
-        g_image_callback(request_id, buf);
+        g_image_callback(request_id, buf, bytes, bytes_len);
     }
     delete[] buf;
 
@@ -1221,38 +1326,30 @@ static napi_value CryptoCallback(napi_env env, napi_callback_info info) {
     return ret;
 }
 
-// ============ Http tsfn 接线 (KP8+ 新增, 同 Image/Crypto 模式: tsfn 发请求 + @CName 回调返回结果) ============
-// 设计与 Image/Crypto 完全一致:
+// ============ Http tsfn 接线 (KP8+ 新增, 二进制混合协议: 控制面 JSON + 数据面裸字节) ============
+// 设计与 Image 一致 (KP9+ 升级):
 // - KMP 通过 OhosNativeBridge.invokeHttpSync 发 execute/cancel 请求
-// - 请求经 C++ ohos_http_dispatch → napi_call_threadsafe_function → ArkTS 主线程回调
+// - 请求经 C++ ohos_http_dispatch(json, body, bodyLen) → napi_call_threadsafe_function →
+//   ArkTS 主线程回调 (body 为请求体字节, napi external ArrayBuffer 零拷贝包装)
 // - ArkTS HttpBridgeHandler 调 @ohos.net.http 执行真实请求
-// - 完成后通过 httpCallback(requestId, resultJson) (napi → @CName) 回送结果给 Kotlin
+// - 完成后通过 httpCallback(requestId, resultJson, bodyArrayBuffer) (napi → @CName) 回送结果给 Kotlin
+//   (resultJson 为控制面小字段, body 为响应体裸字节)
 
 // C++ dispatch 入口: 由 Kotlin lambda (注入到 OhosNativeBridge.httpTsfn) 调用
-extern "C" void ohos_http_dispatch(const char* json) {
-    if (g_http_tsfn == nullptr || json == nullptr) return;
-    size_t len = strlen(json) + 1;
-    char* json_dup = (char*)malloc(len);
-    if (json_dup == nullptr) return;
-    memcpy(json_dup, json, len);
-    napi_status status = napi_call_threadsafe_function(g_http_tsfn, json_dup, napi_tsfn_nonblocking);
-    if (status != napi_ok) {
-        free(json_dup);
-    }
+// 混合协议双参: 控制面 JSON + 数据面裸字节 (请求 body, 可为 null)
+extern "C" void ohos_http_dispatch(const char *json, const void *bytes, size_t bytes_len) {
+    DispatchBinaryCommon(g_http_tsfn, json, bytes, bytes_len);
 }
 
-// tsfn call-js 回调: 在 ArkTS 主线程执行, 把 data (JSON 串) 包成 napi string 后调用 ArkTS 回调
+// tsfn call-js 回调: 在 ArkTS 主线程执行, 把 data (JSON + 裸字节) 包成
+// (napi string, napi ArrayBuffer|undefined) 后调用 ArkTS 回调
 static void HttpCallJs(napi_env env, napi_value js_cb, void* /*context*/, void* data) {
-    if (js_cb == nullptr || data == nullptr) return;
-    char* json = static_cast<char*>(data);
-    napi_value json_arg;
-    napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
-    free(json);
+    CallJsWithBinary(env, js_cb, data);
 }
 
-// napi 包装: registerHttpCallback(callback: (json: string) => void): void
+// napi 包装: registerHttpCallback(callback: (json: string, body?: ArrayBuffer) => void): void
 // ArkTS 注册 http 回调; C++ 创建 tsfn, 通过 legado_register_http_fn 注入 ohos_http_dispatch 到 Kotlin
+// (混合协议: 第二参数 body 为请求体字节的 external ArrayBuffer, 无 body 时 undefined)
 static napi_value RegisterHttpCallback(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1] = {nullptr};
@@ -1294,27 +1391,169 @@ static napi_value RegisterHttpCallback(napi_env env, napi_callback_info info) {
     return ret;
 }
 
-// napi 包装: httpCallback(requestId: number, result: string): void
-// ArkTS → Kotlin HTTP 请求结果回调 (execute 完成后调用)
+// napi 包装: httpCallback(requestId: number, result: string, body?: ArrayBuffer): void
+// ArkTS → Kotlin HTTP 请求结果回调 (execute 完成后调用, 混合协议)
 static napi_value HttpCallback(napi_env env, napi_callback_info info) {
-    size_t argc = 2;
-    napi_value args[2] = {nullptr};
+    size_t argc = 3;
+    napi_value args[3] = {nullptr};
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
     // args[0]: requestId (number, int64)
     int64_t request_id = 0;
     napi_get_value_int64(env, args[0], &request_id);
 
-    // args[1]: resultJson (string)
+    // args[1]: resultJson (string, 控制面: 不含 body 的结果 JSON)
     size_t str_len = 0;
     napi_get_value_string_utf8(env, args[1], nullptr, 0, &str_len);
     char* buf = new char[str_len + 1];
     napi_get_value_string_utf8(env, args[1], buf, str_len + 1, &str_len);
 
+    // args[2]: body (ArrayBuffer, 数据面: 响应 body 裸字节; 无 body 时 undefined)
+    // napi_get_arraybuffer_info 零拷贝取数据指针, 调用期间 ArrayBuffer 由 JS 引擎持有, 生命周期安全
+    const void *bytes = nullptr;
+    size_t bytes_len = 0;
+    bool is_ab = false;
+    if (argc >= 3 && args[2] != nullptr &&
+            napi_is_arraybuffer(env, args[2], &is_ab) == napi_ok && is_ab) {
+        napi_get_arraybuffer_info(env, args[2], (void **) &bytes, &bytes_len);
+    }
+
     if (load_legado_shared() && g_http_callback != nullptr) {
-        g_http_callback(request_id, buf);
+        g_http_callback(request_id, buf, bytes, bytes_len);
     }
     delete[] buf;
+
+    napi_value ret;
+    napi_get_undefined(env, &ret);
+    return ret;
+}
+
+// ============ WebView tsfn 接线 (混合协议: 控制面 JSON + 数据面裸字符串) ============
+// 设计与 Http/Image 一致, 但传输为混合协议, 避免大段 HTML 的 JSON 转义膨胀 + 双端编解码拷贝:
+// - KMP 通过 OhosNativeBridge.invokeWebViewSync(jsonControl, htmlRaw) 发后台 WebView 抓取请求 (书源 webView 规则)
+// - 请求经 C++ ohos_webview_dispatch(json, html) → napi_call_threadsafe_function → ArkTS 主线程回调
+//   (tsfn data 携带两个字符串: 控制面 JSON + 数据面裸 html, 均不经 JSON 转义)
+// - ArkTS WebViewBridgeHandler 用隐藏 Web 组件 loadUrl/loadData + onPageEnd 后 runJavaScript 取源码
+// - 完成后通过 webViewCallback(requestId, resultJson, bodyRaw) (napi → @CName) 回送结果给 Kotlin
+//   (resultJson 为控制面小字段, bodyRaw 为裸源码/命中 URL)
+
+// tsfn 传输数据: 控制面 JSON + 数据面裸 html (均 malloc 拷贝, WebViewCallJs 统一释放)
+struct WebViewDispatchData {
+    char *json;
+    char *html;
+};
+
+// C++ dispatch 入口: 由 Kotlin lambda (注入到 OhosNativeBridge.webViewTsfn) 调用
+// html 为第二参数裸字符串 (Kotlin 侧已把 null 归一为空串, 此处仅防御性判空)
+extern "C" void ohos_webview_dispatch(const char *json, const char *html) {
+    if (g_webview_tsfn == nullptr || json == nullptr) return;
+    if (html == nullptr) html = "";
+    WebViewDispatchData *data = (WebViewDispatchData *) malloc(sizeof(WebViewDispatchData));
+    if (data == nullptr) return;
+    size_t json_len = strlen(json) + 1;
+    size_t html_len = strlen(html) + 1;
+    data->json = (char *) malloc(json_len);
+    data->html = (char *) malloc(html_len);
+    if (data->json == nullptr || data->html == nullptr) {
+        free(data->json);
+        free(data->html);
+        free(data);
+        return;
+    }
+    memcpy(data->json, json, json_len);
+    memcpy(data->html, html, html_len);
+    napi_status status = napi_call_threadsafe_function(g_webview_tsfn, data, napi_tsfn_nonblocking);
+    if (status != napi_ok) {
+        free(data->json);
+        free(data->html);
+        free(data);
+    }
+}
+
+// tsfn call-js 回调: 在 ArkTS 主线程执行, 把 data (JSON + html) 包成两个 napi string 后调用 ArkTS 回调
+static void WebViewCallJs(napi_env env, napi_value js_cb, void * /*context*/, void *data) {
+    if (js_cb == nullptr || data == nullptr) return;
+    WebViewDispatchData *d = static_cast<WebViewDispatchData *>(data);
+    napi_value args[2];
+    napi_create_string_utf8(env, d->json, NAPI_AUTO_LENGTH, &args[0]);
+    napi_create_string_utf8(env, d->html, NAPI_AUTO_LENGTH, &args[1]);
+    napi_call_function(env, js_cb, 2, args, nullptr);
+    free(d->json);
+    free(d->html);
+    free(d);
+}
+
+// napi 包装: registerWebViewCallback(callback: (json: string, html: string) => void): void
+// ArkTS 注册 webView 回调; C++ 创建 tsfn, 通过 legado_register_webview_fn 注入 ohos_webview_dispatch 到 Kotlin
+static napi_value RegisterWebViewCallback(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) {
+        napi_throw_type_error(env, nullptr, "registerWebViewCallback requires 1 argument (callback)");
+        napi_value ret;
+        napi_get_undefined(env, &ret);
+        return ret;
+    }
+
+    if (g_webview_tsfn != nullptr) {
+        napi_release_threadsafe_function(g_webview_tsfn, napi_tsfn_abort);
+        g_webview_tsfn = nullptr;
+    }
+
+    napi_value work_name;
+    napi_create_string_utf8(env, "LegadoWebViewTsfn", NAPI_AUTO_LENGTH, &work_name);
+    napi_threadsafe_function tsfn;
+    napi_status status = napi_create_threadsafe_function(
+            env, args[0], work_name, nullptr, 0, 1,
+            nullptr, nullptr, nullptr, nullptr, WebViewCallJs, &tsfn);
+    if (status != napi_ok) {
+        OH_LOG_ERROR(LOG_APP, "registerWebViewCallback: napi_create_threadsafe_function failed: %{public}d", status);
+        napi_value ret;
+        napi_get_undefined(env, &ret);
+        return ret;
+    }
+    g_webview_tsfn = tsfn;
+
+    if (load_legado_shared() && g_register_webview_fn != nullptr) {
+        g_register_webview_fn(&ohos_webview_dispatch);
+    } else {
+        OH_LOG_WARN(LOG_APP, "registerWebViewCallback: legado_register_webview_fn not resolved (KMP invokeWebViewSync 将降级)");
+    }
+
+    napi_value ret;
+    napi_get_undefined(env, &ret);
+    return ret;
+}
+
+// napi 包装: webViewCallback(requestId: number, result: string, body: string): void
+// ArkTS → Kotlin webView 后台抓取结果回调 (混合协议: 控制面 JSON + 数据面裸源码/命中 URL)
+static napi_value WebViewCallback(napi_env env, napi_callback_info info) {
+    size_t argc = 3;
+    napi_value args[3] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    // args[0]: requestId (number, int64)
+    int64_t request_id = 0;
+    napi_get_value_int64(env, args[0], &request_id);
+
+    // args[1]: resultJson (string, 控制面: 不含 body 的结果 JSON)
+    size_t str_len = 0;
+    napi_get_value_string_utf8(env, args[1], nullptr, 0, &str_len);
+    char *buf = new char[str_len + 1];
+    napi_get_value_string_utf8(env, args[1], buf, str_len + 1, &str_len);
+
+    // args[2]: bodyRaw (string, 数据面: 裸源码/命中 URL, 失败或空结果时为空串)
+    size_t body_len = 0;
+    napi_get_value_string_utf8(env, args[2], nullptr, 0, &body_len);
+    char *body_buf = new char[body_len + 1];
+    napi_get_value_string_utf8(env, args[2], body_buf, body_len + 1, &body_len);
+
+    if (load_legado_shared() && g_webview_callback != nullptr) {
+        g_webview_callback(request_id, buf, body_buf);
+    }
+    delete[] buf;
+    delete[] body_buf;
 
     napi_value ret;
     napi_get_undefined(env, &ret);
@@ -1755,6 +1994,9 @@ androidx_compose_ui_arkui_init(env, exports
         // TextCodec tsfn 回调注册 + ArkTS → Kotlin 回调 (同 Pasteboard 模式, decode/encode)
         {"registerTextCodecCallback", nullptr, RegisterTextCodecCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"textCodecCallback", nullptr, TextCodecCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
+            // WebView tsfn 回调注册 + ArkTS → Kotlin 回调 (后台 WebView 抓取, 同 Http/Image 模式)
+            {"registerWebViewCallback", nullptr, RegisterWebViewCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
+            {"webViewCallback", nullptr, WebViewCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
     return exports;

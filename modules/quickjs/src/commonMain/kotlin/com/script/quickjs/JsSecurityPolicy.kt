@@ -1,5 +1,6 @@
 package com.script.quickjs
 
+import com.script.quickjs.JsSecurityPolicy.isClassVisible
 import com.script.quickjs.JsSecurityPolicy.protectedClassNamesMatcher
 import com.script.quickjs.JsSecurityPolicy.protectedClasses
 import com.script.quickjs.JsSecurityPolicy.systemClassProtectedName
@@ -24,7 +25,7 @@ import java.util.Collections
 object JsSecurityPolicy {
 
     /**
-     * android.content.Context 类引用 (KP1.1 跨平台): Android 端存在, 桌面 JVM 不存在。
+     * android.content.Context 类引用 (跨平台): Android 端存在, 桌面 JVM 不存在。
      * 用反射加载, null 表示当前平台无此类 (桌面 JVM 黑名单跳过 Context 检查)。
      */
     private val androidContextClass: Class<*>? by lazy {
@@ -33,6 +34,7 @@ object JsSecurityPolicy {
 
     private val protectedClassNamesMatcher by lazy {
         listOf(
+            // 2026-08-04: 用户确认保留此安全收紧(异于原版, 有意为之)。
             "java.lang.Class",
             "java.lang.ClassLoader",
             "java.net.URLClassLoader",
@@ -142,7 +144,7 @@ object JsSecurityPolicy {
     }
 
     private val protectedClasses by lazy {
-        // KP1.1 跨平台: android.content.Context 在桌面 JVM 不存在, 用反射按需加载
+        // 跨平台: android.content.Context 在桌面 JVM 不存在, 用反射按需加载
         // (桌面端常见 JS 引擎场景无 Android Context, 但保留黑名单条目以兼容 Android 行为)
         val list = mutableListOf(
             ClassLoader::class.java,

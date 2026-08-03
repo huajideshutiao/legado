@@ -6,8 +6,8 @@ import com.script.quickjs.QuickJsEngine
 import com.script.quickjs.ScriptBindings
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.http.newCallStrResponse
-import io.legado.app.model.script.JsBindingInjector
 import io.legado.app.help.http.okHttpClient
+import io.legado.app.model.script.JsBindingInjector
 import io.legado.app.model.script.JsScope
 import io.legado.app.model.script.SharedJsScopeProvider
 import io.legado.app.model.script.quickjs.QuickJsSharedJsScopeProvider.bytecodeCache
@@ -20,7 +20,6 @@ import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonObject
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.decodeFromString
 import splitties.init.appCtx
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -86,7 +85,7 @@ object QuickJsSharedJsScopeProvider : SharedJsScopeProvider {
         val scope = QuickJsEngine.getRuntimeScope(
             ScriptBindings().apply {
                 this.dangerousApi = enableDangerousApi
-                // KJ1: jsLib 顶层代码也能读 platform/image（与 JsBindings 注入一致）
+                // jsLib 顶层代码也能读 platform/image（与 JsBindings 注入一致）
                 this["platform"] = JsBindingInjector.platform
                 this["image"] = JsBindingInjector.image
             }

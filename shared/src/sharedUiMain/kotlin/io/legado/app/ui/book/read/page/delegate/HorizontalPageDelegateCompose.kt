@@ -146,6 +146,8 @@ abstract class HorizontalPageDelegateCompose(
     override fun abortAnim() {
         // 与 app 端 HorizontalPageDelegate.abortAnim 对应:
         // 动画进行中(animJob 未完成)按下/翻页抢跑时, 取消动画协程并立即补页(fillPage)
+        // 手动翻页手势/按键开始：暂停自动翻页推进 (对照原版 onScrollAnimStart → autoPager.pause)
+        autoPager?.pause()
         val dir = mDirection
         val wasRunning = animJob?.isActive == true
         animJob?.cancel()
@@ -161,12 +163,16 @@ abstract class HorizontalPageDelegateCompose(
                 PageDirectionShared.PREV -> if (!viewModel.prevPage()) viewModel.moveToPrevChapter()
                 else -> Unit
             }
+            // 实际换页：自动翻页进度归零重开 (对照原版 onPageChange → autoPager.reset)
+            autoPager?.reset()
         }
     }
 
     override fun onAnimStart(animationSpeed: Int) {
         if (!isMoved || mDirection == PageDirectionShared.NONE) {
-            // 未移动或方向未定，不启动动画（与 app 端 onTouch ACTION_UP 后判定一致）
+            // 未移动或方向未定，不启动动画（与 app 端 onTouch ACTION_UP 后判定一致）。
+            // 手势未成形同样恢复自动翻页，避免 abortAnim 的 pause 悬挂
+            autoPager?.resume()
             return
         }
         isStarted = true
@@ -206,6 +212,8 @@ abstract class HorizontalPageDelegateCompose(
                     }
                     else -> Unit
                 }
+                // 实际换页：自动翻页进度归零重开 (对照原版 onPageChange → autoPager.reset)
+                autoPager?.reset()
             }
         } finally {
             // 重置状态（与 app 端 stopScroll 行为对应）
@@ -263,7 +271,7 @@ abstract class HorizontalPageDelegateCompose(
         curContent: @Composable () -> Unit,
         nextContent: @Composable () -> Unit,
         onClick: (TextColumn?) -> Unit,
-        onLongClick: (TextColumn?) -> Unit,
+        onLongClick: (Float, Float) -> Unit,
     ) {
         // 尺寸变化时同步（与 app 端 setViewSize 调用时机对应）
         if (viewWidth != pageWidthPx || viewHeight != pageHeightPx) {
@@ -297,7 +305,7 @@ abstract class HorizontalPageDelegateCompose(
                         },
                     )
                 }
-                // 单击/长按手势：转发到 onTap / onLongClick
+                // 单击/长按手势：转发到 onTap / onLongClick（携带落点坐标，供页内文字选择命中判定）
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { offset ->
@@ -306,8 +314,8 @@ abstract class HorizontalPageDelegateCompose(
                                 onClick(null)
                             }
                         },
-                        onLongPress = { _ ->
-                            onLongClick(null)
+                        onLongPress = { offset ->
+                            onLongClick(offset.x, offset.y)
                         },
                     )
                 },

@@ -95,6 +95,15 @@ by appCtx.getSharedPreferences("local", Context.MODE_PRIVATE) {
             putBoolean("deleteBookOriginal", value)
         }
 
+    /**
+     * 是否已同意隐私协议 (首启弹窗同意后置 true, 拒绝则退出应用)
+     */
+    var privacyPolicyOk: Boolean
+        get() = getBoolean("privacyPolicyOk")
+        set(value) {
+            putBoolean("privacyPolicyOk", value)
+        }
+
     var appCrash: Boolean
         get() = getBoolean("appCrash")
         set(value) {

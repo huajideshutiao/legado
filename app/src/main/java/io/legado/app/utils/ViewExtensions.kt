@@ -4,7 +4,6 @@ package io.legado.app.utils
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -37,7 +36,6 @@ import androidx.core.view.marginBottom
 import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager.widget.ViewPager
-import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.canvasrecorder.CanvasRecorder
 import io.legado.app.utils.canvasrecorder.record
 import splitties.views.bottomPadding
@@ -316,12 +314,4 @@ fun android.widget.CompoundButton.setOnUserCheckedChangeListener(listener: (isCh
     setOnClickListener {
         listener(isChecked)
     }
-}
-
-// 替代已删除的 TintHelper.setTintAuto(background=true)，供恢复的原版 CodeView 控件使用
-fun View.applyTint(
-    @ColorInt color: Int,
-    isDark: Boolean = AppConfig.isNightTheme
-) {
-    backgroundTintList = ColorStateList.valueOf(color)
 }

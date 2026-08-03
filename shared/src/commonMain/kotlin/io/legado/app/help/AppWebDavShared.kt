@@ -8,9 +8,12 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDavShared.DEFAULT_WEB_DAV_URL
+import io.legado.app.help.AppWebDavShared.backUpWebDav
+import io.legado.app.help.AppWebDavShared.downloadAllBookProgress
 import io.legado.app.help.AppWebDavShared.exportWebDav
 import io.legado.app.help.AppWebDavShared.rootWebDavUrl
 import io.legado.app.help.AppWebDavShared.upConfig
+import io.legado.app.help.AppWebDavShared.uploadBookProgress
 import io.legado.app.help.book.LocalBookLocators
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
@@ -29,6 +32,7 @@ import io.legado.app.utils.AlphanumComparator
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.isJson
+import io.legado.app.utils.isNetworkAvailable
 import io.legado.app.utils.normalizeFileName
 import io.legado.app.utils.replaceReservedChar
 import io.legado.app.utils.systemCurrentTimeMillis
@@ -56,7 +60,8 @@ import kotlin.coroutines.cancellation.CancellationException
  * - **不下沉 RemoteBookWebDav**: 依赖 `RemoteBookWebDav` 的 defaultBookWebDav 保留在
  *   app 端 [io.legado.app.help.AppWebDav]; 其 `exportWebDav(Uri)` 在此以路径版
  *   [exportWebDav] 下沉 (Uri → 本地路径)。
- * - **不依赖 isNetworkAvailable**: 直接 try-catch, 让 [WebDavException] 自身报错。
+ * - **复用 [isNetworkAvailable]**: 与 app 端原版一致, 未配置 / 断网时静默 return
+ *   (见 [backUpWebDav] / [uploadBookProgress] / [downloadAllBookProgress])。
  *
  * # 命名后缀 Shared
  * 与 app 端 [io.legado.app.help.AppWebDav] 同包同名会与 app 模块类冲突
@@ -95,10 +100,10 @@ object AppWebDavShared {
     private val bookProgressUrl: String get() = "${rootWebDavUrl}${PROGRESS_SUB_DIR}"
 
     /** 书籍导出 URL (rootWebDavUrl + EXPORTS_SUB_DIR)。 */
-    private val exportsWebDavUrl: String get() = "${rootWebDavUrl}${EXPORTS_SUB_DIR}"
+    val exportsWebDavUrl: String get() = "${rootWebDavUrl}${EXPORTS_SUB_DIR}"
 
     /** 背景图片 URL (rootWebDavUrl + BG_SUB_DIR)。 */
-    private val bgWebDavUrl: String get() = "${rootWebDavUrl}${BG_SUB_DIR}"
+    val bgWebDavUrl: String get() = "${rootWebDavUrl}${BG_SUB_DIR}"
 
     /**
      * WebDav 根 URL (含子目录, 末尾带 /)。
@@ -107,8 +112,10 @@ object AppWebDavShared {
      * - 配置 URL 为空时默认 [DEFAULT_WEB_DAV_URL]
      * - URL 不以 "/" 结尾自动补
      * - webDavDir 非空时追加为子目录
+     *
+     * public: app 端 [io.legado.app.help.AppWebDav] 委托本属性, 消除双份拼接逻辑。
      */
-    private val rootWebDavUrl: String
+    val rootWebDavUrl: String
         get() {
             val configUrl = AppConfigProviders.get().webDavUrl
             var url = if (configUrl.isEmpty()) DEFAULT_WEB_DAV_URL else configUrl
@@ -232,9 +239,12 @@ object AppWebDavShared {
      */
     @Throws(Exception::class)
     suspend fun backUpWebDav(fileName: String) {
-        val auth = authorization ?: throw NoStackTraceException("webDav没有配置")
-        val putUrl = "$rootWebDavUrl$fileName"
-        WebDav(putUrl, auth).upload(BackupShared.zipFilePath)
+        // 未配置 / 断网静默 return (对照 app 端原版 AppWebDav.backUpWebDav)
+        if (!isNetworkAvailable()) return
+        authorization?.let { auth ->
+            val putUrl = "$rootWebDavUrl$fileName"
+            WebDav(putUrl, auth).upload(BackupShared.zipFilePath)
+        }
     }
 
     /**
@@ -329,6 +339,7 @@ object AppWebDavShared {
     ) {
         val auth = authorization ?: return
         if (!AppConfigProviders.get().syncBookProgress) return
+        if (!isNetworkAvailable()) return
         try {
             val bookProgress = BookProgress(book)
             val json = GSON.toJson(bookProgress)
@@ -349,6 +360,7 @@ object AppWebDavShared {
         try {
             val auth = authorization ?: return
             if (!AppConfigProviders.get().syncBookProgress) return
+            if (!isNetworkAvailable()) return
             val json = GSON.toJson(bookProgress)
             val url = getProgressUrl(bookProgress.name, bookProgress.author)
             WebDav(url, auth).upload(json.encodeToByteArray(), "application/json")
@@ -398,6 +410,8 @@ object AppWebDavShared {
      */
     suspend fun downloadAllBookProgress() {
         val auth = authorization ?: return
+        // 断网静默 return (对照 app 端原版 AppWebDav.downloadAllBookProgress)
+        if (!isNetworkAvailable()) return
         val bookProgressFiles = WebDav(bookProgressUrl, auth).listFiles()
         val map = hashMapOf<String, WebDavFile>()
         bookProgressFiles.forEach { map[it.displayName] = it }

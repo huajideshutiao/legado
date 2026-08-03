@@ -75,7 +75,7 @@ object DirectLinkUpload : DirectLinkUploadStoreProvider, DirectLinkUploadDefault
 
                 is ByteArray -> ZipUtils.zipByteArray(file, fileName)
                 is String -> ZipUtils.zipByteArray(file.toByteArray(), fileName)
-                // Phase D: GSON.toJson(file) 反射序列化 Any → toJsonElement().toString() 处理任意类型
+                // GSON.toJson(file) 反射序列化 Any → toJsonElement().toString() 处理任意类型
                 else -> ZipUtils.zipByteArray(file.toJsonElement().toString().toByteArray(), fileName)
             }
         }

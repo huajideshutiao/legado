@@ -56,6 +56,13 @@ interface ReaderPlatformProvider {
         screenModel: ReaderScreenModel,
     ): ReadMenuController
 
+    /**
+     * 音量键翻页开关 (对照 app 端 `AppConfig.volumeKeyPage`, 默认 true)。
+     * ReaderRoute 的 VolumeUp/VolumeDown 翻页快捷键按此开关决定是否拦截;
+     * 无音量键平台 (desktop/iOS/鸿蒙) 恒 true 即可。
+     */
+    val volumeKeyPage: Boolean get() = true
+
     /** 当前电池电量 0-100，-1 表示不显示 */
     fun getBatteryLevel(): Int
 
@@ -65,8 +72,21 @@ interface ReaderPlatformProvider {
     /** 路由退出：清理 [onEnter] 注册的副作用 */
     fun onExit(screenModel: ReaderScreenModel) {}
 
+    /**
+     * 屏幕超时设置变更 (对照 app 端 keepLightChange → upScreenTimeOut)。
+     * ReaderRoute 订阅 [ReadBookEvents.keepLightChange] 后桥接, 平台 actual 重算常亮计时。
+     */
+    fun onKeepLightChange(screenModel: ReaderScreenModel) {}
+
     /** 长按页内文字触发选择 (对照 app 端 ReadView.CallBack.onPageLongClick) */
     fun onLongPress(screenModel: ReaderScreenModel) {}
+
+    /**
+     * 页内文字选择完成（长按选中文字后抬起）：携带选中文本，平台弹选择菜单
+     * （对照旧 ReadView.CallBack.showTextActionMenu；app 端桥接到 TextSelectionDialog
+     * 并注入选中文本，见 MainActivity.showReaderTextSelection）。默认空实现。
+     */
+    fun onTextSelected(screenModel: ReaderScreenModel, text: String) {}
 
     /**
      * 平台宿主 onPause（对照 app 端 ReadBookActivity.onPause）：默认空实现，
@@ -248,6 +268,8 @@ class ReaderScreenModel(
                 if (menuState.isVisible) {
                     postDialogEvent(ReaderDialogEvent.ReadAloud)
                 } else {
+                    // 停自动翻页 (对照 app 端 onClickReadAloud 首步 autoPageStop), 再切换朗读
+                    if (menuState.autoPage) menuState.clickAutoPage()
                     viewModel.toggleReadAloud()
                 }
             }
@@ -458,14 +480,14 @@ class ReaderScreenModel(
      *
      * 平台 actual 在 Activity Lifecycle ON_PAUSE 时调 [ReaderPlatformProvider.onPause]，
      * 由其桥接到本方法。完成：
-     * - 落库当前阅读进度（防止 Activity 被销毁时丢进度，对照原版 `ReadBook.saveRead()`）
+     * - 落库并上传当前阅读进度（对照原版 onPause 的 `ReadBook.saveRead()` + `uploadProgress()`，
+     *   [ReadBookViewModelShared.uploadProgress] 内部先落库再按配置上传，走独立 progressSyncScope）
      * - 取消预下载任务（对照原版 `ReadBook.cancelPreDownloadTask()`）
      *
-     * 上传进度交由 [ReadBookViewModelShared.onCleared]（ DisposableEffect.onDispose 触发）
-     * 与切章时的 `uploadProgress()`，与原版 onPause 一致。
+     * 退出阅读（DisposableEffect.onDispose → [ReadBookViewModelShared.onCleared]）时同样落库上传。
      */
     fun onPause() {
-        viewModel.saveProgress()
+        viewModel.uploadProgress()
         viewModel.cancelPreDownloadTask()
     }
 
@@ -526,4 +548,18 @@ sealed interface ReaderDialogEvent {
 
     /** 章节换源 (对照原版 换源图标长按 → ChangeChapterSourceDialog, 全高底部弹窗) */
     object ChangeChapterSource : ReaderDialogEvent
+
+    // ===== 溢出菜单选择器 (iOS/鸿蒙/desktop 共用, 对照 app 端 ReadMenu 的 selector/alert 弹窗) =====
+
+    /** 模拟阅读配置 (对照原版 menu_simulated_reading → showSimulatedReading) */
+    data object SimulatedReading : ReaderDialogEvent
+
+    /** 图片样式 4 项选择器 (对照原版 menu_image_style) */
+    data object ImageStyle : ReaderDialogEvent
+
+    /** 离线缓存起止章节 (对照原版 menu_download → showDownloadDialog) */
+    data object Download : ReaderDialogEvent
+
+    /** 文本编码选择器 (对照原版 menu_set_charset → showCharsetConfig) */
+    data object SetCharset : ReaderDialogEvent
 }

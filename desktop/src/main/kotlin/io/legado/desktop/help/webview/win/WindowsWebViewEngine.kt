@@ -11,6 +11,9 @@ import io.legado.desktop.help.webview.WebViewFetchResult
 import io.legado.desktop.help.webview.WebViewWindowHandle
 import io.legado.desktop.help.webview.WebViewWindowRequest
 import io.legado.desktop.help.webview.unwrapScriptResult
+import io.legado.desktop.help.webview.win.WindowsWebViewEngine.fetch
+import io.legado.desktop.help.webview.win.WindowsWebViewEngine.harvestCookies
+import io.legado.desktop.help.webview.win.WindowsWebViewEngine.openWindow
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -202,7 +205,11 @@ private class WebView2WindowHandle(
     private val closedOnce = AtomicBoolean(false)
 
     suspend fun open() {
-        val created = WebView2Instance.create(visible = true, title = request.title)
+        val created = WebView2Instance.create(
+            visible = true,
+            title = request.title,
+            bottomSheet = request.bottomSheet,
+        )
         if (created == null) {
             AppLog.put("WebView2 窗口创建失败: ${request.title}")
             close()
@@ -231,11 +238,12 @@ private class WebView2WindowHandle(
         }
     }
 
-    override suspend fun currentHtml(): String? {
+    override suspend fun currentHtml(): String? =
+        evaluateJavascript(WindowsWebViewEngine.DEFAULT_JS)
+
+    override suspend fun evaluateJavascript(script: String): String? {
         val target = instance ?: return null
-        return unwrapScriptResult(
-            target.executeScript(WindowsWebViewEngine.DEFAULT_JS, AppConst.timeLimit)
-        )
+        return unwrapScriptResult(target.executeScript(script, AppConst.timeLimit))
     }
 
     override fun reload() {

@@ -15,21 +15,20 @@ import io.legado.app.help.JsExtFactory
 import io.legado.app.help.JsExtProviders
 import io.legado.app.help.RuleBigDataHelp
 import io.legado.app.help.RuleBigDataProviders
-import io.legado.app.help.source.SourceCacheProvider
-import io.legado.app.help.source.SourceCacheProviders
-import io.legado.app.help.source.SourceDebugLogger
-import io.legado.app.help.source.SourceDebugLoggers
-import io.legado.app.help.source.SourceNetworkProvider
-import io.legado.app.help.source.SourceNetworkProviders
 import io.legado.app.help.UserAgentProvider
 import io.legado.app.help.UserAgentProviders
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.CookieStore
 import io.legado.app.help.http.OkHttpProxyClientProvider
 import io.legado.app.help.http.OkHttpProxyClientProviders
-import io.legado.app.help.http.getProxyClient
-import io.legado.app.model.Debug
 import io.legado.app.help.image.BitmapImageOps
+import io.legado.app.help.source.SourceCacheProvider
+import io.legado.app.help.source.SourceCacheProviders
+import io.legado.app.help.source.SourceDebugLogger
+import io.legado.app.help.source.SourceDebugLoggers
+import io.legado.app.help.source.SourceNetworkProvider
+import io.legado.app.help.source.SourceNetworkProviders
+import io.legado.app.model.Debug
 import io.legado.app.model.SharedJsScope
 import io.legado.app.model.analyzeRule.AnalyzeRule
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
@@ -46,7 +45,7 @@ import io.legado.app.utils.registerAndroidChineseUtils
  * shared 侧 [JsEngines]/[SharedJsScope]/[JsBindingInjector] 走 provider 注入（非 expect/actual），
  * 宿主启动早期 App.onCreate 调 [registerAndroidJsEngines]（任何 JS eval 之前）。
  *
- * 引擎固定 quickjs（rhino 已于 2026-07-17 KMP 裁决弃用，模块及适配层已删除）。
+ * 引擎固定 quickjs（rhino 已弃用，模块及适配层已删除）。
  */
 fun registerAndroidJsEngines() {
     JsBindingInjector.registerImageOps(BitmapImageOps)

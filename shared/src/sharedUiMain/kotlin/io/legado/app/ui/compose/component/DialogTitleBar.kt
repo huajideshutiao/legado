@@ -1,6 +1,7 @@
 package io.legado.app.ui.compose.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -31,6 +32,8 @@ fun DialogTitleBar(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
+    titleClickable: Boolean = false,
+    onTitleClick: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val colors = AppTheme.colors
@@ -53,7 +56,17 @@ fun DialogTitleBar(
         } else {
             Spacer(Modifier.width(16.dp))
         }
-        Column(Modifier.weight(1f)) {
+        Column(
+            Modifier
+                .weight(1f)
+                .let { mod ->
+                    if (titleClickable && onTitleClick != null) {
+                        mod.clickable(onClick = onTitleClick)
+                    } else {
+                        mod
+                    }
+                }
+        ) {
             Text(
                 text = title,
                 color = colors.primaryText,

@@ -11,66 +11,24 @@ import io.legado.app.utils.isJsonObject
 import kotlinx.coroutines.CoroutineScope
 
 /**
- * HttpTTS 编辑 VM 共享核心 (KMP 版, commonMain)。
+ * HttpTTS 编辑 VM 共享核心 (commonMain)。
  *
- * # 背景
+ * 对照 app 端 `HttpTtsEditViewModel(app) : BaseViewModel(app)`: 四个方法
+ * (initData/save/importFromClip/importSource) 仅依赖 DAO + 协程 + Toasters + 剪贴板 +
+ * KS_JSON + ReadAloud.upReadAloudClass() 通知, 可下沉多端复用。DAO 走
+ * [AppDbProviders.get].httpTTSDao; `execute{...}` 链式回调下沉为直接调 [Coroutine.async]。
  *
- * 对照 app 端原 `HttpTtsEditViewModel(app: Application) : BaseViewModel(app)`:
- * - 四个方法 (initData / save / importFromClip / importSource) 仅依赖 DAO + 协程 +
- *   Toasters + 剪贴板文本 + KS_JSON + ReadAloud.upReadAloudClass() 通知,
- *   可以下沉 commonMain 供多端复用 (Android / Desktop / iOS / 鸿蒙)。
- * - DAO 访问走 [AppDbProviders.get].httpTTSDao (宿主启动时由 app 端注册
- *   AppDbAccessorImpl, 已暴露 httpTTSDao)。
- * - 原 `execute { ... }.onSuccess { ... }.onError { ... }` (BaseViewModel 内委托
- *   [Coroutine.async]) 下沉后直接调 [Coroutine.async], 保留链式 onSuccess/onError
- *   回调结构, 行为等价 (业务 context=IO, 回调 executeContext=mainDispatcher,
- *   与 BaseViewModel.execute 默认值一致)。
+ * Android 专属依赖替换: Bundle 解析留 app 端 (转发到显式参数 [id]); 剪贴板经
+ * [clipTextProvider] 注入; TTS 引擎刷新通知经 [onTtsChanged] 注入——shared 端 insert 后
+ * 无条件调用, 宿主内部自行判断 `ReadAloud.ttsEngine == httpTTS.id.toString()` 再决定
+ * 是否 upReadAloudClass (判断逻辑放宿主端, shared 只负责通知时机, 行为等价);
+ * Toast → [Toasters.get]。
  *
- * # Android 专属依赖替换
+ * 设计: 组合委托 (BaseViewModel 是 AndroidViewModel 不能继承)。
  *
- * - **Bundle 解析留 app 端**: 原 `initData(arguments: Bundle?, ...)` 用
- *   `arguments?.getLong("id")` 解析 Bundle, commonMain 不能直接下沉, 留 app 端
- *   解析后转发到 [initData] 的显式参数 [id];
- * - **剪贴板访问**: 原 `getClipText()` (Android ClipboardManager) 不能下沉,
- *   通过构造函数 lambda [clipTextProvider] 注入:
- *   - app 端实现 `{ getClipText() }` (委托 utils.ContextExtensions.getClipText);
- *   - desktop 端实现用 `Toolkit.getDefaultToolkit().systemClipboard.getData(...)`;
- *   - iOS/鸿蒙留宿主自实现。
- * - **TTS 引擎刷新通知**: 原 `save` 内
- *   `if (ReadAloud.ttsEngine == httpTTS.id.toString()) ReadAloud.upReadAloudClass()`
- *   依赖 app 端 `ReadAloud` 单例 (未下沉), 通过构造函数 lambda [onTtsChanged] 注入。
- *   shared 端 save 内 `insert` 后无条件调 [onTtsChanged](), 由宿主 lambda 内部
- *   自行判断 `ReadAloud.ttsEngine == httpTTS.id.toString()` 后决定是否调
- *   `ReadAloud.upReadAloudClass()` (判断逻辑放宿主端, shared 端只负责通知时机,
- *   行为等价; 因 [onTtsChanged] 无参, 宿主需自行持有刚保存的 HttpTTS 引用,
- *   app 端实现见 `HttpTtsEditViewModel.lastSavedTts` 字段)。
- * - **Toast 提示**: 原 `context.toastOnUi(msg)` → [Toasters.get].toast(msg)
- *   (Toaster 接口已下沉 commonMain, androidMain 注册的实现内部切主线程,
- *   与 `context.toastOnUi` 行为等价; 原 `context.toastOnUi(it.message)`
- *   在 localizedMessage 为 null 时下沉惯例回落到 "Error", 与 ReplaceEditViewModelShared /
- *   TxtTocRuleEditViewModelShared 一致)。
- *
- * # 设计选择 (组合委托)
- *
- * 不采用 `expect abstract class` 让 app 端子类继承: BaseViewModel 是 AndroidViewModel,
- * commonMain 不可用, Kotlin 单继承会冲突。改用组合委托模式 (对照
- * [io.legado.app.ui.replace.edit.ReplaceEditViewModelShared] /
- * [io.legado.app.ui.book.toc.rule.TxtTocRuleEditViewModelShared]):
- * - app 端 `HttpTtsEditViewModel(app)` `extends BaseViewModel(app)`, 内部持有本类实例,
- *   通过 `viewModelScope` + `{ getClipText() }` + onTtsChanged lambda 注入;
- * - desktop 端在 Compose `remember` 中构造本类, 注入应用 scope + AWT Clipboard lambda
- *   + 自定义 TTS 刷新 lambda。
- *
- * @param scope 协程作用域, actual 平台注入
- *   (Android = `viewModelScope` / 桌面 = 应用主作用域 / 窗口 scope)
- * @param clipTextProvider 剪贴板文本提供者 (替代 `getClipText()`):
- *   - app 端实现 `{ getClipText() }`
- *   - desktop 端实现 `Toolkit.getDefaultToolkit().systemClipboard.getData(DataFlavor.stringFlavor) as? String`
- * @param onTtsChanged TTS 引擎刷新通知 (替代 `ReadAloud.upReadAloudClass()`):
- *   - app 端实现内部判断 `ReadAloud.ttsEngine == saved.id.toString()` 后调
- *     `ReadAloud.upReadAloudClass()` (saved 由 app 端 ViewModel 持有);
- *   - desktop 端实现刷新桌面 TTS 引擎;
- *   - iOS/鸿蒙留宿主自实现。
+ * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
+ * @param clipTextProvider 剪贴板文本提供者 (替代 `getClipText()`)
+ * @param onTtsChanged TTS 引擎刷新通知 (替代 `ReadAloud.upReadAloudClass()`)
  */
 class HttpTtsEditViewModelShared(
     private val scope: CoroutineScope,

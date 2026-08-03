@@ -1,11 +1,12 @@
 package io.legado.app.data
 
+import io.legado.app.data.AppDatabaseProviders.get
 import kotlin.concurrent.Volatile
 
 /**
  * [AppDatabase] 单例注入接口 (shared commonMain)。
  *
- * # KP1.2: 桌面端落地 Room KMP
+ * # 平台差异
  * - commonMain 的 [AppDatabase] (@Database 主体 + 17 DAO + companion 常量) 平台无关
  * - 但 appDb 单例构造依赖平台特定驱动 (Android: AndroidSQLiteDriver + appCtx;
  *   JVM: BundledSQLiteDriver + 本地文件), 通过本接口在 commonMain 解耦

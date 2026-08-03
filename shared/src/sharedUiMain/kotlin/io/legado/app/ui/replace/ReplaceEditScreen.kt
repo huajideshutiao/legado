@@ -13,10 +13,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
-import androidx.compose.material.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -39,9 +39,12 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.ui.compose.component.AppCheckbox
-import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.AppTextField
+import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.component.code.KeyboardToolbar
+import io.legado.app.ui.compose.component.code.KeyboardToolbarState
+import io.legado.app.ui.compose.component.code.insertAtCursor
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.replace.edit.ReplaceEditViewModelShared
 import legado.shared.generated.resources.Res
@@ -69,9 +72,9 @@ import org.jetbrains.compose.resources.stringResource
  * 替换规则编辑 Screen (KMP 版, commonMain 共享)。
  *
  * 对照 app 端原 Content 下沉, 做以下简化以消除 Android 依赖:
- * - **去掉 KeyboardToolbar**: app 端 `io.legado.app.ui.widget.keyboard.KeyboardToolbar`
- *   及 `insertAtCursor`/`KeyboardAssistsConfig` 未下沉, 强 Android 依赖; KMP 版用回调
- *   [onHelp] 暴露帮助入口, 宿主端可自行实现辅助键工具栏并接入 (app 端后续包装时回填)
+ * - **KeyboardToolbar**: [io.legado.app.ui.compose.component.code.KeyboardToolbar] 共享实现
+ *   (辅助键/撤销/重做/查找替换面板), 与 [BookSourceEditScreen] 用法一致; 查找替换面板
+ *   为空操作 (对照原版 `getActiveCodeView() = null`, 本页无 CodeView)
  * - **剪贴板用回调**: [onCopyRule] / [onPasteRule] 由宿主处理 (app 端 sendToClip/getClipText,
  *   desktop 端 java.awt.datatransfer.Clipboard), VM 解析 JSON 后回调回填表单
  * - **去掉 WindowInsets.ime/navigationBars**: Android 专属 inset, desktop 无 IME insets 概念,
@@ -87,7 +90,7 @@ import org.jetbrains.compose.resources.stringResource
  *   故本 Screen 不再需要 `onShowError` 回调 (旧版接口已移除);
  * - `state` StateFlow 接口保留 (旧版 VM 同名接口), 用 [collectAsState] 订阅触发回填。
  *
- * 保留核心表单逻辑: [FieldState] (撤销/重做历史, 去 insertAtCursor) / [FormField] /
+ * 保留核心表单逻辑: [FieldState] (撤销/重做历史 + 辅助键插入) / [FormField] /
  * [UseRegexRow] / [ScopeCheckRow], 对齐 app 端字段语义与校验。
  *
  * @param onCopyRule 复制规则到剪贴板 (宿主端序列化 ReplaceRule 为 JSON 写剪贴板)
@@ -95,6 +98,9 @@ import org.jetbrains.compose.resources.stringResource
  *   [ReplaceEditViewModelShared.pasteRule], 解析成功后回调 success 回填表单;
  *   解析失败由 Shared 内部 `Toasters.get().toast(...)` 提示, 无需外部 error 回调
  * @param onHelp 正则帮助回调 (app 端 showHelp("regexHelp") / desktop 端浏览器跳转)
+ * @param onShowKeyboardConfig 辅助键配置入口 (app 端 KeyboardAssistsConfig DialogFragment,
+ *   对照 [BookSourceEditScreen] 的 onShowKeyboardConfig; 未注入时 ⚙️ 点击无操作)
+ * @param modifier 外部 modifier (app 端可附加 `windowInsetsPadding(ime ∪ navigationBars)`)
  */
 @Composable
 fun ReplaceEditScreen(
@@ -104,9 +110,11 @@ fun ReplaceEditScreen(
     onCopyRule: (ReplaceRule) -> Unit,
     onPasteRule: (success: (ReplaceRule) -> Unit) -> Unit,
     onHelp: () -> Unit,
+    modifier: Modifier = Modifier,
+    onShowKeyboardConfig: () -> Unit = {},
 ) {
     val rule by viewModel.state.collectAsState()
-    // 表单字段状态 (TextFieldValue 支持光标位置, 但去掉 app 端 insertAtCursor 辅助键插入)
+    // 表单字段状态 (TextFieldValue 支持光标位置, 辅助键插入走 FieldState.insertAtCursor)
     val name = remember { FieldState() }
     val group = remember { FieldState() }
     val pattern = remember { FieldState() }
@@ -118,6 +126,8 @@ fun ReplaceEditScreen(
     var scopeTitle by remember { mutableStateOf(false) }
     var scopeContent by remember { mutableStateOf(true) }
     var focusedField by remember { mutableStateOf<FieldState?>(null) }
+    // 键盘辅助条状态 (对照 BookSourceEditScreen: 辅助键/撤销/重做/查找替换面板)
+    val keyboardState = remember { KeyboardToolbarState() }
 
     // 规则加载完成后回填表单 (对齐 app 端 upReplaceView)
     LaunchedEffect(rule) {
@@ -136,7 +146,7 @@ fun ReplaceEditScreen(
     }
 
     Column(
-        Modifier
+        modifier
             .fillMaxSize()
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown || !event.isCtrlPressed) {
@@ -244,14 +254,25 @@ fun ReplaceEditScreen(
                 number = true
             ) { focusedField = it }
         }
+        // 键盘辅助条 (对照原版 keyboardTool.setInterface: 辅助键 + 撤销/重做 + 查找替换面板 +
+        // KeyboardAssistsConfig 入口; 查找替换面板为空操作, 对照原版 getActiveCodeView() = null)
+        KeyboardToolbar(
+            state = keyboardState,
+            onSendText = { focusedField?.insertAtCursor(it) },
+            onUndo = { focusedField?.undo() },
+            onRedo = { focusedField?.redo() },
+            onShowConfig = onShowKeyboardConfig,
+            target = { null },
+        )
     }
 }
 
 /**
  * 单个输入框状态: 值 + 撤销/重做历史 (上限 100 步)。
  *
- * 对照 app 端原 FieldState 下沉, 去掉 `insertAtCursor` (依赖 app 端
- * `KeyboardToolbarState.insertAtCursor` 扩展); 保留 undo/redo/onChange/reset 语义。
+ * 对照 app 端原 FieldState 下沉, 保留 undo/redo/onChange/reset 语义, 并恢复
+ * `insertAtCursor` (键盘辅助条 sendText 的 Compose 侧插入目标, 用共享的
+ * [io.legado.app.ui.compose.component.code.insertAtCursor] 扩展)。
  * KMP Screen 统一处理 Ctrl+Z、Ctrl+Y 与 Ctrl+Shift+Z，并定向作用于当前焦点字段。
  */
 class FieldState {
@@ -270,6 +291,13 @@ class FieldState {
         }
         value = new
     }
+
+    /** 在光标处插入文本 (键盘辅助条 sendText), 替换选中区。 */
+    fun insertAtCursor(insert: String) {
+        if (insert.isBlank()) return
+        value = value.insertAtCursor(insert)
+    }
+
 
     fun reset(text: String) {
         value = TextFieldValue(text)
@@ -290,7 +318,7 @@ class FieldState {
     }
 }
 
-/** 文本输入框: label 浮动提示, 聚焦时登记为焦点字段 (供宿主辅助键工具栏定向 undo/redo) */
+/** 文本输入框: label 浮动提示, 聚焦时登记为焦点字段 (供键盘辅助条定向 undo/redo/插入) */
 @Composable
 private fun FormField(
     field: FieldState,

@@ -23,6 +23,8 @@ import kotlinx.serialization.json.JsonPrimitive
  * | JsonObject           | LinkedHashMap (保序) |
  *
  * 注册由 quickjs 引擎在入 JS 边界统一调用 (bindings 注入 + Java 方法返回)。
+ *
+ * 2026-08-04: 用户确认保留跨边界自动转换(兼容性增强)。
  */
 object JsonElementJsConverter : JsValueConverter {
 

@@ -31,6 +31,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
@@ -42,6 +44,7 @@ import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.content_edit_copy_all
 import legado.shared.generated.resources.content_edit_copy_success
 import legado.shared.generated.resources.content_edit_reset
+import legado.shared.generated.resources.edit
 import legado.shared.generated.resources.ic_save
 import legado.shared.generated.resources.ok
 import org.jetbrains.compose.resources.painterResource
@@ -71,19 +74,21 @@ import org.jetbrains.compose.resources.stringResource
  *
  * # 与 app 端的差异
  *
- * - 不实现"标题点击编辑章节名" (依赖 appDb.bookChapterDao + ReadBook 模型, 桌面端未下沉,
- *   章节名编辑由调用方在外部实现);
- * - 不实现 onCancel 时自动 save (原版 onCancel(dialog) { save() } 是因为 View EditText
- *   退出时保存进度, KMP 版用 onSubmit 显式提交, dismiss 即丢弃, 与"返回取消"语义对齐);
+ * - 标题栏点击编辑章节名: 由 [onRenameChapter] 回调承载 (调用方负责 appDb 更新 + 重载),
+ *   null 时标题不可点击, 与原版标题栏点击改标题对齐 (原版直接依赖 appDb.bookChapterDao);
+ * - 返回键 (标题栏返回) 自动保存: 对齐原版 onCancel(dialog) { save() } 语义;
+ * - 底部显式"取消"按钮保留丢弃语义 (与返回键保存区分);
  * - 不实现 applyContent 按阅读进度滚动定位 (依赖 AppCompatEditText.layout.getLineForOffset,
  *   Compose OutlinedTextField 不暴露此 API, 滚动定位由用户手动操作)。
  *
  * @param chapterName 章节名 (用于标题 + 复制全部前缀)
  * @param content 章节正文 (用户可编辑)
  * @param onSubmit 用户点击保存且内容非空, 参数为编辑后的正文
- * @param onDismiss 用户取消 (返回按钮 / 点击对话框外部)
+ * @param onDismiss 用户取消 (点击"取消"按钮 / 对话框外部)
  * @param onReset 重置回调 (从源重新获取正文), null 时不显示重置菜单项
  * @param clipTextSink 剪贴板文本写入器 (替代 `context.sendToClip(text)`), null 时不显示复制全部菜单项
+ * @param onRenameChapter 章节重命名回调 (参数为新标题, 调用方负责落库 + 刷新),
+ *   null 时标题栏不可点击编辑 (对齐原版标题栏点击改章节标题)
  */
 @Composable
 fun ContentEditDialog(
@@ -93,6 +98,7 @@ fun ContentEditDialog(
     onDismiss: () -> Unit,
     onReset: (() -> Unit)? = null,
     clipTextSink: ((String) -> Unit)? = null,
+    onRenameChapter: ((String) -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
     // 所有字符串一次性在 @Composable 主体内 rememberString, 避免 onClick 中误用 @Composable
@@ -102,6 +108,16 @@ fun ContentEditDialog(
     val copySuccessText = stringResource(Res.string.content_edit_copy_success)
     val cancelText = stringResource(Res.string.cancel)
     val okText = stringResource(Res.string.ok)
+    val editText = stringResource(Res.string.edit)
+
+    // 标题本地 state: 重命名成功后由回调更新, chapterName 参数变化 (外部重载) 时重新同步
+    var titleState by remember(chapterName) { mutableStateOf(chapterName) }
+    LaunchedEffect(chapterName) {
+        titleState = chapterName
+    }
+    // 标题编辑子对话框开关 (原版 titleBar.toolbar 点击 → alert 编辑标题)
+    var showTitleEdit by remember { mutableStateOf(false) }
+    var titleEditState by remember { mutableStateOf(titleState) }
 
     // 本地编辑 state: content 参数变化时 (如 reset 后调用方更新 content) 重新初始化
     var contentState by remember(content) { mutableStateOf(content) }
@@ -129,8 +145,14 @@ fun ContentEditDialog(
     ) {
         Column(Modifier.fillMaxWidth()) {
             DialogTitleBar(
-                title = chapterName,
-                onBack = onDismiss,
+                title = titleState,
+                // 返回键自动保存 (对照原版 onCancel(dialog) { save() })
+                onBack = { save() },
+                titleClickable = onRenameChapter != null,
+                onTitleClick = {
+                    titleEditState = titleState
+                    showTitleEdit = true
+                },
                 actions = {
                     IconButton(onClick = { save() }) {
                         Icon(
@@ -157,7 +179,7 @@ fun ContentEditDialog(
                                 onClick = {
                                     dismissMenu()
                                     // 与 app 端 sendToClip("$title\n${contentView?.text}") 等价
-                                    clipTextSink("$chapterName\n$contentState")
+                                    clipTextSink("$titleState\n$contentState")
                                     Toasters.get().toast(copySuccessText)
                                 },
                             ) {
@@ -201,6 +223,49 @@ fun ContentEditDialog(
                 Spacer(Modifier.width(4.dp))
                 TextButton(onClick = { save() }) {
                     Text(okText, color = DesignTokens.arcoBlue6)
+                }
+            }
+        }
+    }
+    // 标题编辑子对话框 (对照原版 editTitle: alert + 单行输入, 确认后回调调用方落库 + 刷新)
+    if (showTitleEdit && onRenameChapter != null) {
+        AppDialog(
+            onDismissRequest = { showTitleEdit = false },
+            properties = AppDialogSizes.properties(),
+        ) {
+            Surface(
+                shape = DesignTokens.dialogShape,
+                color = colors.fillet,
+                modifier = Modifier.fillMaxWidth().padding(8.dp),
+            ) {
+                Column(Modifier.fillMaxWidth()) {
+                    DialogTitleBar(title = editText, onBack = { showTitleEdit = false })
+                    AppTextField(
+                        value = titleEditState,
+                        onValueChange = { titleEditState = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                    )
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = { showTitleEdit = false }) {
+                            Text(cancelText, color = colors.secondaryText)
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        TextButton(onClick = {
+                            showTitleEdit = false
+                            titleState = titleEditState
+                            onRenameChapter(titleEditState)
+                        }) {
+                            Text(okText, color = DesignTokens.arcoBlue6)
+                        }
+                    }
                 }
             }
         }

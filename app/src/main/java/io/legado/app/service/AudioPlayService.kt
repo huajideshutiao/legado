@@ -260,6 +260,7 @@ class AudioPlayService : BaseService(), AudioPlayControllerListener, AudioPlayMa
         if (!requestFocus()) return
         execute(context = Main) {
             // 拉链接+缓冲窗口置 LOADING, 不再置 STOP: 后者会让 Activity.onDestroy 误判"没在播"而 stopSelf
+            // 2026-08-04: 用户确认保留 LOADING 状态(刻意设置)。
             AudioPlay.status = Status.LOADING
             postEvent(EventBus.AUDIO_STATE, Status.LOADING)
             audioPlayManager.cancelProgressJobs()

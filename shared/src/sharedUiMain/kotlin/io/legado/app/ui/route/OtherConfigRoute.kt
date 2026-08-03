@@ -14,16 +14,17 @@ import androidx.compose.ui.Modifier
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.toast.Toasters
+import io.legado.app.help.update.AppUpdateManager
 import io.legado.app.model.CheckSourceShared
 import io.legado.app.ui.book.read.config.PageKeyDialog
-import io.legado.app.ui.config.ConfigActionsShared
-import io.legado.app.ui.config.OtherConfigScreen
-import io.legado.app.ui.config.OtherConfigScreenModel
-import io.legado.app.ui.config.OtherConfigUiEvent
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
+import io.legado.app.ui.config.ConfigActionsShared
+import io.legado.app.ui.config.OtherConfigScreen
+import io.legado.app.ui.config.OtherConfigScreenModel
+import io.legado.app.ui.config.OtherConfigUiEvent
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.ui.dialog.TextInputDialog
 import io.legado.app.ui.root.AppNavigator
@@ -51,10 +52,11 @@ import legado.shared.generated.resources.sure
 import legado.shared.generated.resources.sure_del
 import legado.shared.generated.resources.threads_num
 import legado.shared.generated.resources.threads_num_title
+import legado.shared.generated.resources.update_url_hint
+import legado.shared.generated.resources.update_url_title
 import legado.shared.generated.resources.user_agent
 import legado.shared.generated.resources.web_port_summary
 import legado.shared.generated.resources.web_port_title
-import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -103,6 +105,7 @@ fun OtherConfigRoute(
     var showWebPortPicker by remember { mutableStateOf(false) }
     var showThreadCountPicker by remember { mutableStateOf(false) }
     var showCustomPageKey by remember { mutableStateOf(false) }
+    var showUpdateUrlDialog by remember { mutableStateOf(false) }
     var showLocalPasswordDialog by remember { mutableStateOf(false) }
     var showCleanCacheConfirm by remember { mutableStateOf(false) }
     var showClearWebViewConfirm by remember { mutableStateOf(false) }
@@ -146,6 +149,7 @@ fun OtherConfigRoute(
             onShrinkDatabase = { showShrinkDatabaseConfirm = true },
             onThreadCount = { showThreadCountPicker = true },
             onCustomPageKey = { showCustomPageKey = true },
+            onUpdateUrl = { showUpdateUrlDialog = true },
         )
     }
     screenModelRef = screenModel
@@ -196,6 +200,13 @@ fun OtherConfigRoute(
                 )
             )
         }
+        if (state.updateUrlSummary.isEmpty()) {
+            screenModel.dispatch(
+                OtherConfigUiEvent.UpdateUpdateUrlSummary(
+                    pref.getString(PreferKey.updateUrl) ?: ""
+                )
+            )
+        }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -224,6 +235,8 @@ fun OtherConfigRoute(
             onShrinkDatabase = { screenModel.dispatch(OtherConfigUiEvent.ShrinkDatabase) },
             onThreadCount = { screenModel.dispatch(OtherConfigUiEvent.ThreadCount) },
             onCustomPageKey = { screenModel.dispatch(OtherConfigUiEvent.CustomPageKey) },
+            updateUrlSummary = state.updateUrlSummary,
+            showUpdateUrl = AppUpdateManager.isAvailable(),
         )
     }
 
@@ -244,6 +257,23 @@ fun OtherConfigRoute(
                 showUserAgentDialog = false
             },
             onDismiss = { showUserAgentDialog = false },
+        )
+    }
+
+    // 自定义更新地址编辑对话框 (app 端 updateUrl JSON 数组协议; 清空 = 回退 GitHub)
+    if (showUpdateUrlDialog) {
+        TextInputDialog(
+            title = stringResource(Res.string.update_url_title),
+            initialValue = pref.getString(PreferKey.updateUrl) ?: "",
+            hint = stringResource(Res.string.update_url_hint),
+            onConfirm = { raw ->
+                val value = raw.trim()
+                // 空值存 null (= 回退 GitHub), 与 DesktopPreferenceProvider.putString(null) 移除语义对齐
+                pref.putString(PreferKey.updateUrl, value.ifEmpty { null })
+                screenModel.dispatch(OtherConfigUiEvent.UpdateUpdateUrlSummary(value))
+                showUpdateUrlDialog = false
+            },
+            onDismiss = { showUpdateUrlDialog = false },
         )
     }
 

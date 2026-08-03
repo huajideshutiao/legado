@@ -1,7 +1,7 @@
 package io.legado.app.data.entities
 
 /**
- * K5-c Phase 4: Book/ReadConfig 下沉 commonMain 的 java.time.LocalDate 抽象面。
+ * Book/ReadConfig 下沉 commonMain 的 java.time.LocalDate 抽象面。
  *
  * commonMain 不允许直接引用 java.time.*; 经 expect class + actual typealias 桥接到
  * 各端 java.time.LocalDate (androidMain/jvmMain)。

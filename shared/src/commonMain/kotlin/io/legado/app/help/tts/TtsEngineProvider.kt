@@ -4,46 +4,17 @@ import io.legado.app.data.entities.HttpTTS
 import kotlin.concurrent.Volatile
 
 /**
- * 系统 TTS 引擎的进程级 Provider（KMP commonMain 版）。
+ * 系统 TTS 引擎的进程级 Provider (commonMain)。
  *
- * # 设计动机
+ * [SystemTtsEngine] 具体实现由各平台 actual 提供 (app: TextToSpeechEngine / desktop:
+ * Windows SAPI·espeak·say / ios: AVSpeechSynthesizer / ohos: napi textToSpeech);
+ * [ReadAloudControllerShared] 需要拿到实例但不能直接 new 平台实现 (会引入平台依赖),
+ * 故用 Provider 模式: 宿主启动时 register, commonMain 取 get()。
  *
- * [SystemTtsEngine] 接口的具体实现由各平台 actual 提供:
- * - app (Android): `TextToSpeechEngine` (基于 android.speech.tts.TextToSpeech)
- * - desktop (JVM): `DesktopSystemTtsEngine` (Windows SAPI / Linux espeak / macOS say)
- * - ios: `IosSystemTtsEngine` (AVSpeechSynthesizer)
- * - ohos: `OhosSystemTtsEngine` (napi 桥接 @ohos.textToSpeech)
- *
- * commonMain 中的 [ReadAloudControllerShared] 需要拿到当前平台的 [SystemTtsEngine]
- * 实例来驱动朗读, 但不能直接 new 平台实现 (会引入平台依赖)。采用 Provider 模式:
- *
- * ```
- *   desktop Main.kt 启动时:
- *       TtsEngineProvider.register(DesktopSystemTtsEngine())
- *
- *   commonMain ReadAloudControllerShared:
- *       val engine = TtsEngineProvider.get()  // 取 desktop 注册的实例
- * ```
- *
- * # 与其他 Provider 的一致性
- *
- * 复用项目内既有 Provider 模式风格:
- * - [io.legado.app.help.book.BookStorageProviders] / [io.legado.app.help.book.BookHelpProviders]
- * - [io.legado.app.data.AppDbProviders] / [io.legado.app.data.AppDatabaseProviders]
- * - [io.legado.app.help.config.PreferenceProviders]
- * - [io.legado.app.help.http.OkHttpClientProviders]
- *
- * 上述 Provider 均为 `object + @Volatile var impl` 风格, 本类保持一致便于阅读维护。
- *
- * # 线程安全
- *
- * - [impl] 用 `@Volatile` 保证可见性
- * - register / get / unregister 都不做同步, 假定在应用启动阶段单线程调用 register,
- *   后续任意线程只读 get (与上述其他 Provider 行为一致)
- * - 若需运行时切换引擎 (如用户在设置里切 TTS 引擎), 应由调用方自行同步, 或后续
- *   改为 AtomicReference
- *
- * KP2-D P0-9 新增。
+ * 风格与 [BookStorageProviders]/[AppDbProviders]/[PreferenceProviders] 等一致
+ * (`object + @Volatile var impl`)。线程安全: impl @Volatile 保证可见性;
+ * register/get/unregister 不做同步, 假定启动阶段单线程 register、后续只读 get;
+ * 若需运行时切换引擎由调用方自行同步 (或后续改 AtomicReference)。
  */
 object TtsEngineProvider {
 
@@ -81,7 +52,7 @@ object TtsEngineProvider {
         implField = null
     }
 
-    // region HttpTtsPlayer 工厂注册点 (KP2-D P0-9 新增, 三端朗读 HttpTTS 路径)
+    // region HttpTtsPlayer 工厂注册点 (三端朗读 HttpTTS 路径)
 
     /**
      * 当前平台注册的 [HttpTtsPlayer] 工厂。

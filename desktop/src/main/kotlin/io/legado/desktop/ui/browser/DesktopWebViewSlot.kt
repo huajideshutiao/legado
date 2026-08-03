@@ -12,6 +12,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -20,11 +21,16 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
 import io.legado.app.ui.browser.WebViewCallbacks
 import io.legado.app.ui.browser.WebViewConfig
+import io.legado.app.ui.browser.WebViewHost
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.desktop.help.webview.DesktopWebViewEngine
 import io.legado.desktop.help.webview.DesktopWebViewEngines
 import io.legado.desktop.help.webview.WebViewWindowHandle
 import io.legado.desktop.help.webview.WebViewWindowRequest
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.awt.Desktop
 import java.net.URI
 
@@ -41,10 +47,11 @@ import java.net.URI
  *
  * 引擎不可用时保持原行为: 直接调系统默认浏览器 (cookie 无法回收, 但不崩)。
  *
- * TODO(desktop): 验证回传 (WebViewConfig.saveResult) 未接线 — 独立窗口无 evaluateJavascript/
- * onPageFinished 回传通道 (WebViewCallbacks.host 恒 null), 验证结果只能走 WebViewRoute
- * 的 refetch 兜底分支 (OkHttp 重拉页面 HTML); 等待引擎窗口加"完成"按钮 + 结果回传
- * (对照 AndroidWebView), 才能支持 outerHTML 抓取与 CF 挑战自动检测。
+ * 验证回传: 窗口句柄已具备 [WebViewWindowHandle.evaluateJavascript] (WebView2/JavaFX
+ * 都支持任意 JS), 因此这里把 [WebViewCallbacks.host] 桥接为 [DesktopWebViewHost],
+ * 并把导航完成事件接回 [WebViewCallbacks.onPageFinished], 于是 WebViewRoute 的
+ * outerHTML 抓取与 CF 挑战自动检测 (对照 AndroidWebView 的 WebViewHostImpl + onPageFinished)
+ * 在桌面端可用; 独立窗口无内嵌后退栈, canGoBack 恒 false (返回走路由出栈)。
  */
 @Composable
 fun DesktopWebViewSlot(
@@ -57,7 +64,7 @@ fun DesktopWebViewSlot(
     if (engine == null) {
         SystemBrowserFallback(url, modifier)
     } else {
-        EngineWindowSlot(engine, url, modifier)
+        EngineWindowSlot(engine, url, modifier, callbacks)
     }
 }
 
@@ -66,22 +73,36 @@ private fun EngineWindowSlot(
     engine: DesktopWebViewEngine,
     url: String,
     modifier: Modifier,
+    callbacks: WebViewCallbacks,
 ) {
     var windowClosed by remember(url) { mutableStateOf(false) }
     var handle by remember(url) { mutableStateOf<WebViewWindowHandle?>(null) }
+    // 回调对象由路由 remember 持有, 重组时用最新实例 (对齐 AndroidWebView 的 callbacksRef)
+    val callbacksRef by rememberUpdatedState(callbacks)
 
     fun open(): WebViewWindowHandle? = engine.openWindow(
         WebViewWindowRequest(
             url = url,
             title = "legado",
+            // 对照 AndroidWebViewClient.onPageFinished: 导航完成 → 路由侧 CF 检测/验证回传
+            onNavigated = { url -> callbacksRef.onPageFinished?.invoke(url) },
             onClosed = { windowClosed = true },
         )
-    ).also { if (it == null) AppLog.put("内置浏览器窗口打开失败: $url") }
+    ).also { opened ->
+        if (opened != null) {
+            callbacksRef.host = DesktopWebViewHost(opened)
+        } else {
+            AppLog.put("内置浏览器窗口打开失败: $url")
+        }
+    }
 
     DisposableEffect(url) {
         val opened = open()
         handle = opened
-        onDispose { opened?.close() }
+        onDispose {
+            opened?.close()
+            callbacks.host = null
+        }
     }
 
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -144,4 +165,35 @@ private fun SystemBrowserFallback(url: String, modifier: Modifier) {
             }
         }
     }
+}
+
+/**
+ * [WebViewHost] 的桌面实现: 桥接独立浏览器窗口 (WebView2 / JavaFX)。
+ *
+ * 语义对照 Android 端 [io.legado.app.ui.browser.AndroidWebView] 的 WebViewHostImpl:
+ * - [evaluateJavascript] 经 [WebViewWindowHandle.evaluateJavascript] 执行 (引擎已归一为纯文本);
+ * - 独立窗口无路由内嵌后退栈, canGoBack 恒 false (返回键走路由出栈, 与原行为一致);
+ * - getUrl/reload 直通窗口句柄。
+ */
+private class DesktopWebViewHost(
+    private val handle: WebViewWindowHandle,
+) : WebViewHost {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    override fun evaluateJavascript(script: String, onResult: (String?) -> Unit) {
+        // 引擎的 executeScript 是 suspend (COM 消息泵 / FX 线程桥), 起协程适配回调式接口
+        scope.launch {
+            val result = runCatching { handle.evaluateJavascript(script) }.getOrNull()
+            onResult(result)
+        }
+    }
+
+    override fun canGoBack(): Boolean = false
+
+    override fun goBack() = Unit
+
+    override fun getUrl(): String? = handle.currentUrl
+
+    override fun reload() = handle.reload()
 }

@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
 /**
  * 字典规则
  *
- * K5-c Phase 4: 已从 jvmAndAndroidMain 下沉 commonMain。
+ * 已从 jvmAndAndroidMain 下沉 commonMain。
  * search 方法依赖 AnalyzeUrlCore/AnalyzeRuleCore (jvmAndAndroidMain),
  * 已抽取到 jvmAndAndroidMain/DictRuleExt.kt 作为扩展函数。
  */

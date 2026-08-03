@@ -90,55 +90,18 @@ import org.jetbrains.compose.resources.stringResource
 /**
  * 朗读控制面板对话框 (KMP 共享, app + desktop 复用)。
  *
- * 对应 app 端 `io.legado.app.ui.book.read.config.ReadAloudDialog`,
- * 但去掉对 Android Fragment / BaseReadAloudService / ReadAloud / ReadBook /
- * ReadBookEvents / ReadMenuColors / toastOnUi / context.selector 的依赖,
- * 改为纯 @Composable + 回调形式:
- * - 调用方传入 [isPlaying] (当前播放状态), 用户点击播放/暂停按钮通过 [onPlayPause] 回调
- * - 用户点击停止按钮通过 [onStop] 回调 (并自动 dismiss)
- * - 用户点击上一章/下一章通过 [onPrev] / [onNext] 回调
- * - 用户调整定时通过 [onSetTimer] 回调 (参数为分钟数, 0=关闭定时)
- * - 用户调整语速通过 [onAdjustSpeed] 回调 (参数为 Float 速率, 0.5~5.0, 1.0=正常)
- * - [onDismiss] 关闭回调
+ * 对应 app 端 ReadAloudDialog, 去掉对 Android Fragment / BaseReadAloudService /
+ * ReadAloud / ReadBookEvents / ReadMenuColors / toastOnUi 的依赖, 改纯 @Composable + 回调:
+ * [isPlaying]/[initialTimer] 等状态由调用方订阅后传入, 播放/暂停/停止/上下章/定时/语速
+ * 均通过 onXxx 回调通知调用方。
  *
- * # 原业务逻辑保留
+ * 原业务逻辑保留: 章节/段落控制行、定时行 (0..180 分钟)、语速行 (0..45) 与底部功能
+ * 按钮行布局与 app 端原版对齐。差异 (KMP 限制): aloudState/readAloudDs 订阅与
+ * ttsFlowSys/ttsSpeechRate 持久化移到调用方; CallBack 接口方法改为 onXxx 回调。
  *
- * - 章节/段落播放控制行: 上一章 | 上一句 播放/暂停 停止 下一句 | 下一章
- *   (与原版 Row + Text(上一章) + AloudIcon(prevParagraph) + AloudIcon(play/pause) +
- *   AloudIcon(stop) + AloudIcon(nextParagraph) + Text(下一章) 对齐)
- * - 定时行: 定时图标(保存当前定时) + 滑条(0..180 分钟) + 当前时间(点击弹选时)
- *   (与原版 Row + AloudIcon(time_add) + AppSlider + Text(timer_m) 对齐)
- * - 语速行: 标题 + 当前值 + 跟随系统开关 + 滑条(0..45) + 加减按钮
- *   (与原版 Row + Text(read_aloud_speed) + Text(value) + Text(flow_sys) + AppSwitch +
- *   Row + AloudIcon(reduce) + AppSlider + AloudIcon(add) 对齐)
- * - 底部功能按钮行: 目录 / 主菜单 / 转到后台 / 设置
- *   (与原版 Row + ReadMenuIconButton(toc) + ReadMenuIconButton(menu) +
- *   ReadMenuIconButton(visibility_off) + ReadMenuIconButton(settings) 对齐)
- *
- * # 与原版的差异 (KMP 限制)
- *
- * - 原版 `ReadBookEvents.aloudState.collect` 监听朗读状态变化, 下沉后由调用方通过
- *   [isPlaying] 参数传入 (调用方负责订阅 aloudState 并重组传入)
- * - 原版 `ReadBookEvents.readAloudDs.collect` 监听定时变化, 下沉后由调用方通过
- *   [initialTimer] 参数传入 (调用方负责订阅 readAloudDs 并重组传入)
- * - 原版 `AppConfig.ttsFlowSys / ttsSpeechRate / ttsTimer` 直接读写, 下沉后改为
- *   [onAdjustSpeed] / [onSetTimer] 回调 (由调用方决定持久化)
- * - 原版 `callBack?.openChapterList() / showMenuBar() / finish() / ReadAloudConfigDialog().show()`
- *   通过 ReadAloudDialog.CallBack 接口桥接, 下沉后改为 [onOpenChapterList] /
- *   [onShowMenuBar] / [onBackstage] / [onOpenSettings] 回调
- *
- * # 语速范围说明
- *
- * - 内部 speechRate: Int (0..45), 与原版 `AppConfig.ttsSpeechRate` 范围一致
- * - 显示速率: (speechRate + 5) / 10f, 即 0.5x ~ 5.0x (1.0x = speechRate=5)
- * - 任务要求"0.5x ~ 4.0x", 实际原版支持到 5.0x, 保留原版范围 (4.0x = speechRate=35)
- * - [onAdjustSpeed] 回调接收 Float 速率值 (0.5~5.0), 与任务参数类型对齐
- *
- * # 样式 (Arco Design 规范)
- *
- * - 主色 arcoblue-6 (#165DFF): Slider thumb/activeTrack + 图标 tint
- * - 圆角 arco_radius_lg = 16dp: Dialog Surface 圆角
- * - 无阴影 (Surface 默认无阴影)
+ * 语速范围: 内部 speechRate Int 0..45, 显示速率 (speechRate+5)/10f = 0.5x~5.0x
+ * (任务要求 0.5x~4.0x, 实际保留原版范围到 5.0x)。样式: Arco Design
+ * (arcoblue-6 主色 + 16dp 圆角)。
  *
  * @param isPlaying 当前是否正在播放 (true=播放中, false=已暂停/已停止)
  * @param initialTimer 初始定时值 (分钟, 0=关闭定时)

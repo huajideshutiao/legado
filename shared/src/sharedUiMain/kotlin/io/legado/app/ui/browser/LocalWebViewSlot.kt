@@ -39,6 +39,12 @@ interface WebViewHost {
     fun evaluateJavascript(script: String, onResult: (String?) -> Unit)
     fun canGoBack(): Boolean
     fun goBack()
+
+    /** 当前加载页 URL (原 WebViewActivity 的 `webView.url ?: baseUrl`)。未实现时返回 null, 由路由回退预取 URL。 */
+    fun getUrl(): String? = null
+
+    /** 重新加载当前页 (原 menu_refresh → `webView.reload()`)。 */
+    fun reload() {}
 }
 
 /**

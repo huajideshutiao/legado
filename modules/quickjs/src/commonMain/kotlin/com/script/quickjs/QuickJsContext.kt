@@ -20,7 +20,7 @@ import kotlin.coroutines.CoroutineContext
  *
  * 架构 A (自封装 native QuickJS):
  * - 持有 [rtPtr] (native JSRuntime 指针) 和 [ctxPtr] (native JSContext 指针)
- * - 不再依赖 quickjs-kt 的 QuickJs (Phase 5 已移除)
+ * - 不再依赖 quickjs-kt 的 QuickJs (已移除)
  * - 通过 [QuickJsNative] 调用 native API
  *
  * 线程模型: JS 执行线程通过 [QuickJsEngine.eval] 进入,

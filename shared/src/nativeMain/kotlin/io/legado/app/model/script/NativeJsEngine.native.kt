@@ -72,6 +72,7 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.plus
 import kotlinx.cinterop.pointed
 import kotlinx.cinterop.ptr
+import kotlinx.cinterop.staticCFunction
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.useContents
 import kotlinx.cinterop.value
@@ -80,77 +81,22 @@ import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.CoroutineContext
 
 /**
- * native 端 (iOS/鸿蒙) JS 引擎实现：基于 quickjs-ng C 源码 (cinterop 编译),与 Android/Desktop 端
- * [QuickJsJsEngine] 共用同一 quickjs 引擎 (全平台 quickjs 统一)。
+ * native 端 (iOS/鸿蒙) JS 引擎: 基于 quickjs-ng C 源码 (cinterop 编译), 与 Android/Desktop
+ * [QuickJsJsEngine] 共用同一 quickjs 引擎 (全平台统一)。原 iosMain [IosJsEngine] /
+ * ohosMain [OhosJsEngine] 逻辑一致, 下沉到 nativeMain, 平台端 typealias 指向本类。
  *
- * nativeMain 中间源集下沉: 原 iosMain [IosJsEngine] / ohosMain [OhosJsEngine] 逻辑完全一致
- * (基于 cinterop 共享 quickjs 绑定, 桥接逻辑完全一致), 下沉到 nativeMain 共用,
- * iosMain/ohosMain 用 typealias 别名指向本类。
+ * 选型: 原 iOS 用 JavaScriptCore、鸿蒙用 JSVM-API (ArkJS/V8), 与 quickjs 行为不一致
+ * (ES 特性/错误信息/bytecode), 改 cinterop 直接编译 shared/src/cinterop/quickjs-ng/ 的 C 源码
+ * (单一数据源, iOS/鸿蒙 cinterop 与 Android/Desktop JNI CMake 共用; Kotlin/Native 无 JNI)。
  *
- * # 选型理由 (KP6)
- * - **全平台 quickjs 统一**: 原 iOS 端用 JavaScriptCore (系统库)、鸿蒙端用 JSVM-API (ArkJS/V8 系统库),
- *   与 Android/Desktop 的 quickjs 行为不一致 (ES 特性、错误信息、bytecode 等); KP6 改为 quickjs cinterop,
- *   与 jvmAndAndroid 端 [QuickJsJsEngine] 行为一致, 减少 platform 分支;
- * - **C 源码内嵌**: cinterop 直接编译 `shared/src/cinterop/quickjs-ng/` 的 C 源码
- *   (单一数据源: iOS/鸿蒙 cinterop 与 Android/Desktop JNI CMake 共用同一份 C 源码),
- *   不依赖系统 JS 运行时, 跨版本行为一致;
- * - **cinterop 绑定**: `src/cinterop/quickjs.def` 声明
- *   quickjs C API, Kotlin/Native cinterop 编译后生成 `io.legado.app.napi.quickjs.*` Kotlin 绑定,
- *   类型安全调用 C 函数 (iOS/鸿蒙共用同一份 .def 与绑定);
- * - **无 JNI**: iOS/鸿蒙 Kotlin/Native 不支持 JNI, 无法复用 `modules/quickjs` 的 `QuickJsNative` JNI 桥;
- *   cinterop 是 Kotlin/Native 的原生 C 互操作机制, 直接编译 C 源码到 framework/.so, 无需 JNI。
+ * 与 [QuickJsJsEngine] 差异: 编译缓存 = 源码字符串 (无 bytecode, TODO 补 JS_EVAL_FLAG_COMPILE_ONLY);
+ * Java 桥 = JS_SetPropertyStr + Map/List (无反射); Packages/importClass 走 [NativeJavaCompat]
+ * 白名单类表 (System/URLEncoder/URLDecoder/UUID 静态方法, 表外类明确失败而非静默),
+ * JavaAdapter 抛异常; 资源管理 = JS_FreeContext/JS_FreeRuntime。
  *
- * # 架构: cinterop 编译 quickjs C 源码
- * ```
- * Kotlin/Native (NativeJsEngine)
- *   → io.legado.app.napi.quickjs.* (cinterop 生成的 Kotlin 绑定)
- *   → JS_NewRuntime / JS_NewContext / JS_Eval / ... (quickjs C 函数)
- *   → quickjs-ng C 源码 (编译为静态库, 链接进 iOS framework / 鸿蒙 .so)
- *   → JS 执行结果
- * ```
- *
- * # 与 [QuickJsJsEngine] 的对应关系
- * 接口面完全一致 (均实现 [JsEngine]), 内部实现差异:
- *
- * | 维度 | QuickJsJsEngine (Android/Desktop) | NativeJsEngine (iOS/鸿蒙) |
- * |------|-----------------------------------|--------------------------|
- * | JS 引擎 | QuickJS (quickjs-ng, JNI) | QuickJS (quickjs-ng, cinterop 编译 C 源码) |
- * | 平台库访问 | JNI `external fun` | `io.legado.app.napi.quickjs.*` (cinterop 绑定) |
- * | 编译缓存 | QuickJS bytecode (跨实例复用) | 源码字符串缓存 (无 bytecode, TODO: JS_Eval + JS_EVAL_FLAG_COMPILE_ONLY) |
- * | Java/Kotlin 桥 | JavaObjectBridge + native exotic trap (反射访问 Java 对象) | JS_SetPropertyStr + JS_NewObject/JS_NewArray (基本类型 + Map/List) |
- * | Java 类加载 | __loadJavaClass + 反射 (Packages.java.xxx) | stub 返回 0 (native 无 Java 类) |
- * | JavaAdapter | Proxy.newProxyInstance + JsFunctionHandle | stub 抛异常 (native 无 Java 反射) |
- * | bootstrap | 注入 Packages/JavaImporter/JavaAdapter + bindingsStack | 仅注入 bindingsStack (Java 相关 stub) |
- * | 资源管理 | 显式 close 释放 native ctx + PhantomReference 兜底 | 显式 close 调用 JS_FreeContext + JS_FreeRuntime |
- *
- * # 桥接限制 (TODO 后续补完)
- * - **复杂 Kotlin 对象桥接**: 基本类型 / Map / List 与 [JsExtensionsCommon] (即 `java` binding,
- *   经 [NativeJsExtensionsBridge] handle 表 + methodId 分派) 均已桥接; 其余带方法的 Kotlin 对象
- *   仍走 [toJsValue] 的 else 分支返回 null (注入时跳过, JS 里访问会得到 undefined);
- * - **Java 类加载**: `Packages.java.xxx` / `importClass` / `JavaAdapter` 在 native 上无意义
- *   (无 Java 类), bootstrap 中 stub 为返回 0/null/抛异常, 让依赖此能力的书源 JS 在 native 上明确失败
- *   而非静默错误;
- * - **bytecode 缓存**: quickjs 支持 JS_Eval + JS_EVAL_FLAG_COMPILE_ONLY 编译为 bytecode,
- *   再用 JS_ReadObject + JS_EvalFunction 执行, P0 阶段仅缓存源码字符串 (与 Android 端接口对齐,
- *   后续 KP7 补完 bytecode 缓存以提升性能);
- * - **dangerousApi 安全名单**: native 端无 Java 反射, dangerousApi 在 native 上语义为 no-op
- *   (无 Java 类可旁路访问), 保留字段仅为了接口对齐。
- *
- * # cinterop C 源码维护
- * `shared/src/cinterop/quickjs-ng/` 是 quickjs-ng 核心源码的单一数据源
- * (仅 quickjs 核心源码, 不含 quickjs-libc/qjs CLI/test 等),
- * iOS/鸿蒙 cinterop 与 Android/Desktop JNI CMake 均直接引用此目录, 升级 quickjs-ng 时只需更新此一处。
- *
- * # 启动注册
- * 宿主启动早期经 [registerIosJsEngines] / [registerOhosJsEngines] 注册到 [JsEngines] (在任何 JS eval 之前),
- * 详见 [NativeJsEngineRegistry] / IosProviderRegistry / OhosProviderRegistry。
- *
- * # 编译验证
- * ```
- * ./gradlew :shared:compileKotlinIosArm64
- * ./gradlew :shared:compileKotlinIosSimulatorArm64
- * ./gradlew :shared:compileKotlinLinuxArm64 -PenableOhosTarget=true --stacktrace
- * ```
+ * 注册: 宿主启动早期经 registerIosJsEngines/registerOhosJsEngines 注册到 [JsEngines]。
+ * 编译验证: ./gradlew :shared:compileKotlinIosArm64 / compileKotlinIosSimulatorArm64 /
+ * compileKotlinLinuxArm64 -PenableOhosTarget=true。
  */
 object NativeJsEngine : JsEngine {
 
@@ -221,6 +167,7 @@ object NativeJsEngine : JsEngine {
      *
      * 用 qjs_NewCFunction 把 [NativeJsExtensionsBridge.nativeDispatchFn] (staticCFunction) 包装为 JS 函数,
      * 注入 globalThis.__nativeDispatch, 供 JS 工厂函数 __createJavaObj 等回调 Kotlin 层分派。
+     * 同时注入 __nativeJavaCompat (白名单 Java 类静态方法兼容面, 见 [NativeJavaCompat])。
      *
      * 必须在 [BOOTSTRAP_CODE] eval 之后 (JS_FACTORY_CODE 依赖 __nativeDispatch 已定义) 调用。
      */
@@ -235,6 +182,13 @@ object NativeJsEngine : JsEngine {
                     3
                 )
                 JS_SetPropertyStr(ctx, global, "__nativeDispatch", fn)
+                val javaCompatFn = qjs_NewCFunction(
+                    ctx,
+                    nativeJavaCompatFn,
+                    "__nativeJavaCompat",
+                    4
+                )
+                JS_SetPropertyStr(ctx, global, "__nativeJavaCompat", javaCompatFn)
             }
         } finally {
             JS_FreeValue(ctx, global)
@@ -878,17 +832,19 @@ object NativeJsEngine : JsEngine {
      * 仅注入 [evalInSubScope] 需要的 bindings 子 scope 栈 (与 quickjs JsBootstrap 一致):
      * - `__bindingsStack__` / `__currentBindings` / `__enterBindings` / `__exitBindings`
      *
-     * Java 类相关 (Packages/JavaImporter/JavaAdapter/__loadJavaClass 等) 在 native 上无意义
-     * (无 Java 类), stub 为返回 0/null/抛异常, 让依赖此能力的书源 JS 在 native 上明确失败:
-     * - `__loadJavaClass` → 0 (类句柄, 表示加载失败)
-     * - `__classExists` → false
+     * Java 类相关 (Packages/JavaImporter/JavaAdapter/__loadJavaClass 等): native 无 Java 反射,
+     * 用白名单类表兼容面 [NativeJavaCompat] 支持常用类 (java.lang.System /
+     * java.net.URLEncoder / java.net.URLDecoder / java.util.UUID) 的静态方法:
+     * - `__loadJavaClass` → 白名单类句柄 (正整数) / 表外类 0
+     * - `__classExists` → 白名单类 true / 其他 false
      * - `__isInterface` → false
-     * - `__newJavaInstance` / `__callStaticMethod` / `__getStaticField` → null/undefined
+     * - `__callStaticMethod` → 经 `__nativeJavaCompat` 分派到 Kotlin 静态方法表 (表外方法 null)
+     * - `__newJavaInstance` / `__getStaticField` / `__setStaticField` → null/false (无对象实例化/字段反射)
      * - `__newJavaAdapter` → 抛异常 (native 无 Java 反射)
-     * - `__getDangerousApi` → false (native 无 Java 反射, dangerousApi 语义为 no-op)
+     * - `__getDangerousApi` → true (native 无安全模型: 类表固定且安全, 不存在可旁路的任意类加载)
      *
-     * 这些 stub 让 bootstrap 不依赖 native binding (quickjs 通过 nativeDefineBinding 注册),
-     * JS 层直接定义全局函数, 行为等价于"binding 调用 Kotlin 后返回 stub 值"。
+     * 这些桩让 bootstrap 不依赖 native binding (quickjs 通过 nativeDefineBinding 注册),
+     * JS 层直接定义全局函数, 行为等价于"binding 调用 Kotlin 后返回桩值"。
      */
     private val BOOTSTRAP_CODE: String = """
 // ============ bindings 子 scope 栈 (与 quickjs JsBootstrap 一致) ============
@@ -935,21 +891,25 @@ function __exitBindings() {
     }
 }
 
-// ============ Java 类相关 stub (native 无 Java 类, 返回 stub 值让书源 JS 明确失败) ============
-// stub 等价于 quickjs 端的 native binding (nativeDefineBinding 注册后回调 BindingHandler)
+// ============ Java 类兼容面 (native 无 Java 反射, 用白名单类表 + 静态方法表) ============
+// 与 quickjs 端一致: Packages/importClass/JavaAdapter 等 rhino LiveConnect 兼容 API 通过
+// __loadJavaClass/__callStaticMethod 等桩函数回 Kotlin 分派。native 侧由 __nativeJavaCompat
+// (NativeJavaCompat) 实现白名单类 (System/URLEncoder/URLDecoder/UUID) 的静态方法,
+// 其余类返回 0/null 让书源 JS 明确失败 (规则层 runCatching 后呈现为规则错误)。
 
 function __getDangerousApi() {
-    // native 无 Java 反射, dangerousApi 语义为 no-op, 恒返回 false
-    return false;
+    // native 无 Java 反射亦无安全模型: 类表固定且仅含白名单安全类, 不存在可旁路的
+    // 任意类加载, dangerousApi 语义天然全放行 (放行也不会新增能力, 仅让书源走 java.* 路径)
+    return true;
 }
 
 function __loadJavaClass(fullName, dangerousApi) {
-    // native 无 Java 类加载, 返回 0 (类句柄, 表示加载失败)
-    return 0;
+    // 返回类句柄 (正整数); 白名单外返回 0 (类句柄, 表示加载失败)
+    return __nativeJavaCompat("load", fullName, "", []);
 }
 
 function __classExists(fullName, dangerousApi) {
-    return false;
+    return __nativeJavaCompat("exists", fullName, "", []) !== 0;
 }
 
 function __isInterface(classHandle, dangerousApi) {
@@ -957,11 +917,12 @@ function __isInterface(classHandle, dangerousApi) {
 }
 
 function __newJavaInstance(classHandle, args, dangerousApi) {
+    // native 无对象实例化 (无反射), 返回 null 让书源明确失败
     return null;
 }
 
 function __callStaticMethod(classHandle, methodName, args, dangerousApi) {
-    return null;
+    return __nativeJavaCompat("callStatic", classHandle, methodName, args || []);
 }
 
 function __getStaticField(classHandle, fieldName, dangerousApi) {
@@ -973,7 +934,7 @@ function __setStaticField(classHandle, fieldName, value, dangerousApi) {
 }
 
 function __newJavaAdapter(classHandle, jsFnHandle, dangerousApi) {
-    throw new Error('JavaAdapter not supported on native (no Java reflection)');
+    throw new Error('JavaAdapter not supported on native (no Java reflection); use java.* JsExtensions bindings instead');
 }
 
 function __registerJsFunctionNative(jsObjectExpr, dangerousApi) {
@@ -984,6 +945,199 @@ function __wrapJavaHandle(handle) {
     return null;
 }
     """.trimIndent() + "\n" + NativeJsExtensionsBridge.JS_FACTORY_CODE
+
+    // ============ Java 类兼容面 (Packages/importClass 白名单类表) ============
+
+    /**
+     * 全局 native Java 兼容分派函数 C 指针, 由 bootstrap 注入 globalThis.__nativeJavaCompat。
+     *
+     * 签名: __nativeJavaCompat(method, arg1, arg2, args) → any
+     * - method "load"      : arg1 = 类全名 → 类句柄 (Int) 或 0
+     * - method "exists"    : arg1 = 类全名 → 0/1
+     * - method "callStatic": arg1 = 类句柄 (Int), arg2 = 方法名, args = 参数数组
+     *
+     * 与 [NativeJsExtensionsBridge.nativeDispatchFn] 同模式 (staticCFunction, 不捕获上下文)。
+     */
+    internal val nativeJavaCompatFn =
+        staticCFunction { ctx: CPointer<JSContext>?, thisVal: CValue<JSValue>, argc: Int, argv: CPointer<JSValue>? ->
+            javaCompatImpl(ctx, thisVal, argc, argv)
+        }
+
+    /** [nativeJavaCompatFn] 的 Kotlin 实现 (object 方法, 可被 staticCFunction 调用)。 */
+    private fun javaCompatImpl(
+        ctx: CPointer<JSContext>?,
+        @Suppress("UNUSED_PARAMETER") thisVal: CValue<JSValue>,
+        argc: Int,
+        argv: CPointer<JSValue>?
+    ): CValue<JSValue> {
+        val ctxNotNull = ctx ?: return jsUndefined()
+        if (argc < 3 || argv == null) return jsUndefined()
+        try {
+            val method = jsValueToString(ctxNotNull, argv[0L].readValue())
+            when (method) {
+                "load" -> {
+                    val className = jsValueToString(ctxNotNull, argv[1L].readValue())
+                    return qjs_NewInt32(ctxNotNull, NativeJavaCompat.classIdOf(className))
+                }
+
+                "exists" -> {
+                    val className = jsValueToString(ctxNotNull, argv[1L].readValue())
+                    return qjs_NewBool(
+                        ctxNotNull,
+                        if (NativeJavaCompat.classIdOf(className) != 0) 1 else 0
+                    )
+                }
+
+                "callStatic" -> {
+                    if (argc < 4) return jsUndefined()
+                    val classId = qjs_ValueGetInt(argv[1L].readValue())
+                    val methodName = jsValueToString(ctxNotNull, argv[2L].readValue())
+                    val argsArray = argv[3L].readValue()
+                    val result = NativeJavaCompat.callStatic(
+                        classId, methodName, fromJsArray(ctxNotNull, argsArray)
+                    )
+                    // 结果经 toJsValue 转换 (基本类型/字符串), 复杂对象保持 null (同注入语义)
+                    return toJsValue(ctxNotNull, result) ?: jsNullValue()
+                }
+
+                else -> return jsUndefined()
+            }
+        } catch (t: Throwable) {
+            // 兼容面异常返回 undefined, 避免 JS 引擎崩溃 (与 nativeDispatchImpl 行为一致)
+            return jsUndefined()
+        }
+    }
+}
+
+/**
+ * 白名单 Java 类静态方法兼容面 (native 无反射, 供 Packages.java.xxx / importClass 使用)。
+ *
+ * # 覆盖范围 (常用书源类)
+ * - `java.lang.System`: currentTimeMillis() / nanoTime() / lineSeparator() / getProperty() → null
+ * - `java.net.URLEncoder`: encode(String, String) (UTF-8, 空格 → '+', 与 JDK 行为一致)
+ * - `java.net.URLDecoder`: decode(String, String) (UTF-8, '+' → 空格)
+ * - `java.util.UUID`: randomUUID() → 标准 v4 UUID 字符串
+ *
+ * # 限制 (明确失败而非静默)
+ * - 表外类: __loadJavaClass 返回 0 → quickjs 端 Packages 代理 fallback 后方法调用返回 undefined;
+ * - 表内类但方法不在表内: callStatic 返回 null;
+ * - 对象实例化 / 字段读写 / JavaAdapter: 无反射不支持, 返回 null/false/抛异常。
+ *
+ * 建议书源优先使用 `java.*` JsExtensionsCommon 绑定 (native 全量支持),
+ * 本表仅为历史书源 (importClass 风格) 的兼容兜底。
+ */
+private object NativeJavaCompat {
+
+    private const val CLASS_SYSTEM = 1
+    private const val CLASS_URL_ENCODER = 2
+    private const val CLASS_URL_DECODER = 3
+    private const val CLASS_UUID = 4
+
+    /** 类全名 → 类句柄; 表外类返回 0。 */
+    fun classIdOf(fullName: String): Int = when (fullName) {
+        "java.lang.System" -> CLASS_SYSTEM
+        "java.net.URLEncoder" -> CLASS_URL_ENCODER
+        "java.net.URLDecoder" -> CLASS_URL_DECODER
+        "java.util.UUID" -> CLASS_UUID
+        else -> 0
+    }
+
+    /** 静态方法分派; 表外方法返回 null (书源侧得到 null/undefined 明确失败)。 */
+    fun callStatic(classId: Int, methodName: String, args: List<Any?>): Any? = when (classId) {
+        CLASS_SYSTEM -> when (methodName) {
+            "currentTimeMillis" -> io.legado.app.utils.systemCurrentTimeMillis()
+            "nanoTime" -> io.legado.app.utils.systemNanoTime()
+            "lineSeparator" -> "\n"
+            // getProperty 依赖平台属性表, native 不支持 → null (书源侧判空)
+            else -> null
+        }
+
+        CLASS_URL_ENCODER -> when (methodName) {
+            "encode" -> urlEncode(args.getString(0))
+            else -> null
+        }
+
+        CLASS_URL_DECODER -> when (methodName) {
+            "decode" -> urlDecode(args.getString(0))
+            else -> null
+        }
+
+        CLASS_UUID -> when (methodName) {
+            "randomUUID" -> io.legado.app.utils.randomUUIDString()
+            else -> null
+        }
+
+        else -> null
+    }
+
+    private fun List<Any?>.getString(index: Int): String =
+        getOrNull(index)?.toString() ?: ""
+
+    private val HEX = "0123456789ABCDEF"
+
+    /**
+     * java.net.URLEncoder.encode(str, "UTF-8") 等价实现: 字母数字与 -_.* 原样,
+     * 空格 → '+', 其余字节 %XX (UTF-8)。
+     */
+    private fun urlEncode(str: String): String {
+        val bytes = str.encodeToByteArray()
+        val sb = StringBuilder(bytes.size)
+        for (b in bytes) {
+            val c = b.toInt() and 0xFF
+            val keep = (c in 'A'.code..'Z'.code) || (c in 'a'.code..'z'.code) ||
+                (c in '0'.code..'9'.code) || c == '-'.code || c == '_'.code ||
+                c == '.'.code || c == '*'.code
+            when {
+                keep -> sb.append(c.toChar())
+                c == ' '.code -> sb.append('+')
+                else -> sb.append('%').append(HEX[c ushr 4]).append(HEX[c and 0xF])
+            }
+        }
+        return sb.toString()
+    }
+
+    /**
+     * java.net.URLDecoder.decode(str, "UTF-8") 等价实现: '+' → 空格, %XX 解码 (UTF-8),
+     * 非 ASCII 原字符先按 UTF-8 编码再解码 (与 JDK 对非法串的宽容处理一致: 非法 % 序列原样保留)。
+     */
+    private fun urlDecode(str: String): String {
+        val bytes = ArrayList<Byte>(str.length)
+        var i = 0
+        while (i < str.length) {
+            val c = str[i]
+            when {
+                c == '+' -> {
+                    bytes.add(' '.code.toByte())
+                    i++
+                }
+
+                c == '%' && i + 2 < str.length -> {
+                    val hi = hexVal(str[i + 1])
+                    val lo = hexVal(str[i + 2])
+                    if (hi >= 0 && lo >= 0) {
+                        bytes.add(((hi shl 4) or lo).toByte())
+                        i += 3
+                    } else {
+                        bytes.add(c.code.toByte())
+                        i++
+                    }
+                }
+
+                else -> {
+                    bytes.addAll(c.toString().encodeToByteArray().toList())
+                    i++
+                }
+            }
+        }
+        return bytes.toByteArray().decodeToString()
+    }
+
+    private fun hexVal(c: Char): Int = when (c) {
+        in '0'..'9' -> c - '0'
+        in 'a'..'f' -> c - 'a' + 10
+        in 'A'..'F' -> c - 'A' + 10
+        else -> -1
+    }
 }
 
 /**

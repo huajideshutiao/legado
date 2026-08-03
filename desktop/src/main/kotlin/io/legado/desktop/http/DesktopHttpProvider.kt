@@ -6,7 +6,7 @@ import io.legado.desktop.http.DesktopHttpProvider.Companion.DEFAULT_UA
 import okhttp3.OkHttpClient
 
 /**
- * 桌面端 OkHttpClient / 代理 OkHttpClient Provider 实现 (KP1.3)。
+ * 桌面端 OkHttpClient / 代理 OkHttpClient Provider 实现。
  *
  * HttpHelper 主体下沉 shared/jvmAndAndroidMain 后, 本类仅作薄包装:
  * - [okHttpClient] / [getProxyClient] 直接转发到 shared `io.legado.app.help.http.okHttpClient`

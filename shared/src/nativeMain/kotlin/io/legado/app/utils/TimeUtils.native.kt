@@ -5,10 +5,15 @@ import kotlinx.cinterop.alloc
 import kotlinx.cinterop.convert
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
+import kotlinx.cinterop.value
 import platform.posix.CLOCK_MONOTONIC
 import platform.posix.CLOCK_REALTIME
 import platform.posix.clock_gettime
+import platform.posix.localtime_r
+import platform.posix.time
+import platform.posix.time_tVar
 import platform.posix.timespec
+import platform.posix.tm
 
 /**
  * TimeUtils 的 iOS/鸿蒙 actual。
@@ -39,10 +44,8 @@ actual fun systemNanoTime(): Long = memScoped {
 }
 
 actual fun yearMonthDayFromMillis(epochMillis: Long): Triple<Int, Int, Int> {
-    // 本地时区偏移量 (毫秒)。iOS/鸿蒙无 java.util.TimeZone.getDefault(),
-    // 用 epoch → 当前 UTC 偏移量 (基于 systemCurrentTimeMillis 与本地日期的关系)。
-    // 简化: 用 UTC 计算 (与 jvmAndAndroidMain 的默认时区行为在 UTC 场景一致)。
-    // 若需本地时区, 上层应在调用前自行 shift (与 ReadRecord.dayKey 的语义一致: 本地日分桶)。
+    // 本地时区偏移量 (毫秒), 见 [currentLocalOffsetMillis] (POSIX localtime_r, iOS/鸿蒙共用)。
+    // 与 jvmAndAndroidMain 的 java.util.Calendar 默认时区语义对齐: 本地日分桶 (ReadRecord.dayKey)。
     val localOffsetMillis = currentLocalOffsetMillis()
     return epochToYmd(epochMillis + localOffsetMillis)
 }
@@ -61,23 +64,25 @@ actual fun prevDayKey(dayKey: Int): Int {
 }
 
 /**
- * 与 jvmAndAndroidMain.midnightSecFromDayKey 同语义, 纯 Kotlin 实现。
- * days_from_civil(y, m, d) → days since 1970-01-01 → * 86400 (秒)。
- * 注: iOS/鸿蒙 localOffsetMillis = 0 (与 yearMonthDayFromMillis 的 UTC 简化一致)。
+ * 与 jvmAndAndroidMain.midnightSecFromDayKey 同语义 (本地 0 点 epoch 秒), 纯 Kotlin 实现。
+ * days_from_civil(y, m, d) → days since 1970-01-01 → * 86400 (秒) + 本地时区偏移。
+ * 注: 偏移量取当前时区偏移 (与 jvmAndAndroidMain Calendar 的"当日本地午夜"在 DST 切换日
+ * 存在 ±1h 近似差, 常规日完全一致)。
  */
 actual fun midnightSecFromDayKey(dayKey: Int): Long {
     val y = dayKey / 10000
     val m = (dayKey / 100) % 100
     val d = dayKey % 100
     // daysFromCivil 已返回"自 1970-01-01 起的天数", 不能再减一次纪元偏移
-    return daysFromCivil(y, m, d) * 86_400L
+    return daysFromCivil(y, m, d) * 86_400L + currentLocalOffsetMillis() / 1_000L
 }
 
 /**
- * 漫画信息条 HH:mm: 纯 Kotlin UTC 换算 (与 yearMonthDayFromMillis 的 UTC 简化一致)。
+ * 漫画信息条 HH:mm: 本地时区换算 (与 jvmAndAndroidMain Calendar 的本地时区语义对齐)。
  */
 actual fun formatTimeOfDay(epochMillis: Long): String {
-    val millisOfDay = epochMillis.mod(86_400_000L)
+    val localMillis = epochMillis + currentLocalOffsetMillis()
+    val millisOfDay = localMillis.mod(86_400_000L)
     val totalMinutes = (millisOfDay / 60_000L).toInt()
     val h = totalMinutes / 60
     val m = totalMinutes % 60
@@ -87,14 +92,25 @@ actual fun formatTimeOfDay(epochMillis: Long): String {
 /**
  * 获取当前本地时区偏移量 (毫秒)。
  *
- * 纯 Kotlin 实现: 通过 kotlinx-datetime 的 TimeSource / 时区信息不可直接获取,
- * 这里用 Kotlin/Native 的 platform.time (iOS) / ohos.time (鸿蒙) 等价方案不可跨平台,
- * 简化用 UTC 偏移量 0 (与 jvmAndAndroidMain 的 UTC 行为一致; 若宿主需要本地时区, 由宿主注入)。
+ * POSIX localtime_r (iOS/鸿蒙共用, nativeMain 不依赖平台专属 API, 与 clock_gettime 同模式):
+ * 1. time() 取当前 epoch 秒
+ * 2. localtime_r 换算为本地钟面时间 (已含 DST)
+ * 3. 把本地钟面时间按 UTC 解释回算 epoch 秒 (days_from_civil 反算)
+ * 4. 差值即本地偏移 (标准时 + 夏令时), 与 NSTimeZone.localTimeZone.secondsFromGMT 等价
  *
- * 注: iOS/鸿蒙端暂按 UTC 处理, 与 jvmAndAndroidMain 的"默认时区"在 UTC 场景等价;
- * 实际部署时若需本地时区, 应由宿主注入时区偏移量。
+ * 失败 (localtime_r 返回 null) 时回退 0 (UTC), 不抛异常。
  */
-private fun currentLocalOffsetMillis(): Long = 0L
+@OptIn(ExperimentalForeignApi::class)
+private fun currentLocalOffsetMillis(): Long = memScoped {
+    val now = alloc<time_tVar>()
+    time(now.ptr)
+    val tm = alloc<tm>()
+    if (localtime_r(now.ptr, tm.ptr) == null) return@memScoped 0L
+    // tm 字段是 Int (Darwin/Linux 绑定一致): tm_year 自 1900, tm_mon 0 起
+    val localAsUtc = daysFromCivil(tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday) * 86_400L +
+        tm.tm_hour * 3_600L + tm.tm_min * 60L + tm.tm_sec
+    (localAsUtc - now.value) * 1_000L
+}
 
 /** 纯 Kotlin 公历换算: epoch 毫秒 → (year, month, day) (基于 [civilFromDays])。 */
 private fun epochToYmd(epochMillis: Long): Triple<Int, Int, Int> {
@@ -105,7 +121,7 @@ private fun epochToYmd(epochMillis: Long): Triple<Int, Int, Int> {
 
 /**
  * Howard Hinnant civil_from_days 算法: 自 1970-01-01 起的天数 → (year, month, day)。
- * 与 jvmAndAndroidMain 的 java.util.Calendar 本地日期语义在 UTC 场景等价。
+ * 与 jvmAndAndroidMain 的 java.util.Calendar 本地日期语义对齐 (配合 [currentLocalOffsetMillis])。
  */
 private fun civilFromDays(daysSinceEpoch: Long): Triple<Int, Int, Int> {
     val z = daysSinceEpoch + 719_468

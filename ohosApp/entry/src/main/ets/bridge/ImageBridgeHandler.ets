@@ -1,32 +1,34 @@
 import image from '@ohos.multimedia.image';
-import buffer from '@ohos.buffer';
 
 /**
  * ArkTS 侧图片操作处理器 (KP8+)。
  *
  * 接收 Kotlin OhosNativeBridge.invokeImageSync 通过 tsfn dispatch 过来的图片操作请求,
  * 调用 @ohos.multimedia.image (PixelMap/ImageSource/ImagePacker) 执行真实像素操作,
- * 完成后通过 legado.imageCallback(requestId, resultJson) 回送结果给 Kotlin。
+ * 完成后通过 legado.imageCallback(requestId, resultJson, body?) 回送结果给 Kotlin。
  *
- * # JSON 协议 (与 OhosImageOps.kt / OhosNativeBridge.kt 对齐)
+ * # 混合协议 (与 OhosImageOps.kt / OhosNativeBridge.kt 对齐, 同 WebView 桥思路: 大字节走裸参数)
  *
  * ## 请求 (Kotlin → ArkTS)
+ * ```
+ * handleImageRequest(requestJson, bytesArrayBuffer)
  * {
  *   "requestId": <number>,
  *   "action": "decode" | "encode" | "size" | "crop" | "split" | "stitch" | "release",
  *   "payload": "<JSON string, action-specific>"
  * }
+ * ```
+ * - 控制面: requestJson 内 payload 只含小字段 (pixelMapId/format/quality/坐标等)
+ * - 数据面: bytesArrayBuffer 为 decode 的图片字节 (tsfn call-js 用 napi external ArrayBuffer
+ *   零拷贝包装; 其余 action 为 undefined)
  *
  * ## 响应 (ArkTS → Kotlin)
- * {
- *   "ok": <boolean>,
- *   "pixelMapId": <number?>,        // decode/crop/stitch 返回新 PixelMap id
- *   "pixelMapIds": [<number>...],   // split 返回多个 PixelMap id
- *   "data": "<base64?>",            // encode 返回 base64 编码的 packed bytes
- *   "width": <number?>,             // size 返回宽
- *   "height": <number?>,            // size 返回高
- *   "error": "<string?>"            // 失败时含错误信息
- * }
+ * ```
+ * imageCallback(requestId, resultJson, bodyArrayBuffer)
+ * ```
+ * - 控制面 resultJson: `{ ok, pixelMapId?, pixelMapIds?, width?, height?, error? }`
+ *   (encode 的 packed 字节不走 JSON, 见下)
+ * - 数据面 bodyArrayBuffer: encode 的 packed 图片字节裸传 (不经 base64, 二进制保真)
  *
  * # PixelMap 句柄管理
  * ArkTS 侧用 Map<number, PixelMap> 持有 PixelMap 实例, Kotlin 侧只持有 id。
@@ -38,8 +40,8 @@ import buffer from '@ohos.buffer';
 const pixelMaps = new Map<number, image.PixelMap>();
 let nextPixelMapId = 1;
 
-// Image callback 类型 (由 EntryAbility 注入, 内部调 legado.imageCallback)
-export type ImageCallback = (requestId: number, resultJson: string) => void;
+// Image callback 类型 (由 EntryAbility 注入, 内部调 legado.imageCallback; body 为数据面裸字节)
+export type ImageCallback = (requestId: number, resultJson: string, body: ArrayBuffer | undefined) => void;
 
 // ===== 请求/响应接口定义 (与 Kotlin 侧 JSON 协议对齐) =====
 
@@ -53,14 +55,12 @@ interface ImageResponse {
   ok: boolean;
   pixelMapId?: number;
   pixelMapIds?: number[];
-  data?: string;
   width?: number;
   height?: number;
   error?: string;
 }
 
-// Payload 各 action 的参数结构
-interface DecodePayload { bytes: string; }
+// Payload 各 action 的参数结构 (encode 的 packed 字节走回调 body 裸参, 不在 JSON)
 interface EncodePayload { pixelMapId: number; format: string; quality: number; }
 interface SizePayload { pixelMapId: number; }
 interface CropPayload { pixelMapId: number; x: number; y: number; w: number; h: number; }
@@ -68,13 +68,20 @@ interface SplitPayload { pixelMapId: number; rows: number; cols: number; }
 interface StitchPayload { pixelMapIds: number[]; direction: string; }
 interface ReleasePayload { pixelMapId: number; }
 
+// action 处理结果: 控制面 ImageResponse + 可选数据面裸字节 (仅 encode 携带 packed 图片)
+interface ImageActionResult {
+  resp: ImageResponse;
+  body?: ArrayBuffer;
+}
+
 /**
- * 处理来自 Kotlin 的图片操作请求 (由 EntryAbility 注册的 tsfn 回调调用)。
+ * 处理来自 Kotlin 的图片操作请求 (由 EntryAbility 注册的 tsfn 回调调用, 混合协议)。
  *
- * @param requestJson 请求 JSON 字符串 (含 requestId/action/payload)
+ * @param requestJson 请求 JSON 字符串 (含 requestId/action/payload 控制面)
+ * @param bytes 数据面裸字节 ArrayBuffer (decode 的图片字节; 其余 action 为 undefined)
  * @param callback 回送结果的函数 (EntryAbility 注入 legado.imageCallback)
  */
-export function handleImageRequest(requestJson: string, callback: ImageCallback): void {
+export function handleImageRequest(requestJson: string, bytes: ArrayBuffer | undefined, callback: ImageCallback): void {
   let req: ImageBridgeRequest;
   try {
     req = JSON.parse(requestJson) as ImageBridgeRequest;
@@ -84,8 +91,8 @@ export function handleImageRequest(requestJson: string, callback: ImageCallback)
   }
 
   // 异步处理, 完成后回调
-  handleAction(req).then((resp: ImageResponse) => {
-    callback(req.requestId, JSON.stringify(resp));
+  handleAction(req, bytes).then((result: ImageActionResult) => {
+    callback(req.requestId, JSON.stringify(result.resp), result.body);
   }).catch((err: Error) => {
     const resp: ImageResponse = { ok: false, error: err.message ?? String(err) };
     callback(req.requestId, JSON.stringify(resp));
@@ -93,25 +100,26 @@ export function handleImageRequest(requestJson: string, callback: ImageCallback)
 }
 
 // 根据 action 分发到具体处理函数
-async function handleAction(req: ImageBridgeRequest): Promise<ImageResponse> {
+async function handleAction(req: ImageBridgeRequest, bytes: ArrayBuffer | undefined): Promise<ImageActionResult> {
   switch (req.action) {
-    case 'decode': return await handleDecode(req.payload);
+    case 'decode': return { resp: await handleDecode(bytes) };
     case 'encode': return await handleEncode(req.payload);
-    case 'size': return await handleSize(req.payload);
-    case 'crop': return await handleCrop(req.payload);
-    case 'split': return await handleSplit(req.payload);
-    case 'stitch': return await handleStitch(req.payload);
-    case 'release': return await handleRelease(req.payload);
-    default: return { ok: false, error: 'unknown action: ' + req.action };
+    case 'size': return { resp: await handleSize(req.payload) };
+    case 'crop': return { resp: await handleCrop(req.payload) };
+    case 'split': return { resp: await handleSplit(req.payload) };
+    case 'stitch': return { resp: await handleStitch(req.payload) };
+    case 'release': return { resp: await handleRelease(req.payload) };
+    default: return { resp: { ok: false, error: 'unknown action: ' + req.action } };
   }
 }
 
-// ===== decode: base64 → PixelMap =====
-async function handleDecode(payload: string): Promise<ImageResponse> {
-  const p = JSON.parse(payload) as DecodePayload;
-  // base64 → ArrayBuffer
-  const buf = buffer.from(p.bytes, 'base64');
-  const imageSource = image.createImageSource(buf.buffer);
+// ===== decode: ArrayBuffer (napi 裸字节) → PixelMap =====
+async function handleDecode(bytes: ArrayBuffer | undefined): Promise<ImageResponse> {
+  if (bytes == null || bytes.byteLength === 0) {
+    return { ok: false, error: 'decode: empty image bytes' };
+  }
+  // napi external ArrayBuffer 零拷贝直用, 不经 base64
+  const imageSource = image.createImageSource(bytes);
   try {
     const pixelMap = await imageSource.createPixelMap();
     const id = nextPixelMapId++;
@@ -122,20 +130,20 @@ async function handleDecode(payload: string): Promise<ImageResponse> {
   }
 }
 
-// ===== encode: PixelMap → base64 =====
-async function handleEncode(payload: string): Promise<ImageResponse> {
+// ===== encode: PixelMap → packed 字节 (回调 body 裸传) =====
+async function handleEncode(payload: string): Promise<ImageActionResult> {
   const p = JSON.parse(payload) as EncodePayload;
   const pixelMap = pixelMaps.get(p.pixelMapId);
   if (pixelMap == null) {
-    return { ok: false, error: 'pixelMap not found: ' + p.pixelMapId };
+    return { resp: { ok: false, error: 'pixelMap not found: ' + p.pixelMapId } };
   }
   const packer = image.createImagePacker();
   try {
     // format 规范: "jpeg" → "image/jpeg", "png" → "image/png"
     const formatStr = p.format.startsWith('image/') ? p.format : 'image/' + p.format;
     const packed = await packer.packing(pixelMap, { format: formatStr, quality: p.quality });
-    const base64 = buffer.from(packed).toString('base64');
-    return { ok: true, data: base64 };
+    // packed 是 ArrayBuffer: 原样裸传 (零拷贝, 二进制保真)
+    return { resp: { ok: true }, body: packed };
   } finally {
     packer.release();
   }

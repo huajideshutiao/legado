@@ -150,7 +150,7 @@ class ReaderProvider : ContentProvider() {
      */
     private class SimpleCursor(data: ReturnData?) : MatrixCursor(arrayOf("result"), 1) {
 
-        // Phase D: Gson().toJson(data) → ReturnData.toJsonString()
+        // Gson().toJson(data) → ReturnData.toJsonString()
         private val mData: String = data?.toJsonString() ?: ""
 
         init {

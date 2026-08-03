@@ -12,7 +12,7 @@ import java.io.File
  * JVM 端 [DatabaseDriverProvider] 实现: **Room KMP + BundledSQLiteDriver 真实数据库**。
  *
  * # 背景
- * KP1.2 已完成 17 个 DAO 的 suspend 迁移 (Room KMP 2.8.4 强制非 Android 平台 DAO 必须 suspend,
+ * 17 个 DAO 已完成 suspend 迁移 (Room KMP 2.8.4 强制非 Android 平台 DAO 必须 suspend,
  * 见 https://developer.android.com/kotlin/multiplatform/room "转换阻塞型 DAO 函数" 段)。
  * 启用 `kspJvm(libs.room.compiler)` 后, Room 在 JVM target 生成 `AppDatabase_Impl`,
  * 桌面端可通过 `Room.databaseBuilder<AppDatabase>` 真实构造数据库实例。

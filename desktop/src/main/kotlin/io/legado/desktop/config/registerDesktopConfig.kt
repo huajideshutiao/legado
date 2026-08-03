@@ -10,7 +10,7 @@ import io.legado.app.ui.compose.platform.DesktopPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.PreferenceStoreProvider
 
 /**
- * 桌面端启动早期注册所有 config 相关 provider（KP1.4 + 备份格式兼容性补齐）。
+ * 桌面端启动早期注册所有 config 相关 provider（含备份格式兼容性补齐）。
  *
  * - [PreferenceProviders]: 注入 [DesktopPreferenceProvider] (java.util.prefs.Preferences 实现)
  * - [AppConfigProviders]: 注入 [DesktopAppConfigAccessor] (5 个只读配置项)

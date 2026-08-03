@@ -16,6 +16,7 @@ import io.legado.app.help.file.registerOhosAppFilesDir
 import io.legado.app.help.file.registerNativeFileDownloader
 import io.legado.app.help.image.OhosBitmapProvider
 import io.legado.app.help.http.registerDefaultOhosCookieStoreProvider
+import io.legado.app.help.http.registerOhosBackstageWebView
 import io.legado.app.help.http.registerOhosHttpProvider
 import io.legado.app.help.http.registerSharedCookieJarBridge
 import io.legado.app.help.notification.registerOhosNotificationProgress
@@ -24,6 +25,7 @@ import io.legado.app.help.registerNativeDirectLinkUploadProviders
 import io.legado.app.help.registerNativeExploreKindsCacheProvider
 import io.legado.app.help.registerNativeFileCacheProvider
 import io.legado.app.help.registerNativeSourceCacheProvider
+import io.legado.app.help.registerOhosMainThread
 import io.legado.app.help.service.registerNativeUpdateBookCallback
 import io.legado.app.help.service.registerOhosServiceLauncher
 import io.legado.app.help.source.registerNativeSourceHelpAccessor
@@ -45,6 +47,7 @@ import io.legado.app.model.webBook.registerNativeWebBookProviders
 import io.legado.app.napi.registerOhosNativeBridge
 import io.legado.app.ui.book.changesource.registerOhosChangeBookSourcePlatform
 import io.legado.app.ui.book.manage.registerOhosBookshelfManagePlatform
+import io.legado.app.ui.book.read.page.provider.registerOhosTextMeasurer
 import io.legado.app.ui.compose.platform.OhosPreferenceStoreProvider
 import io.legado.app.web.registerNativeWebServerPlatform
 import io.legado.app.web.utils.registerNativeWebAssetSource
@@ -101,6 +104,9 @@ import io.legado.app.web.utils.registerNativeWebStrings
  * desktop 端 `Main.kt` 中的 provider 注册序列。
  */
 fun registerOhosProviders() {
+    // 0. 主线程 id 捕获 (任何 JS eval / webView 调用之前, EntryAbility.onCreate 在主线程执行本函数)
+    registerOhosMainThread()
+
     // 1. 文件系统目录 (其他 provider 持久化依赖)
     registerOhosAppFilesDir()
 
@@ -182,6 +188,10 @@ fun registerOhosProviders() {
     // (NativeRegexReplacer 的 @js: 分支依赖已注册的 JsEngines)
     registerNativeWebBookProviders()
 
+    // 6.3 后台 WebView (隐藏 Web 组件 napi 桥; 桥未就绪时抛明确失败信息让规则层 runCatching;
+    // 须在任何 webView 规则解析之前)
+    registerOhosBackstageWebView()
+
     // 6.5 BitmapProvider (CbzFile/EpubFile 封面提取用, 委托 OhosImageOps 的 PixelMap 解码/编码)
     // 必须在任何封面提取调用之前 (BitmapProviders 未注册时 get() 抛 IllegalStateException)
     BitmapProviders.register(OhosBitmapProvider)
@@ -193,7 +203,7 @@ fun registerOhosProviders() {
     // 7. TTS 引擎 provider (OhosSystemTtsEngine 占位), 在 JsEngines 之后
     // (与 desktop Main.kt 中 `TtsEngineProvider.register(DesktopSystemTtsEngine())` 位置一致)
     registerOhosSystemTtsEngine()
-    // 7b. HttpTTS 播放器工厂 (KP2-D P0-9: 三端朗读 HttpTTS 路径, 鸿蒙 AVPlayer napi 桥接 actual)
+    // 7b. HttpTTS 播放器工厂 (三端朗读 HttpTTS 路径, 鸿蒙 AVPlayer napi 桥接 actual)
     TtsEngineProvider.registerHttpTtsPlayerFactory { OhosHttpTtsPlayer() }
 
     // 8. 其余业务 provider (顺序无关)
@@ -233,6 +243,10 @@ fun registerOhosProviders() {
     registerOhosChangeBookSourcePlatform()
     // 书架管理平台 provider (commonMain BookshelfManageViewModelShared 调用, 须在 WebBookProviders 之后)
     registerOhosBookshelfManagePlatform()
+
+    // 8.8 阅读排版真实字形度量器 (Skia Font 度量, 取代 SimpleTextMeasurer 等宽近似;
+    // 须在任何章节排版之前, 依赖 skiko 随 compose ui 已就绪)
+    registerOhosTextMeasurer()
 
     // 9. Web 服务 provider (WebAssetSource + WebStrings + WebServerPlatform, iOS/鸿蒙共用 Ktor server 壳)
     // 仅注册平台实现, 不启动服务 (WebServerManager.start 由用户操作触发)

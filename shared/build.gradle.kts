@@ -16,6 +16,11 @@ compose.resources {
     generateResClass = always
 }
 
+// 2026-08-04: 改 composeResources 后编译偶发报 Unresolved reference(上游 Gradle VFS watcher 漏事件
+// + KGP 2.3.20 增量不重编生成访问器)。应对: 删 shared/build/generated/compose/resourceGenerator 后重编。
+// VFS watch 与增量编译已恢复默认(偶发, 不为偶发牺牲性能)。
+// CMP 资源访问器 (commonMainResourceAccessors) 由 generateResourceAccessorsForCommonMain 在
+// 编译任务图内生成 (compileKotlinJvm 直接 dependsOn 它)。KGP 2.3.20 的增量编译 (ABI 快照引擎)
 val isMacHost = System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
 // 非 mac 也可显式开启 (-PenableIosTarget=true): Kotlin/Native 的 Windows 分发自带 Apple platform klib,
 // klib 编译 (语法/类型/签名校验) 不需要 Xcode; 只有 link 成 framework 才必须 mac。

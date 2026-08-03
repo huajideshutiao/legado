@@ -18,13 +18,15 @@ import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.closeIfCloseable
 import io.legado.app.help.coroutine.newFixedThreadPoolDispatcher
+import io.legado.app.help.i18n.AppStringKey
+import io.legado.app.help.i18n.appString
+import io.legado.app.help.service.UpdateBookShared.Companion.AUTO_UPDATE_STALE_MS
 import io.legado.app.model.CacheBookShared
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.onEachParallel
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.systemCurrentTimeMillis
-import kotlin.concurrent.Volatile
 import kotlinx.atomicfu.AtomicInt
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -44,79 +46,27 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 import kotlin.math.min
 
 /**
- * 跨平台 UpdateBook (目录更新 / 强制刷新 / 自动更新 / 预下载调度) 编排核心
- * (shared commonMain 版本)。
+ * 跨平台 UpdateBook 编排核心 (commonMain): 目录更新 / 强制刷新 / 自动更新 / 预下载调度。
  *
- * # 背景
+ * 背景: app 端 MainViewModel 与桌面端阅读 VM 各有一份高度重复的编排逻辑
+ * (upToc/forceRefresh/scheduleAutoUpdate/refreshBook/updateToc/addDownload/...),
+ * 仅平台差异点不同; 本类把非平台特有逻辑下沉供 app/desktop/iOS/鸿蒙复用。
  *
- * app 端 `io.legado.app.ui.main.MainViewModel` 与桌面端阅读 VM
- * 各自实现了一份高度重复的
- * 目录更新编排逻辑 (upToc / forceRefresh / scheduleAutoUpdate / refreshBook /
- * updateToc / addDownload / cacheBook / startUpTocJob / onUpTocJobCompleted /
- * addToWaitUp / pollWaitUpTocBook / upPool 等), 仅在以下平台差异点不同:
- * - **协程 scope**: app 端 `viewModelScope` (随 Activity 销毁), 桌面端自有 scope
- * - **进度通知**: app 端 `NotificationManagerCompat` + `startService<UpdateBookService>`
- *   显示通知栏进度, 桌面端 `NotificationProgresses` (SystemTray 文本通知) + StateFlow
- * - **Toast 反馈**: app 端 `context.toastOnUi(R.string.xxx)`, 桌面端 `Toasters.get().toast(msg)`
- * - **CacheBook 调用**: app 端 `CacheBook` 单例 (CacheBookShared 的 app 薄壳),
- *   桌面端 `DesktopCacheBook` (CacheBookShared 的 desktop 薄壳)
- * - **bookSourceCache**: app 端 `androidx.collection.LruCache`, 桌面端
- *   `Collections.synchronizedMap(LinkedHashMap(accessOrder=true))`
- * - **ReadBook.onChapterListUpdated**: app 端调 ReadBook 单例, 桌面端 postEvent 通知
+ * 平台差异经 [UpdateBookCallback] 注入抽象:
+ * - scope: app 端 viewModelScope (随 Activity 销毁) / 桌面自有 scope
+ * - 进度通知: app 端 NotificationManagerCompat + UpdateBookService / 桌面 NotificationProgresses + StateFlow
+ * - Toast: app 端 toastOnUi / 桌面 Toasters.get()
+ * - CacheBook: app 端 CacheBook 单例 / 桌面 DesktopCacheBook (都是 CacheBookShared 薄壳)
+ * - bookSourceCache: app 端 androidx LruCache / 本类纯 Kotlin [LruCache] 逐条淘汰
+ *   (commonMain 无 accessOrder LinkedHashMap, 命中重插队尾 + 超容量淘汰队首)
+ * - ReadBook.onChapterListUpdated: app 端调单例, 统一改 postEvent(UP_BOOKSHELF)
  *
- * 本类把两者**非平台特有**的编排逻辑下沉到 commonMain, 供 app / desktop / iOS / 鸿蒙
- * 复用。平台差异通过 [UpdateBookCallback] 注入抽象 (与 [CacheBookShared] +
- * [io.legado.app.model.CacheBookCallback] 模式一致)。
- *
- * # 已复用的 shared commonMain 下沉件
- *
- * - [WebBook.getBookInfoAwait] / [WebBook.getChapterListAwait] / [WebBook.runPreUpdateJs]:
- *   shared model/webBook 已下沉
- * - [onEachParallel]: shared FlowExtensionsShared 已下沉的限流并发算子
- * - [postEvent] / [EventBus.UP_BOOKSHELF] / [EventBus.STOP_UP_BOOK]: shared FlowBus 已下沉
- * - [AppDbProviders.get()] / [AppConfigProviders.get()]: DAO 与配置访问 provider
- * - [Book.isLocal] / [Book.isUpError] / [Book.addType] / [Book.removeType]:
- *   shared BookExtensionsShared 已下沉
- * - [AppConst.MAX_THREAD]: shared commonMain 已下沉
- * - [ContentProcessorProviders.get().getTitleReplaceRules]: shared 已下沉 (替代 app 端
- *   `ContentProcessor.get(book).getTitleReplaceRules()`)
- * - [BookStorageProviders.get().updateCacheFolder]: shared 已下沉 (替代 app 端
- *   `BookHelp.updateCacheFolder`)
- * - [CacheBookShared]: shared model/CacheBookShared 已下沉 (替代 app 端 `CacheBook` /
- *   桌面端 `DesktopCacheBook`, 各端 CacheBook 单例都是 CacheBookShared 的薄壳)
- *
- * # 平台差异处理 (对照 app 端 MainViewModel / 桌面端宿主)
- *
- * - **不依赖 ViewModelStore / lifecycleScope**: 由调用方构造时注入 [scope]
- *   (app 端 viewModelScope / 桌面端自有 scope / iOS-鸿蒙 NativeServiceLauncher 的 scope)
- * - **不依赖 Android 通知栏**: 进度通知通过 [UpdateBookCallback.onProgressUpdate] /
- *   [UpdateBookCallback.onProgressCancel] 抽象, 由各端 callback 实现桥接
- *   (app 端 NotificationManagerCompat + startService<UpdateBookService>,
- *   桌面端 NotificationProgresses + StateFlow, iOS/鸿蒙 NativeUpdateBookCallback
- *   桥接 NotificationProgresses + Toasters)
- * - **不依赖 ReadBook 单例**: app 端 `ReadBook.onChapterListUpdated(book)` 通过
- *   postEvent(EventBus.UP_BOOKSHELF, bookUrl) 替代 (与桌面端一致, 阅读流 Composable
- *   监听自行重载, 语义等价仅少一次内存缓存同步)
- * - **不依赖 androidx.collection.LruCache**: bookSourceCache 改用
- *   `SynchronizedObject` + synchronized 包裹普通 `LinkedHashMap` (KMP 标准 API,
- *   commonMain 的 LinkedHashMap 无 accessOrder 构造, 用超过容量清空的简化 LRU 策略,
- *   见 [bookSourceCache] 字段注释; 不再参照 CacheBookShared 用 java.util.concurrent
- *   的历史遗留 bug 模式)
- * - **不依赖 CacheBook 单例 (app) / DesktopCacheBook (desktop)**: 直接调 [CacheBookShared]
- *   (commonMain 已下沉, 各端 CacheBook 单例都是其薄壳, 行为等价)
- *
- * # 生命周期
- *
- * class (非 object), 由各端 VM 持有实例:
- * - app 端 `MainViewModel` 持有, viewModelScope 注入, `onCleared` 时调 [onCleared]
- * - 桌面端宿主持有, 自有 scope 注入, `DisposableEffect.onDispose` 调 [onCleared]
- * - iOS/鸿蒙 `NativeServiceLauncher` 持有, launcher scope 注入, launcher 销毁时调 [onCleared]
- *
- * 模式参考 [CacheBookShared] (但 CacheBookShared 是 object 单例因 cacheBookMap 跨 VM 共享;
- * UpdateBookShared 是 class 因每个 VM 独立持有 upTocJob / refreshJob 等任务状态)。
+ * 生命周期: class 非 object, 各端 VM 持有实例 (upTocJob 等任务状态每 VM 独立);
+ * onCleared 释放。模式参考 [CacheBookShared]。
  */
 class UpdateBookShared(
     /** 协程作用域, 由调用方注入 (app: viewModelScope / desktop: 自有 scope / iOS-鸿蒙: launcher scope) */
@@ -160,16 +110,12 @@ class UpdateBookShared(
     /**
      * 更新目录 / 刷新书籍信息时缓存最近用过的书源, 避免每本书都走 DB (对照 app 端 bookSourceCache)。
      *
-     * app 端用 androidx.collection.LruCache (Android 专属), 本类用
-     * [SynchronizedObject] + synchronized 包裹普通 [LinkedHashMap] 实现 LRU
-     * (KMP 标准 API, 与 AppLog 同模式):
+     * app 端用 androidx.collection.LruCache (Android 专属), 本类用纯 Kotlin 私有 [LruCache]
+     * 实现等价逐条淘汰语义 (commonMain 的 LinkedHashMap 无 accessOrder 构造参数):
      * - 容量 16 (与 app 端一致, 一次自动更新批次活跃书源数通常远少于该上限)
+     * - 超出容量时逐条淘汰最久未使用项 (与 app 端 LruCache 一致, 不再整体 clear)
      * - 同时缓存 "未找到" (null) 状态, 避免书源被删后重复查库
-     * - synchronized 包裹保证 onEachParallel 并发访问安全
-     *
-     * 简化 LRU: commonMain 的 kotlin.collections.LinkedHashMap 无 accessOrder 构造参数
-     * (JVM 专属), 改用超过容量时整体 clear 的简化策略 (与 app 端 LruCache 逐条淘汰行为有差异,
-     * 但一次自动更新批次通常 < 16 本书源, 超过时清空重填可接受)。
+     * - [SynchronizedObject] + synchronized 包裹保证 onEachParallel 并发访问安全
      *
      * 内部包装 [SourceWrapper] 而非直接存 BookSource?, 与 app 端保持一致 (LruCache 不存 null)。
      */
@@ -179,23 +125,52 @@ class UpdateBookShared(
     }
 
     private val bookSourceCacheLock = SynchronizedObject()
-    private val bookSourceCache = LinkedHashMap<String, SourceWrapper>()
+    private val bookSourceCache = LruCache<String, SourceWrapper>(16)
 
     // KMP: addDownload 原子性保护 (替代 @Synchronized, Native 端 @Synchronized 无效)
     private val addDownloadLock = SynchronizedObject()
 
     private class SourceWrapper(val source: BookSource?)
 
+    /**
+     * 纯 Kotlin LRU 缓存 (替代 androidx.collection.LruCache / android.util.LruCache):
+     * - 容量 [maxSize], 超出时逐条淘汰最久未使用项 (与 app 端 LruCache 语义一致)
+     * - commonMain 的 kotlin.collections.LinkedHashMap 无 accessOrder 构造参数 (JVM 专属),
+     *   用「命中时 remove 后重插移至队尾 + 超出容量时淘汰队首」实现等价 LRU
+     * - 不内置锁: 调用方已用 [bookSourceCacheLock] synchronized 包裹 (与 app 端
+     *   LruCache 内部锁语义等价, 见 [bookSourceCache] 字段注释)
+     */
+    private class LruCache<K, V>(private val maxSize: Int) {
+        private val map = LinkedHashMap<K, V>()
+
+        fun get(key: K): V? {
+            val value = map.remove(key) ?: return null
+            map[key] = value // 重插队尾, 标记为最近使用
+            return value
+        }
+
+        fun put(key: K, value: V) {
+            map.remove(key)
+            map[key] = value
+            while (map.size > maxSize) {
+                map.remove(map.keys.first())
+            }
+        }
+
+        fun clear() {
+            map.clear()
+        }
+    }
+
     // KMP: 改 suspend 避免 runBlocking 持锁阻塞 (Native 端 deadlock 风险)
     // 逻辑等价: 先查缓存(含 null source 的 wrapper), 未命中查 DB 后回填
     private suspend fun getBookSource(origin: String): BookSource? {
-        val cached = synchronized(bookSourceCacheLock) { bookSourceCache[origin] }
+        val cached = synchronized(bookSourceCacheLock) { bookSourceCache.get(origin) }
         if (cached != null) return cached.source
         val source = appDb.bookSourceDao.getBookSource(origin)
         synchronized(bookSourceCacheLock) {
-            // 简化 LRU: 超过 16 个时清空 (commonMain 无 accessOrder, 见字段注释)
-            if (bookSourceCache.size > 16) bookSourceCache.clear()
-            bookSourceCache[origin] = SourceWrapper(source)
+            // 逐条 LRU 淘汰由 LruCache.put 内部处理 (命中重插队尾, 超出容量淘汰队首)
+            bookSourceCache.put(origin, SourceWrapper(source))
         }
         return source
     }
@@ -781,7 +756,9 @@ class UpdateBookShared(
         _isRefreshing.value = true
         val count = upTocCount.value + refreshCount.value
         val total = upTocTotal.value + refreshTotal.value
-        val title = if (refreshActive) "强制刷新" else "更新目录"
+        val title = if (refreshActive) appString(AppStringKey.force_refresh_book) else appString(
+            AppStringKey.update_toc
+        )
         val msg = "$count/$total"
         _progressText.value = "$title $msg"
         // 显示进度通知 (对照 app 端 updateUpdateNotification 内 NotificationManager.notify)

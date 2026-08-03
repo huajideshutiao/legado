@@ -70,6 +70,8 @@ class WebViewFetchResult(
  *   由调用方先抓取解码后传入; 非空时引擎渲染 html 而非 [url]。两个引擎 (WebView2
  *   `NavigateToString` / JavaFX `loadContent`) 都无 base URL 参数, 页面相对资源按
  *   about:blank 根解析, 与原版 `loadDataWithBaseURL` 存在此语义差异 (实现时评估)。
+ * @param bottomSheet 置底半屏语义 (对照 app 端 startBrowser asBottomSheet=true 的
+ *   BottomSheetDialog): 窗口高度取屏幕一半并贴屏幕底部; 默认普通居中窗口
  * @param onNavigated 每次导航完成回调 (参数为当前地址), cookie 回写已由引擎完成
  * @param onClosed 窗口关闭回调 (用户点 X 或代码 close 都会触发, 保证只回调一次)
  */
@@ -79,6 +81,7 @@ data class WebViewWindowRequest(
     val html: String? = null,
     val userAgent: String? = null,
     val cookieTag: String? = null,
+    val bottomSheet: Boolean = false,
     val onNavigated: (String) -> Unit = {},
     val onClosed: () -> Unit = {},
 )
@@ -91,6 +94,14 @@ interface WebViewWindowHandle {
 
     /** 取当前网页源码 (document.documentElement.outerHTML), 失败返回 null。 */
     suspend fun currentHtml(): String?
+
+    /**
+     * 在当前页面执行 JS 并取回结果, 失败返回 null。
+     *
+     * 结果已按平台归一为纯文本 (对齐安卓 evaluateJavascript 的 JSON 反转义+去引号),
+     * 供 [WebViewHost] 桥接 (验证回传 outerHTML / CF 挑战检测)。
+     */
+    suspend fun evaluateJavascript(script: String): String?
 
     fun reload()
 

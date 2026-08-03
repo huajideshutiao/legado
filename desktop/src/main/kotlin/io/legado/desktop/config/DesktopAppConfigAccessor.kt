@@ -7,7 +7,7 @@ import io.legado.app.help.config.CachedPrefValue
 import io.legado.app.help.config.PreferenceProviders
 
 /**
- * [AppConfigAccessor] 桌面端实现（KP1.4）。
+ * [AppConfigAccessor] 桌面端实现。
  *
  * 从 [PreferenceProviders.get()] 读只读配置项, 默认值与 app 端 [io.legado.app.help.config.AppConfig]
  * 保持一致:
@@ -26,8 +26,10 @@ import io.legado.app.help.config.PreferenceProviders
  * 注册到 [io.legado.app.help.config.AppConfigProviders] 由 [registerDesktopConfig] 完成。
  *
  * 注: isNightTheme / isEInkMode 在 app 端基于 themeMode 计算 (isNightTheme 的 else
- * 分支会回退到 Android 系统夜间模式), 桌面端无系统夜间模式概念, else 分支统一返回 false
- * (相当于日间), 与 themeMode 默认 "0" 跟随系统的语义对齐。
+ * 分支会回退到 Android 系统夜间模式), 桌面端 else 分支用系统深色模式检测:
+ * Windows 读注册表 `HKCU\...\Themes\Personalize\AppsUseLightTheme` (JNA Advapi32Util,
+ * 项目已有 JNA 依赖), 其他平台无标准 API 回退 false (相当于日间), 与 themeMode 默认
+ * "0" 跟随系统的语义对齐。
  */
 class DesktopAppConfigAccessor : AppConfigAccessor {
 
@@ -301,13 +303,12 @@ class DesktopAppConfigAccessor : AppConfigAccessor {
         get() = themeModeCache.get()
 
     // 与 AppConfig.isNightTheme 对齐: "1"=false, "2"=true, "3"=false, else=系统夜间模式
-    // 桌面端无系统夜间模式概念, else 分支返回 false
     override val isNightTheme: Boolean
         get() = when (themeModeCache.get()) {
             "1" -> false
             "2" -> true
             "3" -> false
-            else -> false
+            else -> systemNightMode()
         }
 
     override val isEInkMode: Boolean
@@ -383,6 +384,48 @@ class DesktopAppConfigAccessor : AppConfigAccessor {
     override val welcomeShowTime: Int
         get() = prefs.getInt(PreferKey.welcomeShowTime, 600)
             .coerceIn(AppConfigRanges.welcomeShowTime)
+
+    // ---- 系统深色模式检测 (themeMode="0" 跟随系统时用) ----
+
+    /** 系统深色模式缓存时间戳 (-1 = 未初始化), 避免热路径频繁读注册表。 */
+    @Volatile
+    private var sysNightCacheAt: Long = -1L
+
+    @Volatile
+    private var sysNightValue: Boolean = false
+
+    /** 注册表读取结果缓存时长 (毫秒): 系统主题切换不频繁, 10s 足够平滑。 */
+    private fun systemNightMode(): Boolean {
+        val now = System.currentTimeMillis()
+        if (sysNightCacheAt != -1L && now - sysNightCacheAt < SYS_NIGHT_TTL_MS) {
+            return sysNightValue
+        }
+        val value = detectSystemNightMode()
+        sysNightValue = value
+        sysNightCacheAt = now
+        return value
+    }
+
+    /**
+     * 仅 Windows: 读 `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`
+     * 的 `AppsUseLightTheme` DWORD (0=深色, 1=浅色); 非 Windows 平台 (macOS/Linux)
+     * 无等价注册表, 返回 false (与 JVM 无系统主题 API 的事实对齐, UI 回落日间属正常降级)。
+     */
+    private fun detectSystemNightMode(): Boolean {
+        if (!com.sun.jna.Platform.isWindows()) return false
+        return runCatching {
+            com.sun.jna.platform.win32.Advapi32Util.registryGetIntValue(
+                com.sun.jna.platform.win32.WinReg.HKEY_CURRENT_USER,
+                "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                "AppsUseLightTheme",
+            ) == 0
+        }.getOrDefault(false)
+    }
+
+    private companion object {
+        /** 系统深色模式检测缓存时长 (毫秒)。 */
+        const val SYS_NIGHT_TTL_MS = 10_000L
+    }
 
     // ---- 设置界面直写 pref 的开关 (热路径, 走缓存) ----
     // 原版 AppConfig 均为 boolPref 直读; 桌面端覆写为缓存字段, 变更由监听刷新

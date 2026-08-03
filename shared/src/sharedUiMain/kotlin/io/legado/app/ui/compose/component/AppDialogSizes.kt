@@ -59,6 +59,12 @@ object AppDialogSizes {
 
     /**
      * 对话框窗口属性: 必须关掉平台默认宽度, 否则 [appDialogSize] 的钳制被平台宽度覆盖。
+     *
+     * 背景暗化不在这里做: common expect 的 DialogProperties 只有 3 个参数, 传不了
+     * decorFitsSystemWindows (Android 设 false 虽会切到带 dim 的 FloatingDialogWindowTheme,
+     * 但窗口变 edge-to-edge 侵入系统栏, 内容需自行处理 insets) / scrimColor (仅 skiko 有);
+     * 由 [io.legado.app.ui.compose.platform.PlatformDialogDim] 在 Dialog 内容内按平台补齐
+     * (Android 窗口 FLAG_DIM_BEHIND 0.6, 桌面/iOS 自带 0.6 scrim)。
      */
     fun properties(
         dismissOnBackPress: Boolean = true,

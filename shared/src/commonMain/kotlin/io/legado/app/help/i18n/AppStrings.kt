@@ -50,6 +50,10 @@ enum class AppStringKey {
     bookshelf_layout,
     thread_count,
     local_book,
+
+    // UpdateBook 更新进度通知标题 (与 app 端 R.string 一一对应)
+    force_refresh_book,
+    update_toc,
 }
 
 /**

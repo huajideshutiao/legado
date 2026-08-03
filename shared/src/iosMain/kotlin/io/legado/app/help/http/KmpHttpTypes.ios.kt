@@ -1,10 +1,20 @@
+@file:OptIn(ExperimentalEncodingApi::class)
+
 package io.legado.app.help.http
 
+import io.legado.app.constant.AppConst
+import io.legado.app.help.UserAgentProviders
 import io.legado.app.utils.Closeable
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.toInputStream
 import io.ktor.client.HttpClient
+import io.ktor.client.engine.ProxyBuilder
 import io.ktor.client.engine.cio.CIO
+import io.ktor.client.engine.http
+import io.ktor.client.network.sockets.ConnectTimeoutException
+import io.ktor.client.network.sockets.InterruptedIOException
+import io.ktor.client.plugins.HttpRequestTimeoutException
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.header
 import io.ktor.client.request.request
@@ -18,6 +28,7 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import io.ktor.http.content.ByteArrayContent
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -25,8 +36,17 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.io.IOException
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.reflect.KClass
 import kotlin.time.Duration
+import okio.Buffer
+import okio.GzipSource
+import okio.Inflater
+import okio.InflaterSource
+import okio.buffer
+import okio.use
 
 /**
  * OkHttp 跨平台抽象层 nativeMain Actual 实现 (基于 Ktor 3.1.0 CIO engine)。
@@ -60,6 +80,14 @@ import kotlin.time.Duration
  *   OkHttp 原生 ResponseBody 是流式; 大文件场景内存占用更高 (与 WebDav.native.kt 同样降级)
  * - 协议枚举: Ktor 不暴露 Protocol 概念, [KmpResponseBuilder.protocol] 入参被忽略,
  *   [KmpResponse.networkResponse] / [priorResponse] / [isRedirect] 等少数成员为占位
+ * - 超时: [KmpHttpClientBuilder.build] 默认 connect/read/call 均 15s (对齐 Android HttpHelper
+ *   connect/read/write/call 15s; CIO 无 writeTimeout 等价物), 规则显式 timeout 优先;
+ * - 拦截器: [KmpRequest.prepareForSend] 在请求发出前等价执行 Android app 拦截器逻辑
+ *   (UA 注入 / Keep-Alive / Cache-Control / Accept-Encoding / CookieJar 标记移除 + CookieJarBridge),
+ *   发送失败重试一次 (对齐 retryOnConnectionFailure); gzip/deflate 响应经 okio 透明解压
+ *   (对齐 DecompressInterceptor; TLS connectionSpecs 无法在 CIO 等价配置, 走系统信任库)
+ * - 代理: 支持 http/https 代理 (含基础认证, 经 Proxy-Authorization 请求头, Ktor CIO CONNECT 会透传);
+ *   Ktor CIO 不支持 SOCKS 代理 (引擎忽略), 回退主 client 直连
  *
  * ## 编译期作用
  * 让 commonMain 中的 OkHttpUtils/DecompressInterceptor/AnalyzeUrlCore/StrResponse 等
@@ -92,6 +120,18 @@ actual class KmpHttpClient {
         private set
     private var readTimeoutMillis: Long = 0L
     private var callTimeoutMillis: Long = 0L
+    internal var proxyHost: String? = null
+        private set
+    internal var proxyPort: Int = 0
+        private set
+    internal var proxyUsername: String? = null
+        private set
+    internal var proxyPassword: String? = null
+        private set
+
+    /** 派生值: "Basic " + base64(user:pass); 请求发出时附加 Proxy-Authorization 头 */
+    internal var proxyAuthHeader: String? = null
+        private set
 
     // 给 expect class 匹配的 public 无参 constructor (commonMain 不直接调用)
     constructor()
@@ -99,23 +139,37 @@ actual class KmpHttpClient {
     internal constructor(
         ktorClient: HttpClient,
         readTimeoutMillis: Long,
-        callTimeoutMillis: Long
+        callTimeoutMillis: Long,
+        proxyHost: String? = null,
+        proxyPort: Int = 0,
+        proxyUsername: String? = null,
+        proxyPassword: String? = null,
+        proxyAuthHeader: String? = null
     ) {
         this.ktorClient = ktorClient
         this.readTimeoutMillis = readTimeoutMillis
         this.callTimeoutMillis = callTimeoutMillis
+        this.proxyHost = proxyHost
+        this.proxyPort = proxyPort
+        this.proxyUsername = proxyUsername
+        this.proxyPassword = proxyPassword
+        this.proxyAuthHeader = proxyAuthHeader
     }
 
     actual fun newCall(request: KmpRequest): KmpCall {
-        val client = ktorClient
+        ktorClient
             ?: throw IllegalStateException("KmpHttpClient not initialized (use KmpHttpClientBuilder.build())")
-        return NativeKmpCall(client, request)
+        return NativeKmpCall(this, request)
     }
 
     actual fun newBuilder(): KmpHttpClientBuilder {
         return KmpHttpClientBuilder().also {
             it.readTimeoutMillis = readTimeoutMillis
             it.callTimeoutMillis = callTimeoutMillis
+            it.proxyHost = proxyHost
+            it.proxyPort = proxyPort
+            it.proxyUsername = proxyUsername
+            it.proxyPassword = proxyPassword
         }
     }
 }
@@ -123,16 +177,22 @@ actual class KmpHttpClient {
 /**
  * nativeMain 端 [KmpHttpClientBuilder] 实现: 累积 timeout 配置, [build] 时构造 Ktor [HttpClient]。
  *
- * Ktor CIO engine 通过 [io.ktor.client.engine.cio.CIOEngineConfig] 配置:
- * - `requestTimeout` 对应 OkHttp callTimeout (整个请求周期上限)
- * - `endpoint.connectTimeout` / `endpoint.requestTimeout` 等其他参数保持 Ktor 默认
+ * 超时统一走 Ktor [HttpTimeout] 插件 (跨引擎标准 API, CIO 引擎会读取配置):
+ * - `requestTimeoutMillis` 对应 OkHttp callTimeout (整个请求周期上限);
+ * - `connectTimeoutMillis` 对应 OkHttp connectTimeout;
+ * - `socketTimeoutMillis` 对应 OkHttp readTimeout (两次数据包之间最大间隔);
+ * - writeTimeout 在 CIO 无等价物 (尽力而为, 已说明)。
  *
- * 注: readTimeout 在 Ktor 中无直接等价物 (Ktor 是协程模型, 读超时由 socket 层处理),
- * 这里只记录参数, 不实际生效 (与 jvmAndAndroidMain 行为基本一致, OkHttp readTimeout 影响单次 read 阻塞)。
+ * 默认值与 Android HttpHelper 对齐 (connect/read/write/call 均 15s):
+ * 0 = 未显式配置 → 默认 15s; AnalyzeUrlCore 规则显式 timeout 时经 setter 覆盖优先。
  */
 actual class KmpHttpClientBuilder {
     internal var readTimeoutMillis: Long = 0L
     internal var callTimeoutMillis: Long = 0L
+    internal var proxyHost: String? = null
+    internal var proxyPort: Int = 0
+    internal var proxyUsername: String? = null
+    internal var proxyPassword: String? = null
 
     actual fun readTimeout(duration: Duration): KmpHttpClientBuilder {
         readTimeoutMillis = duration.inWholeMilliseconds
@@ -144,15 +204,66 @@ actual class KmpHttpClientBuilder {
         return this
     }
 
+    /**
+     * 配置 HTTP 代理 (仅 http/https; Ktor CIO 引擎不支持 SOCKS, 见 IosHttpProvider)。
+     *
+     * 认证: CIO 无 CONNECT 级认证 API, 由 [KmpHttpClient.proxyAuthHeader] 在请求上携带
+     * Proxy-Authorization 头 (Ktor CIO startTunnel 会把该头透传到 CONNECT 隧道)。
+     */
+    internal fun proxy(
+        host: String,
+        port: Int,
+        username: String?,
+        password: String?
+    ): KmpHttpClientBuilder {
+        proxyHost = host
+        proxyPort = port
+        proxyUsername = username
+        proxyPassword = password
+        return this
+    }
+
     actual fun build(): KmpHttpClient {
-        // CIO engine 配置: requestTimeout 对应 OkHttp callTimeout; 0 表示无超时 (OkHttp 行为)
-        val engineTimeout = if (callTimeoutMillis > 0) callTimeoutMillis else Long.MAX_VALUE
+        // 与 Android HttpHelper 对齐: connect/read/write/call 默认均 15s; 0 = 未显式配置 → 默认 15s
+        // (AnalyzeUrlCore 规则显式 readTimeout/callTimeout 时经上面 setter 覆盖, 显式值优先)
+        val effectiveReadTimeout =
+            if (readTimeoutMillis > 0) readTimeoutMillis else DEFAULT_TIMEOUT_MS
+        val effectiveCallTimeout =
+            if (callTimeoutMillis > 0) callTimeoutMillis else DEFAULT_TIMEOUT_MS
         val client = HttpClient(CIO) {
+            // 超时走 HttpTimeout 插件 (CIO 引擎经 HttpTimeoutCapability 读取
+            // connectTimeoutMillis/socketTimeoutMillis 并应用到连接/读写):
+            // - requestTimeoutMillis 对应 OkHttp callTimeout (整个请求周期上限: 发请求到收响应)
+            // - connectTimeoutMillis 对应 OkHttp connectTimeout (Android 默认 15s)
+            // - socketTimeoutMillis 对应 OkHttp readTimeout (两次数据包之间最大间隔);
+            //   CIO 无 writeTimeout 等价物 (尽力而为)
+            install(HttpTimeout) {
+                requestTimeoutMillis = effectiveCallTimeout
+                connectTimeoutMillis = DEFAULT_TIMEOUT_MS
+                socketTimeoutMillis = effectiveReadTimeout
+            }
             engine {
-                requestTimeout = engineTimeout
+                proxyHost?.let { host ->
+                    proxy = ProxyBuilder.http("http://$host:$proxyPort")
+                }
             }
         }
-        return KmpHttpClient(client, readTimeoutMillis, callTimeoutMillis)
+        // 代理基础认证: CIO CONNECT 请求会透传请求头的 Proxy-Authorization (见 Ktor CIO startTunnel);
+        // 注意该头也会随请求到达目标站 (CIO 无法只对 CONNECT 附加, 尽力而为, 与 OkHttp
+        // ProxyAuthenticator 407 挑战式认证行为不同)
+        val authHeader = if (!proxyUsername.isNullOrEmpty() && !proxyPassword.isNullOrEmpty()) {
+            "Basic " + Base64.encode("$proxyUsername:$proxyPassword".encodeToByteArray())
+        } else null
+        return KmpHttpClient(
+            client,
+            effectiveReadTimeout,
+            effectiveCallTimeout,
+            proxyHost,
+            proxyPort,
+            proxyUsername,
+            proxyPassword,
+            authHeader
+        )
     }
 }
 // endregion
@@ -290,13 +401,19 @@ actual class KmpResponse : Closeable {
 
     constructor()
 
-    // 给 Ktor 实际请求构造: body 立即读到内存
+    // 给 Ktor 实际请求构造: body 立即读到内存 (gzip/deflate 透明解压, 对齐 Android DecompressInterceptor)
     internal constructor(ktorResponse: HttpResponse, request: KmpRequest) {
         codeVal = ktorResponse.status.value
         messageVal = ktorResponse.status.description
         headersVal = ktorResponse.headers.entries().associate { it.key to it.value }
         contentTypeStr = ktorResponse.headers[HttpHeaders.ContentType]
-        bodyBytes = runCatching { runBlocking { ktorResponse.bodyAsBytes() } }.getOrNull()
+        val rawBytes = runCatching { runBlocking { ktorResponse.bodyAsBytes() } }.getOrNull()
+        bodyBytes = rawBytes?.let {
+            decompressResponseBody(
+                it,
+                ktorResponse.headers[HttpHeaders.ContentEncoding]
+            )
+        }
         requestVal = request
     }
 
@@ -446,7 +563,7 @@ internal class NativeKmpResponseBody(
  * 调用方需在后台线程使用 (与 WebDav.native.kt 中 readRange 同样模式)。
  */
 internal class NativeKmpCall(
-    private val ktorClient: HttpClient,
+    private val client: KmpHttpClient,
     private val request: KmpRequest
 ) : KmpCall {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -475,14 +592,55 @@ internal class NativeKmpCall(
     }
 
     /**
-     * 实际执行 Ktor 请求 (suspend): 把 [KmpRequest] 转为 [HttpRequestBuilder] 并发起请求。
+     * 实际执行 Ktor 请求 (suspend): 应用层拦截器等价逻辑 + Ktor 请求 + 失败重试。
+     *
+     * 流程 (对照 Android HttpHelper.createOkHttpClient 的 app 拦截器):
+     * 1. [KmpRequest.prepareForSend]: UA 注入 / Keep-Alive / Connection / Cache-Control /
+     *    Accept-Encoding / "CookieJar" 标记头移除 + CookieJarBridge.loadRequest 注入 Cookie 头;
+     * 2. 代理认证头 Proxy-Authorization (仅代理客户端配置账号密码时);
+     * 3. 发送失败重试一次 (对齐 OkHttp retryOnConnectionFailure=true; 超时/取消不重试);
+     * 4. 响应回写 CookieJarBridge.saveResponse (启用 cookieJar 时, 对齐 Android 拦截器)。
      *
      * 返回的 [KmpResponse] 在构造时已读取 body 到内存缓存 (见 [KmpResponse] 构造函数)。
      */
     private suspend fun executeKtor(): KmpResponse {
-        val ktorRequest = request.toKtorHttpRequestBuilder()
-        val httpResponse = ktorClient.request(ktorRequest)
-        return KmpResponse(httpResponse, request)
+        val ktorClient = client.ktorClient
+            ?: throw IllegalStateException("KmpHttpClient not initialized (use KmpHttpClientBuilder.build())")
+        val enableCookieJar = request.header(cookieJarHeader) != null
+        val prepared = request.prepareForSend()
+        val ktorRequest = prepared.toKtorHttpRequestBuilder()
+        client.proxyAuthHeader?.let { ktorRequest.header(HttpHeaders.ProxyAuthorization, it) }
+        val httpResponse = ktorClientRequest(ktorClient, ktorRequest)
+        val response = KmpResponse(httpResponse, prepared)
+        if (enableCookieJar) {
+            CookieJarBridgeHolder.get()?.saveResponse(response)
+        }
+        return response
+    }
+
+    /** retryOnConnectionFailure(true) 等价: 非超时类传输错误重试一次 (OkHttp 默认重试) */
+    private suspend fun ktorClientRequest(
+        ktorClient: HttpClient,
+        ktorRequest: HttpRequestBuilder
+    ): HttpResponse {
+        return try {
+            ktorClient.request(ktorRequest)
+        } catch (e: IOException) {
+            // Ktor 各引擎异常 (ConnectTimeoutException / SocketTimeoutException /
+            // HttpRequestTimeoutException 等) 均继承 kotlinx.io.IOException
+            if (!e.isRetryableTransportError()) throw e
+            // body 是内存字节 (ByteArrayContent), 可安全重发
+            ktorClient.request(ktorRequest)
+        }
+    }
+
+    private fun Throwable.isRetryableTransportError(): Boolean {
+        if (this is CancellationException) return false
+        // 超时类异常不重试 (与 OkHttp 对 InterruptedIOException 不重试一致)
+        if (this is InterruptedIOException) return false
+        if (this is ConnectTimeoutException) return false
+        if (this is HttpRequestTimeoutException) return false
+        return true
     }
 }
 
@@ -712,6 +870,59 @@ private fun KmpRequest.toKtorHttpRequestBuilder(): HttpRequestBuilder {
 }
 
 /**
+ * 应用层拦截器等价逻辑 (对照 Android HttpHelper.createOkHttpClient 的 app 拦截器):
+ * - UA 注入: 无 UA 头时填 UserAgentProviders.get(); UA 值为 "null" 时移除 (Android 同款);
+ * - Keep-Alive / Connection / Cache-Control 固定头 (Android 拦截器逐请求添加);
+ * - Accept-Encoding: 无显式 Accept-Encoding 且无 Range 时加 "gzip, deflate"
+ *   (对齐 Android DecompressInterceptor 的 transparentDecompress 条件; 响应侧 [decompressResponseBody] 解压);
+ * - "CookieJar" 标记头移除 (Android 拦截器在启用 cookieJar 时移除, 标记绝不上行给服务器);
+ * - cookieJar 启用时经 [CookieJarBridgeHolder.loadRequest] 注入 Cookie 头 (Android 拦截器同款)。
+ */
+private fun KmpRequest.prepareForSend(): KmpRequest {
+    val builder = newBuilder()
+    val ua = header(AppConst.UA_NAME)
+    if (ua == null) {
+        builder.addHeader(AppConst.UA_NAME, UserAgentProviders.get())
+    } else if (ua == "null") {
+        builder.removeHeader(AppConst.UA_NAME)
+    }
+    builder.addHeader("Keep-Alive", "300")
+    builder.addHeader("Connection", "Keep-Alive")
+    builder.addHeader("Cache-Control", "no-cache")
+    if (header("Accept-Encoding") == null && header("Range") == null) {
+        builder.addHeader("Accept-Encoding", "gzip, deflate")
+    }
+
+    if (header(cookieJarHeader) != null) {
+        builder.removeHeader(cookieJarHeader)
+        return CookieJarBridgeHolder.get()?.loadRequest(builder.build()) ?: builder.build()
+    }
+    return builder.build()
+}
+
+/**
+ * 透明 gzip/deflate 解压 (对齐 Android DecompressInterceptor: 仅 "gzip"/"deflate")。
+ *
+ * okio 3.x 的 GzipSource / InflaterSource 在 Kotlin/Native 可用 (纯 Kotlin 实现);
+ * deflate 用 nowrap=true (raw deflate, 与 Android java.util.zip.Inflater(true) 一致)。
+ * 解压失败回退原字节 (与 OkHttp 解压失败抛异常不同, 尽力而为)。
+ */
+private fun decompressResponseBody(bytes: ByteArray, contentEncoding: String?): ByteArray {
+    return when (contentEncoding?.lowercase()) {
+        "gzip", "x-gzip" -> runCatching {
+            GzipSource(Buffer().write(bytes)).buffer().use { it.readByteArray() }
+        }.getOrDefault(bytes)
+
+        "deflate" -> runCatching {
+            InflaterSource(Buffer().write(bytes), Inflater(true)).buffer()
+                .use { it.readByteArray() }
+        }.getOrDefault(bytes)
+
+        else -> bytes
+    }
+}
+
+/**
  * form-urlencoded 编码 (与 OkHttp FormBody 编码行为对齐)。
  *
  * 规则: 字母数字不编码; 空格 '+'; 其他字符 %XX (UTF-8)。
@@ -754,4 +965,7 @@ private fun urlEncodeQuery(s: String): String {
 private inline fun String.ifNotEmpty(block: (String) -> Unit) {
     if (isNotEmpty()) block(this)
 }
+
+/** 默认超时 (对齐 Android HttpHelper: connect/read/write/call 均 15s) */
+private const val DEFAULT_TIMEOUT_MS = 15_000L
 // endregion

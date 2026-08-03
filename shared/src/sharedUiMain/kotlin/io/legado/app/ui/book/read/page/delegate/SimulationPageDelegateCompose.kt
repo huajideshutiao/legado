@@ -369,7 +369,12 @@ class SimulationPageDelegateCompose(
      * `_currentOffset` 仍同步推进：它是唯一的 Compose state，负责触发每帧重组。
      */
     override fun onAnimStart(animationSpeed: Int) {
-        if (!isMoved || mDirection == PageDirectionShared.NONE) return
+        if (!isMoved || mDirection == PageDirectionShared.NONE) {
+            // 未移动或方向未定，不启动动画（与基类 onAnimStart 守卫一致）。
+            // 手势未成形同样恢复自动翻页，避免 abortAnim 的 pause 悬挂
+            autoPager?.resume()
+            return
+        }
         isStarted = true
         isRunning = true
         // dx/dy 逐行照搬原版

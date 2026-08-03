@@ -10,59 +10,22 @@ import io.legado.app.utils.toJson
 import kotlinx.coroutines.CoroutineScope
 
 /**
- * 字典规则编辑 VM 共享核心 (KMP 版, commonMain)。
+ * 字典规则编辑 VM 共享核心 (commonMain)。
  *
- * # 背景
+ * 对照 app 端 `DictRuleEditDialog.DictRuleEditViewModel(app) : BaseViewModel(app)` (内部类):
+ * 四个方法 (initData/save/copyRule/pasteRule) 仅依赖 DAO + 协程 + Toasters + 剪贴板读写 +
+ * GSON, 可下沉多端复用。DAO 走 [AppDbProviders.get].dictRuleDao; `execute{...}` 链式回调
+ * 下沉为直接调 [Coroutine.async] (业务 IO / 回调 mainDispatcher, 行为等价)。
  *
- * 对照 app 端原 `DictRuleEditDialog.DictRuleEditViewModel(application: Application) :
- * BaseViewModel(application)` (内部类):
- * - 四个方法 (initData / save / copyRule / pasteRule) 仅依赖 DAO + 协程 + Toasters +
- *   剪贴板读写 + GSON, 可以下沉 commonMain 供多端复用 (Android / Desktop / iOS / 鸿蒙)。
- * - DAO 访问走 [AppDbProviders.get].dictRuleDao (宿主启动时由 app 端注册
- *   AppDbAccessorImpl, 已暴露 dictRuleDao)。
- * - 原 `execute { ... }.onFinally { ... }` / `execute { ... }.onSuccess { ... }
- *   .onError { ... }` (BaseViewModel 内委托 [Coroutine.async]) 下沉后直接调
- *   [Coroutine.async], 保留链式 onFinally/onSuccess/onError 回调结构, 行为等价
- *   (业务 context=IO, 回调 executeContext=mainDispatcher, 与 BaseViewModel.execute
- *   默认值一致)。
+ * Android 专属依赖替换: scope 经构造函数注入 (BaseViewModel 来自 Android ViewModel);
+ * 剪贴板读写经 [clipTextProvider]/[clipTextSink] 注入 (desktop 用 AWT Toolkit);
+ * Toast → [Toasters.get]; GSON 为 KS_JSON 别名直接复用。
  *
- * # Android 专属依赖替换
+ * 设计: 组合委托 (BaseViewModel 是 AndroidViewModel 不能继承)。
  *
- * - **viewModelScope**: BaseViewModel 来自 Android ViewModel, 不能下沉,
- *   通过构造函数 [scope] 注入 (Android = `viewModelScope` / 桌面 = 应用主作用域)。
- * - **剪贴板读取**: 原 `getClipText()` (Android ClipboardManager) 不能下沉,
- *   通过构造函数 lambda [clipTextProvider] 注入:
- *   - app 端实现 `{ getClipText() }` (委托 utils.ContextExtensions.getClipText);
- *   - desktop 端实现用 `Toolkit.getDefaultToolkit().systemClipboard.getData(...)`;
- *   - iOS/鸿蒙留宿主自实现。
- * - **剪贴板写入**: 原 `context.sendToClip(text)` (Android ClipboardManager) 不能下沉,
- *   通过构造函数 lambda [clipTextSink] 注入:
- *   - app 端实现 `{ text -> context.sendToClip(text) }`;
- *   - desktop 端实现用 `Toolkit.getDefaultToolkit().systemClipboard.setContents(...)`。
- * - **Toast 提示**: 原 `context.toastOnUi(msg)` → [Toasters.get].toast(msg)
- *   (Toaster 接口已下沉 commonMain, androidMain 注册的实现内部切主线程,
- *   与 `context.toastOnUi` 行为等价)。
- * - **GSON**: shared 端 [GSON] 已是 KS_JSON 的别名 (见 GsonExtensions.kt),
- *   [fromJsonObject] / [toJson] 扩展也已下沉 commonMain, 直接复用, 与 app 端行为一致。
- *
- * # 设计选择 (组合委托)
- *
- * 不采用 `expect abstract class` 让 app 端子类继承: BaseViewModel 是 AndroidViewModel,
- * commonMain 不可用, Kotlin 单继承会冲突。改用组合委托模式 (对照
- * [io.legado.app.ui.replace.edit.ReplaceEditViewModelShared]):
- * - app 端 `DictRuleEditDialog.DictRuleEditViewModel(application)` `extends BaseViewModel(application)`,
- *   内部持有本类实例, 通过 `viewModelScope` + `{ getClipText() }` +
- *   `{ text -> context.sendToClip(text) }` 注入;
- * - desktop 端在 Compose `remember` 中构造本类, 注入应用 scope + AWT Clipboard lambda。
- *
- * @param scope 协程作用域, actual 平台注入
- *   (Android = `viewModelScope` / 桌面 = 应用主作用域 / 窗口 scope)
- * @param clipTextProvider 剪贴板文本提供者 (替代 `getClipText()`):
- *   - app 端实现 `{ getClipText() }`
- *   - desktop 端实现 `Toolkit.getDefaultToolkit().systemClipboard.getData(DataFlavor.stringFlavor) as? String`
- * @param clipTextSink 剪贴板文本写入器 (替代 `context.sendToClip(text)`):
- *   - app 端实现 `{ text -> context.sendToClip(text) }`
- *   - desktop 端实现 `{ text -> ... systemClipboard.setContents(StringSelection(text), null) }`
+ * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
+ * @param clipTextProvider 剪贴板文本提供者 (替代 `getClipText()`)
+ * @param clipTextSink 剪贴板文本写入器 (替代 `context.sendToClip(text)`)
  */
 class DictRuleEditViewModelShared(
     private val scope: CoroutineScope,

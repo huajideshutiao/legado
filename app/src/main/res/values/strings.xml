@@ -40,6 +40,7 @@
     <string name="update_log">What\'s new</string>
     <string name="bookshelf_empty">The bookshelf is still empty. Search for books or add them from discovery!</string>
     <string name="action_download">Download</string>
+    <string name="open_release_page">Open release page</string>
     <string name="layout_list">List</string>
     <string name="fixed_width_mode">Fixed width mode</string>
     <string name="column_count">Columns</string>

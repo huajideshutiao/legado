@@ -1,5 +1,10 @@
 package io.legado.app.ui.route
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -7,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import io.legado.app.ui.replace.ReplaceEditScreen
@@ -26,6 +32,9 @@ import io.legado.app.utils.toJson
  * [ReplaceEditViewModelShared] 非 [io.legado.app.ui.root.ScreenModel] (组合委托模式,
  * scope/clipTextProvider 由宿主注入), 故用 [remember] 而非 [ScreenModelStore.getOrCreateTyped]。
  * 剪贴板通过 Compose [LocalClipboardManager] 访问, 帮助页通过 [HelpDialog] 渲染。
+ * 键盘辅助条由 Screen 内部共享 [io.legado.app.ui.compose.component.code.KeyboardToolbar]
+ * 直接渲染, 与 [io.legado.app.ui.route.BookSourceEditRoute] 一致 (Android 15+ edge-to-edge
+ * 底部避让 ime ∪ navigationBars)。
  */
 @Composable
 fun ReplaceEditRoute(
@@ -66,6 +75,11 @@ fun ReplaceEditRoute(
             viewModel.pasteRule(success)
         },
         onHelp = { showHelp = true },
+        // Android 15+ 强制 edge-to-edge 不再随键盘 resize, 底部辅助条须自行避让
+        // 键盘/导航条 (对齐 BookSourceEditRoute; desktop/iOS 上 ime inset 为 0, 此 padding 为 no-op)
+        modifier = Modifier.windowInsetsPadding(
+            WindowInsets.navigationBars.union(WindowInsets.ime)
+        ),
     )
 
     if (showHelp) {

@@ -2,7 +2,6 @@ package io.legado.app.help.book
 
 import android.graphics.BitmapFactory
 import android.os.ParcelFileDescriptor
-import androidx.documentfile.provider.DocumentFile
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
@@ -13,8 +12,6 @@ import io.legado.app.help.book.BookHelp.clearInvalidCache
 import io.legado.app.help.book.BookHelp.getCacheFile
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.analyzeRule.AnalyzeUrl
-import io.legado.app.model.fileBook.FileBook
-import io.legado.app.model.fileBook.getBookInputStream
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.ui.book.read.page.provider.ChapterContentParser
 import io.legado.app.utils.ArchiveUtils
@@ -40,17 +37,14 @@ import splitties.init.appCtx
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileNotFoundException
-import java.io.FileOutputStream
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
-import java.util.zip.ZipFile
 
 @Suppress("unused", "ConstPropertyName")
 object BookHelp {
     private val downloadDir: File = appCtx.externalFiles
     private const val cacheFolderName = "book_cache"
     private const val cacheImageFolderName = "images"
-    private const val cacheEpubFolderName = "epub"
     private val downloadImages = ConcurrentHashMap<String, Mutex>()
 
     val cachePath = FileUtils.getPath(downloadDir, cacheFolderName)
@@ -230,27 +224,6 @@ object BookHelp {
 
     fun getImageSuffix(src: String): String =
         BookHelpLogic.getImageSuffix(src)
-
-    @Throws(IOException::class, FileNotFoundException::class)
-    fun getEpubFile(book: Book): ZipFile {
-        val uri = book.getLocalUri()
-        if (uri.isContentScheme()) {
-            FileUtils.createFolderIfNotExist(downloadDir, cacheEpubFolderName)
-            val path = FileUtils.getPath(downloadDir, cacheEpubFolderName, book.originName)
-            val file = File(path)
-            val doc = DocumentFile.fromSingleUri(appCtx, uri)
-                ?: throw IOException("文件不存在")
-            if (!file.exists() || doc.lastModified() > book.latestChapterTime) {
-                FileBook.getBookInputStream(book).use { inputStream ->
-                    FileOutputStream(file).use { outputStream ->
-                        inputStream.copyTo(outputStream)
-                    }
-                }
-            }
-            return ZipFile(file)
-        }
-        return ZipFile(uri.path)
-    }
 
     /**
      * 获取本地书籍文件的ParcelFileDescriptor

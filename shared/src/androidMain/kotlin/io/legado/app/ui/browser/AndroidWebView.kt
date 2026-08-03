@@ -2,12 +2,14 @@ package io.legado.app.ui.browser
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.net.Uri
 import android.os.Build
 import android.util.AttributeSet
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
+import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -16,22 +18,49 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material.AlertDialog
+import androidx.compose.material.Text
+import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.documentfile.provider.DocumentFile
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import io.legado.app.constant.AppConst
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.CookieStoreProviders
+import io.legado.app.help.toast.Toasters
+import io.legado.app.model.Download
+import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.utils.DocumentUtils
 import io.legado.app.utils.EscapeUtils
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.splitNotBlank
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.action_download
+import legado.shared.generated.resources.action_save
+import legado.shared.generated.resources.cancel
+import legado.shared.generated.resources.save_success
+import legado.shared.generated.resources.select_folder
+import org.jetbrains.compose.resources.stringResource
+import java.net.URLDecoder
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Android 端 WebView 平台实现 (供 [LocalWebViewSlot] 注入)。
@@ -48,10 +77,10 @@ import io.legado.app.utils.splitNotBlank
  * - [WebViewConfig.html] 非空时 loadDataWithBaseURL (POST body/data: 解包/RSS clHtml 正文);
  * - [WebViewCallbacks.shouldOverrideUrl] 接原 `BaseWebViewClient.interceptUrl` (书源跳转拦截 JS);
  * - [WebViewCallbacks.onReceivedTitle] / [WebViewCallbacks.onFullScreenChanged] 接原
- *   `CommonWebChromeClient` 的标题与 `<video>` 全屏 (custom view 铺满本组件自己的容器)。
- *
- * 未迁移项: 长按图片保存与下载监听 (原 WebViewUtil.setupImageLongClick / setupDownloadListener),
- * 依赖 Activity 级目录选择器, 留在 app 端。
+ *   `CommonWebChromeClient` 的标题与 `<video>` 全屏 (custom view 铺满本组件自己的容器);
+ * - 长按图片保存与下载监听 (原 WebViewUtil.setupImageLongClick / setupDownloadListener):
+ *   长按图片弹保存菜单 (保存到上次目录/选择文件夹, 目录经 SAF 持久化授权后写入),
+ *   下载走 shared [Download] (Android 端仍落系统 DownloadManager/DownloadService)。
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -63,6 +92,71 @@ fun AndroidWebView(
     // 全屏 custom view 由本组件自己托管: 有值时铺满整个 slot, 盖住 WebView
     var customView by remember { mutableStateOf<View?>(null) }
     val callbacksRef by rememberUpdatedState(callbacks)
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    // 长按图片的 hitTest extra (图片 url 或 base64 data uri), 非空时弹保存菜单
+    var imageToSave by remember { mutableStateOf<String?>(null) }
+    // 下载确认 (url to fileName), 非空时弹下载对话框
+    var downloadRequest by remember { mutableStateOf<Pair<String, String>?>(null) }
+    // 上次保存目录 (对照原 ACache imagePathKey: 保存到上次目录, 失败时清除)
+    var lastImageDir by remember {
+        mutableStateOf(PreferenceProviders.get().getString(AppConst.imagePathKey))
+    }
+    val saveSuccessText = stringResource(Res.string.save_success)
+
+    // 下载图片字节并写入目录 (对照原 FileUtils.saveImage(url, dirUri) + WebViewModel.saveImage)
+    // 注意: 局部函数不可前向引用, doSaveImage 被 pickDirAndSave/saveImage 依赖, 故排在最前
+    fun doSaveImage(pic: String, dirUri: String) {
+        scope.launch(IoDispatcher) {
+            runCatching {
+                // data: 前缀自动解包 (原 urlOrBase64ToBytes 的 base64 分支)
+                val bytes = AnalyzeUrlCore(
+                    pic, coroutineContext = coroutineContext
+                ).getByteArrayAwait()
+                val dirDoc = DocumentFile.fromTreeUri(context, Uri.parse(dirUri))
+                    ?: error("目录不可用")
+                val ext = pic.substringAfterLast('.', "").let {
+                    if (it.length <= 5 && it.matches(Regex("[a-zA-Z0-9]+"))) ".$it" else ".jpg"
+                }
+                val name = SimpleDateFormat("yy-MM-dd-HH-mm-ss", Locale.getDefault())
+                    .format(Date()) + ext
+                val file = DocumentUtils.createFileIfNotExist(dirDoc, name, mimeType = "image/*")
+                    ?: error("创建文件失败")
+                // 2026-08-04: documentfile 无 openOutputStream(官方指引 ContentResolver), 此处为标准用法。
+                val os = context.contentResolver.openOutputStream(file.uri, "w")
+                    ?: error("打开文件失败")
+                os.use { it.write(bytes) }
+            }.onSuccess {
+                withContext(Dispatchers.Main) { Toasters.get().toast(saveSuccessText) }
+            }.onFailure { e ->
+                // 对照原 WebViewModel.saveImage.onError: 清目录缓存并提示
+                PreferenceProviders.get().remove(AppConst.imagePathKey)
+                withContext(Dispatchers.Main) {
+                    Toasters.get().toast("保存图片失败:${e.message}")
+                }
+            }
+        }
+    }
+
+    // 选目录后保存 (对照原 setupImageLongClick 的 selectFolder 分支)
+    fun pickDirAndSave(pic: String) {
+        scope.launch(IoDispatcher) {
+            // pickDirectory 内部 runBlocking 等主线程回调, 必须在 IO 线程调用
+            val dir = PlatformServiceProviders.get().files.pickDirectory() ?: return@launch
+            lastImageDir = dir
+            PreferenceProviders.get().putString(AppConst.imagePathKey, dir)
+            doSaveImage(pic, dir)
+        }
+    }
+
+    // 保存: 有上次目录直接存, 否则先选目录 (对照原 WebViewActivity.saveImage)
+    fun saveImage(pic: String) {
+        if (lastImageDir.isNullOrEmpty()) {
+            pickDirAndSave(pic)
+        } else {
+            doSaveImage(pic, lastImageDir)
+        }
+    }
 
     Box(modifier) {
         AndroidView(
@@ -91,6 +185,26 @@ fun AndroidWebView(
                         }
                     }
                     callbacksRef.host = WebViewHostImpl(this)
+                    // 长按图片弹保存菜单 (原 WebViewUtil.setupImageLongClick)
+                    setOnLongClickListener {
+                        val hit = hitTestResult
+                        if (hit.type == WebView.HitTestResult.IMAGE_TYPE ||
+                            hit.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
+                        ) {
+                            hit.extra?.let { pic ->
+                                imageToSave = pic
+                                return@setOnLongClickListener true
+                            }
+                        }
+                        return@setOnLongClickListener false
+                    }
+                    // 下载监听弹确认 (原 WebViewUtil.setupDownloadListener)
+                    setDownloadListener { url, _, contentDisposition, _, _ ->
+                        val downloadUrl = url ?: return@setDownloadListener
+                        var fileName = URLUtil.guessFileName(downloadUrl, contentDisposition, null)
+                        fileName = URLDecoder.decode(fileName, "UTF-8")
+                        downloadRequest = downloadUrl to fileName
+                    }
                 }
             },
             update = { web ->
@@ -126,7 +240,46 @@ fun AndroidWebView(
             )
         }
     }
+
+    // 长按图片保存菜单 (对照原 WebViewUtil.setupImageLongClick 的 selector: 保存/选择文件夹)
+    imageToSave?.let { pic ->
+        AlertDialog(
+            onDismissRequest = { imageToSave = null },
+            title = { Text(stringResource(Res.string.action_save)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    imageToSave = null
+                    saveImage(pic)
+                }) { Text(stringResource(Res.string.action_save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    imageToSave = null
+                    pickDirAndSave(pic)
+                }) { Text(stringResource(Res.string.select_folder)) }
+            },
+        )
+    }
+    // 下载确认 (对照原 setupDownloadListener 的 alert: 标题=文件名, 确认=下载)
+    downloadRequest?.let { (url, fileName) ->
+        AlertDialog(
+            onDismissRequest = { downloadRequest = null },
+            title = { Text(fileName) },
+            confirmButton = {
+                TextButton(onClick = {
+                    downloadRequest = null
+                    Download.start(url, fileName)
+                }) { Text(stringResource(Res.string.action_download)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { downloadRequest = null }) {
+                    Text(stringResource(Res.string.cancel))
+                }
+            },
+        )
+    }
 }
+
 
 /** 对照原 app 端 WebViewUtil.applyCommonSettings。 */
 @SuppressLint("SetJavaScriptEnabled")
@@ -229,6 +382,10 @@ private class WebViewHostImpl(private val webView: WebView) : WebViewHost {
     override fun canGoBack(): Boolean = webView.canGoBack()
 
     override fun goBack() = webView.goBack()
+
+    override fun getUrl(): String? = webView.url
+
+    override fun reload() = webView.reload()
 }
 
 /**

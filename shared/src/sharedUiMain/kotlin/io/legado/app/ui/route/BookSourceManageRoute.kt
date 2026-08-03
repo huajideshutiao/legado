@@ -24,6 +24,7 @@ import io.legado.app.ui.association.ImportBookSourceViewModelShared
 import io.legado.app.ui.book.source.BookSourceListCallbacks
 import io.legado.app.ui.book.source.BookSourceListScreen
 import io.legado.app.ui.book.source.SourceFilter
+import io.legado.app.ui.book.source.manage.BookSourceGroupManageDialog
 import io.legado.app.ui.book.source.manage.BookSourceScreenModel
 import io.legado.app.ui.book.source.manage.BookSourceUiEvent
 import io.legado.app.ui.compose.component.AlertButton
@@ -143,6 +144,8 @@ fun BookSourceManageRoute(
     // 删除确认对话框 (对照 app 端 del / delSelection 内 alert)
     var delTarget by remember { mutableStateOf<BookSourcePart?>(null) }
     var showDelSelection by remember { mutableStateOf(false) }
+    // 书源分组管理对话框 (对照 app 端 GroupManageDialog; 管理 BookSource.bookSourceGroup, 非书架 BookGroup)
+    var showGroupManage by remember { mutableStateOf(false) }
 
     // 首次打开帮助引导 (对照 app 端 onActivityCreated: !LocalConfig.bookSourcesHelpVersionIsLast)
     LaunchedEffect(Unit) {
@@ -272,9 +275,7 @@ fun BookSourceManageRoute(
                 }
             },
             onImportOnline = { showUrlInput = true },
-            onGroupManage = {
-                PlatformCapabilityProviders.getOrNull()?.showBookSourceGroupManage()
-            },
+            onGroupManage = { showGroupManage = true },
             onHelp = { showHelp = true },
             onSelectActions = {
                 // 对照 app 端 selectActions(): 12 个 SelectAction
@@ -411,5 +412,10 @@ fun BookSourceManageRoute(
             },
             cancelButton = AlertButton(stringResource(Res.string.no)),
         )
+    }
+
+    // 书源分组管理 (对照 app 端 showDialogFragment<GroupManageDialog>)
+    if (showGroupManage) {
+        BookSourceGroupManageDialog(onDismiss = { showGroupManage = false })
     }
 }

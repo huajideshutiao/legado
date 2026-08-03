@@ -1,130 +1,69 @@
 package io.legado.desktop.help
 
-import io.legado.app.constant.AppLog
-import io.legado.app.help.http.OkHttpClientProviders
+import io.legado.app.constant.PreferKey
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.toast.Toasters
-import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.help.update.AbiTokens
+import io.legado.app.help.update.AppUpdateEnvironment
+import io.legado.app.help.update.AppUpdateManager
+import io.legado.app.help.update.UpdateAction
+import io.legado.app.help.update.UpdateCheckInfo
+import io.legado.app.help.update.UpdateExecutor
+import io.legado.app.help.update.UpdateExecutors
+import io.legado.app.help.update.UpdatePlatform
+import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.desktop.constant.DesktopAppInfo
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import okhttp3.Request
 
 /**
- * 桌面端检查更新 (方案 B: GitHub Release API + 手动下载)。
+ * 桌面端更新能力注册 (薄壳转发 shared, 不再自写 GitHub API 解析)。
  *
- * # 背景 / 与 app 端差异
+ * 检查更新全链路在 shared: 关于页 [io.legado.app.ui.about.AboutScreenModel] →
+ * [AppUpdateManager.check] → [io.legado.app.help.update.UpdateStrategies] 策略
+ * (updateUrl 非空时换 [io.legado.app.help.update.CustomUrlUpdateChecker],
+ * 为空回退 GitHubReleaseChecker, 与 app 端一致)。
  *
- * app 端 [io.legado.app.help.update.AppUpdate] 走自建更新源 (`AppConfig.updateUrl`, JSON 协议)
- * + DownloadManager 自动下载安装 (Android Intent `ACTION_INSTALL_PACKAGE`)。
+ * 本文件只注册两样东西:
+ * 1. [AppUpdateEnvironment]: 平台/版本号/架构/自建更新源 (读 `PreferKey.updateUrl`)
+ * 2. [UpdateExecutor]: 桌面端无 DownloadManager, 一律用系统浏览器打开
+ *    下载直链 (有资产) 或 release 页 (无资产), 与旧 DesktopAppUpdate 手动下载行为一致
  *
- * 桌面端无 Intent / DownloadManager, 也无自建更新源下沉, 改为:
- * 1. 调 GitHub Release API (`/repos/gedoor/legado/releases/latest`) 取最新 release
- * 2. 解析 `tag_name` (版本号) + `body` (release notes) + `assets` (找 Windows `.msi` 下载链接)
- * 3. 与 [DesktopAppInfo.versionName] 比对 (去 v 前缀, 简单字符串比对)
- * 4. 有新版本时回调 [onResult] 由 UI 层弹窗提示用户手动下载
- *    (`java.awt.Desktop.browse` 打开下载 URL); 已是最新版本 / 失败时由本类直接 toast 提示
- *    (UI 层无需处理这两类分支)
- *
- * # 不引入
- *
- * - semver 库: 版本比对仅去 v 前缀后字符串等值比较 (与 app 端 AppUpdate.isNewest 语义对齐)
- * - 自动下载安装: 桌面端无 Intent, 仅提示用户手动下载
- *
- * @see io.legado.app.help.update.AppUpdate (app 端实现, 走自建更新源)
+ * 注册后 shared 关于页的"检查更新"入口自动出现 (AboutRoute 以
+ * [AppUpdateManager.isAvailable] 为 gate), 新版本弹 [UpdateAvailableDialog]。
  */
-object DesktopAppUpdate {
+fun registerDesktopAppUpdate() {
+    AppUpdateManager.register(DesktopUpdateEnvironment())
+    UpdateExecutors.register(DesktopUpdateExecutor)
+}
 
-    /** GitHub Release API (latest release 元数据: tag_name / body / assets)。 */
-    private const val LATEST_RELEASE_URL = "https://api.github.com/repos/gedoor/legado/releases/latest"
+/** 桌面端运行时信息。 */
+private class DesktopUpdateEnvironment : AppUpdateEnvironment {
+    override val platform: UpdatePlatform get() = currentPlatform()
+    override val currentVersionName: String get() = DesktopAppInfo.versionName
+    override val supportedAbis: List<String>
+        get() = listOf(AbiTokens.normalize(System.getProperty("os.arch", "amd64")))
+    override val updateUrl: String
+        get() = PreferenceProviders.get().getString(PreferKey.updateUrl, "")
+}
 
-    /** GitHub API v2+ 推荐 Accept 头 (避免 API 弃用警告)。 */
-    private const val ACCEPT_HEADER = "application/vnd.github+json"
-
-    private val json = Json { ignoreUnknownKeys = true; isLenient = true }
-
-    /**
-     * 检查更新。
-     *
-     * @param onResult 新版本可用时回调 [UpdateInfo] (UI 层据此弹 AlertDialog 提示用户手动下载);
-     *                 已是最新版本 / 网络失败时由本函数直接 toast, 不回调 [onResult]。
-     */
-    suspend fun check(onResult: (UpdateInfo) -> Unit) {
-        val info = runCatching {
-            fetchLatestRelease()
-        }.getOrElse {
-            AppLog.put(jvmGetString("check_update_failed", it.localizedMessage), it)
-            Toasters.get().toast(it.localizedMessage ?: jvmGetString("check_update_failed_no_msg"))
-            return
-        }
-        // 版本比对: 去 v/V 前缀 + trim, 简单字符串等值比较 (不引入 semver)
-        val current = DesktopAppInfo.versionName.removePrefix("v").removePrefix("V").trim()
-        val latest = info.latestVersion.removePrefix("v").removePrefix("V").trim()
-        if (latest.isNotEmpty() && latest != current) {
-            onResult(info)
-        } else {
-            Toasters.get().toast(jvmGetString("already_latest_version"))
-        }
-    }
-
-    /** 拉 latest release JSON 并解析为 [UpdateInfo] (IO 线程执行)。 */
-    private suspend fun fetchLatestRelease(): UpdateInfo = withContext(Dispatchers.IO) {
-        val client = OkHttpClientProviders.get().okHttpClient
-        val request = Request.Builder()
-            .url(LATEST_RELEASE_URL)
-            .header("Accept", ACCEPT_HEADER)
-            .build()
-        client.newCall(request).execute().use { response ->
-            val bodyStr = response.body.string()
-            parseUpdateInfo(bodyStr)
-        }
-    }
-
-    /**
-     * 解析 GitHub Release API JSON 响应为 [UpdateInfo]。
-     *
-     * 仅取 3 个字段: `tag_name` (版本号) / `body` (release notes markdown) / `assets`
-     * (找 `name` 以 `.msi` 结尾的 Windows 安装包 `browser_download_url`)。
-     * 用 kotlinx.serialization.json 的 DOM API 手动遍历, 不为整个响应定义 @Serializable。
-     */
-    private fun parseUpdateInfo(jsonStr: String): UpdateInfo {
-        val obj = json.parseToJsonElement(jsonStr).jsonObject
-        val tag = obj["tag_name"]?.jsonPrimitive?.contentOrNull ?: ""
-        val body = obj["body"]?.jsonPrimitive?.contentOrNull ?: ""
-        var downloadUrl = ""
-        val assets = obj["assets"]?.jsonArray
-        if (assets != null) {
-            for (asset in assets) {
-                val name = asset.jsonObject["name"]?.jsonPrimitive?.contentOrNull ?: ""
-                // Windows MSI 安装包 (jpackage 产物, 对应 desktop/build.gradle.kts TargetFormat.Msi)
-                if (name.endsWith(".msi", ignoreCase = true)) {
-                    downloadUrl = asset.jsonObject["browser_download_url"]
-                        ?.jsonPrimitive?.contentOrNull ?: ""
-                    break
-                }
-            }
-        }
-        return UpdateInfo(
-            latestVersion = tag,
-            releaseNotes = body,
-            downloadUrl = downloadUrl,
-        )
+/** 桌面端执行器: 浏览器打开下载直链, 无资产降级打开 release 页。 */
+private object DesktopUpdateExecutor : UpdateExecutor {
+    override suspend fun execute(action: UpdateAction, info: UpdateCheckInfo): Boolean {
+        // 有资产: 打开安装包直链; 无资产: 打开 release 页 (landingUrl)
+        val url = info.downloadUrl.ifBlank { info.landingUrl }
+        if (url.isBlank()) return false
+        val browser = PlatformServiceProviders.getOrNull()?.browser ?: return false
+        Toasters.get().toast("正在打开下载页")
+        browser.openUrl(url)
+        return true
     }
 }
 
-/**
- * 检查更新结果 (新版本元数据)。
- *
- * @param latestVersion 最新版本号 (GitHub Release `tag_name`, 如 "3.25.0722" 或 "v3.25.0722")
- * @param releaseNotes  release notes (GitHub Release `body`, markdown 文本)
- * @param downloadUrl   Windows MSI 下载链接 (`assets[].browser_download_url`; 无 MSI 资源时为空串)
- */
-data class UpdateInfo(
-    val latestVersion: String,
-    val releaseNotes: String,
-    val downloadUrl: String,
-)
+/** 按当前 OS 选更新平台 (决定 release 资产后缀匹配: msi/exe / dmg / deb-rpm)。 */
+private fun currentPlatform(): UpdatePlatform {
+    val os = System.getProperty("os.name", "").lowercase()
+    return when {
+        os.contains("win") -> UpdatePlatform.WINDOWS
+        os.contains("mac") -> UpdatePlatform.MACOS
+        else -> UpdatePlatform.LINUX
+    }
+}

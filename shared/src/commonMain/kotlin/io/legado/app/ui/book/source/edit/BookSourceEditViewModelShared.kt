@@ -21,88 +21,26 @@ import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.CoroutineScope
 
 /**
- * 书源编辑 VM 共享核心 (KMP 版, commonMain)。
+ * 书源编辑 VM 共享核心 (commonMain)。
  *
- * # 背景
+ * 对照 app 端 `BookSourceEditViewModel(application) : BaseViewModel(application)`:
+ * 六个方法 (initData/save/pasteSource/importSource×2/clearCookie) 仅依赖 DAO + 协程 +
+ * 剪贴板/Toast/i18n/okHttpClient 等, 可下沉 commonMain 多端复用。DAO 走 [AppDbProviders.get];
+ * `execute{...}` 链式回调下沉为直接调 [Coroutine.async] (业务 IO / 回调 mainDispatcher, 行为等价)。
+ * Android 专属依赖通过构造 lambda 注入: Intent 解析留 app 端 (改传 [sourceUrl] 按 URL 查 DB,
+ * KMP 路由只传稳定 ID/URL); 剪贴板 [clipTextProvider] / Toast [Toasters.get] / 校验文案
+ * [nonNullNameUrlMessage] / okHttpClient [OkHttpClientProviders.get] / [sourceConfigRemover] /
+ * [cookieRemover] / [systemCurrentTimeMillis]。
  *
- * 对照 app 端原 `BookSourceEditViewModel(application: Application) : BaseViewModel(application)`:
- * - 六个方法 (initData / save / pasteSource / importSource×2 / clearCookie) 仅依赖 DAO +
- *   协程 + Toasters + 剪贴板 + okHttpClient + SourceHelp + SharedJsScope + SourceConfig +
- *   CookieStore + GSON, 可以下沉 commonMain 供多端复用 (Android / Desktop / iOS / 鸿蒙)。
- * - DAO 访问走 [AppDbProviders.get].bookSourceDao (宿主启动时由 app 端注册
- *   AppDbAccessorImpl, 已暴露 bookSourceDao)。
- * - 原 `execute { ... }.onSuccess { ... }.onError { ... }.onFinally { ... }`
- *   (BaseViewModel 内委托 [Coroutine.async]) 下沉后直接调 [Coroutine.async],
- *   保留链式 onSuccess/onError/onFinally 回调结构, 行为等价 (业务 context=IO,
- *   回调 executeContext=mainDispatcher, 与 BaseViewModel.execute 默认值一致)。
+ * 设计: 组合委托而非 `expect abstract class` (BaseViewModel 是 AndroidViewModel,
+ * commonMain 不可用且单继承冲突); app 端持有本类实例注入 scope + lambda, desktop 端
+ * Compose remember 中构造。
  *
- * # Android 专属依赖替换
- *
- * - **Intent 解析留 app 端**: 原 `initData(intent: Intent, onFinally)` 用
- *   `intent.getStringExtra("sourceUrl")` 解析 Bundle, 并读 `IntentData.source as? BookSource`,
- *   下沉后改为接收已解析的 [sourceUrl]; IntentData 对象直传在 KMP 路由 (只传稳定 ID/URL)
- *   下无对应物, 统一按 URL 查 DB。
- * - **剪贴板访问**: 原 `getClipText()` (Android ClipboardManager) 不能下沉,
- *   通过构造函数 lambda [clipTextProvider] 注入:
- *   - app 端实现 `{ getClipText() }` (委托 utils.ContextExtensions.getClipText);
- *   - desktop 端实现用 `Toolkit.getDefaultToolkit().systemClipboard.getData(...)`;
- *   - iOS/鸿蒙留宿主自实现。
- * - **Toast 提示**: 原 `context.toastOnUi(msg)` → [Toasters.get].toast(msg)
- *   (Toaster 接口已下沉 commonMain, androidMain 注册的实现内部切主线程,
- *   与 `context.toastOnUi` 行为等价)。
- * - **错误日志**: 原 `it.printStackTraceOnDebug()` 走 [printStackTraceOnDebug] 扩展 (已下沉 commonMain,
- *   各平台 actual 决定是否打栈, 行为对齐)。
- * - **i18n 字符串**: 原 `context.getString(R.string.non_null_name_url)` (校验失败文案)
- *   通过构造函数 lambda [nonNullNameUrlMessage] 注入, app 端实现
- *   `{ context.getString(R.string.non_null_name_url) }`, 保持 locale 切换行为。
- * - **okHttpClient**: 原 `okHttpClient` 顶层 val (依赖 app-only 模块) 通过
- *   [OkHttpClientProviders.get].okHttpClient 间接访问 (宿主启动时注册), 行为等价。
- * - **SourceConfig.removeSource**: [SourceConfig] 已下沉 commonMain (走 PreferenceProviders),
- *   本可直接调用; 但为保持构造函数签名兼容, 仍通过 lambda [sourceConfigRemover] 注入,
- *   app 端实现 `{ url -> SourceConfig.removeSource(url) }`。
- * - **CookieStore.removeCookie**: [CookieStore] 未下沉 (依赖 Android CookieJar),
- *   通过构造函数 lambda [cookieRemover] 注入, app 端实现
- *   `{ url -> CookieStore.removeCookie(url) }`。
- * - **System.currentTimeMillis()**: commonMain 不可用, 改用 [systemCurrentTimeMillis]
- *   (expect/actual, jvmAndAndroidMain 委托 System.currentTimeMillis())。
- *
- * # 已下沉依赖 (直接复用)
- *
- * - [SourceHelp].deleteBookSource (已下沉 commonMain, 内部走 AppDbProviders +
- *   SourceHelpAccessors, 行为与 app 端一致)。
- * - [SharedJsScope].remove (已下沉 commonMain, 转发到宿主注册的 provider)。
- * - [clearExploreKindsCache] (已下沉 commonMain, BookSource 扩展函数)。
- * - [GSON] / [fromJsonObject] / [fromJsonArray] (已下沉 commonMain, KS_JSON 别名)。
- * - [isAbsUrl] / [isJsonObject] / [isJsonArray] (已下沉 commonMain, String? 扩展)。
- *
- * # 设计选择 (组合委托)
- *
- * 不采用 `expect abstract class` 让 app 端子类继承: BaseViewModel 是 AndroidViewModel,
- * commonMain 不可用, Kotlin 单继承会冲突。改用组合委托模式 (对照
- * [io.legado.app.ui.replace.edit.ReplaceEditViewModelShared] /
- * [io.legado.app.ui.dict.rule.DictRuleEditViewModelShared]):
- * - app 端 `BookSourceEditViewModel(application)` `extends BaseViewModel(application)`,
- *   内部持有本类实例, 通过 `viewModelScope` + `{ getClipText() }` +
- *   `{ url -> SourceConfig.removeSource(url) }` + `{ url -> CookieStore.removeCookie(url) }` +
- *   `{ context.getString(R.string.non_null_name_url) }` 注入;
- * - desktop 端在 Compose `remember` 中构造本类, 注入应用 scope + AWT Clipboard lambda +
- *   no-op 配置/cookie 清理 lambda。
- *
- * @param scope 协程作用域, actual 平台注入
- *   (Android = `viewModelScope` / 桌面 = 应用主作用域 / 窗口 scope)
- * @param clipTextProvider 剪贴板文本提供者 (替代 `getClipText()`):
- *   - app 端实现 `{ getClipText() }`
- *   - desktop 端实现 `Toolkit.getDefaultToolkit().systemClipboard.getData(DataFlavor.stringFlavor) as? String`
- * @param sourceConfigRemover 书源配置清理器 (替代 `SourceConfig.removeSource(url)`):
- *   注: SourceConfig 已下沉 commonMain, 本可直接调用; 参数保留为签名兼容。
- *   - app 端实现 `{ url -> SourceConfig.removeSource(url) }`
- *   - desktop 端未接入 BookSourceEditViewModelShared (无 desktop 调用方)
- * @param cookieRemover Cookie 清理器 (替代 `CookieStore.removeCookie(url)`):
- *   - app 端实现 `{ url -> CookieStore.removeCookie(url) }`
- *   - desktop 端实现 `{}` (no-op, desktop 用独立 Cookie 管理)
- * @param nonNullNameUrlMessage 校验失败文案提供者 (替代 `context.getString(R.string.non_null_name_url)`):
- *   - app 端实现 `{ context.getString(R.string.non_null_name_url) }` (保持 locale 切换)
- *   - desktop 端实现 `{ "name and URL cannot be empty" }` (硬编码兜底)
+ * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
+ * @param clipTextProvider 剪贴板文本提供者 (替代 `getClipText()`)
+ * @param sourceConfigRemover 书源配置清理器 (替代 `SourceConfig.removeSource(url)`)
+ * @param cookieRemover Cookie 清理器 (替代 `CookieStore.removeCookie(url)`)
+ * @param nonNullNameUrlMessage 校验失败文案提供者 (替代 `context.getString(R.string.non_null_name_url)`)
  */
 class BookSourceEditViewModelShared(
     private val scope: CoroutineScope,

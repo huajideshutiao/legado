@@ -41,7 +41,7 @@ object JsEngines {
 
     private val lock = SynchronizedObject()
 
-    /** 固定 quickjs：rhino 已弃用（代码保留、不进产物，KMP 裁决 2026-07-17），切换入口已撤。 */
+    /** 固定 quickjs：rhino 已弃用（代码保留、不进产物），切换入口已撤。 */
     val type: JsEngineType
         get() = JsEngineType.QUICKJS
 

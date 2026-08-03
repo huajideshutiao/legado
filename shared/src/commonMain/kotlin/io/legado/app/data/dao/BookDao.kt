@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.map
 interface BookDao {
 
     fun flowByGroup(groupId: Long): Flow<List<Book>> {
-        // K5-c Phase 2: 原调用 app 端 BaseBook.isNotShelf 扩展 (app/.../help/book/BookExtensions.kt),
+        // 原调用 app 端 BaseBook.isNotShelf 扩展 (app/.../help/book/BookExtensions.kt),
         // DAO 下沉到 shared 后无法引用 app 端扩展; 按 BaseBook.isType(notShelf) = type and notShelf > 0
         // 内联等价改写 (BookType.notShelf 已下沉 commonMain), 行为零变化。
         return when (groupId) {

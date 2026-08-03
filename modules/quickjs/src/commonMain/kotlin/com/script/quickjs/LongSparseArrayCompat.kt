@@ -1,7 +1,7 @@
 package com.script.quickjs
 
 /**
- * 跨平台 Long->T 映射 (KP1.1)。
+ * 跨平台 Long->T 映射。
  *
  * Android 用 `androidx.collection.LongSparseArray` (基于 binary search, 内存紧凑);
  * 桌面 JVM 用 `java.util.HashMap<Long, T>` 简化实现 (语义等价, 不追求极致内存)。
@@ -16,7 +16,7 @@ expect class LongSparseArrayCompat<T>() {
 }
 
 /**
- * 跨平台 LRU 缓存 (KP1.1)。
+ * 跨平台 LRU 缓存。
  *
  * Android 用 `androidx.collection.LruCache` (基于 LinkedHashMap accessOrder);
  * 桌面 JVM 用同样的 LinkedHashMap 实现, 行为一致。

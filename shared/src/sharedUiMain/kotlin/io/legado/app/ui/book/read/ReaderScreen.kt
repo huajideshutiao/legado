@@ -44,6 +44,12 @@ interface ReaderUiActions {
     fun onPageLongClick(column: TextColumn?)
 
     /**
+     * 页内文字选择完成（长按选中文字后抬起）：携带选中文本，平台弹选择菜单
+     * （对照旧 ReadView.CallBack.showTextActionMenu；默认空实现，未接入的平台忽略）
+     */
+    fun onTextSelection(text: String) {}
+
+    /**
      * 九宫格点击的非翻页动作（对照 app 端 ReadView.click 里走 callBack 的分支）：
      * 7=添加书签 / 9=替换状态 / 10=目录 / 11=全文搜索 / 13=朗读暂停继续。
      */
@@ -91,6 +97,7 @@ fun ReaderScreen(
             onClick = { column -> actions.onPageClick(column) },
             onLongClick = { column -> actions.onPageLongClick(column) },
             onAction = { action -> actions.onPageAction(action) },
+            onSelectionMenu = { text -> actions.onTextSelection(text) },
         )
         ReadMenuOverlay(state = state.menuState)
     }

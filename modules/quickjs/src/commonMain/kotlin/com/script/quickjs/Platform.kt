@@ -1,7 +1,7 @@
 package com.script.quickjs
 
 /**
- * 跨平台日志与 native 库加载抽象 (KP1.1)。
+ * 跨平台日志与 native 库加载抽象。
  *
  * 桌面 JVM target 复用自研 JNI 桥, 但需要把 Android 专属 API 抽离:
  * - `android.util.Log` → 桌面端用 `System.err`

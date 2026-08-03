@@ -33,64 +33,25 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * 导入书源 VM 共享核心 (KMP 版, commonMain)。
+ * 导入书源 VM 共享核心 (commonMain)。
  *
- * # 背景
+ * 对照 app 端 `ImportBookSourceViewModel(app) : BaseViewModel(app)`: 4 个方法
+ * (importSelect/importSource/importFromJson/comparisonSource) + private importSourceUrl,
+ * 仅依赖 DAO + 协程 + okHttpClient + SourceHelp + ContentProcessor + GSON + RJPath,
+ * 可下沉多端复用。DAO 走 [AppDbProviders.get].bookSourceDao; `execute{...}` 链式回调
+ * 下沉为直接调 [Coroutine.async] (业务 IO / 回调 mainDispatcher, 行为等价)。
  *
- * 对照 app 端原 `ImportBookSourceViewModel(app: Application) : BaseViewModel(app)`:
- * - 4 个方法 (importSelect / importSource / importFromJson / comparisonSource) + 1 个
- *   private suspend (importSourceUrl) 仅依赖 DAO + 协程 + okHttpClient + SourceHelp +
- *   ContentProcessor + GSON + RJPath, 可以下沉 commonMain 供多端复用 (Android / Desktop / iOS / 鸿蒙)。
- * - DAO 访问走 [AppDbProviders.get].bookSourceDao (宿主启动时由 app 端注册
- *   AppDbAccessorImpl, 已暴露 bookSourceDao 等 DAO)。
- * - 原 `execute { ... }.onError { ... }.onSuccess { ... }.onFinally { ... }`
- *   (BaseViewModel 内委托 [Coroutine.async]) 下沉后直接调 [Coroutine.async],
- *   保留链式 onError/onSuccess/onFinally 回调结构, 行为等价 (业务 context=IO,
- *   回调 executeContext=mainDispatcher, 与 BaseViewModel.execute 默认值一致)。
+ * Android 专属依赖替换: Uri 读取留 app 端 (app 端 importSource 先判 isUri 读文本/字节再转发);
+ * okHttpClient → [OkHttpClientProviders.get]; AppConfig.importKeepXxx →
+ * [AppConfigProviders.get]; ContentProcessor.upReplaceRules() → [ContentProcessorProviders.get];
+ * R.string 文案 → 直接抛 `NoStackTraceException("格式不对")`;
+ * MutableLiveData → [MutableSharedFlow] (replay=1)。
  *
- * # Android 专属依赖替换
+ * 设计: 组合委托 (BaseViewModel 是 AndroidViewModel 不能继承), app 端持有本类实例,
+ * errorLiveData/successLiveData 在 init 块桥接 [errorState]/[successState], 列表/分组
+ * 状态直接 getter 转发 (同实例引用)。
  *
- * - **Uri 读取留 app 端**: 原 `importSource(text)` 内 `mText.isUri()` 判断 +
- *   `mText.toUri().inputStream(context)` 读文件, 是 Android ContentResolver 专属,
- *   commonMain 不可用。下沉后 app 端 `ImportBookSourceViewModel.importSource(text)`
- *   先判断 isUri, 若是 Uri 则先读取文本/字节数组再传入本类 [importSource];
- *   否则直接转发到本类 [importSource]。URL/JSON 解析逻辑全部下沉到本类。
- * - **appDb.bookSourceDao**: 改为 [AppDbProviders.get].bookSourceDao (宿主注册)。
- * - **okHttpClient**: 改为 [OkHttpClientProviders.get].okHttpClient
- *   (shared 内 KmpHttpClient 经 typealias 等价 okhttp3.OkHttpClient,
- *   newCallResponseBody / decompressed / byteStream 均为 commonMain 扩展)。
- * - **AppConfig.importKeepXxx**: 改为 [AppConfigProviders.get].importKeepXxx
- *   (3 个 Boolean 字段已在 AppConfigAccessor 接口暴露)。
- * - **ContentProcessor.upReplaceRules()**: 改为 [ContentProcessorProviders.get].upReplaceRules()
- *   (ContentProcessorAccessor 接口已新增 upReplaceRules() 方法, 由 app 端
- *   WebBookProvidersImpl 桥接 ContentProcessor.upReplaceRules())。
- * - **SourceHelp.adjustSortNumber()**: 已下沉 commonMain, 直接复用。
- * - **GSON / RJPath / AppLog / AppConst.UA_NAME / AppPattern.splitGroupRegex**:
- *   均已下沉 commonMain, 直接复用。
- * - **context.getString(R.string.wrong_format)**: commonMain 无 R.string 资源,
- *   改为直接抛 `NoStackTraceException("格式不对")` (与 shared 端其他下沉 VM
- *   如 ReplaceEditViewModelShared/TxtTocRuleEditViewModelShared 文案一致,
- *   错误经 `_errorState.tryEmit("ImportError:${it.message}")` 推送)。
- * - **androidx.lifecycle.MutableLiveData**: 不可 KMP, 改为 [MutableSharedFlow] (replay=1) + [asSharedFlow]
- *   (对照 [io.legado.app.ui.explore.ExploreShowViewModelShared] 的事件流模式)。
- *
- * # 设计选择 (组合委托)
- *
- * 不采用 `expect abstract class` 让 app 端子类继承: BaseViewModel 是 AndroidViewModel,
- * commonMain 不可用, Kotlin 单继承会冲突。改用组合委托模式 (对照
- * [io.legado.app.ui.replace.edit.ReplaceEditViewModelShared] / [RuleSubViewModelShared]):
- * - app 端 `ImportBookSourceViewModel(application)` `extends BaseViewModel(application)`,
- *   内部持有本类实例, 通过 `viewModelScope` 注入;
- * - app 端 errorLiveData / successLiveData (MutableLiveData) 在 init 块内
- *   `viewModelScope.launch { collect { postValue } }` 桥接本类的 [errorState] / [successState],
- *   调用方 `observe` 用法不变;
- * - allSources / checkSources / selectStatus 等 MutableList 直接 getter 转发到本类
- *   (同实例引用, app 端 `selectStatus[index] = checked` 与 shared 端读取一致);
- * - isAddGroup / groupName 通过 var getter/setter 委托本类;
- * - importSelect / importSource 转发 (importSource 先处理 Uri 分支)。
- *
- * @param scope 协程作用域, actual 平台注入
- *   (Android = `viewModelScope` / 桌面 = 应用主作用域 / 窗口 scope)
+ * @param scope 协程作用域 (Android = viewModelScope / 桌面 = 应用主作用域)
  */
 class ImportBookSourceViewModelShared(
     private val scope: CoroutineScope,

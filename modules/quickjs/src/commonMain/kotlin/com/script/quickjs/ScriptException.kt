@@ -40,6 +40,8 @@ class ScriptException : Exception {
      * 已经够清楚,再加一层 Java 类名只是噪声。
      *
      * 注:Java/Kotlin/JNI 调用栈仍照常收集 (默认 fillInStackTrace),便于排查引擎侧问题。
+     *
+     * 2026-08-04: 用户确认保留此格式(修原版 stack 粘连 bug)。
      */
     override fun toString(): String {
         val sb = StringBuilder()

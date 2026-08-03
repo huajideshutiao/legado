@@ -2,14 +2,13 @@
 
 package io.legado.app.utils
 
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import java.io.OutputStream
 import java.io.Reader
 import java.io.Writer
 
 /**
- * Gson Phase D 兼容层: java.io 流式重载, 下沉 shared jvmAndAndroidMain。
+ * Gson 兼容层: java.io 流式重载, 下沉 shared jvmAndAndroidMain。
  *
  * 纯 Kotlin 部分 (GSON/GSONStrict 别名, toJson(obj), fromJsonObject, fromJsonArray, toJsonElement)
  * 在 modules/shared/src/commonMain/kotlin/io/legado/app/utils/GsonExtensions.kt,

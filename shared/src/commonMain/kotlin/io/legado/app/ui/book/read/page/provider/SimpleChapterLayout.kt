@@ -43,7 +43,7 @@ data class ParsedParagraph(
  * [ColumnFactory] / [TextLayoutCallback] 接口，补全编排入口与平台无关的
  * `setTypeText` / 断行调度 / 收尾分页等逻辑。
  *
- * # 功能对齐 app 端 [TextChapterLayout]（KP2-D P2 起）
+ * # 功能对齐 app 端 [TextChapterLayout]
  *
  * - **图片排版**：[setTypeImage] + [ImageColumn] 构造，依赖注入的 [ImageResolver]
  *   提供「取尺寸（内部含下载 / 缓存）」原语；[layout] 传 [ParsedParagraph] 列表时走图片排版路径，
@@ -62,7 +62,7 @@ data class ParsedParagraph(
  *   width/cnCharWidth/letterSpacingPx`，输出 `lineStartCluster/lineCount/lineWidth`，
  *   按 cluster 区间切片后调 [TextLayoutEngine.addCharsToLineMiddle] / [addCharsToLineNatural]。
  * - **行几何**：`lineTop = paddingTop + durY` / `lineBottom = lineTop + textHeight` /
- *   `lineBase = lineBottom - descent`，与 app 端 `TextLineRender.upTopBottom` 口径一致。
+ *   `lineBase = lineBottom - descent`，与 shared `TextLineExt.upTopBottom` 口径一致。
  * - **预取上下章**：[layout] 的 `prefetchCallback` 参数在排版当前章开始时回调
  *   （`direction = -1` 预取上一章，`direction = +1` 预取下一章），由调用方异步 launch。
  * - **替换规则**：[layout] 的 `contentProcessor` 参数对每段正文应用替换规则（对应
@@ -94,6 +94,8 @@ data class ParsedParagraph(
  *   按 `textHeight * paragraphSpacing / 10` 累积到 durY）
  * @param titleTopSpacing 标题顶部留白（px）
  * @param titleBottomSpacing 标题底部留白（px）
+ * @param endPadding 末页底部留白（px，对照 app 端 getTextChapter 末尾 `20.dpToPx()`；
+ *   由调用方按平台密度折算，默认 0 向后兼容）
  * @param paragraphIndent 段落缩进字符串（默认全角空格 `　　`）
  * @param textFullJustify 是否两端对齐（true 时调 `addCharsToLineMiddle`，false 走
  *   `addCharsToLineNatural`；与 app 端 `ReadBookConfig.textFullJustify` 一致）
@@ -130,6 +132,7 @@ class SimpleChapterLayout(
     private val paragraphSpacing: Int,
     private val titleTopSpacing: Int,
     private val titleBottomSpacing: Int,
+    private val endPadding: Int = 0,
     private val paragraphIndent: String,
     private val textFullJustify: Boolean,
     private val useZhLayout: Boolean = true,
@@ -277,19 +280,35 @@ class SimpleChapterLayout(
         //    对应 app 端 shouldCenterTitle
         val centerTitle = titleMode == 1 || contents.isEmpty() ||
             imageStyle?.uppercase() == Book.imgStyleSingle
-        if (displayTitle.isNotEmpty() && (titleMode != 2 || contents.isEmpty())) {
-            engine.durY += titleTopSpacing
+        val emptyContent = contents.isEmpty()
+        if (displayTitle.isNotEmpty() && (titleMode != 2 || emptyContent)) {
+            // 标题起始 Y 由 setTypeText 内 calculateInitialYPosition 决定
+            // （空章 / SINGLE 图片风格垂直居中，其余 durY + titleTopSpacing），
+            // 不再提前 += titleTopSpacing（对齐 app 端 setTypeText 开头）
             displayTitle.split("\n").forEach { titleLine ->
                 if (titleLine.isBlank()) return@forEach
+                // 标题段评占位符：有段评数据时追加 ▨（对照 app 端
+                // `if (enableReview) text + ChapterProvider.reviewChar else text`）
+                val titleText =
+                    if (reviewChar.isNotEmpty() && reviewCountMap != null) titleLine + reviewChar
+                    else titleLine
                 setTypeText(
-                    engine, pages, titleLine,
+                    engine, pages, titleText,
                     isTitle = true, paragraphNum = 0, centerTitle = centerTitle,
+                    emptyContent = emptyContent, imageStyle = imageStyle,
                 )
                 // 标题行视为段落末尾
                 engine.pendingTextPage.lines.lastOrNull()?.isParagraphEnd = true
                 engine.stringBuilder.append("\n")
             }
             engine.durY += titleBottomSpacing
+            // SINGLE 图片风格：标题独占一页，正文从新页开始（对照 app 端
+            // `if (isSingleStyle && pendingTextPage.lines.isNotEmpty() && contents.isNotEmpty())`）
+            if (imageStyle?.uppercase() == Book.imgStyleSingle &&
+                engine.pendingTextPage.lines.isNotEmpty() && !emptyContent
+            ) {
+                engine.prepareNextPageIfNeed()
+            }
         }
 
         // 3. 排版正文段落
@@ -317,8 +336,12 @@ class SimpleChapterLayout(
 
         // 4. 收尾：把 pendingTextPage 作为最后一页入列（如果有内容）
         if (engine.pendingTextPage.lineSize > 0) {
-            if (engine.pendingTextPage.height < engine.durY) {
-                engine.pendingTextPage.height = engine.durY
+            // 末页 20dp 底部留白（对照 app 端 getTextChapter 末尾 endPadding：
+            // `if (height < durY + endPadding) height = durY + endPadding else height += endPadding`）
+            if (engine.pendingTextPage.height < engine.durY + endPadding) {
+                engine.pendingTextPage.height = engine.durY + endPadding
+            } else {
+                engine.pendingTextPage.height += endPadding
             }
             engine.pendingTextPage.text = engine.stringBuilder.toString()
             callback.onPageCompleted()
@@ -497,6 +520,9 @@ class SimpleChapterLayout(
      * @param isFirstLine 是否段落首行（影响几何缩进；标题传 true 但 isTitle=true 时不缩进）
      * @param centerTitle 标题是否居中（[titleMode]==1 / 空章 / SINGLE 图片风格时 true，
      *   对应 app 端 shouldCenterTitle；false 时标题居左）
+     * @param emptyContent 当前章正文是否为空（标题排版用，对照 app 端 setTypeText 的
+     *   emptyContent 参数：空章时标题垂直居中）
+     * @param imageStyle 图片风格（标题排版用，SINGLE 时标题垂直居中）
      * @param imgList 内联图片队列（TEXT 风格图片占位符由 ColumnFactory 从此队列取）；
      *   null=纯文本行
      */
@@ -508,6 +534,8 @@ class SimpleChapterLayout(
         paragraphNum: Int,
         isFirstLine: Boolean = true,
         centerTitle: Boolean = false,
+        emptyContent: Boolean = false,
+        imageStyle: String? = null,
         imgList: ArrayDeque<ImgData>? = null,
     ) {
         if (text.isEmpty()) return
@@ -524,9 +552,17 @@ class SimpleChapterLayout(
 
         // 断行：useZhLayout=true 用 ZhLineBreaker（避头尾），否则退化为按累积宽度的最简断行
         val lineRanges: List<IntRange> = if (useZhLayout) {
-            breakByZh(words, widths, m)
+            breakByZh(words, widths, m, isFirstLine)
         } else {
             breakByAccumulateWidth(words, widths)
+        }
+
+        // 标题起始 Y：对齐 app 端 calculateInitialYPosition（空章 / SINGLE 图片风格垂直居中，
+        // 其余 durY + titleTopSpacing）；正文行返回 engine.durY 原值
+        if (isTitle) {
+            engine.durY = calculateInitialYPosition(
+                engine, pages, lineRanges.size, th, emptyContent, imageStyle,
+            )
         }
 
         val useGeomIndent = indentCharWidth > 0f
@@ -744,6 +780,57 @@ class SimpleChapterLayout(
     }
 
     /**
+     * 标题起始 Y 计算（对照 app 端 [TextChapterLayout.calculateInitialYPosition]）：
+     *
+     * - 空章（[emptyContent] 且尚无完成页）：标题块垂直居中；已有标题行时先把它们整体上移
+     *   [textLayoutHeight]（保证多行标题整块居中）
+     * - 标题首行且无完成页、当前页为空：SINGLE 图片风格垂直居中，否则 `durY + titleTopSpacing`
+     * - 其余：返回 [engine.durY] 原值
+     *
+     * @param lineCount 本次 setTypeText 排版出的行数（对照 app 端 layout.lineCount）
+     * @param th 当前排版字号行高（标题 = titleTextHeight，对照 app 端 titlePaintTextHeight）
+     */
+    private fun calculateInitialYPosition(
+        engine: TextLayoutEngine,
+        pages: ArrayList<TextPage>,
+        lineCount: Int,
+        th: Float,
+        emptyContent: Boolean,
+        imageStyle: String?,
+    ): Float {
+        if (emptyContent && pages.isEmpty()) {
+            val textPage = engine.pendingTextPage
+            if (textPage.lineSize == 0) {
+                val ty = (visibleHeight - lineCount * th) / 2
+                return if (ty > titleTopSpacing) ty else titleTopSpacing.toFloat()
+            } else {
+                var textLayoutHeight = lineCount * th
+                val firstLine = textPage.getLine(0)
+                if (firstLine.lineTop < textLayoutHeight + titleTopSpacing) {
+                    textLayoutHeight = firstLine.lineTop - titleTopSpacing
+                }
+                textPage.lines.forEach {
+                    it.lineTop -= textLayoutHeight
+                    it.lineBase -= textLayoutHeight
+                    it.lineBottom -= textLayoutHeight
+                }
+                return engine.durY - textLayoutHeight
+            }
+        }
+        if (pages.isEmpty() && engine.pendingTextPage.lines.isEmpty()) {
+            return when (imageStyle?.uppercase()) {
+                Book.imgStyleSingle -> {
+                    val ty = (visibleHeight - lineCount * th) / 2
+                    if (ty > titleTopSpacing) ty else titleTopSpacing.toFloat()
+                }
+
+                else -> engine.durY + titleTopSpacing
+            }
+        }
+        return engine.durY
+    }
+
+    /**
      * 用 [ZhLineBreaker] 断行：返回每行在 words 列表中的 cluster index 区间（闭区间）。
      *
      * ZhLineBreaker 输出：
@@ -753,16 +840,20 @@ class SimpleChapterLayout(
      *
      * 注意 lineStartCluster 数组容量至少 lineCount + 1（init 中 lineStart[line+1] = ...
      * 会把「下一行起点」写入；最后一行也写一次）。
+     *
+     * @param isFirstLine 段落首行时 indentSize = 缩进字符数（对照 app 端 ZhLayout
+     *   `if (isFirstLine) paragraphIndent.length else 0`），避免断行器把缩进字单独甩到行尾
      */
     private fun breakByZh(
         words: List<String>,
         widths: List<Float>,
         m: TextMeasurer,
+        isFirstLine: Boolean,
     ): List<IntRange> {
         val breaker = ZhLineBreaker(
             words = words,
             widths = widths,
-            indentSize = 0, // 缩进已在调用前拼接到 text 前部（几何缩进则在 setTypeText 内 addIndentChars 处理）
+            indentSize = if (isFirstLine) paragraphIndent.length else 0,
             width = visibleWidth,
             cnCharWidth = m.textSizePx,
             letterSpacingPx = m.letterSpacingPx,

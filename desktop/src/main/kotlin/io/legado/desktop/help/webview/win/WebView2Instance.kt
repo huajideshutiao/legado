@@ -12,6 +12,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.help.file.AppFilesDirs
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
+import java.awt.Toolkit
 import java.io.File
 
 /** ICoreWebView2_2: CookieManager 所在接口 (SDK 1.0.705 起, 是第一个扩展接口)。 */
@@ -371,23 +372,45 @@ internal class WebView2Instance private constructor(
 
     companion object {
 
+        /** 置底半屏窗口矩形 (对照 app 端 BottomSheetDialog 语义): 宽=屏幕宽, 高=屏幕一半, 贴底。 */
+        private fun bottomSheetBounds(bottomSheet: Boolean): WebView2Loop.WindowBounds {
+            if (!bottomSheet) return WebView2Loop.WindowBounds()
+            val screen = Toolkit.getDefaultToolkit().screenSize
+            val height = (screen.height / 2).coerceAtLeast(400)
+            return WebView2Loop.WindowBounds(
+                x = 0,
+                y = screen.height - height,
+                width = screen.width,
+                height = height
+            )
+        }
+
         /** 创建期 handler 的强引用池 (创建完成即移除)。 */
         private val creating = java.util.Collections.synchronizedList(ArrayList<ComHandler>())
 
         /**
          * 建实例。[visible] = false 为无头: 宿主窗口全程不显示 (屏幕外 + 无 WS_VISIBLE),
          * 但 controller 仍置可见, 保证 JS 与定时器照常跑。
+         *
+         * @param bottomSheet 置底半屏语义 (对照 app 端 BottomSheetDialog): 窗口高取屏幕一半贴底
          */
         suspend fun create(
             visible: Boolean,
             title: String,
+            bottomSheet: Boolean = false,
             sniffResources: Boolean = false,
         ): WebView2Instance? {
             val environment = WebView2Environment.get() ?: return null
             val deferred = CompletableDeferred<Pair<WinDef.HWND, Pointer>?>()
             val handlerBox = arrayOfNulls<ComHandler>(1)
             WebView2Loop.post {
-                val hwnd = runCatching { WebView2Loop.createWindow(visible, title) }
+                val hwnd = runCatching {
+                    WebView2Loop.createWindow(
+                        visible,
+                        title,
+                        bounds = bottomSheetBounds(bottomSheet)
+                    )
+                }
                     .onFailure { AppLog.put("WebView2 宿主窗口创建失败", it) }
                     .getOrNull()
                 if (hwnd == null) {

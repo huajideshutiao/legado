@@ -201,7 +201,7 @@ object BookReview {
                 else -> {
                     val bodyStr = body.toString().trim()
                     if (bodyStr.isNotEmpty() && bodyStr != "[object Object]") {
-                        // Phase D: GSON.fromJson<Map<String, Any>>(bodyStr, type) → decodeAnyMapOrNull(bodyStr)
+                        // GSON.fromJson<Map<String, Any>>(bodyStr, type) → decodeAnyMapOrNull(bodyStr)
                         // AnyMapSerializer 复刻原 MapDeserializerDoubleAsIntFix 数字策略 (整数 Long/小数 Double)
                         val map = decodeAnyMapOrNull(bodyStr)
                         if (map == null) {

@@ -9,14 +9,15 @@ import io.legado.app.model.script.JsEngine
 import io.legado.app.model.script.JsEngineType
 import io.legado.app.model.script.JsObject
 import io.legado.app.model.script.JsScope
+import io.legado.app.model.script.quickjs.QuickJsJsEngine.toQuickJsBindings
 import kotlin.coroutines.CoroutineContext
 
 /**
  * quickjs 引擎实现：直接转发 [QuickJsEngine] 静态方法。
  *
- * # 下沉位置 (KP1.1)
+ * # 下沉位置
  * 原在 `app/src/main/java/io/legado/app/model/script/quickjs/QuickJsJsEngine.kt`,
- * KP1.1 桌面端 JS 引擎落地时下沉到 `modules/shared/src/jvmAndAndroidMain`,
+ * 桌面端 JS 引擎落地时下沉到 `modules/shared/src/jvmAndAndroidMain`,
  * 让 Android 与桌面 JVM 共用同一份引擎适配层 (复用 `modules:quickjs` KMP 化后的 commonMain API)。
  *
  * 包名 `io.legado.app.model.script.quickjs` 保持不变, app 端所有 import 无需修改,

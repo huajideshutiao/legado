@@ -118,8 +118,14 @@ fun BookshelfManageRoute(
         BookshelfManageScreenModel(
             screenLabel = screenLabel,
             noGroupLabel = noGroupLabel,
-            // AppConfigAccessor 暂仅暴露默认 bookshelfSort, per-group override 待下沉
-            resolveBookSort = { AppConfigProviders.get().bookshelfSort },
+            // 对照 app 端 AppConfig.getBookSortByGroupId: 分组自定义排序 (bookSort>=0) 优先,
+            // 否则回退全局 bookshelfSort (3=手动排序可拖拽, canDrag 由 ScreenModel 解析)
+            resolveBookSort = { groupId ->
+                val groupSort = runCatching {
+                    AppDbProviders.get().bookGroupDao.getByID(groupId)?.bookSort ?: -1
+                }.getOrDefault(-1)
+                if (groupSort >= 0) groupSort else AppConfigProviders.get().bookshelfSort
+            },
             // 缓存文件扫描委托 shared VM (对照 app 端 viewModel.loadCacheFiles)
             loadCacheFiles = { books -> manageVm.loadCacheFiles(books) },
         )

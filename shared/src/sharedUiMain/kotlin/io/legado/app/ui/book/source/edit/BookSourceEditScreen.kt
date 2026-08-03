@@ -79,68 +79,17 @@ import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 书源编辑 Screen (KMP 版, 替代 app 端 `io.legado.app.ui.book.source.edit.BookSourceEditScreen`)。
+ * 书源编辑 Screen (KMP 版, 替代 app 端 BookSourceEditScreen)。
  *
  * 下沉改动 (对照 app 端原版 11 个 @Composable):
- * - 去掉对 `BookSourceEditActivity` 的直接依赖, 改为通过 [BookSourceEditState] +
- *   [BookSourceEditCallbacks] + [editEntities] 传入状态与回调, 解耦 Composable 与 Android Activity
- * - 字符串资源 `stringResource(R.string.xxx)` → `stringResource(Res.string.xxx)` (key-based, 跨平台)
- * - 图标资源 `painterResource(R.drawable.xxx)` → `rememberPainter("xxx")` (key-based, 跨平台)
- * - 颜色资源 `colorResource(R.color.xxx)` → `rememberColor("xxx")` (key-based, 跨平台)
- * - 数组资源 `stringArrayResource(R.array.xxx)` → `stringArrayResource(Res.array.xxx)` (key-based, 跨平台)
- * - Android 的 CodeView 专项能力 (自动补全、原生 View 滚动/绘制和 ActionMode) 留在 Android View 层;
- *   shared/non-Android 使用 [CodeTextField] 的等宽文本、语法高亮、行号和查找替换能力
- * - KeyboardToolbar (原依赖 CodeView + appDb.keyboardAssistsDao) → 共享
- *   [io.legado.app.ui.compose.component.code.KeyboardToolbar], 内部直连 keyboardAssistsDao
- * - 去掉 `WindowInsets.ime/navigationBars` (Android 专属 inset 概念, 见 ReplaceEditScreen
- *   同款决策), 宿主端在包装层通过 [modifier] 传入 `windowInsetsPadding`
- *
- * ## ResourceProvider key 需求清单 (供 ResourceProvider.kt 维护者补全)
- *
- * ### String key (string)
- * - `edit_book_source`       顶部标题
- * - `action_save`            保存按钮 contentDescription
- * - `debug_source`           调试按钮 contentDescription
- * - `login`                  登录菜单项
- * - `search`                 搜索菜单项
- * - `cookie`                 清除 Cookie 菜单项
- * - `copy_source`            复制源菜单项
- * - `paste_source`           粘贴源菜单项
- * - `auto_indent`            自动缩进菜单项
- * - `set_source_variable`    设置源变量菜单项
- * - `str_share`              分享源字符串菜单项
- * - `book_type`              书源类型标签
- * - `is_enable`              启用复选框
- * - `auto_save_cookie`       CookieJar 复选框
- * - `enable_dangerous_api`   危险 API 复选框
- * - `enable_review`          段评复选框
- * - `discovery`              发现复选框
- * - `explore_style`          发现样式标签
- * - `explore_cols`           发现列数标签
- * - `source_tab_base`        Tab: 基本
- * - `source_tab_search`      Tab: 搜索
- * - `source_tab_find`        Tab: 发现
- * - `source_tab_info`        Tab: 详情
- * - `source_tab_toc`         Tab: 目录
- * - `source_tab_content`     Tab: 正文
- * - `source_tab_review`      Tab: 段评
- *
- * ### Painter key (drawable)
- * - `ic_save`                保存图标
- * - `ic_bug_report`          调试图标
- * - `ic_arrow_drop_down`     下拉箭头
- *
- * ### Color key (color)
- * - `bg_divider_line`        Tab 下方分割线颜色
- *
- * ### StringArray key (string-array)
- * - `book_type`              书源类型选项 (文本/音频/图片/文件/视频/RSS)
- * - `explore_item_style`     发现样式选项 (默认/视频)
- *
- * ## L3 不可下沉项 (通过回调注入, 由宿主实现)
- *
- * - **KeyboardAssistsConfig**: 辅助键配置弹窗是平台专属 (app 端 DialogFragment),
- *   通过 [onShowKeyboardConfig] 回调注入
+ * - 去掉对 BookSourceEditActivity 的直接依赖, 改经 [BookSourceEditState] + [BookSourceEditCallbacks]
+ *   + [editEntities] 传状态与回调, 解耦 Composable 与 Android Activity
+ * - 资源访问全改 key-based: stringResource(Res.string.xxx) / rememberPainter("xxx") /
+ *   rememberColor("xxx") / stringArrayResource(Res.array.xxx); 所需 key 见下方清单
+ * - CodeView 专项能力 (自动补全/原生滚动/ActionMode) 留 Android View 层; 非 Android 用
+ *   [CodeTextField] (等宽/高亮/行号/查找替换); KeyboardToolbar → 共享组件 (直连 DAO)
+ * - 去掉 WindowInsets.ime/navigationBars (Android 专属), 宿主经 [modifier] 传 windowInsetsPadding
+ * - L3 不可下沉项: KeyboardAssistsConfig 弹窗平台专属, 经 [onShowKeyboardConfig] 回调注入
  *
  * @param state           顶部表单状态 (书源类型/各启用开关/tab/版本号)
  * @param callbacks       事件回调 (菜单动作/状态变更)

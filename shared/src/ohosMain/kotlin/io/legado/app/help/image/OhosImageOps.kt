@@ -4,7 +4,7 @@ import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.Base64Lenient
 import kotlinx.serialization.Serializable
-import kotlin.io.encoding.Base64
+import kotlinx.serialization.encodeToString
 
 /**
  * 鸿蒙端 [ImageOps] 真实实现 (KP8+)。
@@ -22,13 +22,19 @@ import kotlin.io.encoding.Base64
  * ## 句柄模型
  * [OhosImageRef] 持有原始 [ByteArray] + ArkTS 侧 PixelMap 句柄 ID (`pixelMapId`)。
  * - [decode]: 通过桥接调 `image.createImageSource(bytes).createPixelMap()`, ArkTS 侧存入
- *   `Map<pixelMapId, PixelMap>`, 返回 ID 给 Kotlin; 同时保留原始 bytes 供降级/encode 回退
+ *   `Map<pixelMapId, PixelMap>`, 返回 ID 给 Kotlin; 同时保留原始 bytes 供降级/encode 回退。
+ *   图片字节作为 invokeImageSync 数据面裸参数 (napi ArrayBuffer) 直传, 不经 base64
  * - [encode]: 通过桥接调 `image.createImagePacker().packing(pixelMap, {format, quality})`,
- *   ArkTS 侧返回 base64 编码的 packed bytes, Kotlin 解码为 ByteArray
+ *   ArkTS 侧把 packed 字节经 imageCallback 第三参数 ArrayBuffer 裸传, Kotlin 拷为 ByteArray
  * - [size]: 通过桥接调 `pixelMap.getImageInfo().size`, 返回 `{w, h}`
  * - [crop]: 通过桥接调新 PixelMap + `crop({x, y, size:{w, h}})`, 返回新 pixelMapId
  * - [split]: 通过桥接循环 crop, 返回新 pixelMapId 列表
  * - [stitch]: 通过桥接创建大 PixelMap + 逐个 writePixels, 返回新 pixelMapId
+ *
+ * ## 混合协议 (KP9+, 与 WebView 桥同思路)
+ * 大字节面 (decode 入参图片字节 / encode 出参 packed 字节) 走 napi 裸参数 (ArrayBuffer),
+ * 控制面小字段 (pixelMapId/format/quality/宽高/错误) 保留 JSON。不经 base64, 避免 33% 体积
+ * 膨胀与双端编解码拷贝, 且二进制保真 (图片是任意字节)。
  *
  * ## 降级策略 (桥接未就绪时, 与 KP5 占位行为一致)
  * [OhosNativeBridge.isImageBridgeReady] 返回 false (tsfn 未注入) 时, 所有操作降级为
@@ -39,7 +45,7 @@ import kotlin.io.encoding.Base64
  * ```
  * JS image.decode(bytes)
  *   → OhosImageOps.decode(bytes)
- *   → OhosNativeBridge.invokeImageSync("decode", {"bytes":"<base64>"})
+ *   → OhosNativeBridge.invokeImageSync("decode", "{}", bytes)  (bytes 走裸参 ArrayBuffer)
  *   → [tsfn] ArkTS image callback: createImageSource + createPixelMap → pixelMaps[id] = pixelMap
  *   → [napi @CName] legado_image_callback(requestId, {"ok":true,"pixelMapId":1})
  *   → OhosImageOps.decode 返回 OhosImageRef(bytes, pixelMapId=1)
@@ -70,13 +76,18 @@ object OhosImageOps : ImageOps {
             return OhosImageRef(bytes)
         }
         // 桥接就绪: 通过 napi 调 ArkTS image.createImageSource + createPixelMap
-        val payload = KS_JSON.encodeToString(DecodePayload(bytes = Base64.encode(bytes)))
-        val result = OhosNativeBridge.invokeImageSync("decode", payload)
-        if (result == null) {
+        // 图片字节走 invokeImageSync 数据面裸参数 (napi ArrayBuffer), 不再 base64 进 JSON
+        val reply = OhosNativeBridge.invokeImageSync("decode", "{}", bytes)
+        if (reply == null) {
             // 桥接调用失败 (tsfn 异常 / 超时): 降级为字节持有
             return OhosImageRef(bytes)
         }
-        val resp = runCatching { KS_JSON.decodeFromString(BridgeResponse.serializer(), result) }.getOrNull()
+        val resp = runCatching {
+            KS_JSON.decodeFromString(
+                BridgeResponse.serializer(),
+                reply.json
+            )
+        }.getOrNull()
         if (resp == null || !resp.ok || resp.pixelMapId == null) {
             // ArkTS 解码失败: 抛异常 (与 ImageOps.decode 契约一致: "失败抛异常")
             throw IllegalArgumentException(
@@ -99,14 +110,20 @@ object OhosImageOps : ImageOps {
         val payload = KS_JSON.encodeToString(
             EncodePayload(pixelMapId = pixelMapId, format = format, quality = quality)
         )
-        val result = OhosNativeBridge.invokeImageSync("encode", payload)
-        if (result == null) return ref.bytes // 降级
-        val resp = runCatching { KS_JSON.decodeFromString(BridgeResponse.serializer(), result) }.getOrNull()
-        if (resp == null || !resp.ok || resp.data == null) {
+        val reply = OhosNativeBridge.invokeImageSync("encode", payload)
+        if (reply == null) return ref.bytes // 降级
+        val resp = runCatching {
+            KS_JSON.decodeFromString(
+                BridgeResponse.serializer(),
+                reply.json
+            )
+        }.getOrNull()
+        if (resp == null || !resp.ok) {
             // 编码失败: 降级返回原始字节 (不抛异常, 让 JS 调用链不崩)
             return ref.bytes
         }
-        return Base64.decode(resp.data)
+        // 数据面: packed 字节走 imageCallback 裸字节 (napi ArrayBuffer), 不再 base64
+        return reply.bytes ?: ByteArray(0)
     }
 
     override fun split(img: ImageRef, rows: Int, cols: Int): List<ImageRef> {
@@ -115,9 +132,14 @@ object OhosImageOps : ImageOps {
         val payload = KS_JSON.encodeToString(
             SplitPayload(pixelMapId = pixelMapId, rows = rows, cols = cols)
         )
-        val result = OhosNativeBridge.invokeImageSync("split", payload)
-        if (result == null) return listOf(img) // 降级
-        val resp = runCatching { KS_JSON.decodeFromString(BridgeResponse.serializer(), result) }.getOrNull()
+        val reply = OhosNativeBridge.invokeImageSync("split", payload)
+        if (reply == null) return listOf(img) // 降级
+        val resp = runCatching {
+            KS_JSON.decodeFromString(
+                BridgeResponse.serializer(),
+                reply.json
+            )
+        }.getOrNull()
         if (resp == null || !resp.ok || resp.pixelMapIds == null) {
             return listOf(img) // 降级
         }
@@ -134,9 +156,14 @@ object OhosImageOps : ImageOps {
         val payload = KS_JSON.encodeToString(
             StitchPayload(pixelMapIds = pixelMapIds, direction = direction)
         )
-        val result = OhosNativeBridge.invokeImageSync("stitch", payload)
-        if (result == null) return imgs.first() // 降级
-        val resp = runCatching { KS_JSON.decodeFromString(BridgeResponse.serializer(), result) }.getOrNull()
+        val reply = OhosNativeBridge.invokeImageSync("stitch", payload)
+        if (reply == null) return imgs.first() // 降级
+        val resp = runCatching {
+            KS_JSON.decodeFromString(
+                BridgeResponse.serializer(),
+                reply.json
+            )
+        }.getOrNull()
         if (resp == null || !resp.ok || resp.pixelMapId == null) {
             return imgs.first() // 降级
         }
@@ -149,9 +176,14 @@ object OhosImageOps : ImageOps {
         val payload = KS_JSON.encodeToString(
             CropPayload(pixelMapId = pixelMapId, x = x, y = y, w = w, h = h)
         )
-        val result = OhosNativeBridge.invokeImageSync("crop", payload)
-        if (result == null) return img // 降级
-        val resp = runCatching { KS_JSON.decodeFromString(BridgeResponse.serializer(), result) }.getOrNull()
+        val reply = OhosNativeBridge.invokeImageSync("crop", payload)
+        if (reply == null) return img // 降级
+        val resp = runCatching {
+            KS_JSON.decodeFromString(
+                BridgeResponse.serializer(),
+                reply.json
+            )
+        }.getOrNull()
         if (resp == null || !resp.ok || resp.pixelMapId == null) {
             return img // 降级
         }
@@ -162,9 +194,14 @@ object OhosImageOps : ImageOps {
         val ref = img as? OhosImageRef ?: return emptyMap()
         val pixelMapId = ref.pixelMapId ?: return emptyMap() // 降级
         val payload = KS_JSON.encodeToString(SizePayload(pixelMapId = pixelMapId))
-        val result = OhosNativeBridge.invokeImageSync("size", payload)
-        if (result == null) return emptyMap() // 降级
-        val resp = runCatching { KS_JSON.decodeFromString(BridgeResponse.serializer(), result) }.getOrNull()
+        val reply = OhosNativeBridge.invokeImageSync("size", payload)
+        if (reply == null) return emptyMap() // 降级
+        val resp = runCatching {
+            KS_JSON.decodeFromString(
+                BridgeResponse.serializer(),
+                reply.json
+            )
+        }.getOrNull()
         if (resp == null || !resp.ok || resp.width == null || resp.height == null) {
             return emptyMap() // 降级
         }
@@ -172,11 +209,7 @@ object OhosImageOps : ImageOps {
         return mapOf("w" to resp.width, "h" to resp.height)
     }
 
-    // ===== 桥接 payload 数据类 (与 ArkTS 侧 JSON 协议对齐) =====
-
-    /** decode 请求: base64 编码的图片字节。 */
-    @Serializable
-    private data class DecodePayload(val bytes: String)
+    // ===== 桥接 payload 数据类 (与 ArkTS 侧 JSON 协议对齐, 混合协议: 大字节走裸参数) =====
 
     /** encode 请求: pixelMapId + 格式 + 质量。 */
     @Serializable
@@ -199,11 +232,11 @@ object OhosImageOps : ImageOps {
     private data class StitchPayload(val pixelMapIds: List<Long>, val direction: String)
 
     /**
-     * 桥接统一响应 (ArkTS → Kotlin)。
+     * 桥接统一响应 (ArkTS → Kotlin, 混合协议: 控制面 JSON + 数据面裸字节)。
      * 所有操作的响应都走此结构, 不同的操作读取不同字段:
      * - decode/crop/stitch: 读 [pixelMapId]
      * - split: 读 [pixelMapIds]
-     * - encode: 读 [data] (base64)
+     * - encode: [ok]=true, packed 字节走 [OhosNativeBridge.OhosBinaryBridgeResponse.bytes] 裸字节
      * - size: 读 [width]/[height]
      * - 失败: [ok]=false, [error] 含错误信息
      */
@@ -212,7 +245,6 @@ object OhosImageOps : ImageOps {
         val ok: Boolean = false,
         val pixelMapId: Long? = null,
         val pixelMapIds: List<Long>? = null,
-        val data: String? = null,
         val width: Int? = null,
         val height: Int? = null,
         val error: String? = null,

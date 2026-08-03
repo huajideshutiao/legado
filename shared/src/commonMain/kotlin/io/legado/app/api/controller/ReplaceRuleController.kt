@@ -59,7 +59,7 @@ object ReplaceRuleController {
     fun testRule(postData: String?): ReturnData {
         val returnData = ReturnData()
         postData ?: return returnData.setErrorMsg("数据不能为空")
-        // Phase D: GSON.fromJsonObject<Map<String, *>>(postData) → decodeAnyMapOrNull (AnyMapSerializer 处理通配符值类型)
+        // GSON.fromJsonObject<Map<String, *>>(postData) → decodeAnyMapOrNull (AnyMapSerializer 处理通配符值类型)
         val map = decodeAnyMapOrNull(postData)
         if (map == null) {
             returnData.setErrorMsg("格式不对")
@@ -68,7 +68,7 @@ object ReplaceRuleController {
                 if (it is String) {
                     GSON.fromJsonObject<ReplaceRule>(it).getOrNull()
                 } else {
-                    // Phase D: GSON.toJson(it) 反射序列化 Any → toJsonElement().toString() 处理任意类型
+                    // GSON.toJson(it) 反射序列化 Any → toJsonElement().toString() 处理任意类型
                     GSON.fromJsonObject<ReplaceRule>(it.toJsonElement().toString()).getOrNull()
                 }
             }

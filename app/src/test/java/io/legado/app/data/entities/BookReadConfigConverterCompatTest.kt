@@ -15,7 +15,7 @@ import java.time.LocalDate
  * 关键点: GSON 把 LocalDate 反射成 {"year":Y,"month":M,"day":D} 非标准形态,
  * 自定义 LocalDateAsGsonSerializer 复刻该 shape。
  *
- * Phase D: 原 BookReadConfigConverterCompatTest 用 GsonBuilder 作为 oracle 生成旧 JSON,
+ * 原 BookReadConfigConverterCompatTest 用 GsonBuilder 作为 oracle 生成旧 JSON,
  * 现改为硬编码等价 JSON 字符串 (pretty-printed 格式不影响 kotlinx 解析, 用紧凑格式)。
  * 字段顺序对齐 GSON 反射声明顺序: reverseToc, reSegment, imageStyle, useReplaceRule,
  * delTag, ttsEngine, splitLongChapter, readSimulating, startDate, startChapter, dailyChapters。

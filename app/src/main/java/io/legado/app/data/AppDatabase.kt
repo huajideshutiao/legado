@@ -7,6 +7,7 @@ import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.driver.AndroidSQLiteConnection
 import androidx.sqlite.driver.AndroidSQLiteDriver
 import io.legado.app.constant.AppLog
+import io.legado.app.data.AndroidAppDatabaseProvider.appDb
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.DefaultData
 import org.intellij.lang.annotations.Language
@@ -14,7 +15,7 @@ import splitties.init.appCtx
 import java.util.Locale
 
 /**
- * KP1.2: Android 端 [AppDatabaseProvider] 实现。
+ * Android 端 [AppDatabaseProvider] 实现。
  *
  * 委托 app 端 [appDb] lazy 单例 (依赖 appCtx + AndroidSQLiteDriver + DefaultData + Locale.CHINESE),
  * 在 [io.legado.app.model.webBook.registerAndroidWebBookProviders] 中注册到 [AppDatabaseProviders]。
@@ -27,9 +28,7 @@ object AndroidAppDatabaseProvider : AppDatabaseProvider {
 }
 
 /**
- * K5-c Phase 5: AppDatabase 主体 (含 @Database 注解) 已下沉 shared/commonMain。
- *
- * 本文件保留 app 端专属内容:
+ * AppDatabase 主体 (含 @Database 注解) 在 shared/commonMain, 本文件保留 app 端专属内容:
  * - appDb 单例: 依赖 appCtx (Android Context) + AndroidSQLiteDriver
  * - dbCallback: 依赖 AndroidSQLiteConnection + Locale.CHINESE + DefaultData (app 端专属)
  *

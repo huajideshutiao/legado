@@ -15,8 +15,8 @@ object AppConst {
 
     const val UA_NAME = "User-Agent"
 
-    /** 注入所有 JS eval 作用域的 platform 变量值，KMP 各端取 android/ios/ohos/jvm。 */
-    const val JS_PLATFORM = "android"
+    /** 注入所有 JS eval 作用域的 platform 变量值，KMP 各端按 expect/actual 取真实平台标识 (android/desktop/ios/ohos)。 */
+    val JS_PLATFORM: String get() = jsPlatform()
 
     const val MAX_THREAD = 9
 
@@ -46,3 +46,11 @@ object AppConst {
     }
 
 }
+
+/**
+ * 各端 JS 引擎可见的平台标识 (android/desktop/ios/ohos)。
+ *
+ * expect/actual 拆分: androidMain/jvmMain/iosMain/ohosMain 各提供 actual
+ * (见各源集 AppConst.<平台>.kt), 替代原硬编码 const —— JS `platform` 变量反映真实运行平台。
+ */
+internal expect fun jsPlatform(): String
