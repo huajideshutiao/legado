@@ -2,11 +2,12 @@ package io.legado.app.data.entities
 
 import androidx.room3.ColumnInfo
 import androidx.room3.ColumnTypeConverter
-import androidx.room3.ColumnTypeConverters
 import androidx.room3.Entity
 import androidx.room3.Ignore
 import androidx.room3.Index
 import androidx.room3.PrimaryKey
+import androidx.room3.TypeConverter
+import androidx.room3.TypeConverters
 import io.legado.app.constant.BookType
 import io.legado.app.help.book.getFolderNameNoCache
 import io.legado.app.utils.decodeStringMapOrNull
@@ -27,7 +28,10 @@ import kotlinx.serialization.json.Json
 //   2. AppDatabase 上 (DATABASE 作用域): 处理 BookChapter.ForeignKey 跨实体解析时的 ReadConfig 类型链 (iOS/ohos KSP 需要)
 // 缺一不可: 只在 AppDatabase 上会导致 JVM KSP 处理 Book 实体时找不到 converter;
 //          只在 Book 上会导致 iOS/ohos KSP 处理 ForeignKey 跨实体时不应用 converter
-@ColumnTypeConverters(Book.Converters::class)
+//
+// 3.0.1 KSP 处理器认 ColumnTypeConverters, 鸿蒙 CPF fork (alpha01 API) 的 KSP 处理器认
+// TypeConverters, 两者并存双注册 (非鸿蒙构建的旧名注解声明见 nonOhosCompatMain)。
+@TypeConverters(Book.Converters::class)
 @Serializable
 @Entity(
     tableName = "books",
@@ -258,12 +262,14 @@ data class Book(
     class Converters {
 
         @ColumnTypeConverter
+        @TypeConverter
         fun readConfigToString(config: ReadConfig?): String? {
             if (config == null || config == ReadConfig()) return null
             return readConfigJson.encodeToString(config)
         }
 
         @ColumnTypeConverter
+        @TypeConverter
         fun stringToReadConfig(json: String?): ReadConfig? {
             json ?: return null
             return kotlin.runCatching {

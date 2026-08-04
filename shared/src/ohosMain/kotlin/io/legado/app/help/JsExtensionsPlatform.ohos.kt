@@ -3,6 +3,7 @@
 package io.legado.app.help
 
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.NativePtr
 import kotlinx.cinterop.rawValue
 import platform.posix.pthread_self
 
@@ -11,10 +12,11 @@ import platform.posix.pthread_self
  *
  * 鸿蒙无 NSThread 等价 API (kotlin.native.Platform 也无 isMainThread, 已核实 2.3.20 stdlib),
  * napi 桥是异步 tsfn 不适合同步判定; pthread_t 在 musl 上是 `unsigned long`,
- * cinterop 映射为 CPointer, 取 rawValue 按整型比较。未捕获时
+ * cinterop 映射为 CPointer, 取 rawValue 按整型比较 (CPF K/N 的 NativePtr 是包装类,
+ * 非 ULong 别名, 直接存 NativePtr 比较)。未捕获时
  * (registerOhosMainThread 未调) 保守返回 false。
  */
-private var mainThreadId: ULong? = null
+private var mainThreadId: NativePtr? = null
 
 /**
  * 宿主启动早期 (EntryAbility.onCreate, 主线程) 调用一次, 记录主线程 pthread id。

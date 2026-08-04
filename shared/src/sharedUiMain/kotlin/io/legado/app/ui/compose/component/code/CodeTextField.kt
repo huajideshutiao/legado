@@ -1,5 +1,6 @@
 package io.legado.app.ui.compose.component.code
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -12,7 +13,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -23,6 +25,7 @@ import androidx.compose.material.Text
 import androidx.compose.material.TextFieldDefaults
 import androidx.compose.material.TextFieldDefaults.indicatorLine
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -36,16 +39,27 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.takeOrElse
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
@@ -165,7 +179,7 @@ fun buildSearchRanges(
  * + MD2 TextField 默认 16dp 水平边距, 字体跟随主题默认, 差异仅在语法着色。
  * [showIndicator] = false 时连下划线也不画, 用于对话框内嵌 (对齐原版 CodeDialog 无边框呈现)。
  * [autoComplete] 轻量自动补全 (对齐原版 CodeView 的 AutoCompleteAdapter 词表 + fuzzy 匹配,
- * 弹层锚定光标, 默认开启)。
+ * 弹层锚定光标, 默认开启; 弹层弹出时支持键盘: 上下移动高亮、回车/Tab 确认、ESC 收起)。
  *
  * @param syntax 着色规则集, 由调用方按字段类型传 (见 [rememberCodeSyntax])
  * @param searchHighlight 查找高亮叠加 (由外部屏幕持有, 传 null 不叠加), 对齐原版 CodeView
@@ -201,7 +215,25 @@ fun CodeTextField(
     // 行号列与文本同处滚动容器, 需统一行高: 默认字体下 CJK 回退与拉丁字符的自然行高不一致,
     // 强制固定行高才能保证逐行对齐 (对齐原版 Canvas 逐行画号不受行高变化影响)。
     // 行号列只在文本含换行时出现 (对齐原版 enterPosSize > 0 条件), 单行字段走自然行高。
-    val gutterShown = showLineNumbers && value.text.contains('\n')
+    // 行号计数增量跟踪: 常规编辑在 onValueChange 里按前后文 diff 求新行数 (O(编辑距离)),
+    // 外部整体改写 (撤销/重载/查找替换等不经本字段 onValueChange 的写入) 走组合期全量重算,
+    // 避免每次按键 O(n) 扫描全文。
+    var lastLineCountText by remember { mutableStateOf(value.text) }
+    var lineCount by remember { mutableIntStateOf(countLineNumbers(value.text)) }
+    if (lastLineCountText !== value.text) {
+        lastLineCountText = value.text
+        lineCount = countLineNumbers(value.text)
+    }
+    // 行数增量 + 转发: 文本实例相同时只更新增量, 行号串 (remember(lineCount)) 不重建
+    val trackedValueChange: (TextFieldValue) -> Unit = { newValue ->
+        val newText = newValue.text
+        if (newText !== lastLineCountText) {
+            lineCount += newlineDelta(lastLineCountText, newText)
+            lastLineCountText = newText
+        }
+        onValueChange(newValue)
+    }
+    val gutterShown = showLineNumbers && lineCount > 1
     val codeStyle =
         if (gutterShown) baseStyle.copy(lineHeight = fontSize * 1.5f) else baseStyle
     val textColor = codeStyle.color.takeOrElse { colors.textColor(enabled).value }
@@ -242,9 +274,73 @@ fun CodeTextField(
             }
         }
     }
-    // 弹层锚点: 光标所在行 Y + 近似 X (按默认字体近似估算: ASCII 按 0.6em, 全角按 1em)
+    // 键盘导航状态 (对齐原版 AutoCompleteTextView 的 listSelection): -1 = 未选中, 回车取第 0 项;
+    // autoDismissedText: ESC/确认后当前文本不再弹候选, 文本变化后恢复 (对齐原版 dismissDropDown)
+    var autoSelectedIndex by remember { mutableIntStateOf(-1) }
+    var autoDismissedText by remember { mutableStateOf<String?>(null) }
+    val matches = if (autoDismissedText == value.text) emptyList() else autoMatches
+    LaunchedEffect(matches) { autoSelectedIndex = -1 }
+    // 确认候选 (键盘回车/Tab 与点击共用), 对齐原版 replaceText 后 dismissDropDown
+    val applyMatch: (Int) -> Unit = { index ->
+        val (newText, newSelection) = applyCompletion(value.text, value.selection, matches[index])
+        autoDismissedText = newText
+        autoSelectedIndex = -1
+        onValueChange(value.copy(text = newText, selection = newSelection))
+    }
+    // 键盘事件: onPreviewKeyEvent 挂在字段外层 Box (BasicTextField 的祖先), 预览阶段先于字段
+    // 内部 keyInput, 弹层 focusable=false 不抢焦点, 按键由字段统一接收 (原版 popup 亦如此)。
+    // 候选弹出时 上下/回车/Tab 优先走补全, ESC 收起; 无候选时回车交还字段 (换行缩进走
+    // CodeEditorState.adjustInput), Tab 插入 "\t" (对齐原版 EditText 硬件 Tab 行为)。
+    val previewKeyHandler: (KeyEvent) -> Boolean = { event ->
+        if (!autoComplete || readOnly || !isFocused) {
+            false
+        } else if (event.type != KeyEventType.KeyDown) {
+            false
+        } else {
+            when (event.key) {
+                Key.DirectionDown -> if (matches.isEmpty()) false else {
+                    autoSelectedIndex = (autoSelectedIndex + 1).coerceAtMost(matches.lastIndex)
+                    true
+                }
+
+                Key.DirectionUp -> if (matches.isEmpty()) false else {
+                    autoSelectedIndex = (autoSelectedIndex - 1).coerceAtLeast(-1)
+                    true
+                }
+
+                Key.Enter -> if (matches.isEmpty()) false else {
+                    applyMatch(if (autoSelectedIndex == -1) 0 else autoSelectedIndex)
+                    true
+                }
+
+                Key.Tab -> if (event.isShiftPressed || matches.isEmpty()) {
+                    // Shift+Tab 不参与补全 (保留焦点后退语义); 无候选时插入 "\t"
+                    if (matches.isEmpty() && !event.isShiftPressed) {
+                        onValueChange(insertTabAtSelection(value))
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    applyMatch(if (autoSelectedIndex == -1) 0 else autoSelectedIndex)
+                    true
+                }
+
+                Key.Escape -> if (matches.isEmpty()) false else {
+                    autoDismissedText = value.text
+                    true
+                }
+
+                else -> false
+            }
+        }
+    }
+    // 弹层锚点: 光标所在行 Y + X; X 用 TextMeasurer 实测行首到光标的文本宽度与行号列宽
+    // (替代原 0.6em/1em 近似估算, 对齐原版 showDropDown 的 layout.getPrimaryHorizontal),
+    // 测量失败/超长回退估算
     val density = LocalDensity.current
-    val popupOffset = if (autoMatches.isEmpty()) {
+    val textMeasurer = rememberTextMeasurer(cacheSize = 8)
+    val popupOffset = if (matches.isEmpty()) {
         IntOffset.Zero
     } else {
         val text = value.text
@@ -258,10 +354,33 @@ fun CodeTextField(
         var x = with(density) {
             contentPadding.calculateStartPadding(LayoutDirection.Ltr).toPx()
         }.roundToInt()
-        val charWidthPx = with(density) { (fontSize * 0.6f).toPx() }.roundToInt()
-        val wideWidthPx = with(density) { fontSize.toPx() }.roundToInt()
-        for (i in lineStart until cursor) {
-            x += if (isFullWidthChar(text[i])) wideWidthPx else charWidthPx
+        // 行号列宽: gutterShown 时文本起点右移 (数字递增, 末行最宽; 列宽 = 5dp + 号宽 + 11dp)
+        if (gutterShown) {
+            val gutterTextWidth = measureTextWidth(
+                textMeasurer,
+                lineCount.toString(),
+                codeStyle.copy(fontSize = codeStyle.fontSize * 0.6f),
+                density,
+            )
+            if (gutterTextWidth != null) {
+                x += (gutterTextWidth + with(density) { (5.dp + 11.dp).toPx() }).roundToInt()
+            }
+        }
+        // 行首到光标宽度: 实测优先, 失败回退 0.6em/1em 估算
+        val prefixWidth = measureTextWidth(
+            textMeasurer,
+            text.substring(lineStart, cursor),
+            codeStyle,
+            density,
+        )
+        if (prefixWidth != null) {
+            x += prefixWidth.roundToInt()
+        } else {
+            val charWidthPx = with(density) { (fontSize * 0.6f).toPx() }.roundToInt()
+            val wideWidthPx = with(density) { fontSize.toPx() }.roundToInt()
+            for (i in lineStart until cursor) {
+                x += if (isFullWidthChar(text[i])) wideWidthPx else charWidthPx
+            }
         }
         IntOffset(x, y)
     }
@@ -270,10 +389,14 @@ fun CodeTextField(
         isError = isError,
         errorMessage = errorMessage,
     ) {
-        Box(Modifier.fillMaxWidth()) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .onPreviewKeyEvent(previewKeyHandler)
+        ) {
             BasicTextField(
                 value = value,
-                onValueChange = onValueChange,
+                onValueChange = trackedValueChange,
                 modifier = Modifier
                     .fillMaxWidth()
                     .then(
@@ -296,7 +419,10 @@ fun CodeTextField(
                 interactionSource = interactionSource,
                 cursorBrush = SolidColor(colors.cursorColor(isError).value),
                 decorationBox = { innerTextField ->
-                    // 行号列包在 innerTextField 外层, 随文本同步滚动; label/placeholder 由
+                    // 行号列包在 innerTextField 外层: 行号只在外部无界高度 + 滚动容器场景启用,
+                    // 此时字段整体随容器滚动, 行号与文本同步; 若字段自身有界 (内部滚动), decoration
+                    // 内容不随文本滚动, 行号会钉在顶部 (当前无线号使用场景, 保持现状)。
+                    // label/placeholder 由
                     // AppDecorationBox 全宽渲染 (hint 从 contentPadding 起点 16dp 开始, 不被
                     // CodeView gutter 挤开; LineNumberGutter 的 5dp/11dp/6dp 几何在 16dp 水平
                     // 边距下与 CodeView.onDraw 的 paddingLeft-11dp / paddingLeft-6dp 对齐)
@@ -304,7 +430,7 @@ fun CodeTextField(
                         if (gutterShown) {
                             Row(Modifier.fillMaxWidth()) {
                                 LineNumberGutter(
-                                    lineCount = value.text.count { it == '\n' } + 1,
+                                    lineCount = lineCount,
                                     textStyle = codeStyle,
                                 )
                                 Box(Modifier.weight(1f)) { innerTextField() }
@@ -331,18 +457,12 @@ fun CodeTextField(
                     )
                 },
             )
-            if (autoMatches.isNotEmpty()) {
+            if (matches.isNotEmpty()) {
                 AutoCompletePopup(
-                    matches = autoMatches,
+                    matches = matches,
+                    selectedIndex = autoSelectedIndex,
                     offset = popupOffset,
-                    onSelect = { item ->
-                        val (newText, newSelection) = applyCompletion(
-                            value.text,
-                            value.selection,
-                            item
-                        )
-                        onValueChange(value.copy(text = newText, selection = newSelection))
-                    },
+                    onSelect = applyMatch,
                 )
             }
         }
@@ -365,6 +485,10 @@ private fun LineNumberGutter(
     textStyle: TextStyle,
 ) {
     val colors = AppTheme.colors
+    // 行号串只在行数变化时重建: 常规按键 (行数不变) 复用同一实例, BasicText 节点按内容语义比较
+    // 跳过重排; 滚动只改放置 (verticalScroll 不重组子节点, Text shouldAutoInvalidate=false),
+    // 行号布局全程复用, 万行文件下不再每次按键全量重建
+    val numbersText = remember(lineCount) { buildLineNumbers(lineCount) }
     Box(
         Modifier
             .padding(start = 5.dp)
@@ -379,7 +503,7 @@ private fun LineNumberGutter(
             },
     ) {
         Text(
-            text = buildLineNumbers(lineCount),
+            text = numbersText,
             color = colors.secondaryText,
             style = textStyle.copy(fontSize = textStyle.fontSize * 0.6f),
             textAlign = TextAlign.End,
@@ -393,6 +517,38 @@ private fun buildLineNumbers(lineCount: Int): String = buildString {
         if (i > 1) append('\n')
         append(i)
     }
+}
+
+/** 文本行数 (换行符数 + 1), 仅在外部整体替换时全量统计 */
+private fun countLineNumbers(text: String): Int {
+    var count = 1
+    for (i in text.indices) {
+        if (text[i] == '\n') count++
+    }
+    return count
+}
+
+/**
+ * 前后文 diff 求新行数增量: 只统计未匹配中段的换行差, 常规按键 (光标处单字符编辑) 为
+ * O(编辑距离), 避免每次按键 O(n) 扫描全文; 全量替换等无公共前缀/后缀的改动退化为 O(n)。
+ */
+private fun newlineDelta(oldText: String, newText: String): Int {
+    val minLen = minOf(oldText.length, newText.length)
+    var prefix = 0
+    while (prefix < minLen && oldText[prefix] == newText[prefix]) prefix++
+    var suffix = 0
+    while (suffix < minLen - prefix &&
+        oldText[oldText.length - 1 - suffix] == newText[newText.length - 1 - suffix]
+    ) suffix++
+    var removed = 0
+    for (i in prefix until oldText.length - suffix) {
+        if (oldText[i] == '\n') removed++
+    }
+    var added = 0
+    for (i in prefix until newText.length - suffix) {
+        if (newText[i] == '\n') added++
+    }
+    return added - removed
 }
 
 /** 全角字符 (CJK/假名/全角符号): 自动补全弹层 X 估算时按 1em 计, 其余按 0.6em */
@@ -410,16 +566,25 @@ private fun isFullWidthChar(c: Char): Boolean {
 }
 
 /**
- * 自动补全候选弹层 (对齐原版 AutoCompleteTextView 下拉): 小字 + 次要文字色列表,
- * 点击插入到光标处 ([applyCompletion])。focusable=false 不抢焦点, 字段保持可继续输入。
+ * 自动补全候选弹层 (对齐原版 AutoCompleteTextView 下拉): 小字列表 + 键盘/点击选中高亮,
+ * 确认插入到光标处 ([applyCompletion])。focusable=false 不抢焦点: 键盘事件由字段层
+ * onPreviewKeyEvent 共享处理 (原版 popup 同样不独立接收按键), 上下键高亮随 LazyColumn 滚动。
  */
 @Composable
 private fun AutoCompletePopup(
     matches: List<String>,
+    selectedIndex: Int,
     offset: IntOffset,
-    onSelect: (String) -> Unit,
+    onSelect: (Int) -> Unit,
 ) {
     val colors = AppTheme.colors
+    val listState = rememberLazyListState()
+    // 键盘导航把高亮项滚进可视区 (对齐原版 AutoCompleteTextView 自动滚动跟随)
+    LaunchedEffect(selectedIndex) {
+        if (selectedIndex in 0 until matches.size) {
+            listState.animateScrollToItem(selectedIndex)
+        }
+    }
     Popup(
         alignment = Alignment.TopStart,
         offset = offset,
@@ -432,8 +597,8 @@ private fun AutoCompletePopup(
             elevation = 4.dp,
             modifier = Modifier.width(220.dp),
         ) {
-            LazyColumn(Modifier.heightIn(max = 200.dp)) {
-                items(matches) { item ->
+            LazyColumn(Modifier.heightIn(max = 200.dp), state = listState) {
+                itemsIndexed(matches) { index, item ->
                     Text(
                         item,
                         color = colors.primaryText,
@@ -441,12 +606,52 @@ private fun AutoCompletePopup(
                         maxLines = 1,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onSelect(item) }
+                            .background(
+                                if (index == selectedIndex) {
+                                    colors.accent.copy(alpha = 0.15f)
+                                } else {
+                                    Color.Transparent
+                                }
+                            )
+                            .clickable { onSelect(index) }
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                     )
                 }
             }
         }
+    }
+}
+
+/** Tab 键无候选时插入 "\t" (对齐原版 EditText 硬件 Tab 行为; Compose 字段默认 Tab 走焦点移动, 需消费) */
+private fun insertTabAtSelection(value: TextFieldValue): TextFieldValue {
+    val sel = value.selection
+    val start = sel.min
+    return value.copy(
+        text = value.text.replaceRange(start, sel.max, "\t"),
+        selection = TextRange(start + 1),
+    )
+}
+
+/**
+ * TextMeasurer 实测文本单行宽度; 空串返 0, 超长/异常返 null (调用方回退 0.6em/1em 估算)。
+ * [density] 必须传真实屏幕密度, 否则 sp 字号按 Density(1f) 折算导致宽度整体偏小。
+ */
+private fun measureTextWidth(
+    textMeasurer: TextMeasurer,
+    text: String,
+    style: TextStyle,
+    density: Density,
+): Float? {
+    if (text.isEmpty()) return 0f
+    if (text.length > 300) return null
+    return try {
+        textMeasurer.measure(
+            AnnotatedString(text),
+            style = style,
+            density = Density(density.density),
+        ).size.width.toFloat()
+    } catch (_: Exception) {
+        null
     }
 }
 

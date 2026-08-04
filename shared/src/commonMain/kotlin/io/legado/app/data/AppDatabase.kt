@@ -68,6 +68,7 @@ import io.legado.app.data.entities.TxtTocRule
 // DATABASE 作用域注册 Book.Converters: iOS/ohos KSP 处理 BookChapter.ForeignKey 跨实体解析时,
 // 需在 Database 级可见 ReadConfig <-> String 转换链 (与 Book 实体上的 ENTITY 作用域双重注册,
 // 详见 Book.kt 顶部注释)。缺此注册会导致 iOS/ohos KSP 报 ReadConfig 类型链解析失败。
+// 鸿蒙 fork (alpha01 API) KSP 只认 TypeConverters 旧名, 与 ColumnTypeConverters 并存双注册。
 @ColumnTypeConverters(Book.Converters::class)
 // 非 Android 平台 (iOS/desktop/鸿蒙) Room3 要求显式 @ConstructedBy 提供实例工厂
 @ConstructedBy(AppDatabaseConstructor::class)

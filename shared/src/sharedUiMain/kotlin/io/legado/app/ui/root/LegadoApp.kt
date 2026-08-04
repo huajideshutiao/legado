@@ -76,6 +76,7 @@ import io.legado.app.ui.config.ThemeListDialog
 import io.legado.app.ui.widget.dialog.PhotoViewOverlayDialog
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 
@@ -491,6 +492,20 @@ private fun SourceLoginOverlayDialogContent(overlay: AppOverlay.Dialog, navigato
     if (context == null) {
         LaunchedEffect(Unit) { navigator.dismissOverlay(overlay.key) }
         return
+    }
+    // 登录 JS 打开内部浏览器 (java.startBrowser → 推 AppRoute.WebView) 时关闭对话框:
+    // 原版 WebViewActivity 作为新 Activity 全屏盖住登录对话框, 登录 JS 在其下继续执行,
+    // 对话框随后随 login() 完成而 dismiss; 单页导航下路由渲染在 Overlay 对话框之下,
+    // 不关闭会被对话框遮住 (表现为"对话框没关")。故监听路由栈: 顶层变为 WebView 即关闭
+    // 本对话框; 登录 JS 已解耦到对话框组合之外 (SourceLoginDialog 内独立 scope),
+    // 关闭不会中断 JS 执行, 验证完成后经 WebViewRoute 回传唤醒等待线程 (原 checkResult 语义)。
+    LaunchedEffect(Unit) {
+        val initialSize = navigator.backStack.value.size
+        navigator.backStack.drop(initialSize).collect { entries ->
+            if (entries.lastOrNull()?.route is AppRoute.WebView) {
+                navigator.dismissOverlay(overlay.key)
+            }
+        }
     }
     EditDialogHost(onDismiss = { navigator.dismissOverlay(overlay.key) }) {
         SourceLoginDialog(

@@ -24,6 +24,7 @@ import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CFunction
 import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.CPointer
+import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.allocArrayOf
 import kotlinx.cinterop.cstr
 import kotlinx.cinterop.invoke

@@ -150,12 +150,23 @@ class BookshelfViewModel {
      *
      * 触发 [upToc] / [forceRefresh] 时把目标 books 的 url 加入集合, 收到 UP_BOOKSHELF 事件时移除,
      * 与 app 端 BaseBookshelfState 行为一致 (条目转圈在书籍刷新完成时消失)。
+     *
+     * 阅读器退出 / 目录更新落库后也会发 UP_BOOKSHELF (见 ReadBookViewModelShared.uploadProgressAwait /
+     * UpdateBookShared), 此时重启当前 + 相邻分组流强制重查: 单页架构下书架流全程驻留, 退出阅读
+     * 不摘订阅, 依赖 Room 连续失效推送; 重启流对齐原版"返回书架 onResume 重订阅"的刷新语义,
+     * 保证进度/排序在返回后立即可见。书架不可见 (active=false) 时跳过, 恢复激活时已重查。
      */
     private fun observeUpBookshelfEvents() {
         scope.launch {
             FlowBus.with(EventBus.UP_BOOKSHELF).collect { e ->
                 val url = e as? String ?: return@collect
                 _refreshingUrls.value = _refreshingUrls.value - url
+                if (active) {
+                    (composedGroupIds + _currentGroupId.value).forEach { groupId ->
+                        booksFlowJobs.remove(groupId)?.cancel()
+                        startGroupFlow(groupId)
+                    }
+                }
             }
         }
     }
@@ -214,7 +225,7 @@ class BookshelfViewModel {
     private fun startGroupFlow(groupId: Long) {
         if (booksFlowJobs.containsKey(groupId)) return
         val isCurrent = groupId == _currentGroupId.value
-        booksFlowJobs[groupId] = scope.launch {
+        val job = scope.launch {
             try {
                 // 过滤内容相同的重复 emit, 避免无关 DAO 触发重排与重组
                 val source = bookDao.flowByGroup(groupId).distinctUntilChanged().catch {
@@ -231,10 +242,14 @@ class BookshelfViewModel {
                     }
                 }
             } finally {
-                // 持续流被取消 / one-shot 取完首值, 均从活跃表移除
-                booksFlowJobs.remove(groupId)
+                // 只移除自己: 取消后重启 (UP_BOOKSHELF/upSort/selectGroup) 可能已注册新 job,
+                // 旧 job 的 finally 若直接 remove 会误删新 job 的登记, 导致流失联后重复订阅
+                if (booksFlowJobs[groupId] === coroutineContext[Job]) {
+                    booksFlowJobs.remove(groupId)
+                }
             }
         }
+        booksFlowJobs[groupId] = job
     }
 
     /** 分组书籍流发射回调: 回填缓存, 触发自动更新, 当前分组同步 [_books] */

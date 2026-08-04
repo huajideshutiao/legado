@@ -145,6 +145,10 @@ kotlin {
         commonMain {
             if (enableOhosTarget) {
                 kotlin.srcDir("src/ohosCompatMain/kotlin")
+            } else {
+                // 非鸿蒙构建的 room3 旧名注解兼容 (TypeConverters/TypeConverter), 见
+                // src/nonOhosCompatMain/kotlin/androidx/room3/TypeConvertersCompat.kt 注释。
+                kotlin.srcDir("src/nonOhosCompatMain/kotlin")
             }
             dependencies {
                 implementation(libs.kotlin.stdlib)
@@ -286,6 +290,19 @@ kotlin {
             maybeCreate("ohosArm64Main").apply {
                 dependsOn(maybeCreate("ohosMain"))
                 kotlin.srcDir(layout.buildDirectory.dir("generated/nativeInterop/ohosArm64Main"))
+                // KSP 对动态创建源集不自动接线, 显式注册生成目录 (DAO Impl/AppDatabaseConstructor 等)
+                kotlin.srcDir(layout.buildDirectory.dir("generated/ksp/ohosArm64/ohosArm64Main/kotlin"))
+                // 排除 KSP 生成的 4 个 fork 不兼容文件 (suspend override + executeSQL 旧名),
+                // 改用与生成物同源集 (ohosArm64Main) 的手写派生版 (AppDatabase_Impl.ohos.kt 等,
+                // 见 src/ohosArm64Main/.../data/*.ohos.kt; 手写版引用 DAO Impl 等生成物,
+                // 必须在 ohosArm64Main 编译单元内才可见)。exclude 只按相对路径匹配生成目录下的
+                // 同名 .kt, 手写文件为 .ohos.kt 且位于 src/ 下, 不受 exclude 影响。
+                kotlin.exclude(
+                    "io/legado/app/data/AppDatabase_Impl.kt",
+                    "io/legado/app/data/AppDatabase_AutoMigration_83_84_Impl.kt",
+                    "io/legado/app/data/AppDatabase_AutoMigration_84_85_Impl.kt",
+                    "io/legado/app/data/AppDatabase_AutoMigration_85_86_Impl.kt",
+                )
             }
         }
 
@@ -347,5 +364,18 @@ dependencies {
     if (enableIosTarget) {
         add("kspIosArm64", libs.room.compiler)
         add("kspIosSimulatorArm64", libs.room.compiler)
+    }
+    if (enableOhosTarget) {
+        // CPF 鸿蒙 room3 fork 只发布到 3.0.0-alpha01-0.3.0 (runtime/klib API 是 alpha01 时代,
+        // RoomOpenDelegate/Migration/Callback 非 suspend、无 ColumnTypeConverters、无 clearAllTables 等)。
+        // 官方 room3-compiler 全版本 (alpha01/alpha06/3.0.1) 均生成 suspend override + sqlite 扩展调用,
+        // 与 fork 非 suspend 基类不兼容; 只能让 KSP 照常生成 (DAO 实现可用), 另由 ohosArm64Main
+        // 手写 fork 适配层替换 4 个不兼容生成物 (AppDatabase_Impl + 3 AutoMigration, 见
+        // ohosArm64Main 的 kotlin.exclude 与 src/ohosArm64Main/.../data/*.ohos.kt; 手写版与
+        // 生成物同源集编译, 才能引用 internal 的 DAO Impl)。alpha01 编译器生成的 DAO 实现
+        // 可直接编译, 故 kspOhosArm64 用 alpha01; 源码侧的 3.0.1 新注解由 ohosCompatMain 兼容声明
+        // 补齐 (见 OhosRoom3Compat.kt), alpha01 旧注解 (TypeConverters/TypeConverter) 由
+        // Book.kt/AppDatabase.kt 双注册 + 非鸿蒙构建的 nonOhosCompatMain 声明补齐。
+        add("kspOhosArm64", "androidx.room3:room3-compiler:3.0.0-alpha01")
     }
 }

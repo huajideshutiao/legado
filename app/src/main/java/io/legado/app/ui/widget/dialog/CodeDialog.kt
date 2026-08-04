@@ -21,7 +21,6 @@ import io.legado.app.ui.compose.component.code.CodeTextField
 import io.legado.app.ui.compose.component.code.rememberFullCodeSyntax
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
-import org.jetbrains.compose.resources.stringResource
 
 class CodeDialog() : BaseComposeDialogFragment() {
 
@@ -65,7 +64,7 @@ class CodeDialog() : BaseComposeDialogFragment() {
                 onValueChange = { code = it },
                 syntax = syntax,
                 readOnly = disableEdit,
-                // 对齐原版 CodeView 内嵌呈现: 无下划线, 四周 12dp
+                // 内嵌呈现: 无下划线, 四周 12dp
                 showIndicator = false,
                 modifier = Modifier
                     .fillMaxWidth()

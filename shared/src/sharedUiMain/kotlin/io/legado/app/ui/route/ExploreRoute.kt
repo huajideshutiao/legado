@@ -17,6 +17,7 @@ import io.legado.app.data.entities.PinnedExplore
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.main.explore.ExploreScreen
@@ -24,7 +25,6 @@ import io.legado.app.ui.main.explore.ExploreScreenModel
 import io.legado.app.ui.main.explore.ExploreUiActions
 import io.legado.app.ui.main.explore.ExploreUiEvent
 import io.legado.app.ui.main.explore.ExploreUiState
-import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
@@ -158,6 +158,10 @@ fun ExploreRoute(
 
             override fun onRefreshSource(source: BookSourcePart) {
                 screenModel.dispatch(ExploreUiEvent.RefreshSource(source))
+            }
+
+            override fun onRefreshAll() {
+                screenModel.dispatch(ExploreUiEvent.RefreshAll)
             }
 
             override fun onDeleteSource(source: BookSourcePart) {

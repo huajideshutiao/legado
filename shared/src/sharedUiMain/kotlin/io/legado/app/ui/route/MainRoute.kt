@@ -76,6 +76,7 @@ import io.legado.app.ui.bookshelf.BookshelfScreen
 import io.legado.app.ui.bookshelf.BookshelfViewModel
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.bookshelf.ShelfScrollState
+import io.legado.app.ui.bookshelf.ShelfVideoItem
 import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
@@ -566,7 +567,14 @@ private fun HomeSectionTitleRow(title: String, onMoreClick: () -> Unit) {
     }
 }
 
-/** 横向封面行 (对照 CoverCardAdapter): 封面 + 书名, 横向滚动 */
+/**
+ * 横向封面行 (对照 CoverCardAdapter): 封面 + 书名, 横向滚动。
+ *
+ * isVideoStyle=true (section.coverVideo) 时对照原版 CoverCardAdapter 的
+ * VideoCoverCardVH: 复用 item_explore_video 视频卡 (shared [ShelfVideoItem]),
+ * 卡片宽 220dp (原版把 match_parent 根布局改为固定 220dp 才能在横向滚动里排布),
+ * 封面按 VIDEO(16:9) 比例由宽度反推高度, 加粗标题 + 分类 + 作者, 无徽标。
+ */
 @Composable
 private fun HomeCoverRow(
     books: List<SearchBook>,
@@ -574,44 +582,60 @@ private fun HomeCoverRow(
     onBookLongClick: (SearchBook) -> Unit,
     isVideoStyle: Boolean,
 ) {
-    val colors = AppTheme.colors
-    // 对照 item_home_cover_card.xml + CoverCardVH.bind: 封面固定高 160dp (视频 120dp),
-    // 宽度由 CoverImageView 按 coverRatio 反推, 不读书架封面高度配置
-    val coverHeight = if (isVideoStyle) 120.dp else 160.dp
     Row(
         Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
-        books.forEach { book ->
-            Column(
-                Modifier
-                    .width(90.dp)
-                    .padding(horizontal = 4.dp)
-                    .combinedClickable(
-                        onClick = { onBookClick(book) },
-                        onLongClick = { onBookLongClick(book) },
-                    ),
-            ) {
-                // 封面: 走 LocalBookCoverSlot (与书架/探索页一致)
-                LocalBookCoverSlot.current(
-                    book.toCoverBook(),
+        if (isVideoStyle) {
+            // 对照原 VideoCoverCardVH.bind: bindVideoCard(coverRatio=VIDEO, isInBookshelf=false,
+            // showBookshelfBadge=false); 封面走 LocalBookCoverSlot (与书架/探索页一致)
+            books.forEach { book ->
+                ShelfVideoItem(
+                    book = book.toCoverBook(),
+                    coverReloadTick = 0,
+                    onClick = { onBookClick(book) },
+                    onLongClick = { onBookLongClick(book) },
+                    modifier = Modifier.width(220.dp),
+                    coverSlot = { b, m, isVideoCover, tick ->
+                        LocalBookCoverSlot.current(b, m, isVideoCover, tick)
+                    },
+                )
+            }
+        } else {
+            val colors = AppTheme.colors
+            // 对照 item_home_cover_card.xml + CoverCardVH.bind: 封面固定高 160dp,
+            // 宽度由 CoverImageView 按 coverRatio (NOVEL) 反推, 不读书架封面高度配置
+            books.forEach { book ->
+                Column(
                     Modifier
-                        .fillMaxWidth()
-                        .height(coverHeight),
-                    isVideoStyle,
-                    0,
-                )
-                Text(
-                    text = book.name,
-                    color = colors.primaryText,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                )
+                        .width(90.dp)
+                        .padding(horizontal = 4.dp)
+                        .combinedClickable(
+                            onClick = { onBookClick(book) },
+                            onLongClick = { onBookLongClick(book) },
+                        ),
+                ) {
+                    // 封面: 走 LocalBookCoverSlot (与书架/探索页一致)
+                    LocalBookCoverSlot.current(
+                        book.toCoverBook(),
+                        Modifier
+                            .fillMaxWidth()
+                            .height(160.dp),
+                        false,
+                        0,
+                    )
+                    Text(
+                        text = book.name,
+                        color = colors.primaryText,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    )
+                }
             }
         }
     }
@@ -1021,6 +1045,10 @@ private fun ExploreTabContent(
 
             override fun onRefreshSource(source: BookSourcePart) {
                 screenModel.dispatch(ExploreUiEvent.RefreshSource(source))
+            }
+
+            override fun onRefreshAll() {
+                screenModel.dispatch(ExploreUiEvent.RefreshAll)
             }
 
             override fun onDeleteSource(source: BookSourcePart) {

@@ -44,6 +44,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,7 +62,10 @@ import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.GridPackLayout
+import io.legado.app.ui.compose.component.PullToRefreshDefaults
 import io.legado.app.ui.compose.component.estimateGridHeight
+import io.legado.app.ui.compose.component.pullToRefresh
+import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import io.legado.app.ui.compose.component.toGridPackSpec
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
@@ -200,6 +204,9 @@ interface ExploreUiActions {
     /** 项菜单 - 刷新分类 (clearExploreKindsCache + 重载) */
     fun onRefreshSource(source: BookSourcePart)
 
+    /** 下拉刷新整页: 重读收藏区 + 清空分类缓存并重载已展开源 (对照 origin 各刷新入口) */
+    fun onRefreshAll()
+
     /** 项菜单 - 删除 (调 viewModel.deleteSource) */
     fun onDeleteSource(source: BookSourcePart)
 }
@@ -231,7 +238,19 @@ fun ExploreScreen(
             onGroup = { actions.onGroup(it) },
             onBack = onBack,
         )
-        Box(Modifier.fillMaxSize()) {
+        // 下拉刷新 (对照 origin fragment_recycler_view 的 SwipeRefreshLayout; 原版因
+        // refreshLayout.isEnabled=false 被禁用, 本次迁移补齐: 刷新收藏区 + 分类缓存)
+        val pullState = rememberPullToRefreshState()
+        val isRefreshing = state.expandedLoading.isNotEmpty()
+        Box(
+            Modifier
+                .fillMaxSize()
+                .pullToRefresh(
+                    isRefreshing = isRefreshing,
+                    state = pullState,
+                    onRefresh = actions::onRefreshAll,
+                ),
+        ) {
             val sources = state.sources
             val pinned = state.pinned
             if (sources.isEmpty() && state.searchKey.isEmpty()) {
@@ -259,6 +278,12 @@ fun ExploreScreen(
                     ExploreSourceItem(state, actions, item, expanded = state.expandedUrl == item.bookSourceUrl)
                 }
             }
+            PullToRefreshDefaults.Indicator(
+                state = pullState,
+                isRefreshing = isRefreshing,
+                modifier = Modifier.align(Alignment.TopCenter),
+                color = colors.accent,
+            )
             // 展开后内容过高: 等展开动画结束, 把该项推到列表顶部尽量显示
             // (对照 origin/master ExploreAdapter.ensureExpandedItemVisible)
             // 优化: 预估高度可用时提前计算目标位置, 动画期间并行滚动 (不等动画结束)
@@ -418,6 +443,24 @@ private fun ExploreSourceItem(
             } else if (expanded || kindPair != null) {
                 // 从没展开过的项不建 AnimatedVisibility 的 Transition (整屏几十项都要建一份);
                 // 首次展开时它以 visible=false 建立再翻 true, 进场动画与原来一致
+                //
+                // 修复首次展开闪现: expandedUrl 与 expandedKinds 常在同一帧内就绪
+                // (exploreKinds 有内存+磁盘缓存, 加载快于一帧), 导致 AnimatedVisibility
+                // 首次组合时 visible 已为 true —— 初始状态即目标状态, 进场动画被跳过,
+                // 内容直接出现。这里用本地 animateIn 强制先以 visible=false 完成首帧组合,
+                // 下一帧再翻 true, 保证 false→true 转变必然发生、进场动画必然触发。
+                // (第二次展开: AnimatedVisibility 已被 kindPair 保活, 行为不变, 仅动画晚一帧开始)
+                val contentReady = expanded && kindPair != null
+                var animateIn by remember(contentReady) { mutableStateOf(false) }
+                LaunchedEffect(contentReady) {
+                    if (contentReady) {
+                        // 等隐藏态首帧绘制完成后再翻转, 确保触发进场动画
+                        withFrameNanos { }
+                        animateIn = true
+                    } else {
+                        animateIn = false
+                    }
+                }
                 // 预估高度: 用 estimateGridHeight 提前算出目标高度, 展开动画从 0 到目标高度
                 // 平滑过渡, 避免动画期间高度随测量逐步跳变 (对照补充.txt 思路)
                 val estimatedHeight = kindPair?.let { (_, kinds) ->
@@ -427,7 +470,7 @@ private fun ExploreSourceItem(
                     } else 0.dp
                 } ?: 0.dp
                 AnimatedVisibility(
-                    visible = expanded && kindPair != null,
+                    visible = animateIn,
                     enter = expandVertically(
                         tween(EXPAND_DURATION_MS, easing = FastOutSlowInEasing),
                         expandFrom = Alignment.Top,

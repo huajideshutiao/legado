@@ -12,8 +12,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.CircularProgressIndicator
@@ -122,6 +124,8 @@ import org.jetbrains.compose.resources.stringResource
  * @param colorFilterConfig 颜色滤镜配置 (平台应用到图片)
  * @param grayEnabled 灰度滤镜开关
  * @param onBack 返回回调
+ * @param onMenuVisibleChange 菜单(操作界面)显隐回调 (对照原版 ReadMangaActivity.upSystemUiVisibility:
+ *   菜单显示 → 宿主恢复系统栏, 菜单隐藏 → 沉浸式全屏; 各平台经 WindowController.setSystemBars 执行)
  * @param onPrevChapter 上一章
  * @param onNextChapter 下一章
  * @param onPrevPage 上一页（提供后键盘上翻键优先调用，否则整屏回滚）
@@ -168,6 +172,7 @@ fun MangaReaderScreenContent(
     hasReview: Boolean = false,
     clickActionConfig: ClickActionConfig = ClickActionConfig(),
     onBack: () -> Unit,
+    onMenuVisibleChange: (Boolean) -> Unit = {},
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
     onPrevPage: (() -> Unit)? = null,
@@ -203,6 +208,9 @@ fun MangaReaderScreenContent(
     }
     // 菜单 Overlay 显隐 (点击区域动作 0 呼出, 对照 app 端 click action 0)
     var menuVisible by remember { mutableStateOf(false) }
+    // 系统栏随菜单显隐 (对照原版 ReadMangaActivity.upSystemUiVisibility(menuIsVisible) →
+    // toggleSystemBar: 菜单显示恢复状态栏/导航栏, 菜单隐藏沉浸式全屏; 由宿主平台执行)
+    LaunchedEffect(menuVisible) { onMenuVisibleChange(menuVisible) }
     // 自动翻页开关: 对照原版 menu_enable_auto_page, 由溢出菜单勾选项控制 (原版同样不持久化)
     var autoPageEnabled by remember { mutableStateOf(false) }
     // 渲染状态: 提升到顶层, 供 SeekBar 定位复用 listState
@@ -640,6 +648,9 @@ private fun MangaMenuTopBar(
         Modifier
             .fillMaxWidth()
             .background(colors.background)
+            // 对照原版 TitleBar fitStatusBar=true: 系统栏恢复时顶栏避开状态栏,
+            // 沉浸式全屏时 inset=0 无多余空白
+            .statusBarsPadding()
             .padding(horizontal = 8.dp),
     ) {
         // 整行点击打开书籍详情 (对照 app 端 toolbar click → openBookInfoActivity)
@@ -815,7 +826,10 @@ private fun MangaMenuBottomBar(
     Column(
         Modifier
             .fillMaxWidth()
-            .background(colors.bottomBackground),
+            .background(colors.bottomBackground)
+            // 对照原版 MangaMenu.initView: bottomMenu.applyNavigationBarPadding()
+            // (沉浸式全屏时 inset=0 无多余空白)
+            .navigationBarsPadding(),
     ) {
         Row(
             Modifier

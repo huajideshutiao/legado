@@ -117,6 +117,7 @@ import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.component.AppSwitch
+import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.dialogs.selector
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -2178,7 +2179,7 @@ private fun BookshelfLayoutConfigContent(
         if (fixedWidthMode.value) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.grid_width_dp), color = colors.primaryText)
-                OutlinedTextField(
+                AppTextField(
                     value = gridWidthText.value,
                     onValueChange = { gridWidthText.value = it.filter { c -> c.isDigit() } },
                     singleLine = true,

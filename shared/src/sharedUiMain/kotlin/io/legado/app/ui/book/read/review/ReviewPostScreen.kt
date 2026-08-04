@@ -9,7 +9,10 @@ import androidx.compose.material.ButtonDefaults
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.theme.AppTheme
@@ -24,7 +27,7 @@ import org.jetbrains.compose.resources.stringResource
  * 下沉自 app 端 `ReviewPostActivity` 的 BottomSheet 输入面板:
  * - Activity 版仅采集文本, 通过 setResult 回传给 ReviewListDialog 调用 viewModel.reply/post
  * - shared 版为纯输入面板 (输入框 + 提交按钮), 外壳由 [io.legado.app.ui.route.ReviewPostDialogHost]
- *   提供 (AppDialog + DialogTitleBar), 状态托管于 [ReviewPostScreenModel]
+ *   提供 (AppBottomSheetDialog 贴底面板 + DialogTitleBar), 状态托管于 [ReviewPostScreenModel]
  * - 提交动作通过 [ReviewPostUiActions.onSubmit] 回调上抛, 实际网络提交仍由上层
  *   (ReviewListDialog / ReviewViewModel) 处理
  */
@@ -34,6 +37,11 @@ fun ReviewPostScreen(
     actions: ReviewPostUiActions,
 ) {
     val colors = AppTheme.colors
+    // 进入即聚焦输入框 (对照原版 ReviewPostActivity: etInput.requestFocus() +
+    // windowSoftInputMode=stateAlwaysVisible 弹键盘); Android 弹窗内软键盘随之弹出,
+    // 桌面/iOS 无软键盘则仅获得焦点, 无副作用
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
     Column(
         Modifier
             .fillMaxWidth()
@@ -49,6 +57,7 @@ fun ReviewPostScreen(
                 .heightIn(min = 120.dp),
             placeholder = state.hint.ifBlank { stringResource(Res.string.review_post_hint) },
             maxLines = 8,
+            focusRequester = focusRequester,
         )
         // 提交按钮: 内容空或提交中禁用, 提交中显示加载指示
         Button(

@@ -28,12 +28,20 @@ object WindowPolicies {
         systemBars = SystemBarsPolicy.Hidden
     )
     val VideoPlayer = WindowPolicy(
+        // 原版 VideoPlayActivity 继承 VMBaseActivity 默认 fullScreen=true:
+        // 竖屏内容铺到透明状态栏之后、由标题栏按 inset 回避, 横屏切全屏时整体隐藏系统栏
+        fullscreen = true,
         keepScreenOn = true,
         // 原版 VideoPlayActivity 不强制横屏, 由用户在播放页手动切换; 这里默认不锁方向
         orientation = OrientationPolicy.Unspecified,
         pictureInPicture = true
     )
-    val AudioPlay = WindowPolicy(keepScreenOn = true)
+    val AudioPlay = WindowPolicy(
+        // 原版 AudioPlayActivity 继承 VMBaseActivity 默认 fullScreen=true:
+        // 模糊封面背景铺满到透明状态栏之后, 标题栏按状态栏 inset 回避
+        fullscreen = true,
+        keepScreenOn = true
+    )
 
     // 编辑页文本域在页面底部, 固定 adjustResize: 避免 adjustUnspecified 对 Compose 层级
     // 判不可滚动而落 adjustPan, 弹键盘时整页(含标题栏)被顶起 (对照原 BookInfoEditActivity 可滚动布局→resize)

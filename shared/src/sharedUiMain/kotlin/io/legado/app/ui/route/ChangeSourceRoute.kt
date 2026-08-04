@@ -96,7 +96,8 @@ fun ChangeSourceRoute(
 
 /**
  * 整书换源弹窗形态 (对照原版 ChangeBookSourceDialog: 全高底部弹窗)。
- * 由阅读页"换源"按钮弹起; 切源成功经 [onSourceChanged] 回传 (宿主负责 changeTo 落地 + 关闭)。
+ * 由阅读页"换源"按钮 / 书籍详情页长按"来源"弹起; 切源成功经 [onSourceChanged] 回传
+ * (宿主负责 changeTo 落地 + 关闭)。
  */
 @Composable
 fun ChangeSourceDialogHost(

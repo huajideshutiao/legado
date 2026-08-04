@@ -2,6 +2,7 @@ package io.legado.app.ui.book.read
 
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
+import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -40,6 +41,7 @@ import io.legado.app.ui.book.read.page.provider.SimpleChapterLayout
 import io.legado.app.ui.book.read.page.provider.SimpleTextMeasurer
 import io.legado.app.ui.book.read.page.provider.TextMeasurerProviders
 import io.legado.app.ui.book.searchContent.SearchResult
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -985,6 +987,10 @@ class ReadBookViewModelShared(
      */
     private suspend fun uploadProgressAwait(bookUrl: String) {
         saveProgressAwait()
+        // 进度落库后通知书架重查 (对齐原版: 退出阅读返回书架时, 书架在 Activity onResume
+        // 重订阅 Room 流拿到最新进度/排序)。单页架构下书架 DB 流全程驻留, 阅读期间不摘订阅,
+        // 退出只靠 Room 连续失效推送; 显式 postEvent 让书架重启当前分组流, 保证立即刷新。
+        postEvent(EventBus.UP_BOOKSHELF, bookUrl)
         if (!runCatching { AppConfigProviders.get().syncBookProgress }.getOrDefault(false)) return
         runCatching {
             val fresh = AppDbProviders.get().bookDao.getBook(bookUrl) ?: return

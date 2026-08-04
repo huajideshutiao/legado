@@ -36,7 +36,6 @@
     <color name="md_blue_A200">#448AFF</color>
 
     <!-- Light Blue -->
-    <color name="md_light_blue_600">#039BE5</color>
     <color name="md_light_blue_700">#0288D1</color>
 
     <!-- Deep Orange -->
@@ -44,7 +43,6 @@
 
     <!-- Orange -->
     <color name="md_orange_700">#F57C00</color>
-    <color name="md_orange_900">#E65100</color>
 
     <!-- Yellow -->
     <color name="md_yellow_700">#FBC02D</color>
@@ -63,7 +61,6 @@
     <color name="md_grey_900">#212121</color>
 
     <!-- Blue Grey -->
-    <color name="md_blue_grey_500">#607D8B</color>
     <color name="md_blue_grey_600">#546E7A</color>
     <color name="md_blue_grey_700">#455A64</color>
 

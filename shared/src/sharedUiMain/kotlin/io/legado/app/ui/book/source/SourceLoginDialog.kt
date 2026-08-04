@@ -24,7 +24,6 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,6 +57,9 @@ import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.toJson
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -111,7 +113,11 @@ fun SourceLoginDialog(
     chapter: BookChapter? = null,
 ) {
     val colors = AppTheme.colors
-    val scope = rememberCoroutineScope()
+    // 登录/按钮 JS 需在对话框关闭后继续执行 (登录流程打开内部浏览器时会先关闭对话框,
+    // 对齐原版: WebViewActivity 盖住对话框后登录 JS 仍在后台运行至完成):
+    // rememberCoroutineScope 随组合销毁即取消, 会中断正在执行的登录 JS (如 startBrowserAwait
+    // 等待验证结果), 故用独立 SupervisorJob scope, 由协程自身生命周期驱动。
+    val scope = remember { CoroutineScope(SupervisorJob() + IoDispatcher) }
     val clipboard = LocalClipboardManager.current
 
     val titleText = stringResource(Res.string.login_source, source.getTag())
@@ -208,6 +214,8 @@ fun SourceLoginDialog(
                     Toasters.get().toast(successText)
                     withContext(mainDispatcher) { onDismiss() }
                 } catch (e: Exception) {
+                    // 取消 (如对话框已关闭) 不是登录错误, 按协程约定继续抛出
+                    if (e is CancellationException) throw e
                     AppLog.put("登录出错\n${e.message}", e)
                     Toasters.get().toast("登录出错\n${e.message}")
                     e.printStackTraceOnDebug()

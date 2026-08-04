@@ -9,6 +9,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,9 +18,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Icon
@@ -138,6 +137,7 @@ fun ColorPickerDialog(
 }
 
 /** 取色盘正文（不含窗口），供命令式宿主 base/ComposeDialog 复用 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ColorPickerDialogContent(
     initColor: Int,
@@ -257,13 +257,14 @@ fun ColorPickerDialogContent(
                 if (presets.any { ColorUtils.stripAlpha(it) == currentStripped }) {
                     presets + 0xFF000000.toInt()
                 } else presets
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(44.dp),
-                modifier = Modifier.fillMaxWidth().height(120.dp).padding(top = 8.dp),
+            // FlowRow 按行自动换行、高度包裹内容：替换 LazyVerticalGrid 固定 height(120.dp)
+            // (窄屏 3 行以上时底部色格被裁剪, 实测主题定制对话框底部固定色消失)
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(displayPresets) { preset ->
+                displayPresets.forEach { preset ->
                     val selected = ColorUtils.stripAlpha(preset) == ColorUtils.stripAlpha(current())
                     Box(
                         Modifier

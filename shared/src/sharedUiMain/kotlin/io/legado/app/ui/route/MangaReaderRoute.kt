@@ -34,6 +34,7 @@ import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
+import io.legado.app.ui.root.SystemBarsPolicy
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.systemCurrentTimeMillis
@@ -192,6 +193,13 @@ fun MangaReaderRoute(
         hasReview = state.hasReview,
         clickActionConfig = state.clickActionConfig,
         onBack = onBack,
+        // 菜单显隐 → 系统栏显隐 (对照原版 ReadMangaActivity.upSystemUiVisibility(menuIsVisible)
+        // → toggleSystemBar: 菜单显示恢复状态栏/导航栏, 菜单隐藏沉浸式全屏)
+        onMenuVisibleChange = { visible ->
+            PlatformServiceProviders.getOrNull()?.window?.setSystemBars(
+                if (visible) SystemBarsPolicy.Default else SystemBarsPolicy.Hidden
+            )
+        },
         onPrevChapter = { screenModel.dispatch(MangaReaderUiEvent.PrevChapter) },
         onNextChapter = { screenModel.dispatch(MangaReaderUiEvent.NextChapter) },
         onCenterItemChanged = { screenModel.onCenterItemChanged(it) },

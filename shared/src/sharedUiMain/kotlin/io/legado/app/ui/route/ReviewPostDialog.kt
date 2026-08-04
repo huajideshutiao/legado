@@ -1,6 +1,7 @@
 package io.legado.app.ui.route
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
@@ -14,7 +15,7 @@ import io.legado.app.ui.book.read.review.ReviewPostScreen
 import io.legado.app.ui.book.read.review.ReviewPostScreenModel
 import io.legado.app.ui.book.read.review.ReviewPostUiActions
 import io.legado.app.ui.book.read.review.ReviewPostUiEvent
-import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
@@ -31,11 +32,17 @@ import org.jetbrains.compose.resources.stringResource
  *
  * 原版 ReviewPostActivity 是独立 Activity 模拟 BottomSheet 的输入面板 (Manifest
  * `android:theme="@style/AppTheme.BottomSheetInput"`, 注释"段评输入面板(模拟 BottomSheet 的 Activity)"),
- * 提交后 setResult 回传 content 由 ReviewListDialog 处理网络提交; KMP 迁移后曾退化为整页路由,
- * 本弹窗恢复对话框形态 (桌面端与 app 端共用同一份 shared 代码):
- * - [AppDialog] 外壳, properties 用 [AppDialogSizes.properties] (与列表弹窗一致的宽/高策略)
+ * sheet 贴底 + `translationY = -ime.bottom` 跟随软键盘上浮 (WindowInsetsAnimationCompat 平滑跟
+ * 动画), 提交后 setResult 回传 content 由 ReviewListDialog 处理网络提交; KMP 迁移后曾退化为居中
+ * 普通对话框, 本弹窗恢复底部输入面板形态, 逻辑全在 shared (桌面端与 app 端共用同一份代码):
+ * - [AppBottomSheetDialog] 外壳 (底部贴齐 + 滑入/滑出动画 + scrim, 对照原版 sheet
+ *   layout_gravity=bottom), properties 用 [AppDialogSizes.properties]
+ * - 面板整体 `imePadding()`: Android 上 sheet 底边顶在软键盘上方 (对照原版
+ *   translationY=-ime.bottom 的"整体上移"表现), 键盘收起时回落; desktop/iOS/鸿蒙
+ *   ime inset 为 0, 该 padding 为 no-op, 仅保留贴底面板形态
  * - 标题栏 [DialogTitleBar] (标题 post_review, 对照原 ReviewPostRoute)
- * - 正文复用 [ReviewPostScreen] (输入框 + 提交按钮, 已去掉整页标题栏)
+ * - 正文复用 [ReviewPostScreen] (输入框 + 提交按钮, 已去掉整页标题栏); 输入框进入即聚焦,
+ *   对照原版 requestFocus + windowSoftInputMode=stateAlwaysVisible (键盘随弹窗弹出)
  * - 提交: trim 后经 [onPosted] 回传, 由调用方 (ReviewListDialog / ReviewListRoute) 处理网络提交;
  *   随后立即关闭, 对齐 Activity submit = setResult + finish
  * - [replyPreview] 非空时构造 "回复 xxx…" hint (对照 Activity onCreate EXTRA_REPLY_PREVIEW)
@@ -88,7 +95,7 @@ fun ReviewPostDialogHost(
         }
     }
 
-    AppDialog(
+    AppBottomSheetDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
@@ -96,7 +103,12 @@ fun ReviewPostDialogHost(
             Surface(
                 shape = DesignTokens.dialogShape,
                 color = AppTheme.colors.background,
-                modifier = Modifier.appDialogSize().padding(16.dp),
+                // imePadding: sheet 底边顶在软键盘上方 (对照原版 translationY=-ime.bottom);
+                // 无键盘平台 (桌面/iOS/鸿蒙) inset 为 0, 等价贴底面板
+                modifier = Modifier
+                    .appDialogSize()
+                    .imePadding()
+                    .padding(16.dp),
             ) {
                 Column {
                     DialogTitleBar(

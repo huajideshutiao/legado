@@ -22,6 +22,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.takeOrElse
@@ -41,6 +43,10 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
  * - label 浮动到输入区上方; 配色状态化: 未聚焦/聚焦均为 accent
  * - 文字水平起始 ~4dp (DecorationBox contentPadding 收窄; M2 TextField 默认 16dp 是 filled 容器所需,
  *   下划线形态下会与周边 4dp 对齐的布局明显错位, 如 BookInfoEditScreen 封面按钮行)
+ * - 单行高度 48dp (DesignTokens.viewHeightXl): 原版 TextInputLayout 下划线形态高度由 EditText
+ *   wrap_content 决定 (~47dp), 而非 M2 filled 的 56dp — 56dp 会把文本顶到距底线 ~15dp
+ *   (app 文本 includeFontPadding=false 行高更矮, 空隙更大, 即实测"文本离下划线太远");
+ *   有 label 时文本-底线间距 = bottom padding 10dp, 与 M2 默认/原版一致。
  *
  * 配色适配 Arco Design 主题: 聚焦色 = AppTheme.colors.accent (arcoblue-6 #165DFF),
  * 错误色 = Arco danger (#F53F3F), 直接用 AppTheme.colors 注入 TextFieldDefaults.textFieldColors,
@@ -69,6 +75,7 @@ fun AppTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     textStyle: TextStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
+    focusRequester: FocusRequester? = null,
 ) {
     AppTextFieldImpl(
         modifier = modifier,
@@ -83,11 +90,13 @@ fun AppTextField(
             onValueChange = onValueChange,
             modifier = Modifier
                 .fillMaxWidth()
+                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                 .indicatorLine(enabled, isError, interactionSource, colors)
-                // 对齐 String 重载与安卓默认 TextInputLayout 高度 (56dp, TextFieldDefaults.MinHeight)
+                // 下划线形态单行高度 48dp (arco_view_height_xl): 原版 TextInputLayout 下划线
+                // 形态高度由 EditText wrap_content 决定 (~47dp), 非 M2 filled 的 56dp
                 .defaultMinSize(
                     minWidth = TextFieldDefaults.MinWidth,
-                    minHeight = TextFieldDefaults.MinHeight,
+                    minHeight = AppTheme.DesignTokens.viewHeightXl,
                 ),
             enabled = enabled,
             readOnly = readOnly,
@@ -145,6 +154,7 @@ fun AppTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     textStyle: TextStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
+    focusRequester: FocusRequester? = null,
 ) {
     AppTextFieldImpl(
         modifier = modifier,
@@ -159,10 +169,11 @@ fun AppTextField(
             onValueChange = onValueChange,
             modifier = Modifier
                 .fillMaxWidth()
+                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                 .indicatorLine(enabled, isError, interactionSource, colors)
                 .defaultMinSize(
                     minWidth = TextFieldDefaults.MinWidth,
-                    minHeight = TextFieldDefaults.MinHeight,
+                    minHeight = AppTheme.DesignTokens.viewHeightXl,
                 ),
             enabled = enabled,
             readOnly = readOnly,
@@ -238,10 +249,14 @@ internal fun AppDecorationBox(
     leadingIcon: @Composable (() -> Unit)?,
     trailingIcon: @Composable (() -> Unit)?,
     colors: TextFieldColors,
+    // 垂直内边距走 M2 默认 (无 label: top 16; 有 label: top 20 = FirstBaselineOffset),
+    // 仅覆写 bottom: 有 label 10dp (= M2 TextFieldBottomPadding) → 单行文本-底线间距 10dp,
+    // 与 M2 默认及原版下划线输入一致; 无 label 8dp (多行底部间距, 原版 EditText insetBottom ~7dp)。
+    // 无 label 单行: 文本由 M2 布局居中于 48dp 最小高度盒内。
     contentPadding: PaddingValues = if (label == null) {
-        TextFieldDefaults.textFieldWithoutLabelPadding(start = 0.dp, end = 0.dp, bottom = 4.dp)
+        TextFieldDefaults.textFieldWithoutLabelPadding(start = 0.dp, end = 0.dp, bottom = 8.dp)
     } else {
-        TextFieldDefaults.textFieldWithLabelPadding(start = 0.dp, end = 0.dp, bottom = 4.dp)
+        TextFieldDefaults.textFieldWithLabelPadding(start = 0.dp, end = 0.dp, bottom = 10.dp)
     },
 ) {
     TextFieldDefaults.TextFieldDecorationBox(

@@ -3,6 +3,7 @@ package io.legado.app.ui.config
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -10,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
+import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,6 +33,7 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
@@ -110,69 +113,77 @@ private fun ThemeListDialogContent(
     val items = builtins + customs
     val builtinCount = builtins.size
 
-    Column(Modifier.appDialogSize(fullHeight = true)) {
-        DialogTitleBar(
-            title = stringResource(Res.string.theme_list),
-            onBack = onDismiss,
-            actions = {
-                IconButton(onClick = { onNewConfig(false) }) {
-                    Icon(
-                        painter = rememberPainter("ic_add"),
-                        contentDescription = stringResource(Res.string.add),
-                        tint = colors.primaryText,
-                    )
-                }
-                IconButton(onClick = {
-                    val clipText = onImportFromClip()
-                    if (clipText != null) {
-                        val config = parseThemeConfig(clipText)
-                        if (config != null) {
-                            provider.addConfig(config)
-                            dataVersion++
-                        }
+    // 圆角/底色对齐 BaseComposeDialogFragment.filletBackground + alert DSL AppAlertDialogContent
+    // (AppDialog 窗口本身无背景, 不包 Surface 会整窗透明, 如实测主题列表背景丢失)
+    Surface(
+        modifier = Modifier.appDialogSize(fullHeight = true),
+        shape = DesignTokens.shapeDefault,
+        color = colors.fillet,
+    ) {
+        Column(Modifier.fillMaxSize()) {
+            DialogTitleBar(
+                title = stringResource(Res.string.theme_list),
+                onBack = onDismiss,
+                actions = {
+                    IconButton(onClick = { onNewConfig(false) }) {
+                        Icon(
+                            painter = rememberPainter("ic_add"),
+                            contentDescription = stringResource(Res.string.add),
+                            tint = colors.primaryText,
+                        )
                     }
-                }) {
-                    Icon(
-                        painter = rememberPainter("ic_copy"),
-                        contentDescription = "剪贴板导入",
-                        tint = colors.primaryText,
+                    IconButton(onClick = {
+                        val clipText = onImportFromClip()
+                        if (clipText != null) {
+                            val config = parseThemeConfig(clipText)
+                            if (config != null) {
+                                provider.addConfig(config)
+                                dataVersion++
+                            }
+                        }
+                    }) {
+                        Icon(
+                            painter = rememberPainter("ic_copy"),
+                            contentDescription = "剪贴板导入",
+                            tint = colors.primaryText,
+                        )
+                    }
+                },
+            )
+            LazyColumn(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 16.dp),
+            ) {
+                itemsIndexed(items) { position, item ->
+                    ThemeListItem(
+                        item = item,
+                        configIndex = position - builtinCount,
+                        builtinCount = builtinCount,
+                        onClick = {
+                            onDismiss()
+                            if (item.isBuiltin) {
+                                provider.applyBuiltin(item.isNightTheme)
+                            } else {
+                                provider.applyConfig(item)
+                            }
+                        },
+                        onLongClick = {
+                            if (!item.isBuiltin && position - builtinCount >= 0) {
+                                onEditConfig(position - builtinCount)
+                            }
+                        },
+                        onShare = {
+                            val json = GSON.toJson(customs[position - builtinCount])
+                            onShare(json)
+                        },
+                        onDelete = {
+                            provider.delConfig(position - builtinCount)
+                            dataVersion++
+                        },
                     )
                 }
-            },
-        )
-        LazyColumn(
-            Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .padding(horizontal = 16.dp),
-        ) {
-            itemsIndexed(items) { position, item ->
-                ThemeListItem(
-                    item = item,
-                    configIndex = position - builtinCount,
-                    builtinCount = builtinCount,
-                    onClick = {
-                        onDismiss()
-                        if (item.isBuiltin) {
-                            provider.applyBuiltin(item.isNightTheme)
-                        } else {
-                            provider.applyConfig(item)
-                        }
-                    },
-                    onLongClick = {
-                        if (!item.isBuiltin && position - builtinCount >= 0) {
-                            onEditConfig(position - builtinCount)
-                        }
-                    },
-                    onShare = {
-                        val json = GSON.toJson(customs[position - builtinCount])
-                        onShare(json)
-                    },
-                    onDelete = {
-                        provider.delConfig(position - builtinCount)
-                        dataVersion++
-                    },
-                )
             }
         }
     }

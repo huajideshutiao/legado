@@ -64,11 +64,14 @@ fun TextDialog(
         },
         text = {
             when (mode) {
+                // 正文滚动区上限 = 0.8 锚点高 - 标题/按钮/间距 (约 180dp): 直接用 fullHeight()
+                // 会让 M2 AlertDialog 的 BaselineLayout 按未钳制的标题+正文高度汇报, Column 超出
+                // 对话框 Surface 封顶, 按钮行被裁掉且正文可视高度 < 滚动视口, 滚动错位。
                 TextDialogMode.MD -> MarkdownContentSelectable(
                     content = content,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = AppDialogSizes.fullHeight())
+                        .heightIn(max = AppDialogSizes.textAreaMaxHeight())
                         .verticalScroll(rememberScrollState()),
                 )
 
@@ -85,7 +88,7 @@ fun TextDialog(
                             fontSize = 15.sp,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(max = AppDialogSizes.fullHeight())
+                                .heightIn(max = AppDialogSizes.textAreaMaxHeight())
                                 .verticalScroll(rememberScrollState()),
                         )
                     }

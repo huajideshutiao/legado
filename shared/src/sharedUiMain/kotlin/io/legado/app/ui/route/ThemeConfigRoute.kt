@@ -30,7 +30,6 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.config.ThemeConfigScreen
@@ -46,6 +45,7 @@ import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.btn_default_s
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.explore_cols
+import legado.shared.generated.resources.explore_item_style
 import legado.shared.generated.resources.explore_style
 import legado.shared.generated.resources.font_scale
 import legado.shared.generated.resources.font_scale_summary
@@ -55,8 +55,6 @@ import legado.shared.generated.resources.search_layout
 import legado.shared.generated.resources.source_edit_max_line_summary
 import legado.shared.generated.resources.source_edit_text_max_line
 import legado.shared.generated.resources.theme_setting
-import legado.shared.generated.resources.explore_item_style
-import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
@@ -221,17 +219,16 @@ fun ThemeConfigRoute(
         )
     }
 
-    // 搜索布局配置 (对照 app 端 ThemeConfigHost.configSearch, Compose 重建)
+    // 搜索布局配置 (对照 app 端 ThemeConfigHost.configSearch)
     if (showSearchLayoutPicker) {
-        // 在 @Composable 上下文获取 eventBus, 供非 Composable lambda 使用
-        val eventBus = LocalEventBusProvider.current
         SearchLayoutConfigDialog(
             currentLayout = appConfig.searchLayout,
             onConfirm = { newLayout ->
                 if (appConfig.searchLayout != newLayout) {
                     pref.putInt(PreferKey.searchLayout, newLayout)
-                    // 对照 app 端 configSearch okButton: recreateActivities()
-                    eventBus.emitRecreate()
+                    // 不 emitRecreate: 原版 recreateActivities 是 View/XML 布局生效所需;
+                    // Compose 下 SearchScreen 响应式读 searchLayout, 配置变化即生效。
+                    // (整 Activity recreate 会丢导航栈, 设置页被弹回主界面——用户实测问题)
                 }
             },
             onDismiss = { showSearchLayoutPicker = false },

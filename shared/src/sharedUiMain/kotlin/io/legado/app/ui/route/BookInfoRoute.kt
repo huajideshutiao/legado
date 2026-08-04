@@ -91,6 +91,9 @@ fun BookInfoRoute(
     // 自动加载依赖它, 故在初始化 effect 内同步查好再用
     var bookSource by remember { mutableStateOf<BookSource?>(null) }
 
+    // 整书换源弹窗显示开关 (对照原版长按来源 showDialogFragment(ChangeBookSourceDialog))
+    var showChangeSourceDialog by remember { mutableStateOf(false) }
+
     // 状态初始化 (对照 BaseReadViewModel.upBook + Activity showBook + upWordCount + upGroup)
     val noGroupLabel = stringResource(Res.string.no_group)
     val errorLoadTocLabel = stringResource(Res.string.error_load_toc)
@@ -233,9 +236,9 @@ fun BookInfoRoute(
             navigator.push(AppRoute.BookSourceEdit(book.origin), RouteResults.BOOK_SOURCE_EDIT)
         }
 
-        // 来源长按: 换源
+        // 来源长按: 换源弹窗 (对照原版 showDialogFragment(ChangeBookSourceDialog), 全高底部弹窗同阅读页)
         override fun onOriginLongClick() {
-            navigator.push(AppRoute.ChangeSource(book.toRouteRef()), RouteResults.CHANGE_SOURCE)
+            showChangeSourceDialog = true
         }
 
         // 目录
@@ -563,25 +566,6 @@ fun BookInfoRoute(
                             }
                         }
 
-                        // 整书换源返回: 同步新书源 + 用新源刷新 book info
-                        RouteResults.CHANGE_SOURCE -> {
-                            val payload =
-                                result.payload as? RouteResultPayload.ChangeSource
-                                    ?: return@collect
-                            // bookSource 由 LaunchedEffect(book.origin) 按路由书籍加载, 换源后不会自动更新
-                            bookSource = payload.source
-                            screenModel.dispatch(
-                                BookInfoUiEvent.ShowBook(
-                                    payload.book,
-                                    screenModel.lastedTitleOf(payload.book)
-                                )
-                            )
-                            screenModel.refresh(
-                                payload.book, payload.source, errorLoadTocLabel,
-                                isSearchBook = isSearchBook,
-                            )
-                        }
-
                         // 目录返回: 选章节跳阅读, 未选则删书 (对照 app 端 BookInfoActivity tocActivityResult)
                         RouteResults.TOC -> {
                             val payload = result.payload as? RouteResultPayload.Toc
@@ -689,6 +673,32 @@ fun BookInfoRoute(
             introImageSlot(src, onClick)
         },
     )
+
+    // 整书换源弹窗 (对照原版长按来源 → ChangeBookSourceDialog 全高底部弹窗, 与阅读页换源同款)
+    if (showChangeSourceDialog) {
+        ChangeSourceDialogHost(
+            book = state.book ?: book,
+            onSourceChanged = { source, newBook, toc ->
+                showChangeSourceDialog = false
+                // bookSource 由 LaunchedEffect(book.origin) 按路由书籍加载, 换源后不会自动更新
+                bookSource = source
+                scope.launch {
+                    screenModel.dispatch(
+                        BookInfoUiEvent.ShowBook(newBook, screenModel.lastedTitleOf(newBook))
+                    )
+                }
+                screenModel.refresh(
+                    newBook, source, errorLoadTocLabel,
+                    isSearchBook = isSearchBook,
+                )
+            },
+            onEditSource = { origin ->
+                navigator.push(AppRoute.BookSourceEdit(origin), RouteResults.BOOK_SOURCE_EDIT)
+            },
+            onBookSourceManage = { navigator.push(AppRoute.BookSourceManage) },
+            onDismiss = { showChangeSourceDialog = false },
+        )
+    }
 
     // 等待对话框 (对照 app 端 BookInfoActivity.upWaitDialogStatus, webFile 流程加载指示)
     val waitDialogVisible by screenModel.waitDialog.collectAsState()

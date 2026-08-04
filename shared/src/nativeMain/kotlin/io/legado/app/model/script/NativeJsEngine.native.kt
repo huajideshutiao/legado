@@ -68,10 +68,12 @@ import kotlinx.cinterop.UIntVar
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.cValue
 import kotlinx.cinterop.cstr
+import kotlinx.cinterop.get
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.plus
 import kotlinx.cinterop.pointed
 import kotlinx.cinterop.ptr
+import kotlinx.cinterop.readValue
 import kotlinx.cinterop.staticCFunction
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.useContents
@@ -705,6 +707,11 @@ object NativeJsEngine : JsEngine {
     /** 构造 JS null JSValue (cValue 构造, tag=JS_TAG_NULL, u 默认 0)。 */
     private fun jsNullValue(): CValue<JSValue> = cValue {
         tag = JS_TAG_NULL.toLong()
+    }
+
+    /** 构造 JS undefined JSValue (与 [NativeJsExtensionsBridge.jsUndefined] 同实现)。 */
+    private fun jsUndefined(): CValue<JSValue> = cValue {
+        tag = JS_TAG_UNDEFINED.toLong()
     }
 
     // ============ private helper: bindings kvs 字面量构造 ============

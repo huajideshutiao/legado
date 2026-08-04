@@ -90,6 +90,14 @@ class AndroidVideoPlayPlatformProvider(
     ) {
         val androidController = controller as AndroidVideoPlayerController
         val uiState by screenModel.state.collectAsState()
+        // 横屏自动进入全屏 (对照原版 VideoPlayActivity.onConfigurationChanged → setFullScreen(isFull)):
+        // 横屏隐藏系统栏/标题栏/选集网格 (setFullScreen → applyFullscreen → toggleSystemBar(!enabled)),
+        // 竖屏恢复; 初次组合即按当前方向同步一次 (含直接以横屏进入的场景)
+        val isLandscape = LocalConfiguration.current.orientation ==
+            Configuration.ORIENTATION_LANDSCAPE
+        LaunchedEffect(isLandscape) {
+            screenModel.setFullScreen(isLandscape)
+        }
         // 手势反馈文字(原 tv_video_speed), null 时隐藏
         var gestureText by remember { mutableStateOf<String?>(null) }
         // 锁定态: 旁路全部手势并隐藏控制层, 仅留解锁钮 (对照 app 端 isLocked)

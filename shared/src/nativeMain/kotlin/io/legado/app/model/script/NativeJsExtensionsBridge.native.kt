@@ -52,8 +52,10 @@ import kotlinx.cinterop.LongVar
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.cValue
 import kotlinx.cinterop.cstr
+import kotlinx.cinterop.get
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
+import kotlinx.cinterop.readValue
 import kotlinx.cinterop.staticCFunction
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.value
