@@ -22,6 +22,7 @@ class ExploreShowScreenModel : ScreenModel {
             books = emptyList(),
             exploreStyle = 0,
             isFavorite = false,
+            canLogin = false,
             bookshelfVersion = 0,
             optionsVersion = 0,
             scrollTopEpoch = 0,
@@ -47,6 +48,9 @@ class ExploreShowScreenModel : ScreenModel {
             ExploreShowUiEvent.ClearBooks -> handleClearBooks()
             is ExploreShowUiEvent.ExploreStyleChanged -> _state.update { it.copy(exploreStyle = event.style) }
             is ExploreShowUiEvent.IsFavoriteChanged -> _state.update { it.copy(isFavorite = event.isFavorite) }
+            is ExploreShowUiEvent.LoginAvailabilityChanged -> _state.update {
+                it.copy(canLogin = event.canLogin)
+            }
             ExploreShowUiEvent.BookshelfVersionBump -> _state.update {
                 it.copy(bookshelfVersion = it.bookshelfVersion + 1)
             }
@@ -130,6 +134,9 @@ sealed interface ExploreShowUiEvent {
 
     /** 收藏状态变化 (upStarLiveData) */
     data class IsFavoriteChanged(val isFavorite: Boolean) : ExploreShowUiEvent
+
+    /** 书源登录入口可用性变化 (bookSource 就绪后按 hasLoginUrl 计算, 菜单"书源登录"显隐) */
+    data class LoginAvailabilityChanged(val canLogin: Boolean) : ExploreShowUiEvent
 
     /** 书架集合变化信号 (upAdapterLiveData) */
     object BookshelfVersionBump : ExploreShowUiEvent

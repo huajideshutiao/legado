@@ -19,6 +19,8 @@ import kotlinx.coroutines.withContext
  * 防盗链 Interceptor + Ktor3 网络后端 + 磁盘/内存缓存 + Skia 解码)。
  *
  * - `file://` / 绝对路径 / `http(s)://`: Coil3 统一处理 (对照 jvmMain JvmImageBitmapLoader 分支)
+ * - `bg://`: 转 CDN 下载 URL 走 Coil3 (原版逻辑: 全图不随包, 远程下载;
+ *   Coil3 自带磁盘缓存, 下载过即本地可用, 对齐原版"本地缓存一级兜底")
  * - `cbz://`: 前置拦截直解, 不进 Coil3 管线 ([loadCbzEntryBytes] 经 ArchiveProviders 抽
  *   压缩包条目字节 → Skia 解码; 较自定义 Fetcher 改动小, 且 cbz 页无需网络/磁盘缓存)
  * - 失败: 返回 null (调用方负责占位/日志)
@@ -26,7 +28,13 @@ import kotlinx.coroutines.withContext
 actual class ImageBitmapLoader actual constructor() {
 
     actual suspend fun loadBitmap(url: String, book: Book?, bookSource: BookSource?): ImageBitmap? {
-        if (url.startsWith("cbz://")) {
+        // bg:// 内置背景图: 原版远程下载语义, 转 CDN URL 走 Coil3 (磁盘缓存一级兜底)
+        val loadUrl = if (url.startsWith("bg://")) {
+            bgCdnUrl(url.removePrefix("bg://"))
+        } else {
+            url
+        }
+        if (loadUrl.startsWith("cbz://")) {
             return withContext(Dispatchers.IO) {
                 loadCbzEntryBytes(url, book?.bookUrl)?.let { bytes ->
                     runCatching { org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap() }.getOrNull()
@@ -35,7 +43,7 @@ actual class ImageBitmapLoader actual constructor() {
         }
         return runCatching {
             val request = ImageRequest.Builder(PlatformContext.INSTANCE)
-                .data(url)
+                .data(loadUrl)
                 .sourceOrigin(bookSource?.bookSourceUrl)
                 .build()
             val result = iosCoilImageLoader.execute(request)
@@ -51,6 +59,9 @@ actual class ImageBitmapLoader actual constructor() {
      * 本方法无动图消费点, 不值得为取字节另开一条绕过缓存的下载链路。
      */
     actual suspend fun loadBytes(url: String, book: Book?, bookSource: BookSource?): ByteArray? {
+        // bg:// 内置背景图由 Coil3 管线承载 (磁盘缓存), 其 ImageRequest 不暴露原始字节, 返回 null;
+        // 无 bg:// 字节消费点 (阅读背景走 loadBitmap, 图片菜单 src 为书源网络图不走 bg://)
+        if (url.startsWith("bg://")) return null
         if (!url.startsWith("cbz://")) return null
         return withContext(Dispatchers.IO) { loadCbzEntryBytes(url, book?.bookUrl) }
     }

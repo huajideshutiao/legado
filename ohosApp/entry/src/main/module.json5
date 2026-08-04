@@ -12,6 +12,20 @@
     "deliveryWithInstall": true,
     "installationFree": false,
     "pages": "$profile:main_pages",
+    // 图片菜单"保存到相册"所需权限 (user_grant, 运行时经 abilityAccessCtrl 申请,
+    // 见 Index.ets saveImageToGallery; photoAccessHelper.createAsset 写入图库需要)
+    "requestPermissions": [
+      {
+        "name": "ohos.permission.WRITE_IMAGEVIDEO",
+        "reason": "$string:permission_write_imagevideo_reason",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      }
+    ],
     "abilities": [
       {
         "name": "EntryAbility",

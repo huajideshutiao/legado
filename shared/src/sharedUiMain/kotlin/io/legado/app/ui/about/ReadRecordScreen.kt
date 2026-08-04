@@ -52,11 +52,13 @@ import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.component.ResponsiveReferenceWidth
+import io.legado.app.ui.compose.component.effectiveColumns
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
-import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.utils.format
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.all_read_time
 import legado.shared.generated.resources.avg_book_read_time
@@ -88,7 +90,6 @@ import legado.shared.generated.resources.today_read_time
 import legado.shared.generated.resources.week_read_time
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import io.legado.app.utils.format
 
 // ===== state / actions =====
 
@@ -341,9 +342,6 @@ private fun SortItem(
 
 // ---- 列表 (header 统计卡/热力图卡 + 记录行 + 日期分段) ----
 
-/** 顶部统计卡与热力图卡同行排列的最小可用宽度阈值。 */
-private val SUMMARY_HEATMAP_ROW_MIN_WIDTH = 400.dp
-
 /**
  * 列表: 头部统计卡 + 热力图卡 + 记录行 (perDayMode 时按天分段)。
  *
@@ -379,11 +377,12 @@ private fun RecordList(
         contentPadding = WindowInsets.navigationBars.asPaddingValues(),
     ) {
         // 顶部统计卡与热力图卡: 基于可用宽度自适应, 不做平台判断
-        // (>=阈值同行各占一半, 否则纵向堆叠; HeatMapCard 同行布局下补 12dp top padding
+        // (与列表分列同一口径 rememberResponsiveColumns(1): 400dp→1列, 800dp→2列;
+        //  列数≥2 时同行各占一半, 否则纵向堆叠; HeatMapCard 同行布局下补 12dp top padding
         //  与 SummaryCard 顶部对齐, 纵向布局下由 SummaryCard bottom 提供间距, 保持原值)
         item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
             BoxWithConstraints {
-                if (maxWidth > SUMMARY_HEATMAP_ROW_MIN_WIDTH) {
+                if (effectiveColumns(1, maxWidth, ResponsiveReferenceWidth) >= 2) {
                     Row(Modifier.fillMaxWidth()) {
                         Box(Modifier.weight(1f)) {
                             SummaryCard(state)

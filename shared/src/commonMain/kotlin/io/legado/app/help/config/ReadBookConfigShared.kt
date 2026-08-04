@@ -116,6 +116,7 @@ class ReadBookConfigShared(private val prefs: PreferenceStoreProvider) {
     var isComic: Boolean = false
 
     private val lock = SynchronizedObject()
+    private var saveGeneration = 0L
     private var initialized = false
     private val internalConfigList = mutableListOf<ReadStyleConfig>()
     private var internalShareConfig: ReadStyleConfig? = null
@@ -158,11 +159,24 @@ class ReadBookConfigShared(private val prefs: PreferenceStoreProvider) {
     var durConfig: ReadStyleConfig
         get() = getConfig(styleSelect)
         set(value) {
-            configList[styleSelect] = value
+            configList[validStyleIndex()] = value
             if (shareLayout) {
                 shareConfig = value
             }
         }
+
+    /**
+     * 返回合法的当前样式索引；prefs 索引越界时（配置列表被替换/备份恢复后未同步，
+     * 如 [deleteDur] 前列表已变小）修正到最后一个合法索引并落盘，
+     * 避免 removeAt / 数组下标越界崩溃。
+     */
+    private fun validStyleIndex(): Int {
+        val index = styleSelect
+        if (index in 0 until internalConfigList.size) return index
+        val fixed = internalConfigList.lastIndex.coerceAtLeast(0)
+        if (isComic) comicStyleSelect = fixed else readStyleSelect = fixed
+        return fixed
+    }
 
     /** 实际生效配置（shareLayout=true 走 [shareConfig]，否则走 [durConfig]）。 */
     val config: ReadStyleConfig
@@ -209,6 +223,11 @@ class ReadBookConfigShared(private val prefs: PreferenceStoreProvider) {
         }
         internalConfigList.clear()
         internalConfigList.addAll(configs ?: ReadConfigDefaults.readConfigs)
+        // 配置文件可能比 prefs 索引短（备份恢复/文件被替换后未同步），
+        // 这里修正越界索引，避免后续 deleteDur / durConfig 越界崩溃。
+        val lastIndex = internalConfigList.lastIndex.coerceAtLeast(0)
+        if (readStyleSelect > lastIndex) readStyleSelect = lastIndex
+        if (comicStyleSelect > lastIndex) comicStyleSelect = lastIndex
     }
 
     /** 从 shareReadConfig.json 载入 [shareConfig]，缺失时回落到 `configList[5]` 或默认值。 */
@@ -225,36 +244,68 @@ class ReadBookConfigShared(private val prefs: PreferenceStoreProvider) {
         internalShareConfig = c ?: internalConfigList.getOrNull(5) ?: ReadStyleConfig()
     }
 
-    /** 异步持久化 [configList] / [shareConfig]（与 app 端 `save()` 同语义）。 */
+    /**
+     * 异步持久化 [configList] / [shareConfig]（与 app 端 `save()` 同语义）。
+     *
+     * 在调用线程先生成不可变 JSON 快照，再交给 IO 协程写盘。这样连续点击背景/颜色
+     * 或快速切换样式时，旧的异步任务不会在新的保存之后再次把旧快照写回文件；同时保留
+     * 原有非阻塞 UI 语义。
+     */
     fun save() {
+        val snapshot = synchronized(lock) {
+            SaveSnapshot(
+                generation = ++saveGeneration,
+                // ReadStyleConfig 的字段都是值/字符串；copy 后异步任务不再观察可变配置对象。
+                configs = internalConfigList.map { it.copy() },
+                shareConfig = (internalShareConfig ?: ReadStyleConfig()).copy(),
+                configPath = configFilePath,
+                shareConfigPath = shareConfigFilePath,
+            )
+        }
         Coroutine.async {
+            // JSON 编码放在 IO 协程，避免配置较多时阻塞点击线程；快照本身已脱离可变列表。
+            val configJson = KS_JSON.encodeToString(
+                ListSerializer(ReadStyleConfig.serializer()),
+                snapshot.configs,
+            )
+            val shareConfigJson = KS_JSON.encodeToString(
+                ReadStyleConfig.serializer(),
+                snapshot.shareConfig,
+            )
+            // 写盘也受同一把锁保护：新保存若在旧任务写入期间到达，会在旧写完后
+            // 获得锁并覆盖为更新快照；旧任务若排在后面，则因 generation 过期而跳过。
             synchronized(lock) {
-                runCatching {
-                    BackupFileOps.writeText(
-                        configFilePath,
-                        KS_JSON.encodeToString(
-                            ListSerializer(ReadStyleConfig.serializer()),
-                            internalConfigList
-                        )
-                    )
-                    BackupFileOps.writeText(
-                        shareConfigFilePath,
-                        KS_JSON.encodeToString(
-                            ReadStyleConfig.serializer(),
-                            internalShareConfig ?: ReadStyleConfig()
-                        )
-                    )
-                }.onFailure {
-                    AppLog.put("保存排版配置文件出错", it)
+                if (snapshot.generation == saveGeneration) {
+                    runCatching {
+                        BackupFileOps.writeText(snapshot.configPath, configJson)
+                        BackupFileOps.writeText(snapshot.shareConfigPath, shareConfigJson)
+                    }.onFailure {
+                        AppLog.put("保存排版配置文件出错", it)
+                    }
                 }
             }
         }
     }
 
+    private data class SaveSnapshot(
+        val generation: Long,
+        val configs: List<ReadStyleConfig>,
+        val shareConfig: ReadStyleConfig,
+        val configPath: String,
+        val shareConfigPath: String,
+    )
+
     /** 用内置样式重置全部主题并落盘（与 app 端 `resetAll` 一致）。 */
     private fun resetAll() {
+        val defaults = ReadConfigDefaults.readConfigs
         internalConfigList.clear()
-        internalConfigList.addAll(ReadConfigDefaults.readConfigs)
+        internalConfigList.addAll(defaults)
+        // 兜底: 内置列表不足 5 条时 (解码失败回退单条) 补齐, 保证 getConfig 的
+        // "size < 5 → resetAll" 判定不会每次访问都重置, 否则用户刚改的配置会在
+        // 下一次读配置时被清回默认 (表现为"翻页后全部恢复默认")
+        while (internalConfigList.size < 5) {
+            internalConfigList.add(ReadStyleConfig())
+        }
         save()
     }
 
@@ -264,13 +315,14 @@ class ReadBookConfigShared(private val prefs: PreferenceStoreProvider) {
      */
     fun deleteDur(): Boolean {
         if (configList.size > 5) {
-            val removeIndex = styleSelect
+            val removeIndex = validStyleIndex()
             configList.removeAt(removeIndex)
+            // 删除选中的首个样式时也会走到 <= 分支，钳制到 0 避免索引落成 -1
             if (removeIndex <= readStyleSelect) {
-                readStyleSelect -= 1
+                readStyleSelect = (readStyleSelect - 1).coerceAtLeast(0)
             }
             if (removeIndex <= comicStyleSelect) {
-                comicStyleSelect -= 1
+                comicStyleSelect = (comicStyleSelect - 1).coerceAtLeast(0)
             }
             return true
         }
@@ -993,13 +1045,45 @@ data class ReadStyleConfig(
     }
 
     /**
+     * 当前生效背景图片的加载地址。
+     *
+     * - 内置图片使用 `bg://` 前缀，由各平台图片加载器负责缓存/下载；
+     * - 用户图片沿用配置中的绝对路径或 `{files}/bg/{fileName}`；
+     * - 纯色背景返回 null。
+     */
+    fun curBgImageSource(): String? {
+        return when (curBgType()) {
+            1 -> curBgStr().takeIf { it.isNotBlank() }?.let { "bg://$it" }
+            2 -> {
+                val bgIndex = when {
+                    isEInk -> 2
+                    isNight -> 1
+                    else -> 0
+                }
+                getBgPath(bgIndex)
+            }
+
+            else -> null
+        }
+    }
+
+    /**
      * 当前生效背景色（ARGB，各端 Canvas/Compose 渲染用）。
      * 纯色背景（bgType==0）按 [curBgStr] 解析并按 [bgAlpha] 折算透明度；
-     * 图片背景用 [bgMeanColor]（代表色，各端渲染背景图后写入，未渲染时为 0）。
+     * 图片背景用 [bgMeanColor]（代表色，各端渲染背景图后写入）。
      * 对应 app 端 `ReadBookConfig.upBg()` 产出的 `bgMeanColor` + `bg.alpha`。
+     *
+     * 非 Android 端没有 Drawable 取色回写时，图片首次绘制前 [bgMeanColor] 可能为 0。
+     * 返回一个不透明的日/夜兜底色，避免翻页层在异步图片加载期间再次透出窗口背景。
      */
     fun curBgColor(): Int {
-        if (curBgType() != 0) return bgMeanColor
+        if (curBgType() != 0) {
+            if (bgMeanColor != 0) return bgMeanColor or 0xFF000000.toInt()
+            return when {
+                isEInk || !isNight -> 0xFFFFFFFF.toInt()
+                else -> 0xFF000000.toInt()
+            }
+        }
         val alpha = (bgAlpha / 100f * 255).toInt().coerceIn(0, 255)
         return runCatching { ColorUtils.parseColor(curBgStr()) }.getOrDefault(0)
             .let { (it and 0x00FFFFFF) or (alpha shl 24) }
@@ -1077,6 +1161,11 @@ data class ReadStyleConfig(
         }
         val sep = BackupFileOps.separator
         val filesBase = AppFilesDirs.get().externalFilesDir ?: AppFilesDirs.get().filesDir
-        return if (bgStr.contains(sep)) bgStr else filesBase + sep + "bg" + sep + bgStr
+        // 配置可能来自另一平台，Windows 路径和 URI 也可能使用与当前平台不同的分隔符。
+        return if (bgStr.contains(sep) || bgStr.contains('/') || bgStr.contains('\\')) {
+            bgStr
+        } else {
+            filesBase + sep + "bg" + sep + bgStr
+        }
     }
 }

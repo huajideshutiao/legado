@@ -7,6 +7,9 @@ expect object MD5Utils {
 
     fun md5Encode(str: String?): String
 
+    /** 字节数组全量 MD5 (供跨端共享逻辑用, 等价 jvmAndAndroid 的 md5Encode(InputStream)) */
+    fun md5Encode(bytes: ByteArray): String
+
     fun md5Encode16(str: String): String
 }
 
@@ -15,7 +18,10 @@ internal object MD5UtilsCore {
 
     fun md5Encode(str: String?): String {
         if (str == null) return ""
-        val bytes = str.encodeToByteArray()
+        return md5Encode(str.encodeToByteArray())
+    }
+
+    fun md5Encode(bytes: ByteArray): String {
         val digest = Md5Digest()
         digest.update(bytes, 0, bytes.size)
         return digest.digest().toHexLower()

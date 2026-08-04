@@ -33,7 +33,7 @@ import io.legado.app.ui.compose.theme.AppTheme
  *
  * # 当前状态
  * 上述 napi 桥接 (legado_napi.cpp registerWebController / WebControllerProxy) 未实现,
- * [OhosWebViewBridge.get] 返回 NoOp, 故本 slot 仍为占位; 调用方 (LoginRoute/ReadRssRoute/
+ * [OhosWebViewBridge.get] 返回 NoOp, 故本 slot 仍为占位; 调用方 (登录 Overlay/ReadRssRoute/
  * WebViewRoute) 行为与 stub 一致, 不影响其他端。
  *
  * # TODO 待办 (解除阻塞需要的工作)

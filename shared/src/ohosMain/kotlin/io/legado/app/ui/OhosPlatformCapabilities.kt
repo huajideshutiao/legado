@@ -5,8 +5,10 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.data.entities.Review
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.config.LocalConfigKeys
@@ -18,11 +20,13 @@ import io.legado.app.help.source.OhosCheckSource
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.Debug
 import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.toRouteRef
+import io.legado.app.ui.route.encodeReviewListDialogPayload
 import io.legado.app.utils.File
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
@@ -259,6 +263,45 @@ object OhosPlatformCapabilities : PlatformCapabilities {
 
     override fun setLocalPassword(password: String?) {
         prefs.putString(LocalConfigKeys.password, password)
+    }
+
+    // 段评/书评列表: shared 底部弹窗 Overlay (对照 app 端 ReviewListDialog BottomSheetDialogFragment;
+    // 回复详情再开一层由宿主内部处理, 见 ReviewListDialogHost.kt)
+    override fun showReviewListDialog(
+        book: Book,
+        chapter: BookChapter?,
+        paragraphIndex: Int,
+        parentReview: Review?,
+    ): Boolean {
+        AppNavigatorProviders.getOrNull()?.showOverlay(
+            AppOverlay.Dialog(
+                key = "review_list",
+                payload = encodeReviewListDialogPayload(
+                    book,
+                    chapter,
+                    paragraphIndex,
+                    parentReview
+                ),
+            )
+        )
+        return true
+    }
+
+    // 默认封面图集: shared 管理对话框 Overlay (对照 app 端 DefaultCoverGalleryDialog;
+    // 选图加入/删除走 shared 逻辑, 见 DefaultCoverGalleryHost.kt)
+    override fun showDefaultCoverGallery(isNight: Boolean) {
+        AppNavigatorProviders.getOrNull()?.showOverlay(
+            AppOverlay.Dialog(
+                key = "default_cover_gallery",
+                payload = if (isNight) "1" else "0",
+            )
+        )
+    }
+
+    // 刷新默认封面缓存: shared 默认封面链每次组合重读 prefs, 无内存缓存,
+    // 广播书架刷新让封面槽重组重读即可 (对照 app 端 BookCover.upDefaultCover)
+    override fun refreshDefaultCover() {
+        FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
     }
 
     override fun pickBookTreeUri(onSelected: (String?) -> Unit) {

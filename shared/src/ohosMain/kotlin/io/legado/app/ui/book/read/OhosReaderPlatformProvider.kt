@@ -9,22 +9,32 @@ import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.book.getUseReplaceRule
+import io.legado.app.help.sourceLoginOverlayPayload
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfigProviders
+import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.help.toast.Toasters
+import io.legado.app.help.tts.TtsEngineProvider
+import io.legado.app.model.ReadBookProviders
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
+import io.legado.app.ui.book.read.ReaderDialogEvent
 import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.KS_JSON
+import io.legado.app.utils.encodeURI
+import io.legado.app.utils.isAbsUrl
 import kotlinx.serialization.Serializable
 
 /**
@@ -36,10 +46,136 @@ import kotlinx.serialization.Serializable
  */
 object OhosReaderPlatformProvider : ReaderPlatformProvider {
 
+    /** 查词请求 (选中词 → 暂存, 由 MainOhos 宿主渲染 DictDialogHost; 对照原版 menu_dict → DictDialog)。 */
+    internal var dictWord by mutableStateOf<String?>(null)
+
+    /** 当前浮动菜单的选中文本 (ArkTS 菜单项点击时经回调取参)。 */
+    private var textActionText: String = ""
+
+    init {
+        // 菜单动作回调注册 (ArkTS 菜单项点击 → legado_text_action_callback → 本分发)
+        OhosNativeBridge.textActionHandler = { action, text, src ->
+            onTextAction(action, text, src)
+        }
+    }
+
+    /** 空白长按回落: 原版 ContentTextView.longPress 未命中任何列时无动作，此处 no-op。 */
+    override fun onLongPress(screenModel: ReaderScreenModel) = Unit
+
+    /**
+     * 页内文字选择完成：经 napi 桥弹 ArkTS 浮动菜单并跟随选区（平台原生 ArkUI 组件，
+     * 对标 Android 原版 TextActionMenu；动作见 [onTextAction]）。
+     */
+    override fun onTextSelected(
+        screenModel: ReaderScreenModel,
+        text: String,
+        anchorX: Float,
+        anchorY: Float,
+    ) {
+        if (text.isBlank()) return
+        textActionText = text
+        OhosNativeBridge.showTextActionMenu(text, anchorX, anchorY)
+    }
+
+    /**
+     * 图片长按 (命中图片列): 经 napi 桥弹 ArkTS 图片浮动菜单 (查看/刷新/保存到相册)。
+     * 查看/保存由 ArkTS 侧本地处理 (全屏预览 / photoAccessHelper 存相册),
+     * 刷新回送本分发执行 [onTextAction] 的 "refresh" 分支 (清图片缓存 + 重排)。
+     * 对照原版 ReadBookActivity.onImageLongPress (无"选择目录", 平台适配为保存到相册)。
+     */
+    override fun onImageLongPress(
+        screenModel: ReaderScreenModel,
+        src: String,
+        x: Float,
+        y: Float,
+    ) {
+        if (src.isBlank()) return
+        OhosNativeBridge.showImageActionMenu(src, x, y)
+    }
+
+    /**
+     * 文本菜单动作分发 (对标原版 ReadBookActivity.onMenuItemSelected/onMenuItemClick):
+     * 替换/书签/全文搜索走 shared 能力; 复制走剪贴板; 查词暂存 dictWord;
+     * 浏览器 URL 直开否则系统搜索; 朗读走系统 TTS 引擎 (TtsEngineProvider);
+     * 图片菜单 refresh 清图片缓存并重排;
+     * `__dismiss` = 菜单收起 → 取消页内选择 (对标原版 onMenuActionFinally)。
+     */
+    private fun onTextAction(action: String, text: String, src: String) {
+        val text = text.ifBlank { textActionText }
+        when (action) {
+            "replace" -> {
+                val book = ActiveReadBookRegistry.current?.bookValue
+                AppNavigatorProviders.getOrNull()?.push(
+                    AppRoute.ReplaceEdit(
+                        pattern = text.lineSequence().joinToString("\n") { it.trim() },
+                        scope = listOfNotNull(book?.name, book?.origin).joinToString(";"),
+                    )
+                )
+            }
+
+            "copy" -> PlatformCapabilityProviders.get().copyToClipboard(text)
+            "bookmark" -> {
+                val readBook = ActiveReadBookRegistry.current ?: return
+                val book = readBook.bookValue ?: return
+                val bookmark = Bookmark(bookName = book.name, bookAuthor = book.author).apply {
+                    chapterIndex = readBook.durChapterIndexValue
+                    chapterPos = readBook.durChapterPosValue
+                    chapterName = readBook.curChapter?.title ?: ""
+                    bookText = text.trim()
+                }
+                readBook.currentViewModel?.postDialogEvent(ReaderDialogEvent.AddBookmark(bookmark))
+            }
+
+            "aloud" -> {
+                // 朗读选中文本: 用已注册的系统 TTS 引擎 (经 TtsBridgeHandler → @ohos.textToSpeech,
+                // 对照原版 menu_aloud → ReadAloudControllerShared)
+                val engine = TtsEngineProvider.get()
+                if (engine != null) {
+                    engine.speak(text, "textActionAloud")
+                } else {
+                    Toasters.get().toast("朗读暂未支持")
+                }
+            }
+
+            "dict" -> dictWord = text
+            "search_content" -> {
+                val readBook = ActiveReadBookRegistry.current ?: return
+                val viewModel = readBook.currentViewModel ?: return
+                viewModel.searchContentQuery = text
+                viewModel.menuState.clickSearch()
+            }
+
+            "browser" -> {
+                val url = if (text.isAbsUrl()) {
+                    text
+                } else {
+                    "https://www.bing.com/search?q=" + text.encodeURI()
+                }
+                PlatformCapabilityProviders.get().openExternalUrl(url)
+            }
+
+            "share" -> PlatformCapabilityProviders.get().shareText(text)
+
+            // 图片菜单"刷新": 清 shared ReaderImageCache (鸿蒙阅读页图片走 shared
+            // ReaderImageResolver) + 发 LOAD_CONTENT 事件重排 (对照 app 端 refreshImage)
+            "refresh" -> {
+                ReaderImageCache.clear()
+                ReadBookEvents.postConfig(ReadConfigChange.LOAD_CONTENT)
+            }
+
+            "__dismiss" -> ReadBookEvents.postSelectionCancel()
+        }
+    }
+
     override fun createMenuController(
         navigator: AppNavigator,
         screenModel: ReaderScreenModel,
     ): ReadMenuController = OhosReadMenuController(navigator, screenModel)
+
+    // 自动翻页面板停止按钮: 本端 autoPage 仅开关状态 (无 AutoPager), 复位开关即可
+    override fun autoPageStop(screenModel: ReaderScreenModel) {
+        (screenModel.menuController.state as? OhosReadMenuState)?.autoPage = false
+    }
 
     // 经 napi Battery 桥查询 @ohos.batteryInfo.batterySOC; 桥未就绪/超时返回 -1
     override fun getBatteryLevel(): Int {
@@ -79,10 +215,18 @@ private class OhosReadMenuState(
     override val isVisible: Boolean get() = visibleState.currentState || visibleState.targetState
     override val canShowMenu: Boolean get() = true
 
-    // 无沉浸式阅读背景, 用 AppTheme 默认色 (同 iOS/desktop)
-    override val immersive: Boolean = false
-    override val bgColor: Int = 0
-    override val textColor: Int = 0
+    // 菜单栏配色 (对照原版 ReadMenu.upColorConfig, 逻辑见 shared createReadMenuColors):
+    // 纯色阅读背景时 immersive=true, 顶/底栏用阅读背景色(含 bgAlpha 透明度)+阅读文字色,
+    // 文字对比度由阅读配色自身保证; 图片阅读背景时沉浸式为 false, ReadMenuOverlay 走
+    // AppTheme 默认色 (与原版非沉浸式行为一致)。fallbackBgColor 传 0: 非沉浸式时
+    // Composable 不消费 bgColor, 仅沉浸式解析失败时兜底。hasBgImage 语义为「窗口背景图」
+    // (app 端 ThemeConfig.curBgImagePath), 鸿蒙无此概念恒 false。
+    private val menuTheme: ReadMenuColors
+        get() = createReadMenuColors(ReadBookConfigProviders.get().config, fallbackBgColor = 0)
+    override val immersive: Boolean get() = menuTheme.immersive
+    override val bgColor: Int get() = menuTheme.bgColor
+    override val textColor: Int get() = menuTheme.textColor
+
     override val hasBgImage: Boolean = false
 
     // 顶栏: 书名/章节名/章节 URL/书源按钮
@@ -182,15 +326,14 @@ private class OhosReadMenuState(
                     screenModel.currentBook,
                     screenModel.currentChapter,
                 )
-                if (source.loginUi.isNullOrEmpty()) {
-                    // URL 登录: 对照原版 showLoginDialog 的 WebViewActivity 分支, 开登录页
-                    navigator.push(AppRoute.Login(source.getKey(), dataKey))
-                } else {
-                    // 表单登录: 对照原版 showDialogFragment<SourceLoginDialog>, Overlay 弹对话框
-                    navigator.showOverlay(
-                        AppOverlay.Dialog(key = "sourceLogin", payload = dataKey)
+                // 纯 Overlay 弹登录对话框, 不推新路由; 表单/URL 两条分支由
+                // SourceLoginOverlayContent 统一分发 (对照原版 showLoginDialog)
+                navigator.showOverlay(
+                    AppOverlay.Dialog(
+                        key = "sourceLogin",
+                        payload = sourceLoginOverlayPayload(source.getKey(), dataKey),
                     )
-                }
+                )
             }
 
             SourceAction.EDIT_SOURCE -> {
@@ -306,9 +449,14 @@ private class OhosReadMenuState(
                 syncSuccessAction = { Toasters.get().toast("同步成功") },
             )
 
-            // 段评: iOS/鸿蒙无 ReviewListDialog (Android 专属 Fragment), 且 reviewVisible 恒 false
-            // 不渲染该项; 保留分支仅为穷尽枚举
-            ReadMenuAction.REVIEW -> Unit
+            // 段评: 弹 shared 底部弹窗 (对照原版 menu_review → ReviewListDialog(book, chapter, 0);
+            // 能力已四端接通, 见 ReviewListDialogHost.kt)
+            ReadMenuAction.REVIEW -> screenModel.currentBook?.let { book ->
+                val chapter = screenModel.currentChapter
+                if (!PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)) {
+                    Toasters.get().toast("暂不支持段评")
+                }
+            }
 
             // 帮助: 原版 showHelp 打开本地 web 帮助页 (依赖 Android 资源), iOS/鸿蒙未移植
             ReadMenuAction.HELP -> Unit
@@ -334,6 +482,7 @@ private class OhosReadMenuState(
                 index = screenModel.searchResultIndex,
                 word = screenModel.searchContentQuery.takeIf { it.isNotEmpty() },
                 initialResults = initialResults,
+                book = screenModel.viewModel.book.value?.toRouteRef(),
             ),
             resultKey = RouteResults.SEARCH_CONTENT,
         )

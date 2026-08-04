@@ -5,9 +5,9 @@ import io.legado.app.utils.EscapeUtils
 /**
  * 桌面端内嵌浏览器引擎抽象。
  *
- * 引擎按三级回退链选择 (见 [DesktopWebViewEngines]): 系统自带引擎 → JavaFX WebView → 无
- * (无引擎时调用方回退系统浏览器)。三个消费点分别是无头回源
- * ([io.legado.desktop.help.http.registerDesktopBackstageWebView])、书源网页验证
+ * 引擎按平台选择 (见 [DesktopWebViewEngines]): Windows = WebView2 Runtime, Linux =
+ * webkit2gtk-4.1, macOS = WKWebView, 全不可用返回 null (调用方回退系统浏览器)。三个消费点
+ * 分别是无头回源 ([io.legado.desktop.help.http.registerDesktopBackstageWebView])、书源网页验证
  * ([io.legado.desktop.help.source.DesktopVerificationUiProvider]) 与登录页
  * ([io.legado.desktop.ui.browser.DesktopWebViewSlot])。
  */
@@ -66,12 +66,24 @@ class WebViewFetchResult(
  * 引擎会在每次导航完成后把浏览器 cookie 写回 CookieStore, 对照 app 端
  * `WebViewActivity.onPageFinished`: 按页面地址存一份, [cookieTag] 非空时再按书源 key 存一份。
  *
+ * 窗口带 CustomTab 式工具栏 (对照 shared `WebViewRoute` 的标题栏 + 进度条 + 菜单动作):
+ * 动态网页标题、加载进度细条、返回/前进/刷新、关闭 ×; [isLogin] 或 [saveResult] 为 true
+ * 时额外显示"确定"按钮 (对照原版 `menu_ok`):
+ * - [isLogin]: 点击提示并 reload, 下次导航完成自动关窗 (对照原版 check_host_cookie 分支);
+ * - [saveResult]: 点击时引擎先抓取当前页 outerHTML (页面仍存活) 回传 [onSaveResult],
+ *   由调用方决定关窗 (对照原版 `saveVerificationResult` 后 finish)。
+ *
  * @param html 渲染内容 (对照 app 端 `loadDataWithBaseURL` 分支): POST / dataUri / 非 http 源
  *   由调用方先抓取解码后传入; 非空时引擎渲染 html 而非 [url]。两个引擎 (WebView2
  *   `NavigateToString` / JavaFX `loadContent`) 都无 base URL 参数, 页面相对资源按
  *   about:blank 根解析, 与原版 `loadDataWithBaseURL` 存在此语义差异 (实现时评估)。
  * @param bottomSheet 置底半屏语义 (对照 app 端 startBrowser asBottomSheet=true 的
  *   BottomSheetDialog): 窗口高度取屏幕一半并贴屏幕底部; 默认普通居中窗口
+ * @param isLogin 登录页语义 (对照 WebViewActivity isLogin): "确定"按钮走 check_host_cookie
+ * @param saveResult 验证语义 (对照 WebViewActivity sourceVerificationEnable): "确定"按钮
+ *   抓 html 回传 [onSaveResult]
+ * @param onSaveResult 验证回传回调 (仅 [saveResult] 时接线; 参数为页面存活时抓取的
+ *   outerHTML, 引擎关闭后不可再取, 故在关窗前调用)
  * @param onNavigated 每次导航完成回调 (参数为当前地址), cookie 回写已由引擎完成
  * @param onClosed 窗口关闭回调 (用户点 X 或代码 close 都会触发, 保证只回调一次)
  */
@@ -82,9 +94,15 @@ data class WebViewWindowRequest(
     val userAgent: String? = null,
     val cookieTag: String? = null,
     val bottomSheet: Boolean = false,
+    val isLogin: Boolean = false,
+    val saveResult: Boolean = false,
+    val onSaveResult: ((String?) -> Unit)? = null,
     val onNavigated: (String) -> Unit = {},
     val onClosed: () -> Unit = {},
 )
+
+/** 工具栏"确定"按钮 isLogin 分支的提示文案 (对照 strings.xml check_host_cookie)。 */
+internal const val CHECK_HOST_COOKIE_TEXT = "正在打开首页，成功后自动返回"
 
 /** 可见窗口句柄。 */
 interface WebViewWindowHandle {

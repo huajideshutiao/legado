@@ -1,12 +1,12 @@
 package io.legado.desktop.help.ui
 
 import io.legado.app.constant.AppLog
+import io.legado.app.help.toast.Toasters
 import io.legado.app.help.ui.OpenUrlProvider
 import io.legado.app.help.ui.OpenUrlProviders
+import io.legado.app.utils.browseUrl
 import io.legado.desktop.ui.DesktopDialogRequest
 import io.legado.desktop.ui.DesktopDialogs
-import java.awt.Desktop
-import java.net.URI
 
 /**
  * [OpenUrlProvider] 桌面端实现。
@@ -37,14 +37,14 @@ object DesktopOpenUrlProviderImpl : OpenUrlProvider {
 
     /** 用户确认后真正跳转 (桌面端无 Intent/mimeType 概念, 统一交给系统默认程序)。 */
     private fun doOpenUrl(url: String) {
-        // 桌面端可能不支持 Desktop.API (无图形环境), 失败时回退控制台打印
-        runCatching {
-            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                Desktop.getDesktop().browse(URI(url))
-                return
+        // 失败不再静默: 之前异常只写 AppLog, 用户看不到任何反馈 (书源 URL 未编码时
+        // 单参 URI 构造抛 URISyntaxException, 表现就是"点了没反应")
+        if (!browseUrl(url)) {
+            runCatching {
+                Toasters.get().toastLong("无法打开链接: $url")
             }
-        }.onFailure { AppLog.put("打开链接失败", it, true) }
-        println("[OpenUrl] $url")
+            AppLog.put("打开链接失败: $url")
+        }
     }
 }
 

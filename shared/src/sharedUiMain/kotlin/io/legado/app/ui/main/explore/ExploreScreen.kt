@@ -50,8 +50,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.BookSource
@@ -62,10 +64,7 @@ import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.GridPackLayout
-import io.legado.app.ui.compose.component.PullToRefreshDefaults
 import io.legado.app.ui.compose.component.estimateGridHeight
-import io.legado.app.ui.compose.component.pullToRefresh
-import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import io.legado.app.ui.compose.component.toGridPackSpec
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
@@ -124,6 +123,15 @@ import org.jetbrains.compose.resources.stringResource
 
 /** 展开/收起动画时长, 对照原 ExploreAdapter.EXPAND_DURATION_MS (Material standard) */
 private const val EXPAND_DURATION_MS = 220
+
+/** 分类网格单行最小高度 (GridPackLayout rowUnitMinHeight; 原 tv.minimumHeight = viewHeight.large) */
+private val KIND_ROW_MIN_HEIGHT = 40.dp
+
+/**
+ * 展开动画结束后的单次复查缓冲: 覆盖展开动画晚一帧开始 (animateIn 翻转) + 帧渲染余量。
+ * 注: 假设系统动画时长缩放 = 1; 被放大时复查按"当前实测"兜底, 属尽力而为 (预滚本身不受影响)。
+ */
+private const val EXPAND_RECHECK_BUFFER_MS = 64L
 
 /**
  * 发现 tab 展示状态 (KMP 共享)。
@@ -204,9 +212,6 @@ interface ExploreUiActions {
     /** 项菜单 - 刷新分类 (clearExploreKindsCache + 重载) */
     fun onRefreshSource(source: BookSourcePart)
 
-    /** 下拉刷新整页: 重读收藏区 + 清空分类缓存并重载已展开源 (对照 origin 各刷新入口) */
-    fun onRefreshAll()
-
     /** 项菜单 - 删除 (调 viewModel.deleteSource) */
     fun onDeleteSource(source: BookSourcePart)
 }
@@ -238,19 +243,7 @@ fun ExploreScreen(
             onGroup = { actions.onGroup(it) },
             onBack = onBack,
         )
-        // 下拉刷新 (对照 origin fragment_recycler_view 的 SwipeRefreshLayout; 原版因
-        // refreshLayout.isEnabled=false 被禁用, 本次迁移补齐: 刷新收藏区 + 分类缓存)
-        val pullState = rememberPullToRefreshState()
-        val isRefreshing = state.expandedLoading.isNotEmpty()
-        Box(
-            Modifier
-                .fillMaxSize()
-                .pullToRefresh(
-                    isRefreshing = isRefreshing,
-                    state = pullState,
-                    onRefresh = actions::onRefreshAll,
-                ),
-        ) {
+        Box(Modifier.fillMaxSize()) {
             val sources = state.sources
             val pinned = state.pinned
             if (sources.isEmpty() && state.searchKey.isEmpty()) {
@@ -278,32 +271,44 @@ fun ExploreScreen(
                     ExploreSourceItem(state, actions, item, expanded = state.expandedUrl == item.bookSourceUrl)
                 }
             }
-            PullToRefreshDefaults.Indicator(
-                state = pullState,
-                isRefreshing = isRefreshing,
-                modifier = Modifier.align(Alignment.TopCenter),
-                color = colors.accent,
-            )
-            // 展开后内容过高: 等展开动画结束, 把该项推到列表顶部尽量显示
-            // (对照 origin/master ExploreAdapter.ensureExpandedItemVisible)
-            // 优化: 预估高度可用时提前计算目标位置, 动画期间并行滚动 (不等动画结束)
+            // ===== 展开并行预滚 =====
+            // 分类展开区是固定模板 (GridPackLayout 12 列网格 + 定高标签), 内容最终高度可在
+            // 动画开始前精确预计算 (见 estimateKindGridHeightPx): 因此展开动画一开始就按
+            // "最终几何"并行预滚 (底部超出 → 标题贴顶), 不必等动画结束再测量 ——
+            // F55 的逐帧轮询 (awaitItemSizeSettled) 已删除。
+            // 预计算是实际高度的下界 (行实际高 = max(最小行高, 标签固有高), 文字行高随字体缩放),
+            // 预滚只会"少滚"不会"多滚", 剩余误差由动画结束后的单次实测复查兜底。
+            val density = LocalDensity.current
+            val lastContentHeightPx = remember { mutableMapOf<String, Int>() }
             LaunchedEffect(state.expandedUrl, state.expandedKinds[state.expandedUrl]) {
-                val url = state.expandedUrl ?: return@LaunchedEffect
+                val url = state.expandedUrl ?: run {
+                    lastContentHeightPx.clear() // 收起: 下次展开内容从 0 高开始, 旧高度记录失效
+                    return@LaunchedEffect
+                }
                 val kindPair = state.expandedKinds[url] ?: return@LaunchedEffect
                 val (_, kinds) = kindPair
-                // 预估展开内容高度, 提前通知 LazyList 即将增高的项 (改善动画体验)
-                if (kinds.isNotEmpty()) {
-                    val specs = kinds.map { it.style().toGridPackSpec() }
-                    val estimatedH = estimateGridHeight(specs, rowUnitMinHeight = 40.dp)
-                    // 预估高度 > 0 时, 动画期间也开始预滚动, 不必等完整展开
-                    if (estimatedH > 0.dp) {
-                        // eInk 无展开动画, 等一帧; 普通模式等半程 (动画进行中就开始滚)
-                        if (eInk) delay(32L) else delay(EXPAND_DURATION_MS / 2 + 16L)
-                        ensureExpandedItemVisible(state.listState, url)
-                    }
+                // 无展开内容时无高度变化, 无需滚动 (对照 origin 仅动画结束时检查)
+                if (kinds.isEmpty()) {
+                    lastContentHeightPx[url] = 0
+                    return@LaunchedEffect
+                }
+                val contentPx = estimateKindGridHeightPx(kinds, density)
+                // 刷新时 item 此刻仍渲染旧内容: 最终高度 = 当前测量高 + 新内容高 - 旧内容高
+                val oldContentPx = lastContentHeightPx[url] ?: 0
+                lastContentHeightPx[url] = contentPx
+                if (eInk) {
+                    // eInk 无展开动画, 内容即时就位; 等一帧后按实际测量尺寸滚动 (无需预滚)
+                    delay(32L)
+                    ensureExpandedItemVisible(state.listState, url)
                 } else {
-                    // kinds 为空, 无需等动画
-                    if (eInk) delay(32L) else delay(EXPAND_DURATION_MS + 32L)
+                    // 并行预滚: 动画开始时 item 内容高度仍为 0/旧值, 用预计算最终高度算几何,
+                    // 与展开动画同时 animateScrollBy (滚动目标 = 标题贴顶, 与内容高度无关, 天然精确)
+                    ensureExpandedItemVisible(
+                        state.listState, url, contentDeltaPx = contentPx - oldContentPx,
+                    )
+                    // 单次复查兜底 (非轮询): 预计算是下界, 实际渲染更高时 (字体缩放等) 补滚一次;
+                    // 若预滚已滚过, 此项必然为 no-op (标题已贴顶, 实测仍溢出也无需再动)
+                    delay(EXPAND_DURATION_MS + EXPAND_RECHECK_BUFFER_MS)
                     ensureExpandedItemVisible(state.listState, url)
                 }
             }
@@ -312,18 +317,60 @@ fun ExploreScreen(
 }
 
 /**
- * 展开完成后按需平滑滚动，让展开项尽量完整可见 (对照 origin/master ExploreAdapter.ensureExpandedItemVisible)。
+ * 分类展开区内容高度的预计算 (px)。
+ *
+ * 原理: 展开区是固定模板 (GridPackLayout 12 列虚拟网格 + FilletTag 定高标签), 最终高度
+ * 在动画开始前就能算出, 无需等测量:
+ * - 每项占 12/cols 列宽 (权重): JSON 源由 style{cols:1..4} 指定 (旧版 layout_flexBasisPercent 兜底);
+ *   非 JSON 源 style 恒为 null → 默认 cols=3 → 权重恒 4;
+ * - 总行数 = packGridCells 精确打包 (先到先占格, 纵跨项抬水位; 无纵跨项时退化为
+ *   ceil(总权重/12), 如非 JSON 源: ceil(n×4/12) = ceil(n/3));
+ * - 高度 = 总行数 × KIND_ROW_MIN_HEIGHT (单行最小高度)。
+ *
+ * 用途:
+ * 1. 展开动画开始时的并行预滚 (见 ExploreScreen 内 LaunchedEffect) —— 滚动几何按最终高度算,
+ *    与动画并行执行, 动画结束时已就位;
+ * 2. 展开动画目标高度已知 (实际渲染高度 ≥ 预计算, 差值 = 行高超出部分, 随字体缩放增长)。
+ *
+ * 注意: 预计算是实际高度的下界 (行实际高 = max(最小行高, 标签固有高), 文字行高随字体缩放),
+ * 因此只可用于"下界判断" (该滚才滚), 误差由动画结束后的单次实测复查兜底。
+ *
+ * 可扩展点:
+ * - 若网格改用固定行高 (行高 ≡ KIND_ROW_MIN_HEIGHT), 预计算即精确值: 可直接作为
+ *   AnimatedVisibility 的 targetHeight (动画曲线完全确定、无结束跳变) 与 LazyColumn 滚动条/占位预估;
+ * - eInk 模式可直接按最终高度一次性布局 (当前仍走实测, 行为等价, 改动无收益)。
+ */
+private fun estimateKindGridHeightPx(kinds: List<ExploreKind>, density: Density): Int {
+    if (kinds.isEmpty()) return 0
+    val specs = kinds.map { it.style().toGridPackSpec() }
+    return with(density) {
+        estimateGridHeight(
+            specs,
+            rowUnitMinHeight = KIND_ROW_MIN_HEIGHT
+        ).roundToPx()
+    }
+}
+
+/**
+ * 展开后按需平滑滚动，让展开项尽量完整可见 (对照 origin/quickjs ExploreAdapter.ensureExpandedItemVisible)。
  * 优先策略：底部超出 → 让标题贴顶（但不会把标题滚到顶部以上）；
  *           顶部被切 → 把标题拉回到顶部；
  *           其他情况不动。
+ *
+ * @param contentDeltaPx 展开内容的高度增量, 用于动画开始时的预滚: 此刻 item 的实测高度还是
+ *                       未展开值, 最终高度 = 当前实测高 + contentDeltaPx; 0 = 按当前实测高度判断 (复查)。
  */
-private suspend fun ensureExpandedItemVisible(listState: LazyListState, url: String) {
+private suspend fun ensureExpandedItemVisible(
+    listState: LazyListState,
+    url: String,
+    contentDeltaPx: Int = 0,
+) {
     val layoutInfo = listState.layoutInfo
     val info = layoutInfo.visibleItemsInfo.firstOrNull { it.key == url } ?: return
     val viewportTop = layoutInfo.viewportStartOffset
     val viewportBottom = layoutInfo.viewportEndOffset
     val viewTop = info.offset - viewportTop
-    val viewBottom = viewTop + info.size
+    val viewBottom = viewTop + info.size + contentDeltaPx
 
     val dy = when {
         viewBottom > viewportBottom -> viewTop.coerceAtLeast(0)
@@ -461,14 +508,12 @@ private fun ExploreSourceItem(
                         animateIn = false
                     }
                 }
-                // 预估高度: 用 estimateGridHeight 提前算出目标高度, 展开动画从 0 到目标高度
-                // 平滑过渡, 避免动画期间高度随测量逐步跳变 (对照补充.txt 思路)
-                val estimatedHeight = kindPair?.let { (_, kinds) ->
-                    if (kinds.isNotEmpty()) {
-                        val specs = remember(kinds) { kinds.map { it.style().toGridPackSpec() } }
-                        estimateGridHeight(specs, rowUnitMinHeight = 40.dp)
-                    } else 0.dp
-                } ?: 0.dp
+                // 展开动画: 高度 0 → 内容自然高度。内容是固定模板, 动画期间自然高度恒定,
+                // 曲线天然平滑 (目标 ≈ 预计算高度, 见 estimateKindGridHeightPx)。
+                // 刻意不把 targetHeight 设为预计算值: 预计算是实际高度的下界 (行高 = max(40dp,
+                // 标签固有高), 文字行高随字体缩放), 动画结束瞬间会从预计算值跳到实测值造成跳变;
+                // 保持默认 (目标 = 实测自然高) 动画全程无跳变。预计算高度的真正用途是
+                // ExploreScreen 内 LaunchedEffect 的并行预滚。
                 AnimatedVisibility(
                     visible = animateIn,
                     enter = expandVertically(
@@ -501,7 +546,7 @@ private fun KindFlow(actions: ExploreUiActions, source: BookSource, kinds: List<
     val specs = remember(kinds) { kinds.map { it.style().toGridPackSpec() } }
     GridPackLayout(
         specs = specs,
-        rowUnitMinHeight = 40.dp, // 原 tv.minimumHeight = 40dp × rows (viewHeight.large)
+        rowUnitMinHeight = KIND_ROW_MIN_HEIGHT, // 原 tv.minimumHeight = 40dp × rows (viewHeight.large)
         modifier = Modifier.fillMaxWidth(),
     ) {
         kinds.forEach { kind ->

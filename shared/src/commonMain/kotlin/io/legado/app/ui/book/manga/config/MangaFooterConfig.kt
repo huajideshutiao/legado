@@ -1,6 +1,9 @@
 package io.legado.app.ui.book.manga.config
 
+import kotlinx.serialization.Serializable
+
 // INFO_BAR_ALIGN_LEFT=0 原 app 端 render 包常量, render 未下沉, 此处用字面量保持默认值一致
+@Serializable
 data class MangaFooterConfig(
     var hideChapterLabel: Boolean = false,
     var hideChapter: Boolean = false,

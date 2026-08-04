@@ -4,7 +4,6 @@ import androidx.compose.runtime.Composable
 import io.legado.app.ui.route.AboutRoute
 import io.legado.app.ui.route.AudioPlayRoute
 import io.legado.app.ui.route.BackupConfigRoute
-import io.legado.app.ui.route.BgTextConfigRoute
 import io.legado.app.ui.route.BookInfoEditRoute
 import io.legado.app.ui.route.BookInfoRoute
 import io.legado.app.ui.route.BookSourceDebugRoute
@@ -16,23 +15,16 @@ import io.legado.app.ui.route.ChangeChapterSourceRoute
 import io.legado.app.ui.route.ChangeSourceRoute
 import io.legado.app.ui.route.CoverConfigRoute
 import io.legado.app.ui.route.DictRuleRoute
-import io.legado.app.ui.route.EffectiveReplacesRoute
 import io.legado.app.ui.route.ExploreRoute
 import io.legado.app.ui.route.ExploreShowRoute
 import io.legado.app.ui.route.ImportBookRoute
 import io.legado.app.ui.route.JsEditRoute
-import io.legado.app.ui.route.LoginRoute
 import io.legado.app.ui.route.MainRoute
 import io.legado.app.ui.route.MangaReaderRoute
-import io.legado.app.ui.route.MoreConfigRoute
 import io.legado.app.ui.route.MyConfigRoute
 import io.legado.app.ui.route.OtherConfigRoute
-import io.legado.app.ui.route.PaddingConfigRoute
-import io.legado.app.ui.route.ReadAloudConfigRoute
-import io.legado.app.ui.route.ReadConfigRoute
 import io.legado.app.ui.route.ReadRecordRoute
 import io.legado.app.ui.route.ReadRssRoute
-import io.legado.app.ui.route.ReadStyleRoute
 import io.legado.app.ui.route.ReaderRoute
 import io.legado.app.ui.route.RemoteBookRoute
 import io.legado.app.ui.route.ReplaceEditRoute
@@ -43,7 +35,6 @@ import io.legado.app.ui.route.SearchContentRoute
 import io.legado.app.ui.route.SearchRoute
 import io.legado.app.ui.route.SourceFilterRuleRoute
 import io.legado.app.ui.route.ThemeConfigRoute
-import io.legado.app.ui.route.TipConfigRoute
 import io.legado.app.ui.route.TocRoute
 import io.legado.app.ui.route.TxtTocRuleRoute
 import io.legado.app.ui.route.VideoPlayRoute
@@ -73,11 +64,6 @@ fun RouteContent(
 
         is AppRoute.BackupConfig -> {
             BackupConfigRoute(entry, navigator, screenModelStore)
-            true
-        }
-
-        is AppRoute.BgTextConfig -> {
-            BgTextConfigRoute(entry, navigator, screenModelStore)
             true
         }
 
@@ -129,11 +115,6 @@ fun RouteContent(
             true
         }
 
-        is AppRoute.EffectiveReplaces -> {
-            EffectiveReplacesRoute(entry, navigator, screenModelStore)
-            true
-        }
-
         is AppRoute.Explore -> {
             ExploreRoute(entry, navigator, screenModelStore)
             true
@@ -154,11 +135,6 @@ fun RouteContent(
             true
         }
 
-        is AppRoute.MoreConfig -> {
-            MoreConfigRoute(entry, navigator, screenModelStore)
-            true
-        }
-
         is AppRoute.MyConfig -> {
             MyConfigRoute(entry, navigator, screenModelStore)
             true
@@ -169,23 +145,8 @@ fun RouteContent(
             true
         }
 
-        is AppRoute.PaddingConfig -> {
-            PaddingConfigRoute(entry, navigator, screenModelStore)
-            true
-        }
-
-        is AppRoute.ReadAloudConfig -> {
-            ReadAloudConfigRoute(entry, navigator, screenModelStore)
-            true
-        }
-
         is AppRoute.ReadRecord -> {
             ReadRecordRoute(entry, navigator, screenModelStore)
-            true
-        }
-
-        is AppRoute.ReadStyle -> {
-            ReadStyleRoute(entry, navigator, screenModelStore)
             true
         }
 
@@ -226,11 +187,6 @@ fun RouteContent(
 
         is AppRoute.ThemeConfig -> {
             ThemeConfigRoute(entry, navigator, screenModelStore)
-            true
-        }
-
-        is AppRoute.TipConfig -> {
-            TipConfigRoute(entry, navigator, screenModelStore)
             true
         }
 
@@ -290,18 +246,8 @@ fun RouteContent(
             true
         }
 
-        is AppRoute.ReadConfig -> {
-            ReadConfigRoute(entry, navigator, screenModelStore)
-            true
-        }
-
         is AppRoute.WebView -> {
             WebViewRoute(entry, navigator, screenModelStore)
-            true
-        }
-
-        is AppRoute.Login -> {
-            LoginRoute(entry, navigator, screenModelStore)
             true
         }
 

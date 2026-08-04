@@ -18,6 +18,13 @@
     { "name": "discover_title", "value": "发现" },
     { "name": "discover_empty", "value": "暂无发现源" },
     { "name": "manga_loading_images", "value": "加载中..." },
-    { "name": "manga_chapter_images_empty", "value": "本章无图片" }
+    {
+      "name": "manga_chapter_images_empty",
+      "value": "本章无图片"
+    },
+    {
+      "name": "permission_write_imagevideo_reason",
+      "value": "用于将阅读页长按图片保存到系统相册"
+    }
   ]
 }

@@ -22,12 +22,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.toColorInt
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
-import io.legado.app.base.ComposeDialog
 import io.legado.app.constant.AppConst
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
@@ -45,16 +43,14 @@ import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.save
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
+import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.ThemeConfigProviders
+import io.legado.app.help.sourceLoginOverlayPayload
 import io.legado.app.lib.theme.bottomBackground
-import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.model.CacheBook
 import io.legado.app.model.ReadAloud
 import io.legado.app.service.BaseReadAloudService
-import io.legado.app.ui.book.read.config.AutoReadActions
-import io.legado.app.ui.book.read.config.AutoReadController
-import io.legado.app.ui.book.read.config.AutoReadPanel
 import io.legado.app.ui.book.read.page.AutoPagerCompose
 import io.legado.app.ui.compose.component.AppAutoCompleteField
 import io.legado.app.ui.compose.component.AppNumberField
@@ -69,7 +65,6 @@ import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.toRouteRef
-import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.share
 import io.legado.app.utils.showDialogFragment
@@ -111,6 +106,20 @@ class AndroidReaderPlatformProvider(
             (it.state as? AndroidReaderMenuState)?.let { state -> screenModel to state }
     }
 
+    // ===== 自动翻页面板平台动作 (对照原版 AutoReadDialog 的 CallBack + 平台副作用) =====
+
+    override fun autoPageStop(screenModel: ReaderScreenModel) {
+        activeMenuState?.takeIf { it.first === screenModel }?.second?.stopAutoPage()
+    }
+
+    override fun showPageAnimConfig(screenModel: ReaderScreenModel) {
+        activeMenuState?.takeIf { it.first === screenModel }?.second?.showPageAnimConfigSelector()
+    }
+
+    override fun upTtsSpeechRate(screenModel: ReaderScreenModel) {
+        activeMenuState?.takeIf { it.first === screenModel }?.second?.upTtsSpeechRate()
+    }
+
     override fun getBatteryLevel(): Int {
         val manager = appCtx.getSystemService(BatteryManager::class.java) ?: return -1
         return runCatching {
@@ -119,14 +128,28 @@ class AndroidReaderPlatformProvider(
     }
 
     /**
-     * 长按非文字区域回落（图片/空白）：整章选择对话框（原版 View 链图片长按是图片菜单，
-     * Compose 链当前无等价桥接，维持既有行为）。文字长按已由页内选择接管，
-     * 完成后走 [onTextSelected]。
+     * 空白长按回落：原版 ContentTextView.longPress 未命中任何列时无动作，此处 no-op。
+     * （文字长按由页内选择接管走 [onTextSelected]，图片长按走 [onImageLongPress]。）
      */
-    override fun onLongPress(screenModel: ReaderScreenModel) {
-        activity.showReaderTextSelection(
-            chapterName = screenModel.currentChapter?.title.orEmpty(),
-            content = screenModel.currentChapterText,
+    override fun onLongPress(screenModel: ReaderScreenModel) = Unit
+
+    /**
+     * 页内文字选择完成（长按选中文字后抬起）：弹浮动文本操作菜单并跟随选区
+     * （对照旧 ReadView.CallBack.showTextActionMenu → TextActionMenu 浮动菜单，
+     * ActionMode.TYPE_FLOATING；菜单项/动作/清选择语义见 TextActionMenu 与
+     * MainActivity.onMenuItemSelected/onMenuActionFinally）。
+     */
+    override fun onTextSelected(
+        screenModel: ReaderScreenModel,
+        text: String,
+        anchorX: Float,
+        anchorY: Float,
+    ) {
+        if (text.isBlank()) return
+        activity.showReaderTextActionMenu(
+            text = text,
+            anchorX = anchorX,
+            anchorY = anchorY,
             onReplace = onReplace(screenModel),
             onBookmark = onBookmark(screenModel),
             onReadAloud = onReadAloud(screenModel),
@@ -136,22 +159,16 @@ class AndroidReaderPlatformProvider(
     }
 
     /**
-     * 页内文字选择完成（长按选中文字后抬起）：弹选择菜单，携带选中文本
-     * （对照旧 ReadView.CallBack.showTextActionMenu → TextActionMenu；
-     * 复用 [TextSelectionDialog] 并注入选中文本，动作与整章形态同一套回调）。
+     * 图片长按（命中图片列）：弹图片操作菜单（对照原版 ReadBookActivity.onImageLongPress：
+     * 查看/刷新/保存/选择目录，PopupAction 承载）。
      */
-    override fun onTextSelected(screenModel: ReaderScreenModel, text: String) {
-        if (text.isBlank()) return
-        activity.showReaderTextSelection(
-            chapterName = screenModel.currentChapter?.title.orEmpty(),
-            content = screenModel.currentChapterText,
-            selectedText = text,
-            onReplace = onReplace(screenModel),
-            onBookmark = onBookmark(screenModel),
-            onReadAloud = onReadAloud(screenModel),
-            onSearchContent = onSearchContent(screenModel),
-            onShare = onShare(screenModel),
-        )
+    override fun onImageLongPress(
+        screenModel: ReaderScreenModel,
+        src: String,
+        x: Float,
+        y: Float,
+    ) {
+        activity.showImageActionMenu(src, x, y)
     }
 
     /** 替换 (对照原版 menu_replace): 打开替换规则编辑页, pattern=选中文本(去行首尾空白),
@@ -407,7 +424,6 @@ private class AndroidReaderMenuState(
     // 自动翻页控制器 (对照 app 端 ReadView.autoPager 的 AutoPager; 由 shared AutoPagerCompose 承载)
     private val autoPageScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var autoPager: AutoPagerCompose? = null
-    private var autoReadDialog: ComposeDialog? = null
 
     // 滚动模式朗读重定位: 暂停期间页面是否变化 (对照原版 ReadBookActivity.pageChanged)
     private var aloudPageChanged = false
@@ -442,11 +458,8 @@ private class AndroidReaderMenuState(
         private set
 
     fun show() {
-        // 自动翻页运行时点屏幕: 对照原版 showActionMenu → AutoReadDialog (速度滑条面板)
-        if (autoPage) {
-            showAutoReadPanel()
-            return
-        }
+        // 自动翻页运行时点屏幕的菜单重定向已上移 shared (ReaderScreenModel.showMenu:
+        // autoPage → ReaderDialogEvent.AutoRead → ReaderRoute 渲染 AutoReadPanelDialogHost)
         showNormalMenu()
     }
 
@@ -468,21 +481,17 @@ private class AndroidReaderMenuState(
         activity.upReaderSystemBars(menuVisible = false)
     }
 
-    // 沉浸式色彩配置 (对照 app 端 ReadMenu.upColorConfig)
+    // 沉浸式色彩配置 (对照 app 端 ReadMenu.upColorConfig, 逻辑下沉 shared createReadMenuColors;
+    // 用 shareLayout 感知的 config, 与阅读页正文 ReaderDrawStyle 同源)
     private fun upColorConfig() {
-        immersive = ReadBookConfig.durConfig.curBgType() == 0
-        bgColor = if (immersive) {
-            runCatching {
-                ReadBookConfig.durConfig.curBgStr().toColorInt()
-            }.getOrDefault(activity.bottomBackground)
-        } else {
-            activity.bottomBackground
-        }
-        textColor = if (immersive) {
-            ReadBookConfig.durConfig.curTextColor()
-        } else {
-            activity.getPrimaryTextColor(ColorUtils.isColorLight(bgColor))
-        }
+        val theme = createReadMenuColors(
+            config = ReadBookConfigProviders.get().config,
+            fallbackBgColor = activity.bottomBackground,
+        )
+        immersive = theme.immersive
+        bgColor = theme.bgColor
+        textColor = theme.textColor
+        // 窗口背景图 (原 ThemeConfig.curBgImagePath 非空) 时顶栏透明, 让窗口背景图透出
         hasBgImage = !ThemeConfig.curBgImagePath.isNullOrBlank()
     }
 
@@ -564,15 +573,14 @@ private class AndroidReaderMenuState(
                     screenModel.currentBook,
                     screenModel.currentChapter,
                 )
-                if (source.loginUi.isNullOrEmpty()) {
-                    // URL 登录: 对照原版 showLoginDialog 的 WebViewActivity 分支, 开登录页
-                    navigator.push(AppRoute.Login(source.getKey(), dataKey))
-                } else {
-                    // 表单登录: 对照原版 showDialogFragment<SourceLoginDialog>, Overlay 弹对话框
-                    navigator.showOverlay(
-                        AppOverlay.Dialog(key = "sourceLogin", payload = dataKey)
+                // 纯 Overlay 弹登录对话框, 不推新路由; 表单/URL 两条分支由
+                // SourceLoginOverlayContent 统一分发 (对照原版 showLoginDialog)
+                navigator.showOverlay(
+                    AppOverlay.Dialog(
+                        key = "sourceLogin",
+                        payload = sourceLoginOverlayPayload(source.getKey(), dataKey),
                     )
-                }
+                )
             }
 
             SourceAction.EDIT_SOURCE -> {
@@ -942,6 +950,7 @@ private class AndroidReaderMenuState(
                 index = screenModel.searchResultIndex,
                 word = screenModel.searchContentQuery.takeIf { it.isNotEmpty() },
                 initialResults = initialResults,
+                book = screenModel.viewModel.book.value?.toRouteRef(),
             ),
             resultKey = RouteResults.SEARCH_CONTENT,
         )
@@ -984,8 +993,6 @@ private class AndroidReaderMenuState(
         autoPager?.stop()
         autoPager = null
         autoPage = false
-        autoReadDialog?.dismiss()
-        autoReadDialog = null
     }
 
     override fun clickReplaceRule() {
@@ -1084,7 +1091,7 @@ private class AndroidReaderMenuState(
     }
 
     // 翻页动画选择器 (原 PAGE_ANIM 分支提取, AutoReadPanel 设置按钮复用)
-    private fun showPageAnimConfigSelector() {
+    fun showPageAnimConfigSelector() {
         val items = arrayListOf(
             activity.getString(R.string.btn_default_s),
             activity.getString(R.string.page_anim_cover),
@@ -1101,44 +1108,11 @@ private class AndroidReaderMenuState(
     }
 
     // 自动翻页控制面板 (对照原版 AutoReadDialog: 速度滑条 + 目录/主菜单/停止/设置)
-    private fun showAutoReadPanel() {
-        val controller = object : AutoReadController {
-            override var autoReadSpeed: Int
-                get() = ReadBookConfig.autoReadSpeed
-                set(value) {
-                    ReadBookConfig.autoReadSpeed = value.coerceAtLeast(1)
-                }
-        }
-        val actions = object : AutoReadActions {
-            override fun openChapterList() {
-                // 原版 AutoReadDialog 目录按钮 → TocDialog (dismissWhenOtherBottomDialogShowing 先收面板)
-                autoReadDialog?.dismiss()
-                screenModel.postDialogEvent(ReaderDialogEvent.Toc)
-            }
-
-            override fun showMenuBar() {
-                // 原版 主菜单按钮 → showMenuBar (强制弹常规菜单, 不受自动翻页重定向影响)
-                autoReadDialog?.dismiss()
-                showNormalMenu()
-            }
-
-            override fun autoPageStop() {
-                stopAutoPage()
-            }
-
-            override fun showPageAnimConfig() = showPageAnimConfigSelector()
-
-            override fun upTtsSpeechRate() = this@AndroidReaderMenuState.upTtsSpeechRate()
-        }
-        autoReadDialog = activity.alert(activity.getString(R.string.auto_next_page)) {
-            customView {
-                AutoReadPanel(controller = controller, actions = actions)
-            }
-        }
-    }
+    // 已上移 shared: 面板由 ReaderRoute 渲染 AutoReadPanelDialogHost,
+    // 本端只需提供 autoPageStop / showPageAnimConfig / upTtsSpeechRate 平台动作 (见 Provider 覆写)
 
     // 对照原版 ReadAloudDialog.upTtsSpeechRate: 新语速要 pause+resume 才作用到当前段
-    private fun upTtsSpeechRate() {
+    fun upTtsSpeechRate() {
         ReadAloud.upTtsSpeechRate(activity)
         if (!BaseReadAloudService.pause) {
             ReadAloud.pause(activity)

@@ -26,7 +26,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
-import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -49,11 +48,14 @@ import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.rememberPainter
-import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.ic_bookmark
+import legado.shared.generated.resources.in_favorites
 import legado.shared.generated.resources.intro_show_null
+import legado.shared.generated.resources.login
+import legado.shared.generated.resources.out_favorites
+import legado.shared.generated.resources.refresh
 import legado.shared.generated.resources.source_filter_rule
 import legado.shared.generated.resources.switchLayout
 import org.jetbrains.compose.resources.painterResource
@@ -63,8 +65,6 @@ import org.jetbrains.compose.resources.stringResource
  * 下沉所需资源 key 清单 (供 ResourceProvider 各平台 actual 补全)
  *
  * Painter key (drawable):
- *   - ic_star            已收藏图标
- *   - ic_star_border     未收藏图标
  *   - ic_layout_list     列表布局图标
  *   - ic_layout_video    视频布局图标
  *   - ic_author          作者图标 (已存在, 复用 BookshelfComposablesShared)
@@ -73,9 +73,11 @@ import org.jetbrains.compose.resources.stringResource
  *
  * String key (string):
  *   - discovery          发现页标题
- *   - in_favorites       已收藏 contentDescription
- *   - out_favorites      未收藏 contentDescription
+ *   - in_favorites       已收藏 (收藏菜单项文案)
+ *   - out_favorites      未收藏 (收藏菜单项文案)
  *   - switchLayout       布局切换 contentDescription
+ *   - refresh            刷新菜单项
+ *   - login              书源登录菜单项 (书源带登录入口时显示)
  *   - source_filter_rule 源过滤规则菜单
  *   - bottom_line        到底文案
  *   - empty              空文案
@@ -109,6 +111,7 @@ private val InBookshelfDotColor = Color(0xFF43A047)
  * 字段语义对照 app 端原 `ExploreShowActivity` 同名字段:
  * - [title] / [books] / [exploreStyle] / [isFavorite] / [footerLoading] / [footerText]:
  *   与 Activity 同名字段一一对应
+ * - [canLogin]: 书源带登录入口 (对照原 hasLoginUrl), 菜单"书源登录"显隐
  * - [bookshelfVersion]: 书架增删时递增驱动重组刷新绿点/徽标
  * - [optionsVersion]: 参数 chip 结构变化时递增驱动 optionsRowSlot 重组重绑
  * - [scrollTopEpoch]: 标题栏点击回顶信号, >0 时触发列表 animateScrollToItem(0)
@@ -118,6 +121,11 @@ data class ExploreShowUiState(
     val books: List<SearchBook>,
     val exploreStyle: Int,
     val isFavorite: Boolean,
+    /**
+     * 书源是否带登录入口 (对照原 hasLoginUrl: loginUrl/loginUi 非空)。
+     * 控制菜单"书源登录"项的显隐 (常隐)。
+     */
+    val canLogin: Boolean,
     val bookshelfVersion: Int,
     val optionsVersion: Int,
     val scrollTopEpoch: Int,
@@ -142,8 +150,14 @@ interface ExploreShowUiActions {
     /** 标题栏点击 (对照原 toolbar 点击回顶) */
     fun onTitleClick()
 
-    /** 切换收藏/取消收藏 */
+    /** 菜单 - 切换收藏/取消收藏 (原标题栏星标按钮移入菜单) */
     fun onToggleFavorite()
+
+    /** 菜单 - 刷新列表 (清空 books + 重拉第一页, 对照 registerRefreshHandler 语义) */
+    fun onRefresh()
+
+    /** 菜单 - 书源登录 (宿主弹登录 Overlay; 仅 canLogin 时菜单显示) */
+    fun onLogin()
 
     /** 切换布局 (list/grid/video) */
     fun onSwitchLayout()
@@ -224,15 +238,6 @@ fun ExploreShowScreen(
 @Composable
 private fun ExploreActions(state: ExploreShowUiState, actions: ExploreShowUiActions) {
     val colors = AppTheme.colors
-    IconButton(onClick = actions::onToggleFavorite) {
-        Icon(
-            painter = rememberPainter(if (state.isFavorite) "ic_star" else "ic_star_border"),
-            contentDescription = rememberString(
-                if (state.isFavorite) "in_favorites" else "out_favorites"
-            ),
-            tint = colors.primaryText,
-        )
-    }
     // 长按弹列数选择 (对齐原 iconItemOnLongClick)
     Box(
         Modifier
@@ -256,7 +261,32 @@ private fun ExploreActions(state: ExploreShowUiState, actions: ExploreShowUiActi
             tint = colors.primaryText,
         )
     }
+    // 收藏移入菜单 (对照原 menu_star: 标题随状态切 in_favorites/out_favorites)
     OverflowMenu { dismiss ->
+        DropdownMenuItem(
+            onClick = { dismiss(); actions.onToggleFavorite() },
+        ) {
+            Text(
+                stringResource(
+                    if (state.isFavorite) Res.string.in_favorites else Res.string.out_favorites
+                ),
+                color = colors.primaryText,
+            )
+        }
+        // 刷新: 常显 (对齐原 explore_item 菜单 refresh 项语义, 常驻溢出菜单)
+        DropdownMenuItem(
+            onClick = { dismiss(); actions.onRefresh() },
+        ) {
+            Text(stringResource(Res.string.refresh), color = colors.primaryText)
+        }
+        // 书源登录: 常隐, 仅书源带登录入口 (loginUrl/loginUi 非空, 对照原 hasLoginUrl) 时显示
+        if (state.canLogin) {
+            DropdownMenuItem(
+                onClick = { dismiss(); actions.onLogin() },
+            ) {
+                Text(stringResource(Res.string.login), color = colors.primaryText)
+            }
+        }
         DropdownMenuItem(
             onClick = { dismiss(); actions.onShowSourceFilterRule() },
         ) {

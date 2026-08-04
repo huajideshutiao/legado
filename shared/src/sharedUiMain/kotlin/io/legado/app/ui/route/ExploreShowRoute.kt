@@ -15,6 +15,7 @@ import io.legado.app.help.book.addType
 import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.sourceLoginOverlayPayload
 import io.legado.app.ui.book.explore.ExploreShowScreen
 import io.legado.app.ui.book.explore.ExploreShowScreenModel
 import io.legado.app.ui.book.explore.ExploreShowUiActions
@@ -126,6 +127,10 @@ fun ExploreShowRoute(
     LaunchedEffect(vm) {
         vm.sourceReadyFlow.collect {
             screenModel.dispatch(ExploreShowUiEvent.ExploreStyleChanged(vm.exploreStyle))
+            // 菜单"书源登录"显隐: 书源带登录入口 (loginUrl/loginUi 非空, 对照原 hasLoginUrl)
+            screenModel.dispatch(
+                ExploreShowUiEvent.LoginAvailabilityChanged(vm.bookSource?.hasLogin() == true)
+            )
         }
     }
     LaunchedEffect(vm) {
@@ -141,6 +146,12 @@ fun ExploreShowRoute(
     // 列数选择器 (原走 PlatformCapabilities.showColumnPicker, 仅 Android 有实现; 改用 shared 对话框)
     var showColumnPicker by remember { mutableStateOf(false) }
 
+    // 刷新当前列表: 清空 books + 重拉第一页 (对照注册的 refreshHandler / onExploreOptionChanged)
+    val refresh = {
+        screenModel.dispatch(ExploreShowUiEvent.ClearBooks)
+        vm.explore(true)
+    }
+
     val actions = remember(navigator, screenModel, vm) {
         object : ExploreShowUiActions {
             override fun onBack() {
@@ -155,6 +166,22 @@ fun ExploreShowRoute(
             // 对照 Activity.onToggleFavorite: viewModel.toggleFavorite()
             override fun onToggleFavorite() {
                 vm.toggleFavorite()
+            }
+
+            // 菜单 - 刷新: 重拉第一页 (对齐注册的 refreshHandler 语义)
+            override fun onRefresh() {
+                refresh()
+            }
+
+            // 菜单 - 书源登录: 纯 Overlay 弹登录对话框, 不推新路由 (源无登录入口时菜单不显示)
+            override fun onLogin() {
+                val sourceUrl = vm.bookSource?.bookSourceUrl ?: return
+                navigator.showOverlay(
+                    AppOverlay.Dialog(
+                        key = "sourceLogin",
+                        payload = sourceLoginOverlayPayload(sourceUrl),
+                    )
+                )
             }
 
             // 对照 Activity.switchLayout: viewModel.switchLayout() + exploreStyle 更新
@@ -239,8 +266,7 @@ fun ExploreShowRoute(
 
     DisposableEffect(entry.id, vm) {
         navigator.registerRefreshHandler(entry.id) {
-            screenModel.dispatch(ExploreShowUiEvent.ClearBooks)
-            vm.explore(true)
+            refresh()
         }
         onDispose { navigator.unregisterRefreshHandler(entry.id) }
     }

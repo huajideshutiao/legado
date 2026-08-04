@@ -40,14 +40,18 @@ interface ReaderUiActions {
     /** 页面单击且动作为 0（菜单）时回调，其余动作在 [ReadViewComposable] 内消费或走 [onPageAction] */
     fun onPageClick(column: TextColumn?)
 
-    /** 页面长按（用于文字选择） */
+    /** 页面长按（仅空白区域回落；文字长按走页内选择，图片长按走 [onImageLongPress]） */
     fun onPageLongClick(column: TextColumn?)
 
+    /** 图片长按（命中图片列，携带 src 与长按点坐标；对照旧 onImageLongPress → 图片操作菜单） */
+    fun onImageLongPress(src: String, x: Float, y: Float) {}
+
     /**
-     * 页内文字选择完成（长按选中文字后抬起）：携带选中文本，平台弹选择菜单
+     * 页内文字选择完成（长按选中文字后抬起）：携带选中文本与选区起点锚点
+     * （阅读页内坐标，含滚动折算），平台弹浮动文本操作菜单并跟随选区
      * （对照旧 ReadView.CallBack.showTextActionMenu；默认空实现，未接入的平台忽略）
      */
-    fun onTextSelection(text: String) {}
+    fun onTextSelection(text: String, anchorX: Float, anchorY: Float) {}
 
     /**
      * 九宫格点击的非翻页动作（对照 app 端 ReadView.click 里走 callBack 的分支）：
@@ -96,8 +100,16 @@ fun ReaderScreen(
             clockText = clockText,
             onClick = { column -> actions.onPageClick(column) },
             onLongClick = { column -> actions.onPageLongClick(column) },
+            onImageLongPress = { src, x, y -> actions.onImageLongPress(src, x, y) },
             onAction = { action -> actions.onPageAction(action) },
-            onSelectionMenu = { text -> actions.onTextSelection(text) },
+            onSelectionMenu = { text, anchor ->
+                actions.onTextSelection(
+                    text,
+                    anchor?.x ?: 0f,
+                    anchor?.y ?: 0f,
+                )
+            },
+            menuVisible = { state.menuState.isVisible },
         )
         ReadMenuOverlay(state = state.menuState)
     }

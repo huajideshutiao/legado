@@ -1,6 +1,7 @@
 package io.legado.app.utils
 
 import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.help.image.BG_CDN_PATH
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.http.newCallResponse
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -13,13 +14,16 @@ import java.net.URLEncoder
  * 远端资产 (内置背景图 / 简繁词典) 按需下载缓存 (下沉自 app 端 `utils/RemoteAssetsUtils.kt`)。
  *
  * Android 专属依赖已换成 KMP 抽象: `appCtx.cacheDir` → [AppFilesDirs];
- * `appCtx.assets` → [readAppAssetBytes]; `okHttpClient` → [OkHttpClientProviders];
+ * `appCtx.assets` → [readSharedResourceBytes]; `okHttpClient` → [OkHttpClientProviders];
  * `AppConst.appInfo.versionName` → [PlatformCapabilityProviders]。
  */
 object RemoteAssetsUtils {
 
-    private const val BASE_URL = "https://fastly.jsdelivr.net/gh"
-    private const val BG_DIR = "huajideshutiao/legado@master/app/src/main/assets/bg"
+    private const val BASE_URL = "https://cdn.jsdelivr.net/gh"
+
+    // 内置背景图远程下载目录 (原版逻辑: 全图不随包, 运行时下载到本地缓存; master 已删该目录,
+    // 固定 commit de37cc824b 实测 200)。路径字面量单一数据源在共享 BG_CDN_PATH (见 BgImageSources.kt)
+    private const val BG_DIR = BG_CDN_PATH
     private const val BG_PREVIEW_DIR = "bg_preview"
     private const val TC_DIR =
         "liuyueyi/quick-chinese-transfer@master/transfer-core/src/main/resources/tc"
@@ -43,8 +47,25 @@ object RemoteAssetsUtils {
         File(remoteAssetsDir, "tc").apply { if (!exists()) mkdirs() }
     }
 
+    /**
+     * 内置背景缩略图: 单一数据源在 shared composeResources `files/bg_preview/`
+     * (commonMain/composeResources/files/bg_preview, 四端同一份), 本地读取零网络。
+     */
     fun getBgPreviewBytes(fileName: String): ByteArray? {
-        return readAppAssetBytes("$BG_PREVIEW_DIR/$fileName")
+        return readSharedResourceBytes("$BG_PREVIEW_DIR/$fileName")
+    }
+
+    /**
+     * 取内置背景图全尺寸原图字节 (原版逻辑: 全图不随包, 远程下载到本地缓存):
+     * 一级本地缓存 (对照原版 curBgDrawable: 缓存文件存在即用, 下载过就永久可用),
+     * 二级 CDN 下载 (commit 级地址, master 已删该目录)。
+     */
+    suspend fun getBgBytes(fileName: String): ByteArray? {
+        val cacheFile = getBgCachePath(fileName)
+        if (cacheFile.isFile && cacheFile.length() > 0) {
+            return withContext(Dispatchers.IO) { cacheFile.readBytes() }
+        }
+        return downloadBgIfNeeded(fileName)
     }
 
     suspend fun downloadBgIfNeeded(fileName: String): ByteArray? {

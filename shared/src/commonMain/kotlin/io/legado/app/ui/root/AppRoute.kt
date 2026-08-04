@@ -159,10 +159,6 @@ sealed interface AppRoute {
     @SerialName("rule_sub")
     data object RuleSub : AppRoute
 
-    @Serializable
-    @SerialName("effective_replaces")
-    data object EffectiveReplaces : AppRoute
-
     // 三端合并: 书架/搜索/导入类
     @Serializable
     @SerialName("bookshelf_manage")
@@ -174,6 +170,9 @@ sealed interface AppRoute {
         val index: Int = 0,
         val word: String? = null,
         val initialResults: List<SearchResult>? = null,
+        // 当前书籍 (阅读页全文搜索入口传入; 修复: SearchContent 页面 book 曾依赖
+        // IntentData.book 全局槽, 路由跳转未设置 → book 恒 null → 只跳界面不搜索, 2026-08-06)
+        val book: BookRef? = null,
     ) : AppRoute
 
     @Serializable
@@ -214,34 +213,6 @@ sealed interface AppRoute {
     @SerialName("welcome_config")
     data object WelcomeConfig : AppRoute
 
-    @Serializable
-    @SerialName("read_config")
-    data object ReadConfig : AppRoute
-
-    @Serializable
-    @SerialName("read_aloud_config")
-    data object ReadAloudConfig : AppRoute
-
-    @Serializable
-    @SerialName("padding_config")
-    data object PaddingConfig : AppRoute
-
-    @Serializable
-    @SerialName("tip_config")
-    data object TipConfig : AppRoute
-
-    @Serializable
-    @SerialName("more_config")
-    data object MoreConfig : AppRoute
-
-    @Serializable
-    @SerialName("bg_text_config")
-    data object BgTextConfig : AppRoute
-
-    @Serializable
-    @SerialName("read_style")
-    data object ReadStyle : AppRoute
-
     // 三端合并: 工具类 (WebView/登录/JS/关联)
     // 字段对应原 app 端 WebViewActivity 的 intent extras:
     // title/sourceName/sourceKey/sourceType (initData 取书源 headerMap 用),
@@ -259,18 +230,6 @@ sealed interface AppRoute {
         val saveResult: Boolean = false,
         val refetchAfterSuccess: Boolean = true,
     ) : AppRoute
-
-    /**
-     * 书源登录页。
-     *
-     * [dataKey] 指向 [io.legado.app.help.SourceLoginContext]（源对象 + book/chapter JS 上下文），
-     * 对照原版 `IntentData.nowSource/nowBook/nowChapter`：HttpTTS 等不在 bookSourceDao 的源
-     * 只能靠它拿到，登录 JS 的 book/chapter 绑定也只能靠它传。
-     * 为空（或进程重建后失效）时退化为按 [sourceUrl] 查库。
-     */
-    @Serializable
-    @SerialName("login")
-    data class Login(val sourceUrl: String, val dataKey: String? = null) : AppRoute
 
     @Serializable
     @SerialName("js_edit")

@@ -15,8 +15,8 @@ import io.legado.app.help.http.BackstageWebViewProviders
 import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.help.http.StrResponse
 import io.legado.app.help.source.SourceVerificationHelpShared
+import io.legado.app.help.toast.Toasters
 import io.legado.app.help.ui.OpenUrlProviders
-import io.legado.app.help.ui.ToastProviders
 import io.legado.app.model.Debug
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.analyzeRule.CustomUrl
@@ -435,11 +435,11 @@ interface JsExtensionsCommon {
     //****************** P1: UI 反馈 (toast/longToast/getWebViewUA/openUrl, 走 Providers) ******************
 
     /**
-     * 弹窗提示 (走 [ToastProviders], 由宿主端注册)
+     * 弹窗提示 (走 [Toasters], 由宿主端注册)
      */
     fun toast(msg: Any?) {
         jsContext.ensureActive()
-        ToastProviders.get().showToast("${getSource()?.getTag()}: ${msg.toString()}", long = false)
+        Toasters.get().toast("${getSource()?.getTag()}: $msg")
     }
 
     /**
@@ -447,7 +447,7 @@ interface JsExtensionsCommon {
      */
     fun longToast(msg: Any?) {
         jsContext.ensureActive()
-        ToastProviders.get().showToast("${getSource()?.getTag()}: ${msg.toString()}", long = true)
+        Toasters.get().toastLong("${getSource()?.getTag()}: $msg")
     }
 
     /**
@@ -676,6 +676,11 @@ interface JsExtensionsCommon {
      * @param url zip文件的链接或十六进制字符串
      * @param path 所需获取文件在zip内的路径
      * @return zip指定文件的数据
+     *
+     * 与原 app 端差异 (2026-08-06 对照确认): 原版用 ZipInputStream 逐条目线性扫描且
+     * while 条件与循环尾双重推进 nextEntry, 奇数位条目永远匹配不到 (原版 bug);
+     * 本实现经 [ArchiveProviders] 走索引解析 (RemoteZipCore ensureMeta 精确匹配),
+     * 为修复版, 保持现状。
      */
     fun getZipByteArrayContent(url: String, path: String): ByteArray? {
         val bytes = if (url.isAbsUrl()) {
@@ -783,7 +788,14 @@ interface JsExtensionsCommon {
     /**
      * 获取缓存文件绝对路径
      * @param path 相对路径
-     * @return 绝对路径字符串 (原 app 端返回 File, 改返回 String 解级联依赖, JS 调用方需适配)
+     * @return 绝对路径字符串
+     *
+     * 备注 (与原 app 端差异, 2026-08-06 用户拍板只备注不修):
+     * 原版返回 java.io.File 对象 (JS 可调 .exists()/.readBytes() 等); 本实现返回路径
+     * String —— commonMain 跨平台签名统一所需 (native 端无法暴露 Java File 对象),
+     * 属迁移时的能力退化, 书源 JS 按 File 用法的调用需适配为字符串 + 现有工具函数。
+     * 安全校验未丢: [FileUtilsCommon.resolveCachePath] 复刻原版路径解析 + 非法路径
+     * SecurityException 检查。
      */
     fun getFile(path: String): String {
         return FileUtilsCommon.resolveCachePath(path)
@@ -905,8 +917,20 @@ interface JsExtensionsCommon {
         )
         FileUtilsCommon.createFileReplace(path)
         return try {
-            val bytes = analyzeUrl.getByteArray()
-            FileUtilsCommon.writeBytes(path, bytes)
+            // 流式优先 (对齐原版 getInputStream().copyTo, 大文件不整块缓冲);
+            // iOS/鸿蒙 byteStreamAsInput 暂不可用 (见 JvmPlatformTypes), 自动回退全量缓冲
+            // 注: commonMain expect InputStream 未实现 Closeable, use{} 不可用, 手动 try-finally
+            val ok = runCatching {
+                val input = analyzeUrl.getInputStream()
+                try {
+                    FileUtilsCommon.copyToFile(path, input)
+                } finally {
+                    input.close()
+                }
+            }.getOrDefault(false)
+            if (!ok) {
+                FileUtilsCommon.writeBytes(path, analyzeUrl.getByteArray())
+            }
             path.substring(FileUtilsCommon.getCachePath().length)
         } catch (e: Throwable) {
             FileUtilsCommon.delete(path, true)

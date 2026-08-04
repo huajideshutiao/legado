@@ -31,10 +31,10 @@ import kotlinx.coroutines.launch
  * - 否则 loginUrl 非空 -> WebView 登录 (对照 `WebViewActivity` isLogin=true), cookie 持久化
  *   由平台 WebView slot 在 onPageFinished 内调
  *   `CookieStoreProviders.get().setCookie(source.getKey(), cookie)` 完成;
- * - [loginComplete] 投递 [loginCompleteFlow] 信号, 由 Route pop。
+ * - [loginComplete] 投递 [loginCompleteFlow] 信号, 由 Overlay 关闭。
  *
- * 源对象优先取路由携带的 [SourceLoginContext] (对照原版 `IntentData.nowSource`), 拿不到再按
- * sourceUrl 查库; HttpTTS (key 形如 `httpTts:$id`) 不在 bookSourceDao, 只能走前者或 id 反查。
+ * 源对象优先取 Overlay payload 携带的 [SourceLoginContext] (对照原版 `IntentData.nowSource`),
+ * 拿不到再按 sourceUrl 查库; HttpTTS (key 形如 `httpTts:$id`) 不在 bookSourceDao, 只能走前者或 id 反查。
  */
 class LoginScreenModel : ScreenModel {
 
@@ -54,11 +54,11 @@ class LoginScreenModel : ScreenModel {
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
 
-    /** 刷新信号: 每次点刷新都投递一次, 由 Route 重建平台 WebView。 */
+    /** 刷新信号: 每次点刷新都投递一次, 由 Overlay 重建平台 WebView。 */
     private val _refreshFlow = signalFlow<Unit>()
     val refreshFlow: SharedFlow<Unit> = _refreshFlow.asSharedFlow()
 
-    /** 登录完成信号 (对照 app 端 menu_ok 后 finish()), 由 Route pop。 */
+    /** 登录完成信号 (对照 app 端 menu_ok 后 finish()), 由 Overlay 关闭。 */
     private val _loginCompleteFlow = signalFlow<Unit>()
     val loginCompleteFlow: SharedFlow<Unit> = _loginCompleteFlow.asSharedFlow()
 
@@ -78,7 +78,9 @@ class LoginScreenModel : ScreenModel {
         if (_state.value.source != null) return
         scope.launch {
             val context = SourceLoginContext.take(dataKey)
-            val source = context?.source ?: loadSource(sourceUrl)
+            // 查库失败 (DB 未就绪等) 按源缺失处理: loading 必须落 false,
+            // 由 Overlay 的"无内容可登录"分支关闭对话框, 不能卡在加载态
+            val source = runCatching { context?.source ?: loadSource(sourceUrl) }.getOrNull()
             _state.update {
                 it.copy(
                     source = source,

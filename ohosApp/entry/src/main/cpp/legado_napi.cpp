@@ -87,6 +87,8 @@ typedef int (*legado_str_int_fn)(const char*);
 typedef int (*legado_int_fn)(void);
 typedef void (*legado_void_fn)(void);
 typedef void (*legado_cstr_void_fn)(const char*);
+
+typedef void (*legado_int_int_void_fn)(int, int);
 typedef void (*legado_cstr_cstr_void_fn)(const char*, const char*);
 typedef void (*legado_int64_cstr_void_fn)(int64_t, const char*);
 
@@ -129,6 +131,9 @@ static legado_cstr_void_fn g_delete_explore_source = nullptr;    // (sourceUrl) 
 // dlsym 加载的函数指针 - FileDir/CacheDir 路径注入 (KP7+ 新增, ArkTS → Kotlin 同步推送)
 static legado_cstr_void_fn g_register_file_dir = nullptr;
 static legado_cstr_void_fn g_register_cache_dir = nullptr;
+
+// dlsym 加载的函数指针 - 屏幕尺寸注入 (ArkTS → Kotlin 同步推送, 同 FileDir 模式)
+static legado_int_int_void_fn g_register_screen_size = nullptr;
 
 // dlsym 加载的函数指针 - legado:// deep link 投递 (ArkTS → Kotlin 同步推送, 返回是否已识别)
 static legado_str_int_fn g_handle_deep_link = nullptr;
@@ -186,6 +191,10 @@ static legado_int64_cstr_void_fn g_pasteboard_callback = nullptr;
 static legado_register_dispatch_fn g_register_text_codec_fn = nullptr;
 static legado_int64_cstr_void_fn g_text_codec_callback = nullptr;
 
+// dlsym 加载的函数指针 - TextAction tsfn 注入 + ArkTS → Kotlin 菜单动作回调 (阅读页文本操作浮动菜单, KP8+ 新增)
+static legado_register_dispatch_fn g_register_text_action_fn = nullptr;
+static legado_int64_cstr_void_fn g_text_action_callback = nullptr;
+
 // dlsym 加载的函数指针 - WebView tsfn 注入 + ArkTS → Kotlin 回调 (混合协议: 控制面 JSON + 数据面裸字符串, 后台 WebView 抓取)
 static legado_register_webview_dispatch_fn g_register_webview_fn = nullptr;
 static legado_int64_cstr_cstr_void_fn g_webview_callback = nullptr;
@@ -199,6 +208,7 @@ static napi_threadsafe_function g_tts_tsfn = nullptr;
 static napi_threadsafe_function g_crypto_tsfn = nullptr;
 static napi_threadsafe_function g_http_tsfn = nullptr;
 static napi_threadsafe_function g_open_url_tsfn = nullptr;
+static napi_threadsafe_function g_text_action_tsfn = nullptr;
 static napi_threadsafe_function g_file_picker_tsfn = nullptr;
 static napi_threadsafe_function g_pasteboard_tsfn = nullptr;
 static napi_threadsafe_function g_text_codec_tsfn = nullptr;
@@ -245,6 +255,9 @@ static bool load_legado_shared() {
     g_register_file_dir = (legado_cstr_void_fn)dlsym(g_legado_so, "legado_register_file_dir");
     g_register_cache_dir = (legado_cstr_void_fn)dlsym(g_legado_so, "legado_register_cache_dir");
 
+    // 解析 @CName 导出符号 - 屏幕尺寸注入
+    g_register_screen_size = (legado_int_int_void_fn) dlsym(g_legado_so, "legado_register_screen_size");
+
     // 解析 @CName 导出符号 - legado:// deep link 投递
     g_handle_deep_link = (legado_str_int_fn)dlsym(g_legado_so, "legado_handle_deep_link");
 
@@ -284,6 +297,10 @@ static bool load_legado_shared() {
     // 解析 @CName 导出符号 - TextCodec tsfn 注入 + ArkTS → Kotlin 回调 (同 Pasteboard 模式)
     g_register_text_codec_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_text_codec_fn");
     g_text_codec_callback = (legado_int64_cstr_void_fn)dlsym(g_legado_so, "legado_text_codec_callback");
+
+    // 解析 @CName 导出符号 - TextAction tsfn 注入 + ArkTS → Kotlin 菜单动作回调
+    g_register_text_action_fn = (legado_register_dispatch_fn) dlsym(g_legado_so, "legado_register_text_action_fn");
+    g_text_action_callback = (legado_int64_cstr_void_fn) dlsym(g_legado_so, "legado_text_action_callback");
 
     // 解析 @CName 导出符号 - WebView tsfn 注入 + ArkTS → Kotlin 回调 (混合协议: 控制面 JSON + 数据面裸字符串)
     g_register_webview_fn = (legado_register_webview_dispatch_fn) dlsym(g_legado_so, "legado_register_webview_fn");
@@ -689,6 +706,31 @@ static napi_value RegisterCacheDir(napi_env env, napi_callback_info info) {
         g_register_cache_dir(buf);
     }
     delete[] buf;
+
+    napi_value ret;
+    napi_get_undefined(env, &ret);
+    return ret;
+}
+
+// ============ 屏幕尺寸注入 napi 包装 (ArkTS → Kotlin 同步推送, 同 FileDir 模式) ============
+
+// napi 包装: registerScreenSize(widthPx: number, heightPx: number): void  注入显示物理像素尺寸
+// 调用方: EntryAbility.onWindowStageCreate (loadContent 之前, 任何 shared 对话框尺寸计算之前),
+// 由 Kotlin LegadoNativeExports.registerScreenSize → OhosNativeBridge.registerScreenSizeFn 存储;
+// sharedUiMain AppDialogSizes 兜底取 ScreenInfoProviders.get() (未注册时 error 导致对话框崩溃)。
+static napi_value RegisterScreenSize(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    int32_t width = 0;
+    int32_t height = 0;
+    napi_get_value_int32(env, args[0], &width);
+    napi_get_value_int32(env, args[1], &height);
+
+    if (load_legado_shared() && g_register_screen_size != nullptr) {
+        g_register_screen_size(width, height);
+    }
 
     napi_value ret;
     napi_get_undefined(env, &ret);
@@ -1932,6 +1974,109 @@ static napi_value TextCodecCallback(napi_env env, napi_callback_info info) {
     return ret;
 }
 
+// ============ TextAction tsfn 接线 (阅读页文本操作浮动菜单, 同 OpenUrl fire-and-forget + ArkTS → Kotlin 回调) ============
+// - KMP OhosReaderPlatformProvider.onTextSelected → OhosNativeBridge.showTextActionMenu(text, x, y)
+// - 请求经 C++ ohos_text_action_dispatch → napi_call_threadsafe_function → ArkTS 主线程回调
+// - ArkTS TextActionBridgeHandler + Index.ets 叠层浮动菜单展示, 菜单项点击经
+//   TextActionCallback(requestId, resultJson) (napi → @CName legado_text_action_callback) 回送动作
+
+// C++ dispatch 入口: 由 Kotlin lambda (注入到 OhosNativeBridge.textActionTsfn) 调用
+extern "C" void ohos_text_action_dispatch(const char *json) {
+    if (g_text_action_tsfn == nullptr || json == nullptr) return;
+    size_t len = strlen(json) + 1;
+    char *json_dup = (char *) malloc(len);
+    if (json_dup == nullptr) return;
+    memcpy(json_dup, json, len);
+    napi_status status = napi_call_threadsafe_function(g_text_action_tsfn, json_dup, napi_tsfn_nonblocking);
+    if (status != napi_ok) {
+        free(json_dup);
+    }
+}
+
+// tsfn call-js 回调: 在 ArkTS 主线程执行, 把 data (JSON 串) 包成 napi string 后调用 ArkTS 回调
+static void TextActionCallJs(napi_env env, napi_value js_cb, void * /*context*/, void *data) {
+    if (js_cb == nullptr || data == nullptr) return;
+    char *json = static_cast<char *>(data);
+    napi_value json_arg;
+    napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
+    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
+    free(json);
+}
+
+// napi 包装: registerTextActionCallback(callback: (json: string) => void): void
+// ArkTS 注册文本菜单回调; C++ 创建 tsfn, 通过 legado_register_text_action_fn 注入 ohos_text_action_dispatch 到 Kotlin
+static napi_value RegisterTextActionCallback(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) {
+        napi_throw_type_error(env, nullptr, "registerTextActionCallback requires 1 argument (callback)");
+        napi_value ret;
+        napi_get_undefined(env, &ret);
+        return ret;
+    }
+
+    if (g_text_action_tsfn != nullptr) {
+        napi_release_threadsafe_function(g_text_action_tsfn, napi_tsfn_abort);
+        g_text_action_tsfn = nullptr;
+    }
+
+    napi_value work_name;
+    napi_create_string_utf8(env, "LegadoTextActionTsfn", NAPI_AUTO_LENGTH, &work_name);
+    napi_threadsafe_function tsfn;
+    napi_status status = napi_create_threadsafe_function(
+            env, args[0], work_name, nullptr, 0, 1,
+            nullptr, nullptr, nullptr, nullptr, TextActionCallJs, &tsfn);
+    if (status != napi_ok) {
+        OH_LOG_ERROR(LOG_APP, "registerTextActionCallback: napi_create_threadsafe_function failed: %{public}d", status);
+        napi_value ret;
+        napi_get_undefined(env, &ret);
+        return ret;
+    }
+    g_text_action_tsfn = tsfn;
+
+    if (load_legado_shared() && g_register_text_action_fn != nullptr) {
+        g_register_text_action_fn(&ohos_text_action_dispatch);
+    } else {
+        OH_LOG_WARN(LOG_APP, "registerTextActionCallback: legado_register_text_action_fn not resolved (KMP showTextActionMenu 将降级 println)");
+    }
+
+    napi_value ret;
+    napi_get_undefined(env, &ret);
+    return ret;
+}
+
+// napi 包装: textActionCallback(requestId: number, resultJson: string): void
+// ArkTS 菜单项点击/收起 → C++ 转发 @CName legado_text_action_callback → KMP OhosNativeBridge.onTextActionResult
+static napi_value TextActionCallback(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 2) {
+        napi_throw_type_error(env, nullptr, "textActionCallback requires 2 arguments (requestId, resultJson)");
+        napi_value ret;
+        napi_get_undefined(env, &ret);
+        return ret;
+    }
+
+    int64_t request_id = 0;
+    napi_get_value_int64(env, args[0], &request_id);
+
+    size_t str_len = 0;
+    napi_get_value_string_utf8(env, args[1], nullptr, 0, &str_len);
+    char *buf = new char[str_len + 1];
+    napi_get_value_string_utf8(env, args[1], buf, str_len + 1, &str_len);
+
+    if (load_legado_shared() && g_text_action_callback != nullptr) {
+        g_text_action_callback(request_id, buf);
+    }
+    delete[] buf;
+
+    napi_value ret;
+    napi_get_undefined(env, &ret);
+    return ret;
+}
+
 // napi module 初始化: 注册所有方法
 EXTERN_C_START
 static napi_value Init(napi_env env, napi_value exports) {
@@ -1962,6 +2107,8 @@ androidx_compose_ui_arkui_init(env, exports
         // FileDir/CacheDir 路径注入 (KP7+ 新增, ArkTS → Kotlin 同步推送)
         {"registerFileDir", nullptr, RegisterFileDir, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"registerCacheDir", nullptr, RegisterCacheDir, nullptr, nullptr, nullptr, napi_default, nullptr},
+            // 屏幕尺寸注入 (ArkTS → Kotlin 同步推送, 同 FileDir 模式)
+            {"registerScreenSize", nullptr, RegisterScreenSize, nullptr, nullptr, nullptr, napi_default, nullptr},
         // legado:// deep link 投递 (ArkTS → Kotlin 同步推送, 返回是否已识别)
         {"handleDeepLink", nullptr, HandleDeepLink, nullptr, nullptr, nullptr, napi_default, nullptr},
         // Toast/Notification tsfn 回调注册 (KP7+ 新增, KMP → ArkTS 跨线程 dispatch)
@@ -1993,6 +2140,8 @@ androidx_compose_ui_arkui_init(env, exports
         {"pasteboardCallback", nullptr, PasteboardCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
         // TextCodec tsfn 回调注册 + ArkTS → Kotlin 回调 (同 Pasteboard 模式, decode/encode)
         {"registerTextCodecCallback", nullptr, RegisterTextCodecCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
+            {"registerTextActionCallback", nullptr, RegisterTextActionCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
+            {"textActionCallback", nullptr, TextActionCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"textCodecCallback", nullptr, TextCodecCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
             // WebView tsfn 回调注册 + ArkTS → Kotlin 回调 (后台 WebView 抓取, 同 Http/Image 模式)
             {"registerWebViewCallback", nullptr, RegisterWebViewCallback, nullptr, nullptr, nullptr, napi_default, nullptr},

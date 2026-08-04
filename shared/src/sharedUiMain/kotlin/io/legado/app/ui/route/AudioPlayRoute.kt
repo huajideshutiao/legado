@@ -14,6 +14,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Bookmark
@@ -21,9 +22,11 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isNotShelf
+import io.legado.app.help.book.migrateTo
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.sourceLoginOverlayPayload
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.audio.AudioPlayOverflowActions
@@ -34,6 +37,7 @@ import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
@@ -59,7 +63,8 @@ import org.jetbrains.compose.resources.stringResource
  *
  * 对照 app 端 [io.legado.app.ui.book.audio.AudioPlayActivity]:
  * - onActivityCreated viewModel.initData → Init 事件
- * - showChangeSource / openChapterList → push ChangeSource / Toc (带 resultKey)
+ * - showChangeSource → ChangeSourceDialogHost 全高底部弹窗 (原版 ChangeBookSourceDialog);
+ *   openChapterList → push Toc (带 resultKey)
  * - showLogin / copyAudioUrl / showSourceVariable / showBookVariable / editSource / addBookmark / showAppLog →
  *   构造 [AudioPlayOverflowActions] 交由 shared [io.legado.app.ui.book.audio.AudioPlayScreenContent] 渲染溢出菜单
  * - finish: !inBookshelf 时弹加书架确认 (对照 Activity.finish alert)
@@ -108,18 +113,6 @@ fun AudioPlayRoute(
                     }
                 }
 
-                RouteResults.CHANGE_SOURCE -> {
-                    // 换源回传新 source + book + toc (对照 Activity changeSourceResult)
-                    (result.payload as? RouteResultPayload.ChangeSource)?.let { cs ->
-                        AudioPlayShared.bookSource = cs.source
-                        AudioPlayShared.chapterList = cs.toc
-                        scope.launch {
-                            AudioPlayShared.resetData(cs.book)
-                            screenModel.dispatch(AudioPlayUiEvent.UpdateInShelf(!cs.book.isNotShelf))
-                        }
-                    }
-                }
-
                 RouteResults.BOOK_SOURCE_EDIT -> {
                     // 书源编辑后重新拉取 (对照 Activity upSource)
                     AudioPlayShared.book?.let { b ->
@@ -145,6 +138,8 @@ fun AudioPlayRoute(
     var pendingBookmark by remember { mutableStateOf<Bookmark?>(null) }
     // 发布输入弹窗 (对照原版 ReviewPostActivity 底部输入面板): 书籍级书评 (无回复预览)
     var showPostDialog by remember { mutableStateOf(false) }
+    // 整书换源弹窗显示开关 (对照原版 menu_change_source → showDialogFragment(ChangeBookSourceDialog))
+    var showChangeSourceDialog by remember { mutableStateOf(false) }
 
     // 退出加书架确认弹窗 (对照 Activity.finish: !inBookshelf 时弹确认)
     var showAddToShelfDialog by remember { mutableStateOf(false) }
@@ -173,13 +168,18 @@ fun AudioPlayRoute(
     val overflowActions = AudioPlayOverflowActions(
         hasLogin = source?.hasLogin() == true,
         onLogin = {
-            // 对照 BookInfoRoute/MainRoute: 跳 shared LoginRoute, 不走平台专属 showBookSourceLogin
+            // 对照 BookInfoRoute/MainRoute: 纯 Overlay 弹登录对话框, 不走平台专属 showBookSourceLogin
             // 带上书与当前章, 供登录 JS 绑定 (对照原版 menu_login 预置 IntentData.book/chapter)
             source?.let {
                 val dataKey = SourceLoginContext.put(
                     it, AudioPlayShared.book, AudioPlayShared.durChapter
                 )
-                navigator.push(AppRoute.Login(it.bookSourceUrl, dataKey))
+                navigator.showOverlay(
+                    AppOverlay.Dialog(
+                        key = "sourceLogin",
+                        payload = sourceLoginOverlayPayload(it.bookSourceUrl, dataKey),
+                    )
+                )
             }
         },
         onCopyAudioUrl = {
@@ -232,10 +232,8 @@ fun AudioPlayRoute(
         state = state,
         onBack = onBack,
         onOpenChangeSource = {
-            navigator.push(
-                AppRoute.ChangeSource(book.toRouteRef()),
-                resultKey = RouteResults.CHANGE_SOURCE
-            )
+            // 对照原版 menu_change_source → showDialogFragment(ChangeBookSourceDialog) 全高底部弹窗
+            showChangeSourceDialog = true
         },
         onOpenToc = {
             // 对照 app 端 AudioPlayActivity.openChapterList: 未加书架的书目录不落库, 走内存传递
@@ -324,6 +322,44 @@ fun AudioPlayRoute(
                     navigator.pop()
                 }
             },
+        )
+    }
+
+    // 整书换源弹窗 (对照原版 menu_change_source → ChangeBookSourceDialog 全高底部弹窗, 同阅读页/详情页同款)
+    if (showChangeSourceDialog) {
+        ChangeSourceDialogHost(
+            book = AudioPlayShared.book ?: book,
+            onSourceChanged = { source, newBook, toc ->
+                showChangeSourceDialog = false
+                // 对照原版 AudioPlayActivity.changeTo → BaseReadViewModel.changeTo:
+                // 1) migrateTo 把当前章/进度/分组迁移到新书 (换源后回到当前章)
+                // 2) 书架书落库: 删旧书 + 插新书 + 插新目录
+                // 3) 切源数据落地: bookSource/chapterList/resetData (对照原 changeSourceResult)
+                scope.launch {
+                    runCatching {
+                        AudioPlayShared.book?.let { oldBook ->
+                            oldBook.migrateTo(newBook, toc)
+                            if (AudioPlayShared.inBookshelf) {
+                                newBook.removeType(BookType.updateError)
+                                AppDbProviders.get().bookDao.delete(oldBook)
+                                AppDbProviders.get().bookDao.insert(newBook)
+                                AppDbProviders.get().bookChapterDao.insert(*toc.toTypedArray())
+                            }
+                        }
+                    }.onFailure {
+                        AppLog.put("换源失败\n$it", it, true)
+                    }
+                    AudioPlayShared.bookSource = source
+                    AudioPlayShared.chapterList = toc
+                    AudioPlayShared.resetData(newBook)
+                    screenModel.dispatch(AudioPlayUiEvent.UpdateInShelf(!newBook.isNotShelf))
+                }
+            },
+            onEditSource = { origin ->
+                navigator.push(AppRoute.BookSourceEdit(origin), RouteResults.BOOK_SOURCE_EDIT)
+            },
+            onBookSourceManage = { navigator.push(AppRoute.BookSourceManage) },
+            onDismiss = { showChangeSourceDialog = false },
         )
     }
 }

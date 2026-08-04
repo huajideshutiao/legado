@@ -1,5 +1,6 @@
 package io.legado.desktop.js
 
+import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.file.desktopAppCacheDir
 import io.legado.app.model.SharedJsScope
 import io.legado.app.model.script.JsBindingInjector
@@ -8,6 +9,7 @@ import io.legado.app.model.script.JsEngines
 import io.legado.app.model.script.quickjs.QuickJsJsEngine
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.utils.ChineseUtils
+import io.legado.app.utils.RemoteAssetsUtils
 import io.legado.app.utils.TcDictCachePathProvider
 import io.legado.desktop.image.DesktopImageOps
 import java.io.File
@@ -31,7 +33,7 @@ import java.nio.file.Paths
  *    仅 jsLib URL 下载内容缓存从 ACache 改为 in-memory Map);
  * 4. 注册 [ChineseUtils.pathProvider] 为 [DesktopTcDictCachePathProvider]
  *    (简繁词典缓存文件定位器, 指向 `{java.io.tmpdir}/legado/cache/tc_cache/` 目录;
- *    桌面端不实现后台拉取, 文件不存在时 ChineseUtils.loadDict 会 fallback 到
+ *    桌面端与 app 端一致: 词典缓存缺失时在 loadDict 调用处 (功能实际使用时) 后台拉取
  *    quick-transfer 自带默认词典, 行为可用但不持久化)。
  *
  * # 与 Android 端 `registerAndroidJsEngines` 的差异
@@ -40,7 +42,7 @@ import java.nio.file.Paths
  *   在 registerAndroidJsEngines 内注册; 桌面端移到 [io.legado.desktop.help.source.registerDesktopSourceProviders]
  *   统一注册 (业务 provider 与 JS 引擎注册解耦, 便于维护);
  * - Android 端调用 registerAndroidChineseUtils 注册 TcDictCachePathProvider (含后台拉取副作用);
- *   桌面端在 registerDesktopJsEngines 内直接注册简化版 (无后台拉取)。
+ *   桌面端在 registerDesktopJsEngines 内注册同语义实现 (缺失即后台拉取, 2026-08-06 补)。
  *
  * # native 库依赖
  * `QuickJsJsEngine.eval` 内部调 `QuickJsEngine.eval` -> JNI -> native legado_quickjs 库,
@@ -67,7 +69,7 @@ fun registerDesktopJsEngines() {
         }
     }
     // 注册简繁词典缓存定位器 (替代 app 端 registerAndroidChineseUtils)
-    // 桌面端不实现后台拉取, 文件不存在时 ChineseUtils.loadDict fallback 到 quick-transfer 默认词典
+    // 词典缓存缺失时后台拉取 (仅在 loadDict 实际调用时触发, 对照原版"用到时再下载"语义)
     ChineseUtils.pathProvider = DesktopTcDictCachePathProvider
 }
 
@@ -91,5 +93,11 @@ private val DesktopTcDictCachePathProvider = TcDictCachePathProvider { fileName 
     // 与 DesktopAppFilesDir.cacheDir 同根: 系统临时目录 {java.io.tmpdir}/legado/cache
     val cacheRoot = Paths.get(desktopAppCacheDir(), "tc_cache")
     Files.createDirectories(cacheRoot)
-    File(cacheRoot.toFile(), fileName)
+    val file = File(cacheRoot.toFile(), fileName)
+    // 缺失即后台拉取 (对照 app 端 ChineseUtilsUi.registerAndroidChineseUtils 的下载副作用,
+    // 2026-08-06 补: 此前桌面端只定位不下载, 每次启动回落 quick-transfer 默认词典加载慢)
+    if (!file.exists() || file.length() == 0L) {
+        Coroutine.async { RemoteAssetsUtils.downloadTcIfNeeded(fileName) }
+    }
+    file
 }

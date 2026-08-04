@@ -42,8 +42,12 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.add
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import kotlin.native.CName
 
@@ -571,6 +575,28 @@ object LegadoNativeExports {
         OhosNativeBridge.registerCacheDirFn(path.toKString())
     }
 
+    /**
+     * 注入显示物理像素尺寸 (ArkTS EntryAbility.onWindowStageCreate 调用)。
+     *
+     * 调用链: `ArkTS EntryAbility` → `legado.registerScreenSize(w, h)` →
+     * napi (legado_napi.cpp RegisterScreenSize) → dlsym("legado_register_screen_size") →
+     * 本函数 → [OhosNativeBridge.registerScreenSizeFn]。
+     *
+     * # 时机
+     * EntryAbility.onWindowStageCreate 中 loadContent 之前调用 (任何 shared 对话框尺寸计算之前;
+     * sharedUiMain AppDialogSizes 未注册 ScreenInfoProviders 时 get() 直接 error 导致对话框崩溃)。
+     *
+     * # 跨语言传递
+     * 两个 int 直接传 (无需 JSON 包装: payload 仅两字段, 与 registerFileDir 同思路)。
+     *
+     * @param widthPx 显示物理像素宽度 (vp × densityPixels, 与 iOS nativeBounds / Android displayMetrics 语义一致)
+     * @param heightPx 显示物理像素高度
+     */
+    @CName("legado_register_screen_size")
+    fun registerScreenSize(widthPx: Int, heightPx: Int) {
+        OhosNativeBridge.registerScreenSizeFn(widthPx, heightPx)
+    }
+
     // ===== legado:// deep link 投递 (ArkTS → Kotlin, 被动接收无回调) =====
 
     /**
@@ -971,6 +997,46 @@ object LegadoNativeExports {
                 dispatch(json.cstr.getPointer(this))
             }
         }
+    }
+
+    // ===== TextAction tsfn 注入 + ArkTS → KMP 菜单动作回调 (阅读页文本操作浮动菜单) =====
+
+    /**
+     * 注入 textAction dispatch 函数指针 (由 legado_napi.cpp RegisterTextActionCallback 调用)。
+     *
+     * 注入到 [OhosNativeBridge.textActionTsfn], 使 KMP [OhosNativeBridge.showTextActionMenu]
+     * 能跨线程 dispatch 菜单请求到 ArkTS (Index.ets 叠层浮动菜单)。
+     *
+     * @param dispatch C++ tsfn dispatch 入口 (`ohos_text_action_dispatch`), 类型 `void(*)(const char*)`
+     */
+    @CName("legado_register_text_action_fn")
+    fun registerTextActionFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>) -> Unit>>) {
+        OhosNativeBridge.registerTextActionFn { json ->
+            memScoped {
+                dispatch(json.cstr.getPointer(this))
+            }
+        }
+    }
+
+    /**
+     * ArkTS → KMP 文本操作菜单动作回调 (由 legado_napi.cpp TextActionCallback 调用)。
+     *
+     * @param requestId 请求 ID (当前未用, 保留与其它回调一致的签名)
+     * @param result 动作 JSON: `{ action: "replace|copy|bookmark|aloud|dict|search_content|browser|share|view|refresh|save|__dismiss", text: "...", src?: "..." }`
+     *   (`view`/`save` 由 ArkTS 本地处理不回送, 回送的主要是 `refresh` (图片刷新);
+     *   `src` 为图片 src (图片菜单动作携带, 文本菜单为空);
+     *   `__dismiss` = 菜单收起, 取消页内选择, 对标原版 onMenuActionFinally)
+     */
+    @CName("legado_text_action_callback")
+    fun textActionCallback(requestId: Long, result: CPointer<ByteVar>) {
+        val json = result.toKString()
+        val payload = runCatching {
+            Json.parseToJsonElement(json).jsonObject
+        }.getOrNull() ?: return
+        val action = payload["action"]?.jsonPrimitive?.contentOrNull ?: return
+        val text = payload["text"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        val src = payload["src"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        OhosNativeBridge.onTextActionResult(action, text, src)
     }
 
     // ===== FilePicker tsfn 注入 + ArkTS → Kotlin 结果回调 (KP8+, 同 Image/Crypto/Http 模式) =====

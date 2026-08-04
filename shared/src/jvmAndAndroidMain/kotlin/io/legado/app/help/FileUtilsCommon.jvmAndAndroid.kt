@@ -9,6 +9,7 @@ import io.legado.app.help.FileUtilsCommon.resolveCachePath
 import io.legado.app.help.FileUtilsCommon.writeBytes
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.utils.FileUtilsBase
+import io.legado.app.utils.InputStream
 import java.io.File
 
 /**
@@ -64,6 +65,21 @@ internal actual object FileUtilsCommon {
     actual fun writeBytes(path: String, data: ByteArray): Boolean {
         // 委托 FileUtilsBase.writeBytes (自动创建父目录 + FileOutputStream, false on IOException)
         return FileUtilsBase.writeBytes(path, data)
+    }
+
+    actual fun copyToFile(path: String, input: InputStream): Boolean {
+        // 对齐原 app 端 downloadFile 的 inputStream.copyTo(outputStream) 语义
+        return try {
+            val file = File(path)
+            if (!file.exists()) {
+                file.parentFile?.mkdirs()
+                file.createNewFile()
+            }
+            file.outputStream().use { out -> input.copyTo(out) }
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     actual fun delete(path: String, deleteRootDir: Boolean): Boolean {

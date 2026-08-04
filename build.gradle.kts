@@ -47,7 +47,7 @@ subprojects {
                 if (requested.group == "io.ktor") {
                     useVersion("3.3.3-0.3.0")
                 }
-                if (requested.group?.startsWith("org.jetbrains.compose") == true) {
+                if (requested.group.startsWith("org.jetbrains.compose")) {
                     useVersion("1.9.2-0.4.0")
                 }
                 if (requested.group == "org.jetbrains.androidx") {

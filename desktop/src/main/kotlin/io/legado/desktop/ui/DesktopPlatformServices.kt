@@ -140,7 +140,7 @@ private class DesktopPermissionService : PermissionService {
     override fun requestPermission(permission: String): Boolean = true
 }
 
-// Window 全屏经 AWT GraphicsDevice 切换 (javafx Stage.setFullScreen 等价物), 仅供 F11 手动切换;
+// Window 全屏经 AWT GraphicsDevice 切换 (Stage.setFullScreen 等价物), 仅供 F11 手动切换;
 // 常亮/方向/系统栏桌面端无对应概念, no-op
 private class DesktopWindowController(
     private val handle: DesktopWindowHandle,

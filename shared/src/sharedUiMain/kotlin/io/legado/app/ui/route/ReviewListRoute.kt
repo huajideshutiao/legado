@@ -42,9 +42,10 @@ import org.jetbrains.compose.resources.stringResource
  * - 删除: [AppAlertDialog] 二次确认 (对照 alert(R.string.delete, R.string.confirm_delete_review))
  * - 长按: 复制内容 (对照 sendToClip)
  * - 头像/配图: photo overlay 看大图 (对照 PhotoDialog)
+ * - 回复详情: 复用共享 [ReviewListDialogHost] 再开一层底部弹窗 (对照 app 原版 openReplies)
  *
- * 未对齐项: 回复详情 (app 原版 openReplies 再开一层 Dialog) —— AppRoute 无对应路由,
- * 按任务约束不新造路由, 故 onOpenReplies 暂为空实现。
+ * 注: 四端 [io.legado.app.ui.root.PlatformCapabilities.showReviewListDialog] 已接入底部弹窗
+ * (见 [ReviewListDialogHost]), 本整页路由仅保留为兜底 (能力未注册/返回 false 时)。
  */
 @Composable
 fun ReviewListRoute(
@@ -73,6 +74,9 @@ fun ReviewListRoute(
     // 发布输入弹窗状态 (对照原版 ReviewPostActivity): preview 非空 = 回复该条
     var showPostDialog by remember { mutableStateOf(false) }
     var postReplyPreview by remember { mutableStateOf<String?>(null) }
+
+    // 回复详情: 目标段评 (原版 openReplies 再开一层 Dialog), 非空时弹 [ReviewListDialogHost]
+    var repliesTarget by remember { mutableStateOf<Review?>(null) }
 
     val pendingDelete = remember { mutableStateOf<Review?>(null) }
 
@@ -117,8 +121,10 @@ fun ReviewListRoute(
             pendingDelete.value = review
         }
 
-        // 回复详情: AppRoute 无对应路由, 按约束不新造, 暂空实现 (见本文件 KDoc)
-        override fun onOpenReplies(review: Review) = Unit
+        // 回复详情: 再开一层弹窗 (对照 app 端 openReplies → 新 ReviewListDialog, 回复模式)
+        override fun onOpenReplies(review: Review) {
+            if (!review.id.isNullOrBlank()) repliesTarget = review
+        }
 
         // 发书评: 清空 replyTo, 弹发布输入面板
         override fun onPostClick() {
@@ -139,6 +145,17 @@ fun ReviewListRoute(
     }
 
     ReviewListScreen(state = state, actions = actions)
+
+    // 回复详情层 (原版 openReplies 再开一层 Dialog): 复用共享底部弹窗宿主, 回复模式
+    repliesTarget?.let { review ->
+        ReviewListDialogHost(
+            book = book,
+            chapter = null,
+            paragraphIndex = -1,
+            parentReview = review,
+            onDismiss = { repliesTarget = null },
+        )
+    }
 
     // 发布输入弹窗 (对照原版 ReviewPostActivity 底部输入面板): 提交内容直连原 REVIEW_POST
     // 路由回传结果处理逻辑 (submit → shared VM 网络提交 + 列表重载)

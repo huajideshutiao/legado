@@ -271,6 +271,15 @@ interface PlatformCapabilities {
     /** 弹出导出配置对话框 (对照 showExportConfig) */
     fun showExportConfig() = unsupported("导出配置")
 
+    /**
+     * 弹出自定义导出章节配置对话框 (对照 app 端 configExportSection / dialog_select_section_export.xml):
+     * 导出全部 / 自定义导出 (章节范围 + epub 分卷大小 + epub 文件名 JS 规则)。
+     *
+     * @param path 已选定的导出目录
+     * @param books 待导出书籍 (自定义导出时逐本按 epubScope/epubSize 启动导出)
+     */
+    fun showExportSectionConfig(path: String, books: List<Book>) = unsupported("自定义导出章节")
+
     /** "导出替换"开关当前值 (对照 AppConfig.exportUseReplace) */
     fun exportUseReplace(): Boolean = false
 
@@ -319,6 +328,12 @@ interface PlatformCapabilities {
     // 对照 app 端 FontSelectDialog.loadFontFiles: 字体目录 + 本地字体合并去重排序
     /** 扫描字体文件列表 (对照 app 端 FontSelectDialog, 未实现端空列表) */
     suspend fun scanFontItems(): List<FontItem> = emptyList()
+
+    /**
+     * 阅读背景内置图片列表（对照 app 端 [RemoteAssetsUtils.getBgList]）。
+     * shared UI 只负责展示和派发选择事件，资源列表由平台提供；未实现端返回空列表。
+     */
+    fun readerBackgroundImageNames(): List<String> = emptyList()
 
     // 书源管理平台能力 (各端按需 override, 未实现端统一给出明确提示)
     // 对照 app 端 BookSourceActivity 同名方法

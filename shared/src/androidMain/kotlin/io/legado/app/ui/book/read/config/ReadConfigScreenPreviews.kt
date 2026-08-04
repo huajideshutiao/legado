@@ -57,7 +57,7 @@ private class PreviewReadStyleController : ReadStyleController {
     )
 
     override fun curTextColor(): Int = configList[styleSelect].textColor
-    override fun addStyle() {}
+    override fun addStyle(): Int = 0
     override fun save() {}
 }
 
@@ -70,6 +70,7 @@ private object NoopReadStyleActions : ReadStyleActions {
     override fun showBgTextConfig(index: Int) {}
     override fun onUpPageAnim() {}
     override fun onPostConfig(changes: List<ReadConfigChange>) {}
+    override fun onPostActionBarChange() {}
 }
 
 /** bgPreviewSlot 占位: 简单色块 + 选中描边, 不渲染真实 Bitmap。 */

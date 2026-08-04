@@ -99,6 +99,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -188,6 +189,7 @@ interface ReadMenuState {
     val immersive: Boolean
     val bgColor: Int
     val textColor: Int
+
     /** 是否设置了背景图（原 ThemeConfig.curBgImagePath 非空），背景图时顶栏透明 */
     val hasBgImage: Boolean
 
@@ -312,12 +314,13 @@ fun ReadMenuOverlay(state: ReadMenuState) {
 private fun ReadMenuTopBar(state: ReadMenuState) {
     val colors = AppTheme.colors
     val eInk = LocalEInk.current
-    // hasBgImage 走 app 端 ThemeConfig.curBgImagePath 判断（通过 ReadMenuState 桥接）
+    // hasBgImage 走 app 端 ThemeConfig.curBgImagePath 判断（通过 ReadMenuState 桥接）。
+    // 窗口背景图语义 (原版顶栏透明, 仅 Android 有) 优先于阅读背景取色, 保护原版行为
     val topBg = when {
         eInk -> Color.White
-        state.immersive -> Color(state.bgColor)
         state.hasBgImage -> Color.Transparent
-        else -> colors.background
+        state.immersive -> Color(state.bgColor)
+        else -> colors.bottomBackground
     }
     val topText = when {
         state.immersive -> Color(state.textColor)
@@ -332,6 +335,7 @@ private fun ReadMenuTopBar(state: ReadMenuState) {
     Column(
         Modifier
             .fillMaxWidth()
+            .shadow(4.dp)
             .background(topBg)
             .statusBarsPadding()
     ) {
@@ -656,8 +660,8 @@ private fun SourceActionButton(state: ReadMenuState) {
 private fun ReadMenuBottom(state: ReadMenuState) {
     val eInk = LocalEInk.current
     val colors = AppTheme.colors
-    // 非沉浸式走主题底栏色 / 主文字色（对照原版 ReadMenu.upColorConfig 的 else 分支：
-    // bgColor = context.bottomBackground, textColor = getPrimaryTextColor）
+    // 底栏背景/文字: 沉浸式(纯色阅读背景)用阅读背景色/阅读文字色; 图片背景回落主题色
+    // (对照原版 upColorConfig 的 else 分支, 2026-08-06 的图片取色增强已移除)
     val bg = if (state.immersive) Color(state.bgColor) else colors.bottomBackground
     val text = if (state.immersive) Color(state.textColor) else colors.primaryText
     val pressedBg = Color(ColorUtils.darkenColor(bg.toArgb()))
@@ -695,10 +699,16 @@ private fun ReadMenuBottom(state: ReadMenuState) {
                 bg = bg, pressedBg = pressedBg, tint = text,
             ) { state.clickNightTheme() }
         }
-        // 底部设置栏(原 ll_bottom_bg)
+        // 底部设置栏(原 ll_bottom_bg)；4dp 阴影向上: 默认 shadow 光源在上方,
+        // 先翻转 180° 加阴影再翻回, 阴影即投射到屏幕底部外侧的上方。
+        // 注: 桌面端(Skiko) spot 阴影方向不随 layer 翻转反转, 底栏阴影偏淡属平台渲染行为, 非代码错误
+        // shadow API, 保持与顶栏同源实现 (2026-08-06)。
         Column(
             Modifier
                 .fillMaxWidth()
+                .graphicsLayer { rotationX = 180f }
+                .shadow(4.dp)
+                .graphicsLayer { rotationX = 180f }
                 .background(if (eInk) Color.White else bg)
                 .windowInsetsPadding(
                     WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)
@@ -731,26 +741,26 @@ private fun ReadMenuBottom(state: ReadMenuState) {
                     enabled = state.nextEnabled,
                 ) { state.clickNext() }
             }
-            // 目录/朗读/界面/设置
+            // 目录/朗读/界面/设置：均分底栏(原 Spacer 1:2:2:1 居中)，扩大可点击范围，样式不变
             Row(Modifier.fillMaxWidth()) {
-                Spacer(Modifier.weight(1f))
-                BottomMenuItem("ic_toc", "chapter_list", text) {
+                BottomMenuItem("ic_toc", "chapter_list", text, Modifier.weight(1f)) {
                     state.clickCatalog()
                 }
-                Spacer(Modifier.weight(2f))
                 BottomMenuItem(
-                    "ic_read_aloud", "read_aloud", text,
+                    "ic_read_aloud", "read_aloud", text, Modifier.weight(1f),
                     onLongClick = { state.longClickReadAloud() },
                 ) { state.clickReadAloud() }
-                Spacer(Modifier.weight(2f))
-                BottomMenuItem("ic_interface_setting", "interface_setting", text) {
+                BottomMenuItem(
+                    "ic_interface_setting",
+                    "interface_setting",
+                    text,
+                    Modifier.weight(1f)
+                ) {
                     state.clickFont()
                 }
-                Spacer(Modifier.weight(2f))
-                BottomMenuItem("ic_settings", "setting", text) {
+                BottomMenuItem("ic_settings", "setting", text, Modifier.weight(1f)) {
                     state.clickSetting()
                 }
-                Spacer(Modifier.weight(1f))
             }
         }
     }
@@ -832,18 +842,18 @@ fun ReadMenuFab(
     }
 }
 
-/** 底栏图标+文字项(原 60dp 竖排按钮) */
+/** 底栏图标+文字项(原 60dp 竖排按钮)；默认宽 60dp，可传 modifier 覆盖(如 weight 均分底栏) */
 @Composable
 fun BottomMenuItem(
     iconKey: String,
     labelKey: String,
     tint: Color,
+    modifier: Modifier = Modifier.width(60.dp),
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     Column(
-        Modifier
-            .width(60.dp)
+        modifier
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(top = 4.dp, bottom = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,

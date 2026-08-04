@@ -37,7 +37,7 @@ internal fun ClickActionConfig.actionAt(x: Float, y: Float, width: Int, height: 
 }
 
 /**
- * 读回 9 个区域动作配置, 与 MoreConfigRoute 的 ClickActionDialog 写同一批 PreferKey。
+ * 读回 9 个区域动作配置, 与 MoreConfigDialog 的 ClickActionDialog 写同一批 PreferKey。
  * 原版 AppConfig.clickActionXX 是 cachedIntPref, 每次点击现取, 故这里也不做组合期缓存。
  */
 internal fun readClickActionConfig(): ClickActionConfig {

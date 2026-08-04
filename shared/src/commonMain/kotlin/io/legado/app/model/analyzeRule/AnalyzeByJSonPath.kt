@@ -29,7 +29,19 @@ class AnalyzeByJSonPath(json: Any) {
         }
 
         /**
-         * Map/List/基本类型 递归重建为 JsonElement, 供解包结果回流再查询
+         * JSONPath 规则有时会作用于登录页/防爬页等 HTML 响应。
+         * 这类输入不是 JSON，应按“无匹配”处理，不能在构造解析器时把整条请求协程打崩。
+         */
+        private fun parseOrNull(json: Any): JsonElement? {
+            return try {
+                parse(json)
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        /**
+         * Map/List/基本类型 递归重建为 JsonElement, 供解包结果回流再查询。
          */
         private fun anyToElement(value: Any?): JsonElement {
             return when (value) {
@@ -47,7 +59,8 @@ class AnalyzeByJSonPath(json: Any) {
         }
     }
 
-    private var element: JsonElement = parse(json)
+    // HTML 错误页/登录页误套 JSONPath 时，按空结果处理；合法 JSON 的行为不变。
+    private val parsedElement: JsonElement? = parseOrNull(json)
 
     /**
      * 改进解析方法
@@ -56,6 +69,7 @@ class AnalyzeByJSonPath(json: Any) {
      * */
     fun getString(rule: String): String? {
         if (rule.isEmpty()) return null
+        val element = parsedElement ?: return null
         var result: String
         val ruleAnalyzes = RuleAnalyzer(rule, true) //设置平衡组为代码平衡
         val rules = ruleAnalyzes.splitRule("&&", "||")
@@ -115,6 +129,7 @@ class AnalyzeByJSonPath(json: Any) {
     fun getStringList(rule: String): List<String> {
         val result = ArrayList<String>()
         if (rule.isEmpty()) return result
+        val element = parsedElement ?: return result
         val ruleAnalyzes = RuleAnalyzer(rule, true) //设置平衡组为代码平衡
         val rules = ruleAnalyzes.splitRule("&&", "||", "%%")
 
@@ -162,6 +177,7 @@ class AnalyzeByJSonPath(json: Any) {
     }
 
     fun getObject(rule: String): Any? {
+        val element = parsedElement ?: return null
         return try {
             // 对齐 jayway: ctx.read(rule) 直接返回, null 就是 null。
             // 结果保持 JsonElement, 类型转换延迟到 JS 胶水层。
@@ -175,6 +191,7 @@ class AnalyzeByJSonPath(json: Any) {
     fun getList(rule: String): ArrayList<Any> {
         val result = ArrayList<Any>()
         if (rule.isEmpty()) return result
+        val element = parsedElement ?: return result
         val ruleAnalyzes = RuleAnalyzer(rule, true) //设置平衡组为代码平衡
         val rules = ruleAnalyzes.splitRule("&&", "||", "%%")
         if (rules.size == 1) {

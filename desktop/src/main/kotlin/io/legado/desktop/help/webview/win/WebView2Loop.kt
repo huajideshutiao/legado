@@ -9,9 +9,11 @@ import com.sun.jna.platform.win32.WinDef
 import com.sun.jna.platform.win32.WinUser
 import io.legado.app.constant.AppLog
 import io.legado.desktop.help.webview.win.WebView2Loop.WM_RUN_TASK
+import io.legado.desktop.help.webview.win.WebView2Loop.ensureStarted
 import io.legado.desktop.help.webview.win.WebView2Loop.tasks
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
+import java.awt.Toolkit
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -43,20 +45,27 @@ internal object WebView2Loop {
     @Volatile
     private var startFailed = false
 
-    /** 每个 HWND 的消息处理钩子 (WM_SIZE/WM_CLOSE), 由 [WebView2Window] 注册。 */
-    private val windowHooks = HashMap<Pointer, (Int) -> Boolean>()
+    /** 每个 HWND 的消息处理钩子 (WM_SIZE/WM_CLOSE/工具栏绘制与鼠标), 由窗口创建方注册。 */
+    private val windowHooks = HashMap<Pointer, (Int, WinDef.WPARAM, WinDef.LPARAM) -> Boolean>()
 
     // 强引用: WNDCLASS 里的 lpfnWndProc 是 JNA 回调, 被 GC 后窗口消息即崩
     private val windowProc = WinUser.WindowProc { hwnd, msg, wParam, lParam ->
-        when {
-            msg == WM_RUN_TASK -> {
-                drainTasks()
-                WinDef.LRESULT(0)
+        try {
+            when {
+                msg == WM_RUN_TASK -> {
+                    drainTasks()
+                    WinDef.LRESULT(0)
+                }
+
+                windowHooks[hwnd.pointer]?.invoke(msg, wParam, lParam) == true -> WinDef.LRESULT(0)
+
+                else -> User32.INSTANCE.DefWindowProc(hwnd, msg, wParam, lParam)
             }
-
-            windowHooks[hwnd.pointer]?.invoke(msg) == true -> WinDef.LRESULT(0)
-
-            else -> User32.INSTANCE.DefWindowProc(hwnd, msg, wParam, lParam)
+        } catch (e: Throwable) {
+            // JNA 回调内异常默认只打 stderr 静默吞掉; 工具栏曾因 paint 内
+            // UnsatisfiedLinkError 永久不重绘 (白条) 而无任何日志, 这里必须显式记录
+            AppLog.put("WebView2 窗口消息处理异常 (msg=${msg})", e)
+            WinDef.LRESULT(0)
         }
     }
 
@@ -79,8 +88,15 @@ internal object WebView2Loop {
         return pumpWindow != null
     }
 
-    /** 把 [block] 排到 WebView2 线程执行 (不等待完成)。 */
+    /**
+     * 把 [block] 排到 WebView2 线程执行 (不等待完成)。
+     *
+     * 必须先 [ensureStarted]: 首次调用 (如书源 `java.startBrowser` 直接开窗) 时消息泵
+     * 线程尚未启动, 只入队不 PostMessage 会导致任务永远不被消费, 环境/窗口创建 20s
+     * 静默超时 (曾表现为"WebView2 窗口创建失败"后无任何其他日志)。
+     */
     fun post(block: () -> Unit) {
+        if (!ensureStarted()) return
         tasks += block
         val hwnd = pumpWindow ?: return
         User32.INSTANCE.PostMessage(hwnd, WM_RUN_TASK, WinDef.WPARAM(0), WinDef.LPARAM(0))
@@ -158,11 +174,26 @@ internal object WebView2Loop {
             Kernel32.INSTANCE.GetModuleHandle(null),
             null,
         ) ?: error("CreateWindowEx 失败 (err=${Native.getLastError()})")
-        if (visible) User32.INSTANCE.ShowWindow(hwnd, WinUser.SW_SHOW)
+        if (visible) {
+            User32.INSTANCE.ShowWindow(hwnd, WinUser.SW_SHOW)
+            // 弹窗语义: 新窗口置前显示。曾出现 WebView2 窗口启动在主窗口后面
+            // (ShowWindow 不改变 Z 序, 主窗口保持激活)。HWND_TOP 提升到 Z 序顶部
+            // (非 TOPMOST 置顶), 再请求前台激活 (同进程前台时 SetForegroundWindow 有效)
+            User32.INSTANCE.SetWindowPos(
+                hwnd,
+                null, // HWND_TOP = NULL 指针 (置顶 Z 序, 非 TOPMOST)
+                0, 0, 0, 0,
+                WinUser.SWP_NOMOVE or WinUser.SWP_NOSIZE or WinUser.SWP_SHOWWINDOW
+            )
+            User32.INSTANCE.SetForegroundWindow(hwnd)
+        }
         return hwnd
     }
 
-    fun hookWindow(hwnd: WinDef.HWND, handler: (Int) -> Boolean) {
+    fun hookWindow(
+        hwnd: WinDef.HWND,
+        handler: (Int, WinDef.WPARAM, WinDef.LPARAM) -> Boolean,
+    ) {
         windowHooks[hwnd.pointer] = handler
     }
 
@@ -182,6 +213,23 @@ internal object WebView2Loop {
     }
 
     private const val CW_USEDEFAULT = 0x80000000.toInt()
+
+    /**
+     * 屏幕居中窗口矩形 (弹窗语义): 独立浏览器窗口默认居中打开, 尺寸自适应屏幕。
+     * 置底半屏 (bottomSheet) 由调用方显式传 [WindowBounds]。
+     */
+    fun centeredBounds(): WindowBounds {
+        val screen = Toolkit.getDefaultToolkit().screenSize
+        val width = kotlin.math.min(DEFAULT_WIDTH, (screen.width * 0.8).toInt().coerceAtLeast(400))
+        val height =
+            kotlin.math.min(DEFAULT_HEIGHT, (screen.height * 0.8).toInt().coerceAtLeast(300))
+        return WindowBounds(
+            x = ((screen.width - width) / 2).coerceAtLeast(0),
+            y = ((screen.height - height) / 2).coerceAtLeast(0),
+            width = width,
+            height = height,
+        )
+    }
 
     /** 屏幕外坐标 (Win32 惯用值, 保证任何显示器布局下都不可见)。 */
     private const val OFFSCREEN = -32000

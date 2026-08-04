@@ -1,5 +1,8 @@
 package io.legado.app.help.toast
 
+import io.legado.app.help.toast.DesktopTrayNotifier.sender
+
+
 /**
  * 托盘通知发送器的注册点。
  *
@@ -11,6 +14,14 @@ object DesktopTrayNotifier {
     /** 返回 false 表示未发出, 调用方走兜底。 */
     @Volatile
     var sender: ((message: String) -> Boolean)? = null
+
+    /**
+     * 主窗口内 toast 宿主 (desktop 模块 DesktopToasts 注入), 优先于托盘气泡:
+     * 托盘通知受 Windows 通知设置/专注助手影响经常静默不显示, 窗口内 UI toast
+     * 才是与 app 端 Toast 语义一致的可靠反馈; 窗口最小化时由宿主自行转 [sender]。
+     */
+    @Volatile
+    var uiSender: ((message: String) -> Boolean)? = null
 }
 
 /**
@@ -35,10 +46,11 @@ class DesktopToaster : Toaster {
         showMessage(message, isLong = true)
     }
 
-    /** 显示消息: 优先宿主托盘图标, 退化到 stdout。 */
+    /** 显示消息: 优先主窗口 UI toast, 其次宿主托盘图标, 退化到 stdout。 */
     private fun showMessage(message: String, isLong: Boolean) {
         val sent = runCatching {
-            DesktopTrayNotifier.sender?.invoke(message) == true
+            DesktopTrayNotifier.uiSender?.invoke(message) == true ||
+                DesktopTrayNotifier.sender?.invoke(message) == true
         }.getOrDefault(false)
         if (sent) return
         // stdout 兜底 (无头模式 / 托盘未安装)

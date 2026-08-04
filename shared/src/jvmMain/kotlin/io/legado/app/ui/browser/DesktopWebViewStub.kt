@@ -12,8 +12,8 @@ import androidx.compose.ui.text.style.TextAlign
 /**
  * Desktop WebView 平台占位实现 (供 [LocalWebViewSlot] 注入)。
  *
- * TODO: desktop WebView 待 JavaFX (javafx.scene.web.WebView) 经 SwingNode/Compose 互操作集成;
- * 当前仅占位, 不伪造渲染, 等待 JavaFX WebView 接入。
+ * 桌面端真实浏览器已由 [io.legado.desktop.ui.browser.DesktopWebViewSlot] 提供 (系统引擎
+ * 独立窗口: WebView2/webkit2gtk/WKWebView), 本占位仅兜底无引擎场景, 不伪造渲染。
  */
 @Composable
 fun DesktopWebViewStub(url: String, modifier: Modifier = Modifier) {
@@ -22,7 +22,7 @@ fun DesktopWebViewStub(url: String, modifier: Modifier = Modifier) {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "desktop WebView 待 JavaFX 集成\n$url",
+            text = "desktop WebView 不可用\n$url",
             color = Color.Gray,
             textAlign = TextAlign.Center,
         )

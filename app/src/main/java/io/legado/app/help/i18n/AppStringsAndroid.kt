@@ -37,6 +37,8 @@ private val AppStringKey.resId: Int
         AppStringKey.main_body -> R.string.main_body
         AppStringKey.check_source_config_summary -> R.string.check_source_config_summary
         AppStringKey.data_loading -> R.string.data_loading
+        AppStringKey.toc_updateing -> R.string.toc_updateing
+        AppStringKey.error_load_toc -> R.string.error_load_toc
         AppStringKey.webdav_application_authorization_error -> R.string.webdav_application_authorization_error
         AppStringKey.replace_rule_invalid -> R.string.replace_rule_invalid
         AppStringKey.read_config -> R.string.read_config

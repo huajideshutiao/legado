@@ -171,6 +171,12 @@ fun AndroidWebView(
                             callbacksRef.onReceivedTitle?.invoke(title)
                         }
 
+                        override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                            super.onProgressChanged(view, newProgress)
+                            // 对照原 CommonWebChromeClient.onProgressChanged → RefreshProgressBar
+                            callbacksRef.onProgressChanged?.invoke(newProgress)
+                        }
+
                         override fun onShowCustomView(
                             view: View?,
                             callback: CustomViewCallback?,

@@ -278,7 +278,9 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
     }
 
     override fun updateColorFilter(config: MangaColorFilterConfig) {
-        prefs.putString(PreferKey.mangaColorFilter, GSON.toJson(config))
+        // 走模型自带 toJson (全零返回 "", 与原版 MangaColorFilterDialog 一致);
+        // 注意不能用 GSON.toJson 直接序列化非 @Serializable 旧实现, 会落成 toString 垃圾串无法回读
+        prefs.putString(PreferKey.mangaColorFilter, config.toJson())
     }
 
     override fun updateGray(enable: Boolean) {

@@ -26,6 +26,7 @@ import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.LocalReadConfigProviders
+import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.help.config.ReadTipConfigShared
 import io.legado.app.help.coroutine.IoDispatcher
@@ -52,6 +53,9 @@ import io.legado.app.ui.book.read.ReaderScreenModel
 import io.legado.app.ui.book.read.ReaderUiActions
 import io.legado.app.ui.book.read.ReaderUiState
 import io.legado.app.ui.book.read.SimulatedReadingDialog
+import io.legado.app.ui.book.read.config.AutoReadActions
+import io.legado.app.ui.book.read.config.AutoReadController
+import io.legado.app.ui.book.read.config.AutoReadPanelDialogHost
 import io.legado.app.ui.book.read.config.ChineseConverterSelectorDialog
 import io.legado.app.ui.book.read.config.HttpTtsEditDialog
 import io.legado.app.ui.book.read.config.HttpTtsEditViewModelShared
@@ -186,8 +190,12 @@ fun ReaderRoute(
                 provider.onLongPress(screenModel)
             }
 
-            override fun onTextSelection(text: String) {
-                provider.onTextSelected(screenModel, text)
+            override fun onImageLongPress(src: String, x: Float, y: Float) {
+                provider.onImageLongPress(screenModel, src, x, y)
+            }
+
+            override fun onTextSelection(text: String, anchorX: Float, anchorY: Float) {
+                provider.onTextSelected(screenModel, text, anchorX, anchorY)
             }
 
             // 非翻页类点击动作，对照 app 端 ReadView.click 走 callBack 的分支
@@ -527,7 +535,7 @@ fun ReaderRoute(
                     onDismiss = { screenModel.clearDialogEvent() },
                 )
             }
-            // 繁简转换选择器 (对照 EffectiveReplacesRoute)
+            // 繁简转换选择器 (对照 EffectiveReplacesDialog)
             if (showChineseConverter) {
                 ChineseConverterSelectorDialog(
                     currentType = AppConfigProviders.get().chineseConverterType,
@@ -597,6 +605,56 @@ fun ReaderRoute(
             }
         }
 
+        // 自动翻页控制面板 (对照原版 自动翻页运行时点屏幕 → AutoReadDialog: 速度滑条 + 目录/主菜单/停止/设置)
+        is ReaderDialogEvent.AutoRead -> {
+            // 自动翻页自行结束 (如翻到全书末尾, app 端 pager.onEnd → stopAutoPage) 时收起面板
+            // (对照原版 autoPageStop → dismissDialogFragment(AutoReadDialog))
+            val autoPageActive = screenModel.menuState.autoPage
+            LaunchedEffect(autoPageActive) {
+                if (!autoPageActive) screenModel.clearDialogEvent()
+            }
+            AutoReadPanelDialogHost(
+                controller = object : AutoReadController {
+                    // 对照原版 ReadBookConfig.autoReadSpeed (共享配置, 各端同一存储)
+                    override var autoReadSpeed: Int
+                        get() = ReadBookConfigProviders.get().autoReadSpeed
+                        set(value) {
+                            ReadBookConfigProviders.get().autoReadSpeed = value.coerceAtLeast(1)
+                        }
+                },
+                actions = object : AutoReadActions {
+                    // 目录按钮 → TocDialog (对照原版 callBack.openChapterList)
+                    override fun openChapterList() {
+                        screenModel.clearDialogEvent()
+                        screenModel.postDialogEvent(ReaderDialogEvent.Toc)
+                    }
+
+                    // 主菜单按钮 → 强制弹常规菜单 (对照原版 callBack.showMenuBar, 不走 autoPage 重定向)
+                    override fun showMenuBar() {
+                        screenModel.clearDialogEvent()
+                        screenModel.menuController.showMenu()
+                    }
+
+                    // 停止自动翻页 (对照原版 callBack.autoPageStop)
+                    override fun autoPageStop() {
+                        screenModel.clearDialogEvent()
+                        provider.autoPageStop(screenModel)
+                    }
+
+                    // 设置按钮 → 翻页动画配置 (对照原版 showPageAnimConfig)
+                    override fun showPageAnimConfig() {
+                        provider.showPageAnimConfig(screenModel)
+                    }
+
+                    // 滑条抬手 → 同步 TTS 语速 (对照原版 upTtsSpeechRate)
+                    override fun upTtsSpeechRate() {
+                        provider.upTtsSpeechRate(screenModel)
+                    }
+                },
+                onDismiss = { screenModel.clearDialogEvent() },
+            )
+        }
+
         // 编辑 HTTP TTS (对照原版 SpeakEngineDialog 中"+"按钮 → HttpTtsEditDialog)
         is ReaderDialogEvent.HttpTtsEdit -> {
             HttpTtsEditDialogHost(
@@ -628,11 +686,16 @@ fun ReaderRoute(
             if (book != null) {
                 TocDialogHost(
                     book = book,
+                    navigator = navigator,
                     onOpenChapter = { index, pos ->
                         screenModel.clearDialogEvent()
                         screenModel.openChapter(index, pos)
                     },
-                    onShowTocRegexDialog = { navigator.push(AppRoute.TxtTocRule) },
+                    onTocRegexChanged = { tocBook, _ ->
+                        // 对照原版 ReadBookActivity.onTocRegexDialogResult: 规则已写入 book.tocUrl,
+                        // 阅读页按新规则重载目录 (本地 txt 重新解析)
+                        screenModel.viewModel.loadChapterList(tocBook)
+                    },
                     onDismiss = { screenModel.clearDialogEvent() },
                 )
             } else {
@@ -1025,7 +1088,7 @@ private fun SpeakEngineDialogHost(
     var engines by remember { mutableStateOf(emptyList<HttpTTS>()) }
     LaunchedEffect(Unit) {
         appDb.httpTTSDao.flowAll()
-            .catch { /* 静默, 与 ReadAloudConfigRoute 一致 */ }
+            .catch { /* 静默, 与 ReadAloudConfigDialog 一致 */ }
             .flowOn(IoDispatcher)
             .conflate()
             .collect { engines = it }

@@ -47,11 +47,13 @@ import java.net.URI
  *
  * 引擎不可用时保持原行为: 直接调系统默认浏览器 (cookie 无法回收, 但不崩)。
  *
- * 验证回传: 窗口句柄已具备 [WebViewWindowHandle.evaluateJavascript] (WebView2/JavaFX
+ * 验证回传: 窗口句柄已具备 [WebViewWindowHandle.evaluateJavascript] (三个系统引擎
  * 都支持任意 JS), 因此这里把 [WebViewCallbacks.host] 桥接为 [DesktopWebViewHost],
  * 并把导航完成事件接回 [WebViewCallbacks.onPageFinished], 于是 WebViewRoute 的
  * outerHTML 抓取与 CF 挑战自动检测 (对照 AndroidWebView 的 WebViewHostImpl + onPageFinished)
- * 在桌面端可用; 独立窗口无内嵌后退栈, canGoBack 恒 false (返回走路由出栈)。
+ * 在桌面端可用; 独立窗口带 CustomTab 式工具栏 (返回/前进/刷新/关闭/标题/进度,
+ * 与书源验证窗口同一套实现), 但无路由内嵌后退栈, 路由侧 canGoBack 仍恒 false
+ * (返回走路由出栈)。
  */
 @Composable
 fun DesktopWebViewSlot(
@@ -168,7 +170,7 @@ private fun SystemBrowserFallback(url: String, modifier: Modifier) {
 }
 
 /**
- * [WebViewHost] 的桌面实现: 桥接独立浏览器窗口 (WebView2 / JavaFX)。
+ * [WebViewHost] 的桌面实现: 桥接独立浏览器窗口 (系统引擎)。
  *
  * 语义对照 Android 端 [io.legado.app.ui.browser.AndroidWebView] 的 WebViewHostImpl:
  * - [evaluateJavascript] 经 [WebViewWindowHandle.evaluateJavascript] 执行 (引擎已归一为纯文本);

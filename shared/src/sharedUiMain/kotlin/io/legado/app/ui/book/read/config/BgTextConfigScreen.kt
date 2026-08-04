@@ -1,18 +1,24 @@
 package io.legado.app.ui.book.read.config
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -20,9 +26,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.help.image.ImageBitmapLoader
+import org.jetbrains.compose.resources.ExperimentalResourceApi
+import org.jetbrains.compose.resources.decodeToImageBitmap
+import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
@@ -46,6 +59,7 @@ import legado.shared.generated.resources.delete
 import legado.shared.generated.resources.edit
 import legado.shared.generated.resources.export_str
 import legado.shared.generated.resources.ic_edit
+import legado.shared.generated.resources.ic_image
 import legado.shared.generated.resources.import_str
 import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.restore
@@ -128,7 +142,8 @@ interface BgTextConfigController {
  *
  * app 端原实现：
  * - `selectBgImage` / `selectExportDir` / `selectImportDoc` 用 `registerHandleFile`（SAF）
- * - `RemoteAssetsUtils.getBgList()` / `getBgPreviewBytes()` 取 assets 背景图
+ * - `RemoteAssetsUtils.getBgList()` / `getBgPreviewBytes()` 取背景图 (现为 shared
+ *   composeResources 单一数据源, 见 commonMain/composeResources/files/bg_preview)
  * - `BgTextConfigViewModel` 处理 zip 导入导出 + 网络下载
  *
  * shared/commonMain 无 SAF / RemoteAssetsUtils / ViewModel，由 wrapper 实现。
@@ -203,6 +218,8 @@ fun BgTextConfigScreen(
     isImageBook: Boolean,
     bgImageList: List<BgImageItem>,
     bgImagePreviewSlot: @Composable (item: BgImageItem, onClick: () -> Unit) -> Unit,
+    /** 删除当前主题成功后关闭对话框（对照原版 deleteDur 成功后 dismissAllowingStateLoss） */
+    onDismiss: (() -> Unit)? = null,
 ) {
     val colors = AppTheme.colors
     // 资源 key 在 Composable 顶层一次性求值（avoid calling @Composable in remember initializer）
@@ -265,10 +282,11 @@ fun BgTextConfigScreen(
                 modifier = Modifier.clickable { showRestorePresetDialog = true },
             )
         }
-        // 暗色状态栏图标开关
+        // 暗色状态栏图标开关（对照原版 setCurStatusIconDark + upSystemUiVisibility）
         SwitchRow(darkStatusIconStr, darkStatusIcon) {
             darkStatusIcon = it
             controller.setCurStatusIconDark(it)
+            actions.onPostConfig(listOf(ReadConfigChange.SYSTEM_UI))
         }
         // 下划线开关（图片书籍不显示）
         if (!isImageBook) {
@@ -315,6 +333,11 @@ fun BgTextConfigScreen(
                             ReadConfigChange.LOAD_CONTENT,
                         )
                     )
+                    // 对照原版删除成功后 dismissAllowingStateLoss
+                    onDismiss?.invoke()
+                } else {
+                    // 对照原版 toastOnUi("数量已是最少,不能删除.")
+                    Toasters.get().toast("数量已是最少,不能删除.")
                 }
             }
         }
@@ -454,6 +477,75 @@ private fun SwitchRow(
     ) {
         Text(label, color = AppTheme.colors.primaryText, modifier = Modifier.weight(1f))
         AppSwitch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+/**
+ * 默认背景图槽位：平台 wrapper 可以提供真正的缩略图，但不能把“选择图片”
+ * 这一项留成空槽。原版始终显示一个带 ic_image 的可点击 header；这里在
+ * wrapper 没有预览实现时也保持同样的可用性。
+ *
+ * 内置背景图预设（[BgImageItem.fileName] 非空）加载真实缩略图，二级缓冲对标原版
+ * curBgDrawable/BgAdapter：一级直接读 shared composeResources 的 bg_preview 缩略图
+ * （四端同一份, 本地零网络, 见 commonMain/composeResources/files/bg_preview）；
+ * 二级再加载原图（缓存命中直接读，未命中后台下载），下好自动切换为原图。
+ * 加载中/失败回落图标占位。
+ */
+@OptIn(ExperimentalResourceApi::class)
+@Composable
+fun DefaultBgImagePreviewSlot(
+    item: BgImageItem,
+    onClick: () -> Unit,
+) {
+    val colors = AppTheme.colors
+    val fileName = item.fileName
+    var bitmap by remember(fileName) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(fileName) {
+        if (fileName.isEmpty()) return@LaunchedEffect
+        // 一级: shared composeResources 内置 bg_preview 缩略图立即显示 (四端本地零网络)
+        bitmap = runCatching { Res.readBytes("files/bg_preview/$fileName") }
+            .getOrNull()
+            ?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() }
+        // 二级: 原图 (bg:// 加载器内部缓存命中直读, 未命中下载), 下好切换
+        ImageBitmapLoader().loadBitmap("bg://$fileName", null, null)?.let { bitmap = it }
+    }
+    Column(
+        modifier = Modifier
+            .size(66.dp, 88.dp)
+            .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(66.dp, 66.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(colors.bottomBackground),
+            contentAlignment = Alignment.Center,
+        ) {
+            val bmp = bitmap
+            if (bmp != null) {
+                // 中心裁剪铺满缩略图槽（对照原版 centerCrop 语义）
+                Image(
+                    bitmap = bmp,
+                    contentDescription = item.label,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Icon(
+                    painter = painterResource(Res.drawable.ic_image),
+                    contentDescription = item.label,
+                    tint = colors.primaryText,
+                    modifier = Modifier.size(36.dp),
+                )
+            }
+        }
+        Text(
+            text = item.label,
+            color = colors.secondaryText,
+            fontSize = 11.sp,
+            maxLines = 1,
+        )
     }
 }
 

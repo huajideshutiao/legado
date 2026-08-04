@@ -1,0 +1,344 @@
+package io.legado.app.ui.config
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material.Icon
+import androidx.compose.material.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.dp
+import io.legado.app.constant.EventBus
+import io.legado.app.constant.PreferKey
+import io.legado.app.help.FileUtilsCommon
+import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.image.BookImageLoaders
+import io.legado.app.help.storage.DataStorageProviders
+import io.legado.app.help.toast.Toasters
+import io.legado.app.model.BookCoverShared
+import io.legado.app.model.BookCoverShared.CoverRatio
+import io.legado.app.model.BookCoverShared.DefaultCoverEntry
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppDialog
+import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.component.appDialogSize
+import io.legado.app.ui.compose.component.rememberResponsiveColumns
+import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppOverlay
+import io.legado.app.ui.root.FileFilter
+import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.utils.FlowBus
+import io.legado.app.utils.MD5Utils
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.add
+import legado.shared.generated.resources.day
+import legado.shared.generated.resources.default_cover
+import legado.shared.generated.resources.delete
+import legado.shared.generated.resources.image_cover_default
+import legado.shared.generated.resources.night
+import legado.shared.generated.resources.no
+import legado.shared.generated.resources.sure_del
+import legado.shared.generated.resources.yes
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
+
+/**
+ * 默认封面图集管理对话框 (KMP 共享, 对照 app 端 DefaultCoverGalleryDialog)。
+ *
+ * 原版"默认封面库"是用户自选图集: 网格展示已选封面 (烘焙 3:4 图), 末尾 + 按钮选图加入,
+ * 点击封面二次确认删除; 选中的图集用于书籍无封面/useDefaultCover 时的封面回退
+ * (shared 链: [io.legado.app.ui.bookshelf.defaultCoverFilePath] → 用户图集 → 内置图)。
+ *
+ * 本对话框把该管理 UI 下沉 shared 供四端复用 (app 端仍走原 Fragment, 其余端经
+ * [io.legado.app.ui.root.PlatformCapabilities.showDefaultCoverGallery] Overlay 弹出):
+ *
+ * - 列表: [BookCoverShared.listDefaultCovers] 读 prefs (PreferKey.defaultCover / defaultCoverDark)
+ * - 瓦片: 按 [BookCoverShared.bakedPath] 经 [BookImageLoaders] 加载烘焙图
+ *   (未注册 loader 的端如鸿蒙显示内置占位, 与书架封面链一致)
+ * - 添加: 平台文件选择器 ([PlatformServiceProviders].files.pickFile, 阻塞式须切 IO) →
+ *   读字节 → MD5 作 id → 按 [DefaultCoverEntry] 写 coversDir (最小等价: 原图直落
+ *   `{id}_novel.webp` / `{id}_video.webp` 两路径, 不重新烘焙裁剪; 各端图片加载器按
+ *   内容魔数解码, 与扩展名无关, 展示时由封面槽 ContentScale.Crop 裁剪, 与原版
+ *   BookCover.addDefaultCover 的烘焙裁剪在渲染上等价; .9.png 特殊路径同原版按原名识别)
+ *   → [BookCoverShared.addDefaultCoverEntry] 写 prefs → 广播 [EventBus.DEFAULT_COVER_CHANGED]
+ * - 删除: 二次确认 → 移除 prefs entry + 删烘焙文件 (对照 app 端 removeDefaultCover)
+ * - 增删后广播 DEFAULT_COVER_CHANGED (封面配置页 summary 刷新) + BOOKSHELF_REFRESH
+ *   (书架/详情页默认封面链重组重读 prefs)
+ *
+ * @param isNight 编辑夜间图集 (PreferKey.defaultCoverDark) 还是日间 (PreferKey.defaultCover)
+ * @param onDismiss 关闭回调
+ */
+@Composable
+fun DefaultCoverGalleryDialogHost(
+    isNight: Boolean,
+    onDismiss: () -> Unit,
+) {
+    val prefKey = if (isNight) PreferKey.defaultCoverDark else PreferKey.defaultCover
+    val prefs = PreferenceProviders.get()
+    val scope = rememberCoroutineScope()
+
+    // 数据版本号: 增删后自增触发重组重取列表 (对照 app 端 dataVersion)
+    var dataVersion by remember { mutableIntStateOf(0) }
+    val entries = remember(dataVersion) { BookCoverShared.listDefaultCovers(prefs, prefKey) }
+    // 广播驱动刷新: 本对话框自身的增删也会 emit, 统一走此路径 (含外部修改)
+    LaunchedEffect(Unit) {
+        FlowBus.with(EventBus.DEFAULT_COVER_CHANGED).collect { dataVersion++ }
+    }
+
+    var pendingDelete by remember { mutableStateOf<DefaultCoverEntry?>(null) }
+    var adding by remember { mutableStateOf(false) }
+
+    AppDialog(
+        onDismissRequest = onDismiss,
+        properties = AppDialogSizes.properties(),
+    ) {
+        AppTheme {
+            Surface(
+                shape = DesignTokens.dialogShape,
+                color = AppTheme.colors.background,
+                modifier = Modifier.appDialogSize(fullHeight = true),
+            ) {
+                Column(Modifier.fillMaxSize()) {
+                    DialogTitleBar(
+                        title = stringResource(Res.string.default_cover),
+                        subtitle = stringResource(if (isNight) Res.string.night else Res.string.day),
+                        onBack = onDismiss,
+                    )
+                    LazyVerticalGrid(
+                        columns = rememberResponsiveColumns(3),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .padding(top = 8.dp),
+                    ) {
+                        items(entries, key = { it.id }) { entry ->
+                            DefaultCoverTile(entry = entry) { pendingDelete = entry }
+                        }
+                        item(key = "__add__") {
+                            // + 按钮: 平台图片选择器 → 烘焙落盘 → 写 prefs (对照原版 onAddClick)
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp)
+                                    .aspectRatio(3f / 4f)
+                                    .clip(DesignTokens.shapeDefault)
+                                    .background(AppTheme.colors.fillet)
+                                    .clickable(enabled = !adding) {
+                                        adding = true
+                                        scope.launch {
+                                            addDefaultCoverFromPicker(prefKey)
+                                            adding = false
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    painter = rememberPainter("ic_add"),
+                                    contentDescription = stringResource(Res.string.add),
+                                    tint = AppTheme.colors.primaryText,
+                                    modifier = Modifier.size(48.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 删除二次确认 (对照 app 端 alert(delete, sure_del) + yesButton/noButton)
+    pendingDelete?.let { entry ->
+        AppAlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = stringResource(Res.string.delete),
+            message = stringResource(Res.string.sure_del),
+            okButton = AlertButton(stringResource(Res.string.yes)) {
+                scope.launch {
+                    removeDefaultCover(prefKey, entry)
+                    pendingDelete = null
+                }
+            },
+            cancelButton = AlertButton(stringResource(Res.string.no)) {},
+        )
+    }
+}
+
+/**
+ * Overlay 渲染入口 (LegadoApp DialogOverlayContent 按 key="default_cover_gallery" 分流;
+ * payload "1"=夜间, 其余=日间)。
+ */
+@Composable
+internal fun DefaultCoverGalleryOverlayDialogContent(
+    overlay: AppOverlay.Dialog,
+    navigator: AppNavigator,
+) {
+    DefaultCoverGalleryDialogHost(
+        isNight = overlay.payload == "1",
+        onDismiss = { navigator.dismissOverlay(overlay.key) },
+    )
+}
+
+/** 单个封面瓦片: 烘焙图按 3:4 展示, 点击删除 (对照原版 CoverTile + onCoverClick)。 */
+@Composable
+private fun DefaultCoverTile(entry: DefaultCoverEntry, onClick: () -> Unit) {
+    val coversDir = DataStorageProviders.getOrNull()?.coversDir
+    val loader = remember { BookImageLoaders.getOrNull() }
+    var bitmap by remember(entry.id) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(entry.id, loader, coversDir) {
+        if (loader == null || coversDir == null) return@LaunchedEffect
+        bitmap = loader.loadImageOrNull(
+            url = BookCoverShared.bakedPath(coversDir, entry, CoverRatio.NOVEL),
+            sourceOrigin = null,
+        )
+    }
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(8.dp)
+            .aspectRatio(3f / 4f)
+            .clip(DesignTokens.shapeDefault)
+            .background(AppTheme.colors.fillet)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        val bmp = bitmap
+        if (bmp != null) {
+            Image(
+                bitmap = bmp,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            // 加载中/未注册 loader/读盘失败: 内置默认封面图占位 (对照原版 loadThumb 失败回落)
+            Image(
+                painter = painterResource(Res.drawable.image_cover_default),
+                contentDescription = null,
+                contentScale = ContentScale.FillBounds,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+/**
+ * 平台图片选择器 → 加入默认封面图集 (对照 app 端 DefaultCoverGalleryDialog.onAddClick →
+ * HandleFileContract.IMAGE + BookCover.addDefaultCover)。
+ *
+ * 最小等价说明: 原版把选中图按 NOVEL/VIDEO 各烘焙裁剪成 webp 后落盘; 本实现把原图字节
+ * 直接写到两个 ratio 路径 (不重新编码)。各端图片加载器 (Coil3 JVM/iOS/Android) 均按内容
+ * 魔数解码, 不依赖扩展名; 展示时封面槽以 ContentScale.Crop 裁剪, 与烘焙裁剪渲染等价。
+ * 差异仅在烘焙尺寸优化 (原图未缩放, 磁盘占用略大)。.9.png 按原版语义识别并单路径落盘。
+ *
+ * 成功后广播 DEFAULT_COVER_CHANGED (本对话框经 LaunchedEffect 刷新列表) +
+ * BOOKSHELF_REFRESH (书架默认封面链重组)。
+ */
+private suspend fun addDefaultCoverFromPicker(prefKey: String) {
+    // 选择器是阻塞式的 (各端 runBlocking 等系统回调), 必须切到 IO 再调
+    val path = withContext(IoDispatcher) {
+        PlatformServiceProviders.getOrNull()?.files?.pickFile(FileFilter.Images)
+    } ?: return
+    val bytes = FileUtilsCommon.readBytes(path)
+    if (bytes == null || bytes.isEmpty()) {
+        Toasters.get().toast("读取图片失败")
+        return
+    }
+    val prefs = PreferenceProviders.get()
+    val ninePatch = path.endsWith(".9.png", ignoreCase = true)
+    val entry = DefaultCoverEntry(id = MD5Utils.md5Encode(bytes), ninePatch = ninePatch)
+    // 相同图片再次添加直接忽略, 避免重复写盘 (对照 app 端 addDefaultCover 的 existing 判断)
+    if (!BookCoverShared.addDefaultCoverEntry(prefs, prefKey, entry)) return
+    val coversDir = DataStorageProviders.getOrNull()?.coversDir ?: return
+    withContext(IoDispatcher) {
+        runCatching {
+            FileUtilsCommon.createFolderIfNotExist(coversDir)
+            if (entry.ninePatch) {
+                FileUtilsCommon.writeBytes(
+                    FileUtilsCommon.getPath(coversDir, "${entry.id}.9.png"),
+                    bytes
+                )
+            } else {
+                // 原图直落两个 ratio 路径 (见函数 KDoc 最小等价说明)
+                FileUtilsCommon.writeBytes(
+                    FileUtilsCommon.getPath(
+                        coversDir,
+                        "${entry.id}_${CoverRatio.NOVEL.fileTag}.webp"
+                    ),
+                    bytes,
+                )
+                FileUtilsCommon.writeBytes(
+                    FileUtilsCommon.getPath(
+                        coversDir,
+                        "${entry.id}_${CoverRatio.VIDEO.fileTag}.webp"
+                    ),
+                    bytes,
+                )
+            }
+        }
+    }.onFailure { Toasters.get().toast("添加封面失败\n${it.message}") }
+    FlowBus.with(EventBus.DEFAULT_COVER_CHANGED).tryEmit(prefKey)
+    FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
+}
+
+/** 移除 prefs entry + 删除烘焙文件 (对照 app 端 BookCover.removeDefaultCover), 成功后广播刷新。 */
+private suspend fun removeDefaultCover(prefKey: String, entry: DefaultCoverEntry) {
+    val prefs = PreferenceProviders.get()
+    val removed = BookCoverShared.removeDefaultCoverEntry(prefs, prefKey, entry.id)
+    if (removed == null) return
+    val coversDir = DataStorageProviders.getOrNull()?.coversDir
+    withContext(IoDispatcher) {
+        if (coversDir != null) {
+            if (removed.ninePatch) {
+                runCatching {
+                    FileUtilsCommon.delete(
+                        FileUtilsCommon.getPath(
+                            coversDir,
+                            "${removed.id}.9.png"
+                        )
+                    )
+                }
+            } else {
+                CoverRatio.entries.forEach { ratio ->
+                    runCatching {
+                        FileUtilsCommon.delete(
+                            FileUtilsCommon.getPath(
+                                coversDir,
+                                "${removed.id}_${ratio.fileTag}.webp"
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+    FlowBus.with(EventBus.DEFAULT_COVER_CHANGED).tryEmit(prefKey)
+    FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
+}

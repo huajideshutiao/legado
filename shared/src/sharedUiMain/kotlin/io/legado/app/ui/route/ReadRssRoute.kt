@@ -19,6 +19,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.sourceLoginOverlayPayload
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.tts.OneShotTts
 import io.legado.app.model.rss.RssHelp
@@ -33,6 +34,7 @@ import io.legado.app.ui.browser.WebViewConfig
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
@@ -231,7 +233,13 @@ fun ReadRssRoute(
         }
 
         override fun onLogin() {
-            navigator.push(AppRoute.Login(book.origin))
+            // 纯 Overlay 弹登录对话框, 不推新路由 (源按 book.origin 查库)
+            navigator.showOverlay(
+                AppOverlay.Dialog(
+                    key = "sourceLogin",
+                    payload = sourceLoginOverlayPayload(book.origin),
+                )
+            )
         }
     }
 

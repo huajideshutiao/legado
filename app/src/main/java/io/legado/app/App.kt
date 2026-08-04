@@ -56,6 +56,7 @@ import io.legado.app.help.i18n.registerAndroidAppStringProvider
 import io.legado.app.help.image.registerAndroidBookImageLoader
 import io.legado.app.help.registerAndroidDirectLinkUploadProviders
 import io.legado.app.help.registerAndroidFileCacheProvider
+import io.legado.app.help.service.UpdateBookCallbacks
 import io.legado.app.help.service.registerAndroidServiceLauncher
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceUiEventBridge
@@ -64,7 +65,6 @@ import io.legado.app.help.storage.registerAndroidBackupRestoreHook
 import io.legado.app.help.storage.registerAndroidPasswordProvider
 import io.legado.app.help.toast.registerAndroidToaster
 import io.legado.app.help.ui.registerAndroidOpenUrlProvider
-import io.legado.app.help.ui.registerAndroidToastProvider
 import io.legado.app.help.ui.registerAndroidUserAgentProvider
 import io.legado.app.model.BookCover
 import io.legado.app.model.CacheBook
@@ -79,6 +79,7 @@ import io.legado.app.service.WebService
 import io.legado.app.ui.book.changesource.registerAndroidChangeBookSourcePlatform
 import io.legado.app.ui.book.manage.registerAndroidBookshelfManagePlatform
 import io.legado.app.ui.compose.platform.AndroidPreferenceStoreProvider
+import io.legado.app.ui.main.AndroidUpdateBookCallback
 import io.legado.app.ui.platform.registerSharedAppContext
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.defaultSharedPreferences
@@ -119,7 +120,6 @@ class App : Application() {
         registerAndroidScreenInfoProvider()
         // 注册 UI Provider (Toast/OpenUrl/UserAgent, 供 JsExtensionsCommon.toast/longToast/
         // getWebViewUA/openUrl 回调, 须在任何 JS 业务调用之前)
-        registerAndroidToastProvider()
         registerAndroidOpenUrlProvider()
         registerAndroidUserAgentProvider()
         registerAndroidJsEngines()
@@ -167,6 +167,10 @@ class App : Application() {
         registerAndroidPasswordProvider()
         // 注册 ServiceLaunchers (commonMain Download/CacheBook/UpdateBook 启动入口)
         registerAndroidServiceLauncher(appCtx)
+        // 注册 UpdateBookCallback 默认实现: shared BookshelfViewModel 据此构造 UpdateBookShared
+        // 刷新引擎 (书架菜单/下拉刷新、自动更新、条目转圈状态、进度通知均依赖它;
+        // iOS/鸿蒙端在 registerNativeUpdateBookCallback 注册, 桌面端在 Main.kt 注册)
+        UpdateBookCallbacks.registerDefault(AndroidUpdateBookCallback)
         // 注册 Web 服务 provider (commonMain WebServerManager 调用 WebServerPlatform/WebAssetSource/WebStrings)
         // - WebServerPlatform: HttpServer+WebSocketServer 起停 + serve 回调拉起 WebService 续命 wakelock
         // - WebAssetSource: composeResources 读 web 静态资源 (单一数据源 commonMain/composeResources/files/web)

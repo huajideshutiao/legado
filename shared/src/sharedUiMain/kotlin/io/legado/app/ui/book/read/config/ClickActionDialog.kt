@@ -26,11 +26,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Icon
-import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -40,16 +40,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSelectorDialog
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bookmark_add
 import legado.shared.generated.resources.chapter_list
@@ -109,11 +107,11 @@ data class ClickActionConfig(
  *   7=添加书签/9=替换状态切换/10=目录/11=全文搜索/13=朗读暂停/继续)
  * - 顶部标题栏 + 关闭按钮 (与原版 `R.string.click_regional_config` + ic_baseline_close 对齐)
  *
- * # 样式 (Arco Design 规范)
+ * # 样式 (对照原版 dialog_click_action_config.xml 全屏半透明覆盖层)
  *
- * - 主色 arcoblue-6 (#165DFF): 当前选中动作文字色
- * - 圆角 arco_radius_lg = 16dp: Dialog Surface 与格子圆角
- * - 无阴影 (Surface 默认无阴影)
+ * - 全屏对话框: 内容 fillMaxSize, 背景 #99343434 半透明 (原版 @color/translucent)
+ * - 3x3 网格铺满全屏: 每格 1dp 间隔 + 3dp 圆角半透明卡片 + 白色动作名 (原版 shape_translucent_card)
+ * - 底部栏: 原版 LinearLayout (margin arco_spacing_lg, 半透明卡片, 标题 + 关闭按钮)
  *
  * @param clickActionConfig 9 个区域当前动作值
  * @param onConfirm 用户切换动作时回传更新后的配置 (即时写入语义, 与原版 AppConfig 写入对齐)
@@ -126,6 +124,9 @@ fun ClickActionDialog(
     onDismiss: () -> Unit,
 ) {
     val colors = AppTheme.colors
+    // 原版 @color/translucent (#99343434) / @color/white；卡片圆角 3dp（shape_translucent_card）
+    val translucent = Color(0x99343434)
+    val cardShape = RoundedCornerShape(3.dp)
 
     // 13 个可选动作 (key=动作值, value=动作名), 顺序与原版 actions linkedMapOf 完全一致
     // rememberString 是 @Composable, 不能在 remember{} 内调用, 直接每次重组时构建
@@ -170,88 +171,92 @@ fun ClickActionDialog(
     // 当前展开 selector 的格子索引 (null=未展开), 与原版 context.selector 单弹窗语义对齐
     var selectorTargetIndex by remember { mutableStateOf<Int?>(null) }
 
+    // 全屏半透明覆盖层 (对照原版 dialog_click_action_config.xml: FrameLayout match_parent +
+    // translucent 背景; 原版窗口 MATCH_PARENT, 无圆角卡片壳)
     AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
-        Surface(
-            shape = DesignTokens.dialogShape,
-            color = colors.fillet,
-            modifier = Modifier.appDialogSize().padding(16.dp),
+        // 对照原版 dialog_click_action_config.xml: FrameLayout match_parent (translucent 背景)
+        // 内叠两个子组件 —— GridLayout 铺满全屏 (3x3 九宫格覆盖整个点击区),
+        // LinearLayout 底部栏与其重叠、浮动在上方 (margin arco_spacing_lg)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(translucent),
         ) {
-            Column(Modifier.fillMaxWidth()) {
-                // 顶部标题栏: 标题 + 关闭按钮 (与原版 R.string.click_regional_config + ic_baseline_close 对齐)
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(colors.bottomBackground)
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = stringResource(Res.string.click_regional_config),
-                        color = colors.primaryText,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Icon(
-                        painter = painterResource(Res.drawable.ic_baseline_close),
-                        contentDescription = stringResource(Res.string.close),
-                        tint = colors.primaryText,
-                        modifier = Modifier
-                            .clickable(onClick = onDismiss)
-                            .padding(4.dp),
-                    )
-                }
-
-                // 3x3 网格 9 个区域, 与原版 repeat(3) { Row { repeat(3) { ... } } } 对齐
-                // 行顺序: Top / Middle / Bottom; 列顺序: Left / Center / Right
-                val rowOrders = listOf(
-                    listOf(0, 1, 2), // TL, TC, TR
-                    listOf(3, 4, 5), // ML, MC, MR
-                    listOf(6, 7, 8), // BL, BC, BR
-                )
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    rowOrders.forEach { rowIndices ->
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            rowIndices.forEach { index ->
-                                val state = states[index]
-                                val value by state
-                                Box(
-                                    Modifier
-                                        .weight(1f)
-                                        .aspectRatio(1f)
-                                        .background(
-                                            color = colors.bottomBackground,
-                                            shape = DesignTokens.shapeDefault,
-                                        )
-                                        .clickable {
-                                            // 点击格子弹出动作选择 (与原版 context.selector 对齐)
-                                            selectorTargetIndex = index
-                                        },
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        text = actionMap[value].orEmpty(),
-                                        color = DesignTokens.arcoBlue6,
-                                        fontSize = 14.sp,
-                                        textAlign = TextAlign.Center,
-                                        fontWeight = FontWeight.Medium,
+            // 3x3 网格铺满整个容器 (原版 GridLayout match_parent, 每格 1dp margin + 权重 1),
+            // 行/列均 weight(1f) 均分, 覆盖全部可用区域
+            // 行顺序: Top / Middle / Bottom; 列顺序: Left / Center / Right
+            val rowOrders = listOf(
+                listOf(0, 1, 2), // TL, TC, TR
+                listOf(3, 4, 5), // ML, MC, MR
+                listOf(6, 7, 8), // BL, BC, BR
+            )
+            Column(Modifier.fillMaxSize()) {
+                rowOrders.forEach { rowIndices ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                    ) {
+                        rowIndices.forEach { index ->
+                            val state = states[index]
+                            val value by state
+                            Box(
+                                Modifier
+                                    .weight(1f)
+                                    .fillMaxSize()
+                                    .padding(1.dp) // 原版 margin=1dp
+                                    .background(
+                                        color = translucent,
+                                        shape = cardShape,
                                     )
-                                }
+                                    .clickable {
+                                        // 点击格子弹出动作选择 (与原版 context.selector 对齐)
+                                        selectorTargetIndex = index
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = actionMap[value].orEmpty(),
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    textAlign = TextAlign.Center,
+                                )
                             }
                         }
                     }
                 }
+            }
+            // 底部栏: 重叠在九宫格之上、底部对齐 (原版 FrameLayout 内 LinearLayout 浮动层,
+            // margin arco_spacing_lg + 半透明卡片; 点击区被遮住的部分按原版同样不可点)
+            Row(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .background(
+                        color = translucent,
+                        shape = cardShape,
+                    )
+                    .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(Res.string.click_regional_config),
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    painter = painterResource(Res.drawable.ic_baseline_close),
+                    contentDescription = stringResource(Res.string.close),
+                    tint = Color.White,
+                    modifier = Modifier
+                        .clickable(onClick = onDismiss)
+                        .padding(4.dp),
+                )
             }
         }
     }

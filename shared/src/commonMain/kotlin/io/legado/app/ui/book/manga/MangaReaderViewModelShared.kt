@@ -134,12 +134,13 @@ data class MangaReaderConfig(
  *
  * @param scope 协程作用域, actual 平台注入 (Android=viewModelScope / 桌面=应用主作用域)
  * @param imageExtractor 漫画图片提取器 (actual 平台注入, 封装 BookHelp.flowImages)
- * @param config 漫画阅读器配置 (actual 平台从 AppConfig 读取后注入)
+ * @param config 漫画阅读器配置 (actual 平台从 AppConfig 读取后注入; 菜单项切换后由
+ *   ScreenModel 经 [config] 刷新, 保证切章/重载时读到新值, 不是一次性快照)
  */
 class MangaReaderViewModelShared(
     private val scope: CoroutineScope,
     private val imageExtractor: MangaImageExtractor,
-    private val config: MangaReaderConfig = MangaReaderConfig.DEFAULT,
+    var config: MangaReaderConfig = MangaReaderConfig.DEFAULT,
 ) {
     // region 状态流: 外部只读 StateFlow, 适配 Compose 重组
     private val _book = MutableStateFlow<Book?>(null)

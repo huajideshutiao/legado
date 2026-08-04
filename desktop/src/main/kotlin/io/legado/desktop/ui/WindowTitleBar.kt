@@ -2,6 +2,7 @@ package io.legado.desktop.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
@@ -122,12 +123,23 @@ private fun textColorFor(bg: Color): Color =
  * ThemeStore 派生色) 时, LaunchedEffect 的 key (isDark/background) 变化自动重跑,
  * 实时同步标题栏; 启动早期 AWT 窗口可能尚未 realize, 每 100ms 轮询重试至多约 3s。
  */
+/**
+ * 阅读页激活时的窗口标题栏着色 (由 DesktopReaderPlatformProvider.onEnter/onExit 维护):
+ * 把桌面窗口系统标题栏视为状态栏, 跟随小说阅读界面的背景色 (用户要求 2026-08-06);
+ * null = 无阅读页激活, 回落 AppTheme 主题色。
+ */
+internal val readerWindowTint = mutableStateOf<Color?>(null)
+
 @Composable
 fun DesktopWindowTitleBarSync(windowHandle: DesktopWindowHandle) {
     val colors = AppTheme.colors
     val isDark = colors.isDark
     val background = colors.background
-    LaunchedEffect(isDark, background) {
+    // 阅读页激活时优先用阅读背景色着色标题栏 (深色背景 → 深色标题栏 + 浅色文字)
+    val tint = readerWindowTint.value
+    val dark = tint?.let { it.luminance() < 0.5f } ?: isDark
+    val bg = tint ?: background
+    LaunchedEffect(dark, bg) {
         repeat(30) {
             val window = windowHandle.window
             if (window != null && window.isDisplayable) {

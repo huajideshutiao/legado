@@ -43,7 +43,12 @@ data class ReaderDrawStyle(
     val searchColor: Color,
     val reviewColor: Color,
     val reviewTextSize: TextUnit,
+    /** 不透明底层色；图片背景在其上按 [backgroundImageAlpha] 叠加。 */
     val bgColor: Color,
+    /** 当前生效图片背景地址，纯色背景为 null。 */
+    val backgroundImageSource: String?,
+    /** 图片背景透明度（0..1），对应 ReadBookConfig.bgAlpha。 */
+    val backgroundImageAlpha: Float,
     val tipColor: Color,
     val underline: Boolean,
     val isEInk: Boolean,
@@ -122,22 +127,25 @@ private fun buildReaderDrawStyle(
         letterSpacingEm = letterSpacing,
         textColor = textColor,
         accentColor = accentColor,
-        selectedColor = selectedHighlightColor,
+        // 长按选中高亮: 动态主题色 (accent) + 透明度处理 (用户需求 2026-08-04,
+        // 原版 btn_bg_press_2 固定黑色 0x20 透明度, 现跟随日夜主题)
+        selectedColor = accentColor.copy(alpha = 0.25f),
         // 原版搜索结果只换文字色（accentColor），高亮底色沿用 accent 弱化值
         searchColor = accentColor.copy(alpha = 0.25f),
         // 与 app 端 reviewPaint 一致：正文色 60% 透明度 + 0.45 倍字号
         reviewColor = textColor.copy(alpha = 0.6f),
         reviewTextSize = contentSize * 0.45f,
-        // 纯色背景按 bgStr + bgAlpha 折算，图片背景用 bgMeanColor（对应 app 端 upBg 产物）
-        bgColor = Color(readBookConfig.config.curBgColor()),
+        // 纯色背景按 bgStr + bgAlpha 折算；图片背景使用不透明代表色作为底层，
+        // 实际图片在 PageViewComposable 中按 bgAlpha 叠加（对应 Android upBg 的 LayerDrawable）。
+        bgColor = Color(readBookConfig.config.curBgColor()).copy(alpha = 1f),
+        backgroundImageSource = readBookConfig.config.curBgImageSource(),
+        backgroundImageAlpha = (readBookConfig.bgAlpha / 100f).coerceIn(0f, 1f),
         tipColor = Color(if (readTipConfig.tipColor == 0) readBookConfig.textColor else readTipConfig.tipColor),
         underline = readBookConfig.underline,
         isEInk = isEInk,
     )
 }
 
-/** 选中态底色，对齐 app 端 `ContentTextView.selectedPaint` 取的 `@color/btn_bg_press_2`。 */
-private val selectedHighlightColor = Color(0x20000000)
 
 /** 页眉/页脚 tip 文本字号（sp），与 PageViewComposable 的 TipSlot 渲染字号一致。 */
 const val READ_TIP_TEXT_SIZE_SP = 12

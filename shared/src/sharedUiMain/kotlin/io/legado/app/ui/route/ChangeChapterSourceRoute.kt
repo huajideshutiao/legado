@@ -182,8 +182,6 @@ fun ChangeChapterSourceContent(
 
     // 当前点击的源条目 (openToc 后用于 clickChapter 取 book 给 getContent)
     var currentSearchBook by remember { mutableStateOf<SearchBook?>(null) }
-    // 分组选择对话框显示状态
-    var showGroupPicker by remember { mutableStateOf(false) }
     // 空结果 alert 显示状态 (searchFinishCallback 触发)
     var showEmptyGroupAlert by remember { mutableStateOf(false) }
 
@@ -407,9 +405,6 @@ fun ChangeChapterSourceContent(
         itemActions = itemActions,
         searchGroup = state.searchGroup,
         onSearchGroupChange = { /* 已在 onGroupPickerSelect 中 dispatch */ },
-        onShowGroupPicker = { showGroupPicker = true },
-        showGroupPicker = showGroupPicker,
-        onGroupPickerDismiss = { showGroupPicker = false },
         onGroupPickerSelect = onGroupPickerSelect,
         groups = state.groups,
         onTocHide = {

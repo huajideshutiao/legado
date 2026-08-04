@@ -24,6 +24,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
 import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -39,6 +40,8 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -85,6 +88,7 @@ import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.save
 import io.legado.app.help.book.toggleBookshelfCore
+import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.AppConfigConstants
 import io.legado.app.help.config.LocalConfig
@@ -142,6 +146,7 @@ import io.legado.app.utils.FileUtils
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
 import io.legado.app.utils.RealPathUtil
+import io.legado.app.utils.RemoteAssetsUtils
 import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.createFileIfNotExist
@@ -166,6 +171,7 @@ import io.legado.app.utils.share
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.toastOnUi
+import io.legado.app.utils.verificationField
 import io.legado.app.utils.writeToOutputStream
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Job
@@ -258,6 +264,8 @@ class AndroidPlatformCapabilities(
     }
 
     override fun getClipboardText(): String? = getClipText()
+
+    override fun readerBackgroundImageNames(): List<String> = RemoteAssetsUtils.getBgList()
 
     override fun testDirectLinkUpload(
         rule: io.legado.app.help.DirectLinkUploadRule,
@@ -1166,6 +1174,215 @@ class AndroidPlatformCapabilities(
                 AppConfig.exportCharset =
                     charsetState.value.takeIf { it.isNotBlank() } ?: "UTF-8"
                 AppConfig.exportNoChapterName = noChapterNameState.value
+            }
+            cancelButton()
+        }
+    }
+
+    // 对照 BookshelfManageActivity.configExportSection: 自定义导出章节配置对话框
+    // (导出全部/自定义导出 + epub 文件名JS规则 + 分卷大小 + 章节范围, 复刻 dialog_select_section_export.xml)。
+    // 仅在导出到文件夹且 enableCustomExport 开启时弹出 (对照 exportDir 回调 value=="cache" 分支)。
+    override fun showExportSectionConfig(path: String, books: List<Book>) {
+        // 默认选中自定义导出 (对照 cbSelectExport.callOnClick())
+        val allState = mutableStateOf(false)
+        val customState = mutableStateOf(true)
+        val fileNameState = mutableStateOf(AppConfig.episodeExportFileName.orEmpty())
+        val sizeState = mutableStateOf("1")
+        val scopeState = mutableStateOf("")
+        // epub 文件名 JS 规则预览/校验提示 (对照 lyEtEpubFilename.helperText)
+        val fileNameHelper = mutableStateOf("")
+        // 章节范围错误 (对照 etInputScope.error)
+        val scopeError = mutableStateOf<String?>(null)
+        activity.alert(R.string.select_section_export) {
+            customView {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 8.dp)
+                ) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Row(
+                            Modifier
+                                .weight(1f)
+                                .toggleable(
+                                    value = allState.value,
+                                    role = Role.Checkbox,
+                                    onValueChange = {
+                                        // 互斥: 选中导出全部时取消自定义导出并禁用自定义项 (对照 cbAllExport 回调)
+                                        allState.value = it
+                                        customState.value = !it
+                                        if (it) scopeError.value = null
+                                    },
+                                )
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            AppCheckbox(checked = allState.value, onCheckedChange = null)
+                            Text(
+                                activity.getString(R.string.export_all),
+                                color = AppTheme.colors.primaryText,
+                                modifier = Modifier.padding(start = 8.dp),
+                            )
+                        }
+                        Row(
+                            Modifier
+                                .weight(1f)
+                                .toggleable(
+                                    value = customState.value,
+                                    role = Role.Checkbox,
+                                    onValueChange = {
+                                        customState.value = it
+                                        allState.value = !it
+                                    },
+                                )
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            AppCheckbox(checked = customState.value, onCheckedChange = null)
+                            Text(
+                                activity.getString(R.string.custom_export),
+                                color = AppTheme.colors.primaryText,
+                                modifier = Modifier.padding(start = 8.dp),
+                            )
+                        }
+                    }
+                    // epub 文件名 JS 规则 (分卷, 对照 lyEtEpubFilename/etEpubFilename)
+                    Text(
+                        activity.getString(R.string.export_file_name),
+                        color = AppTheme.colors.primaryText,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                    )
+                    OutlinedTextField(
+                        value = fileNameState.value,
+                        onValueChange = { fileNameState.value = it },
+                        singleLine = true,
+                        enabled = customState.value,
+                        textStyle = TextStyle(textAlign = TextAlign.Start),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { focused ->
+                                // 失焦时校验并持久化 (对照 etEpubFilename 焦点监听)
+                                if (!focused.isFocused &&
+                                    tryParesExportFileName(fileNameState.value)
+                                ) {
+                                    AppConfig.episodeExportFileName = fileNameState.value
+                                }
+                            },
+                        trailingIcon = {
+                            // 解析示例按钮 (对照 lyEtEpubFilename 的 endIcon 点击)
+                            IconButton(onClick = {
+                                fileNameHelper.value =
+                                    if (tryParesExportFileName(fileNameState.value)) {
+                                        books.firstOrNull()?.let { book ->
+                                            activity.getString(R.string.result_analyzed) + ": " +
+                                                book.getExportFileName(
+                                                    "epub",
+                                                    1,
+                                                    fileNameState.value
+                                                )
+                                        } ?: activity.getString(R.string.result_analyzed)
+                                    } else {
+                                        "Error"
+                                    }
+                            }) {
+                                Icon(
+                                    painter = rememberPainter("ic_play_24dp"),
+                                    contentDescription = "Execute script",
+                                    tint = AppTheme.colors.primaryText,
+                                )
+                            }
+                        },
+                    )
+                    Text(
+                        "Variable: name, author, epubIndex",
+                        color = AppTheme.colors.secondaryText,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                    if (fileNameHelper.value.isNotEmpty()) {
+                        Text(
+                            fileNameHelper.value,
+                            color = AppTheme.colors.secondaryText,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                    // 分卷大小 (对照 lyEtEpubSize/etEpubSize)
+                    OutlinedTextField(
+                        value = sizeState.value,
+                        onValueChange = { new ->
+                            if (new.length <= 6 && new.all { it.isDigit() }) sizeState.value = new
+                        },
+                        singleLine = true,
+                        enabled = customState.value,
+                        label = {
+                            Text(
+                                activity.getString(R.string.file_contains_number),
+                                color = AppTheme.colors.secondaryText,
+                            )
+                        },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        textStyle = TextStyle(textAlign = TextAlign.Start),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                    )
+                    // 章节范围 (对照 lyEtInputScope/etInputScope, 占位提示 "1-5,8,10-18")
+                    OutlinedTextField(
+                        value = scopeState.value,
+                        onValueChange = {
+                            scopeState.value = it
+                            scopeError.value = null
+                        },
+                        singleLine = true,
+                        enabled = customState.value,
+                        label = {
+                            Text(
+                                activity.getString(R.string.export_chapter_index),
+                                color = AppTheme.colors.secondaryText,
+                            )
+                        },
+                        placeholder = {
+                            Text("1-5,8,10-18", color = AppTheme.colors.secondaryText)
+                        },
+                        isError = scopeError.value != null,
+                        textStyle = TextStyle(textAlign = TextAlign.Start),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                    )
+                    scopeError.value?.let {
+                        Text(
+                            it,
+                            color = Color(0xFFE53935),
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                }
+            }
+            // 校验保留型确认: 范围非法时对话框不关闭 (对照 getButton(POSITIVE) 手动 hide 语义)
+            positiveButtonRetain(R.string.ok) {
+                if (allState.value) {
+                    activity.startExportBooks(path, books)
+                    true
+                } else {
+                    val scopeText = scopeState.value.trim()
+                    if (!verificationField(scopeText)) {
+                        scopeError.value = activity.getString(R.string.error_scope_input)
+                        false
+                    } else {
+                        val epubSize = sizeState.value.toIntOrNull() ?: 1
+                        activity.startExportBooksCustom(path, books, epubSize, scopeText)
+                        true
+                    }
+                }
             }
             cancelButton()
         }

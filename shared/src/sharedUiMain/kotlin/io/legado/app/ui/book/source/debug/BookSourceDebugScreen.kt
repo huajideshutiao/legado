@@ -153,10 +153,14 @@ fun BookSourceDebugScreen(
     clearFocusSignal: Flow<Unit> = emptyFlow(),
 ) {
     val colors = AppTheme.colors
+    // 日志文本颜色对齐原版: 原版 BookSourceDebugAdapter 的 TextView 未显式设色,
+    // 继承主题 android:textColorPrimary (AppCompat DayNight: light #DE000000 / dark #FFFFFFFF);
+    // AppTheme.colors.primaryText 是 arco_text_1 (#212121 / #F8F8F8), 与原版 textColorPrimary 不同,
+    // 故此处按原版色值取色 (isDark 与 BaseActivity 按背景亮度选 Light/Dark 主题语义一致)
+    val logTextColor = if (colors.isDark) Color(0xFFFFFFFF) else Color(0xDE000000)
     val focusManager = LocalFocusManager.current
     val searchFocus = remember { FocusRequester() }
-    // 对齐 onActionViewExpanded：进入即聚焦搜索框弹出键盘、展示帮助
-    LaunchedEffect(Unit) { searchFocus.requestFocus() }
+    // 不自动聚焦 (用户确认: 对齐原版, 进入不弹键盘; 根 Box 兜底持焦保证 ESC 可用)
     LaunchedEffect(clearFocusSignal) {
         clearFocusSignal.collect { focusManager.clearFocus() }
     }
@@ -194,7 +198,7 @@ fun BookSourceDebugScreen(
                     SelectionContainer {
                         Text(
                             text = annotated,
-                            color = colors.primaryText,
+                            color = logTextColor,
                             fontSize = 14.sp,
                             modifier = Modifier.fillMaxWidth(),
                         )

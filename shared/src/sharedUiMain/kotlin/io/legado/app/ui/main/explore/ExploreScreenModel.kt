@@ -85,7 +85,6 @@ class ExploreScreenModel : ScreenModel {
             is ExploreUiEvent.SetGroup -> setGroup(event.group)
             is ExploreUiEvent.ToggleExpand -> toggleExpand(event.item)
             is ExploreUiEvent.RefreshSource -> refreshSource(event.item)
-            is ExploreUiEvent.RefreshAll -> refreshAll()
             is ExploreUiEvent.ToTop -> viewModelShared.topSource(event.item)
             is ExploreUiEvent.DeleteSource -> viewModelShared.deleteSource(event.item)
             is ExploreUiEvent.RemovePinned -> removePinned(event.item)
@@ -201,22 +200,6 @@ class ExploreScreenModel : ScreenModel {
         refreshSource(source)
     }
 
-    /**
-     * 下拉刷新整页 (对照 origin 各刷新入口的合集):
-     * - upPinned: 重读收藏区 (对照 ExploreFragment.upPinned)
-     * - 全部书源 clearExploreKindsCache: 下次展开/重载时重新抓取分类 (对照项菜单"刷新")
-     * - refreshCurrentExpanded: 强制重载当前展开源分类 (对照 REFRESH_EXPLORE 事件)
-     * sources 列表本身由 DB flow 驱动, 无需手动重拉
-     */
-    private fun refreshAll() {
-        upPinned()
-        scope.launch {
-            val sources = _state.value.sources
-            withContext(IoDispatcher) { sources.forEach { it.clearExploreKindsCache() } }
-            refreshCurrentExpanded()
-        }
-    }
-
     /** reselect 发现 tab: 收起已展开项, 返回是否实际收起 (未展开返回 false, 由 Route 滚顶) */
     fun collapseExpanded(): Boolean {
         if (_state.value.expandedUrl != null) {
@@ -274,9 +257,6 @@ sealed interface ExploreUiEvent {
 
     /** 刷新分类 (clearExploreKindsCache + 强制重载) */
     data class RefreshSource(val item: BookSourcePart) : ExploreUiEvent
-
-    /** 下拉刷新整页 (重读收藏 + 清全部分类缓存 + 重载展开源分类) */
-    data object RefreshAll : ExploreUiEvent
 
     /** 置顶源 (ExploreViewModelShared.topSource) */
     data class ToTop(val item: BookSourcePart) : ExploreUiEvent

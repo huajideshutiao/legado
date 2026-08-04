@@ -21,7 +21,7 @@ import java.io.File
  * `WEBVIEW_MSWEBVIEW2_BUILTIN_IMPL` 走的也是这条路)。
  *
  * 缺失 runtime 时 [detect] 返回 null, 由上层回退下一级引擎; [BOOTSTRAPPER_URL]
- * 供 UI 引导用户装 Evergreen Bootstrapper (模式参考 MpvDownloader 的引导安装)。
+ * 供 UI 引导用户安装 Evergreen Bootstrapper。
  */
 internal object WebView2Runtime {
 

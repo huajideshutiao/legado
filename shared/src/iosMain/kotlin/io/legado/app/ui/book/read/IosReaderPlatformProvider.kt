@@ -8,24 +8,40 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.data.entities.BookSource
 import io.legado.app.help.AppWebDavShared
 import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.book.getUseReplaceRule
+import io.legado.app.help.sourceLoginOverlayPayload
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfigProviders
+import io.legado.app.help.image.ImageBitmapLoader
+import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.help.toast.Toasters
+import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.toRouteRef
+import io.legado.app.utils.encodeURI
+import io.legado.app.utils.isAbsUrl
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import platform.UIKit.UIDevice
+import platform.UIKit.UIImage
+import platform.UIKit.UIImageWriteToSavedPhotosAlbum
 
 /**
  * iOS 阅读页平台能力: 菜单可见/可切, 导航经 [AppNavigator] 桥接, 电量用 [UIDevice]。
@@ -35,14 +51,179 @@ import platform.UIKit.UIDevice
  *
  * # 不实现
  * - ReadAloud 短按: iOS 无前台 Service, 待 ReadAloudControllerShared 接入阅读页 (长按跳配置页)
- * - 沉浸式色彩 (immersive/bgColor/textColor): 用 AppTheme 默认色, 与 desktop 一致
+ * - 沉浸式色彩: 纯色阅读背景时菜单栏跟随阅读背景色+文字色 (shared createReadMenuColors,
+ *   同 desktop); 图片阅读背景/无窗口背景图时用 AppTheme 默认色
  */
 object IosReaderPlatformProvider : ReaderPlatformProvider {
+
+    /** 查词请求 (选中词 → 暂存, 由 MainViewController 宿主渲染 DictDialogHost; 对照原版 menu_dict → DictDialog)。 */
+    internal var dictWord by mutableStateOf<String?>(null)
+
+    /** 图片长按动作协程 scope (Main: UIKit 操作/toast 需主线程, 网络下载在 loadBytes 内部切 IO)。 */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun createMenuController(
         navigator: AppNavigator,
         screenModel: ReaderScreenModel,
     ): ReadMenuController = IosReadMenuController(navigator, screenModel)
+
+    // 自动翻页面板停止按钮: 本端 autoPage 仅开关状态 (无 AutoPager), 复位开关即可
+    override fun autoPageStop(screenModel: ReaderScreenModel) {
+        (screenModel.menuController.state as? IosReadMenuState)?.autoPage = false
+    }
+
+    /** 空白长按回落: 原版 ContentTextView.longPress 未命中任何列时无动作，此处 no-op。 */
+    override fun onLongPress(screenModel: ReaderScreenModel) = Unit
+
+    /**
+     * 图片长按：弹平台原生浮动菜单（查看/刷新/保存到相册；iOS 无"选择目录"概念，
+     * 用"保存到相册"代替，动作分发见 [onImageAction]——对标原版 onImageLongPress）。
+     */
+    override fun onImageLongPress(screenModel: ReaderScreenModel, src: String, x: Float, y: Float) {
+        if (src.isBlank()) return
+        IosImageActionMenu.show(
+            anchorX = x,
+            anchorY = y,
+            onAction = { action -> onImageAction(screenModel, src, action) },
+        )
+    }
+
+    /**
+     * 页内文字选择完成：弹 UIMenuController 浮动菜单并跟随选区（平台原生实现，
+     * 对标 Android 原版 TextActionMenu；动作见 [onTextAction]）。
+     */
+    override fun onTextSelected(
+        screenModel: ReaderScreenModel,
+        text: String,
+        anchorX: Float,
+        anchorY: Float,
+    ) {
+        if (text.isBlank()) return
+        IosTextActionMenu.show(
+            anchorX = anchorX,
+            anchorY = anchorY,
+            onAction = { action -> onTextAction(screenModel, text, action) },
+            // 菜单关闭 (动作完成/点外部) → 取消页内选择 (对标原版 onMenuActionFinally)
+            onMenuFinally = { ReadBookEvents.postSelectionCancel() },
+        )
+    }
+
+    /**
+     * 文本菜单动作分发 (对标原版 ReadBookActivity.onMenuItemSelected/onMenuItemClick):
+     * 替换/书签/全文搜索/分享走 screenModel 回调; 复制走剪贴板; 查词暂存 dictWord;
+     * 浏览器 URL 直开否则系统搜索; 朗读走系统 TTS 引擎 (见 [TtsEngineProvider])。
+     */
+    private fun onTextAction(screenModel: ReaderScreenModel, text: String, action: String) {
+        when (action) {
+            "replace" -> {
+                val book = screenModel.viewModel.book.value
+                AppNavigatorProviders.get().push(
+                    AppRoute.ReplaceEdit(
+                        pattern = text.lineSequence().joinToString("\n") { it.trim() },
+                        scope = listOfNotNull(book?.name, book?.origin).joinToString(";"),
+                    )
+                )
+            }
+
+            "copy" -> PlatformCapabilityProviders.get().copyToClipboard(text)
+            "bookmark" -> onBookmark(screenModel, text)
+            "aloud" -> {
+                // 朗读选中文本: 系统 TTS 引擎 (AVSpeechSynthesizer, 宿主启动经
+                // registerIosSystemTtsEngine 注册到 TtsEngineProvider; 未注册时提示)
+                val engine = TtsEngineProvider.get()
+                if (engine == null) {
+                    Toasters.get().toast("朗读引擎未就绪")
+                } else {
+                    engine.speak(text, "textActionAloud")
+                }
+            }
+
+            "dict" -> dictWord = text
+            "search_content" -> {
+                screenModel.searchContentQuery = text
+                screenModel.menuState.clickSearch()
+            }
+
+            "browser" -> {
+                val url = if (text.isAbsUrl()) {
+                    text
+                } else {
+                    "https://www.bing.com/search?q=" + text.encodeURI()
+                }
+                PlatformCapabilityProviders.get().openExternalUrl(url)
+            }
+
+            "share" -> PlatformCapabilityProviders.get().shareText(text)
+        }
+    }
+
+    /**
+     * 图片菜单动作分发 (对标原版 ReadBookActivity.onImageLongPress 的
+     * show/refresh/save 三分支; selectFolder 由 iOS"保存到相册"取代):
+     * 查看 → 下载解码 + 模态预览; 刷新 → 清内存缓存 + 重排; 保存 → 写系统相册。
+     */
+    private fun onImageAction(screenModel: ReaderScreenModel, src: String, action: String) {
+        when (action) {
+            "view" -> previewImage(screenModel, src)
+            "refresh" -> {
+                // 清共享内存缓存 + 重排 (对照原版 viewModel.refreshImage 的删缓存文件+清内存缓存+loadContent;
+                // iOS 阅读页图片走 shared ReaderImageResolver → ReaderImageCache, 磁盘缓存由 Coil3 自管)
+                ReaderImageCache.clear()
+                ReadBookEvents.postConfig(ReadConfigChange.LOAD_CONTENT)
+            }
+
+            "save" -> saveImageToAlbum(screenModel, src)
+        }
+    }
+
+    /** 查看图片: 下载解码 → 模态预览 (失败 toast; 对照原版 show → PhotoDialog)。 */
+    private fun previewImage(screenModel: ReaderScreenModel, src: String) {
+        val book = screenModel.viewModel.book.value
+        val bookSource = screenModel.viewModel.bookSource.value
+        scope.launch {
+            val image = loadImage(src, book, bookSource)
+            if (image == null) {
+                Toasters.get().toast("图片加载失败")
+                return@launch
+            }
+            showIosImagePreview(image)
+        }
+    }
+
+    /** 保存到相册: 下载解码 → UIImageWriteToSavedPhotosAlbum (无完成回调, 保存后提示)。 */
+    private fun saveImageToAlbum(screenModel: ReaderScreenModel, src: String) {
+        val book = screenModel.viewModel.book.value
+        val bookSource = screenModel.viewModel.bookSource.value
+        Toasters.get().toast("正在保存")
+        scope.launch {
+            val image = loadImage(src, book, bookSource)
+            if (image == null) {
+                Toasters.get().toast("图片保存失败")
+                return@launch
+            }
+            UIImageWriteToSavedPhotosAlbum(image, null, null, null)
+            Toasters.get().toast("已保存到相册")
+        }
+    }
+
+    /** 下载并解码图片 (ImageBitmapLoader 内部网络/磁盘切 IO, 本 scope 在主线程, 返回即可直接操作 UIKit)。 */
+    private suspend fun loadImage(src: String, book: Book?, bookSource: BookSource?): UIImage? {
+        val bytes = runCatching { ImageBitmapLoader().loadBytes(src, book, bookSource) }.getOrNull()
+            ?: return null
+        return runCatching { bytes.toUIImage() }.getOrNull()
+    }
+
+    /** 书签 (对照原版 menu_bookmark): 用选中文本建书签, 弹 BookmarkDialog (ReaderRoute 处理 AddBookmark)。 */
+    private fun onBookmark(screenModel: ReaderScreenModel, text: String) {
+        val book = screenModel.viewModel.book.value ?: return
+        val bookmark = Bookmark(bookName = book.name, bookAuthor = book.author).apply {
+            chapterIndex = screenModel.viewModel.durChapterIndex.value
+            chapterPos = screenModel.viewModel.durChapterPos.value
+            chapterName = screenModel.currentChapter?.title ?: ""
+            bookText = text.trim()
+        }
+        screenModel.postDialogEvent(ReaderDialogEvent.AddBookmark(bookmark))
+    }
 
     // UIDevice 电池监控: 返回 0~100, 未启用或未知返回 -1
     override fun getBatteryLevel(): Int {
@@ -79,10 +260,18 @@ private class IosReadMenuState(
     override val isVisible: Boolean get() = visibleState.currentState || visibleState.targetState
     override val canShowMenu: Boolean get() = true
 
-    // 无沉浸式阅读背景, 用 AppTheme 默认色 (同 desktop)
-    override val immersive: Boolean = false
-    override val bgColor: Int = 0
-    override val textColor: Int = 0
+    // 菜单栏配色 (对照原版 ReadMenu.upColorConfig, 逻辑见 shared createReadMenuColors):
+    // 纯色阅读背景时 immersive=true, 顶/底栏用阅读背景色(含 bgAlpha 透明度)+阅读文字色,
+    // 文字对比度由阅读配色自身保证; 图片阅读背景时沉浸式为 false, ReadMenuOverlay 走
+    // AppTheme 默认色 (与原版非沉浸式行为一致)。fallbackBgColor 传 0: 非沉浸式时
+    // Composable 不消费 bgColor, 仅沉浸式解析失败时兜底。hasBgImage 语义为「窗口背景图」
+    // (app 端 ThemeConfig.curBgImagePath), iOS 无此概念恒 false。
+    private val menuTheme: ReadMenuColors
+        get() = createReadMenuColors(ReadBookConfigProviders.get().config, fallbackBgColor = 0)
+    override val immersive: Boolean get() = menuTheme.immersive
+    override val bgColor: Int get() = menuTheme.bgColor
+    override val textColor: Int get() = menuTheme.textColor
+
     override val hasBgImage: Boolean = false
 
     // 顶栏: 书名/章节名/章节 URL/书源按钮
@@ -182,15 +371,14 @@ private class IosReadMenuState(
                     screenModel.currentBook,
                     screenModel.currentChapter,
                 )
-                if (source.loginUi.isNullOrEmpty()) {
-                    // URL 登录: 对照原版 showLoginDialog 的 WebViewActivity 分支, 开登录页
-                    navigator.push(AppRoute.Login(source.getKey(), dataKey))
-                } else {
-                    // 表单登录: 对照原版 showDialogFragment<SourceLoginDialog>, Overlay 弹对话框
-                    navigator.showOverlay(
-                        AppOverlay.Dialog(key = "sourceLogin", payload = dataKey)
+                // 纯 Overlay 弹登录对话框, 不推新路由; 表单/URL 两条分支由
+                // SourceLoginOverlayContent 统一分发 (对照原版 showLoginDialog)
+                navigator.showOverlay(
+                    AppOverlay.Dialog(
+                        key = "sourceLogin",
+                        payload = sourceLoginOverlayPayload(source.getKey(), dataKey),
                     )
-                }
+                )
             }
 
             SourceAction.EDIT_SOURCE -> {
@@ -306,9 +494,14 @@ private class IosReadMenuState(
                 syncSuccessAction = { Toasters.get().toast("同步成功") },
             )
 
-            // 段评: iOS/鸿蒙无 ReviewListDialog (Android 专属 Fragment), 且 reviewVisible 恒 false
-            // 不渲染该项; 保留分支仅为穷尽枚举
-            ReadMenuAction.REVIEW -> Unit
+            // 段评: 弹 shared 底部弹窗 (对照原版 menu_review → ReviewListDialog(book, chapter, 0);
+            // 能力已四端接通, 见 ReviewListDialogHost.kt)
+            ReadMenuAction.REVIEW -> screenModel.currentBook?.let { book ->
+                val chapter = screenModel.currentChapter
+                if (!PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)) {
+                    Toasters.get().toast("暂不支持段评")
+                }
+            }
 
             // 帮助: 原版 showHelp 打开本地 web 帮助页 (依赖 Android 资源), iOS/鸿蒙未移植
             ReadMenuAction.HELP -> Unit
@@ -334,6 +527,7 @@ private class IosReadMenuState(
                 index = screenModel.searchResultIndex,
                 word = screenModel.searchContentQuery.takeIf { it.isNotEmpty() },
                 initialResults = initialResults,
+                book = screenModel.viewModel.book.value?.toRouteRef(),
             ),
             resultKey = RouteResults.SEARCH_CONTENT,
         )

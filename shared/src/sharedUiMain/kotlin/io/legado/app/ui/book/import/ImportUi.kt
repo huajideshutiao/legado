@@ -14,8 +14,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.LinearProgressIndicator
@@ -34,6 +33,8 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.dateFormat
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppMenuCheckbox
+import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
+import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -65,6 +66,9 @@ import org.jetbrains.compose.resources.painterResource
 /**
  * 导入家族(本地/远程)共享骨架：标题栏 + 面包屑 + 2dp 进度条 + 列表 + 底部批量栏。
  * 对照 activity_recycler_with_action_bar 布局结构。
+ *
+ * 列表按容器可用宽度自动分列 (与发现页/目录界面同款 rememberResponsiveColumns(1):
+ * 400dp→1列, 600dp→2列…), 窄屏(≤400dp)单列渲染与原来完全一致。
  */
 @Composable
 fun ImportScaffold(
@@ -75,7 +79,7 @@ fun ImportScaffold(
     titleBar: @Composable () -> Unit,
     actionBar: @Composable () -> Unit,
     modifier: Modifier = Modifier,
-    listContent: LazyListScope.() -> Unit,
+    listContent: LazyGridScope.() -> Unit,
 ) {
     val colors = AppTheme.colors
     Column(modifier.fillMaxSize()) {
@@ -98,7 +102,12 @@ fun ImportScaffold(
                 .fillMaxWidth()
                 .weight(1f),
         ) {
-            LazyColumn(Modifier.fillMaxSize(), content = listContent)
+            FastScrollLazyVerticalGrid(
+                columns = rememberResponsiveColumns(1),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                listContent()
+            }
             if (emptyVisible) {
                 Text(
                     text = emptyText,

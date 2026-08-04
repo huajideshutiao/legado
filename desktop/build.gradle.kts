@@ -95,12 +95,20 @@ dependencies {
     // 桌面端 MP3 音频播放: jlayer 解码 MP3 → PCM, javax.sound.sampled.SourceDataLine 输出
     // javax.sound.sampled 是 JDK 内置, 无需额外依赖; jlayer 在 toml 单独声明
     implementation(libs.jlayer)
-    // 桌面端视频播放: all-in mpv 外部进程 (--wid 子窗口嵌入 + 内建 OSC + JSON IPC 桥),
-    // 见 help/video/MpvPlayer.kt / MpvDetector.kt。选 mpv 而非 vlcj 的根因: libvlc 无
-    // 全量 HTTP header 透传选项 (Cookie 防盗链无解), mpv --http-header-fields-append 直达
-    // HLS 分片。运行时需用户机器已安装 mpv (winget/scoop/官网), MpvDetector 按
-    // 设置项(mpvPath)/PATH/常见安装路径探测, 未装时 VideoPlayerScreen 显示引导安装占位。
-    // jna 用于取 AWT Canvas 原生窗口句柄 (Native.getComponentID) 供 mpv --wid 嵌入。
+    // 桌面端视频播放: open-ani/mediamp (mediamp-mpv 后端)。替代自研 libmpv 直通渲染 +
+    // mpv.exe 外部进程方案 (已删, 见 git 历史)。
+    // - 渲染: libmpv render API → 独立 producer GL/D3D11 上下文 → 共享纹理环 → Skia 零拷贝
+    //   (Windows: D3D11→Skia D3D12 共享; Linux: GLX share group; macOS: Metal), 视频区是普通
+    //   Compose 层, 控制层/弹层自由叠加, 无 airspace 问题, 也不再有 Skia GL 状态缓存污染
+    // - mpv runtime: mediamp-mpv 的 POM 只把 runtime 工件列在 dependencyManagement (版本锁
+    //   定), 并不传递引入, 必须显式 runtimeOnly 声明 mediamp-mpv-runtime (聚合工件, 单一 JVM
+    //   variant 无 OS/arch 属性, 带全部平台 natives, loader 运行时按当前 OS/arch 解包加载,
+    //   无需用户安装 mpv); 想省体积可换 per-platform 工件 mediamp-mpv-runtime-windows-x64 等
+    // - 防盗链: UriMediaData(uri, headers) 原生透传 User-Agent/Referer/http-header-fields
+    implementation(libs.mediamp.mpv)
+    runtimeOnly(libs.mediamp.mpv.runtime)
+    // jna 保留: WindowsFileDialogs (jna-platform) / DesktopAppConfigAccessor / DesktopBattery /
+    // DesktopWebViewEngines 直调 Win32; 视频侧 JNA 绑定已随自研渲染器删除。
     implementation("net.java.dev.jna:jna:5.17.0")
     // jna-platform 提供 Win32 COM 基础设施 (Ole32/Guid/HRESULT), 供 WindowsFileDialogs 直调
     // IFileDialog 取现代文件对话框 (AWT FileDialog 在 Windows 上是 comdlg32 旧版样式)。
@@ -115,26 +123,16 @@ dependencies {
     // rar4/rar5 (junrar 8.x 已支持 RAR5); slf4j-nop 消 junrar 传递依赖的无绑定警告
     implementation("com.github.junrar:junrar:8.0.0")
     implementation("org.slf4j:slf4j-nop:2.0.17")
-    // P0.3 桌面端真实 WebView slot: JavaFX WebView 经 SwingPanel(JFXPanel) 嵌入 Compose
-    // javafx-web 提供 javafx.scene.web.WebView, javafx-swing 提供 javafx.embed.swing.JFXPanel
-    // OpenJFX 21 Maven 构件的坑: 主 jar 是空壳 (0KB), 全部类在平台 classifier (win/linux/mac)
-    // 里, 且传递依赖也会拉到空主 jar —— 必须显式给每个模块挂当前 OS 的 classifier。
-    // nativeDistributions 也只打当前 OS, 这里按 OperatingSystem.current() 取 classifier 即可。
-    val javafxClassifier = when {
-        OperatingSystem.current().isWindows -> "win"
-        OperatingSystem.current().isMacOsX -> "mac"
-        OperatingSystem.current().isLinux -> "linux"
-        else -> throw GradleException("Unsupported OS for JavaFX: ${System.getProperty("os.name")}")
-    }
-    implementation("org.openjfx:javafx-base:21.0.5:$javafxClassifier")
-    implementation("org.openjfx:javafx-graphics:21.0.5:$javafxClassifier")
-    implementation("org.openjfx:javafx-controls:21.0.5:$javafxClassifier")
-    implementation("org.openjfx:javafx-media:21.0.5:$javafxClassifier")
-    implementation("org.openjfx:javafx-web:21.0.5:$javafxClassifier")
-    implementation("org.openjfx:javafx-swing:21.0.5:$javafxClassifier")
+    // 内嵌浏览器引擎全部直调系统引擎 (Windows WebView2 / Linux webkit2gtk / macOS WKWebView),
+    // 零随包 native。历史上 JavaFX WebView (OpenJFX 21 内嵌 2018 年 WebKit 606.1) 曾作为
+    // 跨平台兜底, 因内核过老 (ES2017+ 缺失/无资源拦截/cookie 反射 hack) 达不到书源网页需求,
+    // 已移除 —— 引擎不可用时直接回退系统浏览器 (见 help/webview/DesktopWebViewEngines)。
     // KP2-D: 桌面端 Room 事务支持
     // room-ktx 2.8.4 不发布 jvm 变体 (Android 专属), 桌面端改用 room-runtime 的 useWriterTransaction
     // shared.commonMain 已 api(libs.room.runtime), 桌面端通过传递依赖可见, 无需显式声明
+
+    // 测试: WebView2 消息泵/环境/窗口创建闭环验证 (修复"startBrowser 首次调用打不开")
+    testImplementation(libs.junit)
 }
 
 // Compose Desktop 统一配置入口 (mainClass + nativeDistributions)

@@ -173,7 +173,6 @@ fun ChangeSourceContent(
     }
 
     // region 对话框状态 (对照 app 端 alert 调用 + waitDialog)
-    var showGroupPicker by remember { mutableStateOf(false) }
     var showWaitDialog by remember { mutableStateOf(false) }
     var tocCoroutine by remember { mutableStateOf<Coroutine<*>?>(null) }
     var showEmptyGroupAlert by remember { mutableStateOf(false) }
@@ -430,12 +429,8 @@ fun ChangeSourceContent(
         itemActions = itemActions,
         searchGroup = state.searchGroup,
         onSearchGroupChange = { },
-        onShowGroupPicker = { showGroupPicker = true },
-        showGroupPicker = showGroupPicker,
-        onGroupPickerDismiss = { showGroupPicker = false },
         onGroupPickerSelect = { group ->
             // 对照 app 端 onGroupSelected (第 272-282 行)
-            showGroupPicker = false
             if (group != platform.searchGroup) {
                 platform.searchGroup = group
                 screenModel.dispatch(ChangeSourceUiEvent.SearchGroupChanged(group))

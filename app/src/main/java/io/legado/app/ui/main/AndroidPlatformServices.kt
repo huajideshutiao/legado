@@ -6,6 +6,7 @@ import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
@@ -53,6 +54,7 @@ import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import splitties.systemservices.notificationManager
 import java.io.File
+import java.io.FileOutputStream
 
 /**
  * Android 端 PlatformServices 实现：聚合 10 项平台能力，
@@ -109,12 +111,14 @@ private class AndroidFilePickerService(
         withContext(Dispatchers.Main) { openDocumentPicker.launch(filter.toMimeTypes()) }
             ?.toString()
             ?.takeIf { filter.matchesUri(it) }
+            ?.let(::materializeUri)
     }
 
     override fun pickFiles(filter: FileFilter): List<String> = runBlocking {
         withContext(Dispatchers.Main) { openDocumentsPicker.launch(filter.toMimeTypes()) }
             .map { it.toString() }
             .filter { filter.matchesUri(it) }
+            .mapNotNull(::materializeUri)
     }
 
     override fun saveFile(suggestedName: String, defaultDir: String?): String? = runBlocking {
@@ -134,6 +138,58 @@ private class AndroidFilePickerService(
                 AppLog.put("AndroidFilePickerService.pickDirectory takePersistableUriPermission 失败: ${it.localizedMessage}")
             }
             uri.toString()
+        }
+    }
+
+    /**
+     * SAF 返回的 content:// URI 不能直接交给 java.io.File。
+     * 原版 BgTextConfigViewModel.setBgFromUri 直接从 URI 读流；这里把选择结果
+     * 先复制到 cache，再把普通本地路径交给 shared 的跨平台文件逻辑。
+     * 这样阅读背景、封面和其它文件导入都不会因 URI scheme 丢失而失败。
+     */
+    private fun materializeUri(uriString: String): String? {
+        val uri = Uri.parse(uriString)
+        return when (uri.scheme?.lowercase()) {
+            "content" -> runCatching {
+                val resolver = appCtx.contentResolver
+                val displayName = resolver.query(
+                    uri,
+                    arrayOf(OpenableColumns.DISPLAY_NAME),
+                    null,
+                    null,
+                    null,
+                )?.use { cursor ->
+                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (nameIndex >= 0 && cursor.moveToFirst()) {
+                        cursor.getString(nameIndex)
+                    } else {
+                        null
+                    }
+                }
+                val sourceName = displayName
+                    ?.substringAfterLast(':')
+                    ?.substringAfterLast('/')
+                    ?.takeIf { it.isNotBlank() }
+                    ?: uri.lastPathSegment
+                        ?.substringAfterLast(':')
+                        ?.substringAfterLast('/')
+                        ?.takeIf { it.isNotBlank() }
+                    ?: "picked_${System.currentTimeMillis()}"
+                val safeName = sourceName.map { c ->
+                    if (c.isLetterOrDigit() || c == '.' || c == '_' || c == '-') c else '_'
+                }.joinToString("").ifBlank { "picked_${System.currentTimeMillis()}" }
+                val targetDir = File(appCtx.cacheDir, "file_picker").apply { mkdirs() }
+                val target = File(targetDir, "${System.currentTimeMillis()}_$safeName")
+                resolver.openInputStream(uri)?.use { input ->
+                    FileOutputStream(target).use { output -> input.copyTo(output) }
+                } ?: return null
+                target.absolutePath
+            }.onFailure {
+                AppLog.put("AndroidFilePickerService 读取文件失败: ${it.localizedMessage}")
+            }.getOrNull()
+
+            "file" -> uri.path
+            else -> uriString
         }
     }
 

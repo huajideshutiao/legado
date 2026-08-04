@@ -104,6 +104,7 @@ fun MangaRenderLayer(
             .background(MangaReaderBackground)
             .onSizeChanged(state::onContainerSize)
             .pointerInput(state) { webtoonGestures(state) }
+            .pointerInput(state) { mangaMouseDragGestures(state) }
             .pointerInput(state) {
                 detectTapGestures(
                     onTap = { state.onSingleTap(it) },

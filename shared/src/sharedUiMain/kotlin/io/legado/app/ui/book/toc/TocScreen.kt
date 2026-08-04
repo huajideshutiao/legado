@@ -21,7 +21,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -59,7 +62,9 @@ import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
+import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
@@ -319,7 +324,7 @@ private fun TocActions(state: TocUiState, actions: TocUiActions, page: Int) {
 
 @Composable
 private fun ChapterListPage(state: TocUiState, actions: TocUiActions) {
-    val listState = rememberLazyListState()
+    val listState = rememberLazyGridState()
     val display by remember(state.chapters, state.collapsedVolumes) {
         derivedStateOf { buildDisplayList(state.chapters, state.collapsedVolumes) }
     }
@@ -337,13 +342,20 @@ private fun ChapterListPage(state: TocUiState, actions: TocUiActions) {
         val collapsedSet = state.collapsedVolumes
         val countWords = state.countWords
         val durIndex = state.durChapterIndex
-        FastScrollLazyColumn(
+        // 与发现页同款按容器宽度自动分列 (rememberResponsiveColumns(1): 400dp→1列,
+        // 600dp→2列…); 卷名行跨满整行, 窄屏单列时与原来完全一致
+        FastScrollLazyVerticalGrid(
+            columns = rememberResponsiveColumns(1),
             state = listState,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
         ) {
-            items(display, key = { it.index }) { item ->
+            items(
+                display,
+                key = { it.index },
+                span = { if (it.isVolume) GridItemSpan(maxLineSpan) else GridItemSpan(1) },
+            ) { item ->
                 // 缓存文件名, 避免每次重组重复计算
                 val fileName = remember(item) { item.getFileName() }
                 // 参数瘦身: 只传本项派生值(全稳定), state 任一无关字段变化时本项可跳过重组
@@ -471,7 +483,7 @@ private fun ChapterItem(
 private fun ChapterInfoBar(
     state: TocUiState,
     actions: TocUiActions,
-    listState: LazyListState,
+    listState: LazyGridState,
     itemCount: Int,
 ) {
     val colors = AppTheme.colors
@@ -681,7 +693,7 @@ private fun CheckItem(text: String, checked: Boolean, onClick: () -> Unit) {
  *
  * # 职责
  *
- * 仅渲染 drawer 内容 (drawerContent + 顶部搜索/反转栏 + LazyColumn + 章节项),
+ * 仅渲染 drawer 内容 (drawerContent + 顶部搜索/反转栏 + 响应式章节网格 + 章节项),
  * 由调用方 ([io.legado.desktop.ui.reader.ReaderScreen]) 用 `ModalDrawer`
  * 包裹并传入 `drawerContent = { TocDrawerContent(...) }`。
  *
@@ -699,7 +711,7 @@ fun TocDrawerContent(
     modifier: Modifier = Modifier,
 ) {
     val colors = AppTheme.colors
-    val listState = rememberLazyListState()
+    val listState = rememberLazyGridState()
     // D 过渡实现的 4 个增强状态（桌面端内部维护, app 端完整版由 TocActivity 管理）
     var searchQuery by remember { mutableStateOf("") }
     var reversed by remember { mutableStateOf(false) }
@@ -750,12 +762,18 @@ fun TocDrawerContent(
             }
         }
 
-        // 章节列表
-        FastScrollLazyColumn(
+        // 章节列表: 与发现页同款按容器宽度自动分列 (rememberResponsiveColumns(1)),
+        // 卷名行跨满整行, 窄屏单列时与原来完全一致
+        FastScrollLazyVerticalGrid(
+            columns = rememberResponsiveColumns(1),
             state = listState,
             modifier = Modifier.fillMaxSize(),
         ) {
-            items(displayList, key = { it.index }) { chapter ->
+            items(
+                displayList,
+                key = { it.index },
+                span = { if (it.isVolume) GridItemSpan(maxLineSpan) else GridItemSpan(1) },
+            ) { chapter ->
                 TocDrawerItem(
                     chapter = chapter,
                     isCurrent = chapter.index == currentIndex,

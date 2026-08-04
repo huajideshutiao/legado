@@ -36,6 +36,10 @@ enum class AppStringKey {
     // AudioPlay 加载占位标题
     data_loading,
 
+    // 阅读页消息页文案 (对照 app 端 R.string.toc_updateing / error_load_toc)
+    toc_updateing,
+    error_load_toc,
+
     // AppWebDav 授权失败
     webdav_application_authorization_error,
 

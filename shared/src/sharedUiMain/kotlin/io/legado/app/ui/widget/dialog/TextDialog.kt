@@ -1,14 +1,17 @@
 package io.legado.app.ui.widget.dialog
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.AlertDialog
+import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
@@ -18,6 +21,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.MarkdownContentSelectable
+import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
@@ -33,6 +37,12 @@ private const val MAX_TEXT_LENGTH = 32 * 1024
 
 /**
  * 通用文本展示对话框，保留旧调用方的确定/中性按钮契约，同时支持 Markdown、HTML 和纯文本模式。
+ *
+ * 布局 = AppDialog + Surface + Column(标题固定 / 正文 weight(1f)+verticalScroll / 按钮行钉底)。
+ * 不用 M2 AlertDialog: 其 BaselineLayout 在 CMP 桌面按"未钳制的标题+正文高"汇报, 长文本时
+ * 对话框超 Surface 封顶, 滚动视口 > 可视区, 滚动错位 (内容下移/顶部空白/按钮被推出屏幕外,
+ * 用户多轮实测复现)。weight+scroll 方案视口恒定 (正文区 = 对话框剩余空间), 与
+ * AppAlertDialogContent/AppLogDialog 同一已验证模式。
  */
 @Composable
 fun TextDialog(
@@ -51,75 +61,76 @@ fun TextDialog(
     val tooLargeText = stringResource(Res.string.text_too_large)
     val clipboard = LocalClipboardManager.current
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        modifier = Modifier.appDialogSize(),
-        properties = AppDialogSizes.properties(),
-        title = {
-            Text(
-                text = title,
-                color = colors.primaryText,
-                fontSize = 18.sp,
-            )
-        },
-        text = {
-            when (mode) {
-                // 正文滚动区上限 = 0.8 锚点高 - 标题/按钮/间距 (约 180dp): 直接用 fullHeight()
-                // 会让 M2 AlertDialog 的 BaselineLayout 按未钳制的标题+正文高度汇报, Column 超出
-                // 对话框 Surface 封顶, 按钮行被裁掉且正文可视高度 < 滚动视口, 滚动错位。
-                TextDialogMode.MD -> MarkdownContentSelectable(
-                    content = content,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = AppDialogSizes.textAreaMaxHeight())
-                        .verticalScroll(rememberScrollState()),
+    AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
+        Surface(
+            modifier = Modifier.appDialogSize(),
+            shape = DesignTokens.shapeDefault,
+            color = colors.fillet,
+        ) {
+            Column(Modifier.padding(vertical = 16.dp)) {
+                Text(
+                    text = title,
+                    color = colors.primaryText,
+                    fontSize = 18.sp,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
                 )
-
-                TextDialogMode.HTML, TextDialogMode.TEXT -> {
-                    val displayText = if (content.length >= MAX_TEXT_LENGTH) {
-                        content.take(MAX_TEXT_LENGTH) + "\n\n" + tooLargeText
-                    } else {
-                        content
-                    }
-                    SelectionContainer {
-                        Text(
-                            text = displayText,
-                            color = colors.secondaryText,
-                            fontSize = 15.sp,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = AppDialogSizes.textAreaMaxHeight())
-                                .verticalScroll(rememberScrollState()),
+                // 正文区: weight 占对话框剩余空间 (视口恒定), 超长滚动, 按钮行恒可见
+                Box(
+                    Modifier
+                        .weight(1f, fill = false)
+                        .padding(horizontal = 24.dp, vertical = 8.dp),
+                ) {
+                    when (mode) {
+                        TextDialogMode.MD -> MarkdownContentSelectable(
+                            content = content,
+                            modifier = Modifier.verticalScroll(rememberScrollState()),
                         )
+
+                        TextDialogMode.HTML, TextDialogMode.TEXT -> {
+                            val displayText = if (content.length >= MAX_TEXT_LENGTH) {
+                                content.take(MAX_TEXT_LENGTH) + "\n\n" + tooLargeText
+                            } else {
+                                content
+                            }
+                            SelectionContainer {
+                                Text(
+                                    text = displayText,
+                                    color = colors.secondaryText,
+                                    fontSize = 15.sp,
+                                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                                )
+                            }
+                        }
                     }
                 }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(text = okText, color = DesignTokens.arcoBlue6)
-            }
-        },
-        dismissButton = {
-            Row {
-                if (neutralButtonText != null && onNeutral != null) {
-                    TextButton(onClick = onNeutral) {
-                        Text(text = neutralButtonText, color = DesignTokens.arcoBlue6)
+                // 按钮行钉底 (对照 AppAlertDialogContent: neutral 靠左, copy/取消/确定 靠右)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    if (neutralButtonText != null && onNeutral != null) {
+                        TextButton(onClick = onNeutral) {
+                            Text(text = neutralButtonText, color = DesignTokens.arcoBlue6)
+                        }
+                        Spacer(Modifier.width(4.dp))
+                    }
+                    TextButton(onClick = { clipboard.setText(AnnotatedString(content)) }) {
+                        Text(text = copyText, color = DesignTokens.arcoBlue6)
                     }
                     Spacer(Modifier.width(4.dp))
-                }
-                TextButton(onClick = { clipboard.setText(AnnotatedString(content)) }) {
-                    Text(text = copyText, color = DesignTokens.arcoBlue6)
-                }
-                Spacer(Modifier.width(4.dp))
-                TextButton(onClick = onDismiss) {
-                    Text(text = cancelText, color = colors.secondaryText)
+                    TextButton(onClick = onDismiss) {
+                        Text(text = cancelText, color = colors.secondaryText)
+                    }
+                    TextButton(onClick = onConfirm) {
+                        Text(text = okText, color = DesignTokens.arcoBlue6)
+                    }
                 }
             }
-        },
-        shape = DesignTokens.shapeDefault,
-        backgroundColor = colors.fillet,
-    )
+        }
+    }
 }
 
 enum class TextDialogMode {

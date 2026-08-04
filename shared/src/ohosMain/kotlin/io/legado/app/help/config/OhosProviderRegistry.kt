@@ -9,6 +9,7 @@ import io.legado.app.help.archive.registerNativeArchiveProvider
 import io.legado.app.help.book.registerNativeBookHelpAccessor
 import io.legado.app.help.book.registerNativeBookStorage
 import io.legado.app.help.storage.registerNativeDataStorage
+import io.legado.app.help.storage.registerOhosBackupRestoreHook
 import io.legado.app.help.book.registerNativeBookImageStorage
 import io.legado.app.help.book.registerNativeContentProcessorAccessor
 import io.legado.app.help.book.registerNativeLocalBookLocator
@@ -36,17 +37,18 @@ import io.legado.app.help.tts.OhosHttpTtsPlayer
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.help.tts.registerOhosSystemTtsEngine
 import io.legado.app.help.ui.registerOhosOpenUrlProvider
-import io.legado.app.help.ui.registerOhosToastProvider
 import io.legado.app.help.ui.registerOhosUserAgentProvider
 import io.legado.app.model.fileBook.BitmapProviders
 import io.legado.app.model.fileBook.registerNativeFileBookAccessor
 import io.legado.app.model.registerNativeCacheBookCallback
 import io.legado.app.model.registerOhosAudioPlayCommanders
+import io.legado.app.model.registerOhosReadBookPlatform
 import io.legado.app.model.script.registerOhosJsEngines
 import io.legado.app.model.webBook.registerNativeWebBookProviders
 import io.legado.app.napi.registerOhosNativeBridge
 import io.legado.app.ui.book.changesource.registerOhosChangeBookSourcePlatform
 import io.legado.app.ui.book.manage.registerOhosBookshelfManagePlatform
+import io.legado.app.utils.registerOhosScreenInfoProvider
 import io.legado.app.ui.book.read.page.provider.registerOhosTextMeasurer
 import io.legado.app.ui.compose.platform.OhosPreferenceStoreProvider
 import io.legado.app.web.registerNativeWebServerPlatform
@@ -106,6 +108,11 @@ import io.legado.app.web.utils.registerNativeWebStrings
 fun registerOhosProviders() {
     // 0. 主线程 id 捕获 (任何 JS eval / webView 调用之前, EntryAbility.onCreate 在主线程执行本函数)
     registerOhosMainThread()
+
+    // 0.5 屏幕尺寸 provider (sharedUiMain AppDialogSizes 兜底取 ScreenInfoProviders.get(),
+    // 未注册时 error 导致所有对话框崩溃; 数据由 EntryAbility.onWindowStageCreate 经
+    // legado.registerScreenSize 注入, 未注入时回退默认尺寸)
+    registerOhosScreenInfoProvider()
 
     // 1. 文件系统目录 (其他 provider 持久化依赖)
     registerOhosAppFilesDir()
@@ -231,7 +238,6 @@ fun registerOhosProviders() {
 
     // 8.7 UI provider (Toast / OpenUrl / UserAgent, JsExtensionsCommon 在 JS eval 时回调)
     // 必须在任何 JS 执行之前 (JS eval 在本函数返回后由业务代码触发); stub 实现, 真实实现需 tsfn 桥接 ArkTS
-    registerOhosToastProvider()
     registerOhosOpenUrlProvider()
     registerOhosUserAgentProvider()
     // 源验证 UI provider (最小实现: 不支持路径明确报错+Toast, 纯打开链接走 OpenUrlProviders;
@@ -243,6 +249,12 @@ fun registerOhosProviders() {
     registerOhosChangeBookSourcePlatform()
     // 书架管理平台 provider (commonMain BookshelfManageViewModelShared 调用, 须在 WebBookProviders 之后)
     registerOhosBookshelfManagePlatform()
+    // 阅读编排平台钩子 (朗读/缓存服务运行态暂缺, 本地 txt 分章缓存清理真实;
+    // 对照 iOS registerIosReadBookPlatform, 未注册时默认空实现行为一致)
+    registerOhosReadBookPlatform()
+    // 备份/恢复钩子 (lastBackup 时间戳 + 恢复完成提示; zip 复制/解压走 BackupFileOps 默认实现,
+    // 对照 iOS registerIosBackupRestoreHook; 未注册时默认空实现静默丢这些副作用)
+    registerOhosBackupRestoreHook()
 
     // 8.8 阅读排版真实字形度量器 (Skia Font 度量, 取代 SimpleTextMeasurer 等宽近似;
     // 须在任何章节排版之前, 依赖 skiko 随 compose ui 已就绪)

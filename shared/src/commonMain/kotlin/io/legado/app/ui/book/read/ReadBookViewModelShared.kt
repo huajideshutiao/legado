@@ -21,6 +21,8 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.i18n.AppStringKey
+import io.legado.app.help.i18n.appString
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.CacheBookShared
 import io.legado.app.model.ReadBookPlatforms
@@ -33,6 +35,7 @@ import io.legado.app.ui.book.read.page.PageDelegateShared
 import io.legado.app.ui.book.read.page.entities.TextChapterShared
 import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
+import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.book.read.page.provider.ChapterContentParserShared
 import io.legado.app.ui.book.read.page.provider.ImageResolver
 import io.legado.app.ui.book.read.page.provider.ImageResolverProviders
@@ -353,6 +356,11 @@ class ReadBookViewModelShared(
         if (config.visibleWidth <= 0 || config.visibleHeight <= 0) return
         if (_layoutConfig.value == config) return
         _layoutConfig.value = config
+        // 当前章未装载时占位/消息页按新配置重建（加载中页几何与视口一致，对照原版
+        // ChapterProvider.viewWidth 变化后 format() 重排消息页）
+        if (readBook.curTextChapter.value == null || readBook.msg != null) {
+            syncPageFlows()
+        }
         relayoutCurrentChapter()
     }
 
@@ -540,6 +548,12 @@ class ReadBookViewModelShared(
         if (index < 0 || index >= readBook.chapterSize) return
         if (index !in readBook.durChapterIndex.value - 1..readBook.durChapterIndex.value + 1) return
         if (!addLoading(index)) return
+        // 当前章未装载：先刷新页面流，展示"加载数据中…"占位（对照原版 moveToNextChapter /
+        // openChapter 的 upContent 后 pageFactory 无章兜底页；msg 优先，不覆盖消息页）。
+        // 装载完成后由 contentLoadFinish → applyCurChapterPages 替换为正文。
+        if (index == readBook.durChapterIndex.value && readBook.msg == null) {
+            syncPageFlows()
+        }
         try {
             val book = readBook.book.value ?: return
             val chapter = readBook.chapterList.value.getOrNull(index)
@@ -792,6 +806,10 @@ class ReadBookViewModelShared(
                 applyCurChapterPages(newCur)
             }
             if (newCur == null) {
+                // 当前章未装载：立即刷新三页流展示"加载数据中…"占位（对照原版
+                // moveToNextChapter 的 upContent 后 pageFactory 无章兜底页），
+                // 装载完成由 contentLoadFinish 替换为正文
+                syncPageFlows()
                 launchChapterLoad(curIndex + 1) { loadContent(curIndex + 1) }
             }
             launchChapterLoad(curIndex + 2) { loadContent(curIndex + 2) }
@@ -848,6 +866,9 @@ class ReadBookViewModelShared(
                 applyCurChapterPages(newCur)
             }
             if (newCur == null) {
+                // 当前章未装载：立即刷新三页流展示"加载数据中…"占位（对照原版
+                // moveToPrevChapter 的 upContent 后 pageFactory 无章兜底页）
+                syncPageFlows()
                 launchChapterLoad(curIndex - 1) { loadContent(curIndex - 1) }
             }
             launchChapterLoad(curIndex - 2) { loadContent(curIndex - 2) }
@@ -1185,12 +1206,20 @@ class ReadBookViewModelShared(
      * 成功后清当前章排版缓存并重载三章滑窗; 失败保持现状不破坏内存目录。
      */
     fun loadChapterList(book: Book) {
+        // 对照原版 ReadBookActivity.loadChapterList：更新目录期间整页显示"更新目录中…"
+        readBook.upMsg(appString(AppStringKey.toc_updateing))
         scope.launch {
             val list = loadChapterListFromSource(book)
-            if (list.isNotEmpty()) {
+            if (list.isEmpty()) {
+                // 对照原版 loadChapterListAwait 失败分支：显示"加载目录失败"（目录保持现状）
+                readBook.upMsg(appString(AppStringKey.error_load_toc))
+            } else {
                 // 成功: 清当前章已处理内容缓存 + 重载滑窗 (对照 app 端 onChapterListUpdated 触发 loadContent)
                 processedContentCache.remove(readBook.durChapterIndex.value)
                 readBook.clearTextChapter()
+                // 先清消息再重载：upMsg(null) 经 onUpContent 刷新页面流，
+                // 当前章已清空时直接展示"加载数据中…"占位
+                readBook.upMsg(null)
                 val index = readBook.durChapterIndex.value
                 launchChapterLoad(index) { loadContent(index) }
                 launchChapterLoad(index + 1) { loadContent(index + 1) }
@@ -1469,13 +1498,51 @@ class ReadBookViewModelShared(
         preDownload()
     }
 
-    /** 按 durChapterPos 反算 pageIndex 并刷新三个页面状态流 */
+    /**
+     * 按 durChapterPos 反算 pageIndex 并刷新三个页面状态流。
+     *
+     * 对照原版 TextPageFactory：
+     * - [ReadBookShared.msg] 非空时三页流全部显示消息页（原版 curPage/prevPage/nextPage 的 msg 优先分支）
+     * - 当前章未装载时当前页给"加载数据中…"占位（原版无章时的 `TextPage()` 默认文案），
+     *   prev/next 按相邻章兜底（原版 prevChapter/nextChapter 分支）
+     * - 章内翻页时 prev/next 取 pageList 相邻页（原版 curPage±1）
+     */
     private fun syncPageFlows() {
+        // 阅读消息页优先（原版 msg 检查在所有页面工厂分支之前）
+        readBook.msg?.let { msg ->
+            val page = buildMessagePage(msg, readBook.durChapterIndex.value, readBook.chapterSize)
+            _curTextPage.value = page
+            _prevTextPage.value = page
+            _nextTextPage.value = page
+            return
+        }
+        val durIndex = readBook.durChapterIndex.value
+        val curChapter = readBook.curTextChapter.value
+        if (curChapter == null) {
+            // 当前章尚未装载（打开书籍/切章加载中）：当前页显示"加载数据中…"占位。
+            // 此时 pageList 可能残留上一章排版（切章未装载分支不清空），不能用于当前页推导
+            _curTextPage.value = loadingPlaceholderPage(durIndex)
+            val prevChapter = readBook.prevTextChapter.value
+            val nextChapter = readBook.nextTextChapter.value
+            _prevTextPage.value = prevChapter?.pages?.lastOrNull()
+                ?: if (canMoveToPrevChapter()) {
+                    loadingPlaceholderPage(durIndex - 1)
+                } else {
+                    null
+                }
+            _nextTextPage.value = nextChapter?.pages?.firstOrNull()
+                ?: if (canMoveToNextChapter()) {
+                    loadingPlaceholderPage(durIndex + 1)
+                } else {
+                    null
+                }
+            return
+        }
         pageIndex = readBook.durPageIndexValue.coerceIn(0, (pageList.size - 1).coerceAtLeast(0))
         _curTextPage.value = pageList.getOrNull(pageIndex)
-        // 对照原版 TextPageFactory.prevPage/nextPage：章首/章末的相邻页跨章节取
-        // - prevPage = 上一章末页（prevChapter.lastPage），nextPage = 下一章首页（nextChapter.getPage(0)）
-        // - 相邻章尚未装载时给"加载数据中…"占位页（原版 loadingTextPage）
+        // 章首/章末的相邻页跨章节取：prevPage = 上一章末页（prevChapter.lastPage），
+        // nextPage = 下一章首页（nextChapter.getPage(0)）；相邻章尚未装载时给
+        // "加载数据中…"占位页（原版 loadingTextPage）
         // 修复翻页动画：prev/next 流为 null 时 ReadViewComposable 的 prevContent/nextContent
         // lambda 什么都不渲染，滑入层只有阴影扫过、页面内容不跟着动（原版三页流永远有值）
         val prevChapter = readBook.prevTextChapter.value
@@ -1483,28 +1550,39 @@ class ReadBookViewModelShared(
         _prevTextPage.value = pageList.getOrNull(pageIndex - 1)
             ?: prevChapter?.pages?.lastOrNull()
                 ?: if (pageIndex == 0 && canMoveToPrevChapter()) {
-                loadingPlaceholderPage(readBook.durChapterIndex.value - 1)
+                loadingPlaceholderPage(durIndex - 1)
             } else {
                 null
             }
         _nextTextPage.value = pageList.getOrNull(pageIndex + 1)
             ?: nextChapter?.pages?.firstOrNull()
                 ?: if (pageIndex == pageList.lastIndex && canMoveToNextChapter()) {
-                loadingPlaceholderPage(readBook.durChapterIndex.value + 1)
+                loadingPlaceholderPage(durIndex + 1)
             } else {
                 null
             }
     }
 
     /**
+     * 阅读状态变化后的视图刷新入口（对照原版 `ReadBook.CallBack.upContent`）。
+     *
+     * [ReadBookShared.upMsg] / [ReadBookShared.initData] 等状态变更经回调触发本方法，
+     * 重新推导三页流：消息页（更新目录/错误提示）与"加载数据中…"占位页在此呈现。
+     */
+    fun onUpContent() {
+        syncPageFlows()
+    }
+
+    /**
      * "加载数据中…"占位页（对照原版 TextPageFactory.loadingTextPage，文案同 R.string.data_loading）。
-     * 相邻章尚未装载时填充 prev/next 流，保证翻页动画滑入层始终有内容。
+     * 当前章未装载时填充当前页流，相邻章尚未装载时填充 prev/next 流，
+     * 保证翻页动画滑入层始终有内容。
      */
     private fun loadingPlaceholderPage(chapterIndex: Int): TextPage = placeholderPage(
-        msg = "加载数据中…",
+        msg = appString(AppStringKey.data_loading),
         chapterIndex = chapterIndex,
         chapterSize = readBook.chapterSize,
-        title = "加载数据中…",
+        title = appString(AppStringKey.data_loading),
     )
 
     /** 展示占位提示章（原版错误文案同样经 contentLoadFinish 成章展示） */
@@ -1647,6 +1725,8 @@ class ReadBookViewModelShared(
      */
     fun updateToc() {
         val book = readBook.book.value ?: return
+        // 对照原版菜单"更新目录" → loadChapterList：整页显示"更新目录中…"
+        readBook.upMsg(appString(AppStringKey.toc_updateing))
         scope.launch(IoDispatcher) {
             // 本地 txt 解析句柄缓存清空 (对照原版 UPDATE_TOC: it.getHandler().clear()), 失败不阻断
             runCatching { FileBookProviders.get().getHandler(book).clear() }.onFailure {
@@ -1658,10 +1738,15 @@ class ReadBookViewModelShared(
                 }
             }
             val list = loadChapterListFromSource(book)
-            if (list.isEmpty()) return@launch
+            if (list.isEmpty()) {
+                // 失败（目录为空）保持现状不破坏内存目录；消息页显示加载失败（对照原版 error_load_toc）
+                readBook.upMsg(appString(AppStringKey.error_load_toc))
+                return@launch
+            }
             readBook.updateChapterList(list)
             processedContentCache.clear()
             readBook.clearTextChapter()
+            readBook.upMsg(null)
             val index = readBook.durChapterIndex.value
             launchChapterLoad(index) { loadContent(index) }
             launchChapterLoad(index + 1) { loadContent(index + 1) }
@@ -1788,7 +1873,7 @@ class ReadBookViewModelShared(
     }
 
     /**
-     * 构造占位 [TextPage]（章节越界 / 缓存未命中的兜底页）。
+     * 构造占位 [TextPage]（章节越界 / 缓存未命中的兜底页），排版为居中消息行。
      *
      * @param msg 显示文本
      * @param chapterIndex 章节序号
@@ -1800,14 +1885,104 @@ class ReadBookViewModelShared(
         chapterIndex: Int,
         chapterSize: Int,
         title: String? = "提示",
-    ): TextPage = TextPage(
-        text = msg,
-        title = title ?: "",
+    ): TextPage = buildMessagePage(
+        msg = msg,
         chapterIndex = chapterIndex,
         chapterSize = chapterSize,
-    ).apply {
-        isCompleted = true
-        isMsgPage = true
+        title = title,
+    )
+
+    /**
+     * 构造消息占位页并排版为居中行（对照原版 `TextPage.format()` 消息页分支：
+     * StaticLayout 按可见宽度换行，文本块垂直/水平居中，逐字生成 TextColumn）。
+     *
+     * 排版参数取当前 [_layoutConfig]；视口未注入（<=0）或文案为空时仅构造无行占位页，
+     * 由后续 [updateLayoutConfig] 重建。
+     */
+    private fun buildMessagePage(
+        msg: String,
+        chapterIndex: Int,
+        chapterSize: Int,
+        title: String? = null,
+    ): TextPage {
+        val cfg = _layoutConfig.value
+        val page = TextPage(
+            text = msg,
+            title = title ?: "",
+            chapterIndex = chapterIndex,
+            chapterSize = chapterSize,
+        ).apply {
+            isMsgPage = true
+            isCompleted = true
+        }
+        if (cfg.visibleWidth <= 0 || cfg.visibleHeight <= 0 || msg.isEmpty()) return page
+        val measurer = TextMeasurerProviders
+            .createOrNull(cfg.textSizePx, cfg.letterSpacingPx, cfg.textFontPath)
+            ?: SimpleTextMeasurer(
+                textSizePx = cfg.textSizePx,
+                letterSpacingPx = cfg.letterSpacingPx,
+                descent = cfg.textSizePx * 0.2f,
+            )
+        val textHeight = measurer.descent - measurer.ascent
+        val lineSpacing = textHeight * cfg.lineSpacingExtra
+        // 贪心换行：按 \n 分段，逐字累积宽度，超出可见宽度断行（消息文案短，足够）
+        val wrappedLines = arrayListOf<String>()
+        for (segment in msg.split('\n')) {
+            if (segment.isEmpty()) {
+                wrappedLines.add("")
+                continue
+            }
+            val widths = FloatArray(segment.length)
+            measurer.measureGlyphWidths(segment, widths)
+            val sb = StringBuilder()
+            var lineWidth = 0f
+            for (i in segment.indices) {
+                if (sb.isNotEmpty() && lineWidth + widths[i] > cfg.visibleWidth) {
+                    wrappedLines.add(sb.toString())
+                    sb.setLength(0)
+                    lineWidth = 0f
+                }
+                sb.append(segment[i])
+                lineWidth += widths[i]
+            }
+            wrappedLines.add(sb.toString())
+        }
+        // 文本块总高（行盒高 × 行数），垂直居中于可视区（对照原版 format 的
+        // y = (visibleHeight - layout.height) / 2）；行水平居中（x = paddingLeft +
+        // (visibleWidth - lineWidth) / 2）
+        val totalHeight = wrappedLines.size * lineSpacing
+        var y = cfg.paddingTop + (cfg.visibleHeight - totalHeight) / 2f
+        if (y < cfg.paddingTop) y = cfg.paddingTop.toFloat()
+        for (lineText in wrappedLines) {
+            val textLine = TextLine(text = lineText)
+            textLine.lineTop = y
+            textLine.lineBottom = y + textHeight
+            // baseline = lineTop - ascent（ascent 为负，同正文行 lineBase = lineBottom - descent）
+            textLine.lineBase = y - measurer.ascent
+            // 列宽度与本行换行测量同源（measureGlyphWidths），保证绘制不走样
+            val widths = FloatArray(lineText.length)
+            measurer.measureGlyphWidths(lineText, widths)
+            val lineWidth = widths.sum()
+            var x = cfg.paddingLeft + (cfg.visibleWidth - lineWidth) / 2f
+            if (x < cfg.paddingLeft) x = cfg.paddingLeft.toFloat()
+            for (i in lineText.indices) {
+                val char = lineText[i].toString()
+                val cw = widths[i]
+                textLine.addColumn(TextColumn(start = x, end = x + cw, char))
+                x += cw
+            }
+            page.addLine(textLine)
+            y += lineSpacing
+        }
+        // 几何参数注入（滚动模式视口裁剪/行距对齐用，对照排版层 onPageCompleted 注入）
+        page.paddingTop = cfg.paddingTop
+        page.visibleHeight = cfg.visibleHeight
+        page.visibleBottom = cfg.paddingTop + cfg.visibleHeight
+        page.lineSpacingExtra = cfg.lineSpacingExtra
+        page.contentPaintTextHeight = textHeight
+        page.height = cfg.visibleHeight.toFloat()
+        page.upRenderHeight()
+        return page
     }
 
     /**

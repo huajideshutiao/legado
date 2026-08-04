@@ -27,6 +27,10 @@ interface ScreenInfoProvider {
  *
  * shared/commonMain 内访问点用 `ScreenInfoProviders.get().screenWidthPx` 等替代
  * 平台 Resources / Toolkit 调用, 行为完全一致, 仅多一层 provider 间接。
+ *
+ * 各端注册: app 端 `registerAndroidScreenInfoProvider` / 桌面端 `registerDesktopScreenInfoProvider` /
+ * iOS 端 `registerIosScreenInfoProvider` / 鸿蒙端 `registerOhosScreenInfoProvider`
+ * (鸿蒙尺寸由 EntryAbility 经 legado.registerScreenSize 注入显示物理像素)。
  */
 object ScreenInfoProviders {
     @Volatile
@@ -39,5 +43,6 @@ object ScreenInfoProviders {
 
     /** 取已注册实现；未注册抛出 IllegalStateException 帮助早期发现初始化遗漏。 */
     fun get(): ScreenInfoProvider =
-        impl ?: error("ScreenInfoProviders.impl not registered; call registerAndroidScreenInfoProvider() or registerDesktopScreenInfoProvider() first")
+        impl
+            ?: error("ScreenInfoProviders.impl not registered; call registerAndroidScreenInfoProvider() / registerDesktopScreenInfoProvider() / registerIosScreenInfoProvider() / registerOhosScreenInfoProvider() first")
 }

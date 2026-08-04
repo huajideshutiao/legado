@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.ui.book.read.ReadBookViewModelShared
+import io.legado.app.ui.book.read.page.ReaderBackgroundImageCache
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -450,7 +451,14 @@ class SimulationPageDelegateCompose(
         // NEXT: 底页=当前页、露出=下一页；PREV: 底页=上一页、露出=当前页
         val baseContent = if (direction == PageDirectionShared.NEXT) curContent else prevContent
         val revealContent = if (direction == PageDirectionShared.NEXT) nextContent else curContent
-        val bgColor = Color(LocalReadConfigProviders.current.readBookConfig.config.curBgColor())
+        // 翻起页背面必须是不透明的阅读底色，否则向后翻页时背面会透出底层页面。
+        // 正面 PageView 也会把背景 alpha 归一为 1，保持两种渲染路径一致。
+        val bgColor = Color(
+            LocalReadConfigProviders.current.readBookConfig.config.curBgColor()
+        ).copy(alpha = 1f)
+        // 背景图由 PageView 的 Canvas 异步加载；这里也读取版本，确保已录制的
+        // baseLayer 在图片就绪后重新记录，仿真翻页背面不会继续保留加载前的空底色。
+        val backgroundVersion = ReaderBackgroundImageCache.version
 
         // 替代原版 CanvasRecorder.screenshot：底页只渲染一次，正面 / 背面镜像共用这份 layer
         val baseLayer = rememberGraphicsLayer()
@@ -463,6 +471,7 @@ class SimulationPageDelegateCompose(
             modifier = Modifier
                 .fillMaxSize()
                 .drawWithContent {
+                    if (backgroundVersion < 0) return@drawWithContent
                     baseLayer.record { this@drawWithContent.drawContent() }
                     if (frame == 0f) {
                         drawLayer(baseLayer)

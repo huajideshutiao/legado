@@ -58,6 +58,9 @@ internal object Wv2 {
     const val NAV_START_GET_IS_REDIRECTED = 5
     const val NAV_START_PUT_CANCEL = 8
 
+    // ICoreWebView2NavigationCompletedEventArgs
+    const val NAV_COMPLETED_GET_IS_SUCCESS = 3
+
     // ICoreWebView2WebResourceRequestedEventArgs / WebResourceRequest
     const val RES_ARGS_GET_REQUEST = 3
     const val REQUEST_GET_URI = 3

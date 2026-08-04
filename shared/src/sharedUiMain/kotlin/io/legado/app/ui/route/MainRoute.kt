@@ -63,6 +63,8 @@ import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfigAccessor
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.SourceLoginContext
+import io.legado.app.help.sourceLoginOverlayPayload
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.ui.about.AppLogDialog
@@ -83,6 +85,7 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.ExploreOptionsRow
 import io.legado.app.ui.compose.component.appDialogSize
+import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -100,6 +103,7 @@ import io.legado.app.ui.main.home.HomeTabManageDialog
 import io.legado.app.ui.main.home.homeSectionKey
 import io.legado.app.ui.main.my.MyConfigScreen
 import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.LocalPlatformCapabilities
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -162,15 +166,35 @@ fun MainRoute(
     screenModelStore: ScreenModelStore,
 ) {
     val appConfig = remember { AppConfigProviders.get() }
+    val eventBus = LocalEventBusProvider.current
+
+    // 底栏配置变更即时生效 (修复: 调整底栏设置后需切 tab 才刷新):
+    // 各端底栏设置对话框写入后 emitRecreate()/postEvent(EventBus.RECREATE), 本组合
+    // 订阅 recreateEvent 递增 configTick 强制重组 (与 AppTheme 观察同一事件流同模式)。
+    // 底栏配置 (bottomBarHeight/IconSize/LabelMode/showHome/showDiscovery/bottomNavItemOrder)
+    // 均为直读配置的普通 getter (Android 直读 SharedPreferences, 桌面/iOS/鸿蒙经
+    // CachedPrefValue 由 pref 变更监听同步刷新), 重组即读到新值, remember 键变化后
+    // 底栏立即按新配置刷新, 无需切 tab。
+    // 对照原版: BaseActivity 观察 EventBus.RECREATE → recreate() → upHomePage() 整页重建。
+    var configTick by remember(eventBus) { mutableIntStateOf(0) }
+    LaunchedEffect(eventBus) {
+        eventBus.recreateEvent.collect { configTick++ }
+    }
+    configTick
 
     // 对照 MainActivity.computeVisibleTags: 顺序配置校验 + showHome/showDiscovery 过滤
     val visibleTags =
-        remember(appConfig.bottomNavItemOrder, appConfig.showHome, appConfig.showDiscovery) {
+        remember(
+            configTick,
+            appConfig.bottomNavItemOrder,
+            appConfig.showHome,
+            appConfig.showDiscovery,
+        ) {
             computeVisibleTags(appConfig)
         }
 
     // 对照 MainActivity.homePageIndex: defaultHomePage 落点, 目标 tab 隐藏时回落书架
-    val initialPage = remember(visibleTags, appConfig.defaultHomePage) {
+    val initialPage = remember(configTick, visibleTags, appConfig.defaultHomePage) {
         computeHomePageIndex(visibleTags, appConfig.defaultHomePage)
     }
 
@@ -181,6 +205,19 @@ fun MainRoute(
     // 对照 MainActivity.currentPage: pager 当前页 (返回键/reselect 判定)
     // rememberSaveable: 配合 LegadoApp 的 SaveableStateHolder, 返回主界面时恢复 tab 位置
     var currentPage by rememberSaveable { mutableStateOf(initialPage) }
+
+    // tab 集合/顺序变化 (底栏配置变更): 按 tag 定位保持当前 tab (换序/纯外观变更不打断),
+    // 仅当前 tab 被隐藏时回落首个可见 tab——不回默认首页 (用户确认回默认页行为多余)。
+    var lastVisibleTags by remember { mutableStateOf(visibleTags) }
+    LaunchedEffect(visibleTags) {
+        if (visibleTags != lastVisibleTags) {
+            val old = lastVisibleTags
+            lastVisibleTags = visibleTags
+            val curTag = old.getOrNull(currentPage)
+            val newIndex = curTag?.let { tag -> visibleTags.indexOf(tag) }?.takeIf { it >= 0 } ?: 0
+            if (newIndex != currentPage) pageSelections.tryEmit(newIndex to false)
+        }
+    }
 
     // 对照 MainActivity.bookshelfReselected/exploreReselected: 300ms 双击 reselect
     var bookshelfReselected by remember { mutableLongStateOf(0L) }
@@ -876,7 +913,7 @@ private fun BookshelfTabContent(
             onDismissRequest = { addVm.cancelAddBook() },
         )
     }
-    // 应用日志对话框 (对照 SearchRoute / LoginRoute 同名状态)
+    // 应用日志对话框 (对照 SearchRoute 同名状态)
     if (showAppLog) {
         AppLogDialog(onDismiss = { showAppLog = false })
     }
@@ -1036,7 +1073,13 @@ private fun ExploreTabContent(
             }
 
             override fun onLogin(source: BookSourcePart) {
-                navigator.push(AppRoute.Login(source.bookSourceUrl))
+                // 纯 Overlay 弹登录对话框, 不推新路由 (源按 bookSourceUrl 查库)
+                navigator.showOverlay(
+                    AppOverlay.Dialog(
+                        key = "sourceLogin",
+                        payload = sourceLoginOverlayPayload(source.bookSourceUrl),
+                    )
+                )
             }
 
             override fun onSearchBook(source: BookSourcePart) {
@@ -1045,10 +1088,6 @@ private fun ExploreTabContent(
 
             override fun onRefreshSource(source: BookSourcePart) {
                 screenModel.dispatch(ExploreUiEvent.RefreshSource(source))
-            }
-
-            override fun onRefreshAll() {
-                screenModel.dispatch(ExploreUiEvent.RefreshAll)
             }
 
             override fun onDeleteSource(source: BookSourcePart) {

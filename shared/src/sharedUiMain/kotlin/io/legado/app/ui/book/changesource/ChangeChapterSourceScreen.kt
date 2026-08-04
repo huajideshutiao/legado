@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -21,6 +22,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import kotlinx.coroutines.launch
 import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.all_source
 import legado.shared.generated.resources.book_source_manage
 import legado.shared.generated.resources.checkAuthor
 import legado.shared.generated.resources.group
@@ -85,7 +87,7 @@ interface ChangeChapterSourceItemActions {
  * 下沉自 Dialog 形态: 标题栏 (复用 [ChangeSourceTitleBar]) + 搜索进度条
  * (复用 [ChangeSourceRefreshBar]) + 源列表 ([FastScrollLazyColumn] + [SearchBookItem]
  * 完整版含点赞/长按菜单) + 底栏 (复用 [ChangeSourceBottomBar]) + toc 预览覆盖层
- * ([ChapterTocPanel]) + 分组选择对话框 ([GroupPickerDialog])。
+ * ([ChapterTocPanel]) + 分组二级菜单 (菜单「分组」subMenu 展开, 对照原版 upGroupMenu)。
  *
  * 与 [ChangeSourceScreen] 同构, 差异:
  * - 标题用 [ChangeChapterSourceUiState.chapterTitle];
@@ -98,13 +100,10 @@ interface ChangeChapterSourceItemActions {
  * @param actions 交互回调 (由 Route 层桥接到 navigator + 平台 ViewModel)
  * @param menuActions 溢出菜单回调 (由 Route 层桥接到 platform 持久化 + ViewModel 刷新)
  * @param itemActions 列表项长按菜单回调 (由 Route 层桥接到 ViewModel)
- * @param searchGroup 当前选中分组 (GroupPickerDialog 选中态)
+ * @param searchGroup 当前选中分组 (菜单「分组」项二级菜单选中态)
  * @param onSearchGroupChange 分组变更 (Route 层 dispatch SearchGroupChanged)
- * @param onShowGroupPicker 显示分组选择对话框
- * @param showGroupPicker 分组选择对话框是否显示
- * @param onGroupPickerDismiss 分组选择对话框关闭
- * @param onGroupPickerSelect 分组选择对话框选中 (Route 层做 stopSearch/refresh/startSearch)
- * @param groups 启用分组列表
+ * @param onGroupPickerSelect 分组选中回调 (二级分组菜单选中, Route 层做 stopSearch/refresh/startSearch)
+ * @param groups 启用分组列表 (二级分组菜单渲染)
  * @param onTocHide 隐藏 toc 预览覆盖层
  * @param onClickChapter 点击章节 (Route 层走 getContent + navigator.pop)
  */
@@ -116,9 +115,6 @@ fun ChangeChapterSourceScreen(
     itemActions: ChangeChapterSourceItemActions,
     searchGroup: String,
     onSearchGroupChange: (String) -> Unit,
-    onShowGroupPicker: () -> Unit,
-    showGroupPicker: Boolean,
-    onGroupPickerDismiss: () -> Unit,
     onGroupPickerSelect: (String) -> Unit,
     groups: List<String>,
     onTocHide: () -> Unit,
@@ -154,31 +150,43 @@ fun ChangeChapterSourceScreen(
             },
             onStartStop = actions::onStartStop,
         ) { dismiss ->
-            TextMenuItem(stringResource(Res.string.book_source_manage)) {
-                dismiss()
-                menuActions.onBookSourceManage()
+            // 对照 app 端 Dialog 第 181-212 行 6 个菜单项;
+            // 「分组」项点击后用分组列表替换一级菜单 (对照原版 menu_group 的 subMenu
+            // 展开行为, 见原版 upGroupMenu, 不再弹独立分组对话框, 2026-08-06)。
+            var showGroup by remember { mutableStateOf(false) }
+            if (showGroup) {
+                val hasSelected = searchGroup.isNotEmpty() && groups.contains(searchGroup)
+                RadioMenuItem(stringResource(Res.string.all_source), !hasSelected) {
+                    dismiss(); onGroupPickerSelect("")
+                }
+                groups.forEach { group ->
+                    RadioMenuItem(group, group == searchGroup) {
+                        dismiss(); onGroupPickerSelect(group)
+                    }
+                }
+            } else {
+                TextMenuItem(stringResource(Res.string.book_source_manage)) {
+                    dismiss()
+                    menuActions.onBookSourceManage()
+                }
+                CheckMenuItem(stringResource(Res.string.checkAuthor), state.checkAuthor) {
+                    dismiss()
+                    menuActions.onCheckAuthorChange(!state.checkAuthor)
+                }
+                CheckMenuItem(stringResource(Res.string.load_word_count), state.loadWordCount) {
+                    dismiss()
+                    menuActions.onLoadWordCountChange(!state.loadWordCount)
+                }
+                CheckMenuItem(stringResource(Res.string.load_info), state.loadInfo) {
+                    dismiss()
+                    menuActions.onLoadInfoChange(!state.loadInfo)
+                }
+                CheckMenuItem(stringResource(Res.string.load_toc), state.loadToc) {
+                    dismiss()
+                    menuActions.onLoadTocChange(!state.loadToc)
+                }
+                TextMenuItem(stringResource(Res.string.group)) { showGroup = true }
             }
-            CheckMenuItem(stringResource(Res.string.checkAuthor), state.checkAuthor) {
-                dismiss()
-                menuActions.onCheckAuthorChange(!state.checkAuthor)
-            }
-            CheckMenuItem(stringResource(Res.string.load_word_count), state.loadWordCount) {
-                dismiss()
-                menuActions.onLoadWordCountChange(!state.loadWordCount)
-            }
-            CheckMenuItem(stringResource(Res.string.load_info), state.loadInfo) {
-                dismiss()
-                menuActions.onLoadInfoChange(!state.loadInfo)
-            }
-            CheckMenuItem(stringResource(Res.string.load_toc), state.loadToc) {
-                dismiss()
-                menuActions.onLoadTocChange(!state.loadToc)
-            }
-            GroupMenuItem(
-                title = stringResource(Res.string.group),
-                dismissParent = dismiss,
-                onShowGroupPicker = onShowGroupPicker,
-            )
         }
         Box(Modifier.weight(1f)) {
             Column(Modifier.fillMaxSize()) {
@@ -233,18 +241,5 @@ fun ChangeChapterSourceScreen(
                 )
             }
         }
-    }
-    // 分组选择独立 Dialog: 弹出时居中显示, 避免原嵌套 Popup 错位
-    if (showGroupPicker) {
-        GroupPickerDialog(
-            groups = groups,
-            selectedGroup = searchGroup,
-            onDismiss = onGroupPickerDismiss,
-            onSelect = { group ->
-                onGroupPickerDismiss()
-                onSearchGroupChange(group)
-                onGroupPickerSelect(group)
-            },
-        )
     }
 }

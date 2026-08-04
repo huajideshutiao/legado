@@ -9,6 +9,7 @@ import io.legado.app.service.ReadAloudControllerShared
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.utils.FlowBus
+import io.legado.desktop.ui.tray.DesktopMediaTray.syncVisibility
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -18,9 +19,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import java.awt.Component
 import java.awt.Frame
+import java.awt.Graphics
 import java.awt.GraphicsEnvironment
 import java.awt.Image
+import java.awt.MouseInfo
 import java.awt.Rectangle
 import java.awt.RenderingHints
 import java.awt.SystemTray
@@ -33,9 +37,11 @@ import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import java.awt.image.BufferedImage
 import javax.imageio.ImageIO
+import javax.swing.Icon
 import javax.swing.JDialog
 import javax.swing.JMenuItem
 import javax.swing.JPopupMenu
+import javax.swing.SwingConstants
 import javax.swing.SwingUtilities
 import javax.swing.UIManager
 import javax.swing.event.PopupMenuEvent
@@ -59,10 +65,14 @@ class ReadAloudTrayBinding(
  * 全进程唯一 [TrayIcon] 由本对象持有。`Toaster.jvm.kt` 原先自建蓝色圆点 TrayIcon 发通知,
  * 已改为经 [DesktopTrayNotifier] 委托到这里, 避免两个图标; 未安装托盘时它退化回 stdout。
  *
- * # 显示时机
- * 图标常驻 (随宿主启动 install), 右键菜单每次弹出时按当前状态现构建: 音频/朗读活跃时才有播放
- * 控制项, 空闲时只剩"显示/退出"。图标常驻的原因是它同时是 toast 通知的宿主 —— 按需增删会让
- * 空闲期的通知无处可发。
+ * # 显示时机 (与 app 端 Android 后台任务语义对齐)
+ * 托盘图标是桌面端"后台任务"的呈现: app 端以"前台服务 + 常驻通知"表示后台任务
+ * (音频: AudioPlayService 在 status != STOP 时 startForeground; 朗读: BaseReadAloudService
+ * 在 state ∈ {PLAYING, PAUSED} 时 startForeground, 停止即 stopSelf), 桌面端用同一状态源
+ * (AudioPlayShared.status / ReadAloudControllerShared.state) 驱动托盘图标显隐 ——
+ * 任一后台任务活跃即显示, 全部停止即隐藏。空闲期图标不驻留; 此时 toast/进度通知经
+ * [DesktopTrayNotifier] 回退 stdout (见 Toaster.jvm.kt / DesktopNotificationService)。
+ * 右键菜单每次弹出时按当前状态现构建: 音频/朗读活跃时才有播放控制项, 空闲时只剩"显示/退出"。
  *
  * # 菜单为什么用 Swing 而不是 java.awt.PopupMenu
  * AWT 的 [java.awt.MenuItem] 在 Windows 上是 owner-draw 原生菜单, 文字由 JDK 的
@@ -71,6 +81,15 @@ class ReadAloudTrayBinding(
  * 菜单真的变大变衬线) 但中文照样是方块, 换 "Microsoft YaHei UI" 也无效 —— 即字体不是变量,
  * 是原生绘制路径本身不支持。Swing 的 [JPopupMenu] 由 Java2D 自绘, 走正常字体回退, 中文正常。
  * (托盘 tooltip 与气泡通知走的是原生 Shell_NotifyIcon 宽字符路径, 中文本来就正常, 不受影响。)
+ *
+ * # 菜单位置
+ * TrayIcon 的 MouseEvent 坐标在 Windows 上不可靠 (WTrayIconPeer 上报原生物理坐标, 多屏/系统
+ * 缩放下与 AWT 逻辑坐标不一致, 实测菜单被推到屏幕角落), 弹出时改取 MouseInfo 指针屏幕坐标,
+ * 再按点击点所在屏幕的工作区双向夹紧, 保证菜单完整落在可见区域内。
+ *
+ * # 菜单文本
+ * 无图标设计, 文本居中: Windows LAF 默认给菜单项留 16px 勾选列 + afterCheckIconGap, 并把文本
+ * 起点抬到 minimumTextOffset (31px), 无图标时文本被推到行右侧; 见 ensureNativeLookAndFeel。
  *
  * # 文案考古
  * tooltip 与菜单项对照 app 端 `AudioPlayService.createNotification` /
@@ -85,6 +104,18 @@ object DesktopMediaTray {
     /** JDK WTrayIconPeer.TRAY_ICON_WIDTH/HEIGHT 的逻辑基准尺寸。 */
     private const val TRAY_ICON_BASE = 16
 
+    /**
+     * 1x1 透明占位图标: 顶掉 Windows LAF 默认的 16px 勾选列 (见 ensureNativeLookAndFeel)。
+     * 不能 put null —— UIManager.put(key, null) 只是删除用户值, 会回落到 LAF 默认图标。
+     */
+    private val emptyIcon = object : Icon {
+        override fun getIconWidth(): Int = 1
+
+        override fun getIconHeight(): Int = 1
+
+        override fun paintIcon(c: Component, g: Graphics, x: Int, y: Int) = Unit
+    }
+
     private val readAloudBinding = MutableStateFlow<ReadAloudTrayBinding?>(null)
 
     /** 朗读控制器绑定: 阅读页启动朗读时注入, 停止朗读后置 null。 */
@@ -94,9 +125,9 @@ object DesktopMediaTray {
             readAloudBinding.value = value
         }
 
-    // install/uninstall 在主线程写, refresh 在协程线程读, 故 @Volatile
+    // 状态监听作用域 (install 建 / uninstall 取消), 显隐与 refresh 在协程线程读, 故 @Volatile
     @Volatile
-    private var scope: CoroutineScope? = null
+    private var monitorScope: CoroutineScope? = null
 
     @Volatile
     private var trayIcon: TrayIcon? = null
@@ -118,17 +149,87 @@ object DesktopMediaTray {
     private var exitAction: (() -> Unit)? = null
 
     /**
-     * 安装托盘 (无头模式 / 系统不支持托盘时静默 no-op)。
+     * 注册托盘宿主 (窗口恢复 / 退出回调) 并启动后台任务状态监听。
+     *
+     * 不再立即创建 [TrayIcon]: 图标显隐由后台任务状态驱动 (见 [syncVisibility]),
+     * 空闲期不驻留, 首个后台任务开始时才真正 add 到 [SystemTray]。
      *
      * @param windowProvider 主窗口提供者 (左键点击 / "显示"菜单项恢复它)
      * @param exitAction 退出动作 (通常是 Compose 的 exitApplication)
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     fun install(windowProvider: () -> Window?, exitAction: () -> Unit) {
-        if (trayIcon != null) return
+        if (monitorScope != null) return
         if (GraphicsEnvironment.isHeadless() || !SystemTray.isSupported()) return
         this.windowProvider = windowProvider
         this.exitAction = exitAction
+        monitorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { s ->
+            // 音频状态: 事件仅作变化触发, 判定直接读 AudioPlayShared.status (与事件同源同步更新)
+            s.launch { FlowBus.withSticky(EventBus.AUDIO_STATE).collect { syncVisibility() } }
+            // 章节标题变化只刷 tooltip
+            s.launch { FlowBus.withSticky(EventBus.AUDIO_SUB_TITLE).collect { refresh() } }
+            // 朗读状态: 绑定 StateFlow 首值立即下发, 保证启动期就完成一次显隐同步
+            s.launch {
+                readAloudBinding
+                    .flatMapLatest { it?.controller?.state ?: flowOf(null) }
+                    .collect { syncVisibility() }
+            }
+        }
+        syncVisibility()
+    }
+
+    /** 卸载托盘 (进程退出前调用, 避免图标残留)。 */
+    fun uninstall() {
+        monitorScope?.cancel()
+        monitorScope = null
+        DesktopTrayNotifier.sender = null
+        trayIcon?.let { icon ->
+            runCatching { SystemTray.getSystemTray().remove(icon) }
+        }
+        trayIcon = null
+        val dialog = anchorDialog
+        anchorDialog = null
+        activeMenu = null
+        if (dialog != null) SwingUtilities.invokeLater { runCatching { dialog.dispose() } }
+        windowProvider = null
+        exitAction = null
+    }
+
+    // ==================== 显隐 (后台任务驱动) ====================
+
+    /**
+     * 后台任务判定: 与 app 端 Android 前台服务语义对齐 (同一状态, 不同呈现)。
+     *
+     * - 音频: AudioPlayService 在 `status != Status.STOP` (PLAY/PAUSE/LOADING) 时
+     *   startForeground 常驻通知, STOP 时 stopSelf
+     * - 朗读: BaseReadAloudService 在 state ∈ {PLAYING, PAUSED} 时 startForeground,
+     *   停止/完成/出错时 stopSelf
+     *
+     * 桌面端把"前台服务 + 通知"呈现为托盘图标, 判定状态源与 app 端完全一致
+     * (AudioPlayShared.status / ReadAloudControllerShared.state)。
+     */
+    private fun anyBackgroundActive(): Boolean {
+        val audioActive = AudioPlayShared.status != Status.STOP
+        val aloud = readAloudBinding.value
+        val aloudState = aloud?.controller?.state?.value
+        val aloudActive =
+            aloudState == ReadAloudState.PLAYING || aloudState == ReadAloudState.PAUSED
+        return audioActive || aloudActive
+    }
+
+    /** 状态事件可在任意线程发出, 显隐操作统一收口到 EDT (SystemTray 状态单线程串行改)。 */
+    private fun syncVisibility() {
+        SwingUtilities.invokeLater {
+            if (monitorScope == null) return@invokeLater
+            if (anyBackgroundActive()) showTrayIcon() else hideTrayIcon()
+            refresh()
+        }
+    }
+
+    private fun showTrayIcon() {
+        if (trayIcon != null) return
+        if (monitorScope == null) return
+        if (GraphicsEnvironment.isHeadless() || !SystemTray.isSupported()) return
         val icon = TrayIcon(loadTrayImage(), appName())
         icon.isImageAutoSize = true
         // 左键单击恢复窗口 (不加 ActionListener: Windows 上双击会与本监听重复触发)
@@ -150,33 +251,15 @@ object DesktopMediaTray {
         trayIcon = icon
         // 接管 Toaster 的通知发送 (原 Toaster.jvm.kt 自建 TrayIcon 已移除)
         DesktopTrayNotifier.sender = { message -> displayMessage(message) }
-        scope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { s ->
-            s.launch { FlowBus.withSticky(EventBus.AUDIO_STATE).collect { refresh() } }
-            s.launch { FlowBus.withSticky(EventBus.AUDIO_SUB_TITLE).collect { refresh() } }
-            s.launch {
-                readAloudBinding
-                    .flatMapLatest { it?.controller?.state ?: flowOf(null) }
-                    .collect { refresh() }
-            }
-        }
-        refresh()
     }
 
-    /** 卸载托盘 (进程退出前调用, 避免图标残留)。 */
-    fun uninstall() {
+    private fun hideTrayIcon() {
+        val icon = trayIcon ?: return
         DesktopTrayNotifier.sender = null
-        scope?.cancel()
-        scope = null
-        trayIcon?.let { icon ->
-            runCatching { SystemTray.getSystemTray().remove(icon) }
-        }
+        dismissMenu()
+        runCatching { SystemTray.getSystemTray().remove(icon) }
+            .onFailure { AppLog.put("系统托盘图标移除失败", it) }
         trayIcon = null
-        val dialog = anchorDialog
-        anchorDialog = null
-        activeMenu = null
-        if (dialog != null) SwingUtilities.invokeLater { runCatching { dialog.dispose() } }
-        windowProvider = null
-        exitAction = null
     }
 
     // ==================== 通知 ====================
@@ -249,9 +332,12 @@ object DesktopMediaTray {
 
     private fun maybeShowMenu(e: MouseEvent) {
         if (!e.isPopupTrigger) return
-        // TrayIcon 的 MouseEvent 坐标本就是屏幕坐标 (托盘无 Component 参照系)
-        val x = e.x
-        val y = e.y
+        // TrayIcon 的 MouseEvent 坐标不可靠: Windows 上 WTrayIconPeer 上报的是原生物理坐标,
+        // 多屏/系统缩放下与 AWT 逻辑坐标不一致, 直接使用实测会把菜单推到屏幕角落。
+        // 右键时指针必然停在托盘图标上, 取指针的 AWT 逻辑屏幕坐标最稳。
+        val pointer = runCatching { MouseInfo.getPointerInfo()?.location }.getOrNull()
+        val x = pointer?.x ?: e.x
+        val y = pointer?.y ?: e.y
         SwingUtilities.invokeLater {
             runCatching { showMenu(x, y) }.onFailure { AppLog.put("托盘菜单弹出失败", it) }
         }
@@ -270,9 +356,13 @@ object DesktopMediaTray {
         val anchor = anchorDialog ?: createAnchor().also { anchorDialog = it }
         val area = workArea(x, y)
         val size = menu.preferredSize
+        // 优先在指针上方展开 (底部任务栏场景), 放不下则向下; 两个方向都夹进工作区,
+        // 防异常坐标 (TrayIcon 事件坐标在缩放下越界) 把菜单推出屏幕或压到任务栏底下
         val left = (area.x + area.width - size.width).coerceAtLeast(area.x)
         val px = x.coerceIn(area.x, left)
-        val py = if (y - size.height >= area.y) y - size.height else y
+        val py = (if (y - size.height >= area.y) y - size.height else y)
+            .coerceAtMost(area.y + area.height - size.height)
+            .coerceAtLeast(area.y)
         anchor.setLocation(px, py)
         anchor.isVisible = true
         // 宿主窗口必须真正拿到前台焦点, 否则点别处时收不到 windowLostFocus, 菜单会赖着不走
@@ -297,11 +387,22 @@ object DesktopMediaTray {
         anchorDialog?.isVisible = false
     }
 
-    /** 托盘菜单是进程内唯一 Swing UI, 用系统 LAF 保持原生菜单外观 (字体自动取 win.menu.font)。 */
+    /**
+     * 托盘菜单是进程内唯一 Swing UI, 用系统 LAF 保持原生菜单外观 (字体自动取 win.menu.font)。
+     *
+     * 顺带修正无图标菜单的文本位置: Windows LAF 默认给每个菜单项保留 16px 勾选列 +
+     * afterCheckIconGap, 并把文本起点抬到 "MenuItem.minimumTextOffset" (31px) —— 那是为
+     * 带图标/勾选的原生菜单留的; 本菜单无图标, 不清理的话文本整体被推到行右侧。
+     * 勾选列换成 1x1 透明占位 (不能 put null: UIManager 会回落 LAF 默认图标), 起点归零,
+     * 配合 buildMenu 里的 horizontalAlignment=CENTER 让文本真正居中。
+     * 全局 UIManager.put 安全: 全应用只有本托盘菜单一个 Swing 菜单 (其余 UI 走 Compose)。
+     */
     private fun ensureNativeLookAndFeel() {
         if (lookAndFeelReady) return
         lookAndFeelReady = true
         runCatching { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()) }
+        UIManager.put("MenuItem.minimumTextOffset", 0)
+        UIManager.put("MenuItem.checkIcon", emptyIcon)
     }
 
     /** 点击点所在屏幕的工作区 (多显示器下不能只看主屏)。 */
@@ -385,14 +486,21 @@ object DesktopMediaTray {
         popup.add(item(str("stop", "停止")) { controller.stop() })
     }
 
-    private fun header(label: String): JMenuItem = JMenuItem(label).apply { isEnabled = false }
+    private fun header(label: String): JMenuItem = JMenuItem(label).apply {
+        isEnabled = false
+        horizontalAlignment = SwingConstants.CENTER
+    }
 
     private fun item(label: String, action: () -> Unit): JMenuItem =
-        JMenuItem(label).apply { addActionListener { runCommand(action) } }
+        JMenuItem(label).apply {
+            // 无图标设计: 文本在行内居中 (配合 ensureNativeLookAndFeel 清掉 LAF 勾选列)
+            horizontalAlignment = SwingConstants.CENTER
+            addActionListener { runCommand(action) }
+        }
 
     /** 菜单命令切出 EDT 执行: 播放命令内部会落库/起协程, 不该压在 AWT 事件线程上。 */
     private fun runCommand(action: () -> Unit) {
-        val s = scope ?: return
+        val s = monitorScope ?: return
         s.launch {
             runCatching { action() }.onFailure { AppLog.put("托盘菜单命令执行失败", it) }
         }

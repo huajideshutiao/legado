@@ -4,7 +4,9 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.http.CookieStoreProviders
+import io.legado.app.help.toast.Toasters
 import io.legado.app.utils.NetworkUtils
+import io.legado.desktop.help.webview.CHECK_HOST_COOKIE_TEXT
 import io.legado.desktop.help.webview.DesktopWebViewEngine
 import io.legado.desktop.help.webview.WebViewFetchRequest
 import io.legado.desktop.help.webview.WebViewFetchResult
@@ -17,6 +19,7 @@ import io.legado.desktop.help.webview.win.WindowsWebViewEngine.openWindow
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -186,9 +189,19 @@ internal object WindowsWebViewEngine : DesktopWebViewEngine {
     }
 }
 
+/** 可见窗口导航超时 (页面挂起时 loading 停止并提示, 防卡死感)。 */
+private const val NAV_TIMEOUT_MS = 30_000L
+
 /**
  * 可见窗口句柄。cookie 由调用方在 [WebViewWindowRequest.onNavigated] 里回收
  * (对齐 app 端 WebViewActivity.onPageFinished), 用户关窗触发 onClosed。
+ *
+ * 窗口带 CustomTab 式工具栏 ([WebView2Toolbar]), 行为对照 shared `WebViewRoute`:
+ * - 标题/进度/返回/前进/刷新/关闭/确定, 确定按钮语义见 [WebViewWindowRequest.isLogin]/[saveResult];
+ * - 返回/前进用手动历史栈 (WebView2 历史 API 需 ICoreWebView2_9, 运行时版本门槛高;
+ *   手动栈在导航完成时维护, 前进后退时置 historyNavPending 避免重复入栈);
+ * - 页面标题经 executeScript("document.title") 读取 (避免新增未验证的 vtable 序号),
+ *   非空且非 http 前缀才更新 (对齐 onReceivedTitle)。
  */
 private class WebView2WindowHandle(
     private val request: WebViewWindowRequest,
@@ -202,13 +215,39 @@ private class WebView2WindowHandle(
     override var currentUrl: String? = null
         private set
 
+    /** 手动历史栈: 导航完成入栈, 前进后退移动 index。 */
+    private val history = ArrayList<String>()
+    private var historyIndex = -1
+    private var historyNavPending = false
+
+    /** isLogin 确认流程: 确定 → reload, 下次导航完成关窗 (对照 menu_ok 的 checking)。 */
+    private val checking = AtomicBoolean(false)
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     private val closedOnce = AtomicBoolean(false)
+
+    /** 导航超时任务: 页面挂起 (网络黑洞/连接重置) 时 NavigationCompleted 永不触发,
+     * loading 指示一直转 (= 卡死感)。超时后停止 loading 并提示。 */
+    private var navTimeoutJob: Job? = null
+
+    private fun scheduleNavTimeout(created: WebView2Instance) {
+        navTimeoutJob?.cancel()
+        navTimeoutJob = scope.launch {
+            delay(NAV_TIMEOUT_MS)
+            if (!closedOnce.get()) {
+                created.toolbar?.setLoading(false)
+                runCatching { Toasters.get().toast("页面加载超时") }
+            }
+        }
+    }
 
     suspend fun open() {
         val created = WebView2Instance.create(
             visible = true,
             title = request.title,
             bottomSheet = request.bottomSheet,
+            toolbarSpec = WebView2ToolbarSpec(request.title, request.isLogin, request.saveResult),
         )
         if (created == null) {
             AppLog.put("WebView2 窗口创建失败: ${request.title}")
@@ -222,11 +261,47 @@ private class WebView2WindowHandle(
         instance = created
         currentUrl = request.url
         request.userAgent?.let { created.setUserAgent(it) }
+        created.toolbar?.onAction = { action -> onToolbarAction(created, action) }
+        created.onNavigationStarting = { _, _ ->
+            created.toolbar?.setLoading(true)
+            scheduleNavTimeout(created)
+            false
+        }
+        created.onNavigationFailed = { url ->
+            navTimeoutJob?.cancel()
+            created.toolbar?.setLoading(false)
+            AppLog.put("WebView2 页面加载失败: $url")
+            runCatching { Toasters.get().toast("页面加载失败") }
+        }
         created.onNavigationCompleted = { url ->
+            navTimeoutJob?.cancel()
             if (url.isNotBlank()) {
                 currentUrl = url
                 WindowsWebViewEngine.harvestWindowCookies(created, url, request.cookieTag)
                 runCatching { request.onNavigated(url) }
+                val toolbar = created.toolbar
+                toolbar?.setLoading(false)
+                if (checking.get()) {
+                    // 对照 menu_ok isLogin 分支: reload 后下次导航完成即关窗
+                    close()
+                } else if (toolbar != null) {
+                    onNavigationForHistory(url)
+                    toolbar.setCanNavigate(historyIndex > 0, historyIndex < history.size - 1)
+                    // 动态标题 (对齐 WebViewRoute.onReceivedTitle): 非空且非 http 前缀才更新
+                    scope.launch {
+                        val docTitle = runCatching {
+                            unwrapScriptResult(
+                                created.executeScript(
+                                    "document.title",
+                                    AppConst.timeLimit
+                                )
+                            )
+                        }.getOrNull()
+                        if (!docTitle.isNullOrBlank() && !docTitle.startsWith("http")) {
+                            toolbar.updateTitle(docTitle)
+                        }
+                    }
+                }
             }
         }
         created.onWindowClose = { close() }
@@ -235,6 +310,70 @@ private class WebView2WindowHandle(
             created.navigateToString(html)
         } else {
             created.navigate(request.url)
+        }
+    }
+
+    /** 手动历史栈维护: 前进/后退导航只移动 index; 普通导航截断前进项后入栈。 */
+    private fun onNavigationForHistory(url: String) {
+        if (historyNavPending) {
+            historyNavPending = false
+        } else if (history.isEmpty() || history[historyIndex] != url) {
+            while (history.size - 1 > historyIndex) history.removeAt(history.size - 1)
+            history.add(url)
+            historyIndex = history.size - 1
+        }
+    }
+
+    private fun onToolbarAction(created: WebView2Instance, action: ToolbarAction) {
+        when (action) {
+            ToolbarAction.BACK -> if (historyIndex > 0) {
+                historyNavPending = true
+                historyIndex--
+                created.navigate(history[historyIndex])
+            }
+
+            ToolbarAction.FORWARD -> if (historyIndex < history.size - 1) {
+                historyNavPending = true
+                historyIndex++
+                created.navigate(history[historyIndex])
+            }
+
+            ToolbarAction.REFRESH -> {
+                created.toolbar?.setLoading(true)
+                created.reload()
+            }
+
+            ToolbarAction.OK -> onOkPressed(created)
+
+            ToolbarAction.CLOSE -> close()
+        }
+    }
+
+    /** 确定按钮 (对照 menu_ok): isLogin → check_host_cookie; saveResult → 回传后由调用方关窗。 */
+    private fun onOkPressed(created: WebView2Instance) {
+        when {
+            request.isLogin -> {
+                if (checking.compareAndSet(false, true)) {
+                    runCatching { Toasters.get().toast(CHECK_HOST_COOKIE_TEXT) }
+                    created.toolbar?.setLoading(true)
+                    created.reload()
+                }
+            }
+
+            request.saveResult -> {
+                // 页面还活着时抓 outerHTML 回传 (对照 saveVerificationResult 的 html 分支), 再交回调用方关窗
+                scope.launch {
+                    val html = runCatching {
+                        unwrapScriptResult(
+                            created.executeScript(
+                                WindowsWebViewEngine.DEFAULT_JS,
+                                AppConst.timeLimit
+                            )
+                        )
+                    }.getOrNull()
+                    request.onSaveResult?.invoke(html)
+                }
+            }
         }
     }
 

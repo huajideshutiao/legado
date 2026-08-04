@@ -219,6 +219,18 @@ class MangaRenderState {
     }
 
     /**
+     * 鼠标拖拽松手后的惯性/吸附 (由 [mangaMouseDragGestures] 调用):
+     * 横向走单页 snap (与触摸 finishPan 同一条 fling 路径, 保证拖到半页松手也能归位), 纵向走普通衰减。
+     */
+    internal fun flingAfterMouseDrag(velocity: Float) {
+        val fb = flingBehavior ?: return
+        val v = velocity
+        scope?.launch {
+            listState.scroll { with(fb) { performFling(-v) } }
+        }
+    }
+
+    /**
      * 抬手判定：画面惯性在钳制范围内衰减(原 OverScroller)；手指速度反号喂给列表
      * fling(原 rv.fling)——横向由 snap 决定翻不翻并归位，纵向为普通滚动。
      * 已到边界时置 allowPageScroll，下一次拖动才允许连续拖动翻页。

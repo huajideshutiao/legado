@@ -6,9 +6,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.Icon
+import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -20,17 +21,45 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.ui.compose.component.AppBottomSheetDialog
+import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSlider
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.auto_page_speed
 import legado.shared.generated.resources.chapter_list
 import legado.shared.generated.resources.main_menu
 import legado.shared.generated.resources.setting
 import legado.shared.generated.resources.stop
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+
+/**
+ * 自动翻页控制面板底部弹窗宿主 (对照原版 AutoReadDialog: BaseBottomDialogFragment)。
+ * 由 ReaderRoute 在 [io.legado.app.ui.book.read.ReaderDialogEvent.AutoRead] 时弹起:
+ * 自动翻页运行时点屏幕 (showMenu) 重定向到本面板, 速度滑条抬手写配置 + 同步 TTS 语速。
+ */
+@Composable
+fun AutoReadPanelDialogHost(
+    controller: AutoReadController,
+    actions: AutoReadActions,
+    onDismiss: () -> Unit,
+) {
+    AppBottomSheetDialog(
+        onDismissRequest = onDismiss,
+        properties = AppDialogSizes.properties(),
+    ) {
+        Surface(
+            shape = DesignTokens.dialogShape,
+            color = AppTheme.colors.fillet,
+            modifier = Modifier.appDialogSize(),
+        ) {
+            AutoReadPanel(controller = controller, actions = actions)
+        }
+    }
+}
 
 /**
  * 自动翻页速度调节控制器：把 app 端 `ReadBookConfig.autoReadSpeed` 读写抽象为接口，

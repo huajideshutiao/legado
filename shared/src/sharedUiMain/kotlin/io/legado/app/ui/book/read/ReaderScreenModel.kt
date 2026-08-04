@@ -82,11 +82,25 @@ interface ReaderPlatformProvider {
     fun onLongPress(screenModel: ReaderScreenModel) {}
 
     /**
-     * 页内文字选择完成（长按选中文字后抬起）：携带选中文本，平台弹选择菜单
-     * （对照旧 ReadView.CallBack.showTextActionMenu；app 端桥接到 TextSelectionDialog
-     * 并注入选中文本，见 MainActivity.showReaderTextSelection）。默认空实现。
+     * 页内文字选择完成（长按选中文字后抬起）：携带选中文本与选区起点锚点（阅读页内坐标，
+     * 含滚动折算），平台弹浮动文本操作菜单并跟随选区（对照旧 ReadView.CallBack.showTextActionMenu
+     * → TextActionMenu 浮动菜单；app 端桥接 MainActivity 浮动菜单，桌面端回落对话框）。
+     * 默认空实现。
      */
-    fun onTextSelected(screenModel: ReaderScreenModel, text: String) {}
+    fun onTextSelected(
+        screenModel: ReaderScreenModel,
+        text: String,
+        anchorX: Float,
+        anchorY: Float
+    ) {
+    }
+
+    /**
+     * 图片长按（命中图片列，携带长按点坐标）：平台弹图片操作菜单（对照旧
+     * ContentTextView.longPress 的 ImageColumn 分支 → ReadBookActivity.onImageLongPress：
+     * 查看/刷新/保存/选择目录）
+     */
+    fun onImageLongPress(screenModel: ReaderScreenModel, src: String, x: Float, y: Float) {}
 
     /**
      * 平台宿主 onPause（对照 app 端 ReadBookActivity.onPause）：默认空实现，
@@ -99,6 +113,18 @@ interface ReaderPlatformProvider {
      * 平台 actual 在 Activity Lifecycle 中调用 [ReaderScreenModel.onResume]。
      */
     fun onResume(screenModel: ReaderScreenModel) {}
+
+    /**
+     * 自动翻页面板的平台动作桥 (对照原版 AutoReadDialog 的 CallBack + 平台侧副作用)。
+     * 默认 no-op: 未实现的端面板仍可调速度, 但停止/设置/语速动作降级为空。
+     */
+    fun autoPageStop(screenModel: ReaderScreenModel) {}
+
+    /** 翻页动画配置 (对照原版 AutoReadDialog 设置按钮 → showPageAnimConfig) */
+    fun showPageAnimConfig(screenModel: ReaderScreenModel) {}
+
+    /** 自动翻页滑条抬手后同步 TTS 语速 (对照原版 AutoReadDialog upTtsSpeechRate) */
+    fun upTtsSpeechRate(screenModel: ReaderScreenModel) {}
 
     /**
      * 朗读控制桥：驱动长按朗读弹出的共享面板
@@ -236,6 +262,27 @@ class ReaderScreenModel(
         ActiveReadBookRegistry.attach(readBook)
         // 桥接 ReadBookShared 回调到 ReadBookEvents (对照 app 端 ReadBook.CallBack → Activity 方法)
         readBook.callback = object : ReadBookShared.ReadBookCallback {
+            // 阅读消息/内容状态变化后的视图刷新（对照原版 ReadBook.CallBack.upContent →
+            // ReadBookActivity.upContent → readView.upContent：重新推导三页流，
+            // 呈现"更新目录中…"/"加载数据中…"等消息/占位页）
+            override fun upContent(
+                relativePosition: Int,
+                resetPageOffset: Boolean,
+                success: (() -> Unit)?,
+            ) {
+                viewModel.onUpContent()
+                success?.invoke()
+            }
+
+            override suspend fun upContentAwait(
+                relativePosition: Int,
+                resetPageOffset: Boolean,
+                success: (() -> Unit)?,
+            ) {
+                viewModel.onUpContent()
+                success?.invoke()
+            }
+
             override fun onBookChanged(book: Book) = ReadBookEvents.postMenuRefresh()
 
             override fun onChapterChanged(index: Int) {
@@ -455,7 +502,12 @@ class ReaderScreenModel(
 
     /** 显示阅读菜单（对照 app 端 ReadBookActivity.showMenuBar → readMenu.runMenuIn） */
     fun showMenu() {
-        menuController.showMenu()
+        // 对照原版 showActionMenu: 自动翻页运行时点屏幕 → AutoReadDialog (速度滑条面板), 否则常规菜单
+        if (menuState.autoPage) {
+            postDialogEvent(ReaderDialogEvent.AutoRead)
+        } else {
+            menuController.showMenu()
+        }
     }
 
     /**
@@ -545,6 +597,9 @@ sealed interface ReaderDialogEvent {
 
     /** 整书换源 (对照原版 换源按钮 → ChangeBookSourceDialog, 全高底部弹窗) */
     object ChangeSource : ReaderDialogEvent
+
+    /** 自动翻页控制面板 (对照原版 自动翻页运行时点屏幕 → AutoReadDialog: 速度滑条面板) */
+    object AutoRead : ReaderDialogEvent
 
     /** 章节换源 (对照原版 换源图标长按 → ChangeChapterSourceDialog, 全高底部弹窗) */
     object ChangeChapterSource : ReaderDialogEvent

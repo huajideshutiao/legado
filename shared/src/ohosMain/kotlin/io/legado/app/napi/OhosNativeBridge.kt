@@ -232,6 +232,44 @@ object OhosNativeBridge {
     /** 读取已注入的 cacheDir 路径, 未注入返回 null。 */
     fun getCacheDir(): String? = synchronized(lock) { cacheDirPath }
 
+    // ===== 屏幕尺寸注入 (ArkTS → Kotlin 同步推送, 同 FileDir 模式) =====
+
+    /**
+     * 显示物理像素尺寸 (ArkTS EntryAbility.onWindowStageCreate 调 [registerScreenSizeFn] 注入)。
+     *
+     * # 与 FileDir 同模型
+     * 屏幕尺寸是启动早期即知的静态配置, 消费方 ([ScreenInfoProviders] / sharedUiMain AppDialogSizes)
+     * 需同步读取, tsfn 无法回传值, 故采用 ArkTS → Kotlin 同步推送: ArkTS 取
+     * `display.getDefaultDisplaySync()` (vp 尺寸 × densityPixels → 物理像素) 后, 经
+     * @CName (legado_register_screen_size) 直接把宽高注入本字段。
+     *
+     * # 降级策略
+     * 未注入 (0) 时 [OhosScreenInfoProvider] 回退默认 1080x2340 (兼容 napi 未接入阶段;
+     * 对齐 AppFilesDir 未注入回退 POSIX user.dir 的思路, 保证不崩)。
+     */
+    @Volatile
+    private var screenWidthPx: Int = 0
+
+    /** 显示物理像素高度 (同 [screenWidthPx], ArkTS 注入)。 */
+    @Volatile
+    private var screenHeightPx: Int = 0
+
+    /**
+     * 注入显示物理像素尺寸 (由 @CName legado_register_screen_size 调用)。
+     *
+     * 时机: EntryAbility.onWindowStageCreate 中 loadContent 之前 (任何 shared 对话框
+     * 尺寸计算之前; AppDialogSizes 未注册时 get() 直接 error 导致对话框崩溃)。
+     */
+    fun registerScreenSizeFn(widthPx: Int, heightPx: Int) {
+        synchronized(lock) {
+            screenWidthPx = widthPx
+            screenHeightPx = heightPx
+        }
+    }
+
+    /** 读取已注入的显示物理像素尺寸, 未注入返回 (0, 0) (调用方自行兜底)。 */
+    fun getScreenSizePx(): Pair<Int, Int> = synchronized(lock) { screenWidthPx to screenHeightPx }
+
     // ===== Image 同步桥 (tsfn + callback, 混合协议: 控制面 JSON + 数据面裸字节, KP8+) =====
     // 图片操作 (decode/encode/size/crop/split/stitch) 是同步接口, 但 ArkTS @ohos.multimedia.image
     // 只能通过 napi 桥接异步调用。采用 "tsfn 发请求 + @CName 回调返回结果" 的同步等待模式,
@@ -916,6 +954,102 @@ object OhosNativeBridge {
      * OhosOpenUrlProviderImpl 据此判断走真实 startAbility 还是降级 println (兼容 napi 未接入阶段)。
      */
     fun isOpenUrlBridgeReady(): Boolean = synchronized(lock) { openUrlTsfn != null }
+
+    // ===== TextAction tsfn (KMP → ArkTS 显示浮动菜单) + ArkTS → KMP 动作回调 =====
+    // 阅读页文本操作浮动菜单: KMP 长按选字完成 → 跨线程 dispatch 菜单请求到 ArkTS
+    // (Index.ets 叠层浮动菜单, 平台原生 ArkUI 组件), 菜单项点击经 @CName
+    // legado_text_action_callback (legado_napi.cpp TextActionCallback) 回送动作字符串。
+
+    /** textAction threadsafe_function 引用 (EntryAbility.ets 注册后注入)。 */
+    @Volatile
+    private var textActionTsfn: OhosTsfnCallback? = null
+
+    /** 菜单动作回调 (由 OhosReaderPlatformProvider 注册; ArkTS 菜单项点击 → [onTextActionResult])。
+     *  @param src 图片 src (图片菜单动作携带; 文本菜单动作为空串)。 */
+    @Volatile
+    var textActionHandler: ((action: String, text: String, src: String) -> Unit)? = null
+
+    /** 注入 textAction tsfn (由 legado_napi.cpp RegisterTextActionCallback 调用)。 */
+    fun registerTextActionFn(tsfn: OhosTsfnCallback) {
+        synchronized(lock) {
+            textActionTsfn = tsfn
+        }
+    }
+
+    /**
+     * 显示文本操作浮动菜单 (跨线程 dispatch 到 ArkTS)。未注册 tsfn 时降级 println。
+     *
+     * @param text 选中文本 (菜单动作参数)
+     * @param x/y 选区起点锚点 (阅读页内坐标)
+     */
+    fun showTextActionMenu(text: String, x: Float, y: Float) {
+        val json = KS_JSON.encodeToString(
+            TextActionMenuPayload(text = text, x = x, y = y)
+        )
+        val tsfn = synchronized(lock) { textActionTsfn }
+        if (tsfn != null) {
+            runCatching { tsfn(json) }.onFailure {
+                println("[ohos-text-action] tsfn call failed, fallback: $text")
+            }
+        } else {
+            // 降级: 未注册 tsfn
+            println("[ohos-text-action] $text")
+        }
+    }
+
+    /**
+     * 显示图片操作浮动菜单 (跨线程 dispatch 到 ArkTS, 同 [showTextActionMenu] 共用一个 tsfn)。
+     * 未注册 tsfn 时降级 println。
+     *
+     * payload 带 `type="image"` + `src`, ArkTS TextActionBridgeHandler 据此切换菜单项
+     * (查看/刷新/保存到相册, 对照原版 ReadBookActivity.onImageLongPress 图片菜单)。
+     *
+     * @param src 图片地址 (菜单动作参数)
+     * @param x/y 长按点锚点 (阅读页内坐标)
+     */
+    fun showImageActionMenu(src: String, x: Float, y: Float) {
+        val json = KS_JSON.encodeToString(
+            TextActionMenuPayload(text = "", x = x, y = y, src = src, type = "image")
+        )
+        val tsfn = synchronized(lock) { textActionTsfn }
+        if (tsfn != null) {
+            runCatching { tsfn(json) }.onFailure {
+                println("[ohos-text-action] image menu tsfn call failed, fallback: $src")
+            }
+        } else {
+            // 降级: 未注册 tsfn
+            println("[ohos-text-action] image menu $src")
+        }
+    }
+
+    /** 隐藏文本操作浮动菜单 (菜单项点击/点外部收起后由 ArkTS 自行隐藏, 此方法供取消选择联动)。 */
+    fun hideTextActionMenu() {
+        val tsfn = synchronized(lock) { textActionTsfn }
+        if (tsfn != null) {
+            runCatching {
+                tsfn(
+                    KS_JSON.encodeToString(
+                        TextActionMenuPayload(
+                            text = "",
+                            x = -1f,
+                            y = -1f
+                        )
+                    )
+                )
+            }
+                .onFailure { println("[ohos-text-action] hide tsfn call failed") }
+        }
+    }
+
+    /**
+     * ArkTS → KMP 菜单动作结果 (由 legado_napi.cpp TextActionCallback 调用,
+     * 经 [LegadoNativeExports.textActionCallback] 转发)。
+     *
+     * @param src 图片 src (图片菜单动作携带; 文本菜单动作为空串)
+     */
+    fun onTextActionResult(action: String, text: String, src: String) {
+        textActionHandler?.invoke(action, text, src)
+    }
 
     // ===== Window tsfn (KMP → ArkTS, fire-and-forget, 同 OpenUrl 模式) =====
     // 窗口策略 (全屏/常亮/方向/系统栏) 走 ArkTS @ohos.window API (setWindowLayoutFullScreen /
@@ -1611,6 +1745,22 @@ object OhosNativeBridge {
     private data class KeyboardCommand(
         val action: String,
         val mode: Int? = null,
+    )
+
+    /**
+     * 文本/图片操作菜单 payload (Kotlin → ArkTS: 选中文本或图片 src + 锚点; x/y = -1 表示隐藏菜单)。
+     * type="text" 为文本操作菜单 (text 为选中文本), type="image" 为图片操作菜单 (src 为图片地址),
+     * ArkTS TextActionBridgeHandler 据 type 切换菜单项 (TEXT_ACTION_ITEMS / IMAGE_ACTION_ITEMS)。
+     */
+    @Serializable
+    private data class TextActionMenuPayload(
+        val text: String,
+        val x: Float,
+        val y: Float,
+        /** 图片 src (type="image" 时携带; 文本菜单为 null)。 */
+        val src: String? = null,
+        /** 菜单类型: "text" = 文本操作菜单 / "image" = 图片操作菜单。 */
+        val type: String = "text",
     )
 
     /** openUrl 跨语言传递 payload (序列化为 JSON 给 ArkTS, 同 Toast 模式 fire-and-forget)。 */

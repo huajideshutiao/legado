@@ -129,4 +129,20 @@ class AnalyzeByJSonPathUnwrapTest {
         val parsed: JsonElement = AnalyzeByJSonPath.parse("  \n {\"name\":\"玄幻\"}")
         assertEquals("玄幻", AnalyzeByJSonPath(parsed).getString("$.name"))
     }
+
+    @Test
+    fun `HTML 响应误用 JSONPath 时按无匹配处理`() {
+        val html = "<div id=\"comment-create-form-wrapper\">登录后发表评论</div>"
+        val analyzer = AnalyzeByJSonPath(html)
+
+        assertNull(analyzer.getString("$.comments"))
+        assertTrue(analyzer.getStringList("$.comments").isEmpty())
+        assertNull(analyzer.getObject("$.comments"))
+        assertTrue(analyzer.getList("$.comments").isEmpty())
+
+        // AnalyzeRuleCore 的显式/自动 JSONPath 入口也不应把 HTML 错误页抛到请求协程。
+        val ruleAnalyzer = AnalyzeRuleCore().setContent(html)
+        assertEquals("", ruleAnalyzer.getString("$.comments"))
+        assertTrue(ruleAnalyzer.getElements("$.comments").isEmpty())
+    }
 }

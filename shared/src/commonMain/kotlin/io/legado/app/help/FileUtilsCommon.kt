@@ -1,5 +1,7 @@
 package io.legado.app.help
 
+import io.legado.app.utils.InputStream
+
 /**
  * 跨平台 file IO 门面 (expect object)。
  *
@@ -48,6 +50,14 @@ internal expect object FileUtilsCommon {
 
     /** 写入字节到文件 (覆盖), 自动创建父目录, 成功返回 true。 */
     fun writeBytes(path: String, data: ByteArray): Boolean
+
+    /**
+     * 从流写入文件 (流式分块, 不整块缓冲), 自动创建父目录, 成功返回 true。
+     *
+     * 对齐原 app 端 JsExtensions.downloadFile 的 `getInputStream().copyTo` 语义
+     * (大文件避免全量字节数组内存峰值)。
+     */
+    fun copyToFile(path: String, input: InputStream): Boolean
 
     /**
      * 删除文件或目录。

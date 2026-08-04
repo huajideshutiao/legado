@@ -77,8 +77,10 @@ class BookshelfViewModel {
     /**
      * 目录更新/强制刷新编排核心 (对照 app 端 MainViewModel.updateBookShared)。
      *
-     * 平台未注册 [UpdateBookCallback] 时为 null, 此时 [upToc] / [forceRefresh] 走 DB 重订阅兜底
-     * (与下沉前行为一致), [isRefreshing] 恒 false。
+     * 各端宿主启动期注册默认 [UpdateBookCallback] 后经 [UpdateBookCallbacks.getDefault] 取用
+     * (app: App.kt 注册 AndroidUpdateBookCallback / 桌面: Main.kt 注册 DesktopUpdateBookCallback /
+     * iOS·鸿蒙: registerNativeUpdateBookCallback)。宿主未注册时为 null, 此时 [upToc] / [forceRefresh]
+     * 静默跳过 (刷新任务与转圈状态均不生效), [isRefreshing] 恒 false。
      */
     private val updateBookShared: UpdateBookShared? by lazy {
         val callback = UpdateBookCallbacks.getDefault() ?: return@lazy null
@@ -149,7 +151,9 @@ class BookshelfViewModel {
      * 订阅 UP_BOOKSHELF 事件, 维护 [refreshingUrls] (对照 app 端 FlowBus UP_BOOKSHELF 收敛)。
      *
      * 触发 [upToc] / [forceRefresh] 时把目标 books 的 url 加入集合, 收到 UP_BOOKSHELF 事件时移除,
-     * 与 app 端 BaseBookshelfState 行为一致 (条目转圈在书籍刷新完成时消失)。
+     * 与 app 端 BaseBookshelfState 行为一致 (条目转圈在书籍刷新完成时消失)。UpdateBookShared 只在
+     * 每本书完成/失败/取消时发事件 (开始事件已移除, 否则转圈会在渲染前被清掉, 见
+     * UpdateBookShared.startUpTocJob 注释)。
      *
      * 阅读器退出 / 目录更新落库后也会发 UP_BOOKSHELF (见 ReadBookViewModelShared.uploadProgressAwait /
      * UpdateBookShared), 此时重启当前 + 相邻分组流强制重查: 单页架构下书架流全程驻留, 退出阅读
@@ -351,7 +355,7 @@ class BookshelfViewModel {
      * 下拉刷新: 主动更新目录 (对照 app 端下拉刷新 → MainViewModel.upToc)。
      *
      * 把当前分组书籍 url 加入 [refreshingUrls] 触发条目转圈, 调 [UpdateBookShared.upToc]
-     * 实际刷新目录; 平台未注册 callback 时走 DB 重订阅兜底。
+     * 实际刷新目录 (宿主未注册 callback 时无引擎, 静默跳过)。
      */
     fun upToc() {
         upToc(_books.value)
@@ -364,18 +368,12 @@ class BookshelfViewModel {
      */
     fun upToc(books: List<Book>) {
         if (books.isEmpty()) return
-        val shared = updateBookShared
-        if (shared != null) {
-            // 只标记会被实际刷新的书 (过滤条件与 UpdateBookShared.upToc 一致),
-            // 否则本地书/不可更新书等不到 UP_BOOKSHELF 事件, 转圈永不消失
-            _refreshingUrls.value = _refreshingUrls.value +
-                books.filter { !it.isLocal && it.canUpdate }.map { it.bookUrl }
-            shared.upToc(books)
-        } else {
-            // 平台未接入 UpdateBookShared: 重启 DB 订阅触发回填, 立即清空转圈
-            ensureGroupFlow(_currentGroupId.value)
-            _refreshingUrls.value = emptySet()
-        }
+        val shared = updateBookShared ?: return // 宿主未注册 UpdateBookCallback 时无刷新引擎, 静默跳过
+        // 只标记会被实际刷新的书 (过滤条件与 UpdateBookShared.upToc 一致),
+        // 否则本地书/不可更新书等不到 UP_BOOKSHELF 事件, 转圈永不消失
+        _refreshingUrls.value = _refreshingUrls.value +
+            books.filter { !it.isLocal && it.canUpdate }.map { it.bookUrl }
+        shared.upToc(books)
     }
 
     /**
@@ -387,16 +385,15 @@ class BookshelfViewModel {
     fun refresh() {
         val books = _books.value
         if (books.isEmpty()) return
-        val shared = updateBookShared
-        if (shared != null) {
+        val shared = updateBookShared ?: return // 宿主未注册 UpdateBookCallback 时无刷新引擎, 静默跳过
+        // forceRefresh 在任一刷新任务在跑时会拒绝并 toast; 忙时不标记转圈, 避免被拒的书
+        // 等不到 UP_BOOKSHELF 收敛事件导致转圈卡死 (仍调用引擎以保留 busy toast)
+        if (!shared.isRefreshing.value) {
             // 只标记会被实际刷新的书 (UpdateBookShared.forceRefresh 跳过本地书)
             _refreshingUrls.value = _refreshingUrls.value +
                 books.filterNot { it.isLocal }.map { it.bookUrl }
-            shared.forceRefresh(books)
-        } else {
-            // 平台未接入 UpdateBookShared: 重启 DB 订阅触发回填
-            ensureGroupFlow(_currentGroupId.value)
         }
+        shared.forceRefresh(books)
     }
 
     /**
@@ -419,6 +416,7 @@ class BookshelfViewModel {
 
     /** 宿主销毁时调用, 取消所有数据流订阅与协程 */
     fun onCleared() {
+        updateBookShared?.onCleared() // 取消任务 + 关闭 upTocPool (对照 app 端 MainViewModel.onCleared)
         scope.cancel()
     }
 }

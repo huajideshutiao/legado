@@ -1,7 +1,7 @@
 package io.legado.app.ui.book.import.local
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.runtime.Composable

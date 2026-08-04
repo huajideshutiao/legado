@@ -1,17 +1,11 @@
 package io.legado.desktop
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.ExperimentalComposeUiApi
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -21,6 +15,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowExceptionHandler
 import androidx.compose.ui.window.WindowExceptionHandlerFactory
 import androidx.compose.ui.window.application
+import androidx.compose.ui.window.rememberWindowState
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.AppDbProviders
@@ -53,11 +48,14 @@ import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.image.registerJvmBookImageLoader
 import io.legado.app.help.image.registerReaderImageResolver
 import io.legado.app.help.notification.registerDesktopNotificationProgress
+import io.legado.app.help.service.DesktopUpdateBookCallback
+import io.legado.app.help.service.UpdateBookCallbacks
 import io.legado.app.help.service.registerDesktopServiceLauncher
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceHelpAccessors
 import io.legado.app.help.storage.BackupShared
 import io.legado.app.help.storage.registerJvmDataStorage
+import io.legado.app.help.toast.DesktopTrayNotifier
 import io.legado.app.help.toast.registerDesktopToaster
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.model.DesktopReadBookProvider
@@ -127,7 +125,6 @@ import io.legado.desktop.help.source.registerDesktopVerificationUiProvider
 import io.legado.desktop.help.storage.registerDesktopBackupRestoreHook
 import io.legado.desktop.help.tts.DesktopReadAloudHost
 import io.legado.desktop.help.ui.registerDesktopOpenUrlProvider
-import io.legado.desktop.help.ui.registerDesktopToastProvider
 import io.legado.desktop.help.ui.registerDesktopUserAgentProvider
 import io.legado.desktop.http.registerDesktopHttpProvider
 import io.legado.desktop.js.registerDesktopJsEngines
@@ -140,19 +137,22 @@ import io.legado.desktop.tts.DesktopSystemTtsEngine
 import io.legado.desktop.ui.DesktopDialogHost
 import io.legado.desktop.ui.DesktopPlatformCapabilities
 import io.legado.desktop.ui.DesktopPlatformServices
+import io.legado.desktop.ui.DesktopToastHost
+import io.legado.desktop.ui.DesktopToasts
 import io.legado.desktop.ui.DesktopWindowHandle
 import io.legado.desktop.ui.DesktopWindowTitleBarSync
 import io.legado.desktop.ui.browser.DesktopWebViewSlot
 import io.legado.desktop.ui.platform.DesktopAudioPlayPlatformProvider
 import io.legado.desktop.ui.platform.DesktopMangaReaderPlatform
 import io.legado.desktop.ui.platform.DesktopReaderPlatformProvider
-import io.legado.desktop.ui.platform.DesktopVideoPlayPlatformProvider
+import io.legado.desktop.ui.platform.MediampVideoPlayPlatformProvider
 import io.legado.desktop.ui.tray.DesktopMediaTray
 import io.legado.desktop.ui.tray.ReadAloudTrayBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import org.jsoup.Jsoup
+import org.openani.mediamp.mpv.MpvMediampPlayer
 import java.awt.Desktop
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -198,10 +198,20 @@ var startupArgs: Array<String> = emptyArray()
 private const val RESTART_WAIT_PREFIX = "--legado-restart-wait="
 
 fun main(args: Array<String>) {
+    // 视频渲染: open-ani/mediamp (mediamp-mpv) 后端。Windows 走 Skiko Direct3D 默认渲染
+    // (mpv D3D11 → 共享纹理 → Skia D3D12), macOS 默认 Metal, Linux 默认 OpenGL —— 均
+    // 为各自平台默认值, 无需 (也不应) 强制 skiko.renderApi。
     // KP6: 便携模式检测 + native 库加载。必须最先执行 (早于 SingleInstanceGuard):
     // 它设置的 legado.portable.root 决定 desktopAppRootDir() 的解析结果, 而后者进程内 lazy
     // 只解析一次 —— 单实例守卫要在数据目录写 instance.lock, 提前读会把便携模式的根目录定位歪。
     initDesktopRuntimeEnvironment()
+    // 视频: mediamp mpv natives 后台预解包 (独立协程, 早于窗口创建): 首次创建播放器时
+    // 同步解包 ~20MB DLL + System.load 会硬卡顿, 启动期后台完成解包+加载,
+    // 之后打开视频零等待 (prepareLibraries 幂等, 内部有锁, 与首次播放时的同步路径互斥安全)
+    Coroutine.async {
+        runCatching { MpvMediampPlayer.prepareLibraries() }
+            .onFailure { AppLog.put("mediamp mpv natives 预解包失败: ${it.message}", it) }
+    }
     // 重启场景: 先等旧进程退出 (旧进程退出时 shutdown hook 才释放单实例锁),
     // 避免新进程把启动参数转发给正在退出的旧进程后自杀 (表现为“应用直接消失”)
     val effectiveArgs = waitForOldProcessIfRestart(args)
@@ -301,7 +311,21 @@ private fun runDesktopApp() = application {
     // 未注册时 Toasters.get() 抛 IllegalStateException (forceRefresh 未 runCatching 防御);
     // SystemTray 需在主线程初始化, 故同步注册
     registerDesktopToaster()
+    // Toaster 链路 (登录对话框"没有请求头！"等) 统一收口到主窗口 UI toast
+    // (DesktopToasts → DesktopToastHost), 不再只依赖托盘气泡 (Windows 通知设置
+    // 会静默拦截 TrayIcon.displayMessage, 曾表现为 toast 无反应)
+    DesktopTrayNotifier.uiSender = { msg ->
+        DesktopToasts.show(msg, false)
+        true
+    }
     registerDesktopNotificationProgress()
+    // 注册 UpdateBookCallback 默认实现: shared BookshelfViewModel 据此构造 UpdateBookShared
+    // 刷新引擎 (书架菜单/下拉刷新、自动更新、条目转圈状态均依赖它)。须在阶段1同步注册:
+    // 书架激活后首个书籍流发射即可能触发 autoUpdateGroup → 引擎 lazy 构造,
+    // 晚于窗口显示的异步注册存在竞态 (引擎已构造为 null 则整个会话刷新失效)。
+    // 依赖上方 registerDesktopToaster + registerDesktopNotificationProgress, 故紧随其后。
+    // iOS/鸿蒙端在 registerNativeUpdateBookCallback 注册, app 端在 App.kt 注册。
+    UpdateBookCallbacks.registerDefault(DesktopUpdateBookCallback)
     // 备份格式兼容性: 注册桌面端 config provider
     // - PreferenceProvider + AppConfigAccessor
     // - ReadBookConfigProviders + ThemeConfigProviders (备份格式兼容性补齐, 供 BackupShared 用)
@@ -421,7 +445,7 @@ private fun runDesktopApp() = application {
     registerReaderImageResolver()
     AudioPlayPlatformProviders.register(DesktopAudioPlayPlatformProvider())
     MangaReaderScreenModel.Providers.register(DesktopMangaReaderPlatform)
-    VideoPlayPlatformProviders.register(DesktopVideoPlayPlatformProvider(windowHandle))
+    VideoPlayPlatformProviders.register(MediampVideoPlayPlatformProvider(windowHandle))
 
     // ==================== 阶段2: 显示窗口 ====================
     // KP2: 桌面端窗口框架——注入 4 个 DesktopXxxProvider + AppTheme 包装 LegadoApp
@@ -431,6 +455,8 @@ private fun runDesktopApp() = application {
     // 窗口标题走 rememberString("app_name"); application{} 顶层是 @Composable 上下文,
     // 在 Window 调用前求值后传给 title (Window.title 接收 String 而非 @Composable)
     val appName = rememberString("app_name")
+    // 窗口状态: 供 DesktopToastHost 检测最小化 (最小化时 toast 转托盘气泡)
+    val windowState = rememberWindowState()
     // classpath 资源加载: 弃用的 painterResource(String) 改为手动 ImageIO 解码 + BitmapPainter
     val iconPainter = remember {
         runCatching {
@@ -456,6 +482,7 @@ private fun runDesktopApp() = application {
         onKeyEvent = { false },
         title = appName,
         icon = iconPainter,
+        state = windowState,
     ) {
         // 单实例守卫绑定主窗口: 二次启动转发到达时前置本窗口 (取消最小化 + toFront + 请求焦点);
         // DisposableEffect 保证窗口销毁后解绑, 不让守卫持有已 dispose 的 AWT Window
@@ -521,29 +548,21 @@ private fun runDesktopApp() = application {
                 SourceUiEventBridgeHost()
                 // 桌面端命令式对话框宿主: PlatformCapabilities 的同步方法经 DesktopDialogs 推请求
                 DesktopDialogHost()
+                // 桌面端 Toast 宿主: JS java.toast / Toaster 链路统一收口到窗口内 UI toast
+                // (Popup 呈现: 独立合成层不被 LegadoApp 覆盖, 相对主窗口底部定位)
+                DesktopToastHost()
                 // 阅读页长按文字选择对话框宿主 (对照 app 端 MainActivity.readerSelection 分支)
                 desktopReaderProvider.TextSelectionHost()
                 // legado:// deep link 导入对话框宿主: 消费 main(args)/OpenURIHandler 经
                 // LegadoDeepLinkHandler 记录的待导入请求 (对照 app 端 AssociationActivity 分发)
                 DeepLinkImportHost()
                 // 零薄壳: shared LegadoApp 统一管理导航栈 + ScreenModel 生命周期,
-                // 所有路由由 shared RouteContent 直接渲染
-                // 根级焦点包装 (对照 iOS/ohos 入口同款): handleBackKey 的 onPreviewKeyEvent
-                // 走 Compose 焦点系统, 组合内无节点持焦时 Esc 根本不会派发;
-                // 根节点持焦后 Esc 在任何界面都触发 performBack → pop
-                val rootFocusRequester = remember { FocusRequester() }
-                LaunchedEffect(Unit) { runCatching { rootFocusRequester.requestFocus() } }
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .focusRequester(rootFocusRequester)
-                        .focusable()
-                ) {
-                    LegadoApp(
-                        navigator = navigator,
-                        screenModelStore = screenModelStore,
-                    )
-                }
+                // 所有路由由 shared RouteContent 直接渲染; 根级键盘焦点由 shared LegadoApp
+                // 内部处理 (handleBackKey 与焦点节点同链, 无控件持焦时 ESC 仍可达)
+                LegadoApp(
+                    navigator = navigator,
+                    screenModelStore = screenModelStore,
+                )
             }
         }
     }
@@ -617,11 +636,10 @@ private suspend fun registerSecondaryProviders() {
         registerDesktopWebBookProviders()
         // 11b. JS 扩展回调 provider (Toast/OpenUrl/UserAgent, 供 JsExtensionsCommon 回调,
         //      必须在 JS 引擎首次 eval 之前注册)
-        registerDesktopToastProvider()
         registerDesktopOpenUrlProvider()
         registerDesktopUserAgentProvider()
         // 11c. 书源验证 UI provider (图片验证码走 Swing 输入框, 网页验证给明确报错)
-        //      依赖 OkHttpClientProviders (第2步, 拉验证码图片) + ToastProviders (上一行);
+        //      依赖 OkHttpClientProviders (第2步, 拉验证码图片) + Toasters (上方已注册);
         //      未注册时 JS 触发验证会 IllegalStateException 裸抛
         registerDesktopVerificationUiProvider()
         // 注: JS 引擎 (JsEngines/SharedJsScope) 已提前到阶段1同步注册

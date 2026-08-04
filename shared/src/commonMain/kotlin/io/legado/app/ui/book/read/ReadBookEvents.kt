@@ -48,6 +48,13 @@ object ReadBookEvents {
     private val _menuRefresh = eventFlow<Unit>(replay = 1)
     val menuRefresh: SharedFlow<Unit> get() = _menuRefresh
 
+    /**
+     * 取消页内文字选择请求（对照旧 TextActionMenu.onMenuActionFinally → readView.cancelSelect()）。
+     * 平台侧文本操作菜单关闭/动作完成后 post，ReadViewComposable 收集后清选区高亮并恢复自动翻页。
+     */
+    private val _selectionCancel = eventFlow<Unit>()
+    val selectionCancel: SharedFlow<Unit> get() = _selectionCancel
+
     /** 请求重载目录（原 ReadBook.CallBack.loadChapterList 同步直调，replay=1 兜底无订阅期漏发） */
     private val _loadChapterList = eventFlow<Book>(replay = 1)
     val loadChapterList: SharedFlow<Book> get() = _loadChapterList
@@ -101,6 +108,10 @@ object ReadBookEvents {
 
     fun postKeepLightChange() {
         _keepLightChange.tryEmit(Unit)
+    }
+
+    fun postSelectionCancel() {
+        _selectionCancel.tryEmit(Unit)
     }
 
     fun postMenuRefresh() {

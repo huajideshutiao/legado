@@ -1,6 +1,5 @@
 package io.legado.app.ui.main
 
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Typeface
@@ -43,13 +42,19 @@ import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.config.ReadTipConfigShared
+import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.help.image.registerReaderImageResolver
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.update.AppUpdate
 import io.legado.app.lib.dialogs.SelectItem
+import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.isLocal
 import io.legado.app.model.AndroidReadBookProvider
 import io.legado.app.model.CoverRatio
+import io.legado.app.model.FileBook
 import io.legado.app.model.LocalReadBookProvider
+import io.legado.app.model.ReadBook
 import io.legado.app.receiver.MediaButtonReceiver
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.ExportBookService
@@ -68,6 +73,8 @@ import io.legado.app.ui.book.manga.AndroidMangaReaderPlatform
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.read.AndroidReaderPlatformProvider
 import io.legado.app.ui.book.read.ReaderPlatformProviders
+import io.legado.app.ui.book.read.TextActionMenu
+import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.page.provider.AndroidTextMeasurer
 import io.legado.app.ui.book.read.page.provider.TextMeasurerProviders
 import io.legado.app.ui.book.video.AndroidVideoPlayPlatformProvider
@@ -79,7 +86,14 @@ import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.main.bookshelf.ShelfCover
-import io.legado.app.ui.reader.TextSelectionDialog
+import io.legado.app.ui.dict.DictDialogHost
+import android.net.Uri
+import io.legado.app.ui.widget.PopupAction
+import io.legado.app.utils.ACache
+import io.legado.app.utils.AppLog
+import io.legado.app.utils.FileUtils
+import io.legado.app.utils.toastOnUi
+import kotlinx.coroutines.Dispatchers
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
@@ -110,7 +124,7 @@ import kotlin.coroutines.resume
  * 主界面：零薄壳入口。Content 调用 shared [LegadoApp]，由 shared RouteContent 统一渲染。
  * 保留启动期逻辑（版本更新/本地密码/崩溃通知/备份同步）和平台专属回调（换封面/导入选目录）。
  */
-class MainActivity : BaseComposeActivity() {
+class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
 
     val viewModel by viewModels<MainViewModel>()
 
@@ -126,8 +140,38 @@ class MainActivity : BaseComposeActivity() {
      *  [bookTreeUriSelect] 回调时消费。 */
     var pendingBookTreeUriCallback: ((String?) -> Unit)? = null
 
-    /** 文字选择对话框数据 + 选中文本动作回调 (由阅读页长按触发, AndroidReaderPlatformProvider 注入) */
-    private var readerSelection by mutableStateOf<ReaderTextSelection?>(null)
+    /** 文本操作浮动菜单 (对照原版 TextActionMenu: ActionMode.TYPE_FLOATING 跟随选区)。 */
+    private val textActionMenu by lazy { TextActionMenu(this, this) }
+
+    /** 当前浮动菜单选中的文本 (TextActionMenu.CallBack.selectedText, 由 showReaderTextActionMenu 写入) */
+    private var textActionMenuText: String = ""
+
+    /** 浮动菜单动作回调 (由阅读页长按触发, AndroidReaderPlatformProvider 注入) */
+    private var textActionMenuOnReplace: ((String) -> Unit)? = null
+    private var textActionMenuOnBookmark: ((String) -> Unit)? = null
+    private var textActionMenuOnReadAloud: ((String) -> Unit)? = null
+    private var textActionMenuOnSearchContent: ((String) -> Unit)? = null
+    private var textActionMenuOnShare: ((String) -> Unit)? = null
+
+    /** 图片长按菜单 (对照原版 ReadBookActivity.onImageLongPress 的 popupAction) */
+    private val imageActionMenu by lazy { PopupAction() }
+
+    /** 查词请求 (选中词 → dictWord 暂存, 由 Content 渲染词典对话框; 对照原版 menu_dict → DictDialog)。 */
+    private var dictWord by mutableStateOf<String?>(null)
+
+    /** 图片保存目录选择 (对照原版 selectImageDir.launch: SAF 选目录 → 写 ACache imagePathKey)。 */
+    private val selectImageDir = registerHandleFile { result ->
+        val uri = result.uri ?: return@registerHandleFile
+        ACache.get().put(AppConst.imagePathKey, uri.toString())
+        // 有待保存图片 (menu_save 先选目录后保存) 则继续保存
+        pendingSaveImageSrc?.let { src ->
+            pendingSaveImageSrc = null
+            saveImage(src, uri)
+        }
+    }
+
+    /** 图片保存待处理 src (选择目录完成后继续执行保存)。 */
+    private var pendingSaveImageSrc: String? = null
 
     // 阅读页屏幕常亮管理 (对照原版 ReadBookEventHandler.upScreenTimeOut/screenOffTimerStart)
     private val keepScreenOnHandler by lazy { Handler(Looper.getMainLooper()) }
@@ -185,7 +229,13 @@ class MainActivity : BaseComposeActivity() {
                 val books = pendingExportBooks
                 pendingExportBooks = null
                 if (books != null && books.isNotEmpty()) {
-                    startExportBooks(dirPath, books)
+                    // 对照 BookshelfManageActivity.exportDir 回调: 开启自定义导出时先弹章节配置对话框
+                    if (AppConfig.enableCustomExport) {
+                        PlatformCapabilityProviders.get()
+                            .showExportSectionConfig(dirPath, books)
+                    } else {
+                        startExportBooks(dirPath, books)
+                    }
                 }
             } else {
                 // 文件导出: 显示成功
@@ -235,6 +285,29 @@ class MainActivity : BaseComposeActivity() {
         }
     }
 
+    /** 自定义导出: 按章节范围/分卷大小导出为 epub (对照 configExportSection 的自定义分支)。 */
+    internal fun startExportBooksCustom(
+        path: String,
+        books: List<Book>,
+        epubSize: Int,
+        epubScope: String,
+    ) {
+        if (books.isEmpty()) {
+            toastOnUi(R.string.no_book)
+            return
+        }
+        books.forEach { book ->
+            startService<ExportBookService> {
+                action = IntentAction.start
+                putExtra("bookUrl", book.bookUrl)
+                putExtra("exportType", "epub")
+                putExtra("exportPath", path)
+                putExtra("epubSize", epubSize)
+                putExtra("epubScope", epubScope)
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         initializePlatform()
         super.onCreate(savedInstanceState)
@@ -257,20 +330,114 @@ class MainActivity : BaseComposeActivity() {
         pendingCoverChangeCallback = null
     }
 
-    fun showReaderTextSelection(
-        chapterName: String,
-        content: String,
-        selectedText: String? = null,
+    /**
+     * 显示文本操作浮动菜单 (对照原版 ReadBookActivity.showTextActionMenu → textActionMenu.show)。
+     *
+     * @param anchorX/anchorY 选区起点锚点 (阅读页内坐标, 由 ReadViewComposable 传入),
+     *        浮动菜单 contentRect 取锚点周围 40px 方块 (原版为选区起止矩形)
+     */
+    fun showReaderTextActionMenu(
+        text: String,
+        anchorX: Float,
+        anchorY: Float,
         onReplace: (String) -> Unit = {},
         onBookmark: (String) -> Unit = {},
         onReadAloud: (String) -> Unit = {},
         onSearchContent: (String) -> Unit = {},
         onShare: (String) -> Unit = {},
     ) {
-        readerSelection = ReaderTextSelection(
-            chapterName, content, selectedText, onReplace, onBookmark, onReadAloud,
-            onSearchContent, onShare,
+        textActionMenuText = text
+        textActionMenuOnReplace = onReplace
+        textActionMenuOnBookmark = onBookmark
+        textActionMenuOnReadAloud = onReadAloud
+        textActionMenuOnSearchContent = onSearchContent
+        textActionMenuOnShare = onShare
+        val x = anchorX.toInt()
+        val y = anchorY.toInt()
+        textActionMenu.show(
+            window.decorView,
+            x - 20, y - 20,
+            x + 20, y + 20,
         )
+    }
+
+    /**
+     * 图片长按菜单 (对照原版 ReadBookActivity.onImageLongPress: 查看/刷新/保存/选择目录)。
+     */
+    fun showImageActionMenu(src: String, x: Float, y: Float) {
+        imageActionMenu.setItems(
+            listOf(
+                SelectItem(getString(R.string.show), "show"),
+                SelectItem(getString(R.string.refresh), "refresh"),
+                SelectItem(getString(R.string.action_save), "save"),
+                SelectItem(getString(R.string.select_folder), "selectFolder")
+            )
+        )
+        imageActionMenu.onActionClick = { action ->
+            when (action) {
+                "show" -> capabilities.showImagePreview(src)
+                "refresh" -> refreshImage(src)
+                "save" -> {
+                    val path = ACache.get().getAsString(AppConst.imagePathKey)
+                    if (path.isNullOrEmpty()) {
+                        pendingSaveImageSrc = src
+                        selectImageDir.launch {
+                            mode = HandleFileContract.DIR_SYS
+                        }
+                    } else {
+                        saveImage(src, path.toUri())
+                    }
+                }
+
+                "selectFolder" -> {
+                    selectImageDir.launch {
+                        mode = HandleFileContract.DIR_SYS
+                    }
+                }
+            }
+        }
+        imageActionMenu.show(window.decorView, x.toInt(), y.toInt())
+    }
+
+    /**
+     * 刷新图片 (对照原版 ReadBookViewModel.refreshImage): 删缓存文件 + 清内存缓存 + 重排。
+     * 迁移版内存缓存为 shared ReaderImageCache (单书作用域, clear 清当前书);
+     * 磁盘缓存文件沿用 BookHelp.getImage 路径 (原版同一路径)。
+     */
+    private fun refreshImage(src: String) {
+        Coroutine.async(Dispatchers.IO) {
+            ReadBook.book?.let { book ->
+                val vFile = BookHelp.getImage(book, src)
+                ReaderImageCache.clear()
+                vFile.delete()
+            }
+        }.onFinally {
+            ReadBook.loadContent(false)
+        }
+    }
+
+    /**
+     * 保存图片到用户目录 (对照原版 BaseReadViewModel.saveImage):
+     * 缓存文件存在 → 直接复制; 本地书 → 取原图流写入; 网络书缓存缺失 → 不处理 (原版行为)。
+     */
+    private fun saveImage(src: String, uri: Uri) {
+        Coroutine.async(Dispatchers.IO) {
+            val book = ReadBook.book ?: return@async
+            val image = BookHelp.getImage(book, src)
+            if (image.exists()) {
+                FileUtils.saveImage(image, uri)
+            } else if (book.isLocal) {
+                FileBook.getImage(book, src)?.use { input ->
+                    FileUtils.saveImage(input, uri, ".${BookHelp.getImageSuffix(src)}")
+                }
+            }
+        }.onError {
+            AppLog.put("保存图片出错\n${it.localizedMessage}", it)
+            ACache.get().remove(AppConst.imagePathKey)
+            toastOnUi("保存图片出错\n${it.localizedMessage}")
+        }.onFinally {
+            toastOnUi("保存图片成功")
+        }
     }
 
     fun enterReaderWindow() {
@@ -393,27 +560,64 @@ class MainActivity : BaseComposeActivity() {
             }
             // legado:// deep link 导入对话框宿主 (对照 iOS/鸿蒙 MainViewController 末尾挂载)
             DeepLinkImportHost()
-            readerSelection?.let { sel ->
-                TextSelectionDialog(
-                    chapterName = sel.chapterName,
-                    content = sel.content,
-                    onDismiss = { readerSelection = null },
-                    clipTextProvider = {
-                        val clipboard =
-                            context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                        clipboard?.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
-                    },
-                    clipTextSink = { capabilities.copyToClipboard(it) },
-                    openUrl = capabilities::openExternalUrl,
-                    selectedText = sel.selectedText,
-                    onReplace = sel.onReplace,
-                    onBookmark = sel.onBookmark,
-                    onReadAloud = sel.onReadAloud,
-                    onSearchContent = sel.onSearchContent,
-                    onShare = sel.onShare,
+            // 查词对话框 (选中词 → 词典查询, 本地/在线词典规则; 对照原版 menu_dict → DictDialog)
+            dictWord?.let { word ->
+                DictDialogHost(
+                    word = word,
+                    onDismiss = { dictWord = null },
                 )
             }
         }
+    }
+
+    // ===== TextActionMenu.CallBack (对照原版 ReadBookActivity 的同名实现) =====
+
+    /** 当前选中文本 (浮动菜单动作取参; 对照原版 readView.getSelectText()) */
+    override val selectedText: String get() = textActionMenuText
+
+    /**
+     * 菜单项处理 (对照原版 ReadBookActivity.onMenuItemSelected):
+     * aloud/bookmark/replace/search_content/dict 返回 true 本层处理;
+     * copy/share/browser 返回 false 走 TextActionMenu.onMenuItemClick。
+     */
+    override fun onMenuItemSelected(itemId: Int): Boolean {
+        when (itemId) {
+            R.id.menu_aloud -> {
+                textActionMenuOnReadAloud?.invoke(selectedText)
+                return true
+            }
+
+            R.id.menu_bookmark -> {
+                textActionMenuOnBookmark?.invoke(selectedText)
+                return true
+            }
+
+            R.id.menu_replace -> {
+                textActionMenuOnReplace?.invoke(selectedText)
+                return true
+            }
+
+            R.id.menu_search_content -> {
+                textActionMenuOnSearchContent?.invoke(selectedText)
+                return true
+            }
+
+            R.id.menu_dict -> {
+                dictWord = selectedText
+                return true
+            }
+        }
+        return false
+    }
+
+    /**
+     * 菜单操作完成 (对照原版 onMenuActionFinally → textActionMenu.dismiss +
+     * readView.cancelSelect()): 关闭浮动菜单并取消页内文字选择。
+     */
+    override fun onMenuActionFinally() {
+        textActionMenu.dismiss()
+        textActionMenuText = ""
+        ReadBookEvents.postSelectionCancel()
     }
 
     private fun initializePlatform() {
@@ -648,22 +852,6 @@ class MainActivity : BaseComposeActivity() {
     }
 
 }
-
-/**
- * 文字选择对话框数据 + 选中文本动作回调。
- * 动作回调由阅读页平台提供方 (AndroidReaderPlatformProvider.onLongPress) 注入,
- * 持有 ReaderScreenModel 完成替换规则/书签/朗读/全文搜索/分享等业务。
- */
-private data class ReaderTextSelection(
-    val chapterName: String,
-    val content: String,
-    val selectedText: String?,
-    val onReplace: (String) -> Unit,
-    val onBookmark: (String) -> Unit,
-    val onReadAloud: (String) -> Unit,
-    val onSearchContent: (String) -> Unit,
-    val onShare: (String) -> Unit,
-)
 
 /**
  * 正文度量字体：[fontPath] = `ReadBookConfig.textFont`，与绘制侧 `loadReaderFontFamily`

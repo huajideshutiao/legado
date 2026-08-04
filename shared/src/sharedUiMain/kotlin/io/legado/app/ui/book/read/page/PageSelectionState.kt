@@ -4,8 +4,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.BaseColumn
+import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 
 /**
@@ -136,11 +138,14 @@ class PageSelectionState {
                     return RoughHit(PageSelPos(lineIndex, charIndex), column)
                 }
             }
-            val isLast = columns.first().start < x
+            // 防御: 空列行 (异常排版产物) 时 first()/last() 抛 NoSuchElementException,
+            // 会杀死本手势协程导致后续长按选择全部失效, 这里按行首回落
+            val firstColumn = columns.firstOrNull() ?: continue
+            val isLast = firstColumn.start < x
             val charIndex = if (isLast) columns.lastIndex + 1 else -1
             return RoughHit(
                 PageSelPos(lineIndex, charIndex),
-                if (isLast) columns.last() else columns.first(),
+                if (isLast) columns.last() else firstColumn,
             )
         }
         return null
@@ -220,6 +225,34 @@ class PageSelectionState {
         end = PageSelPos.EMPTY
         isActive = false
         tick++
+    }
+
+    /**
+     * 选区起点锚点（页内坐标）：起点列中心 x + 起点行顶 y。
+     * 对照旧 ReadBookActivity.upSelectedStart 的 textMenuPosition（x=选区起点 x,
+     * y=起点行 top），供浮动文本操作菜单跟随选区定位。
+     */
+    fun selectionAnchor(): Offset? {
+        val page = pageRef ?: return null
+        val s = start
+        if (!s.isValid) return null
+        val line = page.getLine(s.lineIndex)
+        val column = line.columns.getOrNull(s.columnIndex) ?: return null
+        return Offset((column.start + column.end) / 2f, line.lineTop)
+    }
+
+    /**
+     * 命中当前位置的列（长按回落分发用，页实例由调用方传入——长按未命中文字时
+     * [pageRef] 尚未建立）：命中图片列返回 [ImageColumn]（供平台弹图片长按菜单，
+     * 对照旧 ContentTextView.longPress 的 ImageColumn 分支）；未命中任何列返回 null。
+     */
+    fun columnAt(page: TextPage?, x: Float, y: Float, contentOffsetY: Float): BaseColumn? {
+        val p = page ?: return null
+        for (line in p.lines) {
+            if (!line.isTouch(x, y - contentOffsetY, 0f)) continue
+            return line.columns.firstOrNull { it.isTouch(x) }
+        }
+        return null
     }
 
     /** 选中文本（对照旧 getSelectedText：含跨行/段尾换行拼接，与旧版逐列判断完全一致） */

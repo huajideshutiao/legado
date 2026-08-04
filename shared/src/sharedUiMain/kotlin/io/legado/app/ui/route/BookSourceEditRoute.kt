@@ -25,6 +25,7 @@ import io.legado.app.help.config.LocalConfigShared
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.SourceConfig
 import io.legado.app.help.http.CookieStoreProviders
+import io.legado.app.help.sourceLoginOverlayPayload
 import io.legado.app.model.SharedJsScope
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.source.edit.BookSourceEditCallbacks
@@ -189,18 +190,17 @@ fun BookSourceEditRoute(
                 // 对照 app 端 login: viewModel.save(getSource()) { source.showLoginDialog(this) }
                 val source = screenModel.getSource(editState)
                 screenModel.dispatch(BookSourceEditUiEvent.Save(source) { saved ->
-                    if (saved.loginUi.isNullOrEmpty()) {
-                        // URL 登录: 对照原版 showLoginDialog 的 WebViewActivity 分支, 开登录页
-                        PlatformCapabilityProviders.getOrNull()?.showBookSourceLogin(saved)
-                    } else {
-                        // 表单登录: 对照原版 showDialogFragment<SourceLoginDialog>, Overlay 弹对话框
-                        navigator.showOverlay(
-                            AppOverlay.Dialog(
-                                key = "sourceLogin",
-                                payload = SourceLoginContext.put(saved),
-                            )
+                    // 纯 Overlay 弹登录对话框, 不推新路由; 表单/URL 两条分支由
+                    // SourceLoginOverlayContent 统一分发 (对照原版 showLoginDialog)
+                    navigator.showOverlay(
+                        AppOverlay.Dialog(
+                            key = "sourceLogin",
+                            payload = sourceLoginOverlayPayload(
+                                saved.bookSourceUrl,
+                                SourceLoginContext.put(saved),
+                            ),
                         )
-                    }
+                    )
                 })
             },
             onSearch = {

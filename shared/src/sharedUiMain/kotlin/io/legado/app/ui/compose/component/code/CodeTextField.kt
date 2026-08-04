@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -91,8 +92,23 @@ private val SearchMatchBackground = Color(0x80FFFF00)
 /** 行号分隔线 alpha, 对齐 CodeView `lineNumberTextColor and 0x00FFFFFF or 0x60000000` */
 private val LineDividerAlpha = 0x60 / 255f
 
-/** MD2 TextField 默认水平内边距 16dp (对照 MD2 TextField contentPadding 起点) */
-private val TextFieldHorizontalPadding = 16.dp
+/** 下划线形态水平内边距 4dp (对齐 AppTextField 与周边 4dp 布局; M2 filled 默认 16dp 是容器形态所需) */
+private val TextFieldHorizontalPadding = 4.dp
+
+/** 无 label 时文本顶部留白 (M2 textFieldWithoutLabelPadding 默认 top = TextFieldPadding = 16dp) */
+private val TextFieldTopPadding = 16.dp
+
+/** 有 label 时 label 基线距组件顶 (M2 FirstBaselineOffset = 20dp) */
+private val TextFieldFirstBaselineOffset = 20.dp
+
+/** label 基线到文本顶的间距 (M2 内部 TextFieldTopPadding = 2dp, label 浮动后文本顶 = 基线 + 2dp) */
+private val TextFieldLabelToText = 2.dp
+
+/**
+ * 文本底到指示线的间距 4dp (原版 EditText wrap_content 底部 inset 约 2-4dp)。
+ * 本组件顶对齐 (singleLine=false), 内容高度 = 顶留白 + 行高 + bottom, 因此 bottom 即"文本-下划线"距离。
+ */
+private val TextFieldBottomInset = 4.dp
 
 /** 查找面板开着时编辑器文本变化的即时刷新上限, 超长文本等下次面板操作再算 (原版为增量更新) */
 private const val SearchRefreshMaxLength = 20000
@@ -176,7 +192,9 @@ fun buildSearchRanges(
  *
  * MD2 纯下划线风格 (对照 MD2 TextField): 无填充底、无圆角盒、无边框, 仅底部下划线
  * indicatorLine (未聚焦 controlNormal / 聚焦 accent / 错误 error) + hint (label/placeholder)
- * + MD2 TextField 默认 16dp 水平边距, 字体跟随主题默认, 差异仅在语法着色。
+ * + 4dp 水平边距 (下划线形态收窄, 对齐 AppTextField; M2 filled 默认 16dp 是容器形态所需),
+ * 垂直按内容包裹: 文本底距指示线恒 4dp (对齐原版 EditText wrap_content 底部 inset 2-4dp),
+ * 字体跟随主题默认, 差异仅在语法着色。
  * [showIndicator] = false 时连下划线也不画, 用于对话框内嵌 (对齐原版 CodeDialog 无边框呈现)。
  * [autoComplete] 轻量自动补全 (对齐原版 CodeView 的 AutoCompleteAdapter 词表 + fuzzy 匹配,
  * 弹层锚定光标, 默认开启; 弹层弹出时支持键盘: 上下移动高亮、回车/Tab 确认、ESC 收起)。
@@ -200,8 +218,9 @@ fun CodeTextField(
     errorMessage: String? = null,
     showIndicator: Boolean = true,
     showLineNumbers: Boolean = false,
-    minHeight: Dp = 56.dp,
     fontSize: TextUnit = 14.sp,
+    // 默认最小高度 = 顶留白 + 固定行高 + 底部 4dp, 单行字段高度贴合内容 (消除 minHeight 死区)
+    minHeight: Dp = codeFieldDefaultMinHeight(label != null, fontSize),
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
@@ -210,11 +229,12 @@ fun CodeTextField(
 ) {
     val transformation = rememberCodeHighlightTransformation(syntax, searchHighlight)
     val colors = AppFieldColors
+    val themeColors = AppTheme.colors
     // 字体跟随主题默认 (原版 CodeView 未设置等宽字体, 用系统默认字体)
     val baseStyle = LocalTextStyle.current.copy(fontSize = fontSize)
     // 行号列与文本同处滚动容器, 需统一行高: 默认字体下 CJK 回退与拉丁字符的自然行高不一致,
     // 强制固定行高才能保证逐行对齐 (对齐原版 Canvas 逐行画号不受行高变化影响)。
-    // 行号列只在文本含换行时出现 (对齐原版 enterPosSize > 0 条件), 单行字段走自然行高。
+    // 行号列只在文本含换行时出现 (对齐原版 enterPosSize > 0 条件)。
     // 行号计数增量跟踪: 常规编辑在 onValueChange 里按前后文 diff 求新行数 (O(编辑距离)),
     // 外部整体改写 (撤销/重载/查找替换等不经本字段 onValueChange 的写入) 走组合期全量重算,
     // 避免每次按键 O(n) 扫描全文。
@@ -234,23 +254,25 @@ fun CodeTextField(
         onValueChange(newValue)
     }
     val gutterShown = showLineNumbers && lineCount > 1
-    val codeStyle =
-        if (gutterShown) baseStyle.copy(lineHeight = fontSize * 1.5f) else baseStyle
+    // 固定行高 fontSize*1.5, 单行/多行一致: 单行与多行的垂直几何统一 (行高恒定, 高度只随行数增长,
+    // 回车换行时行距不跳变); 也是内容推导 minHeight 与行号逐行对齐的前提
+    val codeStyle = baseStyle.copy(lineHeight = fontSize * 1.5f)
     val textColor = codeStyle.color.takeOrElse { colors.textColor(enabled).value }
-    // MD2 纯下划线: contentPadding 走 MD2 TextField 默认 16dp 水平起点;
-    // showIndicator=false (CodeDialog 内嵌) 维持 0dp 水平边距
+    // MD2 纯下划线: 水平起点 4dp (下划线形态收窄, 对齐 AppTextField; showIndicator=false 内嵌时 0dp);
+    // 垂直: top 走 M2 默认 (无 label 16dp / label 基线 20dp), bottom 固定 4dp —— 本组件顶对齐
+    // (singleLine=false), bottom 即"文本底到指示线"距离 (原版 EditText wrap_content 底部 inset 2-4dp)
     val horizontalPadding = if (showIndicator) TextFieldHorizontalPadding else 0.dp
     val contentPadding = if (label == null) {
         TextFieldDefaults.textFieldWithoutLabelPadding(
             start = horizontalPadding,
             end = horizontalPadding,
-            bottom = 4.dp
+            bottom = TextFieldBottomInset
         )
     } else {
         TextFieldDefaults.textFieldWithLabelPadding(
             start = horizontalPadding,
             end = horizontalPadding,
-            bottom = 4.dp
+            bottom = TextFieldBottomInset
         )
     }
     // 轻量自动补全: 聚焦且光标处 token 非空时, 按词表 + 行内词 fuzzy 匹配出候选
@@ -340,6 +362,30 @@ fun CodeTextField(
     // 测量失败/超长回退估算
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer(cacheSize = 8)
+    // 行号列宽 (px, 未显示行号时 null): 5dp 左距 + 号宽 + 11dp 右距 (对齐原版
+    // mLineNumberPadding = measureText + 16f*density), 分隔线与补全弹层共用同一实测值
+    val gutterTextStyle = codeStyle.copy(fontSize = codeStyle.fontSize * 0.6f)
+    val gutterWidthPx: Float? = if (gutterShown) {
+        measureTextWidth(
+            textMeasurer,
+            lineCount.toString(),
+            gutterTextStyle,
+            density
+        )?.let { numberWidth ->
+            with(density) { (5.dp + 11.dp).toPx() + numberWidth }
+        }
+    } else null
+    // 行号与正文基线对齐: 两种字号在同一固定行高下由 Compose 各自垂直居中, 基线差 =
+    // 各自 firstBaseline 之差 (Roboto 14sp/8.4sp 下约 1.9dp, 即"行号比正文基线偏高"的错位)。
+    // 实测消除, 不依赖字体度量假设
+    val gutterBaselineShift = if (gutterShown) {
+        with(density) {
+            (measureFirstBaseline(textMeasurer, codeStyle, density) -
+                measureFirstBaseline(textMeasurer, gutterTextStyle, density)).toDp()
+        }
+    } else {
+        0.dp
+    }
     val popupOffset = if (matches.isEmpty()) {
         IntOffset.Zero
     } else {
@@ -349,22 +395,17 @@ fun CodeTextField(
         val lineStart = text.lastIndexOf('\n', cursor - 1) + 1
         val lineHeight = codeStyle.lineHeight.takeOrElse { fontSize * 1.5f }
         val y = with(density) {
-            contentPadding.calculateTopPadding().toPx() + cursorLine * lineHeight.toPx()
+            // label 场景文本顶 = contentPadding.top (label 基线 20dp) + 2dp (对齐 M2 放置公式)
+            (contentPadding.calculateTopPadding() +
+                if (label != null) TextFieldLabelToText else 0.dp).toPx() +
+                cursorLine * lineHeight.toPx()
         }.roundToInt()
         var x = with(density) {
             contentPadding.calculateStartPadding(LayoutDirection.Ltr).toPx()
         }.roundToInt()
-        // 行号列宽: gutterShown 时文本起点右移 (数字递增, 末行最宽; 列宽 = 5dp + 号宽 + 11dp)
-        if (gutterShown) {
-            val gutterTextWidth = measureTextWidth(
-                textMeasurer,
-                lineCount.toString(),
-                codeStyle.copy(fontSize = codeStyle.fontSize * 0.6f),
-                density,
-            )
-            if (gutterTextWidth != null) {
-                x += (gutterTextWidth + with(density) { (5.dp + 11.dp).toPx() }).roundToInt()
-            }
+        // 行号列宽: gutterShown 时文本起点右移 (列宽实测值, 与分隔线同源)
+        if (gutterWidthPx != null) {
+            x += gutterWidthPx.roundToInt()
         }
         // 行首到光标宽度: 实测优先, 失败回退 0.6em/1em 估算
         val prefixWidth = measureTextWidth(
@@ -423,15 +464,33 @@ fun CodeTextField(
                     // 此时字段整体随容器滚动, 行号与文本同步; 若字段自身有界 (内部滚动), decoration
                     // 内容不随文本滚动, 行号会钉在顶部 (当前无线号使用场景, 保持现状)。
                     // label/placeholder 由
-                    // AppDecorationBox 全宽渲染 (hint 从 contentPadding 起点 16dp 开始, 不被
-                    // CodeView gutter 挤开; LineNumberGutter 的 5dp/11dp/6dp 几何在 16dp 水平
-                    // 边距下与 CodeView.onDraw 的 paddingLeft-11dp / paddingLeft-6dp 对齐)
+                    // AppDecorationBox 全宽渲染 (hint 从 contentPadding 起点 4dp 开始, 不被
+                    // CodeView gutter 挤开; LineNumberGutter 的 5dp/11dp/6dp 几何与
+                    // CodeView.onDraw 的 paddingLeft-11dp / paddingLeft-6dp 对齐)
                     val fieldContent: @Composable () -> Unit = {
                         if (gutterShown) {
-                            Row(Modifier.fillMaxWidth()) {
+                            // 分隔线画在 Row 上, 覆盖整个文本区高度: 行号列 Box 只与行号等高,
+                            // 长行软换行时文本区比行号列高, 画在行号列上会提前截断
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .drawBehind {
+                                        gutterWidthPx?.let { gW ->
+                                            // 对齐原版 lineX = paddingLeft - 6f*density
+                                            val dividerX = gW - 6.dp.toPx()
+                                            drawLine(
+                                                color = themeColors.secondaryText.copy(alpha = LineDividerAlpha),
+                                                start = Offset(dividerX, 0f),
+                                                end = Offset(dividerX, size.height),
+                                                strokeWidth = 1.dp.toPx(),
+                                            )
+                                        }
+                                    }
+                            ) {
                                 LineNumberGutter(
                                     lineCount = lineCount,
                                     textStyle = codeStyle,
+                                    baselineShift = gutterBaselineShift,
                                 )
                                 Box(Modifier.weight(1f)) { innerTextField() }
                             }
@@ -470,19 +529,21 @@ fun CodeTextField(
 }
 
 /**
- * 行号列, 布局数值对齐原版 CodeView.onDraw (列自身在 16dp 水平边距之后, 与 CodeView
- * 位于 TextInputLayout 16dp 内容起点一致):
+ * 行号列, 布局数值对齐原版 CodeView.onDraw:
  * - 行号字号 = 文本字号 * 0.6f (lineNumberTextSize = textSize * 0.6f), 次要文字色右对齐
  * - 行号右边缘距文本 11dp (x = paddingLeft - 11f*density)
  * - 分隔线在行号右边缘右侧 5dp (lineX = paddingLeft - 6f*density), 1dp 宽,
- *   颜色 = 行号色 RGB + alpha 0x60
+ *   颜色 = 行号色 RGB + alpha 0x60; 线画在承载 Row 上 (见调用处), 覆盖整个文本区高度
  * - 整列宽 = 行号宽 + 16dp (mLineNumberPadding = measureText + 16f*density), 文本从列右缘开始
- * 行高与文本强制一致 (调用方已统一 lineHeight), 随文本同步滚动。
+ * [baselineShift]: 行号字号小于正文, 同一固定行高下 Compose 各自垂直居中导致行号基线偏高
+ * (约 1.9dp), 传入实测基线差把行号下移与正文行基线对齐。
+ * 行高与文本一致 (调用方已统一 lineHeight), 随文本同步滚动。
  */
 @Composable
 private fun LineNumberGutter(
     lineCount: Int,
     textStyle: TextStyle,
+    baselineShift: Dp,
 ) {
     val colors = AppTheme.colors
     // 行号串只在行数变化时重建: 常规按键 (行数不变) 复用同一实例, BasicText 节点按内容语义比较
@@ -490,24 +551,17 @@ private fun LineNumberGutter(
     // 行号布局全程复用, 万行文件下不再每次按键全量重建
     val numbersText = remember(lineCount) { buildLineNumbers(lineCount) }
     Box(
-        Modifier
-            .padding(start = 5.dp)
-            .drawBehind {
-                val dividerX = size.width - 6.dp.toPx()
-                drawLine(
-                    color = colors.secondaryText.copy(alpha = LineDividerAlpha),
-                    start = Offset(dividerX, 0f),
-                    end = Offset(dividerX, size.height),
-                    strokeWidth = 1.dp.toPx(),
-                )
-            },
+        Modifier.padding(start = 5.dp),
     ) {
         Text(
             text = numbersText,
             color = colors.secondaryText,
             style = textStyle.copy(fontSize = textStyle.fontSize * 0.6f),
             textAlign = TextAlign.End,
-            modifier = Modifier.padding(end = 11.dp),
+            // 下移基线差与正文行基线对齐 (offset 不参与测量, Box 高度不变, 溢出落在底部内边距内)
+            modifier = Modifier
+                .padding(end = 11.dp)
+                .offset(y = baselineShift),
         )
     }
 }
@@ -634,7 +688,8 @@ private fun insertTabAtSelection(value: TextFieldValue): TextFieldValue {
 
 /**
  * TextMeasurer 实测文本单行宽度; 空串返 0, 超长/异常返 null (调用方回退 0.6em/1em 估算)。
- * [density] 必须传真实屏幕密度, 否则 sp 字号按 Density(1f) 折算导致宽度整体偏小。
+ * [density] 必须传真实屏幕密度 (LocalDensity, 含 fontScale), 否则 sp 字号按 Density(1f)
+ * 折算导致宽度整体偏小。
  */
 private fun measureTextWidth(
     textMeasurer: TextMeasurer,
@@ -648,11 +703,38 @@ private fun measureTextWidth(
         textMeasurer.measure(
             AnnotatedString(text),
             style = style,
-            density = Density(density.density),
+            density = density,
         ).size.width.toFloat()
     } catch (_: Exception) {
         null
     }
+}
+
+/** 单行文本首行基线位置 (px, 相对行盒顶); 异常返 0f (调用方容忍对齐误差) */
+private fun measureFirstBaseline(
+    textMeasurer: TextMeasurer,
+    style: TextStyle,
+    density: Density,
+): Float {
+    return try {
+        textMeasurer.measure(AnnotatedString("0"), style = style, density = density).firstBaseline
+    } catch (_: Exception) {
+        0f
+    }
+}
+
+/**
+ * CodeTextField 默认最小高度 = 顶部留白 + 固定行高 (fontSize*1.5) + 底部 4dp:
+ * 单行字段高度正好贴合内容, 消除 minHeight 死区 —— 死区是"单行文本离下划线太远"的根源
+ * (56dp 最小高 + 顶对齐下, 文本下方空出 56-(顶留白+行高+4dp) ≈ 19dp)。
+ * 多行时内容自然超过该值, 高度随内容增长, 文本底距指示线恒为 [TextFieldBottomInset]。
+ * (fontScale=1 时 sp 与 dp 等价; 非 1 时此项仅为下限, 内容更高则自动撑开)
+ */
+private fun codeFieldDefaultMinHeight(hasLabel: Boolean, fontSize: TextUnit): Dp {
+    val topSpace =
+        if (hasLabel) TextFieldFirstBaselineOffset + TextFieldLabelToText else TextFieldTopPadding
+    val lineHeightDp = (if (fontSize.isSp) fontSize.value else 14f) * 1.5f
+    return topSpace + lineHeightDp.dp + TextFieldBottomInset
 }
 
 /** [CodeTextField] 的 String 重载: 无需保留选区/composition 的场景 */
@@ -670,8 +752,9 @@ fun CodeTextField(
     errorMessage: String? = null,
     showIndicator: Boolean = true,
     showLineNumbers: Boolean = false,
-    minHeight: Dp = 56.dp,
     fontSize: TextUnit = 14.sp,
+    // 默认最小高度 = 顶留白 + 固定行高 + 底部 4dp, 单行字段高度贴合内容 (消除 minHeight 死区)
+    minHeight: Dp = codeFieldDefaultMinHeight(label != null, fontSize),
     searchHighlight: CodeSearchHighlightState? = null,
     autoComplete: Boolean = true,
 ) {

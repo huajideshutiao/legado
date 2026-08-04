@@ -62,6 +62,12 @@ class WebViewCallbacks {
     var onReceivedTitle: ((String?) -> Unit)? = null
 
     /**
+     * 页面加载进度 (对照原 CommonWebChromeClient.onProgressChanged → RefreshProgressBar)。
+     * 参数为 0..100 的进度值; 平台实现在 WebChromeClient.onProgressChanged 触发。
+     */
+    var onProgressChanged: ((Int) -> Unit)? = null
+
+    /**
      * 进入/退出全屏 (HTML5 `<video>` 全屏播放, 对照原 CommonWebChromeClient 的
      * onShowCustomView / onHideCustomView)。平台实现负责把 custom view 铺满自己的容器,
      * 这里只上报状态供路由隐藏标题栏。
@@ -82,7 +88,7 @@ class WebViewCallbacks {
  *
  * 宿主端用 [CompositionLocalProvider] 覆盖注入 Android WebView、iOS WKWebView、
  * desktop 系统浏览器或鸿蒙 NAPI Web 能力,
- * 供 shared 路由 ([io.legado.app.ui.route.LoginRoute] / [io.legado.app.ui.route.ReadRssRoute] /
+ * 供 shared 路由 (登录 Overlay / [io.legado.app.ui.route.ReadRssRoute] /
  * [io.legado.app.ui.route.WebViewRoute]) 渲染 WebView, 避免 shared 路由硬编码平台 WebView 组件。
  *
  * 签名 `(WebViewConfig, Modifier, WebViewCallbacks) -> Unit`: 待加载 URL/header/html 配置

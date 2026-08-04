@@ -28,6 +28,7 @@ import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.mainDispatcher
+import io.legado.app.help.sourceLoginOverlayPayload
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.info.BookInfoMenuState
 import io.legado.app.ui.book.info.BookInfoScreen
@@ -300,12 +301,17 @@ fun BookInfoRoute(
             }
         }
 
-        // 登录: 跳转书源登录页 (带上当前书, 对照原版 menu_login 预置 IntentData.book)
+        // 登录: 纯 Overlay 弹登录对话框, 不推新路由 (带上当前书, 对照原版 menu_login 预置 IntentData.book)
         override fun onLogin() {
             val b = state.book ?: book
             val source = bookSource
             val dataKey = source?.let { SourceLoginContext.put(it, b) }
-            navigator.push(AppRoute.Login(source?.getKey() ?: b.origin, dataKey))
+            navigator.showOverlay(
+                AppOverlay.Dialog(
+                    key = "sourceLogin",
+                    payload = sourceLoginOverlayPayload(source?.getKey() ?: b.origin, dataKey),
+                )
+            )
         }
 
         // 评论: Android 恢复原版 BottomSheet 对话框 (全功能交互+提交), 其余平台回退共享列表页

@@ -17,6 +17,7 @@ import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.LocalConfigShared
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.sourceLoginOverlayPayload
 import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.association.ImportBookSourceItemsDialog
@@ -33,6 +34,7 @@ import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.dragSelectable
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
@@ -255,7 +257,15 @@ fun BookSourceManageRoute(
             onToBottom = { screenModel.dispatch(BookSourceUiEvent.ToBottom(it)) },
             onSearchBook = { navigator.push(AppRoute.Search()) },
             onDebug = { part -> navigator.push(AppRoute.BookSourceDebug(part.bookSourceUrl)) },
-            onLogin = { part -> navigator.push(AppRoute.Login(part.bookSourceUrl)) },
+            onLogin = { part ->
+                // 纯 Overlay 弹登录对话框, 不推新路由 (源按 bookSourceUrl 查库)
+                navigator.showOverlay(
+                    AppOverlay.Dialog(
+                        key = "sourceLogin",
+                        payload = sourceLoginOverlayPayload(part.bookSourceUrl),
+                    )
+                )
+            },
             onDel = { delTarget = it },
             onDelSelection = { showDelSelection = true },
             onCancelCheckSource = { PlatformCapabilityProviders.getOrNull()?.cancelCheckSource() },

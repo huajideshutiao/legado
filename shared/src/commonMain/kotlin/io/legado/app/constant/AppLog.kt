@@ -1,6 +1,7 @@
 package io.legado.app.constant
 
 import io.legado.app.constant.AppLog.lock
+import io.legado.app.constant.AppLog.put
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,8 +47,13 @@ object AppLog {
      * 对齐 origin AppLog: 所有副作用 (toast/write/ring/debugPrint) 在同一把锁内,
      * 保证落盘与环形列表顺序一致 (原 @Synchronized 语义)。
      *
+     * @JvmOverloads: 恢复原版 2/3 参 JVM 签名 (原版无 tag 参数, JVM 上存在
+     * put(String, Throwable, boolean) 三参重载); 迁移加 tag 后只剩 1/4 参签名,
+     * 书源 jsLib 的 `AppLog.put(msg, null, true)` 报 "Cannot find method 'put'"。
+     *
      * @param tag 组件标签, 默认 "AppLog", 供迁移前 LogUtils.d(TAG,...) 调用方保留原 TAG。
      */
+    @JvmOverloads
     fun put(
         message: String?,
         throwable: Throwable? = null,
@@ -77,8 +83,11 @@ object AppLog {
     /**
      * 记录日志但不落盘 (仅内存环形列表 + DEBUG logcat)。
      *
+     * @JvmOverloads: 同 [put], 恢复原版 JVM 签名面 (书源 jsLib 可能调用 putNotSave)。
+     *
      * @param tag 组件标签, 默认 "AppLog"。
      */
+    @JvmOverloads
     fun putNotSave(
         message: String?,
         throwable: Throwable? = null,
@@ -109,8 +118,11 @@ object AppLog {
     /**
      * 受 recordLog 门控的调试日志。
      *
+     * @JvmOverloads: 同 [put], 恢复原版 JVM 签名面。
+     *
      * @param tag 组件标签, 默认 "AppLog"。
      */
+    @JvmOverloads
     fun putDebug(
         message: String?,
         throwable: Throwable? = null,

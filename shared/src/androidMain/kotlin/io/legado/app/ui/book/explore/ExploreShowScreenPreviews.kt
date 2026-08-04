@@ -60,6 +60,8 @@ private val noOpExploreActions = object : ExploreShowUiActions {
     override fun onBack() {}
     override fun onTitleClick() {}
     override fun onToggleFavorite() {}
+    override fun onRefresh() {}
+    override fun onLogin() {}
     override fun onSwitchLayout() {}
     override fun onShowColumnPicker() {}
     override fun onShowSourceFilterRule() {}
@@ -91,6 +93,7 @@ private fun previewExploreState(
     books = books,
     exploreStyle = exploreStyle,
     isFavorite = true,
+    canLogin = true,
     bookshelfVersion = 0,
     optionsVersion = 0,
     scrollTopEpoch = 0,

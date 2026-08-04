@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.page.AutoPagerCompose
 import io.legado.app.ui.book.read.page.PageDelegateShared
+import io.legado.app.ui.book.read.page.MouseDragDelegate
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import kotlinx.coroutines.CoroutineScope
@@ -56,7 +57,7 @@ abstract class PageDelegateCompose(
     protected val viewModel: ReadBookViewModelShared,
     protected val scope: CoroutineScope,
     protected val animationSpeed: Int = DEFAULT_ANIMATION_SPEED,
-) : PageDelegateShared {
+) : PageDelegateShared, MouseDragDelegate {
 
     companion object {
         // 与 app 端 ReadView.defaultAnimationSpeed=300 对应

@@ -3,6 +3,7 @@ package io.legado.app.help
 import io.legado.app.exception.SecurityException
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.utils.File
+import io.legado.app.utils.InputStream
 
 /**
  * FileUtilsCommon 的 nativeMain actual (iOS / 鸿蒙 共用)。
@@ -76,6 +77,30 @@ internal actual object FileUtilsCommon {
                 file.createNewFile()
             }
             file.writeBytes(data)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    actual fun copyToFile(path: String, input: InputStream): Boolean {
+        // expect InputStream 无 copyTo 扩展, 分块读 + OutputStream 写 (对齐 JVM 流式语义);
+        // 注: native 端 AnalyzeUrlCore.byteStreamAsInput 暂不可用, downloadFile 流式路径
+        // 实际走不到这里 (回退 getByteArray), 本实现为 expect/actual 完整性 + 未来可用
+        return try {
+            val file = File(path)
+            if (!file.exists()) {
+                file.parent?.let { File(it).mkdirs() }
+                file.createNewFile()
+            }
+            file.outputStream().use { out ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n <= 0) break
+                    out.write(buffer, 0, n)
+                }
+            }
             true
         } catch (_: Exception) {
             false

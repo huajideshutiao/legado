@@ -27,7 +27,7 @@ import io.legado.app.utils.servicePendingIntent
  *
  * 本 Service **不参与业务编排**, 仅保留:
  * - **Android 前台通知占位**: [startForegroundNotification] 显示 "更新目录" 占位通知
- *   (进度由 `MainViewModel.AndroidUpdateBookCallback.onProgressUpdate` 经
+ *   (进度由 `io.legado.app.ui.main.AndroidUpdateBookCallback.onProgressUpdate` 经
  *   `NotificationManagerCompat.notify` 实时刷写同一通知 ID, 与本 Service 解耦)
  * - **生命周期标志**: [isRun] (供 app 端其他组件判断 Service 是否在跑, 对照
  *   `CacheBookService.isRun` 模式)
@@ -38,9 +38,9 @@ import io.legado.app.utils.servicePendingIntent
  *
  * # 调用关系
  *
- * - **启动**: `MainViewModel.AndroidUpdateBookCallback.onProgressUpdate` 内
+ * - **启动**: `io.legado.app.ui.main.AndroidUpdateBookCallback.onProgressUpdate` 内
  *   `context.startService<UpdateBookService>` (有任务在跑时显示通知)
- * - **停止**: `MainViewModel.AndroidUpdateBookCallback.onProgressCancel` 内
+ * - **停止**: `io.legado.app.ui.main.AndroidUpdateBookCallback.onProgressCancel` 内
  *   `context.stopService<UpdateBookService>` (任务完成/取消时取消通知)
  * - **用户取消**: 通知栏 "取消" 按钮 → PendingIntent → [onStartCommand] (action=stop)
  *   → postEvent(STOP_UP_BOOK) → UpdateBookShared 监听器取消任务 → callback.onProgressCancel

@@ -18,11 +18,13 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.page.delegate.ScrollPageDelegateCompose
@@ -81,10 +83,14 @@ import kotlin.math.roundToInt
  * @param batteryLevel 电池电量 0-100，传 -1 表示不显示
  * @param clockText 当前系统时间 HH:mm，随 timeChanged 刷新
  * @param onClick 单击回调（动作 0=菜单，由调用方处理；翻页/切章在本 Composable 内消费）
- * @param onLongClick 长按回调（仅非文字区域回落：图片/空白长按仍走旧整章选择对话框；
- *   文字长按改由页内选择接管，见 [PageSelectionState]）
+ * @param onLongClick 长按回调（仅非文字非图片区域回落：空白长按；文字长按由页内选择接管，
+ *   图片长按走 [onImageLongPress]，均对照旧 ReadView.onLongPress 的列分发）
+ * @param onImageLongPress 图片长按回调（命中图片列，携带 src 与长按点坐标；对照旧
+ *   ContentTextView.longPress 的 ImageColumn 分支 → ReadBookActivity.onImageLongPress 图片菜单）
  * @param onAction 非翻页类点击动作（书签/目录/搜索等），对照 app 端 ReadView.click 的 callBack 分支
- * @param onSelectionMenu 页内文字选择完成回调（选中文本；对照旧 ReadView.CallBack.showTextActionMenu）
+ * @param onSelectionMenu 页内文字选择完成回调（选中文本 + 选区起点锚点（页内坐标，含滚动折算）；
+ *   对照旧 ReadView.CallBack.showTextActionMenu → 平台浮动菜单跟随选区）
+ * @param menuVisible 阅读菜单是否可见（桌面端鼠标手势层让位用；菜单可见时点击由菜单 bg 收起）
  */
 @Composable
 fun ReadViewComposable(
@@ -94,8 +100,10 @@ fun ReadViewComposable(
     clockText: String = formatTimeOfDay(systemCurrentTimeMillis()),
     onClick: (TextColumn?) -> Unit = {},
     onLongClick: (TextColumn?) -> Unit = {},
+    onImageLongPress: (String, Float, Float) -> Unit = { _, _, _ -> },
     onAction: (Int) -> Unit = {},
-    onSelectionMenu: (String) -> Unit = {},
+    onSelectionMenu: (String, Offset?) -> Unit = { _, _ -> },
+    menuVisible: () -> Boolean = { false },
 ) {
     val prevTextPage by viewModel.prevTextPage.collectAsState()
     val curTextPage by viewModel.curTextPage.collectAsState()
@@ -116,6 +124,14 @@ fun ReadViewComposable(
         selection.cancel()
         // 选择被页切换中断后恢复自动翻页（激活选择时已暂停）
         composeDelegate.autoPager?.resume()
+    }
+    // 平台侧文本操作菜单关闭/动作完成后取消选择（对照旧 TextActionMenu.onMenuActionFinally
+    // → readView.cancelSelect()）；未激活时无操作
+    LaunchedEffect(Unit) {
+        ReadBookEvents.selectionCancel.collect {
+            selection.cancel()
+            composeDelegate.autoPager?.resume()
+        }
     }
 
     BoxWithConstraints(
@@ -149,14 +165,21 @@ fun ReadViewComposable(
         // 滚动模式行级平移提供者（对照旧 drawPage 的 translate + clipRect；
         // 非滚动模式为 null，PageViewComposable 走零开销原样渲染路径）
         val scrollDelegate = composeDelegate as? ScrollPageDelegateCompose
+        // 下一页是否带完整页面装饰（背景/页眉/页脚）：仅滚动模式连排时由固定层提供背景
+        // （showChrome=false, 对照旧 drawPage 只画 TextPage 内容）；横向翻页模式（覆盖/滑动/
+        // 仿真/无动画）下一页是完整页面, 必须自带不透明背景, 否则翻到下一页时翻起区
+        // 透出窗口背景（2026-08-04 用户反馈: 向后翻页背景透明）
+        val nextPageShowChrome = scrollDelegate == null
 
         // 长按落点回调（供 delegate 手势转发）: 命中文字列 → 词级选中（对照旧
         // ReadView.onLongPress → ContentTextView.longPress + BreakIterator 词边界）;
-        // 图片/空白等非文字长按 → 回落旧行为（整章选择对话框）。
+        // 命中图片列 → onImageLongPress（对照旧 ImageColumn 分支 → 图片长按菜单）;
+        // 空白 → onLongClick(null)（原版空白长按无动作，桌面端回落整章选择对话框）。
         // pointerInput(Unit) 不随重组重启, 用 rememberUpdatedState 取最新页/宽度/回调。
         val latestCurPage by rememberUpdatedState(curTextPage)
         val latestPageWidth by rememberUpdatedState(pageWidthPx)
         val latestOnLongClick by rememberUpdatedState(onLongClick)
+        val latestOnImageLongPress by rememberUpdatedState(onImageLongPress)
         val onPageLongPress: (Float, Float) -> Unit = { x, y ->
             if (selection.longPressStart(
                     latestCurPage, x, y, scrollOffset.toFloat(), latestPageWidth
@@ -166,7 +189,15 @@ fun ReadViewComposable(
                 // 避免翻页打断选择；选择取消时在下方手势层/页切换处恢复
                 composeDelegate.autoPager?.pause()
             } else {
-                latestOnLongClick(null)
+                // 未命中文字列: 图片列 → 图片长按; 其余空白 → 回落
+                val column = selection.columnAt(
+                    latestCurPage, x, y, scrollOffset.toFloat()
+                )
+                if (column is ImageColumn) {
+                    latestOnImageLongPress(column.src, x, y)
+                } else {
+                    latestOnLongClick(null)
+                }
             }
         }
 
@@ -213,9 +244,10 @@ fun ReadViewComposable(
                         onClick = onClick,
                         onLongClick = onLongClick,
                         drawTick = pageDrawTick,
-                        // 滚动模式：下一页连排在当前页内容之后（旧 relativeOffset(1)），纯正文无装饰
+                        // 滚动模式：下一页连排在当前页内容之后（旧 relativeOffset(1)），纯正文无装饰；
+                        // 横向翻页模式：下一页是完整页面，需自带不透明背景（见 nextPageShowChrome）
                         contentTranslationY = scrollDelegate?.let { sd -> { sd.nextContentOffset } },
-                        showChrome = false,
+                        showChrome = nextPageShowChrome,
                         selection = selection,
                     )
                 }
@@ -241,22 +273,40 @@ fun ReadViewComposable(
             }
         }
 
-        // 文字选择手势层（覆盖在 delegate 之上命中优先；选择未激活时零消费、不干扰任何手势）:
+        // 文字选择 + 桌面鼠标手势合并层（同一 Layout 的多个 pointerInput 共享同一命中路径;
+        // sharePointerInputWithSiblings 让下层 delegate 手势层继续收到事件）。
+        //
+        // 背景 (2026-08-04 实测): CMP 命中测试默认在顶层兄弟布局命中后即阻断下层 —— 鼠标手势层
+        // 叠在 selection 层之上时, selection 层完全收不到事件, 表现为长按能上色（激活在鼠标层）
+        // 但扩选与弹菜单（selection 层职责）全部失效。两个手势合并到同一 Box 并开启共享后:
+        // - 鼠标: 本层 Initial pass 统一消费, selection 层正常收事件（扩选/菜单）,
+        //   delegate 手势层见 isConsumed 让位
+        // - 触摸: 鼠标层不消费, delegate 手势链正常接管（触摸路径此前同样被阻断, 一并修复）
+        //
+        // 文字选择手势层职责（选择未激活时零消费、不干扰任何手势）:
         // - 按下时选择已激活 → 立即取消选择（对照旧 ACTION_DOWN → cancelSelect）
         // - 选择激活期间消费拖动 → 更新终点（对照旧 ACTION_MOVE → selectText）;
-        //   消费后 delegate 的翻页/点击手势在竞技场中被取消 → 选择激活时禁止翻页（对照旧
-        //   onTouchEvent 的 isTextSelected 分流）
-        // - 手势结束（抬起/取消）时选择已激活 → 弹选择菜单（对照旧 ACTION_UP →
-        //   showTextActionMenu）; 若按下时取消了选择且本手势未重新选中 → 消费抬起事件,
-        //   抑制本次点击动作（对照旧 pressOnTextSelected 抑制单击）
+        //   消费后 delegate 的翻页/点击手势被取消 → 选择激活时禁止翻页（对照旧 isTextSelected 分流）
+        // - 手势结束（抬起/取消）时选择已激活 → 弹选择菜单（触摸路径; 鼠标路径由鼠标层弹,
+        //   本层对鼠标抬起跳过避免重复, 见下方 down.type 判定）; 若按下时取消了选择且本手势
+        //   未重新选中 → 消费抬起事件抑制本次点击（对照旧 pressOnTextSelected 抑制单击）
         val latestOnSelectionMenu by rememberUpdatedState(onSelectionMenu)
+        // 弹菜单时的选区锚点（页内坐标 + 滚动折算；滚动模式内容下移锚点同步下移）
+        val latestScrollOffset by rememberUpdatedState(scrollOffset)
+        val selectionMenuAnchor: () -> Offset? = {
+            selection.selectionAnchor()?.let { Offset(it.x, it.y + latestScrollOffset) }
+        }
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .sharePointerInputWithSiblings()
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val downId = down.id
+                        // 鼠标手势由下方 readerMouseGestures 全权接管 (含长按抬手弹菜单),
+                        // 本层只对触摸路径弹菜单, 避免双弹
+                        val isMouseGesture = down.type == PointerType.Mouse
                         val suppressedTap = if (selection.isActive) {
                             selection.cancel()
                             // 点按取消选择 → 恢复自动翻页（对照旧 ACTION_DOWN → cancelSelect）
@@ -283,7 +333,8 @@ fun ReadViewComposable(
                                 )
                             }
                         }
-                        if (selection.isActive) {
+                        // 触摸路径: 抬手弹选择菜单 (鼠标路径由鼠标手势层在抬起时弹)
+                        if (selection.isActive && !isMouseGesture) {
                             val text = selection.selectedText()
                             if (text.isBlank()) {
                                 // 拖回起点导致空选区：取消而非弹空菜单（对照旧版会弹空文本菜单,
@@ -291,10 +342,35 @@ fun ReadViewComposable(
                                 selection.cancel()
                                 composeDelegate.autoPager?.resume()
                             } else {
-                                latestOnSelectionMenu(text)
+                                latestOnSelectionMenu(text, selectionMenuAnchor())
                             }
                         }
                     }
+                }
+                // 桌面端鼠标手势接管层（仅 PointerType.Mouse 生效；触摸零影响）:
+                // 鼠标 单击/长按/拖拽 全部经本层转发 delegate 并统一消费, 修复桌面端阅读页
+                // 鼠标拖拽翻页/点击无效 (2026-08-04, 参照 F68 漫画页 MangaMouseGestures 模式)。
+                // key 用 composeDelegate: 翻页动画配置变更重建 delegate 时手势层同步重启。
+                .pointerInput(composeDelegate) {
+                    readerMouseGestures(
+                        delegate = composeDelegate,
+                        onClickFallback = onClick,
+                        onLongPressAt = onPageLongPress,
+                        isSelectionActive = { selection.isActive },
+                        cancelSelection = {
+                            selection.cancel()
+                            // 点按取消选择 → 恢复自动翻页（对照 selection 层同款处理）
+                            composeDelegate.autoPager?.resume()
+                        },
+                        menuVisible = menuVisible,
+                        onLongPressMenu = { text ->
+                            if (text.isNotBlank()) latestOnSelectionMenu(
+                                text,
+                                selectionMenuAnchor()
+                            )
+                        },
+                        selectionText = { selection.selectedText() },
+                    )
                 },
         ) {}
     }

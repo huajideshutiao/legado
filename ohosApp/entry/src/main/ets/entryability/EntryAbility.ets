@@ -2,6 +2,7 @@ import UIAbility from '@ohos.app.ability.UIAbility';
 import type { AbilityConstant, Want } from '@ohos.app.ability.AbilityConstant';
 import type { Configuration } from '@ohos.app.ability.Configuration';
 import type window from '@ohos.window';
+import display from '@ohos.display';
 import notificationManager from '@ohos.notificationManager';
 // napi 桥接层加载 (鸿蒙编译产物 liblegado_napi.so)
 // 详见 ohosApp/INTEROP.md 与 ohosApp/entry/src/main/cpp/legado_napi.cpp
@@ -21,6 +22,7 @@ import { handleTextCodecRequest } from '../bridge/TextCodecBridgeHandler';
 import { handleWebViewRequest } from '../bridge/WebViewBridgeHandler';
 // KP8+ System 桥接处理器 (ArkTS 侧 promptAction.showToast + context.startAbility 真实实现)
 import { initSystemBridge, handleShowToast, handleOpenUrl } from '../bridge/SystemBridgeHandler';
+import { handleShowTextActionMenu } from '../bridge/TextActionBridgeHandler';
 
 // Notification tsfn 跨语言 payload (与 OhosNativeBridge.kt NotificationPayload 对齐)
 // 由 KMP 侧 KS_JSON 序列化为 JSON 字符串, 经 C++ tsfn dispatch 到 ArkTS 回调, 此处 JSON.parse 还原。
@@ -143,6 +145,19 @@ export default class EntryAbility extends UIAbility {
       console.info('[Legado] openUrl tsfn callback registered via napi');
     } catch (e) {
       console.error('[Legado] registerOpenUrlCallback failed: ' + JSON.stringify(e));
+    }
+
+    // KP8+: 注册 TextAction tsfn 回调 (KMP → ArkTS 跨线程 dispatch 文本操作菜单请求)。
+    // C++ 侧 (legado_napi.cpp RegisterTextActionCallback) 创建 napi_threadsafe_function 包装此回调,
+    // 并通过 @CName legado_register_text_action_fn 把 dispatch 函数指针
+    // 注入 Kotlin OhosNativeBridge.textActionTsfn。此后 KMP 长按选字完成 →
+    // OhosNativeBridge.showTextActionMenu 调用时, JSON payload 跨线程 dispatch 到此回调,
+    // 由 ArkTS TextActionBridgeHandler 更新 Index.ets 叠层浮动菜单。
+    try {
+      legado.registerTextActionCallback(handleShowTextActionMenu);
+      console.info('[Legado] textAction tsfn callback registered via napi');
+    } catch (e) {
+      console.error('[Legado] registerTextActionCallback failed: ' + JSON.stringify(e));
     }
 
     // KP8+: 注册 FilePicker tsfn 回调 (KMP → ArkTS 跨线程 dispatch, 同 Image/Crypto/Http 模式)。
@@ -337,6 +352,23 @@ export default class EntryAbility extends UIAbility {
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
     console.info('[Legado] EntryAbility.onWindowStageCreate');
+
+    // 注入显示物理像素尺寸 (供 shared ScreenInfoProviders / sharedUiMain AppDialogSizes
+    // 计算对话框尺寸; 未注册时 AppDialogSizes 兜底 get() 直接 error 导致所有对话框崩溃,
+    // 与 iOS registerIosScreenInfoProvider 对齐)。必须在 loadContent 之前调用:
+    // 首帧组合后任何对话框尺寸计算都可能触发。
+    // display.getDefaultDisplaySync() 返回 vp 尺寸 + densityPixels, 物理像素 = vp × density
+    // (与 iOS UIScreen.nativeBounds / Android displayMetrics 的物理像素语义一致)。
+    try {
+      const displayInfo = display.getDefaultDisplaySync();
+      const widthPx = Math.round(displayInfo.width * displayInfo.densityPixels);
+      const heightPx = Math.round(displayInfo.height * displayInfo.densityPixels);
+      legado.registerScreenSize(widthPx, heightPx);
+      console.info('[Legado] screen size injected: ' + widthPx + 'x' + heightPx);
+    } catch (e) {
+      console.error('[Legado] registerScreenSize failed: ' + JSON.stringify(e));
+    }
+
     // 加载首页 Index, ArkTS 路由表见 resources/base/profile/main_pages.json
     windowStage.loadContent('pages/Index', (err) => {
       if (err && err.code) {

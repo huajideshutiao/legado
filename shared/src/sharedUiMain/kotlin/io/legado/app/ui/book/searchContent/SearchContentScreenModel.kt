@@ -74,14 +74,23 @@ class SearchContentScreenModel(
      * @param searchResultList 路由参数携带的已有搜索结果，用于恢复列表。
      * @param position 当前选中结果索引。
      * @param searchWord 当前搜索词。
+     * @param book 当前书籍 (阅读页全文搜索入口经 BookRef 传入; null 回落 IntentData.book)。
      */
-    fun init(searchResultList: List<SearchResult>?, position: Int, searchWord: String?) {
+    fun init(
+        searchResultList: List<SearchResult>?,
+        position: Int,
+        searchWord: String?,
+        book: Book? = null,
+    ) {
         val noSearchResult = searchResultList == null
         if (noSearchResult) requestFocusSearch()
-        shared.initBook {
-            initSearchResultList(searchResultList, position)
-            initBook(noSearchResult, searchWord)
-        }
+        shared.initBook(
+            success = {
+                initSearchResultList(searchResultList, position)
+                initBook(noSearchResult, searchWord)
+            },
+            book = book,
+        )
     }
 
     /** SAVE_CONTENT 事件处理: 更新 cacheChapterNames (observeEvent 留 Activity) */

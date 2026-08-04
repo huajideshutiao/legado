@@ -10,6 +10,7 @@ import io.legado.app.data.entities.BookSource
  * 加载策略:
  * - `file://` / 绝对路径 `/...`: 直接读文件解码
  * - `http://` / `https://`: OkHttp 下载字节流后解码 (网络书带书源 header/cookie/charset/JS)
+ * - `bg://`: 阅读器内置背景图（平台实现负责缓存/下载）
  * - `cbz://`: 从 cbz/zip 内嵌条目读取图片流 (`cbz://{entry}` 需 [book] 非 null;
  *   native 端另支持 `cbz://{archivePath}#{entry}` 自含形式)
  * - 不支持的 scheme / 解码失败: 返回 null
@@ -19,7 +20,7 @@ import io.legado.app.data.entities.BookSource
  *
  * 平台实现:
  * - jvmMain (desktop): ImageIO + OkHttp + AnalyzeUrlCore + CbzFile (对照 app 端 ImageLoader.loadManga)
- * - androidMain: 暂 stub (返回 null; app 端消费点走 Coil3, 按需再补 BitmapFactory)
+ * - androidMain: BitmapFactory + OkHttp (与 JVM 路径一致，含 bg:// 内置背景缓存)
  * - iosMain: Coil3 共享管线 (防盗链 fetcher + Ktor3 + 缓存); cbz:// 前置直解
  *   (ArchiveProviders 抽条目字节 + Skia 解码)
  * - ohosMain: CPF 融合渲染变体提供的编码图像解码 + KmpHttpClient/AnalyzeUrlCore;
@@ -32,7 +33,7 @@ expect class ImageBitmapLoader() {
     /**
      * 加载图片为 [ImageBitmap]。
      *
-     * @param url 图片 URL (file:// / 绝对路径 / http(s):// / cbz://)
+     * @param url 图片地址 (bg:// / file:// / 绝对路径 / http(s):// / cbz://)
      * @param book 当前书籍 (cbz:// 必填, http(s):// 用于判断 isLocal), 可为 null
      * @param bookSource 书源 (http(s):// 用于防盗链 header/cookie/charset/JS), 可为 null
      * @return 已解码 [ImageBitmap], 失败或不支持的 scheme 返回 null

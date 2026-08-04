@@ -101,6 +101,17 @@ export interface LegadoNativeBridge {
    */
   registerCacheDir(path: string): void;
 
+  // ===== 屏幕尺寸注入 (ArkTS → Kotlin 同步推送, 同 FileDir 模式) =====
+  /**
+   * 注入显示物理像素尺寸 (EntryAbility.onWindowStageCreate 中 loadContent 之前调用)。
+   *
+   * 供 shared ScreenInfoProviders / AppDialogSizes 计算对话框尺寸;
+   * 未注册时 AppDialogSizes 兜底 get() 直接 error 导致所有 shared 对话框崩溃。
+   * @param widthPx 显示物理像素宽度 (vp 尺寸 × densityPixels)
+   * @param heightPx 显示物理像素高度
+   */
+  registerScreenSize(widthPx: number, heightPx: number): void;
+
   // ===== legado:// deep link 投递 (ArkTS → Kotlin 同步推送) =====
   /**
    * 投递 legado:// / yuedu:// 一键导入链接 (EntryAbility.onCreate / onNewWant 调用)。

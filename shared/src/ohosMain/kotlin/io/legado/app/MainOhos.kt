@@ -1,16 +1,11 @@
 package io.legado.app
 
-import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.window.ComposeArkUIViewController
 import io.legado.app.help.config.registerOhosProviders
 import io.legado.app.ui.browser.LocalWebViewSlot
@@ -21,6 +16,7 @@ import io.legado.app.ui.book.audio.OhosAudioPlayPlatformProvider
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.manga.OhosMangaReaderPlatform
 import io.legado.app.ui.book.read.OhosReaderPlatformProvider
+import io.legado.app.ui.dict.DictDialogHost
 import io.legado.app.ui.book.read.ReaderPlatformProviders
 import io.legado.app.ui.book.source.SourceUiEventBridgeHost
 import io.legado.app.ui.book.video.OhosVideoPlayPlatformProvider
@@ -96,28 +92,26 @@ fun MainOhos() {
     ) {
         AppTheme {
             Surface(modifier = Modifier.fillMaxSize(), color = AppTheme.colors.background) {
-                val rootFocusRequester = remember { FocusRequester() }
-                LaunchedEffect(Unit) {
-                    runCatching { rootFocusRequester.requestFocus() }
-                }
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .focusRequester(rootFocusRequester)
-                        .focusable()
-                ) {
-                    // 零薄壳: shared LegadoApp 统一管理导航栈 + ScreenModel 生命周期,
-                    // 所有路由由 shared RouteContent 直接渲染
-                    LegadoApp(
-                        navigator = navigator,
-                        screenModelStore = screenModelStore,
-                    )
-                    // legado:// deep link 导入宿主
-                    DeepLinkImportHost()
-                }
+                // 零薄壳: shared LegadoApp 统一管理导航栈 + ScreenModel 生命周期,
+                // 所有路由由 shared RouteContent 直接渲染; 根级键盘焦点由 shared 内部处理
+                // (handleBackKey 与焦点节点同链, 无控件持焦时键盘事件仍可达)
+                LegadoApp(
+                    navigator = navigator,
+                    screenModelStore = screenModelStore,
+                )
+                // legado:// deep link 导入宿主
+                DeepLinkImportHost()
             }
             // 书源 UI 事件桥
             SourceUiEventBridgeHost()
+            // 阅读页文本操作菜单查词宿主 (对照 desktop TextSelectionHost 的 dictWord 分支)
+            val dictWord = OhosReaderPlatformProvider.dictWord
+            if (dictWord != null) {
+                DictDialogHost(
+                    word = dictWord,
+                    onDismiss = { OhosReaderPlatformProvider.dictWord = null },
+                )
+            }
         }
     }
 }

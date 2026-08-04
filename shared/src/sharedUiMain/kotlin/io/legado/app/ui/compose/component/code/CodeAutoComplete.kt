@@ -41,24 +41,56 @@ internal val CodeCompletions: Map<String, List<String>?> = mapOf(
     "JSON." to listOf("parse()", "stringify()"),
     "Date." to listOf("now()", "parse()"),
     "java." to listOf(
+        // Network
         "ajax()",
         "ajaxAll()",
         "get()",
         "post()",
+        "connect()",
+        // Browser
         "startBrowser()",
         "startBrowserAwait()",
         "openUrl()",
-        "startJsActivity()",
+        "webView()",
+        "webViewGetSource()",
+        "webViewGetOverrideUrl()",
+        // User-Agent
         "getWebViewUA()",
         "getVerificationCode()",
+        // Cookie
         "getCookie()",
+        // Cache / File (2026-08-06 补: 对照 JsExtensionsCommon 真实 API)
         "cacheFile()",
+        "getFile()",
+        "readFile()",
+        "readTxtFile()",
+        "deleteFile()",
+        "getTxtInFolder()",
+        "importScript()",
+        "downloadFile()",
+        // Archive
+        "unzipFile()",
+        "unrarFile()",
+        "un7zFile()",
+        "unArchiveFile()",
+        "getZipByteArrayContent()",
+        "getZipStringContent()",
+        "getRarByteArrayContent()",
+        "getRarStringContent()",
+        "get7zByteArrayContent()",
+        "get7zStringContent()",
+        // Font 反混淆
+        "queryTTF()",
+        "replaceFont()",
+        // Encoding
         "encodeURI()",
         "base64Decode()",
         "base64DecodeToByteArray()",
         "base64Encode()",
         "hexDecodeToByteArray()",
         "hexDecodeToString()",
+        "hexEncodeToString()",
+        // Crypto
         "createSymmetricCrypto()",
         "createAsymmetricCrypto()",
         "createSign()",
@@ -68,16 +100,27 @@ internal val CodeCompletions: Map<String, List<String>?> = mapOf(
         "md5Encode16()",
         "HMacHex()",
         "HMacBase64()",
+        // ByteArray
         "strToBytes()",
         "bytesToStr()",
+        // Chinese
         "t2s()",
         "s2t()",
+        // Time
         "timeFormatUTC()",
         "timeFormat()",
         "log()",
         "logType()",
         "toast()",
         "longToast()",
+        // Misc (2026-08-06 补)
+        "refreshUi()",
+        "randomUUID()",
+        "toURL()",
+        "htmlFormat()",
+        "toNumChapter()",
+        "androidId()",
+        // AnalyzRule
         "getString()",
         "getStringList()",
         "getElement()",
@@ -85,6 +128,7 @@ internal val CodeCompletions: Map<String, List<String>?> = mapOf(
         "setContent()",
         "refreshTocUrl()",
         "put()",
+        // AnalyzeUrl ()
         "initUrl()",
         "getHeaderMap()",
         "getStrResponse()",

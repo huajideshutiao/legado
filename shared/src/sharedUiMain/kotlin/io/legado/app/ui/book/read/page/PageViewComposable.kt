@@ -1,5 +1,6 @@
 package io.legado.app.ui.book.read.page
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
@@ -36,7 +38,7 @@ import io.legado.app.utils.systemCurrentTimeMillis
  *
  * 内部结构：`Box(background) { PageContentCanvas + HeaderTip + FooterTip + BatteryIndicator }`
  * 与 app 端 PageView 布局一一对应：
- * - 背景：从 [ReaderDrawStyle] 取 `bgMeanColor`，用 [Modifier.background] 渲染纯色
+ * - 背景：先从 [ReaderDrawStyle] 绘制不透明底色，再把配置的背景图片按透明度中心裁剪叠加
  * - 主内容：[PageContentCanvas] fillMaxSize
  * - 顶部 tip：[HeaderTip] 显示章节标题/时间/电池（按 [ReadTipConfigShared] 6 槽位配置）
  * - 底部 tip：[FooterTip] 显示页码/进度（按 [ReadTipConfigShared] 6 槽位配置）
@@ -101,11 +103,25 @@ fun PageViewComposable(
     Box(
         modifier = modifier
             // commonMain 无 Brush.solidColor，Modifier.background 有 Color 重载，直接传纯色。
+            // PageView 的底色必须保持不透明：旧 Android PageView 用不透明的 bgMeanColor
+            // 作为底层，再叠加带 bgAlpha 的背景 Drawable；若直接把带 alpha 的颜色作为
+            // Compose 背景，向后翻页时上一页会透出当前页/窗口背景。
             // 滚动模式下一页 (showChrome=false) 不画背景：背景由固定层（当前页）提供，
             // 避免整屏纯色覆盖当前页内容 (对照旧 drawPage 只画 TextPage 内容)
-            .then(if (showChrome) Modifier.background(style.bgColor) else Modifier)
+            .then(
+                if (showChrome) Modifier.background(style.bgColor.copy(alpha = 1f))
+                else Modifier
+            )
             .fillMaxSize()
     ) {
+        if (showChrome) {
+            ReaderBackgroundImage(
+                source = style.backgroundImageSource,
+                alpha = style.backgroundImageAlpha,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
         if (contentTranslationY != null) {
             // 滚动模式: 正文固定视口裁剪 + 行级平移 (对照旧 canvas.clipRect(visibleRect) +
             // withTranslation(0f, pageOffset))。裁剪在平移外层, 视口边界不随内容移动。
@@ -212,6 +228,31 @@ fun PageViewComposable(
                     .padding(bottom = with(density) { footerTipHeight.toDp() }),
             )
         }
+    }
+}
+
+/**
+ * 绘制实际背景图。
+ *
+ * 先由父 Box 绘制不透明 [ReaderDrawStyle.bgColor]，再把图片按中心裁剪叠加；这样
+ * 图片未加载、加载失败或 alpha 小于 100% 时，页面仍有完整的阅读底色。该 Composable
+ * 被每一个参与翻页的 PageView 使用，故上一页、当前页和翻起页录制内容的背景一致。
+ */
+@Composable
+private fun ReaderBackgroundImage(
+    source: String?,
+    alpha: Float,
+    modifier: Modifier = Modifier,
+) {
+    if (source.isNullOrBlank()) return
+    LaunchedEffect(source) {
+        ReaderBackgroundImageCache.requestAsync(source)
+    }
+    Canvas(modifier = modifier) {
+        // 只读 version 建立快照订阅；异步加载完成后重新执行 draw lambda。
+        if (ReaderBackgroundImageCache.version < 0) return@Canvas
+        val bitmap = ReaderBackgroundImageCache.peek(source) ?: return@Canvas
+        drawReaderBackgroundBitmap(bitmap, alpha)
     }
 }
 

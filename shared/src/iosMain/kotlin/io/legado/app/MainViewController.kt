@@ -1,15 +1,10 @@
 package io.legado.app
 
-import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.window.ComposeUIViewController
 import io.legado.app.help.config.registerIosProviders
 import io.legado.app.help.config.LocalReadConfigProviders
@@ -27,6 +22,7 @@ import io.legado.app.ui.book.audio.IosAudioPlayPlatformProvider
 import io.legado.app.ui.book.manga.IosMangaReaderPlatform
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.read.IosReaderPlatformProvider
+import io.legado.app.ui.dict.DictDialogHost
 import io.legado.app.ui.book.read.ReaderPlatformProviders
 import io.legado.app.ui.book.source.SourceUiEventBridgeHost
 import io.legado.app.ui.book.video.IosVideoPlayPlatformProvider
@@ -82,11 +78,6 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
     val navigator = remember { AppNavigator(AppRoute.Main()) }
     val screenModelStore = remember { ScreenModelStore() }
 
-    val rootFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        runCatching { rootFocusRequester.requestFocus() }
-    }
-
     CompositionLocalProvider(
         LocalThemeStoreProvider provides themeStoreProvider,
         LocalAppConfigProvider provides appConfigProvider,
@@ -104,26 +95,27 @@ fun MainViewController(): UIViewController = ComposeUIViewController {
     ) {
         AppTheme {
             Column(modifier = Modifier.fillMaxSize()) {
-                // 主区域: 接收键盘焦点, 供 shared LegadoApp 内部 handleBackKey 处理返回键
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .focusRequester(rootFocusRequester)
-                        .focusable()
-                ) {
-                    // 零薄壳: shared LegadoApp 统一管理导航栈 + ScreenModel 生命周期,
-                    // 所有路由由 shared RouteContent 直接渲染
-                    LegadoApp(
-                        navigator = navigator,
-                        screenModelStore = screenModelStore,
-                    )
-                }
+                // 零薄壳: shared LegadoApp 统一管理导航栈 + ScreenModel 生命周期,
+                // 所有路由由 shared RouteContent 直接渲染; 根级键盘焦点由 shared 内部处理
+                // (handleBackKey 与焦点节点同链, 无控件持焦时键盘事件仍可达)
+                LegadoApp(
+                    navigator = navigator,
+                    screenModelStore = screenModelStore,
+                )
             }
             // 书源 UI 事件桥: 订阅 SOURCE_UI_REQUEST, 承接 JS 的 showLoginDialog/
             // showSourceVariableDialog 弹窗 (对照 desktop Main.kt line 391)
             SourceUiEventBridgeHost()
             // legado:// deep link 导入对话框宿主 (投递侧: iOSApp.swift onOpenURL → handleLegadoDeepLink)
             DeepLinkImportHost()
+            // 阅读页文本操作菜单查词宿主 (对照 desktop TextSelectionHost 的 dictWord 分支)
+            val dictWord = IosReaderPlatformProvider.dictWord
+            if (dictWord != null) {
+                DictDialogHost(
+                    word = dictWord,
+                    onDismiss = { IosReaderPlatformProvider.dictWord = null },
+                )
+            }
         }
     }
 }

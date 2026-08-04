@@ -11,9 +11,9 @@ import io.legado.app.data.entities.SourceUiRequest
 import io.legado.app.help.IntentData
 import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.source.SourceVerificationHelpShared
+import io.legado.app.help.sourceLoginOverlayPayload
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
-import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.decodeStringMapOrNull
@@ -69,11 +69,12 @@ fun SourceUiEventBridgeHost() {
 
     // 登录: 不限 BookSource (HttpTTS/RSS 源同样要能登录), 先于 BookSource 转换处理。
     // book/chapter 取调用方预置的上下文 (对照原版 IntentData.nowBook/nowChapter), 喂给登录 JS。
-    // 走 Overlay 栈由 LegadoApp 统一渲染 EditDialogHost 包裹的 SourceLoginDialog,
+    // 纯 Overlay 弹登录对话框 (表单/URL 两分支由 SourceLoginOverlayContent 统一分发),
+    // 由 LegadoApp 统一渲染 EditDialogHost 包裹的登录对话框,
     // 避免在此根级直接渲染纯 Column 导致覆盖整个 LegadoApp (看起来像新开界面)。
     if (request is SourceUiRequest.Login) {
         LaunchedEffect(request) {
-            // IntentData 一次性消费: 暂存 source/book/chapter, 弹窗/路由渲染时按 key 取回
+            // IntentData 一次性消费: 暂存 source/book/chapter, 弹窗渲染时按 key 取回
             val dataKey = SourceLoginContext.put(
                 source = request.source,
                 book = IntentData.book,
@@ -81,15 +82,13 @@ fun SourceUiEventBridgeHost() {
             )
             val navigator = AppNavigatorProviders.getOrNull()
             if (navigator != null) {
-                if (request.source.loginUi.isNullOrEmpty()) {
-                    // URL 登录: 对照原版 showLoginDialog 的 WebViewActivity 分支, 开登录页
-                    navigator.push(AppRoute.Login(request.source.getKey(), dataKey))
-                } else {
-                    // 表单登录: 对照原版 showDialogFragment<SourceLoginDialog>, Overlay 弹对话框
-                    navigator.showOverlay(
-                        AppOverlay.Dialog(key = "sourceLogin", payload = dataKey)
+                // 纯 Overlay 弹登录对话框, 不推新路由 (对照原版 showLoginDialog)
+                navigator.showOverlay(
+                    AppOverlay.Dialog(
+                        key = "sourceLogin",
+                        payload = sourceLoginOverlayPayload(request.source.getKey(), dataKey),
                     )
-                }
+                )
             }
             currentRequest.value = null
         }

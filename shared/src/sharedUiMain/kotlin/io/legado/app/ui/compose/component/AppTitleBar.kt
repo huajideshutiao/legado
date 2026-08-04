@@ -3,6 +3,7 @@ package io.legado.app.ui.compose.component
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -56,12 +57,14 @@ import org.jetbrains.compose.resources.stringResource
  * 标题 20sp、返回箭头、右侧菜单区、状态栏沉浸 padding。
  *
  * @param titleContent 覆盖标题区(如搜索框)；为空则显示 [title] 文本。
+ * @param subtitle 标题下方小字 (对照原 TitleBar.subtitle, 如 WebView 页的书源名); 空则不显示。
  */
 @Composable
 fun AppTitleBar(
     title: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    subtitle: String? = null,
     titleContent: (@Composable RowScope.() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
@@ -103,7 +106,7 @@ fun AppTitleBar(
             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                 if (titleContent != null) {
                     titleContent()
-                } else {
+                } else if (subtitle.isNullOrBlank()) {
                     Text(
                         text = title,
                         color = colors.primaryText,
@@ -111,6 +114,23 @@ fun AppTitleBar(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                } else {
+                    Column {
+                        Text(
+                            text = title,
+                            color = colors.primaryText,
+                            fontSize = 20.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = subtitle,
+                            color = colors.secondaryText,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
             actions()

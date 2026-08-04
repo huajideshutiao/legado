@@ -3,6 +3,7 @@ package io.legado.app.ui.root
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,6 +27,9 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -37,10 +41,10 @@ import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.IntentData
-import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.sourceLoginOverlayPayload
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.about.CrashLogItem
 import io.legado.app.ui.about.CrashLogsDialog
@@ -55,7 +59,6 @@ import io.legado.app.ui.book.group.GroupViewModelShared
 import io.legado.app.ui.book.manage.SourcePickerDialog
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
-import io.legado.app.ui.book.source.SourceLoginDialog
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.browser.LocalWebViewSlot
@@ -69,14 +72,15 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.config.BookshelfLayoutConfigDialog
 import io.legado.app.ui.config.BottomNavConfigDialog
 import io.legado.app.ui.config.CheckSourceConfigDialog
+import io.legado.app.ui.config.DefaultCoverGalleryOverlayDialogContent
 import io.legado.app.ui.config.DirectLinkUploadConfigDialog
 import io.legado.app.ui.config.MODE_EDIT_PREFS
 import io.legado.app.ui.config.ThemeCustomizeDialog
 import io.legado.app.ui.config.ThemeListDialog
+import io.legado.app.ui.route.ReviewListOverlayDialogContent
 import io.legado.app.ui.widget.dialog.PhotoViewOverlayDialog
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 
@@ -172,12 +176,36 @@ fun LegadoApp(
         // Overlay 栈状态: BackHandler 与渲染共用
         val overlays by navigator.overlays.collectAsState()
 
-        // ESC/BackSpace 返回键由 shared 统一处理 (替代三端入口 onPreviewKeyEvent 重复实现)
-        AppGlobalShortcuts(navigator)
+        // ESC/BackSpace 返回键由 shared 统一处理 (替代三端入口 onPreviewKeyEvent 重复实现)。
+        // Compose 按键经焦点系统派发 (FocusOwnerImpl.dispatchKeyEvent 只沿"焦点节点的
+        // KeyInput 祖先链"分发, 组合内无节点持焦时按键直接被丢弃), 故根 Box 同时挂
+        // focusable + handleBackKey: 无控件持焦时根节点自己持焦, handleBackKey 的 KeyInput
+        // 恰在其焦点链上, ESC 在任意界面可用; 输入框/阅读页等主动取焦时根节点退为祖先,
+        // 按键仍沿祖先链到达。onFocusChanged 状态机: public FocusState 只能区分 isFocused,
+        // ActiveParent(后代持焦) 与 Inactive(无人持焦) 需靠转移推断 —— 后代持焦后焦点被清
+        // (路由出栈销毁输入框等) 时收回根焦点, 否则 ESC 会再次失效。
+        val rootFocusRequester = remember { FocusRequester() }
+        var rootFocusOwner by remember { mutableStateOf("none") } // none|root|descendant
+        LaunchedEffect(Unit) { runCatching { rootFocusRequester.requestFocus() } }
         Box(
             Modifier
                 .fillMaxSize()
                 .background(AppTheme.colors.background)
+                .focusRequester(rootFocusRequester)
+                .focusable()
+                .onFocusChanged { state ->
+                    rootFocusOwner = when {
+                        state.isFocused -> "root"
+                        rootFocusOwner == "root" -> "descendant"
+                        rootFocusOwner == "descendant" -> {
+                            // 后代焦点被清 (ActiveParent→Inactive): 收回根焦点保 ESC 可用
+                            runCatching { rootFocusRequester.requestFocus() }
+                            "root"
+                        }
+
+                        else -> "none"
+                    }
+                }
                 .handleBackKey(
                     onBack = { performBack(navigator) },
                     onRefresh = { runCatching { navigator.refreshCurrent() }.getOrDefault(false) },
@@ -371,7 +399,14 @@ private suspend fun handleLaunchRequest(
 
         is LaunchRequest.ImportFile -> navigator.push(AppRoute.ImportBook(request.filePath))
         is LaunchRequest.SourceUi -> when (request.type) {
-            LaunchRequest.SourceUiType.LOGIN -> navigator.push(AppRoute.Login(request.sourceUrl))
+            // 纯 Overlay 弹登录对话框 (handleLaunchRequest 在 LegadoApp 组合后的
+            // LaunchedEffect 中执行, navigator 与 Overlay 渲染均已就绪, 无时机问题)
+            LaunchRequest.SourceUiType.LOGIN -> navigator.showOverlay(
+                AppOverlay.Dialog(
+                    key = "sourceLogin",
+                    payload = sourceLoginOverlayPayload(request.sourceUrl),
+                )
+            )
             // 由平台层 SourceUi 处理器消费
             LaunchRequest.SourceUiType.SOURCE_VARIABLE,
             LaunchRequest.SourceUiType.VERIFICATION_CODE -> Unit
@@ -416,9 +451,16 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
         "group_manage" -> GroupManageDialogContent(overlay, navigator)
         "source_picker" -> SourcePickerDialogContent(overlay, navigator)
         "bookmark" -> BookmarkDialogContent(overlay, navigator)
-        "sourceLogin" -> SourceLoginOverlayDialogContent(overlay, navigator)
+        "sourceLogin" -> SourceLoginOverlayContent(overlay, navigator)
         "change_cover" -> ChangeCoverDialogContent(overlay, navigator)
         "app_log" -> AppLogOverlayDialogContent(overlay, navigator)
+
+        // 段评/书评列表底部弹窗 (对照 app 端 ReviewListDialog BottomSheetDialogFragment;
+        // payload = ReviewListDialogPayload JSON, 见 ReviewListDialogHost.kt)
+        "review_list" -> ReviewListOverlayDialogContent(overlay, navigator)
+
+        // 默认封面图集管理 (对照 app 端 DefaultCoverGalleryDialog; payload "1"=夜间, 其余=日间)
+        "default_cover_gallery" -> DefaultCoverGalleryOverlayDialogContent(overlay, navigator)
 
         // 帮助: key="help" 时 payload 为 md 文件名, dictRuleHelp 为固定文档
         "help" -> HelpDialogContent(overlay, navigator, overlay.payload.orEmpty())
@@ -484,39 +526,8 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
     }
 }
 
-// 书源表单登录对话框 (key="sourceLogin", payload=SourceLoginContext 的 dataKey)。
-// 对照原版 BaseSource.showLoginDialog 的 showDialogFragment<SourceLoginDialog> 分支。
-@Composable
-private fun SourceLoginOverlayDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
-    val context = remember(overlay.payload) { overlay.payload?.let { SourceLoginContext.take(it) } }
-    if (context == null) {
-        LaunchedEffect(Unit) { navigator.dismissOverlay(overlay.key) }
-        return
-    }
-    // 登录 JS 打开内部浏览器 (java.startBrowser → 推 AppRoute.WebView) 时关闭对话框:
-    // 原版 WebViewActivity 作为新 Activity 全屏盖住登录对话框, 登录 JS 在其下继续执行,
-    // 对话框随后随 login() 完成而 dismiss; 单页导航下路由渲染在 Overlay 对话框之下,
-    // 不关闭会被对话框遮住 (表现为"对话框没关")。故监听路由栈: 顶层变为 WebView 即关闭
-    // 本对话框; 登录 JS 已解耦到对话框组合之外 (SourceLoginDialog 内独立 scope),
-    // 关闭不会中断 JS 执行, 验证完成后经 WebViewRoute 回传唤醒等待线程 (原 checkResult 语义)。
-    LaunchedEffect(Unit) {
-        val initialSize = navigator.backStack.value.size
-        navigator.backStack.drop(initialSize).collect { entries ->
-            if (entries.lastOrNull()?.route is AppRoute.WebView) {
-                navigator.dismissOverlay(overlay.key)
-            }
-        }
-    }
-    EditDialogHost(onDismiss = { navigator.dismissOverlay(overlay.key) }) {
-        SourceLoginDialog(
-            source = context.source,
-            onDismiss = { navigator.dismissOverlay(overlay.key) },
-            onOpenUrl = { PlatformCapabilityProviders.getOrNull()?.openExternalUrl(it) },
-            book = context.book,
-            chapter = context.chapter,
-        )
-    }
-}
+// 书源登录 Overlay (key="sourceLogin", payload=sourceLoginOverlayPayload 编码的 {url, dataKey}),
+// 实现在 SourceLoginOverlayDialog.kt (表单/URL 两分支统一分发, 对照原版 BaseSource.showLoginDialog)。
 
 // 全屏大图查看 (key="photo", payload=图片 src)
 @Composable

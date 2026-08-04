@@ -37,7 +37,6 @@ import io.legado.app.help.tts.IosHttpTtsPlayer
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.help.tts.registerIosSystemTtsEngine
 import io.legado.app.help.ui.registerIosOpenUrlProvider
-import io.legado.app.help.ui.registerIosToastProvider
 import io.legado.app.help.ui.registerIosUserAgentProvider
 import io.legado.app.model.fileBook.BitmapProviders
 import io.legado.app.model.fileBook.registerNativeFileBookAccessor
@@ -206,7 +205,6 @@ fun registerIosProviders() {
     registerIosToaster()
     registerIosNotificationProgress()
     // UI provider (Toast/OpenUrl/UserAgent), 供 JsExtensionsCommon 调用, 顺序无关, 须在任何 JS eval 之前
-    registerIosToastProvider()
     registerIosOpenUrlProvider()
     registerIosUserAgentProvider()
     // 源验证 UI provider (最小实现: 不支持路径明确报错+Toast, 纯打开链接走 OpenUrlProviders;

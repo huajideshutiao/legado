@@ -18,6 +18,7 @@ import io.legado.app.ui.book.searchContent.SearchResult
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
+import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.utils.FlowBus
@@ -47,13 +48,16 @@ fun SearchContentRoute(
             emptyResultText = { emptyResultText },
         )
     }
-    // position/searchWord 来自 AppRoute.SearchContent 路由参数
+    // position/searchWord/book 来自 AppRoute.SearchContent 路由参数
+    // (book 由阅读页全文搜索入口经 BookRef 传入, 取代原 IntentData.book 全局槽;
+    //  修复: 路由跳转不设 IntentData → book 恒 null → 只跳界面不搜索, 2026-08-06)
     val routeArgs = entry.route as? AppRoute.SearchContent
     LaunchedEffect(routeArgs) {
         screenModel.init(
             routeArgs?.initialResults,
             routeArgs?.index ?: 0,
             routeArgs?.word,
+            routeArgs?.book?.asBook(),
         )
     }
 

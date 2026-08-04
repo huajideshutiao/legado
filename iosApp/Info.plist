@@ -86,6 +86,10 @@
     <key>LSSupportsOpeningDocumentsInPlace</key>
     <true/>
 
+    <!-- 保存图片到相册权限说明 (阅读页图片长按菜单"保存到相册"; iOS 14+ 缺此 key 调用会直接崩) -->
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>保存阅读页图片到系统相册需要访问你的照片库</string>
+
     <!-- legado:// / yuedu:// deep link (对照 app 端 AssociationActivity intent-filter) -->
     <key>CFBundleURLTypes</key>
     <array>

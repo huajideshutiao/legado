@@ -27,7 +27,6 @@ import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.LinearProgressIndicator
-import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,16 +49,12 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.SearchBook
-import io.legado.app.ui.compose.component.AppDialog
-import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSearchField
-import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.component.OverflowMenu
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
@@ -81,7 +76,6 @@ import legado.shared.generated.resources.go_to_top
 import legado.shared.generated.resources.group
 import legado.shared.generated.resources.ic_arrow_back
 import legado.shared.generated.resources.ic_arrow_down
-import legado.shared.generated.resources.ic_arrow_right
 import legado.shared.generated.resources.ic_check
 import legado.shared.generated.resources.ic_praise
 import legado.shared.generated.resources.like_source
@@ -216,32 +210,9 @@ fun CheckMenuItem(text: String, checked: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** 分组菜单项：点击关闭父菜单并触发独立分组选择对话框（替代嵌套 Popup） */
+/** 分组二级菜单单选项 (换源菜单「分组」subMenu 行为, 同包 ChangeChapterSourceScreen 共用) */
 @Composable
-fun GroupMenuItem(
-    title: String,
-    dismissParent: () -> Unit,
-    onShowGroupPicker: () -> Unit,
-) {
-    val colors = AppTheme.colors
-    DropdownMenuItem(
-        onClick = {
-            dismissParent()
-            onShowGroupPicker()
-        },
-    ) {
-        Text(title, color = colors.primaryText)
-        Spacer(Modifier.weight(1f))
-        Icon(
-            painter = painterResource(Res.drawable.ic_arrow_right),
-            contentDescription = null,
-            tint = colors.secondaryText,
-        )
-    }
-}
-
-@Composable
-private fun RadioMenuItem(text: String, selected: Boolean, onClick: () -> Unit) {
+fun RadioMenuItem(text: String, selected: Boolean, onClick: () -> Unit) {
     DropdownMenuItem(
         onClick = onClick,
     ) {
@@ -590,47 +561,6 @@ private fun TocItemRow(chapter: BookChapter, isDur: Boolean, onClick: () -> Unit
 }
 
 /**
- * 分组选择对话框：独立 Dialog 替代原 GroupMenuItem 的嵌套 AppDropdownMenu，
- * 解决 Compose 嵌套 Popup 位置错乱问题。宽度对齐项目对话框规范 0.9 屏宽 / 上限 800dp。
- */
-@Composable
-fun GroupPickerDialog(
-    groups: List<String>,
-    selectedGroup: String,
-    onDismiss: () -> Unit,
-    onSelect: (String) -> Unit,
-) {
-    val colors = AppTheme.colors
-    AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
-        Surface(
-            shape = AppTheme.DesignTokens.dialogShape,
-            color = colors.fillet,
-            modifier = Modifier.appDialogSize(),
-        ) {
-            Column(Modifier.fillMaxWidth()) {
-                DialogTitleBar(
-                    title = stringResource(Res.string.group),
-                    onBack = onDismiss,
-                )
-                LazyColumn(Modifier.fillMaxWidth()) {
-                    val hasSelected = selectedGroup.isNotEmpty() && groups.contains(selectedGroup)
-                    item {
-                        RadioMenuItem(stringResource(Res.string.all_source), !hasSelected) {
-                            onSelect("")
-                        }
-                    }
-                    items(groups) { group ->
-                        RadioMenuItem(group, group == selectedGroup) {
-                            onSelect(group)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
  * 整书换源 UI 交互回调。
  *
  * 实际业务 (搜索/筛选/启停/切源) 留在 [ChangeBookSourceViewModelShared], Route 层
@@ -714,7 +644,8 @@ interface ChangeSourceItemActions {
  *
  * 下沉自 Dialog 形态: 标题栏 (复用 [ChangeSourceTitleBar]) + 搜索进度条
  * (复用 [ChangeSourceRefreshBar]) + 源列表 ([SearchBookItem] 完整版含点赞/长按菜单)
- * + 底栏 (复用 [ChangeSourceBottomBar]) + 分组选择对话框 ([GroupPickerDialog])。
+ * + 底栏 (复用 [ChangeSourceBottomBar]) + 分组二级菜单 (菜单「分组」subMenu 展开,
+ *   对照原版 menu_group/upGroupMenu)。
  *
  * 与 [ChangeChapterSourceScreen] 同构, 差异: 列表项用完整 [SearchBookItem] (含点赞/长按菜单/字数列)。
  * 菜单 8 项与列表项操作通过 [ChangeSourceMenuActions] / [ChangeSourceItemActions] 注入。
@@ -724,13 +655,10 @@ interface ChangeSourceItemActions {
  * @param actions 交互回调 (由 Route 层桥接到 navigator + 平台 ViewModel)
  * @param menuActions 菜单项回调 (由 Route 层桥接到 platform 开关 + ViewModel)
  * @param itemActions 列表项操作回调 (由 Route 层桥接到 ViewModel)
- * @param searchGroup 当前选中分组 (GroupMenuItem 标题显示)
+ * @param searchGroup 当前选中分组 (菜单「分组」项标题显示)
  * @param onSearchGroupChange 分组变化回调 (保留供 Route 同步, Screen 内用 state 显示)
- * @param onShowGroupPicker 显示分组选择对话框
- * @param showGroupPicker 分组选择对话框是否显示
- * @param onGroupPickerDismiss 分组选择对话框关闭
- * @param onGroupPickerSelect 分组选择对话框选中
- * @param groups 启用分组列表 (GroupPickerDialog 渲染)
+ * @param onGroupPickerSelect 分组选中回调 (二级分组菜单选中, Route 层做 stopSearch/refresh/startSearch)
+ * @param groups 启用分组列表 (二级分组菜单渲染)
  */
 @Composable
 fun ChangeSourceScreen(
@@ -741,9 +669,6 @@ fun ChangeSourceScreen(
     itemActions: ChangeSourceItemActions,
     searchGroup: String,
     onSearchGroupChange: (String) -> Unit,
-    onShowGroupPicker: () -> Unit,
-    showGroupPicker: Boolean,
-    onGroupPickerDismiss: () -> Unit,
     onGroupPickerSelect: (String) -> Unit,
     groups: List<String>,
 ) {
@@ -771,40 +696,53 @@ fun ChangeSourceScreen(
             },
             onStartStop = actions::onStartStop,
         ) { dismiss ->
-            // 对照 app 端 Dialog.Content 第 179-220 行 8 个菜单项
-            TextMenuItem(stringResource(Res.string.book_source_manage)) {
-                dismiss(); menuActions.onBookSourceManage()
-            }
-            TextMenuItem(stringResource(Res.string.refresh_list)) {
-                dismiss(); menuActions.onRefreshList()
-            }
-            CheckMenuItem(stringResource(Res.string.checkAuthor), state.checkAuthor) {
-                dismiss()
-                menuActions.onCheckAuthorChange(!state.checkAuthor)
-            }
-            CheckMenuItem(stringResource(Res.string.load_word_count), state.loadWordCount) {
-                dismiss()
-                menuActions.onLoadWordCountChange(!state.loadWordCount)
-            }
-            CheckMenuItem(stringResource(Res.string.load_info), state.loadInfo) {
-                dismiss()
-                menuActions.onLoadInfoChange(!state.loadInfo)
-            }
-            CheckMenuItem(stringResource(Res.string.load_toc), state.loadToc) {
-                dismiss()
-                menuActions.onLoadTocChange(!state.loadToc)
-            }
-            GroupMenuItem(
-                title = if (searchGroup.isEmpty()) {
-                    stringResource(Res.string.group)
-                } else {
-                    stringResource(Res.string.group) + "($searchGroup)"
-                },
-                dismissParent = dismiss,
-                onShowGroupPicker = onShowGroupPicker,
-            )
-            TextMenuItem(stringResource(Res.string.close)) {
-                dismiss(); menuActions.onClose()
+            // 对照 app 端 Dialog.Content 第 179-220 行 8 个菜单项;
+            // 「分组」项点击后用分组列表替换一级菜单 (对照原 Android menu_search_group 的
+            // submenu 展开行为, 不再弹独立分组对话框, 2026-08-06)。
+            var showGroup by remember { mutableStateOf(false) }
+            if (showGroup) {
+                val hasSelected = searchGroup.isNotEmpty() && groups.contains(searchGroup)
+                RadioMenuItem(stringResource(Res.string.all_source), !hasSelected) {
+                    dismiss(); onGroupPickerSelect("")
+                }
+                groups.forEach { group ->
+                    RadioMenuItem(group, group == searchGroup) {
+                        dismiss(); onGroupPickerSelect(group)
+                    }
+                }
+            } else {
+                TextMenuItem(stringResource(Res.string.book_source_manage)) {
+                    dismiss(); menuActions.onBookSourceManage()
+                }
+                TextMenuItem(stringResource(Res.string.refresh_list)) {
+                    dismiss(); menuActions.onRefreshList()
+                }
+                CheckMenuItem(stringResource(Res.string.checkAuthor), state.checkAuthor) {
+                    dismiss()
+                    menuActions.onCheckAuthorChange(!state.checkAuthor)
+                }
+                CheckMenuItem(stringResource(Res.string.load_word_count), state.loadWordCount) {
+                    dismiss()
+                    menuActions.onLoadWordCountChange(!state.loadWordCount)
+                }
+                CheckMenuItem(stringResource(Res.string.load_info), state.loadInfo) {
+                    dismiss()
+                    menuActions.onLoadInfoChange(!state.loadInfo)
+                }
+                CheckMenuItem(stringResource(Res.string.load_toc), state.loadToc) {
+                    dismiss()
+                    menuActions.onLoadTocChange(!state.loadToc)
+                }
+                TextMenuItem(
+                    if (searchGroup.isEmpty()) {
+                        stringResource(Res.string.group)
+                    } else {
+                        stringResource(Res.string.group) + "($searchGroup)"
+                    }
+                ) { showGroup = true }
+                TextMenuItem(stringResource(Res.string.close)) {
+                    dismiss(); menuActions.onClose()
+                }
             }
         }
         ChangeSourceRefreshBar(state.isLoading)
@@ -843,15 +781,6 @@ fun ChangeSourceScreen(
                     if (state.sources.isNotEmpty()) listState.scrollToItem(state.sources.lastIndex)
                 }
             },
-        )
-    }
-    // 对照 app 端 Dialog.Content 第 258-269 行: 分组选择独立 Dialog
-    if (showGroupPicker) {
-        GroupPickerDialog(
-            groups = groups,
-            selectedGroup = searchGroup,
-            onDismiss = onGroupPickerDismiss,
-            onSelect = onGroupPickerSelect,
         )
     }
 }

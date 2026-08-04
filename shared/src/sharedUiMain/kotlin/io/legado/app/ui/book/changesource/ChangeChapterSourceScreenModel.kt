@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.update
  * - [chapterIndex]: 章节序号 (toc 定位, initData 写入);
  * - [curBookUrl]: 当前书源 URL (高亮当前源, SOURCE_CHANGED 事件触发);
  * - [groups]: 启用分组列表 (bookSourceDao.flowEnabledGroups);
- * - [searchGroup]: 当前选中分组 (GroupPickerDialog 选中);
+ * - [searchGroup]: 当前选中分组 (菜单「分组」二级菜单选中);
  * - [tocVisible]: toc 预览覆盖层是否显示;
  * - [tocLoading]: toc 加载中;
  * - [tocList]: toc 列表 (null 表示未加载);
@@ -148,7 +148,7 @@ sealed interface ChangeChapterSourceUiEvent {
     /** 启用分组列表更新 (bookSourceDao.flowEnabledGroups 触发) */
     data class GroupsLoaded(val groups: List<String>) : ChangeChapterSourceUiEvent
 
-    /** 当前搜索分组变更 (GroupPickerDialog 选中触发) */
+    /** 当前搜索分组变更 (菜单「分组」二级菜单选中触发) */
     data class SearchGroupChanged(val group: String) : ChangeChapterSourceUiEvent
 
     /** toc 预览覆盖层显示状态变化 */

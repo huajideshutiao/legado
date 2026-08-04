@@ -10,6 +10,10 @@ import java.io.InputStream
 // 命名约定), 避免与 commonMain 同包同名 interface AsymmetricCrypto 在合并编译时冲突
 // (Kotlin 规则: 同包 class-like declarations 不能同名)。
 // 方法体零变化: 仅追加 `: AsymmetricCrypto` (commonMain interface) 实现标记 + 方法 `override`。
+// 例外: 原 @JvmOverloads + `usePublicKey: Boolean? = true` 默认值生成的 5 个单参 JVM 重载
+// (decrypt/decryptStr/encrypt/encryptHex/encryptBase64) 在 override 化后丢失——Kotlin 禁止
+// override 声明参数默认值, @JvmOverloads 无从生成 1 参方法, JS 桥反射按 1 参调用即报
+// "Cannot find method ... with args [String]"。已显式补回 (见文件底部 JVM-only 单参重载)。
 //
 // @Keep 移除：shared 无 androidx.annotation 依赖，JS 桥反射保活改由 consumer-rules.pro -keep 登记（照 JsURL/StrResponse 先例）。
 @Suppress("unused")
@@ -81,5 +85,22 @@ class AsymmetricCryptoAndroid(algorithm: String) : cn.hutool.crypto.asymmetric.A
     override fun encryptBase64(data: Any, usePublicKey: Boolean?): String {
         return EncoderUtils.base64Encode(encrypt(data, usePublicKey))
     }
+
+    // ============ JVM-only 单参重载 ============
+    // 原版 @JvmOverloads 语义还原: `usePublicKey: Boolean? = true` 缺省即公钥加密/解密。
+    // 书源 JS 按 `java.createAsymmetricCrypto(...).encryptHex(str)` 单参调用
+    // (hutool 父类仅 KeyType 双参变体, 无 1 参方法), 缺了这些重载 JavaObjectBridge
+    // 反射 findMethod 返回 null → IllegalStateException。
+    // 不进 commonMain interface (native 端 NativeJsExtensionsBridge 自有单参分派,
+    // 仿 SymmetricCryptoAndroid JVM-only 附加成员先例)。
+    fun decrypt(data: Any): ByteArray = decrypt(data, true)
+
+    fun decryptStr(data: Any): String = decryptStr(data, true)
+
+    fun encrypt(data: Any): ByteArray = encrypt(data, true)
+
+    fun encryptHex(data: Any): String = encryptHex(data, true)
+
+    fun encryptBase64(data: Any): String = encryptBase64(data, true)
 
 }

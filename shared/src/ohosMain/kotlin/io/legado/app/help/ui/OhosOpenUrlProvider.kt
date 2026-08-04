@@ -7,7 +7,7 @@ import io.legado.app.napi.OhosNativeBridge
  *
  * 经 [OhosNativeBridge.openUrl] tsfn 桥接到 ArkTS context.startAbility
  * (KMP 无 ArkTS API 访问能力, 需 tsfn 跨线程 dispatch 到 ArkTS 主线程;
- * 与 [OhosToastProviderImpl] 走相同 fire-and-forget tsfn 模式);
+ * 走相同 fire-and-forget tsfn 模式);
  * 未注册 tsfn 时由 [OhosNativeBridge] 降级 println (兼容 napi 未接入阶段, 保证 JS 调用链不崩)。
  * 在 [registerOhosProviders] 经 [registerOhosOpenUrlProvider] 注册到 [OpenUrlProviders]。
  *

@@ -5,12 +5,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -18,7 +15,6 @@ import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -36,7 +32,6 @@ import io.legado.app.utils.isAbsUrl
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bookmark
 import legado.shared.generated.resources.browser
-import legado.shared.generated.resources.browser_search
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.content_edit_copy_all
 import legado.shared.generated.resources.content_edit_copy_success
@@ -59,18 +54,18 @@ import org.jetbrains.compose.resources.stringResource
  * 用户拖选文字后由 sharedUiMain 已下沉的 ComposeTextToolbar (AppTheme 注入 LocalTextToolbar)
  * 自动弹出"复制/全选"菜单, 复刻 app 端 ActionMode 文字选择 + TextActionMenu。
  *
- * # 操作菜单
+ * # 操作菜单 (对照原版 TextActionMenu 的 content_select_action.xml 菜单项,
+ * 全部按钮集中底部一排, 顺序同原版: 替换/复制/书签/朗读/查词/全文搜索/浏览器/分享 + 关闭)
  *
  * - 复制 / 全选: 由 ComposeTextToolbar 自动提供 (用户拖选文字后弹出)
  * - 复制全部 / 复制章节标题: 标题栏 OverflowMenu (经 [clipTextSink] 写系统剪贴板)
- * - 查词: 底部按钮 (经 [clipTextProvider] 读剪贴板取关键字, 调 [onDict] 回调由调用方弹 DictDialog)
- * - 浏览器搜索: 底部按钮 (读剪贴板取关键字, 经 [openUrl] 打开系统浏览器)
- * - 替换 / 书签 / 朗读 / 全文搜索 / 分享 / 浏览器: 底部 FlowRow (读剪贴板取选中文本,
- *   分别经 [onReplace] / [onBookmark] / [onReadAloud] / [onSearchContent] / [onShare] 回调
- *   由调用方处理, 浏览器直接经 [openUrl] 打开; 对照原版 TextActionMenu 的
- *   menu_replace/menu_bookmark/menu_aloud/menu_search_content/menu_share_str/menu_browser,
- *   执行后关闭对话框)
- * - 关闭: 底部按钮
+ * - 替换 / 复制 / 书签 / 朗读 / 查词 / 全文搜索 / 浏览器 / 分享: 底部一排按钮,
+ *   分别经 [onReplace] / [onBookmark] / [onReadAloud] / [onDict] / [onSearchContent] /
+ *   [onShare] 回调由调用方处理 (原版 menu_replace/menu_copy/menu_bookmark/menu_aloud/
+ *   menu_dict/menu_search_content/menu_browser/menu_share_str, 执行后关闭对话框);
+ *   浏览器按原版 menu_browser 语义: 选中文本是 URL 直接打开, 否则经 [openUrl] 打开
+ *   系统搜索引擎 (无独立"浏览器搜索"按钮, 原版只有一个浏览器项)
+ * - 关闭: 同上排在末尾
  *
  * 浏览器搜索按钮读取剪贴板的设计原因: [SelectionContainer] 选区信息经
  * SelectionRegistrar internal API 暴露, 外部不易拿到; 简化为"用户选中 → 点
@@ -122,7 +117,6 @@ fun TextSelectionDialog(
     val copySuccessText = stringResource(Res.string.content_edit_copy_success)
     val copyChapterTitleText = stringResource(Res.string.copy_chapter_title)
     val dictText = stringResource(Res.string.lookup_word)
-    val browserSearchText = stringResource(Res.string.browser_search)
     val replaceText = stringResource(Res.string.replace)
     val bookmarkText = stringResource(Res.string.bookmark)
     val readAloudText = stringResource(Res.string.read_aloud)
@@ -200,47 +194,25 @@ fun TextSelectionDialog(
                         )
                     }
                 }
-                // 底部按钮栏 (与 ContentEditDialog 风格对齐: 关闭右对齐, 其余左)
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // 查词: 取选中文本/剪贴板 → 空则 toast 提示, 非空则触发 onDict 回调 (由调用方弹 DictDialog)
-                    AppTextButton(text = dictText, onClick = {
-                        val query = selectedTextOrNull()
-                        if (query != null) {
-                            onDict(query)
-                        }
-                    })
-                    AppTextButton(text = browserSearchText, onClick = {
-                        openInBrowser(
-                            urlPrefix = "https://www.bing.com/search?q=",
-                            textProvider = { selectedTextOrNull() },
-                            openUrl = openUrl,
-                            noSelectionHint = noSelectionHintText,
-                        )
-                    })
-                    Spacer(Modifier.width(4.dp))
-                    AppTextButton(
-                        text = cancelText,
-                        color = colors.secondaryText,
-                        onClick = onDismiss
-                    )
-                }
-                // 原版 TextActionMenu 动作 (替换/复制/书签/朗读/全文搜索/分享/浏览器), 取选中文本
-                // (选中文本形态直接取参, 整章形态读剪贴板), 执行后关闭对话框
-                // (对齐原版 onActionItemClicked → onMenuActionFinally 收菜单)
+                // 底部按钮栏: 全部动作集中一排 (对照原版 TextActionMenu 的 content_select_action.xml
+                // 菜单项顺序: 替换/复制/书签/朗读/查词/全文搜索/浏览器/分享 + 关闭; 2026-08-05 用户
+                // 反馈: 原实现把查词/浏览器搜索/关闭单独右对齐拆成一行, 且"浏览器搜索"与"浏览器"
+                // 重复 —— 现合并为单排 FlowRow, 只保留原版菜单项)
                 FlowRow(
                     Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.Start,
                 ) {
+                    // 替换 (原版 menu_replace)
+                    AppTextButton(text = replaceText, onClick = {
+                        selectedTextOrNull()?.let { text ->
+                            onReplace(text)
+                            onDismiss()
+                        }
+                    })
                     if (useSelectedText) {
-                        // 对照原版 menu_copy: 复制选中文本并收菜单
+                        // 复制选中文本 (原版 menu_copy) 并收菜单
                         AppTextButton(text = copyText, onClick = {
                             selectedTextOrNull()?.let { text ->
                                 clipTextSink(text)
@@ -249,37 +221,36 @@ fun TextSelectionDialog(
                             }
                         })
                     }
-                    AppTextButton(text = replaceText, onClick = {
-                        selectedTextOrNull()?.let { text ->
-                            onReplace(text)
-                            onDismiss()
-                        }
-                    })
+                    // 书签 (原版 menu_bookmark)
                     AppTextButton(text = bookmarkText, onClick = {
                         selectedTextOrNull()?.let { text ->
                             onBookmark(text)
                             onDismiss()
                         }
                     })
+                    // 朗读 (原版 menu_aloud)
                     AppTextButton(text = readAloudText, onClick = {
                         selectedTextOrNull()?.let { text ->
                             onReadAloud(text)
                             onDismiss()
                         }
                     })
+                    // 查词 (原版 menu_dict): 由调用方弹 DictDialog
+                    AppTextButton(text = dictText, onClick = {
+                        val query = selectedTextOrNull()
+                        if (query != null) {
+                            onDict(query)
+                            onDismiss()
+                        }
+                    })
+                    // 全文搜索 (原版 menu_search_content)
                     AppTextButton(text = searchContentText, onClick = {
                         selectedTextOrNull()?.let { text ->
                             onSearchContent(text)
                             onDismiss()
                         }
                     })
-                    AppTextButton(text = shareText, onClick = {
-                        selectedTextOrNull()?.let { text ->
-                            onShare(text)
-                            onDismiss()
-                        }
-                    })
-                    // 浏览器打开 (对照原版 menu_browser): URL 直接打开, 非 URL 走系统搜索引擎
+                    // 浏览器 (原版 menu_browser): URL 直接打开, 非 URL 走系统搜索引擎
                     AppTextButton(text = browserText, onClick = {
                         val text = selectedTextOrNull() ?: return@AppTextButton
                         if (text.isAbsUrl()) {
@@ -294,6 +265,19 @@ fun TextSelectionDialog(
                         }
                         onDismiss()
                     })
+                    // 分享 (原版 menu_share_str)
+                    AppTextButton(text = shareText, onClick = {
+                        selectedTextOrNull()?.let { text ->
+                            onShare(text)
+                            onDismiss()
+                        }
+                    })
+                    // 关闭
+                    AppTextButton(
+                        text = cancelText,
+                        color = colors.secondaryText,
+                        onClick = onDismiss,
+                    )
                 }
             }
         }

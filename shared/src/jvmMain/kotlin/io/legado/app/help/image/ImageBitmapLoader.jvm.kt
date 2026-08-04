@@ -8,6 +8,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.fileBook.CbzFile
+import io.legado.app.utils.RemoteAssetsUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
@@ -36,6 +37,12 @@ actual class ImageBitmapLoader actual constructor() {
     actual suspend fun loadBitmap(url: String, book: Book?, bookSource: BookSource?): ImageBitmap? =
         withContext(Dispatchers.IO) {
             val image = when {
+                url.startsWith("bg://") -> {
+                    val fileName = url.removePrefix("bg://")
+                    // 优先 composeResources 打包原图 (四端离线可用), 其次本地缓存/CDN 兜底
+                    RemoteAssetsUtils.getBgBytes(fileName)
+                        ?.let { ImageIO.read(ByteArrayInputStream(it)) }
+                }
                 url.startsWith("cbz://") && book != null -> {
                     // 本地 cbz/zip 漫画: 从 zip 内嵌条目读取图片流
                     val entryName = url.removePrefix("cbz://")
@@ -63,6 +70,11 @@ actual class ImageBitmapLoader actual constructor() {
         withContext(Dispatchers.IO) {
             runCatching {
                 when {
+                    url.startsWith("bg://") -> {
+                        val fileName = url.removePrefix("bg://")
+                        // 优先 composeResources 打包原图, 其次本地缓存/CDN 兜底
+                        RemoteAssetsUtils.getBgBytes(fileName)
+                    }
                     url.startsWith("cbz://") && book != null ->
                         CbzFile.getImage(book, url.removePrefix("cbz://"))?.use { it.readBytes() }
                     url.startsWith("file://") -> File(url.removePrefix("file://")).readBytes()

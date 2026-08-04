@@ -58,6 +58,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -107,9 +108,12 @@ fun MainScreen(
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage) { visibleTags.size }
 
+    // visibleTags 随底栏配置变更, 常驻 collector 用 rememberUpdatedState 读最新值
+    // (避免 LaunchedEffect(Unit) 捕获首帧旧 visibleTags, 越界守卫失效)
+    val currentVisibleTags by rememberUpdatedState(visibleTags)
     LaunchedEffect(Unit) {
         pageSelections.collect { (index, smooth) ->
-            if (index !in visibleTags.indices) return@collect
+            if (index !in currentVisibleTags.indices) return@collect
             if (smooth) pagerState.animateScrollToPage(index) else pagerState.scrollToPage(index)
         }
     }

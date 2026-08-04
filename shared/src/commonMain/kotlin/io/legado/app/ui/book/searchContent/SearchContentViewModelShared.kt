@@ -60,25 +60,25 @@ class SearchContentViewModelShared(
     var replaceEnabled: Boolean = false
 
     /**
-     * 从 [IntentData.book] 初始化当前书籍 + bookUrl。
+     * 初始化当前书籍 + bookUrl: 优先路由传入的 [book] (阅读页全文搜索经 BookRef 传入,
+     * 修复: 路由跳转不设 IntentData.book → book 恒 null → 只跳界面不搜索, 2026-08-06),
+     * 否则回落 [IntentData.book] (对照原 SearchContentViewModel.initBook)。
      *
-     * 对照原 SearchContentViewModel.initBook:
-     * - `execute { ... }.onSuccess { ... }` 在 BaseViewModel 内部走 viewModelScope + IO,
-     *   下沉后由 [scope].launch 编排; IntentData 访问是内存操作, 无需切 IO,
-     *   在 scope 默认调度器 (Android=Main) 执行, 与原 execute 完成后切主线程回调等价。
-     * - 原 `contentProcessor = ContentProcessor.get(it.name, it.origin)` 缓存 ContentProcessor
-     *   实例的下沉等价: ContentProcessorProviders.get().getContent 内部自己缓存 (WebBookProvidersImpl
-     *   委托 `ContentProcessor.get(book).getContent(...)`, 行为等价), 无需 shared 持有实例。
-     *
+     * @param book 路由传入的当前书籍 (可为 null, 回落 IntentData.book)
      * @param success 初始化成功回调 (对应原 execute.onSuccess, 在 [scope] 上下文回调)
      */
-    fun initBook(success: () -> Unit) {
+    fun initBook(success: () -> Unit, book: Book? = null) {
         scope.launch {
-            IntentData.book?.let {
-                // 强转 Book (对照原 app 端 `it as Book`, IntentData.book 类型为 BaseBook?,
-                // 实际运行场景中总是 Book 类型, 此处保持原强转行为不变)
-                book = it as Book
-                bookUrl = it.bookUrl
+            if (book != null) {
+                this@SearchContentViewModelShared.book = book
+                bookUrl = book.bookUrl
+            } else {
+                IntentData.book?.let {
+                    // 强转 Book (对照原 app 端 `it as Book`, IntentData.book 类型为 BaseBook?,
+                    // 实际运行场景中总是 Book 类型, 此处保持原强转行为不变)
+                    this@SearchContentViewModelShared.book = it as Book
+                    bookUrl = it.bookUrl
+                }
             }
             // onSuccess 回调: BaseViewModel.execute 在协程完成后切主线程回调,
             // shared 端在 scope 上下文回调 (Android=viewModelScope 默认 Main 调度器),

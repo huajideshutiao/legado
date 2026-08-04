@@ -3,7 +3,6 @@ package io.legado.app.ui.book.read.config
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -31,7 +30,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.PageAnim
@@ -42,13 +40,13 @@ import io.legado.app.ui.compose.component.AppDetailSeekBar
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.RadioChip
 import io.legado.app.ui.compose.component.StrokeTextChip
-import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.add
 import legado.shared.generated.resources.font_weight_text
 import legado.shared.generated.resources.ic_add
+import legado.shared.generated.resources.indent
 import legado.shared.generated.resources.information
 import legado.shared.generated.resources.line_size
 import legado.shared.generated.resources.padding
@@ -63,12 +61,11 @@ import legado.shared.generated.resources.share_layout
 import legado.shared.generated.resources.text
 import legado.shared.generated.resources.text_bg_style
 import legado.shared.generated.resources.text_font
+import legado.shared.generated.resources.text_font_weight
 import legado.shared.generated.resources.text_font_weight_converter
 import legado.shared.generated.resources.text_indent
 import legado.shared.generated.resources.text_letter_spacing
 import legado.shared.generated.resources.text_size
-import legado.shared.generated.resources.indent
-import legado.shared.generated.resources.text_font_weight
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
@@ -116,8 +113,8 @@ interface ReadStyleController {
     /** 当前文字颜色 Int（对应 `durConfig.curTextColor()`） */
     fun curTextColor(): Int
 
-    /** 新增样式主题（对应 `ReadBookConfig.configList.add(ReadBookConfig.Config())`） */
-    fun addStyle()
+    /** 新增样式主题，返回新增项索引（对应 `ReadBookConfig.configList.add(ReadBookConfig.Config())`）。 */
+    fun addStyle(): Int
 
     /** 持久化配置（对应 `ReadBookConfig.save()`） */
     fun save()
@@ -161,6 +158,9 @@ interface ReadStyleActions {
 
     /** 配置变更通知（对应 `ReadBookEvents.postConfig(...)`） */
     fun onPostConfig(changes: List<ReadConfigChange>)
+
+    /** 阅读菜单/顶栏重建（对应原版 `postEvent(UPDATE_READ_ACTION_BAR, true)` → readMenu.reset()） */
+    fun onPostActionBarChange()
 }
 
 /**
@@ -200,6 +200,8 @@ interface ReadStyleActions {
  * @param controller 配置读写桥接
  * @param actions 动作回调桥接
  * @param bgPreviewSlot 单个样式预览渲染（config, size, selected, onClick, onLongClick）
+ * @param externalRefresh 外部变更版本号：背景文字弹窗（叠层形态）改名/换背景/换色后自增，
+ *        让样式列表（名称/缩略图）实时刷新（原版弹窗形态下本弹窗已 dismiss，重进自然读新值）
  */
 @Composable
 fun ReadStyleScreen(
@@ -211,6 +213,7 @@ fun ReadStyleScreen(
         onClick: () -> Unit,
         onLongClick: () -> Unit,
     ) -> Unit,
+    externalRefresh: Int = 0,
 ) {
     val colors = AppTheme.colors
     // 资源 key 在 Composable 顶层一次性求值
@@ -240,21 +243,31 @@ fun ReadStyleScreen(
     // 文字色取自当前样式 (用于样式列表预览文字色, 对齐 app 端 textColor = Color(item.curTextColor()))
     val textColor = Color(controller.curTextColor())
 
-    // 样式切换/共用布局切换后需整体重读配置（对齐原 upView）
+    // 样式切换/共用布局切换后需整体重读配置（对齐原 upView）；
+    // externalRefresh 并入 key：背景文字弹窗叠层形态下外部改名/换背景后强制重读
     var refresh by remember { mutableIntStateOf(0) }
-    var textBold by remember(refresh) { mutableIntStateOf(controller.textBold) }
+    var textBold by remember(refresh, externalRefresh) { mutableIntStateOf(controller.textBold) }
     var chineseType by remember { mutableIntStateOf(controller.chineseType) }
-    var pageAnim by remember(refresh) { mutableIntStateOf(controller.pageAnim) }
-    var shareLayout by remember { mutableStateOf(controller.shareLayout) }
-    var textSize by remember(refresh) { mutableIntStateOf(controller.textSize - 5) }
-    var letterSpacing by remember(refresh) {
+    var pageAnim by remember(refresh, externalRefresh) { mutableIntStateOf(controller.pageAnim) }
+    var shareLayout by remember(refresh, externalRefresh) {
+        mutableStateOf(controller.shareLayout)
+    }
+    var textSize by remember(
+        refresh,
+        externalRefresh
+    ) { mutableIntStateOf(controller.textSize - 5) }
+    var letterSpacing by remember(refresh, externalRefresh) {
         mutableIntStateOf((controller.letterSpacing * 100).toInt() + 50)
     }
-    var lineSize by remember(refresh) { mutableIntStateOf(controller.lineSpacingExtra) }
-    var paragraphSpacing by remember(refresh) {
+    var lineSize by remember(refresh, externalRefresh) {
+        mutableIntStateOf(controller.lineSpacingExtra)
+    }
+    var paragraphSpacing by remember(refresh, externalRefresh) {
         mutableIntStateOf(controller.paragraphSpacing)
     }
-    var styleSelect by remember(refresh) { mutableIntStateOf(controller.styleSelect) }
+    var styleSelect by remember(refresh, externalRefresh) {
+        mutableIntStateOf(controller.styleSelect)
+    }
     var showTextBoldSelector by remember { mutableStateOf(false) }
     var showTextIndentSelector by remember { mutableStateOf(false) }
 
@@ -270,6 +283,8 @@ fun ReadStyleScreen(
                     ReadConfigChange.LOAD_CONTENT,
                 )
             )
+            // 对照原版 changeBgTextConfig 额外 postEvent(UPDATE_READ_ACTION_BAR, true)
+            actions.onPostActionBarChange()
         }
     }
 
@@ -443,8 +458,11 @@ fun ReadStyleScreen(
             }
             item {
                 AddStyleItem(colors.primaryText) {
-                    controller.addStyle()
-                    showBgTextConfig(controller.configList.lastIndex)
+                    // 原版点击 + 后立即把新组合加入 configList 并打开其详细设置。
+                    // 返回索引并触发一次保存，避免仅依赖外层弹窗 dismiss 才落盘。
+                    val index = controller.addStyle()
+                    controller.save()
+                    showBgTextConfig(index)
                 }
             }
         }

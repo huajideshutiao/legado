@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.legado.app.help.config.AppConfigProviders
@@ -95,11 +96,15 @@ private val DecelerateEasing = Easing { 1f - (1f - it) * (1f - it) }
 fun AppBottomSheetDialog(
     onDismissRequest: () -> Unit,
     properties: DialogProperties = AppDialogSizes.properties(),
+    maxHeight: Dp? = null,
     content: @Composable () -> Unit,
 ) {
     if (AppConfigProviders.get().isEInkMode) {
         Dialog(onDismissRequest = onDismissRequest, properties = properties) {
-            BottomSheetScaffold(onDismissRequest = onDismissRequest) { content() }
+            BottomSheetScaffold(
+                onDismissRequest = onDismissRequest,
+                maxHeight = maxHeight
+            ) { content() }
         }
         return
     }
@@ -124,6 +129,7 @@ fun AppBottomSheetDialog(
         BottomSheetScaffold(
             // 外部点击与返回键一致走 dismissing 退出动画路径
             onDismissRequest = { dismissing = true },
+            maxHeight = maxHeight,
             modifier = Modifier.graphicsLayer {
                 translationY = slideHeightPx * (1f - p)
                 alpha = p
@@ -140,6 +146,7 @@ fun AppBottomSheetDialog(
 private fun BottomSheetScaffold(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
+    maxHeight: Dp? = null,
     content: @Composable () -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
@@ -156,7 +163,7 @@ private fun BottomSheetScaffold(
             modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .heightIn(max = AppDialogSizes.fullHeight()),
+                .heightIn(max = maxHeight ?: AppDialogSizes.fullHeight()),
             contentAlignment = Alignment.BottomCenter,
         ) { content() }
     }

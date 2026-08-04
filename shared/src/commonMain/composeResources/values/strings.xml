@@ -271,6 +271,16 @@
     <string name="export_folder">导出文件夹</string>
     <string name="export_to_web_dav">导出到 WebDav</string>
     <string name="custom_export_section">自定义Epub导出章节</string>
+    <string name="select_section_export">选择待导出章节</string>
+    <string name="export_file_name">导出文件名</string>
+    <string name="export_type">导出格式</string>
+    <string name="export_charset">导出编码</string>
+    <string name="export_no_chapter_name">TXT 不导出章节名</string>
+    <string name="file_contains_number">每个文件包含的章节数量</string>
+    <string name="export_chapter_index">需要输出的章节</string>
+    <string name="error_scope_input">请输入正确的范围</string>
+    <string name="result_analyzed">解析示例</string>
+    <string name="custom_export">自定义导出</string>
     <string name="filter_book_type">按类型筛选</string>
     <string name="import_file_name">导入文件名</string>
     <string name="local_book">本地书籍</string>
@@ -847,6 +857,8 @@
     <string name="copy_address">复制地址</string>
     <string name="open_failed">打开失败: %1$s</string>
     <string name="open_in_browser">浏览器打开</string>
+    <string name="jump_to_another_app">跳转到其他应用</string>
+    <string name="check_host_cookie">正在打开首页，成功后自动返回</string>
     <string name="restore_from_local_prompt">将从本地备份恢复。</string>
     <string name="clear_cache_success">清缓存成功</string>
     <string name="export_bookmark_json">导出书签 JSON</string>
@@ -1289,6 +1301,7 @@
     <string name="error_image_url_empty">图片链接为空，检查替换净化规则</string>
     <string name="check_source_config_summary">校验超时：%1$s秒\n校验项目：%2$s</string>
     <string name="data_loading">加载数据中…</string>
+    <string name="toc_updateing">更新目录中</string>
     <string name="webdav_application_authorization_error">webDav应用验证失败</string>
     <string name="replace_rule_invalid">替换规则为空或者不满足正则表达式要求</string>
     <string name="thread_count">线程数</string>

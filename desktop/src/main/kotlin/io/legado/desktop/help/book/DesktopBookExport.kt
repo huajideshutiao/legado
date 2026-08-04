@@ -52,6 +52,12 @@ object DesktopBookExport {
             epubShared.exportCbz(dir, book, chapters)
         }
     }
+
+    /** 自定义导出: 按章节范围/分卷大小导出 epub (对照 app 端 ExportBookService 的 epubScope/epubSize 分支)。 */
+    suspend fun exportCustomEpub(dir: String, books: List<Book>, scope: String, size: Int) {
+        File(dir).mkdirs()
+        books.forEach { epubShared.exportCustom(dir, it, scope, size) }
+    }
 }
 
 private object DesktopExportBookDeps : ExportBookDeps {

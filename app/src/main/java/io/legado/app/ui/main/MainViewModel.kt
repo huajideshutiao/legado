@@ -1,33 +1,19 @@
 package io.legado.app.ui.main
 
 import android.app.Application
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.recyclerview.widget.RecyclerView.RecycledViewPool
-import io.legado.app.R
 import io.legado.app.base.BaseViewModel
-import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
-import io.legado.app.constant.IntentAction
-import io.legado.app.constant.NotificationId
 import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.DefaultData
-import io.legado.app.help.NotificationHelp
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.service.UpdateBookCallback
 import io.legado.app.help.service.UpdateBookShared
-import io.legado.app.help.setLiveProgress
-import io.legado.app.service.UpdateBookService
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChangeFirst
-import io.legado.app.utils.servicePendingIntent
-import io.legado.app.utils.startService
-import io.legado.app.utils.stopService
-import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -36,7 +22,6 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.runBlocking
-import splitties.init.appCtx
 
 /**
  * app 端主 ViewModel (书架数据层刷新引擎)。
@@ -52,13 +37,15 @@ import splitties.init.appCtx
  *   (依赖 assets DefaultData) / [restoreWebDav] (依赖 app 端 AppWebDav)
  * - **平台特有状态**: [isActivityVisible] (callback 内判断是否显示通知) /
  *   [booksListRecycledViewPool] / [booksGridRecycledViewPool] (RecyclerView 复用池)
- * - **Android 通知实现**: [AndroidUpdateBookCallback] inner class, 桥接
- *   [UpdateBookCallback] 到 `NotificationManagerCompat` + `startService<UpdateBookService>`
+ * - **Android 通知实现**: [AndroidUpdateBookCallback] object (由 [io.legado.app.App] 注册为
+ *   [io.legado.app.help.service.UpdateBookCallbacks] 默认实现, 书架 VM 引擎共用), 桥接
+ *   [io.legado.app.help.service.UpdateBookCallback] 到 `NotificationManagerCompat` +
+ *   `startService<UpdateBookService>`
  * - **转发方法**: [upToc] / [forceRefresh] / [scheduleAutoUpdate] / [cancelRefreshJobs] /
  *   [isUpdate] / [markGroupAutoUpdated] / [onCleared] 直接转发到 [updateBookShared]
  *
  * 与桌面端 `DesktopMainViewModel` 改造对齐 (桌面端 callback 用 NotificationProgresses +
- * Toasters, 本类 callback 用 NotificationManagerCompat + context.toastOnUi)。
+ * Toasters, 本类 callback 用 NotificationManagerCompat + appCtx.toastOnUi)。
  *
  * # UpdateBookService.kt 关系
  *
@@ -74,13 +61,21 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
      * UpdateBook 编排核心 (shared commonMain 下沉件), 持有实例并转发公共方法。
      *
      * scope 用 viewModelScope (随 Activity 销毁取消任务, 与原 MainViewModel 一致);
-     * callback 用 [AndroidUpdateBookCallback] (桥接 Android 通知 + toast)。
+     * callback 用 [AndroidUpdateBookCallback] (单例, 桥接 Android 通知 + toast)。
      */
     private val updateBookShared: UpdateBookShared by lazy {
-        UpdateBookShared(viewModelScope, AndroidUpdateBookCallback())
+        UpdateBookShared(viewModelScope, AndroidUpdateBookCallback)
     }
 
-    var isActivityVisible = true
+    /**
+     * Activity 可见性 (通知显隐依据); 委托 [AndroidUpdateBookCallback.isActivityVisible]
+     * (与书架 VM 引擎共用的默认 callback 同一标志, 保证两端引擎通知行为一致)
+     */
+    var isActivityVisible: Boolean
+        get() = AndroidUpdateBookCallback.isActivityVisible
+        set(value) {
+            AndroidUpdateBookCallback.isActivityVisible = value
+        }
 
     val booksListRecycledViewPool = RecycledViewPool().apply {
         setMaxRecycledViews(0, 30)
@@ -189,80 +184,6 @@ class MainViewModel(application: Application) : BaseViewModel(application) {
     fun restoreWebDav(name: String) {
         execute {
             AppWebDav.restoreWebDav(name)
-        }
-    }
-
-    /**
-     * [UpdateBookCallback] 的 Android actual 实现 (inner class, 持有 MainViewModel this)。
-     *
-     * 桥接 [UpdateBookShared] 的进度回调到 app 端 Android 通知栏:
-     * - [onProgressUpdate]: `startService<UpdateBookService>` + `NotificationManagerCompat.notify`
-     *   (NotificationCompat.Builder 设置进度, 与原 `updateUpdateNotification` 一致)
-     * - [onProgressCancel]: `stopService<UpdateBookService>` (取消通知)
-     * - [toastForceRefreshBusy]: `context.toastOnUi(R.string.force_refresh_busy)`
-     * - [toastForceRefreshStart] / [toastForceRefreshDone]: app 端原 MainViewModel 无此 toast
-     *   (仅桌面端有), no-op
-     *
-     * # isActivityVisible 处理
-     * 原 `updateUpdateNotification` 在 `isActivityVisible=true` 时直接 `stopService` 不显示通知
-     * (避免 Activity 可见时打扰用户)。本 callback 在 [onProgressUpdate] 内自行检查
-     * [isActivityVisible], 行为对齐 (UpdateBookShared 不感知 isActivityVisible, 由 callback 处理)。
-     */
-    private inner class AndroidUpdateBookCallback : UpdateBookCallback {
-
-        override fun onProgressUpdate(active: Boolean, title: String, content: String, count: Int, total: Int) {
-            // Activity 可见时不显示通知 (与原 updateUpdateNotification 一致)
-            if (isActivityVisible) {
-                context.stopService<UpdateBookService>()
-                return
-            }
-            context.startService<UpdateBookService>()
-            if (NotificationManagerCompat.from(appCtx).areNotificationsEnabled()) {
-                // title/content 已由 UpdateBookShared 计算 (appString(AppStringKey.update_toc / force_refresh_book)
-                // → R.string.update_toc / R.string.force_refresh_book 多语言文案 + "count/total"), 这里直接用
-                val notificationBuilder =
-                    NotificationCompat.Builder(context, AppConst.channelIdDownload)
-                        .setSmallIcon(R.drawable.ic_update)
-                        .setOngoing(true)
-                        .setOnlyAlertOnce(true)
-                        .setContentTitle(title)
-                        .setContentText(content)
-                        .setLiveProgress(
-                            count,
-                            total,
-                            shortText = if (total > 0) "$count/$total" else null
-                        )
-                        .addAction(
-                            R.drawable.ic_stop_black_24dp,
-                            context.getString(R.string.cancel),
-                            context.servicePendingIntent<UpdateBookService>(IntentAction.stop)
-                        )
-                        .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                try {
-                    val notification = notificationBuilder.build()
-                    NotificationHelp.logPromotable(notification)
-                    NotificationManagerCompat.from(appCtx)
-                        .notify(NotificationId.UpdateBookService, notification)
-                } catch (e: Exception) {
-                    AppLog.put("更新通知失败\n${e.localizedMessage}", e)
-                }
-            }
-        }
-
-        override fun onProgressCancel() {
-            context.stopService<UpdateBookService>()
-        }
-
-        override fun toastForceRefreshBusy() {
-            context.toastOnUi(R.string.force_refresh_busy)
-        }
-
-        override fun toastForceRefreshStart(count: Int) {
-            // app 端原 MainViewModel 无此 toast (仅桌面端有), no-op
-        }
-
-        override fun toastForceRefreshDone() {
-            // app 端原 MainViewModel 无此 toast (仅桌面端有), no-op
         }
     }
 

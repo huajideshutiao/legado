@@ -226,6 +226,16 @@ class UpdateBookShared(
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
+    /**
+     * 本引擎是否启动过刷新任务 (startUpTocJob / forceRefresh 任一启动过即置 true)。
+     *
+     * 多引擎并存时 (app 端 MainViewModel 遗留引擎 + 书架 VM 引擎, 或桌面 ServiceLauncher 引擎
+     * + 书架 VM 引擎) 只有活动引擎在发进度通知; 未启动过任务的引擎在 [refreshProgress] 空闲分支
+     * 不得调 onProgressCancel, 否则会误杀活动引擎的通知 (如 MainActivity.onStart/onStop 经
+     * MainViewModel.updateUpdateNotification 触发的刷新)。
+     */
+    private val startedOnce = atomic(false)
+
     /** 进度文案 (如 "更新目录 3/10"), null 表示无任务; UI 可选订阅显示在顶栏 */
     private val _progressText = MutableStateFlow<String?>(null)
     val progressText: StateFlow<String?> = _progressText.asStateFlow()
@@ -260,6 +270,9 @@ class UpdateBookShared(
         _progressText.value = null
         // 取消进度通知 (对照 app 端 cancelRefreshJobs 间接触发 UpdateBookService.onDestroy 取消通知)
         callback.onProgressCancel()
+        // 广播 STOP_UP_BOOK: 本引擎取消时其他 UpdateBookShared 实例 (如书架 VM 持有的引擎)
+        // 一并取消任务, 对齐原版单引擎"退出/停止即全部停止"语义 (退出清理、停止更新入口均走此)
+        postEvent(EventBus.STOP_UP_BOOK, "")
     }
 
     fun isUpdate(bookUrl: String): Boolean {
@@ -298,6 +311,7 @@ class UpdateBookShared(
             callback.toastForceRefreshBusy()
             return
         }
+        startedOnce.value = true
         refreshJob = scope.launch(Dispatchers.Default) {
             val urls = books.filterNot { it.isLocal }.map { it.bookUrl }
             if (urls.isEmpty()) return@launch
@@ -321,8 +335,18 @@ class UpdateBookShared(
         upPool()
         bookUrls.asFlow()
             .onEachParallel(threadCount) { bookUrl ->
-                val book = appDb.bookDao.getBook(bookUrl) ?: return@onEachParallel
-                val source = getBookSource(book.origin) ?: return@onEachParallel
+                val book = appDb.bookDao.getBook(bookUrl)
+                if (book == null) {
+                    // 书已被删除: 无任务可刷, 仍发收敛事件避免转圈卡死
+                    postEvent(EventBus.UP_BOOKSHELF, bookUrl)
+                    return@onEachParallel
+                }
+                val source = getBookSource(book.origin)
+                if (source == null) {
+                    // 书源已删除: 无任务可刷, 仍发收敛事件避免转圈卡死
+                    postEvent(EventBus.UP_BOOKSHELF, bookUrl)
+                    return@onEachParallel
+                }
                 try {
                     // 在 WebBook 修改 book 字段前快照 (replace 用 oldBook 按旧 bookUrl 删除,
                     // 必须保存修改前的 bookUrl, 与 app 端 `val oldBook = book.copy()` 一致)
@@ -347,10 +371,14 @@ class UpdateBookShared(
                     }
                     // 预下载后续章节 (对照 app 端 addDownload, 受 preDownloadNum 控制)
                     addDownload(source, book)
-                    postEvent(EventBus.UP_BOOKSHELF, book.bookUrl)
                 } catch (e: Throwable) {
                     currentCoroutineContext().ensureActive()
                     AppLog.put("${book.name} 强制刷新失败\n${e.message}", e)
+                } finally {
+                    // 无论成功/失败/取消都发收敛事件: 驱动书架转圈消失。用入参 bookUrl
+                    // (与 BookshelfViewModel.refreshingUrls 中登记的一致; bookUrl 变更时
+                    // 也须用旧 url 收敛, 否则该条目转圈永不消失)
+                    postEvent(EventBus.UP_BOOKSHELF, bookUrl)
                 }
                 refreshCount.incrementAndGet()
                 updateProgress()
@@ -479,13 +507,17 @@ class UpdateBookShared(
         if (refreshJob?.isActive == true) return
         upPool()
         _isRefreshing.value = true
+        startedOnce.value = true
         upTocJob = scope.launch(upTocPool) {
             flow {
                 while (true) {
                     emit(pollWaitUpTocBook() ?: break)
                 }
             }.onEachParallel(threadCount) {
-                postEvent(EventBus.UP_BOOKSHELF, it)
+                // 不在开始处发 UP_BOOKSHELF: 原版 app 端在 onUpTocBooks.add 后发一次, 供
+                // RecyclerView 适配器"拉取式"重绑出转圈; shared 书架是"推送式"集合
+                // (BookshelfViewModel.refreshingUrls 在 upToc() 时已全量登记), 开始事件只会在
+                // 转圈渲染前把它清掉, 导致转圈永不显示。收敛只依赖完成/取消事件。
                 try {
                     updateToc(it)
                     upTocCount.incrementAndGet()
@@ -749,8 +781,11 @@ class UpdateBookShared(
         if (!upTocActive && !refreshActive) {
             _progressText.value = null
             _isRefreshing.value = false
-            // 取消进度通知 (对照 app 端 updateUpdateNotification 内 stopService 取消通知)
-            callback.onProgressCancel()
+            // 从未启动过任务的引擎不取消通知 (多引擎并存时避免误杀活动引擎的通知, 见 [startedOnce])
+            if (startedOnce.value) {
+                // 取消进度通知 (对照 app 端 updateUpdateNotification 内 stopService 取消通知)
+                callback.onProgressCancel()
+            }
             return
         }
         _isRefreshing.value = true

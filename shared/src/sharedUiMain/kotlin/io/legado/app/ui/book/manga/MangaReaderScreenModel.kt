@@ -25,9 +25,11 @@ import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.config.ClickActionConfig
 import io.legado.app.ui.root.ScreenModel
 import io.legado.app.utils.FlowBus
+import io.legado.app.utils.GSON
 import io.legado.app.utils.format
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.systemCurrentTimeMillis
+import io.legado.app.utils.toJson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -141,7 +143,7 @@ class MangaReaderScreenModel : ScreenModel {
         fun getOrNull(): Platform? = impl
     }
 
-    private val platform = Providers.getOrNull()
+    private val platform get() = Providers.getOrNull()
     private val imageExtractor = platform?.let { p ->
         object : MangaImageExtractor {
             override fun flowImages(bookChapter: BookChapter, content: String): Flow<String> =
@@ -304,58 +306,98 @@ class MangaReaderScreenModel : ScreenModel {
 
     /** 切换横/纵向翻页 (对照 app 端 MangaMenuAction.HORIZONTAL_SCROLL) */
     fun toggleHorizontal() {
-        val newHorizontal = platform?.toggleHorizontal() ?: return
+        val newHorizontal = togglePrefBoolean(PreferKey.enableMangaHorizontalScroll, false)
+            ?: platform?.toggleHorizontal()
+            ?: return
         _state.value = _state.value.copy(horizontal = newHorizontal)
+        refreshSharedConfig()
     }
 
     /** 更新颜色滤镜配置并持久化 (对照 app 端 MangaColorFilterDialog.Callback.updateColorFilter) */
     fun updateColorFilter(config: MangaColorFilterConfig) {
-        platform?.updateColorFilter(config)
+        val prefs = prefsOrNull()
+        if (prefs != null) {
+            prefs.putString(PreferKey.mangaColorFilter, config.toJson())
+        } else {
+            platform?.updateColorFilter(config)
+        }
         _state.value = _state.value.copy(colorFilterConfig = config)
     }
 
     /** 更新灰度开关并持久化 (对照 app 端 MangaColorFilterDialog.upGray) */
     fun updateGray(enable: Boolean) {
-        platform?.updateGray(enable)
+        val prefs = prefsOrNull()
+        if (prefs != null) {
+            prefs.putBoolean(PreferKey.enableMangaGray, enable)
+        } else {
+            platform?.updateGray(enable)
+        }
         _state.value = _state.value.copy(grayEnabled = enable)
+        refreshSharedConfig()
     }
 
     /** 更新页脚配置并持久化 (对照 app 端 MangaFooterSettingDialog.onDismiss) */
     fun updateFooterConfig(config: MangaFooterConfig) {
-        platform?.updateFooterConfig(config)
+        val prefs = prefsOrNull()
+        if (prefs != null) {
+            prefs.putString(PreferKey.mangaFooterConfig, GSON.toJson(config))
+        } else {
+            platform?.updateFooterConfig(config)
+        }
         _state.value = _state.value.copy(footerConfig = config)
     }
 
     /** 切换隐藏漫画标题 (对照 app 端 MangaMenuAction.HIDE_TITLE), 触发 shared 重新加载章节内容 */
     fun toggleHideTitle() {
-        val newHide = platform?.toggleHideTitle() ?: return
+        val newHide = togglePrefBoolean(PreferKey.hideMangaTitle, false)
+            ?: platform?.toggleHideTitle()
+            ?: return
         _state.value = _state.value.copy(hideMangaTitle = newHide)
+        refreshSharedConfig()
         // 重新加载当前章节, 让 ReaderLoading 头按新配置增减 (对照 app 端 viewModel.loadContent)
         shared.loadContent()
     }
 
     /** 切换禁用翻页动画 (对照 app 端 MangaMenuAction.DISABLE_PAGE_ANIM) */
     fun toggleDisablePageAnim() {
-        val newDisable = platform?.toggleDisablePageAnim() ?: return
+        val newDisable = togglePrefBoolean(PreferKey.disableMangaPageAnim, false)
+            ?: platform?.toggleDisablePageAnim()
+            ?: return
         _state.value = _state.value.copy(disablePageAnim = newDisable)
+        refreshSharedConfig()
     }
 
     /** 切换 GIF 播完翻页 (对照 app 端 MangaMenuAction.GIF_AUTO_NEXT) */
     fun toggleGifAutoNext() {
-        val newEnable = platform?.toggleGifAutoNext() ?: return
+        val newEnable = togglePrefBoolean(PreferKey.enableMangaGifAutoNext, false)
+            ?: platform?.toggleGifAutoNext()
+            ?: return
         _state.value = _state.value.copy(gifAutoNext = newEnable)
+        refreshSharedConfig()
     }
 
     /** 设置预下载章节数并持久化 (对照 app 端 MangaMenuAction.PRE_DOWNLOAD_NUM) */
     fun setPreDownloadNum(num: Int) {
-        platform?.setPreDownloadNum(num)
+        val prefs = prefsOrNull()
+        if (prefs != null) {
+            prefs.putInt(PreferKey.mangaPreDownloadNum, num)
+        } else {
+            platform?.setPreDownloadNum(num)
+        }
         _state.value = _state.value.copy(preDownloadNum = num)
+        refreshSharedConfig()
     }
 
     /** 设置自动翻页速度并持久化 (对照 app 端 MangaMenuAction.AUTO_PAGE_SPEED) */
     fun setAutoPageSpeed(speed: Int) {
-        platform?.setAutoPageSpeed(speed)
+        val prefs = prefsOrNull()
+        if (prefs != null) {
+            prefs.putInt(PreferKey.mangaAutoPageSpeed, speed)
+        } else {
+            platform?.setAutoPageSpeed(speed)
+        }
         _state.value = _state.value.copy(autoPageSpeed = speed)
+        refreshSharedConfig()
     }
 
     /** 更新点击区域配置并持久化 (对照 app 端 ClickActionConfigDialog 即时写 AppConfig.clickActionXX) */
@@ -373,6 +415,28 @@ class MangaReaderScreenModel : ScreenModel {
             putInt(PreferKey.clickActionBR, config.br)
         }
         _state.value = _state.value.copy(clickActionConfig = config)
+    }
+
+    /**
+     * 直写 prefs 的布尔开关: 成功返回新值; [PreferenceProviders] 未注册返回 null
+     * (调用方回退平台实现, 与 iOS/鸿蒙缺省空实现兼容)。
+     *
+     * 菜单勾选持久化统一走这里 (key 与 app 端 AppConfig 一致), 保证四端一致:
+     * 桌面/安卓平台实现同样写这套 key, 双重写入同值无害; iOS/鸿蒙平台未实现
+     * toggle 系列 (接口缺省返回 false), 原先勾选完全不生效, 现在由本处兜底。
+     */
+    private fun togglePrefBoolean(key: String, defaultValue: Boolean): Boolean? {
+        val prefs = prefsOrNull() ?: return null
+        val newValue = !prefs.getBoolean(key, defaultValue)
+        prefs.putBoolean(key, newValue)
+        return newValue
+    }
+
+    private fun prefsOrNull() = runCatching { PreferenceProviders.get() }.getOrNull()
+
+    /** 菜单项切换后刷新 VM 的配置快照, 保证切章/重载 (hideMangaTitle/preDownloadNum 等) 读到新值。 */
+    private fun refreshSharedConfig() {
+        shared.config = platform?.config ?: MangaReaderConfig.DEFAULT
     }
 
     private fun readClickActionConfig(): ClickActionConfig {

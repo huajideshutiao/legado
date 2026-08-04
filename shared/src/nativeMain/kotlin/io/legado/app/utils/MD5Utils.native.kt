@@ -15,5 +15,8 @@ actual object MD5Utils {
 
     actual fun md5Encode(str: String?): String = MD5UtilsCore.md5Encode(str)
 
+    /** 字节数组全量 MD5 (commonMain expect 成员, 委托共享 Md5Digest) */
+    actual fun md5Encode(bytes: ByteArray): String = MD5UtilsCore.md5Encode(bytes)
+
     actual fun md5Encode16(str: String): String = MD5UtilsCore.md5Encode16(str)
 }

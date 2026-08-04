@@ -5,12 +5,15 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.data.entities.Review
 import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.toggleBookshelfCore
+import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.storage.DataStorageProviders
@@ -29,8 +32,10 @@ import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
+import io.legado.app.ui.route.encodeReviewListDialogPayload
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
+import io.legado.app.utils.RemoteAssetsUtils
 import io.legado.app.utils.decodeStringMapOrNull
 import io.legado.app.utils.encodeStringMap
 import io.legado.app.utils.toJson
@@ -329,7 +334,14 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
                 initialDir = defaultBookExportDir()?.let(::File),
             ) ?: return@launch
             prefs.putString(KEY_EXPORT_BOOK_PATH, dir.absolutePath)
-            if (books.isNotEmpty()) startExport(dir.absolutePath, books)
+            if (books.isNotEmpty()) {
+                // 对照 app 端 exportDir 回调: 开启自定义导出时先弹章节配置对话框
+                if (enableCustomExport()) {
+                    showExportSectionConfig(dir.absolutePath, books)
+                } else {
+                    startExport(dir.absolutePath, books)
+                }
+            }
         }
     }
 
@@ -339,15 +351,61 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
         if (dir.isDirectory || dir.mkdirs()) dir.absolutePath else null
     }.getOrNull()
 
-    // 导出配置弹窗 (对照 app 端 showExportConfig): 导出类型 txt|epub (cbz 按 app 端语义
-    // 由图片书自动选择, 无需用户配置)
+    // 导出配置弹窗 (对照 app 端 showExportConfig / dialog_export_config.xml 全量字段):
+    // 导出文件名 JS 规则 / 导出类型 txt|epub / 导出编码 / TXT 不导出章节名
+    // (cbz 按 app 端语义由图片书自动选择, 无需用户配置)
     override fun showExportConfig() {
         DesktopDialogs.show(
             DesktopDialogRequest.ExportConfig(
                 currentType = prefs.getInt(PreferKey.exportType, 0),
-                onConfirm = { type -> prefs.putInt(PreferKey.exportType, type) },
+                currentFileName = prefs.getString(PreferKey.bookExportFileName, ""),
+                currentCharset = prefs.getString(PreferKey.exportCharset, ""),
+                currentNoChapterName = prefs.getBoolean(PreferKey.exportNoChapterName, false),
+                onConfirm = { type, fileName, charset, noChapterName ->
+                    prefs.putInt(PreferKey.exportType, type)
+                    prefs.putString(PreferKey.bookExportFileName, fileName)
+                    prefs.putString(PreferKey.exportCharset, charset)
+                    prefs.putBoolean(PreferKey.exportNoChapterName, noChapterName)
+                },
             )
         )
+    }
+
+    // 自定义导出章节配置弹窗 (对照 app 端 configExportSection / dialog_select_section_export.xml):
+    // 导出所有 / 自定义导出 (章节范围 + epub 分卷大小 + epub 文件名 JS 规则)
+    override fun showExportSectionConfig(path: String, books: List<Book>) {
+        DesktopDialogs.show(
+            DesktopDialogRequest.ExportSectionConfig(
+                path = path,
+                books = books,
+                currentFileName = prefs.getString(PreferKey.episodeExportFileName, ""),
+                onConfirm = { all, scope, size, fileName ->
+                    // 分卷文件名 JS 规则仅在合法时持久化 (对照 etEpubFilename 失焦校验)
+                    if (tryParesExportFileName(fileName)) {
+                        prefs.putString(PreferKey.episodeExportFileName, fileName)
+                    }
+                    if (all) {
+                        startExport(path, books)
+                    } else {
+                        startCustomExport(path, books, scope, size)
+                    }
+                },
+            )
+        )
+    }
+
+    private fun startCustomExport(path: String, books: List<Book>, range: String, size: Int) {
+        if (books.isEmpty()) return
+        scope.launch {
+            Toasters.get().toast("开始导出 ${books.size} 本 (自定义章节)")
+            try {
+                DesktopBookExport.exportCustomEpub(path, books, range, size)
+                Toasters.get().toast("导出完成\n$path")
+            } catch (e: Exception) {
+                AppLog.put("导出书籍出错\n${e.message}", e)
+                Toasters.get().toast("导出书籍出错\n${e.message}")
+            }
+        }
     }
 
     private fun startExport(dir: String, books: List<Book>) {
@@ -445,6 +503,45 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
         Debug.finishChecking()
     }
 
+    // 段评/书评列表: shared 底部弹窗 Overlay (对照 app 端 ReviewListDialog BottomSheetDialogFragment;
+    // 回复详情再开一层由宿主内部处理, 见 ReviewListDialogHost.kt)
+    override fun showReviewListDialog(
+        book: Book,
+        chapter: BookChapter?,
+        paragraphIndex: Int,
+        parentReview: Review?,
+    ): Boolean {
+        AppNavigatorProviders.getOrNull()?.showOverlay(
+            AppOverlay.Dialog(
+                key = "review_list",
+                payload = encodeReviewListDialogPayload(
+                    book,
+                    chapter,
+                    paragraphIndex,
+                    parentReview
+                ),
+            )
+        )
+        return true
+    }
+
+    // 默认封面图集: shared 管理对话框 Overlay (对照 app 端 DefaultCoverGalleryDialog;
+    // 选图加入/删除走 shared 逻辑, 见 DefaultCoverGalleryHost.kt)
+    override fun showDefaultCoverGallery(isNight: Boolean) {
+        AppNavigatorProviders.getOrNull()?.showOverlay(
+            AppOverlay.Dialog(
+                key = "default_cover_gallery",
+                payload = if (isNight) "1" else "0",
+            )
+        )
+    }
+
+    // 刷新默认封面缓存: shared 默认封面链每次组合重读 prefs, 无内存缓存,
+    // 广播书架刷新让封面槽重组重读即可 (对照 app 端 BookCover.upDefaultCover)
+    override fun refreshDefaultCover() {
+        FlowBus.with(EventBus.BOOKSHELF_REFRESH).tryEmit("")
+    }
+
     // ===== 其它设置 =====
 
     override fun setLocalPassword(password: String?) {
@@ -508,6 +605,44 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
                 }.onFailure { error ->
                     AppLog.put("导入关联书籍失败: ${error.message}", error)
                 }
+        }
+    }
+
+    // ===== 阅读样式平台能力 =====
+
+    /**
+     * 阅读背景内置图片列表 (对照 app 端 [RemoteAssetsUtils.getBgList])。
+     * RemoteAssetsUtils 位于 shared jvmAndAndroidMain, 桌面 JVM 直接复用同一下载/缓存链路
+     * (bg:// 由 ImageBitmapLoader.jvm 的 RemoteAssetsUtils.getBgCachePath/downloadBgIfNeeded 支撑),
+     * 背景文字配置弹窗的内置预设列表 (午后沙滩等) 与 Android 端一致。
+     */
+    override fun readerBackgroundImageNames(): List<String> = RemoteAssetsUtils.getBgList()
+
+    /**
+     * 系统 TTS 设置入口 (朗读设置弹窗"系统TTS设置"项): 各平台打开自己的语音设置页。
+     * - Windows: `ms-settings:speech` (设置 → 隐私 → 语音)
+     * - macOS: 系统设置 → 辅助功能 → 朗读内容 (Spoken Content)
+     * - Linux: 尽力尝试 gnome-control-center, 失败提示不支持
+     */
+    override fun openTtsSettings() {
+        val os = System.getProperty("os.name").lowercase()
+        val command = when {
+            os.contains("win") -> listOf("cmd", "/c", "start", "", "ms-settings:speech")
+            os.contains("mac") -> listOf(
+                "open",
+                "x-apple.systempreferences:com.apple.preference.universalaccess?SpokenContent"
+            )
+
+            os.contains("linux") -> listOf("gnome-control-center", "universal-access")
+            else -> null
+        }
+        if (command == null) {
+            unsupported("系统 TTS 设置")
+            return
+        }
+        runCatching { ProcessBuilder(command).start() }.onFailure {
+            AppLog.put("打开系统 TTS 设置失败: ${it.message}", it)
+            unsupported("系统 TTS 设置")
         }
     }
 

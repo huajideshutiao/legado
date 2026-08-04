@@ -64,6 +64,7 @@ fun TocRoute(
     val resultKey = entry.resultKey
     TocContent(
         book = book,
+        navigator = navigator,
         onBack = { navigator.pop() },
         onOpenChapter = { chapterIndex, chapterPos, chapterChanged ->
             if (resultKey != null) {
@@ -78,7 +79,7 @@ fun TocRoute(
                 navigator.push(AppRoute.Reader(route.book, chapterIndex, chapterPos))
             }
         },
-        onShowTocRegexDialog = { navigator.push(AppRoute.TxtTocRule) },
+        // 目录规则应用由 TocContent 内部完成 (对照原版 TocActivity.upBookAndToc), 路由无额外动作
     )
 }
 
@@ -89,8 +90,9 @@ fun TocRoute(
 @Composable
 fun TocDialogHost(
     book: Book,
+    navigator: AppNavigator,
     onOpenChapter: (chapterIndex: Int, chapterPos: Int) -> Unit,
-    onShowTocRegexDialog: () -> Unit,
+    onTocRegexChanged: (book: Book, tocRegex: String) -> Unit = { _, _ -> },
     onDismiss: () -> Unit,
 ) {
     AppBottomSheetDialog(
@@ -105,14 +107,12 @@ fun TocDialogHost(
             ) {
                 TocContent(
                     book = book,
+                    navigator = navigator,
                     onBack = onDismiss,
                     onOpenChapter = { chapterIndex, chapterPos, _ ->
                         onOpenChapter(chapterIndex, chapterPos)
                     },
-                    onShowTocRegexDialog = {
-                        onDismiss()
-                        onShowTocRegexDialog()
-                    },
+                    onTocRegexChanged = onTocRegexChanged,
                 )
             }
         }
@@ -126,16 +126,18 @@ fun TocDialogHost(
  * 由宿主 (TocRoute 或 [TocDialogHost]) 决定 pop/push 或 dismiss。
  *
  * @param book 当前书籍
+ * @param navigator 导航器 (TXT 目录规则对话框的新增/导入/帮助 Overlay 用)
  * @param onBack 返回 (路由=pop, 弹窗=dismiss)
  * @param onOpenChapter 选中章节 (chapterIndex, chapterPos, chapterChanged)
- * @param onShowTocRegexDialog 打开 TXT 目录规则管理
+ * @param onTocRegexChanged 目录正则规则应用后的宿主通知 (book 已写入 tocUrl, 宿主可额外重载)
  */
 @Composable
 fun TocContent(
     book: Book,
+    navigator: AppNavigator,
     onBack: () -> Unit,
     onOpenChapter: (chapterIndex: Int, chapterPos: Int, chapterChanged: Boolean) -> Unit,
-    onShowTocRegexDialog: () -> Unit,
+    onTocRegexChanged: (book: Book, tocRegex: String) -> Unit = { _, _ -> },
 ) {
     val scope = rememberCoroutineScope()
     val screenModel = remember(book.bookUrl) {
@@ -149,6 +151,9 @@ fun TocContent(
     DisposableEffect(screenModel) {
         onDispose { screenModel.onCleared() }
     }
+
+    // TXT 目录规则对话框显隐 (对照原版 TxtTocRuleDialog: 全高底部弹窗, 基于当前生效规则)
+    var showTocRegexDialog by remember { mutableStateOf(false) }
 
     // 初始化书籍数据
     LaunchedEffect(book) {
@@ -173,7 +178,7 @@ fun TocContent(
     var showLogDialog by remember { mutableStateOf(false) }
     var editingBookmark by remember { mutableStateOf<Bookmark?>(null) }
 
-    val actions = remember(screenModel, scope, onBack, onOpenChapter, onShowTocRegexDialog) {
+    val actions = remember(screenModel, scope, onBack, onOpenChapter, onTocRegexChanged) {
         object : TocUiActions {
             override fun onBack() {
                 onBack()
@@ -234,9 +239,9 @@ fun TocContent(
                 screenModel.dispatch(TocUiEvent.UpBookTocRule(curBook))
             }
 
-            // 跳转 TXT 目录规则管理页
+            // 弹起 TXT 目录规则对话框 (对照原版 TxtTocRuleDialog)
             override fun showTocRegexDialog() {
-                onShowTocRegexDialog()
+                showTocRegexDialog = true
             }
 
             // 导出书签 JSON: 平台文件选择器 + BackupFileOps 写文件 (对照 viewModel.saveBookmark)
@@ -337,6 +342,23 @@ fun TocContent(
                 }
                 editingBookmark = null
             },
+        )
+    }
+
+    // TXT 目录规则对话框 (对照原版 TxtTocRuleDialog: 全高底部弹窗, 预选中当前生效规则)
+    if (showTocRegexDialog) {
+        val curBook = screenModel.state.value.book ?: book
+        TxtTocRuleDialogHost(
+            book = curBook,
+            navigator = navigator,
+            onTocRegexResult = { tocRegex ->
+                showTocRegexDialog = false
+                // 对照原版 TocActivity.onTocRegexDialogResult: book.tocUrl = tocRegex + upBookAndToc
+                curBook.tocUrl = tocRegex
+                screenModel.dispatch(TocUiEvent.UpBookTocRule(curBook))
+                onTocRegexChanged(curBook, tocRegex)
+            },
+            onDismiss = { showTocRegexDialog = false },
         )
     }
 

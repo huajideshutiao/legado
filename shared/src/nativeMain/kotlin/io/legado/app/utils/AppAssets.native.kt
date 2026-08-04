@@ -1,4 +1,7 @@
 package io.legado.app.utils
 
-/** iOS/鸿蒙无 assets 目录, 内置背景预览图不可用。 */
-internal actual fun readAppAssetBytes(path: String): ByteArray? = null
+/**
+ * iOS/鸿蒙未接入本通道 (RemoteAssetsUtils 仅在 jvmAndAndroidMain, native 无调用方);
+ * 内置背景缩略图由 sharedUiMain 消费方直接走 composeResources Res.readBytes, 无需平台实现。
+ */
+internal actual fun readSharedResourceBytes(path: String): ByteArray? = null

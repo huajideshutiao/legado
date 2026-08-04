@@ -16,6 +16,7 @@ import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.PinnedExplore
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.sourceLoginOverlayPayload
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.compose.component.AlertButton
@@ -26,6 +27,7 @@ import io.legado.app.ui.main.explore.ExploreUiActions
 import io.legado.app.ui.main.explore.ExploreUiEvent
 import io.legado.app.ui.main.explore.ExploreUiState
 import io.legado.app.ui.root.AppNavigator
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResults
@@ -144,7 +146,13 @@ fun ExploreRoute(
             }
 
             override fun onLogin(source: BookSourcePart) {
-                navigator.push(AppRoute.Login(source.bookSourceUrl))
+                // 纯 Overlay 弹登录对话框, 不推新路由 (源按 bookSourceUrl 查库)
+                navigator.showOverlay(
+                    AppOverlay.Dialog(
+                        key = "sourceLogin",
+                        payload = sourceLoginOverlayPayload(source.bookSourceUrl),
+                    )
+                )
             }
 
             override fun onSearchBook(source: BookSourcePart) {
@@ -158,10 +166,6 @@ fun ExploreRoute(
 
             override fun onRefreshSource(source: BookSourcePart) {
                 screenModel.dispatch(ExploreUiEvent.RefreshSource(source))
-            }
-
-            override fun onRefreshAll() {
-                screenModel.dispatch(ExploreUiEvent.RefreshAll)
             }
 
             override fun onDeleteSource(source: BookSourcePart) {

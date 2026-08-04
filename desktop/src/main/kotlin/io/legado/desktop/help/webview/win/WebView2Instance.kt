@@ -50,8 +50,17 @@ internal object WebView2Environment {
                 startCreate(it)
             }
         }
-        return withTimeoutOrNull(CREATE_TIMEOUT_MS) { deferred.await() }
-            ?.also { environment = it }
+        val env = withTimeoutOrNull(CREATE_TIMEOUT_MS) { deferred.await() }
+        synchronized(this) {
+            if (env != null) environment = env
+            // 无论成败都清 pending: 失败/超时后复用同一个已结束的 deferred 会让
+            // 后续所有调用立刻拿到 null, 进程内永远无法重试 (必须重启才恢复)
+            pending = null
+        }
+        if (env == null) {
+            AppLog.put("WebView2 环境创建失败或超时 (${CREATE_TIMEOUT_MS}ms), 内嵌浏览器不可用")
+        }
+        return env
     }
 
     private fun startCreate(deferred: CompletableDeferred<Pointer?>) {
@@ -116,6 +125,10 @@ internal class WebView2Instance private constructor(
     @Volatile
     var onNavigationCompleted: ((String) -> Unit)? = null
 
+    /** 导航失败回调 (NavigationCompleted IsSuccess=false, 参数为当前地址)。 */
+    @Volatile
+    var onNavigationFailed: ((String) -> Unit)? = null
+
     /** 导航开始回调; 返回 true 取消本次导航, 对应 shouldOverrideUrlLoading。 */
     @Volatile
     var onNavigationStarting: ((url: String, redirected: Boolean) -> Boolean)? = null
@@ -127,6 +140,10 @@ internal class WebView2Instance private constructor(
     /** 用户点窗口 X 的回调。 */
     @Volatile
     var onWindowClose: (() -> Unit)? = null
+
+    /** 可见窗口的 CustomTab 工具栏 (无头实例为 null)。loop 线程创建, 之后只读。 */
+    @Volatile
+    var toolbar: WebView2Toolbar? = null
 
     suspend fun currentUrl(): String? = WebView2Loop.runOnLoop {
         if (closed) null else readSource()
@@ -298,7 +315,14 @@ internal class WebView2Instance private constructor(
 
         val navCompleted = ComHandler(object : ComInvokeEventCb {
             override fun callback(self: Pointer, sender: Pointer?, args: Pointer?): Int {
+                // IsSuccess=false 表示导航失败 (网络错误/404/DNS), 对应 app 端
+                // WebViewClient.onReceivedError; 桌面端无内建处理, 失败必须显式反馈
+                val success = args?.let {
+                    IntByReference().also { r -> vtbl(args, Wv2.NAV_COMPLETED_GET_IS_SUCCESS, r) }
+                        .value != 0
+                } ?: true
                 val url = readSource().orEmpty()
+                if (!success) runCatching { onNavigationFailed?.invoke(url) }
                 runCatching { onNavigationCompleted?.invoke(url) }
                 return S_OK
             }
@@ -353,10 +377,20 @@ internal class WebView2Instance private constructor(
     private fun applyLayout() {
         // 窗口本身不可见时也把 controller 置为可见: 否则 Chromium 按"被遮挡"降频, 脚本/定时器会停
         vtbl(controller, Wv2.CTRL_PUT_IS_VISIBLE, 1)
-        vtbl(controller, Wv2.CTRL_PUT_BOUNDS, WebView2Loop.clientRect(hwnd))
+        val rect = WebView2Loop.clientRect(hwnd)
+        val toolbarTop = toolbar?.let { WebView2Toolbar.HEIGHT } ?: 0
+        vtbl(controller, Wv2.CTRL_PUT_BOUNDS, RectValue().apply {
+            left = rect.left
+            top = rect.top + toolbarTop
+            right = rect.right
+            bottom = rect.bottom
+        })
     }
 
-    /** 对齐 app 端 BackstageWebView: 开 JS, 关脚本弹窗/devtools/内建错误页。 */
+    /** 对齐 app 端 BackstageWebView: 开 JS, 关脚本弹窗/devtools。
+     * 内建错误页保持开启: app 端关它是因有 onReceivedError 自定义处理, 桌面端
+     * 无等价实现, 关闭会导致加载失败时一片空白 (曾表现为"页面错误无行为");
+     * 开启后 Chromium 错误页自带重试按钮, 配合 [onNavigationFailed] 提示。 */
     private fun applyDefaultSettings() {
         val settings = PointerByReference()
             .takeIf { vtbl(webview, Wv2.WV_GET_SETTINGS, it) == S_OK }?.value ?: return
@@ -364,7 +398,7 @@ internal class WebView2Instance private constructor(
             vtbl(settings, Wv2.SETTINGS_PUT_IS_SCRIPT_ENABLED, 1)
             vtbl(settings, Wv2.SETTINGS_PUT_ARE_DEFAULT_SCRIPT_DIALOGS_ENABLED, 0)
             vtbl(settings, Wv2.SETTINGS_PUT_ARE_DEV_TOOLS_ENABLED, 0)
-            vtbl(settings, Wv2.SETTINGS_PUT_IS_BUILT_IN_ERROR_PAGE_ENABLED, 0)
+            vtbl(settings, Wv2.SETTINGS_PUT_IS_BUILT_IN_ERROR_PAGE_ENABLED, 1)
         } finally {
             comRelease(settings)
         }
@@ -393,12 +427,14 @@ internal class WebView2Instance private constructor(
          * 但 controller 仍置可见, 保证 JS 与定时器照常跑。
          *
          * @param bottomSheet 置底半屏语义 (对照 app 端 BottomSheetDialog): 窗口高取屏幕一半贴底
+         * @param toolbarSpec 非空时给可见窗口挂 CustomTab 式工具栏 (自绘, 见 [WebView2Toolbar])
          */
         suspend fun create(
             visible: Boolean,
             title: String,
             bottomSheet: Boolean = false,
             sniffResources: Boolean = false,
+            toolbarSpec: WebView2ToolbarSpec? = null,
         ): WebView2Instance? {
             val environment = WebView2Environment.get() ?: return null
             val deferred = CompletableDeferred<Pair<WinDef.HWND, Pointer>?>()
@@ -408,7 +444,11 @@ internal class WebView2Instance private constructor(
                     WebView2Loop.createWindow(
                         visible,
                         title,
-                        bounds = bottomSheetBounds(bottomSheet)
+                        bounds = when {
+                            bottomSheet -> bottomSheetBounds(true)
+                            visible -> WebView2Loop.centeredBounds()
+                            else -> WebView2Loop.WindowBounds()
+                        }
                     )
                 }
                     .onFailure { AppLog.put("WebView2 宿主窗口创建失败", it) }
@@ -436,21 +476,37 @@ internal class WebView2Instance private constructor(
             }
             val created = withTimeoutOrNull(CREATE_TIMEOUT_MS) { deferred.await() }
             handlerBox[0]?.let { creating.remove(it) }
-            val (hwnd, controller) = created ?: return null
+            val (hwnd, controller) = created ?: run {
+                AppLog.put("WebView2 窗口/controller 创建超时或失败 (${CREATE_TIMEOUT_MS}ms)")
+                return null
+            }
 
             return WebView2Loop.runOnLoop {
                 val webviewRef = PointerByReference()
                 if (vtbl(controller, Wv2.CTRL_GET_CORE_WEBVIEW2, webviewRef) != S_OK) {
+                    AppLog.put("WebView2 获取 CoreWebView2 失败")
                     comRelease(controller)
                     User32.INSTANCE.DestroyWindow(hwnd)
                     return@runOnLoop null
                 }
                 WebView2Instance(hwnd, controller, webviewRef.value).apply {
+                    toolbar = if (visible && toolbarSpec != null) {
+                        val client = WebView2Loop.clientRect(hwnd)
+                        WebView2Toolbar(
+                            hwnd,
+                            toolbarSpec.title,
+                            toolbarSpec.isLogin,
+                            toolbarSpec.saveResult,
+                        ).also { it.layout(client.right) }
+                    } else null
                     applyLayout()
                     applyDefaultSettings()
                     bindEvents(sniffResources)
-                    WebView2Loop.hookWindow(hwnd) { message ->
-                        when (message) {
+                    WebView2Loop.hookWindow(hwnd) { message, wParam, lParam ->
+                        val t = toolbar
+                        if (t != null && t.onWindowMessage(message, wParam, lParam)) {
+                            true
+                        } else when (message) {
                             WinUser.WM_SIZE -> {
                                 applyLayout()
                                 false
@@ -464,8 +520,20 @@ internal class WebView2Instance private constructor(
                             else -> false
                         }
                     }
+                    // 关键: 窗口显示 (ShowWindow) 先于 hook 注册, 首个 WM_PAINT 被
+                    // DefWindowProc 吃掉 (不画工具栏), 之后若无失效区域工具栏永远不画
+                    // (曾表现为"控制栏下面一行空白": 客户区 0..HEIGHT 是窗口默认白底)。
+                    // hook 注册后必须主动触发一次重绘。
+                    User32.INSTANCE.InvalidateRect(hwnd, null, false)
                 }
             }
         }
     }
 }
+
+/** 可见窗口工具栏的构造参数 (仅 [WebView2Instance.create] visible=true 时传入)。 */
+internal class WebView2ToolbarSpec(
+    val title: String,
+    val isLogin: Boolean,
+    val saveResult: Boolean,
+)
