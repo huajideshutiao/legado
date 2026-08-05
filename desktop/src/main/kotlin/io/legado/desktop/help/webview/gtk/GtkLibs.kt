@@ -187,6 +187,9 @@ internal object GtkLibs {
         fun gtk_window_get_screen(window: Pointer): Pointer
         fun gtk_window_set_position(window: Pointer, position: Int)
         fun gtk_window_present(window: Pointer)
+        fun gtk_window_is_maximized(window: Pointer): Int
+        fun gtk_window_maximize(window: Pointer)
+        fun gtk_window_unmaximize(window: Pointer)
         fun gtk_widget_show(widget: Pointer)
         fun gtk_widget_hide(widget: Pointer)
         fun gtk_widget_destroy(widget: Pointer)

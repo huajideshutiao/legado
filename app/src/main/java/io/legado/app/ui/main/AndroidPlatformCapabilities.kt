@@ -73,7 +73,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.Review
-import io.legado.app.exception.NoBooksDirException
+import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.CrashHandler
@@ -113,7 +113,7 @@ import io.legado.app.ui.book.import.local.ImportBookViewModel
 import io.legado.app.ui.book.read.ReviewListDialog
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.book.read.config.HttpTtsEditDialog
-import io.legado.app.ui.book.source.manage.BookSourceSort
+import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.manage.BookSourceViewModel
 import io.legado.app.ui.compose.component.AppAutoCompleteField
 import io.legado.app.ui.compose.component.AppCheckbox
@@ -243,6 +243,13 @@ class AndroidPlatformCapabilities(
 
     override fun openExternalUrl(url: String) {
         activity.openUrl(url)
+    }
+
+    override fun openWebView(url: String, sourceKey: String, sourceName: String) {
+        // 移动端保留内嵌 WebViewRoute 路由语义 (对话框内嵌)
+        AppNavigatorProviders.getOrNull()?.push(
+            io.legado.app.ui.root.AppRoute.WebView(url, sourceKey, sourceName)
+        )
     }
 
     override fun shareText(text: String) {
@@ -903,7 +910,7 @@ class AndroidPlatformCapabilities(
                 activity.runOnUiThread { success?.invoke(merged) }
             } catch (e: Throwable) {
                 when (e) {
-                    is NoBooksDirException -> onAction("selectBooksDir")
+                    is InvalidBooksDirException -> onAction("selectBooksDir")
                     else -> AppLog.put("ImportWebFileError\n${e.localizedMessage}", e, true)
                 }
             } finally {
@@ -929,7 +936,7 @@ class AndroidPlatformCapabilities(
                 activity.runOnUiThread { success?.invoke(uri.toString()) }
             } catch (e: Throwable) {
                 when (e) {
-                    is NoBooksDirException -> onAction("selectBooksDir")
+                    is InvalidBooksDirException -> onAction("selectBooksDir")
                     else -> AppLog.put("DownloadWebFileError\n${e.localizedMessage}", e, true)
                 }
             } finally {

@@ -174,6 +174,12 @@ kotlin {
                 implementation("org.jetbrains.compose.foundation:foundation:$composeVersion")
                 implementation("org.jetbrains.compose.material:material:$composeVersion")
                 implementation("org.jetbrains.compose.ui:ui:$composeVersion")
+                // CMP 1.10+: androidx.compose.ui.tooling.preview.Preview 注解在 commonMain 可用
+                // (org.jetbrains.compose.ui:ui-tooling-preview 的 commonMain 声明; android 变体
+                // 转发到 androidx.compose.ui:ui-tooling-preview, 与 androidMain 的
+                // components-ui-tooling-preview 解析到同一 androidx 构件, 无重复类)。
+                // @Preview 函数合并进 sharedUiMain 后在此声明, IDE/desktop 插件按 FQN 识别。
+                implementation("org.jetbrains.compose.ui:ui-tooling-preview:$composeVersion")
                 // 书架 DB 流门控 (repeatOnLifecycle); ohos 依赖链不含本源集, 不受 fork 影响
                 implementation(libs.compose.lifecycle.runtime.multiplatform)
             }

@@ -51,6 +51,8 @@ import legado.shared.generated.resources.plus
 import legado.shared.generated.resources.reduce
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 数字选择对话框 (Compose Multiplatform / sharedUiMain)。
@@ -298,5 +300,61 @@ fun NumberPickerDialog(
         shape = DesignTokens.dialogShape,
         // 显式容器色, 避免默认色与项目其他对话框 (8dp 圆角) 视觉割裂
         backgroundColor = AppTheme.colors.fillet,
+    )
+}
+
+// ===== @Preview 合并自 androidMain 的 dialog/NumberPickerDialogPreviews.kt =====
+
+/**
+ * [NumberPickerDialog.kt] 中 [NumberPickerDialog] 的 @Preview。
+ */
+
+@Preview
+@Composable
+fun NumberPickerDialogPreview() = LegadoThemePreview {
+    NumberPickerDialog(
+        title = "字号",
+        value = 18,
+        range = 12..36,
+        onConfirm = {},
+        onDismiss = {},
+    )
+}
+
+@Preview
+@Composable
+fun NumberPickerDialogLargeRangePreview() = LegadoThemePreview {
+    NumberPickerDialog(
+        title = "换源延迟(ms)",
+        value = 500,
+        range = 0..3000,
+        onConfirm = {},
+        onDismiss = {},
+    )
+}
+
+@Preview
+@Composable
+fun NumberPickerDialogWithNeutralPreview() = LegadoThemePreview {
+    NumberPickerDialog(
+        title = "端口",
+        value = 8080,
+        range = 1024..65535,
+        onConfirm = {},
+        onDismiss = {},
+        neutralButtonText = "默认",
+        onNeutral = {},
+    )
+}
+
+@Preview
+@Composable
+fun NumberPickerDialogDarkPreview() = LegadoThemePreview(dark = true) {
+    NumberPickerDialog(
+        title = "字号",
+        value = 16,
+        range = 12..36,
+        onConfirm = {},
+        onDismiss = {},
     )
 }

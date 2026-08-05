@@ -40,6 +40,9 @@ import legado.shared.generated.resources.ic_save
 import legado.shared.generated.resources.name
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
+import io.legado.app.ui.preview.previewServers
 
 /**
  * 服务器配置编辑对话框 (KMP 共享, app/desktop/iOS 复用)。
@@ -181,4 +184,38 @@ fun ServerConfigDialog(
             }
         }
     }
+}
+
+// ===== @Preview 合并自 androidMain 的 book/import/remote/ServerDialogsPreviews.kt (ServerConfigDialog) =====
+
+// ---- ServerConfigDialog ----
+
+@Preview
+@Composable
+fun ServerConfigDialogPreview() = LegadoThemePreview {
+    ServerConfigDialog(
+        server = previewServers.first(),
+        onSave = {},
+        onDismiss = {},
+    )
+}
+
+@Preview
+@Composable
+fun ServerConfigDialogNewPreview() = LegadoThemePreview {
+    ServerConfigDialog(
+        server = null,
+        onSave = {},
+        onDismiss = {},
+    )
+}
+
+@Preview
+@Composable
+fun ServerConfigDialogDarkPreview() = LegadoThemePreview(dark = true) {
+    ServerConfigDialog(
+        server = previewServers.first(),
+        onSave = {},
+        onDismiss = {},
+    )
 }

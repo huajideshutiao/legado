@@ -8,8 +8,10 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.utils.NetworkUtils
+import io.legado.app.utils.browseUrl
 import io.legado.desktop.help.webview.CHECK_HOST_COOKIE_TEXT
 import io.legado.desktop.help.webview.DesktopWebViewEngine
+import io.legado.desktop.help.webview.ToolbarAction
 import io.legado.desktop.help.webview.WebViewFetchRequest
 import io.legado.desktop.help.webview.WebViewFetchResult
 import io.legado.desktop.help.webview.WebViewWindowHandle
@@ -19,7 +21,6 @@ import io.legado.desktop.help.webview.mac.ObjC.ns
 import io.legado.desktop.help.webview.mac.ObjC.property
 import io.legado.desktop.help.webview.mac.ObjC.ptr
 import io.legado.desktop.help.webview.mac.ObjC.void
-import io.legado.desktop.help.webview.win.ToolbarAction
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -245,6 +246,18 @@ internal class MacSession private constructor(
     private val cookieStore: Pointer?,
     val toolbar: MacToolbar?,
 ) {
+
+    /** 同步 OS 窗口标题 (工具栏已不绘制标题文字, 2026-08-06)。 */
+    fun setWindowTitle(title: String) {
+        val w = window ?: return
+        void(w, "setTitle:", ns(title))
+    }
+
+    /** 全屏切换 (NSWindow toggleFullScreen:, 对照原版 menu_full_screen)。 */
+    fun toggleFullScreen() {
+        val w = window ?: return
+        void(w, "toggleFullScreen:", null)
+    }
 
     /** 导航完成回调 (主线程), 参数为当前 URL。 */
     var onNavigated: ((String) -> Unit)? = null
@@ -635,8 +648,9 @@ private class MacWindowHandle(
                 onNavigationForHistory(url)
                 toolbar.setCanNavigate(historyIndex > 0, historyIndex < history.size - 1)
                 val docTitle = created.propertyString("title")
+                // 2026-08-06 去工具栏标题 (用户反馈多余): 仅同步 OS 窗口标题
                 if (!docTitle.isNullOrBlank() && !docTitle.startsWith("http")) {
-                    toolbar.setTitle(docTitle)
+                    created.setWindowTitle(docTitle)
                 }
             }
         }
@@ -670,6 +684,29 @@ private class MacWindowHandle(
             }
 
             ToolbarAction.REFRESH -> target.reload()
+
+            // 复制当前页 URL (对照原版 menu_copy_url, 与 Windows 引擎行为一致)
+            ToolbarAction.COPY_URL -> {
+                val url = currentUrl ?: request.url
+                runCatching {
+                    java.awt.Toolkit.getDefaultToolkit().systemClipboard
+                        .setContents(java.awt.datatransfer.StringSelection(url), null)
+                    Toasters.get().toast("已复制 URL")
+                }.onFailure { AppLog.put("复制 URL 失败", it) }
+            }
+
+            // 系统浏览器打开当前页 (对照原版 menu_open_in_browser)
+            ToolbarAction.OPEN_IN_BROWSER -> {
+                browseUrl(currentUrl ?: request.url)
+            }
+
+            // Mac 工具栏无溢出菜单按钮 (仅 Windows 有 ⋮)
+            ToolbarAction.MENU -> Unit
+
+            // 最大化/全屏切换 (对照原版 menu_full_screen): NSWindow toggleFullScreen
+            ToolbarAction.FULL_SCREEN -> {
+                target.toggleFullScreen()
+            }
 
             ToolbarAction.OK -> onOkPressed(target)
 

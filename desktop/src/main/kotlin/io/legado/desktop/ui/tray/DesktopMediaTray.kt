@@ -4,10 +4,13 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
 import io.legado.app.help.toast.DesktopTrayNotifier
+import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.service.ReadAloudControllerShared
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
 import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.toReadRoute
 import io.legado.app.utils.FlowBus
 import io.legado.desktop.ui.tray.DesktopMediaTray.syncVisibility
 import kotlinx.coroutines.CoroutineScope
@@ -56,6 +59,8 @@ class ReadAloudTrayBinding(
     val controller: ReadAloudControllerShared,
     val bookName: () -> String? = { null },
     val chapterTitle: () -> String? = { null },
+    /** 定时关闭分钟数 (对照原版通知标题的倒计时; 0=未启用)。 */
+    val timeMinute: () -> Int = { 0 },
 )
 
 /**
@@ -129,6 +134,18 @@ object DesktopMediaTray {
     @Volatile
     private var monitorScope: CoroutineScope? = null
 
+    /** 最近音频播放进度 (AUDIO_PROGRESS 事件驱动任务栏进度条)。 */
+    @Volatile
+    private var audioProgressMs: Int = 0
+
+    /** 最近音频总时长 (AUDIO_SIZE 事件)。 */
+    @Volatile
+    private var audioDurationMs: Int = 0
+
+    /** 最近音频定时分钟 (AUDIO_DS 事件, tooltip 标题倒计时显示)。 */
+    @Volatile
+    private var audioTimerMinute: Int = 0
+
     @Volatile
     private var trayIcon: TrayIcon? = null
 
@@ -165,9 +182,37 @@ object DesktopMediaTray {
         this.exitAction = exitAction
         monitorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { s ->
             // 音频状态: 事件仅作变化触发, 判定直接读 AudioPlayShared.status (与事件同源同步更新)
-            s.launch { FlowBus.withSticky(EventBus.AUDIO_STATE).collect { syncVisibility() } }
+            s.launch {
+                FlowBus.withSticky(EventBus.AUDIO_STATE).collect { syncVisibility() }
+            }
             // 章节标题变化只刷 tooltip
             s.launch { FlowBus.withSticky(EventBus.AUDIO_SUB_TITLE).collect { refresh() } }
+            // 定时分钟 (通知标题倒计时显示, 对照原版 playing_timer 1..60 分钟)
+            s.launch {
+                FlowBus.withSticky(EventBus.AUDIO_DS).collect { value ->
+                    if (value is Int) {
+                        audioTimerMinute = value
+                        refresh()
+                    }
+                }
+            }
+            // 进度/总时长: 驱动任务栏进度条 (对照原版通知进度刷新)
+            s.launch {
+                FlowBus.withSticky(EventBus.AUDIO_PROGRESS).collect { value ->
+                    if (value is Int) {
+                        audioProgressMs = value
+                        updateTaskbar()
+                    }
+                }
+            }
+            s.launch {
+                FlowBus.withSticky(EventBus.AUDIO_SIZE).collect { value ->
+                    if (value is Int) {
+                        audioDurationMs = value
+                        updateTaskbar()
+                    }
+                }
+            }
             // 朗读状态: 绑定 StateFlow 首值立即下发, 保证启动期就完成一次显隐同步
             s.launch {
                 readAloudBinding
@@ -175,6 +220,8 @@ object DesktopMediaTray {
                     .collect { syncVisibility() }
             }
         }
+        // 任务栏缩略图按钮/进度条/全局媒体键 (Windows 专属, 内部自检平台)
+        DesktopTaskbarMedia.install()
         syncVisibility()
     }
 
@@ -183,6 +230,7 @@ object DesktopMediaTray {
         monitorScope?.cancel()
         monitorScope = null
         DesktopTrayNotifier.sender = null
+        DesktopTaskbarMedia.uninstall()
         trayIcon?.let { icon ->
             runCatching { SystemTray.getSystemTray().remove(icon) }
         }
@@ -223,6 +271,7 @@ object DesktopMediaTray {
             if (monitorScope == null) return@invokeLater
             if (anyBackgroundActive()) showTrayIcon() else hideTrayIcon()
             refresh()
+            updateTaskbar()
         }
     }
 
@@ -232,11 +281,14 @@ object DesktopMediaTray {
         if (GraphicsEnvironment.isHeadless() || !SystemTray.isSupported()) return
         val icon = TrayIcon(loadTrayImage(), appName())
         icon.isImageAutoSize = true
-        // 左键单击恢复窗口 (不加 ActionListener: Windows 上双击会与本监听重复触发)
-        // 右键弹 Swing 菜单: 刻意不给 TrayIcon 绑 java.awt.PopupMenu (中文会画成方块, 见类注释)
+        // 左键单击 = 原版通知点击行为: 恢复窗口 + 跳到对应页面
+        // (不加 ActionListener: Windows 上双击会与本监听重复触发)
         icon.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
-                if (e.button == MouseEvent.BUTTON1) activateWindow()
+                if (e.button == MouseEvent.BUTTON1) {
+                    activateWindow()
+                    jumpToActive()
+                }
             }
 
             // popupTrigger 的时机各平台不同 (Windows 在 released, macOS/Linux 在 pressed), 都接
@@ -299,23 +351,13 @@ object DesktopMediaTray {
         val lines = ArrayList<String>(2)
         when {
             audioActive -> {
-                val prefix = if (audioStatus == Status.PAUSE) {
-                    str("audio_pause", "播放暂停")
-                } else {
-                    str("audio_play_t", "正在播放")
-                }
-                lines += titleLine(prefix, AudioPlayShared.book?.name)
+                lines += audioTitleLine(audioStatus, audioTimerMinute)
                 lines += AudioPlayShared.durChapter?.title?.takeUnless { it.isEmpty() }
                     ?: str("audio_play_s", "点击打开播放界面")
             }
 
             aloudActive -> {
-                val prefix = if (aloudState == ReadAloudState.PAUSED) {
-                    str("read_aloud_pause", "朗读暂停")
-                } else {
-                    str("read_aloud_t", "正在朗读")
-                }
-                lines += titleLine(prefix, aloud?.bookName())
+                lines += aloudTitleLine(aloud, aloudState)
                 lines += aloud?.chapterTitle()?.takeUnless { it.isEmpty() }
                     ?: str("read_aloud_s", "点击打开阅读界面")
             }
@@ -325,8 +367,74 @@ object DesktopMediaTray {
         return lines.joinToString("\n").take(TOOLTIP_MAX)
     }
 
+    /**
+     * 音频标题行 (对照原版 createNotification):
+     * pause → "播放暂停"; 定时 1..60 分钟 → "正在播放（还剩 N 分钟）"; 否则 "正在播放", 后接 ": 书名"
+     */
+    private fun audioTitleLine(audioStatus: Int, timerMinute: Int): String {
+        val prefix = when {
+            audioStatus == Status.PAUSE -> str("audio_pause", "播放暂停")
+            timerMinute in 1..60 -> timerText("playing_timer", timerMinute)
+            else -> str("audio_play_t", "正在播放")
+        }
+        return titleLine(prefix, AudioPlayShared.book?.name)
+    }
+
+    /** 朗读标题行 (对照原版 createNotification): 定时 > 0 分钟即显示倒计时 (与音频的 1..60 条件不同)。 */
+    private fun aloudTitleLine(aloud: ReadAloudTrayBinding?, aloudState: ReadAloudState?): String {
+        val prefix = when {
+            aloudState == ReadAloudState.PAUSED -> str("read_aloud_pause", "朗读暂停")
+            (aloud?.timeMinute() ?: 0) > 0 -> timerText("read_aloud_timer", aloud!!.timeMinute())
+            else -> str("read_aloud_t", "正在朗读")
+        }
+        return titleLine(prefix, aloud?.bookName())
+    }
+
+    /** 定时倒计时文案 (jvmGetString 支持 %d 占位符; 缺 key 时兜底)。 */
+    private fun timerText(key: String, minute: Int): String {
+        val s = jvmGetString(key, minute)
+        return if (s != key) s else "$key $minute"
+    }
+
     private fun titleLine(prefix: String, bookName: String?): String =
         if (bookName.isNullOrEmpty()) prefix else "$prefix: $bookName"
+
+    /** 任务栏缩略图按钮/进度条刷新 (Windows 专属, 内部自检)。 */
+    private fun updateTaskbar() {
+        DesktopTaskbarMedia.update(
+            audioStatus = AudioPlayShared.status,
+            aloud = readAloudBinding.value,
+            progressMs = audioProgressMs,
+            durationMs = audioDurationMs,
+        )
+    }
+
+    // ==================== 跳转 (对照原版通知点击行为) ====================
+
+    /**
+     * 跳到当前后台任务对应的页面 (原版通知 contentIntent 的桌面等价):
+     * - 音频活跃: 打开音频播放页 (对照 AudioPlayActivity)
+     * - 朗读活跃: 打开阅读页 (对照 ReaderActivity)
+     * 经 AppNavigatorProviders 全局导航 (非 Composable 代码的既有入口)。
+     */
+    private fun jumpToActive() {
+        val navigator = AppNavigatorProviders.getOrNull() ?: return
+        val audioActive = AudioPlayShared.status != Status.STOP
+        val aloud = readAloudBinding.value
+        val aloudActive = aloud?.controller?.state?.value?.let {
+            it == ReadAloudState.PLAYING || it == ReadAloudState.PAUSED
+        } ?: false
+        val route = when {
+            // 音频优先 (与托盘菜单/媒体键一致)
+            audioActive -> AudioPlayShared.book?.toReadRoute()
+            aloudActive -> ActiveReadBookRegistry.current?.bookValue?.toReadRoute()
+            else -> null
+        }
+        if (route != null) {
+            runCatching { navigator.push(route) }
+                .onFailure { AppLog.put("托盘跳转书籍失败", it) }
+        }
+    }
 
     // ==================== 菜单 ====================
 
@@ -440,7 +548,7 @@ object DesktopMediaTray {
             addReadAloudItems(menu, aloud!!, aloudState == ReadAloudState.PAUSED)
         }
         if (audioActive || aloudActive) menu.addSeparator()
-        menu.add(item(str("show", "显示")) { activateWindow() })
+        // 无"显示"项: 恢复窗口 + 跳转对应页面 (原版通知点击行为) 由托盘左键单击承载
         menu.add(item(str("exit", "退出")) { exitAction?.invoke() })
         // 选中菜单项 / ESC 关闭时把宿主窗口一并收掉, 免得 1x1 置顶窗赖在前台
         menu.addPopupMenuListener(object : PopupMenuListener {
@@ -455,10 +563,12 @@ object DesktopMediaTray {
         return menu
     }
 
-    /** 对照 AudioPlayService 通知 action: 上一章 / 播放暂停 / 下一章 / 停止。 */
+    /** 对照 AudioPlayService 通知 action: Timer / 上一章 / 播放暂停 / 下一章 / 停止。 */
     private fun addAudioItems(popup: JPopupMenu, audioStatus: Int) {
         val paused = audioStatus == Status.PAUSE
         val toggleLabel = if (paused) str("resume", "继续") else str("pause", "暂停")
+        // 原版通知第 1 个 action 是 Timer (addTimer 每次 +10 分钟, 180 封顶再按归零)
+        popup.add(item(str("set_timer", "定时")) { AudioPlayShared.addTimer() })
         popup.add(item(toggleLabel) {
             if (paused) AudioPlayShared.resume() else AudioPlayShared.pause()
         })

@@ -47,6 +47,12 @@ import legado.shared.generated.resources.paragraph_size
 import legado.shared.generated.resources.read_config
 import legado.shared.generated.resources.text_size
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.help.config.ReadConfigProviders
+import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
+import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 桌面端阅读配置面板。
@@ -390,3 +396,53 @@ private val BG_PRESETS: List<BgPreset> = listOf(
         0xFF000000.toInt()
     ),
 )
+
+// ===== @Preview 合并自 androidMain 的 book/read/page/ReadPagePreviews.kt (ReadConfigPanel) =====
+
+// ===== ReadConfigPanel =====
+
+
+/**
+ * [ReadConfigPanel.kt] / [PageViewComposable.kt] / [PageContentCanvas.kt] 的 @Preview。
+ *
+ * 上述 Composable 通过 [LocalReadConfigProviders] 注入 ReadBookConfigShared / ReadTipConfigShared,
+ * 用 [LocalPreferenceStoreProvider] (LegadoThemePreview 提供的 stub) 构造一份内存版
+ * [ReadConfigProviders] 注入即可在 Preview 期渲染。
+ */
+
+/**
+ * 包装 [LegadoThemePreview], 在其基础上注入 [LocalReadConfigProviders] (走 stub prefs)。
+ */
+@Composable
+private fun LegadoReadConfigPreview(
+    dark: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    LegadoThemePreview(dark = dark) {
+        val prefs = LocalPreferenceStoreProvider.current
+        val providers = ReadConfigProviders(prefs)
+        CompositionLocalProvider(LocalReadConfigProviders provides providers) {
+            Box(Modifier.fillMaxSize()) { content() }
+        }
+    }
+}
+
+
+@Preview
+@Composable
+fun ReadConfigPanelPreview() = LegadoReadConfigPreview {
+    ReadConfigPanel(
+        onDismissRequest = {},
+        onPageAnimChange = {},
+    )
+}
+
+@Preview
+@Composable
+fun ReadConfigPanelDarkPreview() = LegadoReadConfigPreview(dark = true) {
+    ReadConfigPanel(
+        onDismissRequest = {},
+        onPageAnimChange = {},
+    )
+}
+

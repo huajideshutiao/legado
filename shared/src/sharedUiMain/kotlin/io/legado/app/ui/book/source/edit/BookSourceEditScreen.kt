@@ -2,6 +2,7 @@ package io.legado.app.ui.book.source.edit
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,8 +29,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppCheckbox
@@ -50,6 +59,7 @@ import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
 import io.legado.app.ui.widget.text.EditEntity
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.action_save
@@ -117,7 +127,37 @@ fun BookSourceEditScreen(
     // 查找高亮状态: 供聚焦字段的 CodeTextField 叠加全量黄底 + 当前命中强调色 (对齐原版 CodeView 查找高亮)
     val searchHighlight = remember { CodeSearchHighlightState() }
     val focusManager = LocalFocusManager.current
-    Column(modifier.fillMaxSize()) {
+    Column(
+        modifier
+            .fillMaxSize()
+            // 桌面端键盘监听: Ctrl+Z 撤销 / Ctrl+Shift+Z、Ctrl+Y 重做 (对照 ReplaceEditScreen;
+            // 目标是最后聚焦字段 activeEditor, 与底部辅助条 undo/redo 同一目标)
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown || !event.isCtrlPressed) {
+                    return@onPreviewKeyEvent false
+                }
+                when (event.key) {
+                    Key.Z if event.isShiftPressed -> {
+                        activeEditor?.redo()
+                        activeEditor != null
+                    }
+
+                    Key.Z -> {
+                        activeEditor?.undo()
+                        activeEditor != null
+                    }
+
+                    Key.Y -> {
+                        activeEditor?.redo()
+                        activeEditor != null
+                    }
+
+                    else -> false
+                }
+            }
+            // 无字段持焦时根节点自己持焦, 保证键盘事件可达 (对照 ReplaceEditScreen)
+            .focusable()
+    ) {
         AppTitleBar(
             title = stringResource(Res.string.edit_book_source),
             onBack = callbacks.onBack,
@@ -728,4 +768,87 @@ private fun DropdownBox(
             }
         }
     }
+}
+
+// ===== @Preview 合并自 androidMain 的 book/source/edit/BookSourceEditScreenPreviews.kt =====
+
+/**
+ * [BookSourceEditScreen] 的 @Preview。
+ *
+ * 假数据: [BookSourceEditState] 用 remember 构造并预设开关状态;
+ * [editEntities] 返回两条测试 [EditEntity]; 代码字段由 Screen 内部共享 CodeTextField 渲染。
+ */
+
+@Composable
+private fun previewState(): BookSourceEditState = remember {
+    BookSourceEditState().apply {
+        bookSourceTypeIndex = 0
+        enabled = true
+        enabledCookieJar = false
+        enableDangerousApi = false
+        enabledExplore = true
+        enabledReview = false
+        exploreStyleIndex = 0
+        exploreColsIndex = 3
+        currentTab = 0
+    }
+}
+
+private val previewCallbacks = BookSourceEditCallbacks()
+
+private fun previewEntities(tab: Int): List<EditEntity> = when (tab) {
+    0 -> listOf(
+        EditEntity(key = "bookSourceName", value = "测试书源", hint = "书源名称"),
+        EditEntity(key = "bookSourceUrl", value = "https://test.com", hint = "书源URL"),
+        EditEntity(key = "bookSourceGroup", value = "默认", hint = "书源分组"),
+    )
+
+    1 -> listOf(
+        EditEntity(
+            key = "searchUrl",
+            value = "https://test.com/search?q={{key}}",
+            hint = "搜索URL"
+        ),
+        EditEntity(key = "ruleSearch", value = "{}", hint = "搜索规则"),
+    )
+
+    else -> listOf(
+        EditEntity(key = "field_$tab", value = "value_$tab", hint = "字段_$tab"),
+    )
+}
+
+@Preview
+@Composable
+fun BookSourceEditScreenPreview() = LegadoThemePreview {
+    BookSourceEditScreen(
+        state = previewState(),
+        callbacks = previewCallbacks,
+        editEntities = ::previewEntities,
+    )
+}
+
+@Preview
+@Composable
+fun BookSourceEditScreenSearchTabPreview() = LegadoThemePreview {
+    val state = remember {
+        BookSourceEditState().apply {
+            enabled = true
+            currentTab = 1
+        }
+    }
+    BookSourceEditScreen(
+        state = state,
+        callbacks = previewCallbacks,
+        editEntities = ::previewEntities,
+    )
+}
+
+@Preview
+@Composable
+fun BookSourceEditScreenDarkPreview() = LegadoThemePreview(dark = true) {
+    BookSourceEditScreen(
+        state = previewState(),
+        callbacks = previewCallbacks,
+        editEntities = ::previewEntities,
+    )
 }

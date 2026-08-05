@@ -58,6 +58,9 @@ import legado.shared.generated.resources.source_filter_rule_scope_label
 import legado.shared.generated.resources.source_filter_rule_scope_summary_all
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
+import io.legado.app.ui.preview.previewFilterRules
 
 /** 五个作用字段与标签，顺序对齐 app 端 fieldLabels。 */
 private val fieldLabels = listOf(
@@ -322,4 +325,38 @@ private fun ScopeRow(
                 .size(24.dp),
         )
     }
+}
+
+// ===== @Preview 合并自 androidMain 的 book/filter/SourceFilterRulePreviews.kt (SourceFilterEditDialog) =====
+
+// ---- SourceFilterEditDialog ----
+
+@Preview
+@Composable
+fun SourceFilterEditDialogPreview() = LegadoThemePreview {
+    SourceFilterEditDialog(
+        rule = previewFilterRules.first(),
+        onConfirm = {},
+        onDismiss = {},
+    )
+}
+
+@Preview
+@Composable
+fun SourceFilterEditDialogNewPreview() = LegadoThemePreview {
+    SourceFilterEditDialog(
+        rule = null,
+        onConfirm = {},
+        onDismiss = {},
+    )
+}
+
+@Preview
+@Composable
+fun SourceFilterEditDialogDarkPreview() = LegadoThemePreview(dark = true) {
+    SourceFilterEditDialog(
+        rule = previewFilterRules.first(),
+        onConfirm = {},
+        onDismiss = {},
+    )
 }

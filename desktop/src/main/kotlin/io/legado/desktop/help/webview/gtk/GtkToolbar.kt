@@ -1,13 +1,11 @@
 package io.legado.desktop.help.webview.gtk
 
 import com.sun.jna.Pointer
-import io.legado.desktop.help.webview.gtk.GtkLibs.GTK_ALIGN_CENTER
-import io.legado.desktop.help.webview.gtk.GtkLibs.GTK_ALIGN_START
+import io.legado.desktop.help.webview.BrowserToolbar
+import io.legado.desktop.help.webview.ToolbarAction
 import io.legado.desktop.help.webview.gtk.GtkLibs.GTK_ICON_SIZE_MENU
 import io.legado.desktop.help.webview.gtk.GtkLibs.GTK_ORIENTATION_VERTICAL
 import io.legado.desktop.help.webview.gtk.GtkLibs.GTK_RELIEF_NONE
-import io.legado.desktop.help.webview.gtk.GtkLibs.PANGO_ELLIPSIZE_END
-import io.legado.desktop.help.webview.win.ToolbarAction
 
 /**
  * GTK3 工具栏: 返回/前进/刷新/确定/关闭 按钮 + 标题标签 + 细进度条。
@@ -16,8 +14,8 @@ import io.legado.desktop.help.webview.win.ToolbarAction
  * `WebViewRoute` 标题栏 + 进度条语义)。所有控件创建与更新必须在 GTK 线程 (由引擎保证)。
  */
 internal class GtkToolbar(
-    private val onAction: (ToolbarAction) -> Unit,
-) {
+    override var onAction: ((ToolbarAction) -> Unit)?,
+) : BrowserToolbar {
 
     /** 工具栏行 (HBox)。 */
     val bar: Pointer
@@ -25,12 +23,10 @@ internal class GtkToolbar(
     /** 细进度条 (单独一行, 加载中显示, 完成隐藏)。 */
     val progress: Pointer
 
-    private val titleLabel: Pointer
     private val backBtn: Pointer
     private val forwardBtn: Pointer
     private val refreshBtn: Pointer
     private val okBtn: Pointer
-    private val closeBtn: Pointer
 
     /** JNA 回调强引用 (GC 后 GTK 调用即崩)。 */
     private val clickCallbacks = ArrayList<GtkLibs.ClickedCallback>()
@@ -44,21 +40,11 @@ internal class GtkToolbar(
         forwardBtn = navButton("go-next", ToolbarAction.FORWARD)
         refreshBtn = navButton("view-refresh", ToolbarAction.REFRESH)
         okBtn = navButton("gtk-ok", ToolbarAction.OK)
-        closeBtn = navButton("window-close", ToolbarAction.CLOSE)
-
-        titleLabel = gtk.gtk_label_new("")
-        gtk.gtk_label_set_ellipsize(titleLabel, PANGO_ELLIPSIZE_END)
-        gtk.gtk_label_set_max_width_chars(titleLabel, 40)
-        gtk.gtk_widget_set_hexpand(titleLabel, 1)
-        gtk.gtk_widget_set_halign(titleLabel, GTK_ALIGN_START)
-        gtk.gtk_widget_set_valign(titleLabel, GTK_ALIGN_CENTER)
 
         gtk.gtk_box_pack_start(bar, backBtn, 0, 0, 2)
         gtk.gtk_box_pack_start(bar, forwardBtn, 0, 0, 2)
         gtk.gtk_box_pack_start(bar, refreshBtn, 0, 0, 2)
-        gtk.gtk_box_pack_start(bar, titleLabel, 1, 1, 6)
         gtk.gtk_box_pack_start(bar, okBtn, 0, 0, 2)
-        gtk.gtk_box_pack_start(bar, closeBtn, 0, 0, 2)
 
         progress = gtk.gtk_progress_bar_new()
         gtk.gtk_progress_bar_set_fraction(progress, 0.0)
@@ -74,24 +60,22 @@ internal class GtkToolbar(
         val btn = gtk.gtk_button_new_from_icon_name(iconName, GTK_ICON_SIZE_MENU)
         gtk.gtk_button_set_relief(btn, GTK_RELIEF_NONE)
         val cb = object : GtkLibs.ClickedCallback {
-            override fun invoke(button: Pointer, userData: Pointer?) = onAction(action)
+            override fun invoke(button: Pointer, userData: Pointer?) {
+                onAction?.invoke(action)
+            }
         }
         clickCallbacks.add(cb)
         GtkLibs.gobject.g_signal_connect(btn, "clicked", cb, null)
         return btn
     }
 
-    fun setTitle(text: String) {
-        GtkLibs.gtk.gtk_label_set_text(titleLabel, text)
-    }
-
-    fun setCanNavigate(back: Boolean, forward: Boolean) {
+    override fun setCanNavigate(back: Boolean, forward: Boolean) {
         GtkLibs.gtk.gtk_widget_set_sensitive(backBtn, if (back) 1 else 0)
         GtkLibs.gtk.gtk_widget_set_sensitive(forwardBtn, if (forward) 1 else 0)
     }
 
     /** 加载状态: 进度条显示/隐藏 (对齐 RefreshProgressBar 100 隐藏)。 */
-    fun setLoading(loading: Boolean) {
+    override fun setLoading(loading: Boolean) {
         GtkLibs.gtk.gtk_widget_set_visible(progress, if (loading) 1 else 0)
     }
 

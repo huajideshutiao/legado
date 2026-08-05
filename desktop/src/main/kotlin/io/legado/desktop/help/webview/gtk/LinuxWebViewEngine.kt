@@ -6,8 +6,10 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.utils.NetworkUtils
+import io.legado.app.utils.browseUrl
 import io.legado.desktop.help.webview.CHECK_HOST_COOKIE_TEXT
 import io.legado.desktop.help.webview.DesktopWebViewEngine
+import io.legado.desktop.help.webview.ToolbarAction
 import io.legado.desktop.help.webview.WebViewFetchRequest
 import io.legado.desktop.help.webview.WebViewFetchResult
 import io.legado.desktop.help.webview.WebViewWindowHandle
@@ -17,7 +19,6 @@ import io.legado.desktop.help.webview.gtk.GtkLibs.WEBKIT_LOAD_FINISHED
 import io.legado.desktop.help.webview.gtk.GtkLibs.WEBKIT_LOAD_REDIRECTED
 import io.legado.desktop.help.webview.gtk.GtkLibs.WEBKIT_LOAD_STARTED
 import io.legado.desktop.help.webview.gtk.LinuxWebViewEngine.fetch
-import io.legado.desktop.help.webview.win.ToolbarAction
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -278,7 +279,7 @@ private class GtkWindowHandle(
                                 created.executeScript("document.title")
                             }.getOrNull()
                             if (!docTitle.isNullOrBlank() && !docTitle.startsWith("http")) {
-                                toolbar.setTitle(docTitle)
+                                created.setWindowTitle(docTitle)
                             }
                         }
                     }
@@ -325,7 +326,30 @@ private class GtkWindowHandle(
                 target.reload()
             }
 
+            // 复制当前页 URL (对照原版 menu_copy_url, 与 Windows 引擎行为一致)
+            ToolbarAction.COPY_URL -> {
+                val url = currentUrl ?: request.url
+                runCatching {
+                    java.awt.Toolkit.getDefaultToolkit().systemClipboard
+                        .setContents(java.awt.datatransfer.StringSelection(url), null)
+                    Toasters.get().toast("已复制 URL")
+                }.onFailure { AppLog.put("复制 URL 失败", it) }
+            }
+
+            // 系统浏览器打开当前页 (对照原版 menu_open_in_browser)
+            ToolbarAction.OPEN_IN_BROWSER -> {
+                browseUrl(currentUrl ?: request.url)
+            }
+
             ToolbarAction.OK -> onOkPressed(target)
+
+            // GTK 工具栏无溢出菜单按钮 (仅 Windows 有 ⋮)
+            ToolbarAction.MENU -> Unit
+
+            // 最大化/还原切换 (对照原版 menu_full_screen)
+            ToolbarAction.FULL_SCREEN -> {
+                target.toggleMaximize()
+            }
 
             ToolbarAction.CLOSE -> close()
         }

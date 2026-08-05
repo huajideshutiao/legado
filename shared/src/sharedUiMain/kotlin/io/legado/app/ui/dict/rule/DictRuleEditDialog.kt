@@ -46,6 +46,9 @@ import legado.shared.generated.resources.ic_save
 import legado.shared.generated.resources.paste_rule
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
+import io.legado.app.ui.preview.previewDictRules
 
 /**
  * 字典规则编辑对话框 (KMP 共享, app + desktop 复用)。
@@ -223,4 +226,42 @@ fun DictRuleEditDialog(
             }
         }
     }
+}
+
+// ===== @Preview 合并自 androidMain 的 dict/rule/DictRulePreviews.kt (DictRuleEditDialog) =====
+
+// ---- DictRuleEditDialog ----
+
+@Preview
+@Composable
+fun DictRuleEditDialogPreview() = LegadoThemePreview {
+    DictRuleEditDialog(
+        rule = previewDictRules.first(),
+        onConfirm = {},
+        onDismiss = {},
+        clipTextProvider = { null },
+    )
+}
+
+@Preview
+@Composable
+fun DictRuleEditDialogNewPreview() = LegadoThemePreview {
+    DictRuleEditDialog(
+        rule = null,
+        onConfirm = {},
+        onDismiss = {},
+        clipTextProvider = { null },
+    )
+}
+
+@Preview
+@Composable
+fun DictRuleEditDialogDarkPreview() = LegadoThemePreview(dark = true) {
+    DictRuleEditDialog(
+        rule = previewDictRules.first(),
+        onConfirm = {},
+        onDismiss = {},
+        clipTextProvider = { null },
+        clipTextSink = {},
+    )
 }

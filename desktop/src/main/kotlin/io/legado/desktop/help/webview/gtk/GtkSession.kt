@@ -21,6 +21,22 @@ internal class GtkSession private constructor(
     val toolbar: GtkToolbar?,
 ) {
 
+    /** 同步 GTK 窗口标题 (工具栏已不绘制标题文字, 2026-08-06)。 */
+    fun setWindowTitle(title: String) {
+        val w = window ?: return
+        GtkLibs.gtk.gtk_window_set_title(w, title)
+    }
+
+    /** 最大化/还原切换 (对照原版 menu_full_screen)。 */
+    fun toggleMaximize() {
+        val w = window ?: return
+        if (GtkLibs.gtk.gtk_window_is_maximized(w) != 0) {
+            GtkLibs.gtk.gtk_window_unmaximize(w)
+        } else {
+            GtkLibs.gtk.gtk_window_maximize(w)
+        }
+    }
+
     /** 导航事件回调 (GTK 线程)。event 为 WebKitLoadEvent。 */
     var onLoadChanged: ((view: Pointer, event: Int) -> Unit)? = null
 

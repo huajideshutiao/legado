@@ -22,7 +22,6 @@ import io.legado.app.ui.root.SystemBarsPolicy
 import io.legado.app.ui.root.WindowController
 import io.legado.desktop.ui.component.FileDialogs
 import java.awt.Desktop
-import java.awt.GraphicsDevice
 import java.awt.Toolkit
 import java.awt.Window
 import java.awt.datatransfer.StringSelection
@@ -42,7 +41,8 @@ class DesktopWindowHandle {
  * desktop 端 [PlatformServices] 实现：聚合 10 项平台能力。
  *
  * 各子能力提供最小可用实现：FilePicker/Share/Browser 走 AWT/系统原生可用;
- * Window 全屏经 [GraphicsDevice] 切换; Orientation/SystemBars 桌面端无对应概念为 no-op。
+ * Window 全屏经 [DesktopFullscreenController] 切 Windows 真全屏 (无边框独占窗口覆盖任务栏),
+ * 非 Windows 平台显式日志暂不支持 (不做 AWT fallback); Orientation/SystemBars 桌面端无对应概念为 no-op。
  * 不伪造行为, 无法实现的返回空/no-op。
  */
 class DesktopPlatformServices(
@@ -140,7 +140,8 @@ private class DesktopPermissionService : PermissionService {
     override fun requestPermission(permission: String): Boolean = true
 }
 
-// Window 全屏经 AWT GraphicsDevice 切换 (Stage.setFullScreen 等价物), 仅供 F11 手动切换;
+// Window 全屏: Windows 走原生 HWND 真全屏 (无边框独占窗口覆盖任务栏, 经
+// DesktopFullscreenController); 非 Windows 平台显式日志暂不支持; 仅供 F11 手动切换;
 // 常亮/方向/系统栏桌面端无对应概念, no-op
 private class DesktopWindowController(
     private val handle: DesktopWindowHandle,
@@ -150,9 +151,7 @@ private class DesktopWindowController(
 
     override fun setFullscreen(enabled: Boolean) {
         val window = handle.window ?: return
-        val device = window.graphicsConfiguration?.device ?: return
-        // 进入全屏: 设为全屏窗口; 退出全屏: 传 null 释放
-        device.setFullScreenWindow(if (enabled) window else null)
+        DesktopFullscreenController.setFullscreen(window, enabled)
     }
 
     override fun setKeepScreenOn(enabled: Boolean) {

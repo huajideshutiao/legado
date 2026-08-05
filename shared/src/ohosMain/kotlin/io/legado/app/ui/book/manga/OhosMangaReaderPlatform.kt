@@ -49,6 +49,7 @@ object OhosMangaReaderPlatform : MangaReaderScreenModel.Platform {
         grayEnabled: Boolean,
         onLoadState: (MangaCellState) -> Unit,
         retryTick: Int,
+        onProgress: (String) -> Unit,
     ) {
         var bitmap by remember(url) { mutableStateOf<ImageBitmap?>(null) }
         var failed by remember(url) { mutableStateOf(false) }

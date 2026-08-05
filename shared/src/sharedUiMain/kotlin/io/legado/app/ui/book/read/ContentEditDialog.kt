@@ -49,6 +49,8 @@ import legado.shared.generated.resources.ic_save
 import legado.shared.generated.resources.ok
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 章节正文编辑对话框 (KMP 共享, app + desktop 复用)。
@@ -270,4 +272,66 @@ fun ContentEditDialog(
             }
         }
     }
+}
+
+// ===== @Preview 合并自 androidMain 的 book/read/ReadDialogsPreviews.kt (ContentEditDialog) =====
+
+// ===== ContentEditDialog =====
+
+@Preview
+@Composable
+fun ContentEditDialogPreview() = LegadoThemePreview {
+    ContentEditDialog(
+        chapterName = "第一章 科学边界",
+        content = buildString {
+            appendLine("物理学在这一切之中扮演了什么角色?")
+            appendLine("杨冬在心中默默问自己。")
+            appendLine("她看着窗外, 那颗恒星的影像已经在屏幕上消散,")
+            appendLine("只剩下空荡荡的宇宙, 像一个无声的嘲弄。")
+        },
+        onSubmit = {},
+        onDismiss = {},
+        onReset = {},
+        clipTextSink = {},
+    )
+}
+
+@Preview
+@Composable
+fun ContentEditDialogLongContentPreview() = LegadoThemePreview {
+    ContentEditDialog(
+        chapterName = "第二章 疯狂年代",
+        content = buildString {
+            repeat(30) { i ->
+                appendLine("第 ${i + 1} 段: 这是一段用于测试长正文滚动展示效果的占位内容, ")
+                appendLine("用于验证 OutlinedTextField 在 maxLines=10 时的滚动行为。")
+            }
+        },
+        onSubmit = {},
+        onDismiss = {},
+    )
+}
+
+@Preview
+@Composable
+fun ContentEditDialogEmptyContentPreview() = LegadoThemePreview {
+    ContentEditDialog(
+        chapterName = "空章节",
+        content = "",
+        onSubmit = {},
+        onDismiss = {},
+    )
+}
+
+@Preview
+@Composable
+fun ContentEditDialogDarkPreview() = LegadoThemePreview(dark = true) {
+    ContentEditDialog(
+        chapterName = "第一章 科学边界",
+        content = "物理学在这一切之中扮演了什么角色?",
+        onSubmit = {},
+        onDismiss = {},
+        onReset = {},
+        clipTextSink = {},
+    )
 }

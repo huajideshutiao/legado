@@ -256,7 +256,9 @@ fun VideoPlayRoute(
                 hasLogin = screenModel.shared.curBookSource?.hasLogin() == true,
                 hasReview = !screenModel.shared.curBookSource?.reviewRule?.reviewUrl.isNullOrBlank(),
                 onExpandedChange = { menuExpanded = it },
-                onFullScreen = screenModel::onToggleSystemFullScreen,
+                // 右上角菜单"全屏" = 窗口内全屏 (隐藏顶栏/选集网格, 对照 Activity toggleFullScreen);
+                // 右下角按钮 = 系统级全屏 (onToggleSystemFullScreen, 覆盖任务栏) —— 用户拍板两者行为区分
+                onFullScreen = screenModel::onToggleFullScreen,
                 onLogin = screenModel::onShowLogin,
                 onCopyPlayUrl = screenModel::onCopyPlayUrl,
                 onSourceVariable = screenModel::onShowSourceVariable,

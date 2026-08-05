@@ -147,6 +147,7 @@ import io.legado.desktop.ui.platform.DesktopMangaReaderPlatform
 import io.legado.desktop.ui.platform.DesktopReaderPlatformProvider
 import io.legado.desktop.ui.platform.MediampVideoPlayPlatformProvider
 import io.legado.desktop.ui.tray.DesktopMediaTray
+import io.legado.desktop.ui.tray.DesktopTaskbarMedia
 import io.legado.desktop.ui.tray.ReadAloudTrayBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -415,6 +416,7 @@ private fun runDesktopApp() = application {
             controller = DesktopReadAloudHost.controller,
             bookName = { DesktopReadAloudHost.bookName },
             chapterTitle = { DesktopReadAloudHost.chapterTitle },
+            timeMinute = { DesktopReadAloudHost.timeMinute },
         )
         onDispose {
             DesktopMediaTray.readAloud = null
@@ -486,10 +488,12 @@ private fun runDesktopApp() = application {
     ) {
         // 单实例守卫绑定主窗口: 二次启动转发到达时前置本窗口 (取消最小化 + toFront + 请求焦点);
         // DisposableEffect 保证窗口销毁后解绑, 不让守卫持有已 dispose 的 AWT Window
-        // 同步注入 AWT 窗口句柄到 DesktopWindowHandle, 供 DesktopWindowController 切换全屏
+        // 同步注入 AWT 窗口句柄到 DesktopWindowHandle, 供 DesktopWindowController 切换全屏;
+        // 同时注入任务栏媒体 (缩略图按钮/进度条) 的 HWND (窗口重建时自动重挂)
         DisposableEffect(window) {
             windowHandle.window = window
             SingleInstanceGuard.bindWindow(window)
+            DesktopTaskbarMedia.attach(window)
             onDispose {
                 windowHandle.window = null
                 SingleInstanceGuard.bindWindow(null)

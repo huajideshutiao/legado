@@ -184,7 +184,14 @@ internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: Ap
                 actions = actions,
                 platformWebViewSlot = { url ->
                     LocalWebViewSlot.current(
-                        WebViewConfig(url = url),
+                        // 2026-08-06 功能保留: URL 登录必须带 isLogin (窗口"确定"= 确认 cookie
+                        // 后 reload 检测, 对照原版 WebViewActivity isLogin 分支) + sourceKey (cookie
+                        // 按书源回写, 登录态可复用)
+                        WebViewConfig(
+                            url = url,
+                            isLogin = true,
+                            sourceKey = state.source?.getKey() ?: "",
+                        ),
                         Modifier.fillMaxSize(),
                         WebViewCallbacks(),
                     )

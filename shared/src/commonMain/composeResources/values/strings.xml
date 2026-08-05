@@ -794,6 +794,8 @@
     <string name="audio_play_t">正在播放</string>
     <string name="audio_pause">播放暂停</string>
     <string name="audio_play_s">点击打开播放界面</string>
+    <string name="playing_timer">正在播放（还剩 %d 分钟）</string>
+    <string name="read_aloud_timer">正在朗读（还剩 %d 分钟）</string>
     <string name="read_aloud_t">正在朗读</string>
     <string name="read_aloud_pause">朗读暂停</string>
     <string name="read_aloud_s">点击打开阅读界面</string>
@@ -963,6 +965,7 @@
     <string name="desktop_audio_no_resource_url">未获取到资源链接</string>
     <string name="desktop_audio_load_failed">桌面音频加载失败&#10;%1$s</string>
     <string name="desktop_lrc_load_failed">桌面歌词加载失败&#10;%1$s</string>
+    <string name="desktop_cover_load_failed">桌面封面加载失败&#10;%1$s</string>
     <string name="desktop_audio_save_read_failed">桌面 saveRead 失败&#10;%1$s</string>
     <string name="desktop_audio_save_failed">桌面 save 失败&#10;%1$s</string>
     <string name="desktop_audio_get_book_source_failed">桌面 getBookSource 失败&#10;%1$s</string>

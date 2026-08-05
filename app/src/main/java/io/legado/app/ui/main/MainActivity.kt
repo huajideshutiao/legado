@@ -1,8 +1,8 @@
 package io.legado.app.ui.main
 
-import android.content.Context
 import android.content.Intent
 import android.graphics.Typeface
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -23,17 +23,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.BuildConfig
 import io.legado.app.R
 import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.appInfo
 import io.legado.app.data.entities.Book
 import io.legado.app.help.AppWebDav
+import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isImage
+import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
@@ -48,13 +52,11 @@ import io.legado.app.help.image.registerReaderImageResolver
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.update.AppUpdate
 import io.legado.app.lib.dialogs.SelectItem
-import io.legado.app.help.book.BookHelp
-import io.legado.app.help.book.isLocal
 import io.legado.app.model.AndroidReadBookProvider
 import io.legado.app.model.CoverRatio
-import io.legado.app.model.FileBook
 import io.legado.app.model.LocalReadBookProvider
 import io.legado.app.model.ReadBook
+import io.legado.app.model.fileBook.FileBook
 import io.legado.app.receiver.MediaButtonReceiver
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.service.ExportBookService
@@ -72,9 +74,9 @@ import io.legado.app.ui.book.info.LocalIntroImageSlot
 import io.legado.app.ui.book.manga.AndroidMangaReaderPlatform
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
 import io.legado.app.ui.book.read.AndroidReaderPlatformProvider
+import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReaderPlatformProviders
 import io.legado.app.ui.book.read.TextActionMenu
-import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.page.provider.AndroidTextMeasurer
 import io.legado.app.ui.book.read.page.provider.TextMeasurerProviders
 import io.legado.app.ui.book.video.AndroidVideoPlayPlatformProvider
@@ -83,17 +85,10 @@ import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.browser.AndroidWebView
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.dict.DictDialogHost
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.main.bookshelf.ShelfCover
-import io.legado.app.ui.dict.DictDialogHost
-import android.net.Uri
-import io.legado.app.ui.widget.PopupAction
-import io.legado.app.utils.ACache
-import io.legado.app.utils.AppLog
-import io.legado.app.utils.FileUtils
-import io.legado.app.utils.toastOnUi
-import kotlinx.coroutines.Dispatchers
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
@@ -103,8 +98,10 @@ import io.legado.app.ui.root.LegadoApp
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.ScreenModelStore
+import io.legado.app.ui.widget.PopupAction
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.ACache
+import io.legado.app.utils.FileUtils
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.registerForActivityResult
@@ -114,6 +111,7 @@ import io.legado.app.utils.startService
 import io.legado.app.utils.sysScreenOffTime
 import io.legado.app.utils.toastOnUi
 import io.legado.app.web.utils.WebAssetSources
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -405,7 +403,7 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
      * 磁盘缓存文件沿用 BookHelp.getImage 路径 (原版同一路径)。
      */
     private fun refreshImage(src: String) {
-        Coroutine.async(Dispatchers.IO) {
+        Coroutine.async(context = Dispatchers.IO) {
             ReadBook.book?.let { book ->
                 val vFile = BookHelp.getImage(book, src)
                 ReaderImageCache.clear()
@@ -421,7 +419,7 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
      * 缓存文件存在 → 直接复制; 本地书 → 取原图流写入; 网络书缓存缺失 → 不处理 (原版行为)。
      */
     private fun saveImage(src: String, uri: Uri) {
-        Coroutine.async(Dispatchers.IO) {
+        Coroutine.async(context = Dispatchers.IO) {
             val book = ReadBook.book ?: return@async
             val image = BookHelp.getImage(book, src)
             if (image.exists()) {

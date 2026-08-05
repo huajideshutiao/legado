@@ -81,6 +81,8 @@ import legado.shared.generated.resources.stop
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import io.legado.app.utils.format
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 音频播放页主体内容 (模糊封面背景 + 遮罩 + 标题栏 + 副标题 + 封面/歌词区 + 进度条 + 播放控制排)。
@@ -197,7 +199,8 @@ fun AudioPlayScreenContent(
         modifier
             .fillMaxSize()
             // 键盘快捷键: 消费共享 handleMediaKeys
-            // (Space=播放/暂停, ←/→=进度∓10s, ↑/↓=上/下一章, Esc/Backspace=返回)
+            // (Space=播放/暂停, ←/→=进度∓10s, ↑/↓=上/下一章, 长按→=2x 倍速松手恢复,
+            //  Esc/Backspace=返回)
             .handleMediaKeys(
                 onTogglePlayPause = onTogglePlay,
                 onSeekDelta = { delta ->
@@ -205,6 +208,8 @@ fun AudioPlayScreenContent(
                 },
                 onPrev = { if (prevEnabled) onPrev() },
                 onNext = { if (nextEnabled) onNext() },
+                // 长按右方向键倍速 (2.0f), 松手恢复 (1.0f), 走共享倍速设置
+                onSpeedChange = onSetSpeed,
                 onBack = onBack,
                 scope = keyScope,
             )
@@ -769,4 +774,139 @@ private fun playModeIconKey(mode: AudioPlayShared.PlayMode): String = when (mode
     AudioPlayShared.PlayMode.SINGLE_LOOP -> "ic_play_mode_single_loop"
     AudioPlayShared.PlayMode.RANDOM -> "ic_play_mode_random"
     AudioPlayShared.PlayMode.LIST_LOOP -> "ic_play_mode_list_loop"
+}
+
+// ===== @Preview 合并自 androidMain 的 book/audio/AudioPlayScreenPreviews.kt =====
+
+/**
+ * [AudioPlayScreenContent] 的 @Preview。
+ *
+ * coverSlot/lrcSlot/对话框 slot 均用占位实现 (真实实现依赖 Coil/平台歌词组件)。
+ */
+
+private val previewAudioCoverSlot: @Composable (String?, Modifier) -> Unit = { _, modifier ->
+    Box(
+        modifier.background(Color(0xFF34495E), DesignTokens.shapeDefault),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text("封面", color = Color.White)
+    }
+}
+
+private val previewLrcSlot: @Composable (Modifier) -> Unit = { modifier ->
+    Box(modifier, contentAlignment = Alignment.Center) {
+        Text("这里是歌词滚动区", color = Color(0xFF888888))
+    }
+}
+
+@Preview
+@Composable
+fun AudioPlayScreenContentPlayingPreview() = LegadoThemePreview {
+    AudioPlayScreenContent(
+        title = "三体(有声剧)",
+        subTitle = "第十二章 黑暗森林",
+        coverUrl = null,
+        coverVisible = true,
+        timerMinute = 0,
+        speed = 1.0f,
+        progressMs = 754_000,
+        durationMs = 1_800_000,
+        bufferMs = 1_200_000,
+        isPlaying = true,
+        loading = false,
+        playMode = AudioPlayShared.PlayMode.LIST_LOOP,
+        prevEnabled = true,
+        nextEnabled = true,
+        accentColor = Color(0xFF165DFF),
+        onBack = {},
+        onOpenChangeSource = {},
+        onCoverClick = {},
+        onTogglePlay = {},
+        onPrev = {},
+        onNext = {},
+        onChangePlayMode = {},
+        onOpenToc = {},
+        onSeek = {},
+        onSetTimer = {},
+        onSetSpeed = {},
+        coverSlot = previewAudioCoverSlot,
+        lrcSlot = previewLrcSlot,
+        timerDialogSlot = { _, _, _ -> },
+        speedDialogSlot = { _, _, _ -> },
+    )
+}
+
+@Preview
+@Composable
+fun AudioPlayScreenContentPausedLoadingPreview() = LegadoThemePreview {
+    AudioPlayScreenContent(
+        title = "三体(有声剧)",
+        subTitle = "第十三章 面壁者",
+        coverUrl = null,
+        coverVisible = true,
+        timerMinute = 30,
+        speed = 1.5f,
+        progressMs = 0,
+        durationMs = 0,
+        bufferMs = 0,
+        isPlaying = false,
+        loading = true,
+        playMode = AudioPlayShared.PlayMode.SINGLE_LOOP,
+        prevEnabled = false,
+        nextEnabled = true,
+        accentColor = Color(0xFF165DFF),
+        onBack = {},
+        onOpenChangeSource = {},
+        onCoverClick = {},
+        onTogglePlay = {},
+        onPrev = {},
+        onNext = {},
+        onChangePlayMode = {},
+        onOpenToc = {},
+        onSeek = {},
+        onSetTimer = {},
+        onSetSpeed = {},
+        onStop = {},
+        coverSlot = previewAudioCoverSlot,
+        lrcSlot = previewLrcSlot,
+        timerDialogSlot = { _, _, _ -> },
+        speedDialogSlot = { _, _, _ -> },
+    )
+}
+
+@Preview
+@Composable
+fun AudioPlayScreenContentDarkPreview() = LegadoThemePreview(dark = true) {
+    AudioPlayScreenContent(
+        title = "三体(有声剧)",
+        subTitle = "第十二章 黑暗森林",
+        coverUrl = null,
+        coverVisible = true,
+        timerMinute = 0,
+        speed = 1.0f,
+        progressMs = 754_000,
+        durationMs = 1_800_000,
+        bufferMs = 1_500_000,
+        isPlaying = true,
+        loading = false,
+        playMode = AudioPlayShared.PlayMode.RANDOM,
+        prevEnabled = true,
+        nextEnabled = true,
+        accentColor = Color(0xFF165DFF),
+        onBack = {},
+        onOpenChangeSource = {},
+        onCoverClick = {},
+        onTogglePlay = {},
+        onPrev = {},
+        onNext = {},
+        onChangePlayMode = {},
+        onOpenToc = {},
+        onSeek = {},
+        onSetTimer = {},
+        onSetSpeed = {},
+        coverSlot = previewAudioCoverSlot,
+        lrcSlot = previewLrcSlot,
+        timerDialogSlot = { _, _, _ -> },
+        speedDialogSlot = { _, _, _ -> },
+    )
 }

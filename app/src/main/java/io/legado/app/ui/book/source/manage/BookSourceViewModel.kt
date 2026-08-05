@@ -7,6 +7,7 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.toBookSource
+import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.cnCompare
@@ -14,8 +15,8 @@ import io.legado.app.utils.outputStream
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.writeToOutputStream
-import java.io.File
 import kotlinx.coroutines.runBlocking
+import java.io.File
 
 /**
  * 书源管理数据修改 VM (Android 端组合委托包装)。

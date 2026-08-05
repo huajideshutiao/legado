@@ -23,6 +23,8 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.loading
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 加载等待对话框内容 (KMP 共享, app + desktop + iOS 复用)。
@@ -99,3 +101,33 @@ fun WaitDialog(
         }
     }
 }
+
+// ===== @Preview 合并自 androidMain 的 widget/dialog/CommonDialogsPreviews.kt (WaitDialogContent) =====
+
+// ---- WaitDialogContent ----
+
+/**
+ * [WaitDialog] / [CodeDialog] / [VariableDialog] 的 @Preview。
+ *
+ * 均取 *Content 版本 (无 Dialog 包装), Preview 中 Popup 渲染不稳定;
+ * VariableDialog 无 Content 拆分, 直接预览带 Dialog 版本。
+ */
+
+@Preview
+@Composable
+fun WaitDialogContentPreview() = LegadoThemePreview {
+    WaitDialogContent(message = "正在加载...")
+}
+
+@Preview
+@Composable
+fun WaitDialogContentLongMessagePreview() = LegadoThemePreview {
+    WaitDialogContent(message = "正在校验书源可用性, 请稍候, 这可能需要几分钟")
+}
+
+@Preview
+@Composable
+fun WaitDialogContentDarkPreview() = LegadoThemePreview(dark = true) {
+    WaitDialogContent(message = "正在加载...")
+}
+

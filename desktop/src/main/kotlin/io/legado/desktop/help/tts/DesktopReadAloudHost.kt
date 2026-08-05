@@ -9,10 +9,13 @@ import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.media.SleepTimer
 import io.legado.app.help.tts.ReadAloudQueue
 import io.legado.app.model.ActiveReadBookRegistry
+import io.legado.app.model.AudioPlayShared
 import io.legado.app.service.ReadAloudChapterNavigator
 import io.legado.app.service.ReadAloudControllerShared
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
 import io.legado.app.ui.book.read.ReadBookEvents
+import io.legado.desktop.audio.DesktopSmtc
+import io.legado.desktop.audio.SmtcState
 import io.legado.desktop.help.tts.DesktopReadAloudHost.controller
 import io.legado.desktop.help.tts.DesktopReadAloudHost.pause
 import io.legado.desktop.help.tts.DesktopReadAloudHost.pendingStartPos
@@ -299,18 +302,52 @@ object DesktopReadAloudHost {
 
     private fun onStateChanged(state: ReadAloudState) {
         when (state) {
-            ReadAloudState.PLAYING -> ReadBookEvents.postAloudState(Status.PLAY)
+            ReadAloudState.PLAYING -> {
+                ReadBookEvents.postAloudState(Status.PLAY)
+                syncSmtc(playing = true)
+            }
+
             ReadAloudState.PAUSED -> {
                 ReadBookEvents.postAloudState(Status.PAUSE)
                 removeAloudSpan()
+                syncSmtc(paused = true)
             }
 
             ReadAloudState.STOPPED, ReadAloudState.COMPLETED, ReadAloudState.ERROR -> {
                 ReadBookEvents.postAloudState(Status.STOP)
                 removeAloudSpan()
+                syncSmtc(stopped = true)
             }
 
             ReadAloudState.IDLE -> Unit
+        }
+    }
+
+    /**
+     * 同步 SMTC 媒体卡 (Title=章节 / Artist=书名 / AlbumArtist=作者)。
+     * 音频活跃时 SMTC 卡归音频 (与托盘/任务栏优先级一致), 朗读侧不覆盖。
+     */
+    private fun syncSmtc(
+        playing: Boolean = false,
+        paused: Boolean = false,
+        stopped: Boolean = false
+    ) {
+        if (AudioPlayShared.status != Status.STOP) return
+        if (!com.sun.jna.Platform.isWindows()) return
+        val readBook = ActiveReadBookRegistry.current
+        DesktopSmtc.update(
+            SmtcState(
+                title = chapterTitle ?: "",
+                artist = bookName ?: "",
+                albumArtist = readBook?.bookValue?.author ?: "",
+                isPlaying = playing,
+                isPaused = paused,
+                prevNextEnabled = true,
+                playbackRate = 0f, // 朗读无倍速概念, 不写 PlaybackRate
+            )
+        )
+        if (stopped) {
+            DesktopSmtc.release()
         }
     }
 

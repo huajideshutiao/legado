@@ -34,6 +34,8 @@ import legado.shared.generated.resources.screen_time_out
 import legado.shared.generated.resources.screen_time_out_value
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 阅读界面更多设置（迁 pref_config_read.xml）。逐条对齐原条目顺序/key/默认值。
@@ -198,4 +200,38 @@ fun MoreConfigScreen(
             )
         }
     }
+}
+
+// ===== @Preview 合并自 androidMain 的 book/read/config/ReadConfigPrefsPreviews.kt (MoreConfigScreen) =====
+
+// ===== MoreConfigScreen =====
+
+@Preview
+@Composable
+fun MoreConfigScreenPreview() = LegadoThemePreview {
+    MoreConfigScreen(
+        pageTouchSlopSummary = "默认 (16)",
+        onPageTouchSlop = {},
+        onClickRegionalConfig = {},
+    )
+}
+
+@Preview
+@Composable
+fun MoreConfigScreenCustomizedPreview() = LegadoThemePreview {
+    MoreConfigScreen(
+        pageTouchSlopSummary = "已自定义 (24)",
+        onPageTouchSlop = {},
+        onClickRegionalConfig = {},
+    )
+}
+
+@Preview
+@Composable
+fun MoreConfigScreenDarkPreview() = LegadoThemePreview(dark = true) {
+    MoreConfigScreen(
+        pageTouchSlopSummary = "默认 (16)",
+        onPageTouchSlop = {},
+        onClickRegionalConfig = {},
+    )
 }

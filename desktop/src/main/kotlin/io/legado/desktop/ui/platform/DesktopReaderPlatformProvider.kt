@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import io.legado.app.constant.PreferKey
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.SourceLoginContext
@@ -18,6 +19,7 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfigProviders
+import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.sourceLoginOverlayPayload
 import io.legado.app.ui.book.read.ReadAloudControls
 import io.legado.app.ui.book.read.ReadBookEvents
@@ -376,6 +378,9 @@ private class DesktopReadMenuState(
     /** 自动翻页控制器协程作用域 (对照 app 端 AndroidReaderMenuState.autoPageScope, Main)。 */
     private val autoPageScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
+    /** 章节链接开窗: 查询书源 + startBrowser 开窗在 IO 线程 (AnalyzeUrl 可能执行 header JS)。 */
+    private val chapterLinkScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override val visibleState = MutableTransitionState(false)
     override var animate: Boolean = true
         private set
@@ -474,14 +479,19 @@ private class DesktopReadMenuState(
             DesktopPlatformCapabilities.openExternalUrl(url.substringBefore(",{"))
             return
         }
-        // 传原始 chapterUrl (可能含 `,{...}` 请求头) + 书源信息, 由 WebViewRoute 解析
-        navigator.push(
-            AppRoute.WebView(
-                url = url,
-                sourceKey = book.origin,
-                sourceName = book.originName,
-            )
-        )
+        // 2026-08-06 用户拍板: 不再推 WebViewRoute 中转界面, 直接开内置浏览器窗口
+        // (java.startBrowser 同链路: cookie 经书源 key 回写, 登录态可复用;
+        //  传原始 chapterUrl 可能含 `,{...}` 请求头, 由 AnalyzeUrl 解析)
+        chapterLinkScope.launch {
+            val source = AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
+            if (source != null) {
+                SourceVerificationHelpShared.startBrowser(
+                    source, url, book.originName ?: "章节", false, false
+                )
+            } else {
+                DesktopPlatformCapabilities.openExternalUrl(url.substringBefore(",{"))
+            }
+        }
     }
 
     // 章节链接长按: 弹选择框切换浏览器/应用内打开 (对照 app 端 ReadMenu.onChapterViewLongClick

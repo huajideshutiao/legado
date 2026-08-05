@@ -1,21 +1,14 @@
 package io.legado.app.ui.book.audio
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 
-// 鸿蒙音频播放平台 UI: 渲染标题/进度/播控 (同 iOS IosAudioPlayPlatformProvider)
-// AVPlayer 播控由 OhosAudioPlayCommander 经 napi Media 桥承载
+/**
+ * 鸿蒙音频播放平台 UI: 复用 shared [SharedAudioPlayScreenContent]
+ * (封面/模糊背景/歌词/弹窗 slot 全端共享, 见 AudioPlaySharedSlots.kt / LrcViewShared.kt)。
+ *
+ * 注: 鸿蒙未注册 BookImageLoaders (coil3 无 ohosArm64 变体), 封面/模糊背景/取色走
+ * getOrNull 回退: 封面显示占位底、歌词用原版默认色; 播控由 OhosAudioPlayCommander 承载。
+ */
 object OhosAudioPlayPlatformProvider : AudioPlayPlatformProvider {
 
     @Composable
@@ -29,27 +22,15 @@ object OhosAudioPlayPlatformProvider : AudioPlayPlatformProvider {
         overflowActions: AudioPlayOverflowActions,
         onEvent: (AudioPlayUiEvent) -> Unit,
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(state.title)
-            Spacer(Modifier.height(8.dp))
-            Text(state.subTitle)
-            Spacer(Modifier.height(8.dp))
-            Text("${state.progressMs} / ${state.durationMs}")
-            Spacer(Modifier.height(16.dp))
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(24.dp),
-            ) {
-                Text("上一章", modifier = Modifier.clickable { onEvent(AudioPlayUiEvent.Prev) })
-                Text(
-                    if (state.isPlaying) "暂停" else "播放",
-                    modifier = Modifier.clickable { onEvent(AudioPlayUiEvent.TogglePlay) },
-                )
-                Text("下一章", modifier = Modifier.clickable { onEvent(AudioPlayUiEvent.Next) })
-            }
-        }
+        SharedAudioPlayScreenContent(
+            state = state,
+            onBack = onBack,
+            onOpenChangeSource = onOpenChangeSource,
+            onOpenToc = onOpenToc,
+            onOpenBookSourceEdit = onOpenBookSourceEdit,
+            onOpenReview = onOpenReview,
+            overflowActions = overflowActions,
+            onEvent = onEvent,
+        )
     }
 }

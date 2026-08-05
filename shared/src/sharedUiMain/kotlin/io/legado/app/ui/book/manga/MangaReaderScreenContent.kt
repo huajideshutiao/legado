@@ -198,7 +198,7 @@ fun MangaReaderScreenContent(
     preloadImage: (suspend (String, Book, BookSource?) -> Unit)? = null,
     imageSlot: @Composable (
         String, Modifier, Boolean, MangaColorFilterConfig, Boolean,
-        (MangaCellState) -> Unit, Int
+        (MangaCellState) -> Unit, Int, (String) -> Unit
     ) -> Unit,
 ) {
     // 键盘事件焦点: onPreviewKeyEvent 需节点持有焦点才触发, 进入即取焦点
@@ -308,10 +308,15 @@ fun MangaReaderScreenContent(
         Modifier
             .fillMaxSize()
             .background(MangaReaderBackground)
-            // 对照 app 端 onKeyDown: 音量/翻页键走整屏翻页, 不是切章
+            // 方向键键盘 (用户拍板 2026-08): 键位随翻页方向自适应——横向(LazyRow)模式
+            // ←/→=翻页、↑/↓=章节; 纵向(webtoon)模式 ↑/↓=翻页、←/→=章节;
+            // PageUp/PageDown/Space 不再绑定; Esc/Backspace 走 onBack
             .handleReadPageKeys(
                 onPrevPage = { if (onPrevPage != null) onPrevPage() else scrollPageTo(-1) },
                 onNextPage = { if (onNextPage != null) onNextPage() else scrollPageTo(1) },
+                onPrevChapter = onPrevChapter,
+                onNextChapter = onNextChapter,
+                horizontalPageMode = horizontal,
                 onBack = onBack,
             )
             .focusRequester(keyFocusRequester)
@@ -882,7 +887,7 @@ private fun LazyItemScope.MangaPageCell(
     horizontal: Boolean,
     imageSlot: @Composable (
         String, Modifier, Boolean, MangaColorFilterConfig, Boolean,
-        (MangaCellState) -> Unit, Int
+        (MangaCellState) -> Unit, Int, (String) -> Unit
     ) -> Unit,
     colorFilterConfig: MangaColorFilterConfig,
     grayEnabled: Boolean,
@@ -892,6 +897,8 @@ private fun LazyItemScope.MangaPageCell(
     // 不设 onSizeChanged 兜底 —— 兜底会在 LOADING 时把占位高度误判为出图, 与平台上报互相
     // 覆写导致"转圈闪现/ERROR 被盖/高度 H↔内容 抖动" (桌面端"一直加载中"观感)
     var load by remember(url) { mutableStateOf(MangaCellState.LOADING) }
+    // 下载进度文本 (对照 app 端 MangaPageImageView.onProgress → MangaRenderScreen 转圈内百分比)
+    var progress by remember(url) { mutableStateOf("") }
     // 重试计数: "重新加载"点击自增, 平台图片槽据此重试 (Android 直接调 MangaPageImageView.retry())
     var retryTick by remember(url) { mutableStateOf(0) }
     val cellModifier = when {
@@ -915,6 +922,7 @@ private fun LazyItemScope.MangaPageCell(
                 grayEnabled,
                 { load = it },
                 retryTick,
+                { progress = it },
             )
         }
         if (load != MangaCellState.SUCCESS) {
@@ -928,8 +936,11 @@ private fun LazyItemScope.MangaPageCell(
                     CircularProgressIndicator(
                         color = Color.White,
                         strokeWidth = 4.dp,
+                        backgroundColor = Color.Transparent,
                         modifier = Modifier.size(48.dp),
                     )
+                    // 下载进度叠在转圈环心 (对照 app 端 MangaRenderScreen: 转圈 + Text(progress))
+                    Text(text = progress, color = Color.White)
                 } else {
                     Text(
                         text = stringResource(Res.string.reload),

@@ -69,6 +69,8 @@ import legado.shared.generated.resources.text_color
 import legado.shared.generated.resources.text_underline
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 背景/文字样式配置控制器：把 app 端 `ReadBookConfig.durConfig` 的字段读写抽象为接口，
@@ -569,3 +571,114 @@ private fun ActionIcon(
             .clickable(onClick = onClick),
     )
 }
+
+// ===== @Preview 合并自 androidMain 的 book/read/config/ReadConfigScreenPreviews.kt (BgTextConfigScreen) =====
+
+// ===== BgTextConfigScreen =====
+
+/** Preview 期 [BgTextConfigController] stub。 */
+private class PreviewBgTextConfigController : BgTextConfigController {
+    override var name: String = "默认"
+    private var darkStatus: Boolean = true
+    private var underline: Boolean = false
+    private var bgAlpha: Int = 100
+    private var textColor: Int = 0xFF3E3D3B.toInt()
+    private var bgType: Int = 0
+    private var bgStr: String = "#FFFFFF"
+
+    override fun darkStatusIcon(): Boolean = darkStatus
+    override fun setCurStatusIconDark(value: Boolean) {
+        darkStatus = value
+    }
+
+    override fun underline(): Boolean = underline
+    override fun setUnderline(value: Boolean) {
+        underline = value
+    }
+
+    override fun bgAlpha(): Int = bgAlpha
+    override fun setBgAlpha(value: Int) {
+        bgAlpha = value
+    }
+
+    override fun curTextColor(): Int = textColor
+    override fun curBgType(): Int = bgType
+    override fun curBgStr(): String = bgStr
+    override fun setCurTextColor(color: Int) {
+        textColor = color
+    }
+
+    override fun setCurBg(type: Int, value: String) {
+        bgType = type
+        bgStr = value
+    }
+
+    override fun deleteDur(): Boolean = true
+    override fun save() {}
+    override fun restorePresetNames(): List<String> = listOf("默认", "护眼", "夜间", "羊皮纸")
+    override fun restorePreset(index: Int) {}
+}
+
+/** Preview 期 [BgTextConfigActions] stub。 */
+private object NoopBgTextConfigActions : BgTextConfigActions {
+    override fun onImportConfig() {}
+    override fun onExportConfig() {}
+    override fun onImportNetConfig() {}
+    override fun onSelectBgImage() {}
+    override fun onSelectBgPreset(fileName: String) {}
+    override fun onPostConfig(changes: List<ReadConfigChange>) {}
+}
+
+/** 背景图预览占位: 66x88 色块。 */
+@Composable
+private fun previewBgImageSlot(item: BgImageItem, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(66.dp, 88.dp)
+            .background(Color(0xFFEEEEEE)),
+    )
+}
+
+private val previewBgImageList = listOf(
+    BgImageItem(label = "纸纹 01", fileName = "paper01.jpg"),
+    BgImageItem(label = "纸纹 02", fileName = "paper02.jpg"),
+    BgImageItem(label = "山水", fileName = "landscape.png"),
+)
+
+@Preview
+@Composable
+fun BgTextConfigScreenPreview() = LegadoThemePreview {
+    BgTextConfigScreen(
+        controller = PreviewBgTextConfigController(),
+        actions = NoopBgTextConfigActions,
+        isImageBook = false,
+        bgImageList = previewBgImageList,
+        bgImagePreviewSlot = { item, onClick -> previewBgImageSlot(item, onClick) },
+    )
+}
+
+@Preview
+@Composable
+fun BgTextConfigScreenImageBookPreview() = LegadoThemePreview {
+    // 图片书籍不显示下划线开关
+    BgTextConfigScreen(
+        controller = PreviewBgTextConfigController(),
+        actions = NoopBgTextConfigActions,
+        isImageBook = true,
+        bgImageList = previewBgImageList,
+        bgImagePreviewSlot = { item, onClick -> previewBgImageSlot(item, onClick) },
+    )
+}
+
+@Preview
+@Composable
+fun BgTextConfigScreenDarkPreview() = LegadoThemePreview(dark = true) {
+    BgTextConfigScreen(
+        controller = PreviewBgTextConfigController(),
+        actions = NoopBgTextConfigActions,
+        isImageBook = false,
+        bgImageList = previewBgImageList,
+        bgImagePreviewSlot = { item, onClick -> previewBgImageSlot(item, onClick) },
+    )
+}
+

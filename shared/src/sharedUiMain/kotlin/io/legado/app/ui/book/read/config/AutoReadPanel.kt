@@ -35,6 +35,8 @@ import legado.shared.generated.resources.main_menu
 import legado.shared.generated.resources.setting
 import legado.shared.generated.resources.stop
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 自动翻页控制面板底部弹窗宿主 (对照原版 AutoReadDialog: BaseBottomDialogFragment)。
@@ -219,4 +221,49 @@ private fun ReadMenuIconButton(
             modifier = Modifier.padding(top = 4.dp),
         )
     }
+}
+
+// ===== @Preview 合并自 androidMain 的 book/read/config/ReadConfigScreenPreviews.kt (AutoReadPanel) =====
+
+// ===== AutoReadPanel =====
+
+/** Preview 期 [AutoReadController] stub。 */
+private class PreviewAutoReadController(
+    override var autoReadSpeed: Int = 10,
+) : AutoReadController
+
+/** Preview 期 [AutoReadActions] stub。 */
+private object NoopAutoReadActions : AutoReadActions {
+    override fun openChapterList() {}
+    override fun showMenuBar() {}
+    override fun autoPageStop() {}
+    override fun showPageAnimConfig() {}
+    override fun upTtsSpeechRate() {}
+}
+
+@Preview
+@Composable
+fun AutoReadPanelPreview() = LegadoThemePreview {
+    AutoReadPanel(
+        controller = PreviewAutoReadController(autoReadSpeed = 10),
+        actions = NoopAutoReadActions,
+    )
+}
+
+@Preview
+@Composable
+fun AutoReadPanelFastPreview() = LegadoThemePreview {
+    AutoReadPanel(
+        controller = PreviewAutoReadController(autoReadSpeed = 60),
+        actions = NoopAutoReadActions,
+    )
+}
+
+@Preview
+@Composable
+fun AutoReadPanelDarkPreview() = LegadoThemePreview(dark = true) {
+    AutoReadPanel(
+        controller = PreviewAutoReadController(autoReadSpeed = 30),
+        actions = NoopAutoReadActions,
+    )
 }

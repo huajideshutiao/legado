@@ -6,8 +6,10 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.utils.NetworkUtils
+import io.legado.app.utils.browseUrl
 import io.legado.desktop.help.webview.CHECK_HOST_COOKIE_TEXT
 import io.legado.desktop.help.webview.DesktopWebViewEngine
+import io.legado.desktop.help.webview.ToolbarAction
 import io.legado.desktop.help.webview.WebViewFetchRequest
 import io.legado.desktop.help.webview.WebViewFetchResult
 import io.legado.desktop.help.webview.WebViewWindowHandle
@@ -330,6 +332,10 @@ private class WebView2WindowHandle(
                 historyNavPending = true
                 historyIndex--
                 created.navigate(history[historyIndex])
+            } else {
+                // 无历史时返回 = 关闭窗口 (对照原版 WebViewActivity toolbar 返回箭头
+                // = finish(), 避免"返回不可用"的困惑)
+                close()
             }
 
             ToolbarAction.FORWARD -> if (historyIndex < history.size - 1) {
@@ -341,6 +347,31 @@ private class WebView2WindowHandle(
             ToolbarAction.REFRESH -> {
                 created.toolbar?.setLoading(true)
                 created.reload()
+            }
+
+            // 溢出菜单展开/收起 (工具栏动态高度, 刷新 WebView2 bounds)
+            ToolbarAction.MENU -> {
+                created.refreshToolbarBounds()
+            }
+
+            // 最大化/还原切换 (对照原版 menu_full_screen)
+            ToolbarAction.FULL_SCREEN -> {
+                created.maximizeToggle()
+            }
+
+            // 复制当前页 URL (对照原版 menu_copy_url → sendToClip)
+            ToolbarAction.COPY_URL -> {
+                val url = currentUrl ?: request.url
+                runCatching {
+                    java.awt.Toolkit.getDefaultToolkit().systemClipboard
+                        .setContents(java.awt.datatransfer.StringSelection(url), null)
+                    Toasters.get().toast("已复制 URL")
+                }.onFailure { AppLog.put("复制 URL 失败", it) }
+            }
+
+            // 系统浏览器打开当前页 (对照原版 menu_open_in_browser → openUrl)
+            ToolbarAction.OPEN_IN_BROWSER -> {
+                browseUrl(currentUrl ?: request.url)
             }
 
             ToolbarAction.OK -> onOkPressed(created)

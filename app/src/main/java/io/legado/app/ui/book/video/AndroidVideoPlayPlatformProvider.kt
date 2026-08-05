@@ -303,6 +303,10 @@ private enum class AndroidGestureMode { NONE, PROGRESS, BRIGHTNESS, VOLUME }
  *
  * 单击切控制层 / 双击播放暂停 / 长按 2x 倍速 (松手恢复) /
  * 左半屏竖滑亮度 / 右半屏竖滑音量 / 横滑进度 (松手 seek)。
+ *
+ * 竖滑相对调节复用共享状态机 [VideoGestureAdjuster] (进模式读当前值 + 增量 +
+ * 碰顶/底重置, 与原版逐行等价): 音量走整数步进 (step=1f, 对照原版 .toInt() 截断
+ * 语义), 亮度走连续浮点。
  */
 private class AndroidVideoGestureHandler(
     private val activity: MainActivity,
@@ -321,9 +325,9 @@ private class AndroidVideoGestureHandler(
     private var startY = 0f
     private val deadZoneSize by lazy { 15f.dpToPx() }
     private val audioManager by lazy { activity.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
-    private var currentVolume = 0
-    private var currentBrightness = 0f
     private val maxVolume by lazy { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
+    private val brightnessAdjuster by lazy { VideoGestureAdjuster() }
+    private val volumeAdjuster by lazy { VideoGestureAdjuster(max = maxVolume.toFloat()) }
     private var lastScrollTime = 0L
     private val scrollThrottleInterval = 32L //ms
     private val progressTimeFormat by lazy {
@@ -366,13 +370,19 @@ private class AndroidVideoGestureHandler(
             gestureMode = when {
                 deltaX > deltaY -> AndroidGestureMode.PROGRESS
                 startX < screenWidth / 2 -> {
-                    currentBrightness = if (activity.window.attributes.screenBrightness <= 0f) 0f
-                    else activity.window.attributes.screenBrightness
+                    // 进模式读当前亮度 (系统默认 <=0 按 0, 对照原版)
+                    brightnessAdjuster.onGestureStart(startY) {
+                        if (activity.window.attributes.screenBrightness <= 0f) 0f
+                        else activity.window.attributes.screenBrightness
+                    }
                     AndroidGestureMode.BRIGHTNESS
                 }
 
                 else -> {
-                    currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                    // 进模式读当前音量 (0..maxVolume, 对照原版 getStreamVolume)
+                    volumeAdjuster.onGestureStart(startY) {
+                        audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat()
+                    }
                     AndroidGestureMode.VOLUME
                 }
             }
@@ -391,14 +401,10 @@ private class AndroidVideoGestureHandler(
             }
 
             AndroidGestureMode.BRIGHTNESS -> {
-                val deltaBrightness =
-                    (currentBrightness + (startY - y) / screenHeight).coerceIn(0f, 1f)
+                // 相对调节 + 碰顶/底重置 (共享状态机, 逐行对照原版亮度段)
+                val deltaBrightness = brightnessAdjuster.onGestureMove(y, screenHeight)
                 activity.window.attributes = activity.window.attributes.apply {
                     screenBrightness = deltaBrightness
-                }
-                if (deltaBrightness == 0f || deltaBrightness == 1f) {
-                    startY = y
-                    currentBrightness = deltaBrightness
                 }
                 onGestureText(
                     String.format(
@@ -410,13 +416,9 @@ private class AndroidVideoGestureHandler(
             }
 
             AndroidGestureMode.VOLUME -> {
-                val deltaVolume =
-                    (currentVolume + (startY - y) / screenHeight * maxVolume).toInt()
-                        .coerceIn(0, maxVolume)
-                if (deltaVolume == 0 || deltaVolume == maxVolume) {
-                    startY = y
-                    currentVolume = deltaVolume
-                }
+                // step=1f: AudioManager 整数步进, 对照原版 .toInt().coerceIn(0, maxVolume)
+                // 的截断 + 边界判定语义 (状态机内部碰顶/底重置, 逐行等价)
+                val deltaVolume = volumeAdjuster.onGestureMove(y, screenHeight, step = 1f).toInt()
                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, deltaVolume, 0)
                 onGestureText(
                     String.format(Locale.getDefault(), "音量: %d%%", deltaVolume * 100 / maxVolume)

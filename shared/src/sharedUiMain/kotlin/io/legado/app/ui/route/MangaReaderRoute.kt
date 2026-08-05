@@ -247,7 +247,7 @@ fun MangaReaderRoute(
             }
         },
         preloadImage = screenModel.preloadImage,
-        imageSlot = { url, modifier, horizontal, colorFilterConfig, grayEnabled, onLoadState, retryTick ->
+        imageSlot = { url, modifier, horizontal, colorFilterConfig, grayEnabled, onLoadState, retryTick, onProgress ->
             screenModel.platformRenderer?.Image(
                 url = url,
                 modifier = modifier,
@@ -258,6 +258,7 @@ fun MangaReaderRoute(
                 grayEnabled = grayEnabled,
                 onLoadState = onLoadState,
                 retryTick = retryTick,
+                onProgress = onProgress,
             )
         },
     )

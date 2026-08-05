@@ -32,6 +32,11 @@ import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.systemCurrentTimeMillis
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.help.config.ReadConfigProviders
+import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
+import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * KMP 版阅读页面视图：用 Compose 替代 app 端 `PageView` (FrameLayout + ViewBookPageBinding)。
@@ -485,3 +490,56 @@ private fun BatteryIndicator(
         )
     }
 }
+
+// ===== @Preview 合并自 androidMain 的 book/read/page/ReadPagePreviews.kt (PageViewComposable) =====
+
+// ===== PageViewComposable =====
+
+
+/**
+ * 包装 [LegadoThemePreview], 在其基础上注入 [LocalReadConfigProviders] (走 stub prefs)。
+ */
+@Composable
+private fun LegadoReadConfigPreview(
+    dark: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    LegadoThemePreview(dark = dark) {
+        val prefs = LocalPreferenceStoreProvider.current
+        val providers = ReadConfigProviders(prefs)
+        CompositionLocalProvider(LocalReadConfigProviders provides providers) {
+            Box(Modifier.fillMaxSize()) { content() }
+        }
+    }
+}
+
+
+@Preview
+@Composable
+fun PageViewComposableEmptyPreview() = LegadoReadConfigPreview {
+    // textPage=null 时显示加载占位 (背景色取自 stub ReadBookConfig)
+    PageViewComposable(
+        textPage = null,
+        batteryLevel = 75,
+    )
+}
+
+@Preview
+@Composable
+fun PageViewComposableWithEmptyPagePreview() = LegadoReadConfigPreview {
+    // 用 TextPage.emptyTextPage (无文字行, 仅显示 tip 占位)
+    PageViewComposable(
+        textPage = TextPage.emptyTextPage,
+        batteryLevel = 50,
+    )
+}
+
+@Preview
+@Composable
+fun PageViewComposableNoBatteryPreview() = LegadoReadConfigPreview {
+    PageViewComposable(
+        textPage = TextPage.emptyTextPage,
+        batteryLevel = -1,
+    )
+}
+

@@ -16,6 +16,7 @@ import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.Debug
@@ -30,19 +31,21 @@ import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.PlatformCapabilities
+import io.legado.app.ui.root.encodeBookVariableOverlayPayload
+import io.legado.app.ui.root.encodeSourceVariableOverlayPayload
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.route.encodeReviewListDialogPayload
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
 import io.legado.app.utils.RemoteAssetsUtils
-import io.legado.app.utils.decodeStringMapOrNull
-import io.legado.app.utils.encodeStringMap
 import io.legado.app.utils.toJson
 import io.legado.app.web.WebServerManager
 import io.legado.desktop.constant.DesktopAppInfo
 import io.legado.desktop.help.book.DesktopBookExport
 import io.legado.desktop.help.source.DesktopCheckSource
+import io.legado.desktop.help.webview.DesktopWebViewEngines
+import io.legado.desktop.help.webview.WebViewWindowRequest
 import io.legado.desktop.model.fileBook.DesktopImportBook
 import io.legado.desktop.model.fileBook.DesktopImportFile
 import io.legado.desktop.ui.component.FileDialogs
@@ -73,6 +76,31 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
 
     override fun openExternalUrl(url: String) {
         if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(URI(url))
+    }
+
+    override fun openWebView(url: String, sourceKey: String, sourceName: String) {
+        // 2026-08-06 用户拍板: 桌面端所有中转 WebView 界面去掉, 直接开独立浏览器窗口
+        // (cookie 经书源 key 回写, 登录态可复用; 无书源时裸开窗口)
+        scope.launch {
+            val source = if (sourceKey.isNotEmpty()) {
+                runCatching {
+                    AppDbProviders.get().bookSourceDao.getBookSource(sourceKey)
+                }.getOrNull()
+            } else null
+            if (source != null) {
+                SourceVerificationHelpShared.startBrowser(
+                    source, url, sourceName.ifBlank { "网页" }, false, false
+                )
+            } else {
+                DesktopWebViewEngines.get()?.openWindow(
+                    WebViewWindowRequest(
+                        url = url,
+                        title = sourceName.ifBlank { "网页" },
+                        cookieTag = sourceKey.ifBlank { null },
+                    )
+                )
+            }
+        }
     }
 
     override fun shareText(text: String) {
@@ -192,7 +220,9 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
         }
     }
 
-    // 书源变量: 经 FlowBus 走 shared SourceUiEventBridgeHost (Main.kt 已挂载)
+    // 书源变量: 对照原版 BaseSource.showSourceVariableDialog, 经 AppOverlay 弹 shared
+    // SourceVariableDialog (编辑 source.getVariable() 的原始 JSON 文本, 确定后 setVariable
+    // 原样写回, 不解析不校验); 渲染/保存逻辑见 VariableOverlayDialog.kt
     override fun showSourceVariableDialog(book: Book) {
         scope.launch {
             val source = appDb.bookSourceDao.getBookSource(book.origin)
@@ -200,35 +230,35 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
                 Toasters.get().toast("未找到书源")
                 return@launch
             }
-            source.showSourceVariableDialog()
+            showBookSourceVariableDialog(source)
         }
     }
 
     override fun showBookSourceVariableDialog(source: BookSource) {
-        source.showSourceVariableDialog()
+        AppNavigatorProviders.getOrNull()?.showOverlay(
+            AppOverlay.Dialog(
+                key = "sourceVariable",
+                payload = encodeSourceVariableOverlayPayload(source),
+            )
+        )
     }
 
     override fun showBookSourceLogin(source: BookSource) {
         source.showLoginDialog()
     }
 
-    // 书籍变量: shared VariableDialog 是 Map 批量编辑器, 经桌面对话框宿主弹出
+    // 书籍变量: 对照原版 BaseBook.showBookVariableDialog, 只编辑 book.variable 的 "custom" 键
+    // (getCustomVariable/putCustomVariable 保留其他键), 经 AppOverlay 弹 shared
+    // BookVariableDialog, 确定后写库持久化 (逻辑见 VariableOverlayDialog.kt);
+    // 推 Overlay 前先查源: 原版拿不到 BookSource 直接 return (不弹窗)
     override fun showBookVariableDialog(book: Book) {
         scope.launch {
-            val source = appDb.bookSourceDao.getBookSource(book.origin)
-            val bookVars = decodeStringMapOrNull(book.variable) ?: emptyMap()
-            val sourceVars = source?.let { decodeStringMapOrNull(it.getVariable()) } ?: emptyMap()
-            DesktopDialogs.show(
-                DesktopDialogRequest.Variable(sourceVars, bookVars) { newSourceVars, newBookVars ->
-                    scope.launch {
-                        source?.setVariable(encodeStringMap(newSourceVars))
-                        // 写库前重查, 避免用入队时的旧快照整行覆盖用户并发修改
-                        appDb.bookDao.getBook(book.bookUrl)?.let { latest ->
-                            latest.variable = encodeStringMap(newBookVars)
-                            appDb.bookDao.update(latest)
-                        }
-                    }
-                }
+            val source = appDb.bookSourceDao.getBookSource(book.origin) ?: return@launch
+            AppNavigatorProviders.getOrNull()?.showOverlay(
+                AppOverlay.Dialog(
+                    key = "bookVariable",
+                    payload = encodeBookVariableOverlayPayload(book, source),
+                )
             )
         }
     }

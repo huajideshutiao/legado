@@ -11,8 +11,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Density
@@ -244,21 +248,55 @@ fun ReaderRoute(
     // 栈内页面全部留在组合中, 故非栈顶时必须失效, 否则目录/换源等子页里按方向键会翻背景的书;
     // 翻页键菜单可见时不响应 (原版 menuLayoutIsVisible 分支), 字号增减不受菜单影响
     val isTopEntry = { navigator.backStack.value.lastOrNull()?.id == entry.id }
-    // 翻页键 200ms 去抖 (对照原版 ReadBookKeyHandler.keyPageDebounce: wait=200/maxWait=200,
-    // leading 语义: 200ms 内重复触发只翻一页, 长按不连翻)
+    // 方向键 (用户拍板 2026-08): 阅读键盘只保留方向键, PageUp/PageDown/Space 不再绑定;
+    // 键位随翻页方向自适应——左右翻页模式 ←/→=翻页、↑/↓=章节切换;
+    // 上下滚动模式 ↑/↓=翻页、←/→=章节切换 (原版 ReadBookKeyHandler 的 prevKeys/nextKeys
+    // 含 ↑↓ 翻页, 用户拍板改为章节切换)。
+    // 翻页 200ms 去抖 (对照原版 ReadBookKeyHandler.keyPageDebounce: wait=200/maxWait=200,
+    // leading 语义: 200ms 内重复触发只翻一页, 长按不连翻); 章节切换独立去抖, 防 KeyDown 自动重复连切
     val pageTurnThrottle = remember { PageTurnThrottle() }
+    val chapterTurnThrottle = remember { PageTurnThrottle() }
     AppShortcutHandler(
-        shortcuts = ReaderShortcuts.pageTurn,
+        shortcuts = ReaderShortcuts.arrows,
         enabled = { isTopEntry() && !screenModel.menuState.isVisible },
     ) { shortcut ->
-        val direction = if (shortcut in ReaderShortcuts.prevPage) {
-            PageDirectionShared.PREV
-        } else {
-            PageDirectionShared.NEXT
-        }
-        pageTurnThrottle.tryTurn {
-            // turnPage 内部优先走 pageDelegate.keyTurnPage(带动画), 无委托时直接位移页码
-            screenModel.viewModel.turnPage(direction)
+        // 分发时读当前翻页方向 (scroll=上下滚动, 其余=左右翻页), 不依赖重组
+        val isScroll = screenModel.viewModel.isScrollPageAnim
+        when (shortcut.key) {
+            Key.DirectionLeft, Key.DirectionRight -> {
+                val prev = shortcut.key == Key.DirectionLeft
+                if (isScroll) {
+                    // 上下滚动模式: ←/→ = 章节切换 (用户拍板)
+                    chapterTurnThrottle.tryTurn {
+                        if (prev) screenModel.viewModel.moveToPrevChapter(toLast = false)
+                        else screenModel.viewModel.moveToNextChapter()
+                    }
+                } else {
+                    pageTurnThrottle.tryTurn {
+                        // turnPage 内部优先走 pageDelegate.keyTurnPage(带动画), 无委托时直接位移页码
+                        screenModel.viewModel.turnPage(
+                            if (prev) PageDirectionShared.PREV else PageDirectionShared.NEXT
+                        )
+                    }
+                }
+            }
+
+            Key.DirectionUp, Key.DirectionDown -> {
+                val up = shortcut.key == Key.DirectionUp
+                if (isScroll) {
+                    pageTurnThrottle.tryTurn {
+                        screenModel.viewModel.turnPage(
+                            if (up) PageDirectionShared.PREV else PageDirectionShared.NEXT
+                        )
+                    }
+                } else {
+                    // 左右翻页模式: ↑/↓ = 章节切换 (用户拍板)
+                    chapterTurnThrottle.tryTurn {
+                        if (up) screenModel.viewModel.moveToPrevChapter(toLast = false)
+                        else screenModel.viewModel.moveToNextChapter()
+                    }
+                }
+            }
         }
     }
     // 音量键翻页 (对照原版 ReadBookKeyHandler VOLUME_UP/DOWN 分支, 默认开启;
@@ -275,22 +313,39 @@ fun ReaderRoute(
             )
         }
     }
-    AppShortcutHandler(ReaderShortcuts.textSize, enabled = isTopEntry) { shortcut ->
-        val delta = if (shortcut == ReaderShortcuts.increaseTextSize) 1 else -1
-        val newSize = (readBookConfig.textSize + delta).coerceIn(MIN_TEXT_SIZE, MAX_TEXT_SIZE)
-        if (newSize != readBookConfig.textSize) {
-            readBookConfig.textSize = newSize
-            readBookConfig.save()
-            // 与 ReadStyleScreen 字号 seekBar 一致的重排事件
-            ReadBookEvents.postConfig(
-                ReadConfigChange.CHAPTER_STYLE,
-                ReadConfigChange.LOAD_CONTENT,
-            )
-        }
-    }
     // endregion
 
-    ReaderScreen(state = state, actions = actions, focusRequester = keyFocusRequester)
+    // Ctrl+滚轮调字号 (用户拍板: 替代 Ctrl+=/-= 快捷键, 更直观)
+    // 非 Ctrl 滚轮不消费 (阅读页滚动走拖拽, 保持现状)
+    ReaderScreen(
+        state = state,
+        actions = actions,
+        focusRequester = keyFocusRequester,
+        modifier = Modifier.pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) {
+                    val event = awaitPointerEvent()
+                    if (event.type != PointerEventType.Scroll) continue
+                    val change = event.changes.firstOrNull() ?: continue
+                    val delta = change.scrollDelta.y
+                    if (delta == 0f || !event.keyboardModifiers.isCtrlPressed) continue
+                    val deltaSize = if (delta > 0) 1 else -1
+                    val newSize = (readBookConfig.textSize + deltaSize)
+                        .coerceIn(MIN_TEXT_SIZE, MAX_TEXT_SIZE)
+                    if (newSize != readBookConfig.textSize) {
+                        readBookConfig.textSize = newSize
+                        readBookConfig.save()
+                        // 与 ReadStyleScreen 字号 seekBar 一致的重排事件
+                        ReadBookEvents.postConfig(
+                            ReadConfigChange.CHAPTER_STYLE,
+                            ReadConfigChange.LOAD_CONTENT,
+                        )
+                    }
+                    change.consume()
+                }
+            }
+        },
+    )
 
     // region ReadBookEvents 订阅 (对照 app 端 ReadBookActivity.observeLiveBus 的 ReadBookEvents 收集)
     LaunchedEffect(screenModel) {
@@ -418,13 +473,10 @@ fun ReaderRoute(
                     okButton = AlertButton(stringResource(Res.string.ok)) {
                         screenModel.clearDialogEvent()
                         screenModel.payChapter { url ->
-                            // 支付页 URL 打开方式与 onChapterViewClick 一致 (内嵌 WebView 路由)
-                            navigator.push(
-                                AppRoute.WebView(
-                                    url = url,
-                                    sourceKey = book.origin,
-                                    sourceName = book.originName,
-                                )
+                            // 2026-08-06: 打开方式与 onChapterViewClick 一致, 走平台 openWebView
+                            // (桌面端=独立窗口, 移动端=原 WebViewRoute 路由)
+                            PlatformCapabilityProviders.getOrNull()?.openWebView(
+                                url, book.origin, book.originName
                             )
                         }
                     },
@@ -872,8 +924,10 @@ private const val MIN_TEXT_SIZE = 5
 private const val MAX_TEXT_SIZE = 50
 
 /**
- * 阅读页快捷键。PageUp/PageDown/空格为原版键位 (app 端 ReadBookKeyHandler);
- * 方向键是桌面端新增, 替代原版没有的音量键翻页。均无修饰键, 走冒泡阶段分发。
+ * 阅读页快捷键。用户拍板 (2026-08): 键盘只保留方向键, 键位随翻页方向自适应——
+ * 左右翻页模式 ←/→=翻页、↑/↓=章节切换; 上下滚动模式 ↑/↓=翻页、←/→=章节切换;
+ * PageUp/PageDown/Space 不再绑定 (原版 ReadBookKeyHandler 的 prevKeys/nextKeys 含 ↑↓ 翻页,
+ * 用户拍板改为章节切换)。均无修饰键, 走冒泡阶段分发。
  */
 /**
  * 翻页快捷键 200ms 去抖 (对照原版 ReadBookKeyHandler.keyPageDebounce 的 Throttle
@@ -892,28 +946,18 @@ private class PageTurnThrottle(private val intervalMs: Long = 200L) {
 }
 
 private object ReaderShortcuts {
-    val prevPage = listOf(
-        AppShortcut(Key.PageUp),
+    val arrows = listOf(
         AppShortcut(Key.DirectionLeft),
-        AppShortcut(Key.DirectionUp),
-    )
-    val nextPage = listOf(
-        AppShortcut(Key.PageDown),
         AppShortcut(Key.DirectionRight),
+        AppShortcut(Key.DirectionUp),
         AppShortcut(Key.DirectionDown),
-        AppShortcut(Key.Spacebar),
     )
-    val pageTurn = prevPage + nextPage
 
     /** 音量键翻页 (对照原版 ReadBookKeyHandler VOLUME_UP/DOWN) */
     val volumePageTurn = listOf(
         AppShortcut(Key.VolumeUp),
         AppShortcut(Key.VolumeDown),
     )
-
-    val increaseTextSize = AppShortcut(Key.Equals, command = true)
-    val decreaseTextSize = AppShortcut(Key.Minus, command = true)
-    val textSize = listOf(increaseTextSize, decreaseTextSize)
 }
 
 /**

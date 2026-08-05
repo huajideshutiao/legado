@@ -10,6 +10,8 @@ import legado.shared.generated.resources.chinese_converter
 import legado.shared.generated.resources.chinese_mode
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 跨平台"简繁转换"选择器对话框（对照 app 端 `ChineseUtils.showConverterSelector`）。
@@ -68,3 +70,44 @@ fun ChineseConverterSelectorDialog(
         },
     )
 }
+
+// ===== @Preview 合并自 androidMain 的 book/read/config/FontAndConverterDialogPreviews.kt (ChineseConverterSelectorDialog) =====
+
+// ---- ChineseConverterSelectorDialog ----
+
+/**
+ * [ChineseConverterSelectorDialog] / [FontSelectDialog] 的 @Preview。
+ *
+ * 字体列表用内存 [FontItem], 不扫描真实字体目录。
+ */
+
+@Preview
+@Composable
+fun ChineseConverterSelectorDialogOffPreview() = LegadoThemePreview {
+    ChineseConverterSelectorDialog(
+        currentType = 0,
+        onChanged = {},
+        onDismiss = {},
+    )
+}
+
+@Preview
+@Composable
+fun ChineseConverterSelectorDialogT2sPreview() = LegadoThemePreview {
+    ChineseConverterSelectorDialog(
+        currentType = 1,
+        onChanged = {},
+        onDismiss = {},
+    )
+}
+
+@Preview
+@Composable
+fun ChineseConverterSelectorDialogDarkPreview() = LegadoThemePreview(dark = true) {
+    ChineseConverterSelectorDialog(
+        currentType = 2,
+        onChanged = {},
+        onDismiss = {},
+    )
+}
+

@@ -1,284 +1,202 @@
 package io.legado.app.ui.widget.dialog
 
-// I18N KEYS (need to register in ResourceProvider.jvm.kt):
-//   "source_variable_tab" to "源变量",
-//   "book_variable_tab" to "书籍变量",
-//   "variable_key" to "变量名",
-//   "variable_value" to "变量值",
-//   "variable_edit_title" to "编辑变量",
-//   "variable_empty" to "暂无变量"
+// 对照原版 app 端 VariableDialog.kt + dialog_variable.xml 的 KMP 共享版。
+// 原版是单变量编辑器: 一次编辑一个变量的原始文本 (书源变量 = getVariable() 的原始 JSON 文本;
+// 书籍变量 = book.variable 的 "custom" 键), 不解析不校验, 确定时原样存字符串 (空串也允许)。
+// 替代早前的双 Tab Map 键值编辑器 (key 只读 value 可编辑可增删, 经
+// decodeStringMap/encodeStringMap 往返会破坏原始 JSON, 且书籍变量 Tab 数据会被丢)。
+//
+// 原版入口语义 (origin/quickjs BaseSource.showSourceVariableDialog / BaseBook.showBookVariableDialog):
+//   - 书源变量: 标题 "设置源变量", 初始值 = getVariable() 原文, 注释 = variableComment + "源变量可在js中通过source.getVariable()获取",
+//     确定 setVariable(v) 原样存字符串 (存储 key sourceVariable_{sourceKey}, 与 SourceCacheProviders 一致)
+//   - 书籍变量: 标题 "设置书籍变量", 初始值 = getCustomVariable() (只读 variable 的 "custom" 键),
+//     注释 = variableComment + "书籍变量可在js中通过book.getVariable(\"custom\")获取",
+//     确定 putCustomVariable(v) 写回 "custom" 键 (其他键保留), 再持久化整个 variable JSON
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.Icon
-import androidx.compose.material.IconButton
-import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.legado.app.ui.compose.component.AppDialog
-import io.legado.app.ui.compose.component.AppDialogSizes
+import io.legado.app.ui.compose.component.AlertButton
+import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppOutlinedTextField
-import io.legado.app.ui.compose.component.AppScrollTabRow
-import io.legado.app.ui.compose.component.AppTextButton
-import io.legado.app.ui.compose.component.DialogTitleBar
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
-import legado.shared.generated.resources.add
-import legado.shared.generated.resources.book_variable_tab
 import legado.shared.generated.resources.cancel
-import legado.shared.generated.resources.ic_add
-import legado.shared.generated.resources.ic_baseline_close
 import legado.shared.generated.resources.ok
-import legado.shared.generated.resources.source_variable_tab
-import legado.shared.generated.resources.variable_edit_title
-import legado.shared.generated.resources.variable_empty
-import legado.shared.generated.resources.variable_key
-import legado.shared.generated.resources.variable_value
-import org.jetbrains.compose.resources.painterResource
+import legado.shared.generated.resources.set_book_variable
+import legado.shared.generated.resources.set_source_variable
+import legado.shared.generated.resources.variable_comment
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
- * 变量编辑对话框 (KMP 共享, app + desktop 复用)。
+ * 书源变量对话框 (对照原版 VariableDialog.show + dialog_variable.xml):
+ * 单个多行输入框编辑 [initialJson] (source.getVariable() 的原始 JSON 文本, 原样填入),
+ * 确定时原样保存字符串 (不解析不校验, 空串也允许)。
  *
- * 对应 app 端 `io.legado.app.ui.widget.dialog.VariableDialog`, 但去掉对
- * AppCompatActivity / ComposeDialog / WindowManager 的依赖, 改为纯 @Composable + 回调形式:
- * - 两个 Tab: 源变量 / 书籍变量, 通过 [AppScrollTabRow] 切换
- * - 每个 Tab 展示变量键值对 (key 只读 + value 可编辑), 支持删除和新增
- * - 确认时把两个 Map 通过 [onConfirm] 回传
- *
- * 原 app 端是单变量编辑器 (一次编辑一个变量值), KMP 版改为 Map 批量编辑器
- * (一次查看/编辑全部变量), 更适合桌面端批量操作场景。
- *
- * @param sourceVariables 当前的书源变量 Map
- * @param bookVariables 当前的书籍变量 Map
- * @param onConfirm 用户点击确定, 参数为 (源变量Map, 书籍变量Map)
- * @param onDismiss 用户取消 (返回按钮 / 点击对话框外部 / 取消按钮)
+ * @param initialJson 初始值 = source.getVariable() 原文 (null 按空串填入)
+ * @param comment 注释正文 = variableComment + "源变量可在js中通过source.getVariable()获取" (由调用方拼好)
+ * @param onSave 确定回调, 参数为输入框原文 (原样存字符串)
+ * @param onDismiss 取消回调
  */
 @Composable
-fun VariableDialog(
-    sourceVariables: Map<String, String>,
-    bookVariables: Map<String, String>,
-    onConfirm: (Map<String, String>, Map<String, String>) -> Unit,
+fun SourceVariableDialog(
+    initialJson: String?,
+    comment: String?,
+    onSave: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val colors = AppTheme.colors
-    val titleText = stringResource(Res.string.variable_edit_title)
-    val sourceTabText = stringResource(Res.string.source_variable_tab)
-    val bookTabText = stringResource(Res.string.book_variable_tab)
-    val keyLabelText = stringResource(Res.string.variable_key)
-    val valueLabelText = stringResource(Res.string.variable_value)
-    val emptyText = stringResource(Res.string.variable_empty)
-    val addText = stringResource(Res.string.add)
-    val cancelText = stringResource(Res.string.cancel)
-    val okText = stringResource(Res.string.ok)
+    var text by remember { mutableStateOf(initialJson.orEmpty()) }
+    VariableEditDialogContent(
+        title = stringResource(Res.string.set_source_variable),
+        text = text,
+        onTextChange = { text = it },
+        comment = comment,
+        onSave = { onSave(text) },
+        onDismiss = onDismiss,
+    )
+}
 
-    // 可变变量 Map (初始化自参数)
-    val sourceVars = remember { mutableStateMapOf<String, String>().apply { putAll(sourceVariables) } }
-    val bookVars = remember { mutableStateMapOf<String, String>().apply { putAll(bookVariables) } }
+/**
+ * 书籍变量对话框 (对照原版 VariableDialog.show + dialog_variable.xml):
+ * 只编辑 book.variable 的 "custom" 键 (getCustomVariable/putCustomVariable, 其他键保留),
+ * 确定时原样保存字符串 (不解析不校验, 空串也允许)。
+ *
+ * @param initialCustom 初始值 = book.getCustomVariable() (custom 键原文, null 按空串填入)
+ * @param comment 注释正文 = variableComment + "书籍变量可在js中通过book.getVariable(\"custom\")获取" (由调用方拼好)
+ * @param onSave 确定回调, 参数为输入框原文 (调用方负责 putCustomVariable + 持久化)
+ * @param onDismiss 取消回调
+ */
+@Composable
+fun BookVariableDialog(
+    initialCustom: String?,
+    comment: String?,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var text by remember { mutableStateOf(initialCustom.orEmpty()) }
+    VariableEditDialogContent(
+        title = stringResource(Res.string.set_book_variable),
+        text = text,
+        onTextChange = { text = it },
+        comment = comment,
+        onSave = { onSave(text) },
+        onDismiss = onDismiss,
+    )
+}
 
-    // 当前选中的 Tab (0=源变量, 1=书籍变量)
-    var selectedTab by remember { mutableStateOf(0) }
-
-    AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {
-        Surface(
-            shape = DesignTokens.dialogShape,
-            color = colors.fillet,
-            modifier = Modifier.appDialogSize(),
+/**
+ * 两个变量对话框共用正文 (对齐 dialog_variable.xml 布局):
+ * TextInputEditText (hint "variable") + NestedScrollView(AccentTextView "变量注释" + tv_comment)。
+ */
+@Composable
+private fun VariableEditDialogContent(
+    title: String,
+    text: String,
+    onTextChange: (String) -> Unit,
+    comment: String?,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AppAlertDialog(
+        onDismissRequest = onDismiss,
+        title = title,
+        okButton = AlertButton(text = stringResource(Res.string.ok)) { onSave() },
+        cancelButton = AlertButton(text = stringResource(Res.string.cancel)) { onDismiss() },
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp),
         ) {
-            Column(Modifier.fillMaxWidth()) {
-                DialogTitleBar(
-                    title = titleText,
-                    onBack = onDismiss,
-                )
-
-                // Tab 切换行 (任务要求用 AppTabRow, shared 仅有 AppScrollTabRow, 行为等价)
-                AppScrollTabRow(
-                    tabCount = 2,
-                    selectedIndex = selectedTab,
-                    indicatorColor = DesignTokens.arcoBlue6,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(colors.bottomBackground),
-                ) { index ->
-                    val tabText = if (index == 0) sourceTabText else bookTabText
-                    Text(
-                        text = tabText,
-                        color = if (index == selectedTab) DesignTokens.arcoBlue6 else colors.secondaryText,
-                        fontSize = 14.sp,
-                        fontWeight = if (index == selectedTab) FontWeight.Medium else FontWeight.Normal,
-                        modifier = Modifier
-                            .clickable { selectedTab = index }
-                            .padding(horizontal = 24.dp, vertical = 12.dp),
-                    )
-                }
-
-                // Tab 内容区: 变量列表 + 新增输入
-                val currentMap = if (selectedTab == 0) sourceVars else bookVars
-                VariableTabContent(
-                    variables = currentMap,
-                    keyLabel = keyLabelText,
-                    valueLabel = valueLabelText,
-                    emptyText = emptyText,
-                    addText = addText,
-                )
-
-                // 底部按钮栏
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(colors.bottomBackground)
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    AppTextButton(text = cancelText, color = colors.secondaryText) { onDismiss() }
-                    AppTextButton(text = okText, color = DesignTokens.arcoBlue6) {
-                        onConfirm(
-                            sourceVars.toMap(),
-                            bookVars.toMap(),
-                        )
-                    }
-                }
-            }
+            // 变量原文编辑框 (对照 tv_variable, hint "variable"; 多行, 原文原样填入)
+            AppOutlinedTextField(
+                value = text,
+                onValueChange = onTextChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 120.dp, max = 240.dp),
+                singleLine = false,
+                placeholder = "variable",
+            )
+            // 注释区 (对照 dialog_variable.xml: AccentTextView @string/variable_comment + tv_comment)
+            Text(
+                text = stringResource(Res.string.variable_comment),
+                color = DesignTokens.arcoBlue6,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+            )
+            Text(
+                text = comment.orEmpty(),
+                color = AppTheme.colors.secondaryText,
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 120.dp)
+                    .verticalScroll(rememberScrollState()),
+            )
         }
     }
 }
 
-/**
- * 单个 Tab 的变量列表内容: 已有变量 (key 只读 + value 可编辑 + 删除) + 新增行。
- */
+// ===== @Preview 合并自 androidMain 的 widget/dialog/CommonDialogsPreviews.kt (VariableDialog (源变量/书籍变量, 对照原版单变量编辑器)) =====
+
+// ---- VariableDialog (源变量/书籍变量, 对照原版单变量编辑器) ----
+
+private val previewSourceVariable = """{
+  "cookie": "session=abc123; uid=88888",
+  "token": "eyJhbGciOiJIUzI1NiJ9.preview",
+  "baseUrl": "https://preview.invalid"
+}"""
+
+private val previewBookVariable = """{
+  "lastReadTime": "1700000000000",
+  "chapterOffset": "12"
+}"""
+
+@Preview
 @Composable
-private fun VariableTabContent(
-    variables: MutableMap<String, String>,
-    keyLabel: String,
-    valueLabel: String,
-    emptyText: String,
-    addText: String,
-) {
-    val colors = AppTheme.colors
-    // 新增行的 key/value 输入
-    var newKey by remember { mutableStateOf("") }
-    var newValue by remember { mutableStateOf("") }
+fun SourceVariableDialogPreview() = LegadoThemePreview {
+    SourceVariableDialog(
+        initialJson = previewSourceVariable,
+        comment = "cookie\n源变量可在js中通过source.getVariable()获取",
+        onSave = {},
+        onDismiss = {},
+    )
+}
 
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(max = 400.dp)
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-    ) {
-        if (variables.isEmpty()) {
-            Text(
-                text = emptyText,
-                color = colors.secondaryText,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(vertical = 8.dp),
-            )
-        } else {
-            // 已有变量列表 (toList 避免遍历时并发修改)
-            variables.toList().forEach { (key, value) ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // key 只读展示 (对齐原 VariableDialog: 变量名由调用方指定, 用户只编辑值)
-                    Text(
-                        text = key,
-                        color = colors.primaryText,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier
-                            .width(100.dp)
-                            .padding(end = 8.dp),
-                    )
-                    // value 可编辑
-                    AppOutlinedTextField(
-                        value = value,
-                        onValueChange = { variables[key] = it },
-                        modifier = Modifier
-                            .weight(1f),
-                        singleLine = true,
-                    )
-                    // 删除按钮
-                    IconButton(
-                        onClick = { variables.remove(key) },
-                        modifier = Modifier.padding(start = 4.dp),
-                    ) {
-                        Icon(
-                            painter = painterResource(Res.drawable.ic_baseline_close),
-                            contentDescription = null,
-                            tint = colors.secondaryText,
-                        )
-                    }
-                }
-            }
-        }
+@Preview
+@Composable
+fun BookVariableDialogPreview() = LegadoThemePreview {
+    BookVariableDialog(
+        initialCustom = previewBookVariable,
+        comment = """书籍变量可在js中通过book.getVariable("custom")获取""",
+        onSave = {},
+        onDismiss = {},
+    )
+}
 
-        Spacer(Modifier.heightIn(min = 8.dp))
-
-        // 新增变量行: key 输入 + value 输入 + 添加按钮
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(top = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            AppOutlinedTextField(
-                value = newKey,
-                onValueChange = { newKey = it },
-                label = keyLabel,
-                modifier = Modifier
-                    .width(120.dp)
-                    .padding(end = 8.dp),
-                singleLine = true,
-            )
-            AppOutlinedTextField(
-                value = newValue,
-                onValueChange = { newValue = it },
-                label = valueLabel,
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-            )
-            IconButton(
-                onClick = {
-                    // key 非空才添加 (对齐原 VariableDialog 的非空校验)
-                    if (newKey.isNotBlank()) {
-                        variables[newKey.trim()] = newValue
-                        newKey = ""
-                        newValue = ""
-                    }
-                },
-                modifier = Modifier.padding(start = 4.dp),
-            ) {
-                Icon(
-                    painter = painterResource(Res.drawable.ic_add),
-                    contentDescription = addText,
-                    tint = DesignTokens.arcoBlue6,
-                )
-            }
-        }
-    }
+@Preview
+@Composable
+fun VariableDialogDarkPreview() = LegadoThemePreview(dark = true) {
+    SourceVariableDialog(
+        initialJson = previewSourceVariable,
+        comment = "源变量可在js中通过source.getVariable()获取",
+        onSave = {},
+        onDismiss = {},
+    )
 }

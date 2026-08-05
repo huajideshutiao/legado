@@ -12,6 +12,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -25,8 +29,9 @@ import io.legado.app.ui.compose.theme.AppTheme
  * 走 [BookImageLoaders] (各端注入 Coil3 实现) 加载封面 Bitmap, 再用 [Modifier.blur] 做高斯模糊。
  * 加载中/失败/E-Ink 模式回退到 accent 半透明纯色占位 (与 [SharedBlurCoverBgPlaceholder] 一致)。
  *
- * 与 app 端 [BookInfoBlurCoverBg] 区别: 不使用 Android 专属 BookInfoBgTransformation (渐变遮罩),
- * 改用 Modifier.blur + 纯色叠层, 视觉接近但简化, 适合非 Android 平台。
+ * 渐变蒙版对照 app 端 [io.legado.app.ui.book.info.BookInfoBgTransformation]:
+ * 顶部 30% 清晰 → 30%-65% 柔和过渡 → 底部透明 (DST_IN alpha 蒙版), 再叠压暗蒙层
+ * (原版 argb(50,0,0,0) SRC_ATOP ≈ 压暗 20%)。用 Compose 绘制层实现, 免 Android 位图 API。
  *
  * @param book 当前书籍 (可能为 null)
  * @param coverTick 封面重载 key (变更时重新加载)
@@ -55,21 +60,42 @@ fun SharedBlurCoverBgCoil(
         )
     }
     Box(modifier) {
-        // 模糊封面铺满
+        // 模糊封面铺满 + 渐变蒙版 + 压暗 (对照原版 BookInfoBgTransformation)
         bitmap?.let {
             Image(
                 bitmap = it,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().blur(24.dp),
+                // 链序关键: drawWithContent 在 blur 外层, 否则渐变蒙版/压暗也会被高斯模糊
+                modifier = Modifier.fillMaxSize().drawWithContent {
+                    drawContent()
+                    // 顶部 30% 清晰 → 65% 柔和过渡 → 底部透明 (alpha 蒙版, 曲线同原版)
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.00f to Color.Black,
+                                0.30f to Color.Black,
+                                0.48f to Color(0xD2000000), // alpha 210
+                                0.63f to Color(0xA5000000), // alpha 165
+                                0.77f to Color(0x6E000000), // alpha 110
+                                0.90f to Color(0x1E000000), // alpha 30
+                                1.00f to Color.Transparent,
+                            ),
+                        ),
+                        blendMode = BlendMode.DstIn,
+                    )
+                    // 压暗蒙层 (对照原版 argb(50,0,0,0) SRC_ATOP)
+                    drawRect(color = Color(0x32000000))
+                }.blur(24.dp),
             )
         }
-        // accent 半透明遮罩 (加载中/失败时即纯色占位)
-        Box(Modifier.fillMaxSize().background(AppTheme.colors.accent.copy(alpha = 0.15f)))
-        // 加深底色保证标题栏文字可读
-        Box(
-            Modifier.fillMaxSize()
-                .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.2f))
-        )
+        // 加载中/失败/E-Ink 占位: 原纯色占位视觉 (对照 SharedBlurCoverBgPlaceholder)
+        if (bitmap == null) {
+            Box(Modifier.fillMaxSize().background(AppTheme.colors.accent.copy(alpha = 0.15f)))
+            Box(
+                Modifier.fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.2f))
+            )
+        }
     }
 }

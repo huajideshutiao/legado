@@ -31,6 +31,8 @@ import legado.shared.generated.resources.source_filter_rule_manage
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 展示当前章节起效的替换规则对话框正文 Composable。
@@ -126,3 +128,55 @@ fun EffectiveReplacesScreen(
         }
     }
 }
+
+// ===== @Preview 合并自 androidMain 的 book/read/ReadDialogsPreviews.kt (EffectiveReplacesScreen) =====
+
+// ===== EffectiveReplacesScreen =====
+
+
+private val previewReplaceRules = listOf(
+    ReplaceRule(
+        id = 1L,
+        name = "净化广告",
+        pattern = "<ad>.*?</ad>",
+        replacement = "",
+    ),
+    ReplaceRule(
+        id = 2L,
+        name = "繁简转换",
+        pattern = "[繁體]",
+        replacement = "[简体]",
+    ),
+    ReplaceRule(
+        id = 3L,
+        name = "去除水印",
+        pattern = "本章未完.*?请翻页",
+        replacement = "",
+    ),
+)
+
+
+@Preview
+@Composable
+fun EffectiveReplacesScreenPreview() = LegadoThemePreview {
+    EffectiveReplacesScreen(
+        items = previewReplaceRules,
+        onAddRule = {},
+        onItemClick = {},
+        onManageAll = {},
+        onDismiss = {},
+    )
+}
+
+@Preview
+@Composable
+fun EffectiveReplacesScreenEmptyPreview() = LegadoThemePreview {
+    EffectiveReplacesScreen(
+        items = emptyList(),
+        onAddRule = {},
+        onItemClick = {},
+        onManageAll = {},
+        onDismiss = {},
+    )
+}
+

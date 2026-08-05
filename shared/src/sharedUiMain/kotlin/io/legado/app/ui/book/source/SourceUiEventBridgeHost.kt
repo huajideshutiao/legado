@@ -4,7 +4,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SourceUiRequest
@@ -14,11 +13,8 @@ import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.sourceLoginOverlayPayload
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
-import io.legado.app.ui.widget.dialog.VariableDialog
+import io.legado.app.ui.root.encodeSourceVariableOverlayPayload
 import io.legado.app.utils.FlowBus
-import io.legado.app.utils.decodeStringMapOrNull
-import io.legado.app.utils.encodeStringMap
-import kotlinx.coroutines.launch
 
 /**
  * shared 统一书源 UI 事件桥宿主 (零薄壳方案 §3.1/§11, LegadoApp 统一管理 Overlay)。
@@ -32,7 +28,6 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun SourceUiEventBridgeHost() {
-    val scope = rememberCoroutineScope()
     val currentRequest = remember { mutableStateOf<SourceUiRequest?>(null) }
 
     LaunchedEffect(Unit) {
@@ -103,21 +98,18 @@ fun SourceUiEventBridgeHost() {
 
     when (request) {
         is SourceUiRequest.SourceVariable -> {
-            // 与 BookSourceEditScreen 一致: bookVariables 传空 Map (无具体书籍),
-            // sourceVariables 从 getVariable() 解析; 确认后 setVariable 写回
-            VariableDialog(
-                sourceVariables = decodeStringMapOrNull(src.getVariable()) ?: emptyMap(),
-                bookVariables = emptyMap(),
-                onConfirm = { newSourceVars, _ ->
-                    scope.launch {
-                        src.setVariable(encodeStringMap(newSourceVars))
-                    }
-                    currentRequest.value = null
-                },
-                onDismiss = {
-                    currentRequest.value = null
-                },
-            )
+            // 对照原版 BaseSource.showSourceVariableDialog: 经 AppOverlay 弹 shared
+            // SourceVariableDialog (初始值 = getVariable() 原文, 注释 = variableComment + 提示语,
+            // 确定后 setVariable 原样写回, 不解析不校验; 全部逻辑见 VariableOverlayDialog.kt)
+            LaunchedEffect(request) {
+                AppNavigatorProviders.getOrNull()?.showOverlay(
+                    AppOverlay.Dialog(
+                        key = "sourceVariable",
+                        payload = encodeSourceVariableOverlayPayload(src),
+                    )
+                )
+                currentRequest.value = null
+            }
         }
         // 上方 early-return 已处理, 以下分支不可达 (sealed when 需穷尽)
         is SourceUiRequest.Login,

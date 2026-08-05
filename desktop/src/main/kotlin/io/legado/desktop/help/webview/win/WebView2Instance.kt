@@ -8,6 +8,7 @@ import com.sun.jna.platform.win32.WinDef
 import com.sun.jna.platform.win32.WinUser
 import com.sun.jna.ptr.IntByReference
 import com.sun.jna.ptr.PointerByReference
+import com.sun.jna.win32.StdCallLibrary
 import io.legado.app.constant.AppLog
 import io.legado.app.help.file.AppFilesDirs
 import kotlinx.coroutines.CompletableDeferred
@@ -378,13 +379,27 @@ internal class WebView2Instance private constructor(
         // 窗口本身不可见时也把 controller 置为可见: 否则 Chromium 按"被遮挡"降频, 脚本/定时器会停
         vtbl(controller, Wv2.CTRL_PUT_IS_VISIBLE, 1)
         val rect = WebView2Loop.clientRect(hwnd)
-        val toolbarTop = toolbar?.let { WebView2Toolbar.HEIGHT } ?: 0
+        // 工具栏动态高度 (溢出菜单展开时加高, WebView2 同步下移)
+        val toolbarTop = toolbar?.let { it.layoutHeight() } ?: 0
         vtbl(controller, Wv2.CTRL_PUT_BOUNDS, RectValue().apply {
             left = rect.left
             top = rect.top + toolbarTop
             right = rect.right
             bottom = rect.bottom
         })
+    }
+
+    /** 工具栏高度变化 (菜单展开/收起) 后刷新 WebView2 bounds。 */
+    fun refreshToolbarBounds() {
+        WebView2Loop.post { applyLayout() }
+    }
+
+    /** 最大化/还原切换 (对照原版 menu_full_screen 的最大化语义; 原生标题栏全屏由系统处理)。 */
+    fun maximizeToggle() {
+        WebView2Loop.post {
+            val isZoomed = user32Ex.IsZoomed(hwnd)
+            user32Ex.ShowWindow(hwnd, if (isZoomed) WinUser.SW_RESTORE else WinUser.SW_MAXIMIZE)
+        }
     }
 
     /** 对齐 app 端 BackstageWebView: 开 JS, 关脚本弹窗/devtools。
@@ -403,6 +418,9 @@ internal class WebView2Instance private constructor(
             comRelease(settings)
         }
     }
+
+    private fun loword(lParam: WinDef.LPARAM): Int =
+        (lParam as Number).toLong().toInt() and 0xFFFF
 
     companion object {
 
@@ -497,20 +515,36 @@ internal class WebView2Instance private constructor(
                             toolbarSpec.title,
                             toolbarSpec.isLogin,
                             toolbarSpec.saveResult,
-                        ).also { it.layout(client.right) }
+                        ).also {
+                            // 2026-08-06 标准 ToolbarWindow32 控件: 创建子窗口 + 按钮 + 进度条
+                            it.create()
+                            it.resize(client.right)
+                        }
                     } else null
                     applyLayout()
                     applyDefaultSettings()
                     bindEvents(sniffResources)
                     WebView2Loop.hookWindow(hwnd) { message, wParam, lParam ->
                         val t = toolbar
-                        if (t != null && t.onWindowMessage(message, wParam, lParam)) {
-                            true
-                        } else when (message) {
+                        when (message) {
                             WinUser.WM_SIZE -> {
+                                // 同步工具栏/进度条尺寸 (标准控件由系统重绘, 无残留)
+                                val w = loword(lParam)
+                                t?.resize(w)
                                 applyLayout()
                                 false
                             }
+
+                            // 标准 Toolbar 控件按钮点击 / TBN_DROPDOWN 菜单
+                            // (jna WinUser 未定义 WM_COMMAND/WM_NOTIFY, 自定义常量)
+                            WM_COMMAND -> {
+                                t?.onCommand(wParam, lParam) == true
+                            }
+
+                            WM_NOTIFY -> {
+                                t?.onNotify(lParam) == true
+                            }
+
                             // 关闭统一走 onWindowClose -> close(), 不让 DefWindowProc 直接销毁
                             WinUser.WM_CLOSE -> {
                                 runCatching { onWindowClose?.invoke() }
@@ -520,11 +554,6 @@ internal class WebView2Instance private constructor(
                             else -> false
                         }
                     }
-                    // 关键: 窗口显示 (ShowWindow) 先于 hook 注册, 首个 WM_PAINT 被
-                    // DefWindowProc 吃掉 (不画工具栏), 之后若无失效区域工具栏永远不画
-                    // (曾表现为"控制栏下面一行空白": 客户区 0..HEIGHT 是窗口默认白底)。
-                    // hook 注册后必须主动触发一次重绘。
-                    User32.INSTANCE.InvalidateRect(hwnd, null, false)
                 }
             }
         }
@@ -537,3 +566,20 @@ internal class WebView2ToolbarSpec(
     val isLogin: Boolean,
     val saveResult: Boolean,
 )
+
+private const val WM_COMMAND = 0x0111
+private const val WM_NOTIFY = 0x004E
+
+/** user32 补充接口: jna-platform User32 未覆盖 IsZoomed。 */
+private interface WebView2User32Ex : StdCallLibrary {
+    fun IsZoomed(hWnd: WinDef.HWND): Boolean
+    fun ShowWindow(hWnd: WinDef.HWND, nCmdShow: Int): Boolean
+}
+
+private val user32Ex: WebView2User32Ex by lazy {
+    com.sun.jna.Native.load(
+        "user32",
+        WebView2User32Ex::class.java,
+        com.sun.jna.win32.W32APIOptions.UNICODE_OPTIONS
+    )
+}

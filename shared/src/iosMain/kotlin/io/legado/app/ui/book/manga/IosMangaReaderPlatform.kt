@@ -57,6 +57,7 @@ object IosMangaReaderPlatform : MangaReaderScreenModel.Platform {
         grayEnabled: Boolean,
         onLoadState: (MangaCellState) -> Unit,
         retryTick: Int,
+        onProgress: (String) -> Unit,
     ) {
         // 内部重试计数保留原有"重新加载"按钮; shared 单元格的 retryTick 变化同样重建 ImageRequest
         var internalRetryTick by remember(url) { mutableStateOf(0) }

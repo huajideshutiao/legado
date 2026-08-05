@@ -361,7 +361,8 @@ private suspend fun handleLaunchRequest(
     capabilities: PlatformCapabilities,
 ) {
     when (request) {
-        is LaunchRequest.DeepLink -> navigator.push(AppRoute.WebView(request.url))
+        // 2026-08-06: 深链网页打开走平台 openWebView (桌面端=独立窗口, 移动端=原路由)
+        is LaunchRequest.DeepLink -> capabilities.openWebView(request.url)
         is LaunchRequest.SearchBook -> navigator.push(
             AppRoute.Search(key = request.key, submit = request.submit)
         )
@@ -452,6 +453,9 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
         "source_picker" -> SourcePickerDialogContent(overlay, navigator)
         "bookmark" -> BookmarkDialogContent(overlay, navigator)
         "sourceLogin" -> SourceLoginOverlayContent(overlay, navigator)
+        // 源/书变量编辑 (对照原版 VariableDialog; payload 携带实体, 见 VariableOverlayDialog.kt)
+        "sourceVariable" -> SourceVariableOverlayDialogContent(overlay, navigator)
+        "bookVariable" -> BookVariableOverlayDialogContent(overlay, navigator)
         "change_cover" -> ChangeCoverDialogContent(overlay, navigator)
         "app_log" -> AppLogOverlayDialogContent(overlay, navigator)
 

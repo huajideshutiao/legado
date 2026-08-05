@@ -27,6 +27,8 @@ import legado.shared.generated.resources.sys_tts_config_summary
 import legado.shared.generated.resources.system_media_control_compatibility_change
 import legado.shared.generated.resources.system_media_control_compatibility_change_summary
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 朗读设置（迁 pref_config_aloud.xml）。逐条对齐原条目顺序/key/默认值。
@@ -128,3 +130,42 @@ fun ReadAloudConfigScreen(
         }
     }
 }
+
+// ===== @Preview 合并自 androidMain 的 book/read/config/ReadConfigPrefsPreviews.kt (ReadAloudConfigScreen) =====
+
+// ===== ReadAloudConfigScreen =====
+
+@Preview
+@Composable
+fun ReadAloudConfigScreenPreview() = LegadoThemePreview {
+    ReadAloudConfigScreen(
+        pausePhoneCallsEnabled = true,
+        speakEngineSummary = "系统默认 TTS",
+        onTtsEngine = {},
+        onSysTtsConfig = {},
+    )
+}
+
+@Preview
+@Composable
+fun ReadAloudConfigScreenNoPausePreview() = LegadoThemePreview {
+    // 拒接来电暂停不可用 (ignoreAudioFocus 未开)
+    ReadAloudConfigScreen(
+        pausePhoneCallsEnabled = false,
+        speakEngineSummary = "未配置",
+        onTtsEngine = {},
+        onSysTtsConfig = {},
+    )
+}
+
+@Preview
+@Composable
+fun ReadAloudConfigScreenDarkPreview() = LegadoThemePreview(dark = true) {
+    ReadAloudConfigScreen(
+        pausePhoneCallsEnabled = true,
+        speakEngineSummary = "阅读朗读引擎",
+        onTtsEngine = {},
+        onSysTtsConfig = {},
+    )
+}
+

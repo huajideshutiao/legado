@@ -199,6 +199,11 @@ compose.desktop {
             "-Xshare:auto",                      // 启用 CDS (classlist 已 dump, 失败自动回退)
             "-XX:+UseStringDeduplication",       // G1 字符串去重
             "-Dfile.encoding=UTF-8",             // Windows 默认 GBK, 显式声明 UTF-8 避免资源乱码
+            // 反射访问 AWT 原生句柄 (任务栏按钮/DWM 卡片等经 WComponentPeer.getHWnd 拿 HWND):
+            // Component.peer 字段在 java.awt (需 opens), getHWnd 在 sun.awt.windows (需 opens),
+            // 缺任一都会 InaccessibleObjectException 被吞 → HWND 静默拿不到
+            "--add-opens", "java.desktop/java.awt=ALL-UNNAMED",
+            "--add-opens", "java.desktop/sun.awt.windows=ALL-UNNAMED",
         )
 
         // Compose Desktop 原生分发配置 (msi/deb/rpm) — 配合 .github/workflows 多端编译

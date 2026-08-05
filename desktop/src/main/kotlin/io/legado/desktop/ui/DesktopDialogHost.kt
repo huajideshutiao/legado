@@ -43,7 +43,6 @@ import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.dialog.TextInputDialog
-import io.legado.app.ui.widget.dialog.VariableDialog
 import io.legado.app.utils.verificationField
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -58,13 +57,6 @@ import kotlinx.coroutines.launch
  * 模式与 shared 的 `DeepLinkImportHost` (StateFlow 待办) 同构。
  */
 sealed interface DesktopDialogRequest {
-
-    /** 变量编辑 (书源变量 / 书籍变量, 复用 shared [VariableDialog] 的双 Tab Map 编辑器)。 */
-    data class Variable(
-        val sourceVariables: Map<String, String>,
-        val bookVariables: Map<String, String>,
-        val onConfirm: (Map<String, String>, Map<String, String>) -> Unit,
-    ) : DesktopDialogRequest
 
     /** 单行文本输入 (校验关键词 / 分组名 / 文件名导入 js 等)。 */
     data class TextInput(
@@ -161,16 +153,6 @@ fun DesktopDialogHost() {
     val request by DesktopDialogs.request.collectAsState()
     when (val current = request) {
         null -> Unit
-
-        is DesktopDialogRequest.Variable -> VariableDialog(
-            sourceVariables = current.sourceVariables,
-            bookVariables = current.bookVariables,
-            onConfirm = { sourceVars, bookVars ->
-                current.onConfirm(sourceVars, bookVars)
-                DesktopDialogs.dismiss()
-            },
-            onDismiss = { DesktopDialogs.dismiss() },
-        )
 
         is DesktopDialogRequest.TextInput -> TextInputDialog(
             title = current.title,

@@ -24,6 +24,16 @@ interface PlatformCapabilities {
     fun openExternalUrl(url: String)
     fun shareText(text: String)
 
+    /**
+     * 打开 WebView (2026-08-06 用户拍板: 中转 WebView 界面不再内嵌路由):
+     * 桌面端 = 独立浏览器窗口 (cookie 经 sourceKey 回写);
+     * 移动端 = 保持原 WebViewRoute 内嵌路由 (表单登录/验证的对话框语义)。
+     * 功能契约 (各端都要保留): cookie 回写 / 登录确认 (isLogin) / 验证回传 (saveResult)。
+     */
+    fun openWebView(url: String, sourceKey: String = "", sourceName: String = "") {
+        openExternalUrl(url)
+    }
+
     // 书籍路由解析: shared 无 DB 能力, 按 bookUrl 解析为 BookRef 供 LaunchRequest 路由导航
     suspend fun resolveBookRef(bookUrl: String): BookRef? = null
 

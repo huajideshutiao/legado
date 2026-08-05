@@ -125,6 +125,7 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
         grayEnabled: Boolean,
         onLoadState: (MangaCellState) -> Unit,
         retryTick: Int,
+        onProgress: (String) -> Unit,
     ) {
         val viewRef = remember { Ref<MangaPageImageView>() }
         // 重试: shared 单元格"重新加载"点击 → retryTick 自增 → 直接调 MangaPageImageView.retry() (对照 app 端 MangaRenderScreen)
@@ -163,6 +164,8 @@ object AndroidMangaReaderPlatform : MangaReaderScreenModel.Platform {
                         }
                     )
                 }
+                // 上报下载进度给 shared 单元格转圈环心 (对照 app 端 MangaRenderScreen: v.onProgress = { progress = it })
+                view.onProgress = onProgress
                 // GIF 由 Coil3 自动识别解码 (coil3-gif MovieDrawable/AnimatedImageDrawable), 无需 isGif 标记
                 view.loadPageImage(url, book, source, grayEnabled)
             },

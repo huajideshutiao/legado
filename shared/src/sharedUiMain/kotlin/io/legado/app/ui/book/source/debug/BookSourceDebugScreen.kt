@@ -37,6 +37,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppSearchField
@@ -45,6 +46,7 @@ import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.linkifyText
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import legado.shared.generated.resources.Res
@@ -82,7 +84,7 @@ data class BookSourceDebugUiState(
     val logs: List<String>,
     /** 搜索框当前文本 */
     val query: String,
-    /** 帮助面板是否可见 (搜索框聚焦时显示, 提交搜索后隐藏) */
+    /** 帮助面板是否可见 (进入即显示; 搜索框聚焦时显示, 提交搜索后隐藏; 对照原版常驻顶部) */
     val helpVisible: Boolean,
     /** 是否正在调试 (顶部 CircularProgressIndicator) */
     val loading: Boolean,
@@ -346,4 +348,83 @@ private fun FilletChip(text: String, onLongClick: (() -> Unit)? = null, onClick:
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+// ===== @Preview 合并自 androidMain 的 book/source/debug/BookSourceDebugScreenPreviews.kt =====
+
+/**
+ * [BookSourceDebugScreen] 的 @Preview。
+ *
+ * 假数据: 纯内存 [BookSourceDebugUiState] + no-op [BookSourceDebugUiActions]。
+ */
+
+private val previewState = BookSourceDebugUiState(
+    logs = listOf(
+        "调试开始",
+        "搜索: 我的 https://www.test.com/search?q=我的",
+        "详情: 获取成功",
+        "ERROR: 目录解析失败",
+    ),
+    query = "我的",
+    helpVisible = false,
+    loading = true,
+    textMy = "我的",
+    textFx = "https://www.test.com/explore",
+)
+
+private val previewStateHelp = previewState.copy(helpVisible = true, loading = false)
+
+private val previewStateEmpty = BookSourceDebugUiState(
+    logs = emptyList(),
+    query = "",
+    helpVisible = false,
+    loading = false,
+    textMy = "我的",
+    textFx = "",
+)
+
+/** no-op actions, 所有回调空实现 */
+private object NoOpDebugActions : BookSourceDebugUiActions {
+    override fun onBack() {}
+    override fun onQueryChange(text: String) {}
+    override fun onSubmitQuery() {}
+    override fun onSearchFocusChanged(focused: Boolean) {}
+    override fun onChipMyClick() {}
+    override fun onChipSystemClick() {}
+    override fun onChipFxClick() {}
+    override fun onChipFxLongClick() {}
+    override fun onChipDetailClick() {}
+    override fun onChipTocClick() {}
+    override fun onChipContentClick() {}
+    override fun onShowSearchSrc() {}
+    override fun onShowBookSrc() {}
+    override fun onShowTocSrc() {}
+    override fun onShowContentSrc() {}
+    override fun onShowReviewSrc() {}
+    override fun onRefreshExplore() {}
+    override fun onShowHelp() {}
+}
+
+@Preview
+@Composable
+fun BookSourceDebugScreenPreview() = LegadoThemePreview {
+    BookSourceDebugScreen(previewState, NoOpDebugActions)
+}
+
+@Preview
+@Composable
+fun BookSourceDebugScreenHelpPreview() = LegadoThemePreview {
+    BookSourceDebugScreen(previewStateHelp, NoOpDebugActions)
+}
+
+@Preview
+@Composable
+fun BookSourceDebugScreenEmptyPreview() = LegadoThemePreview {
+    BookSourceDebugScreen(previewStateEmpty, NoOpDebugActions)
+}
+
+@Preview
+@Composable
+fun BookSourceDebugScreenDarkPreview() = LegadoThemePreview(dark = true) {
+    BookSourceDebugScreen(previewState, NoOpDebugActions)
 }

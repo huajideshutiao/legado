@@ -16,8 +16,9 @@ import okhttp3.OkHttpClient
  *   (与原桌面裁剪版行为一致)。
  * - UA: shared HttpHelper 内 `UserAgentProviders.get()` 由桌面
  *   `registerDesktopSourceProviders` 注册 (PreferKey.userAgent 空 → [DEFAULT_UA])。
- * - ProgressResponseBody 包装: 桌面端无 ProgressManager.addListener 调用,
- *   `ProgressManager.getProgressListener(url)` 恒返回 null, 包装分支不触发 (零开销)。
+ * - ProgressResponseBody 包装: 桌面端 MangaReaderPlatform.Image 已注册
+ *   `ProgressManager.addListener(url)` (转圈环心显示下载百分比), 有监听器时
+ *   `ProgressManager.getProgressListener(url)` 非空, 包装分支触发并逐字节回调;
  * - cookieJar: 桌面端经 `registerDesktopHttpProvider` 注册 [DesktopCookieJarBridge]
  *   到 [io.legado.app.help.http.CookieJarBridgeHolder], shared HttpHelper 通过该 holder
  *   桥接到桌面 cookie 实现。

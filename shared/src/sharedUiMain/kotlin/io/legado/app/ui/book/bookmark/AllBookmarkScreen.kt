@@ -35,6 +35,9 @@ import legado.shared.generated.resources.all_bookmark
 import legado.shared.generated.resources.export
 import legado.shared.generated.resources.export_md
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
+import io.legado.app.ui.preview.previewBookmarks
 
 // ===== state / actions =====
 
@@ -224,4 +227,43 @@ private fun MenuItem(text: String, onClick: () -> Unit) {
     DropdownMenuItem(onClick = onClick) {
         Text(text, color = AppTheme.colors.primaryText)
     }
+}
+
+// ===== @Preview 合并自 androidMain 的 book/bookmark/BookmarkPreviews.kt (AllBookmarkScreen) =====
+
+// ---- AllBookmarkScreen ----
+
+private val noOpBookmarkActions = object : AllBookmarkUiActions {
+    override fun onBack() {}
+    override fun export() {}
+    override fun exportMd() {}
+    override fun openBookmark(bookmark: Bookmark) {}
+    override fun editBookmark(bookmark: Bookmark, pos: Int) {}
+}
+
+@Preview
+@Composable
+fun AllBookmarkScreenPreview() = LegadoThemePreview {
+    AllBookmarkScreen(
+        state = AllBookmarkUiState(bookmarks = previewBookmarks),
+        actions = noOpBookmarkActions,
+    )
+}
+
+@Preview
+@Composable
+fun AllBookmarkScreenEmptyPreview() = LegadoThemePreview {
+    AllBookmarkScreen(
+        state = AllBookmarkUiState(),
+        actions = noOpBookmarkActions,
+    )
+}
+
+@Preview
+@Composable
+fun AllBookmarkScreenDarkPreview() = LegadoThemePreview(dark = true) {
+    AllBookmarkScreen(
+        state = AllBookmarkUiState(bookmarks = previewBookmarks),
+        actions = noOpBookmarkActions,
+    )
 }

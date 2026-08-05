@@ -1,13 +1,13 @@
 package io.legado.desktop.help.webview.mac
 
 import com.sun.jna.Pointer
-
+import io.legado.desktop.help.webview.BrowserToolbar
+import io.legado.desktop.help.webview.ToolbarAction
 import io.legado.desktop.help.webview.mac.ObjC.NSRect
 import io.legado.desktop.help.webview.mac.ObjC.ns
 import io.legado.desktop.help.webview.mac.ObjC.ptr
 import io.legado.desktop.help.webview.mac.ObjC.sel
 import io.legado.desktop.help.webview.mac.ObjC.void
-import io.legado.desktop.help.webview.win.ToolbarAction
 
 /**
  * AppKit 工具栏 (NSView 手工 frame 布局): 返回/前进/刷新/确定/关闭 + 标题 + 细进度条。
@@ -17,8 +17,8 @@ import io.legado.desktop.help.webview.win.ToolbarAction
  * **所有方法必须在主线程 (EDT) 调用。**
  */
 internal class MacToolbar(
-    private val onAction: (ToolbarAction) -> Unit,
-) {
+    override var onAction: ((ToolbarAction) -> Unit)?,
+) : BrowserToolbar {
 
     /** 顶层容器 NSView。 */
     val view: Pointer
@@ -26,12 +26,10 @@ internal class MacToolbar(
     /** 细进度条 NSProgressIndicator。 */
     val progress: Pointer
 
-    private val titleField: Pointer
     private val backBtn: Pointer
     private val forwardBtn: Pointer
     private val refreshBtn: Pointer
     private val okBtn: Pointer
-    private val closeBtn: Pointer
 
     /** target-action 动态子类实例 (NSControl target 是弱引用, 必须由我方持有)。 */
     private val target: Pointer
@@ -63,20 +61,18 @@ internal class MacToolbar(
             listOf("toolbarAction:" to "v@:@"),
         ) { _, _, args ->
             val sender = args.firstOrNull() as? Pointer
-            if (sender != null) actionBySender[Pointer.nativeValue(sender)]?.let(onAction)
+            if (sender != null) actionBySender[Pointer.nativeValue(sender)]?.let {
+                onAction?.invoke(
+                    it
+                )
+            }
         }
 
         backBtn = button("←", 8.0, 2.0, 32.0, 28.0, ToolbarAction.BACK, NSViewMaxXMargin)
         forwardBtn = button("→", 44.0, 2.0, 32.0, 28.0, ToolbarAction.FORWARD, NSViewMaxXMargin)
         refreshBtn = button("⟳", 80.0, 2.0, 32.0, 28.0, ToolbarAction.REFRESH, NSViewMaxXMargin)
 
-        titleField = ptr(ObjC.cls("NSTextField"), "labelWithString:", ns(""))!!
-        frameView(titleField, 120.0, 4.0, 1000.0 - 120.0 - 72.0, 24.0, NSViewWidthSizable)
-        void(titleField, "setAlignment", 0L) // left
-
         okBtn = button("确定", 1000.0 - 68.0, 2.0, 32.0, 28.0, ToolbarAction.OK, NSViewMinXMargin)
-        closeBtn =
-            button("×", 1000.0 - 32.0, 2.0, 24.0, 28.0, ToolbarAction.CLOSE, NSViewMinXMargin)
 
         progress = ptr(ObjC.cls("NSProgressIndicator"), "alloc")!!
         ptr(progress, "initWithFrame:", frame(0.0, 0.0, 1000.0, PROGRESS_H))!!
@@ -122,17 +118,13 @@ internal class MacToolbar(
             this.size.width = w; this.size.height = h
         }
 
-    fun setTitle(text: String) {
-        void(titleField, "setStringValue:", ns(text))
-    }
-
-    fun setCanNavigate(back: Boolean, forward: Boolean) {
+    override fun setCanNavigate(back: Boolean, forward: Boolean) {
         void(backBtn, "setEnabled:", if (back) 1L else 0L)
         void(forwardBtn, "setEnabled:", if (forward) 1L else 0L)
     }
 
     /** 加载状态: 进度条显示/隐藏。 */
-    fun setLoading(loading: Boolean) {
+    override fun setLoading(loading: Boolean) {
         void(progress, "setHidden", if (loading) 0L else 1L)
     }
 

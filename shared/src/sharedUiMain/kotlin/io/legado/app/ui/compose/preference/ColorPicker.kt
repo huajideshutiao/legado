@@ -52,6 +52,8 @@ import legado.shared.generated.resources.ic_check
 import legado.shared.generated.resources.ok
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 取色项：行尾颜色格子（复刻 cpv 预览方块），点击进自绘取色盘。复刻 ColorPreference。
@@ -352,3 +354,76 @@ val MaterialPresets = listOf(
     0xFF8BC34A, 0xFFCDDC39, 0xFFFFEB3B, 0xFFFFC107, 0xFFFF9800,
     0xFF795548, 0xFF607D8B, 0xFF9E9E9E,
 ).map { it.toInt() }
+
+// ===== @Preview 合并自 androidMain 的 compose/preference/ColorPickerPreviews.kt =====
+
+/**
+ * [ColorPicker.kt] 中 [ColorPickerDialog] 的 @Preview。
+ *
+ * ColorPickerDialog 内部用 Dialog 窗口包装, Preview 中可渲染但交互受限;
+ * 主要预览 SV 面板 / Hue 滑条 / hex 输入 / 预设色格的视觉效果。
+ */
+
+@Preview
+@Composable
+
+fun ColorPickerDialogPreview() = LegadoThemePreview {
+    ColorPickerDialog(
+        initColor = 0xFF165DFF.toInt(),
+        title = "选择颜色",
+        onDismissRequest = {},
+        onConfirm = {},
+    )
+}
+
+// ===== @Preview 合并自 androidMain 的 compose/preference/ColorPickerPreviews.kt =====
+
+@Preview
+@Composable
+fun ColorPickerDialogWithAlphaPreview() = LegadoThemePreview {
+    ColorPickerDialog(
+        initColor = 0x80FF5722.toInt(),
+        title = "带透明度颜色",
+        showAlphaSlider = true,
+        onDismissRequest = {},
+        onConfirm = {},
+    )
+}
+
+// ===== @Preview 合并自 androidMain 的 compose/preference/ColorPickerPreviews.kt =====
+
+@Preview
+@Composable
+fun ColorPickerDialogDarkPreview() = LegadoThemePreview(dark = true) {
+    ColorPickerDialog(
+        initColor = 0xFFF44336.toInt(),
+        title = "深色主题取色",
+        onDismissRequest = {},
+        onConfirm = {},
+    )
+}
+
+/**
+ * colorPreference 的 @Preview: 行尾颜色格子 + 点击弹取色盘。
+ *
+ * colorPreference 是 LazyListScope 扩展, 需包在 [PreferenceScreen] 中。
+ * 点击交互在 Preview 中受限, 但可预览行尾颜色格子的视觉。
+ */
+// ===== @Preview 合并自 androidMain 的 compose/preference/ColorPickerPreviews.kt =====
+
+/**
+ * ColorPickerDialogContent 的 @Preview: 取色盘正文 (不含 Dialog 窗口)。
+ *
+ * 直接 Preview Content 可避免 Dialog 窗口在 IDE 中的渲染限制,
+ * 更清晰地预览 SV 面板 / Hue 滑条 / hex 输入 / 预设色格。
+ */
+@Preview
+@Composable
+fun ColorPickerDialogContentPreview() = LegadoThemePreview {
+    ColorPickerDialogContent(
+        initColor = 0xFF165DFF.toInt(),
+        title = "选择颜色",
+        onDismissRequest = {},
+        onConfirm = {},
+    )
+}

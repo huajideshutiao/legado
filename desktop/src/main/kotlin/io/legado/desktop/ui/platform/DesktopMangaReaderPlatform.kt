@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -39,6 +40,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.glide.progress.ProgressManager
 import io.legado.app.help.image.MangaImageBytesLoader
 import io.legado.app.model.manga.MangaModel
 import io.legado.app.ui.book.manga.MangaImageExtractorShared
@@ -127,6 +129,7 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
         grayEnabled: Boolean,
         onLoadState: (MangaCellState) -> Unit,
         retryTick: Int,
+        onProgress: (String) -> Unit,
     ) {
         // MangaModel 必须带书籍上下文; 空 book 时 Coil 会接受 null data 并保持 Empty/Loading。
         if (book == null) {
@@ -150,6 +153,25 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
         }
         val painter = rememberAsyncImagePainter(request)
         val state by painter.state.collectAsState()
+        // 字节级下载进度: 注册 ProgressManager 监听 (与 app 端 MangaPageImageView 同链路,
+        // HttpHelper OkHttp 拦截器 ProgressResponseBody 逐字节回调), 转发给 shared 单元格转圈环心
+        DisposableEffect(url) {
+            ProgressManager.addListener(url) { _, percentage, bytesRead, totalBytes ->
+                onProgress(
+                    if (totalBytes > 0) {
+                        "$percentage%"
+                    } else {
+                        val kb = bytesRead / 1024.0
+                        if (kb >= 1024) {
+                            String.format("%.1fMB", kb / 1024)
+                        } else {
+                            "${kb.toInt()}KB"
+                        }
+                    }
+                )
+            }
+            onDispose { ProgressManager.removeListener(url) }
+        }
         // 上报加载状态给 shared 单元格 (对齐 app 端 onStateChange, 失败时单元格显示"重新加载")
         LaunchedEffect(state) {
             onLoadState(

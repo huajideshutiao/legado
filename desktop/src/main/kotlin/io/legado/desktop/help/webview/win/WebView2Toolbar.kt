@@ -1,517 +1,392 @@
 package io.legado.desktop.help.webview.win
 
-import androidx.compose.ui.graphics.toArgb
+import com.sun.jna.Memory
 import com.sun.jna.Pointer
-import com.sun.jna.Structure
+import com.sun.jna.platform.win32.User32
 import com.sun.jna.platform.win32.WinDef
 import com.sun.jna.platform.win32.WinUser
-import com.sun.jna.win32.StdCallLibrary
-import com.sun.jna.win32.W32APIOptions
-import io.legado.app.ui.compose.platform.DesktopThemeStoreProvider
-
-/** 工具栏按钮动作 (WebView2 loop 线程回调 [WebView2Toolbar.onAction])。 */
-internal enum class ToolbarAction { BACK, FORWARD, REFRESH, OK, CLOSE }
+import com.sun.jna.ptr.PointerByReference
+import io.legado.desktop.help.webview.BrowserToolbar
+import io.legado.desktop.help.webview.ToolbarAction
 
 /**
- * WebView2 可见窗口的 CustomTab 式工具栏 (纯 Win32 自绘, 不依赖 comctl32 / Swing)。
+ * WebView2 可见窗口的工具栏 —— 标准 ToolbarWindow32 控件 (2026-08-06 调研重做)。
  *
- * 背景: WebView2 实例必须跑在自建的 Win32 消息泵线程 (见 [WebView2Loop]), 刻意不复用
- * AWT EDT, 因此工具栏也随宿主窗口自绘: 顶部 40px 工具条 + 底部 2px 进度细条,
- * 全部在宿主 HWND 的 WndProc 里画 (WM_PAINT) 并命中测试 (WM_LBUTTONDOWN/UP/WM_MOUSEMOVE),
- * 与 [io.legado.desktop.help.webview.JavaFxBrowserToolbar] 组成对齐 (对照 shared
- * `WebViewRoute` 标题栏 + 进度条 + menu_ok):
- * - 返回 ← / 前进 → (手动历史栈, 由调用方维护并 [setCanNavigate]); 刷新 ↻;
- * - 网页标题 (动态更新, 省略号截断, 对齐 onReceivedTitle 语义); 关闭 ✕;
- * - 确定按钮 (仅 isLogin / saveResult 时显示, 对照 menu_ok);
- * - 加载进度: WebView2 无 0..100 进度 API, 用导航事件驱动的不确定扫动条
- *   (NavigationStarting → 显示, NavigationCompleted → 隐藏, 对照 RefreshProgressBar)。
+ * 取代手绘方案 (曾出现: 图标糊/按钮消失/resize 残留/菜单打不开)。主题渲染、hover、
+ * 按下态、重绘、命中全部由 comctl32 处理; 图标复用项目 composeResources 矢量 XML
+ * (ic_arrow_back/ic_arrow_forward/ic_refresh_black_24dp/ic_more_vert) 渲染进 ImageList。
  *
- * 颜色取桌面端主题 (DesktopThemeStoreProvider): 底 = bottomBackground, 强调 = accent,
- * 文字按深浅主题派生; 主题在窗口打开时读取一次 (独立窗口不随 RECREATE 实时换肤)。
+ * - 按钮: 返回/前进/刷新 (+验证模式"确定"文字按钮) + 溢出菜单 (⋮, BTNS_DROPDOWN);
+ *   无关闭按钮 (原生标题栏自带 ✕), 无标题文字 (标题只同步 OS 窗口标题栏);
+ * - 菜单: TBN_DROPDOWN → TrackPopupMenu (AppendMenuW 中文正常, 需先
+ *   SetForegroundWindow 否则点击外部不关闭) —— 刷新/浏览器打开/拷贝 URL;
+ * - 进度条: msctls_progress32 不确定模式 (PBM_SETMARQUEE), 细条贴工具栏底部;
+ * - 事件路由: 子窗口 WM_COMMAND (按钮 ID) / WM_NOTIFY (TBN_DROPDOWN) 发给宿主,
+ *   由 WebView2Instance 的 hook 转发到 [onCommand]/[onNotify];
+ * - DPI: 图标尺寸 = 24dp × GetDpiForWindow/96 (PerMonitorV2 下按物理像素)。
  *
- * 线程: 所有绘制/命中在 WebView2 loop 线程; 状态更新 ([updateTitle] / [setCanNavigate] /
- * [setLoading]) 任意线程可调 (volatile + InvalidateRect 线程安全), 定时器经 [WebView2Loop.post]
- * 归队到 loop 线程。
+ * 线程: 创建/消息在 WebView2 loop 线程 (与宿主同线程); 状态方法任意线程可调
+ * (经 [WebView2Loop.post] 归队)。
  */
 internal class WebView2Toolbar(
     private val hwnd: WinDef.HWND,
     initialTitle: String,
     isLogin: Boolean,
     saveResult: Boolean,
-) {
+) : BrowserToolbar {
 
-    /** 按钮点击回调 (WebView2 loop 线程同步调用)。 */
-    @Volatile
-    var onAction: ((ToolbarAction) -> Unit)? = null
-
-    @Volatile
-    private var title = initialTitle
+    override var onAction: ((ToolbarAction) -> Unit)? = null
 
     @Volatile
     private var loading = false
 
-    @Volatile
-    private var canBack = false
-
-    @Volatile
-    private var canForward = false
-
-    private var hovered: ToolbarAction? = null
-    private var pressed: ToolbarAction? = null
-    private var w = 0
-    private var sweepPos = -SWEEP_W
+    private var toolbarHwnd: WinDef.HWND? = null
+    private var progressHwnd: WinDef.HWND? = null
+    private var imageList: Pointer? = null
 
     private val showOk = isLogin || saveResult
 
-    private val theme = DesktopThemeStoreProvider()
-    private val bgColor = theme.bottomBackground.toArgb()
-    private val accentColor = theme.accentColor.toArgb()
-    private val textColor = if (theme.isDark) 0xFFD9D9D9.toInt() else 0xFF1F2329.toInt()
+    private var width = 0
 
-    private val backRect = WinDef.RECT()
-    private val forwardRect = WinDef.RECT()
-    private val refreshRect = WinDef.RECT()
-    private val okRect = WinDef.RECT()
-    private val closeRect = WinDef.RECT()
-    private val titleRect = WinDef.RECT()
-    private val progressRect = WinDef.RECT()
+    override fun layoutHeight(): Int = HEIGHT
 
-    /**
-     * 处理宿主窗口消息 (WebView2 loop 线程)。返回 true 表示已消费 (不再走 DefWindowProc)。
-     * WM_SIZE 返回 false: 布局后由调用方继续 applyLayout (WebView2 边界下移)。
-     */
-    fun onWindowMessage(msg: Int, wParam: WinDef.WPARAM, lParam: WinDef.LPARAM): Boolean =
-        when (msg) {
-            WinUser.WM_SIZE -> {
-                layout(loword(lParam))
-                false
-            }
+    /** 创建 toolbar 子窗口 + ImageList + 按钮 + 进度条 (loop 线程, 宿主窗口已存在)。 */
+    fun create() {
+        if (toolbarHwnd != null) return
+        // InitCommonControlsEx(ICC_BAR_CLASSES)
+        val icc = Memory(8)
+        icc.setInt(0, 8)
+        icc.setInt(4, ComCtl32.ICC_BAR_CLASSES)
+        val inited = ComCtl32.comctl.InitCommonControlsEx(icc)
+        io.legado.app.constant.AppLog.put("工具栏: InitCommonControlsEx=$inited")
 
-            WM_PAINT -> {
-                paint()
-                true
-            }
-
-            WM_ERASEBKGND -> true
-
-            WM_MOUSEMOVE -> {
-                onMouseMove(coordX(lParam), coordY(lParam))
-                true
-            }
-
-            WM_MOUSELEAVE -> {
-                onMouseLeave()
-                true
-            }
-
-            WM_LBUTTONDOWN -> {
-                onLButtonDown(coordX(lParam), coordY(lParam))
-                true
-            }
-
-            WM_LBUTTONUP -> {
-                onLButtonUp(coordX(lParam), coordY(lParam))
-                true
-            }
-
-            WM_SETCURSOR -> onSetCursor()
-
-            WM_TIMER -> {
-                if ((wParam as Number).toLong().toInt() == TIMER_ID) onTimer()
-                true
-            }
-
-            else -> false
+        val style = WinUser.WS_CHILD or WinUser.WS_VISIBLE or
+            TBSTYLE_FLAT or TBSTYLE_LIST or TBSTYLE_TOOLTIPS
+        toolbarHwnd = User32.INSTANCE.CreateWindowEx(
+            0, TOOLBARCLASSNAME, null, style,
+            0, 0, width, HEIGHT, hwnd, null,
+            com.sun.jna.platform.win32.Kernel32.INSTANCE.GetModuleHandle(null),
+            null,
+        )
+        val toolbar = toolbarHwnd ?: run {
+            io.legado.app.constant.AppLog.put(
+                "工具栏: CreateWindowEx 失败 err=${com.sun.jna.Native.getLastError()}"
+            )
+            return
         }
-
-    /** 重算按钮/标题/进度条矩形 (WM_SIZE 或创建时调用)。 */
-    fun layout(width: Int) {
-        if (width <= 0) return
-        w = width
-        val y = (HEIGHT - BTN) / 2
-        backRect.set(8, y, BTN, BTN)
-        forwardRect.set(8 + BTN + BTN_GAP, y, BTN, BTN)
-        refreshRect.set(8 + (BTN + BTN_GAP) * 2, y, BTN, BTN)
-        val closeX = width - 8 - BTN
-        closeRect.set(closeX, y, BTN, BTN)
+        io.legado.app.constant.AppLog.put("工具栏: 控件创建成功")
+        // TB_BUTTONSTRUCTSIZE
+        val tbSize = TBBUTTON().size()
+        val sizeSet = send(toolbar, TB_BUTTONSTRUCTSIZE, tbSize, 0L)
+        io.legado.app.constant.AppLog.put("工具栏: TBBUTTON.size()=$tbSize, TB_BUTTONSTRUCTSIZE 返回=$sizeSet")
+        // ImageList: 图标尺寸按 DPI
+        val dpi = runCatching { toolbarUser32.GetDpiForWindow(hwnd) }.getOrDefault(96)
+        val iconSize = (24 * dpi / 96).coerceAtLeast(16)
+        imageList = ComCtl32.comctl.ImageList_Create(
+            iconSize, iconSize, ComCtl32.ILC_COLOR32 or ComCtl32.ILC_MASK, 6, 4
+        )
+        val icons = listOf(
+            "ic_arrow_back.xml",
+            "ic_arrow_forward.xml",
+            "ic_refresh_black_24dp.xml",
+            "ic_more_vert.xml",
+        )
+        val list = imageList ?: run {
+            io.legado.app.constant.AppLog.put("工具栏: ImageList_Create 失败 (iconSize=$iconSize)")
+            return
+        }
+        icons.forEachIndexed { index, name ->
+            val image = ToolbarIcons.render(name, iconSize)
+            if (image == null) {
+                io.legado.app.constant.AppLog.put("工具栏: 图标渲染失败 $name")
+                return@forEachIndexed
+            }
+            val hbm = bitmapOf(image)
+            if (hbm == null) {
+                io.legado.app.constant.AppLog.put("工具栏: DIB 创建失败 $name")
+                return@forEachIndexed
+            }
+            val added = ComCtl32.comctl.ImageList_Add(list, hbm, Pointer.NULL)
+            ComCtl32.gdi.DeleteObject(hbm)
+            io.legado.app.constant.AppLog.put("工具栏: 图标 $name → index=$added")
+        }
+        val imgSet = send(toolbar, TB_SETIMAGELIST, 0, Pointer.nativeValue(list))
+        io.legado.app.constant.AppLog.put("工具栏: TB_SETIMAGELIST 返回=$imgSet")
+        // 按钮: 返回/前进/刷新 | (确定) | 菜单
+        val buttons = ArrayList<TBBUTTON>()
+        buttons += tbb(0, ID_BACK)
+        buttons += tbb(1, ID_FORWARD)
+        buttons += tbb(2, ID_REFRESH)
+        buttons += TBBUTTON().also {
+            it.iBitmap = -1
+            it.fsStyle = BTNS_SEP.toByte()
+        }
         if (showOk) {
-            okRect.set(closeX - BTN_GAP - OK_W, y, OK_W, BTN)
-            titleRect.set(refreshRect.right + 12, 0, okRect.left - refreshRect.right - 24, HEIGHT)
-        } else {
-            okRect.set(0, 0, 0, 0)
-            titleRect.set(refreshRect.right + 12, 0, closeX - refreshRect.right - 20, HEIGHT)
+            // "确定" 文字按钮: TB_ADDSTRING 注册字符串, iString 引用
+            val strIndex = send(toolbar, TB_ADDSTRING, 0, Pointer.nativeValue(wide("确定")))
+            buttons += TBBUTTON().also {
+                it.idCommand = ID_OK
+                it.fsState = TBSTATE_ENABLED.toByte()
+                it.fsStyle = (BTNS_AUTOSIZE or BTNS_SHOWTEXT).toByte()
+                it.iString = strIndex.toLong()
+            }
         }
-        progressRect.set(0, HEIGHT - PROGRESS_H, width, PROGRESS_H)
+        buttons += TBBUTTON().also {
+            it.iBitmap = 3 // ic_more_vert
+            it.idCommand = ID_MENU
+            it.fsState = TBSTATE_ENABLED.toByte()
+            it.fsStyle = (BTNS_AUTOSIZE or BTNS_DROPDOWN).toByte()
+        }
+        // JNA 5.17 的 toArray 返回 Structure[] (泛型移除), 改手工连续内存布局
+        val size = TBBUTTON().size()
+        val mem = Memory((size * buttons.size).toLong())
+        buttons.forEachIndexed { i, b ->
+            b.write()
+            mem.write(i * size.toLong(), b.pointer.getByteArray(0, size), 0, size)
+        }
+        val addedButtons = send(toolbar, TB_ADDBUTTONS, buttons.size, Pointer.nativeValue(mem))
+        io.legado.app.constant.AppLog.put("工具栏: TB_ADDBUTTONS=${buttons.size} 返回=$addedButtons")
+        // 主题 (Explorer 样式) + 自动尺寸
+        runCatching { ComCtl32.uxtheme.SetWindowTheme(toolbar, "Explorer", null) }
+        send(toolbar, TB_AUTOSIZE, 0, 0L)
+        // 进度条: 细条贴工具栏底部
+        progressHwnd = User32.INSTANCE.CreateWindowEx(
+            0, PROGRESS_CLASS, null,
+            WinUser.WS_CHILD or WinUser.WS_VISIBLE,
+            0, HEIGHT - PROGRESS_H, width, PROGRESS_H, hwnd, null,
+            com.sun.jna.platform.win32.Kernel32.INSTANCE.GetModuleHandle(null),
+            null,
+        )
     }
 
-    /** 页面标题更新 (任意线程); 同时同步 OS 窗口标题。 */
-    fun updateTitle(value: String) {
-        if (value == title) return
-        title = value
-        native.SetWindowTextW(hwnd, value)
-        invalidate(titleRect)
+    /** 宿主窗口尺寸变化 (WM_SIZE): 同步 toolbar/进度条尺寸并自动布局。 */
+    fun resize(newWidth: Int) {
+        width = newWidth
+        val toolbar = toolbarHwnd ?: return
+        User32.INSTANCE.MoveWindow(toolbar, 0, 0, newWidth, HEIGHT, true)
+        send(toolbar, TB_AUTOSIZE, 0, 0L)
+        val progress = progressHwnd ?: return
+        User32.INSTANCE.MoveWindow(progress, 0, HEIGHT - PROGRESS_H, newWidth, PROGRESS_H, true)
     }
 
-    /** 返回/前进可用态 (任意线程)。 */
-    fun setCanNavigate(canBack: Boolean, canForward: Boolean) {
-        if (this.canBack == canBack && this.canForward == canForward) return
-        this.canBack = canBack
-        this.canForward = canForward
-        invalidate(null)
+    // -------------------- 宿主 hook 转发 (loop 线程) --------------------
+
+    /** WM_COMMAND: 子窗口按钮点击 (lParam = toolbarHwnd 时处理)。 */
+    fun onCommand(wParam: WinDef.WPARAM, lParam: WinDef.LPARAM): Boolean {
+        val th = toolbarHwnd ?: return false
+        if ((lParam as Number).toLong() != Pointer.nativeValue(th.pointer)) {
+            return false
+        }
+        val id = (wParam as Number).toLong().toInt() and 0xFFFF
+        val action = when (id) {
+            ID_BACK -> ToolbarAction.BACK
+            ID_FORWARD -> ToolbarAction.FORWARD
+            ID_REFRESH -> ToolbarAction.REFRESH
+            ID_OK -> ToolbarAction.OK
+            ID_MENU -> ToolbarAction.MENU
+            else -> null
+        } ?: return false
+        runCatching { onAction?.invoke(action) }
+        return true
     }
 
-    /**
-     * 加载态 (任意线程, 经 loop 线程归队): true 显示不确定扫动进度条并起定时器,
-     * false 隐藏并停定时器 (对照 RefreshProgressBar 100 隐藏)。
-     */
-    fun setLoading(value: Boolean) {
+    /** WM_NOTIFY: TBN_DROPDOWN → TrackPopupMenu。 */
+    fun onNotify(lParam: WinDef.LPARAM): Boolean {
+        val toolbar = toolbarHwnd ?: return false
+        val p = Pointer((lParam as Number).toLong())
+        val code = p.getInt(8) // NMHDR.code
+        if (code != TBN_DROPDOWN) return false
+        val buttonLeft = p.getInt(20) // NMTOOLBAR.rcButton.left (屏幕坐标)
+        val buttonBottom = p.getInt(36) // rcButton.bottom
+        val menu = menuUser32.CreatePopupMenu()
+        if (menu == null) return true
+        try {
+            menuUser32.AppendMenuW(menu, MF_STRING, MENU_ID_REFRESH, "刷新")
+            menuUser32.AppendMenuW(menu, MF_STRING, MENU_ID_BROWSER, "浏览器打开")
+            menuUser32.AppendMenuW(menu, MF_STRING, MENU_ID_COPY, "拷贝 URL")
+            // 先置前, 否则点击菜单外部不会关闭 (Win32 菜单行为)
+            menuUser32.SetForegroundWindow(toolbar)
+            val cmd = menuUser32.TrackPopupMenu(
+                menu, TPM_RETURNCMD, buttonLeft, buttonBottom, 0, toolbar, null
+            )
+            val action = when (cmd) {
+                MENU_ID_REFRESH -> ToolbarAction.REFRESH
+                MENU_ID_BROWSER -> ToolbarAction.OPEN_IN_BROWSER
+                MENU_ID_COPY -> ToolbarAction.COPY_URL
+                else -> null
+            }
+            action?.let { runCatching { onAction?.invoke(it) } }
+        } finally {
+            menuUser32.DestroyMenu(menu)
+        }
+        return true
+    }
+
+    // -------------------- BrowserToolbar 状态 (任意线程) --------------------
+
+    override fun setCanNavigate(back: Boolean, forward: Boolean) {
+        WebView2Loop.post {
+            val toolbar = toolbarHwnd ?: return@post
+            // runCatching: JNA native 层可能抛 Error (Invalid memory access),
+            // 不能让它崩掉整个窗口 (曾实测崩溃)
+            runCatching {
+                send(toolbar, TB_SETSTATE, ID_BACK, if (back) TBSTATE_ENABLED.toLong() else 0L)
+                send(
+                    toolbar,
+                    TB_SETSTATE,
+                    ID_FORWARD,
+                    if (forward) TBSTATE_ENABLED.toLong() else 0L
+                )
+            }.onFailure { io.legado.app.constant.AppLog.put("工具栏: setCanNavigate 失败", it) }
+        }
+    }
+
+    override fun setLoading(value: Boolean) {
         WebView2Loop.post {
             if (loading == value) return@post
             loading = value
-            if (value) {
-                sweepPos = -SWEEP_W
-                native.SetTimer(hwnd, TIMER_ID, TIMER_MS, null)
-            } else {
-                native.KillTimer(hwnd, TIMER_ID)
-            }
-            invalidate(progressRect)
+            progressHwnd?.let { send(it, PBM_SETMARQUEE, if (value) 1 else 0, 50L) }
         }
     }
 
-    // -------------------- 绘制 (loop 线程) --------------------
-
-    private fun paint() {
-        val ps = PaintStruct()
-        val hdc = native.BeginPaint(hwnd, ps) ?: return
-        try {
-            fill(hdc, 0, 0, w, HEIGHT, bgColor)
-            drawButton(hdc, backRect, ToolbarAction.BACK, "←")
-            drawButton(hdc, forwardRect, ToolbarAction.FORWARD, "→")
-            drawButton(hdc, refreshRect, ToolbarAction.REFRESH, "↻")
-            if (showOk) drawButton(hdc, okRect, ToolbarAction.OK, "确定")
-            drawButton(hdc, closeRect, ToolbarAction.CLOSE, "✕")
-            drawTitle(hdc)
-            if (loading) drawProgress(hdc)
-        } finally {
-            native.EndPaint(hwnd, ps)
-        }
-    }
-
-    private fun drawButton(hdc: Pointer, rect: WinDef.RECT, action: ToolbarAction, glyph: String) {
-        val fillColor = when {
-            pressed == action -> blend(bgColor, textColor, 0.18f)
-            hovered == action -> blend(bgColor, textColor, 0.10f)
-            else -> bgColor
-        }
-        fill(hdc, rect, fillColor)
-        withFont(hdc) {
-            gdi.SetBkMode(hdc, TRANSPARENT)
-            gdi.SetTextColor(
-                hdc, colorRef(if (enabled(action)) textColor else blend(bgColor, textColor, 0.35f))
-            )
-            val inner = WinDef.RECT().also {
-                it.left = rect.left + 2
-                it.top = rect.top + 2
-                it.right = rect.right - 2
-                it.bottom = rect.bottom - 2
-            }
-            native.DrawTextW(
-                hdc, glyph, -1, inner,
-                DT_CENTER or DT_VCENTER or DT_SINGLELINE or DT_NOPREFIX,
-            )
-        }
-    }
-
-    private fun drawTitle(hdc: Pointer) {
-        withFont(hdc) {
-            gdi.SetBkMode(hdc, TRANSPARENT)
-            gdi.SetTextColor(hdc, colorRef(textColor))
-            native.DrawTextW(
-                hdc, title, -1, titleRect,
-                DT_SINGLELINE or DT_VCENTER or DT_END_ELLIPSIS or DT_NOPREFIX,
-            )
-        }
-    }
-
-    private fun drawProgress(hdc: Pointer) {
-        val brush = gdi.CreateSolidBrush(colorRef(accentColor)) ?: return
-        try {
-            val rect = WinDef.RECT().also {
-                it.left = sweepPos.toInt()
-                it.top = HEIGHT - PROGRESS_H
-                it.right = sweepPos.toInt() + SWEEP_W.toInt()
-                it.bottom = HEIGHT
-            }
-            native.FillRect(hdc, rect, brush)
-        } finally {
-            gdi.DeleteObject(brush)
-        }
-    }
-
-    private fun fill(hdc: Pointer, x: Int, y: Int, width: Int, height: Int, color: Int) {
-        fill(hdc, WinDef.RECT().also { it.set(x, y, width, height) }, color)
-    }
-
-    private fun fill(hdc: Pointer, rect: WinDef.RECT, color: Int) {
-        val brush = gdi.CreateSolidBrush(colorRef(color)) ?: return
-        try {
-            native.FillRect(hdc, rect, brush)
-        } finally {
-            gdi.DeleteObject(brush)
-        }
-    }
-
-    private inline fun withFont(hdc: Pointer, block: () -> Unit) {
-        val old = gdi.SelectObject(hdc, gdi.GetStockObject(DEFAULT_GUI_FONT))
-        try {
-            block()
-        } finally {
-            gdi.SelectObject(hdc, old)
-        }
-    }
-
-    // -------------------- 命中测试 (loop 线程) --------------------
-
-    private fun enabled(action: ToolbarAction): Boolean = when (action) {
-        ToolbarAction.BACK -> canBack
-        ToolbarAction.FORWARD -> canForward
-        else -> true
-    }
-
-    private fun hitTest(x: Int, y: Int): ToolbarAction? {
-        if (y < 0 || y >= HEIGHT) return null
-        fun hit(rect: WinDef.RECT, action: ToolbarAction): ToolbarAction? =
-            if (enabled(action) && x in rect.left until rect.right && y in rect.top until rect.bottom) {
-                action
-            } else {
-                null
-            }
-        hit(backRect, ToolbarAction.BACK)?.let { return it }
-        hit(forwardRect, ToolbarAction.FORWARD)?.let { return it }
-        hit(refreshRect, ToolbarAction.REFRESH)?.let { return it }
-        if (showOk) hit(okRect, ToolbarAction.OK)?.let { return it }
-        hit(closeRect, ToolbarAction.CLOSE)?.let { return it }
-        return null
-    }
-
-    private fun onMouseMove(x: Int, y: Int) {
-        val hit = hitTest(x, y)
-        if (hit != hovered) {
-            hovered = hit
-            trackMouseLeave()
-            invalidate(null)
-        }
-    }
-
-    private fun onMouseLeave() {
-        if (hovered != null || pressed != null) {
-            hovered = null
-            pressed = null
-            invalidate(null)
-        }
-    }
-
-    private fun onLButtonDown(x: Int, y: Int) {
-        val hit = hitTest(x, y)
-        if (hit != pressed) {
-            pressed = hit
-            invalidate(null)
-        }
-    }
-
-    private fun onLButtonUp(x: Int, y: Int) {
-        val hit = hitTest(x, y)
-        val wasPressed = pressed
-        pressed = null
-        if (wasPressed != null && wasPressed == hit) {
-            runCatching { onAction?.invoke(wasPressed) }
-        }
-        invalidate(null)
-    }
-
-    private fun onSetCursor(): Boolean {
-        if (hovered != null) {
-            native.SetCursor(native.LoadCursor(null, Pointer(IDC_HAND.toLong())))
-            return true
-        }
-        return false
-    }
-
-    private fun onTimer() {
-        sweepPos += SWEEP_STEP
-        if (sweepPos > w) sweepPos = -SWEEP_W
-        invalidate(progressRect)
-    }
-
-    private fun trackMouseLeave() {
-        val tme = TrackMouseEventStruct().apply {
-            cbSize = size()
-            dwFlags = TME_LEAVE
-            hwndTrack = hwnd
-        }
-        native.TrackMouseEvent(tme)
-    }
-
-    private fun invalidate(rect: WinDef.RECT?) {
-        native.InvalidateRect(hwnd, rect, false)
+    /** 页面标题: 仅同步 OS 窗口标题栏 (工具栏不绘制标题)。 */
+    fun updateTitle(value: String) {
+        menuUser32.SetWindowTextW(hwnd, value)
     }
 
     // -------------------- 工具 --------------------
 
-    private fun blend(from: Int, to: Int, t: Float): Int {
-        fun channel(shift: Int): Int {
-            val f = (from ushr shift) and 0xFF
-            val target = (to ushr shift) and 0xFF
-            return (f + ((target - f) * t).toInt()).coerceIn(0, 255)
+    private fun tbb(iconIndex: Int, id: Int) = TBBUTTON().also {
+        it.iBitmap = iconIndex
+        it.idCommand = id
+        it.fsState = TBSTATE_ENABLED.toByte()
+        it.fsStyle = BTNS_AUTOSIZE.toByte()
+    }
+
+    /** BufferedImage (ARGB) → HBITMAP (32bpp 顶向下, BGRA 预乘 alpha)。 */
+    private fun bitmapOf(image: java.awt.image.BufferedImage): Pointer? {
+        val w = image.width
+        val h = image.height
+        val bmi = Memory(40)
+        bmi.setInt(0, 40) // biSize
+        bmi.setInt(4, w)
+        bmi.setInt(8, -h) // 顶向下
+        bmi.setShort(12, 1) // biPlanes
+        bmi.setShort(14, 32) // biBitCount
+        bmi.setInt(16, ComCtl32.BI_RGB)
+        val bitsRef = PointerByReference()
+        val hbm = ComCtl32.gdi.CreateDIBSection(
+            Pointer.NULL, bmi, ComCtl32.DIB_RGB_COLORS, bitsRef, Pointer.NULL, 0
+        ) ?: return null
+        val bits = bitsRef.value ?: return null
+        val argb = image.getRGB(0, 0, w, h, null, 0, w)
+        for (i in argb.indices) {
+            val a = (argb[i] ushr 24) and 0xFF
+            val r = (argb[i] ushr 16) and 0xFF
+            val g = (argb[i] ushr 8) and 0xFF
+            val b = argb[i] and 0xFF
+            val off = i * 4L
+            bits.setByte(off, ((b * a) / 255).toByte())
+            bits.setByte(off + 1, ((g * a) / 255).toByte())
+            bits.setByte(off + 2, ((r * a) / 255).toByte())
+            bits.setByte(off + 3, a.toByte())
         }
-        return (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
+        return hbm
     }
 
-    /**
-     * ARGB → GDI COLORREF (0x00BBGGRR)。COLORREF 高字节必须为 0,
-     * Compose 的 toArgb() 带 0xFF alpha 直接传 CreateSolidBrush 会渲染纯黑。
-     */
-    private fun colorRef(argb: Int): Int {
-        val r = (argb ushr 16) and 0xFF
-        val g = (argb ushr 8) and 0xFF
-        val b = argb and 0xFF
-        return (b shl 16) or (g shl 8) or r
-    }
+    private fun send(h: WinDef.HWND, msg: Int, w: Int, l: Long): Long =
+        (User32.INSTANCE.SendMessage(
+            h,
+            msg,
+            WinDef.WPARAM(w.toLong()),
+            WinDef.LPARAM(l)
+        ) as Number).toLong()
 
-    private fun coordX(lParam: WinDef.LPARAM): Int =
-        (lParam as Number).toLong().toInt().toShort().toInt()
-
-    private fun coordY(lParam: WinDef.LPARAM): Int =
-        ((lParam as Number).toLong() ushr 16).toInt().toShort().toInt()
-
-    private fun loword(lParam: WinDef.LPARAM): Int = (lParam as Number).toLong().toInt() and 0xFFFF
-
-    private fun WinDef.RECT.set(x: Int, y: Int, width: Int, height: Int) {
-        left = x
-        top = y
-        right = x + width
-        bottom = y + height
+    private fun wide(value: String): Memory {
+        val mem = Memory((value.length + 1) * 2L)
+        mem.setWideString(0, value)
+        return mem
     }
 
     companion object {
-
-        /** 工具栏条高度 (px); [WebView2Instance.applyLayout] 用它下移 WebView2 边界。 */
-        const val HEIGHT = 40
+        /** 工具栏条高度 (px)。 */
+        const val HEIGHT = 44
 
         private const val PROGRESS_H = 2
-        private const val BTN = 28
-        private const val BTN_GAP = 6
-        private const val OK_W = 56
 
-        private const val TIMER_ID = 1
-        private const val TIMER_MS = 16
-        private const val SWEEP_W = 80f
-        private const val SWEEP_STEP = 6f
+        // 按钮 ID (WM_COMMAND LOWORD)
+        private const val ID_BACK = 1
+        private const val ID_FORWARD = 2
+        private const val ID_REFRESH = 3
+        private const val ID_OK = 4
+        private const val ID_MENU = 5
 
-        // winuser.h / wingdi.h 常量
-        private const val WM_PAINT = 0x000F
-        private const val WM_ERASEBKGND = 0x0014
-        private const val WM_MOUSEMOVE = 0x0200
-        private const val WM_LBUTTONDOWN = 0x0201
-        private const val WM_LBUTTONUP = 0x0202
-        private const val WM_MOUSELEAVE = 0x02A3
-        private const val WM_SETCURSOR = 0x0020
-        private const val WM_TIMER = 0x0113
-        private const val IDC_HAND = 32649
-        private const val TME_LEAVE = 0x0002
-        private const val TRANSPARENT = 1
-        private const val DEFAULT_GUI_FONT = 17
-        private const val DT_SINGLELINE = 0x0020
-        private const val DT_CENTER = 0x0001
-        private const val DT_VCENTER = 0x0004
-        private const val DT_END_ELLIPSIS = 0x8000
-        private const val DT_NOPREFIX = 0x0800
+        // 菜单项 ID (TrackPopupMenu 返回值)
+        private const val MENU_ID_REFRESH = 101
+        private const val MENU_ID_BROWSER = 102
+        private const val MENU_ID_COPY = 103
+
+        // commctrl / user32 常量
+        private const val TOOLBARCLASSNAME = "ToolbarWindow32"
+        private const val PROGRESS_CLASS = "msctls_progress32"
+        private const val TBSTYLE_FLAT = 0x0800
+        private const val TBSTYLE_LIST = 0x1000
+        private const val TBSTYLE_TOOLTIPS = 0x0100
+        private const val BTNS_AUTOSIZE = 0x0010
+        private const val BTNS_SEP = 0x0001
+        private const val BTNS_DROPDOWN = 0x0080
+        private const val BTNS_SHOWTEXT = 0x0040
+        private const val TBSTATE_ENABLED = 0x04
+        private const val TB_BUTTONSTRUCTSIZE = 0x041F
+        private const val TB_SETIMAGELIST = 0x0418
+        private const val TB_ADDBUTTONS = 0x0414
+        private const val TB_ADDSTRING = 0x041C
+        private const val TB_AUTOSIZE = 0x041B
+        private const val TB_SETSTATE = 0x041A
+        private const val PBM_SETMARQUEE = 0x040A
+        private const val TBN_DROPDOWN = -710
+        private const val MF_STRING = 0x0000
+        private const val TPM_RETURNCMD = 0x0100
     }
 }
 
-/** PAINTSTRUCT (windows.h) 最小声明; jna-platform 未内置。 */
-private class PaintStruct : Structure() {
-    @JvmField
-    var hdc: Pointer? = null
-
-    @JvmField
-    var fErase: Int = 0
-
-    @JvmField
-    var rcPaint: WinDef.RECT = WinDef.RECT()
-
-    @JvmField
-    var fRestore: Int = 0
-
-    @JvmField
-    var fIncUpdate: Int = 0
-
-    @JvmField
-    var rgbReserved: ByteArray = ByteArray(32)
-
-    override fun getFieldOrder(): List<String> =
-        listOf("hdc", "fErase", "rcPaint", "fRestore", "fIncUpdate", "rgbReserved")
+/** user32 补充: GetDpiForWindow (PerMonitorV2 下按窗口 DPI 缩放图标)。 */
+internal interface ToolbarUser32Dpi : com.sun.jna.win32.StdCallLibrary {
+    fun GetDpiForWindow(hWnd: WinDef.HWND): Int
 }
 
-/** TRACKMOUSEEVENT (winuser.h) 最小声明; jna-platform 未内置。 */
-private class TrackMouseEventStruct : Structure() {
-    @JvmField
-    var cbSize: Int = 0
-
-    @JvmField
-    var dwFlags: Int = 0
-
-    @JvmField
-    var hwndTrack: WinDef.HWND? = null
-
-    @JvmField
-    var dwHoverTime: Int = 0
-
-    override fun getFieldOrder(): List<String> =
-        listOf("cbSize", "dwFlags", "hwndTrack", "dwHoverTime")
+internal val toolbarUser32: ToolbarUser32Dpi by lazy {
+    com.sun.jna.Native.load(
+        "user32",
+        ToolbarUser32Dpi::class.java,
+        com.sun.jna.win32.W32APIOptions.UNICODE_OPTIONS
+    )
 }
 
-/** 工具栏用到的 user32 函数 (jna-platform 5.17 的 User32 未覆盖, 参照 Dwmapi 声明方式)。 */
-private interface ToolbarUser32 : StdCallLibrary {
-    fun BeginPaint(hWnd: WinDef.HWND, lpPaint: PaintStruct): Pointer
-    fun EndPaint(hWnd: WinDef.HWND, lpPaint: PaintStruct): Boolean
-    fun InvalidateRect(hWnd: WinDef.HWND?, lpRect: WinDef.RECT?, bErase: Boolean): Boolean
-    fun SetTimer(hWnd: WinDef.HWND?, nIDEvent: Int, uElapse: Int, lpTimerFunc: Pointer?): Long
-    fun KillTimer(hWnd: WinDef.HWND?, nIDEvent: Int): Boolean
-    fun TrackMouseEvent(lpEventTrack: TrackMouseEventStruct): Boolean
-    fun SetCursor(hCursor: WinDef.HCURSOR?): WinDef.HCURSOR?
-    fun LoadCursor(hInstance: WinDef.HINSTANCE?, lpCursorName: Pointer): WinDef.HCURSOR?
-    fun SetWindowTextW(hWnd: WinDef.HWND, lpString: String): Boolean
-    fun DrawTextW(
-        hdc: Pointer,
-        lpchText: String,
-        cchText: Int,
-        lprc: WinDef.RECT,
-        uFormat: Int
+/** 菜单 API (jna-platform User32 未覆盖): CreatePopupMenu/AppendMenuW/TrackPopupMenu/DestroyMenu/SetForegroundWindow。 */
+internal interface ToolbarMenuUser32 : com.sun.jna.win32.StdCallLibrary {
+    fun CreatePopupMenu(): com.sun.jna.platform.win32.WinNT.HANDLE
+    fun AppendMenuW(
+        hMenu: com.sun.jna.platform.win32.WinNT.HANDLE,
+        uFlags: Int,
+        uIDNewItem: Int,
+        lpNewItem: String
+    ): Boolean
+
+    fun TrackPopupMenu(
+        hMenu: com.sun.jna.platform.win32.WinNT.HANDLE, uFlags: Int, x: Int, y: Int,
+        nReserved: Int, hWnd: WinDef.HWND, prcRect: com.sun.jna.platform.win32.WinDef.RECT?
     ): Int
 
-    fun FillRect(hdc: Pointer, lprc: WinDef.RECT, hbr: Pointer): Int
+    fun DestroyMenu(hMenu: com.sun.jna.platform.win32.WinNT.HANDLE): Boolean
+    fun SetForegroundWindow(hWnd: WinDef.HWND): Boolean
+    fun SetWindowTextW(hWnd: WinDef.HWND, lpString: String): Boolean
 }
 
-/** 工具栏用到的 gdi32 函数。
- *
- * 注意: SetBkMode/SetTextColor 是 gdi32 导出, 不能声明进 user32 接口 ——
- * 曾误放 ToolbarUser32 导致 paint() 抛 UnsatisfiedLinkError (JNA 回调内异常被静默
- * 吞, BeginPaint 已消费无效区域, 工具栏永不再重绘 = 白条, 鼠标命中正常)。
- */
-private interface ToolbarGdi32 : StdCallLibrary {
-    fun CreateSolidBrush(crColor: Int): Pointer
-    fun SelectObject(hdc: Pointer, obj: Pointer): Pointer
-    fun DeleteObject(obj: Pointer): Boolean
-    fun GetStockObject(i: Int): Pointer
-    fun SetBkMode(hdc: Pointer, iMode: Int): Int
-    fun SetTextColor(hdc: Pointer, crColor: Int): Int
-}
-
-private val native: ToolbarUser32 by lazy {
-    com.sun.jna.Native.load("user32", ToolbarUser32::class.java, W32APIOptions.UNICODE_OPTIONS)
-}
-
-private val gdi: ToolbarGdi32 by lazy {
-    com.sun.jna.Native.load("gdi32", ToolbarGdi32::class.java, W32APIOptions.UNICODE_OPTIONS)
+internal val menuUser32: ToolbarMenuUser32 by lazy {
+    com.sun.jna.Native.load(
+        "user32",
+        ToolbarMenuUser32::class.java,
+        com.sun.jna.win32.W32APIOptions.UNICODE_OPTIONS
+    )
 }

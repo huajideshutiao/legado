@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?><!-- 全屏退出 (对照 media3 exo_ic_fullscreen_exit) -->
+<?xml version="1.0" encoding="utf-8"?><!-- 全屏退出 (对照 media3 exo_ic_fullscreen_exit, pathData 与官方逐字符一致) -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -6,5 +6,5 @@
     android:viewportHeight="24">
     <path
         android:fillColor="#FF000000"
-        android:pathData="M5,16h3v3h2v-5H5v2zM16,16h3v-2h-5v5h2v-3zM8,8H5v2h5V5H8v3zM16,8v3h2V8h3V5h-5v3z" />
+        android:pathData="M5,16h3v3h2v-5L5,14v2zM8,8L5,8v2h5L10,5L8,5v3zM14,19h2v-3h3v-2h-5v5zM16,8L16,5h-2v5h5L19,8h-3z" />
 </vector>

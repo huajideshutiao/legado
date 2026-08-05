@@ -67,6 +67,9 @@ import legado.shared.generated.resources.sort
 import legado.shared.generated.resources.sure_del
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
+import io.legado.app.ui.preview.previewGroupSample
 
 /**
  * 分组编辑对话框 (KMP 共享, app + desktop 复用)。
@@ -339,3 +342,42 @@ private fun SortRow(
         }
     }
 }
+
+// ===== @Preview 合并自 androidMain 的 book/group/GroupDialogsPreviews.kt (GroupEditDialog) =====
+
+// ---- GroupEditDialog ----
+
+/** [GroupEditDialog] / [GroupManageDialog] 的 @Preview (新增态/编辑态/空列表)。 */
+
+@Preview
+@Composable
+fun GroupEditDialogNewPreview() = LegadoThemePreview {
+    GroupEditDialog(
+        group = null,
+        onConfirm = {},
+        onDismiss = {},
+    )
+}
+
+@Preview
+@Composable
+fun GroupEditDialogEditPreview() = LegadoThemePreview {
+    GroupEditDialog(
+        group = previewGroupSample,
+        onConfirm = {},
+        onDismiss = {},
+        onDelete = {},
+    )
+}
+
+@Preview
+@Composable
+fun GroupEditDialogDarkPreview() = LegadoThemePreview(dark = true) {
+    GroupEditDialog(
+        group = previewGroupSample,
+        onConfirm = {},
+        onDismiss = {},
+        onDelete = {},
+    )
+}
+

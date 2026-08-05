@@ -39,6 +39,8 @@ import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.prev_page_key
 import legado.shared.generated.resources.reset
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 自定义翻页按键对话框 (KMP 共享, app + desktop 复用)。
@@ -180,3 +182,45 @@ private fun buildKeyMappings(prev: String, next: String): Map<Int, String> {
         .forEach { result[it] = "next_page" }
     return result
 }
+
+// ===== @Preview 合并自 androidMain 的 book/read/config/ReadConfigDialogPreviews.kt (PageKeyDialog) =====
+
+// ===== PageKeyDialog =====
+
+private val previewKeyMappings = mapOf(
+    21 to "prev_page",  // KEYCODE_DPAD_LEFT
+    22 to "next_page",  // KEYCODE_DPAD_RIGHT
+    19 to "prev_page",  // KEYCODE_DPAD_UP
+    20 to "next_page",  // KEYCODE_DPAD_DOWN
+)
+
+@Preview
+@Composable
+fun PageKeyDialogPreview() = LegadoThemePreview {
+    PageKeyDialog(
+        keyMappings = previewKeyMappings,
+        onConfirm = {},
+        onDismiss = {},
+    )
+}
+
+@Preview
+@Composable
+fun PageKeyDialogEmptyPreview() = LegadoThemePreview {
+    PageKeyDialog(
+        keyMappings = emptyMap(),
+        onConfirm = {},
+        onDismiss = {},
+    )
+}
+
+@Preview
+@Composable
+fun PageKeyDialogDarkPreview() = LegadoThemePreview(dark = true) {
+    PageKeyDialog(
+        keyMappings = previewKeyMappings,
+        onConfirm = {},
+        onDismiss = {},
+    )
+}
+

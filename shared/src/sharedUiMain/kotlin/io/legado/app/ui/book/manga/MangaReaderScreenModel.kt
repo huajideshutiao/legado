@@ -130,6 +130,7 @@ class MangaReaderScreenModel : ScreenModel {
             grayEnabled: Boolean,
             onLoadState: (MangaCellState) -> Unit,
             retryTick: Int,
+            onProgress: (String) -> Unit,
         )
     }
 

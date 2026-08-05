@@ -32,6 +32,8 @@ import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.route.encodeReviewListDialogPayload
+import io.legado.app.ui.root.encodeBookVariableOverlayPayload
+import io.legado.app.ui.root.encodeSourceVariableOverlayPayload
 import io.legado.app.utils.File
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
@@ -86,6 +88,11 @@ object IosPlatformCapabilities : PlatformCapabilities {
 
     override fun openExternalUrl(url: String) {
         openURL(url)
+    }
+
+    override fun openWebView(url: String, sourceKey: String, sourceName: String) {
+        // 移动端保留内嵌 WebViewRoute 路由语义 (对话框内嵌)
+        AppNavigatorProviders.getOrNull()?.push(AppRoute.WebView(url, sourceKey, sourceName))
     }
 
     override fun shareText(text: String) {
@@ -161,7 +168,9 @@ object IosPlatformCapabilities : PlatformCapabilities {
         }
     }
 
-    // 书源变量/登录: 经 FlowBus 走 shared SourceUiEventBridgeHost (MainViewController 已挂载)
+    // 书源变量: 对照原版 BaseSource.showSourceVariableDialog, 经 AppOverlay 弹 shared
+    // SourceVariableDialog (编辑 source.getVariable() 的原始 JSON 文本, 确定后 setVariable
+    // 原样写回, 不解析不校验); 渲染/保存逻辑见 VariableOverlayDialog.kt
     override fun showSourceVariableDialog(book: Book) {
         scope.launch {
             val source = appDb.bookSourceDao.getBookSource(book.origin)
@@ -169,12 +178,33 @@ object IosPlatformCapabilities : PlatformCapabilities {
                 Toasters.get().toast("未找到书源")
                 return@launch
             }
-            source.showSourceVariableDialog()
+            showBookSourceVariableDialog(source)
         }
     }
 
     override fun showBookSourceVariableDialog(source: BookSource) {
-        source.showSourceVariableDialog()
+        AppNavigatorProviders.getOrNull()?.showOverlay(
+            AppOverlay.Dialog(
+                key = "sourceVariable",
+                payload = encodeSourceVariableOverlayPayload(source),
+            )
+        )
+    }
+
+    // 书籍变量: 对照原版 BaseBook.showBookVariableDialog, 只编辑 book.variable 的 "custom" 键
+    // (getCustomVariable/putCustomVariable 保留其他键), 经 AppOverlay 弹 shared
+    // BookVariableDialog, 确定后写库持久化 (逻辑见 VariableOverlayDialog.kt);
+    // 推 Overlay 前先查源: 原版拿不到 BookSource 直接 return (不弹窗)
+    override fun showBookVariableDialog(book: Book) {
+        scope.launch {
+            val source = appDb.bookSourceDao.getBookSource(book.origin) ?: return@launch
+            AppNavigatorProviders.getOrNull()?.showOverlay(
+                AppOverlay.Dialog(
+                    key = "bookVariable",
+                    payload = encodeBookVariableOverlayPayload(book, source),
+                )
+            )
+        }
     }
 
     override fun showBookSourceLogin(source: BookSource) {

@@ -66,17 +66,18 @@ fun DesktopWebViewSlot(
     if (engine == null) {
         SystemBrowserFallback(url, modifier)
     } else {
-        EngineWindowSlot(engine, url, modifier, callbacks)
+        EngineWindowSlot(engine, config, modifier, callbacks)
     }
 }
 
 @Composable
 private fun EngineWindowSlot(
     engine: DesktopWebViewEngine,
-    url: String,
+    config: WebViewConfig,
     modifier: Modifier,
     callbacks: WebViewCallbacks,
 ) {
+    val url = config.url
     var windowClosed by remember(url) { mutableStateOf(false) }
     var handle by remember(url) { mutableStateOf<WebViewWindowHandle?>(null) }
     // 回调对象由路由 remember 持有, 重组时用最新实例 (对齐 AndroidWebView 的 callbacksRef)
@@ -86,6 +87,11 @@ private fun EngineWindowSlot(
         WebViewWindowRequest(
             url = url,
             title = "legado",
+            // 2026-08-06 功能保留: 登录/验证场景必须带 isLogin (窗口"确定"= cookie 确认,
+            // 对照原版 WebViewActivity isLogin 分支) + cookieTag (cookie 按书源回写)
+            isLogin = config.isLogin,
+            saveResult = config.saveResult,
+            cookieTag = config.sourceKey.ifBlank { null },
             // 对照 AndroidWebViewClient.onPageFinished: 导航完成 → 路由侧 CF 检测/验证回传
             onNavigated = { url -> callbacksRef.onPageFinished?.invoke(url) },
             onClosed = { windowClosed = true },
@@ -107,22 +113,27 @@ private fun EngineWindowSlot(
         }
     }
 
-    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                if (windowClosed) "浏览器窗口已关闭" else "已在内置浏览器窗口中打开, 完成后回到本页确认",
-                Modifier.padding(16.dp),
-                textAlign = TextAlign.Center,
-            )
-            Button(onClick = {
-                handle?.close()
-                handle = open()
-                windowClosed = false
-            }) {
-                Text(if (windowClosed) "重新打开" else "重新加载")
+    Box(modifier.fillMaxSize()) {
+        // 2026-08-06: 窗口打开成功时占位区域留空 (用户反馈: 去掉中间占位界面,
+        // 点开直接出窗口); 仅窗口被关闭后显示重开入口, 避免用户无路可回
+        if (windowClosed) {
+            Column(
+                Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    "浏览器窗口已关闭",
+                    Modifier.padding(16.dp),
+                    textAlign = TextAlign.Center,
+                )
+                Button(onClick = {
+                    handle?.close()
+                    handle = open()
+                    windowClosed = false
+                }) {
+                    Text("重新打开")
+                }
             }
         }
     }

@@ -52,6 +52,10 @@ import androidx.compose.ui.window.PopupProperties
 import io.legado.app.ui.compose.theme.AppTheme
 import kotlin.math.max
 import kotlin.math.min
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.Text
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 统一容器样式的下拉菜单，复刻 View PopupMenu 的 BottomBackgroundDrawable：
@@ -297,4 +301,24 @@ private fun handlePopupOnKeyEvent(
     }
 } else {
     false
+}
+
+// ===== @Preview 合并自 androidMain 的 compose/component/SmallComponentsPreviews.kt (AppDropdownMenu) =====
+
+// ---- AppDropdownMenu ----
+// AppDropdownMenu 依赖外部 expanded 状态, expanded=false 时不显示内容;
+// expanded=true 时在 IDE Preview 中可能无法正确弹出 Popup, 但可预览容器样式。
+
+@Preview
+@Composable
+fun AppDropdownMenuExpandedPreview() = LegadoThemePreview {
+    Box(Modifier.padding(16.dp)) {
+        AppDropdownMenu(
+            expanded = true,
+            onDismissRequest = {},
+        ) {
+            Text("菜单项1", modifier = Modifier.padding(16.dp))
+            Text("菜单项2", modifier = Modifier.padding(16.dp))
+        }
+    }
 }

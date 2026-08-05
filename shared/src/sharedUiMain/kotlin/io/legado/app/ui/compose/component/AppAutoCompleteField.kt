@@ -31,6 +31,8 @@ import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.ic_clear_all
 import org.jetbrains.compose.resources.painterResource
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 复刻 widget.text.AutoCompleteTextView（DialogEditTextBinding 的历史下拉输入框）：
@@ -116,5 +118,60 @@ fun AppAutoCompleteField(
                 }
             }
         }
+    }
+}
+
+// ===== @Preview 合并自 androidMain 的 compose/component/AppAutoCompleteFieldPreviews.kt =====
+
+/**
+ * [AppAutoCompleteField.kt] 中 [AppAutoCompleteField] 的 @Preview。
+ *
+ * 该组件依赖 Popup (聚焦时弹历史候选下拉), Preview 中可能无法触发 Popup;
+ * 但可预览输入框本身的样式。
+ */
+
+@Preview
+@Composable
+fun AppAutoCompleteFieldPreview() = LegadoThemePreview {
+    var value by remember { mutableStateOf("") }
+    Box(Modifier.padding(16.dp)) {
+        AppAutoCompleteField(
+            value = value,
+            onValueChange = { value = it },
+            label = "搜索历史",
+            values = listOf("三体", "刘慈欣", "科幻小说", "黑暗森林"),
+            onDelete = {},
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Preview
+@Composable
+fun AppAutoCompleteFieldFilledPreview() = LegadoThemePreview {
+    var value by remember { mutableStateOf("三") }
+    Box(Modifier.padding(16.dp)) {
+        AppAutoCompleteField(
+            value = value,
+            onValueChange = { value = it },
+            label = "搜索历史",
+            values = listOf("三体", "刘慈欣", "科幻小说", "黑暗森林"),
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Preview
+@Composable
+fun AppAutoCompleteFieldNoHistoryPreview() = LegadoThemePreview {
+    var value by remember { mutableStateOf("测试") }
+    Box(Modifier.padding(16.dp)) {
+        AppAutoCompleteField(
+            value = value,
+            onValueChange = { value = it },
+            label = "无历史",
+            values = emptyList(),
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }

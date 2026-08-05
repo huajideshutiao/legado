@@ -2,13 +2,14 @@ package io.legado.app.model.fileBook
 
 import android.net.Uri
 import androidx.core.net.toUri
+import io.legado.app.R
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.exception.EmptyFileException
-import io.legado.app.exception.NoBooksDirException
+import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.addType
@@ -24,11 +25,14 @@ import io.legado.app.help.book.isPdf
 import io.legado.app.help.book.removeLocalUriCache
 import io.legado.app.help.book.save
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.i18n.appString
 import io.legado.app.help.i18n.AppStringKey
+import io.legado.app.help.i18n.appString
 import io.legado.app.lib.webdav.WebDav
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.CustomUrl
+import io.legado.app.model.fileBook.FileBookAccessorImpl.importLocalFile
+import io.legado.app.model.fileBook.FileBookAccessorImpl.importRemoteBook
+import io.legado.app.model.fileBook.FileBookAccessorImpl.saveBookFile
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
@@ -239,7 +243,9 @@ object FileBookAccessorImpl : FileBookAccessor {
         fileName: String,
         source: BaseSource?
     ): String {
-        AppConfig.defaultBookTreeUri ?: throw NoBooksDirException()
+        AppConfig.defaultBookTreeUri ?: throw InvalidBooksDirException(
+            appCtx.getString(R.string.no_books_dir)
+        )
         val inputStream = if (!str.startsWith(BookType.webDavTag)) AnalyzeUrl(
             str, source = source, callTimeout = 0, coroutineContext = currentCoroutineContext()
         ).getInputStreamAwait()
@@ -257,7 +263,9 @@ object FileBookAccessorImpl : FileBookAccessor {
         fileName: String
     ): String {
         inputStream.use {
-            val treeUri = AppConfig.defaultBookTreeUri?.toUri() ?: throw NoBooksDirException()
+            val treeUri = AppConfig.defaultBookTreeUri?.toUri() ?: throw InvalidBooksDirException(
+                appCtx.getString(R.string.no_books_dir)
+            )
             return if (treeUri.isContentScheme()) {
                 val doc = kotlin.runCatching {
                     FileDoc.fromDir(treeUri).createFileIfNotExist(

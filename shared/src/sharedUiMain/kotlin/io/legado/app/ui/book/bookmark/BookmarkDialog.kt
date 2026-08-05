@@ -39,6 +39,9 @@ import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.delete
 import legado.shared.generated.resources.ok
 import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.preview.LegadoThemePreview
+import io.legado.app.ui.preview.previewBookmarks
 
 /**
  * 书签编辑对话框 (KMP 共享, app + desktop 复用)。
@@ -140,3 +143,60 @@ fun BookmarkDialog(
         }
     }
 }
+
+// ===== @Preview 合并自 androidMain 的 book/bookmark/BookmarkPreviews.kt (BookmarkDialog) =====
+
+// ---- BookmarkDialog ----
+
+/**
+ * [BookmarkDialog] 与 [AllBookmarkScreen] 的 @Preview。
+ *
+ * 假数据取 PreviewData.previewBookmarks (跨两本书, 验证按书分组吸顶)。
+ */
+
+private val previewBookmark = previewBookmarks.first()
+
+@Preview
+@Composable
+fun BookmarkDialogPreview() = LegadoThemePreview {
+    BookmarkDialog(
+        bookmark = previewBookmark,
+        onConfirm = {},
+        onDismiss = {},
+    )
+}
+
+@Preview
+@Composable
+fun BookmarkDialogWithDeletePreview() = LegadoThemePreview {
+    BookmarkDialog(
+        bookmark = previewBookmark,
+        showDelete = true,
+        onConfirm = {},
+        onDismiss = {},
+        onDelete = {},
+    )
+}
+
+@Preview
+@Composable
+fun BookmarkDialogEmptyNotePreview() = LegadoThemePreview {
+    BookmarkDialog(
+        bookmark = previewBookmarks[1],
+        onConfirm = {},
+        onDismiss = {},
+    )
+}
+
+@Preview
+@Composable
+fun BookmarkDialogDarkPreview() = LegadoThemePreview(dark = true) {
+    BookmarkDialog(
+        bookmark = previewBookmark,
+        showDelete = true,
+        onConfirm = {},
+        onDismiss = {},
+        onDelete = {},
+    )
+}
+
