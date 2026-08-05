@@ -36,6 +36,13 @@ interface NotificationPayload {
   max?: number;
 }
 
+/** 窗口策略命令 payload (与 OhosNativeBridge.kt WindowCommand 对齐)。 */
+interface WindowCommand {
+  action: string;  // 'setFullScreenLayout' | 'setKeepScreenOn' | 'setPreferredOrientation' | 'setSystemBarEnable'
+  enabled?: boolean;
+  orientation?: number;
+}
+
 /**
  * 鸿蒙 UIAbility 入口 - Legado 应用启动入口。
  *
@@ -376,6 +383,47 @@ export default class EntryAbility extends UIAbility {
         return;
       }
       console.info('[Legado] loadContent pages/Index succeed');
+
+      // 窗口策略桥 (KMP → ArkTS @ohos.window): 注册 tsfn 回调。
+      // C++ 侧 (legado_napi.cpp RegisterWindowCallback) 创建 napi_threadsafe_function 包装此回调,
+      // 经 @CName legado_register_window_fn 注入 dispatch 指针到 Kotlin OhosNativeBridge.windowTsfn。
+      // 此后 KMP WindowController.setFullscreen/setKeepScreenOn/setOrientation/setSystemBars
+      // 的 JSON 命令跨线程 dispatch 到此回调, 由 ArkTS 在窗口上执行 @ohos.window API。
+      // 未注册时 KMP 侧降级 println (见 OhosNativeBridge.sendWindowCommand)。
+      // 注: setWindowSystemBarEnable 仅支持整体显隐 (鸿蒙 API 无分栏), 单栏策略
+      // (HiddenStatusBar/HiddenNavigationBar) 由 KMP 侧映射为整体隐藏 (见 WindowPolicy.kt)。
+      try {
+        legado.registerWindowCallback((json: string): void => {
+          try {
+            const cmd = JSON.parse(json) as WindowCommand;
+            windowStage.getMainWindow().then((win: window.Window) => {
+              switch (cmd.action) {
+                case 'setFullScreenLayout':
+                  win.setWindowLayoutFullScreen(cmd.enabled ?? false);
+                  break;
+                case 'setKeepScreenOn':
+                  win.setWindowKeepScreenOn(cmd.enabled ?? false);
+                  break;
+                case 'setPreferredOrientation':
+                  win.setPreferredOrientation(cmd.orientation ?? 0);
+                  break;
+                case 'setSystemBarEnable':
+                  win.setWindowSystemBarEnable(cmd.enabled ?? true);
+                  break;
+                default:
+                  console.warn('[Legado] window callback unknown action: ' + cmd.action);
+              }
+            }).catch((e: Error) => {
+              console.error('[Legado] window callback getMainWindow failed: ' + JSON.stringify(e));
+            });
+          } catch (e) {
+            console.error('[Legado] window callback failed: ' + JSON.stringify(e) + ', json=' + json);
+          }
+        });
+        console.info('[Legado] window tsfn callback registered via napi');
+      } catch (e) {
+        console.error('[Legado] registerWindowCallback failed: ' + JSON.stringify(e));
+      }
     });
   }
 

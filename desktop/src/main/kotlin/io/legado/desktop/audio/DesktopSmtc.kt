@@ -116,11 +116,14 @@ internal object DesktopSmtc {
     private const val SLOT_ADD_BUTTON_PRESSED = 32
     private const val SLOT_REMOVE_BUTTON_PRESSED = 33
 
-    // ISystemMediaTransportControls2
-    private const val SLOT_ISMTC2_PUT_PLAYBACK_RATE = 11
-    private const val SLOT_ISMTC2_UPDATE_TIMELINE = 12
-    private const val SLOT_ISMTC2_ADD_POS_CHANGE = 13
-    private const val SLOT_ISMTC2_REMOVE_POS_CHANGE = 14
+    // ISystemMediaTransportControls2 (ISMTC 有 38 个业务方法 = vtable 6..43,
+    // ISMTC2 的方法从 44 起; 序号经 WinRT 元数据反射验证)
+    // 2026-08 修正: 此前 11/12/13/14 落在 ISMTC 的 put_IsEnabled/get_IsPlayEnabled 等槽位上,
+    // 导致播放速率未设置、时间线未更新、进度事件未注册
+    private const val SLOT_ISMTC2_PUT_PLAYBACK_RATE = 49
+    private const val SLOT_ISMTC2_UPDATE_TIMELINE = 50
+    private const val SLOT_ISMTC2_ADD_POS_CHANGE = 51
+    private const val SLOT_ISMTC2_REMOVE_POS_CHANGE = 52
 
     // ISystemMediaTransportControlsDisplayUpdater
     private const val SLOT_DU_PUT_TYPE = 7

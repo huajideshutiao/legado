@@ -186,6 +186,54 @@ class ScrollPageDelegateCompose(
     }
 
     /**
+     * 鼠标滚轮滚动入口 (ReaderRoute 滚轮翻页调用): 行级滚动 + 页边界折算,
+     * 滚过页底自动切入下一页, 与拖拽滚动同一套折算 (互不干扰)。
+     *
+     * 用户主动滚动: 先打断惯性/行对齐动画 (abortAnim, 对照手势 onDown), 从当前偏移接管;
+     * abortAnim 暂停了自动翻页 (pause), 滚轮是离散事件, 处理完立即配对恢复 (resume 重置时间基准,
+     * 自动翻页在滚轮期间不推进、滚轮停止后恢复)。
+     *
+     * @return false = 命中硬边界 (书首/书末), 调用方按需处理
+     */
+    fun scrollBy(deltaPx: Float): Boolean {
+        if (deltaPx == 0f) return true
+        abortAnim()
+        val ok = applyScrollDelta(deltaPx)
+        autoPager?.resume()
+        return ok
+    }
+
+    /**
+     * 带动画小步滚动 (方向键滚动用, 用户拍板: 方向键滚动要有动画):
+     * 页内部分动画 (与整页翻页同一 [animateOffsetTo] 机制), 越界部分同步折算跨页
+     * (与 nextPageByAnim 的跨页瞬切一致); abortAnim 打断后从当前偏移重算, 连按流畅。
+     */
+    fun scrollByAnimated(deltaPx: Float, animDurationMs: Int = 200): Boolean {
+        if (deltaPx == 0f) return true
+        abortAnim()
+        val h = viewModel.curTextPage.value?.height?.toFloat() ?: return false
+        // 页内可滚量 (offset 范围 (-h, 0]): 向下滚到页底 / 向上滚到页顶
+        val remaining = if (deltaPx < 0f) (-h - _currentOffset) else -_currentOffset
+        val inPage = if (deltaPx < 0f) maxOf(deltaPx, remaining) else minOf(deltaPx, remaining)
+        if (inPage != 0f) {
+            isStarted = true
+            isRunning = true
+            animJob?.cancel()
+            animJob = scope.launch {
+                animateOffsetTo(_currentOffset + inPage, animDurationMs)
+            }
+        }
+        // 越界部分同步折算 (跨页), 与 scrollBy 一致恢复自动翻页
+        val rest = deltaPx - inPage
+        if (rest != 0f) {
+            val ok = applyScrollDelta(rest)
+            autoPager?.resume()
+            return ok
+        }
+        return true
+    }
+
+    /**
      * 惯性停止后对齐到最近行边界 (对照旧 scrollToLine 的行对齐语义)。
      * 候选 = 页顶 (offset 0) + 各行行顶对齐视口顶, 取距当前视口顶最近者。
      */
@@ -381,15 +429,26 @@ class ScrollPageDelegateCompose(
     }
 
     override fun nextPageByAnim(animDurationMs: Int) {
-        // 对照旧 ScrollPageDelegate.nextPageByAnim: 保留一行滚动 (页索引不变)
-        if (isRunning) return
+        // 对照旧 ScrollPageDelegate.nextPageByAnim: 保留一行滚动 (页索引不变)。
+        // 不做 isRunning 拦截: 动画中按键由 abortAnim 打断后从当前偏移重算目标 (对齐原版
+        // nextPageByAnim → startScroll 语义), 快速连按的合法按键不静默丢弃。
         if (!hasNext()) return
         abortAnim()
-        val target = calcNextPageOffset()
+        var target = calcNextPageOffset()
         if (target == _currentOffset) {
-            // 无动画路径：恢复自动翻页，避免 abortAnim 的 pause 悬挂
-            autoPager?.resume()
-            return
+            // 偏移已对齐当前页末行 (上次保留一行翻页完成): 继续滚过页底切入下一页、
+            // 再对齐新页末行 (对照 applyScrollDelta 的跨页折算分支), 保证连续按键每次都翻页
+            val pageHeight = viewModel.curTextPage.value?.height?.toFloat() ?: 0f
+            if (pageHeight <= 0f || !applyScrollDelta(-pageHeight)) {
+                // 无动画路径：恢复自动翻页，避免 abortAnim 的 pause 悬挂
+                autoPager?.resume()
+                return
+            }
+            target = calcNextPageOffset()
+            if (target == _currentOffset) {
+                autoPager?.resume()
+                return
+            }
         }
         isStarted = true
         isRunning = true
@@ -399,8 +458,8 @@ class ScrollPageDelegateCompose(
     }
 
     override fun prevPageByAnim(animDurationMs: Int) {
-        // 对照旧 ScrollPageDelegate.prevPageByAnim: 先切上一页, 再滚动保留上一页末行
-        if (isRunning) return
+        // 对照旧 ScrollPageDelegate.prevPageByAnim: 先切上一页, 再滚动保留上一页末行;
+        // isRunning 拦截理由同 [nextPageByAnim]
         if (!hasPrev()) return
         abortAnim()
         val target = calcPrevPageOffset()

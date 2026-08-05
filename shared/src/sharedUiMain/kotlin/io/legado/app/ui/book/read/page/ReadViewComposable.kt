@@ -5,15 +5,18 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -25,8 +28,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.PreferenceProviders
-import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
+import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.page.delegate.ScrollPageDelegateCompose
 import io.legado.app.ui.book.read.page.delegate.rememberPageDelegate
@@ -39,6 +42,8 @@ import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -118,8 +123,10 @@ fun ReadViewComposable(
     // 页内文字选择状态（对照旧 ReadView.isTextSelected + ContentTextView.selectStart/selectEnd）
     val selection = remember { PageSelectionState() }
     // 滚动模式正文平移量（仅 ScrollPageDelegateCompose 写入, 非滚动模式恒 0）:
-    // 选择命中坐标折算回页内坐标用（选中高亮随内容层平移, 见 PageViewComposable contentTranslationY）
-    val scrollOffset by viewModel.scrollOffset.collectAsState()
+    // 选择命中坐标折算回页内坐标用（选中高亮随内容层平移, 见 PageViewComposable contentTranslationY）。
+    // 不订阅 collectAsState：滚动每帧 updateScrollOffset 会触发整棵阅读树每帧重组（三页全部
+    // 重建 contentTranslationY lambda → 整页重绘），改为在事件回调（长按/弹菜单/扩选）内直接读
+    // StateFlow.value 取最新值，滚动热路径只走 graphicsLayer 绘制期订阅（只失效图层）。
     // 整页切换/重排时清除选择（对照旧 upContent → cancelSelect）; 未激活时无操作
     LaunchedEffect(curTextPage) {
         selection.cancel()
@@ -134,6 +141,18 @@ fun ReadViewComposable(
             composeDelegate.autoPager?.resume()
         }
     }
+    // 选区消失 → 通知平台关闭浮动文本操作菜单（对照旧 ContentTextView.cancelSelect →
+    // callBack.onCancelSelect → ReadBookActivity.onCancelSelect → textActionMenu.dismiss：
+    // 选区与菜单强绑定，任何清除路径——点按取消/翻页/重排/菜单动作后/外部状态变化——
+    // 都必须同步关菜单）。观察 isActive 下降沿（唯一清除入口是 [PageSelectionState.cancel]，
+    // 覆盖全部调用点，避免逐处手动 post 漏路径）；平台侧收集见
+    // ReaderRoute → [ReaderPlatformProvider.onTextSelectionDismissed]
+    LaunchedEffect(Unit) {
+        snapshotFlow { selection.isActive }
+            .drop(1) // 初始 false，只观察 true→false 下降沿
+            .filter { !it }
+            .collect { ReadBookEvents.postSelectionDismissed() }
+    }
 
     BoxWithConstraints(
         modifier = modifier.fillMaxSize(),
@@ -142,11 +161,20 @@ fun ReadViewComposable(
         val pageWidthInt = pageWidthPx.roundToInt()
         val pageHeightPx = with(LocalDensity.current) { maxHeight.toPx() }
         val pageHeightInt = pageHeightPx.roundToInt()
+        // 系统栏 inset：正文内容层已整体避让（PageViewComposable 内 platformStatusBarPadding
+        // + 导航栏 bottom inset），但九宫格/长按分区仍按全窗坐标判定，须排除系统栏区域
+        // （对照原版 contentTextView 被 vwStatusBar/vwNavigationBar 占位挤小后的 bounds）
+        val density = LocalDensity.current
+        val systemBarTopPx = WindowInsets.statusBars.getTop(density)
+        val systemBarBottomPx = WindowInsets.navigationBars.getBottom(density)
 
         // 九宫格点击动作分发（对照 app 端 ReadView.onSingleTapUp → click(action)）。
         // 先做页内列级点击分发（对照原版 ACTION_UP 先 curPage.onClick 再 onSingleTapUp），
         // 列命中并消费（图片/段评）后不再走九宫格动作。
         val onTapAt: (Float, Float) -> Unit = onTapAt@{ x, y ->
+            // 系统栏区域点击不响应（原版状态栏/导航栏占位区域点击落在 contentTextView
+            // bounds 外无动作，此处等价过滤，避免点状态栏/导航条误翻页/误开菜单）
+            if (y < systemBarTopPx || y >= pageHeightPx - systemBarBottomPx) return@onTapAt
             if (dispatchColumnClick(viewModel, curTextPage, tapScope, x, y)) {
                 return@onTapAt
             }
@@ -181,9 +209,11 @@ fun ReadViewComposable(
         val latestPageWidth by rememberUpdatedState(pageWidthPx)
         val latestOnLongClick by rememberUpdatedState(onLongClick)
         val latestOnImageLongPress by rememberUpdatedState(onImageLongPress)
-        val onPageLongPress: (Float, Float) -> Unit = { x, y ->
+        val onPageLongPress: (Float, Float) -> Unit = onPageLongPress@{ x, y ->
+            // 同上：系统栏区域长按无动作（原版占位区域不触发长按选择/空白长按）
+            if (y < systemBarTopPx || y >= pageHeightPx - systemBarBottomPx) return@onPageLongPress
             if (selection.longPressStart(
-                    latestCurPage, x, y, scrollOffset.toFloat(), latestPageWidth
+                    latestCurPage, x, y, viewModel.scrollOffset.value.toFloat(), latestPageWidth
                 )
             ) {
                 // 选择激活期间暂停自动翻页（对照旧手势按下 → autoPager.pause），
@@ -192,7 +222,7 @@ fun ReadViewComposable(
             } else {
                 // 未命中文字列: 图片列 → 图片长按; 其余空白 → 回落
                 val column = selection.columnAt(
-                    latestCurPage, x, y, scrollOffset.toFloat()
+                    latestCurPage, x, y, viewModel.scrollOffset.value.toFloat()
                 )
                 if (column is ImageColumn) {
                     latestOnImageLongPress(column.src, x, y)
@@ -292,10 +322,10 @@ fun ReadViewComposable(
         //   本层对鼠标抬起跳过避免重复, 见下方 down.type 判定）; 若按下时取消了选择且本手势
         //   未重新选中 → 消费抬起事件抑制本次点击（对照旧 pressOnTextSelected 抑制单击）
         val latestOnSelectionMenu by rememberUpdatedState(onSelectionMenu)
-        // 弹菜单时的选区锚点（页内坐标 + 滚动折算；滚动模式内容下移锚点同步下移）
-        val latestScrollOffset by rememberUpdatedState(scrollOffset)
+        // 弹菜单时的选区锚点（页内坐标 + 滚动折算；滚动模式内容下移锚点同步下移）。
+        // 直接读最新值不订阅：避免滚动每帧触发重组（同上方 scrollOffset 说明）
         val selectionMenuAnchor: () -> Offset? = {
-            selection.selectionAnchor()?.let { Offset(it.x, it.y + latestScrollOffset) }
+            selection.selectionAnchor()?.let { Offset(it.x, it.y + viewModel.scrollOffset.value) }
         }
         Box(
             modifier = Modifier
@@ -329,7 +359,7 @@ fun ReadViewComposable(
                                 selection.extendTo(
                                     change.position.x,
                                     change.position.y,
-                                    scrollOffset.toFloat(),
+                                    viewModel.scrollOffset.value.toFloat(),
                                     latestPageWidth,
                                 )
                             }
@@ -476,8 +506,9 @@ private fun AutoPageRevealOverlay(
 
     Box(modifier = Modifier.fillMaxSize()) {
         // 下一页：自顶向下 clip 揭示（未到末页时才有内容；末页时下一页为 null 只走进度线）。
-        // 注: Compose 1.9 的 GraphicsLayerScope 无 clipRect API, 改用绘制期裁剪
-        // (drawWithContent + clipRect), 语义不变但每帧重绘页内容
+        // 2026-08 回退: 曾加 revealLayer 录制缓存 (record), 但 record 内执行子节点
+        // PageViewComposable 的 Canvas onDraw 会与外层 scope 的 fontScale 委托互相递归
+        // → StackOverflowError (同 PageContentCanvas 白屏根因), 恢复直接绘制 + clipRect
         nextTextPage?.let { page ->
             Box(
                 modifier = Modifier

@@ -64,6 +64,7 @@ fun BookInfoBlurCoverBg(
     inBookshelf: Boolean,
     isEInkMode: Boolean,
     modifier: Modifier,
+    land: Boolean = false,
 ) {
     val tick = coverTick
     val bgDesc = stringResource(R.string.bg_image)
@@ -82,7 +83,7 @@ fun BookInfoBlurCoverBg(
                     blurConfig(
                         seed = book.name,
                         sourceOrigin = book.origin,
-                        extraTransformations = listOf(BookInfoBgTransformation()),
+                        extraTransformations = listOf(BookInfoBgTransformation(land)),
                     )
                     placeholder(iv.drawable)
                 }

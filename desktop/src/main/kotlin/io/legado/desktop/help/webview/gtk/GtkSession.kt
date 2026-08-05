@@ -27,6 +27,34 @@ internal class GtkSession private constructor(
         GtkLibs.gtk.gtk_window_set_title(w, title)
     }
 
+    /**
+     * 删除源确认 (GTK 线程): 模态对话框 (确定/取消), 返回是否确认删除。
+     * 对照原版 menu_delete_source 的 alert (sure_del + 源名); 三端对齐
+     * Windows MessageBox / Mac NSAlert (2026-08-08)。
+     */
+    fun confirmDelete(message: String): Boolean {
+        val parent = window ?: return false
+        val gtk = GtkLibs.gtk
+        // 全非 varargs 组合 (GtkDialog + label + 按钮), 避开 JNA 对 C varargs 的 ABI 坑
+        val dialog = gtk.gtk_dialog_new()
+        gtk.gtk_window_set_title(dialog, "删除源")
+        gtk.gtk_window_set_transient_for(dialog, parent)
+        gtk.gtk_window_set_modal(dialog, 1)
+        gtk.gtk_window_set_destroy_with_parent(dialog, 1)
+        val content = gtk.gtk_dialog_get_content_area(dialog)
+        gtk.gtk_box_pack_start(content, gtk.gtk_label_new(message), 0, 0, 8)
+        gtk.gtk_dialog_add_action_widget(
+            dialog, gtk.gtk_button_new_with_label("确定"), GtkLibs.GTK_RESPONSE_YES
+        )
+        gtk.gtk_dialog_add_action_widget(
+            dialog, gtk.gtk_button_new_with_label("取消"), GtkLibs.GTK_RESPONSE_NO
+        )
+        gtk.gtk_widget_show_all(dialog)
+        val response = gtk.gtk_dialog_run(dialog)
+        gtk.gtk_widget_destroy(dialog)
+        return response == GtkLibs.GTK_RESPONSE_YES
+    }
+
     /** 最大化/还原切换 (对照原版 menu_full_screen)。 */
     fun toggleMaximize() {
         val w = window ?: return

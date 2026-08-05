@@ -15,7 +15,7 @@ import io.legado.app.help.book.addType
 import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfigProviders
-import io.legado.app.help.sourceLoginOverlayPayload
+import io.legado.app.help.showSourceLogin
 import io.legado.app.ui.book.explore.ExploreShowScreen
 import io.legado.app.ui.book.explore.ExploreShowScreenModel
 import io.legado.app.ui.book.explore.ExploreShowUiActions
@@ -173,15 +173,10 @@ fun ExploreShowRoute(
                 refresh()
             }
 
-            // 菜单 - 书源登录: 纯 Overlay 弹登录对话框, 不推新路由 (源无登录入口时菜单不显示)
+            // 菜单 - 书源登录: 统一登录入口, URL 登录桌面端直开登录窗口 (2026-08-07)
             override fun onLogin() {
-                val sourceUrl = vm.bookSource?.bookSourceUrl ?: return
-                navigator.showOverlay(
-                    AppOverlay.Dialog(
-                        key = "sourceLogin",
-                        payload = sourceLoginOverlayPayload(sourceUrl),
-                    )
-                )
+                val source = vm.bookSource ?: return
+                showSourceLogin(source.bookSourceUrl, source)
             }
 
             // 对照 Activity.switchLayout: viewModel.switchLayout() + exploreStyle 更新

@@ -101,9 +101,6 @@ class BookSourceDebugScreenModel(
 
     fun init(sourceUrl: String?) {
         scope.launch(IoDispatcher) {
-            // 对照原版: 进入调试页顶部帮助面板必须显示 (原版 View 版 help 面板常驻顶部,
-            // 不因任何解析结果而隐藏), 进入时显式复位, 避免任何残留状态影响
-            _uiState.update { it.copy(helpVisible = true) }
             try {
                 // 优先取编辑页跳转前塞入的内存对象 (含未落库的最新编辑结果);
                 // 书源管理页只带 url, 走 DB 兜底
@@ -132,13 +129,17 @@ class BookSourceDebugScreenModel(
                 kinds.firstOrNull()?.let {
                     _uiState.update { state -> state.copy(textFx = "${it.title}::${it.url}") }
                     if (it.title.startsWith("ERROR:")) {
-                        // 对照原版: 帮助面板常驻顶部, 发现分类解析失败仅追加错误日志,
-                        // 不隐藏面板 (原版 View 版无任何隐藏 help 的逻辑; 隐藏仅发生在提交搜索后)
+                        // 对照原版: 探索分类解析出错时隐藏帮助面板并收键盘,
+                        // 重新点击搜索框可唤回 (对齐 app 端 SearchView.clearFocus 语义)
                         logs.add(exploreErrorText(it.url ?: ""))
+                        _uiState.update { state -> state.copy(helpVisible = false) }
+                        _clearFocusFlow.tryEmit(Unit)
                     }
                 }
             } catch (e: NullPointerException) {
                 logs.add(exploreJsonErrorText(e))
+                _uiState.update { state -> state.copy(helpVisible = false) }
+                _clearFocusFlow.tryEmit(Unit)
             }
         }
     }

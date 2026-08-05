@@ -45,16 +45,18 @@ import io.legado.app.ui.compose.theme.AppTheme
 /**
  * 模糊封面背景 slot。
  *
- * 签名 `(Book?, Int, Boolean, Boolean, Modifier) -> Unit` 对齐 app 端 [BookInfoBlurCoverBg] 入参:
+ * 签名 `(Book?, Int, Boolean, Boolean, Modifier, Boolean) -> Unit` 对齐 app 端 [BookInfoBlurCoverBg] 入参:
  * - [Book]: 当前书籍 (可能为 null)
  * - Int: coverTick, 封面重载 key (对照 activity.coverTick)
  * - Boolean: inBookshelf, 是否在书架 (对照 activity.viewModel.inBookshelf)
  * - Boolean: isEInkMode, E-Ink 模式跳过模糊加载
  * - [Modifier]: 调用方传入的尺寸约束 (fillMaxSize 或 fillMaxWidth+height(300.dp))
+ * - Boolean: land, 横屏布局 (左半列铺满, 渐变改水平; 竖屏顶部条垂直渐变)。
+ *   2026-08 用户反馈: 横屏整列套垂直渐变 → 从上到下越来越黑, 与原版行为不符
  */
 val LocalBlurCoverBgSlot =
-    staticCompositionLocalOf<@Composable (Book?, Int, Boolean, Boolean, Modifier) -> Unit> {
-        @Composable { book, coverTick, inBookshelf, isEInkMode, modifier ->
+    staticCompositionLocalOf<@Composable (Book?, Int, Boolean, Boolean, Modifier, Boolean) -> Unit> {
+        @Composable { book, coverTick, inBookshelf, isEInkMode, modifier, land ->
             SharedBlurCoverBgPlaceholder(book, modifier)
         }
     }

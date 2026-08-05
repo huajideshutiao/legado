@@ -563,8 +563,11 @@ class ReadBookViewModelShared(
                 ?: return
             // 与 app ReadBook.loadContent 一致：正文 IO 前先并行启动段评数请求，正文缓存命中也不阻塞。
             val countDeferred = startReviewCountFetchAsync(book, chapter)
+            // 正文缓存读取是同步文件 IO (JvmBookStorage.readAllBytes, MB 级), 必须切 IO 线程
             val cached = runCatching {
-                BookStorageProviders.get().getContent(book, chapter)
+                withContext(IoDispatcher) {
+                    BookStorageProviders.get().getContent(book, chapter)
+                }
             }.getOrNull()
             val content = cached ?: downloadAwait(book, chapter)
             // 原版在 contentLoadFinish 入口先 removeLoading；先释放守卫，确保段评迟到触发的重排
@@ -803,7 +806,8 @@ class ReadBookViewModelShared(
             readBook.slideTextChaptersNext()
             val newCur = readBook.curTextChapter.value
             if (newCur != null) {
-                applyCurChapterPages(newCur)
+                // 滚动切章: 不归零滚动偏移 (offset 连续折算在 applyScrollDelta), 对照原版 toFirst=false
+                applyCurChapterPages(newCur, resetOffset = false)
             }
             if (newCur == null) {
                 // 当前章未装载：立即刷新三页流展示"加载数据中…"占位（对照原版
@@ -863,7 +867,8 @@ class ReadBookViewModelShared(
             readBook.slideTextChaptersPrev()
             val newCur = readBook.curTextChapter.value
             if (newCur != null) {
-                applyCurChapterPages(newCur)
+                // 滚动切章: 不归零滚动偏移 (offset 连续折算在 applyScrollDelta), 对照原版 toFirst=false
+                applyCurChapterPages(newCur, resetOffset = false)
             }
             if (newCur == null) {
                 // 当前章未装载：立即刷新三页流展示"加载数据中…"占位（对照原版
@@ -1479,11 +1484,19 @@ class ReadBookViewModelShared(
      * 当前章排版结果写入页状态流并按 durChapterPos 归位页码
      * （对照 app 端 contentLoadFinish 的 containPos 定位；toLast 时自然落到 pages.lastIndex）。
      */
-    private fun applyCurChapterPages(textChapter: TextChapterShared) {
+    private fun applyCurChapterPages(
+        textChapter: TextChapterShared,
+        // 滚动切章 (moveToNext/PrevChapter 滚动路径) 传 false: 保留 offset 连续折算,
+        // 对照原版 moveToNextChapter(toFirst=false) 不 resetPageOffset;
+        // 菜单切章/重排/刷新等场景默认 true 归零
+        resetOffset: Boolean = true,
+    ) {
         pageList.clear()
         pageList.addAll(textChapter.pages)
-        // 切章/重排/刷新后滚动偏移归零 (对照旧 upContent(resetPageOffset=true) → resetPageOffset)
-        resetScrollOffset()
+        if (resetOffset) {
+            // 切章/重排/刷新后滚动偏移归零 (对照旧 upContent(resetPageOffset=true) → resetPageOffset)
+            resetScrollOffset()
+        }
         // 跨章朗读起点: 目标章排版完成即触发 (对照原版 openChapter success 回调时机)
         pendingReadAloudStart?.let { startPos ->
             pendingReadAloudStart = null

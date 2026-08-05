@@ -1,21 +1,33 @@
 package io.legado.desktop
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.window.LocalWindowExceptionHandlerFactory
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowDecoration
 import androidx.compose.ui.window.WindowExceptionHandler
 import androidx.compose.ui.window.WindowExceptionHandlerFactory
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.sun.jna.Platform
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabaseProviders
 import io.legado.app.data.AppDbProviders
@@ -85,7 +97,9 @@ import io.legado.app.ui.compose.platform.LocalAppConfigProvider
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.dispatchShortcut
 import io.legado.app.ui.compose.platform.jvmGetString
+import io.legado.app.ui.compose.platform.performBack
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
@@ -137,10 +151,11 @@ import io.legado.desktop.tts.DesktopSystemTtsEngine
 import io.legado.desktop.ui.DesktopDialogHost
 import io.legado.desktop.ui.DesktopPlatformCapabilities
 import io.legado.desktop.ui.DesktopPlatformServices
+import io.legado.desktop.ui.DesktopTitleBar
 import io.legado.desktop.ui.DesktopToastHost
 import io.legado.desktop.ui.DesktopToasts
+import io.legado.desktop.ui.DesktopWindowChrome
 import io.legado.desktop.ui.DesktopWindowHandle
-import io.legado.desktop.ui.DesktopWindowTitleBarSync
 import io.legado.desktop.ui.browser.DesktopWebViewSlot
 import io.legado.desktop.ui.platform.DesktopAudioPlayPlatformProvider
 import io.legado.desktop.ui.platform.DesktopMangaReaderPlatform
@@ -480,11 +495,57 @@ private fun runDesktopApp() = application {
     ) {
     Window(
         onCloseRequest = ::exitApplication,
-        // 返回键由 shared LegadoApp 内部 handleBackKey 统一处理, desktop Window 不消费
-        onKeyEvent = { false },
+        // 返回键由 shared LegadoApp 内部 handleBackKey 统一处理, desktop Window 不消费;
+        // 例外1: 全屏时 Esc 优先退出全屏 (用户拍板 2026-08);
+        // 例外2: 全局快捷键 (方向键/音量键等 AppShortcutHandler) 在 Window 层分发——
+        //   Compose 组合内 onPreviewKeyEvent 依赖焦点节点, 刚进阅读/漫画页无焦点时
+        //   快捷键完全无响应 (用户多次踩坑: 漫画方向键必须点一下界面才生效);
+        //   Window 层回调不依赖焦点, 命中即消费, 未命中放行给组合内 (输入框/焦点导航)。
+        onKeyEvent = { event ->
+            when (event.type) {
+                KeyEventType.KeyDown -> {
+                    when {
+                        // 全屏时 Esc 优先退出全屏 (用户拍板 2026-08)
+                        event.key == Key.Escape && DesktopWindowChrome.fullscreen -> {
+                            PlatformServiceProviders.getOrNull()?.window?.setFullscreen(false)
+                            true
+                        }
+
+                        // Esc = 统一返回 (对照 shared performBack: 先关 overlay 再出栈);
+                        // 组合内 BackKeyHandler 的 onPreviewKeyEvent 依赖焦点, 漫画/阅读页
+                        // 无焦点节点时不触发 (用户实测 Esc 无效)——Window 层直接执行
+                        event.key == Key.Escape -> {
+                            performBack(navigator)
+                            true
+                        }
+
+                        else -> dispatchShortcut(event, preemptive = true) ||
+                            dispatchShortcut(event, preemptive = false)
+                    }
+                }
+
+                KeyEventType.KeyUp -> {
+                    // KeyUp 只清理快捷键按住状态 (repeat 过滤用), 无动作、不消费
+                    dispatchShortcut(event, preemptive = true)
+                    false
+                }
+
+                else -> false
+            }
+        },
         title = appName,
         icon = iconPainter,
         state = windowState,
+        // Windows/Linux 去掉系统装饰, 自绘标题栏 (DesktopTitleBar); macOS 保留原生红绿灯
+        // 标题栏 (SystemDefault)。Undecorated() 官方自带边缘 8dp resize 区, 无需自实现
+        decoration = if (Platform.isMac()) {
+            WindowDecoration.SystemDefault
+        } else {
+            WindowDecoration.Undecorated()
+        },
+        // 置顶开关 (控制栏菜单切换, DesktopWindowChrome 单一状态源); SwingWindow
+        // updater 同步 AWT setAlwaysOnTop
+        alwaysOnTop = DesktopWindowChrome.alwaysOnTop,
     ) {
         // 单实例守卫绑定主窗口: 二次启动转发到达时前置本窗口 (取消最小化 + toFront + 请求焦点);
         // DisposableEffect 保证窗口销毁后解绑, 不让守卫持有已 dispose 的 AWT Window
@@ -537,15 +598,11 @@ private fun runDesktopApp() = application {
                 DesktopWebViewSlot(config, modifier, callbacks)
             },
             // 注入 Coil3 模糊封面背景到 shared 详情页路由, 覆盖 LocalBlurCoverBgSlot 兜底
-            LocalBlurCoverBgSlot provides { book, coverTick, inBookshelf, isEInkMode, modifier ->
-                SharedBlurCoverBgCoil(book, coverTick, inBookshelf, isEInkMode, modifier)
+            LocalBlurCoverBgSlot provides { book, coverTick, inBookshelf, isEInkMode, modifier, land ->
+                SharedBlurCoverBgCoil(book, coverTick, inBookshelf, isEInkMode, modifier, land)
             },
         ) {
             AppTheme {
-                // Windows 原生标题栏跟随应用主题 (修复: 深色主题下标题栏仍是系统浅色):
-                // 订阅 AppTheme 派生色, 深浅/夜间模式切换 (eventBus.emitRecreate → AppTheme
-                // 重组) 时 LaunchedEffect key 变化自动重跑, 实时同步 DWM 标题栏
-                DesktopWindowTitleBarSync(windowHandle)
                 // 对照 app 端 App.kt:132 SourceUiEventBridge.init(): desktop 无 Activity,
                 // 改用 Composable 宿主订阅 FlowBus(SOURCE_UI_REQUEST) 弹 Compose Dialog
                 // (实现见 shared/sharedUiMain 的 SourceUiEventBridgeHost)
@@ -560,13 +617,47 @@ private fun runDesktopApp() = application {
                 // legado:// deep link 导入对话框宿主: 消费 main(args)/OpenURIHandler 经
                 // LegadoDeepLinkHandler 记录的待导入请求 (对照 app 端 AssociationActivity 分发)
                 DeepLinkImportHost()
-                // 零薄壳: shared LegadoApp 统一管理导航栈 + ScreenModel 生命周期,
-                // 所有路由由 shared RouteContent 直接渲染; 根级键盘焦点由 shared LegadoApp
-                // 内部处理 (handleBackKey 与焦点节点同链, 无控件持焦时 ESC 仍可达)
-                LegadoApp(
-                    navigator = navigator,
-                    screenModelStore = screenModelStore,
-                )
+                // 自绘窗口控制栏: Windows/Linux undecorated 后接管标题栏 (macOS 保留原生,
+                // 不渲染); 所有页面共用, 内容区在其下方让出 40dp; 真全屏时隐藏。
+                // 阅读页激活染色由控制栏消费 readerWindowTint (同一状态源, 原 DWM 标题栏
+                // 着色 DesktopWindowTitleBarSync 随 undecorated 失去作用对象, 不再调用)
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        // 全屏时 Esc 优先退出全屏 (用户拍板 2026-08): 捕获阶段拦截,
+                        // 先于 LegadoApp 的 handleBackKey 返回逻辑, 不执行返回等普通操作
+                        .onPreviewKeyEvent { event ->
+                            if (event.type == KeyEventType.KeyDown && event.key == Key.Escape &&
+                                DesktopWindowChrome.fullscreen
+                            ) {
+                                PlatformServiceProviders.getOrNull()?.window?.setFullscreen(false)
+                                true
+                            } else {
+                                false
+                            }
+                        },
+                ) {
+                    if (!Platform.isMac() && !DesktopWindowChrome.fullscreen) {
+                        DesktopTitleBar(
+                            appName = appName,
+                            icon = iconPainter,
+                            window = window,
+                            windowState = windowState,
+                            themeStore = themeStoreProvider,
+                            navigator = navigator,
+                            onCloseRequest = ::exitApplication,
+                        )
+                    }
+                    // 零薄壳: shared LegadoApp 统一管理导航栈 + ScreenModel 生命周期,
+                    // 所有路由由 shared RouteContent 直接渲染; 根级键盘焦点由 shared LegadoApp
+                    // 内部处理 (handleBackKey 与焦点节点同链, 无控件持焦时 ESC 仍可达)
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        LegadoApp(
+                            navigator = navigator,
+                            screenModelStore = screenModelStore,
+                        )
+                    }
+                }
             }
         }
     }

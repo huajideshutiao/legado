@@ -3,7 +3,7 @@ package io.legado.app.model.webBook
 import io.legado.app.constant.AppConst
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.data.entities.IBookSource
+import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Review
 import io.legado.app.data.entities.ReviewPage
 import io.legado.app.data.entities.rule.ReviewRule
@@ -18,7 +18,7 @@ import kotlinx.coroutines.ensureActive
  * 段评解析
  *
  * W3-e: 从 app 下沉到 shared jvmAndAndroidMain, 现下沉到 commonMain。
- * - bookSource 参数类型 BookSource → IBookSource (BookSource 实现 IBookSource, 调用方无需改)
+ * - bookSource 参数类型直接用 shared commonMain 的 BookSource 实体 (webBook 编排层与实体同模块)
  * - Debug.log(key, msg, state) → SourceDebugLoggers.impl?.log(key, msg, state)
  * - AnalyzeRule → AnalyzeRuleFactories.create (各端注册工厂返回平台子类补全 JsExtensions 面, 未注册端裸 AnalyzeRuleCore)
  * - WebBook.parseBoolean → WebBookRuleUtils.parseBoolean (解除对 WebBook object 的直接依赖)
@@ -29,7 +29,7 @@ object BookReview {
      * 解析段评列表
      */
     suspend fun analyzeReviewList(
-        bookSource: IBookSource,
+        bookSource: BookSource,
         book: Book,
         bookChapter: BookChapter?,
         baseUrl: String,
@@ -183,7 +183,7 @@ object BookReview {
      * 约定书源返回 JS 对象或 JSON 字符串。
      */
     fun analyzeReviewCount(
-        bookSource: IBookSource,
+        bookSource: BookSource,
         body: Any?,
     ): Map<Int, Int> {
         if (body == null) return emptyMap()

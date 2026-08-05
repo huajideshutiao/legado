@@ -1,6 +1,6 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,7 +23,6 @@ import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
@@ -55,10 +54,12 @@ fun ReadAloudConfigDialogHost(
         properties = AppDialogSizes.properties(),
     ) {
         AppTheme {
+            // 原版 BasePrefDialogFragment: 0.9 宽居中 + applyFilletBackground=false 无圆角,
+            // 背景 backgroundColor (createPrefContainer); 内容边距由 preference 列表自带
             Surface(
-                shape = DesignTokens.dialogShape,
+                shape = RoundedCornerShape(0.dp),
                 color = AppTheme.colors.background,
-                modifier = Modifier.appDialogSize().padding(16.dp),
+                modifier = Modifier.appDialogSize(),
             ) {
                 ReadAloudConfigContent(
                     onSysTtsConfig = { PlatformCapabilityProviders.get().openTtsSettings() },

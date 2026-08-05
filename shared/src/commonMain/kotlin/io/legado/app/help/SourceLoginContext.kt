@@ -3,6 +3,9 @@ package io.legado.app.help
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.utils.encodeStringMap
 
 /**
@@ -45,3 +48,39 @@ fun sourceLoginOverlayPayload(sourceUrl: String, dataKey: String? = null): Strin
             if (dataKey != null) put("dataKey", dataKey)
         }
     )
+
+/**
+ * 书源登录统一入口 (JS showLoginDialog / 各 UI 菜单登录共用)。
+ *
+ * URL 登录 (loginUi 为空且 loginUrl 非空) 时先问平台是否直接开登录窗口
+ * ([PlatformCapabilities.openLoginWebView], 桌面端 = 带 isLogin 工具栏的独立浏览器窗口),
+ * 平台已处理则不再弹 Overlay 对话框 —— 2026-08-07 用户拍板: 去掉登录中转界面。
+ * 表单登录 (loginUi 非空) 与平台未直接处理的场景保持原行为: 弹 sourceLogin Overlay,
+ * 由 [io.legado.app.ui.root.SourceLoginOverlayContent] 统一分发。
+ *
+ * @param sourceUrl 源地址 (查库/深链回退用, 对照原版 showLoginDialog 的 key)
+ * @param source 内存中的源对象 (非空时短路判断与 dataKey 复用; null 时只弹 Overlay 按库回查)
+ * @param book 登录 JS 的 book 绑定 (对照原版 IntentData.nowBook)
+ * @param chapter 登录 JS 的 chapter 绑定 (对照原版 IntentData.nowChapter)
+ */
+fun showSourceLogin(
+    sourceUrl: String,
+    source: BaseSource? = null,
+    book: BaseBook? = null,
+    chapter: BookChapter? = null,
+) {
+    // URL 登录 + 平台支持直开登录窗口 → 不弹对话框外壳 (桌面端零闪烁)
+    if (source != null && source.loginUi.isNullOrEmpty() && !source.loginUrl.isNullOrBlank()) {
+        val platform = PlatformCapabilityProviders.getOrNull()
+        if (platform?.openLoginWebView(source.loginUrl!!, source.getKey()) == true) return
+    }
+    val navigator = AppNavigatorProviders.getOrNull() ?: return
+    if (source == null && sourceUrl.isBlank()) return
+    val dataKey = source?.let { SourceLoginContext.put(it, book, chapter) }
+    navigator.showOverlay(
+        AppOverlay.Dialog(
+            key = "sourceLogin",
+            payload = sourceLoginOverlayPayload(sourceUrl, dataKey),
+        )
+    )
+}

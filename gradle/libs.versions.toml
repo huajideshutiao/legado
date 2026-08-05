@@ -6,8 +6,18 @@ kotlin = "2.3.20"
 composeMultiplatform = "1.10.1"
 composeMultiplatformOfficial = "1.10.1"
 # 鸿蒙专用的版本通过 gradle.properties 或命令行参数开启强制替换
-kotlin-ohos = "2.2.21-0.4.0"
-composeMultiplatform-ohos = "1.9.2-0.4.0"
+kotlin-ohos = "2.2.21-0.5.0-12"
+composeMultiplatform-ohos = "1.9.2-0.5.0-25"
+# CPF ohos 配套库版本 (2026-08: 0.5.0 仅发布 kotlin/compose/androidx 主体,
+# 其余配套库仍为 0.4.0 基线; 升级统一改此处, 禁止在构建脚本硬编码)
+coroutines-ohos = "1.10.2-0.4.0"
+atomicfu-ohos = "0.31.0-0.4.0"
+okio-ohos = "3.16.4-0.4.0"
+serialization-ohos = "1.9.1-0.4.0"
+ktor-ohos = "3.3.3-0.3.0"
+androidx-ohos = "2.9.4-0.5.0-25"
+room-ohos = "3.0.0-alpha01-0.3.0"
+stately-ohos = "2.1.0-0.4.0"
 
 krypto = "4.0.10"
 ksoup = "0.2.6"

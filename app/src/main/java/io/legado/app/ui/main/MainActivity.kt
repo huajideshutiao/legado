@@ -360,6 +360,14 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
     }
 
     /**
+     * 收起文本操作浮动菜单（选区消失时由 provider 桥接调用，对照原版
+     * ReadBookActivity.onCancelSelect → textActionMenu.dismiss）。幂等：菜单未显示时无操作。
+     */
+    fun dismissReaderTextActionMenu() {
+        textActionMenu.dismiss()
+    }
+
+    /**
      * 图片长按菜单 (对照原版 ReadBookActivity.onImageLongPress: 查看/刷新/保存/选择目录)。
      */
     fun showImageActionMenu(src: String, x: Float, y: Float) {
@@ -538,8 +546,8 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
                     AndroidWebView(config, modifier, callbacks)
                 },
                 // 注入 app 端 BookInfoBlurCoverBg 到 shared 路由 (详情页模糊背景), 覆盖 LocalBlurCoverBgSlot 兜底
-                LocalBlurCoverBgSlot provides { book, coverTick, inBookshelf, isEInkMode, modifier ->
-                    BookInfoBlurCoverBg(book, coverTick, inBookshelf, isEInkMode, modifier)
+                LocalBlurCoverBgSlot provides { book, coverTick, inBookshelf, isEInkMode, modifier, land ->
+                    BookInfoBlurCoverBg(book, coverTick, inBookshelf, isEInkMode, modifier, land)
                 },
                 LocalBookInfoCoverSlot provides { book, coverTick, inBookshelf, modifier ->
                     BookInfoCover(book, coverTick, inBookshelf, modifier)

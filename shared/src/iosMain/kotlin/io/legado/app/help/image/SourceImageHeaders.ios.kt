@@ -28,6 +28,13 @@ val SourceOriginKey = Extras.Key<String?>(default = null)
 val LoadOnlyWifiKey = Extras.Key<Boolean>(default = false)
 
 /**
+ * Coil3 Extras key: 请求是否为封面图 (default=true 保持封面语义, 兼容未显式标注的调用)。
+ * fetcher 层据此选解密规则: 封面 → coverDecodeJs, 正文图 → contentRule.imageDecode
+ * (对齐原版: 封面链 OkHttpStreamFetcher 用 coverDecodeJs, 正文链 BookHelp.saveImage 用 imageDecode)。
+ */
+val IsCoverKey = Extras.Key<Boolean>(default = true)
+
+/**
  * 按 [sourceOrigin] (书源 bookUrl) 解析防盗链 header (对齐原版 `AnalyzeUrl.getGlideUrl()`)。
  *
  * 与 jvmAndAndroid 版差异: 不写入 [cookieJarHeader] 内部标记头 —— 该标记在 OkHttp 端由

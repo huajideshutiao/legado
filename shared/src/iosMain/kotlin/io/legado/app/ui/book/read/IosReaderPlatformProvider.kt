@@ -10,9 +10,8 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.AppWebDavShared
-import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.book.getUseReplaceRule
-import io.legado.app.help.sourceLoginOverlayPayload
+import io.legado.app.help.showSourceLogin
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
@@ -106,6 +105,19 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
             // 菜单关闭 (动作完成/点外部) → 取消页内选择 (对标原版 onMenuActionFinally)
             onMenuFinally = { ReadBookEvents.postSelectionCancel() },
         )
+    }
+
+    /**
+     * 页内选区已消失（点按取消选择/翻页/重排等任意路径）：收起 UIMenuController 浮动菜单
+     * （对照原版 onCancelSelect → textActionMenu.dismiss）。幂等：菜单未显示时无操作。
+     */
+    override fun onTextSelectionDismissed(screenModel: ReaderScreenModel) {
+        IosTextActionMenu.dismiss()
+    }
+
+    /** 阅读页退出: 收起浮动菜单, 避免残留 (对照原版 onDestroy → textActionMenu.dismiss)。 */
+    override fun onExit(screenModel: ReaderScreenModel) {
+        IosTextActionMenu.dismiss()
     }
 
     /**
@@ -365,19 +377,13 @@ private class IosReadMenuState(
         when (action) {
             SourceAction.LOGIN -> {
                 val source = screenModel.viewModel.bookSource.value ?: return
-                // 带上当前书与当前章, 供登录 JS 的 book/chapter 绑定 (对照原版 showLogin 预置 IntentData)
-                val dataKey = SourceLoginContext.put(
+                // 统一登录入口: URL 登录桌面端直开登录窗口 (2026-08-07); 表单登录弹 Overlay,
+                // 带上当前书与当前章 (对照原版 showLogin 预置 IntentData)
+                showSourceLogin(
+                    source.getKey(),
                     source,
                     screenModel.currentBook,
                     screenModel.currentChapter,
-                )
-                // 纯 Overlay 弹登录对话框, 不推新路由; 表单/URL 两条分支由
-                // SourceLoginOverlayContent 统一分发 (对照原版 showLoginDialog)
-                navigator.showOverlay(
-                    AppOverlay.Dialog(
-                        key = "sourceLogin",
-                        payload = sourceLoginOverlayPayload(source.getKey(), dataKey),
-                    )
                 )
             }
 

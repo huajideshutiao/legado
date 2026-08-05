@@ -1,12 +1,10 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.config.TipConfigController
@@ -30,10 +28,12 @@ fun TipConfigDialogHost(
         properties = AppDialogSizes.properties(),
     ) {
         AppTheme {
+            // 原版 BaseDialogFragment: 0.9 宽居中 + filletBackground 8dp 圆角;
+            // 标题栏由 TipConfigScreen 内部 DialogTitleBar 渲染 (原版 setupTitleBar("正文标题"))
             Surface(
-                shape = DesignTokens.dialogShape,
+                shape = DesignTokens.shapeDefault,
                 color = AppTheme.colors.background,
-                modifier = Modifier.appDialogSize().padding(16.dp),
+                modifier = Modifier.appDialogSize(),
             ) {
                 TipConfigContent(onBack = onDismiss)
             }

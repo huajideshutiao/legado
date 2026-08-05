@@ -1,8 +1,6 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -12,7 +10,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadConfigDefaults
 import io.legado.app.help.coroutine.IoDispatcher
@@ -30,10 +27,10 @@ import io.legado.app.ui.book.read.config.DefaultBgImagePreviewSlot
 import io.legado.app.ui.book.read.page.ReaderBackgroundImageCache
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialogContent
+import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppOutlinedTextField
-import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -47,12 +44,11 @@ import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.import_on_line
 import legado.shared.generated.resources.ok
-import legado.shared.generated.resources.text_bg_style
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * 背景文字配置弹窗形态 (对照原版 BgTextConfigDialog: 居中对话框 + 标题栏)。
- * 由界面设置弹窗"背景文字"入口弹起。
+ * 背景文字配置弹窗形态 (对照原版 BgTextConfigDialog: BaseBottomDialogFragment
+ * 底部全宽弹层, 无标题栏)。由界面设置弹窗"背景文字"入口弹起。
  *
  * @param onConfigChanged 配置变更回调：改名/换背景/换色等改动后触发，供上层界面设置弹窗
  *        实时刷新样式列表（缩略图与名称）。原版 ReadStyleDialog 在打开本弹窗前已 dismiss，
@@ -63,23 +59,19 @@ fun BgTextConfigDialogHost(
     onDismiss: () -> Unit,
     onConfigChanged: () -> Unit = {},
 ) {
-    AppDialog(
+    AppBottomSheetDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
         AppTheme {
+            // 原版 BaseBottomDialogFragment: 窗口 MATCH_PARENT 全宽贴底, filletBackground 8dp 圆角;
+            // 内容 8dp 间距由 BgTextConfigScreen 内部 padding(8.dp) 提供 (XML root padding=default)。
             Surface(
-                shape = DesignTokens.dialogShape,
-                color = AppTheme.colors.background,
-                modifier = Modifier.appDialogSize().padding(16.dp),
+                shape = DesignTokens.shapeDefault,
+                color = AppTheme.colors.bottomBackground,
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                Column {
-                    DialogTitleBar(
-                        title = stringResource(Res.string.text_bg_style),
-                        onBack = onDismiss,
-                    )
-                    BgTextConfigContent(onDismiss = onDismiss, onConfigChanged = onConfigChanged)
-                }
+                BgTextConfigContent(onDismiss = onDismiss, onConfigChanged = onConfigChanged)
             }
         }
     }

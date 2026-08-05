@@ -32,6 +32,7 @@ import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.theme.AppTheme
+import kotlin.math.roundToInt
 
 /**
  * 音频播放页全端共享平台 slot (对照原版 AudioPlayActivity 的平台渲染):
@@ -242,7 +243,7 @@ fun AudioPlaySpeedDialog(
         text = {
             Column {
                 Text(
-                    "%.1fX".format(value / 10.0f),
+                    "${(value / 10.0f).let { (it * 10).roundToInt() / 10f }}X",
                     color = AppTheme.colors.secondaryText,
                 )
                 AppSlider(

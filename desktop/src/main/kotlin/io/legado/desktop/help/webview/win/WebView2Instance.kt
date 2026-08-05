@@ -10,6 +10,7 @@ import com.sun.jna.ptr.IntByReference
 import com.sun.jna.ptr.PointerByReference
 import com.sun.jna.win32.StdCallLibrary
 import io.legado.app.constant.AppLog
+import io.legado.app.help.RssToolbarActions
 import io.legado.app.help.file.AppFilesDirs
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
@@ -297,11 +298,30 @@ internal class WebView2Instance private constructor(
         return pairs.takeIf { it.isNotEmpty() }?.joinToString("; ")
     }
 
+    /**
+     * 删除源确认 (loop 线程): MessageBoxW 模态确认 (MB_YESNO), 返回是否确认删除。
+     * 对照原版 menu_delete_source 的 alert (sure_del + 源名); 三端对齐
+     * GTK 对话框 / Mac NSAlert (2026-08-08)。
+     */
+    fun confirmDelete(message: String): Boolean {
+        if (closed) return false
+        return user32Ex.MessageBoxW(
+            hwnd, message, "删除源",
+            MB_YESNO or MB_ICONQUESTION or MB_DEFBUTTON2,
+        ) == IDYES
+    }
+
     /** 关闭并释放 (幂等)。 */
     fun close() {
         if (closed) return
         closed = true
+        // 关闭后 WebView2 回调仍可能触发 (CTRL_CLOSE 异步), 先断开工具栏引用,
+        // 让 onNavigationCompleted 等回调里的 setLoading/setCanNavigate 直接跳过
+        val tb = toolbar
+        toolbar = null
         WebView2Loop.post {
+            // 与 DestroyWindow 同一任务: dispose 后队列残留任务见句柄为 null 直接跳过
+            tb?.dispose()
             runCatching { vtbl(controller, Wv2.CTRL_CLOSE) }
             comRelease(controller)
             WebView2Loop.unhookWindow(hwnd)
@@ -515,6 +535,8 @@ internal class WebView2Instance private constructor(
                             toolbarSpec.title,
                             toolbarSpec.isLogin,
                             toolbarSpec.saveResult,
+                            toolbarSpec.rssActions,
+                            toolbarSpec.sourceKey,
                         ).also {
                             // 2026-08-06 标准 ToolbarWindow32 控件: 创建子窗口 + 按钮 + 进度条
                             it.create()
@@ -535,14 +557,9 @@ internal class WebView2Instance private constructor(
                                 false
                             }
 
-                            // 标准 Toolbar 控件按钮点击 / TBN_DROPDOWN 菜单
-                            // (jna WinUser 未定义 WM_COMMAND/WM_NOTIFY, 自定义常量)
+                            // 标准 Button 控件按钮点击 (jna WinUser 未定义 WM_COMMAND, 自定义常量)
                             WM_COMMAND -> {
                                 t?.onCommand(wParam, lParam) == true
-                            }
-
-                            WM_NOTIFY -> {
-                                t?.onNotify(lParam) == true
                             }
 
                             // 关闭统一走 onWindowClose -> close(), 不让 DefWindowProc 直接销毁
@@ -565,15 +582,24 @@ internal class WebView2ToolbarSpec(
     val title: String,
     val isLogin: Boolean,
     val saveResult: Boolean,
+    val rssActions: RssToolbarActions? = null,
+    /** 书源 key (cookieTag): 非空时菜单显示 禁用源/删除源 (2026-08-08)。 */
+    val sourceKey: String? = null,
 )
 
 private const val WM_COMMAND = 0x0111
-private const val WM_NOTIFY = 0x004E
 
-/** user32 补充接口: jna-platform User32 未覆盖 IsZoomed。 */
+// MessageBoxW 常量 (winuser.h): 确认框样式与返回值
+private const val MB_YESNO = 0x00000004
+private const val MB_ICONQUESTION = 0x00000020
+private const val MB_DEFBUTTON2 = 0x00000100
+private const val IDYES = 6
+
+/** user32 补充接口: jna-platform User32 未覆盖 IsZoomed/MessageBoxW。 */
 private interface WebView2User32Ex : StdCallLibrary {
     fun IsZoomed(hWnd: WinDef.HWND): Boolean
     fun ShowWindow(hWnd: WinDef.HWND, nCmdShow: Int): Boolean
+    fun MessageBoxW(hWnd: WinDef.HWND, lpText: String?, lpCaption: String?, uType: Int): Int
 }
 
 private val user32Ex: WebView2User32Ex by lazy {

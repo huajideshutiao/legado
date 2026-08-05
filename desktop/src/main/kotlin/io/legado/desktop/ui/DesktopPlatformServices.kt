@@ -151,7 +151,11 @@ private class DesktopWindowController(
 
     override fun setFullscreen(enabled: Boolean) {
         val window = handle.window ?: return
-        DesktopFullscreenController.setFullscreen(window, enabled)
+        // 操作结果同步到全局状态: 成功才翻转 DesktopWindowChrome.fullscreen,
+        // 自绘控制栏据此隐藏/显示 + 菜单勾选态; F11 (AppGlobalShortcuts) 与控制栏
+        // 菜单共用本入口, 单点同步防两处状态分叉
+        val ok = DesktopFullscreenController.setFullscreen(window, enabled)
+        if (ok) DesktopWindowChrome.fullscreen = enabled
     }
 
     override fun setKeepScreenOn(enabled: Boolean) {

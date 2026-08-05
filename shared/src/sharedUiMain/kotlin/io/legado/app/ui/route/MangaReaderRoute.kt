@@ -13,6 +13,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.help.IntentData
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.bookmark.BookmarkDialog
@@ -145,8 +146,14 @@ fun MangaReaderRoute(
 
     // 返回栈由导航器统一管理; 目录派发独立 BookRef 快照 + resultKey
     val onBack: () -> Unit = { navigator.pop() }
-    val onOpenToc: () -> Unit =
-        { navigator.push(AppRoute.Toc(book.toRouteRef()), resultKey = RouteResults.TOC) }
+    val onOpenToc: () -> Unit = {
+        // 对照原版 MangaMenuAction.CATALOG: 迁移时漏传 IntentData (book + chapterList),
+        // Toc 界面章节来源 = IntentData.chapterList → 活动阅读注册表 → DB 兜底,
+        // 漫画章节未落库时只传 BookRef 会导致目录页空白
+        IntentData.book = screenModel.currentBook
+        IntentData.chapterList = screenModel.chapterList
+        navigator.push(AppRoute.Toc(book.toRouteRef()), resultKey = RouteResults.TOC)
+    }
     // 顶栏标题点击进书籍详情 (对照 app 端 MangaMenu toolbar click → openBookInfoActivity)
     val onOpenBookInfo: () -> Unit = { navigator.push(AppRoute.BookInfo(book.toRouteRef())) }
 
@@ -177,6 +184,7 @@ fun MangaReaderRoute(
         horizontal = state.horizontal,
         autoPageSpeed = state.autoPageSpeed,
         loading = state.loading,
+        jumpTick = state.jumpTick,
         error = state.error,
         batteryLevel = batteryLevel,
         systemTime = systemTime,
@@ -193,6 +201,8 @@ fun MangaReaderRoute(
         hasReview = state.hasReview,
         clickActionConfig = state.clickActionConfig,
         onBack = onBack,
+        // 键盘快捷键仅栈顶路由响应 (对照小说阅读端 isTopEntry, 目录/详情等子页在栈顶时不翻背景的书)
+        isTopEntry = { navigator.backStack.value.lastOrNull()?.id == entry.id },
         // 菜单显隐 → 系统栏显隐 (对照原版 ReadMangaActivity.upSystemUiVisibility(menuIsVisible)
         // → toggleSystemBar: 菜单显示恢复状态栏/导航栏, 菜单隐藏沉浸式全屏)
         onMenuVisibleChange = { visible ->

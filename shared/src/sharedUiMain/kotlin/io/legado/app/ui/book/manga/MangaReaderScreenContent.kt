@@ -5,10 +5,10 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,10 +34,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
@@ -58,7 +57,9 @@ import io.legado.app.ui.book.read.config.ClickActionConfig
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSlider
-import io.legado.app.ui.compose.platform.handleReadPageKeys
+import io.legado.app.ui.compose.platform.AppShortcut
+import io.legado.app.ui.compose.platform.AppShortcutHandler
+import io.legado.app.ui.compose.platform.PageTurnThrottle
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
@@ -92,6 +93,24 @@ import legado.shared.generated.resources.reload
 import legado.shared.generated.resources.review
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+
+/** 漫画阅读页方向键 (对照小说阅读端 ReaderShortcuts.arrows; 显式 preemptive = true 捕获阶段拦截:
+ * 避开 FocusTargetNode 焦点导航在冒泡阶段抢先消费方向键导致按键丢失——与小说端同因)。 */
+private val mangaPageKeys = listOf(
+    AppShortcut(Key.DirectionLeft, preemptive = true),
+    AppShortcut(Key.DirectionRight, preemptive = true),
+    AppShortcut(Key.DirectionUp, preemptive = true),
+    AppShortcut(Key.DirectionDown, preemptive = true),
+)
+
+/** 音量键翻页 (对照小说阅读端 ReaderShortcuts.volumePageTurn) */
+private val mangaVolumeKeys = listOf(
+    AppShortcut(Key.VolumeUp),
+    AppShortcut(Key.VolumeDown),
+)
+
+/** 物理 Menu 键呼出菜单 (对照原版 ReadMangaActivity KEYCODE_MENU) */
+private val mangaMenuKey = listOf(AppShortcut(Key.Menu))
 
 /**
  * 漫画阅读 Screen 主体内容（各端共享，由 desktop/app 调用）。
@@ -156,6 +175,8 @@ fun MangaReaderScreenContent(
     horizontal: Boolean,
     autoPageSpeed: Int,
     loading: Boolean,
+    /** 菜单/目录切章的显式跳转信号 (见 ScreenModel.dispatch 的 jumpTick 自增) */
+    jumpTick: Int = 0,
     error: String?,
     batteryLevel: Int = -1,
     systemTime: String = "",
@@ -172,6 +193,8 @@ fun MangaReaderScreenContent(
     hasReview: Boolean = false,
     clickActionConfig: ClickActionConfig = ClickActionConfig(),
     onBack: () -> Unit,
+    /** 本路由是否处于导航栈栈顶 (对照小说阅读端快捷键 isTopEntry: 非栈顶时键盘不响应) */
+    isTopEntry: () -> Boolean = { true },
     onMenuVisibleChange: (Boolean) -> Unit = {},
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
@@ -201,16 +224,15 @@ fun MangaReaderScreenContent(
         (MangaCellState) -> Unit, Int, (String) -> Unit
     ) -> Unit,
 ) {
-    // 键盘事件焦点: onPreviewKeyEvent 需节点持有焦点才触发, 进入即取焦点
-    val keyFocusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        runCatching { keyFocusRequester.requestFocus() }
-    }
     // 菜单 Overlay 显隐 (点击区域动作 0 呼出, 对照 app 端 click action 0)
     var menuVisible by remember { mutableStateOf(false) }
     // 系统栏随菜单显隐 (对照原版 ReadMangaActivity.upSystemUiVisibility(menuIsVisible) →
     // toggleSystemBar: 菜单显示恢复状态栏/导航栏, 菜单隐藏沉浸式全屏; 由宿主平台执行)
     LaunchedEffect(menuVisible) { onMenuVisibleChange(menuVisible) }
+    // 翻页/切章 200ms 去抖 (对照原版 prevPageThrottle/nextPageThrottle, 防长按连翻/连切章)
+    val pageTurnThrottle = remember { PageTurnThrottle() }
+    val chapterTurnThrottle = remember { PageTurnThrottle() }
+
     // 自动翻页开关: 对照原版 menu_enable_auto_page, 由溢出菜单勾选项控制 (原版同样不持久化)
     var autoPageEnabled by remember { mutableStateOf(false) }
     // 渲染状态: 提升到顶层, 供 SeekBar 定位复用 listState
@@ -219,6 +241,17 @@ fun MangaReaderScreenContent(
     val bottomLineText = stringResource(Res.string.bottom_line)
     renderState.scope = scope
     renderState.horizontal = horizontal
+    // 横竖切换时归位到当前中心页 (对照原版: 垂直翻页途中切水平, 图片自动归中当前页;
+    // 跳过首次组合, 避免打断初始定位)
+    var firstHorizontal by remember { mutableStateOf(true) }
+    LaunchedEffect(horizontal) {
+        if (firstHorizontal) {
+            firstHorizontal = false
+            return@LaunchedEffect
+        }
+        val center = renderState.centerItemIndex()
+        if (center >= 0) renderState.scrollToPosition(center)
+    }
     // 速度下限 1: 对照 app 端 showNumberPickerDialog(min=1); 0 会让定时翻页退化成空转
     renderState.autoSpeed = autoPageSpeed.coerceAtLeast(1)
     renderState.items = items
@@ -246,6 +279,81 @@ fun MangaReaderScreenContent(
             renderState.post { renderState.syncGifAutoNextForCurrentPage() }
         }
         return true
+    }
+
+    // ---- 键盘 (对照小说阅读端同一套 AppShortcutHandler 体系) ----
+    // 键位 (用户拍板 2026-08): 方向键随翻页方向自适应——横向(LazyRow)模式 ←/→=翻页、↑/↓=章节;
+    // 纵向(webtoon)模式 ↑/↓=翻页、←/→=章节; PageUp/PageDown/Space 不再绑定。
+    // 对照原版 ReadMangaActivity 补齐: 音量键翻页 (Vol+/Vol- = 上一页/下一页)、物理 Menu 键呼出菜单。
+    // 与小说端差异对齐:
+    // - 走全局快捷键栈 + 根节点分发, 不依赖本页持焦 (点击菜单/弹窗后翻页键不失效)
+    // - 非栈顶路由不响应 (isTopEntry)
+    // - 菜单打开时不响应方向键/音量键 (与小说端一致, 同时避免与菜单下拉/滑杆的键盘操作互相干扰)
+    // - Esc 由根节点 handleBackKey → performBack 统一处理 (菜单打开时同样出栈, 与小说端一致);
+    //   Backspace 不再绑定 (根节点刻意不映射 Backspace, 与小说端一致)
+    AppShortcutHandler(
+        shortcuts = mangaPageKeys,
+        enabled = { isTopEntry() && !menuVisible },
+    ) { shortcut ->
+        when {
+            !horizontal && (shortcut.key == Key.DirectionUp || shortcut.key == Key.DirectionDown) -> {
+                // 上下滚动模式: ↑/↓ = 小步滚动 (用户拍板 2026-08: 一次翻整页难受), 1/3 视口
+                pageTurnThrottle.tryTurn {
+                    renderState.scrollPagePart(
+                        if (shortcut.key == Key.DirectionUp) -1 else 1,
+                        fraction = 1f / 3f,
+                        animated = !disablePageAnim,
+                    )
+                }
+            }
+
+            !horizontal -> {
+                // 上下滚动模式: ←/→ = 章节切换
+                chapterTurnThrottle.tryTurn {
+                    if (shortcut.key == Key.DirectionLeft) onPrevChapter?.invoke()
+                    else onNextChapter?.invoke()
+                }
+            }
+
+            shortcut.key == Key.DirectionLeft || shortcut.key == Key.DirectionRight -> {
+                // 左右翻页模式: ←/→ = 翻页
+                pageTurnThrottle.tryTurn {
+                    if (shortcut.key == Key.DirectionLeft) {
+                        if (onPrevPage != null) onPrevPage() else scrollPageTo(-1)
+                    } else {
+                        if (onNextPage != null) onNextPage() else scrollPageTo(1)
+                    }
+                }
+            }
+
+            else -> {
+                // 左右翻页模式: ↑/↓ = 章节切换
+                chapterTurnThrottle.tryTurn {
+                    if (shortcut.key == Key.DirectionUp) onPrevChapter?.invoke()
+                    else onNextChapter?.invoke()
+                }
+            }
+        }
+    }
+    // 音量键翻页 (对照原版 ReadBookKeyHandler VOLUME_UP/DOWN 分支, 与小说端一致仅在菜单可见时失效)
+    AppShortcutHandler(
+        shortcuts = mangaVolumeKeys,
+        enabled = { isTopEntry() && !menuVisible },
+    ) { shortcut ->
+        pageTurnThrottle.tryTurn {
+            if (shortcut.key == Key.VolumeUp) {
+                if (onPrevPage != null) onPrevPage() else scrollPageTo(-1)
+            } else {
+                if (onNextPage != null) onNextPage() else scrollPageTo(1)
+            }
+        }
+    }
+    // 物理 Menu 键呼出菜单 (对照原版 ReadMangaActivity KEYCODE_MENU → runMenuIn)
+    AppShortcutHandler(
+        shortcuts = mangaMenuKey,
+        enabled = { isTopEntry() },
+    ) {
+        if (!menuVisible && !loading) menuVisible = true
     }
 
     // 居中页变化驱动跨章/进度/信息条 (对照 app 端 onCenterItemChanged)
@@ -292,11 +400,20 @@ fun MangaReaderScreenContent(
 
     // 初始/切章定位 (对照 app 端 upContent: loadingViewVisible && curFinish 时 scrollToPosition)。
     // shared VM 在 upContent 内已把 loading 置回 false, 故用本地标记记住"这轮加载需要定位"
-    var awaitingScroll by remember { mutableStateOf(true) }
-    LaunchedEffect(loading) { if (loading) awaitingScroll = true }
+    var needJumpToContent by remember { mutableStateOf(true) }
+    LaunchedEffect(loading) { if (loading) needJumpToContent = true }
+    // 菜单/目录切章同 loading 一样置位: 预载下一章时 loading 的 true→false 在 VM 同步
+    // 调用内合并, UI 观察不到脉冲, 必须靠显式 jumpTick (见 ScreenModel.dispatch 注释)
+    LaunchedEffect(jumpTick) { if (jumpTick > 0) needJumpToContent = true }
+    // 重构 (对齐原版 upContent): 仅"跳转"场景 (初始打开/菜单切章/重载) 定位到内容位置;
+    // 其余 items 变化 (滚动跨章/预载头部插入等结构性重建) 保持 LazyList 滚动位置,
+    // 滚动连续性由列表自身位置保持 + 中心页上报 (onCenterItemChanged) 驱动。
+    // 删除原 key 锚点恢复机制 (按 key 钉视口): 与原版行为不符, 且与中心上报/跨章
+    // 判定互相干扰 (曾导致切章不更新/弹回旧章/闪烁)。
     LaunchedEffect(items, curFinish) {
-        if (awaitingScroll && curFinish && items.isNotEmpty()) {
-            awaitingScroll = false
+        if (!curFinish || items.isEmpty()) return@LaunchedEffect
+        if (needJumpToContent) {
+            needJumpToContent = false
             renderState.scrollToPosition(contentPos) {
                 // 初始定位不触发停稳回调, 手动装填首个当前页的 GIF
                 renderState.syncGifAutoNextForCurrentPage()
@@ -308,19 +425,6 @@ fun MangaReaderScreenContent(
         Modifier
             .fillMaxSize()
             .background(MangaReaderBackground)
-            // 方向键键盘 (用户拍板 2026-08): 键位随翻页方向自适应——横向(LazyRow)模式
-            // ←/→=翻页、↑/↓=章节; 纵向(webtoon)模式 ↑/↓=翻页、←/→=章节;
-            // PageUp/PageDown/Space 不再绑定; Esc/Backspace 走 onBack
-            .handleReadPageKeys(
-                onPrevPage = { if (onPrevPage != null) onPrevPage() else scrollPageTo(-1) },
-                onNextPage = { if (onNextPage != null) onNextPage() else scrollPageTo(1) },
-                onPrevChapter = onPrevChapter,
-                onNextChapter = onNextChapter,
-                horizontalPageMode = horizontal,
-                onBack = onBack,
-            )
-            .focusRequester(keyFocusRequester)
-            .focusable(),
     ) {
         MangaRenderLayer(renderState) { item, _ ->
             MangaPageCell(
@@ -904,7 +1008,10 @@ private fun LazyItemScope.MangaPageCell(
     val cellModifier = when {
         horizontal -> Modifier.fillParentMaxSize()
         load == MangaCellState.SUCCESS -> Modifier.fillMaxWidth()
-        else -> Modifier.fillMaxWidth().fillParentMaxHeight()
+        // LOADING/ERROR 占位: 用典型漫画页宽高比 (2:3) 而非整屏高。整屏高占位在
+        // 成图后塌成内容高, 高度跳变会扰动居中页计算 (中心跳动→误触发跨章/进度回退),
+        // 是桌面端"闪现/错位"的主要放大器; 2:3 占位高度≈成图高度, 跳变消失
+        else -> Modifier.fillMaxWidth().aspectRatio(2f / 3f)
     }
     Box(
         cellModifier.background(MangaReaderBackground),

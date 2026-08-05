@@ -66,10 +66,17 @@ private fun decodedCachePut(url: String, bytes: ByteArray): Unit = synchronized(
  * (对齐原 Glide OkHttpStreamFetcher.loadData/onResponse: 失败判断与解密都只在真正取数据时执行,
  * 内存缓存命中不解析不解密; 本层跑在 fetcherCoroutineContext (IO), 不再每请求跑主线程 DB 查询)。
  *
- * - 无 coverDecodeJs 的书源: 委托内层 [SourceOriginHeaderFetcher] → 网络 fetcher,
- *   网络请求的 HTTP 非 2xx ([coil3.network.HttpException]) 进失败表
- * - 带 coverDecodeJs: 下载原始字节跑 JS 解密 (共享 [ImageUtils.decode], native QuickJs 引擎),
- *   经 [DecodedCoverFetcher] 包成字节源回灌管线解码; 解密后字节缓存 = 进程内 LRU
+ * 双链路 (2026-08 拍板, 对齐 jvm/android): 本 fetcher 只服务走 Coil 管线的常规组件
+ * (书架封面等); 正文图/图片预览改走 [ImageBitmapLoader] 自下载链路 ([ImageBytesCache] 隔离缓存)。
+ * IsCoverKey 分流保留: 封面 → coverDecodeJs, 若仍有场景带 isCover=false 走 Coil 则正确走
+ * contentRule.imageDecode (超集, 不违背双链路架构)。
+ *
+ * - 无对应解密规则 (封面无 coverDecodeJs / 正文图无 imageDecode) 的书源: 委托内层
+ *   [SourceOriginHeaderFetcher] → 网络 fetcher, 网络请求的 HTTP 非 2xx
+ *   ([coil3.network.HttpException]) 进失败表
+ * - 带解密规则: 下载原始字节跑 JS 解密 (共享 [ImageUtils.decode], 按 [IsCoverKey]
+ *   选 coverDecodeJs/imageDecode; native QuickJs 引擎), 经 [DecodedCoverFetcher]
+ *   包成字节源回灌管线解码; 解密后字节缓存 = 进程内 LRU (key 带 cover/image 规则前缀)
  */
 class CoverDecodeFetcher(
     private val url: String,
@@ -92,7 +99,10 @@ class CoverDecodeFetcher(
         } else {
             SourceHelp.getSource(sourceOrigin) as? BookSource
         }
-        if (source?.coverDecodeJs.isNullOrBlank()) {
+        val isCover = options.extras[IsCoverKey] ?: true
+        // 按请求类型选解密规则 (对齐 ImageUtils.getRuleJs): 封面 → coverDecodeJs, 正文图 → imageDecode
+        val ruleJs = if (isCover) source?.coverDecodeJs else source?.contentRule?.imageDecode
+        if (ruleJs.isNullOrBlank()) {
             return try {
                 delegate.fetch()
             } catch (e: coil3.network.HttpException) {
@@ -100,18 +110,20 @@ class CoverDecodeFetcher(
                 throw e
             }
         }
-        val decoded = decodedCacheGet(url) ?: run {
+        // 缓存 key 带规则前缀: 同一 url 按封面/正文图可能用不同解密规则, 防止串缓存
+        val cacheKey = (if (isCover) "cover:" else "image:") + url
+        val decoded = decodedCacheGet(cacheKey) ?: run {
             val raw = downloadBytes(url, sourceOrigin)
             val bytes = runScriptWithContext {
-                ImageUtils.decode(url, raw, isCover = true, source)
+                ImageUtils.decode(url, raw, isCover = isCover, source)
             } ?: run {
                 markFailUrl(url)
-                throw NoStackTraceException("封面二次解密失败")
+                throw NoStackTraceException("图片二次解密失败")
             }
-            decodedCachePut(url, bytes)
+            decodedCachePut(cacheKey, bytes)
             bytes
         }
-        return DecodedCoverFetcher(DecodedCoverBytes(url, decoded)).fetch()
+        return DecodedCoverFetcher(DecodedCoverBytes(cacheKey, decoded)).fetch()
     }
 
     /** 带书源防盗链 header 下载原始封面字节 (KmpHttpClient 内部 Ktor client, 继承 timeout 配置)。 */
@@ -148,8 +160,10 @@ class CoverDecodeFetcher(
 }
 
 /**
- * 解密后的封面字节 (data=本类型时走 [DecodedCoverFetcher] 直接解码)。
- * 缓存 key 由 [DecodedCoverKeyer] 按 url 稳定生成 (字节本身无稳定 toString)。
+ * 解密后的图片字节 (data=本类型时走 [DecodedCoverFetcher] 直接解码)。
+ * 缓存 key 由 [DecodedCoverKeyer] 按 url 稳定生成 (字节本身无稳定 toString);
+ * 此处 url 为带 cover:/image: 规则前缀的 cacheKey, 同一原始 url 按封面/正文图
+ * 不同解密规则的结果不会串 Coil3 内存缓存。
  */
 class DecodedCoverBytes(
     val url: String,

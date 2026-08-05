@@ -80,10 +80,24 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 struct iOSApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
+    /// 状态栏显隐: 阅读页 hideStatusBar 配置 / 全屏路由由 Kotlin 侧 IosWindowController.setSystemBars
+    /// 经 NSNotificationCenter 桥接驱动 (Kotlin 常量: IosStatusBarHiddenNotification = "legado.statusBarHidden",
+    /// userInfo key "hidden" = Bool)。SwiftUI 宿主下 VC 的 prefersStatusBarHidden 不生效,
+    /// .statusBarHidden modifier 是唯一可靠的系统栏控制方式 (iOS 13+)。
+    @State private var statusBarHidden = false
+
     /// SwiftUI App 入口, 根视图为 ContentView。
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .statusBarHidden(statusBarHidden)
+                .onReceive(
+                    NotificationCenter.default.publisher(
+                        for: Notification.Name("legado.statusBarHidden")
+                    )
+                ) { note in
+                    statusBarHidden = note.userInfo?["hidden"] as? Bool ?? false
+                }
                 // legado:// / yuedu:// deep link (Info.plist CFBundleURLTypes 注册, 见 project.yml):
                 // 转发给 shared framework 的 Kotlin 共享解析器 (commonMain LegadoDeepLinkHandler),
                 // 对照 app 端 AssociationActivity 一键导入书源/替换规则/主题等

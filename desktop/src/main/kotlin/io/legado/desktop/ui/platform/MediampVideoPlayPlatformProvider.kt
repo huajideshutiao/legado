@@ -58,7 +58,9 @@ import io.legado.app.ui.compose.platform.rememberString
 import io.legado.desktop.audio.DesktopScreenBrightness
 import io.legado.desktop.audio.DesktopSystemVolume
 import io.legado.desktop.ui.DesktopFullscreenController
+import io.legado.desktop.ui.DesktopWindowChrome
 import io.legado.desktop.ui.DesktopWindowHandle
+import io.legado.desktop.ui.applyWindowCornerPreference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -128,12 +130,19 @@ class MediampVideoPlayPlatformProvider(
     // 与 applyFullscreen (右上角菜单的窗口内全屏) 区分
     override fun applySystemFullScreen(enabled: Boolean) {
         val window = windowHandle.window ?: return
-        DesktopFullscreenController.setFullscreen(window, enabled)
+        // 与 F11/控制栏菜单同一状态源: 成功才翻转 DesktopWindowChrome.fullscreen,
+        // 自绘控制栏在视频全屏时同样隐藏 (跨行为一致)
+        val ok = DesktopFullscreenController.setFullscreen(window, enabled)
+        if (ok) DesktopWindowChrome.fullscreen = enabled
     }
 
     // 窗口内全屏 (右上角菜单, 对照原版 Activity applyFullscreen → toggleSystemBar 沉浸式):
-    // shared isFullScreen 已隐藏标题栏/选集网格; 桌面无系统状态栏, 窗口无需变化, 无需窗口级操作
-    override fun applyFullscreen(enabled: Boolean) = Unit
+    // shared isFullScreen 已隐藏标题栏/选集网格; 桌面无系统状态栏, 窗口尺寸无需变化,
+    // 但全屏画面不应带圆角 (用户拍板 2026-08: 全屏都不需要圆角)——窗口切方角/退出恢复
+    override fun applyFullscreen(enabled: Boolean) {
+        val window = windowHandle.window ?: return
+        applyWindowCornerPreference(window, round = !enabled)
+    }
 
     // mediamp 是 Compose 层渲染 (无原生子窗口), 无 airspace 遮挡问题, 直接跳过
     override fun setOverlayVisible(visible: Boolean) = Unit

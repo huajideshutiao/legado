@@ -6,6 +6,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.http.CookieStoreProviders
+import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.toast.Toasters
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.browseUrl
@@ -582,6 +583,9 @@ internal class MacSession private constructor(
     }
 }
 
+/** NSAlert.runModal 返回值: 第一个按钮 (确定) = 1000 (NSAlertFirstButtonReturn)。 */
+private const val NS_ALERT_FIRST_BUTTON = 1000
+
 /** 可见窗口句柄。 */
 private class MacWindowHandle(
     private val request: WebViewWindowRequest,
@@ -610,7 +614,14 @@ private class MacWindowHandle(
             visible = true,
             title = request.title,
             bottomSheet = request.bottomSheet,
-            toolbar = MacToolbar { action -> onToolbarAction(action) },
+            toolbar = MacToolbar(
+                onAction = { action -> onToolbarAction(action) },
+                rssActions = request.rssActions,
+                // 确定按钮仅登录/验证模式显示 (三端对齐 Windows)
+                showOk = request.isLogin || request.saveResult,
+                // 书源 key 非空时菜单显示 禁用源/删除源 (2026-08-08)
+                sourceKey = request.cookieTag,
+            ),
         )
         if (created == null) {
             AppLog.put("WKWebView 窗口创建失败: ${request.title}")
@@ -623,6 +634,8 @@ private class MacWindowHandle(
         }
         session = created
         currentUrl = request.url
+        // RSS 收藏态反推: shared 侧书架操作完成后经 onStarChanged 更新窗口星图标 (对照 Windows 引擎)
+        request.rssActions?.onStarChanged = { starred -> created.toolbar?.setStarred(starred) }
         // cookie 注入 (suspend) 在协程里做, 不等导航完成
         scope.launch {
             runCatching {
@@ -700,8 +713,21 @@ private class MacWindowHandle(
                 browseUrl(currentUrl ?: request.url)
             }
 
-            // Mac 工具栏无溢出菜单按钮 (仅 Windows 有 ⋮)
+            // 菜单按钮 (⋯) 在工具栏内部直接弹 NSMenu, 不经过引擎分发
             ToolbarAction.MENU -> Unit
+
+            // RSS 模式按钮 (2026-08-07: RSS 阅读去页面外壳, 功能移入窗口工具栏)
+            ToolbarAction.STAR_TOGGLE -> request.rssActions?.onStarToggle()
+
+            ToolbarAction.READ_ALOUD -> request.rssActions?.onReadAloud {
+                // 页面还活着时抓 outerHTML (对照原版 readAloud 的 evaluateJavascript;
+                // 与 onOkPressed saveResult 分支抓取方式一致)
+                runCatching { target.evaluateJavascript(MacWebViewEngine.DEFAULT_JS) }.getOrNull()
+            }
+
+            ToolbarAction.SHARE -> request.rssActions?.onShare()
+
+            ToolbarAction.LOGIN -> request.rssActions?.onLogin()
 
             // 最大化/全屏切换 (对照原版 menu_full_screen): NSWindow toggleFullScreen
             ToolbarAction.FULL_SCREEN -> {
@@ -710,7 +736,45 @@ private class MacWindowHandle(
 
             ToolbarAction.OK -> onOkPressed(target)
 
+            // 禁用源 (对照原版 menu_disable_source → viewModel.disableSource { finish() }):
+            // 成功后关窗, 失败记录日志不关窗
+            ToolbarAction.DISABLE_SOURCE -> onDisableSource()
+
+            // 删除源 (对照原版 menu_delete_source → alert 确认后 deleteSource { finish() })
+            ToolbarAction.DELETE_SOURCE -> onDeleteSource()
+
             ToolbarAction.CLOSE -> close()
+        }
+    }
+
+    /** 禁用源: 直接执行 (对照原版无确认), 成功后关窗。 */
+    private fun onDisableSource() {
+        val key = request.cookieTag ?: return
+        scope.launch {
+            runCatching { SourceHelp.enableSource(key, request.sourceType, false) }
+                .onSuccess { close() }
+                .onFailure { AppLog.put("禁用书源失败: $key", it) }
+        }
+    }
+
+    /** 删除源: 先弹确认 (sure_del + 源名, 对照原版 alert), 确认后执行, 成功后关窗。 */
+    private fun onDeleteSource() {
+        val key = request.cookieTag ?: return
+        val name = request.sourceName.ifBlank { key }
+        // NSAlert 模态 (EDT): 确定 = firstButton(1000), 取消 = second(1001)
+        val alert = ptr(ObjC.cls("NSAlert"), "alloc")!!
+        ptr(alert, "init")!!
+        void(alert, "setMessageText:", ns("删除源"))
+        void(alert, "setInformativeText:", ns("是否确认删除？\n$name"))
+        void(alert, "addButtonWithTitle:", ns("确定"))
+        void(alert, "addButtonWithTitle:", ns("取消"))
+        val confirmed = ObjC.int(alert, "runModal") == NS_ALERT_FIRST_BUTTON
+        void(alert, "release")
+        if (!confirmed) return
+        scope.launch {
+            runCatching { SourceHelp.deleteSource(key, request.sourceType) }
+                .onSuccess { close() }
+                .onFailure { AppLog.put("删除书源失败: $key", it) }
         }
     }
 
@@ -759,6 +823,8 @@ private class MacWindowHandle(
         val target = session
         session = null
         if (target != null) {
+            // 先置 disposed 再销毁: 队列残留的 setStarred 任务直接跳过 (防悬垂句柄)
+            target.toolbar?.dispose()
             CocoaLoop.post { target.destroy() }
         }
         runCatching { request.onClosed() }

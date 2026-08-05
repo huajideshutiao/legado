@@ -224,8 +224,9 @@ abstract class HorizontalPageDelegateCompose(
     override fun nextPageByAnim(animDurationMs: Int) {
         // 与 app 端 HorizontalPageDelegate.nextPageByAnim 对应：
         // abortAnim → setDirection → setStartPoint → onAnimStart
-        // 必须经 onAnimStart 而非直接起动画，否则 NoAnim 的"松手即翻"覆写被绕过
-        if (isRunning) return
+        // 必须经 onAnimStart 而非直接起动画，否则 NoAnim 的"松手即翻"覆写被绕过。
+        // 不做 isRunning 拦截：动画中按键由 abortAnim 打断补页后重翻（对齐原版语义），
+        // 快速连按的合法按键不静默丢弃；拖拽中按键由 abortAnim 的 isMoved 复位重新起算。
         if (!hasNext()) return
         abortAnim()
         setDirection(PageDirectionShared.NEXT)
@@ -243,8 +244,7 @@ abstract class HorizontalPageDelegateCompose(
     }
 
     override fun prevPageByAnim(animDurationMs: Int) {
-        // 与 app 端 HorizontalPageDelegate.prevPageByAnim 对应
-        if (isRunning) return
+        // 与 app 端 HorizontalPageDelegate.prevPageByAnim 对应；isRunning 拦截理由同 [nextPageByAnim]
         if (!hasPrev()) return
         abortAnim()
         setDirection(PageDirectionShared.PREV)

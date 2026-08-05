@@ -15,6 +15,7 @@ import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.page.ReaderBackgroundImageCache.FAIL_RETRY_INTERVAL_MS
 import io.legado.app.ui.book.read.page.ReaderBackgroundImageCache.version
+import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
@@ -54,7 +55,7 @@ object ReaderBackgroundImageCache {
     fun requestAsync(source: String) {
         if (source.isBlank()) return
         synchronized(lock) {
-            val now = System.currentTimeMillis()
+            val now = systemCurrentTimeMillis()
             if (bitmaps.containsKey(source) ||
                 !inFlight.add(source) ||
                 failedAt[source]?.let { now - it < FAIL_RETRY_INTERVAL_MS } == true
@@ -71,7 +72,7 @@ object ReaderBackgroundImageCache {
             synchronized(lock) {
                 inFlight.remove(source)
                 if (bitmap == null) {
-                    failedAt[source] = System.currentTimeMillis()
+                    failedAt[source] = systemCurrentTimeMillis()
                 } else {
                     failedAt.remove(source)
                     bitmaps.remove(source)

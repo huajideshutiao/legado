@@ -10,10 +10,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.IntOffset
 import io.legado.app.ui.book.read.ReadBookViewModelShared
+import io.legado.app.ui.book.read.page.delegate.PageDelegateCompose.Companion.SHADOW_WIDTH_PX
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
-import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import kotlinx.coroutines.CoroutineScope
 import kotlin.math.roundToInt
 
@@ -77,7 +78,10 @@ class CoverPageDelegateCompose(
                                 y = 0,
                             )
                         }
-                        .fillMaxSize(),
+                        .fillMaxSize()
+                        // 独立渲染层：内容不变时滑入/滑出只更新层 transform，不重绘整页
+                        // （Skia 后端无显示列表缓存，无此层时 offset 每帧移动会整页重绘文字）
+                        .graphicsLayer { },
                 ) {
                     prevContent()
                 }
@@ -94,7 +98,8 @@ class CoverPageDelegateCompose(
                                 y = 0,
                             )
                         }
-                        .fillMaxSize(),
+                        .fillMaxSize()
+                        .graphicsLayer { },
                 ) {
                     nextContent()
                 }

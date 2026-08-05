@@ -176,6 +176,14 @@ internal object GtkLibs {
     /** GtkPositionType (进度条): GTK_POS_TOP = 0 */
     const val GTK_WIN_POS_CENTER = 1
 
+    /** GdkGravity (菜单弹出对齐, GTK3 稳定 ABI 值): NORTH_EAST = 3, SOUTH_EAST = 9 */
+    const val GDK_GRAVITY_NORTH_EAST = 3
+    const val GDK_GRAVITY_SOUTH_EAST = 9
+
+    /** GtkResponseType (gtktypes.h, GTK3 稳定 ABI 值): 对话框返回值, 删除源确认用 (2026-08-08)。 */
+    const val GTK_RESPONSE_YES = -8
+    const val GTK_RESPONSE_NO = -9
+
     interface Gtk3 : Library {
         fun gtk_init_check(argc: Pointer?, argv: Pointer?): Int
         fun gtk_main_quit()
@@ -201,9 +209,30 @@ internal object GtkLibs {
         fun gtk_container_add(container: Pointer, widget: Pointer)
         fun gtk_box_new(orientation: Int, spacing: Int): Pointer
         fun gtk_box_pack_start(box: Pointer, child: Pointer, expand: Int, fill: Int, padding: Int)
+        fun gtk_box_pack_end(box: Pointer, child: Pointer, expand: Int, fill: Int, padding: Int)
         fun gtk_button_new_with_label(label: String): Pointer
         fun gtk_button_new_from_icon_name(iconName: String, size: Int): Pointer
         fun gtk_button_set_relief(button: Pointer, relief: Int)
+        fun gtk_button_get_image(button: Pointer): Pointer
+        fun gtk_image_set_from_icon_name(image: Pointer, iconName: String, size: Int)
+
+        // --- GtkMenu (弹出菜单; gtk_menu_popup_at_widget 需 GTK >= 3.22, webkit2gtk-4.1 满足) ---
+        fun gtk_menu_new(): Pointer
+        fun gtk_menu_item_new_with_label(label: String): Pointer
+        fun gtk_menu_shell_append(menuShell: Pointer, child: Pointer)
+        fun gtk_menu_attach_to_widget(
+            menu: Pointer,
+            attachWidget: Pointer,
+            detacher: GDestroyNotify?
+        )
+
+        fun gtk_menu_popup_at_widget(
+            menu: Pointer,
+            widget: Pointer,
+            widgetAnchor: Int,
+            menuAnchor: Int,
+            triggerEvent: Pointer?,
+        )
         fun gtk_label_new(text: String): Pointer
         fun gtk_label_set_text(label: Pointer, text: String)
         fun gtk_label_set_ellipsize(label: Pointer, mode: Int)
@@ -216,6 +245,16 @@ internal object GtkLibs {
         fun gtk_widget_set_valign(widget: Pointer, align: Int)
         fun gtk_widget_get_allocated_height(widget: Pointer): Int
         fun gtk_widget_get_allocated_width(widget: Pointer): Int
+
+        // --- GtkDialog (删除源确认, 2026-08-08; 全非 varargs 组合, 避开 JNA 对
+        // C varargs (如 gtk_message_dialog_new/gtk_dialog_add_button) 的 ABI 坑) ---
+        fun gtk_dialog_new(): Pointer
+        fun gtk_dialog_run(dialog: Pointer): Int
+        fun gtk_dialog_get_content_area(dialog: Pointer): Pointer
+        fun gtk_dialog_add_action_widget(dialog: Pointer, child: Pointer, responseId: Int)
+        fun gtk_window_set_transient_for(window: Pointer, parent: Pointer)
+        fun gtk_window_set_modal(window: Pointer, modal: Int)
+        fun gtk_window_set_destroy_with_parent(window: Pointer, setting: Int)
     }
 
     // ==================== GDK3 (libgdk-3.so.0) ====================
@@ -376,5 +415,10 @@ internal object GtkLibs {
     /** GtkButton::clicked (GtkButton*, gpointer) */
     interface ClickedCallback : Callback {
         fun invoke(button: Pointer, userData: Pointer?)
+    }
+
+    /** GtkMenuItem::activate (GtkMenuItem*, gpointer) — 菜单项点击。 */
+    interface MenuItemActivateCallback : Callback {
+        fun invoke(menuItem: Pointer, userData: Pointer?)
     }
 }

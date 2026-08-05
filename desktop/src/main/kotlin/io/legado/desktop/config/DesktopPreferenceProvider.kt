@@ -43,26 +43,47 @@ class DesktopPreferenceProvider : PreferenceProvider {
         } else {
             prefs.put(key, value)
         }
+        flushAfterWrite()
     }
 
     override fun putInt(key: String, value: Int) {
         prefs.putInt(key, value)
+        flushAfterWrite()
     }
 
     override fun putBoolean(key: String, value: Boolean) {
         prefs.putBoolean(key, value)
+        flushAfterWrite()
     }
 
     override fun putLong(key: String, value: Long) {
         prefs.putLong(key, value)
+        flushAfterWrite()
     }
 
     override fun putFloat(key: String, value: Float) {
         prefs.putFloat(key, value)
+        flushAfterWrite()
     }
 
     override fun remove(key: String) {
         prefs.remove(key)
+        flushAfterWrite()
+    }
+
+    /**
+     * java.util.prefs 持久化语义: Windows (WindowsPreferences) 同步写注册表,
+     * flush 为 no-op; Linux/macOS (FileSystemPreferences) put 只写内存缓存,
+     * 后台约 30s 才落盘且无 shutdown hook——写后立即退出/崩溃 (如重启应用) 会丢配置,
+     * 故每次写入后显式 flush (Windows 幂等零成本, Linux/macOS 立即落盘)。
+     * flush 失败 (BackingStoreException) 如实记录, 不吞。
+     */
+    private fun flushAfterWrite() {
+        try {
+            prefs.flush()
+        } catch (e: Exception) {
+            io.legado.app.constant.AppLog.put("配置持久化失败 (prefs.flush)", e)
+        }
     }
 
     override fun contains(key: String): Boolean =

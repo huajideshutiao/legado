@@ -164,7 +164,9 @@ fun ReadRecordRoute(
                 if (found != null) {
                     navigator.push(found.toReadRoute())
                 } else {
-                    navigator.push(AppRoute.Search())
+                    // 未命中跳搜索页并自动搜索书名 (对照原版跳 Search 带 searchKey;
+                    // submit=true 默认自动提交, 之前漏传 key 导致搜索页空白不搜索)
+                    navigator.push(AppRoute.Search(key = item.bookName))
                 }
             }
         }

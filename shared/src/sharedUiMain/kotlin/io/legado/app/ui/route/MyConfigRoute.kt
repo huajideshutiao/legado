@@ -1,12 +1,16 @@
 package io.legado.app.ui.route
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import io.legado.app.ui.compose.component.AppSelectorDialog
+import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.main.my.MyConfigScreen
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
@@ -15,6 +19,7 @@ import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.copy_url
+import legado.shared.generated.resources.my
 import legado.shared.generated.resources.open_in_browser
 import legado.shared.generated.resources.web_service
 import legado.shared.generated.resources.web_service_desc
@@ -61,38 +66,46 @@ fun MyConfigRoute(
         }
     }
 
-    MyConfigScreen(
-        webServiceChecked = webServiceChecked,
-        webServiceSummary = webServiceSummary,
-        onThemeModeChange = {
-            PlatformCapabilityProviders.getOrNull()?.applyDayNight()
-        },
-        // 对照 MyTab: 开关切换即时回填态; 写 prefs 由 switchPreference 内部处理,
-        // shared 端无 SharedPreferences 监听, 直接调 setWebService 触发 start/stop
-        onWebServiceChange = {
-            webServiceChecked = it
-            webServiceSummary = if (it) {
-                PlatformCapabilityProviders.getOrNull()?.getWebServiceUrl().orEmpty()
-            } else {
-                webServiceDesc
-            }
-            PlatformCapabilityProviders.getOrNull()?.setWebService(it)
-        },
-        onWebServiceLongClick = { showWebServiceMenu = true },
-        onThemeSetting = { navigator.push(AppRoute.ThemeConfig) },
-        onWebDavSetting = { navigator.push(AppRoute.BackupConfig) },
-        onOtherSetting = { navigator.push(AppRoute.OtherConfig) },
-        onBookSourceManage = { navigator.push(AppRoute.BookSourceManage) },
-        onReplaceManage = { navigator.push(AppRoute.ReplaceRule) },
-        onSourceFilterRuleManage = { navigator.push(AppRoute.SourceFilterRule) },
-        onTxtTocRuleManage = { navigator.push(AppRoute.TxtTocRule) },
-        onDictRuleManage = { navigator.push(AppRoute.DictRule) },
-        onRuleSubManage = { navigator.push(AppRoute.RuleSub) },
-        onBookmark = { navigator.push(AppRoute.Bookmark()) },
-        onReadRecord = { navigator.push(AppRoute.ReadRecord) },
-        onAbout = { navigator.push(AppRoute.About) },
-        // 原版 pref_main.xml 无 RSS 条目, 订阅入口在主界面底栏 tab, 此处不渲染
-    )
+    // push 打开时自带顶栏 + 返回按钮 (对照其他 push 型路由如 ThemeConfigRoute;
+    // tab 态不经本路由, 由 MainRoute 的 MyTabTitleBar 提供无返回顶栏)
+    Column(Modifier.fillMaxSize()) {
+        AppTitleBar(
+            title = stringResource(Res.string.my),
+            onBack = { navigator.pop() },
+        )
+        MyConfigScreen(
+            webServiceChecked = webServiceChecked,
+            webServiceSummary = webServiceSummary,
+            onThemeModeChange = {
+                PlatformCapabilityProviders.getOrNull()?.applyDayNight()
+            },
+            // 对照 MyTab: 开关切换即时回填态; 写 prefs 由 switchPreference 内部处理,
+            // shared 端无 SharedPreferences 监听, 直接调 setWebService 触发 start/stop
+            onWebServiceChange = {
+                webServiceChecked = it
+                webServiceSummary = if (it) {
+                    PlatformCapabilityProviders.getOrNull()?.getWebServiceUrl().orEmpty()
+                } else {
+                    webServiceDesc
+                }
+                PlatformCapabilityProviders.getOrNull()?.setWebService(it)
+            },
+            onWebServiceLongClick = { showWebServiceMenu = true },
+            onThemeSetting = { navigator.push(AppRoute.ThemeConfig) },
+            onWebDavSetting = { navigator.push(AppRoute.BackupConfig) },
+            onOtherSetting = { navigator.push(AppRoute.OtherConfig) },
+            onBookSourceManage = { navigator.push(AppRoute.BookSourceManage) },
+            onReplaceManage = { navigator.push(AppRoute.ReplaceRule) },
+            onSourceFilterRuleManage = { navigator.push(AppRoute.SourceFilterRule) },
+            onTxtTocRuleManage = { navigator.push(AppRoute.TxtTocRule) },
+            onDictRuleManage = { navigator.push(AppRoute.DictRule) },
+            onRuleSubManage = { navigator.push(AppRoute.RuleSub) },
+            onBookmark = { navigator.push(AppRoute.Bookmark()) },
+            onReadRecord = { navigator.push(AppRoute.ReadRecord) },
+            onAbout = { navigator.push(AppRoute.About) },
+            // 原版 pref_main.xml 无 RSS 条目, 订阅入口在主界面底栏 tab, 此处不渲染
+        )
+    }
 
     // web 服务长按菜单 (对照 MyTab context.selector: 复制地址 / 浏览器打开)
     if (showWebServiceMenu) {

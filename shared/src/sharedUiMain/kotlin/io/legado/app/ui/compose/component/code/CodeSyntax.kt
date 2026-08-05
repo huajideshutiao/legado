@@ -31,15 +31,21 @@ object CodePatterns {
 
     val legado = Regex("""\|\||&&|%%|@@|@(?:js|Json|css|XPath):""")
 
+    // 引号串用占有量词 *+ (原版为 *): 未闭合引号 + 超长文本时 * 会逐位置回溯 O(n²)
+    // 递归深栈 → StackOverflowError (书源编辑打开即崩, 2026-08 实测); *+ 不回溯,
+    // 未闭合引号直接失败, 匹配语义不变 (闭合串照常匹配) 且线性复杂度
     val json =
-        Regex("""(?<!\\)(?:"(?:\\.|[^\\"\n])*"|'(?:\\.|[^\\'\n])*'|`(?:\\.|[^\\`\n])*`)|[\[\]{}]""")
+        Regex("""(?<!\\)(?:"(?:\\.|[^\\"\n])*+"|'(?:\\.|[^\\'\n])*+'|`(?:\\.|[^\\`\n])*+`)|[\[\]{}]""")
 
     val wrap = Regex("""\\n""")
 
     val operation = Regex("""!=|[:=><%+\-^&|?*]""")
 
-    val js =
-        Regex("""\b(?:var|let|const|if|else|for|while|do|switch|case|break|continue|return|new|this|true|false|null|undefined|in|typeof|try|catch|finally|throw|function|class)\b""")
+    // 首字符分派 (原版为 27 词平铺交替): Java 正则对 alternation 逐个分支尝试,
+    // 平铺时每个位置最多试 27 次; 按首字母分组后最多试 2-5 个 (词集 1:1, 匹配结果不变)
+    val js = Regex(
+        """\b(?:v(?:ar)|l(?:et)|c(?:onst|ase|ontinue|atch|lass)|i(?:f|n)|e(?:lse)|f(?:or|alse|inally|unction)|w(?:hile)|d(?:o)|s(?:witch)|b(?:reak)|r(?:eturn)|n(?:ew|ull)|t(?:his|rue|ry|ypeof|hrow)|u(?:ndefined))\b"""
+    )
 }
 
 private val ColorOrange900 = Color(0xFFE65100)

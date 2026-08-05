@@ -44,7 +44,8 @@ import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
-import io.legado.app.help.sourceLoginOverlayPayload
+import io.legado.app.help.showSourceLogin
+import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.about.CrashLogItem
 import io.legado.app.ui.about.CrashLogsDialog
@@ -400,14 +401,9 @@ private suspend fun handleLaunchRequest(
 
         is LaunchRequest.ImportFile -> navigator.push(AppRoute.ImportBook(request.filePath))
         is LaunchRequest.SourceUi -> when (request.type) {
-            // 纯 Overlay 弹登录对话框 (handleLaunchRequest 在 LegadoApp 组合后的
-            // LaunchedEffect 中执行, navigator 与 Overlay 渲染均已就绪, 无时机问题)
-            LaunchRequest.SourceUiType.LOGIN -> navigator.showOverlay(
-                AppOverlay.Dialog(
-                    key = "sourceLogin",
-                    payload = sourceLoginOverlayPayload(request.sourceUrl),
-                )
-            )
+            // 统一登录入口: URL 登录桌面端直开登录窗口 (2026-08-07); 深链无源对象,
+            // 由 SourceLoginOverlayContent 源加载完成后兜底短路
+            LaunchRequest.SourceUiType.LOGIN -> showSourceLogin(request.sourceUrl)
             // 由平台层 SourceUi 处理器消费
             LaunchRequest.SourceUiType.SOURCE_VARIABLE,
             LaunchRequest.SourceUiType.VERIFICATION_CODE -> Unit
@@ -537,9 +533,15 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
 @Composable
 private fun PhotoOverlayDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
     val src = overlay.payload ?: return
+    // 对齐原版 PhotoDialog 内部语义 (ReadBook.book): 从全局当前阅读书取 book/bookSource,
+    // 网络图带书源防盗链 header/cookie/charset/JS 与 coverDecodeJs 封面解密,
+    // 否则加密封面/防盗链书源图片直接按裸 URL 请求而显示失败
+    val readBook = ActiveReadBookRegistry.current
     PhotoViewOverlayDialog(
         src = src,
         onDismiss = { navigator.dismissOverlay(overlay.key) },
+        book = readBook?.book?.value,
+        bookSource = readBook?.bookSource?.value,
     )
 }
 

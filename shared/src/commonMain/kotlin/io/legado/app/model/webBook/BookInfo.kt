@@ -3,11 +3,11 @@ package io.legado.app.model.webBook
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
-import io.legado.app.data.entities.IBookSource
+import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.source.SourceDebugLoggers
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
+import io.legado.app.help.source.SourceDebugLoggers
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.utils.HtmlFormatter
@@ -21,7 +21,7 @@ import kotlinx.coroutines.ensureActive
  * 获取详情
  *
  * W3-e: 从 app 下沉到 shared jvmAndAndroidMain, 现下沉到 commonMain。
- * - bookSource 参数类型 BookSource → IBookSource (BookSource 实现 IBookSource, 调用方无需改)
+ * - bookSource 参数类型直接用 shared commonMain 的 BookSource 实体 (webBook 编排层与实体同模块)
  * - Debug.log(key, msg, state) → SourceDebugLoggers.impl?.log(key, msg, state)
  * - AnalyzeRule → AnalyzeRuleFactories.create (各端注册工厂返回平台子类补全 JsExtensions 面, 未注册端裸 AnalyzeRuleCore)
  * - book.isWebFile → (book.type and BookType.webFile > 0) (isWebFile/isType 扩展在 app 端, 内联位运算避免新增 shared 扩展)
@@ -31,7 +31,7 @@ object BookInfo {
 
     @Throws(Exception::class)
     suspend fun analyzeBookInfo(
-        bookSource: IBookSource,
+        bookSource: BookSource,
         book: Book,
         baseUrl: String,
         redirectUrl: String,
@@ -54,7 +54,7 @@ object BookInfo {
         book: Book,
         body: String,
         analyzeRule: AnalyzeRuleCore,
-        bookSource: IBookSource,
+        bookSource: BookSource,
         baseUrl: String,
         redirectUrl: String,
         canReName: Boolean,

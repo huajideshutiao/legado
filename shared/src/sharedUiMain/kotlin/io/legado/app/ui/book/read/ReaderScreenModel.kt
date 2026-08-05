@@ -96,6 +96,14 @@ interface ReaderPlatformProvider {
     }
 
     /**
+     * 页内选区已消失（点按取消选择/翻页/重排/菜单动作后等任意路径）：平台收起浮动文本操作菜单。
+     * 对照旧 ReadBookActivity.onCancelSelect → textActionMenu.dismiss：选区与菜单强绑定，
+     * 选区消失时菜单必须同步关闭。由 ReaderRoute 收集 [ReadBookEvents.selectionDismissed]
+     * 后桥接调用；默认空实现（无浮动菜单的平台如 desktop 对话框形态无需处理）。
+     */
+    fun onTextSelectionDismissed(screenModel: ReaderScreenModel) {}
+
+    /**
      * 图片长按（命中图片列，携带长按点坐标）：平台弹图片操作菜单（对照旧
      * ContentTextView.longPress 的 ImageColumn 分支 → ReadBookActivity.onImageLongPress：
      * 查看/刷新/保存/选择目录）

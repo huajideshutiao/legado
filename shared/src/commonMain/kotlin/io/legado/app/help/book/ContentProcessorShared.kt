@@ -13,10 +13,10 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.utils.RegexReplacers
 import io.legado.app.utils.escapeRegex
 import io.legado.app.utils.stackTraceStr
-import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 
 /**
  * ContentProcessor 核心正文处理逻辑下沉 (commonMain)。
@@ -146,8 +146,10 @@ class ContentProcessorShared(
                 // Pattern.quote(book.name) → escapeRegex (语义等价: 字面量匹配)
                 val name = book.name.escapeRegex()
                 var title = chapter.title.escapeRegex().replace(spaceRegex, "\\\\s*")
-                // Pattern.compile(...).matcher(mContent).find() → Regex(...).find(mContent)
-                var regex = Regex("^(\\s|\\p{P}|${name})*${title} *\\n?")
+                // Pattern.compile(...).matcher(mContent).find() → Regex(...).find(mContent);
+                // 前缀量词用占有 *+ : 标题内空格展开的 \s* 与前缀 (\s|\p{P}|name)* 重叠,
+                // 正文开头大量空白/标点时 O(n²) 回溯 (举一反三: 对齐 CodeSyntax 修法)
+                var regex = Regex("^(\\s|\\p{P}|${name})*+${title} *\\n?")
                 var match = regex.find(mContent)
                 if (match != null) {
                     // matcher.end() (exclusive) → match.range.last + 1
@@ -158,7 +160,7 @@ class ContentProcessorShared(
                         titleReplaceRules,
                         chineseConvert = false
                     ).escapeRegex()
-                    regex = Regex("^(\\s|\\p{P}|${name})*${title} *\\n?")
+                    regex = Regex("^(\\s|\\p{P}|${name})*+${title} *\\n?")
                     match = regex.find(mContent)
                     if (match != null) {
                         mContent = mContent.substring(match.range.last + 1)

@@ -16,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -160,12 +161,37 @@ internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: Ap
         return
     }
 
+    // URL 登录兜底短路 (2026-08-07 用户拍板: 去掉登录中转界面): 入口无源对象时
+    // (深链/列表页只传 url) Overlay 已渲染, 源加载完成后问平台是否直开登录窗口 ——
+    // 平台已处理 (桌面端 = 独立浏览器窗口, isLogin 语义) 则关闭对话框, 不落入
+    // 对话框外壳; 移动端 openLoginWebView 返回 false, 恢复渲染内嵌 WebView 对话框。
+    // 有源对象的入口已在 showSourceLogin 提前短路, 不会走到这里。
+    // 注意: 平台结果未定前只渲染占位, 不能渲染 LoginScreen —— 否则桌面端
+    // LocalWebViewSlot → DesktopWebViewSlot 会先开一个窗口, 再被兜底窗口替换 (双窗闪屏)。
+    var urlLoginFallback by remember { mutableStateOf(false) }
+    val urlLoginAwait =
+        !state.loading && formSource == null && state.loginUrl.isNotBlank() && !urlLoginFallback
+    if (urlLoginAwait) {
+        LaunchedEffect(state.loginUrl) {
+            val handled = platformCapabilities
+                ?.openLoginWebView(state.loginUrl, state.source?.getKey().orEmpty()) == true
+            if (handled) {
+                navigator.dismissOverlay(overlay.key)
+            } else {
+                urlLoginFallback = true
+            }
+        }
+    }
+
     // 统一居中对话框外壳: 加载占位 / 表单登录 / URL 登录 (WebView) 共用同一
     // EditDialogHost (AppDialog + appDialogSize 居中卡片), 全端"登录=对话框"。
     EditDialogHost(onDismiss = { navigator.dismissOverlay(overlay.key) }) {
         when {
             // 源还没解析出来: 对话框内加载占位, 先不建 WebView, 否则表单源会闪一下空白页
             state.loading -> LoginLoadingPlaceholder()
+
+            // URL 登录兜底等待平台结果: 同样只渲染占位 (防桌面端双窗闪屏, 见上)
+            urlLoginAwait -> LoginLoadingPlaceholder()
 
             // 表单登录: 对照原版 BaseSource.showLoginDialog 的
             // showDialogFragment<SourceLoginDialog> 分支。

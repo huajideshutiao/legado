@@ -199,6 +199,9 @@ static legado_int64_cstr_void_fn g_text_action_callback = nullptr;
 static legado_register_webview_dispatch_fn g_register_webview_fn = nullptr;
 static legado_int64_cstr_cstr_void_fn g_webview_callback = nullptr;
 
+// dlsym 加载的函数指针 - Window tsfn 注入 (KMP → ArkTS @ohos.window 窗口策略命令, 同 Toast 模式, fire-and-forget)
+static legado_register_dispatch_fn g_register_window_fn = nullptr;
+
 // Toast/Notification/Image/Media/TTS/Crypto/Http/OpenUrl/FilePicker/Pasteboard threadsafe_function 引用 (C++ 侧持有, ArkTS registerXxxCallback 时创建)
 static napi_threadsafe_function g_toast_tsfn = nullptr;
 static napi_threadsafe_function g_notification_tsfn = nullptr;
@@ -213,6 +216,7 @@ static napi_threadsafe_function g_file_picker_tsfn = nullptr;
 static napi_threadsafe_function g_pasteboard_tsfn = nullptr;
 static napi_threadsafe_function g_text_codec_tsfn = nullptr;
 static napi_threadsafe_function g_webview_tsfn = nullptr;
+static napi_threadsafe_function g_window_tsfn = nullptr;
 
 // liblegado_shared.so 句柄
 static void* g_legado_so = nullptr;
@@ -264,6 +268,9 @@ static bool load_legado_shared() {
     // 解析 @CName 导出符号 - Toast/Notification tsfn 注入 (KP7+ 新增)
     g_register_toast_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_toast_fn");
     g_register_notification_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_notification_fn");
+
+    // 解析 @CName 导出符号 - Window tsfn 注入 (KMP → ArkTS 窗口策略, 同 Toast 模式)
+    g_register_window_fn = (legado_register_dispatch_fn) dlsym(g_legado_so, "legado_register_window_fn");
 
     // 解析 @CName 导出符号 - Image/Media tsfn 注入 + ArkTS → Kotlin 回调 (KP8+ 新增)
     g_register_image_fn = (legado_register_bin_dispatch_fn) dlsym(g_legado_so, "legado_register_image_fn");
@@ -825,6 +832,79 @@ static void NotificationCallJs(napi_env env, napi_value js_cb, void* /*context*/
     napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
     napi_call_function(env, js_cb, 1, &json_arg, nullptr);
     free(json);
+}
+
+// C++ dispatch 入口: 由 Kotlin lambda (注入到 OhosNativeBridge.windowTsfn) 调用。
+// 同 ohos_toast_dispatch: 拷贝 JSON 后 napi_call_threadsafe_function 异步 dispatch 到 ArkTS。
+extern "C" void ohos_window_dispatch(const char *json) {
+    if (g_window_tsfn == nullptr || json == nullptr) return;
+    size_t len = strlen(json) + 1;
+    char *json_dup = (char *) malloc(len);
+    if (json_dup == nullptr) return;
+    memcpy(json_dup, json, len);
+    napi_status status = napi_call_threadsafe_function(g_window_tsfn, json_dup, napi_tsfn_nonblocking);
+    if (status != napi_ok) {
+        // 调用失败 (队列满 / tsfn 关闭中): 自行释放拷贝, 回调不会执行
+        free(json_dup);
+    }
+}
+
+// tsfn call-js 回调: 在 ArkTS 主线程执行, 把 data (JSON 串) 包成 napi string 后调用 ArkTS 回调。
+static void WindowCallJs(napi_env env, napi_value js_cb, void * /*context*/, void *data) {
+    if (js_cb == nullptr || data == nullptr) return;
+    char *json = static_cast<char *>(data);
+    napi_value json_arg;
+    napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
+    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
+    free(json);
+}
+
+// napi 包装: registerWindowCallback(callback: (json: string) => void): void
+// ArkTS 注册窗口策略回调; C++ 创建 napi_threadsafe_function 包装 ArkTS callback, 存入 g_window_tsfn,
+// 并通过 @CName legado_register_window_fn 把 ohos_window_dispatch 函数指针注入 Kotlin
+// (Kotlin 包成 (String) -> Unit lambda 存入 OhosNativeBridge.windowTsfn),
+// 使 KMP sendWindowCommand (全屏/常亮/方向/系统栏) 能跨线程 dispatch 到 ArkTS 执行 @ohos.window API。
+static napi_value RegisterWindowCallback(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) {
+        napi_throw_type_error(env, nullptr, "registerWindowCallback requires 1 argument (callback)");
+        napi_value ret;
+        napi_get_undefined(env, &ret);
+        return ret;
+    }
+
+    // 重复注册场景: 释放旧 tsfn
+    if (g_window_tsfn != nullptr) {
+        napi_release_threadsafe_function(g_window_tsfn, napi_tsfn_abort);
+        g_window_tsfn = nullptr;
+    }
+
+    napi_value work_name;
+    napi_create_string_utf8(env, "LegadoWindowTsfn", NAPI_AUTO_LENGTH, &work_name);
+    napi_threadsafe_function tsfn;
+    napi_status status = napi_create_threadsafe_function(
+            env, args[0], work_name, nullptr, 0, 1,
+            nullptr, nullptr, nullptr, nullptr, WindowCallJs, &tsfn);
+    if (status != napi_ok) {
+        OH_LOG_ERROR(LOG_APP, "registerWindowCallback: napi_create_threadsafe_function failed: %{public}d", status);
+        napi_value ret;
+        napi_get_undefined(env, &ret);
+        return ret;
+    }
+    g_window_tsfn = tsfn;
+
+    // 把 ohos_window_dispatch 函数指针注入 Kotlin (Kotlin 包成 lambda 存入 OhosNativeBridge.windowTsfn)
+    if (load_legado_shared() && g_register_window_fn != nullptr) {
+        g_register_window_fn(&ohos_window_dispatch);
+    } else {
+        OH_LOG_WARN(LOG_APP, "registerWindowCallback: legado_register_window_fn not resolved, tsfn 仅 C++ 侧持有 (KMP 窗口策略将降级 println)");
+    }
+
+    napi_value ret;
+    napi_get_undefined(env, &ret);
+    return ret;
 }
 
 // napi 包装: registerToastCallback(callback: (json: string) => void): void
@@ -2114,6 +2194,8 @@ androidx_compose_ui_arkui_init(env, exports
         // Toast/Notification tsfn 回调注册 (KP7+ 新增, KMP → ArkTS 跨线程 dispatch)
         {"registerToastCallback", nullptr, RegisterToastCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"registerNotificationCallback", nullptr, RegisterNotificationCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
+            // Window tsfn 回调注册 (KMP → ArkTS 窗口策略命令: 全屏/常亮/方向/系统栏)
+            {"registerWindowCallback", nullptr, RegisterWindowCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
         // Image/Media tsfn 回调注册 (KP8+ 新增, KMP → ArkTS 跨线程 dispatch)
         {"registerImageCallback", nullptr, RegisterImageCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"registerMediaCallback", nullptr, RegisterMediaCallback, nullptr, nullptr, nullptr, napi_default, nullptr},

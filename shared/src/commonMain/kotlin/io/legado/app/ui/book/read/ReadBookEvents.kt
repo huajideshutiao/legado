@@ -4,6 +4,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.ui.book.read.ReadBookEvents.configChange
 import io.legado.app.ui.book.read.ReadBookEvents.newProgressConfirm
+import io.legado.app.ui.book.read.ReadBookEvents.selectionCancel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -54,6 +55,17 @@ object ReadBookEvents {
      */
     private val _selectionCancel = eventFlow<Unit>()
     val selectionCancel: SharedFlow<Unit> get() = _selectionCancel
+
+    /**
+     * 页内选区已消失通知（对照旧 ContentTextView.cancelSelect → callBack.onCancelSelect →
+     * textActionMenu.dismiss：选区与浮动菜单强绑定，任何清除路径都必须同步关菜单）。
+     * 与 [selectionCancel] 方向相反：selectionCancel 是「平台菜单关闭 → 请求清选区」，
+     * 本事件是「选区已消失（点按取消/翻页/重排等任意路径）→ 平台关闭浮动菜单」。
+     * ReadViewComposable 观察 selection.isActive 下降沿后 post，ReaderRoute 桥接到
+     * [ReaderPlatformProvider.onTextSelectionDismissed] 由各端收起平台菜单。
+     */
+    private val _selectionDismissed = eventFlow<Unit>()
+    val selectionDismissed: SharedFlow<Unit> get() = _selectionDismissed
 
     /** 请求重载目录（原 ReadBook.CallBack.loadChapterList 同步直调，replay=1 兜底无订阅期漏发） */
     private val _loadChapterList = eventFlow<Book>(replay = 1)
@@ -112,6 +124,10 @@ object ReadBookEvents {
 
     fun postSelectionCancel() {
         _selectionCancel.tryEmit(Unit)
+    }
+
+    fun postSelectionDismissed() {
+        _selectionDismissed.tryEmit(Unit)
     }
 
     fun postMenuRefresh() {

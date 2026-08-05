@@ -37,6 +37,8 @@ import io.legado.app.ui.compose.platform.PlatformDialogDim
 fun AppDialog(
     onDismissRequest: () -> Unit,
     properties: DialogProperties = AppDialogSizes.properties(),
+    /** 背景暗化: 原版 BaseDialogFragment 默认保留 dim, 个别对话框 (PaddingConfigDialog) 清 FLAG_DIM_BEHIND */
+    dim: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     if (AppConfigProviders.get().isEInkMode) {
@@ -46,7 +48,7 @@ fun AppDialog(
     var dismissing by remember { mutableStateOf(false) }
     Dialog(onDismissRequest = { dismissing = true }, properties = properties) {
         // Android 补平台 dim 0.6 (对齐桌面/iOS 0.6 scrim); E-Ink 分支在上方已跳过 (对齐原版 E-Ink 清 dim)
-        PlatformDialogDim()
+        if (dim) PlatformDialogDim()
         val progress = remember { Animatable(0f) }
         // 进入: 缩放 0.96→1 + 淡入 (对齐 dialog_enter.xml)
         LaunchedEffect(Unit) {
@@ -110,8 +112,10 @@ fun AppBottomSheetDialog(
     }
     var dismissing by remember { mutableStateOf(false) }
     Dialog(onDismissRequest = { dismissing = true }, properties = properties) {
-        // Android 补平台 dim 0.6; E-Ink 分支在上方已跳过
-        PlatformDialogDim()
+        // 底部弹层不压暗底层 (对照原版 BaseBottomDialogFragment/setupAsBottomDialog
+        // 的 clearFlags(FLAG_DIM_BEHIND) + dimAmount=0, 同 LegadoApp ModalBottomSheet 先例)。
+        // 桌面/iOS/鸿蒙 CMP Dialog 自带 0.6 scrim 且 DialogProperties 无 scrimColor 参数
+        // (common expect 仅 3 参数), 无法关闭, 属平台限制; Android 端不再补 FLAG_DIM_BEHIND。
         val progress = remember { Animatable(0f) }
         // 进入: 从底部滑入 + 淡入 (对齐原版底部弹层动画)
         LaunchedEffect(Unit) {

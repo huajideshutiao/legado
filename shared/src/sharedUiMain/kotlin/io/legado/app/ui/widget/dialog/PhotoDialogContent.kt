@@ -13,6 +13,7 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -32,29 +33,43 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.zoomable
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.close
+import legado.shared.generated.resources.image_cover_default
 import legado.shared.generated.resources.loading
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
  * 跨平台大图查看内容件 (对照 app 端 [io.legado.app.ui.widget.dialog.PhotoDialog] 的 Content)。
  *
  * 图片加载走 [ImageBitmapLoader] (commonMain 面, 各端 actual: jvm=OkHttp+ImageIO,
- * iOS=Coil3，鸿蒙=ArkUI 融合渲染平台图片管线；传 [bookSource] 时网络图自动带书源防盗链 header/cookie)。
+ * iOS=Coil3，鸿蒙=ArkUI 融合渲染平台图片管线；传 [bookSource] 时网络图自动带书源防盗链 header/cookie，
+ * 并按原版 Glide 封面/预览链路语义 (isCover=true) 执行书源 coverDecodeJs 响应字节解密)。
+ * 多级回退与缓存复用 (对齐原版 PhotoDialog.loadPhoto→loadByGlide):
+ * ① 本地文件分支 (file:///cbz:///绝对路径, 各端 actual 内部) → ② 进程内 LRU + 磁盘缓存
+ * [ImageBytesCache] (对齐原版 onlyRetrieveFromCache 优先 + Glide DiskCacheStrategy.DATA;
+ * iOS 由 Coil3 自带磁盘缓存承担) → ③ 网络下载+解密 (非 2xx/解密失败进进程级 failUrl 黑名单,
+ * 对齐原版 OkHttpStreamFetcher "跳过加载失败的图片", 死链不再反复请求) → ④ 失败显示默认封面占位
+ * (对齐原版 glide error(BookCover.newDefaultDrawable()) 兜底)。同一 URL 二次打开零重复下载/解密。
+ * 注: 原版 loadPhoto 的"章节缓存文件/EPUB ZIP"本地优先为 Android 专属 (BookHelp/FileBook),
+ * app 端 PhotoDialog 已保留; desktop/iOS/鸿蒙无对应缓存目录, 由上述缓存层承担复用。
  * 手势复用共享 [zoomable] (双指缩放/单指平移/双击循环/fling 惯性, E-Ink 自动降级)。
  *
  * GIF 动图: desktop 经 [rememberAnimatedImageBitmap] 使用 Skiko Codec 逐帧播放；
  * 其余格式与其他端仍走静态 [ImageBitmapLoader] 路径。
  *
+ * 加载中显示 [loadingContent] 占位；加载失败显示默认封面占位图
+ * (对齐 app 端 PhotoDialog glide error(BookCover.newDefaultDrawable()) 兜底)。
+ *
  * app 端 PhotoDialog 不消费本件: 其加载链含章节缓存文件/EPUB ZIP/SVG/data URI/Coil
- * 磁盘缓存/默认封面兜底 (Android 专属), 且 androidMain 的 ImageBitmapLoader 暂为 stub。
+ * 磁盘缓存 (Android 专属, KMP 端由各端加载器/磁盘缓存承担)。
  *
  * @param src 图片路径 (http(s):// / file:// / 绝对路径, 各端 actual 支持范围见 ImageBitmapLoader)
  * @param modifier 外层容器 Modifier (默认 wrap; 全屏场景传 fillMaxSize)
  * @param imageModifier 图片 Modifier (默认 fillMaxSize; 对话框场景传定高约束)
- * @param book 当前书籍 (http 场景判断 isLocal), 可空
- * @param bookSource 书源 (网络图防盗链 header/cookie/charset/JS), 可空
+ * @param book 当前书籍 (http 场景判断 isLocal 与解密 put("book")), 可空
+ * @param bookSource 书源 (网络图防盗链 header/cookie/charset/JS + coverDecodeJs 封面解密), 可空
  * @param onLongPress 长按回调 (app 端长按保存等场景), 默认无
- * @param loadingContent 加载中/失败占位 (默认 i18n "loading" 文案, 对照原 DesktopPhotoDialog)
+ * @param loadingContent 加载中占位 (默认 i18n "loading" 文案, 对照原 DesktopPhotoDialog)
  */
 @Composable
 fun PhotoDialogContent(
@@ -67,25 +82,37 @@ fun PhotoDialogContent(
     onTap: (() -> Unit)? = null,
     loadingContent: @Composable () -> Unit = { Text(stringResource(Res.string.loading)) },
 ) {
-    val bitmap by produceState<ImageBitmap?>(null, src) {
+    // 三态: 加载中 / 成功 / 失败 (失败走默认封面占位, 对齐原版 PhotoDialog 的 glide error 兜底)
+    val photoState by produceState<PhotoLoadState>(PhotoLoadState.Loading, src) {
         value = runCatching {
-            ImageBitmapLoader().loadBitmap(src, book, bookSource)
-        }.getOrNull()
+            ImageBitmapLoader().loadBitmap(src, book, bookSource, isCover = true)
+        }.fold(
+            onSuccess = { bitmap ->
+                if (bitmap != null) PhotoLoadState.Success(bitmap) else PhotoLoadState.Failed
+            },
+            onFailure = { PhotoLoadState.Failed },
+        )
     }
     // GIF 动图旁路: 大图查看是唯一值得逐帧播放的场景, 故额外取一次裸字节解码。
     // Desktop 使用 Skiko Codec；Android/iOS/鸿蒙交给平台图片管线，无法逐帧时退化静态图。
     // 非 GIF 字节不进解码器, 静态图仅多一次带缓存的字节读取。
     val gifBytes by produceState<ByteArray?>(null, src) {
         value = runCatching {
-            ImageBitmapLoader().loadBytes(src, book, bookSource)
+            ImageBitmapLoader().loadBytes(src, book, bookSource, isCover = true)
         }.getOrNull()?.takeIf { isGifBytes(it) }
     }
     val animatedFrame = rememberAnimatedImageBitmap(gifBytes)
-    val image = animatedFrame ?: bitmap
+    val successBitmap = (photoState as? PhotoLoadState.Success)?.bitmap
+    val image = animatedFrame ?: successBitmap
+    val defaultCover = painterResource(Res.drawable.image_cover_default)
+    val defaultCoverRatio = remember(defaultCover) {
+        val size = defaultCover.intrinsicSize
+        if (size.width > 0f && size.height > 0f) size.width / size.height else 1f
+    }
     Box(
-        // 占位态没有图片可挂 zoomable, 单击/长按要挂到容器上, 否则加载中/加载失败时全屏
+        // 占位态没有图片可挂 zoomable, 单击/长按要挂到容器上, 否则加载中时全屏
         // 看图层没有任何可点区域, 点不掉也退不出 (对照原 PhotoDialog 点击即关)
-        modifier = if (image == null) {
+        modifier = if (image == null && photoState is PhotoLoadState.Loading) {
             modifier.pointerInput(onTap, onLongPress) {
                 detectTapGestures(
                     onTap = onTap?.let { { _: Offset -> it() } },
@@ -97,22 +124,51 @@ fun PhotoDialogContent(
         },
         contentAlignment = Alignment.Center,
     ) {
-        image?.let { b ->
-            Image(
-                bitmap = b,
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                // clipToBounds 在 zoomable 的 graphicsLayer 之前: 放大后不溢出图片布局边界
-                modifier = imageModifier
-                    .clipToBounds()
-                    .zoomable(
-                        contentAspectRatio = b.width.toFloat() / b.height,
-                        onLongPress = onLongPress,
-                        onTap = onTap,
-                    ),
-            )
-        } ?: loadingContent()
+        when (val state = photoState) {
+            is PhotoLoadState.Success -> {
+                val b = if (animatedFrame != null) animatedFrame else state.bitmap
+                Image(
+                    bitmap = b,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    // clipToBounds 在 zoomable 的 graphicsLayer 之前: 放大后不溢出图片布局边界
+                    modifier = imageModifier
+                        .clipToBounds()
+                        .zoomable(
+                            contentAspectRatio = b.width.toFloat() / b.height,
+                            onLongPress = onLongPress,
+                            onTap = onTap,
+                        ),
+                )
+            }
+
+            PhotoLoadState.Failed -> {
+                // 对齐原版 PhotoDialog glide error(BookCover.newDefaultDrawable()):
+                // 失败显示默认封面占位, 保持可缩放/可点关闭
+                Image(
+                    painter = defaultCover,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = imageModifier
+                        .clipToBounds()
+                        .zoomable(
+                            contentAspectRatio = defaultCoverRatio,
+                            onLongPress = onLongPress,
+                            onTap = onTap,
+                        ),
+                )
+            }
+
+            PhotoLoadState.Loading -> loadingContent()
+        }
     }
+}
+
+/** 图片加载三态 (失败占位对齐原版 glide error 默认封面)。 */
+private sealed interface PhotoLoadState {
+    data object Loading : PhotoLoadState
+    data class Success(val bitmap: ImageBitmap) : PhotoLoadState
+    data object Failed : PhotoLoadState
 }
 
 /**

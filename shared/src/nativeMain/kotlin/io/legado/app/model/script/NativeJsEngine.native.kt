@@ -28,12 +28,17 @@ import io.legado.app.napi.quickjs.JS_GetGlobalObject
 import io.legado.app.napi.quickjs.JS_GetOwnPropertyNames
 import io.legado.app.napi.quickjs.JS_GetProperty
 import io.legado.app.napi.quickjs.JS_GetPropertyUint32
+import io.legado.app.napi.quickjs.qjs_ArrayBufferRead
+import io.legado.app.napi.quickjs.qjs_ArrayBufferSize
+import io.legado.app.napi.quickjs.qjs_NewUint8ArrayCopy
 import io.legado.app.napi.quickjs.JS_IsArray
+import io.legado.app.napi.quickjs.JS_IsArrayBuffer
 import io.legado.app.napi.quickjs.JS_IsError
 import io.legado.app.napi.quickjs.JS_NewArray
 import io.legado.app.napi.quickjs.JS_NewContext
 import io.legado.app.napi.quickjs.JS_NewObject
 import io.legado.app.napi.quickjs.JS_NewRuntime
+import io.legado.app.napi.quickjs.JS_NewUint8Array
 import io.legado.app.napi.quickjs.JS_SetPropertyStr
 import io.legado.app.napi.quickjs.JS_SetPropertyUint32
 import io.legado.app.napi.quickjs.JS_ToBool
@@ -58,22 +63,29 @@ import io.legado.app.napi.quickjs.qjs_ValueGetFloat64
 import io.legado.app.napi.quickjs.qjs_ValueGetInt
 import io.legado.app.napi.quickjs.qjs_ValueGetTag
 import kotlinx.cinterop.ByteVar
+import kotlinx.cinterop.CFunction
 import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.CPointerVar
 import kotlinx.cinterop.CValue
+import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.DoubleVar
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.LongVar
+import kotlinx.cinterop.UByteVar
 import kotlinx.cinterop.UIntVar
+import kotlinx.cinterop.ULongVar
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.cValue
 import kotlinx.cinterop.cstr
 import kotlinx.cinterop.get
+import kotlinx.cinterop.interpretCPointer
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.plus
 import kotlinx.cinterop.pointed
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.readValue
+import kotlinx.cinterop.refTo
+import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.staticCFunction
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.useContents
@@ -81,6 +93,7 @@ import kotlinx.cinterop.value
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.CoroutineContext
+import platform.posix.memcpy
 
 /**
  * native 端 (iOS/鸿蒙) JS 引擎: 基于 quickjs-ng C 源码 (cinterop 编译), 与 Android/Desktop
@@ -509,12 +522,38 @@ object NativeJsEngine : JsEngine {
     /** 把任意 JSValue 转为字符串 (通过 JS_ToString + qjs_ToCString)。 */
     private fun jsValueToString(ctx: CPointer<JSContext>, v: CValue<JSValue>): String {
         // 用 qjs_ToCString 直接转 (quickjs 内部会调 JS_ToString)
-        val cstr = qjs_ToCString(ctx, v) ?: return "JS exception"
-        return try {
-            cstr.toKString()
-        } finally {
-            qjs_FreeCString(ctx, cstr)
+        val cstr = qjs_ToCString(ctx, v)
+        if (cstr != null) {
+            return try {
+                cstr.toKString()
+            } finally {
+                qjs_FreeCString(ctx, cstr)
+            }
         }
+        // toString 失败 (抛出的值不可字符串化, 如无 toString/valueOf 的对象):
+        // 用纯 tag 判定给出类型描述 (对齐 Android 端 buildExceptionMessage),
+        // 避免只报裸 "JS exception" 让用户无法判断书源抛的是什么。
+        return describeThrownValue(ctx, v)
+    }
+
+    /**
+     * 对 toString 失败的值做纯 tag 判定生成类型描述。
+     *
+     * 约束: 此时 ctx 的 current_exception 已被 toString 抛出的新异常占用,
+     * 只使用 qjs_IsXxx 等不执行 JS 的判定, 不覆盖该异常。
+     * (基本类型的 toString 不会失败, 实际只会落到对象分支。)
+     */
+    private fun describeThrownValue(ctx: CPointer<JSContext>, v: CValue<JSValue>): String {
+        val kind = when {
+            qjs_IsNull(v) != 0 -> "null"
+            qjs_IsUndefined(v) != 0 -> "undefined"
+            qjs_IsBool(v) != 0 -> if (qjs_ValueGetBool(v) != 0) "true" else "false"
+            qjs_IsNumber(v) != 0 -> "a number"
+            qjs_IsString(v) != 0 -> "a string"
+            qjs_IsObject(v) != 0 -> "an object"
+            else -> "an unknown value"
+        }
+        return "JS exception (thrown value: $kind)"
     }
 
     // ============ private helper: JSValue <-> Kotlin 值转换 ============
@@ -555,6 +594,9 @@ object NativeJsEngine : JsEngine {
             }
         }
         if (qjs_IsObject(v) != 0) {
+            // Uint8Array/TypedArray (解密脚本返回值): 直接拷回 ByteArray,
+            // ImageUtils.decode 的 is ByteArray 分支直接消费, 无需 List 中间态
+            tryGetUint8ArrayBytes(ctx, v)?.let { return it }
             // 判断 array 还是 plain object
             if (JS_IsArray(v)) {
                 return fromJsArray(ctx, v)
@@ -638,6 +680,9 @@ object NativeJsEngine : JsEngine {
      * - String → qjs_NewString (cstr 在 memScope 内分配)
      * - Map<String,Any?> → JS_NewObject + 递归 JS_SetPropertyStr
      * - List<Any?> → JS_NewArray + 递归 JS_SetPropertyUint32
+     * - ByteArray → Uint8Array (1 次 memcpy + JS_NewUint8Array, 见 [byteArrayToJsUint8Array];
+     *   解密脚本需要 result.length/索引读写, TypedArray 语义与原版 quickjs JavaObjectBridge 的
+     *   byte[] 一致; 脚本写回后整体返回, 由 [tryGetUint8ArrayBytes] 拷回 ByteArray)
      * - 其他对象 → null (P0 stub, 复杂对象不桥接, 调用方跳过此 key)
      *
      * 注意: 返回的 JSValue 所有权归调用方 (除非传给 JS_SetPropertyStr 转移所有权);
@@ -668,6 +713,7 @@ object NativeJsEngine : JsEngine {
             }
 
             is List<*> -> listToJsArray(ctx, converted)
+            is ByteArray -> byteArrayToJsUint8Array(ctx, converted)
             is JsExtensionsCommon -> {
                 // JsExtensions 桥接: 通过 handle 表 + JS 工厂函数桥接为 JS 对象 (NativeJsExtensionsBridge)
                 // 需要当前 scope (threadLocalScope) 记录 handle, close 时清理
@@ -702,6 +748,83 @@ object NativeJsEngine : JsEngine {
             JS_SetPropertyUint32(ctx, arr, i.toUInt(), jsItem)
         }
         return arr
+    }
+
+    /**
+     * ByteArray → Uint8Array (1 次 memcpy, 零逐字节装箱):
+     *
+     * 走 quickjs.def 的 qjs_NewUint8ArrayCopy (JS_NewUint8ArrayCopy 语义: 内部 malloc +
+     * memcpy + js_array_buffer_free 自管内存), Kotlin 侧无分配/持有/释放, 无生命周期风险;
+     * 指针经 uintptr_t 整数传参 (各 target cinterop 指针映射不一致, 见 quickjs.def 注释)。
+     * JS 侧得到 Uint8Array: `length` 是 number、索引读写直接改内存 (TypedArray),
+     * 与原版 quickjs JavaObjectBridge 的 byte[] 语义一致 (length/索引可用),
+     * 脚本 `result.length==undefined` 判断走主分支, 不会进 Packages 分支。
+     */
+    private fun byteArrayToJsUint8Array(
+        ctx: CPointer<JSContext>,
+        bytes: ByteArray
+    ): CValue<JSValue> {
+        val size = bytes.size
+        // 数组参数形式 (qjs_NewUint8ArrayCopy 的 src[]): cinterop 生成 CValuesRef<ByteVar>,
+        // 经 refTo(0) 传 CPointer (ByteArray 不能直接传 CValuesRef); 空数组 refTo(0) 返回 null
+        // (copy 版 len=0 时内部 js_mallocz(1) 安全处理)
+        val arr = qjs_NewUint8ArrayCopy(ctx, bytes.refTo(0), size.toULong())
+        return if (qjs_IsException(arr) != 0) jsNullValue() else arr
+    }
+
+    /**
+     * 判定 JS 值是否为 TypedArray (Uint8Array 等) 并拷回 ByteArray:
+     *
+     * 读 `buffer` 属性 → JS_IsArrayBuffer → JS_GetArrayBuffer 拿数据指针+总长,
+     * 再按 `byteOffset`/`byteLength` 偏移拷回 (脚本 slice/subarray 返回的视图也支持)。
+     * 非 TypedArray 返回 null (交由后续分支处理)。返回的 ByteArray 由调用方持有。
+     */
+    private fun tryGetUint8ArrayBytes(ctx: CPointer<JSContext>, v: CValue<JSValue>): ByteArray? {
+        val buf = JS_GetPropertyStr(ctx, v, "buffer")
+        if (qjs_IsException(buf) != 0) {
+            JS_FreeValue(ctx, buf)
+            return null
+        }
+        try {
+            // JS_IsArrayBuffer 返回 C bool (cinterop 映射 Boolean), 与 JS_IsArray 同用法
+            if (!JS_IsArrayBuffer(buf)) return null
+            return memScoped {
+                // 数据长度整数返回 + C 侧拷贝到 ByteArray (数组参数), 零指针转换
+                val totalSize = qjs_ArrayBufferSize(ctx, buf).toInt()
+                val byteOffset = jsPropNumber(ctx, v, "byteOffset")?.toInt() ?: 0
+                val byteLength = jsPropNumber(ctx, v, "byteLength")?.toInt()
+                    ?: (totalSize - byteOffset).coerceAtLeast(0)
+                if (byteOffset < 0 || byteLength <= 0) return@memScoped null
+                val len = minOf(byteLength, (totalSize - byteOffset).coerceAtLeast(0))
+                val out = ByteArray(len)
+                if (len > 0) {
+                    // C 侧按 offset 拷贝 (JS_GetArrayBuffer 数据指针 + 偏移, 不暴露指针给 Kotlin)
+                    val n = qjs_ArrayBufferRead(
+                        ctx, buf, byteOffset.toULong(), out.refTo(0), len.toULong()
+                    )
+                    if (n.toInt() != len) return@memScoped null
+                }
+                out
+            }
+        } finally {
+            JS_FreeValue(ctx, buf)
+        }
+    }
+
+    /** 读 JS 对象的数字属性 (byteOffset/byteLength 等), 非数字返回 null。 */
+    private fun jsPropNumber(ctx: CPointer<JSContext>, obj: CValue<JSValue>, key: String): Number? {
+        val v = JS_GetPropertyStr(ctx, obj, key)
+        if (qjs_IsException(v) != 0) {
+            JS_FreeValue(ctx, v)
+            return null
+        }
+        try {
+            if (qjs_IsNumber(v) == 0) return null
+            val tag = qjs_ValueGetTag(v)
+            return if (tag == JS_TAG_INT) qjs_ValueGetInt(v) else qjs_ValueGetFloat64(v)
+        } finally {
+            JS_FreeValue(ctx, v)
+        }
     }
 
     /** 构造 JS null JSValue (cValue 构造, tag=JS_TAG_NULL, u 默认 0)。 */

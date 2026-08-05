@@ -273,18 +273,21 @@ internal object DesktopTaskbarMedia {
     }
 
     /**
-     * THUMBBUTTON x64 布局: dwMask(4) iId(4) iBitmap(4) iIcon(4) szTip[260](520) dwFlags(4),
-     * 共 540 → 8 字节对齐 544。szTip 为 WCHAR, 需 UTF-16LE (Memory.setChar 即按 UTF-16LE 写)。
+     * THUMBBUTTON x64 布局 (commctrl.h): dwMask(4) iId(4) iBitmap(4) [对齐填充 12..16]
+     * hIcon(8) szTip[260](520, 24..544) dwFlags(4, 544..548) → 结构 552 字节。
+     * szTip 为 WCHAR, 需 UTF-16LE (Memory.setChar 即按 UTF-16LE 写)。
+     * 2026-08 修正: 此前按 32 位布局写 (hIcon=4 → szTip@16/dwFlags@536/stride 544),
+     * x64 下 dwFlags 落在 szTip 内、按钮 2+ 整体错位 (缩略图按钮行为异常)。
      */
     private fun writeButton(mem: Memory, slot: Int, id: Int, tip: String, flags: Int) {
         val base = slot * BUTTON_STRIDE
         mem.setInt(base + 0, THB_TOOLTIP or THB_FLAGS) // dwMask
         mem.setInt(base + 4, id)
         mem.setInt(base + 8, 0) // iBitmap
-        mem.setInt(base + 12, 0) // iIcon
-        val tipBase = base + 16
+        mem.setLong(base + 16, 0) // hIcon (x64 指针, 12..16 为对齐填充)
+        val tipBase = base + 24
         tip.take(259).forEachIndexed { i, c -> mem.setChar(tipBase + i * 2L, c) }
-        mem.setInt(base + 536, flags) // dwFlags
+        mem.setInt(base + 544, flags) // dwFlags
     }
 
     // ==================== 按钮点击 / 媒体键 (动作对照原版) ====================
@@ -604,8 +607,8 @@ internal object DesktopTaskbarMedia {
     private fun str(key: String, fallback: String): String =
         jvmGetString(key).takeIf { it != key } ?: fallback
 
-    /** THUMBBUTTON 结构 stride (x64: 540 → 8 字节对齐 544)。 */
-    private val BUTTON_STRIDE = if (Native.POINTER_SIZE == 8) 544L else 540L
+    /** THUMBBUTTON 结构 stride (x64 = 552, 32 位 = 540)。 */
+    private val BUTTON_STRIDE = if (Native.POINTER_SIZE == 8) 552L else 540L
 
     private const val START_TIMEOUT_SECONDS = 10L
 }

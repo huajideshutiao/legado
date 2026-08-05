@@ -1,10 +1,11 @@
 package io.legado.app.ui.book.read.config
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,15 +20,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppSlider
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.auto_page_speed
 import legado.shared.generated.resources.chapter_list
@@ -35,8 +37,6 @@ import legado.shared.generated.resources.main_menu
 import legado.shared.generated.resources.setting
 import legado.shared.generated.resources.stop
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 自动翻页控制面板底部弹窗宿主 (对照原版 AutoReadDialog: BaseBottomDialogFragment)。
@@ -53,10 +53,12 @@ fun AutoReadPanelDialogHost(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
+        // 原版 AutoReadDialog: BaseBottomDialogFragment 全宽贴底 + filletBackground 8dp 圆角;
+        // 内容 16/8dp 间距由 AutoReadPanel 内部 padding 提供 (对齐 XML root paddingH=lg V=default)
         Surface(
-            shape = DesignTokens.dialogShape,
+            shape = DesignTokens.shapeDefault,
             color = AppTheme.colors.fillet,
-            modifier = Modifier.appDialogSize(),
+            modifier = Modifier.fillMaxWidth(),
         ) {
             AutoReadPanel(controller = controller, actions = actions)
         }
@@ -155,7 +157,6 @@ fun AutoReadPanel(
         )
         Row(
             Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             ReadMenuIconButton(
                 "ic_toc",
@@ -164,6 +165,7 @@ fun AutoReadPanel(
             ) {
                 actions.openChapterList()
             }
+            Spacer(Modifier.weight(1f))
             ReadMenuIconButton(
                 "ic_menu",
                 stringResource(Res.string.main_menu),
@@ -171,6 +173,7 @@ fun AutoReadPanel(
             ) {
                 actions.showMenuBar()
             }
+            Spacer(Modifier.weight(1f))
             ReadMenuIconButton(
                 "ic_auto_page_stop",
                 stringResource(Res.string.stop),
@@ -178,6 +181,7 @@ fun AutoReadPanel(
             ) {
                 actions.autoPageStop()
             }
+            Spacer(Modifier.weight(1f))
             ReadMenuIconButton(
                 "ic_settings",
                 stringResource(Res.string.setting),
@@ -190,8 +194,9 @@ fun AutoReadPanel(
 }
 
 /**
- * 底部菜单图标按钮：60dp 宽竖排（图标 20dp + 文字 12sp），严格对齐 app 端
- * `BaseReadBottomComposeDialog.ReadMenuIconButton` 的尺寸（width=60dp, padding(vertical=8dp)）。
+ * 底部菜单图标按钮：严格对齐原版 dialog_auto_read.xml 底部 4 按钮
+ * (TextView drawableTop): 50dp 宽 + minHeight 50dp + paddingBottom default(8dp),
+ * 图标 24dp (drawableTop 资源原尺寸) + drawablePadding 4dp + 文字 12sp。
  */
 @Composable
 private fun ReadMenuIconButton(
@@ -202,16 +207,17 @@ private fun ReadMenuIconButton(
 ) {
     Column(
         Modifier
-            .width(60.dp)
+            .width(50.dp)
+            .heightIn(min = 50.dp)
             .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
+            .padding(bottom = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
             painter = rememberPainter(iconKey),
             contentDescription = text,
             tint = tint,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(24.dp),
         )
         Text(
             text = text,

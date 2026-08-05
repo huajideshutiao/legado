@@ -20,7 +20,7 @@ import coil3.transform.Transformation
  * 优化版：通过 ComposeShader 合并绘制步骤，减少像素遍历次数和对象分配
  * 渐变分区：顶部 30% 清晰 → 30%-65% 柔和过渡 → 65%-100% 加速淡出
  */
-class BookInfoBgTransformation : Transformation() {
+class BookInfoBgTransformation(private val land: Boolean = false) : Transformation() {
 
     companion object {
         private const val ID = "io.legado.app.ui.book.info.BookInfoBgTransformation"
@@ -44,15 +44,6 @@ class BookInfoBgTransformation : Transformation() {
 
         private val SRC_XFERMODE = PorterDuffXfermode(PorterDuff.Mode.SRC)
 
-        private val threadGradient = ThreadLocal.withInitial {
-            LinearGradient(
-                0f, 0f, 0f, 1f,
-                GRADIENT_COLORS,
-                GRADIENT_STOPS,
-                Shader.TileMode.CLAMP
-            )
-        }
-
         private val threadPaint = ThreadLocal.withInitial {
             Paint(Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
         }
@@ -72,18 +63,27 @@ class BookInfoBgTransformation : Transformation() {
         val canvas = Canvas(result)
         val paint = threadPaint.get()!!
         val matrix = threadMatrix.get()!!
-        val gradient = threadGradient.get()!!
-
-        // 1. 将原图设为 Shader
         val bitmapShader = BitmapShader(input, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
-
-        // 2. 使用模板渐变并通过 Matrix 缩放，避免每次 new LinearGradient
-        matrix.setScale(1f, height.toFloat())
-        gradient.setLocalMatrix(matrix)
-
-        // 3. 组合 Shader：使用 DST_IN 模式，使 gradient 的 alpha 通道应用到 bitmapShader 上
-        // DST_IN 效果为：结果颜色 = Destination 颜色 * Source Alpha
-        paint.shader = ComposeShader(bitmapShader, gradient, PorterDuff.Mode.DST_IN)
+        // 竖屏顶部条: 顶部清晰 → 底部淡出渐变蒙版 (原版语义); 横屏整列均匀模糊不加渐变
+        val gradient = if (!land) {
+            LinearGradient(
+                0f, 0f, 0f, 1f,
+                GRADIENT_COLORS,
+                GRADIENT_STOPS,
+                Shader.TileMode.CLAMP
+            )
+        } else {
+            null
+        }
+        if (gradient != null) {
+            matrix.setScale(1f, height.toFloat())
+            gradient.setLocalMatrix(matrix)
+            // 组合 Shader: 使用 DST_IN 模式, 使 gradient 的 alpha 通道应用到 bitmapShader 上
+            // DST_IN 效果为: 结果颜色 = Destination 颜色 * Source Alpha
+            paint.shader = ComposeShader(bitmapShader, gradient, PorterDuff.Mode.DST_IN)
+        } else {
+            paint.shader = bitmapShader
+        }
 
         // 4. 应用暗化滤镜：在 Shader 输出后进行像素着色处理
         paint.colorFilter = DARK_COLOR_FILTER
@@ -99,7 +99,7 @@ class BookInfoBgTransformation : Transformation() {
         paint.colorFilter = null
         paint.xfermode = null
         matrix.reset()
-        gradient.setLocalMatrix(null)
+        gradient?.setLocalMatrix(null)
 
         return result
     }

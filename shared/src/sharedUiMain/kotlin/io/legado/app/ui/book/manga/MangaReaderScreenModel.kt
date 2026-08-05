@@ -177,6 +177,9 @@ class MangaReaderScreenModel : ScreenModel {
     )
     val state: StateFlow<MangaReaderUiState> = _state.asStateFlow()
     val currentBook: Book? get() = shared.book.value
+
+    /** 当前章节表 (供目录页经 IntentData 传递, 对照原版 chapterListData) */
+    val chapterList: List<BookChapter> get() = shared.chapterList.value
     val currentChapter: BookChapter? get() = shared.durChapter.value
     val currentSource get() = shared.bookSource.value
     val platformRenderer: Platform? get() = platform
@@ -194,7 +197,10 @@ class MangaReaderScreenModel : ScreenModel {
     val systemTime: StateFlow<String> = _systemTime.asStateFlow()
 
     init {
-        // 合并 shared 各 StateFlow → 统一 UiState; chapterSize 为普通字段, 随内容流变化时读取
+        // VM 状态流 → UiState (以 _state.value 为底增量拷贝: horizontal/jumpTick 等直写
+        // 字段不被覆盖; 同时保证 bookName/items/curFinish 等 VM 字段真正写入 state)。
+        // 注意不能把本级输出经中间 combine 再转发: 中间级若用缓存输出作底会覆盖直写字段
+        // (翻页后 horizontal 跳回), 若用 _state.value 作底则丢弃本级字段 (items 永远为空)。
         combine(
             shared.book, shared.durChapter, shared.mangaContent,
             shared.durChapterIndex, shared.loading,
@@ -217,22 +223,29 @@ class MangaReaderScreenModel : ScreenModel {
                 // 有评论规则才显示"评论"菜单项 (对照 app 端 onMenuOpened 里 reviewUrl 判空)
                 hasReview = shared.bookSource.value?.reviewRule?.reviewUrl.isNullOrBlank() == false,
             )
-        }.combine(errorMsg) { uiState, error ->
-            uiState.copy(error = error)
-        }.combine(shared.durChapterPos) { uiState, pos ->
-            val imageCount = shared.currentImageCount
-            uiState.copy(
-                currentPage = pos.coerceIn(0, (imageCount - 1).coerceAtLeast(0)),
-                progressPercent = computeProgress(
-                    uiState.curChapterIndex, uiState.chapterSize, pos, imageCount
-                ),
-            )
         }.onEach { _state.value = it }.launchIn(scope)
 
         // 事件流转本地状态: 新一轮加载先清空, 保证同一个错误重试后仍能再次点亮重试页
         // (对照 app 端 showLoading 隐藏 llRetry + loadFailLiveData.observe)
         scope.launch { shared.error.collect { (msg, _) -> errorMsg.value = msg } }
         scope.launch { shared.loading.collect { if (it) errorMsg.value = null } }
+        // error → state.error: 独立增量写, 不经过 combine 缓存链 (避免覆盖 VM 字段)
+        scope.launch { errorMsg.collect { _state.value = _state.value.copy(error = it) } }
+
+        // 章内页码/进度 → state: 独立增量写, 翻页 (durChapterPos 发射) 不覆盖
+        // horizontal/jumpTick 等直写字段 (原 3 级 combine 链 stage-2 丢弃 stage-1 输出,
+        // 导致 items/bookName 永不更新; 此处拆链修复)
+        scope.launch {
+            shared.durChapterPos.collect { pos ->
+                val imageCount = shared.currentImageCount
+                _state.value = _state.value.copy(
+                    currentPage = pos.coerceIn(0, (imageCount - 1).coerceAtLeast(0)),
+                    progressPercent = computeProgress(
+                        _state.value.curChapterIndex, _state.value.chapterSize, pos, imageCount
+                    ),
+                )
+            }
+        }
 
         // 系统时间刷新 (对照 ReaderScreenModel: 平台广播经 ReadBookEvents.timeChanged 推送,
         // 订阅者更新 StateFlow 驱动信息条重组; 无 ACTION_TIME_TICK 的平台由下方轮询兜底)
@@ -260,8 +273,17 @@ class MangaReaderScreenModel : ScreenModel {
     fun onCenterItemChanged(item: BaseMangaPage) {
         val durIndex = shared.durChapterIndex.value
         when {
-            durIndex < item.chapterIndex -> shared.moveToNextChapter()
-            durIndex > item.chapterIndex -> shared.moveToPrevChapter()
+            durIndex < item.chapterIndex -> {
+                // 对照原版 ReadMangaActivity.onCenterItemChanged: 滚动切章直接
+                // moveToNextChapter (toFirst=false 不重置 durChapterPos, 不设 item.index——
+                // 原版同款; 滚动位置由渲染层保持, 进度 coerce 偏差与原版一致)
+                shared.moveToNextChapter()
+            }
+
+            durIndex > item.chapterIndex -> {
+                shared.moveToPrevChapter()
+            }
+
             else -> {
                 shared.setDurChapterPos(item.index)
                 shared.curPageChanged()
@@ -505,9 +527,26 @@ class MangaReaderScreenModel : ScreenModel {
                 )
             }
             // toFirst=true: 对照 Activity 点击区域 action 3/4, 用户主动切章跳首页+显示 loading
-            MangaReaderUiEvent.NextChapter -> shared.moveToNextChapter(true)
-            MangaReaderUiEvent.PrevChapter -> shared.moveToPrevChapter(true)
-            is MangaReaderUiEvent.OpenChapter -> shared.openChapter(event.index, event.position)
+            // jumpTick 必须先于 shared 调用自增: 下一章已预载时 moveToNextChapter(true)
+            // 在同一个同步调用内把 loading 置 true 又经 upContent 置回 false, 合并后 UI
+            // 观察不到 loading 脉冲 → 只靠 loading 置位 needJumpToContent 会丢失"菜单切章
+            // 需跳转"信号, 锚点逻辑把视口钉在旧章页 (旧章页仍在新 items 的 prev 段),
+            // 表现为"切章不更新/图片旧"。先自增让 jumpTick 与切章后的新 items 落在
+            // 同一次状态发射里, 切章后 items 变化即触发内容定位跳转。
+            MangaReaderUiEvent.NextChapter -> {
+                _state.value = _state.value.copy(jumpTick = _state.value.jumpTick + 1)
+                shared.moveToNextChapter(true)
+            }
+
+            MangaReaderUiEvent.PrevChapter -> {
+                _state.value = _state.value.copy(jumpTick = _state.value.jumpTick + 1)
+                shared.moveToPrevChapter(true)
+            }
+
+            is MangaReaderUiEvent.OpenChapter -> {
+                _state.value = _state.value.copy(jumpTick = _state.value.jumpTick + 1)
+                shared.openChapter(event.index, event.position)
+            }
             // 对照 app 端 tvRetry 点击: 先隐藏重试页再重新加载
             MangaReaderUiEvent.Retry -> {
                 errorMsg.value = null
@@ -554,6 +593,8 @@ data class MangaReaderUiState(
     val autoPageSpeed: Int = 0,
     val loading: Boolean = false,
     val error: String? = null,
+    /** 显式"需要跳转到内容位置"信号 (菜单/目录切章时自增, 见 dispatch) */
+    val jumpTick: Int = 0,
     val currentPage: Int = 0,
     val pageCount: Int = 0,
     val progressPercent: String = "0.0%",

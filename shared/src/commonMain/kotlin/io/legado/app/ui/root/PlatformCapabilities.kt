@@ -7,6 +7,7 @@ import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.Review
 import io.legado.app.help.DirectLinkUploadRule
+import io.legado.app.help.RssToolbarActions
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.import.ImportFileItem
@@ -33,6 +34,40 @@ interface PlatformCapabilities {
     fun openWebView(url: String, sourceKey: String = "", sourceName: String = "") {
         openExternalUrl(url)
     }
+
+    /**
+     * 书源 URL 登录直开窗 (2026-08-07 用户拍板: 去掉登录中转界面)。
+     *
+     * 仅 URL 登录 (loginUi 为空) 时调用; 返回 true = 平台已直接处理 (弹出登录窗口/系统浏览器),
+     * 调用方不再弹 sourceLogin Overlay 对话框; false = 平台未处理, 保持对话框内嵌 WebView
+     * (移动端默认 false, 登录仍走原 Overlay 对话框)。
+     * 功能契约: 登录窗口必须带 isLogin 语义 (工具栏"确定" = 确认 cookie 后 reload 关窗) +
+     * cookie 按 [sourceKey] 回写 (登录态可复用)。
+     */
+    fun openLoginWebView(url: String, sourceKey: String): Boolean = false
+
+    /**
+     * RSS 阅读直开窗 (2026-08-07 用户拍板: RSS 阅读页去外壳, 功能移入浏览器窗口工具栏)。
+     *
+     * 返回 true = 平台已处理 (弹出带 RSS 工具栏的浏览器窗口), 调用方不再渲染 ReadRssScreen
+     * 页面外壳 (移动端默认 false, 保持内嵌页面)。窗口工具栏带 收藏/朗读/分享/登录 按钮
+     * (动作经 [RssToolbarActions] 回调回 shared), 星收藏态经 [RssToolbarActions.onStarChanged]
+     * 反推更新; 窗口被关闭时平台实现负责让 RSS 路由出栈。
+     */
+    fun openRssReader(
+        book: Book,
+        chapter: BookChapter?,
+        url: String,
+        html: String?,
+        headerMap: Map<String, String>,
+        actions: RssToolbarActions,
+    ): Boolean = false
+
+    /**
+     * RSS 阅读是否直开独立窗口 (2026-08-07): true 时 ReadRssRoute 跳过页面外壳渲染
+     * (内容加载期间无占位界面, 就绪后经 [openRssReader] 开窗); 移动端 false 保持内嵌页面。
+     */
+    val rssDirectWindow: Boolean get() = false
 
     // 书籍路由解析: shared 无 DB 能力, 按 bookUrl 解析为 BookRef 供 LaunchRequest 路由导航
     suspend fun resolveBookRef(bookUrl: String): BookRef? = null

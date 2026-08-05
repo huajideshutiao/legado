@@ -3,7 +3,6 @@ package io.legado.app.ui.compose.platform
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
@@ -27,6 +26,11 @@ fun Modifier.handleBackKey(
     onRefresh: () -> Boolean = { false },
 ): Modifier = this
     .onPreviewKeyEvent { event ->
+        // KeyUp 只清理快捷键按住状态 (repeat 过滤用, 见 dispatchShortcut), 无动作、不消费
+        if (event.type == KeyEventType.KeyUp) {
+            dispatchShortcut(event, preemptive = true)
+            return@onPreviewKeyEvent false
+        }
         if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
         when (event.key) {
             Key.Escape -> {

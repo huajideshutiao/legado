@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.AppLog
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.compose.MarkdownContentSelectable
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
@@ -29,6 +30,7 @@ import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.web.utils.WebAssetSources
+import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.help
 import legado.shared.generated.resources.ok
@@ -49,13 +51,19 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun HelpDialog(fileName: String, onDismiss: () -> Unit) {
     val colors = AppTheme.colors
-    var content by remember(fileName) { mutableStateOf("") }
+    var content by remember(fileName) {
+        mutableStateOf("")
+    }
     LaunchedEffect(fileName) {
-        content = runCatching {
-            WebAssetSources.get().read("web/help/md/$fileName.md").decodeToString()
-        }.getOrElse {
-            AppLog.put("读取帮助文档失败 $fileName", it)
-            it.message.orEmpty()
+        // 同步读文件不能卡主线程 (用户反馈点击"文档"卡一下): 切 IO 线程读,
+        // 完成回主线程更新状态 (LaunchedEffect 协程体默认跑主线程, 读 IO 必须显式切)
+        content = withContext(IoDispatcher) {
+            runCatching {
+                WebAssetSources.get().read("web/help/md/$fileName.md").decodeToString()
+            }.getOrElse {
+                AppLog.put("读取帮助文档失败 $fileName", it)
+                it.message.orEmpty()
+            }
         }
     }
     AppDialog(onDismissRequest = onDismiss, properties = AppDialogSizes.properties()) {

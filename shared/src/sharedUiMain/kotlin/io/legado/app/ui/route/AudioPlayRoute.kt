@@ -19,14 +19,13 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.IntentData
-import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.migrateTo
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
-import io.legado.app.help.sourceLoginOverlayPayload
+import io.legado.app.help.showSourceLogin
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.audio.AudioPlayOverflowActions
@@ -37,7 +36,6 @@ import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.root.AppNavigator
-import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
@@ -168,17 +166,14 @@ fun AudioPlayRoute(
     val overflowActions = AudioPlayOverflowActions(
         hasLogin = source?.hasLogin() == true,
         onLogin = {
-            // 对照 BookInfoRoute/MainRoute: 纯 Overlay 弹登录对话框, 不走平台专属 showBookSourceLogin
-            // 带上书与当前章, 供登录 JS 绑定 (对照原版 menu_login 预置 IntentData.book/chapter)
+            // 统一登录入口: URL 登录桌面端直开登录窗口 (2026-08-07);
+            // 表单登录弹 Overlay, 带上书与当前章 (对照原版 menu_login 预置 IntentData.book/chapter)
             source?.let {
-                val dataKey = SourceLoginContext.put(
-                    it, AudioPlayShared.book, AudioPlayShared.durChapter
-                )
-                navigator.showOverlay(
-                    AppOverlay.Dialog(
-                        key = "sourceLogin",
-                        payload = sourceLoginOverlayPayload(it.bookSourceUrl, dataKey),
-                    )
+                showSourceLogin(
+                    it.bookSourceUrl,
+                    it,
+                    AudioPlayShared.book,
+                    AudioPlayShared.durChapter
                 )
             }
         },

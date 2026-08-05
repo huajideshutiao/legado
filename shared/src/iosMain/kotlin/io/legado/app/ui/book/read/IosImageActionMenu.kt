@@ -5,12 +5,12 @@ package io.legado.app.ui.book.read
 import io.legado.app.help.topMostViewController
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCAction
-import kotlinx.cinterop.Selector
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSData
 import platform.Foundation.NSNotificationCenter
+import platform.Foundation.NSSelectorFromString
 import platform.Foundation.create
 import platform.UIKit.UIApplication
 import platform.UIKit.UIColor
@@ -25,8 +25,11 @@ import platform.UIKit.UITapGestureRecognizer
 import platform.UIKit.UIView
 import platform.UIKit.UIViewAutoresizingFlexibleHeight
 import platform.UIKit.UIViewAutoresizingFlexibleWidth
-import platform.UIKit.UIViewContentModeScaleAspectFit
+import platform.UIKit.UIViewContentMode
 import platform.UIKit.UIViewController
+import platform.darwin.NSObject
+import kotlinx.cinterop.CPointer
+import kotlinx.cinterop.CPointed
 
 /**
  * iOS 图片长按浮动菜单（平台原生实现 = UIMenuController + responder 链，
@@ -42,9 +45,9 @@ object IosImageActionMenu {
 
     private val menuItems by lazy {
         listOf(
-            UIMenuItem(title = "查看", action = Selector("menuView:")),
-            UIMenuItem(title = "刷新", action = Selector("menuRefresh:")),
-            UIMenuItem(title = "保存到相册", action = Selector("menuSave:")),
+            UIMenuItem(title = "查看", action = NSSelectorFromString("menuView:")),
+            UIMenuItem(title = "刷新", action = NSSelectorFromString("menuRefresh:")),
+            UIMenuItem(title = "保存到相册", action = NSSelectorFromString("menuSave:")),
         )
     }
 
@@ -70,10 +73,12 @@ object IosImageActionMenu {
         window.addSubview(target)
         target.becomeFirstResponder()
         UIMenuController.sharedMenuController.setMenuItems(menuItems)
-        UIMenuController.sharedMenuController.showMenuFromRect(
+        // showMenuFromRect 在 K/N 2.3 绑定不可用, 用两步式 setTargetRect + setMenuVisible
+        UIMenuController.sharedMenuController.setTargetRect(
             CGRectMake(anchorX.toDouble(), anchorY.toDouble(), 40.0, 40.0),
             inView = target,
         )
+        UIMenuController.sharedMenuController.setMenuVisible(true, animated = true)
         showing = true
         installHideObserver()
     }
@@ -120,19 +125,20 @@ object IosImageActionMenu {
 
         override fun canBecomeFirstResponder(): Boolean = true
 
-        override fun canPerformAction(action: Selector, withSender sender: Any?): Boolean =
-            action == Selector("menuView:") ||
-                action == Selector("menuRefresh:") ||
-                action == Selector("menuSave:")
+        override fun canPerformAction(action: CPointer<out CPointed>?, withSender: Any?): Boolean =
+            action == NSSelectorFromString("menuView:") ||
+                action == NSSelectorFromString("menuRefresh:") ||
+                action == NSSelectorFromString("menuSave:")
+
+        // @ObjCAction 方法参数必须是 ObjC 对象类型 (K/N 限制), Any? 不受支持
+        @ObjCAction
+        fun menuView(sender: NSObject?) = fire("view")
 
         @ObjCAction
-        fun menuView(sender: Any?) = fire("view")
+        fun menuRefresh(sender: NSObject?) = fire("refresh")
 
         @ObjCAction
-        fun menuRefresh(sender: Any?) = fire("refresh")
-
-        @ObjCAction
-        fun menuSave(sender: Any?) = fire("save")
+        fun menuSave(sender: NSObject?) = fire("save")
     }
 }
 
@@ -149,31 +155,32 @@ internal fun showIosImagePreview(image: UIImage) {
 private class ImagePreviewViewController(image: UIImage) : UIViewController() {
 
     private val imageView = UIImageView(image = image).apply {
-        contentMode = UIViewContentModeScaleAspectFit
-        autoresizingMask = UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight
+        // K/N 2.3 UIKit 属性绑定为方法形式 (setContentMode/setAutoresizingMask)
+        setContentMode(UIViewContentMode.UIViewContentModeScaleAspectFit)
+        setAutoresizingMask(UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight)
     }
 
     init {
         // 全屏展示（默认 .automatic 在部分上下文会变成 pageSheet 卡片样式，预览图应整屏）
-        modalPresentationStyle = UIModalPresentationFullScreen
+        setModalPresentationStyle(UIModalPresentationFullScreen)
     }
 
     override fun viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor.blackColor
-        imageView.frame = view.bounds
+        view.setBackgroundColor(UIColor.blackColor)
+        imageView.setFrame(view.bounds)
         view.addSubview(imageView)
         // 点按任意位置关闭（对照原版 PhotoDialog 点击关闭）
         view.addGestureRecognizer(
             UITapGestureRecognizer(
                 target = this,
-                action = Selector("handleTap:")
+                action = NSSelectorFromString("handleTap:")
             )
         )
     }
 
     @ObjCAction
-    fun handleTap(sender: Any?) {
+    fun handleTap(sender: NSObject?) {
         dismissViewControllerAnimated(true, completion = null)
     }
 }

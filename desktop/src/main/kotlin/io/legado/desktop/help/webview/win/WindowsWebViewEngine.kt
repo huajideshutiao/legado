@@ -4,6 +4,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.http.CookieStoreProviders
+import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.toast.Toasters
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.browseUrl
@@ -249,7 +250,13 @@ private class WebView2WindowHandle(
             visible = true,
             title = request.title,
             bottomSheet = request.bottomSheet,
-            toolbarSpec = WebView2ToolbarSpec(request.title, request.isLogin, request.saveResult),
+            toolbarSpec = WebView2ToolbarSpec(
+                request.title,
+                request.isLogin,
+                request.saveResult,
+                request.rssActions,
+                request.cookieTag,
+            ),
         )
         if (created == null) {
             AppLog.put("WebView2 窗口创建失败: ${request.title}")
@@ -264,6 +271,8 @@ private class WebView2WindowHandle(
         currentUrl = request.url
         request.userAgent?.let { created.setUserAgent(it) }
         created.toolbar?.onAction = { action -> onToolbarAction(created, action) }
+        // RSS 收藏态反推: shared 侧书架操作完成后经 onStarChanged 更新窗口星图标
+        request.rssActions?.onStarChanged = { starred -> created.toolbar?.setStarred(starred) }
         created.onNavigationStarting = { _, _ ->
             created.toolbar?.setLoading(true)
             scheduleNavTimeout(created)
@@ -374,9 +383,54 @@ private class WebView2WindowHandle(
                 browseUrl(currentUrl ?: request.url)
             }
 
+            // RSS 模式按钮 (2026-08-07: RSS 阅读去页面外壳, 功能移入窗口工具栏)
+            ToolbarAction.STAR_TOGGLE -> request.rssActions?.onStarToggle()
+
+            ToolbarAction.READ_ALOUD -> request.rssActions?.onReadAloud {
+                // 页面还活着时抓 outerHTML (对照原版 readAloud 的 evaluateJavascript)
+                runCatching {
+                    unwrapScriptResult(
+                        created.executeScript(WindowsWebViewEngine.DEFAULT_JS, AppConst.timeLimit)
+                    )
+                }.getOrNull()
+            }
+
+            ToolbarAction.SHARE -> request.rssActions?.onShare()
+
+            ToolbarAction.LOGIN -> request.rssActions?.onLogin()
+
             ToolbarAction.OK -> onOkPressed(created)
 
+            // 禁用源 (对照原版 menu_disable_source → viewModel.disableSource { finish() }):
+            // 成功后关窗, 失败记录日志不关窗 (窗口仍可继续用)
+            ToolbarAction.DISABLE_SOURCE -> onDisableSource()
+
+            // 删除源 (对照原版 menu_delete_source → alert 确认后 deleteSource { finish() })
+            ToolbarAction.DELETE_SOURCE -> onDeleteSource(created)
+
             ToolbarAction.CLOSE -> close()
+        }
+    }
+
+    /** 禁用源: 直接执行 (对照原版无确认), 成功后关窗。 */
+    private fun onDisableSource() {
+        val key = request.cookieTag ?: return
+        scope.launch {
+            runCatching { SourceHelp.enableSource(key, request.sourceType, false) }
+                .onSuccess { close() }
+                .onFailure { AppLog.put("禁用书源失败: $key", it) }
+        }
+    }
+
+    /** 删除源: 先弹确认 (sure_del + 源名, 对照原版 alert), 确认后执行, 成功后关窗。 */
+    private fun onDeleteSource(created: WebView2Instance) {
+        val key = request.cookieTag ?: return
+        val name = request.sourceName.ifBlank { key }
+        if (!created.confirmDelete("是否确认删除？\n$name")) return
+        scope.launch {
+            runCatching { SourceHelp.deleteSource(key, request.sourceType) }
+                .onSuccess { close() }
+                .onFailure { AppLog.put("删除书源失败: $key", it) }
         }
     }
 

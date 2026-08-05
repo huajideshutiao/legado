@@ -3,8 +3,8 @@ package io.legado.desktop.ui.component
 import com.sun.jna.Function
 import com.sun.jna.Memory
 import com.sun.jna.Native
-import com.sun.jna.Pointer
 import com.sun.jna.Platform
+import com.sun.jna.Pointer
 import com.sun.jna.WString
 import com.sun.jna.platform.win32.Guid
 import com.sun.jna.platform.win32.Ole32
@@ -13,6 +13,7 @@ import com.sun.jna.ptr.IntByReference
 import com.sun.jna.ptr.PointerByReference
 import com.sun.jna.win32.StdCallLibrary
 import com.sun.jna.win32.W32APIOptions
+import io.legado.desktop.ui.component.WindowsFileDialogs.vtbl
 import java.awt.EventQueue
 import java.awt.Toolkit
 import java.awt.Window
@@ -66,8 +67,10 @@ internal object WindowsFileDialogs {
     private const val VT_SET_DEFAULT_EXTENSION = 22
     private const val VT_RELEASE = 2
 
-    // IFileOpenDialog::GetResults (IFileDialog 之后第一个新增方法)
-    private const val VT_GET_RESULTS = 27
+    // IFileOpenDialog::GetResults (IFileDialog 方法到 27=GetFilter 为止, 共 28 项 vtable
+    // 0..27; GetResults 是 IFileOpenDialog 第一个新增方法 = 28)
+    // 2026-08 修正: 此前 27 实际是 GetFilter, 多选结果会读到过滤器数据
+    private const val VT_GET_RESULTS = 28
 
     // IShellItem::GetDisplayName
     private const val VT_ITEM_GET_DISPLAY_NAME = 5

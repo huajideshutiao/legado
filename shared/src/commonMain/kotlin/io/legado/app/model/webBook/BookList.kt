@@ -2,7 +2,7 @@ package io.legado.app.model.webBook
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookListPage
-import io.legado.app.data.entities.IBookSource
+import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.rule.BookListRule
 import io.legado.app.data.entities.rule.ExploreKind
@@ -26,18 +26,18 @@ import kotlinx.coroutines.ensureActive
  * 获取书籍列表
  *
  * W3-e: 从 app 下沉到 shared jvmAndAndroidMain, 现下沉到 commonMain。
- * - bookSource 参数类型 BookSource → IBookSource (BookSource 实现 IBookSource, 调用方无需改)
+ * - bookSource 参数类型直接用 shared commonMain 的 BookSource 实体 (webBook 编排层与实体同模块)
  * - Debug.log(key, msg, state) → SourceDebugLoggers.impl?.log(key, msg, state)
  * - AnalyzeRule → AnalyzeRuleFactories.create (各端注册工厂返回平台子类补全 JsExtensions 面, 未注册端裸 AnalyzeRuleCore)
  * - analyzeUrl 参数类型 AnalyzeUrl → AnalyzeUrlCore (app 端 AnalyzeUrl 继承 AnalyzeUrlCore, 调用方传 AnalyzeUrl 实例向上转型)
  * - WebBook.parseRulePrefix/parseBoolean → WebBookRuleUtils (解除对 WebBook object 的直接依赖)
- * - bookSource.getBookType()/exploreKindsJson() → IBookSource 成员方法 (BookSource 实现 IBookSource)
+ * - bookSource.getBookType()/exploreKindsJson() 为 BookSource 成员方法 (原扩展函数提升, 行为不变)
  */
 object BookList {
 
     @Throws(Exception::class)
     suspend fun analyzeBookList(
-        bookSource: IBookSource,
+        bookSource: BookSource,
         ruleData: RuleData,
         analyzeUrl: AnalyzeUrlCore,
         baseUrl: String,
@@ -156,7 +156,7 @@ object BookList {
 
     @Throws(Exception::class)
     private suspend fun getInfoItem(
-        bookSource: IBookSource,
+        bookSource: BookSource,
         analyzeRule: AnalyzeRuleCore,
         analyzeUrl: AnalyzeUrlCore,
         body: String,
@@ -196,7 +196,7 @@ object BookList {
 
     @Throws(Exception::class)
     private suspend fun getSearchItem(
-        bookSource: IBookSource,
+        bookSource: BookSource,
         analyzeRule: AnalyzeRuleCore,
         item: Any,
         baseUrl: String,
@@ -293,7 +293,7 @@ object BookList {
         return null
     }
 
-    private fun checkExploreJson(bookSource: IBookSource) {
+    private fun checkExploreJson(bookSource: BookSource) {
         // 仅调试窗口打开时才做严格 JSON 校验; Debug.callback 常驻为 null, 用它而非
         // SourceDebugLoggers.impl (宿主常驻注册, 会让每次发现页解析都白跑一遍双栈解析)
         if (Debug.callback == null) {

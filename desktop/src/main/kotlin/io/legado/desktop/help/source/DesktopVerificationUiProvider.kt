@@ -160,6 +160,9 @@ object DesktopVerificationUiProvider : VerificationUiProvider {
                 // 否则验证站点拿到的 UA 与后续 HTTP 重拉不一致, cookie 可能失效
                 userAgent = headerMap?.get(AppConst.UA_NAME),
                 cookieTag = sourceKey,
+                // 书源菜单 (2026-08-08): 真实源类型/源名, 禁用/删除源动作与确认弹窗用
+                sourceType = source.getSourceType(),
+                sourceName = source.getTag(),
                 // 置底半屏语义 (对照 app 端 JsActivity 的 BottomSheetDialog)
                 bottomSheet = asBottomSheet,
                 // 窗口带 CustomTab 式工具栏; startBrowser 无 isLogin 语义 (登录走

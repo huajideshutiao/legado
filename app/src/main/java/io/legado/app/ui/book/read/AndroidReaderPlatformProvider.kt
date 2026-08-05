@@ -31,7 +31,6 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.AppWebDav
-import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.TTS
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.ContentProcessor
@@ -46,7 +45,7 @@ import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.ThemeConfigProviders
-import io.legado.app.help.sourceLoginOverlayPayload
+import io.legado.app.help.showSourceLogin
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.model.CacheBook
 import io.legado.app.model.ReadAloud
@@ -61,7 +60,6 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
-import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.toRouteRef
@@ -156,6 +154,14 @@ class AndroidReaderPlatformProvider(
             onSearchContent = onSearchContent(screenModel),
             onShare = onShare(screenModel),
         )
+    }
+
+    /**
+     * 页内选区已消失（点按取消选择/翻页/重排等任意路径）：收起浮动文本操作菜单
+     * （对照原版 onCancelSelect → textActionMenu.dismiss）。幂等：菜单未显示时无操作。
+     */
+    override fun onTextSelectionDismissed(screenModel: ReaderScreenModel) {
+        activity.dismissReaderTextActionMenu()
     }
 
     /**
@@ -277,6 +283,9 @@ class AndroidReaderPlatformProvider(
             activeMenuState?.second?.stopAutoPage()
             activeMenuState = null
         }
+        // 退出阅读页: 收起文本操作浮动菜单 (对照原版 onDestroy → textActionMenu.dismiss),
+        // 否则 ActionMode 悬在 decorView 上残留
+        activity.dismissReaderTextActionMenu()
     }
 
     override fun readAloudControls(
@@ -567,19 +576,13 @@ private class AndroidReaderMenuState(
         when (action) {
             SourceAction.LOGIN -> {
                 val source = screenModel.viewModel.bookSource.value ?: return
-                // 带上当前书与当前章, 供登录 JS 的 book/chapter 绑定 (对照原版 showLogin 预置 IntentData)
-                val dataKey = SourceLoginContext.put(
+                // 统一登录入口 (shared): Android 端 URL 登录仍弹 Overlay 对话框 (与原行为一致),
+                // 带上当前书与当前章 (对照原版 showLogin 预置 IntentData)
+                showSourceLogin(
+                    source.getKey(),
                     source,
                     screenModel.currentBook,
                     screenModel.currentChapter,
-                )
-                // 纯 Overlay 弹登录对话框, 不推新路由; 表单/URL 两条分支由
-                // SourceLoginOverlayContent 统一分发 (对照原版 showLoginDialog)
-                navigator.showOverlay(
-                    AppOverlay.Dialog(
-                        key = "sourceLogin",
-                        payload = sourceLoginOverlayPayload(source.getKey(), dataKey),
-                    )
                 )
             }
 

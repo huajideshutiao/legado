@@ -7,12 +7,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,20 +29,20 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.config.LocalReadConfigProviders
+import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.config.ReadTipConfigShared
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
+import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
+import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.platform.rememberColor
+import io.legado.app.ui.preview.LegadoThemePreview
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.systemCurrentTimeMillis
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.help.config.ReadConfigProviders
-import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * KMP 版阅读页面视图：用 Compose 替代 app 端 `PageView` (FrameLayout + ViewBookPageBinding)。
@@ -49,8 +55,10 @@ import io.legado.app.ui.preview.LegadoThemePreview
  * - 底部 tip：[FooterTip] 显示页码/进度（按 [ReadTipConfigShared] 6 槽位配置）
  * - 电池图标：[BatteryIndicator] 显示电池百分比
  *
- * 与 app 端差异：状态栏/导航栏 padding 由调用方（桌面窗口 Composable）决定，
- * 本 Composable 不强制 statusBarsPadding（桌面端无 Android WindowInsets）。
+ * 与 app 端差异：状态栏/导航栏避让在本 Composable 内部完成（内容层
+ * [platformStatusBarPadding] + 导航栏 bottom inset，等价 app 端 vwStatusBar/vwNavigationBar
+ * 占位 View），背景层仍铺满全窗（含系统栏区域，显示阅读背景色）；
+ * 桌面端无系统栏 inset，避让恒为 no-op。
  *
  * @param textPage 当前页内容，null 时显示加载占位
  * @param batteryLevel 电池电量 0-100，传 -1 表示不显示
@@ -127,111 +135,124 @@ fun PageViewComposable(
             )
         }
 
-        if (contentTranslationY != null) {
-            // 滚动模式: 正文固定视口裁剪 + 行级平移 (对照旧 canvas.clipRect(visibleRect) +
-            // withTranslation(0f, pageOffset))。裁剪在平移外层, 视口边界不随内容移动。
-            val clipTop = textPage?.paddingTop?.toFloat() ?: 0f
-            val clipBottom = textPage?.visibleBottom?.toFloat() ?: Float.MAX_VALUE
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .drawWithContent {
-                        // clipRect 块内 receiver 为 DrawScope, drawContent 需显式指定外层
-                        // ContentDrawScope receiver (K2 不隐式回退到外层接收者)
-                        clipRect(
-                            left = 0f,
-                            top = clipTop,
-                            right = size.width,
-                            bottom = clipBottom
-                        ) {
-                            this@drawWithContent.drawContent()
-                        }
-                    }
-            ) {
+        // 状态栏/导航栏避让层（对照原版 PageView 的 vwStatusBar/vwNavigationBar 占位 View：
+        // 背景由外层 Box 铺满（含系统栏区域，显示阅读背景色），本层正文/页眉/页脚整体
+        // 避让系统栏；系统栏隐藏时 inset=0，内容自然顶到窗口边，等价原版 hideStatusBar/
+        // hideNavigationBar 配置下占位 View isGone。桌面端无系统栏 inset，恒为 no-op。
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .platformStatusBarPadding()
+                .windowInsetsPadding(
+                    WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)
+                )
+        ) {
+            if (contentTranslationY != null) {
+                // 滚动模式: 正文固定视口裁剪 + 行级平移 (对照旧 canvas.clipRect(visibleRect) +
+                // withTranslation(0f, pageOffset))。裁剪在平移外层, 视口边界不随内容移动。
+                val clipTop = textPage?.paddingTop?.toFloat() ?: 0f
+                val clipBottom = textPage?.visibleBottom?.toFloat() ?: Float.MAX_VALUE
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        // 绘制阶段读取偏移: 滚动热路径只失效图层, 不触发重组
-                        .graphicsLayer {
-                            translationY = contentTranslationY()
+                        .drawWithContent {
+                            // clipRect 块内 receiver 为 DrawScope, drawContent 需显式指定外层
+                            // ContentDrawScope receiver (K2 不隐式回退到外层接收者)
+                            clipRect(
+                                left = 0f,
+                                top = clipTop,
+                                right = size.width,
+                                bottom = clipBottom
+                            ) {
+                                this@drawWithContent.drawContent()
+                            }
                         }
                 ) {
-                    textPage?.let {
-                        PageContentCanvas(
-                            textPage = it,
-                            modifier = Modifier.fillMaxSize(),
-                            style = style,
-                            onClick = onClick,
-                            onLongClick = onLongClick,
-                            drawTick = drawTick,
-                            selection = selection,
-                        )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            // 绘制阶段读取偏移: 滚动热路径只失效图层, 不触发重组
+                            .graphicsLayer {
+                                translationY = contentTranslationY()
+                            }
+                    ) {
+                        textPage?.let {
+                            PageContentCanvas(
+                                textPage = it,
+                                modifier = Modifier.fillMaxSize(),
+                                style = style,
+                                onClick = onClick,
+                                onLongClick = onLongClick,
+                                drawTick = drawTick,
+                                selection = selection,
+                            )
+                        }
                     }
                 }
+            } else {
+                // 非滚动模式: 原样渲染 (零额外层开销)
+                textPage?.let {
+                    PageContentCanvas(
+                        textPage = it,
+                        modifier = Modifier.fillMaxSize(),
+                        style = style,
+                        onClick = onClick,
+                        onLongClick = onLongClick,
+                        drawTick = drawTick,
+                        selection = selection,
+                    )
+                }
             }
-        } else {
-            // 非滚动模式: 原样渲染 (零额外层开销)
-            textPage?.let {
-                PageContentCanvas(
-                    textPage = it,
-                    modifier = Modifier.fillMaxSize(),
-                    style = style,
-                    onClick = onClick,
-                    onLongClick = onLongClick,
-                    drawTick = drawTick,
-                    selection = selection,
+
+            // 顶部 tip：锚定顶部，行高 = 排版预留的页眉高度
+            if (showChrome) {
+                HeaderTip(
+                    textPage = textPage,
+                    readTipConfig = readTipConfig,
+                    textColor = style.tipColor,
+                    batteryLevel = batteryLevel,
+                    clockText = clockText,
+                    heightPx = headerTipHeight,
+                    startPaddingDp = readBookConfig.headerPaddingLeft,
+                    endPaddingDp = readBookConfig.headerPaddingRight,
+                    modifier = Modifier.align(Alignment.TopCenter),
                 )
             }
-        }
 
-        // 顶部 tip：锚定顶部，行高 = 排版预留的页眉高度
-        if (showChrome) {
-            HeaderTip(
-                textPage = textPage,
-                readTipConfig = readTipConfig,
-                textColor = style.tipColor,
-                batteryLevel = batteryLevel,
-                clockText = clockText,
-                heightPx = headerTipHeight,
-                startPaddingDp = readBookConfig.headerPaddingLeft,
-                endPaddingDp = readBookConfig.headerPaddingRight,
-                modifier = Modifier.align(Alignment.TopCenter),
-            )
-        }
+            // 页眉分割线：贴合页眉底边（对照 app 端 vw_top_divider）
+            if (showChrome && readTipConfig.headerMode != 2 && readBookConfig.showHeaderLine) {
+                TipDivider(
+                    color = tipDividerColor,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = with(density) { headerTipHeight.toDp() }),
+                )
+            }
 
-        // 页眉分割线：贴合页眉底边（对照 app 端 vw_top_divider）
-        if (showChrome && readTipConfig.headerMode != 2 && readBookConfig.showHeaderLine) {
-            TipDivider(
-                color = tipDividerColor,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = with(density) { headerTipHeight.toDp() }),
-            )
-        }
+            // 底部 tip：锚定底部，行高 = 排版预留的页脚高度
+            if (showChrome) {
+                FooterTip(
+                    textPage = textPage,
+                    readTipConfig = readTipConfig,
+                    textColor = style.tipColor,
+                    batteryLevel = batteryLevel,
+                    clockText = clockText,
+                    heightPx = footerTipHeight,
+                    startPaddingDp = readBookConfig.footerPaddingLeft,
+                    endPaddingDp = readBookConfig.footerPaddingRight,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+            }
 
-        // 底部 tip：锚定底部，行高 = 排版预留的页脚高度
-        if (showChrome) {
-            FooterTip(
-                textPage = textPage,
-                readTipConfig = readTipConfig,
-                textColor = style.tipColor,
-                batteryLevel = batteryLevel,
-                clockText = clockText,
-                heightPx = footerTipHeight,
-                startPaddingDp = readBookConfig.footerPaddingLeft,
-                endPaddingDp = readBookConfig.footerPaddingRight,
-                modifier = Modifier.align(Alignment.BottomCenter),
-            )
-        }
-
-        // 页脚分割线：贴合页脚顶边（对照 app 端 vw_bottom_divider）
-        if (showChrome && readTipConfig.footerMode != 1 && readBookConfig.showFooterLine) {
-            TipDivider(
-                color = tipDividerColor,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = with(density) { footerTipHeight.toDp() }),
-            )
+            // 页脚分割线：贴合页脚顶边（对照 app 端 vw_bottom_divider）
+            if (showChrome && readTipConfig.footerMode != 1 && readBookConfig.showFooterLine) {
+                TipDivider(
+                    color = tipDividerColor,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = with(density) { footerTipHeight.toDp() }),
+                )
+            }
         }
     }
 }

@@ -319,7 +319,10 @@ private class AndroidVideoGestureHandler(
         private set
     private var position = 0L
     private val screenWidth get() = Resources.getSystem().displayMetrics.widthPixels
-    private val screenHeight = 350.dpToPx()
+
+    // 手势响应区高度: 350dp 转 px; onGestureMove 的 height 参数为 Float (共享调整器签名),
+    // dpToPx 返回 Int, 需显式转 Float (对照桌面端 Mediamp 实现传 Float)
+    private val screenHeight = 350f.dpToPx()
     private var gestureMode = AndroidGestureMode.NONE
     private var startX = 0f
     private var startY = 0f

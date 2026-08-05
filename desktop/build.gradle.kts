@@ -8,18 +8,28 @@ plugins {
     id("legado.compose")
 }
 
-// CPF 0.4.0 的 root metadata 只发布 Android/iOS/OHOS 变体，Desktop JVM 继续使用同基线的
-// JetBrains 1.9.2 平台制品 (与 shared/build.gradle.kts 同款 resolutionStrategy 对齐)
+// CPF 的 root metadata 只发布 Android/iOS/OHOS 变体，Desktop JVM 继续使用同基线的
+// JetBrains 平台制品 (与 shared/build.gradle.kts 同款 resolutionStrategy 对齐);
+// 版本从 catalog 读取 (显式索引避免点分歧义), 禁止硬编码
 val isHarmonyMode = providers.gradleProperty("enableOhosTarget").getOrNull() == "true"
-val activeComposeVersion = if (isHarmonyMode) "1.9.2-0.4.0" else "1.7.1"
+// catalog 经 rootProject 的 VersionCatalogsExtension 访问 (与 build-logic 同款模式)
+private val ohosCatalog =
+    rootProject.extensions.getByType<VersionCatalogsExtension>().named("libs")
+
+private fun ohosVersion(key: String): String =
+    ohosCatalog.findVersion(key).get().requiredVersion
+
+val activeComposeVersion =
+    if (isHarmonyMode) ohosVersion("composeMultiplatform-ohos") else "1.7.1"
 
 configurations.configureEach {
     resolutionStrategy.eachDependency {
         if (requested.group.startsWith("org.jetbrains.compose") &&
             requested.version == activeComposeVersion
         ) {
-            useVersion("1.9.2")
-            because("CPF 0.4.0 does not publish Desktop JVM variants")
+            // CPF 基线 (如 1.9.2-0.5.0-25) 的 Desktop JVM 平台制品 = 主版本 (1.9.2)
+            useVersion(activeComposeVersion.substringBefore("-"))
+            because("CPF does not publish Desktop JVM variants")
         }
     }
 }
@@ -133,6 +143,8 @@ dependencies {
 
     // 测试: WebView2 消息泵/环境/窗口创建闭环验证 (修复"startBrowser 首次调用打不开")
     testImplementation(libs.junit)
+    // Compose UI 测试 (官方: compose.desktop.uiTestJUnit4, runComposeUiTest)
+    testImplementation(compose.desktop.uiTestJUnit4)
 }
 
 // Compose Desktop 统一配置入口 (mainClass + nativeDistributions)

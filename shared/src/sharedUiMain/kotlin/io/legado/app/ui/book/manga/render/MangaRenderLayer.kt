@@ -67,7 +67,21 @@ fun MangaRenderLayer(
     LaunchedEffect(state) {
         // 居中页变化(原 onScrolled + findCenterViewPosition)
         launch {
-            snapshotFlow { state.centerItemIndex() }
+            snapshotFlow {
+                // 布局与 items 可能分帧更新: 中心条目的 key 必须与当前 items 在相同 index 上
+                // 一致, 否则是 items 重建窗口内的过期布局 —— 返回 -1 抑制, 防错位条目误触发
+                // 跨章/进度回退 (重建完成后下一帧布局与 items 对齐, 自然恢复上报)
+                val li = state.listState.layoutInfo
+                val center = (li.viewportStartOffset + li.viewportEndOffset) / 2
+                val info = li.visibleItemsInfo.firstOrNull {
+                    center >= it.offset && center < it.offset + it.size
+                }
+                if (info != null && state.items.getOrNull(info.index)?.listKey() == info.key) {
+                    info.index
+                } else {
+                    -1
+                }
+            }
                 .distinctUntilChanged()
                 .collect { if (it != -1) state.onCenterItemChanged(it) }
         }
@@ -92,7 +106,10 @@ fun MangaRenderLayer(
     LaunchedEffect(pendingScroll) {
         if (pendingScroll != null) {
             val max = (state.items.size - 1).coerceAtLeast(0)
-            state.listState.scrollToItem(pendingScroll.index.coerceIn(0, max))
+            state.listState.scrollToItem(
+                pendingScroll.index.coerceIn(0, max),
+                pendingScroll.scrollOffset,
+            )
             state.pendingScroll = null
             pendingScroll.onApplied?.invoke()
         }
@@ -155,12 +172,7 @@ private fun LazyListScope.mangaItems(
     val list = state.items
     items(
         count = list.size,
-        key = { i ->
-            when (val item = list[i]) {
-                is MangaPage -> "p:${item.chapterIndex}:${item.index}"
-                else -> "l:${item.chapterIndex}"
-            }
-        },
+        key = { i -> list[i].listKey() },
         contentType = { i -> if (list[i] is MangaPage) 1 else 0 },
     ) { i ->
         when (val item = list[i]) {

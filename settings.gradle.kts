@@ -29,11 +29,20 @@ dependencyResolutionManagement {
     // "插件已在 classpath" 校验之后, 会让 :app 的 alias() 请求与根项目版本对不上而失败。
     if (enableOhosTarget) {
         versionCatalogs.create("libs") {
-            // 与 libs.versions.toml 的 kotlin-ohos / composeMultiplatform-ohos 保持一致
-            version("kotlin", "2.2.21-0.4.0")
-            version("composeMultiplatform", "1.9.2-0.4.0")
+            // 版本从 gradle/libs.versions.toml 读取 (单数据源, 无硬编码)
+            val tomlText = file("gradle/libs.versions.toml").readText()
+            version("kotlin", tomlVersionOf(tomlText, "kotlin-ohos"))
+            version("composeMultiplatform", tomlVersionOf(tomlText, "composeMultiplatform-ohos"))
         }
     }
+}
+
+/** 从 libs.versions.toml 读取版本键值 (settings 阶段无 catalog 访问, 直接解析文本)。 */
+private fun tomlVersionOf(toml: String, key: String): String {
+    val match = Regex("""^\s*$key\s*=\s*"([^"]+)"""", RegexOption.MULTILINE)
+        .find(toml)
+        ?: error("gradle/libs.versions.toml 缺少版本键: $key")
+    return match.groupValues[1]
 }
 rootProject.name = "legado"
 

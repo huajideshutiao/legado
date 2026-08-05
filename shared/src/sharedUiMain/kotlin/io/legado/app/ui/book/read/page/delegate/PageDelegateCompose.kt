@@ -10,8 +10,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.page.AutoPagerCompose
-import io.legado.app.ui.book.read.page.PageDelegateShared
 import io.legado.app.ui.book.read.page.MouseDragDelegate
+import io.legado.app.ui.book.read.page.PageDelegateShared
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import kotlinx.coroutines.CoroutineScope
@@ -136,7 +136,9 @@ abstract class PageDelegateCompose(
     }
 
     override fun keyTurnPage(direction: PageDirectionShared) {
-        if (isRunning) return
+        // 不做 isRunning 拦截: 动画进行中的按键由子类 nextPageByAnim/prevPageByAnim 内部的
+        // abortAnim 打断重翻 (对照原版 keyTurnPage → nextPageByAnim → abortAnim 语义), 否则
+        // 快速连按时动画未结束的合法按键会被静默丢弃 (表现为"只能按一下")。
         when (direction) {
             PageDirectionShared.NEXT -> nextPageByAnim(animationSpeed)
             PageDirectionShared.PREV -> prevPageByAnim(animationSpeed)

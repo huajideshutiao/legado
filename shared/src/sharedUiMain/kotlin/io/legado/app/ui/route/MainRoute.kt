@@ -63,8 +63,7 @@ import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfigAccessor
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
-import io.legado.app.help.SourceLoginContext
-import io.legado.app.help.sourceLoginOverlayPayload
+import io.legado.app.help.showSourceLogin
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.ui.about.AppLogDialog
@@ -103,9 +102,10 @@ import io.legado.app.ui.main.home.HomeTabManageDialog
 import io.legado.app.ui.main.home.homeSectionKey
 import io.legado.app.ui.main.my.MyConfigScreen
 import io.legado.app.ui.root.AppNavigator
-import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.LocalPlatformCapabilities
+import io.legado.app.ui.root.MainTab
+import io.legado.app.ui.root.MainTabSwitcher
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResults
@@ -201,6 +201,21 @@ fun MainRoute(
     // 对照 MainActivity.pageSelections: 页面跳转指令流 (index to smooth)
     val pageSelections: MutableSharedFlow<Pair<Int, Boolean>> =
         remember { MutableSharedFlow(extraBufferCapacity = 4) }
+
+    // 外部切 tab 请求 (桌面端控制栏菜单等): MainTab → 当前可见 tag 列表 index → 平滑滚动
+    // (目标 tab 被隐藏时 indexOf 为 -1, 忽略请求; 与 reselect 语义一致)
+    LaunchedEffect(visibleTags) {
+        MainTabSwitcher.flow.collect { tab ->
+            val tag = when (tab) {
+                MainTab.HOME -> BottomNavTag.HOME
+                MainTab.BOOKSHELF -> BottomNavTag.BOOKSHELF
+                MainTab.DISCOVERY -> BottomNavTag.DISCOVERY
+                MainTab.MY -> BottomNavTag.MY
+            }
+            val index = visibleTags.indexOf(tag)
+            if (index >= 0) pageSelections.tryEmit(index to true)
+        }
+    }
 
     // 对照 MainActivity.currentPage: pager 当前页 (返回键/reselect 判定)
     // rememberSaveable: 配合 LegadoApp 的 SaveableStateHolder, 返回主界面时恢复 tab 位置
@@ -1073,13 +1088,8 @@ private fun ExploreTabContent(
             }
 
             override fun onLogin(source: BookSourcePart) {
-                // 纯 Overlay 弹登录对话框, 不推新路由 (源按 bookSourceUrl 查库)
-                navigator.showOverlay(
-                    AppOverlay.Dialog(
-                        key = "sourceLogin",
-                        payload = sourceLoginOverlayPayload(source.bookSourceUrl),
-                    )
-                )
+                // 统一登录入口: URL 登录桌面端直开登录窗口, 不弹对话框 (2026-08-07)
+                showSourceLogin(source.bookSourceUrl)
             }
 
             override fun onSearchBook(source: BookSourcePart) {

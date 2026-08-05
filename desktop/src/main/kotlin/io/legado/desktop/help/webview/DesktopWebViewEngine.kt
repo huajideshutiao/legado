@@ -1,5 +1,7 @@
 package io.legado.desktop.help.webview
 
+import io.legado.app.constant.SourceType
+import io.legado.app.help.RssToolbarActions
 import io.legado.app.utils.EscapeUtils
 
 /**
@@ -82,10 +84,19 @@ class WebViewFetchResult(
  * @param isLogin 登录页语义 (对照 WebViewActivity isLogin): "确定"按钮走 check_host_cookie
  * @param saveResult 验证语义 (对照 WebViewActivity sourceVerificationEnable): "确定"按钮
  *   抓 html 回传 [onSaveResult]
+ * @param cookieTag cookie 保存标签 (通常 source.getKey() = 书源 key), 对应 app 端 `tag`;
+ *   非空时工具栏溢出菜单显示"禁用源/删除源" (对照原版 web_view.xml 菜单的
+ *   sourceKey 非空条件): 禁用源直接执行成功后关窗; 删除源先弹确认再执行, 成功后关窗
+ * @param sourceType 书源类型 (SourceType.book/rss/tts, 对应 AppRoute.WebView.sourceType),
+ *   禁用/删除源动作使用; 调用方能拿到源对象时传真实类型, 否则默认 book
+ * @param sourceName 书源名 (删除源确认弹窗显示, 对照原版 sure_del + sourceName; 空时回退 cookieTag)
  * @param onSaveResult 验证回传回调 (仅 [saveResult] 时接线; 参数为页面存活时抓取的
  *   outerHTML, 引擎关闭后不可再取, 故在关窗前调用)
  * @param onNavigated 每次导航完成回调 (参数为当前地址), cookie 回写已由引擎完成
  * @param onClosed 窗口关闭回调 (用户点 X 或代码 close 都会触发, 保证只回调一次)
+ * @param rssActions RSS 阅读模式 (2026-08-07: RSS 阅读去页面外壳, 收藏/朗读/分享/登录
+ *   移入窗口工具栏); 非空时工具栏显示 RSS 按钮组, 动作经 [io.legado.app.help.RssToolbarActions]
+ *   回调回 shared, 星收藏态经 [io.legado.app.help.RssToolbarActions.onStarChanged] 反推更新
  */
 data class WebViewWindowRequest(
     val url: String,
@@ -93,12 +104,15 @@ data class WebViewWindowRequest(
     val html: String? = null,
     val userAgent: String? = null,
     val cookieTag: String? = null,
+    val sourceType: Int = SourceType.book,
+    val sourceName: String = "",
     val bottomSheet: Boolean = false,
     val isLogin: Boolean = false,
     val saveResult: Boolean = false,
     val onSaveResult: ((String?) -> Unit)? = null,
     val onNavigated: (String) -> Unit = {},
     val onClosed: () -> Unit = {},
+    val rssActions: RssToolbarActions? = null,
 )
 
 /** 工具栏"确定"按钮 isLogin 分支的提示文案 (对照 strings.xml check_host_cookie)。 */

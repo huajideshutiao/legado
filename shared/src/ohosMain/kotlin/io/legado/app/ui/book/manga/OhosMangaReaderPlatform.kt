@@ -3,6 +3,7 @@ package io.legado.app.ui.book.manga
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -72,11 +73,18 @@ object OhosMangaReaderPlatform : MangaReaderScreenModel.Platform {
 
         val bmp = bitmap
         if (bmp != null) {
+            // 等比渲染: 按位图固有宽高比显式定高 (与 desktop/iOS 同一修复,
+            // 纵向永不变形; 横向仍整页铺满视口等比留白, 行为不变)
+            val aspect = if (bmp.width > 0 && bmp.height > 0) {
+                Modifier.aspectRatio(bmp.width.toFloat() / bmp.height)
+            } else {
+                Modifier
+            }
             Image(
                 bitmap = bmp,
                 contentDescription = null,
-                modifier = modifier,
-                contentScale = if (horizontal) ContentScale.Fit else ContentScale.FillWidth,
+                modifier = if (horizontal) modifier else modifier.then(aspect),
+                contentScale = ContentScale.Fit,
             )
         } else if (failed) {
             // 加载失败占位 (同 iOS UIImageView image 为 nil 时的空白)

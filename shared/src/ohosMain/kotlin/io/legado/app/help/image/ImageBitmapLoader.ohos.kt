@@ -15,7 +15,20 @@ import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.utils.ImageUtils
 import io.legado.app.utils.File
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+
+/** 失败 url 跳过表 (对照原版 Glide OkHttpStreamFetcher.companion failUrl: 非 2xx/解密失败进表)。 */
+private val ohosFailUrls = HashSet<String>()
+private val ohosFailUrlsMutex = Mutex()
+
+private suspend fun ohosFailUrlsContains(url: String): Boolean =
+    ohosFailUrlsMutex.withLock { ohosFailUrls.contains(url) }
+
+private suspend fun ohosFailUrlsAdd(url: String) {
+    ohosFailUrlsMutex.withLock { ohosFailUrls.add(url) }
+}
 
 
 /**
@@ -40,14 +53,24 @@ import kotlinx.coroutines.withContext
  */
 actual class ImageBitmapLoader actual constructor() {
 
-    actual suspend fun loadBitmap(url: String, book: Book?, bookSource: BookSource?): ImageBitmap? =
+    actual suspend fun loadBitmap(
+        url: String,
+        book: Book?,
+        bookSource: BookSource?,
+        isCover: Boolean,
+    ): ImageBitmap? =
         withContext(IoDispatcher) {
-            ohosLoadImageBytes(url, book, bookSource)?.let { ohosDecodeImageBytes(it) }
+            ohosLoadImageBytes(url, book, bookSource, isCover)?.let { ohosDecodeImageBytes(it) }
         }
 
-    actual suspend fun loadBytes(url: String, book: Book?, bookSource: BookSource?): ByteArray? =
+    actual suspend fun loadBytes(
+        url: String,
+        book: Book?,
+        bookSource: BookSource?,
+        isCover: Boolean,
+    ): ByteArray? =
         withContext(IoDispatcher) {
-            ohosLoadImageBytes(url, book, bookSource)
+            ohosLoadImageBytes(url, book, bookSource, isCover)
         }
 }
 
@@ -56,6 +79,7 @@ private suspend fun ohosLoadImageBytes(
     url: String,
     book: Book?,
     bookSource: BookSource?,
+    isCover: Boolean,
 ): ByteArray? = when {
     // bg:// 内置背景图: 原版远程下载语义 (全图不随包, 本地缓存一级兜底)
     url.startsWith("bg://") -> ohosLoadBgBytes(url.removePrefix("bg://"))
@@ -68,8 +92,27 @@ private suspend fun ohosLoadImageBytes(
         File(url).readBytes()
     }.getOrNull()
     url.startsWith("http://") || url.startsWith("https://") ->
-        ohosDownloadImageBytes(url, book, bookSource)
+        ohosLoadNetworkImageBytes(url, book, bookSource, isCover)
     else -> null
+}
+
+/**
+ * 网络图字节加载: 死链跳过 (原版 failUrl 语义) + 进程内/磁盘缓存优先
+ * (对齐原版 PhotoDialog.loadByGlide 的 onlyRetrieveFromCache 优先语义),
+ * 未命中才下载 + 解密, 成功后回写缓存 (同一 URL 二次打开零重复下载/解密)。
+ */
+private suspend fun ohosLoadNetworkImageBytes(
+    url: String,
+    book: Book?,
+    bookSource: BookSource?,
+    isCover: Boolean,
+): ByteArray? {
+    if (ohosFailUrlsContains(url)) return null
+    return ImageBytesCache.get(url, isCover) ?: run {
+        val bytes = ohosDownloadImageBytes(url, book, bookSource, isCover)
+        if (bytes != null) ImageBytesCache.put(url, isCover, bytes)
+        bytes
+    }
 }
 
 /**
@@ -90,7 +133,12 @@ internal suspend fun ohosDownloadImageBytes(
         return runCatching {
             val response = client.newCall(request).execute()
             try {
-                if (!response.isSuccessful) null else response.body.bytes()
+                if (!response.isSuccessful) {
+                    ohosFailUrlsAdd(url)
+                    null
+                } else {
+                    response.body.bytes()
+                }
             } finally {
                 response.close()
             }
@@ -105,6 +153,9 @@ internal suspend fun ohosDownloadImageBytes(
         val raw = analyzeUrl.getByteArrayAwait()
         runScriptWithContext {
             ImageUtils.decode(url, raw, isCover, bookSource, book)
+        } ?: run {
+            ohosFailUrlsAdd(url)
+            null
         }
     }.getOrNull()
 }

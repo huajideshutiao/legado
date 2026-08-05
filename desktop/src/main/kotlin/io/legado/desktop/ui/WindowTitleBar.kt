@@ -42,6 +42,11 @@ private const val DWMWA_USE_IMMERSIVE_DARK_MODE = 20
 private const val DWMWA_CAPTION_COLOR = 35
 private const val DWMWA_TEXT_COLOR = 36
 
+// Win11 22H2+ (22621+) 新增: 无边框窗口恢复系统圆角 (DWMWCP_ROUND=2); 全屏时关闭 (DONOTROUND=1)
+private const val DWMWA_WINDOW_CORNER_PREFERENCE = 33
+private const val DWMWCP_DONOTROUND = 1
+private const val DWMWCP_ROUND = 2
+
 /**
  * dwmapi.dll 声明。DwmSetWindowAttribute 不在 jna-platform 的 User32 里,
  * 需自行声明 (对照 WindowsFileDialogs.kt 的 Shell32Ex 声明方式)。
@@ -94,6 +99,27 @@ fun applyTitleBarTheme(window: Window?, dark: Boolean, accentBg: Color?) {
     }
 }
 
+/**
+ * Win11 22H2+: 设置无边框窗口的圆角偏好。
+ * 自绘标题栏去系统装饰后 DWM 默认不画圆角, 显式声明 [DWMWCP_ROUND] 恢复;
+ * 真全屏时铺满方角屏幕, 应关闭圆角 ([DWMWCP_DONOTROUND], 用户拍板 2026-08)。
+ * Win10/旧版 Win11 不认该属性返回 E_INVALIDARG, 静默忽略保持直角 (无副作用)。
+ */
+fun applyWindowCornerPreference(window: Window?, round: Boolean) {
+    if (!Platform.isWindows()) return
+    val win = window ?: return
+    if (!win.isDisplayable) return
+    val hwnd = runCatching { Native.getComponentID(win) }.getOrDefault(0L)
+    if (hwnd == 0L) return
+    val dwm = dwmapi ?: return
+    setAttribute(
+        dwm,
+        WinDef.HWND(Pointer.createConstant(hwnd)),
+        DWMWA_WINDOW_CORNER_PREFERENCE,
+        if (round) DWMWCP_ROUND else DWMWCP_DONOTROUND,
+    )
+}
+
 /** 单条 DWM 属性写入; 非零 HRESULT (如 Win10 不认 35/36) 只记调试日志, 不中断后续属性 */
 private fun setAttribute(dwm: Dwmapi, hwnd: WinDef.HWND, attribute: Int, value: Int) {
     // JNA 里 int 值要传 IntByReference (映射 int*), 不能传裸 Int (会被 JNA 当指针解引用)
@@ -112,8 +138,10 @@ private fun Color.toColorRef(): Int {
 /**
  * 标题栏文字色: 按背景亮度反推 (浅底深字/深底浅字), 与 AppTheme.primaryText
  * (readAppColors 的「背景亮度反推」语义) 保持一致。
+ *
+ * internal: 自绘窗口控制栏 (DesktopTitleBar) 复用同一亮度反推规则。
  */
-private fun textColorFor(bg: Color): Color =
+internal fun textColorFor(bg: Color): Color =
     if (bg.luminance() >= 0.5f) Color(0xFF212121) else Color(0xFFF8F8F8)
 
 /**

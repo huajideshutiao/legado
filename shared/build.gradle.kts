@@ -14,6 +14,9 @@ room3 {
 
 compose.resources {
     generateResClass = always
+    // CMP 1.6+ 默认 Res 为 internal; desktop 模块需要访问 shared 资源
+    // (控制栏深浅色图标 ic_daytime/ic_brightness), 显式公开
+    publicResClass = true
 }
 
 // 2026-08-04: 改 composeResources 后编译偶发报 Unresolved reference(上游 Gradle VFS watcher 漏事件
@@ -179,7 +182,12 @@ kotlin {
                 // 转发到 androidx.compose.ui:ui-tooling-preview, 与 androidMain 的
                 // components-ui-tooling-preview 解析到同一 androidx 构件, 无重复类)。
                 // @Preview 函数合并进 sharedUiMain 后在此声明, IDE/desktop 插件按 FQN 识别。
-                implementation("org.jetbrains.compose.ui:ui-tooling-preview:$composeVersion")
+                // 2026-08: CPF compose-ohos fork 无 ui-tooling-preview 的 ohosArm64 变体
+                // (依赖解析失败), ohos target 排除; sharedUiMain 的 @Preview 在 ohos 由
+                // ui-ohosarm64 自带的 tooling.preview 注解承担 (若有缺则报错时再补兼容层)。
+                if (!enableOhosTarget) {
+                    implementation("org.jetbrains.compose.ui:ui-tooling-preview:$composeVersion")
+                }
                 // 书架 DB 流门控 (repeatOnLifecycle); ohos 依赖链不含本源集, 不受 fork 影响
                 implementation(libs.compose.lifecycle.runtime.multiplatform)
             }
@@ -291,6 +299,11 @@ kotlin {
                     implementation("androidx.sqlite:sqlite-framework:2.7.0-alpha01-0.3.0")
                     implementation("io.ktor:ktor-client-core:3.1.0")
                     implementation("io.ktor:ktor-client-cio:3.1.0")
+                    // K/N 2.x link 检查: OhosTargetConventionPlugin 的 sharedLib.export 导出
+                    // compose export klib, 其依赖必须声明为 API 依赖 (implementation 会被
+                    // linkDebugSharedOhosArm64 拒绝: "exported in the debugShared binary are
+                    // not specified as API-dependencies")
+                    api("org.jetbrains.compose.export:export:${libs.versions.composeMultiplatform.ohos.get()}")
                 }
             }
             maybeCreate("ohosArm64Main").apply {
@@ -339,11 +352,8 @@ tasks.matching {
 }
 
 if (enableOhosTarget) {
-    tasks.configureEach {
-        if (name == "kspKotlinOhosArm64") {
-            dependsOn("composeGenerateKnRenderBackendOhosArm64")
-        }
-    }
+    // 0.4.0 时代 composeGenerateKnRenderBackendOhosArm64 生成任务已随 CPF 0.5.0 移除
+    // (渲染后端元数据改为 OhosRenderBackendMetadataResolver 配置期解析), 无 dependsOn 需求
 }
 
 if (enableIosTarget) {

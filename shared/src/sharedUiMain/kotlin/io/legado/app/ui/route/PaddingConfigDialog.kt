@@ -1,30 +1,23 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.config.PaddingConfigController
 import io.legado.app.ui.book.read.config.PaddingConfigScreen
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import legado.shared.generated.resources.Res
-import legado.shared.generated.resources.padding
-import org.jetbrains.compose.resources.stringResource
 
 /**
- * 边距配置弹窗形态 (对照原版 PaddingConfigDialog: 居中对话框 + 标题栏)。
- * 由界面设置弹窗"边距"入口弹起。
+ * 边距配置弹窗形态 (对照原版 PaddingConfigDialog: BaseDialogFragment 居中对话框, XML 无标题栏;
+ * onStart 清 FLAG_DIM_BEHIND + dimAmount=0 无暗化)。由界面设置弹窗"边距"入口弹起。
  */
 @Composable
 fun PaddingConfigDialogHost(
@@ -33,20 +26,17 @@ fun PaddingConfigDialogHost(
     AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
+        dim = false,
     ) {
         AppTheme {
+            // 原版 BaseDialogFragment: 0.9 宽居中 (appDialogSize) + filletBackground 8dp 圆角;
+            // 16dp 内容间距由 PaddingConfigScreen 内部 padding(16.dp) 提供 (XML root padding=lg)
             Surface(
-                shape = DesignTokens.dialogShape,
+                shape = DesignTokens.shapeDefault,
                 color = AppTheme.colors.background,
-                modifier = Modifier.appDialogSize().padding(16.dp),
+                modifier = Modifier.appDialogSize(),
             ) {
-                Column {
-                    DialogTitleBar(
-                        title = stringResource(Res.string.padding),
-                        onBack = onDismiss,
-                    )
-                    PaddingConfigContent()
-                }
+                PaddingConfigContent()
             }
         }
     }

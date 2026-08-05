@@ -28,6 +28,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -61,6 +63,8 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.preview.LegadoThemePreview
 import io.legado.app.ui.widget.text.EditEntity
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.action_save
 import legado.shared.generated.resources.auto_indent
@@ -108,6 +112,8 @@ import org.jetbrains.compose.resources.stringResource
  * @param onFieldTextChange 字段文本变化回调 `(fieldId, text)`, 宿主可据此维护文本快照
  * @param fieldTextOverride 宿主外部改写字段文本时的取值 (如自动缩进), 返回 null 用实体自身值
  * @param onShowKeyboardConfig 辅助键配置入口 (app 端 `showDialogFragment<KeyboardAssistsConfig>()`)
+ * @param requestFocusSignal 请求根节点持焦的信号 (宿主在页面回到栈顶时投递; 页面全程留在
+ *                           Composition, 进入时的持焦只在首次组合执行, 返回后需重新请求)
  * @param modifier        外部 modifier (app 端可附加 `windowInsetsPadding(ime ∪ navigationBars)`)
  */
 @Composable
@@ -120,6 +126,7 @@ fun BookSourceEditScreen(
     onFieldTextChange: (String, String) -> Unit = { _, _ -> },
     fieldTextOverride: (String) -> String? = { null },
     onShowKeyboardConfig: () -> Unit = {},
+    requestFocusSignal: Flow<Unit> = emptyFlow(),
 ) {
     // 焦点字段的编辑器状态 (对照 app 端 lastActiveCodeView): 辅助键插入/撤销/重做/查找替换的目标
     var activeEditor by remember { mutableStateOf<CodeEditorState?>(null) }
@@ -127,9 +134,17 @@ fun BookSourceEditScreen(
     // 查找高亮状态: 供聚焦字段的 CodeTextField 叠加全量黄底 + 当前命中强调色 (对齐原版 CodeView 查找高亮)
     val searchHighlight = remember { CodeSearchHighlightState() }
     val focusManager = LocalFocusManager.current
+    // 根节点持焦: 进入即请求焦点 (无字段持焦时键盘事件会被焦点系统直接丢弃, ESC 无响应;
+    // 聚焦路径含根 handleBackKey, 持焦后 ESC/快捷键立即可用, 对照调试页进入聚焦的做法)
+    val rootFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { rootFocusRequester.requestFocus() } }
+    LaunchedEffect(requestFocusSignal) {
+        requestFocusSignal.collect { runCatching { rootFocusRequester.requestFocus() } }
+    }
     Column(
         modifier
             .fillMaxSize()
+            .focusRequester(rootFocusRequester)
             // 桌面端键盘监听: Ctrl+Z 撤销 / Ctrl+Shift+Z、Ctrl+Y 重做 (对照 ReplaceEditScreen;
             // 目标是最后聚焦字段 activeEditor, 与底部辅助条 undo/redo 同一目标)
             .onPreviewKeyEvent { event ->

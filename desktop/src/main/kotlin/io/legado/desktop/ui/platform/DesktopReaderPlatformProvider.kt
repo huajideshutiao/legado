@@ -10,7 +10,6 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
-import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
@@ -19,8 +18,8 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfigProviders
+import io.legado.app.help.showSourceLogin
 import io.legado.app.help.source.SourceVerificationHelpShared
-import io.legado.app.help.sourceLoginOverlayPayload
 import io.legado.app.ui.book.read.ReadAloudControls
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
@@ -39,7 +38,6 @@ import io.legado.app.ui.dict.DictDialogHost
 import io.legado.app.ui.reader.TextSelectionDialog
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
-import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteResults
@@ -528,19 +526,13 @@ private class DesktopReadMenuState(
         when (action) {
             SourceAction.LOGIN -> {
                 val source = screenModel.viewModel.bookSource.value ?: return
-                // 带上当前书与当前章, 供登录 JS 的 book/chapter 绑定 (对照原版 showLogin 预置 IntentData)
-                val dataKey = SourceLoginContext.put(
+                // 统一登录入口: URL 登录桌面端直开登录窗口 (2026-08-07); 表单登录弹 Overlay,
+                // 带上当前书与当前章 (对照原版 showLogin 预置 IntentData)
+                showSourceLogin(
+                    source.getKey(),
                     source,
                     screenModel.currentBook,
                     screenModel.currentChapter,
-                )
-                // 纯 Overlay 弹登录对话框, 不推新路由; 表单/URL 两条分支由
-                // SourceLoginOverlayContent 统一分发 (对照原版 showLoginDialog)
-                navigator.showOverlay(
-                    AppOverlay.Dialog(
-                        key = "sourceLogin",
-                        payload = sourceLoginOverlayPayload(source.getKey(), dataKey),
-                    )
                 )
             }
 

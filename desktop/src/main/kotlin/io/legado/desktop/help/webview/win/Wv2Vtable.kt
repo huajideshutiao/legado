@@ -18,7 +18,8 @@ internal object Wv2 {
     const val CTRL_CLOSE = 24
     const val CTRL_GET_CORE_WEBVIEW2 = 25
 
-    // ICoreWebView2
+    // ICoreWebView2 (序号经 runtime 实测验证: 55=add_WebResourceRequested 回调实测触发,
+    // 57=AddWebResourceRequestedFilter 实测返回 S_OK; 50 实测返回 ERROR_NOT_FOUND 不是 add)
     const val WV_GET_SETTINGS = 3
     const val WV_GET_SOURCE = 4
     const val WV_NAVIGATE = 5
@@ -34,10 +35,15 @@ internal object Wv2 {
     const val WV2_GET_COOKIE_MANAGER = 66
 
     // ICoreWebView2Settings / Settings2
-    const val SETTINGS_PUT_IS_SCRIPT_ENABLED = 4
-    const val SETTINGS_PUT_ARE_DEFAULT_SCRIPT_DIALOGS_ENABLED = 8
-    const val SETTINGS_PUT_ARE_DEV_TOOLS_ENABLED = 12
-    const val SETTINGS_PUT_IS_BUILT_IN_ERROR_PAGE_ENABLED = 20
+    // 序号 2026-08 实测修正: 8 实际是 put_AreDefaultContextMenusEnabled(右键菜单),
+    // 12 实际是 put_AreHostObjectsAllowed; 正确的 put 均为 get+1 (实测: 槽位 6 改 get(5)
+    // AreDefaultScriptDialogsEnabled, 槽位 10 改 get(9) AreDevToolsEnabled)
+    const val SETTINGS_PUT_IS_SCRIPT_ENABLED = 4 // get 3
+    const val SETTINGS_PUT_ARE_DEFAULT_SCRIPT_DIALOGS_ENABLED = 6 // get 5
+    const val SETTINGS_PUT_ARE_DEV_TOOLS_ENABLED = 10 // get 9
+    const val SETTINGS_PUT_IS_BUILT_IN_ERROR_PAGE_ENABLED = 20 // get 19
+
+    // Settings2 实测: 21=get_UserAgent, 22=put_UserAgent
     const val SETTINGS2_PUT_USER_AGENT = 22
 
     // ICoreWebView2CookieManager

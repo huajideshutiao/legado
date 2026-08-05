@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,6 +26,7 @@ import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.widget.dialog.HelpDialog
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
+import kotlinx.coroutines.flow.MutableSharedFlow
 
 /**
  * 替换规则编辑 shared 路由入口。
@@ -64,6 +66,15 @@ fun ReplaceEditRoute(
 
     var showHelp by remember { mutableStateOf(false) }
 
+    // 回到栈顶 (如从其它页面返回) 时重新请求根节点持焦: 页面全程留在 Composition,
+    // 进入时的 requestFocus 只在首次组合执行, 返回后焦点已空, 需重新请求保证 ESC 可用
+    val backStack by navigator.backStack.collectAsState()
+    val isTopEntry = backStack.lastOrNull()?.id == entry.id
+    val refocusSignal = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
+    LaunchedEffect(isTopEntry) {
+        if (isTopEntry) refocusSignal.tryEmit(Unit)
+    }
+
     ReplaceEditScreen(
         viewModel = viewModel,
         onBack = { navigator.pop() },
@@ -75,6 +86,7 @@ fun ReplaceEditRoute(
             viewModel.pasteRule(success)
         },
         onHelp = { showHelp = true },
+        requestFocusSignal = refocusSignal,
         // Android 15+ 强制 edge-to-edge 不再随键盘 resize, 底部辅助条须自行避让
         // 键盘/导航条 (对齐 BookSourceEditRoute; desktop/iOS 上 ime inset 为 0, 此 padding 为 no-op)
         modifier = Modifier.windowInsetsPadding(

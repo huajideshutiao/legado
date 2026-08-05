@@ -1,7 +1,11 @@
 package io.legado.app.ui.book.read.page
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -9,26 +13,24 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import io.legado.app.help.config.LocalReadConfigProviders
+import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.help.config.LocalReadConfigProviders
-import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.preview.LegadoThemePreview
 
@@ -71,6 +73,16 @@ fun PageContentCanvas(
     selection: PageSelectionState? = null,
 ) {
     val textMeasurer: TextMeasurer = rememberTextMeasurer()
+    // 2026-08 回退: 曾加整页录制缓存 (pageLayer.record + drawLayer), 但 record 在 Canvas
+    // onDraw (CanvasDrawScope) 内调用会与外层 scope 的 fontScale 委托互相递归 →
+    // StackOverflowError (CanvasDrawScope.getFontScale ↔ LayoutNodeDrawScope.getFontScale),
+    // 阅读页白屏。改为安全方案: 组合阶段逐列缓存 TextLayoutResult (measure 一次),
+    // 每帧绘制走 drawText(layoutResult) 零 measure (官方 API, 无 scope 环)。
+    // 缓存 key: 页实例/样式/页内容版本(drawTick: 朗读高亮等变色)——换页/配置变更/高亮变化才重缓存
+    val density = LocalDensity.current
+    val layoutCache = remember(textPage, style, drawTick) {
+        TextLayoutCache.build(textPage, textMeasurer, style, density)
+    }
 
     Canvas(modifier = modifier) {
         // 读位图就绪计数建立快照订阅：图片异步加载完成后本页自动重绘（值本身不参与绘制）
@@ -82,57 +94,146 @@ fun PageContentCanvas(
         if (selection != null && selection.tick < 0) return@Canvas
         drawPageContent(
             textPage = textPage,
-            textMeasurer = textMeasurer,
             style = style,
+            layoutCache = layoutCache,
         )
     }
 }
+
+/**
+ * 逐列 TextLayoutResult 缓存（组合阶段构建, measure 一次/页）。
+ *
+ * 原实现每帧对每列 drawText(textMeasurer, ...) 全量 measure（~300 列/页 × 60fps 翻页动画）；
+ * 本缓存把 measure 收敛到构建时一次, 每帧绘制走 [DrawScope.drawText] 的 layoutResult 重载
+ * （零 measure, 只重放 glyph）。基线折算/字间距补偿量一并缓存（与列布局同 key）。
+ *
+ * key 由调用方 remember(textPage, style, drawTick) 保证: 换页新 TextPage、配置变更新
+ * ReaderDrawStyle、朗读高亮等变色经 drawTick 自增重缓存; 选区高亮 (column.selected) 是
+ * 绘制期覆盖矩形不参与缓存。
+ */
+private class TextLayoutCache(
+    private val textByColumn: HashMap<TextColumn, ColumnLayout>,
+    private val reviewByColumn: HashMap<ReviewColumn, ColumnLayout>,
+) {
+    fun textLayout(column: TextColumn): ColumnLayout? = textByColumn[column]
+
+    fun reviewLayout(column: ReviewColumn): ColumnLayout? = reviewByColumn[column]
+
+    companion object {
+        fun build(
+            textPage: TextPage,
+            textMeasurer: TextMeasurer,
+            style: ReaderDrawStyle,
+            density: Density,
+        ): TextLayoutCache {
+            // baseline 折算（每套样式各测一次）: drawText 的 topLeft 是文本框左上角,
+            // 行基线 lineBase 需减去首行 baseline 偏移得到框顶 y (与 app 端 drawText(x, lineBase) 不同)
+            val contentBaseline = textMeasurer.measure("水", style.contentStyle).getLineBaseline(0)
+            val titleBaseline = textMeasurer.measure("水", style.titleStyle).getLineBaseline(0)
+            // letterSpacing 是 em（字号倍数），折算像素补偿量：fontSizePx * em * 0.5
+            // （组合阶段无 DrawScope.toPx, 用传入密度换算）
+            val contentSpacingHalf = with(density) {
+                style.contentStyle.fontSize.toPx() * style.letterSpacingEm * 0.5f
+            }
+            val titleSpacingHalf = with(density) {
+                style.titleStyle.fontSize.toPx() * style.letterSpacingEm * 0.5f
+            }
+            val textByColumn = HashMap<TextColumn, ColumnLayout>()
+            val reviewByColumn = HashMap<ReviewColumn, ColumnLayout>()
+            for (lineIndex in textPage.lines.indices) {
+                val textLine = textPage.lines[lineIndex]
+                val isTitle = textLine.isTitle
+                val lineStyle = if (isTitle) style.titleStyle else style.contentStyle
+                val baselineOffset = if (isTitle) titleBaseline else contentBaseline
+                val letterSpacingHalf = if (isTitle) titleSpacingHalf else contentSpacingHalf
+                for (column in textLine.columns) {
+                    when (column) {
+                        is TextColumn -> {
+                            // 列内文字颜色: 朗读/搜索结果高亮用 accent 色 (与绘制期同一判定)
+                            val color = if (textLine.isReadAloud || column.isSearchResult) {
+                                style.accentColor
+                            } else {
+                                style.textColor
+                            }
+                            val layout = textMeasurer.measure(
+                                column.charData,
+                                lineStyle.copy(color = color),
+                            )
+                            textByColumn[column] = ColumnLayout(
+                                layout = layout,
+                                baselineOffset = baselineOffset,
+                                letterSpacingHalf = letterSpacingHalf,
+                            )
+                        }
+
+                        is ReviewColumn -> {
+                            val countTextStyle = lineStyle.copy(
+                                color = style.reviewColor,
+                                fontSize = style.reviewTextSize,
+                            )
+                            val countLayout = textMeasurer.measure(column.countText, countTextStyle)
+                            reviewByColumn[column] = ColumnLayout(
+                                layout = countLayout,
+                                baselineOffset = countLayout.getLineBaseline(0),
+                                letterSpacingHalf = 0f,
+                            )
+                        }
+
+                        else -> Unit
+                    }
+                }
+            }
+            return TextLayoutCache(textByColumn, reviewByColumn)
+        }
+    }
+}
+
+/** 单列缓存项: 布局结果 + 绘制辅助量 (与 TextColumn 对象同生命周期, 页内引用稳定)。 */
+private class ColumnLayout(
+    val layout: TextLayoutResult,
+    val baselineOffset: Float,
+    val letterSpacingHalf: Float,
+)
 
 /**
  * 单页内容绘制主体：与 app 端 `TextPageRender.drawPage` → `TextLine.draw` 对应。
  */
 private fun DrawScope.drawPageContent(
     textPage: TextPage,
-    textMeasurer: TextMeasurer,
     style: ReaderDrawStyle,
+    layoutCache: TextLayoutCache,
 ) {
-    // baseline 折算：drawText 的 topLeft 是文本框左上角，行基线 lineBase 需减去首行 baseline 偏移得到框顶 y。
-    // 与 app 端 Android Canvas.drawText(x, lineBase) 直接用 baseline 不同。标题/正文两套字号各测一次。
-    val contentBaseline = textMeasurer.measure("水", style.contentStyle).getLineBaseline(0)
-    val titleBaseline = textMeasurer.measure("水", style.titleStyle).getLineBaseline(0)
-    // letterSpacing 是 em（字号倍数），折算像素补偿量：fontSizePx * em * 0.5
-    val contentSpacingHalf = style.contentStyle.fontSize.toPx() * style.letterSpacingEm * 0.5f
-    val titleSpacingHalf = style.titleStyle.fontSize.toPx() * style.letterSpacingEm * 0.5f
+    // 基线折算/字间距补偿/逐列 TextLayoutResult 均已在 [TextLayoutCache] 构建时缓存,
+    // 每帧只重放绘制 (drawText(layoutResult) 零 measure)。
     val underlineWidth = 1.dp.toPx()
     for (lineIndex in textPage.lines.indices) {
         val textLine = textPage.lines[lineIndex]
         val isTitle = textLine.isTitle
-        val lineStyle = if (isTitle) style.titleStyle else style.contentStyle
-        val baselineOffset = if (isTitle) titleBaseline else contentBaseline
-        val letterSpacingHalf = if (isTitle) titleSpacingHalf else contentSpacingHalf
         val lineTop = textLine.lineTop
         val lineBase = textLine.lineBase
         val lineHeight = textLine.lineBottom - textLine.lineTop
         for (columnIndex in textLine.columns.indices) {
             val column = textLine.columns[columnIndex]
             when (column) {
-                is TextColumn -> drawTextColumn(
-                    column = column,
-                    textMeasurer = textMeasurer,
-                    textStyle = lineStyle,
-                    textColor = if (textLine.isReadAloud || column.isSearchResult) {
-                        style.accentColor
-                    } else {
-                        style.textColor
-                    },
-                    selectedColor = style.selectedColor,
-                    searchColor = style.searchColor,
-                    letterSpacingHalf = letterSpacingHalf,
-                    lineTop = lineTop,
-                    lineBase = lineBase,
-                    baselineOffset = baselineOffset,
-                    lineHeight = lineHeight,
-                )
+                is TextColumn -> {
+                    val cached = layoutCache.textLayout(column)
+                    if (cached != null) {
+                        drawTextColumn(
+                            column = column,
+                            layout = cached,
+                            textColor = if (textLine.isReadAloud || column.isSearchResult) {
+                                style.accentColor
+                            } else {
+                                style.textColor
+                            },
+                            selectedColor = style.selectedColor,
+                            searchColor = style.searchColor,
+                            lineTop = lineTop,
+                            lineBase = lineBase,
+                            lineHeight = lineHeight,
+                        )
+                    }
+                }
                 is ImageColumn -> drawImageColumn(
                     column = column,
                     lineTop = lineTop,
@@ -141,10 +242,8 @@ private fun DrawScope.drawPageContent(
                 )
                 is ReviewColumn -> drawReviewColumn(
                     column = column,
-                    textMeasurer = textMeasurer,
-                    textStyle = lineStyle,
+                    layout = layoutCache.reviewLayout(column),
                     reviewColor = style.reviewColor,
-                    reviewTextSize = style.reviewTextSize,
                     lineTop = lineTop,
                     lineHeight = lineHeight,
                 )
@@ -193,30 +292,23 @@ private fun DrawScope.drawLineUnderline(
  */
 private fun DrawScope.drawTextColumn(
     column: TextColumn,
-    textMeasurer: TextMeasurer,
-    textStyle: TextStyle,
+    layout: ColumnLayout,
     textColor: Color,
     selectedColor: Color,
     searchColor: Color,
-    letterSpacingHalf: Float,
     lineTop: Float,
     lineBase: Float,
-    baselineOffset: Float,
     lineHeight: Float,
 ) {
-    val x = column.start + letterSpacingHalf
-    val y = lineBase - baselineOffset
+    val x = column.start + layout.letterSpacingHalf
+    val y = lineBase - layout.baselineOffset
     // 越界保护 (对照原版 Android Canvas.drawText: 越界不绘制也不崩):
-    // Compose drawText 内部用 `scopeSize - topLeft` 算文本约束, topLeft 超出画布时
+    // drawText(layoutResult) 内部用 `scopeSize - topLeft` 算文本约束, topLeft 超出画布时
     // 约束为负直接抛 IllegalArgumentException (maxWidth must be >= minWidth)。
     // 窗口 resize / 翻页动画期间旧排版数据可能暂时超出画布, 完全越界时跳过, 部分可见时正常画。
     if (x >= size.width || y >= size.height) return
-    drawText(
-        textMeasurer = textMeasurer,
-        text = column.charData,
-        style = textStyle.copy(color = textColor),
-        topLeft = Offset(x, y),
-    )
+    // 缓存布局零 measure 重放 (文字颜色已按高亮状态固化进布局, 见 TextLayoutCache.build)
+    drawText(layout.layout, topLeft = Offset(x, y))
     if (column.selected) {
         drawRect(
             color = selectedColor,
@@ -327,10 +419,8 @@ private fun DrawScope.drawImagePlaceholder(
  */
 private fun DrawScope.drawReviewColumn(
     column: ReviewColumn,
-    textMeasurer: TextMeasurer,
-    textStyle: TextStyle,
+    layout: ColumnLayout?,
     reviewColor: Color,
-    reviewTextSize: TextUnit,
     lineTop: Float,
     lineHeight: Float,
 ) {
@@ -350,22 +440,18 @@ private fun DrawScope.drawReviewColumn(
         center = Offset(centerX, centerY),
         style = Stroke(width = 1.5f),
     )
-    // 数字居中绘制：drawText topLeft 是文本框左上角，
-    // 用 baselineOffset 折算到圆心上方使文字视觉居中。
-    val countTextStyle = textStyle.copy(color = reviewColor, fontSize = reviewTextSize)
-    val countBaseline = textMeasurer.measure(column.countText, countTextStyle).getLineBaseline(0)
+    // 数字居中绘制：drawText topLeft 是文本框左上角,
+    // 用缓存 layout 的 baseline 折算到圆心上方使文字视觉居中 (TextLayoutCache.build 已 measure)
+    val layout = layout ?: return
+    val baseline = layout.baselineOffset
     val countTopLeft = Offset(
         centerX - radius * 0.5f,
-        centerY - countBaseline * 0.5f,
+        centerY - baseline * 0.5f,
     )
     // 越界保护：同 [drawTextColumn]，约束为负会抛异常（resize/翻页动画期间旧排版可能越界）
     if (countTopLeft.x >= size.width || countTopLeft.y >= size.height) return
-    drawText(
-        textMeasurer = textMeasurer,
-        text = column.countText,
-        style = countTextStyle,
-        topLeft = countTopLeft,
-    )
+    // 缓存布局零 measure 重放
+    drawText(layout.layout, topLeft = countTopLeft)
 }
 
 // ===== @Preview 合并自 androidMain 的 book/read/page/ReadPagePreviews.kt (PageContentCanvas) =====

@@ -41,6 +41,8 @@ import platform.AVFoundation.pause
 import platform.AVFoundation.play
 import platform.AVFoundation.replaceCurrentItemWithPlayerItem
 import platform.AVFoundation.requestAccessForMediaType
+import platform.Foundation.NSNotificationCenter
+import platform.Foundation.NSNotificationName
 import platform.Foundation.NSSelectorFromString
 import platform.Foundation.NSURL
 import platform.Photos.PHAccessLevelReadWrite
@@ -234,7 +236,16 @@ private fun String.toIosPermission(): IosPermission? {
 }
 
 // UIKit 窗口控制: KeepScreenOn 经 UIApplication.isIdleTimerDisabled (对照 Android FLAG_KEEP_SCREEN_ON);
-// 状态栏/全屏现代 API 在 VC 层 (prefersStatusBarHidden), 方向 iOS 不支持编程强制, 均为 no-op
+// 状态栏显隐由 SwiftUI 根视图 .statusBarHidden 控制 (iOS 13+, SwiftUI 下 VC 级 prefersStatusBarHidden
+// 不生效, 见 iosApp/iOSApp.swift 的 onReceive 监听), 经 NSNotificationCenter 桥接;
+// 方向 iOS 不支持编程强制, 均为 no-op
+
+/** 状态栏显隐通知名 (与 iosApp/iOSApp.swift 的 Notification.Name 一致)。 */
+internal const val IosStatusBarHiddenNotification = "legado.statusBarHidden"
+
+/** 通知 userInfo 中显隐布尔值的 key。 */
+internal const val IosStatusBarHiddenKey = "hidden"
+
 private object IosWindowController : WindowController {
     override fun setFullscreen(enabled: Boolean) {
         // iOS 全屏等价于隐藏状态栏, 由 setSystemBars 统一承担 (此处不重复)
@@ -250,7 +261,16 @@ private object IosWindowController : WindowController {
     }
 
     override fun setSystemBars(policy: SystemBarsPolicy) {
-        // 状态栏显隐现代 API 由 VC prefersStatusBarHidden 决定, UIApplication 级仅遗留 deprecated 接口, no-op
+        // 状态栏显隐经 NSNotificationCenter 桥接到 SwiftUI 根视图 .statusBarHidden
+        // (iOSApp.swift onReceive 监听后应用; SwiftUI 宿主下 VC 的 prefersStatusBarHidden 不生效,
+        // .statusBarHidden modifier 是唯一可靠途径)。iOS 无导航栏概念 (home indicator 不占内容区,
+        // 由 safeAreaInsets 驱动), 故 HiddenNavigationBar 无对应动作。
+        val hidden = policy == SystemBarsPolicy.Hidden || policy == SystemBarsPolicy.HiddenStatusBar
+        NSNotificationCenter.defaultCenter.postNotificationName(
+            aName = IosStatusBarHiddenNotification,
+            `object` = null,
+            userInfo = mapOf(IosStatusBarHiddenKey to hidden),
+        )
     }
 }
 

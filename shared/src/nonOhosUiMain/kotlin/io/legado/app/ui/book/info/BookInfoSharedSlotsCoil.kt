@@ -46,6 +46,7 @@ fun SharedBlurCoverBgCoil(
     inBookshelf: Boolean,
     isEInkMode: Boolean,
     modifier: Modifier,
+    land: Boolean = false,
 ) {
     val cover = book?.getDisplayCover()
     val loader = remember { BookImageLoaders.getOrNull() }
@@ -69,21 +70,25 @@ fun SharedBlurCoverBgCoil(
                 // 链序关键: drawWithContent 在 blur 外层, 否则渐变蒙版/压暗也会被高斯模糊
                 modifier = Modifier.fillMaxSize().drawWithContent {
                     drawContent()
-                    // 顶部 30% 清晰 → 65% 柔和过渡 → 底部透明 (alpha 蒙版, 曲线同原版)
-                    drawRect(
-                        brush = Brush.verticalGradient(
-                            colorStops = arrayOf(
-                                0.00f to Color.Black,
-                                0.30f to Color.Black,
-                                0.48f to Color(0xD2000000), // alpha 210
-                                0.63f to Color(0xA5000000), // alpha 165
-                                0.77f to Color(0x6E000000), // alpha 110
-                                0.90f to Color(0x1E000000), // alpha 30
-                                1.00f to Color.Transparent,
+                    // 渐变蒙版 (顶部 30% 清晰 → 底部透明, 曲线同原版) 仅竖屏顶部条使用;
+                    // 横屏左半列整列铺满时任何方向的"一边黑"渐变都不合适 (用户反馈),
+                    // 横屏只保留均匀压暗, 整列均匀模糊
+                    if (!land) {
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0.00f to Color.Black,
+                                    0.30f to Color.Black,
+                                    0.48f to Color(0xD2000000),
+                                    0.63f to Color(0xA5000000),
+                                    0.77f to Color(0x6E000000),
+                                    0.90f to Color(0x1E000000),
+                                    1.00f to Color.Transparent,
+                                ),
                             ),
-                        ),
-                        blendMode = BlendMode.DstIn,
-                    )
+                            blendMode = BlendMode.DstIn,
+                        )
+                    }
                     // 压暗蒙层 (对照原版 argb(50,0,0,0) SRC_ATOP)
                     drawRect(color = Color(0x32000000))
                 }.blur(24.dp),

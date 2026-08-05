@@ -99,7 +99,13 @@ class CoverDecodeFetcher(
                     diskSnapshot.close()
                 }
             }
-            // 缓存未命中: 下载原始字节 + 执行解密JS
+            // 缓存未命中: 下载原始字节 + 执行解密JS。
+            // 统一传 ByteArray (封面/正文共用同一条 [ImageUtils.decode] ByteArray 链路,
+            // 2026-08 拍板: 不再维护 InputStream 重载, 避免双路径重复逻辑)。
+            // 与原版封面链 (InputStream 注入) 的差异: 脚本侧 result 是 byte[] JavaObject
+            // (length 为 number), `result.length==undefined` 判断走 XOR 主分支,
+            // 不触发 Packages.readBytes 分支 —— 对主流 XOR/索引异或脚本结果一致,
+            // 且与 native 端 (iOS/鸿蒙 Uint8Array 注入) 脚本语义统一。
             val raw = downloadBytes(url, sourceOrigin)
             val bytes = runScriptWithContext {
                 ImageUtils.decode(url, raw, isCover = true, source)

@@ -3,6 +3,7 @@ package io.legado.desktop.ui
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
+import io.legado.app.constant.SourceType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -10,6 +11,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.Review
 import io.legado.app.help.DirectLinkUploadRule
+import io.legado.app.help.RssToolbarActions
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.toggleBookshelfCore
@@ -39,12 +41,14 @@ import io.legado.app.ui.route.encodeReviewListDialogPayload
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
 import io.legado.app.utils.RemoteAssetsUtils
+import io.legado.app.utils.browseUrl
 import io.legado.app.utils.toJson
 import io.legado.app.web.WebServerManager
 import io.legado.desktop.constant.DesktopAppInfo
 import io.legado.desktop.help.book.DesktopBookExport
 import io.legado.desktop.help.source.DesktopCheckSource
 import io.legado.desktop.help.webview.DesktopWebViewEngines
+import io.legado.desktop.help.webview.WebViewWindowHandle
 import io.legado.desktop.help.webview.WebViewWindowRequest
 import io.legado.desktop.model.fileBook.DesktopImportBook
 import io.legado.desktop.model.fileBook.DesktopImportFile
@@ -62,6 +66,7 @@ import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
 import java.io.File
 import java.net.URI
+import java.util.concurrent.atomic.AtomicBoolean
 
 object DesktopPlatformCapabilities : PlatformCapabilities {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -97,10 +102,118 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
                         url = url,
                         title = sourceName.ifBlank { "网页" },
                         cookieTag = sourceKey.ifBlank { null },
+                        // source 查不到时默认 book (对照 AppRoute.WebView.sourceType 默认值);
+                        // 删除源确认弹窗显示源名, 空时回退 sourceKey
+                        sourceType = SourceType.book,
+                        sourceName = sourceName,
                     )
                 )
             }
         }
+    }
+
+    override val rssDirectWindow: Boolean get() = true
+
+    /**
+     * 书源 URL 登录直开窗 (2026-08-07 用户拍板: 去掉登录中转界面)。
+     *
+     * 带 isLogin 语义的独立浏览器窗口 (工具栏"确定" = 确认 cookie 后 reload 关窗,
+     * 对照原版 WebViewActivity menu_ok isLogin 分支), cookie 按书源 key 回写;
+     * 引擎不可用/开窗失败降级系统浏览器并提示。无论成败都返回 true —— 桌面端
+     * 登录不弹对话框外壳 (表单登录仍走 shared Overlay, 不经过这里)。
+     */
+    override fun openLoginWebView(url: String, sourceKey: String): Boolean {
+        val engine = DesktopWebViewEngines.get()
+        if (engine == null) {
+            browseUrl(url)
+            runCatching {
+                Toasters.get().toastLong("内置浏览器不可用, 已用系统浏览器打开登录页")
+            }
+            return true
+        }
+        val handle = engine.openWindow(
+            WebViewWindowRequest(
+                url = url,
+                title = "登录",
+                isLogin = true,
+                cookieTag = sourceKey.ifBlank { null },
+                // URL 登录只有 sourceKey: sourceType 默认 book (对照 AppRoute.WebView 默认值),
+                // 删除源确认弹窗源名回退 sourceKey
+                sourceType = SourceType.book,
+            )
+        )
+        if (handle == null) {
+            browseUrl(url)
+            runCatching {
+                Toasters.get().toastLong("内置浏览器窗口打开失败, 已用系统浏览器打开登录页")
+            }
+        }
+        return true
+    }
+
+    /**
+     * RSS 阅读直开窗 (2026-08-07 用户拍板: RSS 阅读页去外壳, 功能移入浏览器窗口工具栏)。
+     *
+     * 独立浏览器窗口带 RSS 按钮组 (收藏/朗读/分享/登录), 动作经 [RssToolbarActions]
+     * 回调回 shared; 窗口关闭 → RSS 路由出栈, 路由出栈 → 窗口关闭 (经 onDetach, 幂等);
+     * 引擎不可用/开窗失败降级系统浏览器并提示。返回 true (桌面端不再渲染页面外壳)。
+     */
+    override fun openRssReader(
+        book: Book,
+        chapter: BookChapter?,
+        url: String,
+        html: String?,
+        headerMap: Map<String, String>,
+        actions: RssToolbarActions,
+    ): Boolean {
+        val target = url.ifBlank { book.tocUrl }
+        val engine = DesktopWebViewEngines.get()
+        if (engine == null) {
+            browseUrl(target)
+            runCatching {
+                Toasters.get().toastLong("内置浏览器不可用, 已用系统浏览器打开: ${book.name}")
+            }
+            return true
+        }
+        // 路由/窗口双向联动: 窗口关闭 → 路由出栈; 路由先出栈 (onDetach) → 关窗 (幂等)
+        val detached = AtomicBoolean(false)
+        var handle: WebViewWindowHandle? = null
+        actions.onDetach = {
+            detached.set(true)
+            handle?.close()
+        }
+        handle = engine.openWindow(
+            WebViewWindowRequest(
+                url = url,
+                html = html,
+                title = book.name,
+                cookieTag = book.origin,
+                // RSS 窗口书源菜单: 默认 book 类型 (book/rss 同走 bookSourceDao,
+                // 禁用/删除行为与源类型无关); 确认弹窗显示书源名
+                sourceType = SourceType.book,
+                sourceName = book.originName,
+                rssActions = actions,
+                onClosed = {
+                    // 窗口被关闭 → RSS 路由出栈; 但路由先出栈 (onDetach → close) 触发
+                    // 的 close 回调不能再 pop, 否则会误弹 RSS 之下的路由 (reviewer 2026-08-07)
+                    if (!detached.get()) {
+                        scope.launch(Dispatchers.Main) {
+                            runCatching { AppNavigatorProviders.getOrNull()?.pop() }
+                        }
+                    }
+                },
+            )
+        )
+        if (handle == null) {
+            browseUrl(target)
+            runCatching {
+                Toasters.get().toastLong("内置浏览器窗口打开失败, 已用系统浏览器打开: ${book.name}")
+            }
+        } else if (detached.get()) {
+            // 路由已先出栈: 立即关闭刚打开的窗口
+            handle.close()
+        }
+        return true
     }
 
     override fun shareText(text: String) {

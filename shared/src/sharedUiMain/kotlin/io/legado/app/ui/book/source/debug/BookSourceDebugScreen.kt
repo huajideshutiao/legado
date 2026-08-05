@@ -84,7 +84,7 @@ data class BookSourceDebugUiState(
     val logs: List<String>,
     /** 搜索框当前文本 */
     val query: String,
-    /** 帮助面板是否可见 (进入即显示; 搜索框聚焦时显示, 提交搜索后隐藏; 对照原版常驻顶部) */
+    /** 帮助面板是否可见 (搜索框聚焦时显示, 提交搜索后隐藏) */
     val helpVisible: Boolean,
     /** 是否正在调试 (顶部 CircularProgressIndicator) */
     val loading: Boolean,
@@ -162,7 +162,9 @@ fun BookSourceDebugScreen(
     val logTextColor = if (colors.isDark) Color(0xFFFFFFFF) else Color(0xDE000000)
     val focusManager = LocalFocusManager.current
     val searchFocus = remember { FocusRequester() }
-    // 不自动聚焦 (用户确认: 对齐原版, 进入不弹键盘; 根 Box 兜底持焦保证 ESC 可用)
+    // 对齐原版 (onActionViewExpanded): 进入即聚焦搜索框, 帮助面板随聚焦显示 (手机端弹键盘);
+    // 提交/出错后经 clearFocusSignal 清焦, 重新点击搜索框可唤回面板
+    LaunchedEffect(Unit) { searchFocus.requestFocus() }
     LaunchedEffect(clearFocusSignal) {
         clearFocusSignal.collect { focusManager.clearFocus() }
     }

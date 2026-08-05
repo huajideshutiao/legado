@@ -61,11 +61,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fleeksoft.ksoup.Ksoup
 import com.fleeksoft.ksoup.nodes.Element
 import com.fleeksoft.ksoup.nodes.TextNode
+import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.isWebFile
@@ -79,6 +81,7 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.splitNotBlank
 import legado.shared.generated.resources.Res
@@ -113,9 +116,6 @@ import legado.shared.generated.resources.to_top
 import legado.shared.generated.resources.upload_to_remote
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.constant.BookType
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /*
  * 下沉所需资源 key 清单 (供 ResourceProvider 各平台 actual 补全)
@@ -276,7 +276,7 @@ val LocalBookInfoActions = compositionLocalOf<BookInfoUiActions> {
 fun BookInfoScreen(
     state: BookInfoUiState,
     actions: BookInfoUiActions,
-    blurCoverBgSlot: @Composable (Modifier) -> Unit,
+    blurCoverBgSlot: @Composable (Modifier, Boolean) -> Unit,
     coverSlot: @Composable (Book?, Modifier) -> Unit,
     introImageSlot: @Composable (String, () -> Unit) -> Unit,
 ) {
@@ -302,7 +302,7 @@ private fun PortraitLayout(
     state: BookInfoUiState,
     actions: BookInfoUiActions,
     titleColor: Color,
-    blurCoverBgSlot: @Composable (Modifier) -> Unit,
+    blurCoverBgSlot: @Composable (Modifier, Boolean) -> Unit,
     coverSlot: @Composable (Book?, Modifier) -> Unit,
     introImageSlot: @Composable (String, () -> Unit) -> Unit,
 ) {
@@ -328,7 +328,8 @@ private fun PortraitLayout(
                         blurCoverBgSlot(
                             Modifier
                                 .fillMaxWidth()
-                                .height(300.dp)
+                                .height(300.dp),
+                            false,
                         )
                     }
                     Column(Modifier.fillMaxWidth()) {
@@ -365,7 +366,7 @@ private fun LandscapeLayout(
     state: BookInfoUiState,
     actions: BookInfoUiActions,
     titleColor: Color,
-    blurCoverBgSlot: @Composable (Modifier) -> Unit,
+    blurCoverBgSlot: @Composable (Modifier, Boolean) -> Unit,
     coverSlot: @Composable (Book?, Modifier) -> Unit,
     introImageSlot: @Composable (String, () -> Unit) -> Unit,
 ) {
@@ -376,7 +377,7 @@ private fun LandscapeLayout(
                 .weight(1f)
                 .fillMaxHeight(),
         ) {
-            blurCoverBgSlot(Modifier.matchParentSize())
+            blurCoverBgSlot(Modifier.matchParentSize(), true)
             Column(Modifier.fillMaxSize()) {
                 InfoTitleBar(state, actions, titleColor, Modifier)
                 Column(
@@ -1201,7 +1202,7 @@ private object NoOpInfoActions : BookInfoUiActions {
 }
 
 /** 占位模糊背景 slot */
-private val blurCoverBgSlot: @Composable (Modifier) -> Unit = { modifier ->
+private val blurCoverBgSlot: @Composable (Modifier, Boolean) -> Unit = { modifier, _ ->
     Box(modifier.background(Color(0xFF4A6B8A)))
 }
 

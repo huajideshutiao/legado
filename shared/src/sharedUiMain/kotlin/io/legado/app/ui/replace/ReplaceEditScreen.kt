@@ -26,6 +26,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -47,6 +49,8 @@ import io.legado.app.ui.compose.component.code.KeyboardToolbarState
 import io.legado.app.ui.compose.component.code.insertAtCursor
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.replace.edit.ReplaceEditViewModelShared
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.action_save
 import legado.shared.generated.resources.copy_rule
@@ -100,6 +104,8 @@ import org.jetbrains.compose.resources.stringResource
  * @param onHelp 正则帮助回调 (app 端 showHelp("regexHelp") / desktop 端浏览器跳转)
  * @param onShowKeyboardConfig 辅助键配置入口 (app 端 KeyboardAssistsConfig DialogFragment,
  *   对照 [BookSourceEditScreen] 的 onShowKeyboardConfig; 未注入时 ⚙️ 点击无操作)
+ * @param requestFocusSignal 请求根节点持焦的信号 (宿主在页面回到栈顶时投递; 页面全程留在
+ *   Composition, 进入时的持焦只在首次组合执行, 返回后需重新请求)
  * @param modifier 外部 modifier (app 端可附加 `windowInsetsPadding(ime ∪ navigationBars)`)
  */
 @Composable
@@ -112,6 +118,7 @@ fun ReplaceEditScreen(
     onHelp: () -> Unit,
     modifier: Modifier = Modifier,
     onShowKeyboardConfig: () -> Unit = {},
+    requestFocusSignal: Flow<Unit> = emptyFlow(),
 ) {
     val rule by viewModel.state.collectAsState()
     // 表单字段状态 (TextFieldValue 支持光标位置, 辅助键插入走 FieldState.insertAtCursor)
@@ -128,6 +135,13 @@ fun ReplaceEditScreen(
     var focusedField by remember { mutableStateOf<FieldState?>(null) }
     // 键盘辅助条状态 (对照 BookSourceEditScreen: 辅助键/撤销/重做/查找替换面板)
     val keyboardState = remember { KeyboardToolbarState() }
+    // 根节点持焦: 进入即请求焦点 (无字段持焦时键盘事件被焦点系统直接丢弃, ESC 无响应;
+    // 聚焦路径含根 handleBackKey, 持焦后 ESC/快捷键立即可用, 对照 BookSourceEditScreen)
+    val rootFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { rootFocusRequester.requestFocus() } }
+    LaunchedEffect(requestFocusSignal) {
+        requestFocusSignal.collect { runCatching { rootFocusRequester.requestFocus() } }
+    }
 
     // 规则加载完成后回填表单 (对齐 app 端 upReplaceView)
     LaunchedEffect(rule) {
@@ -148,6 +162,7 @@ fun ReplaceEditScreen(
     Column(
         modifier
             .fillMaxSize()
+            .focusRequester(rootFocusRequester)
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown || !event.isCtrlPressed) {
                     return@onPreviewKeyEvent false

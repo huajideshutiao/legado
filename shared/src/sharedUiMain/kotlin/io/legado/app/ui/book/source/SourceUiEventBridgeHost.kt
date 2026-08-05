@@ -8,9 +8,8 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.SourceUiRequest
 import io.legado.app.help.IntentData
-import io.legado.app.help.SourceLoginContext
+import io.legado.app.help.showSourceLogin
 import io.legado.app.help.source.SourceVerificationHelpShared
-import io.legado.app.help.sourceLoginOverlayPayload
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.encodeSourceVariableOverlayPayload
@@ -69,22 +68,14 @@ fun SourceUiEventBridgeHost() {
     // 避免在此根级直接渲染纯 Column 导致覆盖整个 LegadoApp (看起来像新开界面)。
     if (request is SourceUiRequest.Login) {
         LaunchedEffect(request) {
-            // IntentData 一次性消费: 暂存 source/book/chapter, 弹窗渲染时按 key 取回
-            val dataKey = SourceLoginContext.put(
-                source = request.source,
-                book = IntentData.book,
-                chapter = IntentData.chapter,
+            // 统一登录入口: URL 登录桌面端直开登录窗口 (2026-08-07); 表单登录弹 Overlay
+            // (IntentData 一次性消费: source/book/chapter 暂存, 弹窗渲染时按 key 取回)
+            showSourceLogin(
+                request.source.getKey(),
+                request.source,
+                IntentData.book,
+                IntentData.chapter,
             )
-            val navigator = AppNavigatorProviders.getOrNull()
-            if (navigator != null) {
-                // 纯 Overlay 弹登录对话框, 不推新路由 (对照原版 showLoginDialog)
-                navigator.showOverlay(
-                    AppOverlay.Dialog(
-                        key = "sourceLogin",
-                        payload = sourceLoginOverlayPayload(request.source.getKey(), dataKey),
-                    )
-                )
-            }
             currentRequest.value = null
         }
         return

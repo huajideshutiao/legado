@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
 import androidx.compose.material.Text
@@ -26,15 +25,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.image.ImageBitmapLoader
-import org.jetbrains.compose.resources.ExperimentalResourceApi
-import org.jetbrains.compose.resources.decodeToImageBitmap
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.compose.component.AlertButton
@@ -48,6 +45,7 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.preference.ColorPickerDialog
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
 import io.legado.app.utils.ColorUtils
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bg_alpha
@@ -67,10 +65,10 @@ import legado.shared.generated.resources.select_image
 import legado.shared.generated.resources.style_name
 import legado.shared.generated.resources.text_color
 import legado.shared.generated.resources.text_underline
+import org.jetbrains.compose.resources.ExperimentalResourceApi
+import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 背景/文字样式配置控制器：把 app 端 `ReadBookConfig.durConfig` 的字段读写抽象为接口，
@@ -312,11 +310,14 @@ fun BgTextConfigScreen(
             StrokeTextChip(
                 textColorStr,
                 textColor = colors.secondaryText,
+                // 原版 StrokeTextView 未设 arcoRadius, 走默认 radius.default=8dp
+                cornerRadius = DesignTokens.radiusDefault,
                 modifier = Modifier.weight(5f),
             ) { showTextColorPicker = true }
             StrokeTextChip(
                 bgColorStr,
                 textColor = colors.secondaryText,
+                cornerRadius = DesignTokens.radiusDefault,
                 modifier = Modifier.weight(5f).padding(start = 8.dp),
             ) { showBgColorPicker = true }
             ActionIcon("ic_import", importStr, colors.primaryText) {
@@ -514,19 +515,23 @@ fun DefaultBgImagePreviewSlot(
     Column(
         modifier = Modifier
             .size(66.dp, 88.dp)
-            .clickable(onClick = onClick),
+            // 原版 BgAdapter/BgTextConfigDialog header: root 66x88 + setPadding(2dp) 内缩;
+            // clickable 先于 padding, 点击区域覆盖整个 66x88 槽位 (原版 root.setOnClickListener)
+            .clickable(onClick = onClick)
+            .padding(2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
             modifier = Modifier
-                .size(66.dp, 66.dp)
-                .clip(RoundedCornerShape(3.dp))
+                .weight(1f)
+                .fillMaxWidth()
+                // 原版 ImageView 无圆角; 背景仅作加载占位
                 .background(colors.bottomBackground),
             contentAlignment = Alignment.Center,
         ) {
             val bmp = bitmap
             if (bmp != null) {
-                // 中心裁剪铺满缩略图槽（对照原版 centerCrop 语义）
+                // 中心裁剪铺满缩略图槽（对照原版 Glide centerCrop 语义）
                 Image(
                     bitmap = bmp,
                     contentDescription = item.label,
@@ -538,14 +543,16 @@ fun DefaultBgImagePreviewSlot(
                     painter = painterResource(Res.drawable.ic_image),
                     contentDescription = item.label,
                     tint = colors.primaryText,
-                    modifier = Modifier.size(36.dp),
+                    // 原版 header: ImageView FIT_CENTER + ic_image 原始 24dp
+                    modifier = Modifier.size(24.dp),
                 )
             }
         }
         Text(
             text = item.label,
             color = colors.secondaryText,
-            fontSize = 11.sp,
+            // 原版 tvName 未设 textSize, 走 TextView 默认字号
+            fontSize = 14.sp,
             maxLines = 1,
         )
     }

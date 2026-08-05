@@ -4,15 +4,18 @@ package io.legado.app.ui.book.read
 
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCAction
-import kotlinx.cinterop.Selector
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSNotificationCenter
+import platform.Foundation.NSSelectorFromString
 import platform.UIKit.UIApplication
 import platform.UIKit.UIMenuController
 import platform.UIKit.UIMenuControllerWillHideMenuNotification
 import platform.UIKit.UIMenuItem
 import platform.UIKit.UIResponder
 import platform.UIKit.UIView
+import platform.darwin.NSObject
+import kotlinx.cinterop.CPointer
+import kotlinx.cinterop.CPointed
 
 /**
  * iOS 文本操作浮动菜单（平台原生实现 = UIMenuController + responder 链，
@@ -33,14 +36,15 @@ object IosTextActionMenu {
 
     private val menuItems by lazy {
         listOf(
-            UIMenuItem(title = "替换", action = Selector("menuReplace:")),
-            UIMenuItem(title = "复制", action = Selector("menuCopy:")),
-            UIMenuItem(title = "书签", action = Selector("menuBookmark:")),
-            UIMenuItem(title = "朗读", action = Selector("menuAloud:")),
-            UIMenuItem(title = "查词", action = Selector("menuDict:")),
-            UIMenuItem(title = "全文搜索", action = Selector("menuSearchContent:")),
-            UIMenuItem(title = "浏览器", action = Selector("menuBrowser:")),
-            UIMenuItem(title = "分享", action = Selector("menuShare:")),
+            // K/N 无 kotlinx.cinterop.Selector (2.x 移除), 用 NSSelectorFromString 构造
+            UIMenuItem(title = "替换", action = NSSelectorFromString("menuReplace:")),
+            UIMenuItem(title = "复制", action = NSSelectorFromString("menuCopy:")),
+            UIMenuItem(title = "书签", action = NSSelectorFromString("menuBookmark:")),
+            UIMenuItem(title = "朗读", action = NSSelectorFromString("menuAloud:")),
+            UIMenuItem(title = "查词", action = NSSelectorFromString("menuDict:")),
+            UIMenuItem(title = "全文搜索", action = NSSelectorFromString("menuSearchContent:")),
+            UIMenuItem(title = "浏览器", action = NSSelectorFromString("menuBrowser:")),
+            UIMenuItem(title = "分享", action = NSSelectorFromString("menuShare:")),
         )
     }
 
@@ -75,10 +79,12 @@ object IosTextActionMenu {
         window.addSubview(target)
         target.becomeFirstResponder()
         UIMenuController.sharedMenuController.setMenuItems(menuItems)
-        UIMenuController.sharedMenuController.showMenuFromRect(
+        // showMenuFromRect 在 K/N 2.3 绑定不可用, 用两步式 setTargetRect + setMenuVisible
+        UIMenuController.sharedMenuController.setTargetRect(
             CGRectMake(anchorX.toDouble(), anchorY.toDouble(), 40.0, 40.0),
             inView = target,
         )
+        UIMenuController.sharedMenuController.setMenuVisible(true, animated = true)
         showing = true
         installHideObserver()
     }
@@ -133,38 +139,39 @@ object IosTextActionMenu {
 
         override fun canBecomeFirstResponder(): Boolean = true
 
-        override fun canPerformAction(action: Selector, withSender sender: Any?): Boolean =
-            action == Selector("menuReplace:") ||
-                action == Selector("menuCopy:") ||
-                action == Selector("menuBookmark:") ||
-                action == Selector("menuAloud:") ||
-                action == Selector("menuDict:") ||
-                action == Selector("menuSearchContent:") ||
-                action == Selector("menuBrowser:") ||
-                action == Selector("menuShare:")
+        override fun canPerformAction(action: CPointer<out CPointed>?, withSender: Any?): Boolean =
+            action == NSSelectorFromString("menuReplace:") ||
+                action == NSSelectorFromString("menuCopy:") ||
+                action == NSSelectorFromString("menuBookmark:") ||
+                action == NSSelectorFromString("menuAloud:") ||
+                action == NSSelectorFromString("menuDict:") ||
+                action == NSSelectorFromString("menuSearchContent:") ||
+                action == NSSelectorFromString("menuBrowser:") ||
+                action == NSSelectorFromString("menuShare:")
+
+        // @ObjCAction 方法参数必须是 ObjC 对象类型 (K/N 限制), Any? 不受支持
+        @ObjCAction
+        fun menuReplace(sender: NSObject?) = fire("replace")
 
         @ObjCAction
-        fun menuReplace(sender: Any?) = fire("replace")
+        fun menuCopy(sender: NSObject?) = fire("copy")
 
         @ObjCAction
-        fun menuCopy(sender: Any?) = fire("copy")
+        fun menuBookmark(sender: NSObject?) = fire("bookmark")
 
         @ObjCAction
-        fun menuBookmark(sender: Any?) = fire("bookmark")
+        fun menuAloud(sender: NSObject?) = fire("aloud")
 
         @ObjCAction
-        fun menuAloud(sender: Any?) = fire("aloud")
+        fun menuDict(sender: NSObject?) = fire("dict")
 
         @ObjCAction
-        fun menuDict(sender: Any?) = fire("dict")
+        fun menuSearchContent(sender: NSObject?) = fire("search_content")
 
         @ObjCAction
-        fun menuSearchContent(sender: Any?) = fire("search_content")
+        fun menuBrowser(sender: NSObject?) = fire("browser")
 
         @ObjCAction
-        fun menuBrowser(sender: Any?) = fire("browser")
-
-        @ObjCAction
-        fun menuShare(sender: Any?) = fire("share")
+        fun menuShare(sender: NSObject?) = fire("share")
     }
 }

@@ -7,8 +7,8 @@ package io.legado.app.help.source
  * exploreKindsMap (internal) / mutexMap / aCache 已全部下沉到 shared commonMain
  * (BookSourceExtensionsShared.kt), ACache 读写经 ExploreKindsCacheProviders provider 转发。
  *
- * - getBookType() / exploreKindsJson(): 已提升为 BookSource 成员方法 (实现 IBookSource 接口),
- *   调用方直接 bookSource.getBookType() / bookSource.exploreKindsJson(), 无需 import 扩展函数。
+ * - getBookType() / exploreKindsJson(): 已提升为 BookSource 成员方法,
+ *   调用方直接 bookSource.getBookType() / bookSource.exploreKindsJson()。
  * - clearExploreKindsCache() / exploreKinds(): 已下沉到 shared BookSourceExtensionsShared.kt,
  *   跨模块同包名同签名扩展自动合并, 消费方 import `io.legado.app.help.source.exploreKinds`
  *   / `clearExploreKindsCache` 零改动。

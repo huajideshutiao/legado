@@ -53,7 +53,6 @@ object AppLog {
      *
      * @param tag 组件标签, 默认 "AppLog", 供迁移前 LogUtils.d(TAG,...) 调用方保留原 TAG。
      */
-    @JvmOverloads
     fun put(
         message: String?,
         throwable: Throwable? = null,
@@ -80,6 +79,13 @@ object AppLog {
         }
     }
 
+    // 短参显式重载: 补回原 @JvmOverloads 生成的 JVM 签名 (commonMain 无该注解,
+    // 照 CacheManager 先例), 书源 jsLib 按 arity 匹配调用 AppLog.put(msg[, err[, toast]])
+    fun put(message: String?) = put(message, null, false, "AppLog")
+    fun put(message: String?, throwable: Throwable?) = put(message, throwable, false, "AppLog")
+    fun put(message: String?, throwable: Throwable?, toast: Boolean) =
+        put(message, throwable, toast, "AppLog")
+
     /**
      * 记录日志但不落盘 (仅内存环形列表 + DEBUG logcat)。
      *
@@ -87,7 +93,6 @@ object AppLog {
      *
      * @param tag 组件标签, 默认 "AppLog"。
      */
-    @JvmOverloads
     fun putNotSave(
         message: String?,
         throwable: Throwable? = null,
@@ -108,6 +113,14 @@ object AppLog {
         }
     }
 
+    // 短参重载: 同 [put], 恢复原版 JVM 签名面 (书源 jsLib 可能调用 putNotSave)
+    fun putNotSave(message: String?) = putNotSave(message, null, false, "AppLog")
+    fun putNotSave(message: String?, throwable: Throwable?) =
+        putNotSave(message, throwable, false, "AppLog")
+
+    fun putNotSave(message: String?, throwable: Throwable?, toast: Boolean) =
+        putNotSave(message, throwable, toast, "AppLog")
+
     fun clear() {
         synchronized(lock) {
             mLogs.clear()
@@ -122,7 +135,6 @@ object AppLog {
      *
      * @param tag 组件标签, 默认 "AppLog"。
      */
-    @JvmOverloads
     fun putDebug(
         message: String?,
         throwable: Throwable? = null,
@@ -132,6 +144,10 @@ object AppLog {
             put(message, throwable, tag = tag)
         }
     }
+
+    // 短参重载: 同 [put], 恢复原版 JVM 签名面
+    fun putDebug(message: String?) = putDebug(message, null, "AppLog")
+    fun putDebug(message: String?, throwable: Throwable?) = putDebug(message, throwable, "AppLog")
 
     /**
      * 是否启用日志记录 (原 AppConfig.recordLog 门), 供下沉到 shared 的 DispatchersMonitor

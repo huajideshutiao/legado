@@ -52,5 +52,38 @@ const char *qjs_AtomToCString(JSContext *ctx, JSAtom atom) { return JS_AtomToCSt
 // qjs_ToCString/qjs_AtomToCString 返回的 CPointer<ByteVar>?, 改走 void* 参数 (COpaquePointer?) ----
 void qjs_FreeCString(JSContext *ctx, void *ptr) { JS_FreeCString(ctx, (const char *)ptr); }
 
+// ---- Uint8Array/ArrayBuffer 指针传参适配: 各 target cinterop 对指针参数映射不一致
+// (iOS=CPointer<Var>/COpaquePointer, ohos=NativePtr/Long), 统一走 uintptr_t 整数传指针
+// (两端均映射 ULong), Kotlin 侧用 CPointer.rawValue / interpretCPointer 转换 ----
+
+// ---- Uint8Array/ArrayBuffer 数据传递适配: 各 target cinterop 对指针参数映射不一致
+// (官方 iOS=CPointer<Var>/COpaquePointer, CPF ohos=CPointer<CapturedType>/NativePtr),
+// 统一用「数组参数」形式 (cinterop 生成 CValuesRef, Kotlin 直接传 ByteArray, 零指针转换) ----
+
+// 拷贝版创建 Uint8Array (内部 malloc+memcpy+js_array_buffer_free 自管内存):
+// Kotlin 侧无需分配/持有/free 回调, 无生命周期风险 (JS_NewUint8ArrayCopy 语义);
+// 数组参数用 char[] (cinterop 映射 CValuesRef<ByteVar>, Kotlin ByteArray 直接传)
+JSValue qjs_NewUint8ArrayCopy(JSContext *ctx, const char src[], size_t len) {
+    return JS_NewUint8ArrayCopy(ctx, (const uint8_t *)src, len);
+}
+
+// 取 TypedArray 底层 ArrayBuffer 数据总长 (整数返回, 避免 out 指针参数跨端映射差异)
+uintptr_t qjs_ArrayBufferSize(JSContext *ctx, JSValueConst obj) {
+    size_t sz = 0;
+    JS_GetArrayBuffer(ctx, &sz, obj);
+    return (uintptr_t)sz;
+}
+
+// 从 ArrayBuffer 数据 offset 偏移处拷 min(cap, 剩余) 字节到 dst (dst 数组参数, Kotlin 传 ByteArray),
+// 返回实际拷贝长度; 失败/越界返回 0
+size_t qjs_ArrayBufferRead(JSContext *ctx, JSValueConst obj, size_t offset, char dst[], size_t cap) {
+    size_t sz = 0;
+    uint8_t *p = JS_GetArrayBuffer(ctx, &sz, obj);
+    if (!p || offset >= sz || cap == 0) return 0;
+    size_t n = (sz - offset) < cap ? (sz - offset) : cap;
+    memcpy(dst, p + offset, n);
+    return n;
+}
+
 // ---- 宏常量 (cinterop 不绑定带参数宏; 无参宏/字面量也非可调用符号, 统一 wrapper) ----
 int qjs_EvalTypeGlobal(void) { return JS_EVAL_TYPE_GLOBAL; }

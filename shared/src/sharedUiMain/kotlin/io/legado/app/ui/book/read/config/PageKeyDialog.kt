@@ -9,13 +9,17 @@
 
 package io.legado.app.ui.book.read.config
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Surface
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,15 +27,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppOutlinedTextField
-import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.custom_page_key
 import legado.shared.generated.resources.next_page_key
@@ -39,8 +46,6 @@ import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.prev_page_key
 import legado.shared.generated.resources.reset
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 自定义翻页按键对话框 (KMP 共享, app + desktop 复用)。
@@ -105,7 +110,7 @@ fun PageKeyDialog(
         properties = AppDialogSizes.properties(),
     ) {
         Surface(
-            shape = DesignTokens.dialogShape,
+            shape = DesignTokens.shapeDefault,
             color = colors.fillet,
             modifier = Modifier.appDialogSize().padding(16.dp),
         ) {
@@ -136,32 +141,53 @@ fun PageKeyDialog(
                     )
                 }
 
-                // 底部按钮行 (与原版 Row + Spacer(weight) + Reset + OK 对齐)
+                // 底部按钮行 (原版 dialog_page_key.xml: 重置/确定两个 48dp 高 weight1 均分方块,
+                // selector_fillet_btn_bg = arco_radius_default 8dp 圆角 + btn_bg(#100e0e0e) 实底
+                // + primaryText 居中, 两钮无间隔)
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(8.dp),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
+                        .padding(horizontal = 8.dp),
                 ) {
-                    AppTextButton(
+                    FilletButton(
                         text = stringResource(Res.string.reset),
-                        color = colors.secondaryText,
-                        onClick = {
-                            prev = ""
-                            next = ""
-                        },
-                    )
-                    Spacer(Modifier.padding(horizontal = 4.dp))
-                    AppTextButton(
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        prev = ""
+                        next = ""
+                    }
+                    FilletButton(
                         text = stringResource(Res.string.ok),
-                        onClick = {
-                            onConfirm(buildKeyMappings(prev, next))
-                        },
-                    )
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        onConfirm(buildKeyMappings(prev, next))
+                    }
                 }
             }
         }
+    }
+}
+
+/**
+ * 原版 selector_fillet_btn_bg 方块按钮: arco_radius_default 8dp 圆角 + btn_bg(#100e0e0e) 实底
+ * + primaryText 居中; 高度 48dp (arco_view_height_xl), 点击区随 modifier 均分。
+ */
+@Composable
+private fun FilletButton(
+    text: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val colors = AppTheme.colors
+    Box(
+        modifier
+            .height(48.dp)
+            .clip(DesignTokens.shapeDefault)
+            .background(Color(0x100E0E0E))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, color = colors.primaryText)
     }
 }
 

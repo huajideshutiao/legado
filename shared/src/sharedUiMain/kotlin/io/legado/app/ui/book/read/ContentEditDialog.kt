@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.toast.Toasters
@@ -36,8 +37,10 @@ import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.action_save
 import legado.shared.generated.resources.cancel
@@ -49,8 +52,6 @@ import legado.shared.generated.resources.ic_save
 import legado.shared.generated.resources.ok
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 章节正文编辑对话框 (KMP 共享, app + desktop 复用)。
@@ -79,14 +80,15 @@ import io.legado.app.ui.preview.LegadoThemePreview
  * - 标题栏点击编辑章节名: 由 [onRenameChapter] 回调承载 (调用方负责 appDb 更新 + 重载),
  *   null 时标题不可点击, 与原版标题栏点击改标题对齐 (原版直接依赖 appDb.bookChapterDao);
  * - 返回键 (标题栏返回) 自动保存: 对齐原版 onCancel(dialog) { save() } 语义;
- * - 底部显式"取消"按钮保留丢弃语义 (与返回键保存区分);
+ * - 无底部按钮栏 (2026-08 删除迁移期添加的"取消/确定"栏): 外部点击/系统返回同样走
+ *   save() 即保存后关闭 (原版 onCancel 保存, 不存在丢弃路径; 空内容时 save 直接 return 不关闭);
  * - 不实现 applyContent 按阅读进度滚动定位 (依赖 AppCompatEditText.layout.getLineForOffset,
  *   Compose OutlinedTextField 不暴露此 API, 滚动定位由用户手动操作)。
  *
  * @param chapterName 章节名 (用于标题 + 复制全部前缀)
  * @param content 章节正文 (用户可编辑)
- * @param onSubmit 用户点击保存且内容非空, 参数为编辑后的正文
- * @param onDismiss 用户取消 (点击"取消"按钮 / 对话框外部)
+ * @param onSubmit 用户保存且内容非空, 参数为编辑后的正文
+ * @param onDismiss 关闭对话框 (save() 成功回调后内部调用)
  * @param onReset 重置回调 (从源重新获取正文), null 时不显示重置菜单项
  * @param clipTextSink 剪贴板文本写入器 (替代 `context.sendToClip(text)`), null 时不显示复制全部菜单项
  * @param onRenameChapter 章节重命名回调 (参数为新标题, 调用方负责落库 + 刷新),
@@ -140,91 +142,84 @@ fun ContentEditDialog(
         onDismiss()
     }
 
-    Surface(
-        shape = DesignTokens.dialogShape,
-        color = colors.fillet,
-        modifier = Modifier.fillMaxWidth().padding(8.dp),
+    // 原版 ContentEditDialog: BaseDialogFragment + isFullHeight=true (窗口 0.9 宽 × 0.8 屏高居中,
+    // filletBackground 8dp 圆角, 带 dim); dialog_content_edit.xml 根 match_parent 全高, 标题栏 + 正文 weight 撑满;
+    // 无底部按钮栏, 外部取消/返回均保存 (原版 onCancel(dialog) { save() })
+    AppDialog(
+        onDismissRequest = { save() },
+        properties = AppDialogSizes.properties(),
     ) {
-        Column(Modifier.fillMaxWidth()) {
-            DialogTitleBar(
-                title = titleState,
-                // 返回键自动保存 (对照原版 onCancel(dialog) { save() })
-                onBack = { save() },
-                titleClickable = onRenameChapter != null,
-                onTitleClick = {
-                    titleEditState = titleState
-                    showTitleEdit = true
-                },
-                actions = {
-                    IconButton(onClick = { save() }) {
-                        Icon(
-                            painter = painterResource(Res.drawable.ic_save),
-                            contentDescription = saveDescText,
-                            tint = DesignTokens.arcoBlue6,
-                        )
-                    }
-                    OverflowMenu { dismissMenu ->
-                        // 重置: 仅当调用方提供 onReset 时渲染 (依赖 ContentEditViewModel.reset, 调用方注入)
-                        if (onReset != null) {
-                            DropdownMenuItem(
-                                onClick = {
-                                    dismissMenu()
-                                    onReset()
-                                },
-                            ) {
-                                Text(resetText, color = colors.primaryText)
+        Surface(
+            shape = DesignTokens.shapeDefault,
+            color = colors.fillet,
+            modifier = Modifier.appDialogSize(fullHeight = true),
+        ) {
+            Column(Modifier.fillMaxWidth()) {
+                DialogTitleBar(
+                    title = titleState,
+                    // 返回键自动保存 (对照原版 onCancel(dialog) { save() })
+                    onBack = { save() },
+                    titleClickable = onRenameChapter != null,
+                    onTitleClick = {
+                        titleEditState = titleState
+                        showTitleEdit = true
+                    },
+                    actions = {
+                        IconButton(onClick = { save() }) {
+                            Icon(
+                                painter = painterResource(Res.drawable.ic_save),
+                                contentDescription = saveDescText,
+                                tint = DesignTokens.arcoBlue6,
+                            )
+                        }
+                        OverflowMenu { dismissMenu ->
+                            // 重置: 仅当调用方提供 onReset 时渲染 (依赖 ContentEditViewModel.reset, 调用方注入)
+                            if (onReset != null) {
+                                DropdownMenuItem(
+                                    onClick = {
+                                        dismissMenu()
+                                        onReset()
+                                    },
+                                ) {
+                                    Text(resetText, color = colors.primaryText)
+                                }
+                            }
+                            // 复制全部: 仅当调用方提供 clipTextSink 时渲染 (与 app 端 sendToClip 等价)
+                            if (clipTextSink != null) {
+                                DropdownMenuItem(
+                                    onClick = {
+                                        dismissMenu()
+                                        // 与 app 端 sendToClip("$title\n${contentView?.text}") 等价
+                                        clipTextSink("$titleState\n$contentState")
+                                        Toasters.get().toast(copySuccessText)
+                                    },
+                                ) {
+                                    Text(copyAllText, color = colors.primaryText)
+                                }
                             }
                         }
-                        // 复制全部: 仅当调用方提供 clipTextSink 时渲染 (与 app 端 sendToClip 等价)
-                        if (clipTextSink != null) {
-                            DropdownMenuItem(
-                                onClick = {
-                                    dismissMenu()
-                                    // 与 app 端 sendToClip("$title\n${contentView?.text}") 等价
-                                    clipTextSink("$titleState\n$contentState")
-                                    Toasters.get().toast(copySuccessText)
-                                },
-                            ) {
-                                Text(copyAllText, color = colors.primaryText)
-                            }
-                        }
-                    }
-                },
-            )
-            // 正文区: Box 包裹留作未来扩展 (原 app 端有 CircularProgressIndicator loading 指示器);
-            // 不用 weight (Column 无固定高度时 weight 不生效), 让 TextField 按 maxLines=10 自然计算高度
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-            ) {
-                // 多行输入, maxLines = 10 (任务硬要求); 走 AppTextField 统一 MD2 视觉
-                // maxLines=10 时 TextField 内部自动滚动, 无需外层 verticalScroll
-                AppTextField(
-                    value = contentState,
-                    onValueChange = { contentState = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    maxLines = 10,
-                    textStyle = LocalTextStyle.current.copy(
-                        color = colors.primaryText,
-                        fontSize = 16.sp,
-                    ),
+                    },
                 )
-            }
-            // 底部按钮栏 (与 SourceFilterEditDialog 风格对齐: 取消左 + 确定右)
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onDismiss) {
-                    Text(cancelText, color = colors.secondaryText)
-                }
-                Spacer(Modifier.width(4.dp))
-                TextButton(onClick = { save() }) {
-                    Text(okText, color = DesignTokens.arcoBlue6)
+                // 正文区: 固定高度下 weight(1f) 撑满剩余 (原版 FrameLayout weight=1);
+                // 内边距 arco_spacing_md=12dp (对齐 XML content_view padding)
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(12.dp),
+                ) {
+                    // 多行输入, maxLines = 10 (任务硬要求); 走 AppTextField 统一 MD2 视觉
+                    // maxLines=10 时 TextField 内部自动滚动, 无需外层 verticalScroll
+                    AppTextField(
+                        value = contentState,
+                        onValueChange = { contentState = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 10,
+                        textStyle = LocalTextStyle.current.copy(
+                            color = colors.primaryText,
+                            fontSize = 16.sp,
+                        ),
+                    )
                 }
             }
         }

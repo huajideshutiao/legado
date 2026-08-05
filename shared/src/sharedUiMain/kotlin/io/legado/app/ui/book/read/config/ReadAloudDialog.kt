@@ -34,7 +34,6 @@
 package io.legado.app.ui.book.read.config
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,6 +41,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.Slider
@@ -58,17 +58,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSwitch
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.chapter_list
 import legado.shared.generated.resources.flow_sys
@@ -86,8 +87,6 @@ import legado.shared.generated.resources.to_backstage
 import legado.shared.generated.resources.tts_speech_add
 import legado.shared.generated.resources.tts_speech_reduce
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 朗读控制面板对话框 (KMP 共享, app + desktop 复用)。
@@ -156,15 +155,16 @@ fun ReadAloudDialog(
     // 拖动中的语速预览值 (与原版 AppSlider 拖动语义对齐: 拖动中仅刷新显示, 抬手回调)
     var draggingSpeed by remember { mutableFloatStateOf(-1f) }
 
-    // 底部弹层 (对照原版 BaseBottomDialogFragment)
+    // 底部弹层 (对照原版 BaseBottomDialogFragment: 窗口 MATCH_PARENT 全宽贴底 +
+    // filletBackground 8dp 圆角; 内容 16/8dp 间距由下方 Column padding 提供, 对齐 XML root)
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
     ) {
         Surface(
-            shape = DesignTokens.dialogShape,
+            shape = DesignTokens.shapeDefault,
             color = colors.fillet,
-            modifier = Modifier.appDialogSize().padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
         ) {
             Column(
                 Modifier
@@ -365,18 +365,17 @@ fun ReadAloudDialog(
                     )
                 }
 
-                // 底部功能按钮行: 目录 / 主菜单 / 转到后台 / 设置 (与原版 Row + ReadMenuIconButton x4 对齐)
+                // 底部功能按钮行: 目录 / 主菜单 / 转到后台 / 设置 (原版 4×60dp 按钮 + weight2 spacer 均分,
+                // 图标 maxHeight 20dp + 文字 12sp marginTop 3dp + paddingBottom default)
                 Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    Modifier.fillMaxWidth().padding(top = 8.dp),
                 ) {
                     BottomIconButton(
                         iconKey = "ic_toc",
                         label = stringResource(Res.string.chapter_list),
                         onClick = onOpenChapterList,
                     )
+                    Spacer(Modifier.weight(2f))
                     BottomIconButton(
                         iconKey = "ic_menu",
                         label = stringResource(Res.string.main_menu),
@@ -385,11 +384,13 @@ fun ReadAloudDialog(
                             onDismiss()
                         },
                     )
+                    Spacer(Modifier.weight(2f))
                     BottomIconButton(
                         iconKey = "ic_visibility_off",
                         label = stringResource(Res.string.to_backstage),
                         onClick = onBackstage,
                     )
+                    Spacer(Modifier.weight(2f))
                     BottomIconButton(
                         iconKey = "ic_settings",
                         label = stringResource(Res.string.setting),
@@ -430,6 +431,8 @@ private fun AloudIcon(
  * 底部功能图标按钮 (复刻自 app 端 ReadMenuIconButton)。
  *
  * 竖排: 图标 + 文字标签, 单击触发回调。
+ * 尺寸对齐原版 dialog_read_aloud.xml 底部 4 按钮: 60dp 宽 + paddingBottom=default(8dp),
+ * 图标 maxHeight 20dp, 文字 12sp + marginTop 3dp。
  */
 @Composable
 private fun BottomIconButton(
@@ -440,22 +443,23 @@ private fun BottomIconButton(
     val colors = AppTheme.colors
     Column(
         Modifier
+            .width(60.dp)
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(bottom = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
             painter = rememberPainter(iconKey),
             contentDescription = label,
             tint = colors.primaryText,
-            modifier = Modifier.size(24.dp),
+            modifier = Modifier.size(20.dp),
         )
         Text(
             text = label,
             color = colors.primaryText,
             fontSize = 12.sp,
             maxLines = 1,
-            modifier = Modifier.padding(top = 4.dp),
+            modifier = Modifier.padding(top = 3.dp),
         )
     }
 }

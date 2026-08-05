@@ -251,6 +251,9 @@ class MangaReaderViewModelShared(
                 success()
             }.onFailure {
                 AppLog.put("初始化数据失败\n${it.message}", it)
+                // 关键路径: 初始化失败必须可见 (错误页可重试), 否则 UI 永久转圈无提示
+                _loading.value = false
+                _error.tryEmit("初始化数据失败\n${it.message}" to true)
             }
         }
     }
@@ -429,8 +432,12 @@ class MangaReaderViewModelShared(
      * 加载或刷新当前章 (对应 app 端 ReadMangaViewModel.loadOrUpContent)。
      */
     fun loadOrUpContent() {
-        if (curMangaChapter == null) loadContent(_durChapterIndex.value)
-        else upContent()
+        if (curMangaChapter == null) {
+            // 对照原版 "重新加载" 按钮: 先显示加载中再重载 (原版 loadingRowVisible=true → retryVisible=false → loadOrUpContent);
+            // 漏置 _loading 会导致失败页点击重载后 error 消失、转圈也不出现 → 无任何反馈
+            _loading.value = true
+            loadContent(_durChapterIndex.value)
+        } else upContent()
         if (nextMangaChapter == null) loadContent(_durChapterIndex.value + 1)
         if (prevMangaChapter == null) loadContent(_durChapterIndex.value - 1)
     }
@@ -461,6 +468,13 @@ class MangaReaderViewModelShared(
                 }
             }.onFailure {
                 AppLog.put("加载正文出错\n${it.message}")
+                // 关键路径: 当前章加载失败必须可见 (错误页可重试), 否则 UI 永久转圈/空白无提示;
+                // prev/next 章为可选预加载, 失败不影响当前显示, 仅记日志
+                if (index == _durChapterIndex.value) {
+                    removeLoading(index)
+                    _loading.value = false
+                    _error.tryEmit("加载正文出错\n${it.message}" to true)
+                }
             }
         }
     }

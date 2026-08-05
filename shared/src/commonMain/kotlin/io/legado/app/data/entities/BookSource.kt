@@ -8,7 +8,6 @@ import androidx.room3.PrimaryKey
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.BookSourceType
 import io.legado.app.constant.BookType
-import io.legado.app.help.ExploreKindsCacheProviders
 import io.legado.app.data.entities.rule.BookInfoRule
 import io.legado.app.data.entities.rule.ContentRule
 import io.legado.app.data.entities.rule.ExploreRule
@@ -16,6 +15,7 @@ import io.legado.app.data.entities.rule.ReviewRule
 import io.legado.app.data.entities.rule.RulePolymorphicSerializer
 import io.legado.app.data.entities.rule.SearchRule
 import io.legado.app.data.entities.rule.TocRule
+import io.legado.app.help.ExploreKindsCacheProviders
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.isJsonArray
@@ -45,18 +45,18 @@ import kotlinx.serialization.Transient
 data class BookSource(
     // 地址，包括 http/https
     @PrimaryKey
-    override var bookSourceUrl: String = "",
+    var bookSourceUrl: String = "",
     // 名称
-    override var bookSourceName: String = "",
+    var bookSourceName: String = "",
     // 分组
     var bookSourceGroup: String? = null,
     // 类型，0 文本，1 音频, 2 图片, 3 文件（指的是类似知轩藏书只提供下载的网站）
     var bookSourceType: Int = 0,
     // 详情页url正则
-    override var bookUrlPattern: String? = null,
+    var bookUrlPattern: String? = null,
     // 手动排序编号
     @ColumnInfo(defaultValue = "0")
-    override var customOrder: Int = 0,
+    var customOrder: Int = 0,
     // 是否启用
     @ColumnInfo(defaultValue = "1")
     var enabled: Boolean = true,
@@ -85,7 +85,7 @@ data class BookSource(
     @Serializable(with = RawJsonStringSerializer::class)
     override var loginUi: String? = null,
     // 登录检测js
-    override var loginCheckJs: String? = null,
+    var loginCheckJs: String? = null,
     // 封面解密js
     var coverDecodeJs: String? = null,
     // 注释
@@ -113,7 +113,7 @@ data class BookSource(
     @Serializable(with = RawJsonStringSerializer::class)
     var ruleExplore: String? = null,
     // 搜索url
-    override var searchUrl: String? = null,
+    var searchUrl: String? = null,
     // 搜索规则
     // rule JSON 值可能是对象, 需原样转字符串
     @Serializable(with = RawJsonStringSerializer::class)
@@ -133,8 +133,8 @@ data class BookSource(
     // 段评规则
     // rule JSON 值可能是对象, 需原样转字符串
     @Serializable(with = RawJsonStringSerializer::class)
-    override var ruleReview: String? = null
-) : BaseSource, IBookSource {
+    var ruleReview: String? = null
+) : BaseSource {
 
     @Ignore
     @Transient
@@ -185,7 +185,7 @@ data class BookSource(
     }
 
     @get:Ignore
-    override var searchRule: SearchRule
+    var searchRule: SearchRule
         get() = _searchRule ?: parseRule(ruleSearch, SearchRule.serializer()) { SearchRule() }.also { _searchRule = it }
         set(value) {
             ruleSearch = KS_JSON.encodeToString(SearchRule.serializer(), value)
@@ -193,7 +193,7 @@ data class BookSource(
         }
 
     @get:Ignore
-    override var exploreRule: ExploreRule
+    var exploreRule: ExploreRule
         get() = _exploreRule ?: parseRule(ruleExplore, ExploreRule.serializer()) { ExploreRule() }.also { _exploreRule = it }
         set(value) {
             ruleExplore = KS_JSON.encodeToString(ExploreRule.serializer(), value)
@@ -201,7 +201,7 @@ data class BookSource(
         }
 
     @get:Ignore
-    override var bookInfoRule: BookInfoRule
+    var bookInfoRule: BookInfoRule
         get() = _bookInfoRule ?: parseRule(ruleBookInfo, BookInfoRule.serializer()) { BookInfoRule() }.also {
             _bookInfoRule = it
         }
@@ -211,7 +211,7 @@ data class BookSource(
         }
 
     @get:Ignore
-    override var tocRule: TocRule
+    var tocRule: TocRule
         get() = _tocRule ?: parseRule(ruleToc, TocRule.serializer()) { TocRule() }.also { _tocRule = it }
         set(value) {
             ruleToc = KS_JSON.encodeToString(TocRule.serializer(), value)
@@ -219,7 +219,7 @@ data class BookSource(
         }
 
     @get:Ignore
-    override var contentRule: ContentRule
+    var contentRule: ContentRule
         get() = _contentRule ?: parseRule(ruleContent, ContentRule.serializer()) { ContentRule() }.also { _contentRule = it }
         set(value) {
             ruleContent = KS_JSON.encodeToString(ContentRule.serializer(), value)
@@ -227,7 +227,7 @@ data class BookSource(
         }
 
     @get:Ignore
-    override var reviewRule: ReviewRule
+    var reviewRule: ReviewRule
         get() = _reviewRule ?: parseRule(ruleReview, ReviewRule.serializer()) { ReviewRule() }.also { _reviewRule = it }
         set(value) {
             ruleReview = KS_JSON.encodeToString(ReviewRule.serializer(), value)
@@ -261,7 +261,7 @@ data class BookSource(
      * 仅提升为成员方法以满足 [IBookSource] 接口契约 (便于 shared 模块在
      * 不依赖 app 端 BookSource 实体类的前提下通过接口调用)。
      */
-    override fun getBookType(): Int {
+    fun getBookType(): Int {
         return when (bookSourceType) {
             BookSourceType.file -> BookType.text or BookType.webFile
             BookSourceType.image -> BookType.image
@@ -281,7 +281,7 @@ data class BookSource(
      * 采用 md5 作为 key 可以在分类修改后自动重新计算, 不需要手动刷新。
      * F2: 缓存读取走 [ExploreKindsCacheProviders] (app 端注册转发到 ACache.get("explore"), 行为不变)。
      */
-    override fun exploreKindsJson(): String {
+    fun exploreKindsJson(): String {
         val exploreKindsKey = MD5Utils.md5Encode(bookSourceUrl + exploreUrl)
         return ExploreKindsCacheProviders.impl?.getAsString(exploreKindsKey)?.takeIf { it.isJsonArray() }
             ?: exploreUrl.takeIf { it.isJsonArray() }

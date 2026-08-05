@@ -275,7 +275,9 @@ internal object DesktopSystemVolume {
     private fun guidBytes(s: String): Memory {
         val g = s.replace("-", "")
         val mem = Memory(16)
-        mem.setInt(0, g.substring(0, 8).toInt(16))
+        // Data1 可为 8 位 hex 且可能 > 0x7FFFFFFF (如 BCDE0395), toInt(16) 溢出抛异常,
+        // 用 parseUnsignedInt (2026-08 桌面回归实崩修复)
+        mem.setInt(0, Integer.parseUnsignedInt(g.substring(0, 8), 16))
         mem.setShort(4, g.substring(8, 12).toInt(16).toShort())
         mem.setShort(6, g.substring(12, 16).toInt(16).toShort())
         for (i in 0 until 8) {

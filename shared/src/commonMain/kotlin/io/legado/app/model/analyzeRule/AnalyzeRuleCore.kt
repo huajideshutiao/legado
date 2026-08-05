@@ -854,17 +854,33 @@ open class AnalyzeRuleCore(
         // - sharedScope 路径: SharedJsScope 缓存的 topScope (ThreadLocal 线程独占),
         //   bindings 也注入到该 topScope 的 globalThis, 执行后由 evalInSubScope 自行清理,
         //   既能让 jsLib 自由函数命中 binding, 又不会跨 evalJS 残留。
-        return if (topScope == null) {
-            val scope = JsEngines.get().getRuntimeScope(bindings)
-            topScopeRef = scope
-            val wrappedJs = JsEngines.get().wrapJsForEval(jsStr)
-            compileScriptCache(wrappedJs).eval(scope, coroutineContext)
-        } else {
-            JsEngines.get().evalInSubScope(
-                compileSubScopeCache(jsStr),
-                topScope,
-                bindings,
-                coroutineContext
+        return try {
+            if (topScope == null) {
+                val scope = JsEngines.get().getRuntimeScope(bindings)
+                topScopeRef = scope
+                val wrappedJs = JsEngines.get().wrapJsForEval(jsStr)
+                compileScriptCache(wrappedJs).eval(scope, coroutineContext)
+            } else {
+                JsEngines.get().evalInSubScope(
+                    compileSubScopeCache(jsStr),
+                    topScope,
+                    bindings,
+                    coroutineContext
+                )
+            }
+        } catch (e: Exception) {
+            // 2026-08 用户拍板: JS 异常补书源上下文。原版 (origin/quickjs) SearchModel/BookInfo
+            // 的 catch 日志只有 "书源搜索出错/获取分类出错" 无书源名, 多书源场景无法定位;
+            // 此处一处包装, 全部上层日志 (搜索/详情/目录/正文) 自动带书源名。
+            // 保留原异常为 cause, 不吞异常 (铁律: 真正的问题必须能被看到)。
+            // BaseSource 无名称/URL 属性 (BookSource 才有), 非书源场景 (本地书/测试) 显示裸前缀。
+            val bookSource = source as? io.legado.app.data.entities.BookSource
+            val sourceName = bookSource?.bookSourceName?.takeIf { it.isNotBlank() }
+                ?: bookSource?.bookSourceUrl
+            throw RuntimeException(
+                if (sourceName.isNullOrBlank()) "JS执行出错\n${e.message}"
+                else "书源【$sourceName】JS执行出错\n${e.message}",
+                e
             )
         }
     }

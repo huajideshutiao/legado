@@ -3,6 +3,7 @@
 #include "jni_object_class.h"
 #include <cstring>
 #include <cstdlib>
+#include <cstdio>
 #include <pthread.h>
 
 // KP1.1 跨平台日志: Android 走 __android_log_print, 桌面 JVM 走 fprintf(stderr)
@@ -13,7 +14,6 @@
 
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 #else
-#include <cstdio>
 #define LOGE(...) fprintf(stderr, "[ERROR][%s] ", TAG); fprintf(stderr, __VA_ARGS__); fprintf(stderr, "\n")
 #endif
 
@@ -689,18 +689,66 @@ static char *buildObjectPropsText(JSContext *ctx, JSValue obj) {
     return out;
 }
 
+// 对 toString 失败 (抛出的值不可字符串化) 的异常值做纯 tag 判定, 生成可读类型描述。
+//
+// 约束: 此时 ctx 的 current_exception 已被 toString 抛出的新异常占用, 本函数只使用
+// tag 宏 / JS_IsXxx / JavaObjectClass::isInstance 等不执行 JS 的判定, 不覆盖该异常,
+// 保证 buildExceptionMessage 能继续取出 toString 失败原因。
+//
+// 返回 malloc 分配的 "JS Exception (thrown value: <类型>)", 调用方 free。
+static char *describeThrownValue(JSContext *ctx, JSValue v) {
+    const char *kind = nullptr;
+    char numBuf[64];
+    if (JS_IsNull(v)) {
+        kind = "null";
+    } else if (JS_IsUndefined(v)) {
+        kind = "undefined";
+    } else if (JS_IsBool(v)) {
+        kind = JS_ToBool(ctx, v) ? "true" : "false";
+    } else if (JS_VALUE_GET_TAG(v) == JS_TAG_INT) {
+        std::snprintf(numBuf, sizeof(numBuf), "number %d", (int) JS_VALUE_GET_INT(v));
+        kind = numBuf;
+    } else if (JS_TAG_IS_FLOAT64(JS_VALUE_GET_TAG(v))) {
+        std::snprintf(numBuf, sizeof(numBuf), "number %g", JS_VALUE_GET_FLOAT64(v));
+        kind = numBuf;
+    } else if (JS_IsString(v)) {
+        kind = "a string";  // 理论不可达: string 的 JS_ToCString 不会失败
+    } else if (JS_IsFunction(ctx, v)) {
+        kind = "a function";
+    } else if (JS_IsArray(v)) {
+        kind = "an array";
+    } else if (JavaObjectClass::isInstance(ctx, v)) {
+        kind = "a Java object";
+    } else {
+        kind = "an object";
+    }
+    static const char kPrefix[] = "JS Exception (thrown value: ";
+    size_t kindLen = std::strlen(kind);
+    size_t n = sizeof(kPrefix) - 1 + kindLen + 2;  // + ")" + NUL
+    char *out = (char *) std::malloc(n);
+    if (!out) return nullptr;
+    std::memcpy(out, kPrefix, sizeof(kPrefix) - 1);
+    std::memcpy(out + sizeof(kPrefix) - 1, kind, kindLen);
+    out[n - 2] = ')';
+    out[n - 1] = '\0';
+    return out;
+}
+
 char *JniValueConvert::buildExceptionMessage(JSContext *ctx, JSValue exc) {
     // 1. 获取 message (toString), 如 "TypeError: xxx" / "SyntaxError: ... at line 1 col 6"
     const char *msg = JS_ToCString(ctx, exc);
-    const char *msgSafe = msg ? msg : "JS Exception";
-    size_t msgLen = std::strlen(msgSafe);
 
     // 1.1 toString 失败 (OOM / 自定义 toString 或 getter 抛异常): JS_ToCString 返回
     //     null 且 ctx 的 current_exception 已被 toString 抛出的新异常替换, 取出来转
     //     文本附加到 message, 避免用户只看到裸 "JS Exception" 无法区分是脚本问题
     //     还是引擎桥接问题。
     char *toStringErr = nullptr;
+    char *valueDesc = nullptr;
     if (!msg) {
+        // 对抛出的原始值做纯 tag 判定生成类型描述。此时不能调用任何可能执行 JS 的
+        // API (current_exception 已被 toString 抛出的新异常占用, 再执行 JS 会覆盖它);
+        // tag 宏 / JS_IsXxx / JavaObjectClass::isInstance 均不执行 JS, 可安全使用。
+        valueDesc = describeThrownValue(ctx, exc);
         JSValue newExc = JS_GetException(ctx);
         if (!JS_IsUndefined(newExc) && !JS_IsNull(newExc)) {
             const char *newMsg = JS_ToCString(ctx, newExc);
@@ -713,6 +761,10 @@ char *JniValueConvert::buildExceptionMessage(JSContext *ctx, JSValue exc) {
         }
         JS_FreeValue(ctx, newExc);
     }
+    // msgSafe: toString 成功用原文; 失败用类型描述 (仍以 "JS Exception" 开头保持辨识度,
+    // 并让用户知道书源抛的是什么类型的值, 而不是面对裸 "JS Exception")。
+    const char *msgSafe = msg ? msg : (valueDesc ? valueDesc : "JS Exception");
+    size_t msgLen = std::strlen(msgSafe);
     size_t toStringErrLen = toStringErr ? std::strlen(toStringErr) : 0;
 
     // 2. 若是 Error 对象 (含子类 SyntaxError/TypeError 等), 附加 stack 属性
@@ -758,6 +810,7 @@ char *JniValueConvert::buildExceptionMessage(JSContext *ctx, JSValue exc) {
     char *out = (char *) std::malloc(total);
     if (!out) {
         std::free(toStringErr);
+        std::free(valueDesc);
         std::free(propsStr);
         if (stackStr) JS_FreeCString(ctx, stackStr);
         if (!JS_IsUndefined(stack)) JS_FreeValue(ctx, stack);
@@ -792,6 +845,7 @@ char *JniValueConvert::buildExceptionMessage(JSContext *ctx, JSValue exc) {
     out[pos] = '\0';
 
     std::free(toStringErr);
+    std::free(valueDesc);
     std::free(propsStr);
     if (stackStr) JS_FreeCString(ctx, stackStr);
     if (!JS_IsUndefined(stack)) JS_FreeValue(ctx, stack);

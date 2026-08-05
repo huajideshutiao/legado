@@ -1,5 +1,8 @@
 package io.legado.app.ui.route
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -30,6 +33,7 @@ import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.LocalReadConfigProviders
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.help.config.ReadTipConfigShared
@@ -54,6 +58,7 @@ import io.legado.app.ui.book.read.ReaderDialogEvent
 import io.legado.app.ui.book.read.ReaderPlatformProviders
 import io.legado.app.ui.book.read.ReaderScreen
 import io.legado.app.ui.book.read.ReaderScreenModel
+import io.legado.app.ui.book.read.ReaderScreenModelRegistry
 import io.legado.app.ui.book.read.ReaderUiActions
 import io.legado.app.ui.book.read.ReaderUiState
 import io.legado.app.ui.book.read.SimulatedReadingDialog
@@ -66,6 +71,7 @@ import io.legado.app.ui.book.read.config.HttpTtsEditViewModelShared
 import io.legado.app.ui.book.read.config.PageKeyDialog
 import io.legado.app.ui.book.read.config.ReadAloudDialog
 import io.legado.app.ui.book.read.config.SpeakEngineDialog
+import io.legado.app.ui.book.read.page.delegate.ScrollPageDelegateCompose
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.book.read.page.tipRowHeightPx
@@ -75,6 +81,7 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.AppShortcut
 import io.legado.app.ui.compose.platform.AppShortcutHandler
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
+import io.legado.app.ui.compose.platform.PageTurnThrottle
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -137,7 +144,12 @@ fun ReaderRoute(
 
     DisposableEffect(screenModel, provider) {
         provider.onEnter(screenModel)
-        onDispose { provider.onExit(screenModel) }
+        // 注册为当前阅读屏 (鸿蒙 napi 回调/非 Compose 宿主取 dialogEvent/menuState 用)
+        ReaderScreenModelRegistry.attach(screenModel)
+        onDispose {
+            ReaderScreenModelRegistry.detach(screenModel)
+            provider.onExit(screenModel)
+        }
     }
 
     // region 排版参数注入（对照原版 ChapterProvider.upViewSize + TextStyleProvider.upStyle）
@@ -153,6 +165,13 @@ fun ReaderRoute(
             layoutSize = containerSize
         }
     }
+    // 系统栏 inset：阅读页窗口 fullscreen（内容铺到系统栏后），排版视口须预留状态栏/
+    // 导航栏高度（对照原版 headerHeight 的 vwStatusBar.height 与 vwNavigationBar 占位）；
+    // inset 随系统栏显隐变化（hideStatusBar/hideNavigationBar 配置、菜单弹出恢复系统栏），
+    // 读值即订阅 → inset 变化触发重组 → 下方 LaunchedEffect key 变化重排
+    // （对照原版 onConfigurationChanged → upStatusBar + upViewSize 重排）
+    val statusBarTopPx = WindowInsets.statusBars.getTop(density)
+    val navigationBarBottomPx = WindowInsets.navigationBars.getBottom(density)
     // 配置变更即时触发：读回新配置后由 VM 比对，参数没变不重排
     var configVersion by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
@@ -161,9 +180,15 @@ fun ReaderRoute(
         }
     }
     // readTipConfig 进 key: 页眉/页脚显隐与内边距变化时重建排版视口
-    LaunchedEffect(screenModel, layoutSize, configVersion, density, readBookConfig, readTipConfig) {
+    LaunchedEffect(
+        screenModel, layoutSize, configVersion, density, readBookConfig, readTipConfig,
+        statusBarTopPx, navigationBarBottomPx,
+    ) {
         screenModel.viewModel.updateLayoutConfig(
-            buildLayoutConfig(layoutSize, density, readBookConfig, readTipConfig)
+            buildLayoutConfig(
+                layoutSize, density, readBookConfig, readTipConfig,
+                statusBarTopPx, navigationBarBottomPx,
+            )
         )
     }
     // endregion
@@ -252,9 +277,10 @@ fun ReaderRoute(
     // 键位随翻页方向自适应——左右翻页模式 ←/→=翻页、↑/↓=章节切换;
     // 上下滚动模式 ↑/↓=翻页、←/→=章节切换 (原版 ReadBookKeyHandler 的 prevKeys/nextKeys
     // 含 ↑↓ 翻页, 用户拍板改为章节切换)。
-    // 翻页 200ms 去抖 (对照原版 ReadBookKeyHandler.keyPageDebounce: wait=200/maxWait=200,
-    // leading 语义: 200ms 内重复触发只翻一页, 长按不连翻); 章节切换独立去抖, 防 KeyDown 自动重复连切
-    val pageTurnThrottle = remember { PageTurnThrottle() }
+    // 翻页去抖已由 AppShortcuts 分发的按住过滤承担 (系统 repeat 只触发一次、快速连按每次生效,
+    // 见 dispatchShortcut 的 KEY_REPEAT_WINDOW_MS); 动画中按键由 delegate abortAnim 打断重翻
+    // (对照原版 keyTurnPage → nextPageByAnim → abortAnim 语义)。章节切换保留独立去抖,
+    // 防快速连按误触连切章。
     val chapterTurnThrottle = remember { PageTurnThrottle() }
     AppShortcutHandler(
         shortcuts = ReaderShortcuts.arrows,
@@ -272,19 +298,24 @@ fun ReaderRoute(
                         else screenModel.viewModel.moveToNextChapter()
                     }
                 } else {
-                    pageTurnThrottle.tryTurn {
-                        // turnPage 内部优先走 pageDelegate.keyTurnPage(带动画), 无委托时直接位移页码
-                        screenModel.viewModel.turnPage(
-                            if (prev) PageDirectionShared.PREV else PageDirectionShared.NEXT
-                        )
-                    }
+                    // turnPage 内部优先走 pageDelegate.keyTurnPage(带动画), 无委托时直接位移页码
+                    screenModel.viewModel.turnPage(
+                        if (prev) PageDirectionShared.PREV else PageDirectionShared.NEXT
+                    )
                 }
             }
 
             Key.DirectionUp, Key.DirectionDown -> {
                 val up = shortcut.key == Key.DirectionUp
                 if (isScroll) {
-                    pageTurnThrottle.tryTurn {
+                    // 滚动模式: ↑/↓ = 小步滚动 (用户拍板: 一次整页难受),
+                    // 1/3 视口 + 动画 (scrollByAnimated: 页内动画, 越界同步折算跨页)
+                    val pageH =
+                        (screenModel.viewModel.curTextPage.value?.visibleHeight ?: 0).toFloat()
+                    if (pageH > 0f) {
+                        (screenModel.viewModel.pageDelegate as? ScrollPageDelegateCompose)
+                            ?.scrollByAnimated(if (up) pageH / 3f else -pageH / 3f)
+                    } else {
                         screenModel.viewModel.turnPage(
                             if (up) PageDirectionShared.PREV else PageDirectionShared.NEXT
                         )
@@ -306,17 +337,18 @@ fun ReaderRoute(
         shortcuts = ReaderShortcuts.volumePageTurn,
         enabled = { isTopEntry() && !screenModel.menuState.isVisible && provider.volumeKeyPage },
     ) { shortcut ->
-        pageTurnThrottle.tryTurn {
-            screenModel.viewModel.turnPage(
-                if (shortcut.key == Key.VolumeUp) PageDirectionShared.PREV
-                else PageDirectionShared.NEXT
-            )
-        }
+        screenModel.viewModel.turnPage(
+            if (shortcut.key == Key.VolumeUp) PageDirectionShared.PREV
+            else PageDirectionShared.NEXT
+        )
     }
     // endregion
 
-    // Ctrl+滚轮调字号 (用户拍板: 替代 Ctrl+=/-= 快捷键, 更直观)
-    // 非 Ctrl 滚轮不消费 (阅读页滚动走拖拽, 保持现状)
+    // Ctrl+滚轮调字号 (用户拍板: 替代 Ctrl+=/-= 快捷键, 更直观, 每格 ±2, 范围 5..50);
+    // 非 Ctrl 滚轮在滚动翻页模式 (isScrollPageAnim) 下按 mouseWheelPage 开关消费为滚动翻页
+    // (滚过页底自动折算切页, 与拖拽滚动同一套 applyScrollDelta 折算, 互不干扰);
+    // 左右翻页模式非 Ctrl 滚轮不消费 (保持现状: 拖拽翻页, 滚轮不干扰)。
+    // 菜单可见时不消费滚轮, 让位菜单内列表滚动 (对照原版 onMouseWheel 的 menuLayoutIsVisible 守卫)。
     ReaderScreen(
         state = state,
         actions = actions,
@@ -328,20 +360,45 @@ fun ReaderRoute(
                     if (event.type != PointerEventType.Scroll) continue
                     val change = event.changes.firstOrNull() ?: continue
                     val delta = change.scrollDelta.y
-                    if (delta == 0f || !event.keyboardModifiers.isCtrlPressed) continue
-                    val deltaSize = if (delta > 0) 1 else -1
-                    val newSize = (readBookConfig.textSize + deltaSize)
-                        .coerceIn(MIN_TEXT_SIZE, MAX_TEXT_SIZE)
-                    if (newSize != readBookConfig.textSize) {
-                        readBookConfig.textSize = newSize
-                        readBookConfig.save()
-                        // 与 ReadStyleScreen 字号 seekBar 一致的重排事件
-                        ReadBookEvents.postConfig(
-                            ReadConfigChange.CHAPTER_STYLE,
-                            ReadConfigChange.LOAD_CONTENT,
-                        )
+                    if (delta == 0f) continue
+                    if (event.keyboardModifiers.isCtrlPressed) {
+                        val deltaSize = if (delta > 0) 2 else -2
+                        val newSize = (readBookConfig.textSize + deltaSize)
+                            .coerceIn(MIN_TEXT_SIZE, MAX_TEXT_SIZE)
+                        if (newSize != readBookConfig.textSize) {
+                            readBookConfig.textSize = newSize
+                            readBookConfig.save()
+                            // 与 ReadStyleScreen 字号 seekBar 一致的重排事件
+                            ReadBookEvents.postConfig(
+                                ReadConfigChange.CHAPTER_STYLE,
+                                ReadConfigChange.LOAD_CONTENT,
+                            )
+                        }
+                        change.consume()
+                        continue
                     }
-                    change.consume()
+                    // 非 Ctrl 滚轮: 仅滚动翻页模式 + 开关开启 + 菜单隐藏时消费为滚动翻页
+                    // (开关分发时现取, 改配置立即生效; 对照 MoreConfigScreen 的 mouseWheelPage 开关)
+                    val wheelPageEnabled = runCatching {
+                        PreferenceProviders.get().getBoolean(PreferKey.mouseWheelPage, true)
+                    }.getOrDefault(true)
+                    val scrollDelegate =
+                        screenModel.viewModel.pageDelegate as? ScrollPageDelegateCompose
+                    if (wheelPageEnabled && scrollDelegate != null &&
+                        !screenModel.menuState.isVisible
+                    ) {
+                        // 滚轮滚动: CMP 的 scrollDelta 是格数 (preciseWheelRotation 直接透传,
+                        // Windows 一格 = 1.0, 非像素!) —— 之前按像素假设倍率全部失效;
+                        // 一格 = 视口 1/4 (4 格翻一页, 用户实测要求的速度);
+                        // 高精度滚轮 (preciseWheelRotation 小数) 自然细分;
+                        // 方向保持 -delta (用户实测确认)
+                        val viewportH =
+                            (screenModel.viewModel.curTextPage.value?.visibleHeight ?: 0).toFloat()
+                        scrollDelegate.scrollBy(
+                            if (viewportH > 0f) -delta * viewportH / 4f else -delta * 300f
+                        )
+                        change.consume()
+                    }
                 }
             }
         },
@@ -361,6 +418,13 @@ fun ReaderRoute(
         launch {
             ReadBookEvents.loadChapterList.collect { book ->
                 screenModel.viewModel.loadChapterList(book)
+            }
+        }
+        // 页内选区已消失 → 平台收起浮动文本操作菜单 (对照旧 onCancelSelect → textActionMenu.dismiss;
+        // 事件源: ReadViewComposable 观察 selection.isActive 下降沿, 见 PageSelectionState.cancel)
+        launch {
+            ReadBookEvents.selectionDismissed.collect {
+                provider.onTextSelectionDismissed(screenModel)
             }
         }
     }
@@ -929,28 +993,17 @@ private const val MAX_TEXT_SIZE = 50
  * PageUp/PageDown/Space 不再绑定 (原版 ReadBookKeyHandler 的 prevKeys/nextKeys 含 ↑↓ 翻页,
  * 用户拍板改为章节切换)。均无修饰键, 走冒泡阶段分发。
  */
-/**
- * 翻页快捷键 200ms 去抖 (对照原版 ReadBookKeyHandler.keyPageDebounce 的 Throttle
- * wait=200/maxWait=200/leading=true/trailing=false: 首次按键立即翻页, 200ms 内
- * 重复按键 (含系统按键 repeat) 丢弃, 长按不会连翻)。
- */
-private class PageTurnThrottle(private val intervalMs: Long = 200L) {
-    private var lastTurnTime = 0L
-
-    fun tryTurn(block: () -> Unit) {
-        val now = systemCurrentTimeMillis()
-        if (now - lastTurnTime < intervalMs) return
-        lastTurnTime = now
-        block()
-    }
-}
-
 private object ReaderShortcuts {
+    // 显式 preemptive = true: 捕获阶段拦截方向键。
+    // 1) 避开 FocusTargetNode 焦点导航在冒泡阶段抢先消费方向键 (焦点在阅读页与根节点/其他
+    //    路由页面的 focusable 间移动时, 按键会被吞掉不触发快捷键);
+    // 2) 仅当阅读页是栈顶且菜单隐藏时才命中 (enabled), 此时页面上无输入框, 抢占不吞输入;
+    //    非顶层 (目录/换源等子页) 时 enabled=false, 捕获阶段放行, 输入框/焦点导航不受影响。
     val arrows = listOf(
-        AppShortcut(Key.DirectionLeft),
-        AppShortcut(Key.DirectionRight),
-        AppShortcut(Key.DirectionUp),
-        AppShortcut(Key.DirectionDown),
+        AppShortcut(Key.DirectionLeft, preemptive = true),
+        AppShortcut(Key.DirectionRight, preemptive = true),
+        AppShortcut(Key.DirectionUp, preemptive = true),
+        AppShortcut(Key.DirectionDown, preemptive = true),
     )
 
     /** 音量键翻页 (对照原版 ReadBookKeyHandler VOLUME_UP/DOWN) */
@@ -980,6 +1033,8 @@ private fun buildLayoutConfig(
     density: Density,
     config: ReadBookConfigShared,
     tipConfig: ReadTipConfigShared,
+    statusBarTopPx: Int,
+    navigationBarBottomPx: Int,
 ): ReadBookViewModelShared.LayoutConfig = with(density) {
     val textSizePx = config.textSize.sp.toPx()
     // 页眉/页脚 tip 高度（隐藏时为 0）：排版视口预留，正文不钻进 tip 区。
@@ -990,7 +1045,11 @@ private fun buildLayoutConfig(
     else tipRowHeightPx(density, config.footerPaddingTop, config.footerPaddingBottom)
     ReadBookViewModelShared.LayoutConfig(
         viewWidth = size.width,
-        viewHeight = size.height - footerTip,
+        // 系统栏避让：原版 contentTextView 实际尺寸 = 窗口高 - vwStatusBar - llHeader -
+        // llFooter - vwNavigationBar；KMP 内容层（PageViewComposable）已按 insets 整体
+        // 下移/上移，排版视口高度同样扣除状态栏与导航栏高度（系统栏隐藏时 inset=0，
+        // 等价原版占位 View isGone）
+        viewHeight = size.height - footerTip - statusBarTopPx - navigationBarBottomPx,
         paddingLeft = config.paddingLeft.dp.roundToPx(),
         paddingTop = headerTip + config.paddingTop.dp.roundToPx(),
         paddingRight = config.paddingRight.dp.roundToPx(),

@@ -4,7 +4,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -188,14 +190,28 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
         }
         Box(modifier.background(Color.Black), contentAlignment = Alignment.Center) {
             when (state) {
-                is AsyncImagePainter.State.Success -> Image(
-                    painter = painter,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    // 横向滚动: FIT_CENTER (等比留白); 纵向滚动: FIT_XY (填满, 对照 app 端 ScaleType.FIT_XY)
-                    contentScale = if (horizontal) ContentScale.Fit else ContentScale.FillBounds,
-                    colorFilter = colorFilter,
-                )
+                is AsyncImagePainter.State.Success -> {
+                    // 等比渲染: 按图片固有宽高比显式定高 (CMP Image 不再按 intrinsicSize 自适配,
+                    // wrap 盒内 fillMaxSize 会塌成 0 高 / 整屏盒内会被 FillBounds 拉满变形),
+                    // 纵向永不拉伸; 横向仍整页铺满视口等比留白 (行为不变)
+                    val intrinsic = painter.intrinsicSize
+                    val aspect = if (intrinsic.width > 0f && intrinsic.height > 0f) {
+                        Modifier.aspectRatio(intrinsic.width / intrinsic.height)
+                    } else {
+                        Modifier
+                    }
+                    Image(
+                        painter = painter,
+                        contentDescription = null,
+                        modifier = if (horizontal) {
+                            Modifier.fillMaxSize()
+                        } else {
+                            Modifier.fillMaxWidth().then(aspect)
+                        },
+                        contentScale = ContentScale.Fit,
+                        colorFilter = colorFilter,
+                    )
+                }
                 // 失败/加载中占位由 shared 单元格覆盖层统一展示, 此处保留兜底
                 is AsyncImagePainter.State.Error -> Text(
                     text = "重新加载",

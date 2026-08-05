@@ -18,14 +18,13 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import io.legado.app.constant.BookSourceType
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.IntentData
-import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.config.HelpVersion
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.LocalConfigShared
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.SourceConfig
 import io.legado.app.help.http.CookieStoreProviders
-import io.legado.app.help.sourceLoginOverlayPayload
+import io.legado.app.help.showSourceLogin
 import io.legado.app.model.SharedJsScope
 import io.legado.app.ui.book.search.SearchScope
 import io.legado.app.ui.book.source.edit.BookSourceEditCallbacks
@@ -38,7 +37,6 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.root.AppNavigator
-import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteEntry
@@ -49,6 +47,7 @@ import io.legado.app.ui.widget.text.EditEntity
 import io.legado.app.utils.CodeFormatter
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
+import kotlinx.coroutines.flow.MutableSharedFlow
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.enable_dangerous_api
@@ -167,6 +166,13 @@ fun BookSourceEditRoute(
     val isTopEntry = backStack.lastOrNull()?.id == entry.id
     AppBackHandler(enabled = isTopEntry && !showExitConfirm, onBack = requestExit)
 
+    // 回到栈顶 (如从调试页返回) 时重新请求根节点持焦: 页面全程留在 Composition,
+    // 进入时的 requestFocus 只在首次组合执行, 返回后焦点已空, 需重新请求保证 ESC 可用
+    val refocusSignal = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
+    LaunchedEffect(isTopEntry) {
+        if (isTopEntry) refocusSignal.tryEmit(Unit)
+    }
+
     val callbacks = remember(navigator, screenModel, fieldTexts, activeField) {
         BookSourceEditCallbacks(
             onBack = requestExit,
@@ -190,17 +196,8 @@ fun BookSourceEditRoute(
                 // 对照 app 端 login: viewModel.save(getSource()) { source.showLoginDialog(this) }
                 val source = screenModel.getSource(editState)
                 screenModel.dispatch(BookSourceEditUiEvent.Save(source) { saved ->
-                    // 纯 Overlay 弹登录对话框, 不推新路由; 表单/URL 两条分支由
-                    // SourceLoginOverlayContent 统一分发 (对照原版 showLoginDialog)
-                    navigator.showOverlay(
-                        AppOverlay.Dialog(
-                            key = "sourceLogin",
-                            payload = sourceLoginOverlayPayload(
-                                saved.bookSourceUrl,
-                                SourceLoginContext.put(saved),
-                            ),
-                        )
-                    )
+                    // 统一登录入口: URL 登录桌面端直开登录窗口 (2026-08-07); 表单登录弹 Overlay
+                    showSourceLogin(saved.bookSourceUrl, saved)
                 })
             },
             onSearch = {
@@ -288,6 +285,7 @@ fun BookSourceEditRoute(
         onFieldFocus = { fieldId, entity -> activeField.value = fieldId to entity },
         onFieldTextChange = { fieldId, text -> fieldTexts[fieldId] = text },
         fieldTextOverride = { fieldId -> fieldTexts[fieldId] },
+        requestFocusSignal = refocusSignal,
         // Android 15+ 强制 edge-to-edge 不再随键盘 resize, 底部辅助条须自行避让
         // 键盘/导航条 (对齐原版 Activity 的 adjustResize + initialPadding 定位, 见
         // BookSourceEditScreen KDoc; desktop/iOS 上 ime inset 为 0, 此 padding 为 no-op)

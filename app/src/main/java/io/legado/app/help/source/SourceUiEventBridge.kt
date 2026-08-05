@@ -4,8 +4,8 @@ import androidx.appcompat.app.AppCompatActivity
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.SourceUiRequest
 import io.legado.app.help.LifecycleHelp
+import io.legado.app.help.showSourceLogin
 import io.legado.app.ui.association.VerificationCodeDialog
-import io.legado.app.ui.login.navigateToLogin
 import io.legado.app.ui.widget.dialog.showSourceVariableDialog
 import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.CoroutineScope
@@ -26,7 +26,12 @@ object SourceUiEventBridge {
                 // showSourceVariableDialog 扩展仍需 AppCompatActivity 入参
                 val activity = LifecycleHelp.currentActivity as? AppCompatActivity ?: return@collect
                 when (event) {
-                    is SourceUiRequest.Login -> event.source.navigateToLogin()
+                    // 统一登录入口 (shared): URL 登录时 Android 端 openLoginWebView 返回 false,
+                    // 仍弹 sourceLogin Overlay 对话框 (与原行为一致)
+                    is SourceUiRequest.Login -> showSourceLogin(
+                        event.source.getKey(),
+                        event.source,
+                    )
                     is SourceUiRequest.SourceVariable -> event.source.showSourceVariableDialog(activity)
                     // Android 端验证码不经事件总线 (VerificationUiProviderImpl 直调
                     // VerificationCodeDialog.display), 此分支仅保证 sealed when 穷尽

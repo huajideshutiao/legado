@@ -7,9 +7,8 @@ import androidx.compose.runtime.setValue
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.AppWebDavShared
-import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.book.getUseReplaceRule
-import io.legado.app.help.sourceLoginOverlayPayload
+import io.legado.app.help.showSourceLogin
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
@@ -20,7 +19,7 @@ import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.tts.TtsEngineProvider
-import io.legado.app.model.ReadBookProviders
+import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
@@ -78,6 +77,19 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
     }
 
     /**
+     * 页内选区已消失（点按取消选择/翻页/重排等任意路径）：收起 ArkTS 浮动菜单
+     * （对照原版 onCancelSelect → textActionMenu.dismiss）。幂等：菜单未显示时无操作。
+     */
+    override fun onTextSelectionDismissed(screenModel: ReaderScreenModel) {
+        OhosNativeBridge.hideTextActionMenu()
+    }
+
+    /** 阅读页退出: 收起浮动菜单, 避免残留 (对照原版 onDestroy → textActionMenu.dismiss)。 */
+    override fun onExit(screenModel: ReaderScreenModel) {
+        OhosNativeBridge.hideTextActionMenu()
+    }
+
+    /**
      * 图片长按 (命中图片列): 经 napi 桥弹 ArkTS 图片浮动菜单 (查看/刷新/保存到相册)。
      * 查看/保存由 ArkTS 侧本地处理 (全屏预览 / photoAccessHelper 存相册),
      * 刷新回送本分发执行 [onTextAction] 的 "refresh" 分支 (清图片缓存 + 重排)。
@@ -120,10 +132,15 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
                 val bookmark = Bookmark(bookName = book.name, bookAuthor = book.author).apply {
                     chapterIndex = readBook.durChapterIndexValue
                     chapterPos = readBook.durChapterPosValue
-                    chapterName = readBook.curChapter?.title ?: ""
+                    // 当前章节标题: ReadBookShared.curChapter 无 title 属性 (TextChapterContract 只含
+                    // 排版视图), 用 Book.durChapterTitle (桌面端同字段语义)
+                    chapterName = book.durChapterTitle ?: ""
                     bookText = text.trim()
                 }
-                readBook.currentViewModel?.postDialogEvent(ReaderDialogEvent.AddBookmark(bookmark))
+                // currentViewModel 在 ActiveReadBookRegistry 上 (ReadBookShared 无此属性);
+                // 对话框事件投递走当前阅读屏 ScreenModel (napi 回调无 screenModel 参数)
+                ReaderScreenModelRegistry.currentScreenModel
+                    ?.postDialogEvent(ReaderDialogEvent.AddBookmark(bookmark))
             }
 
             "aloud" -> {
@@ -139,10 +156,12 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
 
             "dict" -> dictWord = text
             "search_content" -> {
-                val readBook = ActiveReadBookRegistry.current ?: return
-                val viewModel = readBook.currentViewModel ?: return
-                viewModel.searchContentQuery = text
-                viewModel.menuState.clickSearch()
+                // menuState/searchContentQuery 在 ReaderScreenModel 上 (ReadBookViewModelShared 无);
+                // napi 回调经 ReaderScreenModelRegistry 取当前阅读屏 (ReaderRoute 生命周期注册),
+                // 对齐 iOS onTextAction 的 search_content 处理
+                val screenModel = ReaderScreenModelRegistry.currentScreenModel ?: return
+                screenModel.searchContentQuery = text
+                screenModel.menuState.clickSearch()
             }
 
             "browser" -> {
@@ -320,19 +339,13 @@ private class OhosReadMenuState(
         when (action) {
             SourceAction.LOGIN -> {
                 val source = screenModel.viewModel.bookSource.value ?: return
-                // 带上当前书与当前章, 供登录 JS 的 book/chapter 绑定 (对照原版 showLogin 预置 IntentData)
-                val dataKey = SourceLoginContext.put(
+                // 统一登录入口: URL 登录桌面端直开登录窗口 (2026-08-07); 表单登录弹 Overlay,
+                // 带上当前书与当前章 (对照原版 showLogin 预置 IntentData)
+                showSourceLogin(
+                    source.getKey(),
                     source,
                     screenModel.currentBook,
                     screenModel.currentChapter,
-                )
-                // 纯 Overlay 弹登录对话框, 不推新路由; 表单/URL 两条分支由
-                // SourceLoginOverlayContent 统一分发 (对照原版 showLoginDialog)
-                navigator.showOverlay(
-                    AppOverlay.Dialog(
-                        key = "sourceLogin",
-                        payload = sourceLoginOverlayPayload(source.getKey(), dataKey),
-                    )
                 )
             }
 

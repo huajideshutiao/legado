@@ -116,7 +116,10 @@ object OhosPlatformServices : PlatformServices {
         }
 
         override fun setSystemBars(policy: SystemBarsPolicy) {
-            // window.setWindowSystemBarEnable: Default/Visible 显示, Hidden/Immersive 隐藏
+            // window.setWindowSystemBarEnable 仅支持整体显隐 (鸿蒙 API 无分栏参数),
+            // 故单栏策略 (HiddenStatusBar / HiddenNavigationBar) 降级为整体隐藏 ——
+            // 与原版"隐藏指定栏"意图一致但会连带另一栏, 属平台 API 限制;
+            // 桥未注册 (EntryAbility 未 registerWindowCallback) 时降级 println。
             val visible = policy == SystemBarsPolicy.Default || policy == SystemBarsPolicy.Visible
             OhosNativeBridge.setWindowSystemBarEnable(visible)
         }

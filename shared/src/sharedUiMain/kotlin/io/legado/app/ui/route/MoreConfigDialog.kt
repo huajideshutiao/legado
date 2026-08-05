@@ -1,6 +1,8 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -19,11 +21,9 @@ import io.legado.app.ui.book.read.config.ClickActionDialog
 import io.legado.app.ui.book.read.config.MoreConfigScreen
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.PreferenceStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.dialog.NumberPickerDialog
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import legado.shared.generated.resources.Res
@@ -33,7 +33,8 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * 阅读界面更多设置底部弹窗形态 (对照原版 MoreConfigDialog:
- * BasePrefDialogFragment + setupAsBottomDialog(480dp), 无标题栏)。
+ * BasePrefDialogFragment + setupAsBottomDialog(480dp): 全宽贴底、固定高 480dp、
+ * 无圆角 (applyFilletBackground=false) + 背景 R.color.background, 无标题栏)。
  * 由阅读菜单"设置"按钮弹起, 行为与正文 [MoreConfigBody] 一致。
  */
 @Composable
@@ -45,12 +46,15 @@ fun MoreConfigDialogHost(
     AppBottomSheetDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
+        maxHeight = 480.dp,
     ) {
         AppTheme {
+            // 原版 setupAsBottomDialog: MATCH_PARENT 全宽 + 高 480dp + 无圆角 (BasePrefDialogFragment
+            // applyFilletBackground=false); 内容背景 bottomBackground (createPrefContainer)
             Surface(
-                shape = DesignTokens.dialogShape,
+                shape = RoundedCornerShape(0.dp),
                 color = AppTheme.colors.bottomBackground,
-                modifier = Modifier.appDialogSize().padding(16.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp),
             ) {
                 MoreConfigBody(
                     pref = pref,

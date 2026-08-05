@@ -6,10 +6,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -28,15 +29,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadStyleConfig
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.config.ChineseConverterSelectorDialog
@@ -47,7 +47,6 @@ import io.legado.app.ui.book.read.config.ReadStyleController
 import io.legado.app.ui.book.read.config.ReadStyleScreen
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
-import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -80,10 +79,14 @@ fun ReadStyleDialogHost(
         properties = AppDialogSizes.properties(),
     ) {
         AppTheme {
+            // 原版 BaseBottomDialogFragment: 窗口 MATCH_PARENT 全宽贴底 + Gravity.BOTTOM + WRAP_CONTENT,
+            // 背景 filletBackground (bottomBackground 色 + radius.default 8dp 圆角);
+            // 内容横向 16dp 间距由 ReadStyleScreen 内部 padding(horizontal=16.dp) 提供
+            // (对齐 XML root paddingHorizontal=arco_spacing_lg)。
             Surface(
-                shape = DesignTokens.dialogShape,
+                shape = DesignTokens.shapeDefault,
                 color = AppTheme.colors.bottomBackground,
-                modifier = Modifier.appDialogSize().padding(16.dp),
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 ReadStyleContent(
                     onShowPaddingConfig = { subConfig = ReadStyleSubConfig.PADDING },
@@ -374,51 +377,42 @@ private fun ReadStylePreviewSlot(
     val textColor = runCatching { Color(config.curTextColor()) }
         .getOrDefault(colors.primaryText)
     val borderColor = if (selected) colors.accent else textColor
-    val shape = DesignTokens.shapeSm
+    // 原版 createStyleItemBinding: 48dp 方块 + 左右 margin 8dp (space.default),
+    // ivStyle 为 ShapeableImageView cornerSize=size/2 (正圆) + strokeWidth 固定 1dp (仅颜色切换),
+    // tvStyle 叠加在图上居中 (FrameLayout 内后添加覆盖在上层, gravity=CENTER)。
+    val shape = CircleShape
 
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+    Box(
         modifier = Modifier
-            .padding(horizontal = 4.dp)
+            .padding(horizontal = 8.dp)
+            .size(48.dp)
+            .clip(shape)
+            .background(backgroundColor)
+            .border(
+                width = DesignTokens.strokeThin,
+                color = borderColor,
+                shape = shape,
+            )
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(shape)
-                .background(backgroundColor)
-                .border(
-                    width = if (selected) DesignTokens.strokeMedium else DesignTokens.strokeThin,
-                    color = borderColor,
-                    shape = shape,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            val bmp = bgBitmap
-            if (bmp != null) {
-                // 中心裁剪铺满缩略图（对照原版 curBgDrawable 的 centerCrop 语义）
-                Image(
-                    bitmap = bmp,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Text(
-                    text = "阅",
-                    color = textColor,
-                    fontSize = 18.sp,
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                )
-            }
+        val bmp = bgBitmap
+        if (bmp != null) {
+            // 中心裁剪铺满缩略图（对照原版 curBgDrawable 的 centerCrop 语义）
+            Image(
+                bitmap = bmp,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
+        // 样式名叠加居中 (原版 tvStyle 始终覆盖在图上, 选中加粗 + 文字色取当前样式)
         Text(
             text = config.name.ifBlank { "文字" },
-            color = if (selected) colors.accent else colors.primaryText,
-            fontSize = 12.sp,
+            color = textColor,
+            fontSize = 14.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 2.dp),
         )
     }
 }

@@ -93,14 +93,23 @@ internal actual object FileUtilsCommon {
                 file.parent?.let { File(it).mkdirs() }
                 file.createNewFile()
             }
-            file.outputStream().use { out ->
-                val buffer = ByteArray(64 * 1024)
-                while (true) {
-                    val n = input.read(buffer)
-                    if (n <= 0) break
-                    out.write(buffer, 0, n)
-                }
+            // native File 无 outputStream (okio 封装), 分段读入后整块 writeBytes
+            val buffer = ByteArray(64 * 1024)
+            val chunks = ArrayList<ByteArray>()
+            while (true) {
+                val n = input.read(buffer)
+                if (n <= 0) break
+                // read 会覆写 buffer, 必须拷贝当前段
+                chunks.add(buffer.copyOfRange(0, n))
             }
+            val total = chunks.sumOf { it.size }
+            val all = ByteArray(total)
+            var offset = 0
+            for (chunk in chunks) {
+                chunk.copyInto(all, offset)
+                offset += chunk.size
+            }
+            file.writeBytes(all)
             true
         } catch (_: Exception) {
             false

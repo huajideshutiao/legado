@@ -13,8 +13,14 @@ dependencies {
     sourceArchives("com.fleeksoft.ksoup:ksoup:0.2.6:sources@jar")
     sourceArchives("com.fleeksoft.io:io-core:0.0.8:sources@jar")
     sourceArchives("com.fleeksoft.charset:charset:0.0.8:sources@jar")
-    commonMainImplementation("co.touchlab:stately-concurrency:2.1.0-0.4.0")
-    commonMainImplementation("org.jetbrains.kotlinx:atomicfu:0.31.0-0.4.0")
+    // 版本从 rootProject 的 catalog 读取 (*-ohos 键, 与 build-logic 同款模式), 禁止硬编码
+    val ohosCatalog =
+        rootProject.extensions.getByType<VersionCatalogsExtension>().named("libs")
+
+    fun ohosVersion(key: String): String =
+        ohosCatalog.findVersion(key).get().requiredVersion
+    commonMainImplementation("co.touchlab:stately-concurrency:${ohosVersion("stately-ohos")}")
+    commonMainImplementation("org.jetbrains.kotlinx:atomicfu:${ohosVersion("atomicfu-ohos")}")
 }
 
 val generatedSourceRoot = layout.buildDirectory.dir("generated/ksoupSources")

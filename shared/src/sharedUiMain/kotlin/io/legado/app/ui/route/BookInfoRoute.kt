@@ -15,7 +15,6 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.IntentData
-import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
@@ -28,7 +27,7 @@ import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.mainDispatcher
-import io.legado.app.help.sourceLoginOverlayPayload
+import io.legado.app.help.showSourceLogin
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.info.BookInfoMenuState
 import io.legado.app.ui.book.info.BookInfoScreen
@@ -301,17 +300,12 @@ fun BookInfoRoute(
             }
         }
 
-        // 登录: 纯 Overlay 弹登录对话框, 不推新路由 (带上当前书, 对照原版 menu_login 预置 IntentData.book)
+        // 登录: 统一登录入口, URL 登录桌面端直开登录窗口 (2026-08-07);
+        // 表单登录弹 Overlay (带上当前书, 对照原版 menu_login 预置 IntentData.book)
         override fun onLogin() {
             val b = state.book ?: book
             val source = bookSource
-            val dataKey = source?.let { SourceLoginContext.put(it, b) }
-            navigator.showOverlay(
-                AppOverlay.Dialog(
-                    key = "sourceLogin",
-                    payload = sourceLoginOverlayPayload(source?.getKey() ?: b.origin, dataKey),
-                )
-            )
+            showSourceLogin(source?.getKey() ?: b.origin, source, b)
         }
 
         // 评论: Android 恢复原版 BottomSheet 对话框 (全功能交互+提交), 其余平台回退共享列表页
@@ -668,9 +662,16 @@ fun BookInfoRoute(
     BookInfoScreen(
         state = screenState,
         actions = actions,
-        blurCoverBgSlot = { modifier ->
-            // 适配 (Modifier)->Unit 到 (Book?,Int,Boolean,Boolean,Modifier)->Unit 签名
-            blurCoverBgSlot(currentBook, state.coverTick, state.inBookshelf, isEInkMode, modifier)
+        blurCoverBgSlot = { modifier, land ->
+            // 适配 (Modifier,Boolean)->Unit 到 (Book?,Int,Boolean,Boolean,Modifier,Boolean)->Unit 签名
+            blurCoverBgSlot(
+                currentBook,
+                state.coverTick,
+                state.inBookshelf,
+                isEInkMode,
+                modifier,
+                land
+            )
         },
         coverSlot = { book, modifier ->
             bookInfoCoverSlot(book, state.coverTick, state.inBookshelf, modifier)

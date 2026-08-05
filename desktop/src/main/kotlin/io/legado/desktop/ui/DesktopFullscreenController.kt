@@ -67,26 +67,29 @@ object DesktopFullscreenController {
     /**
      * 切换真全屏 (Windows: 无边框独占窗口覆盖任务栏; 非 Windows 平台暂不支持, 显式日志)。
      * 严格幂等: 重复 enter no-op; exit 无状态时无害。
+     *
+     * @return 调用后全屏状态是否与 [enabled] 一致 (非 Windows / 任一 Win32 步骤失败为
+     *         false); 调用方 (DesktopWindowController) 据此同步全局全屏状态。
      */
     @Synchronized
-    fun setFullscreen(window: Window, enabled: Boolean) {
+    fun setFullscreen(window: Window, enabled: Boolean): Boolean {
         if (!Platform.isWindows()) {
             AppLog.put("真全屏: 非 Windows 平台暂不支持")
-            return
+            return false
         }
-        if (enabled) enterFullscreen(window) else exitFullscreen()
+        return if (enabled) enterFullscreen(window) else exitFullscreen(window)
     }
 
     // ==================== 进入全屏 ====================
 
-    private fun enterFullscreen(window: Window) {
-        // 幂等: 已在全屏 → no-op
-        if (fullscreenHwnd != null) return
+    private fun enterFullscreen(window: Window): Boolean {
+        // 幂等: 已在全屏 → 状态一致
+        if (fullscreenHwnd != null) return true
 
         val hwnd = hwndOf(window)
         if (hwnd == null) {
             AppLog.put("真全屏: 无法获取窗口 HWND (peer 反射/getHWnd 失败)")
-            return
+            return false
         }
 
         // 保存原样式 (LONG_PTR 以 Pointer 收发, 同 DesktopTaskbarDwm.SubclassWin32)
@@ -94,7 +97,7 @@ object DesktopFullscreenController {
             Pointer.nativeValue(FullscreenWin32.INSTANCE.GetWindowLongPtrW(hwnd, GWL_STYLE))
         } catch (e: Throwable) {
             AppLog.put("真全屏: GetWindowLongPtr 失败", e)
-            return
+            return false
         }
 
         // 保存原位置/尺寸 (须在改样式前取, 样式变化影响窗口矩形)
@@ -102,11 +105,11 @@ object DesktopFullscreenController {
         try {
             if (!FullscreenWin32.INSTANCE.GetWindowRect(hwnd, bounds)) {
                 AppLog.put("真全屏: GetWindowRect 失败 (err=${Native.getLastError()})")
-                return
+                return false
             }
         } catch (e: Throwable) {
             AppLog.put("真全屏: GetWindowRect 失败", e)
-            return
+            return false
         }
 
         fullscreenHwnd = hwnd
@@ -120,7 +123,7 @@ object DesktopFullscreenController {
         } catch (e: Throwable) {
             AppLog.put("真全屏: SetWindowLongPtr 失败", e)
             clearState()
-            return
+            return false
         }
 
         // 铺满主屏 (含任务栏区域); 以下任何失败都还原样式
@@ -133,9 +136,9 @@ object DesktopFullscreenController {
             AppLog.put("真全屏: GetSystemMetrics 失败", e)
             restoreWindow(hwnd, style, bounds)
             clearState()
-            return
+            return false
         }
-        try {
+        return try {
             val ok = FullscreenWin32.INSTANCE.SetWindowPos(
                 hwnd,
                 null,
@@ -150,35 +153,47 @@ object DesktopFullscreenController {
                 // 失败即还原样式 (之前版本缺陷: 只记日志不还原)
                 restoreWindow(hwnd, style, bounds)
                 clearState()
+            } else {
+                // 全屏铺满方角屏幕, 关闭系统圆角 (用户拍板 2026-08: 无圆角屏上带圆角很怪)
+                applyWindowCornerPreference(window, round = false)
             }
+            ok
         } catch (e: Throwable) {
             AppLog.put("真全屏: SetWindowPos 失败", e)
             restoreWindow(hwnd, style, bounds)
             clearState()
+            false
         }
     }
 
     // ==================== 退出全屏 ====================
 
-    private fun exitFullscreen() {
-        // 无状态时无害
-        val hwnd = fullscreenHwnd ?: return
-        restoreWindow(hwnd, originalStyle, originalBounds)
+    private fun exitFullscreen(window: Window): Boolean {
+        // 无状态时状态已一致
+        val hwnd = fullscreenHwnd ?: return true
+        val ok = restoreWindow(hwnd, originalStyle, originalBounds)
         clearState()
+        if (ok) {
+            // 退出全屏恢复系统圆角 (与 enterFullscreen 的关闭配对)
+            applyWindowCornerPreference(window, round = true)
+        }
+        return ok
     }
 
     /** 还原窗口样式与原位置/尺寸 (enter 失败 / exit 共用; 失败显式记日志, 不静默)。 */
-    private fun restoreWindow(hwnd: WinDef.HWND, style: Long, bounds: WinDef.RECT?) {
+    private fun restoreWindow(hwnd: WinDef.HWND, style: Long, bounds: WinDef.RECT?): Boolean {
+        var ok = true
         if (style != 0L) {
             try {
                 FullscreenWin32.INSTANCE.SetWindowLongPtrW(hwnd, GWL_STYLE, Pointer(style))
             } catch (e: Throwable) {
                 AppLog.put("真全屏: 还原窗口样式失败", e)
+                ok = false
             }
         }
         if (bounds != null) {
             try {
-                val ok = FullscreenWin32.INSTANCE.SetWindowPos(
+                val restored = FullscreenWin32.INSTANCE.SetWindowPos(
                     hwnd,
                     null,
                     bounds.left,
@@ -187,13 +202,16 @@ object DesktopFullscreenController {
                     bounds.bottom - bounds.top,
                     SWP_FRAMECHANGED or SWP_NOZORDER or SWP_NOACTIVATE,
                 )
-                if (!ok) {
+                if (!restored) {
                     AppLog.put("真全屏: 还原窗口位置失败 (err=${Native.getLastError()})")
+                    ok = false
                 }
             } catch (e: Throwable) {
                 AppLog.put("真全屏: 还原窗口位置失败", e)
+                ok = false
             }
         }
+        return ok
     }
 
     /** 清状态 (幂等退出 / 失败路径共用)。 */

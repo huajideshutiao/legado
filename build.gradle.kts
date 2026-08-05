@@ -16,14 +16,23 @@ plugins {
 }
 
 val isHarmonyMode = providers.gradleProperty("enableOhosTarget").getOrNull() == "true"
+// 统一版本源: 全部从 libs.versions.toml 读取 (settings 在 enableOhosTarget 时已将 catalog 的
+// kotlin/composeMultiplatform 键切换为 ohos 版本; 配套库经 VersionCatalogsExtension 的
+// findVersion 读取 (与 build-logic 同款模式, 避免生成访问器的点分歧义)。禁止硬编码 CPF 版本
+// (2026-08 曾硬编码 0.4.0 导致 compose 库解析旧版触发 CAdapter NPE)
+private val ohosCatalog =
+    extensions.getByType<VersionCatalogsExtension>().named("libs")
+
+private fun ohosVersion(key: String): String =
+    ohosCatalog.findVersion(key).get().requiredVersion
 val ohosDependencyVersions = mapOf(
-    "org.jetbrains.kotlinx:kotlinx-coroutines-core" to "1.10.2-0.4.0",
-    "org.jetbrains.kotlinx:atomicfu" to "0.31.0-0.4.0",
-    "com.squareup.okio:okio" to "3.16.4-0.4.0",
-    "org.jetbrains.kotlinx:kotlinx-serialization-core" to "1.9.1-0.4.0",
-    "org.jetbrains.kotlinx:kotlinx-serialization-json" to "1.9.1-0.4.0",
-    "androidx.room3:room3-common" to "3.0.0-alpha01-0.3.0",
-    "androidx.room3:room3-runtime" to "3.0.0-alpha01-0.3.0",
+    "org.jetbrains.kotlinx:kotlinx-coroutines-core" to ohosVersion("coroutines-ohos"),
+    "org.jetbrains.kotlinx:atomicfu" to ohosVersion("atomicfu-ohos"),
+    "com.squareup.okio:okio" to ohosVersion("okio-ohos"),
+    "org.jetbrains.kotlinx:kotlinx-serialization-core" to ohosVersion("serialization-ohos"),
+    "org.jetbrains.kotlinx:kotlinx-serialization-json" to ohosVersion("serialization-ohos"),
+    "androidx.room3:room3-common" to ohosVersion("room-ohos"),
+    "androidx.room3:room3-runtime" to ohosVersion("room-ohos"),
 )
 
 subprojects {
@@ -35,7 +44,7 @@ subprojects {
 
         resolutionStrategy.eachDependency {
             if (isHarmonyMode && requested.group == "org.jetbrains.kotlin") {
-                useVersion("2.2.21-0.4.0")
+                useVersion(ohosVersion("kotlin-ohos"))
             }
             if (isHarmonyMode && isOhosConfiguration && !name.startsWith(
                     "ksp",
@@ -45,13 +54,13 @@ subprojects {
                 val coordinate = "${requested.group}:${requested.name}"
                 ohosDependencyVersions[coordinate]?.let { useVersion(it) }
                 if (requested.group == "io.ktor") {
-                    useVersion("3.3.3-0.3.0")
+                    useVersion(ohosVersion("ktor-ohos"))
                 }
                 if (requested.group.startsWith("org.jetbrains.compose")) {
-                    useVersion("1.9.2-0.4.0")
+                    useVersion(ohosVersion("composeMultiplatform-ohos"))
                 }
                 if (requested.group == "org.jetbrains.androidx") {
-                    useVersion("2.9.4-0.4.0")
+                    useVersion(ohosVersion("androidx-ohos"))
                 }
             }
         }

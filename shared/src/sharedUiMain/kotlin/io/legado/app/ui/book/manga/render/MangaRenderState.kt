@@ -304,13 +304,25 @@ class MangaRenderState {
         if (direction > 0) listState.canScrollForward else listState.canScrollBackward
 
     /** 待应用的定位请求：由组合内 LaunchedEffect 在新 items 组合落定后执行 */
-    class PendingScroll(val index: Int, val onApplied: (() -> Unit)?)
+    class PendingScroll(
+        val index: Int,
+        /** 条目顶部相对视口顶的偏移 (对照 LazyListState.scrollToItem 的 scrollOffset) */
+        val scrollOffset: Int = 0,
+        val onApplied: (() -> Unit)? = null,
+    )
 
     var pendingScroll by mutableStateOf<PendingScroll?>(null)
 
-    /** 定位到条目(原 scrollToPositionWithOffset)；onApplied 在定位生效后回调 */
-    fun scrollToPosition(index: Int, onApplied: (() -> Unit)? = null) {
-        pendingScroll = PendingScroll(index, onApplied)
+    /**
+     * 定位到条目(原 scrollToPositionWithOffset)；onApplied 在定位生效后回调。
+     * [scrollOffset] 为条目顶部相对视口顶的偏移，用于 items 重建后按原视口位置恢复。
+     */
+    fun scrollToPosition(
+        index: Int,
+        scrollOffset: Int = 0,
+        onApplied: (() -> Unit)? = null,
+    ) {
+        pendingScroll = PendingScroll(index, scrollOffset, onApplied)
     }
 
     private fun viewportMainAxisSize(): Int {
@@ -321,6 +333,21 @@ class MangaRenderState {
     /** 按整屏翻页；animated=false 时同步生效(原 rv.scrollBy) */
     fun scrollPage(direction: Int, animated: Boolean) {
         val delta = viewportMainAxisSize().toFloat() * direction
+        if (!animated) {
+            listState.dispatchRawDelta(delta)
+        } else {
+            scope?.launch {
+                listState.animateScrollBy(
+                    delta,
+                    tween(PAGE_ANIM_DURATION, easing = DecelerateEasing)
+                )
+            }
+        }
+    }
+
+    /** 按视口比例滚动 (方向键小步滚动用, 用户拍板: 纵向模式一次整页难受); fraction 0<f<1 */
+    fun scrollPagePart(direction: Int, fraction: Float, animated: Boolean) {
+        val delta = viewportMainAxisSize().toFloat() * fraction * direction
         if (!animated) {
             listState.dispatchRawDelta(delta)
         } else {
@@ -475,6 +502,16 @@ class MangaRenderState {
         // 原 DecelerateInterpolator
         internal val DecelerateEasing = Easing { 1f - (1f - it) * (1f - it) }
     }
+}
+
+/**
+ * 列表条目稳定 key，与 [MangaRenderLayer] 的 items(key=) 一致。
+ *
+ * 供 items 重建后按 key 锚定"重建前居中条目"，消除像素偏移在列表头尾结构变化时的错位。
+ */
+internal fun BaseMangaPage.listKey(): String = when (this) {
+    is MangaPage -> "p:${chapterIndex}:${index}"
+    else -> "l:${chapterIndex}"
 }
 
 /**
