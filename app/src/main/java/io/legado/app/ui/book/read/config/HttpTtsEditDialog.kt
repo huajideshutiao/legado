@@ -6,7 +6,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.fragment.app.viewModels
-import io.legado.app.R
+import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.ui.compose.dialogs.alert
@@ -74,7 +75,7 @@ class HttpTtsEditDialog() : BaseComposeDialogFragment() {
     }
 
     private fun showLoginHeader() = alert {
-        setTitle(R.string.login_header)
+        setTitle(androidAppString("login_header"))
         dataFromView().getLoginHeader()?.let { loginHeader ->
             setMessage(loginHeader)
         }
@@ -83,31 +84,31 @@ class HttpTtsEditDialog() : BaseComposeDialogFragment() {
     fun initView(httpTTS: HttpTTS) {
         editEntities = listOf(
             // name: 简单文本字段
-            EditEntity("name", httpTTS.name, R.string.name),
+            EditEntity("name", httpTTS.name, androidAppString("name")),
             // url: 代码字段 + 全部着色 (legado + json + js)
             EditEntity("url", httpTTS.url, "url", ViewType.code, codePatterns = CodePattern.all),
             // contentType: 短文本字段（MIME 类型），无需语法高亮
             EditEntity("contentType", httpTTS.contentType, "Content-Type"),
             // concurrentRate: 短文本字段（限速值），无需语法高亮
-            EditEntity("concurrentRate", httpTTS.concurrentRate, R.string.concurrent_rate),
+            EditEntity("concurrentRate", httpTTS.concurrentRate, androidAppString("concurrent_rate")),
             // loginUrl: 代码字段 + 全部着色
             EditEntity(
-                "loginUrl", httpTTS.loginUrl, R.string.login_url,
+                "loginUrl", httpTTS.loginUrl, androidAppString("login_url"),
                 ViewType.code, codePatterns = CodePattern.all
             ),
             // loginUi: 代码字段 + json 着色
             EditEntity(
-                "loginUi", httpTTS.loginUi, R.string.login_ui,
+                "loginUi", httpTTS.loginUi, androidAppString("login_ui"),
                 ViewType.code, codePatterns = CodePattern.json
             ),
             // loginCheckJs: 代码字段 + js 着色
             EditEntity(
-                "loginCheckJs", httpTTS.loginCheckJs, R.string.login_check_js,
+                "loginCheckJs", httpTTS.loginCheckJs, androidAppString("login_check_js"),
                 ViewType.code, codePatterns = CodePattern.js
             ),
             // header: 代码字段 + 全部着色
             EditEntity(
-                "header", httpTTS.header, R.string.source_http_header,
+                "header", httpTTS.header, androidAppString("source_http_header"),
                 ViewType.code, codePatterns = CodePattern.all
             ),
         )

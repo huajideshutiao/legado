@@ -23,6 +23,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.Fragment
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.base.ComposeDialog
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialogContent
@@ -102,6 +103,10 @@ class AlertBuilder(val context: Context) {
     }
 
     /** 校验保留型中性按钮：点击不关闭对话框，复刻 getButton(BUTTON_NEUTRAL) 覆盖 dismiss 的语义。 */
+    fun neutralButtonRetain(text: String, onClicked: () -> Unit) {
+        neutralButton = AlertButton(text, dismissOnClick = false, onClick = onClicked)
+    }
+
     fun neutralButtonRetain(@StringRes textRes: Int, onClicked: () -> Unit) {
         neutralButton = AlertButton(context.getString(textRes), dismissOnClick = false, onClick = onClicked)
     }
@@ -113,6 +118,12 @@ class AlertBuilder(val context: Context) {
      * 校验保留型确认按钮：onClicked 返回 true 才关闭对话框，
      * 复刻旧代码 getButton(BUTTON_POSITIVE).setOnClickListener 手动控制关闭的校验语义。
      */
+    fun positiveButtonRetain(text: String, onClicked: () -> Boolean) {
+        okButton = AlertButton(text, dismissOnClick = false, onClick = {
+            if (onClicked()) dialog.dismiss()
+        })
+    }
+
     fun positiveButtonRetain(@StringRes textRes: Int = android.R.string.ok, onClicked: () -> Boolean) {
         okButton = AlertButton(context.getString(textRes), dismissOnClick = false, onClick = {
             if (onClicked()) dialog.dismiss()
@@ -123,10 +134,10 @@ class AlertBuilder(val context: Context) {
         negativeButton(android.R.string.cancel, onClicked)
 
     fun yesButton(onClicked: (() -> Unit)? = null) =
-        positiveButton(io.legado.app.R.string.yes, onClicked)
+        positiveButton(androidAppString("yes"), onClicked)
 
     fun noButton(onClicked: (() -> Unit)? = null) =
-        negativeButton(io.legado.app.R.string.no, onClicked)
+        negativeButton(androidAppString("no"), onClicked)
 
     // ---- 生命周期回调 ----
 

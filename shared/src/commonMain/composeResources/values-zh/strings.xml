@@ -1,0 +1,1816 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ok">确认</string>
+    <string name="cancel">取消</string>
+    <string name="exit">退出</string>
+    <string name="exit_no_save">尚未保存，是否继续编辑</string>
+    <string name="yes">是</string>
+    <string name="no">否</string>
+    <string name="reduce">减</string>
+    <string name="plus">加</string>
+    <string name="clear">清除</string>
+    <string name="more_menu">更多菜单</string>
+    <string name="empty">空</string>
+    <string name="revert_selection">反选</string>
+    <string name="book_source">书源</string>
+    <string name="search_book_source">搜索书源</string>
+    <string name="sort">排序</string>
+    <string name="sort_desc">反序</string>
+    <string name="sort_manual">手动排序</string>
+    <string name="sort_auto">智能排序</string>
+    <string name="sort_by_name">名称排序</string>
+    <string name="sort_by_url">地址排序</string>
+    <string name="sort_by_lastUpdateTime">更新时间排序</string>
+    <string name="sort_by_respondTime">响应时间排序</string>
+    <string name="is_enabled">是否启用</string>
+    <string name="menu_action_group">分组</string>
+    <string name="group_manage">分组管理</string>
+    <string name="enabled">已启用</string>
+    <string name="disabled">已禁用</string>
+    <string name="need_login">需要登录</string>
+    <string name="no_group">未分组</string>
+    <string name="enabled_explore">已启用发现</string>
+    <string name="disabled_explore">已禁用发现</string>
+    <string name="add_book_source">新建书源</string>
+    <string name="import_local">本地导入</string>
+    <string name="import_on_line">网络导入</string>
+    <string name="group_sources_by_domain">按域名分组显示</string>
+    <string name="help">帮助</string>
+    <string name="edit">编辑</string>
+    <string name="to_top">置顶</string>
+    <string name="to_bottom">置底</string>
+    <string name="login">登录</string>
+    <string name="login_url">登录 URL(loginUrl)</string>
+    <string name="login_header">登录头</string>
+    <string name="show_login_header">查看登录头</string>
+    <string name="del_login_header">删除登录头</string>
+    <string name="search">搜索</string>
+    <string name="debug">调试</string>
+    <string name="delete">删除</string>
+    <string name="enable_explore">启用发现</string>
+    <string name="disable_explore">禁用发现</string>
+    <string name="open">打开</string>
+    <string name="select_all_count">全选（%1$d/%2$d）</string>
+    <string name="select_cancel_count">取消全选（%1$d/%2$d）</string>
+    <string name="more_config">更多配置</string>
+    <string name="screen_direction">屏幕方向</string>
+    <string name="keep_light">屏幕超时</string>
+    <string name="pt_hide_status_bar">隐藏状态栏</string>
+    <string name="pt_hide_navigation_bar">隐藏导航栏</string>
+    <string name="double_page_horizontal">平板/横屏双页</string>
+    <string name="progress_bar_behavior">进度条行为</string>
+    <string name="use_zh_layout">使用自定义中文分行</string>
+    <string name="text_full_justify">文字两端对齐</string>
+    <string name="text_bottom_justify">文字底部对齐</string>
+    <string name="mouse_wheel_page">鼠标滚轮翻页</string>
+    <string name="volume_key_page_on_play">朗读时音量键翻页</string>
+    <string name="page_touch_slop_title">滑动翻页阈值</string>
+    <string name="auto_change_source">自动换源</string>
+    <string name="preview_image_by_click">点击预览图片</string>
+    <string name="click_regional_config">点击区域设置</string>
+    <string name="custom_page_key">自定义翻页按键</string>
+    <string name="show_read_title_addition">展示顶部工具栏附加区域</string>
+    <string name="read_aloud_config">朗读配置</string>
+    <string name="aloud_config">朗读设置</string>
+    <string name="ignore_audio_focus_title">忽略音频焦点</string>
+    <string name="ignore_audio_focus_summary">允许与其他应用同时播放音频</string>
+    <string name="pause_read_aloud_while_phone_calls_title">来电期间暂停朗读</string>
+    <string name="pause_read_aloud_while_phone_calls_summary">在通话期间暂停朗读，需要读取手机状态权限</string>
+    <string name="read_aloud_wake_lock">朗读服务唤醒锁</string>
+    <string name="read_aloud_wake_lock_summary">开启朗读的时候启用唤醒锁,有些手机开启唤醒锁会被杀后台</string>
+    <string name="system_media_control_compatibility_change">系统媒体控件兼容性更改</string>
+    <string name="system_media_control_compatibility_change_summary">当锁屏不显示系统媒体控件时可以尝试开启，比如oneui7.0或vivo等</string>
+    <string name="pref_media_button_per_next">媒体按钮•上一首|下一首</string>
+    <string name="pref_media_button_per_next_summary">上一段|下一段/上一章|下一章</string>
+    <string name="read_aloud_by_page">按页朗读</string>
+    <string name="read_aloud_by_page_summary">及时翻页，翻页时会停顿一下</string>
+    <string name="stream_read_aloud_audio">流式播放音频</string>
+    <string name="stream_read_aloud_audio_summary">即边下边播，网络不好时播放会断断续续，仅TTS源有效</string>
+    <string name="speak_engine">朗读引擎</string>
+    <string name="sys_tts_config">系统 TTS 设置</string>
+    <string name="sys_tts_config_summary">打开系统 TTS 设置界面</string>
+    <string name="chapter_list">目录</string>
+    <string name="bookmark">书签</string>
+    <string name="export">导出</string>
+    <string name="export_md">导出(MD)</string>
+    <string name="txt_toc_rule">TXT 目录规则</string>
+    <string name="split_long_chapter">拆分超长章节</string>
+    <string name="reverse_toc">反转目录</string>
+    <string name="use_replace">使用替换</string>
+    <string name="load_word_count">加载字数</string>
+    <string name="log">日志</string>
+    <string name="go_to_top">滚动到顶部</string>
+    <string name="go_to_bottom">滚动到底部</string>
+    <string name="body_title">正文标题</string>
+    <string name="title_left">靠左</string>
+    <string name="title_center">居中</string>
+    <string name="title_hide">隐藏</string>
+    <string name="title_font_size">字号</string>
+    <string name="title_margin_top">上边距</string>
+    <string name="title_margin_bottom">下边距</string>
+    <string name="header">页眉</string>
+    <string name="footer">页脚</string>
+    <string name="header_footer">页眉<![CDATA[&]]>页脚</string>
+    <string name="show_hide">显示/隐藏</string>
+    <string name="left">左</string>
+    <string name="middle">中</string>
+    <string name="right">右</string>
+    <string name="text_color">文字颜色</string>
+    <string name="tip_divider_color">分隔线颜色</string>
+    <string name="show">显示</string>
+    <string name="hide">隐藏</string>
+    <string name="hide_when_status_bar_show">状态栏显示时隐藏</string>
+    <string name="padding_config">边距配置</string>
+    <string name="main_body">正文</string>
+    <string name="showLine">显示分隔线</string>
+    <string name="padding_top">上边距</string>
+    <string name="padding_bottom">下边距</string>
+    <string name="padding_left">左边距</string>
+    <string name="padding_right">右边距</string>
+    <string name="effective_replaces">起效的替换</string>
+    <string name="add">添加</string>
+    <string name="close">关闭</string>
+    <string name="source_filter_rule_manage">管理全部</string>
+    <string name="source_filter_rule_no_match">当前范围没有命中的屏蔽规则</string>
+    <string name="select_font">选择字体</string>
+    <string name="default_font">默认字体</string>
+    <string name="other_folder">其它目录</string>
+    <string name="system_typeface">系统内置字体样式</string>
+    <string name="bookshelf">书架</string>
+    <string name="bookshelf_empty">书架还空着，先去搜索书籍或从发现里添加吧！</string>
+    <string name="book_local">添加本地</string>
+    <string name="add_url">添加网址</string>
+    <string name="add_book_url">添加书籍网址</string>
+    <string name="force_refresh_book">强制更新书籍</string>
+    <string name="select_file">选择文件</string>
+    <string name="add_remote_book">远程书籍</string>
+    <string name="replace_rule_edit">替换规则编辑</string>
+    <string name="action_save">保存</string>
+    <string name="copy_rule">拷贝规则</string>
+    <string name="paste_rule">粘贴规则</string>
+    <string name="replace_rule_summary">替换规则名称</string>
+    <string name="replace_rule">替换规则</string>
+    <string name="replace_to">替换为</string>
+    <string name="replace_scope">替换范围，选填书名或者书源 URL</string>
+    <string name="replace_exclude_scope">排除范围，选填书名或者书源 URL</string>
+    <string name="replace_rule_title">替换净化</string>
+    <string name="replace_purify">替换净化</string>
+    <string name="replace_purify_search">替换净化-搜索</string>
+    <string name="replace_enable_default_s">新加入书架的书是否启用替换净化</string>
+    <string name="replace_enable_default_t">默认启用替换净化</string>
+    <string name="replace">替换</string>
+    <string name="browser">浏览器</string>
+    <string name="scope_title">作用于标题</string>
+    <string name="scope_content">作用于正文</string>
+    <string name="use_regex">使用正则表达式</string>
+    <string name="add_replace_rule">新建替换</string>
+    <string name="sure_del">是否确认删除？</string>
+    <string name="draw">提醒</string>
+    <string name="timeout_millisecond">超时毫秒数</string>
+    <string name="respondTime">响应时间：%1$d ms</string>
+    <string name="rule_subscription">规则订阅</string>
+    <string name="rss_sources">RSS</string>
+    <string name="dict_rule">字典规则</string>
+    <string name="enable_selection">启用所选</string>
+    <string name="disable_selection">禁用所选</string>
+    <string name="selection_to_top">置顶所选</string>
+    <string name="selection_to_bottom">置底所选</string>
+    <string name="export_selection">导出所选</string>
+    <string name="book_info">书籍信息</string>
+    <string name="book_info_delete_alert_summary">删除书籍前弹出确认对话框</string>
+    <string name="book_info_delete_alert_title">删除书籍时提醒</string>
+    <string name="book_info_horizontal_layout">书籍详情横向布局</string>
+    <string name="book_info_horizontal_layout_summary">书籍详情页将封面与信息并排显示</string>
+    <string name="book_intro">内容简介</string>
+    <string name="book_name">书名</string>
+    <string name="book_source_manage">书源管理</string>
+    <string name="book_source_manage_desc">新建、导入、编辑或管理书源</string>
+    <string name="change_source_progress">结果 %1$d, 当前进度 %2$d / %3$d: %4$s</string>
+    <string name="book_type_different">书籍类型不一样</string>
+    <string name="book_type_novel">小说</string>
+    <string name="book_type_comic">漫画</string>
+    <string name="soure_change_source">是否确认换源</string>
+    <string name="book_tree_uri_t">书籍保存位置</string>
+    <string name="book_type">类型：</string>
+    <string name="bookshelf_cover_height">列表模式下封面高度</string>
+    <string name="bookshelf_layout">书架布局</string>
+    <string name="bookshelf_management">书籍管理</string>
+    <string name="author">作者</string>
+    <string name="cookie">清除 Cookie</string>
+    <string name="copy_book_url">拷贝书籍 URL</string>
+    <string name="copy_source">拷贝源</string>
+    <string name="copy_toc_url">拷贝目录 URL</string>
+    <string name="debug_source">调试源</string>
+    <string name="delete_source">删除源</string>
+    <string name="disable_source">禁用源</string>
+    <string name="verification_code">验证码</string>
+    <string name="captcha_load_failed_hint">无法加载验证码图片, 请手动打开:</string>
+    <string name="edit_book_source">编辑书源</string>
+    <string name="edit_source">编辑源</string>
+    <string name="paste_source">粘贴源</string>
+    <string name="like_source">赞</string>
+    <string name="not_like_source">踩</string>
+    <string name="review">评论</string>
+    <string name="share">分享</string>
+    <string name="str_share">字符串分享</string>
+    <string name="in_favorites">已收藏</string>
+    <string name="out_favorites">未收藏</string>
+    <string name="favorite">收藏</string>
+    <string name="author_show">作者：%1$s</string>
+    <string name="intro_show">简介：%1$s</string>
+    <string name="intro_show_null">简介：暂无简介</string>
+    <string name="add_to_bookshelf">放入书架</string>
+    <string name="remove_from_bookshelf">删除书籍</string>
+    <string name="copy_play_url">拷贝播放 URL</string>
+    <string name="check_add_bookshelf">是否将《%1$s》放入书架？</string>
+    <string name="audio_play_wake_lock">音频服务唤醒锁</string>
+    <string name="all_source">全部书源</string>
+    <string name="groups_or_source">多分组/书源</string>
+    <string name="precision_search">精准搜索</string>
+    <string name="screen">筛选</string>
+    <string name="search_book_key">搜索书名、作者</string>
+    <string name="search_content">全文搜索</string>
+    <string name="search_content_size">搜索结果</string>
+    <string name="search_layout">搜索布局</string>
+    <string name="searchHistory">搜索历史</string>
+    <string name="source_filter_rule">屏蔽规则</string>
+    <string name="start">开始</string>
+    <string name="stop">停止</string>
+    <string name="refresh">刷新</string>
+    <string name="next_chapter">下一章</string>
+    <string name="previous_chapter">上一章</string>
+    <string name="read_dur_progress">最近：%1$s</string>
+    <string name="read_record">阅读记录</string>
+    <string name="reading">阅读</string>
+    <string name="read_record_today_total">当日 %1$s / 总 %2$s</string>
+    <string name="reading_time_sort">阅读时长排序</string>
+    <string name="last_read_time_sort">阅读时间排序</string>
+    <string name="enable_record">开启记录</string>
+    <string name="delete_all">删除所有</string>
+    <string name="sure_del_any">是否确认删除 %1$s？</string>
+    <string name="today_read_time">今日</string>
+    <string name="month_read_time">本月</string>
+    <string name="read_book_count">已读书籍数</string>
+    <string name="week_read_time">本周</string>
+    <string name="all_read_time">总阅读时间</string>
+    <string name="avg_book_read_time">均读时长</string>
+    <string name="read_heatmap_title">阅读热力图</string>
+    <string name="prev_month">上个月</string>
+    <string name="next_month">下个月</string>
+    <string name="month_label_format">%1$d 年 %2$d 月</string>
+    <string name="loading">加载中…</string>
+    <string name="code_view">code view</string>
+    <string name="success">成功</string>
+    <string name="switchLayout">切换布局</string>
+    <string name="action_download">下载</string>
+    <string name="allow_update">允许更新</string>
+    <string name="download_to_local">下载到本地</string>
+    <string name="empty_msg_import_book">点击右上角文件夹图标，选择文件夹</string>
+    <string name="export_all_use_book_source">导出所有书的书源</string>
+    <string name="export_config">导出文件设置</string>
+    <string name="export_folder">导出文件夹</string>
+    <string name="export_to_web_dav">导出到 WebDav</string>
+    <string name="custom_export_section">自定义Epub导出章节</string>
+    <string name="select_section_export">选择待导出章节</string>
+    <string name="export_file_name">导出文件名</string>
+    <string name="export_type">导出格式</string>
+    <string name="export_charset">导出编码</string>
+    <string name="export_no_chapter_name">TXT 不导出章节名</string>
+    <string name="file_contains_number">每个文件包含的章节数量</string>
+    <string name="export_chapter_index">需要输出的章节</string>
+    <string name="error_scope_input">请输入正确的范围</string>
+    <string name="result_analyzed">解析示例</string>
+    <string name="custom_export">自定义导出</string>
+    <string name="filter_book_type">按类型筛选</string>
+    <string name="import_file_name">导入文件名</string>
+    <string name="local_book">本地书籍</string>
+    <string name="menu_download_after">下载之后章节</string>
+    <string name="menu_download_all">下载全部章节</string>
+    <string name="move_to_group">移入分组</string>
+    <string name="pre_download">预下载</string>
+    <string name="remote_book">远程书籍</string>
+    <string name="scan_folder">智能扫描</string>
+    <string name="select_folder">选择文件夹</string>
+    <string name="sub_dir">子文件夹</string>
+    <string name="group">分组</string>
+    <string name="about">关于</string>
+    <string name="app_name">阅读</string>
+    <string name="backup_config">备份设置</string>
+    <string name="backup">备份</string>
+    <string name="backup_path">备份路径</string>
+    <string name="backup_restore">备份与恢复</string>
+    <string name="backup_summary">本地和 WebDav 一起备份</string>
+    <string name="auto_check_new_backup_s">打开软件时检查是否有新备份，有新备份时提示是否更新</string>
+    <string name="auto_check_new_backup_t">自动检查新备份</string>
+    <string name="only_latest_backup_s">本地备份仅保留最新备份文件</string>
+    <string name="only_latest_backup_t">仅保留最新备份</string>
+    <string name="restore">恢复</string>
+    <string name="restore_ignore">恢复忽略列表</string>
+    <string name="restore_ignore_summary">恢复时忽略一些内容不恢复，方便不同手机配置不同</string>
+    <string name="restore_summary">优先从 WebDav 恢复，长按从本地恢复</string>
+    <string name="select_restore_file">选择恢复文件</string>
+    <string name="set_local_password">设置本地密码</string>
+    <string name="set_local_password_summary">本地密码用来对备份的敏感信息加密和解密,如需在不同设备之间同步,本地密码需一致.</string>
+    <string name="web_dav_account">WebDav 账号</string>
+    <string name="web_dav_pw">WebDav 密码</string>
+    <string name="web_dav_set">WebDav 设置</string>
+    <string name="web_dav_set_import_old">WebDav 设置/导入旧版本数据</string>
+    <string name="web_dav_url">WebDav 服务器地址</string>
+    <string name="webdav_device_name">设备名称</string>
+    <string name="web_port_title">Web 端口</string>
+    <string name="web_service">Web 服务</string>
+    <string name="web_service_wake_lock">WebService唤醒锁</string>
+    <string name="web_service_wake_lock_summary">开启web服务的时候启用唤醒锁,有些手机开启唤醒锁会被杀后台</string>
+    <string name="user_agent">用户代理</string>
+    <string name="threads_num_title">更新和搜索线程数（太多会卡顿）</string>
+    <string name="bitmap_cache_size">图片绘制缓存</string>
+    <string name="clear_cache">清理缓存</string>
+    <string name="clear_cache_summary">清除已下载书籍和字体缓存</string>
+    <string name="clear_webview_data">清除 WebView 数据</string>
+    <string name="clear_webview_data_summary">清除内置浏览器所有数据</string>
+    <string name="shrink_database">压缩数据库</string>
+    <string name="shrink_database_summary">减小数据库文件的大小</string>
+    <string name="auto_check_update">自动检查更新</string>
+    <string name="update_url_title">自定义更新地址</string>
+    <string name="update_url_summary">留空使用 GitHub 检查更新</string>
+    <string name="update_url_hint">更新源地址, JSON 数组或单个 URL</string>
+    <string name="check_update">检查更新</string>
+    <string name="update_to_variant_title">检查更新查找版本</string>
+    <string name="update_to_variant_summary">检查更新时查找其他签名版本</string>
+    <string name="pref_cronet_summary">使用 Cronet 网络组件</string>
+    <string name="server_config">服务器配置</string>
+    <string name="create">新建</string>
+    <string name="text_default">默认</string>
+    <string name="name">名称</string>
+    <string name="direct_link_upload_rule">直链上传规则</string>
+    <string name="direct_link_upload_rule_summary">用于导出书源书单时生成直链 URL</string>
+    <string name="check_source_config">校验设置</string>
+    <string name="check_source_timeout">单个书源校验超时（秒）</string>
+    <string name="check_source_item">校验项目</string>
+    <string name="cannot_empty">输入不能为空</string>
+    <string name="less_than">小于</string>
+    <string name="seconds">秒</string>
+    <string name="timeout">超时</string>
+    <string name="contributors">开发人员</string>
+    <string name="contributors_summary">gedoor、Invinciblelee 和 Xwite 等，详情请在 GitHub 中查看</string>
+    <string name="join_telegram_group">加入 Telegram 群</string>
+    <string name="update_log">更新日志</string>
+    <string name="crash_log">崩溃日志</string>
+    <string name="save_log">保存日志</string>
+    <string name="create_heap_dump">创建堆转储</string>
+    <string name="record_debug_log">记录调试日志</string>
+    <string name="record_heap_dump_s">当应用发生OOM崩溃时保存堆转储</string>
+    <string name="record_heap_dump_t">记录堆转储</string>
+    <string name="record_log">记录日志</string>
+    <string name="license">开源许可</string>
+    <string name="disclaimer">免责声明</string>
+    <string name="other">其它</string>
+    <string name="other_setting">其它设置</string>
+    <string name="theme_config">主题配置</string>
+    <string name="welcome_config">欢迎页设置</string>
+    <string name="background_image">背景图片</string>
+    <string name="change_icon">切换图标</string>
+    <string name="change_icon_summary">切换软件显示在桌面的图标</string>
+    <string name="cover_config">封面设置</string>
+    <string name="cover_config_summary">默认封面样式</string>
+    <string name="cover_show_author">显示作者</string>
+    <string name="cover_show_author_summary">封面上显示作者</string>
+    <string name="cover_show_name">显示书名</string>
+    <string name="cover_show_name_summary">封面上显示书名</string>
+    <string name="customize_day_theme">自定义白天主题</string>
+    <string name="customize_night_theme">自定义夜间主题</string>
+    <string name="dark_theme">深色模式</string>
+    <string name="default_cover">默认封面</string>
+    <string name="default_home_page">默认主页</string>
+    <string name="font_scale">字体大小</string>
+    <string name="only_wifi">仅 WiFi</string>
+    <string name="only_wifi_summary">仅在 WiFi 下加载网络封面</string>
+    <string name="show_default_book_icon">显示默认书籍图标</string>
+    <string name="use_default_cover">总是使用默认封面</string>
+    <string name="use_default_cover_s">总是显示默认封面（不显示网络封面）</string>
+    <string name="bottom_nav_config">底栏设置</string>
+    <string name="bottom_nav_config_summary">调整底栏高度、图标大小与文本显示方式</string>
+    <string name="bottom_bar_items_order">入口顺序</string>
+    <string name="bottom_bar_height">底栏高度</string>
+    <string name="bottom_bar_icon_size">图标大小</string>
+    <string name="bottom_bar_label_mode">文本显示</string>
+    <string name="bottom_bar_label_unlabeled">不显示</string>
+    <string name="bottom_bar_label_labeled">始终显示</string>
+    <string name="bottom_bar_label_selected">仅显示选中</string>
+    <string name="bottom_bar_label_auto">自动</string>
+    <string name="group_style">分组样式</string>
+    <string name="show_unread">显示未读标志</string>
+    <string name="bookshelf_show_group_count">分组显示书籍数</string>
+    <string name="show_bookshelf_fast_scroller">显示快速滚动条</string>
+    <string name="fixed_width_mode">固定宽度模式</string>
+    <string name="view">视图</string>
+    <string name="column_count">列数</string>
+    <string name="bookshelf_list_show_kind">显示分类</string>
+    <string name="bookshelf_list_show_intro">显示简介</string>
+    <string name="bookshelf_list_intro_lines">简介行数</string>
+    <string name="show_last_update_time">显示上次更新时间</string>
+    <string name="grid_width_dp">宽度</string>
+    <string name="bookshelf_px_0">按阅读时间</string>
+    <string name="bookshelf_px_1">按更新时间</string>
+    <string name="bookshelf_px_2">按书名</string>
+    <string name="bookshelf_px_3">手动排序</string>
+    <string name="bookshelf_px_4">综合排序</string>
+    <string name="bookshelf_px_5">按作者</string>
+    <string name="theme_list">主题列表</string>
+    <string name="theme_list_summary">使用、保存、导入或分享主题</string>
+    <string name="accent">强调色</string>
+    <string name="background_color">背景色</string>
+    <string name="navbar_color">底部操作栏颜色</string>
+    <string name="theme_name">主题名称</string>
+    <string name="new_theme">新建</string>
+    <string name="theme_customize_title">编辑主题</string>
+    <string name="select_image">选择图片</string>
+    <string name="default_cover_count">已选 %1$d 张</string>
+    <string name="background_image_blurring">背景图片虚化</string>
+    <string name="day_background_too_dark">白天背景不能太暗</string>
+    <string name="night_background_too_light">夜间背景不能太亮</string>
+    <string name="theme_mode">主题模式</string>
+    <string name="default_day_theme">默认·白天</string>
+    <string name="default_night_theme">默认·夜间</string>
+    <string name="theme_setting">界面设置</string>
+    <string name="theme_setting_s">与界面/颜色相关的一些设置</string>
+    <string name="welcome_show_time">欢迎页显示时间</string>
+    <string name="welcome_style">启动界面样式</string>
+    <string name="welcome_style_summary">启动界面图片和是否显示文字等</string>
+    <string name="welcome_text">阅读|享受美好时光</string>
+    <string name="enable_welcome">启用欢迎页</string>
+    <string name="enable_welcome_summary">启动时是否显示欢迎页</string>
+    <string name="show_welcome_text">显示文字</string>
+    <string name="show_icon">显示图标</string>
+    <string name="day">白天</string>
+    <string name="night">夜间</string>
+    <string name="source_edit_text_max_line">源编辑框最大行数</string>
+    <string name="auto_indent">自动缩进</string>
+    <string name="ps_auto_refresh">打开软件时自动更新书籍</string>
+    <string name="pt_auto_refresh">自动刷新</string>
+    <string name="click_book_open_read">点击视频书籍直接播放</string>
+    <string name="click_book_open_read_summary">在搜索、发现中点击视频书籍直接打开播放页，跳过详情</string>
+    <string name="media_button_on_exit_title">全程响应耳机按键</string>
+    <string name="media_button_on_exit_summary">即使退出软件也响应耳机按键</string>
+    <string name="read_aloud_by_media_button_title">耳机按键启动朗读</string>
+    <string name="read_aloud_by_media_button_summary">通过耳机按键来启动朗读</string>
+    <string name="auto_next_page">自动翻页</string>
+    <string name="auto_next_page_stop">停止自动翻页</string>
+    <string name="edit_content">编辑内容</string>
+    <string name="book_page_anim">翻页动画（本书）</string>
+    <string name="simulated_reading">模拟追读</string>
+    <string name="same_title_removed">移除重复标题</string>
+    <string name="re_segment">重新分段</string>
+    <string name="del_h_tag">删除h标签</string>
+    <string name="del_ruby_tag">删除ruby标签</string>
+    <string name="image_style">图片样式</string>
+    <string name="update_toc">更新目录</string>
+    <string name="set_charset">设置编码</string>
+    <string name="offline_cache">离线缓存</string>
+    <string name="interface_setting">界面</string>
+    <string name="menu_refresh_dur">刷新当前章节</string>
+    <string name="menu_refresh_after">刷新之后章节</string>
+    <string name="menu_refresh_all">刷新全部章节</string>
+    <string name="book_change_source">整书换源</string>
+    <string name="chapter_change_source">单章换源</string>
+    <string name="chapter_pay">购买</string>
+    <string name="disable_book_source">禁用书源</string>
+    <string name="bottom_line">我是有底线的</string>
+    <string name="discovery">发现</string>
+    <string name="explore_cols">列数</string>
+    <string name="explore_empty">当前没有发现源！</string>
+    <string name="explore_style">样式</string>
+    <string name="explore_style_video">视频</string>
+    <string name="home">主页</string>
+    <string name="home_manage">管理组件</string>
+    <string name="home_more">更多</string>
+    <string name="home_tab_empty">此分组无组件，点击右上角+添加</string>
+    <string name="home_tab_manage">管理分组</string>
+    <string name="my">我的</string>
+    <string name="language">语言</string>
+    <string name="add_to_text_context_menu_s">长按文字在操作菜单中显示阅读</string>
+    <string name="add_to_text_context_menu_t">文字操作显示搜索</string>
+    <string name="show_add_to_shelf_alert_summary">阅读未放入书架的书籍在返回时提示放入书架</string>
+    <string name="show_add_to_shelf_alert_title">返回时提示放入书架</string>
+    <string name="set_book_variable">设置书籍变量</string>
+    <string name="set_source_variable">设置源变量</string>
+    <string name="sync_book_progress_s">进入退出阅读界面时同步阅读进度</string>
+    <string name="sync_book_progress_t">同步阅读进度</string>
+    <string name="sync_book_progress_plus_s">重新进入页面（息屏、后台返回等）或者网络变为可用时同步云端进度，同步新进度会询问</string>
+    <string name="sync_book_progress_plus_t">同步增强</string>
+    <string name="upload_to_remote">上传 WebDav</string>
+    <string name="sort_by_size">大小排序</string>
+    <string name="sort_by_time">时间排序</string>
+    <string name="save_book_source_failed">保存书源失败</string>
+    <string name="debug_book_source_save_failed">调试书源保存失败</string>
+    <string name="search_book_source_save_failed">搜索书源保存失败</string>
+    <string name="book_source_copied">书源已复制到剪贴板</string>
+    <string name="copy_book_source_failed">复制书源失败</string>
+    <string name="book_source_str_copied_desktop">书源字符串已复制到剪贴板 (桌面端用剪贴板替代分享)</string>
+    <string name="share_book_source_failed">分享书源失败</string>
+    <string name="paste_book_source_failed">粘贴书源失败</string>
+    <string name="dialog_title">提示</string>
+    <string name="not_set">未设置</string>
+    <string name="zero_disable_suffix">(0=禁用)</string>
+    <string name="settings_not_implemented">设置 (待实现)</string>
+    <string name="retry">重试</string>
+    <string name="new_book_source">新建书源</string>
+    <string name="select_book_source_json">选择书源 JSON 文件</string>
+    <string name="input_book_source_url">请输入书源订阅 URL</string>
+    <string name="net_import_book_source">网络导入书源</string>
+    <string name="export_book_source_json">导出书源 JSON</string>
+    <string name="json_file_filter">JSON 文件 (*.json)</string>
+    <string name="sure_del_source">确认删除该书源？</string>
+    <string name="image_style_default">默认</string>
+    <string name="image_style_full">满版</string>
+    <string name="image_style_text">文字环绕</string>
+    <string name="image_style_single">单张</string>
+    <string name="searched_count_progress">已搜索 %1$d 条 / 第 %2$d / 共 %3$d 个源 (%4$s)</string>
+    <string name="sure_del_explore_favorite">确认删除该发现收藏？</string>
+    <string name="explore_category_error">发现分类错误</string>
+    <string name="bottom_reached">到底了</string>
+    <string name="loading_error">加载错误</string>
+    <string name="loading_error_click_detail">加载错误 点击查看详情</string>
+    <string name="replace_rule_net_import_title">网络导入替换规则</string>
+    <string name="replace_rule_input_url">请输入替换规则订阅 URL</string>
+    <string name="replace_rule_select_json_file">选择替换规则 JSON 文件</string>
+    <string name="replace_rule_save_json_file">保存替换规则 JSON 文件</string>
+    <string name="explore_show_empty">空</string>
+    <string name="previous_segment">上一段</string>
+    <string name="next_segment">下一段</string>
+    <string name="play">播放</string>
+    <string name="pause">暂停</string>
+    <string name="speech_rate">语速</string>
+    <string name="reading_not_started">朗读未开始</string>
+    <string name="reading_progress_format">正在朗读第 %1$d 章 第 %2$d 段</string>
+    <string name="paused">已暂停</string>
+    <string name="stopped">已停止</string>
+    <string name="reading_completed">朗读完成</string>
+    <string name="reading_error">朗读出错</string>
+    <string name="read_aloud">朗读</string>
+    <string name="aloud_stop">朗读停止</string>
+    <string name="select_cover_image">选择封面图片</string>
+    <string name="input_new_cover_url">请输入新的封面 URL</string>
+    <string name="change_cover_source">封面换源</string>
+    <string name="select_import_book_dir">选择导入书籍目录</string>
+    <string name="filename_import_js_title">文件名导入 js</string>
+    <string name="filename_import_js_summary">使用js处理文件名变量src，将书名作者分别赋值到变量name author</string>
+    <string name="image_label_with_src">图片: %1$s</string>
+    <string name="web_dav_config_not_implemented">WebDav 服务器配置功能暂未在桌面端实现</string>
+    <string name="web_dav_help_not_implemented">WebDav 帮助暂未在桌面端实现</string>
+    <string name="log_view_not_implemented">日志查看功能暂未在桌面端实现</string>
+    <string name="pending_operation">待操作</string>
+    <string name="test_connection">测试连接</string>
+    <string name="connecting">测试连接中...</string>
+    <string name="connection_success">连接成功</string>
+    <string name="connection_no_account">未连接: 账号或密码为空</string>
+    <string name="connection_failed">连接失败: %1$s</string>
+    <string name="web_dav_jianGuoYun">坚果云</string>
+    <string name="web_dav_other">其他 WebDav</string>
+    <string name="backup_success_uploaded">备份成功 (已上传到 WebDav)</string>
+    <string name="backup_failed">备份失败: %1$s</string>
+    <string name="local_backup_success">本地备份成功 (未上传到 WebDav)</string>
+    <string name="local_backup_failed">本地备份失败: %1$s</string>
+    <string name="web_dav_no_backup">WebDav 无备份文件</string>
+    <string name="restore_success">恢复成功</string>
+    <string name="restore_failed">恢复失败: %1$s</string>
+    <string name="seconds_unit">秒</string>
+    <string name="btn_default_s">默认</string>
+    <string name="page_touch_slop_dialog_title">滑动翻页阈值（0 = 系统默认值）</string>
+    <string name="page_touch_slop_summary">滑动多长距离才会触发滑动翻页（系统默认值 %1$s px）</string>
+    <string name="search_src">搜索源码</string>
+    <string name="book_src">书籍源码</string>
+    <string name="toc_src">目录源码</string>
+    <string name="content_src">正文源码</string>
+    <string name="review_src">评论源码</string>
+    <string name="refresh_explore">刷新发现</string>
+    <string name="group_name">分组名称</string>
+    <string name="group_select">分组选择</string>
+    <string name="source_url">源 URL（sourceUrl）</string>
+    <string name="source_name">源名称（sourceName）</string>
+    <string name="source_group">源分组（sourceGroup）</string>
+    <string name="comment">源注释（sourceComment）</string>
+    <string name="login_check_js">登录检查 JS（loginCheckJs）</string>
+    <string name="book_url_pattern">书籍 URL 正则（bookUrlPattern）</string>
+    <string name="source_http_header">请求头（header）</string>
+    <string name="concurrent_rate">并发率（concurrentRate）</string>
+    <string name="r_search_url">搜索地址（url）</string>
+    <string name="check_key_word">校验关键字（checkKeyWord）</string>
+    <string name="r_book_list">书籍列表规则（bookList）</string>
+    <string name="r_book_name">书名规则（name）</string>
+    <string name="r_author">作者规则（author）</string>
+    <string name="rule_book_kind">分类规则（kind）</string>
+    <string name="rule_word_count">字数规则（wordCount）</string>
+    <string name="rule_last_chapter">最新章节规则（lastChapter）</string>
+    <string name="rule_book_intro">简介规则（intro）</string>
+    <string name="rule_cover_url">封面规则（coverUrl）</string>
+    <string name="r_book_url">详情页 URL 规则（bookUrl）</string>
+    <string name="rule_has_more">是否有下一页（hasMoreRule）</string>
+    <string name="r_find_url">发现地址规则（url）</string>
+    <string name="rule_book_info_init">预处理规则（bookInfoInit）</string>
+    <string name="rule_toc_url">目录 URL 规则（tocUrl）</string>
+    <string name="rule_can_re_name">允许修改书名作者（canReName）</string>
+    <string name="download_url_rule">下载URL规则(downloadUrls)</string>
+    <string name="pre_update_js">更新之前 JS（preUpdateJs）</string>
+    <string name="rule_chapter_name">章节名称规则（ChapterName）</string>
+    <string name="rule_chapter_url">章节 URL 规则（chapterUrl）</string>
+    <string name="rule_is_volume">Volume 标识（isVolume）</string>
+    <string name="rule_update_time">更新时间（ChapterInfo）</string>
+    <string name="rule_is_vip">VIP 标识（isVip）</string>
+    <string name="rule_is_pay">购买标识（isPay）</string>
+    <string name="rule_next_toc_url">目录下一页规则（nextTocUrl）</string>
+    <string name="rule_book_content">正文规则（content）</string>
+    <string name="rule_should_override_url_loading">拦截网页跳转（shouldOverrideUrlLoading）</string>
+    <string name="rule_web_js">WebView JS（webJs）</string>
+    <string name="rule_source_regex">资源正则（sourceRegex）</string>
+    <string name="rule_replace_regex">替换规则（replaceRegex）</string>
+    <string name="rule_image_style">图片样式（imageStyle）</string>
+    <string name="rule_pay_action">购买操作（payAction）</string>
+    <string name="cover_decode_js">封面解密（coverDecodeJs）</string>
+    <string name="variable_comment">变量说明(variableComment)</string>
+    <string name="js_lib">JS 库</string>
+    <string name="sub_content_rule">副正文规则</string>
+    <string name="image_decode">图片解码</string>
+    <string name="music_cover_rule">音乐封面规则</string>
+    <string name="review_count_rule">段评数量规则</string>
+    <string name="total_review_count_rule">总段评数规则</string>
+    <string name="review_url_rule">段评 URL 规则</string>
+    <string name="review_list_rule">段评列表规则</string>
+    <string name="review_id_rule">段评 ID 规则</string>
+    <string name="avatar_rule">头像规则</string>
+    <string name="nickname_rule">昵称规则</string>
+    <string name="content_rule">内容规则</string>
+    <string name="post_time_rule">发布时间规则</string>
+    <string name="extra_rule">额外规则</string>
+    <string name="images_rule">图片规则</string>
+    <string name="vote_up_count_rule">点赞数规则</string>
+    <string name="vote_up_selected_rule">已点赞规则</string>
+    <string name="vote_down_selected_rule">已踩规则</string>
+    <string name="reply_count_rule">回复数规则</string>
+    <string name="reply_list_url">回复列表 URL</string>
+    <string name="vote_up_rule">点赞规则</string>
+    <string name="vote_down_rule">踩规则</string>
+    <string name="reply_rule">回复规则</string>
+    <string name="source_login_url">登录 URL</string>
+    <string name="source_login_ui">登录界面</string>
+    <string name="delete_rule">删除规则</string>
+    <string name="source_tab_base">基本</string>
+    <string name="source_tab_search">搜索</string>
+    <string name="source_tab_find">发现</string>
+    <string name="source_tab_info">详情</string>
+    <string name="source_tab_toc">目录</string>
+    <string name="source_tab_content">正文</string>
+    <string name="source_tab_review">段评</string>
+    <string name="is_enable">启用</string>
+    <string name="auto_save_cookie">CookieJar</string>
+    <string name="enable_review">启用段评</string>
+    <string name="login_ui">登录 UI（loginUi）</string>
+    <string name="rule_chapter_list">目录列表规则（chapterList）</string>
+    <string name="rule_next_content">正文下一页 URL 规则（nextContentUrl）</string>
+    <string name="rule_sub_content">附加内容规则（subContent）</string>
+    <string name="rule_image_decode">图片解密（imageDecode）</string>
+    <string name="rule_music_cover">音乐封面URL规则（musicCoverUrl）</string>
+    <string name="rule_review_count">整章段评数规则（reviewCountRule）</string>
+    <string name="rule_review_total_count">段评总数规则（totalCountRule）</string>
+    <string name="rule_review_url">段评URL（reviewUrl）</string>
+    <string name="rule_review_list">段评列表节点（reviewList）</string>
+    <string name="rule_review_id">段评ID规则（reviewIdRule）</string>
+    <string name="rule_avatar">段评发布者头像（avatarRule）</string>
+    <string name="rule_review_name">段评发布者用户名（nameRule）</string>
+    <string name="rule_review_content">段评内容（contentRule）</string>
+    <string name="rule_post_time">段评发布时间（postTimeRule）</string>
+    <string name="rule_review_extra">段评附加信息（extraRule）</string>
+    <string name="rule_review_images">段评图片列表（imagesRule）</string>
+    <string name="rule_vote_up_count">点赞数（voteUpCountRule）</string>
+    <string name="rule_vote_up_selected">是否已点赞规则（voteUpSelectedRule）</string>
+    <string name="rule_vote_down_selected">是否已点踩规则（voteDownSelectedRule）</string>
+    <string name="rule_reply_count">回复数（replyCountRule）</string>
+    <string name="rule_reply_list_url">回复列表URL（replyListUrl）</string>
+    <string name="rule_vote_up">点赞规则（voteUpRule）</string>
+    <string name="rule_vote_down">点踩规则（voteDownRule）</string>
+    <string name="rule_reply">回复评论规则（replyRule）</string>
+    <string name="rule_delete_review">删除规则（deleteRule）</string>
+    <string name="read_config">阅读界面设置</string>
+    <string name="text_size">字号</string>
+    <string name="line_size">行距</string>
+    <string name="paragraph_size">段距</string>
+    <string name="background">背景</string>
+    <string name="page_turn">翻页</string>
+    <string name="page_anim_none">无动画</string>
+    <string name="page_anim_cover">覆盖</string>
+    <string name="page_anim_slide">滑动</string>
+    <string name="search_result_empty">搜索结果为空</string>
+    <string name="search_result_empty_close_precision">%1$s 分组搜索结果为空，是否关闭精准搜索？</string>
+    <string name="search_result_empty_switch_all">%1$s 分组搜索结果为空，是否切换到全部分组？</string>
+    <string name="copy">复制</string>
+    <string name="cut">剪切</string>
+    <string name="paste">粘贴</string>
+    <string name="select_all">全选</string>
+    <string name="time_format_minutes">%1$d 分钟</string>
+    <string name="time_format_hours_minutes">%1$d 小时 %2$d 分钟</string>
+    <string name="time_format_hours">%1$d 小时</string>
+    <string name="time_format_minutes_only">%1$d 分钟</string>
+    <string name="time_format_seconds">%1$d 秒</string>
+    <string name="book_source_tutorial">书源教程</string>
+    <string name="js_tutorial">JS 教程</string>
+    <string name="regex_tutorial">正则教程</string>
+    <string name="debug_search_hint">调试搜索&gt;&gt;输入关键字，如：</string>
+    <string name="debug_explore_hint">调试发现&gt;&gt;输入发现URL，如：</string>
+    <string name="debug_book_info_hint">调试详情页&gt;&gt;输入详情页URL，如：</string>
+    <string name="debug_toc_hint">调试目录页&gt;&gt;输入目录页URL，如：</string>
+    <string name="debug_content_hint">调试正文页&gt;&gt;输入正文页URL，如：</string>
+    <string name="system">系统</string>
+    <string name="text_too_large">数据太大，无法全部显示…</string>
+    <string name="log_level_all">全部</string>
+    <string name="log_level_error">错误</string>
+    <string name="log_level_warn">警告</string>
+    <string name="log_level_info">信息</string>
+    <string name="log_level_debug">调试</string>
+    <string name="log_stack_trace">堆栈信息</string>
+    <string name="bookmark_content">内容</string>
+    <string name="bookmark_note">备注内容</string>
+    <string name="search_scope">搜索范围</string>
+    <string name="source_variable_tab">源变量</string>
+    <string name="book_variable_tab">书籍变量</string>
+    <string name="variable_key">变量名</string>
+    <string name="variable_value">变量值</string>
+    <string name="variable_edit_title">编辑变量</string>
+    <string name="variable_empty">暂无变量</string>
+    <string name="group_edit">编辑分组</string>
+    <string name="group_add">添加分组</string>
+    <string name="allow_drop_down_refresh">允许下拉刷新</string>
+    <string name="book_sort_default">默认</string>
+    <string name="book_sort_reading_time">按阅读时间</string>
+    <string name="book_sort_update_time">按更新时间</string>
+    <string name="book_sort_name">按书名</string>
+    <string name="book_sort_manual">手动排序</string>
+    <string name="book_sort_comprehensive">综合排序</string>
+    <string name="book_sort_author">按作者</string>
+    <string name="txt_toc_rule_edit_name">名称</string>
+    <string name="txt_toc_rule_edit_rule">规则</string>
+    <string name="txt_toc_rule_edit_example">示例</string>
+    <string name="txt_toc_rule_edit_name_required">名称不能为空</string>
+    <string name="txt_toc_rule_edit_regex_error">正则语法错误或不支持(txt)</string>
+    <string name="txt_toc_rule_edit_copy_success">已复制</string>
+    <string name="dict_rule_edit_name">名称</string>
+    <string name="dict_rule_edit_url_rule">URL 规则</string>
+    <string name="dict_rule_edit_show_rule">显示规则</string>
+    <string name="dict_rule_edit_copy_success">已复制</string>
+    <string name="source_filter_rule_edit_name">规则名</string>
+    <string name="source_filter_rule_edit_pattern">规则</string>
+    <string name="source_filter_rule_edit_invalid_pattern">正则无效或为空</string>
+    <string name="source_filter_rule_edit_title_add">添加屏蔽规则</string>
+    <string name="source_filter_rule_edit_title_edit">屏蔽规则</string>
+    <string name="source_filter_rule_name">名称</string>
+    <string name="source_filter_rule_pattern">正则表达式</string>
+    <string name="source_filter_rule_fields">作用字段（任一命中则丢弃）</string>
+    <string name="source_filter_rule_scope_label">作用范围</string>
+    <string name="source_filter_rule_scope_summary_all">全部书源</string>
+    <string name="source_filter_rule_invalid_pattern">正则表达式无效</string>
+    <string name="source_filter_rule_no_field">请至少选一个作用字段</string>
+    <string name="source_filter_field_name">书名</string>
+    <string name="source_filter_field_author">作者</string>
+    <string name="source_filter_field_intro">简介</string>
+    <string name="source_filter_field_kind">分类</string>
+    <string name="source_filter_field_word_count">字数</string>
+    <string name="content_edit_reset">重置</string>
+    <string name="content_edit_copy_all">复制全部</string>
+    <string name="content_edit_copy_success">已复制</string>
+    <string name="select_action">选择操作</string>
+    <string name="menu">菜单</string>
+    <string name="next_page">下一页</string>
+    <string name="prev_page">上一页</string>
+    <string name="read_aloud_prev_paragraph">朗读上一段</string>
+    <string name="read_aloud_next_paragraph">朗读下一段</string>
+    <string name="bookmark_add">添加书签</string>
+    <string name="replace_state_change">替换(启用/禁用)</string>
+    <string name="read_aloud_pause_resume">朗读暂停/继续</string>
+    <string name="prev_page_key">上一页按键</string>
+    <string name="next_page_key">下一页按键</string>
+    <string name="reset">重置</string>
+    <string name="system_default">系统默认</string>
+    <string name="prev_sentence">上一句</string>
+    <string name="next_sentence">下一句</string>
+    <string name="audio_play">播放</string>
+    <string name="audio_play_t">正在播放</string>
+    <string name="audio_pause">播放暂停</string>
+    <string name="audio_play_s">点击打开播放界面</string>
+    <string name="playing_timer">正在播放（还剩 %1$d 分钟）</string>
+    <string name="read_aloud_timer">正在朗读（还剩 %1$d 分钟）</string>
+    <string name="read_aloud_t">正在朗读</string>
+    <string name="read_aloud_pause">朗读暂停</string>
+    <string name="read_aloud_s">点击打开阅读界面</string>
+    <string name="resume">继续</string>
+    <string name="audio">音频</string>
+    <string name="set_timer">定时</string>
+    <string name="timer_m">%1$d 分钟</string>
+    <string name="read_aloud_speed">朗读语速</string>
+    <string name="flow_sys">跟随系统</string>
+    <string name="tts_speech_reduce">语速减</string>
+    <string name="tts_speech_add">语速加</string>
+    <string name="main_menu">主菜单</string>
+    <string name="to_backstage">后台</string>
+    <string name="select_book_source">选择书源</string>
+    <string name="change_source_delay">换源间隔</string>
+    <string name="tts_error_prepare_no_url">prepare 失败: 未设置 URL</string>
+    <string name="tts_error_prepare_exception">prepare 异常: %1$s</string>
+    <string name="tts_error_resume_failed">恢复播放失败: %1$s</string>
+    <string name="tts_error_play_exception">播放异常: %1$s</string>
+    <string name="tts_error_http_connect_failed">HTTP 连接失败: %1$s</string>
+    <string name="tts_error_input_stream_null">InputStream 为 null</string>
+    <string name="tts_error_unsupported_audio_format">不支持的音频格式 (桌面端仅支持 WAV/PCM/AU/AIFF; MP3 需引入 MP3 SPI): %1$s</string>
+    <string name="tts_error_read_stream_failed">读取音频流失败: %1$s</string>
+    <string name="tts_error_audio_line_unavailable">音频输出线不可用: %1$s</string>
+    <string name="tts_error_open_line_failed">打开音频输出线失败: %1$s</string>
+    <string name="tts_error_source_line_not_ready">播放失败: SourceDataLine 未就绪</string>
+    <string name="tts_error_audio_stream_not_ready">播放失败: AudioInputStream 未就绪</string>
+    <string name="tts_error_start_failed">启动播放失败: %1$s</string>
+    <string name="tts_error_read_stream_interrupted">读取音频流中断: %1$s</string>
+    <string name="tts_error_write_line_failed">写入音频线失败: %1$s</string>
+    <string name="debug_explore_error">获取发现出错
+%1$s</string>
+    <string name="debug_explore_json_error">获取发现出错 JSON 数据错误
+%1$s</string>
+    <string name="debug_source_not_found">ERROR:未找到书源 %1$s</string>
+    <string name="import_tts">导入 TTS</string>
+    <string name="http_tts_net_import_title">网络导入 TTS</string>
+    <string name="http_tts_input_url">请输入 TTS 订阅 URL</string>
+    <string name="http_tts_select_json_file">选择 TTS JSON 文件</string>
+    <string name="back">返回</string>
+    <string name="change_source">换源</string>
+    <string name="cover">封面</string>
+    <string name="no_lyrics">暂无歌词</string>
+    <string name="speed">倍速</string>
+    <string name="play_mode">播放模式</string>
+    <string name="log_saved">日志已保存</string>
+    <string name="save_log_failed">保存日志失败</string>
+    <string name="heap_dump_saved">堆转储已保存</string>
+    <string name="save_heap_dump_failed">保存堆转储失败</string>
+    <string name="found_new_version">发现新版本</string>
+    <string name="download_now">前往下载</string>
+    <string name="net_import_theme">网络导入主题</string>
+    <string name="input_theme_url">请输入主题订阅 URL</string>
+    <string name="import_theme_success">导入成功, 共 %1$d 个主题</string>
+    <string name="clipboard_empty_or_invalid">剪贴板为空或格式不对</string>
+    <string name="format_invalid_add_failed">格式不对,添加失败</string>
+    <string name="copied_to_clipboard">已复制到剪贴板</string>
+    <string name="copy_failed">复制失败</string>
+    <string name="load_chapter_content_failed">加载章节内容失败</string>
+    <string name="text_action">文字操作</string>
+    <string name="loading_chapter_content">正在加载章节内容...</string>
+    <string name="address_copied">已复制地址</string>
+    <string name="copy_address">复制地址</string>
+    <string name="open_failed">打开失败: %1$s</string>
+    <string name="open_in_browser">浏览器打开</string>
+    <string name="jump_to_another_app">跳转其它应用</string>
+    <string name="check_host_cookie">正在打开首页，成功自动返回主界面</string>
+    <string name="restore_from_local_prompt">将从本地备份恢复。</string>
+    <string name="clear_cache_success">成功清理缓存</string>
+    <string name="export_bookmark_json">导出书签 JSON</string>
+    <string name="export_success">导出成功</string>
+    <string name="export_bookmark_md">导出书签 Markdown</string>
+    <string name="no_book">没有书籍</string>
+    <string name="non_null_name_url">名称和 URL 不能为空</string>
+    <string name="resolution">分辨率</string>
+    <string name="reload">重新加载</string>
+    <string name="manga_color_filter">滤镜</string>
+    <string name="contrast">对比度</string>
+    <string name="enable_manga_gray">开启图片灰色</string>
+    <string name="manga_footer_config">页脚配置</string>
+    <string name="enable_manga_horizontal_scroll">左右翻页</string>
+    <string name="disable_manga_page_anim">禁用翻页动画</string>
+    <string name="enable_auto_page_scroll">开启自动翻页</string>
+    <string name="manga_auto_page_speed">翻页速度 %1$s</string>
+    <string name="setting_manga_auto_page_speed">设置自动翻页速度</string>
+    <string name="hide_manga_title">隐藏漫画列表标题</string>
+    <string name="pre_download_m">预下载 %1$s 页</string>
+    <string name="manga_gif_auto_next">GIF播放完成后翻页</string>
+    <string name="manga_check_chapter_label">前缀"章."</string>
+    <string name="manga_check_chapter">序号</string>
+    <string name="manga_check_chapter_name">章节名</string>
+    <string name="manga_check_page_label">前缀"页."</string>
+    <string name="manga_check_page_number">数值</string>
+    <string name="manga_check_progress_label">前缀"进度."</string>
+    <string name="manga_check_progress">百分比</string>
+    <string name="manga_header_footer">显示页脚</string>
+    <string name="manga_header_chapter">章节</string>
+    <string name="manga_header_page">页码</string>
+    <string name="manga_header_progress">进度</string>
+    <string name="manga_header_orientation">对齐</string>
+    <string name="manga_radio_left">靠左</string>
+    <string name="manga_radio_center">居中</string>
+    <string name="page_preview">九宫格预览</string>
+    <string name="save_image_as">保存图片</string>
+    <string name="review_post_hint">想说点什么？</string>
+    <string name="reply_review">回复</string>
+    <string name="review_replies_detail_title">评论详情</string>
+    <string name="review_replies_section_title">全部回复 · %1$d</string>
+    <string name="review_list_section_title">全部评论 · %1$s</string>
+    <string name="review_sort_hot">最热</string>
+    <string name="review_sort_latest">最新</string>
+    <string name="review_expand">展开</string>
+    <string name="review_collapse">收起</string>
+    <string name="confirm_delete_review">确定删除这条评论？</string>
+    <string name="vote_up">点赞</string>
+    <string name="vote_down">点踩</string>
+    <string name="review_replies_count">全部 %1$d 条回复 &gt;</string>
+    <string name="check_source_cancelled">已取消书源校验</string>
+    <string name="check_source_in_progress">已有书源在校验,等完成后再试</string>
+    <string name="check_source_progress_msg">校验书源 %1$d/%2$d %3$s</string>
+    <string name="check_source_completed">书源校验完成</string>
+    <string name="check_source_error">书源校验出错
+%1$s</string>
+    <string name="new_book_source_added">新建书源已添加: %1$s</string>
+    <string name="no_source_selected">未选中任何书源</string>
+    <string name="export_source_no_selection">导出书源: 未选中任何书源</string>
+    <string name="export_source_db_empty">导出书源: 数据库查询为空</string>
+    <string name="export_source_cancelled">导出书源: 用户取消选择</string>
+    <string name="export_source_done">导出书源完成, 共 %1$d 条 → %2$s</string>
+    <string name="export_source_write_failed">导出书源: 写文件失败</string>
+    <string name="share_source_no_selection">分享书源: 未选中任何书源</string>
+    <string name="share_source_db_empty">分享书源: 数据库查询为空</string>
+    <string name="share_source_copied">分享书源已复制到剪贴板, 共 %1$d 条</string>
+    <string name="import_source_cancelled">导入书源: 用户取消选择</string>
+    <string name="debug_fx_default">系统::http://xxx</string>
+    <string name="import_state_new">新增</string>
+    <string name="import_state_update">更新</string>
+    <string name="import_state_existing">已有</string>
+    <string name="import_book_source">导入书源</string>
+    <string name="import_replace_rule">导入替换规则</string>
+    <string name="import_dict_rule">导入字典规则</string>
+    <string name="import_txt_toc_rule">导入 TXT 目录规则</string>
+    <string name="import_source_filter_rule">导入屏蔽规则</string>
+    <string name="import_theme">导入主题</string>
+    <string name="select_new_source">选中新增源</string>
+    <string name="select_update_source">选中更新源</string>
+    <string name="diy_source_group">自定义源分组</string>
+    <string name="diy_edit_source_group">输入自定义源分组名称</string>
+    <string name="keep_original_name">保留原名</string>
+    <string name="keep_group">保留分组</string>
+    <string name="keep_enable">保留启用状态</string>
+    <string name="deep_link_type_not_supported">该 legado:// 导入类型暂未支持: %1$s</string>
+    <string name="rule_sub_load_failed">规则订阅界面获取数据失败
+%1$s</string>
+    <string name="input_valid_url">请输入有效的 URL</string>
+    <string name="check_update_failed">检查更新失败
+%1$s</string>
+    <string name="check_update_failed_no_msg">检查更新失败</string>
+    <string name="already_latest_version">已是最新版本</string>
+    <string name="desktop_smoke_test_js_hint">提示: 若错误为 UnsatisfiedLinkError, 请先执行:</string>
+    <string name="desktop_smoke_test_db_count">bookSourceDao.allCount() = %1$s (空表期望 0)</string>
+    <string name="desktop_install_mode_not_portable">[legado-desktop] install mode = %1$s (portable.root not set, 下游走 portable.txt 标记/系统数据目录)</string>
+    <string name="image_decode_failed_bytes">image.decode: 无法解码图片字节(%1$s bytes)</string>
+    <string name="image_encode_unsupported_format">image.encode: 不支持的格式 %1$s，仅 png/jpg/webp</string>
+    <string name="image_encode_write_failed">image.encode: ImageIO.write 失败 format=%1$s</string>
+    <string name="image_split_rows_cols_positive">image.split: rows/cols 必须为正数(%1$s,%2$s)</string>
+    <string name="image_split_exceeds_size">image.split: 切块数超过像素尺寸(%1$sx%2$s / %3$s行%4$s列)</string>
+    <string name="image_stitch_imgs_empty">image.stitch: imgs 为空</string>
+    <string name="image_stitch_direction_invalid">image.stitch: direction 仅支持 h/v，收到 %1$s</string>
+    <string name="image_ref_type_invalid">image: 参数不是 image.decode/split/stitch/crop 返回的 ImageRef(%1$s)</string>
+    <string name="desktop_audio_play_error">桌面音频播放出错
+%1$s</string>
+    <string name="desktop_audio_no_resource_url">未获取到资源链接</string>
+    <string name="desktop_audio_load_failed">桌面音频加载失败
+%1$s</string>
+    <string name="desktop_lrc_load_failed">桌面歌词加载失败
+%1$s</string>
+    <string name="desktop_cover_load_failed">桌面封面加载失败
+%1$s</string>
+    <string name="desktop_audio_save_read_failed">桌面 saveRead 失败
+%1$s</string>
+    <string name="desktop_audio_save_failed">桌面 save 失败
+%1$s</string>
+    <string name="desktop_audio_get_book_source_failed">桌面 getBookSource 失败
+%1$s</string>
+    <string name="desktop_cookie_set_error">桌面端设置 cookie 出错 domain=%1$s cookie=%2$s</string>
+    <string name="download_jslib_failed">下载jsLib-%1$s失败</string>
+    <string name="rhino_deprecated_unreachable">rhino 已弃用,JsEngines.type 固定 QUICKJS,不应到达 type=%1$s</string>
+    <string name="upload_url_not_configured">上传url未配置</string>
+    <string name="download_url_rule_not_configured">下载地址规则未配置</string>
+    <string name="upload_failed_with_body">上传失败,%1$s</string>
+    <string name="desktop_backstage_webview_unsupported">桌面端不支持 BackstageWebView (依赖 android.webkit.WebView), 请改用 HTTP 路径或选用不依赖 webView 的书源</string>
+    <string name="book_info_copied">已复制书籍信息</string>
+    <string name="need_more_time_load_content">正文长度过长时，加载正文可能会花费更多时间</string>
+    <string name="clear_cache_failed">清缓存失败: %1$s
+%2$s</string>
+    <string name="intro_action_dispatch_failed">简介动作派发失败: %1$s</string>
+    <string name="no_book_source">无书源</string>
+    <string name="select_cover_cancelled">选择封面: 用户取消选择</string>
+    <string name="bookshelf_manage_load_groups_failed">书架管理界面获取分组数据失败
+%1$s</string>
+    <string name="bookshelf_manage_load_sources_failed">书架管理界面获取书源数据失败
+%1$s</string>
+    <string name="bookshelf_manage_load_books_failed">书架管理界面获取书籍列表失败
+%1$s</string>
+    <string name="export_bookshelf_json">导出书架 JSON</string>
+    <string name="export_bookshelf_cancelled">导出书架: 用户取消选择</string>
+    <string name="delete_local_book_file_failed">删除本地书源文件失败: %1$s
+%2$s</string>
+    <string name="add_book_url_failed">添加 %1$s 失败
+%2$s</string>
+    <string name="add_book_url_success">%1$d/%2$d 成功</string>
+    <string name="add_book_url_all_failed">添加网址失败</string>
+    <string name="adding_book">添加中...</string>
+    <string name="read_file_failed">读取文件失败</string>
+    <string name="import_book_failed">导入&lt;%1$s&gt;失败
+%2$s</string>
+    <string name="import_complete">导入完成 %1$d</string>
+    <string name="import_bookshelf_failed">导入书架失败
+%1$s</string>
+    <string name="import_bookshelf">导入书单</string>
+    <string name="importing_book">导入中...</string>
+    <string name="url_import">URL 导入</string>
+    <string name="upload_url_empty">上传Url不能为空</string>
+    <string name="download_url_rule_empty">下载Url规则不能为空</string>
+    <string name="summary_empty">注释不能为空</string>
+    <string name="copy_rule_failed">复制规则失败</string>
+    <string name="clear_all_cache_failed">清缓存失败
+%1$s</string>
+    <string name="shrink_database_failed">收缩数据库失败
+%1$s</string>
+    <string name="more">更多</string>
+    <string name="source_invalid">书源失效</string>
+    <string name="widget_count">%1$d个组件</string>
+    <string name="no_widget">暂无组件</string>
+    <string name="home_style_rank_list">排行榜</string>
+    <string name="home_style_four_row">四行横向滚动</string>
+    <string name="home_style_infinite_grid">瀑布网格</string>
+    <string name="home_style_cover_row">横向封面</string>
+    <string name="home_style">样式</string>
+    <string name="home_add_section">添加组件</string>
+    <string name="home_edit_section">编辑组件</string>
+    <string name="home_section_title">组件标题</string>
+    <string name="home_select_source">选择书源</string>
+    <string name="home_select_category">选择分类</string>
+    <string name="home_pick_favorite">从收藏中选取</string>
+    <string name="current_selection">当前选择：%1$s</string>
+    <string name="home_no_favorite">无收藏分类</string>
+    <string name="home_source_no_explore">此书源无分类</string>
+    <string name="home_title_empty">标题不能为空</string>
+    <string name="home_infinite_only_one">只能添加一个瀑布网格</string>
+    <string name="home_cover_video">视频封面（16:9）</string>
+    <string name="home_tab_add">添加分组</string>
+    <string name="home_tab_edit">编辑分组</string>
+    <string name="home_tab_title">分组名称</string>
+    <string name="home_tab_name_duplicate">分组名称已存在</string>
+    <string name="home_tab_section_count">%1$d 个组件</string>
+    <string name="home_tab_delete_confirm">删除分组"%1$s"？</string>
+    <string name="home_tab_delete_confirm_with_sections">分组"%1$s"包含%2$d个组件，将一并删除</string>
+    <string name="home_manage_for_tab">管理"%1$s"组件</string>
+    <string name="home_manage_empty">此分组无组件，点击右上角+添加</string>
+    <string name="load_default_http_tts_failed">加载默认 HttpTTS 失败
+%1$s</string>
+    <string name="webdav_sync_progress_failed">WebDav 同步阅读进度失败
+%1$s</string>
+    <string name="force_refresh_busy">正在刷新中, 请稍后再试</string>
+    <string name="force_refresh_start">开始强制刷新 %1$d 本</string>
+    <string name="refresh_complete">刷新完成</string>
+    <string name="copy_chapter_title">复制章节标题</string>
+    <string name="lookup_word">查词</string>
+    <string name="browser_search">浏览器搜索</string>
+    <string name="select_and_copy_first_hint">请先选中并复制文字</string>
+    <string name="replace_rule_copied_to_clipboard">替换规则已复制到剪贴板</string>
+    <string name="dict_rule_load_failed">字典规则界面获取数据失败
+%1$s</string>
+    <string name="import_default_dict_rule_failed">导入默认字典规则失败</string>
+    <string name="import_dict_rule_user_canceled">导入字典规则: 用户取消选择</string>
+    <string name="export_dict_rule_no_selection">导出字典规则: 未选中任何规则</string>
+    <string name="export_dict_rule_user_canceled">导出字典规则: 用户取消选择</string>
+    <string name="export_dict_rule_done">导出字典规则完成, 共 %1$d 条 → %2$s</string>
+    <string name="export_dict_rule_failed">导出字典规则失败</string>
+    <string name="explore_update_groups_error">发现界面更新分组出错</string>
+    <string name="explore_update_data_error">发现界面更新数据出错</string>
+    <string name="explore_pinned_source_not_found">发现收藏: 书源未找到 %1$s</string>
+    <string name="explore_js_error">JS错误%1$s</string>
+    <string name="import_replace_rule_user_canceled">导入替换规则: 用户取消选择</string>
+    <string name="export_replace_rule_no_selection">导出替换规则: 未选中任何规则</string>
+    <string name="rss_articles_empty">暂无文章</string>
+    <string name="rss_no_content_rule_hint">无正文规则或内容为空
+请用浏览器打开</string>
+    <string name="rss_sources_empty_hint">暂无 RSS 源
+请在书架中添加 type 含 rss 位的书籍</string>
+    <string name="latest_version">最新版本: %1$s</string>
+    <string name="search_content_failed">书内搜索失败
+%1$s</string>
+    <string name="restore_from_local_failed">本地恢复失败
+%1$s</string>
+    <string name="get_webdav_backup_list_failed">获取WebDav备份列表出错
+%1$s</string>
+    <string name="webdav_backup_failed">WebDav 备份失败
+%1$s</string>
+    <string name="webdav_local_backup_failed">WebDav 本地备份失败
+%1$s</string>
+    <string name="webdav_restore_failed">WebDav 恢复失败
+%1$s</string>
+    <string name="all_bookmark_load_data_failed_log">所有书签界面获取数据失败
+%1$s</string>
+    <string name="export_bookmark_no_book">导出书签: 没有书籍</string>
+    <string name="export_bookmark_user_cancelled">导出书签: 用户取消选择</string>
+    <string name="export_failed_log">导出失败
+%1$s</string>
+    <string name="export_failed">导出失败
+%1$s</string>
+    <string name="save_success">保存成功</string>
+    <string name="delete_success">删除成功</string>
+    <string name="delete_http_tts_failed">删除 HttpTTS 失败</string>
+    <string name="copy_http_tts_failed">复制 HttpTTS 失败</string>
+    <string name="desktop_test_not_implemented">桌面端测试功能待实现</string>
+    <string name="load_font_failed">加载字体失败: %1$s</string>
+    <string name="load_http_tts_list_failed">加载 HttpTTS 列表失败</string>
+    <string name="import_http_tts_user_cancelled">导入 HttpTTS: 用户取消选择</string>
+    <string name="change_chapter_source_load_toc_error_log">单章换源获取目录出错
+%1$s</string>
+    <string name="change_source_load_toc_error_log">换源获取目录出错
+%1$s</string>
+    <string name="audio_cover_load_failed_log">桌面音频封面加载失败: %1$s
+%2$s</string>
+    <string name="cbz_import_parse_failed_log">Cbz 导入解析失败: %1$s
+%2$s</string>
+    <string name="epub_import_parse_failed_log">Epub 导入解析失败: %1$s
+%2$s</string>
+    <string name="filename_import_js_input_log">文件名导入 js 已输入 (桌面端暂不持久化): %1$s</string>
+    <string name="import_local_book_user_cancelled">导入本地书籍: 用户取消选择目录</string>
+    <string name="remote_book_webdav_not_sunk_log">远程书籍: WebDav 客户端未下沉, 桌面端暂不加载远程列表</string>
+    <string name="review_no_current_book">无当前书籍</string>
+    <string name="review_no_source">无书源</string>
+    <string name="review_load_failed">评论加载失败: %1$s</string>
+    <string name="review_operation_failed">操作失败: %1$s</string>
+    <string name="review_no_action_rule">书源未配置此操作规则</string>
+    <string name="current_chapter_prefix"> / 当前章节:</string>
+    <string name="import_default_txt_toc_rule_failed">导入默认 TXT 目录规则失败</string>
+    <string name="import_txt_toc_rule_user_cancelled">导入 TXT 目录规则: 用户取消选择</string>
+    <string name="export_txt_toc_rule_no_selection">导出 TXT 目录规则: 未选中任何规则</string>
+    <string name="export_txt_toc_rule_user_cancelled">导出 TXT 目录规则: 用户取消选择</string>
+    <string name="export_txt_toc_rule_done_log">导出 TXT 目录规则完成, 共 %1$s 条 → %2$s</string>
+    <string name="export_txt_toc_rule_failed">导出 TXT 目录规则失败</string>
+    <string name="source_filter_rule_load_data_failed_log">书源过滤规则界面获取数据失败
+%1$s</string>
+    <string name="import_source_filter_rule_user_cancelled">导入书源过滤规则: 用户取消选择</string>
+    <string name="export_source_filter_rule_no_selection">导出书源过滤规则: 未选中任何规则</string>
+    <string name="export_source_filter_rule_user_cancelled">导出书源过滤规则: 用户取消选择</string>
+    <string name="export_source_filter_rule_done_log">导出书源过滤规则完成, 共 %1$s 条 → %2$s</string>
+    <string name="export_source_filter_rule_failed">导出书源过滤规则失败</string>
+    <string name="mpv_not_found">未检测到 mpv 播放器</string>
+    <string name="mpv_install_guide">视频播放依赖 mpv (https://mpv.io)
+Windows: winget install shinchiro.mpv 或 scoop install mpv,
+也可官网下载后把 mpv.exe 所在目录加入 PATH,
+或在配置项 mpvPath 中指定完整路径</string>
+    <string name="mpv_open_website">打开 mpv 官网</string>
+    <string name="mpv_auto_download">自动下载便携版</string>
+    <string name="mpv_downloading">正在准备 mpv 便携版...</string>
+    <string name="mpv_downloading_percent">正在下载 mpv 便携版... %1$s%%</string>
+    <string name="mpv_download_failed">下载 mpv 失败: %1$s
+可改用 winget/scoop 安装, 或手动下载后在配置项 mpvPath 指定</string>
+    <string name="mpv_redetect">重新检测</string>
+    <string name="mpv_open_in_browser">浏览器直接打开</string>
+    <string name="mpv_open_in_browser_warn">已用系统默认程序打开视频流 (无防盗链请求头, 部分源可能无法播放)</string>
+    <string name="mpv_detached_playing">已在独立 mpv 窗口中播放 (当前系统不支持窗口嵌入)</string>
+    <string name="video_mpv_launch_error_log">桌面视频启动 mpv 出错
+%1$s</string>
+    <string name="video_mpv_ipc_error_log">mpv IPC 桥连接失败, 进度回写/自动连播/快捷键不可用: %1$s</string>
+    <string name="video_play_error_mpv">桌面视频播放出错 (mpv: %1$s)</string>
+    <string name="manga_cbz_load_chapter_list_error_log">桌面漫画(cbz)获取章节列表出错
+%1$s</string>
+    <string name="manga_load_chapter_list_error_log">桌面漫画获取章节列表出错
+%1$s</string>
+    <string name="manga_load_chapter_list_failed">获取章节列表失败: %1$s</string>
+    <string name="source_not_exists">书源不存在</string>
+    <string name="chapter_list_not_loaded">章节列表未加载</string>
+    <string name="chapter_not_exists">章节不存在: %1$s</string>
+    <string name="manga_cbz_load_chapter_content_error_log">桌面漫画(cbz)获取章节内容出错
+%1$s</string>
+    <string name="manga_load_chapter_content_error_log">桌面漫画获取章节内容出错
+%1$s</string>
+    <string name="load_failed">加载失败: %1$s</string>
+    <string name="content_empty">正文内容为空</string>
+    <string name="content_no_images">正文没有图片</string>
+    <string name="manga_load_chapter_error_log">桌面漫画加载章节出错
+%1$s</string>
+    <string name="load_error">加载出错: %1$s</string>
+    <string name="manga_pre_download_chapter_failed_log">桌面漫画预下载章节 %1$s 失败
+%2$s</string>
+    <string name="manga_save_read_progress_error_log">桌面漫画保存阅读进度出错
+%1$s</string>
+    <string name="manga_image_load_failed_log">桌面漫画图片加载失败: %1$s
+%2$s</string>
+    <string name="toc_load_chapter_failed_log">目录界面加载章节失败
+%1$s</string>
+    <string name="toc_load_bookmark_failed_log">目录界面获取书签数据失败
+%1$s</string>
+    <string name="toc_reload_bookmark_failed_log">目录界面重载书签失败
+%1$s</string>
+    <string name="txt_toc_rule_load_data_failed_log">TXT 目录规则界面获取数据失败
+%1$s</string>
+    <string name="theme_arcoblue_light">Arcoblue 浅</string>
+    <string name="theme_arcoblue_dark">Arcoblue 深</string>
+    <string name="theme_arcogreen_light">Arcogreen 浅</string>
+    <string name="theme_arcogreen_dark">Arcogreen 深</string>
+    <string name="theme_arcoorange_light">Arcoorange 浅</string>
+    <string name="theme_arcoorange_dark">Arcoorange 深</string>
+    <string name="theme_arcopurple_light">Arcopurple 浅</string>
+    <string name="theme_arcopurple_dark">Arcopurple 深</string>
+    <string name="theme_arcored_light">Arcored 浅</string>
+    <string name="theme_arcored_dark">Arcored 深</string>
+    <string name="ios_check_update_not_implemented">iOS 端检查更新功能待接入</string>
+    <string name="ios_crash_log_not_implemented">iOS 端崩溃日志功能待接入</string>
+    <string name="ios_save_log_not_implemented">iOS 端保存日志功能待接入</string>
+    <string name="ios_heap_dump_not_supported">iOS 端不支持堆转储</string>
+    <string name="ios_prev_chapter_not_implemented">iOS 端上一章待接入</string>
+    <string name="ios_next_chapter_not_implemented">iOS 端下一章待接入</string>
+    <string name="ios_video_playback_not_implemented">iOS 端视频播放待接入</string>
+    <string name="ios_progress_drag_not_implemented">iOS 端进度拖动待接入</string>
+    <string name="ios_playback_speed_not_implemented">iOS 端倍速待接入</string>
+    <string name="ios_retry_not_implemented">iOS 端重试待接入</string>
+    <string name="ios_welcome_duration_not_implemented">iOS 端启动时长待接入</string>
+    <string name="ios_welcome_bg_image_not_implemented">iOS 端启动背景图选取待接入</string>
+    <string name="ios_bookshelf_layout_not_implemented">iOS 端书架布局待接入</string>
+    <string name="ios_search_layout_not_implemented">iOS 端搜索布局待接入</string>
+    <string name="ios_bottom_bar_config_not_implemented">iOS 端底栏配置待接入</string>
+    <string name="ios_theme_list_not_implemented">iOS 端主题列表待接入</string>
+    <string name="ios_custom_light_theme_not_implemented">iOS 端自定义日间主题待接入</string>
+    <string name="ios_custom_dark_theme_not_implemented">iOS 端自定义夜间主题待接入</string>
+    <string name="ios_font_scale_not_implemented">iOS 端字体缩放待接入</string>
+    <string name="ios_source_edit_max_line_not_implemented">iOS 端源编辑行数待接入</string>
+    <string name="ios_local_password_not_implemented">iOS 端本地密码待接入</string>
+    <string name="ios_user_agent_not_implemented">iOS 端 UserAgent 设置待接入</string>
+    <string name="ios_book_tree_uri_not_implemented">iOS 端书籍存储路径待接入</string>
+    <string name="ios_check_source_not_implemented">iOS 端校验源配置待接入</string>
+    <string name="ios_upload_rule_not_implemented">iOS 端上传规则待接入</string>
+    <string name="ios_bitmap_cache_not_implemented">iOS 端位图缓存设置待接入</string>
+    <string name="ios_pre_download_num_not_implemented">iOS 端预下载数量待接入</string>
+    <string name="ios_web_port_not_implemented">iOS 端 Web 端口待接入</string>
+    <string name="ios_clean_cache_not_implemented">iOS 端清理缓存待接入</string>
+    <string name="ios_clear_webview_data_not_supported">iOS 端不支持清理 WebView 数据</string>
+    <string name="ios_shrink_database_not_implemented">iOS 端压缩数据库待接入</string>
+    <string name="ios_thread_count_not_implemented">iOS 端线程数设置待接入</string>
+    <string name="ios_custom_page_key_not_implemented">iOS 端自定义翻页按键待接入</string>
+    <string name="ios_default_cover_not_implemented">iOS 端默认封面选择待接入</string>
+    <string name="ios_cover_height_not_implemented">iOS 端封面高度设置待接入</string>
+    <string name="ios_tts_engine_not_implemented">iOS 端 TTS 引擎待接入</string>
+    <string name="ios_sys_tts_config_not_implemented">iOS 端系统 TTS 配置待接入</string>
+    <string name="ios_backup_path_not_implemented">iOS 端备份路径选择待接入</string>
+    <string name="ios_webdav_backup_not_implemented">iOS 端 WebDav 备份待接入</string>
+    <string name="ios_webdav_restore_not_implemented">iOS 端 WebDav 恢复待接入</string>
+    <string name="ios_restore_ignore_not_implemented">iOS 端忽略恢复待接入</string>
+    <string name="ios_theme_mode_change_not_implemented">iOS 端主题模式切换待接入</string>
+    <string name="ios_web_service_not_implemented">iOS 端 Web 服务待接入</string>
+    <string name="ios_add_replace_rule_not_implemented">iOS 端新增替换规则待接入</string>
+    <string name="ios_edit_replace_rule_not_implemented">iOS 端编辑替换规则待接入</string>
+    <string name="ios_manage_replace_rules_not_implemented">iOS 端管理替换规则待接入</string>
+    <string name="ios_add_rule_sub_not_implemented">新增订阅功能待接入</string>
+    <string name="ios_edit_rule_sub_not_implemented">编辑订阅功能待接入</string>
+    <string name="ios_open_rule_sub_not_implemented">打开订阅功能待接入</string>
+    <string name="ios_edit_book_source_not_implemented">编辑书源功能暂未接入</string>
+    <string name="ios_import_default_txt_toc_rule_not_supported">iOS 端暂不支持导入默认 TXT 目录规则</string>
+    <string name="ios_import_default_dict_rule_not_supported">iOS 端暂不支持导入默认字典规则</string>
+    <string name="cannot_access_selected_dir">无法访问所选目录</string>
+    <string name="ios_webdav_client_not_available_log">iOS 端 WebDav 客户端未下沉, 远程书籍列表加载暂不可用</string>
+    <string name="ios_cover_switch_not_implemented">iOS 端封面切换待接入</string>
+    <string name="ios_audio_playback_not_implemented">iOS 端音频播放待接入</string>
+    <string name="ios_prev_track_not_implemented">iOS 端上一曲待接入</string>
+    <string name="ios_next_track_not_implemented">iOS 端下一曲待接入</string>
+    <string name="ios_play_mode_switch_not_implemented">iOS 端播放模式切换待接入</string>
+    <string name="ios_audio_progress_drag_not_implemented">iOS 端进度拖动待接入</string>
+    <string name="ios_audio_timer_not_implemented">iOS 端定时待接入</string>
+    <string name="ios_audio_playback_speed_not_implemented">iOS 端倍速待接入</string>
+    <string name="ohos_bookshelf_layout_not_implemented">鸿蒙端书架布局待接入</string>
+    <string name="ohos_search_layout_not_implemented">鸿蒙端搜索布局待接入</string>
+    <string name="ohos_bottom_bar_config_not_implemented">鸿蒙端底栏配置待接入</string>
+    <string name="ohos_theme_list_not_implemented">鸿蒙端主题列表待接入</string>
+    <string name="ohos_custom_light_theme_not_implemented">鸿蒙端自定义日间主题待接入</string>
+    <string name="ohos_custom_dark_theme_not_implemented">鸿蒙端自定义夜间主题待接入</string>
+    <string name="ohos_font_scale_not_implemented">鸿蒙端字体缩放待接入</string>
+    <string name="ohos_source_edit_max_line_not_implemented">鸿蒙端源编辑行数待接入</string>
+    <string name="ohos_tts_engine_not_implemented">鸿蒙端 TTS 引擎待接入</string>
+    <string name="ohos_sys_tts_config_not_implemented">鸿蒙端系统 TTS 配置待接入</string>
+    <string name="ohos_local_password_not_implemented">鸿蒙端本地密码待接入</string>
+    <string name="ohos_user_agent_not_implemented">鸿蒙端 UserAgent 设置待接入</string>
+    <string name="ohos_book_tree_uri_not_implemented">鸿蒙端书籍存储路径待接入</string>
+    <string name="ohos_check_source_not_implemented">鸿蒙端校验源配置待接入</string>
+    <string name="ohos_upload_rule_not_implemented">鸿蒙端上传规则待接入</string>
+    <string name="ohos_bitmap_cache_not_implemented">鸿蒙端位图缓存设置待接入</string>
+    <string name="ohos_pre_download_num_not_implemented">鸿蒙端预下载数量待接入</string>
+    <string name="ohos_web_port_not_implemented">鸿蒙端 Web 端口待接入</string>
+    <string name="ohos_clean_cache_not_implemented">鸿蒙端清理缓存待接入</string>
+    <string name="ohos_clear_webview_data_not_supported">鸿蒙端不支持清理 WebView 数据</string>
+    <string name="ohos_shrink_database_not_implemented">鸿蒙端压缩数据库待接入</string>
+    <string name="ohos_thread_count_not_implemented">鸿蒙端线程数设置待接入</string>
+    <string name="ohos_custom_page_key_not_implemented">鸿蒙端自定义翻页按键待接入</string>
+    <string name="ohos_backup_path_not_implemented">鸿蒙端备份路径选择待接入</string>
+    <string name="ohos_webdav_backup_not_implemented">鸿蒙端 WebDav 备份待接入</string>
+    <string name="ohos_webdav_restore_not_implemented">鸿蒙端 WebDav 恢复待接入</string>
+    <string name="ohos_restore_ignore_not_implemented">鸿蒙端忽略恢复待接入</string>
+    <string name="ohos_default_cover_not_implemented">鸿蒙端默认封面选择待接入</string>
+    <string name="ohos_cover_height_not_implemented">鸿蒙端封面高度设置待接入</string>
+    <string name="ohos_welcome_duration_not_implemented">鸿蒙端启动时长待接入</string>
+    <string name="ohos_welcome_bg_image_not_implemented">鸿蒙端启动背景图选取待接入</string>
+    <string name="format_invalid">格式不对</string>
+    <string name="copied_rules_to_clipboard_count">已复制 %1$d 条规则到剪贴板</string>
+    <string name="copied_rule_to_clipboard">已复制规则到剪贴板</string>
+    <string name="copied_bookmarks_to_clipboard_count">已复制 %1$d 条书签到剪贴板</string>
+    <string name="copied_markdown_to_clipboard">已复制 Markdown 到剪贴板</string>
+    <string name="import_complete_with_fail_count">导入完成 成功 %1$d 失败 %2$d</string>
+    <string name="upload_success">上传成功</string>
+    <string name="upload_failed">上传失败</string>
+    <string name="download_success">下载成功</string>
+    <string name="book_source_disabled">已禁用书源</string>
+    <string name="import_local_book_failed_log">导入本地书籍失败
+%1$s</string>
+    <string name="get_toc_failed_log">获取目录失败
+%1$s</string>
+    <string name="download_remote_book_failed_log">下载远程书籍&lt;%1$s&gt;失败</string>
+    <string name="intro_action_failed_log">简介动作执行失败
+%1$s</string>
+    <string name="pick_image_failed_log">选图失败: 无法获取路径</string>
+    <string name="new_book_source_added_log">新建书源已添加: %1$s</string>
+    <string name="save_book_source_failed_log">保存书源失败</string>
+    <string name="debug_source_save_failed_log">调试书源保存失败</string>
+    <string name="search_in_book_failed_log">书内搜索失败
+%1$s</string>
+    <string name="bookmark_load_failed_log">所有书签界面获取数据失败
+%1$s</string>
+    <string name="change_source_toc_failed_log">换源获取目录出错
+%1$s</string>
+    <string name="change_chapter_source_toc_failed_log">单章换源获取目录出错
+%1$s</string>
+    <string name="load_toc_failed">加载目录失败</string>
+    <string name="bookshelf_manage_load_group_failed_log">书架管理加载分组失败
+%1$s</string>
+    <string name="bookshelf_manage_load_book_failed_log">书架管理加载书籍失败
+%1$s</string>
+    <string name="ios_unlock_scope_failed_access_selected_dir_log">iOS 端解锁安全作用域失败, 无法访问所选目录</string>
+    <string name="ios_unlock_scope_failed_access_subdir_log">iOS 端解锁安全作用域失败, 无法访问子目录</string>
+    <string name="ios_unlock_scope_failed_access_parent_dir_log">iOS 端解锁安全作用域失败, 无法访问上级目录</string>
+    <string name="ios_unlock_scope_failed_scan_dir_log">iOS 端解锁安全作用域失败, 无法扫描目录</string>
+    <string name="ios_user_cancel_select_import_dir_log">iOS 端用户取消选择导入目录</string>
+    <string name="ios_filename_import_js_input_log">文件名导入 js 输入: %1$s</string>
+    <string name="read_style">阅读样式</string>
+    <string name="video_play">视频播放</string>
+    <string name="manga_read">漫画阅读</string>
+    <string name="association_import">关联导入</string>
+    <string name="js_edit">JS 编辑</string>
+    <string name="run">运行</string>
+    <string name="result">结果</string>
+    <string name="ohos_association_not_implemented">鸿蒙端关联导入待接入</string>
+    <string name="ohos_js_run_not_implemented">鸿蒙端 JS 运行待接入</string>
+    <string name="web_view">WebView</string>
+    <string name="web_back">后退</string>
+    <string name="web_forward">前进</string>
+    <string name="ohos_webview_not_implemented">WebView 待接入鸿蒙端 @ohos.web.webview</string>
+    <string name="publish_review">发布书评</string>
+    <string name="post_review">发布</string>
+    <string name="sure">确认</string>
+    <string name="error">错误</string>
+    <string name="error_no_source">没有源</string>
+    <string name="error_get_book_info">书籍信息获取失败</string>
+    <string name="error_get_chapter_list">目录获取失败</string>
+    <string name="error_load_toc">加载目录失败</string>
+    <string name="error_load_msg">加载失败\n%1$s</string>
+    <string name="error_get_web_content">访问网站失败：%1$s</string>
+    <string name="chapter_list_empty">目录列表为空</string>
+    <string name="unsupport_archivefile_entry">压缩文件内没有支持的文件</string>
+    <string name="error_decode_bitmap">图片解码失败</string>
+    <string name="error_image_url_empty">图片链接为空，检查替换净化规则</string>
+    <string name="check_source_config_summary">校验超时：%1$s秒\n校验项目：%2$s</string>
+    <string name="data_loading">加载数据中…</string>
+    <string name="toc_updateing">更新目录中</string>
+    <string name="webdav_application_authorization_error">webDav应用验证失败</string>
+    <string name="replace_rule_invalid">替换规则为空或者不满足正则表达式要求</string>
+    <string name="thread_count">线程数</string>
+    <string name="delete_book_file">删除源文件</string>
+    <string name="cloud_progress_exceeds_current">云端进度超过当前进度，是否同步？</string>
+    <string name="reply_review_to">回复: %1$s</string>
+    <string name="about_description">
+        \u3000\u3000这是一款使用 Kotlin 全新开发的开源的阅读软件，欢迎您的加入。
+    </string>
+    <string name="add_group">添加分组</string>
+    <string name="add_to_group">加入分组</string>
+    <string name="all_bookmark">所有书签</string>
+    <string name="app_share_description">
+        阅读 3.0 下载地址：\nhttps://github.com/huajideshutiao/legado/releases
+    </string>
+    <string name="auto_page_speed">自动翻页速度</string>
+    <string name="bg_alpha">背景透明度</string>
+    <string name="bg_color">背景颜色</string>
+    <string name="bg_image">背景图片</string>
+    <string name="bitmap_cache_size_summary">当前最大缓存 %s MB</string>
+    <string name="book_info_edit">书籍信息编辑</string>
+    <string name="book_tree_uri_s">从其它应用打开的书籍保存位置</string>
+    <string name="book_url">书籍地址</string>
+    <string name="bookshelf_cover_height_summary">当前高度：%s</string>
+    <string name="change_origin">换源</string>
+    <string name="checkAuthor">校验作者</string>
+    <string name="check_select_source">校验所选</string>
+    <string name="check_selected_interval">选中所选区间</string>
+    <string name="chinese_converter">中文简繁体转换</string>
+    <string name="contributors_url" translatable="false">https://github.com/huajideshutiao/legado/graphs/contributors</string>
+    <string name="copy_url">拷贝 URL</string>
+    <string name="cover_path">封面地址</string>
+    <string name="dark_status_icon">深色状态栏图标</string>
+    <string name="enable">启用</string>
+    <string name="enable_dangerous_api">高危API</string>
+    <string name="enable_dangerous_api_confirm">注意，允许未知来源的源使用高危API会造成无法预测的结果，最严重的情况下会导致软件数据被清除、泄露，本地可访问文件泄露等，请确保你审计代码并信任该源，否则请不要启用。</string>
+    <string name="export_str">导出</string>
+    <string name="font_scale_summary">当前字体大小：%s</string>
+    <string name="font_weight_text">中/粗/细</string>
+    <string name="full_screen">全屏</string>
+    <string name="import_default_rule">导入默认规则</string>
+    <string name="upload_url">上传 URL</string>
+    <string name="is_compress">是否压缩</string>
+    <string name="test">测试</string>
+    <string name="summary">注释</string>
+    <string name="import_str">导入</string>
+    <string name="information">信息</string>
+    <string name="lasted_show">最新：%1$s</string>
+    <string name="load_info">加载详情页</string>
+    <string name="load_toc">加载目录</string>
+    <string name="login_source">登录 %1$s</string>
+    <string name="padding">边距</string>
+    <string name="page_anim">翻页动画</string>
+    <string name="page_anim_scroll">滚动</string>
+    <string name="page_anim_simulation">仿真</string>
+    <string name="pre_download_s">预先下载 %s 章正文</string>
+    <string name="privacy_policy">用户隐私与协议</string>
+    <string name="refresh_cover">刷新封面</string>
+    <string name="refresh_list">刷新列表</string>
+    <string name="remove_group">移除分组</string>
+    <string name="rss_source">订阅源</string>
+    <string name="rule_sub_empty_msg">添加大佬们提供的规则导入地址\n添加后点击可导入规则</string>
+    <string name="search_content_empty">搜索内容为空，请检查净化或简繁设置</string>
+    <string name="select_backup_path">请选择备份路径</string>
+    <string name="select_local_image">选择本地图片</string>
+    <string name="setting">设置</string>
+    <string name="share_layout">共用布局</string>
+    <string name="share_selected_source">分享选中源</string>
+    <string name="source_edit_max_line_summary">%s,设置行数小于屏幕可显示的最大行数可以更方便的滑动到其他的字段进行编辑</string>
+    <string name="source_filter_rule_delete_all_confirm">删除全部屏蔽规则？</string>
+    <string name="source_filter_rule_empty">还没有屏蔽规则，点右上角 + 添加</string>
+    <string name="style_name">样式名称：</string>
+    <string name="sure_clear_search_history">是否确认清除所有搜索历史记录</string>
+    <string name="system_tts">系统 TTS</string>
+    <string name="telegram_group_url" translatable="false">https://t.me/+mT22ceIeiSllM2U1</string>
+    <string name="text">文字</string>
+    <string name="text_bg_style">文字颜色和背景（长按自定义）</string>
+    <string name="text_font">字体</string>
+    <string name="text_font_weight_converter">文章字重切换</string>
+    <string name="text_indent">缩进</string>
+    <string name="text_letter_spacing">字距</string>
+    <string name="text_underline">文字下划线</string>
+    <string name="threads_num">当前线程数 %s</string>
+    <string name="tts">TTS</string>
+    <string name="version">版本</string>
+    <string name="web_dav_account_s">输入你的 WebDav 账号</string>
+    <string name="web_dav_pw_s">输入你的 WebDav 授权密码</string>
+    <string name="web_dav_url_s">输入你的服务器地址</string>
+    <string name="web_port_summary">当前端口 %s</string>
+    <string name="web_service_desc">用浏览器写源或看书</string>
+    <string name="wrong_format">格式不对</string>
+    <string name="no_source_found">未获取到书源</string>
+    <string name="select_explore">选择发现</string>
+    <string name="code">代码</string>
+    <string name="favorites">收藏</string>
+    <string name="file_name">文件名</string>
+    <string name="rating">评分</string>
+    <string name="web_view_open_hint">在浏览器中打开</string>
+    <string name="change_source_batch">批量换源</string>
+    <string name="download_count">已下载 %1$d/%2$d</string>
+    <string name="export_all">导出所有</string>
+    <string name="disable_update">禁止更新</string>
+    <string name="export_bookshelf">导出书单</string>
+    <string name="select_one_book">请选择一本书</string>
+    <string name="all">全部</string>
+    <string name="skip_previous">上一个</string>
+    <string name="skip_next">下一个</string>
+    <string name="regular_expression">正则表达式</string>
+    <string name="match_whole_word">全词匹配</string>
+    <string name="match_case">区分大小写</string>
+    <string name="keyboard_shortcuts">键盘快捷键</string>
+    <string name="keyboard_shortcuts_s">桌面端与外接键盘可用的按键一览</string>
+    <string name="keyboard_shortcuts_global">全局</string>
+    <string-array name="language">
+        <item>跟随系统</item>
+        <item>简体中文</item>
+        <item>繁体中文</item>
+        <item>英文</item>
+    </string-array>
+    <string-array name="language_value">
+        <item>auto</item>
+        <item>zh</item>
+        <item>tw</item>
+        <item>en</item>
+    </string-array>
+    <string-array name="default_home_page_value">
+        <item>home</item>
+        <item>bookshelf</item>
+        <item>explore</item>
+        <item>my</item>
+    </string-array>
+    <string-array name="default_app_variant">
+        <item>当前</item>
+        <item>正式版</item>
+        <item>测试版</item>
+        <item>共存版</item>
+    </string-array>
+    <string-array name="default_app_variant_value">
+        <item>default_version</item>
+        <item>official_version</item>
+        <item>beta_release_version</item>
+        <item>beta_releaseA_version</item>
+    </string-array>
+    <string-array name="screen_direction_title">
+        <item>跟随系统</item>
+        <item>竖向</item>
+        <item>横向</item>
+        <item>跟随传感器</item>
+        <item>反向竖屏</item>
+    </string-array>
+    <string-array name="screen_direction_value">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+    </string-array>
+    <string-array name="screen_time_out">
+        <item>默认</item>
+        <item>1分钟</item>
+        <item>5分钟</item>
+        <item>10分钟</item>
+        <item>常亮</item>
+    </string-array>
+    <string-array name="screen_time_out_value">
+        <item>0</item>
+        <item>60</item>
+        <item>300</item>
+        <item>600</item>
+        <item>-1</item>
+    </string-array>
+    <string-array name="double_page_title">
+        <item>全局单页</item>
+        <item>全局双页</item>
+        <item>横屏双页</item>
+        <item>平板/横屏双页</item>
+    </string-array>
+    <string-array name="double_page_value">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+    </string-array>
+    <string-array name="progress_bar_behavior_title">
+        <item>调整本章页数</item>
+        <item>调整章节位置</item>
+    </string-array>
+    <string-array name="progress_bar_behavior_value">
+        <item>page</item>
+        <item>chapter</item>
+    </string-array>
+    <string-array name="read_tip">
+        <item>无</item>
+        <item>书名</item>
+        <item>标题</item>
+        <item>时间</item>
+        <item>电量</item>
+        <item>电量%</item>
+        <item>页数</item>
+        <item>进度(%)</item>
+        <item>进度(xx/yyy)</item>
+        <item>页数及进度</item>
+        <item>时间及电量</item>
+        <item>时间及电量%</item>
+    </string-array>
+    <string-array name="tip_color">
+        <item>跟随内容</item>
+        <item>自定义</item>
+    </string-array>
+    <string-array name="tip_divider_color">
+        <item>默认</item>
+        <item>跟随内容</item>
+        <item>自定义</item>
+    </string-array>
+    <string-array name="book_type">
+        <item>文本</item>
+        <item>音频</item>
+        <item>图片</item>
+        <item>文件</item>
+        <item>视频</item>
+        <item>订阅</item>
+    </string-array>
+    <string-array name="explore_item_style">
+        <item>普通</item>
+        <item>视频</item>
+    </string-array>
+    <string-array name="group_style">
+        <item>页签</item>
+        <item>文件夹</item>
+    </string-array>
+    <string-array name="icon_names">
+        <item>iconMain</item>
+        <item>icon1</item>
+        <item>icon4</item>
+        <item>icon5</item>
+    </string-array>
+    <string-array name="icons">
+        <item>ic_launcher</item>
+        <item>launcher1</item>
+        <item>launcher4</item>
+        <item>launcher5</item>
+    </string-array>
+    <string-array name="theme_mode">
+        <item>跟随系统</item>
+        <item>亮色主题</item>
+        <item>暗色主题</item>
+        <item>E-Ink(墨水屏)</item>
+    </string-array>
+    <string-array name="theme_mode_v">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+    </string-array>
+    <string-array name="chinese_mode">
+        <item>关闭</item>
+        <item>繁体转简体</item>
+        <item>简体转繁体</item>
+    </string-array>
+    <string-array name="system_typefaces">
+        <item>系统默认字体</item>
+        <item>系统衬线字体</item>
+        <item>系统等宽字体</item>
+    </string-array>
+    <string-array name="text_font_weight">
+        <item>正常</item>
+        <item>粗体</item>
+        <item>细体</item>
+    </string-array>
+    <string-array name="indent">
+        <item>无缩进</item>
+        <item>一字符缩进</item>
+        <item>二字符缩进</item>
+        <item>三字符缩进</item>
+        <item>四字符缩进</item>
+    </string-array>
+    <string-array name="default_home_page">
+        <item>主页</item>
+        <item>书架</item>
+        <item>发现</item>
+        <item>我的</item>
+    </string-array>
+    <string name="app_name_a">阅读·A</string>
+    <string name="receiving_shared_label">阅读·搜索</string>
+    <string name="tip_perm_request_storage">阅读需要访问存储卡权限，请前往“设置”—“应用权限”，打开所需权限</string>
+    <string name="dialog_cancel">取消</string>
+    <string name="dialog_setting">去设置</string>
+    <string name="tip_cannot_jump_setting_page">无法跳转至设置界面</string>
+    <string name="manual_input">手动输入</string>
+    <string name="enter_directory_path">请输入目录路径</string>
+    <string name="invalid_directory">目录路径无效</string>
+    <string name="empty_directory_input">目录路径不能为空</string>
+    <string name="dynamic_click_retry">点击重试</string>
+    <string name="dynamic_loading">正在加载</string>
+    <string name="last_read">最后阅读</string>
+    <string name="open_release_page">打开 Release 页</string>
+    <string name="layout_list">列表</string>
+    <string name="local">本地</string>
+    <string name="origin_format">来源：%1$s</string>
+    <string name="backup_success">备份成功</string>
+    <string name="backup_fail">备份失败\n%1$s</string>
+    <string name="screen_sensor">跟随传感器</string>
+    <string name="screen_landscape">横向</string>
+    <string name="screen_portrait">竖向</string>
+    <string name="screen_unspecified">跟随系统</string>
+    <string name="can_not_open">无法打开</string>
+    <string name="is_latest_version">已是最新版本</string>
+    <string name="img_cover">封面</string>
+    <string name="book">书</string>
+    <string name="welcome">启动页</string>
+    <string name="download_start">开始下载</string>
+    <string name="import_select_book">导入选择书籍</string>
+    <string name="start_read">开始阅读</string>
+    <string name="content">内容</string>
+    <string name="copy_text">拷贝内容</string>
+    <string name="copy_complete">已拷贝</string>
+    <string name="check_book_source">校验书源</string>
+    <string name="progress_show">%1$s      进度 %2$d/%3$d</string>
+    <string name="tts_init_failed">TTS 初始化失败！</string>
+    <string name="sys_file_picker">系统文件选择器</string>
+    <string name="debug_hint">书名、作者、URL</string>
+    <string name="no_prev_page">没有上一页</string>
+    <string name="no_next_page">没有下一页</string>
+    <string name="error_read_file">文件读取失败</string>
+    <string name="join_qq_group">加入 QQ 群</string>
+    <string name="get_storage_per">需要存储权限</string>
+    <string name="double_click_exit">再按一次退出程序</string>
+    <string name="network_connection_unavailable">网络连接不可用</string>
+    <string name="chapter">章</string>
+    <string name="to">至</string>
+    <string name="indent_0">无缩进</string>
+    <string name="indent_1">一字符缩进</string>
+    <string name="indent_2">二字符缩进</string>
+    <string name="indent_3">三字符缩进</string>
+    <string name="indent_4">四字符缩进</string>
+    <string name="group_s">分组：%1$s</string>
+    <string name="toc_s">目录：%1$s</string>
+    <string name="service_starting">正在启动服务</string>
+    <string name="file_chooser">文件选择</string>
+    <string name="folder_chooser">文件夹选择</string>
+    <string name="sys_folder_picker">系统文件夹选择器</string>
+    <string name="app_folder_picker">自带文件夹选择器</string>
+    <string name="app_file_picker">自带文件选择器</string>
+    <string name="select_end">文本选择结束位置</string>
+    <string name="select_start">文本选择开始位置</string>
+    <string name="regex">正则</string>
+    <string name="example">示例</string>
+    <string name="default1">预设一</string>
+    <string name="title">标题</string>
+    <string name="source_auto_changing">正在自动换源</string>
+    <string name="note_content">备注内容</string>
+    <string name="page_key_set_help">将焦点放到输入框按下物理按键会自动录入键值，多个按键会自动用英文逗号隔开。</string>
+    <string name="sync_book_progress_success">进度同步成功</string>
+    <string name="create_bookmark_error">创建书签失败</string>
+    <string name="show_discovery">显示发现</string>
+    <string name="show_home">显示主页</string>
+    <string name="null_url">URL 为空</string>
+    <string name="dict">字典</string>
+    <string name="unknown_error">未知错误</string>
+    <string name="end">结束</string>
+    <string name="custom_group_summary">关闭替换分组/开启添加分组</string>
+    <string name="cronet_enabled">Cronet 已启用</string>
+    <string name="cronet_download_failed">Cronet 下载失败</string>
+    <string name="path">路径</string>
+    <string name="direct_link_upload_config">直链上传配置</string>
+    <string name="open_fun">打开方式</string>
+    <string name="use_browser_open">是否使用外部浏览器打开？</string>
+    <string name="open_sys_dir_picker_error">打开系统文件夹选择器出错，将自动打开应用文件夹选择器</string>
+    <string name="select_book_folder">选择保存书籍的文件夹</string>
+    <string name="general">全局</string>
+    <string name="copy_all">拷贝所有</string>
+    <string name="assists_key_config">辅助按键配置</string>
+    <string name="input_verification_code">输入验证码</string>
+    <string name="file_not_supported">文件 %1$s 不受支持，是否继续打开？</string>
+    <string name="download_and_import_file">导入在线书籍文件</string>
+    <string name="upload_book_success">上传成功</string>
+    <string name="tag_explore_enabled">标志:发现已启用</string>
+    <string name="tag_explore_disabled">标志:发现已禁用</string>
+    <string name="restore_last_book_process">是否恢复到跳转前的阅读进度？</string>
+    <string name="update_book_fail">更新失败</string>
+    <string name="notification_permission_rationale">阅读需要发送通知来显示朗读控制和下载进度</string>
+    <string name="webdav_after_local_restore_confirm">webDav书源比本地新,是否恢复</string>
+    <string name="confirm">确认</string>
+    <string name="url_rule">url规则(urlRule)</string>
+    <string name="show_rule">显示规则(showRule)</string>
+    <string name="sure_upload">远程webDav链接已存在，是否继续</string>
+    <string name="no_books_dir">没有设置书籍保存位置!</string>
+    <string name="no_book_found_bookshelf">未在书架上找到所选书籍, 是否重新导入？</string>
+    <string name="archive_not_found">未能在书籍保存目录找到压缩文件，是否重新导入？</string>
+    <string name="agree">同意</string>
+    <string name="refuse">拒绝</string>
+    <string name="create_folder">创建文件夹</string>
+    <string name="export_book">导出书籍</string>
+    <string name="export_book_notification_content">正在导出(%1$s),还有%2$d本待导出</string>
+    <string name="export_wait">等待导出</string>
+    <string name="screen_portrait_reversed">反向竖屏</string>
+    <string name="adjust_chapter_page">调整本章页数</string>
+    <string name="adjust_chapter_index">调整章节位置</string>
+    <string name="clear_webview_data_success">清除成功，3秒后自动重启应用</string>
+    <string name="keep_swipe_tip">继续滑动以加载下一章…</string>
+    <string name="ignore_battery_permission_rationale">阅读需要请求后台权限以保持服务正常运行</string>
+    <string name="switch_on">开关</string>
+    <string name="start_from">开始日期</string>
+    <string name="daily_chapters">日更章数</string>
+    <string name="start_chapter">起始章节</string>
+    <string name="default_version">当前</string>
+    <string name="official_version">正式版</string>
+    <string name="beta_release_version">测试版</string>
+    <string name="beta_releaseA_version">共存版</string>
+    <string name="read_aloud_read_phone_state_permission_rationale">阅读需要读取手机状态实现来电期间暂停朗读功能</string>
+    <string name="sys_image_picker">系统图片选择器</string>
+    <string name="source_filter_rule_filtered_count">屏蔽了 %1$d 本</string>
+    <string name="explore_style_normal">普通</string>
+    <string name="home_source_invalid">书源无效</string>
+    <string name="bottom_nav_items_order">底栏项目顺序</string>
+    <string name="debug_error">调试错误</string>
+    <string name="select_explore_kind">选择发现分类</string>
+    <string name="no_source_code">暂无源码</string>
+    <string name="cookie_input">Cookie</string>
+    <string name="qq_group_url"></string>
+    <string name="http_ip">http://%1$s:%2$d</string>
+    <string name="diy_edit_source_group_title">【%1$s】</string>
+    <string-array name="book_sort">
+        <item>默认</item>
+        <item>按阅读时间</item>
+        <item>按更新时间</item>
+        <item>按书名</item>
+        <item>手动排序</item>
+        <item>综合排序</item>
+        <item>按作者</item>
+    </string-array>
+    <string-array name="rule_type">
+        <item>书源</item>
+        <item>订阅源</item>
+        <item>替换规则</item>
+        <item>TXT 目录规则</item>
+        <item>字典规则</item>
+        <item>TTS</item>
+    </string-array>
+</resources>

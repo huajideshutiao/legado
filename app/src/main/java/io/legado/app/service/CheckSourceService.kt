@@ -12,6 +12,7 @@ import io.legado.app.constant.NotificationId
 import io.legado.app.data.appDb
 import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.setLiveProgress
 import io.legado.app.model.CheckSourceShared
 import io.legado.app.model.Debug
@@ -48,7 +49,7 @@ class CheckSourceService : BaseService() {
     private var threadCount = AppConfig.threadCount
     private var searchCoroutine =
         Executors.newFixedThreadPool(min(threadCount, AppConst.MAX_THREAD)).asCoroutineDispatcher()
-    private var notificationMsg = appCtx.getString(R.string.service_starting)
+    private var notificationMsg = androidAppString("service_starting")
     private var checkJob: Job? = null
     private var originSize = 0
     private var finishCount = 0
@@ -58,7 +59,7 @@ class CheckSourceService : BaseService() {
             .setSmallIcon(R.drawable.ic_network_check)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setContentTitle(getString(R.string.check_book_source))
+            .setContentTitle(androidAppString("check_book_source"))
             .setContentIntent(
                 activityPendingIntent<MainActivity>("activity") {
                     putExtra("route", "book_source_manage")
@@ -66,7 +67,7 @@ class CheckSourceService : BaseService() {
             )
             .addAction(
                 R.drawable.ic_stop_black_24dp,
-                getString(R.string.cancel),
+                androidAppString("cancel"),
                 servicePendingIntent<CheckSourceService>(IntentAction.stop)
             )
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -108,14 +109,14 @@ class CheckSourceService : BaseService() {
                 originSize = ids.size
                 finishCount = 0
                 // 初始帧无书源名, 传 "" 会残留前导空格, trim 掉使其与后续带名字的帧一样左对齐
-                notificationMsg = getString(R.string.progress_show, "", 0, originSize).trim()
+                notificationMsg = androidAppString("progress_show", "", 0, originSize).trim()
                 upNotification()
             }.onEachParallel(threadCount) {
                 CheckSourceShared.checkSource(it)
             }.onEach {
                 finishCount++
-                notificationMsg = getString(
-                    R.string.progress_show,
+                notificationMsg = androidAppString(
+                    "progress_show",
                     it.bookSourceName,
                     finishCount,
                     originSize

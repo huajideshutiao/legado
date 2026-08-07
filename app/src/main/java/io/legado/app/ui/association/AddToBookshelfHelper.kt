@@ -2,7 +2,7 @@ package io.legado.app.ui.association
 
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
-import io.legado.app.R
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.help.book.addType
@@ -29,11 +29,11 @@ object AddToBookshelfHelper {
             if (finishOnDismiss) activity.finish()
             return
         }
-        val waitDialog = WaitDialog.from(activity).setText(R.string.add_to_bookshelf)
+        val waitDialog = WaitDialog.from(activity).setText(androidAppString("add_to_bookshelf"))
         var cancelled = false
         waitDialog.onCancelListener = {
             cancelled = true
-            activity.toastOnUi(R.string.cancel)
+            activity.toastOnUi(androidAppString("cancel"))
             if (finishOnDismiss) activity.finish()
         }
         waitDialog.show()

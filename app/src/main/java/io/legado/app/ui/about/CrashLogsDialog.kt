@@ -12,7 +12,7 @@ import androidx.core.net.toUri
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.lifecycleScope
-import io.legado.app.R
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.base.BaseViewModel
 import io.legado.app.help.config.AppConfig
@@ -72,9 +72,9 @@ class CrashLogsDialog : BaseComposeDialogFragment() {
 
     private fun shareFile(fileDoc: FileDoc) {
         fileDoc.asFile()?.let {
-            requireContext().share(it, title = getString(R.string.share))
+            requireContext().share(it, title = androidAppString("share"))
         } ?: requireContext().share(
-            fileDoc.uri, title = getString(R.string.share)
+            fileDoc.uri, title = androidAppString("share")
         )
     }
 

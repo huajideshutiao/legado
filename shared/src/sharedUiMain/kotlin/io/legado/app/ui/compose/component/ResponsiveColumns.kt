@@ -11,16 +11,29 @@ import kotlin.math.roundToInt
 /** 参考宽度: 用户设置的"列数"被定义为这个宽度下的列数; 低于此宽度的手机严格按用户列数, 高于此宽度按比例加列, 400dp 为用户确认的折算起点 */
 val ResponsiveReferenceWidth: Dp = 400.dp
 
+/** 最窄列宽守卫系数: 列宽下限 = 参考列宽 × 此比例 (round 进位边界防"加列反而更挤")。 */
+private const val MIN_COLUMN_WIDTH_RATIO = 0.8f
+
 /**
  * 响应式列数: 用户设置的列数 N 只描述"参考宽度下的列数", 容器更宽时按比例加列。
  *
- * `max` 钳底保证 ≤ 参考宽度的手机与原来完全一致(存量配置零迁移);
- * `round` 允许条目压到参考宽度约 80% 再增列(700dp/N=1 → 2 列)。
+ * 取整策略 (round + 最窄列宽守卫, 均为内部策略不对外暴露):
+ * - `max` 钳底保证 ≤ 参考宽度的手机与原来完全一致(存量配置零迁移);
+ * - `round` 在 0.5 进位边界提前加列 (列宽 ≈ 参考列宽×0.8 起), 比 floor 更积极利用空间;
+ * - 守卫: round 进位后若列宽跌破守卫线 (如 1400dp/N=1 → round(3.5)=4 列 350dp,
+ *   比 1200dp 的 3 列 400dp 更窄), 循环退列直到列宽回到守卫线上方
+ *   (0.5 进位通常只差 1 列, 循环保证大 base 的 round 误差也能兜住)。
  */
 fun effectiveColumns(baseColumns: Int, availableWidth: Dp, referenceWidth: Dp): Int {
     val base = baseColumns.coerceAtLeast(1)
     val scaled = (base * (availableWidth / referenceWidth)).roundToInt()
-    return maxOf(base, scaled)
+    // 参考列宽 = referenceWidth / base; 守卫下限 = 其 MIN_COLUMN_WIDTH_RATIO 倍
+    val minColumnWidth = referenceWidth / base * MIN_COLUMN_WIDTH_RATIO
+    var columns = scaled
+    while (columns > base && availableWidth / columns < minColumnWidth) {
+        columns--
+    }
+    return columns
 }
 
 /**

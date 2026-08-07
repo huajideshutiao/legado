@@ -20,6 +20,16 @@ import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 
 
+/**
+ * libarchive (me.zhanghai.android.libarchive) JNI 封装。
+ *
+ * # 下沉说明
+ * 保持 app 端不下沉: 全文件是 Android native libarchive 的薄封装 (ParcelFileDescriptor /
+ * android.system.Os / OsConstants + libarchive JNI), 无与平台无关的纯算法可剥离;
+ * 其余端的解压能力由 shared [io.legado.app.help.archive.ArchiveProvider] 平台实现各自提供
+ * (desktop 走 JDK ZipInputStream; iOS/鸿蒙走 nativeMain NativeArchiveProvider 的
+ * NativeZipCodec; rar/7z 覆盖差异见 ArchiveProvider KDoc)。
+ */
 object LibArchiveUtils {
 
     @Throws(ArchiveException::class)

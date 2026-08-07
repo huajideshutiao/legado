@@ -9,6 +9,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.setLiveOngoing
 import io.legado.app.service.UpdateBookService.Companion.isRun
 import io.legado.app.utils.postEvent
@@ -58,10 +59,10 @@ class UpdateBookService : BaseService() {
             .setSmallIcon(R.drawable.ic_update)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setContentTitle(getString(R.string.update_toc))
+            .setContentTitle(androidAppString("update_toc"))
             .addAction(
                 R.drawable.ic_stop_black_24dp,
-                getString(R.string.cancel),
+                androidAppString("cancel"),
                 servicePendingIntent<UpdateBookService>(IntentAction.stop)
             )
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

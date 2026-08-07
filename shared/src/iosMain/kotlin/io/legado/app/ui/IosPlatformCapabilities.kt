@@ -490,7 +490,7 @@ object IosPlatformCapabilities : PlatformCapabilities {
             )
             alert.addAction(
                 UIAlertAction.actionWithTitle(
-                    title = "确定",
+                    title = "确认",
                     style = UIAlertActionStyleDefault,
                     handler = { _ ->
                         val text = (alert.textFields?.firstOrNull() as? UITextField)?.text.orEmpty()

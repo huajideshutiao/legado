@@ -1,8 +1,8 @@
 package io.legado.app.help.config
 
 import android.content.Context
-import io.legado.app.R
-import splitties.init.appCtx
+import io.legado.app.help.i18n.androidAppString
+import io.legado.app.help.i18n.androidAppStringArray
 
 @Suppress("ConstPropertyName")
 object ReadTipConfig {
@@ -24,11 +24,11 @@ object ReadTipConfig {
         none, bookName, chapterTitle, time, battery, batteryPercentage, page,
         totalProgress, totalProgress1, pageAndTotal, timeBattery, timeBatteryPercentage
     )
-    val tipNames get() = appCtx.resources.getStringArray(R.array.read_tip).toList()
+    // strings.xml 删除后统一走 shared composeResources (同步通道, 启动期已暖缓存)
+    val tipNames get() = androidAppStringArray("read_tip")
 
-    val tipColorNames get() = appCtx.resources.getStringArray(R.array.tip_color).toList()
-    val tipDividerColorNames
-        get() = appCtx.resources.getStringArray(R.array.tip_divider_color).toList()
+    val tipColorNames get() = androidAppStringArray("tip_color")
+    val tipDividerColorNames get() = androidAppStringArray("tip_divider_color")
 
     var tipHeaderLeft: Int
         get() = ReadBookConfig.config.tipHeaderLeft
@@ -92,16 +92,16 @@ object ReadTipConfig {
 
     fun getHeaderModes(context: Context): LinkedHashMap<Int, String> {
         return linkedMapOf(
-            Pair(0, context.getString(R.string.hide_when_status_bar_show)),
-            Pair(1, context.getString(R.string.show)),
-            Pair(2, context.getString(R.string.hide))
+            Pair(0, androidAppString("hide_when_status_bar_show")),
+            Pair(1, androidAppString("show")),
+            Pair(2, androidAppString("hide"))
         )
     }
 
     fun getFooterModes(context: Context): LinkedHashMap<Int, String> {
         return linkedMapOf(
-            Pair(0, context.getString(R.string.show)),
-            Pair(1, context.getString(R.string.hide))
+            Pair(0, androidAppString("show")),
+            Pair(1, androidAppString("hide"))
         )
     }
 }

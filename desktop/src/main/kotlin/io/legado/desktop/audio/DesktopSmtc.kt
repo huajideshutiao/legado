@@ -40,7 +40,7 @@ import java.util.concurrent.Executors
  * - ISMTC: 6/7 get/put_PlaybackStatus; 8 get_DisplayUpdater; 10/11 IsEnabled; 12/13 IsPlayEnabled;
  *   16/17 IsPauseEnabled; 24/25 IsPreviousEnabled; 26/27 IsNextEnabled;
  *   32 add_ButtonPressed(IEventHandler*, out i64); 33 remove_ButtonPressed(i64)
- * - ISMTC2: 10/11 PlaybackRate; 12 UpdateTimelineProperties(IInspectable*); 13 add/14 remove
+ * - ISMTC2: 40/41 get/put_PlaybackRate; 42 UpdateTimelineProperties(IInspectable*); 43 add/44 remove
  *   PlaybackPositionChangeRequested
  * - DisplayUpdater: 6/7 Type; 10/11 Thumbnail; 12 get_MusicProperties; 16 ClearAll; 17 Update
  * - IMusicDisplayProperties (6BBF0C59-...): 6/7 Title; 8/9 AlbumArtist; 10/11 Artist
@@ -116,14 +116,17 @@ internal object DesktopSmtc {
     private const val SLOT_ADD_BUTTON_PRESSED = 32
     private const val SLOT_REMOVE_BUTTON_PRESSED = 33
 
-    // ISystemMediaTransportControls2 (ISMTC 有 38 个业务方法 = vtable 6..43,
-    // ISMTC2 的方法从 44 起; 序号经 WinRT 元数据反射验证)
-    // 2026-08 修正: 此前 11/12/13/14 落在 ISMTC 的 put_IsEnabled/get_IsPlayEnabled 等槽位上,
-    // 导致播放速率未设置、时间线未更新、进度事件未注册
-    private const val SLOT_ISMTC2_PUT_PLAYBACK_RATE = 49
-    private const val SLOT_ISMTC2_UPDATE_TIMELINE = 50
-    private const val SLOT_ISMTC2_ADD_POS_CHANGE = 51
-    private const val SLOT_ISMTC2_REMOVE_POS_CHANGE = 52
+    // ISystemMediaTransportControls2 (ISMTC 业务方法 30 个 = vtable 6..35, ISMTC2 从 36 起)
+    // 官方头文件 windows.media.systemmediatransportcontrols.h 顺序:
+    // get/put_AutoRepeatMode 36/37, get/put_ShuffleEnabled 38/39, get/put_PlaybackRate 40/41,
+    // UpdateTimelineProperties 42, add/remove_PlaybackPositionChangeRequested 43/44
+    // (与 windows-rs master = Win11 SDK metadata 逐槽核对一致)
+    // 2026-08 修正: 此前按“38 个业务方法 = 6..43”的错误前提取 49/50/51/52 (偏移 +8),
+    // 导致播放速率未设置、时间线未更新、seek 事件注册越界 (51/52 超出 ISMTC2 vtable)
+    private const val SLOT_ISMTC2_PUT_PLAYBACK_RATE = 41
+    private const val SLOT_ISMTC2_UPDATE_TIMELINE = 42
+    private const val SLOT_ISMTC2_ADD_POS_CHANGE = 43
+    private const val SLOT_ISMTC2_REMOVE_POS_CHANGE = 44
 
     // ISystemMediaTransportControlsDisplayUpdater
     private const val SLOT_DU_PUT_TYPE = 7
@@ -377,7 +380,11 @@ internal object DesktopSmtc {
 
         // 倍速 (ISMTC2.PlaybackRate, 浮层显示语速)
         if (state.playbackRate > 0f) {
-            smtc2?.let { vtbl(it, SLOT_ISMTC2_PUT_PLAYBACK_RATE, state.playbackRate.toDouble()) }
+            val s2 = smtc2
+            if (s2 != null) {
+                val hr = vtbl(s2, SLOT_ISMTC2_PUT_PLAYBACK_RATE, state.playbackRate.toDouble())
+                if (hr != S_OK) AppLog.put("SMTC put_PlaybackRate 失败 hr=$hr")
+            }
         }
 
         // 封面 (二期): URL → Uri → RandomAccessStreamReference → Thumbnail (不下载图片)
@@ -396,7 +403,8 @@ internal object DesktopSmtc {
         vtbl(tl, SLOT_TL_PUT_MIN_SEEK_TIME, 0L)
         vtbl(tl, SLOT_TL_PUT_MAX_SEEK_TIME, end)
         vtbl(tl, SLOT_TL_PUT_POSITION, pos)
-        vtbl(s2, SLOT_ISMTC2_UPDATE_TIMELINE, tl)
+        val hr = vtbl(s2, SLOT_ISMTC2_UPDATE_TIMELINE, tl)
+        if (hr != S_OK) AppLog.put("SMTC UpdateTimelineProperties 失败 hr=$hr")
     }
 
     private fun ensureTimelineProps(): Pointer? {
@@ -705,7 +713,10 @@ internal object DesktopSmtc {
     private fun guidBytes(s: String): Memory {
         val g = s.replace("-", "")
         val mem = Memory(16)
-        mem.setInt(0, g.substring(0, 8).toInt(16))
+        // Data1 可为 8 位 hex 且可能 > 0x7FFFFFFF (如 AF86E2E0/99FA3FF4), toInt(16) 溢出
+        // 抛 NumberFormatException → <clinit> 失败 → NoClassDefFoundError 拖垮整个播放链路
+        // (同 DesktopSystemVolume.guidBytes 已修模式, 2026-08 补漏)
+        mem.setInt(0, Integer.parseUnsignedInt(g.substring(0, 8), 16))
         mem.setShort(4, g.substring(8, 12).toInt(16).toShort())
         mem.setShort(6, g.substring(12, 16).toInt(16).toShort())
         for (i in 0 until 8) {

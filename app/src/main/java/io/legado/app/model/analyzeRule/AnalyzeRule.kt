@@ -7,8 +7,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.JsExtensionsJvm
 import io.legado.app.model.webBook.BookInfoRefreshers
-import io.legado.app.utils.NetworkUtils
-import io.legado.app.utils.URL
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 
@@ -48,11 +46,6 @@ class AnalyzeRule(
      * 用 super<AnalyzeRuleCore>.ajax 转发到父类实现 (因 JsExtensionsJvm.ajax 也提供默认实现, 需指定父类).
      */
     override fun ajax(url: Any): String? = super<AnalyzeRuleCore>.ajax(url)
-
-    /** 恢复原版 java.net.URL 重载路径, 避免 String 门面 substringBefore(",") 截断含逗号的 redirectUrl。 */
-    override fun getAbsoluteURL(redirectUrl: URL?, relativePath: String): String {
-        return NetworkUtils.getAbsoluteURL(redirectUrl, relativePath)
-    }
 
     /**
      * 更新tocUrl,有些书源目录url定期更新,可以在js调用更新

@@ -914,7 +914,7 @@ fun ReaderRoute(
             }
         }
 
-        // 模拟阅读配置 (对照原版 menu_simulated_reading → showSimulatedReading)
+        // 模拟追读配置 (对照原版 menu_simulated_reading → showSimulatedReading)
         is ReaderDialogEvent.SimulatedReading -> {
             val book = screenModel.currentBook
             if (book != null) {
@@ -1179,7 +1179,7 @@ private fun HttpTtsEditDialogHost(
         onShowLoginHeader = {
             val httpTts = collectHttpTtsFromEntities(editEntities, viewModel.id)
             val header = httpTts.getLoginHeader()
-            if (header.isNullOrBlank()) Toasters.get().toast("无登录请求头")
+            if (header.isNullOrBlank()) Toasters.get().toast("无登录头")
             else Toasters.get().toast(header)
         },
         onDeleteLoginHeader = {

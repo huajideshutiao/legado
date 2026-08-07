@@ -1,3 +1,4 @@
+import org.gradle.api.tasks.JavaExec
 import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 plugins {
@@ -285,6 +286,11 @@ compose.desktop {
 afterEvaluate {
     tasks.named("run").configure {
         dependsOn(project(":modules:quickjs").tasks.named("buildJvmNativeLib"))
+        // 开发期 run 注入 debug 标志: 让 shared printStackTraceOnDebug 对齐 Android 的
+        // BuildConfig.DEBUG 语义 (仅开发打栈); 打包产物不带该属性 = 静默
+        if (this is JavaExec) {
+            systemProperty("legado.debug", "true")
+        }
     }
     // KP6: 打包 task 必须依赖 copyQuickjsNativeToResources, 确保 native 库先复制到
     // appResourcesRootDir, jpackage 才会纳入 app/{packageName}/ 目录, 打包后可加载

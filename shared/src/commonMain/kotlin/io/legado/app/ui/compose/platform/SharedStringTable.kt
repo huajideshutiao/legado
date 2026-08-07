@@ -14,7 +14,7 @@ package io.legado.app.ui.compose.platform
  * - `NativeQuickJsSharedJsScopeProvider` (1): download_jslib_failed
  */
 val sharedStringTable: Map<String, String> = mapOf(
-    "ok" to "确定",
+    "ok" to "确认",
     "default_day_theme" to "默认·白天",
     "default_night_theme" to "默认·夜间",
     "native_book_format_not_supported" to

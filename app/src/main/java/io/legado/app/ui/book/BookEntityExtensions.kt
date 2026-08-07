@@ -1,7 +1,7 @@
 package io.legado.app.ui.book
 
 import android.content.Context
-import io.legado.app.R
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.config.AppConfig
@@ -11,10 +11,10 @@ import io.legado.app.help.config.AppConfig
  */
 fun BookGroup.getManageName(context: Context): String {
     return when (groupId) {
-        BookGroup.IdAll -> "$groupName(${context.getString(R.string.all)})"
-        BookGroup.IdLocal -> "$groupName(${context.getString(R.string.local)})"
-        BookGroup.IdUngrouped -> "$groupName(${context.getString(R.string.no_group)})"
-        BookGroup.IdError -> "$groupName(${context.getString(R.string.update_book_fail)})"
+        BookGroup.IdAll -> "$groupName(${androidAppString("all")})"
+        BookGroup.IdLocal -> "$groupName(${androidAppString("local")})"
+        BookGroup.IdUngrouped -> "$groupName(${androidAppString("no_group")})"
+        BookGroup.IdError -> "$groupName(${androidAppString("update_book_fail")})"
         else -> groupName
     }
 }
@@ -36,6 +36,6 @@ fun BookGroup.getRealBookSort(): Int {
 fun SearchBook.trimIntro(context: Context): String {
     val trimIntro = intro?.trim()
     return if (trimIntro.isNullOrEmpty()) {
-        context.getString(R.string.intro_show_null)
+        androidAppString("intro_show_null")
     } else trimIntro
 }

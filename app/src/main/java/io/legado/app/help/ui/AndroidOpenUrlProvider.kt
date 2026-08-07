@@ -1,11 +1,16 @@
 package io.legado.app.help.ui
 
-import io.legado.app.ui.association.OpenUrlConfirmDialog
+import io.legado.app.help.IntentData
+import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.association.OpenUrlConfirmPayload
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
 
 /**
  * [OpenUrlProvider] 的 app 端实现。
  *
- * 委托原 [OpenUrlConfirmDialog.display], 行为与下沉前完全一致。
+ * 跳转确认对话框已下沉 sharedUiMain (key="openUrlConfirm"): 这里经 AppOverlay 弹出,
+ * 确认后由共享层调 PlatformCapabilities.openExternalUrl(url, mimeType) 打开链接。
  * 在 App.onCreate 经 [registerAndroidOpenUrlProvider] 注册到 [OpenUrlProviders]。
  */
 object AndroidOpenUrlProvider : OpenUrlProvider {
@@ -17,12 +22,25 @@ object AndroidOpenUrlProvider : OpenUrlProvider {
         sourceTag: String?,
         sourceType: Int
     ) {
-        OpenUrlConfirmDialog.display(
-            url,
-            mimeType,
-            sourceKey,
-            sourceTag,
-            sourceType
+        val navigator = AppNavigatorProviders.getOrNull()
+        if (navigator == null) {
+            // 对照原版 LifecycleHelp.currentActivity 为空时的 toast
+            Toasters.get().toast("无法在后台显示跳转确认对话框")
+            return
+        }
+        navigator.showOverlay(
+            AppOverlay.Dialog(
+                key = "openUrlConfirm",
+                payload = IntentData.put(
+                    OpenUrlConfirmPayload(
+                        url = url,
+                        mimeType = mimeType,
+                        sourceKey = sourceKey,
+                        sourceTag = sourceTag,
+                        sourceType = sourceType,
+                    )
+                ),
+            )
         )
     }
 }

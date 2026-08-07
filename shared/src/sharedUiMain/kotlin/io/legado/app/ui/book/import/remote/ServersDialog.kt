@@ -5,7 +5,7 @@ package io.legado.app.ui.book.import.remote
 //   "create"        to "新建",
 //   "text_default"  to "默认",
 //   "cancel"        to "取消",
-//   "ok"            to "确定",
+//   "ok"            to "确认",
 //   "edit"          to "编辑",
 //   "delete"        to "删除",
 //   "draw"          to "提醒",

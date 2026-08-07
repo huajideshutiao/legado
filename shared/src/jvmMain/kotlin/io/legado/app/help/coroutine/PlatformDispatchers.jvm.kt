@@ -17,7 +17,19 @@ private val resolvedMainDispatcher: CoroutineDispatcher = runCatching {
 
 internal actual val mainDispatcher: CoroutineDispatcher get() = resolvedMainDispatcher
 
-/** 桌面无 BuildConfig，工具场景默认打栈便于诊断。 */
+private var isDebug: Boolean = false
+
+/**
+ * 桌面 JVM 无 BuildConfig, 由宿主 (desktop Main) 启动时注入调试状态,
+ * 与 android 的 [registerAndroidDebugState] 同模式; 未注入时默认不打栈。
+ */
+fun registerJvmDebugState(debug: Boolean) {
+    isDebug = debug
+}
+
+/** 对齐 Android BuildConfig.DEBUG 语义: 仅 debug 场景打栈 (开发期 run 任务注入 true, 打包产物不打)。 */
 actual fun Throwable.printStackTraceOnDebug() {
-    printStackTrace()
+    if (isDebug) {
+        printStackTrace()
+    }
 }

@@ -9,8 +9,8 @@ import java.util.WeakHashMap
  * 针对中文的断行排版处理-by hoodie13
  * 因为StaticLayout对标点处理不符合国人习惯，继承Layout
  *
- * 断行状态机已抽到纯 Kotlin 的 [ZhLineBreaker]（JVM 可测）；本类仅保留 android.text.Layout
- * 外壳（复用 getLineStart 等接口）+ 平台测量收口（经 [TextMeasurer]）。
+ * 断行状态机已抽到 shared commonMain 的纯 Kotlin [ZhLineBreaker]（JVM 可测）；
+ * 本类仅保留 android.text.Layout 外壳（复用 getLineStart 等接口）+ 平台测量收口（经 [TextMeasurer]）。
  * */
 @Suppress("MemberVisibilityCanBePrivate", "unused")
 class ZhLayout(

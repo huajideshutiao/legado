@@ -32,7 +32,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.edit
 
-import io.legado.app.R
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.authority
 import io.legado.app.data.entities.BaseBook
@@ -252,7 +252,7 @@ val Context.navigationBarHeight: Int
         return resources.getDimensionPixelSize(resourceId)
     }
 
-fun Context.share(text: String, title: String = getString(R.string.share)) {
+fun Context.share(text: String, title: String = androidAppString("share")) {
     kotlin.runCatching {
         val intent = Intent(Intent.ACTION_SEND)
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -263,12 +263,12 @@ fun Context.share(text: String, title: String = getString(R.string.share)) {
     }
 }
 
-fun Context.share(file: File, type: String = "text/*", title: String = getString(R.string.share)) {
+fun Context.share(file: File, type: String = "text/*", title: String = androidAppString("share")) {
     val fileUri = FileProvider.getUriForFile(this, AppConst.authority, file)
     share(fileUri, type, title)
 }
 
-fun Context.share(uri: Uri, type: String = "text/*", title: String = getString(R.string.share)) {
+fun Context.share(uri: Uri, type: String = "text/*", title: String = androidAppString("share")) {
     kotlin.runCatching {
         val intent = Intent(Intent.ACTION_SEND)
         intent.type = type
@@ -284,7 +284,7 @@ fun Context.share(uri: Uri, type: String = "text/*", title: String = getString(R
 fun Context.sendToClip(text: String) {
     val clipData = ClipData.newPlainText(null, text)
     clipboardManager.setPrimaryClip(clipData)
-    longToastOnUi(R.string.copy_complete)
+    longToastOnUi(androidAppString("copy_complete"))
 }
 
 fun getClipText(): String? {

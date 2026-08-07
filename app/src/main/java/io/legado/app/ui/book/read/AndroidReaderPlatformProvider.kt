@@ -25,11 +25,12 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
-import io.legado.app.R
+import io.legado.app.BuildConfig
 import io.legado.app.constant.AppConst
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.TTS
 import io.legado.app.help.book.BookHelp
@@ -46,6 +47,7 @@ import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.showSourceLogin
+import io.legado.app.help.storage.Backup
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.model.CacheBook
 import io.legado.app.model.ReadAloud
@@ -60,12 +62,13 @@ import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.toRouteRef
+import io.legado.app.ui.route.encodeReviewListDialogPayload
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.share
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CoroutineScope
@@ -262,6 +265,10 @@ class AndroidReaderPlatformProvider(
                 // 对照原版 onPause → autoPageStop: 退后台停自动翻页
                 activeMenuState?.second?.stopAutoPage()
                 screenModel.onPause()
+                // 对照原版 ReadBookActivity.onPause → Backup.autoBack: 退后台触发自动备份
+                if (!BuildConfig.DEBUG) {
+                    Backup.autoBack(activity)
+                }
             }
 
             override fun onResume(owner: LifecycleOwner) {
@@ -282,6 +289,11 @@ class AndroidReaderPlatformProvider(
         if (activeMenuState?.first === screenModel) {
             activeMenuState?.second?.stopAutoPage()
             activeMenuState = null
+        }
+        // 退出阅读页: 自动备份 (对照原版 ReadBookActivity.onDestroy → Backup.autoBack;
+        // MainActivity.onDestroy 兜底保留)
+        if (!BuildConfig.DEBUG) {
+            Backup.autoBack(activity)
         }
         // 退出阅读页: 收起文本操作浮动菜单 (对照原版 onDestroy → textActionMenu.dismiss),
         // 否则 ActionMode 悬在 decorView 上残留
@@ -508,7 +520,7 @@ private class AndroidReaderMenuState(
     private fun upSourceAction() {
         val book = screenModel.viewModel.book.value
         val source = screenModel.viewModel.bookSource.value
-        sourceActionText = source?.bookSourceName ?: activity.getString(R.string.book_source)
+        sourceActionText = source?.bookSourceName ?: androidAppString("book_source")
         sourceActionVisible = book?.let { !it.isLocal } ?: false
     }
 
@@ -555,8 +567,8 @@ private class AndroidReaderMenuState(
     override fun onChapterViewLongClick() {
         val book = screenModel.viewModel.book.value ?: return
         if (book.isLocal) return
-        activity.alert(R.string.open_fun) {
-            setMessage(R.string.use_browser_open)
+        activity.alert(androidAppString("open_fun")) {
+            setMessage(androidAppString("use_browser_open"))
             okButton { AppConfig.readUrlInBrowser = true }
             noButton { AppConfig.readUrlInBrowser = false }
         }
@@ -735,7 +747,7 @@ private class AndroidReaderMenuState(
                 val imgStyles = arrayListOf(
                     Book.imgStyleDefault, Book.imgStyleFull, Book.imgStyleText, Book.imgStyleSingle
                 )
-                activity.selector(R.string.image_style, imgStyles) { _, index ->
+                activity.selector(androidAppString("image_style"), imgStyles) { _, index ->
                     val imageStyle = imgStyles[index]
                     val book = screenModel.viewModel.book.value ?: return@selector
                     book.config.imageStyle = imageStyle
@@ -754,17 +766,23 @@ private class AndroidReaderMenuState(
 
             // 云进度: 手动同步, 上传成功/已同步 toast (对照原版 menu_sync_progress)
             ReadMenuAction.SYNC_PROGRESS -> screenModel.viewModel.syncProgressManual(
-                uploadSuccessAction = { activity.toastOnUi(R.string.upload_book_success) },
-                syncSuccessAction = { activity.toastOnUi(R.string.sync_book_progress_success) },
+                uploadSuccessAction = { activity.toastOnUi(androidAppString("upload_book_success")) },
+                syncSuccessAction = { activity.toastOnUi(androidAppString("sync_book_progress_success")) },
             )
 
-            // 段评: 章节级评论对话框 (对照原版 menu_review → viewModel.openCommentDialog)
+            // 段评: 章节级评论对话框 (对照原版 menu_review → viewModel.openCommentDialog);
+            // ReviewListDialog 已下沉 shared: 经 review_list Overlay 弹底部弹窗
             ReadMenuAction.REVIEW -> {
                 val book = screenModel.viewModel.book.value ?: return
                 val chapter = screenModel.currentChapter
                 if (chapter != null) {
                     hide()
-                    activity.showDialogFragment(ReviewListDialog(book, chapter, 0))
+                    AppNavigatorProviders.getOrNull()?.showOverlay(
+                        AppOverlay.Dialog(
+                            key = "review_list",
+                            payload = encodeReviewListDialogPayload(book, chapter, 0),
+                        )
+                    )
                 }
             }
 
@@ -802,7 +820,7 @@ private class AndroidReaderMenuState(
         val startState = mutableStateOf(book.getStartChapter().toString())
         val numState = mutableStateOf(book.config.dailyChapters.toString())
         val dateState = mutableStateOf(book.getStartDate()?.format(dateFormatter).orEmpty())
-        activity.alert(R.string.simulated_reading) {
+        activity.alert(androidAppString("simulated_reading")) {
             customView {
                 val colors = AppTheme.colors
                 Column(
@@ -817,7 +835,7 @@ private class AndroidReaderMenuState(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            activity.getString(R.string.switch_on),
+                            androidAppString("switch_on"),
                             color = colors.primaryText,
                             fontSize = 16.sp,
                             modifier = Modifier.weight(1f),
@@ -834,7 +852,7 @@ private class AndroidReaderMenuState(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            activity.getString(R.string.start_from),
+                            androidAppString("start_from"),
                             color = colors.primaryText,
                             fontSize = 16.sp,
                             modifier = Modifier.padding(end = 8.dp),
@@ -871,7 +889,7 @@ private class AndroidReaderMenuState(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            activity.getString(R.string.start_chapter),
+                            androidAppString("start_chapter"),
                             color = colors.primaryText,
                             fontSize = 16.sp,
                         )
@@ -883,7 +901,7 @@ private class AndroidReaderMenuState(
                                 .padding(horizontal = 4.dp),
                         )
                         Text(
-                            activity.getString(R.string.daily_chapters),
+                            androidAppString("daily_chapters"),
                             color = colors.primaryText,
                             fontSize = 16.sp,
                         )
@@ -1096,14 +1114,14 @@ private class AndroidReaderMenuState(
     // 翻页动画选择器 (原 PAGE_ANIM 分支提取, AutoReadPanel 设置按钮复用)
     fun showPageAnimConfigSelector() {
         val items = arrayListOf(
-            activity.getString(R.string.btn_default_s),
-            activity.getString(R.string.page_anim_cover),
-            activity.getString(R.string.page_anim_slide),
-            activity.getString(R.string.page_anim_simulation),
-            activity.getString(R.string.page_anim_scroll),
-            activity.getString(R.string.page_anim_none),
+            androidAppString("btn_default_s"),
+            androidAppString("page_anim_cover"),
+            androidAppString("page_anim_slide"),
+            androidAppString("page_anim_simulation"),
+            androidAppString("page_anim_scroll"),
+            androidAppString("page_anim_none"),
         )
-        activity.selector(R.string.page_anim, items) { _, _ ->
+        activity.selector(androidAppString("page_anim"), items) { _, _ ->
             ReadBookEvents.postConfig(
                 ReadConfigChange.PAGE_ANIM, ReadConfigChange.LOAD_CONTENT
             )
@@ -1128,7 +1146,7 @@ private class AndroidReaderMenuState(
         val book = screenModel.viewModel.book.value ?: return
         val startState = mutableStateOf((book.durChapterIndex + 1).toString())
         val endState = mutableStateOf(book.totalChapterNum.toString())
-        activity.alert(R.string.offline_cache) {
+        activity.alert(androidAppString("offline_cache")) {
             customView {
                 val colors = AppTheme.colors
                 Column(
@@ -1143,7 +1161,7 @@ private class AndroidReaderMenuState(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            activity.getString(R.string.start),
+                            androidAppString("start"),
                             color = colors.primaryText,
                             fontSize = 16.sp,
                             modifier = Modifier.padding(end = 8.dp),
@@ -1154,7 +1172,7 @@ private class AndroidReaderMenuState(
                             modifier = Modifier.weight(1f),
                         )
                         Text(
-                            activity.getString(R.string.end),
+                            androidAppString("end"),
                             color = colors.primaryText,
                             fontSize = 16.sp,
                             modifier = Modifier.padding(horizontal = 8.dp),
@@ -1181,7 +1199,7 @@ private class AndroidReaderMenuState(
     private fun showCharsetConfig() {
         val book = screenModel.viewModel.book.value ?: return
         val charsetState = mutableStateOf(book.charset.orEmpty())
-        activity.alert(R.string.set_charset) {
+        activity.alert(androidAppString("set_charset")) {
             customView {
                 AppAutoCompleteField(
                     value = charsetState.value,

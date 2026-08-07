@@ -1,8 +1,8 @@
 package io.legado.app.ui.book.manage
 
-import io.legado.app.R
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.model.fileBook.FileBook
 import splitties.init.appCtx
 
@@ -18,11 +18,11 @@ import splitties.init.appCtx
  * - [getChapterFiles]: 委托 [BookHelp.getChapterFiles]。
  * - [getCacheSize]: 用接口默认实现 (返回 0), 与原行为一致 (原 app 端未统计缓存大小)。
  * - [deleteLocalBook]: 委托 [FileBook.deleteBook]。
- * - [clearCacheSuccessMessage]: `appCtx.getString(R.string.clear_cache_success)`。
+ * - [clearCacheSuccessMessage]: `androidAppString("clear_cache_success")`。
  *
  * 注: 原 inner class 通过 `context` (BaseViewModel 提供) 调
- * `context.getString(R.string.clear_cache_success)`; 顶级类无外类 context, 改用
- * [appCtx] (Application Context), 与原行为等价。
+ * `androidAppString("clear_cache_success")`; 顶级类无外类 context, 改用
+ * [androidAppString] (与 AppStringsAndroid 同步通道, 启动期已暖缓存), 与原行为等价。
  */
 class AndroidBookshelfManagePlatform : BookshelfManagePlatform {
 
@@ -43,9 +43,9 @@ class AndroidBookshelfManagePlatform : BookshelfManagePlatform {
         FileBook.deleteBook(book, deleteOriginal)
     }
 
-    /** 清缓存成功提示文案 (对照原 `context.getString(R.string.clear_cache_success)`)。 */
+    /** 清缓存成功提示文案 (对照原 `androidAppString("clear_cache_success")`)。 */
     override val clearCacheSuccessMessage: String
-        get() = appCtx.getString(R.string.clear_cache_success)
+        get() = androidAppString("clear_cache_success")
 }
 
 /**

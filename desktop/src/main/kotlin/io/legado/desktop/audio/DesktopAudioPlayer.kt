@@ -6,12 +6,28 @@ import javazoom.jl.decoder.Header
 import javazoom.jl.player.advanced.AdvancedPlayer
 import javazoom.jl.player.advanced.PlaybackEvent
 import javazoom.jl.player.advanced.PlaybackListener
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.Request
 import okhttp3.Response
 import java.io.BufferedInputStream
 import java.io.FilterInputStream
 import java.io.IOException
 import java.io.InputStream
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeout
+import kotlin.coroutines.coroutineContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * 桌面端音频播放器 (jlayer MP3 解码 + javax.sound.sampled 输出)。
@@ -68,8 +84,14 @@ class DesktopAudioPlayer {
     @Volatile private var advancedPlayer: AdvancedPlayer? = null
     @Volatile private var audioDevice: SonicAudioDevice? = null
 
-    @Volatile private var prepareThread: Thread? = null
     @Volatile private var playbackThread: Thread? = null
+
+    /** prepare 协程 (超时/取消可控; 取代原不可中断的阻塞线程) */
+    private val prepareScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile private var prepareJob: Job? = null
+
+    /** prepare 代次: 新 prepare 使旧 job 的迟到 onError 失效 (避免误杀新章节的加载态) */
+    private val prepareGeneration = AtomicInteger(0)
 
     /** HTTP Content-Length, 用于估算 duration; -1 未知 */
     @Volatile private var contentLength: Long = -1L
@@ -136,8 +158,8 @@ class DesktopAudioPlayer {
     }
 
     /**
-     * 后台启动 HTTP 拉流 + 解析第一帧 Header 估算 duration, 完成后回调 [Listener.onReady]。
-     * 对应 app 端 ExoPlayer.prepare()。
+     * 后台启动 HTTP 拉流 + 解析首帧估算 duration, 完成后回调 [Listener.onReady]。
+     * 协程化: withTimeout + call.cancel() 保证直链挂起时不残留 LOADING。
      */
     fun prepare() {
         if (released) return
@@ -145,19 +167,28 @@ class DesktopAudioPlayer {
             listener?.onError("no url set")
             return
         }
-        prepareThread = Thread({
+        prepareJob?.cancel()
+        val gen = prepareGeneration.incrementAndGet()
+        prepareJob = prepareScope.launch {
             try {
-                prepareInternal(theUrl)
+                withTimeout(PREPARE_TIMEOUT_MS) { prepareInternal(theUrl) }
+            } catch (e: TimeoutCancellationException) {
+                // call.cancel() 已中断连接; 释放响应, 收掉加载态避免转圈残留
+                runCatching { response?.close() }
+                if (!released && gen == prepareGeneration.get()) {
+                    listener?.onError("prepare timeout")
+                }
+            } catch (e: CancellationException) {
+                throw e // 主动取消 (换章/停止): 由新流程接管, 不报错
             } catch (e: Exception) {
-                if (!released) listener?.onError("prepare failed: ${e.message}")
+                if (!released && gen == prepareGeneration.get()) {
+                    listener?.onError("prepare failed: ${e.message}")
+                }
             }
-        }, "DesktopAudioPlayer-prepare").apply {
-            isDaemon = true
-            start()
         }
     }
 
-    private fun prepareInternal(theUrl: String) {
+    private suspend fun prepareInternal(theUrl: String) {
         // 关闭上次响应 (若有)
         try { response?.close() } catch (_: Exception) {}
         response = null
@@ -166,8 +197,22 @@ class DesktopAudioPlayer {
         val client = OkHttpClientProviders.get().okHttpClient
         val builder = Request.Builder().url(theUrl)
         headers.forEach { (k, v) -> builder.header(k, v) }
+        // 异步 enqueue + suspendCancellableCoroutine: withTimeout 超时/换章取消时
+        // invokeOnCancellation → call.cancel() 真正中断连接 (同步 execute 无法取消)
+        val call = client.newCall(builder.build())
         val resp = try {
-            client.newCall(builder.build()).execute()
+            suspendCancellableCoroutine<Response> { cont ->
+                cont.invokeOnCancellation { runCatching { call.cancel() } }
+                call.enqueue(object : Callback {
+                    override fun onFailure(call: Call, e: IOException) {
+                        if (cont.isActive) cont.resumeWithException(e)
+                    }
+
+                    override fun onResponse(call: Call, response: Response) {
+                        if (cont.isActive) cont.resume(response)
+                    }
+                })
+            }
         } catch (e: IOException) {
             listener?.onError("HTTP connect failed: ${e.message}")
             return
@@ -190,6 +235,9 @@ class DesktopAudioPlayer {
         // peek 第一帧 Header 估算 duration (不消耗流, 用 mark/reset 回退)
         // 使用 jlayer 确定 public 的 Header API (frequency/version/framesize),
         // 避免 master fork 才有的 bitrate/ms_per_frame() (1.0.1 不一定有)
+        // 超时/取消后不再上报 ready (流已被 call.cancel() 中断);
+        // peek 前再检查一次取消, 避免取消已发生仍进入阻塞读
+        coroutineContext.ensureActive()
         try {
             stream.mark(BUFFER_SIZE)
             val bitstream = Bitstream(stream)
@@ -221,6 +269,8 @@ class DesktopAudioPlayer {
             try { stream.reset() } catch (_: Exception) {}
         }
 
+        // 超时/取消后不再上报 ready (流已被 call.cancel() 中断)
+        coroutineContext.ensureActive()
         listener?.onReady(durationMs)
     }
 
@@ -437,8 +487,9 @@ class DesktopAudioPlayer {
     private fun stopInternal(clearState: Boolean) {
         playing = false
         paused = false
-        prepareThread?.interrupt()
-        prepareThread = null
+        // 中断 prepare 协程 (超时/换章/停止时 call.cancel() 断开连接)
+        prepareJob?.cancel()
+        prepareJob = null
         playbackThread?.interrupt()
         playbackThread = null
         try { advancedPlayer?.stop() } catch (_: Exception) {}
@@ -457,6 +508,9 @@ class DesktopAudioPlayer {
     private companion object {
         /** BufferedInputStream 缓冲区大小 (字节); 8KB 平衡 mark/reset 内存与 seek 精度 */
         private const val BUFFER_SIZE = 8192
+
+        /** prepare 超时 (毫秒): 响应头/首帧拿不到即 onError, 防止直链挂起转圈永久残留 */
+        private const val PREPARE_TIMEOUT_MS = 30_000L
     }
 
     /**

@@ -4,7 +4,7 @@ import android.app.Application
 import android.net.Uri
 import androidx.core.net.toUri
 import androidx.lifecycle.MutableLiveData
-import io.legado.app.R
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
@@ -95,7 +95,7 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
             success.invoke(it)
         }.onError {
             errorLive.postValue(
-                it.localizedMessage ?: context.getString(R.string.unknown_error)
+                it.localizedMessage ?: androidAppString("unknown_error")
             )
         }
     }
@@ -112,11 +112,11 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
             ReadBookConfig.configList.add(config)
             config.name
         }.onSuccess {
-            finally.invoke(context.getString(R.string.success), "导入排版成功")
+            finally.invoke(androidAppString("success"), "导入排版成功")
         }.onError {
             finally.invoke(
-                context.getString(R.string.error),
-                it.localizedMessage ?: context.getString(R.string.unknown_error)
+                androidAppString("error"),
+                it.localizedMessage ?: androidAppString("unknown_error")
             )
         }
     }

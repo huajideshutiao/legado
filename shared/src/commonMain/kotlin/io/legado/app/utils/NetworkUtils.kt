@@ -29,8 +29,22 @@ expect object NetworkUtils {
 
     /**
      * 获取绝对地址
+     *
+     * baseURL 为空或 data url 时不拼接, 直接返回 relativePath.trim()
+     * (三端一致: data url 无法作为相对拼接基址)。
      */
     fun getAbsoluteURL(baseURL: String?, relativePath: String): String
+
+    /**
+     * 获取绝对地址 (URL 重载)
+     *
+     * baseURL 为已解析的 [URL] 对象时直接按原版 java.net.URL 拼接语义处理,
+     * 不经 String 门面 (门面会 substringBefore(",") 截断含逗号的 URL)。
+     * jvmAndAndroidMain actual 即原版实现; nativeMain actual 用 [URL.toString]
+     * 做手工拼接 (行为对齐)。AnalyzeRuleCore.getAbsoluteURL 默认实现走本重载,
+     * 各端子类无需再 override。
+     */
+    fun getAbsoluteURL(baseURL: URL?, relativePath: String): String
 
     fun getBaseUrl(url: String?): String?
 

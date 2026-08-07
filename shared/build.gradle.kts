@@ -342,6 +342,10 @@ kotlin {
     }
 }
 
+// APK 语言目录过滤已移至 app/build.gradle.kts 的 merge{Variant}Assets 任务 (见该文件注释):
+// shared 的 copy*ComposeResourcesToAndroidAssets 输出只是 AAR 内资产, 最终合并发生在 app 模块
+// merge{Variant}Assets (从 AAR 复制进合并输出), 在此删除会被 merge 覆盖, 故此处仅保留
+// doFirst 清空输出以强制每次重建 (防止增量复用残留), 不在此做过滤。
 tasks.matching {
     it.name == "copyDebugComposeResourcesToAndroidAssets" ||
         it.name == "copyReleaseComposeResourcesToAndroidAssets"

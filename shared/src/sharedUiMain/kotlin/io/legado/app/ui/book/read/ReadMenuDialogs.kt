@@ -31,7 +31,7 @@ import io.legado.app.ui.compose.theme.AppTheme
 /**
  * 阅读菜单选择器对话框集 (iOS/鸿蒙/desktop 共用, 对照 app 端 ReadMenu 的
  * activity.selector / activity.alert 弹窗):
- * - [SimulatedReadingDialog]: 模拟阅读配置 (开关 + 起始日期 + 起始章节 + 每日章节)
+ * - [SimulatedReadingDialog]: 模拟追读配置 (开关 + 起始日期 + 起始章节 + 每日章节)
  * - [ImageStyleDialog]: 图片样式 4 项选择器
  * - [DownloadDialog]: 离线缓存起止章节号
  * - [CharsetDialog]: 文本编码选择器
@@ -40,7 +40,7 @@ import io.legado.app.ui.compose.theme.AppTheme
  * onApply 回调执行 (需要 viewModel/DAO 上下文)。
  */
 
-/** 模拟阅读配置对话框 (对照 app 端 ReadMenu.showSimulatedReading 的 customView)。 */
+/** 模拟追读配置对话框 (对照 app 端 ReadMenu.showSimulatedReading 的 customView)。 */
 @Composable
 fun SimulatedReadingDialog(
     book: Book,
@@ -65,9 +65,9 @@ fun SimulatedReadingDialog(
 
     AppAlertDialog(
         onDismissRequest = onDismiss,
-        title = "模拟阅读",
+        title = "模拟追读",
         okButton = io.legado.app.ui.compose.component.AlertButton(
-            text = "确定",
+            text = "确认",
             onClick = {
                 val date = parseDateOrToday(dateText)
                 config.readSimulating = enabled
@@ -179,7 +179,7 @@ fun DownloadDialog(
         onDismissRequest = onDismiss,
         title = "离线缓存",
         okButton = io.legado.app.ui.compose.component.AlertButton(
-            text = "确定",
+            text = "确认",
             onClick = {
                 val start = startText.toIntOrNull() ?: 0
                 val end = endText.toIntOrNull() ?: book.totalChapterNum

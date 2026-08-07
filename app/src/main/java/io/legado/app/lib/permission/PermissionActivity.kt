@@ -12,10 +12,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
-import io.legado.app.R
 import io.legado.app.base.ComposeDialog
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.utils.registerForActivityResult
 import io.legado.app.utils.toastOnUi
@@ -152,7 +152,7 @@ class PermissionActivity : AppCompatActivity() {
             settingIntent.data = Uri.fromParts("package", packageName, null)
             settingActivityResult.launch(settingIntent)
         } catch (e: Exception) {
-            toastOnUi(R.string.tip_cannot_jump_setting_page)
+            toastOnUi(androidAppString("tip_cannot_jump_setting_page"))
             RequestPlugins.sRequestCallback?.onError(e)
             finish()
         }
@@ -195,11 +195,11 @@ class PermissionActivity : AppCompatActivity() {
             return
         }
         rationaleDialog = alert(
-            getString(R.string.dialog_title),
+            androidAppString("dialog_title"),
             rationale
         ) {
-            positiveButton(R.string.dialog_setting) { onOk.invoke() }
-            negativeButton(R.string.dialog_cancel) {
+            positiveButton(androidAppString("dialog_setting")) { onOk.invoke() }
+            negativeButton(androidAppString("dialog_cancel")) {
                 RequestPlugins.sRequestCallback?.onRequestPermissionsResult(
                     permissions,
                     IntArray(0)

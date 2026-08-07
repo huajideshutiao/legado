@@ -325,7 +325,7 @@ fun NumberPickerDialogPreview() = LegadoThemePreview {
 @Composable
 fun NumberPickerDialogLargeRangePreview() = LegadoThemePreview {
     NumberPickerDialog(
-        title = "换源延迟(ms)",
+        title = "换源间隔(ms)",
         value = 500,
         range = 0..3000,
         onConfirm = {},

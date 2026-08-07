@@ -52,7 +52,9 @@ import io.legado.app.help.http.registerAndroidBackstageWebView
 import io.legado.app.help.http.registerAndroidCookieStoreProvider
 import io.legado.app.help.http.registerAndroidCronetProvider
 import io.legado.app.help.http.registerSharedCookieJarBridge
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.i18n.registerAndroidAppStringProvider
+import io.legado.app.help.i18n.warmAppStringCache
 import io.legado.app.help.image.registerAndroidBookImageLoader
 import io.legado.app.help.registerAndroidDirectLinkUploadProviders
 import io.legado.app.help.registerAndroidFileCacheProvider
@@ -113,6 +115,11 @@ class App : Application() {
         // content scheme 路径返回 null (PFD 获取失败, EpubFile 记录错误日志)
         registerEpubApplicationContext(this)
         registerAndroidAppFilesDir(appCtx)
+        // 注册 appString 平台 provider (commonMain 非 UI 层字符串通道): 先暖缓存同步
+        // 上下文常用 key (填热 Compose Resources AsyncCache), 再注册 provider (取值走
+        // androidAppString 直取, 缓存命中后零 IO; 须在 Locale.setDefault 之后 —
+        // attachBaseContext 的 AppContextWrapper.wrap 已设置)
+        warmAppStringCache()
         registerAndroidAppStringProvider()
         registerAndroidAppLogHost()
         // 注册 ScreenInfoProvider (供 SystemUtils.screenWidthPx/screenHeightPx 委托读取),
@@ -174,11 +181,11 @@ class App : Application() {
         // 注册 Web 服务 provider (commonMain WebServerManager 调用 WebServerPlatform/WebAssetSource/WebStrings)
         // - WebServerPlatform: HttpServer+WebSocketServer 起停 + serve 回调拉起 WebService 续命 wakelock
         // - WebAssetSource: composeResources 读 web 静态资源 (单一数据源 commonMain/composeResources/files/web)
-        // - WebStrings: R.string.cannot_empty 文案注入 WebSocketServer
+        // - WebStrings: cannot_empty 文案注入 WebSocketServer
         // 须在任何 WebServerManager.start()/stop() 之前注册 (用户触发 Web 服务开关时)
         registerAndroidWebServerPlatform { WebService.serve() }
         registerAndroidWebAssetSource(appCtx)
-        registerAndroidWebStrings(appCtx, R.string.cannot_empty)
+        registerAndroidWebStrings(androidAppString("cannot_empty"))
         // 注册 AudioPlay 平台 provider (commonMain AudioPlayShared 调用
         // AudioPlayCommanders/AudioPlayBookBridges 派发 Service 命令与 Book 操作,
         // 须在 registerAndroidWebBookProviders 之后, 因 AudioPlayShared 依赖 AppDbProviders)
@@ -325,7 +332,7 @@ class App : Application() {
     private fun createNotificationChannels() {
         val downloadChannel = NotificationChannel(
             channelIdDownload,
-            getString(R.string.action_download),
+            androidAppString("action_download"),
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
             enableLights(false)
@@ -336,7 +343,7 @@ class App : Application() {
 
         val readAloudChannel = NotificationChannel(
             channelIdReadAloud,
-            getString(R.string.read_aloud),
+            androidAppString("read_aloud"),
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
             enableLights(false)
@@ -347,7 +354,7 @@ class App : Application() {
 
         val webChannel = NotificationChannel(
             channelIdWeb,
-            getString(R.string.web_service),
+            androidAppString("web_service"),
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
             enableLights(false)

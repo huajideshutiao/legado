@@ -1,8 +1,8 @@
 // I18N KEYS (新增, 待 ResourceProvider.jvm.kt 补全桌面端字面量):
 // - select_book_source: "选择书源"
 // - search_book_source: "搜索书源" (已存在 jvmMain)
-// - change_source_delay: "换源延迟"
-// - ok: "确定" (已存在 jvmMain)
+// - change_source_delay: "换源间隔"
+// - ok: "确认" (已存在 jvmMain)
 // - cancel: "取消" (已存在 jvmMain)
 //
 // PAINTER KEYS (新增, 待 ResourceProvider.jvm.kt 补全桌面端图标):
@@ -60,7 +60,7 @@ import io.legado.app.ui.preview.LegadoThemePreview
  * 对照 app 端 `io.legado.app.ui.book.manage.SourcePickerDialog`：
  * - 搜索框即时筛选启用书源；
  * - 点击书源后立即回调并关闭；
- * - 溢出菜单可设置批量换源延迟。
+ * - 溢出菜单可设置批量换源间隔。
  *
  * 数据加载与延迟持久化由调用方负责，组件只维护查询和弹窗状态。
  */

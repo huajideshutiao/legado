@@ -11,11 +11,9 @@ import androidx.core.content.edit
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
-import io.legado.app.R
 import io.legado.app.data.entities.Book
-import io.legado.app.ui.widget.dialog.TextDialog
-import io.legado.app.web.utils.WebAssetSources
-import kotlinx.coroutines.runBlocking
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
 
 inline fun <reified T : DialogFragment> Fragment.showDialogFragment(
     arguments: Bundle.() -> Unit = {}
@@ -93,8 +91,10 @@ fun Fragment.startActivityForBook(
 }
 
 fun Fragment.showHelp(fileName: String) {
-    val mdText = String(runBlocking { WebAssetSources.get().read("web/help/md/${fileName}.md") })
-    showDialogFragment(TextDialog(getString(R.string.help), mdText, TextDialog.Mode.MD))
+    // 帮助文档对话框已下沉 shared (HelpDialog): 经 help Overlay 读 web/help/md/{fileName}.md 渲染
+    AppNavigatorProviders.getOrNull()?.showOverlay(
+        AppOverlay.Dialog(key = "help", payload = fileName)
+    )
 }
 
 val Fragment.isCreated

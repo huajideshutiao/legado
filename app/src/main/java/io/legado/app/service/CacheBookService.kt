@@ -13,6 +13,7 @@ import io.legado.app.constant.NotificationId
 import io.legado.app.data.appDb
 import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.setLiveProgress
 import io.legado.app.model.CacheBook
 import io.legado.app.model.webBook.WebBook
@@ -44,18 +45,18 @@ class CacheBookService : BaseService() {
     private var cachePool =
         Executors.newFixedThreadPool(min(threadCount, AppConst.MAX_THREAD)).asCoroutineDispatcher()
     private var downloadJob: Job? = null
-    private var notificationContent = appCtx.getString(R.string.service_starting)
+    private var notificationContent = androidAppString("service_starting")
     private var mutex = Mutex()
     private val notificationBuilder by lazy {
         val builder = NotificationCompat.Builder(this, AppConst.channelIdDownload)
             .setSmallIcon(R.drawable.ic_download)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setContentTitle(getString(R.string.offline_cache))
+            .setContentTitle(androidAppString("offline_cache"))
             //.setContentIntent(activityPendingIntent<CacheActivity>("cacheActivity"))
         builder.addAction(
             R.drawable.ic_stop_black_24dp,
-            getString(R.string.cancel),
+            androidAppString("cancel"),
             servicePendingIntent<CacheBookService>(IntentAction.stop)
         )
         builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -102,7 +103,7 @@ class CacheBookService : BaseService() {
     private fun upCacheBookFinishNotification() {
         val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
             .setSmallIcon(R.drawable.ic_download)
-            .setContentTitle(getString(R.string.offline_cache))
+            .setContentTitle(androidAppString("offline_cache"))
             .setContentText("缓存完成")
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(false)

@@ -18,6 +18,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Theme
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.model.BookCover
 import io.legado.app.utils.BitmapUtils
@@ -179,7 +180,7 @@ object ThemeConfig {
         val (nightAccent, nightBg, nightBbg) = readDefaultColors(context, true)
         return listOf(
             Config(
-                themeName = context.getString(R.string.default_day_theme),
+                themeName = androidAppString("default_day_theme"),
                 isNightTheme = false,
                 primaryColor = "#${dayBg.hexString}",
                 accentColor = "#${dayAccent.hexString}",
@@ -187,7 +188,7 @@ object ThemeConfig {
                 bottomBackground = "#${dayBbg.hexString}"
             ).apply { isBuiltin = true },
             Config(
-                themeName = context.getString(R.string.default_night_theme),
+                themeName = androidAppString("default_night_theme"),
                 isNightTheme = true,
                 primaryColor = "#${nightBg.hexString}",
                 accentColor = "#${nightAccent.hexString}",

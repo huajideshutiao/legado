@@ -30,7 +30,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle.State.STARTED
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import io.legado.app.R
+import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.ui.compose.component.DialogTitleBar
@@ -78,7 +78,7 @@ class ChangeCoverDialog() : BaseComposeDialogFragment() {
 
         Column(Modifier.fillMaxSize()) {
             DialogTitleBar(
-                title = stringResource(R.string.change_cover_source),
+                title = rememberString("change_cover_source"),
                 onBack = { dismissAllowingStateLoss() }
             ) {
                 IconButton(onClick = { viewModel.startOrStopSearch() }) {
@@ -87,9 +87,7 @@ class ChangeCoverDialog() : BaseComposeDialogFragment() {
                             if (searching) "ic_stop_black_24dp"
                             else "ic_refresh_black_24dp"
                         ),
-                        contentDescription = stringResource(
-                            if (searching) R.string.stop else R.string.refresh
-                        ),
+                        contentDescription = if (searching) rememberString("stop") else rememberString("refresh"),
                         tint = colors.primaryText
                     )
                 }

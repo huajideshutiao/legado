@@ -221,7 +221,7 @@ private fun ExportConfigDialog(
     AppAlertDialog(
         onDismissRequest = onDismiss,
         title = jvmGetString("export_config"),
-        okButton = AlertButton(text = "确定") {
+        okButton = AlertButton(text = "确认") {
             request.onConfirm(type, fileName, charset, noChapterName)
             onDismiss()
         },
@@ -331,7 +331,7 @@ private fun ExportSectionConfigDialog(
     AppAlertDialog(
         onDismissRequest = onDismiss,
         title = jvmGetString("select_section_export"),
-        okButton = AlertButton(text = "确定") {
+        okButton = AlertButton(text = "确认") {
             if (all) {
                 request.onConfirm(true, "", 1, fileName)
                 onDismiss()
@@ -513,7 +513,7 @@ private fun OpenUrlConfirmDialog(
     AppAlertDialog(
         onDismissRequest = onDismiss,
         title = "跳转确认",
-        okButton = AlertButton(text = "确定") {
+        okButton = AlertButton(text = "确认") {
             request.onConfirm()
             onDismiss()
         },

@@ -28,7 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.viewModels
-import io.legado.app.R
+import io.legado.app.help.i18n.androidAppString
+import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.ui.book.import.ImportFileRow
 import io.legado.app.ui.book.import.local.ImportBook
@@ -93,14 +94,12 @@ class FilePickerDialog : BaseComposeDialogFragment() {
         val colors = AppTheme.colors
         Column {
             DialogTitleBar(
-                title = arguments?.getString("title") ?: stringResource(
-                    if (viewModel.isSelectDir) R.string.folder_chooser else R.string.file_chooser
-                ),
+                title = arguments?.getString("title") ?: if (viewModel.isSelectDir) rememberString("folder_chooser") else rememberString("file_chooser"),
                 actions = {
                     IconButton(onClick = { showCreateFolderAlert() }) {
                         Icon(
                             painter = rememberPainter("ic_create_folder_outline"),
-                            contentDescription = stringResource(R.string.create_folder),
+                            contentDescription = rememberString("create_folder"),
                             tint = colors.primaryText,
                         )
                     }
@@ -143,7 +142,7 @@ class FilePickerDialog : BaseComposeDialogFragment() {
                 }
                 if (emptyVisible) {
                     Text(
-                        text = stringResource(R.string.empty),
+                        text = rememberString("empty"),
                         color = colors.secondaryText,
                         modifier = Modifier
                             .align(Alignment.Center)
@@ -160,7 +159,7 @@ class FilePickerDialog : BaseComposeDialogFragment() {
                 onRevertSelection = {
                     selected = items.filter { isCheckable(it) }.toSet() - selected
                 },
-                mainActionText = stringResource(R.string.confirm),
+                mainActionText = rememberString("confirm"),
                 onMainAction = { onConfirm() },
             )
         }
@@ -208,7 +207,7 @@ class FilePickerDialog : BaseComposeDialogFragment() {
     }
 
     private fun showCreateFolderAlert() {
-        alert(R.string.create_folder) {
+        alert(androidAppString("create_folder")) {
             val getText = editTextView(hint = "文件夹名", autoFocus = true)
             okButton {
                 val text = getText()

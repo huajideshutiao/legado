@@ -6,6 +6,7 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -14,12 +15,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.addType
+import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.migrateTo
 import io.legado.app.help.book.removeType
@@ -31,6 +36,9 @@ import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.audio.AudioPlayOverflowActions
 import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
 import io.legado.app.ui.book.audio.AudioPlayScreenModel
+import io.legado.app.ui.book.audio.AudioPlaySidePanelKind
+import io.legado.app.ui.book.audio.AudioPlaySidePanelMaxWidth
+import io.legado.app.ui.book.audio.AudioPlaySidePanelMinWidth
 import io.legado.app.ui.book.audio.AudioPlayUiEvent
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.compose.component.AlertButton
@@ -43,6 +51,7 @@ import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
+import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.toDurationTime
 import kotlinx.coroutines.launch
@@ -112,11 +121,14 @@ fun AudioPlayRoute(
                 }
 
                 RouteResults.BOOK_SOURCE_EDIT -> {
-                    // 书源编辑后重新拉取 (对照 Activity upSource)
+                    // 书源编辑后重拉并刷新评论入口显隐
                     AudioPlayShared.book?.let { b ->
                         scope.launch(IoDispatcher) {
                             AudioPlayShared.bookSource =
                                 AppDbProviders.get().bookSourceDao.getBookSource(b.origin)
+                            screenModel.dispatch(
+                                AudioPlayUiEvent.UpdateInShelf(AudioPlayShared.inBookshelf)
+                            )
                         }
                     }
                 }
@@ -142,9 +154,31 @@ fun AudioPlayRoute(
     // 退出加书架确认弹窗 (对照 Activity.finish: !inBookshelf 时弹确认)
     var showAddToShelfDialog by remember { mutableStateOf(false) }
 
-    // 退出处理 (对照 Activity.finish)
+    // 宽屏右侧面板 (评论/目录共用, 互斥显示): 窗口宽 ≥600dp 启用 (与主界面 NavRail 同阈值惯例),
+    // 面板宽 = 容器宽 × 0.3, 上限 AudioPlaySidePanelMaxWidth; 窄屏保持原版交互 (弹窗/全屏页)
+    val windowInfo = LocalWindowInfo.current
+    val density = LocalDensity.current
+    val sidePanelWidth by remember(windowInfo, density) {
+        derivedStateOf {
+            val windowWidth = with(density) { windowInfo.containerSize.width.toDp() }
+            if (windowWidth >= AudioPlaySidePanelMinWidth) {
+                (windowWidth * 0.3f).coerceAtMost(AudioPlaySidePanelMaxWidth)
+            } else {
+                0.dp
+            }
+        }
+    }
+    var panelKind by remember { mutableStateOf<AudioPlaySidePanelKind?>(null) }
+    // 窗口缩回窄屏时清理面板状态 (防残留: 再放大时面板内容层已销毁, panelKind 非空会白屏)
+    LaunchedEffect(sidePanelWidth) {
+        if (sidePanelWidth <= 0.dp) panelKind = null
+    }
+
+    // 退出处理 (对照 Activity.finish); 面板打开时先关面板 (Esc/返回/标题栏返回统一路径)
     val onBack: () -> Unit = {
-        if (state.inShelf) {
+        if (panelKind != null) {
+            panelKind = null
+        } else if (state.inShelf) {
             navigator.pop()
         } else if (!AppConfigProviders.get().showAddToShelfAlert) {
             // 不弹确认, 直接删除并退出
@@ -231,9 +265,14 @@ fun AudioPlayRoute(
             showChangeSourceDialog = true
         },
         onOpenToc = {
-            // 对照 app 端 AudioPlayActivity.openChapterList: 未加书架的书目录不落库, 走内存传递
-            IntentData.chapterList = AudioPlayShared.chapterList
-            navigator.push(AppRoute.Toc(book.toRouteRef()), resultKey = RouteResults.TOC)
+            if (sidePanelWidth > 0.dp) {
+                // 宽屏: 右侧面板 (互斥: 直接覆盖评论面板)
+                panelKind = AudioPlaySidePanelKind.TOC
+            } else {
+                // 对照 app 端 AudioPlayActivity.openChapterList: 未加书架的书目录不落库, 走内存传递
+                IntentData.chapterList = AudioPlayShared.chapterList
+                navigator.push(AppRoute.Toc(book.toRouteRef()), resultKey = RouteResults.TOC)
+            }
         },
         onOpenBookSourceEdit = { sourceUrl ->
             navigator.push(
@@ -241,15 +280,53 @@ fun AudioPlayRoute(
                 resultKey = RouteResults.BOOK_SOURCE_EDIT
             )
         },
-        onOpenReview = {
-            // 对照 Activity openReview: viewModel.openCommentDialog → ReviewListDialog(book, chapter, 0)
-            val chapter = AudioPlayShared.durChapter
-            if (!PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)) {
+        onOpenReview = openReview@{
+            // 目录未加载 (chapter 空) 时静默无反应
+            val chapter = AudioPlayShared.durChapter ?: return@openReview
+            if (sidePanelWidth > 0.dp) {
+                // 宽屏: 右侧面板 (互斥: 直接覆盖目录面板)
+                panelKind = AudioPlaySidePanelKind.REVIEW
+            } else if (!PlatformCapabilityProviders.get().showReviewListDialog(book, chapter, 0)) {
                 showPostDialog = true
             }
         },
         overflowActions = overflowActions,
         onEvent = screenModel::dispatch,
+        sidePanelWidth = sidePanelWidth,
+        sidePanelVisible = panelKind != null,
+        sidePanelKind = panelKind,
+        sidePanelSlot = { kind ->
+            when (kind) {
+                AudioPlaySidePanelKind.TOC -> TocContent(
+                    book = book,
+                    navigator = navigator,
+                    onBack = { panelKind = null },
+                    onOpenChapter = { index, _, _ ->
+                        // 对照 RouteResults.TOC 回传三态分支 (目录面板 pos 恒 0):
+                        // 章节变 → skipTo(index, 0); 同章 → skipTo 重开
+                        // 越界 (如模拟追读锁定章节) 时保持面板打开允许重选
+                        // (对照原版 TocActivity 返回后用户仍停留在目录页可重选)
+                        if (index in 0..<AudioPlayShared.simulatedChapterSize) {
+                            panelKind = null
+                            AudioPlayShared.skipTo(index, 0)
+                        }
+                    },
+                )
+
+                AudioPlaySidePanelKind.REVIEW -> {
+                    // 目录未加载 (durChapter 空) 时面板留空 (入口处已拦, 双保险)
+                    val chapter = AudioPlayShared.durChapter
+                    if (chapter != null) {
+                        ReviewListContent(
+                            book = book,
+                            chapter = chapter,
+                            paragraphIndex = 0,
+                            onDismiss = { panelKind = null },
+                        )
+                    }
+                }
+            }
+        },
     )
 
     // 日志对话框 (对照 VideoPlayRoute AppLogDialog)
@@ -324,12 +401,30 @@ fun AudioPlayRoute(
     if (showChangeSourceDialog) {
         ChangeSourceDialogHost(
             book = AudioPlayShared.book ?: book,
-            onSourceChanged = { source, newBook, toc ->
+            onSourceChanged = changeSource@{ source, newBook, toc ->
                 showChangeSourceDialog = false
-                // 对照原版 AudioPlayActivity.changeTo → BaseReadViewModel.changeTo:
-                // 1) migrateTo 把当前章/进度/分组迁移到新书 (换源后回到当前章)
-                // 2) 书架书落库: 删旧书 + 插新书 + 插新目录
-                // 3) 切源数据落地: bookSource/chapterList/resetData (对照原 changeSourceResult)
+                if (!newBook.isAudio) {
+                    // 非音频书: 停播 + 迁移落库 + 跳对应阅读路由 + 退出音频页
+                    scope.launch {
+                        runCatching {
+                            AudioPlayShared.book?.let { oldBook ->
+                                oldBook.migrateTo(newBook, toc)
+                                if (AudioPlayShared.inBookshelf) {
+                                    newBook.removeType(BookType.updateError)
+                                    AppDbProviders.get().bookDao.delete(oldBook)
+                                    AppDbProviders.get().bookDao.insert(newBook)
+                                    AppDbProviders.get().bookChapterDao.insert(*toc.toTypedArray())
+                                }
+                            }
+                        }.onFailure {
+                            AppLog.put("换源失败\n$it", it, true)
+                        }
+                        AudioPlayShared.stop()
+                        navigator.replace(newBook.toReadRoute())
+                    }
+                    return@changeSource
+                }
+                // 1) migrateTo 迁移进度/分组 2) 书架书落库 3) 切源数据落地
                 scope.launch {
                     runCatching {
                         AudioPlayShared.book?.let { oldBook ->

@@ -15,6 +15,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import coil3.load
 import coil3.request.placeholder
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.R
 import io.legado.app.constant.AppPattern
 import io.legado.app.help.config.AppConfig
@@ -49,7 +50,7 @@ class CoverImageView @JvmOverloads constructor(
         // 加载到真实封面后切回 CENTER_CROP (见 glideListener)
         scaleType = ScaleType.FIT_XY
         transitionName = "img_cover"
-        contentDescription = context.getString(R.string.img_cover)
+        contentDescription = androidAppString("img_cover")
         if (isInEditMode) {
             setImageResource(R.drawable.image_cover_default)
         }

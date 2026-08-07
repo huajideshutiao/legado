@@ -2,6 +2,7 @@ package io.legado.app.ui.book.read.page
 
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.config.ClickActionConfig
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
@@ -54,6 +55,29 @@ internal fun readClickActionConfig(): ClickActionConfig {
         bc = prefs.getInt(PreferKey.clickActionBC, d.bc),
         br = prefs.getInt(PreferKey.clickActionBR, d.br),
     )
+}
+
+/**
+ * 九宫格点击区域校验 (对照原版 AppConfig.detectClickArea):
+ * 9 格全部非 0 (无菜单格) 时, 强制恢复中间格 (MC) 为菜单动作并 toast。
+ * 调用时机与原版一致: 阅读页初始化 (原 ReadBookViewModel.init) + 点击区域配置变更后 (原配置页 onDestroy)。
+ */
+internal fun detectClickArea() {
+    val prefs = PreferenceProviders.get()
+    val d = ClickActionConfig()
+    val product = prefs.getInt(PreferKey.clickActionTL, d.tl) *
+        prefs.getInt(PreferKey.clickActionTC, d.tc) *
+        prefs.getInt(PreferKey.clickActionTR, d.tr) *
+        prefs.getInt(PreferKey.clickActionML, d.ml) *
+        prefs.getInt(PreferKey.clickActionMC, d.mc) *
+        prefs.getInt(PreferKey.clickActionMR, d.mr) *
+        prefs.getInt(PreferKey.clickActionBL, d.bl) *
+        prefs.getInt(PreferKey.clickActionBC, d.bc) *
+        prefs.getInt(PreferKey.clickActionBR, d.br)
+    if (product != 0) {
+        prefs.putInt(PreferKey.clickActionMC, 0)
+        Toasters.get().toast("当前没有配置菜单区域,自动恢复中间区域为菜单.")
+    }
 }
 
 /**

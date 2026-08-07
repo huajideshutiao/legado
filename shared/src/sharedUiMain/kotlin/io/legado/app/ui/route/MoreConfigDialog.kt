@@ -19,6 +19,7 @@ import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.book.read.config.ClickActionConfig
 import io.legado.app.ui.book.read.config.ClickActionDialog
 import io.legado.app.ui.book.read.config.MoreConfigScreen
+import io.legado.app.ui.book.read.page.detectClickArea
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
@@ -151,6 +152,9 @@ private fun MoreConfigBody(
                 pref.putInt(PreferKey.clickActionBL, updated.bl)
                 pref.putInt(PreferKey.clickActionBC, updated.bc)
                 pref.putInt(PreferKey.clickActionBR, updated.br)
+                // 对照原版配置页 onDestroy → AppConfig.detectClickArea: 变更后立即校验,
+                // 九宫格全部非 0 时强制恢复中间格为菜单 + toast
+                detectClickArea()
             },
             onDismiss = { showClickRegional = false },
         )

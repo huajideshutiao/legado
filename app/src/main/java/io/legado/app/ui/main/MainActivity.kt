@@ -40,6 +40,7 @@ import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.ReadBookConfig
@@ -85,6 +86,7 @@ import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.browser.AndroidWebView
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.platform.findStringResource
 import io.legado.app.ui.dict.DictDialogHost
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
@@ -110,13 +112,14 @@ import io.legado.app.utils.showExportSuccess
 import io.legado.app.utils.startService
 import io.legado.app.utils.sysScreenOffTime
 import io.legado.app.utils.toastOnUi
-import io.legado.app.web.utils.WebAssetSources
+import org.jetbrains.compose.resources.getString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
+import kotlinx.coroutines.flow.first
 
 /**
  * 主界面：零薄壳入口。Content 调用 shared [LegadoApp]，由 shared RouteContent 统一渲染。
@@ -207,7 +210,7 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
 
     /** 暴露给 [AndroidPlatformCapabilities] 启动 SAF 选书籍目录。 */
     fun launchBookTreeUriPicker() = bookTreeUriSelect.launch {
-        title = getString(R.string.select_book_folder)
+        title = androidAppString("select_book_folder")
         mode = HandleFileContract.DIR_SYS
     }
 
@@ -265,7 +268,7 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
     /** 启动 ExportBookService 批量导出 (对照 BookshelfManageActivity.startExport)。 */
     internal fun startExportBooks(path: String, books: List<Book>) {
         if (books.isEmpty()) {
-            toastOnUi(R.string.no_book)
+            toastOnUi(androidAppString("no_book"))
             return
         }
         val defaultType = when (AppConfig.exportType) {
@@ -291,7 +294,7 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
         epubScope: String,
     ) {
         if (books.isEmpty()) {
-            toastOnUi(R.string.no_book)
+            toastOnUi(androidAppString("no_book"))
             return
         }
         books.forEach { book ->
@@ -373,10 +376,10 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
     fun showImageActionMenu(src: String, x: Float, y: Float) {
         imageActionMenu.setItems(
             listOf(
-                SelectItem(getString(R.string.show), "show"),
-                SelectItem(getString(R.string.refresh), "refresh"),
-                SelectItem(getString(R.string.action_save), "save"),
-                SelectItem(getString(R.string.select_folder), "selectFolder")
+                SelectItem(androidAppString("show"), "show"),
+                SelectItem(androidAppString("refresh"), "refresh"),
+                SelectItem(androidAppString("action_save"), "save"),
+                SelectItem(androidAppString("select_folder"), "selectFolder")
             )
         )
         imageActionMenu.onActionClick = { action ->
@@ -661,7 +664,7 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
                 return@addCallback
             }
             if (System.currentTimeMillis() - exitTime > EXIT_INTERVAL) {
-                toastOnUi(R.string.double_click_exit)
+                toastOnUi(androidAppString("double_click_exit"))
                 exitTime = System.currentTimeMillis()
             } else {
                 if (BaseReadAloudService.pause) {
@@ -756,12 +759,12 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
             return@sc
         }
         val privacyPolicy = String(assets.open("privacyPolicy.md").readBytes())
-        alert(getString(R.string.privacy_policy), privacyPolicy) {
-            positiveButton(R.string.agree) {
+        alert(androidAppString("privacy_policy"), privacyPolicy) {
+            positiveButton(androidAppString("agree")) {
                 LocalConfig.privacyPolicyOk = true
                 block.resume(true)
             }
-            negativeButton(R.string.refuse) {
+            negativeButton(androidAppString("refuse")) {
                 finish()
                 block.resume(false)
             }
@@ -770,19 +773,18 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
 
     /**
      * 版本更新日志
+     * 帮助文档对话框已下沉 shared (HelpDialog): 经 help Overlay 读 appHelp.md 渲染,
+     * 等待 Overlay 关闭后继续 (对照原版 TextDialog setOnDismissListener 语义)
      */
     private suspend fun upVersion() {
         if (LocalConfig.versionCode == AppConst.appInfo.versionCode) return
         LocalConfig.versionCode = AppConst.appInfo.versionCode
         if (!LocalConfig.isFirstOpenApp) return
-        // 先读资源( suspend ), 再进 suspendCancellableCoroutine 等待 Dialog 关闭
-        val help = String(WebAssetSources.get().read("web/help/md/appHelp.md"))
-        suspendCancellableCoroutine<Unit> { block ->
-            val dialog = TextDialog(getString(R.string.help), help, TextDialog.Mode.MD)
-            dialog.setOnDismissListener {
-                block.resume(Unit)
-            }
-            showDialogFragment(dialog)
+        // Compose root 未就绪时不弹 (理论不会发生, onPostCreate 时已挂载)
+        val navigator = AppNavigatorProviders.getOrNull() ?: return
+        navigator.showOverlay(AppOverlay.Dialog(key = "help", payload = "appHelp"))
+        navigator.overlays.first { list ->
+            list.none { it.key == "help" }
         }
     }
 
@@ -794,7 +796,10 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
             block.resume(null)
             return@sc
         }
-        alert(R.string.set_local_password, R.string.set_local_password_summary) {
+        alert(
+            androidAppString("set_local_password"),
+            androidAppString("set_local_password_summary")
+        ) {
             val getText = editTextView(hint = "password")
             onDismiss {
                 block.resume(null)
@@ -813,7 +818,7 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
             return
         }
         LocalConfig.appCrash = false
-        alert(getString(R.string.draw), "检测到阅读发生了崩溃，是否打开崩溃日志以便报告问题？") {
+        alert(androidAppString("draw"), "检测到阅读发生了崩溃，是否打开崩溃日志以便报告问题？") {
             yesButton {
                 AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("crash_logs"))
             }
@@ -833,7 +838,7 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
                 withContext(IO) { AppWebDav.lastBackUp().getOrNull() } ?: return@launch
             if (lastBackupFile.lastModify - LocalConfig.lastBackup > DateUtils.MINUTE_IN_MILLIS) {
                 LocalConfig.lastBackup = lastBackupFile.lastModify
-                alert(R.string.restore, R.string.webdav_after_local_restore_confirm) {
+                alert(androidAppString("restore"), androidAppString("webdav_after_local_restore_confirm")) {
                     cancelButton()
                     okButton {
                         viewModel.restoreWebDav(lastBackupFile.displayName)

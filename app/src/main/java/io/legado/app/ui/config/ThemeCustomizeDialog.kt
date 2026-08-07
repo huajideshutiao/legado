@@ -34,7 +34,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
-import io.legado.app.R
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.base.ComposeDialog
 import io.legado.app.constant.EventBus
@@ -46,6 +46,7 @@ import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
+import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.preference.ColorPickerDialogContent
 import io.legado.app.ui.compose.theme.AppTheme
@@ -211,13 +212,13 @@ class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
         0
     }
 
-    private fun titleText(): String = getString(
+    private fun titleText(): String = androidAppString(
         when (mode) {
             MODE_EDIT_PREFS ->
-                if (isNight) R.string.customize_night_theme else R.string.customize_day_theme
+                if (isNight) "customize_night_theme" else "customize_day_theme"
 
-            MODE_NEW_CONFIG -> R.string.new_theme
-            else -> R.string.theme_customize_title
+            MODE_NEW_CONFIG -> "new_theme"
+            else -> "theme_customize_title"
         }
     )
 
@@ -241,34 +242,34 @@ class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
                     AppOutlinedTextField(
                         value = themeName,
                         onValueChange = { themeName = it },
-                        label = stringResource(R.string.theme_name),
+                        label = rememberString("theme_name"),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     // 日/夜切换单选组：EDIT_PREFS 是从设置页明确入口进的, 不显示
                     Row(Modifier.fillMaxWidth()) {
                         ModeRadio(
-                            text = stringResource(R.string.day),
+                            text = rememberString("day"),
                             selected = !isNight,
                             modifier = Modifier.weight(1f),
                         ) { switchIsNight(false) }
                         ModeRadio(
-                            text = stringResource(R.string.night),
+                            text = rememberString("night"),
                             selected = isNight,
                             modifier = Modifier.weight(1f),
                         ) { switchIsNight(true) }
                     }
                 }
                 ColorRow(
-                    label = stringResource(R.string.accent),
+                    label = rememberString("accent"),
                     color = accent,
                 ) { showColorPicker(DIALOG_ID_ACCENT, accent) }
                 ColorRow(
-                    label = stringResource(R.string.background_color),
+                    label = rememberString("background_color"),
                     color = bg,
                 ) { showColorPicker(DIALOG_ID_BG, bg) }
                 ColorRow(
-                    label = stringResource(R.string.navbar_color),
+                    label = rememberString("navbar_color"),
                     color = bbg,
                 ) { showColorPicker(DIALOG_ID_BBG, bbg) }
                 // 背景图和模糊：仅 EDIT_PREFS 保留（Config 不含背景图字段）
@@ -287,14 +288,14 @@ class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = stringResource(R.string.background_image),
+                            text = rememberString("background_image"),
                             color = colors.primaryText,
                             fontSize = 15.sp,
                             modifier = Modifier.weight(1f),
                         )
                         Text(
                             text = if (hasImage) bgImagePath.orEmpty()
-                            else stringResource(R.string.select_image),
+                            else rememberString("select_image"),
                             color = colors.secondaryText,
                             fontSize = 13.sp,
                             maxLines = 1,
@@ -304,7 +305,7 @@ class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
                             IconButton(onClick = { bgImagePath = null }) {
                                 Icon(
                                     painter = rememberPainter("ic_baseline_close"),
-                                    contentDescription = stringResource(R.string.delete),
+                                    contentDescription = rememberString("delete"),
                                     tint = colors.secondaryText,
                                     modifier = Modifier.size(20.dp),
                                 )
@@ -318,7 +319,7 @@ class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = stringResource(R.string.background_image_blurring),
+                            text = rememberString("background_image_blurring"),
                             color = colors.primaryText,
                             fontSize = 15.sp,
                         )
@@ -341,11 +342,11 @@ class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Spacer(Modifier.weight(1f))
-                    AppTextButton(text = stringResource(R.string.cancel)) {
+                    AppTextButton(text = rememberString("cancel")) {
                         dismissAllowingStateLoss()
                     }
                     Spacer(Modifier.width(8.dp))
-                    AppTextButton(text = stringResource(R.string.ok)) { onSaveClicked() }
+                    AppTextButton(text = rememberString("ok")) { onSaveClicked() }
                 }
             }
         }
@@ -408,16 +409,16 @@ class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
     }
 
     private fun showColorPicker(dialogId: Int, seedColor: Int) {
-        val titleRes = when (dialogId) {
-            DIALOG_ID_ACCENT -> R.string.accent
-            DIALOG_ID_BG -> R.string.background_color
-            else -> R.string.navbar_color
+        val titleText = when (dialogId) {
+            DIALOG_ID_ACCENT -> "accent"
+            DIALOG_ID_BG -> "background_color"
+            else -> "navbar_color"
         }
         val dialog = ComposeDialog(requireContext(), applyFilletBackground = false)
         dialog.setComposeContent {
             ColorPickerDialogContent(
                 initColor = seedColor,
-                title = getString(titleRes),
+                title = androidAppString(titleText),
                 onDismissRequest = { dialog.dismiss() },
                 onConfirm = { color -> onColorSelected(dialogId, color) },
             )
@@ -445,11 +446,11 @@ class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
 
     private fun checkBgColor(color: Int): Boolean {
         if (!isNight && !ColorUtils.isColorLight(color)) {
-            toastOnUi(R.string.day_background_too_dark)
+            toastOnUi(androidAppString("day_background_too_dark"))
             return false
         }
         if (isNight && ColorUtils.isColorLight(color)) {
-            toastOnUi(R.string.night_background_too_light)
+            toastOnUi(androidAppString("night_background_too_light"))
             return false
         }
         return true
@@ -500,7 +501,7 @@ class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
     private fun saveToConfig() {
         val name = themeName.trim()
         if (name.isEmpty()) {
-            toastOnUi(R.string.theme_name)
+            toastOnUi(androidAppString("theme_name"))
             return
         }
         val list = ThemeConfig.configList
@@ -524,7 +525,7 @@ class ThemeCustomizeDialog() : BaseComposeDialogFragment() {
     private fun saveAsNewConfig() {
         val name = themeName.trim()
         if (name.isEmpty()) {
-            toastOnUi(R.string.theme_name)
+            toastOnUi(androidAppString("theme_name"))
             return
         }
         ThemeConfig.addConfig(

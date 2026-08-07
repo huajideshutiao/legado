@@ -4,7 +4,7 @@ import android.os.Bundle
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.fragment.app.viewModels
-import io.legado.app.R
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.utils.toastOnUi
 
@@ -25,7 +25,7 @@ class DictDialog() : BaseComposeDialogFragment() {
     override fun Content() {
         val word = arguments?.getString("word")
         if (word.isNullOrEmpty()) {
-            toastOnUi(R.string.cannot_empty)
+            toastOnUi(androidAppString("cannot_empty"))
             dismiss()
             return
         }

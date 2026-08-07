@@ -23,6 +23,15 @@ interface PlatformCapabilities {
 
     fun exitApplication()
     fun openExternalUrl(url: String)
+
+    /**
+     * 打开外部链接 (带 MIME 类型, 供跳转确认等显式指定打开类型的场景; 默认实现忽略 mimeType)。
+     * Android 端实现同步: mimeType 非空时 setDataAndType 打开 (对照原版 OpenUrlConfirmDialog.openUrl)。
+     */
+    fun openExternalUrl(url: String, mimeType: String?) {
+        openExternalUrl(url)
+    }
+
     fun shareText(text: String)
 
     /**

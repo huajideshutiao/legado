@@ -8,6 +8,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
 import io.legado.app.help.NotificationHelp
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.service.UpdateBookCallback
 import io.legado.app.help.setLiveProgress
 import io.legado.app.service.UpdateBookService
@@ -34,7 +35,7 @@ import splitties.init.appCtx
  * - [onProgressUpdate]: `startService<UpdateBookService>` + `NotificationManagerCompat.notify`
  *   (NotificationCompat.Builder 设置进度)
  * - [onProgressCancel]: `stopService<UpdateBookService>` (取消通知)
- * - [toastForceRefreshBusy]: `toastOnUi(R.string.force_refresh_busy)`
+ * - [toastForceRefreshBusy]: `toastOnUi(androidAppString("force_refresh_busy"))`
  * - [toastForceRefreshStart] / [toastForceRefreshDone]: app 端原 MainViewModel 无此 toast
  *   (仅桌面端有), no-op
  *
@@ -64,7 +65,7 @@ object AndroidUpdateBookCallback : UpdateBookCallback {
         appCtx.startService<UpdateBookService>()
         if (NotificationManagerCompat.from(appCtx).areNotificationsEnabled()) {
             // title/content 已由 UpdateBookShared 计算 (appString(AppStringKey.update_toc /
-            // force_refresh_book) → R.string.update_toc / R.string.force_refresh_book
+            // force_refresh_book) → "update_toc" / "force_refresh_book"
             // 多语言文案 + "count/total"), 这里直接用
             val notificationBuilder =
                 NotificationCompat.Builder(appCtx, AppConst.channelIdDownload)
@@ -80,7 +81,7 @@ object AndroidUpdateBookCallback : UpdateBookCallback {
                     )
                     .addAction(
                         R.drawable.ic_stop_black_24dp,
-                        appCtx.getString(R.string.cancel),
+                        androidAppString("cancel"),
                         appCtx.servicePendingIntent<UpdateBookService>(IntentAction.stop)
                     )
                     .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -100,7 +101,7 @@ object AndroidUpdateBookCallback : UpdateBookCallback {
     }
 
     override fun toastForceRefreshBusy() {
-        appCtx.toastOnUi(R.string.force_refresh_busy)
+        appCtx.toastOnUi(androidAppString("force_refresh_busy"))
     }
 
     override fun toastForceRefreshStart(count: Int) {

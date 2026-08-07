@@ -25,6 +25,7 @@ import io.legado.app.constant.Status
 import io.legado.app.help.book.save
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.media.AudioFocusController
 import io.legado.app.help.media.BecomingNoisyReceiver
@@ -411,12 +412,12 @@ class AudioPlayService : BaseService(), AudioPlayControllerListener, AudioPlayMa
                 .setBufferedPosition(exoPlayer.bufferedPosition)
                 .addCustomAction(
                     APP_ACTION_STOP,
-                    getString(R.string.stop),
+                    androidAppString("stop"),
                     R.drawable.ic_stop_black_24dp
                 )
                 .addCustomAction(
                     APP_ACTION_TIMER,
-                    getString(R.string.set_timer),
+                    androidAppString("set_timer"),
                     R.drawable.ic_time_add_24dp
                 )
                 .build()
@@ -459,22 +460,22 @@ class AudioPlayService : BaseService(), AudioPlayControllerListener, AudioPlayMa
     private fun createNotification(): NotificationCompat.Builder {
         val current = sleepTimer?.minutes ?: 0
         val title = when {
-            pause -> getString(R.string.audio_pause)
-            current in 1..60 -> getString(R.string.playing_timer, current)
-            else -> getString(R.string.audio_play_t)
+            pause -> androidAppString("audio_pause")
+            current in 1..60 -> androidAppString("playing_timer", current)
+            else -> androidAppString("audio_play_t")
         } + ": ${AudioPlay.book?.name}"
         val subtitle = AudioPlay.durChapter?.title?.takeUnless { it.isEmpty() }
-            ?: getString(R.string.audio_play_s)
+            ?: androidAppString("audio_play_s")
         val playPause = if (pause) {
             MediaPlaybackNotification.Action(
                 R.drawable.ic_play_24dp,
-                getString(R.string.resume),
+                androidAppString("resume"),
                 servicePendingIntent<AudioPlayService>(IntentAction.resume)
             )
         } else {
             MediaPlaybackNotification.Action(
                 R.drawable.ic_pause_24dp,
-                getString(R.string.pause),
+                androidAppString("pause"),
                 servicePendingIntent<AudioPlayService>(IntentAction.pause)
             )
         }
@@ -492,29 +493,29 @@ class AudioPlayService : BaseService(), AudioPlayControllerListener, AudioPlayMa
             actions = listOf(
                 MediaPlaybackNotification.Action(
                     R.drawable.ic_time_add_24dp,
-                    getString(R.string.set_timer),
+                    androidAppString("set_timer"),
                     servicePendingIntent<AudioPlayService>(IntentAction.addTimer)
                 ),
                 MediaPlaybackNotification.Action(
                     R.drawable.ic_skip_previous,
-                    getString(R.string.pref_media_button_per_next),
+                    androidAppString("pref_media_button_per_next"),
                     servicePendingIntent<AudioPlayService>(IntentAction.prev)
                 ),
                 playPause,
                 MediaPlaybackNotification.Action(
                     R.drawable.ic_skip_next,
-                    getString(R.string.pref_media_button_per_next_summary),
+                    androidAppString("pref_media_button_per_next_summary"),
                     servicePendingIntent<AudioPlayService>(IntentAction.next)
                 ),
                 MediaPlaybackNotification.Action(
                     R.drawable.ic_stop_black_24dp,
-                    getString(R.string.stop),
+                    androidAppString("stop"),
                     servicePendingIntent<AudioPlayService>(IntentAction.stop)
                 ),
             ),
             compactActionIndices = intArrayOf(1, 2, 3),
             sessionToken = mediaSessionCompat?.sessionToken,
-            subText = getString(R.string.audio),
+            subText = androidAppString("audio"),
         )
     }
 

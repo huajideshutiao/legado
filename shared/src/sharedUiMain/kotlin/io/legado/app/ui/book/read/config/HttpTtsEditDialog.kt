@@ -54,7 +54,7 @@ import org.jetbrains.compose.resources.stringResource
  * # 原业务逻辑保留 (1:1 复刻 app 端 Content)
  *
  * - 标题栏: 空标题 + 返回 (dismiss) + 保存按钮 (ic_save) + OverflowMenu;
- * - OverflowMenu 7 项: 登录 / 查看登录请求头 / 删除登录请求头 / 拷贝源 / 粘贴源 / 日志 / 帮助;
+ * - OverflowMenu 7 项: 登录 / 查看登录头 / 删除登录头 / 拷贝源 / 粘贴源 / 日志 / 帮助;
  * - 表单区: Column(weight 1f, fill=false) + verticalScroll + FormEditFields。
  *
  * # 与原版的差异 (KMP 限制)
@@ -70,8 +70,8 @@ import org.jetbrains.compose.resources.stringResource
  * @param onBack 返回按钮 (app: dismissAllowingStateLoss)
  * @param onSave 保存按钮 (app: viewModel.save(dataFromView()) { toastOnUi("保存成功") })
  * @param onLogin 登录菜单 (app: login() — hasLogin 校验 + save + showLoginDialog)
- * @param onShowLoginHeader 查看登录请求头菜单 (app: alert { setTitle; setMessage(loginHeader) })
- * @param onDeleteLoginHeader 删除登录请求头菜单 (app: dataFromView().removeLoginHeader())
+ * @param onShowLoginHeader 查看登录头菜单 (app: alert { setTitle; setMessage(loginHeader) })
+ * @param onDeleteLoginHeader 删除登录头菜单 (app: dataFromView().removeLoginHeader())
  * @param onCopySource 拷贝源菜单 (app: context?.sendToClip(GSON.toJson(dataFromView())))
  * @param onPasteSource 粘贴源菜单 (app: viewModel.importFromClip { initView(it) })
  * @param onShowLog 日志菜单 (app: showDialogFragment<AppLogDialog>())

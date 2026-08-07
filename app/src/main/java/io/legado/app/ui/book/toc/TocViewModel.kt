@@ -6,7 +6,6 @@ import android.net.Uri
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
-import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
@@ -15,6 +14,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.model.ReadBook
 import io.legado.app.model.fileBook.FileBook
+import io.legado.app.ui.compose.platform.findStringResource
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.GSON
 import io.legado.app.utils.toJson
@@ -22,6 +22,7 @@ import io.legado.app.utils.createFileIfNotExist
 import io.legado.app.utils.openOutputStream
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.writeText
+import org.jetbrains.compose.resources.getString
 import kotlinx.coroutines.launch
 
 /**
@@ -152,7 +153,7 @@ class TocViewModel(application: Application) : BaseViewModel(application) {
     fun saveBookmark(treeUri: Uri) {
         execute {
             val book = bookData.value
-                ?: throw NoStackTraceException(context.getString(R.string.no_book))
+                ?: throw NoStackTraceException(findStringResource("no_book")?.let { getString(it) } ?: "no_book")
             val fileName = "bookmark-${book.name} ${book.author}.json"
             val doc = FileDoc.fromUri(treeUri, true)
             doc.createFileIfNotExist(fileName).writeText(
@@ -180,7 +181,7 @@ class TocViewModel(application: Application) : BaseViewModel(application) {
     fun saveBookmarkMd(treeUri: Uri) {
         execute {
             val book = bookData.value
-                ?: throw NoStackTraceException(context.getString(R.string.no_book))
+                ?: throw NoStackTraceException(findStringResource("no_book")?.let { getString(it) } ?: "no_book")
             val fileName = "bookmark-${book.name} ${book.author}.md"
             val treeDoc = FileDoc.fromUri(treeUri, true)
             val fileDoc = treeDoc.createFileIfNotExist(fileName)

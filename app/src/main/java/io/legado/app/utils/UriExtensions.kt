@@ -8,7 +8,7 @@ import android.os.ParcelFileDescriptor
 import androidx.appcompat.app.AppCompatActivity
 import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.Fragment
-import io.legado.app.R
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.constant.AppLog
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.lib.permission.Permissions
@@ -48,7 +48,7 @@ fun AppCompatActivity.readUri(
         } else {
             PermissionsCompat.Builder()
                 .addPermissions(*Permissions.Group.STORAGE)
-                .rationale(R.string.get_storage_per)
+                .rationale(androidAppString("get_storage_per"))
                 .onGranted {
                     RealPathUtil.getPath(this, uri)?.let { path ->
                         val file = File(path)
@@ -85,7 +85,7 @@ fun Fragment.readUri(uri: Uri?, success: (fileDoc: FileDoc, inputStream: InputSt
         } else {
             PermissionsCompat.Builder()
                 .addPermissions(*Permissions.Group.STORAGE)
-                .rationale(R.string.get_storage_per)
+                .rationale(androidAppString("get_storage_per"))
                 .onGranted {
                     RealPathUtil.getPath(requireContext(), uri)?.let { path ->
                         val file = File(path)

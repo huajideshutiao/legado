@@ -1,8 +1,9 @@
 package io.legado.app.utils
 
 import android.content.Context
+import io.legado.app.help.i18n.androidAppString
+import io.legado.app.help.i18n.androidAppStringArray
 import io.legado.app.utils.TransType
-import io.legado.app.R
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.ui.compose.dialogs.alert
@@ -15,8 +16,8 @@ fun ChineseUtils.showConverterSelector(
     context: Context,
     onChanged: ((Int) -> Unit)? = null
 ) {
-    context.alert(titleResource = R.string.chinese_converter) {
-        items(context.resources.getStringArray(R.array.chinese_mode).toList()) { _, i ->
+    context.alert(title = androidAppString("chinese_converter")) {
+        items(androidAppStringArray("chinese_mode")) { _, i ->
             if (AppConfig.chineseConverterType != i) {
                 AppConfig.chineseConverterType = i
                 onChanged?.invoke(i)

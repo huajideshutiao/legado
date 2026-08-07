@@ -16,6 +16,7 @@ import io.legado.app.help.book.registerNativeLocalBookLocator
 import io.legado.app.help.file.registerOhosAppFilesDir
 import io.legado.app.help.file.registerNativeFileDownloader
 import io.legado.app.help.image.OhosBitmapProvider
+import io.legado.app.help.image.registerOhosBookImageLoader
 import io.legado.app.help.http.registerDefaultOhosCookieStoreProvider
 import io.legado.app.help.http.registerOhosBackstageWebView
 import io.legado.app.help.http.registerOhosHttpProvider
@@ -202,6 +203,11 @@ fun registerOhosProviders() {
     // 6.5 BitmapProvider (CbzFile/EpubFile 封面提取用, 委托 OhosImageOps 的 PixelMap 解码/编码)
     // 必须在任何封面提取调用之前 (BitmapProviders 未注册时 get() 抛 IllegalStateException)
     BitmapProviders.register(OhosBitmapProvider)
+
+    // 6.5b 封面图片加载器 (OhosBookImageLoader: 复用 ImageBitmapLoader 图像管线;
+    // 须在 AppDbProviders/OkHttpClientProviders 注册之后, 任何封面加载之前;
+    // 音频页封面/模糊背景/书架封面此前因未注册恒占位)
+    registerOhosBookImageLoader()
 
     // 6.6 本地书 accessor (FileBookProviders: epub 走 nativeMain EpubFile, txt/pdf/cbz 明确抛异常)
     // 须在 BookStorage/LocalBookLocator/BitmapProviders 之后, 任何 FileBook 调用之前

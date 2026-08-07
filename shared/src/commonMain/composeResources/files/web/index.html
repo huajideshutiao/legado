@@ -36,7 +36,7 @@
       <div class="web-confirm-body">${e.message}</div>
       <div class="web-confirm-footer">
         <button class="web-btn web-btn--cancel">${e.cancelButtonText||"取消"}</button>
-        <button class="web-btn web-btn--primary">${e.confirmButtonText||"确定"}</button>
+        <button class="web-btn web-btn--primary">${e.confirmButtonText||"确认"}</button>
       </div>
     `,s.appendChild(o),document.body.appendChild(s);const r=()=>{e.closeOnHashChange!==!1&&(i(),n("cancel"))};e.closeOnHashChange!==!1&&window.addEventListener("hashchange",r);function i(){s.remove(),window.removeEventListener("hashchange",r)}s.addEventListener("click",l=>{l.target===s&&(i(),n("cancel"))}),o.querySelector(".web-btn--cancel").addEventListener("click",()=>{i(),n("cancel")}),o.querySelector(".web-btn--primary").addEventListener("click",()=>{i(),t("confirm")})})}const fa={confirm(e,t,n){return Xd({message:e,title:t,...n})},prompt(e,t,n){return new Promise((s,o)=>{const r=document.createElement("div");r.className="web-confirm-overlay";const i=document.createElement("div");i.className="web-confirm-box",i.innerHTML=`
         <div class="web-confirm-header"><span>${t}</span></div>
@@ -47,7 +47,7 @@
         </div>
         <div class="web-confirm-footer">
           <button class="web-btn web-btn--cancel">${(n==null?void 0:n.cancelButtonText)||"取消"}</button>
-          <button class="web-btn web-btn--primary">${(n==null?void 0:n.confirmButtonText)||"确定"}</button>
+          <button class="web-btn web-btn--primary">${(n==null?void 0:n.confirmButtonText)||"确认"}</button>
         </div>
       `,r.appendChild(i),document.body.appendChild(r);const l=i.querySelector(".web-prompt-input"),a=i.querySelector(".web-prompt-error");function c(){r.remove()}r.addEventListener("click",u=>{u.target===r&&(c(),s({action:"cancel",value:l.value}))}),i.querySelector(".web-btn--cancel").addEventListener("click",()=>{c(),s({action:"cancel",value:l.value})}),i.querySelector(".web-btn--primary").addEventListener("click",()=>{if(n!=null&&n.inputValidator&&!n.inputValidator(l.value)){a.style.display="block";return}c(),s({action:"confirm",value:l.value})}),setTimeout(()=>l.focus(),100)})}};/*!
  * pinia v2.3.1

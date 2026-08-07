@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toDrawable
 import androidx.lifecycle.lifecycleScope
+import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.R
 import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.Theme
@@ -84,7 +85,7 @@ open class WelcomeActivity : BaseComposeActivity() {
             if (AppConfig.welcomeShowIcon) {
                 Icon(
                     painter = painterResource(R.drawable.icon_read_book),
-                    contentDescription = stringResource(R.string.welcome),
+                    contentDescription = rememberString("welcome"),
                     tint = accent,
                     modifier = Modifier.size(120.dp),
                 )

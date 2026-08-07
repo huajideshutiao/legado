@@ -18,7 +18,7 @@ import io.legado.app.ui.widget.image.CoverImageView
  * (包名 io.legado.app.ui.bookshelf, 与本文件 io.legado.app.ui.main.bookshelf 不同)。
  *
  * shared 版本改动:
- * - 资源访问: stringResource(R.string.xxx) → rememberString("xxx");
+ * - 资源访问: stringResource("xxx") → rememberString("xxx");
  *   painterResource(R.drawable.xxx) → rememberPainter("xxx")
  * - Android API: LocalContext/LocalConfiguration/AppConfig/ThemeConfig/ColorUtils →
  *   provider 间接访问 + 回调注入 + 内联实现

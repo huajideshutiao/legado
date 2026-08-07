@@ -80,7 +80,7 @@ actual object NetworkUtils {
         c in '0'..'9' || c in 'A'..'F' || c in 'a'..'f'
 
     actual fun getAbsoluteURL(baseURL: String?, relativePath: String): String {
-        if (baseURL.isNullOrEmpty()) return relativePath.trim()
+        if (baseURL.isNullOrEmpty() || baseURL.isDataUrl()) return relativePath.trim()
         val base = baseURL.substringBefore(",")
         val absoluteUrl = try {
             JsURL(base).let { "${it.origin}${it.pathname}" }
@@ -88,6 +88,16 @@ actual object NetworkUtils {
             return relativePath.trim()
         }
         return getAbsoluteURLFromBase(absoluteUrl, relativePath)
+    }
+
+    /**
+     * URL 重载: 不经 String 门面 (避免 substringBefore(",") 截断含逗号的 URL)。
+     * baseURL.toString() 已是完整 URL 文本, 直接走 [getAbsoluteURLFromBase] 手工拼接
+     * (内部自处理 query/# 与相对路径, 与原 JDK URL(base, relative) 语义对齐)。
+     */
+    actual fun getAbsoluteURL(baseURL: URL?, relativePath: String): String {
+        if (baseURL == null) return relativePath.trim()
+        return getAbsoluteURLFromBase(baseURL.toString(), relativePath)
     }
 
     private fun getAbsoluteURLFromBase(baseURL: String, relativePath: String): String {

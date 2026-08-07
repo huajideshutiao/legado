@@ -13,6 +13,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.IntentAction
 import io.legado.app.constant.NotificationId
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.setLiveOngoing
 import io.legado.app.receiver.NetworkChangedListener
 import io.legado.app.utils.NetworkUtils
@@ -80,7 +81,7 @@ class WebService : BaseService() {
                 setReferenceCounted(false)
             }
     }
-    private var notificationList = mutableListOf(appCtx.getString(R.string.service_starting))
+    private var notificationList = mutableListOf(androidAppString("service_starting"))
     private val networkChangedListener by lazy {
         NetworkChangedListener(this)
     }
@@ -107,7 +108,7 @@ class WebService : BaseService() {
                 emptyList()
             }
             // 无可用 IP 时 hostAddress 置本地化文案 (对齐原版, 供通知/复制/EventBus 消费方显示)
-            val unavailableText = getString(R.string.network_connection_unavailable)
+            val unavailableText = androidAppString("network_connection_unavailable")
             WebServerManager.updateAddresses(addresses, unavailableText)
             notificationList.clear()
             if (addresses.isNotEmpty()) {
@@ -169,14 +170,14 @@ class WebService : BaseService() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setSmallIcon(R.drawable.ic_web_service_noti)
             .setOngoing(true)
-            .setContentTitle(getString(R.string.web_service))
+            .setContentTitle(androidAppString("web_service"))
             .setContentText(notificationList.joinToString("\n"))
             .setContentIntent(
                 servicePendingIntent<WebService>("copyHostAddress")
             )
         builder.addAction(
             R.drawable.ic_stop_black_24dp,
-            getString(R.string.cancel),
+            androidAppString("cancel"),
             servicePendingIntent<WebService>(IntentAction.stop)
         )
         // Web 服务为常驻运行态而非确定进度的"旅程", 故只请求实时进行中胶囊;

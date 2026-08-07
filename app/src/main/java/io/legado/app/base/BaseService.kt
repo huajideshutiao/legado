@@ -6,9 +6,9 @@ import android.os.IBinder
 import androidx.annotation.CallSuper
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
-import io.legado.app.R
 import io.legado.app.help.LifecycleHelp
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.utils.LogUtils
@@ -90,7 +90,7 @@ abstract class BaseService : LifecycleService() {
     private fun checkPermission() {
         PermissionsCompat.Builder()
             .addPermissions(Permissions.POST_NOTIFICATIONS)
-            .rationale(R.string.notification_permission_rationale)
+            .rationale(androidAppString("notification_permission_rationale"))
             .onGranted {
                 if (lifecycleScope.isActive) {
                     startForegroundNotification()
@@ -100,7 +100,7 @@ abstract class BaseService : LifecycleService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             PermissionsCompat.Builder()
                 .addPermissions(Permissions.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                .rationale(R.string.ignore_battery_permission_rationale)
+                .rationale(androidAppString("ignore_battery_permission_rationale"))
                 .request()
         }
     }

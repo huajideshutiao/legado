@@ -1,15 +1,18 @@
 package io.legado.desktop.ui.tray
 
 import com.sun.jna.Function
+import com.sun.jna.Library
 import com.sun.jna.Memory
 import com.sun.jna.Native
 import com.sun.jna.Platform
 import com.sun.jna.Pointer
+import com.sun.jna.platform.win32.GDI32
 import com.sun.jna.platform.win32.Guid
 import com.sun.jna.platform.win32.Kernel32
 import com.sun.jna.platform.win32.Ole32
 import com.sun.jna.platform.win32.User32
 import com.sun.jna.platform.win32.WinDef
+import com.sun.jna.platform.win32.WinError
 import com.sun.jna.platform.win32.WinUser
 import com.sun.jna.ptr.PointerByReference
 import io.legado.app.constant.AppLog
@@ -18,8 +21,11 @@ import io.legado.app.model.AudioPlayShared
 import io.legado.app.service.ReadAloudControllerShared.ReadAloudState
 import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.desktop.ui.tray.DesktopTaskbarMedia.attach
+import java.awt.Color
 import java.awt.Component
+import java.awt.RenderingHints
 import java.awt.Window
+import java.awt.image.BufferedImage
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -31,10 +37,13 @@ import java.util.concurrent.atomic.AtomicBoolean
  * # 缩略图工具栏按钮 (ITaskbarList3::ThumbBarAddButtons)
  * 鼠标悬停任务栏图标时, Windows 显示窗口缩略图 + 缩略图下方一排按钮 (即"带控件的音乐播放小卡片")。
  * 按钮集对照原版通知 action (与托盘菜单 DesktopMediaTray.addAudioItems/addReadAloudItems 同源):
- * - 音频活跃: 上一章 / 播放暂停(暂停⇄继续) / 下一章 / 停止
- *   (tooltip 文案对照原版通知按钮 label: 音频用 pref_media_button_per_next 系列)
- * - 朗读活跃: 上一章 / 播放暂停(暂停⇄继续) / 下一章 / 停止
- *   (tooltip 文案对照原版朗读通知: previous_chapter / next_chapter)
+ * 上一章 / 播放暂停(暂停⇄继续) / 下一章 / 停止。
+ * - tooltip 文案: 不可用原版通知按钮的无障碍 label (pref_media_button_per_next 系列 =
+ *   "媒体按钮•上一首|下一首", 是设置项标题), ThumbBar tooltip 直接可见会显示成乱码;
+ *   统一用简短章节 label (previous_chapter / next_chapter, 同原版朗读通知)。
+ * - 图标: 自绘白色 glyph → ImageList (comctl32) → ThumbBarSetImageList (vtable 槽 17),
+ *   THUMBBUTTON.dwMask 含 THB_BITMAP + iBitmap 指向列表索引 (toggle 按播放/暂停切图标)。
+ *   此前从未提供图标源, Windows 渲染成无图标的纯文字按钮。
  *
  * # 任务栏进度条 (SetProgressValue / SetProgressState)
  * 播放中显示进度 (对照原版通知进度条); 暂停 TBPF_PAUSED; 停止/空闲清除。
@@ -71,12 +80,25 @@ internal object DesktopTaskbarMedia {
     private const val SLOT_SET_PROGRESS_STATE = 10
     private const val SLOT_THUMB_BAR_ADD_BUTTONS = 15
     private const val SLOT_THUMB_BAR_UPDATE_BUTTONS = 16
+    private const val SLOT_THUMB_BAR_SET_IMAGE_LIST = 17
 
     // THUMBBUTTON dwMask / dwFlags
+    private const val THB_BITMAP = 0x1
     private const val THB_TOOLTIP = 0x4
     private const val THB_FLAGS = 0x8
     private const val THBF_DISABLED = 0x1
     private const val THBF_HIDDEN = 0x8
+
+    // ImageList (comctl32) 标志与尺寸
+    private const val ILC_COLOR32 = 0x20
+    private const val ICON_SIZE = 32
+
+    // 缩略图按钮图标索引 (ImageList 添加顺序)
+    private const val ICON_PREV = 0
+    private const val ICON_PLAY = 1
+    private const val ICON_PAUSE = 2
+    private const val ICON_NEXT = 3
+    private const val ICON_STOP = 4
 
     // SetProgressState flags
     private const val TBPF_NOPROGRESS = 0x0
@@ -126,6 +148,10 @@ internal object DesktopTaskbarMedia {
     @Volatile
     private var lastDurationMs: Int = 0
 
+    /** 缩略图按钮图标列表 (comctl32 ImageList, 懒创建; 卸载时销毁)。 */
+    @Volatile
+    private var imageList: Pointer? = null
+
     private val commandExecutor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "legado-taskbar-cmd").apply { isDaemon = true }
     }
@@ -167,6 +193,9 @@ internal object DesktopTaskbarMedia {
         // 释放 COM 实例 (IUnknown::Release, vtable slot 2)
         cachedTaskbarList?.let { runCatching { vtbl(it, 2) } }
         cachedTaskbarList = null
+        // 销毁按钮图标列表
+        imageList?.let { runCatching { ComCtl32.INSTANCE.ImageList_Destroy(it) } }
+        imageList = null
         val pump = pumpWindow
         pumpWindow = null
         if (pump != null) {
@@ -219,19 +248,14 @@ internal object DesktopTaskbarMedia {
 
             else -> setProgress(TBPF_NOPROGRESS, 0L, 0L)
         }
-        // 按钮集: 音频链优先 (与托盘菜单一致); 文案对照原版通知按钮 label ——
-        // 音频 prev/next 用 pref_media_button_per_next 系列, 朗读才用 previous/next_chapter
-        val buttons = if (audioActive) {
-            buildButtons(
-                prevTip = str("pref_media_button_per_next", "上一章"),
-                toggleTip = if (paused) str("resume", "继续") else str("pause", "暂停"),
-                nextTip = str("pref_media_button_per_next_summary", "下一章"),
-                stopTip = str("stop", "停止"),
-            )
-        } else if (aloudActive) {
+        // 按钮集: 音频/朗读统一用简短章节 label (ThumbBar tooltip 直接可见,
+        // 不能用原版通知的无障碍 label —— pref_media_button_per_next 系列是设置项标题,
+        // 如“媒体按钮•上一首|下一首”, 直接显示即乱码)
+        val buttons = if (audioActive || aloudActive) {
             buildButtons(
                 prevTip = str("previous_chapter", "上一章"),
                 toggleTip = if (paused) str("resume", "继续") else str("pause", "暂停"),
+                toggleIcon = if (paused) ICON_PLAY else ICON_PAUSE,
                 nextTip = str("next_chapter", "下一章"),
                 stopTip = str("stop", "停止"),
             )
@@ -253,21 +277,22 @@ internal object DesktopTaskbarMedia {
     private fun buildButtons(
         prevTip: String,
         toggleTip: String,
+        toggleIcon: Int,
         nextTip: String,
         stopTip: String,
     ): Memory {
         val mem = Memory(BUTTON_STRIDE * BTN_COUNT)
-        writeButton(mem, 0, BTN_PREV, prevTip, 0)
-        writeButton(mem, 1, BTN_TOGGLE, toggleTip, 0)
-        writeButton(mem, 2, BTN_NEXT, nextTip, 0)
-        writeButton(mem, 3, BTN_STOP, stopTip, 0)
+        writeButton(mem, 0, BTN_PREV, prevTip, 0, ICON_PREV)
+        writeButton(mem, 1, BTN_TOGGLE, toggleTip, 0, toggleIcon)
+        writeButton(mem, 2, BTN_NEXT, nextTip, 0, ICON_NEXT)
+        writeButton(mem, 3, BTN_STOP, stopTip, 0, ICON_STOP)
         return mem
     }
 
     private fun hiddenButtons(): Memory {
         val mem = Memory(BUTTON_STRIDE * BTN_COUNT)
         for (i in 0 until BTN_COUNT) {
-            writeButton(mem, i, i + 1, "", THBF_HIDDEN)
+            writeButton(mem, i, i + 1, "", THBF_HIDDEN, ICON_PREV)
         }
         return mem
     }
@@ -276,14 +301,22 @@ internal object DesktopTaskbarMedia {
      * THUMBBUTTON x64 布局 (commctrl.h): dwMask(4) iId(4) iBitmap(4) [对齐填充 12..16]
      * hIcon(8) szTip[260](520, 24..544) dwFlags(4, 544..548) → 结构 552 字节。
      * szTip 为 WCHAR, 需 UTF-16LE (Memory.setChar 即按 UTF-16LE 写)。
+     * dwMask 含 THB_BITMAP: iBitmap 指向 ThumbBarSetImageList 设置列表中的索引。
      * 2026-08 修正: 此前按 32 位布局写 (hIcon=4 → szTip@16/dwFlags@536/stride 544),
      * x64 下 dwFlags 落在 szTip 内、按钮 2+ 整体错位 (缩略图按钮行为异常)。
      */
-    private fun writeButton(mem: Memory, slot: Int, id: Int, tip: String, flags: Int) {
+    private fun writeButton(
+        mem: Memory,
+        slot: Int,
+        id: Int,
+        tip: String,
+        flags: Int,
+        iconIndex: Int
+    ) {
         val base = slot * BUTTON_STRIDE
-        mem.setInt(base + 0, THB_TOOLTIP or THB_FLAGS) // dwMask
+        mem.setInt(base + 0, THB_BITMAP or THB_TOOLTIP or THB_FLAGS) // dwMask
         mem.setInt(base + 4, id)
-        mem.setInt(base + 8, 0) // iBitmap
+        mem.setInt(base + 8, iconIndex) // iBitmap
         mem.setLong(base + 16, 0) // hIcon (x64 指针, 12..16 为对齐填充)
         val tipBase = base + 24
         tip.take(259).forEachIndexed { i, c -> mem.setChar(tipBase + i * 2L, c) }
@@ -432,16 +465,23 @@ internal object DesktopTaskbarMedia {
         ): WinDef.LRESULT {
             try {
                 when {
-                    msg == WM_HOTKEY -> onMediaKey(wParam.toLong().toInt())
+                    msg == WM_HOTKEY -> {
+                        onMediaKey(wParam.toLong().toInt())
+                        return WinDef.LRESULT(0)
+                    }
 
-                    else -> taskbarCreatedMsg?.let {
-                        if (msg == it) refreshFromLastState()
+                    taskbarCreatedMsg != null && msg == taskbarCreatedMsg -> {
+                        refreshFromLastState()
+                        return WinDef.LRESULT(0)
                     }
                 }
             } catch (e: Throwable) {
                 AppLog.put("任务栏媒体消息处理异常 (msg=$msg)", e)
             }
-            return WinDef.LRESULT(0)
+            // 其余消息走 DefWindowProc (同 WebView2Loop.windowProc)。此前一律返回 0,
+            // WM_NCCREATE 返回 FALSE 会让 CreateWindowEx 中止并返回 NULL (GetLastError 常为 0,
+            // 即此前 "CreateWindowEx 失败 (err=0)" 的根因), 隐藏窗口根本建不出来。
+            return User32.INSTANCE.DefWindowProc(hwnd, msg, wParam, lParam)
         }
     }
 
@@ -486,7 +526,13 @@ internal object DesktopTaskbarMedia {
         wndClass.lpszClassName = WINDOW_CLASS
         wndClass.lpfnWndProc = pumpProc
         wndClass.hInstance = Kernel32.INSTANCE.GetModuleHandle(null)
-        User32.INSTANCE.RegisterClassEx(wndClass)
+        val atom = User32.INSTANCE.RegisterClassEx(wndClass)
+        // 重复注册 (同进程二次 install) 返回 0 + ERROR_CLASS_ALREADY_EXISTS, 无害;
+        // 其他失败会让 CreateWindowEx 找不到类 (同样表现为 err=0), 必须留痕便于诊断
+        // ATOM 是 IntegerType 子类, 不能与 Int 直接比较; 用等值构造比较 (equals 按 value 判等, 等价 intValue() == 0)
+        if (atom == WinDef.ATOM(0) && Native.getLastError() != WinError.ERROR_CLASS_ALREADY_EXISTS) {
+            AppLog.put("注册任务栏媒体窗口类失败 (err=${Native.getLastError()})")
+        }
     }
 
     /** 注册全局媒体键 (对照原版 MediaButtonReceiver 的媒体按钮接管)。 */
@@ -564,9 +610,136 @@ internal object DesktopTaskbarMedia {
 
     private fun addButtons(hwnd: WinDef.HWND, buttons: Memory) {
         val list = taskbarList() ?: return
+        // 图标列表就绪后设置 (THB_BITMAP/iBitmap 依赖 ThumbBarSetImageList)
+        getOrCreateImageList()?.let { setImageList(hwnd, it) }
         runCatching {
             vtbl(list, SLOT_THUMB_BAR_ADD_BUTTONS, hwnd, BTN_COUNT, buttons)
         }.onFailure { AppLog.put("ThumbBarAddButtons 失败", it) }
+    }
+
+    /** ThumbBarSetImageList (vtable 槽 17): 提供按钮图标列表 (无图标则按钮无图)。 */
+    private fun setImageList(hwnd: WinDef.HWND, himl: Pointer) {
+        val list = taskbarList() ?: return
+        runCatching {
+            vtbl(list, SLOT_THUMB_BAR_SET_IMAGE_LIST, hwnd, himl)
+        }.onFailure { AppLog.put("ThumbBarSetImageList 失败", it) }
+    }
+
+    // ==================== 按钮图标 (自绘 glyph → ImageList) ====================
+
+    /** 按钮 glyph 形状 (白色, 对照原版通知按钮图标语义)。 */
+    private enum class ThumbGlyph { PREV, PLAY, PAUSE, NEXT, STOP }
+
+    /** 懒创建按钮图标列表: 32bpp ImageList, 顺序 [PREV, PLAY, PAUSE, NEXT, STOP]。 */
+    private fun getOrCreateImageList(): Pointer? {
+        imageList?.let { return it }
+        synchronized(this) {
+            imageList?.let { return it }
+            val himl = ComCtl32.INSTANCE.ImageList_Create(ICON_SIZE, ICON_SIZE, ILC_COLOR32, 5, 0)
+                ?: return null
+            val built = runCatching {
+                val hbms = mutableListOf<WinDef.HBITMAP>()
+                try {
+                    for (glyph in ThumbGlyph.entries) {
+                        val hbm = DesktopTaskbarDwm.toHBitmap(drawGlyph(ICON_SIZE, glyph))
+                            ?: error("toHBitmap 失败")
+                        hbms += hbm
+                        val idx = ComCtl32.INSTANCE.ImageList_Add(himl, hbm, null)
+                        if (idx < 0) error("ImageList_Add 失败 idx=$idx")
+                    }
+                } finally {
+                    hbms.forEach { runCatching { GDI32.INSTANCE.DeleteObject(it) } }
+                }
+            }
+            if (built.isFailure) {
+                AppLog.put("任务栏按钮图标构建失败", built.exceptionOrNull())
+                runCatching { ComCtl32.INSTANCE.ImageList_Destroy(himl) }
+                return null
+            }
+            imageList = himl
+            return himl
+        }
+    }
+
+    /** 绘制白色 glyph (透明底, 32bpp; 仿 DesktopTaskbarDwm.drawStatusIcon 自绘惯例)。 */
+    private fun drawGlyph(size: Int, glyph: ThumbGlyph): BufferedImage {
+        val img = BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB)
+        val g = img.createGraphics()
+        try {
+            g.setRenderingHint(
+                RenderingHints.KEY_ANTIALIASING,
+                RenderingHints.VALUE_ANTIALIAS_ON
+            )
+            g.color = Color.WHITE
+            val s = size.toFloat()
+            when (glyph) {
+                ThumbGlyph.PREV -> {
+                    // 左侧竖条 + 右侧左指三角 (skip previous)
+                    val barW = (s * 0.14f).toInt().coerceAtLeast(2)
+                    val barX = (s * 0.16f).toInt()
+                    g.fillRoundRect(barX, (s * 0.25f).toInt(), barW, (s * 0.5f).toInt(), barW, barW)
+                    val triX = (s * 0.42f).toInt()
+                    val xs =
+                        intArrayOf(triX + (s * 0.34f).toInt(), triX, triX + (s * 0.34f).toInt())
+                    val ys = intArrayOf((s * 0.2f).toInt(), (s * 0.5f).toInt(), (s * 0.8f).toInt())
+                    g.fillPolygon(xs, ys, 3)
+                }
+
+                ThumbGlyph.PLAY -> {
+                    // 右指实心三角
+                    val xs =
+                        intArrayOf((s * 0.32f).toInt(), (s * 0.78f).toInt(), (s * 0.32f).toInt())
+                    val ys =
+                        intArrayOf((s * 0.18f).toInt(), (s * 0.5f).toInt(), (s * 0.82f).toInt())
+                    g.fillPolygon(xs, ys, 3)
+                }
+
+                ThumbGlyph.PAUSE -> {
+                    // 双竖条
+                    val barW = (s * 0.16f).toInt().coerceAtLeast(2)
+                    val gap = (s * 0.14f).toInt()
+                    val x1 = (s * 0.26f).toInt()
+                    val y = (s * 0.22f).toInt()
+                    val h = (s * 0.56f).toInt()
+                    g.fillRoundRect(x1, y, barW, h, barW, barW)
+                    g.fillRoundRect(x1 + barW + gap, y, barW, h, barW, barW)
+                }
+
+                ThumbGlyph.NEXT -> {
+                    // 右侧竖条 + 左方右指三角 (skip next)
+                    val triX = (s * 0.26f).toInt()
+                    val xs = intArrayOf(triX, triX + (s * 0.34f).toInt(), triX)
+                    val ys = intArrayOf((s * 0.2f).toInt(), (s * 0.5f).toInt(), (s * 0.8f).toInt())
+                    g.fillPolygon(xs, ys, 3)
+                    val barW = (s * 0.14f).toInt().coerceAtLeast(2)
+                    val barX = (s * 0.70f).toInt()
+                    g.fillRoundRect(barX, (s * 0.25f).toInt(), barW, (s * 0.5f).toInt(), barW, barW)
+                }
+
+                ThumbGlyph.STOP -> {
+                    // 实心方块
+                    val x = (s * 0.28f).toInt()
+                    val w = (s * 0.44f).toInt()
+                    g.fillRoundRect(x, x, w, w, (s * 0.08f).toInt(), (s * 0.08f).toInt())
+                }
+            }
+        } finally {
+            g.dispose()
+        }
+        return img
+    }
+
+    // ==================== comctl32 (ImageList) 最小绑定 ====================
+
+    /** ImageList 函数 (老版 comctl32 仍导出; HIMAGELIST 用 Pointer 表示)。 */
+    private interface ComCtl32 : Library {
+        fun ImageList_Create(cx: Int, cy: Int, flags: Int, cInitial: Int, cGrow: Int): Pointer?
+        fun ImageList_Add(himl: Pointer, hbmImage: WinDef.HBITMAP, hbmMask: WinDef.HBITMAP?): Int
+        fun ImageList_Destroy(himl: Pointer): Boolean
+
+        companion object {
+            val INSTANCE: ComCtl32 = Native.load("comctl32", ComCtl32::class.java)
+        }
     }
 
     private fun updateButtons(hwnd: WinDef.HWND, buttons: Memory) {
@@ -607,8 +780,8 @@ internal object DesktopTaskbarMedia {
     private fun str(key: String, fallback: String): String =
         jvmGetString(key).takeIf { it != key } ?: fallback
 
-    /** THUMBBUTTON 结构 stride (x64 = 552, 32 位 = 540)。 */
-    private val BUTTON_STRIDE = if (Native.POINTER_SIZE == 8) 552L else 540L
+    /** THUMBBUTTON 结构 stride (仅支持 x64 = 552; writeButton 偏移与任务栏链路其余部分同为 x64 假设)。 */
+    private val BUTTON_STRIDE = 552L
 
     private const val START_TIMEOUT_SECONDS = 10L
 }

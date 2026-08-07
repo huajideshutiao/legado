@@ -19,11 +19,10 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 import androidx.fragment.app.DialogFragment
-import io.legado.app.R
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.ui.compose.dialogs.alert
-import io.legado.app.ui.widget.dialog.TextDialog
-import io.legado.app.web.utils.WebAssetSources
-import kotlinx.coroutines.runBlocking
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
 
 inline fun <reified T : DialogFragment> AppCompatActivity.showDialogFragment(
     arguments: Bundle.() -> Unit = {}
@@ -186,21 +185,23 @@ fun Activity.toggleSystemBar(show: Boolean) {
 
 /**
  * 显示目录help下的帮助文档
+ * 帮助文档对话框已下沉 shared (HelpDialog): 经 help Overlay 读 web/help/md/{fileName}.md 渲染
  */
 fun AppCompatActivity.showHelp(fileName: String) {
-    val mdText = String(runBlocking { WebAssetSources.get().read("web/help/md/${fileName}.md") })
-    showDialogFragment(TextDialog(getString(R.string.help), mdText, TextDialog.Mode.MD))
+    AppNavigatorProviders.getOrNull()?.showOverlay(
+        AppOverlay.Dialog(key = "help", payload = fileName)
+    )
 }
 
 /**
  * 显示导出成功对话框
  */
 fun Activity.showExportSuccess(uri: Uri) {
-    alert(R.string.export_success) {
+    alert(androidAppString("export_success")) {
         if (uri.toString().isAbsUrl()) {
             setMessage(io.legado.app.help.DirectLinkUpload.getSummary())
         }
-        editTextView(hint = getString(R.string.path), text = uri.toString())
+        editTextView(hint = androidAppString("path"), text = uri.toString())
         okButton {
             sendToClip(uri.toString())
         }
@@ -211,11 +212,11 @@ fun Activity.showExportSuccess(uri: Uri) {
  * 显示导出成功对话框 (Fragment版本)
  */
 fun androidx.fragment.app.Fragment.showExportSuccess(uri: Uri) {
-    alert(R.string.export_success) {
+    alert(androidAppString("export_success")) {
         if (uri.toString().isAbsUrl()) {
             setMessage(io.legado.app.help.DirectLinkUpload.getSummary())
         }
-        editTextView(hint = getString(R.string.path), text = uri.toString())
+        editTextView(hint = androidAppString("path"), text = uri.toString())
         okButton {
             requireContext().sendToClip(uri.toString())
         }

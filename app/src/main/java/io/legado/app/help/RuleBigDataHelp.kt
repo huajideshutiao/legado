@@ -4,6 +4,16 @@ import io.legado.app.utils.FileUtils
 import io.legado.app.utils.externalFiles
 import splitties.init.appCtx
 
+/**
+ * [RuleBigDataProvider] app 端实现 (Android 专属)。
+ *
+ * 核心逻辑已下沉 shared commonMain 的 [RuleBigDataShared] (纯文件持久化实现),
+ * 本文件仅保留 Android 专属部分: appCtx.externalFiles/ruleData/book 路径注入,
+ * put/get/has 等全部委托 [RuleBigDataShared], 行为与下沉前完全一致。
+ *
+ * desktop/ios/ohos 端各自注册对应路径的 [RuleBigDataShared] 实例,
+ * 见 RegisterNativeSourceProviders / 各端 ProviderRegistry。
+ */
 object RuleBigDataHelp : RuleBigDataProvider {
 
     private val ruleDataDir = FileUtils.createFolderIfNotExist(appCtx.externalFiles, "ruleData")

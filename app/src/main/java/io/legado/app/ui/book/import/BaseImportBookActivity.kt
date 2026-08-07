@@ -4,7 +4,9 @@ import androidx.activity.addCallback
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import io.legado.app.R
+import io.legado.app.help.i18n.androidAppString
+import io.legado.app.ui.compose.platform.findStringResource
+import org.jetbrains.compose.resources.getString
 import io.legado.app.base.BaseComposeActivity
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.appDb
@@ -92,7 +94,7 @@ abstract class BaseImportBookActivity : BaseComposeActivity() {
         val storageHelp =
             "* 由于安卓的存储访问限制，阅读需要设置**公共目录下的子目录**来实现书籍拷贝、下载，例如Documents/Books、Download/Books\n" +
                 "* 如不设置，将无法正常使用本地书籍、webDav书籍的相关功能"
-        val hint = getString(R.string.select_book_folder)
+        val hint = androidAppString("select_book_folder")
         alert(hint, storageHelp) {
             okButton {
                 localBookTreeSelect.launch {
@@ -139,11 +141,11 @@ abstract class BaseImportBookActivity : BaseComposeActivity() {
 
     private fun showSelectBookReadAlert(fileDoc: FileDoc, fileNames: List<String>) {
         if (fileNames.isEmpty()) {
-            toastOnUi(R.string.unsupport_archivefile_entry)
+            toastOnUi(androidAppString("unsupport_archivefile_entry"))
             return
         }
         selector(
-            R.string.start_read,
+            androidAppString("start_read"),
             fileNames
         ) { _, name, _ ->
             runBlocking { appDb.bookDao.getBookByFileName(name) }?.let {
@@ -168,8 +170,8 @@ abstract class BaseImportBookActivity : BaseComposeActivity() {
     /* 提示是否重新导入所点击的压缩文件 */
     private fun showImportAlert(fileDoc: FileDoc, fileName: String) {
         alert(
-            R.string.draw,
-            R.string.no_book_found_bookshelf
+            androidAppString("draw"),
+            androidAppString("no_book_found_bookshelf")
         ) {
             okButton {
                 addArchiveToBookShelf(fileDoc, fileName) {

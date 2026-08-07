@@ -730,7 +730,7 @@ fun formatDuring(
 fun rememberFormatDuring(seconds: Long): String {
     return formatDuring(
         seconds = seconds,
-        zeroMinutes = stringResource(Res.string.time_format_minutes),
+        zeroMinutes = stringResource(Res.string.time_format_minutes, 0),
         hoursMinutes = stringResource(Res.string.time_format_hours_minutes),
         hoursOnly = stringResource(Res.string.time_format_hours),
         minutesOnly = stringResource(Res.string.time_format_minutes_only),

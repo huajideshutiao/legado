@@ -26,6 +26,7 @@ import io.legado.app.constant.Status
 import io.legado.app.help.MediaHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.media.AudioFocusController
 import io.legado.app.help.media.BecomingNoisyReceiver
 import io.legado.app.help.media.MediaPlaybackLock
@@ -391,7 +392,7 @@ abstract class BaseReadAloudService : BaseService() {
                 .addCustomAction(
                     PlaybackStateCompat.CustomAction.Builder(
                         "ACTION_ADD_TIMER",
-                        getString(R.string.set_timer),
+                        androidAppString("set_timer"),
                         R.drawable.ic_time_add_24dp
                     ).build()
                 )
@@ -448,22 +449,22 @@ abstract class BaseReadAloudService : BaseService() {
     private fun createNotification(): NotificationCompat.Builder {
         val current = sleepTimer?.minutes ?: 0
         val title = when {
-            pause -> getString(R.string.read_aloud_pause)
-            current > 0 -> getString(R.string.read_aloud_timer, current)
-            else -> getString(R.string.read_aloud_t)
+            pause -> androidAppString("read_aloud_pause")
+            current > 0 -> androidAppString("read_aloud_timer", current)
+            else -> androidAppString("read_aloud_t")
         } + ": ${ReadBook.book?.name}"
         val subtitle = ReadBook.curTextChapter?.title?.takeUnless { it.isBlank() }
-            ?: getString(R.string.read_aloud_s)
+            ?: androidAppString("read_aloud_s")
         val playPause = if (pause) {
             MediaPlaybackNotification.Action(
                 R.drawable.ic_play_24dp,
-                getString(R.string.resume),
+                androidAppString("resume"),
                 aloudServicePendingIntent(IntentAction.resume)
             )
         } else {
             MediaPlaybackNotification.Action(
                 R.drawable.ic_pause_24dp,
-                getString(R.string.pause),
+                androidAppString("pause"),
                 aloudServicePendingIntent(IntentAction.pause)
             )
         }
@@ -484,29 +485,29 @@ abstract class BaseReadAloudService : BaseService() {
             actions = listOf(
                 MediaPlaybackNotification.Action(
                     R.drawable.ic_time_add_24dp,
-                    getString(R.string.set_timer),
+                    androidAppString("set_timer"),
                     aloudServicePendingIntent(IntentAction.addTimer)
                 ),
                 MediaPlaybackNotification.Action(
                     R.drawable.ic_skip_previous,
-                    getString(R.string.previous_chapter),
+                    androidAppString("previous_chapter"),
                     aloudServicePendingIntent(IntentAction.prev)
                 ),
                 playPause,
                 MediaPlaybackNotification.Action(
                     R.drawable.ic_skip_next,
-                    getString(R.string.next_chapter),
+                    androidAppString("next_chapter"),
                     aloudServicePendingIntent(IntentAction.next)
                 ),
                 MediaPlaybackNotification.Action(
                     R.drawable.ic_stop_black_24dp,
-                    getString(R.string.stop),
+                    androidAppString("stop"),
                     aloudServicePendingIntent(IntentAction.stop)
                 ),
             ),
             compactActionIndices = intArrayOf(1, 2, 3),
             sessionToken = sessionToken,
-            subText = getString(R.string.read_aloud),
+            subText = androidAppString("read_aloud"),
             category = NotificationCompat.CATEGORY_TRANSPORT,
             foregroundBehavior = NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE,
         )
@@ -572,7 +573,7 @@ abstract class BaseReadAloudService : BaseService() {
         } catch (_: SecurityException) {
             PermissionsCompat.Builder()
                 .addPermissions(Permissions.READ_PHONE_STATE)
-                .rationale(R.string.read_aloud_read_phone_state_permission_rationale)
+                .rationale(androidAppString("read_aloud_read_phone_state_permission_rationale"))
                 .onGranted {
                     try {
                         block.invoke()

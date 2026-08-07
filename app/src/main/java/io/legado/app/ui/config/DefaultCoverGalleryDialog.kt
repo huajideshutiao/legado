@@ -28,7 +28,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toDrawable
 import androidx.lifecycle.lifecycleScope
-import io.legado.app.R
+import io.legado.app.help.i18n.androidAppString
+import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
@@ -87,7 +88,7 @@ class DefaultCoverGalleryDialog() : BaseComposeDialogFragment() {
                 }
             }
             val safeBytes = bytes ?: run {
-                appCtx.toastOnUi(R.string.error_read_file)
+                appCtx.toastOnUi(androidAppString("error_read_file"))
                 return@registerHandleFile
             }
             lifecycleScope.launch {
@@ -109,10 +110,8 @@ class DefaultCoverGalleryDialog() : BaseComposeDialogFragment() {
         val entries = BookCover.listDefaultCovers(prefKey)
         Column(Modifier.fillMaxSize()) {
             DialogTitleBar(
-                title = stringResource(R.string.default_cover),
-                subtitle = stringResource(
-                    if (prefKey == PreferKey.defaultCoverDark) R.string.night else R.string.day
-                ),
+                title = rememberString("default_cover"),
+                subtitle = if (prefKey == PreferKey.defaultCoverDark) rememberString("night") else rememberString("day"),
                 onBack = { dismissAllowingStateLoss() },
             )
             LazyVerticalGrid(
@@ -136,7 +135,7 @@ class DefaultCoverGalleryDialog() : BaseComposeDialogFragment() {
                     ) {
                         Icon(
                             painter = rememberPainter("ic_add"),
-                            contentDescription = stringResource(R.string.add),
+                            contentDescription = rememberString("add"),
                             tint = AppTheme.colors.primaryText,
                             modifier = Modifier.size(48.dp),
                         )
@@ -180,7 +179,7 @@ class DefaultCoverGalleryDialog() : BaseComposeDialogFragment() {
     }
 
     private fun onCoverClick(entry: DefaultCoverEntry) {
-        alert(R.string.delete, R.string.sure_del) {
+        alert(androidAppString("delete"), androidAppString("sure_del")) {
             yesButton {
                 lifecycleScope.launch {
                     withContext(Dispatchers.IO) {

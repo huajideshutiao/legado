@@ -127,9 +127,12 @@ actual object NetworkUtils {
 
     /**
      * 获取绝对地址
+     *
+     * baseURL 为 data url 时不做相对拼接 (JDK URL 不支持 data 协议, 且逗号截断会切掉 payload),
+     * 直接返回 relativePath.trim()。
      */
     actual fun getAbsoluteURL(baseURL: String?, relativePath: String): String {
-        if (baseURL.isNullOrEmpty()) return relativePath.trim()
+        if (baseURL.isNullOrEmpty() || baseURL.isDataUrl()) return relativePath.trim()
         var absoluteUrl: URL? = null
         try {
             absoluteUrl = URL(baseURL.substringBefore(","))
@@ -142,9 +145,10 @@ actual object NetworkUtils {
     /**
      * 获取绝对地址
      *
-     * 附加成员: 参数为 java.net.URL, common 无 URL 类型, 仅 jvmAndAndroid 暴露。
+     * 附加成员: 参数为 java.net.URL (原版 NetworkUtils.getAbsoluteURL(URL?, String) 重载,
+     * 不经 String 门面, 避免 substringBefore(",") 截断含逗号的 URL)。
      */
-    fun getAbsoluteURL(baseURL: URL?, relativePath: String): String {
+    actual fun getAbsoluteURL(baseURL: URL?, relativePath: String): String {
         val relativePathTrim = relativePath.trim()
         if (baseURL == null) return relativePathTrim
         if (relativePathTrim.isAbsUrl()) return relativePathTrim

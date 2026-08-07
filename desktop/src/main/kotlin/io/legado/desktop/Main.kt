@@ -55,6 +55,7 @@ import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.config.ReadTipConfigShared
 import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.coroutine.registerJvmDebugState
 import io.legado.app.help.file.registerDesktopAppFilesDir
 import io.legado.app.help.http.OkHttpClientProviders
 import io.legado.app.help.image.registerJvmBookImageLoader
@@ -214,6 +215,9 @@ var startupArgs: Array<String> = emptyArray()
 private const val RESTART_WAIT_PREFIX = "--legado-restart-wait="
 
 fun main(args: Array<String>) {
+    // 打栈开关: 对齐 Android BuildConfig.DEBUG 语义, 仅 debug 打栈。
+    // build.gradle.kts 的 run 任务注入 -Dlegado.debug=true, 打包产物不注入 = 静默。
+    registerJvmDebugState(System.getProperty("legado.debug")?.toBoolean() == true)
     // 视频渲染: open-ani/mediamp (mediamp-mpv) 后端。Windows 走 Skiko Direct3D 默认渲染
     // (mpv D3D11 → 共享纹理 → Skia D3D12), macOS 默认 Metal, Linux 默认 OpenGL —— 均
     // 为各自平台默认值, 无需 (也不应) 强制 skiko.renderApi。

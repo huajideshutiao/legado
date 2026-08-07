@@ -7,8 +7,6 @@ import io.legado.app.data.entities.BookChapterLike
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.JsExtensionsJvm
 import io.legado.app.model.webBook.BookInfoRefreshers
-import io.legado.app.utils.NetworkUtils
-import io.legado.app.utils.URL
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.CoroutineContext
@@ -27,11 +25,6 @@ class DesktopAnalyzeRule(
     source: BaseSource? = null,
     preUpdateJs: Boolean = false
 ) : AnalyzeRuleCore(ruleData, source, preUpdateJs), JsExtensionsJvm {
-
-    /** 恢复原版 java.net.URL 重载路径, 避免 String 门面 substringBefore(",") 截断含逗号的 redirectUrl。 */
-    override fun getAbsoluteURL(redirectUrl: URL?, relativePath: String): String {
-        return NetworkUtils.getAbsoluteURL(redirectUrl, relativePath)
-    }
 
     /**
      * 与 app 端 AnalyzeRule.ajax 同处理: 解析 diamond 继承冲突,

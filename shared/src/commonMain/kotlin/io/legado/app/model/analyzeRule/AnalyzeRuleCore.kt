@@ -120,11 +120,13 @@ open class AnalyzeRuleCore(
     }
 
     /**
-     * redirectUrl 转绝对地址。commonMain 只有 String 门面, 会 substringBefore(",") 截断含逗号的 URL;
-     * JVM 端子类 override 走 java.net.URL 重载, 与原版 AnalyzeRule 行为一致。
+     * redirectUrl 转绝对地址。直接走 [NetworkUtils.getAbsoluteURL] 的 URL 重载
+     * (与原版 AnalyzeRule 行为一致), 不经 String 门面, 避免 substringBefore(",")
+     * 截断含逗号的 redirectUrl。该重载已提升为 expect/actual 默认实现,
+     * JVM 端子类不再需要 override。
      */
     protected open fun getAbsoluteURL(redirectUrl: URL?, relativePath: String): String {
-        return NetworkUtils.getAbsoluteURL(redirectUrl?.toString(), relativePath)
+        return NetworkUtils.getAbsoluteURL(redirectUrl, relativePath)
     }
 
     /**

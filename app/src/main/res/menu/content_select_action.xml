@@ -4,7 +4,7 @@
 
     <item
         android:id="@+id/menu_replace"
-        android:title="@string/replace" />
+        android:title="替换" />
 
     <item
         android:id="@+id/menu_copy"
@@ -12,28 +12,28 @@
 
     <item
         android:id="@+id/menu_bookmark"
-        android:title="@string/bookmark" />
+        android:title="书签" />
 
     <item
         android:id="@+id/menu_aloud"
-        android:title="@string/read_aloud" />
+        android:title="朗读" />
 
     <item
         android:id="@+id/menu_dict"
-        android:title="@string/dict" />
+        android:title="字典" />
 
     <item
         android:id="@+id/menu_search_content"
-        android:title="@string/search_content"
+        android:title="全文搜索"
         app:showAsAction="never" />
 
     <item
         android:id="@+id/menu_browser"
-        android:title="@string/browser"
+        android:title="浏览器"
         app:showAsAction="never" />
 
     <item
         android:id="@+id/menu_share_str"
-        android:title="@string/share"
+        android:title="分享"
         app:showAsAction="never" />
 </menu>

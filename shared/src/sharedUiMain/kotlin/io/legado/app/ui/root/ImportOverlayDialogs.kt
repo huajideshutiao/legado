@@ -41,7 +41,9 @@ import org.jetbrains.compose.resources.stringResource
  * - success(count=0) 显示"格式不对"错误 (对照 app 端 `error = getString(R.string.wrong_format)`)。
  */
 
-// 通用导入 Overlay: 6 个 Import 对话框共用 (key="*Import", payload=IntentData key)
+// 通用导入 Overlay: 6 个 Import 对话框共用 (key="*Import:<DeepLinkImportType.name>", payload=IntentData key)
+// 由 LegadoApp DialogOverlayContent 按类型分发; 调用方 (app 端 FileAssociationFragment / 其他端深链) 用
+// AppOverlay.Dialog(key = "*Import:" + type.name, payload = IntentData.put(sourceText)) 弹窗。
 @Composable
 internal fun ImportSourceOverlayContent(
     overlay: AppOverlay.Dialog,

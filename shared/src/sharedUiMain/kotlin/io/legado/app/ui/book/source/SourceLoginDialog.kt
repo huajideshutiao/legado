@@ -85,7 +85,7 @@ import io.legado.app.ui.preview.LegadoThemePreview
  * 书源登录对话框 (KMP 共享, app + desktop + iOS 复用)。
  *
  * 严格复刻 app 端 `io.legado.app.ui.login.SourceLoginDialog` 的 UI 结构与交互逻辑:
- * - 顶部 DialogTitleBar: 登录标题 + 确认按钮(ic_check) + 溢出菜单(查看/删除登录请求头 + 日志)
+ * - 顶部 DialogTitleBar: 登录标题 + 确认按钮(ic_check) + 溢出菜单(查看/删除登录头 + 日志)
  * - GridPackLayout(columnCount=12, rowUnitMinHeight=60dp) 承载 loginUi 各行
  * - 行类型: text/password/select/toggle/button, padding 与原 view 对齐
  * - 确认: loginData 空则 removeLoginInfo + 关闭; 否则 putLoginInfo + 执行 login() JS
@@ -286,7 +286,7 @@ fun SourceLoginDialog(
         LoginForm(rows, loginData) { handleButtonClick(it) }
     }
 
-    // 登录请求头展示 + 复制按钮 (复刻 app 端 alert DSL)
+    // 登录头展示 + 复制按钮 (复刻 app 端 alert DSL)
     headerToShow?.let { loginHeader ->
         AppAlertDialog(
             onDismissRequest = { headerToShow = null },

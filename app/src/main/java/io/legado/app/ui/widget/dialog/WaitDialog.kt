@@ -9,13 +9,13 @@ import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
-import io.legado.app.R
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.base.ComposeDialog
 
 class WaitDialog(context: Context) {
 
     // 文本用 Compose 状态承载，setText 可从任意线程写入（Snapshot 线程安全），读侧自动重组
-    private var message by mutableStateOf(context.getString(R.string.loading))
+    private var message by mutableStateOf(androidAppString("loading"))
     private val dialog = ComposeDialog(context, fullWidth = false)
 
     var onCancelListener: (() -> Unit)? = null

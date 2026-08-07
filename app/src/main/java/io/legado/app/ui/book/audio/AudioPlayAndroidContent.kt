@@ -4,6 +4,7 @@ import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
@@ -24,6 +25,10 @@ fun AudioPlayAndroidContent(
     onOpenReview: () -> Unit,
     overflowActions: AudioPlayOverflowActions,
     onEvent: (AudioPlayUiEvent) -> Unit,
+    sidePanelWidth: Dp = 0.dp,
+    sidePanelVisible: Boolean = false,
+    sidePanelKind: AudioPlaySidePanelKind? = null,
+    sidePanelSlot: @Composable (AudioPlaySidePanelKind) -> Unit = {},
 ) {
     SharedAudioPlayScreenContent(
         state = state,
@@ -34,14 +39,20 @@ fun AudioPlayAndroidContent(
         onOpenReview = onOpenReview,
         overflowActions = overflowActions,
         onEvent = onEvent,
+        sidePanelWidth = sidePanelWidth,
+        sidePanelVisible = sidePanelVisible,
+        sidePanelKind = sidePanelKind,
+        sidePanelSlot = sidePanelSlot,
         titleBarTrailingSlot = {
-            // 评论入口 (对照原版 AudioPlayScreen 标题栏评论钮)
-            IconButton(onClick = onOpenReview) {
-                Icon(
-                    painter = rememberPainter("ic_review_thumb_up"),
-                    contentDescription = rememberString("review"),
-                    tint = Color.White,
-                )
+            // 评论入口 (reviewUrl 非空才显示; hasReview 随书源切换刷新)
+            if (state.hasReview) {
+                IconButton(onClick = onOpenReview) {
+                    Icon(
+                        painter = rememberPainter("ic_edit"),
+                        contentDescription = rememberString("review"),
+                        tint = Color.White,
+                    )
+                }
             }
         },
         // app 端默认值 (对照 AudioPlayScreenContent.kt 注释)

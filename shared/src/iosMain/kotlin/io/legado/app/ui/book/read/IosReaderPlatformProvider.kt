@@ -474,7 +474,7 @@ private class IosReadMenuState(
             ReadMenuAction.PAGE_ANIM ->
                 ReadBookEvents.postConfig(ReadConfigChange.PAGE_ANIM, ReadConfigChange.LOAD_CONTENT)
 
-            // 模拟阅读 (对照原版 menu_simulated_reading → SimulatedReadingDialog)
+            // 模拟追读 (对照原版 menu_simulated_reading → SimulatedReadingDialog)
             ReadMenuAction.SIMULATED_READING ->
                 screenModel.postDialogEvent(ReaderDialogEvent.SimulatedReading)
 

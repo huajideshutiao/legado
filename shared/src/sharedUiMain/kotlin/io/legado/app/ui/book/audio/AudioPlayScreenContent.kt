@@ -1,9 +1,18 @@
 package io.legado.app.ui.book.audio
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -13,6 +22,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,7 +31,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
@@ -39,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -48,7 +59,9 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.config.AppConfigProviders
@@ -61,6 +74,9 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.compose.theme.LocalEInk
+import io.legado.app.ui.preview.LegadoThemePreview
+import io.legado.app.utils.format
 import io.legado.app.utils.toDurationTime
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.audio_play
@@ -80,9 +96,18 @@ import legado.shared.generated.resources.speed
 import legado.shared.generated.resources.stop
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import io.legado.app.utils.format
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
+
+/**
+ * 宽屏右侧面板内容类型 (评论/目录共用同一面板槽位, 互斥显示)。
+ * 窄屏 (窗口宽 < [AudioPlaySidePanelMinWidth]) 时面板不启用, 入口保持原版交互 (弹窗/全屏页)。
+ */
+enum class AudioPlaySidePanelKind { TOC, REVIEW }
+
+/** 宽屏面板启用阈值 (与主界面 MainNavRailMinWindowWidth 同惯例: 桌面/平板横屏判宽屏)。 */
+val AudioPlaySidePanelMinWidth = 600.dp
+
+/** 面板宽度上限 (比例随容器宽, 封顶避免大窗口面板过宽)。 */
+val AudioPlaySidePanelMaxWidth = 400.dp
 
 /**
  * 音频播放页主体内容 (模糊封面背景 + 遮罩 + 标题栏 + 副标题 + 封面/歌词区 + 进度条 + 播放控制排)。
@@ -186,6 +211,14 @@ fun AudioPlayScreenContent(
     playMenuAlpha: Float = 1f,
     titleBarHorizontalPadding: Dp = 8.dp,
     playModeIconPadding: Dp = 4.dp,
+    /** 宽屏右侧面板宽度 (0=不启用; 由路由层按窗口宽计算)。 */
+    sidePanelWidth: Dp = 0.dp,
+    /** 面板当前是否显示 (驱动滑入/滑出与左侧挤压动画)。 */
+    sidePanelVisible: Boolean = false,
+    /** 面板当前内容类型 (null=无; 切换时直接替换内容)。 */
+    sidePanelKind: AudioPlaySidePanelKind? = null,
+    /** 面板内容渲染 (评论/目录各自的内容组件)。 */
+    sidePanelSlot: @Composable (AudioPlaySidePanelKind) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val keyScope = rememberCoroutineScope()
@@ -195,6 +228,17 @@ fun AudioPlayScreenContent(
     LaunchedEffect(Unit) {
         runCatching { keyFocusRequester.requestFocus() }
     }
+    // 宽屏面板动画: 滑入位移 + 左侧挤压同步 (E-Ink 一律 snap 无动画, 项目惯例)
+    val eInk = LocalEInk.current
+    val panelSlideAnim: FiniteAnimationSpec<IntOffset> =
+        if (eInk) snap() else tween(durationMillis = 300, easing = FastOutSlowInEasing)
+    val panelWidthAnim: FiniteAnimationSpec<Dp> =
+        if (eInk) snap() else tween(durationMillis = 300, easing = FastOutSlowInEasing)
+    val animatedPanelWidth by animateDpAsState(
+        targetValue = if (sidePanelVisible) sidePanelWidth else 0.dp,
+        animationSpec = panelWidthAnim,
+        label = "audioSidePanelWidth",
+    )
     Box(
         modifier
             .fillMaxSize()
@@ -221,7 +265,8 @@ fun AudioPlayScreenContent(
         bgSlot(coverUrl, Modifier.matchParentSize())
         // 半透明遮罩 (对照 app 端 0x3A000000)
         Box(Modifier.matchParentSize().background(Color(0x3A000000)))
-        Column(Modifier.fillMaxSize()) {
+        // 左区: 右侧随面板宽度动画挤压 (面板滑入时内容同步变窄)
+        Column(Modifier.fillMaxSize().padding(end = animatedPanelWidth)) {
             AudioTitleBar(
                 title = title,
                 onBack = onBack,
@@ -317,6 +362,39 @@ fun AudioPlayScreenContent(
                 timerDialogSlot = timerDialogSlot,
                 speedDialogSlot = speedDialogSlot,
             )
+        }
+        // 宽屏右侧面板 (仅启用时组合; 滑入/滑出动画, 内容由路由层注入)
+        if (sidePanelWidth > 0.dp) {
+            // exit 动画期间保留旧内容 (否则滑出时面板内容先消失);
+            // sidePanelKind 为空时沿用上次内容 (面板已开时切 kind 直接替换)
+            var lastKind by remember { mutableStateOf<AudioPlaySidePanelKind?>(null) }
+            lastKind = sidePanelKind ?: lastKind
+            AnimatedVisibility(
+                visible = sidePanelVisible,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight(),
+                enter = slideInHorizontally(panelSlideAnim) { it },
+                exit = slideOutHorizontally(panelSlideAnim) { it },
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxHeight()
+                        .width(sidePanelWidth)
+                        // 左缘分隔线 (与左区内容区分)
+                        .drawBehind {
+                            val stroke = 1.dp.toPx()
+                            drawLine(
+                                color = Color.White.copy(alpha = 0.1f),
+                                start = Offset(0f, 0f),
+                                end = Offset(0f, size.height),
+                                strokeWidth = stroke,
+                            )
+                        }
+                ) {
+                    lastKind?.let { sidePanelSlot(it) }
+                }
+            }
         }
     }
 }
@@ -511,6 +589,8 @@ private fun ProgressRow(
 ) {
     // 拖动中的预览值 (拖动期间不回显事件进度)
     var dragValue by remember { mutableStateOf<Int?>(null) }
+    // 时长未知 (流式资源 READY 前/无时长): 显示 --:-- 并禁用拖动, 避免“进度超过时长”的观感
+    val durationKnown = durationMs > 0
     Row(
         Modifier
             .fillMaxWidth()
@@ -518,7 +598,8 @@ private fun ProgressRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            (dragValue ?: progressMs).toDurationTime(),
+            (dragValue ?: if (durationKnown) progressMs.coerceIn(0, durationMs) else progressMs)
+                .toDurationTime(),
             color = Color.White,
             fontSize = 14.sp,
         )
@@ -528,6 +609,7 @@ private fun ProgressRow(
             max = durationMs,
             activeColor = lrcActiveColor ?: accentColor,
             bufferColor = lrcInactiveColor ?: accentColor.copy(alpha = 0.5f),
+            enabled = durationKnown,
             onDrag = { dragValue = it },
             onDragFinished = {
                 dragValue?.let { onSeek(it) }
@@ -537,7 +619,11 @@ private fun ProgressRow(
                 .weight(1f)
                 .height(25.dp),
         )
-        Text(durationMs.toDurationTime(), color = Color.White, fontSize = 14.sp)
+        Text(
+            if (durationKnown) durationMs.toDurationTime() else "--:--",
+            color = Color.White,
+            fontSize = 14.sp,
+        )
     }
 }
 
@@ -549,32 +635,42 @@ private fun AudioSeekBar(
     max: Int,
     activeColor: Color,
     bufferColor: Color,
+    enabled: Boolean = true,
     onDrag: (Int) -> Unit,
     onDragFinished: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val range = max.coerceAtLeast(1)
+    // 显示钳制: 兜住 READY 前 progressMs 瞬时超限, 避免文字/轨道溢出
+    val clampedValue = value.coerceIn(0, range)
+    val clampedSecondary = secondary.coerceIn(0, range)
 
     fun fractionToValue(fraction: Float): Int =
         (fraction * range).toInt().coerceIn(0, range)
 
     Box(
-        modifier
-            .pointerInput(max) {
-                detectTapGestures(onTap = { pos ->
-                    onDrag(fractionToValue(pos.x / size.width))
-                    onDragFinished()
-                })
+        modifier.then(
+            if (enabled) {
+                Modifier
+                    .pointerInput(max) {
+                        detectTapGestures(onTap = { pos ->
+                            onDrag(fractionToValue(pos.x / size.width))
+                            onDragFinished()
+                        })
+                    }
+                    .pointerInput(max) {
+                        detectHorizontalDragGestures(
+                            onDragEnd = { onDragFinished() },
+                            onDragCancel = { onDragFinished() },
+                        ) { change, _ ->
+                            change.consume()
+                            onDrag(fractionToValue(change.position.x / size.width))
+                        }
+                    }
+            } else {
+                Modifier
             }
-            .pointerInput(max) {
-                detectHorizontalDragGestures(
-                    onDragEnd = { onDragFinished() },
-                    onDragCancel = { onDragFinished() },
-                ) { change, _ ->
-                    change.consume()
-                    onDrag(fractionToValue(change.position.x / size.width))
-                }
-            },
+        ),
         contentAlignment = Alignment.CenterStart,
     ) {
         Canvas(Modifier.fillMaxSize()) {
@@ -583,17 +679,37 @@ private fun AudioSeekBar(
             val cy = size.height / 2
             val startX = thumbR
             val endX = size.width - thumbR
-            val playFrac = (value.toFloat() / range).coerceIn(0f, 1f)
-            val bufFrac = (secondary.toFloat() / range).coerceIn(0f, 1f)
+            val playFrac = (clampedValue.toFloat() / range).coerceIn(0f, 1f)
+            val bufFrac = (clampedSecondary.toFloat() / range).coerceIn(0f, 1f)
             val playX = startX + (endX - startX) * playFrac
             val bufX = startX + (endX - startX) * bufFrac
+            // 禁用态 (时长未知): 半透明呈现, 与可拖动态区分
+            val layerColor = { color: Color -> if (enabled) color else color.copy(alpha = 0.35f) }
             // 进度背景
-            drawLine(Color(0xB3FFFFFF), Offset(startX, cy), Offset(endX, cy), trackH, StrokeCap.Round)
+            drawLine(
+                layerColor(Color(0xB3FFFFFF)),
+                Offset(startX, cy),
+                Offset(endX, cy),
+                trackH,
+                StrokeCap.Round
+            )
             if (bufX > startX) {
-                drawLine(bufferColor, Offset(startX, cy), Offset(bufX, cy), trackH, StrokeCap.Round)
+                drawLine(
+                    layerColor(bufferColor),
+                    Offset(startX, cy),
+                    Offset(bufX, cy),
+                    trackH,
+                    StrokeCap.Round,
+                )
             }
-            drawLine(activeColor, Offset(startX, cy), Offset(playX, cy), trackH, StrokeCap.Round)
-            drawCircle(activeColor, thumbR, Offset(playX, cy))
+            drawLine(
+                layerColor(activeColor),
+                Offset(startX, cy),
+                Offset(playX, cy),
+                trackH,
+                StrokeCap.Round
+            )
+            drawCircle(layerColor(activeColor), thumbR, Offset(playX, cy))
         }
     }
 }
@@ -688,9 +804,11 @@ private fun PlayMenu(
                 )
             }
             if (loading) {
+                // 64dp 视图 - 4dp stroke = 60dp 圈环, 内缘贴 56dp 按钮外缘
                 CircularProgressIndicator(
                     color = accentColor,
-                    modifier = Modifier.matchParentSize(),
+                    strokeWidth = 4.dp,
+                    modifier = Modifier.size(64.dp),
                 )
             }
         }

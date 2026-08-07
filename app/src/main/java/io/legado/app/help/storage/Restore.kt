@@ -4,8 +4,8 @@ import android.content.Context
 import android.net.Uri
 import androidx.core.net.toUri
 import io.legado.app.BuildConfig
-import io.legado.app.R
 import io.legado.app.constant.PreferKey
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.LauncherIconHelp
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.utils.FileDoc
@@ -69,7 +69,7 @@ object Restore {
 
     /** 恢复完成: 提示 + 切换图标 + 应用日夜间 (与原实现一致)。 */
     suspend fun onRestoreFinished() {
-        appCtx.toastOnUi(R.string.restore_success)
+        appCtx.toastOnUi(androidAppString("restore_success"))
         withContext(Main) {
             delay(100)
             if (!BuildConfig.DEBUG) {

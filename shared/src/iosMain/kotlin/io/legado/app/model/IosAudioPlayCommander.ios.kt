@@ -121,6 +121,8 @@ class IosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
             AudioPlayShared.status = Status.STOP
             AudioPlayShared.book?.let { save(it) }
             postEvent(EventBus.AUDIO_STATE, Status.STOP)
+            // 停止即收掉加载转圈
+            postEvent(EventBus.AUDIO_LOADING, false)
         }
     }
 
@@ -203,6 +205,7 @@ class IosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
         pause = true
         AudioPlayShared.status = Status.STOP
         postEvent(EventBus.AUDIO_STATE, Status.STOP)
+        postEvent(EventBus.AUDIO_LOADING, false)
     }
 
     /** 对应 AudioPlayService.triggerPlay */
@@ -223,6 +226,8 @@ class IosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
         try {
             AudioPlayShared.status = Status.LOADING
             postEvent(EventBus.AUDIO_STATE, Status.LOADING)
+            // 起播/缓冲阶段转圈 (覆盖 resume 直播路径; URL 加载路径已由 manager 发 true)
+            postEvent(EventBus.AUDIO_LOADING, true)
             manager.cancelProgressJobs()
             val analyzeUrl = MediaAnalyzeUrl(
                 url,
@@ -438,8 +443,9 @@ private class IosAvAudioPlayController(
             return (seconds * 1000.0).toLong()
         }
 
-    // AVPlayerItem.loadedTimeRanges 的 NSValue→CMTimeRange 桥接符号无法本机验证, 缓冲条恒 0 (与 desktop 一致)
-    override val bufferedPosition: Long get() = 0L
+    // AVPlayerItem.loadedTimeRanges 的 NSValue→CMTimeRange 桥接符号无法本机验证,
+    // 用已播位置近似缓冲
+    override val bufferedPosition: Long get() = currentPosition
 
     override val playbackState: Int get() = state
 

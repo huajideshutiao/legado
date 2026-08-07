@@ -4,12 +4,12 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
-import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
-import io.legado.app.R
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.constant.AppLog
+import io.legado.app.help.IntentData
 import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
@@ -23,6 +23,7 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.FileUtils
@@ -33,6 +34,7 @@ import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.readUri
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
@@ -92,8 +94,8 @@ class FileAssociationFragment() : Fragment() {
         }
         viewModel.notSupportedLiveData.observe(this) { data ->
             alert(
-                title = appCtx.getString(R.string.draw),
-                message = appCtx.getString(R.string.file_not_supported, data.second)
+                title = androidAppString("draw"),
+                message = androidAppString("file_not_supported", data.second)
             ) {
                 yesButton {
                     importBook(data.first)
@@ -114,7 +116,7 @@ class FileAssociationFragment() : Fragment() {
         } else {
             PermissionsCompat.Builder()
                 .addPermissions(*Permissions.Group.STORAGE)
-                .rationale(R.string.tip_perm_request_storage)
+                .rationale(androidAppString("tip_perm_request_storage"))
                 .onGranted {
                     viewModel.dispatchIntent(uri)
                 }
@@ -133,12 +135,12 @@ class FileAssociationFragment() : Fragment() {
             return
         }
         when (uri.path) {
-            "/bookSource", "/rssSource" -> showImportDialog(ImportBookSourceDialog(url, isShell))
-            "/replaceRule" -> showImportDialog(ImportReplaceRuleDialog(url, isShell))
-            "/textTocRule" -> showImportDialog(ImportTxtTocRuleDialog(url, isShell))
-            "/httpTTS" -> showImportDialog(ImportHttpTtsDialog(url, isShell))
-            "/dictRule" -> showImportDialog(ImportDictRuleDialog(url, isShell))
-            "/theme" -> showImportDialog(ImportThemeDialog(url, isShell))
+            "/bookSource", "/rssSource" -> showImportDialog(DeepLinkImportType.BOOK_SOURCE, url)
+            "/replaceRule" -> showImportDialog(DeepLinkImportType.REPLACE_RULE, url)
+            "/textTocRule" -> showImportDialog(DeepLinkImportType.TXT_TOC_RULE, url)
+            "/httpTTS" -> showImportDialog(DeepLinkImportType.HTTP_TTS, url)
+            "/dictRule" -> showImportDialog(DeepLinkImportType.DICT_RULE, url)
+            "/theme" -> showImportDialog(DeepLinkImportType.THEME, url)
             "/addToBookshelf" -> {
                 AddToBookshelfHelper.add(
                     AppNavigatorProviders.get(),
@@ -156,8 +158,10 @@ class FileAssociationFragment() : Fragment() {
             }
 
             "/importonline" -> when (uri.host) {
-                "booksource", "rsssource" -> showImportDialog(ImportBookSourceDialog(url, isShell))
-                "replace" -> showImportDialog(ImportReplaceRuleDialog(url, isShell))
+                "booksource", "rsssource" ->
+                    showImportDialog(DeepLinkImportType.BOOK_SOURCE, url)
+
+                "replace" -> showImportDialog(DeepLinkImportType.REPLACE_RULE, url)
                 else -> viewModel.determineType(url) { title, msg ->
                     finallyDialog(title, msg)
                 }
@@ -171,24 +175,35 @@ class FileAssociationFragment() : Fragment() {
 
     private fun handleSuccess(it: Pair<String, String>) {
         when (it.first) {
-            "bookSource", "rssSource" -> showImportDialog(
-                ImportBookSourceDialog(
-                    it.second,
-                    isShell
-                )
-            )
-
-            "replaceRule" -> showImportDialog(ImportReplaceRuleDialog(it.second, isShell))
-            "httpTts" -> showImportDialog(ImportHttpTtsDialog(it.second, isShell))
-            "theme" -> showImportDialog(ImportThemeDialog(it.second, isShell))
-            "txtRule" -> showImportDialog(ImportTxtTocRuleDialog(it.second, isShell))
-            "dictRule" -> showImportDialog(ImportDictRuleDialog(it.second, isShell))
+            "bookSource", "rssSource" -> showImportDialog(DeepLinkImportType.BOOK_SOURCE, it.second)
+            "replaceRule" -> showImportDialog(DeepLinkImportType.REPLACE_RULE, it.second)
+            "httpTts" -> showImportDialog(DeepLinkImportType.HTTP_TTS, it.second)
+            "theme" -> showImportDialog(DeepLinkImportType.THEME, it.second)
+            "txtRule" -> showImportDialog(DeepLinkImportType.TXT_TOC_RULE, it.second)
+            "dictRule" -> showImportDialog(DeepLinkImportType.DICT_RULE, it.second)
         }
     }
 
-    private fun showImportDialog(dialog: DialogFragment) {
-        // 通过宿主 Activity 的 FragmentManager 显示，避免强转 AppCompatActivity
-        dialog.show(parentFragmentManager, dialog::class.simpleName)
+    /**
+     * 导入对话框改走 shared Overlay 分发 (对照 ImportOverlayDialogs 的 IntentData 侧信道模式):
+     * source 文本经 IntentData 存侧信道, overlay payload 只放 key。
+     * 原版 finishOnDismiss(isShell) 语义保留: 宿主是 MainActivity 时等 overlay 关闭后 finish。
+     */
+    private fun showImportDialog(type: DeepLinkImportType, source: String) {
+        AppNavigatorProviders.get().showOverlay(
+            AppOverlay.Dialog(
+                key = "*Import:${type.name}",
+                payload = IntentData.put(source),
+            )
+        )
+        if (isShell) {
+            lifecycleScope.launch {
+                AppNavigatorProviders.get().overlays.first { list ->
+                    list.none { it.key.startsWith("*Import:") }
+                }
+                activity?.finish()
+            }
+        }
         removeSelf()
     }
 
@@ -221,7 +236,7 @@ class FileAssociationFragment() : Fragment() {
         val treeUriStr = AppConfig.defaultBookTreeUri
         if (uri.isContentScheme() && treeUriStr.isNullOrEmpty()) {
             localBookTreeSelect.launch {
-                title = getString(R.string.select_book_folder)
+                title = androidAppString("select_book_folder")
                 mode = HandleFileContract.DIR_SYS
             }
         } else {
@@ -275,7 +290,7 @@ class FileAssociationFragment() : Fragment() {
             }.onFailure {
                 if (it is InvalidBooksDirException) {
                     localBookTreeSelect.launch {
-                        title = getString(R.string.select_book_folder)
+                        title = androidAppString("select_book_folder")
                         mode = HandleFileContract.DIR_SYS
                     }
                 } else {

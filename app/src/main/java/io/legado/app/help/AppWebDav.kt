@@ -1,10 +1,10 @@
 package io.legado.app.help
 
 import android.net.Uri
-import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.AppWebDav.defaultBookWebDav
 import io.legado.app.help.AppWebDav.exportWebDav
 import io.legado.app.help.AppWebDav.upBgs
@@ -100,7 +100,7 @@ object AppWebDav {
         }.onFailure {
             currentCoroutineContext().ensureActive()
             if (it is WebDavException) {
-                appCtx.toastOnUi(R.string.webdav_application_authorization_error)
+                appCtx.toastOnUi(androidAppString("webdav_application_authorization_error"))
             }
             AppLog.put("WebDav upConfig 失败\n${it.localizedMessage}", it)
         }

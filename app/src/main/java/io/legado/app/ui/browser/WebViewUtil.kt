@@ -18,7 +18,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.net.toUri
 import androidx.fragment.app.commit
-import io.legado.app.R
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.ui.compose.dialogs.alert
@@ -124,7 +124,7 @@ object WebViewUtil {
             fileName = URLDecoder.decode(fileName, "UTF-8")
             // Arco: 可交互 Snackbar 换成对话框
             activity.alert(fileName) {
-                positiveButton(R.string.action_download) {
+                positiveButton(androidAppString("action_download")) {
                     Download.start(url, fileName)
                 }
                 cancelButton()
@@ -144,8 +144,8 @@ object WebViewUtil {
 
             else -> {
                 // Arco: 可交互 Snackbar 换成对话框
-                activity.alert(R.string.jump_to_another_app) {
-                    positiveButton(R.string.confirm) {
+                activity.alert(androidAppString("jump_to_another_app")) {
+                    positiveButton(androidAppString("confirm")) {
                         activity.openUrl(url)
                     }
                     cancelButton()
@@ -168,8 +168,8 @@ object WebViewUtil {
             ) {
                 hitTestResult.extra?.let { webPic ->
                     val items: List<SelectItem<String>> = arrayListOf(
-                        SelectItem(activity.getString(R.string.action_save), "save"),
-                        SelectItem(activity.getString(R.string.select_folder), "selectFolder")
+                        SelectItem(androidAppString("action_save"), "save"),
+                        SelectItem(androidAppString("select_folder"), "selectFolder")
                     )
                     activity.selector(items) { _, item, _ ->
                         when (item.value) {

@@ -1,6 +1,7 @@
 package io.legado.app.ui.main
 
 import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
 import android.provider.Settings
@@ -58,7 +59,6 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.commit
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
-import io.legado.app.R
 import io.legado.app.base.AppContextWrapper
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
@@ -76,6 +76,7 @@ import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.Review
 import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.CrashHandler
 import io.legado.app.help.DirectLinkUpload
@@ -111,7 +112,6 @@ import io.legado.app.ui.association.FileAssociationViewModel
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.import.local.ImportBook
 import io.legado.app.ui.book.import.local.ImportBookViewModel
-import io.legado.app.ui.book.read.ReviewListDialog
 import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.book.read.config.HttpTtsEditDialog
 import io.legado.app.ui.book.source.BookSourceSort
@@ -125,6 +125,8 @@ import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.dialogs.selector
+import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.platform.rememberStringArray
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.config.DefaultCoverGalleryDialog
@@ -137,12 +139,13 @@ import io.legado.app.ui.root.DialogTransitionSpec
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.RouteTransitionSpec
 import io.legado.app.ui.root.TransitionEasing
+import io.legado.app.ui.root.encodeBookVariableOverlayPayload
+import io.legado.app.ui.root.encodeSourceVariableOverlayPayload
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
+import io.legado.app.ui.route.encodeReviewListDialogPayload
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.ui.widget.dialog.TextDialog
-import io.legado.app.ui.widget.dialog.showBookVariableDialog
-import io.legado.app.ui.widget.dialog.showSourceVariableDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
@@ -309,6 +312,28 @@ class AndroidPlatformCapabilities(
         activity.openUrl(url)
     }
 
+    // 对照原版 OpenUrlConfirmDialog.openUrl: mimeType 非空时 setDataAndType 显式指定打开类型
+    override fun openExternalUrl(url: String, mimeType: String?) {
+        if (mimeType.isNullOrBlank()) {
+            activity.openUrl(url)
+            return
+        }
+        try {
+            val uri = url.toUri()
+            val targetIntent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mimeType)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            if (targetIntent.resolveActivity(appCtx.packageManager) != null) {
+                appCtx.startActivity(targetIntent)
+            } else {
+                appCtx.toastOnUi(androidAppString("can_not_open"))
+            }
+        } catch (e: Exception) {
+            AppLog.put("打开链接失败", e, true)
+        }
+    }
+
     override fun openWebView(url: String, sourceKey: String, sourceName: String) {
         // 移动端保留内嵌 WebViewRoute 路由语义 (对话框内嵌)
         AppNavigatorProviders.getOrNull()?.push(
@@ -445,14 +470,20 @@ class AndroidPlatformCapabilities(
         }
     }
 
-    // 评论: 恢复原版 BottomSheetDialogFragment (对照 BookInfoViewModel.openCommentDialog)
+    // 评论: 经 shared Overlay 弹段评/书评列表 (对照 app 端 ReviewListDialog BottomSheetDialogFragment;
+    // shared ReviewListDialogHost 用 AppBottomSheetDialog 还原底部弹窗语义, payload 编码见 ReviewListDialogHost.kt)
     override fun showReviewListDialog(
         book: Book,
         chapter: BookChapter?,
         paragraphIndex: Int,
         parentReview: Review?,
     ): Boolean {
-        activity.showDialogFragment(ReviewListDialog(book, chapter, paragraphIndex, parentReview))
+        AppNavigatorProviders.getOrNull()?.showOverlay(
+            AppOverlay.Dialog(
+                key = "review_list",
+                payload = encodeReviewListDialogPayload(book, chapter, paragraphIndex, parentReview),
+            )
+        )
         return true
     }
 
@@ -591,7 +622,7 @@ class AndroidPlatformCapabilities(
 
     // 对照 ImportBookActivity.onAlertImportFileName / alertImportFileName
     override fun alertImportFileName() {
-        activity.alert(R.string.import_file_name) {
+        activity.alert(androidAppString("import_file_name")) {
             setMessage("使用js处理文件名变量src，将书名作者分别赋值到变量name author")
             val getText = editTextView(hint = "js", text = AppConfig.bookImportFileName ?: "")
             okButton {
@@ -716,7 +747,7 @@ class AndroidPlatformCapabilities(
             delBook(book, LocalConfig.deleteBookOriginal, onComplete)
             return
         }
-        activity.alert(titleResource = R.string.draw, messageResource = R.string.sure_del) {
+        activity.alert(title = androidAppString("draw"), message = androidAppString("sure_del")) {
             val deleteFile = mutableStateOf(LocalConfig.deleteBookOriginal)
             if (book.isLocal) {
                 customView {
@@ -734,7 +765,7 @@ class AndroidPlatformCapabilities(
                     ) {
                         AppCheckbox(checked = deleteFile.value, onCheckedChange = null)
                         Text(
-                            stringResource(R.string.delete_book_file),
+                            rememberString("delete_book_file"),
                             color = AppTheme.colors.primaryText
                         )
                     }
@@ -765,26 +796,40 @@ class AndroidPlatformCapabilities(
         }
     }
 
-    // 对照 BookInfoActivity.onSetBookVariable / book.showBookVariableDialog (需查源)
+    // 对照 BookInfoActivity.onSetBookVariable / book.showBookVariableDialog (需查源);
+    // VariableDialog 已下沉 shared: 经 bookVariable Overlay 弹出 (payload 编码见 VariableOverlayDialog.kt)
     override fun showBookVariableDialog(book: Book) {
         activity.lifecycleScope.launch(IO) {
             val source = appDb.bookSourceDao.getBookSource(book.origin)
-            activity.runOnUiThread {
-                book.showBookVariableDialog(activity, source)
+            if (source != null) {
+                activity.runOnUiThread {
+                    AppNavigatorProviders.getOrNull()?.showOverlay(
+                        AppOverlay.Dialog(
+                            key = "bookVariable",
+                            payload = encodeBookVariableOverlayPayload(book, source),
+                        )
+                    )
+                }
             }
         }
     }
 
-    // 对照 BookInfoActivity.onSetSourceVariable / source.showSourceVariableDialog (需查源)
+    // 对照 BookInfoActivity.onSetSourceVariable / source.showSourceVariableDialog (需查源);
+    // 查不到源 toast error_no_source (与原版一致), 查到时经 sourceVariable Overlay 弹出
     override fun showSourceVariableDialog(book: Book) {
         activity.lifecycleScope.launch(IO) {
             val source = appDb.bookSourceDao.getBookSource(book.origin)
             if (source == null) {
-                activity.toastOnUi(R.string.error_no_source)
+                activity.toastOnUi(androidAppString("error_no_source"))
                 return@launch
             }
             activity.runOnUiThread {
-                source.showSourceVariableDialog(activity)
+                AppNavigatorProviders.getOrNull()?.showOverlay(
+                    AppOverlay.Dialog(
+                        key = "sourceVariable",
+                        payload = encodeSourceVariableOverlayPayload(source),
+                    )
+                )
             }
         }
     }
@@ -795,7 +840,7 @@ class AndroidPlatformCapabilities(
         activity.lifecycleScope.launch(IO) {
             val source = appDb.bookSourceDao.getBookSource(book.origin)
             if (source == null) {
-                activity.toastOnUi(R.string.error_no_source)
+                activity.toastOnUi(androidAppString("error_no_source"))
                 return@launch
             }
             try {
@@ -892,7 +937,7 @@ class AndroidPlatformCapabilities(
         onAction: (String) -> Unit,
         onSuccess: ((Book) -> Unit)?,
     ) {
-        activity.selector(R.string.download_and_import_file, webFiles) { _, webFile, _ ->
+        activity.selector(androidAppString("download_and_import_file"), webFiles) { _, webFile, _ ->
             if (webFile.isSupported) {
                 importWebFile(book, webFile, onWaitDialog, onAction) { onSuccess?.invoke(it) }
             } else if (webFile.isSupportDecompress) {
@@ -918,10 +963,10 @@ class AndroidPlatformCapabilities(
                 }
             } else {
                 activity.alert(
-                    title = activity.getString(R.string.draw),
-                    message = activity.getString(R.string.file_not_supported, webFile.name)
+                    title = androidAppString("draw"),
+                    message = androidAppString("file_not_supported", webFile.name)
                 ) {
-                    neutralButton(R.string.open_fun) {
+                    neutralButton(androidAppString("open_fun")) {
                         downloadWebFile(book, webFile, onWaitDialog, onAction) { path ->
                             activity.openFileUri(path.toUri(), "*/*")
                         }
@@ -941,10 +986,10 @@ class AndroidPlatformCapabilities(
         onSuccess: ((Book) -> Unit)?,
     ) {
         if (fileNames.isEmpty()) {
-            activity.toastOnUi(R.string.unsupport_archivefile_entry)
+            activity.toastOnUi(androidAppString("unsupport_archivefile_entry"))
             return
         }
-        activity.selector(R.string.import_select_book, fileNames) { _, name, _ ->
+        activity.selector(androidAppString("import_select_book"), fileNames) { _, name, _ ->
             importBookFromArchive(
                 archiveFilePath,
                 name,
@@ -1152,7 +1197,7 @@ class AndroidPlatformCapabilities(
         val typeState = mutableIntStateOf(if (AppConfig.exportType == 1) 1 else 0)
         val charsetState = mutableStateOf(AppConfig.exportCharset)
         val noChapterNameState = mutableStateOf(AppConfig.exportNoChapterName)
-        activity.alert(R.string.export_config) {
+        activity.alert(androidAppString("export_config")) {
             customView {
                 Column(
                     Modifier
@@ -1160,7 +1205,7 @@ class AndroidPlatformCapabilities(
                         .padding(horizontal = 24.dp, vertical = 8.dp)
                 ) {
                     Text(
-                        activity.getString(R.string.export_file_name),
+                        androidAppString("export_file_name"),
                         color = AppTheme.colors.primaryText,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(bottom = 4.dp),
@@ -1173,7 +1218,7 @@ class AndroidPlatformCapabilities(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Text(
-                        activity.getString(R.string.export_type),
+                        androidAppString("export_type"),
                         color = AppTheme.colors.primaryText,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
@@ -1204,7 +1249,7 @@ class AndroidPlatformCapabilities(
                         }
                     }
                     Text(
-                        activity.getString(R.string.export_charset),
+                        androidAppString("export_charset"),
                         color = AppTheme.colors.primaryText,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
@@ -1232,7 +1277,7 @@ class AndroidPlatformCapabilities(
                             onCheckedChange = null,
                         )
                         Text(
-                            activity.getString(R.string.export_no_chapter_name),
+                            androidAppString("export_no_chapter_name"),
                             color = AppTheme.colors.primaryText,
                             modifier = Modifier.padding(start = 8.dp),
                         )
@@ -1264,7 +1309,7 @@ class AndroidPlatformCapabilities(
         val fileNameHelper = mutableStateOf("")
         // 章节范围错误 (对照 etInputScope.error)
         val scopeError = mutableStateOf<String?>(null)
-        activity.alert(R.string.select_section_export) {
+        activity.alert(androidAppString("select_section_export")) {
             customView {
                 Column(
                     Modifier
@@ -1295,7 +1340,7 @@ class AndroidPlatformCapabilities(
                         ) {
                             AppCheckbox(checked = allState.value, onCheckedChange = null)
                             Text(
-                                activity.getString(R.string.export_all),
+                                androidAppString("export_all"),
                                 color = AppTheme.colors.primaryText,
                                 modifier = Modifier.padding(start = 8.dp),
                             )
@@ -1316,7 +1361,7 @@ class AndroidPlatformCapabilities(
                         ) {
                             AppCheckbox(checked = customState.value, onCheckedChange = null)
                             Text(
-                                activity.getString(R.string.custom_export),
+                                androidAppString("custom_export"),
                                 color = AppTheme.colors.primaryText,
                                 modifier = Modifier.padding(start = 8.dp),
                             )
@@ -1324,7 +1369,7 @@ class AndroidPlatformCapabilities(
                     }
                     // epub 文件名 JS 规则 (分卷, 对照 lyEtEpubFilename/etEpubFilename)
                     Text(
-                        activity.getString(R.string.export_file_name),
+                        androidAppString("export_file_name"),
                         color = AppTheme.colors.primaryText,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
@@ -1351,13 +1396,13 @@ class AndroidPlatformCapabilities(
                                 fileNameHelper.value =
                                     if (tryParesExportFileName(fileNameState.value)) {
                                         books.firstOrNull()?.let { book ->
-                                            activity.getString(R.string.result_analyzed) + ": " +
+                                            androidAppString("result_analyzed") + ": " +
                                                 book.getExportFileName(
                                                     "epub",
                                                     1,
                                                     fileNameState.value
                                                 )
-                                        } ?: activity.getString(R.string.result_analyzed)
+                                        } ?: androidAppString("result_analyzed")
                                     } else {
                                         "Error"
                                     }
@@ -1394,7 +1439,7 @@ class AndroidPlatformCapabilities(
                         enabled = customState.value,
                         label = {
                             Text(
-                                activity.getString(R.string.file_contains_number),
+                                androidAppString("file_contains_number"),
                                 color = AppTheme.colors.secondaryText,
                             )
                         },
@@ -1415,7 +1460,7 @@ class AndroidPlatformCapabilities(
                         enabled = customState.value,
                         label = {
                             Text(
-                                activity.getString(R.string.export_chapter_index),
+                                androidAppString("export_chapter_index"),
                                 color = AppTheme.colors.secondaryText,
                             )
                         },
@@ -1439,14 +1484,14 @@ class AndroidPlatformCapabilities(
                 }
             }
             // 校验保留型确认: 范围非法时对话框不关闭 (对照 getButton(POSITIVE) 手动 hide 语义)
-            positiveButtonRetain(R.string.ok) {
+            positiveButtonRetain(androidAppString("ok")) {
                 if (allState.value) {
                     activity.startExportBooks(path, books)
                     true
                 } else {
                     val scopeText = scopeState.value.trim()
                     if (!verificationField(scopeText)) {
-                        scopeError.value = activity.getString(R.string.error_scope_input)
+                        scopeError.value = androidAppString("error_scope_input")
                         false
                     } else {
                         val epubSize = sizeState.value.toIntOrNull() ?: 1
@@ -1574,9 +1619,9 @@ class AndroidPlatformCapabilities(
     override fun selectionAddToGroups(selection: List<BookSourcePart>) {
         if (selection.isEmpty()) return
         val groups = runBlocking { appDb.bookSourceDao.flowGroups().first() }
-        activity.alert(R.string.add_group) {
+        activity.alert(androidAppString("add_group")) {
             val getGroup = editTextView(
-                hint = activity.getString(R.string.group_name),
+                hint = androidAppString("group_name"),
                 filterValues = groups,
             )
             okButton {
@@ -1592,9 +1637,9 @@ class AndroidPlatformCapabilities(
     override fun selectionRemoveFromGroups(selection: List<BookSourcePart>) {
         if (selection.isEmpty()) return
         val groups = runBlocking { appDb.bookSourceDao.flowGroups().first() }
-        activity.alert(R.string.remove_group) {
+        activity.alert(androidAppString("remove_group")) {
             val getGroup = editTextView(
-                hint = activity.getString(R.string.group_name),
+                hint = androidAppString("group_name"),
                 filterValues = groups,
             )
             okButton {
@@ -1636,14 +1681,14 @@ class AndroidPlatformCapabilities(
             sortAscending = sortAscending,
             sort = BookSourceSort.Default,
         ) { file ->
-            activity.share(file, title = activity.getString(R.string.share_selected_source))
+            activity.share(file, title = androidAppString("share_selected_source"))
         }
     }
 
     // 对照 BookSourceActivity.checkSource: alert 输入关键词 + CheckSource.start
     override fun checkBookSource(selection: List<BookSourcePart>) {
         if (selection.isEmpty()) return
-        activity.alert(R.string.search_book_key) {
+        activity.alert(androidAppString("search_book_key")) {
             val getKey = editTextView(hint = "search word", text = CheckSource.keyword)
             okButton {
                 getKey().takeIf { it.isNotEmpty() }?.let { CheckSource.keyword = it }
@@ -1655,7 +1700,7 @@ class AndroidPlatformCapabilities(
                 // 不再需要原版 adapter 轮询刷新 (startCheckMessageRefreshJob)
             }
             // 对照原版 getButton(BUTTON_NEUTRAL) 手动监听: 打开校验设置且不关闭输入框
-            neutralButtonRetain(R.string.check_source_config) {
+            neutralButtonRetain(androidAppString("check_source_config")) {
                 AppNavigatorProviders.getOrNull()
                     ?.showOverlay(AppOverlay.Dialog("check_source_config"))
             }
@@ -1670,9 +1715,15 @@ class AndroidPlatformCapabilities(
         source.showLoginDialog()
     }
 
-    // 对照 BookSourceEditActivity.setSourceVariable / source.showSourceVariableDialog (route 已先 save)
+    // 对照 BookSourceEditActivity.setSourceVariable / source.showSourceVariableDialog (route 已先 save);
+    // VariableDialog 已下沉 shared: 经 sourceVariable Overlay 弹出
     override fun showBookSourceVariableDialog(source: BookSource) {
-        source.showSourceVariableDialog(activity)
+        AppNavigatorProviders.getOrNull()?.showOverlay(
+            AppOverlay.Dialog(
+                key = "sourceVariable",
+                payload = encodeSourceVariableOverlayPayload(source),
+            )
+        )
     }
 
     // ===== 主题设置弹窗平台能力: 对照 ThemeConfigFragment 同名方法 =====
@@ -1711,14 +1762,14 @@ class AndroidPlatformCapabilities(
     // 对照 ThemeConfigFragment.configBottomNav: dialog_bottom_nav_config.xml Compose 重建
     override fun showBottomNavConfigDialog() {
         val defaultNavItems = listOf(
-            BottomNavConfigItem(BottomNavTag.HOME, R.string.home, AppConfig.showHome),
-            BottomNavConfigItem(BottomNavTag.BOOKSHELF, R.string.bookshelf, true),
+            BottomNavConfigItem(BottomNavTag.HOME, androidAppString("home"), AppConfig.showHome),
+            BottomNavConfigItem(BottomNavTag.BOOKSHELF, androidAppString("bookshelf"), true),
             BottomNavConfigItem(
                 BottomNavTag.DISCOVERY,
-                R.string.discovery,
+                androidAppString("discovery"),
                 AppConfig.showDiscovery
             ),
-            BottomNavConfigItem(BottomNavTag.MY, R.string.my, true),
+            BottomNavConfigItem(BottomNavTag.MY, androidAppString("my"), true),
         )
         // 对照原版: 保存顺序合法才采用, 否则回退默认顺序
         val savedOrder =
@@ -1736,7 +1787,7 @@ class AndroidPlatformCapabilities(
         val iconSize = mutableStateOf(AppConfig.bottomBarIconSize)
         val labelMode = mutableStateOf(AppConfig.bottomBarLabelMode)
 
-        activity.alert(titleResource = R.string.bottom_nav_config) {
+        activity.alert(title = androidAppString("bottom_nav_config")) {
             customView {
                 BottomNavConfigContent(navItems, height, iconSize, labelMode)
             }
@@ -1763,7 +1814,7 @@ class AndroidPlatformCapabilities(
                 // 对照原版: 有变更才 recreateActivities()
                 if (changed) postEvent(EventBus.RECREATE, "")
             }
-            neutralButtonRetain(R.string.reset) {
+            neutralButtonRetain(androidAppString("reset")) {
                 // 对照原版 neutralButton: 恢复默认值但不关闭对话框
                 navItems.clear()
                 navItems.addAll(defaultNavItems.map { it.copy(enabled = true) })
@@ -1802,7 +1853,7 @@ class AndroidPlatformCapabilities(
         val showKind = mutableStateOf(AppConfig.bookshelfListShowKind)
         val showIntro = mutableStateOf(AppConfig.bookshelfListShowIntro)
 
-        activity.alert(titleResource = R.string.bookshelf_layout) {
+        activity.alert(title = androidAppString("bookshelf_layout")) {
             customView {
                 BookshelfLayoutConfigContent(
                     groupStyle = groupStyle,
@@ -1924,7 +1975,7 @@ class AndroidPlatformCapabilities(
         Coroutine.async {
             FileUtils.delete(activity.getDir("webview", Context.MODE_PRIVATE))
             FileUtils.delete(activity.getDir("hws_webview", Context.MODE_PRIVATE), true)
-            activity.toastOnUi(R.string.clear_webview_data_success)
+            activity.toastOnUi(androidAppString("clear_webview_data_success"))
             delay(3000)
             appCtx.restart()
         }.onError {
@@ -2010,9 +2061,9 @@ class AndroidPlatformCapabilities(
                 ArchiveUtils.getArchiveFilesName(fileDoc) { AppPattern.bookFileRegex.matches(it) }
             }.getOrDefault(emptyList())
             when {
-                fileNames.isEmpty() -> activity.toastOnUi(R.string.unsupport_archivefile_entry)
+                fileNames.isEmpty() -> activity.toastOnUi(androidAppString("unsupport_archivefile_entry"))
                 fileNames.size == 1 -> openArchiveBook(fileDoc, fileNames.first())
-                else -> activity.selector(R.string.start_read, fileNames) { _, name, _ ->
+                else -> activity.selector(androidAppString("start_read"), fileNames) { _, name, _ ->
                     openArchiveBook(fileDoc, name)
                 }
             }
@@ -2033,7 +2084,7 @@ class AndroidPlatformCapabilities(
             AppNavigatorProviders.getOrNull()?.push(book.toReadRoute())
             return
         }
-        activity.alert(R.string.draw, R.string.no_book_found_bookshelf) {
+        activity.alert(androidAppString("draw"), androidAppString("no_book_found_bookshelf")) {
             okButton {
                 activity.lifecycleScope.launch(IO) {
                     val book = runCatching {
@@ -2160,7 +2211,7 @@ class AndroidPlatformCapabilities(
 /** 底栏配置条目 (对照 ThemeConfigFragment.configBottomNav 内 NavItem, 书架/我的不可隐藏) */
 private data class BottomNavConfigItem(
     val tag: String,
-    val nameRes: Int,
+    val name: String,
     val enabled: Boolean,
 ) {
     val locked get() = tag == BottomNavTag.BOOKSHELF || tag == BottomNavTag.MY
@@ -2189,7 +2240,7 @@ private fun BottomNavConfigContent(
     val colors = AppTheme.colors
     Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
         Text(
-            stringResource(R.string.bottom_nav_items_order),
+            rememberString("bottom_nav_items_order"),
             color = colors.primaryText,
             fontWeight = FontWeight.Bold,
         )
@@ -2243,12 +2294,12 @@ private fun BottomNavConfigContent(
                     val tint = if (item.enabled) colors.accent else colors.primaryText
                     Icon(
                         painter = rememberPainter(bottomNavIconKey(item.tag, item.enabled)),
-                        contentDescription = stringResource(item.nameRes),
+                        contentDescription = item.name,
                         tint = tint,
                         modifier = Modifier.size(iconSize.value.dp),
                     )
                     Text(
-                        stringResource(item.nameRes),
+                        item.name,
                         color = tint,
                         fontSize = 12.sp,
                     )
@@ -2259,7 +2310,7 @@ private fun BottomNavConfigContent(
         // 高度滑条 (对照 sb_height: MIN 36, 范围 36..80)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                stringResource(R.string.bottom_bar_height),
+                rememberString("bottom_bar_height"),
                 color = colors.primaryText,
                 modifier = Modifier.weight(1f),
             )
@@ -2273,7 +2324,7 @@ private fun BottomNavConfigContent(
         // 图标大小滑条 (对照 sb_icon: MIN 18, 范围 18..36)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                stringResource(R.string.bottom_bar_icon_size),
+                rememberString("bottom_bar_icon_size"),
                 color = colors.primaryText,
                 modifier = Modifier.weight(1f),
             )
@@ -2286,7 +2337,7 @@ private fun BottomNavConfigContent(
         )
         // 标签模式单选 (对照 rg_label_mode: 0=隐藏 1=常显 2=仅选中 3=自动, 可横向滚动)
         Text(
-            stringResource(R.string.bottom_bar_label_mode),
+            rememberString("bottom_bar_label_mode"),
             color = colors.primaryText,
             modifier = Modifier.padding(top = 4.dp),
         )
@@ -2298,10 +2349,10 @@ private fun BottomNavConfigContent(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val labelRes = listOf(
-                R.string.bottom_bar_label_unlabeled,
-                R.string.bottom_bar_label_labeled,
-                R.string.bottom_bar_label_selected,
-                R.string.bottom_bar_label_auto,
+                rememberString("bottom_bar_label_unlabeled"),
+                rememberString("bottom_bar_label_labeled"),
+                rememberString("bottom_bar_label_selected"),
+                rememberString("bottom_bar_label_auto"),
             )
             labelRes.forEachIndexed { i, res ->
                 Row(
@@ -2313,7 +2364,7 @@ private fun BottomNavConfigContent(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     AppRadioButton(selected = labelMode.value == i, onClick = null)
-                    Text(stringResource(res), color = colors.primaryText)
+                    Text(res, color = colors.primaryText)
                 }
             }
         }
@@ -2342,15 +2393,12 @@ private fun BookshelfLayoutConfigContent(
 ) {
     val colors = AppTheme.colors
     val context = LocalContext.current
-    val groupStyles = remember { context.resources.getStringArray(R.array.group_style).toList() }
-    val itemStyles =
-        remember { context.resources.getStringArray(R.array.explore_item_style).toList() }
-    val sortLabels = remember {
-        arrayOf(
-            R.string.bookshelf_px_0, R.string.bookshelf_px_1, R.string.bookshelf_px_2,
-            R.string.bookshelf_px_3, R.string.bookshelf_px_4, R.string.bookshelf_px_5,
-        ).map { context.getString(it) }
-    }
+    val groupStyles = rememberStringArray("group_style")
+    val itemStyles = rememberStringArray("explore_item_style")
+    val sortLabels = arrayOf(
+        rememberString("bookshelf_px_0"), rememberString("bookshelf_px_1"), rememberString("bookshelf_px_2"),
+        rememberString("bookshelf_px_3"), rememberString("bookshelf_px_4"), rememberString("bookshelf_px_5"),
+    )
     // 列表模式: 非固定宽且列数 <= 1 (对照原版 updateListOnlyVisibility)
     val isList = !fixedWidthMode.value && selectedCols.value <= 1
 
@@ -2360,29 +2408,29 @@ private fun BookshelfLayoutConfigContent(
             .padding(horizontal = 24.dp, vertical = 8.dp),
     ) {
         ConfigDropdownRow(
-            label = stringResource(R.string.group_style),
+            label = rememberString("group_style"),
             options = groupStyles,
             selectedIndex = groupStyle.value,
             onSelect = { groupStyle.value = it },
         )
         ConfigDropdownRow(
-            label = stringResource(R.string.explore_style),
+            label = rememberString("explore_style"),
             options = itemStyles,
             selectedIndex = if (isVideo.value) 1 else 0,
             onSelect = { isVideo.value = it == 1 },
         )
-        ConfigSwitchRow(stringResource(R.string.show_unread), showUnread.value) {
+        ConfigSwitchRow(rememberString("show_unread"), showUnread.value) {
             showUnread.value = it
         }
-        ConfigSwitchRow(stringResource(R.string.bookshelf_show_group_count), showGroupCount.value) {
+        ConfigSwitchRow(rememberString("bookshelf_show_group_count"), showGroupCount.value) {
             showGroupCount.value = it
         }
-        ConfigSwitchRow(stringResource(R.string.fixed_width_mode), fixedWidthMode.value) {
+        ConfigSwitchRow(rememberString("fixed_width_mode"), fixedWidthMode.value) {
             fixedWidthMode.value = it
         }
         // 视图小节 (对照原版 tv_layout_title)
         Text(
-            stringResource(R.string.view),
+            rememberString("view"),
             color = colors.accent,
             fontSize = 16.sp,
             modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
@@ -2391,7 +2439,7 @@ private fun BookshelfLayoutConfigContent(
         if (!fixedWidthMode.value) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    stringResource(R.string.column_count),
+                    rememberString("column_count"),
                     color = colors.primaryText,
                     modifier = Modifier.padding(end = 8.dp),
                 )
@@ -2412,10 +2460,10 @@ private fun BookshelfLayoutConfigContent(
         }
         // 列表模式专属项
         if (isList) {
-            ConfigSwitchRow(stringResource(R.string.bookshelf_list_show_kind), showKind.value) {
+            ConfigSwitchRow(rememberString("bookshelf_list_show_kind"), showKind.value) {
                 showKind.value = it
             }
-            ConfigSwitchRow(stringResource(R.string.bookshelf_list_show_intro), showIntro.value) {
+            ConfigSwitchRow(rememberString("bookshelf_list_show_intro"), showIntro.value) {
                 showIntro.value = it
             }
             // 简介行数 1..5 (对照原版 tv_intro_lines_minus/plus, 未开简介降透明度)
@@ -2426,7 +2474,7 @@ private fun BookshelfLayoutConfigContent(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    stringResource(R.string.bookshelf_list_intro_lines),
+                    rememberString("bookshelf_list_intro_lines"),
                     color = colors.primaryText,
                     modifier = Modifier.weight(1f),
                 )
@@ -2457,7 +2505,7 @@ private fun BookshelfLayoutConfigContent(
                 )
             }
             ConfigSwitchRow(
-                stringResource(R.string.show_last_update_time),
+                rememberString("show_last_update_time"),
                 showLastUpdateTime.value
             ) {
                 showLastUpdateTime.value = it
@@ -2466,7 +2514,7 @@ private fun BookshelfLayoutConfigContent(
         // 固定宽模式: 网格宽度 dp (对照原版 ll_fixed_width / et_grid_width)
         if (fixedWidthMode.value) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.grid_width_dp), color = colors.primaryText)
+                Text(rememberString("grid_width_dp"), color = colors.primaryText)
                 AppTextField(
                     value = gridWidthText.value,
                     onValueChange = { gridWidthText.value = it.filter { c -> c.isDigit() } },
@@ -2482,7 +2530,7 @@ private fun BookshelfLayoutConfigContent(
         }
         // 排序小节 (对照原版 rg_sort 6 项单选)
         Text(
-            stringResource(R.string.sort),
+            rememberString("sort"),
             color = colors.accent,
             fontSize = 16.sp,
             modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),

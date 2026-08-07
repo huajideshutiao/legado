@@ -129,6 +129,8 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
             AudioPlayShared.status = Status.STOP
             AudioPlayShared.book?.let { save(it) }
             postEvent(EventBus.AUDIO_STATE, Status.STOP)
+            // 停止即收掉加载转圈
+            postEvent(EventBus.AUDIO_LOADING, false)
         }
     }
 
@@ -213,6 +215,7 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
         pause = true
         AudioPlayShared.status = Status.STOP
         postEvent(EventBus.AUDIO_STATE, Status.STOP)
+        postEvent(EventBus.AUDIO_LOADING, false)
     }
 
     /** 对应 AudioPlayService.triggerPlay */
@@ -237,6 +240,8 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
         try {
             AudioPlayShared.status = Status.LOADING
             postEvent(EventBus.AUDIO_STATE, Status.LOADING)
+            // 起播/缓冲阶段转圈 (覆盖 resume 直播路径; URL 加载路径已由 manager 发 true)
+            postEvent(EventBus.AUDIO_LOADING, true)
             manager.cancelProgressJobs()
             // 桥未就绪: 报错落 STOP, 不假播放 (catch 分支统一处理)
             if (!OhosNativeBridge.isMediaBridgeReady()) {
@@ -299,7 +304,8 @@ class OhosAudioPlayCommander : AudioPlayCommander, AudioPlayBookBridge,
                 controller.stop()
                 val file = downloadToCache(mediaUrl, resolvedHeaders)
                 swapCacheFile(file)
-                controller.playWhenReady = true
+                // 缓冲期按过暂停则回退后不自动起播
+                controller.playWhenReady = !pause
                 controller.setSource(file.path, position.toLong())
                 controller.prepare()
             } catch (e: Exception) {

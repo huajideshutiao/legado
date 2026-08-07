@@ -435,7 +435,8 @@ internal object DesktopTaskbarDwm {
 
     // ==================== 位图 (CreateDIBSection 32bpp → HBITMAP) ====================
 
-    private fun toHBitmap(img: BufferedImage): WinDef.HBITMAP? {
+    /** BufferedImage → HBITMAP (32bpp DIB; DWM 卡片与任务栏按钮图标共用)。 */
+    internal fun toHBitmap(img: BufferedImage): WinDef.HBITMAP? {
         val w = img.width
         val h = img.height
         // BITMAPINFOHEADER: biSize 40 + biWidth + biHeight(负=自顶向下) + planes + bitcount + compression

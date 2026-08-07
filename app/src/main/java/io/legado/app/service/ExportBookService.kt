@@ -24,6 +24,7 @@ import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalModified
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.setLiveOngoing
 import io.legado.app.model.ReadBook
 import io.legado.app.model.fileBook.FileBook
@@ -67,7 +68,7 @@ class ExportBookService : BaseService() {
     private val groupKey = "${appCtx.packageName}.exportBook"
     private val waitExportBooks = linkedMapOf<String, ExportConfig>()
     private var exportJob: Job? = null
-    private var notificationContentText = appCtx.getString(R.string.service_starting)
+    private var notificationContentText = androidAppString("service_starting")
 
     // 下沉业务逻辑桥接 (setEpubMetadata / exportTxt / exportEpub / exportCbz / CustomExporter 委托 shared)
     private val depsImpl = ExportBookDepsImpl()
@@ -87,7 +88,7 @@ class ExportBookService : BaseService() {
                         epubScope = intent.getStringExtra("epubScope")
                     )
                     waitExportBooks[bookUrl] = exportConfig
-                    exportMsg[bookUrl] = getString(R.string.export_wait)
+                    exportMsg[bookUrl] = androidAppString("export_wait")
                     postEvent(EventBus.EXPORT_BOOK, bookUrl)
                     export()
                 }
@@ -116,7 +117,7 @@ class ExportBookService : BaseService() {
     override fun startForegroundNotification() {
         val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
             .setSmallIcon(R.drawable.ic_export)
-            .setSubText(getString(R.string.export_book))
+            .setSubText(androidAppString("export_book"))
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setGroup(groupKey)
             .setGroupSummary(true)
@@ -126,7 +127,7 @@ class ExportBookService : BaseService() {
     private fun upExportNotification(finish: Boolean = false) {
         val notification = NotificationCompat.Builder(this, AppConst.channelIdDownload)
             .setSmallIcon(R.drawable.ic_export)
-            .setSubText(getString(R.string.export_book))
+            .setSubText(androidAppString("export_book"))
             // BookshelfManageActivity 已被 shared BookshelfManageRoute 替代,
             // 通知点击 → NavigateTo("bookshelf_manage") 打开书架管理页面
             .setContentIntent(activityPendingIntent<MainActivity>("bookshelfManageActivity") {
@@ -144,7 +145,7 @@ class ExportBookService : BaseService() {
             notification.setLiveOngoing()
             notification.addAction(
                 R.drawable.ic_stop_black_24dp,
-                getString(R.string.cancel),
+                androidAppString("cancel"),
                 servicePendingIntent<ExportBookService>(IntentAction.stop)
             )
         } else {
@@ -172,8 +173,8 @@ class ExportBookService : BaseService() {
                 try {
                     book ?: throw NoStackTraceException("获取${bookUrl}书籍出错")
                     val chapters = ensureChapterList(book)
-                    notificationContentText = getString(
-                        R.string.export_book_notification_content,
+                    notificationContentText = androidAppString(
+                        "export_book_notification_content",
                         book.name,
                         waitExportBooks.size
                     )
@@ -195,7 +196,7 @@ class ExportBookService : BaseService() {
                         "cbz" -> epubShared.exportCbz(exportConfig.path, book, chapters)
                         else -> shared.exportTxt(exportConfig.path, book)
                     }
-                    exportMsg[book.bookUrl] = getString(R.string.export_success)
+                    exportMsg[book.bookUrl] = androidAppString("export_success")
                 } catch (e: Throwable) {
                     ensureActive()
                     exportMsg[bookUrl] = e.localizedMessage ?: "ERROR"
@@ -245,10 +246,10 @@ class ExportBookService : BaseService() {
         override val exportToWebDav: Boolean get() = AppConfig.exportToWebDav
 
         override fun strAuthorShow(author: String): String =
-            getString(R.string.author_show, author)
+            androidAppString("author_show", author)
 
         override fun strIntroShow(intro: String): String =
-            getString(R.string.intro_show, intro)
+            androidAppString("intro_show", intro)
 
         override fun getExportFileName(book: Book, suffix: String): String =
             book.getExportFileName(suffix)
@@ -365,8 +366,8 @@ class ExportBookService : BaseService() {
         override fun getTitleReplaceRules(book: Book): List<ReplaceRule> =
             ContentProcessor.get(book.name, book.origin).getTitleReplaceRules()
 
-        override fun strImgCover(): String = getString(R.string.img_cover)
+        override fun strImgCover(): String = androidAppString("img_cover")
 
-        override fun strBookIntro(): String = getString(R.string.book_intro)
+        override fun strBookIntro(): String = androidAppString("book_intro")
     }
 }

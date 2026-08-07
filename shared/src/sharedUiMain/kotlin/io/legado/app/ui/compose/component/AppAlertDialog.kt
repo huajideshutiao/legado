@@ -225,7 +225,7 @@ fun AppAlertDialogContentPreview() = LegadoThemePreview {
             onDismissRequest = {},
             title = "对话框标题",
             message = "这是对话框的正文内容, 用于提示用户确认操作。",
-            okButton = AlertButton(text = "确定"),
+            okButton = AlertButton(text = "确认"),
             cancelButton = AlertButton(text = "取消"),
             widthFraction = 0.9f,
         )
@@ -240,7 +240,7 @@ fun AppAlertDialogContentDarkPreview() = LegadoThemePreview(dark = true) {
             onDismissRequest = {},
             title = "深色对话框",
             message = "深色主题下的对话框内容。",
-            okButton = AlertButton(text = "确定"),
+            okButton = AlertButton(text = "确认"),
             cancelButton = AlertButton(text = "取消"),
         )
     }
@@ -253,7 +253,7 @@ fun AppAlertDialogContentWithCustomViewPreview() = LegadoThemePreview {
         AppAlertDialogContent(
             onDismissRequest = {},
             title = "带自定义视图",
-            okButton = AlertButton(text = "确定"),
+            okButton = AlertButton(text = "确认"),
             cancelButton = AlertButton(text = "取消"),
         ) {
             Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
@@ -272,7 +272,7 @@ fun AppAlertDialogPreview() = LegadoThemePreview {
         onDismissRequest = {},
         title = "对话框标题",
         message = "完整对话框 (含 Dialog 窗口)。",
-        okButton = AlertButton(text = "确定"),
+        okButton = AlertButton(text = "确认"),
         cancelButton = AlertButton(text = "取消"),
     )
 }

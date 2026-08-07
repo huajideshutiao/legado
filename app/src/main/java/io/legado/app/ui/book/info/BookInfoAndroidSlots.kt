@@ -26,7 +26,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import coil3.load
 import coil3.request.placeholder
 import coil3.toBitmap
-import io.legado.app.R
+import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.isVideo
 import io.legado.app.model.blurConfig
@@ -67,7 +67,7 @@ fun BookInfoBlurCoverBg(
     land: Boolean = false,
 ) {
     val tick = coverTick
-    val bgDesc = stringResource(R.string.bg_image)
+    val bgDesc = rememberString("bg_image")
     AndroidView(
         factory = {
             AppCompatImageView(it).apply {

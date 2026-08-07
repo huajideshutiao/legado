@@ -32,6 +32,9 @@ import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.model.AudioPlayShared
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.theme.AppTheme
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.timer_m
+import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
 
 /**
@@ -68,6 +71,10 @@ fun SharedAudioPlayScreenContent(
     playMenuAlpha: Float = 1f,
     titleBarHorizontalPadding: Dp = 8.dp,
     playModeIconPadding: Dp = 4.dp,
+    sidePanelWidth: Dp = 0.dp,
+    sidePanelVisible: Boolean = false,
+    sidePanelKind: AudioPlaySidePanelKind? = null,
+    sidePanelSlot: @Composable (AudioPlaySidePanelKind) -> Unit = {},
 ) {
     // 封面取色 → 歌词 + SeekBar 配色 (对照原版 updateCover → updateLrcColor)
     val lrcColors = rememberLrcColors(
@@ -132,6 +139,10 @@ fun SharedAudioPlayScreenContent(
         playMenuAlpha = playMenuAlpha,
         titleBarHorizontalPadding = titleBarHorizontalPadding,
         playModeIconPadding = playModeIconPadding,
+        sidePanelWidth = sidePanelWidth,
+        sidePanelVisible = sidePanelVisible,
+        sidePanelKind = sidePanelKind,
+        sidePanelSlot = sidePanelSlot,
     )
 }
 
@@ -206,10 +217,13 @@ fun AudioPlayTimerDialog(
     var value by remember { mutableIntStateOf(initial) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("定时关闭") },
+        title = { Text("定时") },
         text = {
             Column {
-                Text("${value}m", color = AppTheme.colors.secondaryText)
+                Text(
+                    stringResource(Res.string.timer_m, value),
+                    color = AppTheme.colors.secondaryText,
+                )
                 AppSlider(
                     value = value,
                     max = 180,
@@ -222,7 +236,7 @@ fun AudioPlayTimerDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("确定") }
+            TextButton(onClick = onDismiss) { Text("确认") }
         },
     )
 }
@@ -258,7 +272,7 @@ fun AudioPlaySpeedDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("确定") }
+            TextButton(onClick = onDismiss) { Text("确认") }
         },
     )
 }

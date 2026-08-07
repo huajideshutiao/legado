@@ -14,8 +14,6 @@ import io.legado.app.model.analyzeRule.AnalyzeRuleCore
 import io.legado.app.model.webBook.WebBook.getContentAwait
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.postEvent
-import kotlin.concurrent.Volatile
-import kotlin.coroutines.CoroutineContext
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
@@ -26,6 +24,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.concurrent.Volatile
+import kotlin.coroutines.CoroutineContext
 
 /**
  * 音频播放纯逻辑管理器 (KMP commonMain)。
@@ -105,6 +105,14 @@ class AudioPlayManager(
                 AudioPlayShared.durChapterPos = controller.currentPosition.toInt()
                 postEvent(EventBus.AUDIO_BUFFER_PROGRESS, controller.bufferedPosition.toInt())
                 postEvent(EventBus.AUDIO_PROGRESS, AudioPlayShared.durChapterPos)
+                // 时长兜底: 流式资源 READY 时 duration 可能未知 (0/-1), 播放中变已知后
+                // 心跳补发 AUDIO_SIZE, 否则 UI 时长恒 0/旧值, 进度会“超过时长”
+                val duration = controller.duration
+                if (duration > 0 && duration.toInt() != AudioPlayShared.durAudioSize) {
+                    AudioPlayShared.durAudioSize = duration.toInt()
+                    postEvent(EventBus.AUDIO_SIZE, AudioPlayShared.durAudioSize)
+                    AudioPlayShared.saveDurChapter(duration)
+                }
                 delay(1000)
             }
         }

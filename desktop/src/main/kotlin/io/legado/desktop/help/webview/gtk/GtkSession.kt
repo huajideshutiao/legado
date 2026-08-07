@@ -44,7 +44,7 @@ internal class GtkSession private constructor(
         val content = gtk.gtk_dialog_get_content_area(dialog)
         gtk.gtk_box_pack_start(content, gtk.gtk_label_new(message), 0, 0, 8)
         gtk.gtk_dialog_add_action_widget(
-            dialog, gtk.gtk_button_new_with_label("确定"), GtkLibs.GTK_RESPONSE_YES
+            dialog, gtk.gtk_button_new_with_label("确认"), GtkLibs.GTK_RESPONSE_YES
         )
         gtk.gtk_dialog_add_action_widget(
             dialog, gtk.gtk_button_new_with_label("取消"), GtkLibs.GTK_RESPONSE_NO

@@ -17,6 +17,7 @@ import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
+import io.legado.app.model.AudioPlayShared.resetData
 import io.legado.app.utils.postEvent
 import kotlinx.coroutines.withContext
 
@@ -184,6 +185,27 @@ object AudioPlayShared {
         postEvent(EventBus.AUDIO_BUFFER_PROGRESS, 0)
     }
 
+    /**
+     * 目录到货后同步章节计数 (对齐 [resetData] 语义, 参照 ReadBook.updateChapterList)。
+     *
+     * 进入播放页时若 DB 无目录, [resetData] 只能把 simulatedChapterSize 算到 0,
+     * 切章按钮可用性与 skipTo 边界会永久失效; 异步回源成功后必须调用本函数重算。
+     */
+    fun updateChapterList(list: List<BookChapter>) {
+        val cur = book ?: return
+        // 换书竞态防护: 目录与当前书不匹配时忽略 (对齐 resetData 的 bookUrl 校验),
+        // 防旧书回源协程晚到污染新书的计数/目录
+        if (list.firstOrNull()?.bookUrl != cur.bookUrl) return
+        chapterList = list
+        chapterSize = list.size
+        // 模拟追读按日解锁章节数 (与 resetData 一致)
+        simulatedChapterSize = if (cur.readSimulating()) {
+            cur.simulatedTotalChapterNum()
+        } else {
+            list.size
+        }
+    }
+
     suspend fun upDurChapter() {
         val book = book ?: return
         durChapter = chapterList?.get(durChapterIndex) ?: withContext(IoDispatcher) {
@@ -241,6 +263,8 @@ object AudioPlayShared {
     }
 
     fun next() {
+        // 目录未就绪/为空时 RANDOM 分支 `(0 until 0).random()` 会抛异常, 防御
+        if (simulatedChapterSize <= 0) return
         val newIndex = when (playMode) {
             PlayMode.LIST_END_STOP ->
                 if (durChapterIndex + 1 < simulatedChapterSize) durChapterIndex + 1 else return

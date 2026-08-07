@@ -10,13 +10,13 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.exception.RegexTimeoutException
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.coroutine.runBlockingInScope
 import io.legado.app.utils.RegexReplacers
 import io.legado.app.utils.escapeRegex
 import io.legado.app.utils.stackTraceStr
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
+import kotlin.coroutines.EmptyCoroutineContext
 
 /**
  * ContentProcessor 核心正文处理逻辑下沉 (commonMain)。
@@ -210,14 +210,11 @@ class ContentProcessorShared(
                         }
                     } catch (e: RegexTimeoutException) {
                         item.isEnabled = false
-                        // runBlocking { appDb.replaceRuleDao.update(item) } → AppDbProviders.get().replaceRuleDao
-                        // fire-and-forget: 错误恢复路径 (禁用超时规则), 不阻塞当前线程 (避免 Native 端死锁)
-                        // 写库失败会让坏规则每章反复超时, invokeOnCompletion 记日志暴露
-                        GlobalScope.launch { replaceRuleDao.update(item) }.invokeOnCompletion { cause ->
-                            if (cause != null && cause !is CancellationException) {
-                                AppLog.put("禁用超时替换规则失败: ${item.name}\n${cause.message}", cause)
-                            }
-                        }
+                        // 对照原版: `appDb.replaceRuleDao.update(item)` 同步写库 (Room KMP DAO suspend,
+                        // 经 runBlockingInScope 桥接; 项目内同步 DB 写先例: CacheManager.put/delete、
+                        // SharedCookieStore.onInsertCookieToDb、ReadBookShared.saveReadProgress 同模式)。
+                        // 同步保证坏规则立即落库禁用, 不会出现“写库失败让坏规则每章反复超时”。
+                        runBlockingInScope(EmptyCoroutineContext) { replaceRuleDao.update(item) }
                         mContent = item.name + e.stackTraceStr
                     } catch (_: CancellationException) {
                     } catch (e: Exception) {

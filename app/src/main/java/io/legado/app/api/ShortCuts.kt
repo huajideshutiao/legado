@@ -6,6 +6,7 @@ import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
 import io.legado.app.R
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.ui.main.MainActivity
 
 object ShortCuts {
@@ -22,8 +23,8 @@ object ShortCuts {
     private fun buildBookShelfShortCutInfo(context: Context): ShortcutInfoCompat {
         val bookShelfIntent = buildIntent<MainActivity>(context)
         return ShortcutInfoCompat.Builder(context, "bookshelf")
-            .setShortLabel(context.getString(R.string.bookshelf))
-            .setLongLabel(context.getString(R.string.bookshelf))
+            .setShortLabel(androidAppString("bookshelf"))
+            .setLongLabel(androidAppString("bookshelf"))
             .setIcon(IconCompat.createWithResource(context, R.drawable.icon_read_book))
             .setIntent(bookShelfIntent)
             .build()
@@ -36,8 +37,8 @@ object ShortCuts {
             putExtra("route", "last_read")
         }
         return ShortcutInfoCompat.Builder(context, "lastRead")
-            .setShortLabel(context.getString(R.string.last_read))
-            .setLongLabel(context.getString(R.string.last_read))
+            .setShortLabel(androidAppString("last_read"))
+            .setLongLabel(androidAppString("last_read"))
             .setIcon(IconCompat.createWithResource(context, R.drawable.icon_read_book))
             .setIntents(arrayOf(bookShelfIntent, readBookIntent))
             .build()
@@ -48,8 +49,8 @@ object ShortCuts {
         val readAloudIntent = buildIntent<MainActivity>(context)
         readAloudIntent.putExtra("action", "readAloud")
         return ShortcutInfoCompat.Builder(context, "readAloud")
-            .setShortLabel(context.getString(R.string.read_aloud))
-            .setLongLabel(context.getString(R.string.read_aloud))
+            .setShortLabel(androidAppString("read_aloud"))
+            .setLongLabel(androidAppString("read_aloud"))
             .setIcon(IconCompat.createWithResource(context, R.drawable.icon_read_book))
             .setIntent(readAloudIntent)
             .build()

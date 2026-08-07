@@ -11,16 +11,17 @@ import androidx.compose.runtime.Composable
 import androidx.core.net.toUri
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.viewModels
-import io.legado.app.R
 import io.legado.app.base.BaseComposeDialogFragment
 import io.legado.app.constant.AppLog
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.ui.compose.component.AppAlertDialogContent
 import io.legado.app.ui.compose.component.AppSelectorList
 import io.legado.app.ui.compose.dialogs.alert
+import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.utils.SelectImageContract
 import io.legado.app.utils.checkWrite
 import io.legado.app.utils.externalFiles
@@ -123,10 +124,10 @@ class HandleFileDialog : BaseComposeDialogFragment() {
     @Composable
     override fun Content() {
         val title = arguments?.getString("title") ?: when (mode) {
-            HandleFileContract.EXPORT -> getString(R.string.export)
-            HandleFileContract.DIR -> getString(R.string.select_folder)
-            HandleFileContract.IMAGE -> getString(R.string.select_image)
-            else -> getString(R.string.select_file)
+            HandleFileContract.EXPORT -> rememberString("export")
+            HandleFileContract.DIR -> rememberString("select_folder")
+            HandleFileContract.IMAGE -> rememberString("select_image")
+            else -> rememberString("select_file")
         }
         // 对齐旧 AlertDialog setItems(items, null)：点击不自动关闭，等结果回传后 dismiss
         AppAlertDialogContent(
@@ -151,7 +152,7 @@ class HandleFileDialog : BaseComposeDialogFragment() {
         HandleFileContract.FILE -> getFileActions()
         HandleFileContract.EXPORT -> arrayListOf(
             SelectItem(
-                getString(R.string.upload_url),
+                androidAppString("upload_url"),
                 111
             )
         ).apply {
@@ -168,7 +169,7 @@ class HandleFileDialog : BaseComposeDialogFragment() {
                 isLaunchingResult = true
                 kotlin.runCatching { selectDocTree.launch(null) }.onFailure {
                     isLaunchingResult = false
-                    AppLog.put(getString(R.string.open_sys_dir_picker_error), it, true)
+                    AppLog.put(androidAppString("open_sys_dir_picker_error"), it, true)
                     checkPermissions {
                         FilePickerDialog.show(childFragmentManager, mode = HandleFileContract.DIR)
                     }
@@ -180,7 +181,7 @@ class HandleFileDialog : BaseComposeDialogFragment() {
                 kotlin.runCatching { selectDoc.launch(typesOfExtensions(allowExtensions)) }
                     .onFailure {
                         isLaunchingResult = false
-                        AppLog.put(getString(R.string.open_sys_dir_picker_error), it, true)
+                        AppLog.put(androidAppString("open_sys_dir_picker_error"), it, true)
                         checkPermissions {
                             FilePickerDialog.show(
                                 childFragmentManager,
@@ -225,42 +226,42 @@ class HandleFileDialog : BaseComposeDialogFragment() {
 
     private fun getDirActions(onlySys: Boolean = false) = if (onlySys) {
         arrayListOf(
-            SelectItem(getString(R.string.sys_folder_picker), HandleFileContract.DIR),
-            SelectItem(getString(R.string.manual_input), 112)
+            SelectItem(androidAppString("sys_folder_picker"), HandleFileContract.DIR),
+            SelectItem(androidAppString("manual_input"), 112)
         )
     } else {
         arrayListOf(
-            SelectItem(getString(R.string.sys_folder_picker), HandleFileContract.DIR),
-            SelectItem(getString(R.string.app_folder_picker), 10),
-            SelectItem(getString(R.string.manual_input), 112)
+            SelectItem(androidAppString("sys_folder_picker"), HandleFileContract.DIR),
+            SelectItem(androidAppString("app_folder_picker"), 10),
+            SelectItem(androidAppString("manual_input"), 112)
         )
     }
 
     private fun getFileActions() = arrayListOf(
-        SelectItem(getString(R.string.sys_file_picker), HandleFileContract.FILE),
-        SelectItem(getString(R.string.app_file_picker), 11)
+        SelectItem(androidAppString("sys_file_picker"), HandleFileContract.FILE),
+        SelectItem(androidAppString("app_file_picker"), 11)
     )
 
     private fun getImageActions() = arrayListOf(
         SelectItem(
-            getString(R.string.sys_image_picker),
+            androidAppString("sys_image_picker"),
             HandleFileContract.IMAGE
         )
     ).apply { addAll(getFileActions()) }
 
     private fun showInputDirectoryDialog() {
-        alert(getString(R.string.manual_input)) {
-            val getText = editTextView(hint = getString(R.string.enter_directory_path))
+        alert(androidAppString("manual_input")) {
+            val getText = editTextView(hint = androidAppString("enter_directory_path"))
             okButton {
                 val inputPath = getText()
                 if (inputPath.isBlank()) {
-                    toastOnUi(getString(R.string.empty_directory_input))
+                    toastOnUi(androidAppString("empty_directory_input"))
                     return@okButton
                 }
                 val file = File(inputPath)
                 if (file.exists() && file.isDirectory && isExternalStorage(file) && file.checkWrite()) {
                     onResult(Uri.fromFile(file))
-                } else toastOnUi(getString(R.string.invalid_directory))
+                } else toastOnUi(androidAppString("invalid_directory"))
             }
             cancelButton {
                 onResult(null)
@@ -294,7 +295,7 @@ class HandleFileDialog : BaseComposeDialogFragment() {
 
     private fun checkPermissions(success: (() -> Unit)?) {
         PermissionsCompat.Builder().addPermissions(*Permissions.Group.STORAGE)
-            .rationale(R.string.tip_perm_request_storage)
+            .rationale(androidAppString("tip_perm_request_storage"))
             .onGranted { success?.invoke() }.onDenied {
                 onResult(null)
             }.onError {

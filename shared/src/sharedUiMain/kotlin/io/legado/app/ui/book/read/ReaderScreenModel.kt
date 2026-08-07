@@ -3,22 +3,30 @@ package io.legado.app.ui.book.read
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Status
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.migrateTo
 import io.legado.app.help.book.removeType
+import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.toast.Toasters
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.ReadBookShared
+import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
+import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.read.ReaderPlatformProviders.getOrNull
 import io.legado.app.ui.book.read.ReaderPlatformProviders.register
+import io.legado.app.ui.book.read.page.detectClickArea
 import io.legado.app.ui.book.searchContent.SearchResult
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.ScreenModel
@@ -26,6 +34,7 @@ import io.legado.app.utils.FlowBus
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isTrue
+import io.legado.app.utils.mapParallelSafe
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.CoroutineScope
@@ -36,6 +45,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onEmpty
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
@@ -360,6 +377,10 @@ class ReaderScreenModel(
             }
         }
         // endregion
+
+        // 九宫格点击区域配置校验 (对照原版 ReadBookViewModel.init → AppConfig.detectClickArea):
+        // 全部 9 格均非“菜单”时强制恢复中间格为菜单 + toast, 避免无菜单入口死区
+        detectClickArea()
     }
 
     val menuState: ReadMenuState get() = menuController.state
@@ -451,13 +472,75 @@ class ReaderScreenModel(
     /**
      * 初始化书籍并装载章节（对照 app 端 ReadBookViewModel.initData + applyBookmarkPosition）。
      * chapterIndex + chapterPos 来自书签跳转入口（对照 app 端 intent extra chapterIndex/chapterPos）。
+     *
+     * 装载完成后按原版 initBook 语义补两件事：
+     * - 云进度同步（仅同书 + 朗读运行中跳过）
+     * - 无书源时自动换源（而非静默失败）
      */
     fun initBook(book: Book, chapterIndex: Int?, chapterPos: Int? = null) {
+        val isSameBook = readBook.book.value?.bookUrl == book.bookUrl
         readBook.loadBook(book)
         viewModel.loadChapter(chapterIndex ?: book.durChapterIndex)
         // 对照 app 端 applyBookmarkPosition: chapterIndex 有效时跳转到指定 chapterPos
         if (chapterIndex != null && chapterPos != null) {
             readBook.updateDurChapterPos(chapterPos)
+        }
+        // 对照原版 initBook: 打开书即同步云进度 (原版每次 initBook 都 syncProgress,
+        // 仅同书 + 朗读运行中跳过; 书签跳转等入口同样触发, 与原版 chapterChanged 之外的行为一致)
+        viewModel.syncProgressOnBookOpen(book, isSameBook)
+        // 对照原版 initBook: 非本地书且无书源时自动换源, 不再静默失败
+        if (!book.isLocal && readBook.bookSource.value == null) {
+            autoChangeSource(book.name, book.author)
+        }
+    }
+
+    /**
+     * 自动换源 (对照原版 BaseReadViewModel.autoChangeSource):
+     * 遍历启用文本书源, 并发精确搜索 + 取目录 + 预取首章正文, 首个成功源直接换源落地。
+     * 全部失败则记日志 + toast (原版 catch 语义)。
+     */
+    private fun autoChangeSource(name: String, author: String) {
+        // 对照原版 `if (!AppConfig.autoChangeSource) return` (默认 true)
+        if (!PreferenceProviders.get().getBoolean(PreferKey.autoChangeSource, true)) return
+        scope.launch {
+            // 对照原版 getTextEnabledSources() = appDb.bookSourceDao.allTextEnabledPart
+            val sources = AppDbProviders.get().bookSourceDao.allTextEnabledPart()
+            flow {
+                for (source in sources) {
+                    AppDbProviders.get().bookSourceDao.getBookSource(source.bookSourceUrl)?.let {
+                        emit(it)
+                    }
+                }
+            }.onStart {
+                    // 对照原版 onSourceChanging(R.string.source_auto_changing)
+                    readBook.upMsg("自动换源中…")
+                }.mapParallelSafe(AppConfigProviders.get().threadCount, sources.size) { source ->
+                    val book = WebBook.preciseSearchAwait(source, name, author).getOrThrow()
+                    if (book.tocUrl.isEmpty()) {
+                        WebBook.getBookInfoAwait(source, book)
+                    }
+                    val toc = WebBook.getChapterListAwait(source, book).getOrThrow()
+                    val chapter = toc.getOrElse(book.durChapterIndex) { toc.last() }
+                    val nextChapter = toc.getOrElse(chapter.index + 1) { toc.first() }
+                    WebBook.getContentAwait(
+                        bookSource = source,
+                        book = book,
+                        bookChapter = chapter,
+                        nextChapterUrl = nextChapter.url
+                    )
+                    Triple(book, toc, source)
+                }.take(1).onEach { (book, toc, source) ->
+                    // 对照原版 changeTo(curBookSource!!, book, toc): 新书源即搜索命中的 source,
+                    // 落地语义同 [changeTo] (迁移+落库+重装)
+                    changeTo(source, book, toc)
+                }.onEmpty {
+                    throw NoStackTraceException("没有合适书源")
+                }.onCompletion {
+                    readBook.upMsg(null)
+                }.catch {
+                    AppLog.put("自动换源失败\n${it.localizedMessage}", it)
+                    Toasters.get().toast("自动换源失败\n${it.localizedMessage}")
+                }.collect()
         }
     }
 
@@ -536,6 +619,8 @@ class ReaderScreenModel(
 
     override fun onCleared() {
         ActiveReadBookRegistry.detach(readBook)
+        // 对照原版 ReadBookActivity.onDestroy: 立即结束阅读计时 (不等待 end 的延迟结算)
+        ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.READ_BOOK)
         viewModel.onCleared()
         scope.cancel()
     }
@@ -552,6 +637,8 @@ class ReaderScreenModel(
      * 退出阅读（DisposableEffect.onDispose → [ReadBookViewModelShared.onCleared]）时同样落库上传。
      */
     fun onPause() {
+        // 对照原版 ReadBookActivity.onPause: 结束阅读计时
+        ReadTimeRecorder.end(ReadTimeRecorder.Source.READ_BOOK)
         viewModel.uploadProgress()
         viewModel.cancelPreDownloadTask()
     }
@@ -559,11 +646,21 @@ class ReaderScreenModel(
     /**
      * 平台 onResume 入口（对照 app 端 ReadBookActivity.onResume）。
      *
-     * shared 端无 onResume 等价副作用（网络监听/广播注册/时间刷新等由平台 actual 接入）；
-     * 预留扩展点供未来下沉云进度同步等逻辑。
+     * - 开始阅读计时 (原版 onResume 首行 ReadTimeRecorder.start(READ_BOOK))
+     * - web 端阅读时, app 处于阅读界面, 本地记录会覆盖 web 保存的进度, 在此处恢复
+     *   (原版 onResume else 分支: webBookProgress?.let { setProgress; 置 null })
+     *
+     * 网络监听/广播注册/时间刷新等由平台 actual 接入。
      */
     fun onResume() {
-        // 占位：当前 shared 端无 onResume 等价副作用
+        ReadTimeRecorder.start(
+            ReadTimeRecorder.Source.READ_BOOK,
+            readBook.book.value?.name ?: ""
+        )
+        readBook.webBookProgressValue?.let {
+            readBook.setProgress(it)
+            readBook.updateWebBookProgress(null)
+        }
     }
 }
 
@@ -619,7 +716,7 @@ sealed interface ReaderDialogEvent {
 
     // ===== 溢出菜单选择器 (iOS/鸿蒙/desktop 共用, 对照 app 端 ReadMenu 的 selector/alert 弹窗) =====
 
-    /** 模拟阅读配置 (对照原版 menu_simulated_reading → showSimulatedReading) */
+    /** 模拟追读配置 (对照原版 menu_simulated_reading → showSimulatedReading) */
     data object SimulatedReading : ReaderDialogEvent
 
     /** 图片样式 4 项选择器 (对照原版 menu_image_style) */

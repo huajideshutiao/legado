@@ -1,13 +1,14 @@
 package io.legado.app.help.update
 
 import androidx.appcompat.app.AppCompatActivity
-import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.appInfo
+import io.legado.app.help.IntentData
 import io.legado.app.help.config.AppConfig
-import io.legado.app.ui.about.UpdateDialog
+import io.legado.app.help.i18n.androidAppString
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.widget.dialog.WaitDialog
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CoroutineScope
 import splitties.init.appCtx
@@ -36,13 +37,19 @@ object AppUpdate {
             currentAppVariant = AppConst.appInfo.appVariant
         ).onSuccess {
             if (it != null) {
-                activity.showDialogFragment(UpdateDialog(it))
+                // UpdateDialog 已下沉 sharedUiMain: 经 AppOverlay 弹更新弹窗 (payload=IntentData 侧信道)
+                AppNavigatorProviders.getOrNull()?.showOverlay(
+                    AppOverlay.Dialog(
+                        key = "updateDialog",
+                        payload = IntentData.put(it),
+                    )
+                )
             } else if (!silent) {
-                appCtx.toastOnUi(R.string.is_latest_version)
+                appCtx.toastOnUi(androidAppString("is_latest_version"))
             }
         }.onError {
             if (!silent) {
-                appCtx.toastOnUi("${activity.getString(R.string.check_update)}\n${it.localizedMessage}")
+                appCtx.toastOnUi("${androidAppString("check_update")}\n${it.localizedMessage}")
             }
         }.onFinally {
             waitDialog?.dismissSafe()

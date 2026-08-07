@@ -766,7 +766,7 @@ private class MacWindowHandle(
         ptr(alert, "init")!!
         void(alert, "setMessageText:", ns("删除源"))
         void(alert, "setInformativeText:", ns("是否确认删除？\n$name"))
-        void(alert, "addButtonWithTitle:", ns("确定"))
+        void(alert, "addButtonWithTitle:", ns("确认"))
         void(alert, "addButtonWithTitle:", ns("取消"))
         val confirmed = ObjC.int(alert, "runModal") == NS_ALERT_FIRST_BUTTON
         void(alert, "release")

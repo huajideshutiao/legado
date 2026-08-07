@@ -3,13 +3,13 @@ package io.legado.app.service
 import android.app.PendingIntent
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
-import io.legado.app.R
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.help.MediaHelp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.tts.TextToSpeechEngine
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.model.ReadAloud
@@ -36,7 +36,7 @@ class TTSReadAloudService : BaseReadAloudService() {
         runCatching {
             initEngine()
         }.onFailure {
-            AppLog.put("${getString(R.string.tts_init_failed)}\n$it", it, true)
+            AppLog.put("${androidAppString("tts_init_failed")}\n$it", it, true)
         }
     }
 
@@ -58,7 +58,7 @@ class TTSReadAloudService : BaseReadAloudService() {
         LogUtils.d(TAG, "initEngine name:$engineName")
         engine = TextToSpeechEngine(engineName).apply {
             progressListener = TTSUtteranceListener()
-            onInitFailed = { toastOnUi(R.string.tts_init_failed) }
+            onInitFailed = { toastOnUi(androidAppString("tts_init_failed")) }
         }
         engine?.ensureReady {
             upSpeechRate()

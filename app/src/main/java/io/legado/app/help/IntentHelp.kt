@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.core.net.toUri
-import io.legado.app.R
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
 
@@ -33,7 +33,7 @@ object IntentHelp {
             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
             appCtx.startActivity(intent)
         }.onFailure {
-            appCtx.toastOnUi(R.string.tip_cannot_jump_setting_page)
+            appCtx.toastOnUi(androidAppString("tip_cannot_jump_setting_page"))
         }
     }
 

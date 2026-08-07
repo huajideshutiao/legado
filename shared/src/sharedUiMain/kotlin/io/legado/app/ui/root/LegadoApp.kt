@@ -55,6 +55,10 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.showSourceLogin
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.about.UpdateDialogOverlayContent
+import io.legado.app.ui.association.DeepLinkImportType
+import io.legado.app.ui.association.OpenUrlConfirmOverlayContent
+import io.legado.app.ui.widget.keyboard.KeyboardAssistsConfigOverlayContent
 import io.legado.app.ui.about.CrashLogItem
 import io.legado.app.ui.about.CrashLogsDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
@@ -633,6 +637,23 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
             overlay,
             navigator
         )
+
+        // 更新弹窗 (对照 app 端 UpdateDialog; payload=IntentData key 携带 AppUpdateShared.UpdateInfo)
+        "updateDialog" -> UpdateDialogOverlayContent(overlay, navigator)
+
+        // 跳转确认 (对照 app 端 OpenUrlConfirmDialog; payload=IntentData key 携带 OpenUrlConfirmPayload)
+        "openUrlConfirm" -> OpenUrlConfirmOverlayContent(overlay, navigator)
+
+        // 辅助按键配置 (对照 app 端 KeyboardAssistsConfig)
+        "keyboardAssistsConfig" -> KeyboardAssistsConfigOverlayContent(overlay, navigator)
+
+        // 6 个 Import 对话框 (对照 app 端 Import*Dialog Fragment; payload=IntentData key 携带 source 文本)
+        "*Import:BOOK_SOURCE" -> ImportSourceOverlayContent(overlay, navigator, DeepLinkImportType.BOOK_SOURCE)
+        "*Import:REPLACE_RULE" -> ImportSourceOverlayContent(overlay, navigator, DeepLinkImportType.REPLACE_RULE)
+        "*Import:TXT_TOC_RULE" -> ImportSourceOverlayContent(overlay, navigator, DeepLinkImportType.TXT_TOC_RULE)
+        "*Import:HTTP_TTS" -> ImportSourceOverlayContent(overlay, navigator, DeepLinkImportType.HTTP_TTS)
+        "*Import:DICT_RULE" -> ImportSourceOverlayContent(overlay, navigator, DeepLinkImportType.DICT_RULE)
+        "*Import:THEME" -> ImportSourceOverlayContent(overlay, navigator, DeepLinkImportType.THEME)
 
         // 字典规则
         "dictRuleEdit" -> DictRuleEditDialogContent(overlay, navigator)

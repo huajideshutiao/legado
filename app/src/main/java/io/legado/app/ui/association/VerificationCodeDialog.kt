@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
@@ -80,7 +82,7 @@ object VerificationCodeDialog {
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text(
-                                stringResource(R.string.verification_code),
+                                rememberString("verification_code"),
                                 color = AppTheme.colors.primaryText,
                                 fontSize = 18.sp,
                             )
@@ -94,7 +96,7 @@ object VerificationCodeDialog {
                         }) {
                             Icon(
                                 painter = rememberPainter("ic_check"),
-                                contentDescription = stringResource(R.string.ok),
+                                contentDescription = rememberString("ok"),
                                 tint = AppTheme.colors.primaryText,
                             )
                         }
@@ -103,7 +105,7 @@ object VerificationCodeDialog {
                             IconButton(onClick = { showMenu = true }) {
                                 Icon(
                                     painter = rememberPainter("ic_more_vert"),
-                                    contentDescription = stringResource(R.string.more_menu),
+                                    contentDescription = rememberString("more_menu"),
                                     tint = AppTheme.colors.primaryText,
                                 )
                             }
@@ -114,12 +116,12 @@ object VerificationCodeDialog {
                                         sourceOrigin?.let { Coroutine.async { SourceHelp.enableSource(it, sourceType, false) } }
                                         dialog.dismiss()
                                     },
-                                ) { Text(stringResource(R.string.disable_source)) }
+                                ) { Text(rememberString("disable_source")) }
                                 DropdownMenuItem(
                                     onClick = {
                                         showMenu = false
-                                        activity.alert(R.string.draw) {
-                                            setMessage(activity.getString(R.string.sure_del) + "\n" + sourceName)
+                                        activity.alert(androidAppString("draw")) {
+                                            setMessage(androidAppString("sure_del") + "\n" + sourceName)
                                             noButton()
                                             yesButton {
                                                 sourceOrigin?.let { Coroutine.async { SourceHelp.deleteSource(it, sourceType) } }
@@ -127,7 +129,7 @@ object VerificationCodeDialog {
                                             }
                                         }
                                     },
-                                ) { Text(stringResource(R.string.delete_source)) }
+                                ) { Text(rememberString("delete_source")) }
                             }
                         }
                     }
@@ -148,7 +150,7 @@ object VerificationCodeDialog {
                     AppOutlinedTextField(
                         value = code,
                         onValueChange = { code = it },
-                        label = stringResource(R.string.verification_code),
+                        label = rememberString("verification_code"),
                         singleLine = true,
                         modifier = Modifier
                             .fillMaxWidth()

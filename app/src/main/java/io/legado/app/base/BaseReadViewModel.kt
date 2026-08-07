@@ -4,7 +4,6 @@ import android.app.Application
 import android.net.Uri
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.MutableLiveData
-import io.legado.app.R
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
@@ -36,17 +35,20 @@ import io.legado.app.help.book.updateTo
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.analyzeRule.AnalyzeUrl
+import io.legado.app.ui.compose.platform.findStringResource
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.model.webBook.WebBook.getBookInfoAwait
 import io.legado.app.model.webBook.WebBook.getChapterListAwait
-import io.legado.app.ui.book.read.ReviewListDialog
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
+import io.legado.app.ui.route.encodeReviewListDialogPayload
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.UrlUtil
 import io.legado.app.utils.mapParallelSafe
 import io.legado.app.utils.postEvent
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
+import org.jetbrains.compose.resources.getString
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.catch
@@ -180,7 +182,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
         } else {
             val bookSource = curBookSource ?: let {
                 chapterListData.postValue(emptyList())
-                context.toastOnUi(R.string.error_no_source)
+                context.toastOnUi(findStringResource("error_no_source")?.let { getString(it) })
                 return
             }
             try {
@@ -211,7 +213,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                 }
             } catch (e: Throwable) {
                 AppLog.put("获取书籍信息失败\n${e.localizedMessage}", e)
-                context.toastOnUi(R.string.error_get_book_info)
+                context.toastOnUi(findStringResource("error_get_book_info")?.let { getString(it) })
             }
         }
     }
@@ -237,7 +239,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
         } else {
             val bookSource = curBookSource ?: let {
                 chapterListData.postValue(emptyList())
-                context.toastOnUi(R.string.error_no_source)
+                context.toastOnUi(findStringResource("error_no_source")?.let { getString(it) })
                 return
             }
             val oldBook = book.copy()
@@ -258,7 +260,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
             } catch (e: Throwable) {
                 chapterListData.postValue(emptyList())
                 AppLog.put("获取目录失败\n${e.localizedMessage}", e)
-                context.toastOnUi(R.string.error_get_chapter_list)
+                context.toastOnUi(findStringResource("error_get_chapter_list")?.let { getString(it) })
             }
         }
     }
@@ -303,7 +305,7 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
                     }
                 }
             }.onStart {
-                onSourceChanging(context.getString(R.string.source_auto_changing))
+                onSourceChanging(findStringResource("source_auto_changing")?.let { getString(it) } ?: "source_auto_changing")
             }.mapParallelSafe(AppConfig.threadCount, sources.size) { source ->
                 val book = WebBook.preciseSearchAwait(source, name, author).getOrThrow()
                 if (book.tocUrl.isEmpty()) {
@@ -472,11 +474,17 @@ abstract class BaseReadViewModel(application: Application) : BaseViewModel(appli
     /**
      * 打开章节级评论对话框 (paragraphIndex=0)
      * 段评 (paragraphIndex>0) 由小说阅读页点击段落气泡触发, 不走此入口
+     * ReviewListDialog 已下沉 shared: 经 review_list Overlay 弹底部弹窗 (payload 编码见 ReviewListDialogHost.kt)
      */
     open fun openCommentDialog(activity: AppCompatActivity) {
         val book = curBook ?: return
         val chapter = chapterListData.value?.getOrNull(book.durChapterIndex) ?: return
-        activity.showDialogFragment(ReviewListDialog(book, chapter, 0))
+        AppNavigatorProviders.getOrNull()?.showOverlay(
+            AppOverlay.Dialog(
+                key = "review_list",
+                payload = encodeReviewListDialogPayload(book, chapter, 0),
+            )
+        )
     }
 
     override fun onCleared() {

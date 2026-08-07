@@ -3,9 +3,9 @@ package io.legado.app.help.config
 import android.content.SharedPreferences
 import android.os.Build
 import io.legado.app.BuildConfig
-import io.legado.app.R
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.ui.book.getRealBookSort
 import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
 import io.legado.app.utils.getPrefBoolean
@@ -58,9 +58,9 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
                 io.legado.app.help.http.Cronet.preDownload { success ->
                     if (success) {
                         io.legado.app.help.http.recreateOkHttpClient()
-                        appCtx.toastOnUi(R.string.cronet_enabled)
+                        appCtx.toastOnUi(androidAppString("cronet_enabled"))
                     } else {
-                        appCtx.toastOnUi(R.string.cronet_download_failed)
+                        appCtx.toastOnUi(androidAppString("cronet_download_failed"))
                     }
                 }
             }

@@ -472,12 +472,6 @@ class ReadBookViewModelShared(
                 return@launchChapterLoad
             }
 
-            // 3.5 打开书首次装载时拉云进度（对照 app 端 initBook 的 syncProgress，每本书只触发一次）
-            if (cloudSyncedBookUrl != book.bookUrl) {
-                cloudSyncedBookUrl = book.bookUrl
-                pullCloudProgress(book)
-            }
-
             // 4. 跳章（对照 app 端 openChapter）：清滑窗 + 进度归零；同章重载保留 durChapterPos 恢复进度
             if (index != readBook.durChapterIndex.value) {
                 readBook.clearTextChapter()
@@ -939,15 +933,27 @@ class ReadBookViewModelShared(
     }
 
     // region WebDav 进度同步（对照 app 端 BaseReadViewModel.syncProgress/uploadProgress + ReadBookViewModel.initBook）
-    /** 已触发过云进度拉取的 bookUrl：每本书打开只拉一次（原版 initBook 仅入口同步一次）。 */
-    private var cloudSyncedBookUrl: String? = null
-
-    /**
-     * 进度同步专用作用域：不随 UI scope 取消。
+    /** 进度同步专用作用域：不随 UI scope 取消。
      * 原版 uploadProgress 走进程级 MainScope（Coroutine.async），退出阅读时 VM 已 cleared 上传也不被打断；
      * shared 版等价用独立 SupervisorJob + IO 作用域（[scope] 桌面端为 rememberCoroutineScope，dispose 即取消）。
      */
     private val progressSyncScope = CoroutineScope(SupervisorJob() + IoDispatcher)
+
+    /**
+     * 打开书时同步云进度（对照原版 ReadBookViewModel.initBook 的同步段）：
+     * 每次打开书都触发，仅同书 + 朗读运行中跳过（原版 `!(isSameBook && BaseReadAloudService.isRun)`）。
+     * 原版另有 chapterChanged 跳过（intent extra，shared 无对应概念）与 inBookshelf 守卫；
+     * 同步入口由 ReaderScreenModel.initBook 调用，换章等 loadChapter 路径不触发。
+     *
+     * 注意：原版 initBook 每次调用都同步，不存在“每本书只同步一次”的限频；
+     * 云端较新时弹确认框（[ReadBookEvents.newProgressConfirm]），确认后云端进度回写，
+     * 下次进入比对相等不再弹，不会重复打扰。
+     */
+    fun syncProgressOnBookOpen(book: Book, isSameBook: Boolean) {
+        if (isSameBook && ReadBookPlatforms.get().isReadAloudRun) return
+        if (book.isNotShelf) return
+        pullCloudProgress(book)
+    }
 
     /**
      * 打开书时拉取云进度并三路比对（原版 BaseReadViewModel.syncProgress，syncBookProgressPlus 路径）：

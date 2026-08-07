@@ -3,7 +3,7 @@
 // - prev_page_key: "上一页按键"
 // - next_page_key: "下一页按键"
 // - reset: "重置"
-// - ok: "确定" (已存在 jvmMain)
+// - ok: "确认" (已存在 jvmMain)
 //
 // PAINTER KEYS: 本 Dialog 不使用 painter key (无图标)
 

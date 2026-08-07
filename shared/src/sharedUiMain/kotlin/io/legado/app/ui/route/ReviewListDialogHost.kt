@@ -1,5 +1,6 @@
 package io.legado.app.ui.route
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -77,12 +78,14 @@ import org.jetbrains.compose.resources.stringResource
  * @param onDismiss 关闭回调 (顶层弹窗; 回复详情层关闭回退到列表层)
  */
 @Composable
-fun ReviewListDialogHost(
+fun ReviewListContent(
     book: Book,
     chapter: BookChapter?,
     paragraphIndex: Int,
     parentReview: Review? = null,
     onDismiss: () -> Unit,
+    /** 回复详情嵌套承载: true=再开一层弹窗 (Host 弹窗形态, 原版两层 Dialog 语义); false=同容器替换 (宽屏面板形态) */
+    wrapRepliesInSheet: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
     // 对照 app 端 ReviewListDialog.onViewCreated: 实例化 shared VM 并灌入输入参数
@@ -148,26 +151,7 @@ fun ReviewListDialogHost(
         })
     }
 
-    // 0.92 × 锚点高 (对齐 app 端 BottomSheetDialog 92% 撑高); 桌面端锚点 = 主窗口
-    val sheetHeight = with(LocalDensity.current) {
-        val anchor = LocalDialogAnchorSize.current
-        val hPx = anchor?.height ?: ScreenInfoProviders.get().screenHeightPx
-        (hPx * 0.92f).toDp()
-    }
-
-    AppBottomSheetDialog(
-        onDismissRequest = onDismiss,
-        properties = AppDialogSizes.properties(),
-        maxHeight = sheetHeight,
-    ) {
-        AppTheme {
-            Surface(
-                color = AppTheme.colors.background,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(sheetHeight),
-            ) {
-                Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize().background(AppTheme.colors.background)) {
                     ReviewListDialog(
                         title = titleText,
                         parentReview = parentReview,
@@ -243,21 +227,28 @@ fun ReviewListDialogHost(
                             onDismiss = { showPostDialog = false },
                         )
                     }
-                }
-            }
-        }
     }
 
-    // 回复详情层: 嵌套本宿主 (原版 openReplies 的"再开一层 Dialog"语义);
+    // 回复详情层: 弹窗形态=再开一层弹窗 (原版两层 Dialog 语义); 面板形态=同容器替换内容。
     // 关闭时只回退到列表层, 不关外层
     repliesTarget?.let { review ->
-        ReviewListDialogHost(
-            book = book,
-            chapter = chapter,
-            paragraphIndex = paragraphIndex,
-            parentReview = review,
-            onDismiss = { repliesTarget = null },
-        )
+        if (wrapRepliesInSheet) {
+            ReviewListDialogHost(
+                book = book,
+                chapter = chapter,
+                paragraphIndex = paragraphIndex,
+                parentReview = review,
+                onDismiss = { repliesTarget = null },
+            )
+        } else {
+            ReviewListContent(
+                book = book,
+                chapter = chapter,
+                paragraphIndex = paragraphIndex,
+                parentReview = review,
+                onDismiss = { repliesTarget = null },
+            )
+        }
     }
 
     // 删除二次确认 (对照 app 端 alert(delete, confirm_delete_review))
@@ -271,6 +262,51 @@ fun ReviewListDialogHost(
             },
             cancelButton = AlertButton(stringResource(Res.string.no)) {},
         )
+    }
+}
+
+/**
+ * 评论列表**底部弹窗**宿主 (对照 app 端 ReviewListDialog BottomSheetDialogFragment):
+ * 贴底滑入 + 92% 撑高外壳, 内容与交互全部在 [ReviewListContent] (宽屏面板与弹窗共用)。
+ * 回复详情在弹窗形态下再开一层本宿主 (原版两层 Dialog 语义)。
+ */
+@Composable
+fun ReviewListDialogHost(
+    book: Book,
+    chapter: BookChapter?,
+    paragraphIndex: Int,
+    parentReview: Review? = null,
+    onDismiss: () -> Unit,
+) {
+    // 0.92 × 锚点高 (对齐 app 端 BottomSheetDialog 92% 撑高); 桌面端锚点 = 主窗口
+    val sheetHeight = with(LocalDensity.current) {
+        val anchor = LocalDialogAnchorSize.current
+        val hPx = anchor?.height ?: ScreenInfoProviders.get().screenHeightPx
+        (hPx * 0.92f).toDp()
+    }
+
+    AppBottomSheetDialog(
+        onDismissRequest = onDismiss,
+        properties = AppDialogSizes.properties(),
+        maxHeight = sheetHeight,
+    ) {
+        AppTheme {
+            Surface(
+                color = AppTheme.colors.background,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(sheetHeight),
+            ) {
+                ReviewListContent(
+                    book = book,
+                    chapter = chapter,
+                    paragraphIndex = paragraphIndex,
+                    parentReview = parentReview,
+                    onDismiss = onDismiss,
+                    wrapRepliesInSheet = true,
+                )
+            }
+        }
     }
 }
 
