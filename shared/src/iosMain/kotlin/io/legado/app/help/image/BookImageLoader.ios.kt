@@ -64,23 +64,27 @@ class IosBookImageLoader : BookImageLoader {
         sourceOrigin: String?,
         widthPx: Int,
         heightPx: Int,
-    ): ImageBitmap? {
-        val request = ImageRequest.Builder(PlatformContext.INSTANCE)
-            .data(url)
-            .sourceOrigin(sourceOrigin)
-            .apply {
-                // 按显示尺寸降采样; FILL 对齐消费端 ContentScale.Crop, INEXACT 允许复用更大的内存缓存项
-                if (widthPx > 0 && heightPx > 0) {
-                    size(widthPx, heightPx)
-                    scale(Scale.FILL)
-                    precision(Precision.INEXACT)
+    ): ImageBitmap? =
+        // 同 URL 并发请求经 BookImageLoadDedup 单飞去重 (I6, 与 jvm/android 端一致)
+        BookImageLoadDedup.singleFlight(
+            "${url}\u0000${sourceOrigin ?: ""}\u0000${widthPx}x$heightPx\u0000false"
+        ) {
+            val request = ImageRequest.Builder(PlatformContext.INSTANCE)
+                .data(url)
+                .sourceOrigin(sourceOrigin)
+                .apply {
+                    // 按显示尺寸降采样; FILL 对齐消费端 ContentScale.Crop, INEXACT 允许复用更大的内存缓存项
+                    if (widthPx > 0 && heightPx > 0) {
+                        size(widthPx, heightPx)
+                        scale(Scale.FILL)
+                        precision(Precision.INEXACT)
+                    }
                 }
-            }
-            .build()
-        val result = iosCoilImageLoader.execute(request)
-        val bitmap = (result as? SuccessResult)?.image?.toBitmap() ?: return null
-        return bitmap.asComposeImageBitmap()
-    }
+                .build()
+            val result = iosCoilImageLoader.execute(request)
+            val bitmap = (result as? SuccessResult)?.image?.toBitmap() ?: return@singleFlight null
+            bitmap.asComposeImageBitmap()
+        }
 }
 
 /**

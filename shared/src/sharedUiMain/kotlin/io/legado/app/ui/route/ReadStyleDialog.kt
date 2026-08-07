@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -346,6 +347,9 @@ private fun ReadStylePreviewSlot(
 ) {
     val colors = AppTheme.colors
     val bgSource = config.curBgImageSource()
+    // I4: 预览槽位实际显示尺寸 (48dp 正圆), 解码按槽位像素采样 + 进程级位图 LRU
+    // (ImageBitmapLoader 内部, 同尺寸二次打开零重复解码); 1080p+ 壁纸不再全尺寸解码
+    val slotPx = with(LocalDensity.current) { 48.dp.roundToPx() }.coerceAtLeast(1)
     // 图片背景缩略图异步加载（仅图片背景；纯色背景 null 不加载）
     var bgBitmap by remember(config, bgSource) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(bgSource) {
@@ -359,10 +363,13 @@ private fun ReadStylePreviewSlot(
             bgBitmap = runCatching { Res.readBytes("files/bg_preview/$fileName") }
                 .getOrNull()
                 ?.let { runCatching { it.decodeToImageBitmap() }.getOrNull() }
-            // 二级: 原图 (bg:// 加载器内部缓存命中直读, 未命中下载), 下好切换
-            ImageBitmapLoader().loadBitmap(bgSource, null, null)?.let { bgBitmap = it }
+            // 二级: 原图按槽位尺寸采样 (bg:// 加载器内部缓存命中直读, 未命中下载), 下好切换
+            ImageBitmapLoader().loadBitmap(bgSource, null, null, widthPx = slotPx, heightPx = slotPx)
+                ?.let { bgBitmap = it }
         } else {
-            bgBitmap = ImageBitmapLoader().loadBitmap(bgSource, null, null)
+            bgBitmap = ImageBitmapLoader().loadBitmap(
+                bgSource, null, null, widthPx = slotPx, heightPx = slotPx,
+            )
         }
     }
     val backgroundColor = when {

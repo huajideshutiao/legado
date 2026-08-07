@@ -1,15 +1,26 @@
 package io.legado.desktop.ui.platform
 
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import com.sun.jna.Platform
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
+import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
@@ -18,8 +29,12 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfigProviders
+import io.legado.app.help.image.ImageBitmapLoader
+import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.help.showSourceLogin
 import io.legado.app.help.source.SourceVerificationHelpShared
+import io.legado.app.help.storage.DataStorageProviders
+import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.read.ReadAloudControls
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
@@ -34,25 +49,34 @@ import io.legado.app.ui.book.read.SourceAction
 import io.legado.app.ui.book.read.TopMenuState
 import io.legado.app.ui.book.read.createReadMenuColors
 import io.legado.app.ui.book.read.page.AutoPagerCompose
+import io.legado.app.ui.compose.component.AppDropdownMenu
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.dict.DictDialogHost
 import io.legado.app.ui.reader.TextSelectionDialog
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.toRouteRef
+import io.legado.app.utils.FileUtilsBase
 import io.legado.desktop.help.DesktopBattery
 import io.legado.desktop.help.tts.DesktopReadAloudHost
 import io.legado.desktop.ui.DesktopDialogRequest
 import io.legado.desktop.ui.DesktopDialogs
 import io.legado.desktop.ui.DesktopPlatformCapabilities
+import io.legado.desktop.ui.DesktopWindowChrome
+import io.legado.desktop.ui.component.FileDialogs
 import io.legado.desktop.ui.readerWindowTint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import kotlin.math.roundToInt
 
 /**
  * desktop 端 [ReaderPlatformProvider] 真实实现: 菜单可见/可切, 导航经 [AppNavigator] 桥接。
@@ -87,6 +111,9 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
     /** 标题栏着色协程作用域 (Main)。 */
     private val titleBarScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
+    /** 图片保存协程作用域 (Main: toast 需主线程; 下载/写盘在 IO 块内切换)。 */
+    private val imageActionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     /** 触发标题栏着色刷新的配置变更集合。 */
     private val titleBarTintChanges = setOf(
         ReadConfigChange.BG,
@@ -96,6 +123,10 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
 
     /** 查词请求 (TextSelectionDialog 查词按钮 → onDict 回调暂存, 由 [TextSelectionHost] 渲染词典对话框)。 */
     internal var dictWord by mutableStateOf<String?>(null)
+        private set
+
+    /** 图片长按菜单请求 (长按坐标 + 动作上下文, 由 [ImageActionMenuHost] 渲染)。 */
+    internal var imageActionMenu by mutableStateOf<ReaderImageMenuState?>(null)
         private set
 
     override fun createMenuController(
@@ -132,11 +163,12 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         }
     }
 
-    /** 阅读页退出: 清除标题栏着色, 回落 AppTheme 主题色。 */
+    /** 阅读页退出: 清除标题栏着色, 回落 AppTheme 主题色; 收起图片长按菜单避免残留。 */
     override fun onExit(screenModel: ReaderScreenModel) {
         titleBarTintJob?.cancel()
         titleBarTintJob = null
         readerWindowTint.value = null
+        imageActionMenu = null
     }
 
     override fun onLongPress(screenModel: ReaderScreenModel) {
@@ -179,14 +211,93 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         )
     }
 
-    /** 图片长按: 桌面端无图片菜单, 维持整章选择对话框回落 (与空白长按一致) */
+    /**
+     * 图片长按: 弹图片操作菜单 (查看大图/刷新/保存, 对齐移动端三项; 对照原版
+     * ReadBookActivity.onImageLongPress 的 show/refresh/save 三分支, "选择目录"
+     * iOS/鸿蒙均未做故桌面也不做)。菜单由 [ImageActionMenuHost] 锚定在长按坐标处渲染。
+     */
     override fun onImageLongPress(
         screenModel: ReaderScreenModel,
         src: String,
         x: Float,
         y: Float,
     ) {
-        onLongPress(screenModel)
+        if (src.isBlank()) return
+        imageActionMenu = ReaderImageMenuState(screenModel, src, x, y)
+    }
+
+    /** 查看大图: 弹共享全屏大图 Overlay (key="photo" → PhotoViewOverlayDialog, 全屏黑底+缩放;
+     *  带书源身份走防盗链 header + coverDecodeJs 封面解密, 与列表封面同款身份, 本地书不传)。 */
+    private fun viewImage(screenModel: ReaderScreenModel, src: String) {
+        val book = screenModel.currentBook
+        AppNavigatorProviders.getOrNull()?.showOverlay(
+            AppOverlay.Dialog(
+                key = "photo",
+                payload = src,
+                sourceOrigin = book?.origin?.takeIf { !book.isLocal && it.isNotBlank() },
+            )
+        )
+    }
+
+    /**
+     * 刷新图片: 删该图磁盘缓存文件 + 清共享内存缓存 + 重排 (对照原版 viewModel.refreshImage
+     * 的删缓存文件+清内存缓存+loadContent; 桌面阅读页图片走 ReaderImageResolver → 磁盘
+     * BookImageStorage 缓存, 只清内存缓存会读到旧磁盘字节, 故按单图删文件, 其余图片缓存不动)。
+     */
+    private fun refreshImage(screenModel: ReaderScreenModel, src: String) {
+        val book = screenModel.currentBook
+        val chapter = screenModel.currentChapter
+        if (book != null && chapter != null) {
+            BookImageStorageProviders.get().getImagePath(book, chapter, src)?.let { File(it).delete() }
+        }
+        ReaderImageCache.clear()
+        ReadBookEvents.postConfig(ReadConfigChange.LOAD_CONTENT)
+    }
+
+    /** 保存图片: 原生保存对话框选路径 → 下载解码字节 (书源防盗链+解密链路) → 落盘, toast 提示路径。 */
+    private fun saveImage(screenModel: ReaderScreenModel, src: String) {
+        val book = screenModel.currentBook
+        val bookSource = screenModel.viewModel.bookSource.value
+        imageActionScope.launch {
+            Toasters.get().toast("正在保存")
+            // 阻塞式选择器必须切 IO (对照漫画阅读页 onSaveImage 的 withContext(IoDispatcher))
+            val destPath = withContext(Dispatchers.IO) {
+                FileDialogs.pickSaveFile(
+                    title = "保存图片",
+                    defaultName = "legado-${System.currentTimeMillis()}.jpg",
+                    initialDir = defaultImageSaveDir(),
+                )?.absolutePath
+            } ?: return@launch
+            val savedPath = withContext(Dispatchers.IO) {
+                runCatching {
+                    val bytes = ImageBitmapLoader().loadBytes(src, book, bookSource)
+                        ?: return@runCatching null
+                    val dest = File(destPath)
+                    dest.parentFile?.mkdirs()
+                    dest.writeBytes(bytes)
+                    // 建议名恒为 .jpg, 与实际格式不符时按魔数改名 (与漫画保存一致)
+                    fixImageExtension(dest)
+                    dest.absolutePath
+                }.getOrElse {
+                    AppLog.put("保存图片出错\n${it.localizedMessage}", it)
+                    null
+                }
+            }
+            Toasters.get().toast(if (savedPath != null) "保存成功\n$savedPath" else "保存失败")
+        }
+    }
+
+    /** 保存对话框默认起始目录 (用户可见产物目录 桌面/legado, 与漫画保存一致)。 */
+    private fun defaultImageSaveDir(): File? = runCatching {
+        val dir = File(DataStorageProviders.get().userExportDir)
+        if (dir.isDirectory || dir.mkdirs()) dir else null
+    }.getOrNull()
+
+    /** 按魔数校正图片扩展名 (对照漫画 DesktopMangaReaderPlatform.fixExtension)。 */
+    private fun fixImageExtension(dest: File) {
+        val ext = FileUtilsBase.getImageExtension(dest)
+        if (dest.name.endsWith(ext, ignoreCase = true)) return
+        dest.renameTo(File(dest.parentFile, dest.nameWithoutExtension + ext))
     }
 
     /** 替换 (对照 app 端 menu_replace): 打开替换规则编辑页, pattern=选中文本(去行首尾空白), scope=书名;书源URL */
@@ -264,6 +375,60 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         }
     }
 
+    /**
+     * 图片长按菜单宿主 (挂在桌面 Compose 根, 与 [TextSelectionHost] 并列; 对照
+     * IosImageActionMenu 浮动菜单, 桌面用 AppDropdownMenu 锚定在长按坐标处)。
+     *
+     * 坐标换算: 长按回调坐标是阅读视口局部坐标, 宿主在窗口根坐标空间; 非 mac/非全屏时
+     * 自绘控制栏占顶部 40dp (DesktopTitleBar 同款高度 token), 锚点 y 加回该偏移。
+     */
+    @Composable
+    fun ImageActionMenuHost() {
+        val menu = imageActionMenu ?: return
+        val titleBarTopPx = if (Platform.isMac() || DesktopWindowChrome.fullscreen) {
+            0f
+        } else {
+            with(LocalDensity.current) { AppTheme.DesignTokens.viewHeightLarge.toPx() }
+        }
+        Box(Modifier.fillMaxSize()) {
+            Box(
+                Modifier.offset {
+                    IntOffset(menu.x.roundToInt(), (menu.y + titleBarTopPx).roundToInt())
+                }
+            ) {
+                AppDropdownMenu(expanded = true, onDismissRequest = { imageActionMenu = null }) {
+                    // 查看大图 (对照原版 show → PhotoDialog)
+                    DropdownMenuItem(
+                        onClick = {
+                            imageActionMenu = null
+                            viewImage(menu.screenModel, menu.src)
+                        }
+                    ) {
+                        Text("查看大图")
+                    }
+                    // 刷新 (对照原版 refresh → refreshImage)
+                    DropdownMenuItem(
+                        onClick = {
+                            imageActionMenu = null
+                            refreshImage(menu.screenModel, menu.src)
+                        }
+                    ) {
+                        Text("刷新")
+                    }
+                    // 保存 (对照原版 save → saveImage; 桌面无相册, 走文件保存对话框)
+                    DropdownMenuItem(
+                        onClick = {
+                            imageActionMenu = null
+                            saveImage(menu.screenModel, menu.src)
+                        }
+                    ) {
+                        Text("保存")
+                    }
+                }
+            }
+        }
+    }
+
     override fun readAloudControls(
         navigator: AppNavigator,
         screenModel: ReaderScreenModel,
@@ -281,6 +446,15 @@ internal data class ReaderTextSelection(
     val onReadAloud: (String) -> Unit = {},
     val onSearchContent: (String) -> Unit = {},
     val onShare: (String) -> Unit = {},
+)
+
+/** 图片长按菜单请求载荷: 长按图片 src + 视口坐标 + 阅读上下文 (由
+ *  [DesktopReaderPlatformProvider.ImageActionMenuHost] 渲染)。 */
+internal data class ReaderImageMenuState(
+    val screenModel: ReaderScreenModel,
+    val src: String,
+    val x: Float,
+    val y: Float,
 )
 
 /**

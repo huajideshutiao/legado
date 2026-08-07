@@ -9,7 +9,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -35,6 +34,7 @@ import io.legado.app.ui.book.source.edit.BookSourceEditUiEvent
 import io.legado.app.ui.book.source.edit.BookSourceEditViewModelShared
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.code.CodeEditorState
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
@@ -112,8 +112,11 @@ fun BookSourceEditRoute(
 
     val editState = remember { BookSourceEditState() }
 
-    // 字段文本快照: EditEntity.value 不是 Compose State, 自动缩进这类外部改写要靠它触发重组
-    val fieldTexts = remember(editState.sourceVersion) { mutableStateMapOf<String, String>() }
+    // 字段编辑器状态容器: fieldId → CodeEditorState。普通 HashMap 仅作引用容器不参与重组
+    // (编辑器内部 value 是 Compose State), 单字段写入只重组对应字段 —— 消除原 SnapshotStateMap
+    // 写一字段全字段失效的输入期全量重组; version 变化时整体重建 (粘贴源/重新加载后所有字段
+    // 文本替换, 撤销历史一并重置, 对齐原版 upSourceView 重建实体)
+    val fieldEditors = remember(editState.sourceVersion) { HashMap<String, CodeEditorState>() }
     // 最后获得焦点的字段 (对照 app 端 lastActiveCodeView), 自动缩进作用于它
     val activeField =
         remember(editState.sourceVersion) { mutableStateOf<Pair<String, EditEntity>?>(null) }
@@ -173,7 +176,7 @@ fun BookSourceEditRoute(
         if (isTopEntry) refocusSignal.tryEmit(Unit)
     }
 
-    val callbacks = remember(navigator, screenModel, fieldTexts, activeField) {
+    val callbacks = remember(navigator, screenModel, fieldEditors, activeField) {
         BookSourceEditCallbacks(
             onBack = requestExit,
             onSave = {
@@ -228,10 +231,12 @@ fun BookSourceEditRoute(
             onAutoIndent = {
                 // 对照 app 端 autoIndent: getActiveCodeView()?.reFormat(), 作用于最后获得焦点的字段
                 activeField.value?.let { (fieldId, entity) ->
-                    val old = fieldTexts[fieldId] ?: entity.value.orEmpty()
+                    val editor = fieldEditors[fieldId] ?: return@let
+                    val old = editor.value.text
                     val formatted = CodeFormatter.reFormat(old)
                     if (formatted != old) {
-                        fieldTexts[fieldId] = formatted
+                        // 直接写编辑器 (内部 State 驱动对应字段重组), 不再经文本快照中转
+                        editor.setText(formatted)
                         entity.value = formatted
                     }
                 }
@@ -282,9 +287,8 @@ fun BookSourceEditRoute(
         state = editState,
         callbacks = callbacks,
         editEntities = { tab -> screenModel.editEntities(tab) },
+        fieldEditors = fieldEditors,
         onFieldFocus = { fieldId, entity -> activeField.value = fieldId to entity },
-        onFieldTextChange = { fieldId, text -> fieldTexts[fieldId] = text },
-        fieldTextOverride = { fieldId -> fieldTexts[fieldId] },
         requestFocusSignal = refocusSignal,
         // Android 15+ 强制 edge-to-edge 不再随键盘 resize, 底部辅助条须自行避让
         // 键盘/导航条 (对齐原版 Activity 的 adjustResize + initialPadding 定位, 见

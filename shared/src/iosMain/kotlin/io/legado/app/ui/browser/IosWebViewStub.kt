@@ -109,6 +109,8 @@ private class WebViewNavDelegate(
             }
         }
         callbacks.onPageFinished?.invoke(url)
+        // 页面 URL 状态同步 (页面内跳转后菜单取最新链接)
+        callbacks.onUrlChanged?.invoke(url)
     }
 }
 

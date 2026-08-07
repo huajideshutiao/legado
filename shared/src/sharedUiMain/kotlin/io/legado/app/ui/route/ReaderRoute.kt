@@ -20,6 +20,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Density
@@ -36,7 +37,6 @@ import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
-import io.legado.app.help.config.ReadTipConfigShared
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.CacheBookShared
@@ -74,7 +74,6 @@ import io.legado.app.ui.book.read.config.SpeakEngineDialog
 import io.legado.app.ui.book.read.page.delegate.ScrollPageDelegateCompose
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
-import io.legado.app.ui.book.read.page.tipRowHeightPx
 import io.legado.app.ui.book.read.page.turnPage
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
@@ -82,6 +81,8 @@ import io.legado.app.ui.compose.platform.AppShortcut
 import io.legado.app.ui.compose.platform.AppShortcutHandler
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.PageTurnThrottle
+import io.legado.app.ui.compose.platform.VolumeKeyPageTurnHandler
+import io.legado.app.ui.compose.platform.performBack
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -155,14 +156,18 @@ fun ReaderRoute(
     // region 排版参数注入（对照原版 ChapterProvider.upViewSize + TextStyleProvider.upStyle）
     val density = LocalDensity.current
     val readBookConfig = LocalReadConfigProviders.current.readBookConfig
-    val readTipConfig = LocalReadConfigProviders.current.readTipConfig
     val containerSize = LocalWindowInfo.current.containerSize
-    // 拖动窗口时 containerSize 每帧变化，停稳后再重排（对照原版 upViewSize 的 postDelayed 去抖）
-    var layoutSize by remember { mutableStateOf(containerSize) }
-    LaunchedEffect(containerSize) {
-        if (layoutSize != containerSize) {
+    // 排版视口尺寸：取渲染 Box 实测尺寸（ReaderScreen modifier.onSizeChanged），与正文/
+    // 页眉/页脚同一布局系统同一基准（对照原版 contentTextView.onSizeChanged → upViewSize）。
+    // 不用 LocalWindowInfo.containerSize 直接排版——任何与渲染 Box 的基准偏差（窗口装饰/
+    // 缩放等）都会让排版视口 ≠ 正文实际尺寸，重构后统一以实测为准（2026-08 对账确认）。
+    var measuredViewSize by remember { mutableStateOf(containerSize) }
+    var pendingViewSize by remember { mutableStateOf(containerSize) }
+    // 拖动窗口时 onSizeChanged 每帧触发，停稳后再重排（对照原版 upViewSize 的 postDelayed 去抖）
+    LaunchedEffect(pendingViewSize) {
+        if (pendingViewSize != measuredViewSize) {
             delay(VIEW_SIZE_DEBOUNCE_MS)
-            layoutSize = containerSize
+            measuredViewSize = pendingViewSize
         }
     }
     // 系统栏 inset：阅读页窗口 fullscreen（内容铺到系统栏后），排版视口须预留状态栏/
@@ -172,6 +177,12 @@ fun ReaderRoute(
     // （对照原版 onConfigurationChanged → upStatusBar + upViewSize 重排）
     val statusBarTopPx = WindowInsets.statusBars.getTop(density)
     val navigationBarBottomPx = WindowInsets.navigationBars.getBottom(density)
+    // 页眉/页脚实际测量高度（px，来自 PageViewComposable 布局占位子节点 onSizeChanged
+    // 上报）：排版视口只认这一份实测值（对照原版 contentTextView 被 llHeader/llFooter
+    // 挤小后的实际尺寸——同一布局系统测量，正文与页脚天然一致）。
+    // null = 首帧尚未测量：保持当前排版不更新（布局依赖顺序——测量回调后重排收敛，
+    // 非降级兜底）。
+    var measuredTips by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     // 配置变更即时触发：读回新配置后由 VM 比对，参数没变不重排
     var configVersion by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
@@ -179,15 +190,18 @@ fun ReaderRoute(
             if (changes.any { it in relayoutChanges }) configVersion++
         }
     }
-    // readTipConfig 进 key: 页眉/页脚显隐与内边距变化时重建排版视口
+    // 测量值进 key：页眉/页脚实测高度变化（显隐/边距/字号配置变更、系统栏沉浸切换）
+    // 时以新实测值重建排版视口（页眉/页脚显隐配置不再直接进 key——显隐只经布局子节点
+    // 组合与否体现为实测高度变化，单一来源）
     LaunchedEffect(
-        screenModel, layoutSize, configVersion, density, readBookConfig, readTipConfig,
-        statusBarTopPx, navigationBarBottomPx,
+        screenModel, measuredViewSize, configVersion, density, readBookConfig,
+        statusBarTopPx, navigationBarBottomPx, measuredTips,
     ) {
+        val tips = measuredTips ?: return@LaunchedEffect
         screenModel.viewModel.updateLayoutConfig(
             buildLayoutConfig(
-                layoutSize, density, readBookConfig, readTipConfig,
-                statusBarTopPx, navigationBarBottomPx,
+                measuredViewSize, density, readBookConfig,
+                statusBarTopPx, navigationBarBottomPx, tips.first, tips.second,
             )
         )
     }
@@ -243,7 +257,9 @@ fun ReaderRoute(
             }
 
             override fun onBack() {
-                navigator.pop()
+                // 统一返回链: 先关顶层覆盖物 (阅读菜单/对话框/Popup) 再出栈,
+                // 对齐原版 BACK 语义 (桌面端 Backspace/兜底 ESC 均经此链)
+                performBack(navigator)
             }
         }
     }
@@ -293,9 +309,17 @@ fun ReaderRoute(
                 val prev = shortcut.key == Key.DirectionLeft
                 if (isScroll) {
                     // 上下滚动模式: ←/→ = 章节切换 (用户拍板)
+                    // 方向键切章统一落到新章第一页: toLast=false 章首 + resetOffset=true
+                    // 归零滚动偏移 (滚动模式下滑窗预载命中时默认保留偏移, 视觉上会延续
+                    // 上一章滚动位置; 菜单/自动切章等入口保持原语义不动)
                     chapterTurnThrottle.tryTurn {
-                        if (prev) screenModel.viewModel.moveToPrevChapter(toLast = false)
-                        else screenModel.viewModel.moveToNextChapter()
+                        if (prev) {
+                            screenModel.viewModel.moveToPrevChapter(
+                                toLast = false, resetOffset = true
+                            )
+                        } else {
+                            screenModel.viewModel.moveToNextChapter(resetOffset = true)
+                        }
                     }
                 } else {
                     // turnPage 内部优先走 pageDelegate.keyTurnPage(带动画), 无委托时直接位移页码
@@ -322,9 +346,15 @@ fun ReaderRoute(
                     }
                 } else {
                     // 左右翻页模式: ↑/↓ = 章节切换 (用户拍板)
+                    // 同滚动模式方向键切章: toLast=false + resetOffset=true, 新章从第一页开始
                     chapterTurnThrottle.tryTurn {
-                        if (up) screenModel.viewModel.moveToPrevChapter(toLast = false)
-                        else screenModel.viewModel.moveToNextChapter()
+                        if (up) {
+                            screenModel.viewModel.moveToPrevChapter(
+                                toLast = false, resetOffset = true
+                            )
+                        } else {
+                            screenModel.viewModel.moveToNextChapter(resetOffset = true)
+                        }
                     }
                 }
             }
@@ -333,13 +363,13 @@ fun ReaderRoute(
     // 音量键翻页 (对照原版 ReadBookKeyHandler VOLUME_UP/DOWN 分支, 默认开启;
     // 开关走平台配置 AppConfig.volumeKeyPage, 关闭时不拦截让系统调音量)
     // 2026-08-04: 用户决策——音量键翻页功能保留恒生效, 仅删 volumeKeyPageOnPlay 配置项。
-    AppShortcutHandler(
-        shortcuts = ReaderShortcuts.volumePageTurn,
+    // 长按策略 (2026-08 用户拍板): 与漫画页一致——TRIGGER 连翻 + 200ms 节流,
+    // 接线收敛在共享 VolumeKeyPageTurnHandler (单击翻页 / 长按连翻节流 / 抬起消费)
+    VolumeKeyPageTurnHandler(
         enabled = { isTopEntry() && !screenModel.menuState.isVisible && provider.volumeKeyPage },
-    ) { shortcut ->
+    ) { volumeUp ->
         screenModel.viewModel.turnPage(
-            if (shortcut.key == Key.VolumeUp) PageDirectionShared.PREV
-            else PageDirectionShared.NEXT
+            if (volumeUp) PageDirectionShared.PREV else PageDirectionShared.NEXT
         )
     }
     // endregion
@@ -353,7 +383,11 @@ fun ReaderRoute(
         state = state,
         actions = actions,
         focusRequester = keyFocusRequester,
-        modifier = Modifier.pointerInput(Unit) {
+        onTipMeasured = { header, footer -> measuredTips = header to footer },
+        modifier = Modifier
+            // 排版视口尺寸实测（与渲染 Box 同一基准，见 measuredViewSize 说明）
+            .onSizeChanged { pendingViewSize = it }
+            .pointerInput(Unit) {
             awaitPointerEventScope {
                 while (true) {
                     val event = awaitPointerEvent()
@@ -1005,19 +1039,20 @@ private object ReaderShortcuts {
         AppShortcut(Key.DirectionUp, preemptive = true),
         AppShortcut(Key.DirectionDown, preemptive = true),
     )
-
-    /** 音量键翻页 (对照原版 ReadBookKeyHandler VOLUME_UP/DOWN) */
-    val volumePageTurn = listOf(
-        AppShortcut(Key.VolumeUp),
-        AppShortcut(Key.VolumeDown),
-    )
+    // 音量键翻页已收敛到共享 VolumeKeyPageTurnHandler (TRIGGER + 200ms 节流,
+    // 与漫画一致), 不再在此声明快捷键列表
 }
 
 /**
  * 触发重排的配置事件：原版这些分支都落到 `ChapterProvider.upStyle/upLayout` +
  * `ReadBook.loadContent(resetPageOffset = false)`。
+ * SYSTEM_UI（隐藏状态栏/导航栏切换）：页眉按 headerMode=0 联动显隐、排版视口随
+ * 系统栏 inset 与页眉高度变化，必须同步重算（原版由 [0,2] 双事件中的 STYLE 分支
+ * upStyle 驱动占位 View 显隐后布局变化触发；本地事件已拆分为 SYSTEM_UI 单独语义，
+ * 故在此补上，避免沉浸切换后排版视口仍按旧页眉高度预留）。
  */
 private val relayoutChanges = setOf(
+    ReadConfigChange.SYSTEM_UI,
     ReadConfigChange.STYLE,
     ReadConfigChange.CHAPTER_STYLE,
     ReadConfigChange.CHAPTER_LAYOUT,
@@ -1027,31 +1062,36 @@ private val relayoutChanges = setOf(
 /**
  * 窗口视口 + [ReadBookConfigShared] → 排版参数，逐字段对照原版
  * `ChapterProvider.upLayout`（padding dp→px）与 `TextStyleProvider.upStyle`（字号 / 间距）。
+ *
+ * 页眉/页脚不再有独立预留公式（2026-08 重构）：正文视口高度 = 容器实测高 − 系统栏 −
+ * 页眉实测高 − 页脚实测高，其中页眉/页脚实测值由渲染侧布局占位子节点（
+ * PageViewComposable onSizeChanged）上报——与正文区实际剩余空间同一布局系统同一帧测量
+ * （对照原版 contentTextView 实际尺寸 = 窗口 − vwStatusBar − llHeader − llFooter −
+ * vwNavigationBar）。paddingTop 只含正文自身内边距（对照原版 contentTextView 被
+ * llHeader 约束后内部 padding）。
  */
 private fun buildLayoutConfig(
     size: IntSize,
     density: Density,
     config: ReadBookConfigShared,
-    tipConfig: ReadTipConfigShared,
     statusBarTopPx: Int,
     navigationBarBottomPx: Int,
+    headerTipPx: Int,
+    footerTipPx: Int,
 ): ReadBookViewModelShared.LayoutConfig = with(density) {
     val textSizePx = config.textSize.sp.toPx()
-    // 页眉/页脚 tip 高度（隐藏时为 0）：排版视口预留，正文不钻进 tip 区。
-    // 对照 app 端 contentTextView 被 header/footer 占位挤小后的实际尺寸。
-    val headerTip = if (tipConfig.headerMode == 2) 0
-    else tipRowHeightPx(density, config.headerPaddingTop, config.headerPaddingBottom)
-    val footerTip = if (tipConfig.footerMode == 1) 0
-    else tipRowHeightPx(density, config.footerPaddingTop, config.footerPaddingBottom)
     ReadBookViewModelShared.LayoutConfig(
         viewWidth = size.width,
         // 系统栏避让：原版 contentTextView 实际尺寸 = 窗口高 - vwStatusBar - llHeader -
         // llFooter - vwNavigationBar；KMP 内容层（PageViewComposable）已按 insets 整体
-        // 下移/上移，排版视口高度同样扣除状态栏与导航栏高度（系统栏隐藏时 inset=0，
-        // 等价原版占位 View isGone）
-        viewHeight = size.height - footerTip - statusBarTopPx - navigationBarBottomPx,
+        // 下移/上移，排版视口高度同样扣除状态栏/导航栏高度与页眉/页脚实测高度
+        // （系统栏隐藏时 inset=0，等价原版占位 View isGone）
+        viewHeight = size.height - statusBarTopPx - navigationBarBottomPx -
+            headerTipPx - footerTipPx,
         paddingLeft = config.paddingLeft.dp.roundToPx(),
-        paddingTop = headerTip + config.paddingTop.dp.roundToPx(),
+        // 正文区顶部即页眉底边（布局占位子节点把正文约束在页眉/页脚之间），
+        // paddingTop 只含正文自身内边距，不含页眉高度
+        paddingTop = config.paddingTop.dp.roundToPx(),
         paddingRight = config.paddingRight.dp.roundToPx(),
         paddingBottom = config.paddingBottom.dp.roundToPx(),
         textSizePx = textSizePx,

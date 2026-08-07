@@ -614,6 +614,8 @@ private fun runDesktopApp() = application {
                 DesktopToastHost()
                 // 阅读页长按文字选择对话框宿主 (对照 app 端 MainActivity.readerSelection 分支)
                 desktopReaderProvider.TextSelectionHost()
+                // 阅读页图片长按菜单宿主 (DropdownMenu 锚定长按坐标: 查看大图/刷新/保存)
+                desktopReaderProvider.ImageActionMenuHost()
                 // legado:// deep link 导入对话框宿主: 消费 main(args)/OpenURIHandler 经
                 // LegadoDeepLinkHandler 记录的待导入请求 (对照 app 端 AssociationActivity 分发)
                 DeepLinkImportHost()

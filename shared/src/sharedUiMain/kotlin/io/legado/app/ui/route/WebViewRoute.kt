@@ -101,6 +101,9 @@ fun WebViewRoute(
     var cloudflareChallenge by remember { mutableStateOf(false) }
     // 页面标题 (原 WebViewActivity: intent title → onPageFinished 更新为网页 title)
     var pageTitle by remember(route) { mutableStateOf(route.title) }
+    // 页面当前 URL 状态 (原 menu_copy_url / menu_open_in_browser 取 webView.url ?: baseUrl;
+    // 平台在每次导航完成时经 onUrlChanged 更新, 页面内跳转后菜单取最新链接)
+    var pageUrl by remember(route) { mutableStateOf<String?>(null) }
     // 加载进度 (原 RefreshProgressBar: menu_refresh 置 0, onProgressChanged 更新, 100 隐藏)
     var loadProgress by remember { mutableStateOf<Int?>(null) }
     // 原 menu_ok 的 isLogin 分支: 确认后 reload 检查 cookie, 下次加载完成即返回
@@ -204,6 +207,7 @@ fun WebViewRoute(
         callbacks.onProgressChanged = { progress ->
             loadProgress = if (progress >= 100) null else progress
         }
+        callbacks.onUrlChanged = { url -> pageUrl = url }
         callbacks.shouldOverrideUrl = { url -> interceptUrl(url) }
     }
 
@@ -217,8 +221,11 @@ fun WebViewRoute(
         PlatformServiceProviders.getOrNull()?.window?.setFullscreen(isFullScreen)
     }
 
-    // 当前页 URL (原 menu_copy_url / menu_open_in_browser 取 webView.url ?: baseUrl)
-    fun currentUrl(): String = callbacks.host?.getUrl() ?: loadState?.url ?: route.url
+    // 当前页 URL (原 menu_copy_url / menu_open_in_browser 取 webView.url ?: baseUrl):
+    // 优先平台实时 URL (跳转后最新, 含 SPA history 变化), 其次导航完成状态,
+    // 最后回退预取/初始 URL
+    fun currentUrl(): String =
+        callbacks.host?.getUrl() ?: pageUrl ?: loadState?.url ?: route.url
 
     // 返回: 页面可后退则后退 (原 canGoBack && history>1 的简化), 全屏先退出全屏, 否则出栈
     fun handleBack() {
@@ -362,15 +369,26 @@ fun WebViewRoute(
                 },
             )
         }
-        // 加载进度条 (原 RefreshProgressBar: 1dp, 100 隐藏, menu_refresh 时先置 0)
-        val progress = loadProgress
-        if (!isFullScreen && progress != null) {
-            val animatedProgress by animateFloatAsState(progress / 100f)
-            LinearProgressIndicator(
-                progress = animatedProgress,
-                modifier = Modifier.fillMaxWidth().height(1.dp),
-                color = AppTheme.colors.accent,
-            )
+        // 加载进度条 (原 RefreshProgressBar: 1dp, 100 隐藏, menu_refresh 时先置 0;
+        // 预取阶段 loadState==null 时 WebView 尚未组合, 无进度回调 → indeterminate 常驻,
+        // 对齐原版“加载即常驻” (修复: 原先 loadProgress==null 不显示, 预取期间无任何加载反馈)
+        if (!isFullScreen && loadError == null) {
+            if (loadState == null) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth().height(1.dp),
+                    color = AppTheme.colors.accent,
+                )
+            } else {
+                val progress = loadProgress
+                if (progress != null) {
+                    val animatedProgress by animateFloatAsState(progress / 100f)
+                    LinearProgressIndicator(
+                        progress = animatedProgress,
+                        modifier = Modifier.fillMaxWidth().height(1.dp),
+                        color = AppTheme.colors.accent,
+                    )
+                }
+            }
         }
         Box(Modifier.fillMaxWidth().weight(1f)) {
             val state = loadState

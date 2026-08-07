@@ -1,7 +1,10 @@
 package io.legado.app.help.image
 
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.isLocal
@@ -18,16 +21,26 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
+import org.jetbrains.skia.Color
+import org.jetbrains.skia.Data
+import org.jetbrains.skia.Surface
+import org.jetbrains.skia.svg.SVGDOM
+import org.jetbrains.skia.svg.SVGLengthContext
 
-/** 失败 url 进程级跳过表 (对照原版 Glide OkHttpStreamFetcher.companion failUrl: 非 2xx/解密失败进表)。 */
+/** 失败 url 进程级跳过表 (对照原版 Glide OkHttpStreamFetcher.companion failUrl: 非 2xx/解密失败进表)。
+ * key 带书源维度 (origin+url): 不同书源同 URL 互不影响, 换源/无源→有源切换后不再被
+ * 旧失败记录拦截可重新加载; 无书源 (裸 GET) 时 key 即 url, 保持原死链跳过语义。 */
 private val iosFailUrlsLock = SynchronizedObject()
 private val iosFailUrls = HashSet<String>()
 
-private fun isIosFailUrl(url: String): Boolean =
-    synchronized(iosFailUrlsLock) { iosFailUrls.contains(url) }
+private fun iosFailKey(origin: String?, url: String): String =
+    if (origin.isNullOrEmpty()) url else "$origin\u0000$url"
 
-private fun markIosFailUrl(url: String) {
-    synchronized(iosFailUrlsLock) { iosFailUrls.add(url) }
+private fun isIosFailUrl(origin: String?, url: String): Boolean =
+    synchronized(iosFailUrlsLock) { iosFailUrls.contains(iosFailKey(origin, url)) }
+
+private fun markIosFailUrl(origin: String?, url: String) {
+    synchronized(iosFailUrlsLock) { iosFailUrls.add(iosFailKey(origin, url)) }
 }
 
 /**
@@ -57,11 +70,21 @@ actual class ImageBitmapLoader actual constructor() {
         book: Book?,
         bookSource: BookSource?,
         isCover: Boolean,
+        widthPx: Int,
+        heightPx: Int,
+        useBitmapCache: Boolean,
     ): ImageBitmap? =
         withContext(IoDispatcher) {
             val bytes = loadBytes(url, book, bookSource, isCover) ?: return@withContext null
-            runCatching { org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap() }
-                .getOrNull()
+            val key = if (useBitmapCache) {
+                DecodedBitmapCache.cacheKey(url, bookSource?.bookSourceUrl, isCover, widthPx, heightPx)
+            } else null
+            val cached = key?.let { DecodedBitmapCache.get(it) }
+            if (cached != null) return@withContext cached
+            val maxDim = maxOf(widthPx, heightPx)
+            val bitmap = decodeBytesSampled(bytes, maxDim) ?: decodeSvgFallback(bytes, maxDim)
+            if (bitmap != null && key != null) DecodedBitmapCache.put(key, bitmap)
+            bitmap
         }
 
     /**
@@ -87,7 +110,7 @@ actual class ImageBitmapLoader actual constructor() {
                     url.startsWith("file://") -> File(url.removePrefix("file://")).readBytes()
                     url.startsWith("/") -> File(url).readBytes()
                     url.startsWith("http://") || url.startsWith("https://") -> {
-                        if (isIosFailUrl(url)) {
+                        if (isIosFailUrl(bookSource?.bookSourceUrl, url)) {
                             // 跳过加载失败的图片 (原版 OkHttpStreamFetcher 同语义)
                             null
                         } else {
@@ -110,13 +133,15 @@ actual class ImageBitmapLoader actual constructor() {
         book: Book?,
         isCover: Boolean,
     ): ByteArray? =
-        ImageBytesCache.get(url, isCover) ?: run {
+        ImageBytesCache.get(url, bookSource?.bookSourceUrl, isCover) ?: run {
             val bytes = if (bookSource == null || book?.isLocal == true) {
                 downloadBytesSimple(url)
             } else {
                 downloadBytesWithSource(url, bookSource, book, isCover)
             }
-            if (bytes != null) ImageBytesCache.put(url, isCover, bytes)
+            if (bytes != null) {
+                ImageBytesCache.put(url, bookSource?.bookSourceUrl, isCover, bytes)
+            }
             bytes
         }
 
@@ -126,7 +151,7 @@ actual class ImageBitmapLoader actual constructor() {
         return runCatching {
             val response = client.get(url)
             if (!response.status.isSuccess()) {
-                markIosFailUrl(url)
+                markIosFailUrl(null, url)
                 null
             } else {
                 response.bodyAsBytes()
@@ -155,9 +180,61 @@ actual class ImageBitmapLoader actual constructor() {
             runScriptWithContext {
                 ImageUtils.decode(url, bytes, isCover, bookSource, book)
             } ?: run {
-                markIosFailUrl(url)
+                markIosFailUrl(bookSource.bookSourceUrl, url)
                 null
             }
         }.getOrNull()
     }
 }
+
+/**
+ * 带目标长边上限解码: Skia 全量解码后按 Canvas 缩放 (省常驻内存与绘制带宽,
+ * 解码峰值内存不变; iOS 无解码前采样 API, 见 [downscaled])。
+ */
+actual fun decodeBytesSampled(bytes: ByteArray, maxDim: Int): ImageBitmap? {
+    val bitmap = runCatching {
+        org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap()
+    }.getOrNull() ?: return null
+    return if (maxDim > 0) bitmap.downscaled(maxDim) else bitmap
+}
+
+/**
+ * Skia 解码后的位图按长边缩放 (双线性, Compose Canvas 绘制到新位图)。
+ * 仅省常驻内存与绘制带宽, 解码峰值内存不变 (iOS 无 ImageIO 式解码前采样)。
+ */
+private fun ImageBitmap.downscaled(maxDim: Int): ImageBitmap {
+    val max = maxOf(width, height)
+    if (max <= maxDim) return this
+    val scale = maxDim.toFloat() / max
+    val nw = (width * scale).toInt().coerceAtLeast(1)
+    val nh = (height * scale).toInt().coerceAtLeast(1)
+    val out = ImageBitmap(nw, nh)
+    val canvas = Canvas(out)
+    canvas.drawImage(this, dstOffset = IntOffset.Zero, dstSize = IntSize(nw, nh))
+    return out
+}
+
+/**
+ * SVG 兜底解码 (skiko SVGDOM, commonMain API 四端一致)。
+ *
+ * 栅格解码失败后按 SVG 渲染: 字节→SVGDOM, 固有尺寸取 root.getIntrinsicSize
+ * (width/height → viewBox 兜底, 百分比按容器 2048 hint 解析), 按长边 [maxDim] 等比缩放
+ * (只缩不放, maxDim<=0 按 2048) 后 setContainerSize 并 Surface 离屏渲染成 Compose 位图。
+ */
+actual fun decodeSvgFallback(bytes: ByteArray, maxDim: Int): ImageBitmap? = runCatching {
+    val dom = SVGDOM(Data.makeFromBytes(bytes))
+    val root = dom.root ?: return null
+    val intrinsic = root.getIntrinsicSize(SVGLengthContext(2048f, 2048f, 90f))
+    val srcW = intrinsic.x
+    val srcH = intrinsic.y
+    if (srcW <= 0f || srcH <= 0f) return null
+    val target = if (maxDim > 0) maxDim else 2048
+    val ratio = minOf(1f, target.toFloat() / maxOf(srcW, srcH))
+    val w = (srcW * ratio).toInt().coerceAtLeast(1)
+    val h = (srcH * ratio).toInt().coerceAtLeast(1)
+    dom.setContainerSize(w.toFloat(), h.toFloat())
+    val surface = Surface.makeRasterN32Premul(w, h)
+    surface.canvas.clear(Color.TRANSPARENT)
+    dom.render(surface.canvas)
+    surface.makeImageSnapshot().toComposeImageBitmap()
+}.getOrNull()

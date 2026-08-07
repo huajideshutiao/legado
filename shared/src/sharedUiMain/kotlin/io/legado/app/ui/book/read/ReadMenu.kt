@@ -108,6 +108,7 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.component.AppSlider
+import io.legado.app.ui.compose.platform.BackLayerHandler
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
@@ -281,6 +282,11 @@ fun ReadMenuOverlay(state: ReadMenuState) {
     if (!vs.currentState && !vs.targetState) {
         return
     }
+    // 顶层覆盖物返回拦截: 阅读菜单可见期间 (含出入场动画期) 返回键 (桌面端 ESC /
+    // 统一链) 优先收起菜单, 不落到页面/出栈。对齐原版语义: 菜单是自绘覆盖层,
+    // 原版靠点击背景收起; 桌面端 ESC 等价返回键, 用户拍板"无对话框时 ESC 关阅读菜单".
+    // 用 onBgClick (菜单背景点击同款收起路径, 含 bgClickEnabled 判断)。
+    BackLayerHandler(enabled = true) { state.onBgClick() }
     fun spec(duration: Int): FiniteAnimationSpec<IntOffset> =
         if (state.animate) tween(duration, easing = AccelerateDecelerateEasing) else snap()
     Box(Modifier.fillMaxSize()) {
@@ -423,7 +429,18 @@ private fun ReadMenuTopBar(state: ReadMenuState) {
                 Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(Modifier.weight(1f)) {
+                // 章节名 + 章节链接共用一个点击层: 整个区域一个 hover 高亮/点击行为
+                // (两文本原各自 combinedClickable, 桌面 hover 拆成两块灰色提示; 行为本就相同
+                //  —— onChapterViewClick: 在线书开 WebView 加载章节 URL, 本地书无动作)
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .combinedClickable(
+                            onClick = { state.onChapterViewClick() },
+                            onLongClick = { state.onChapterViewLongClick() },
+                        )
+                        .padding(horizontal = 16.dp),
+                ) {
                     if (state.chapterNameVisible) {
                         Text(
                             text = state.chapterName.orEmpty(),
@@ -431,13 +448,7 @@ private fun ReadMenuTopBar(state: ReadMenuState) {
                             fontSize = 14.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .combinedClickable(
-                                    onClick = { state.onChapterViewClick() },
-                                    onLongClick = { state.onChapterViewLongClick() },
-                                )
-                                .padding(horizontal = 16.dp),
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                     if (state.chapterUrlVisible) {
@@ -447,13 +458,7 @@ private fun ReadMenuTopBar(state: ReadMenuState) {
                             fontSize = 14.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .combinedClickable(
-                                    onClick = { state.onChapterViewClick() },
-                                    onLongClick = { state.onChapterViewLongClick() },
-                                )
-                                .padding(horizontal = 16.dp),
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                 }

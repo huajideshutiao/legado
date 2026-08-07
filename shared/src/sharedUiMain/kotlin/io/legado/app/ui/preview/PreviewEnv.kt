@@ -116,6 +116,7 @@ private class StubAppConfigAccessor : AppConfigAccessor {
     override val bookshelfCoverHeight: Int = 120
     override val bookshelfGridWidth: Int = 120
     override val showUnread: Boolean = true
+    override val showBookshelfFastScroller: Boolean = true
     override val bookshelfListShowKind: Boolean = true
     override val bookshelfListShowIntro: Boolean = true
     override val bookshelfListIntroLines: Int = 2

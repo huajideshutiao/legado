@@ -125,7 +125,7 @@ internal fun matchCodeSpans(text: String, rules: List<CodeSyntaxRule>): ArrayLis
 /** 生成着色后的 AnnotatedString (全量, 供只读展示用)。 */
 internal fun buildHighlightedCode(text: String, rules: List<CodeSyntaxRule>): AnnotatedString {
     if (rules.isEmpty()) return AnnotatedString(text)
-    val spans = matchCodeSpans(text, rules)
+    val spans = mergeAdjacentSpans(matchCodeSpans(text, rules))
     if (spans.isEmpty()) return AnnotatedString(text)
     return buildAnnotatedString {
         append(text)
@@ -133,6 +133,26 @@ internal fun buildHighlightedCode(text: String, rules: List<CodeSyntaxRule>): An
             addStyle(SpanStyle(color = span.color), span.start, span.end)
         }
     }
+}
+
+/**
+ * 相邻同色 span 合并 (prev.end == start 且颜色相同): AnnotatedString 相邻同 style 区间
+ * 不自动合并, 大文本下 operator 等规则产生数千 span, 合并后布局/绘制按区间数线性下降。
+ * 只合并连续同色区间, 不改变上色规则 (哪些文本上色、什么颜色均不变)。
+ * 要求输入已按 start 升序 ([matchCodeSpans] 与增量路径的 kept 均满足)。
+ */
+internal fun mergeAdjacentSpans(spans: List<CodeSpan>): List<CodeSpan> {
+    if (spans.size < 2) return spans
+    val merged = ArrayList<CodeSpan>(spans.size)
+    for (span in spans) {
+        val last = merged.lastOrNull()
+        if (last != null && last.end == span.start && last.color == span.color) {
+            merged[merged.size - 1] = CodeSpan(last.start, span.end, span.color)
+        } else {
+            merged.add(span)
+        }
+    }
+    return merged
 }
 
 internal class CodeSpan(val start: Int, val end: Int, val color: Color)

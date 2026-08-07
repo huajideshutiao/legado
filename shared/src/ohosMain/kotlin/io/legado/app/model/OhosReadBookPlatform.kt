@@ -1,5 +1,6 @@
 package io.legado.app.model
 
+import io.legado.app.help.image.DecodedBitmapCache
 import io.legado.app.model.fileBook.TextFile
 
 /**
@@ -29,8 +30,11 @@ private object OhosReadBookPlatform : ReadBookPlatform {
     // (对照 iOS IosBackgroundTasks.isCacheBookRunning; 待 ServiceLauncher 补 isRun 后接真值)
     override val isCacheBookServiceRun: Boolean get() = false
 
-    // 鸿蒙图片加载无进程内内存缓存 (ImageBitmapLoader 每次直取/解码, 无 memoryCache 可清)
-    override fun clearImageCache() = Unit
+    // 鸿蒙图片加载无 Coil 内存缓存, 但 ImageBitmapLoader 解码结果进进程级
+    // DecodedBitmapCache (大图查看/阅读背景等), 退出阅读时一并清空 (I1)
+    override fun clearImageCache() {
+        DecodedBitmapCache.clear()
+    }
 
     override fun clearTextFileCache() {
         runCatching { TextFile.clear() }

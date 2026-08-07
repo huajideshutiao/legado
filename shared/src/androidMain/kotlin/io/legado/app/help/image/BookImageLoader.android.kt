@@ -74,34 +74,38 @@ class AndroidBookImageLoader(
         heightPx: Int,
     ): ImageBitmap? = execute(url, sourceOrigin, widthPx, heightPx, persistent = true)
 
-    /** [persistent] 为 true 时改写 diskCacheKey, 由 [MultiDiskCache] 分流到封面持久区。 */
+    /** [persistent] 为 true 时改写 diskCacheKey, 由 [MultiDiskCache] 分流到封面持久区。
+     * 同 URL 并发请求经 [BookImageLoadDedup] 单飞去重 (I6)。 */
     private suspend fun execute(
         url: String,
         sourceOrigin: String?,
         widthPx: Int,
         heightPx: Int,
         persistent: Boolean,
-    ): ImageBitmap? {
-        val request = ImageRequest.Builder(context as PlatformContext)
-            .data(url)
-            .sourceOrigin(sourceOrigin)
-            .apply {
-                if (persistent) {
-                    diskCacheKey(coverDiskCacheKey(url))
-                    extras.set(PersistentCoverKey, true)
+    ): ImageBitmap? =
+        BookImageLoadDedup.singleFlight(
+            "${url}\u0000${sourceOrigin ?: ""}\u0000${widthPx}x$heightPx\u0000$persistent"
+        ) {
+            val request = ImageRequest.Builder(context as PlatformContext)
+                .data(url)
+                .sourceOrigin(sourceOrigin)
+                .apply {
+                    if (persistent) {
+                        diskCacheKey(coverDiskCacheKey(url))
+                        extras.set(PersistentCoverKey, true)
+                    }
+                    // 按显示尺寸降采样; FILL 对齐消费端 ContentScale.Crop, INEXACT 允许复用更大的内存缓存项
+                    if (widthPx > 0 && heightPx > 0) {
+                        size(widthPx, heightPx)
+                        scale(Scale.FILL)
+                        precision(Precision.INEXACT)
+                    }
                 }
-                // 按显示尺寸降采样; FILL 对齐消费端 ContentScale.Crop, INEXACT 允许复用更大的内存缓存项
-                if (widthPx > 0 && heightPx > 0) {
-                    size(widthPx, heightPx)
-                    scale(Scale.FILL)
-                    precision(Precision.INEXACT)
-                }
-            }
-            .build()
-        val result = imageLoader.execute(request)
-        val bitmap = (result as? SuccessResult)?.image?.toBitmap() ?: return null
-        return bitmap.asImageBitmap()
-    }
+                .build()
+            val result = imageLoader.execute(request)
+            val bitmap = (result as? SuccessResult)?.image?.toBitmap() ?: return@singleFlight null
+            bitmap.asImageBitmap()
+        }
 
 }
 

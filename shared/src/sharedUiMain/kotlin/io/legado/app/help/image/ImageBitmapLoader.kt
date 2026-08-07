@@ -16,7 +16,26 @@ import io.legado.app.data.entities.BookSource
  * - 不支持的 scheme / 解码失败: 返回 null
  *
  * 网络请求与磁盘 IO 在 [kotlinx.coroutines.Dispatchers.IO] 执行 (actual 实现内部 withContext)。
- * 调用方负责内存缓存与错误日志 (保留各端差异化行为)。
+ *
+ * # 解码位图进程级 LRU (2026 图片加载深度优化 I1)
+ *
+ * [loadBitmap] 解码结果进 [DecodedBitmapCache] (进程级 LRU, 容量沿 AppConfig.bitmapCacheSize,
+ * key 含 url+书源+isCover+采样尺寸), 同 URL 二次打开零重复解码; 验证码等同 URL 每次返回
+ * 新图的场景传 `useBitmapCache=false` 绕过; 统一清缓存入口见 [DecodedBitmapCache] KDoc。
+ *
+ * # 目标尺寸采样 (I7)
+ *
+ * [loadBitmap] 传 [widthPx]/[heightPx] (>0) 时按目标尺寸采样解码 (对齐 [BookImageLoader]
+ * loadImageOrNull 的尺寸契约; 平台实现: jvm=ImageIO 解码前采样 / android=inSampleSize /
+ * ios=Skia 解码后缩放 / ohos=保持全尺寸); 不传保持各端原语义 (jvm/iOS/ohos 全尺寸,
+ * android 长边 ≤2048 防 OOM)。采样只发生在 decode 阶段, 字节缓存不变 (原图字节可再解)。
+ *
+ * # SVG 兜底 (2026 对齐原版 SvgUtils)
+ *
+ * 栅格解码失败后进 [decodeSvgFallback] (对照原版 `SvgUtils.createBitmap` 兜底语义:
+ * `decodeBitmap ?: SvgUtils.createBitmap`): jvm=jsvg (SvgRasterizer) / android=androidsvg /
+ * ios=Skia SVGDOM / ohos=Skia SVGDOM。SVG 矢量任意缩放, 按目标长边等比渲染 (只缩不放),
+ * 渲染结果与栅格图同规则进 [DecodedBitmapCache] (key 语义不变, 同字节同尺寸渲染确定)。
  *
  * 平台实现:
  * - jvmMain (desktop): ImageIO + OkHttp + AnalyzeUrlCore + CbzFile (对照 app 端 ImageLoader.loadManga)
@@ -49,6 +68,11 @@ expect class ImageBitmapLoader() {
      * @param bookSource 书源 (http(s):// 用于防盗链 header/cookie/charset/JS), 可为 null
      * @param isCover 响应字节解密规则选择: true=coverDecodeJs (原版 Glide 封面/预览链路),
      *   false=imageDecode (原版 BookHelp.saveImage 正文链路), 默认 false
+     * @param widthPx 目标显示宽度 (px), >0 时按目标尺寸采样解码; 默认 0 不采样
+     *   (各端保持原语义: jvm/iOS/ohos 全尺寸, android 长边 ≤2048 防 OOM)
+     * @param heightPx 目标显示高度 (px), >0 时按目标尺寸采样解码; 默认 0 不采样
+     * @param useBitmapCache 是否进 [DecodedBitmapCache] 进程级位图 LRU, 默认 true;
+     *   验证码等同 URL 每次返回新图的场景传 false 绕过 (避免二次打开显示旧图)
      * @return 已解码 [ImageBitmap], 失败或不支持的 scheme 返回 null
      */
     suspend fun loadBitmap(
@@ -56,6 +80,9 @@ expect class ImageBitmapLoader() {
         book: Book?,
         bookSource: BookSource?,
         isCover: Boolean = false,
+        widthPx: Int = 0,
+        heightPx: Int = 0,
+        useBitmapCache: Boolean = true,
     ): ImageBitmap?
 
     /**
@@ -76,3 +103,47 @@ expect class ImageBitmapLoader() {
         isCover: Boolean = false,
     ): ByteArray?
 }
+
+/**
+ * 带目标长边上限的位图解码 (采样只发生在 decode 阶段, 字节缓存不变)。
+ *
+ * 供 [ReaderImageCache] (阅读页内嵌图, 按页宽量级采样) 等已持有字节的消费点使用;
+ * [ImageBitmapLoader.loadBitmap] 内部同样走它 (经 [DecodedBitmapCache] LRU)。
+ *
+ * 平台实现:
+ * - jvm (desktop): ImageIO `ImageReader.setSourceSubsampling` 解码前采样 (峰值内存/解码耗时双降)
+ * - android: BitmapFactory `inJustDecodeBounds` + `inSampleSize` 解码前采样
+ * - ios: Skia 全量解码后 Canvas 缩放 (省常驻内存与绘制带宽, 解码峰值内存不变)
+ * - ohos: 保持全尺寸解码 (CPF 融合渲染管线暂无解码前采样参数, 解码后缩放路径未验证)
+ *
+ * 仅处理栅格格式; SVG 由调用方在本函数返回 null 后走 [decodeSvgFallback]
+ * (本函数保持纯栅格语义, SVG 兜底不混入, 各调用点显式串联)。
+ *
+ * @param bytes 编码图片字节
+ * @param maxDim 目标长边上限 (px); <=0 全尺寸解码
+ * @return 解码后位图; 无法识别/解码失败返回 null (调用方回落 SVG 兜底/全尺寸解码或占位)
+ */
+expect fun decodeBytesSampled(bytes: ByteArray, maxDim: Int): ImageBitmap?
+
+/**
+ * SVG 兜底解码 (对照原版 `SvgUtils.createBitmap` 兜底语义: 栅格解码失败后按 SVG 渲染)。
+ *
+ * SVG 是矢量无固定像素尺寸, 按 [maxDim] 长边上限等比渲染 (只缩不放, 对齐原版
+ * SvgUtils.createBitmap 的 ratio 语义; 宽高比保持, 排版取尺寸/绘制共用同一比例)。
+ * 渲染结果确定性 (同字节同目标尺寸同结果), 可安全进 [DecodedBitmapCache] / [ReaderImageCache]
+ * 等位图缓存, 缓存 key 语义与栅格图一致无需区分。
+ *
+ * 平台实现:
+ * - jvm (desktop): jsvg (`SvgRasterizer.toPng` 渲染 PNG 后 ImageIO 解码, 复用现有实现)
+ * - android: androidsvg (`SVG.getFromInputStream` + `renderToCanvas`, 对齐
+ *   `ImageProvider.android.kt` SvgDecode / app 端 SvgUtils.renderInto 的渲染参数)
+ * - ios: Skia `org.jetbrains.skia.svg.SVGDOM` (skiko commonMain API, 字节→Surface 渲染)
+ * - ohos: 同 ios (CPF fork 的 skiko klib 含 svg 包, 兼容门面 API)
+ *
+ * @param bytes SVG 编码字节
+ * @param maxDim 目标长边上限 (px); <=0 按 2048 默认上限 (对齐 android 防 OOM 语义与
+ *   jsvg SvgRasterizer 的 MAX_EDGE)
+ * @return 渲染后位图; 非 SVG / 无固有尺寸 (无 width/height/viewBox) / 渲染失败返回 null
+ *   (调用方回落失败占位)
+ */
+expect fun decodeSvgFallback(bytes: ByteArray, maxDim: Int): ImageBitmap?

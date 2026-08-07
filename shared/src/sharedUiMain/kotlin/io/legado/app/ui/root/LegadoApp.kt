@@ -1,13 +1,18 @@
 package io.legado.app.ui.root
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.LinearProgressIndicator
 import androidx.compose.material.ModalBottomSheetLayout
 import androidx.compose.material.ModalBottomSheetValue
 import androidx.compose.material.Text
@@ -20,12 +25,14 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -33,6 +40,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
@@ -66,6 +74,7 @@ import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.browser.WebViewCallbacks
 import io.legado.app.ui.browser.WebViewConfig
 import io.legado.app.ui.compose.component.AppSelectorDialog
+import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.PlatformBackHandler
 import io.legado.app.ui.compose.platform.handleBackKey
 import io.legado.app.ui.compose.platform.performBack
@@ -80,10 +89,15 @@ import io.legado.app.ui.config.ThemeCustomizeDialog
 import io.legado.app.ui.config.ThemeListDialog
 import io.legado.app.ui.route.ReviewListOverlayDialogContent
 import io.legado.app.ui.widget.dialog.PhotoViewOverlayDialog
+import io.legado.app.ui.widget.dialog.PlatformPhotoOverlayDialog
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.loading
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * 四端统一应用根 Composable：整合 AppNavigator + ScreenModelStore + PlatformServices + WindowPolicy。
@@ -115,20 +129,44 @@ fun LegadoApp(
         // 硬切), 正是切换闪烁的来源。组合阶段先定方向, 首帧即渲染动画起始位
         var navigatingForward by remember { mutableStateOf(true) }
         var animating by remember { mutableStateOf(false) }
-        var outgoingEntry by remember { mutableStateOf<RouteEntry?>(null) }
+        // 返回导航时缓存即将消失的页面 (pop 单个 / popTo 多个), 用于滑出动画;
+        // 动画结束后由 effect 清空复位
+        var outgoingEntries by remember { mutableStateOf<List<RouteEntry>>(emptyList()) }
+        // 返回动画期间收到前进导航 (目录链路 pop+push 同帧): 记待播方向, 返回段播完
+        // (出栈页滑出) 后连播前进段 (对齐原版三段转场: 目录滑出→详情可见→Reader 滑入)
+        var pendingForward by remember { mutableStateOf(false) }
         // 上次已消化(动画播完)的栈, 由下方动画 effect 更新, 组合阶段据此检测新导航
         val lastSettled = remember { mutableStateOf(entries) }
-        if (entries.size != lastSettled.value.size) {
-            navigatingForward = entries.size > lastSettled.value.size
-            // 返回导航时缓存即将消失的页面，用于滑出动画
-            if (!navigatingForward) {
-                outgoingEntry = lastSettled.value.lastOrNull()
+        // 转场动画平台 spec: 随导航事件读取 (Android 端每次动态读系统动画时长缩放, 即时生效)
+        val transitionSpec = remember(entries, capabilities) { capabilities.routeTransitionSpec }
+        if (entries.size != lastSettled.value.size || entries != lastSettled.value) {
+            val forward = entries.size > lastSettled.value.size
+            val sameSizeDiff = entries.size == lastSettled.value.size && entries != lastSettled.value
+            when {
+                // 返回动画期间收到前进导航 (目录链路 pop+push): 不打断返回动画, 播完后连播前进段
+                animating && !navigatingForward && (forward || sameSizeDiff) -> {
+                    pendingForward = true
+                }
+                // 动画间隙同帧 pop+push: 按"先返回后前进"两段连播
+                !animating && sameSizeDiff -> {
+                    navigatingForward = false
+                    outgoingEntries = lastSettled.value.filterNot { e -> entries.any { it.id == e.id } }
+                    pendingForward = true
+                    animating = true
+                }
+                else -> {
+                    navigatingForward = forward
+                    // 返回导航时缓存即将消失的页面 (popTo 多个页面一并滑出, 消除中间页瞬消)
+                    if (!forward) {
+                        outgoingEntries = lastSettled.value.filterNot { e -> entries.any { it.id == e.id } }
+                    }
+                    animating = true
+                }
             }
-            animating = true
         }
-        // 返回导航时出栈页保留在栈尾滑出, 动画结束后由 effect 清 outgoingEntry 复位
+        // 返回导航时出栈页保留在栈尾滑出, 动画结束后由 effect 清空复位
         val displayEntries = if (!navigatingForward) {
-            entries + listOfNotNull(outgoingEntry)
+            entries + outgoingEntries
         } else {
             entries
         }
@@ -219,17 +257,70 @@ fun LegadoApp(
             // 动画驱动 + 动画结束后的清理: 出栈页的 ScreenModel/SaveableState 要撑到动画
             // 播完, 提前 retain/removeState 会让返回动画中的页面重建 ViewModel 重载数据
             LaunchedEffect(entries) {
-                if (entries.size != lastSettled.value.size) {
-                    transition.snapTo(0f)
-                    transition.animateTo(1f, tween(durationMillis = 300))
-                    lastSettled.value = entries
-                    outgoingEntry = null
-                    animating = false
+                if (entries.size != lastSettled.value.size || entries != lastSettled.value) {
+                    if (pendingForward) {
+                        // 连播第一段 (返回): 出栈页滑出。动画进行中则从当前值续播 (不
+                        // snapTo(0) 跳回起点), 未开始则完整播; 时长按剩余比例折算保持总时长一致
+                        if (transition.value == 1f) transition.snapTo(0f)
+                        val remaining = (1f - transition.value).coerceIn(0f, 1f)
+                        transition.animateTo(
+                            1f,
+                            tween(
+                                durationMillis = (transitionSpec.popDurationMillis * remaining)
+                                    .toInt().coerceAtLeast(1),
+                                easing = transitionSpec.popEasing.toComposeEasing(),
+                            )
+                        )
+                        // 消化返回段: 移除出栈页后与 entries 的交集 (连按 pop 时可能不足一项)
+                        val settledAfterPop = entries.take(
+                            minOf(entries.size, lastSettled.value.size - 1)
+                        )
+                        lastSettled.value = settledAfterPop
+                        pendingForward = false
+                        outgoingEntries = emptyList()
+                        if (entries != settledAfterPop) {
+                            // 连播第二段 (前进): 新页滑入 (目录链路三段: 目录滑出→详情可见→Reader 滑入)
+                            navigatingForward = true
+                            transition.snapTo(0f)
+                            transition.animateTo(
+                                1f,
+                                tween(
+                                    durationMillis = transitionSpec.pushDurationMillis,
+                                    easing = transitionSpec.pushEasing.toComposeEasing(),
+                                )
+                            )
+                            lastSettled.value = entries
+                        }
+                        animating = false
+                    } else {
+                        transition.snapTo(0f)
+                        transition.animateTo(
+                            1f,
+                            tween(
+                                durationMillis = if (navigatingForward) {
+                                    transitionSpec.pushDurationMillis
+                                } else {
+                                    transitionSpec.popDurationMillis
+                                },
+                                easing = if (navigatingForward) {
+                                    transitionSpec.pushEasing.toComposeEasing()
+                                } else {
+                                    transitionSpec.popEasing.toComposeEasing()
+                                },
+                            )
+                        )
+                        lastSettled.value = entries
+                        outgoingEntries = emptyList()
+                        animating = false
+                    }
                 } else if (transition.value != 1f) {
                     // 动画中途导航被打断且栈规模不变 (如快速 push+pop): 复位动画,
-                    // 否则页面会停在动画中间位
+                    // 否则页面会停在动画中间位; 同时清理滑出页/待播方向 (状态污染修复:
+                    // 不清会残留已销毁页面, 后续返回时滑出幽灵页)
                     transition.snapTo(1f)
                     animating = false
+                    pendingForward = false
+                    outgoingEntries = emptyList()
                 }
                 // ScreenModel 生命周期与栈绑定 (清理已出栈的 ScreenModel)
                 screenModelStore.retain(entries)
@@ -239,12 +330,26 @@ fun LegadoApp(
                 }
                 retainedEntryIds = currentIds
             }
-            // 动画角色: top=动画后留存的栈顶页, slide=前进时的旧页或返回时的出栈页
+            // 动画角色: top=动画后留存的栈顶页, slide=前进时的旧页或返回时的出栈页们;
+            // 返回段 (pendingForward 连播第一段) 期间栈顶是新页 (待入), 目标页是栈倒数第二
             val topEntry = entries.lastOrNull()
-            val slideEntry = outgoingEntry ?: displayEntries.getOrNull(displayEntries.lastIndex - 1)
+            val slidingIds = remember(entries, outgoingEntries, navigatingForward) {
+                if (navigatingForward) {
+                    entries.getOrNull(entries.lastIndex - 1)?.let { setOf(it.id) } ?: emptySet()
+                } else {
+                    outgoingEntries.mapTo(mutableSetOf()) { it.id }
+                }
+            }
             displayEntries.forEach { entry ->
                 val isTop = entry.id == topEntry?.id
-                val isSliding = entry.id == slideEntry?.id
+                // 返回段期间: 新页已入栈但停在屏幕外右侧待入, 不参与返回动画
+                val isPendingNew = pendingForward && !navigatingForward && isTop
+                val isTarget = if (isPendingNew) {
+                    entry.id == entries.getOrNull(entries.lastIndex - 1)?.id
+                } else {
+                    isTop
+                }
+                val isSliding = entry.id in slidingIds
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -254,28 +359,67 @@ fun LegadoApp(
                             // 动画尚未启动的首帧 (组合先于 effect 的 snapTo): 按起始位渲染,
                             // 与 snapTo(0) 后的动画首帧位置一致, 避免先闪终态再动画
                             val idleFrame = animating && !running && progress == 1f
+                            val topFade = if (navigatingForward) {
+                                transitionSpec.newPageFadeIn
+                            } else {
+                                transitionSpec.targetPageFadeIn
+                            }
+                            val topScaleFrom = if (navigatingForward) {
+                                transitionSpec.newPageScaleFrom
+                            } else {
+                                transitionSpec.targetPageScaleFrom
+                            }
+                            val slideFade = if (navigatingForward) {
+                                transitionSpec.oldPageFadeOut
+                            } else {
+                                transitionSpec.outgoingFadeOut
+                            }
                             when {
-                                isTop -> {
-                                    alpha = 1f
-                                    scaleX = 1f
-                                    scaleY = 1f
+                                isPendingNew -> {
+                                    // 返回段: 新页停在右侧屏幕外 (对齐其前进起始位), 返回段播完后由前进段滑入
+                                    alpha = if (transitionSpec.newPageFadeIn) 0f else 1f
+                                    scaleX = transitionSpec.newPageScaleFrom
+                                    scaleY = transitionSpec.newPageScaleFrom
+                                    translationX = size.width * transitionSpec.newPageSlideFraction
+                                }
+
+                                isTarget -> {
+                                    alpha = when {
+                                        !topFade -> 1f
+                                        idleFrame -> 0f
+                                        else -> progress
+                                    }
+                                    scaleX = if (idleFrame) {
+                                        topScaleFrom
+                                    } else {
+                                        topScaleFrom + (1f - topScaleFrom) * progress
+                                    }
+                                    scaleY = scaleX
                                     translationX = when {
-                                        idleFrame && navigatingForward -> size.width
-                                        idleFrame -> -size.width * 0.3f
-                                        navigatingForward -> size.width * (1f - progress)
-                                        else -> -size.width * 0.3f * (1f - progress)
+                                        idleFrame && navigatingForward ->
+                                            size.width * transitionSpec.newPageSlideFraction
+                                        idleFrame -> -size.width * transitionSpec.targetPageSlideFraction
+                                        navigatingForward ->
+                                            size.width * transitionSpec.newPageSlideFraction * (1f - progress)
+                                        else -> -size.width * transitionSpec.targetPageSlideFraction * (1f - progress)
                                     }
                                 }
 
                                 isSliding -> {
                                     // 前进: 旧页向左滑出; 返回: 出栈页向右滑出
-                                    alpha = 1f
+                                    alpha = when {
+                                        !slideFade -> 1f
+                                        idleFrame -> 1f
+                                        else -> 1f - progress
+                                    }
                                     scaleX = 1f
                                     scaleY = 1f
                                     translationX = when {
                                         idleFrame -> 0f
-                                        animating && navigatingForward -> -size.width * 0.3f * progress
-                                        animating -> size.width * progress
+                                        animating && navigatingForward ->
+                                            -size.width * transitionSpec.oldPageShiftFraction * progress
+                                        animating ->
+                                            size.width * transitionSpec.outgoingSlideFraction * progress
                                         else -> -size.width
                                     }
                                 }
@@ -529,20 +673,68 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
 // 书源登录 Overlay (key="sourceLogin", payload=sourceLoginOverlayPayload 编码的 {url, dataKey}),
 // 实现在 SourceLoginOverlayDialog.kt (表单/URL 两分支统一分发, 对照原版 BaseSource.showLoginDialog)。
 
-// 全屏大图查看 (key="photo", payload=图片 src)
+// 全屏大图查看 (key="photo", payload=图片 src; sourceOrigin=书源 URL 身份, 可空)
 @Composable
 private fun PhotoOverlayDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
     val src = overlay.payload ?: return
-    // 对齐原版 PhotoDialog 内部语义 (ReadBook.book): 从全局当前阅读书取 book/bookSource,
-    // 网络图带书源防盗链 header/cookie/charset/JS 与 coverDecodeJs 封面解密,
-    // 否则加密封面/防盗链书源图片直接按裸 URL 请求而显示失败
+    // 书源身份优先取 overlay.sourceOrigin (调用方随 payload 传入, 与全局当前阅读书解耦,
+    // 列表封面 SharedBookCover 同款身份); 无身份时回退全局当前阅读书
+    // (对齐原版 PhotoDialog 内部语义 ReadBook.book, 段评图片等无书源场景保持原样)。
+    // 有身份时先按 origin 查库、就绪后才渲染图片加载: 避免查询期间以无书源状态先裸 GET
+    // (失败进黑名单/写脏缓存, 书源就绪后无法重载的时序问题; 黑名单/字节缓存虽已按书源
+    // 维度隔离, 但查询本身毫秒级, 一次到位更干净)。
+    val sourceState by produceState(
+        initialValue = if (overlay.sourceOrigin == null) {
+            PhotoSourceState.Resolved(null)
+        } else {
+            PhotoSourceState.Querying
+        },
+        key1 = overlay.sourceOrigin,
+    ) {
+        value = if (overlay.sourceOrigin == null) {
+            PhotoSourceState.Resolved(null)
+        } else {
+            PhotoSourceState.Resolved(
+                withContext(IoDispatcher) {
+                    AppDbProviders.get().bookSourceDao.getBookSource(overlay.sourceOrigin)
+                }
+            )
+        }
+    }
     val readBook = ActiveReadBookRegistry.current
+    // 带书源身份时 book 实体不随 payload 传递, 传 null (列表封面链路 Coil fetcher 亦只
+    // 传 origin 无 book; PhotoDialogContent 的 isLocal 判断在 bookSource 非空时不短路, 不受影响)
+    val book = overlay.sourceOrigin?.let { null } ?: readBook?.book?.value
+    val bookSource = (sourceState as? PhotoSourceState.Resolved)?.source
+    if (sourceState is PhotoSourceState.Querying) {
+        // 书源查询中: 黑色占位 + loading (毫秒级; 点击可关, 防查询慢时无响应)
+        PlatformPhotoOverlayDialog(onDismissRequest = { navigator.dismissOverlay(overlay.key) }) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .pointerInput(Unit) {
+                        detectTapGestures(onTap = { navigator.dismissOverlay(overlay.key) })
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(stringResource(Res.string.loading), color = Color.White)
+            }
+        }
+        return
+    }
     PhotoViewOverlayDialog(
         src = src,
         onDismiss = { navigator.dismissOverlay(overlay.key) },
-        book = readBook?.book?.value,
-        bookSource = readBook?.bookSource?.value,
+        book = book,
+        bookSource = bookSource,
     )
+}
+
+/** photo overlay 书源解析三态: 查询中 / 已就绪 (null=查不到书源, 走裸 GET)。 */
+private sealed interface PhotoSourceState {
+    data object Querying : PhotoSourceState
+    data class Resolved(val source: BookSource?) : PhotoSourceState
 }
 
 // 分组选择 (key="group_select", payload=当前 groupId 位掩码字符串)
@@ -936,11 +1128,58 @@ private fun SheetOverlayContent(overlay: AppOverlay.Sheet, navigator: AppNavigat
             when (overlay.key) {
                 "web_view" -> {
                     val url = overlay.payload ?: return@ModalBottomSheetLayout
-                    LocalWebViewSlot.current(
-                        WebViewConfig(url = url),
-                        Modifier.fillMaxWidth(),
-                        WebViewCallbacks(),
-                    )
+                    // 顶栏 + 进度条 + 内容区 (对齐 WebViewRoute 的路由页形态, 修复 Sheet 白屏无顶栏):
+                    // 原版 activity_web_view.xml TitleBar 静态常显 + RefreshProgressBar 1dp 加载即常驻
+                    var pageTitle by remember { mutableStateOf("") }
+                    var loadProgress by remember { mutableStateOf<Int?>(null) }
+                    // 收到首个进度回调前 indeterminate 常驻 (原版加载即常驻, 100 隐藏)
+                    var progressStarted by remember { mutableStateOf(false) }
+                    val webCallbacks = remember { WebViewCallbacks() }
+                    // 网页 title/进度接线 (对齐 WebViewRoute: title 非空且非 url 才更新; 100 隐藏进度)
+                    SideEffect {
+                        webCallbacks.onReceivedTitle = { title ->
+                            if (!title.isNullOrBlank() && !title.startsWith("http")) {
+                                pageTitle = title
+                            }
+                        }
+                        webCallbacks.onProgressChanged = { progress ->
+                            progressStarted = true
+                            loadProgress = if (progress >= 100) null else progress
+                        }
+                    }
+                    Column(Modifier.fillMaxSize()) {
+                        AppTitleBar(
+                            title = pageTitle.ifBlank { stringResource(Res.string.loading) },
+                            onBack = { navigator.dismissOverlay(overlay.key) },
+                        )
+                        if (!progressStarted) {
+                            LinearProgressIndicator(
+                                modifier = Modifier.fillMaxWidth().height(1.dp),
+                                color = AppTheme.colors.accent,
+                            )
+                        } else {
+                            val progress = loadProgress
+                            if (progress != null) {
+                                val animatedProgress by animateFloatAsState(progress / 100f)
+                                LinearProgressIndicator(
+                                    progress = animatedProgress,
+                                    modifier = Modifier.fillMaxWidth().height(1.dp),
+                                    color = AppTheme.colors.accent,
+                                )
+                            }
+                        }
+                        // 内容区: 主题底色占位 (WebView 组合/加载完成前不白屏) + 平台 WebView slot
+                        Box(
+                            Modifier.fillMaxWidth().weight(1f)
+                                .background(AppTheme.colors.background)
+                        ) {
+                            LocalWebViewSlot.current(
+                                WebViewConfig(url = url),
+                                Modifier.fillMaxSize(),
+                                webCallbacks,
+                            )
+                        }
+                    }
                 }
                 // 其他 sheet key 由 OverlayDialogs 子代理接入
                 else -> overlay.payload?.let { Text(it) }
@@ -952,7 +1191,9 @@ private fun SheetOverlayContent(overlay: AppOverlay.Sheet, navigator: AppNavigat
         scrimColor = Color.Transparent,
         content = { Box(Modifier.fillMaxSize()) },
     )
-    // 初始 Hidden 再滑入展开: 对齐 app 版底部菜单滑入动画 (E-Ink 已起步 Expanded, 无动画)
+    // 初始 Hidden 再滑入展开: 对齐 app 版底部菜单滑入动画 (E-Ink 已起步 Expanded, 无动画)。
+    // 滑入/滑出动画由 ModalBottomSheetState 组件内部驱动 (平台组件语义, material API 不暴露
+    // 时长参数, 不强行参数化); sheet 类动画参数化集中点在 AppBottomSheetDialog (读平台 spec)。
     LaunchedEffect(Unit) {
         if (sheetState.currentValue != ModalBottomSheetValue.Expanded) {
             sheetState.show()

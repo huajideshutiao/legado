@@ -22,10 +22,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusManager
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.InputMode
@@ -55,17 +53,15 @@ import kotlin.math.min
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.Text
 import androidx.compose.ui.tooling.preview.Preview
+import io.legado.app.ui.compose.platform.BackLayerHandler
 import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
- * 统一容器样式的下拉菜单，复刻 View PopupMenu 的 BottomBackgroundDrawable：
- * bottomBackground 填充 + 8dp 圆角，elevation 置 0。原版 popupMenuStyle 样式链
- * （Style.PopupMenu → Widget.AppCompat.PopupMenu）未设 android:popupElevation，
- * PopupWindow 无 elevation 即无阴影，四周是平的。
+ * 统一容器样式的下拉菜单：bottomBackground 填充 + 8dp 圆角，
+ * elevation 用 material DropdownMenu 默认 MenuElevation=8dp 阴影（默认阴影色）。
  *
- * 不复用 material DropdownMenu：其 DropdownMenuContent 内部 Card 硬编码
- * MenuElevation=8dp，阴影关不掉。此处按 CMP 1.9.2 DropdownMenu 行为
- * （定位/变换原点/缩放淡入淡出/方向键焦点）自建容器，仅换掉容器的 elevation。
+ * 不复用 material DropdownMenu：按 CMP 1.9.2 DropdownMenu 行为
+ * （定位/变换原点/缩放淡入淡出/方向键焦点）自建容器，只保留同一套默认阴影。
  */
 @Composable
 fun AppDropdownMenu(
@@ -77,6 +73,11 @@ fun AppDropdownMenu(
 ) {
     val expandedStates = remember { MutableTransitionState(false) }
     expandedStates.targetState = expanded
+    // 顶层覆盖物返回拦截: 菜单展开期间 (含出入场动画期) 返回键 (桌面端 ESC / 统一链)
+    // 优先收起菜单, 不落到页面/出栈 (对齐原版 PopupMenu 消费 BACK 的层级语义)。
+    BackLayerHandler(enabled = expandedStates.currentState || expandedStates.targetState) {
+        onDismissRequest()
+    }
     if (expandedStates.currentState || expandedStates.targetState) {
         val transformOriginState = remember { mutableStateOf(TransformOrigin.Center) }
         val density = LocalDensity.current
@@ -105,7 +106,7 @@ fun AppDropdownMenu(
     }
 }
 
-/** 菜单容器：bottomBackground 填充 + 8dp 圆角 + 无 elevation（对齐 BottomBackgroundDrawable）。 */
+/** 菜单容器：bottomBackground 填充 + 8dp 圆角 + material 默认菜单阴影（MenuElevation=8dp）。 */
 @Composable
 private fun MenuContainer(
     expandedStates: MutableTransitionState<Boolean>,
@@ -144,19 +145,11 @@ private fun MenuContainer(
                 scaleY = scale
                 this.alpha = alpha
                 transformOrigin = transformOriginState.value
-            }
-            .shadow(
-                // 阴影须在 graphicsLayer 内层随动画一起淡入/缩放, 否则弹出瞬间先闪出阴影框
-                // 8dp: 4dp 时阴影仅边缘露出 1~2dp, 被不透明菜单本体盖住几乎不可见
-                elevation = 8.dp,
-                shape = AppTheme.DesignTokens.shapeDefault,
-                ambientColor = Color.Black.copy(alpha = 0.5f),
-                spotColor = Color.Black.copy(alpha = 0.5f),
-            ),
+            },
         shape = AppTheme.DesignTokens.shapeDefault,
         color = AppTheme.colors.bottomBackground,
-        // 阴影由 Modifier.shadow 单独控制 (8dp+半透明), Surface 自身不再叠加 elevation 阴影
-        elevation = 0.dp,
+        // material DropdownMenu 默认阴影: MenuElevation=8dp, 阴影色走默认 (不透明黑)
+        elevation = 8.dp,
     ) {
         Column(
             modifier = Modifier

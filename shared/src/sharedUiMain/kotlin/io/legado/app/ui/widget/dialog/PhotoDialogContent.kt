@@ -234,7 +234,7 @@ fun PhotoViewOverlayDialog(
             src = src,
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.85f)),
+                .background(Color.Black.copy(alpha = 0.55f)),
             imageModifier = Modifier.fillMaxSize(),
             book = book,
             bookSource = bookSource,

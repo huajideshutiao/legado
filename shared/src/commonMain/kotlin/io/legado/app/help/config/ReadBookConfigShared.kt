@@ -933,7 +933,11 @@ data class ReadStyleConfig(
     var footerPaddingLeft: Int = 16,
     var footerPaddingRight: Int = 16,
     var footerPaddingTop: Int = 6,
-    var showHeaderLine: Boolean = false,
+    // 页眉线默认显示: 与内置默认主题(微信读书, ReadConfigDefaults 中 showHeaderLine=true)
+    // 及原版 assets/defaultData/readConfig.json 一致。旧配置文件缺失该字段时解码走此默认,
+    // 避免对齐原版后旧数据(未显式配置)分割线默认消失; 用户显式 false 仍生效(渲染侧
+    // PageViewComposable 对照原版 vwTopDivider.gone(llHeader.isGone || !showHeaderLine))。
+    var showHeaderLine: Boolean = true,
     var showFooterLine: Boolean = true,
     var tipHeaderLeft: Int = ReadTipConfigShared.time,
     var tipHeaderMiddle: Int = ReadTipConfigShared.none,

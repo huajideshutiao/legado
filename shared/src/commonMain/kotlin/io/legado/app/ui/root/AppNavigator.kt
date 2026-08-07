@@ -33,6 +33,13 @@ sealed interface AppOverlay {
         override val key: String,
         val payload: String? = null,
         val dismissOnBack: Boolean = true,
+        // 允许与其他对话框叠放: 弹新 Overlay 时不被自动关闭, 也不关闭已有对话框
+        // (对照原版 Fragment 对话框叠放场景, 如段评列表上再弹图片查看器, 关闭查看器后列表仍在)
+        val stacked: Boolean = false,
+        // 书源身份 (书源 URL, 可空): 供 photo 等需要防盗链 header/封面解密规则的 overlay
+        // 按书源加载网络资源 (与全局当前阅读书解耦); 本地书/无书源场景不传, 保持裸 GET。
+        // 默认值 + routeJson(ignoreUnknownKeys) 保证旧快照双向兼容 (与 stacked 字段同方案)。
+        val sourceOrigin: String? = null,
     ) : AppOverlay
 
     @Serializable
@@ -91,6 +98,11 @@ class AppNavigator(
     fun push(route: AppRoute, resultKey: String? = null): RouteEntryId {
         val current = currentEntry
         if (current.route == route && current.resultKey == resultKey) return current.id
+        // 方案 C: 任何新导航动作 (push 路由) 先自动关闭对话框类 overlay。对照原版:
+        // 新 Activity/Fragment 全屏盖住后, 旧对话框随导航消失 (如登录对话框内
+        // java.startBrowser → WebViewActivity, 对话框不再与 WebView 叠放); 单页导航下
+        // 路由渲染在 Overlay 之下, 不关闭会被对话框遮住。Sheet 属半屏界面, 保留不关。
+        dismissDialogOverlays()
         val entryId = routeBackStack.push(
             route = route,
             resultKey = resultKey,
@@ -128,6 +140,8 @@ class AppNavigator(
     }
 
     fun replace(route: AppRoute): RouteEntryId {
+        // 方案 C: replace 同样是新导航动作 (当前无调用点, 预留防止未来遗漏), 先关对话框类 overlay
+        dismissDialogOverlays()
         val replacedEntryId = currentEntry.id
         val entryId = routeBackStack.replace(route)
         targetedResults.remove(replacedEntryId)?.close()
@@ -189,7 +203,27 @@ class AppNavigator(
     }
 
     fun showOverlay(overlay: AppOverlay) {
+        // 方案 C: 弹新 Overlay 时先自动关闭已有的对话框类 overlay (同上); 新 overlay 为
+        // 可叠放 Dialog (stacked=true) 时保留已有对话框, 关闭后回到原对话框 (原版语义)。
+        dismissDialogOverlays(
+            keepStacked = overlay is AppOverlay.Dialog && overlay.stacked
+        )
         overlayBackStack.show(overlay)
+    }
+
+    /**
+     * 关闭所有对话框类 (Dialog) overlay, Sheet (半屏界面) 保留不关。
+     *
+     * @param keepStacked 为 true 时保留已有对话框 (仅当新 overlay 为可叠放 Dialog 时传,
+     * 如段评列表上弹图片查看器, 查看器关闭后列表仍在); dismiss 按 key 过滤, 对不存在
+     * 的 key 返回 false, 幂等无副作用, 与 pop() 的 dismissTopOverlay 复用同一底层机制。
+     */
+    private fun dismissDialogOverlays(keepStacked: Boolean = false) {
+        overlayBackStack.overlays.value.forEach { overlay ->
+            if (overlay is AppOverlay.Dialog && !(keepStacked && overlay.stacked)) {
+                overlayBackStack.dismiss(overlay.key)
+            }
+        }
     }
 
     fun dismissOverlay(key: String): Boolean =

@@ -223,6 +223,10 @@ fun SourceLoginDialog(
                     Toasters.get().toast("登录出错\n${e.message}")
                     e.printStackTraceOnDebug()
                 }
+            } else {
+                // putLoginInfo 失败 (AES 加密/缓存写入异常, 原版静默留在对话框):
+                // 留在对话框提示错误, 不关闭, 用户可修正后重试
+                Toasters.get().toast("保存登录信息失败")
             }
         }
     }

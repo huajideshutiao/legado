@@ -3,6 +3,7 @@ package io.legado.app.ui.main
 import android.content.Context
 import android.content.res.Configuration
 import android.net.Uri
+import android.provider.Settings
 import android.view.ViewConfiguration
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -132,7 +133,10 @@ import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
+import io.legado.app.ui.root.DialogTransitionSpec
 import io.legado.app.ui.root.PlatformCapabilities
+import io.legado.app.ui.root.RouteTransitionSpec
+import io.legado.app.ui.root.TransitionEasing
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.dialog.PhotoDialog
@@ -236,6 +240,66 @@ class AndroidPlatformCapabilities(
 
     // 空态文案可见 (对照 initRootDoc/initRootPath 的 tvEmptyMsg)
     private val importEmptyMsgState = MutableStateFlow(false)
+
+    // ===== 全局转场动画平台 spec (方案 A: 动画单一注入点参数化) =====
+    // Android: 系统 Activity 转场语义 (API 28+ 默认转场: 新页 slide_in_right 全宽滑入 +
+    // fade_in, 旧页 fade_out 不位移, 300ms, @android:interpolator/fast_out_slow_in);
+    // 返回: 出栈页 slide_out_right 全宽滑出+淡出, 目标页按系统 fade 转场语义淡入不位移。
+    // 时长运行时动态读系统动画时长缩放 (Settings.Global ANIMATOR_DURATION_SCALE ×
+    // TRANSITION_ANIMATION_SCALE 取小值: 任一关闭即关闭转场动画, 尊重用户"动画时长缩放"
+    // 设置, >1 时与系统一致放慢), 读取失败回退系统规范值 (300ms/200ms/150ms)。
+
+    /** 系统动画时长缩放 (ANIMATOR_DURATION_SCALE × TRANSITION_ANIMATION_SCALE 取小值, 读取失败回退 1f) */
+    private fun systemAnimationScale(): Float {
+        return runCatching {
+            val resolver = activity.contentResolver
+            val animatorScale = Settings.Global.getFloat(
+                resolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f
+            )
+            val transitionScale = Settings.Global.getFloat(
+                resolver, Settings.Global.TRANSITION_ANIMATION_SCALE, 1f
+            )
+            minOf(animatorScale, transitionScale)
+        }.getOrDefault(1f)
+    }
+
+    override val routeTransitionSpec: RouteTransitionSpec
+        get() {
+            val scale = systemAnimationScale()
+            return RouteTransitionSpec(
+                // 系统转场 300ms × 动画时长缩放 (关闭动画时 scale=0 → 0ms 瞬切, 对齐系统行为)
+                pushDurationMillis = (300 * scale).toInt(),
+                pushEasing = TransitionEasing.FastOutSlowIn,
+                newPageSlideFraction = 1f, // 系统 slide_in_right 全宽
+                oldPageShiftFraction = 0f, // 系统 fade_out 旧页不位移
+                newPageFadeIn = true, // 系统 fade_in
+                oldPageFadeOut = true, // 系统 fade_out
+                newPageScaleFrom = 1f,
+                popDurationMillis = (300 * scale).toInt(),
+                popEasing = TransitionEasing.FastOutSlowIn,
+                targetPageSlideFraction = 0f, // 系统返回转场 fade 语义, 目标页不位移
+                outgoingSlideFraction = 1f, // 系统 slide_out_right 全宽
+                targetPageFadeIn = true,
+                outgoingFadeOut = true,
+                targetPageScaleFrom = 1f,
+            )
+        }
+
+    override val dialogTransitionSpec: DialogTransitionSpec
+        get() {
+            val scale = systemAnimationScale()
+            return DialogTransitionSpec(
+                // 系统 dialog_enter.xml 200ms decelerate_quad 缩放 0.96→1+淡入 /
+                // dialog_exit.xml 150ms accelerate_quad 淡出, 时长 × 动画时长缩放
+                enterDurationMillis = (200 * scale).toInt(),
+                enterEasing = TransitionEasing.DecelerateQuad,
+                enterScaleFrom = 0.96f,
+                enterFadeIn = true,
+                exitDurationMillis = (150 * scale).toInt(),
+                exitEasing = TransitionEasing.AccelerateQuad,
+                exitFadeOut = true,
+            )
+        }
 
     override fun exitApplication() {
         activity.finish()

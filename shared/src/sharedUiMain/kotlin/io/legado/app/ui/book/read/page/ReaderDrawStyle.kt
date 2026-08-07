@@ -11,7 +11,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -23,7 +22,7 @@ import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
-import kotlin.math.roundToInt
+import io.legado.app.ui.root.PlatformCapabilityProviders
 
 /**
  * 阅读画布的样式快照，对应 app 端 `TextStyleProvider.upStyle` 产出的
@@ -147,18 +146,30 @@ private fun buildReaderDrawStyle(
 }
 
 
+/**
+ * 页眉是否可见（对照原版 PageView.upTipStyle 的 `llHeader.isGone` 判定）：
+ * - headerMode=1: 恒显
+ * - headerMode=2: 恒隐
+ * - headerMode=0（默认）: 有系统栏平台（Android/iOS/ohos）仅当"隐藏状态栏"开启时显示
+ *   （状态栏显示时隐藏，跟随沉浸联动，对照原版 `else -> !ReadBookConfig.hideStatusBar`，
+ *   与菜单显隐无关）；无系统栏平台（桌面）状态栏恒"不显示"，按原版沉浸语义
+ *   （状态栏隐藏 → 页眉顶替显示时间/电量/章节）退化为恒显。
+ *
+ * 渲染侧（PageViewComposable 页眉子节点显隐）唯一判定；页眉高度不再由公式预留，
+ * 显隐只控制布局子节点是否组合，高度由布局系统实测后反哺排版（单一来源）。
+ */
+fun headerTipVisible(headerMode: Int, hideStatusBar: Boolean): Boolean = when (headerMode) {
+    1 -> true
+    2 -> false
+    else -> {
+        // 无系统栏平台（桌面）：hideStatusBar 无入口可改且恒 false，状态栏恒不显示 →
+        // headerMode=0 退化为恒显（原版语义：状态栏隐藏时页眉顶替显示）。
+        // 未注册 capabilities（如 @Preview）按有系统栏处理，与 MoreConfigScreen 约定一致，
+        // 移动端三态行为不变。
+        val hasSystemBars = PlatformCapabilityProviders.getOrNull()?.hasSystemBars() ?: true
+        !hasSystemBars || hideStatusBar
+    }
+}
+
 /** 页眉/页脚 tip 文本字号（sp），与 PageViewComposable 的 TipSlot 渲染字号一致。 */
 const val READ_TIP_TEXT_SIZE_SP = 12
-
-/**
- * 页眉/页脚 tip 行高度（px）。
- *
- * ReaderRoute.buildLayoutConfig（排版视口预留）与 PageViewComposable（tip 行渲染）
- * 共用此函数，保证两处同源不漂移。行盒按 1.6 倍字号折算，覆盖 CJK/拉丁字体行高差异，
- * 避免 tip 文字在固定行高内被裁切。
- */
-fun tipRowHeightPx(density: Density, paddingTopDp: Int, paddingBottomDp: Int): Int =
-    with(density) {
-        (paddingTopDp.dp.toPx() + paddingBottomDp.dp.toPx() +
-            READ_TIP_TEXT_SIZE_SP.sp.toPx() * 1.6f).roundToInt()
-    }

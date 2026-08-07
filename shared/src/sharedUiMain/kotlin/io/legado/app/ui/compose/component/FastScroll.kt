@@ -74,6 +74,9 @@ private data class FastScrollMetrics(
  *
  * 迁移前的界面普遍使用 FastScrollRecyclerView；这个共享实现把同等的拖动跳转能力
  * 补回 Compose/KMP，并在内容不足一屏时自动隐藏。
+ *
+ * @param fastScrollEnabled 是否启用快速滚动条 (对照原版 FastScrollRecyclerView.setFastScrollEnabled)。
+ * 关闭时仅隐藏滚动条, 列表本身不受影响。
  */
 @Composable
 fun FastScrollLazyColumn(
@@ -83,6 +86,7 @@ fun FastScrollLazyColumn(
     verticalArrangement: Arrangement.Vertical = Arrangement.Top,
     horizontalAlignment: Alignment.Horizontal = Alignment.Start,
     userScrollEnabled: Boolean = true,
+    fastScrollEnabled: Boolean = true,
     content: LazyListScope.() -> Unit,
 ) {
     Box(modifier) {
@@ -95,7 +99,7 @@ fun FastScrollLazyColumn(
             userScrollEnabled = userScrollEnabled,
             content = content,
         )
-        LazyListFastScrollbar(state)
+        if (fastScrollEnabled) LazyListFastScrollbar(state)
     }
 }
 
@@ -109,6 +113,7 @@ fun FastScrollLazyVerticalGrid(
     verticalArrangement: Arrangement.Vertical = Arrangement.Top,
     horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,
     userScrollEnabled: Boolean = true,
+    fastScrollEnabled: Boolean = true,
     content: LazyGridScope.() -> Unit,
 ) {
     Box(modifier) {
@@ -122,7 +127,7 @@ fun FastScrollLazyVerticalGrid(
             userScrollEnabled = userScrollEnabled,
             content = content,
         )
-        LazyGridFastScrollbar(state)
+        if (fastScrollEnabled) LazyGridFastScrollbar(state)
     }
 }
 
@@ -267,10 +272,12 @@ private fun BoxScope.FastScrollbar(
         label = "fastScrollHandleScale",
     )
 
+    // 对照原版 FastScroller: 任何滚动(拖拽/惯性/滚轮/程序滚动)都显示, 静止约 1s 后隐藏;
+    // 拖动 handle 期间保持显示 (原版 mHandleView.isSelected 语义)。
     LaunchedEffect(isDragged, isScrollInProgress, dragFraction) {
         when {
             dragFraction != null || isDragged -> scrollbarVisible = true
-            isScrollInProgress -> Unit
+            isScrollInProgress -> scrollbarVisible = true
             else -> {
                 delay(FastScrollHideDelayMillis)
                 scrollbarVisible = false

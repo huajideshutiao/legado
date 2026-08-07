@@ -45,6 +45,8 @@ import kotlinx.coroutines.withContext
  * 鸿蒙端 [PlatformCapabilities]: 内核已下沉的能力直接复用 shared 实现 (对照 desktop),
  * 依赖弹窗宿主 (分组管理/文本输入/主题列表/导入书籍浏览) 的能力保持 unsupported —
  * 鸿蒙端尚无命令式对话框宿主, 需先补 Compose 对话框层。
+ * 转场动画 spec 不 override, 随 shared 默认 (iOS 式 300ms); 鸿蒙系统动画参数
+ * (如动画时长缩放) 后续按平台能力接入时再动态提供。
  */
 object OhosPlatformCapabilities : PlatformCapabilities {
     private val scope = CoroutineScope(SupervisorJob() + IoDispatcher)
@@ -53,8 +55,9 @@ object OhosPlatformCapabilities : PlatformCapabilities {
     private val prefs get() = PreferenceProviders.get()
     private val services get() = PlatformServiceProviders.getOrNull()
 
-    // 鸿蒙由系统统一管理应用生命周期, 无 Activity.finish 等价物 (对照 iOS 同为 no-op)
-    override fun exitApplication() = Unit
+    // 鸿蒙由系统统一管理应用生命周期, 无 Activity.finish 等价物 (对照 iOS 同为 no-op);
+    // 退出应用能力暂未实现, 显式 TODO 标注 (禁止静默 no-op 占位)
+    override fun exitApplication() = TODO("鸿蒙退出应用暂未实现")
 
     override fun openExternalUrl(url: String) {
         openURL(url)

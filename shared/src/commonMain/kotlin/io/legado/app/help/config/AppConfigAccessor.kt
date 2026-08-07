@@ -55,6 +55,9 @@ interface AppConfigAccessor {
     /** 是否显示未读 (原 AppConfig.showUnread), 默认 true。 */
     val showUnread: Boolean
 
+    /** 书架是否显示快速滚动条 (原 AppConfig.showBookshelfFastScroller), 默认 true。 */
+    val showBookshelfFastScroller: Boolean
+
     /** 书架列表显示种类 (原 AppConfig.bookshelfListShowKind), 默认 false。 */
     val bookshelfListShowKind: Boolean
 

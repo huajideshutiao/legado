@@ -58,7 +58,8 @@ import org.jetbrains.compose.resources.stringResource
  * SourceUiRequest.VerificationCode 事件驱动本对话框, 采集验证码后由调用方回填
  * [io.legado.app.help.source.SourceVerificationHelpShared.setResult]。
  *
- * 图片加载走 [ImageBitmapLoader] (直连拉取零缓存——验证码同 URL 每次返回不同图,
+ * 图片加载走 [ImageBitmapLoader] (直连拉取——验证码同 URL 每次返回不同图, 显式
+ * `useBitmapCache=false` 不进 [DecodedBitmapCache] 进程级位图 LRU, 避免二次打开显示旧图;
  * 网络书源自动带 header/cookie; iOS actual 暂 stub 返回 null 走 URL 文案降级)。
  *
  * 标题栏溢出菜单提供"禁用源/删除源" (对照 app 端同款对话框): 禁用走
@@ -87,10 +88,11 @@ fun VerificationCodeDialog(
     var photoSrc by remember { mutableStateOf<String?>(null) }
     // 删除源确认对话框状态 (对照 app 端溢出菜单 → alert(sure_del) { yesButton { deleteSource } })
     var showDeleteConfirm by remember { mutableStateOf(false) }
-    // 直连加载验证码 (produceState: 进组合即拉取, url 不变不重拉)
+    // 直连加载验证码 (produceState: 进组合即拉取, url 不变不重拉);
+    // useBitmapCache=false: 验证码同 URL 每次返回新图, 不进进程级位图 LRU (防二次打开显示旧图)
     val bitmap by produceState<ImageBitmap?>(null, url) {
         value = runCatching {
-            ImageBitmapLoader().loadBitmap(url, null, source as? BookSource)
+            ImageBitmapLoader().loadBitmap(url, null, source as? BookSource, useBitmapCache = false)
         }.getOrNull()
     }
 

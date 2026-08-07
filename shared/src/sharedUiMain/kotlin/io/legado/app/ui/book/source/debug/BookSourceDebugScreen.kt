@@ -26,7 +26,10 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -162,9 +165,16 @@ fun BookSourceDebugScreen(
     val logTextColor = if (colors.isDark) Color(0xFFFFFFFF) else Color(0xDE000000)
     val focusManager = LocalFocusManager.current
     val searchFocus = remember { FocusRequester() }
+    var searchFocused by remember { mutableStateOf(false) }
     // 对齐原版 (onActionViewExpanded): 进入即聚焦搜索框, 帮助面板随聚焦显示 (手机端弹键盘);
-    // 提交/出错后经 clearFocusSignal 清焦, 重新点击搜索框可唤回面板
-    LaunchedEffect(Unit) { searchFocus.requestFocus() }
+    // 从编辑界面 push 进入时旧界面焦点可能尚未释放, 首次 requestFocus 会被拒绝且无重试:
+    // 观察焦点状态, 未获得则逐帧重试, 确认获得即停 (组合退出时 LaunchedEffect 自动取消)
+    LaunchedEffect(Unit) {
+        while (!searchFocused) {
+            searchFocus.requestFocus()
+            withFrameNanos { }
+        }
+    }
     LaunchedEffect(clearFocusSignal) {
         clearFocusSignal.collect { focusManager.clearFocus() }
     }
@@ -179,7 +189,10 @@ fun BookSourceDebugScreen(
                     hint = stringResource(Res.string.search_book_key),
                     textFieldModifier = Modifier
                         .focusRequester(searchFocus)
-                        .onFocusChanged { actions.onSearchFocusChanged(it.isFocused) },
+                        .onFocusChanged {
+                            searchFocused = it.isFocused
+                            actions.onSearchFocusChanged(it.isFocused)
+                        },
                     onSearch = {
                         focusManager.clearFocus()
                         actions.onSubmitQuery()

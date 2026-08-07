@@ -342,11 +342,16 @@ class ReaderScreenModel(
                 _clockText.value = formatTimeOfDay(systemCurrentTimeMillis())
             }
         }
-        // 无 ACTION_TIME_TICK 的平台 (桌面/iOS/鸿蒙) 每分钟兜底刷新 (对照 MangaReaderScreenModel 轮询)
+        // 无 ACTION_TIME_TICK 的平台 (桌面/iOS/鸿蒙) 整分兜底刷新:
+        // 对齐原版 TimeBatteryReceiver 的 ACTION_TIME_TICK 整分语义 —— 首次 delay 等到下个整分,
+        // 之后每整分刷新; 若从 model 创建时刻起算, 刷新点漂移会导致页眉周期性滞后最多 59 秒
         scope.launch {
+            delay(60_000L - systemCurrentTimeMillis() % 60_000L)
             while (isActive) {
-                delay(60_000L)
                 _clockText.value = formatTimeOfDay(systemCurrentTimeMillis())
+                // 桌面端无 BATTERY_CHANGED 广播, 电池随同一整分轮询读取 (对照原版 BATTERY_CHANGED 事件语义)
+                _batteryLevel.value = getBatteryLevel()
+                delay(60_000L)
             }
         }
         scope.launch {

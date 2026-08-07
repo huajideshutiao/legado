@@ -17,7 +17,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -25,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.delay
+import io.legado.app.ui.compose.theme.AppTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,7 +45,7 @@ data class DesktopToastMsg(
  * ToastProviders 链路, 已合并入 Toasters) 与 shared jvmMain `DesktopTrayNotifier.uiSender`
  * (Toaster 链路, 登录对话框"没有请求头！"等) 统一收口。
  *
- * 呈现 = 窗口内底部 toast (app 端 Toast 语义): 黑底白字圆角, 自动消失。
+ * 呈现 = 窗口内底部 toast (app 端 Toast 语义): 主题底栏色底主文本色圆角, 自动消失。
  * 不依赖托盘气泡 (托盘图标空闲期不驻留, 且受 Windows 通知设置影响, 曾表现为
  * "JS 里调用 toast 没反应")。
  */
@@ -105,12 +105,12 @@ fun DesktopToastHost() {
             ) {
                 Text(
                     text = current.text,
-                    color = Color.White,
+                    color = AppTheme.colors.primaryText,
                     fontSize = 14.sp,
                     modifier = Modifier
                         .shadow(4.dp, RoundedCornerShape(8.dp))
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xE6000000))
+                        .background(AppTheme.colors.bottomBackground)
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                 )
             }

@@ -128,6 +128,7 @@ object WebBookProvidersImpl :
         set(value) { AppConfig.chineseConverterType = value }
     override val replaceEnableDefault: Boolean get() = AppConfig.replaceEnableDefault
     override val enableReadRecord: Boolean get() = AppConfig.enableReadRecord
+    override val showBookshelfFastScroller: Boolean get() = AppConfig.showBookshelfFastScroller
 
     // ---- 书架业务 ----
     override val bookshelfSort: Int get() = AppConfig.bookshelfSort

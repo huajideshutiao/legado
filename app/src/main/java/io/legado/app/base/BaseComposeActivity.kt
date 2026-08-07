@@ -10,6 +10,7 @@ import android.view.MotionEvent
 import androidx.activity.addCallback
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -83,6 +84,10 @@ abstract class BaseComposeActivity(
             val eventBusProvider = remember { AndroidEventBusProvider() }
             val preferenceStoreProvider = remember { AndroidPreferenceStoreProvider() }
             CompositionLocalProvider(
+                // Android 12+ 默认 stretch overscroll: 越界下拉整体下移, 露出窗口背景
+                // (主题黑/白); 统一禁用 overscroll 视觉效果 (对齐原版 View 体系无边行为),
+                // 只改 Android 入口, iOS rubber-band / 桌面 overscroll 不受影响
+                LocalOverscrollFactory provides null,
                 LocalThemeStoreProvider provides themeStoreProvider,
                 LocalAppConfigProvider provides appConfigProvider,
                 LocalEventBusProvider provides eventBusProvider,

@@ -32,7 +32,12 @@ import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
+import io.legado.app.ui.root.DefaultDialogTransitionSpec
+import io.legado.app.ui.root.DialogTransitionSpec
 import io.legado.app.ui.root.PlatformCapabilities
+import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.ui.root.RouteTransitionSpec
+import io.legado.app.ui.root.TransitionEasing
 import io.legado.app.ui.root.encodeBookVariableOverlayPayload
 import io.legado.app.ui.root.encodeSourceVariableOverlayPayload
 import io.legado.app.ui.root.toReadRoute
@@ -77,7 +82,38 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
     /** 书源分组增删改 (shared 下沉件), 供 [DesktopDialogHost] 的分组管理对话框调用。 */
     internal val bookSourceViewModel by lazy { BookSourceViewModelShared(scope) }
 
-    override fun exitApplication() = Unit
+    override fun exitApplication() {
+        // 主界面返回双击退出等 shared 调用: 关闭主窗口 (等价标题栏关闭按钮),
+        // 触发 Window.onCloseRequest → compose exitApplication (含单实例守卫清理)
+        (PlatformServiceProviders.getOrNull() as? DesktopPlatformServices)
+            ?.windowHandle?.window?.dispose()
+    }
+
+    // ===== 全局转场动画平台 spec (方案 A: 动画单一注入点参数化) =====
+    // 桌面端无系统动画配置可动态读取 (JVM 无对应系统 API), 按桌面平台惯例提供默认值:
+    // Windows Fluent motion 规范 (时长 150~300ms 取 200ms, 标准曲线 cubic-bezier(0.1,0.9,0.2,1));
+    // 形态 = 淡入淡出 + 轻微位移 (8% 宽度), 旧页/出栈页不位移仅淡出 (窗口淡入淡出惯例)。
+    override val routeTransitionSpec: RouteTransitionSpec
+        get() = RouteTransitionSpec(
+            pushDurationMillis = 200,
+            pushEasing = TransitionEasing.CubicBezier(0.1f, 0.9f, 0.2f, 1f),
+            newPageSlideFraction = 0.08f,
+            oldPageShiftFraction = 0f,
+            newPageFadeIn = true,
+            oldPageFadeOut = true,
+            newPageScaleFrom = 1f,
+            popDurationMillis = 200,
+            popEasing = TransitionEasing.CubicBezier(0.1f, 0.9f, 0.2f, 1f),
+            targetPageSlideFraction = 0.08f,
+            outgoingSlideFraction = 0f,
+            targetPageFadeIn = true,
+            outgoingFadeOut = true,
+            targetPageScaleFrom = 1f,
+        )
+
+    // 桌面无系统对话框动画规范, 沿用 shared 默认 (Android 系统 dialog 动画资源语义 200/150ms)
+    override val dialogTransitionSpec: DialogTransitionSpec
+        get() = DefaultDialogTransitionSpec
 
     override fun openExternalUrl(url: String) {
         if (Desktop.isDesktopSupported()) Desktop.getDesktop().browse(URI(url))

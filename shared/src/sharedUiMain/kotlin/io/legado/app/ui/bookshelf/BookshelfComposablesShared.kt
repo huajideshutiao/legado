@@ -300,6 +300,7 @@ fun ShelfBooksContent(
                 state = scroll.list,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 8.dp),
+                fastScrollEnabled = appConfig.showBookshelfFastScroller,
             ) {
                 items(items, key = ::shelfItemKey, contentType = ::shelfItemType) { item ->
                     val itemModifier = if (eInk) Modifier else Modifier.animateItem()
@@ -332,6 +333,7 @@ fun ShelfBooksContent(
                 state = scroll.grid,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 8.dp),
+                fastScrollEnabled = appConfig.showBookshelfFastScroller,
             ) {
                 items(items, key = ::shelfItemKey, contentType = ::shelfItemType) { item ->
                     val itemModifier = if (eInk) Modifier else Modifier.animateItem()
@@ -362,6 +364,7 @@ fun ShelfBooksContent(
                 state = scroll.grid,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 8.dp),
+                fastScrollEnabled = appConfig.showBookshelfFastScroller,
             ) {
                 items(items, key = ::shelfItemKey, contentType = ::shelfItemType) { item ->
                     val itemModifier = if (eInk) Modifier else Modifier.animateItem()

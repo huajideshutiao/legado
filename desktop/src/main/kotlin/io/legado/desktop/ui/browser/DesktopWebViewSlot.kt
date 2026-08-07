@@ -93,7 +93,11 @@ private fun EngineWindowSlot(
             saveResult = config.saveResult,
             cookieTag = config.sourceKey.ifBlank { null },
             // 对照 AndroidWebViewClient.onPageFinished: 导航完成 → 路由侧 CF 检测/验证回传
-            onNavigated = { url -> callbacksRef.onPageFinished?.invoke(url) },
+            // 与页面 URL 状态同步 (页面内跳转后菜单取最新链接)
+            onNavigated = { url ->
+                callbacksRef.onPageFinished?.invoke(url)
+                callbacksRef.onUrlChanged?.invoke(url)
+            },
             onClosed = { windowClosed = true },
         )
     ).also { opened ->

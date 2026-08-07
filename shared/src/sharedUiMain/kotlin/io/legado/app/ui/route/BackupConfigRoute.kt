@@ -14,7 +14,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,7 +82,6 @@ fun BackupConfigRoute(
     navigator: AppNavigator,
     screenModelStore: ScreenModelStore,
 ) {
-    val scope = rememberCoroutineScope()
     val pref = LocalPreferenceStoreProvider.current
     val appConfig = remember { AppConfigProviders.get() }
 
@@ -111,10 +109,16 @@ fun BackupConfigRoute(
     // WebDav 无备份时回退本地 alert (对照 app 端 activity.alert "WebDav无备份文件")
     var showNoBackupAlert by remember { mutableStateOf(false) }
 
+    // lateinit 让 onBackup/onSelectBackupPath lambda 内可引用 screenModel.dispatch
+    // (factory 内部 lambda 延迟执行, 实际调用时 screenModel 已赋值)
+    lateinit var screenModel: BackupConfigScreenModel
+
     // 启动备份协程: WaitDialog 显示 backup 文案, 完成后自动隐藏, Job 暂存供 WaitDialog 取消
     // (对照 app 端 WaitDialog.from(activity).setText("备份") + viewModel.backup)
+    // 协程跑在 screenModel.scope (生命周期与 ScreenModel 绑定, 而非组合), 修复组合销毁后
+    // 延迟回调 scope.launch 抛 ForgottenCoroutineScopeException
     val startBackup: (String, Boolean) -> Unit = { backupPath, uploadToWebDav ->
-        backupRestoreJob = scope.launch {
+        backupRestoreJob = screenModel.scope.launch {
             waitDialogMessage = backupStr
             try {
                 withContext(IoDispatcher) {
@@ -128,9 +132,6 @@ fun BackupConfigRoute(
         }
     }
 
-    // lateinit 让 onBackup/onSelectBackupPath lambda 内可引用 screenModel.dispatch
-    // (factory 内部 lambda 延迟执行, 实际调用时 screenModel 已赋值)
-    lateinit var screenModel: BackupConfigScreenModel
     screenModel = screenModelStore.getOrCreateTyped(entry) {
         BackupConfigScreenModel(
             // 备份: 读 backupPath, 空则用平台默认落地目录 (桌面=文档目录), 平台要求选目录时先 SAF 选;
@@ -146,7 +147,7 @@ fun BackupConfigRoute(
                         startBackup(defaultDir, uploadToWebDav)
                     } else if (backupPath.isNullOrBlank()) {
                         // 没设路径: SAF 选目录, 选完写 prefs + 立即备份 (对照 app 端 backupDir.launch)
-                        scope.launch {
+                        screenModel.scope.launch {
                             val path = withContext(IoDispatcher) { services.files.pickDirectory() }
                             if (path != null) {
                                 pref.putString(PreferKey.backupPath, path)
@@ -166,7 +167,7 @@ fun BackupConfigRoute(
             onRestore = {
                 val services = PlatformServiceProviders.getOrNull()
                 if (services != null) {
-                    backupRestoreJob = scope.launch {
+                    backupRestoreJob = screenModel.scope.launch {
                         waitDialogMessage = restoreStr
                         try {
                             withContext(IoDispatcher) {
@@ -200,7 +201,7 @@ fun BackupConfigRoute(
                 // 对照 app 端 restoreDoc.launch (HandleFileContract.FILE + allowExtensions=zip)
                 val services = PlatformServiceProviders.getOrNull()
                 if (services != null) {
-                    scope.launch {
+                    screenModel.scope.launch {
                         val path = withContext(IoDispatcher) {
                             services.files.pickFile(FileFilter(extensions = listOf("zip")))
                         } ?: return@launch
@@ -214,7 +215,7 @@ fun BackupConfigRoute(
             onSelectBackupPath = {
                 val services = PlatformServiceProviders.getOrNull()
                 if (services != null) {
-                    scope.launch {
+                    screenModel.scope.launch {
                         val path = withContext(IoDispatcher) { services.files.pickDirectory() }
                         if (path != null) {
                             pref.putString(PreferKey.backupPath, path)
@@ -372,7 +373,7 @@ fun BackupConfigRoute(
                 val name = backupNames.getOrNull(index)
                 if (name != null) {
                     showRestoreSelector = false
-                    backupRestoreJob = scope.launch {
+                    backupRestoreJob = screenModel.scope.launch {
                         waitDialogMessage = restoreStr
                         try {
                             withContext(IoDispatcher) { AppWebDavShared.restoreWebDav(name) }
@@ -397,7 +398,7 @@ fun BackupConfigRoute(
                 // 回退本地: 仿 onRestoreFromLocal (HandleFileContract.FILE + zip)
                 val services = PlatformServiceProviders.getOrNull()
                 if (services != null) {
-                    scope.launch {
+                    screenModel.scope.launch {
                         val path = withContext(IoDispatcher) {
                             services.files.pickFile(FileFilter(extensions = listOf("zip")))
                         } ?: return@launch

@@ -8,16 +8,22 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Icon
@@ -182,117 +188,158 @@ fun ColorPickerDialogContent(
         cancelButton = AlertButton(text = stringResource(Res.string.cancel)),
         modifier = modifier,
     ) {
-        Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
-            // SV 面板
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1.3f)
-                    .clip(DesignTokens.shapeSm)
-                    .pointerInput(hue) {
-                        detectTapGestures { pos ->
-                            sat = (pos.x / size.width).coerceIn(0f, 1f)
-                            value = 1f - (pos.y / size.height).coerceIn(0f, 1f)
-                            applyHsv()
+        // 自适应布局（方案 C）：BoxWithConstraints 感知正文可用宽高——
+        // 竖屏/窄窗(可用宽 ≤ 可用高): Column 单列(现状), 色板高度封顶防矮窗溢出;
+        // 横屏/桌面(可用宽 > 可用高): Row 双列, 左列色板填满正文高, 右列控件区可滚动换行。
+        BoxWithConstraints(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
+            val landscape = maxWidth > maxHeight
+            // 色板恒保 aspectRatio 1.3 (宽高互相推导)：
+            // 竖屏  高 = min(宽/1.3, 可用高×0.45)（封顶时按高推导宽并居中，防极端矮窗溢出）
+            // 横屏  高 = 正文可用高, 宽 = min(高×1.3, 可用宽×0.55)
+            val panelHeight = if (landscape) maxHeight
+            else minOf(maxWidth / 1.3f, maxHeight * 0.45f)
+            val panelWidth = if (landscape) minOf(maxHeight * 1.3f, maxWidth * 0.55f)
+            else panelHeight * 1.3f
+
+            // SV 面板（两布局共用, 尺寸由调用处 Modifier 决定）
+            val svPanel: @Composable (Modifier) -> Unit = { panelModifier ->
+                Box(
+                    panelModifier
+                        .clip(DesignTokens.shapeSm)
+                        .pointerInput(hue) {
+                            detectTapGestures { pos ->
+                                sat = (pos.x / size.width).coerceIn(0f, 1f)
+                                value = 1f - (pos.y / size.height).coerceIn(0f, 1f)
+                                applyHsv()
+                            }
                         }
+                        .pointerInput(hue) {
+                            detectDragGestures { change, _ ->
+                                sat = (change.position.x / size.width).coerceIn(0f, 1f)
+                                value = 1f - (change.position.y / size.height).coerceIn(0f, 1f)
+                                applyHsv()
+                            }
+                        },
+                ) {
+                    Canvas(Modifier.fillMaxSize()) {
+                        val hueColor = Color(ColorUtils.HSVToColor(floatArrayOf(hue, 1f, 1f)))
+                        drawRect(Brush.horizontalGradient(listOf(Color.White, hueColor)))
+                        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black)))
+                        // 选点指示
+                        drawCircle(
+                            color = Color.White,
+                            radius = 8f,
+                            center = Offset(sat * size.width, (1f - value) * size.height),
+                            style = Stroke(width = 3f),
+                        )
                     }
-                    .pointerInput(hue) {
-                        detectDragGestures { change, _ ->
-                            sat = (change.position.x / size.width).coerceIn(0f, 1f)
-                            value = 1f - (change.position.y / size.height).coerceIn(0f, 1f)
-                            applyHsv()
-                        }
-                    },
-            ) {
-                Canvas(Modifier.fillMaxSize()) {
-                    val hueColor = Color(ColorUtils.HSVToColor(floatArrayOf(hue, 1f, 1f)))
-                    drawRect(Brush.horizontalGradient(listOf(Color.White, hueColor)))
-                    drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black)))
-                    // 选点指示
-                    drawCircle(
-                        color = Color.White,
-                        radius = 8f,
-                        center = Offset(sat * size.width, (1f - value) * size.height),
-                        style = Stroke(width = 3f),
-                    )
                 }
             }
-            // Hue 滑条
-            GradientSlider(
-                fraction = hue / 360f,
-                brush = Brush.horizontalGradient(HueColors),
-                onChange = { hue = (it * 360f).coerceIn(0f, 360f); applyHsv() },
-                modifier = Modifier.padding(top = 12.dp),
-            )
-            // Alpha 滑条（可选）
-            if (showAlphaSlider) {
-                val opaque = Color(ColorUtils.HSVToColor(floatArrayOf(hue, sat, value)))
+
+            // 控件区（Hue/Alpha/Hex/预设）：竖屏续排在色板下方, 横屏收进右列
+            val controls: @Composable ColumnScope.() -> Unit = {
+                // Hue 滑条
                 GradientSlider(
-                    fraction = alpha,
-                    brush = Brush.horizontalGradient(listOf(Color.Transparent, opaque)),
-                    onChange = { alpha = it; applyHsv() },
-                    modifier = Modifier.padding(top = 8.dp),
+                    fraction = hue / 360f,
+                    brush = Brush.horizontalGradient(HueColors),
+                    onChange = { hue = (it * 360f).coerceIn(0f, 360f); applyHsv() },
+                    modifier = Modifier.padding(top = 12.dp),
                 )
-            }
-            // hex 输入
-            AppOutlinedTextField(
-                value = hex,
-                onValueChange = { input ->
-                    hex = input
-                    // 替代 android.graphics.Color.parseColor: commonMain 用纯 Kotlin ColorUtils.parseColor
-                    runCatching { ColorUtils.parseColor(input) }.getOrNull()?.let { c ->
-                        val out = FloatArray(3)
-                        ColorUtils.colorToHSV(c, out)
-                        hue = out[0]; sat = out[1]; value = out[2]
-                        if (showAlphaSlider) alpha = ColorUtils.alpha(c) / 255f
-                    }
-                },
-                singleLine = true,
-                label = "Hex",
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            )
-            // 预设色格：选中色属色板时补黑色第 20 格
-            // （对照 colorpicker 1.1.0 loadPresets：isMaterialColors && presets.length == 19
-            //   → pushIfNotExists(black)，即选中色在 material 色板内才追加黑格）
-            val currentStripped = ColorUtils.stripAlpha(current())
-            val displayPresets =
-                if (presets.any { ColorUtils.stripAlpha(it) == currentStripped }) {
-                    presets + 0xFF000000.toInt()
-                } else presets
-            // FlowRow 按行自动换行、高度包裹内容：替换 LazyVerticalGrid 固定 height(120.dp)
-            // (窄屏 3 行以上时底部色格被裁剪, 实测主题定制对话框底部固定色消失)
-            FlowRow(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                displayPresets.forEach { preset ->
-                    val selected = ColorUtils.stripAlpha(preset) == ColorUtils.stripAlpha(current())
-                    Box(
-                        Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(Color(preset))
-                            .border(if (selected) DesignTokens.strokeMedium else DesignTokens.strokeThin, colors.secondaryText, CircleShape)
-                            .clickable {
-                                val out = FloatArray(3)
-                                ColorUtils.colorToHSV(preset, out)
-                                hue = out[0]; sat = out[1]; value = out[2]
-                                if (showAlphaSlider) alpha = ColorUtils.alpha(preset) / 255f
-                                applyHsv()
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (selected) {
-                            Icon(
-                                // 替代 painterResource(R.drawable.ic_check): commonMain 走 painterResource(Res.drawable.ic_check)
-                                painter = painterResource(Res.drawable.ic_check),
-                                contentDescription = null,
-                                tint = if (ColorUtils.isColorLight(preset)) Color.Black else Color.White,
-                                modifier = Modifier.size(18.dp),
-                            )
+                // Alpha 滑条（可选）
+                if (showAlphaSlider) {
+                    val opaque = Color(ColorUtils.HSVToColor(floatArrayOf(hue, sat, value)))
+                    GradientSlider(
+                        fraction = alpha,
+                        brush = Brush.horizontalGradient(listOf(Color.Transparent, opaque)),
+                        onChange = { alpha = it; applyHsv() },
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+                // hex 输入
+                AppOutlinedTextField(
+                    value = hex,
+                    onValueChange = { input ->
+                        hex = input
+                        // 替代 android.graphics.Color.parseColor: commonMain 用纯 Kotlin ColorUtils.parseColor
+                        runCatching { ColorUtils.parseColor(input) }.getOrNull()?.let { c ->
+                            val out = FloatArray(3)
+                            ColorUtils.colorToHSV(c, out)
+                            hue = out[0]; sat = out[1]; value = out[2]
+                            if (showAlphaSlider) alpha = ColorUtils.alpha(c) / 255f
+                        }
+                    },
+                    singleLine = true,
+                    label = "Hex",
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                )
+                // 预设色格：选中色属色板时补黑色第 20 格
+                // （对照 colorpicker 1.1.0 loadPresets：isMaterialColors && presets.length == 19
+                //   → pushIfNotExists(black)，即选中色在 material 色板内才追加黑格）
+                val currentStripped = ColorUtils.stripAlpha(current())
+                val displayPresets =
+                    if (presets.any { ColorUtils.stripAlpha(it) == currentStripped }) {
+                        presets + 0xFF000000.toInt()
+                    } else presets
+                // FlowRow 按行自动换行、高度包裹内容：替换 LazyVerticalGrid 固定 height(120.dp)
+                // (窄屏 3 行以上时底部色格被裁剪, 实测主题定制对话框底部固定色消失)
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    displayPresets.forEach { preset ->
+                        val selected = ColorUtils.stripAlpha(preset) == ColorUtils.stripAlpha(current())
+                        Box(
+                            Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color(preset))
+                                .border(if (selected) DesignTokens.strokeMedium else DesignTokens.strokeThin, colors.secondaryText, CircleShape)
+                                .clickable {
+                                    val out = FloatArray(3)
+                                    ColorUtils.colorToHSV(preset, out)
+                                    hue = out[0]; sat = out[1]; value = out[2]
+                                    if (showAlphaSlider) alpha = ColorUtils.alpha(preset) / 255f
+                                    applyHsv()
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (selected) {
+                                Icon(
+                                    // 替代 painterResource(R.drawable.ic_check): commonMain 走 painterResource(Res.drawable.ic_check)
+                                    painter = painterResource(Res.drawable.ic_check),
+                                    contentDescription = null,
+                                    tint = if (ColorUtils.isColorLight(preset)) Color.Black else Color.White,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
                         }
                     }
+                }
+            }
+
+            if (landscape) {
+                // 横屏/桌面双列：左列色板填满正文高, 右列控件区可滚动(高度有限时保证完整可达)
+                Row(Modifier.fillMaxWidth()) {
+                    svPanel(Modifier.width(panelWidth).height(panelHeight))
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState())
+                            .padding(start = 16.dp),
+                    ) { controls() }
+                }
+            } else {
+                // 竖屏单列（现状顺序）：色板封顶收窄时居中
+                Column(Modifier.fillMaxWidth()) {
+                    svPanel(
+                        Modifier
+                            .width(panelWidth)
+                            .height(panelHeight)
+                            .align(Alignment.CenterHorizontally),
+                    )
+                    controls()
                 }
             }
         }

@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
+import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,6 +52,7 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.ic_bookmark
+import legado.shared.generated.resources.ic_refresh_black_24dp
 import legado.shared.generated.resources.in_favorites
 import legado.shared.generated.resources.intro_show_null
 import legado.shared.generated.resources.login
@@ -79,7 +81,7 @@ import io.legado.app.ui.preview.LegadoThemePreview
  *   - in_favorites       已收藏 (收藏菜单项文案)
  *   - out_favorites      未收藏 (收藏菜单项文案)
  *   - switchLayout       布局切换 contentDescription
- *   - refresh            刷新菜单项
+ *   - refresh            刷新按钮 (标题栏常显, contentDescription)
  *   - login              书源登录菜单项 (书源带登录入口时显示)
  *   - source_filter_rule 源过滤规则菜单
  *   - bottom_line        到底文案
@@ -241,6 +243,14 @@ fun ExploreShowScreen(
 @Composable
 private fun ExploreActions(state: ExploreShowUiState, actions: ExploreShowUiActions) {
     val colors = AppTheme.colors
+    // 刷新: 常显且位于操作行第一个 (对照原 explore_bar 标题栏刷新入口; 原实现藏在溢出菜单, 非恒显)
+    IconButton(onClick = actions::onRefresh) {
+        Icon(
+            painter = painterResource(Res.drawable.ic_refresh_black_24dp),
+            contentDescription = stringResource(Res.string.refresh),
+            tint = colors.primaryText,
+        )
+    }
     // 长按弹列数选择 (对齐原 iconItemOnLongClick)
     Box(
         Modifier
@@ -275,12 +285,6 @@ private fun ExploreActions(state: ExploreShowUiState, actions: ExploreShowUiActi
                 ),
                 color = colors.primaryText,
             )
-        }
-        // 刷新: 常显 (对齐原 explore_item 菜单 refresh 项语义, 常驻溢出菜单)
-        DropdownMenuItem(
-            onClick = { dismiss(); actions.onRefresh() },
-        ) {
-            Text(stringResource(Res.string.refresh), color = colors.primaryText)
         }
         // 书源登录: 常隐, 仅书源带登录入口 (loginUrl/loginUi 非空, 对照原 hasLoginUrl) 时显示
         if (state.canLogin) {

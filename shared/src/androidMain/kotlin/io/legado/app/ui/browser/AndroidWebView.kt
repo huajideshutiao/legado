@@ -29,6 +29,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.documentfile.provider.DocumentFile
@@ -42,6 +43,7 @@ import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.Download
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
+import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.utils.DocumentUtils
 import io.legado.app.utils.EscapeUtils
@@ -94,6 +96,9 @@ fun AndroidWebView(
     val callbacksRef by rememberUpdatedState(callbacks)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    // WebView 默认纯白底, 页面/预取完成前会白屏刺眼; 对齐主题底色 (原版 activity_web_view 内容区
+    // 随主题色, 这里在 factory 创建时一次设置, 与主题切换后重建行为一致)
+    val webViewBgColor = AppTheme.colors.background.toArgb()
     // 长按图片的 hitTest extra (图片 url 或 base64 data uri), 非空时弹保存菜单
     var imageToSave by remember { mutableStateOf<String?>(null) }
     // 下载确认 (url to fileName), 非空时弹下载对话框
@@ -163,6 +168,7 @@ fun AndroidWebView(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx ->
                 VisibleWebView(ctx).apply {
+                    setBackgroundColor(webViewBgColor)
                     applyCommonSettings(settings)
                     webViewClient = AndroidWebViewClient(callbacksRef)
                     webChromeClient = object : WebChromeClient() {
@@ -372,6 +378,8 @@ private class AndroidWebViewClient(
             CookieStoreProviders.get()?.replaceCookie(url, webCookie)
         }
         callbacks.onPageFinished?.invoke(url)
+        // 页面 URL 状态同步 (页面内跳转后菜单取最新链接)
+        callbacks.onUrlChanged?.invoke(url)
     }
 }
 

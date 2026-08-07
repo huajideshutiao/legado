@@ -60,6 +60,7 @@ import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.platform.AppShortcut
 import io.legado.app.ui.compose.platform.AppShortcutHandler
 import io.legado.app.ui.compose.platform.PageTurnThrottle
+import io.legado.app.ui.compose.platform.VolumeKeyPageTurnHandler
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
@@ -101,12 +102,6 @@ private val mangaPageKeys = listOf(
     AppShortcut(Key.DirectionRight, preemptive = true),
     AppShortcut(Key.DirectionUp, preemptive = true),
     AppShortcut(Key.DirectionDown, preemptive = true),
-)
-
-/** 音量键翻页 (对照小说阅读端 ReaderShortcuts.volumePageTurn) */
-private val mangaVolumeKeys = listOf(
-    AppShortcut(Key.VolumeUp),
-    AppShortcut(Key.VolumeDown),
 )
 
 /** 物理 Menu 键呼出菜单 (对照原版 ReadMangaActivity KEYCODE_MENU) */
@@ -335,17 +330,17 @@ fun MangaReaderScreenContent(
             }
         }
     }
-    // 音量键翻页 (对照原版 ReadBookKeyHandler VOLUME_UP/DOWN 分支, 与小说端一致仅在菜单可见时失效)
-    AppShortcutHandler(
-        shortcuts = mangaVolumeKeys,
+    // 音量键翻页 (对照原版 ReadMangaActivity onKeyDown: 无开关检查、repeat 连翻、onKeyUp 消费;
+    // 与小说端一致——共享 VolumeKeyPageTurnHandler: TRIGGER 策略 + 200ms 节流连翻
+    // (2026-08 用户拍板, 小说/漫画行为一致; 快捷键列表见 volumePageTurnKeys))
+    // 菜单可见时不响应音量键翻页 (有意 UI 考虑, 勿改)
+    VolumeKeyPageTurnHandler(
         enabled = { isTopEntry() && !menuVisible },
-    ) { shortcut ->
-        pageTurnThrottle.tryTurn {
-            if (shortcut.key == Key.VolumeUp) {
-                if (onPrevPage != null) onPrevPage() else scrollPageTo(-1)
-            } else {
-                if (onNextPage != null) onNextPage() else scrollPageTo(1)
-            }
+    ) { volumeUp ->
+        if (volumeUp) {
+            if (onPrevPage != null) onPrevPage() else scrollPageTo(-1)
+        } else {
+            if (onNextPage != null) onNextPage() else scrollPageTo(1)
         }
     }
     // 物理 Menu 键呼出菜单 (对照原版 ReadMangaActivity KEYCODE_MENU → runMenuIn)

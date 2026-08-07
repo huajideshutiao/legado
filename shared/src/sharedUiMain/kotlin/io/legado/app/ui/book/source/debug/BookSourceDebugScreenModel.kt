@@ -49,6 +49,9 @@ class BookSourceDebugScreenModel(
     var exploreKinds: List<ExploreKind> = emptyList()
         private set
 
+    /** 搜索框是否曾获得过焦点: 进入时旧界面焦点未释放, 首个 onFocusChanged(false) 不覆盖初值 helpVisible=true */
+    private var hasFocusEver = false
+
     var bookSource: BookSource? = null
         private set
 
@@ -186,8 +189,14 @@ class BookSourceDebugScreenModel(
                 _uiState.update { it.copy(query = event.text) }
 
             BookSourceDebugUiEvent.SubmitQuery -> setQuery(_uiState.value.query, true)
-            is BookSourceDebugUiEvent.SearchFocusChanged ->
-                _uiState.update { it.copy(helpVisible = event.focused) }
+            is BookSourceDebugUiEvent.SearchFocusChanged -> {
+                if (event.focused) hasFocusEver = true
+                // 从未获得过焦点前的首个失焦回调 (旧界面焦点未释放导致) 不覆盖初值 helpVisible=true;
+                // 获得过焦点后 (提交/出错清焦、重新点击搜索框) 仍按焦点联动隐藏/唤回
+                if (event.focused || hasFocusEver) {
+                    _uiState.update { it.copy(helpVisible = event.focused) }
+                }
+            }
 
             BookSourceDebugUiEvent.ChipMyClick -> setQuery(_uiState.value.textMy, true)
             BookSourceDebugUiEvent.ChipSystemClick -> setQuery(systemText, true)

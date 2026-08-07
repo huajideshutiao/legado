@@ -11,21 +11,27 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.PlatformContext
 import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
+import coil3.size.Precision
+import coil3.size.Scale
 import coil3.size.Size
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.isNotShelf
@@ -72,14 +78,19 @@ object DesktopBookCover {
      */
     @Composable
     fun BlurCoverBg(book: Book?, modifier: Modifier = Modifier) {
+        // I3: 模糊背景按容器 1/8 尺寸采样解码再放大绘制 (blur(24.dp) 后高频细节不可见,
+        // 视觉等价, 内存/绘制带宽降 ~64 倍); 容器尺寸测量后经 size 参数触发 1/8 请求
+        var sizePx by remember { mutableStateOf(IntSize.Zero) }
         val painter = rememberCoverPainter(
             book?.getDisplayCover(),
             book?.origin,
             // 非书架书的封面落临时缓存区 (对照 app 端 BookInfoActivity 的 inBookshelf 分流)
             persistent = book?.isNotShelf == false,
+            widthPx = sizePx.width / 8,
+            heightPx = sizePx.height / 8,
         )
         val state by painter.state.collectAsState()
-        Box(modifier) {
+        Box(modifier.onSizeChanged { sizePx = it }) {
             if (state is AsyncImagePainter.State.Success) {
                 // 模糊封面铺满背景区域
                 Image(
@@ -188,7 +199,9 @@ object DesktopBookCover {
  *   [sourceOrigin] 非空时由 fetcher 层 (SourceOriginHeaderFetcher) 注入书源防盗链 header
  * - `file://` / 绝对路径 (含 Windows 盘符): [File] model (默认 key 含 mtime, 封面文件更新可感知)
  * - 相对路径/未知协议/空白: model 置 null, painter 走 Error 态 (调用方显示占位)
- * - size ORIGINAL: 原图解码一次全消费点共享 (对齐替换前 LRU 行为, 模糊背景与封面同 Bitmap)
+ * - 默认 size ORIGINAL: 原图解码一次全消费点共享 (对齐替换前 LRU 行为, 模糊背景与封面同 Bitmap);
+ *   传 [widthPx]/[heightPx] (>0) 时按目标尺寸采样 (FILL + INEXACT, I3 模糊背景 1/8 用),
+ *   内存缓存 key 含尺寸, 与 ORIGINAL 项互不冲突 (详情页封面仍全尺寸不受影响)
  *
  * 调用方按 `painter.state` 是否 Success 决定绘制图片还是原占位。
  */
@@ -197,8 +210,10 @@ fun rememberCoverPainter(
     src: String?,
     sourceOrigin: String? = null,
     persistent: Boolean = false,
+    widthPx: Int = 0,
+    heightPx: Int = 0,
 ): AsyncImagePainter {
-    val model = remember(src, sourceOrigin, persistent) {
+    val model = remember(src, sourceOrigin, persistent, widthPx, heightPx) {
         val data = src?.takeIf { it.isNotBlank() }?.let { coverModel(it) }
         ImageRequest.Builder(PlatformContext.INSTANCE)
             .data(data)
@@ -212,8 +227,15 @@ fun rememberCoverPainter(
                         extras.set(PersistentCoverKey, true)
                     }
                 }
+                if (widthPx > 0 && heightPx > 0) {
+                    // 按目标尺寸采样 (FILL 覆盖消费端 Crop 区域, INEXACT 允许复用更大缓存项)
+                    size(Size(widthPx, heightPx))
+                    scale(Scale.FILL)
+                    precision(Precision.INEXACT)
+                } else {
+                    size(Size.ORIGINAL)
+                }
             }
-            .size(Size.ORIGINAL)
             .build()
     }
     return rememberAsyncImagePainter(model)

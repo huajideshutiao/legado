@@ -475,6 +475,15 @@ interface PlatformCapabilities {
 
     /** 清理 WebView 数据 (对照 app 端 viewModel.clearWebViewData: 删 webview 目录 + toast + 重启) */
     fun clearWebViewData() = unsupported("清理 WebView 数据")
+
+    // ===== 全局转场动画平台 spec (方案 A: 动画单一注入点参数化) =====
+    // 动画仍由 shared LegadoApp 唯一注入点驱动; 各端按系统转场语义 override
+    // (Android 时长运行时动态读系统动画缩放), 未 override 端 (ohos) 用 shared 默认值 (iOS 式 300ms)。
+    /** 路由转场动画参数 (push/pop 几何 + 时长 + 插值器), 平台可运行时动态提供 */
+    val routeTransitionSpec: RouteTransitionSpec get() = DefaultRouteTransitionSpec
+
+    /** 对话框/底部弹层动画参数 (进入/退出时长 + 插值器) */
+    val dialogTransitionSpec: DialogTransitionSpec get() = DefaultDialogTransitionSpec
 }
 
 object PlatformCapabilityProviders {

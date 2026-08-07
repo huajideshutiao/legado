@@ -28,8 +28,12 @@ import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
+import io.legado.app.ui.root.DefaultDialogTransitionSpec
+import io.legado.app.ui.root.DialogTransitionSpec
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.ui.root.RouteTransitionSpec
+import io.legado.app.ui.root.TransitionEasing
 import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.route.encodeReviewListDialogPayload
 import io.legado.app.ui.root.encodeBookVariableOverlayPayload
@@ -85,6 +89,33 @@ object IosPlatformCapabilities : PlatformCapabilities {
 
     // iOS 由系统统一管理应用生命周期, 无 Activity.finish 等价物
     override fun exitApplication() = Unit
+
+    // ===== 全局转场动画平台 spec (方案 A: 动画单一注入点参数化) =====
+    // iOS: UINavigationController push/pop 转场语义 (系统无动画时长缩放配置可动态读取,
+    // 用平台规范默认值): 350ms + Core Animation kCAMediaTimingFunctionEaseInEaseOut
+    // (0.42,0,0.58,1); 前进=新页全宽滑入+旧页左移 30%, 返回=目标页自左 30% 滑回+
+    // 出栈页全宽滑出; 系统 push/pop 转场不带 fade, 保持现状无淡入淡出。
+    override val routeTransitionSpec: RouteTransitionSpec
+        get() = RouteTransitionSpec(
+            pushDurationMillis = 350,
+            pushEasing = TransitionEasing.CubicBezier(0.42f, 0f, 0.58f, 1f),
+            newPageSlideFraction = 1f,
+            oldPageShiftFraction = 0.3f,
+            newPageFadeIn = false,
+            oldPageFadeOut = false,
+            newPageScaleFrom = 1f,
+            popDurationMillis = 350,
+            popEasing = TransitionEasing.CubicBezier(0.42f, 0f, 0.58f, 1f),
+            targetPageSlideFraction = 0.3f,
+            outgoingSlideFraction = 1f,
+            targetPageFadeIn = false,
+            outgoingFadeOut = false,
+            targetPageScaleFrom = 1f,
+        )
+
+    // iOS 无系统对话框动画规范可循, 沿用 shared 默认 (Android 系统 dialog 动画资源语义 200/150ms)
+    override val dialogTransitionSpec: DialogTransitionSpec
+        get() = DefaultDialogTransitionSpec
 
     override fun openExternalUrl(url: String) {
         openURL(url)

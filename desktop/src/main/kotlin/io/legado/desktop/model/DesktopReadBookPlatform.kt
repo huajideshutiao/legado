@@ -1,5 +1,6 @@
 package io.legado.desktop.model
 
+import io.legado.app.help.image.DecodedBitmapCache
 import io.legado.app.model.ReadBookPlatform
 import io.legado.app.model.ReadBookPlatforms
 import io.legado.app.model.fileBook.TextFile
@@ -38,8 +39,12 @@ object DesktopReadBookPlatform : ReadBookPlatform {
         DesktopReadAloudHost.pause()
     }
 
-    // clearImageCache 保持空实现: 桌面端阅读内联图无独立位图缓存,
-    // Coil 单例内存缓存与书架封面共用, 退出阅读时清会误伤封面。
+    // clearImageCache: Coil 单例内存缓存与书架封面共用, 退出阅读时清会误伤封面, 保持不清;
+    // 解码位图进程级 LRU (DecodedBitmapCache: 大图查看/阅读背景/样式预览, 与封面链无关),
+    // 退出阅读时清空 (I1, 与 iOS/鸿蒙端对齐)。
+    override fun clearImageCache() {
+        DecodedBitmapCache.clear()
+    }
 }
 
 /** 桌面宿主启动早期注册一次 (任何阅读页打开之前)。 */

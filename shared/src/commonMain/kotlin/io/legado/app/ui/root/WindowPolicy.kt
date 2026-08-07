@@ -46,6 +46,16 @@ object WindowPolicies {
     // 编辑页文本域在页面底部, 固定 adjustResize: 避免 adjustUnspecified 对 Compose 层级
     // 判不可滚动而落 adjustPan, 弹键盘时整页(含标题栏)被顶起 (对照原 BookInfoEditActivity 可滚动布局→resize)
     val BookInfoEdit = WindowPolicy(softInput = SoftInputPolicy.Resize)
+    // 同类可滚动多输入界面 (书源编辑/替换规则编辑/JS 编辑): 同走 adjustUnspecified→adjustPan,
+    // Android 15+ edge-to-edge 下 insets 必派发 → imePadding + adjustPan 双重避让产生键盘上方空白, 一并对齐 Resize
+    val BookSourceEdit = WindowPolicy(softInput = SoftInputPolicy.Resize)
+    val ReplaceEdit = WindowPolicy(softInput = SoftInputPolicy.Resize)
+    val JsEdit = WindowPolicy(softInput = SoftInputPolicy.Resize)
+    // 搜索/输入 + 滚动列表类页面 (搜索页/书源管理/换源/书架管理/规则列表/导入/记录/目录/书源调试/发现等):
+    // 页面均含 AppSearchField/输入框 + LazyColumn/Grid, 同样受 adjustUnspecified→adjustPan 影响
+    // (键盘弹出时列表无法收缩到键盘上方, 且已消费 IME insets 的页面会产生双重避让);
+    // 统一 Resize 让 IME insets 正确派发, 未消费 insets 的页面无副作用
+    val ScrollableInput = WindowPolicy(softInput = SoftInputPolicy.Resize)
     val WebView = WindowPolicy()
     val Normal = WindowPolicy()
 
@@ -56,6 +66,23 @@ object WindowPolicies {
         is AppRoute.VideoPlay -> VideoPlayer
         is AppRoute.AudioPlay -> AudioPlay
         is AppRoute.BookInfoEdit -> BookInfoEdit
+        is AppRoute.BookSourceEdit -> BookSourceEdit
+        is AppRoute.ReplaceEdit -> ReplaceEdit
+        is AppRoute.JsEdit -> JsEdit
+        is AppRoute.Main -> ScrollableInput
+        is AppRoute.Search -> ScrollableInput
+        is AppRoute.SearchContent -> ScrollableInput
+        is AppRoute.BookSourceManage -> ScrollableInput
+        is AppRoute.ChangeSource -> ScrollableInput
+        is AppRoute.BookshelfManage -> ScrollableInput
+        is AppRoute.ReplaceRule -> ScrollableInput
+        is AppRoute.SourceFilterRule -> ScrollableInput
+        is AppRoute.ImportBook -> ScrollableInput
+        is AppRoute.RemoteBook -> ScrollableInput
+        is AppRoute.ReadRecord -> ScrollableInput
+        is AppRoute.Toc -> ScrollableInput
+        is AppRoute.BookSourceDebug -> ScrollableInput
+        is AppRoute.ReadRss -> ScrollableInput
         is AppRoute.WebView -> WebView
         else -> Normal
     }

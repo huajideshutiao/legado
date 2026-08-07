@@ -13,15 +13,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -45,6 +49,8 @@ import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -79,6 +85,15 @@ import kotlin.math.roundToInt
  * 并叠加 accent 色 1px 进度线；滚动模式由委托的 [onAutoScrollBy] 连续滚动，
  * 无需覆盖层。手势翻页期间的暂停/恢复/复位由 delegate 钩子完成。
  *
+ * # 坐标空间（触摸/鼠标全窗坐标 → 内容区坐标）
+ *
+ * 触摸/鼠标坐标是全窗坐标（含状态栏区域），排版/绘制基准是正文区原点
+ * （= 窗口原点 + 状态栏 + 页眉，正文区即页眉/页脚布局占位子节点之间的空间）。
+ * 所有命中入口（列级点击/长按选词/扩选）先减
+ * systemBarTopPx + 页眉实测高 折算到正文区坐标（对照原版
+ * contentTextView.click(x, y - headerHeight)，headerHeight 含 vwStatusBar + llHeader）；九宫格分区同样按内容区坐标；弹菜单锚点加回
+ * systemBarTopPx 还原为窗口坐标。x 无水平 inset 不折算；滚动折算两侧一致不变。
+ *
  * # 与 app 端差异
  *
  * - app 端用 View 的 onTouchEvent 分发到 PageDelegate；KMP 版把手势下沉到 delegate 自身的
@@ -91,12 +106,15 @@ import kotlin.math.roundToInt
  * @param onClick 单击回调（动作 0=菜单，由调用方处理；翻页/切章在本 Composable 内消费）
  * @param onLongClick 长按回调（仅非文字非图片区域回落：空白长按；文字长按由页内选择接管，
  *   图片长按走 [onImageLongPress]，均对照旧 ReadView.onLongPress 的列分发）
- * @param onImageLongPress 图片长按回调（命中图片列，携带 src 与长按点坐标；对照旧
+ * @param onImageLongPress 图片长按回调（命中图片列，携带 src 与长按点窗口坐标；对照旧
  *   ContentTextView.longPress 的 ImageColumn 分支 → ReadBookActivity.onImageLongPress 图片菜单）
  * @param onAction 非翻页类点击动作（书签/目录/搜索等），对照 app 端 ReadView.click 的 callBack 分支
- * @param onSelectionMenu 页内文字选择完成回调（选中文本 + 选区起点锚点（页内坐标，含滚动折算）；
+ * @param onSelectionMenu 页内文字选择完成回调（选中文本 + 选区起点锚点（窗口坐标：页内坐标 +
+ *   滚动折算 + 状态栏高度，平台浮动菜单按窗口定位）；
  *   对照旧 ReadView.CallBack.showTextActionMenu → 平台浮动菜单跟随选区）
  * @param menuVisible 阅读菜单是否可见（桌面端鼠标手势层让位用；菜单可见时点击由菜单 bg 收起）
+ * @param onTipMeasured 页眉/页脚实测高度上报（px，来自页面布局占位子节点 onSizeChanged）：
+ *   排版视口与滚动连排占位的单一来源，透传 ReaderRoute
  */
 @Composable
 fun ReadViewComposable(
@@ -110,6 +128,7 @@ fun ReadViewComposable(
     onAction: (Int) -> Unit = {},
     onSelectionMenu: (String, Offset?) -> Unit = { _, _ -> },
     menuVisible: () -> Boolean = { false },
+    onTipMeasured: ((Int, Int) -> Unit)? = null,
 ) {
     val prevTextPage by viewModel.prevTextPage.collectAsState()
     val curTextPage by viewModel.curTextPage.collectAsState()
@@ -119,6 +138,22 @@ fun ReadViewComposable(
     // 按 ReadBookConfig.pageAnim 取翻页委托，配置变更时重建（对照原版 ReadView.upPageAnim）
     val composeDelegate = rememberPageDelegate(viewModel)
     val tapScope = rememberCoroutineScope()
+
+    // 页眉/页脚实际测量高度（px，来自页面布局占位子节点 onSizeChanged 上报）。
+    // 单一来源，三处消费：
+    // 1. onTipMeasured 上报 ReaderRoute → 排版视口（viewHeight 扣除）——排版与渲染同源
+    // 2. 滚动模式下一页（showChrome=false）正文区顶部占位（headerPlaceholderPx）——
+    //    连排坐标基准与当前页一致（正文区顶 = 页眉底）
+    // 3. 命中/选择坐标折算（窗口 y → 页内坐标需减状态栏 + 页眉，对照原版
+    //    contentTextView.click(x, y - headerHeight) 的 headerHeight 含 vwStatusBar + llHeader）
+    var headerTipMeasured by remember { mutableIntStateOf(0) }
+    var footerTipMeasured by remember { mutableIntStateOf(0) }
+    // 首帧未测量（0,0）不上报（布局依赖顺序：测量后重排收敛）
+    LaunchedEffect(headerTipMeasured, footerTipMeasured) {
+        if (headerTipMeasured > 0 || footerTipMeasured > 0) {
+            onTipMeasured?.invoke(headerTipMeasured, footerTipMeasured)
+        }
+    }
 
     // 页内文字选择状态（对照旧 ReadView.isTextSelected + ContentTextView.selectStart/selectEnd）
     val selection = remember { PageSelectionState() }
@@ -167,6 +202,16 @@ fun ReadViewComposable(
         val density = LocalDensity.current
         val systemBarTopPx = WindowInsets.statusBars.getTop(density)
         val systemBarBottomPx = WindowInsets.navigationBars.getBottom(density)
+        // 内容区高度（全窗高 - 状态栏 - 导航栏）：九宫格分区与命中判定统一按内容区坐标
+        val contentHeightPx = pageHeightPx - systemBarTopPx - systemBarBottomPx
+        // 坐标基准: 触摸/鼠标坐标是全窗坐标（含状态栏区域），排版/绘制基准是正文区原点
+        // = 窗口原点 + 状态栏 + 页眉（正文区即页眉/页脚布局占位子节点之间的空间），
+        // 所有命中入口先减 systemBarTopPx + 页眉实测高再判行/列（对照原版
+        // contentTextView.click(x, y - headerHeight)，headerHeight 含 vwStatusBar + llHeader）。rememberUpdatedState：pointerInput(Unit)
+        // 长驻协程不随重组重启，经 State 间接读保证取到最新 inset。
+        val latestSystemBarTopPx by rememberUpdatedState(systemBarTopPx)
+        // 页眉实测高（rememberUpdatedState：手势长驻协程不随重组重启，经 State 间接读）
+        val latestHeaderTipPx by rememberUpdatedState(headerTipMeasured)
 
         // 九宫格点击动作分发（对照 app 端 ReadView.onSingleTapUp → click(action)）。
         // 先做页内列级点击分发（对照原版 ACTION_UP 先 curPage.onClick 再 onSingleTapUp），
@@ -174,11 +219,17 @@ fun ReadViewComposable(
         val onTapAt: (Float, Float) -> Unit = onTapAt@{ x, y ->
             // 系统栏区域点击不响应（原版状态栏/导航栏占位区域点击落在 contentTextView
             // bounds 外无动作，此处等价过滤，避免点状态栏/导航条误翻页/误开菜单）
-            if (y < systemBarTopPx || y >= pageHeightPx - systemBarBottomPx) return@onTapAt
-            if (dispatchColumnClick(viewModel, curTextPage, tapScope, x, y)) {
+            if (y < systemBarTopPx || y >= systemBarTopPx + contentHeightPx) return@onTapAt
+            // 命中坐标折算为内容区坐标（全窗 y - 状态栏高度；x 无水平 inset 不动）。
+            // 列级命中与九宫格分区共用同一坐标系（对照原版 contentTextView 被
+            // vwStatusBar/vwNavigationBar/llHeader/llFooter 挤小后的 bounds）
+            val contentY = y - latestSystemBarTopPx - latestHeaderTipPx
+            if (dispatchColumnClick(viewModel, curTextPage, tapScope, x, contentY)) {
                 return@onTapAt
             }
-            when (val action = readClickActionConfig().actionAt(x, y, pageWidthInt, pageHeightInt)) {
+            when (val action = readClickActionConfig().actionAt(
+                    x, contentY, pageWidthInt, contentHeightPx.roundToInt()
+                )) {
                 0 -> onClick(null)
                 1 -> viewModel.turnPage(PageDirectionShared.NEXT)
                 2 -> viewModel.turnPage(PageDirectionShared.PREV)
@@ -211,9 +262,11 @@ fun ReadViewComposable(
         val latestOnImageLongPress by rememberUpdatedState(onImageLongPress)
         val onPageLongPress: (Float, Float) -> Unit = onPageLongPress@{ x, y ->
             // 同上：系统栏区域长按无动作（原版占位区域不触发长按选择/空白长按）
-            if (y < systemBarTopPx || y >= pageHeightPx - systemBarBottomPx) return@onPageLongPress
+            if (y < systemBarTopPx || y >= systemBarTopPx + contentHeightPx) return@onPageLongPress
+            // 命中坐标折算为内容区坐标（同 onTapAt；选词/图片列命中共用同一坐标系）
+            val contentY = y - latestSystemBarTopPx - latestHeaderTipPx
             if (selection.longPressStart(
-                    latestCurPage, x, y, viewModel.scrollOffset.value.toFloat(), latestPageWidth
+                    latestCurPage, x, contentY, viewModel.scrollOffset.value.toFloat(), latestPageWidth
                 )
             ) {
                 // 选择激活期间暂停自动翻页（对照旧手势按下 → autoPager.pause），
@@ -222,9 +275,10 @@ fun ReadViewComposable(
             } else {
                 // 未命中文字列: 图片列 → 图片长按; 其余空白 → 回落
                 val column = selection.columnAt(
-                    latestCurPage, x, y, viewModel.scrollOffset.value.toFloat()
+                    latestCurPage, x, contentY, viewModel.scrollOffset.value.toFloat()
                 )
                 if (column is ImageColumn) {
+                    // 菜单定位坐标保持窗口坐标（平台浮动菜单按窗口定位）
                     latestOnImageLongPress(column.src, x, y)
                 } else {
                     latestOnLongClick(null)
@@ -246,6 +300,10 @@ fun ReadViewComposable(
                         onLongClick = onLongClick,
                         drawTick = pageDrawTick,
                         selection = selection,
+                        // 页眉/页脚实测高度上报（布局占位子节点 onSizeChanged）：
+                        // 单一来源，排版视口/滚动连排占位/坐标折算共用
+                        onHeaderMeasured = { headerTipMeasured = it },
+                        onFooterMeasured = { footerTipMeasured = it },
                     )
                 }
             },
@@ -262,6 +320,8 @@ fun ReadViewComposable(
                         // 滚动模式：正文随行级偏移平移（绘制阶段读取，不触发重组）
                         contentTranslationY = scrollDelegate?.let { sd -> { sd.contentOffset } },
                         selection = selection,
+                        onHeaderMeasured = { headerTipMeasured = it },
+                        onFooterMeasured = { footerTipMeasured = it },
                     )
                 }
             },
@@ -280,6 +340,9 @@ fun ReadViewComposable(
                         contentTranslationY = scrollDelegate?.let { sd -> { sd.nextContentOffset } },
                         showChrome = nextPageShowChrome,
                         selection = selection,
+                        // 滚动模式下一页 showChrome=false：顶部保留页眉同高占位，
+                        // 连排正文区起点与当前页一致（正文区顶 = 页眉底）
+                        headerPlaceholderPx = headerTipMeasured,
                     )
                 }
             },
@@ -300,6 +363,8 @@ fun ReadViewComposable(
                     onLongClick = onLongClick,
                     drawTick = pageDrawTick,
                     selection = selection,
+                    onHeaderMeasured = { headerTipMeasured = it },
+                    onFooterMeasured = { footerTipMeasured = it },
                 )
             }
         }
@@ -312,7 +377,8 @@ fun ReadViewComposable(
         // 但扩选与弹菜单（selection 层职责）全部失效。两个手势合并到同一 Box 并开启共享后:
         // - 鼠标: 本层 Initial pass 统一消费, selection 层正常收事件（扩选/菜单）,
         //   delegate 手势层见 isConsumed 让位
-        // - 触摸: 鼠标层不消费, delegate 手势链正常接管（触摸路径此前同样被阻断, 一并修复）
+        // - 触摸: 鼠标层不消费, delegate 手势链正常接管（触摸路径此前同样被阻断, 一并修复）;
+        //   长按检测随后移入本层（2026-08-08 方案 A, 见下方说明）, 触摸不再依赖跨层共享
         //
         // 文字选择手势层职责（选择未激活时零消费、不干扰任何手势）:
         // - 按下时选择已激活 → 立即取消选择（对照旧 ACTION_DOWN → cancelSelect）
@@ -321,11 +387,29 @@ fun ReadViewComposable(
         // - 手势结束（抬起/取消）时选择已激活 → 弹选择菜单（触摸路径; 鼠标路径由鼠标层弹,
         //   本层对鼠标抬起跳过避免重复, 见下方 down.type 判定）; 若按下时取消了选择且本手势
         //   未重新选中 → 消费抬起事件抑制本次点击（对照旧 pressOnTextSelected 抑制单击）
+        //
+        // 移动端长按检测 (2026-08-08 方案 A: 长按检测移到顶层选择层, 根治移动端长按失效):
+        // 背景: 移动端（尤其 iOS）长按事件到不了下层 delegate 的 detectTapGestures（跨层
+        // 事件共享在 CMP iOS 上不可靠, 8-04 的 sharePointerInputWithSiblings 修复只在桌面验证
+        // 过）, 长按选择在移动端永不激活。改为由本层直接检测触摸长按, 不再依赖跨层共享:
+        // - down 后 withTimeout 计时（沿用 viewConfiguration.longPressTimeoutMillis, 与
+        //   readerMouseGestures 同一口径; 对齐 detectTapGestures 内部语义）;
+        //   超时前不消费任何事件 → 点击/滑动完全放行下层 delegate
+        // - 位移超 slop → 放弃长按、完全放行（滑动翻页正常）
+        // - 超时确认 → 分派长按（文字→词级选中+暂停自动翻页 / 图片→图片长按 / 空白→
+        //   onLongClick(null), 原下层 detectTapGestures.onLongPress → onPageLongPress 职责,
+        //   下层长按已移除避免双触发）→ 后续 MOVE/UP 在 Initial pass 统一消费: delegate 的
+        //   scrollDragGesture/detectTapGestures/detectDragGestures 在 Main pass 见 isConsumed
+        //   让位 → 长按后拖动不再触发滚动/翻页, 选择激活后与扩选无争抢
+        // - 抬手 → 弹选择菜单/结束选择。鼠标长按仍由 readerMouseGestures 接管, 行为不变
         val latestOnSelectionMenu by rememberUpdatedState(onSelectionMenu)
-        // 弹菜单时的选区锚点（页内坐标 + 滚动折算；滚动模式内容下移锚点同步下移）。
+        // 弹菜单时的选区锚点（窗口坐标 = 页内坐标 + 滚动折算 + 页眉 + 状态栏高度；
+        // 滚动模式内容下移锚点同步下移，再加回 systemBarTopPx 供平台浮动菜单按窗口定位）。
         // 直接读最新值不订阅：避免滚动每帧触发重组（同上方 scrollOffset 说明）
         val selectionMenuAnchor: () -> Offset? = {
-            selection.selectionAnchor()?.let { Offset(it.x, it.y + viewModel.scrollOffset.value) }
+            selection.selectionAnchor()?.let {
+                Offset(it.x, it.y + viewModel.scrollOffset.value + latestHeaderTipPx + latestSystemBarTopPx)
+            }
         }
         Box(
             modifier = Modifier
@@ -335,8 +419,8 @@ fun ReadViewComposable(
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val downId = down.id
-                        // 鼠标手势由下方 readerMouseGestures 全权接管 (含长按抬手弹菜单),
-                        // 本层只对触摸路径弹菜单, 避免双弹
+                        // 鼠标手势由下方 readerMouseGestures 全权接管 (含长按检测与抬手弹菜单),
+                        // 本层只对触摸路径做长按检测/弹菜单, 避免双弹
                         val isMouseGesture = down.type == PointerType.Mouse
                         val suppressedTap = if (selection.isActive) {
                             selection.cancel()
@@ -346,26 +430,88 @@ fun ReadViewComposable(
                         } else {
                             false
                         }
+
+                        if (isMouseGesture) {
+                            // 鼠标: 长按检测/拖选/弹菜单全在 readerMouseGestures,
+                            // 本层只负责选择激活期间的扩选（Main pass 同步收到事件）
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == downId }
+                                if (change == null || !change.pressed) {
+                                    if (suppressedTap) change?.consume()
+                                    break
+                                }
+                                if (selection.isActive) {
+                                    // 选择激活期间消费拖动 → 扩选终点（拖拽热路径只改选区数据 + tick）
+                                    change.consume()
+                                    selection.extendTo(
+                                        change.position.x,
+                                        change.position.y - latestSystemBarTopPx - latestHeaderTipPx,
+                                        viewModel.scrollOffset.value.toFloat(),
+                                        latestPageWidth,
+                                    )
+                                }
+                            }
+                            return@awaitEachGesture
+                        }
+
+                        // ===== 触摸: 长按检测（三选一: 抬起 / 越 slop / 超时, 超时前零消费）=====
+                        val startPos = down.position
+                        val slop = viewConfiguration.touchSlop
+                        var longPressConfirmed = false
+                        try {
+                            withTimeout(viewConfiguration.longPressTimeoutMillis) {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change =
+                                        event.changes.firstOrNull { it.id == downId } ?: break
+                                    if (!change.pressed) {
+                                        // 普通点击抬起: suppressedTap 时消费抑制本次点击
+                                        // （对照旧 pressOnTextSelected 抑制单击）
+                                        if (suppressedTap) change.consume()
+                                        break
+                                    }
+                                    if (change.isConsumed) break
+                                    // 位移超 slop → 放弃长按, 完全放行下层滑动翻页
+                                    if (abs(change.position.x - startPos.x) > slop ||
+                                        abs(change.position.y - startPos.y) > slop
+                                    ) {
+                                        break
+                                    }
+                                }
+                            }
+                        } catch (_: PointerEventTimeoutCancellationException) {
+                            longPressConfirmed = true
+                        }
+                        // 未确认长按（点击/滑动/被消费）: 事件全部放行, 手势结束
+                        if (!longPressConfirmed) return@awaitEachGesture
+
+                        // ===== 长按确认: 分派并接管后续事件 =====
+                        // 文字→词级选中+暂停自动翻页 / 图片→图片长按 / 空白→onLongClick(null)
+                        // （对照原下层 detectTapGestures.onLongPress → onPageLongPress）
+                        onPageLongPress(startPos.x, startPos.y)
+                        // 后续事件 Initial pass 统一消费: delegate 各手势层在 Main pass
+                        // 见 isConsumed 让位 → 长按后拖动不触发滚动/翻页, 选择激活后无争抢
                         while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == downId }
-                            if (change == null || !change.pressed) {
-                                if (suppressedTap) change?.consume()
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val change = event.changes.firstOrNull { it.id == downId } ?: break
+                            if (!change.pressed) {
+                                change.consume()
                                 break
                             }
                             if (selection.isActive) {
-                                // 选择激活期间消费拖动 → 扩选终点（拖拽热路径只改选区数据 + tick）
-                                change.consume()
+                                // 扩选终点（拖拽热路径只改选区数据 + tick）
                                 selection.extendTo(
                                     change.position.x,
-                                    change.position.y,
+                                    change.position.y - latestSystemBarTopPx - latestHeaderTipPx,
                                     viewModel.scrollOffset.value.toFloat(),
                                     latestPageWidth,
                                 )
                             }
+                            change.consume()
                         }
-                        // 触摸路径: 抬手弹选择菜单 (鼠标路径由鼠标手势层在抬起时弹)
-                        if (selection.isActive && !isMouseGesture) {
+                        // 抬手弹选择菜单（触摸路径; 鼠标路径由鼠标手势层在抬起时弹）
+                        if (selection.isActive) {
                             val text = selection.selectedText()
                             if (text.isBlank()) {
                                 // 拖回起点导致空选区：取消而非弹空菜单（对照旧版会弹空文本菜单,
@@ -412,6 +558,9 @@ fun ReadViewComposable(
  *
  * 命中规则与 ContentTextView.touch 一致：行内 `isTouch(x, y, 0)`（当前页无相对偏移），
  * 列内 `isTouch(x)`；第一个命中的列生效。
+ *
+ * @param x/y 正文区坐标（调用方已减状态栏 + 页眉折算，对照原版
+ *        contentTextView.click(x, y - headerHeight)）
  *
  * @return true 已消费（图片/段评动作），false 未消费（回落九宫格动作）
  */
@@ -499,6 +648,8 @@ private fun AutoPageRevealOverlay(
     onLongClick: (TextColumn?) -> Unit,
     drawTick: Int,
     selection: PageSelectionState? = null,
+    onHeaderMeasured: ((Int) -> Unit)? = null,
+    onFooterMeasured: ((Int) -> Unit)? = null,
 ) {
     val progress = autoPager.progress // 读取状态触发重组（仅本覆盖层范围）
     val revealHeight = pageHeightPx * progress
@@ -528,6 +679,8 @@ private fun AutoPageRevealOverlay(
                     onLongClick = onLongClick,
                     drawTick = drawTick,
                     selection = selection,
+                    onHeaderMeasured = onHeaderMeasured,
+                    onFooterMeasured = onFooterMeasured,
                 )
             }
         }

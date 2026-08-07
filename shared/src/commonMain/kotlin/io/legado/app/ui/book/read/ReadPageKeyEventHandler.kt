@@ -12,6 +12,13 @@ package io.legado.app.ui.book.read
  *   `if (menuLayoutIsVisible || event.repeatCount > 0) return false`）。
  * - 按项目规则：音量键始终用于翻页（移除 `volumeKeyPageOnPlay` 守卫）。
  *
+ * ⚠ 无调用点（死代码，仅保留作对照参考，勿删）：KMP 各端按键分发实际走
+ * [io.legado.app.ui.compose.platform.AppShortcutHandler] 快捷键栈（小说 ReaderRoute /
+ * 漫画 MangaReaderScreenContent 注册）。音量键 repeat（长按）与去抖语义在
+ * AppShortcuts.dispatchShortcut 的 [io.legado.app.ui.compose.platform.KeyRepeatPolicy]
+ * （小说/漫画均 TRIGGER 连翻 + 200ms 节流，2026-08 用户拍板；接线收敛在
+ * [io.legado.app.ui.compose.platform.VolumeKeyPageTurnHandler]）中实现。
+ *
  * @param menuLayoutIsVisible 菜单层（顶/底栏、底部弹窗）是否可见
  * @param isPrevKey 用户自定义"上一页"keyCode 判定（对照 app 端 `BaseReadBookActivity.isPrevKey`）
  * @param isNextKey 用户自定义"下一页"keyCode 判定（对照 app 端 `BaseReadBookActivity.isNextKey`）

@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -33,6 +35,9 @@ import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.preview.LegadoThemePreview
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.image_loading_error
+import org.jetbrains.compose.resources.decodeToImageBitmap
 
 /**
  * KMP 版阅读内容绘制 Canvas：用 Compose Multiplatform Canvas API 替代
@@ -57,8 +62,9 @@ import io.legado.app.ui.preview.LegadoThemePreview
  * y = line.lineBase - baselineOffset（drawText 的 topLeft 是文本框左上角，需把行基线折算回框顶）。
  * letterSpacingHalf 仅 API35+ 补偿；KMP 版统一补偿以保持视觉一致。
  *
- * @param drawTick 页内容原地变更版本号（朗读高亮等）：变更时强制本 Canvas 重绘，
- *   不参与绘制逻辑（对照 [ReaderImageCache.version] 的读值订阅模式）
+ * @param drawTick 页内容原地变更版本号（朗读高亮等）：变更时强制本 Canvas 重绘
+ *   （纯重绘零 measure——高亮颜色经绘制期覆盖，不进布局缓存 key；
+ *   对照 [ReaderImageCache.version] 的读值订阅模式）
  * @param selection 页内文字选择状态：绘制块内读 [PageSelectionState.tick] 建立快照订阅，
  *   拖拽扩选只失效本 Canvas 重绘、不触发任何重组；高亮本身读 `TextColumn.selected` 数据
  */
@@ -78,17 +84,27 @@ fun PageContentCanvas(
     // StackOverflowError (CanvasDrawScope.getFontScale ↔ LayoutNodeDrawScope.getFontScale),
     // 阅读页白屏。改为安全方案: 组合阶段逐列缓存 TextLayoutResult (measure 一次),
     // 每帧绘制走 drawText(layoutResult) 零 measure (官方 API, 无 scope 环)。
-    // 缓存 key: 页实例/样式/页内容版本(drawTick: 朗读高亮等变色)——换页/配置变更/高亮变化才重缓存
+    // 缓存 key: 页实例/样式——换页/配置变更才重缓存。朗读/搜索高亮颜色不参与 measure
+    // (颜色不改变几何), 由绘制期 drawText(layoutResult, color=...) 覆盖: 高亮变化只经
+    // drawTick 触发纯重绘 (零 measure), 不再每词全页重新 measure (~300 列/页)。
     val density = LocalDensity.current
-    val layoutCache = remember(textPage, style, drawTick) {
+    val layoutCache = remember(textPage, style) {
         TextLayoutCache.build(textPage, textMeasurer, style, density)
+    }
+
+    // 正文图失败占位: 对齐原版 ImageProvider.errorBitmap (image_loading_error 资源图)。
+    // 组合期解码一次并缓存 (Canvas onDraw 非组合上下文不能加载资源, 也避免每帧解码);
+    // 解码完成后重组触发 Canvas 重绘, 失败图从灰块切换到错误图。
+    val failedImage by produceState<ImageBitmap?>(null) {
+        value = runCatching { Res.readBytes("drawable/image_loading_error.png").decodeToImageBitmap() }.getOrNull()
     }
 
     Canvas(modifier = modifier) {
         // 读位图就绪计数建立快照订阅：图片异步加载完成后本页自动重绘（值本身不参与绘制）
         if (ReaderImageCache.version < 0) return@Canvas
         // 朗读高亮等原地变更（isReadAloud 不在 data class 相等性内，StateFlow 去重不重发）：
-        // 消费 drawTick 使本绘制块在版本自增后重新执行（值本身不参与绘制）
+        // 消费 drawTick 使本绘制块在版本自增后重新执行（值本身不参与绘制；
+        // 布局缓存 key 不含 drawTick——本块是纯重绘，颜色覆盖见 drawTextColumn）
         if (drawTick < 0) return@Canvas
         // 文字选择起止变化：draw 阶段读 tick 建立订阅，只重绘不重组（拖拽热路径）
         if (selection != null && selection.tick < 0) return@Canvas
@@ -96,6 +112,7 @@ fun PageContentCanvas(
             textPage = textPage,
             style = style,
             layoutCache = layoutCache,
+            failedImage = failedImage,
         )
     }
 }
@@ -107,9 +124,10 @@ fun PageContentCanvas(
  * 本缓存把 measure 收敛到构建时一次, 每帧绘制走 [DrawScope.drawText] 的 layoutResult 重载
  * （零 measure, 只重放 glyph）。基线折算/字间距补偿量一并缓存（与列布局同 key）。
  *
- * key 由调用方 remember(textPage, style, drawTick) 保证: 换页新 TextPage、配置变更新
- * ReaderDrawStyle、朗读高亮等变色经 drawTick 自增重缓存; 选区高亮 (column.selected) 是
- * 绘制期覆盖矩形不参与缓存。
+ * key 由调用方 remember(textPage, style) 保证: 换页新 TextPage、配置变更新
+ * ReaderDrawStyle 才重缓存; 朗读/搜索高亮颜色不参与 measure (颜色不改变几何),
+ * 由绘制期 drawText(layoutResult, color=...) 覆盖, 高亮变化经 drawTick 纯重绘零 measure;
+ * 选区高亮 (column.selected) 是绘制期覆盖矩形不参与缓存。
  */
 private class TextLayoutCache(
     private val textByColumn: HashMap<TextColumn, ColumnLayout>,
@@ -149,16 +167,10 @@ private class TextLayoutCache(
                 for (column in textLine.columns) {
                     when (column) {
                         is TextColumn -> {
-                            // 列内文字颜色: 朗读/搜索结果高亮用 accent 色 (与绘制期同一判定)
-                            val color = if (textLine.isReadAloud || column.isSearchResult) {
-                                style.accentColor
-                            } else {
-                                style.textColor
-                            }
-                            val layout = textMeasurer.measure(
-                                column.charData,
-                                lineStyle.copy(color = color),
-                            )
+                            // 用基础样式 measure (lineStyle 已含正文色): 朗读/搜索高亮色
+                            // 不参与布局 (颜色不影响几何/换行), 由绘制期 drawText(color=...)
+                            // 覆盖, 避免朗读逐词推进触发全页重 measure (见 drawTextColumn)
+                            val layout = textMeasurer.measure(column.charData, lineStyle)
                             textByColumn[column] = ColumnLayout(
                                 layout = layout,
                                 baselineOffset = baselineOffset,
@@ -202,6 +214,7 @@ private fun DrawScope.drawPageContent(
     textPage: TextPage,
     style: ReaderDrawStyle,
     layoutCache: TextLayoutCache,
+    failedImage: ImageBitmap?,
 ) {
     // 基线折算/字间距补偿/逐列 TextLayoutResult 均已在 [TextLayoutCache] 构建时缓存,
     // 每帧只重放绘制 (drawText(layoutResult) 零 measure)。
@@ -239,6 +252,7 @@ private fun DrawScope.drawPageContent(
                     lineTop = lineTop,
                     lineHeight = lineHeight,
                     placeholderColor = style.textColor,
+                    failedImage = failedImage,
                 )
                 is ReviewColumn -> drawReviewColumn(
                     column = column,
@@ -307,8 +321,10 @@ private fun DrawScope.drawTextColumn(
     // 约束为负直接抛 IllegalArgumentException (maxWidth must be >= minWidth)。
     // 窗口 resize / 翻页动画期间旧排版数据可能暂时超出画布, 完全越界时跳过, 部分可见时正常画。
     if (x >= size.width || y >= size.height) return
-    // 缓存布局零 measure 重放 (文字颜色已按高亮状态固化进布局, 见 TextLayoutCache.build)
-    drawText(layout.layout, topLeft = Offset(x, y))
+    // 缓存布局零 measure 重放; 朗读/搜索高亮色在绘制期覆盖 (官方 drawText 重载:
+    // 颜色不参与布局, 只改 paint.color 重放 glyph)。高亮变化零 measure 纯重绘,
+    // 视觉与原"颜色固化进布局"一致 (同判定同色值)
+    drawText(layout.layout, topLeft = Offset(x, y), color = textColor)
     if (column.selected) {
         drawRect(
             color = selectedColor,
@@ -332,7 +348,8 @@ private fun DrawScope.drawTextColumn(
  * 被 LRU 淘汰时就地发起异步补加载，加载完成自增 version 触发本页重绘。
  * app 端 actual 侧填过 [ImageColumn.renderCache] 时优先用它。
  *
- * 加载中画灰色占位块，取图失败画带叉的错误占位（对照 app 端 ImageProvider 的 errorBitmap）。
+ * 加载中画灰色占位块，取图失败绘制 image_loading_error 错误图
+ * （对照 app 端 ImageProvider 的 errorBitmap，按原图占位矩形等比居中）。
  *
  * 缩放比例：保持原图宽高比，按 containerW/containerH 中较小者缩放，
  * 居中放置（与 app 端 `ImageDrawCache.updateDrawCache` 算法一致）。
@@ -342,6 +359,7 @@ private fun DrawScope.drawImageColumn(
     lineTop: Float,
     lineHeight: Float,
     placeholderColor: Color,
+    failedImage: ImageBitmap?,
 ) {
     val containerW = column.end - column.start
     val containerH = lineHeight
@@ -349,7 +367,7 @@ private fun DrawScope.drawImageColumn(
     if (bitmap == null) {
         val failed = ReaderImageCache.isFailed(column.src)
         if (!failed) ReaderImageCache.requestAsync(column.src)
-        drawImagePlaceholder(column.start, lineTop, containerW, containerH, placeholderColor, failed)
+        drawImagePlaceholder(column.start, lineTop, containerW, containerH, placeholderColor, failed, failedImage)
         return
     }
     val bW = bitmap.width.toFloat()
@@ -373,7 +391,8 @@ private fun DrawScope.drawImageColumn(
     )
 }
 
-/** 图片占位：加载中为浅色实块，失败时再叠一个叉。 */
+/** 图片占位：加载中为浅色实块（本地增强，原版无加载中占位）；失败时再叠错误图
+ * （对齐原版 ImageProvider 的 errorBgPaint 灰底 + errorBitmap 直画语义）。 */
 private fun DrawScope.drawImagePlaceholder(
     left: Float,
     top: Float,
@@ -381,6 +400,7 @@ private fun DrawScope.drawImagePlaceholder(
     height: Float,
     color: Color,
     failed: Boolean,
+    errorImage: ImageBitmap?,
 ) {
     if (width <= 0f || height <= 0f) return
     drawRect(
@@ -389,24 +409,22 @@ private fun DrawScope.drawImagePlaceholder(
         size = Size(width, height),
     )
     if (!failed) return
-    val stroke = 1.dp.toPx()
-    drawRect(
-        color = color.copy(alpha = 0.3f),
-        topLeft = Offset(left, top),
-        size = Size(width, height),
-        style = Stroke(width = stroke),
-    )
-    drawLine(
-        color = color.copy(alpha = 0.3f),
-        start = Offset(left, top),
-        end = Offset(left + width, top + height),
-        strokeWidth = stroke,
-    )
-    drawLine(
-        color = color.copy(alpha = 0.3f),
-        start = Offset(left + width, top),
-        end = Offset(left, top + height),
-        strokeWidth = stroke,
+    val image = errorImage ?: return
+    // 对齐原版 drawBitmap(bitmap, null, cachedRectF, paint) 语义: 错误图按自身宽高比在
+    // 容器矩形内等比居中 (image_loading_error 512×512 即正方形), 与正常图片列居中缩放算法一致
+    val scale = (width / image.width).coerceAtMost(height / image.height)
+    val drawW = image.width * scale
+    val drawH = image.height * scale
+    drawImage(
+        image = image,
+        dstOffset = IntOffset(
+            x = (left + (width - drawW) / 2f).toInt(),
+            y = (top + (height - drawH) / 2f).toInt(),
+        ),
+        dstSize = IntSize(
+            width = drawW.toInt().coerceAtLeast(1),
+            height = drawH.toInt().coerceAtLeast(1),
+        ),
     )
 }
 

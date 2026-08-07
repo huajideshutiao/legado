@@ -131,18 +131,17 @@ fun DesktopTitleBar(
     // undecorated 窗口 AWT 默认白底, 深色主题下启动首帧会闪白; 背景同步主题色
     // Win11 22H2+: 顺带声明系统圆角 (DWM), 无边框窗口不丢圆角; 真全屏时由
     // DesktopFullscreenController 切换为无圆角 (方角屏), 退出全屏恢复
+    // 圆角决策统一走 shouldRoundWindowCorner (真全屏/最大化都去圆角),
+    // 防止本控制栏重组把真全屏已去掉的圆角无条件加回
     SideEffect {
         window.background = java.awt.Color(bg.red, bg.green, bg.blue)
-        applyWindowCornerPreference(window, round = true)
+        applyWindowCornerPreference(window, round = shouldRoundWindowCorner(window))
     }
     // 最大化时窗口铺满工作区 (贴边), 圆角与贴边冲突 (用户拍板 2026-08); 还原恢复圆角。
     // 跟随 placement 响应: AWT 侧用户操作 (snap/任务栏) 经 windowStateListener 回写
     // placement, 双向一致 (与 toggleMaximize 共用同一状态源)
     LaunchedEffect(windowState.placement) {
-        applyWindowCornerPreference(
-            window,
-            round = windowState.placement != WindowPlacement.Maximized,
-        )
+        applyWindowCornerPreference(window, round = shouldRoundWindowCorner(window))
     }
 
     Row(

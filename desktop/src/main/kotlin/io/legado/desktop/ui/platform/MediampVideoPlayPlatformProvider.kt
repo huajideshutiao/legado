@@ -61,6 +61,7 @@ import io.legado.desktop.ui.DesktopFullscreenController
 import io.legado.desktop.ui.DesktopWindowChrome
 import io.legado.desktop.ui.DesktopWindowHandle
 import io.legado.desktop.ui.applyWindowCornerPreference
+import io.legado.desktop.ui.shouldRoundWindowCorner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -127,7 +128,7 @@ class MediampVideoPlayPlatformProvider(
 
     // 系统级全屏 (对照原版 window 全屏语义): Windows 真全屏 (无边框独占窗口覆盖任务栏,
     // 经 DesktopFullscreenController); 非 Windows 平台显式日志暂不支持 (不做 AWT fallback)
-    // 与 applyFullscreen (右上角菜单的窗口内全屏) 区分
+    // 与 applyFullscreen (右上角三点菜单"全屏"项) 区分
     override fun applySystemFullScreen(enabled: Boolean) {
         val window = windowHandle.window ?: return
         // 与 F11/控制栏菜单同一状态源: 成功才翻转 DesktopWindowChrome.fullscreen,
@@ -136,12 +137,13 @@ class MediampVideoPlayPlatformProvider(
         if (ok) DesktopWindowChrome.fullscreen = enabled
     }
 
-    // 窗口内全屏 (右上角菜单, 对照原版 Activity applyFullscreen → toggleSystemBar 沉浸式):
-    // shared isFullScreen 已隐藏标题栏/选集网格; 桌面无系统状态栏, 窗口尺寸无需变化,
-    // 但全屏画面不应带圆角 (用户拍板 2026-08: 全屏都不需要圆角)——窗口切方角/退出恢复
+    // 右上角三点菜单"全屏"项 (对照原版 Activity applyFullscreen → toggleSystemBar 沉浸式):
+    // shared isFullScreen 只隐藏顶栏/选集网格 (窗口内沉浸模式), 不涉及窗口全屏——
+    // 圆角保持普通窗口状态 (undecorated 窗口圆角声明随重绘失效时重新声明);
+    // 真全屏 (F11/无边框) 走 applySystemFullScreen
     override fun applyFullscreen(enabled: Boolean) {
         val window = windowHandle.window ?: return
-        applyWindowCornerPreference(window, round = !enabled)
+        applyWindowCornerPreference(window, round = shouldRoundWindowCorner(window))
     }
 
     // mediamp 是 Compose 层渲染 (无原生子窗口), 无 airspace 遮挡问题, 直接跳过

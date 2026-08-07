@@ -12,19 +12,25 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -108,9 +114,11 @@ import org.jetbrains.compose.resources.stringResource
  * @param state           顶部表单状态 (书源类型/各启用开关/tab/版本号)
  * @param callbacks       事件回调 (菜单动作/状态变更)
  * @param editEntities    按 tab 返回当前页的 [EditEntity] 列表 (宿主持有可变列表, 供 getSource 读取)
+ * @param fieldEditors    字段编辑器状态容器 (fieldId → [CodeEditorState]), 宿主持有, 按
+ *                        sourceVersion 重建: 版本变化即全部字段编辑器重置 (对齐原版 upSourceView
+ *                        重建实体); 容器内编辑器 value 是 Compose State, 单字段写入只重组该字段,
+ *                        避免 SnapshotStateMap 写一字段全字段失效
  * @param onFieldFocus    字段获得焦点回调 `(fieldId, entity)`, 供宿主定位自动缩进目标
- * @param onFieldTextChange 字段文本变化回调 `(fieldId, text)`, 宿主可据此维护文本快照
- * @param fieldTextOverride 宿主外部改写字段文本时的取值 (如自动缩进), 返回 null 用实体自身值
  * @param onShowKeyboardConfig 辅助键配置入口 (app 端 `showDialogFragment<KeyboardAssistsConfig>()`)
  * @param requestFocusSignal 请求根节点持焦的信号 (宿主在页面回到栈顶时投递; 页面全程留在
  *                           Composition, 进入时的持焦只在首次组合执行, 返回后需重新请求)
@@ -121,15 +129,16 @@ fun BookSourceEditScreen(
     state: BookSourceEditState,
     callbacks: BookSourceEditCallbacks,
     editEntities: (Int) -> List<EditEntity>,
+    fieldEditors: MutableMap<String, CodeEditorState>,
     modifier: Modifier = Modifier,
     onFieldFocus: (String, EditEntity) -> Unit = { _, _ -> },
-    onFieldTextChange: (String, String) -> Unit = { _, _ -> },
-    fieldTextOverride: (String) -> String? = { null },
     onShowKeyboardConfig: () -> Unit = {},
     requestFocusSignal: Flow<Unit> = emptyFlow(),
 ) {
-    // 焦点字段的编辑器状态 (对照 app 端 lastActiveCodeView): 辅助键插入/撤销/重做/查找替换的目标
-    var activeEditor by remember { mutableStateOf<CodeEditorState?>(null) }
+    // 焦点字段的编辑器状态 (对照 app 端 lastActiveCodeView): 辅助键插入/撤销/重做/查找替换的目标。
+    // 以 State 引用下发到字段层, 字段内部用 derivedStateOf 做 === 判定 (见 CodeField),
+    // 聚焦切换只重组新旧两个字段, 其余可见字段的调用点不读取本 State
+    val activeEditor = remember { mutableStateOf<CodeEditorState?>(null) }
     val keyboardState = remember { KeyboardToolbarState() }
     // 查找高亮状态: 供聚焦字段的 CodeTextField 叠加全量黄底 + 当前命中强调色 (对齐原版 CodeView 查找高亮)
     val searchHighlight = remember { CodeSearchHighlightState() }
@@ -153,18 +162,18 @@ fun BookSourceEditScreen(
                 }
                 when (event.key) {
                     Key.Z if event.isShiftPressed -> {
-                        activeEditor?.redo()
-                        activeEditor != null
+                        activeEditor.value?.redo()
+                        activeEditor.value != null
                     }
 
                     Key.Z -> {
-                        activeEditor?.undo()
-                        activeEditor != null
+                        activeEditor.value?.undo()
+                        activeEditor.value != null
                     }
 
                     Key.Y -> {
-                        activeEditor?.redo()
-                        activeEditor != null
+                        activeEditor.value?.redo()
+                        activeEditor.value != null
                     }
 
                     else -> false
@@ -187,31 +196,36 @@ fun BookSourceEditScreen(
                 .height(1.dp)
                 .background(rememberColor("bg_divider_line"))
         )
+        // onEditorActive 逻辑只依赖稳定引用 (remember 的 activeEditor/searchHighlight),
+        // remember 固定 lambda 实例: 聚焦切换触发的整屏重组不再新建 lambda 引用,
+        // EditFields 的 item 调用点可跳过重组 (对齐 onCodeViewFocus 语义)
+        val stableOnEditorActive: (CodeEditorState) -> Unit = remember {
+            { editor ->
+                if (activeEditor.value != editor) {
+                    // 对齐原版 onCodeViewFocus: 切换到别的字段时清空上一字段的查找高亮
+                    searchHighlight.clear()
+                    activeEditor.value = editor
+                }
+            }
+        }
         EditFields(
             state = state,
             editEntities = editEntities,
-            activeEditor = activeEditor,
+            fieldEditors = fieldEditors,
+            activeEditorState = activeEditor,
             searchHighlight = searchHighlight,
             onFieldFocus = onFieldFocus,
-            onFieldTextChange = onFieldTextChange,
-            fieldTextOverride = fieldTextOverride,
-            onEditorActive = { editor ->
-                if (activeEditor != editor) {
-                    // 对齐原版 onCodeViewFocus: 切换到别的字段时清空上一字段的查找高亮
-                    searchHighlight.clear()
-                    activeEditor = editor
-                }
-            },
+            onEditorActive = stableOnEditorActive,
             modifier = Modifier.weight(1f),
         )
         KeyboardToolbar(
             state = keyboardState,
-            onSendText = { activeEditor?.insertAtCursor(it) },
-            onUndo = { activeEditor?.undo() },
-            onRedo = { activeEditor?.redo() },
+            onSendText = { activeEditor.value?.insertAtCursor(it) },
+            onUndo = { activeEditor.value?.undo() },
+            onRedo = { activeEditor.value?.redo() },
             onShowConfig = onShowKeyboardConfig,
             target = {
-                activeEditor?.let {
+                activeEditor.value?.let {
                     CodeEditorSearchTarget(it, searchHighlight) { focusManager.clearFocus() }
                 }
             },
@@ -230,6 +244,7 @@ fun BookSourceEditScreen(
  * - `sourceVersion` 由 `upSourceView` 自增, 驱动 [EditFields] 整体重建 (对齐原 `private set`
  *   语义: 仅宿主端自增, shared 端只读)
  */
+@Stable
 class BookSourceEditState {
     var bookSourceTypeIndex by mutableIntStateOf(0)
     var enabled by mutableStateOf(false)
@@ -252,6 +267,7 @@ class BookSourceEditState {
  * 对照 app 端 `BookSourceEditActivity` 的菜单动作方法 (`saveSource`/`debugSource`/`login`/...)
  * 与 header 状态变更 (`bookSourceTypeIndex = it` / `enabled = it` / ...)。
  */
+@Stable
 data class BookSourceEditCallbacks(
     val onBack: () -> Unit = {},
     val onSave: () -> Unit = {},
@@ -485,48 +501,59 @@ private fun TabBar(state: BookSourceEditState, callbacks: BookSourceEditCallback
 private fun EditFields(
     state: BookSourceEditState,
     editEntities: (Int) -> List<EditEntity>,
-    activeEditor: CodeEditorState?,
+    fieldEditors: MutableMap<String, CodeEditorState>,
+    activeEditorState: State<CodeEditorState?>,
     searchHighlight: CodeSearchHighlightState,
     onFieldFocus: (String, EditEntity) -> Unit,
-    onFieldTextChange: (String, String) -> Unit,
-    fieldTextOverride: (String) -> String?,
     onEditorActive: (CodeEditorState) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val scrollState = rememberScrollState()
+    // 虚拟化滚动: 只组合可见字段, 长字段 (数百行规则文本) 滚动到时才布局/测量,
+    // 对齐原版 RecyclerView 定高内滚的惰性行为 (原版每字段 item 高度即内容高度)
+    val listState = rememberLazyListState()
     val tab = state.currentTab
     val version = state.sourceVersion
     // 原版 BookSourceEditAdapter 对每个字段三连 addLegado/addJs/addJsonPattern, 不分组
     val syntax = rememberFullCodeSyntax()
+    // 回调/取数 lambda 引用稳定化 (State 捕获模式): 宿主重组传新 lambda 时,
+    // LazyColumn item 调用点的捕获引用不变, 可见字段不因父级重组而全部重组合
+    val latestEditEntities = rememberUpdatedState(editEntities)
+    val stableEditEntities = remember { { tab: Int -> latestEditEntities.value(tab) } }
+    val latestOnFieldFocus = rememberUpdatedState(onFieldFocus)
+    val stableOnFieldFocus = remember {
+        { id: String, entity: EditEntity -> latestOnFieldFocus.value(id, entity) }
+    }
+    val latestOnEditorActive = rememberUpdatedState(onEditorActive)
+    val stableOnEditorActive = remember {
+        { editor: CodeEditorState -> latestOnEditorActive.value(editor) }
+    }
     // 切 tab / 重建数据时回顶 (对齐 View 版 scrollToPosition(0))
-    LaunchedEffect(tab, version) { scrollState.scrollTo(0) }
-    Column(
-        modifier
-            .fillMaxWidth()
-            .verticalScroll(scrollState),
+    LaunchedEffect(tab, version) { listState.scrollToItem(0) }
+    LazyColumn(
+        state = listState,
+        modifier = modifier.fillMaxWidth(),
     ) {
-        key(version, tab) {
-            editEntities(tab).forEach { entity ->
-                key(entity.key) {
-                    when (entity.viewType) {
-                        EditEntity.ViewType.spinner -> SpinnerField(entity)
-                        else -> {
-                            val editor = editorOf(entity)
-                            CodeField(
-                                // fieldId 带 tab 前缀: 同一 key 在多个 tab 重复出现 (如 name / bookList)
-                                fieldId = "$tab/${entity.key}",
-                                entity = entity,
-                                editor = editor,
-                                syntax = syntax,
-                                active = editor === activeEditor,
-                                searchHighlight = searchHighlight,
-                                onFieldFocus = onFieldFocus,
-                                onFieldTextChange = onFieldTextChange,
-                                fieldTextOverride = fieldTextOverride,
-                                onEditorActive = onEditorActive,
-                            )
-                        }
-                    }
+        // item key = 字段 key: 对齐原 key(version, tab) 整体重建语义 —— 版本号变化时
+        // 列表内容整体替换, 编辑器状态由 fieldEditors 容器按版本重建承载 (见 Route);
+        // 同 key item 复用组合槽, 值同步走 editorOf 的 setText 检查
+        val entities = stableEditEntities(tab)
+        items(entities, key = { it.key }) { entity ->
+            when (entity.viewType) {
+                EditEntity.ViewType.spinner -> SpinnerField(entity)
+                else -> {
+                    val fieldId = "$tab/${entity.key}"
+                    val editor = editorOf(fieldId, entity, fieldEditors)
+                    CodeField(
+                        // fieldId 带 tab 前缀: 同一 key 在多个 tab 重复出现 (如 name / bookList)
+                        fieldId = fieldId,
+                        entity = entity,
+                        editor = editor,
+                        syntax = syntax,
+                        activeState = activeEditorState,
+                        searchHighlight = searchHighlight,
+                        onFieldFocus = stableOnFieldFocus,
+                        onEditorActive = stableOnEditorActive,
+                    )
                 }
             }
         }
@@ -540,25 +567,31 @@ private fun CodeField(
     entity: EditEntity,
     editor: CodeEditorState,
     syntax: CodeSyntaxScheme,
-    active: Boolean,
+    activeState: State<CodeEditorState?>,
     searchHighlight: CodeSearchHighlightState,
     onFieldFocus: (String, EditEntity) -> Unit,
-    onFieldTextChange: (String, String) -> Unit,
-    fieldTextOverride: (String) -> String?,
     onEditorActive: (CodeEditorState) -> Unit,
 ) {
-    // 外部改写 (自动缩进/粘贴源) 同步回编辑器
-    val override = fieldTextOverride(fieldId)
-    if (override != null && override != editor.value.text) editor.setText(override)
+    // 聚焦判定下沉: activeState 引用在调用点不读取, 派生值 (=== 引用比较) 变化才重组
+    // 本字段 —— 聚焦切换只重组新旧两字段, 其余可见字段整体跳过
+    val isActive by remember(editor, activeState) {
+        derivedStateOf { activeState.value === editor }
+    }
+    // 查找面板防抖协程作用域: 防抖任务挂在字段 scope, 随字段离开组合自动取消
+    val searchRefreshScope = rememberCoroutineScope()
+    // 回调 lambda 经 rememberUpdatedState 稳定: 父级重组传新 lambda 引用时本字段不重组
+    val latestOnEditorActive by rememberUpdatedState(onEditorActive)
+    val latestOnFieldFocus by rememberUpdatedState(onFieldFocus)
     CodeTextField(
         value = editor.value,
         onValueChange = {
             editor.onValueChange(it)
             entity.value = it.text
-            onFieldTextChange(fieldId, it.text)
-            // 查找面板开着且本字段聚焦时, 跟随文本变化刷新匹配高亮 (对齐原版 afterTextChanged 的
+            // 查找面板开着且本字段聚焦时, 防抖刷新匹配高亮 (对齐原版 afterTextChanged 的
             // updateSearchHighlightIncremental; 替换等由面板触发的编辑走 target 内部重算)
-            if (active && searchHighlight.keyword.isNotEmpty()) searchHighlight.refresh(it.text)
+            if (isActive && searchHighlight.keyword.isNotEmpty()) {
+                searchHighlight.refreshDebounced(it.text, searchRefreshScope)
+            }
         },
         syntax = syntax,
         label = rememberString(entity.hint),
@@ -567,29 +600,35 @@ private fun CodeField(
         // 对照原版 CodeView: EditText 默认 16sp (原版未设 textSize)
         fontSize = 16.sp,
         // 查找高亮只叠加在聚焦字段上 (原版查找作用于 lastActiveCodeView)
-        searchHighlight = if (active) searchHighlight else null,
+        searchHighlight = if (isActive) searchHighlight else null,
         modifier = Modifier
             .fillMaxWidth()
             // 对齐原版 BookSourceEditAdapter: TextInputLayout setPadding(0, space.xs, 0, 0)
             .padding(top = 4.dp)
             .onFocusChanged {
                 if (it.isFocused) {
-                    onEditorActive(editor)
-                    onFieldFocus(fieldId, entity)
+                    latestOnEditorActive(editor)
+                    latestOnFieldFocus(fieldId, entity)
                 }
             },
     )
 }
 
 /**
- * 字段的编辑器状态: 按组合位置记忆, 由外层 key(version, tab) + key(entity.key) 分组隔离
- * (不能用 entity 作 remember key — EditEntity 是 data class, 跨字段等值会串状态)。
- * 外部整体重建 (粘贴源/重新加载) 后值可能变化, 同步回编辑器。
+ * 字段的编辑器状态: 从 [fieldEditors] 容器按 fieldId 取, 组合位置与滚动回收无关
+ * (容器由宿主按 sourceVersion 重建: 粘贴源/重新加载后旧编辑器与撤销历史一并丢弃, 对齐原版
+ * upSourceView 重建实体; tab 切换不重建容器, 切回时编辑器状态保留, 对齐原版 View 回收复用)。
+ * 容器为普通 map 不参与重组, 编辑器内部 value 是 Compose State, 单字段写入只重组该字段。
  */
 @Composable
-private fun editorOf(entity: EditEntity): CodeEditorState {
+private fun editorOf(
+    fieldId: String,
+    entity: EditEntity,
+    fieldEditors: MutableMap<String, CodeEditorState>,
+): CodeEditorState {
+    val editor = fieldEditors.getOrPut(fieldId) { CodeEditorState(entity.value.orEmpty()) }
+    // 外部整体改写 (自动缩进/粘贴源) 后值可能变化, 同步回编辑器
     val value = entity.value.orEmpty()
-    val editor = remember { CodeEditorState(value) }
     if (editor.value.text != value) editor.setText(value)
     return editor
 }
@@ -721,7 +760,7 @@ private class CodeEditorSearchTarget(
 private fun SpinnerField(entity: EditEntity) {
     val colors = AppTheme.colors
     val selections = entity.selections.orEmpty()
-    var selectedIndex by remember {
+    var selectedIndex by remember(entity.value) {
         mutableIntStateOf(selections.indexOfFirst { it.second == entity.value }.coerceAtLeast(0))
     }
     Row(
@@ -835,10 +874,12 @@ private fun previewEntities(tab: Int): List<EditEntity> = when (tab) {
 @Preview
 @Composable
 fun BookSourceEditScreenPreview() = LegadoThemePreview {
+    val fieldEditors = remember { HashMap<String, CodeEditorState>() }
     BookSourceEditScreen(
         state = previewState(),
         callbacks = previewCallbacks,
         editEntities = ::previewEntities,
+        fieldEditors = fieldEditors,
     )
 }
 
@@ -851,19 +892,23 @@ fun BookSourceEditScreenSearchTabPreview() = LegadoThemePreview {
             currentTab = 1
         }
     }
+    val fieldEditors = remember { HashMap<String, CodeEditorState>() }
     BookSourceEditScreen(
         state = state,
         callbacks = previewCallbacks,
         editEntities = ::previewEntities,
+        fieldEditors = fieldEditors,
     )
 }
 
 @Preview
 @Composable
 fun BookSourceEditScreenDarkPreview() = LegadoThemePreview(dark = true) {
+    val fieldEditors = remember { HashMap<String, CodeEditorState>() }
     BookSourceEditScreen(
         state = previewState(),
         callbacks = previewCallbacks,
         editEntities = ::previewEntities,
+        fieldEditors = fieldEditors,
     )
 }

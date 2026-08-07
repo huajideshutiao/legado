@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.image.DecodedBitmapCache
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.update.AppUpdateManager
 import io.legado.app.model.CheckSourceShared
@@ -396,6 +397,8 @@ fun OtherConfigRoute(
                 showCleanCacheConfirm = false
                 scope.launch {
                     ConfigActionsShared.clearCache()
+                    // 解码位图进程级 LRU (大图查看/阅读背景/样式预览等) 一并清空 (I1)
+                    DecodedBitmapCache.clear()
                     Toasters.get().toast(clearCacheSuccessStr)
                 }
             },

@@ -81,6 +81,7 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         }
 
     var showUnread by boolPref(PreferKey.showUnread, true)
+    var showBookshelfFastScroller by boolPref(PreferKey.showBookshelfFastScroller, true)
     var showLastUpdateTime by boolPref(PreferKey.showLastUpdateTime, false)
     var bookshelfListShowKind by boolPref(PreferKey.bookshelfListShowKind, false)
     var bookshelfListShowIntro by boolPref(PreferKey.bookshelfListShowIntro, false)

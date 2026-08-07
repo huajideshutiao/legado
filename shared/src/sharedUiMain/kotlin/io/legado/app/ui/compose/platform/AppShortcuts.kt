@@ -21,6 +21,7 @@ import io.legado.app.utils.systemCurrentTimeMillis
  * 快捷键描述。[command] 是跨平台主修饰键: macOS/iOS 走 Cmd, 其余平台走 Ctrl。
  *
  * [preemptive] 显式指定是否在捕获阶段抢占消费；null = 按默认规则推断（见 [AppShortcut.preemptive]）。
+ * [repeatPolicy] 指定系统按键 repeat（按住连发）的处理策略，默认 [KeyRepeatPolicy.FILTER]。
  */
 data class AppShortcut(
     val key: Key,
@@ -28,7 +29,21 @@ data class AppShortcut(
     val shift: Boolean = false,
     val alt: Boolean = false,
     val preemptive: Boolean? = null,
+    val repeatPolicy: KeyRepeatPolicy = KeyRepeatPolicy.FILTER,
 )
+
+/**
+ * 系统按键 repeat（按住连发）的处理策略，见 [AppShortcut.repeatPolicy]。
+ */
+enum class KeyRepeatPolicy {
+    /** 消费但不重复触发（默认）：按住只触发一次（方向键/翻页键等），冒泡阶段不再执行 */
+    FILTER,
+
+    /** 消费且每次 repeat 都触发：小说/漫画音量键长按连续翻页（用户拍板 2026-08，
+     *  小说与漫画一致；连翻速率由调用方节流，对照原版 ReadMangaActivity onKeyDown 的
+     *  repeat 连翻） */
+    TRIGGER,
+}
 
 /** 主修饰键: macOS/iOS = Cmd (Meta), Windows/Linux/Android/鸿蒙 = Ctrl。 */
 val KeyEvent.isCommandPressed: Boolean
@@ -128,9 +143,14 @@ fun AppShortcutHandler(
  * [preemptive] 区分捕获/冒泡两阶段: 见 [AppShortcut.preemptive]。
  * 逐个 catch + 遍历前取快照, 理由同 [dispatchBackKey]。
  *
- * KeyUp 只清理按住状态 (repeat 过滤用), 不触发任何动作。KeyDown 命中后:
- * 同键未抬起且间隔在 [KEY_REPEAT_WINDOW_MS] 内 → 视为系统按键 repeat, 消费但不重复触发
- * (对照原版 ReadBookKeyHandler 的 `repeatCount > 0 → return false` 语义, 按住只翻一页);
+ * KeyUp 只清理按住状态 (repeat 过滤用), 不触发任何动作——例外: 音量键且栈顶命中
+ * TRIGGER 策略时抬起也消费, 对照原版 ReadMangaActivity onKeyUp 对音量键返回 true
+ * (小说/漫画音量键均为 TRIGGER)。
+ *
+ * KeyDown 命中后:
+ * 同键未抬起且间隔在 [KEY_REPEAT_WINDOW_MS] 内 → 视为系统按键 repeat, 按
+ * [AppShortcut.repeatPolicy] 处理 (默认 FILTER: 消费但不重复触发, 按住只触发一次;
+ * 音量键 TRIGGER: 每次 repeat 触发连翻, 连翻速率由调用方 200ms 节流);
  * 快速连按 (间隔超过窗口) 每次正常触发。
  */
 fun dispatchShortcut(event: KeyEvent, preemptive: Boolean): Boolean {
@@ -139,33 +159,60 @@ fun dispatchShortcut(event: KeyEvent, preemptive: Boolean): Boolean {
     try {
         if (event.type == KeyEventType.KeyUp) {
             pressedSince.remove(event.key)
+            // 音量键抬起: 栈顶激活的 TRIGGER 策略快捷键 (小说/漫画) 消费 (对照原版
+            // ReadMangaActivity.onKeyUp), 其余策略放行
+            if (event.key == Key.VolumeUp || event.key == Key.VolumeDown) {
+                return firstEnabledEntry { it.key == event.key }
+                    ?.shortcuts()
+                    ?.any { it.key == event.key && it.repeatPolicy == KeyRepeatPolicy.TRIGGER } == true
+            }
             return false
         }
         if (event.type != KeyEventType.KeyDown) return false
-        val snapshot = shortcutStack.toList()
-        for (index in snapshot.indices.reversed()) {
-            val entry = snapshot[index]
-            if (entry !in shortcutStack) continue
-            val enabled = runCatching { entry.enabled() }
-                .onFailure { AppLog.put("快捷键开关求值异常", it) }
-                .getOrDefault(false)
-            if (!enabled) continue
-            val hit = entry.shortcuts()
-                .firstOrNull { it.preemptive == preemptive && it.matches(event) }
-                ?: continue
-            val now = systemCurrentTimeMillis()
-            val lastPress = pressedSince[event.key]
-            if (lastPress != null && now - lastPress < KEY_REPEAT_WINDOW_MS) {
-                // 按住连发 (系统 repeat): 消费但不重复触发, 焦点导航等冒泡阶段不再执行
-                return true
+        val entry = firstEnabledEntry {
+            it.preemptive == preemptive && it.matches(event)
+        } ?: return false
+        val hit = entry.shortcuts().first { it.preemptive == preemptive && it.matches(event) }
+        val now = systemCurrentTimeMillis()
+        val lastPress = pressedSince[event.key]
+        if (lastPress != null && now - lastPress < KEY_REPEAT_WINDOW_MS) {
+            // 系统按键 repeat: 处理策略见 AppShortcut.repeatPolicy
+            when (hit.repeatPolicy) {
+                // 消费但不重复触发, 焦点导航等冒泡阶段不再执行
+                KeyRepeatPolicy.FILTER -> return true
+                // 每次 repeat 都触发 (长按连翻, 速率由调用方节流)
+                KeyRepeatPolicy.TRIGGER -> {
+                    pressedSince[event.key] = now
+                    trigger(entry, hit)
+                    return true
+                }
             }
-            pressedSince[event.key] = now
-            runCatching { entry.onTriggered(hit) }
-                .onFailure { AppLog.put("快捷键处理异常", it) }
-            return true
         }
-        return false
+        pressedSince[event.key] = now
+        trigger(entry, hit)
+        return true
     } finally {
         dispatching = false
     }
+}
+
+/** 栈顶第一个 enabled 且 shortcuts 命中 predicate 的注册项 (栈顶优先, 语义对齐 [dispatchShortcut]) */
+private fun firstEnabledEntry(predicate: (AppShortcut) -> Boolean): ShortcutEntry? {
+    val snapshot = shortcutStack.toList()
+    for (index in snapshot.indices.reversed()) {
+        val entry = snapshot[index]
+        if (entry !in shortcutStack) continue
+        val enabled = runCatching { entry.enabled() }
+            .onFailure { AppLog.put("快捷键开关求值异常", it) }
+            .getOrDefault(false)
+        if (!enabled) continue
+        if (entry.shortcuts().any(predicate)) return entry
+    }
+    return null
+}
+
+/** 触发快捷键回调, 异常只记日志不中断分发链 */
+private fun trigger(entry: ShortcutEntry, hit: AppShortcut) {
+    runCatching { entry.onTriggered(hit) }
+        .onFailure { AppLog.put("快捷键处理异常", it) }
 }

@@ -17,6 +17,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.ui.compose.theme.AppTheme
 import kotlinx.coroutines.delay
 import java.awt.Window
+import javax.swing.JFrame
 
 /**
  * Windows 原生标题栏 (最小化/最大化/关闭按钮那一条) 跟随应用主题。
@@ -119,6 +120,15 @@ fun applyWindowCornerPreference(window: Window?, round: Boolean) {
         if (round) DWMWCP_ROUND else DWMWCP_DONOTROUND,
     )
 }
+
+/**
+ * 窗口圆角统一决策: 无边框真全屏 ([DesktopWindowChrome.fullscreen]) / 最大化铺满 (贴边)
+ * 时窗口应为方角 (去圆角), 其余状态保留圆角。所有圆角设置点 (自绘控制栏重组 / 真全屏
+ * 进出) 共用本决策, 防止一处恢复圆角覆盖另一处已去除的圆角。
+ */
+fun shouldRoundWindowCorner(window: Window): Boolean =
+    !DesktopWindowChrome.fullscreen &&
+        (window as? JFrame)?.let { (it.extendedState and JFrame.MAXIMIZED_BOTH) == 0 } ?: true
 
 /** 单条 DWM 属性写入; 非零 HRESULT (如 Win10 不认 35/36) 只记调试日志, 不中断后续属性 */
 private fun setAttribute(dwm: Dwmapi, hwnd: WinDef.HWND, attribute: Int, value: Int) {

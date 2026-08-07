@@ -4,6 +4,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -21,7 +22,13 @@ import kotlinx.coroutines.flow.StateFlow
  * - [menuState] 驱动 [ReadMenuOverlay]（顶/底栏菜单）
  * - [batteryLevel] 传给 [ReadViewComposable] 显示页眉/页脚电量
  * - [clockText] 传给 [ReadViewComposable] 显示页眉/页脚时间
+ *
+ * 标注 @Stable：全部属性为 val 且引用稳定（viewModel/menuState 组合期不换实例，
+ * battery/clock 是 StateFlow 引用，内部值变化经 collectAsState 局部订阅，不改变
+ * 本类相等性），上层可安全按 equals 跳过无效重组；菜单显隐等内部可变状态由
+ * [ReadMenuOverlay] 直接订阅 menuState 自身，不经本类驱动。
  */
+@Stable
 data class ReaderUiState(
     val viewModel: ReadBookViewModelShared,
     val menuState: ReadMenuState,
@@ -83,6 +90,7 @@ fun ReaderScreen(
     actions: ReaderUiActions,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
+    onTipMeasured: ((Int, Int) -> Unit)? = null,
 ) {
     val batteryLevel by state.batteryLevel.collectAsState()
     val clockText by state.clockText.collectAsState()
@@ -110,6 +118,7 @@ fun ReaderScreen(
                 )
             },
             menuVisible = { state.menuState.isVisible },
+            onTipMeasured = onTipMeasured,
         )
         ReadMenuOverlay(state = state.menuState)
     }

@@ -75,6 +75,13 @@ class WebViewCallbacks {
     var onFullScreenChanged: ((Boolean) -> Unit)? = null
 
     /**
+     * 页面 URL 变化 (导航完成后的当前地址, 对照原 WebViewActivity 菜单取
+     * `webView.url ?: baseUrl` 的语义)。平台实现在每次导航完成时触发,
+     * 路由侧维护共享 currentUrl 状态供菜单读取 (页面内跳转后取最新链接)。
+     */
+    var onUrlChanged: ((String) -> Unit)? = null
+
+    /**
      * URL 跳转拦截 (对照原 BaseWebViewClient.interceptUrl → 书源
      * `contentRule.shouldOverrideUrlLoading` JS)。返回 true 表示已处理, WebView 不再加载。
      *

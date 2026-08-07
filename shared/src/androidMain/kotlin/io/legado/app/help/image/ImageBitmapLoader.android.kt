@@ -1,8 +1,11 @@
 package io.legado.app.help.image
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import com.caverock.androidsvg.SVG
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.isLocal
@@ -16,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.withContext
 import okhttp3.Request
+import java.io.ByteArrayInputStream
 import java.io.File
 import kotlin.math.max
 
@@ -39,8 +43,13 @@ import kotlin.math.max
 actual class ImageBitmapLoader actual constructor() {
 
     companion object {
-        /** 失败 url 跳过表 (对照原版 Glide OkHttpStreamFetcher.companion failUrl: 非 2xx/解密失败进表)。 */
+        /** 失败 url 跳过表 (对照原版 Glide OkHttpStreamFetcher.companion failUrl: 非 2xx/解密失败进表)。
+         * key 带书源维度 (origin+url): 不同书源同 URL 互不影响, 换源/无源→有源切换后不再被
+         * 旧失败记录拦截可重新加载; 无书源 (裸 GET) 时 key 即 url, 保持原死链跳过语义。 */
         private val failUrls = java.util.Collections.synchronizedSet(HashSet<String>())
+
+        private fun failKey(origin: String?, url: String): String =
+            if (origin.isNullOrEmpty()) url else "$origin\u0000$url"
     }
 
     actual suspend fun loadBitmap(
@@ -48,10 +57,21 @@ actual class ImageBitmapLoader actual constructor() {
         book: Book?,
         bookSource: BookSource?,
         isCover: Boolean,
+        widthPx: Int,
+        heightPx: Int,
+        useBitmapCache: Boolean,
     ): ImageBitmap? =
         withContext(Dispatchers.IO) {
             val bytes = loadBytes(url, book, bookSource, isCover) ?: return@withContext null
-            runCatching { decodeBytes(bytes) }.getOrNull()
+            val key = if (useBitmapCache) {
+                DecodedBitmapCache.cacheKey(url, bookSource?.bookSourceUrl, isCover, widthPx, heightPx)
+            } else null
+            val cached = key?.let { DecodedBitmapCache.get(it) }
+            if (cached != null) return@withContext cached
+            val bitmap = runCatching { decodeBytes(bytes, maxOf(widthPx, heightPx)) }.getOrNull()
+                ?: decodeSvgFallback(bytes, maxOf(widthPx, heightPx))
+            if (bitmap != null && key != null) DecodedBitmapCache.put(key, bitmap)
+            bitmap
         }
 
     /** 同 [loadBitmap], 返回原始字节 (动图/需要原始数据的消费点用)。 */
@@ -74,7 +94,7 @@ actual class ImageBitmapLoader actual constructor() {
                     url.startsWith("file://") -> File(url.removePrefix("file://")).readBytes()
                     url.startsWith("/") -> File(url).readBytes()
                     url.startsWith("http://") || url.startsWith("https://") -> {
-                        if (failUrls.contains(url)) {
+                        if (failUrls.contains(failKey(bookSource?.bookSourceUrl, url))) {
                             // 跳过加载失败的图片 (原版 OkHttpStreamFetcher 同语义)
                             null
                         } else {
@@ -87,13 +107,18 @@ actual class ImageBitmapLoader actual constructor() {
             }.getOrNull()
         }
 
-    /** BitmapFactory 解码, 先读边界再按长边 ≤2048 降采样, 防大图解码 OOM。 */
-    private fun decodeBytes(bytes: ByteArray): ImageBitmap? {
+    /**
+     * BitmapFactory 解码, 先读边界再按目标尺寸降采样 (inSampleSize 取 2 的幂,
+     * 解码后长边 ≥ target/2); 未显式指定目标尺寸时按长边 ≤2048 防大图解码 OOM (原语义)。
+     */
+    internal fun decodeBytes(bytes: ByteArray, maxDim: Int): ImageBitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-        val maxDim = max(bounds.outWidth, bounds.outHeight)
+        val srcMax = max(bounds.outWidth, bounds.outHeight)
+        if (srcMax <= 0) return null
+        val target = if (maxDim > 0) maxDim else 2048
         var inSampleSize = 1
-        while (maxDim / (inSampleSize * 2) >= 2048) inSampleSize *= 2
+        while (srcMax / 2 / inSampleSize >= target) inSampleSize *= 2
         val opts = BitmapFactory.Options().apply { this.inSampleSize = inSampleSize }
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)?.asImageBitmap()
     }
@@ -109,13 +134,15 @@ actual class ImageBitmapLoader actual constructor() {
         book: Book?,
         isCover: Boolean,
     ): ByteArray? =
-        ImageBytesCache.get(url, isCover) ?: run {
+        ImageBytesCache.get(url, bookSource?.bookSourceUrl, isCover) ?: run {
             val bytes = if (bookSource == null || book?.isLocal == true) {
                 downloadBytesSimple(url)
             } else {
                 downloadBytesWithSource(url, bookSource, book, isCover)
             }
-            if (bytes != null) ImageBytesCache.put(url, isCover, bytes)
+            if (bytes != null) {
+                ImageBytesCache.put(url, bookSource?.bookSourceUrl, isCover, bytes)
+            }
             bytes
         }
 
@@ -126,7 +153,7 @@ actual class ImageBitmapLoader actual constructor() {
         return runCatching {
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    failUrls.add(url)
+                    failUrls.add(failKey(null, url))
                     null
                 } else {
                     response.body?.bytes()
@@ -156,9 +183,42 @@ actual class ImageBitmapLoader actual constructor() {
             runScriptWithContext {
                 ImageUtils.decode(url, bytes, isCover, bookSource, book)
             } ?: run {
-                failUrls.add(url)
+                failUrls.add(failKey(bookSource.bookSourceUrl, url))
                 null
             }
         }.getOrNull()
     }
 }
+
+/** 带目标长边上限解码: BitmapFactory 解码前采样 (maxDim<=0 保持长边 ≤2048 防 OOM)。 */
+actual fun decodeBytesSampled(bytes: ByteArray, maxDim: Int): ImageBitmap? =
+    ImageBitmapLoader().decodeBytes(bytes, maxDim)
+
+/**
+ * SVG 兜底解码 (androidsvg, 依赖 shared androidMain 已有 libs.androidsvg)。
+ *
+ * 栅格解码失败后按 SVG 渲染, 渲染参数对齐 app 端 SvgUtils.createBitmap / shared
+ * ImageProvider.android.kt SvgDecode: 固有尺寸取 documentWidth/Height (androidsvg 已换算 px),
+ * 缺失回落 viewBox; 无 viewBox 时补一个与固有尺寸一致的 viewBox 再以 100% 画布渲染。
+ * 长边受 [maxDim] 约束只缩不放 (对齐 createBitmap 的 ratio 语义), maxDim<=0 按 2048 防大 viewBox 撑爆内存。
+ */
+actual fun decodeSvgFallback(bytes: ByteArray, maxDim: Int): ImageBitmap? = runCatching {
+    val svg = SVG.getFromInputStream(ByteArrayInputStream(bytes))
+    val srcW = svg.documentWidth.toInt().takeIf { it > 0 }
+        ?: svg.documentViewBox?.let { (it.right - it.left).toInt() } ?: return null
+    val srcH = svg.documentHeight.toInt().takeIf { it > 0 }
+        ?: svg.documentViewBox?.let { (it.bottom - it.top).toInt() } ?: return null
+    if (srcW <= 0 || srcH <= 0) return null
+    val target = if (maxDim > 0) maxDim else 2048
+    val ratio = minOf(1f, target.toFloat() / maxOf(srcW, srcH))
+    val w = (srcW * ratio).toInt().coerceAtLeast(1)
+    val h = (srcH * ratio).toInt().coerceAtLeast(1)
+    if (svg.documentViewBox == null) {
+        svg.setDocumentViewBox(0f, 0f, svg.documentWidth, svg.documentHeight)
+    }
+    svg.setDocumentWidth("100%")
+    svg.setDocumentHeight("100%")
+    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    svg.renderToCanvas(Canvas(bitmap))
+    bitmap.asImageBitmap()
+}.getOrNull()

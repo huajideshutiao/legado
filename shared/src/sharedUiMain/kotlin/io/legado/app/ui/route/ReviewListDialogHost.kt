@@ -209,13 +209,23 @@ fun ReviewListDialogHost(
                         onAvatarClick = { url ->
                             url?.takeIf { it.isNotBlank() }?.let {
                                 AppNavigatorProviders.getOrNull()?.showOverlay(
-                                    AppOverlay.Dialog(key = "photo", payload = it)
+                                    AppOverlay.Dialog(
+                                        key = "photo",
+                                        payload = it,
+                                        // 可叠放 (方案 C 例外): 图片查看器叠在段评列表上,
+                                        // 关闭查看器后列表仍在 (对照原版 Fragment 叠放语义)
+                                        stacked = true,
+                                    )
                                 )
                             }
                         },
                         onImageClick = { url ->
                             AppNavigatorProviders.getOrNull()?.showOverlay(
-                                AppOverlay.Dialog(key = "photo", payload = url)
+                                AppOverlay.Dialog(
+                                    key = "photo",
+                                    payload = url,
+                                    stacked = true,
+                                )
                             )
                         },
                         // 图片渲染槽: 复用整页路由同款 (BookImageLoaders, 未注册端回退占位)

@@ -526,7 +526,10 @@ class ScrollPageDelegateCompose(
                 .pointerInput(Unit) {
                     scrollDragGesture()
                 }
-                // 单击/长按手势: 转发到 onTap / onLongClick (携带落点坐标, 供页内文字选择命中判定)
+                // 单击手势: 转发到 onTap (携带落点坐标, 供九宫格动作分发)。
+                // 长按已由顶层选择层统一接管 (2026-08-08 方案 A: 触摸长按在 ReadViewComposable
+                // 顶层选择层检测并消费, 鼠标长按在 readerMouseGestures), 此处不再注册
+                // onLongPress, 避免与顶层长按检测双触发 (onLongClick 参数保留, 见基类签名)
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { offset ->
@@ -534,9 +537,6 @@ class ScrollPageDelegateCompose(
                             if (!onTap(offset.x, offset.y)) {
                                 onClick(null)
                             }
-                        },
-                        onLongPress = { offset ->
-                            onLongClick(offset.x, offset.y)
                         },
                     )
                 },

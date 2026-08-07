@@ -127,12 +127,8 @@ fun SharedIntroImage(
     var bitmap by remember(src) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(src, loader) {
         if (src.isBlank() || loader == null) return@LaunchedEffect
-        loader.loadImage(
-            url = src,
-            sourceOrigin = null,
-            onSuccess = { bitmap = it },
-            onError = { bitmap = null },
-        )
+        // 挂起 API: 随本协程取消 (离开页面即中止), 同 URL 并发经 BookImageLoadDedup 单飞去重
+        bitmap = loader.loadImageOrNull(src, null)
     }
     val bmp = bitmap
     if (bmp != null) {

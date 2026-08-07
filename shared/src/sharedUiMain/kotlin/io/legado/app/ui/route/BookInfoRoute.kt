@@ -370,10 +370,19 @@ fun BookInfoRoute(
             navigator.push(AppRoute.Search(key = (state.book ?: book).name, submit = true))
         }
 
-        // 封面点击: 查看大图
+        // 封面点击: 查看大图 (payload 随带书源身份: 图片查看器按书源走防盗链 header +
+        // coverDecodeJs 封面解密完整链路, 与列表封面 SharedBookCover 同款身份;
+        // 本地书/无书源不传, 保持裸 GET)
         override fun onCoverClick() {
-            (state.book ?: book).getDisplayCover()?.let { cover ->
-                navigator.showOverlay(AppOverlay.Dialog(key = "photo", payload = cover))
+            val b = state.book ?: book
+            b.getDisplayCover()?.let { cover ->
+                navigator.showOverlay(
+                    AppOverlay.Dialog(
+                        key = "photo",
+                        payload = cover,
+                        sourceOrigin = b.origin.takeIf { !b.isLocal && it.isNotBlank() },
+                    )
+                )
             }
         }
 
@@ -458,9 +467,16 @@ fun BookInfoRoute(
             PlatformCapabilityProviders.getOrNull()?.evalIntroAction(state.book ?: book, js)
         }
 
-        // 查看简介图片
+        // 查看简介图片 (同封面: 带书源身份, 简介图防盗链/解密与封面同链路)
         override fun onShowPhoto(src: String) {
-            navigator.showOverlay(AppOverlay.Dialog(key = "photo", payload = src))
+            val b = state.book ?: book
+            navigator.showOverlay(
+                AppOverlay.Dialog(
+                    key = "photo",
+                    payload = src,
+                    sourceOrigin = b.origin.takeIf { !b.isLocal && it.isNotBlank() },
+                )
+            )
         }
     }
 
@@ -571,17 +587,36 @@ fun BookInfoRoute(
                             val payload = result.payload as? RouteResultPayload.Toc
                             val b = screenModel.state.value.book ?: book
                             if (payload != null) {
+                                // 异步落库保留 (进度持久化), 但跳转章节不再依赖落库后 toRouteRef() 快照——
+                                // push 发生在异步写之前, 快照拿到的是旧进度, 阅读页 chapterIndex ?: durChapterIndex
+                                // 会落回旧章节 (对齐原版: await 落库后 startReadActivity 传同一已改对象)
                                 scope.launch(IoDispatcher) {
                                     b.durChapterIndex = payload.chapterIndex
                                     b.durChapterPos = payload.chapterPos
                                     AppDbProviders.get().bookDao.update(b)
                                 }
                                 val target = when {
-                                    b.isAudio -> AppRoute.AudioPlay(b.toRouteRef())
-                                    b.isVideo -> AppRoute.VideoPlay(b.toRouteRef())
-                                    b.isImage -> AppRoute.MangaReader(b.toRouteRef())
+                                    b.isAudio -> AppRoute.AudioPlay(
+                                        b.toRouteRef(),
+                                        chapterIndex = payload.chapterIndex,
+                                        chapterPos = payload.chapterPos,
+                                    )
+                                    b.isVideo -> AppRoute.VideoPlay(
+                                        b.toRouteRef(),
+                                        chapterIndex = payload.chapterIndex,
+                                        chapterPos = payload.chapterPos,
+                                    )
+                                    b.isImage -> AppRoute.MangaReader(
+                                        b.toRouteRef(),
+                                        chapterIndex = payload.chapterIndex,
+                                        chapterPos = payload.chapterPos,
+                                    )
                                     b.isRss -> AppRoute.ReadRss(b.toRouteRef())
-                                    else -> AppRoute.Reader(b.toRouteRef())
+                                    else -> AppRoute.Reader(
+                                        b.toRouteRef(),
+                                        chapterIndex = payload.chapterIndex,
+                                        chapterPos = payload.chapterPos,
+                                    )
                                 }
                                 navigator.push(target, RouteResults.READER)
                             } else if (!screenModel.state.value.inBookshelf) {

@@ -18,16 +18,26 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.jetbrains.skia.Color
+import org.jetbrains.skia.Data
+import org.jetbrains.skia.Surface
+import org.jetbrains.skia.svg.SVGDOM
+import org.jetbrains.skia.svg.SVGLengthContext
 
-/** 失败 url 跳过表 (对照原版 Glide OkHttpStreamFetcher.companion failUrl: 非 2xx/解密失败进表)。 */
+/** 失败 url 跳过表 (对照原版 Glide OkHttpStreamFetcher.companion failUrl: 非 2xx/解密失败进表)。
+ * key 带书源维度 (origin+url): 不同书源同 URL 互不影响, 换源/无源→有源切换后不再被
+ * 旧失败记录拦截可重新加载; 无书源 (裸 GET) 时 key 即 url, 保持原死链跳过语义。 */
 private val ohosFailUrls = HashSet<String>()
 private val ohosFailUrlsMutex = Mutex()
 
-private suspend fun ohosFailUrlsContains(url: String): Boolean =
-    ohosFailUrlsMutex.withLock { ohosFailUrls.contains(url) }
+private fun ohosFailKey(origin: String?, url: String): String =
+    if (origin.isNullOrEmpty()) url else "$origin\u0000$url"
 
-private suspend fun ohosFailUrlsAdd(url: String) {
-    ohosFailUrlsMutex.withLock { ohosFailUrls.add(url) }
+private suspend fun ohosFailUrlsContains(origin: String?, url: String): Boolean =
+    ohosFailUrlsMutex.withLock { ohosFailUrls.contains(ohosFailKey(origin, url)) }
+
+private suspend fun ohosFailUrlsAdd(origin: String?, url: String) {
+    ohosFailUrlsMutex.withLock { ohosFailUrls.add(ohosFailKey(origin, url)) }
 }
 
 
@@ -58,9 +68,20 @@ actual class ImageBitmapLoader actual constructor() {
         book: Book?,
         bookSource: BookSource?,
         isCover: Boolean,
+        widthPx: Int,
+        heightPx: Int,
+        useBitmapCache: Boolean,
     ): ImageBitmap? =
         withContext(IoDispatcher) {
-            ohosLoadImageBytes(url, book, bookSource, isCover)?.let { ohosDecodeImageBytes(it) }
+            val bytes = ohosLoadImageBytes(url, book, bookSource, isCover) ?: return@withContext null
+            val key = if (useBitmapCache) {
+                DecodedBitmapCache.cacheKey(url, bookSource?.bookSourceUrl, isCover, widthPx, heightPx)
+            } else null
+            val cached = key?.let { DecodedBitmapCache.get(it) }
+            if (cached != null) return@withContext cached
+            val bitmap = ohosDecodeImageBytes(bytes) ?: decodeSvgFallback(bytes, maxOf(widthPx, heightPx))
+            if (bitmap != null && key != null) DecodedBitmapCache.put(key, bitmap)
+            bitmap
         }
 
     actual suspend fun loadBytes(
@@ -73,6 +94,15 @@ actual class ImageBitmapLoader actual constructor() {
             ohosLoadImageBytes(url, book, bookSource, isCover)
         }
 }
+
+/**
+ * 带目标长边上限解码 (鸿蒙版)。
+ *
+ * 保持全尺寸解码: CPF 融合渲染管线的编码解码门面无解码前采样参数, 解码后 Compose Canvas
+ * 缩放路径未经验证 (ohos ui-graphics 为 CPF 桥接变体), 暂不启用 —— 尺寸感知只影响常驻
+ * 内存/绘制带宽, 鸿蒙端维持现状, 待 CPF Canvas 桥接验证后补采样。
+ */
+actual fun decodeBytesSampled(bytes: ByteArray, maxDim: Int): ImageBitmap? = ohosDecodeImageBytes(bytes)
 
 /** 按 scheme 取图片原始字节 ([ImageBitmapLoader] 的解码前一步, 动图路径直接复用)。 */
 private suspend fun ohosLoadImageBytes(
@@ -107,10 +137,12 @@ private suspend fun ohosLoadNetworkImageBytes(
     bookSource: BookSource?,
     isCover: Boolean,
 ): ByteArray? {
-    if (ohosFailUrlsContains(url)) return null
-    return ImageBytesCache.get(url, isCover) ?: run {
+    if (ohosFailUrlsContains(bookSource?.bookSourceUrl, url)) return null
+    return ImageBytesCache.get(url, bookSource?.bookSourceUrl, isCover) ?: run {
         val bytes = ohosDownloadImageBytes(url, book, bookSource, isCover)
-        if (bytes != null) ImageBytesCache.put(url, isCover, bytes)
+        if (bytes != null) {
+            ImageBytesCache.put(url, bookSource?.bookSourceUrl, isCover, bytes)
+        }
         bytes
     }
 }
@@ -134,7 +166,7 @@ internal suspend fun ohosDownloadImageBytes(
             val response = client.newCall(request).execute()
             try {
                 if (!response.isSuccessful) {
-                    ohosFailUrlsAdd(url)
+                    ohosFailUrlsAdd(bookSource?.bookSourceUrl, url)
                     null
                 } else {
                     response.body.bytes()
@@ -154,7 +186,7 @@ internal suspend fun ohosDownloadImageBytes(
         runScriptWithContext {
             ImageUtils.decode(url, raw, isCover, bookSource, book)
         } ?: run {
-            ohosFailUrlsAdd(url)
+            ohosFailUrlsAdd(bookSource.bookSourceUrl, url)
             null
         }
     }.getOrNull()
@@ -188,3 +220,28 @@ internal fun ohosDecodeImageBytes(bytes: ByteArray): ImageBitmap? {
         org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap()
     }.getOrNull()
 }
+
+/**
+ * SVG 兜底解码 (skiko SVGDOM, 与 iOS 同实现)。
+ *
+ * CPF fork 的 skiko klib 含 org.jetbrains.skia.svg 包 (与 Image 同门面, 见 [ohosDecodeImageBytes]),
+ * 故按兼容门面 API 实现; 渲染失败 (如 fork 未桥接 SVG native 符号) 由 runCatching 兜住返回 null,
+ * 调用方走失败占位, 不影响栅格图路径。
+ */
+actual fun decodeSvgFallback(bytes: ByteArray, maxDim: Int): ImageBitmap? = runCatching {
+    val dom = SVGDOM(Data.makeFromBytes(bytes))
+    val root = dom.root ?: return null
+    val intrinsic = root.getIntrinsicSize(SVGLengthContext(2048f, 2048f, 90f))
+    val srcW = intrinsic.x
+    val srcH = intrinsic.y
+    if (srcW <= 0f || srcH <= 0f) return null
+    val target = if (maxDim > 0) maxDim else 2048
+    val ratio = minOf(1f, target.toFloat() / maxOf(srcW, srcH))
+    val w = (srcW * ratio).toInt().coerceAtLeast(1)
+    val h = (srcH * ratio).toInt().coerceAtLeast(1)
+    dom.setContainerSize(w.toFloat(), h.toFloat())
+    val surface = Surface.makeRasterN32Premul(w, h)
+    surface.canvas.clear(Color.TRANSPARENT)
+    dom.render(surface.canvas)
+    surface.makeImageSnapshot().toComposeImageBitmap()
+}.getOrNull()

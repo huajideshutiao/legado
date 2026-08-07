@@ -41,6 +41,13 @@ object ReaderImageCache {
     /** 取图失败时的占位尺寸（对照原版返回 `errorBitmap` 宽高，让排版仍产出图片行）。 */
     private const val PLACEHOLDER_SIZE = 512
 
+    /**
+     * 阅读页内嵌图解码目标长边上限 (I2): 2000px 量级 ≈ 2× 典型页宽 (手机 1080p 物理宽 /
+     * 桌面 1440p 窗口), 阅读器无图片放大路径, 采样对显示无感知差异; 解码内存/耗时按 ~1/4 计
+     * (4000px 图 → 2048px), 采样因子取 2 的幂。原图字节保留, 未来加放大可再解全图。
+     */
+    private const val SAMPLE_MAX_DIM = 2048
+
     private val lock = SynchronizedObject()
 
     /** 手写 LRU：命中时先 remove 再 put 把条目挪到队尾，超预算从队首淘汰。 */
@@ -139,7 +146,12 @@ object ReaderImageCache {
     }
 
     private fun decode(src: String, bytes: ByteArray): ImageBitmap? {
-        val bitmap = runCatching { bytes.decodeToImageBitmap() }.getOrNull()
+        // I2: 先按目标尺寸采样解码 (解码前采样才有峰值内存收益), 失败依次回落 SVG 兜底
+        // (对齐原版 `decodeBitmap ?: SvgUtils.createBitmap`; 矢量按目标长边渲染) 与全尺寸
+        // 解码 (格式兜底, 如桌面 ImageIO 无 reader 的 WEBP 走 skia decodeToImageBitmap)。
+        val bitmap = runCatching { decodeBytesSampled(bytes, SAMPLE_MAX_DIM) }.getOrNull()
+            ?: runCatching { decodeSvgFallback(bytes, SAMPLE_MAX_DIM) }.getOrNull()
+            ?: runCatching { bytes.decodeToImageBitmap() }.getOrNull()
         synchronized(lock) {
             if (bitmap == null) {
                 failed.add(src)
@@ -181,9 +193,9 @@ object ReaderImageCache {
 }
 
 /**
- * 只读图片头取宽高（PNG / JPEG / GIF / BMP / WEBP），对应原版 `BitmapFactory.Options
+ * 只读图片头取宽高（PNG / JPEG / GIF / BMP / WEBP / SVG 常见写法），对应原版 `BitmapFactory.Options
  * .inJustDecodeBounds = true`——排版拿到宽高即可算行高，不必整解码占内存。
- * 无法识别返回 null，由调用方回落整解码。
+ * 无法识别返回 null，由调用方回落整解码（SVG 经 [decodeSvgFallback] 渲染后取位图尺寸）。
  */
 internal fun probeImageSize(bytes: ByteArray): ImageSize? {
     fun be16(at: Int) = ((bytes[at].toInt() and 0xff) shl 8) or (bytes[at + 1].toInt() and 0xff)
@@ -246,6 +258,56 @@ internal fun probeImageSize(bytes: ByteArray): ImageSize? {
         }
         return null
     }
+    // SVG: 解析 <svg> 标签的 width/height / viewBox 拿固有宽高 (矢量无固定像素尺寸,
+    // 宽高比供排版算行高; 实际渲染尺寸由 decodeSvgFallback 按目标长边等比缩放, 比例一致)
+    probeSvgSize(bytes)?.let { return it }
+    return null
+}
+
+/**
+ * 只读 SVG 头取固有宽高（对应原版 `SvgUtils.getSize`: documentWidth/Height → viewBox 兜底）。
+ *
+ * 解析 `<svg` 标签内 width/height（数值+单位，百分比/auto 视为未指定）或 viewBox 后两值；
+ * 解析不出返回 null（调用方回落整解码经 [decodeSvgFallback] 渲染后取位图尺寸）。
+ * 仅做字符串扫描，不依赖平台 SVG 解析器，四端共用。
+ */
+private fun probeSvgSize(bytes: ByteArray): ImageSize? {
+    // 只取文件头部 (XML 声明/注释/DOCTYPE 之后、<svg> 标签的属性不会超出前几 KB)
+    val head = bytes.copyOf(minOf(bytes.size, 4096)).toString(Charsets.UTF_8)
+    val tagStart = head.indexOf("<svg")
+    if (tagStart < 0) return null
+    val tagEnd = head.indexOf('>', tagStart)
+    if (tagEnd < 0) return null
+    val tag = head.substring(tagStart, tagEnd)
+
+    // 取属性值 (双/单引号均可, 属性名不含正则特殊字符)
+    fun attr(name: String): String? =
+        Regex("""$name\s*=\s*["']([^"']*)["']""").find(tag)?.groupValues?.get(1)?.trim()
+
+    // 取数值前缀 (忽略 px/pt/em 等单位, 比例用途下可忽略单位换算误差)
+    fun number(v: String?): Float? =
+        v?.let { Regex("""^(\d+(?:\.\d+)?)""").find(it.trim())?.groupValues?.get(1)?.toFloatOrNull() }
+
+    val rawW = attr("width")
+    val rawH = attr("height")
+    // 百分比/auto 视为未指定 (对应原版 SvgUtils.getSize: documentWidth 对百分比返回 0 再回落 viewBox)
+    fun absolute(v: String?): Float? =
+        v?.takeIf { !it.endsWith('%') && !it.equals("auto", ignoreCase = true) }?.let(::number)
+    val absW = absolute(rawW)
+    val absH = absolute(rawH)
+    if (absW != null && absH != null && absW > 0 && absH > 0) {
+        return ImageSize(absW.toInt().coerceAtLeast(1), absH.toInt().coerceAtLeast(1))
+    }
+
+    // viewBox="minX minY w h" (空白/逗号分隔)
+    val vb = attr("viewBox")?.split(Regex("""[\s,]+""")) ?: emptyList()
+    if (vb.size >= 4) {
+        val w = vb[2].toFloatOrNull()
+        val h = vb[3].toFloatOrNull()
+        if (w != null && h != null && w > 0 && h > 0) {
+            return ImageSize(w.toInt().coerceAtLeast(1), h.toInt().coerceAtLeast(1))
+        }
+    }
     return null
 }
 
@@ -258,7 +320,13 @@ internal fun probeImageSize(bytes: ByteArray): ImageSize? {
  * 2. 网络书：先查图片磁盘缓存（[BookImageStorageProviders]），未命中用 [AnalyzeUrlCore]
  *    带书源 header/cookie/JS 下载并写入缓存
  *
- * 解码统一走 compose resources 的 `decodeToImageBitmap`（JPEG/PNG/BMP/WEBP，四端一致）。
+ * 解码走 [decodeBytesSampled] (I2 图片加载深度优化): 按 [SAMPLE_MAX_DIM] 长边上限解码前采样
+ * (jvm ImageIO setSourceSubsampling / android inSampleSize / iOS Skia 后缩放 / ohos 全尺寸),
+ * 采样失败依次回落 [decodeSvgFallback] (SVG 矢量按目标长边渲染, 对齐原版
+ * `decodeBitmap ?: SvgUtils.createBitmap`) 与 compose resources `decodeToImageBitmap`
+ * 全尺寸解码 (格式兜底如桌面 WEBP)。尺寸探测 [probeImageSize] 支持 SVG 头 (width/height/viewBox),
+ * 排版拿固有宽高比算行高, 无需整解码。字节路径不变 (原图字节仍在磁盘/ImageBytesCache,
+ * 未来加放大可再解全图)。
  */
 class ReaderImageResolver(
     private val book: Book,

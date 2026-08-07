@@ -252,7 +252,9 @@ abstract class PageDelegateCompose(
      * @param curContent 当前页内容
      * @param nextContent 下一页内容
      * @param onClick 单击回调（delegate 内部 [onTap] 判定中心区域后转发，左右区域直接翻页不转发）
-     * @param onLongClick 长按回调（x/y 落点坐标，用于页内文字选择命中判定）
+     * @param onLongClick 长按回调（x/y 落点坐标，用于页内文字选择命中判定）。
+     *   2026-08-08 方案 A 起长按检测移入顶层选择层（触摸在 ReadViewComposable 选择层、
+     *   鼠标在 readerMouseGestures），delegate 内不再使用，参数保留供未来扩展
      */
     @Composable
     abstract fun renderPageAnimation(

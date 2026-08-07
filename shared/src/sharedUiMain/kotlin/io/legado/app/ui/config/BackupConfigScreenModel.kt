@@ -1,6 +1,10 @@
 package io.legado.app.ui.config
 
 import io.legado.app.ui.root.ScreenModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -80,6 +84,14 @@ class BackupConfigScreenModel(
     private val onRestoreIgnore: () -> Unit,
 ) : ScreenModel {
 
+    /**
+     * 页面级协程作用域 (对照 app 端 viewModelScope): 生命周期与 ScreenModel 绑定,
+     * 由 ScreenModelStore.retain/clear → onCleared 取消。宿主 Route 的交互协程
+     * (备份/恢复/选文件等) 全部跑在这里, 避免页面组合销毁后延迟回调再 launch 抛
+     * ForgottenCoroutineScopeException。
+     */
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     private val _state = MutableStateFlow(BackupConfigUiState())
     val state: StateFlow<BackupConfigUiState> = _state.asStateFlow()
 
@@ -110,5 +122,9 @@ class BackupConfigScreenModel(
             BackupConfigUiEvent.RestoreFromLocal -> onRestoreFromLocal()
             BackupConfigUiEvent.RestoreIgnore -> onRestoreIgnore()
         }
+    }
+
+    override fun onCleared() {
+        scope.cancel()
     }
 }

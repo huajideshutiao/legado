@@ -1,5 +1,6 @@
 package io.legado.app.model
 
+import io.legado.app.help.image.DecodedBitmapCache
 import io.legado.app.help.image.iosCoilImageLoader
 import io.legado.app.help.service.IosBackgroundTasks
 import io.legado.app.model.fileBook.TextFile
@@ -26,9 +27,11 @@ private object IosReadBookPlatform : ReadBookPlatform {
     // iOS 无 CacheBookService, 运行态取 IosBackgroundTasks 的调度/后台任务标记
     override val isCacheBookServiceRun: Boolean get() = IosBackgroundTasks.isCacheBookRunning
 
-    // 对照 app 端 ImageProvider.clear(): 释放 Coil3 内存缓存 (磁盘缓存保留)
+    // 对照 app 端 ImageProvider.clear(): 释放 Coil3 内存缓存 (磁盘缓存保留) +
+    // 解码位图进程级 LRU (PhotoDialog/阅读背景等, I1)
     override fun clearImageCache() {
         runCatching { iosCoilImageLoader.memoryCache?.clear() }
+        DecodedBitmapCache.clear()
     }
 
     override fun clearTextFileCache() {

@@ -795,9 +795,12 @@ class ReadBookViewModelShared(
      * 切到下一章（对照 app 端 `ReadBook.moveToNextChapter`）：三章滑窗前移，
      * 命中已排版的 next 章直接展示，未命中再装载；并预载新的下一章。
      *
+     * @param resetOffset true=滚动模式切章后滚动偏移归零，新章严格从第一页顶部开始
+     *   （方向键切章用）；默认 false 保留偏移连续折算（对照原版 toFirst=false，
+     *   自动切章/菜单/朗读等入口沿用）
      * @return true 表示已触发切章；false 表示已到末章
      */
-    fun moveToNextChapter(): Boolean {
+    fun moveToNextChapter(resetOffset: Boolean = false): Boolean {
         val curIndex = readBook.durChapterIndex.value
         if (curIndex < readBook.simulatedChapterSize - 1) {
             readBook.updateDurChapterPos(0)
@@ -806,8 +809,9 @@ class ReadBookViewModelShared(
             readBook.slideTextChaptersNext()
             val newCur = readBook.curTextChapter.value
             if (newCur != null) {
-                // 滚动切章: 不归零滚动偏移 (offset 连续折算在 applyScrollDelta), 对照原版 toFirst=false
-                applyCurChapterPages(newCur, resetOffset = false)
+                // 滚动切章: 默认不归零滚动偏移 (offset 连续折算在 applyScrollDelta), 对照原版 toFirst=false;
+                // 方向键切章 (resetOffset=true) 归零, 新章从第一页顶部开始
+                applyCurChapterPages(newCur, resetOffset = resetOffset)
             }
             if (newCur == null) {
                 // 当前章未装载：立即刷新三页流展示"加载数据中…"占位（对照原版
@@ -850,10 +854,14 @@ class ReadBookViewModelShared(
      * 切到上一章（对照 app 端 `ReadBook.moveToPrevChapter`）：三章滑窗后移。
      *
      * @param toLast true=落到上一章末页（durChapterPos = prev.lastReadLength，
-     *   未预载时用 Int.MAX_VALUE 编码，排版后自然落到 pages.lastIndex；原版默认值）
+     *   未预载时用 Int.MAX_VALUE 编码，排版后自然落到 pages.lastIndex；原版默认值）；
+     *   false=落到上一章第一页
+     * @param resetOffset true=滚动模式切章后滚动偏移归零，新章严格从第一页顶部开始
+     *   （方向键切章用）；默认 false 保留偏移连续折算（对照原版 toFirst=false，
+     *   自动切章/菜单/朗读等入口沿用）
      * @return true 表示已触发切章；false 表示已到首章
      */
-    fun moveToPrevChapter(toLast: Boolean = true): Boolean {
+    fun moveToPrevChapter(toLast: Boolean = true, resetOffset: Boolean = false): Boolean {
         val curIndex = readBook.durChapterIndex.value
         if (curIndex > 0) {
             val prevPos = if (toLast) {
@@ -867,8 +875,9 @@ class ReadBookViewModelShared(
             readBook.slideTextChaptersPrev()
             val newCur = readBook.curTextChapter.value
             if (newCur != null) {
-                // 滚动切章: 不归零滚动偏移 (offset 连续折算在 applyScrollDelta), 对照原版 toFirst=false
-                applyCurChapterPages(newCur, resetOffset = false)
+                // 滚动切章: 默认不归零滚动偏移 (offset 连续折算在 applyScrollDelta), 对照原版 toFirst=false;
+                // 方向键切章 (resetOffset=true) 归零, 新章从第一页顶部开始
+                applyCurChapterPages(newCur, resetOffset = resetOffset)
             }
             if (newCur == null) {
                 // 当前章未装载：立即刷新三页流展示"加载数据中…"占位（对照原版

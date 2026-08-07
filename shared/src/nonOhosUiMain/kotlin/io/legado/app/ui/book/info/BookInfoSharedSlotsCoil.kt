@@ -18,6 +18,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Book
 import io.legado.app.help.image.BookImageLoaders
@@ -27,6 +29,8 @@ import io.legado.app.ui.compose.theme.AppTheme
  * 模糊封面背景 Coil3 实现 (desktop/iOS 共享)。
  *
  * 走 [BookImageLoaders] (各端注入 Coil3 实现) 加载封面 Bitmap, 再用 [Modifier.blur] 做高斯模糊。
+ * I3: 按容器尺寸 1/8 采样解码 (size(w/8,h/8) + FILL + INEXACT), blur 后放大绘制视觉等价,
+ * 内存/绘制带宽降 ~64 倍。
  * 加载中/失败/E-Ink 模式回退到 accent 半透明纯色占位 (与 [SharedBlurCoverBgPlaceholder] 一致)。
  *
  * 渐变蒙版对照 app 端 [io.legado.app.ui.book.info.BookInfoBgTransformation]:
@@ -51,16 +55,17 @@ fun SharedBlurCoverBgCoil(
     val cover = book?.getDisplayCover()
     val loader = remember { BookImageLoaders.getOrNull() }
     var bitmap by remember(cover, coverTick) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(cover, coverTick, loader, isEInkMode) {
+    // I3: 模糊背景按 1/8 显示尺寸采样解码再放大绘制 (blur 后高频细节不可见, 视觉等价),
+    // 内存/绘制带宽降 ~64 倍; 容器尺寸测量后触发加载 (窗口 resize 后按新尺寸重解)
+    var containerSize by remember { mutableStateOf(IntSize.Zero) }
+    LaunchedEffect(cover, coverTick, loader, isEInkMode, containerSize) {
         if (isEInkMode || cover.isNullOrBlank() || loader == null) return@LaunchedEffect
-        loader.loadImage(
-            url = cover,
-            sourceOrigin = book?.origin,
-            onSuccess = { bitmap = it },
-            onError = { bitmap = null },
-        )
+        if (containerSize == IntSize.Zero) return@LaunchedEffect
+        val w = (containerSize.width / 8).coerceAtLeast(1)
+        val h = (containerSize.height / 8).coerceAtLeast(1)
+        bitmap = loader.loadImageOrNull(cover, book?.origin, w, h)
     }
-    Box(modifier) {
+    Box(modifier.onSizeChanged { containerSize = it }) {
         // 模糊封面铺满 + 渐变蒙版 + 压暗 (对照原版 BookInfoBgTransformation)
         bitmap?.let {
             Image(
