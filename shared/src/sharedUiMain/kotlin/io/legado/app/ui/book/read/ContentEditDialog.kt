@@ -71,6 +71,8 @@ import org.jetbrains.compose.resources.stringResource
  *   原生 OutlinedTextField, 滚动定位由 Compose 自动处理, 不再需要 View 互操作);
  * - 保存: 校验非空 (与 app 端 save() 中 `contentView?.text?.toString() ?: return` 等价,
  *   空内容直接 return 不回调), 通过则回调 [onSubmit] + [onDismiss];
+ * - 关闭: 返回键/外部点击/系统返回直接关闭不保存 (2026-08 变更: 顶部已有保存按钮,
+ *   关闭即放弃未保存的修改; 原版 onCancel 自动保存的语义不再沿用);
  * - 重置: 委托 [onReset] (调用方负责从源重新拉取正文并更新 [content] 参数触发重组);
  * - 复制全部: "$chapterName\n$content" + [clipTextSink] 写剪贴板 + toast "已复制"
  *   (与 app 端 `requireContext().sendToClip("$title\n${contentView?.text}")` 等价)。
@@ -79,16 +81,17 @@ import org.jetbrains.compose.resources.stringResource
  *
  * - 标题栏点击编辑章节名: 由 [onRenameChapter] 回调承载 (调用方负责 appDb 更新 + 重载),
  *   null 时标题不可点击, 与原版标题栏点击改标题对齐 (原版直接依赖 appDb.bookChapterDao);
- * - 返回键 (标题栏返回) 自动保存: 对齐原版 onCancel(dialog) { save() } 语义;
- * - 无底部按钮栏 (2026-08 删除迁移期添加的"取消/确定"栏): 外部点击/系统返回同样走
- *   save() 即保存后关闭 (原版 onCancel 保存, 不存在丢弃路径; 空内容时 save 直接 return 不关闭);
+ * - 返回键 (标题栏返回) / 外部点击 / 系统返回直接关闭不保存: 顶部已有保存按钮 (ic_save),
+ *   关闭即放弃未保存修改 (原版 onCancel(dialog) { save() } 自动保存语义已废弃);
+ * - 无底部按钮栏 (2026-08 删除迁移期添加的"取消/确定"栏): 外部点击/系统返回直接 onDismiss()
+ *   关闭不保存, 空内容时保存按钮同样直接 return 不关闭 (与 save() 空内容语义一致);
  * - 不实现 applyContent 按阅读进度滚动定位 (依赖 AppCompatEditText.layout.getLineForOffset,
  *   Compose OutlinedTextField 不暴露此 API, 滚动定位由用户手动操作)。
  *
  * @param chapterName 章节名 (用于标题 + 复制全部前缀)
  * @param content 章节正文 (用户可编辑)
  * @param onSubmit 用户保存且内容非空, 参数为编辑后的正文
- * @param onDismiss 关闭对话框 (save() 成功回调后内部调用)
+ * @param onDismiss 关闭对话框 (返回键/外部点击/系统返回时直接调用, 不保存)
  * @param onReset 重置回调 (从源重新获取正文), null 时不显示重置菜单项
  * @param clipTextSink 剪贴板文本写入器 (替代 `context.sendToClip(text)`), null 时不显示复制全部菜单项
  * @param onRenameChapter 章节重命名回调 (参数为新标题, 调用方负责落库 + 刷新),
@@ -144,9 +147,9 @@ fun ContentEditDialog(
 
     // 原版 ContentEditDialog: BaseDialogFragment + isFullHeight=true (窗口 0.9 宽 × 0.8 屏高居中,
     // filletBackground 8dp 圆角, 带 dim); dialog_content_edit.xml 根 match_parent 全高, 标题栏 + 正文 weight 撑满;
-    // 无底部按钮栏, 外部取消/返回均保存 (原版 onCancel(dialog) { save() })
+    // 无底部按钮栏, 外部取消/返回仅关闭不保存 (2026-08 变更: 顶部保存按钮负责落库)
     AppDialog(
-        onDismissRequest = { save() },
+        onDismissRequest = { onDismiss() },
         properties = AppDialogSizes.properties(),
     ) {
         Surface(
@@ -157,8 +160,8 @@ fun ContentEditDialog(
             Column(Modifier.fillMaxWidth()) {
                 DialogTitleBar(
                     title = titleState,
-                    // 返回键自动保存 (对照原版 onCancel(dialog) { save() })
-                    onBack = { save() },
+                    // 返回键直接关闭不保存 (2026-08 变更: 原 onCancel 自动保存改为关闭不保存)
+                    onBack = { onDismiss() },
                     titleClickable = onRenameChapter != null,
                     onTitleClick = {
                         titleEditState = titleState
@@ -169,7 +172,8 @@ fun ContentEditDialog(
                             Icon(
                                 painter = painterResource(Res.drawable.ic_save),
                                 contentDescription = saveDescText,
-                                tint = DesignTokens.arcoBlue6,
+                                // 普通按钮色 (与返回箭头一致), 不主题色着色 (2026-08 变更)
+                                tint = colors.primaryText,
                             )
                         }
                         OverflowMenu { dismissMenu ->
@@ -208,13 +212,12 @@ fun ContentEditDialog(
                         .weight(1f)
                         .padding(12.dp),
                 ) {
-                    // 多行输入, maxLines = 10 (任务硬要求); 走 AppTextField 统一 MD2 视觉
-                    // maxLines=10 时 TextField 内部自动滚动, 无需外层 verticalScroll
+                    // 多行输入, 不限制行数 (对齐原版 EditText 无 maxLines): 长正文时高度被
+                    // Box 约束压满 + TextField 内部滚动, 不再出现输入框下方大空白 (2026-08 移除 maxLines=10)
                     AppTextField(
                         value = contentState,
                         onValueChange = { contentState = it },
                         modifier = Modifier.fillMaxWidth(),
-                        maxLines = 10,
                         textStyle = LocalTextStyle.current.copy(
                             color = colors.primaryText,
                             fontSize = 16.sp,

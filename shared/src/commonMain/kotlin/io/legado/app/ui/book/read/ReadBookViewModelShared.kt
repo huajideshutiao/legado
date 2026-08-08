@@ -19,6 +19,7 @@ import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
+import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.i18n.AppStringKey
@@ -205,6 +206,17 @@ class ReadBookViewModelShared(
     private val loadingChapters = arrayListOf<Int>()
     /** 单章排版/加载任务；切章时取消三章窗口外任务，对齐 app chapterLoadingJobs。 */
     private val chapterLoadingJobs = mutableMapOf<Int, Job>()
+
+    /**
+     * 目录加载任务（单飞）。独立于 [chapterLoadingJobs]，不参与同章替换取消：
+     * 未入架书目录不落库，网络拉取若被 relayout 的同章替换掐断，chapterSize 会滞留 0、
+     * loadContent 越界静默 return → 永久"加载数据中"（对照原版目录 await 就绪后才 loadContent 的时序）。
+     * 切书/销毁时随 scope 取消；任务内校验书未切换才更新内存目录。
+     */
+    private var directoryLoadingJob: Job? = null
+
+    /** 目录拉取失败标志：失败后不自动重试（对照原版失败后需手动"更新目录"），成功/切书时清除。 */
+    private var directoryLoadFailed = false
 
     // 替代原 @Synchronized 的 this 监视器 (kotlin.jvm.Synchronized 无 common 变体且 native 无效)
     private val syncLock = SynchronizedObject()
@@ -426,6 +438,8 @@ class ReadBookViewModelShared(
         val currentBookUrl = readBook.book.value?.bookUrl
         if (reviewCountBookUrl != currentBookUrl) {
             clearExpiredChapterLoadingJobs(clearAll = true)
+            directoryLoadingJob?.cancel()
+            directoryLoadFailed = false
             reviewCountBookUrl = currentBookUrl
         }
         // 书籍切换时清空已处理内容缓存
@@ -437,34 +451,12 @@ class ReadBookViewModelShared(
             // 1. 同步 shared 状态字段（callback 通知）
             readBook.loadChapter(index)
 
-            // 2. 章节列表：内存优先，内存没有再查库。
-            // 未加入书架的书按原版语义不落库（BaseReadViewModel.loadChapterList 的 inBookshelf 守卫），
-            // 章节只存在于内存，无条件用查库结果覆盖会把它清成空目录。
+            // 2. 章节列表：内存优先，内存没有再查库，仍空则单飞回源重解析（ensureChapterListLoaded）。
+            // 目录加载独立于本章任务（单飞任务不参与同章替换取消）：打开初期 relayout 的同章替换
+            // 不会掐断网络目录拉取。未入架书目录不落库，拉取被取消会致 chapterSize 滞留 0、
+            // loadContent 越界静默 return → 永久"加载数据中"；对照原版时序：目录 await 就绪后才 loadContent。
             val book = readBook.book.value ?: return@launchChapterLoad
-            var chapterList: List<BookChapter> =
-                readBook.chapterList.value.takeIf { it.firstOrNull()?.bookUrl == book.bookUrl }
-                    ?: runCatching {
-                        AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
-                    }.onFailure {
-                        AppLog.put("读取目录失败\n${it.message}", it)
-                    }.getOrDefault(emptyList()).also { readBook.updateChapterList(it) }
-
-            // 3. 书源解析缓存（对照 app 端 ReadBook.upWebBook，本地书为 null；upToc/预下载复用）
-            if (book.isLocal) {
-                readBook.updateBookSource(null)
-            } else if (readBook.bookSource.value?.bookSourceUrl != book.origin) {
-                readBook.updateBookSource(
-                    runCatching {
-                        AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
-                    }.getOrNull()
-                )
-            }
-
-            if (chapterList.isEmpty()) {
-                // 内存和库都没有目录：回源重解析（对照 app 端 BaseReadViewModel.upBook 的
-                // `!inBookshelf || totalChapterNum == 0 || 库里查空` → loadChapterList 分支）
-                chapterList = loadChapterListFromSource(book)
-            }
+            val chapterList = ensureChapterListLoaded()
 
             if (chapterList.getOrNull(index) == null) {
                 // 章节序号越界：显示占位页
@@ -472,7 +464,7 @@ class ReadBookViewModelShared(
                 return@launchChapterLoad
             }
 
-            // 4. 跳章（对照 app 端 openChapter）：清滑窗 + 进度归零；同章重载保留 durChapterPos 恢复进度
+            // 3. 跳章（对照 app 端 openChapter）：清滑窗 + 进度归零；同章重载保留 durChapterPos 恢复进度
             if (index != readBook.durChapterIndex.value) {
                 readBook.clearTextChapter()
                 readBook.updateDurChapterIndex(index)
@@ -480,7 +472,7 @@ class ReadBookViewModelShared(
                 clearExpiredChapterLoadingJobs()
             }
 
-            // 5. 当前章优先装载，前后章异步预载（对照 app 端 loadContent 三章同载）
+            // 4. 当前章优先装载，前后章异步预载（对照 app 端 loadContent 三章同载）
             loadContent(index)
             launchChapterLoad(index + 1) { loadContent(index + 1) }
             launchChapterLoad(index - 1) { loadContent(index - 1) }
@@ -497,6 +489,69 @@ class ReadBookViewModelShared(
         val list = fetchChapterListFromSource(book, readBook.bookSource.value)
         readBook.updateChapterList(list)
         return list
+    }
+
+    /**
+     * 确保当前书目录就绪（对照原版时序：upBook → loadChapterList await 就绪后才 loadContent）。
+     *
+     * 内存目录有效直接返回（未入架书目录只在内存，查库覆盖会清成空目录）；否则查库（在架书路径）；
+     * 仍空则启动/等待单飞网络拉取（[startDirectoryLoad]）。拉取失败返回空列表且置失败标志，
+     * 不自动重试（对照原版失败后需手动"更新目录"）。
+     */
+    private suspend fun ensureChapterListLoaded(): List<BookChapter> {
+        val book = readBook.book.value ?: return emptyList()
+        readBook.chapterList.value.firstOrNull()?.let {
+            if (it.bookUrl == book.bookUrl) return readBook.chapterList.value
+        }
+        if (directoryLoadFailed) return emptyList()
+        // 书源解析缓存（对照 app 端 ReadBook.upWebBook，本地书为 null；网络拉取/正文下载复用）
+        if (book.isLocal) {
+            readBook.updateBookSource(null)
+        } else if (readBook.bookSource.value?.bookSourceUrl != book.origin) {
+            readBook.updateBookSource(
+                runCatching {
+                    AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
+                }.getOrNull()
+            )
+        }
+        // 库里查目录（在架书路径；未入架书目录不落库，查不到）
+        val dbList = runCatching {
+            AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
+        }.onFailure {
+            AppLog.put("读取目录失败\n${it.message}", it)
+        }.getOrDefault(emptyList())
+        if (dbList.firstOrNull()?.bookUrl == book.bookUrl) {
+            readBook.updateChapterList(dbList)
+            return dbList
+        }
+        // 内存和库都没有目录：单飞回源重解析（对照 app 端 upBook 的
+        // `!inBookshelf || totalChapterNum == 0 || 库里查空` → loadChapterList 分支）
+        startDirectoryLoad(book).join()
+        val list = readBook.chapterList.value
+            .takeIf { it.firstOrNull()?.bookUrl == book.bookUrl } ?: emptyList()
+        if (list.isEmpty()) directoryLoadFailed = true
+        return list
+    }
+
+    /**
+     * 启动目录加载任务（单飞）：已存在进行中任务则复用；任务内校验书未切换再更新内存目录，
+     * 避免旧书拉取结果污染新书状态。切书/销毁时随 scope 取消。
+     */
+    private fun startDirectoryLoad(book: Book): Job = synchronized(syncLock) {
+        directoryLoadingJob?.let { return it }
+        val job = scope.launch {
+            val list = fetchChapterListFromSource(book, readBook.bookSource.value)
+            if (readBook.book.value?.bookUrl == book.bookUrl) {
+                readBook.updateChapterList(list)
+            }
+        }
+        directoryLoadingJob = job
+        job.invokeOnCompletion {
+            synchronized(syncLock) {
+                if (directoryLoadingJob === job) directoryLoadingJob = null
+            }
+        }
+        job
     }
 
     /**
@@ -539,7 +594,20 @@ class ReadBookViewModelShared(
      * 缓存未命中经 [downloadAwait] 联网，失败文案与原版一致作为正文排版展示。
      */
     private suspend fun loadContent(index: Int) {
-        if (index < 0 || index >= readBook.chapterSize) return
+        if (index < 0) return
+        // 目录未就绪时先确保：打开初期 relayout 的同章替换会取消 loadChapter 主任务
+        //（其中含网络目录拉取），重载任务在此补上目录前置，避免未入架书（目录不落库）
+        // chapterSize 滞留 0 后本方法越界静默 return → 永久"加载数据中"。
+        // 对照原版时序：loadContent 调用前目录必已由 loadChapterList await 就绪。
+        val book = readBook.book.value ?: return
+        if (readBook.chapterList.value.firstOrNull()?.bookUrl != book.bookUrl) {
+            val list = ensureChapterListLoaded()
+            if (list.isEmpty()) {
+                showMessageChapter("无章节内容", index, 0)
+                return
+            }
+        }
+        if (index >= readBook.chapterSize) return
         if (index !in readBook.durChapterIndex.value - 1..readBook.durChapterIndex.value + 1) return
         if (!addLoading(index)) return
         // 当前章未装载：先刷新页面流，展示"加载数据中…"占位（对照原版 moveToNextChapter /
@@ -549,7 +617,6 @@ class ReadBookViewModelShared(
             syncPageFlows()
         }
         try {
-            val book = readBook.book.value ?: return
             val chapter = readBook.chapterList.value.getOrNull(index)
                 ?: runCatching {
                     AppDbProviders.get().bookChapterDao.getChapter(book.bookUrl, index)
@@ -1057,8 +1124,21 @@ class ReadBookViewModelShared(
         ActiveReadBookRegistry.detachViewModel(this)
         uploadProgress()
         clearExpiredChapterLoadingJobs(clearAll = true)
+        directoryLoadingJob?.cancel()
         reviewCountBookUrl = null
         preDownloadTask?.cancel()
+        // 未入架书退出后清理 DB 残留（对照原版 ReadBookActivity.onDestroy 的
+        // `if (!ReadBook.inBookshelf && !isChangingConfigurations) removeFromBookshelf(null)` 兜底；
+        // 走独立 scope，UI scope 取消不影响删除）。确定入架（已去 notShelf 标记）或已删除的书不重复处理。
+        val book = readBook.book.value
+        if (book != null && book.isNotShelf) {
+            progressSyncScope.launch {
+                runCatching {
+                    AppDbProviders.get().bookDao.delete(book)
+                    book.addType(BookType.notShelf)
+                }
+            }
+        }
         downloadScope.coroutineContext.cancelChildren()
     }
     // endregion
@@ -1234,6 +1314,7 @@ class ReadBookViewModelShared(
                 // 对照原版 loadChapterListAwait 失败分支：显示"加载目录失败"（目录保持现状）
                 readBook.upMsg(appString(AppStringKey.error_load_toc))
             } else {
+                directoryLoadFailed = false
                 // 成功: 清当前章已处理内容缓存 + 重载滑窗 (对照 app 端 onChapterListUpdated 触发 loadContent)
                 processedContentCache.remove(readBook.durChapterIndex.value)
                 readBook.clearTextChapter()
@@ -1334,6 +1415,18 @@ class ReadBookViewModelShared(
             }.onSuccess {
                 success?.invoke()
             }
+        }
+    }
+
+    /**
+     * 加入书架（对照原版 BaseReadActivity.finish 弹窗确定分支 `currentBook?.save()`）。
+     * 上架核心复用 [toggleBookshelfCore]（与详情页收藏同语义：去 notShelf 标记 + 同名书进度合并 + upsert）。
+     */
+    fun addToBookshelf(success: (() -> Unit)? = null) {
+        val book = readBook.book.value ?: return
+        scope.launch {
+            runCatching { book.toggleBookshelfCore(inBookshelf = false) }
+                .onSuccess { success?.invoke() }
         }
     }
 

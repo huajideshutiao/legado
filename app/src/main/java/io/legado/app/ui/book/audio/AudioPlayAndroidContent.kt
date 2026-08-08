@@ -29,6 +29,7 @@ fun AudioPlayAndroidContent(
     sidePanelVisible: Boolean = false,
     sidePanelKind: AudioPlaySidePanelKind? = null,
     sidePanelSlot: @Composable (AudioPlaySidePanelKind) -> Unit = {},
+    onTapOutsideSidePanel: (() -> Unit)? = null,
 ) {
     SharedAudioPlayScreenContent(
         state = state,
@@ -43,6 +44,7 @@ fun AudioPlayAndroidContent(
         sidePanelVisible = sidePanelVisible,
         sidePanelKind = sidePanelKind,
         sidePanelSlot = sidePanelSlot,
+        onTapOutsideSidePanel = onTapOutsideSidePanel,
         titleBarTrailingSlot = {
             // 评论入口 (reviewUrl 非空才显示; hasReview 随书源切换刷新)
             if (state.hasReview) {

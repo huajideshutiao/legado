@@ -32,6 +32,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.HttpTTS
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.PreferenceProviders
@@ -77,6 +78,7 @@ import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.book.read.page.turnPage
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.compose.platform.AppShortcut
 import io.legado.app.ui.compose.platform.AppShortcutHandler
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
@@ -101,8 +103,10 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.add_to_bookshelf
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.chapter_pay
+import legado.shared.generated.resources.check_add_bookshelf
 import legado.shared.generated.resources.cloud_progress_exceeds_current
 import legado.shared.generated.resources.concurrent_rate
 import legado.shared.generated.resources.login_check_js
@@ -289,6 +293,16 @@ fun ReaderRoute(
     // 栈内页面全部留在组合中, 故非栈顶时必须失效, 否则目录/换源等子页里按方向键会翻背景的书;
     // 翻页键菜单可见时不响应 (原版 menuLayoutIsVisible 分支), 字号增减不受菜单影响
     val isTopEntry = { navigator.backStack.value.lastOrNull()?.id == entry.id }
+    // 未入架书退出确认（对照原版 BaseReadActivity.finish：弹"加入书架"确认框，
+    // 确定=入架保留进度，取消=删除；关闭提示则直接退出，由 onCleared 兜底删除）。
+    // 返回键统一走 performBack → dispatchBackKey 分发到本拦截器，覆盖 ESC/系统返回/菜单返回按钮。
+    val currentBook by screenModel.viewModel.book.collectAsState()
+    AppBackHandler(
+        enabled = isTopEntry() && currentBook?.isNotShelf == true &&
+            AppConfigProviders.get().showAddToShelfAlert,
+    ) {
+        screenModel.postDialogEvent(ReaderDialogEvent.AddToShelfConfirm)
+    }
     // 方向键 (用户拍板 2026-08): 阅读键盘只保留方向键, PageUp/PageDown/Space 不再绑定;
     // 键位随翻页方向自适应——左右翻页模式 ←/→=翻页、↑/↓=章节切换;
     // 上下滚动模式 ↑/↓=翻页、←/→=章节切换 (原版 ReadBookKeyHandler 的 prevKeys/nextKeys
@@ -580,6 +594,29 @@ fun ReaderRoute(
                     },
                     cancelButton = AlertButton(stringResource(Res.string.cancel)) {
                         screenModel.clearDialogEvent()
+                    },
+                )
+            }
+        }
+
+        is ReaderDialogEvent.AddToShelfConfirm -> {
+            // 未入架书退出确认 (对照原版 BaseReadActivity.finish 的 alert：
+            // 确定=加入书架保留进度后退出；取消=删除后退出；点外部关闭留在阅读页)
+            val book = screenModel.currentBook
+            if (book == null) {
+                screenModel.clearDialogEvent()
+            } else {
+                AppAlertDialog(
+                    onDismissRequest = { screenModel.clearDialogEvent() },
+                    title = stringResource(Res.string.add_to_bookshelf),
+                    message = stringResource(Res.string.check_add_bookshelf, book.name),
+                    okButton = AlertButton(stringResource(Res.string.ok)) {
+                        screenModel.clearDialogEvent()
+                        screenModel.viewModel.addToBookshelf { navigator.pop() }
+                    },
+                    cancelButton = AlertButton(stringResource(Res.string.cancel)) {
+                        screenModel.clearDialogEvent()
+                        screenModel.viewModel.removeFromBookshelf { navigator.pop() }
                     },
                 )
             }

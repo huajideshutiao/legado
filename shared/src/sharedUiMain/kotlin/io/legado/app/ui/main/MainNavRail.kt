@@ -14,9 +14,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.theme.LocalEInk
 
-/** 窗口宽 ≥ 此值时导航栏由底部改到左侧 (桌面/平板横屏), 窄回底栏 */
-val MainNavRailMinWindowWidth = 600.dp
-
 /** 侧栏宽度: 容纳底栏同款 24dp 图标 + 12sp 单行标签, 与 Material NavigationRail 同档 */
 private val MainNavRailWidth = 72.dp
 

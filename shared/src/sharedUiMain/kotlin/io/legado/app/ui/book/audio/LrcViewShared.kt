@@ -215,6 +215,7 @@ fun LrcViewShared(
     // pointerInput 在组合外执行, 状态经 rememberUpdatedState 取最新值
     val currentLines by rememberUpdatedState(lines)
     val currentScrollY by rememberUpdatedState(scrollY)
+    val currentViewportW by rememberUpdatedState(viewportW)
     val currentViewportH by rememberUpdatedState(viewportH)
 
     fun maxScrollY(): Float =
@@ -287,7 +288,20 @@ fun LrcViewShared(
                                             else if (touchY >= line.offset + line.height) -1
                                             else 0
                                         }
-                                        if (idx >= 0) onLineClick(currentLines[idx].time)
+                                        if (idx >= 0) {
+                                            val line = currentLines[idx]
+                                            val layout = line.layout
+                                            // 点击宽度只限文本实际宽度 (用户拍板 2026-08):
+                                            // 水平 = 文本宽, 文本两侧空白不触发跳转;
+                                            // 垂直保持整行命中 (行高收窄会难受, 用户拍板)
+                                            if (layout != null) {
+                                                val centerX = currentViewportW / 2f
+                                                val dx = change.position.x - centerX
+                                                if (dx in -layout.size.width / 2f..layout.size.width / 2f) {
+                                                    onLineClick(line.time)
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                                 break

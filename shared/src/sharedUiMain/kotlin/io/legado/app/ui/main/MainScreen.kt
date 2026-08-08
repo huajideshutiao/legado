@@ -57,7 +57,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
@@ -66,6 +65,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import io.legado.app.constant.BottomNavTag
 import io.legado.app.ui.compose.platform.platformStatusBarPadding
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import kotlinx.coroutines.flow.SharedFlow
 
@@ -74,7 +74,7 @@ import kotlinx.coroutines.flow.SharedFlow
  * + 自绘导航栏。四 tab 均为纯 composable, 由调用方经 lambda 注入; pager 跳转/重选经回调
  * 回传给宿主(供返回键/reselect/recreate 调用)。
  *
- * 导航栏按窗口宽度切换方位: ≥[MainNavRailMinWindowWidth] 用左侧 [MainNavRail], 否则用底部
+ * 导航栏按窗口宽度切换方位: ≥[DesignTokens.wideScreenMinWidth] 用左侧 [MainNavRail], 否则用底部
  * [MainBottomBar]; 两者视觉/配置项完全一致, 只差排列方向。
  *
  * @param visibleTags 可见 tag 列表(BottomNavTag 字符串, 顺序含配置校验)
@@ -134,7 +134,8 @@ fun MainScreen(
     val density = LocalDensity.current
     val useNavRail by remember(windowInfo, density) {
         derivedStateOf {
-            with(density) { windowInfo.containerSize.width.toDp() } >= MainNavRailMinWindowWidth
+            with(density) { windowInfo.containerSize.width.toDp() } >=
+                DesignTokens.wideScreenMinWidth
         }
     }
 

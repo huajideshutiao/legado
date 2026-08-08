@@ -62,6 +62,8 @@ interface AudioPlayPlatformProvider {
         sidePanelVisible: Boolean = false,
         sidePanelKind: AudioPlaySidePanelKind? = null,
         sidePanelSlot: @Composable (AudioPlaySidePanelKind) -> Unit = {},
+        /** 点击左侧内容区空白处时回调 (面板打开时点击外部关闭; 窄屏端不传)。 */
+        onTapOutsideSidePanel: (() -> Unit)? = null,
     )
 }
 

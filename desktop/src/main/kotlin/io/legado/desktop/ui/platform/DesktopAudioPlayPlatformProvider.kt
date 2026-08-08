@@ -37,6 +37,7 @@ class DesktopAudioPlayPlatformProvider : AudioPlayPlatformProvider {
         sidePanelVisible: Boolean,
         sidePanelKind: AudioPlaySidePanelKind?,
         sidePanelSlot: @Composable (AudioPlaySidePanelKind) -> Unit,
+        onTapOutsideSidePanel: (() -> Unit)?,
     ) {
         SharedAudioPlayScreenContent(
             state = state,
@@ -51,6 +52,7 @@ class DesktopAudioPlayPlatformProvider : AudioPlayPlatformProvider {
             sidePanelVisible = sidePanelVisible,
             sidePanelKind = sidePanelKind,
             sidePanelSlot = sidePanelSlot,
+            onTapOutsideSidePanel = onTapOutsideSidePanel,
             // 评论入口 (reviewUrl 非空才显示; hasReview 随书源切换刷新)
             titleBarTrailingSlot = {
                 if (state.hasReview) {

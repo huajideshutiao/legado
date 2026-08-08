@@ -181,7 +181,10 @@ fun DesktopWindowTitleBarSync(windowHandle: DesktopWindowHandle) {
         repeat(30) {
             val window = windowHandle.window
             if (window != null && window.isDisplayable) {
-                applyTitleBarTheme(window, isDark, background)
+                // 用计算后的 dark/bg (而非 isDark/background): 阅读页激活时标题栏
+                // 须染阅读背景色 (readerWindowTint 语义, 与顶部工具栏同源);
+                // 原实现误传主题色导致染色只触发重跑不生效
+                applyTitleBarTheme(window, dark, bg)
                 return@LaunchedEffect
             }
             delay(100)

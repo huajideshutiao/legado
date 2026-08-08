@@ -258,6 +258,11 @@ object AudioPlayShared {
         durChapterIndex -= 1
         durChapterPos = 0
         durPlayUrl = ""
+        // 同步落到 book (saveRead 是 async 落库): doLoadPlayUrl 的章节作废校验
+        // (chapter.index != book.durChapterIndex) 读 book 即时值, 不同步会误判新章
+        // 作废 → LOADING 残留无限转圈 (对齐 skipTo 的同步写法)
+        book?.durChapterIndex = durChapterIndex
+        book?.durChapterPos = durChapterPos
         saveRead()
         AudioPlayCommanders.get().loadPlayUrl()
     }
@@ -277,6 +282,10 @@ object AudioPlayShared {
         durChapterIndex = newIndex
         durChapterPos = 0
         durPlayUrl = ""
+        // 同步落到 book (saveRead 是 async 落库): 同 prev(), 防 doLoadPlayUrl 的
+        // 章节作废校验误判 → LOADING 残留无限转圈 (对齐 skipTo 的同步写法)
+        book?.durChapterIndex = durChapterIndex
+        book?.durChapterPos = durChapterPos
         saveRead()
         AudioPlayCommanders.get().loadPlayUrl()
     }

@@ -48,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -70,6 +71,7 @@ import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.utils.format
+import kotlinx.coroutines.delay
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.full_screen
@@ -94,7 +96,6 @@ import kotlin.math.abs
  * 手机 vs 平板/桌面断点 (smallestScreenWidth >= 600dp 视为平板/桌面)。
  * 手机横屏才让视频全屏; 平板/桌面无论方向都走 2/3 + 选集网格。
  */
-private val PhoneTabletBreakpoint = 600.dp
 
 /**
  * 视频播放页主体内容 (标题栏 + 渲染槽 + 选集网格), 逐项对照 app 端 VideoPlayScreen。
@@ -158,9 +159,16 @@ fun VideoPlayerScreenContent(
     val scope = rememberCoroutineScope()
     // 键盘事件焦点: onPreviewKeyEvent 需焦点路径上有节点持焦才触发, 进入即取焦点
     // (desktop 端渲染槽另有 focusRequester, 后取焦者生效, 根节点 handler 均在焦点路径上)
+    // requestFocus 一次性请求在组合初期可能失败, 循环重试兜底 (同音频页 AudioPlayScreenContent,
+    // 用户拍板 2026-08: 避免"必须点一下界面才有键盘交互")
     val keyFocusRequester = remember { FocusRequester() }
+    var keyFocusHeld by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        runCatching { keyFocusRequester.requestFocus() }
+        repeat(30) {
+            if (keyFocusHeld) return@LaunchedEffect
+            runCatching { keyFocusRequester.requestFocus() }
+            delay(50)
+        }
     }
 
     Box(
@@ -182,6 +190,7 @@ fun VideoPlayerScreenContent(
             )
             .focusRequester(keyFocusRequester)
             .focusable()
+            .onFocusChanged { keyFocusHeld = it.isFocused }
     ) {
         Column(Modifier.fillMaxSize()) {
             if (!isFullScreen) {
@@ -199,8 +208,8 @@ fun VideoPlayerScreenContent(
             val showGrid = !isFullScreen && chapters.size > 1
             if (showGrid) {
                 BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
-                    // 手机 vs 平板/桌面断点 (shortest side < 600dp 视为手机)
-                    val isPhone = minOf(maxWidth, maxHeight) < PhoneTabletBreakpoint
+                    // 手机 vs 平板/桌面断点 (shortest side < DesignTokens.wideScreenMinWidth 视为手机)
+                    val isPhone = minOf(maxWidth, maxHeight) < DesignTokens.wideScreenMinWidth
                     if (isPhone && maxWidth > maxHeight) {
                         // 手机横屏: 视频全屏不缩窄不列列表 (对照 app 横屏强制全屏并隐藏网格)
                         Box(Modifier.fillMaxSize()) {

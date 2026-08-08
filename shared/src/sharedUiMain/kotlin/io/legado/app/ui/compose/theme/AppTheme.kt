@@ -86,6 +86,23 @@ object AppTheme {
         val viewHeightXl: Dp = 48.dp
         val viewHeightMax: Dp = 56.dp
 
+        // 响应式布局断点 (对齐 Android 官方 Window size class / Material 3 断点:
+        // Compact <600dp / Medium 600-839dp / Expanded ≥840dp / Large ≥1200dp)。
+        // 全项目"宽屏/大屏"判断统一引用此处, 禁止各处另写字面量。
+        val wideScreenMinWidth: Dp = 600.dp // 宽屏/平板分界 (官方 Compact/Medium 分界):
+        // 主界面 NavRail 方位切换、音频页右侧面板/封面歌词并排、视频播放页手机 vs 平板布局
+
+        val expandedScreenMinWidth: Dp = 840.dp // 大屏分界 (官方 Medium/Expanded 分界), 备用
+
+        val responsiveColumnsReferenceWidth: Dp = 400.dp // 自动分列折算起点 (用户列数 N 定义在
+        // 此宽度下; 容器更宽按比例加列, 低于此宽度严格按用户列数) —— 换算基准, 非宽屏分界
+
+        val sidePanelMaxWidth: Dp = 400.dp // 宽屏右侧面板宽度上限 (音频页评论/目录面板:
+        // 宽度 = 容器宽 × 0.35, 封顶避免大窗口面板过宽)
+
+        val audioCoverAreaMaxWidth: Dp = 600.dp // 音频页并排封面区宽度上限 (宽度 = 容器宽 × 0.35,
+        // 封顶 600dp, 用户拍板: 封面区比右侧面板更宽, 容纳 300dp 大封面)
+
         // Arco arcoblue-6 主色 (#165DFF), 仅作无主题色场景的兜底强调色
         val arcoBlue6: Color = Color(0xFF165DFF)
 

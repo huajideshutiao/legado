@@ -5,11 +5,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlin.math.roundToInt
 
-/** 参考宽度: 用户设置的"列数"被定义为这个宽度下的列数; 低于此宽度的手机严格按用户列数, 高于此宽度按比例加列, 400dp 为用户确认的折算起点 */
-val ResponsiveReferenceWidth: Dp = 400.dp
+/**
+ * 参考宽度: 用户设置的"列数"被定义为这个宽度下的列数; 低于此宽度的手机严格按用户列数, 高于此宽度按比例加列。
+ * 值统一引自 [DesignTokens.responsiveColumnsReferenceWidth] (400dp, 用户确认的折算起点)。
+ */
 
 /** 最窄列宽守卫系数: 列宽下限 = 参考列宽 × 此比例 (round 进位边界防"加列反而更挤")。 */
 private const val MIN_COLUMN_WIDTH_RATIO = 0.8f
@@ -44,7 +46,7 @@ fun effectiveColumns(baseColumns: Int, availableWidth: Dp, referenceWidth: Dp): 
  */
 class ResponsiveGridCells(
     private val baseColumns: Int,
-    private val referenceWidth: Dp = ResponsiveReferenceWidth,
+    private val referenceWidth: Dp = DesignTokens.responsiveColumnsReferenceWidth,
 ) : GridCells {
 
     override fun Density.calculateCrossAxisCellSizes(
@@ -69,7 +71,7 @@ class ResponsiveGridCells(
 @Composable
 fun rememberResponsiveColumns(
     baseColumns: Int,
-    referenceWidth: Dp = ResponsiveReferenceWidth,
+    referenceWidth: Dp = DesignTokens.responsiveColumnsReferenceWidth,
 ): GridCells = remember(baseColumns, referenceWidth) {
     ResponsiveGridCells(baseColumns, referenceWidth)
 }

@@ -75,6 +75,7 @@ fun SharedAudioPlayScreenContent(
     sidePanelVisible: Boolean = false,
     sidePanelKind: AudioPlaySidePanelKind? = null,
     sidePanelSlot: @Composable (AudioPlaySidePanelKind) -> Unit = {},
+    onTapOutsideSidePanel: (() -> Unit)? = null,
 ) {
     // 封面取色 → 歌词 + SeekBar 配色 (对照原版 updateCover → updateLrcColor)
     val lrcColors = rememberLrcColors(
@@ -112,6 +113,7 @@ fun SharedAudioPlayScreenContent(
         onSetSpeed = { onEvent(AudioPlayUiEvent.SetSpeed(it)) },
         onStop = null,
         overflowActions = overflowActions,
+        onTapOutsideSidePanel = onTapOutsideSidePanel,
         coverSlot = { url, modifier -> SharedAudioCoverSlot(url, modifier) },
         blurBgSlot = { url, modifier -> SharedAudioBlurBgSlot(url, modifier) },
         lrcSlot = { modifier ->

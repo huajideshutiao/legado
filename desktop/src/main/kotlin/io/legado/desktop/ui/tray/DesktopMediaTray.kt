@@ -1,5 +1,6 @@
 package io.legado.desktop.ui.tray
 
+import com.sun.jna.Platform
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
@@ -79,13 +80,18 @@ class ReadAloudTrayBinding(
  * [DesktopTrayNotifier] 回退 stdout (见 Toaster.jvm.kt / DesktopNotificationService)。
  * 右键菜单每次弹出时按当前状态现构建: 音频/朗读活跃时才有播放控制项, 空闲时只剩"显示/退出"。
  *
- * # 菜单为什么用 Swing 而不是 java.awt.PopupMenu
- * AWT 的 [java.awt.MenuItem] 在 Windows 上是 owner-draw 原生菜单, 文字由 JDK 的
- * `AwtFont::drawMFString` 按 fontconfig 字符集拆段后用 GDI 的窄字节 TextOut 绘制,
- * 该路径解析不出 CJK 字形, 菜单项一律画成"豆腐块"。实测 `setFont` 确实生效 (换 28pt Serif
- * 菜单真的变大变衬线) 但中文照样是方块, 换 "Microsoft YaHei UI" 也无效 —— 即字体不是变量,
- * 是原生绘制路径本身不支持。Swing 的 [JPopupMenu] 由 Java2D 自绘, 走正常字体回退, 中文正常。
- * (托盘 tooltip 与气泡通知走的是原生 Shell_NotifyIcon 宽字符路径, 中文本来就正常, 不受影响。)
+ * # 菜单实现 (Windows = 原生 / 其他平台 = Swing)
+ * - **Windows**: Win32 原生菜单 (DesktopTrayNativeMenu: CreatePopupMenu + AppendMenuW +
+ *   TrackPopupMenuEx TPM_RETURNCMD), DWM 统一渲染 = Win11 深色圆角/主题跟随/键盘导航,
+ *   与资源管理器托盘菜单一致, 零 LAF hack。
+ * - **macOS/Linux**: Swing JPopupMenu (ensureNativeLookAndFeel 系统 LAF)。
+ *   为什么不用 java.awt.PopupMenu: AWT 的 [java.awt.MenuItem] 在 Windows 上是
+ *   owner-draw 原生菜单, 文字由 JDK 的 `AwtFont::drawMFString` 按 fontconfig 字符集
+ *   拆段后用 GDI 的窄字节 TextOut 绘制, 该路径解析不出 CJK 字形, 菜单项一律画成
+ *   "豆腐块"。实测 `setFont` 确实生效 (换 28pt Serif 菜单真的变大变衬线) 但中文照样
+ *   是方块, 换 "Microsoft YaHei UI" 也无效 —— 即字体不是变量, 是原生绘制路径本身
+ *   不支持。Swing 的 [JPopupMenu] 由 Java2D 自绘, 走正常字体回退, 中文正常。
+ *   (托盘 tooltip 与气泡通知走的是原生 Shell_NotifyIcon 宽字符路径, 中文本来就正常, 不受影响。)
  *
  * # 菜单位置
  * TrayIcon 的 MouseEvent 坐标在 Windows 上不可靠 (WTrayIconPeer 上报原生物理坐标, 多屏/系统
@@ -454,11 +460,18 @@ object DesktopMediaTray {
     /**
      * 在托盘点击处弹出菜单。
      *
-     * 位置自己算而不是交给 [JPopupMenu] 的越界翻转 —— 后者按整块屏幕算, 会把菜单压到任务栏
-     * 底下 (实测末项被遮住); 这里按"工作区"(屏幕减去任务栏 inset) 夹紧, 底部任务栏时向上展开。
+     * Windows: Win32 原生菜单 (TrackPopupMenuEx, DWM 渲染 Win11 样式), 菜单自动
+     * 翻转避让任务栏/屏幕边界, 无需手工夹紧; 位置 = 指针物理坐标。
+     * 其他平台: Swing JPopupMenu, 位置自己算而不是交给 [JPopupMenu] 的越界翻转
+     * —— 后者按整块屏幕算, 会把菜单压到任务栏底下 (实测末项被遮住); 这里按
+     * "工作区"(屏幕减去任务栏 inset) 夹紧, 底部任务栏时向上展开。
      */
     private fun showMenu(x: Int, y: Int) {
         if (trayIcon == null) return
+        if (Platform.isWindows()) {
+            showNativeMenu(x, y)
+            return
+        }
         ensureNativeLookAndFeel()
         val menu = buildMenu()
         val anchor = anchorDialog ?: createAnchor().also { anchorDialog = it }
@@ -478,6 +491,27 @@ object DesktopMediaTray {
         anchor.requestFocus()
         activeMenu = menu
         menu.show(anchor, 0, 0)
+    }
+
+    /**
+     * Windows: Win32 原生菜单 (DWM 渲染, Win11 深色圆角/主题跟随)。
+     * owner 窗口/模态循环由 DesktopTrayNativeMenu 在专用线程管理 (AWT 窗口句柄会
+     * 导致 TrackPopupMenuEx 失败; 模态循环阻塞 EDT 会冻结主窗口, 见该文件 KDoc);
+     * 本函数立即返回, 选中后经回调执行命令 (切出菜单线程)。
+     */
+    private fun showNativeMenu(x: Int, y: Int) {
+        val entries = buildMenuModel()
+        val items = entries.map { e ->
+            DesktopTrayNativeMenu.Item(
+                label = e.label,
+                enabled = e.enabled,
+                action = e.action,
+            )
+        }
+        val (px, py) = DesktopTrayNativeMenu.toPhysical(x, y)
+        DesktopTrayNativeMenu.show(px, py, items) { action ->
+            if (action != null) runCommand(action)
+        }
     }
 
     private fun createAnchor(): JDialog = JDialog().apply {
@@ -530,8 +564,19 @@ object DesktopMediaTray {
         )
     }
 
-    private fun buildMenu(): JPopupMenu {
-        val menu = JPopupMenu()
+    /**
+     * 菜单条目模型 (Swing 与 Win32 原生菜单共用): label=null 为分隔线;
+     * action=null 且禁用 = 分组标题。
+     */
+    private class MenuEntry(
+        val label: String? = null,
+        val enabled: Boolean = true,
+        val action: (() -> Unit)? = null,
+    )
+
+    /** 菜单内容单一来源: 两套渲染 (Swing JPopupMenu / Win32 TrackPopupMenu) 共用, 防漂移。 */
+    private fun buildMenuModel(): List<MenuEntry> {
+        val entries = ArrayList<MenuEntry>()
         val audioStatus = AudioPlayShared.status
         val audioActive = audioStatus != Status.STOP
         val aloud = readAloudBinding.value
@@ -540,16 +585,28 @@ object DesktopMediaTray {
         // 两条链同时活跃时加标题分组, 免得两组"上一章"分不清 (文案取 app 端通知 subText)
         val grouped = audioActive && aloudActive
         if (audioActive) {
-            if (grouped) menu.add(header(str("audio", "音频")))
-            addAudioItems(menu, audioStatus)
+            if (grouped) entries += MenuEntry(str("audio", "音频"), enabled = false)
+            addAudioEntries(entries, audioStatus)
         }
         if (aloudActive) {
-            if (grouped) menu.add(header(str("read_aloud", "朗读")))
-            addReadAloudItems(menu, aloud!!, aloudState == ReadAloudState.PAUSED)
+            if (grouped) entries += MenuEntry(str("read_aloud", "朗读"), enabled = false)
+            addReadAloudEntries(entries, aloud!!, aloudState == ReadAloudState.PAUSED)
         }
-        if (audioActive || aloudActive) menu.addSeparator()
+        if (audioActive || aloudActive) entries += MenuEntry() // 分隔线
         // 无"显示"项: 恢复窗口 + 跳转对应页面 (原版通知点击行为) 由托盘左键单击承载
-        menu.add(item(str("exit", "退出")) { exitAction?.invoke() })
+        entries += MenuEntry(str("exit", "退出")) { exitAction?.invoke() }
+        return entries
+    }
+
+    private fun buildMenu(): JPopupMenu {
+        val menu = JPopupMenu()
+        buildMenuModel().forEach { e ->
+            when {
+                e.label == null -> menu.addSeparator()
+                e.action == null -> menu.add(header(e.label!!))
+                else -> menu.add(item(e.label!!, e.action))
+            }
+        }
         // 选中菜单项 / ESC 关闭时把宿主窗口一并收掉, 免得 1x1 置顶窗赖在前台
         menu.addPopupMenuListener(object : PopupMenuListener {
             override fun popupMenuWillBecomeVisible(e: PopupMenuEvent) = Unit
@@ -564,36 +621,40 @@ object DesktopMediaTray {
     }
 
     /** 对照 AudioPlayService 通知 action: Timer / 上一章 / 播放暂停 / 下一章 / 停止。 */
-    private fun addAudioItems(popup: JPopupMenu, audioStatus: Int) {
+    private fun addAudioEntries(entries: MutableList<MenuEntry>, audioStatus: Int) {
         val paused = audioStatus == Status.PAUSE
         val toggleLabel = if (paused) str("resume", "继续") else str("pause", "暂停")
         // 原版通知第 1 个 action 是 Timer (addTimer 每次 +10 分钟, 180 封顶再按归零)
-        popup.add(item(str("set_timer", "定时")) { AudioPlayShared.addTimer() })
-        popup.add(item(toggleLabel) {
+        entries += MenuEntry(str("set_timer", "定时")) { AudioPlayShared.addTimer() }
+        entries += MenuEntry(toggleLabel) {
             if (paused) AudioPlayShared.resume() else AudioPlayShared.pause()
-        })
-        popup.add(item(str("previous_chapter", "上一章")) { AudioPlayShared.prev() })
-        popup.add(item(str("next_chapter", "下一章")) { AudioPlayShared.next() })
+        }
+        entries += MenuEntry(str("previous_chapter", "上一章")) { AudioPlayShared.prev() }
+        entries += MenuEntry(str("next_chapter", "下一章")) { AudioPlayShared.next() }
         // app 端通知 stop → stopSelf, 对应 shared stop() (含 saveRead), 非 stopPlay()
-        popup.add(item(str("stop", "停止")) { AudioPlayShared.stop() })
+        entries += MenuEntry(str("stop", "停止")) { AudioPlayShared.stop() }
     }
 
     /** 对照 BaseReadAloudService 通知 action + IntentAction.prev/nextParagraph。 */
-    private fun addReadAloudItems(
-        popup: JPopupMenu,
+    private fun addReadAloudEntries(
+        entries: MutableList<MenuEntry>,
         aloud: ReadAloudTrayBinding,
         paused: Boolean,
     ) {
         val controller = aloud.controller
         val toggleLabel = if (paused) str("resume", "继续") else str("pause", "暂停")
-        popup.add(item(toggleLabel) {
+        entries += MenuEntry(toggleLabel) {
             if (paused) controller.resume() else controller.pause()
-        })
-        popup.add(item(str("read_aloud_prev_paragraph", "朗读上一段")) { controller.prevParagraph() })
-        popup.add(item(str("read_aloud_next_paragraph", "朗读下一段")) { controller.nextParagraph() })
-        popup.add(item(str("previous_chapter", "上一章")) { controller.prevChapter() })
-        popup.add(item(str("next_chapter", "下一章")) { controller.nextChapter() })
-        popup.add(item(str("stop", "停止")) { controller.stop() })
+        }
+        entries += MenuEntry(str("read_aloud_prev_paragraph", "朗读上一段")) {
+            controller.prevParagraph()
+        }
+        entries += MenuEntry(str("read_aloud_next_paragraph", "朗读下一段")) {
+            controller.nextParagraph()
+        }
+        entries += MenuEntry(str("previous_chapter", "上一章")) { controller.prevChapter() }
+        entries += MenuEntry(str("next_chapter", "下一章")) { controller.nextChapter() }
+        entries += MenuEntry(str("stop", "停止")) { controller.stop() }
     }
 
     private fun header(label: String): JMenuItem = JMenuItem(label).apply {

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -35,10 +36,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,12 +55,14 @@ import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.OverflowMenu
-import io.legado.app.ui.compose.component.ResponsiveReferenceWidth
 import io.legado.app.ui.compose.component.effectiveColumns
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
+import io.legado.app.ui.preview.previewBookFresh
+import io.legado.app.ui.preview.previewBookSample
 import io.legado.app.utils.format
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.all_read_time
@@ -90,12 +95,6 @@ import legado.shared.generated.resources.today_read_time
 import legado.shared.generated.resources.week_read_time
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
-import io.legado.app.ui.preview.previewBookFresh
-import io.legado.app.ui.preview.previewBookSample
 
 // ===== state / actions =====
 
@@ -388,7 +387,12 @@ private fun RecordList(
         //  与 SummaryCard 顶部对齐, 纵向布局下由 SummaryCard bottom 提供间距, 保持原值)
         item(key = "header", span = { GridItemSpan(maxLineSpan) }) {
             BoxWithConstraints {
-                if (effectiveColumns(1, maxWidth, ResponsiveReferenceWidth) >= 2) {
+                if (effectiveColumns(
+                        1,
+                        maxWidth,
+                        DesignTokens.responsiveColumnsReferenceWidth
+                    ) >= 2
+                ) {
                     Row(Modifier.fillMaxWidth()) {
                         Box(Modifier.weight(1f)) {
                             SummaryCard(state)

@@ -540,15 +540,19 @@ private fun runDesktopApp() = application {
         title = appName,
         icon = iconPainter,
         state = windowState,
-        // Windows/Linux 去掉系统装饰, 自绘标题栏 (DesktopTitleBar); macOS 保留原生红绿灯
-        // 标题栏 (SystemDefault)。Undecorated() 官方自带边缘 8dp resize 区, 无需自实现
+        // 回归原版自绘控制栏 (用户拍板 2026-08 终版): Windows/Linux 去掉系统装饰,
+        // 自绘标题栏 (DesktopTitleBar); macOS 保留原生红绿灯标题栏 (SystemDefault)。
+        // 拖拽/贴靠/双击最大化走系统接线 (WM_NCHITTEST/WM_NCLBUTTONDBLCLK 子类),
+        // 不手写拖动样板; Undecorated() 官方自带边缘 8dp resize 区。
+        // 真全屏 (无边框) 由 DesktopFullscreenController 在 Win32 层临时去 WS_CAPTION,
+        // 与窗口是否装饰无关, 退出全屏自动还原。
+        // 置顶开关 (控制栏菜单切换, DesktopWindowChrome 单一状态源); SwingWindow
+        // updater 同步 AWT setAlwaysOnTop
         decoration = if (Platform.isMac()) {
             WindowDecoration.SystemDefault
         } else {
             WindowDecoration.Undecorated()
         },
-        // 置顶开关 (控制栏菜单切换, DesktopWindowChrome 单一状态源); SwingWindow
-        // updater 同步 AWT setAlwaysOnTop
         alwaysOnTop = DesktopWindowChrome.alwaysOnTop,
     ) {
         // 单实例守卫绑定主窗口: 二次启动转发到达时前置本窗口 (取消最小化 + toFront + 请求焦点);
@@ -607,6 +611,9 @@ private fun runDesktopApp() = application {
             },
         ) {
             AppTheme {
+                // 回归原版: 自绘控制栏由 DesktopTitleBar 自身管理 (含系统接线
+                // WM_NCHITTEST 拖拽/双击最大化 + DWM 圆角); undecorated 无系统标题栏,
+                // 不再需要 DesktopWindowTitleBarSync (DWM 标题栏同步失去作用对象)。
                 // 对照 app 端 App.kt:132 SourceUiEventBridge.init(): desktop 无 Activity,
                 // 改用 Composable 宿主订阅 FlowBus(SOURCE_UI_REQUEST) 弹 Compose Dialog
                 // (实现见 shared/sharedUiMain 的 SourceUiEventBridgeHost)
@@ -623,10 +630,9 @@ private fun runDesktopApp() = application {
                 // legado:// deep link 导入对话框宿主: 消费 main(args)/OpenURIHandler 经
                 // LegadoDeepLinkHandler 记录的待导入请求 (对照 app 端 AssociationActivity 分发)
                 DeepLinkImportHost()
-                // 自绘窗口控制栏: Windows/Linux undecorated 后接管标题栏 (macOS 保留原生,
-                // 不渲染); 所有页面共用, 内容区在其下方让出 40dp; 真全屏时隐藏。
-                // 阅读页激活染色由控制栏消费 readerWindowTint (同一状态源, 原 DWM 标题栏
-                // 着色 DesktopWindowTitleBarSync 随 undecorated 失去作用对象, 不再调用)
+                // 自绘窗口控制栏 (回归原版): Windows/Linux undecorated 后接管标题栏
+                // (macOS 保留原生, 不渲染); 所有页面共用, 内容区在其下方让出 40dp;
+                // 真全屏时隐藏。阅读页激活染色由控制栏消费 readerWindowTint。
                 Column(
                     Modifier
                         .fillMaxSize()

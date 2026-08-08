@@ -538,8 +538,8 @@ class ReaderScreenModel(
                 }.onCompletion {
                     readBook.upMsg(null)
                 }.catch {
-                    AppLog.put("自动换源失败\n${it.localizedMessage}", it)
-                    Toasters.get().toast("自动换源失败\n${it.localizedMessage}")
+                AppLog.put("自动换源失败\n${it.message}", it)
+                Toasters.get().toast("自动换源失败\n${it.message}")
                 }.collect()
         }
     }
@@ -701,6 +701,9 @@ sealed interface ReaderDialogEvent {
 
     /** 章节购买确认 (对照原版 ReadBookActivity.payAction 的 alert 确认, 确认后执行 payAction JS) */
     data object ChapterPay : ReaderDialogEvent
+
+    /** 未入架书退出确认 (对照原版 BaseReadActivity.finish 的"加入书架"弹窗, 确定=入架保留进度, 取消=删除) */
+    data object AddToShelfConfirm : ReaderDialogEvent
 
     /** 目录 (对照原版 目录按钮 → TocDialog, 全高底部弹窗) */
     object Toc : ReaderDialogEvent

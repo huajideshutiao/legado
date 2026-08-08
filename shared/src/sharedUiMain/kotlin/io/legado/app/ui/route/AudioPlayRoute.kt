@@ -37,12 +37,11 @@ import io.legado.app.ui.book.audio.AudioPlayOverflowActions
 import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
 import io.legado.app.ui.book.audio.AudioPlayScreenModel
 import io.legado.app.ui.book.audio.AudioPlaySidePanelKind
-import io.legado.app.ui.book.audio.AudioPlaySidePanelMaxWidth
-import io.legado.app.ui.book.audio.AudioPlaySidePanelMinWidth
 import io.legado.app.ui.book.audio.AudioPlayUiEvent
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -154,15 +153,16 @@ fun AudioPlayRoute(
     // 退出加书架确认弹窗 (对照 Activity.finish: !inBookshelf 时弹确认)
     var showAddToShelfDialog by remember { mutableStateOf(false) }
 
-    // 宽屏右侧面板 (评论/目录共用, 互斥显示): 窗口宽 ≥600dp 启用 (与主界面 NavRail 同阈值惯例),
-    // 面板宽 = 容器宽 × 0.35, 上限 AudioPlaySidePanelMaxWidth; 窄屏保持原版交互 (弹窗/全屏页)
+    // 宽屏右侧面板 (评论/目录共用, 互斥显示): 窗口宽 ≥DesignTokens.wideScreenMinWidth 启用
+    // (官方 Compact/Medium 分界, 与主界面 NavRail/音频页并排同源);
+    // 面板宽 = 容器宽 × 0.35, 上限 DesignTokens.sidePanelMaxWidth; 窄屏保持原版交互 (弹窗/全屏页)
     val windowInfo = LocalWindowInfo.current
     val density = LocalDensity.current
     val sidePanelWidth by remember(windowInfo, density) {
         derivedStateOf {
             val windowWidth = with(density) { windowInfo.containerSize.width.toDp() }
-            if (windowWidth >= AudioPlaySidePanelMinWidth) {
-                (windowWidth * 0.35f).coerceAtMost(AudioPlaySidePanelMaxWidth)
+            if (windowWidth >= DesignTokens.wideScreenMinWidth) {
+                (windowWidth * 0.35f).coerceAtMost(DesignTokens.sidePanelMaxWidth)
             } else {
                 0.dp
             }
@@ -295,6 +295,8 @@ fun AudioPlayRoute(
         sidePanelWidth = sidePanelWidth,
         sidePanelVisible = panelKind != null,
         sidePanelKind = panelKind,
+        // 点击左侧内容区空白处关闭面板 (对话框语义, 用户拍板 2026-08)
+        onTapOutsideSidePanel = { if (panelKind != null) panelKind = null },
         sidePanelSlot = { kind ->
             when (kind) {
                 AudioPlaySidePanelKind.TOC -> TocContent(

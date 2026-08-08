@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.Text
@@ -41,12 +42,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.repeatOnLifecycle
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
@@ -68,6 +67,7 @@ import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
+import io.legado.app.ui.preview.LegadoThemePreview
 import io.legado.app.utils.FlowBus
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
@@ -82,9 +82,6 @@ import legado.shared.generated.resources.bookshelf
 import legado.shared.generated.resources.image_cover_default
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.foundation.layout.width
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 书架 Screen (KMP 版, commonMain 共享)。
@@ -157,21 +154,17 @@ fun BookshelfScreen(
     gotoTopTick: Int = 0,
 ) {
     val colors = AppTheme.colors
-    // 订阅门控 (对照原版 flowWithLifecycle): tab 激活 + 生命周期 RESUMED 双条件成立
-    // 才开 VM 的 DB 订阅; 切走/后台即取消, 书架不可见时 books 写入零查询零全表流。
-    val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(active, lifecycleOwner) {
-        if (!active) {
+    // 订阅常驻 (用户拍板 2026-08): 对齐原版 LiveData 语义 —— 订阅不随页面停止/
+    // tab 切走取消, 落库即经 Room 失效推送刷新。原门控 (repeatOnLifecycle) 在
+    // 恢复时产生"旧快照首帧"窗口, 快速"切章→离开→点击书架"会点到过期进度,
+    // 导致音频页 upData 误判 resetData 跳回旧记录位置 (回归报告 2026-08)。
+    // 组合销毁 (书架页离开导航栈) 才取消订阅。
+    LaunchedEffect(Unit) {
+        viewModel.setBookshelfActive(true)
+        try {
+            awaitCancellation()
+        } finally {
             viewModel.setBookshelfActive(false)
-        } else {
-            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-                viewModel.setBookshelfActive(true)
-                try {
-                    awaitCancellation()
-                } finally {
-                    viewModel.setBookshelfActive(false)
-                }
-            }
         }
     }
     val appConfig = remember { AppConfigProviders.get() }

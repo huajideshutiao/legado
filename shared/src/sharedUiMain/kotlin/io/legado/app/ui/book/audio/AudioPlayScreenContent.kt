@@ -13,11 +13,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -49,10 +53,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -78,6 +84,7 @@ import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.ui.preview.LegadoThemePreview
 import io.legado.app.utils.format
 import io.legado.app.utils.toDurationTime
+import kotlinx.coroutines.delay
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.audio_play
 import legado.shared.generated.resources.audio_play_wake_lock
@@ -99,15 +106,9 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * 宽屏右侧面板内容类型 (评论/目录共用同一面板槽位, 互斥显示)。
- * 窄屏 (窗口宽 < [AudioPlaySidePanelMinWidth]) 时面板不启用, 入口保持原版交互 (弹窗/全屏页)。
+ * 窄屏 (窗口宽 < [DesignTokens.wideScreenMinWidth]) 时面板不启用, 入口保持原版交互 (弹窗/全屏页)。
  */
 enum class AudioPlaySidePanelKind { TOC, REVIEW }
-
-/** 宽屏面板启用阈值 (与主界面 MainNavRailMinWindowWidth 同惯例: 桌面/平板横屏判宽屏)。 */
-val AudioPlaySidePanelMinWidth = 600.dp
-
-/** 面板宽度上限 (比例随容器宽, 封顶避免大窗口面板过宽)。 */
-val AudioPlaySidePanelMaxWidth = 400.dp
 
 /**
  * 音频播放页主体内容 (模糊封面背景 + 遮罩 + 标题栏 + 副标题 + 封面/歌词区 + 进度条 + 播放控制排)。
@@ -219,14 +220,24 @@ fun AudioPlayScreenContent(
     sidePanelKind: AudioPlaySidePanelKind? = null,
     /** 面板内容渲染 (评论/目录各自的内容组件)。 */
     sidePanelSlot: @Composable (AudioPlaySidePanelKind) -> Unit = {},
+    /** 点击左侧内容区空白处时回调 (右侧面板打开时点击外部关闭, 对话框语义; null=不监听)。 */
+    onTapOutsideSidePanel: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val keyScope = rememberCoroutineScope()
     // 键盘事件焦点: onPreviewKeyEvent 需节点持有焦点才触发, 进入即取焦点
-    // (对照 desktop VideoPlayerScreen 焦点接线)
+    // (对照 desktop VideoPlayerScreen 焦点接线)。
+    // requestFocus 一次性请求在组合初期可能失败 (焦点系统未就绪/被导航抢占),
+    // 这里以 onFocusChanged 标志 + 循环重试兜底 (同 WindowTitleBar DWM 轮询先例),
+    // 避免"必须点一下界面才有键盘交互"。
     val keyFocusRequester = remember { FocusRequester() }
+    var keyFocusHeld by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        runCatching { keyFocusRequester.requestFocus() }
+        repeat(30) {
+            if (keyFocusHeld) return@LaunchedEffect
+            runCatching { keyFocusRequester.requestFocus() }
+            delay(50)
+        }
     }
     // 宽屏面板动画: 滑入位移 + 左侧挤压同步 (E-Ink 一律 snap 无动画, 项目惯例)
     val eInk = LocalEInk.current
@@ -258,15 +269,22 @@ fun AudioPlayScreenContent(
                 scope = keyScope,
             )
             .focusRequester(keyFocusRequester)
-            .focusable(),
+            .focusable()
+            .onFocusChanged { keyFocusHeld = it.isFocused },
     ) {
         // 模糊封面背景 (平台 blurBgSlot 加载; null 时复用 coverSlot)
         val bgSlot = blurBgSlot ?: coverSlot
         bgSlot(coverUrl, Modifier.matchParentSize())
         // 半透明遮罩 (对照 app 端 0x3A000000)
         Box(Modifier.matchParentSize().background(Color(0x3A000000)))
-        // 左区: 右侧随面板宽度动画挤压 (面板滑入时内容同步变窄)
-        Column(Modifier.fillMaxSize().padding(end = animatedPanelWidth)) {
+        // 左区: 右侧随面板宽度动画挤压 (面板滑入时内容同步变窄); 面板打开时点击
+        // 左区空白 (未被子级消费的点击) 关闭面板, 对话框语义
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(end = animatedPanelWidth)
+                .tapOnUnconsumed { onTapOutsideSidePanel?.invoke() },
+        ) {
             AudioTitleBar(
                 title = title,
                 onBack = onBack,
@@ -284,25 +302,91 @@ fun AudioPlayScreenContent(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             )
-            Box(Modifier.fillMaxWidth().weight(1f)) {
-                Column(
-                    Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    if (coverVisible) {
-                        CoverImage(
-                            coverUrl = coverUrl,
-                            accentColor = accentColor,
-                            onClick = onCoverClick,
-                            coverSlot = coverSlot,
+            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+                // 宽屏 (弹性区宽 ≥ DesignTokens.wideScreenMinWidth, 官方 Compact/Medium
+                // 分界, 手机横屏起): 封面与歌词并排 —— 封面区占容器宽 35% (上限
+                // DesignTokens.sidePanelMaxWidth, 与右侧评论/目录面板同款), 封面在区内
+                // 居中不贴左, 尺寸上限 300dp (用户拍板 2026-08); 窄屏保持竖排 (封面在上、
+                // 歌词在下, 歌词保留最小可视高, 封面保持原版 200dp)。
+                // 封面尺寸受封面区宽高双重钳制 (桌面窗口可自由缩放, 防向下溢出压住
+                // 进度条/操作区); 竖排时封面还须给歌词让出 COVER_MIN_LRC_HEIGHT。
+                val landscape = maxWidth >= DesignTokens.wideScreenMinWidth
+                val coverTopPad = 16.dp
+                // 封面区宽度 (0.35 比例 + 上限 600dp, 用户拍板) — 区内居中显示封面
+                val coverAreaWidth =
+                    (maxWidth * 0.35f).coerceAtMost(DesignTokens.audioCoverAreaMaxWidth)
+                val coverSize = if (coverVisible) {
+                    if (landscape) {
+                        minOf(
+                            COVER_MAX_SIZE_LANDSCAPE,
+                            (maxHeight - coverTopPad * 2).coerceAtLeast(0.dp),
+                            (coverAreaWidth - coverTopPad * 2).coerceAtLeast(0.dp),
+                        )
+                    } else {
+                        (maxHeight - coverTopPad - COVER_MIN_LRC_HEIGHT)
+                            .coerceIn(0.dp, COVER_MAX_SIZE)
+                    }
+                } else {
+                    0.dp
+                }
+                if (landscape) {
+                    // 并排: 封面区 (占宽比例, 区内水平+垂直居中) + 歌词 (weight 占剩余宽, 高度占满)
+                    Row(
+                        Modifier
+                            .fillMaxSize()
+                            .clipToBounds(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (coverVisible && coverSize > 0.dp) {
+                            Box(
+                                Modifier
+                                    .width(coverAreaWidth)
+                                    .fillMaxHeight(),
+                                // 封面右对齐 (用户拍板): 紧贴歌词区, 消除封面与歌词之间的空白;
+                                // 左侧留白由封面区承载
+                                contentAlignment = Alignment.CenterEnd,
+                            ) {
+                                CoverImage(
+                                    coverUrl = coverUrl,
+                                    accentColor = accentColor,
+                                    onClick = onCoverClick,
+                                    coverSlot = coverSlot,
+                                    size = coverSize,
+                                    modifier = Modifier.padding(coverTopPad),
+                                )
+                            }
+                        }
+                        lrcSlot(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .padding(horizontal = 8.dp),
                         )
                     }
-                    lrcSlot(
+                } else {
+                    Column(
                         Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .padding(vertical = 16.dp),
-                    )
+                            .fillMaxSize()
+                            .clipToBounds(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        if (coverVisible && coverSize > 0.dp) {
+                            CoverImage(
+                                coverUrl = coverUrl,
+                                accentColor = accentColor,
+                                onClick = onCoverClick,
+                                coverSlot = coverSlot,
+                                size = coverSize,
+                                modifier = Modifier.padding(top = coverTopPad),
+                            )
+                        }
+                        lrcSlot(
+                            Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .padding(vertical = 16.dp),
+                        )
+                    }
                 }
                 // 定时回显标签 (左上)
                 if (timerMinute > 0) {
@@ -528,7 +612,14 @@ private fun AudioOverflowItem(textKey: String, onClick: () -> Unit) {
     }
 }
 
-// ---- 圆形封面 (200dp 圆形 + accent 描边, 平台 coverSlot 加载) ----
+// ---- 圆形封面 (默认 200dp 圆形 + accent 描边, 平台 coverSlot 加载; 尺寸/内边距由调用方按布局模式决定) ----
+
+/** 竖排模式歌词区最小可视高度 (封面压缩时保留的歌词空间)。 */
+private val COVER_MIN_LRC_HEIGHT = 120.dp
+
+/** 封面尺寸上限: 竖排 (原版语义, 200dp); 并排宽屏放大到 300dp (用户拍板 2026-08)。 */
+private val COVER_MAX_SIZE = 200.dp
+private val COVER_MAX_SIZE_LANDSCAPE = 300.dp
 
 @Composable
 private fun CoverImage(
@@ -536,12 +627,13 @@ private fun CoverImage(
     accentColor: Color,
     onClick: () -> Unit,
     coverSlot: @Composable (String?, Modifier) -> Unit,
+    size: Dp = COVER_MAX_SIZE,
+    modifier: Modifier = Modifier,
 ) {
     coverSlot(
         coverUrl,
-        Modifier
-            .padding(top = 16.dp)
-            .size(200.dp)
+        modifier
+            .size(size)
             .clip(CircleShape)
             .border(DesignTokens.strokeMedium, accentColor, CircleShape)
             .clickable(onClick = onClick),
@@ -1027,4 +1119,17 @@ fun AudioPlayScreenContentDarkPreview() = LegadoThemePreview(dark = true) {
         timerDialogSlot = { _, _, _ -> },
         speedDialogSlot = { _, _, _ -> },
     )
+}
+
+/**
+ * 只响应未被子级消费的点击 (子级按钮/歌词等消费后不触发); 用于"面板打开时点击外部关闭"。
+ * 消费语义: down 被子级消费 (requireUnconsumed=true) 时直接跳过; up 未取消 (非拖动) 才回调。
+ */
+private fun Modifier.tapOnUnconsumed(onTap: () -> Unit): Modifier = pointerInput(onTap) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = true)
+        if (down == null) return@awaitEachGesture
+        val up = waitForUpOrCancellation()
+        if (up != null) onTap()
+    }
 }

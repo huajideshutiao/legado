@@ -18,6 +18,7 @@ class AndroidAudioPlayPlatformProvider : AudioPlayPlatformProvider {
         sidePanelVisible: Boolean,
         sidePanelKind: AudioPlaySidePanelKind?,
         sidePanelSlot: @Composable (AudioPlaySidePanelKind) -> Unit,
+        onTapOutsideSidePanel: (() -> Unit)?,
     ) {
         AudioPlayAndroidContent(
             state = state,
@@ -32,6 +33,7 @@ class AndroidAudioPlayPlatformProvider : AudioPlayPlatformProvider {
             sidePanelVisible = sidePanelVisible,
             sidePanelKind = sidePanelKind,
             sidePanelSlot = sidePanelSlot,
+            onTapOutsideSidePanel = onTapOutsideSidePanel,
         )
     }
 }

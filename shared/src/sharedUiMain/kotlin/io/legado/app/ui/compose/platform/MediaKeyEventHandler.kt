@@ -53,13 +53,11 @@ fun Modifier.handleMediaKeys(
                         if (state.heldKeys.add(Key.DirectionRight)) {
                             state.speedJob?.cancel()
                             state.longPressActive = false
+                            // 长短按判定窗口: 按下后 500ms 内松开 = 短按 (seek +10s);
+                            // 按住 ≥500ms = 长按 (2x 倍速, 不 seek)。按下时不立即动作,
+                            // 否则无法区分短/长按 (用户拍板 2026-08)。
                             state.speedJob = scope.launch {
-                                // 阶段 1: 300ms 死区 — 不触发任何操作
-                                delay(300)
-                                // 阶段 2: 死区结束, seek +10s (或下一章)
-                                if (onSeekDelta != null) onSeekDelta(10_000L) else onNext()
-                                // 阶段 3: 再 500ms (总计 800ms) → 2x 倍速 + 手势提示
-                                delay(500)
+                                delay(LONG_PRESS_WINDOW_MS)
                                 state.longPressActive = true
                                 onSpeedChange(2.0f)
                                 onGestureText?.invoke("2.0X")
@@ -72,9 +70,13 @@ fun Modifier.handleMediaKeys(
                         state.speedJob?.cancel()
                         state.speedJob = null
                         if (state.longPressActive) {
+                            // 长按松开: 恢复倍速, 不 seek
                             state.longPressActive = false
                             onSpeedChange(1.0f)
                             onGestureText?.invoke(null)
+                        } else {
+                            // 判定窗口内松开 = 短按: seek +10s (或下一章), 与左键对称
+                            if (onSeekDelta != null) onSeekDelta(10_000L) else onNext()
                         }
                         false
                     }
@@ -137,3 +139,6 @@ private class MediaKeyState {
     /** 当前按住未松开的键 (吞掉自动重复 KeyDown, 一次按压只触发一次动作) */
     val heldKeys = mutableSetOf<Key>()
 }
+
+/** 右方向键长短按判定窗口: 500ms 内松开=短按 (seek), 超过=长按 (2x 倍速)。 */
+private const val LONG_PRESS_WINDOW_MS = 500L
