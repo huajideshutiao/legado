@@ -25,7 +25,6 @@ import io.legado.app.ui.compose.platform.jvmGetString
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.postEvent
 import io.legado.desktop.help.tts.DesktopReadAloudHost
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -35,6 +34,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 桌面端 AudioPlay 平台 provider (对应 app 端 [io.legado.app.model.AudioPlayProvidersImpl])。
@@ -329,7 +329,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
             doLoadPlayUrl()
             return
         }
-        if (currentUrl == playUrl && !playNew && running) return
+        if (currentUrl == playUrl && !playNew && running && player.isPlaying) return
         player.stop()
         paused = false
         val startPos = if (playNew) 0 else AudioPlayShared.book?.durChapterPos ?: 0

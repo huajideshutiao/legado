@@ -2,19 +2,9 @@ package io.legado.desktop.audio
 
 import io.legado.app.help.http.OkHttpClientProviders
 import javazoom.jl.decoder.Bitstream
-import javazoom.jl.decoder.Header
 import javazoom.jl.player.advanced.AdvancedPlayer
 import javazoom.jl.player.advanced.PlaybackEvent
 import javazoom.jl.player.advanced.PlaybackListener
-import okhttp3.Call
-import okhttp3.Callback
-import okhttp3.Request
-import okhttp3.Response
-import java.io.BufferedInputStream
-import java.io.FilterInputStream
-import java.io.IOException
-import java.io.InputStream
-import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +15,15 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.Request
+import okhttp3.Response
+import java.io.BufferedInputStream
+import java.io.FilterInputStream
+import java.io.IOException
+import java.io.InputStream
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.coroutineContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -362,9 +361,10 @@ class DesktopAudioPlayer {
     fun pause() {
         if (released) return
         if (!playing) return
-        paused = true
-        // 估算并保存当前 frame, 供 resume 时估算 position
+        // 先估算当前位置再置 paused: estimateCurrentFrame 依赖 !paused 才能累加已播帧,
+        // 顺序反了会把 playbackStartFrame 重置回旧值 → resume 后进度从 0 起算
         playbackStartFrame = estimateCurrentFrame()
+        paused = true
         try {
             advancedPlayer?.stop()
         } catch (_: Exception) {

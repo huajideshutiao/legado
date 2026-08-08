@@ -22,6 +22,7 @@ import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.toast.Toasters
+import io.legado.app.model.AudioPlayShared
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.toc.TocScreen
@@ -80,6 +81,25 @@ fun TocRoute(
             }
         },
         // 目录规则应用由 TocContent 内部完成 (对照原版 TocActivity.upBookAndToc), 路由无额外动作
+    )
+}
+
+/**
+ * 进入目录前把音频播放器的实时章节状态同步到书籍快照。
+ *
+ * 原版 AudioPlay 单例与 Book 为同实例引用, 切章 (skipTo/prev/next) 后
+ * book.durChapterIndex/durChapterTitle 即时最新, 目录页 initBook 读到即正确;
+ * KMP 化后 Book 是不可变值对象, 导航参数里的 book 是切章前拷贝,
+ * 直接使用会导致"当前章"高亮与顶栏章节信息落后 (对照原版同一引用语义)。
+ * 以 AudioPlayShared.book (skipTo 同步写 index, saveRead 异步写净化标题) 为准。
+ */
+private fun Book.syncDurChapterFromAudioPlay(): Book {
+    val audio = AudioPlayShared.book ?: return this
+    if (audio.bookUrl != this.bookUrl) return this
+    if (audio.durChapterIndex == durChapterIndex) return this
+    return copy(
+        durChapterIndex = audio.durChapterIndex,
+        durChapterTitle = audio.durChapterTitle ?: durChapterTitle,
     )
 }
 
@@ -155,9 +175,9 @@ fun TocContent(
     // TXT 目录规则对话框显隐 (对照原版 TxtTocRuleDialog: 全高底部弹窗, 基于当前生效规则)
     var showTocRegexDialog by remember { mutableStateOf(false) }
 
-    // 初始化书籍数据
+    // 初始化书籍数据 (进入目录前先把音频播放器的实时章节状态同步到快照, 见 syncDurChapterFromAudioPlay)
     LaunchedEffect(book) {
-        screenModel.dispatch(TocUiEvent.SetBook(book))
+        screenModel.dispatch(TocUiEvent.SetBook(book.syncDurChapterFromAudioPlay()))
     }
 
     // 对照 Activity.observeLiveBus: SAVE_CONTENT 事件触发 cacheFileNames 增量更新

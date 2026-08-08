@@ -45,6 +45,14 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 internal object DesktopTaskbarDwm {
 
+    /**
+     * 自绘 iconic 卡片总开关 (原版行为: 悬停显示封面+书名+章节+进度卡片)。
+     * 关闭时任务栏走系统默认窗口缩略图。
+     * 开启 = 向 DWM 承诺"缩略图由本进程提供", 故每个 WM_DWMSENDICONIC* 请求都必须应答
+     * (renderCard 恒返位图 + 尺寸兜底 + 不丢请求), 否则索取方在 await 处抛异常。
+     */
+    private const val ENABLE_ICONIC_CARD = true
+
     // ==================== 常量 ====================
 
     // DWMWINDOWATTRIBUTE
@@ -106,9 +114,14 @@ internal object DesktopTaskbarDwm {
     /** 主窗口可用时注入 (Main.kt 在 Window 组装后调用): 子类化收 DWM 消息。 */
     fun attach(window: Window) {
         if (!com.sun.jna.Platform.isWindows()) return
+        if (!ENABLE_ICONIC_CARD) return
         val hwnd = hwndOf(window) ?: return
         if (hwnd.pointer == mainHwnd?.pointer) return
+        // 窗口重建: 先还原旧窗口过程再子类化新窗口。否则新窗口没被子类化却仍开 FORCE_ICONIC,
+        // DWM 的缩略图请求无人应答 → 任务栏拿不到承诺的位图 (stowed exception 根因之一)
+        restoreWindowProc()
         mainHwnd = hwnd
+        iconicEnabled = false
         subclassWindow(hwnd)
     }
 
@@ -124,6 +137,8 @@ internal object DesktopTaskbarDwm {
     /**
      * 状态变化时刷新卡片 (由 DesktopMediaTray.updateTaskbar 驱动, 与任务栏按钮同源)。
      * 活跃 → 启用 iconic + 刷状态 + Invalidate; 空闲 → 关闭 iconic (恢复实时缩略图)。
+     *
+     * iconic 自绘卡片暂时关闭 (ENABLE_ICONIC_CARD=false): 悬停崩溃排查期间只保留系统默认缩略图。
      */
     fun update(
         audioStatus: Int,
@@ -131,6 +146,7 @@ internal object DesktopTaskbarDwm {
         progressMs: Int,
         durationMs: Int,
     ) {
+        if (!ENABLE_ICONIC_CARD) return
         val audioActive = audioStatus != Status.STOP
         val aloudState = aloud?.controller?.state?.value
         val aloudActive =
@@ -172,7 +188,7 @@ internal object DesktopTaskbarDwm {
             if (coverUrl.isNullOrBlank()) {
                 coverImage = null
             } else {
-                renderExecutor.execute { loadCover(coverUrl) }
+                renderExecutor.execute { loadCover(coverUrl, hwnd) }
             }
         }
         // 内容变化 → 请求重绘 (悬停时才真正触发 0x0323, 无悬停无开销)
@@ -267,18 +283,9 @@ internal object DesktopTaskbarDwm {
 
     // ==================== 渲染 (单线程执行器, 不阻塞 EDT) ====================
 
-    /** 合并渲染请求: 正在渲染时只记 pending, 完成后重查。 */
-    private val rendering = AtomicBoolean(false)
-
+    /** 渲染请求: executor 已是单线程 (天然串行), 不做丢弃 —— 每个 DWM 请求都必须有应答。 */
     private fun requestRender(live: Boolean) {
-        renderExecutor.execute {
-            if (!rendering.compareAndSet(false, true)) return@execute
-            try {
-                doRender(live)
-            } finally {
-                rendering.set(false)
-            }
-        }
+        renderExecutor.execute { runCatching { doRender(live) } }
     }
 
     private fun doRender(live: Boolean) {
@@ -289,12 +296,12 @@ internal object DesktopTaskbarDwm {
             if (!User32.INSTANCE.GetClientRect(hwnd, rect)) return
             rect.right.coerceAtLeast(1) to rect.bottom.coerceAtLeast(1)
         } else {
-            requestedThumbSize ?: return
+            // 尺寸缺失也要应答 (DWM 已被告知本窗口自供位图), 用任务栏缩略图常规尺寸兜底
+            requestedThumbSize ?: (200 to 120)
         }
         val (w, h) = size
         if (w <= 0 || h <= 0 || w > 4000 || h > 4000) return
-        val bitmap = renderCard(w, h) ?: return
-        val hBitmap = toHBitmap(bitmap) ?: return
+        val hBitmap = toHBitmap(renderCard(w, h)) ?: return
         try {
             if (live) {
                 dwmapi("DwmSetIconicLivePreviewBitmap")
@@ -312,9 +319,9 @@ internal object DesktopTaskbarDwm {
     /**
      * 绘制卡片: 深色底 + 封面(左) + 歌名/章节(右) + 状态图标 + 底部进度条。
      * 字号随卡片高度缩放 (缩略图 ~120px 用小字, Peek 大预览用大字)。
+     * 无文案时也返回位图 (只有底色+状态图标): DWM 请求必须有应答。
      */
-    private fun renderCard(w: Int, h: Int): BufferedImage? {
-        if (cardTitle.isBlank() && cardSubtitle.isBlank()) return null
+    private fun renderCard(w: Int, h: Int): BufferedImage {
         val img = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
         val g = img.createGraphics()
         try {
@@ -353,35 +360,53 @@ internal object DesktopTaskbarDwm {
             val iconY = (h * 0.22f).toInt()
             drawStatusIcon(g, iconX, iconY, (titleSize * 1.2f).toInt())
 
-            // 歌名 (状态图标右侧, 单行截断)
+            // 歌名 (状态图标右侧, 最多双行换行)
             g.font = Font("Microsoft YaHei UI", Font.BOLD, titleSize)
             g.color = Color.WHITE
             val titleX = iconX + (titleSize * 1.6f).toInt()
-            drawTruncated(
+            val titleLines = drawWrapped(
                 g,
                 cardTitle,
                 titleX,
                 iconY + titleSize,
-                textW - (titleSize * 1.6f).toInt()
+                textW - (titleSize * 1.6f).toInt(),
+                (titleSize * 1.18f).toInt(),
+                2,
             )
 
-            // 章节 (副标题, 单行截断)
+            // 章节 (副标题, 标题区之后; 单行截断)
             g.font = Font("Microsoft YaHei UI", Font.PLAIN, subSize)
             g.color = Color(0xBFFFFFFF.toInt())
             drawTruncated(
                 g,
                 cardSubtitle,
                 textX,
-                iconY + titleSize + subSize + (h * 0.06f).toInt(),
-                textW
+                iconY + titleSize + (titleLines - 1) * (titleSize * 1.18f).toInt() +
+                    subSize + (h * 0.06f).toInt(),
+                textW,
             )
 
-            // 进度条 (底部; 朗读无进度概念, 音频且时长>0 才画)
+            // 进度条 + 时间文本 (底部; 朗读无进度概念, 音频且时长>0 才画)
+            // 布局: 当前时间最左 / 进度条居中 / 总时长最右, 三者与条中线垂直对齐
             if (cardDurationMs > 0) {
-                val barY = h - (h * 0.12f).toInt().coerceAtLeast(10)
+                val timeSize = (h * 0.09f).toInt().coerceIn(8, 14)
+                g.font = Font("Microsoft YaHei UI", Font.PLAIN, timeSize)
+                val curText = formatTime(cardProgressMs)
+                val durText = formatTime(cardDurationMs)
+                val curW = g.fontMetrics.stringWidth(curText)
+                val durW = g.fontMetrics.stringWidth(durText)
+                val gap = (timeSize * 0.6f).toInt().coerceAtLeast(6)
+                val barY = h - (h * 0.12f).toInt().coerceAtLeast(12)
                 val barH = 3
-                val barX = textX
-                val barW = (w - textX - margin).coerceAtLeast(20)
+                val barX = textX + curW + gap
+                val barW =
+                    (w - textX - margin - curW - durW - gap * 2).coerceAtLeast(20)
+                // 文本基线: 条中线 + 半个字高 (文本垂直居中于条)
+                val textBaseY = barY + barH / 2 + g.fontMetrics.ascent / 2 - 1
+                g.color = Color(0xBFFFFFFF.toInt())
+                g.drawString(curText, textX, textBaseY)
+                g.drawString(durText, barX + barW + gap, textBaseY)
+                // 条 (文本之间)
                 g.color = Color(0x66FFFFFF)
                 g.fillRoundRect(barX, barY, barW, barH, 2, 2)
                 val frac = (cardProgressMs.toFloat() / cardDurationMs).coerceIn(0f, 1f)
@@ -392,7 +417,7 @@ internal object DesktopTaskbarDwm {
                     (barW * frac).toInt().coerceAtLeast(if (frac > 0) 2 else 0),
                     barH,
                     2,
-                    2
+                    2,
                 )
             }
         } finally {
@@ -401,24 +426,26 @@ internal object DesktopTaskbarDwm {
         return img
     }
 
-    /** 播放/暂停/加载状态图标 (自绘, 避免 Unicode 字形跨字体缺失)。 */
+    /** 播放/暂停/加载状态图标 (自绘, 避免 Unicode 字形跨字体缺失)。
+     * 操作语义 (对照 ThumbBar toggle 按钮): 播放中显示“暂停”双竖杠 (点击即暂停),
+     * 暂停/停止显示“播放”三角 (点击即播放)。 */
     private fun drawStatusIcon(g: java.awt.Graphics2D, x: Int, y: Int, size: Int) {
         val s = size
         g.color = Color.WHITE
         when {
             cardPlaying -> {
-                // 播放: 实心三角形
-                val xs = intArrayOf(x, x + s, x)
-                val ys = intArrayOf(y, y + s / 2, y + s)
-                g.fillPolygon(xs, ys, 3)
-            }
-
-            else -> {
-                // 暂停/加载: 双竖条
+                // 播放中: 双竖条 (操作语义: 点击即暂停)
                 val barW = (s * 0.28f).toInt().coerceAtLeast(2)
                 val gap = (s * 0.12f).toInt().coerceAtLeast(2)
                 g.fillRoundRect(x, y, barW, s, barW, barW)
                 g.fillRoundRect(x + barW + gap, y, barW, s, barW, barW)
+            }
+
+            else -> {
+                // 暂停/停止: 实心三角形 (操作语义: 点击即播放)
+                val xs = intArrayOf(x, x + s, x)
+                val ys = intArrayOf(y, y + s / 2, y + s)
+                g.fillPolygon(xs, ys, 3)
             }
         }
     }
@@ -431,6 +458,57 @@ internal object DesktopTaskbarDwm {
         }
         if (t != text) t = t.dropLast(1) + "…"
         g.drawString(t, x, y)
+    }
+
+    /** 最多 maxLines 行换行绘制 (超长末行省略号), 返回实际行数。 */
+    private fun drawWrapped(
+        g: java.awt.Graphics2D,
+        text: String,
+        x: Int,
+        baselineY: Int,
+        maxWidth: Int,
+        lineHeight: Int,
+        maxLines: Int,
+    ): Int {
+        if (text.isEmpty() || maxWidth <= 0 || maxLines <= 0) return 0
+        val fm = g.fontMetrics
+        var line = 0
+        var start = 0
+        while (start < text.length && line < maxLines) {
+            var end = start + 1
+            while (end <= text.length && fm.stringWidth(text.substring(start, end)) <= maxWidth) {
+                end++
+            }
+            if (end > text.length) end = text.length
+            var display = text.substring(start, end)
+            val truncated = line == maxLines - 1 && end < text.length
+            if (truncated) {
+                while (display.length > 1 &&
+                    fm.stringWidth(display + "…") > maxWidth
+                ) {
+                    display = display.dropLast(1)
+                }
+                display += "…"
+            }
+            g.drawString(display, x, baselineY + line * lineHeight)
+            line++
+            start = end
+            if (truncated) break
+        }
+        return line
+    }
+
+    /** ms → mm:ss (超过 1 小时显示 h:mm:ss)。 */
+    private fun formatTime(ms: Int): String {
+        val totalSec = (ms / 1000).coerceAtLeast(0)
+        val h = totalSec / 3600
+        val m = (totalSec % 3600) / 60
+        val s = totalSec % 60
+        return if (h > 0) {
+            "$h:${"%02d".format(m)}:${"%02d".format(s)}"
+        } else {
+            "${m}:${"%02d".format(s)}"
+        }
     }
 
     // ==================== 位图 (CreateDIBSection 32bpp → HBITMAP) ====================
@@ -471,7 +549,7 @@ internal object DesktopTaskbarDwm {
     // ==================== 封面加载 ====================
 
     /** 封面 ImageBitmap → BufferedImage (ImageBitmap.readPixels 返回 ARGB, 与平台解耦)。 */
-    private fun loadCover(url: String) {
+    private fun loadCover(url: String, hwnd: WinDef.HWND) {
         val loader = io.legado.app.help.image.BookImageLoaders.getOrNull() ?: return
         val bitmap = kotlinx.coroutines.runBlocking {
             loader.loadCoverOrNull(url, AudioPlayShared.book?.origin)
@@ -487,6 +565,9 @@ internal object DesktopTaskbarDwm {
                 img.setRGB(i % w, i / w, pixels[i])
             }
             coverImage = img
+            // 封面就绪后必须补发缓存失效: update() 里的 invalidate 发生在新封面就绪之前,
+            // 不补发则 DWM 保留旧封面直到悬停重入 (换歌缩略图不自动更新的根因)
+            if (mainHwnd?.pointer == hwnd.pointer) invalidateIconicBitmaps(hwnd)
         }.onFailure {
             AppLog.put("DWM 卡片封面转换失败", it)
         }
@@ -541,7 +622,7 @@ internal object DesktopTaskbarDwm {
      * 注意: user32 导出名是 GetWindowLongPtrW/SetWindowLongPtrW (宏按 UNICODE 展开),
      * 裸 GetWindowLongPtr 无导出符号 (UnsatisfiedLinkError)。
      */
-    private interface SubclassWin32 : com.sun.jna.Library {
+    internal interface SubclassWin32 : com.sun.jna.Library {
         fun GetWindowLongPtrW(hWnd: WinDef.HWND, nIndex: Int): Pointer
         fun SetWindowLongPtrW(hWnd: WinDef.HWND, nIndex: Int, dwNewLong: Pointer): Pointer
         fun CallWindowProcW(

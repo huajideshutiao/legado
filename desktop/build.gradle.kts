@@ -1,6 +1,7 @@
-import org.gradle.api.tasks.JavaExec
 import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import java.util.Properties
+
 plugins {
     id("legado.jvm.application")
     // shared 模块 @Serializable 类 (Book/BookSource 等) 在桌面端展示需要序列化插件
@@ -188,6 +189,181 @@ val copyQuickjsNativeToResources by tasks.registering(Copy::class) {
     include("*.dll", "*.so", "*.dylib")
 }
 
+// ===== legado_smtc native 桥 (Windows SMTC, 纯 C + MinGW) =====
+// 背景: SMTC 集成从 JNA 手写 COM vtable 重构为 native C 桥 (官方 interop 路径 +
+// 严格 QI 回调 + timeline 节流), 见 desktop/src/main/cpp/smtc/smtc_bridge.c。
+// 构建/打包/加载链路照 quickjs buildJvmNativeLib 同模式 (cmake + MinGW 探测)。
+val smtcNativeDir = layout.buildDirectory.dir("libs/smtc/native").get().asFile
+val smtcNativeBuildDir = layout.buildDirectory.dir("intermediates/cmake-smtc").get().asFile
+val smtcCppDir = file("src/main/cpp/smtc")
+
+val buildSmtcNative by tasks.registering {
+    group = "native"
+    description = "Build legado_smtc native library (SMTC bridge) for desktop JVM"
+    inputs.dir(smtcCppDir)
+    outputs.file(
+        File(
+            smtcNativeDir,
+            if (OperatingSystem.current().isWindows) "legado_smtc.dll" else "liblegado_smtc.so"
+        )
+    )
+    doFirst {
+        val cmakeCmd = findCmakeExecutable()
+        if (cmakeCmd == null) {
+            logger.warn("[legado-smtc] cmake not found, skipping native build. SMTC unavailable.")
+            return@doFirst
+        }
+        smtcNativeDir.mkdirs()
+        smtcNativeBuildDir.mkdirs()
+
+        val isWindows = OperatingSystem.current().isWindows
+        var useMinGW = false
+        var mingwBinDir: String? = null
+        if (isWindows) {
+            val hasNmake = runCatching {
+                val p = ProcessBuilder("nmake", "/?").start()
+                p.waitFor()
+                p.exitValue() == 0
+            }.getOrDefault(false)
+            if (!hasNmake) {
+                mingwBinDir = findMingwBinDir()
+                if (mingwBinDir != null) {
+                    useMinGW = true
+                    logger.lifecycle("[legado-smtc] Using MinGW Makefiles: $mingwBinDir")
+                } else {
+                    logger.warn("[legado-smtc] No nmake/MSVC or MinGW found; cmake may fail.")
+                }
+            }
+        }
+
+        val configureCmd = mutableListOf(cmakeCmd)
+        if (useMinGW) {
+            configureCmd += listOf("-G", "MinGW Makefiles")
+        }
+        configureCmd += listOf(
+            "-S", smtcCppDir.absolutePath,
+            "-B", smtcNativeBuildDir.absolutePath,
+            "-DCMAKE_BUILD_TYPE=Release",
+            "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=" + smtcNativeDir.absolutePath,
+            "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=" + smtcNativeDir.absolutePath,
+        )
+        logger.lifecycle("[legado-smtc] cmake configure: ${configureCmd.joinToString(" ")}")
+        runCatching {
+            val cfg = ProcessBuilder(configureCmd)
+            if (useMinGW && mingwBinDir != null) {
+                cfg.environment().put(
+                    "PATH",
+                    mingwBinDir + File.pathSeparator + (cfg.environment()["PATH"] ?: "")
+                )
+            }
+            cfg.redirectErrorStream(true)
+            val p = cfg.start()
+            p.inputStream.bufferedReader().forEachLine { logger.lifecycle(it) }
+            p.waitFor()
+            if (p.exitValue() != 0) return@runCatching
+            val build = ProcessBuilder(
+                listOf(
+                    cmakeCmd,
+                    "--build",
+                    smtcNativeBuildDir.absolutePath,
+                    "--config",
+                    "Release"
+                )
+            )
+            if (useMinGW && mingwBinDir != null) {
+                build.environment().put(
+                    "PATH",
+                    mingwBinDir + File.pathSeparator + (build.environment()["PATH"] ?: "")
+                )
+            }
+            build.redirectErrorStream(true)
+            val b = build.start()
+            b.inputStream.bufferedReader().forEachLine { logger.lifecycle(it) }
+            b.waitFor()
+            if (b.exitValue() != 0) {
+                logger.warn("[legado-smtc] cmake build failed (exit=${b.exitValue()}).")
+            }
+        }.onFailure {
+            logger.warn("[legado-smtc] native build failed: ${it.message}")
+        }
+    }
+}
+
+fun findCmakeExecutable(): String? {
+    project.findProperty("legado.cmake.path")?.let {
+        if (File(it.toString()).exists()) return it.toString()
+    }
+    val cmakeOk = runCatching {
+        val p = ProcessBuilder("cmake", "--version").start()
+        p.waitFor()
+        p.exitValue() == 0
+    }.getOrDefault(false)
+    if (cmakeOk) return "cmake"
+    runCatching {
+        val props = Properties().apply {
+            val f = rootProject.file("local.properties")
+            if (f.exists()) f.inputStream().use { load(it) }
+        }
+        val sdkDir = props.getProperty("sdk.dir") ?: return null
+        val cmakeBase = File(sdkDir, "cmake")
+        if (cmakeBase.exists()) {
+            for (dir in cmakeBase.listFiles()!!.sortedByDescending { it.name }) {
+                val exe = File(dir, "bin/cmake.exe")
+                if (exe.exists()) return exe.absolutePath
+            }
+        }
+        null
+    }
+    return null
+}
+
+fun findMingwBinDir(): String? {
+    project.findProperty("legado.mingw.path")?.let {
+        if (File(it.toString(), "gcc.exe").exists()) return it.toString()
+    }
+    val gccOk = runCatching {
+        val p = ProcessBuilder("gcc", "--version").start()
+        p.waitFor()
+        p.exitValue() == 0
+    }.getOrDefault(false)
+    if (gccOk) {
+        runCatching {
+            val p = ProcessBuilder("where", "gcc").start()
+            val out =
+                p.inputStream.bufferedReader().readText().trim().lineSequence().firstOrNull() ?: ""
+            if (out.isNotEmpty() && File(out).exists()) return File(out).parent
+        }
+    }
+    runCatching {
+        val wingetBase =
+            File(System.getProperty("user.home"), "AppData/Local/Microsoft/WinGet/Packages")
+        if (wingetBase.exists()) {
+            for (pkg in wingetBase.listFiles()!!
+                .filter { it.name.lowercase().contains("llvm-mingw") }
+                .sortedByDescending { it.name }) {
+                for (sub in pkg.listFiles()!!.filter { it.isDirectory }) {
+                    val bin = File(sub, "bin")
+                    if (File(bin, "gcc.exe").exists()) return bin.absolutePath
+                }
+            }
+        }
+        null
+    }
+    return null
+}
+
+val copySmtcNativeToResources by tasks.registering(Copy::class) {
+    dependsOn(buildSmtcNative)
+    from(smtcNativeDir)
+    val osName = when {
+        OperatingSystem.current().isWindows -> "windows"
+        OperatingSystem.current().isMacOsX -> "macos"
+        else -> "linux"
+    }
+    into(file("${composeResourcesDir.path}/$osName"))
+    include("*.dll", "*.so", "*.dylib")
+}
+
 compose.desktop {
     application {
         mainClass = "io.legado.desktop.MainKt"
@@ -286,10 +462,14 @@ compose.desktop {
 afterEvaluate {
     tasks.named("run").configure {
         dependsOn(project(":modules:quickjs").tasks.named("buildJvmNativeLib"))
+        dependsOn(buildSmtcNative)
         // 开发期 run 注入 debug 标志: 让 shared printStackTraceOnDebug 对齐 Android 的
         // BuildConfig.DEBUG 语义 (仅开发打栈); 打包产物不带该属性 = 静默
         if (this is JavaExec) {
             systemProperty("legado.debug", "true")
+            // AppLog 的 write/debugPrint 走 desktopDebug 门控 (registerDesktopAppLogHost),
+            // 开发期 run 一并打开, 否则 shared/desktop 的 AppLog.put 全部静默 (排查时误判"无异常")
+            systemProperty("legado.desktop.debug", "true")
         }
     }
     // KP6: 打包 task 必须依赖 copyQuickjsNativeToResources, 确保 native 库先复制到
@@ -306,6 +486,7 @@ afterEvaluate {
         )
     }.configureEach {
         dependsOn(copyQuickjsNativeToResources)
+        dependsOn(copySmtcNativeToResources)
     }
 }
 

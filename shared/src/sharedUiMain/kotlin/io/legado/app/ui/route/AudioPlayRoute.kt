@@ -155,14 +155,14 @@ fun AudioPlayRoute(
     var showAddToShelfDialog by remember { mutableStateOf(false) }
 
     // 宽屏右侧面板 (评论/目录共用, 互斥显示): 窗口宽 ≥600dp 启用 (与主界面 NavRail 同阈值惯例),
-    // 面板宽 = 容器宽 × 0.3, 上限 AudioPlaySidePanelMaxWidth; 窄屏保持原版交互 (弹窗/全屏页)
+    // 面板宽 = 容器宽 × 0.35, 上限 AudioPlaySidePanelMaxWidth; 窄屏保持原版交互 (弹窗/全屏页)
     val windowInfo = LocalWindowInfo.current
     val density = LocalDensity.current
     val sidePanelWidth by remember(windowInfo, density) {
         derivedStateOf {
             val windowWidth = with(density) { windowInfo.containerSize.width.toDp() }
             if (windowWidth >= AudioPlaySidePanelMinWidth) {
-                (windowWidth * 0.3f).coerceAtMost(AudioPlaySidePanelMaxWidth)
+                (windowWidth * 0.35f).coerceAtMost(AudioPlaySidePanelMaxWidth)
             } else {
                 0.dp
             }
