@@ -16,12 +16,15 @@ import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.book.isNotShelf
+import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.help.toast.Toasters
+import io.legado.app.help.tts.IosReadAloudHost
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
@@ -48,8 +51,10 @@ import platform.UIKit.UIImageWriteToSavedPhotosAlbum
  * 结构对照 desktop `DesktopReaderPlatformProvider` (顶/底栏 UI 由 shared ReadMenuOverlay
  * 渲染, 此处只持有状态 + 导航回调); 差异仅 getBatteryLevel 用 UIDevice 真实电量。
  *
+ * 朗读已接入: 短按经 [IosReadAloudHost] (ReadAloudControllerShared) 启动/暂停/恢复,
+ * 长按弹共享朗读控制面板, 退出阅读页停朗读 (iOS 无后台控制面)。
+ *
  * # 不实现
- * - ReadAloud 短按: iOS 无前台 Service, 待 ReadAloudControllerShared 接入阅读页 (长按跳配置页)
  * - 沉浸式色彩: 纯色阅读背景时菜单栏跟随阅读背景色+文字色 (shared createReadMenuColors,
  *   同 desktop); 图片阅读背景/无窗口背景图时用 AppTheme 默认色
  */
@@ -115,9 +120,11 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
         IosTextActionMenu.dismiss()
     }
 
-    /** 阅读页退出: 收起浮动菜单, 避免残留 (对照原版 onDestroy → textActionMenu.dismiss)。 */
+    /** 阅读页退出: 收起浮动菜单 + 停朗读, 避免残留 (对照原版 onDestroy → textActionMenu.dismiss)。
+     *  iOS 无前台 Service/后台控制面, 离开阅读页即无朗读控制入口, 显式停止。 */
     override fun onExit(screenModel: ReaderScreenModel) {
         IosTextActionMenu.dismiss()
+        IosReadAloudHost.stop()
     }
 
     /**
@@ -246,6 +253,12 @@ object IosReaderPlatformProvider : ReaderPlatformProvider {
         val level = device.batteryLevel
         return if (level < 0f) -1 else (level * 100).toInt()
     }
+
+    /** 朗读控制桥: 长按面板动作落到 [IosReadAloudHost] + 偏好项 (对照 desktop DesktopReadAloudControls)。 */
+    override fun readAloudControls(
+        navigator: AppNavigator,
+        screenModel: ReaderScreenModel,
+    ): ReadAloudControls = IosReadAloudControls(navigator, screenModel)
 }
 
 private class IosReadMenuController(
@@ -570,11 +583,21 @@ private class IosReadMenuState(
         screenModel.postDialogEvent(ReaderDialogEvent.Toc)
     }
 
-    // TODO: 待 ReadAloudControllerShared 接入阅读页后启动朗读 (引擎已注册: IosSystemTtsEngine)
-    override fun clickReadAloud() = Unit
+    // 朗读短按: 停自动翻页后切换播放/暂停 (对照 app 端 AndroidReaderPlatformProvider.
+    // clickReadAloud 的 autoPageStop + 播放/暂停/恢复三态; 引擎经 TtsEngineProvider 注册:
+    // IosSystemTtsEngine / HttpTtsPlayer.ios.kt)
+    override fun clickReadAloud() {
+        // 对照原版 onClickReadAloud 第一行 autoPageStop
+        if (autoPage) clickAutoPage()
+        // viewModel.toggleReadAloud 内部按 isReadAloudRun/isReadAloudPause 分流:
+        // 未运行 → 从当前进度/可视区起点朗读, 暂停 → 恢复, 运行中 → 暂停
+        // (经 ReadBookPlatforms → IosReadBookPlatform → IosReadAloudHost)
+        screenModel.viewModel.toggleReadAloud()
+    }
 
+    // 朗读长按: 弹共享朗读控制面板 (面板动作经 IosReadAloudControls 落到 IosReadAloudHost)
     override fun longClickReadAloud() {
-        // 对照原版 朗读按钮长按 → ReadAloudDialog
+        // 对照原版 ReadAloudDialog 展示需要真实朗读态, 面板按钮全量可用
         screenModel.postDialogEvent(ReaderDialogEvent.ReadAloud)
     }
 
@@ -592,5 +615,75 @@ private class IosReadMenuState(
 
     override fun onRefresh() {
         screenModel.viewModel.refreshCurrentChapter()
+    }
+}
+
+/**
+ * iOS 端朗读控制桥: 面板动作落到 [IosReadAloudHost] + 偏好项。
+ *
+ * 语速/跟随系统/定时默认值直接读写 PreferKey (与原版 AppConfig 同 key),
+ * 对照 desktop `DesktopReadAloudControls`。
+ */
+private class IosReadAloudControls(
+    private val navigator: AppNavigator,
+    private val screenModel: ReaderScreenModel,
+) : ReadAloudControls {
+
+    private val prefs get() = PreferenceProviders.get()
+
+    override val isPlaying: Boolean get() = !IosReadAloudHost.isPause
+
+    override val timerMinute: Int
+        get() = IosReadAloudHost.timeMinute
+            .takeIf { it > 0 }
+            ?: prefs.getInt(PreferKey.ttsTimer, 0)
+
+    override val speechRate: Int get() = prefs.getInt(PreferKey.ttsSpeechRate, 5)
+
+    override val followSys: Boolean get() = prefs.getBoolean(PreferKey.ttsFollowSys, true)
+
+    override fun playPause() = IosReadAloudHost.toggle()
+
+    override fun stop() = IosReadAloudHost.stop()
+
+    override fun prevChapter() {
+        screenModel.viewModel.moveToPrevChapter()
+    }
+
+    override fun nextChapter() {
+        screenModel.viewModel.moveToNextChapter()
+    }
+
+    override fun prevParagraph() = IosReadAloudHost.prevParagraph()
+
+    override fun nextParagraph() = IosReadAloudHost.nextParagraph()
+
+    override fun setTimer(minute: Int) {
+        IosReadAloudHost.setTimer(minute)
+    }
+
+    override fun setSpeechRate(rate: Int) {
+        prefs.putInt(PreferKey.ttsSpeechRate, rate.coerceIn(0, 45))
+        IosReadAloudHost.setSpeechRate(rate)
+    }
+
+    override fun setFollowSys(follow: Boolean) {
+        prefs.putBoolean(PreferKey.ttsFollowSys, follow)
+        // 跟随系统时回落默认语速 (对照原版 AppConfig.speechRatePlay)
+        IosReadAloudHost.setSpeechRate(if (follow) 5 else speechRate)
+    }
+
+    override fun openChapterList() {
+        // 对照原版 朗读面板目录按钮 → TocDialog 底部弹窗
+        screenModel.postDialogEvent(ReaderDialogEvent.Toc)
+    }
+
+    override fun openSettings() {
+        // 对照原版 ReadAloudDialog 设置按钮 → ReadAloudConfigDialog
+        screenModel.postDialogEvent(ReaderDialogEvent.ReadAloudConfig)
+    }
+
+    override fun toBackstage() {
+        navigator.pop()
     }
 }

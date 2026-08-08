@@ -3,6 +3,7 @@ package io.legado.desktop.help
 import com.sun.jna.Function
 import com.sun.jna.Platform
 import com.sun.jna.Structure
+import io.legado.desktop.help.DesktopBattery.FALLBACK_LEVEL
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -20,16 +21,20 @@ import java.util.concurrent.TimeUnit
  * - **Windows**: JNA 直调 `kernel32!GetSystemPowerStatus` (Win32 API);
  * - **macOS**: 执行 `pmset -g batt` (Runtime.exec), 解析输出中的 `XX%` (2s 超时防卡死);
  * - **Linux**: 读 sysfs 标准接口 `/sys/class/power_supply/` 下 BAT* 的 capacity (0..100);
- * - **其他平台 / 任一渠道失败**: 返回 -1 —— 阅读页信息条不显示电量属正常降级。
-*
-* 电量变化不频繁, 结果带 10s TTL 缓存, 避免热路径反复执行进程 / 读文件。
-*
-* `BatteryLifePercent` 取值 0..100, 255 (0xFF) 表示未知 (交流供电且无电池时常见)。
-*/
+ * - **其他平台 / 任一渠道失败 / 无电池**: 回落 [FALLBACK_LEVEL] —— 桌面端台式机/AC 供电
+ *   无电池属常态, 阅读页电量槽位仍显示兜底值 (用户要求 2026-08-08: 桌面端电量恒显示)。
+ *
+ * 电量变化不频繁, 结果带 10s TTL 缓存, 避免热路径反复执行进程 / 读文件。
+ *
+ * `BatteryLifePercent` 取值 0..100, 255 (0xFF) 表示未知 (交流供电且无电池时常见)。
+ */
 object DesktopBattery {
 
     /** TTL 缓存时长 (毫秒): 电量无需实时刷新, 缓存避免频繁 spawn 进程 / 读 sysfs。 */
     private const val TTL_MS = 10_000L
+
+    /** 无电池 / 读取失败时的兜底电量 (台式机 AC 供电恒满电, 阅读页信息条恒显示电量)。 */
+    const val FALLBACK_LEVEL = 100
 
     @Volatile
     private var cachedAt = -1L
@@ -37,7 +42,7 @@ object DesktopBattery {
     @Volatile
     private var cachedLevel = -1
 
-    /** 当前电池剩余百分比 0..100; 未知 / 调用失败返回 -1 (调用方隐藏电量)。 */
+    /** 当前电池剩余百分比 0..100; 无电池 / 读取失败时回落 [FALLBACK_LEVEL] (信息条恒显示)。 */
     fun getBatteryLevel(): Int {
         val now = System.currentTimeMillis()
         if (cachedAt != -1L && now - cachedAt < TTL_MS) return cachedLevel
@@ -47,9 +52,9 @@ object DesktopBattery {
             Platform.isLinux() -> readLinuxBattery()
             else -> -1
         }
-        cachedLevel = level
+        cachedLevel = if (level in 0..100) level else FALLBACK_LEVEL
         cachedAt = now
-        return level
+        return cachedLevel
     }
 
     /** Windows: JNA 直调 `kernel32!GetSystemPowerStatus`, 读 [SystemPowerStatus] 的电池百分比。 */

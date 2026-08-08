@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -31,10 +30,12 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.help.config.LocalReadConfigProviders
@@ -95,8 +96,12 @@ import io.legado.app.utils.systemCurrentTimeMillis
  *   当前页一致 (正文区顶 = 页眉底, 滚动偏移折算基于同一坐标基准)。
  * @param selection 页内文字选择状态, 透传给 [PageContentCanvas] (绘制块内订阅 tick 重绘)
  * @param onHeaderMeasured 页眉实际测量高度回调 (px, 布局占位子节点 onSizeChanged):
- *   单一来源——排版视口扣除与滚动连排占位都读它, 无独立预留公式
+ *   单一来源——滚动连排占位与坐标折算读它, 无独立预留公式
  * @param onFooterMeasured 页脚实际测量高度回调 (px), 同上
+ * @param onTextAreaMeasured 正文区实测尺寸回调 (px, 布局占位子节点 onSizeChanged):
+ *   排版视口单一来源——正文区已被系统栏 inset + 页眉/页脚约束, 尺寸即原版
+ *   contentTextView.onSizeChanged 的实测值; 仅 [showChrome]=true 的完整页上报
+ *   (滚动模式下一页 showChrome=false, 页眉为占位、无页脚, 尺寸与当前页不一致)
  * @param headerPlaceholderPx 页眉高度占位 (px, 来自同一测量单一来源): 仅 [showChrome]=false
  *   时生效, 滚动模式下一页连排用
  */
@@ -114,6 +119,7 @@ fun PageViewComposable(
     selection: PageSelectionState? = null,
     onHeaderMeasured: ((Int) -> Unit)? = null,
     onFooterMeasured: ((Int) -> Unit)? = null,
+    onTextAreaMeasured: ((IntSize) -> Unit)? = null,
     headerPlaceholderPx: Int = 0,
 ) {
     val providers = LocalReadConfigProviders.current
@@ -219,14 +225,18 @@ fun PageViewComposable(
             }
 
             // 正文区：剩余空间（weight 1f）。页眉/页脚是布局占位子节点，正文实际高度
-            // 由布局系统测量（= 容器高 − 页眉实测 − 页脚实测），排版视口
-            // （buildLayoutConfig viewHeight）以同一实测值为单一来源——同一布局系统
-            // 同帧适配，正文末行与页脚顶边间隔恒为 paddingBottom 配置，永不重叠
-            // （对照原版 contentTextView 被约束在两条分割线之间）。
+            // 由布局系统测量（= 容器高 − 页眉实测 − 页脚实测）。排版视口单一来源：
+            // 本 Box 实测尺寸经 onTextAreaMeasured 上报 ReaderRoute，直接作为
+            // buildLayoutConfig 的 viewWidth/viewHeight（对照原版
+            // ContentTextView.onSizeChanged → ChapterProvider.upViewSize）——同一布局系统
+            // 同帧适配，正文末行与页脚顶边间隔恒为 paddingBottom 配置，永不重叠。
+            // 仅完整页（showChrome=true）上报：滚动模式下一页 showChrome=false，页眉为
+            // 占位、无页脚，尺寸与当前页不一致。
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .onSizeChanged { if (showChrome) onTextAreaMeasured?.invoke(it) }
             ) {
                 if (contentTranslationY != null) {
                     // 滚动模式: 正文固定视口裁剪 + 行级平移 (对照旧 canvas.clipRect(visibleRect) +

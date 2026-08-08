@@ -19,6 +19,7 @@ import io.legado.app.help.openURL
 import io.legado.app.help.source.OhosCheckSource
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.Debug
+import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
@@ -55,9 +56,12 @@ object OhosPlatformCapabilities : PlatformCapabilities {
     private val prefs get() = PreferenceProviders.get()
     private val services get() = PlatformServiceProviders.getOrNull()
 
-    // 鸿蒙由系统统一管理应用生命周期, 无 Activity.finish 等价物 (对照 iOS 同为 no-op);
-    // 退出应用能力暂未实现, 显式 TODO 标注 (禁止静默 no-op 占位)
-    override fun exitApplication() = TODO("鸿蒙退出应用暂未实现")
+    // 鸿蒙由系统统一管理应用生命周期, 无 Activity.finish 等价物;
+    // 退出经 OhosNativeBridge.exitApplication → window tsfn → ArkTS UIAbilityContext.terminateSelf()
+    // (复用 window 桥, action="exitApplication", 见 EntryAbility onWindowStageCreate 的 window callback)
+    override fun exitApplication() {
+        OhosNativeBridge.exitApplication()
+    }
 
     override fun openExternalUrl(url: String) {
         openURL(url)

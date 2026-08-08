@@ -3,6 +3,7 @@ package io.legado.desktop.help
 import io.legado.app.help.FileCacheProvider
 import io.legado.app.help.FileCacheProviders
 import io.legado.app.help.file.AppFilesDirs
+import io.legado.app.utils.ACacheBase
 import java.io.File
 
 /**
@@ -19,8 +20,10 @@ import java.io.File
  *   {java.io.tmpdir}/legado/cache, 隔离 file_cache 子目录避免与其他 cache 使用方冲突)
  * - 文件名: `key.hashCode()` (与 app 端 ACache.ACacheManager.newFile 一致, key 可含任意字符)
  *
- * # TTL
- * 复用 app 端 ACache.Utils 的内嵌日期头格式 (`<13位毫秒>-<存活秒数> ` + 数据),
+ * # 实现
+ * 复用 shared [ACacheBase] (ACache 的纯 JDK 部分), 与 [io.legado.desktop.help.source]
+ * 的 DesktopExploreKindsCacheProvider 同模式: 目录注入改为薄子类 [DesktopFileACache]。
+ * 日期头编解码 / isDue 过期判断 / clearDateInfo 由 ACacheBase 内部 Utils 提供,
  * 文件格式与 app 端 ACache 完全一致, 行为可预期:
  * - saveTime = 0: 直接存原始数据, 永不过期
  * - saveTime > 0: 存 `createDateInfo(saveTime) + 数据`, 读取时校验过期则删除文件并返回 null
@@ -39,109 +42,37 @@ object DesktopFileCacheProvider : FileCacheProvider {
         File(AppFilesDirs.get().filesDir, "file_cache").apply { mkdirs() }
     }
 
+    /** 易失缓存 (cacheDir), 清缓存会被清除。 */
+    private val cache by lazy { DesktopFileACache(cacheDir) }
+
+    /** 持久缓存 (filesDir), 清缓存不受影响。 */
+    private val filesCache by lazy { DesktopFileACache(filesDir) }
+
+    private fun aCache(persistent: Boolean) = if (persistent) filesCache else cache
+
     override fun put(key: String, value: String, saveTime: Int, persistent: Boolean) {
-        val data = if (saveTime == 0) value else createDateInfo(saveTime) + value
-        putBytes(key, data.toByteArray(Charsets.UTF_8), persistent)
+        aCache(persistent).put(key, value, saveTime)
     }
 
-    override fun getAsString(key: String, persistent: Boolean): String? {
-        val bytes = getBytes(key, persistent) ?: return null
-        return clearDateInfo(bytes).toString(Charsets.UTF_8)
-    }
+    override fun getAsString(key: String, persistent: Boolean): String? =
+        aCache(persistent).getAsString(key)
 
     override fun put(key: String, value: ByteArray, saveTime: Int, persistent: Boolean) {
-        val data = if (saveTime == 0) value else {
-            val header = createDateInfo(saveTime).toByteArray(Charsets.UTF_8)
-            ByteArray(header.size + value.size).also { ret ->
-                System.arraycopy(header, 0, ret, 0, header.size)
-                System.arraycopy(value, 0, ret, header.size, value.size)
-            }
-        }
-        putBytes(key, data, persistent)
+        aCache(persistent).put(key, value, saveTime)
     }
 
-    override fun getAsBinary(key: String, persistent: Boolean): ByteArray? {
-        val bytes = getBytes(key, persistent) ?: return null
-        return clearDateInfo(bytes)
-    }
+    override fun getAsBinary(key: String, persistent: Boolean): ByteArray? =
+        aCache(persistent).getAsBinary(key)
 
     override fun remove(key: String, persistent: Boolean) {
-        runCatching { file(key, persistent).delete() }
-    }
-
-    private fun putBytes(key: String, data: ByteArray, persistent: Boolean) {
-        runCatching { file(key, persistent).writeBytes(data) }
-    }
-
-    /** 读取原始字节 (含日期头), 不存在/已过期/读取失败返回 null。 */
-    private fun getBytes(key: String, persistent: Boolean): ByteArray? {
-        val file = file(key, persistent)
-        if (!file.exists()) return null
-        return try {
-            val bytes = file.readBytes()
-            if (isDue(bytes)) {
-                runCatching { file.delete() }
-                null
-            } else {
-                bytes
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    private fun file(key: String, persistent: Boolean): File =
-        File(if (persistent) filesDir else cacheDir, key.hashCode().toString())
-
-    // ---- ACache 兼容的日期头格式 (与 app 端 ACache.Utils 一致, 保证两端文件格式相同) ----
-
-    private const val separator = ' '
-
-    private fun createDateInfo(second: Int): String {
-        // 13 位零填充毫秒时间戳 + "-" + 存活秒数 + 分隔符
-        val currentTime = StringBuilder(System.currentTimeMillis().toString())
-        while (currentTime.length < 13) {
-            currentTime.insert(0, "0")
-        }
-        return "$currentTime-$second$separator"
-    }
-
-    private fun isDue(data: ByteArray): Boolean {
-        val info = getDateInfo(data) ?: return false
-        if (info.size != 2) return false
-        return try {
-            val saveTime = info[0].toLong()
-            val deleteAfter = info[1].toLong()
-            System.currentTimeMillis() > saveTime + deleteAfter * 1000
-        } catch (e: Exception) {
-            false
-        }
-    }
-
-    private fun clearDateInfo(data: ByteArray): ByteArray {
-        if (!hasDateInfo(data)) return data
-        val sepIdx = indexOf(data, separator)
-        return if (sepIdx < 0) data else data.copyOfRange(sepIdx + 1, data.size)
-    }
-
-    private fun hasDateInfo(data: ByteArray): Boolean {
-        return data.size > 15 && data[13] == '-'.code.toByte() && indexOf(data, separator) > 14
-    }
-
-    private fun getDateInfo(data: ByteArray): Array<String>? {
-        if (!hasDateInfo(data)) return null
-        val saveDate = String(data.copyOfRange(0, 13))
-        val deleteAfter = String(data.copyOfRange(14, indexOf(data, separator)))
-        return arrayOf(saveDate, deleteAfter)
-    }
-
-    private fun indexOf(data: ByteArray, c: Char): Int {
-        for (i in data.indices) {
-            if (data[i] == c.code.toByte()) return i
-        }
-        return -1
+        aCache(persistent).remove(key)
     }
 }
+
+/** [ACacheBase] 构造器是 protected, 桌面端开一个薄子类接管目录 (对照 app 端 ACache)。 */
+private class DesktopFileACache(cacheDir: File) : ACacheBase(
+    cacheDir, ACacheBase.MAX_SIZE.toLong(), ACacheBase.MAX_COUNT
+)
 
 /**
  * 注册 desktop 端 [FileCacheProvider] 到 commonMain 的 [FileCacheProviders]。

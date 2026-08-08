@@ -77,8 +77,7 @@ import java.io.File
  *   grayEnabled 用灰度 ColorMatrix (对照 app 端 Coil3 灰度变换)
  * - toggle/update*: 写回 [PreferenceProviders] 同 key (与 app 端 AppConfig = value 等价)
  * - getBatteryLevel: Windows 经 kernel32 (JNA) / macOS 经 `pmset -g batt` /
- *   Linux 经 sysfs BAT/
-capacity 读真实电量, 失败 -1 (信息条不显示电量, 正常降级)
+ *   Linux 经 sysfs BAT/capacity 读真实电量, 无电池/失败回落 100 (信息条恒显示电量)
  * - saveImage: 本地缓存 → 本地书 FileBook → 按书源下载, 写入 destPath
  */
 object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
@@ -108,7 +107,7 @@ object DesktopMangaReaderPlatform : MangaReaderScreenModel.Platform {
             }.getOrNull() ?: MangaFooterConfig(),
         )
 
-    // Windows 经 kernel32 GetSystemPowerStatus 读真实电量; 其他平台 -1 (信息条不显示)
+    // Windows 经 kernel32 GetSystemPowerStatus 读真实电量; 无电池/失败回落 100 (信息条恒显示)
     override fun getBatteryLevel(): Int = DesktopBattery.getBatteryLevel()
 
     override fun toggleHorizontal(): Boolean {

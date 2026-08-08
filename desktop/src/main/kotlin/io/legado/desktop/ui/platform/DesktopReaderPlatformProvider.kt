@@ -84,8 +84,7 @@ import kotlin.math.roundToInt
  * 对照 app 端 [io.legado.app.ui.book.read.AndroidReaderPlatformProvider]:
  * - createMenuController: 返回真实 [DesktopReadMenuController] (visibleState 可切, 非恒 false)
  * - getBatteryLevel: Windows 经 kernel32 (JNA) / macOS 经 `pmset -g batt` /
- *   Linux 经 sysfs BAT/
-capacity 读真实电量, 失败 -1 (信息条不显示电量, 正常降级)
+ *   Linux 经 sysfs BAT/capacity 读真实电量, 无电池/失败回落 100 (信息条恒显示电量)
  * - 顶/底栏菜单 UI 由 shared [io.legado.app.ui.book.read.ReadMenuOverlay] 渲染, 此处只持有状态
  * - 导航回调 (clickCatalog/clickSearch/clickFont/clickSetting 等) 经 [AppNavigator] 跳 shared Route
  * - 章节导航 (clickPre/clickNext/onSeekStop) 委托 [ReaderScreenModel.viewModel]

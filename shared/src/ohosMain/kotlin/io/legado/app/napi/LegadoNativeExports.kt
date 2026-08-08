@@ -13,9 +13,13 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.registerOhosProviders
+import io.legado.app.help.image.ohosDownloadImageBytes
+import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.book.manga.OhosMangaReaderPlatform
 import io.legado.app.ui.explore.ExploreViewModelShared
+import io.legado.app.ui.root.AppNavigatorProviders
+import io.legado.app.ui.root.AppRoute
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.MD5Utils
@@ -49,6 +53,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
+import kotlin.io.encoding.Base64
 import kotlin.native.CName
 
 /**
@@ -460,31 +465,55 @@ object LegadoNativeExports {
     }
 
     /**
-     * 打开发现源详情/书籍列表 (跳转 ExploreShow)。
+     * 打开发现源详情/书籍列表 (跳转 shared ExploreShow)。
      *
-     * # stub no-op
-     * 页面跳转属 ArkTS 路由范畴, Kotlin 侧无 ArkTS 路由 API 访问能力 (与 showToast 走 tsfn 不同,
-     * 路由跳转需在 ArkTS 主线程同步执行, tsfn 异步 dispatch 反而带来时序问题)。
-     * 本函数仅满足 napi 三件套契约, 实际导航应由 ArkTS 端直接调 router.pushUrl 完成。
+     * # 实现 (替代原 stub no-op)
+     * 鸿蒙整体 UI 由 shared Compose 渲染 (LegadoApp/RouteContent), 发现页 ExploreShowRoute 已注册
+     * (AppRoute.ExploreShow → ExploreShowRoute → shared ExploreShowScreen)。本函数按 sourceUrl 查
+     * 书源后经 [AppNavigatorProviders] push 路由, 由 shared 直接导航, 无需 ArkTS 页面。
+     *
+     * # 线程
+     * 经 napi 在 JS 主线程调用, 内部 runBlocking 查本地 DB (快速), push 亦在主线程
+     * (与 OhosReaderPlatformProvider.onTextAction 直接 push 同线程语义)。
+     *
+     * # 失败兜底
+     * provider 未注册 / 书源不存在 / AppNavigator 未注册时静默 no-op。
      *
      * @param sourceUrl 书源 URL (UTF-8 C 字符串)
      * @param exploreUrl 发现分类 URL (UTF-8 C 字符串, 可为空)
      */
     @CName("legado_open_explore")
     fun openExplore(sourceUrl: CPointer<ByteVar>, exploreUrl: CPointer<ByteVar>) {
-        // stub no-op: ArkTS 端应直接处理导航, 不经 napi 往返
+        val sourceUrlStr = sourceUrl.toKString()
+        val exploreUrlStr = exploreUrl.toKString()
+        runCatching {
+            val source = runBlocking {
+                AppDbProviders.get().bookSourceDao.getBookSource(sourceUrlStr)
+            } ?: return
+            AppNavigatorProviders.getOrNull()?.push(
+                AppRoute.ExploreShow(
+                    source = source,
+                    title = source.bookSourceName,
+                    exploreUrl = exploreUrlStr.ifEmpty { null },
+                )
+            )
+        }
     }
 
     /**
-     * 编辑书源 (跳转 BookSourceEdit)。
+     * 编辑书源 (跳转 shared BookSourceEdit)。
      *
-     * 同 [openExplore], stub no-op (页面跳转属 ArkTS 路由范畴)。
+     * 同 [openExplore], 经 [AppNavigatorProviders] push AppRoute.BookSourceEdit,
+     * 由 shared RouteContent 渲染 BookSourceEditScreen (不再 stub no-op)。
      *
      * @param sourceUrl 书源 URL (UTF-8 C 字符串)
      */
     @CName("legado_edit_explore_source")
     fun editExploreSource(sourceUrl: CPointer<ByteVar>) {
-        // stub no-op: ArkTS 端应直接处理导航, 不经 napi 往返
+        val sourceUrlStr = sourceUrl.toKString()
+        runCatching {
+            AppNavigatorProviders.getOrNull()?.push(AppRoute.BookSourceEdit(sourceUrlStr))
+        }
     }
 
     /**
@@ -1245,6 +1274,45 @@ object LegadoNativeExports {
     @CName("legado_permission_callback")
     fun permissionCallback(requestId: Long, result: CPointer<ByteVar>) {
         OhosNativeBridge.onPermissionResult(requestId, result.toKString())
+    }
+
+    // ===== 图片下载管线导出 (ArkTS 保存到相册复用, 带书源 header 防盗链) =====
+
+    /**
+     * 下载图片字节并返回 base64 (ArkTS 保存到相册用, 复用 shared 下载管线)。
+     *
+     * # 与 ArkTS 裸 @ohos.net.http 下载的差异
+     * ArkTS 侧拿不到书源 header (防盗链 Referer/Cookie/解密 JS 在 K/N 侧),
+     * 裸下载防盗链图片会失败。本函数复用 [io.legado.app.help.image.ohosDownloadImageBytes]
+     * (AnalyzeUrlCore 带书源 header/cookie/charset/JS + ImageUtils.decode 解密), 返回 base64
+     * 字符串供 ArkTS 侧解码后写入相册 (photoAccessHelper 仅 ArkTS 可用)。
+     *
+     * # 线程约束
+     * 内部 [runBlocking] 把 suspend 下载转同步, 且下载内部走 HTTP 桥 (invokeHttpSync → tsfn
+     * → ArkTS 主线程处理回调)。调用方必须在 **非主线程** (ArkTS TaskPool/Worker) 调用,
+     * 否则主线程被 runBlocking 阻塞, tsfn 回调无法处理 → 死锁超时。
+     *
+     * # 失败兜底
+     * 未注册 provider / 下载失败 / 解密失败时返回空字符串 (ArkTS 侧回退裸下载或 toast)。
+     *
+     * @param url 图片地址 (UTF-8 C 字符串)
+     * @return UTF-8 C 字符串, base64 编码的图片字节; 失败时为空串
+     */
+    @CName("legado_download_image_bytes")
+    fun downloadImageBytes(url: CPointer<ByteVar>): CPointer<ByteVar> {
+        val urlStr = url.toKString()
+        val result = runCatching {
+            // 当前阅读书的书源 (防盗链 header 来源); 无活动阅读书时按无书源裸 GET 降级
+            val book = ActiveReadBookRegistry.current?.bookValue
+            val source = book?.let {
+                runBlocking { AppDbProviders.get().bookSourceDao.getBookSource(it.origin) }
+            }
+            val bytes = runBlocking {
+                ohosDownloadImageBytes(urlStr, book, source)
+            } ?: return@runCatching ""
+            Base64.encode(bytes)
+        }.getOrNull() ?: ""
+        return allocateCString(result)
     }
 
     // ===== 外部启动请求投递 (ArkTS → Kotlin, 同 legado_handle_deep_link 模式) =====

@@ -14,6 +14,7 @@ import io.legado.app.help.book.registerNativeBookImageStorage
 import io.legado.app.help.book.registerNativeContentProcessorAccessor
 import io.legado.app.help.book.registerNativeLocalBookLocator
 import io.legado.app.help.file.registerOhosAppFilesDir
+import io.legado.app.help.log.registerOhosAppLogHost
 import io.legado.app.help.file.registerNativeFileDownloader
 import io.legado.app.help.image.OhosBitmapProvider
 import io.legado.app.help.image.registerOhosBookImageLoader
@@ -117,6 +118,10 @@ fun registerOhosProviders() {
 
     // 1. 文件系统目录 (其他 provider 持久化依赖)
     registerOhosAppFilesDir()
+
+    // 1.1 AppLog 宿主 (崩溃日志落盘到 {filesDir}/logs, 供 CrashLogProvider 收集;
+    // 须在 AppFilesDirs 之后 (日志目录从 filesDir 派生)、任何 AppLog.put 之前)
+    registerOhosAppLogHost()
 
     // 2. 配置 provider (PreferenceProvider -> AppConfigAccessor)
     registerOhosPreferenceProvider()

@@ -210,7 +210,13 @@ private fun ImageBitmap.downscaled(maxDim: Int): ImageBitmap {
     val nh = (height * scale).toInt().coerceAtLeast(1)
     val out = ImageBitmap(nw, nh)
     val canvas = Canvas(out)
-    canvas.drawImage(this, dstOffset = IntOffset.Zero, dstSize = IntSize(nw, nh))
+    canvas.drawImageRect(
+        image = this,
+        srcOffset = IntOffset.Zero,
+        srcSize = IntSize(width, height),
+        dstOffset = IntOffset.Zero,
+        dstSize = IntSize(nw, nh),
+    )
     return out
 }
 

@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.unit.IntSize
 import io.legado.app.ui.book.read.page.ReadViewComposable
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import kotlinx.coroutines.flow.StateFlow
@@ -90,7 +91,7 @@ fun ReaderScreen(
     actions: ReaderUiActions,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
-    onTipMeasured: ((Int, Int) -> Unit)? = null,
+    onTextAreaMeasured: ((IntSize) -> Unit)? = null,
 ) {
     val batteryLevel by state.batteryLevel.collectAsState()
     val clockText by state.clockText.collectAsState()
@@ -118,7 +119,7 @@ fun ReaderScreen(
                 )
             },
             menuVisible = { state.menuState.isVisible },
-            onTipMeasured = onTipMeasured,
+            onTextAreaMeasured = onTextAreaMeasured,
         )
         ReadMenuOverlay(state = state.menuState)
     }

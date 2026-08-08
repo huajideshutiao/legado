@@ -38,7 +38,8 @@ import buffer from '@ohos.buffer';
  * httpCallback(requestId, resultJson, bodyArrayBuffer)
  * ```
  * - 成功: `{ ok: true, code: <number>, message: "<string>", headers: [{"name":"<string>","value":"<string>"}] }`
- *   (body 走第三参数 ArrayBuffer 裸传, 不经 base64)
+ *   (message 置空串: 状态文本纯映射已下沉到 K/N KmpHttpTypes.ohos.kt ohosStatusText, 见 handleExecute;
+ *   body 走第三参数 ArrayBuffer 裸传, 不经 base64)
  * - 失败: `{ ok: false, error: "<string>" }` (无 body)
  *
  * # 设计说明
@@ -205,10 +206,13 @@ async function handleExecute(
       const b = buffer.from(String(result), 'utf-8');
       respBody = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
     }
+    // message (HTTP reason phrase) 不再在此计算: 纯映射已下沉到 K/N 唯一一份
+    // (KmpHttpTypes.ohos.kt ohosStatusText), 此处置空串, K/N executeOnce 按 code 计算
+    // (对齐 OkHttp Response.message 语义, 消除双份维护)。
     const resp: HttpResponse = {
       ok: true,
       code: data.responseCode,
-      message: statusText(data.responseCode),
+      message: '',
       headers: headerMapToList(data.header),
     };
     callback(requestId, JSON.stringify(resp), respBody);
@@ -266,7 +270,10 @@ function buildHeaderMap(headers: HttpHeader[], contentType?: string): Record<str
 }
 
 // 响应 header (object/Record) → HttpHeader[] (扁平化)
-// Set-Cookie 多值保持独立 (RFC 6265: 不能用逗号合并); 其他多值 header 仍可逗号合并 (RFC 7230)
+// Set-Cookie 多值保持独立 (RFC 6265: 不能用逗号合并); 其他多值 header 仍可逗号合并 (RFC 7230)。
+// 注: 本函数是把 @ohos.net.http 的原始 header 形态转成 K/N 协议扁平列表的 OS 适配层,
+// 规则 (Set-Cookie 拆分 / 逗号合并) 仅此处一份; K/N 侧 (KmpHttpTypes.ohos.kt executeOnce)
+// 再按 name 分组回 Map, 两侧职责互补, 无重复维护。
 function headerMapToList(header: object | undefined): HttpHeader[] {
   const list: HttpHeader[] = [];
   if (header == null) return list;
@@ -286,24 +293,4 @@ function headerMapToList(header: object | undefined): HttpHeader[] {
     }
   }
   return list;
-}
-
-// HTTP 状态码 → 状态文本 (与 OkHttp Response.message 行为对齐, 仅常见状态码)
-function statusText(code: number): string {
-  switch (code) {
-    case 200: return 'OK';
-    case 201: return 'Created';
-    case 204: return 'No Content';
-    case 301: return 'Moved Permanently';
-    case 302: return 'Found';
-    case 304: return 'Not Modified';
-    case 400: return 'Bad Request';
-    case 401: return 'Unauthorized';
-    case 403: return 'Forbidden';
-    case 404: return 'Not Found';
-    case 500: return 'Internal Server Error';
-    case 502: return 'Bad Gateway';
-    case 503: return 'Service Unavailable';
-    default: return code >= 200 && code < 300 ? 'OK' : '';
-  }
 }

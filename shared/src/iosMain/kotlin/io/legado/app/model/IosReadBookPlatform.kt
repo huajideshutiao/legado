@@ -3,26 +3,29 @@ package io.legado.app.model
 import io.legado.app.help.image.DecodedBitmapCache
 import io.legado.app.help.image.iosCoilImageLoader
 import io.legado.app.help.service.IosBackgroundTasks
+import io.legado.app.help.tts.IosReadAloudHost
 import io.legado.app.model.fileBook.TextFile
 
 /**
- * iOS 端 [ReadBookPlatform]: 图片/分章缓存走真实实现, 朗读与缓存服务运行态暂缺。
+ * iOS 端 [ReadBookPlatform]: 图片/分章缓存走真实实现, 朗读桥接
+ * [IosReadAloudHost] (ReadAloudControllerShared + AVSpeechSynthesizer/AVPlayer)。
  *
- * 对照 app 端 `AndroidReadBookPlatform`; iOS 无前台 Service, 朗读钩子留待
- * [io.legado.app.service.ReadAloudControllerShared] 接入阅读页后补齐。
+ * 对照 app 端 `AndroidReadBookPlatform`; iOS 无前台 Service, 朗读在进程内编排,
+ * 语义对齐 app 端 `BaseReadAloudService.isRun/pause` + `ReadAloud.play/pause`。
  */
 private object IosReadBookPlatform : ReadBookPlatform {
 
-    // TODO: 接入 ReadAloudControllerShared 后返回真实朗读状态 (当前恒非运行态)
-    override val isReadAloudRun: Boolean get() = false
+    override val isReadAloudRun: Boolean get() = IosReadAloudHost.isRun
 
-    override val isReadAloudPause: Boolean get() = true
+    override val isReadAloudPause: Boolean get() = IosReadAloudHost.isPause
 
-    // TODO: 接入 ReadAloudControllerShared.start/resume
-    override fun playReadAloud(play: Boolean, startPos: Int) = Unit
+    override fun playReadAloud(play: Boolean, startPos: Int) {
+        IosReadAloudHost.play(play, startPos)
+    }
 
-    // TODO: 接入 ReadAloudControllerShared.pause
-    override fun pauseReadAloud() = Unit
+    override fun pauseReadAloud() {
+        IosReadAloudHost.pause()
+    }
 
     // iOS 无 CacheBookService, 运行态取 IosBackgroundTasks 的调度/后台任务标记
     override val isCacheBookServiceRun: Boolean get() = IosBackgroundTasks.isCacheBookRunning

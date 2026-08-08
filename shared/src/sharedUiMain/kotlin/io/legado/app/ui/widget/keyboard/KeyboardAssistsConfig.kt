@@ -71,7 +71,7 @@ internal fun KeyboardAssistsConfigOverlayContent(overlay: AppOverlay.Dialog, nav
 
     LaunchedEffect(overlay.key) {
         AppDbProviders.get().keyboardAssistsDao.flowAll.catch {
-            AppLog.put("辅助按键配置获取数据失败\n${it.localizedMessage}", it)
+            AppLog.put("辅助按键配置获取数据失败\n${it.message}", it)
         }.flowOn(IoDispatcher).collect {
             items.clear()
             items.addAll(it)

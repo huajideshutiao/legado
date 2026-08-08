@@ -68,6 +68,10 @@ internal data class HttpRequestPayload(
 internal data class HttpResponsePayload(
     val ok: Boolean,
     val code: Int = 0,
+    /**
+     * 状态文本 (HTTP reason phrase)。ArkTS 侧不再填 (纯映射下沉到 K/N [ohosStatusText]);
+     * 本字段保留默认空串兼容旧协议, [OhosKmpCall.executeOnce] 空串时按 [code] 计算。
+     */
     val message: String = "",
     val headers: List<HttpHeader> = emptyList(),
     val error: String? = null
@@ -509,7 +513,10 @@ internal class OhosKmpCall(
         val respBody = reply.bytes ?: ByteArray(0)
         val contentType = resp.headers.firstOrNull { it.name.equals("Content-Type", true) }?.value
         val headersMap = resp.headers.groupBy({ it.name }, { it.value })
-        return KmpResponse(resp.code, resp.message, headersMap, respBody, contentType, prepared)
+        // 状态文本 (HTTP reason phrase): ArkTS 侧不再填 (纯映射下沉到 K/N 一份, 见 [ohosStatusText]),
+        // 空串按 code 计算 (与 OkHttp Response.message 语义对齐)
+        val message = resp.message.ifEmpty { ohosStatusText(resp.code) }
+        return KmpResponse(resp.code, message, headersMap, respBody, contentType, prepared)
     }
 
     private fun Exception.isRetryableTransportError(): Boolean {
@@ -744,4 +751,64 @@ private fun KmpRequest.prepareForSend(): KmpRequest {
 
 /** 默认超时 (对齐 Android HttpHelper: connect/read/write/call 均 15s) */
 private const val DEFAULT_TIMEOUT_MS = 15_000L
+
+/**
+ * HTTP 状态码 → 状态文本 (HTTP reason phrase, 对齐 OkHttp Response.message 语义)。
+ *
+ * # 单一来源 (纯映射下沉)
+ * 原 ArkTS HttpBridgeHandler.statusText 与 K/N 双份维护 → 归一化到本函数 (K/N 唯一一份);
+ * ArkTS 侧不再计算 message (HttpResponsePayload.message 恒空串, 见 [executeOnce] 计算点)。
+ * 与 OkHttp 同语义: 仅常见状态码有映射, 2xx 兜底 "OK", 其余返回空串。
+ */
+private fun ohosStatusText(code: Int): String {
+    return when (code) {
+        200 -> "OK"
+        201 -> "Created"
+        202 -> "Accepted"
+        204 -> "No Content"
+        206 -> "Partial Content"
+        301 -> "Moved Permanently"
+        302 -> "Found"
+        303 -> "See Other"
+        304 -> "Not Modified"
+        307 -> "Temporary Redirect"
+        400 -> "Bad Request"
+        401 -> "Unauthorized"
+        402 -> "Payment Required"
+        403 -> "Forbidden"
+        404 -> "Not Found"
+        405 -> "Method Not Allowed"
+        406 -> "Not Acceptable"
+        408 -> "Request Timeout"
+        409 -> "Conflict"
+        410 -> "Gone"
+        411 -> "Length Required"
+        412 -> "Precondition Failed"
+        413 -> "Payload Too Large"
+        414 -> "URI Too Long"
+        415 -> "Unsupported Media Type"
+        416 -> "Range Not Satisfiable"
+        417 -> "Expectation Failed"
+        418 -> "I'm a teapot"
+        421 -> "Misdirected Request"
+        422 -> "Unprocessable Entity"
+        426 -> "Upgrade Required"
+        428 -> "Precondition Required"
+        429 -> "Too Many Requests"
+        431 -> "Request Header Fields Too Large"
+        451 -> "Unavailable For Legal Reasons"
+        500 -> "Internal Server Error"
+        501 -> "Not Implemented"
+        502 -> "Bad Gateway"
+        503 -> "Service Unavailable"
+        504 -> "Gateway Timeout"
+        505 -> "HTTP Version Not Supported"
+        506 -> "Variant Also Negotiates"
+        507 -> "Insufficient Storage"
+        508 -> "Loop Detected"
+        510 -> "Not Extended"
+        511 -> "Network Authentication Required"
+        else -> if (code in 200..299) "OK" else ""
+    }
+}
 // endregion

@@ -91,6 +91,10 @@ import kotlin.math.min
  * @param layoutConfig 排版几何 / 字号配置初值；UI 层取到真实窗口尺寸 / ReadBookConfig 后
  *   调 [updateLayoutConfig] 覆盖，默认 [LayoutConfig.DEFAULT] 仅作无注入时的兜底
  */
+
+/** 高度-only 排版变化去抖窗口（ms），对照原版 ChapterProvider.upViewSize 的 postDelayed(300)。 */
+private const val LAYOUT_HEIGHT_DEBOUNCE_MS = 300L
+
 class ReadBookViewModelShared(
     private val readBook: ReadBookShared,
     private val scope: CoroutineScope,
@@ -221,6 +225,13 @@ class ReadBookViewModelShared(
     // 替代原 @Synchronized 的 this 监视器 (kotlin.jvm.Synchronized 无 common 变体且 native 无效)
     private val syncLock = SynchronizedObject()
     private var preDownloadTask: Job? = null
+
+    /**
+     * 高度-only 排版变化去抖任务（对照原版 ChapterProvider.upViewSize 对高度变化
+     * postDelayed(300) 合并）。宽度变化立即应用；仅高度变化 300ms 内合并为一次重排，
+     * 避免打开阅读页时系统栏 inset / 页眉页脚测量收敛造成的瞬时多次整章重排。
+     */
+    private var layoutDebounceJob: Job? = null
     private val downloadedChapters = mutableSetOf<Int>()
     private val downloadFailChapters = mutableMapOf<Int, Int>()
     private val downloadScope = CoroutineScope(SupervisorJob() + IoDispatcher)
@@ -363,10 +374,31 @@ class ReadBookViewModelShared(
      * 推入新排版配置并按新参数重排（对照原版 `ChapterProvider.upStyle` / `upViewSize` 后
      * 发 LOAD_CONTENT → `ReadBook.loadContent(resetPageOffset = false)`）。
      * 视口无效或配置未变时不重排。
+     *
+     * 宽度变化立即应用；仅高度变化去抖 300ms 合并为一次重排（对照原版
+     * `ChapterProvider.upViewSize` 的 `if (width == viewWidth) postDelayed(300)` 分支）——
+     * 打开阅读页时系统栏 inset / 页眉页脚测量收敛属于瞬时高度-only 跳变，合并可避免
+     * 连续多次整章重排。
      */
     fun updateLayoutConfig(config: LayoutConfig) {
         if (config.visibleWidth <= 0 || config.visibleHeight <= 0) return
-        if (_layoutConfig.value == config) return
+        val current = _layoutConfig.value
+        if (current == config) return
+        if (config.viewWidth == current.viewWidth) {
+            // 仅高度变化：300ms 去抖合并
+            layoutDebounceJob?.cancel()
+            layoutDebounceJob = scope.launch {
+                delay(LAYOUT_HEIGHT_DEBOUNCE_MS)
+                applyLayoutConfig(config)
+            }
+        } else {
+            // 宽度变化：立即应用
+            layoutDebounceJob?.cancel()
+            applyLayoutConfig(config)
+        }
+    }
+
+    private fun applyLayoutConfig(config: LayoutConfig) {
         _layoutConfig.value = config
         // 当前章未装载时占位/消息页按新配置重建（加载中页几何与视口一致，对照原版
         // ChapterProvider.viewWidth 变化后 format() 重排消息页）

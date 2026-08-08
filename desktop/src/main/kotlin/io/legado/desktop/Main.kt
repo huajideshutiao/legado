@@ -773,7 +773,7 @@ private suspend fun registerSecondaryProviders() {
         // 桌面端 Room KMP 无 Callback, 首启/升级的默认数据统一在这里幂等补齐
         initDesktopDefaultData()
         // 注: app 端 App.kt:171 BookCover.toString() 未补齐 — BookCover object 依赖 Android
-        // Glide/Bitmap/Drawable/appCtx, desktop 用独立的 DesktopBookCover (JDK ImageIO + OkHttp),
+        // Glide/Bitmap/Drawable/appCtx, desktop 详情页封面走 shared 的 SharedBlurCoverBgCoil (Coil3),
         // 无对应下沉的封面缓存初始化逻辑。
 
         // 16. 启动期缓存清理 + WebDav 进度同步

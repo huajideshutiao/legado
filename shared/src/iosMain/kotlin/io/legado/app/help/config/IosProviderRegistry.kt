@@ -198,7 +198,7 @@ fun registerIosProviders() {
     // 屏幕尺寸 provider (UIScreen.nativeBounds): sharedUiMain AppDialogSizes 在容器尺寸未知时
     // 取 ScreenInfoProviders.get() 兜底, 未注册会 error 导致所有对话框崩溃
     registerIosScreenInfoProvider()
-    // 阅读编排平台钩子 (图片/分章缓存清理真实, 朗读与缓存服务运行态待接入)
+    // 阅读编排平台钩子 (朗读桥接 IosReadAloudHost, 缓存服务运行态取 IosBackgroundTasks)
     registerIosReadBookPlatform()
     // 备份/恢复钩子 (lastBackup 时间戳 + 恢复完成提示; zip 复制/解压走 BackupFileOps 默认实现)
     registerIosBackupRestoreHook()

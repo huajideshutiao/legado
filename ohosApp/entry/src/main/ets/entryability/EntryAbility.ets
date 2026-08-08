@@ -23,6 +23,10 @@ import { handleWebViewRequest } from '../bridge/WebViewBridgeHandler';
 // KP8+ System 桥接处理器 (ArkTS 侧 promptAction.showToast + context.startAbility 真实实现)
 import { initSystemBridge, handleShowToast, handleOpenUrl } from '../bridge/SystemBridgeHandler';
 import { handleShowTextActionMenu } from '../bridge/TextActionBridgeHandler';
+import { handleBatteryRequest } from '../bridge/BatteryBridgeHandler';
+import { handleShareRequest } from '../bridge/SystemShareBridgeHandler';
+import { handleKeyboardCommand } from '../bridge/KeyboardBridgeHandler';
+import { initPermissionBridge, handlePermissionRequest } from '../bridge/PermissionBridgeHandler';
 
 // Notification tsfn 跨语言 payload (与 OhosNativeBridge.kt NotificationPayload 对齐)
 // 由 KMP 侧 KS_JSON 序列化为 JSON 字符串, 经 C++ tsfn dispatch 到 ArkTS 回调, 此处 JSON.parse 还原。
@@ -316,7 +320,64 @@ export default class EntryAbility extends UIAbility {
       console.error('[Legado] registerWebViewCallback failed: ' + JSON.stringify(e));
     }
 
-    // legado:// deep link 冷启动投递 (放 onCreate 最尾: 须在 registerOhosProviders 之后,
+    // Battery tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 阅读页电池电量查询)
+    // KMP OhosReaderPlatformProvider.getBatteryLevel → OhosNativeBridge.invokeBatterySync
+    // 发 getLevel 请求, ArkTS 侧 BatteryBridgeHandler 调 @ohos.batteryInfo.batterySOC,
+    // 完成后调 legado.batteryCallback(requestId, resultJson) 回送结果唤醒 KMP 侧 CompletableDeferred。
+    // 未注册时 KMP 侧 getBatteryLevel 恒返回 -1 (阅读页不显示电量)。
+    try {
+      legado.registerBatteryCallback((json: string): void => {
+        handleBatteryRequest(json, (requestId: number, resultJson: string): void => {
+          legado.batteryCallback(requestId, resultJson);
+        });
+      });
+      console.info('[Legado] battery tsfn callback registered via napi');
+    } catch (e) {
+      console.error('[Legado] registerBatteryCallback failed: ' + JSON.stringify(e));
+    }
+
+    // Share tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 系统分享面板, 同 Toast 模式 fire-and-forget)
+    // KMP OhosPlatformServices.sharing.shareText/shareFile → OhosNativeBridge.shareText/shareFile
+    // 经 tsfn dispatch 到此回调, ArkTS 侧 SystemShareBridgeHandler 调 @ohos.share.systemShare
+    // 弹系统分享面板。未注册时 KMP 侧降级写剪贴板 + toast (见 OhosPlatformServices)。
+    try {
+      legado.registerShareCallback(handleShareRequest);
+      console.info('[Legado] share tsfn callback registered via napi');
+    } catch (e) {
+      console.error('[Legado] registerShareCallback failed: ' + JSON.stringify(e));
+    }
+
+    // Keyboard tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 软键盘显隐/避让, 同 Window 模式 fire-and-forget)
+    // KMP OhosPlatformServices.keyboard.hideSoftInput/showSoftInput/setSoftInputPolicy
+    // → OhosNativeBridge.hideSoftInput/showSoftInput/setKeyboardAvoidMode 经 tsfn dispatch 到此回调,
+    // ArkTS 侧 KeyboardBridgeHandler 调 @ohos.inputMethod / UIContext。
+    // 未注册时 KMP 侧降级 println。
+    try {
+      legado.registerKeyboardCallback(handleKeyboardCommand);
+      console.info('[Legado] keyboard tsfn callback registered via napi');
+    } catch (e) {
+      console.error('[Legado] registerKeyboardCallback failed: ' + JSON.stringify(e));
+    }
+
+    // Permission tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 权限查询/申请)
+    // KMP OhosPlatformServices.permissions.hasPermission/requestPermission
+    // → OhosNativeBridge.invokePermissionSync 经 tsfn dispatch 到此回调,
+    // ArkTS 侧 PermissionBridgeHandler 调 @ohos.abilityAccessCtrl.checkAccessTokenSync /
+    // requestPermissionsFromUser, 完成后调 legado.permissionCallback 回送结果。
+    // 未注册时 KMP 侧按"无权限"降级。
+    try {
+      initPermissionBridge(this.context);
+      legado.registerPermissionCallback((json: string): void => {
+        handlePermissionRequest(json, (requestId: number, resultJson: string): void => {
+          legado.permissionCallback(requestId, resultJson);
+        });
+      });
+      console.info('[Legado] permission tsfn callback registered via napi');
+    } catch (e) {
+      console.error('[Legado] registerPermissionCallback failed: ' + JSON.stringify(e));
+    }
+
+    // 外部启动请求冷启动投递 (放 onCreate 最尾: 须在 registerOhosProviders 之后,
     // 否则 LegadoDeepLinkHandler 下游导入 VM 取 AppDbProviders 会未注册)。
     this.handleDeepLink(want);
   }
@@ -332,24 +393,35 @@ export default class EntryAbility extends UIAbility {
   }
 
   /**
-   * 投递 legado:// / yuedu:// 一键导入链接给 KMP 侧 (onCreate 冷启动 / onNewWant 热启动共用)。
+   * 投递外部启动请求给 KMP 侧 (onCreate 冷启动 / onNewWant 热启动共用)。
    *
-   * 链路: want.uri → napi legado.handleDeepLink → @CName legado_handle_deep_link →
-   * Kotlin LegadoDeepLinkHandler.handle 解析写 pending (StateFlow) →
-   * Compose 侧 DeepLinkImportHost 消费弹勾选导入对话框。
-   *
-   * 非 legado/yuedu scheme 直接忽略 (普通启动 want.uri 为空)。
+   * # 分流 (与 Kotlin LegadoNativeExports.handleDeepLink / handleLaunchRequest 分工对应)
+   * - legado:// / yuedu:// 一键导入链接 → legado.handleDeepLink
+   *   (@CName legado_handle_deep_link → LegadoDeepLinkHandler 弹勾选导入对话框)
+   * - 其余非空 URI (文件关联 file:// / 其他 scheme deep link / 通知 route:xxx) →
+   *   legado.handleLaunchRequest (@CName legado_handle_launch_request → OhosLaunchRequests
+   *   → LaunchRequestBus → Compose LegadoApp 路由导航)。普通启动 want.uri 为空, 跳过。
    */
   private handleDeepLink(want: Want): void {
     const uri: string = want.uri ?? '';
-    if (!uri.startsWith('legado://') && !uri.startsWith('yuedu://')) {
+    if (uri.length === 0) {
       return;
     }
+    if (uri.startsWith('legado://') || uri.startsWith('yuedu://')) {
+      try {
+        const handled: boolean = legado.handleDeepLink(uri);
+        console.info('[Legado] deep link dispatched: handled=' + handled + ', uri=' + uri);
+      } catch (e) {
+        console.error('[Legado] handleDeepLink failed: ' + JSON.stringify(e) + ', uri=' + uri);
+      }
+      return;
+    }
+    // 文件关联 / 其他 scheme deep link / 通知 route: 投递给 LaunchRequestBus (Compose 侧消费路由)
     try {
-      const handled: boolean = legado.handleDeepLink(uri);
-      console.info('[Legado] deep link dispatched: handled=' + handled + ', uri=' + uri);
+      const handled: boolean = legado.handleLaunchRequest(uri);
+      console.info('[Legado] launch request dispatched: handled=' + handled + ', uri=' + uri);
     } catch (e) {
-      console.error('[Legado] handleDeepLink failed: ' + JSON.stringify(e) + ', uri=' + uri);
+      console.error('[Legado] handleLaunchRequest failed: ' + JSON.stringify(e) + ', uri=' + uri);
     }
   }
 
@@ -409,6 +481,16 @@ export default class EntryAbility extends UIAbility {
                   break;
                 case 'setSystemBarEnable':
                   win.setWindowSystemBarEnable(cmd.enabled ?? true);
+                  break;
+                case 'exitApplication':
+                  // 退出应用: 仅 UIAbility 自身 context 可调 terminateSelf (系统弹回收确认?
+                  // 无, 直接终止)。从 window tsfn 通道分发 (复用桥避免新增独立通道)。
+                  try {
+                    this.context.terminateSelf();
+                    console.info('[Legado] window callback: exitApplication (terminateSelf)');
+                  } catch (e) {
+                    console.error('[Legado] window callback terminateSelf failed: ' + JSON.stringify(e));
+                  }
                   break;
                 default:
                   console.warn('[Legado] window callback unknown action: ' + cmd.action);

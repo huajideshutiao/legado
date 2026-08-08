@@ -1,30 +1,33 @@
 package io.legado.app.model
 
 import io.legado.app.help.image.DecodedBitmapCache
+import io.legado.app.help.tts.OhosReadAloudHost
 import io.legado.app.model.fileBook.TextFile
 
 /**
- * 鸿蒙端 [ReadBookPlatform]: 朗读与缓存服务运行态暂缺, 缓存清理走真实实现。
+ * 鸿蒙端 [ReadBookPlatform]: 朗读接 [OhosReadAloudHost] (ReadAloudControllerShared + 系统 TTS),
+ * 缓存运行态暂缺, 缓存清理走真实实现。
  *
- * 对照 app 端 `AndroidReadBookPlatform` / iOS 端 `IosReadBookPlatform`; 鸿蒙无前台
- * Service, 朗读钩子留待 [io.legado.app.service.ReadAloudControllerShared] 接入阅读页后补齐
- * (当前 OhosReaderPlatformProvider.clickReadAloud 同为 TODO 空实现)。
+ * 对照 app 端 `AndroidReadBookPlatform` / desktop 端 `DesktopReadBookPlatform`:
+ * 鸿蒙无前台 Service, 朗读由 [OhosReadAloudHost] 驱动 ReadAloudControllerShared
+ * (系统 TTS 引擎 = OhosSystemTtsEngine, 经 @ohos.textToSpeech napi 桥)。
  *
- * 未注册时 [ReadBookPlatforms.get] 返回空默认实现, 行为与本实现一致 (仅缺 TextFile 清理),
- * 注册本实现保证与 iOS 端形态对齐, 并为后续朗读/缓存运行态接线提供挂点。
+ * 未注册时 [ReadBookPlatforms.get] 返回空默认实现, 行为与本实现一致 (仅缺 TextFile 清理)。
  */
 private object OhosReadBookPlatform : ReadBookPlatform {
 
-    // TODO: 接入 ReadAloudControllerShared 后返回真实朗读状态 (当前恒非运行态, 同 iOS)
-    override val isReadAloudRun: Boolean get() = false
+    // 朗读: 桥接到 OhosReadAloudHost (对照 desktop DesktopReadBookPlatform 接 DesktopReadAloudHost)
+    override val isReadAloudRun: Boolean get() = OhosReadAloudHost.isRun
 
-    override val isReadAloudPause: Boolean get() = true
+    override val isReadAloudPause: Boolean get() = OhosReadAloudHost.isPause
 
-    // TODO: 接入 ReadAloudControllerShared.start/resume
-    override fun playReadAloud(play: Boolean, startPos: Int) = Unit
+    override fun playReadAloud(play: Boolean, startPos: Int) {
+        OhosReadAloudHost.play(play, startPos)
+    }
 
-    // TODO: 接入 ReadAloudControllerShared.pause
-    override fun pauseReadAloud() = Unit
+    override fun pauseReadAloud() {
+        OhosReadAloudHost.pause()
+    }
 
     // 鸿蒙无前台 CacheBookService; 缓存 job 由 NativeServiceLauncher 进程内管理, 无运行态标志
     // (对照 iOS IosBackgroundTasks.isCacheBookRunning; 待 ServiceLauncher 补 isRun 后接真值)

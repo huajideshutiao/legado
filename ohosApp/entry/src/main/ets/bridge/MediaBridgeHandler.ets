@@ -64,8 +64,8 @@ export const PLAYER_ID_AUDIO_BOOK: string = 'audioBook';
 /** HttpTTS 朗读播放实例 (Kotlin OhosHttpTtsPlayer 专用)。 */
 export const PLAYER_ID_HTTP_TTS: string = 'httpTts';
 
-/** 视频播放实例 (预留, 待 surface 绑定 napi)。 */
-export const PLAYER_ID_VIDEO: string = 'video';
+/** 视频播放实例 (Kotlin OhosVideoPlayerController 专用)。 */
+export const PLAYER_ID_VIDEO: string = 'videoBook';
 
 /** 单个播放实例的状态 (AVPlayer + 其打开的本地文件 fd)。 */
 class PlayerSlot {
@@ -78,6 +78,10 @@ let players: Map<string, PlayerSlot> = new Map<string, PlayerSlot>();
 
 // Media 事件回调 (由 EntryAbility 注入)
 let eventCallback: MediaEventCallback | null = null;
+
+// 视频画面 surfaceId (由 Index.ets 经 registerComposeInteropBuilder 的 XComponent.onLoad 注入;
+// 先于 AVPlayer 创建时暂存, 创建 videoBook 播放器时再绑定)
+let videoSurfaceId: string | null = null;
 
 /** 本地事件监听项: listener + 关注的 playerId (null = 全收)。 */
 class LocalListenerEntry {
@@ -140,6 +144,31 @@ interface MediaEventPayload {
  */
 export function initMediaBridge(callback: MediaEventCallback): void {
   eventCallback = callback;
+}
+
+/**
+ * 绑定视频画面 surface (Index.ets 的 XComponent.onLoad 回调调用)。
+ *
+ * XComponent(type:'surface') 加载完成时把 surfaceId 交给 AVPlayer (player.surfaceId =
+ * surfaceId) 才能显示画面 (否则视频只能出声)。surfaceId 可能先于 videoBook AVPlayer 创建
+ * (Compose 先渲染 surface、后发 setSourceUrl), 故先暂存, 播放器创建时再绑定。
+ *
+ * @param surfaceId XComponent.onLoad 的 surfaceId (目标平台 surface)
+ */
+export function setVideoSurfaceId(surfaceId: string): void {
+  videoSurfaceId = surfaceId;
+  // 若 videoBook 播放器已存在则立即绑定
+  const slot = players.get(PLAYER_ID_VIDEO);
+  if (slot != null && slot.player != null) {
+    try {
+      slot.player.surfaceId = surfaceId;
+      console.info('[MediaBridge] video surface bound: id=' + surfaceId);
+    } catch (e) {
+      console.error('[MediaBridge] bind video surface failed: ' + (e as Error).message);
+    }
+  } else {
+    console.info('[MediaBridge] video surfaceId stored (player not ready yet): ' + surfaceId);
+  }
 }
 
 /**
@@ -213,6 +242,7 @@ async function handleSetSource(id: string, path: string): Promise<void> {
   const player = await media.createAVPlayer();
   slot.player = player;
   registerPlayerEvents(id, player);
+  bindVideoSurfaceIfNeeded(id, player);
 
   // 设源: 用 fd:// 协议指向本地文件
   player.url = 'fd://' + file.fd;
@@ -237,6 +267,7 @@ async function handleSetSourceUrl(id: string, url: string, headers?: Record<stri
   const player = await media.createAVPlayer();
   slot.player = player;
   registerPlayerEvents(id, player);
+  bindVideoSurfaceIfNeeded(id, player);
 
   // MediaSource 支持自定义请求头 (Referer/User-Agent/Cookie), 直接设 url 属性做不到
   const source: media.MediaSource = media.createMediaSourceWithUrl(url, headers);
@@ -376,6 +407,18 @@ function registerPlayerEvents(id: string, player: media.AVPlayer): void {
 function playerOf(id: string): media.AVPlayer | null {
   const slot = players.get(id);
   return slot != null ? slot.player : null;
+}
+
+/** videoBook 播放器创建后若已有暂存 surfaceId 则立即绑定 (视频画面显示)。 */
+function bindVideoSurfaceIfNeeded(id: string, player: media.AVPlayer): void {
+  if (id !== PLAYER_ID_VIDEO) return;
+  if (videoSurfaceId == null) return;
+  try {
+    player.surfaceId = videoSurfaceId;
+    console.info('[MediaBridge] video surface bound on player create: id=' + videoSurfaceId);
+  } catch (e) {
+    console.error('[MediaBridge] bind video surface on create failed: ' + (e as Error).message);
+  }
 }
 
 /** 释放指定 playerId 的 AVPlayer 并关闭文件 fd */

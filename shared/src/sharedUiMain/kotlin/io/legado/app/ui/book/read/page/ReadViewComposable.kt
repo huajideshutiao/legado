@@ -29,6 +29,7 @@ import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationExceptio
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.PreferenceProviders
@@ -49,7 +50,6 @@ import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeout
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -113,8 +113,9 @@ import kotlin.math.roundToInt
  *   滚动折算 + 状态栏高度，平台浮动菜单按窗口定位）；
  *   对照旧 ReadView.CallBack.showTextActionMenu → 平台浮动菜单跟随选区）
  * @param menuVisible 阅读菜单是否可见（桌面端鼠标手势层让位用；菜单可见时点击由菜单 bg 收起）
- * @param onTipMeasured 页眉/页脚实测高度上报（px，来自页面布局占位子节点 onSizeChanged）：
- *   排版视口与滚动连排占位的单一来源，透传 ReaderRoute
+ * @param onTextAreaMeasured 正文区实测尺寸上报（px，来自正文区布局占位子节点
+ *   onSizeChanged）：排版视口的单一来源，透传 ReaderRoute（对照原版
+ *   ContentTextView.onSizeChanged → ChapterProvider.upViewSize）
  */
 @Composable
 fun ReadViewComposable(
@@ -128,7 +129,7 @@ fun ReadViewComposable(
     onAction: (Int) -> Unit = {},
     onSelectionMenu: (String, Offset?) -> Unit = { _, _ -> },
     menuVisible: () -> Boolean = { false },
-    onTipMeasured: ((Int, Int) -> Unit)? = null,
+    onTextAreaMeasured: ((IntSize) -> Unit)? = null,
 ) {
     val prevTextPage by viewModel.prevTextPage.collectAsState()
     val curTextPage by viewModel.curTextPage.collectAsState()
@@ -140,20 +141,15 @@ fun ReadViewComposable(
     val tapScope = rememberCoroutineScope()
 
     // 页眉/页脚实际测量高度（px，来自页面布局占位子节点 onSizeChanged 上报）。
-    // 单一来源，三处消费：
-    // 1. onTipMeasured 上报 ReaderRoute → 排版视口（viewHeight 扣除）——排版与渲染同源
-    // 2. 滚动模式下一页（showChrome=false）正文区顶部占位（headerPlaceholderPx）——
+    // 本层两处消费：
+    // 1. 滚动模式下一页（showChrome=false）正文区顶部占位（headerPlaceholderPx）——
     //    连排坐标基准与当前页一致（正文区顶 = 页眉底）
-    // 3. 命中/选择坐标折算（窗口 y → 页内坐标需减状态栏 + 页眉，对照原版
+    // 2. 命中/选择坐标折算（窗口 y → 页内坐标需减状态栏 + 页眉，对照原版
     //    contentTextView.click(x, y - headerHeight) 的 headerHeight 含 vwStatusBar + llHeader）
+    // （排版视口不再由页眉/页脚差值推导：ReaderRoute 直接消费正文区实测尺寸，见
+    //   onTextAreaMeasured —— 对照原版 ContentTextView.onSizeChanged 单一来源。）
     var headerTipMeasured by remember { mutableIntStateOf(0) }
     var footerTipMeasured by remember { mutableIntStateOf(0) }
-    // 首帧未测量（0,0）不上报（布局依赖顺序：测量后重排收敛）
-    LaunchedEffect(headerTipMeasured, footerTipMeasured) {
-        if (headerTipMeasured > 0 || footerTipMeasured > 0) {
-            onTipMeasured?.invoke(headerTipMeasured, footerTipMeasured)
-        }
-    }
 
     // 页内文字选择状态（对照旧 ReadView.isTextSelected + ContentTextView.selectStart/selectEnd）
     val selection = remember { PageSelectionState() }
@@ -301,29 +297,31 @@ fun ReadViewComposable(
                         drawTick = pageDrawTick,
                         selection = selection,
                         // 页眉/页脚实测高度上报（布局占位子节点 onSizeChanged）：
-                        // 单一来源，排版视口/滚动连排占位/坐标折算共用
+                        // 滚动连排占位与坐标折算共用；排版视口走 onTextAreaMeasured 单一来源
                         onHeaderMeasured = { headerTipMeasured = it },
                         onFooterMeasured = { footerTipMeasured = it },
+                        onTextAreaMeasured = onTextAreaMeasured,
                     )
                 }
             },
             curContent = {
-                curTextPage?.let { page ->
-                    PageViewComposable(
-                        textPage = page,
-                        modifier = Modifier.fillMaxSize(),
-                        batteryLevel = batteryLevel,
-                        clockText = clockText,
-                        onClick = onClick,
-                        onLongClick = onLongClick,
-                        drawTick = pageDrawTick,
-                        // 滚动模式：正文随行级偏移平移（绘制阶段读取，不触发重组）
-                        contentTranslationY = scrollDelegate?.let { sd -> { sd.contentOffset } },
-                        selection = selection,
-                        onHeaderMeasured = { headerTipMeasured = it },
-                        onFooterMeasured = { footerTipMeasured = it },
-                    )
-                }
+                // 当前页恒组合（textPage 可空）：正文区 Box 在无页首帧也参与测量，排版视口
+                // （onTextAreaMeasured）才有第一个稳定值——initBook 依赖它启动，见 ReaderRoute
+                PageViewComposable(
+                    textPage = curTextPage,
+                    modifier = Modifier.fillMaxSize(),
+                    batteryLevel = batteryLevel,
+                    clockText = clockText,
+                    onClick = onClick,
+                    onLongClick = onLongClick,
+                    drawTick = pageDrawTick,
+                    // 滚动模式：正文随行级偏移平移（绘制阶段读取，不触发重组）
+                    contentTranslationY = scrollDelegate?.let { sd -> { sd.contentOffset } },
+                    selection = selection,
+                    onHeaderMeasured = { headerTipMeasured = it },
+                    onFooterMeasured = { footerTipMeasured = it },
+                    onTextAreaMeasured = onTextAreaMeasured,
+                )
             },
             nextContent = {
                 nextTextPage?.let { page ->

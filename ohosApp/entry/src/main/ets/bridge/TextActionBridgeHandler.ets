@@ -21,6 +21,12 @@ import legado from 'liblegado_napi.so';
  * - 回调 (ArkTS → Kotlin): `{ action: "replace|copy|bookmark|aloud|dict|search_content|browser|share|refresh|__dismiss", text: string, src: string }`
  */
 
+/** 菜单项 (label 显示文本 + action 动作 key)。 */
+export interface TextActionMenuItem {
+  label: string;
+  action: string;
+}
+
 /** 菜单状态 (由 Index.ets 注入 setter, @State 驱动叠层显隐/定位)。 */
 export interface TextActionMenuData {
   visible: boolean;
@@ -31,6 +37,10 @@ export interface TextActionMenuData {
   src: string;
   /** 菜单类型: "text" = 文本操作菜单 / "image" = 图片操作菜单。 */
   type: string;
+  /**
+   * 菜单项清单 (K/N 下发, 唯一一份; 空时用内置 TEXT_ACTION_ITEMS/IMAGE_ACTION_ITEMS 回退)。
+   */
+  menuItems: TextActionMenuItem[];
 }
 
 interface TextActionMenuPayload {
@@ -39,6 +49,7 @@ interface TextActionMenuPayload {
   y: number;
   src?: string;
   type?: string;
+  menuItems?: TextActionMenuItem[];
 }
 
 /** 菜单状态更新回调 (Index.ets 注入, 内部赋给 @State)。 */
@@ -65,16 +76,22 @@ export function handleShowTextActionMenu(json: string): void {
     const payload = JSON.parse(json) as TextActionMenuPayload;
     // x/y = -1: KMP 请求隐藏菜单
     if (payload.x < 0 || payload.y < 0) {
-      menuCallback?.({ visible: false, text: '', x: 0, y: 0, src: '', type: 'text' });
+      menuCallback?.({ visible: false, text: '', x: 0, y: 0, src: '', type: 'text', menuItems: [] });
       return;
     }
+    const type = payload.type ?? 'text';
+    // 菜单项: K/N 下发优先 (唯一一份), 缺失时回退内置清单 (兼容旧宿主)
+    const items = (payload.menuItems != null && payload.menuItems.length > 0)
+      ? payload.menuItems
+      : (type === 'image' ? IMAGE_ACTION_ITEMS : TEXT_ACTION_ITEMS);
     menuCallback?.({
       visible: true,
       text: payload.text,
       x: payload.x,
       y: payload.y,
       src: payload.src ?? '',
-      type: payload.type ?? 'text',
+      type: type,
+      menuItems: items,
     });
   } catch (e) {
     console.error('[TextActionBridge] show menu failed: ' + JSON.stringify(e) + ', json=' + json);
@@ -111,7 +128,7 @@ export const IMAGE_ACTION_ITEMS: { label: string; action: string }[] = [
  * @param src 图片 src (图片菜单, 如 refresh 回送 KMP 清缓存重排)
  */
 export function fireTextAction(action: string, text: string, src: string): void {
-  menuCallback?.({ visible: false, text: '', x: 0, y: 0, src: '', type: 'text' });
+  menuCallback?.({ visible: false, text: '', x: 0, y: 0, src: '', type: 'text', menuItems: [] });
   try {
     legado.textActionCallback(0, JSON.stringify({ action: action, text: text, src: src }));
   } catch (e) {
@@ -124,7 +141,7 @@ export function fireTextAction(action: string, text: string, src: string): void 
  * onMenuActionFinally → readView.cancelSelect()) 并隐藏菜单。
  */
 export function dismissTextActionMenu(): void {
-  menuCallback?.({ visible: false, text: '', x: 0, y: 0, src: '', type: 'text' });
+  menuCallback?.({ visible: false, text: '', x: 0, y: 0, src: '', type: 'text', menuItems: [] });
   try {
     legado.textActionCallback(0, JSON.stringify({ action: '__dismiss', text: '', src: '' }));
   } catch (e) {

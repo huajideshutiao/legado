@@ -12,6 +12,10 @@ import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.help.image.ReaderImageCache.PLACEHOLDER_SIZE
+import io.legado.app.help.image.ReaderImageCache.bind
+import io.legado.app.help.image.ReaderImageCache.sizeOf
+import io.legado.app.help.image.ReaderImageCache.version
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.read.page.provider.ImageResolver
@@ -273,7 +277,7 @@ internal fun probeImageSize(bytes: ByteArray): ImageSize? {
  */
 private fun probeSvgSize(bytes: ByteArray): ImageSize? {
     // 只取文件头部 (XML 声明/注释/DOCTYPE 之后、<svg> 标签的属性不会超出前几 KB)
-    val head = bytes.copyOf(minOf(bytes.size, 4096)).toString(Charsets.UTF_8)
+    val head = bytes.copyOf(minOf(bytes.size, 4096)).decodeToString()
     val tagStart = head.indexOf("<svg")
     if (tagStart < 0) return null
     val tagEnd = head.indexOf('>', tagStart)

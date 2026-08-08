@@ -114,7 +114,7 @@ export interface LegadoNativeBridge {
 
   // ===== legado:// deep link 投递 (ArkTS → Kotlin 同步推送) =====
   /**
-   * 投递 legado:// / yuedu:// 一键导入链接 (EntryAbility.onCreate / onNewWant 调用)。
+   * legado:// deep link 投递 (ArkTS → Kotlin 同步推送)。
    *
    * Kotlin 侧 LegadoDeepLinkHandler 解析 URL 后写入 pending (StateFlow),
    * Compose 侧 DeepLinkImportHost 消费并弹勾选导入对话框 (书源/替换规则/目录规则/字典/语音/主题)。
@@ -124,6 +124,19 @@ export interface LegadoNativeBridge {
    * @return true=已识别并记录待导入; false=非 legado/yuedu scheme 或缺 src 参数 (调用方可自行处理)
    */
   handleDeepLink(uri: string): boolean;
+
+  /**
+   * 外部启动请求投递 (ArkTS → Kotlin 同步推送, 文件关联 / 通知 route / 其他 scheme deep link)。
+   *
+   * Kotlin 侧 OhosLaunchRequests.parse 把 Want.uri 映射为 LaunchRequest (ImportFile /
+   * DeepLink / NavigateTo 等) 并经 LaunchRequestBus.dispatch 投递, Compose 侧 LegadoApp 消费
+   * 路由导航。与 [handleDeepLink] 的分工: 后者只认 legado:// / yuedu:// 导入链接并弹勾选对话框;
+   * 本函数覆盖完整的 Want → LaunchRequest 映射 (文件关联打开 txt/epub 等、通知点击 route:xxx)。
+   *
+   * @param uri Want.uri (UTF-8 字符串); 通知点击可传 `route:<AppRoute 序列化串>`
+   * @return true=已识别并投递到 LaunchRequestBus; false=无法识别 (ArkTS 可自行处理)
+   */
+  handleLaunchRequest(uri: string): boolean;
 
   // ===== Toast / Notification tsfn 回调注册 (KP7+ 新增, KMP → ArkTS 跨线程 dispatch) =====
   /**
@@ -471,11 +484,103 @@ export interface LegadoNativeBridge {
    */
   webViewCallback(requestId: number, result: string, bodyRaw: string): void;
 
+  // ===== Battery tsfn 回调注册 + ArkTS → Kotlin 回调 (同 Crypto 模式) =====
+
+  /**
+   * 注册 Battery 回调 (KMP → ArkTS 跨线程 dispatch, 阅读页电池电量查询)。
+   *
+   * C++ 侧创建 napi_threadsafe_function 包装 [callback], 并通过 @CName legado_register_battery_fn
+   * 把 dispatch 函数指针注入 Kotlin OhosNativeBridge.batteryTsfn。此后 KMP 调
+   * OhosNativeBridge.invokeBatterySync("getLevel") 时, 请求跨线程 dispatch 到此 [callback],
+   * 由 ArkTS 调 @ohos.batteryInfo.batterySOC 读取电量, 通过 [batteryCallback] 回送结果。
+   *
+   * @param callback 接收 JSON 请求 `{ requestId, action: 'getLevel' }`
+   */
+  registerBatteryCallback(callback: (json: string) => void): void;
+
+  /**
+   * Battery 查询结果回调 (ArkTS → Kotlin)。
+   *
+   * @param requestId 请求 ID (与 invokeBatterySync 生成的 requestId 对应)
+   * @param result 结果 JSON: 成功 `{ ok: true, level: <0-100> }`; 失败 `{ ok: false, error: '<string>' }`
+   */
+  batteryCallback(requestId: number, result: string): void;
+
+  // ===== Share tsfn 回调注册 (同 Toast 模式, fire-and-forget dispatch) =====
+
+  /**
+   * 注册 Share 回调 (KMP → ArkTS 跨线程 dispatch, 系统分享面板)。
+   *
+   * C++ 侧创建 napi_threadsafe_function 包装 [callback], 并通过 @CName legado_register_share_fn
+   * 把 dispatch 函数指针注入 Kotlin OhosNativeBridge.shareTsfn。此后 KMP 调
+   * OhosNativeBridge.shareText/shareFile 时, payload 跨线程 dispatch 到此 [callback],
+   * 由 ArkTS 调 @ohos.share.systemShare.systemShare.show 弹系统分享面板。
+   * fire-and-forget (与 Toast 同模式), 无 ArkTS → Kotlin 结果回调。
+   *
+   * @param callback 接收 JSON payload `{ action: 'text'|'file', text?, filePath?, mimeType? }`
+   *   - action='text': 分享纯文本 (text)
+   *   - action='file': 分享文件 (filePath 沙盒绝对路径, ArkTS 转 file:// URI; mimeType)
+   */
+  registerShareCallback(callback: (json: string) => void): void;
+
+  // ===== Keyboard tsfn 回调注册 (同 Window 模式, fire-and-forget dispatch) =====
+
+  /**
+   * 注册 Keyboard 回调 (KMP → ArkTS 跨线程 dispatch, 软键盘显隐/避让)。
+   *
+   * C++ 侧创建 napi_threadsafe_function 包装 [callback], 并通过 @CName legado_register_keyboard_fn
+   * 把 dispatch 函数指针注入 Kotlin OhosNativeBridge.keyboardTsfn。此后 KMP 调
+   * OhosNativeBridge.hideSoftInput/showSoftInput/setKeyboardAvoidMode 时, 命令跨线程
+   * dispatch 到此 [callback], 由 ArkTS 调 @ohos.inputMethod.getController。
+   * fire-and-forget (同 Window 模式), 无 ArkTS → Kotlin 结果回调。
+   *
+   * @param callback 接收 JSON 命令 `{ action: 'hide'|'show'|'setAvoidMode', mode?: <0-2> }`
+   */
+  registerKeyboardCallback(callback: (json: string) => void): void;
+
+  // ===== Permission tsfn 回调注册 + ArkTS → Kotlin 回调 (同 Pasteboard 模式) =====
+
+  /**
+   * 注册 Permission 回调 (KMP → ArkTS 跨线程 dispatch, 权限查询/申请)。
+   *
+   * C++ 侧创建 napi_threadsafe_function 包装 [callback], 并通过 @CName legado_register_permission_fn
+   * 把 dispatch 函数指针注入 Kotlin OhosNativeBridge.permissionTsfn。此后 KMP 调
+   * OhosNativeBridge.invokePermissionSync 时, 请求跨线程 dispatch 到此 [callback],
+   * 由 ArkTS 调 @ohos.abilityAccessCtrl.checkAccessTokenSync / requestPermissionsFromUser,
+   * 通过 [permissionCallback] 回送结果。
+   *
+   * @param callback 接收 JSON 请求 `{ requestId, action: 'check'|'request', payload: '{"permission":"ohos.permission.XXX"}' }`
+   */
+  registerPermissionCallback(callback: (json: string) => void): void;
+
+  /**
+   * Permission 查询/申请结果回调 (ArkTS → Kotlin)。
+   *
+   * @param requestId 请求 ID (与 invokePermissionSync 生成的 requestId 对应)
+   * @param result 结果 JSON: 成功 `{ ok: true, granted: <boolean> }`; 失败 `{ ok: false, error: '<string>' }`
+   */
+  permissionCallback(requestId: number, result: string): void;
+
+  // ===== 图片下载管线 (ArkTS 保存到相册复用, 带书源 header 防盗链) =====
+
+  /**
+   * 下载图片字节并返回 base64 (复用 shared 下载管线: AnalyzeUrlCore 带书源 header/cookie/charset/JS
+   * + ImageUtils.decode 解密, 解决 ArkTS 裸下载拿不到书源 header 导致的防盗链失败)。
+   *
+   * **必须从 TaskPool/Worker 线程调用**: 本函数内部 runBlocking 转同步且下载走 HTTP 桥
+   * (tsfn → ArkTS 主线程处理回调), 主线程直接调用会因主线程被阻塞而无法处理 HTTP 回调 → 死锁超时。
+   *
+   * @param url 图片地址
+   * @return base64 编码的图片字节; 下载失败/解密失败/无活动阅读书时返回空串 (调用方回退裸下载或提示)
+   */
+  downloadImageBytes(url: string): string;
+
   // ===== 发现页 (DiscoverTab) 桥接函数 =====
   // C++ 侧已实现 (KP5+):
   // - exploreList: 返回 enabledExplore=true 且 hasExploreUrl=1 的 BookSourcePart JSON 数组
   // - topExploreSource/deleteExploreSource: 调 ExploreViewModelShared.topSource/deleteSource (经 getBookSourcePart 取 part)
-  // - openExplore/editExploreSource: stub no-op (页面跳转属 ArkTS 路由范畴, 应由 ArkTS 端直接 router.pushUrl)
+  // - openExplore/editExploreSource: 经 AppNavigatorProviders 触发 shared 导航 (ExploreShow/BookSourceEdit),
+  //   鸿蒙整 UI 由 shared Compose 渲染, 无需 ArkTS 页面
 
   /**
    * 获取发现源列表 (仅 enabledExplore=true 的 BookSource)。

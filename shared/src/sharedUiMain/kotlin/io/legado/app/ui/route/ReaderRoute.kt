@@ -1,8 +1,5 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -20,9 +17,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -96,7 +91,6 @@ import io.legado.app.ui.root.asBook
 import io.legado.app.ui.widget.text.EditEntity
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.systemCurrentTimeMillis
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
@@ -157,36 +151,16 @@ fun ReaderRoute(
         }
     }
 
-    // region 排版参数注入（对照原版 ChapterProvider.upViewSize + TextStyleProvider.upStyle）
+    // region 排版参数注入（对照原版 ContentTextView.onSizeChanged → ChapterProvider.upViewSize
+    // + TextStyleProvider.upStyle）
     val density = LocalDensity.current
     val readBookConfig = LocalReadConfigProviders.current.readBookConfig
-    val containerSize = LocalWindowInfo.current.containerSize
-    // 排版视口尺寸：取渲染 Box 实测尺寸（ReaderScreen modifier.onSizeChanged），与正文/
-    // 页眉/页脚同一布局系统同一基准（对照原版 contentTextView.onSizeChanged → upViewSize）。
-    // 不用 LocalWindowInfo.containerSize 直接排版——任何与渲染 Box 的基准偏差（窗口装饰/
-    // 缩放等）都会让排版视口 ≠ 正文实际尺寸，重构后统一以实测为准（2026-08 对账确认）。
-    var measuredViewSize by remember { mutableStateOf(containerSize) }
-    var pendingViewSize by remember { mutableStateOf(containerSize) }
-    // 拖动窗口时 onSizeChanged 每帧触发，停稳后再重排（对照原版 upViewSize 的 postDelayed 去抖）
-    LaunchedEffect(pendingViewSize) {
-        if (pendingViewSize != measuredViewSize) {
-            delay(VIEW_SIZE_DEBOUNCE_MS)
-            measuredViewSize = pendingViewSize
-        }
-    }
-    // 系统栏 inset：阅读页窗口 fullscreen（内容铺到系统栏后），排版视口须预留状态栏/
-    // 导航栏高度（对照原版 headerHeight 的 vwStatusBar.height 与 vwNavigationBar 占位）；
-    // inset 随系统栏显隐变化（hideStatusBar/hideNavigationBar 配置、菜单弹出恢复系统栏），
-    // 读值即订阅 → inset 变化触发重组 → 下方 LaunchedEffect key 变化重排
-    // （对照原版 onConfigurationChanged → upStatusBar + upViewSize 重排）
-    val statusBarTopPx = WindowInsets.statusBars.getTop(density)
-    val navigationBarBottomPx = WindowInsets.navigationBars.getBottom(density)
-    // 页眉/页脚实际测量高度（px，来自 PageViewComposable 布局占位子节点 onSizeChanged
-    // 上报）：排版视口只认这一份实测值（对照原版 contentTextView 被 llHeader/llFooter
-    // 挤小后的实际尺寸——同一布局系统测量，正文与页脚天然一致）。
-    // null = 首帧尚未测量：保持当前排版不更新（布局依赖顺序——测量回调后重排收敛，
-    // 非降级兜底）。
-    var measuredTips by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    // 排版视口单一来源：正文区（PageViewComposable 内 weight(1f) 布局占位子节点）实测尺寸，
+    // 经 onTextAreaMeasured 上报。该正文区已被系统栏 inset + 页眉/页脚约束，实测值即原版
+    // contentTextView.onSizeChanged 拿到的尺寸——同一布局系统同帧测量，与渲染严格同源，
+    // 不再由「窗口高 − insets − 页眉 − 页脚」拼差值（各来源到达帧不同会造成配置多跳重排）。
+    // null = 首帧尚未测量：保持当前排版不更新（布局依赖顺序——测量回调后重排收敛）。
+    var textAreaSize by remember { mutableStateOf<IntSize?>(null) }
     // 配置变更即时触发：读回新配置后由 VM 比对，参数没变不重排
     var configVersion by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
@@ -194,25 +168,28 @@ fun ReaderRoute(
             if (changes.any { it in relayoutChanges }) configVersion++
         }
     }
-    // 测量值进 key：页眉/页脚实测高度变化（显隐/边距/字号配置变更、系统栏沉浸切换）
-    // 时以新实测值重建排版视口（页眉/页脚显隐配置不再直接进 key——显隐只经布局子节点
-    // 组合与否体现为实测高度变化，单一来源）
+    // 正文区实测尺寸 / 阅读配置变化 → 以新视口重排（VM 内部对高度-only 变化去抖，
+    // 宽度变化即时，见 ReadBookViewModelShared.updateLayoutConfig）
     LaunchedEffect(
-        screenModel, measuredViewSize, configVersion, density, readBookConfig,
-        statusBarTopPx, navigationBarBottomPx, measuredTips,
+        screenModel, textAreaSize, configVersion, density, readBookConfig,
     ) {
-        val tips = measuredTips ?: return@LaunchedEffect
+        val textArea = textAreaSize ?: return@LaunchedEffect
         screenModel.viewModel.updateLayoutConfig(
-            buildLayoutConfig(
-                measuredViewSize, density, readBookConfig,
-                statusBarTopPx, navigationBarBottomPx, tips.first, tips.second,
-            )
+            buildLayoutConfig(textArea, density, readBookConfig)
         )
     }
     // endregion
 
-    // 初始化书籍数据（对照 app 端 ReadBookViewModel.initData + applyBookmarkPosition）
-    LaunchedEffect(book) {
+    // 初始化书籍数据（对照 app 端 ReadBookViewModel.initData + applyBookmarkPosition）。
+    // 推迟到正文区实测后再装载：首排必用实测视口，杜绝 LayoutConfig.DEFAULT(720x1080)
+    // 先行排版 → 实测配置到达后再整章重排的「二次排版」（对照原版 initData 用
+    // Looper.myQueue().addIdleHandler 把 loadContent 推迟到视图测量完成后执行）。
+    // book 在路由组合期内固定（remember(route)），用一次性标志保证只 init 一次，
+    // 后续 textAreaSize 变化（窗口 resize）不重复 initBook。
+    var bookInitialized by remember { mutableStateOf(false) }
+    LaunchedEffect(textAreaSize) {
+        if (textAreaSize == null || bookInitialized) return@LaunchedEffect
+        bookInitialized = true
         screenModel.initBook(book, route.chapterIndex, route.chapterPos)
     }
 
@@ -397,10 +374,8 @@ fun ReaderRoute(
         state = state,
         actions = actions,
         focusRequester = keyFocusRequester,
-        onTipMeasured = { header, footer -> measuredTips = header to footer },
+        onTextAreaMeasured = { textAreaSize = it },
         modifier = Modifier
-            // 排版视口尺寸实测（与渲染 Box 同一基准，见 measuredViewSize 说明）
-            .onSizeChanged { pendingViewSize = it }
             .pointerInput(Unit) {
             awaitPointerEventScope {
                 while (true) {
@@ -1051,9 +1026,6 @@ fun ReaderRoute(
     // endregion
 }
 
-/** 视口尺寸去抖窗口（ms），对照原版 upViewSize 的 postDelayed(300) 量级。 */
-private const val VIEW_SIZE_DEBOUNCE_MS = 500L
-
 /** 字号可调范围，对照 ReadStyleScreen 字号 seekBar（内部 0..45，展示值 +5）。 */
 private const val MIN_TEXT_SIZE = 5
 private const val MAX_TEXT_SIZE = 50
@@ -1100,31 +1072,22 @@ private val relayoutChanges = setOf(
  * 窗口视口 + [ReadBookConfigShared] → 排版参数，逐字段对照原版
  * `ChapterProvider.upLayout`（padding dp→px）与 `TextStyleProvider.upStyle`（字号 / 间距）。
  *
- * 页眉/页脚不再有独立预留公式（2026-08 重构）：正文视口高度 = 容器实测高 − 系统栏 −
- * 页眉实测高 − 页脚实测高，其中页眉/页脚实测值由渲染侧布局占位子节点（
- * PageViewComposable onSizeChanged）上报——与正文区实际剩余空间同一布局系统同一帧测量
- * （对照原版 contentTextView 实际尺寸 = 窗口 − vwStatusBar − llHeader − llFooter −
- * vwNavigationBar）。paddingTop 只含正文自身内边距（对照原版 contentTextView 被
- * llHeader 约束后内部 padding）。
+ * 正文视口单一来源：正文区布局占位子节点（PageViewComposable weight(1f) Box）实测尺寸，
+ * 该子节点已被系统栏 inset + 页眉/页脚约束（对照原版 contentTextView 被 vwStatusBar +
+ * llHeader + llFooter + vwNavigationBar 挤小后的实际尺寸）——与渲染同一布局系统同帧测量，
+ * 不再拼差值。padding 只含正文自身内边距。
  */
 private fun buildLayoutConfig(
-    size: IntSize,
+    textArea: IntSize,
     density: Density,
     config: ReadBookConfigShared,
-    statusBarTopPx: Int,
-    navigationBarBottomPx: Int,
-    headerTipPx: Int,
-    footerTipPx: Int,
 ): ReadBookViewModelShared.LayoutConfig = with(density) {
     val textSizePx = config.textSize.sp.toPx()
     ReadBookViewModelShared.LayoutConfig(
-        viewWidth = size.width,
-        // 系统栏避让：原版 contentTextView 实际尺寸 = 窗口高 - vwStatusBar - llHeader -
-        // llFooter - vwNavigationBar；KMP 内容层（PageViewComposable）已按 insets 整体
-        // 下移/上移，排版视口高度同样扣除状态栏/导航栏高度与页眉/页脚实测高度
-        // （系统栏隐藏时 inset=0，等价原版占位 View isGone）
-        viewHeight = size.height - statusBarTopPx - navigationBarBottomPx -
-            headerTipPx - footerTipPx,
+        // 正文区实测宽高：即原版 contentTextView.onSizeChanged 的 w/h（系统栏避让与
+        // 页眉/页脚扣除已由布局系统完成，排版视口与渲染严格同源）
+        viewWidth = textArea.width,
+        viewHeight = textArea.height,
         paddingLeft = config.paddingLeft.dp.roundToPx(),
         // 正文区顶部即页眉底边（布局占位子节点把正文约束在页眉/页脚之间），
         // paddingTop 只含正文自身内边距，不含页眉高度

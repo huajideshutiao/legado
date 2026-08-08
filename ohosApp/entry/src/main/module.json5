@@ -52,6 +52,38 @@
               { "scheme": "legado" },
               { "scheme": "yuedu" }
             ]
+          },
+          // 文件关联: 系统把 txt/epub 等常见文档/压缩包/书源文件以 file:// 授权体 URI
+          // 投递给本 Ability (onCreate/onNewWant 的 want.uri), 由 napi handleLaunchRequest
+          // (@CName legado_handle_launch_request) 映射为 LaunchRequest.ImportFile 打开。
+          // 对照 Android Manifest intent-filter (file 类型, 无 scheme 过滤)。
+          {
+            "entities": [
+              "entity.system.browsable"
+            ],
+            "actions": [
+              "ohos.want.action.viewData"
+            ],
+            "uris": [
+              {
+                "type": "text/plain"
+              },
+              {
+                "type": "application/json"
+              },
+              {
+                "type": "application/epub+zip"
+              },
+              {
+                "type": "application/zip"
+              },
+              {
+                "type": "application/octet-stream"
+              },
+              {
+                "type": "text/xml"
+              }
+            ]
           }
         ]
       }

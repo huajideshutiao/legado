@@ -18,6 +18,7 @@ import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ThemeConfigProviders
 import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.help.toast.Toasters
+import io.legado.app.help.tts.OhosReadAloudHost
 import io.legado.app.help.tts.TtsEngineProvider
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.napi.OhosNativeBridge
@@ -533,8 +534,13 @@ private class OhosReadMenuState(
         screenModel.postDialogEvent(ReaderDialogEvent.Toc)
     }
 
-    // TODO: 待 ReadAloudControllerShared 接入阅读页后启动朗读 (同 iOS IosReadMenuState.clickReadAloud)
-    override fun clickReadAloud() = Unit
+    // 朗读按钮短按: 停自动翻页 → 切换朗读 (未运行→开始, 暂停→继续, 运行→暂停;
+    // 对照 app 端 AndroidReaderPlatformProvider.clickReadAloud + desktop DesktopReadMenuState.
+    // clickReadAloud; 底层 OhosReadAloudHost 驱动 ReadAloudControllerShared + 系统 TTS)
+    override fun clickReadAloud() {
+        autoPage = false
+        OhosReadAloudHost.toggle()
+    }
 
     override fun longClickReadAloud() {
         // 对照原版 朗读按钮长按 → ReadAloudDialog

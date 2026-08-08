@@ -46,7 +46,6 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -76,7 +75,6 @@ import io.legado.app.data.entities.HttpTTS
 import io.legado.app.data.entities.Review
 import io.legado.app.exception.InvalidBooksDirException
 import io.legado.app.exception.NoStackTraceException
-import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.CrashHandler
 import io.legado.app.help.DirectLinkUpload
@@ -89,6 +87,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.save
+import io.legado.app.help.book.toShelfJsonMap
 import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.AppConfig
@@ -96,6 +95,7 @@ import io.legado.app.help.config.AppConfigConstants
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.update.AppUpdate
 import io.legado.app.model.BookCover
 import io.legado.app.model.CheckSource
@@ -125,9 +125,9 @@ import io.legado.app.ui.compose.component.AppSwitch
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.dialogs.selector
+import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.platform.rememberStringArray
-import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.config.DefaultCoverGalleryDialog
 import io.legado.app.ui.config.ThemeCustomizeDialog
@@ -194,6 +194,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -1549,23 +1550,21 @@ class AndroidPlatformCapabilities(
             FileUtils.delete(path)
             val file = FileUtils.createFileWithReplace(path)
             // 对齐原 GSON 行为: prettyPrint + 2 空格缩进 + 不序列化 null 字段
+            // 字段清单/映射下沉 shared commonMain Book.toShelfJsonMap (13 字段, 与 iOS/desktop/鸿蒙一致)
             val json = Json { prettyPrint = true; prettyPrintIndent = "  " }
             val jsonArray = buildJsonArray {
-                books.forEach {
+                books.forEach { book ->
                     add(buildJsonObject {
-                        put("bookUrl", it.bookUrl)
-                        put("tocUrl", it.tocUrl)
-                        put("origin", it.origin)
-                        put("originName", it.originName)
-                        put("name", it.name)
-                        put("author", it.author)
-                        it.kind?.let { v -> put("kind", v) }
-                        it.coverUrl?.let { v -> put("coverUrl", v) }
-                        it.customCoverUrl?.let { v -> put("customCoverUrl", v) }
-                        it.intro?.let { v -> put("intro", v) }
-                        it.customIntro?.let { v -> put("customIntro", v) }
-                        put("type", it.type)
-                        it.wordCount?.let { v -> put("wordCount", v) }
+                        book.toShelfJsonMap().forEach { (key, value) ->
+                            // buildMap 保插入序, 字段顺序与原逐字段 put 完全一致; null 已被映射跳过
+                            when (value) {
+                                is String -> put(key, value)
+                                is Number -> put(key, value)
+                                is Boolean -> put(key, value)
+                                is JsonElement -> put(key, value)
+                                else -> Unit
+                            }
+                        }
                     })
                 }
             }

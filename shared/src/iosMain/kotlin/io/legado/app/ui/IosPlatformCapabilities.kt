@@ -12,6 +12,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.Review
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.book.toShelfJsonMap
 import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.LocalConfigKeys
@@ -500,23 +501,6 @@ object IosPlatformCapabilities : PlatformCapabilities {
             )
             vc.presentViewController(alert, animated = true, completion = null)
         }
-    }
-
-    /** 书架导出字段 (与 app 端 exportBookshelf 的 13 个字段一致)。 */
-    private fun Book.toShelfJsonMap(): Map<String, Any?> = buildMap {
-        put("bookUrl", bookUrl)
-        put("tocUrl", tocUrl)
-        put("origin", origin)
-        put("originName", originName)
-        put("name", name)
-        put("author", author)
-        kind?.let { put("kind", it) }
-        coverUrl?.let { put("coverUrl", it) }
-        customCoverUrl?.let { put("customCoverUrl", it) }
-        intro?.let { put("intro", it) }
-        customIntro?.let { put("customIntro", it) }
-        put("type", type)
-        wordCount?.let { put("wordCount", it) }
     }
 }
 

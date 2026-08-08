@@ -100,7 +100,7 @@ dependencies {
     // shared/jvmAndAndroidMain 已 api(project(':modules:quickjs')), 桌面端通过 shared 传递依赖可见;
     // 显式 implementation 确保 :desktop:run 之前 :modules:quickjs:jvmJar (含 buildJvmNativeLib) 被触发
     implementation(project(":modules:quickjs"))
-    // Coil3 图片栈 (DesktopBookCover/ReviewListScreen 直接用 rememberAsyncImagePainter/ImageRequest):
+    // Coil3 图片栈 (封面/ReviewListScreen 直接用 rememberAsyncImagePainter/ImageRequest):
     // shared 对 coil3 是 implementation 不外泄, desktop 显式声明; coil-compose 传递 api 出
     // coil(SingletonImageLoader)/coil-core(ImageRequest/DiskCache)/coil-compose-core(painter)
     implementation(libs.coil3.compose)

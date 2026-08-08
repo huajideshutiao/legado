@@ -984,7 +984,7 @@ object OhosNativeBridge {
      */
     fun showTextActionMenu(text: String, x: Float, y: Float) {
         val json = KS_JSON.encodeToString(
-            TextActionMenuPayload(text = text, x = x, y = y)
+            TextActionMenuPayload(text = text, x = x, y = y, menuItems = TEXT_ACTION_MENU_ITEMS)
         )
         val tsfn = synchronized(lock) { textActionTsfn }
         if (tsfn != null) {
@@ -1009,7 +1009,14 @@ object OhosNativeBridge {
      */
     fun showImageActionMenu(src: String, x: Float, y: Float) {
         val json = KS_JSON.encodeToString(
-            TextActionMenuPayload(text = "", x = x, y = y, src = src, type = "image")
+            TextActionMenuPayload(
+                text = "",
+                x = x,
+                y = y,
+                src = src,
+                type = "image",
+                menuItems = IMAGE_ACTION_MENU_ITEMS,
+            )
         )
         val tsfn = synchronized(lock) { textActionTsfn }
         if (tsfn != null) {
@@ -1110,6 +1117,20 @@ object OhosNativeBridge {
     fun setWindowSystemBarEnable(enabled: Boolean) {
         sendWindowCommand(
             KS_JSON.encodeToString(WindowCommand(action = "setSystemBarEnable", enabled = enabled))
+        )
+    }
+
+    /**
+     * 退出应用 (经 window tsfn dispatch 到 ArkTS UIAbilityContext.terminateSelf)。
+     *
+     * 鸿蒙无 Activity.finish 等价物, 退出需 ArkTS `context.terminateSelf()` (仅 UIAbility 自身
+     * 可调, 由宿主 window callback 处理 action="exitApplication" 分支)。复用 window tsfn 通道
+     * (同全屏/常亮/方向/系统栏 fire-and-forget 模式), 避免为单条命令新增独立桥。
+     * 未注册 window tsfn (EntryAbility 未 registerWindowCallback) 时降级 println。
+     */
+    fun exitApplication() {
+        sendWindowCommand(
+            KS_JSON.encodeToString(WindowCommand(action = "exitApplication"))
         )
     }
 
@@ -1750,7 +1771,7 @@ object OhosNativeBridge {
     /**
      * 文本/图片操作菜单 payload (Kotlin → ArkTS: 选中文本或图片 src + 锚点; x/y = -1 表示隐藏菜单)。
      * type="text" 为文本操作菜单 (text 为选中文本), type="image" 为图片操作菜单 (src 为图片地址),
-     * ArkTS TextActionBridgeHandler 据 type 切换菜单项 (TEXT_ACTION_ITEMS / IMAGE_ACTION_ITEMS)。
+     * ArkTS TextActionBridgeHandler 据 type 切换菜单项 ([TEXT_ACTION_MENU_ITEMS] / [IMAGE_ACTION_MENU_ITEMS])。
      */
     @Serializable
     private data class TextActionMenuPayload(
@@ -1761,6 +1782,34 @@ object OhosNativeBridge {
         val src: String? = null,
         /** 菜单类型: "text" = 文本操作菜单 / "image" = 图片操作菜单。 */
         val type: String = "text",
+        /**
+         * 菜单项清单 (K/N 唯一一份, 下发替代 ArkTS 硬编码 TEXT_ACTION_ITEMS/IMAGE_ACTION_ITEMS;
+         * 空/缺失时 ArkTS 回退其内置清单, 兼容旧宿主)。
+         */
+        val menuItems: List<TextActionMenuItem>? = null,
+    )
+
+    /** 浮动菜单单项 (K/N 唯一一份的菜单项定义, 见 [TEXT_ACTION_MENU_ITEMS] / [IMAGE_ACTION_MENU_ITEMS])。 */
+    @Serializable
+    data class TextActionMenuItem(val label: String, val action: String)
+
+    /** 文本操作菜单项 (对标原版 content_select_action.xml 顺序: replace/copy/bookmark/aloud/dict/search_content/browser/share)。 */
+    private val TEXT_ACTION_MENU_ITEMS = listOf(
+        TextActionMenuItem("替换", "replace"),
+        TextActionMenuItem("复制", "copy"),
+        TextActionMenuItem("书签", "bookmark"),
+        TextActionMenuItem("朗读", "aloud"),
+        TextActionMenuItem("查词", "dict"),
+        TextActionMenuItem("全文搜索", "search_content"),
+        TextActionMenuItem("浏览器", "browser"),
+        TextActionMenuItem("分享", "share"),
+    )
+
+    /** 图片菜单项 (对标原版 ReadBookActivity.onImageLongPress; 无"选择目录" → 保存到相册)。 */
+    private val IMAGE_ACTION_MENU_ITEMS = listOf(
+        TextActionMenuItem("查看", "view"),
+        TextActionMenuItem("刷新", "refresh"),
+        TextActionMenuItem("保存到相册", "save"),
     )
 
     /** openUrl 跨语言传递 payload (序列化为 JSON 给 ArkTS, 同 Toast 模式 fire-and-forget)。 */

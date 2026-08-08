@@ -3,6 +3,7 @@ package io.legado.app
 import io.legado.app.help.copyToClipboard
 import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.file.pickDocumentContent
+import io.legado.app.help.log.OhosCrashLogs
 import io.legado.app.help.file.pickDocuments
 import io.legado.app.help.file.pickDirectory as pickDirectoryDocument
 import io.legado.app.help.openURL
@@ -179,14 +180,26 @@ object OhosPlatformServices : PlatformServices {
         override fun handleLaunchRequest(request: LaunchRequest): Boolean = false
     }
 
+    // 崩溃日志: 从 {filesDir}/logs 收集 appLog-*.txt (OhosAppLogHost 在 recordLog 开启时落盘;
+    // 对照 Android CrashViewModel.initData 从 externalCacheDir/crash 收集的接口语义)
     override val crashLogs: CrashLogProvider = object : CrashLogProvider {
-        override suspend fun loadCrashLogs(): List<CrashLogProvider.CrashLogEntry> = emptyList()
+        override suspend fun loadCrashLogs(): List<CrashLogProvider.CrashLogEntry> =
+            OhosCrashLogs.listLogs().map { CrashLogProvider.CrashLogEntry(it) }
 
-        override suspend fun readCrashLog(name: String): String? = null
+        override suspend fun readCrashLog(name: String): String? = OhosCrashLogs.readLog(name)
 
-        override suspend fun clearCrashLogs() = Unit
+        override suspend fun clearCrashLogs() = OhosCrashLogs.clearLogs()
 
-        override fun shareCrashLog(name: String) = Unit
+        override fun shareCrashLog(name: String) {
+            val path = "${AppFilesDirs.get().filesDir}/logs/$name"
+            if (OhosNativeBridge.isShareBridgeReady()) {
+                // 系统分享面板分享日志文件 (对照 Android CrashLogsDialog.shareFile)
+                OhosNativeBridge.shareFile(path, "text/plain")
+            } else {
+                // 桥未就绪降级 toast 提示 (分享不可用)
+                Toasters.get().toast("已保存到 $path")
+            }
+        }
     }
 }
 

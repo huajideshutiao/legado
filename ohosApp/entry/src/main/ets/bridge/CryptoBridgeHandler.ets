@@ -48,6 +48,16 @@ import { BusinessError } from '@ohos.base';
  * - 失败: `{ ok: false, error: "<string>" }`
  *
  * # 算法映射 (JCA → cryptoFramework spec, 对齐 jvmAndAndroid hutool + iOS Security.framework)
+ *
+ * ## 单一来源说明 (纯映射下沉评估)
+ * 本映射仅用于 cryptoFramework **回落** 路径 (mbedTLS 主实现失败/不支持时):
+ * - K/N NativeAsymmetricCryptoOps / NativeSignOps 主实现是 mbedTLS (MbedTlsOps), 直接接受
+ *   JCA 字符串 (如 "RSA/ECB/PKCS1Padding" / "SHA256withRSA"), **无** JCA → cryptoFramework spec
+ *   映射 (两层实现不同, 非重复维护);
+ * - ArkTS 本文件的 mapAsyCodecSpec/mapSignSpec 是 mbedTLS 无法覆盖场景 (ECDSA 等) 的
+ *   cryptoFramework 回落所需, 与 mbedTLS 处理互斥, 不构成双份。
+ * 故不迁移: 保持 ArkTS 侧为 cryptoFramework 的**唯一** spec 映射源。
+ *
  * - RSA encrypt/decrypt:
  *     "RSA" / "RSA/ECB/PKCS1Padding"                 → `RSA<size>|PKCS1`
  *     "RSA/ECB/OAEPWithSHA-<1|256|384|512>AndMGF1Padding"
