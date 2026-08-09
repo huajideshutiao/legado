@@ -60,6 +60,9 @@ fun TocRoute(
     screenModelStore: ScreenModelStore,
 ) {
     val route = entry.route as AppRoute.Toc
+    // 栈顶订阅: 目录页搜索拦截只在目录是栈顶时生效 (从搜索结果打开新阅读器后返回键
+    // 不被不可见目录页吞掉, 否则第一下返回静默退出搜索, 第二下才退出阅读器)
+    val backStack by navigator.backStack.collectAsState()
     // asBook() 每次 copy() 新实例, remember(route) 固定后 LaunchedEffect(book) 只在换路由时重启
     val book = remember(route) { route.book.asBook() }
     val resultKey = entry.resultKey
@@ -67,6 +70,7 @@ fun TocRoute(
         book = book,
         navigator = navigator,
         onBack = { navigator.pop() },
+        isTopEntry = backStack.lastOrNull()?.id == entry.id,
         onOpenChapter = { chapterIndex, chapterPos, chapterChanged ->
             if (resultKey != null) {
                 navigator.pop(
@@ -158,6 +162,8 @@ fun TocContent(
     onBack: () -> Unit,
     onOpenChapter: (chapterIndex: Int, chapterPos: Int, chapterChanged: Boolean) -> Unit,
     onTocRegexChanged: (book: Book, tocRegex: String) -> Unit = { _, _ -> },
+    // 目录页是否栈顶: 非栈顶时搜索返回拦截失效 (防不可见目录页吞掉压栈页面的返回键)
+    isTopEntry: Boolean = true,
 ) {
     val scope = rememberCoroutineScope()
     val screenModel = remember(book.bookUrl) {
@@ -333,8 +339,9 @@ fun TocContent(
         }
     }
 
-    // 搜索模式下系统返回键退出搜索 (对照 app TocActivity.Content 的 BackHandler)
-    PlatformBackHandler(enabled = state.searching) { actions.setSearchMode(false) }
+    // 搜索模式下系统返回键退出搜索 (对照 app TocActivity.Content 的 BackHandler);
+    // isTopEntry 门控: 目录压栈后从搜索结果开新阅读器时, 不可见目录页不得拦截返回键
+    PlatformBackHandler(enabled = state.searching && isTopEntry) { actions.setSearchMode(false) }
 
     // 日志对话框
     if (showLogDialog) {

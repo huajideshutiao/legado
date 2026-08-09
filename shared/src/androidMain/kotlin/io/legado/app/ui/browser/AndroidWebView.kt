@@ -22,6 +22,8 @@ import androidx.compose.material.AlertDialog
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -93,6 +95,11 @@ fun AndroidWebView(
 ) {
     // 全屏 custom view 由本组件自己托管: 有值时铺满整个 slot, 盖住 WebView
     var customView by remember { mutableStateOf<View?>(null) }
+    // 视频全屏退出回调 (对照原 WebChromeClient.CustomViewCallback): 返回键需主动退出视频全屏
+    var customViewCallback by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
+    // WebView 实例: 帧后创建, 避免 WebView 构造 (Chromium 内核初始化, 主线程可达数百 ms) 阻塞
+    // 组合路径导致整页(含顶栏)延迟渲染。页面先渲染(顶栏立即可见), WebView 就绪后加入容器。
+    var webViewInstance by remember { mutableStateOf<VisibleWebView?>(null) }
     val callbacksRef by rememberUpdatedState(callbacks)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -163,77 +170,45 @@ fun AndroidWebView(
         }
     }
 
+    // 应用加载配置 (原 factory+update 的 loadUrl 逻辑; tag 判等避免无关重组触发重复加载)
+    fun applyWebViewConfig(web: WebView, config: WebViewConfig) {
+        config.headerMap[AppConst.UA_NAME]?.let { web.settings.userAgentString = it }
+        // tag 持最终加载 url, html 模式与 loadUrl 模式互斥同源
+        val loadUrl = if (config.html.isNullOrEmpty()) config.url else ""
+        if (web.tag != loadUrl) {
+            web.tag = loadUrl
+            // 原 CookieManager.applyToWebView: 业务层 cookie → WebView, 登录态才带得过去
+            applyCookiesToWebView(config.url)
+            if (config.html.isNullOrEmpty()) {
+                web.loadUrl(config.url, HashMap(config.headerMap))
+            } else {
+                web.loadDataWithBaseURL(
+                    config.url, config.html, "text/html", "utf-8", config.url
+                )
+            }
+        }
+    }
+
     Box(modifier) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
-            factory = { ctx ->
-                VisibleWebView(ctx).apply {
-                    setBackgroundColor(webViewBgColor)
-                    applyCommonSettings(settings)
-                    webViewClient = AndroidWebViewClient(callbacksRef)
-                    webChromeClient = object : WebChromeClient() {
-                        override fun onReceivedTitle(view: WebView?, title: String?) {
-                            super.onReceivedTitle(view, title)
-                            callbacksRef.onReceivedTitle?.invoke(title)
-                        }
-
-                        override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                            super.onProgressChanged(view, newProgress)
-                            // 对照原 CommonWebChromeClient.onProgressChanged → RefreshProgressBar
-                            callbacksRef.onProgressChanged?.invoke(newProgress)
-                        }
-
-                        override fun onShowCustomView(
-                            view: View?,
-                            callback: CustomViewCallback?,
-                        ) {
-                            customView = view
-                            callbacksRef.onFullScreenChanged?.invoke(true)
-                        }
-
-                        override fun onHideCustomView() {
-                            customView = null
-                            callbacksRef.onFullScreenChanged?.invoke(false)
-                        }
-                    }
-                    callbacksRef.host = WebViewHostImpl(this)
-                    // 长按图片弹保存菜单 (原 WebViewUtil.setupImageLongClick)
-                    setOnLongClickListener {
-                        val hit = hitTestResult
-                        if (hit.type == WebView.HitTestResult.IMAGE_TYPE ||
-                            hit.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
-                        ) {
-                            hit.extra?.let { pic ->
-                                imageToSave = pic
-                                return@setOnLongClickListener true
-                            }
-                        }
-                        return@setOnLongClickListener false
-                    }
-                    // 下载监听弹确认 (原 WebViewUtil.setupDownloadListener)
-                    setDownloadListener { url, _, contentDisposition, _, _ ->
-                        val downloadUrl = url ?: return@setDownloadListener
-                        var fileName = URLUtil.guessFileName(downloadUrl, contentDisposition, null)
-                        fileName = URLDecoder.decode(fileName, "UTF-8")
-                        downloadRequest = downloadUrl to fileName
-                    }
+            // factory 只返回轻量容器: WebView 构造 (Chromium 初始化) 移出组合路径, 整页(含顶栏)不被阻塞
+            factory = { ctx -> FrameLayout(ctx) },
+            update = { container ->
+                val web = webViewInstance
+                if (web != null && container.childCount == 0) {
+                    (web.parent as? ViewGroup)?.removeView(web)
+                    container.addView(
+                        web,
+                        ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                        ),
+                    )
                 }
-            },
-            update = { web ->
-                config.headerMap[AppConst.UA_NAME]?.let { web.settings.userAgentString = it }
-                // tag 判等避免无关重组触发重复加载 (tag 持最终加载 url, html 模式与 loadUrl 模式互斥同源)
-                val loadUrl = if (config.html.isNullOrEmpty()) config.url else ""
-                if (web.tag != loadUrl) {
-                    web.tag = loadUrl
-                    // 原 CookieManager.applyToWebView: 业务层 cookie → WebView, 登录态才带得过去
-                    applyCookiesToWebView(config.url)
-                    if (config.html.isNullOrEmpty()) {
-                        web.loadUrl(config.url, HashMap(config.headerMap))
-                    } else {
-                        web.loadDataWithBaseURL(
-                            config.url, config.html, "text/html", "utf-8", config.url
-                        )
-                    }
+                if (web != null) {
+                    // tag 判等幂等: 首次组合 loadUrl, 无关重组/刷新时不再重复加载
+                    applyWebViewConfig(web, config)
                 }
             },
         )
@@ -250,6 +225,78 @@ fun AndroidWebView(
                 },
                 onRelease = { it.removeAllViews() },
             )
+        }
+    }
+
+    // 帧后创建 WebView: View 必须在主线程创建; 组合帧已渲染(顶栏立即可见), 创建耗时只影响后续帧。
+    // 对照原版 WebViewActivity: 顶栏是布局内独立视图, 不受 WebView 初始化影响, 始终立即显示。
+    LaunchedEffect(Unit) {
+        val web = VisibleWebView(context).apply {
+            setBackgroundColor(webViewBgColor)
+            applyCommonSettings(settings)
+            webViewClient = AndroidWebViewClient(callbacksRef)
+            webChromeClient = object : WebChromeClient() {
+                override fun onReceivedTitle(view: WebView?, title: String?) {
+                    super.onReceivedTitle(view, title)
+                    callbacksRef.onReceivedTitle?.invoke(title)
+                }
+
+                override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                    super.onProgressChanged(view, newProgress)
+                    // 对照原 CommonWebChromeClient.onProgressChanged → RefreshProgressBar
+                    callbacksRef.onProgressChanged?.invoke(newProgress)
+                }
+
+                override fun onShowCustomView(
+                    view: View?,
+                    callback: CustomViewCallback?,
+                ) {
+                    customView = view
+                    customViewCallback = callback
+                    callbacksRef.onFullScreenChanged?.invoke(true)
+                }
+
+                override fun onHideCustomView() {
+                    customView = null
+                    customViewCallback = null
+                    callbacksRef.onFullScreenChanged?.invoke(false)
+                }
+            }
+            callbacksRef.host = WebViewHostImpl(this) {
+                customViewCallback?.onCustomViewHidden()
+            }
+            // 长按图片弹保存菜单 (原 WebViewUtil.setupImageLongClick)
+            setOnLongClickListener {
+                val hit = hitTestResult
+                if (hit.type == WebView.HitTestResult.IMAGE_TYPE ||
+                    hit.type == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
+                ) {
+                    hit.extra?.let { pic ->
+                        imageToSave = pic
+                        return@setOnLongClickListener true
+                    }
+                }
+                return@setOnLongClickListener false
+            }
+            // 下载监听弹确认 (原 WebViewUtil.setupDownloadListener)
+            setDownloadListener { url, _, contentDisposition, _, _ ->
+                val downloadUrl = url ?: return@setDownloadListener
+                var fileName = URLUtil.guessFileName(downloadUrl, contentDisposition, null)
+                fileName = URLDecoder.decode(fileName, "UTF-8")
+                downloadRequest = downloadUrl to fileName
+            }
+        }
+        webViewInstance = web
+    }
+
+    // 页面离开组合: WebView 已创建但尚未加入容器时手动释放 (孤儿 View 防泄漏);
+    // 已加入容器的由 AndroidView 随容器销毁, 此处不重复 destroy。
+    DisposableEffect(Unit) {
+        onDispose {
+            val web = webViewInstance
+            if (web != null && web.parent == null) {
+                web.destroy()
+            }
         }
     }
 
@@ -384,7 +431,10 @@ private class AndroidWebViewClient(
 }
 
 /** [WebViewHost] 的 Android 实现, 直通 android.webkit.WebView。 */
-private class WebViewHostImpl(private val webView: WebView) : WebViewHost {
+private class WebViewHostImpl(
+    private val webView: WebView,
+    private val onExitFullScreen: () -> Unit,
+) : WebViewHost {
     override fun evaluateJavascript(script: String, onResult: (String?) -> Unit) {
         webView.evaluateJavascript(script) { raw ->
             // Android evaluateJavascript 返回 JSON 转义串, 归一为纯文本
@@ -393,9 +443,15 @@ private class WebViewHostImpl(private val webView: WebView) : WebViewHost {
         }
     }
 
-    override fun canGoBack(): Boolean = webView.canGoBack()
+    // 返回守卫对齐原版 WebViewActivity: canGoBack && copyBackForwardList().size > 1。
+    // 登录/校验页常有不可见历史 (about:blank 初始项、302 重定向链), 仅 canGoBack 时第一下
+    // goBack 画面无变化, 第二下才退出——表现为"返回键要按两次"
+    override fun canGoBack(): Boolean =
+        webView.canGoBack() && webView.copyBackForwardList().size > 1
 
     override fun goBack() = webView.goBack()
+
+    override fun exitFullScreen() = onExitFullScreen()
 
     override fun getUrl(): String? = webView.url
 

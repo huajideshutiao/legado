@@ -67,6 +67,7 @@ import io.legado.app.ui.compose.component.GridPackLayout
 import io.legado.app.ui.compose.component.estimateGridHeight
 import io.legado.app.ui.compose.component.toGridPackSpec
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -232,9 +233,18 @@ fun ExploreScreen(
     state: ExploreUiState,
     actions: ExploreUiActions,
     onBack: (() -> Unit)? = null,
+    /** 独立发现页 (ExploreRoute) 无底栏兜底, Android 15+ 强制 edge-to-edge 时需自行回避导航栏;
+     *  主界面 tab 内由 MainBottomBar 兜底, 保持 false */
+    bottomInsetPadding: Boolean = false,
 ) {
     val colors = AppTheme.colors
     val eInk = LocalEInk.current
+    // 导航栏底部 padding: 仅独立路由需要 (主 tab 内列表底部落在 MainBottomBar 之上, 加了反而多空)
+    val navBarBottom = if (bottomInsetPadding) {
+        rememberNavigationBarPaddingValues().calculateBottomPadding()
+    } else {
+        0.dp
+    }
     Column(Modifier.fillMaxSize().background(colors.background)) {
         ExploreTitleBar(
             searchKey = state.searchKey,
@@ -256,7 +266,11 @@ fun ExploreScreen(
             LazyColumn(
                 state = state.listState,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 12.dp), // space.md
+                contentPadding = PaddingValues(
+                    start = 12.dp,
+                    end = 12.dp,
+                    bottom = navBarBottom
+                ), // space.md
             ) {
                 if (pinned.isNotEmpty()) {
                     item(key = "__pinned__", contentType = "pinned") {

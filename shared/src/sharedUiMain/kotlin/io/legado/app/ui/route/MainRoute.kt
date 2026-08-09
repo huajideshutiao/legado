@@ -344,6 +344,7 @@ fun MainRoute(
                 bookshelfScrollState,
                 bookshelfGotoTopTick,
                 bookshelfActive,
+                isRootTop = backStack.lastOrNull()?.id == entry.id,
             )
         },
         exploreTab = {
@@ -898,6 +899,8 @@ private fun BookshelfTabContent(
     scrollState: ShelfScrollState,
     gotoTopTick: Int,
     active: Boolean,
+    // 主界面是栈顶时分组返回拦截才生效 (否则压栈页面的返回键会被不可见书架页吞掉)
+    isRootTop: Boolean,
 ) {
     var showAppLog by remember { mutableStateOf(false) }
     // 分组长按或管理列表编辑 → GroupEditDialog。
@@ -948,6 +951,7 @@ private fun BookshelfTabContent(
         bookshelfActionsCallbacks = callbacks,
         scrollState = scrollState,
         gotoTopTick = gotoTopTick,
+        isRootTop = isRootTop,
     )
     // 添加网址 / 导入书架进度 (对照 BaseBookshelfFragment.observeLiveBus + ensureWaitDialog:
     // count<0 关闭, 否则 "添加中... (n)"; 取消时 cancel addBookJob)

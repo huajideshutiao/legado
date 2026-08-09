@@ -211,5 +211,11 @@ fun ExploreRoute(
         )
     }
 
-    ExploreScreen(state = uiState, actions = actions, onBack = { navigator.pop() })
+    ExploreScreen(
+        state = uiState,
+        actions = actions,
+        onBack = { navigator.pop() },
+        // 独立发现页无底栏, 自行回避导航栏 (Android 15+ edge-to-edge)
+        bottomInsetPadding = true,
+    )
 }

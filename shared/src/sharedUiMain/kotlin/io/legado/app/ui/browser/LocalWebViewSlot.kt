@@ -40,6 +40,9 @@ interface WebViewHost {
     fun canGoBack(): Boolean
     fun goBack()
 
+    /** 退出 HTML5 视频全屏 (对照原版 WebViewActivity 的 customViewCallback.onCustomViewHidden)。 */
+    fun exitFullScreen() {}
+
     /** 当前加载页 URL (原 WebViewActivity 的 `webView.url ?: baseUrl`)。未实现时返回 null, 由路由回退预取 URL。 */
     fun getUrl(): String? = null
 

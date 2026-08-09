@@ -1,5 +1,6 @@
 package io.legado.app.ui.route
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,7 +25,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppPattern
 import io.legado.app.help.coroutine.IoDispatcher
@@ -178,6 +178,11 @@ fun WebViewRoute(
         }
     }
 
+    // 视频全屏态 (HTML5 video onShowCustomView, 对照原版 WebViewActivity 的
+    // binding.customWebView.size > 0): 返回键先退出视频全屏再走后续。
+    // 声明在事件接线之前 (SideEffect lambda 引用)
+    var videoFullScreen by remember { mutableStateOf(false) }
+
     // 平台 WebView 事件接线 (对照原 WebViewActivity 各回调):
     // - onPageFinished: menu_ok(isLogin) 确认后下次加载完成即返回; CF 挑战检测/验证回传
     // - onReceivedTitle: 网页 title 更新标题栏 (原 onPageFinished 读 view.title)
@@ -209,6 +214,7 @@ fun WebViewRoute(
         }
         callbacks.onUrlChanged = { url -> pageUrl = url }
         callbacks.shouldOverrideUrl = { url -> interceptUrl(url) }
+        callbacks.onFullScreenChanged = { full -> videoFullScreen = full }
     }
 
     // 全屏态 (原 menu_full_screen → toggleFullScreen): 标题栏随全屏隐藏
@@ -227,9 +233,12 @@ fun WebViewRoute(
     fun currentUrl(): String =
         callbacks.host?.getUrl() ?: pageUrl ?: loadState?.url ?: route.url
 
-    // 返回: 页面可后退则后退 (原 canGoBack && history>1 的简化), 全屏先退出全屏, 否则出栈
+    // 返回: 视频全屏先退出 (原 customView 分支), 页面可后退则后退 (原 canGoBack && history>1),
+    // 再退出页面全屏, 最后出栈
     fun handleBack() {
-        if (callbacks.host?.canGoBack() == true) {
+        if (videoFullScreen) {
+            callbacks.host?.exitFullScreen()
+        } else if (callbacks.host?.canGoBack() == true) {
             callbacks.host?.goBack()
         } else if (isFullScreen) {
             toggleFullScreen()

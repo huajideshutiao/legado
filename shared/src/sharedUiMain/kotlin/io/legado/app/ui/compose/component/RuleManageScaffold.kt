@@ -2,30 +2,31 @@ package io.legado.app.ui.compose.component
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.reorderable.RuleReorderableItem
 import io.legado.app.ui.compose.reorderable.rememberReorderableListState
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.empty
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.foundation.layout.padding
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.remember
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 「搜索 + 列表 + 多选 + 拖拽排序 + 分组筛选 + 底部批量操作栏」规则管理界面共享骨架(plan P2)。
@@ -53,13 +54,16 @@ fun <T> RuleManageScaffold(
     listState: LazyListState = rememberLazyListState(),
     listModifier: Modifier = Modifier,
     fillMaxHeight: Boolean = true,
+    /** 底部内容回避 padding: 全屏独立页/全高对话框传 rememberNavigationBarPaddingValues() (Android 15+ 强制
+     * edge-to-edge 时列表末尾不被导航栏遮挡); Dialog 型/有底栏兑底的使用方保持默认 0 不受影响 */
+    bottomPadding: PaddingValues = PaddingValues(0.dp),
     itemContent: @Composable RuleItemScope.(item: T) -> Unit,
 ) {
     val reorderState = rememberReorderableListState(listState) { from, to ->
         onMove(from, to)
     }
     val fillMod = if (fillMaxHeight) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
-    Column(modifier.then(fillMod)) {
+    Column(modifier.then(fillMod).padding(bottom = bottomPadding.calculateBottomPadding())) {
         titleBar()
         Box(Modifier.fillMaxWidth().weight(1f, fill = fillMaxHeight)) {
             if (items.isEmpty()) {

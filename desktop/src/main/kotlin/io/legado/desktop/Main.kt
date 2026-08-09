@@ -221,7 +221,6 @@ fun main(args: Array<String>) {
     // 打栈开关: 对齐 Android BuildConfig.DEBUG 语义, 仅 debug 打栈。
     // build.gradle.kts 的 run 任务注入 -Dlegado.debug=true, 打包产物不注入 = 静默。
     registerJvmDebugState(System.getProperty("legado.debug")?.toBoolean() == true)
-    DesktopAppUserModelId.ensureProcessAppId()
     // 视频渲染: open-ani/mediamp (mediamp-mpv) 后端。Windows 走 Skiko Direct3D 默认渲染
     // (mpv D3D11 → 共享纹理 → Skia D3D12), macOS 默认 Metal, Linux 默认 OpenGL —— 均
     // 为各自平台默认值, 无需 (也不应) 强制 skiko.renderApi。
@@ -325,6 +324,11 @@ private fun runDesktopApp() = application {
     // - AppStringProvider: 返回 key.name 兜底, 未注册时 appString 同样 fallback 到 key.name
     registerDesktopAppLogHost()
     registerDesktopAppStringProvider()
+    // Windows: 设置进程级 AppUserModelID + 保证开始菜单快捷方式身份注册 (SMTC 媒体卡
+    // 应用名来源; :desktop:run/java -jar 无安装注册时按官方文档自建快捷方式)。
+    // 须在 registerDesktopAppStringProvider 之后 (快捷方式文件名取 app_name 显示名),
+    // 且必须在首窗口创建前 (MSDN: SetCurrentProcessExplicitAppUserModelID 须先于 UI)。
+    DesktopAppUserModelId.ensureProcessAppId()
     // 注册桌面端 ScreenInfoProvider (Toolkit.getDefaultToolkit().screenSize),
     // 供 shared commonMain 经 ScreenInfoProviders.get() 读屏幕尺寸; 无依赖, 同步注册
     registerDesktopScreenInfoProvider()

@@ -38,6 +38,7 @@ import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.appDialogSize
+import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -91,6 +92,7 @@ internal fun KeyboardAssistsConfigOverlayContent(overlay: AppOverlay.Dialog, nav
                 items = items,
                 itemKey = { "${it.type}#${it.key}" },
                 onMove = { from, to -> items.add(to, items.removeAt(from)) },
+                bottomPadding = rememberNavigationBarPaddingValues(),
                 titleBar = {
                     DialogTitleBar(
                         title = stringResource(Res.string.assists_key_config),

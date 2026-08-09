@@ -3,14 +3,16 @@ package io.legado.app.ui.root
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlin.jvm.JvmInline
 
 @Serializable
 @JvmInline
@@ -36,6 +38,10 @@ sealed interface AppOverlay {
         // 允许与其他对话框叠放: 弹新 Overlay 时不被自动关闭, 也不关闭已有对话框
         // (对照原版 Fragment 对话框叠放场景, 如段评列表上再弹图片查看器, 关闭查看器后列表仍在)
         val stacked: Boolean = false,
+        // push 路由/弹新 Overlay 时不自动关闭, 由对话框内容自管挂起/恢复
+        // (对照原版 DialogFragment 被新 Activity 全屏盖住仍存活; 书源登录对话框:
+        // 登录 JS startBrowser → push WebView 时挂起, pop 回原栈时恢复)
+        val keepOnPush: Boolean = false,
         // 书源身份 (书源 URL, 可空): 供 photo 等需要防盗链 header/封面解密规则的 overlay
         // 按书源加载网络资源 (与全局当前阅读书解耦); 本地书/无书源场景不传, 保持裸 GET。
         // 默认值 + routeJson(ignoreUnknownKeys) 保证旧快照双向兼容 (与 stacked 字段同方案)。
@@ -82,6 +88,36 @@ class AppNavigator(
 
     private val _results = MutableSharedFlow<RouteResult>(extraBufferCapacity = 16)
     val results: SharedFlow<RouteResult> = _results.asSharedFlow()
+
+    // 挂起中的 Overlay key 集合: 窗口已隐藏 (被路由盖住) 但状态保留。
+    // 挂起期间返回键/ESC 不关闭该 Overlay, 落到路由层 pop (见 pop/dismissTopOverlaySkipSuspended)。
+    private val _suspendedOverlayKeys = MutableStateFlow<Set<String>>(emptySet())
+    val suspendedOverlayKeys: StateFlow<Set<String>> = _suspendedOverlayKeys.asStateFlow()
+
+    /**
+     * 标记 Overlay 挂起/恢复 (key 必须已在 [overlays] 栈中)。
+     *
+     * 对照原版 "DialogFragment 被新 Activity 全屏盖住但存活": 单页导航下 Overlay 恒渲染在
+     * 路由之上, 无法字面"被盖住", 由对话框内容在路由栈被 push 盖住时调用本方法隐藏窗口
+     * (组合保留状态), pop 回原栈时恢复。
+     */
+    fun setOverlaySuspended(key: String, suspended: Boolean) {
+        _suspendedOverlayKeys.update { keys ->
+            if (suspended) keys + key else keys - key
+        }
+    }
+
+    /** 栈顶 Overlay 是否处于挂起状态 (窗口已隐藏, 返回键应 pop 路由而非关闭 Overlay)。 */
+    fun isTopOverlaySuspended(): Boolean {
+        val top = overlayBackStack.peek() ?: return false
+        return top.key in _suspendedOverlayKeys.value
+    }
+
+    /** 关闭顶层 Overlay; 栈顶挂起 (窗口已隐藏) 时跳过并返回 false, 返回链继续落到路由层。 */
+    fun dismissTopOverlaySkipSuspended(): Boolean {
+        if (isTopOverlaySuspended()) return false
+        return dismissTopOverlay()
+    }
     private val targetedResults = backStack.value.associate { entry ->
         entry.id to Channel<RouteResult>(Channel.UNLIMITED)
     }.toMutableMap()
@@ -102,6 +138,7 @@ class AppNavigator(
         // 新 Activity/Fragment 全屏盖住后, 旧对话框随导航消失 (如登录对话框内
         // java.startBrowser → WebViewActivity, 对话框不再与 WebView 叠放); 单页导航下
         // 路由渲染在 Overlay 之下, 不关闭会被对话框遮住。Sheet 属半屏界面, 保留不关。
+        // 例外: keepOnPush 对话框 (书源登录) 保留, 由内容自管挂起/恢复 (原版被盖住仍存活)。
         dismissDialogOverlays()
         val entryId = routeBackStack.push(
             route = route,
@@ -162,8 +199,9 @@ class AppNavigator(
 
     fun pop(payload: RouteResultPayload = RouteResultPayload.None): Boolean {
         // 关闭顶层 Overlay 时, 若 payload 非空则通过 overlayResults 推送 (供调用方按 key 消费)
+        // 栈顶 Overlay 挂起 (窗口已隐藏) 时跳过关闭, 继续 pop 路由: 返回键应作用于可见的路由层
         val topOverlay = overlayBackStack.peek()
-        if (dismissTopOverlay()) {
+        if (topOverlay != null && !isTopOverlaySuspended() && dismissTopOverlay()) {
             if (topOverlay != null && payload !is RouteResultPayload.None) {
                 _overlayResults.tryEmit(OverlayResult(topOverlay.key, payload))
             }
@@ -220,7 +258,10 @@ class AppNavigator(
      */
     private fun dismissDialogOverlays(keepStacked: Boolean = false) {
         overlayBackStack.overlays.value.forEach { overlay ->
-            if (overlay is AppOverlay.Dialog && !(keepStacked && overlay.stacked)) {
+            if (overlay is AppOverlay.Dialog
+                && !(keepStacked && overlay.stacked)
+                && !overlay.keepOnPush
+            ) {
                 overlayBackStack.dismiss(overlay.key)
             }
         }

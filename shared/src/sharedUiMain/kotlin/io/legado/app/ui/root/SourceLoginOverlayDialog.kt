@@ -31,12 +31,12 @@ import io.legado.app.ui.book.source.LoginScreenModel
 import io.legado.app.ui.book.source.LoginUiActions
 import io.legado.app.ui.book.source.LoginUiEvent
 import io.legado.app.ui.book.source.SourceLoginDialog
+import io.legado.app.ui.book.source.SourceLoginFormState
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.browser.WebViewCallbacks
 import io.legado.app.ui.browser.WebViewConfig
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.decodeStringMapOrNull
-import kotlinx.coroutines.flow.drop
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.loading
 import org.jetbrains.compose.resources.stringResource
@@ -62,6 +62,27 @@ import org.jetbrains.compose.resources.stringResource
  */
 @Composable
 internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
+    // ===== 挂起/恢复 (对照原版 DialogFragment 被新 Activity 全屏盖住仍存活) =====
+    // 登录 JS startBrowser → push AppRoute.WebView 时, 单页导航下路由渲染在 Overlay 之下,
+    // 不隐藏对话框窗口会遮住 WebView; 故路由栈被 push 盖住时挂起 (不渲染窗口, 状态保留), 
+    // pop 回原栈时恢复, 表单数据不丢。挂起监听必须在所有 return 分支之前注册,
+    // 保证组合存活期间持续捕获恢复时机。
+    val initialStackSize = remember { navigator.backStack.value.size }
+    var suspended by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        navigator.backStack.collect { entries ->
+            val newSuspended = entries.size > initialStackSize
+            if (newSuspended != suspended) {
+                suspended = newSuspended
+                navigator.setOverlaySuspended(overlay.key, newSuspended)
+            }
+        }
+    }
+    // Overlay 关闭 (dismiss / popTo / resetRoot 清栈) 时清理挂起标记
+    DisposableEffect(Unit) {
+        onDispose { navigator.setOverlaySuspended(overlay.key, false) }
+    }
+
     val params = remember(overlay.payload) { parseSourceLoginPayload(overlay.payload) }
     // 无 url 且无 dataKey (payload 完全无法解析) 时直接关闭, 不落入空对话框
     if (params.sourceUrl.isBlank() && params.dataKey == null) {
@@ -89,20 +110,9 @@ internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: Ap
         screenModel.loginCompleteFlow.collect { navigator.dismissOverlay(overlay.key) }
     }
 
-    // 登录 JS 打开内部浏览器 (java.startBrowser → 推 AppRoute.WebView) 时关闭对话框:
-    // 原版 WebViewActivity 作为新 Activity 全屏盖住登录对话框, 登录 JS 在其下继续执行,
-    // 对话框随后随 login() 完成而 dismiss; 单页导航下路由渲染在 Overlay 对话框之下,
-    // 不关闭会被对话框遮住 (表现为"对话框没关")。故监听路由栈: 顶层变为 WebView 即关闭
-    // 本对话框; 登录 JS 已解耦到对话框组合之外 (SourceLoginDialog 内独立 scope),
-    // 关闭不会中断 JS 执行, 验证完成后经 WebViewRoute 回传唤醒等待线程 (原 checkResult 语义)。
-    LaunchedEffect(Unit) {
-        val initialSize = navigator.backStack.value.size
-        navigator.backStack.drop(initialSize).collect { entries ->
-            if (entries.lastOrNull()?.route is AppRoute.WebView) {
-                navigator.dismissOverlay(overlay.key)
-            }
-        }
-    }
+    // 表单登录状态 (登录数据/行) 由本组合持有: 挂起恢复后 SourceLoginDialog 重建时
+    // 保留用户已输入的值, 跳过 rebuild 清空 (对照原版 DialogFragment 存活语义)
+    val loginFormState = remember { SourceLoginFormState() }
 
     // loginUi 非空走表单登录 (对照原版 BaseSource.showLoginDialog 的 SourceLoginDialog 分支),
     // book/chapter 作为登录 JS 上下文透传
@@ -148,6 +158,12 @@ internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: Ap
                 }
             }
         }
+
+    // ===== 挂起: 不渲染 UI 窗口 (新路由可见) =====
+    // 注意: 挂起 return 必须位于全部状态声明之后 —— return 之前已声明的节点
+    // (screenModel / loginFormState / 信号收集) 在挂起期间保持存活, 恢复后原样呈现;
+    // return 之后的 UI 节点 (EditDialogHost/表单/WebView) 挂起时移出组合, 恢复时重建。
+    if (suspended) return
 
     // 源解析完成但拿不到可登录内容 (源不在库 / loginUrl、loginUi 双空):
     // 对照原版 showLoginDialog 双空直接 return 的语义, 关闭即可, 不落入空白对话框。
@@ -201,6 +217,7 @@ internal fun SourceLoginOverlayContent(overlay: AppOverlay.Dialog, navigator: Ap
                 onOpenUrl = { platformCapabilities?.openExternalUrl(it) },
                 book = state.book,
                 chapter = state.chapter,
+                formState = loginFormState,
             )
 
             // URL 登录 (loginUi 为空, 对照原版 WebViewActivity isLogin=true 分支):

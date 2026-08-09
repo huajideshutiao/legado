@@ -61,7 +61,7 @@ fun Modifier.handleBackKey(
 fun performBack(navigator: AppNavigator) {
     runCatching {
         if (!dismissTopLayer() &&
-            !navigator.dismissTopOverlay() &&
+            !navigator.dismissTopOverlaySkipSuspended() &&
             !dispatchBackKey()
         ) navigator.pop()
     }.onFailure { AppLog.put("返回键处理异常", it) }

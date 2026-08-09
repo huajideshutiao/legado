@@ -7,12 +7,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.Text
@@ -64,6 +66,7 @@ import io.legado.app.model.BookCoverShared
 import io.legado.app.model.BookCoverShared.CoverRatio
 import io.legado.app.ui.compose.component.AppScrollTabRow
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
+import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -152,6 +155,8 @@ fun BookshelfScreen(
     },
     scrollState: ShelfScrollState = remember { ShelfScrollState() },
     gotoTopTick: Int = 0,
+    // 主界面是否栈顶: 分组返回拦截只在主界面可见时生效, 详见 BookshelfScreen2.isRootTop
+    isRootTop: Boolean = true,
 ) {
     val colors = AppTheme.colors
     // 订阅常驻 (用户拍板 2026-08): 对齐原版 LiveData 语义 —— 订阅不随页面停止/
@@ -191,6 +196,7 @@ fun BookshelfScreen(
             actions = actions,
             gotoTopTick = gotoTopTick,
             configTick = configTick,
+            isRootTop = isRootTop,
         )
         return
     }
@@ -514,10 +520,19 @@ internal fun BookshelfTopBarContainer(
     content: @Composable RowScope.() -> Unit,
 ) {
     val colors = AppTheme.colors
+    val eInk = LocalEInk.current
+    // 状态栏回避与 AppTitleBar 同源: EInk 不回避, 其余走状态栏 padding
+    // (Android 15+ 强制 edge-to-edge, 不回避会被系统栏遮挡)
+    val insetsModifier = if (eInk) {
+        Modifier.windowInsetsPadding(WindowInsets(0))
+    } else {
+        Modifier.platformStatusBarPadding()
+    }
     Box(
         Modifier
             .fillMaxWidth()
             .background(colors.background)
+            .then(insetsModifier)
     ) {
         Row(
             Modifier

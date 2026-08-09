@@ -65,6 +65,9 @@ internal fun BookshelfScreen2(
     scrollState: ShelfScrollState = remember { ShelfScrollState() },
     gotoTopTick: Int = 0,
     configTick: Int = 0,
+    // 主界面是否栈顶 (对照原版: 仅主界面可见收到返回键时才调 BookshelfFragment2.back())。
+    // 主界面压栈 (阅读器/详情/WebView 等打开) 时为 false, 分组返回拦截随之失效
+    isRootTop: Boolean = true,
 ) {
     val colors = AppTheme.colors
     val eInk = LocalEInk.current
@@ -100,8 +103,13 @@ internal fun BookshelfScreen2(
     val title = if (showGroupCount) "$baseTitle (${books.size})" else baseTitle
     val refreshEnabled = (group?.enableRefresh ?: true) && items.isNotEmpty()
 
-    // 对照 BookshelfFragment2.back(): 分组内消费返回事件回根级, 根级不消费 (交给宿主双击退出)
-    PlatformBackHandler(enabled = groupId != BookGroup.IdRoot) { groupId = BookGroup.IdRoot }
+    // 对照 BookshelfFragment2.back(): 分组内消费返回事件回根级, 根级不消费 (交给宿主双击退出)。
+    // isRootTop 门控: 栈内页面保持同一 Composition, 压栈页面打开时不可见书架页仍注册着本拦截器;
+    // 若无门控, 从分组打开的页面 (无自身拦截器的详情/已入架书阅读器等) 第一下返回会被静默消费
+    // (分组重置回根, 画面无变化), 第二下才真正退出——表现为"返回键要按两次"
+    PlatformBackHandler(enabled = groupId != BookGroup.IdRoot && isRootTop) {
+        groupId = BookGroup.IdRoot
+    }
 
     // tab 双击滚顶 (对照 BookshelfFragment2.gotoTop), 档位与 layoutSpec 同源
     LaunchedEffect(gotoTopTick) {

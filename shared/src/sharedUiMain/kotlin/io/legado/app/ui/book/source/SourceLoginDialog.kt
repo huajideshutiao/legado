@@ -30,12 +30,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.rule.FlexChildStyle
 import io.legado.app.data.entities.rule.RowUi
 import io.legado.app.help.coroutine.IoDispatcher
@@ -53,6 +55,7 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.GridPackLayout
 import io.legado.app.ui.compose.component.toGridPackSpec
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.preview.LegadoThemePreview
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
@@ -76,9 +79,24 @@ import legado.shared.generated.resources.show_login_header
 import legado.shared.generated.resources.success
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.data.entities.BookSource
-import io.legado.app.ui.preview.LegadoThemePreview
+
+/**
+ * 书源登录表单状态 (登录数据 + loginUi 行快照)。
+ *
+ * 由调用方 (SourceLoginOverlayContent) 持有: 对话框被挂起 (登录 JS startBrowser 推
+ * WebView 路由盖住) 再恢复时, [SourceLoginDialog] 重建但表单值不丢 —— 对照原版
+ * SourceLoginDialog (DialogFragment) 被新 Activity 盖住后存活、用户输入保留的语义。
+ */
+class SourceLoginFormState {
+    /** 表单值以 rowUi.name 为键：text/password 存文本，select 存选中项，toggle 存 "true"/"false" */
+    val loginData = mutableStateMapOf<String, String>()
+
+    /** loginUi 解析结果 (null = 未初始化/解析失败); 挂起恢复时据此跳过 rebuild 清空 */
+    var loginUi: List<RowUi>? by mutableStateOf(null)
+
+    /** 渲染用行快照 (rebuild 时同步) */
+    val rows = mutableStateListOf<RowUi>()
+}
 
 /**
  * 书源登录对话框 (KMP 共享, app + desktop + iOS 复用)。
@@ -113,6 +131,9 @@ fun SourceLoginDialog(
     onOpenUrl: (String) -> Unit,
     book: BaseBook? = null,
     chapter: BookChapter? = null,
+    // 表单状态 (登录数据/行) 由调用方持有: 对话框被挂起 (登录 JS startBrowser 推 WebView
+    // 路由盖住) 再恢复时保留用户已输入的值, 对照原版 DialogFragment 存活语义
+    formState: SourceLoginFormState = remember { SourceLoginFormState() },
 ) {
     val colors = AppTheme.colors
     // 登录/按钮 JS 需在对话框关闭后继续执行 (登录流程打开内部浏览器时会先关闭对话框,
@@ -132,16 +153,15 @@ fun SourceLoginDialog(
     val successText = stringResource(Res.string.success)
 
     // 表单值以 rowUi.name 为键：text/password 存文本，select 存选中项，toggle 存 "true"/"false"
-    val loginData = remember { mutableStateMapOf<String, String>() }
-    val rows = remember { mutableStateListOf<RowUi>() }
-    var loginUi by remember { mutableStateOf<List<RowUi>?>(null) }
+    val loginData = formState.loginData
+    val rows = formState.rows
     var showOverflow by remember { mutableStateOf(false) }
     var headerToShow by remember { mutableStateOf<String?>(null) }
     var showAppLog by remember { mutableStateOf(false) }
 
     fun getLoginData(): HashMap<String, String> {
         val data = hashMapOf<String, String>()
-        loginUi?.forEach { rowUi ->
+        formState.loginUi?.forEach { rowUi ->
             when (rowUi.type) {
                 RowUi.Type.text, RowUi.Type.password,
                 RowUi.Type.select, RowUi.Type.toggle ->
@@ -152,10 +172,10 @@ fun SourceLoginDialog(
     }
 
     fun rebuild() {
-        loginUi = runCatching { source.loginUi() }.getOrNull()
+        formState.loginUi = runCatching { source.loginUi() }.getOrNull()
         val info = source.getLoginInfoMap()
         loginData.clear()
-        loginUi?.forEach { rowUi ->
+        formState.loginUi?.forEach { rowUi ->
             when (rowUi.type) {
                 RowUi.Type.text, RowUi.Type.password ->
                     loginData[rowUi.name] = info?.get(rowUi.name) ?: ""
@@ -171,11 +191,13 @@ fun SourceLoginDialog(
             }
         }
         rows.clear()
-        loginUi?.let { rows.addAll(it) }
+        formState.loginUi?.let { rows.addAll(it) }
     }
 
     LaunchedEffect(Unit) {
-        rebuild()
+        // 首次进入才重建表单行 (loginUi 为空时); 挂起恢复时 formState 已初始化,
+        // 跳过 rebuild 保留用户已输入的值。REFRESH_LOGIN_UI 事件仍强制重建 (原版语义)。
+        if (formState.loginUi == null) rebuild()
         // 对照 app 端 observeEvent<Boolean>(EventBus.REFRESH_LOGIN_UI) { rebuild() }
         FlowBus.with(EventBus.REFRESH_LOGIN_UI).collect { event ->
             if (event is Boolean) rebuild()

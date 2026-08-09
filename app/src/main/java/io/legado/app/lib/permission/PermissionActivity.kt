@@ -136,8 +136,16 @@ class PermissionActivity : AppCompatActivity() {
                 }
             }
         }
+        // 对话框已关闭、Activity 仍可见时 (从系统设置页返回等), 返回键 = 取消权限请求,
+        // 语义对齐 showSettingDialog 的 onCancelled: 回调拒绝结果 + finish。
+        // (原版空回调恒消费返回键, 导致该界面返回键完全失效, 用户被困无法退出)
         onBackPressedDispatcher.addCallback(this) {
-
+            rationaleDialog?.dismiss()
+            RequestPlugins.sRequestCallback?.onRequestPermissionsResult(
+                permissions,
+                IntArray(0)
+            )
+            finish()
         }
     }
 

@@ -495,9 +495,10 @@ object DesktopMediaTray {
 
     /**
      * Windows: Win32 原生菜单 (DWM 渲染, Win11 深色圆角/主题跟随)。
-     * owner 窗口/模态循环由 DesktopTrayNativeMenu 在专用线程管理 (AWT 窗口句柄会
-     * 导致 TrackPopupMenuEx 失败; 模态循环阻塞 EDT 会冻结主窗口, 见该文件 KDoc);
-     * 本函数立即返回, 选中后经回调执行命令 (切出菜单线程)。
+     * 模态循环在 EDT 上执行 (官方对照: OpenJDK AWT PopupMenu 经 InvokeFunction 转发到
+     * AWT 事件线程; 弹出前 SetForegroundWindow、弹出后 PostMessage WM_NULL, 见
+     * DesktopTrayNativeMenu KDoc)。菜单打开期间主窗口不响应 = 原生菜单标准模态行为,
+     * 关闭即恢复。选中后经回调执行命令 (runCommand 切到协程, 不压 EDT)。
      */
     private fun showNativeMenu(x: Int, y: Int) {
         val entries = buildMenuModel()

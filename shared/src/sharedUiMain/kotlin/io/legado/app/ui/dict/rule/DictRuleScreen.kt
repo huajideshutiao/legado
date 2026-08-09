@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.DictRule
 import io.legado.app.ui.compose.component.AlertButton
@@ -35,8 +36,11 @@ import io.legado.app.ui.compose.component.RuleManageScaffold
 import io.legado.app.ui.compose.component.SelectAction
 import io.legado.app.ui.compose.component.SelectActionBar
 import io.legado.app.ui.compose.component.dragSelectable
+import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.preview.LegadoThemePreview
+import io.legado.app.ui.preview.previewDictRules
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.create
 import legado.shared.generated.resources.delete
@@ -59,9 +63,6 @@ import legado.shared.generated.resources.sure_del
 import legado.shared.generated.resources.yes
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
-import io.legado.app.ui.preview.previewDictRules
 
 /**
  * 字典规则管理 Screen (KMP 版, sharedUiMain 共享)。
@@ -185,6 +186,7 @@ fun DictRuleScreen(
             actions.onMoveItem(from, to)
         },
         listState = listState,
+        bottomPadding = rememberNavigationBarPaddingValues(),
         titleBar = {
             AppTitleBar(
                 title = stringResource(Res.string.dict_rule),

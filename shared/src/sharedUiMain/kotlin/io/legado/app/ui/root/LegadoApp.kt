@@ -228,6 +228,8 @@ fun LegadoApp(
 
         // Overlay 栈状态: BackHandler 与渲染共用
         val overlays by navigator.overlays.collectAsState()
+        // 挂起中的 Overlay key 集合 (窗口隐藏但状态保留, 见 AppNavigator.setOverlaySuspended)
+        val suspendedKeys by navigator.suspendedOverlayKeys.collectAsState()
 
         // ESC/BackSpace 返回键由 shared 统一处理 (替代三端入口 onPreviewKeyEvent 重复实现)。
         // Compose 按键经焦点系统派发 (FocusOwnerImpl.dispatchKeyEvent 只沿"焦点节点的
@@ -467,8 +469,12 @@ fun LegadoApp(
         }
 
         // 系统返回键: Overlay 存在时关闭顶层 Overlay (Android 走 BackHandler;
-        // 桌面端 ESC/Backspace 由上方 handleBackKey → navigator.pop() 已先 dismissTopOverlay)
-        PlatformBackHandler(enabled = overlays.isNotEmpty()) {
+        // 桌面端 ESC/Backspace 由上方 handleBackKey → performBack 先 dismissTopOverlay)。
+        // 栈顶 Overlay 挂起 (窗口已隐藏, 如登录对话框被 WebView 路由盖住) 时不拦截返回键,
+        // 落到路由层 pop (对照原版 WebViewActivity 在前台时返回键先退出它)。
+        PlatformBackHandler(
+            enabled = overlays.isNotEmpty() && overlays.lastOrNull()?.key !in suspendedKeys
+        ) {
             navigator.dismissTopOverlay()
         }
 

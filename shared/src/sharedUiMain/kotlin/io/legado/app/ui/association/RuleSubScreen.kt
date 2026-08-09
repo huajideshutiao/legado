@@ -24,16 +24,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.RuleSub
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.RuleManageScaffold
-import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.reorderable.RuleItemScope
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.add
 import legado.shared.generated.resources.book_source
@@ -52,11 +54,8 @@ import legado.shared.generated.resources.to_bottom
 import legado.shared.generated.resources.to_top
 import legado.shared.generated.resources.tts
 import legado.shared.generated.resources.txt_toc_rule
-import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 // ===== state / actions =====
 
@@ -131,6 +130,7 @@ fun RuleSubScreen(
         onMove = { from, to -> actions.onMove(from, to) },
         modifier = modifier,
         emptyText = stringResource(Res.string.rule_sub_empty_msg),
+        bottomPadding = rememberNavigationBarPaddingValues(),
         titleBar = {
             AppTitleBar(
                 title = stringResource(Res.string.rule_subscription),

@@ -81,6 +81,10 @@ fun showSourceLogin(
         AppOverlay.Dialog(
             key = "sourceLogin",
             payload = sourceLoginOverlayPayload(sourceUrl, dataKey),
+            // 登录对话框被 push 路由 (登录 JS startBrowser → WebView) 盖住时保留 Overlay,
+            // 由 SourceLoginOverlayContent 自管挂起/恢复 (对照原版 DialogFragment 被新
+            // Activity 盖住仍存活, 返回后对话框原样恢复)
+            keepOnPush = true,
         )
     )
 }
