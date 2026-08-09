@@ -4,11 +4,9 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,7 +27,7 @@ class ReplaceEditViewModel {
 
     private val dao get() = AppDbProviders.get().replaceRuleDao
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = screenModelScope("替换规则编辑")
 
     /** 当前编辑的规则 (initData 后非空) */
     var replaceRule: ReplaceRule? = null

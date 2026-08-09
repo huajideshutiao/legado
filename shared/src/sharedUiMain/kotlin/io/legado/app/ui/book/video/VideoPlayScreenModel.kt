@@ -13,10 +13,8 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.compose.platform.PreferenceStoreProvider
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.ScreenModel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import io.legado.app.ui.root.screenModelScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -111,7 +109,7 @@ class VideoPlayScreenModel(
     private val prefStore: PreferenceStoreProvider,
 ) : ScreenModel {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = screenModelScope("视频播放")
 
     val shared = VideoPlayViewModelShared(scope = scope, prefStore = prefStore)
     val platform = VideoPlayPlatformProviders.getOrNull()
@@ -122,6 +120,15 @@ class VideoPlayScreenModel(
 
     private val _state = MutableStateFlow(VideoPlayUiState())
     val state: StateFlow<VideoPlayUiState> = _state.asStateFlow()
+
+    /**
+     * 手势/按键反馈文字 (如 "2.0X" / "音量: 50%"), 由渲染层显示 (null = 隐藏)。
+     * 独立 flow 而非并入 [state]: 拖动进度时文字每帧变, 并进主 state 会整页重组。
+     * 键盘长按倍速 (handleMediaKeys onGestureText) 与鼠标手势 (平台渲染槽) 共用此通道,
+     * 桌面/Android 渲染层都订阅它显示。
+     */
+    private val _gestureText = MutableStateFlow<String?>(null)
+    val gestureText: StateFlow<String?> = _gestureText.asStateFlow()
 
     /** onExit 已执行标记: 防 DisposableEffect.onDispose 与 onCleared 重复保存 (释放后位置归零) */
     private var exited = false
@@ -299,6 +306,11 @@ class VideoPlayScreenModel(
     fun onSpeedChange(speed: Float) = controller?.setSpeed(speed) ?: Unit
     fun onToggleControls() {
         _state.update { it.copy(controlsVisible = !it.controlsVisible) }
+    }
+
+    /** 手势/按键反馈文字 (null = 隐藏), 见 [gestureText]。 */
+    fun onGestureText(text: String?) {
+        _gestureText.value = text
     }
 
     fun onSeekBack() = controller?.seekBack() ?: Unit

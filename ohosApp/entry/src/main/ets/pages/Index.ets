@@ -1,8 +1,7 @@
 import { ArkUIViewController, Compose } from '@cpf-kmp-cmp/compose';
 // 视频画面 surface 的 Compose interop builder 注册 API (ArkUIView2 混排 ArkTS XComponent)。
-// 注: 包根 Index.d.ets 未声明该导出, 若编译期报 "no exported member" 需改从子模块导入:
-//   import { registerComposeInteropBuilder } from '@cpf-kmp-cmp/compose/src/main/ets/compose/ArkUIView'
-import { registerComposeInteropBuilder } from '@cpf-kmp-cmp/compose';
+// 包根 Index.d.ets 未 re-export 该函数, 只能从子模块直接导入。
+import { registerComposeInteropBuilder } from '@cpf-kmp-cmp/compose/src/main/ets/compose/ArkUIView';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { taskpool } from '@kit.ArkTS';
 import webview from '@ohos.web.webview';
@@ -18,35 +17,34 @@ import {
   initTextActionBridge,
   fireTextAction,
   dismissTextActionMenu,
-  type TextActionMenuData
+  type TextActionMenuData,
+  type TextActionMenuItem
 } from '../bridge/TextActionBridgeHandler';
 import { initKeyboardBridge } from '../bridge/KeyboardBridgeHandler';
 import { setVideoSurfaceId } from '../bridge/MediaBridgeHandler';
+// taskpool 任务函数须放在无 ArkUI 顶层状态的独立模块 (worker VM 会重执行宿主模块顶层)
+import { loadImageBytesTask } from '../task/ImageDownloadTask';
 
 const DOMAIN: number = 0x0000;
 
 // 视频画面 surface builder (K/N OhosVideoPlayPlatformProvider 的 ArkUIView2(name="legadoVideoSurface")
 // 混排到 Compose 层级时由 CPF 调用)。param 为 K/N 侧传入的 interop 参数 (含 playerId)。
-// XComponent(type:'surface').onLoad 拿到 surfaceId 后交给 MediaBridgeHandler 绑定到 videoBook
-// AVPlayer (player.surfaceId = surfaceId), 否则视频只能出声没有画面。
+// 纯 ArkTS XComponent 的 onLoad 不带 surfaceId (回调参数是 native 侧自定义 context), 故绑
+// XComponentController, onLoad 后经 getXComponentSurfaceId() 取 id 交给 MediaBridgeHandler
+// 绑定到 videoBook AVPlayer (player.surfaceId = surfaceId), 否则视频只能出声没有画面。
+const videoSurfaceController: XComponentController = new XComponentController();
+
 @Builder
 function LegadoVideoSurfaceBuilder(param: object) {
-  XComponent({ id: 'legadoVideoSurface', type: 'surface' })
-    .onLoad((context: object): void => {
-      const ctx = context as XComponentContext;
-      setVideoSurfaceId(ctx.surfaceId);
+  XComponent({ id: 'legadoVideoSurface', type: XComponentType.SURFACE, controller: videoSurfaceController })
+    .onLoad((): void => {
+      setVideoSurfaceId(videoSurfaceController.getXComponentSurfaceId());
     })
     .width('100%')
     .height('100%')
 }
 
-// taskpool worker 任务: 调 K/N 带书源 header 的下载管线 (base64 返回)。
-// 必须离主线程执行: K/N 下载内部走 invokeHttpSync → tsfn → 主线程处理回调,
-// 主线程直接调用会因主线程被阻塞而无法处理 HTTP 回调 → 死锁超时
-// (与 bookshelfList 等业务函数同约束, 见 Index.d.ts downloadImageBytes 注释)。
-function loadImageBytesTask(url: string): string {
-  return legado.downloadImageBytes(url);
-}
+// taskpool worker 任务: 见 ../task/ImageDownloadTask.ets
 
 /**
  * Legado 鸿蒙 Compose 入口。
@@ -121,16 +119,16 @@ struct Index {
         // 后台 WebView: 隐藏组件承载书源 webView 规则 (加载 + runJavaScript 取源码)
         // visibility(Hidden) 不入渲染但仍执行网络请求与 JS; 尺寸 1vp 避免 0 尺寸组件被销毁
         Web({ src: this.webSrc, controller: this.webController })
-          .visibility(Hidden)
+          .visibility(Visibility.Hidden)
           .width(1)
           .height(1)
-          .onPageEnd((event: webview.PageEndEvent): void => {
+          .onPageEnd((event: OnPageEndEvent): void => {
             handlePageEnd();
           })
-          .onErrorReceive((event: webview.OnErrorReceiveEvent): void => {
+          .onErrorReceive((event: OnErrorReceiveEvent): void => {
             handleErrorReceive(event.error.getErrorInfo());
           })
-          .onInterceptRequest((event: webview.WebResourceRequest): webview.WebResourceResponse | undefined => {
+          .onInterceptRequest((event: OnInterceptRequestEvent): WebResourceResponse | undefined => {
             return handleInterceptRequest(event);
           })
       }
@@ -142,36 +140,37 @@ struct Index {
       // 菜单项清单由 K/N 下发 (TextActionBridgeHandler 已归一化: menuItems 优先,
       // 缺失回退内置 TEXT_ACTION_ITEMS / IMAGE_ACTION_ITEMS)
       if (this.textMenu.visible) {
-        Column() {
-          Column() {
-            ForEach(this.textMenu.menuItems, (item: { label: string; action: string }): void => {
-              Text(item.label)
-                .fontSize(16)
-                .fontColor(Color.Black)
-                .width('100%')
-                .height(44)
-                .textAlign(TextAlign.Center)
-                .onClick((event: ClickEvent): void => {
-                  event.stopPropagation();
-                  this.onMenuActionClick(item.action, this.textMenu.text, this.textMenu.src);
-                })
-            }, (item: { label: string; action: string }): string => item.action)
-          }
-          .backgroundColor(Color.White)
-          .borderRadius(12)
-          .padding({ top: 4, bottom: 4 })
-          .position({ x: this.textMenu.x, y: this.textMenu.y })
-          .shadow({ radius: 16, color: 'rgba(0,0,0,0.2)' })
-          .onClick((event: ClickEvent): void => {
-            // 阻止冒泡到遮罩 (点菜单内部不收起)
-            event.stopPropagation();
+        // 遮罩与气泡是 Stack 的兄弟节点 (非父子): 气泡按 HitTestMode.Default 阻断被它遮住的
+        // 兄弟节点参与命中测试, 遮罩不进入手势响应链, 点菜单项不可能收起菜单。
+        // ClickEvent 无 stopPropagation (common.d.ts:11608 起区间内无该成员), 只有结构能保证。
+        Column()
+          .width('100%')
+          .height('100%')
+          .backgroundColor('rgba(0,0,0,0.25)')
+          .onClick((): void => {
+            dismissTextActionMenu();
           })
+
+        Column() {
+          ForEach(this.textMenu.menuItems, (item: TextActionMenuItem): void => {
+            Text(item.label)
+              .fontSize(16)
+              .fontColor(Color.Black)
+              .width('100%')
+              .height(44)
+              .textAlign(TextAlign.Center)
+              .onClick((): void => {
+                this.onMenuActionClick(item.action, this.textMenu.text, this.textMenu.src);
+              })
+          }, (item: TextActionMenuItem): string => item.action)
         }
-        .width('100%')
-        .height('100%')
-        .backgroundColor('rgba(0,0,0,0.25)')
+        .backgroundColor(Color.White)
+        .borderRadius(12)
+        .padding({ top: 4, bottom: 4 })
+        .position({ x: this.textMenu.x, y: this.textMenu.y })
+        .shadow({ radius: 16, color: 'rgba(0,0,0,0.2)' })
         .onClick((): void => {
-          dismissTextActionMenu();
+          // 空实现但必须保留: 让气泡持有点击识别器, 命中气泡自身留白 (padding) 时消费掉
         })
       }
 
@@ -300,9 +299,10 @@ struct Index {
       const b64 = await taskpool.execute(new taskpool.Task(loadImageBytesTask, src)) as string;
       if (b64 != null && b64.length > 0) {
         const buf = buffer.from(b64, 'base64');
-        const ab = new ArrayBuffer(buf.byteLength);
+        // @ohos.buffer.Buffer 的字节数是 length (无 byteLength), 且可能只是底层 ArrayBuffer 的一段
+        const ab = new ArrayBuffer(buf.length);
         const view = new Uint8Array(ab);
-        view.set(new Uint8Array(buf.buffer, 0, buf.byteLength));
+        view.set(new Uint8Array(buf.buffer, buf.byteOffset, buf.length));
         if (ab.byteLength > 0) {
           console.info('[LegadoCompose] image downloaded via K/N pipeline, bytes=' + ab.byteLength);
           return ab;

@@ -107,6 +107,10 @@ import kotlin.math.abs
  * 已由启动期异步预解包, 见 Main.kt);
  * 创建失败返回 [FailedMediampController] 走错误占位, 不崩 UI。
  * 切章/切分辨率 = videoUrl 变化 → 重新 setMediaData (同一 player, 无进程重启)。
+ *
+ * player 的寿命跟 ScreenModel (路由栈) 走, 不跟渲染面的组合走: 渲染槽会随布局分支
+ * (全屏切换/窗口横竖比变化) 反复进出组合, 若在 onDispose 里 close, 再次进组合就是
+ * "MPVHandle has already been closed"。见 [MediampVideoPlayerController.release]。
  */
 class MediampVideoPlayPlatformProvider(
     private val windowHandle: DesktopWindowHandle = DesktopWindowHandle(),
@@ -177,8 +181,19 @@ class MediampVideoPlayerController(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
+    /** 独立于 [scope] 的关闭协程 (release 后 scope 已取消, close 需要自己的调度器) */
+    private val closeScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     /** mediamp player (SPI 工厂经 classpath 上的 mediamp-mpv 创建; 构造抛异常由调用方兜底) */
     val player: MediampPlayer = MediampPlayer(Unit, scope.coroutineContext)
+
+    /** 已起播的 url: 渲染槽重建时 LaunchedEffect(url) 会重跑, 守卫避免重复 setMediaData */
+    @Volatile
+    private var startedUrl: String? = null
+
+    /** release 已执行标记 (close 只调度一次) */
+    @Volatile
+    private var released = false
 
     /** 播放/初始化失败回传 UI (由 Render 注入), 让失败可见而不是只落日志 */
     @Volatile
@@ -206,6 +221,11 @@ class MediampVideoPlayerController(
 
     /** 加载播放 (切章/切分辨率统一入口); setMediaData 完成后自动播放 + 恢复进度 */
     fun startPlayback(url: String, headers: Map<String, String>, startMs: Long) {
+        // 同一 url 只起播一次: 渲染槽随布局分支 (全屏切换/窗口横竖比变化) 反复进出组合,
+        // 重建后 LaunchedEffect(url) 会重跑, 若重复 setMediaData 视频会跳回章节起点。
+        // 重试 (onRetry) 先 resetStartGuard 再走这里
+        if (startedUrl == url) return
+        startedUrl = url
         scope.launch {
             runCatching {
                 player.setMediaData(UriMediaData(url, headers))
@@ -216,6 +236,11 @@ class MediampVideoPlayerController(
                 onError?.invoke("加载失败: ${e.message}")
             }
         }
+    }
+
+    /** 允许对同一 url 重新起播 (错误重试时由 UI 先调用, 见 [startPlayback] 的去重守卫) */
+    fun resetStartGuard() {
+        startedUrl = null
     }
 
     override val positionMs: Long get() = player.currentPositionMillis.value
@@ -234,10 +259,20 @@ class MediampVideoPlayerController(
     override fun seekForward() = seekBy(10000)
 
     override fun release() {
-        // 不在这里 close: mediamp surface 的 onDispose 会访问 MPVHandle (setRenderUpdateListener),
-        // close 由 MediampRender 的 DisposableEffect onDispose 执行——该 effect 声明于 surface 之前,
-        // Compose dispose 逆序 → surface 先 detach 再 close (见 MediampRender)
         scope.cancel()
+        if (released) return
+        released = true
+        // player 寿命跟 ScreenModel (路由栈) 走, 不随渲染槽组合: 渲染槽会随布局分支反复进出
+        // 组合, 若在组合 onDispose 里 close, 再次进组合就是 "MPVHandle has already been closed"
+        // (见 MediampRender DisposableEffect)。close 移到这里 (onCleared 释放 ScreenModel),
+        // 但 surface 的 onDispose (setRenderUpdateListener/releaseSurface) 仍要访问 MPVHandle.ptr,
+        // 必须先 detach 再 close: 出栈页在 pop 动画期间还在组合中, release 立即 close 会撞上
+        // surface, 故用「延迟关闭」代替「dispose 即关闭」—— 等 dispose 传递完再关。
+        closeScope.launch {
+            delay(300)
+            runCatching { player.close() }
+                .onFailure { AppLog.put("mediamp 播放器关闭失败", it) }
+        }
     }
 }
 
@@ -283,19 +318,13 @@ private fun MediampRender(
     val isPlaying = playbackState == PlaybackState.PLAYING
     val isBuffering = playbackState == PlaybackState.PAUSED_BUFFERING
 
-    // 播放/初始化失败回传 → 错误占位 (回调在任意线程, 经 scope 切回 composition 调度器)
+    // 播放/初始化失败回传 → 错误占位 (回调在任意线程, 经 scope 切回 composition 调度器)。
+    // 播放器不在这里 close: player 寿命跟 ScreenModel 走 (渲染槽会反复进出组合),
+    // 由 ScreenModel.onCleared → [MediampVideoPlayerController.release] 延迟关闭
     DisposableEffect(controller) {
         controller.onError = { msg -> scope.launch { playError = msg } }
         onDispose {
             controller.onError = null
-            // close 播放器: 本 effect 声明于 MpvMediampPlayerSurface 之前, Compose dispose 逆序
-            // (后组合先 dispose) → surface 内部 onDispose (setRenderUpdateListener) 先执行,
-            // handle 仍存活可正常 detach, 之后这里再 close, 避免 "MPVHandle has already been closed"
-            try {
-                controller.player.close()
-            } catch (e: Throwable) {
-                io.legado.app.constant.AppLog.put("mediamp 播放器关闭失败", e)
-            }
         }
     }
 
@@ -350,8 +379,8 @@ private fun MediampRender(
     val showBuffering = error == null && !showLoading && playError == null &&
         isBuffering && uiState.playWhenReady
 
-    // 手势反馈文字 (对照 app tv_video_speed, null 时隐藏)
-    var gestureText by remember { mutableStateOf<String?>(null) }
+    // 手势反馈文字 (键盘长按倍速与鼠标手势共用 ScreenModel 级 flow, null 时隐藏)
+    val gestureText by screenModel.gestureText.collectAsState()
 
     // 鼠标手势 (对照 app AndroidVideoGestureHandler): 单击切控制层/双击播放暂停/
     // 长按 2x 倍速/横滑进度/左半竖滑亮度/右半竖滑音量 (见类注释)
@@ -359,7 +388,7 @@ private fun MediampRender(
         DesktopVideoGestureHandler(
             controller = controller,
             onToggleControls = screenModel::onToggleControls,
-            onGestureText = { gestureText = it },
+            onGestureText = screenModel::onGestureText,
         )
     }
     // 键盘焦点: 进屏即抢焦点 (键盘事件统一由共享 VideoPlayerScreenContent 根节点的
@@ -399,6 +428,7 @@ private fun MediampRender(
                 playUrl = url,
                 onRetry = {
                     playError = null
+                    controller.resetStartGuard()
                     retryKey++
                 },
             )
@@ -604,9 +634,16 @@ private class DesktopVideoGestureHandler(
             }
 
             DesktopGestureMode.VOLUME -> {
-                // 相对调节 + 碰顶/底重置 (共享状态机, 对照原版); 写系统音量
+                // 相对调节 + 碰顶/底重置 (共享状态机, 对照原版); 写系统音量。
+                // WASAPI 不可用 (无音频设备/COM 失败) 时回落写 mediamp 音量 (mpv volume),
+                // 避免"手势百分比在动、实际无声" (与亮度读失败回落同思路)
                 val level = volumeAdjuster.onGestureMove(y, height)
-                DesktopSystemVolume.setVolume(level)
+                val wroteSystem = DesktopSystemVolume.setVolume(level)
+                if (!wroteSystem) {
+                    volumeController?.let { vc ->
+                        runCatching { vc.setVolume(level * vc.maxVolume) }
+                    }
+                }
                 onGestureText("音量: %d%%".format((level * 100).toInt()))
             }
 

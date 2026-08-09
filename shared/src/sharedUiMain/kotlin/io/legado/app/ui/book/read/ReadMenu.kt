@@ -43,7 +43,7 @@ package io.legado.app.ui.book.read
  *
  * # 复用已下沉的 shared 组件
  *
- * - ReadConfigPanel / TipConfigScreen / PaddingConfigScreen / EffectiveReplacesScreen
+ * - TipConfigScreen / PaddingConfigScreen / EffectiveReplacesScreen
  *   均为下沉的配置对话框 Composable，由 app 端 DialogFragment 薄壳包装。
  *   本文件的 ReadMenu 顶/底栏 clickFont/clickSetting/clickReplaceRule 等回调
  *   通过 [ReadMenuState] 桥接到 app 端 ReadBookActivity，由其 showDialogFragment
@@ -102,6 +102,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -115,6 +116,7 @@ import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
+import io.legado.app.ui.preview.LegadoThemePreview
 import io.legado.app.utils.ColorUtils
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.dark_theme
@@ -129,8 +131,6 @@ import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.PI
 import kotlin.math.cos
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /** 复刻 View 动画默认 AccelerateDecelerateInterpolator */
 val AccelerateDecelerateEasing = Easing { x ->

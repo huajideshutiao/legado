@@ -130,7 +130,7 @@ class ExportBookService : BaseService() {
             .setSubText(androidAppString("export_book"))
             // BookshelfManageActivity 已被 shared BookshelfManageRoute 替代,
             // 通知点击 → NavigateTo("bookshelf_manage") 打开书架管理页面
-            .setContentIntent(activityPendingIntent<MainActivity>("bookshelfManageActivity") {
+            .setContentIntent(activityPendingIntent<MainActivity>(IntentAction.activityBookshelfManage) {
                 putExtra("route", "bookshelf_manage")
             })
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

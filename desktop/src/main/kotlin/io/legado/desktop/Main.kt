@@ -112,9 +112,11 @@ import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.web.registerDesktopWebServerPlatform
 import io.legado.app.web.utils.registerDesktopWebAssetSource
 import io.legado.app.web.utils.registerDesktopWebStrings
+import io.legado.desktop.audio.DesktopAppUserModelId
 import io.legado.desktop.audio.registerDesktopAudioPlayProviders
 import io.legado.desktop.config.registerDesktopConfig
 import io.legado.desktop.data.DesktopAppDbAccessor
+import io.legado.desktop.help.DesktopCrashHandler
 import io.legado.desktop.help.DesktopDefaultDataResourceProvider
 import io.legado.desktop.help.SingleInstanceGuard
 import io.legado.desktop.help.book.DesktopBitmapProvider
@@ -157,6 +159,7 @@ import io.legado.desktop.ui.DesktopToastHost
 import io.legado.desktop.ui.DesktopToasts
 import io.legado.desktop.ui.DesktopWindowChrome
 import io.legado.desktop.ui.DesktopWindowHandle
+import io.legado.desktop.ui.DesktopWindowTitleBarSync
 import io.legado.desktop.ui.browser.DesktopWebViewSlot
 import io.legado.desktop.ui.platform.DesktopAudioPlayPlatformProvider
 import io.legado.desktop.ui.platform.DesktopMangaReaderPlatform
@@ -218,6 +221,7 @@ fun main(args: Array<String>) {
     // 打栈开关: 对齐 Android BuildConfig.DEBUG 语义, 仅 debug 打栈。
     // build.gradle.kts 的 run 任务注入 -Dlegado.debug=true, 打包产物不注入 = 静默。
     registerJvmDebugState(System.getProperty("legado.debug")?.toBoolean() == true)
+    DesktopAppUserModelId.ensureProcessAppId()
     // 视频渲染: open-ani/mediamp (mediamp-mpv) 后端。Windows 走 Skiko Direct3D 默认渲染
     // (mpv D3D11 → 共享纹理 → Skia D3D12), macOS 默认 Metal, Linux 默认 OpenGL —— 均
     // 为各自平台默认值, 无需 (也不应) 强制 skiko.renderApi。
@@ -225,6 +229,9 @@ fun main(args: Array<String>) {
     // 它设置的 legado.portable.root 决定 desktopAppRootDir() 的解析结果, 而后者进程内 lazy
     // 只解析一次 —— 单实例守卫要在数据目录写 instance.lock, 提前读会把便携模式的根目录定位歪。
     initDesktopRuntimeEnvironment()
+    // 全局崩溃日志 (对照 app 端 CrashHandler): 必须紧跟 initDesktopRuntimeEnvironment ——
+    // 落盘目录依赖它设的 legado.portable.root, 提前装会把便携模式的日志写到系统缓存目录去。
+    DesktopCrashHandler.install()
     // 视频: mediamp mpv natives 后台预解包 (独立协程, 早于窗口创建): 首次创建播放器时
     // 同步解包 ~20MB DLL + System.load 会硬卡顿, 启动期后台完成解包+加载,
     // 之后打开视频零等待 (prepareLibraries 幂等, 内部有锁, 与首次播放时的同步路径互斥安全)
@@ -492,9 +499,11 @@ private fun runDesktopApp() = application {
     // Compose 未捕获异常兜底: CMP 默认工厂 (DefaultWindowExceptionHandlerFactory) 弹的是
     // 模态 JOptionPane —— 模态窗口会禁用主窗口输入却不影响重绘, 又常被置顶的 Dialog 图层
     // 或全屏窗口遮住, 表现就是"窗口还能 resize 重排, 键鼠全部失灵"。改为只记日志不弹窗。
+    // EDT 上的异常不经 Thread.setDefaultUncaughtExceptionHandler, 必须在这里单独落盘,
+    // 否则"关于 → 崩溃日志"看不到任何界面侧崩溃。
     CompositionLocalProvider(
         LocalWindowExceptionHandlerFactory provides WindowExceptionHandlerFactory {
-            WindowExceptionHandler { AppLog.put("Compose 未捕获异常", it) }
+            WindowExceptionHandler { DesktopCrashHandler.handleCrash(it, "Compose 未捕获异常") }
         }
     ) {
     Window(
@@ -542,8 +551,6 @@ private fun runDesktopApp() = application {
         state = windowState,
         // 回归原版自绘控制栏 (用户拍板 2026-08 终版): Windows/Linux 去掉系统装饰,
         // 自绘标题栏 (DesktopTitleBar); macOS 保留原生红绿灯标题栏 (SystemDefault)。
-        // 拖拽/贴靠/双击最大化走系统接线 (WM_NCHITTEST/WM_NCLBUTTONDBLCLK 子类),
-        // 不手写拖动样板; Undecorated() 官方自带边缘 8dp resize 区。
         // 真全屏 (无边框) 由 DesktopFullscreenController 在 Win32 层临时去 WS_CAPTION,
         // 与窗口是否装饰无关, 退出全屏自动还原。
         // 置顶开关 (控制栏菜单切换, DesktopWindowChrome 单一状态源); SwingWindow
@@ -611,9 +618,9 @@ private fun runDesktopApp() = application {
             },
         ) {
             AppTheme {
-                // 回归原版: 自绘控制栏由 DesktopTitleBar 自身管理 (含系统接线
-                // WM_NCHITTEST 拖拽/双击最大化 + DWM 圆角); undecorated 无系统标题栏,
-                // 不再需要 DesktopWindowTitleBarSync (DWM 标题栏同步失去作用对象)。
+                // 回归原版: 自绘控制栏由 DesktopTitleBar 自身管理 (手写拖拽/双击最大化
+                // + DWM 圆角); undecorated 无系统标题栏, 不再需要 DesktopWindowTitleBarSync
+                // (DWM 标题栏同步失去作用对象)。
                 // 对照 app 端 App.kt:132 SourceUiEventBridge.init(): desktop 无 Activity,
                 // 改用 Composable 宿主订阅 FlowBus(SOURCE_UI_REQUEST) 弹 Compose Dialog
                 // (实现见 shared/sharedUiMain 的 SourceUiEventBridgeHost)
@@ -630,44 +637,52 @@ private fun runDesktopApp() = application {
                 // legado:// deep link 导入对话框宿主: 消费 main(args)/OpenURIHandler 经
                 // LegadoDeepLinkHandler 记录的待导入请求 (对照 app 端 AssociationActivity 分发)
                 DeepLinkImportHost()
-                // 自绘窗口控制栏 (回归原版): Windows/Linux undecorated 后接管标题栏
-                // (macOS 保留原生, 不渲染); 所有页面共用, 内容区在其下方让出 40dp;
-                // 真全屏时隐藏。阅读页激活染色由控制栏消费 readerWindowTint。
-                Column(
-                    Modifier
-                        .fillMaxSize()
-                        // 全屏时 Esc 优先退出全屏 (用户拍板 2026-08): 捕获阶段拦截,
-                        // 先于 LegadoApp 的 handleBackKey 返回逻辑, 不执行返回等普通操作
-                        .onPreviewKeyEvent { event ->
-                            if (event.type == KeyEventType.KeyDown && event.key == Key.Escape &&
-                                DesktopWindowChrome.fullscreen
-                            ) {
-                                PlatformServiceProviders.getOrNull()?.window?.setFullscreen(false)
-                                true
-                            } else {
-                                false
-                            }
-                        },
-                ) {
-                    if (!Platform.isMac() && !DesktopWindowChrome.fullscreen) {
-                        DesktopTitleBar(
-                            appName = appName,
-                            icon = iconPainter,
-                            window = window,
-                            windowState = windowState,
-                            themeStore = themeStoreProvider,
-                            navigator = navigator,
-                            onCloseRequest = ::exitApplication,
-                        )
+                // 窗口标题栏: macOS 原生红绿灯 + Windows 系统标题栏 (SystemDefault, 经
+                // DesktopWindowTitleBarSync 用 DWM 染主题色/深色/阅读页染色; 原生能力
+                // 拖拽/双击最大化/贴靠/Snap Layouts 全免费); 仅 Linux 保留自绘控制栏
+                // (无原生标题栏染色)。内容区不额外让位 (系统标题栏在窗口 chrome 区)。
+                // 全屏时 Esc 优先退出全屏 (用户拍板 2026-08): 捕获阶段拦截,
+                // 先于 LegadoApp 的 handleBackKey 返回逻辑, 不执行返回等普通操作
+                Modifier.onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown && event.key == Key.Escape &&
+                        DesktopWindowChrome.fullscreen
+                    ) {
+                        PlatformServiceProviders.getOrNull()?.window?.setFullscreen(false)
+                        true
+                    } else {
+                        false
                     }
-                    // 零薄壳: shared LegadoApp 统一管理导航栈 + ScreenModel 生命周期,
-                    // 所有路由由 shared RouteContent 直接渲染; 根级键盘焦点由 shared LegadoApp
-                    // 内部处理 (handleBackKey 与焦点节点同链, 无控件持焦时 ESC 仍可达)
-                    Box(Modifier.weight(1f).fillMaxWidth()) {
-                        LegadoApp(
-                            navigator = navigator,
-                            screenModelStore = screenModelStore,
-                        )
+                }.let { m ->
+                    if (Platform.isMac()) {
+                        // macOS: 纯系统标题栏 (原生红绿灯), 深浅色/设置走设置页 (原版观感)
+                        Box(m.fillMaxSize()) {
+                            DesktopWindowTitleBarSync(windowHandle)
+                            LegadoApp(
+                                navigator = navigator,
+                                screenModelStore = screenModelStore,
+                            )
+                        }
+                    } else {
+                        // Windows/Linux: 自绘控制栏 (顶部 40dp 标题栏 + 内容区)
+                        Column(m.fillMaxSize()) {
+                            if (!DesktopWindowChrome.fullscreen) {
+                                DesktopTitleBar(
+                                    appName = appName,
+                                    icon = iconPainter,
+                                    window = window,
+                                    windowState = windowState,
+                                    themeStore = themeStoreProvider,
+                                    navigator = navigator,
+                                    onCloseRequest = ::exitApplication,
+                                )
+                            }
+                            Box(Modifier.weight(1f).fillMaxWidth()) {
+                                LegadoApp(
+                                    navigator = navigator,
+                                    screenModelStore = screenModelStore,
+                                )
+                            }
+                        }
                     }
                 }
             }

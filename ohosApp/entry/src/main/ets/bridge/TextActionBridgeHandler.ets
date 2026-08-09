@@ -99,7 +99,7 @@ export function handleShowTextActionMenu(json: string): void {
 }
 
 /** 菜单项 (对标 Android 原版 content_select_action.xml 顺序: replace/copy/bookmark/aloud/dict/search_content/browser/share)。 */
-export const TEXT_ACTION_ITEMS: { label: string; action: string }[] = [
+export const TEXT_ACTION_ITEMS: TextActionMenuItem[] = [
   { label: '替换', action: 'replace' },
   { label: '复制', action: 'copy' },
   { label: '书签', action: 'bookmark' },
@@ -114,7 +114,7 @@ export const TEXT_ACTION_ITEMS: { label: string; action: string }[] = [
  * 图片菜单项 (对标原版 ReadBookActivity.onImageLongPress 图片菜单, 鸿蒙适配:
  * 无"选择目录"概念 → 保存到相册; 查看 = 叠层全屏预览; 刷新 = 回送 KMP 清缓存重排)。
  */
-export const IMAGE_ACTION_ITEMS: { label: string; action: string }[] = [
+export const IMAGE_ACTION_ITEMS: TextActionMenuItem[] = [
   { label: '查看', action: 'view' },
   { label: '刷新', action: 'refresh' },
   { label: '保存到相册', action: 'save' },

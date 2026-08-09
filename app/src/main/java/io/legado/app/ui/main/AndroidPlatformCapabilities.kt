@@ -2078,6 +2078,21 @@ class AndroidPlatformCapabilities(
         }
     }
 
+    // 对照 RemoteBookActivity.startRead 的 archive 分支 + showRemoteBookDownloadAlert:
+    // 默认书籍目录里找已下载的压缩包, 没有就弹确认框由调用方重新下载后重试
+    override fun startReadRemoteArchive(fileName: String, onNeedDownload: () -> Unit) {
+        val treeUri = AppConfig.defaultBookTreeUri ?: return
+        val archiveDoc = FileDoc.fromUri(treeUri.toUri(), true).find(fileName)
+        if (archiveDoc == null) {
+            activity.alert(androidAppString("draw"), androidAppString("archive_not_found")) {
+                okButton { onNeedDownload() }
+                noButton()
+            }
+        } else {
+            startRead(archiveDoc)
+        }
+    }
+
     private fun openArchiveBook(fileDoc: FileDoc, fileName: String) {
         runBlocking { appDb.bookDao.getBookByFileName(fileName) }?.let { book ->
             AppNavigatorProviders.getOrNull()?.push(book.toReadRoute())

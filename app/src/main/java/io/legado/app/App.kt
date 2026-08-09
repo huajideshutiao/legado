@@ -231,6 +231,8 @@ class App : Application() {
             LogUtils.d("App", "onCreate")
             LogUtils.logDeviceInfo()
             createNotificationChannels()
+            // 原在 ReaderProvider.onCreate, 但那早于 Application.onCreate, 取多语言文案会崩
+            io.legado.app.api.ShortCuts.buildShortCuts(this@App)
             DefaultData.upVersion()
             // Arco: 清理旧版本遗留的 barElevation 偏好值（elevation 已移除）
             appCtx.removePref(PreferKey.barElevation)

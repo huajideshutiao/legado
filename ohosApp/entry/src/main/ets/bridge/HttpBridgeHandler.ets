@@ -114,7 +114,7 @@ export function handleHttpRequest(requestJson: string, body: ArrayBuffer | undef
   // 异步处理, 完成后回调 (与 CryptoBridgeHandler.ets 同模式)
   handleAction(req, body, callback).catch((err: Error) => {
     const resp: HttpResponse = { ok: false, error: err.message ?? String(err) };
-    callback(req.requestId, JSON.stringify(resp));
+    callback(req.requestId, JSON.stringify(resp), undefined);
   });
 }
 
@@ -127,7 +127,7 @@ async function handleAction(req: HttpBridgeRequest, body: ArrayBuffer | undefine
       return await handleCancel(req.requestId, callback);
     default: {
       const resp: HttpResponse = { ok: false, error: 'unknown action: ' + req.action };
-      callback(req.requestId, JSON.stringify(resp));
+      callback(req.requestId, JSON.stringify(resp), undefined);
     }
   }
 }
@@ -141,7 +141,7 @@ async function handleExecute(
     p = JSON.parse(payloadJson) as HttpRequestPayload;
   } catch (e) {
     const resp: HttpResponse = { ok: false, error: 'parse payload failed' };
-    callback(requestId, JSON.stringify(resp));
+    callback(requestId, JSON.stringify(resp), undefined);
     return;
   }
 
@@ -189,7 +189,7 @@ async function handleExecute(
     cleanupRequest(requestId);
     if (err) {
       const resp: HttpResponse = { ok: false, error: err.message ?? String(err) };
-      callback(requestId, JSON.stringify(resp));
+      callback(requestId, JSON.stringify(resp), undefined);
       return;
     }
     // 响应 body: HttpDataType.ARRAY_BUFFER 接收, ArrayBuffer 原样裸传 (零拷贝, 二进制保真);
@@ -199,12 +199,13 @@ async function handleExecute(
     if (result instanceof ArrayBuffer) {
       respBody = result;
     } else if (typeof result === 'string') {
+      // Buffer 的长度属性是 length (无 byteLength)
       const b = buffer.from(result, 'utf-8');
-      respBody = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
+      respBody = b.buffer.slice(b.byteOffset, b.byteOffset + b.length);
     } else if (result != null) {
       // 兜底: 其他类型转 string 再编码
       const b = buffer.from(String(result), 'utf-8');
-      respBody = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
+      respBody = b.buffer.slice(b.byteOffset, b.byteOffset + b.length);
     }
     // message (HTTP reason phrase) 不再在此计算: 纯映射已下沉到 K/N 唯一一份
     // (KmpHttpTypes.ohos.kt ohosStatusText), 此处置空串, K/N executeOnce 按 code 计算
@@ -231,7 +232,7 @@ async function handleCancel(requestId: number, callback: HttpCallback): Promise<
     activeRequests.delete(requestId);
   }
   const resp: HttpResponse = { ok: true };
-  callback(requestId, JSON.stringify(resp));
+  callback(requestId, JSON.stringify(resp), undefined);
 }
 
 // 清理活跃请求 Map (请求完成/失败时调用)

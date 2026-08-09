@@ -1,5 +1,6 @@
 package io.legado.app.utils
 
+import io.legado.app.help.http.KmpResponseBody
 import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
@@ -17,8 +18,7 @@ import okio.Path.Companion.toPath
  * [toInputStream]: ByteArray 内存 ByteArrayInputStream 风格 (与 JVM ByteArrayInputStream 行为对齐)。
  *
  * KP4 OkHttp 跨平台修复: [byteStreamAsInput] 接收者改为 [Any] (commonMain expect 不引用 okhttp3.ResponseBody);
- * native 端恒抛 UnsupportedOperationException (KmpResponseBody 的 byteStream() 尚未在此委托),
- * AnalyzeUrlCore 经 byteStreamAsInput 的流式路径在 iOS/鸿蒙暂不可用。
+ * native 端委托 KmpResponseBody.byteStream(), AnalyzeUrlCore 的流式路径在 iOS/鸿蒙可用。
  */
 actual class URL actual constructor(val url: String) {
     override fun toString(): String = url
@@ -232,15 +232,12 @@ actual interface Closeable {
 internal actual fun ByteArray.toInputStream(): InputStream = ByteArrayInputStream(this)
 
 /**
- * ResponseBody → InputStream 转换 (iOS/鸿蒙未接通, 恒抛 UnsupportedOperationException)。
+ * ResponseBody → InputStream 转换: 委托 [KmpResponseBody.byteStream]
+ * (iOS/鸿蒙 actual 均已在内存字节缓存上实现, 可多次读, 语义同 OkHttp)。
  *
- * KP4: 接收者为 [Any] (commonMain expect 不引用 okhttp3.ResponseBody)。
- * 注: nativeMain 的 KmpResponseBody 已具备 byteStream(), 但此处尚未委托 —
- * AnalyzeUrlCore 经 byteStreamAsInput 的流式路径在 iOS/鸿蒙暂不可用。
+ * KP4: 接收者为 [Any] (commonMain expect 不引用 okhttp3.ResponseBody), 故此处强转。
  */
-internal actual fun Any.byteStreamAsInput(): InputStream {
-    throw UnsupportedOperationException("byteStreamAsInput not supported on iOS/ohos: OkHttp unavailable")
-}
+internal actual fun Any.byteStreamAsInput(): InputStream = (this as KmpResponseBody).byteStream()
 
 /** 纯 Kotlin ByteArrayInputStream 风格, 用于 toInputStream。 */
 private class ByteArrayInputStream(

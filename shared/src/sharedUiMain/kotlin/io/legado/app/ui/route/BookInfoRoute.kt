@@ -220,6 +220,10 @@ fun BookInfoRoute(
             if (!state.inBookshelf) {
                 b.addType(BookType.notShelf)
             }
+            // 目录内存交接 (对照原版 BookInfoActivity.startReadActivity:
+            // IntentData.chapterList = viewModel.chapterListData.value)。
+            // 不交接时阅读/播放页只能读 DB, 未加书架的书目录不落库 → 落空后走回源重拉。
+            IntentData.chapterList = screenModel.loadedChapterList
             val target = when {
                 b.isAudio -> AppRoute.AudioPlay(b.toRouteRef())
                 b.isVideo -> AppRoute.VideoPlay(b.toRouteRef())

@@ -24,15 +24,13 @@ import io.legado.app.ui.book.manga.entities.MangaCellState
 import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.config.ClickActionConfig
 import io.legado.app.ui.root.ScreenModel
+import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
 import io.legado.app.utils.format
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.app.utils.toJson
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -60,7 +58,7 @@ import kotlin.concurrent.Volatile
  */
 class MangaReaderScreenModel : ScreenModel {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = screenModelScope("漫画阅读")
 
     interface Platform {
         fun flowImages(bookChapter: BookChapter, content: String): Flow<String>

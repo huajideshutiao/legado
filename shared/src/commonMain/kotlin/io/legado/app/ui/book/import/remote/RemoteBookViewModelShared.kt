@@ -18,6 +18,7 @@ import io.legado.app.lib.webdav.WebDav
 import io.legado.app.lib.webdav.WebDavFile
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.remote.RemoteBook
+import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.utils.AlphanumComparator
 import io.legado.app.utils.isSecurityException
 import kotlinx.coroutines.CancellationException
@@ -226,8 +227,8 @@ class RemoteBookViewModelShared(
     /**
      * 开始阅读已上架书籍 (对照 app RemoteBookActivity.startRead)。
      *
-     * - 压缩包格式 (.zip/.rar/...) 走 archive 路径, app 端依赖 defaultBookTreeUri + SAF,
-     *   桌面端无 SAF, 暂不实现 (TODO)
+     * - 压缩包格式 (.zip/.rar/...) 交平台处理 (对照原版 defaultBookTreeUri 里找已下载的包 →
+     *   onArchiveFileClick 选章阅读; 找不到弹确认框, 确认后重新下载再试)
      * - 普通格式 (txt/epub/pdf/cbz) 通过 bookDao.getBookByFileName 查找本地书籍,
      *   找到则调 [onStartRead] 启动阅读
      *
@@ -236,7 +237,10 @@ class RemoteBookViewModelShared(
     fun startRead(remoteBook: RemoteBook) {
         val filename = remoteBook.filename
         if (archiveFileRegex.matches(filename)) {
-            // TODO: 压缩包格式阅读依赖平台专属 (app: SAF + FileDoc; desktop: 暂未实现)
+            PlatformCapabilityProviders.getOrNull()?.startReadRemoteArchive(filename) {
+                // 对照原版 showRemoteBookDownloadAlert 的 okButton: 下载完成后重试阅读
+                addSelectionToBookshelf(setOf(remoteBook)) { startRead(remoteBook) }
+            }
             return
         }
         scope.launch(IoDispatcher) {

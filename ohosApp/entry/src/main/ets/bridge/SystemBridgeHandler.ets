@@ -1,6 +1,6 @@
 import promptAction from '@ohos.promptAction';
 import common from '@ohos.app.ability.common';
-import type { Want } from '@ohos.app.ability.AbilityConstant';
+import type Want from '@ohos.app.ability.Want';
 
 /**
  * ArkTS 侧系统桥接处理器 (桥接 promptAction.showToast + context.startAbility)。

@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDbProviders
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
@@ -137,10 +138,15 @@ fun VideoPlayRoute(
                 }
 
                 RouteResults.BOOK_INFO -> {
-                    // 书籍详情返回: 查库确认是否仍在书架 (BookInfoRoute 不区分 Ok/Deleted payload)
-                    val inShelf = withContext(IoDispatcher) {
-                        AppDbProviders.get().bookDao.getBook(book.bookUrl) != null
-                    }
+                    // 书籍详情返回: 查库确认是否仍在书架 (BookInfoRoute 不区分 Ok/Deleted payload)。
+                    // LaunchedEffect 里抛出会连坐 Recomposer, 查库异常按"仍在书架"处理
+                    val inShelf = runCatching {
+                        withContext(IoDispatcher) {
+                            AppDbProviders.get().bookDao.getBook(book.bookUrl) != null
+                        }
+                    }.onFailure {
+                        AppLog.put("查询书架状态出错\n${it.message}", it)
+                    }.getOrDefault(true)
                     if (!inShelf) navigator.pop()
                     else screenModel.dispatch(VideoPlayUiEvent.UpdateInShelf(true))
                 }
@@ -223,6 +229,8 @@ fun VideoPlayRoute(
         onPlayPause = screenModel::onPlayPause,
         onSeekDelta = screenModel::onSeekDelta,
         onSpeedChange = screenModel::onSpeedChange,
+        // 键盘长按倍速反馈文字 → ScreenModel flow → 渲染层顶部标签 (对照移动端手势提示)
+        onGestureText = screenModel::onGestureText,
         controlsVisible = state.controlsVisible,
         onToggleControls = screenModel::onToggleControls,
         onTitleClick = onTitleClick,
@@ -292,7 +300,10 @@ fun VideoPlayRoute(
             bookmark = bookmark,
             showDelete = false,
             onConfirm = { updated ->
-                scope.launch { AppDbProviders.get().bookmarkDao.insert(updated) }
+                scope.launch {
+                    runCatching { AppDbProviders.get().bookmarkDao.insert(updated) }
+                        .onFailure { AppLog.put("保存书签出错\n${it.message}", it) }
+                }
                 screenModel.clearPendingBookmark()
             },
             onDismiss = { screenModel.clearPendingBookmark() },

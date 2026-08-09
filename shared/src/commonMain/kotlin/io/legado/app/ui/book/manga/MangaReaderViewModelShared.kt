@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.manga
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -31,14 +32,16 @@ import io.legado.app.ui.book.manga.entities.MangaContent
 import io.legado.app.ui.book.manga.entities.MangaPage
 import io.legado.app.ui.book.manga.entities.ReaderLoading
 import io.legado.app.ui.book.read.ReadBookEvents
+import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.mapIndexed
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.currentCoroutineContext
@@ -199,10 +202,10 @@ class MangaReaderViewModelShared(
     private var preDownloadTask: Job? = null
     private val downloadedChapters = mutableSetOf<Int>()
     private val downloadFailChapters = mutableMapOf<Int, Int>()
-    private val downloadScope = CoroutineScope(SupervisorJob() + IoDispatcher)
+    private val downloadScope = screenModelScope("漫画预下载", IoDispatcher)
 
     /** 退出时落库/上传专用作用域: UI scope 取消不打断 (对照 ReadBookViewModelShared.progressSyncScope) */
-    private val progressSyncScope = CoroutineScope(SupervisorJob() + IoDispatcher)
+    private val progressSyncScope = screenModelScope("漫画进度同步", IoDispatcher)
 
     /** 已触发过云进度拉取的 bookUrl：每本书打开只拉一次 (原版 initManga 仅入口同步一次)。 */
     private var cloudSyncedBookUrl: String? = null
@@ -272,12 +275,14 @@ class MangaReaderViewModelShared(
         }.getOrNull()
         _bookSource.value = source
         onBookSourceChanged()
-        // 加载章节列表 (对照 app 端 upBook 的 loadChapterList 兜底分支):
-        // DB 有目录直接用; DB 空时本地书走 FileBook / 网络书走 getChapterListAwait 拉取。
+        // 加载章节列表 (对照 app 端 BaseReadViewModel.upBook 的三态分支):
+        // 内存交接 (IntentData, 带 bookUrl 校验) → DB → 回源拉取。
         // 缺失不拉会让 chapterSize=0 → loadContent 早退 (index < simulatedChapterSize 为
         // false 连 upToc 都不触发) → _loading 永久 true, 整页"加载中"永不消失
         // (桌面端导入/深链添加的目录未入库的书必现)。
-        val dbList = runCatching {
+        val handoff = IntentData.chapterList
+            ?.takeIf { it.firstOrNull()?.bookUrl == book.bookUrl }
+        val dbList = handoff ?: runCatching {
             AppDbProviders.get().bookChapterDao.getChapterList(book.bookUrl)
         }.getOrDefault(emptyList())
         if (dbList.isNotEmpty()) {
@@ -697,6 +702,10 @@ class MangaReaderViewModelShared(
         if (book != null && !book.isNotShelf) {
             progressSyncScope.launch {
                 saveReadAwait()
+                // 通知书架刷新: 落库后 books 表 durChapterTime 已更新,
+                // 书架 flow 可能因 Room 失效未推送而停在旧快照, 经 UP_BOOKSHELF 重启分组流强制重查
+                // (对齐阅读器 uploadProgress 行为, 回归 2026-08)。
+                postEvent(EventBus.UP_BOOKSHELF, book.bookUrl)
                 // 原版 onPause: syncBookProgressPlus → syncProgress() 三路比对 (云端较新则不上传,
                 // 避免旧进度覆盖云端); 未开启 → 无条件上传
                 if (config.syncBookProgressPlus) {
@@ -939,9 +948,10 @@ class MangaReaderViewModelShared(
             book.lastCheckTime = systemCurrentTimeMillis()
             val oldBook = book.copy()
             scope.launch {
+                // 落库块必须在 runCatching 内: 原版 execute{}.onSuccess{} 的成功回调与 block
+                // 同在 Coroutine 的 catch(Throwable) 里, DB 写失败走 onError 发错误而不外泄
                 runCatching {
-                    WebBook.getChapterListAwait(bookSource, book).getOrThrow()
-                }.onSuccess { cList ->
+                    val cList = WebBook.getChapterListAwait(bookSource, book).getOrThrow()
                     ensureActive()
                     if (cList.size > chapterSize) {
                         if (oldBook.bookUrl == book.bookUrl) {
@@ -959,6 +969,7 @@ class MangaReaderViewModelShared(
                         if (nextMangaChapter == null) loadContent(_durChapterIndex.value + 1)
                     }
                 }.onFailure {
+                    if (it is CancellationException) throw it
                     _error.tryEmit("目录加载失败" to true)
                 }
             }

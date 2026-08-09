@@ -97,7 +97,7 @@ kotlin {
     androidLibrary {
         namespace = "io.legado.shared"
         compileSdk = 36
-        minSdk = 26
+        minSdk = 24
         // 新版 AGP KMP library 插件默认不处理 Android assets/resources, compose.resources
         // 的 copy*ComposeResourcesToAndroidAssets 任务因此拿不到 outputDirectory (配置校验失败,
         // 生成的 composeResources/ 资产也不会进 AAR)。开启后才会有 Sources.assets 供 CMP 接线。
@@ -229,6 +229,12 @@ kotlin {
                 implementation(libs.compose.foundation.android)
                 implementation(libs.compose.activity)
                 implementation("org.jetbrains.compose.components:components-ui-tooling-preview:$composeVersion")
+                // sharedUiMain 的 @Preview 渲染器 (ComposeViewAdapter 在 ui-tooling, 不在 ui-tooling-preview)。
+                // androidLibrary 插件无 buildType, 无 debugImplementation; IDE 预览从 androidMain 源集声明的
+                // 依赖取类路径 (AndroidGradleClassJarProvider.getModuleExternalLibraries), 顶层
+                // add("androidRuntimeClasspath") 进不了该模型, 只能在此 implementation。改动后须 Gradle
+                // sync (只编译不 sync 时 IDE 仍用旧模型); 随 AAR 发布但 release 构建被 R8 裁剪。
+                implementation(libs.compose.ui.tooling.android)
                 // SVG 解码 (ImageProvider.android.kt 内联 SvgDecode 依赖 androidsvg)
                 implementation(libs.androidsvg)
                 // AndroidWebView slot 的夜间模式 (原 WebViewUtil.applyCommonSettings → setDarkeningAllowed)

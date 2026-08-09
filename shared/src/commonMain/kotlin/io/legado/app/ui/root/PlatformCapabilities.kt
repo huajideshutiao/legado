@@ -378,6 +378,16 @@ interface PlatformCapabilities {
         error("Importing associated files is not supported on this platform: $filePath")
     }
 
+    /**
+     * 阅读远程书籍中的压缩包 (对照 app 端 RemoteBookActivity.startRead 的 archive 分支)。
+     *
+     * 在默认书籍目录里找已下载的压缩包: 找到就走解压选章阅读 (onArchiveFileClick),
+     * 没找到就弹 archive_not_found 确认框, 用户确认后回调 [onNeedDownload] 下载并重试。
+     * 依赖平台文件系统 (Android SAF FileDoc), 未实现端提示不支持。
+     */
+    fun startReadRemoteArchive(fileName: String, onNeedDownload: () -> Unit) =
+        unsupported("阅读压缩包内的书")
+
     // 阅读样式平台能力 (各端按需 override, 未实现端返回空列表)
     // 对照 app 端 FontSelectDialog.loadFontFiles: 字体目录 + 本地字体合并去重排序
     /** 扫描字体文件列表 (对照 app 端 FontSelectDialog, 未实现端空列表) */

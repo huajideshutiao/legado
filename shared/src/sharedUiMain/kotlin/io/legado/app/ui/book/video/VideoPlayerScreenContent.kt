@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -93,8 +94,9 @@ import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
 
 /**
- * 手机 vs 平板/桌面断点 (smallestScreenWidth >= 600dp 视为平板/桌面)。
- * 手机横屏才让视频全屏; 平板/桌面无论方向都走 2/3 + 选集网格。
+ * 手机 vs 宽屏断点: 容器宽 < DesignTokens.wideScreenMinWidth 视为手机 (宽边判定, 对齐音频页
+ * maxWidth >= 600dp)。宽屏 (宽 ≥600dp) 无论横竖都带选集列表 (横排 视频+列表 / 竖排 视频+下列表);
+ * 窄横屏 (宽 <600 且高更小) 视频全屏不列列表。Android 手机横屏的全屏由平台层单独负责。
  */
 
 /**
@@ -141,6 +143,8 @@ fun VideoPlayerScreenContent(
     onPlayPause: () -> Unit = {},
     onSeekDelta: (Long) -> Unit = {},
     onSpeedChange: (Float) -> Unit = {},
+    // 手势/按键反馈文字 (键盘长按倍速 2.0X 等; 转发给 handleMediaKeys, 由渲染层经 ScreenModel 显示)
+    onGestureText: (String?) -> Unit = {},
     controlsVisible: Boolean = false,
     onToggleControls: () -> Unit = {},
     // 平台自定义顶栏 (null = 用 shared VideoTitleBar; 传 {} 隐藏)
@@ -185,6 +189,7 @@ fun VideoPlayerScreenContent(
                 onPrev = onPrevChapter,
                 onNext = onNextChapter,
                 onSpeedChange = onSpeedChange,
+                onGestureText = onGestureText,
                 onBack = onBack,
                 scope = scope,
             )
@@ -208,39 +213,113 @@ fun VideoPlayerScreenContent(
             val showGrid = !isFullScreen && chapters.size > 1
             if (showGrid) {
                 BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
-                    // 手机 vs 平板/桌面断点 (shortest side < DesignTokens.wideScreenMinWidth 视为手机)
-                    val isPhone = minOf(maxWidth, maxHeight) < DesignTokens.wideScreenMinWidth
-                    if (isPhone && maxWidth > maxHeight) {
-                        // 手机横屏: 视频全屏不缩窄不列列表 (对照 app 横屏强制全屏并隐藏网格)
-                        Box(Modifier.fillMaxSize()) {
-                            videoRenderSlot(Modifier.matchParentSize())
-                        }
-                    } else {
-                        // 手机竖屏 / 平板/桌面 (任意方向): 视频最大高 2/3, 宽度按 16:9 收窄, 下方选集网格
-                        val maxVideoHeight = maxHeight * 2f / 3f
-                        val videoWidth = minOf(maxWidth, maxVideoHeight * 16f / 9f)
-                        Column(
-                            Modifier.fillMaxSize(),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Box(Modifier.width(videoWidth).aspectRatio(16f / 9f)) {
+                    // 手机 vs 宽屏断点: 宽边 < wideScreenMinWidth 视为手机 (对齐音频页
+                    // maxWidth >= 600dp 的宽屏判定; 矮横窗/手机横屏宽边 ≥600 不再被当手机)
+                    val isPhone = maxWidth < DesignTokens.wideScreenMinWidth
+                    when {
+                        // 窄横屏 (宽 <600 且高更小): 视频全屏不列列表
+                        isPhone && maxWidth > maxHeight ->
+                            Box(Modifier.fillMaxSize()) {
                                 videoRenderSlot(Modifier.matchParentSize())
                             }
-                            VideoChapterGrid(
+
+                        // 平板/桌面横排: 左视频 + 右选集网格 (视频盒子 weight 占剩余, 网格固定窄栏)
+                        // 视频上限用 maxWidth, 实际宽度由视频盒子 (容器宽 - 列表宽) 钳制;
+                        // 不再用 60% 上限 —— 那会让视频比盒子窄、居中后左右留白
+                        maxWidth > maxHeight ->
+                            VideoBody(
+                                vertical = false,
+                                videoMaxHeight = maxHeight,
+                                videoMaxWidth = maxWidth,
+                                gridMaxWidth = (maxWidth * 0.35f)
+                                    .coerceAtMost(DesignTokens.sidePanelMaxWidth),
                                 chapters = chapters,
                                 displayTitles = displayTitles,
                                 durIndex = curChapterIndex,
-                                onClick = onOpenChapter,
                                 countWords = countWords,
-                                modifier = Modifier.fillMaxWidth().weight(1f),
+                                onOpenChapter = onOpenChapter,
+                                videoRenderSlot = videoRenderSlot,
                             )
-                        }
+
+                        // 竖屏 (手机竖屏 / 平板竖屏): 上视频 + 下选集网格
+                        else ->
+                            VideoBody(
+                                vertical = true,
+                                videoMaxHeight = maxHeight * 2f / 3f,
+                                videoMaxWidth = maxWidth,
+                                chapters = chapters,
+                                displayTitles = displayTitles,
+                                durIndex = curChapterIndex,
+                                countWords = countWords,
+                                onOpenChapter = onOpenChapter,
+                                videoRenderSlot = videoRenderSlot,
+                            )
                     }
                 }
             } else {
                 Box(Modifier.fillMaxWidth().weight(1f)) {
                     videoRenderSlot(Modifier.matchParentSize())
                 }
+            }
+        }
+    }
+}
+
+// ---- 视频区 + 选集网格 (横排/竖排共用) ----
+
+/**
+ * 视频渲染区与选集网格的组合布局。
+ *
+ * @param vertical true=竖排 (上视频下网格); false=横排 (左视频右网格)
+ * @param videoMaxHeight 视频区可用的最大高度 (竖排时给网格让出空间)
+ * @param videoMaxWidth 视频区可用的最大宽度 (横排时给网格让出空间)
+ * @param gridMaxWidth 横排时网格固定宽度 (null = 与视频各占一半, 对照旧行为)
+ */
+@Composable
+private fun VideoBody(
+    vertical: Boolean,
+    videoMaxHeight: Dp,
+    videoMaxWidth: Dp,
+    gridMaxWidth: Dp? = null,
+    chapters: List<BookChapter>,
+    displayTitles: List<String>,
+    durIndex: Int,
+    countWords: Boolean,
+    onOpenChapter: (Int) -> Unit,
+    videoRenderSlot: @Composable (Modifier) -> Unit,
+) {
+    // 按 16:9 在可用区域内收窄视频宽
+    val videoWidth = minOf(videoMaxWidth, videoMaxHeight * 16f / 9f)
+    val video: @Composable () -> Unit = {
+        Box(Modifier.width(videoWidth).aspectRatio(16f / 9f)) {
+            videoRenderSlot(Modifier.matchParentSize())
+        }
+    }
+    val grid: @Composable () -> Unit = {
+        VideoChapterGrid(
+            chapters = chapters,
+            displayTitles = displayTitles,
+            durIndex = durIndex,
+            onClick = onOpenChapter,
+            countWords = countWords,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+    if (vertical) {
+        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+            video()
+            Box(Modifier.weight(1f)) { grid() }
+        }
+    } else {
+        Row(Modifier.fillMaxSize()) {
+            Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                video()
+            }
+            if (gridMaxWidth != null) {
+                // 固定窄栏 (对照音频页侧栏): 网格在栏内按自身宽度自适应列数
+                Box(Modifier.width(gridMaxWidth)) { grid() }
+            } else {
+                Box(Modifier.weight(1f)) { grid() }
             }
         }
     }

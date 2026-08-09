@@ -10,6 +10,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.Review
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.DirectLinkUploadRule
 import io.legado.app.help.RssToolbarActions
 import io.legado.app.help.book.BookStorageProviders
@@ -18,12 +19,14 @@ import io.legado.app.help.book.toggleBookshelfCore
 import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.LocalConfigKeys
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.file.AppFilesDirs
 import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.Debug
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.book.import.ImportFileItem
+import io.legado.app.ui.book.read.config.FontItem
 import io.legado.app.ui.book.source.manage.BookSourceViewModelShared
 import io.legado.app.ui.config.MODE_EDIT_CONFIG
 import io.legado.app.ui.config.MODE_EDIT_PREFS
@@ -36,6 +39,7 @@ import io.legado.app.ui.root.DefaultDialogTransitionSpec
 import io.legado.app.ui.root.DialogTransitionSpec
 import io.legado.app.ui.root.PlatformCapabilities
 import io.legado.app.ui.root.PlatformServiceProviders
+import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteTransitionSpec
 import io.legado.app.ui.root.TransitionEasing
 import io.legado.app.ui.root.encodeBookVariableOverlayPayload
@@ -47,9 +51,11 @@ import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
 import io.legado.app.utils.RemoteAssetsUtils
 import io.legado.app.utils.browseUrl
+import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.toJson
 import io.legado.app.web.WebServerManager
 import io.legado.desktop.constant.DesktopAppInfo
+import io.legado.desktop.help.DesktopCrashLogDirs
 import io.legado.desktop.help.book.DesktopBookExport
 import io.legado.desktop.help.source.DesktopCheckSource
 import io.legado.desktop.help.webview.DesktopWebViewEngines
@@ -63,6 +69,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.awt.Desktop
@@ -70,8 +77,10 @@ import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
 import java.io.File
+import java.lang.management.ManagementFactory
 import java.net.URI
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.management.ObjectName
 
 object DesktopPlatformCapabilities : PlatformCapabilities {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -349,14 +358,118 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
 
     override val webServiceState: StateFlow<Boolean>? get() = webServiceRunningState
 
+    // 图片预览: 与 app 端 PhotoDialog 同一份 shared 实现, 经 "photo" overlay 弹出
+    // (阅读页点击正文图片; payload = 图片 src)
+    override fun showImagePreview(url: String) {
+        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("photo", payload = url))
+    }
+
+    // 换封面源: 对照 app 端同名方法, 走 "change_cover" overlay (payload="name\nauthor"),
+    // 结果经 overlayResults 的 RouteResultPayload.ChangeCover 回传
+    override fun showChangeCoverDialog(book: Book, onCoverSelected: (String) -> Unit) {
+        val navigator = AppNavigatorProviders.getOrNull() ?: return
+        scope.launch {
+            navigator.showOverlay(
+                AppOverlay.Dialog("change_cover", payload = "${book.name}\n${book.author}")
+            )
+            val result = navigator.overlayResults.first { it.key == "change_cover" }
+            val payload = result.payload as? RouteResultPayload.ChangeCover ?: return@launch
+            withContext(Dispatchers.Main) { onCoverSelected(payload.coverUrl) }
+        }
+    }
+
     // ===== 关于页 =====
     // 检查更新不再走这里: shared AboutRoute 直接调 AboutScreenModel.checkUpdate →
     // AppUpdateManager (环境/执行器由 registerDesktopAppUpdate 注册, 见 DesktopAppUpdate.kt)
+
+    // 崩溃日志: 与 app 端同走 shared OverlayContentHost 的 "crash_logs" key
+    // (数据源 = DesktopPlatformServices.crashLogs, 写入方见 DesktopCrashHandler)
+    override fun showCrashLogs() {
+        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("crash_logs"))
+    }
+
+    // 对照 app 端 saveLog: 打包 logs + crash + heapDump 成 logs.zip 落到用户可见目录
+    // (app 端落 SAF 备份目录, 桌面端落 userExportDir; 桌面无 logcat 可 dump)
+    override fun saveLog() {
+        scope.launch {
+            runCatching { saveLogInternal() }
+                .onSuccess { Toasters.get().toast("已保存至 $it") }
+                .onFailure {
+                    AppLog.put("保存日志出错\n${it.localizedMessage}", it)
+                    Toasters.get().toast("保存日志出错\n${it.message}")
+                }
+        }
+    }
+
+    // 对照 app 端 createHeapDump: Android 用 Debug.dumpHprofData, JVM 用 HotSpotDiagnosticMXBean
+    override fun createHeapDump() {
+        scope.launch {
+            Toasters.get().toast("开始创建堆转储")
+            runCatching { createHeapDumpInternal() }
+                .onSuccess { Toasters.get().toast("堆转储已保存至 ${it.absolutePath}") }
+                .onFailure {
+                    AppLog.put("保存堆转储失败\n${it.localizedMessage}", it)
+                    Toasters.get().toast("保存堆转储失败\n${it.message}")
+                }
+        }
+    }
 
     // 桌面端无 assets, 直接打开仓库上的文档 (对照 app 端 showMdFile 读不到资源时的回退分支)
     override fun showMdFile(title: String, fileName: String) {
         val path = if (fileName == "LICENSE.md") "LICENSE" else "app/src/main/assets/$fileName"
         runCatching { openExternalUrl("https://github.com/huajideshutiao/legado/blob/master/$path") }
+    }
+
+    /**
+     * 打包日志到 logs.zip (对照 app 端 copyLogs + copyHeapDump, 桌面端无 logcat 环节)。
+     *
+     * 源: `{cacheDir}/logs` (AppLog 落盘) + 崩溃日志目录 + `{cacheDir}/heapDump`;
+     * 目标: `{userExportDir}/logs.zip`。
+     *
+     * @return 目标 zip 绝对路径
+     */
+    private suspend fun saveLogInternal(): String = withContext(Dispatchers.IO) {
+        if (!AppLog.isRecordLogEnabled) {
+            Toasters.get().toast("未开启日志记录, 请去其他设置里打开记录日志")
+        }
+        val cacheDir = File(AppFilesDirs.get().cacheDir)
+        val sources = listOf(
+            File(cacheDir, "logs"),
+            DesktopCrashLogDirs.cacheCrashDir,
+            File(cacheDir, "heapDump"),
+        ).filter { it.exists() }
+        if (sources.isEmpty()) throw NoStackTraceException("没有可保存的日志文件")
+        val outDir = File(DataStorageProviders.get().userExportDir).apply { mkdirs() }
+        val zipFile = File(outDir, "logs.zip")
+        zipFile.delete()
+        if (!ZipUtils.zipFiles(sources, zipFile)) {
+            throw NoStackTraceException("打包日志失败")
+        }
+        zipFile.absolutePath
+    }
+
+    /**
+     * JVM 堆转储 (对照 app 端 CrashHandler.doHeapDump 的 Debug.dumpHprofData)。
+     *
+     * app 端每次 createFolderReplace 只留最新一份, 这里同样先清空目录。
+     * 落 `{cacheDir}/heapDump`, 再经 [saveLog] 一起打包出去 (hprof 体积大, 不直接落用户目录)。
+     */
+    private suspend fun createHeapDumpInternal(): File = withContext(Dispatchers.IO) {
+        val heapDir = File(AppFilesDirs.get().cacheDir, "heapDump")
+        heapDir.deleteRecursively()
+        heapDir.mkdirs()
+        val heapFile = File(heapDir, "heap-dump-manually-${System.currentTimeMillis()}.hprof")
+        System.gc()
+        // HotSpotDiagnosticMXBean 是 JDK 内置诊断 MBean (com.sun.management), 经 MBeanServer
+        // 反射调用避免对 jdk.management 模块的编译期依赖 (非 HotSpot JVM 上优雅失败)
+        val server = ManagementFactory.getPlatformMBeanServer()
+        server.invoke(
+            ObjectName("com.sun.management:type=HotSpotDiagnostic"),
+            "dumpHeap",
+            arrayOf(heapFile.absolutePath, true),
+            arrayOf("java.lang.String", "boolean"),
+        )
+        heapFile
     }
 
     // ===== 书籍详情页 =====
@@ -729,6 +842,72 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
 
     override fun pickBookTreeUri(onSelected: (String?) -> Unit) {
         scope.launch { onSelected(FileDialogs.pickDirectory("选择书籍目录")?.absolutePath) }
+    }
+
+    // 书源校验设置 / 直链上传配置: shared 已有对话框实现, 与 app 端同走 overlay
+    // onDismiss 契约同 app 端: 等 overlay 入栈再等其出栈
+    override fun showCheckSourceConfigDialog(onDismiss: () -> Unit) {
+        val navigator = AppNavigatorProviders.getOrNull() ?: return
+        scope.launch {
+            navigator.overlays.first { list -> list.any { it.key == "check_source_config" } }
+            navigator.overlays.first { list -> list.none { it.key == "check_source_config" } }
+            withContext(Dispatchers.Main) { onDismiss() }
+        }
+        navigator.showOverlay(AppOverlay.Dialog("check_source_config"))
+    }
+
+    override fun showDirectLinkUploadConfigDialog() {
+        AppNavigatorProviders.getOrNull()
+            ?.showOverlay(AppOverlay.Dialog("direct_link_upload_config"))
+    }
+
+    /**
+     * 清理内嵌浏览器数据 (对照 app 端 clearWebViewData 删 webview 私有目录)。
+     *
+     * 桌面端 WebView2 的 cookie/localStorage 落 `{cacheDir}/webview2` (见 WebView2Instance);
+     * 该目录被存活的 WebView2 环境独占, 运行中删不干净, 故与 app 端一样删完提示重启。
+     * app 端 delay 后 appCtx.restart(), 桌面端不自动重启进程 (用户可能正在阅读), 只提示。
+     */
+    override fun clearWebViewData() {
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    File(AppFilesDirs.get().cacheDir, "webview2").deleteRecursively()
+                }.getOrDefault(false)
+            }
+            if (ok) {
+                Toasters.get().toast("已清理 WebView 数据, 重启应用后生效")
+            } else {
+                // 浏览器窗口开着时目录被占用, 删除会部分失败
+                Toasters.get().toast("WebView 数据未能完全清理, 请关闭所有浏览器窗口后重试")
+            }
+        }
+    }
+
+    /**
+     * 扫描字体 (对照 app 端 scanFontItems: pref 字体目录 + 内置字体目录, 同名去重按名排序)。
+     *
+     * 桌面端无 SAF, fontFolder 恒为真实路径; 内置目录取 DataStorage.fontsDir
+     * (对应 app 端 externalFiles/font)。
+     */
+    override suspend fun scanFontItems(): List<FontItem> = withContext(Dispatchers.IO) {
+        val fontRegex = Regex("(?i).*\\.[ot]tf")
+        val items = arrayListOf<FontItem>()
+        // 先扫 pref 目录: distinctBy 保留先出现者, 与 app 端 mergeFontItems 优先级一致
+        prefs.getString(PreferKey.fontFolder).takeIf { it.isNotBlank() }?.let {
+            scanFontDir(items, File(it), fontRegex)
+        }
+        scanFontDir(items, File(DataStorageProviders.get().fontsDir), fontRegex)
+        items.distinctBy { it.name }.sortedBy { it.name }
+    }
+
+    private fun scanFontDir(items: MutableList<FontItem>, dir: File, fontRegex: Regex) {
+        if (!dir.isDirectory) return
+        dir.listFiles()?.forEach {
+            if (it.isFile && it.name.matches(fontRegex)) {
+                items.add(FontItem(it.absolutePath, it.name))
+            }
+        }
     }
 
     // ===== 导入本地书 (状态与扫描见 DesktopImportBook) =====

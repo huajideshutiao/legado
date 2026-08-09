@@ -1,5 +1,6 @@
 import UIAbility from '@ohos.app.ability.UIAbility';
-import type { AbilityConstant, Want } from '@ohos.app.ability.AbilityConstant';
+import type AbilityConstant from '@ohos.app.ability.AbilityConstant';
+import type Want from '@ohos.app.ability.Want';
 import type { Configuration } from '@ohos.app.ability.Configuration';
 import type window from '@ohos.window';
 import display from '@ohos.display';
@@ -24,7 +25,7 @@ import { handleWebViewRequest } from '../bridge/WebViewBridgeHandler';
 import { initSystemBridge, handleShowToast, handleOpenUrl } from '../bridge/SystemBridgeHandler';
 import { handleShowTextActionMenu } from '../bridge/TextActionBridgeHandler';
 import { handleBatteryRequest } from '../bridge/BatteryBridgeHandler';
-import { handleShareRequest } from '../bridge/SystemShareBridgeHandler';
+import { initShareBridge, handleShareRequest } from '../bridge/SystemShareBridgeHandler';
 import { handleKeyboardCommand } from '../bridge/KeyboardBridgeHandler';
 import { initPermissionBridge, handlePermissionRequest } from '../bridge/PermissionBridgeHandler';
 
@@ -60,7 +61,7 @@ interface WindowCommand {
  * 4. KP7+ 已注入 filesDir/cacheDir 沙盒路径 + 注册 Toast/Notification tsfn 回调
  * 5. KP8+ 已注册 Image/Media tsfn 回调, 接入 @ohos.multimedia.image (PixelMap) 和 @ohos.multimedia.media (AVPlayer)
  *    使书源 JS 图片操作 (decode/encode/crop/split/stitch) 和 HTTP TTS 播放在鸿蒙端真实工作
- * 6. KP8+ 已注册 TTS tsfn 回调, 接入 @ohos.textToSpeech 系统语音合成引擎,
+ * 6. KP8+ 已注册 TTS tsfn 回调, 接入 @kit.CoreSpeechKit textToSpeech 系统语音合成引擎,
  *    使系统 TTS 朗读 (createEngine/speak/stop/shutdown) 在鸿蒙端真实工作
  * 7. KP8+ 已注册 Crypto tsfn 回调, 接入 @ohos.security.cryptoFramework (createAsyCodec/createSign/createVerify),
  *    使书源 JS 非对称加解密 (createAsymmetricCrypto encrypt/decrypt) 和签名/验签 (createSign sign/verify) 在鸿蒙端真实工作
@@ -258,7 +259,7 @@ export default class EntryAbility extends UIAbility {
 
     // TTS tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch)
     // KMP OhosNativeBridge.sendTtsCommand 发 TTS 命令 (createEngine/speak/pause/resume/stop/shutdown),
-    // ArkTS 侧 TtsBridgeHandler 调 @ohos.textToSpeech 执行真实朗读,
+    // ArkTS 侧 TtsBridgeHandler 调 @kit.CoreSpeechKit textToSpeech 执行真实朗读,
     // TTS 事件通过 legado.ttsEvent(eventJson) 回送给 KMP 侧 TtsEventListener
     try {
       initTtsBridge((eventJson: string): void => {
@@ -338,9 +339,11 @@ export default class EntryAbility extends UIAbility {
 
     // Share tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 系统分享面板, 同 Toast 模式 fire-and-forget)
     // KMP OhosPlatformServices.sharing.shareText/shareFile → OhosNativeBridge.shareText/shareFile
-    // 经 tsfn dispatch 到此回调, ArkTS 侧 SystemShareBridgeHandler 调 @ohos.share.systemShare
+    // 经 tsfn dispatch 到此回调, ArkTS 侧 SystemShareBridgeHandler 调 @kit.ShareKit systemShare
     // 弹系统分享面板。未注册时 KMP 侧降级写剪贴板 + toast (见 OhosPlatformServices)。
     try {
+      // ShareController.show 需 UIAbilityContext, 注册回调前先注入
+      initShareBridge(this.context);
       legado.registerShareCallback(handleShareRequest);
       console.info('[Legado] share tsfn callback registered via napi');
     } catch (e) {
@@ -462,8 +465,8 @@ export default class EntryAbility extends UIAbility {
       // 此后 KMP WindowController.setFullscreen/setKeepScreenOn/setOrientation/setSystemBars
       // 的 JSON 命令跨线程 dispatch 到此回调, 由 ArkTS 在窗口上执行 @ohos.window API。
       // 未注册时 KMP 侧降级 println (见 OhosNativeBridge.sendWindowCommand)。
-      // 注: setWindowSystemBarEnable 仅支持整体显隐 (鸿蒙 API 无分栏), 单栏策略
-      // (HiddenStatusBar/HiddenNavigationBar) 由 KMP 侧映射为整体隐藏 (见 WindowPolicy.kt)。
+      // 注: 单栏策略 (HiddenStatusBar/HiddenNavigationBar) 已由 KMP 侧映射为整体显隐
+      // (见 WindowPolicy.kt), 故此处只按 enabled 传"全显/全隐"两种 names 组合。
       try {
         legado.registerWindowCallback((json: string): void => {
           try {
@@ -479,9 +482,13 @@ export default class EntryAbility extends UIAbility {
                 case 'setPreferredOrientation':
                   win.setPreferredOrientation(cmd.orientation ?? 0);
                   break;
-                case 'setSystemBarEnable':
-                  win.setWindowSystemBarEnable(cmd.enabled ?? true);
+                case 'setSystemBarEnable': {
+                  // names 为要显示的系统栏; 关闭时传空数组 (状态栏+导航栏全隐)
+                  const bars: Array<'status' | 'navigation'> =
+                    (cmd.enabled ?? true) ? ['status', 'navigation'] : [];
+                  win.setWindowSystemBarEnable(bars);
                   break;
+                }
                 case 'exitApplication':
                   // 退出应用: 仅 UIAbility 自身 context 可调 terminateSelf (系统弹回收确认?
                   // 无, 直接终止)。从 window tsfn 通道分发 (复用桥避免新增独立通道)。

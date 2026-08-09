@@ -2,6 +2,7 @@ package io.legado.app.help.crypto
 
 import io.legado.app.utils.Base64Lenient
 import io.legado.app.utils.encodeBase64Standard
+import io.legado.app.utils.textCharsetCodec
 import io.legado.app.utils.toHexLower
 
 /**
@@ -82,13 +83,16 @@ class NativeSymmetricCrypto(
     override fun encryptBase64(data: ByteArray): String = encrypt(data).encodeBase64Standard()
 
     override fun encryptBase64(data: String, charset: String?): String {
-        // KMP commonMain 无 charset(name) API (kotlin.text.Charset.forName 是 JVM-only),
-        // native 端仅支持 UTF-8 (null 视为 UTF-8, 对齐 jvmAndAndroid 默认行为)。
-        val bytes = when (charset?.uppercase()) {
-            null, "UTF-8", "UTF8" -> data.encodeToByteArray()
-            else -> throw UnsupportedOperationException(
-                "NativeSymmetricCrypto: unsupported charset '$charset' (only UTF-8 supported on native)"
-            )
+        // 对齐 hutool encrypt(data, charset) = StrUtil.bytes(data, charset);
+        // 走 textCharsetCodec (UTF-8/UTF-16 系/Latin1/GBK 系/Big5), 平台无该 codec 才点名抛异常
+        val bytes = if (charset.isNullOrBlank()) {
+            data.encodeToByteArray()
+        } else {
+            val codec = runCatching { textCharsetCodec(charset) }.getOrNull()
+                ?: throw UnsupportedOperationException(
+                    "NativeSymmetricCrypto: unsupported charset '$charset' on iOS/鸿蒙"
+                )
+            codec.encode(data)
         }
         return encrypt(bytes).encodeBase64Standard()
     }

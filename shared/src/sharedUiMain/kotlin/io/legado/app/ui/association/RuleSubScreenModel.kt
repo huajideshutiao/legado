@@ -5,8 +5,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.RuleSub
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.root.ScreenModel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
+import io.legado.app.ui.root.screenModelScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,7 +26,7 @@ import kotlinx.coroutines.flow.update
  */
 class RuleSubScreenModel : ScreenModel {
 
-    private val scope = CoroutineScope(SupervisorJob() + IoDispatcher)
+    private val scope = screenModelScope("订阅源", IoDispatcher)
 
     private val shared = RuleSubViewModelShared(scope)
 

@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.constant.PageAnim
@@ -42,6 +43,7 @@ import io.legado.app.ui.compose.component.RadioChip
 import io.legado.app.ui.compose.component.StrokeTextChip
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.add
 import legado.shared.generated.resources.font_weight_text
@@ -69,8 +71,6 @@ import legado.shared.generated.resources.text_size
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 阅读样式配置控制器：把 app 端 `ReadBookConfig` 的样式字段读写抽象为接口，
@@ -446,8 +446,8 @@ fun ReadStyleScreen(
         }
         // 样式列表 LazyRow
         LazyRow(
-            Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 16.dp),
-            contentPadding = PaddingValues(horizontal = 8.dp),
+            Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp),
         ) {
             items(controller.configList.size) { index ->
                 val item = controller.configList[index]

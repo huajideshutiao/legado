@@ -53,13 +53,12 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.GridPackLayout
 import io.legado.app.ui.compose.component.toGridPackSpec
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.toJson
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -120,7 +119,7 @@ fun SourceLoginDialog(
     // 对齐原版: WebViewActivity 盖住对话框后登录 JS 仍在后台运行至完成):
     // rememberCoroutineScope 随组合销毁即取消, 会中断正在执行的登录 JS (如 startBrowserAwait
     // 等待验证结果), 故用独立 SupervisorJob scope, 由协程自身生命周期驱动。
-    val scope = remember { CoroutineScope(SupervisorJob() + IoDispatcher) }
+    val scope = remember { screenModelScope("书源登录", IoDispatcher) }
     val clipboard = LocalClipboardManager.current
 
     val titleText = stringResource(Res.string.login_source, source.getTag())

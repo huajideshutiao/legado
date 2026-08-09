@@ -3,7 +3,10 @@ package io.legado.app.help
 import io.legado.app.help.crypto.NativeDigestOps
 import io.legado.app.utils.Base64Lenient
 import io.legado.app.utils.ChineseUtils
+import io.legado.app.utils.PercentCodec
+import io.legado.app.utils.TextCharsetCodec
 import io.legado.app.utils.encodeURI
+import io.legado.app.utils.textCharsetCodec
 
 /** 平台主线程判定 (iOS: NSThread / 鸿蒙: pthread_self 捕获比对, 见 iosMain/ohosMain actual)。 */
 internal expect fun isMainThreadPlatform(): Boolean
@@ -14,32 +17,36 @@ internal expect fun isMainThreadPlatform(): Boolean
  * 详见 commonMain/help/JsExtensionsPlatform.kt expect 注释。
  * 纯 Kotlin 实现, 行为对齐 jvmAndAndroidMain:
  *
- * - [urlEncode]: 委托 commonMain 的 [String.encodeURI] (PercentCodec.QUERY, UTF-8 字节)
- *   与 java.net.URLEncoder.encode(str, "UTF-8") 在大多数情况下行为一致
+ * - [urlEncode]: PercentCodec.QUERY + 按 charset 字节化 (对齐 URLEncoder.encode(str, enc))
  *   (差异: encodeURI 空格保持 ' ' 而 URLEncoder 转为 '+', 业务可接受)
- * - [strToBytes]: 用 [String.encodeToByteArray] (UTF-8 默认), charset 参数忽略 (KMP 仅 UTF-8 原生支持)
- *   若 charset 非 UTF-8, 仍返回 UTF-8 字节 (功能受限: GBK 等非 UTF-8 charset 在 iOS/鸿蒙不可用, 不崩)
- * - [bytesToStr]: 用 [ByteArray.decodeToString] (UTF-8 默认), charset 参数忽略
+ * - [strToBytes] / [bytesToStr] / [base64DecodeStr]: 走 [textCharsetCodec]
+ *   (UTF-8/UTF-16 系/UTF-32 系/ISO-8859-1/US-ASCII 内置, GBK 系/Big5 走平台 CJK 桥),
+ *   对齐原版 `str.toByteArray(charset(name))` / `String(bytes, charset(name))`;
+ *   平台无该 charset 的 codec 时退化 UTF-8 (功能受限, 不崩)
  * - [formatTimeUtc]: 纯 Kotlin 日期格式化 (epoch 毫秒 → UTC 时区字符串), 支持常见 SimpleDateFormat 模式字母
  *   (yyyy/MM/dd/HH/mm/ss/SSS 等), 时区偏移由 shiftHours 控制, 与 jvmAndAndroidMain SimpleDateFormat + SimpleTimeZone 行为一致
- * - [base64DecodeStr]: 委托 commonMain Base64Lenient.decodeStr (UTF-8 字节解码), charset 参数忽略
  * - [chineseT2S/chineseS2T]: 委托 commonMain 的 ChineseUtils (expect object, 由繁简子代理提供 actual)
  */
 internal actual object JsExtensionsPlatform {
 
     actual fun urlEncode(str: String, charset: String): String {
-        // 用 commonMain 的 encodeURI (PercentCodec.QUERY + UTF-8)
-        // java.net.URLEncoder.encode 空格 -> "+", 这里 encodeURI 空格 -> "%20", 业务可接受
-        return str.encodeURI()
+        // PercentCodec.QUERY + 按 charset 字节化 (原版 URLEncoder.encode(str, enc) 同为按 charset 取字节)
+        // 已知差异: URLEncoder 空格 -> "+", 这里 -> "%20" (encodeURI 既有行为, 业务可接受)
+        val codec = textCharsetCodecOrNull(charset) ?: return str.encodeURI()
+        return runCatching { PercentCodec.QUERY.encode(str) { codec.encode(it) } }
+            .getOrElse { str.encodeURI() }
     }
 
     actual fun strToBytes(str: String, charset: String): ByteArray {
-        // KMP 仅 UTF-8 原生支持, 非 UTF-8 charset 退化用 UTF-8 (功能受限, 不崩)
-        return str.encodeToByteArray()
+        // 对齐原版 str.toByteArray(charset(charset))
+        val codec = textCharsetCodecOrNull(charset) ?: return str.encodeToByteArray()
+        return runCatching { codec.encode(str) }.getOrElse { str.encodeToByteArray() }
     }
 
     actual fun bytesToStr(bytes: ByteArray, charset: String): String {
-        return bytes.decodeToString()
+        // 对齐原版 String(bytes, charset(charset))
+        val codec = textCharsetCodecOrNull(charset) ?: return bytes.decodeToString()
+        return runCatching { codec.decode(bytes) }.getOrElse { bytes.decodeToString() }
     }
 
     actual fun formatTimeUtc(time: Long, format: String, shiftHours: Int): String {
@@ -56,9 +63,11 @@ internal actual object JsExtensionsPlatform {
     }
 
     actual fun base64DecodeStr(str: String?, charset: String): String? {
-        // KMP 仅 UTF-8 原生支持, 非 UTF-8 charset 退化用 UTF-8
+        // 对齐原版 Base64.decodeStr(str, charset(charset)): 先解 base64 再按 charset 解码
         str ?: return null
-        return Base64Lenient.decodeStr(str)
+        val codec = textCharsetCodecOrNull(charset) ?: return Base64Lenient.decodeStr(str)
+        return runCatching { codec.decode(Base64Lenient.decode(str)) }
+            .getOrElse { Base64Lenient.decodeStr(str) }
     }
 
     actual fun chineseT2S(text: String): String = ChineseUtils.t2s(text)
@@ -76,6 +85,10 @@ internal actual object JsExtensionsPlatform {
 
     actual fun isMainThread(): Boolean = isMainThreadPlatform()
 }
+
+/** 按名取 codec; 平台不支持该 charset 时返回 null 让调用方退化 UTF-8 (原版是抛异常, 此处不崩)。 */
+private fun textCharsetCodecOrNull(charset: String): TextCharsetCodec? =
+    if (charset.isBlank()) null else runCatching { textCharsetCodec(charset) }.getOrNull()
 
 /**
  * 平台主线程判定 (nativeMain 无法统一实现):

@@ -34,10 +34,8 @@ import io.legado.app.ui.root.AppOverlay
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.ScreenModelStore
+import io.legado.app.ui.root.screenModelScope
 import io.legado.app.ui.root.toRouteRef
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bottom_line
@@ -68,7 +66,7 @@ fun ExploreShowRoute(
     val screenModel = screenModelStore.getOrCreateTyped(entry) { ExploreShowScreenModel() }
 
     // VM 创建 (组合委托, 对照 app 端 ExploreShowViewModel)
-    val vmScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.Default) }
+    val vmScope = remember { screenModelScope("发现列表") }
     val vm = remember(vmScope) { ExploreShowViewModelShared(vmScope) }
     DisposableEffect(vmScope) {
         onDispose { vmScope.cancel() }

@@ -32,7 +32,7 @@ import { BusinessError } from '@ohos.base';
  *
  * ## pickImages payload
  * {
- *   "contentTypes": ["public.image", "public.jpeg", ...],  // iOS UTI 风格, 内部映射到 PhotoSelectOptions.MIMETypeFilter
+ *   "contentTypes": ["public.image", "public.jpeg", ...],  // iOS UTI 风格, 内部映射到 PhotoSelectOptions.MIMEType
  *   "allowsMultiple": <boolean>
  * }
  *
@@ -49,10 +49,11 @@ import { BusinessError } from '@ohos.base';
  * - pickDirectory 用户取消: `{ ok: true, cancelled: true }`
  * - 失败: `{ ok: false, error: "<string>" }`
  *
- * # UTI → MIME 映射
+ * # UTI → 后缀映射
  * KMP 调用方 (对照 iOS pickDocuments) 传入 iOS UTI 字符串 (如 "public.json"),
- * 鸿蒙 DocumentViewPicker 用 MIME type 过滤 (fileMimeTypeFilters), 内部做映射;
+ * 鸿蒙 DocumentViewPicker 用文件后缀过滤 (fileSuffixFilters, 无 MIME 过滤能力), 内部做映射;
  * 未知 UTI 不传 filter (显示所有文件, 与 iOS "允许选择任意文件" 语义一致)。
+ * 选图 (PhotoViewPicker) 只有 image/video/全部 三档 (PhotoViewMIMETypes), 无逐格式过滤。
  *
  * # 用户取消识别
  * DocumentViewPicker.select 在用户取消时抛出 BusinessError, code 13900042 (ENOENT) /
@@ -102,23 +103,28 @@ interface SaveDocumentPayload {
   data: string; // base64 编码的文件内容
 }
 
-// ===== UTI → MIME 映射表 (对照 iOS UTI 常用值) =====
-// 鸿蒙 DocumentSelectOptions.fileMimeTypeFilters 接受 MIME type 字符串数组,
-// 未知 UTI 返回 null 表示不限制 (显示所有文件)。
-const UTI_TO_MIME: Record<string, string> = {
-  'public.json': 'application/json',
-  'public.text': 'text/*',
-  'public.plain-text': 'text/plain',
-  'public.html': 'text/html',
-  'public.xml': 'application/xml',
-  'public.source': 'text/*',
-  'public.image': 'image/*',
-  'public.jpeg': 'image/jpeg',
-  'public.png': 'image/png',
-  'public.bmp': 'image/bmp',
-  'public.gif': 'image/gif',
-  'public.data': '*/*',
+// ===== UTI → 文件后缀映射表 (对照 iOS UTI 常用值) =====
+// 鸿蒙 DocumentSelectOptions 用 fileSuffixFilters (后缀数组) 过滤, 不接受 MIME;
+// 每项形如 '.txt' 或 '说明|.txt,.log' (竖线前为描述, 逗号分隔多后缀);
+// 未知 UTI 不产生过滤项, 全部未命中时不设 filter (显示所有文件)。
+const UTI_TO_SUFFIX: Record<string, string> = {
+  'public.json': '.json',
+  'public.text': '.txt,.log,.md',
+  'public.plain-text': '.txt,.log,.md',
+  'public.html': '.html,.htm',
+  'public.xml': '.xml',
+  'public.source': '.txt',
+  'public.image': '.png,.jpg,.jpeg,.bmp,.gif,.webp',
+  'public.jpeg': '.jpg,.jpeg',
+  'public.png': '.png',
+  'public.bmp': '.bmp',
+  'public.gif': '.gif',
+  'public.zip-archive': '.zip',
+  'org.idpf.epub-container': '.epub',
 };
+
+// ===== UTI → 图片 MIME 类别 (PhotoSelectOptions.MIMEType 只接受 PhotoViewMIMETypes 枚举) =====
+// 本桥只用于选图, 故所有图片类 UTI 统一落到 IMAGE_TYPE。
 
 /**
  * 处理来自 Kotlin 的文件选择请求 (由 EntryAbility 注册的 tsfn 回调调用)。
@@ -160,21 +166,21 @@ async function handleAction(req: FilePickerBridgeRequest): Promise<FilePickerRes
 async function handlePickDocuments(payload: string): Promise<FilePickerResponse> {
   const p = JSON.parse(payload) as PickDocumentsPayload;
 
-  // UTI → MIME 映射 (去重, 过滤 null)
-  const mimeSet = new Set<string>();
+  // UTI → 后缀过滤项 (去重, 丢弃未知 UTI)
+  const suffixSet = new Set<string>();
   for (const uti of p.contentTypes) {
-    const mime = UTI_TO_MIME[uti];
-    if (mime != null) {
-      mimeSet.add(mime);
+    const suffix = UTI_TO_SUFFIX[uti];
+    if (suffix != null) {
+      suffixSet.add(suffix);
     }
   }
 
   const documentSelectOptions = new picker.DocumentSelectOptions();
   // maxSelectNumber: 鸿蒙默认 1, 多选时设较大值 (与 iOS allowsMultipleSelection 语义对齐)
   documentSelectOptions.maxSelectNumber = p.allowsMultiple ? 100 : 1;
-  // fileMimeTypeFilters: 仅当有可映射 MIME 时设置 (空数组或不设表示不限制, 显示所有文件)
-  if (mimeSet.size > 0) {
-    documentSelectOptions.fileMimeTypeFilters = Array.from(mimeSet);
+  // fileSuffixFilters: 仅当有可映射后缀时设置 (不设表示不限制, 显示所有文件)
+  if (suffixSet.size > 0) {
+    documentSelectOptions.fileSuffixFilters = Array.from(suffixSet);
   }
 
   const documentViewPicker = new picker.DocumentViewPicker();
@@ -237,25 +243,12 @@ async function handlePickDocumentContent(payload: string): Promise<FilePickerRes
 async function handlePickImages(payload: string): Promise<FilePickerResponse> {
   const p = JSON.parse(payload) as PickImagesPayload;
 
-  // UTI → MIME 映射 (去重, 过滤 null)
-  const mimeSet = new Set<string>();
-  for (const uti of p.contentTypes) {
-    const mime = UTI_TO_MIME[uti];
-    if (mime != null) {
-      mimeSet.add(mime);
-    }
-  }
-
   const photoSelectOptions = new picker.PhotoSelectOptions();
   // maxSelectNumber: 鸿蒙默认 1, 多选时设较大值 (与 iOS allowsMultipleSelection 语义对齐)
   photoSelectOptions.maxSelectNumber = p.allowsMultiple ? 100 : 1;
-  // MIMETypeFilter: PhotoViewPicker 用单个 MIME type 字符串过滤 (非数组), 取首个映射值;
-  // 未映射到 MIME 时默认 image/* (显示所有图片, 与 iOS "允许选择任意图片" 语义一致)
-  if (mimeSet.size > 0) {
-    photoSelectOptions.MIMETypeFilter = Array.from(mimeSet)[0];
-  } else {
-    photoSelectOptions.MIMETypeFilter = 'image/*';
-  }
+  // MIMEType 只接受 PhotoViewMIMETypes 枚举 (image/* | video/* | */*), 无逐格式过滤能力;
+  // 调用方传的图片类 UTI (public.jpeg/public.png/...) 统一落到 IMAGE_TYPE
+  photoSelectOptions.MIMEType = picker.PhotoViewMIMETypes.IMAGE_TYPE;
 
   const photoViewPicker = new picker.PhotoViewPicker();
   try {
@@ -278,7 +271,7 @@ async function handlePickImages(payload: string): Promise<FilePickerResponse> {
 
 // ===== pickDirectory: 调 DocumentViewPicker 选目录, maxSelectNumber=1, 返回目录 URI =====
 async function handlePickDirectory(payload: string): Promise<FilePickerResponse> {
-  // 选目录: 不传 fileMimeTypeFilters (允许用户导航文件系统选择目录), maxSelectNumber=1 限定单选
+  // 选目录: 不传 fileSuffixFilters (允许用户导航文件系统选择目录), maxSelectNumber=1 限定单选
   const documentSelectOptions = new picker.DocumentSelectOptions();
   documentSelectOptions.maxSelectNumber = 1;
   // 必须显式选目录模式, 默认 FILE 会选文件而非目录
@@ -330,8 +323,9 @@ async function handleSaveDocument(payload: string): Promise<FilePickerResponse> 
   let file: fs.File | undefined;
   try {
     const buf = buffer.from(p.data, 'base64');
-    const ab = new ArrayBuffer(buf.byteLength);
-    new Uint8Array(ab).set(new Uint8Array(buf.buffer, 0, buf.byteLength));
+    // Buffer 的长度属性是 length (无 byteLength); buffer.from 可能返回池化视图, 起始偏移取 byteOffset
+    const ab = new ArrayBuffer(buf.length);
+    new Uint8Array(ab).set(new Uint8Array(buf.buffer, buf.byteOffset, buf.length));
     file = fs.openSync(uris[0], fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC);
     fs.writeSync(file.fd, ab);
     return { ok: true, uris: [uris[0]] };

@@ -250,7 +250,7 @@ async function handleVerify(payload: string): Promise<CryptoResponse> {
   return { ok: true, result: isVerified };
 }
 
-// ===== digest: cryptoFramework.createMd + update + doFinal =====
+// ===== digest: cryptoFramework.createMd + update + digest =====
 // KMP NativeDigestOps.digest → action="digest"
 async function handleDigest(payload: string): Promise<CryptoResponse> {
   const p = JSON.parse(payload) as DigestPayload;
@@ -260,7 +260,7 @@ async function handleDigest(payload: string): Promise<CryptoResponse> {
   const algName = normalizeDigestAlg(p.algorithm);
   const md = cryptoFramework.createMd(algName);
   await updateMd(md, dataBytes);
-  const resultBytes = await doFinalMd(md);
+  const resultBytes = await digestMd(md);
   return { ok: true, data: uint8ToBase64(resultBytes) };
 }
 
@@ -353,7 +353,7 @@ function detectAesKeySize(keyByteLength: number): number {
 // ===== cryptoFramework 对称密钥/摘要/HMAC/Cipher 异步回调包装为 Promise =====
 
 // 对称密钥转换 (AES/HMAC): SymKeyGenerator.convertKey(DataBlob) → SymKey
-// 注意: 与非对称 convertKey(AsyKeyGenerator, KeyData) 不同, 对称用 DataBlob (无 type 字段)
+// 注意: 与非对称 convertKey(pubKey, priKey) 双槽不同, 对称只有单个 key 参数
 function convertSymKey(generatorSpec: string, keyBytes: Uint8Array): Promise<cryptoFramework.SymKey> {
   return new Promise((resolve, reject) => {
     const gen = cryptoFramework.createSymKeyGenerator(generatorSpec);
@@ -368,7 +368,7 @@ function convertSymKey(generatorSpec: string, keyBytes: Uint8Array): Promise<cry
   });
 }
 
-// Md: update(data) + doFinal() (流式 API, doFinal 无 data 参数)
+// Md: update(data) + digest() (流式 API, 收尾方法名是 digest 不是 doFinal)
 function updateMd(md: cryptoFramework.Md, data: Uint8Array): Promise<void> {
   return new Promise((resolve, reject) => {
     md.update({ data: data }, (err: BusinessError) => {
@@ -381,9 +381,9 @@ function updateMd(md: cryptoFramework.Md, data: Uint8Array): Promise<void> {
   });
 }
 
-function doFinalMd(md: cryptoFramework.Md): Promise<Uint8Array> {
+function digestMd(md: cryptoFramework.Md): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
-    md.doFinal((err: BusinessError, dataBlob: cryptoFramework.DataBlob) => {
+    md.digest((err: BusinessError, dataBlob: cryptoFramework.DataBlob) => {
       if (err) {
         reject(err);
       } else {
@@ -489,11 +489,11 @@ async function detectEccKeySize(der: Uint8Array, isPrivate: boolean): Promise<nu
 function convertKey(generatorSpec: string, der: Uint8Array, isPrivate: boolean): Promise<cryptoFramework.KeyPair> {
   return new Promise((resolve, reject) => {
     const gen = cryptoFramework.createAsyKeyGenerator(generatorSpec);
-    const keyData: cryptoFramework.KeyData = {
-      type: isPrivate ? 'PKCS#8' : 'X.509',
-      data: der
-    };
-    gen.convertKey(keyData, (err: BusinessError, keyPair: cryptoFramework.KeyPair) => {
+    // convertKey(pubKey, priKey, cb): DER 放哪个槽即决定格式 (pub=X.509, pri=PKCS#8), 另一槽传 null
+    const blob: cryptoFramework.DataBlob = { data: der };
+    const pubKey: cryptoFramework.DataBlob | null = isPrivate ? null : blob;
+    const priKey: cryptoFramework.DataBlob | null = isPrivate ? blob : null;
+    gen.convertKey(pubKey, priKey, (err: BusinessError, keyPair: cryptoFramework.KeyPair) => {
       if (err) {
         reject(err);
       } else {
@@ -529,7 +529,7 @@ function doFinalAsyCipher(cipher: cryptoFramework.Cipher, data: Uint8Array): Pro
   });
 }
 
-function initSign(signer: cryptoFramework.Sign, key: cryptoFramework.Key): Promise<void> {
+function initSign(signer: cryptoFramework.Sign, key: cryptoFramework.PriKey): Promise<void> {
   return new Promise((resolve, reject) => {
     signer.init(key, (err: BusinessError) => {
       if (err) {
@@ -553,7 +553,7 @@ function signData(signer: cryptoFramework.Sign, data: Uint8Array): Promise<Uint8
   });
 }
 
-function initVerify(verifier: cryptoFramework.Verify, key: cryptoFramework.Key): Promise<void> {
+function initVerify(verifier: cryptoFramework.Verify, key: cryptoFramework.PubKey): Promise<void> {
   return new Promise((resolve, reject) => {
     verifier.init(key, (err: BusinessError) => {
       if (err) {
@@ -631,10 +631,11 @@ function mapSignSpec(jcaAlg: string, keySize: number, isEc: boolean): string {
 
 function base64ToUint8(b64: string): Uint8Array {
   const buf = buffer.from(b64, 'base64');
-  // 复制到独立 ArrayBuffer, 避免 buffer 视图偏移影响 cryptoFramework 读取
-  const ab = new ArrayBuffer(buf.byteLength);
+  // 复制到独立 ArrayBuffer, 避免 buffer 视图偏移影响 cryptoFramework 读取 (Buffer 长度属性是 length)。
+  // buffer.from 可能返回池化视图, 起始偏移必须取 buf.byteOffset 而非 0
+  const ab = new ArrayBuffer(buf.length);
   const view = new Uint8Array(ab);
-  view.set(new Uint8Array(buf.buffer, 0, buf.byteLength));
+  view.set(new Uint8Array(buf.buffer, buf.byteOffset, buf.length));
   return view;
 }
 

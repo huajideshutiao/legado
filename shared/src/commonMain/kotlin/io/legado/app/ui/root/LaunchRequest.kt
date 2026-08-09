@@ -49,7 +49,11 @@ sealed interface LaunchRequest {
 
     /** 通知/外部入口投递的路由跳转请求 (routeName 对应 AppRoute 子类型别名) */
     @Serializable
-    data class NavigateTo(val routeName: String) : LaunchRequest
+    data class NavigateTo(
+        val routeName: String,
+        /** 可选携带的书籍地址: 供 audio_play 等路由在内存 book 缺失(冷启动)时回落 DB 解析 */
+        val bookUrl: String? = null,
+    ) : LaunchRequest
 
     /** SourceUiRequest 三种子类型的可序列化映射 */
     @Serializable

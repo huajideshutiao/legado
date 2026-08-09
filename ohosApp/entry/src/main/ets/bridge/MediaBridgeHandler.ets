@@ -395,9 +395,12 @@ function registerPlayerEvents(id: string, player: media.AVPlayer): void {
   });
 
   // 缓冲更新 → 发 onBufferingUpdate
-  player.on('bufferingUpdate', (info: media.BufferingInfoType) => {
-    // BufferingInfoType 含 percent 字段, 表示缓冲百分比
-    emitEvent(id, { event: 'onBufferingUpdate', percent: info.percent });
+  // 回调签名为 (infoType, value): BufferingInfoType 是枚举, 百分比在 value 中,
+  // 仅 BUFFERING_PERCENT 档携带 0-100 百分比 (其余档是起止标记/缓存时长, 不转发)
+  player.on('bufferingUpdate', (infoType: media.BufferingInfoType, value: number) => {
+    if (infoType === media.BufferingInfoType.BUFFERING_PERCENT) {
+      emitEvent(id, { event: 'onBufferingUpdate', percent: value });
+    }
   });
 }
 

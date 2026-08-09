@@ -16,15 +16,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import kotlinx.coroutines.delay
 import io.legado.app.ui.compose.theme.AppTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -108,7 +111,17 @@ fun DesktopToastHost() {
                     color = AppTheme.colors.primaryText,
                     fontSize = 14.sp,
                     modifier = Modifier
-                        .shadow(4.dp, RoundedCornerShape(8.dp))
+                        // 阴影改自绘: Modifier.shadow 在桌面端走合成器图层阴影,
+                        // 与 AnimatedVisibility 的 fadeIn 内容层 alpha 不同步, 表现为
+                        // 文字先淡入、阴影慢半拍; 自绘后与文本同层同步淡入淡出
+                        .drawBehind {
+                            drawRoundRect(
+                                color = Color.Black.copy(alpha = 0.18f),
+                                topLeft = Offset(0.dp.toPx(), 2.dp.toPx()),
+                                size = size,
+                                cornerRadius = CornerRadius(8.dp.toPx()),
+                            )
+                        }
                         .clip(RoundedCornerShape(8.dp))
                         .background(AppTheme.colors.bottomBackground)
                         .padding(horizontal = 16.dp, vertical = 10.dp),

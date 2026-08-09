@@ -40,16 +40,17 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 桌面端 AudioPlay 平台 provider (对应 app 端 [io.legado.app.model.AudioPlayProvidersImpl])。
  *
  * 实现 [AudioPlayCommander] + [AudioPlayBookBridge] 两个接口, 编排 [DesktopAudioPlayer]
- * (jlayer + javax.sound.sampled) + [SleepTimer] + 状态推送, 等价 app 端
+ * (mediamp-mpv 引擎, FFmpeg 全格式) + [SleepTimer] + 状态推送, 等价 app 端
  * [io.legado.app.service.AudioPlayService] 的核心播放逻辑。
  *
  * # 与 app 端 AudioPlayService 行为对照
  * - play/pause/resume/stop: 直接调 [DesktopAudioPlayer] 对应方法 + postEvent(AUDIO_STATE)
- * - adjustProgress: player.seekTo (MP3 重新拉流跳帧, 比 ExoPlayer SimpleCache 慢)
- * - adjustSpeed: player.setSpeed (SonicAudioDevice 在 PCM 层做 Sonic 变速, 保音高)
+ * - adjustProgress: player.seekTo (mpv 原生 seek, 不再重新拉流跳帧)
+ * - adjustSpeed: player.setSpeed (mpv speed 属性, 保音高)
  * - loadPlayUrl: 用 [WebBook.getContentAwait] 拿直链 URL (与 app 端一致),
- *   跳过 AnalyzeUrl 二次解析 (app 端用 AnalyzeUrl.getMediaItem 主要为 setCookie + headers,
- *   桌面端用直链 + 默认 UA 即可; 需 cookie/header 的书源可能播放失败, 属已知限制)
+ *   跳过 AnalyzeUrl 二次解析 (app 端用 AnalyzeUrl.getMediaItem 主要为 setCookie + headers;
+ *   桌面端目前传空 headers 播直链, 需 cookie/header 的书源可能播放失败, 属已知限制,
+ *   mediamp UriMediaData 已支持 headers, 待 provider 接入 AnalyzeUrl 解析即可生效)
  * - setTimer/addTimer: 复用 shared commonMain 的 [SleepTimer] (行为与 app 端完全一致)
  * - saveRead/save/getBookSource: 直接调 AppDbProviders 暴露的 DAO (等价 app 端 BookExtensions)
  *
@@ -110,7 +111,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
                 if (startPos > 0) {
                     player.seekTo(startPos.toLong())
                 }
-                // 先应用倍速, 播放线程建 SonicAudioDevice 时即带上
+                // 先应用倍速 (mpv speed 属性, 起播/续播都生效)
                 player.setSpeed(playSpeed)
                 // 缓冲期按过暂停则就绪后不自动起播 (桌面 pause 在 prepare 阶段无效)
                 if (paused) {
@@ -202,10 +203,13 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
     override fun stop() {
         if (!running) return
         progressJob?.cancel()
+        // 精确回写当前位置 (不依赖进度 tick)。对照 origin onDestroy: 先取位置再释放
+        // (exoPlayer.currentPosition 在 release 前读), 这里须在 player.stop() 之前读,
+        // 否则 stopPlayback 会重置播放器位置导致落库进度不精确。
+        val pos = player.currentPosition.toInt()
         player.stop()
         paused = true
-        // 精确回写当前位置 (不依赖进度 tick)
-        AudioPlayShared.durChapterPos = player.currentPosition.toInt()
+        AudioPlayShared.durChapterPos = pos
         ReadTimeRecorder.endImmediately(ReadTimeRecorder.Source.AUDIO)
         AudioPlayShared.status = Status.STOP
         postEvent(EventBus.AUDIO_STATE, Status.STOP)
@@ -231,7 +235,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
         postEvent(EventBus.AUDIO_LOADING, false)
         // 停止分支同样落库进度
         AudioPlayShared.book?.let { saveRead(it) }
-        syncSmtc(stopped = true)
+        syncSmtc()
     }
 
     override fun pause() {
@@ -371,7 +375,6 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
             // 拉链接窗口置 LOADING, 与 shared AudioPlayManager.loadPlayUrl 对齐
             AudioPlayShared.status = Status.LOADING
             postEvent(EventBus.AUDIO_STATE, Status.LOADING)
-            AudioPlayShared.durCoverUrl = null
             AudioPlayShared.durLrcData = null
             // 并行加载封面 (musicCover 规则) + 歌词, 不阻塞播放 URL 加载
             scope.launch { loadCoverUrl(source, book, chapter) }
@@ -447,6 +450,7 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
             if (!coverUrl.isNullOrBlank()) {
                 postEvent(EventBus.AUDIO_COVER, coverUrl)
             }
+            syncSmtc()
         } catch (e: Exception) {
             AppLog.put(jvmGetString("desktop_cover_load_failed", e.message ?: ""), e)
         }
@@ -498,9 +502,17 @@ class DesktopAudioPlayProvider : AudioPlayCommander, AudioPlayBookBridge {
                 val pos = player.currentPosition.toInt()
                 AudioPlayShared.durChapterPos = pos
                 postEvent(EventBus.AUDIO_PROGRESS, pos)
-                // jlayer 无独立缓冲概念 (边解码边播), 缓冲条用已播位置近似
+                // mpv 无独立缓冲概念暴露给进度条, 缓冲条用已播位置近似
                 // (原 desktop 不 post 导致缓冲条恒空)
                 postEvent(EventBus.AUDIO_BUFFER_PROGRESS, pos)
+                // 时长兜底: mediamp READY 时 duration 未知 (-1), loadfile 后变已知;
+                // 心跳补发 AUDIO_SIZE, 否则 UI 时长恒 0/旧值 (对齐 shared AudioPlayManager)
+                val duration = player.duration
+                if (duration > 0 && duration.toInt() != AudioPlayShared.durAudioSize) {
+                    AudioPlayShared.durAudioSize = duration.toInt()
+                    postEvent(EventBus.AUDIO_SIZE, AudioPlayShared.durAudioSize)
+                    AudioPlayShared.saveDurChapter(duration)
+                }
                 // 同步推进歌词高亮 (AUDIO_LRCPROGRESS 约定发行下标, 不是毫秒)
                 val lrc = AudioPlayShared.durLrcData
                 if (!lrc.isNullOrEmpty()) {

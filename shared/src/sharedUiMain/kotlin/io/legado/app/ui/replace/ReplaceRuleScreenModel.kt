@@ -5,10 +5,8 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.root.ScreenModel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import io.legado.app.ui.root.screenModelScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,7 +26,7 @@ class ReplaceRuleScreenModel : ScreenModel {
 
     private val appDb get() = AppDbProviders.get()
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = screenModelScope("替换规则")
 
     private val _state = MutableStateFlow(ReplaceRuleUiState())
     val state: StateFlow<ReplaceRuleUiState> = _state.asStateFlow()

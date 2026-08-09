@@ -10,14 +10,11 @@ import io.legado.app.ui.book.source.BookSourceListState
 import io.legado.app.ui.book.source.BookSourceSort
 import io.legado.app.ui.book.source.SourceFilter
 import io.legado.app.ui.root.ScreenModel
+import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.throttleLatest
-import kotlin.concurrent.Volatile
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +23,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 
 /**
  * 书源管理页 ScreenModel (KMP 版, sharedUiMain 共享)。
@@ -43,7 +41,7 @@ class BookSourceScreenModel(
 
     private val appDb get() = AppDbProviders.get()
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = screenModelScope("书源管理")
 
     private val _state = MutableStateFlow(BookSourceListState())
     val state: StateFlow<BookSourceListState> = _state.asStateFlow()

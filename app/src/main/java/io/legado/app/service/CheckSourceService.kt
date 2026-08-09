@@ -30,7 +30,6 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
-import splitties.init.appCtx
 import splitties.systemservices.notificationManager
 import java.util.concurrent.Executors
 import kotlin.math.min
@@ -61,7 +60,9 @@ class CheckSourceService : BaseService() {
             .setOnlyAlertOnce(true)
             .setContentTitle(androidAppString("check_book_source"))
             .setContentIntent(
-                activityPendingIntent<MainActivity>("activity") {
+                // 独立 action (IntentAction.activityCheckSource) 区分 PendingIntent 身份
+                // (见 BaseReadAloudService 通知注释)
+                activityPendingIntent<MainActivity>(IntentAction.activityCheckSource) {
                     putExtra("route", "book_source_manage")
                 }
             )

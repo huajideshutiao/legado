@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -491,9 +492,16 @@ private fun TipBar(
                 bottom = bottomPaddingDp.dp,
             ),
     ) {
+        // 行盒高度恒为 tip 文本行高, 与内容无关 (对照原版 wrap_content 的 TextView: 空文字
+        // 仍占满字体行盒)。否则 textPage 未到时槽位塌成零高, 首排视口偏大, 内容到达后
+        // 页脚长高再排一次 —— 排版视口与正文内容形成循环依赖。
+        val tipLineHeight = with(LocalDensity.current) {
+            (READ_TIP_TEXT_SIZE_SP * 1.6f).sp.toDp()
+        }
         Row(
             modifier = Modifier
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .heightIn(min = tipLineHeight),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (slots[0] == ReadTipConfigShared.none) {

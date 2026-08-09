@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.video
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
@@ -9,6 +10,7 @@ import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.data.entities.VideoSource
 import io.legado.app.help.AppWebDavShared
+import io.legado.app.help.IntentData
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
@@ -16,9 +18,11 @@ import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.compose.platform.PreferenceStoreProvider
+import io.legado.app.ui.root.screenModelScope
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -71,7 +75,7 @@ class VideoPlayViewModelShared(
     private val prefStore: PreferenceStoreProvider,
 ) {
     /** 进度同步专用作用域: 不随 UI scope 取消 (对照 ReadBookViewModelShared.progressSyncScope) */
-    private val progressSyncScope = CoroutineScope(SupervisorJob() + IoDispatcher)
+    private val progressSyncScope = screenModelScope("视频进度同步", IoDispatcher)
 
     /** 当前书籍 (initData 写入, 退出时清空) */
     var curBook: Book? = null
@@ -137,6 +141,9 @@ class VideoPlayViewModelShared(
     /** 播放错误已重试标记 (配合 [retryOnPlayError] 仅首次重试) */
     private var hasRetriedOnError = false
 
+    /** [loadChapter] 轮次令牌: 连点切章时只有最新一轮可以复位 [_loading] */
+    private var loadChapterToken = 0
+
     /**
      * 初始化数据 (对照 desktop `VideoPlayerViewModel.initData` /
      * app `VideoViewModel.initData`)。
@@ -153,10 +160,15 @@ class VideoPlayViewModelShared(
         persistProgress: Boolean = true,
     ) {
         curBook = book
-        // 查书源
-        curBookSource = withContext(IoDispatcher) {
-            AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
-        }
+        // 查书源 (对照原版 upBook 的 curBookSource 赋值, 整个 upBook 跑在 execute{} 里,
+        // 查库异常不外泄; 同文件后续网络调用亦全部 runCatching, 此处对齐)
+        curBookSource = runCatching {
+            withContext(IoDispatcher) {
+                AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
+            }
+        }.onFailure {
+            AppLog.put("读取书源出错\n${it.message}", it)
+        }.getOrNull()
         // 拉章节列表
         val source = curBookSource
         if (source == null) {
@@ -184,7 +196,10 @@ class VideoPlayViewModelShared(
             }
         }
         chapterList = runCatching {
-            WebBook.getChapterListAwait(source, book).getOrThrow()
+            // 目录来源对照原版 BaseReadViewModel.upBook: 内存交接 (IntentData, 带 bookUrl 校验)
+            // 优先, 未交接才回源; 不然未加书架的书目录不落库, 每次进页面都要重拉
+            IntentData.chapterList?.takeIf { it.firstOrNull()?.bookUrl == book.bookUrl }
+                ?: WebBook.getChapterListAwait(source, book).getOrThrow()
         }.onFailure {
             AppLog.put("加载章节列表出错\n${it.message}", it)
             _error.value = "加载章节列表失败: ${it.message}"
@@ -260,6 +275,8 @@ class VideoPlayViewModelShared(
         currentResolutionIndex = 0
         _curChapterIndex.value = clampedIndex
         _curChapterTitle.value = chapter.title
+        // 本轮加载令牌: 连点切章时旧一轮的 finally 不得把新一轮的 loading 打成 false
+        val token = ++loadChapterToken
         scope.launch {
             try {
                 // 拉取管线挪 IO: getContentAwait 内部无 withContext (AnalyzeUrl 构造 +
@@ -277,6 +294,7 @@ class VideoPlayViewModelShared(
                             needSave = false
                         )
                     }.onFailure {
+                        if (it is CancellationException) throw it
                         AppLog.put("加载章节内容出错\n${it.message}", it)
                         _error.value = "加载失败: ${it.message}"
                     }.getOrNull()
@@ -296,12 +314,16 @@ class VideoPlayViewModelShared(
                     // 新章节加载成功, 重置错误重试标记
                     hasRetriedOnError = false
                 }
+            } catch (e: CancellationException) {
+                // 取消不是错误: 对照原版 Coroutine.dispatchCallback 的 !scope.isActive 早退,
+                // 被取消的 execute{} 不会走到 onError 弹提示
+                throw e
             } catch (e: Exception) {
                 AppLog.put("加载章节出错\n${e.message}", e)
                 _error.value = "加载出错: ${e.message}"
             } finally {
                 // 失败分支也要落 loading, 否则 UI 停在加载态看不到错误
-                _loading.value = false
+                if (token == loadChapterToken) _loading.value = false
             }
         }
     }
@@ -584,6 +606,10 @@ class VideoPlayViewModelShared(
         // books 表 durChapterPos (Int, 片尾 -1 编码章末); 走 progressSyncScope 不随 UI scope 取消
         val index = _curChapterIndex.value
         progressSyncScope.launch { saveRead(index, bookPos) }
+        // 通知书架刷新: 视频退出落库后 books 表 durChapterTime 已更新,
+        // 书架 flow 可能因 Room 失效未推送而停在旧快照, 经 UP_BOOKSHELF 重启分组流强制重查
+        // (对齐阅读器 uploadProgress 行为, 回归 2026-08)。
+        curBook?.let { postEvent(EventBus.UP_BOOKSHELF, it.bookUrl) }
         // WebDav 上传
         uploadProgress()
     }

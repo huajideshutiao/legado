@@ -13,7 +13,7 @@ kotlin {
     androidLibrary {
         namespace = "com.script.jsdispatch.annotation"
         compileSdk = 36
-        minSdk = 26
+        minSdk = 24
     }
 
     if (enableIosTarget) {

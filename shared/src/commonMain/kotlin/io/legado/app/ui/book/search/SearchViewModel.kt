@@ -13,15 +13,14 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.model.webBook.SearchModel
+import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.concurrent.newConcurrentSet
 import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.app.utils.throttleLatest
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -48,7 +47,7 @@ import kotlinx.coroutines.launch
  * 替换 Android 专属依赖:
  * - `androidx.lifecycle.LiveData / MutableLiveData / asLiveData` → 纯状态用 `MutableStateFlow`,
  *   事件 (结果列表 / 搜索结束) 用 `MutableSharedFlow(replay=1)` 对齐 postValue 的"每次都投递"
- * - `viewModelScope` → 构造参数 [scope] (默认 `SupervisorJob() + Dispatchers.Default`),
+ * - `viewModelScope` → 构造参数 [scope] (默认 [screenModelScope], 带异常兜底),
  *   宿主可注入生命周期 scope (桌面端窗口 scope / app 端 viewModelScope)
  * - `BaseViewModel.execute { ... }.onError { ... }` → `scope.launch { ... }` + try/catch
  *   (Coroutine 容器仍可用, 但 StateFlow 已无观察者调度需求, 直接 launch 更直接)
@@ -64,7 +63,7 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class SearchViewModel(
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    private val scope: CoroutineScope = screenModelScope("搜索"),
 ) {
 
     /** 搜索范围 (持久化于 AppConfig)。 */

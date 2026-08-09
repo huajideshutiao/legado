@@ -85,7 +85,7 @@ android {
         applicationId = "shutiao.reader"
         versionCode = 10000 + gitCommits
         versionName = version
-        minSdk = 26
+        minSdk = 24
         targetSdk = 36
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         base.archivesName.set("${name}_${version}")
@@ -114,7 +114,7 @@ android {
                 include = false
             }
             applicationIdSuffix = ".release"
-            manifestPlaceholders["app_name"] = "Legado"
+            manifestPlaceholders["app_name"] = "@string/app_name"
 
             isMinifyEnabled = true
             isShrinkResources = true
@@ -127,7 +127,7 @@ android {
             if (project.hasProperty("RELEASE_STORE_FILE")) {
                 signingConfig = signingConfigs.getByName("myConfig")
             }
-            manifestPlaceholders["app_name"] = "Legado"
+            manifestPlaceholders["app_name"] = "@string/app_name"
 
             applicationIdSuffix = ".debug"
             versionNameSuffix = "debug"

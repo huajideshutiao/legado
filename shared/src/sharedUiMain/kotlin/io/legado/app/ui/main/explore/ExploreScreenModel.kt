@@ -14,12 +14,10 @@ import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.script.runScriptWithContext
 import io.legado.app.ui.explore.ExploreViewModelShared
 import io.legado.app.ui.root.ScreenModel
+import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.throttleLatest
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,7 +50,7 @@ class ExploreScreenModel : ScreenModel {
     private val appDb get() = AppDbProviders.get()
 
     // 自管 scope (ScreenModelStore 调 onCleared 时取消)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = screenModelScope("发现")
 
     private val _state = MutableStateFlow(ExploreScreenState())
     val state: StateFlow<ExploreScreenState> = _state.asStateFlow()

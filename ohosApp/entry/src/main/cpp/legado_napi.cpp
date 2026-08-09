@@ -865,7 +865,9 @@ static void ToastCallJs(napi_env env, napi_value js_cb, void* /*context*/, void*
     char* json = static_cast<char*>(data);
     napi_value json_arg;
     napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
+    napi_value undef;
+    napi_get_undefined(env, &undef);
+    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
     free(json);
 }
 
@@ -874,7 +876,9 @@ static void NotificationCallJs(napi_env env, napi_value js_cb, void* /*context*/
     char* json = static_cast<char*>(data);
     napi_value json_arg;
     napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
+    napi_value undef;
+    napi_get_undefined(env, &undef);
+    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
     free(json);
 }
 
@@ -899,7 +903,9 @@ static void WindowCallJs(napi_env env, napi_value js_cb, void * /*context*/, voi
     char *json = static_cast<char *>(data);
     napi_value json_arg;
     napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
+    napi_value undef;
+    napi_get_undefined(env, &undef);
+    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
     free(json);
 }
 
@@ -930,7 +936,7 @@ static napi_value RegisterWindowCallback(napi_env env, napi_callback_info info) 
     napi_threadsafe_function tsfn;
     napi_status status = napi_create_threadsafe_function(
             env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr,WindowCallJs, &tsfn);
+            nullptr, nullptr, nullptr, WindowCallJs, &tsfn);
     if (status != napi_ok) {
         OH_LOG_ERROR(LOG_APP, "registerWindowCallback: napi_create_threadsafe_function failed: %{public}d", status);
         napi_value ret;
@@ -977,7 +983,7 @@ static napi_value RegisterToastCallback(napi_env env, napi_callback_info info) {
     napi_threadsafe_function tsfn;
     napi_status status = napi_create_threadsafe_function(
         env, args[0], nullptr, work_name, 0, 1,
-        nullptr, nullptr, nullptr,ToastCallJs, &tsfn);
+            nullptr, nullptr, nullptr, ToastCallJs, &tsfn);
     if (status != napi_ok) {
         OH_LOG_ERROR(LOG_APP, "registerToastCallback: napi_create_threadsafe_function failed: %{public}d", status);
         napi_value ret;
@@ -1021,7 +1027,7 @@ static napi_value RegisterNotificationCallback(napi_env env, napi_callback_info 
     napi_threadsafe_function tsfn;
     napi_status status = napi_create_threadsafe_function(
         env, args[0], nullptr, work_name, 0, 1,
-        nullptr, nullptr, nullptr,NotificationCallJs, &tsfn);
+            nullptr, nullptr, nullptr, NotificationCallJs, &tsfn);
     if (status != napi_ok) {
         OH_LOG_ERROR(LOG_APP, "registerNotificationCallback: napi_create_threadsafe_function failed: %{public}d", status);
         napi_value ret;
@@ -1079,7 +1085,9 @@ static void CallJsWithBinary(napi_env env, napi_value js_cb, void *data) {
     } else {
         napi_get_undefined(env, &args[1]);
     }
-    napi_call_function(env, js_cb, 2, args, nullptr);
+    napi_value undef;
+    napi_get_undefined(env, &undef);
+    napi_call_function(env, undef, js_cb, 2, args, nullptr);
     free(d->json);
     free(d);
 }
@@ -1164,7 +1172,9 @@ static void MediaCallJs(napi_env env, napi_value js_cb, void* /*context*/, void*
     char* json = static_cast<char*>(data);
     napi_value json_arg;
     napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
+    napi_value undef;
+    napi_get_undefined(env, &undef);
+    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
     free(json);
 }
 
@@ -1173,7 +1183,9 @@ static void TtsCallJs(napi_env env, napi_value js_cb, void* /*context*/, void* d
     char* json = static_cast<char*>(data);
     napi_value json_arg;
     napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
+    napi_value undef;
+    napi_get_undefined(env, &undef);
+    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
     free(json);
 }
 
@@ -1201,7 +1213,7 @@ static napi_value RegisterImageCallback(napi_env env, napi_callback_info info) {
     napi_threadsafe_function tsfn;
     napi_status status = napi_create_threadsafe_function(
         env, args[0], nullptr, work_name, 0, 1,
-        nullptr, nullptr, nullptr,ImageCallJs, &tsfn);
+            nullptr, nullptr, nullptr, ImageCallJs, &tsfn);
     if (status != napi_ok) {
         OH_LOG_ERROR(LOG_APP, "registerImageCallback: napi_create_threadsafe_function failed: %{public}d", status);
         napi_value ret;
@@ -1244,7 +1256,7 @@ static napi_value RegisterMediaCallback(napi_env env, napi_callback_info info) {
     napi_threadsafe_function tsfn;
     napi_status status = napi_create_threadsafe_function(
         env, args[0], nullptr, work_name, 0, 1,
-        nullptr, nullptr, nullptr,MediaCallJs, &tsfn);
+            nullptr, nullptr, nullptr, MediaCallJs, &tsfn);
     if (status != napi_ok) {
         OH_LOG_ERROR(LOG_APP, "registerMediaCallback: napi_create_threadsafe_function failed: %{public}d", status);
         napi_value ret;
@@ -1287,7 +1299,7 @@ static napi_value RegisterTtsCallback(napi_env env, napi_callback_info info) {
     napi_threadsafe_function tsfn;
     napi_status status = napi_create_threadsafe_function(
         env, args[0], nullptr, work_name, 0, 1,
-        nullptr, nullptr, nullptr,TtsCallJs, &tsfn);
+            nullptr, nullptr, nullptr, TtsCallJs, &tsfn);
     if (status != napi_ok) {
         OH_LOG_ERROR(LOG_APP, "registerTtsCallback: napi_create_threadsafe_function failed: %{public}d", status);
         napi_value ret;
@@ -1418,7 +1430,9 @@ static void CryptoCallJs(napi_env env, napi_value js_cb, void* /*context*/, void
     char* json = static_cast<char*>(data);
     napi_value json_arg;
     napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
+    napi_value undef;
+    napi_get_undefined(env, &undef);
+    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
     free(json);
 }
 
@@ -1445,7 +1459,7 @@ static napi_value RegisterCryptoCallback(napi_env env, napi_callback_info info) 
     napi_threadsafe_function tsfn;
     napi_status status = napi_create_threadsafe_function(
         env, args[0], nullptr, work_name, 0, 1,
-        nullptr, nullptr, nullptr,CryptoCallJs, &tsfn);
+            nullptr, nullptr, nullptr, CryptoCallJs, &tsfn);
     if (status != napi_ok) {
         OH_LOG_ERROR(LOG_APP, "registerCryptoCallback: napi_create_threadsafe_function failed: %{public}d", status);
         napi_value ret;
@@ -1537,7 +1551,7 @@ static napi_value RegisterHttpCallback(napi_env env, napi_callback_info info) {
     napi_threadsafe_function tsfn;
     napi_status status = napi_create_threadsafe_function(
         env, args[0], nullptr, work_name, 0, 1,
-        nullptr, nullptr, nullptr,HttpCallJs, &tsfn);
+            nullptr, nullptr, nullptr, HttpCallJs, &tsfn);
     if (status != napi_ok) {
         OH_LOG_ERROR(LOG_APP, "registerHttpCallback: napi_create_threadsafe_function failed: %{public}d", status);
         napi_value ret;
@@ -1643,7 +1657,9 @@ static void WebViewCallJs(napi_env env, napi_value js_cb, void * /*context*/, vo
     napi_value args[2];
     napi_create_string_utf8(env, d->json, NAPI_AUTO_LENGTH, &args[0]);
     napi_create_string_utf8(env, d->html, NAPI_AUTO_LENGTH, &args[1]);
-    napi_call_function(env, js_cb, 2, args, nullptr);
+    napi_value undef;
+    napi_get_undefined(env, &undef);
+    napi_call_function(env, undef, js_cb, 2, args, nullptr);
     free(d->json);
     free(d->html);
     free(d);
@@ -1672,7 +1688,7 @@ static napi_value RegisterWebViewCallback(napi_env env, napi_callback_info info)
     napi_threadsafe_function tsfn;
     napi_status status = napi_create_threadsafe_function(
             env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr,WebViewCallJs, &tsfn);
+            nullptr, nullptr, nullptr, WebViewCallJs, &tsfn);
     if (status != napi_ok) {
         OH_LOG_ERROR(LOG_APP, "registerWebViewCallback: napi_create_threadsafe_function failed: %{public}d", status);
         napi_value ret;
@@ -1753,7 +1769,9 @@ static void OpenUrlCallJs(napi_env env, napi_value js_cb, void* /*context*/, voi
     char* json = static_cast<char*>(data);
     napi_value json_arg;
     napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
+    napi_value undef;
+    napi_get_undefined(env, &undef);
+    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
     free(json);
 }
 
@@ -1780,7 +1798,7 @@ static napi_value RegisterOpenUrlCallback(napi_env env, napi_callback_info info)
     napi_threadsafe_function tsfn;
     napi_status status = napi_create_threadsafe_function(
         env, args[0], nullptr, work_name, 0, 1,
-        nullptr, nullptr, nullptr,OpenUrlCallJs, &tsfn);
+            nullptr, nullptr, nullptr, OpenUrlCallJs, &tsfn);
     if (status != napi_ok) {
         OH_LOG_ERROR(LOG_APP, "registerOpenUrlCallback: napi_create_threadsafe_function failed: %{public}d", status);
         napi_value ret;
@@ -1826,7 +1844,9 @@ static void FilePickerCallJs(napi_env env, napi_value js_cb, void* /*context*/, 
     char* json = static_cast<char*>(data);
     napi_value json_arg;
     napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
+    napi_value undef;
+    napi_get_undefined(env, &undef);
+    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
     free(json);
 }
 
@@ -1853,7 +1873,7 @@ static napi_value RegisterFilePickerCallback(napi_env env, napi_callback_info in
     napi_threadsafe_function tsfn;
     napi_status status = napi_create_threadsafe_function(
         env, args[0], nullptr, work_name, 0, 1,
-        nullptr, nullptr, nullptr,FilePickerCallJs, &tsfn);
+            nullptr, nullptr, nullptr, FilePickerCallJs, &tsfn);
     if (status != napi_ok) {
         OH_LOG_ERROR(LOG_APP, "registerFilePickerCallback: napi_create_threadsafe_function failed: %{public}d", status);
         napi_value ret;
@@ -1925,7 +1945,9 @@ static void PasteboardCallJs(napi_env env, napi_value js_cb, void* /*context*/, 
     char* json = static_cast<char*>(data);
     napi_value json_arg;
     napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
+    napi_value undef;
+    napi_get_undefined(env, &undef);
+    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
     free(json);
 }
 
@@ -1952,7 +1974,7 @@ static napi_value RegisterPasteboardCallback(napi_env env, napi_callback_info in
     napi_threadsafe_function tsfn;
     napi_status status = napi_create_threadsafe_function(
         env, args[0], nullptr, work_name, 0, 1,
-        nullptr, nullptr, nullptr,PasteboardCallJs, &tsfn);
+            nullptr, nullptr, nullptr, PasteboardCallJs, &tsfn);
     if (status != napi_ok) {
         OH_LOG_ERROR(LOG_APP, "registerPasteboardCallback: napi_create_threadsafe_function failed: %{public}d", status);
         napi_value ret;
@@ -2024,7 +2046,9 @@ static void TextCodecCallJs(napi_env env, napi_value js_cb, void* /*context*/, v
     char* json = static_cast<char*>(data);
     napi_value json_arg;
     napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
+    napi_value undef;
+    napi_get_undefined(env, &undef);
+    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
     free(json);
 }
 
@@ -2051,7 +2075,7 @@ static napi_value RegisterTextCodecCallback(napi_env env, napi_callback_info inf
     napi_threadsafe_function tsfn;
     napi_status status = napi_create_threadsafe_function(
         env, args[0], nullptr, work_name, 0, 1,
-        nullptr, nullptr, nullptr,TextCodecCallJs, &tsfn);
+            nullptr, nullptr, nullptr, TextCodecCallJs, &tsfn);
     if (status != napi_ok) {
         OH_LOG_ERROR(LOG_APP, "registerTextCodecCallback: napi_create_threadsafe_function failed: %{public}d", status);
         napi_value ret;
@@ -2123,7 +2147,9 @@ static void TextActionCallJs(napi_env env, napi_value js_cb, void * /*context*/,
     char *json = static_cast<char *>(data);
     napi_value json_arg;
     napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
+    napi_value undef;
+    napi_get_undefined(env, &undef);
+    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
     free(json);
 }
 
@@ -2150,7 +2176,7 @@ static napi_value RegisterTextActionCallback(napi_env env, napi_callback_info in
     napi_threadsafe_function tsfn;
     napi_status status = napi_create_threadsafe_function(
             env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr,TextActionCallJs, &tsfn);
+            nullptr, nullptr, nullptr, TextActionCallJs, &tsfn);
     if (status != napi_ok) {
         OH_LOG_ERROR(LOG_APP, "registerTextActionCallback: napi_create_threadsafe_function failed: %{public}d", status);
         napi_value ret;
@@ -2224,7 +2250,9 @@ static void BatteryCallJs(napi_env env, napi_value js_cb, void * /*context*/, vo
     char *json = static_cast<char *>(data);
     napi_value json_arg;
     napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
+    napi_value undef;
+    napi_get_undefined(env, &undef);
+    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
     free(json);
 }
 
@@ -2251,7 +2279,7 @@ static napi_value RegisterBatteryCallback(napi_env env, napi_callback_info info)
     napi_threadsafe_function tsfn;
     napi_status status = napi_create_threadsafe_function(
             env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr,BatteryCallJs, &tsfn);
+            nullptr, nullptr, nullptr, BatteryCallJs, &tsfn);
     if (status != napi_ok) {
         OH_LOG_ERROR(LOG_APP, "registerBatteryCallback: napi_create_threadsafe_function failed: %{public}d", status);
         napi_value ret;
@@ -2319,7 +2347,9 @@ static void ShareCallJs(napi_env env, napi_value js_cb, void * /*context*/, void
     char *json = static_cast<char *>(data);
     napi_value json_arg;
     napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
+    napi_value undef;
+    napi_get_undefined(env, &undef);
+    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
     free(json);
 }
 
@@ -2346,7 +2376,7 @@ static napi_value RegisterShareCallback(napi_env env, napi_callback_info info) {
     napi_threadsafe_function tsfn;
     napi_status status = napi_create_threadsafe_function(
             env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr,ShareCallJs, &tsfn);
+            nullptr, nullptr, nullptr, ShareCallJs, &tsfn);
     if (status != napi_ok) {
         OH_LOG_ERROR(LOG_APP, "registerShareCallback: napi_create_threadsafe_function failed: %{public}d", status);
         napi_value ret;
@@ -2389,7 +2419,9 @@ static void KeyboardCallJs(napi_env env, napi_value js_cb, void * /*context*/, v
     char *json = static_cast<char *>(data);
     napi_value json_arg;
     napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
+    napi_value undef;
+    napi_get_undefined(env, &undef);
+    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
     free(json);
 }
 
@@ -2416,7 +2448,7 @@ static napi_value RegisterKeyboardCallback(napi_env env, napi_callback_info info
     napi_threadsafe_function tsfn;
     napi_status status = napi_create_threadsafe_function(
             env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr,KeyboardCallJs, &tsfn);
+            nullptr, nullptr, nullptr, KeyboardCallJs, &tsfn);
     if (status != napi_ok) {
         OH_LOG_ERROR(LOG_APP, "registerKeyboardCallback: napi_create_threadsafe_function failed: %{public}d", status);
         napi_value ret;
@@ -2459,7 +2491,9 @@ static void PermissionCallJs(napi_env env, napi_value js_cb, void * /*context*/,
     char *json = static_cast<char *>(data);
     napi_value json_arg;
     napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
-    napi_call_function(env, js_cb, 1, &json_arg, nullptr);
+    napi_value undef;
+    napi_get_undefined(env, &undef);
+    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
     free(json);
 }
 
@@ -2486,7 +2520,7 @@ static napi_value RegisterPermissionCallback(napi_env env, napi_callback_info in
     napi_threadsafe_function tsfn;
     napi_status status = napi_create_threadsafe_function(
             env, args[0], nullptr, work_name, 0, 1,
-            nullptr, nullptr, nullptr,PermissionCallJs, &tsfn);
+            nullptr, nullptr, nullptr, PermissionCallJs, &tsfn);
     if (status != napi_ok) {
         OH_LOG_ERROR(LOG_APP, "registerPermissionCallback: napi_create_threadsafe_function failed: %{public}d", status);
         napi_value ret;

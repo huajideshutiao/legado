@@ -18,7 +18,7 @@ import io.legado.app.ui.main.AndroidUpdateBookCallback.toastForceRefreshBusy
 import io.legado.app.ui.main.AndroidUpdateBookCallback.toastForceRefreshDone
 import io.legado.app.ui.main.AndroidUpdateBookCallback.toastForceRefreshStart
 import io.legado.app.utils.servicePendingIntent
-import io.legado.app.utils.startService
+import io.legado.app.utils.startForegroundService
 import io.legado.app.utils.stopService
 import io.legado.app.utils.toastOnUi
 import splitties.init.appCtx
@@ -32,7 +32,7 @@ import splitties.init.appCtx
  * [io.legado.app.help.service.DesktopUpdateBookCallback])。
  *
  * 桥接进度到 Android 通知栏 (逻辑与下沉前 MainViewModel.updateUpdateNotification 一致):
- * - [onProgressUpdate]: `startService<UpdateBookService>` + `NotificationManagerCompat.notify`
+ * - [onProgressUpdate]: `startForegroundService<UpdateBookService>` + `NotificationManagerCompat.notify`
  *   (NotificationCompat.Builder 设置进度)
  * - [onProgressCancel]: `stopService<UpdateBookService>` (取消通知)
  * - [toastForceRefreshBusy]: `toastOnUi(androidAppString("force_refresh_busy"))`
@@ -62,7 +62,7 @@ object AndroidUpdateBookCallback : UpdateBookCallback {
             appCtx.stopService<UpdateBookService>()
             return
         }
-        appCtx.startService<UpdateBookService>()
+        appCtx.startForegroundService<UpdateBookService>()
         if (NotificationManagerCompat.from(appCtx).areNotificationsEnabled()) {
             // title/content 已由 UpdateBookShared 计算 (appString(AppStringKey.update_toc /
             // force_refresh_book) → "update_toc" / "force_refresh_book"

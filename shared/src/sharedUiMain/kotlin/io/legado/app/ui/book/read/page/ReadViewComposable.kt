@@ -25,7 +25,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -50,7 +49,6 @@ import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -134,6 +132,7 @@ fun ReadViewComposable(
     val prevTextPage by viewModel.prevTextPage.collectAsState()
     val curTextPage by viewModel.curTextPage.collectAsState()
     val nextTextPage by viewModel.nextTextPage.collectAsState()
+    val nextPlusTextPage by viewModel.nextPlusTextPage.collectAsState()
     // 朗读高亮等页内容原地变更版本号：自增时强制 Canvas 重绘（见 PageContentCanvas.drawTick）
     val pageDrawTick by viewModel.pageContentVersion.collectAsState()
     // 按 ReadBookConfig.pageAnim 取翻页委托，配置变更时重建（对照原版 ReadView.upPageAnim）
@@ -344,6 +343,26 @@ fun ReadViewComposable(
                     )
                 }
             },
+            // 第 3 页：仅滚动模式连排使用（横向翻页模式各页自带完整背景，由 delegate 忽略）。
+            // 章末短页 + 新章短页时视口下方需本页补位（对照旧 drawPage 的 relativePage(2)），
+            // 否则出现"滑到一定程度下一章内容变空白"
+            nextPlusContent = {
+                nextPlusTextPage?.let { page ->
+                    PageViewComposable(
+                        textPage = page,
+                        modifier = Modifier.fillMaxSize(),
+                        batteryLevel = batteryLevel,
+                        clockText = clockText,
+                        onClick = onClick,
+                        onLongClick = onLongClick,
+                        drawTick = pageDrawTick,
+                        contentTranslationY = scrollDelegate?.let { sd -> { sd.nextPlusContentOffset } },
+                        showChrome = false,
+                        selection = selection,
+                        headerPlaceholderPx = headerTipMeasured,
+                    )
+                }
+            },
             onClick = onClick,
             onLongClick = onPageLongPress,
         )
@@ -375,31 +394,21 @@ fun ReadViewComposable(
         // 但扩选与弹菜单（selection 层职责）全部失效。两个手势合并到同一 Box 并开启共享后:
         // - 鼠标: 本层 Initial pass 统一消费, selection 层正常收事件（扩选/菜单）,
         //   delegate 手势层见 isConsumed 让位
-        // - 触摸: 鼠标层不消费, delegate 手势链正常接管（触摸路径此前同样被阻断, 一并修复）;
-        //   长按检测随后移入本层（2026-08-08 方案 A, 见下方说明）, 触摸不再依赖跨层共享
+        // - 触摸: 鼠标层不消费, delegate 手势链正常接管（触摸路径此前同样被阻断, 一并修复）
         //
-        // 文字选择手势层职责（选择未激活时零消费、不干扰任何手势）:
-        // - 按下时选择已激活 → 立即取消选择（对照旧 ACTION_DOWN → cancelSelect）
-        // - 选择激活期间消费拖动 → 更新终点（对照旧 ACTION_MOVE → selectText）;
-        //   消费后 delegate 的翻页/点击手势被取消 → 选择激活时禁止翻页（对照旧 isTextSelected 分流）
+        // 长按检测 (2026-08 方案 B): 回归 delegate 的 detectTapGestures.onLongPress ——
+        // 方案 A（2026-08-08 本层手写 withTimeout）在移动端实测不可靠（长按/左右翻页失效,
+        // 但点击/垂直滚动正常, 说明 delegate 手势链能收到事件——点击正常触发即证明）。
+        // detectTapGestures 用标准 waitForLongPress（longPressSlop = touchSlop × 2 放大容差 +
+        // 正确异常处理）, 更稳健。本层只负责选择激活后的行为:
+        // - 按下时选择已激活 → 立即取消选择（对照旧 ACTION_DOWN → cancelSelect）并消费本次
+        //   手势（抑制本次点击, 对照旧 pressOnTextSelected 抑制单击）
+        // - delegate 长按激活选择后 → 本层 Initial pass 消费拖动更新扩选终点
+        //   （对照旧 ACTION_MOVE → selectText; 消费后 delegate 的翻页/点击手势被取消 → 选择
+        //   激活时禁止翻页, 对照旧 isTextSelected 分流）
         // - 手势结束（抬起/取消）时选择已激活 → 弹选择菜单（触摸路径; 鼠标路径由鼠标层弹,
-        //   本层对鼠标抬起跳过避免重复, 见下方 down.type 判定）; 若按下时取消了选择且本手势
-        //   未重新选中 → 消费抬起事件抑制本次点击（对照旧 pressOnTextSelected 抑制单击）
-        //
-        // 移动端长按检测 (2026-08-08 方案 A: 长按检测移到顶层选择层, 根治移动端长按失效):
-        // 背景: 移动端（尤其 iOS）长按事件到不了下层 delegate 的 detectTapGestures（跨层
-        // 事件共享在 CMP iOS 上不可靠, 8-04 的 sharePointerInputWithSiblings 修复只在桌面验证
-        // 过）, 长按选择在移动端永不激活。改为由本层直接检测触摸长按, 不再依赖跨层共享:
-        // - down 后 withTimeout 计时（沿用 viewConfiguration.longPressTimeoutMillis, 与
-        //   readerMouseGestures 同一口径; 对齐 detectTapGestures 内部语义）;
-        //   超时前不消费任何事件 → 点击/滑动完全放行下层 delegate
-        // - 位移超 slop → 放弃长按、完全放行（滑动翻页正常）
-        // - 超时确认 → 分派长按（文字→词级选中+暂停自动翻页 / 图片→图片长按 / 空白→
-        //   onLongClick(null), 原下层 detectTapGestures.onLongPress → onPageLongPress 职责,
-        //   下层长按已移除避免双触发）→ 后续 MOVE/UP 在 Initial pass 统一消费: delegate 的
-        //   scrollDragGesture/detectTapGestures/detectDragGestures 在 Main pass 见 isConsumed
-        //   让位 → 长按后拖动不再触发滚动/翻页, 选择激活后与扩选无争抢
-        // - 抬手 → 弹选择菜单/结束选择。鼠标长按仍由 readerMouseGestures 接管, 行为不变
+        //   本层对鼠标抬起跳过避免重复, 见下方 down.type 判定）
+        // - 按下时未激活且未长按 → 本层零消费, delegate 的点击/拖拽手势正常走
         val latestOnSelectionMenu by rememberUpdatedState(onSelectionMenu)
         // 弹菜单时的选区锚点（窗口坐标 = 页内坐标 + 滚动折算 + 页眉 + 状态栏高度；
         // 滚动模式内容下移锚点同步下移，再加回 systemBarTopPx 供平台浮动菜单按窗口定位）。
@@ -417,8 +426,9 @@ fun ReadViewComposable(
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val downId = down.id
-                        // 鼠标手势由下方 readerMouseGestures 全权接管 (含长按检测与抬手弹菜单),
-                        // 本层只对触摸路径做长按检测/弹菜单, 避免双弹
+                        // 鼠标手势由下方 readerMouseGestures 全权接管 (含长按检测与抬手弹菜单);
+                        // 本层对触摸只负责选择激活后的取消/扩选/弹菜单, 长按检测在 delegate
+                        // 的 detectTapGestures.onLongPress, 避免双弹
                         val isMouseGesture = down.type == PointerType.Mouse
                         val suppressedTap = if (selection.isActive) {
                             selection.cancel()
@@ -453,52 +463,39 @@ fun ReadViewComposable(
                             return@awaitEachGesture
                         }
 
-                        // ===== 触摸: 长按检测（三选一: 抬起 / 越 slop / 超时, 超时前零消费）=====
-                        val startPos = down.position
-                        val slop = viewConfiguration.touchSlop
-                        var longPressConfirmed = false
-                        try {
-                            withTimeout(viewConfiguration.longPressTimeoutMillis) {
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    val change =
-                                        event.changes.firstOrNull { it.id == downId } ?: break
-                                    if (!change.pressed) {
-                                        // 普通点击抬起: suppressedTap 时消费抑制本次点击
-                                        // （对照旧 pressOnTextSelected 抑制单击）
-                                        if (suppressedTap) change.consume()
-                                        break
-                                    }
-                                    if (change.isConsumed) break
-                                    // 位移超 slop → 放弃长按, 完全放行下层滑动翻页
-                                    if (abs(change.position.x - startPos.x) > slop ||
-                                        abs(change.position.y - startPos.y) > slop
-                                    ) {
-                                        break
-                                    }
+                        // ===== 触摸: 选择取消 / 扩选 =====
+                        // 长按检测已回归 delegate 的 detectTapGestures.onLongPress（2026-08:
+                        // 顶层手写 withTimeout 长按在移动端不可靠，delegate 手势链已被证实能
+                        // 收到事件——点击正常触发即证明）。本层只负责选择激活后的行为：
+                        // - 按下时选择已激活 → 取消选择并消费本次手势（抑制本次点击，对照旧
+                        //   pressOnTextSelected）
+                        // - 按下时未激活 → delegate 长按激活选择后，本层 Initial pass 消费
+                        //   后续移动做扩选；激活前零消费，delegate 的点击/拖拽手势正常走
+                        //   （对照旧 onLongPress 后拖拽扩选，delegate 各手势层 Main pass
+                        //   见 isConsumed 让位）
+                        if (suppressedTap) {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val change =
+                                    event.changes.firstOrNull { it.id == downId } ?: break
+                                if (!change.pressed) {
+                                    change.consume()
+                                    break
                                 }
+                                change.consume()
                             }
-                        } catch (_: PointerEventTimeoutCancellationException) {
-                            longPressConfirmed = true
+                            return@awaitEachGesture
                         }
-                        // 未确认长按（点击/滑动/被消费）: 事件全部放行, 手势结束
-                        if (!longPressConfirmed) return@awaitEachGesture
-
-                        // ===== 长按确认: 分派并接管后续事件 =====
-                        // 文字→词级选中+暂停自动翻页 / 图片→图片长按 / 空白→onLongClick(null)
-                        // （对照原下层 detectTapGestures.onLongPress → onPageLongPress）
-                        onPageLongPress(startPos.x, startPos.y)
-                        // 后续事件 Initial pass 统一消费: delegate 各手势层在 Main pass
-                        // 见 isConsumed 让位 → 长按后拖动不触发滚动/翻页, 选择激活后无争抢
+                        var selectionTakenOver = false
                         while (true) {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
-                            val change = event.changes.firstOrNull { it.id == downId } ?: break
-                            if (!change.pressed) {
-                                change.consume()
-                                break
-                            }
+                            val change =
+                                event.changes.firstOrNull { it.id == downId } ?: break
+                            if (!change.pressed) break
                             if (selection.isActive) {
+                                selectionTakenOver = true
                                 // 扩选终点（拖拽热路径只改选区数据 + tick）
+                                change.consume()
                                 selection.extendTo(
                                     change.position.x,
                                     change.position.y - latestSystemBarTopPx - latestHeaderTipPx,
@@ -506,10 +503,9 @@ fun ReadViewComposable(
                                     latestPageWidth,
                                 )
                             }
-                            change.consume()
                         }
                         // 抬手弹选择菜单（触摸路径; 鼠标路径由鼠标手势层在抬起时弹）
-                        if (selection.isActive) {
+                        if (selectionTakenOver && selection.isActive) {
                             val text = selection.selectedText()
                             if (text.isBlank()) {
                                 // 拖回起点导致空选区：取消而非弹空菜单（对照旧版会弹空文本菜单,

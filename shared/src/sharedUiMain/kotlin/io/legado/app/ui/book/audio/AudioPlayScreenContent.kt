@@ -293,15 +293,7 @@ fun AudioPlayScreenContent(
                 trailingSlot = titleBarTrailingSlot,
                 horizontalPadding = titleBarHorizontalPadding,
             )
-            Text(
-                text = subTitle,
-                color = Color.White,
-                fontSize = 14.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
+            // 歌名 (章节名) 不再单独置顶, 随封面一起走 (见下方封面区 AudioSongTitle)
             BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
                 // 宽屏 (弹性区宽 ≥ DesignTokens.wideScreenMinWidth, 官方 Compact/Medium
                 // 分界, 手机横屏起): 封面与歌词并排 —— 封面区占容器宽 35% (上限
@@ -319,11 +311,12 @@ fun AudioPlayScreenContent(
                     if (landscape) {
                         minOf(
                             COVER_MAX_SIZE_LANDSCAPE,
-                            (maxHeight - coverTopPad * 2).coerceAtLeast(0.dp),
+                            (maxHeight - coverTopPad * 2 - COVER_TITLE_SPACE)
+                                .coerceAtLeast(0.dp),
                             (coverAreaWidth - coverTopPad * 2).coerceAtLeast(0.dp),
                         )
                     } else {
-                        (maxHeight - coverTopPad - COVER_MIN_LRC_HEIGHT)
+                        (maxHeight - coverTopPad - COVER_TITLE_SPACE - COVER_MIN_LRC_HEIGHT)
                             .coerceIn(0.dp, COVER_MAX_SIZE)
                     }
                 } else {
@@ -346,14 +339,24 @@ fun AudioPlayScreenContent(
                                 // 左侧留白由封面区承载
                                 contentAlignment = Alignment.CenterEnd,
                             ) {
-                                CoverImage(
-                                    coverUrl = coverUrl,
-                                    accentColor = accentColor,
-                                    onClick = onCoverClick,
-                                    coverSlot = coverSlot,
-                                    size = coverSize,
-                                    modifier = Modifier.padding(coverTopPad),
-                                )
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    // 歌名跟随封面 (居中于封面宽, 隐藏封面时一并隐藏)
+                                    if (subTitle.isNotBlank()) {
+                                        AudioSongTitle(
+                                            text = subTitle,
+                                            modifier = Modifier.width(coverSize),
+                                        )
+                                        Spacer(Modifier.height(16.dp))
+                                    }
+                                    CoverImage(
+                                        coverUrl = coverUrl,
+                                        accentColor = accentColor,
+                                        onClick = onCoverClick,
+                                        coverSlot = coverSlot,
+                                        size = coverSize,
+                                        modifier = Modifier.padding(coverTopPad),
+                                    )
+                                }
                             }
                         }
                         lrcSlot(
@@ -371,14 +374,24 @@ fun AudioPlayScreenContent(
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         if (coverVisible && coverSize > 0.dp) {
-                            CoverImage(
-                                coverUrl = coverUrl,
-                                accentColor = accentColor,
-                                onClick = onCoverClick,
-                                coverSlot = coverSlot,
-                                size = coverSize,
-                                modifier = Modifier.padding(top = coverTopPad),
-                            )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                // 歌名跟随封面 (居中于封面宽, 隐藏封面时一并隐藏)
+                                if (subTitle.isNotBlank()) {
+                                    AudioSongTitle(
+                                        text = subTitle,
+                                        modifier = Modifier.width(coverSize),
+                                    )
+                                    Spacer(Modifier.height(16.dp))
+                                }
+                                CoverImage(
+                                    coverUrl = coverUrl,
+                                    accentColor = accentColor,
+                                    onClick = onCoverClick,
+                                    coverSlot = coverSlot,
+                                    size = coverSize,
+                                    modifier = Modifier.padding(top = coverTopPad),
+                                )
+                            }
                         }
                         lrcSlot(
                             Modifier
@@ -620,6 +633,23 @@ private val COVER_MIN_LRC_HEIGHT = 120.dp
 /** 封面尺寸上限: 竖排 (原版语义, 200dp); 并排宽屏放大到 300dp (用户拍板 2026-08)。 */
 private val COVER_MAX_SIZE = 200.dp
 private val COVER_MAX_SIZE_LANDSCAPE = 300.dp
+
+/** 封面上方歌名区总高 (单行文本 ≈ 24dp + 16dp spacer), 计算封面尺寸时预留, 避免顶掉歌词区。 */
+private val COVER_TITLE_SPACE = 40.dp
+
+/** 歌名: 随封面一起走 (居中于封面宽, 单行省略), 封面隐藏时一并隐藏。 */
+@Composable
+private fun AudioSongTitle(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        color = Color.White,
+        fontSize = 15.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        textAlign = TextAlign.Center,
+        modifier = modifier.padding(horizontal = 8.dp),
+    )
+}
 
 @Composable
 private fun CoverImage(

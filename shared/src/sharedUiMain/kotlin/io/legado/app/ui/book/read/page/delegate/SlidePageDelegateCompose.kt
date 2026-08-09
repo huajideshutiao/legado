@@ -5,10 +5,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.IntOffset
@@ -147,45 +143,8 @@ class SlidePageDelegateCompose(
     }
 
     /**
-     * 绘制滑动翻页阴影：在 curPage 边缘与对侧页面交界处。
-     *
-     * **与 [CoverPageDelegate.drawShadow] 的差异**：
-     * - Cover 阴影跟随覆盖页边缘（覆盖页在视口内的一侧）
-     * - Slide 阴影跟随 curPage 滑出后的边缘（页缝位置）
-     *
-     * - PREV：curPage 向右滑出，curPage 左边缘在 currentOffset 位置
-     *   - 阴影在 curPage 左边缘左侧（prevPage 右边缘）展开 shadowWidth
-     *   - 渐变方向：左浅右深（让 prevPage 右边缘有阴影投在 curPage 上）
-     * - NEXT：curPage 向左滑出，curPage 右边缘在 currentOffset + viewWidth 位置
-     *   - 阴影在 curPage 右边缘右侧（nextPage 左边缘）展开 shadowWidth
-     *   - 渐变方向：左深右浅（让 nextPage 左边缘有阴影投在 curPage 上）
+     * 滑动翻页无阴影叠加（对照原版 `SlidePageDelegate.onDraw`：只画页面内容 translation，
+     * 无任何边缘阴影——书籍边缘阴影是 Cover/Simulation 的专利，Slide 不需要）。
      */
-    override fun DrawScope.drawShadow(currentOffset: Float, viewWidth: Int) {
-        val shadowWidth = SHADOW_WIDTH_PX.toFloat()
-        // 用解构声明集中表达 (startColor, endColor, shadowLeft) 三元组
-        val (startColor, endColor, shadowLeft) = when (mDirection) {
-            PageDirectionShared.PREV -> {
-                // curPage 左边缘在 currentOffset 位置，阴影在左侧展开 shadowWidth
-                val left = currentOffset - shadowWidth
-                // 左浅右深
-                Triple(Color(0x00000000), Color(0x66111111), left)
-            }
-            PageDirectionShared.NEXT -> {
-                // curPage 右边缘在 currentOffset + viewWidth 位置，阴影在右侧展开 shadowWidth
-                val left = viewWidth + currentOffset
-                // 左深右浅
-                Triple(Color(0x66111111), Color(0x00000000), left)
-            }
-            else -> return
-        }
-        drawRect(
-            brush = Brush.horizontalGradient(
-                colors = listOf(startColor, endColor),
-                startX = shadowLeft,
-                endX = shadowLeft + shadowWidth,
-            ),
-            topLeft = Offset(shadowLeft, 0f),
-            size = Size(shadowWidth, size.height),
-        )
-    }
+    override fun DrawScope.drawShadow(currentOffset: Float, viewWidth: Int) = Unit
 }

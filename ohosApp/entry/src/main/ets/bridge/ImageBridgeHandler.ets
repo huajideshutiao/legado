@@ -74,6 +74,13 @@ interface ImageActionResult {
   body?: ArrayBuffer;
 }
 
+// stitch 中间态: 单个源 PixelMap 的尺寸 + 已读出的像素 buffer
+interface StitchSource {
+  w: number;
+  h: number;
+  buffer: ArrayBuffer;
+}
+
 /**
  * 处理来自 Kotlin 的图片操作请求 (由 EntryAbility 注册的 tsfn 回调调用, 混合协议)。
  *
@@ -95,7 +102,8 @@ export function handleImageRequest(requestJson: string, bytes: ArrayBuffer | und
     callback(req.requestId, JSON.stringify(result.resp), result.body);
   }).catch((err: Error) => {
     const resp: ImageResponse = { ok: false, error: err.message ?? String(err) };
-    callback(req.requestId, JSON.stringify(resp));
+    // 失败无数据面, body 显式传 undefined (ImageCallback 三参必填)
+    callback(req.requestId, JSON.stringify(resp), undefined);
   });
 }
 
@@ -218,7 +226,7 @@ async function handleStitch(payload: string): Promise<ImageResponse> {
 
   // 收集所有源 PixelMap 及其尺寸
   const sources: image.PixelMap[] = [];
-  const sizes: Array<{ w: number; h: number; buffer: ArrayBuffer }> = [];
+  const sizes: StitchSource[] = [];
   for (const id of p.pixelMapIds) {
     const pm = pixelMaps.get(id);
     if (pm == null) {
@@ -234,7 +242,8 @@ async function handleStitch(payload: string): Promise<ImageResponse> {
     const h = info.size.height;
     const buf = new ArrayBuffer(w * h * 4);
     await pm.readPixelsToBuffer(buf);
-    sizes.push({ w, h, buffer: buf });
+    const src: StitchSource = { w: w, h: h, buffer: buf };
+    sizes.push(src);
   }
 
   // 计算合并后画布尺寸

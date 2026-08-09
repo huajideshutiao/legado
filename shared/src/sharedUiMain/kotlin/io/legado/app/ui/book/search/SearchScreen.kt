@@ -48,6 +48,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -57,6 +59,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -85,12 +89,12 @@ import io.legado.app.ui.compose.component.AppSearchField
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid
 import io.legado.app.ui.compose.component.OverflowMenu
-import io.legado.app.ui.compose.component.RadioChip
-import io.legado.app.ui.compose.component.StrokeTextChip
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
+import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ColorUtils
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -179,8 +183,10 @@ object NoOpSearchNavCallbacks : SearchNavCallbacks {
  * - `WindowInsets.navigationBars.asPaddingValues()` → `rememberNavigationBarPaddingValues()` (跨平台导航栏 padding)
  * - `ShelfCover` (app 专属) → [coverSlot] / [shelfCoverSlot] 注入, 未传时取 [LocalBookCoverSlot]
  * - `KindLabels` / `UnreadBadge` (app 专属) → 复用书架 shared 版同名组件
- * - `AndroidView { LinearLayout + setUpExploreOptions }` (单源搜索选项 chip) → 暂未实现 (KMP 无桥接)
- * - `AndroidView { ItemExploreVideoBinding }` (视频卡) → 暂未实现 (KMP 无 ViewBinding)
+ * - `binding.llFilter.setUpExploreOptions` (单源搜索选项 chip) → [SearchOptionsRow]
+ *   (含多选 chip 的搜索过滤对话框, 对照 ExploreOptionView.showMultiSelectDialog)
+ * - `VideoExploreShowAdapter` / `ItemExploreVideoBinding.bindVideoCard` (视频卡) →
+ *   书架 shared 版同名组件 [ShelfVideoItem]
  *
  * @param viewModel KMP 版 [SearchViewModel]
  * @param navCallbacks 路由回调, 默认 [NoOpSearchNavCallbacks]
@@ -610,55 +616,53 @@ private fun SearchOptionsRow(
                     Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState())
-                        .then(
-                            if (option.multiSelect) {
-                                Modifier.clickable { dialogOptionName = option.name }
-                            } else {
-                                Modifier
-                            }
-                        )
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (option.multiSelect) {
-                        StrokeTextChip(
+                        // 对齐原版 setUpExploreOptions 多选: title + 已选 chip,
+                        // 任一 chip 点击均打开多选对话框 (整行点击区域)
+                        SearchOptionChip(
                             text = option.name,
-                            textColor = AppTheme.colors.primaryText,
-                        ) { dialogOptionName = option.name }
+                            bold = true,
+                            onClick = { dialogOptionName = option.name },
+                        )
                         option.options.forEach { (label, value) ->
                             if (value in option.selectedValues) {
                                 Spacer(Modifier.width(4.dp))
-                                StrokeTextChip(
+                                SearchOptionChip(
                                     text = label,
-                                    textColor = AppTheme.colors.primaryText,
-                                ) { dialogOptionName = option.name }
+                                    onClick = { dialogOptionName = option.name },
+                                )
                             }
                         }
                     } else {
-                        StrokeTextChip(
+                        SearchOptionChip(
                             text = option.name,
-                            textColor = AppTheme.colors.primaryText,
-                        ) {
-                            if (option.resetToDefault()) {
-                                localVersion++
-                                onOptionChanged()
-                            }
-                        }
-                        Spacer(Modifier.width(4.dp))
-                        option.options.forEach { (label, value) ->
-                            RadioChip(
-                                text = label,
-                                checked = option.selectedValue == value,
-                            ) {
-                                val changed = if (option.selectedValue == value) false else {
-                                    option.selectedValue = value
-                                    true
-                                }
-                                if (changed) {
+                            bold = true,
+                            onClick = {
+                                if (option.resetToDefault()) {
                                     localVersion++
                                     onOptionChanged()
                                 }
-                            }
+                            },
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        option.options.forEach { (label, value) ->
+                            SearchOptionChip(
+                                text = label,
+                                selected = option.selectedValue == value,
+                                onClick = {
+                                    val changed = if (option.selectedValue == value) false else {
+                                        option.selectedValue = value
+                                        true
+                                    }
+                                    if (changed) {
+                                        localVersion++
+                                        onOptionChanged()
+                                    }
+                                },
+                            )
                             Spacer(Modifier.width(4.dp))
                         }
                     }
@@ -679,6 +683,49 @@ private fun SearchOptionsRow(
                 }
                 dialogOptionName = null
             },
+        )
+    }
+}
+
+/**
+ * 搜索选项 chip: 复刻书籍详情分类按钮 (KindChip) 的 fillet 胶囊样式
+ * (btn_bg 填充 + arco_fill_3 按压 + 4dp inset + 12×8 内边距 + secondaryText 14sp)。
+ * 标题加粗, 选中项全亮, 未选中半透明 (对齐原版 setUpExploreOptions 的 alpha 语义)。
+ */
+@Composable
+private fun SearchOptionChip(
+    text: String,
+    bold: Boolean = false,
+    selected: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val bg = if (pressed) rememberColor("arco_fill_3") else rememberColor("btn_bg")
+    Box(
+        Modifier
+            // 对齐原版 setUpExploreOptions: alpha 作用于整颗 chip (含背景)
+            .alpha(if (bold) 0.8f else if (selected) 1f else 0.5f)
+            .padding(4.dp) // selector inset
+            .clip(DesignTokens.shapeDefault)
+            .background(bg)
+            .combinedClickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = onClick,
+            )
+            // 原 XML padding 16×12 自视图外缘计(含 4dp inset)，此处已扣除 inset
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = AppTheme.colors.secondaryText,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            fontWeight = if (bold) FontWeight.Bold else null,
+            // 显式 style: 不继承 M3 bodyLarge 的 24sp lineHeight, 保持原 TextView 自然行高
+            style = TextStyle(fontSize = 14.sp),
         )
     }
 }

@@ -21,9 +21,12 @@ import kotlin.concurrent.Volatile
  *
  * # 机制 (MSDN: IAudioEndpointVolume)
  * - CoCreateInstance(CLSID_MMDeviceEnumerator, null, CLSCTX_INPROC_SERVER,
- *   IID_IMMDeviceEnumerator, out) → IMMDeviceEnumerator.EnumAudioEndpoints(eRender,
- *   DEVICE_STATE_ACTIVE, out) → IMMDevice.Activate(IID_IAudioEndpointVolume,
+ *   IID_IMMDeviceEnumerator, out) → IMMDeviceEnumerator.GetDefaultAudioEndpoint(eRender,
+ *   eMultimedia, out) → IMMDevice.Activate(IID_IAudioEndpointVolume,
  *   CLSCTX_INPROC_SERVER, null, out) → 读/写主音量 (0..1 标量)。
+ *   注意: 必须用 GetDefaultAudioEndpoint (直接返回 IMMDevice); 误用 EnumAudioEndpoints
+ *   拿到的是 IMMDeviceCollection, 对它调 Activate 实际命中 GetCount (hr=0 且不写 out),
+ *   音量读/写全部静默失效 (2026-08 修复)。
  * - 全部走 JNA 手写 vtable (照 DesktopSmtc.vtbl 模式: Function.getFunction +
  *   ALT_CONVENTION invokeInt); GUID 按 16 字节 COM 内存布局 (Data1/2/3 小端)。
  *
@@ -31,6 +34,8 @@ import kotlin.concurrent.Volatile
  * - IMMDeviceEnumerator (A95664D2-...): IUnknown 0/1/2, EnumAudioEndpoints=3,
  *   GetDefaultAudioEndpoint=4, GetDevice=5
  * - IMMDevice (D666063F-...): Activate=3, OpenPropertyStore=4, GetId=5, GetState=6
+ * - IMMDeviceCollection (0BD7A1BE-...): IUnknown 0/1/2, GetCount=3, Item=4
+ *   (EnumAudioEndpoints 返回的是它, 不是 IMMDevice!)
  * - IAudioEndpointVolume (5CDF2C82-...): RegisterControlChangeNotify=3,
  *   UnregisterControlChangeNotify=4, GetChannelCount=5, SetMasterVolumeLevel=6,
  *   SetMasterVolumeLevelScalar=7, GetMasterVolumeLevel=8, GetMasterVolumeLevelScalar=9,
@@ -52,7 +57,7 @@ internal object DesktopSystemVolume {
 
     private const val CLSCTX_INPROC_SERVER = 0x1
     private const val E_RENDER = 0 // EDataFlow.eRender
-    private const val DEVICE_STATE_ACTIVE = 0x1
+    private const val E_MULTIMEDIA = 1 // ERole.eMultimedia
     private const val S_OK = 0
     private const val S_FALSE = 1
 
@@ -63,7 +68,7 @@ internal object DesktopSystemVolume {
     private const val SLOT_RELEASE = 2
 
     // IMMDeviceEnumerator
-    private const val SLOT_ENUM_AUDIO_ENDPOINTS = 3
+    private const val SLOT_GET_DEFAULT_AUDIO_ENDPOINT = 4
 
     // IMMDevice
     private const val SLOT_ACTIVATE = 3
@@ -101,12 +106,16 @@ internal object DesktopSystemVolume {
     /** 当前系统音量 0..1; 失败/不可用返回 null (调用方回落 mediamp 音量)。 */
     fun getVolume(): Float? = submit { endpointVolume()?.let { readScalar(it) } }
 
-    /** 设置系统音量 0..1 (内部 coerce; 失败仅日志)。 */
-    fun setVolume(v: Float) {
-        submit {
-            endpointVolume()?.let { writeScalar(it, v.coerceIn(0f, 1f)) }
-            null
+    /**
+     * 设置系统音量 0..1 (内部 coerce)。
+     * @return true=写入成功; false=WASAPI 不可用/写入失败, 调用方可回落 mediamp 音量
+     *   (防"手势百分比在动、实际无声"的同类问题)
+     */
+    fun setVolume(v: Float): Boolean {
+        val ok = submit {
+            endpointVolume()?.let { writeScalar(it, v.coerceIn(0f, 1f)) } ?: false
         }
+        return ok ?: false
     }
 
     /** 静音状态; 不可用返回 null。 */
@@ -167,16 +176,20 @@ internal object DesktopSystemVolume {
             }
             enumerator = enumRef.value
             try {
+                // GetDefaultAudioEndpoint 直接返回默认渲染设备 (IMMDevice)。
+                // 之前误用 EnumAudioEndpoints: 它返回的是 IMMDeviceCollection**, 拿集合当
+                // IMMDevice 调 Activate (槽 3) 实际命中 GetCount, hr=0 且不写 out, 音量读写
+                // 全部静默失效 (见类注释)
                 val deviceRef = PointerByReference()
                 hr = vtbl(
                     enumRef.value,
-                    SLOT_ENUM_AUDIO_ENDPOINTS,
+                    SLOT_GET_DEFAULT_AUDIO_ENDPOINT,
                     E_RENDER,
-                    DEVICE_STATE_ACTIVE,
+                    E_MULTIMEDIA,
                     deviceRef
                 )
                 if (hr != S_OK || deviceRef.value == null) {
-                    throw IllegalStateException("EnumAudioEndpoints hr=$hr")
+                    throw IllegalStateException("GetDefaultAudioEndpoint hr=$hr")
                 }
                 endpoint = deviceRef.value
                 val volumeRef = PointerByReference()

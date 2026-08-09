@@ -2,9 +2,8 @@ package io.legado.app.ui.association
 
 import io.legado.app.model.script.JsEngines
 import io.legado.app.ui.root.ScreenModel
-import kotlinx.coroutines.CoroutineScope
+import io.legado.app.ui.root.screenModelScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,7 +25,7 @@ import kotlinx.coroutines.withContext
 class JsEditScreenModel : ScreenModel {
 
     // 自管 scope (与 ReadRecordScreenModel 一致, 由 ScreenModelStore 调 onCleared)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = screenModelScope("JS编辑")
 
     private val _state = MutableStateFlow(JsEditUiState())
     val state: StateFlow<JsEditUiState> = _state.asStateFlow()

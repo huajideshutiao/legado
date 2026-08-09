@@ -17,12 +17,11 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.ActiveReadBookRegistry
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.root.ScreenModel
+import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.postEvent
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,7 +48,7 @@ class TocScreenModel(
     private val appDb get() = AppDbProviders.get()
 
     // 自管 scope (app 端无 ScreenModelStore 时由宿主 DisposableEffect 调 onCleared)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = screenModelScope("目录")
 
     private val _state = MutableStateFlow(TocUiState.Empty)
     val state: StateFlow<TocUiState> = _state.asStateFlow()

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?><!-- manifest 的 android:label 只能引用 aapt 资源 (安装时由系统解析, 进程未起,
+     读不到 Compose Resources), 故应用名保留 xml。其余文案一律走 shared composeResources。 -->
+<resources>
+    <string name="app_name">Legado</string>
+</resources>

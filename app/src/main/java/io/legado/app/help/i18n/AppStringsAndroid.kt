@@ -132,7 +132,7 @@ private val warmKeys = listOf(
     "ok", "yes", "no", "search_book_key", "check_source_config", "share_selected_source",
     "clear_webview_data_success", "unsupport_archivefile_entry", "start", "end",
     "file_not_supported", "draw", "sure_del", "no_book_found_bookshelf",
-    "confirm_delete_review", "review", "review_post_hint", "reply_review",
+    "archive_not_found", "confirm_delete_review", "review", "review_post_hint", "reply_review",
     "review_replies_detail_title", "review_replies_section_title", "review_list_section_title",
     "set_book_variable", "set_source_variable", "variable_comment", "open_release_page",
     "delete", "add", "assists_key_config", "create_folder", "folder_chooser",

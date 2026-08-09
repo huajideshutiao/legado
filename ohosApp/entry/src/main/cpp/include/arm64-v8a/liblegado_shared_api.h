@@ -5627,6 +5627,9 @@ typedef struct {
 } liblegado_shared_kref_io_legado_app_ui_root_AppRoute;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_kotlinx_coroutines_CoroutineExceptionHandler;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_root_DialogTransitionSpec;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
@@ -27283,6 +27286,8 @@ typedef struct {
                 liblegado_shared_kref_io_legado_app_ui_root_AppRoute (*toReadRoute_)(liblegado_shared_kref_io_legado_app_ui_root_BookRef thiz, liblegado_shared_kref_kotlin_Int chapterIndex, liblegado_shared_kref_kotlin_Int chapterPos);
                 liblegado_shared_kref_io_legado_app_ui_root_BookRef (*toRouteRef)(liblegado_shared_kref_io_legado_app_data_entities_Book thiz);
                 liblegado_shared_kref_io_legado_app_ui_root_BookRef (*toRouteRef_)(liblegado_shared_kref_io_legado_app_data_entities_SearchBook thiz);
+                liblegado_shared_kref_kotlinx_coroutines_CoroutineExceptionHandler (*screenModelExceptionHandler)(const char* name, liblegado_shared_kref_kotlin_Function1 onError);
+                liblegado_shared_kref_kotlinx_coroutines_CoroutineScope (*screenModelScope)(const char* name, liblegado_shared_kref_kotlin_coroutines_CoroutineContext context, liblegado_shared_kref_kotlin_Function1 onError);
                 liblegado_shared_kref_io_legado_app_ui_root_DialogTransitionSpec (*get_DefaultDialogTransitionSpec)();
                 liblegado_shared_kref_io_legado_app_ui_root_RouteTransitionSpec (*get_DefaultRouteTransitionSpec)();
                 liblegado_shared_kref_io_legado_app_ui_root_SystemBarsPolicy (*readerSystemBarsPolicy)(liblegado_shared_KBoolean menuVisible);

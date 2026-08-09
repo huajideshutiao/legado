@@ -8,7 +8,7 @@ kotlin {
     androidLibrary {
         namespace = 'com.script.quickjs'
         compileSdk = 36
-        minSdk = 26
+        minSdk = 24
     }
 
     sourceSets {

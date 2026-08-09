@@ -11,19 +11,19 @@ import io.legado.app.model.audio.AudioPlayControllerListener
 import kotlin.coroutines.CoroutineContext
 
 /**
- * [AudioPlayController] 的 desktop 实现, 包装 [DesktopAudioPlayer] (jlayer)。
+ * [AudioPlayController] 的 desktop 实现, 包装 [DesktopAudioPlayer] (mediamp-mpv)。
  *
  * 对标 app 端 [io.legado.app.model.audio.ExoPlayerAudioPlayController] 包装 ExoPlayer,
  * 供 shared commonMain [io.legado.app.model.audio.AudioPlayManager] 注入使用。
  *
  * # 与 ExoPlayer 行为差异
- * - bufferedPosition: jlayer 流式解码无独立缓冲概念 (边解码边播, 已读即已播),
- *   返回 [DesktopAudioPlayer.currentPosition] 作近似, 让音频页缓冲条不恒空
- * - playbackState: jlayer 无显式状态机, 由 isPlaying 派生
+ * - bufferedPosition: mpv 缓冲细节未暴露, 返回 [DesktopAudioPlayer.currentPosition]
+ *   作近似, 让音频页缓冲条不恒空
+ * - playbackState: 由 isPlaying 派生
  *   (STATE_READY=播放中, STATE_IDLE=暂停/停止/未启动);
  *   shared upPlayProgressForLrc 用 STATE_IDLE 守卫切歌中场景
  * - playWhenReady: 映射到实际播放态 (isPlaying); setter 转 play()/pause()
- * - release: 转发 [DesktopAudioPlayer.release] 释放流/线程/音频设备
+ * - release: 转发 [DesktopAudioPlayer.release] 释放 mpv 实例
  * - listener: shared AudioPlayManager 不经 controller.listener 感知状态
  *   (app 端由 ExoPlayerAudioPlayController 转发 ExoPlayer 回调),
  *   desktop 状态由 DesktopAudioPlayProvider 直接订阅 DesktopAudioPlayer.Listener,
@@ -42,15 +42,15 @@ class DesktopAudioPlayController(private val player: DesktopAudioPlayer) : Audio
     override val currentPosition: Long
         get() = player.currentPosition
 
-    // jlayer 流式解码无独立缓冲概念 (边解码边播); 用已播位置近似, 缓冲条至少不恒空
+    // mpv 缓冲细节未暴露, 用已播位置近似, 缓冲条至少不恒空
     override val bufferedPosition: Long
         get() = player.currentPosition
 
-    // jlayer 无显式状态机; 播放中=READY, 否则=IDLE (upPlayProgressForLrc 用 IDLE 守卫切歌)
+    // 由 isPlaying 派生; 播放中=READY, 否则=IDLE (upPlayProgressForLrc 用 IDLE 守卫切歌)
     override val playbackState: Int
         get() = if (player.isPlaying) AudioPlayController.STATE_READY else AudioPlayController.STATE_IDLE
 
-    // jlayer 无 playWhenReady 概念, 映射到实际播放态; 写值转 play()/pause()
+    // 映射到实际播放态; 写值转 play()/pause()
     override var playWhenReady: Boolean
         get() = player.isPlaying
         set(value) {

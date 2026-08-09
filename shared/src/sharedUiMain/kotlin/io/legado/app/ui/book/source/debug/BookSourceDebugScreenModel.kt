@@ -11,8 +11,7 @@ import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.model.Debug
 import io.legado.app.ui.root.ScreenModel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
+import io.legado.app.ui.root.screenModelScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -42,7 +41,7 @@ class BookSourceDebugScreenModel(
     private val exploreJsonErrorText: (Throwable) -> String,
 ) : ScreenModel, Debug.Callback {
 
-    private val scope = CoroutineScope(SupervisorJob() + IoDispatcher)
+    private val scope = screenModelScope("书源调试", IoDispatcher)
 
     private val logs = mutableStateListOf<String>()
 

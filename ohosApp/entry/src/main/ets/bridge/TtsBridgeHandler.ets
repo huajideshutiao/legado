@@ -1,10 +1,10 @@
-import textToSpeech from '@ohos.textToSpeech';
+import { textToSpeech } from '@kit.CoreSpeechKit';
 
 /**
  * ArkTS 侧 TTS 桥接处理器。
  *
  * 接收 Kotlin OhosNativeBridge.sendTtsCommand 通过 tsfn dispatch 过来的 TTS 命令,
- * 调用 @ohos.textToSpeech 执行真实语音合成,
+ * 调用 @kit.CoreSpeechKit textToSpeech 执行真实语音合成,
  * TTS 事件通过 legado.ttsEvent(eventJson) 回送给 Kotlin。
  *
  * # JSON 协议 (与 OhosSystemTtsEngine.kt / OhosNativeBridge.kt TtsCommand 对齐)
@@ -26,7 +26,7 @@ import textToSpeech from '@ohos.textToSpeech';
  *   "errorCode": <number?>        // onError 时含错误码
  * }
  *
- * # @ohos.textToSpeech API
+ * # @kit.CoreSpeechKit textToSpeech API
  * - createEngine(CreateEngineConfig): Promise<TextToSpeechEngine>
  * - engine.setListener(SpeakListener): 设置 onStart/onComplete/onStop/onError 回调
  * - engine.speak(text, SpeakParams): 合成并播报 (SpeakParams.extraParams.speed 控制语速)
@@ -34,7 +34,7 @@ import textToSpeech from '@ohos.textToSpeech';
  * - engine.shutdown(): 释放引擎资源
  *
  * # 注意
- * @ohos.textToSpeech 无 pause/resume API, pause/resume 命令仅打日志,
+ * @kit.CoreSpeechKit textToSpeech 无 pause/resume API, pause/resume 命令仅打日志,
  * 由 Kotlin 侧标记状态 + ReadAloudController 重播当前段落。
  */
 
@@ -141,8 +141,7 @@ async function doCreateEngine(lang: string): Promise<void> {
     ttsEngine = await textToSpeech.createEngine({
       language: lang,
       person: 0,
-      online: 1,
-      extraParams: {}
+      online: 1
     });
     registerTtsListener(ttsEngine);
     console.info('[TtsBridge] engine created: lang=' + lang);
@@ -175,13 +174,14 @@ async function handleSpeak(text: string, utteranceId: string, rate: number): Pro
 
   const speakParams: textToSpeech.SpeakParams = {
     requestId: utteranceId,
+    // extraParams 类型为 Record<string, Object>, 键须为字符串字面量
     extraParams: {
-      queueMode: 0,
-      speed: rate,
-      volume: 1,
-      pitch: 1,
-      languageContext: currentLang,
-      playType: 1,
+      'queueMode': 0,
+      'speed': rate,
+      'volume': 1,
+      'pitch': 1,
+      'languageContext': currentLang,
+      'playType': 1,
     }
   };
 
@@ -191,13 +191,13 @@ async function handleSpeak(text: string, utteranceId: string, rate: number): Pro
 
 // ===== pause / resume =====
 
-// @ohos.textToSpeech 无 pause/resume API, 由 Kotlin 侧标记状态 + 控制器重播
+// @kit.CoreSpeechKit textToSpeech 无 pause/resume API, 由 Kotlin 侧标记状态 + 控制器重播
 function handlePause(): void {
-  console.warn('[TtsBridge] pause: not supported by @ohos.textToSpeech');
+  console.warn('[TtsBridge] pause: not supported by @kit.CoreSpeechKit textToSpeech');
 }
 
 function handleResume(): void {
-  console.warn('[TtsBridge] resume: not supported by @ohos.textToSpeech');
+  console.warn('[TtsBridge] resume: not supported by @kit.CoreSpeechKit textToSpeech');
 }
 
 // ===== stop =====

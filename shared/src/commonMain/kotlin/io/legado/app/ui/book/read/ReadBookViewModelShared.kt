@@ -115,6 +115,15 @@ class ReadBookViewModelShared(
     val nextTextPage: StateFlow<TextPage?> = _nextTextPage.asStateFlow()
 
     /**
+     * 第 3 页（当前页之后的第 2 页）。对照 app 端 `TextPageFactory.nextPlusPage`：
+     * 滚动模式连排时正文区可能同时容纳 3 页（当前页短 + 下一页短），原版
+     * `ContentTextView.drawPage` 在 `relativeOffset(2) < visibleHeight` 时绘制第 3 页，
+     * 否则章末短页 + 新章短页时视口下方会出现空白。
+     */
+    private val _nextPlusTextPage = MutableStateFlow<TextPage?>(null)
+    val nextPlusTextPage: StateFlow<TextPage?> = _nextPlusTextPage.asStateFlow()
+
+    /**
      * 页内容原地变更版本号（朗读高亮等对 TextPage/TextLine 的原地修改）。
      *
      * 修改不改变 data class 相等性，StateFlow 去重后不会重发，Compose 侧 Canvas
@@ -313,6 +322,33 @@ class ReadBookViewModelShared(
     private fun resetScrollOffset() {
         _scrollOffset.value = 0
     }
+
+    /**
+     * 滚动模式连续滚动跨章标记: [ScrollPageDelegateCompose.applyScrollDelta] 越过章节边界
+     * 切章后置位, 该章正文装载完成 ([contentLoadFinish]) 时消费。
+     *
+     * 目的: 滚动中越过边界进入未装载章节时显示占位页, 章节装载完成若把滚动偏移重置为 0
+     * 会从章首跳变 (对照原版 moveToNextChapter → loadContent(resetPageOffset = false) 保留偏移);
+     * 消费本标记时 [applyCurChapterPages] 保留偏移, 其余装载路径 (打开书/菜单跳章) 照旧归零。
+     */
+    private var scrollCrossingLoadPending = false
+
+    /** 滚动跨章后置位 (ScrollPageDelegateCompose 章节边界折算时调用) */
+    fun markScrollCrossingPending() {
+        scrollCrossingLoadPending = true
+    }
+
+    /** 消费滚动跨章标记: 章节装载完成时读取, true = 本次装载由滚动连续跨章触发 */
+    fun consumeScrollCrossingPending(): Boolean {
+        val v = scrollCrossingLoadPending
+        scrollCrossingLoadPending = false
+        return v
+    }
+
+    /** 清除滚动跨章标记 (显式跳章/跳页/打开书时, 防止残留标记导致误保留偏移) */
+    private fun clearScrollCrossingPending() {
+        scrollCrossingLoadPending = false
+    }
     // endregion
 
     /**
@@ -320,6 +356,7 @@ class ReadBookViewModelShared(
      * 进度条 page 模式松手后按页索引跳转, 跨章时由排版层自动接续。
      */
     fun skipToPage(index: Int) {
+        clearScrollCrossingPending()
         resetScrollOffset()
         readBook.skipToPage(index)
     }
@@ -383,7 +420,13 @@ class ReadBookViewModelShared(
     fun updateLayoutConfig(config: LayoutConfig) {
         if (config.visibleWidth <= 0 || config.visibleHeight <= 0) return
         val current = _layoutConfig.value
-        if (current == config) return
+        // 尺寸抖回原值：撤销已排队的去抖重排，否则 300ms 后会用过期视口排版
+        // （对照原版 ChapterProvider.upViewSize 的 removeCallbacks 分支）
+        if (current == config) {
+            layoutDebounceJob?.cancel()
+            layoutDebounceJob = null
+            return
+        }
         if (config.viewWidth == current.viewWidth) {
             // 仅高度变化：300ms 去抖合并
             layoutDebounceJob?.cancel()
@@ -467,6 +510,8 @@ class ReadBookViewModelShared(
      * 正文经 ContentProcessor 完整处理链后排版，详见 [contentLoadFinish]。
      */
     fun loadChapter(index: Int) {
+        // 显式装载（打开书/菜单跳章）清零滚动跨章标记，防止残留标记导致后续装载误保留偏移
+        clearScrollCrossingPending()
         val currentBookUrl = readBook.book.value?.bookUrl
         if (reviewCountBookUrl != currentBookUrl) {
             clearExpiredChapterLoadingJobs(clearAll = true)
@@ -804,8 +849,12 @@ class ReadBookViewModelShared(
         // 排版期间可能已切章，以最新 durChapterIndex 归位滑窗（原版 when(offset) 三分支，超窗丢弃）
         when (val offset = chapter.index - readBook.durChapterIndex.value) {
             0 -> {
+                // 滚动模式连续跨章装载：保留滚动偏移（对照原版 moveToNextChapter →
+                // loadContent(resetPageOffset = false)，避免占位页被正文替换时从章首跳变）；
+                // 其余装载路径（打开书/菜单跳章/重排）照旧归零
+                val crossing = consumeScrollCrossingPending()
                 readBook.updateTextChapter(offset, textChapter)
-                applyCurChapterPages(textChapter)
+                applyCurChapterPages(textChapter, resetOffset = !crossing)
                 scheduleReviewRelayoutIfNeeded(countDeferred, chapter, textChapter)
             }
             -1, 1 -> {
@@ -1667,6 +1716,7 @@ class ReadBookViewModelShared(
             _curTextPage.value = page
             _prevTextPage.value = page
             _nextTextPage.value = page
+            _nextPlusTextPage.value = page
             return
         }
         val durIndex = readBook.durChapterIndex.value
@@ -1684,6 +1734,12 @@ class ReadBookViewModelShared(
                     null
                 }
             _nextTextPage.value = nextChapter?.pages?.firstOrNull()
+                ?: if (canMoveToNextChapter()) {
+                    loadingPlaceholderPage(durIndex + 1)
+                } else {
+                    null
+                }
+            _nextPlusTextPage.value = nextChapter?.pages?.getOrNull(1)
                 ?: if (canMoveToNextChapter()) {
                     loadingPlaceholderPage(durIndex + 1)
                 } else {
@@ -1710,6 +1766,15 @@ class ReadBookViewModelShared(
         _nextTextPage.value = pageList.getOrNull(pageIndex + 1)
             ?: nextChapter?.pages?.firstOrNull()
                 ?: if (pageIndex == pageList.lastIndex && canMoveToNextChapter()) {
+                loadingPlaceholderPage(durIndex + 1)
+            } else {
+                null
+            }
+        // 第 3 页（对照原版 nextPlusPage）：当前页 +2；跨章时取下一章第 1/2 页
+        // （pageIndex=lastIndex-1 → 下一章第 0 页；pageIndex=lastIndex → 下一章第 1 页）
+        _nextPlusTextPage.value = pageList.getOrNull(pageIndex + 2)
+            ?: nextChapter?.pages?.getOrNull(pageIndex + 2 - pageList.size)
+                ?: if (pageIndex >= pageList.size - 2 && canMoveToNextChapter()) {
                 loadingPlaceholderPage(durIndex + 1)
             } else {
                 null

@@ -7,7 +7,6 @@ import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.net.Uri
 import android.provider.OpenableColumns
-import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import androidx.core.app.ActivityCompat
@@ -42,7 +41,6 @@ import io.legado.app.utils.FileDoc
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.delete
 import io.legado.app.utils.find
-import io.legado.app.utils.fullScreen
 import io.legado.app.utils.getFile
 import io.legado.app.utils.keepScreenOn
 import io.legado.app.utils.list
@@ -260,13 +258,16 @@ private class AndroidPermissionService(
 private class AndroidWindowController(
     private val activity: MainActivity,
 ) : WindowController {
+    // 路由切换时不再翻转 legacy 布局标志: 窗口在 BaseComposeActivity.setupSystemBar 启动时
+    // 已统一铺满到系统栏之后 (LAYOUT_FULLSCREEN + 透明系统栏), 各页面经 Compose insets
+    // (statusBarsPadding 等) 自行避让。若再按路由 fullscreen 开关 setFullscreen, 书架 →
+    // 阅读页 push 转场期间会翻转 LAYOUT_FULLSCREEN, 仍在屏上的书架整页重排、内容突然上顶
+    // 到状态栏之下 (状态栏占位消失的跳动)。系统栏显隐一律交给 setSystemBars (insets
+    // controller show/hide), 布局模式全程稳定。
+    override val appliesPolicyFullscreen: Boolean get() = false
+
     override fun setFullscreen(enabled: Boolean) {
-        if (enabled) {
-            activity.fullScreen()
-        } else {
-            // 退出全屏: 清除 LAYOUT_FULLSCREEN, 恢复系统栏默认布局
-            activity.window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
-        }
+        // 布局模式由启动时统一建立, 此处 no-op; 保留空实现对齐 WindowController 契约
     }
 
     override fun setKeepScreenOn(enabled: Boolean) {
@@ -427,8 +428,13 @@ private class AndroidExternalRequestService : ExternalRequestService {
  * 由 MainActivity 透传到 shared ReaderRoute 分发 (替代原 ReadBookActivity 直启)。
  */
 fun Intent.toLaunchRequest(): LaunchRequest? {
-    // 通知/外部入口携带 route extra: 转为 NavigateTo 请求
-    getStringExtra("route")?.let { return LaunchRequest.NavigateTo(it) }
+    // 通知/外部入口携带 route extra: 转为 NavigateTo 请求 (bookUrl 一并携带供冷启动兜底)
+    getStringExtra("route")?.let {
+        return LaunchRequest.NavigateTo(
+            routeName = it,
+            bookUrl = getStringExtra("bookUrl"),
+        )
+    }
     // startActivityForBook 兜底: bookUrl extra → OpenReader (chapterIndex/chapterPos 可选)
     getStringExtra("bookUrl")?.takeIf { it.isNotEmpty() }?.let { url ->
         // 同步消费 IntentData.book, 避免残留数据污染后续无关 Intent 解析

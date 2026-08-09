@@ -279,7 +279,10 @@ fun MangaReaderRoute(
             bookmark = bookmark,
             showDelete = false,
             onConfirm = { updated ->
-                scope.launch { AppDbProviders.get().bookmarkDao.insert(updated) }
+                scope.launch {
+                    runCatching { AppDbProviders.get().bookmarkDao.insert(updated) }
+                        .onFailure { AppLog.put("保存书签出错\n${it.message}", it) }
+                }
                 editingBookmark = null
             },
             onDismiss = { editingBookmark = null },

@@ -18,9 +18,7 @@ import io.legado.app.help.toast.Toasters
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.root.ScreenModel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import io.legado.app.ui.root.screenModelScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -50,7 +48,7 @@ class BookInfoScreenModel : ScreenModel {
     private val appDb get() = AppDbProviders.get()
 
     // 自管 scope (对照 TocScreenModel, 由 ScreenModelStore 在 onCleared 取消)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = screenModelScope("书籍详情")
 
     private val _state = MutableStateFlow(
         BookInfoUiState(

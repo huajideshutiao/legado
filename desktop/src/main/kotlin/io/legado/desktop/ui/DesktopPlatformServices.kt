@@ -20,6 +20,8 @@ import io.legado.app.ui.root.ShareService
 import io.legado.app.ui.root.SoftInputPolicy
 import io.legado.app.ui.root.SystemBarsPolicy
 import io.legado.app.ui.root.WindowController
+import io.legado.desktop.help.DesktopCrashLogDirs
+import io.legado.desktop.help.DesktopKeepAwake
 import io.legado.desktop.ui.component.FileDialogs
 import java.awt.Desktop
 import java.awt.Toolkit
@@ -142,7 +144,7 @@ private class DesktopPermissionService : PermissionService {
 
 // Window 全屏: Windows 走原生 HWND 真全屏 (无边框独占窗口覆盖任务栏, 经
 // DesktopFullscreenController); 非 Windows 平台显式日志暂不支持; 仅供 F11 手动切换;
-// 常亮/方向/系统栏桌面端无对应概念, no-op
+// 常亮走 DesktopKeepAwake (阻止系统休眠); 方向/系统栏桌面端无对应概念, no-op
 private class DesktopWindowController(
     private val handle: DesktopWindowHandle,
 ) : WindowController {
@@ -159,7 +161,9 @@ private class DesktopWindowController(
     }
 
     override fun setKeepScreenOn(enabled: Boolean) {
-        // desktop 无 KeepScreenOn 概念 (常亮由电源管理控制), no-op
+        // 对照 app 端 FLAG_KEEP_SCREEN_ON: 阻止系统休眠/息屏 (Win=SetThreadExecutionState,
+        // mac=caffeinate, Linux=systemd-inhibit), 见 DesktopKeepAwake
+        DesktopKeepAwake.setKeepScreenOn(enabled)
     }
 
     override fun setOrientation(policy: OrientationPolicy) {
@@ -209,36 +213,37 @@ private class DesktopExternalRequestService : ExternalRequestService {
     override fun handleLaunchRequest(request: LaunchRequest): Boolean = false
 }
 
-// 桌面端崩溃日志提供者: 从用户数据目录/logs/crash 读取
+// 桌面端崩溃日志提供者: 读 DesktopCrashHandler 落盘的两个目录 (缓存 + 用户导出),
+// 对照 app 端 CrashViewModel.initData 同样从外部缓存 + 备份路径两处收集
 private class DesktopCrashLogProvider : CrashLogProvider {
-    private val crashDir by lazy {
-        File(DataStorageProviders.get().userExportDir, "logs/crash")
-    }
+
+    private fun dirs(): List<File> = DesktopCrashLogDirs.readDirs()
+
+    /** 同名文件优先取先出现的目录 (writeDirs 顺序即优先级)。 */
+    private fun findFile(name: String): File? =
+        dirs().map { File(it, name) }.firstOrNull { it.isFile }
 
     override suspend fun loadCrashLogs(): List<CrashLogProvider.CrashLogEntry> {
-        if (!crashDir.isDirectory) return emptyList()
-        return crashDir.listFiles { it.isFile }
-            ?.sortedByDescending { it.name }
-            ?.distinctBy { it.name }
-            ?.map { CrashLogProvider.CrashLogEntry(it.name) }
-            ?: emptyList()
+        return dirs()
+            .filter { it.isDirectory }
+            .flatMap { it.listFiles { f -> f.isFile }?.toList().orEmpty() }
+            .sortedByDescending { it.name }
+            .distinctBy { it.name }
+            .map { CrashLogProvider.CrashLogEntry(it.name) }
     }
 
-    override suspend fun readCrashLog(name: String): String? {
-        val file = File(crashDir, name)
-        return if (file.isFile) file.readText() else null
-    }
+    override suspend fun readCrashLog(name: String): String? = findFile(name)?.readText()
 
     override suspend fun clearCrashLogs() {
-        if (crashDir.isDirectory) {
-            crashDir.listFiles()?.forEach { it.delete() }
+        dirs().forEach { dir ->
+            if (dir.isDirectory) dir.listFiles()?.forEach { it.delete() }
         }
     }
 
     override fun shareCrashLog(name: String) {
         // desktop 无系统分享面板, 改为打开文件所在目录并选中
-        val file = File(crashDir, name)
-        if (file.isFile) {
+        val file = findFile(name)
+        if (file != null) {
             kotlin.runCatching {
                 // 跨平台打开文件管理器并选中文件 (Windows: explorer /select; macOS: open -R; Linux: xdg-open)
                 val osName = System.getProperty("os.name").lowercase()
@@ -254,7 +259,7 @@ private class DesktopCrashLogProvider : CrashLogProvider {
 
                     else -> {
                         // Linux: 打开文件所在目录
-                        Runtime.getRuntime().exec(arrayOf("xdg-open", crashDir.absolutePath))
+                        Runtime.getRuntime().exec(arrayOf("xdg-open", file.parent))
                     }
                 }
             }.onFailure {

@@ -104,9 +104,9 @@ dependencies {
     // shared 对 coil3 是 implementation 不外泄, desktop 显式声明; coil-compose 传递 api 出
     // coil(SingletonImageLoader)/coil-core(ImageRequest/DiskCache)/coil-compose-core(painter)
     implementation(libs.coil3.compose)
-    // 桌面端 MP3 音频播放: jlayer 解码 MP3 → PCM, javax.sound.sampled.SourceDataLine 输出
-    // javax.sound.sampled 是 JDK 内置, 无需额外依赖; jlayer 在 toml 单独声明
-    implementation(libs.jlayer)
+    // 桌面端音频播放: open-ani/mediamp (mediamp-mpv 后端, 与视频同引擎, mpv=FFmpeg 全格式)。
+    // 引擎实例在 DesktopAudioPlayer 惰性创建 (ServiceLoader 解析 mediamp-mpv);
+    // mpv runtime 由下方 mediamp-mpv-runtime 提供 (与视频端共用同一套解包加载)。
     // 桌面端视频播放: open-ani/mediamp (mediamp-mpv 后端)。替代自研 libmpv 直通渲染 +
     // mpv.exe 外部进程方案 (已删, 见 git 历史)。
     // - 渲染: libmpv render API → 独立 producer GL/D3D11 上下文 → 共享纹理环 → Skia 零拷贝
@@ -411,6 +411,8 @@ compose.desktop {
             // - jdk.unsupported: sun.misc.Unsafe (反射/并发库)
             // - jdk.crypto.cryptoki / jdk.crypto.ec: HTTPS 加密 (PKCS11/ECC, OkHttp SSL 用)
             // - jdk.zipfs: ZIP 文件系统 (cbz/epub 解析)
+            // - jdk.management: HotSpotDiagnosticMXBean (关于页"创建堆转储"经 MBean 名字符串
+            //   查找, jdeps 静态分析看不到)
             // 如运行时报 ClassNotFoundException / NoClassDefFoundError, 在此补对应模块
             modules(
                 "jdk.localedata",
@@ -418,6 +420,7 @@ compose.desktop {
                 "jdk.crypto.cryptoki",
                 "jdk.crypto.ec",
                 "jdk.zipfs",
+                "jdk.management",
             )
             // 默认版本号; CI 会用 sed 改为实际版本 (如 3.25.0722)
             packageVersion = "1.0.0"

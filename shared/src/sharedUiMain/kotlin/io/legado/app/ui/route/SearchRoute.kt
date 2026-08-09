@@ -63,8 +63,13 @@ fun SearchRoute(
     val scope = rememberCoroutineScope()
     LaunchedEffect(route.key, route.searchScope, route.submit) {
         route.searchScope?.let(viewModel::updateSearchScope)
-        route.key?.let { viewModel.setQuery(it, route.submit) }
-            ?: viewModel.requestFocus()
+        val key = route.key
+        if (key.isNullOrBlank()) {
+            // 对齐原版 SearchActivity.receiptIntent: key 为空才聚焦输入框
+            viewModel.requestFocus()
+        } else {
+            viewModel.setQuery(key, route.submit)
+        }
     }
     // 对照 Activity.repeatOnLifecycle(RESUMED) { resume(); ... finally { pause() } }
     DisposableEffect(viewModel) {

@@ -25,8 +25,8 @@ import io.legado.app.constant.Status
 import io.legado.app.help.book.save
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
-import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.exoplayer.ExoPlayerHelper
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.media.AudioFocusController
 import io.legado.app.help.media.BecomingNoisyReceiver
 import io.legado.app.help.media.MediaPlaybackLock
@@ -485,8 +485,10 @@ class AudioPlayService : BaseService(), AudioPlayControllerListener, AudioPlayMa
             title = title,
             subtitle = subtitle,
             cover = cover,
-            contentIntent = activityPendingIntent<MainActivity>("activity") {
-                // 点击通知 → 打开当前播放书籍的音频界面 (经 toLaunchRequest → OpenReader → toReadRoute → AudioPlay)
+            contentIntent = activityPendingIntent<MainActivity>(IntentAction.activityAudioPlay) {
+                // 点击通知 → 打开当前播放书籍的音频界面 (对齐 origin activityPendingIntent<AudioPlayActivity>:
+                // 直接用内存 AudioPlay.book 进音频页, 不依赖 DB 解析; bookUrl 仅作冷启动兜底)
+                putExtra("route", "audio_play")
                 putExtra("bookUrl", AudioPlay.book?.bookUrl ?: "")
                 putExtra("chapterIndex", AudioPlay.durChapterIndex)
             },

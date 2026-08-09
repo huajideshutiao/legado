@@ -84,9 +84,7 @@ internal actual object FileUtilsCommon {
     }
 
     actual fun copyToFile(path: String, input: InputStream): Boolean {
-        // expect InputStream 无 copyTo 扩展, 分块读 + OutputStream 写 (对齐 JVM 流式语义);
-        // 注: native 端 AnalyzeUrlCore.byteStreamAsInput 暂不可用, downloadFile 流式路径
-        // 实际走不到这里 (回退 getByteArray), 本实现为 expect/actual 完整性 + 未来可用
+        // expect InputStream 无 copyTo 扩展, 分块读 + OutputStream 写 (对齐 JVM 流式语义)
         return try {
             val file = File(path)
             if (!file.exists()) {

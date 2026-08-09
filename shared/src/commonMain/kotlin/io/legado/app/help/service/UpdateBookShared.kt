@@ -754,7 +754,7 @@ class UpdateBookShared(
      * 桌面端 updateProgress)。
      *
      * 平台差异通过 [UpdateBookCallback.onProgressUpdate] 抽象:
-     * - app 端 callback 实现: startService<UpdateBookService> + NotificationManagerCompat.notify
+     * - app 端 callback 实现: startForegroundService<UpdateBookService> + NotificationManagerCompat.notify
      *   (NotificationCompat.Builder 设置进度, 与原 updateUpdateNotification 一致)
      * - 桌面端 callback 实现: NotificationProgresses.get().showProgress (SystemTray 文本通知) +
      *   StateFlow 暴露给 UI
@@ -831,14 +831,14 @@ class UpdateBookShared(
  *
  * # 背景
  * app 端 `MainViewModel.updateUpdateNotification` 用 `NotificationManagerCompat` +
- * `startService<UpdateBookService>` 显示通知栏进度, `context.toastOnUi(R.string.xxx)` 显示 toast;
+ * `startForegroundService<UpdateBookService>` 显示通知栏进度, `context.toastOnUi(R.string.xxx)` 显示 toast;
  * 桌面端宿主的 updateProgress 用 `NotificationProgresses` (SystemTray 文本通知) +
  * StateFlow 暴露给 UI, `Toasters.get().toast(msg)` 显示 toast;
  * iOS/鸿蒙端经各自已注册的 NotificationProgress / Toaster 真实实现桥接。
  *
  * 本接口把上述差异抽象出来, 由各端 actual 自行实现注册:
  * - Android: app 端 `MainViewModel` 持有 callback 实现, 桥接 `NotificationManagerCompat` +
- *   `startService<UpdateBookService>` + `context.toastOnUi`
+ *   `startForegroundService<UpdateBookService>` + `context.toastOnUi`
  * - 桌面: 桌面端宿主持有 callback 实现, 桥接 `NotificationProgresses` + `Toasters`
  * - iOS/鸿蒙: `NativeServiceLauncher` 持有 `NativeUpdateBookCallback`,
  *   同样桥接 `NotificationProgresses` + `Toasters`

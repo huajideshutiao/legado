@@ -23,4 +23,13 @@ object IntentAction {
     const val init = "init"
     const val remove = "remove"
     const val stopPlay = "stopPlay"
+
+    // ===== MainActivity 通知 contentIntent 身份 action (与 route extra 配套) =====
+    // 通知点击统一走 MainActivity → toLaunchRequest → NavigateTo(route); 各通知用不同 action
+    // 保证 PendingIntent 身份不同 (FLAG_UPDATE_CURRENT 下 extras 不会被互相覆盖, 对齐 origin
+    // 音频/朗读分别指向 AudioPlayActivity/ReadBookActivity 的天然隔离)
+    const val activityAudioPlay = "activity_audio_play"
+    const val activityReadAloud = "activity_read_aloud"
+    const val activityCheckSource = "activity_check_source"
+    const val activityBookshelfManage = "activity_bookshelf_manage"
 }

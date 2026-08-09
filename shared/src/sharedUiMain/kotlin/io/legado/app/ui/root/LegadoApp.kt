@@ -54,13 +54,13 @@ import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.showSourceLogin
 import io.legado.app.model.ActiveReadBookRegistry
+import io.legado.app.model.AudioPlayShared
 import io.legado.app.ui.about.AppLogDialog
+import io.legado.app.ui.about.CrashLogItem
+import io.legado.app.ui.about.CrashLogsDialog
 import io.legado.app.ui.about.UpdateDialogOverlayContent
 import io.legado.app.ui.association.DeepLinkImportType
 import io.legado.app.ui.association.OpenUrlConfirmOverlayContent
-import io.legado.app.ui.widget.keyboard.KeyboardAssistsConfigOverlayContent
-import io.legado.app.ui.about.CrashLogItem
-import io.legado.app.ui.about.CrashLogsDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.changecover.ChangeCoverDialog
 import io.legado.app.ui.book.changecover.ChangeCoverPlatformProviders
@@ -94,6 +94,7 @@ import io.legado.app.ui.config.ThemeListDialog
 import io.legado.app.ui.route.ReviewListOverlayDialogContent
 import io.legado.app.ui.widget.dialog.PhotoViewOverlayDialog
 import io.legado.app.ui.widget.dialog.PlatformPhotoOverlayDialog
+import io.legado.app.ui.widget.keyboard.KeyboardAssistsConfigOverlayContent
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
@@ -188,9 +189,18 @@ fun LegadoApp(
                 WindowPolicies.forRoute(route)
             }
         } ?: WindowPolicies.Default
-        LaunchedEffect(windowPolicy) {
-            runCatching { applyWindowPolicy(windowPolicy) }
-                .onFailure { AppLog.put("应用窗口策略失败", it) }
+        // 用 SideEffect（组合后、同帧布局前）而非 LaunchedEffect（首帧后才跑）下发策略：
+        // 进入阅读页时窗口全屏/系统栏策略提前到位，首帧 insets 即用新策略测量，缩短
+        // "旧 insets 首帧排版 → 新 insets 到位后整章重排"的可见窗口（对照原版进入即
+        // 完成 upSystemUiVisibility）。appliedPolicy 记录已下发策略，仅真正变化才调用，
+        // 避免桌面 setFullscreen 每次重组反复下发窗口本体。
+        var appliedPolicy by remember { mutableStateOf<WindowPolicy?>(null) }
+        SideEffect {
+            if (appliedPolicy != windowPolicy) {
+                appliedPolicy = windowPolicy
+                runCatching { applyWindowPolicy(windowPolicy) }
+                    .onFailure { AppLog.put("应用窗口策略失败", it) }
+            }
         }
         // 阅读页隐藏状态栏/导航栏开关在对话框里切换后重应用系统栏策略 (原版 SharedPreference
         // 监听 → upSystemUiVisibility); 用 rememberUpdatedState 取最新路由
@@ -566,6 +576,31 @@ private suspend fun handleLaunchRequest(
                 // 无最近阅读或 bookResolver 未提供时, 降级到书架主页
                 if (book != null) navigator.push(book.toReadRoute())
                 else navigator.push(AppRoute.Main(MainTab.BOOKSHELF))
+            }
+
+            // 音频通知点击 → 打开当前播放书籍的音频界面 (对齐 origin activityPendingIntent<AudioPlayActivity>:
+            // 直接用内存 AudioPlay.book 进音频页, 不依赖 DB 解析; bookUrl 仅作冷启动兜底)
+            "audio_play" -> {
+                val book = AudioPlayShared.book
+                if (book != null) {
+                    navigator.push(
+                        AppRoute.AudioPlay(
+                            book = book.toRouteRef(),
+                            chapterIndex = AudioPlayShared.durChapterIndex,
+                            chapterPos = AudioPlayShared.durChapterPos,
+                        )
+                    )
+                } else if (request.bookUrl != null) {
+                    // 冷启动(进程被杀)内存 book 已丢: 回落 DB 解析 bookUrl (书架书)
+                    val ref = capabilities.resolveBookRef(request.bookUrl)
+                    if (ref != null) {
+                        navigator.push(ref.toReadRoute())
+                    } else {
+                        navigator.push(AppRoute.Main(MainTab.BOOKSHELF))
+                    }
+                } else {
+                    navigator.push(AppRoute.Main(MainTab.BOOKSHELF))
+                }
             }
 
             else -> Unit

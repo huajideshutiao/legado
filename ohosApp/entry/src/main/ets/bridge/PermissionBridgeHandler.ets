@@ -1,4 +1,5 @@
-import { abilityAccessCtrl } from '@ohos.abilityAccessCtrl';
+import abilityAccessCtrl from '@ohos.abilityAccessCtrl';
+import type { Permissions } from '@ohos.abilityAccessCtrl';
 import common from '@ohos.app.ability.common';
 import { BusinessError } from '@ohos.base';
 
@@ -106,7 +107,7 @@ function handleCheck(req: PermissionBridgeRequest, callback: PermissionCallback)
     const atManager = abilityAccessCtrl.createAtManager();
     // accessTokenId 取应用自身 token: UIAbilityContext.applicationInfo.accessTokenId
     const tokenId = abilityContext?.applicationInfo.accessTokenId ?? 0;
-    const granted = atManager.checkAccessTokenSync(tokenId, p.permission) ===
+    const granted = atManager.checkAccessTokenSync(tokenId, p.permission as Permissions) ===
       abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED;
     const resp: PermissionResponse = { ok: true, granted: granted };
     callback(req.requestId, JSON.stringify(resp));
@@ -134,7 +135,9 @@ async function handleRequest(req: PermissionBridgeRequest, callback: PermissionC
   }
   try {
     const atManager = abilityAccessCtrl.createAtManager();
-    const result = await atManager.requestPermissionsFromUser(abilityContext, [p.permission]);
+    // Permissions 是 SDK 的字符串字面量联合类型, KMP 侧传的是普通 string, 此处断言收窄
+    const permissions: Array<Permissions> = [p.permission as Permissions];
+    const result = await atManager.requestPermissionsFromUser(abilityContext, permissions);
     const granted = result.authResults.length > 0 &&
       result.authResults[0] === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED;
     const resp: PermissionResponse = { ok: true, granted: granted };

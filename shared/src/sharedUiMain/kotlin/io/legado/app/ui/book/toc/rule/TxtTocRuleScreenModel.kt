@@ -5,9 +5,7 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.TxtTocRule
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.root.ScreenModel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import io.legado.app.ui.root.screenModelScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,7 +31,7 @@ class TxtTocRuleScreenModel(
 
     private val appDb get() = AppDbProviders.get()
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = screenModelScope("TXT目录规则")
 
     private val _state = MutableStateFlow(TxtTocRuleUiState())
     val state: StateFlow<TxtTocRuleUiState> = _state.asStateFlow()

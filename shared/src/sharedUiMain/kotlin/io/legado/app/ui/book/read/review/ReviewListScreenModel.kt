@@ -5,9 +5,7 @@ import io.legado.app.data.entities.Review
 import io.legado.app.ui.book.read.ReviewViewModelShared
 import io.legado.app.ui.book.read.SharedUiReviewPlatform
 import io.legado.app.ui.root.ScreenModel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import io.legado.app.ui.root.screenModelScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,7 +25,7 @@ class ReviewListScreenModel(
     private val book: Book,
 ) : ScreenModel {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = screenModelScope("评论列表")
 
     // 委托 shared VM (paragraphIndex = -1, chapter = null, 书评列表模式)
     private val shared = ReviewViewModelShared(

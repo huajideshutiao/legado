@@ -10,10 +10,9 @@ import io.legado.app.data.entities.rule.ReviewRule
 import io.legado.app.data.entities.rule.SearchRule
 import io.legado.app.data.entities.rule.TocRule
 import io.legado.app.ui.root.ScreenModel
+import io.legado.app.ui.root.screenModelScope
 import io.legado.app.ui.widget.text.EditEntity
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,7 +33,7 @@ class BookSourceEditScreenModel(
     sharedFactory: (CoroutineScope) -> BookSourceEditViewModelShared,
 ) : ScreenModel {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = screenModelScope("书源编辑")
 
     private val shared: BookSourceEditViewModelShared = sharedFactory(scope)
 

@@ -52,9 +52,8 @@ class ReaderProvider : ContentProvider() {
     }
 
     override fun onCreate(): Boolean {
-        context?.let { context ->
-            ShortCuts.buildShortCuts(context)
-        }
+        // 快捷方式构建移到 App.onCreate: ContentProvider.onCreate 早于 Application.onCreate,
+        // 此时 Compose Resources 还没拿到 Android context, 取多语言文案会抛 MissingResourceException。
         return false
     }
 

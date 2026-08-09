@@ -21,7 +21,25 @@
 //
 // 同步语义注意: 业务类函数内部用 runBlocking 转 suspend, 应在 TaskPool/Worker 中调用
 
-import type { ArkUIViewController } from '@cpf-kmp-cmp/compose';
+// CPF 渲染控制器接口 (与 @cpf-kmp-cmp/compose 的 libcompose_arkui_utils.so 声明结构一致)。
+// 本文件是 .d.ts, ArkTS 禁止 TS 文件 import .ets/.d.ets, 而 @cpf-kmp-cmp/compose 入口是 Index.d.ets,
+// 其 libcompose_arkui_utils.so 又只在该包自身 oh_modules 内可解析, 故就地声明同形接口 (结构类型兼容)。
+export interface ArkUIViewController {
+  onPageShow(): void;
+
+  onPageHide(): void;
+
+  onSurfaceShow(): void;
+
+  onSurfaceHide(): void;
+
+  onBackPress(): boolean;
+
+  setParentScrollBridge(scroller: Object): void;
+
+  /** 外层可滚动容器 onScrollFrameBegin 同步钩子, 返回 Compose 消费的 vp 偏移。 */
+  consumeOuterScroll(offsetVp: number, sourceInt: number): number;
+}
 
 export interface LegadoNativeBridge {
   /** 创建由 CPF 融合渲染承载的 Legado Compose 根控制器。 */
@@ -165,6 +183,45 @@ export interface LegadoNativeBridge {
    */
   registerNotificationCallback(callback: (json: string) => void): void;
 
+  // ===== Window tsfn 回调注册 (KMP → ArkTS 窗口策略命令) =====
+  /**
+   * 注册 Window 回调 (KMP → ArkTS 跨线程 dispatch, 窗口策略命令)。
+   *
+   * C++ 侧创建 napi_threadsafe_function 包装 [callback], 并通过 @CName legado_register_window_fn
+   * 把 dispatch 函数指针注入 Kotlin OhosNativeBridge.windowTsfn。此后 KMP WindowController
+   * 的命令跨线程 dispatch 到此 [callback], 由 ArkTS 在窗口上执行 @ohos.window API。
+   * fire-and-forget, 无 ArkTS → Kotlin 结果回调。
+   *
+   * @param callback 接收 JSON 命令 `{ action: 'setFullScreenLayout'|'setKeepScreenOn'|
+   *                 'setPreferredOrientation'|'setSystemBarEnable'|'exitApplication',
+   *                 enabled?: boolean, orientation?: number }`
+   */
+  registerWindowCallback(callback: (json: string) => void): void;
+
+  // ===== TextAction tsfn 回调注册 + ArkTS → Kotlin 回调 (长按选字浮动菜单) =====
+  /**
+   * 注册 TextAction 回调 (KMP → ArkTS 跨线程 dispatch, 文本/图片操作菜单请求)。
+   *
+   * C++ 侧创建 napi_threadsafe_function 包装 [callback], 并通过 @CName legado_register_text_action_fn
+   * 把 dispatch 函数指针注入 Kotlin OhosNativeBridge.textActionTsfn。此后 KMP 长按选字完成 →
+   * OhosNativeBridge.showTextActionMenu 时, JSON payload 跨线程 dispatch 到此 [callback],
+   * 由 ArkTS TextActionBridgeHandler 更新 Index.ets 叠层浮动菜单。
+   *
+   * @param callback 接收 JSON payload `{ text, x, y, src?, type, menuItems }`
+   */
+  registerTextActionCallback(callback: (json: string) => void): void;
+
+  /**
+   * TextAction 菜单结果回调 (ArkTS → Kotlin)。
+   *
+   * ArkTS 菜单项点击 / 点遮罩收起后调用, C++ 转发 @CName legado_text_action_callback →
+   * KMP OhosNativeBridge.onTextActionResult。
+   *
+   * @param requestId 请求 ID (菜单为单例通道, 固定传 0)
+   * @param result 结果 JSON, 如 `{ action: 'copy'|'__dismiss'|..., text: '...', src: '...' }`
+   */
+  textActionCallback(requestId: number, result: string): void;
+
   // ===== Image / Media tsfn 回调注册 + ArkTS → Kotlin 回调 (KP8+ 新增) =====
 
   /**
@@ -248,7 +305,7 @@ export interface LegadoNativeBridge {
    * C++ 侧创建 napi_threadsafe_function 包装 [callback], 并通过 @CName legado_register_tts_fn
    * 把 dispatch 函数指针注入 Kotlin OhosNativeBridge.ttsTsfn。此后 KMP 调用
    * OhosNativeBridge.sendTtsCommand 时, JSON 命令跨线程 dispatch 到此 [callback],
-   * 由 ArkTS 调 @ohos.textToSpeech。TTS 事件通过 [ttsEvent] 回送。
+   * 由 ArkTS 调 @kit.CoreSpeechKit textToSpeech。TTS 事件通过 [ttsEvent] 回送。
    *
    * @param callback 接收 JSON 命令 `{ action, text?, utteranceId?, rate?, lang? }`:
    *   - action='createEngine': 创建 TTS 引擎
@@ -263,7 +320,7 @@ export interface LegadoNativeBridge {
   /**
    * TTS 事件回调 (ArkTS → Kotlin)。
    *
-   * ArkTS @ohos.textToSpeech 的 onStart/onComplete/onStop/onError 事件通过此方法推送给 Kotlin,
+   * ArkTS @kit.CoreSpeechKit textToSpeech 的 onStart/onComplete/onStop/onError 事件通过此方法推送给 Kotlin,
    * 转发给 OhosNativeBridge.TtsEventListener (即 OhosSystemTtsEngine)。
    *
    * @param event 事件 JSON, 如 `{ event: 'onStart', utteranceId: 'xxx' }`
@@ -514,7 +571,7 @@ export interface LegadoNativeBridge {
    * C++ 侧创建 napi_threadsafe_function 包装 [callback], 并通过 @CName legado_register_share_fn
    * 把 dispatch 函数指针注入 Kotlin OhosNativeBridge.shareTsfn。此后 KMP 调
    * OhosNativeBridge.shareText/shareFile 时, payload 跨线程 dispatch 到此 [callback],
-   * 由 ArkTS 调 @ohos.share.systemShare.systemShare.show 弹系统分享面板。
+   * 由 ArkTS 调 @kit.ShareKit systemShare.ShareController.show 弹系统分享面板。
    * fire-and-forget (与 Toast 同模式), 无 ArkTS → Kotlin 结果回调。
    *
    * @param callback 接收 JSON payload `{ action: 'text'|'file', text?, filePath?, mimeType? }`

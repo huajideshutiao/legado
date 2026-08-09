@@ -38,8 +38,8 @@ import io.legado.app.utils.File
  *   (commonMain TextFileCore); PDF/CBZ 解析器未下沉, 走 [UnsupportedFileBook] 抛明确异常, 不静默空返回
  * - zip 解析用 commonMain [RemoteZipCore] + [ZipEntryReader] (无 java.util.zip)
  * - bookUrl 用 `file://` + 绝对路径 (与 NativeLocalBookLocator.parseLocalPath 对齐)
- * - saveBookFile(str) 网络路径用 AnalyzeUrlCore.getByteArrayAwait (native 端
- *   getInputStreamAwait 的 byteStreamAsInput 是抛异常 stub)
+ * - saveBookFile(str) 网络路径用 AnalyzeUrlCore.getByteArrayAwait (native 响应体本就整块进内存,
+ *   走 getInputStreamAwait 无额外收益)
  * - importRemoteBook 的 zip 分支用 WebDav.readRange + RemoteZipCore (与 desktop RemoteZipWrapper 语义一致)
  */
 class NativeFileBookAccessor : FileBookAccessor {
@@ -201,7 +201,7 @@ class NativeFileBookAccessor : FileBookAccessor {
         source: BaseSource?
     ): String {
         // webDav 走 WebDav 下载流; 网络 URL 走 AnalyzeUrlCore 取字节
-        // (native 端 getInputStreamAwait 的 byteStreamAsInput 是抛异常 stub, 改走 getByteArrayAwait)
+        // (native 响应体本就整块进内存, getByteArrayAwait 与流式等价)
         val inputStream = if (!str.startsWith(BookType.webDavTag)) {
             AnalyzeUrlCore(
                 str, source = source, callTimeout = 0,

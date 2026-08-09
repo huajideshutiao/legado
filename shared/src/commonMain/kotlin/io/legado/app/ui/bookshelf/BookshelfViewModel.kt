@@ -11,13 +11,11 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.service.UpdateBookCallback
 import io.legado.app.help.service.UpdateBookCallbacks
 import io.legado.app.help.service.UpdateBookShared
+import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.cnCompare
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -72,7 +70,7 @@ class BookshelfViewModel {
     private val appConfig get() = AppConfigProviders.get()
 
     /** VM 自管 scope, 桌面端无 lifecycleScope; app 端也可用, onCleared 时取消即可 */
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = screenModelScope("书架")
 
     /**
      * 目录更新/强制刷新编排核心 (对照 app 端 MainViewModel.updateBookShared)。

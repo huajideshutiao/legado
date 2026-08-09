@@ -5,11 +5,9 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.coroutine.IoDispatcher
+import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.splitNotBlank
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -55,7 +53,7 @@ class ReplaceRuleListViewModel {
     private val dao get() = AppDbProviders.get().replaceRuleDao
 
     /** VM 自管 scope, 桌面端无 lifecycleScope; app 端也可用, onCleared 时取消即可 */
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = screenModelScope("替换规则列表")
 
     private val _rules = MutableStateFlow<List<ReplaceRule>>(emptyList())
     val rules: StateFlow<List<ReplaceRule>> = _rules.asStateFlow()

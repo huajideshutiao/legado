@@ -49,7 +49,7 @@ import webview from '@ohos.web.webview';
  *   JS 取不到结果按 30 次 × 1s 重试, 总超时 15s (AppConst.timeLimit);
  * - onInterceptRequest 拦截全部子资源请求 (比 iOS WKWebView 只拦主框架能力强),
  *   命中 sourceRegex/overrideUrlRegex 立即回传命中 URL 并吞掉该请求;
- * - cookie: 加载前 WebCookieManager.setCookie 注入, 成功后 getCookie 回传 (有 tag 由 Kotlin 落库);
+ * - cookie: 加载前 WebCookieManager.configCookieSync 注入, 成功后 fetchCookieSync 回传 (有 tag 由 Kotlin 落库);
  * - 未就绪 (Index.ets 未挂 Web / controller 未注入) 时回送明确错误, Kotlin 侧转为规则错误而非崩溃。
  */
 
@@ -219,7 +219,8 @@ function startLoad(payload: WebViewRequestPayload, htmlRaw: string): void {
         continue;
       }
       try {
-        webview.WebCookieManager.getInstance().setCookie(cookieUrl, kv);
+        // WebCookieManager 全为静态方法; setCookie 自 API 11 废弃, 用 configCookieSync
+        webview.WebCookieManager.configCookieSync(cookieUrl, kv);
       } catch (e) {
         console.error('[WebViewBridge] setCookie failed: ' + JSON.stringify(e));
       }
@@ -246,7 +247,7 @@ function startLoad(payload: WebViewRequestPayload, htmlRaw: string): void {
       controller.loadData(htmlRaw, 'text/html', payload.encode ?? 'utf-8', payload.url);
     } else if (payload.url != null && payload.url.length > 0) {
       if (payload.headers != null && payload.headers.length > 0) {
-        const headers: webview.Header[] = [];
+        const headers: webview.WebHeader[] = [];
         for (const h of payload.headers) {
           headers.push({ headerKey: h.name, headerValue: h.value });
         }
@@ -365,39 +366,58 @@ function readActiveCookie(): string {
     if (url.length === 0) {
       return '';
     }
-    return webview.WebCookieManager.getInstance().getCookie(url) ?? '';
+    // getCookie 自 API 11 废弃, 用 fetchCookieSync (同为静态方法)
+    return webview.WebCookieManager.fetchCookieSync(url) ?? '';
   } catch (e) {
     return '';
   }
 }
 
-/** 嗅探拦截 (Index.ets Web 组件 onInterceptRequest 回调, 拦截所有子资源请求)。 */
-export function handleInterceptRequest(event: webview.WebResourceRequest): webview.WebResourceResponse | undefined {
+/**
+ * 嗅探拦截 (Index.ets Web 组件 onInterceptRequest 回调, 拦截所有子资源请求)。
+ *
+ * 注: OnInterceptRequestEvent/WebResourceRequest/WebResourceResponse 是 ArkUI 全局声明
+ * (component/web.d.ts), 不属于 @ohos.web.webview 命名空间。
+ */
+export function handleInterceptRequest(event: OnInterceptRequestEvent): WebResourceResponse | undefined {
   if (active == null) {
     return undefined;
   }
   const payload = active.payload;
-  const target = event.getRequestUrl();
-  if (target == null || target.length === 0) {
+  const target: string = event.request.getRequestUrl();
+  if (target.length === 0) {
     return undefined;
   }
   try {
     if (payload.overrideUrlRegex != null && payload.overrideUrlRegex.length > 0) {
       if (new RegExp(payload.overrideUrlRegex).test(target)) {
         completeActive({ ok: true, url: payload.url ?? target }, target);
-        return new webview.WebResourceResponse('text/plain', 'utf-8', '');
+        return emptyResponse();
       }
     }
     if (payload.sourceRegex != null && payload.sourceRegex.length > 0) {
       if (new RegExp(payload.sourceRegex).test(target)) {
         completeActive({ ok: true, url: payload.url ?? target }, target);
-        return new webview.WebResourceResponse('text/plain', 'utf-8', '');
+        return emptyResponse();
       }
     }
   } catch (e) {
     console.error('[WebViewBridge] regex match failed: ' + JSON.stringify(e));
   }
   return undefined;
+}
+
+/** 命中嗅探后吞掉该请求用的空响应 (WebResourceResponse 只有无参构造, 字段走 setter)。 */
+function emptyResponse(): WebResourceResponse {
+  const resp = new WebResourceResponse();
+  resp.setResponseData('');
+  resp.setResponseEncoding('utf-8');
+  resp.setResponseMimeType('text/plain');
+  resp.setResponseCode(200);
+  resp.setReasonMessage('OK');
+  resp.setResponseHeader([]);
+  resp.setResponseIsReady(true);
+  return resp;
 }
 
 /** 完成当前请求并处理下一个 (清状态 + 回送结果, 混合协议: JSON 控制面 + 裸 bodyRaw 数据面)。 */

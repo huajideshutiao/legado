@@ -6,9 +6,8 @@ import io.legado.app.data.dao.sortedByLocalizedOrder
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.ui.root.ScreenModel
-import kotlinx.coroutines.CoroutineScope
+import io.legado.app.ui.root.screenModelScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,7 +28,7 @@ class AllBookmarkScreenModel(
 ) : ScreenModel {
 
     // 自管 scope (app 端无 ScreenModelStore 时由宿主 DisposableEffect 调 onCleared)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = screenModelScope("书签列表")
 
     private val _state = MutableStateFlow(AllBookmarkUiState())
     val state: StateFlow<AllBookmarkUiState> = _state.asStateFlow()

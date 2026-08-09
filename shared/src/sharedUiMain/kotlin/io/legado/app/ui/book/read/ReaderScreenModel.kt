@@ -30,6 +30,7 @@ import io.legado.app.ui.book.read.page.detectClickArea
 import io.legado.app.ui.book.searchContent.SearchResult
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.ScreenModel
+import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.isAbsUrl
@@ -37,9 +38,6 @@ import io.legado.app.utils.isTrue
 import io.legado.app.utils.mapParallelSafe
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.systemCurrentTimeMillis
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -271,8 +269,8 @@ class ReaderScreenModel(
     layoutConfig: ReadBookViewModelShared.LayoutConfig = ReadBookViewModelShared.LayoutConfig.DEFAULT,
 ) : ScreenModel {
 
-    // 自管 scope（与 TocScreenModel 一致：SupervisorJob + Dispatchers.Default）
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // 自管 scope（与 TocScreenModel 一致，异常兜底见 screenModelScope）
+    private val scope = screenModelScope("阅读")
 
     private val readBook = ReadBookShared()
     val menuController: ReadMenuController by lazy { menuControllerFactory(this) }

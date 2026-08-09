@@ -7,9 +7,8 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.root.ScreenModel
-import kotlinx.coroutines.CoroutineScope
+import io.legado.app.ui.root.screenModelScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,7 +32,7 @@ class SearchContentScreenModel(
     private val emptyResultText: () -> String,
 ) : ScreenModel {
 
-    private val scope = CoroutineScope(SupervisorJob() + IoDispatcher)
+    private val scope = screenModelScope("搜索内容", IoDispatcher)
 
     private val shared = SearchContentViewModelShared(
         scope = scope,

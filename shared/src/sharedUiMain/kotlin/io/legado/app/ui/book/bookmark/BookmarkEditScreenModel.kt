@@ -7,9 +7,7 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.root.ScreenModel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import io.legado.app.ui.root.screenModelScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,7 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class BookmarkEditScreenModel : ScreenModel {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = screenModelScope("书签编辑")
 
     private val _state = MutableStateFlow(BookmarkEditUiState())
     val state: StateFlow<BookmarkEditUiState> = _state.asStateFlow()

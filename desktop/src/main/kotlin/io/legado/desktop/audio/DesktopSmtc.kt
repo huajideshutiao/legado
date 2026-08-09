@@ -113,6 +113,7 @@ internal object DesktopSmtc {
             // 会话必须绑主窗口: 绑无任务栏按钮的隐藏窗口会让悬停任务栏拖崩 explorer
             // (A/B 实证)。主窗口未就绪时不初始化, 下次 update 再试。
             val hwnd = DesktopTaskbarMedia.mainWindowHandle() ?: return@execute
+            DesktopAppUserModelId.applyToWindow(hwnd)
             runCatching {
                 val lib = bridge ?: loadBridge().also { bridge = it }
                 val rc = lib.lgsmtc_init(hwnd, cmdCallback)
@@ -141,6 +142,7 @@ internal object DesktopSmtc {
             if (!initialized) {
                 // 同 init(): 主窗口未就绪就不初始化 (不置 initFailed, 留待下次推送重试)
                 val hwnd = DesktopTaskbarMedia.mainWindowHandle() ?: return@execute
+                DesktopAppUserModelId.applyToWindow(hwnd)
                 val rc = runCatching {
                     lib.lgsmtc_init(hwnd, cmdCallback)
                 }.getOrDefault(-1)

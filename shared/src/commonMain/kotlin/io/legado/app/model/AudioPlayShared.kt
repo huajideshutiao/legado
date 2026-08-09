@@ -158,6 +158,16 @@ object AudioPlayShared {
             resetData(book)
             return
         }
+        // 重进同书不走 resetData: 目录已就位时重算章节计数, 否则 simulatedChapterSize 停留在
+        // 旧值(首次进入目录未就绪时为 0), 播放完 next() 静默 return → 不切下一首 (对照 origin resetData)
+        if (!chapterList.isNullOrEmpty()) {
+            chapterSize = chapterList!!.size
+            simulatedChapterSize = if (book.readSimulating()) {
+                book.simulatedTotalChapterNum()
+            } else {
+                chapterList!!.size
+            }
+        }
         durCoverUrl?.let { postEvent(EventBus.AUDIO_COVER, it) }
         durLrcData?.let { postEvent(EventBus.AUDIO_LRC, it) }
         postEvent(EventBus.AUDIO_PROGRESS, durChapterPos)
@@ -293,18 +303,22 @@ object AudioPlayShared {
     fun saveRead() {
         val book = book ?: return
         Coroutine.async {
-            val chapterChanged = book.durChapterIndex != durChapterIndex
             book.durChapterIndex = durChapterIndex
             book.durChapterPos = durChapterPos
-            if (chapterChanged) {
-                durChapter?.let {
-                    book.durChapterTitle = it.getDisplayTitle(
-                        ContentProcessorProviders.get().getTitleReplaceRules(book),
-                        book.getUseReplaceRule()
-                    )
-                }
+            // 标题以当前 durChapter 为准: next/prev/skipTo 已预同步 book.durChapterIndex,
+            // 若仍用 "book.durChapterIndex != durChapterIndex" 判断 chapterChanged 恒为 false,
+            // 导致 durChapterTitle 永远停在旧章标题 (回归 2026-08)。
+            durChapter?.let {
+                book.durChapterTitle = it.getDisplayTitle(
+                    ContentProcessorProviders.get().getTitleReplaceRules(book),
+                    book.getUseReplaceRule()
+                )
             }
             AudioPlayBookBridges.get().saveRead(book)
+            // 落库后通知书架重查 (对齐阅读器 uploadProgress 行为): 书架 DB 流驻留订阅,
+            // Room KMP 失效推送对桌面端不可靠, 需 UP_BOOKSHELF 重启当前分组流强制重查
+            // durChapterTime, 否则书架停在旧快照不刷到第一位 (回归 2026-08)。
+            postEvent(EventBus.UP_BOOKSHELF, book.bookUrl)
         }
     }
 

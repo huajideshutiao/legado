@@ -10,8 +10,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.SourceLoginContext
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.ui.root.ScreenModel
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
+import io.legado.app.ui.root.screenModelScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -38,7 +37,7 @@ import kotlinx.coroutines.launch
  */
 class LoginScreenModel : ScreenModel {
 
-    private val scope = CoroutineScope(SupervisorJob() + IoDispatcher)
+    private val scope = screenModelScope("书源登录", IoDispatcher)
 
     private val _state = MutableStateFlow(LoginUiState())
     val state: StateFlow<LoginUiState> = _state.asStateFlow()

@@ -8,11 +8,9 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.coroutine.printStackTraceOnDebug
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.root.ScreenModel
+import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,7 +32,7 @@ class ReplaceEditScreenModel(
 
     private val appDb get() = AppDbProviders.get()
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = screenModelScope("替换规则编辑")
 
     private val _state = MutableStateFlow(ReplaceEditUiState())
     val state: StateFlow<ReplaceEditUiState> = _state.asStateFlow()

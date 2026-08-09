@@ -106,9 +106,15 @@ fun ReadRssRoute(
 
     LaunchedEffect(book) {
         screenModel.dispatch(ReadRssUiEvent.TitleChanged(book.name))
-        val loaded = withContext(IoDispatcher) {
-            AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
-        }
+        // 对照原版 upBook 里 curBookSource 赋值 (整个 initData 跑在 execute{} 里, 查库异常不外泄);
+        // 同文件 removeFromShelf/toggleStar 亦全部 runCatching, 此处对齐
+        val loaded = runCatching {
+            withContext(IoDispatcher) {
+                AppDbProviders.get().bookSourceDao.getBookSource(book.origin)
+            }
+        }.onFailure {
+            AppLog.put("读取书源出错\n${it.message}", it)
+        }.getOrNull()
         source = loaded
         // 对照原版 upStarMenu: 有书才显示收藏钮; onMenuOpened 里按 hasLogin 决定登录项
         screenModel.dispatch(

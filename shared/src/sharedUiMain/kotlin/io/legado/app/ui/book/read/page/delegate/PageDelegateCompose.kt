@@ -251,6 +251,9 @@ abstract class PageDelegateCompose(
      * @param prevContent 上一页内容（由调用方包装 `PageViewComposable(prevTextPage, ...)`）
      * @param curContent 当前页内容
      * @param nextContent 下一页内容
+     * @param nextPlusContent 第 3 页内容（当前页之后的第 2 页）。仅滚动模式连排使用
+     *   （对照原版 drawPage 的 relativePage(2)，章末短页 + 新章短页时视口下方需第 3 页
+     *   补位，否则出现空白）；横向翻页模式各页自带完整背景，忽略本参数。
      * @param onClick 单击回调（delegate 内部 [onTap] 判定中心区域后转发，左右区域直接翻页不转发）
      * @param onLongClick 长按回调（x/y 落点坐标，用于页内文字选择命中判定）。
      *   2026-08-08 方案 A 起长按检测移入顶层选择层（触摸在 ReadViewComposable 选择层、
@@ -263,6 +266,7 @@ abstract class PageDelegateCompose(
         prevContent: @Composable () -> Unit,
         curContent: @Composable () -> Unit,
         nextContent: @Composable () -> Unit,
+        nextPlusContent: @Composable () -> Unit = {},
         onClick: (TextColumn?) -> Unit,
         onLongClick: (Float, Float) -> Unit,
     )

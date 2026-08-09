@@ -31,8 +31,6 @@ import androidx.annotation.DrawableRes
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.edit
-
-import io.legado.app.help.i18n.androidAppString
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.authority
 import io.legado.app.data.entities.BaseBook
@@ -40,6 +38,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.help.IntentData
 import io.legado.app.help.IntentHelp
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.toReadRoute
@@ -86,6 +85,10 @@ inline fun <reified T : Service> Context.startService(configIntent: Intent.() ->
     startService(Intent(this, T::class.java).apply(configIntent))
 }
 
+inline fun <reified T : Service> Context.startForegroundService(configIntent: Intent.() -> Unit = {}) {
+    ContextCompat.startForegroundService(this, Intent(this, T::class.java).apply(configIntent))
+}
+
 inline fun <reified T : Service> Context.stopService() {
     stopService(Intent(this, T::class.java))
 }
@@ -105,20 +108,6 @@ inline fun <reified T : Service> Context.servicePendingIntent(
     }
     return getService(this, requestCode, intent, flags)
 }
-
-fun Context.activityPendingIntent(
-    intent: Intent,
-    action: String,
-): PendingIntent? {
-    intent.action = action
-    val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        FLAG_UPDATE_CURRENT or FLAG_MUTABLE
-    } else {
-        FLAG_UPDATE_CURRENT
-    }
-    return getActivity(this, 0, intent, flags)
-}
-
 
 inline fun <reified T : Activity> Context.activityPendingIntent(
     action: String,

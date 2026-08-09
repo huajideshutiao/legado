@@ -1,9 +1,8 @@
 package io.legado.app.ui.config
 
 import io.legado.app.ui.root.ScreenModel
-import kotlinx.coroutines.CoroutineScope
+import io.legado.app.ui.root.screenModelScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -90,7 +89,7 @@ class BackupConfigScreenModel(
      * (备份/恢复/选文件等) 全部跑在这里, 避免页面组合销毁后延迟回调再 launch 抛
      * ForgottenCoroutineScopeException。
      */
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    val scope = screenModelScope("备份设置", Dispatchers.Main.immediate)
 
     private val _state = MutableStateFlow(BackupConfigUiState())
     val state: StateFlow<BackupConfigUiState> = _state.asStateFlow()

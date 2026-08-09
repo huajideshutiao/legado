@@ -79,9 +79,6 @@ class ScrollPageDelegateCompose(
 ) : PageDelegateCompose(viewModel, scope, animationSpeed) {
 
     companion object {
-        /** 惯性停止后行对齐动画时长 (ms) */
-        private const val LINE_SNAP_MS = 150
-
         /** 单帧内最大翻页折算次数 (防御性上限, 正常单帧只跨一页) */
         private const val MAX_PAGE_TRANSITIONS = 64
     }
@@ -110,6 +107,16 @@ class ScrollPageDelegateCompose(
      */
     val nextContentOffset: Float
         get() = _currentOffset + (viewModel.curTextPage.value?.height ?: 0f)
+
+    /**
+     * 第 3 页内容平移量 (px) = 当前偏移 + 当前页高 + 下一页高 (对照旧 drawPage 的
+     * relativeOffset(2))。章末短页 + 新章短页时视口下方需本页补位，否则出现空白
+     * （原版 ContentTextView.drawPage 在 relativeOffset(2) < visibleHeight 时绘制第 3 页）。
+     * 供 ReadViewComposable 注入 nextPlusContent 的 contentTranslationY 提供者。
+     */
+    val nextPlusContentOffset: Float
+        get() = _currentOffset + (viewModel.curTextPage.value?.height ?: 0f) +
+            (viewModel.nextTextPage.value?.height ?: 0f)
 
     /**
      * 自动翻页连续滚动驱动：按推进量走行级 scroll 折算（对照原版 AutoPager 每帧
@@ -144,12 +151,21 @@ class ScrollPageDelegateCompose(
                 // 拖过页顶: 上一页从上方滑入 (旧 moveToPrev 分支, 内容连续性由 offset 折算保证)
                 offset > 0f -> {
                     val oldOffset = offset
-                    if (!viewModel.prevPage() && !viewModel.moveToPrevChapter()) {
-                        // 书首: 归零并中止 (旧 !hasPrev → pageOffset = 0 + abortAnim)
-                        offset = 0f
-                        _currentOffset = offset
-                        viewModel.updateScrollOffset(offset.toInt())
-                        return false
+                    if (!viewModel.prevPage()) {
+                        // 章首: 切上一章。章节边界一帧内只折算一次 (break)——
+                        // 对照原版 scroll() 每帧只做一次页转换, 避免快滚时占位页
+                        // 连锁触发 moveToPrevChapter 跳过大量章节
+                        if (!viewModel.moveToPrevChapter()) {
+                            // 书首: 归零并中止 (旧 !hasPrev → pageOffset = 0 + abortAnim)
+                            offset = 0f
+                            _currentOffset = offset
+                            viewModel.updateScrollOffset(offset.toInt())
+                            return false
+                        }
+                        viewModel.markScrollCrossingPending()
+                        // 新当前页高折算 (旧 pageOffset -= textPage.height, 此时 textPage 已换为新页)
+                        offset = oldOffset - (viewModel.curTextPage.value?.height ?: 0f)
+                        break
                     }
                     // 新当前页高折算 (旧 pageOffset -= textPage.height, 此时 textPage 已换为新页)
                     offset = oldOffset - (viewModel.curTextPage.value?.height ?: 0f)
@@ -166,12 +182,19 @@ class ScrollPageDelegateCompose(
                 // 拖过页底: 下一页从下方滑入 (旧 moveToNext 分支)
                 offset < -h -> {
                     val oldHeight = h
-                    if (!viewModel.nextPage() && !viewModel.moveToNextChapter()) {
-                        // 全书末: 钳制到页底 (旧 moveToNext 失败 → pageOffset = -height)
-                        offset = -oldHeight
-                        _currentOffset = offset
-                        viewModel.updateScrollOffset(offset.toInt())
-                        return false
+                    if (!viewModel.nextPage()) {
+                        // 章末: 切下一章。章节边界一帧内只折算一次 (break), 同 prev 分支
+                        if (!viewModel.moveToNextChapter()) {
+                            // 全书末: 钳制到页底 (旧 moveToNext 失败 → pageOffset = -height)
+                            offset = -oldHeight
+                            _currentOffset = offset
+                            viewModel.updateScrollOffset(offset.toInt())
+                            return false
+                        }
+                        viewModel.markScrollCrossingPending()
+                        // 旧页高折算 (旧 pageOffset += textPage.height, height 在 moveToNext 前取值)
+                        offset += oldHeight
+                        break
                     }
                     // 旧页高折算 (旧 pageOffset += textPage.height, height 在 moveToNext 前取值)
                     offset += oldHeight
@@ -229,41 +252,6 @@ class ScrollPageDelegateCompose(
             val ok = applyScrollDelta(rest)
             autoPager?.resume()
             return ok
-        }
-        return true
-    }
-
-    /**
-     * 惯性停止后对齐到最近行边界 (对照旧 scrollToLine 的行对齐语义)。
-     * 候选 = 页顶 (offset 0) + 各行行顶对齐视口顶, 取距当前视口顶最近者。
-     */
-    private fun snapToLine(): Boolean {
-        val cur = viewModel.curTextPage.value ?: return false
-        val lines = cur.lines
-        if (lines.isEmpty()) return false
-        val viewTop = -_currentOffset // 视口顶在页内容中的位置 (durY 坐标)
-        var target = 0f // 候选: 页顶对齐
-        var bestDist = abs(viewTop)
-        for (i in lines.indices) {
-            val lineTop = lines[i].lineTop - cur.paddingTop
-            val dist = abs(lineTop - viewTop)
-            if (dist < bestDist) {
-                bestDist = dist
-                target = -lineTop
-            }
-        }
-        if (target == _currentOffset) return false
-        // 末页底部钳制同样约束行对齐 (对照旧 scroll 末页分支: 页底不能高于视口底)
-        if (!hasNext()) {
-            val minOffset = min(0f, cur.visibleHeight.toFloat() - cur.height)
-            if (target < minOffset) target = minOffset
-            if (target == _currentOffset) return false
-        }
-        isStarted = true
-        isRunning = true
-        animJob?.cancel()
-        animJob = scope.launch {
-            animateOffsetTo(target, LINE_SNAP_MS)
         }
         return true
     }
@@ -349,13 +337,12 @@ class ScrollPageDelegateCompose(
     /**
      * 松手惯性滚动 (对照旧 ScrollPageDelegate.onAnimStart 的
      * `fling(0, touchY, 0, mVelocity.yVelocity, ...)`): 以手势末速度衰减,
-     * 逐帧走 [applyScrollDelta] (翻页折算/边界钳制), 停止后对齐行边界。
+     * 逐帧走 [applyScrollDelta] (翻页折算/边界钳制)。惯性停止即停，不做行对齐
+     * （2026-08 移除 snapToLine：原版 fling 停止处无行对齐，松手强制吸附属多余跳动）。
      */
     private fun onFling(velocityY: Float) {
         if (!isMoved || abs(velocityY) <= 0f) {
-            // 无有效速度: 直接行对齐 (慢速拖放/边界复位后)
-            snapToLine()
-            // 手势结束恢复自动翻页推进 (无动画路径)
+            // 无有效速度: 直接停（慢速拖放/边界复位后）
             autoPager?.resume()
             return
         }
@@ -371,8 +358,6 @@ class ScrollPageDelegateCompose(
                     }
                 }
             }
-            // 惯性停止 → 对齐行边界
-            snapToLine()
             // 惯性结束恢复自动翻页推进 (对照原版 computeScroll → onAnimStop → resume)
             autoPager?.resume()
         }
@@ -497,6 +482,7 @@ class ScrollPageDelegateCompose(
         prevContent: @Composable () -> Unit,
         curContent: @Composable () -> Unit,
         nextContent: @Composable () -> Unit,
+        nextPlusContent: @Composable () -> Unit,
         onClick: (TextColumn?) -> Unit,
         onLongClick: (Float, Float) -> Unit,
     ) {
@@ -526,12 +512,16 @@ class ScrollPageDelegateCompose(
                 .pointerInput(Unit) {
                     scrollDragGesture()
                 }
-                // 单击手势: 转发到 onTap (携带落点坐标, 供九宫格动作分发)。
-                // 长按已由顶层选择层统一接管 (2026-08-08 方案 A: 触摸长按在 ReadViewComposable
-                // 顶层选择层检测并消费, 鼠标长按在 readerMouseGestures), 此处不再注册
-                // onLongPress, 避免与顶层长按检测双触发 (onLongClick 参数保留, 见基类签名)
+                // 单击/长按手势: 单击转发到 onTap (携带落点坐标, 供九宫格动作分发),
+                // 长按转发到 onLongClick (onPageLongPress → 页内文字选择/图片长按/空白长按)。
+                // 长按检测回归 delegate 的 detectTapGestures.onLongPress (2026-08: 顶层选择层
+                // 手写 withTimeout 长按在移动端不可靠; delegate 手势链已被证实能收到事件——
+                // 点击正常触发即证明), 顶层选择层只保留选择激活后的扩选/取消, 见 ReadViewComposable。
                 .pointerInput(Unit) {
                     detectTapGestures(
+                        onLongPress = { offset ->
+                            onLongClick(offset.x, offset.y)
+                        },
                         onTap = { offset ->
                             // onTap 返回 false 表示中心区域未消费, 转发给上层 onClick
                             if (!onTap(offset.x, offset.y)) {
@@ -549,6 +539,11 @@ class ScrollPageDelegateCompose(
             // (对照旧 drawPage 的 relativeOffset(1) = pageOffset + textPage.height;
             // 整页滑出视口时由内部裁剪自然不可见, 无每帧可见性判定)
             nextContent()
+
+            // 第 3 页: 章末短页 + 新章短页时视口下方需补位 (对照旧 drawPage 的
+            // relativeOffset(2) = pageOffset + textPage.height + relativePage(1).height,
+            // 原版仅在其落入 visibleHeight 内时绘制; 整页滑出视口由内部裁剪自然不可见)
+            nextPlusContent()
         }
     }
 

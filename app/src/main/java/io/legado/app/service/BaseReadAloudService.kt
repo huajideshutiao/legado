@@ -479,7 +479,10 @@ abstract class BaseReadAloudService : BaseService() {
             subtitle = subtitle,
             cover = cover,
             // 路由 extra 经 MainActivity → NavigateTo("last_read") 打开最近阅读书籍
-            contentIntent = activityPendingIntent<MainActivity>("activity") {
+            // 用独立 action (IntentAction.activityReadAloud) 区分 PendingIntent 身份,
+            // 避免 FLAG_UPDATE_CURRENT 下多个通知坍缩为同一 PendingIntent 互相覆盖 extras
+            // (origin 音频/朗读分别指向 AudioPlayActivity/ReadBookActivity 天然隔离)
+            contentIntent = activityPendingIntent<MainActivity>(IntentAction.activityReadAloud) {
                 putExtra("route", "last_read")
             },
             actions = listOf(

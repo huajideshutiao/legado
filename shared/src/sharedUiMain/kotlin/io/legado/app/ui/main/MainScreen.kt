@@ -64,9 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import io.legado.app.constant.BottomNavTag
-import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.compose.theme.LocalEInk
 import kotlinx.coroutines.flow.SharedFlow
 
 /**
@@ -122,11 +120,8 @@ fun MainScreen(
         snapshotFlow { pagerState.currentPage }.collect { currentPageSink(it) }
     }
 
-    // 状态栏回避: 非_eInk 走 platformStatusBarPadding (Android/iOS/OHOS=statusBarsPadding, JVM=no-op);
-    // eInk 维持原状(无 padding), 与 HomeScreen/ExploreScreen 顶栏的 eInk 分支对齐。
-    // 父级消费 statusBars 后, 子 Tab 顶栏自带的 statusBarsPadding() 拿到 0 inset, 不会双倍 padding。
-    val eInk = LocalEInk.current
-    val insetsModifier = if (eInk) Modifier else Modifier.platformStatusBarPadding()
+    // 状态栏回避由各 Tab 顶栏自行处理 (HomeTopBar/BookshelfTopBar/ExploreTitleBar/MyTabTitleBar
+    // 均带背景 + statusBarsPadding), 容器层不再重复 padding, 否则顶栏会双倍回避状态栏。
 
     // 窗口宽度决定导航栏方位: 宽窗口(桌面/平板横屏)走左侧竖排, 窄窗口维持底栏。
     // derivedStateOf: 拖动窗口时 containerSize 每帧变化, 只在越过阈值时才重组
@@ -157,7 +152,7 @@ fun MainScreen(
     }
 
     if (useNavRail) {
-        Row(Modifier.fillMaxSize().then(insetsModifier)) {
+        Row(Modifier.fillMaxSize()) {
             MainNavRail(
                 tags = visibleTags,
                 selectedIndex = pagerState.currentPage,
@@ -177,7 +172,7 @@ fun MainScreen(
             )
         }
     } else {
-        Column(Modifier.fillMaxSize().then(insetsModifier)) {
+        Column(Modifier.fillMaxSize()) {
             pager(Modifier.fillMaxWidth().weight(1f))
             MainBottomBar(
                 tags = visibleTags,

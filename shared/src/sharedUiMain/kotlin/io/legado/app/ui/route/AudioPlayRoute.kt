@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -95,6 +96,15 @@ fun AudioPlayRoute(
         screenModel.dispatch(
             AudioPlayUiEvent.Init(book, route.chapterIndex, route.chapterPos)
         )
+    }
+
+    // 退出音频页: 落库进度 + 通知书架刷新 (对齐阅读器/视频/漫画行为, 回归 2026-08)。
+    // 页面离开导航栈才触发 (LegadoApp 动画结束后组合销毁)。saveRead 内部会发
+    // UP_BOOKSHELF 让书架重启分组流强制重查 durChapterTime (异步落库不随组合取消)。
+    DisposableEffect(Unit) {
+        onDispose {
+            AudioPlayShared.saveRead()
+        }
     }
 
     // 订阅子页结果回填 (对照 VideoPlayRoute navigator.resultsFor(entry.id).collect)
@@ -265,12 +275,14 @@ fun AudioPlayRoute(
             showChangeSourceDialog = true
         },
         onOpenToc = {
+            // 对照 app 端 AudioPlayActivity.openChapterList: 未加书架的书目录不落库, 走内存传递。
+            // 宽屏面板与窄屏 push 共用同一数据源 (IntentData.chapterList), 两个分支都要传,
+            // 否则 TocScreenModel 只能读 DB (未加书架书目录不在 DB) → 目录空白。
+            IntentData.chapterList = AudioPlayShared.chapterList
             if (sidePanelWidth > 0.dp) {
                 // 宽屏: 右侧面板 (互斥: 直接覆盖评论面板)
                 panelKind = AudioPlaySidePanelKind.TOC
             } else {
-                // 对照 app 端 AudioPlayActivity.openChapterList: 未加书架的书目录不落库, 走内存传递
-                IntentData.chapterList = AudioPlayShared.chapterList
                 navigator.push(AppRoute.Toc(book.toRouteRef()), resultKey = RouteResults.TOC)
             }
         },
