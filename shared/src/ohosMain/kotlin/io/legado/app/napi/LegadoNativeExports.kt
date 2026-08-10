@@ -1143,6 +1143,39 @@ object LegadoNativeExports {
         OhosNativeBridge.onPasteboardResult(requestId, result.toKString())
     }
 
+    // ===== Network tsfn 注入 + ArkTS → Kotlin 结果回调 (同 Pasteboard 模式) =====
+
+    /**
+     * 注入 network dispatch 函数指针 (由 legado_napi.cpp RegisterNetworkCallback 调用)。
+     *
+     * 注入到 [OhosNativeBridge.networkTsfn], 使 KMP [OhosNativeBridge.invokeNetworkSync]
+     * 能跨线程 dispatch 网络状态查询到 ArkTS。ArkTS NetworkBridgeHandler
+     * (@ohos.net.connection getDefaultNetSync + getConnectionPropertiesSync) 查询完成后
+     * 通过 [networkCallback] (@CName legado_network_callback) 回送结果。
+     *
+     * @param dispatch C++ tsfn dispatch 入口 (`ohos_network_dispatch`), 类型 `void(*)(const char*)`
+     */
+    @CName("legado_register_network_fn")
+    fun registerNetworkFn(dispatch: CPointer<CFunction<(CPointer<ByteVar>) -> Unit>>) {
+        OhosNativeBridge.registerNetworkFn { json ->
+            memScoped {
+                dispatch(json.cstr.getPointer(this))
+            }
+        }
+    }
+
+    /**
+     * ArkTS → Kotlin network 查询结果回调 (由 legado_napi.cpp NetworkCallback 调用)。
+     *
+     * @param requestId 请求 ID (与 invokeNetworkSync 生成的 requestId 对应)
+     * @param result 结果 JSON: 成功 `{ ok: true, network: boolean, wifi: boolean }`,
+     *   失败 `{ ok: false, error: "..." }`
+     */
+    @CName("legado_network_callback")
+    fun networkCallback(requestId: Long, result: CPointer<ByteVar>) {
+        OhosNativeBridge.onNetworkResult(requestId, result.toKString())
+    }
+
     // ===== TextCodec tsfn 注入 + ArkTS → Kotlin 结果回调 (同 Crypto/Pasteboard 模式) =====
 
     /**

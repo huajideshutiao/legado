@@ -1,5 +1,6 @@
 package io.legado.app.ui.root
 
+import kotlin.jvm.JvmInline
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -112,6 +113,11 @@ class AppNavigator(
         val top = overlayBackStack.peek() ?: return false
         return top.key in _suspendedOverlayKeys.value
     }
+
+    /** 栈顶 Overlay 是否可由返回键关闭 (dismissOnBack)。返回键拦截器据此决定是否拦截:
+     * 不可关闭时拦截会"吃键但界面零变化", 应放行落到路由层。 */
+    fun isTopOverlayDismissibleOnBack(): Boolean =
+        overlayBackStack.isTopDismissibleOnBack()
 
     /** 关闭顶层 Overlay; 栈顶挂起 (窗口已隐藏) 时跳过并返回 false, 返回链继续落到路由层。 */
     fun dismissTopOverlaySkipSuspended(): Boolean {

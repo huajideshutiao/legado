@@ -23,10 +23,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -43,13 +47,23 @@ import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
+import io.legado.app.ui.compose.platform.rememberMandatoryGestureBottomPx
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.roundToInt
+import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.ic_cursor_left
+import legado.shared.generated.resources.ic_cursor_right
+import org.jetbrains.compose.resources.painterResource
+
+// 长按触发时间（对照原版 ReadView.longPressTimeout = 600，postDelayed(longPressRunnable, 600)）
+private const val LONG_PRESS_TIMEOUT = 600L
 
 /**
  * KMP 版阅读视图：用 Compose 替代 app 端 `ReadView` (FrameLayout + 3 个 PageView)。
@@ -60,8 +74,16 @@ import kotlin.math.roundToInt
  * 调 [io.legado.app.ui.book.read.page.delegate.PageDelegateCompose.renderPageAnimation]，
  * 把 3 个 [PageViewComposable] 作为 `@Composable () -> Unit` lambda 传入，delegate 完全接管：
  * - 三页位置 / 偏移 / 动画（用 `Modifier.offset` + `Animatable`）
- * - 手势检测（`detectDragGestures` / `detectTapGestures` 转发到 onDown/onScroll/onTap）
  * - 阴影等叠加层绘制（`Canvas` + `Brush.horizontalGradient`）
+ *
+ * # 手势分发（对照原版 ReadView.onTouchEvent）
+ *
+ * 触摸手势由本层唯一一个 `pointerInput` 分发器处理，状态机逐分支对照原版
+ * `onTouchEvent`（DOWN/MOVE/UP/CANCEL + 四布尔位 + 长按定时），按下/拖动/抬手分别驱动
+ * delegate 的命令式接口 [onDown] / [onScroll] / [onTouchUp]（对照原版
+ * `pageDelegate.onTouch`）；单击先做页内列级命中（[dispatchColumnClick]），未消费回落
+ * 九宫格 [onTapAt]（对照原版 `if (!curPage.onClick(startX, startY)) onSingleTapUp()`）。
+ * 桌面端鼠标手势由 [readerMouseGestures] 单独一层接管，触摸分发器对鼠标零消费让位。
  *
  * 九宫格点击分区由本层判定后经 `onTapAt` 注入 delegate：拖动手势与点击动作互不干扰
  * （对照原版 ReadView 持有 `ClickArea`、delegate 只管动画的分工）。
@@ -94,8 +116,8 @@ import kotlin.math.roundToInt
  *
  * # 与 app 端差异
  *
- * - app 端用 View 的 onTouchEvent 分发到 PageDelegate；KMP 版把手势下沉到 delegate 自身的
- *   `pointerInput`，点击落点仍回调本层
+ * - app 端用 View 的 onTouchEvent 分发到 PageDelegate；KMP 版由本层单一分发器
+ *   `pointerInput` 驱动 delegate 命令式接口，结构与状态机逐分支对照原版
  * - 列命中只查当前页（滚动模式行级滚动由 delegate 折算偏移，列坐标仍以当前页为基准）
  *
  * @param viewModel 阅读 ViewModel，提供 prevTextPage/curTextPage/nextTextPage 流
@@ -114,6 +136,8 @@ import kotlin.math.roundToInt
  * @param onTextAreaMeasured 正文区实测尺寸上报（px，来自正文区布局占位子节点
  *   onSizeChanged）：排版视口的单一来源，透传 ReaderRoute（对照原版
  *   ContentTextView.onSizeChanged → ChapterProvider.upViewSize）
+ * @param externalSelection 外部注入的页内文字选择状态（全文搜索跳转的程序化选区用）；
+ *   默认 null 时内部 remember 自建，现有调用方零改动
  */
 @Composable
 fun ReadViewComposable(
@@ -128,6 +152,7 @@ fun ReadViewComposable(
     onSelectionMenu: (String, Offset?) -> Unit = { _, _ -> },
     menuVisible: () -> Boolean = { false },
     onTextAreaMeasured: ((IntSize) -> Unit)? = null,
+    externalSelection: PageSelectionState? = null,
 ) {
     val prevTextPage by viewModel.prevTextPage.collectAsState()
     val curTextPage by viewModel.curTextPage.collectAsState()
@@ -138,6 +163,14 @@ fun ReadViewComposable(
     // 按 ReadBookConfig.pageAnim 取翻页委托，配置变更时重建（对照原版 ReadView.upPageAnim）
     val composeDelegate = rememberPageDelegate(viewModel)
     val tapScope = rememberCoroutineScope()
+
+    // 正文 layout 预热 + 滑出窗口页的缓存回收。窗口口径与原版 ReadBook.recycleRecorders
+    // 一致（保留 [cur-1 .. cur+2]）；测量器取 ReaderScreen 提供的共享实例
+    PageLayoutPrewarmEffect(
+        pages = listOf(prevTextPage, curTextPage, nextTextPage, nextPlusTextPage),
+        style = rememberReaderDrawStyle(),
+        measurer = rememberReaderTextMeasurer(),
+    )
 
     // 页眉/页脚实际测量高度（px，来自页面布局占位子节点 onSizeChanged 上报）。
     // 本层两处消费：
@@ -151,15 +184,25 @@ fun ReadViewComposable(
     var footerTipMeasured by remember { mutableIntStateOf(0) }
 
     // 页内文字选择状态（对照旧 ReadView.isTextSelected + ContentTextView.selectStart/selectEnd）
-    val selection = remember { PageSelectionState() }
+    // 全文搜索跳转时由外部（ReaderScreenModel）注入同一实例，程序化选区与手势选择共用
+    val selection = externalSelection ?: remember { PageSelectionState() }
     // 滚动模式正文平移量（仅 ScrollPageDelegateCompose 写入, 非滚动模式恒 0）:
     // 选择命中坐标折算回页内坐标用（选中高亮随内容层平移, 见 PageViewComposable contentTranslationY）。
     // 不订阅 collectAsState：滚动每帧 updateScrollOffset 会触发整棵阅读树每帧重组（三页全部
     // 重建 contentTranslationY lambda → 整页重绘），改为在事件回调（长按/弹菜单/扩选）内直接读
     // StateFlow.value 取最新值，滚动热路径只走 graphicsLayer 绘制期订阅（只失效图层）。
-    // 整页切换/重排时清除选择（对照旧 upContent → cancelSelect）; 未激活时无操作
+    // 整页切换/重排时清除选择（对照旧版：翻页清选择来自 ReadBook.moveToNextPage 的显式
+    // cancelSelect + setContent 换页实例后旧 selected 标志随实例废弃；upContent 链本身
+    // 不含 cancelSelect）; 未激活时无操作。
+    // 搜索跳转守卫：程序化 selectRange 作用于目标页（pageRef 与新页一致）时不清除——
+    // KMP 组合观察（LaunchedEffect 重启）晚于 model 侧 selectRange（旧版跳转选区同样设置
+    // 在 skipToPage 的 upContent 成功回调之后，但旧版无“页切换自动清选择”机制，故无此问题），
+    // 无脑 cancel 会清掉刚设的搜索高亮。
+    // 真实翻页/重排时 pageRef 仍指向旧页，与新页不一致，仍按原语义清除。
     LaunchedEffect(curTextPage) {
-        selection.cancel()
+        if (selection.currentPage !== curTextPage) {
+            selection.cancel()
+        }
         // 选择被页切换中断后恢复自动翻页（激活选择时已暂停）
         composeDelegate.autoPager?.resume()
     }
@@ -197,14 +240,25 @@ fun ReadViewComposable(
         val density = LocalDensity.current
         val systemBarTopPx = WindowInsets.statusBars.getTop(density)
         val systemBarBottomPx = WindowInsets.navigationBars.getBottom(density)
+        // 选区手柄尺寸（px，对照原版 cursorWidth = 24.dpToPx：手柄 24dp 方形）
+        val handleSizePx = with(density) { 24.dp.toPx() }
         // 内容区高度（全窗高 - 状态栏 - 导航栏）：九宫格分区与命中判定统一按内容区坐标
         val contentHeightPx = pageHeightPx - systemBarTopPx - systemBarBottomPx
+        // 底部强制系统手势区高度（px）：Android 30+ 手势导航时非 0，其余平台/三键导航恒 0
+        // （见 MandatoryGestureInsets）。对照原版 ReadView.onTouchEvent 开头的
+        // mandatorySystemGestures 拦截：落在该带子内的触摸不参与阅读手势
+        val mandatoryGestureBottomPx = rememberMandatoryGestureBottomPx()
+        // 拦截阈值（全窗坐标）：y 超过 全窗高 - 手势区高 即落在带子内（对照原版
+        // event.y > windowManager.currentWindowMetrics.bounds.height() - insets.bottom）
+        val mandatoryGestureBoundPx = pageHeightPx - mandatoryGestureBottomPx.toFloat()
         // 坐标基准: 触摸/鼠标坐标是全窗坐标（含状态栏区域），排版/绘制基准是正文区原点
         // = 窗口原点 + 状态栏 + 页眉（正文区即页眉/页脚布局占位子节点之间的空间），
         // 所有命中入口先减 systemBarTopPx + 页眉实测高再判行/列（对照原版
         // contentTextView.click(x, y - headerHeight)，headerHeight 含 vwStatusBar + llHeader）。rememberUpdatedState：pointerInput(Unit)
         // 长驻协程不随重组重启，经 State 间接读保证取到最新 inset。
         val latestSystemBarTopPx by rememberUpdatedState(systemBarTopPx)
+        // 强制手势区拦截阈值（rememberUpdatedState：手势长驻协程不随重组重启，经 State 间接读）
+        val latestMandatoryGestureBoundPx by rememberUpdatedState(mandatoryGestureBoundPx)
         // 页眉实测高（rememberUpdatedState：手势长驻协程不随重组重启，经 State 间接读）
         val latestHeaderTipPx by rememberUpdatedState(headerTipMeasured)
 
@@ -246,7 +300,11 @@ fun ReadViewComposable(
         // 透出窗口背景（2026-08-04 用户反馈: 向后翻页背景透明）
         val nextPageShowChrome = scrollDelegate == null
 
-        // 长按落点回调（供 delegate 手势转发）: 命中文字列 → 词级选中（对照旧
+        // 手势长驻协程（pointerInput）不随重组重启，经 rememberUpdatedState 间接读保证
+        // 取到最新 delegate/回调/落点（delegate 在翻页动画配置变更时重建）
+        val latestDelegate by rememberUpdatedState(composeDelegate)
+
+        // 长按落点回调（分发器长按定时触发）: 命中文字列 → 词级选中（对照旧
         // ReadView.onLongPress → ContentTextView.longPress + BreakIterator 词边界）;
         // 命中图片列 → onImageLongPress（对照旧 ImageColumn 分支 → 图片长按菜单）;
         // 空白 → onLongClick(null)（原版空白长按无动作，桌面端回落整章选择对话框）。
@@ -265,8 +323,8 @@ fun ReadViewComposable(
                 )
             ) {
                 // 选择激活期间暂停自动翻页（对照旧手势按下 → autoPager.pause），
-                // 避免翻页打断选择；选择取消时在下方手势层/页切换处恢复
-                composeDelegate.autoPager?.pause()
+                // 避免翻页打断选择；选择取消时在分发器/页切换处恢复
+                latestDelegate.autoPager?.pause()
             } else {
                 // 未命中文字列: 图片列 → 图片长按; 其余空白 → 回落
                 val column = selection.columnAt(
@@ -363,8 +421,6 @@ fun ReadViewComposable(
                     )
                 }
             },
-            onClick = onClick,
-            onLongClick = onPageLongPress,
         )
 
         // 自动翻页揭示动画覆盖层（对照原版 AutoPager.onDraw 的非 E-Ink 分支）
@@ -386,29 +442,22 @@ fun ReadViewComposable(
             }
         }
 
-        // 文字选择 + 桌面鼠标手势合并层（同一 Layout 的多个 pointerInput 共享同一命中路径;
-        // sharePointerInputWithSiblings 让下层 delegate 手势层继续收到事件）。
-        //
-        // 背景 (2026-08-04 实测): CMP 命中测试默认在顶层兄弟布局命中后即阻断下层 —— 鼠标手势层
-        // 叠在 selection 层之上时, selection 层完全收不到事件, 表现为长按能上色（激活在鼠标层）
-        // 但扩选与弹菜单（selection 层职责）全部失效。两个手势合并到同一 Box 并开启共享后:
-        // - 鼠标: 本层 Initial pass 统一消费, selection 层正常收事件（扩选/菜单）,
-        //   delegate 手势层见 isConsumed 让位
-        // - 触摸: 鼠标层不消费, delegate 手势链正常接管（触摸路径此前同样被阻断, 一并修复）
-        //
-        // 长按检测 (2026-08 方案 B): 回归 delegate 的 detectTapGestures.onLongPress ——
-        // 方案 A（2026-08-08 本层手写 withTimeout）在移动端实测不可靠（长按/左右翻页失效,
-        // 但点击/垂直滚动正常, 说明 delegate 手势链能收到事件——点击正常触发即证明）。
-        // detectTapGestures 用标准 waitForLongPress（longPressSlop = touchSlop × 2 放大容差 +
-        // 正确异常处理）, 更稳健。本层只负责选择激活后的行为:
-        // - 按下时选择已激活 → 立即取消选择（对照旧 ACTION_DOWN → cancelSelect）并消费本次
-        //   手势（抑制本次点击, 对照旧 pressOnTextSelected 抑制单击）
-        // - delegate 长按激活选择后 → 本层 Initial pass 消费拖动更新扩选终点
-        //   （对照旧 ACTION_MOVE → selectText; 消费后 delegate 的翻页/点击手势被取消 → 选择
-        //   激活时禁止翻页, 对照旧 isTextSelected 分流）
-        // - 手势结束（抬起/取消）时选择已激活 → 弹选择菜单（触摸路径; 鼠标路径由鼠标层弹,
-        //   本层对鼠标抬起跳过避免重复, 见下方 down.type 判定）
-        // - 按下时未激活且未长按 → 本层零消费, delegate 的点击/拖拽手势正常走
+        // 选区手柄覆盖层（对照原版 activity_book_read.xml 的 cursor_left/cursor_right
+        // ImageView：24dp 半圆光标 + accentColor 着色）。绘制期读 selection.tick 建立
+        // 快照订阅（同 PageContentCanvas 的 draw 阶段读法），拖拽热路径只重绘不重组；
+        // 坐标折算与 selectionMenuAnchor 同套（页内坐标 + 滚动折算 + 页眉 + 状态栏）
+        SelectionHandleOverlay(
+            selection = selection,
+            handleSizePx = handleSizePx,
+            scrollOffsetY = { viewModel.scrollOffset.value.toFloat() },
+            headerTipPx = latestHeaderTipPx.toFloat(),
+            systemBarTopPx = latestSystemBarTopPx.toFloat(),
+        )
+
+        // 统一触摸分发层 + 桌面鼠标手势层（同一 Layout 的多个 pointerInput 需
+        // sharePointerInputWithSiblings 共享命中路径，否则后挂的鼠标层收不到事件）。
+        // 触摸手势全部由本层单一分发器处理（对照原版 ReadView.onTouchEvent 状态机），
+        // delegate 不再挂任何手势；鼠标手势由 readerMouseGestures 全权接管。
         val latestOnSelectionMenu by rememberUpdatedState(onSelectionMenu)
         // 弹菜单时的选区锚点（窗口坐标 = 页内坐标 + 滚动折算 + 页眉 + 状态栏高度；
         // 滚动模式内容下移锚点同步下移，再加回 systemBarTopPx 供平台浮动菜单按窗口定位）。
@@ -418,102 +467,249 @@ fun ReadViewComposable(
                 Offset(it.x, it.y + viewModel.scrollOffset.value + latestHeaderTipPx + latestSystemBarTopPx)
             }
         }
+        // 抬手弹选择菜单：空选区时取消而非弹空菜单（有意的 UX 修正，保留）
+        val showSelectionMenu: () -> Unit = {
+            val text = selection.selectedText()
+            if (text.isBlank()) {
+                selection.cancel()
+                latestDelegate.autoPager?.resume()
+            } else {
+                latestOnSelectionMenu(text, selectionMenuAnchor())
+            }
+        }
+        // 分发器长驻协程读最新回调/落点（同 latestDelegate 理由）
+        val latestOnTapAt by rememberUpdatedState(onTapAt)
+        val latestOnPageLongPress by rememberUpdatedState(onPageLongPress)
+        val latestShowSelectionMenu by rememberUpdatedState(showSelectionMenu)
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .sharePointerInputWithSiblings()
                 .pointerInput(Unit) {
                     awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val down = awaitFirstDown(
+                            requireUnconsumed = false,
+                            pass = PointerEventPass.Initial,
+                        )
+                        // 鼠标手势由 readerMouseGestures 全权接管，本层对鼠标零消费让位
+                        if (down.type == PointerType.Mouse) return@awaitEachGesture
                         val downId = down.id
-                        // 鼠标手势由下方 readerMouseGestures 全权接管 (含长按检测与抬手弹菜单);
-                        // 本层对触摸只负责选择激活后的取消/扩选/弹菜单, 长按检测在 delegate
-                        // 的 detectTapGestures.onLongPress, 避免双弹
-                        val isMouseGesture = down.type == PointerType.Mouse
-                        val suppressedTap = if (selection.isActive) {
-                            selection.cancel()
-                            // 点按取消选择 → 恢复自动翻页（对照旧 ACTION_DOWN → cancelSelect）
-                            composeDelegate.autoPager?.resume()
-                            true
-                        } else {
-                            false
+                        val downX = down.position.x
+                        val downY = down.position.y
+                        // 底部强制系统手势带子内按下 → 本次手势整体放弃（对照原版
+                        // onTouchEvent 开头 API>=R 的 mandatorySystemGestures 判据）。
+                        // 等价性：原版吞掉 DOWN 后 pressDown=false，后续 MOVE 首行
+                        // !pressDown 早退、UP/CANCEL 首行 !pressDown return，状态机零动作；
+                        // 本层 return 后 awaitEachGesture 不再处理本手势（内部等全部抬起
+                        // 再等下一个 DOWN），净效果一致
+                        if (downY > latestMandatoryGestureBoundPx) return@awaitEachGesture
+                        val slop = viewConfiguration.touchSlop
+                        // 对照原版 ReadView.onTouchEvent 的状态机：
+                        // pressDown（本层 awaitFirstDown 后恒真，省略）/ isMove / longPressed /
+                        // pressOnTextSelected 四布尔位 + 长按定时
+                        var isMove = false
+                        var longPressed = false
+                        var pressOnTextSelected = false
+                        // 长按定时（对照原版 postDelayed(longPressRunnable, 600)）。
+                        // 挂 tapScope（rememberCoroutineScope）：pointerInput 的
+                        // PointerInputScope/AwaitPointerEventScope 均非 CoroutineScope
+                        // （官方声明 interface PointerInputScope : Density），launch 只能
+                        // 挂组合层 scope；长按协程与下方 MOVE 事件循环并行，互不阻塞
+                        val longPressJob = tapScope.launch {
+                            delay(LONG_PRESS_TIMEOUT)
+                            longPressed = true
+                            latestOnPageLongPress(downX, downY)
                         }
-
-                        if (isMouseGesture) {
-                            // 鼠标: 长按检测/拖选/弹菜单全在 readerMouseGestures,
-                            // 本层只负责选择激活期间的扩选（Main pass 同步收到事件）
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull { it.id == downId }
-                                if (change == null || !change.pressed) {
-                                    if (suppressedTap) change?.consume()
-                                    break
+                        // 手柄抓取标志（对照原版 cursor_left/cursor_right ImageView 的
+                        // OnTouchListener：手柄消费 DOWN 后 ReadView 收不到事件，不触发
+                        // cancelSelect/onDown/长按定时）
+                        var grabbingLeftHandle = false
+                        var grabbingRightHandle = false
+                        // ACTION_DOWN 分支：先判是否落在任一手柄矩形内（命中判定对照原版
+                        // 手柄 ImageView bounds）——命中则本次手势抓取手柄，跳过"点按取消
+                        // 选区"；未命中维持原行为（取消选择 + 抑制点击）
+                        if (selection.isActive) {
+                            // 手柄锚点窗口坐标折算同 selectionMenuAnchor（页内坐标 +
+                            // 滚动折算 + 页眉 + 状态栏）
+                            val handleOffsetY = viewModel.scrollOffset.value.toFloat() +
+                                latestHeaderTipPx.toFloat() + latestSystemBarTopPx.toFloat()
+                            val startHandle = selection.startHandleOffset()?.let {
+                                // 左手柄右缘对齐起点锚点（对照原版 cursorLeft.x = x - width）
+                                Offset(it.x - handleSizePx, it.y + handleOffsetY)
+                            }
+                            val endHandle = selection.endHandleOffset()?.let {
+                                Offset(it.x, it.y + handleOffsetY)
+                            }
+                            if (startHandle != null && downX >= startHandle.x &&
+                                downX <= startHandle.x + handleSizePx &&
+                                downY >= startHandle.y && downY <= startHandle.y + handleSizePx
+                            ) {
+                                grabbingLeftHandle = true
+                            } else if (endHandle != null && downX >= endHandle.x &&
+                                downX <= endHandle.x + handleSizePx &&
+                                downY >= endHandle.y && downY <= endHandle.y + handleSizePx
+                            ) {
+                                grabbingRightHandle = true
+                            }
+                            if (grabbingLeftHandle || grabbingRightHandle) {
+                                // 手柄按下：关菜单但保留选区（对照原版手柄 DOWN →
+                                // textActionMenu.dismiss；KMP 菜单与选区解耦，
+                                // postSelectionDismissed 只关平台菜单）；取消长按定时
+                                // （对照原版手柄 DOWN 不启动长按定时）
+                                ReadBookEvents.postSelectionDismissed()
+                                longPressJob.cancel()
+                                longPressed = false
+                                pressOnTextSelected = true
+                            } else {
+                                selection.cancel()
+                                latestDelegate.autoPager?.resume()
+                                pressOnTextSelected = true
+                            }
+                        } else {
+                            pressOnTextSelected = false
+                        }
+                        // 对照原版 DOWN 分支：pageDelegate.onTouch + onDown + setStartPoint
+                        // （手柄抓取时原版 ReadView 收不到 DOWN，不触发 onDown，跳过）
+                        if (!grabbingLeftHandle && !grabbingRightHandle) {
+                            latestDelegate.onDown(downX, downY)
+                        }
+                        val tracker = VelocityTracker()
+                        tracker.addPointerInputChange(down)
+                        // UP/CANCEL 传给 onTouchUp 的坐标取最后一次事件位置
+                        // （对照原版 UP 分支 pageDelegate?.onTouch(event) 传 UP 事件坐标）
+                        var lastX = downX
+                        var lastY = downY
+                        var gestureCancelled = false
+                        // ACTION_MOVE 分支：越过 touchSlop 后消费并分流
+                        // （选择激活 → 扩选；否则 → delegate 翻页/滚动拖动）
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val change = event.changes.firstOrNull { it.id == downId } ?: break
+                            // 取消检测（对照官方 awaitDragOrCancellation / awaitTouchSlopOrCancellation
+                            // 的 change.isConsumed 惯例）：Android ACTION_CANCEL 不生成 PointerEvent
+                            // —— MotionEventAdapter 对 ACTION_CANCEL 返回 null，AndroidComposeView
+                            // 改走 processCancel()，由 SuspendingPointerInputFilter 合成"全部抬起且
+                            // isInitiallyConsumed=true"的 cancel 事件派发，对应原版 ACTION_CANCEL
+                            // 分支；普通 UP 的 change 是 isConsumed=false，不会误判成取消
+                            if (change.isConsumed) {
+                                gestureCancelled = true
+                                break
+                            }
+                            if (!change.pressed) break
+                            // 原版逐事件判据：MOVE 滑进底部强制手势带子 → 吞掉（状态机不动、
+                            // 不消费、速度不更新），移出带子恢复；UP/CANCEL 不受此判据限制
+                            // （break 后走收尾分支，原版同样放行）。不能只判 DOWN：从正文区
+                            // 按下拖进带子的翻页必须停住，防翻页动画与系统返回手势打架
+                            if (change.position.y > latestMandatoryGestureBoundPx) continue
+                            lastX = change.position.x
+                            lastY = change.position.y
+                            if (!isMove) {
+                                isMove = abs(change.position.x - downX) > slop ||
+                                    abs(change.position.y - downY) > slop
+                            }
+                            if (grabbingLeftHandle || grabbingRightHandle) {
+                                // 手柄拖动：无 slop 直接生效（对照原版手柄 OnTouchListener
+                                // 的 MOVE 分支无条件 selectStartMove/selectEndMove）
+                                longPressJob.cancel()
+                                longPressed = false
+                                change.consume()
+                                // 坐标折算同 extendTo（全窗 y 减状态栏 + 页眉），再按原版
+                                // Activity 折算补手柄宽（rawX ± width / rawY - height）
+                                val handleY = change.position.y - handleSizePx -
+                                    latestSystemBarTopPx.toFloat() - latestHeaderTipPx.toFloat()
+                                val scrollOffset = viewModel.scrollOffset.value.toFloat()
+                                if (grabbingLeftHandle) {
+                                    // 反转后左手柄改驱动终点（对照原版 getReverseStartCursor 分流）
+                                    if (selection.reverseStartCursor) {
+                                        selection.moveEndTo(
+                                            change.position.x - handleSizePx, handleY,
+                                            handleSizePx, scrollOffset, latestPageWidth,
+                                        )
+                                    } else {
+                                        selection.moveStartTo(
+                                            change.position.x + handleSizePx, handleY,
+                                            handleSizePx, scrollOffset, latestPageWidth,
+                                        )
+                                    }
+                                } else {
+                                    // 反转后右手柄改驱动起点（对照原版 getReverseEndCursor 分流）
+                                    if (selection.reverseEndCursor) {
+                                        selection.moveStartTo(
+                                            change.position.x + handleSizePx, handleY,
+                                            handleSizePx, scrollOffset, latestPageWidth,
+                                        )
+                                    } else {
+                                        selection.moveEndTo(
+                                            change.position.x - handleSizePx, handleY,
+                                            handleSizePx, scrollOffset, latestPageWidth,
+                                        )
+                                    }
                                 }
+                            } else if (isMove) {
+                                // 越过 slop：取消长按定时（对照原版 removeCallbacks）
+                                longPressJob.cancel()
+                                longPressed = false
+                                change.consume()
                                 if (selection.isActive) {
-                                    // 选择激活期间消费拖动 → 扩选终点（拖拽热路径只改选区数据 + tick）
-                                    change.consume()
+                                    // 长按选中后拖动扩选（对照原版 selectText）
                                     selection.extendTo(
                                         change.position.x,
                                         change.position.y - latestSystemBarTopPx - latestHeaderTipPx,
                                         viewModel.scrollOffset.value.toFloat(),
                                         latestPageWidth,
                                     )
+                                } else {
+                                    latestDelegate.onScroll(change.position.x, change.position.y)
+                                    tracker.addPointerInputChange(change)
                                 }
                             }
-                            return@awaitEachGesture
                         }
-
-                        // ===== 触摸: 选择取消 / 扩选 =====
-                        // 长按检测已回归 delegate 的 detectTapGestures.onLongPress（2026-08:
-                        // 顶层手写 withTimeout 长按在移动端不可靠，delegate 手势链已被证实能
-                        // 收到事件——点击正常触发即证明）。本层只负责选择激活后的行为：
-                        // - 按下时选择已激活 → 取消选择并消费本次手势（抑制本次点击，对照旧
-                        //   pressOnTextSelected）
-                        // - 按下时未激活 → delegate 长按激活选择后，本层 Initial pass 消费
-                        //   后续移动做扩选；激活前零消费，delegate 的点击/拖拽手势正常走
-                        //   （对照旧 onLongPress 后拖拽扩选，delegate 各手势层 Main pass
-                        //   见 isConsumed 让位）
-                        if (suppressedTap) {
-                            while (true) {
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                val change =
-                                    event.changes.firstOrNull { it.id == downId } ?: break
-                                if (!change.pressed) {
-                                    change.consume()
-                                    break
-                                }
-                                change.consume()
-                            }
-                            return@awaitEachGesture
-                        }
-                        var selectionTakenOver = false
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
-                            val change =
-                                event.changes.firstOrNull { it.id == downId } ?: break
-                            if (!change.pressed) break
-                            if (selection.isActive) {
-                                selectionTakenOver = true
-                                // 扩选终点（拖拽热路径只改选区数据 + tick）
-                                change.consume()
-                                selection.extendTo(
-                                    change.position.x,
-                                    change.position.y - latestSystemBarTopPx - latestHeaderTipPx,
-                                    viewModel.scrollOffset.value.toFloat(),
-                                    latestPageWidth,
-                                )
-                            }
-                        }
-                        // 抬手弹选择菜单（触摸路径; 鼠标路径由鼠标手势层在抬起时弹）
-                        if (selectionTakenOver && selection.isActive) {
-                            val text = selection.selectedText()
-                            if (text.isBlank()) {
-                                // 拖回起点导致空选区：取消而非弹空菜单（对照旧版会弹空文本菜单,
-                                // 此处为有意的 UX 修正）
-                                selection.cancel()
-                                composeDelegate.autoPager?.resume()
+                        // 抬手/取消：取消长按定时（对照原版 removeCallbacks）
+                        longPressJob.cancel()
+                        val grabbedHandle = grabbingLeftHandle || grabbingRightHandle
+                        if (gestureCancelled) {
+                            if (grabbedHandle) {
+                                // 手柄抓取时 CANCEL：原版手柄 OnTouchListener 无 CANCEL
+                                // 分支（无操作；反转标志留待下次手柄 UP 复位），照搬
                             } else {
-                                latestOnSelectionMenu(text, selectionMenuAnchor())
+                                // ACTION_CANCEL 分支：无单击路径，只走选择菜单/翻页后半段，
+                                // 并恢复自动翻页（对照原版 CANCEL 分支 + autoPager.resume；
+                                // 原版本就无 else 互斥，此分支结构正确，仅传参坐标一并修正）
+                                if (selection.isActive) {
+                                    latestShowSelectionMenu()
+                                } else if (latestDelegate.isMoved) {
+                                    latestDelegate.onTouchUp(lastX, lastY, tracker.calculateVelocity().y)
+                                }
+                                pressOnTextSelected = false
+                                latestDelegate.autoPager?.resume()
+                            }
+                        } else {
+                            // ACTION_UP 分支（对照原版 UP 分支的贯穿结构）：
+                            // "未移动且未长按且未抑制" → 点击并结束本次处理（原版内层 return true）；
+                            // 其余情况一律贯穿到选择菜单/翻页收尾——原版外层 if 无 else，
+                            // 长按选词后不拖动抬手（longPressed==true 时点击路径被跳过）
+                            // 必须能落到下方 showTextActionMenu 对应物，不能互斥截断。
+                            var handledAsTap = false
+                            if (!latestDelegate.isMoved && !isMove) {
+                                // 未移动的抬手：长按/选择抑制后先走页内列级命中，未消费
+                                // 回落九宫格（对照原版 if (!curPage.onClick(startX, startY))
+                                // onSingleTapUp()；onTapAt 已封装列命中 + 九宫格分发）
+                                if (!longPressed && !pressOnTextSelected) {
+                                    latestOnTapAt(downX, downY)
+                                    handledAsTap = true
+                                }
+                            }
+                            if (!handledAsTap) {
+                                if (selection.isActive) {
+                                    if (grabbedHandle) {
+                                        // 对照原版手柄 UP：resetReverseCursor + showTextActionMenu
+                                        selection.resetReverseCursor()
+                                    }
+                                    latestShowSelectionMenu()
+                                } else if (latestDelegate.isMoved) {
+                                    latestDelegate.onTouchUp(lastX, lastY, tracker.calculateVelocity().y)
+                                }
+                                pressOnTextSelected = false
                             }
                         }
                     }
@@ -534,6 +730,15 @@ fun ReadViewComposable(
                             composeDelegate.autoPager?.resume()
                         },
                         menuVisible = menuVisible,
+                        // 选择激活期间拖动扩选：坐标换算与统一分发器触摸扩选段完全一致（原样照搬）
+                        onSelectionExtend = { x, y ->
+                            selection.extendTo(
+                                x,
+                                y - latestSystemBarTopPx - latestHeaderTipPx,
+                                viewModel.scrollOffset.value.toFloat(),
+                                latestPageWidth,
+                            )
+                        },
                         onLongPressMenu = { text ->
                             if (text.isNotBlank()) latestOnSelectionMenu(
                                 text,
@@ -688,6 +893,48 @@ private fun AutoPageRevealOverlay(
                     size = Size(size.width, lineWidth),
                 )
             }
+        }
+    }
+}
+
+/**
+ * 选区手柄覆盖层（对照原版 activity_book_read.xml 的 cursor_left/cursor_right ImageView：
+ * 24dp 半圆光标 + accentColor 着色；左手柄右缘对齐起点锚点，右手柄左缘对齐终点锚点）。
+ *
+ * 组合期读 [PageSelectionState.isActive] 决定显隐，绘制期读 [PageSelectionState.tick]
+ * 建立快照订阅（同 [PageContentCanvas] 的 draw 阶段读法）：拖拽热路径只重绘不重组。
+ *
+ * @param scrollOffsetY 滚动模式正文平移量提供者（绘制期调用读最新值，不触发重组；
+ *        对照 selectionMenuAnchor 的滚动折算）
+ */
+@Composable
+private fun SelectionHandleOverlay(
+    selection: PageSelectionState,
+    handleSizePx: Float,
+    scrollOffsetY: () -> Float,
+    headerTipPx: Float,
+    systemBarTopPx: Float,
+) {
+    if (!selection.isActive) return
+    val cursorLeftPainter = painterResource(Res.drawable.ic_cursor_left)
+    val cursorRightPainter = painterResource(Res.drawable.ic_cursor_right)
+    val accentColor = rememberReaderDrawStyle().accentColor
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        // draw 阶段读 tick 建立快照订阅（同 PageContentCanvas）：拖拽热路径只重绘不重组
+        if (selection.tick < 0) return@Canvas
+        val start = selection.startHandleOffset() ?: return@Canvas
+        val end = selection.endHandleOffset() ?: return@Canvas
+        // 窗口坐标折算与 selectionMenuAnchor 同套（页内坐标 + 滚动折算 + 页眉 + 状态栏）
+        val offsetY = scrollOffsetY() + headerTipPx + systemBarTopPx
+        val tint = ColorFilter.tint(accentColor)
+        val handleSize = Size(handleSizePx, handleSizePx)
+        // 左手柄右缘对齐起点锚点（对照原版 cursorLeft.x = x - cursorLeft.width）
+        translate(left = start.x - handleSizePx, top = start.y + offsetY) {
+            with(cursorLeftPainter) { draw(handleSize, colorFilter = tint) }
+        }
+        // 右手柄左缘对齐终点锚点（对照原版 cursorRight.x = x）
+        translate(left = end.x, top = end.y + offsetY) {
+            with(cursorRightPainter) { draw(handleSize, colorFilter = tint) }
         }
     }
 }

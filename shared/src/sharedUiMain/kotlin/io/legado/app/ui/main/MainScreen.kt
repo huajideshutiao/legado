@@ -63,6 +63,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.BottomNavTag
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import kotlinx.coroutines.flow.SharedFlow
@@ -123,14 +124,19 @@ fun MainScreen(
     // 状态栏回避由各 Tab 顶栏自行处理 (HomeTopBar/BookshelfTopBar/ExploreTitleBar/MyTabTitleBar
     // 均带背景 + statusBarsPadding), 容器层不再重复 padding, 否则顶栏会双倍回避状态栏。
 
-    // 窗口宽度决定导航栏方位: 宽窗口(桌面/平板横屏)走左侧竖排, 窄窗口维持底栏。
+    // 窗口尺寸决定导航栏方位: 最短边(shortestSide) ≥ wideScreenMinWidth 的宽窗口
+    // (平板横屏/桌面)走左侧竖排, 手机(横竖屏最短边均 < 600dp)维持底部底栏。
+    // 与 Material windowSizeClass Compact/Medium 分界同源(最短边判定),
+    // 修复手机横屏宽度 ≥600dp 误触发 NavRail 的问题。
     // derivedStateOf: 拖动窗口时 containerSize 每帧变化, 只在越过阈值时才重组
     val windowInfo = LocalWindowInfo.current
     val density = LocalDensity.current
     val useNavRail by remember(windowInfo, density) {
         derivedStateOf {
-            with(density) { windowInfo.containerSize.width.toDp() } >=
-                DesignTokens.wideScreenMinWidth
+            val size = windowInfo.containerSize
+            val wDp = with(density) { size.width.toDp() }
+            val hDp = with(density) { size.height.toDp() }
+            minOf(wDp, hDp) >= DesignTokens.wideScreenMinWidth
         }
     }
 

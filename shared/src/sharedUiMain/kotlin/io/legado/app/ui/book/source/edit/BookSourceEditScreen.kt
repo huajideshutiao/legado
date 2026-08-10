@@ -6,11 +6,17 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -37,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -44,6 +51,7 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.tooling.preview.Preview
@@ -59,6 +67,7 @@ import io.legado.app.ui.compose.component.code.CodeSyntaxScheme
 import io.legado.app.ui.compose.component.code.CodeTextField
 import io.legado.app.ui.compose.component.code.KeyboardToolbar
 import io.legado.app.ui.compose.component.code.KeyboardToolbarState
+import io.legado.app.ui.compose.platform.bringIntoViewOnIme
 import io.legado.app.ui.compose.component.code.KeyboardToolbarTarget
 import io.legado.app.ui.compose.component.code.buildSearchRanges
 import io.legado.app.ui.compose.component.code.insertAtCursor
@@ -67,6 +76,7 @@ import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.compose.theme.TextToolbarFindReplaceEffect
 import io.legado.app.ui.preview.LegadoThemePreview
 import io.legado.app.ui.widget.text.EditEntity
 import kotlinx.coroutines.flow.Flow
@@ -122,7 +132,8 @@ import org.jetbrains.compose.resources.stringResource
  * @param onShowKeyboardConfig 辅助键配置入口 (app 端 `showDialogFragment<KeyboardAssistsConfig>()`)
  * @param requestFocusSignal 请求根节点持焦的信号 (宿主在页面回到栈顶时投递; 页面全程留在
  *                           Composition, 进入时的持焦只在首次组合执行, 返回后需重新请求)
- * @param modifier        外部 modifier (app 端可附加 `windowInsetsPadding(ime ∪ navigationBars)`)
+ * @param modifier        外部 modifier (app 端可附加 `windowInsetsPadding(ime)`; navbar 避让走
+ *                       EditFields 的 contentPadding)
  */
 @Composable
 fun BookSourceEditScreen(
@@ -143,6 +154,20 @@ fun BookSourceEditScreen(
     // 查找高亮状态: 供聚焦字段的 CodeTextField 叠加全量黄底 + 当前命中强调色 (对齐原版 CodeView 查找高亮)
     val searchHighlight = remember { CodeSearchHighlightState() }
     val focusManager = LocalFocusManager.current
+    // 选词菜单的"查找替换"项 (对齐原版 CodeView.onCreateActionMode → onSearchReplaceAction):
+    // 菜单不带选中文本, 从聚焦编辑器的选区取; 顺序对齐原版 clearFocus → showFindReplace
+    val findReplaceAction = remember {
+        {
+            activeEditor.value?.let { editor ->
+                val tf = editor.value
+                focusManager.clearFocus()
+                keyboardState.showFindReplace(tf.text.substring(tf.selection.min, tf.selection.max))
+            }
+            Unit
+        }
+    }
+    // 仅本屏注册, 离屏自动注销: 别处长按选词不会多出这一项
+    TextToolbarFindReplaceEffect(findReplaceAction)
     // 根节点持焦: 进入即请求焦点 (无字段持焦时键盘事件会被焦点系统直接丢弃, ESC 无响应;
     // 聚焦路径含根 handleBackKey, 持焦后 ESC/快捷键立即可用, 对照调试页进入聚焦的做法)
     val rootFocusRequester = remember { FocusRequester() }
@@ -513,6 +538,13 @@ private fun EditFields(
     val listState = rememberLazyListState()
     val tab = state.currentTab
     val version = state.sourceVersion
+    // 底部导航条避让走列表 contentPadding (对齐原版 clipToPadding=false): padding 在滚动区
+    // 内参与滚动, 最后一条能滚到屏幕底边; 键盘弹起时 ime 由根容器 padding 承担
+    // 减去 ime (对齐原版 navigationBarHeight 的 coerceAtLeast(0))
+    val navBottom = WindowInsets.navigationBars
+        .exclude(WindowInsets.ime)
+        .asPaddingValues()
+        .calculateBottomPadding()
     // 原版 BookSourceEditAdapter 对每个字段三连 addLegado/addJs/addJsonPattern, 不分组
     val syntax = rememberFullCodeSyntax()
     // 回调/取数 lambda 引用稳定化 (State 捕获模式): 宿主重组传新 lambda 时,
@@ -532,6 +564,7 @@ private fun EditFields(
     LazyColumn(
         state = listState,
         modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(bottom = navBottom),
     ) {
         // item key = 字段 key: 对齐原 key(version, tab) 整体重建语义 —— 版本号变化时
         // 列表内容整体替换, 编辑器状态由 fieldEditors 容器按版本重建承载 (见 Route);
@@ -582,6 +615,20 @@ private fun CodeField(
     // 回调 lambda 经 rememberUpdatedState 稳定: 父级重组传新 lambda 引用时本字段不重组
     val latestOnEditorActive by rememberUpdatedState(onEditorActive)
     val latestOnFieldFocus by rememberUpdatedState(onFieldFocus)
+    // 键盘弹出时重新滚到光标行: 窗口收缩后聚焦字段 (尤其列表末尾字段) 会再次滚出视口,
+    // 点击获焦时的 bringIntoView 只在焦点变化时触发一次 (见 ImeInsets KDoc)。行高按
+    // CodeTextField 默认 fontSize*1.5 近似, rect 上下各扩 3 行容错 label/内边距误差,
+    // 目标仍是光标行可见而非整个字段 (对齐原版 NoChildScrollGridLayoutManager 语义)
+    val density = LocalDensity.current
+    val imeRectProvider = remember(editor, density) {
+        {
+            val text = editor.value.text
+            val cursor = editor.value.selection.start.coerceIn(0, text.length)
+            val cursorLine = text.take(cursor).count { it == '\n' }
+            val lineHeight = with(density) { (16.sp * 1.5f).toPx() }
+            Rect(0f, (cursorLine - 3) * lineHeight, 0f, (cursorLine + 4) * lineHeight)
+        }
+    }
     CodeTextField(
         value = editor.value,
         onValueChange = {
@@ -610,7 +657,8 @@ private fun CodeField(
                     latestOnEditorActive(editor)
                     latestOnFieldFocus(fieldId, entity)
                 }
-            },
+            }
+            .bringIntoViewOnIme(isActive, imeRectProvider),
     )
 }
 

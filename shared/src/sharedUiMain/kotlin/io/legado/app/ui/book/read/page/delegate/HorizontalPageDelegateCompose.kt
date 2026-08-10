@@ -1,21 +1,16 @@
 package io.legado.app.ui.book.read.page.delegate
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.PointerInputScope
-import androidx.compose.ui.input.pointer.pointerInput
+import io.legado.app.constant.PreferKey
+import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
-import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 
 /**
  * 横向翻页 delegate 基类（sharedUiMain，Compose Multiplatform 版）。
@@ -25,7 +20,8 @@ import kotlin.math.abs
  *
  * # 共用逻辑
  *
- * - **手势判定**：[onDown] / [onScroll] / [onTap]（与 app 端 `HorizontalPageDelegate.onScroll` 对应）
+ * - **手势判定**：[onDown] / [onScroll] / [onTouchUp]（与 app 端 `HorizontalPageDelegate.onTouch` 对应；
+ *   由 ReadViewComposable 统一触摸分发器调用，delegate 自身不挂手势）
  *   - 首次超过 slop 阈值时按 deltaX 正负判定 [mDirection]（PREV / NEXT）
  *   - 后续滑动按 mDirection 反向移动判定 [isCancel]
  *   - 单击按 x 位置区分：左 1/3 → 上一页，右 1/3 → 下一页，中间 → 交上层处理菜单
@@ -34,7 +30,6 @@ import kotlin.math.abs
  *   - 停止时调 viewModel.nextPage/prevPage，章节边界时调 moveToNextChapter/moveToPrevChapter
  * - **翻页 API**：[nextPageByAnim] / [prevPageByAnim]（与 app 端 `HorizontalPageDelegate.nextPageByAnim` 对应）
  * - **Compose 渲染骨架**：[renderPageAnimation]（与 app 端 `onDraw(canvas)` 对应）
- *   - `Box` + `Modifier.pointerInput` 检测拖拽 / 单击 / 长按
  *   - 子类 override [renderPages] 定义三页布局
  *   - 子类 override [drawShadow] 定义阴影叠加层
  *
@@ -55,9 +50,18 @@ abstract class HorizontalPageDelegateCompose(
     animationSpeed: Int = DEFAULT_ANIMATION_SPEED,
 ) : PageDelegateCompose(viewModel, scope, animationSpeed) {
 
+    // 第二道手势阈值（与 app 端 ReadView.pageSlopSquare2 对应）：
+    // pageTouchSlop 自定义值的平方，onDown 时读 pref 刷新；0 = 未自定义
+    private var pageSlopSquare2: Int = 0
+
     // region PageDelegateShared 接口实现（横向翻页共用逻辑）
 
     override fun onDown(x: Float, y: Float) {
+        // 与 app 端 upPageSlopSquare 对应：手势按下时读自定义 pageTouchSlop（0=未自定义），
+        // 平方后作第二道阈值（idiom 同 ReadClickAction 的 PreferenceProviders.get()）
+        val prefs = runCatching { PreferenceProviders.get() }.getOrNull()
+        val pageTouchSlop = prefs?.getInt(PreferKey.pageTouchSlop, 0) ?: 0
+        pageSlopSquare2 = pageTouchSlop * pageTouchSlop
         // 与 app 端 PageDelegate.onTouch ACTION_DOWN 分支先 abortAnim() 对应:
         // 动画进行中按下立即中断(并补页), 否则旧动画协程会继续写 _currentOffset 与新手势冲突
         abortAnim()
@@ -80,31 +84,32 @@ abstract class HorizontalPageDelegateCompose(
     override fun onScroll(x: Float, y: Float) {
         if (!isMoved) {
             val deltaX = x - startX
-            // detectDragGestures 的 onDragStart 与首个 onDrag 收到同一位置（都是越过 slop 的点），
-            // 首次 deltaX 恒为 0，据此定方向会恒判 NEXT（向右拖应上一页也被吞成取消）。
-            // 跳过本次，等真实位移事件再定方向（拖动手势帧率下最多滞后一个事件）。
-            if (deltaX == 0f) return
-            // 原版两层判定共享按下点基准；Compose 已在内部消耗 touchSlop，不再叠加二次判定
-            isMoved = true
-            if (deltaX > 0) {
-                // 向右滑 → PREV，校验是否有上一页 / 上一章
-                if (!hasPrev()) {
-                    noNext = true
-                    return
+            val deltaY = y - startY
+            // 第二道阈值（app 端 distance > pageSlopSquare2 的欧氏距离平方判定）；
+            // pageSlopSquare = pageTouchSlop == 0 ? 平台 slop : pageTouchSlop，平台 slop
+            // 已由上游 ReadViewComposable 首道判定消费，0 = 未自定义 → 阈值 0 恒过
+            isMoved = deltaX * deltaX + deltaY * deltaY > pageSlopSquare2
+            if (isMoved) {
+                if (deltaX > 0) {
+                    // 向右滑 → PREV，校验是否有上一页 / 上一章
+                    if (!hasPrev()) {
+                        noNext = true
+                        return
+                    }
+                    setDirection(PageDirectionShared.PREV)
+                } else {
+                    // 向左滑 → NEXT，校验是否有下一页 / 下一章
+                    if (!hasNext()) {
+                        noNext = true
+                        return
+                    }
+                    setDirection(PageDirectionShared.NEXT)
                 }
-                setDirection(PageDirectionShared.PREV)
-            } else {
-                // 向左滑 → NEXT，校验是否有下一页 / 下一章
-                if (!hasNext()) {
-                    noNext = true
-                    return
-                }
-                setDirection(PageDirectionShared.NEXT)
+                // 重设 startX 为当前点，避免初始 slop 偏移带入 currentOffset
+                // 与 app 端 readView.setStartPoint(event.x, event.y, false) 对应
+                startX = x
+                lastX = x
             }
-            // 重设 startX 为当前点，避免初始 slop 偏移带入 currentOffset
-            // 与 app 端 readView.setStartPoint(event.x, event.y, false) 对应
-            startX = x
-            lastX = x
         }
         if (isMoved) {
             // 反向移动判定取消（与 app 端 HorizontalPageDelegate.onScroll 判定一致）
@@ -274,8 +279,6 @@ abstract class HorizontalPageDelegateCompose(
         curContent: @Composable () -> Unit,
         nextContent: @Composable () -> Unit,
         nextPlusContent: @Composable () -> Unit,
-        onClick: (TextColumn?) -> Unit,
-        onLongClick: (Float, Float) -> Unit,
     ) {
         // 尺寸变化时同步（与 app 端 setViewSize 调用时机对应）
         if (viewWidth != pageWidthPx || viewHeight != pageHeightPx) {
@@ -286,33 +289,7 @@ abstract class HorizontalPageDelegateCompose(
         val direction = mDirection
 
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                // 水平拖拽手势：自定义循环（参照滚动模式已验证的 scrollDragGesture 结构，
-                // 2026-08 替换 detectDragGestures——标准拖拽对"事件被消费"极度敏感, 与顶层
-                // 选择层竞争时被取消, 表现为左右翻页不生效; 自定义循环只检查本指针消费,
-                // 与 detectTapGestures/顶层选择层共存更稳)
-                .pointerInput(Unit) {
-                    horizontalDragGesture()
-                }
-                // 单击/长按手势: 单击转发到 onTap (携带落点坐标, 供九宫格动作分发),
-                // 长按转发到 onLongClick (onPageLongPress → 页内文字选择/图片长按/空白长按)。
-                // 长按检测回归 delegate 的 detectTapGestures.onLongPress (2026-08: 顶层选择层
-                // 手写 withTimeout 长按在移动端不可靠; delegate 手势链已被证实能收到事件——
-                // 点击正常触发即证明), 顶层选择层只保留选择激活后的扩选/取消, 见 ReadViewComposable。
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onLongPress = { offset ->
-                            onLongClick(offset.x, offset.y)
-                        },
-                        onTap = { offset ->
-                            // onTap 返回 false 表示中心区域未消费, 转发给上层 onClick
-                            if (!onTap(offset.x, offset.y)) {
-                                onClick(null)
-                            }
-                        },
-                    )
-                },
+            modifier = Modifier.fillMaxSize(),
         ) {
             // 子类实现三页布局（Cover/Slide/NoAnim/Simulation 各有差异）
             renderPages(
@@ -329,54 +306,6 @@ abstract class HorizontalPageDelegateCompose(
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     drawShadow(currentOffsetValue, pageWidthPx)
                 }
-            }
-        }
-    }
-
-    /**
-     * 水平拖拽手势循环：参照滚动模式 [ScrollPageDelegateCompose] 已验证的
-     * `scrollDragGesture` 结构，只做 x 轴横向翻页。
-     *
-     * 与 app 端 `ReadView.onTouchEvent + HorizontalPageDelegate.onTouch` 对应：
-     * - ACTION_DOWN → [onDown]（中止动画 + 记录起点）
-     * - ACTION_MOVE → 越过 slop 判定后 [onScroll]（拖动页 / 松手判定方向）
-     * - ACTION_UP/CANCEL → [onAnimStart]（启动翻页 / 回弹动画）
-     *
-     * 越过后 touchSlop 才消费事件并开始拖动（与 detectTapGestures 共存，对照旧 isMove 判定）；
-     * 越过 slop 前不消费，单击/长按由 detectTapGestures 正常触发。
-     */
-    private suspend fun PointerInputScope.horizontalDragGesture() {
-        awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false)
-            onDown(down.position.x, down.position.y)
-            val slop = viewConfiguration.touchSlop
-            var lastPos = down.position
-            var dragging = false
-            while (true) {
-                val event = awaitPointerEvent()
-                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                if (!change.pressed) break
-                // 事件已被其他手势消费（文字选择扩选层/顶层选择层）→ 终止本次拖动
-                if (change.isConsumed) break
-                if (!dragging) {
-                    val delta = change.position - down.position
-                    if (abs(delta.x) > slop || abs(delta.y) > slop) {
-                        dragging = true
-                        // 越过 slop 后重置基准，避免 slop 位移带入滚动（对照旧 setStartPoint）
-                        lastPos = change.position
-                    }
-                }
-                if (dragging) {
-                    if (change.position != lastPos) {
-                        onScroll(change.position.x, change.position.y)
-                    }
-                    change.consume()
-                }
-                lastPos = change.position
-            }
-            if (dragging) {
-                // 松手启动翻页/回弹动画（与 app 端 ACTION_UP → onAnimStart 对应）
-                onAnimStart(animationSpeed)
             }
         }
     }

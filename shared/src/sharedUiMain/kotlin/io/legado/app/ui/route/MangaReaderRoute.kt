@@ -76,6 +76,8 @@ fun MangaReaderRoute(
     val state by screenModel.state.collectAsState()
     val batteryLevel by screenModel.batteryLevel.collectAsState()
     val systemTime by screenModel.systemTime.collectAsState()
+    // 栈顶判定改为响应式: collectAsState 订阅 backStack, 栈变化触发重组刷新 lambda 捕获值
+    val backStack by navigator.backStack.collectAsState()
     val scope = rememberCoroutineScope()
 
     // 初始化书籍数据, 透传书签跳转参数 (对照 app 端 applyBookmarkPosition: chapterIndex/chapterPos)
@@ -202,7 +204,7 @@ fun MangaReaderRoute(
         clickActionConfig = state.clickActionConfig,
         onBack = onBack,
         // 键盘快捷键仅栈顶路由响应 (对照小说阅读端 isTopEntry, 目录/详情等子页在栈顶时不翻背景的书)
-        isTopEntry = { navigator.backStack.value.lastOrNull()?.id == entry.id },
+        isTopEntry = { backStack.lastOrNull()?.id == entry.id },
         // 菜单显隐 → 系统栏显隐 (对照原版 ReadMangaActivity.upSystemUiVisibility(menuIsVisible)
         // → toggleSystemBar: 菜单显示恢复状态栏/导航栏, 菜单隐藏沉浸式全屏)
         onMenuVisibleChange = { visible ->

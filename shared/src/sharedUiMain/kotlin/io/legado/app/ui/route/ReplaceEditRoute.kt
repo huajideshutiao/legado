@@ -1,10 +1,5 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -16,6 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import io.legado.app.ui.compose.platform.imeDismissPadding
 import io.legado.app.ui.replace.ReplaceEditScreen
 import io.legado.app.ui.replace.edit.ReplaceEditViewModelShared
 import io.legado.app.ui.root.AppNavigator
@@ -36,7 +32,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
  * 剪贴板通过 Compose [LocalClipboardManager] 访问, 帮助页通过 [HelpDialog] 渲染。
  * 键盘辅助条由 Screen 内部共享 [io.legado.app.ui.compose.component.code.KeyboardToolbar]
  * 直接渲染, 与 [io.legado.app.ui.route.BookSourceEditRoute] 一致 (Android 15+ edge-to-edge
- * 底部避让 ime ∪ navigationBars)。
+ * ime 避让在根, navbar 由 Screen 内滚动容器 contentPadding 承担)。
  */
 @Composable
 fun ReplaceEditRoute(
@@ -87,11 +83,10 @@ fun ReplaceEditRoute(
         },
         onHelp = { showHelp = true },
         requestFocusSignal = refocusSignal,
-        // Android 15+ 强制 edge-to-edge 不再随键盘 resize, 底部辅助条须自行避让
-        // 键盘/导航条 (对齐 BookSourceEditRoute; desktop/iOS 上 ime inset 为 0, 此 padding 为 no-op)
-        modifier = Modifier.windowInsetsPadding(
-            WindowInsets.navigationBars.union(WindowInsets.ime)
-        ),
+        // ime 避让留在根 (对齐 BookSourceEditRoute; desktop/iOS 上 inset 为 0, 为 no-op);
+        // navbar 由 ReplaceEditScreen 滚动区 contentPadding 承担; imeDismissPadding 在
+        // 键盘收起动画期间提前归零 padding, 消除动画期底部空隙
+        modifier = Modifier.imeDismissPadding(),
     )
 
     if (showHelp) {

@@ -1,6 +1,5 @@
 package io.legado.desktop.ui.tray
 
-import com.sun.jna.Platform
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.EventBus
 import io.legado.app.constant.Status
@@ -45,7 +44,6 @@ import javax.swing.Icon
 import javax.swing.JDialog
 import javax.swing.JMenuItem
 import javax.swing.JPopupMenu
-import javax.swing.SwingConstants
 import javax.swing.SwingUtilities
 import javax.swing.UIManager
 import javax.swing.event.PopupMenuEvent
@@ -80,27 +78,23 @@ class ReadAloudTrayBinding(
  * [DesktopTrayNotifier] 回退 stdout (见 Toaster.jvm.kt / DesktopNotificationService)。
  * 右键菜单每次弹出时按当前状态现构建: 音频/朗读活跃时才有播放控制项, 空闲时只剩"显示/退出"。
  *
- * # 菜单实现 (Windows = 原生 / 其他平台 = Swing)
- * - **Windows**: Win32 原生菜单 (DesktopTrayNativeMenu: CreatePopupMenu + AppendMenuW +
- *   TrackPopupMenuEx TPM_RETURNCMD), DWM 统一渲染 = Win11 深色圆角/主题跟随/键盘导航,
- *   与资源管理器托盘菜单一致, 零 LAF hack。
- * - **macOS/Linux**: Swing JPopupMenu (ensureNativeLookAndFeel 系统 LAF)。
- *   为什么不用 java.awt.PopupMenu: AWT 的 [java.awt.MenuItem] 在 Windows 上是
+ * # 菜单实现 (统一 Swing JPopupMenu)
+ * 全平台统一用 Swing 的 [JPopupMenu] (ensureNativeLookAndFeel 系统 LAF)。
+ * - 为什么不用 java.awt.PopupMenu: AWT 的 [java.awt.MenuItem] 在 Windows 上是
  *   owner-draw 原生菜单, 文字由 JDK 的 `AwtFont::drawMFString` 按 fontconfig 字符集
  *   拆段后用 GDI 的窄字节 TextOut 绘制, 该路径解析不出 CJK 字形, 菜单项一律画成
  *   "豆腐块"。实测 `setFont` 确实生效 (换 28pt Serif 菜单真的变大变衬线) 但中文照样
  *   是方块, 换 "Microsoft YaHei UI" 也无效 —— 即字体不是变量, 是原生绘制路径本身
  *   不支持。Swing 的 [JPopupMenu] 由 Java2D 自绘, 走正常字体回退, 中文正常。
+ * - 历史: 曾用 JNA 直调 Win32 TrackPopupMenuEx 追求 Win11 原生观感, 但隐藏 owner 的
+ *   SetForegroundWindow 会取消菜单 (点击外部不关闭/右键失效等一连串问题), 已弃用。
+ *   Swing 菜单点击外部自动关闭 (轻量组件标准行为), 简单可靠, 观感由系统 LAF 决定。
  *   (托盘 tooltip 与气泡通知走的是原生 Shell_NotifyIcon 宽字符路径, 中文本来就正常, 不受影响。)
  *
  * # 菜单位置
  * TrayIcon 的 MouseEvent 坐标在 Windows 上不可靠 (WTrayIconPeer 上报原生物理坐标, 多屏/系统
  * 缩放下与 AWT 逻辑坐标不一致, 实测菜单被推到屏幕角落), 弹出时改取 MouseInfo 指针屏幕坐标,
  * 再按点击点所在屏幕的工作区双向夹紧, 保证菜单完整落在可见区域内。
- *
- * # 菜单文本
- * 无图标设计, 文本居中: Windows LAF 默认给菜单项留 16px 勾选列 + afterCheckIconGap, 并把文本
- * 起点抬到 minimumTextOffset (31px), 无图标时文本被推到行右侧; 见 ensureNativeLookAndFeel。
  *
  * # 文案考古
  * tooltip 与菜单项对照 app 端 `AudioPlayService.createNotification` /
@@ -452,26 +446,19 @@ object DesktopMediaTray {
         val pointer = runCatching { MouseInfo.getPointerInfo()?.location }.getOrNull()
         val x = pointer?.x ?: e.x
         val y = pointer?.y ?: e.y
-        SwingUtilities.invokeLater {
-            runCatching { showMenu(x, y) }.onFailure { AppLog.put("托盘菜单弹出失败", it) }
-        }
+        // Swing JPopupMenu 非模态 (轻量组件, show 后 EDT 继续), 可直接调用;
+        // 菜单打开时再次右键由 Swing 自行处理 (点击外部关闭), 无队列阻塞问题
+        runCatching { showMenu(x, y) }.onFailure { AppLog.put("托盘菜单弹出失败", it) }
     }
 
     /**
-     * 在托盘点击处弹出菜单。
-     *
-     * Windows: Win32 原生菜单 (TrackPopupMenuEx, DWM 渲染 Win11 样式), 菜单自动
-     * 翻转避让任务栏/屏幕边界, 无需手工夹紧; 位置 = 指针物理坐标。
-     * 其他平台: Swing JPopupMenu, 位置自己算而不是交给 [JPopupMenu] 的越界翻转
-     * —— 后者按整块屏幕算, 会把菜单压到任务栏底下 (实测末项被遮住); 这里按
-     * "工作区"(屏幕减去任务栏 inset) 夹紧, 底部任务栏时向上展开。
+     * 在托盘点击处弹出菜单 (Swing JPopupMenu, 全平台统一)。
+     * 位置自己算而不是交给 [JPopupMenu] 的越界翻转 —— 后者按整块屏幕算, 会把菜单压到
+     * 任务栏底下 (实测末项被遮住); 这里按"工作区"(屏幕减去任务栏 inset) 夹紧,
+     * 底部任务栏时向上展开。
      */
     private fun showMenu(x: Int, y: Int) {
         if (trayIcon == null) return
-        if (Platform.isWindows()) {
-            showNativeMenu(x, y)
-            return
-        }
         ensureNativeLookAndFeel()
         val menu = buildMenu()
         val anchor = anchorDialog ?: createAnchor().also { anchorDialog = it }
@@ -491,28 +478,6 @@ object DesktopMediaTray {
         anchor.requestFocus()
         activeMenu = menu
         menu.show(anchor, 0, 0)
-    }
-
-    /**
-     * Windows: Win32 原生菜单 (DWM 渲染, Win11 深色圆角/主题跟随)。
-     * 模态循环在 EDT 上执行 (官方对照: OpenJDK AWT PopupMenu 经 InvokeFunction 转发到
-     * AWT 事件线程; 弹出前 SetForegroundWindow、弹出后 PostMessage WM_NULL, 见
-     * DesktopTrayNativeMenu KDoc)。菜单打开期间主窗口不响应 = 原生菜单标准模态行为,
-     * 关闭即恢复。选中后经回调执行命令 (runCommand 切到协程, 不压 EDT)。
-     */
-    private fun showNativeMenu(x: Int, y: Int) {
-        val entries = buildMenuModel()
-        val items = entries.map { e ->
-            DesktopTrayNativeMenu.Item(
-                label = e.label,
-                enabled = e.enabled,
-                action = e.action,
-            )
-        }
-        val (px, py) = DesktopTrayNativeMenu.toPhysical(x, y)
-        DesktopTrayNativeMenu.show(px, py, items) { action ->
-            if (action != null) runCommand(action)
-        }
     }
 
     private fun createAnchor(): JDialog = JDialog().apply {
@@ -535,9 +500,8 @@ object DesktopMediaTray {
      *
      * 顺带修正无图标菜单的文本位置: Windows LAF 默认给每个菜单项保留 16px 勾选列 +
      * afterCheckIconGap, 并把文本起点抬到 "MenuItem.minimumTextOffset" (31px) —— 那是为
-     * 带图标/勾选的原生菜单留的; 本菜单无图标, 不清理的话文本整体被推到行右侧。
-     * 勾选列换成 1x1 透明占位 (不能 put null: UIManager 会回落 LAF 默认图标), 起点归零,
-     * 配合 buildMenu 里的 horizontalAlignment=CENTER 让文本真正居中。
+     * 带图标/勾选的原生菜单留的; 本菜单无图标, 不清理的话文本被推到行右侧 (左侧大片空白)。
+     * 勾选列换成 1x1 透明占位 (不能 put null: UIManager 会回落 LAF 默认图标), 起点归零。
      * 全局 UIManager.put 安全: 全应用只有本托盘菜单一个 Swing 菜单 (其余 UI 走 Compose)。
      */
     private fun ensureNativeLookAndFeel() {
@@ -575,7 +539,7 @@ object DesktopMediaTray {
         val action: (() -> Unit)? = null,
     )
 
-    /** 菜单内容单一来源: 两套渲染 (Swing JPopupMenu / Win32 TrackPopupMenu) 共用, 防漂移。 */
+    /** 菜单内容单一来源 (Swing JPopupMenu 渲染; 音频/朗读两链共用, 防漂移)。 */
     private fun buildMenuModel(): List<MenuEntry> {
         val entries = ArrayList<MenuEntry>()
         val audioStatus = AudioPlayShared.status
@@ -660,13 +624,10 @@ object DesktopMediaTray {
 
     private fun header(label: String): JMenuItem = JMenuItem(label).apply {
         isEnabled = false
-        horizontalAlignment = SwingConstants.CENTER
     }
 
     private fun item(label: String, action: () -> Unit): JMenuItem =
         JMenuItem(label).apply {
-            // 无图标设计: 文本在行内居中 (配合 ensureNativeLookAndFeel 清掉 LAF 勾选列)
-            horizontalAlignment = SwingConstants.CENTER
             addActionListener { runCommand(action) }
         }
 

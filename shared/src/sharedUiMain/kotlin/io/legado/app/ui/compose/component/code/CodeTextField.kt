@@ -86,6 +86,10 @@ import androidx.compose.ui.window.PopupProperties
 import io.legado.app.ui.compose.component.AppDecorationBox
 import io.legado.app.ui.compose.component.AppFieldColors
 import io.legado.app.ui.compose.component.AppTextFieldImpl
+import io.legado.app.ui.compose.component.TextFieldBottomInset
+import io.legado.app.ui.compose.component.TextFieldHorizontalPadding
+import io.legado.app.ui.compose.component.TextFieldLabelToText
+import io.legado.app.ui.compose.component.appFieldDefaultMinHeight
 import io.legado.app.ui.compose.theme.AppTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -104,24 +108,6 @@ private val SearchMatchBackground = Color(0x80FFFF00)
 
 /** 行号分隔线 alpha, 对齐 CodeView `lineNumberTextColor and 0x00FFFFFF or 0x60000000` */
 private val LineDividerAlpha = 0x60 / 255f
-
-/** 下划线形态水平内边距 4dp (对齐 AppTextField 与周边 4dp 布局; M2 filled 默认 16dp 是容器形态所需) */
-private val TextFieldHorizontalPadding = 4.dp
-
-/** 无 label 时文本顶部留白 (M2 textFieldWithoutLabelPadding 默认 top = TextFieldPadding = 16dp) */
-private val TextFieldTopPadding = 16.dp
-
-/** 有 label 时 label 基线距组件顶 (M2 FirstBaselineOffset = 20dp) */
-private val TextFieldFirstBaselineOffset = 20.dp
-
-/** label 基线到文本顶的间距 (M2 内部 TextFieldTopPadding = 2dp, label 浮动后文本顶 = 基线 + 2dp) */
-private val TextFieldLabelToText = 2.dp
-
-/**
- * 文本底到指示线的间距 4dp (原版 EditText wrap_content 底部 inset 约 2-4dp)。
- * 本组件顶对齐 (singleLine=false), 内容高度 = 顶留白 + 行高 + bottom, 因此 bottom 即"文本-下划线"距离。
- */
-private val TextFieldBottomInset = 4.dp
 
 /** 查找面板开着时编辑器文本变化的即时刷新上限, 超长文本等下次面板操作再算 (原版为增量更新) */
 private const val SearchRefreshMaxLength = 20000
@@ -253,7 +239,7 @@ fun CodeTextField(
     showLineNumbers: Boolean = false,
     fontSize: TextUnit = 14.sp,
     // 默认最小高度 = 顶留白 + 固定行高 + 底部 4dp, 单行字段高度贴合内容 (消除 minHeight 死区)
-    minHeight: Dp = codeFieldDefaultMinHeight(label != null, fontSize),
+    minHeight: Dp = appFieldDefaultMinHeight(label != null, fontSize),
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
@@ -894,20 +880,6 @@ private fun measureFirstBaseline(
     }
 }
 
-/**
- * CodeTextField 默认最小高度 = 顶部留白 + 固定行高 (fontSize*1.5) + 底部 4dp:
- * 单行字段高度正好贴合内容, 消除 minHeight 死区 —— 死区是"单行文本离下划线太远"的根源
- * (56dp 最小高 + 顶对齐下, 文本下方空出 56-(顶留白+行高+4dp) ≈ 19dp)。
- * 多行时内容自然超过该值, 高度随内容增长, 文本底距指示线恒为 [TextFieldBottomInset]。
- * (fontScale=1 时 sp 与 dp 等价; 非 1 时此项仅为下限, 内容更高则自动撑开)
- */
-private fun codeFieldDefaultMinHeight(hasLabel: Boolean, fontSize: TextUnit): Dp {
-    val topSpace =
-        if (hasLabel) TextFieldFirstBaselineOffset + TextFieldLabelToText else TextFieldTopPadding
-    val lineHeightDp = (if (fontSize.isSp) fontSize.value else 14f) * 1.5f
-    return topSpace + lineHeightDp.dp + TextFieldBottomInset
-}
-
 /** [CodeTextField] 的 String 重载: 无需保留选区/composition 的场景 */
 @Composable
 fun CodeTextField(
@@ -925,7 +897,7 @@ fun CodeTextField(
     showLineNumbers: Boolean = false,
     fontSize: TextUnit = 14.sp,
     // 默认最小高度 = 顶留白 + 固定行高 + 底部 4dp, 单行字段高度贴合内容 (消除 minHeight 死区)
-    minHeight: Dp = codeFieldDefaultMinHeight(label != null, fontSize),
+    minHeight: Dp = appFieldDefaultMinHeight(label != null, fontSize),
     searchHighlight: CodeSearchHighlightState? = null,
     autoComplete: Boolean = true,
 ) {

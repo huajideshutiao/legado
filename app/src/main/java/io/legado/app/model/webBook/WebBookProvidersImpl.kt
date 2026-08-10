@@ -218,6 +218,7 @@ object WebBookProvidersImpl :
     override val isNightTheme: Boolean get() = AppConfig.isNightTheme
     override val isEInkMode: Boolean get() = AppConfig.isEInkMode
     override val useDefaultCover: Boolean get() = AppConfig.useDefaultCover
+    override val loadCoverOnlyWifi: Boolean get() = AppConfig.loadCoverOnlyWifi
     override val coverDrawBookName: Boolean
         get() = if (AppConfig.isNightTheme) AppConfig.coverShowNameN else AppConfig.coverShowName
     override val coverDrawBookAuthor: Boolean

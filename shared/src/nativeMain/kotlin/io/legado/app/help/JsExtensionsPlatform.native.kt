@@ -84,6 +84,8 @@ internal actual object JsExtensionsPlatform {
     }
 
     actual fun isMainThread(): Boolean = isMainThreadPlatform()
+
+    actual fun unsafeSslContext(): Any? = null // native 无 unsafe SSL 模式, 系统信任库 (见 expect 注释)
 }
 
 /** 按名取 codec; 平台不支持该 charset 时返回 null 让调用方退化 UTF-8 (原版是抛异常, 此处不崩)。 */

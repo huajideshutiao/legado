@@ -21,8 +21,14 @@ import okio.Path.Companion.toPath
  * native 端委托 KmpResponseBody.byteStream(), AnalyzeUrlCore 的流式路径在 iOS/鸿蒙可用。
  */
 actual class URL actual constructor(val url: String) {
-    override fun toString(): String = url
+    actual override fun toString(): String = url
+
+    actual fun toExternalForm(): String = url
+
 }
+
+internal actual fun URL.urlQuery(): String? =
+    url.substringAfter('?', "").substringBefore('#').takeIf { it.isNotEmpty() }
 
 actual abstract class InputStream {
     abstract fun read(): Int

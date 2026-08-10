@@ -2,9 +2,14 @@
 
 package io.legado.app.model.script
 
+import com.fleeksoft.ksoup.nodes.Node
 import com.script.jsdispatch.JsValueConverters
 
+import io.legado.app.data.entities.BookChapterLike
+import io.legado.app.data.entities.BookLike
 import io.legado.app.help.JsExtensionsCommon
+import io.legado.app.help.source.SourceCacheProvider
+import io.legado.app.help.source.SourceNetworkProvider
 import io.legado.app.napi.quickjs.JSContext
 import io.legado.app.napi.quickjs.JSPropertyEnum
 import io.legado.app.napi.quickjs.JSRuntime
@@ -14,7 +19,9 @@ import io.legado.app.napi.quickjs.JS_TAG_INT
 import io.legado.app.napi.quickjs.JS_TAG_NULL
 import io.legado.app.napi.quickjs.JS_TAG_UNDEFINED
 import io.legado.app.napi.quickjs.qjs_EvalTypeGlobal
+import io.legado.app.napi.quickjs.JS_Call
 import io.legado.app.napi.quickjs.JS_Eval
+import io.legado.app.napi.quickjs.JS_EvalFunction
 import io.legado.app.napi.quickjs.JS_FreeAtom
 import io.legado.app.napi.quickjs.JS_GetLength
 import io.legado.app.napi.quickjs.JS_GetPropertyStr
@@ -28,6 +35,8 @@ import io.legado.app.napi.quickjs.JS_GetGlobalObject
 import io.legado.app.napi.quickjs.JS_GetOwnPropertyNames
 import io.legado.app.napi.quickjs.JS_GetProperty
 import io.legado.app.napi.quickjs.JS_GetPropertyUint32
+import io.legado.app.napi.quickjs.JS_GetRuntime
+import io.legado.app.napi.quickjs.JS_UpdateStackTop
 import io.legado.app.napi.quickjs.qjs_ArrayBufferRead
 import io.legado.app.napi.quickjs.qjs_ArrayBufferSize
 import io.legado.app.napi.quickjs.qjs_NewUint8ArrayCopy
@@ -45,6 +54,10 @@ import io.legado.app.napi.quickjs.JS_ToBool
 import io.legado.app.napi.quickjs.JS_ToFloat64
 import io.legado.app.napi.quickjs.JS_ToInt32
 import io.legado.app.napi.quickjs.qjs_AtomToCString
+import io.legado.app.napi.quickjs.qjs_EvalFlagCompileOnly
+import io.legado.app.napi.quickjs.qjs_FreeBytecodeBuf
+import io.legado.app.napi.quickjs.qjs_ReadBytecode
+import io.legado.app.napi.quickjs.qjs_WriteBytecode
 import io.legado.app.napi.quickjs.qjs_IsBool
 import io.legado.app.napi.quickjs.qjs_IsException
 import io.legado.app.napi.quickjs.qjs_IsNull
@@ -75,6 +88,7 @@ import kotlinx.cinterop.UByteVar
 import kotlinx.cinterop.UIntVar
 import kotlinx.cinterop.ULongVar
 import kotlinx.cinterop.alloc
+import kotlinx.cinterop.allocArray
 import kotlinx.cinterop.cValue
 import kotlinx.cinterop.cstr
 import kotlinx.cinterop.get
@@ -86,13 +100,19 @@ import kotlinx.cinterop.ptr
 import kotlinx.cinterop.readValue
 import kotlinx.cinterop.refTo
 import kotlinx.cinterop.reinterpret
-import kotlinx.cinterop.staticCFunction
+import kotlinx.cinterop.sizeOf
+import kotlinx.cinterop.toCPointer
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.useContents
 import kotlinx.cinterop.value
 import kotlinx.atomicfu.atomic
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
+import kotlinx.cinterop.readBytes
 import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.ContinuationInterceptor
 import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.coroutineContext
 import platform.posix.memcpy
 
 /**
@@ -104,9 +124,10 @@ import platform.posix.memcpy
  * (ES 特性/错误信息/bytecode), 改 cinterop 直接编译 shared/src/cinterop/quickjs-ng/ 的 C 源码
  * (单一数据源, iOS/鸿蒙 cinterop 与 Android/Desktop JNI CMake 共用; Kotlin/Native 无 JNI)。
  *
- * 与 [QuickJsJsEngine] 差异: 编译缓存 = 源码字符串 (无 bytecode, TODO 补 JS_EVAL_FLAG_COMPILE_ONLY);
- * Java 桥 = JS_SetPropertyStr + Map/List (无反射); Packages/importClass 走 [NativeJavaCompat]
- * 白名单类表 (System/URLEncoder/URLDecoder/UUID 静态方法, 表外类明确失败而非静默),
+ * 与 [QuickJsJsEngine] 差异: 编译缓存 = quickjs bytecode (JS_Eval + JS_EVAL_FLAG_COMPILE_ONLY +
+ * JS_WriteObject 序列化, 自带 atom 表可跨 ctx/runtime 复用);
+ * Java 桥 = JS_SetPropertyStr + Map/List (无反射); Packages/importClass 等 LiveConnect
+ * 通路恒失败 (桩函数返回 0/false/null), 需改用 java.* JsExtensions 绑定;
  * JavaAdapter 抛异常; 资源管理 = JS_FreeContext/JS_FreeRuntime。
  *
  * 注册: 宿主启动早期经 registerIosJsEngines/registerOhosJsEngines 注册到 [JsEngines]。
@@ -123,6 +144,10 @@ object NativeJsEngine : JsEngine {
 
     /** JS 递归深度上限, 对齐 QuickJsContext.MAX_RECURSION。 */
     private const val MAX_RECURSION = 10
+
+    /** 编译用临时 ctx 单例 (进程级, 永不释放 — 对齐 JVM QuickJsEngine.compilerCtx 生命周期)。 */
+    private val compilerLock = SynchronizedObject()
+    private var compilerCtx: CPointer<JSContext>? = null
 
     // ============ 一次性 eval ============
 
@@ -182,7 +207,6 @@ object NativeJsEngine : JsEngine {
      *
      * 用 qjs_NewCFunction 把 [NativeJsExtensionsBridge.nativeDispatchFn] (staticCFunction) 包装为 JS 函数,
      * 注入 globalThis.__nativeDispatch, 供 JS 工厂函数 __createJavaObj 等回调 Kotlin 层分派。
-     * 同时注入 __nativeJavaCompat (白名单 Java 类静态方法兼容面, 见 [NativeJavaCompat])。
      *
      * 必须在 [BOOTSTRAP_CODE] eval 之后 (JS_FACTORY_CODE 依赖 __nativeDispatch 已定义) 调用。
      */
@@ -197,13 +221,6 @@ object NativeJsEngine : JsEngine {
                     3
                 )
                 JS_SetPropertyStr(ctx, global, "__nativeDispatch", fn)
-                val javaCompatFn = qjs_NewCFunction(
-                    ctx,
-                    nativeJavaCompatFn,
-                    "__nativeJavaCompat",
-                    4
-                )
-                JS_SetPropertyStr(ctx, global, "__nativeJavaCompat", javaCompatFn)
             }
         } finally {
             JS_FreeValue(ctx, global)
@@ -213,18 +230,87 @@ object NativeJsEngine : JsEngine {
     // ============ 编译 ============
 
     /**
-     * "编译" JS — P0 阶段仅缓存源码字符串 (与 Android 端接口对齐)。
+     * 编译 JS 为 bytecode, 供 [evalBytecode] 执行 (跳过每次执行的 parse+compile)。
      *
-     * TODO: 后续用 JS_Eval + JS_EVAL_FLAG_COMPILE_ONLY 编译为 bytecode,
-     * 再用 JS_ReadObject + JS_EvalFunction 执行, 提升性能。
-     * 返回 [NativeJsCompiledScript] 包装源码, [evalBytecode] 时 fallback 为源码 eval。
+     * 语义对齐 JVM nativeCompile: JS_Eval + JS_EVAL_FLAG_COMPILE_ONLY 得到 function object,
+     * JS_WriteObject 序列化为 ByteArray。编译期异常 (语法错误) 抛 [NativeScriptException]
+     * 带 JS stack (与运行期异常同型, 对齐 JVM compile 抛 ScriptException)。
+     * bytecode 自带 atom 表 (quickjs.c JS_WriteObjectAtoms), 可跨 ctx/runtime 读回
+     * (JVM bootstrapBytecode 跨实例复用同依据), 故可放心在任意 scope 上执行。
+     *
+     * 线程安全: 编译在共享 [compilerCtx] 上执行 (quickjs JSContext 非线程安全),
+     * 整体串行化在 [compilerLock] 内 (对齐 JVM compile 的 synchronized)。
      */
-    override fun compile(script: String): JsCompiledScript = NativeJsCompiledScript(script)
+    override fun compile(script: String): JsCompiledScript = synchronized(compilerLock) {
+        compileToBytecode(script, getCompilerCtx(), "<compile>")
+    }
 
-    /** 在指定 scope 上编译 (复用 scope, native 上等价于 [compile], 无 scope 复用收益)。 */
+    /** 在指定 scope 上编译 (复用 scope 的 ctx, 符号解析一致, 对齐 JVM compile(script, scope))。 */
     override fun compile(script: String, scope: JsScope): JsCompiledScript {
-        require(scope is NativeJsScope) { "NativeJsEngine.compile requires NativeJsScope, got ${scope::class}" }
-        return NativeJsCompiledScript(script)
+        val nativeScope = scope as? NativeJsScope
+            ?: error("NativeJsEngine.compile requires NativeJsScope, got ${scope::class}")
+        return compileToBytecode(script, nativeScope.ctx!!, "<compile>")
+    }
+
+    /**
+     * 获取编译用临时 ctx (懒创建, 复用; 进程级生命周期, 永不释放 — 对齐 JVM getCompilerCtx)。
+     * compile 只解析不执行, 无需 bootstrap/bindings。
+     * 调用方需已持有 [compilerLock] (见 [compile])。
+     */
+    private fun getCompilerCtx(): CPointer<JSContext> {
+        compilerCtx?.let { return it }
+        val rt = JS_NewRuntime() ?: error("JS_NewRuntime() returned null")
+        val ctx = JS_NewContext(rt) ?: error("JS_NewContext() returned null")
+        compilerCtx = ctx
+        return ctx
+    }
+
+    /**
+     * 编译 JS 为 bytecode (供 compile / compile(script, scope) / compileForSubScope 复用)。
+     *
+     * JS_Eval(COMPILE_ONLY) → JS_WriteObject 序列化 → ByteArray; 序列化缓冲区 js_free 释放。
+     * 先 JS_UpdateStackTop: compilerCtx 会被多线程复用, 栈检查需基于当前线程栈 (对齐 JVM
+     * nativeCompile 的同样处理, 否则基于错误 stack_top 误报 "Maximum call stack size exceeded")。
+     */
+    private fun compileToBytecode(
+        script: String,
+        ctx: CPointer<JSContext>,
+        filename: String
+    ): NativeJsCompiledScript {
+        val bytecode = memScoped {
+            // 跨线程使用共享 compilerCtx 时, 栈检查需基于当前线程栈指针
+            JS_UpdateStackTop(JS_GetRuntime(ctx))
+            val funVal = JS_Eval(
+                ctx, script, script.length.toULong(), filename,
+                qjs_EvalTypeGlobal() or qjs_EvalFlagCompileOnly()
+            )
+            try {
+                if (qjs_IsException(funVal) != 0) {
+                    // 编译错误 (语法错误等): 取异常信息抛 NativeScriptException (对齐 JVM compile)
+                    val exc = JS_GetException(ctx)
+                    try {
+                        throw NativeScriptException(exceptionToString(ctx, exc))
+                    } finally {
+                        JS_FreeValue(ctx, exc)
+                    }
+                }
+                val pLen = alloc<ULongVar>()
+                val bufPtr = qjs_WriteBytecode(ctx, funVal, pLen.ptr)
+                // 序列化失败 (非 JS 错误): 对齐 JVM "Compile failed"
+                if (bufPtr == 0UL) throw NativeScriptException("Compile failed")
+                try {
+                    val len = pLen.value.toInt()
+                    val buf = bufPtr.toLong().toCPointer<ByteVar>()
+                    if (buf == null || len <= 0) throw NativeScriptException("Compile failed")
+                    buf.readBytes(len)
+                } finally {
+                    qjs_FreeBytecodeBuf(ctx, bufPtr)
+                }
+            } finally {
+                JS_FreeValue(ctx, funVal)
+            }
+        }
+        return NativeJsCompiledScript(script, bytecode)
     }
 
     // ============ quickjs 独有 API 的统一抽象 ============
@@ -243,9 +329,8 @@ object NativeJsEngine : JsEngine {
         return "(function(){with(__currentBindings()){return eval($jsLiteral);}})()"
     }
 
-    /** [wrapJsForEval] 包装后"编译" (native 上仅缓存源码)。 */
-    override fun compileForSubScope(jsStr: String): JsCompiledScript =
-        NativeJsCompiledScript(wrapJsForEval(jsStr))
+    /** [wrapJsForEval] 包装后编译为 bytecode, 供 [evalInSubScope] 执行 (对齐 JVM compileForSubScope)。 */
+    override fun compileForSubScope(jsStr: String): JsCompiledScript = compile(wrapJsForEval(jsStr))
 
     /**
      * 在共享 topScope 上执行包装后的 compiled, bindings 走 __enterBindings / __exitBindings
@@ -259,25 +344,35 @@ object NativeJsEngine : JsEngine {
     ): Any? {
         val nativeScope = scope as? NativeJsScope
             ?: error("NativeJsEngine.evalInSubScope requires NativeJsScope, got ${scope::class}")
-        val nativeCompiled = (compiled as? NativeJsCompiledScript)?.source
+        val nativeCompiled = compiled as? NativeJsCompiledScript
             ?: error("NativeJsEngine.evalInSubScope requires NativeJsCompiledScript, got ${compiled::class}")
         // 同步 dangerousApi (native 上语义为 no-op, 保留字段对齐)
         nativeScope.dangerousApi = bindings.dangerousApi
-        // 构造 __enterBindings(k1,v1,k2,v2,...) 调用参数
-        val kvsJs = buildBindingKvsJs(bindings)
         val prevScope = threadLocalScope.value
         threadLocalScope.value = nativeScope
         nativeScope.coroutineContext = coroutineContext
         nativeScope.recursiveCount++
         try {
             nativeScope.checkRecursive()
-            // 进入子 scope: 压栈 bindings
-            evalInternal(nativeScope.ctx!!, "__enterBindings($kvsJs)", "<enterBindings>", checkException = true)
-            return try {
-                evalInternal(nativeScope.ctx!!, nativeCompiled, "<subScope>", checkException = true)
+            // 快照 handle 数: eval 后释放本次注入新增的 handle (对齐 JVM releaseNewHandles)
+            val handleSnapshot = nativeScope.handles.size
+            // 构造 kvs (须在压栈后: toJsValue 的 JsExtensionsCommon/BookLike 分支依赖 threadLocalScope)
+            val kvs = buildBindingKvsValues(nativeScope.ctx!!, bindings)
+            try {
+                // 进入子 scope: JS_Call 值参数压栈 bindings (免字符串 eval)
+                enterBindingsWithValues(nativeScope.ctx!!, kvs)
+                return try {
+                    // bytecode 优先, 读回失败 fallback 源码 (evalCompiledInContext 内部处理)
+                    evalCompiledInContext(nativeCompiled, nativeScope)
+                } finally {
+                    // 退出子 scope: 弹栈 bindings (即使中途异常也要弹栈)
+                    evalInternal(nativeScope.ctx!!, "__exitBindings()", "<exitBindings>", checkException = false)
+                    // 释放本次注入新增的 handle (防共享 topScope 长期膨胀)
+                    releaseNewHandles(nativeScope, handleSnapshot)
+                }
             } finally {
-                // 退出子 scope: 弹栈 bindings (即使中途异常也要弹栈)
-                evalInternal(nativeScope.ctx!!, "__exitBindings()", "<exitBindings>", checkException = false)
+                // 释放 kvs 转换的 JSValue 引用 (JS_Call 不转移 argv 所有权, JS 侧已持有引用)
+                for ((_, v) in kvs) JS_FreeValue(nativeScope.ctx!!, v)
             }
         } finally {
             nativeScope.recursiveCount--
@@ -311,11 +406,11 @@ object NativeJsEngine : JsEngine {
     }
 
     /**
-     * 执行 "bytecode" — P0 阶段 fallback 为源码 eval (与原 IosJsEngine/OhosJsEngine 行为一致)。
+     * 执行 bytecode: JS_ReadObject 反序列化 → JS_EvalFunction 执行 (跳过重新 parse+compile)。
      *
-     * [bytecode] 参数在 native 上为 null 或源码字符串的 UTF-8 字节 (NativeJsCompiledScript 内部存源码)。
-     * 实际由 [NativeJsCompiledScript] 包装源码, 此处接收 [JsCompiledScript] 包装。
-     * TODO: 后续用 JS_Eval + JS_EVAL_FLAG_COMPILE_ONLY 真正编译为 bytecode。
+     * 读回失败 (bytecode 损坏/版本不兼容) 抛 [NativeScriptException] (对齐 JVM evalBytecode);
+     * 带源码的执行路径 ([evalInSubScope] / [NativeJsCompiledScript.eval]) 会 fallback 源码 eval,
+     * 不会让整条书源挂掉。
      */
     override fun evalBytecode(
         bytecode: ByteArray?,
@@ -323,9 +418,15 @@ object NativeJsEngine : JsEngine {
         coroutineContext: CoroutineContext?
     ): Any? {
         if (bytecode == null) return null
-        // native P0 阶段 bytecode 实际是源码字符串的 UTF-8 字节, fallback 为源码 eval
-        val source = bytecode.decodeToString()
-        return eval(source, scope, coroutineContext)
+        val nativeScope = scope as? NativeJsScope
+            ?: error("NativeJsEngine.evalBytecode requires NativeJsScope, got ${scope::class}")
+        return withEvalContext(nativeScope, coroutineContext) {
+            try {
+                evalBytecodeInternal(nativeScope.ctx!!, bytecode)
+            } catch (e: NativeBytecodeReadException) {
+                throw NativeScriptException(e.message ?: "Eval bytecode failed")
+            }
+        }
     }
 
     /**
@@ -335,7 +436,8 @@ object NativeJsEngine : JsEngine {
      * 然后 JS_SetPropertyStr 注入每个 key。
      * - 基本类型 (String/Number/Boolean/null) 用 qjs_NewXxx 创建 JSValue 后注入;
      * - Map<String,Any?> / List<Any?> 递归转换为 JS_NewObject / JS_NewArray 后注入;
-     * - 其他复杂 Kotlin 对象 (JsExtensions/BookSource 等) 跳过 (TODO: 后续用 JS_NewCFunction + JSClassDef 完整支持);
+     * - 其他复杂 Kotlin 对象 (Book/BookChapter 等) 用 handle 表 + 属性 getter 工厂桥接
+     *   (NativeJsPropertyBridge); 真·未知类型才跳过注入;
      * - JS_SetPropertyStr 转移 value 所有权, 不需要额外 JS_FreeValue(value);
      * - globalThis 来自 JS_GetGlobalObject (引用计数 +1), 用完需 JS_FreeValue。
      */
@@ -413,6 +515,9 @@ object NativeJsEngine : JsEngine {
     override fun currentContextNonNull(): JsScope =
         threadLocalScope.value ?: error("No NativeJsScope on current thread")
 
+    /** 当前线程的 JS scope (可空), 供桥接层 (NativeJsPropertyBridge) 登记嵌套 handle。 */
+    internal fun currentScope(): NativeJsScope? = threadLocalScope.value
+
     /**
      * 在当前 JS 执行上下文上设 coroutineContext 后执行 block (不创建新 scope)。
      *
@@ -429,13 +534,20 @@ object NativeJsEngine : JsEngine {
         }
     }
 
-    /** suspend 版本, 自动取当前协程上下文 (与原 IosJsEngine/OhosJsEngine 行为一致)。 */
-    @Suppress("UNUSED_PARAMETER")
+    /**
+     * suspend 版本, 取当前协程上下文传给 scope (对齐 JVM runScriptWithContext(block)):
+     * kotlin.coroutines.coroutineContext 在 suspend 函数内可取当前协程上下文;
+     * minusKey(ContinuationInterceptor) 不把调度器存进 scope (与 JVM 端实现一致)。
+     */
     override suspend fun <T> runScriptWithContext(block: () -> T): T {
-        // 当前协程上下文由调用方通过 runScriptWithContext(context, block) 显式传递,
-        // 此处无法取 currentCoroutineContext() (需 suspend coroutineContext),
-        // 直接 fallback 为 block() — native 上 JSContext 跨协程访问由调用方保证。
-        return block()
+        val scope = threadLocalScope.value
+        val prevCtx = scope?.coroutineContext
+        scope?.coroutineContext = coroutineContext.minusKey(ContinuationInterceptor)
+        return try {
+            block()
+        } finally {
+            scope?.coroutineContext = prevCtx
+        }
     }
 
     // ============ private helper: JS eval / 异常处理 ============
@@ -473,6 +585,77 @@ object NativeJsEngine : JsEngine {
                         }
                     }
                     return null
+                }
+                return fromJsValue(ctx, result)
+            } finally {
+                JS_FreeValue(ctx, result)
+            }
+        }
+    }
+
+    /**
+     * 在指定 scope 上执行 compiled 脚本 (bytecode 优先, 读回失败 fallback 源码 eval)。
+     *
+     * 带完整 eval 上下文 (withEvalContext), 供 [NativeJsCompiledScript.eval] 使用;
+     * [evalInSubScope] 已自行建立上下文, 直接调 [evalCompiledInContext]。
+     */
+    internal fun evalCompiled(
+        compiled: NativeJsCompiledScript,
+        scope: NativeJsScope,
+        coroutineContext: CoroutineContext?
+    ): Any? = withEvalContext(scope, coroutineContext) {
+        evalCompiledInContext(compiled, scope)
+    }
+
+    /**
+     * 执行 compiled 脚本 (bytecode 优先, 读回失败 fallback 源码 eval)。
+     * 调用方需已建立 eval 上下文 (withEvalContext 或 evalInSubScope 手动栈)。
+     * fallback 只兜 bytecode 反序列化失败 (quickjs 版本不兼容/损坏), 不吞运行期 JS 异常。
+     */
+    private fun evalCompiledInContext(compiled: NativeJsCompiledScript, scope: NativeJsScope): Any? {
+        val ctx = scope.ctx!!
+        val bytecode = compiled.bytecode
+        if (bytecode == null) {
+            return evalInternal(ctx, compiled.source, "<subScope>", checkException = true)
+        }
+        return try {
+            evalBytecodeInternal(ctx, bytecode)
+        } catch (e: NativeBytecodeReadException) {
+            // bytecode 读回失败: fallback 源码 eval, 不让整条书源挂掉 (执行语义不变)
+            evalInternal(ctx, compiled.source, "<subScope>", checkException = true)
+        }
+    }
+
+    /**
+     * 在指定 ctx 上执行 bytecode (JS_ReadObject → JS_EvalFunction), 返回 Kotlin 值。
+     *
+     * - 反序列化失败: 抛 [NativeBytecodeReadException] (由调用方决定 fallback 或转异常);
+     * - 运行期 JS 异常: 抛 [NativeScriptException] 带 JS stack (与 [evalInternal] 同型);
+     * - 注意: JS_EvalFunction 消费 fun_obj 引用 (quickjs.c 内部各路径 FreeValue),
+     *   成功路径不再 JS_FreeValue(funVal), 与 JVM nativeEvalBytecode 一致。
+     */
+    private fun evalBytecodeInternal(ctx: CPointer<JSContext>, bytecode: ByteArray): Any? {
+        memScoped {
+            val funVal = qjs_ReadBytecode(ctx, bytecode.refTo(0), bytecode.size.toULong())
+            if (qjs_IsException(funVal) != 0) {
+                val exc = JS_GetException(ctx)
+                val msg = try {
+                    exceptionToString(ctx, exc)
+                } finally {
+                    JS_FreeValue(ctx, exc)
+                }
+                JS_FreeValue(ctx, funVal)
+                throw NativeBytecodeReadException(msg)
+            }
+            val result = JS_EvalFunction(ctx, funVal)  // 消费 funVal 引用
+            try {
+                if (qjs_IsException(result) != 0) {
+                    val exc = JS_GetException(ctx)
+                    try {
+                        throw NativeScriptException(exceptionToString(ctx, exc))
+                    } finally {
+                        JS_FreeValue(ctx, exc)
+                    }
                 }
                 return fromJsValue(ctx, result)
             } finally {
@@ -685,6 +868,11 @@ object NativeJsEngine : JsEngine {
      *   byte[] 一致; 脚本写回后整体返回, 由 [tryGetUint8ArrayBytes] 拷回 ByteArray)
      * - 其他对象 → null (P0 stub, 复杂对象不桥接, 调用方跳过此 key)
      *
+     * 注: BookLike/BookChapterLike 等复杂对象 (book/chapter binding) 由
+     * [NativeJsPropertyBridge] 属性 getter 工厂桥接 (handle 表 + propertyId 静态分派);
+     * SourceNetworkProvider/SourceCacheProvider (cookie/cache binding) 经
+     * [NativeJsExtensionsBridge.createJsObject] 工厂映射表桥接 (__createCookieObj/__createCacheObj)。
+     *
      * 注意: 返回的 JSValue 所有权归调用方 (除非传给 JS_SetPropertyStr 转移所有权);
      * 调用方需在不需要时 JS_FreeValue。
      *
@@ -721,7 +909,27 @@ object NativeJsEngine : JsEngine {
                     ?: return null  // 无 scope 上下文, 跳过 (非 injectBindings 调用路径)
                 NativeJsExtensionsBridge.createJsObject(ctx, converted, currentScope)
             }
-            else -> null  // 其他复杂对象暂不桥接 (TODO: 后续按需扩展)
+            is BookLike, is BookChapterLike -> {
+                // 复杂对象 (book/chapter) 桥接: 复用 handle 表 + 属性 getter 工厂
+                // (NativeJsPropertyBridge, propertyId 1700+); 放在 JsExtensionsCommon 之后保持原通路顺序
+                val currentScope = threadLocalScope.value
+                    ?: return null  // 无 scope 上下文, 跳过 (非 injectBindings 调用路径)
+                NativeJsExtensionsBridge.createJsObject(ctx, converted, currentScope)
+            }
+            is SourceNetworkProvider, is SourceCacheProvider -> {
+                // cookie/cache binding: 复用 createJsObject 工厂映射表 (__createCookieObj/__createCacheObj),
+                // 不重复写工厂判断; 与上方复杂对象分支同型 (handle 表 + scope 记录)
+                val currentScope = threadLocalScope.value
+                    ?: return null  // 无 scope 上下文, 跳过 (非 injectBindings 调用路径)
+                NativeJsExtensionsBridge.createJsObject(ctx, converted, currentScope)
+            }
+            is Node -> {
+                // ksoup 节点 (src binding 逐项循环场景): 同 book/chapter 的 handle 表 + 属性工厂
+                val currentScope = threadLocalScope.value
+                    ?: return null  // 无 scope 上下文, 跳过 (非 injectBindings 调用路径)
+                NativeJsExtensionsBridge.createJsObject(ctx, converted, currentScope)
+            }
+            else -> null  // 真·未知类型跳过注入 (调用方 continue), 不注册 handle 不泄漏
         }
     }
 
@@ -837,47 +1045,107 @@ object NativeJsEngine : JsEngine {
         tag = JS_TAG_UNDEFINED.toLong()
     }
 
-    // ============ private helper: bindings kvs 字面量构造 ============
+    // ============ private helper: bindings kvs 值构造 ============
 
     /**
-     * 构造 __enterBindings(k1,v1,k2,v2,...) 调用的 JS 参数字符串。
+     * 构造 __enterBindings(k1,v1,k2,v2,...) 调用的值参数列表 (对齐 JVM buildBindingKvs)。
      *
-     * 把 bindings 铺成 JS 字面量参数 (对齐 quickjs 的 buildBindingKvs):
-     * - String → 转义后的字符串字面量
-     * - Number/Boolean → 原样
-     * - null → null
-     * - Map/List/复杂对象 → 跳过 (通过 JS_SetPropertyStr 注入 globalThis, 不走 __enterBindings)
+     * 逐 key 用 [toJsValue] 转换 (Map/List/复杂对象经 handle 桥接, 非法变量名跳过);
+     * 返回的 JSValue 归调用方所有 (JS_Call 后须 JS_FreeValue)。
      */
-    private fun buildBindingKvsJs(bindings: JsBindings): String {
-        val parts = ArrayList<String>(bindings.size * 2)
+    private fun buildBindingKvsValues(
+        ctx: CPointer<JSContext>,
+        bindings: JsBindings
+    ): List<Pair<String, CValue<JSValue>>> {
+        val kvs = ArrayList<Pair<String, CValue<JSValue>>>(bindings.size)
         for ((key, value) in bindings) {
             if (!isValidVarName(key)) continue
-            val valueJs = toJsLiteral(value)
-            if (valueJs == null) continue  // Map/List/复杂对象跳过
-            parts.add(escapeJsString(key))
-            parts.add(valueJs)
+            val jsValue = toJsValue(ctx, value) ?: continue
+            kvs.add(key to jsValue)
         }
-        return parts.joinToString(",")
+        return kvs
     }
 
-    /** 把 Kotlin 值转为 JS 字面量字符串 (用于拼接 __enterBindings 调用)。null 表示跳过。 */
-    private fun toJsLiteral(value: Any?): String? {
-        val converted = JsValueConverters.convertAll(value)
-        return when (converted) {
-            null -> "null"
-            is Boolean -> converted.toString()
-            is Int, is Long, is Short, is Byte -> converted.toString()
-            is Float, is Double -> {
-                val d = (converted as Number).toDouble()
-                if (d.isNaN() || d.isInfinite()) "null" else d.toString()
+    /**
+     * 以值参数调 __enterBindings(k1,v1,...): 取 globalThis 上函数后 JS_Call (免字符串 eval)。
+     *
+     * JS_Call 不转移 argv 所有权 (argv 是内存拷贝): key/result 在此配对释放,
+     * value 的 JSValue 由调用方释放; __enterBindings 内部赋值已持有 JS 侧引用。
+     */
+    private fun enterBindingsWithValues(
+        ctx: CPointer<JSContext>,
+        kvs: List<Pair<String, CValue<JSValue>>>
+    ) {
+        memScoped {
+            val global = JS_GetGlobalObject(ctx)
+            try {
+                val func = JS_GetPropertyStr(ctx, global, "__enterBindings")
+                try {
+                    if (qjs_IsException(func) != 0) {
+                        throw NativeScriptException("Failed to get __enterBindings")
+                    }
+                    val keyValues = ArrayList<CValue<JSValue>>(kvs.size)
+                    try {
+                        val argc = kvs.size * 2
+                        val result = if (argc == 0) {
+                            JS_Call(ctx, func, global, 0, null)
+                        } else {
+                            // argv 为 key/value 的 JSValue 内存拷贝 (引用计数不转移)
+                            val argv = allocArray<JSValue>(argc)
+                            var i = 0
+                            for ((key, value) in kvs) {
+                                val keyVal = qjs_NewString(ctx, key)
+                                keyVal.useContents {
+                                    memcpy(
+                                        interpretCPointer<ByteVar>(argv[i.toLong()].rawPtr),
+                                        interpretCPointer<ByteVar>(this.rawPtr),
+                                        sizeOf<JSValue>().toULong()
+                                    )
+                                }
+                                value.useContents {
+                                    memcpy(
+                                        interpretCPointer<ByteVar>(argv[i.toLong() + 1].rawPtr),
+                                        interpretCPointer<ByteVar>(this.rawPtr),
+                                        sizeOf<JSValue>().toULong()
+                                    )
+                                }
+                                keyValues.add(keyVal)
+                                i += 2
+                            }
+                            JS_Call(ctx, func, global, argc, argv)
+                        }
+                        try {
+                            if (qjs_IsException(result) != 0) {
+                                val exc = JS_GetException(ctx)
+                                try {
+                                    throw NativeScriptException(exceptionToString(ctx, exc))
+                                } finally {
+                                    JS_FreeValue(ctx, exc)
+                                }
+                            }
+                        } finally {
+                            JS_FreeValue(ctx, result)
+                        }
+                    } finally {
+                        for (kv in keyValues) JS_FreeValue(ctx, kv)
+                    }
+                } finally {
+                    JS_FreeValue(ctx, func)
+                }
+            } finally {
+                JS_FreeValue(ctx, global)
             }
+        }
+    }
 
-            is Number -> converted.toDouble().toString()
-            is String -> escapeJsString(converted)
-            // Map/List 通过 JS_SetPropertyStr 注入 globalThis, 不走 __enterBindings (避免 JSON 序列化丢失类型)
-            is Map<*, *> -> null
-            is List<*> -> null
-            else -> null  // P0 stub: 复杂对象不通过 __enterBindings 注入
+    /**
+     * 释放 scope 中快照后新增的 handle (本次注入注册的), 防共享 topScope 长期膨胀
+     * (对齐 JVM releaseNewHandles; 属性 getter 的嵌套 handle 不在 scope.handles, 不受影响)。
+     */
+    private fun releaseNewHandles(scope: NativeJsScope, snapshotSize: Int) {
+        val handles = scope.handles
+        while (handles.size > snapshotSize) {
+            NativeJsExtensionsBridge.unregisterObject(handles.removeAt(handles.size - 1))
         }
     }
 
@@ -963,15 +1231,14 @@ object NativeJsEngine : JsEngine {
      * - `__bindingsStack__` / `__currentBindings` / `__enterBindings` / `__exitBindings`
      *
      * Java 类相关 (Packages/JavaImporter/JavaAdapter/__loadJavaClass 等): native 无 Java 反射,
-     * 用白名单类表兼容面 [NativeJavaCompat] 支持常用类 (java.lang.System /
-     * java.net.URLEncoder / java.net.URLDecoder / java.util.UUID) 的静态方法:
-     * - `__loadJavaClass` → 白名单类句柄 (正整数) / 表外类 0
-     * - `__classExists` → 白名单类 true / 其他 false
+     * LiveConnect 通路恒失败 (桩函数返回 0/false/null 或抛异常), 书源需改用 java.* JsExtensions 绑定:
+     * - `__loadJavaClass` → 0 (类加载恒失败)
+     * - `__classExists` → false
      * - `__isInterface` → false
-     * - `__callStaticMethod` → 经 `__nativeJavaCompat` 分派到 Kotlin 静态方法表 (表外方法 null)
+     * - `__callStaticMethod` → null
      * - `__newJavaInstance` / `__getStaticField` / `__setStaticField` → null/false (无对象实例化/字段反射)
      * - `__newJavaAdapter` → 抛异常 (native 无 Java 反射)
-     * - `__getDangerousApi` → true (native 无安全模型: 类表固定且安全, 不存在可旁路的任意类加载)
+     * - `__getDangerousApi` → true (native 无安全模型, 无 Java 反射可旁路)
      *
      * 这些桩让 bootstrap 不依赖 native binding (quickjs 通过 nativeDefineBinding 注册),
      * JS 层直接定义全局函数, 行为等价于"binding 调用 Kotlin 后返回桩值"。
@@ -1021,25 +1288,25 @@ function __exitBindings() {
     }
 }
 
-// ============ Java 类兼容面 (native 无 Java 反射, 用白名单类表 + 静态方法表) ============
+// ============ Java 类兼容面 (native 无 Java 反射, LiveConnect 通路恒失败) ============
 // 与 quickjs 端一致: Packages/importClass/JavaAdapter 等 rhino LiveConnect 兼容 API 通过
-// __loadJavaClass/__callStaticMethod 等桩函数回 Kotlin 分派。native 侧由 __nativeJavaCompat
-// (NativeJavaCompat) 实现白名单类 (System/URLEncoder/URLDecoder/UUID) 的静态方法,
-// 其余类返回 0/null 让书源 JS 明确失败 (规则层 runCatching 后呈现为规则错误)。
+// __loadJavaClass/__callStaticMethod 等桩函数回 Kotlin 分派。native 无 Java 反射, 桩函数
+// 恒定返回 0/false/null, 书源 JS 明确失败 (规则层 runCatching 后呈现为规则错误);
+// 跨端书源请改用 java.* JsExtensions 绑定 (native 全量支持)。
 
 function __getDangerousApi() {
-    // native 无 Java 反射亦无安全模型: 类表固定且仅含白名单安全类, 不存在可旁路的
-    // 任意类加载, dangerousApi 语义天然全放行 (放行也不会新增能力, 仅让书源走 java.* 路径)
+    // native 无 Java 反射亦无安全模型: 不存在可旁路的任意类加载, dangerousApi 语义
+    // 天然全放行 (放行也不会新增能力, 仅让书源走 java.* 路径)
     return true;
 }
 
 function __loadJavaClass(fullName, dangerousApi) {
-    // 返回类句柄 (正整数); 白名单外返回 0 (类句柄, 表示加载失败)
-    return __nativeJavaCompat("load", fullName, "", []);
+    // native 无 Java 反射: 类加载恒失败, 返回 0 (类句柄, 表示加载失败)
+    return 0;
 }
 
 function __classExists(fullName, dangerousApi) {
-    return __nativeJavaCompat("exists", fullName, "", []) !== 0;
+    return false;
 }
 
 function __isInterface(classHandle, dangerousApi) {
@@ -1052,7 +1319,7 @@ function __newJavaInstance(classHandle, args, dangerousApi) {
 }
 
 function __callStaticMethod(classHandle, methodName, args, dangerousApi) {
-    return __nativeJavaCompat("callStatic", classHandle, methodName, args || []);
+    return null;
 }
 
 function __getStaticField(classHandle, fieldName, dangerousApi) {
@@ -1076,198 +1343,6 @@ function __wrapJavaHandle(handle) {
 }
     """.trimIndent() + "\n" + NativeJsExtensionsBridge.JS_FACTORY_CODE
 
-    // ============ Java 类兼容面 (Packages/importClass 白名单类表) ============
-
-    /**
-     * 全局 native Java 兼容分派函数 C 指针, 由 bootstrap 注入 globalThis.__nativeJavaCompat。
-     *
-     * 签名: __nativeJavaCompat(method, arg1, arg2, args) → any
-     * - method "load"      : arg1 = 类全名 → 类句柄 (Int) 或 0
-     * - method "exists"    : arg1 = 类全名 → 0/1
-     * - method "callStatic": arg1 = 类句柄 (Int), arg2 = 方法名, args = 参数数组
-     *
-     * 与 [NativeJsExtensionsBridge.nativeDispatchFn] 同模式 (staticCFunction, 不捕获上下文)。
-     */
-    internal val nativeJavaCompatFn =
-        staticCFunction { ctx: CPointer<JSContext>?, thisVal: CValue<JSValue>, argc: Int, argv: CPointer<JSValue>? ->
-            javaCompatImpl(ctx, thisVal, argc, argv)
-        }
-
-    /** [nativeJavaCompatFn] 的 Kotlin 实现 (object 方法, 可被 staticCFunction 调用)。 */
-    private fun javaCompatImpl(
-        ctx: CPointer<JSContext>?,
-        @Suppress("UNUSED_PARAMETER") thisVal: CValue<JSValue>,
-        argc: Int,
-        argv: CPointer<JSValue>?
-    ): CValue<JSValue> {
-        val ctxNotNull = ctx ?: return jsUndefined()
-        if (argc < 3 || argv == null) return jsUndefined()
-        try {
-            val method = jsValueToString(ctxNotNull, argv[0L].readValue())
-            when (method) {
-                "load" -> {
-                    val className = jsValueToString(ctxNotNull, argv[1L].readValue())
-                    return qjs_NewInt32(ctxNotNull, NativeJavaCompat.classIdOf(className))
-                }
-
-                "exists" -> {
-                    val className = jsValueToString(ctxNotNull, argv[1L].readValue())
-                    return qjs_NewBool(
-                        ctxNotNull,
-                        if (NativeJavaCompat.classIdOf(className) != 0) 1 else 0
-                    )
-                }
-
-                "callStatic" -> {
-                    if (argc < 4) return jsUndefined()
-                    val classId = qjs_ValueGetInt(argv[1L].readValue())
-                    val methodName = jsValueToString(ctxNotNull, argv[2L].readValue())
-                    val argsArray = argv[3L].readValue()
-                    val result = NativeJavaCompat.callStatic(
-                        classId, methodName, fromJsArray(ctxNotNull, argsArray)
-                    )
-                    // 结果经 toJsValue 转换 (基本类型/字符串), 复杂对象保持 null (同注入语义)
-                    return toJsValue(ctxNotNull, result) ?: jsNullValue()
-                }
-
-                else -> return jsUndefined()
-            }
-        } catch (t: Throwable) {
-            // 兼容面异常返回 undefined, 避免 JS 引擎崩溃 (与 nativeDispatchImpl 行为一致)
-            return jsUndefined()
-        }
-    }
-}
-
-/**
- * 白名单 Java 类静态方法兼容面 (native 无反射, 供 Packages.java.xxx / importClass 使用)。
- *
- * # 覆盖范围 (常用书源类)
- * - `java.lang.System`: currentTimeMillis() / nanoTime() / lineSeparator() / getProperty() → null
- * - `java.net.URLEncoder`: encode(String, String) (UTF-8, 空格 → '+', 与 JDK 行为一致)
- * - `java.net.URLDecoder`: decode(String, String) (UTF-8, '+' → 空格)
- * - `java.util.UUID`: randomUUID() → 标准 v4 UUID 字符串
- *
- * # 限制 (明确失败而非静默)
- * - 表外类: __loadJavaClass 返回 0 → quickjs 端 Packages 代理 fallback 后方法调用返回 undefined;
- * - 表内类但方法不在表内: callStatic 返回 null;
- * - 对象实例化 / 字段读写 / JavaAdapter: 无反射不支持, 返回 null/false/抛异常。
- *
- * 建议书源优先使用 `java.*` JsExtensionsCommon 绑定 (native 全量支持),
- * 本表仅为历史书源 (importClass 风格) 的兼容兜底。
- */
-private object NativeJavaCompat {
-
-    private const val CLASS_SYSTEM = 1
-    private const val CLASS_URL_ENCODER = 2
-    private const val CLASS_URL_DECODER = 3
-    private const val CLASS_UUID = 4
-
-    /** 类全名 → 类句柄; 表外类返回 0。 */
-    fun classIdOf(fullName: String): Int = when (fullName) {
-        "java.lang.System" -> CLASS_SYSTEM
-        "java.net.URLEncoder" -> CLASS_URL_ENCODER
-        "java.net.URLDecoder" -> CLASS_URL_DECODER
-        "java.util.UUID" -> CLASS_UUID
-        else -> 0
-    }
-
-    /** 静态方法分派; 表外方法返回 null (书源侧得到 null/undefined 明确失败)。 */
-    fun callStatic(classId: Int, methodName: String, args: List<Any?>): Any? = when (classId) {
-        CLASS_SYSTEM -> when (methodName) {
-            "currentTimeMillis" -> io.legado.app.utils.systemCurrentTimeMillis()
-            "nanoTime" -> io.legado.app.utils.systemNanoTime()
-            "lineSeparator" -> "\n"
-            // getProperty 依赖平台属性表, native 不支持 → null (书源侧判空)
-            else -> null
-        }
-
-        CLASS_URL_ENCODER -> when (methodName) {
-            "encode" -> urlEncode(args.getString(0))
-            else -> null
-        }
-
-        CLASS_URL_DECODER -> when (methodName) {
-            "decode" -> urlDecode(args.getString(0))
-            else -> null
-        }
-
-        CLASS_UUID -> when (methodName) {
-            "randomUUID" -> io.legado.app.utils.randomUUIDString()
-            else -> null
-        }
-
-        else -> null
-    }
-
-    private fun List<Any?>.getString(index: Int): String =
-        getOrNull(index)?.toString() ?: ""
-
-    private val HEX = "0123456789ABCDEF"
-
-    /**
-     * java.net.URLEncoder.encode(str, "UTF-8") 等价实现: 字母数字与 -_.* 原样,
-     * 空格 → '+', 其余字节 %XX (UTF-8)。
-     */
-    private fun urlEncode(str: String): String {
-        val bytes = str.encodeToByteArray()
-        val sb = StringBuilder(bytes.size)
-        for (b in bytes) {
-            val c = b.toInt() and 0xFF
-            val keep = (c in 'A'.code..'Z'.code) || (c in 'a'.code..'z'.code) ||
-                (c in '0'.code..'9'.code) || c == '-'.code || c == '_'.code ||
-                c == '.'.code || c == '*'.code
-            when {
-                keep -> sb.append(c.toChar())
-                c == ' '.code -> sb.append('+')
-                else -> sb.append('%').append(HEX[c ushr 4]).append(HEX[c and 0xF])
-            }
-        }
-        return sb.toString()
-    }
-
-    /**
-     * java.net.URLDecoder.decode(str, "UTF-8") 等价实现: '+' → 空格, %XX 解码 (UTF-8),
-     * 非 ASCII 原字符先按 UTF-8 编码再解码 (与 JDK 对非法串的宽容处理一致: 非法 % 序列原样保留)。
-     */
-    private fun urlDecode(str: String): String {
-        val bytes = ArrayList<Byte>(str.length)
-        var i = 0
-        while (i < str.length) {
-            val c = str[i]
-            when {
-                c == '+' -> {
-                    bytes.add(' '.code.toByte())
-                    i++
-                }
-
-                c == '%' && i + 2 < str.length -> {
-                    val hi = hexVal(str[i + 1])
-                    val lo = hexVal(str[i + 2])
-                    if (hi >= 0 && lo >= 0) {
-                        bytes.add(((hi shl 4) or lo).toByte())
-                        i += 3
-                    } else {
-                        bytes.add(c.code.toByte())
-                        i++
-                    }
-                }
-
-                else -> {
-                    bytes.addAll(c.toString().encodeToByteArray().toList())
-                    i++
-                }
-            }
-        }
-        return bytes.toByteArray().decodeToString()
-    }
-
-    private fun hexVal(c: Char): Int = when (c) {
-        in '0'..'9' -> c - '0'
-        in 'a'..'f' -> c - 'a' + 10
-        in 'A'..'F' -> c - 'A' + 10
-        else -> -1
-    }
 }
 
 /**
@@ -1354,27 +1429,24 @@ class NativeJsScope(
 }
 
 /**
- * native 端 (iOS/鸿蒙) "编译"脚本包装 — 持有源码字符串 (P0 阶段无 bytecode)。
+ * native 端 (iOS/鸿蒙) "编译"脚本包装 — 持 bytecode + 源码 (bytecode 读回失败时 fallback 源码 eval)。
  *
  * 对应 quickjs 的 QuickJsJsCompiledScript (持 CompiledScript(bytecode))。
- * [bytecode] 恒为 null (P0 阶段), 业务层通过 [eval] 执行源码。
- *
- * TODO: 后续用 JS_Eval + JS_EVAL_FLAG_COMPILE_ONLY 编译为 bytecode,
- * 用 JS_WriteObject 序列化为 ByteArray, 再用 JS_ReadObject + JS_EvalFunction 执行。
- *
- * 注: [JsCompiledScript.bytecode] 接口要求返回 ByteArray?, native P0 阶段恒 null,
- * SharedJsScope 的 bytecodeCache 在 native 上不会命中 (key 对应 null bytecode)。
+ * bytecode 由 compile/compileForSubScope 生成 (JS_WriteObject 序列化), 执行时
+ * JS_ReadObject + JS_EvalFunction 跳过重新 parse (见 [NativeJsEngine.evalCompiledInContext])。
+ * bytecode 自带 atom 表可跨 ctx/runtime 复用, AnalyzeRuleCore 的 scriptCache (LRU 16)
+ * 命中后直接走 bytecode, 不再每次重新编译。
  */
-class NativeJsCompiledScript(val source: String) : JsCompiledScript {
+class NativeJsCompiledScript(val source: String, bytecode: ByteArray) : JsCompiledScript {
 
-    /** native P0 阶段无 bytecode, 恒返回 null。 */
-    override val bytecode: ByteArray? = null
+    /** 防御性拷贝, 避免外部经 [JsCompiledScript.bytecode] 篡改 (对齐 JVM CompiledScript)。 */
+    override val bytecode: ByteArray? = bytecode.copyOf()
 
-    /** 在指定 scope 上执行源码 (fallback 为源码 eval)。 */
+    /** 在指定 scope 上执行 (bytecode 优先, 读回失败 fallback 源码 eval)。 */
     override fun eval(scope: JsScope, coroutineContext: CoroutineContext?): Any? {
         val nativeScope = scope as? NativeJsScope
             ?: error("NativeJsCompiledScript requires NativeJsScope, got ${scope::class}")
-        return NativeJsEngine.eval(source, nativeScope, coroutineContext)
+        return NativeJsEngine.evalCompiled(this, nativeScope, coroutineContext)
     }
 }
 
@@ -1411,4 +1483,12 @@ class NativeJsObject(val delegate: NativeNativeObject) : JsObject,
  * `is Exception` 可匹配。
  */
 class NativeScriptException(message: String) : Exception(message)
+
+/**
+ * bytecode 反序列化失败标记 (internal, 由 [NativeJsEngine.evalBytecodeInternal] 抛出)。
+ *
+ * 与运行期 JS 异常 ([NativeScriptException]) 区分: 带源码的执行路径据此 fallback 源码 eval,
+ * 独立 evalBytecode 路径转 [NativeScriptException] (对齐 JVM "Eval bytecode failed" 语义)。
+ */
+private class NativeBytecodeReadException(message: String) : Exception(message)
 

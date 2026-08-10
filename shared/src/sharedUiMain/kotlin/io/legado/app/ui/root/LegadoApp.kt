@@ -472,8 +472,12 @@ fun LegadoApp(
         // 桌面端 ESC/Backspace 由上方 handleBackKey → performBack 先 dismissTopOverlay)。
         // 栈顶 Overlay 挂起 (窗口已隐藏, 如登录对话框被 WebView 路由盖住) 时不拦截返回键,
         // 落到路由层 pop (对照原版 WebViewActivity 在前台时返回键先退出它)。
+        // 栈顶 Overlay 不可由返回键关闭 (dismissOnBack=false) 时同样不拦截: 拦截只会
+        // dismissTopOverlay 返回 false, 吃键但界面零变化, 放行落到路由层 pop。
         PlatformBackHandler(
-            enabled = overlays.isNotEmpty() && overlays.lastOrNull()?.key !in suspendedKeys
+            enabled = overlays.isNotEmpty()
+                && overlays.lastOrNull()?.key !in suspendedKeys
+                && navigator.isTopOverlayDismissibleOnBack()
         ) {
             navigator.dismissTopOverlay()
         }

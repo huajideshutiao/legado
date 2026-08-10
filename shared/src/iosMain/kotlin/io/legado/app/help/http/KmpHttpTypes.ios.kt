@@ -186,7 +186,7 @@ actual class KmpHttpClient {
  * 默认值与 Android HttpHelper 对齐 (connect/read/write/call 均 15s):
  * 0 = 未显式配置 → 默认 15s; AnalyzeUrlCore 规则显式 timeout 时经 setter 覆盖优先。
  */
-actual class KmpHttpClientBuilder {
+actual class KmpHttpClientBuilder actual constructor() {
     internal var readTimeoutMillis: Long = 0L
     internal var callTimeoutMillis: Long = 0L
     internal var proxyHost: String? = null
@@ -445,6 +445,10 @@ actual class KmpResponse : Closeable {
     actual val isRedirect: Boolean get() = codeVal in 300..399
 
     actual fun headers(): KmpHeaders = KmpHeaders(headersVal)
+
+    actual fun headers(name: String): List<String> =
+        headersVal.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
+            ?: emptyList()
 
     actual fun newBuilder(): KmpResponseBuilder {
         return KmpResponseBuilder().also { b ->

@@ -1,82 +1,13 @@
 package io.legado.app.help
 
-import io.legado.app.help.coroutine.ConcurrentRateLimiter
-import io.legado.app.help.http.SSLHelper
-import io.legado.app.help.http.cookieJarHeader
-import io.legado.app.model.script.jsContext
-import org.jsoup.Connection
-import org.jsoup.Jsoup
-
 /**
- * JVM 半区 (Android/desktop) JS 扩展面: 在 [JsExtensionsCommon] 基础上补 jsoup get/head/post
- * (书源 JS 的 java.get/post/head 核心 API)。原 app 端 [JsExtensions] 与 desktop 端
- * [DesktopJsExtensions] 各维护一份相同实现, 统一下沉至此; 加密工厂面见 [JsEncodeUtilsDefaults]。
- * native 端无 jsoup, 本接口仅 jvmAndAndroidMain 提供 (与现状一致)。
+ * JVM 半区 (Android/desktop) JS 扩展面。
+ *
+ * 原实现 (jsoup get/head/post 网络三函数) 已下沉至 [JsExtensionsCommon] (commonMain, 带平台门面),
+ * 本接口保留为空壳, 供 BookSourceJsExt / HttpTTSJsExt / DesktopBookSourceJsExt /
+ * DesktopAnalyzeRule / DesktopAnalyzeUrl 等继承以组合 [JsEncodeUtilsDefaults] +
+ * [JsExtensionsCommon] 两个面; 加密工厂面见 [JsEncodeUtilsDefaults]。
+ * native 端无本接口 (AnalyzeRuleCore/AnalyzeUrlCore 由 nativeMain 桥直接走 JsExtensionsCommon)。
  */
 @Suppress("unused")
-interface JsExtensionsJvm : JsEncodeUtilsDefaults, JsExtensionsCommon {
-
-    /**
-     * js实现重定向拦截,网络访问get
-     */
-    fun get(urlStr: String, headers: Map<String, String>): Connection.Response {
-        val requestHeaders = if (getSource()?.enabledCookieJar == true) {
-            headers.toMutableMap().apply { put(cookieJarHeader, "1") }
-        } else headers
-        val rateLimiter = ConcurrentRateLimiter(getSource())
-        val response = rateLimiter.withLimitBlocking {
-            jsContext.ensureActive()
-            Jsoup.connect(urlStr)
-                .sslContext(SSLHelper.unsafeSslContext)
-                .ignoreContentType(true)
-                .followRedirects(false)
-                .headers(requestHeaders)
-                .method(Connection.Method.GET)
-                .execute()
-        }
-        return response
-    }
-
-    /**
-     * js实现重定向拦截,网络访问head,不返回Response Body更省流量
-     */
-    fun head(urlStr: String, headers: Map<String, String>): Connection.Response {
-        val requestHeaders = if (getSource()?.enabledCookieJar == true) {
-            headers.toMutableMap().apply { put(cookieJarHeader, "1") }
-        } else headers
-        val rateLimiter = ConcurrentRateLimiter(getSource())
-        val response = rateLimiter.withLimitBlocking {
-            jsContext.ensureActive()
-            Jsoup.connect(urlStr)
-                .sslContext(SSLHelper.unsafeSslContext)
-                .ignoreContentType(true)
-                .followRedirects(false)
-                .headers(requestHeaders)
-                .method(Connection.Method.HEAD)
-                .execute()
-        }
-        return response
-    }
-
-    /**
-     * 网络访问post
-     */
-    fun post(urlStr: String, body: String, headers: Map<String, String>): Connection.Response {
-        val requestHeaders = if (getSource()?.enabledCookieJar == true) {
-            headers.toMutableMap().apply { put(cookieJarHeader, "1") }
-        } else headers
-        val rateLimiter = ConcurrentRateLimiter(getSource())
-        val response = rateLimiter.withLimitBlocking {
-            jsContext.ensureActive()
-            Jsoup.connect(urlStr)
-                .sslContext(SSLHelper.unsafeSslContext)
-                .ignoreContentType(true)
-                .followRedirects(false)
-                .requestBody(body)
-                .headers(requestHeaders)
-                .method(Connection.Method.POST)
-                .execute()
-        }
-        return response
-    }
-}
+interface JsExtensionsJvm : JsEncodeUtilsDefaults, JsExtensionsCommon

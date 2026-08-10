@@ -41,6 +41,15 @@ data class TextPage(
      */
     var canvasRecorder: CanvasRecorderHandle? = null
 
+    /**
+     * render 侧正文逐列 TextLayoutResult 缓存句柄。
+     * 由 render 侧 lazy 注入（见 PageContentCanvas 取或建挂载），
+     * 回收由渲染侧翻页窗口负责（PageLayoutPrewarmEffect），不走 recycleRecorders
+     * （那条通路在后台线程、且非 Android 为空实现）。朗读/搜索高亮等纯重绘路径
+     * 不触发失效（颜色不参与 measure，绘制期覆盖）。
+     */
+    var textLayoutCache: TextLayoutCacheHandle? = null
+
     var doublePage = false
 
     /**

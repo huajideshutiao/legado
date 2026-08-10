@@ -65,14 +65,16 @@ class AndroidBookImageLoader(
         sourceOrigin: String?,
         widthPx: Int,
         heightPx: Int,
-    ): ImageBitmap? = execute(url, sourceOrigin, widthPx, heightPx, persistent = false)
+        loadOnlyWifi: Boolean,
+    ): ImageBitmap? = execute(url, sourceOrigin, widthPx, heightPx, persistent = false, loadOnlyWifi = loadOnlyWifi)
 
     override suspend fun loadCoverOrNull(
         url: String,
         sourceOrigin: String?,
         widthPx: Int,
         heightPx: Int,
-    ): ImageBitmap? = execute(url, sourceOrigin, widthPx, heightPx, persistent = true)
+        loadOnlyWifi: Boolean,
+    ): ImageBitmap? = execute(url, sourceOrigin, widthPx, heightPx, persistent = true, loadOnlyWifi = loadOnlyWifi)
 
     /** [persistent] 为 true 时改写 diskCacheKey, 由 [MultiDiskCache] 分流到封面持久区。
      * 同 URL 并发请求经 [BookImageLoadDedup] 单飞去重 (I6)。 */
@@ -82,9 +84,10 @@ class AndroidBookImageLoader(
         widthPx: Int,
         heightPx: Int,
         persistent: Boolean,
+        loadOnlyWifi: Boolean = false,
     ): ImageBitmap? =
         BookImageLoadDedup.singleFlight(
-            "${url}\u0000${sourceOrigin ?: ""}\u0000${widthPx}x$heightPx\u0000$persistent"
+            "${url}\u0000${sourceOrigin ?: ""}\u0000${widthPx}x$heightPx\u0000$persistent\u0000$loadOnlyWifi"
         ) {
             val request = ImageRequest.Builder(context as PlatformContext)
                 .data(url)
@@ -93,6 +96,10 @@ class AndroidBookImageLoader(
                     if (persistent) {
                         diskCacheKey(coverDiskCacheKey(url))
                         extras.set(PersistentCoverKey, true)
+                    }
+                    // 非 wifi 且 loadOnlyWifi 时 fetcher 层拦网络获取 (对齐原版 loadOnlyWifiOption)
+                    if (loadOnlyWifi) {
+                        extras.set(LoadOnlyWifiKey, true)
                     }
                     // 按显示尺寸降采样; FILL 对齐消费端 ContentScale.Crop, INEXACT 允许复用更大的内存缓存项
                     if (widthPx > 0 && heightPx > 0) {

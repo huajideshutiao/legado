@@ -63,7 +63,7 @@ internal interface MouseDragDelegate {
 
 /**
  * 桌面端鼠标手势接管层：鼠标左键的 单击 / 长按 / 拖拽 全部由本层处理并统一消费，
- * 使下层 delegate 的 detectTapGestures/detectDragGestures 对鼠标不再重复触发。
+ * 使下层统一触摸分发器（ReadViewComposable）对鼠标不再重复触发。
  *
  * # 背景 (2026-08-04)
  *
@@ -80,7 +80,7 @@ internal interface MouseDragDelegate {
  * - 长按 → 页内文字选择起点（对照 detectTapGestures 的 onLongPress → 页内长按）
  * - 拖拽 → onDown → onScroll → 松手 onAnimStart（对照 delegate 的 detectDragGestures）
  * - 按下时已有文字选择 → 取消选择并吞掉本次点击（对照 selection 层 suppressedTap 语义）
- * - 选择激活期间拖拽 → 本层继续消费事件（Initial pass），selection 层 Main pass 同步扩选；
+ * - 选择激活期间拖拽 → 本层继续消费事件（Initial pass）并直接扩选（onSelectionExtend）；
  *   长按后松手由本层弹选择菜单（2026-08-04 修复：原实现依赖 selection 层在抬起事件
  *   上弹菜单，桌面端实测不弹，改为长按路径自包含——抬起即弹，不依赖下层事件时序）
  *
@@ -95,6 +95,9 @@ internal suspend fun PointerInputScope.readerMouseGestures(
     onLongPressAt: (Float, Float) -> Unit,
     isSelectionActive: () -> Boolean,
     cancelSelection: () -> Unit,
+    /** 选择激活期间拖动扩选终点（鼠标层在 Initial pass 消费后直接扩选；原依赖
+     *  selection 层 Main pass 同步扩选，统一分发器对鼠标让位后该对端已删） */
+    onSelectionExtend: (x: Float, y: Float) -> Unit,
     menuVisible: () -> Boolean,
     /** 长按选中后松手时弹选择菜单（携带选中文本；仅鼠标长按路径触发，触摸仍走 selection 层） */
     onLongPressMenu: (String) -> Unit = {},
@@ -103,11 +106,11 @@ internal suspend fun PointerInputScope.readerMouseGestures(
 ) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-        // 仅鼠标；触摸仍走原手势链（delegate 的 detectDragGestures/detectTapGestures）
+        // 仅鼠标；触摸仍走统一分发器的触摸路径
         if (down.type != PointerType.Mouse) return@awaitEachGesture
         // 菜单可见时 ReadMenuOverlay 的全屏 bg clickable 接管点击（收起菜单），本层不抢
         if (menuVisible()) return@awaitEachGesture
-        // 本层接管后统一消费 down，使 delegate 的手势层对鼠标完全停摆，避免重复触发
+        // 本层接管后统一消费 down，使统一触摸分发器对鼠标完全停摆，避免重复触发
         down.consume()
         val downId = down.id
         val startPos = down.position
@@ -174,15 +177,20 @@ internal suspend fun PointerInputScope.readerMouseGestures(
                         break
                     }
                     if (!event.buttons.isPrimaryPressed) break
-                    // 长按选中后拖拽扩选：让位 selection 层（其消费先于 delegate 手势层）
-                    if (isSelectionActive()) break
+                    // 选择激活期间拖拽：本层继续消费并直接扩选（原让位 selection 层，
+                    // 其对端已随统一分发器对鼠标让位删除）
+                    if (isSelectionActive()) {
+                        onSelectionExtend(change.position.x, change.position.y)
+                        change.consume()
+                        continue
+                    }
                     delegate.onScroll(change.position.x, change.position.y)
                     change.consume()
                 }
             }
 
             isLongPress -> {
-                // 长按：文字选择起点；随后拖拽由 selection 层扩选（Main pass 同步收到事件）
+                // 长按：文字选择起点；随后拖拽由本层直接扩选（onSelectionExtend）
                 if (!suppressedTap) onLongPressAt(startPos.x, startPos.y)
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -198,7 +206,11 @@ internal suspend fun PointerInputScope.readerMouseGestures(
                     }
                     // 非左键（中/右键）：结束且不消费（右键菜单等不受影响）
                     if (!event.buttons.isPrimaryPressed) break
-                    // 选择激活后继续消费移动（selection 层 Main pass 同步扩选，互不干扰）
+                    // 选择激活后继续消费移动并直接扩选（原依赖 selection 层 Main pass
+                    // 同步扩选，统一分发器对鼠标让位后该对端已删，扩选收归本层）
+                    if (isSelectionActive()) {
+                        onSelectionExtend(change.position.x, change.position.y)
+                    }
                     change.consume()
                 }
             }

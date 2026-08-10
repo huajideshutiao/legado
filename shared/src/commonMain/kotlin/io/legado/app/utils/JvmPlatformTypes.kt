@@ -22,7 +22,20 @@ package io.legado.app.utils
  * iOS/鸿蒙 actual 恒抛 UnsupportedOperationException (KmpResponseBody 的 byteStream()
  * 尚未在此委托) — AnalyzeUrlCore 经 byteStreamAsInput 的流式路径在 iOS/鸿蒙暂不可用。
  */
-expect class URL(url: String)
+expect class URL(url: String) {
+    /** URL 外部形式 (jvm: java.net.URL.toExternalForm(); native: 原字符串)。 */
+    fun toExternalForm(): String
+
+    override fun toString(): String
+}
+
+/**
+ * URL 的 query 部分 (不含 '?')。
+ *
+ * 不能声明为 expect class 成员: jvm actual 是 typealias 到 java.net.URL,
+ * 而 Kotlin 不把 Java 合成属性 (getQuery()) 计入 expect/actual 成员匹配。
+ */
+internal expect fun URL.urlQuery(): String?
 
 // java.io.InputStream 是 abstract class, expect class 默认 final 会与 actual typealias 冲突,
 // 需用 abstract 修饰 (build.gradle 已配置 -Xexpect-actual-classes).

@@ -1,5 +1,6 @@
 package io.legado.app.help
 
+import io.legado.app.help.http.SSLHelper
 import io.legado.app.utils.Base64Lenient
 import io.legado.app.utils.ChineseUtils
 import java.net.URLEncoder
@@ -66,4 +67,6 @@ internal actual object JsExtensionsPlatform {
             false
         }
     }
+
+    actual fun unsafeSslContext(): Any? = SSLHelper.unsafeSslContext
 }

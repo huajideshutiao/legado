@@ -1,10 +1,5 @@
 package io.legado.app.ui.route
 
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.union
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -36,6 +31,7 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.code.CodeEditorState
 import io.legado.app.ui.compose.platform.AppBackHandler
+import io.legado.app.ui.compose.platform.imeDismissPadding
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -290,12 +286,11 @@ fun BookSourceEditRoute(
         fieldEditors = fieldEditors,
         onFieldFocus = { fieldId, entity -> activeField.value = fieldId to entity },
         requestFocusSignal = refocusSignal,
-        // Android 15+ 强制 edge-to-edge 不再随键盘 resize, 底部辅助条须自行避让
-        // 键盘/导航条 (对齐原版 Activity 的 adjustResize + initialPadding 定位, 见
-        // BookSourceEditScreen KDoc; desktop/iOS 上 ime inset 为 0, 此 padding 为 no-op)
-        modifier = Modifier.windowInsetsPadding(
-            WindowInsets.navigationBars.union(WindowInsets.ime)
-        ),
+        // ime 避让在根 (对齐原版 adjustResize); navbar 由 EditFields 列表 contentPadding
+        // 承担, 对齐原版 clipToPadding=false (desktop/iOS 上 inset 为 0, 为 no-op);
+        // imeDismissPadding 在键盘收起动画期间提前归零 padding (对齐原版 onGlobalLayout
+        // 立刻 setPadding(0)), 消除动画期键盘视觉先滑走而 insets 未归零的底部空隙
+        modifier = Modifier.imeDismissPadding(),
     )
 
     // 帮助对话框 (对照 app 端 showHelp(fileName))

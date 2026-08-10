@@ -33,8 +33,11 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.takeOrElse
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import androidx.compose.foundation.layout.Arrangement
@@ -54,11 +57,11 @@ import org.jetbrains.compose.resources.painterResource
  *
  * - 透明容器无边框, 仅底部下划线: 未聚焦 1dp controlNormal / 聚焦 2dp accent (indicatorLine 默认粗细)
  * - label 浮动到输入区上方; 配色状态化: 未聚焦/聚焦均为 accent
- * - 文字水平起始 ~4dp (DecorationBox contentPadding 收窄; M2 TextField 默认 16dp 是 filled 容器所需,
+ * - 文字水平起始 4dp (DecorationBox contentPadding 收窄; M2 TextField 默认 16dp 是 filled 容器所需,
  *   下划线形态下会与周边 4dp 对齐的布局明显错位, 如 BookInfoEditScreen 封面按钮行)
- * - 单行高度 56dp (DesignTokens.viewHeightMax) + 默认行高 24sp, 对齐 M2 TextField 源码常量
- *   (MinHeight 56dp / body1 16sp+24sp 行高 / TextFieldBottomPadding 10dp);
- *   文本-底线间距 = bottom padding 10dp, 与 M2 默认一致。
+ * - 高度内容推导: 最小高度 = 顶留白 + 固定行高 (fontSize*1.5) + 底部 4dp, 单行字段贴合内容
+ *   (对齐 CodeTextField, 消除 56dp minHeight 死区, 文本不再悬浮于线上方)
+ * - 行高固定 fontSize*1.5 (16sp → 24sp), 文本底恒距指示线 4dp —— 与 CodeTextField 几何统一
  *
  * 配色适配 Arco Design 主题: 聚焦色 = AppTheme.colors.accent (arcoblue-6 #165DFF),
  * 错误色 = Arco danger (#F53F3F), 直接用 AppTheme.colors 注入 TextFieldDefaults.textFieldColors,
@@ -86,7 +89,7 @@ fun AppTextField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
-    textStyle: TextStyle = LocalTextStyle.current.copy(fontSize = 16.sp, lineHeight = 24.sp),
+    textStyle: TextStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
     focusRequester: FocusRequester? = null,
 ) {
     AppTextFieldImpl(
@@ -97,6 +100,10 @@ fun AppTextField(
         val colors = AppFieldColors
         val interactionSource = remember { MutableInteractionSource() }
         val textColor = textStyle.color.takeOrElse { colors.textColor(enabled).value }
+        // 固定行高 fontSize*1.5 (对齐 CodeTextField): 单行/多行垂直几何统一, 行高不随字体默认漂移
+        val effectiveTextStyle = textStyle.copy(
+            lineHeight = textStyle.fontSize.takeOrElse { 16.sp } * 1.5f,
+        )
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
@@ -104,14 +111,17 @@ fun AppTextField(
                 .fillMaxWidth()
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                 .indicatorLine(enabled, isError, interactionSource, colors)
-                // 单行最小高度 56dp (viewHeightMax): 对齐 M2 TextField MinHeight 常量
+                // 最小高度内容推导 (对齐 CodeTextField): 单行字段贴合内容, 消除 56dp 死区
                 .defaultMinSize(
                     minWidth = TextFieldDefaults.MinWidth,
-                    minHeight = AppTheme.DesignTokens.viewHeightMax,
+                    minHeight = appFieldDefaultMinHeight(
+                        label != null,
+                        textStyle.fontSize.takeOrElse { 16.sp },
+                    ),
                 ),
             enabled = enabled,
             readOnly = readOnly,
-            textStyle = textStyle.copy(color = textColor),
+            textStyle = effectiveTextStyle.copy(color = textColor),
             keyboardOptions = keyboardOptions,
             keyboardActions = keyboardActions,
             singleLine = singleLine,
@@ -164,7 +174,7 @@ fun AppTextField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
-    textStyle: TextStyle = LocalTextStyle.current.copy(fontSize = 16.sp, lineHeight = 24.sp),
+    textStyle: TextStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
     focusRequester: FocusRequester? = null,
 ) {
     AppTextFieldImpl(
@@ -175,6 +185,10 @@ fun AppTextField(
         val colors = AppFieldColors
         val interactionSource = remember { MutableInteractionSource() }
         val textColor = textStyle.color.takeOrElse { colors.textColor(enabled).value }
+        // 固定行高 fontSize*1.5 (对齐 CodeTextField): 单行/多行垂直几何统一, 行高不随字体默认漂移
+        val effectiveTextStyle = textStyle.copy(
+            lineHeight = textStyle.fontSize.takeOrElse { 16.sp } * 1.5f,
+        )
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
@@ -182,13 +196,17 @@ fun AppTextField(
                 .fillMaxWidth()
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                 .indicatorLine(enabled, isError, interactionSource, colors)
+                // 最小高度内容推导 (对齐 CodeTextField): 单行字段贴合内容, 消除 56dp 死区
                 .defaultMinSize(
                     minWidth = TextFieldDefaults.MinWidth,
-                    minHeight = AppTheme.DesignTokens.viewHeightMax,
+                    minHeight = appFieldDefaultMinHeight(
+                        label != null,
+                        textStyle.fontSize.takeOrElse { 16.sp },
+                    ),
                 ),
             enabled = enabled,
             readOnly = readOnly,
-            textStyle = textStyle.copy(color = textColor),
+            textStyle = effectiveTextStyle.copy(color = textColor),
             keyboardOptions = keyboardOptions,
             keyboardActions = keyboardActions,
             singleLine = singleLine,
@@ -215,6 +233,40 @@ fun AppTextField(
             },
         )
     }
+}
+
+// ===== 下划线输入框统一几何 (与 component/code/CodeTextField 共用同一套常量) =====
+
+/** 水平内容留白: 下划线形态收窄至 4dp (M2 filled 默认 16dp 是容器形态所需) */
+internal val TextFieldHorizontalPadding = 4.dp
+
+/** 无 label 时文本顶部留白 (M2 textFieldWithoutLabelPadding 默认 top = TextFieldPadding = 16dp) */
+internal val TextFieldTopPadding = 16.dp
+
+/** 有 label 时 label 基线距组件顶 (M2 FirstBaselineOffset = 20dp) */
+internal val TextFieldFirstBaselineOffset = 20.dp
+
+/** label 基线到文本顶的间距 (M2 内部 TextFieldTopPadding = 2dp, label 浮动后文本顶 = 基线 + 2dp) */
+internal val TextFieldLabelToText = 2.dp
+
+/**
+ * 文本底到指示线的间距 4dp (原版 EditText wrap_content 底部 inset 约 2-4dp)。
+ * 顶对齐内容下 bottom 即"文本-下划线"距离。
+ */
+internal val TextFieldBottomInset = 4.dp
+
+/**
+ * 输入框默认最小高度 = 顶留白 + 固定行高 (fontSize*1.5) + 底部 4dp:
+ * 单行字段高度正好贴合内容, 消除 minHeight 死区 —— 死区是"单行文本离下划线太远"的根源
+ * (56dp 最小高 + 顶对齐下, 文本下方空出 56-(顶留白+行高+4dp) ≈ 19dp)。
+ * 多行时内容自然超过该值, 高度随内容增长, 文本底距指示线恒为 [TextFieldBottomInset]。
+ * (fontScale=1 时 sp 与 dp 等价; 非 1 时此项仅为下限, 内容更高则自动撑开)
+ */
+internal fun appFieldDefaultMinHeight(hasLabel: Boolean, fontSize: TextUnit): Dp {
+    val topSpace =
+        if (hasLabel) TextFieldFirstBaselineOffset + TextFieldLabelToText else TextFieldTopPadding
+    val lineHeightDp = (if (fontSize.isSp) fontSize.value else 14f) * 1.5f
+    return topSpace + lineHeightDp.dp + TextFieldBottomInset
 }
 
 /**
@@ -260,13 +312,21 @@ internal fun AppDecorationBox(
     leadingIcon: @Composable (() -> Unit)?,
     trailingIcon: @Composable (() -> Unit)?,
     colors: TextFieldColors,
-    // 垂直内边距走 M2 默认 (无 label: top 16; 有 label: top 20 = FirstBaselineOffset),
-    // bottom 均取 10dp = M2 TextFieldBottomPadding → 文本-底线间距与 M2 默认一致;
-    // 无 label 单行: 文本由 M2 布局居中于 56dp 最小高度盒内。
+    // 垂直 top 走 M2 默认 (无 label 16dp / 有 label FirstBaselineOffset+2dp), bottom 固定 4dp
+    // (TextFieldBottomInset), 水平 4dp (TextFieldHorizontalPadding) —— 对齐 CodeTextField,
+    // 文本底恒距指示线 4dp, 与 M2 默认 (bottom 10dp / 水平 16dp) 不同。
     contentPadding: PaddingValues = if (label == null) {
-        TextFieldDefaults.textFieldWithoutLabelPadding(start = 0.dp, end = 0.dp, bottom = 10.dp)
+        TextFieldDefaults.textFieldWithoutLabelPadding(
+            start = TextFieldHorizontalPadding,
+            end = TextFieldHorizontalPadding,
+            bottom = TextFieldBottomInset,
+        )
     } else {
-        TextFieldDefaults.textFieldWithLabelPadding(start = 0.dp, end = 0.dp, bottom = 10.dp)
+        TextFieldDefaults.textFieldWithLabelPadding(
+            start = TextFieldHorizontalPadding,
+            end = TextFieldHorizontalPadding,
+            bottom = TextFieldBottomInset,
+        )
     },
 ) {
     TextFieldDefaults.TextFieldDecorationBox(

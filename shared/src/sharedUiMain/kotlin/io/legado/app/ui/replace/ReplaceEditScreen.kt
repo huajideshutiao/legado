@@ -5,8 +5,14 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -43,6 +49,7 @@ import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.platform.bringIntoViewOnIme
 import io.legado.app.ui.compose.component.OverflowMenu
 import io.legado.app.ui.compose.component.code.KeyboardToolbar
 import io.legado.app.ui.compose.component.code.KeyboardToolbarState
@@ -81,8 +88,9 @@ import org.jetbrains.compose.resources.stringResource
  *   为空操作 (对照原版 `getActiveCodeView() = null`, 本页无 CodeView)
  * - **剪贴板用回调**: [onCopyRule] / [onPasteRule] 由宿主处理 (app 端 sendToClip/getClipText,
  *   desktop 端 java.awt.datatransfer.Clipboard), VM 解析 JSON 后回调回填表单
- * - **去掉 WindowInsets.ime/navigationBars**: Android 专属 inset, desktop 无 IME insets 概念,
- *   宿主端如需 IME 适配可在包装层加 windowInsetsPadding
+ * - **WindowInsets**: Screen 内对导航条做滚动避让 (滚动区末尾 Spacer, 对齐原版
+ *   clipToPadding=false); ime 由宿主在包装层加 windowInsetsPadding (desktop 无 IME
+ *   insets 概念, 均为 no-op)
  * - **路由用回调**: [onBack] / [onSaved] 替代 Activity setResult/finish
  *
  * # VM 接入 (ReplaceEditViewModelShared)
@@ -106,7 +114,8 @@ import org.jetbrains.compose.resources.stringResource
  *   对照 [BookSourceEditScreen] 的 onShowKeyboardConfig; 未注入时 ⚙️ 点击无操作)
  * @param requestFocusSignal 请求根节点持焦的信号 (宿主在页面回到栈顶时投递; 页面全程留在
  *   Composition, 进入时的持焦只在首次组合执行, 返回后需重新请求)
- * @param modifier 外部 modifier (app 端可附加 `windowInsetsPadding(ime ∪ navigationBars)`)
+ * @param modifier 外部 modifier (app 端可附加 `windowInsetsPadding(ime)`; 导航条由
+ *   本 Screen 滚动区 contentPadding/Spacer 承担)
  */
 @Composable
 fun ReplaceEditScreen(
@@ -121,6 +130,12 @@ fun ReplaceEditScreen(
     requestFocusSignal: Flow<Unit> = emptyFlow(),
 ) {
     val rule by viewModel.state.collectAsState()
+    // 导航条避让走滚动区末尾 Spacer (对齐原版 clipToPadding=false), ime 由根 modifier 承担
+    // 减去 ime (对齐原版 navigationBarHeight 的 coerceAtLeast(0))
+    val navBottom = WindowInsets.navigationBars
+        .exclude(WindowInsets.ime)
+        .asPaddingValues()
+        .calculateBottomPadding()
     // 表单字段状态 (TextFieldValue 支持光标位置, 辅助键插入走 FieldState.insertAtCursor)
     val name = remember { FieldState() }
     val group = remember { FieldState() }
@@ -268,6 +283,7 @@ fun ReplaceEditScreen(
                 stringResource(Res.string.timeout_millisecond),
                 number = true
             ) { focusedField = it }
+            Spacer(Modifier.height(navBottom))
         }
         // 键盘辅助条 (对照原版 keyboardTool.setInterface: 辅助键 + 撤销/重做 + 查找替换面板 +
         // KeyboardAssistsConfig 入口; 查找替换面板为空操作, 对照原版 getActiveCodeView() = null)
@@ -341,6 +357,7 @@ private fun FormField(
     number: Boolean = false,
     onFocusChanged: (FieldState?) -> Unit,
 ) {
+    var focused by remember { mutableStateOf(false) }
     AppTextField(
         value = field.value,
         onValueChange = { new ->
@@ -357,7 +374,12 @@ private fun FormField(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .onFocusChanged { if (it.isFocused) onFocusChanged(field) },
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocusChanged(field)
+            }
+            // 键盘弹出/窗口收缩后聚焦字段可能再次滚出视口, 重新滚到可见 (见 ImeInsets KDoc)
+            .bringIntoViewOnIme(focused),
     )
 }
 

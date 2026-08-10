@@ -1,7 +1,9 @@
 package io.legado.app.help.image
 
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -216,6 +218,7 @@ private fun ImageBitmap.downscaled(maxDim: Int): ImageBitmap {
         srcSize = IntSize(width, height),
         dstOffset = IntOffset.Zero,
         dstSize = IntSize(nw, nh),
+        paint = Paint().apply { filterQuality = FilterQuality.Low },
     )
     return out
 }

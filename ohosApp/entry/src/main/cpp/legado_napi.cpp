@@ -186,6 +186,8 @@ static legado_int64_cstr_void_fn g_file_picker_callback = nullptr;
 // dlsym 加载的函数指针 - Pasteboard tsfn 注入 + ArkTS → Kotlin 回调 (同 FilePicker 模式, read/write)
 static legado_register_dispatch_fn g_register_pasteboard_fn = nullptr;
 static legado_int64_cstr_void_fn g_pasteboard_callback = nullptr;
+static legado_register_dispatch_fn g_register_network_fn = nullptr;
+static legado_int64_cstr_void_fn g_network_callback = nullptr;
 
 // dlsym 加载的函数指针 - TextCodec tsfn 注入 + ArkTS → Kotlin 回调 (同 Pasteboard 模式, decode/encode)
 static legado_register_dispatch_fn g_register_text_codec_fn = nullptr;
@@ -324,6 +326,10 @@ static bool load_legado_shared() {
     // 解析 @CName 导出符号 - Pasteboard tsfn 注入 + ArkTS → Kotlin 回调 (同 FilePicker 模式)
     g_register_pasteboard_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_pasteboard_fn");
     g_pasteboard_callback = (legado_int64_cstr_void_fn)dlsym(g_legado_so, "legado_pasteboard_callback");
+
+    // 解析 @CName 导出符号 - Network tsfn 注入 + ArkTS → Kotlin 回调 (同 Pasteboard 模式)
+    g_register_network_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_network_fn");
+    g_network_callback = (legado_int64_cstr_void_fn)dlsym(g_legado_so, "legado_network_callback");
 
     // 解析 @CName 导出符号 - TextCodec tsfn 注入 + ArkTS → Kotlin 回调 (同 Pasteboard 模式)
     g_register_text_codec_fn = (legado_register_dispatch_fn)dlsym(g_legado_so, "legado_register_text_codec_fn");
@@ -2021,6 +2027,111 @@ static napi_value PasteboardCallback(napi_env env, napi_callback_info info) {
     return ret;
 }
 
+// ============ Network tsfn 接线 (同 Pasteboard 模式: tsfn 发请求 + @CName 回调返回结果) ============
+// - KMP 通过 OhosNativeBridge.invokeNetworkSync 发 query 请求 (网络可用性 + 是否 WiFi)
+// - 请求经 C++ ohos_network_dispatch → napi_call_threadsafe_function → ArkTS 主线程回调
+// - ArkTS NetworkBridgeHandler 调 @ohos.net.connection getDefaultNetSync + getConnectionPropertiesSync
+//   (需 ohos.permission.GET_NETWORK_INFO, normal + system_grant, module.json5 声明即自动授予)
+// - 完成后通过 networkCallback(requestId, resultJson) (napi → @CName) 回送结果给 Kotlin
+
+// tsfn 引用 (RegisterNetworkCallback 创建)
+static napi_threadsafe_function g_network_tsfn = nullptr;
+
+// C++ dispatch 入口: 由 Kotlin lambda (注入到 OhosNativeBridge.networkTsfn) 调用
+extern "C" void ohos_network_dispatch(const char* json) {
+    if (g_network_tsfn == nullptr || json == nullptr) return;
+    size_t len = strlen(json) + 1;
+    char* json_dup = (char*)malloc(len);
+    if (json_dup == nullptr) return;
+    memcpy(json_dup, json, len);
+    napi_status status = napi_call_threadsafe_function(g_network_tsfn, json_dup, napi_tsfn_nonblocking);
+    if (status != napi_ok) {
+        free(json_dup);
+    }
+}
+
+// tsfn call-js 回调: 在 ArkTS 主线程执行, 把 data (JSON 串) 包成 napi string 后调用 ArkTS 回调
+static void NetworkCallJs(napi_env env, napi_value js_cb, void* /*context*/, void* data) {
+    if (js_cb == nullptr || data == nullptr) return;
+    char* json = static_cast<char*>(data);
+    napi_value json_arg;
+    napi_create_string_utf8(env, json, NAPI_AUTO_LENGTH, &json_arg);
+    napi_value undef;
+    napi_get_undefined(env, &undef);
+    napi_call_function(env, undef, js_cb, 1, &json_arg, nullptr);
+    free(json);
+}
+
+// napi 包装: registerNetworkCallback(callback: (json: string) => void): void
+// ArkTS 注册 network 回调; C++ 创建 tsfn, 通过 legado_register_network_fn 注入 ohos_network_dispatch 到 Kotlin
+static napi_value RegisterNetworkCallback(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) {
+        napi_throw_type_error(env, nullptr, "registerNetworkCallback requires 1 argument (callback)");
+        napi_value ret;
+        napi_get_undefined(env, &ret);
+        return ret;
+    }
+
+    if (g_network_tsfn != nullptr) {
+        napi_release_threadsafe_function(g_network_tsfn, napi_tsfn_abort);
+        g_network_tsfn = nullptr;
+    }
+
+    napi_value work_name;
+    napi_create_string_utf8(env, "LegadoNetworkTsfn", NAPI_AUTO_LENGTH, &work_name);
+    napi_threadsafe_function tsfn;
+    napi_status status = napi_create_threadsafe_function(
+        env, args[0], nullptr, work_name, 0, 1,
+            nullptr, nullptr, nullptr, NetworkCallJs, &tsfn);
+    if (status != napi_ok) {
+        OH_LOG_ERROR(LOG_APP, "registerNetworkCallback: napi_create_threadsafe_function failed: %{public}d", status);
+        napi_value ret;
+        napi_get_undefined(env, &ret);
+        return ret;
+    }
+    g_network_tsfn = tsfn;
+
+    if (load_legado_shared() && g_register_network_fn != nullptr) {
+        g_register_network_fn(&ohos_network_dispatch);
+    } else {
+        OH_LOG_WARN(LOG_APP, "registerNetworkCallback: legado_register_network_fn not resolved (KMP invokeNetworkSync 将降级)");
+    }
+
+    napi_value ret;
+    napi_get_undefined(env, &ret);
+    return ret;
+}
+
+// napi 包装: networkCallback(requestId: number, result: string): void
+// ArkTS → Kotlin network 查询结果回调 (query 完成后调用)
+static napi_value NetworkCallback(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2] = {nullptr};
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    // args[0]: requestId (number, int64)
+    int64_t request_id = 0;
+    napi_get_value_int64(env, args[0], &request_id);
+
+    // args[1]: resultJson (string)
+    size_t str_len = 0;
+    napi_get_value_string_utf8(env, args[1], nullptr, 0, &str_len);
+    char* buf = new char[str_len + 1];
+    napi_get_value_string_utf8(env, args[1], buf, str_len + 1, &str_len);
+
+    if (load_legado_shared() && g_network_callback != nullptr) {
+        g_network_callback(request_id, buf);
+    }
+    delete[] buf;
+
+    napi_value ret;
+    napi_get_undefined(env, &ret);
+    return ret;
+}
+
 // ============ TextCodec tsfn 接线 (同 Pasteboard 模式: tsfn 发请求 + @CName 回调返回结果) ============
 // - KMP 通过 OhosNativeBridge.invokeTextCodecSync 发 decode/encode 请求
 // - 请求经 C++ ohos_text_codec_dispatch → napi_call_threadsafe_function → ArkTS 主线程回调
@@ -2681,6 +2792,9 @@ androidx_compose_ui_arkui_init(env, exports
         // Pasteboard tsfn 回调注册 + ArkTS → Kotlin 回调 (同 FilePicker 模式, read/write)
         {"registerPasteboardCallback", nullptr, RegisterPasteboardCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"pasteboardCallback", nullptr, PasteboardCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
+        // Network tsfn 回调注册 + ArkTS → Kotlin 回调 (同 Pasteboard 模式, query)
+        {"registerNetworkCallback", nullptr, RegisterNetworkCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"networkCallback", nullptr, NetworkCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
         // TextCodec tsfn 回调注册 + ArkTS → Kotlin 回调 (同 Pasteboard 模式, decode/encode)
         {"registerTextCodecCallback", nullptr, RegisterTextCodecCallback, nullptr, nullptr, nullptr, napi_default, nullptr},
             {"registerTextActionCallback", nullptr, RegisterTextActionCallback, nullptr, nullptr, nullptr, napi_default, nullptr},

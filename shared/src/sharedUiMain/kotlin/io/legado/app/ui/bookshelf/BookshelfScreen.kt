@@ -665,12 +665,14 @@ fun SharedBookCover(
     // useDefaultCover 时跳过网络加载, 直接走默认封面链 (对照 app 端 CoverImageView 行为);
     // 每次组合读 prefs (不 remember): 宿主重组触发 LaunchedEffect 重启时读到的是最新配置
     val useDefaultCover = AppConfigProviders.get().useDefaultCover
+    // 仅 WiFi 加载封面: 非 WiFi 时 fetcher 层拦网络获取 (缓存命中仍显示, 对齐原版 loadOnlyWifi)
+    val loadOnlyWifi = AppConfigProviders.get().loadCoverOnlyWifi
     // 位图与"是否默认封面"合成一个 state: 一次加载只引发一次重组
     var coverState by remember(cover, book.origin) { mutableStateOf(NoCoverBitmap) }
     // 尺寸只用于首次按显示大小降采样；后续窗口 resize 不应重新发起封面请求。
     // 否则每跨过一个量化尺寸档都会再次进入图片 Interceptor，重复执行书源 JS header 规则。
     val displaySize = remember { MutableStateFlow(IntSize.Zero) }
-    LaunchedEffect(cover, book.origin, loader, useDefaultCover, isVideoCover) {
+    LaunchedEffect(cover, book.origin, loader, useDefaultCover, loadOnlyWifi, isVideoCover) {
         if (loader == null) return@LaunchedEffect
         val decodeSize = firstValidCoverDecodeSize(displaySize)
         val ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL
@@ -690,9 +692,13 @@ fun SharedBookCover(
         }
         val bmp = if (book.isNotShelf) {
             // 非书架书 (搜索/发现/主页结果) 的封面只落临时缓存区, 不占书架持久区
-            loader.loadImageOrNull(cover, book.origin, decodeSize.width, decodeSize.height)
+            loader.loadImageOrNull(
+                cover, book.origin, decodeSize.width, decodeSize.height, loadOnlyWifi,
+            )
         } else {
-            loader.loadCoverOrNull(cover, book.origin, decodeSize.width, decodeSize.height)
+            loader.loadCoverOrNull(
+                cover, book.origin, decodeSize.width, decodeSize.height, loadOnlyWifi,
+            )
         }
         if (bmp != null) {
             coverState = CoverBitmap(bmp, false)

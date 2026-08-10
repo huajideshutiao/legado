@@ -19,7 +19,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
@@ -28,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.image.ReaderImageCache
+import io.legado.app.ui.book.read.page.entities.TextLayoutCacheHandle
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.ImageColumn
@@ -35,6 +35,7 @@ import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.preview.LegadoThemePreview
+import kotlinx.coroutines.yield
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.image_loading_error
 import org.jetbrains.compose.resources.decodeToImageBitmap
@@ -78,18 +79,27 @@ fun PageContentCanvas(
     drawTick: Int = 0,
     selection: PageSelectionState? = null,
 ) {
-    val textMeasurer: TextMeasurer = rememberTextMeasurer()
+    val textMeasurer: TextMeasurer = rememberReaderTextMeasurer()
     // 2026-08 回退: 曾加整页录制缓存 (pageLayer.record + drawLayer), 但 record 在 Canvas
     // onDraw (CanvasDrawScope) 内调用会与外层 scope 的 fontScale 委托互相递归 →
     // StackOverflowError (CanvasDrawScope.getFontScale ↔ LayoutNodeDrawScope.getFontScale),
     // 阅读页白屏。改为安全方案: 组合阶段逐列缓存 TextLayoutResult (measure 一次),
     // 每帧绘制走 drawText(layoutResult) 零 measure (官方 API, 无 scope 环)。
-    // 缓存 key: 页实例/样式——换页/配置变更才重缓存。朗读/搜索高亮颜色不参与 measure
-    // (颜色不改变几何), 由绘制期 drawText(layoutResult, color=...) 覆盖: 高亮变化只经
-    // drawTick 触发纯重绘 (零 measure), 不再每词全页重新 measure (~300 列/页)。
+    // 缓存挂 TextPage 实例 (render 侧 lazy 注入, 取或建挂载): 页实例/样式/密度匹配
+    // 才复用——换页/配置变更才重缓存, 翻页前 prewarm 产物直接命中 (见 PageLayoutPrewarm)。
+    // 朗读/搜索高亮颜色不参与 measure (颜色不改变几何), 由绘制期 drawText(layoutResult,
+    // color=...) 覆盖: 高亮变化只经 drawTick 触发纯重绘 (零 measure), 不再每词全页
+    // 重新 measure (~300 列/页)。
     val density = LocalDensity.current
-    val layoutCache = remember(textPage, style) {
-        TextLayoutCache.build(textPage, textMeasurer, style, density)
+    val layoutCache = remember(textPage, style, density) {
+        val cached = textPage.textLayoutCache
+        if (cached is TextLayoutCache && cached.matches(style, density)) {
+            cached
+        } else {
+            TextLayoutCache.build(textPage, textMeasurer, style, density).also {
+                textPage.textLayoutCache = it
+            }
+        }
     }
 
     // 正文图失败占位: 对齐原版 ImageProvider.errorBitmap (image_loading_error 资源图)。
@@ -124,84 +134,188 @@ fun PageContentCanvas(
  * 本缓存把 measure 收敛到构建时一次, 每帧绘制走 [DrawScope.drawText] 的 layoutResult 重载
  * （零 measure, 只重放 glyph）。基线折算/字间距补偿量一并缓存（与列布局同 key）。
  *
- * key 由调用方 remember(textPage, style) 保证: 换页新 TextPage、配置变更新
- * ReaderDrawStyle 才重缓存; 朗读/搜索高亮颜色不参与 measure (颜色不改变几何),
- * 由绘制期 drawText(layoutResult, color=...) 覆盖, 高亮变化经 drawTick 纯重绘零 measure;
+ * 实例挂载在 [TextPage.textLayoutCache]（commonMain 接口句柄）上跨组合存续：
+ * 命中且 [matches]（页实例/样式/密度）直接复用，换页/配置变更才重建；
+ * 朗读/搜索高亮颜色不参与 measure (颜色不改变几何), 由绘制期
+ * drawText(layoutResult, color=...) 覆盖, 高亮变化经 drawTick 纯重绘零 measure;
  * 选区高亮 (column.selected) 是绘制期覆盖矩形不参与缓存。
+ *
+ * miss 时（就地重排版等异常路径）按需 measure 补入，保证不出现缺字。
  */
-private class TextLayoutCache(
+internal class TextLayoutCache(
     private val textByColumn: HashMap<TextColumn, ColumnLayout>,
     private val reviewByColumn: HashMap<ReviewColumn, ColumnLayout>,
-) {
-    fun textLayout(column: TextColumn): ColumnLayout? = textByColumn[column]
+    private val textMeasurer: TextMeasurer,
+    private val style: ReaderDrawStyle,
+    private val density: Density,
+    private val contentBaseline: Float,
+    private val titleBaseline: Float,
+    private val contentSpacingHalf: Float,
+    private val titleSpacingHalf: Float,
+) : TextLayoutCacheHandle {
 
-    fun reviewLayout(column: ReviewColumn): ColumnLayout? = reviewByColumn[column]
+    override fun invalidate() {
+        // 清空并允许按需重建（miss 补入路径自动重建）
+        textByColumn.clear()
+        reviewByColumn.clear()
+    }
+
+    override fun recycle() {
+        textByColumn.clear()
+        reviewByColumn.clear()
+    }
+
+    /** 构建时的样式/密度快照是否与当前一致（一致才可复用） */
+    fun matches(style: ReaderDrawStyle, density: Density): Boolean =
+        this.style == style && this.density == density
+
+    fun textLayout(column: TextColumn): ColumnLayout? {
+        val cached = textByColumn[column]
+        if (cached != null) return cached
+        // miss 兜底: 就地重排版等异常路径按需 measure 补入, 不出现缺字
+        // （正常路径构建期已全量填充, 此处零触发）
+        val isTitle = column.textLine.isTitle
+        // 用基础样式 measure (lineStyle 已含正文色): 朗读/搜索高亮色
+        // 不参与布局 (颜色不影响几何/换行), 由绘制期 drawText(color=...) 覆盖,
+        // 避免朗读逐词推进触发全页重 measure (见 drawTextColumn)
+        val layout = textMeasurer.measure(
+            column.charData,
+            if (isTitle) style.titleStyle else style.contentStyle,
+        )
+        return ColumnLayout(
+            layout = layout,
+            baselineOffset = if (isTitle) titleBaseline else contentBaseline,
+            letterSpacingHalf = if (isTitle) titleSpacingHalf else contentSpacingHalf,
+        ).also { textByColumn[column] = it }
+    }
+
+    fun reviewLayout(column: ReviewColumn): ColumnLayout? {
+        val cached = reviewByColumn[column]
+        if (cached != null) return cached
+        val lineStyle = if (column.textLine.isTitle) style.titleStyle else style.contentStyle
+        val countTextStyle = lineStyle.copy(
+            color = style.reviewColor,
+            fontSize = style.reviewTextSize,
+        )
+        val countLayout = textMeasurer.measure(column.countText, countTextStyle)
+        return ColumnLayout(
+            layout = countLayout,
+            baselineOffset = countLayout.getLineBaseline(0),
+            letterSpacingHalf = 0f,
+        ).also { reviewByColumn[column] = it }
+    }
 
     companion object {
+        /** 增量预热每批处理的列数（批间 yield 让出主线程） */
+        private const val COLUMN_BATCH = 64
+
+        /** 构建期预测量: baseline 折算 + letterSpacing 像素补偿（每套样式各测一次） */
+        private class BaselineValues(
+            val contentBaseline: Float,
+            val titleBaseline: Float,
+            val contentSpacingHalf: Float,
+            val titleSpacingHalf: Float,
+        ) {
+            companion object {
+                fun measure(
+                    textMeasurer: TextMeasurer,
+                    style: ReaderDrawStyle,
+                    density: Density,
+                ): BaselineValues {
+                    // baseline 折算（每套样式各测一次）: drawText 的 topLeft 是文本框左上角,
+                    // 行基线 lineBase 需减去首行 baseline 偏移得到框顶 y (与 app 端 drawText(x, lineBase) 不同)
+                    val contentBaseline = textMeasurer.measure("水", style.contentStyle).getLineBaseline(0)
+                    val titleBaseline = textMeasurer.measure("水", style.titleStyle).getLineBaseline(0)
+                    // letterSpacing 是 em（字号倍数），折算像素补偿量：fontSizePx * em * 0.5
+                    // （组合阶段无 DrawScope.toPx, 用传入密度换算）
+                    val contentSpacingHalf = with(density) {
+                        style.contentStyle.fontSize.toPx() * style.letterSpacingEm * 0.5f
+                    }
+                    val titleSpacingHalf = with(density) {
+                        style.titleStyle.fontSize.toPx() * style.letterSpacingEm * 0.5f
+                    }
+                    return BaselineValues(contentBaseline, titleBaseline, contentSpacingHalf, titleSpacingHalf)
+                }
+            }
+        }
+
         fun build(
             textPage: TextPage,
             textMeasurer: TextMeasurer,
             style: ReaderDrawStyle,
             density: Density,
         ): TextLayoutCache {
-            // baseline 折算（每套样式各测一次）: drawText 的 topLeft 是文本框左上角,
-            // 行基线 lineBase 需减去首行 baseline 偏移得到框顶 y (与 app 端 drawText(x, lineBase) 不同)
-            val contentBaseline = textMeasurer.measure("水", style.contentStyle).getLineBaseline(0)
-            val titleBaseline = textMeasurer.measure("水", style.titleStyle).getLineBaseline(0)
-            // letterSpacing 是 em（字号倍数），折算像素补偿量：fontSizePx * em * 0.5
-            // （组合阶段无 DrawScope.toPx, 用传入密度换算）
-            val contentSpacingHalf = with(density) {
-                style.contentStyle.fontSize.toPx() * style.letterSpacingEm * 0.5f
-            }
-            val titleSpacingHalf = with(density) {
-                style.titleStyle.fontSize.toPx() * style.letterSpacingEm * 0.5f
-            }
-            val textByColumn = HashMap<TextColumn, ColumnLayout>()
-            val reviewByColumn = HashMap<ReviewColumn, ColumnLayout>()
+            val values = BaselineValues.measure(textMeasurer, style, density)
+            val cache = TextLayoutCache(
+                textByColumn = HashMap(),
+                reviewByColumn = HashMap(),
+                textMeasurer = textMeasurer,
+                style = style,
+                density = density,
+                contentBaseline = values.contentBaseline,
+                titleBaseline = values.titleBaseline,
+                contentSpacingHalf = values.contentSpacingHalf,
+                titleSpacingHalf = values.titleSpacingHalf,
+            )
+            fillAll(textPage, cache)
+            return cache
+        }
+
+        /**
+         * 增量构建（预热用）：与 [build] 同一逐列 measure 实现（textLayout/reviewLayout
+         * 的 miss 补入路径），每 [COLUMN_BATCH] 列 yield() 一次让出主线程——
+         * 不阻塞首帧、不跨线程 measure（Compose TextMeasurer 无文档线程安全保证）。
+         */
+        suspend fun buildIncremental(
+            textPage: TextPage,
+            textMeasurer: TextMeasurer,
+            style: ReaderDrawStyle,
+            density: Density,
+        ): TextLayoutCache {
+            val values = BaselineValues.measure(textMeasurer, style, density)
+            val cache = TextLayoutCache(
+                textByColumn = HashMap(),
+                reviewByColumn = HashMap(),
+                textMeasurer = textMeasurer,
+                style = style,
+                density = density,
+                contentBaseline = values.contentBaseline,
+                titleBaseline = values.titleBaseline,
+                contentSpacingHalf = values.contentSpacingHalf,
+                titleSpacingHalf = values.titleSpacingHalf,
+            )
+            var measured = 0
             for (lineIndex in textPage.lines.indices) {
                 val textLine = textPage.lines[lineIndex]
-                val isTitle = textLine.isTitle
-                val lineStyle = if (isTitle) style.titleStyle else style.contentStyle
-                val baselineOffset = if (isTitle) titleBaseline else contentBaseline
-                val letterSpacingHalf = if (isTitle) titleSpacingHalf else contentSpacingHalf
                 for (column in textLine.columns) {
-                    when (column) {
-                        is TextColumn -> {
-                            // 用基础样式 measure (lineStyle 已含正文色): 朗读/搜索高亮色
-                            // 不参与布局 (颜色不影响几何/换行), 由绘制期 drawText(color=...)
-                            // 覆盖, 避免朗读逐词推进触发全页重 measure (见 drawTextColumn)
-                            val layout = textMeasurer.measure(column.charData, lineStyle)
-                            textByColumn[column] = ColumnLayout(
-                                layout = layout,
-                                baselineOffset = baselineOffset,
-                                letterSpacingHalf = letterSpacingHalf,
-                            )
-                        }
-
-                        is ReviewColumn -> {
-                            val countTextStyle = lineStyle.copy(
-                                color = style.reviewColor,
-                                fontSize = style.reviewTextSize,
-                            )
-                            val countLayout = textMeasurer.measure(column.countText, countTextStyle)
-                            reviewByColumn[column] = ColumnLayout(
-                                layout = countLayout,
-                                baselineOffset = countLayout.getLineBaseline(0),
-                                letterSpacingHalf = 0f,
-                            )
-                        }
-
-                        else -> Unit
-                    }
+                    fillColumn(column, cache)
+                    if (++measured % COLUMN_BATCH == 0) yield()
                 }
             }
-            return TextLayoutCache(textByColumn, reviewByColumn)
+            return cache
+        }
+
+        private fun fillAll(textPage: TextPage, cache: TextLayoutCache) {
+            for (lineIndex in textPage.lines.indices) {
+                val textLine = textPage.lines[lineIndex]
+                for (column in textLine.columns) {
+                    fillColumn(column, cache)
+                }
+            }
+        }
+
+        private fun fillColumn(column: BaseColumn, cache: TextLayoutCache) {
+            when (column) {
+                is TextColumn -> cache.textLayout(column)
+                is ReviewColumn -> cache.reviewLayout(column)
+                else -> Unit // ButtonColumn 等暂无绘制
+            }
         }
     }
 }
 
 /** 单列缓存项: 布局结果 + 绘制辅助量 (与 TextColumn 对象同生命周期, 页内引用稳定)。 */
-private class ColumnLayout(
+internal class ColumnLayout(
     val layout: TextLayoutResult,
     val baselineOffset: Float,
     val letterSpacingHalf: Float,

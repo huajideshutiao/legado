@@ -2,6 +2,7 @@ package io.legado.app.help.image
 
 import androidx.compose.ui.graphics.ImageBitmap
 import io.legado.app.data.AppDbProviders
+import io.legado.app.utils.isWifiConnect
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -42,7 +43,13 @@ class OhosBookImageLoader : BookImageLoader {
         sourceOrigin: String?,
         widthPx: Int,
         heightPx: Int,
+        loadOnlyWifi: Boolean,
     ): ImageBitmap? {
+        // 非 wifi 且 loadOnlyWifi 时拦网络获取 (对齐 Coil 侧 CoverDecodeFetcher 只拦 http(s)
+        // 的语义; 缓存命中与否由调用方显示路径决定, 这里直接走失败占位)。
+        if (loadOnlyWifi && url.startsWith("http", ignoreCase = true) && !isWifiConnect()) {
+            return null
+        }
         // 书源防盗链/解密上下文: sourceOrigin 查 DB; book 规则上下文可空
         // (ImageUtils.decode 的 book 参数默认 null, 解密脚本仅依赖 src/result 时不受影响)
         val bookSource = sourceOrigin?.takeIf { it.isNotBlank() }?.let {

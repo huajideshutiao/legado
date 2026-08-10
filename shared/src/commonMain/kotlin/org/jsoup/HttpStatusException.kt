@@ -1,6 +1,6 @@
 package org.jsoup
 
-import java.io.IOException
+import okio.IOException
 
 /** 与原版 jsoup 同名同语义:HTTP 状态码非 2xx/3xx 且未 ignoreHttpErrors 时抛出 */
 class HttpStatusException(

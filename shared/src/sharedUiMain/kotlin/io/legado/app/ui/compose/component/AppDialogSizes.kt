@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import io.legado.app.ui.compose.platform.platformDialogProperties
 import io.legado.app.utils.ScreenInfoProviders
 
 /**
@@ -59,20 +60,26 @@ object AppDialogSizes {
 
     /**
      * 对话框窗口属性: 必须关掉平台默认宽度, 否则 [appDialogSize] 的钳制被平台宽度覆盖。
+     * 构造走 [io.legado.app.ui.compose.platform.platformDialogProperties] 平台桥
+     * (common DialogProperties 仅 3 参, decorFitsSystemWindows 是 Android 专属)。
      *
-     * 背景暗化不在这里做: common expect 的 DialogProperties 只有 3 个参数, 传不了
-     * decorFitsSystemWindows (Android 设 false 虽会切到带 dim 的 FloatingDialogWindowTheme,
-     * 但窗口变 edge-to-edge 侵入系统栏, 内容需自行处理 insets) / scrimColor (仅 skiko 有);
-     * 由 [io.legado.app.ui.compose.platform.PlatformDialogDim] 在 Dialog 内容内按平台补齐
-     * (Android 窗口 FLAG_DIM_BEHIND 0.6, 桌面/iOS 自带 0.6 scrim)。
+     * 背景暗化不在这里做: Android 端由
+     * [io.legado.app.ui.compose.platform.PlatformDialogDim] 在 Dialog 内容内补
+     * FLAG_DIM_BEHIND 0.6 (decor=false 时窗口主题自带 dim, 无需再补), 桌面/iOS 自带 0.6 scrim。
+     *
+     * @param decorFitsSystemWindows 仅 Android 有意义: false = 窗口 edge-to-edge,
+     * ime insets 才全量派发给内容 (键盘跟随/收起检测可靠), 内容需自行避让系统栏
+     * ([io.legado.app.ui.compose.platform.bottomSheetBottomInsets]);
+     * 默认 true = 现行为, 仅底部输入面板 (ReviewPost) 显式传 false。
      */
     fun properties(
         dismissOnBackPress: Boolean = true,
         dismissOnClickOutside: Boolean = true,
-    ): DialogProperties = DialogProperties(
+        decorFitsSystemWindows: Boolean = true,
+    ): DialogProperties = platformDialogProperties(
         dismissOnBackPress = dismissOnBackPress,
         dismissOnClickOutside = dismissOnClickOutside,
-        usePlatformDefaultWidth = false,
+        decorFitsSystemWindows = decorFitsSystemWindows,
     )
 }
 

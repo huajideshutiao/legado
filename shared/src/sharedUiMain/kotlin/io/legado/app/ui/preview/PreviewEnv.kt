@@ -158,6 +158,7 @@ private class StubAppConfigAccessor : AppConfigAccessor {
     override val isNightTheme: Boolean = false
     override val isEInkMode: Boolean = false
     override val useDefaultCover: Boolean = false
+    override val loadCoverOnlyWifi: Boolean = false
     override val coverDrawBookName: Boolean = true
     override val coverDrawBookAuthor: Boolean = true
 

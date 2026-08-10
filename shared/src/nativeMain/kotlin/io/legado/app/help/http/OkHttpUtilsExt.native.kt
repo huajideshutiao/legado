@@ -154,11 +154,12 @@ actual fun KmpRequestBuilder.postMultipart(type: String?, form: Map<String, Any>
 // region 内部辅助扩展函数
 /**
  * 从 [KmpMediaType] 中解析 charset 名 (与 okhttp3.MediaType.charset() 的名字解析部分对齐)。
+ * 为 commonMain [KmpMediaType.charsetName] expect 的 nativeMain actual (iOS/鸿蒙共用)。
  *
  * 输入示例: "text/html; charset=UTF-8" -> "UTF-8"
  * 无 charset 返回 null。
  */
-private fun KmpMediaType.charsetName(): String? {
+actual fun KmpMediaType.charsetName(): String? {
     val value = this.toString()
     val idx = value.indexOf("charset=", ignoreCase = true)
     if (idx < 0) return null

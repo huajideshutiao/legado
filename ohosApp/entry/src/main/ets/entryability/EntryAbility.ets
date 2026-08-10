@@ -18,6 +18,7 @@ import { handleCryptoRequest } from '../bridge/CryptoBridgeHandler';
 import { handleHttpRequest } from '../bridge/HttpBridgeHandler';
 import { handleFilePickerRequest } from '../bridge/FilePickerBridgeHandler';
 import { handlePasteboardRequest } from '../bridge/PasteboardBridgeHandler';
+import { handleNetworkRequest } from '../bridge/NetworkBridgeHandler';
 import { handleTextCodecRequest } from '../bridge/TextCodecBridgeHandler';
 // 后台 WebView 桥接处理器 (隐藏 Web 组件 + runJavaScript 取源码, 书源 webView 规则)
 import { handleWebViewRequest } from '../bridge/WebViewBridgeHandler';
@@ -205,6 +206,23 @@ export default class EntryAbility extends UIAbility {
       console.info('[Legado] pasteboard tsfn callback registered via napi');
     } catch (e) {
       console.error('[Legado] registerPasteboardCallback failed: ' + JSON.stringify(e));
+    }
+
+    // Network tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 同 Pasteboard 模式)
+    // KMP NetworkAvailability.ohos.kt → OhosNativeBridge.invokeNetworkSync 发 query 请求,
+    // ArkTS 侧 NetworkBridgeHandler 调 @ohos.net.connection getDefaultNetSync +
+    // getConnectionPropertiesSync (需 ohos.permission.GET_NETWORK_INFO, normal+system_grant)
+    // 查询网络可用性与是否 WiFi, 完成后调 legado.networkCallback(requestId, resultJson) 回送结果
+    // 唤醒 KMP 侧 CompletableDeferred。未注册时 KMP 侧降级 true (不拦截)。
+    try {
+      legado.registerNetworkCallback((json: string): void => {
+        handleNetworkRequest(json, (requestId: number, resultJson: string): void => {
+          legado.networkCallback(requestId, resultJson);
+        });
+      });
+      console.info('[Legado] network tsfn callback registered via napi');
+    } catch (e) {
+      console.error('[Legado] registerNetworkCallback failed: ' + JSON.stringify(e));
     }
 
     // TextCodec tsfn 回调注册 (KMP → ArkTS 跨线程 dispatch, 同 Pasteboard 模式)

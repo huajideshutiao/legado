@@ -3,21 +3,22 @@
 package org.jsoup
 
 import com.fleeksoft.ksoup.nodes.Document
+import io.legado.app.utils.InputStream
+import io.legado.app.utils.URL
 import org.jsoup.internal.HttpConnection
-import java.io.BufferedInputStream
-import java.io.IOException
-import java.io.InputStream
-import java.net.URL
-import javax.net.ssl.SSLContext
-import javax.net.ssl.SSLSocketFactory
 
 /**
  * jsoup 兼容层 Connection 接口
  *
  * 该接口保留 jsoup 1.22.2 中 [org.jsoup.Connection] 的对外 API 形态,供用户 js 脚本继续使用
- * `Connection.Response`、`Connection.Method` 等类型。底层实现改为 OkHttp,不再依赖 jsoup jar。
+ * `Connection.Response`、`Connection.Method` 等类型。底层实现改为 OkHttp/Kmp,不再依赖 jsoup jar。
  *
  * 仅暴露 js 调用常用的方法,内部实现位于 [HttpConnection]。
+ *
+ * 跨平台化说明: `URL` / `InputStream` 为 commonMain expect 门面 (jvmAndAndroidMain actual
+ * typealias 到 java.net.URL / java.io.InputStream, 行为零变化); `sslContext` / `sslSocketFactory`
+ * 的入参类型因 javax.net.ssl 是 JVM 专属改为 `Any?` (JVM 端实际传参仍是 SSLContext/SSLSocketFactory,
+ * native 端无 unsafe SSL 模式, 存值不生效, 见 HttpPlatform actual 注释)。
  */
 interface Connection {
 
@@ -68,10 +69,12 @@ interface Connection {
         fun ignoreHttpErrors(ignoreHttpErrors: Boolean): Request
         fun ignoreContentType(): Boolean
         fun ignoreContentType(ignoreContentType: Boolean): Request
-        fun sslSocketFactory(): SSLSocketFactory?
-        fun sslSocketFactory(sslSocketFactory: SSLSocketFactory?): Request
-        fun sslContext(): SSLContext?
-        fun sslContext(sslContext: SSLContext?): Request
+
+        // javax.net.ssl 是 JVM 专属类型, 跨平台化后入参退化为 Any? (JVM 端实参仍为 SSLContext/SSLSocketFactory)
+        fun sslSocketFactory(): Any?
+        fun sslSocketFactory(sslSocketFactory: Any?): Request
+        fun sslContext(): Any?
+        fun sslContext(sslContext: Any?): Request
         fun data(): Collection<KeyVal>
         fun data(keyval: KeyVal): Request
         fun requestBody(): String?
@@ -85,14 +88,14 @@ interface Connection {
         fun charset(): String?
         fun charset(charset: String?): Response
         fun contentType(): String?
-
-        @Throws(IOException::class)
         fun parse(): Document
         fun body(): String
         fun bodyAsBytes(): ByteArray
         fun readFully(): Response
         fun bufferUp(): Response
-        fun bodyStream(): BufferedInputStream
+
+        /** 响应体字节流 (jvm: java.io.InputStream; native: 内存流) */
+        fun bodyStream(): InputStream
     }
 
     /** 键值对,jsoup 原版 KeyVal 接口 */
@@ -119,8 +122,8 @@ interface Connection {
     fun method(method: Method): Connection
     fun ignoreHttpErrors(ignoreHttpErrors: Boolean): Connection
     fun ignoreContentType(ignoreContentType: Boolean): Connection
-    fun sslSocketFactory(sslSocketFactory: SSLSocketFactory): Connection
-    fun sslContext(sslContext: SSLContext): Connection
+    fun sslSocketFactory(sslSocketFactory: Any?): Connection
+    fun sslContext(sslContext: Any?): Connection
     fun data(key: String, value: String): Connection
     fun data(key: String, filename: String, inputStream: InputStream): Connection
     fun data(
@@ -141,7 +144,6 @@ interface Connection {
     fun postDataCharset(charset: String): Connection
 
     /** 执行请求,返回 [Response] */
-    @Throws(IOException::class)
     fun execute(): Response
 
     /** 当前请求对象 */
@@ -151,16 +153,13 @@ interface Connection {
     fun response(): Response?
 
     companion object {
-        /** 创建一个新的 [Connection],底层使用 OkHttp */
-        @JvmStatic
+        /** 创建一个新的 [Connection] */
         fun connect(url: String): Connection = HttpConnection().url(url)
 
-        /** 创建一个新的 [Connection],底层使用 OkHttp */
-        @JvmStatic
+        /** 创建一个新的 [Connection] */
         fun connect(url: URL): Connection = HttpConnection().url(url)
 
         /** 创建一个新会话,等价于 [HttpConnection] 实例 */
-        @JvmStatic
         fun newSession(): Connection = HttpConnection()
     }
 }

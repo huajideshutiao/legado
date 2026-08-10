@@ -8,24 +8,31 @@ import io.legado.app.constant.Status
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.exception.NoStackTraceException
+import io.legado.app.help.book.BookHelpShared
 import io.legado.app.help.book.BookStorageProviders
+import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.migrateTo
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders
+import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.ActiveReadBookRegistry
+import io.legado.app.model.ReadBookPlatforms
 import io.legado.app.model.ReadBookShared
 import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.ui.book.read.ReaderPlatformProviders.getOrNull
 import io.legado.app.ui.book.read.ReaderPlatformProviders.register
+import io.legado.app.ui.book.read.page.PageSelPos
+import io.legado.app.ui.book.read.page.PageSelectionState
 import io.legado.app.ui.book.read.page.detectClickArea
 import io.legado.app.ui.book.searchContent.SearchResult
 import io.legado.app.ui.root.PlatformCapabilityProviders
@@ -53,6 +60,7 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.concurrent.Volatile
 
 /**
@@ -262,11 +270,14 @@ object ReaderPlatformProviders {
  * @param menuController 平台注入的菜单控制器
  * @param getBatteryLevel 电池电量获取函数（平台定时调 [refreshBattery] 推送新值）
  * @param layoutConfig 排版配置，默认 [ReadBookViewModelShared.LayoutConfig.DEFAULT]
+ * @param onOpenSearch 打开全文搜索页回调（对照原版 ReadBookActivity.openSearchActivity：
+ *   携带当前书/索引/结果列表，供 SearchMenuState "结果"按钮使用）
  */
 class ReaderScreenModel(
     menuControllerFactory: (ReaderScreenModel) -> ReadMenuController,
     private val getBatteryLevel: () -> Int,
     layoutConfig: ReadBookViewModelShared.LayoutConfig = ReadBookViewModelShared.LayoutConfig.DEFAULT,
+    private val onOpenSearch: (ReaderScreenModel, Book, String?) -> Unit = { _, _, _ -> },
 ) : ScreenModel {
 
     // 自管 scope（与 TocScreenModel 一致，异常兜底见 screenModelScope）
@@ -382,8 +393,65 @@ class ReaderScreenModel(
     }
 
     val menuState: ReadMenuState get() = menuController.state
+
+    /**
+     * 页内文字选择状态（搜索跳转的程序化选区与手势选择共用）。
+     * 由 ReaderRoute 经 [ReaderUiState.selection] 注入 ReadViewComposable（hoisting），
+     * 保证搜索跳转与手势选择操作同一实例。
+     */
+    val selection = PageSelectionState()
+
+    /**
+     * 全文搜索态：是否正在展示搜索结果（对照原版 ReadBookActivity.isShowingSearchResult）。
+     * 普通字段非 Compose 状态：只被返回键/点屏/搜索回传等事件读取，不驱动 UI。
+     */
+    var isShowingSearchResult = false
+
+    /**
+     * 搜索跳转设置选区期间为 true（对照原版同名字段）：高亮标记随选区分发。
+     * setter 钳制与原版一致：非搜索态时恒 false。
+     */
+    var isSelectingSearchResult = false
+        set(value) {
+            field = value && isShowingSearchResult
+        }
+
+    /** 搜索菜单状态（对照原版 SearchMenu View），由 [SearchMenuOverlay] 组合消费 */
+    val searchMenuState: SearchMenuStateImpl by lazy { SearchMenuStateImpl(this) }
+
     val currentBook: Book? get() = viewModel.book.value
     val currentChapter get() = viewModel.chapterList.value.getOrNull(viewModel.durChapterIndex.value)
+
+    /**
+     * 加载当前章节完整正文 (对照原版 ContentEditViewModel.initContent):
+     * 从章节缓存读取全文 (非当前页), 经 ContentProcessor 完整处理 (includeTitle=false,
+     * 正文不含章节标题, 标题由标题栏展示)。内容编辑对话框与桌面端文字选择对话框共用,
+     * 替代误用当前页文本 (curTextPage) 作为整章正文的问题。
+     *
+     * @param reset true 时先删缓存并重新拉取 (在线书走 WebBook.getContentAwait), 再读取处理
+     *   (对照原版 menu_reset 语义: delContent + 重拉 + 读新缓存)。
+     */
+    suspend fun loadChapterFullText(reset: Boolean = false): String? {
+        val book = viewModel.book.value ?: return null
+        val chapter = currentChapter ?: return null
+        // 缓存删除/读取 + ContentProcessor 处理均含同步文件 IO, 必须切 IO 线程
+        // (对照原版 ContentEditViewModel.initContent 在 Coroutine.async(IO) 中执行)
+        return withContext(IoDispatcher) {
+            if (reset) {
+                BookStorageProviders.get().delContent(book, chapter)
+                if (!book.isLocal) {
+                    val source = viewModel.bookSource.value
+                    if (source != null) {
+                        WebBook.getContentAwait(source, book, chapter)
+                    }
+                }
+            }
+            val raw = BookHelpShared.getContent(book, chapter) ?: return@withContext null
+            ContentProcessorProviders.get()
+                .getContent(book, chapter, raw, includeTitle = false, useReplace = true)
+                .toString()
+        }
+    }
 
     /** 书源登录入口是否可见 (对照原版 ReadMenu: menu_login.isVisible = hasLogin) */
     fun sourceLoginVisible(): Boolean = viewModel.bookSource.value?.hasLogin() == true
@@ -449,11 +517,6 @@ class ReaderScreenModel(
             }
         }
     }
-    val currentChapterText: String
-        get() = viewModel.curTextPage.value?.lines?.joinToString("\n") { line ->
-            line.columns.filterIsInstance<io.legado.app.ui.book.read.page.entities.column.TextColumn>()
-                .joinToString("") { column -> column.charData }
-        }.orEmpty()
 
     private val _batteryLevel = MutableStateFlow(getBatteryLevel())
     val batteryLevel: StateFlow<Int> = _batteryLevel.asStateFlow()
@@ -467,6 +530,105 @@ class ReaderScreenModel(
     var searchContentQuery: String = ""
     var searchResultIndex: Int = 0
 
+    // region 全文搜索态（对照原版 ReadBookActivity 的搜索段逻辑）
+
+    /**
+     * 搜索页选中结果回传后进入搜索态（对照原版 searchContentActivity 回调体
+     * ReadBookActivity:170-186）：灌列表 + 置搜索态 + 存进度快照 + 跳转 + 弹搜索菜单。
+     */
+    fun onSearchContentResult(searchResult: SearchResult) {
+        searchMenuState.upSearchResultList(searchResultList.orEmpty())
+        isShowingSearchResult = true
+        searchMenuState.updateSearchResultIndex(searchResultIndex)
+        // 退出全文搜索恢复此时进度（原版注释原文）
+        saveCurrentBookProgress()
+        skipToSearch(searchResult)
+        showActionMenu()
+    }
+
+    /**
+     * 全文搜索跳转（对照原版 ReadBookActivity.skipToSearch）：跨章时等新章装载完成
+     * 再定位（用 ReadBookShared.openChapter 的 success 回调，与 app 端 ReadBook.openChapter
+     * 同语义；ReadBookViewModelShared.openChapter 的 success 是立即触发的不适用）。
+     */
+    fun skipToSearch(searchResult: SearchResult) {
+        if (searchResult.chapterIndex != readBook.durChapterIndexValue) {
+            readBook.openChapter(searchResult.chapterIndex) {
+                jumpToPosition(searchResult)
+            }
+        } else {
+            jumpToPosition(searchResult)
+        }
+    }
+
+    /**
+     * 跳转到命中位置并高亮（对照原版 ReadBookActivity.jumpToPosition:1140-1161）。
+     * 命中高亮即文字选择机制：skipToPage 完成回调里用 [selection.selectRange] 设置选区，
+     * isSelectingSearchResult 包夹期间同时标记 isSearchResult（对照旧 upSelectChars）。
+     */
+    private fun jumpToPosition(searchResult: SearchResult) {
+        val curTextChapter = viewModel.curTextChapter.value ?: return
+        searchMenuState.updateSearchInfo()
+        val query = searchContentQuery
+        val pos = searchResultPositions(
+            pages = curTextChapter.pages,
+            // 对照原版 TextChapter.getContent(): pages 拼接
+            content = curTextChapter.pages.joinToString("") { it.text },
+            query = query,
+            searchResult = searchResult,
+        )
+        readBook.skipToPage(pos.pageIndex) {
+            val page = viewModel.curTextPage.value ?: return@skipToPage
+            // 对照旧 upSelectChars 的跨页覆盖清除：每次跳转重算前三页 selected/isSearchResult，
+            // 旧页（prev/next 流）残留的高亮在此清掉（只清 searchResult 列表内列，不动手动选区）
+            clearSearchResult()
+            isSelectingSearchResult = true
+            val start = PageSelPos(pos.lineIndex, pos.charIndex)
+            val end = when (pos.addLine) {
+                0 -> PageSelPos(pos.lineIndex, pos.charIndex + query.length - 1)
+                1 -> PageSelPos(pos.lineIndex + 1, pos.charIndex2)
+                // 跨页命中：原版 selectEndMoveIndex(1, 0, charIndex2) 终点在下一页，
+                // 单页模型无法表达，降级为当前页末行末列——与原版横向翻页模式行为一致
+                // （终点在下一页时当前页起点→页尾全部 selected）；滚动模式差异见交付报告
+                else -> {
+                    if (page.lines.isEmpty()) return@skipToPage // 占位页无行不设选区
+                    PageSelPos(page.lines.lastIndex, page.lines.last().columns.lastIndex)
+                }
+            }
+            selection.selectRange(page, start, end, markSearchResult = true)
+            isSelectingSearchResult = false
+        }
+    }
+
+    /**
+     * 退出搜索态（对照原版 ReadBookActivity.exitSearchMenu:869-879）：
+     * 置 false + 隐藏搜索菜单 + 清搜索结果高亮 + 取消选区。
+     */
+    fun exitSearchMenu() {
+        if (!isShowingSearchResult) return
+        isShowingSearchResult = false
+        // 原版 searchMenu.invalidate() + invisible()（Compose 无重绘概念，只隐藏根）
+        searchMenuState.hideRoot()
+        // 原版 ReadBook.clearSearchResult() + readView.cancelSelect(true)
+        clearSearchResult()
+        selection.cancel()
+    }
+
+    /** 清搜索结果高亮（对照原版 ReadBook.clearSearchResult → TextChapter.clearSearchResult） */
+    fun clearSearchResult() = readBook.clearSearchResult()
+
+    /**
+     * 打开全文搜索页（对照原版 ReadBookActivity.openSearchActivity:823-833）：
+     * 搜索词取选中结果的 query，回退当前搜索词；结果列表仅在首条 query 与当前
+     * 搜索词一致时携带（原版防列表与搜索词不匹配的条件）。
+     */
+    fun openSearchActivity(searchWord: String?) {
+        val book = currentBook ?: return
+        onOpenSearch(this, book, searchWord)
+    }
+
+    // endregion
+
     /**
      * 初始化书籍并装载章节（对照 app 端 ReadBookViewModel.initData + applyBookmarkPosition）。
      * chapterIndex + chapterPos 来自书签跳转入口（对照 app 端 intent extra chapterIndex/chapterPos）。
@@ -478,6 +640,15 @@ class ReaderScreenModel(
     fun initBook(book: Book, chapterIndex: Int?, chapterPos: Int? = null) {
         val isSameBook = readBook.book.value?.bookUrl == book.bookUrl
         readBook.loadBook(book)
+        // 对照原版 applyBookmarkPosition: 带跳转目标且目标位置与当前进度不同时, 先存
+        // 跳转前进度快照再跳 (返回键可恢复跳转前进度; 位置相同/无定位参数的重装不触发,
+        // 如模拟追读 initBook(book, book.durChapterIndex))
+        if (chapterIndex != null &&
+            (readBook.durChapterIndexValue != chapterIndex ||
+                (chapterPos != null && readBook.durChapterPosValue != chapterPos))
+        ) {
+            readBook.saveCurrentBookProgress()
+        }
         viewModel.loadChapter(chapterIndex ?: book.durChapterIndex)
         // 对照 app 端 applyBookmarkPosition: chapterIndex 有效时跳转到指定 chapterPos
         if (chapterIndex != null && chapterPos != null) {
@@ -581,6 +752,37 @@ class ReaderScreenModel(
         }
     }
 
+    // 恢复跳转前进度对话框的交互结果 (对照原版 ReadBookActivity.confirmRestoreProcess:
+    // Activity 字段, null=未表态 / true=总是恢复 / false=不再恢复; 不持久化, 退出阅读页
+    // ScreenModel 销毁重建时自然重置, 换书不重置与原版一致)
+    var confirmRestoreProcess: Boolean? = null
+
+    /** 跳转前进度快照 (对照原版 ReadBook.lastBookProgress) */
+    val lastBookProgress: BookProgress? get() = readBook.lastBookProgress
+
+    /** 存跳转前进度快照 (对照原版 ReadBook.saveCurrentBookProgress, 已有快照时不覆盖) */
+    fun saveCurrentBookProgress() = readBook.saveCurrentBookProgress()
+
+    /** 恢复并清空快照 (对照原版 ReadBook.restoreLastBookProgress) */
+    fun restoreLastBookProgress() = readBook.restoreLastBookProgress()
+
+    /** 放弃快照 (对照原版 restoreLastBookProcess 的 noButton/onCancelled 分支) */
+    fun clearLastBookProgress() {
+        readBook.lastBookProgress = null
+    }
+
+    /**
+     * 返回键恢复跳转前进度入口 (对照原版 ReadBookActivity.restoreLastBookProcess 三态):
+     * true=总是恢复直接恢复; null=未表态弹确认框; false=不再恢复无动作 (返回键进入条件已排除)。
+     */
+    fun restoreLastBookProcess() {
+        when {
+            confirmRestoreProcess == true -> readBook.restoreLastBookProgress()
+            confirmRestoreProcess == null ->
+                postDialogEvent(ReaderDialogEvent.RestoreProcessConfirm)
+        }
+    }
+
     // region 对话框事件 (书签/正文编辑/日志, 由 AndroidReaderMenuState 触发, ReaderRoute 渲染)
     private val _dialogEvent = MutableStateFlow<ReaderDialogEvent?>(null)
     val dialogEvent: StateFlow<ReaderDialogEvent?> = _dialogEvent.asStateFlow()
@@ -594,15 +796,21 @@ class ReaderScreenModel(
     }
     // endregion
 
-    /** 显示阅读菜单（对照 app 端 ReadBookActivity.showMenuBar → readMenu.runMenuIn） */
+    /** 显示阅读菜单（对照 app 端 ReadBookActivity.showActionMenu:749-755 的四段顺序：
+     *  朗读运行中 → 朗读面板；自动翻页 → AutoRead 面板；搜索态 → 搜索菜单；否则常规菜单） */
     fun showMenu() {
-        // 对照原版 showActionMenu: 自动翻页运行时点屏幕 → AutoReadDialog (速度滑条面板), 否则常规菜单
-        if (menuState.autoPage) {
-            postDialogEvent(ReaderDialogEvent.AutoRead)
-        } else {
-            menuController.showMenu()
+        when {
+            ReadBookPlatforms.get().isReadAloudRun ->
+                postDialogEvent(ReaderDialogEvent.ReadAloud)
+
+            menuState.autoPage -> postDialogEvent(ReaderDialogEvent.AutoRead)
+            isShowingSearchResult -> searchMenuState.runMenuIn()
+            else -> menuController.showMenu()
         }
     }
+
+    /** 弹菜单（对照原版 showActionMenu，含搜索态分支；供搜索页回传与其它入口复用） */
+    fun showActionMenu() = showMenu()
 
     /**
      * 跳转到指定章节位置 (对照 app 端 ReadBook.openChapter + applyBookmarkPosition)。
@@ -699,6 +907,10 @@ sealed interface ReaderDialogEvent {
 
     /** 章节购买确认 (对照原版 ReadBookActivity.payAction 的 alert 确认, 确认后执行 payAction JS) */
     data object ChapterPay : ReaderDialogEvent
+
+    /** 返回键恢复跳转前进度确认 (对照原版 restoreLastBookProcess 的 alert:
+     *  是=恢复并以后总是恢复, 否/关闭=放弃快照并以后不再询问) */
+    data object RestoreProcessConfirm : ReaderDialogEvent
 
     /** 未入架书退出确认 (对照原版 BaseReadActivity.finish 的"加入书架"弹窗, 确定=入架保留进度, 取消=删除) */
     data object AddToShelfConfirm : ReaderDialogEvent

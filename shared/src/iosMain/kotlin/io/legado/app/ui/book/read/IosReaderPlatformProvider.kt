@@ -534,6 +534,8 @@ private class IosReadMenuState(
 
     override fun onSeekDragStart() = Unit
     override fun onSeekStop(progress: Int) {
+        // 对照原版 skipToChapter: 进度条跳章前存跳转前进度快照 (返回键可恢复)
+        screenModel.saveCurrentBookProgress()
         screenModel.viewModel.loadChapter(progress)
     }
 

@@ -4,25 +4,17 @@ import androidx.compose.animation.core.AnimationState
 import androidx.compose.animation.core.DecayAnimationSpec
 import androidx.compose.animation.core.animateDecay
 import androidx.compose.animation.splineBasedDecay
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.input.pointer.PointerInputScope
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.util.VelocityTracker
-import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.platform.LocalDensity
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.isImage
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
-import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -65,8 +57,9 @@ import kotlin.math.min
  *
  * # 手势与点击共存（对照旧 ReadView.onTouchEvent）
  *
- * 自定义 drag 循环越过 touchSlop 才开始消费并滚动（旧 isMove 判定）；未越过 slop 的
- * 事件不消费，detectTapGestures 正常触发单击/长按（旧 !isMoved → click 分支）。
+ * 触摸手势由 ReadViewComposable 的单一分发层驱动：越过 touchSlop 后才调 [onScroll]
+ * （旧 isMove 判定）；未移动的抬手由分发层按单击处理（旧 !isMoved → click 分支）。
+ * 长按检测同样在分发层（对照旧 postDelayed(longPressRunnable)）。
  *
  * @param viewModel 阅读 ViewModel
  * @param scope 协程作用域
@@ -401,6 +394,12 @@ class ScrollPageDelegateCompose(
         // 滚动模式动画由手势速度驱动 (onFling), 此入口无额外动作
     }
 
+    override fun onTouchUp(x: Float, y: Float, velocityY: Float) {
+        // 对照原版 ScrollPageDelegate.onTouch 的 UP/CANCEL → onAnimStart → fling：
+        // 以手势末速度惯性滚动，无有效速度时直接停
+        onFling(velocityY)
+    }
+
     override fun onAnimStop() {
         // 滚动模式翻页在滚动过程中完成 (applyScrollDelta), 动画结束仅复位状态, 不清偏移
         isStarted = false
@@ -483,8 +482,6 @@ class ScrollPageDelegateCompose(
         curContent: @Composable () -> Unit,
         nextContent: @Composable () -> Unit,
         nextPlusContent: @Composable () -> Unit,
-        onClick: (TextColumn?) -> Unit,
-        onLongClick: (Float, Float) -> Unit,
     ) {
         // 尺寸变化时同步（与 app 端 setViewSize 调用时机对应）
         if (viewWidth != pageWidthPx || viewHeight != pageHeightPx) {
@@ -506,30 +503,7 @@ class ScrollPageDelegateCompose(
         }
 
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                // 滚动手势: 越过 touchSlop 才消费 (与 detectTapGestures 共存, 对照旧 isMove 判定)
-                .pointerInput(Unit) {
-                    scrollDragGesture()
-                }
-                // 单击/长按手势: 单击转发到 onTap (携带落点坐标, 供九宫格动作分发),
-                // 长按转发到 onLongClick (onPageLongPress → 页内文字选择/图片长按/空白长按)。
-                // 长按检测回归 delegate 的 detectTapGestures.onLongPress (2026-08: 顶层选择层
-                // 手写 withTimeout 长按在移动端不可靠; delegate 手势链已被证实能收到事件——
-                // 点击正常触发即证明), 顶层选择层只保留选择激活后的扩选/取消, 见 ReadViewComposable。
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onLongPress = { offset ->
-                            onLongClick(offset.x, offset.y)
-                        },
-                        onTap = { offset ->
-                            // onTap 返回 false 表示中心区域未消费, 转发给上层 onClick
-                            if (!onTap(offset.x, offset.y)) {
-                                onClick(null)
-                            }
-                        },
-                    )
-                },
+            modifier = Modifier.fillMaxSize(),
         ) {
             // 当前页: 行级平移在 PageViewComposable 内部 (contentTranslationY 提供者 +
             // 固定视口裁剪, 对照旧 drawPage 的 translate + clipRect(visibleRect))
@@ -544,53 +518,6 @@ class ScrollPageDelegateCompose(
             // relativeOffset(2) = pageOffset + textPage.height + relativePage(1).height,
             // 原版仅在其落入 visibleHeight 内时绘制; 整页滑出视口由内部裁剪自然不可见)
             nextPlusContent()
-        }
-    }
-
-    /**
-     * 滚动手势循环: 追踪速度, 越过 touchSlop 后开始滚动并消费事件。
-     *
-     * 对照旧 ReadView.onTouchEvent + ScrollPageDelegate.onTouch:
-     * - ACTION_DOWN → [onDown] (中止动画 + 记录起点)
-     * - ACTION_MOVE → 越过 slop 判定 isMove 后 [onScroll]
-     * - ACTION_UP/CANCEL → [onFling] (带末速度)
-     */
-    private suspend fun PointerInputScope.scrollDragGesture() {
-        awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false)
-            onDown(down.position.x, down.position.y)
-            val tracker = VelocityTracker()
-            tracker.addPointerInputChange(down)
-            val slop = viewConfiguration.touchSlop
-            var lastPos = down.position
-            var dragging = false
-            while (true) {
-                val event = awaitPointerEvent()
-                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                if (!change.pressed) break
-                // 事件已被其他手势消费 (文字选择扩选层) → 终止本次滚动, 避免与选择争抢
-                // (对照 detectDragGestures 的 awaitTouchSlopOrCancellation 对消费事件的处理)
-                if (change.isConsumed) break
-                if (!dragging) {
-                    val delta = change.position - down.position
-                    if (abs(delta.x) > slop || abs(delta.y) > slop) {
-                        dragging = true
-                        // 越过 slop 后重置基准, 避免 slop 位移带入滚动 (对照旧 setStartPoint)
-                        lastPos = change.position
-                    }
-                }
-                if (dragging) {
-                    tracker.addPointerInputChange(change)
-                    if (change.position != lastPos) {
-                        onScroll(change.position.x, change.position.y)
-                    }
-                    change.consume()
-                }
-                lastPos = change.position
-            }
-            if (dragging) {
-                onFling(tracker.calculateVelocity().y)
-            }
         }
     }
 

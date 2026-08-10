@@ -941,17 +941,20 @@ private class AndroidReaderMenuState(
 
     override fun onSeekStop(progress: Int) {
         when (AppConfig.progressBarBehavior) {
-            // 对照原版 onStopTrackingTouch "page" 分支: 直接按页跳转
+            // 对照原版 onStopTrackingTouch "page" 分支: 直接按页跳转 (原版 page 分支不存快照)
             "page" -> screenModel.viewModel.skipToPage(progress)
 
-            // 对照原版 "chapter" 分支: 首次拖动弹"章节跳转确认", 取消/关闭恢复原进度 (滑块自动回弹)
+            // 对照原版 "chapter" 分支: 首次拖动弹"章节跳转确认", 取消/关闭恢复原进度 (滑块自动回弹);
+            // 确认后走原版 skipToChapter 语义: 先存跳转前进度快照再跳章 (返回键可恢复)
             else -> {
                 if (confirmSkipToChapter) {
+                    screenModel.saveCurrentBookProgress()
                     screenModel.viewModel.loadChapter(progress)
                 } else {
                     activity.alert("章节跳转确认", "确定要跳转章节吗？") {
                         yesButton {
                             confirmSkipToChapter = true
+                            screenModel.saveCurrentBookProgress()
                             screenModel.viewModel.loadChapter(progress)
                         }
                         noButton { }

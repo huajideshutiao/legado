@@ -14,7 +14,9 @@ import io.legado.app.help.http.cookieJarHeader
 import io.legado.app.help.http.mergeCookies
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceNetworkProviders
+import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.utils.NetworkUtils
+import kotlin.coroutines.coroutineContext
 
 /**
  * Coil3 Extras key: 携带书源 bookUrl (sourceOrigin), 供 fetcher 层解析防盗链 header。
@@ -33,7 +35,8 @@ val PersistentCoverKey = Extras.Key<Boolean>(default = false)
 /**
  * 按 [sourceOrigin] (书源 bookUrl) 解析防盗链 header。
  *
- * 对齐原版 `AnalyzeUrl.getGlideUrl()`: source header + [SourceNetworkProviders] 中的 cookie,
+ * 对齐原版 `AnalyzeUrl.getGlideUrl()`: 构造 AnalyzeUrl 解析 header (请求头规则 JS 在 AnalyzeUrl
+ * 环境执行, java 可访问 urlNoQuery/url 等属性) + [SourceNetworkProviders] 中的 cookie,
  * 缺 cookie 会让需登录站点的封面 403/裂图。[imageUrl] 用于 source key 非 http 时的 domain 兜底,
  * 与原版 `AnalyzeUrl.domain` 取值一致。
  *
@@ -50,7 +53,17 @@ suspend fun resolveSourceHeaders(
 ): Map<String, String>? {
     if (sourceOrigin.isNullOrEmpty()) return null
     val source: BaseSource = SourceHelp.getSource(sourceOrigin) ?: return null
-    val headerMap = LinkedHashMap(source.getHeaderMap())
+    val ctx = coroutineContext
+    // 对齐原版 AnalyzeUrl(url).getGlideUrl(): 构造 AnalyzeUrl 取 headerMap。
+    // 请求头规则 JS 经 AnalyzeUrlCore.evalJS 执行, java = AnalyzeUrl 实例 (urlNoQuery 可用);
+    // 若走 source.getHeaderMap() (BaseSource.evalJS), java 是书源包装器, 无 urlNoQuery,
+    // header 规则里 java.urlNoQuery 会取到 undefined (原版图片路径可用的回归)。
+    val analyzeUrl = AnalyzeUrlFactories.create(
+        rawUrl = imageUrl ?: sourceOrigin,
+        source = source,
+        coroutineContext = ctx
+    )
+    val headerMap = LinkedHashMap(analyzeUrl.headerMap)
     // 原版 AnalyzeUrl init 把 header 里的 proxy 抽出作代理配置, 不当请求头发出
     headerMap.remove("proxy")
 

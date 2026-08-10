@@ -24,6 +24,9 @@
           ],
           "when": "inuse"
         }
+      },
+      {
+        "name": "ohos.permission.GET_NETWORK_INFO"
       }
     ],
     "abilities": [

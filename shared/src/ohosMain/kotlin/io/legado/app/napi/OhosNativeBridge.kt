@@ -1304,6 +1304,89 @@ object OhosNativeBridge {
      */
     fun isPasteboardBridgeReady(): Boolean = synchronized(lock) { pasteboardTsfn != null }
 
+    // ===== Network 同步桥 (tsfn + callback, 同 Pasteboard 模式) =====
+    // 网络状态查询 (isNetworkAvailable/isWifiConnect) 走 ArkTS @ohos.net.connection
+    // (getDefaultNetSync + getConnectionPropertiesSync, 同步 API 但仅 ArkTS 侧可调),
+    // 采用与 Pasteboard 完全一致的 "tsfn 发请求 + @CName 回调返回结果" 的同步等待模式:
+    //
+    // 调用链 (以 query 为例):
+    // KMP NetworkAvailability.ohos.kt
+    //   → invokeNetworkSync("query", "{}")
+    //   → 生成 requestId, 存入 networkPendingRequests (CompletableDeferred)
+    //   → networkTsfn(requestJson)  (fire-and-forget, dispatch 到 ArkTS 主线程)
+    //   → runBlocking { deferred.await() }  (阻塞等待结果)
+    //   → [ArkTS 主线程] NetworkBridgeHandler.handleNetworkRequest
+    //   → connection.getDefaultNetSync() + getConnectionPropertiesSync() → bearerType
+    //   → legado.networkCallback(requestId, resultJson)  (napi → @CName legado_network_callback)
+    //   → onNetworkResult(requestId, resultJson) → deferred.complete(resultJson)
+
+    /** network threadsafe_function 引用 (Kotlin → ArkTS 发送网络状态查询)。 */
+    @Volatile
+    private var networkTsfn: OhosTsfnCallback? = null
+
+    /** 待响应的 network 同步请求 Map<requestId, CompletableDeferred<resultJson>>。 */
+    private val networkPendingRequests = mutableMapOf<Long, CompletableDeferred<String>>()
+
+    /** network 请求自增 ID (原子性由 [lock] 保护)。 */
+    private var networkRequestCounter = 0L
+
+    /** 注入 network tsfn (由 legado_napi.cpp RegisterNetworkCallback 调用)。 */
+    fun registerNetworkFn(tsfn: OhosTsfnCallback) {
+        synchronized(lock) {
+            networkTsfn = tsfn
+        }
+    }
+
+    /**
+     * network 查询结果回调 (由 ArkTS 侧调 @CName legado_network_callback 触发)。
+     *
+     * @param requestId 对应 [invokeNetworkSync] 生成的请求 ID
+     * @param resultJson ArkTS 返回的结果 JSON (`{ ok: true, network, wifi }` / `{ ok: false, error }`)
+     */
+    fun onNetworkResult(requestId: Long, resultJson: String) {
+        val deferred = synchronized(lock) { networkPendingRequests.remove(requestId) }
+        deferred?.complete(resultJson)
+    }
+
+    /**
+     * 同步查询网络状态 (阻塞等待 ArkTS 返回结果)。
+     *
+     * @param action 操作类型: "query" (网络可用性 + 是否 WiFi 一并返回)
+     * @param payloadJson 操作参数 JSON (当前 "{}")
+     * @param timeoutMs 超时毫秒 (默认 2s, 同步 API 查询应当极快)
+     * @return ArkTS 返回的结果 JSON; tsfn 未注册或超时返回 null (调用方降级 true)
+     */
+    fun invokeNetworkSync(action: String, payloadJson: String, timeoutMs: Long = 2000L): String? {
+        val requestId = synchronized(lock) { ++networkRequestCounter }
+        val deferred = CompletableDeferred<String>()
+        synchronized(lock) { networkPendingRequests[requestId] = deferred }
+
+        val requestJson = KS_JSON.encodeToString(
+            NetworkBridgeRequest(requestId = requestId, action = action, payload = payloadJson)
+        )
+        val tsfn = synchronized(lock) { networkTsfn }
+        if (tsfn == null) {
+            // 降级: tsfn 未注册 (napi 未接入阶段), 移除 pending 请求返回 null
+            synchronized(lock) { networkPendingRequests.remove(requestId) }
+            return null
+        }
+        runCatching { tsfn(requestJson) }.onFailure {
+            // tsfn 调用失败 (module 卸载 / 线程异常), 移除 pending 请求返回 null
+            synchronized(lock) { networkPendingRequests.remove(requestId) }
+            return null
+        }
+
+        val result = runBlocking { withTimeoutOrNull(timeoutMs) { deferred.await() } }
+        synchronized(lock) { networkPendingRequests.remove(requestId) }
+        return result
+    }
+
+    /**
+     * 检查 network 桥是否已就绪 (tsfn 已注入)。
+     * NetworkAvailability.ohos.kt 据此判断走真实查询还是降级 true。
+     */
+    fun isNetworkBridgeReady(): Boolean = synchronized(lock) { networkTsfn != null }
+
     // ===== TextCodec 同步桥 (tsfn + callback, 同 Crypto/Pasteboard 模式) =====
     // TXT 解析的 GB18030/Big5 编解码走 ArkTS @ohos.util.TextDecoder/TextEncoder
     // (支持 gbk/gb18030/big5), 无 NDK C 接口, 需 tsfn 桥接。
@@ -1724,6 +1807,14 @@ object OhosNativeBridge {
     /** pasteboard 桥请求 payload (Kotlin → ArkTS, 同 ImageBridgeRequest 结构, action=read/write)。 */
     @Serializable
     private data class PasteboardBridgeRequest(
+        val requestId: Long,
+        val action: String,
+        val payload: String,
+    )
+
+    /** network 桥请求 payload (Kotlin → ArkTS, 同 ImageBridgeRequest 结构, action=query)。 */
+    @Serializable
+    private data class NetworkBridgeRequest(
         val requestId: Long,
         val action: String,
         val payload: String,

@@ -10,10 +10,12 @@ import io.legado.app.data.entities.BaseSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.archive.ArchiveProviders
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.coroutine.ConcurrentRateLimiter
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.http.BackstageWebViewProviders
 import io.legado.app.help.http.CookieStoreProviders
 import io.legado.app.help.http.StrResponse
+import io.legado.app.help.http.cookieJarHeader
 import io.legado.app.help.source.SourceVerificationHelpShared
 import io.legado.app.help.toast.Toasters
 import io.legado.app.help.ui.OpenUrlProviders
@@ -42,6 +44,8 @@ import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import org.jsoup.Connection
+import org.jsoup.Jsoup
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 
@@ -388,6 +392,73 @@ interface JsExtensionsCommon {
         }.getOrElse {
             StrResponse(analyzeUrl.url, it.stackTraceStr)
         }
+    }
+
+    /**
+     * js实现重定向拦截,网络访问get
+     *
+     * (从 jvmAndAndroidMain JsExtensionsJvm 下沉, 函数体逐行等价; 唯一平台差异:
+     * sslContext 入参经 [JsExtensionsPlatform.unsafeSslContext] 门面, native 端为 null 不走 unsafe SSL)
+     */
+    fun get(urlStr: String, headers: Map<String, String>): Connection.Response {
+        val requestHeaders = if (getSource()?.enabledCookieJar == true) {
+            headers.toMutableMap().apply { put(cookieJarHeader, "1") }
+        } else headers
+        val rateLimiter = ConcurrentRateLimiter(getSource())
+        val response = rateLimiter.withLimitBlocking {
+            jsContext.ensureActive()
+            Jsoup.connect(urlStr)
+                .sslContext(JsExtensionsPlatform.unsafeSslContext())
+                .ignoreContentType(true)
+                .followRedirects(false)
+                .headers(requestHeaders)
+                .method(Connection.Method.GET)
+                .execute()
+        }
+        return response
+    }
+
+    /**
+     * js实现重定向拦截,网络访问head,不返回Response Body更省流量
+     */
+    fun head(urlStr: String, headers: Map<String, String>): Connection.Response {
+        val requestHeaders = if (getSource()?.enabledCookieJar == true) {
+            headers.toMutableMap().apply { put(cookieJarHeader, "1") }
+        } else headers
+        val rateLimiter = ConcurrentRateLimiter(getSource())
+        val response = rateLimiter.withLimitBlocking {
+            jsContext.ensureActive()
+            Jsoup.connect(urlStr)
+                .sslContext(JsExtensionsPlatform.unsafeSslContext())
+                .ignoreContentType(true)
+                .followRedirects(false)
+                .headers(requestHeaders)
+                .method(Connection.Method.HEAD)
+                .execute()
+        }
+        return response
+    }
+
+    /**
+     * 网络访问post
+     */
+    fun post(urlStr: String, body: String, headers: Map<String, String>): Connection.Response {
+        val requestHeaders = if (getSource()?.enabledCookieJar == true) {
+            headers.toMutableMap().apply { put(cookieJarHeader, "1") }
+        } else headers
+        val rateLimiter = ConcurrentRateLimiter(getSource())
+        val response = rateLimiter.withLimitBlocking {
+            jsContext.ensureActive()
+            Jsoup.connect(urlStr)
+                .sslContext(JsExtensionsPlatform.unsafeSslContext())
+                .ignoreContentType(true)
+                .followRedirects(false)
+                .requestBody(body)
+                .headers(requestHeaders)
+                .method(Connection.Method.POST)
+                .execute()
+        }
+        return response
     }
 
     /**

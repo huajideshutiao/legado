@@ -43,7 +43,9 @@ data class PageSelPos(
  * 对照 app 端 View 链的职责划分：
  * - [longPressStart] ← 旧 `ReadView.onLongPress` → `ContentTextView.longPress`（严格列命中）+ BreakIterator 词级展开
  * - [extendTo] ← 旧 `ReadView.selectText` → `ContentTextView.selectText/selectStartMoveIndex/selectEndMoveIndex`（粗命中 + 起止钳制）
- * - [cancel] ← 旧 `ContentTextView.cancelSelect`（ACTION_DOWN 点按取消 / 翻页 upContent 清除）
+ * - [cancel] ← 旧 `ContentTextView.cancelSelect`（ACTION_DOWN 点按取消 / 翻页清除——旧版翻页清选择
+ *   是 moveToNextPage 显式 cancelSelect + setContent 换页实例后旧 selected 标志随实例废弃，
+ *   upContent 链本身不含 cancelSelect）
  * - [selectedText] ← 旧 `ContentTextView.getSelectedText`
  * - [markColumns] ← 旧 `ContentTextView.upSelectChars`（区间内 TextColumn.selected = true，驱动高亮绘制）
  *
@@ -96,8 +98,20 @@ class PageSelectionState {
     /** 选择作用的页面实例（翻页后旧页数据不再被改写） */
     private var pageRef: TextPage? = null
 
+    /** 当前选择作用的页面实例（只读视图，供外部判断选区是否仍位于当前页） */
+    val currentPage: TextPage? get() = pageRef
+
     /** 长按命中位置（对照旧 `ReadView.initialTextPos`，拖拽扩选的方向基准） */
     private var initialPos = PageSelPos.EMPTY
+
+    /** 起点手柄反转标志（对照旧 `ContentTextView.reverseStartCursor`：起点手柄拖过头后
+     *  职责互换为驱动终点，见 [moveStartTo]；手柄抬手时经 [resetReverseCursor] 复位） */
+    var reverseStartCursor = false
+        private set
+
+    /** 终点手柄反转标志（对照旧 `ContentTextView.reverseEndCursor`，见 [moveEndTo]） */
+    var reverseEndCursor = false
+        private set
 
     // region 命中判定
 
@@ -215,6 +229,143 @@ class PageSelectionState {
         tick++
     }
 
+    /**
+     * 起点手柄拖动（对照旧 `ContentTextView.selectStartMove`）：粗命中后按与终点的关系
+     * 更新起点；拖过头（命中在终点之后）时以 x 前移两倍手柄宽二次粗命中确认，仍越过
+     * 终点才左右手柄互换职责（[reverseStartCursor] 置位、[reverseEndCursor] 复位，调用方
+     * 按 [reverseStartCursor] 把后续 MOVE 分流到 [moveEndTo]）。
+     *
+     * @param handleWidthPx 手柄像素宽（对照旧 `cursorWidth` = 24.dpToPx，反转判定用）
+     */
+    fun moveStartTo(
+        x: Float,
+        y: Float,
+        handleWidthPx: Float,
+        contentOffsetY: Float,
+        viewWidth: Float,
+    ) {
+        val page = pageRef ?: return
+        if (!isActive) return
+        val hit = hitRough(page, x, y - contentOffsetY, viewWidth) ?: return
+        // 同位置短路（对照旧 selectStartMove 首行 compare == 0 返回）
+        if (hit.pos.compareTo(start) == 0) return
+        if (hit.pos.compareTo(end) <= 0) {
+            // 未拖过头：起点移到命中位置（对照旧 selectStartMoveIndex 的 max(0, charIndex)）
+            start = clampStart(hit.pos)
+        } else {
+            // 拖过头：二次粗命中（x 前移两倍手柄宽）仍越过终点才反转
+            // （对照旧 touchRough(x - 2 * cursorWidth) + textPos > selectEnd 判据）
+            val check = hitRough(page, x - 2 * handleWidthPx, y - contentOffsetY, viewWidth)
+                ?: return
+            if (check.pos.compareTo(end) <= 0) return
+            reverseStartCursor = true
+            reverseEndCursor = false
+            // 互换职责：终点并到起点位置（含原终点列，对照旧 selectEnd.columnIndex++），
+            // 起点移到拖动位置（对照旧 selectStartMoveIndex(selectEnd) + selectEndMoveIndex(textPos)
+            // —— 旧代码内层 touchRough 的 textPos 遮蔽外层同名参数，取的是二次粗命中位置）
+            end = PageSelPos(end.lineIndex, end.columnIndex + 1)
+            start = clampStart(end)
+            end = clampEnd(page, check.pos)
+        }
+        markColumns()
+        tick++
+    }
+
+    /**
+     * 终点手柄拖动（对照旧 `ContentTextView.selectEndMove`）：粗命中后按与起点的关系
+     * 更新终点；拖过头（命中在起点之前）时以 x 后移两倍手柄宽二次粗命中确认，仍越过
+     * 起点才左右手柄互换职责（[reverseEndCursor] 置位、[reverseStartCursor] 复位，调用方
+     * 按 [reverseEndCursor] 把后续 MOVE 分流到 [moveStartTo]）。
+     */
+    fun moveEndTo(
+        x: Float,
+        y: Float,
+        handleWidthPx: Float,
+        contentOffsetY: Float,
+        viewWidth: Float,
+    ) {
+        val page = pageRef ?: return
+        if (!isActive) return
+        val hit = hitRough(page, x, y - contentOffsetY, viewWidth) ?: return
+        // 同位置短路（对照旧 selectEndMove 首行 compare == 0 返回）
+        if (hit.pos.compareTo(end) == 0) return
+        if (hit.pos.compareTo(start) >= 0) {
+            // 未拖过头：终点移到命中位置（对照旧 selectEndMoveIndex 的 min(charIndex, lastIndex)）
+            end = clampEnd(page, hit.pos)
+        } else {
+            // 拖过头：二次粗命中（x 后移两倍手柄宽）仍越过起点才反转
+            // （对照旧 touchRough(x + 2 * cursorWidth) + textPos < selectStart 判据）
+            val check = hitRough(page, x + 2 * handleWidthPx, y - contentOffsetY, viewWidth)
+                ?: return
+            if (check.pos.compareTo(start) >= 0) return
+            reverseEndCursor = true
+            reverseStartCursor = false
+            // 互换职责：起点并到终点位置（含原起点列，对照旧 selectStart.columnIndex--），
+            // 终点移到拖动位置（对照旧 selectEndMoveIndex(selectStart) + selectStartMoveIndex(textPos)
+            // —— 旧代码内层 touchRough 的 textPos 遮蔽外层同名参数，取的是二次粗命中位置）
+            start = PageSelPos(start.lineIndex, start.columnIndex - 1)
+            end = clampEnd(page, start)
+            start = clampStart(check.pos)
+        }
+        markColumns()
+        tick++
+    }
+
+    /** 复位手柄反转标志（对照旧 `ContentTextView.resetReverseCursor`：手柄抬手时调用） */
+    fun resetReverseCursor() {
+        reverseStartCursor = false
+        reverseEndCursor = false
+    }
+
+    /**
+     * 程序化设置选区（全文搜索跳转用，对照旧 `ContentTextView.selectStartMoveIndex` +
+     * `selectEndMoveIndex` + `upSelectChars` 的最终状态）。一次性设置起止并全量覆盖
+     * 当前页的 selected 标记；[markSearchResult] 为 true 时区间内列同时标记
+     * [TextColumn.isSearchResult]（对照旧 upSelectChars 的
+     * `column.isSearchResult = selected && isSelectingSearchResult`）。
+     *
+     * 旧版起止含 relativePagePos 维度（跨页命中终点在下一页），本类为单页模型
+     * 无法表达跨页区间，由调用方把终点降级为当前页末行末列（对照旧横向翻页模式
+     * 行为：终点在下一页时当前页从起点到页尾全部 selected）。
+     */
+    fun selectRange(
+        page: TextPage,
+        startPos: PageSelPos,
+        endPos: PageSelPos,
+        markSearchResult: Boolean = false,
+    ) {
+        // 上一轮选择未清理时先清（防御：与 longPressStart 同款守卫）
+        if (isActive || pageRef != null) clearColumns()
+        pageRef = page
+        initialPos = startPos
+        start = clampStart(startPos)
+        // 行越界钳制到页内（旧版算法保证 addLine=1 时 lineIndex+1 不越界，此处兜底）
+        val safeEnd = PageSelPos(
+            endPos.lineIndex.coerceIn(0, page.lines.lastIndex),
+            endPos.columnIndex,
+        )
+        end = clampEnd(page, safeEnd)
+        markColumns()
+        if (markSearchResult) {
+            // 对照旧 upSelectChars 的覆盖语义：整页重算 isSearchResult（未选中列同步清除），
+            // 命中列同步加入 page.searchResult（旧版 `textPage.searchResult.add(column)`）——
+            // 否则该集合恒空，ReadBookShared.clearSearchResult 依赖它清标志会失效，
+            // 退出搜索态后本次搜索高亮残留
+            for (line in page.lines) {
+                for (column in line.columns) {
+                    if (column is TextColumn) {
+                        column.isSearchResult = column.selected
+                        if (column.isSearchResult) {
+                            page.searchResult.add(column)
+                        }
+                    }
+                }
+            }
+        }
+        isActive = true
+        tick++
+    }
+
     /** 取消选择并清空当前页高亮（对照旧 cancelSelect）。翻页/点按/空白点击时调用。 */
     fun cancel() {
         if (!isActive && pageRef == null) return
@@ -239,6 +390,39 @@ class PageSelectionState {
         val line = page.getLine(s.lineIndex)
         val column = line.columns.getOrNull(s.columnIndex) ?: return null
         return Offset((column.start + column.end) / 2f, line.lineTop)
+    }
+
+    /**
+     * 起点手柄锚点（页内坐标）：起点列 start x（行尾越界取上一列 end）+ 起点行底 y。
+     * 对照旧 `selectStartMoveIndex` → upSelectedStart 的游标定位（x = 列 start /
+     * charIndex == 列数取列 end；y = 行底 lineBottom，与菜单锚点 [selectionAnchor] 的
+     * lineTop 口径不同：手柄贴行底，菜单锚点用行顶）。
+     */
+    fun startHandleOffset(): Offset? {
+        val page = pageRef ?: return null
+        val s = start
+        if (!s.isValid) return null
+        val line = page.getLine(s.lineIndex)
+        val columns = line.columns
+        val column = line.getColumn(s.columnIndex)
+        val x = if (s.columnIndex < columns.size) column.start else column.end
+        return Offset(x, line.lineBottom)
+    }
+
+    /**
+     * 终点手柄锚点（页内坐标）：终点列 end x（行首越界取上一列 start）+ 终点行底 y。
+     * 对照旧 `selectEndMoveIndex` → upSelectedEnd（x = 列 end / charIndex == -1 取列
+     * start；y = 行底 lineBottom）。
+     */
+    fun endHandleOffset(): Offset? {
+        val page = pageRef ?: return null
+        val e = end
+        if (!e.isValid) return null
+        val line = page.getLine(e.lineIndex)
+        val columns = line.columns
+        val column = line.getColumn(e.columnIndex)
+        val x = if (e.columnIndex > -1) column.end else column.start
+        return Offset(x, line.lineBottom)
     }
 
     /**

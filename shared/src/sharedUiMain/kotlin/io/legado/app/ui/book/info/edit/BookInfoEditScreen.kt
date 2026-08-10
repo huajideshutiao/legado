@@ -4,16 +4,18 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.DropdownMenuItem
@@ -27,12 +29,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Book
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppOutlinedButton
 import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.platform.bringIntoViewOnIme
+import io.legado.app.ui.compose.platform.imeDismissPadding
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
@@ -147,10 +152,16 @@ fun BookInfoEditScreen(
     actions: BookInfoEditUiActions,
     coverSlot: @Composable (Book?, Modifier) -> Unit,
 ) {
+    // 导航条避让走滚动区末尾 Spacer (对齐原版 scrollView clipToPadding=false), ime 留在根
+    // 减去 ime (对齐原版 navigationBarHeight 的 coerceAtLeast(0))
+    val navBottom = WindowInsets.navigationBars
+        .exclude(WindowInsets.ime)
+        .asPaddingValues()
+        .calculateBottomPadding()
     Column(
         Modifier
             .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime)),
+            .imeDismissPadding(),
     ) {
         AppTitleBar(
             title = stringResource(Res.string.book_info_edit),
@@ -194,13 +205,17 @@ fun BookInfoEditScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 4.dp),
         ) {
+            var coverUrlFocused by remember { mutableStateOf(false) }
             AppOutlinedTextField(
                 value = state.coverUrl,
                 onValueChange = { actions.onCoverUrlChange(it) },
                 label = stringResource(Res.string.cover_path),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 4.dp),
+                    .padding(top = 4.dp)
+                    .onFocusChanged { coverUrlFocused = it.isFocused }
+                    // 键盘弹出/窗口收缩后聚焦字段可能再次滚出视口, 重新滚到可见 (见 ImeInsets KDoc)
+                    .bringIntoViewOnIme(coverUrlFocused),
             )
             Row(Modifier.padding(horizontal = 4.dp)) {
                 AppOutlinedButton(stringResource(Res.string.select_local_image)) {
@@ -216,20 +231,28 @@ fun BookInfoEditScreen(
                     actions.onRefreshCover()
                 }
             }
+            var introFocused by remember { mutableStateOf(false) }
             AppOutlinedTextField(
                 value = state.intro,
                 onValueChange = { actions.onIntroChange(it) },
                 label = stringResource(Res.string.book_intro),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 4.dp),
+                    .padding(top = 4.dp)
+                    .onFocusChanged { introFocused = it.isFocused }
+                    .bringIntoViewOnIme(introFocused),
             )
+            var bookUrlFocused by remember { mutableStateOf(false) }
             AppOutlinedTextField(
                 value = state.bookUrl,
                 onValueChange = { actions.onBookUrlChange(it) },
                 label = stringResource(Res.string.book_url),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { bookUrlFocused = it.isFocused }
+                    .bringIntoViewOnIme(bookUrlFocused),
             )
+            Spacer(Modifier.height(navBottom))
         }
     }
 }

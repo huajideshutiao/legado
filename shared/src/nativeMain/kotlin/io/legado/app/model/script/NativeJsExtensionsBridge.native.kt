@@ -2,8 +2,11 @@
 
 package io.legado.app.model.script
 
+import com.fleeksoft.ksoup.nodes.Node
 import io.legado.app.help.JsEncodeUtilsDefaults
+import io.legado.app.data.entities.BaseBook
 import io.legado.app.data.entities.BaseSource
+import io.legado.app.data.entities.BookChapterLike
 import io.legado.app.help.JsExtensionsCommon
 import io.legado.app.help.crypto.AsymmetricCrypto
 import io.legado.app.help.crypto.NativeAsymmetricCrypto
@@ -12,12 +15,16 @@ import io.legado.app.help.crypto.Sign
 import io.legado.app.help.crypto.SymmetricCrypto
 import io.legado.app.help.crypto.NativeSymmetricCrypto
 import io.legado.app.help.http.StrResponse
+import io.legado.app.help.source.SourceCacheProvider
+import io.legado.app.help.source.SourceNetworkProvider
 import io.legado.app.model.analyzeRule.AnalyzeRuleCore
 import io.legado.app.model.analyzeRule.AnalyzeUrlCore
 import io.legado.app.model.analyzeRule.QueryTTF
 import io.legado.app.utils.GSON
 import io.legado.app.utils.JsURL
+import io.legado.app.utils.fromJsonObject
 import io.legado.app.utils.toJson
+import org.jsoup.Connection
 import io.legado.app.napi.quickjs.JSContext
 import io.legado.app.napi.quickjs.JSValue
 import io.legado.app.napi.quickjs.qjs_EvalTypeGlobal
@@ -59,6 +66,8 @@ import kotlinx.cinterop.readValue
 import kotlinx.cinterop.staticCFunction
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.value
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 
 /**
  * native 端 (iOS/鸿蒙) JsExtensions 桥接器: 把 [JsExtensionsCommon] 等 Kotlin 对象桥接为 JS 对象。
@@ -98,50 +107,66 @@ import kotlinx.cinterop.value
  * - 1100-1199: AsymmetricCrypto 对象方法 (setPrivateKey/setPublicKey/decrypt/encrypt/decryptStr/encryptHex/encryptBase64)
  * - 1200-1299: Sign 对象方法 (setPrivateKey/setPublicKey/sign/signHex/verify)
  * - 13-29: 编解码补齐/重载 (strToBytes/bytesToStr/base64 系/hexDecodeToByteArray/encodeURI/timeFormatUTC/toNumChapter/toURL)
- * - 300-399: 网络族 (ajax/ajaxAll/connect/webView 系/getCookie/getWebViewUA)
+ * - 300-399: 网络族 (ajax/ajaxAll/connect/webView 系/getCookie/getWebViewUA; 309-311 java get/head/post)
  * - 400-499: UI/杂项 (refreshUi/log/logType/toast/longToast/androidId/openUrl/startBrowser 系/getVerificationCode)
  * - 500-599: 字体族 (queryTTF/queryBase64TTF/replaceFont)
  * - 600-699: 文件/压缩族 (getFile/readFile/readTxtFile/deleteFile/解压全族/downloadFile/cacheFile/importScript)
+ * - 700-799: Connection.Response 对象方法 (java.get/head/post 返回值: body/statusCode/url/header/cookie 等)
  * - 1300-1399: QueryTTF 对象方法; 1400-1499: StrResponse 对象方法; 1500-1599: JsURL 对象属性;
  *   1600-1699: BaseSource 对象方法 (getKey/getTag/getSourceType/getHeaderMap/getLoginUrl/getHeader/getLoginJs/getConcurrentRate/getJsLib)
+ * - 1700-2199: 复杂对象属性桥 (NativeJsPropertyBridge, book/source/chapter/java 属性 getter,
+ *   分派表与 JS 工厂见 NativeJsPropertyBridge.native.kt; >= 1700 在 dispatch 开头短路转发)
+ * - 2200+: 带参分派 (NativeJsPropertyBridge.dispatchWithArgs): 2300-2399 book 变量/方法面 |
+ *   2400-2499 chapter 变量/方法面 | 2500-2599 cookie (SourceNetworkProvider) |
+ *   2600-2699 cache (SourceCacheProvider) | 2700-3199 属性写 (setterId = getterId + 1000) |
+ *   3200-3299 ksoup Element/Node 方法面 (src binding 逐项循环)
  *
- * 注: AnalyzeUrlCore/AnalyzeRuleCore 实现 JsExtensionsCommon 但不实现 JsEncodeUtilsDefaults,
- * 故 md5Encode 等摘要方法在 AnalyzeUrlCore/AnalyzeRuleCore 路径下不可用 (JS 调用返回 undefined);
- * createSymmetricCrypto 等工厂方法直接调用 native 端 [NativeSymmetricCrypto],
- * 不依赖 JsEncodeUtilsDefaults (iOS/鸿蒙 actual 均 typealias 到 NativeSymmetricCrypto)。
+ * 注: AnalyzeUrlCore/AnalyzeRuleCore 不实现 JsEncodeUtilsDefaults (JVM 端由 JsExtensionsJvm
+ * 多继承注入同接口), 100-199 摘要段对规则类用同源默认实现补全 (encodeDefaultsOf),
+ * 保证书源 java.md5Encode 等与 Android 端同结果; createSymmetricCrypto 等工厂方法直接调用
+ * native 端 [NativeSymmetricCrypto], 不依赖 JsEncodeUtilsDefaults。
+ *
+ * 注: cookie/cache binding 注入依赖 [NativeJsEngine.toJsValue] 识别 SourceNetworkProvider /
+ * SourceCacheProvider (NativeJsEngine.native.kt, 需并行修改方生效; 工厂与分派段已在本文件就绪)。
  */
 object NativeJsExtensionsBridge {
 
     /**
      * handle → Kotlin 对象映射 (强引用, 防止 GC)。
      *
-     * 注: Kotlin/Native 无 `java.util.concurrent.ConcurrentHashMap`, 用普通 HashMap;
-     * quickjs 单线程模型, scope 在单线程内串行访问 (与 native 端 SourceCacheProvider 内存层策略一致)。
+     * 全局共享: iOS/鸿蒙各线程独立 scope 并发 eval, register/unregister/lookup 跨线程
+     * 访问同一表; K/N 无 ConcurrentHashMap, 所有操作由 [handleTableLock] 串行化。
      */
     private val handleTable = HashMap<Long, Any>()
+
+    /** handle 表全局锁 (可重入; 临界区只做 map 操作, 不含 JS 回调/IO, 无死锁风险)。 */
+    private val handleTableLock = SynchronizedObject()
 
     /**
      * handle 自增计数器。
      *
-     * 注: Kotlin/Native 无 `java.util.concurrent.atomic.AtomicLong`, 用普通 var Long;
-     * quickjs 单线程模型, 自增在单线程内串行执行, 无竞态。
+     * 在 [handleTableLock] 内自增并入表 (成对原子), 保证跨线程 handle 唯一。
      */
     private var handleCounter: Long = 0
 
     /** 注册 Kotlin 对象, 返回 handle */
-    fun registerObject(obj: Any): Long {
+    fun registerObject(obj: Any): Long = synchronized(handleTableLock) {
         handleCounter += 1
         val handle = handleCounter
         handleTable[handle] = obj
-        return handle
+        handle
     }
 
     /** 取 Kotlin 对象 */
-    fun getObject(handle: Long): Any? = handleTable[handle]
+    fun getObject(handle: Long): Any? = synchronized(handleTableLock) {
+        handleTable[handle]
+    }
 
     /** 注销 handle (scope close 时调用) */
     fun unregisterObject(handle: Long) {
-        handleTable.remove(handle)
+        synchronized(handleTableLock) {
+            handleTable.remove(handle)
+        }
     }
 
     /**
@@ -170,6 +195,16 @@ object NativeJsExtensionsBridge {
             is QueryTTF -> "__createQueryTTFObj"
             is StrResponse -> "__createStrResponseObj"
             is JsURL -> "__createJsUrlObj"
+            // 复杂对象属性桥 (NativeJsPropertyBridge): 工厂带属性 getter
+            is BaseSource -> "__createBaseSourceObj"
+            is BaseBook -> "__createBookObj"
+            is BookChapterLike -> "__createChapterObj"
+            is AnalyzeUrlCore, is AnalyzeRuleCore -> "__createAnalyzeObj"
+            // cookie/cache binding (SourceNetworkProvider/SourceCacheProvider, 注入侧见 NativeJsEngine)
+            is SourceNetworkProvider -> "__createCookieObj"
+            is SourceCacheProvider -> "__createCacheObj"
+            // ksoup Element/Node (src binding 逐项循环场景, 工厂见 NativeJsPropertyBridge)
+            is Node -> "__createElementObj"
             else -> "__createJavaObj"
         }
         val js = "$factoryFn($handle)"
@@ -243,6 +278,17 @@ object NativeJsExtensionsBridge {
         methodId: Int,
         argsArray: CValue<JSValue>
     ): CValue<JSValue> {
+        // 复杂对象属性/方法段 (>= 1700, NativeJsPropertyBridge):
+        // 1700-2199 属性 getter 无参数, 直接转发跳过 JS Array 解析 (hot path: 一次属性读取零堆分配);
+        // 2200+ 属性写/变量方法/cookie/cache 需解析参数后转发 (setter 与调用路径, 非 hot path)
+        if (methodId >= PROPERTY_ID_BASE) {
+            return if (methodId < PROPERTY_WRITE_BASE) {
+                NativeJsPropertyBridge.dispatch(ctx, obj, methodId) ?: jsUndefined()
+            } else {
+                val args = jsArrayToList(ctx, argsArray)
+                NativeJsPropertyBridge.dispatchWithArgs(ctx, obj, methodId, args) ?: jsUndefined()
+            }
+        }
         // 把 JS Array 转为 Kotlin List<Any?>
         val args = jsArrayToList(ctx, argsArray)
 
@@ -402,30 +448,20 @@ object NativeJsExtensionsBridge {
             }
 
             // ============ JsEncodeUtilsDefaults 摘要/HMAC 面 (100-199) ============
-            obj is JsEncodeUtilsDefaults && methodId == 101 -> {
-                // md5Encode(str)
-                stringToJsValue(ctx, obj.md5Encode(args.getString(0)))
-            }
-            obj is JsEncodeUtilsDefaults && methodId == 102 -> {
-                // md5Encode16(str)
-                stringToJsValue(ctx, obj.md5Encode16(args.getString(0)))
-            }
-            obj is JsEncodeUtilsDefaults && methodId == 103 -> {
-                // digestHex(data, algorithm)
-                stringToJsValue(ctx, obj.digestHex(args.getString(0), args.getString(1)))
-            }
-            obj is JsEncodeUtilsDefaults && methodId == 104 -> {
-                // digestBase64Str(data, algorithm)
-                stringToJsValue(ctx, obj.digestBase64Str(args.getString(0), args.getString(1)))
-            }
-            obj is JsEncodeUtilsDefaults && methodId == 105 -> {
-                // HMacHex(data, algorithm, key)
-                stringToJsValue(ctx, obj.HMacHex(args.getString(0), args.getString(1), args.getString(2)))
-            }
-            obj is JsEncodeUtilsDefaults && methodId == 106 -> {
-                // HMacBase64(data, algorithm, key)
-                stringToJsValue(ctx, obj.HMacBase64(args.getString(0), args.getString(1), args.getString(2)))
-            }
+            // AnalyzeRuleCore/AnalyzeUrlCore 不实现 JsEncodeUtilsDefaults (JVM 端由 JsExtensionsJvm
+            // 多继承注入同接口), 规则类走同源默认实现 (NativeRuleEncodeDefaults, 复用 MD5Utils /
+            // NativeDigestOps/NativeHmacOps, 非重写), 保证 java.md5Encode 等与 Android 端同结果
+            methodId in 101..106 -> encodeDefaultsOf(obj)?.let { enc ->
+                when (methodId) {
+                    101 -> stringToJsValue(ctx, enc.md5Encode(args.getString(0)))
+                    102 -> stringToJsValue(ctx, enc.md5Encode16(args.getString(0)))
+                    103 -> stringToJsValue(ctx, enc.digestHex(args.getString(0), args.getString(1)))
+                    104 -> stringToJsValue(ctx, enc.digestBase64Str(args.getString(0), args.getString(1)))
+                    105 -> stringToJsValue(ctx, enc.HMacHex(args.getString(0), args.getString(1), args.getString(2)))
+                    106 -> stringToJsValue(ctx, enc.HMacBase64(args.getString(0), args.getString(1), args.getString(2)))
+                    else -> jsUndefined()
+                }
+            } ?: jsUndefined()
 
             // ============ 工厂方法 (200-299) → 返回 handle (Float64) ============
             obj is JsExtensionsCommon && methodId == 201 -> {
@@ -641,6 +677,46 @@ object NativeJsExtensionsBridge {
             obj is JsExtensionsCommon && methodId == 308 -> {
                 // getWebViewUA()
                 stringToJsValue(ctx, obj.getWebViewUA())
+            }
+            obj is JsExtensionsCommon && methodId == 309 -> {
+                // java.get(url, headers) — 网络 GET (单参 java.get(key) 走 25 变量读取; 双参分派对齐 JVM)
+                // headers 由 JS 层 JSON.stringify (对象/JSON 字符串都转成 JSON 文本), 此处解析回 Map
+                val headerMap = parseHeaderArg(args.getOrNull(1))
+                qjs_NewFloat64(ctx, registerObject(obj.get(args.getString(0), headerMap)).toDouble())
+            }
+            obj is JsExtensionsCommon && methodId == 310 -> {
+                // java.head(url, headers)
+                val headerMap = parseHeaderArg(args.getOrNull(1))
+                qjs_NewFloat64(ctx, registerObject(obj.head(args.getString(0), headerMap)).toDouble())
+            }
+            obj is JsExtensionsCommon && methodId == 311 -> {
+                // java.post(url, body, headers)
+                val headerMap = parseHeaderArg(args.getOrNull(2))
+                qjs_NewFloat64(ctx, registerObject(obj.post(args.getString(0), args.getString(1), headerMap)).toDouble())
+            }
+
+            // ============ Connection.Response 对象方法 (700-799, java.get/head/post 返回值) ============
+            obj is Connection.Response && methodId == 701 -> stringToJsValue(ctx, obj.body())
+            obj is Connection.Response && methodId == 702 -> qjs_NewInt32(ctx, obj.statusCode())
+            obj is Connection.Response && methodId == 703 -> stringToJsValue(ctx, obj.statusMessage())
+            obj is Connection.Response && methodId == 704 -> stringToJsValue(ctx, obj.url()?.toString())
+            obj is Connection.Response && methodId == 705 -> stringToJsValue(ctx, obj.header(args.getString(0)))
+            obj is Connection.Response && methodId == 706 -> {
+                // headers() → JSON (JS 层 JSON.parse, 与 JVM Map 反射结果等价)
+                stringToJsValue(ctx, GSON.toJson(obj.headers()))
+            }
+            obj is Connection.Response && methodId == 707 -> {
+                // cookies() → JSON
+                stringToJsValue(ctx, GSON.toJson(obj.cookies()))
+            }
+            obj is Connection.Response && methodId == 708 -> stringToJsValue(ctx, obj.cookie(args.getString(0)))
+            obj is Connection.Response && methodId == 709 -> stringToJsValue(ctx, obj.charset())
+            obj is Connection.Response && methodId == 710 -> stringToJsValue(ctx, obj.contentType())
+            obj is Connection.Response && methodId == 711 -> byteArrayToJsArray(ctx, obj.bodyAsBytes())
+            obj is Connection.Response && methodId == 712 -> stringToJsValue(ctx, obj.method().name)
+            obj is Connection.Response && methodId == 713 -> {
+                // parse() → ksoup Document (Document : Element : Node, 复用 __createElementObj 工厂)
+                qjs_NewFloat64(ctx, registerObject(obj.parse()).toDouble())
             }
 
             // ============ UI/杂项 (400-499) ============
@@ -984,6 +1060,22 @@ function __createJavaObj(handle) {
     obj.webViewGetOverrideUrl = function(html, url, js, overrideUrlRegex, delayTime) { return __nativeDispatch(handle, 306, [html, url, js, overrideUrlRegex, delayTime]); };
     obj.getCookie = function(tag, key) { return __nativeDispatch(handle, 307, [tag, key]); };
     obj.getWebViewUA = function() { return __nativeDispatch(handle, 308, []); };
+    // java.get 重载: 单参 = 变量读取 (25), 双参 = 网络 GET (309) — 对齐 JVM 分派表按参数个数分派
+    obj.get = function(a, b) {
+        if (arguments.length >= 2) {
+            var h = (typeof b === 'string') ? b : JSON.stringify(b);
+            return __createRespObj(__nativeDispatch(handle, 309, [a, h]));
+        }
+        return __nativeDispatch(handle, 25, [a]);
+    };
+    obj.head = function(urlStr, headers) {
+        var h = (typeof headers === 'string') ? headers : JSON.stringify(headers);
+        return __createRespObj(__nativeDispatch(handle, 310, [urlStr, h]));
+    };
+    obj.post = function(urlStr, body, headers) {
+        var h = (typeof headers === 'string') ? headers : JSON.stringify(headers);
+        return __createRespObj(__nativeDispatch(handle, 311, [urlStr, body, h]));
+    };
     // ============ UI/杂项 (400-499) ============
     obj.refreshUi = function(target) { __nativeDispatch(handle, 401, [target]); };
     obj.log = function(msg) { __nativeDispatch(handle, 402, [msg]); return msg; };
@@ -1095,6 +1187,27 @@ function __createStrResponseObj(handle) {
     return obj;
 }
 
+function __createRespObj(handle) {
+    if (!handle || handle <= 0) return null;
+    var obj = {};
+    obj.__h = handle;
+    // Connection.Response 方法面 (700-799, java.get/head/post 返回值; 对齐 JVM 反射可见的 jsoup Response 方法)
+    obj.body = function() { return __nativeDispatch(handle, 701, []); };
+    obj.statusCode = function() { return __nativeDispatch(handle, 702, []); };
+    obj.statusMessage = function() { return __nativeDispatch(handle, 703, []); };
+    obj.url = function() { return __nativeDispatch(handle, 704, []); };
+    obj.header = function(name) { return __nativeDispatch(handle, 705, [name]); };
+    obj.headers = function() { var s = __nativeDispatch(handle, 706, []); return (s === null || s === undefined) ? {} : JSON.parse(s); };
+    obj.cookies = function() { var s = __nativeDispatch(handle, 707, []); return (s === null || s === undefined) ? {} : JSON.parse(s); };
+    obj.cookie = function(name) { return __nativeDispatch(handle, 708, [name]); };
+    obj.charset = function() { return __nativeDispatch(handle, 709, []); };
+    obj.contentType = function() { return __nativeDispatch(handle, 710, []); };
+    obj.bodyAsBytes = function() { return __nativeDispatch(handle, 711, []); };
+    obj.method = function() { return __nativeDispatch(handle, 712, []); };
+    obj.parse = function() { return __createElementObj(__nativeDispatch(handle, 713, [])); };
+    return obj;
+}
+
 function __createJsUrlObj(handle) {
     if (!handle || handle <= 0) return null;
     var obj = {};
@@ -1108,26 +1221,7 @@ function __createJsUrlObj(handle) {
     } });
     return obj;
 }
-function __createBaseSourceObj(handle) {
-    if (!handle || handle <= 0) return null;
-    // BaseSource 实现 JsExtensionsCommon, 继承完整 java 方法面 (ajax/getHeaderMap/put/get 等)
-    var obj = __createJavaObj(handle);
-    obj.__h = handle;
-    obj.getKey = function() { return __nativeDispatch(handle, 1601, []); };
-    obj.getTag = function() { return __nativeDispatch(handle, 1602, []); };
-    obj.getSourceType = function() { return __nativeDispatch(handle, 1603, []); };
-    obj.getHeaderMap = function() {
-        var s = __nativeDispatch(handle, 1604, []);
-        return (s === null || s === undefined) ? null : JSON.parse(s);
-    };
-    obj.getLoginUrl = function() { return __nativeDispatch(handle, 1605, []); };
-    obj.getHeader = function() { return __nativeDispatch(handle, 1606, []); };
-    obj.getLoginJs = function() { return __nativeDispatch(handle, 1607, []); };
-    obj.getConcurrentRate = function() { return __nativeDispatch(handle, 1608, []); };
-    obj.getJsLib = function() { return __nativeDispatch(handle, 1609, []); };
-    return obj;
-}
-    """.trimIndent()
+    """.trimIndent() + "\n" + NativeJsPropertyBridge.JS_PROPERTY_FACTORY_CODE
 
     // ============ 工具方法: JSValue ↔ Kotlin 转换 ============
 
@@ -1217,6 +1311,15 @@ function __createBaseSourceObj(handle) {
     private fun List<Any?>.getString(index: Int): String =
         (getOrNull(index) as? String) ?: ""
 
+    /**
+     * java.get/head/post 的 headers 参数: JS 层已 JSON.stringify 成 JSON 文本 (对象或 JSON 字符串), 解析回 Map。
+     * 对齐 JVM 端 dispatcher 的 Map 强转 (JS 对象 → Map) 与 JSON 字符串 → Map 两条路径。
+     */
+    private fun parseHeaderArg(raw: Any?): Map<String, String> {
+        val json = raw as? String ?: return emptyMap()
+        return GSON.fromJsonObject<Map<String, String>>(json).getOrNull() ?: emptyMap()
+    }
+
     /** List 取可空 String (webView html/url/js 等可空参数) */
     private fun List<Any?>.getStringOrNull(index: Int): String? =
         getOrNull(index) as? String
@@ -1243,6 +1346,20 @@ function __createBaseSourceObj(handle) {
     }
 
     // ============ 规则引擎核心方法 (AnalyzeRuleCore / AnalyzeUrlCore 共用, [X4] 补齐) ============
+
+    /**
+     * 摘要/HMAC 默认实现解析: 实现 JsEncodeUtilsDefaults 的对象直接用;
+     * AnalyzeRuleCore/AnalyzeUrlCore (规则路径 java binding) 不实现该接口, JVM 端由
+     * JsExtensionsJvm 多继承注入, native 端用同源默认实现补全 (逻辑复用, 非重写)。
+     */
+    private fun encodeDefaultsOf(obj: Any): JsEncodeUtilsDefaults? = when (obj) {
+        is JsEncodeUtilsDefaults -> obj
+        is AnalyzeRuleCore, is AnalyzeUrlCore -> NativeRuleEncodeDefaults
+        else -> null
+    }
+
+    /** nativeMain [JsEncodeUtilsDefaults] 默认实现实例 (MD5Utils + NativeDigestOps/NativeHmacOps)。 */
+    private object NativeRuleEncodeDefaults : JsEncodeUtilsDefaults
 
     private fun Any.corePut(key: String, value: String): String = when (this) {
         is AnalyzeRuleCore -> put(key, value)

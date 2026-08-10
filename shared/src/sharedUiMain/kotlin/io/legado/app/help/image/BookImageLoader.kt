@@ -58,6 +58,9 @@ interface BookImageLoader {
      * [widthPx]/[heightPx] 均 > 0 时按目标尺寸降采样解码 (Scale.FILL + Precision.INEXACT,
      * 对齐消费端的 ContentScale.Crop); 否则解原图 —— 同屏几十张封面时决定性的开销差别。
      *
+     * [loadOnlyWifi] 为 true 且非 WiFi 时 fetcher 层拦截网络获取 (缓存命中仍显示),
+     * 对齐原版 Glide `loadOnlyWifiOption` (仅 Android/iOS/鸿蒙消费; 桌面恒不拦截)。
+     *
      * @return 失败返回 null (不抛)
      */
     suspend fun loadImageOrNull(
@@ -65,6 +68,7 @@ interface BookImageLoader {
         sourceOrigin: String?,
         widthPx: Int = 0,
         heightPx: Int = 0,
+        loadOnlyWifi: Boolean = false,
     ): ImageBitmap?
 
     /**
@@ -79,7 +83,8 @@ interface BookImageLoader {
         sourceOrigin: String?,
         widthPx: Int = 0,
         heightPx: Int = 0,
-    ): ImageBitmap? = loadImageOrNull(url, sourceOrigin, widthPx, heightPx)
+        loadOnlyWifi: Boolean = false,
+    ): ImageBitmap? = loadImageOrNull(url, sourceOrigin, widthPx, heightPx, loadOnlyWifi)
 }
 
 /**

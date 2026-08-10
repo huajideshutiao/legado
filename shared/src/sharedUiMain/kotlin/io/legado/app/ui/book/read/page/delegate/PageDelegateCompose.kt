@@ -13,7 +13,6 @@ import io.legado.app.ui.book.read.page.AutoPagerCompose
 import io.legado.app.ui.book.read.page.MouseDragDelegate
 import io.legado.app.ui.book.read.page.PageDelegateShared
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
-import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 
@@ -33,15 +32,16 @@ import kotlinx.coroutines.Job
  * | `Canvas.withTranslation`     | `Modifier.offset { IntOffset(x, 0) }`                |
  * | `Canvas.withClip`            | 上层 `Box` 用 offset 移出视口外（不可见即等价 clip）  |
  * | `GradientDrawable` 阴影      | `Brush.horizontalGradient` + `drawRect`              |
- * | `MotionEvent` 分发           | `detectDragGestures` / `detectTapGestures`           |
- * | `VelocityTracker`            | Compose `detectVerticalDragGestures` + `Animatable`  |
+ * | `MotionEvent` 分发           | 统一触摸分发器（ReadViewComposable 一层 pointerInput）|
+ * | `VelocityTracker`            | 分发器内 `VelocityTracker` + `Animatable`            |
  *
  * # 与 app 端的差异
  *
  * - app 端 `PageDelegate(readView: ReadView)` 持有 Android View 引用；
  *   KMP 版改为 `PageDelegate(viewModel, scope, animationSpeed)` 依赖注入，无 View 引用
  * - app 端 `onDraw(canvas: Canvas)` 抽象方法 → KMP 版改为 `@Composable renderPageAnimation(...)`
- * - app 端 `onTouch(event: MotionEvent)` → KMP 版拆为 `onDown` / `onScroll` / `onTap`（接口 [PageDelegateShared]）
+ * - app 端 `onTouch(event: MotionEvent)` → KMP 版拆为 `onDown` / `onScroll` / `onTouchUp`（命令式接口），
+ *   由 [io.legado.app.ui.book.read.page.ReadViewComposable] 的单一触摸分发器调用，delegate 自身不挂手势
  * - app 端 `CanvasRecorder` 截图三页 → KMP 版直接渲染 3 个 `@Composable` lambda + `Modifier.offset`
  *
  * # 章节边界联动
@@ -217,6 +217,16 @@ abstract class PageDelegateCompose(
     open fun onAutoScrollEnd() {}
 
     /**
+     * 抬手/取消（触摸统一分发器在 UP/CANCEL 且 [isMoved] 时调用；对照原版
+     * PageDelegate.onTouch 的 ACTION_UP/ACTION_CANCEL 分支 → onAnimStart）。
+     *
+     * @param velocityY 手势末速度 y 分量（px/s）：仅滚动模式惯性滚动使用，横向模式忽略
+     */
+    open fun onTouchUp(x: Float, y: Float, velocityY: Float) {
+        onAnimStart(animationSpeed)
+    }
+
+    /**
      * 重置状态字段（与 app 端 stopScroll 行为对应）。
      *
      * 子类 [onAnimStop] 在 finally 块中调用，确保动画结束后状态归零。
@@ -242,9 +252,12 @@ abstract class PageDelegateCompose(
      *
      * actual 子类内部：
      * 1. 用 `Box` 容器，三个子 `@Composable` lambda 通过 `Modifier.offset` 控制位置
-     * 2. 挂 `Modifier.pointerInput` 检测拖拽 / 单击 / 长按，转发到 [onDown] / [onScroll] / [onTap]
-     * 3. 用 `Animatable` 自动驱动动画（替代 Android invalidate 驱动）
-     * 4. 在最上层用 `Canvas` 或 `drawBehind` 绘制阴影 / 边缘高光等叠加效果
+     * 2. 用 `Animatable` 自动驱动动画（替代 Android invalidate 驱动）
+     * 3. 在最上层用 `Canvas` 或 `drawBehind` 绘制阴影 / 边缘高光等叠加效果
+     *
+     * 本方法只做渲染、不挂任何手势：触摸手势统一由
+     * [io.legado.app.ui.book.read.page.ReadViewComposable] 的分发层经 [onDown] / [onScroll] /
+     * [onTouchUp] 驱动（对照原版 ReadView.onTouchEvent → PageDelegate.onTouch）。
      *
      * @param pageWidthPx 视图宽度（px，由 BoxWithConstraints.maxWidth 转 px）
      * @param pageHeightPx 视图高度（px，由 BoxWithConstraints.maxHeight 转 px）
@@ -254,10 +267,6 @@ abstract class PageDelegateCompose(
      * @param nextPlusContent 第 3 页内容（当前页之后的第 2 页）。仅滚动模式连排使用
      *   （对照原版 drawPage 的 relativePage(2)，章末短页 + 新章短页时视口下方需第 3 页
      *   补位，否则出现空白）；横向翻页模式各页自带完整背景，忽略本参数。
-     * @param onClick 单击回调（delegate 内部 [onTap] 判定中心区域后转发，左右区域直接翻页不转发）
-     * @param onLongClick 长按回调（x/y 落点坐标，用于页内文字选择命中判定）。
-     *   2026-08-08 方案 A 起长按检测移入顶层选择层（触摸在 ReadViewComposable 选择层、
-     *   鼠标在 readerMouseGestures），delegate 内不再使用，参数保留供未来扩展
      */
     @Composable
     abstract fun renderPageAnimation(
@@ -267,8 +276,6 @@ abstract class PageDelegateCompose(
         curContent: @Composable () -> Unit,
         nextContent: @Composable () -> Unit,
         nextPlusContent: @Composable () -> Unit = {},
-        onClick: (TextColumn?) -> Unit,
-        onLongClick: (Float, Float) -> Unit,
     )
 
     /**

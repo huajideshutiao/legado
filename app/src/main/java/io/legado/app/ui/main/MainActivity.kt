@@ -541,6 +541,8 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
                         // 书架态决定封面落持久区还是临时区 (对照原 ExploreShowAdapter 的
                         // inBookshelf = callBack.isInBookshelf(item)); 搜索/发现结果带 notShelf 标记
                         inBookshelf = !book.isNotShelf,
+                        // 仅 WiFi 加载封面 (原版设置项): 非 WiFi 时 fetcher 层拦网络获取
+                        loadOnlyWifi = AppConfig.loadCoverOnlyWifi,
                         modifier = modifier,
                     )
                 },

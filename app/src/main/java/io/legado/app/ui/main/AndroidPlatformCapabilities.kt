@@ -27,7 +27,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
-import androidx.compose.material.OutlinedTextField
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
@@ -1211,7 +1210,7 @@ class AndroidPlatformCapabilities(
                         fontSize = 14.sp,
                         modifier = Modifier.padding(bottom = 4.dp),
                     )
-                    OutlinedTextField(
+                    AppTextField(
                         value = fileNameState.value,
                         onValueChange = { fileNameState.value = it },
                         singleLine = true,
@@ -1375,7 +1374,7 @@ class AndroidPlatformCapabilities(
                         fontSize = 14.sp,
                         modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
                     )
-                    OutlinedTextField(
+                    AppTextField(
                         value = fileNameState.value,
                         onValueChange = { fileNameState.value = it },
                         singleLine = true,
@@ -1431,19 +1430,14 @@ class AndroidPlatformCapabilities(
                         )
                     }
                     // 分卷大小 (对照 lyEtEpubSize/etEpubSize)
-                    OutlinedTextField(
+                    AppTextField(
                         value = sizeState.value,
                         onValueChange = { new ->
                             if (new.length <= 6 && new.all { it.isDigit() }) sizeState.value = new
                         },
                         singleLine = true,
                         enabled = customState.value,
-                        label = {
-                            Text(
-                                androidAppString("file_contains_number"),
-                                color = AppTheme.colors.secondaryText,
-                            )
-                        },
+                        label = androidAppString("file_contains_number"),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         textStyle = TextStyle(textAlign = TextAlign.Start),
                         modifier = Modifier
@@ -1451,7 +1445,7 @@ class AndroidPlatformCapabilities(
                             .padding(top = 8.dp),
                     )
                     // 章节范围 (对照 lyEtInputScope/etInputScope, 占位提示 "1-5,8,10-18")
-                    OutlinedTextField(
+                    AppTextField(
                         value = scopeState.value,
                         onValueChange = {
                             scopeState.value = it
@@ -1459,15 +1453,8 @@ class AndroidPlatformCapabilities(
                         },
                         singleLine = true,
                         enabled = customState.value,
-                        label = {
-                            Text(
-                                androidAppString("export_chapter_index"),
-                                color = AppTheme.colors.secondaryText,
-                            )
-                        },
-                        placeholder = {
-                            Text("1-5,8,10-18", color = AppTheme.colors.secondaryText)
-                        },
+                        label = androidAppString("export_chapter_index"),
+                        placeholder = "1-5,8,10-18",
                         isError = scopeError.value != null,
                         textStyle = TextStyle(textAlign = TextAlign.Start),
                         modifier = Modifier

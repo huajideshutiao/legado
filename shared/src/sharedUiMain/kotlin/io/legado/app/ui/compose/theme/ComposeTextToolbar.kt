@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,6 +24,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.unit.IntOffset
@@ -54,6 +56,12 @@ import org.jetbrains.compose.resources.stringResource
 class ComposeTextToolbar : TextToolbar {
 
     private var params by mutableStateOf<Params?>(null)
+
+    /**
+     * 文本选择菜单的"查找替换"动作 (经 [TextToolbarFindReplaceEffect] 注册)。
+     * null = 不显示该项, 保证代码编辑屏之外长按选词看不到它。
+     */
+    var findReplaceAction: (() -> Unit)? by mutableStateOf(null)
 
     override val status: TextToolbarStatus
         get() = if (params != null) TextToolbarStatus.Shown else TextToolbarStatus.Hidden
@@ -121,6 +129,13 @@ class ComposeTextToolbar : TextToolbar {
                 p.onCut?.let { ToolbarItem(stringResource(Res.string.cut), it) }
                 p.onPaste?.let { ToolbarItem(stringResource(Res.string.paste), it) }
                 p.onSelectAll?.let { ToolbarItem(stringResource(Res.string.select_all), it) }
+                // 查找替换 (对齐原版 ActionMode 菜单项, 排在系统项之后; 原版同样硬编码中文)
+                findReplaceAction?.let { action ->
+                    ToolbarItem("查找替换") {
+                        hide()
+                        action()
+                    }
+                }
             }
         }
     }
@@ -183,5 +198,24 @@ private class TextToolbarPositionProvider(
         }
         y = y.coerceAtMost((windowSize.height - popupContentSize.height - marginPx).coerceAtLeast(marginPx))
         return IntOffset(x, y)
+    }
+}
+
+/**
+ * 为文本选择菜单注册"查找替换"项 (对齐原版 CodeView 的 ActionMode 菜单项)。
+ *
+ * showMenu 签名不带选中文本, 故动作无参, 由注册方自行从聚焦编辑器取选区。
+ * 注销带归属校验: 导航过渡期新旧屏幕并存时只清自己注册的那个。
+ */
+@Composable
+fun TextToolbarFindReplaceEffect(action: () -> Unit) {
+    val textToolbar = LocalTextToolbar.current as? ComposeTextToolbar
+    DisposableEffect(textToolbar, action) {
+        textToolbar?.findReplaceAction = action
+        onDispose {
+            if (textToolbar?.findReplaceAction === action) {
+                textToolbar.findReplaceAction = null
+            }
+        }
     }
 }

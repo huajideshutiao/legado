@@ -192,6 +192,9 @@ interface AppConfigAccessor {
     /** 是否使用默认封面 (原 AppConfig.useDefaultCover), 默认 false。 */
     val useDefaultCover: Boolean
 
+    /** 是否仅 WiFi 加载封面 (原 AppConfig.loadCoverOnlyWifi), 默认 false。 */
+    val loadCoverOnlyWifi: Boolean
+
     /** 默认封面是否绘制书名 (原 AppConfig.coverShowName/coverShowNameN, 按昼夜取), 默认 true。 */
     val coverDrawBookName: Boolean
 

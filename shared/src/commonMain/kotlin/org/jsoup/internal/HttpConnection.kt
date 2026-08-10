@@ -2,29 +2,24 @@
 
 package org.jsoup.internal
 
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import okio.source
+import io.legado.app.help.http.KmpHttpClient
+import io.legado.app.help.http.KmpRequest
+import io.legado.app.help.http.KmpRequestBuilder
+import io.legado.app.help.http.KmpRequestBody
+import io.legado.app.help.http.toKmpMediaType
+import io.legado.app.help.http.toKmpRequestBody
+import io.legado.app.utils.InputStream
+import io.legado.app.utils.URL
+import io.legado.app.utils.urlQuery
+import io.legado.app.utils.randomUUIDString
+import io.legado.app.utils.textCharsetCodec
 import org.jsoup.Connection
 import org.jsoup.Connection.Method
 import org.jsoup.HttpStatusException
-import java.io.InputStream
-import java.net.URL
-import java.nio.charset.Charset
-import java.security.SecureRandom
-import java.security.cert.X509Certificate
-import java.util.UUID
-import java.util.concurrent.TimeUnit
-import javax.net.ssl.HostnameVerifier
-import javax.net.ssl.SSLContext
-import javax.net.ssl.SSLSocketFactory
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
+import org.jsoup.Jsoup
 
 /**
- * jsoup Connection 兼容实现,底层使用 OkHttp 完成实际请求。
+ * jsoup Connection 兼容实现,底层使用 OkHttp (jvm) / Kmp 抽象 (native) 完成实际请求。
  *
  * 链式 API 与原 jsoup HttpConnection 保持一致,JsExtensions 调用形如:
  * ```
@@ -37,6 +32,9 @@ import javax.net.ssl.X509TrustManager
  *     .execute()
  * ```
  * 全部继续可用,无需改动调用方。
+ *
+ * 平台差异 (URL 编码 / SSL / 超时 / multipart / 解压) 收敛到 [HttpPlatform] 门面,
+ * jvmAndAndroidMain actual 与原实现逐行等价。
  */
 class HttpConnection : Connection {
 
@@ -68,11 +66,11 @@ class HttpConnection : Connection {
         requestDelegate.ignoreContentType(ignoreContentType)
     }
 
-    override fun sslSocketFactory(sslSocketFactory: SSLSocketFactory): Connection = apply {
+    override fun sslSocketFactory(sslSocketFactory: Any?): Connection = apply {
         requestDelegate.sslSocketFactory(sslSocketFactory)
     }
 
-    override fun sslContext(sslContext: SSLContext): Connection = apply {
+    override fun sslContext(sslContext: Any?): Connection = apply {
         requestDelegate.sslContext(sslContext)
     }
 
@@ -150,32 +148,11 @@ class HttpConnection : Connection {
         return resp
     }
 
-    private fun buildOkClient(): OkHttpClient {
-        // 宿主注入了共享 client 则 newBuilder 派生(继承拦截器/连接池),否则裸建
-        val shared = org.jsoup.Jsoup.clientFactory?.invoke()
-        val builder = (shared?.newBuilder() ?: OkHttpClient.Builder())
-            .connectTimeout(requestDelegate.timeout().toLong(), TimeUnit.MILLISECONDS)
-            .readTimeout(requestDelegate.timeout().toLong(), TimeUnit.MILLISECONDS)
-            .followRedirects(requestDelegate.followRedirects())
-            .followSslRedirects(requestDelegate.followRedirects())
+    /** 平台门面: jvm 复刻原 buildOkClient (共享 client newBuilder 派生/裸建 + SSL 配置), native 走 Kmp builder */
+    private fun buildOkClient(): KmpHttpClient =
+        buildPlatformClient(requestDelegate, Jsoup.clientFactory?.invoke() ?: defaultSharedHttpClient())
 
-        if (shared != null) {
-            // 共享 client 带 callTimeout(15s),会盖过上面 per-request 的 connect/read 超时,清掉
-            builder.callTimeout(0, TimeUnit.MILLISECONDS)
-        } else {
-            builder.hostnameVerifier(AllHostHostnameVerifier)
-        }
-
-        requestDelegate.sslSocketFactory()?.let { factory ->
-            builder.sslSocketFactory(factory, UnsafeTrustManager)
-        } ?: requestDelegate.sslContext()?.let { ctx ->
-            builder.sslSocketFactory(ctx.socketFactory, UnsafeTrustManager)
-        }
-
-        return builder.build()
-    }
-
-    private fun buildOkRequest(): Request {
+    private fun buildOkRequest(): KmpRequest {
         val origUrl = requestDelegate.url()
             ?: throw IllegalStateException("url must be set before execute()")
         val method = requestDelegate.method()
@@ -198,7 +175,7 @@ class HttpConnection : Connection {
             dataCollection = emptyList()
         }
 
-        val builder = Request.Builder().url(finalUrl)
+        val builder = KmpRequestBuilder().url(finalUrl.toExternalForm())
 
         // Cookie 头:cookies() 表与 header("Cookie") 并存都要发出,合并成单个头。
         // 顺序对齐原版 jsoup(UrlConnectionExecutor):先 cookies() 表,再 header 表的值。
@@ -236,11 +213,11 @@ class HttpConnection : Connection {
      * 避免 OkHttp 的 String.toRequestBody 改写 charset。
      */
     private fun buildRequestBody(
-        builder: Request.Builder,
+        builder: KmpRequestBuilder,
         body: String?,
         data: Collection<Connection.KeyVal>,
         userContentType: String?,
-    ): okhttp3.RequestBody {
+    ): KmpRequestBody {
         val charsetName = requestDelegate.postDataCharset
         val needsMultipart = data.any { it.hasInputStream() } ||
             userContentType?.contains("multipart/form-data", ignoreCase = true) == true
@@ -248,7 +225,7 @@ class HttpConnection : Connection {
         if (needsMultipart) {
             // 用户 CT 自带 boundary 则复用,否则生成;header 与 body 必须用同一个 boundary
             val boundary = userContentType?.let { parseBoundary(it) }
-                ?: UUID.randomUUID().toString()
+                ?: randomUUIDString()
             builder.header(
                 "Content-Type",
                 userContentType?.takeIf { parseBoundary(it) != null }
@@ -260,8 +237,10 @@ class HttpConnection : Connection {
         val ct = userContentType
             ?: "application/x-www-form-urlencoded; charset=$charsetName"
         val content = body ?: buildFormBody(data, charsetName)
-        return content.toByteArray(Charset.forName(charsetName))
-            .toRequestBody(ct.toMediaTypeOrNull())
+        // Charset.forName 等价物: textCharsetCodec (jvm 端即 Charset.forName, 未知 charset 抛异常)
+        return textCharsetCodec(charsetName).encode(content)
+            // toMediaTypeOrNull 等价: 非法 CT 返回 null (jvm toMediaType 抛异常, runCatching 兜底)
+            .toKmpRequestBody(runCatching { ct.toKmpMediaType() }.getOrNull())
     }
 
     /** 将 data 序列化到 URL query string,同 jsoup serialiseRequestUrl;query 插在 fragment 之前 */
@@ -275,7 +254,7 @@ class HttpConnection : Connection {
         val hashIdx = external.indexOf('#')
         val base = if (hashIdx >= 0) external.substring(0, hashIdx) else external
         val fragment = if (hashIdx >= 0) external.substring(hashIdx) else ""
-        val sep = if (origUrl.query.isNullOrEmpty()) "?" else "&"
+        val sep = if (origUrl.urlQuery().isNullOrEmpty()) "?" else "&"
         return URL("$base$sep$params$fragment")
     }
 
@@ -289,36 +268,8 @@ class HttpConnection : Connection {
         }
     }
 
-    /** 构建 multipart/form-data body;boundary 必须与 Content-Type 头一致 */
-    private fun buildMultipartBody(
-        data: Collection<Connection.KeyVal>,
-        boundary: String
-    ): okhttp3.RequestBody {
-        val body = okhttp3.MultipartBody.Builder(boundary)
-            .setType(okhttp3.MultipartBody.FORM)
-
-        for (kv in data) {
-            val stream = kv.inputStream()
-            if (stream != null) {
-                val contentType = kv.contentType() ?: "application/octet-stream"
-                val fileBody = object : okhttp3.RequestBody() {
-                    override fun contentType() = contentType.toMediaTypeOrNull()
-                    override fun contentLength() = -1L
-
-                    // 流只能消费一次,禁止 OkHttp 在重试/重定向时二次 writeTo
-                    override fun isOneShot() = true
-                    override fun writeTo(sink: okio.BufferedSink) {
-                        stream.source().use { sink.writeAll(it) }
-                    }
-                }
-                // jsoup 语义:文件字段的 value() 即 filename
-                body.addFormDataPart(kv.key(), kv.value(), fileBody)
-            } else {
-                body.addFormDataPart(kv.key(), kv.value())
-            }
-        }
-
-        return body.build()
+    private fun urlEncode(value: String, charset: String): String {
+        return urlEncodeForm(value, charset)
     }
 
     /** 从用户 Content-Type 中取已有 boundary,没有则返回 null */
@@ -332,37 +283,9 @@ class HttpConnection : Connection {
             .takeIf { it.isNotEmpty() }
     }
 
-    private fun urlEncode(value: String, charset: String): String {
-        return java.net.URLEncoder.encode(value, charset)
-    }
-
     companion object {
-        @JvmStatic
         fun connect(url: String): Connection = HttpConnection().url(url)
 
-        @JvmStatic
         fun connect(url: URL): Connection = HttpConnection().url(url)
-    }
-}
-
-/** 兼容所有 host 的 HostnameVerifier,与 jsoup 默认行为对齐 */
-private object AllHostHostnameVerifier : HostnameVerifier {
-    override fun verify(hostname: String, session: javax.net.ssl.SSLSession): Boolean = true
-}
-
-/**
- * 信任所有证书的 TrustManager,仅在调用方主动传入 [SSLContext] / [SSLSocketFactory] 时使用
- * (JsExtensions 传入的 SSLHelper.unsafeSslContext 即期望信任全部)
- */
-private object UnsafeTrustManager : X509TrustManager {
-    override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-    override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
-    override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-}
-
-/** 私有可用作 SSLContext 默认初始化的工厂 (内部使用) */
-internal val UnsafeSslContext: SSLContext by lazy {
-    SSLContext.getInstance("TLS").apply {
-        init(null, arrayOf<TrustManager>(UnsafeTrustManager), SecureRandom())
     }
 }

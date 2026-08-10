@@ -66,7 +66,7 @@ expect class KmpHttpClient {
  *
  * 仅声明 commonMain 中实际调用的成员 (readTimeout/callTimeout/build, 使用 OkHttp 5.x KotlinDuration 重载)。
  */
-expect class KmpHttpClientBuilder {
+expect class KmpHttpClientBuilder() {
     fun readTimeout(duration: Duration): KmpHttpClientBuilder
     fun callTimeout(duration: Duration): KmpHttpClientBuilder
     fun build(): KmpHttpClient
@@ -133,6 +133,9 @@ expect class KmpResponse : Closeable {
     val priorResponse: KmpResponse?
     val isRedirect: Boolean
     fun headers(): KmpHeaders
+
+    /** 按名取全部响应头值 (对应 `okhttp3.Response.headers(name)`)。 */
+    fun headers(name: String): List<String>
     fun newBuilder(): KmpResponseBuilder
     override fun close()
 }
@@ -272,6 +275,14 @@ expect class KmpHttpUrlBuilder {
  * 不暴露成员方法 (commonMain 仅作为类型签名传递), 通过 [toKmpMediaType] 扩展函数构造。
  */
 expect class KmpMediaType
+
+/**
+ * 解析 charset 名 (对应 `okhttp3.MediaType.charset()?.name()`)。
+ *
+ * jvmAndAndroid actual 委托 `MediaType.charset()?.name()` (行为不变);
+ * iOS/鸿蒙 actual 从 media type 字符串解析 (与 OkHttp 名字解析部分对齐)。
+ */
+expect fun KmpMediaType.charsetName(): String?
 
 /**
  * 跨平台 RequestBody (对应 `okhttp3.RequestBody`, abstract class)。

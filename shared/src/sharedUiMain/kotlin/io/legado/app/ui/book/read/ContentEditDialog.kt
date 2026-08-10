@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
@@ -25,6 +28,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +45,7 @@ import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.preview.LegadoThemePreview
+import kotlinx.coroutines.launch
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.action_save
 import legado.shared.generated.resources.cancel
@@ -66,7 +71,8 @@ import org.jetbrains.compose.resources.stringResource
  * # 业务对齐 (对照 app 端原版)
  *
  * - 标题栏: 标题 = 章节名, 返回 (dismiss) + 保存 (ic_save) + OverflowMenu (重置 / 复制全部);
- * - 正文区: 多行 OutlinedTextField, maxLines = 10 (替代 app 端 AndroidView + AppCompatEditText,
+ * - 正文区: 多行输入框不限制行数与最大高度 (对齐原版 EditText 无 maxLines): 输入框 wrap content
+ *   随内容自然增高, 正文区 verticalScroll 承载超高内容 (替代 app 端 AndroidView + AppCompatEditText,
  *   原版用 View EditText 是为了 layout.getLineForOffset 按阅读进度滚动定位, KMP 版用 Compose
  *   原生 OutlinedTextField, 滚动定位由 Compose 自动处理, 不再需要 View 互操作);
  * - 保存: 校验非空 (与 app 端 save() 中 `contentView?.text?.toString() ?: return` 等价,
@@ -89,10 +95,16 @@ import org.jetbrains.compose.resources.stringResource
  *   Compose OutlinedTextField 不暴露此 API, 滚动定位由用户手动操作)。
  *
  * @param chapterName 章节名 (用于标题 + 复制全部前缀)
- * @param content 章节正文 (用户可编辑)
+ * @param content 章节正文 (用户可编辑); 传入 [contentLoader] 时仅作初始占位 (加载中由转圈覆盖,
+ *   加载完成后以 loader 结果为准), 不传 loader 时直接展示本参数 (同步路径 / Preview)
  * @param onSubmit 用户保存且内容非空, 参数为编辑后的正文
  * @param onDismiss 关闭对话框 (返回键/外部点击/系统返回时直接调用, 不保存)
- * @param onReset 重置回调 (从源重新获取正文), null 时不显示重置菜单项
+ * @param onReset 重置回调: 内容重载完成后刷新阅读器 (对照原版 menu_reset 回调里的
+ *   ReadBook.loadContent), null 时不显示重置菜单项
+ * @param contentLoader 章节全文加载器 (对照原版 ContentEditViewModel.initContent): 返回当前章节
+ *   完整正文 (已处理, 不含标题), null 表示读不到内容。传入时对话框自动异步加载并显示转圈
+ *   (对齐原版 rlLoading); 参数 reset=true 时先删缓存并重新拉取再读取 (对照原版 menu_reset)。
+ *   null 时走同步 [content] 路径
  * @param clipTextSink 剪贴板文本写入器 (替代 `context.sendToClip(text)`), null 时不显示复制全部菜单项
  * @param onRenameChapter 章节重命名回调 (参数为新标题, 调用方负责落库 + 刷新),
  *   null 时标题栏不可点击编辑 (对齐原版标题栏点击改章节标题)
@@ -104,6 +116,7 @@ fun ContentEditDialog(
     onSubmit: (String) -> Unit,
     onDismiss: () -> Unit,
     onReset: (() -> Unit)? = null,
+    contentLoader: (suspend (reset: Boolean) -> String?)? = null,
     clipTextSink: ((String) -> Unit)? = null,
     onRenameChapter: ((String) -> Unit)? = null,
 ) {
@@ -131,6 +144,52 @@ fun ContentEditDialog(
     // content 参数变化时同步 state (用于 onReset 后调用方更新 content 触发重组)
     LaunchedEffect(content) {
         contentState = content
+    }
+
+    // 异步加载态 (对齐原版 loadStateLiveData + rlLoading): 传入 contentLoader 时进入加载态,
+    // 加载中正文区显示转圈覆盖输入框, 完成前不展示可编辑内容。
+    // 注意: 不能以 contentLoader 实例作 remember key —— 调用方每轮重组都会新建 lambda,
+    // 会导致 loading 反复重置为 true 卡在转圈; 只以「是否传入 loader」决定初始态
+    var loading by remember { mutableStateOf(contentLoader != null) }
+    val scope = rememberCoroutineScope()
+
+    /**
+     * 加载章节全文 (对照原版 ContentEditViewModel.initContent):
+     * 初次打开 [reset]=false 读取缓存处理; 重置 [reset]=true 先删缓存重拉再读取。
+     */
+    fun loadContent(reset: Boolean) {
+        val loader = contentLoader ?: return
+        loading = true
+        scope.launch {
+            contentState = loader(reset) ?: ""
+            loading = false
+        }
+    }
+
+    // 初次打开: 异步加载章节全文 (对照原版 onFragmentCreated → viewModel.initContent(chapter)),
+    // 加载完成前转圈覆盖 (对齐原版 rlLoading); 同步路径 (无 loader) 直接展示 content 参数
+    LaunchedEffect(Unit) {
+        loadContent(reset = false)
+    }
+
+    /**
+     * 重置: 重新拉取正文并更新输入框, 完成后刷新阅读器
+     * (对照原版 menu_reset → initContent(reset=true) { setText + ReadBook.loadContent })。
+     */
+    fun resetContent() {
+        if (contentLoader == null) {
+            // 同步路径 (Preview): 无 loader 时仅触发调用方刷新, 输入框内容不变
+            onReset?.invoke()
+            return
+        }
+        loading = true
+        scope.launch {
+            contentState = contentLoader(true) ?: ""
+            loading = false
+            // 正文重拉完成后刷新阅读器 (对照原版 initContent 回调里 ReadBook.loadContent,
+            // 此时缓存已就绪, 阅读器从缓存装载不重复下载)
+            onReset?.invoke()
+        }
     }
 
     /**
@@ -177,12 +236,13 @@ fun ContentEditDialog(
                             )
                         }
                         OverflowMenu { dismissMenu ->
-                            // 重置: 仅当调用方提供 onReset 时渲染 (依赖 ContentEditViewModel.reset, 调用方注入)
+                            // 重置: 仅当调用方提供 onReset 时渲染 (依赖 ContentEditViewModel.reset, 调用方注入);
+                            // 点击后重拉正文更新输入框 + 刷新阅读器 (对照原版 menu_reset → initContent(reset=true))
                             if (onReset != null) {
                                 DropdownMenuItem(
                                     onClick = {
                                         dismissMenu()
-                                        onReset()
+                                        resetContent()
                                     },
                                 ) {
                                     Text(resetText, color = colors.primaryText)
@@ -204,16 +264,18 @@ fun ContentEditDialog(
                         }
                     },
                 )
-                // 正文区: 固定高度下 weight(1f) 撑满剩余 (原版 FrameLayout weight=1);
+                // 正文区: weight(1f) 撑满剩余空间 (原版 FrameLayout weight=1, 空内容时整区可点击聚焦),
+                // verticalScroll 承载超高内容 (2026-08 变更: 输入框随内容增高, 超高时正文区滚动);
                 // 内边距 arco_spacing_md=12dp (对齐 XML content_view padding)
                 Box(
                     Modifier
                         .fillMaxWidth()
                         .weight(1f)
+                        .verticalScroll(rememberScrollState())
                         .padding(12.dp),
                 ) {
-                    // 多行输入, 不限制行数 (对齐原版 EditText 无 maxLines): 长正文时高度被
-                    // Box 约束压满 + TextField 内部滚动, 不再出现输入框下方大空白 (2026-08 移除 maxLines=10)
+                    // 输入框不限制行数与最大高度 (对齐原版 EditText 无 maxLines): wrap content
+                    // 随内容自然增高, 不再固定高度内部滚动 (2026-08 变更: 正文区滚动替代输入框内部滚动)
                     AppTextField(
                         value = contentState,
                         onValueChange = { contentState = it },
@@ -223,6 +285,12 @@ fun ContentEditDialog(
                             fontSize = 16.sp,
                         ),
                     )
+                    // 加载中居中转圈覆盖输入框 (对齐原版 rlLoading CircularProgressIndicator)
+                    if (loading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
                 }
             }
         }
@@ -302,7 +370,7 @@ fun ContentEditDialogLongContentPreview() = LegadoThemePreview {
         content = buildString {
             repeat(30) { i ->
                 appendLine("第 ${i + 1} 段: 这是一段用于测试长正文滚动展示效果的占位内容, ")
-                appendLine("用于验证 OutlinedTextField 在 maxLines=10 时的滚动行为。")
+                appendLine("用于验证长正文时输入框随内容增高 + 正文区滚动的展示效果。")
             }
         },
         onSubmit = {},

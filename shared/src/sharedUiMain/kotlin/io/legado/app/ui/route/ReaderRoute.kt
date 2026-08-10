@@ -37,6 +37,7 @@ import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.CacheBookShared
 import io.legado.app.model.LocalReadBookProvider
+import io.legado.app.model.ReadBookPlatforms
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.bookmark.BookmarkDialog
 import io.legado.app.ui.book.read.CharsetDialog
@@ -88,6 +89,7 @@ import io.legado.app.ui.root.RouteResultPayload
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
+import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.text.EditEntity
 import io.legado.app.utils.KS_JSON
 import io.legado.app.utils.systemCurrentTimeMillis
@@ -103,14 +105,18 @@ import legado.shared.generated.resources.chapter_pay
 import legado.shared.generated.resources.check_add_bookshelf
 import legado.shared.generated.resources.cloud_progress_exceeds_current
 import legado.shared.generated.resources.concurrent_rate
+import legado.shared.generated.resources.draw
 import legado.shared.generated.resources.login_check_js
 import legado.shared.generated.resources.login_ui
 import legado.shared.generated.resources.login_url
 import legado.shared.generated.resources.name
 import legado.shared.generated.resources.no
 import legado.shared.generated.resources.ok
+import legado.shared.generated.resources.read_aloud_pause
+import legado.shared.generated.resources.restore_last_book_process
 import legado.shared.generated.resources.source_http_header
 import legado.shared.generated.resources.sync_book_progress_t
+import legado.shared.generated.resources.yes
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -138,6 +144,20 @@ fun ReaderRoute(
         ReaderScreenModel(
             menuControllerFactory = { model -> provider.createMenuController(navigator, model) },
             getBatteryLevel = { provider.getBatteryLevel() },
+            // 搜索菜单"结果"按钮 → 打开全文搜索页 (对照原版 openSearchActivity:
+            // 携带当前书/索引/结果列表, 免重搜; 列表仅首条 query 匹配时携带)
+            onOpenSearch = { model, book, word ->
+                navigator.push(
+                    AppRoute.SearchContent(
+                        index = model.searchResultIndex,
+                        word = word ?: model.searchContentQuery,
+                        initialResults = model.searchResultList?.takeIf { list ->
+                            list.firstOrNull()?.query == model.searchContentQuery
+                        },
+                        book = book.toRouteRef(),
+                    )
+                )
+            },
         )
     }
 
@@ -197,6 +217,8 @@ fun ReaderRoute(
         ReaderUiState(
             viewModel = screenModel.viewModel,
             menuState = screenModel.menuState,
+            searchMenuState = screenModel.searchMenuState,
+            selection = screenModel.selection,
             batteryLevel = screenModel.batteryLevel,
             clockText = screenModel.clockText,
         )
@@ -269,16 +291,53 @@ fun ReaderRoute(
     // region 阅读页快捷键 (对照 app 端 ReadBookKeyHandler.onKeyDown)
     // 栈内页面全部留在组合中, 故非栈顶时必须失效, 否则目录/换源等子页里按方向键会翻背景的书;
     // 翻页键菜单可见时不响应 (原版 menuLayoutIsVisible 分支), 字号增减不受菜单影响
-    val isTopEntry = { navigator.backStack.value.lastOrNull()?.id == entry.id }
+    // 栈顶判定改为响应式: collectAsState 订阅 backStack, 栈变化驱动重组刷新下方消费点;
+    // 旧写法 lambda 读 .value 不订阅 StateFlow, AppBackHandler 的 enabled 会停在过期值
+    val backStack by navigator.backStack.collectAsState()
+    val isTopEntry = backStack.lastOrNull()?.id == entry.id
     // 未入架书退出确认（对照原版 BaseReadActivity.finish：弹"加入书架"确认框，
-    // 确定=入架保留进度，取消=删除；关闭提示则直接退出，由 onCleared 兜底删除）。
+    // 确定=入架后留在阅读界面不退出；取消=删除临时书后退出；关闭提示=留在阅读界面，
+    // 书保持临时态，下次返回再弹框；退出后才由 onDestroy 路径兜底删除临时书）。
     // 返回键统一走 performBack → dispatchBackKey 分发到本拦截器，覆盖 ESC/系统返回/菜单返回按钮。
+    //
+    // 返回键拦截链 (对照原版 ReadBookActivity.onBackPressedDispatcher 五段链：
+    // ③全文搜索段 → ①恢复跳转前进度 → ②朗读暂停 → ④自动翻页停止 → finish(未入架弹框/出栈)。
+    // 用单个 handler + body 内按原版顺序逐段判定：lastBookProgress /
+    // confirmRestoreProcess / 朗读态(平台静态字段) 均非响应式，放 enabled 会在组合期求值停在
+    // 过期值；body 在按键时刻执行必然读到最新值，故 enabled 只做响应式栈顶判定。
+    // 弹框/toast 文案在组合期预取 (onBack 非 @Composable 不能 stringResource)。
+    val readAloudPauseText = stringResource(Res.string.read_aloud_pause)
     val currentBook by screenModel.viewModel.book.collectAsState()
-    AppBackHandler(
-        enabled = isTopEntry() && currentBook?.isNotShelf == true &&
-            AppConfigProviders.get().showAddToShelfAlert,
-    ) {
-        screenModel.postDialogEvent(ReaderDialogEvent.AddToShelfConfirm)
+    AppBackHandler(enabled = isTopEntry) {
+        // ③ 全文搜索段 (原版五段链第一段: 搜索态 → 退出搜索态 + 恢复进入搜索前的进度)
+        if (screenModel.isShowingSearchResult) {
+            screenModel.exitSearchMenu()
+            screenModel.restoreLastBookProcess()
+            return@AppBackHandler
+        }
+        // ① 恢复跳转前进度 (原版: lastBookProgress != null && confirmRestoreProcess != false)
+        if (screenModel.lastBookProgress != null && screenModel.confirmRestoreProcess != false) {
+            screenModel.restoreLastBookProcess()
+            return@AppBackHandler
+        }
+        // ② 朗读暂停 (原版: BaseReadAloudService.isPlay() = isRun && !pause, 暂停态不重复触发)
+        val readBookPlatform = ReadBookPlatforms.get()
+        if (readBookPlatform.isReadAloudRun && !readBookPlatform.isReadAloudPause) {
+            readBookPlatform.pauseReadAloud()
+            Toasters.get().toast(readAloudPauseText)
+            return@AppBackHandler
+        }
+        // ④ 自动翻页停止 (原版: isAutoPage → autoPageStop)
+        if (screenModel.menuState.autoPage) {
+            provider.autoPageStop(screenModel)
+            return@AppBackHandler
+        }
+        // 未入架书退出确认 (原版 finish 的"加入书架"确认框，语义见上方注释)
+        if (currentBook?.isNotShelf == true && AppConfigProviders.get().showAddToShelfAlert) {
+            screenModel.postDialogEvent(ReaderDialogEvent.AddToShelfConfirm)
+        } else {
+            navigator.pop()
+        }
     }
     // 方向键 (用户拍板 2026-08): 阅读键盘只保留方向键, PageUp/PageDown/Space 不再绑定;
     // 键位随翻页方向自适应——左右翻页模式 ←/→=翻页、↑/↓=章节切换;
@@ -291,7 +350,7 @@ fun ReaderRoute(
     val chapterTurnThrottle = remember { PageTurnThrottle() }
     AppShortcutHandler(
         shortcuts = ReaderShortcuts.arrows,
-        enabled = { isTopEntry() && !screenModel.menuState.isVisible },
+        enabled = { isTopEntry && !screenModel.menuState.isVisible },
     ) { shortcut ->
         // 分发时读当前翻页方向 (scroll=上下滚动, 其余=左右翻页), 不依赖重组
         val isScroll = screenModel.viewModel.isScrollPageAnim
@@ -357,7 +416,7 @@ fun ReaderRoute(
     // 长按策略 (2026-08 用户拍板): 与漫画页一致——TRIGGER 连翻 + 200ms 节流,
     // 接线收敛在共享 VolumeKeyPageTurnHandler (单击翻页 / 长按连翻节流 / 抬起消费)
     VolumeKeyPageTurnHandler(
-        enabled = { isTopEntry() && !screenModel.menuState.isVisible && provider.volumeKeyPage },
+        enabled = { isTopEntry && !screenModel.menuState.isVisible && provider.volumeKeyPage },
     ) { volumeUp ->
         screenModel.viewModel.turnPage(
             if (volumeUp) PageDirectionShared.PREV else PageDirectionShared.NEXT
@@ -530,13 +589,15 @@ fun ReaderRoute(
                 RouteResults.SEARCH_CONTENT -> {
                     val payload = result.payload as? RouteResultPayload.SearchContent
                         ?: return@collect
-                    // 回写缓存, 下次进搜索页可免重搜 (对照 ReadBookActivity.onSearchContentResult)
-                    screenModel.searchContentQuery = payload.searchWord.orEmpty()
-                    screenModel.searchResultList = payload.searchResults
-                    screenModel.searchResultIndex = payload.searchResultIndex
+                    // 对照原版 searchContentActivity 回调 (ReadBookActivity:170-186)：
+                    // 从选中结果取 query 回写缓存, 灌结果列表, 进搜索态 (置标志 + 存进度
+                    // 快照 + skipToSearch + 弹搜索菜单)
                     val searchResult = payload.searchResults.getOrNull(payload.searchResultIndex)
                         ?: return@collect
-                    screenModel.openChapter(searchResult.chapterIndex)
+                    screenModel.searchContentQuery = searchResult.query
+                    screenModel.searchResultList = payload.searchResults
+                    screenModel.searchResultIndex = payload.searchResultIndex
+                    screenModel.onSearchContentResult(searchResult)
                 }
             }
         }
@@ -546,6 +607,30 @@ fun ReaderRoute(
     // region 对话框渲染 (书签/正文编辑/日志, 由 AndroidReaderMenuState 触发)
     val dialogEvent by screenModel.dialogEvent.collectAsState()
     when (val event = dialogEvent) {
+        is ReaderDialogEvent.RestoreProcessConfirm -> {
+            // 返回键恢复跳转前进度确认 (对照原版 restoreLastBookProcess 的 alert：
+            // 是=恢复跳转前进度并以后总是恢复；否/点外部关闭=放弃快照并以后不再询问)
+            AppAlertDialog(
+                onDismissRequest = {
+                    screenModel.clearLastBookProgress()
+                    screenModel.confirmRestoreProcess = false
+                    screenModel.clearDialogEvent()
+                },
+                title = stringResource(Res.string.draw),
+                message = stringResource(Res.string.restore_last_book_process),
+                okButton = AlertButton(stringResource(Res.string.yes)) {
+                    screenModel.confirmRestoreProcess = true
+                    screenModel.restoreLastBookProgress()
+                    screenModel.clearDialogEvent()
+                },
+                cancelButton = AlertButton(stringResource(Res.string.no)) {
+                    screenModel.clearLastBookProgress()
+                    screenModel.confirmRestoreProcess = false
+                    screenModel.clearDialogEvent()
+                },
+            )
+        }
+
         is ReaderDialogEvent.ChapterPay -> {
             // 章节购买确认 (对照原版 ReadBookActivity.payAction 的 alert 确认)
             val book = screenModel.currentBook
@@ -576,7 +661,7 @@ fun ReaderRoute(
 
         is ReaderDialogEvent.AddToShelfConfirm -> {
             // 未入架书退出确认 (对照原版 BaseReadActivity.finish 的 alert：
-            // 确定=加入书架保留进度后退出；取消=删除后退出；点外部关闭留在阅读页)
+            // 确定=入架后不退出留在阅读界面；取消=删除后退出；点外部关闭留在阅读页)
             val book = screenModel.currentBook
             if (book == null) {
                 screenModel.clearDialogEvent()
@@ -586,8 +671,11 @@ fun ReaderRoute(
                     title = stringResource(Res.string.add_to_bookshelf),
                     message = stringResource(Res.string.check_add_bookshelf, book.name),
                     okButton = AlertButton(stringResource(Res.string.ok)) {
-                        screenModel.clearDialogEvent()
-                        screenModel.viewModel.addToBookshelf { navigator.pop() }
+                        // 入架成功后才关弹框：toggleBookshelfCore 原地清掉 book.type 的 notShelf 位，
+                        // 关弹框触发重组使 AppBackHandler.enabled 重求值为 false，下次返回直接退出不再弹框
+                        screenModel.viewModel.addToBookshelf {
+                            screenModel.clearDialogEvent()
+                        }
                     },
                     cancelButton = AlertButton(stringResource(Res.string.cancel)) {
                         screenModel.clearDialogEvent()
@@ -617,21 +705,41 @@ fun ReaderRoute(
             val chapter = screenModel.currentChapter
             ContentEditDialog(
                 chapterName = chapter?.title ?: "",
-                content = screenModel.currentChapterText,
+                // 正文由 contentLoader 异步加载当前章节全文 (对照原版 ContentEditViewModel.initContent);
+                // 传空占位, 加载中由对话框内转圈覆盖 —— 不再用当前页文本 (curTextPage) 当整章正文
+                content = "",
+                contentLoader = { reset -> screenModel.loadChapterFullText(reset) },
                 onSubmit = { edited ->
                     val book = screenModel.viewModel.book.value
                     if (book != null && chapter != null) {
                         scope.launch {
+                            // 缓存写入是同步文件 IO, 切 IO 线程 (对照原版 save() 在 Coroutine.async 中执行)
                             runCatching {
-                                BookStorageProviders.get().saveText(book, chapter, edited)
+                                withContext(IoDispatcher) {
+                                    BookStorageProviders.get().saveText(book, chapter, edited)
+                                }
+
                             }
-                            screenModel.viewModel.refreshCurrentChapter()
+                            // 保存后从缓存重载当前章 (对照原版 save() → ReadBook.loadContent:
+                            // 不清缓存, 阅读器直接显示编辑后的正文; 不能用 refreshCurrentChapter,
+                            // 它会 delContent 删掉刚保存的内容再重新下载)。keepScrollOffset 保留滚动偏移
+                            screenModel.viewModel.loadChapter(
+                                screenModel.viewModel.durChapterIndex.value,
+                                keepScrollOffset = true,
+                            )
                         }
                     }
                     screenModel.clearDialogEvent()
                 },
                 onDismiss = { screenModel.clearDialogEvent() },
-                onReset = { screenModel.viewModel.refreshCurrentChapter() },
+                // 重置: 正文重拉完成后刷新阅读器 (对照原版 menu_reset 回调里 ReadBook.loadContent:
+                // 此时新缓存已就绪, loadChapter 从缓存装载, 不重复下载; keepScrollOffset 保留滚动偏移)
+                onReset = {
+                    screenModel.viewModel.loadChapter(
+                        screenModel.viewModel.durChapterIndex.value,
+                        keepScrollOffset = true,
+                    )
+                },
                 // 标题栏点击改章节标题 (对照原版 ContentEditDialog.editTitle: 落库 + 重载)
                 onRenameChapter = { newTitle ->
                     val index = screenModel.viewModel.durChapterIndex.value

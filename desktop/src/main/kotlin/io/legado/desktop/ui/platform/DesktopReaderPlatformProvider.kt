@@ -113,6 +113,9 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
     /** 图片保存协程作用域 (Main: toast 需主线程; 下载/写盘在 IO 块内切换)。 */
     private val imageActionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
+    /** 文字选择对话框协程作用域 (整章正文异步加载: 读缓存 + ContentProcessor, 完成后弹框)。 */
+    private val selectionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     /** 触发标题栏着色刷新的配置变更集合。 */
     private val titleBarTintChanges = setOf(
         ReadConfigChange.BG,
@@ -174,16 +177,21 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         // 对照 app 端 AndroidReaderPlatformProvider.onLongPress: 携带章节名 + 整章正文,
         // 由共享 TextSelectionDialog (SelectionContainer 包 Text) 承载拖选/复制/查词。
         // 文字长按已由页内选择接管 (ReadViewComposable → onTextSelected); 此处为图片/
-        // 空白长按回落路径。
-        readerSelection = ReaderTextSelection(
-            chapterName = screenModel.currentChapter?.title.orEmpty(),
-            content = screenModel.currentChapterText,
-            onReplace = onReplace(screenModel),
-            onBookmark = onBookmark(screenModel),
-            onReadAloud = onReadAloud(screenModel),
-            onSearchContent = onSearchContent(screenModel),
-            onShare = onShare(screenModel),
-        )
+        // 空白长按回落路径。整章正文需异步加载 (读缓存 + ContentProcessor, 对照原版
+        // ContentEditViewModel.initContent), 不再用当前页文本 (curTextPage)。
+        val chapterName = screenModel.currentChapter?.title.orEmpty()
+        selectionScope.launch {
+            val content = screenModel.loadChapterFullText().orEmpty()
+            readerSelection = ReaderTextSelection(
+                chapterName = chapterName,
+                content = content,
+                onReplace = onReplace(screenModel),
+                onBookmark = onBookmark(screenModel),
+                onReadAloud = onReadAloud(screenModel),
+                onSearchContent = onSearchContent(screenModel),
+                onShare = onShare(screenModel),
+            )
+        }
     }
 
     /** 页内文字选择完成: 复用共享 [TextSelectionDialog], 注入选中文本 (锚点坐标桌面端对话框形态不使用)。
@@ -198,16 +206,22 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
         if (text.isBlank()) return
         // 弹对话框即清除页内选择 (读选区已完成, 高亮不再有意义且干扰后续点按)
         ReadBookEvents.postSelectionCancel()
-        readerSelection = ReaderTextSelection(
-            chapterName = screenModel.currentChapter?.title.orEmpty(),
-            content = screenModel.currentChapterText,
-            selectedText = text,
-            onReplace = onReplace(screenModel),
-            onBookmark = onBookmark(screenModel),
-            onReadAloud = onReadAloud(screenModel),
-            onSearchContent = onSearchContent(screenModel),
-            onShare = onShare(screenModel),
-        )
+        // 整章正文异步加载 (用于内容区拖选 + "复制全部"), 不再用当前页文本;
+        // 加载完成后一并弹框 (内容区展示选中文本, 无需再等待)
+        val chapterName = screenModel.currentChapter?.title.orEmpty()
+        selectionScope.launch {
+            val content = screenModel.loadChapterFullText().orEmpty()
+            readerSelection = ReaderTextSelection(
+                chapterName = chapterName,
+                content = content,
+                selectedText = text,
+                onReplace = onReplace(screenModel),
+                onBookmark = onBookmark(screenModel),
+                onReadAloud = onReadAloud(screenModel),
+                onSearchContent = onSearchContent(screenModel),
+                onShare = onShare(screenModel),
+            )
+        }
     }
 
     /**
@@ -780,6 +794,8 @@ private class DesktopReadMenuState(
 
     override fun onSeekDragStart() = Unit
     override fun onSeekStop(progress: Int) {
+        // 对照原版 skipToChapter: 进度条跳章前存跳转前进度快照 (返回键可恢复)
+        screenModel.saveCurrentBookProgress()
         screenModel.viewModel.loadChapter(progress)
     }
 

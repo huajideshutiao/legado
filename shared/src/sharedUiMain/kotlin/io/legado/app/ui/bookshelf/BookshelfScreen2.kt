@@ -165,11 +165,13 @@ fun SharedGroupCover(
     // useDefaultCover 时跳过加载, 直接走默认封面链 (对照 app 端 CoverImageView.load 行为);
     // 每次组合读 prefs (不 remember): 配置变更后条目重组时读到最新值
     val useDefaultCover = AppConfigProviders.get().useDefaultCover
+    // 仅 WiFi 加载封面: 非 WiFi 时 fetcher 层拦网络获取 (缓存命中仍显示, 对齐 SharedBookCover)
+    val loadOnlyWifi = AppConfigProviders.get().loadCoverOnlyWifi
     // 位图 + 是否默认封面合成一个 state (对齐 SharedBookCover, 一次加载只引发一次重组)
     var coverState by remember(cover) { mutableStateOf(NoCoverBitmap) }
     // 仅以首次有效布局尺寸降采样；窗口 resize 不重新发起图片请求。
     val displaySize = remember { MutableStateFlow(IntSize.Zero) }
-    LaunchedEffect(cover, loader, useDefaultCover) {
+    LaunchedEffect(cover, loader, useDefaultCover, loadOnlyWifi) {
         if (loader == null) return@LaunchedEffect
         val decodeSize = firstValidCoverDecodeSize(displaySize)
         val ratio = if (isVideoCover) CoverRatio.VIDEO else CoverRatio.NOVEL
@@ -193,7 +195,9 @@ fun SharedGroupCover(
             return@LaunchedEffect
         }
         // 与书架书同款: 真封面落持久磁盘分区, 清缓存不会把书架/分组清成默认封面
-        val bmp = loader.loadCoverOrNull(cover, null, decodeSize.width, decodeSize.height)
+        val bmp = loader.loadCoverOrNull(
+            cover, null, decodeSize.width, decodeSize.height, loadOnlyWifi,
+        )
         if (bmp != null) {
             coverState = CoverBitmap(bmp, false)
         } else loadDefault()

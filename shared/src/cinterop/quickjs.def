@@ -87,3 +87,32 @@ size_t qjs_ArrayBufferRead(JSContext *ctx, JSValueConst obj, size_t offset, char
 
 // ---- 宏常量 (cinterop 不绑定带参数宏; 无参宏/字面量也非可调用符号, 统一 wrapper) ----
 int qjs_EvalTypeGlobal(void) { return JS_EVAL_TYPE_GLOBAL; }
+
+// JS_EVAL_FLAG_COMPILE_ONLY (bytecode 编译缓存: JS_Eval 编译不执行, 与 JS_EVAL_TYPE_GLOBAL 组合传 flags)
+int qjs_EvalFlagCompileOnly(void) { return JS_EVAL_FLAG_COMPILE_ONLY; }
+
+// ---- bytecode 编译缓存 (JS_WriteObject/JS_ReadObject 裸指针跨端映射差异, 统一包装:
+//      缓冲区指针走 uintptr_t 整数, 数据走数组参数, Kotlin 零指针转换) ----
+
+// 序列化 function object 为 bytecode (JS_WriteObject + JS_WRITE_OBJ_BYTECODE 语义):
+// 返回缓冲区指针 (uintptr_t 整数, 0=失败), *plen 输出字节数;
+// 缓冲区须 qjs_FreeBytecodeBuf 释放 (js_free)
+uintptr_t qjs_WriteBytecode(JSContext *ctx, JSValueConst obj, size_t *plen) {
+    size_t len = 0;
+    uint8_t *buf = JS_WriteObject(ctx, &len, obj, JS_WRITE_OBJ_BYTECODE);
+    if (!buf) return 0;
+    *plen = len;
+    return (uintptr_t)buf;
+}
+
+// 释放 qjs_WriteBytecode 返回的缓冲区 (js_free 语义)
+void qjs_FreeBytecodeBuf(JSContext *ctx, uintptr_t buf) {
+    js_free(ctx, (void *)buf);
+}
+
+// 反序列化 bytecode (JS_ReadObject + JS_READ_OBJ_BYTECODE 语义):
+// src[] 数组参数形式 (cinterop 映射 CValuesRef, Kotlin ByteArray 直接传, 零指针转换,
+// 与 qjs_NewUint8ArrayCopy 同模式)
+JSValue qjs_ReadBytecode(JSContext *ctx, const char src[], size_t len) {
+    return JS_ReadObject(ctx, (const uint8_t *)src, len, JS_READ_OBJ_BYTECODE);
+}

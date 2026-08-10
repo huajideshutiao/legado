@@ -58,4 +58,13 @@ internal expect object JsExtensionsPlatform {
      * - iOS/鸿蒙: 返回 false (无主线程概念, webView 调用本就在后台线程)
      */
     fun isMainThread(): Boolean
+
+    /**
+     * jsoup 层忽略证书校验所需的 SSL 上下文 (JVM 专属类型, 以 Any? 透传)。
+     *
+     * - jvmAndAndroid: [io.legado.app.help.http.SSLHelper.unsafeSslContext] (真实 SSLContext, 信任全部证书);
+     * - iOS/鸿蒙: null —— Ktor CIO / @ohos.net.http 均走系统信任库, 无 unsafe 模式
+     *   (与整个 native HTTP 栈行为一致, 已知平台缺口, 见 IosHttpProvider 注释)。
+     */
+    fun unsafeSslContext(): Any?
 }

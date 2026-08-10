@@ -1,11 +1,8 @@
 package org.jsoup.internal
 
+import io.legado.app.utils.URL
 import org.jsoup.Connection
 import org.jsoup.Connection.Method
-import java.net.MalformedURLException
-import java.net.URL
-import javax.net.ssl.SSLContext
-import javax.net.ssl.SSLSocketFactory
 
 /**
  * [Connection.Request] 的可变实现,被 [HttpConnection] 持有以累积请求配置。
@@ -31,8 +28,10 @@ class HttpConnectionRequest : Connection.Request {
     private var followRedirects = true
     private var ignoreHttpErrors = false
     private var ignoreContentType = false
-    private var sslSocketFactory: SSLSocketFactory? = null
-    private var sslContext: SSLContext? = null
+
+    // javax.net.ssl 是 JVM 专属: jvm 端存的是 SSLContext/SSLSocketFactory, native 端存值不生效
+    private var sslSocketFactory: Any? = null
+    private var sslContext: Any? = null
     private var requestBody: String? = null
 
     /** 表单编码,默认 UTF-8 */
@@ -61,7 +60,8 @@ class HttpConnectionRequest : Connection.Request {
     override fun url(url: String): HttpConnectionRequest = apply {
         this.url = try {
             URL(url)
-        } catch (e: MalformedURLException) {
+        } catch (e: Exception) {
+            // jvm: URL(url) 抛 MalformedURLException; native: URL 是字符串持有者不抛 (catch 为兼容空兜底)
             throw IllegalArgumentException("Invalid URL: $url", e)
         }
     }
@@ -144,14 +144,13 @@ class HttpConnectionRequest : Connection.Request {
         this.ignoreContentType = ignoreContentType
     }
 
-    override fun sslSocketFactory(): SSLSocketFactory? = sslSocketFactory
-    override fun sslSocketFactory(sslSocketFactory: SSLSocketFactory?): HttpConnectionRequest =
-        apply {
-            this.sslSocketFactory = sslSocketFactory
-        }
+    override fun sslSocketFactory(): Any? = sslSocketFactory
+    override fun sslSocketFactory(sslSocketFactory: Any?): HttpConnectionRequest = apply {
+        this.sslSocketFactory = sslSocketFactory
+    }
 
-    override fun sslContext(): SSLContext? = sslContext
-    override fun sslContext(sslContext: SSLContext?): HttpConnectionRequest = apply {
+    override fun sslContext(): Any? = sslContext
+    override fun sslContext(sslContext: Any?): HttpConnectionRequest = apply {
         this.sslContext = sslContext
     }
 

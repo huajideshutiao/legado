@@ -41,6 +41,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,6 +55,7 @@ import io.legado.app.ui.compose.component.code.KeyboardToolbar
 import io.legado.app.ui.compose.component.code.KeyboardToolbarState
 import io.legado.app.ui.compose.component.code.rememberCodeEditorState
 import io.legado.app.ui.compose.component.code.rememberCodeSyntax
+import io.legado.app.ui.compose.platform.bringIntoViewOnIme
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
@@ -144,6 +148,20 @@ fun JsEditScreen(
             }
         }
         val emit: (String) -> Unit = { lastEmitted = it; onCodeChange(it) }
+        // 键盘弹出时重新滚到光标行: 窗口收缩后光标行可能滚出视口, 点击获焦时的
+        // bringIntoView 只在焦点变化时触发一次 (见 ImeInsets KDoc)。行高按 CodeTextField
+        // 默认 fontSize*1.5 近似, rect 上下各扩 3 行容错 label/内边距误差
+        val density = LocalDensity.current
+        val imeRectProvider = remember(editor, density) {
+            {
+                val text = editor.value.text
+                val cursor = editor.value.selection.start.coerceIn(0, text.length)
+                val cursorLine = text.take(cursor).count { it == '\n' }
+                val lineHeight = with(density) { (14.sp * 1.5f).toPx() }
+                Rect(0f, (cursorLine - 3) * lineHeight, 0f, (cursorLine + 4) * lineHeight)
+            }
+        }
+        var codeFocused by remember { mutableStateOf(false) }
         CodeTextField(
             value = editor.value,
             onValueChange = { editor.onValueChange(it); emit(it.text) },
@@ -153,7 +171,9 @@ fun JsEditScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .padding(horizontal = 12.dp, vertical = 4.dp),
+                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .onFocusChanged { codeFocused = it.isFocused }
+                .bringIntoViewOnIme(codeFocused, imeRectProvider),
         )
         // 运行结果区 (有结果或错误时显示, 可滚动)
         val resultText = state.result

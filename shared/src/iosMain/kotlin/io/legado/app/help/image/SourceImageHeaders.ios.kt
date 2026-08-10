@@ -14,7 +14,9 @@ import io.legado.app.help.http.cookieJarHeader
 import io.legado.app.help.http.mergeCookies
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceNetworkProviders
+import io.legado.app.model.analyzeRule.AnalyzeUrlFactories
 import io.legado.app.utils.NetworkUtils
+import kotlin.coroutines.coroutineContext
 
 /**
  * Coil3 Extras key: 携带书源 bookUrl (sourceOrigin), 供 fetcher 层解析防盗链 header。
@@ -51,7 +53,17 @@ suspend fun resolveSourceHeaders(
 ): Map<String, String>? {
     if (sourceOrigin.isNullOrEmpty()) return null
     val source: BaseSource = SourceHelp.getSource(sourceOrigin) ?: return null
-    val headerMap = LinkedHashMap(source.getHeaderMap())
+    val ctx = coroutineContext
+    // 对齐原版 AnalyzeUrl(url).getGlideUrl(): 构造 AnalyzeUrl 取 headerMap。
+    // 请求头规则 JS 经 AnalyzeUrlCore.evalJS 执行, java = AnalyzeUrl 实例 (urlNoQuery 可用);
+    // 若走 source.getHeaderMap() (BaseSource.evalJS), java 是书源包装器, 无 urlNoQuery (回归)。
+    // 注: native 端未注册 AnalyzeUrlFactories, fallback 裸 AnalyzeUrlCore, 与 iOS 主请求链路一致。
+    val analyzeUrl = AnalyzeUrlFactories.create(
+        rawUrl = imageUrl ?: sourceOrigin,
+        source = source,
+        coroutineContext = ctx
+    )
+    val headerMap = LinkedHashMap(analyzeUrl.headerMap)
     // 原版 AnalyzeUrl init 把 header 里的 proxy 抽出作代理配置, 不当请求头发出
     headerMap.remove("proxy")
 

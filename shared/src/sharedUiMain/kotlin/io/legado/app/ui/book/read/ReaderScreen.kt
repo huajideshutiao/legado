@@ -4,6 +4,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -11,7 +12,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.IntSize
+import io.legado.app.ui.book.read.page.LocalReaderTextMeasurer
+import io.legado.app.ui.book.read.page.PageSelectionState
 import io.legado.app.ui.book.read.page.ReadViewComposable
+import io.legado.app.ui.book.read.page.rememberReaderTextMeasurer
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import kotlinx.coroutines.flow.StateFlow
 
@@ -21,18 +25,22 @@ import kotlinx.coroutines.flow.StateFlow
  * 对照 app 端 [ReadBookActivity.Content] 的渲染输入：
  * - [viewModel] 驱动 [ReadViewComposable]（三页流 + pageDelegate）
  * - [menuState] 驱动 [ReadMenuOverlay]（顶/底栏菜单）
+ * - [searchMenuState] 驱动 [SearchMenuOverlay]（全文搜索菜单，对照原版 SearchMenu）
+ * - [selection] 页内文字选择状态（搜索跳转与手势选择共用，注入 [ReadViewComposable]）
  * - [batteryLevel] 传给 [ReadViewComposable] 显示页眉/页脚电量
  * - [clockText] 传给 [ReadViewComposable] 显示页眉/页脚时间
  *
  * 标注 @Stable：全部属性为 val 且引用稳定（viewModel/menuState 组合期不换实例，
  * battery/clock 是 StateFlow 引用，内部值变化经 collectAsState 局部订阅，不改变
  * 本类相等性），上层可安全按 equals 跳过无效重组；菜单显隐等内部可变状态由
- * [ReadMenuOverlay] 直接订阅 menuState 自身，不经本类驱动。
+ * [ReadMenuOverlay]/[SearchMenuOverlay] 直接订阅各自 state，不经本类驱动。
  */
 @Stable
 data class ReaderUiState(
     val viewModel: ReadBookViewModelShared,
     val menuState: ReadMenuState,
+    val searchMenuState: SearchMenuState,
+    val selection: PageSelectionState,
     val batteryLevel: StateFlow<Int>,
     val clockText: StateFlow<String>,
 )
@@ -95,6 +103,9 @@ fun ReaderScreen(
 ) {
     val batteryLevel by state.batteryLevel.collectAsState()
     val clockText by state.clockText.collectAsState()
+    // 阅读页统一测量器：正文绘制（PageContentCanvas）与预热（PageLayoutPrewarmEffect）
+    // 必须共用同一实例，否则各带一份 LRU，预热暖的不是绘制取的那份
+    val readerTextMeasurer = rememberReaderTextMeasurer()
     Box(
         modifier
             .fillMaxSize()
@@ -103,24 +114,31 @@ fun ReaderScreen(
             .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
             .focusable()
     ) {
-        ReadViewComposable(
-            viewModel = state.viewModel,
-            batteryLevel = batteryLevel,
-            clockText = clockText,
-            onClick = { column -> actions.onPageClick(column) },
-            onLongClick = { column -> actions.onPageLongClick(column) },
-            onImageLongPress = { src, x, y -> actions.onImageLongPress(src, x, y) },
-            onAction = { action -> actions.onPageAction(action) },
-            onSelectionMenu = { text, anchor ->
-                actions.onTextSelection(
-                    text,
-                    anchor?.x ?: 0f,
-                    anchor?.y ?: 0f,
-                )
-            },
-            menuVisible = { state.menuState.isVisible },
-            onTextAreaMeasured = onTextAreaMeasured,
-        )
+        CompositionLocalProvider(LocalReaderTextMeasurer provides readerTextMeasurer) {
+            ReadViewComposable(
+                viewModel = state.viewModel,
+                batteryLevel = batteryLevel,
+                clockText = clockText,
+                onClick = { column -> actions.onPageClick(column) },
+                onLongClick = { column -> actions.onPageLongClick(column) },
+                onImageLongPress = { src, x, y -> actions.onImageLongPress(src, x, y) },
+                onAction = { action -> actions.onPageAction(action) },
+                onSelectionMenu = { text, anchor ->
+                    actions.onTextSelection(
+                        text,
+                        anchor?.x ?: 0f,
+                        anchor?.y ?: 0f,
+                    )
+                },
+                // 菜单可见让位判定含搜索菜单（对照原版 menuLayoutIsVisible =
+                // readMenu.isVisible || searchMenu.isVisible）
+                menuVisible = { state.menuState.isVisible || state.searchMenuState.rootVisible },
+                onTextAreaMeasured = onTextAreaMeasured,
+                externalSelection = state.selection,
+            )
+        }
         ReadMenuOverlay(state = state.menuState)
+        // 对照原版 activity_book_read.xml：SearchMenu 在 ReadMenu 之后（上层）
+        SearchMenuOverlay(state = state.searchMenuState)
     }
 }

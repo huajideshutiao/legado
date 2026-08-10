@@ -508,10 +508,19 @@ class ReadBookViewModelShared(
      * 打开章节（对照 app 端 `ReadBook.openChapter` + `loadContent(resetPageOffset)`）：
      * 读章节列表 / 解析书源，跳章时清三章滑窗并重置进度，随后装载当前章并异步预载前后章。
      * 正文经 ContentProcessor 完整处理链后排版，详见 [contentLoadFinish]。
+     *
+     * @param keepScrollOffset true=装载完成后保留滚动偏移 (对照原版 loadContent(resetPageOffset=false),
+     *   用于编辑保存/重置后刷新阅读器: 置位滚动跨章标记, applyCurChapterPages 以 resetOffset=false
+     *   归位, 滚动模式不回到章首; 其余显式装载路径默认 false 归零)
      */
-    fun loadChapter(index: Int) {
-        // 显式装载（打开书/菜单跳章）清零滚动跨章标记，防止残留标记导致后续装载误保留偏移
-        clearScrollCrossingPending()
+    fun loadChapter(index: Int, keepScrollOffset: Boolean = false) {
+        // 显式装载（打开书/菜单跳章）清零滚动跨章标记，防止残留标记导致后续装载误保留偏移;
+        // keepScrollOffset=true 时反向置位, 使本次装载排版完成保留滚动偏移
+        if (keepScrollOffset) {
+            markScrollCrossingPending()
+        } else {
+            clearScrollCrossingPending()
+        }
         val currentBookUrl = readBook.book.value?.bookUrl
         if (reviewCountBookUrl != currentBookUrl) {
             clearExpiredChapterLoadingJobs(clearAll = true)

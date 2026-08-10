@@ -116,6 +116,8 @@ actual typealias KmpHttpUrlBuilder = HttpUrl.Builder
 
 actual typealias KmpMediaType = MediaType
 
+actual fun KmpMediaType.charsetName(): String? = this.charset()?.name()
+
 actual typealias KmpRequestBody = RequestBody
 
 actual typealias KmpHeaders = Headers

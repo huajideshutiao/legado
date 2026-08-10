@@ -64,15 +64,20 @@ class IosBookImageLoader : BookImageLoader {
         sourceOrigin: String?,
         widthPx: Int,
         heightPx: Int,
+        loadOnlyWifi: Boolean,
     ): ImageBitmap? =
         // 同 URL 并发请求经 BookImageLoadDedup 单飞去重 (I6, 与 jvm/android 端一致)
         BookImageLoadDedup.singleFlight(
-            "${url}\u0000${sourceOrigin ?: ""}\u0000${widthPx}x$heightPx\u0000false"
+            "${url}\u0000${sourceOrigin ?: ""}\u0000${widthPx}x$heightPx\u0000false\u0000$loadOnlyWifi"
         ) {
             val request = ImageRequest.Builder(PlatformContext.INSTANCE)
                 .data(url)
                 .sourceOrigin(sourceOrigin)
                 .apply {
+                    // 非 wifi 且 loadOnlyWifi 时 fetcher 层拦网络获取 (CoverDecodeFetcher.ios.kt, 对齐原版 loadOnlyWifiOption)
+                    if (loadOnlyWifi) {
+                        extras.set(LoadOnlyWifiKey, true)
+                    }
                     // 按显示尺寸降采样; FILL 对齐消费端 ContentScale.Crop, INEXACT 允许复用更大的内存缓存项
                     if (widthPx > 0 && heightPx > 0) {
                         size(widthPx, heightPx)

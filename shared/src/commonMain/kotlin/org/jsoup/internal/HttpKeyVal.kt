@@ -1,7 +1,7 @@
 package org.jsoup.internal
 
+import io.legado.app.utils.InputStream
 import org.jsoup.Connection
-import java.io.InputStream
 
 /** [Connection.KeyVal] 的简单可变实现,用于表单字段或文件上传 */
 class HttpKeyVal private constructor(
@@ -33,14 +33,11 @@ class HttpKeyVal private constructor(
     fun filename(): String? = filename
 
     companion object {
-        @JvmStatic
         fun create(key: String, value: String): HttpKeyVal = HttpKeyVal(key, value)
 
-        @JvmStatic
         fun create(key: String, filename: String, inputStream: InputStream): HttpKeyVal =
             HttpKeyVal(key, filename, inputStream, null, filename)
 
-        @JvmStatic
         fun create(
             key: String, filename: String, inputStream: InputStream, contentType: String?
         ): HttpKeyVal = HttpKeyVal(key, filename, inputStream, contentType, filename)

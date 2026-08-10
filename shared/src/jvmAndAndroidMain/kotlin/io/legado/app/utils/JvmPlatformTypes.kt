@@ -16,6 +16,8 @@ import okhttp3.ResponseBody
  */
 actual typealias URL = java.net.URL
 
+internal actual fun URL.urlQuery(): String? = query
+
 actual typealias InputStream = java.io.InputStream
 
 actual typealias File = java.io.File

@@ -4,7 +4,7 @@
 
 |构造函数|函数|对象|简要说明|
 |------|-----|------|------|
-|JavaImporter|importClass| |导入Java类到JavaScript。顶层`importPackage`为空实现（QuickJS无法枚举Java包），请改用`new JavaImporter(包)`或全限定类名|
+|JavaImporter|importClass| |导入Java类到JavaScript。顶层`importPackage`为空实现（QuickJS无法枚举Java包），请改用`new JavaImporter(包)`或全限定类名；ios/ohos 无 Java 反射，不可用|
 |||Packages java javax android org com io cn|按需懒加载的Java包代理，如`Packages.java.lang.String`|
 |JavaAdapter|||用JS对象实现Java接口|
 
@@ -548,6 +548,14 @@ cache.deleteMemory(key: String)
 | java.* 反射调用 Android/JVM 类                  | 可用      | 不可用           |
 | image 对象（图片解密）                             | 可用      | 可用（各平台原生实现）   |
 | webView 系列（java.webView 等）                 | 可用      | 以各平台实现为准      |
+
+> `java.*`/`Packages.*`/`importClass`/`JavaImporter`/`JavaAdapter` 反射在 ios/ohos 均不可用
+> （native 端无 Java 反射，`Packages.java.xxx`/`importClass` 等 LiveConnect 写法恒失败），
+> 跨端书源请改用 `java.*` 绑定（`java.encodeURI`/`java.randomUUID` 等，全平台可用）。
+> 内置 TTS 条目已不依赖 Java 反射，ios/ohos 可用。
+> 需要摘要/HMac/加解密的跨端书源请用内置封装方法
+> `java.HMacBase64`/`java.HMacHex`/`java.digestHex`/`java.base64Encode`（见 crypto 小节，全平台可用）；
+> `ruleHelp.md` 里 `ByteArrayInputStream`/`ByteArrayOutputStream` 图片解密示例同理仅 android/jvm 可用。
 
 crypto 系列各算法明细（android 为 hutool/JCA 全量，ios/ohos 统一走 mbedTLS 后端，异常回落平台实现）：
 
