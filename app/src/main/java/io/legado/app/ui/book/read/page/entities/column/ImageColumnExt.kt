@@ -45,7 +45,8 @@ suspend fun ImageColumn.refreshLayout(book: Book, isSingle: Boolean): Boolean {
 
         if (!isSingle && abs(deltaH) > 0.5f) {
             val lines = textLine.textPage.lines
-            val index = lines.indexOf(textLine)
+            // TextLine 是 data class, indexOf 的结构相等会命中内容相同的另一行, 必须按引用查
+            val index = lines.indexOfFirst { it === textLine }
             if (index != -1) {
                 for (i in index + 1 until lines.size) {
                     val l = lines[i]

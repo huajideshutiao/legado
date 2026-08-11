@@ -183,9 +183,17 @@ abstract class PageDelegateCompose(
             animationSpec = tween(durationMillis = duration, easing = FastOutSlowInEasing),
         ) {
             _currentOffset = value
+            onAnimOffsetChanged(value)
         }
         onAnimStop()
     }
+
+    /**
+     * 动画每帧偏移回调。滚动模式覆写为同步 viewModel.scrollOffset —— 原版 pageOffset 是
+     * 单一真相源, 动画期间每帧更新, 消费方 (朗读起点/选区/列命中) 才读得到真实偏移;
+     * 横向翻页 delegate 的偏移不是滚动偏移, 默认空实现不消费。
+     */
+    protected open fun onAnimOffsetChanged(offset: Float) = Unit
 
     /**
      * 自动翻页控制器（由 [io.legado.app.ui.book.read.page.AutoPagerCompose] 挂载）。

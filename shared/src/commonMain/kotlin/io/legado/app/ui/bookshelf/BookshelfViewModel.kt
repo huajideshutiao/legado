@@ -153,22 +153,20 @@ class BookshelfViewModel {
      * 每本书完成/失败/取消时发事件 (开始事件已移除, 否则转圈会在渲染前被清掉, 见
      * UpdateBookShared.startUpTocJob 注释)。
      *
-     * 阅读器退出 / 目录更新落库后也会发 UP_BOOKSHELF (见 ReadBookViewModelShared.uploadProgressAwait /
-     * UpdateBookShared), 此时重启当前 + 相邻分组流强制重查: 单页架构下书架流全程驻留, 退出阅读
-     * 不摘订阅, 依赖 Room 连续失效推送; 重启流对齐原版"返回书架 onResume 重订阅"的刷新语义,
-     * 保证进度/排序在返回后立即可见。书架不可见 (active=false) 时跳过, 恢复激活时已重查。
+     * 不再在此重启分组流: 所有 UP_BOOKSHELF 发射源 (目录更新/进度落库/强制刷新/停止更新, 见
+     * UpdateBookShared / ReadBookViewModelShared.uploadProgressAwait) 都伴随 book 表落库,
+     * 当前分组持续流由 Room 失效推送自动增量更新 (distinctUntilChanged + debounce 聚合批量写入:
+     * 一次滑动切换前后的一批更新只触发一次发射/重组); 相邻分组 one-shot 流在滑动切换时由
+     * [selectGroup] 重启重新获取 (对齐原版: 相邻 fragment STARTED 态只查一次, 切到 RESUMED 才
+     * 重订阅)。旧实现每本书完成都取消全部组合流并重查重发——重启即新流, distinctUntilChanged
+     * 无旧值可比, 必然全列表发射, 批量刷新/阅读进度更新时反复触发全屏条目重组, 是分组滑动
+     * 卡顿的主要来源之一。
      */
     private fun observeUpBookshelfEvents() {
         scope.launch {
             FlowBus.with(EventBus.UP_BOOKSHELF).collect { e ->
                 val url = e as? String ?: return@collect
                 _refreshingUrls.value = _refreshingUrls.value - url
-                if (active) {
-                    (composedGroupIds + _currentGroupId.value).forEach { groupId ->
-                        booksFlowJobs.remove(groupId)?.cancel()
-                        startGroupFlow(groupId)
-                    }
-                }
             }
         }
     }
@@ -200,7 +198,9 @@ class BookshelfViewModel {
     private fun startBookGroupsFlow() {
         if (bookGroupsJob != null) return
         bookGroupsJob = scope.launch {
-            bookGroupDao.flowShow().conflate().catch {
+            // distinctUntilChanged: Room 流在 bookGroup 表任意变更时都重查发射,
+            // 内容相同的发射会让顶层整树重组 (顶栏 + 各分组页参数比较)
+            bookGroupDao.flowShow().distinctUntilChanged().conflate().catch {
                 AppLog.put("书架分组数据加载出错", it)
             }.collect { groups ->
                 _bookGroups.value = groups

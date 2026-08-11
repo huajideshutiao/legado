@@ -15,6 +15,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -73,7 +74,13 @@ internal fun BookshelfScreen2(
     val eInk = LocalEInk.current
     val appConfig = remember { AppConfigProviders.get() }
     val bookCoverSlot = coverSlot ?: LocalBookCoverSlot.current
-    val groupCoverSlot = LocalGroupCoverSlot.current
+    // LocalGroupCoverSlot 组合期读取值随宿主重组变化, 稳定化引用避免条目层全量重组合
+    val currentGroupCoverSlot = rememberUpdatedState(LocalGroupCoverSlot.current)
+    val groupCoverSlot: @Composable (BookGroup, Modifier, Boolean, Int) -> Unit = remember {
+        { group, m, isVideoCover, tick ->
+            currentGroupCoverSlot.value(group, m, isVideoCover, tick)
+        }
+    }
     val layoutSpec = rememberBookshelfLayoutSpec(tier)
     // 标题是否拼接书籍数量 (对照 app 端 AppConfig.bookshelfShowGroupCount)
     val showGroupCount = remember(configTick) { appConfig.bookshelfShowGroupCount }
@@ -91,6 +98,12 @@ internal fun BookshelfScreen2(
         onDispose { viewModel.releaseGroupFlow(groupId) }
     }
     val books = booksCache[groupId].orEmpty()
+    // 稳定化透传回调: 引用恒定, 避免本屏重组 → 条目层全量重组合 (同 BookshelfScreen 策略);
+    // onRefresh 内部经 rememberUpdatedState 读最新 books (捕获旧引用会刷旧书)
+    val currentBooks = rememberUpdatedState(books)
+    val stableOnRefresh: () -> Unit = remember { { viewModel.upToc(currentBooks.value) } }
+    // groupId 是 remember 的 delegate 引用, lambda 捕获后恒定, 可一次创建
+    val stableOnGroupClick: (BookGroup) -> Unit = remember { { groupId = it.groupId } }
 
     // 对照 getItems(): 根级 = 分组 + 未分组书籍, 分组内 = 只有书籍
     val items: List<Any> = remember(groupId, groups, books) {
@@ -127,7 +140,7 @@ internal fun BookshelfScreen2(
             scroll = scrollState,
             refreshEnabled = refreshEnabled,
             // 对照 refreshLayout.setOnRefreshListener: activityViewModel.upToc(books)
-            onRefresh = { viewModel.upToc(books) },
+            onRefresh = stableOnRefresh,
             coverReloadTick = configTick,
             refreshingUrls = refreshingUrls,
             onBookClick = onBookClick,
@@ -137,7 +150,7 @@ internal fun BookshelfScreen2(
             bookCoverSlot = bookCoverSlot,
             groupCoverSlot = groupCoverSlot,
             // 对照 onItemClick(BookGroup): 进入该分组; onItemLongClick(BookGroup): GroupEditDialog
-            onGroupClick = { groupId = it.groupId },
+            onGroupClick = stableOnGroupClick,
             onGroupLongClick = onGroupLongClick,
         )
     }

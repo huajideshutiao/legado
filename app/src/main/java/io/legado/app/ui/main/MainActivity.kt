@@ -20,6 +20,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -511,7 +512,10 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
 
     @Composable
     override fun Content() {
-        val navigator = remember { AppNavigator() }
+        // rememberSaveable + AppNavigatorSaver: recreate()/进程重建后恢复导航栈
+        // (对照原版 FragmentManager 经 savedInstanceState 恢复 Fragment 栈,
+        // RECREATE 事件重建 Activity 后用户仍停在原页, 不会弹回主界面)
+        val navigator = rememberSaveable(saver = AppNavigatorSaver) { AppNavigator() }
         val screenModelStore = remember { ScreenModelStore() }
         val context = LocalContext.current
 

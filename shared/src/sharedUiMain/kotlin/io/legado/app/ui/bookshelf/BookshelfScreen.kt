@@ -29,6 +29,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -182,16 +183,36 @@ fun BookshelfScreen(
             launch { FlowBus.with(EventBus.BOOKSHELF_REFRESH).collect { configTick++ } }
         }
     }
+    // 稳定化透传到条目层的回调/封面槽: 上层 (MainRoute 等) 重组会新建 lambda 实例,
+    // 直接透传时每次上层重组 → 本屏重组 → 各分组页参数变化 → LazyGrid content 重建 →
+    // 全部可见条目全量重组 (Compose 对 item 参数按 == 比较, 新 lambda 必不等)。
+    // rememberUpdatedState 桥接: 透传引用恒定, 调用时读最新实现, 行为语义不变。
+    val currentCoverSlot = rememberUpdatedState(coverSlot ?: LocalBookCoverSlot.current)
+    val stableCoverSlot: @Composable (Book, Modifier, Boolean, Int) -> Unit = remember {
+        { book, modifier, isVideoCover, tick ->
+            currentCoverSlot.value(book, modifier, isVideoCover, tick)
+        }
+    }
+    val currentOnBookClick = rememberUpdatedState(onBookClick)
+    val stableOnBookClick: (Book) -> Unit = remember { { book -> currentOnBookClick.value(book) } }
+    val currentOnBookLongClick = rememberUpdatedState(onBookLongClick)
+    val stableOnBookLongClick: (Book) -> Unit =
+        remember { { book -> currentOnBookLongClick.value(book) } }
+    val currentOnGroupLongClick = rememberUpdatedState(onGroupLongClick)
+    val stableOnGroupLongClick: (BookGroup) -> Unit =
+        remember { { group -> currentOnGroupLongClick.value(group) } }
+    val currentOnRefresh = rememberUpdatedState<() -> Unit>({ viewModel.upToc() })
+    val stableOnRefresh: () -> Unit = remember { { currentOnRefresh.value() } }
     // 分组样式分流 (对照 MainActivity.getFragmentId: bookGroupStyle==1 走 BookshelfFragment2)
     if (remember(configTick) { appConfig.bookGroupStyle } == 1) {
         BookshelfScreen2(
             viewModel = viewModel,
-            onBookClick = onBookClick,
-            onBookLongClick = onBookLongClick,
-            onGroupLongClick = onGroupLongClick,
+            onBookClick = stableOnBookClick,
+            onBookLongClick = stableOnBookLongClick,
+            onGroupLongClick = stableOnGroupLongClick,
             modifier = modifier,
             tier = tier,
-            coverSlot = coverSlot,
+            coverSlot = stableCoverSlot,
             scrollState = scrollState,
             actions = actions,
             gotoTopTick = gotoTopTick,
@@ -201,10 +222,10 @@ fun BookshelfScreen(
         return
     }
     val eInk = LocalEInk.current
-    // 封面 slot: 显式传入优先, 否则取 CompositionLocal (宿主端可覆盖注入平台实现, 兜底 SharedBookCover);
-    // 第 4 参为封面重载 tick (configTick 变化时条目重组并重载封面, 应用 useDefaultCover 等配置变更)
-    val resolvedCoverSlot: @Composable (Book, Modifier, Boolean, Int) -> Unit =
-        coverSlot ?: LocalBookCoverSlot.current
+    // 封面 slot 直接透传 (引用已稳定, 不再包新 lambda, 避免所有可见条目一起重组)
+    val bookCoverSlot: @Composable (Book, Modifier, Boolean, Int) -> Unit = stableCoverSlot
+    val groupCoverSlot: @Composable (BookGroup, Modifier, Boolean, Int) -> Unit =
+        DefaultGroupCoverSlot
     val groups by viewModel.bookGroups.collectAsState()
     val currentGroupId by viewModel.currentGroupId.collectAsState()
     // 单一数据源: 页数据/顶栏计数均读 VM 缓存切片 (未访问过的分组无条目, 顶栏显示 "..")
@@ -219,10 +240,6 @@ fun BookshelfScreen(
     val layoutSpec = rememberBookshelfLayoutSpec(tier)
     // 各分组页的滚动状态 (对照 BookshelfFragment1.fragmentMap): 滚顶要作用于当前分组页
     val pageScrollStates = remember { mutableStateMapOf<Long, ShelfScrollState>() }
-    // 封面 slot 直接透传 (原来外面再包一层 lambda: 每次重组换实例, 会让所有可见条目一起重组)
-    val bookCoverSlot: @Composable (Book, Modifier, Boolean, Int) -> Unit = resolvedCoverSlot
-    val groupCoverSlot: @Composable (BookGroup, Modifier, Boolean, Int) -> Unit =
-        DefaultGroupCoverSlot
 
     // HorizontalPager (对照 app 端 BookshelfScreen1, pageCount 动态跟随 groups)
     val pagerState = rememberPagerState(
@@ -290,7 +307,7 @@ fun BookshelfScreen(
                     }
                 }
             },
-            onGroupLongClick = onGroupLongClick,
+            onGroupLongClick = stableOnGroupLongClick,
             actions = actions,
         )
         if (groups.isEmpty()) {
@@ -309,8 +326,8 @@ fun BookshelfScreen(
                 onRefresh = {},
                 coverReloadTick = 0,
                 refreshingUrls = emptySet(),
-                onBookClick = onBookClick,
-                onBookLongClick = onBookLongClick,
+                onBookClick = stableOnBookClick,
+                onBookLongClick = stableOnBookLongClick,
                 showLastUpdateTime = true,
                 showKindIntro = true,
                 bookCoverSlot = bookCoverSlot,
@@ -334,11 +351,11 @@ fun BookshelfScreen(
                     viewModel = viewModel,
                     configTick = configTick,
                     books = booksCache[group.groupId],
-                    onBookClick = onBookClick,
-                    onBookLongClick = onBookLongClick,
+                    onBookClick = stableOnBookClick,
+                    onBookLongClick = stableOnBookLongClick,
                     bookCoverSlot = bookCoverSlot,
                     groupCoverSlot = groupCoverSlot,
-                    onRefresh = { viewModel.upToc() },
+                    onRefresh = stableOnRefresh,
                 )
             }
         }

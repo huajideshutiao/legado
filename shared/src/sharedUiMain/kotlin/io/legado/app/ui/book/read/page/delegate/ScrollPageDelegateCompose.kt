@@ -71,11 +71,6 @@ class ScrollPageDelegateCompose(
     animationSpeed: Int = DEFAULT_ANIMATION_SPEED,
 ) : PageDelegateCompose(viewModel, scope, animationSpeed) {
 
-    companion object {
-        /** 单帧内最大翻页折算次数 (防御性上限, 正常单帧只跨一页) */
-        private const val MAX_PAGE_TRANSITIONS = 64
-    }
-
     // region 状态
     /** 惯性衰减 (splineBasedDecay, 由 renderPageAnimation 组合期注入) */
     private var decaySpec: DecayAnimationSpec<Float>? = null
@@ -132,68 +127,57 @@ class ScrollPageDelegateCompose(
      */
     private fun applyScrollDelta(delta: Float): Boolean {
         var offset = _currentOffset + delta
-        var transitions = 0
-        while (transitions++ < MAX_PAGE_TRANSITIONS) {
-            val cur = viewModel.curTextPage.value
-            if (cur == null) {
-                offset = 0f
-                break
+        val cur = viewModel.curTextPage.value
+        if (cur == null) {
+            _currentOffset = 0f
+            viewModel.updateScrollOffset(0)
+            return true
+        }
+        val h = cur.height.toFloat()
+        // 页高为 0 (空章空标题页/配置异常时的占位页): 不折算, 否则 offset < -h 恒成立且
+        // offset += 0 不推进, 一次手势会连翻几十页; 同时丢弃增量不累积 (页高 0 期间无内容
+        // 可滚, 累积会在页高恢复后折算成跳变/连翻)
+        if (h <= 0f) {
+            return true
+        }
+        when {
+            // 拖过页顶: 上一页从上方滑入 (旧 moveToPrev 分支, 内容连续性由 offset 折算保证)
+            offset > 0f -> {
+                val oldOffset = offset
+                if (!viewModel.prevPage()) {
+                    if (!viewModel.moveToPrevChapter()) {
+                        // 书首: 归零并中止 (旧 !hasPrev → pageOffset = 0 + abortAnim)
+                        _currentOffset = 0f
+                        viewModel.updateScrollOffset(0)
+                        return false
+                    }
+                    viewModel.markScrollCrossingPending()
+                }
+                // 新当前页高折算 (旧 pageOffset -= textPage.height, 此时 textPage 已换为新页)
+                offset = oldOffset - (viewModel.curTextPage.value?.height ?: 0f)
             }
-            val h = cur.height.toFloat()
-            when {
-                // 拖过页顶: 上一页从上方滑入 (旧 moveToPrev 分支, 内容连续性由 offset 折算保证)
-                offset > 0f -> {
-                    val oldOffset = offset
-                    if (!viewModel.prevPage()) {
-                        // 章首: 切上一章。章节边界一帧内只折算一次 (break)——
-                        // 对照原版 scroll() 每帧只做一次页转换, 避免快滚时占位页
-                        // 连锁触发 moveToPrevChapter 跳过大量章节
-                        if (!viewModel.moveToPrevChapter()) {
-                            // 书首: 归零并中止 (旧 !hasPrev → pageOffset = 0 + abortAnim)
-                            offset = 0f
-                            _currentOffset = offset
-                            viewModel.updateScrollOffset(offset.toInt())
-                            return false
-                        }
-                        viewModel.markScrollCrossingPending()
-                        // 新当前页高折算 (旧 pageOffset -= textPage.height, 此时 textPage 已换为新页)
-                        offset = oldOffset - (viewModel.curTextPage.value?.height ?: 0f)
-                        break
+
+            // 末页底部钳制 (旧 !hasNext 分支): 末行对齐视口底后不再上滚
+            !hasNext() && offset < 0f && offset + h < cur.visibleHeight.toFloat() -> {
+                offset = min(0f, cur.visibleHeight.toFloat() - h)
+                _currentOffset = offset
+                viewModel.updateScrollOffset(offset.toInt())
+                return false
+            }
+
+            // 拖过页底: 下一页从下方滑入 (旧 moveToNext 分支)
+            offset < -h -> {
+                if (!viewModel.nextPage()) {
+                    if (!viewModel.moveToNextChapter()) {
+                        // 全书末: 钳制到页底 (旧 moveToNext 失败 → pageOffset = -height)
+                        _currentOffset = -h
+                        viewModel.updateScrollOffset((-h).toInt())
+                        return false
                     }
-                    // 新当前页高折算 (旧 pageOffset -= textPage.height, 此时 textPage 已换为新页)
-                    offset = oldOffset - (viewModel.curTextPage.value?.height ?: 0f)
+                    viewModel.markScrollCrossingPending()
                 }
-
-                // 末页底部钳制 (旧 !hasNext 分支): 末行对齐视口底后不再上滚
-                !hasNext() && offset < 0f && offset + h < cur.visibleHeight.toFloat() -> {
-                    offset = min(0f, cur.visibleHeight.toFloat() - h)
-                    _currentOffset = offset
-                    viewModel.updateScrollOffset(offset.toInt())
-                    return false
-                }
-
-                // 拖过页底: 下一页从下方滑入 (旧 moveToNext 分支)
-                offset < -h -> {
-                    val oldHeight = h
-                    if (!viewModel.nextPage()) {
-                        // 章末: 切下一章。章节边界一帧内只折算一次 (break), 同 prev 分支
-                        if (!viewModel.moveToNextChapter()) {
-                            // 全书末: 钳制到页底 (旧 moveToNext 失败 → pageOffset = -height)
-                            offset = -oldHeight
-                            _currentOffset = offset
-                            viewModel.updateScrollOffset(offset.toInt())
-                            return false
-                        }
-                        viewModel.markScrollCrossingPending()
-                        // 旧页高折算 (旧 pageOffset += textPage.height, height 在 moveToNext 前取值)
-                        offset += oldHeight
-                        break
-                    }
-                    // 旧页高折算 (旧 pageOffset += textPage.height, height 在 moveToNext 前取值)
-                    offset += oldHeight
-                }
-
-                else -> break
+                // 旧页高折算 (旧 pageOffset += textPage.height, height 在 moveToNext 前取值)
+                offset += h
             }
         }
         _currentOffset = offset
@@ -335,8 +319,10 @@ class ScrollPageDelegateCompose(
      */
     private fun onFling(velocityY: Float) {
         if (!isMoved || abs(velocityY) <= 0f) {
-            // 无有效速度: 直接停（慢速拖放/边界复位后）
-            autoPager?.resume()
+            // 无有效速度: 直接停（慢速拖放/边界复位后）。走 onAnimStop 而非只 resume:
+            // 对照原版 computeScroll 的 else 分支 (onAnimStop + stopScroll) 把手势标志归零,
+            // 否则 isStarted/isMoved/isRunning 残留 true 到下次按下
+            onAnimStop()
             return
         }
         isStarted = true
@@ -345,15 +331,42 @@ class ScrollPageDelegateCompose(
         animJob = scope.launch {
             val decay = decaySpec
             if (decay != null) {
-                AnimationState(_currentOffset, velocityY).animateDecay(decay) {
-                    if (!applyScrollDelta(value - _currentOffset)) {
+                // 惯性行程上限 ±10 屏 (对照原版 fling(0, touchY, 0, vy, 0, 0, -10*viewHeight,
+                // 10*viewHeight) 的 minY/maxY): Compose animateDecay 无边界参数, 极端快甩
+                // 会一路衰减出十几屏, 需显式钳制
+                val startValue = _currentOffset
+                val travelLimit =
+                    if (viewHeight > 0) 10f * viewHeight else Float.MAX_VALUE
+                // 增量必须取自动画自身轨迹: applyScrollDelta 折页时把 _currentOffset 折算 ±页高,
+                // 而 animateDecay 的 value 沿原轨迹继续, 若用 value - _currentOffset 求增量, 首次
+                // 折页后每帧都会得到约一页的增量 → 每帧翻一页 (一次惯性几十页)。
+                // 对照原版 Scroller: 增量取 currY - lastY (scroller 自身坐标), 不受折算影响
+                var lastValue = startValue
+                AnimationState(startValue, velocityY).animateDecay(decay) {
+                    val bounded = value.coerceIn(
+                        startValue - travelLimit,
+                        startValue + travelLimit,
+                    )
+                    val delta = bounded - lastValue
+                    lastValue = bounded
+                    // 命中硬边界或已到行程上限: 停止惯性 (对照原版 abortAnim / fling 边界)
+                    if (!applyScrollDelta(delta) || bounded != value) {
                         cancelAnimation()
                     }
                 }
             }
-            // 惯性结束恢复自动翻页推进 (对照原版 computeScroll → onAnimStop → resume)
-            autoPager?.resume()
+            // 惯性结束: 复位手势标志并恢复自动翻页 (对照原版 computeScroll → onAnimStop + stopScroll)
+            onAnimStop()
         }
+    }
+
+    /**
+     * 动画每帧同步滚动偏移到 viewModel (对照原版动画期间每帧更新 pageOffset 的单一真相源):
+     * animateOffsetTo 只写本地 _currentOffset, 不双写会让 ReadBookViewModelShared
+     * 的首个可见行 (朗读起点/选区/图片列命中) 读到翻页前的旧偏移。
+     */
+    override fun onAnimOffsetChanged(offset: Float) {
+        viewModel.updateScrollOffset(offset.toInt())
     }
 
     override fun onTap(x: Float, y: Float): Boolean {

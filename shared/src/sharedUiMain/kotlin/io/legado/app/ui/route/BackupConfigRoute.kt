@@ -27,6 +27,7 @@ import io.legado.app.help.storage.BackupConfigShared
 import io.legado.app.help.storage.BackupShared
 import io.legado.app.help.storage.DataStorageProviders
 import io.legado.app.help.storage.RestoreShared
+import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.config.BackupConfigScreen
 import io.legado.app.ui.config.BackupConfigScreenModel
 import io.legado.app.ui.config.BackupConfigUiEvent
@@ -132,6 +133,29 @@ fun BackupConfigRoute(
         }
     }
 
+    // 从本地 zip 恢复: 先 SAF 选文件 (弹出期间不亮等待态), 选完才亮"恢复"转圈;
+    // Job 暂存供 WaitDialog 取消。两入口共用, 对照 app 端 restoreFromLocal()
+    // (restoreDoc.launch 回调里才调 viewModel.restore(uri) → WaitDialog)
+    val startRestoreFromLocal: () -> Unit = {
+        val services = PlatformServiceProviders.getOrNull()
+        if (services != null) {
+            backupRestoreJob = screenModel.scope.launch {
+                val path = withContext(IoDispatcher) {
+                    services.files.pickFile(FileFilter(extensions = listOf("zip")))
+                } ?: return@launch
+                waitDialogMessage = restoreStr
+                try {
+                    // 对照 app 端 viewModel.restore(uri) → Restore.restore (本地恢复无 toast)
+                    withContext(IoDispatcher) { RestoreShared.restoreFromZip(path) }
+                } catch (e: Exception) {
+                    AppLog.put("BackupConfigRoute restoreFromLocal 失败\n${e.message}", e)
+                } finally {
+                    waitDialogMessage = null
+                }
+            }
+        }
+    }
+
     screenModel = screenModelStore.getOrCreateTyped(entry) {
         BackupConfigScreenModel(
             // 备份: 读 backupPath, 空则用平台默认落地目录 (桌面=文档目录), 平台要求选目录时先 SAF 选;
@@ -199,16 +223,7 @@ fun BackupConfigRoute(
             },
             onRestoreFromLocal = {
                 // 对照 app 端 restoreDoc.launch (HandleFileContract.FILE + allowExtensions=zip)
-                val services = PlatformServiceProviders.getOrNull()
-                if (services != null) {
-                    screenModel.scope.launch {
-                        val path = withContext(IoDispatcher) {
-                            services.files.pickFile(FileFilter(extensions = listOf("zip")))
-                        } ?: return@launch
-                        // 对照 app 端 viewModel.restore(uri) → Restore.restore
-                        withContext(IoDispatcher) { RestoreShared.restoreFromZip(path) }
-                    }
-                }
+                startRestoreFromLocal()
             },
             // SAF 选目录 + 写 prefs + 更新 summary
             // (对照 app 端 selectBackupPath.launch + AppConfig.backupPath = uri.toString())
@@ -379,6 +394,8 @@ fun BackupConfigRoute(
                             withContext(IoDispatcher) { AppWebDavShared.restoreWebDav(name) }
                         } catch (e: Exception) {
                             AppLog.put("BackupConfigRoute restoreWebDav 失败\n${e.message}", e)
+                            // 对照 app 端 onError toast ("WebDav恢复出错\n{localizedMessage}")
+                            Toasters.get().toast("WebDav恢复出错\n${e.message}")
                         } finally {
                             waitDialogMessage = null
                         }
@@ -395,16 +412,8 @@ fun BackupConfigRoute(
             title = restoreStr,
             okButton = AlertButton(text = okStr) {
                 showNoBackupAlert = false
-                // 回退本地: 仿 onRestoreFromLocal (HandleFileContract.FILE + zip)
-                val services = PlatformServiceProviders.getOrNull()
-                if (services != null) {
-                    screenModel.scope.launch {
-                        val path = withContext(IoDispatcher) {
-                            services.files.pickFile(FileFilter(extensions = listOf("zip")))
-                        } ?: return@launch
-                        withContext(IoDispatcher) { RestoreShared.restoreFromZip(path) }
-                    }
-                }
+                // 回退本地: 同 onRestoreFromLocal (对照 app 端 alert okButton { restoreFromLocal() })
+                startRestoreFromLocal()
             },
             cancelButton = AlertButton(text = cancelStr),
         ) {
