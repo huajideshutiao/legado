@@ -43,7 +43,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -51,7 +50,6 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.tooling.preview.Preview
@@ -67,7 +65,6 @@ import io.legado.app.ui.compose.component.code.CodeSyntaxScheme
 import io.legado.app.ui.compose.component.code.CodeTextField
 import io.legado.app.ui.compose.component.code.KeyboardToolbar
 import io.legado.app.ui.compose.component.code.KeyboardToolbarState
-import io.legado.app.ui.compose.platform.bringIntoViewOnIme
 import io.legado.app.ui.compose.component.code.KeyboardToolbarTarget
 import io.legado.app.ui.compose.component.code.buildSearchRanges
 import io.legado.app.ui.compose.component.code.insertAtCursor
@@ -615,20 +612,8 @@ private fun CodeField(
     // 回调 lambda 经 rememberUpdatedState 稳定: 父级重组传新 lambda 引用时本字段不重组
     val latestOnEditorActive by rememberUpdatedState(onEditorActive)
     val latestOnFieldFocus by rememberUpdatedState(onFieldFocus)
-    // 键盘弹出时重新滚到光标行: 窗口收缩后聚焦字段 (尤其列表末尾字段) 会再次滚出视口,
-    // 点击获焦时的 bringIntoView 只在焦点变化时触发一次 (见 ImeInsets KDoc)。行高按
-    // CodeTextField 默认 fontSize*1.5 近似, rect 上下各扩 3 行容错 label/内边距误差,
-    // 目标仍是光标行可见而非整个字段 (对齐原版 NoChildScrollGridLayoutManager 语义)
-    val density = LocalDensity.current
-    val imeRectProvider = remember(editor, density) {
-        {
-            val text = editor.value.text
-            val cursor = editor.value.selection.start.coerceIn(0, text.length)
-            val cursorLine = text.take(cursor).count { it == '\n' }
-            val lineHeight = with(density) { (16.sp * 1.5f).toPx() }
-            Rect(0f, (cursorLine - 3) * lineHeight, 0f, (cursorLine + 4) * lineHeight)
-        }
-    }
+    // 键盘弹出时滚到光标行由 CodeTextField 内部统一处理 (精确光标行 rect + ime insets,
+    // 对齐原版 adjustResize + bringPointIntoView), 此处只登记辅助键目标/自动缩进目标
     CodeTextField(
         value = editor.value,
         onValueChange = {
@@ -657,8 +642,7 @@ private fun CodeField(
                     latestOnEditorActive(editor)
                     latestOnFieldFocus(fieldId, entity)
                 }
-            }
-            .bringIntoViewOnIme(isActive, imeRectProvider),
+            },
     )
 }
 

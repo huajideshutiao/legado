@@ -30,10 +30,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.HomeSection
@@ -46,7 +48,6 @@ import io.legado.app.ui.compose.component.pullToRefresh
 import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
 import kotlinx.coroutines.launch
 import legado.shared.generated.resources.Res
@@ -178,11 +179,15 @@ interface HomeUiActions {
  *   - 调用方传入 tabTitle + section, slot 内部自行从 state 取参数/回调
  * @param infiniteGridCardSlot 无限流网格单元 (含 ShelfCover/视频卡, L3)
  *   - 调用方传入 tabTitle + section + book, slot 内部自行处理渲染
+ *
+ * @param active 本 tab 是否为主界面当前页 (对照原版 BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT:
+ *   主界面预组合时保持组合但不加载, 真正翻到本 tab 才触发分组加载)
  */
 @Composable
 fun HomeScreen(
     state: HomeUiState,
     actions: HomeUiActions,
+    active: Boolean,
     sectionBlockSlot: @Composable (tabTitle: String, section: HomeSection) -> Unit,
     infiniteHeaderSlot: @Composable (tabTitle: String, section: HomeSection) -> Unit,
     infiniteGridCardSlot: @Composable (tabTitle: String, section: HomeSection, book: SearchBook) -> Unit,
@@ -193,16 +198,37 @@ fun HomeScreen(
     val scope = rememberCoroutineScope()
     // 每 tab 的网格滚动状态, 组合存活期间保留分页位置 (对照原 HomeTabState.gridState)
     val gridStates = remember { mutableMapOf<String, LazyGridState>() }
+    // 稳定化透传到条目层的 slot: 上层 (MainRoute) 重组会新建 slot lambda 实例,
+    // 直接透传时每次上层重组 → 本屏/各 tab 页重组 → LazyVerticalGrid content lambda 换新实例
+    // (LazyGridItemProvider 按引用比较) → 全部可见条目全量重组。
+    // rememberUpdatedState 桥接: 透传引用恒定, 调用时读最新实现, 行为语义不变。
+    val currentSectionBlockSlot = rememberUpdatedState(sectionBlockSlot)
+    val stableSectionBlockSlot: @Composable (String, HomeSection) -> Unit = remember {
+        { tabTitle, section -> currentSectionBlockSlot.value(tabTitle, section) }
+    }
+    val currentInfiniteHeaderSlot = rememberUpdatedState(infiniteHeaderSlot)
+    val stableInfiniteHeaderSlot: @Composable (String, HomeSection) -> Unit = remember {
+        { tabTitle, section -> currentInfiniteHeaderSlot.value(tabTitle, section) }
+    }
+    val currentInfiniteGridCardSlot = rememberUpdatedState(infiniteGridCardSlot)
+    val stableInfiniteGridCardSlot: @Composable (String, HomeSection, SearchBook) -> Unit = remember {
+        { tabTitle, section, book -> currentInfiniteGridCardSlot.value(tabTitle, section, book) }
+    }
     Column(Modifier.fillMaxSize().background(colors.background)) {
         val pagerState = rememberPagerState(
             initialPage = state.currentPage.coerceAtLeast(0),
             pageCount = { tabs.size },
         )
-        // 页变化 → 记录当前页并触发该 tab 初始化 (对照 HomeTabFragment.onResume→initTab)
-        LaunchedEffect(pagerState, tabs) {
-            snapshotFlow { pagerState.currentPage }.collect { page ->
+        // 页停稳 → 记录当前页; 仅当本 tab 为主界面当前页(active)才触发该分组加载 (网络请求)。
+        // 对照原版 HomeTabFragment.onResume→initTab: 相邻分组 fragment 预创建但不 RESUMED,
+        // 只有真正翻到才 initTab。用 settledPage: 拖拽回弹/滑动动画中不变, "翻到那里"才加载;
+        // initTab 内部有 initialized 标记, 翻来翻去不重复发请求。
+        LaunchedEffect(pagerState, tabs, active) {
+            snapshotFlow { pagerState.settledPage }.collect { page ->
                 actions.onPageChanged(page)
-                tabs.getOrNull(page)?.let { actions.onPageVisible(it.title) }
+                if (active) {
+                    tabs.getOrNull(page)?.let { actions.onPageVisible(it.title) }
+                }
             }
         }
         HomeTopBar(actions, tabs, pagerState, eInk) { index ->
@@ -225,9 +251,9 @@ fun HomeScreen(
                         tabTitle = tab.title,
                         gridState = gridStates.getOrPut(tab.title) { LazyGridState() },
                         actions = actions,
-                        sectionBlockSlot = sectionBlockSlot,
-                        infiniteHeaderSlot = infiniteHeaderSlot,
-                        infiniteGridCardSlot = infiniteGridCardSlot,
+                        sectionBlockSlot = stableSectionBlockSlot,
+                        infiniteHeaderSlot = stableInfiniteHeaderSlot,
+                        infiniteGridCardSlot = stableInfiniteGridCardSlot,
                     )
                 }
             }
@@ -417,26 +443,30 @@ private fun HomeTabPage(
     }
 }
 
-/** 无限流底部加载态 (对照 LoadMoreView): 加载中转圈 / 无更多显示 bottom_line。 */
+/**
+ * 无限流底部加载态 (对照 LoadMoreView 的 view_load_more.xml):
+ * 加载中 36dp 转圈 (+8dp 边距, 总高 52dp); 无更多显示 bottom_line (14sp + 12dp 纵向 padding);
+ * 空闲时文本 invisible 恒占位 (约 41dp 高空白, 对照原版 tv_text invisible 保留布局空间)。
+ */
 @Composable
 private fun LoadMoreFooter(loading: Boolean, hasMore: Boolean) {
     val colors = AppTheme.colors
-    Box(
-        Modifier.fillMaxWidth().height(DesignTokens.viewHeightXl),
-        contentAlignment = Alignment.Center,
-    ) {
-        when {
-            loading -> CircularProgressIndicator(
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        if (loading) {
+            CircularProgressIndicator(
                 color = colors.accent,
                 strokeWidth = 2.dp,
-                modifier = Modifier.size(24.dp),
-            )
-
-            !hasMore -> Text(
-                text = stringResource(Res.string.bottom_line),
-                color = colors.secondaryText,
-                fontSize = 12.sp,
+                modifier = Modifier.size(36.dp).padding(8.dp),
             )
         }
+        // 对照 view_load_more.xml tv_text: 恒占位, 无更多时显示 bottom_line
+        Text(
+            text = if (hasMore) "" else stringResource(Res.string.bottom_line),
+            color = colors.secondaryText,
+            fontSize = 14.sp,
+            maxLines = 1,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+        )
     }
 }

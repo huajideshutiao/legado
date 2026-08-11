@@ -49,6 +49,8 @@ fun MangaRenderLayer(
     state: MangaRenderState,
     modifier: Modifier = Modifier,
     pageCell: @Composable LazyItemScope.(item: MangaPage, index: Int) -> Unit,
+    /** 列表末尾 footer (对照原版 RecyclerView 的 LoadMoreView footer item) */
+    footer: (@Composable LazyItemScope.() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
@@ -150,7 +152,7 @@ fun MangaRenderLayer(
                     flingBehavior = fling,
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    mangaItems(state, pageCell)
+                    mangaItems(state, footer, pageCell)
                 }
             } else {
                 LazyColumn(
@@ -158,7 +160,7 @@ fun MangaRenderLayer(
                     flingBehavior = fling,
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    mangaItems(state, pageCell)
+                    mangaItems(state, footer, pageCell)
                 }
             }
         }
@@ -167,6 +169,7 @@ fun MangaRenderLayer(
 
 private fun LazyListScope.mangaItems(
     state: MangaRenderState,
+    footer: (@Composable LazyItemScope.() -> Unit)?,
     pageCell: @Composable LazyItemScope.(item: MangaPage, index: Int) -> Unit,
 ) {
     val list = state.items
@@ -179,6 +182,10 @@ private fun LazyListScope.mangaItems(
             is MangaPage -> pageCell(item, i)
             is ReaderLoading -> ReaderLoadingCell(item)
         }
+    }
+    // 原版 LoadMoreView footer: 列表末尾条目, 滚动到底可见; key 与 listKey 前缀不冲突
+    if (footer != null) {
+        item(key = "loadMoreFooter", contentType = { 2 }) { footer() }
     }
 }
 

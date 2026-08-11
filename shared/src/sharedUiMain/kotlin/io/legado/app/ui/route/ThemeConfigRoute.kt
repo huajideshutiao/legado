@@ -30,6 +30,7 @@ import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.config.ThemeConfigScreen
@@ -76,6 +77,7 @@ fun ThemeConfigRoute(
     screenModelStore: ScreenModelStore,
 ) {
     val pref = LocalPreferenceStoreProvider.current
+    val eventBus = LocalEventBusProvider.current
     val appConfig = remember { AppConfigProviders.get() }
 
     val fontScaleFormat = stringResource(Res.string.font_scale_summary)
@@ -179,6 +181,8 @@ fun ThemeConfigRoute(
                         )
                     )
                 }
+                // 对照 app 端 onSharedPreferenceChanged: fontScale 变更后 recreateActivities()
+                eventBus.emitRecreate()
             },
             onDismiss = { showFontScalePicker = false },
             neutralButtonText = defaultStr,
@@ -196,6 +200,8 @@ fun ThemeConfigRoute(
                         )
                     )
                 }
+                // 对照 app 端 onSharedPreferenceChanged: fontScale 变更后 recreateActivities()
+                eventBus.emitRecreate()
             },
         )
     }
@@ -226,9 +232,9 @@ fun ThemeConfigRoute(
             onConfirm = { newLayout ->
                 if (appConfig.searchLayout != newLayout) {
                     pref.putInt(PreferKey.searchLayout, newLayout)
-                    // 不 emitRecreate: 原版 recreateActivities 是 View/XML 布局生效所需;
-                    // Compose 下 SearchScreen 响应式读 searchLayout, 配置变化即生效。
-                    // (整 Activity recreate 会丢导航栈, 设置页被弹回主界面——用户实测问题)
+                    // 对照原版 configSearch: 变更后 recreateActivities();
+                    // 导航栈恢复由 AppNavigatorSaver 保证, 绕过已无必要
+                    eventBus.emitRecreate()
                 }
             },
             onDismiss = { showSearchLayoutPicker = false },

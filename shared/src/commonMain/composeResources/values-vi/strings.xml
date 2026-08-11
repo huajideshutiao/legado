@@ -806,6 +806,7 @@
     <string name="manga_check_page_label">Tiền tố "Tr."</string>
     <string name="manga_check_page_number">Số</string>
     <string name="manga_header_progress">Tiến độ</string>
+    <string name="no_more_chapter">Không còn chương nào</string>
     <string name="manga_check_progress_label">Tiền tố</string>
     <string name="manga_check_progress">Phần trăm</string>
     <string name="manga_header_footer">Hiển thị chân trang</string>

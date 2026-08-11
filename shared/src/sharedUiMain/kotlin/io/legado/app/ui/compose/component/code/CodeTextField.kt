@@ -6,10 +6,12 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -36,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -53,13 +56,17 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.requireLayoutCoordinates
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.ui.relocation.BringIntoViewModifierNode
 import androidx.compose.ui.relocation.bringIntoView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
@@ -237,7 +244,7 @@ fun CodeTextField(
     errorMessage: String? = null,
     showIndicator: Boolean = true,
     showLineNumbers: Boolean = false,
-    fontSize: TextUnit = 14.sp,
+    fontSize: TextUnit = 16.sp,
     // 默认最小高度 = 顶留白 + 固定行高 + 底部 4dp, 单行字段高度贴合内容 (消除 minHeight 死区)
     minHeight: Dp = appFieldDefaultMinHeight(label != null, fontSize),
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
@@ -246,7 +253,12 @@ fun CodeTextField(
     searchHighlight: CodeSearchHighlightState? = null,
     autoComplete: Boolean = true,
 ) {
-    val transformation = rememberCodeHighlightTransformation(syntax, searchHighlight)
+    // 着色挂载窗口 (字符偏移区间, 对照原版 activeSyntaxSpans 的渲染窗口 ±20 行):
+    // 全文 span 基线照旧维护, 但只有落在本窗口内的 span 会进 AnnotatedString ——
+    // 万行文件下 span 从数千降到数十, 文本布局的样式处理成本随之线性下降。
+    // 默认全区间: layout 未就绪的首帧与短文本行为与裁剪前一致。
+    var renderRange by remember { mutableStateOf(0..Int.MAX_VALUE) }
+    val transformation = rememberCodeHighlightTransformation(syntax, searchHighlight, renderRange)
     val colors = AppFieldColors
     val themeColors = AppTheme.colors
     // 字体跟随主题默认 (原版 CodeView 未设置等宽字体, 用系统默认字体)
@@ -407,39 +419,91 @@ fun CodeTextField(
     val textMeasurer = rememberTextMeasurer(cacheSize = 8)
     // 字段在窗口中的位置: Popup 的 offset 锚点是窗口内容根 (见 ComposeTextToolbar 的
     // anchorBounds 注释), 自动补全弹层要锚定光标, 组件内相对偏移必须换算成窗口坐标。
-    // 只在弹层可见时挂载跟踪 (挂载即回调一次取最新值, 滚动时跟随更新), 弹层关闭时
-    // 不挂载, 避免滚动容器内每帧回调触发无谓重组
-    var fieldWindowOffset by remember { mutableStateOf(IntOffset.Zero) }
-    val positionTrackingModifier = if (matches.isNotEmpty()) {
-        Modifier.onGloballyPositioned {
-            val topLeft = it.boundsInWindow().topLeft
-            fieldWindowOffset = IntOffset(topLeft.x.roundToInt(), topLeft.y.roundToInt())
-        }
-    } else {
-        Modifier
+    // 常挂跟踪: 挂载即回调一次取最新值 (首次弹层可见时不再用 Zero 错位一帧),
+    // 滚动/键盘时位置变化跟随更新; 写入同值不触发重组, 弹层不可见时 (popupOffset
+    // 分支短路无读取者) 滚动回调零重组成本
+    // 文本布局结果 (BasicTextField onTextLayout 回传): 光标行 rect / 补全弹层锚点 / 行号
+    // 逐行对齐全部取自它, 对齐原版 CodeView 一律用 layout.getLineForOffset /
+    // getPrimaryHorizontal / getLineBaseline 取几何。逻辑行号 × 固定行高的算法遇软换行
+    // (长行折行) 必然偏移, 是"点击内容上跑/光标被键盘挡/补全条跑屏幕底部"的共同根因。
+    var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    // 文本块在字段内的起点 Y (px): contentPadding.top + label 占位, 行内 Y 由 layout 提供
+    val textTopPx = with(density) {
+        (contentPadding.calculateTopPadding() +
+            if (label != null) TextFieldLabelToText else 0.dp).toPx()
     }
-    // 焦点/光标 bringIntoView 滚动目标: 光标所在行 (根 Box 局部坐标)。BasicTextField 获焦时
+    // 字段在窗口中的位置: Popup 的 offset 锚点是窗口内容根 (见 ComposeTextToolbar 的
+    // anchorBounds 注释), 自动补全弹层要锚定光标, 组件内相对偏移必须换算成窗口坐标。
+    // 常挂跟踪: 挂载即回调一次取最新值 (首次弹层可见时不再用 Zero 错位一帧),
+    // 滚动/键盘时位置变化跟随更新; 写入同值不触发重组
+    var fieldWindowOffset by remember { mutableStateOf(IntOffset.Zero) }
+    val positionTrackingModifier = Modifier.onGloballyPositioned { coords ->
+        // 锚点用 positionInWindow (未裁剪): boundsInWindow 会被祖先裁剪模块裁掉,
+        // 长字段在滚动容器里向上滚出视口后 top 被夹成视口顶, 弹层锚点随之偏
+        val pos = coords.positionInWindow()
+        val offset = IntOffset(pos.x.roundToInt(), pos.y.roundToInt())
+        if (offset != fieldWindowOffset) fieldWindowOffset = offset
+        // 可见区间 → 着色挂载窗口 (对照原版 updateVisibleSpans: getLocalVisibleRect +
+        // getLineForVertical ±10 行判定 / ±20 行挂载, 窗口仍被覆盖时提前返回不重挂)
+        val layout = textLayout ?: return@onGloballyPositioned
+        val visible = coords.boundsInWindow()
+        if (visible.height <= 0f) return@onGloballyPositioned
+        val topInText = visible.top - pos.y - textTopPx
+        val bottomInText = visible.bottom - pos.y - textTopPx
+        val lastLine = layout.lineCount - 1
+        val firstVisible = layout.getLineForVerticalPosition(topInText).coerceIn(0, lastLine)
+        val lastVisible = layout.getLineForVerticalPosition(bottomInText).coerceIn(0, lastLine)
+        // ±10 行判定窗口仍在已挂载区间内 → 不动 (hysteresis, 滚动不逐帧重挂)
+        val keepStart = layout.getLineStart((firstVisible - 10).coerceAtLeast(0))
+        val keepEnd = layout.getLineEnd((lastVisible + 10).coerceAtMost(lastLine))
+        if (keepStart >= renderRange.first && keepEnd <= renderRange.last) {
+            return@onGloballyPositioned
+        }
+        val start = layout.getLineStart((firstVisible - 20).coerceAtLeast(0))
+        val end = layout.getLineEnd((lastVisible + 20).coerceAtMost(lastLine))
+        renderRange = start..end
+    }
+    // 焦点/光标 bringIntoView 滚动目标: 光标所在视觉行 (根 Box 局部坐标)。BasicTextField 获焦时
     // 焦点系统按整个字段 bounds 发起请求, 长字段 (高 > 视口) 会把字段底对齐视口底, 表现
     // 为点击跳到底部; 拦截后统一以光标行为目标, 最多滚动到光标行可见
     val cursorLineRect: () -> Rect? = {
-        val text = value.text
-        val cursor = value.selection.start.coerceIn(0, text.length)
-        val cursorLine = text.take(cursor).count { it == '\n' }
-        val lineHeightPx = with(density) {
-            codeStyle.lineHeight.takeOrElse { fontSize * 1.5f }.toPx()
+        val layout = textLayout
+        // layout 必须与当前文本同步: 回车/输入的 bringIntoView 请求发生在文本变化的同一帧,
+        // 此时 onTextLayout 还没回传新布局, 用旧布局算出的行是"变化前的光标行" ——
+        // 表现为按回车后光标仍被软键盘挡住。此时返回 null, 由拦截节点退回子请求自身的
+        // bounds (BasicTextField 用它内部的新布局算, 是准的)
+        if (layout == null || layout.layoutInput.text.text != value.text) {
+            null
+        } else {
+            val cursor = value.selection.start.coerceIn(0, value.text.length)
+            // getLineForOffset 是视觉行 (含软换行), 与原版 layout.getLineForOffset 同语义
+            val line = layout.getLineForOffset(cursor)
+            Rect(
+                left = 0f,
+                top = textTopPx + layout.getLineTop(line),
+                right = 0f, // 宽度由 responder 节点在请求时以自身实际宽度补齐
+                bottom = textTopPx + layout.getLineBottom(line),
+            )
         }
-        val topPx = with(density) {
-            (contentPadding.calculateTopPadding() +
-                if (label != null) TextFieldLabelToText else 0.dp).toPx()
-        }
-        Rect(
-            left = 0f,
-            top = topPx + cursorLine * lineHeightPx,
-            right = 0f, // 宽度由 responder 节点在请求时以自身实际宽度补齐
-            bottom = topPx + (cursorLine + 1) * lineHeightPx,
-        )
     }
     val cursorLineRectState = rememberUpdatedState(cursorLineRect)
+    // IME 弹出期间按精确光标行持续请求 bringIntoView (对齐原版 adjustResize +
+    // EditText bringPointIntoView: 光标行完全可见则不滚, 不可见才滚到可见);
+    // 点击获焦 (键盘已开) 时的聚焦请求由 cursorLineBringIntoView 拦截为同一光标行,
+    // 可见则不滚 —— 不再出现旧实现 (调用方 ±3 行容错 rect + 无 label 偏移) 的
+    // "点击内容上跑/滚不到位被键盘挡"。非 Android 平台 ime 恒 0, 为 no-op。
+    val imeRequester = remember { BringIntoViewRequester() }
+    // 只按"键盘是否可见"翻转触发, 不跟 inset 数值: 键盘弹出是一段动画, imeBottom 每帧都在变,
+    // 若作为 key 会逐帧发起 bringIntoView, 滚动请求互相打断 —— 表现为弹键盘时明显卡顿
+    val imeVisible = WindowInsets.ime.getBottom(density) > 0
+    LaunchedEffect(isFocused, imeVisible) {
+        if (isFocused && imeVisible) {
+            // 等布局稳定 (键盘动画期间视口在收缩) 再请求一次, 避免用动画中间态的视口算目标
+            withFrameNanos { }
+            val rect = cursorLineRectState.value.invoke()
+            if (rect != null) imeRequester.bringIntoView(rect)
+        }
+    }
     // 行号列宽 (px, 未显示行号时 null): 5dp 左距 + 号宽 + 11dp 右距 (对齐原版
     // mLineNumberPadding = measureText + 16f*density), 分隔线与补全弹层共用同一实测值。
     // measure 结果 remember: 行数/字号/密度不变时重组直接复用, 不再重复 TextMeasurer.measure
@@ -456,6 +520,39 @@ fun CodeTextField(
             }
         }
     } else null
+    // 行号串: 逐**视觉行**一个条目, 只在逻辑行首放行号, 软换行的续行留空 —— 与原版 onDraw
+    // 的 isRealLineStart 判定同语义 (续行不画号), 也让行号列与正文逐行严格对齐。
+    // layout 未就绪时先按逻辑行数排 (首帧, 随即被 onTextLayout 校正)
+    // 行号窗口 (视觉行区间) 与其在文本块内的顶部偏移: 与着色挂载窗口同源 (renderRange),
+    // 只为窗口内的行生成行号串 —— 万行文件不再把全部行号做成一个巨大 Text 参与布局
+    // (对照原版 onDraw 只画 firstLine..lastLine)。
+    val gutterWindow: Triple<String, Float, Int>? = if (!gutterShown) {
+        null
+    } else {
+        val layout = textLayout
+        if (layout == null) {
+            Triple(buildLineNumbers(lineCount), 0f, 0)
+        } else {
+            remember(layout, renderRange, gutterShown) {
+                val lastLine = layout.lineCount - 1
+                val from = layout.getLineForOffset(renderRange.first.coerceIn(0, value.text.length))
+                    .coerceIn(0, lastLine)
+                val to = layout.getLineForOffset(
+                    renderRange.last.coerceIn(0, value.text.length)
+                ).coerceIn(from, lastLine)
+                Triple(
+                    buildVisualLineNumbers(
+                        value.text, layout, from, to,
+                        logicalLineBefore(value.text, layout, from),
+                    ),
+                    layout.getLineTop(from),
+                    from,
+                )
+            }
+        }
+    }
+    val numbersText = gutterWindow?.first ?: ""
+    val numbersTopPx = gutterWindow?.second ?: 0f
     // 行号与正文基线对齐: 两种字号在同一固定行高下由 Compose 各自垂直居中, 基线差 =
     // 各自 firstBaseline 之差 (Roboto 14sp/8.4sp 下约 1.9dp, 即"行号比正文基线偏高"的错位)。
     // 实测消除, 不依赖字体度量假设; 结果同样 remember, 非字号/密度变化不重测
@@ -476,49 +573,31 @@ fun CodeTextField(
     val popupOffset = if (matches.isEmpty()) {
         IntOffset.Zero
     } else {
-        // 锚点计算 (O(cursor) 前缀扫描 + TextMeasurer 实测) remember 化: 文本/选区/行号列宽/
-        // 窗口位置未变的重组直接复用, 仅补全弹层可见期间跟随这些 key 变化重算
-        remember(
-            value.text, value.selection, gutterWidthPx, contentPadding, density, codeStyle,
-            fieldWindowOffset, label != null
-        ) {
-            val text = value.text
-            val cursor = value.selection.start
-            val cursorLine = text.take(cursor).count { it == '\n' }
-            val lineStart = text.lastIndexOf('\n', cursor - 1) + 1
-            val lineHeight = codeStyle.lineHeight.takeOrElse { fontSize * 1.5f }
-            val y = with(density) {
-                // label 场景文本顶 = contentPadding.top (label 基线 20dp) + 2dp (对齐 M2 放置公式)
-                (contentPadding.calculateTopPadding() +
-                    if (label != null) TextFieldLabelToText else 0.dp).toPx() +
-                    cursorLine * lineHeight.toPx()
-            }.roundToInt()
-            var x = with(density) {
-                contentPadding.calculateStartPadding(LayoutDirection.Ltr).toPx()
-            }.roundToInt()
-            // 行号列宽: gutterShown 时文本起点右移 (列宽实测值, 与分隔线同源)
-            if (gutterWidthPx != null) {
-                x += gutterWidthPx.roundToInt()
-            }
-            // 行首到光标宽度: 实测优先, 失败回退 0.6em/1em 估算
-            val prefixWidth = measureTextWidth(
-                textMeasurer,
-                text.substring(lineStart, cursor),
-                codeStyle,
-                density,
-            )
-            if (prefixWidth != null) {
-                x += prefixWidth.roundToInt()
+        // 锚点全部取自真实 layout (对照原版 showDropDown: layout.getLineForOffset +
+        // getLineBottom + getPrimaryHorizontal), 逐行硬算遇软换行必偏, 是"补全条跑屏幕
+        // 最下方"的根因 —— 锚点算出界后被窗口管理器夹到屏幕底部
+        remember(textLayout, value.selection, gutterWidthPx, contentPadding, density, fieldWindowOffset, label != null) {
+            val layout = textLayout
+            if (layout == null) {
+                IntOffset.Zero
             } else {
-                val charWidthPx = with(density) { (fontSize * 0.6f).toPx() }.roundToInt()
-                val wideWidthPx = with(density) { fontSize.toPx() }.roundToInt()
-                for (i in lineStart until cursor) {
-                    x += if (isFullWidthChar(text[i])) wideWidthPx else charWidthPx
+                val cursor = value.selection.start.coerceIn(0, value.text.length)
+                val line = layout.getLineForOffset(cursor)
+                // 弹层挂在光标行下沿 (原版 dropDownAnchor 幽灵 View 覆盖光标行, 下拉在其下方)
+                val y = (textTopPx + layout.getLineBottom(line)).roundToInt()
+                var x = with(density) {
+                    contentPadding.calculateStartPadding(LayoutDirection.Ltr).toPx()
+                }.roundToInt()
+                // 行号列宽: gutterShown 时文本起点右移 (列宽实测值, 与分隔线同源)
+                if (gutterWidthPx != null) {
+                    x += gutterWidthPx.roundToInt()
                 }
+                // 行首到光标的水平位置 (对照原版 getPrimaryHorizontal, 含软换行/双向文本)
+                x += layout.getHorizontalPosition(cursor, usePrimaryDirection = true).roundToInt()
+                // 弹层锚点换算见 AutoCompletePopup: 组件内偏移 + 字段窗口位置, 由 PopupPositionProvider
+                // 减去内容根窗口偏移 (anchorBounds.topLeft) 得最终 offset
+                IntOffset(x, y) + fieldWindowOffset
             }
-            // 弹层锚点换算见 AutoCompletePopup: 组件内偏移 + 字段窗口位置, 由 PopupPositionProvider
-            // 减去内容根窗口偏移 (anchorBounds.topLeft) 得最终 offset
-            IntOffset(x, y) + fieldWindowOffset
         }
     }
     AppTextFieldImpl(
@@ -531,6 +610,7 @@ fun CodeTextField(
                 .fillMaxWidth()
                 .onPreviewKeyEvent(previewKeyHandler)
                 .then(positionTrackingModifier)
+                .bringIntoViewRequester(imeRequester)
                 .cursorLineBringIntoView(cursorLineRectState)
         ) {
             BasicTextField(
@@ -557,6 +637,7 @@ fun CodeTextField(
                 visualTransformation = transformation,
                 interactionSource = interactionSource,
                 cursorBrush = SolidColor(colors.cursorColor(isError).value),
+                onTextLayout = { textLayout = it },
                 decorationBox = { innerTextField ->
                     // 行号列包在 innerTextField 外层: 行号只在外部无界高度 + 滚动容器场景启用,
                     // 此时字段整体随容器滚动, 行号与文本同步; 若字段自身有界 (内部滚动), decoration
@@ -586,9 +667,11 @@ fun CodeTextField(
                                     }
                             ) {
                                 LineNumberGutter(
-                                    lineCount = lineCount,
+                                    numbersText = numbersText,
                                     textStyle = codeStyle,
                                     baselineShift = gutterBaselineShift,
+                                    topOffsetPx = numbersTopPx,
+                                    widthPx = gutterWidthPx,
                                 )
                                 Box(Modifier.weight(1f)) { innerTextField() }
                             }
@@ -636,30 +719,44 @@ fun CodeTextField(
  * - 整列宽 = 行号宽 + 16dp (mLineNumberPadding = measureText + 16f*density), 文本从列右缘开始
  * [baselineShift]: 行号字号小于正文, 同一固定行高下 Compose 各自垂直居中导致行号基线偏高
  * (约 1.9dp), 传入实测基线差把行号下移与正文行基线对齐。
+ * [topOffsetPx]: 行号串只覆盖挂载窗口, 用顶部内边距把它压到窗口首行 (padding 参与测量,
+ * 列高 = 偏移 + 窗口高, 不会被祖先裁剪吃掉; 固定行高下偏移精确)。
+ * [widthPx]: 列宽固定为"最大行号位数"实测值 (与分隔线/弹层锚点同源), 否则窗口内可见
+ * 行号位数变化 (99 → 1000) 会让列宽随滚动跳动。
  * 行高与文本一致 (调用方已统一 lineHeight), 随文本同步滚动。
  */
 @Composable
 private fun LineNumberGutter(
-    lineCount: Int,
+    numbersText: String,
     textStyle: TextStyle,
     baselineShift: Dp,
+    topOffsetPx: Float,
+    widthPx: Float?,
 ) {
     val colors = AppTheme.colors
-    // 行号串只在行数变化时重建: 常规按键 (行数不变) 复用同一实例, BasicText 节点按内容语义比较
-    // 跳过重排; 滚动只改放置 (verticalScroll 不重组子节点, Text shouldAutoInvalidate=false),
-    // 行号布局全程复用, 万行文件下不再每次按键全量重建
-    val numbersText = remember(lineCount) { buildLineNumbers(lineCount) }
+    val density = LocalDensity.current
+    val topOffset = with(density) { topOffsetPx.toDp() }
     Box(
-        Modifier.padding(start = 5.dp),
+        Modifier
+            .padding(start = 5.dp)
+            .then(
+                if (widthPx != null) {
+                    // 列宽减去两侧内边距 (5dp/11dp), 与 gutterWidthPx 的构成一致
+                    Modifier.width(with(density) { widthPx.toDp() } - 5.dp)
+                } else {
+                    Modifier
+                }
+            ),
     ) {
         Text(
             text = numbersText,
             color = colors.secondaryText,
             style = textStyle.copy(fontSize = textStyle.fontSize * 0.6f),
             textAlign = TextAlign.End,
-            // 下移基线差与正文行基线对齐 (offset 不参与测量, Box 高度不变, 溢出落在底部内边距内)
+            // 下移基线差与正文行基线对齐 (offset 不参与测量, 溢出落在底部内边距内)
             modifier = Modifier
-                .padding(end = 11.dp)
+                .fillMaxWidth()
+                .padding(top = topOffset, end = 11.dp)
                 .offset(y = baselineShift),
         )
     }
@@ -670,6 +767,47 @@ private fun buildLineNumbers(lineCount: Int): String = buildString {
         if (i > 1) append('\n')
         append(i)
     }
+}
+
+/**
+ * 行号串 (逐视觉行, 只覆盖挂载窗口): 只在逻辑行首放行号, 软换行的续行留空行占位 ——
+ * 与原版 onDraw 的 isRealLineStart 判定同语义 (`lineStartOffset == 0 ||
+ * text[lineStartOffset-1] == '\n'`), 保证行号列与正文逐视觉行严格对齐。
+ *
+ * 只生成 [fromLine]..[toLine] 的行号 (对照原版 onDraw 只画 firstLine..lastLine 可见行):
+ * 万行文件不再把全部行号做成一个巨大 Text 参与布局。调用方按 getLineTop(fromLine)
+ * 下移本列即可对位 (固定行高, 偏移精确)。
+ *
+ * @return 行号串; 首个行号对应的逻辑行号由 [startLogicalLine] 决定
+ */
+private fun buildVisualLineNumbers(
+    text: String,
+    layout: TextLayoutResult,
+    fromLine: Int,
+    toLine: Int,
+    startLogicalLine: Int,
+): String = buildString {
+    var logicalLine = startLogicalLine
+    for (i in fromLine..toLine) {
+        if (i > fromLine) append('\n')
+        val start = layout.getLineStart(i)
+        val isRealLineStart = start == 0 || (start in 1..text.length && text[start - 1] == '\n')
+        if (isRealLineStart) {
+            logicalLine++
+            append(logicalLine)
+        }
+    }
+}
+
+/** [line] 之前的逻辑行数 (= 该视觉行所属逻辑行的 0 基序号), 供窗口首行的行号起点定位 */
+private fun logicalLineBefore(text: String, layout: TextLayoutResult, line: Int): Int {
+    if (line <= 0) return 0
+    val offset = layout.getLineStart(line).coerceIn(0, text.length)
+    var count = 0
+    for (i in 0 until offset) {
+        if (text[i] == '\n') count++
+    }
+    return count
 }
 
 /** 文本行数 (换行符数 + 1), 仅在外部整体替换时全量统计 */
@@ -748,7 +886,27 @@ private fun AutoCompletePopup(
                 windowSize: IntSize,
                 layoutDirection: LayoutDirection,
                 popupContentSize: IntSize,
-            ): IntOffset = popupAnchor - anchorBounds.topLeft
+            ): IntOffset {
+                var pos = popupAnchor
+                // 返回值就是窗口坐标 (对照同项目 TextToolbarPositionProvider: 内容根偏移
+                // anchorBounds.topLeft + 内容根相对坐标 = 窗口坐标)。popupAnchor 已由调用方
+                // 用 positionInWindow + 组件内偏移算成窗口绝对坐标, 直接用即可。
+                // 旧实现减掉 anchorBounds.topLeft, 等于把窗口坐标退回成字段内局部坐标再当
+                // 窗口坐标用: 光标在长文档深处时局部 Y 达数千 px, 越界后被窗口管理器夹到
+                // 屏幕底部 —— 这才是"补全条跑屏幕最下方"的真正根因
+                // 垂直翻转: 光标下方放不下 → 翻到光标行上方 (对齐原版 PopupWindow
+                // showAsDropDown 的翻转, 弹层不超出屏幕底部)
+                if (pos.y + popupContentSize.height > windowSize.height) {
+                    pos = IntOffset(pos.x, pos.y - popupContentSize.height)
+                }
+                if (pos.y < 0) pos = IntOffset(pos.x, 0)
+                // 水平: 右侧放不下 → 左移贴右缘 (对齐原版 PopupWindow 水平翻转)
+                if (pos.x + popupContentSize.width > windowSize.width) {
+                    pos = IntOffset((windowSize.width - popupContentSize.width).coerceAtLeast(0), pos.y)
+                }
+                if (pos.x < 0) pos = IntOffset(0, pos.y)
+                return pos
+            }
         }
     }
     Popup(
@@ -895,7 +1053,7 @@ fun CodeTextField(
     errorMessage: String? = null,
     showIndicator: Boolean = true,
     showLineNumbers: Boolean = false,
-    fontSize: TextUnit = 14.sp,
+    fontSize: TextUnit = 16.sp,
     // 默认最小高度 = 顶留白 + 固定行高 + 底部 4dp, 单行字段高度贴合内容 (消除 minHeight 死区)
     minHeight: Dp = appFieldDefaultMinHeight(label != null, fontSize),
     searchHighlight: CodeSearchHighlightState? = null,
@@ -940,6 +1098,7 @@ fun CodeTextField(
 private fun rememberCodeHighlightTransformation(
     syntax: CodeSyntaxScheme,
     search: CodeSearchHighlightState?,
+    renderRange: IntRange,
 ): VisualTransformation {
     if (syntax.rules.isEmpty() && search == null) return VisualTransformation.None
     val scope = rememberCoroutineScope()
@@ -947,14 +1106,14 @@ private fun rememberCodeHighlightTransformation(
     val version = cache.version
     val searchVersion = search?.version
     val accent = AppTheme.colors.accent
-    return remember(cache, version, search, searchVersion, accent) {
+    return remember(cache, version, search, searchVersion, accent, renderRange) {
         // 搜索叠加结果缓存: 防抖窗口内 (同一 pendingText) 文本与搜索版本均未变时,
         // 每次重组复用同一 AnnotatedString 实例, 不再重复 append(全文) + 遍历匹配区间
         var overlayText: String? = null
         var overlaySearchVersion: Int = -1
         var overlayResult: AnnotatedString? = null
         VisualTransformation { text ->
-            val base = cache.highlight(text.text, scope)
+            val base = cache.highlight(text.text, renderRange, scope)
             val searchOverlay =
                 search?.takeIf { it.keyword.isNotEmpty() && it.ranges.isNotEmpty() }
             val result = if (searchOverlay == null) {
@@ -1000,21 +1159,41 @@ private class CodeHighlightCache(private val rules: List<CodeSyntaxRule>) {
         private set
 
     private var cachedText: String? = null
+    private var cachedRange: IntRange? = null
     private var cached: AnnotatedString? = null
     private var spans: List<CodeSpan> = emptyList()
+    /**
+     * spans 的 end 前缀最大值 (单调不减): 二分即可定出"首个可能与窗口相交的 span",
+     * 对照原版 updateVisibleSpans 的二分 + 回扫 actualStartIndex, 但为精确 O(log n)
+     * (原版回扫到 0 是 O(n))。跨窗口起点的长 span (块注释) 因此不会漏挂。
+     */
+    private var spanMaxEndPrefix: IntArray = IntArray(0)
+    /** 最近一次请求的挂载窗口: 后台着色完成时按它构建挂载结果 */
+    private var lastRange: IntRange = 0..Int.MAX_VALUE
     private var pendingText: String? = null
     /** 防抖窗口内的 stale 结果缓存: 同一 pendingText 期间多次 filter 调用复用同一实例 */
     private var staleResult: AnnotatedString? = null
+    private var staleRange: IntRange? = null
     private var job: Job? = null
 
-    fun highlight(text: String, scope: CoroutineScope): AnnotatedString {
-        if (cachedText == text) return cached!!
+    fun highlight(text: String, range: IntRange, scope: CoroutineScope): AnnotatedString {
+        lastRange = range
+        if (cachedText == text && cachedRange == range) return cached!!
+        if (cachedText == text) {
+            // 仅窗口变化 (滚动): span 基线已是最新文本, 直接按新窗口重挂, 不重跑正则
+            // (对照原版 updateVisibleSpans 只增删挂载, 不重算 allSyntaxSpans)
+            val built = buildAnnotated(text, spans, range)
+            cached = built
+            cachedRange = range
+            return built
+        }
         if (pendingText == text) {
-            // 防抖窗口内: 复用上次构建的 stale 实例 (输入热路径每键 O(n+span) → O(1))
-            staleResult?.let { return it }
+            // 防抖窗口内: 复用上次构建的 stale 实例 (输入热路径每键 O(n+窗口 span) → O(1))
+            if (staleRange == range) staleResult?.let { return it }
         } else {
             pendingText = text
             staleResult = null
+            staleRange = null
             // 单 worker 串行: 任务在跑就不重启 (循环内会自检 pendingText 变化),
             // 不再每次按键 cancel + 新协程 —— 已开始的同步 compute 无法被 cancel 中断,
             // 旧实现串键时会在 Default 池堆积多个全量 diff
@@ -1022,7 +1201,7 @@ private class CodeHighlightCache(private val rules: List<CodeSyntaxRule>) {
                 job = scope.launch { runHighlightLoop() }
             }
         }
-        return staleOrPlain(text)
+        return staleOrPlain(text, range)
     }
 
     /**
@@ -1037,19 +1216,26 @@ private class CodeHighlightCache(private val rules: List<CodeSyntaxRule>) {
             delay(if (cachedText == null) 0 else AsyncHighlightDelayMs)
             if (pendingText != text) continue // 防抖窗口内又输入, 放弃本轮
             // 后台只读计算, 字段统一在主线程落盘, 避免并发 compute 写坏增量基线
-            val result = withContext(Dispatchers.Default) { compute(text) }
+            val range = lastRange
+            val result = withContext(Dispatchers.Default) {
+                val newSpans = compute(text)
+                Triple(newSpans, prefixMaxEnd(newSpans), buildAnnotated(text, newSpans, range))
+            }
             if (pendingText != text) continue // 计算期间又输入, 丢弃过期结果
-            cached = result.first
-            spans = result.second
+            spans = result.first
+            spanMaxEndPrefix = result.second
+            cached = result.third
             cachedText = text
+            cachedRange = range
             pendingText = null
             staleResult = null
+            staleRange = null
             version++
             return
         }
     }
 
-    private fun compute(text: String): Pair<AnnotatedString, List<CodeSpan>> {
+    private fun compute(text: String): List<CodeSpan> {
         val oldText = cachedText
         val newSpans = if (oldText == null) {
             matchCodeSpans(text, rules)
@@ -1058,8 +1244,7 @@ private class CodeHighlightCache(private val rules: List<CodeSyntaxRule>) {
         }
         // 相邻同色区间合并后再入基线: AnnotatedString 相邻同 style 不自动合并,
         // 大文本下 operator 规则产生数千 span, 合并后布局/绘制与下次增量平移都按区间数线性下降
-        val merged = mergeAdjacentSpans(newSpans)
-        return buildAnnotated(text, merged) to merged
+        return mergeAdjacentSpans(newSpans)
     }
 
     /**
@@ -1099,42 +1284,109 @@ private class CodeHighlightCache(private val rules: List<CodeSyntaxRule>) {
         val lineEndRaw = newText.indexOf('\n', dEnd)
         val lineEnd = if (lineEndRaw == -1) newText.length else lineEndRaw
 
-        // 3. 移除区间内旧 span, 重算区间并合并 (对齐原版 removeAll + addAll + sort)
+        // 3. 移除区间内旧 span, 重算区间并归并 (对齐原版 removeAll + addAll + sort;
+        // 平移保持有序 + 区间新匹配有序 → 线性归并替代全量 sort, 大文本防抖后少 O(n log n))
         val kept = ArrayList<CodeSpan>(shifted.size + 8)
         for (span in shifted) {
             if (span.start >= lineStart && span.end <= lineEnd) continue
             kept.add(span)
         }
-        for (span in matchCodeSpans(newText.substring(lineStart, lineEnd), rules)) {
-            kept.add(CodeSpan(span.start + lineStart, span.end + lineStart, span.color))
+        val added = matchCodeSpans(newText.substring(lineStart, lineEnd), rules)
+        val merged = ArrayList<CodeSpan>(kept.size + added.size + 8)
+        var a = 0
+        var b = 0
+        while (a < kept.size && b < added.size) {
+            val sa = kept[a]
+            val sb = added[b]
+            // added 的偏移是子串相对坐标, 比较前必须换算到绝对坐标 (漏 +lineStart 会让
+            // 归并顺序错乱, 影响重叠 span 的着色优先级)
+            val sbStart = sb.start + lineStart
+            val sbEnd = sb.end + lineStart
+            val cmp = if (sa.start != sbStart) {
+                sa.start - sbStart
+            } else if (sa.end != sbEnd) {
+                sbEnd - sa.end
+            } else {
+                0
+            }
+            if (cmp <= 0) {
+                merged.add(sa); a++
+            } else {
+                merged.add(CodeSpan(sbStart, sbEnd, sb.color)); b++
+            }
         }
-        kept.sortWith(compareBy({ it.start }, { -it.end }))
-        return kept
+        while (a < kept.size) merged.add(kept[a++])
+        while (b < added.size) {
+            val sb = added[b++]
+            merged.add(CodeSpan(sb.start + lineStart, sb.end + lineStart, sb.color))
+        }
+        return merged
     }
 
-    private fun buildAnnotated(text: String, spans: List<CodeSpan>): AnnotatedString {
+    /**
+     * 只挂载与 [range] 相交的 span (对照原版 activeSyntaxSpans: 全文 span 基线照旧,
+     * 但只有渲染窗口内的才 attach 到 Editable)。起点用 [spanMaxEndPrefix] 二分定位,
+     * 跨窗口起点的长 span (块注释/多行字符串) 不会漏挂。
+     */
+    private fun buildAnnotated(
+        text: String,
+        spans: List<CodeSpan>,
+        range: IntRange,
+    ): AnnotatedString {
         if (spans.isEmpty()) return AnnotatedString(text)
         return buildAnnotatedString {
             append(text)
-            for (span in spans) {
+            var i = firstSpanIndexReaching(spans, range.first)
+            while (i < spans.size) {
+                val span = spans[i]
+                if (span.start > range.last) break
                 val s = span.start.coerceIn(0, text.length)
                 val e = span.end.coerceIn(0, text.length)
                 if (s < e) addStyle(SpanStyle(color = span.color), s, e)
+                i++
             }
         }
     }
 
     /**
+     * 首个 end > [from] 的 span 下标: 在 end 前缀最大值 (单调不减) 上二分。
+     * 前缀数组尚未就绪 (stale 路径的临时 span 集) 时退化为线性扫描。
+     */
+    private fun firstSpanIndexReaching(spans: List<CodeSpan>, from: Int): Int {
+        val prefix = spanMaxEndPrefix
+        if (prefix.size != spans.size) {
+            var i = 0
+            while (i < spans.size && spans[i].end <= from) i++
+            return i
+        }
+        var low = 0
+        var high = spans.size - 1
+        var result = spans.size
+        while (low <= high) {
+            val mid = (low + high) ushr 1
+            if (prefix[mid] > from) {
+                result = mid
+                high = mid - 1
+            } else {
+                low = mid + 1
+            }
+        }
+        return result
+    }
+
+    /**
      * 防抖窗口内沿用旧 span, 按变更偏移近似平移 (对齐原版: span 挂在 Editable 上随文本
-     * 自动偏移, 新增字符无色), 避免长文本每次按键闪回无色。
+     * 自动偏移, 新增字符无色), 避免长文本每次按键闪回无色。只平移窗口内的 span:
+     * 上次挂载结果本身已是窗口切片, 故此处成本为 O(窗口 span) 而非全文。
      * 结果缓存到 [staleResult]: 同一 pendingText 期间每次 filter 调用复用同一实例。
      */
-    private fun staleOrPlain(text: String): AnnotatedString {
-        staleResult = buildStale(text)
+    private fun staleOrPlain(text: String, range: IntRange): AnnotatedString {
+        staleResult = buildStale(text, range)
+        staleRange = range
         return staleResult!!
     }
 
-    private fun buildStale(text: String): AnnotatedString {
+    private fun buildStale(text: String, range: IntRange): AnnotatedString {
         val old = cachedText ?: return AnnotatedString(text)
         val stale = cached ?: return AnnotatedString(text)
         if (stale.spanStyles.isEmpty()) return AnnotatedString(text)
@@ -1144,10 +1396,10 @@ private class CodeHighlightCache(private val rules: List<CodeSyntaxRule>) {
         val offset = text.length - old.length
         return buildAnnotatedString {
             append(text)
-            for (range in stale.spanStyles) {
-                if (range.start >= text.length) continue
-                var s = range.start
-                var e = range.end
+            for (spanRange in stale.spanStyles) {
+                if (spanRange.start >= text.length) continue
+                var s = spanRange.start
+                var e = spanRange.end
                 if (s >= prefix) {
                     s = max(prefix, s + offset)
                     e = max(prefix, e + offset)
@@ -1156,10 +1408,24 @@ private class CodeHighlightCache(private val rules: List<CodeSyntaxRule>) {
                 }
                 s = s.coerceIn(0, text.length)
                 e = e.coerceIn(0, text.length)
-                if (s < e) addStyle(range.item, s, e)
+                // 窗口外不挂 (窗口随滚动前移时旧切片可能已越界)
+                if (s < e && e > range.first && s <= range.last) {
+                    addStyle(spanRange.item, s, e)
+                }
             }
         }
     }
+}
+
+/** span 的 end 前缀最大值 (单调不减), 供窗口起点二分 */
+private fun prefixMaxEnd(spans: List<CodeSpan>): IntArray {
+    val out = IntArray(spans.size)
+    var maxEnd = Int.MIN_VALUE
+    for (i in spans.indices) {
+        if (spans[i].end > maxEnd) maxEnd = spans[i].end
+        out[i] = maxEnd
+    }
+    return out
 }
 
 /**

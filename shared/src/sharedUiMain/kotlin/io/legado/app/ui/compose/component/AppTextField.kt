@@ -100,9 +100,12 @@ fun AppTextField(
         val colors = AppFieldColors
         val interactionSource = remember { MutableInteractionSource() }
         val textColor = textStyle.color.takeOrElse { colors.textColor(enabled).value }
+        // 输入字号统一 16sp: 调用点显式传 textStyle 但未指定 fontSize 时归一化 (否则渲染回落 14sp)
+        val effectiveFontSize = textStyle.fontSize.takeOrElse { 16.sp }
         // 固定行高 fontSize*1.5 (对齐 CodeTextField): 单行/多行垂直几何统一, 行高不随字体默认漂移
         val effectiveTextStyle = textStyle.copy(
-            lineHeight = textStyle.fontSize.takeOrElse { 16.sp } * 1.5f,
+            fontSize = effectiveFontSize,
+            lineHeight = effectiveFontSize * 1.5f,
         )
         BasicTextField(
             value = value,
@@ -116,7 +119,7 @@ fun AppTextField(
                     minWidth = TextFieldDefaults.MinWidth,
                     minHeight = appFieldDefaultMinHeight(
                         label != null,
-                        textStyle.fontSize.takeOrElse { 16.sp },
+                        effectiveFontSize,
                     ),
                 ),
             enabled = enabled,
@@ -185,9 +188,12 @@ fun AppTextField(
         val colors = AppFieldColors
         val interactionSource = remember { MutableInteractionSource() }
         val textColor = textStyle.color.takeOrElse { colors.textColor(enabled).value }
+        // 输入字号统一 16sp: 调用点显式传 textStyle 但未指定 fontSize 时归一化 (否则渲染回落 14sp)
+        val effectiveFontSize = textStyle.fontSize.takeOrElse { 16.sp }
         // 固定行高 fontSize*1.5 (对齐 CodeTextField): 单行/多行垂直几何统一, 行高不随字体默认漂移
         val effectiveTextStyle = textStyle.copy(
-            lineHeight = textStyle.fontSize.takeOrElse { 16.sp } * 1.5f,
+            fontSize = effectiveFontSize,
+            lineHeight = effectiveFontSize * 1.5f,
         )
         BasicTextField(
             value = value,
@@ -201,7 +207,7 @@ fun AppTextField(
                     minWidth = TextFieldDefaults.MinWidth,
                     minHeight = appFieldDefaultMinHeight(
                         label != null,
-                        textStyle.fontSize.takeOrElse { 16.sp },
+                        effectiveFontSize,
                     ),
                 ),
             enabled = enabled,

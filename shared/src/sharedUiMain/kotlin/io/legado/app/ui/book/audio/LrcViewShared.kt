@@ -70,7 +70,7 @@ import kotlin.math.roundToInt
  * | 缩放: current 1+0.05p, last 1.05-0.05p, 锚点(内容中心X,行中心Y) | 同 |
  * | 透明度: 上下 0.35h 边界线性 255→40, 与颜色 alpha 相乘 | 同 (calculateAlpha) |
  * | 点击: touchY=scrollYOffset+y-h/2, 二分 offset 区间, 回调 time | 同 (touchSlop 判定 tap/drag) |
- * | 拖动: scrollYOffset±dy coerce 0..maxScrollY | 同 |
+ * | 拖动: scrollYOffset+dY (GestureDetector dY=下滑为负, 内容跟手) | scrollY-dy (dy=手指位移下滑为正, 取负) |
  * | 滚轮: AXIS_VSCROLL*lineMargin*3, 上滚看前(减) | 同 (Scroll 事件跨平台, 方向语义等价) |
  * | fling: OverScroller 物理衰减 | 近似: 按松手速度估算终点 + 400ms 减速 (物理曲线跨平台无法逐字复刻) |
  * | 手动滚动 5s 后 autoScroll=true + 回中当前行 | 同 (manualTick 重置计时, 切行取消) |
@@ -254,8 +254,10 @@ fun LrcViewShared(
                                 beginManualScroll()
                             }
                             if (dragged) {
+                                // 原版 GestureDetector.distanceY = mLastFocusY - focusY (下滑为负,
+                                // 内容跟手); 此处 dy 为手指位移 (下滑为正), 取负对齐
                                 val dy = change.position.y - change.previousPosition.y
-                                scrollY = (scrollY + dy).coerceIn(0f, maxScrollY())
+                                scrollY = (scrollY - dy).coerceIn(0f, maxScrollY())
                                 velocityTracker.addPosition(change.uptimeMillis, change.position)
                                 change.consume()
                             }

@@ -179,6 +179,7 @@ fun MangaReaderRoute(
         items = state.items,
         contentPos = state.contentPos,
         curFinish = state.curFinish,
+        hasNextChapter = state.hasNextChapter,
         book = screenModel.currentBook,
         bookSource = screenModel.currentSource,
         curChapterIndex = state.curChapterIndex,

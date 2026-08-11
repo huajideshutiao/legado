@@ -1,6 +1,7 @@
 package io.legado.app.ui.bookshelf
 
 import io.legado.app.constant.AppLog
+import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
@@ -17,6 +18,7 @@ import io.legado.app.utils.cnCompare
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +30,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 
 /**
  * 书架布局档位 (KMP 版, 对照 app 端 ShelfTier)。
@@ -138,7 +141,42 @@ class BookshelfViewModel {
     private var bookGroupsJob: Job? = null
 
     /** 书架激活态 (UI 层按 tab 激活 + 生命周期 RESUMED 驱动); false 时零 DB 订阅 */
+    @Volatile
     private var active = false
+
+    /** 书架可见态 (UI 按 "书架 tab 激活 && 主界面栈顶" 驱动): 决定 UP_BOOKSHELF 事件是否立即重查 */
+    @Volatile
+    private var visible = false
+
+    /**
+     * books 数据可能过期标记: UP_BOOKSHELF 事件置位, 展示时机 (书架重新可见) 消费。
+     * 不逐事件重查: 桌面端 Room 失效推送不可靠, 但旧实现逐事件重启全部分组流必然全量重发,
+     * 是滑动卡顿源头; 收敛为可见时一次 one-shot 重查。
+     */
+    @Volatile
+    private var bookDataDirty = false
+
+    /** 书架可见时的重查空闲窗口 job (事件到达重置, 聚合批量刷新的连续事件) */
+    private var recheckDebounceJob: Job? = null
+
+    /** one-shot 重查去重指纹: 与最近一次发射一致则跳过发射, 避免与 Room 失效推送重复 */
+    private data class ShelfFingerprint(
+        val url: String,
+        val name: String,
+        val author: String,
+        val coverUrl: String?,
+        val durChapterTime: Long,
+        val durChapterIndex: Int,
+        val durChapterPos: Int,
+        val latestChapterTime: Long,
+    )
+
+    private fun Book.toFingerprint() = ShelfFingerprint(
+        bookUrl, name, author, coverUrl, durChapterTime, durChapterIndex, durChapterPos, latestChapterTime,
+    )
+
+    /** 各分组最近一次发射的指纹快照 (唯一数据源: onGroupBooks; 线程安全同 [booksCache]) */
+    private val groupFingerprints = MutableStateFlow<Map<Long, List<ShelfFingerprint>>>(emptyMap())
 
     init {
         // 书籍/分组订阅改由 setBookshelfActive 挂 UI 组合生命周期, 不再 init 常驻
@@ -161,12 +199,21 @@ class BookshelfViewModel {
      * 重订阅)。旧实现每本书完成都取消全部组合流并重查重发——重启即新流, distinctUntilChanged
      * 无旧值可比, 必然全列表发射, 批量刷新/阅读进度更新时反复触发全屏条目重组, 是分组滑动
      * 卡顿的主要来源之一。
+     *
+     * 删除后的兜底改由本收集器置脏标记 + [scheduleRecheckIfVisible] / [setBookshelfVisible]
+     * 收敛重查: 书架重新可见时对当前分组做一次 one-shot 重查 (指纹去重), 不重建持续流,
+     * 既不依赖桌面端不可靠的 Room 失效推送, 也避免逐事件全流重启的重组风暴。
      */
     private fun observeUpBookshelfEvents() {
         scope.launch {
             FlowBus.with(EventBus.UP_BOOKSHELF).collect { e ->
                 val url = e as? String ?: return@collect
                 _refreshingUrls.value = _refreshingUrls.value - url
+                // 数据可能已过期: 置脏标记 + 可见时经空闲窗口聚合重查 (发射方注释仍承诺
+                // "UP_BOOKSHELF → 重启分组流强制重查", 旧实现删除后此兜底缺失, 见
+                // ReadBookViewModelShared.uploadProgressAwait / AudioPlayShared)
+                bookDataDirty = true
+                scheduleRecheckIfVisible()
             }
         }
     }
@@ -191,6 +238,63 @@ class BookshelfViewModel {
             bookGroupsJob = null
             booksFlowJobs.values.forEach { it.cancel() }
             booksFlowJobs.clear()
+        }
+    }
+
+    /**
+     * 书架可见态开关 (UI 在 "书架 tab 激活 && 主界面栈顶" 时开)。重新可见时若数据
+     * 可能过期 (后台阅读/批量刷新/目录更新落库) 立即重查, 对齐原版 fragment 回到
+     * RESUMED 时冷流重订阅的"返回必见最新"语义。
+     */
+    fun setBookshelfVisible(visible: Boolean) {
+        if (this.visible == visible) return
+        this.visible = visible
+        if (visible) {
+            recheckIfDirty()
+        } else {
+            recheckDebounceJob?.cancel()
+            recheckDebounceJob = null
+        }
+    }
+
+    /** 书架可见时 UP_BOOKSHELF 事件驱动重查: 500ms 空闲窗口聚合批量刷新的连续事件 */
+    private fun scheduleRecheckIfVisible() {
+        if (!visible) return
+        recheckDebounceJob?.cancel()
+        recheckDebounceJob = scope.launch {
+            delay(500)
+            recheckIfDirty()
+        }
+    }
+
+    /** 脏标记消费: 对当前分组 + 组合中的分组各做一次 one-shot 重查 (指纹去重) */
+    private fun recheckIfDirty() {
+        if (!bookDataDirty) return
+        bookDataDirty = false
+        recheckDebounceJob?.cancel()
+        recheckDebounceJob = null
+        (composedGroupIds + _currentGroupId.value).forEach { recheckGroup(it) }
+    }
+
+    /**
+     * one-shot 重查指定分组 (不重建持续流): 查询 + 排序 + 指纹比对, 与当前展示一致则
+     * 跳过发射。区别于旧实现的重启流: 重启即新流, distinctUntilChanged 无旧值可比,
+     * 必然全列表重发; one-shot 只在数据真变化时发射一次。
+     */
+    private fun recheckGroup(groupId: Long) {
+        scope.launch(IoDispatcher) {
+            val list = try {
+                bookDao.getBooksByGroup(groupId)
+            } catch (e: Throwable) {
+                AppLog.put("书架数据重查失败 groupId=$groupId", e)
+                return@launch
+            }
+            val sorted = sortBooks(
+                list.filterNot { (it.type and BookType.notShelf) > 0 },
+                sortOf(groupId),
+            )
+            if (sorted.map { it.toFingerprint() } == groupFingerprints.value[groupId]) return@launch
+            onGroupBooks(groupId, sorted)
         }
     }
 
@@ -231,7 +335,10 @@ class BookshelfViewModel {
             try {
                 // 过滤内容相同的重复 emit, 避免无关 DAO 触发重排与重组
                 val source = bookDao.flowByGroup(groupId).distinctUntilChanged().catch {
+                    // catch 是终结性操作: 捕获后流结束、job 摘除, 此后无重启路径会永久不刷新;
+                    // 置脏标记, 由 finally 兜底重查 / 下次展示时机恢复
                     AppLog.put("书架书籍数据加载出错 groupId=$groupId", it)
+                    bookDataDirty = true
                 }.map { list -> sortBooks(list, sortOf(groupId)) }
                     .debounce(100)
                     .flowOn(IoDispatcher).conflate()
@@ -248,15 +355,22 @@ class BookshelfViewModel {
                 // 旧 job 的 finally 若直接 remove 会误删新 job 的登记, 导致流失联后重复订阅
                 if (booksFlowJobs[groupId] === coroutineContext[Job]) {
                     booksFlowJobs.remove(groupId)
+                    // 自愈: 流异常结束 (catch 置脏) 且该分组仍是当前分组时立即 one-shot 兜底一次,
+                    // 不等展示时机 (用户可能一直停留在书架页)
+                    if (bookDataDirty && active && groupId == _currentGroupId.value) {
+                        bookDataDirty = false
+                        recheckGroup(groupId)
+                    }
                 }
             }
         }
         booksFlowJobs[groupId] = job
     }
 
-    /** 分组书籍流发射回调: 回填缓存, 触发自动更新, 当前分组同步 [_books] */
+    /** 分组书籍流发射回调: 回填缓存, 记录指纹, 触发自动更新, 当前分组同步 [_books] */
     private fun onGroupBooks(groupId: Long, list: List<Book>) {
         updateBooksCache(groupId, list)
+        groupFingerprints.value = groupFingerprints.value + (groupId to list.map { it.toFingerprint() })
         autoUpdateGroup(groupId, list)
         if (groupId == _currentGroupId.value) {
             _books.value = list

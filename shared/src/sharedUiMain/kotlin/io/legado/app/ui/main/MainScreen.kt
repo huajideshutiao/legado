@@ -80,6 +80,7 @@ import kotlinx.coroutines.flow.SharedFlow
  * @param initialPage 首页落点(等价旧 upHomePage, 仅初始组合时消费)
  * @param pageSelections 页面跳转指令流: index to smooth
  * @param currentPageSink pager 当前页回写回调(供返回键/重选判定)
+ * @param settledPageSink pager 停稳页回写回调(供宿主按"真正翻到该页"门控 tab 内网络加载)
  * @param onSelectPage 跳转页回调(index, smooth)
  * @param onReselect 重选当前 tab 回调(传 tag)
  * @param homeTab 主页 tab composable (app 端注入)
@@ -96,6 +97,7 @@ fun MainScreen(
     initialPage: Int,
     pageSelections: SharedFlow<Pair<Int, Boolean>>,
     currentPageSink: (Int) -> Unit,
+    settledPageSink: (Int) -> Unit,
     onSelectPage: (Int, Boolean) -> Unit,
     onReselect: (String) -> Unit,
     homeTab: @Composable () -> Unit,
@@ -119,6 +121,12 @@ fun MainScreen(
     }
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage }.collect { currentPageSink(it) }
+    }
+    // 停稳页回写: 对照原版 FragmentStatePagerAdapter(BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT) +
+    // offscreenPageLimit=3 全预创建——tab 预组合但仅真正翻到的页才加载。settledPage 在拖拽回弹/
+    // 滑动动画中不变, 宿主据此门控各 tab 的网络加载, 不会"露一半又滑回"就误触发。
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.collect { settledPageSink(it) }
     }
 
     // 状态栏回避由各 Tab 顶栏自行处理 (HomeTopBar/BookshelfTopBar/ExploreTitleBar/MyTabTitleBar

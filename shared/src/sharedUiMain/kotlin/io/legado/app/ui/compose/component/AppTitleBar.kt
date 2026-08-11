@@ -195,7 +195,7 @@ fun AppSearchField(
                 value = value,
                 onValueChange = onValueChange,
                 singleLine = true,
-                textStyle = TextStyle(color = colors.primaryText, fontSize = 14.sp),
+                textStyle = TextStyle(color = colors.primaryText, fontSize = 16.sp),
                 cursorBrush = SolidColor(colors.accent),
                 keyboardOptions = if (onSearch != null) {
                     KeyboardOptions(imeAction = ImeAction.Search)

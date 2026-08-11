@@ -28,12 +28,18 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.image.BookImageLoader
 import io.legado.app.help.image.BookImageLoaders
 import io.legado.app.model.AudioPlayShared
+import io.legado.app.model.BookCoverShared.CoverRatio
+import io.legado.app.ui.bookshelf.defaultCoverFilePath
 import io.legado.app.ui.compose.component.AppSlider
 import io.legado.app.ui.compose.theme.AppTheme
 import legado.shared.generated.resources.Res
+import legado.shared.generated.resources.image_cover_default
 import legado.shared.generated.resources.timer_m
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
 
@@ -148,23 +154,35 @@ fun SharedAudioPlayScreenContent(
     )
 }
 
-// ---- 圆形封面 slot (原版 ivCover; BookImageLoaders 异步加载, 未注册平台回退占位底) ----
+// ---- 圆形封面 slot (原版 ivCover; 加载链对照原版 BookCover.load: 失败回落默认图集) ----
 
 @Composable
 private fun SharedAudioCoverSlot(coverUrl: String?, modifier: Modifier) {
     val loader = remember { BookImageLoaders.getOrNull() }
     var bitmap by remember(coverUrl) { mutableStateOf<ImageBitmap?>(null) }
+    var showBuiltIn by remember(coverUrl) { mutableStateOf(false) }
     LaunchedEffect(coverUrl, loader) {
         bitmap = null
-        if (coverUrl.isNullOrBlank() || loader == null) return@LaunchedEffect
-        bitmap = loader.loadCoverOrNull(coverUrl, AudioPlayShared.book?.origin)
+        showBuiltIn = false
+        if (loader == null) return@LaunchedEffect
+        val bmp = loadAudioCover(loader, coverUrl)
+        if (bmp != null) bitmap = bmp else showBuiltIn = true
     }
     Box(
         modifier.clip(androidx.compose.foundation.shape.CircleShape).background(Color(0xFF165DFF))
     ) {
-        bitmap?.let {
-            Image(
-                bitmap = it,
+        val bmp = bitmap
+        when {
+            bmp != null -> Image(
+                bitmap = bmp,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize()
+                    .clip(androidx.compose.foundation.shape.CircleShape),
+                contentScale = ContentScale.Crop,
+            )
+            // 默认图集也为空: 内置默认封面 (对照原版 newDefaultDrawable 的内置回落)
+            showBuiltIn -> Image(
+                painter = painterResource(Res.drawable.image_cover_default),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize()
                     .clip(androidx.compose.foundation.shape.CircleShape),
@@ -174,27 +192,56 @@ private fun SharedAudioCoverSlot(coverUrl: String?, modifier: Modifier) {
     }
 }
 
+/**
+ * 音频页封面加载链 (对照原版 BookCover.load / loadBlur):
+ * useDefaultCover / 空 URL / 加载失败 → 默认图集按 seed=书名 挑一张 (与书架同源
+ * defaultCoverFilePath); 返回 null 表示默认图集也为空, 调用方落内置默认封面图。
+ * 前景/背景共用同一 seed, 保证回落挑到同一张 (对照原版 load/loadBlur 同 seed 注释)。
+ */
+private suspend fun loadAudioCover(loader: BookImageLoader, coverUrl: String?): ImageBitmap? {
+    suspend fun loadDefault(): ImageBitmap? {
+        val path = defaultCoverFilePath(AudioPlayShared.book?.name, CoverRatio.NOVEL)
+        return path?.let { loader.loadImageOrNull(it, null) }
+    }
+    if (AppConfigProviders.get().useDefaultCover || coverUrl.isNullOrBlank()) return loadDefault()
+    return loader.loadCoverOrNull(coverUrl, AudioPlayShared.book?.origin) ?: loadDefault()
+}
+
 // ---- 模糊背景 slot (原版 iv_bg: 整图模糊 + 300ms TransitionDrawable 淡入; 均匀遮罩由 shared 层叠) ----
 
 @Composable
 private fun SharedAudioBlurBgSlot(coverUrl: String?, modifier: Modifier) {
     val loader = remember { BookImageLoaders.getOrNull() }
     var bitmap by remember(coverUrl) { mutableStateOf<ImageBitmap?>(null) }
+    var showBuiltIn by remember(coverUrl) { mutableStateOf(false) }
     LaunchedEffect(coverUrl, loader) {
         bitmap = null
-        if (coverUrl.isNullOrBlank() || loader == null) return@LaunchedEffect
-        bitmap = loader.loadCoverOrNull(coverUrl, AudioPlayShared.book?.origin)
+        showBuiltIn = false
+        if (loader == null) return@LaunchedEffect
+        // 加载链对照原版 BookCover.loadBlur (与前景同 seed, 失败回落同一张默认图)
+        val bmp = loadAudioCover(loader, coverUrl)
+        if (bmp != null) bitmap = bmp else showBuiltIn = true
     }
-    val success = bitmap != null
+    val success = bitmap != null || showBuiltIn
     // 300ms 淡入 (对照原版 TransitionDrawable.startTransition(300); 切封面时重新淡入)
     val alpha by animateFloatAsState(
         targetValue = if (success) 1f else 0f,
         animationSpec = tween(durationMillis = 300),
     )
     Box(modifier) {
-        if (success) {
+        val bmp = bitmap
+        if (bmp != null) {
             Image(
-                bitmap = bitmap!!,
+                bitmap = bmp,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize().blur(24.dp)
+                    .graphicsLayer { this.alpha = alpha },
+                contentScale = ContentScale.Crop,
+            )
+        } else if (showBuiltIn) {
+            // 默认图集也为空: 内置默认封面 (对照原版 loadBlur 的内置回落, 同样模糊)
+            Image(
+                painter = painterResource(Res.drawable.image_cover_default),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize().blur(24.dp)
                     .graphicsLayer { this.alpha = alpha },

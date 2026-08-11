@@ -210,6 +210,7 @@ class MangaReaderScreenModel : ScreenModel {
                 items = mangaContent?.items?.filterIsInstance<BaseMangaPage>() ?: emptyList(),
                 contentPos = mangaContent?.pos ?: 0,
                 curFinish = mangaContent?.curFinish == true,
+                hasNextChapter = shared.hasNextChapter,
                 curChapterIndex = durChapterIndex,
                 chapterSize = shared.chapterSize,
                 currentPage = shared.durChapterPos.value.coerceIn(
@@ -590,6 +591,8 @@ data class MangaReaderUiState(
     val items: List<BaseMangaPage> = emptyList(),
     val contentPos: Int = 0,
     val curFinish: Boolean = false,
+    /** 是否有下一章 (对照原版 ReadMangaViewModel.hasNextChapter, 无下一章时列表尾部提示"暂无章节了") */
+    val hasNextChapter: Boolean = true,
     val curChapterIndex: Int = 0,
     val chapterSize: Int = 0,
     val horizontal: Boolean = false,

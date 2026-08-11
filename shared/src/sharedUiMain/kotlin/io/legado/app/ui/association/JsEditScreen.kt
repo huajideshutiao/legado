@@ -41,9 +41,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,7 +52,7 @@ import io.legado.app.ui.compose.component.code.KeyboardToolbar
 import io.legado.app.ui.compose.component.code.KeyboardToolbarState
 import io.legado.app.ui.compose.component.code.rememberCodeEditorState
 import io.legado.app.ui.compose.component.code.rememberCodeSyntax
-import io.legado.app.ui.compose.platform.bringIntoViewOnIme
+import io.legado.app.ui.compose.platform.imeDismissPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
@@ -113,7 +110,13 @@ fun JsEditScreen(
     onShowKeyboardConfig: () -> Unit = {},
 ) {
     val colors = AppTheme.colors
-    Column(Modifier.fillMaxSize()) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            // ime 避让在根 (对齐原版 Activity adjustResize): 键盘弹出时编辑区/工具栏
+            // 不被键盘覆盖, 收起动画期间提前归零 (imeDismissPadding)
+            .imeDismissPadding()
+    ) {
         AppTitleBar(
             title = stringResource(Res.string.js_edit),
             onBack = { actions.onBack() },
@@ -137,7 +140,10 @@ fun JsEditScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 4.dp),
         )
-        // 代码编辑区 (语法高亮 CodeTextField, 多行填满主区域)
+        // 代码编辑区: 外部滚动容器 + wrap 高字段。键盘弹出后 (ime 避让收缩视口) 光标行
+        // bringIntoView 请求须可达滚动容器 —— 字段自身有界内滚时外部请求无法到达
+        // CoreTextField 内部滚动, 光标会被键盘挡住; 滚动与光标可见均由 CodeTextField
+        // 内部按精确光标行发起 (对齐原版 EditText 内部滚动 + bringPointIntoView)
         val editor = rememberCodeEditorState(state.code)
         // 只在外部重新载入 (打开文件) 时同步; 记录自己回写的文本, 避免 state 异步滞后时被回卷
         var lastEmitted by remember { mutableStateOf(state.code) }
@@ -148,33 +154,23 @@ fun JsEditScreen(
             }
         }
         val emit: (String) -> Unit = { lastEmitted = it; onCodeChange(it) }
-        // 键盘弹出时重新滚到光标行: 窗口收缩后光标行可能滚出视口, 点击获焦时的
-        // bringIntoView 只在焦点变化时触发一次 (见 ImeInsets KDoc)。行高按 CodeTextField
-        // 默认 fontSize*1.5 近似, rect 上下各扩 3 行容错 label/内边距误差
-        val density = LocalDensity.current
-        val imeRectProvider = remember(editor, density) {
-            {
-                val text = editor.value.text
-                val cursor = editor.value.selection.start.coerceIn(0, text.length)
-                val cursorLine = text.take(cursor).count { it == '\n' }
-                val lineHeight = with(density) { (14.sp * 1.5f).toPx() }
-                Rect(0f, (cursorLine - 3) * lineHeight, 0f, (cursorLine + 4) * lineHeight)
-            }
-        }
-        var codeFocused by remember { mutableStateOf(false) }
-        CodeTextField(
-            value = editor.value,
-            onValueChange = { editor.onValueChange(it); emit(it.text) },
-            syntax = rememberCodeSyntax(js = true),
-            label = stringResource(Res.string.code),
-            fontSize = 14.sp,
-            modifier = Modifier
+        Box(
+            Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .padding(horizontal = 12.dp, vertical = 4.dp)
-                .onFocusChanged { codeFocused = it.isFocused }
-                .bringIntoViewOnIme(codeFocused, imeRectProvider),
-        )
+                .verticalScroll(rememberScrollState()),
+        ) {
+            CodeTextField(
+                value = editor.value,
+                onValueChange = { editor.onValueChange(it); emit(it.text) },
+                syntax = rememberCodeSyntax(js = true),
+                label = stringResource(Res.string.code),
+                fontSize = 14.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+            )
+        }
         // 运行结果区 (有结果或错误时显示, 可滚动)
         val resultText = state.result
         val errorText = state.error?.stackTraceToString()

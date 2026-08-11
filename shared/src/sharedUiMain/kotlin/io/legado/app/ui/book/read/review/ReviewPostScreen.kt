@@ -74,7 +74,7 @@ fun ReviewPostScreen(
                     .heightIn(min = 40.dp),
                 placeholder = state.hint.ifBlank { stringResource(Res.string.review_post_hint) },
                 maxLines = 6,
-                textStyle = LocalTextStyle.current.copy(fontSize = 13.sp),
+                textStyle = LocalTextStyle.current.copy(fontSize = 16.sp),
                 // 键盘 Send 键直接提交 (原版 imeOptions=actionSend + setOnEditorActionListener)
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { actions.onSubmit() }),

@@ -811,6 +811,7 @@
     <string name="manga_check_page_label">前缀"页."</string>
     <string name="manga_check_page_number">数值</string>
     <string name="manga_header_progress">进度</string>
+    <string name="no_more_chapter">この先の章はありません</string>
     <string name="manga_check_progress_label">前缀"进度."</string>
     <string name="manga_check_progress">百分比</string>
     <string name="manga_header_footer">显示页脚</string>

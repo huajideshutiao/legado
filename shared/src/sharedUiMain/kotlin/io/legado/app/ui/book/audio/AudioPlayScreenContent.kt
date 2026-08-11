@@ -393,11 +393,12 @@ fun AudioPlayScreenContent(
                                 )
                             }
                         }
+                        // 左右 16dp = 原版 iv_lrc paddingStart/End (arco_spacing_lg), 还原歌词左右留白
                         lrcSlot(
                             Modifier
                                 .fillMaxWidth()
                                 .weight(1f)
-                                .padding(vertical = 16.dp),
+                                .padding(16.dp),
                         )
                     }
                 }

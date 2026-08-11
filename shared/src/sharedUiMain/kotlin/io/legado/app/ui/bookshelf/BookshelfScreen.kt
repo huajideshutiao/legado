@@ -118,8 +118,8 @@ import org.jetbrains.compose.resources.stringResource
  * - [actions]: 顶栏右侧溢出菜单槽 (添加书/书架管理/分组管理等, 由宿主端注入)
  *
  * @param viewModel 书架 VM (持有 groups/books/currentGroupId state)
- * @param active 书架 tab 是否激活 (MainRoute 按当前页推导); 激活且窗口生命周期 RESUMED
- *   时 VM 才订阅 DB 流, 否则零消费 (对照原版 flowWithLifecycle 的"页面可见才订阅")
+ * @param active 书架 tab 是否激活 (MainRoute 按当前页推导); 与 [isRootTop] 共同构成
+ *   "书架可见"信号 (setBookshelfVisible): 切回书架 tab / 从阅读器返回时触发数据重查
  * @param onBookClick 书籍点击回调
  * @param onBookLongClick 书籍长按回调 (默认空)
  * @param onSearchClick 搜索图标点击回调 (默认空)
@@ -172,6 +172,11 @@ fun BookshelfScreen(
         } finally {
             viewModel.setBookshelfActive(false)
         }
+    }
+    // 书架可见信号 (tab 激活 && 主界面栈顶): 切回书架 / 从阅读器返回时 VM 重查一次
+    // (后台阅读/批量刷新落库后 Room 失效推送桌面端不可靠, 需显式兜底, 见 setBookshelfVisible)
+    LaunchedEffect(active, isRootTop) {
+        viewModel.setBookshelfVisible(active && isRootTop)
     }
     val appConfig = remember { AppConfigProviders.get() }
     // 配置项每次变更后重读 (对照原版: 分组样式变更走 NOTIFY_MAIN 重建 Fragment,

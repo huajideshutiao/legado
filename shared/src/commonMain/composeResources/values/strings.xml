@@ -894,6 +894,7 @@
     <string name="manga_header_chapter">Chapter</string>
     <string name="manga_header_page">Page</string>
     <string name="manga_header_progress">Progress</string>
+    <string name="no_more_chapter">No more chapters!</string>
     <string name="manga_header_orientation">Alignment</string>
     <string name="manga_radio_left">Left</string>
     <string name="manga_radio_center">Center</string>

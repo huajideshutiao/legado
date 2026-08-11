@@ -87,6 +87,7 @@ import legado.shared.generated.resources.manga_footer_config
 import legado.shared.generated.resources.manga_gif_auto_next
 import legado.shared.generated.resources.more_menu
 import legado.shared.generated.resources.next_chapter
+import legado.shared.generated.resources.no_more_chapter
 import legado.shared.generated.resources.pre_download_m
 import legado.shared.generated.resources.previous_chapter
 import legado.shared.generated.resources.refresh
@@ -163,6 +164,8 @@ fun MangaReaderScreenContent(
     items: List<BaseMangaPage>,
     contentPos: Int,
     curFinish: Boolean,
+    /** 是否有下一章 (对照原版 ReadMangaViewModel.hasNextChapter, 无下一章时列表尾部显示"暂无章节了") */
+    hasNextChapter: Boolean = true,
     book: Book?,
     bookSource: BookSource?,
     curChapterIndex: Int,
@@ -421,15 +424,25 @@ fun MangaReaderScreenContent(
             .fillMaxSize()
             .background(MangaReaderBackground)
     ) {
-        MangaRenderLayer(renderState) { item, _ ->
-            MangaPageCell(
-                url = item.mImageUrl,
-                horizontal = horizontal,
-                imageSlot = imageSlot,
-                colorFilterConfig = colorFilterConfig,
-                grayEnabled = grayEnabled,
-            )
-        }
+        MangaRenderLayer(
+            renderState,
+            // 原版 LoadMoreView noMore 态: 当前章加载完成且无下一章时, 列表底部显示"暂无章节了！"
+            footer = if (curFinish && !hasNextChapter) {
+                { NoMoreFooter() }
+            } else {
+                null
+            },
+            // pageCell 在签名里位于 footer 之前, 不能用尾随 lambda (会绑到 footer)
+            pageCell = { item, _ ->
+                MangaPageCell(
+                    url = item.mImageUrl,
+                    horizontal = horizontal,
+                    imageSlot = imageSlot,
+                    colorFilterConfig = colorFilterConfig,
+                    grayEnabled = grayEnabled,
+                )
+            },
+        )
 
         // 对照 app 端 loadFail: 失败时 ll_loading 收起换 ll_retry, 故错误优先于转圈
         if (loading && error == null) {
@@ -976,6 +989,24 @@ private fun ChapterNavText(text: String, color: Color, onClick: () -> Unit) {
             .clickable { onClick() }
             .padding(vertical = 12.dp),
     )
+}
+
+/** 列表底部"暂无章节了"footer (对照原版 LoadMoreView noMore 态: 黑底白字 14sp 居中) */
+@Composable
+private fun LazyItemScope.NoMoreFooter() {
+    Box(
+        Modifier
+            .fillParentMaxWidth()
+            .background(MangaReaderBackground)
+            .padding(vertical = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = stringResource(Res.string.no_more_chapter),
+            color = Color.White,
+            fontSize = 14.sp,
+        )
+    }
 }
 
 // ---- 渲染区图片单元格 (列表/手势/转场页均在 shared MangaRenderLayer) ----

@@ -133,7 +133,8 @@ import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.copy_url
 import legado.shared.generated.resources.draw
 import legado.shared.generated.resources.empty
-import legado.shared.generated.resources.error_load_msg
+import legado.shared.generated.resources.error
+import legado.shared.generated.resources.home_source_invalid
 import legado.shared.generated.resources.help
 import legado.shared.generated.resources.home_more
 import legado.shared.generated.resources.ic_arrow_right
@@ -222,6 +223,10 @@ fun MainRoute(
     // rememberSaveable: 配合 LegadoApp 的 SaveableStateHolder, 返回主界面时恢复 tab 位置
     var currentPage by rememberSaveable { mutableStateOf(initialPage) }
 
+    // 对照原版 BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT: pager 停稳页 (拖拽回弹/动画中不变),
+    // 仅用于门控 home tab 的 section 网络加载——预组合的 tab 不加载, 真正翻到才加载
+    var settledPage by rememberSaveable { mutableIntStateOf(initialPage) }
+
     // tab 集合/顺序变化 (底栏配置变更): 按 tag 定位保持当前 tab (换序/纯外观变更不打断),
     // 仅当前 tab 被隐藏时回落首个可见 tab——不回默认首页 (用户确认回默认页行为多余)。
     var lastVisibleTags by remember { mutableStateOf(visibleTags) }
@@ -243,6 +248,9 @@ fun MainRoute(
     var bookshelfGotoTopTick by remember { mutableIntStateOf(0) }
     // 书架 tab 激活态: 书架 DB 订阅开关 (tab 切走即取消订阅, 零全表流)
     val bookshelfActive = visibleTags.getOrNull(currentPage) == BottomNavTag.BOOKSHELF
+    // home tab 激活态: 用停稳页判定 (对照原版仅当前 Fragment 才 onResume→initTab),
+    // 拖拽到一半又滑回不触发; 预组合的 home 页保持组合但不加载
+    val homeActive = visibleTags.getOrNull(settledPage) == BottomNavTag.HOME
 
     // ScreenModelStore 持有 BookshelfViewModel + ExploreScreenModel, 生命周期随 entry
     val mainScreenModel = screenModelStore.getOrCreateTyped(entry) { MainScreenModel() }
@@ -302,6 +310,7 @@ fun MainRoute(
         initialPage = initialPage,
         pageSelections = pageSelections,
         currentPageSink = { currentPage = it },
+        settledPageSink = { settledPage = it },
         onSelectPage = { index, smooth -> pageSelections.tryEmit(index to smooth) },
         onReselect = { tag ->
             // 对照 MainActivity.onTabReselect: 300ms 内双击触发
@@ -336,7 +345,7 @@ fun MainRoute(
                 }
             }
         },
-        homeTab = { HomeTabContent(mainScreenModel.homeScreenModel, navigator) },
+        homeTab = { HomeTabContent(mainScreenModel.homeScreenModel, navigator, homeActive) },
         bookshelfTab = {
             BookshelfTabContent(
                 mainScreenModel.bookshelfViewModel,
@@ -426,7 +435,9 @@ private fun computeHomePageIndex(visibleTags: List<String>, defaultHomePage: Str
 @Composable
 private fun HomeTabContent(
     screenModel: HomeScreenModel,
-    navigator: AppNavigator
+    navigator: AppNavigator,
+    // 主界面停稳页是否为本 tab (对照原版当前 Fragment 才 onResume→initTab)
+    active: Boolean,
 ) {
     val state by screenModel.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -445,6 +456,7 @@ private fun HomeTabContent(
     HomeScreen(
         state = state,
         actions = screenModel,
+        active = active,
         // slots: shared 端纯 Compose 实现 (无 L3 AndroidView/ShelfCover, 用占位封面)
         sectionBlockSlot = { tabTitle, section ->
             HomeSectionBlock(
@@ -472,6 +484,7 @@ private fun HomeTabContent(
         infiniteGridCardSlot = { _, section, book ->
             HomeInfiniteGridCard(
                 book = book,
+                coverVideo = section.coverVideo,
                 onBookClick = { onBook(book, section, false) },
                 onBookLongClick = { onBook(book, section, true) },
             )
@@ -553,61 +566,97 @@ private fun HomeSectionBlock(
     onBookLongClick: (SearchBook) -> Unit,
     onMoreClick: () -> Unit,
 ) {
-    val colors = AppTheme.colors
-    Column(Modifier.fillMaxWidth()) {
-        HomeSectionTitleRow(section.title, onMoreClick)
-        ExploreOptionsRow(options, optionsVersion, onOptionSelected)
+    // 对照 LoadMoreView.showErrorDialog: 错误占位点击弹对话框 (原版无 retry 监听, 无按钮)
+    var showErrorDialog by remember { mutableStateOf(false) }
+    // 稳定化回调: 上层槽每次调用都新建 lambda 实例, 直接透传时数据未变也会全量重组本区块
+    val currentOnOptionSelected = rememberUpdatedState(onOptionSelected)
+    val stableOnOptionSelected: () -> Unit = remember { { currentOnOptionSelected.value() } }
+    val currentOnBookClick = rememberUpdatedState(onBookClick)
+    val stableOnBookClick: (SearchBook) -> Unit =
+        remember { { book -> currentOnBookClick.value(book) } }
+    val currentOnBookLongClick = rememberUpdatedState(onBookLongClick)
+    val stableOnBookLongClick: (SearchBook) -> Unit =
+        remember { { book -> currentOnBookLongClick.value(book) } }
+    val currentOnMoreClick = rememberUpdatedState(onMoreClick)
+    val stableOnMoreClick: () -> Unit = remember { { currentOnMoreClick.value() } }
+    // 对照 SectionHolder.root: 每个展示项上下留白 (top default=8 / bottom xs=4)
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)) {
+        HomeSectionTitleRow(section.title, stableOnMoreClick)
+        ExploreOptionsRow(options, optionsVersion, stableOnOptionSelected)
         when {
-            error -> Box(
-                Modifier.fillMaxWidth().height(80.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = stringResource(Res.string.error_load_msg),
-                    color = colors.secondaryText,
-                    fontSize = 13.sp,
-                )
-            }
+            error -> SectionStateText(
+                text = stringResource(Res.string.home_source_invalid),
+                onClick = { showErrorDialog = true },
+            )
 
-            books.isEmpty() -> Box(
-                Modifier.fillMaxWidth().height(80.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (loading) {
-                    CircularProgressIndicator(
-                        color = colors.accent,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(24.dp),
-                    )
-                } else {
-                    Text(
-                        text = stringResource(Res.string.empty),
-                        color = colors.secondaryText,
-                        fontSize = 13.sp,
-                    )
-                }
+            books.isEmpty() -> if (loading) {
+                SectionStateLoading()
+            } else {
+                SectionStateText(text = stringResource(Res.string.empty))
             }
 
             else -> when (section.style) {
                 // 对照 HomeSectionAdapter.RANK_LIMIT: 排行榜只展示前 5 名
                 HomeSection.STYLE_RANK_LIST ->
-                    HomeRankList(books.take(HOME_RANK_LIMIT), onBookClick, onBookLongClick)
+                    HomeRankList(books.take(HOME_RANK_LIMIT), stableOnBookClick, stableOnBookLongClick)
 
                 // 对照 FourColumnAdapter: 每列 4 本, 横向翻列
-                HomeSection.STYLE_FOUR_ROW -> HomeFourRow(books, onBookClick, onBookLongClick)
-                else -> HomeCoverRow(books, onBookClick, onBookLongClick, section.coverVideo)
+                HomeSection.STYLE_FOUR_ROW -> HomeFourRow(books, stableOnBookClick, stableOnBookLongClick)
+
+                // 对照 HomeSectionAdapter: COVER_ROW 走封面行, 未知样式回落排行榜
+                HomeSection.STYLE_COVER_ROW ->
+                    HomeCoverRow(books, stableOnBookClick, stableOnBookLongClick, section.coverVideo)
+
+                else -> HomeRankList(books.take(HOME_RANK_LIMIT), stableOnBookClick, stableOnBookLongClick)
             }
         }
     }
+    // 对照 LoadMoreView.showErrorDialog: 标题"错误" + 书源无效, 无按钮
+    if (showErrorDialog) {
+        AppAlertDialog(
+            onDismissRequest = { showErrorDialog = false },
+            title = stringResource(Res.string.error),
+            message = stringResource(Res.string.home_source_invalid),
+        )
+    }
+}
+
+/** 展示项加载中占位 (对照 LoadMoreView.startLoad: 36dp 转圈 + 8dp 边距) */
+@Composable
+private fun SectionStateLoading() {
+    val colors = AppTheme.colors
+    Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(
+            color = colors.accent,
+            strokeWidth = 2.dp,
+            modifier = Modifier.size(36.dp),
+        )
+    }
+}
+
+/** 展示项空/错误占位 (对照 view_load_more.xml tv_text: 14sp 摘要色 + 12dp 纵向 padding, 单行居中) */
+@Composable
+private fun SectionStateText(text: String, onClick: (() -> Unit)? = null) {
+    val colors = AppTheme.colors
+    Text(
+        text = text,
+        color = colors.secondaryText,
+        fontSize = 14.sp,
+        maxLines = 1,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(vertical = 12.dp),
+    )
 }
 
 /** 对照 HomeSectionAdapter.RANK_LIMIT: 排行榜样式仅展示前 N 名 */
 private const val HOME_RANK_LIMIT = 5
 
 /**
- * 展示项标题行 (对照 view_home_section_title.xml: 标题 + "更多" + 右箭头, 整行可点)。
- *
- * 原 XML 无左侧色块, 但迁移版已有且属现有样式, 保留不动 (只补"更多"入口)。
+ * 展示项标题行 (对照 view_home_section_title.xml: 高 36dp, paddingStart 16 / paddingEnd 8,
+ * 标题 16sp 加粗 + "更多" 13sp 摘要色 + 16dp 右箭头, 整行可点)。
  */
 @Composable
 private fun HomeSectionTitleRow(title: String, onMoreClick: () -> Unit) {
@@ -615,16 +664,11 @@ private fun HomeSectionTitleRow(title: String, onMoreClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = 40.dp)
+            .height(36.dp)
             .clickable(onClick = onMoreClick)
-            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
+            .padding(start = 16.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            Modifier
-                .size(width = 3.dp, height = 16.dp)
-                .background(colors.accent),
-        )
         Text(
             text = title,
             color = colors.primaryText,
@@ -632,7 +676,7 @@ private fun HomeSectionTitleRow(title: String, onMoreClick: () -> Unit) {
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f).padding(start = 8.dp),
+            modifier = Modifier.weight(1f),
         )
         // 对照 view_home_section_title.xml 的 tv_more + iv_arrow (13sp 摘要色 + 16dp 箭头)
         Text(
@@ -640,7 +684,7 @@ private fun HomeSectionTitleRow(title: String, onMoreClick: () -> Unit) {
             color = colors.secondaryText,
             fontSize = 13.sp,
             maxLines = 1,
-            modifier = Modifier.padding(horizontal = 8.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
         )
         Icon(
             painter = painterResource(Res.drawable.ic_arrow_right),
@@ -670,7 +714,7 @@ private fun HomeCoverRow(
         Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = 8.dp),
     ) {
         if (isVideoStyle) {
             // 对照原 VideoCoverCardVH.bind: bindVideoCard(coverRatio=VIDEO, isInBookshelf=false,
@@ -689,13 +733,13 @@ private fun HomeCoverRow(
             }
         } else {
             val colors = AppTheme.colors
-            // 对照 item_home_cover_card.xml + CoverCardVH.bind: 封面固定高 160dp,
-            // 宽度由 CoverImageView 按 coverRatio (NOVEL) 反推, 不读书架封面高度配置
+            // 对照 item_home_cover_card.xml + CoverCardVH.bind: 封面 120×160dp (高 160dp 由
+            // CoverImageView 按 NOVEL 3:4 反推宽 120dp), item 总宽 128 = 120 + 两侧 4dp padding
             books.forEach { book ->
                 Column(
                     Modifier
-                        .width(90.dp)
-                        .padding(horizontal = 4.dp)
+                        .width(128.dp)
+                        .padding(4.dp)
                         .combinedClickable(
                             onClick = { onBookClick(book) },
                             onLongClick = { onBookLongClick(book) },
@@ -705,19 +749,29 @@ private fun HomeCoverRow(
                     LocalBookCoverSlot.current(
                         book.toCoverBook(),
                         Modifier
-                            .fillMaxWidth()
+                            .width(120.dp)
                             .height(160.dp),
                         false,
                         0,
                     )
+                    // 对照 XML tv_name: 12sp 最多 2 行 (minLines=2 保持卡片等高)
                     Text(
                         text = book.name,
                         color = colors.primaryText,
                         fontSize = 12.sp,
+                        maxLines = 2,
+                        minLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    )
+                    // 对照 XML tv_author: 10sp 摘要色, 最多 1 行, marginTop 2dp
+                    Text(
+                        text = book.getRealAuthor(),
+                        color = colors.secondaryText,
+                        fontSize = 10.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
                     )
                 }
             }
@@ -732,7 +786,8 @@ private fun HomeRankList(
     onBookClick: (SearchBook) -> Unit,
     onBookLongClick: (SearchBook) -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+    // 对照原版排行榜 rv: setPadding(default, 0, default, 0), 条目自带 4dp 纵向 padding
+    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
         books.forEachIndexed { index, book ->
             HomeRankItem(index + 1, book, true, onBookClick, onBookLongClick)
         }
@@ -754,7 +809,7 @@ private fun HomeFourRow(
         Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = 8.dp),
     ) {
         books.chunked(4).forEach { column ->
             Column(Modifier.width(220.dp)) {
@@ -837,9 +892,15 @@ private fun HomeInfiniteHeader(
     onOptionSelected: () -> Unit,
     onMoreClick: () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth()) {
-        HomeSectionTitleRow(section.title, onMoreClick)
-        ExploreOptionsRow(options, optionsVersion, onOptionSelected)
+    // 稳定化回调: 同 HomeSectionBlock, 避免数据未变时全量重组
+    val currentOnOptionSelected = rememberUpdatedState(onOptionSelected)
+    val stableOnOptionSelected: () -> Unit = remember { { currentOnOptionSelected.value() } }
+    val currentOnMoreClick = rememberUpdatedState(onMoreClick)
+    val stableOnMoreClick: () -> Unit = remember { { currentOnMoreClick.value() } }
+    // 对照 SectionHolder.root: 无限流头部同样有 top 8 / bottom 4 留白
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp)) {
+        HomeSectionTitleRow(section.title, stableOnMoreClick)
+        ExploreOptionsRow(options, optionsVersion, stableOnOptionSelected)
     }
 }
 
@@ -847,39 +908,58 @@ private fun HomeInfiniteHeader(
 @Composable
 private fun HomeInfiniteGridCard(
     book: SearchBook,
+    coverVideo: Boolean,
     onBookClick: () -> Unit,
     onBookLongClick: () -> Unit,
 ) {
     val colors = AppTheme.colors
-    val coverHeight = AppConfigProviders.get().bookshelfCoverHeight
+    // 稳定化回调: 同 HomeSectionBlock, 数据未变时卡片整体跳过重组
+    val currentOnBookClick = rememberUpdatedState(onBookClick)
+    val stableOnBookClick: () -> Unit = remember { { currentOnBookClick.value() } }
+    val currentOnBookLongClick = rememberUpdatedState(onBookLongClick)
+    val stableOnBookLongClick: () -> Unit = remember { { currentOnBookLongClick.value() } }
     Box(
         Modifier.fillMaxWidth().combinedClickable(
-            onClick = onBookClick,
-            onLongClick = onBookLongClick,
+            onClick = stableOnBookClick,
+            onLongClick = stableOnBookLongClick,
         )
     ) {
-        Column(Modifier.fillMaxWidth()) {
-            // 封面: 走 LocalBookCoverSlot (与书架/探索页一致)
-            LocalBookCoverSlot.current(
-                book.toCoverBook(),
-                Modifier
-                    .fillMaxWidth()
-                    .padding(start = 12.dp, top = 12.dp, end = 12.dp)
-                    .height(coverHeight.dp),
-                false,
-                0,
+        if (coverVideo) {
+            // 对照原版 coverVideo 无限流 → VideoExploreShowAdapter: 视频卡占满格宽
+            ShelfVideoItem(
+                book = book.toCoverBook(),
+                coverReloadTick = 0,
+                onClick = stableOnBookClick,
+                onLongClick = stableOnBookLongClick,
+                modifier = Modifier.fillMaxWidth(),
+                coverSlot = { b, m, isVideoCover, tick ->
+                    LocalBookCoverSlot.current(b, m, isVideoCover, tick)
+                },
             )
-            Text(
-                text = book.name,
-                color = colors.primaryText,
-                fontSize = 12.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 8.dp),
-            )
+        } else {
+            Column(Modifier.fillMaxWidth()) {
+                // 对照 item_bookshelf_grid.xml: 封面四边 12dp margin, 高按 NOVEL 3:4 由宽度
+                // 反推 (原版 iv_cover wrap_content + coverRatio=NOVEL), 不读书架封面高度配置
+                LocalBookCoverSlot.current(
+                    book.toCoverBook(),
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    false,
+                    0,
+                )
+                Text(
+                    text = book.name,
+                    color = colors.primaryText,
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                )
+            }
         }
     }
 }

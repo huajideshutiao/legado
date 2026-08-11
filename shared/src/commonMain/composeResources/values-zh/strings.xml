@@ -896,6 +896,7 @@
     <string name="manga_header_chapter">章节</string>
     <string name="manga_header_page">页码</string>
     <string name="manga_header_progress">进度</string>
+    <string name="no_more_chapter">暂无章节了！</string>
     <string name="manga_header_orientation">对齐</string>
     <string name="manga_radio_left">靠左</string>
     <string name="manga_radio_center">居中</string>
