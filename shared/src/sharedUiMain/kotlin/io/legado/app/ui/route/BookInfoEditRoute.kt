@@ -8,6 +8,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.model.ActiveReadBookRegistry
+import io.legado.app.ui.book.changecover.CoverStorageServiceProviders
 import io.legado.app.ui.book.info.edit.BookInfoEditScreen
 import io.legado.app.ui.book.info.edit.BookInfoEditScreenModel
 import io.legado.app.ui.book.info.edit.BookInfoEditUiActions
@@ -68,16 +69,26 @@ fun BookInfoEditRoute(
 
         override fun onSave() {
             screenModel.dispatch(BookInfoEditUiEvent.Save {
-                navigator.pop(RouteResultPayload.Ok)
+                // 对齐原版 saveData 末尾 IntentData.book = book; finish(): 回传编辑后的同一对象,
+                // 详情页只替换内存对象驱动 UI, 不网络重拉不写 DB (避免顶掉 customCoverUrl)
+                screenModel.book?.let { navigator.pop(RouteResultPayload.BookEdited(it)) }
             })
         }
 
         // 本地选图: 平台文件选择器 (对照 app 端 HandleFileContract)
         // 选择器实现是阻塞式的 (Android 端 runBlocking 等 SAF 回调), 必须切到 IO 再调
+        // 选中后先经 CoverStorageService 持久化到 covers 目录 (对齐原版 md5 命名),
+        // 持久化失败回退 pickFile 物化临时路径
         override fun onSelectCover() {
             scope.launch {
                 val path = withContext(IoDispatcher) {
                     PlatformServiceProviders.getOrNull()?.files?.pickFile(FileFilter.Images)
+                        ?.let { picked ->
+                            val displayName =
+                                picked.substringAfterLast('/').substringAfterLast('\\')
+                            CoverStorageServiceProviders.get()
+                                .persistCover(picked, displayName) ?: picked
+                        }
                 }
                 if (path != null) {
                     screenModel.dispatch(BookInfoEditUiEvent.CoverChangeTo(path))
@@ -123,7 +134,8 @@ fun BookInfoEditRoute(
         state = state,
         actions = actions,
         coverSlot = { book, modifier ->
-            book?.let { bookCoverSlot(it, modifier, false, 0) }
+            // coverTick 递增 (选图/刷新) 时驱动封面组件重载 (ShelfCover reloadKey / SharedBookCover tick)
+            book?.let { bookCoverSlot(it, modifier, false, state.coverTick) }
         },
     )
 }

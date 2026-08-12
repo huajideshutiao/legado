@@ -79,13 +79,6 @@ interface ReaderPlatformProvider {
         screenModel: ReaderScreenModel,
     ): ReadMenuController
 
-    /**
-     * 音量键翻页开关 (对照 app 端 `AppConfig.volumeKeyPage`, 默认 true)。
-     * ReaderRoute 的 VolumeUp/VolumeDown 翻页快捷键按此开关决定是否拦截;
-     * 无音量键平台 (desktop/iOS/鸿蒙) 恒 true 即可。
-     */
-    val volumeKeyPage: Boolean get() = true
-
     /** 当前电池电量 0-100，-1 表示不显示 */
     fun getBatteryLevel(): Int
 

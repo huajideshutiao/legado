@@ -111,6 +111,12 @@ sealed interface RouteResultPayload {
         val toc: List<BookChapter>,
     ) : RouteResultPayload
 
+    /** 书籍信息编辑回传编辑后的 Book (对齐 BookInfoEditActivity.saveData 末尾 IntentData.book + finish) */
+    @Serializable
+    data class BookEdited(
+        val book: Book,
+    ) : RouteResultPayload
+
     /** 章节换源回传 (对齐 ChangeChapterSourceDialog.CallBack.replaceContent(content)) */
     @Serializable
     data class ChangeChapterContent(

@@ -283,12 +283,20 @@ fun CodeTextField(
         lineCount = countLineNumbers(value.text)
         hasNewline = value.text.contains('\n')
     }
+    // 拦截节点 (bringIntoView 挂起恢复时) 读最新 selection 的同步数据源 (见 cursorLineRect):
+    // 点击/输入在 trackedValueChange 里同步写入 (早于同帧的 bringIntoView 拦截), 外部直写
+    // (undo/redo/setText 等不经本字段 onValueChange 的写入) 由组合期赋值兜底
+    var latestValue by remember { mutableStateOf(value) }
+    if (latestValue != value) latestValue = value
     // 行数增量 + 转发: 文本内容不变时只更新增量, 行号串 (remember(lineCount)) 不重建。
     // lambda 用 remember 固定 + rememberUpdatedState 读最新 onValueChange: 同一实例传给
     // BasicTextField, 无文本变化的重组不触发字段内部额外重建
     val currentOnValueChange by rememberUpdatedState(onValueChange)
     val trackedValueChange: (TextFieldValue) -> Unit = remember {
         { newValue: TextFieldValue ->
+            // 同步写入拦截节点数据源 (见 latestValue): 点击/输入后同帧的 bringIntoView
+            // 拦截必须读到本次 selection 更新, 重组路径 (rememberUpdatedState) 晚一帧
+            latestValue = newValue
             val newText = newValue.text
             if (newText != lastLineCountText) {
                 val delta = newlineDelta(lastLineCountText, newText)
@@ -427,6 +435,15 @@ fun CodeTextField(
     // getPrimaryHorizontal / getLineBaseline 取几何。逻辑行号 × 固定行高的算法遇软换行
     // (长行折行) 必然偏移, 是"点击内容上跑/光标被键盘挡/补全条跑屏幕底部"的共同根因。
     var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    /**
+     * 只有与当前文本**同步**的布局才可用来按字符偏移取几何。
+     *
+     * onTextLayout 回传滞后于文本变化一帧: 用旧布局按新文本的偏移取几何会直接越界崩溃
+     * (IllegalArgumentException: offset(n) is out of bounds [0, 0] —— 布局还是空文本的,
+     * 却被要求算第 n 个字符)。凡是 getLineForOffset / getHorizontalPosition 这类按偏移
+     * 查询的调用, 一律只用本值; 按行号查询 (getLineStart/getLineTop) 可用原始布局。
+     */
+    val syncedLayout = textLayout?.takeIf { it.layoutInput.text.text == value.text }
     // 文本块在字段内的起点 Y (px): contentPadding.top + label 占位, 行内 Y 由 layout 提供
     val textTopPx = with(density) {
         (contentPadding.calculateTopPadding() +
@@ -467,15 +484,18 @@ fun CodeTextField(
     // 焦点系统按整个字段 bounds 发起请求, 长字段 (高 > 视口) 会把字段底对齐视口底, 表现
     // 为点击跳到底部; 拦截后统一以光标行为目标, 最多滚动到光标行可见
     val cursorLineRect: () -> Rect? = {
-        val layout = textLayout
-        // layout 必须与当前文本同步: 回车/输入的 bringIntoView 请求发生在文本变化的同一帧,
-        // 此时 onTextLayout 还没回传新布局, 用旧布局算出的行是"变化前的光标行" ——
-        // 表现为按回车后光标仍被软键盘挡住。此时返回 null, 由拦截节点退回子请求自身的
-        // bounds (BasicTextField 用它内部的新布局算, 是准的)
-        if (layout == null || layout.layoutInput.text.text != value.text) {
+        // 布局过期时返回 null: 拦截节点会退回子请求自身的 bounds (BasicTextField 用其内部
+        // 新布局算, 准确) —— 否则按回车后光标仍被软键盘挡住
+        val layout = syncedLayout
+        // 拦截节点在挂起恢复时 (同帧, 早于重组) 调用本 lambda: 不能用组合期捕获的 value
+        // 算 rect (点击后 selection 已更新而重组未跑, 旧 lambda 会算出旧光标行, 长文本下
+        // 画面大幅跳错), 一律经 latestValue 取最新 selection。点击只改 selection 不改文本,
+        // 旧布局仍与最新文本同步, 可直接按最新 selection 取行; 输入改了文本则旧布局与新文本
+        // 不同步, 退回子请求 bounds
+        if (layout == null || layout.layoutInput.text.text != latestValue.text) {
             null
         } else {
-            val cursor = value.selection.start.coerceIn(0, value.text.length)
+            val cursor = latestValue.selection.start.coerceIn(0, latestValue.text.length)
             // getLineForOffset 是视觉行 (含软换行), 与原版 layout.getLineForOffset 同语义
             val line = layout.getLineForOffset(cursor)
             Rect(
@@ -523,15 +543,22 @@ fun CodeTextField(
     // 行号串: 逐**视觉行**一个条目, 只在逻辑行首放行号, 软换行的续行留空 —— 与原版 onDraw
     // 的 isRealLineStart 判定同语义 (续行不画号), 也让行号列与正文逐行严格对齐。
     // layout 未就绪时先按逻辑行数排 (首帧, 随即被 onTextLayout 校正)
+    // 行号窗口: 布局过期帧 (文本刚变, onTextLayout 未回传) 复用上次结果, 首帧无历史回退
+    // 逻辑行数估算 (见 gutterWindow)
+    var lastGutterWindow by remember { mutableStateOf<Triple<String, Float, Int>?>(null) }
     // 行号窗口 (视觉行区间) 与其在文本块内的顶部偏移: 与着色挂载窗口同源 (renderRange),
     // 只为窗口内的行生成行号串 —— 万行文件不再把全部行号做成一个巨大 Text 参与布局
     // (对照原版 onDraw 只画 firstLine..lastLine)。
     val gutterWindow: Triple<String, Float, Int>? = if (!gutterShown) {
         null
     } else {
-        val layout = textLayout
+        // layout 必须与当前文本同步 (syncedLayout): 旧布局按新偏移取行会越界崩溃
+        // (offset out of bounds [0,0], 布局还是空文本时), 见 syncedLayout 注释
+        val layout = syncedLayout
         if (layout == null) {
-            Triple(buildLineNumbers(lineCount), 0f, 0)
+            // 布局未就绪 (首帧/刚载入) 按逻辑行数估算; 过期帧复用上次结果, 避免行号串
+            // 逐键闪变 (估算串与挂载窗口不匹配)
+            lastGutterWindow ?: Triple(buildLineNumbers(lineCount), 0f, 0)
         } else {
             remember(layout, renderRange, gutterShown) {
                 val lastLine = layout.lineCount - 1
@@ -548,7 +575,7 @@ fun CodeTextField(
                     layout.getLineTop(from),
                     from,
                 )
-            }
+            }.also { lastGutterWindow = it }
         }
     }
     val numbersText = gutterWindow?.first ?: ""
@@ -570,17 +597,23 @@ fun CodeTextField(
     } else {
         0.dp
     }
+    // 补全弹层锚点: 布局过期帧复用上次已算好的锚点 (见 popupOffset), 首帧无历史回退 Zero
+    var lastPopupOffset by remember { mutableStateOf(IntOffset.Zero) }
     val popupOffset = if (matches.isEmpty()) {
         IntOffset.Zero
     } else {
         // 锚点全部取自真实 layout (对照原版 showDropDown: layout.getLineForOffset +
         // getLineBottom + getPrimaryHorizontal), 逐行硬算遇软换行必偏, 是"补全条跑屏幕
         // 最下方"的根因 —— 锚点算出界后被窗口管理器夹到屏幕底部
-        remember(textLayout, value.selection, gutterWidthPx, contentPadding, density, fieldWindowOffset, label != null) {
-            val layout = textLayout
-            if (layout == null) {
-                IntOffset.Zero
-            } else {
+        // layout 必须与当前文本同步 (syncedLayout): 旧布局按新偏移取行会越界崩溃
+        // (offset out of bounds [0,0], 布局还是空文本时), 见 syncedLayout 注释
+        val layout = syncedLayout
+        if (layout == null) {
+            // 布局未就绪 (首帧) 或过期 (文本刚变, onTextLayout 未回传): 复用上次锚点,
+            // 避免弹层逐键闪回字段角落; 无历史 (首帧) 才退回 Zero
+            lastPopupOffset
+        } else {
+            remember(layout, value.selection, gutterWidthPx, contentPadding, density, fieldWindowOffset, label != null) {
                 val cursor = value.selection.start.coerceIn(0, value.text.length)
                 val line = layout.getLineForOffset(cursor)
                 // 弹层挂在光标行下沿 (原版 dropDownAnchor 幽灵 View 覆盖光标行, 下拉在其下方)
@@ -597,7 +630,7 @@ fun CodeTextField(
                 // 弹层锚点换算见 AutoCompletePopup: 组件内偏移 + 字段窗口位置, 由 PopupPositionProvider
                 // 减去内容根窗口偏移 (anchorBounds.topLeft) 得最终 offset
                 IntOffset(x, y) + fieldWindowOffset
-            }
+            }.also { lastPopupOffset = it }
         }
     }
     AppTextFieldImpl(

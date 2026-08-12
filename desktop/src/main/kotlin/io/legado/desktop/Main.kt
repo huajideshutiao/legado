@@ -80,6 +80,7 @@ import io.legado.app.ui.association.DeepLinkImportHost
 import io.legado.app.ui.association.LegadoDeepLink
 import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
+import io.legado.app.ui.book.changecover.CoverStorageServiceProviders
 import io.legado.app.ui.book.info.LocalBlurCoverBgSlot
 import io.legado.app.ui.book.info.SharedBlurCoverBgCoil
 import io.legado.app.ui.book.manga.MangaReaderScreenModel
@@ -123,6 +124,7 @@ import io.legado.desktop.help.book.DesktopBitmapProvider
 import io.legado.desktop.help.book.DesktopBookHelpAccessor
 import io.legado.desktop.help.book.DesktopZipFileWrapperFactory
 import io.legado.desktop.help.book.registerDesktopBookshelfManagePlatform
+import io.legado.desktop.help.changecover.DesktopCoverStorageService
 import io.legado.desktop.help.changesource.registerDesktopChangeBookSourcePlatform
 import io.legado.desktop.help.config.registerDesktopPasswordProvider
 import io.legado.desktop.help.http.registerDesktopBackstageWebView
@@ -435,6 +437,8 @@ private fun runDesktopApp() = application {
             windowHandle
         )
     )
+    // 封面选图持久化 (对齐 Android 原版 externalFiles/covers, 落桌面应用数据根目录 covers/)
+    CoverStorageServiceProviders.register(DesktopCoverStorageService())
     // 系统托盘: 音频/朗读活跃时给播放控制菜单 (最小化后仍可控), 同时承载 toast/进度气泡
     DisposableEffect(Unit) {
         DesktopMediaTray.install(

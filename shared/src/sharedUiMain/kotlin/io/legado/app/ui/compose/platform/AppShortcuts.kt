@@ -20,7 +20,7 @@ import io.legado.app.utils.systemCurrentTimeMillis
 /**
  * 快捷键描述。[command] 是跨平台主修饰键: macOS/iOS 走 Cmd, 其余平台走 Ctrl。
  *
- * [preemptive] 显式指定是否在捕获阶段抢占消费；null = 按默认规则推断（见 [AppShortcut.preemptive]）。
+ * [preemptive] 显式指定是否在捕获阶段抢占消费；null = 按默认规则推断（见 [AppShortcut.resolvedPreemptive]）。
  * [repeatPolicy] 指定系统按键 repeat（按住连发）的处理策略，默认 [KeyRepeatPolicy.FILTER]。
  */
 data class AppShortcut(
@@ -68,7 +68,15 @@ internal fun AppShortcut.matches(event: KeyEvent): Boolean =
  * 例外: 阅读页方向键显式置 true —— 仅当阅读页是栈顶且菜单隐藏时才命中 (页面上无输入框),
  * 抢占不会吞输入; 同时避开 FocusTargetNode 的焦点导航在冒泡阶段抢先消费方向键导致按键丢失。
  */
-internal val AppShortcut.preemptive: Boolean
+/**
+ * 解析后的抢占式标志: 显式设置取显式值, 否则按默认规则推断。
+ *
+ * 注意: 本扩展曾与成员属性 [AppShortcut.preemptive] 同名, 而 Kotlin 解析规则为成员优先, 调用点
+ * `it.preemptive` 会解析到成员 (Boolean?, 未显式设置时为 null), 导致 `null == preemptive` 恒 false,
+ * 所有未显式传 preemptive 的快捷键 (音量键/物理 Menu 键/桌面全局 Ctrl 组合键) KeyDown 永不匹配
+ * (2026-08 真机 logcat 实证: 音量键 KeyDown 未消费而 KeyUp 消费)。改名根治, 调用点必须用本扩展。
+ */
+internal val AppShortcut.resolvedPreemptive: Boolean
     get() = preemptive ?: (command || alt || key in functionKeys)
 
 private val functionKeys = setOf(
@@ -140,7 +148,7 @@ fun AppShortcutHandler(
 /**
  * 把按键分发给快捷键栈, 返回 true 表示已消费。
  *
- * [preemptive] 区分捕获/冒泡两阶段: 见 [AppShortcut.preemptive]。
+ * [preemptive] 区分捕获/冒泡两阶段: 见 [AppShortcut.resolvedPreemptive]。
  * 逐个 catch + 遍历前取快照, 理由同 [dispatchBackKey]。
  *
  * KeyUp 只清理按住状态 (repeat 过滤用), 不触发任何动作——例外: 音量键且栈顶命中
@@ -170,9 +178,9 @@ fun dispatchShortcut(event: KeyEvent, preemptive: Boolean): Boolean {
         }
         if (event.type != KeyEventType.KeyDown) return false
         val entry = firstEnabledEntry {
-            it.preemptive == preemptive && it.matches(event)
+            it.resolvedPreemptive == preemptive && it.matches(event)
         } ?: return false
-        val hit = entry.shortcuts().first { it.preemptive == preemptive && it.matches(event) }
+        val hit = entry.shortcuts().first { it.resolvedPreemptive == preemptive && it.matches(event) }
         val now = systemCurrentTimeMillis()
         val lastPress = pressedSince[event.key]
         if (lastPress != null && now - lastPress < KEY_REPEAT_WINDOW_MS) {

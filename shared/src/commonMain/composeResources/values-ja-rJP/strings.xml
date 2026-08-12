@@ -138,7 +138,6 @@
     <string name="replace_to">Replacement</string>
     <string name="img_cover">Cover</string>
     <string name="book">Book</string>
-    <string name="mouse_wheel_page">Mouse wheel to turn page</string>
     <string name="page_anim">Flip animation</string>
     <string name="book_page_anim">Flip animation (book)</string>
     <string name="keep_light">Keep screen awake</string>

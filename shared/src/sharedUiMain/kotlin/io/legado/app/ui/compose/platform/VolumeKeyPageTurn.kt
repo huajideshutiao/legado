@@ -23,8 +23,8 @@ val volumePageTurnKeys = listOf(
  * - 长按 (repeat 每次触发) 经 [PageTurnThrottle] 200ms 节流 → 约 5 页/秒, 避免连翻过快
  * - 快速连按 200ms 内合并/忽略
  *
- * @param enabled 生效条件 (由调用方提供: 小说含 volumeKeyPage 开关与菜单可见判断,
- *        漫画含菜单可见判断——菜单可见时不响应音量键翻页为有意 UI 考虑)
+ * @param enabled 生效条件 (由调用方提供: 菜单可见判断——菜单可见时不响应音量键翻页为有意 UI 考虑;
+ *        音量键翻页恒生效无开关, 2026-08 用户拍板)
  * @param onTurnPage 翻页回调 (volumeUp = true → VolumeUp/上一页, false → VolumeDown/下一页),
  *        调用方完成方向映射与翻页执行
  */

@@ -89,9 +89,6 @@ class AndroidReaderPlatformProvider(
     // 记 screenModel 用于校验归属, 避免旧路由 onExit 误停新路由的自动翻页
     private var activeMenuState: Pair<ReaderScreenModel, AndroidReaderMenuState>? = null
 
-    // 音量键翻页开关 (对照原版 AppConfig.volumeKeyPage, ReaderRoute 快捷键消费)
-    override val volumeKeyPage: Boolean get() = AppConfig.volumeKeyPage
-
     // Activity 生命周期观察者：桥接到 ReaderScreenModel.onPause/onResume (对照 app 端 ReadBookActivity.onPause/onResume)
     // onEnter 注册、onExit 解注册；ON_PAUSE 落库+取消预下载+停自动翻页，ON_RESUME 留扩展点
     private var lifecycleObserver: DefaultLifecycleObserver? = null

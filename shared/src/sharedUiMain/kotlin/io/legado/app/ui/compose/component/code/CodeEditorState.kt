@@ -74,18 +74,29 @@ class CodeEditorState(initial: String) {
 
         // 2. 回车: 自动缩进
         if (removed.isEmpty() && inserted == "\n") {
-            val lineStart = oldText.lastIndexOf('\n', prefix - 1) + 1
+            // 方案 A: 弃用 diff 定位, 以新文本中插入的 '\n' 下标 (== 旧文本中的真实插入点)
+            // 为锚点反推行首/缩进/配对。diff 的公共前缀会把光标前原有的 '\n' 吃进前缀
+            // (prefix 越过真实插入点): lineStart 算到下一行 → indentStr 恒空、行首扫描
+            // 区间为空 → 自动缩进/闭合对全失效, selection 被推到下一行行首。
+            // 纯插入 '\n' 时 BasicTextField 的 selection 恒为 collapsed 且紧贴插入点,
+            // new.selection.start - 1 即新文本中该 '\n' 的下标。
+            val insert = new.selection.start - 1
+            if (insert < 0 || newText.getOrNull(insert) != '\n') {
+                // 防御: selection 未锚定到插入的 '\n' (异常路径), 原样返回字段结果
+                return new
+            }
+            val lineStart = oldText.lastIndexOf('\n', insert - 1) + 1
             var indentEnd = lineStart
-            while (indentEnd < prefix && oldText[indentEnd] == ' ') indentEnd++
+            while (indentEnd < insert && oldText[indentEnd] == ' ') indentEnd++
             val indentStr = oldText.substring(lineStart, indentEnd)
             var lastNonSpaceChar: Char? = null
-            for (i in prefix - 1 downTo lineStart) {
+            for (i in insert - 1 downTo lineStart) {
                 if (!oldText[i].isWhitespace()) {
                     lastNonSpaceChar = oldText[i]
                     break
                 }
             }
-            val nextChar = oldText.getOrNull(prefix)
+            val nextChar = oldText.getOrNull(insert)
             val sb = StringBuilder("\n").append(indentStr)
             var cursorOffset = sb.length
             if (lastNonSpaceChar in IndentCharacterList) {
@@ -103,8 +114,8 @@ class CodeEditorState(initial: String) {
                 }
             }
             val adjusted =
-                newText.substring(0, prefix) + sb + newText.substring(prefix + 1)
-            return TextFieldValue(adjusted, TextRange(prefix + cursorOffset))
+                newText.substring(0, insert) + sb + newText.substring(insert + 1)
+            return TextFieldValue(adjusted, TextRange(insert + cursorOffset))
         }
 
         // 3. 剔除 "#in" 占位符, 光标定位到其起始处

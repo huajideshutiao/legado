@@ -15,6 +15,7 @@ import io.legado.app.help.service.UpdateBookShared
 import io.legado.app.ui.root.screenModelScope
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.cnCompare
+import io.legado.app.utils.isAndroidPlatform
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -209,11 +210,18 @@ class BookshelfViewModel {
             FlowBus.with(EventBus.UP_BOOKSHELF).collect { e ->
                 val url = e as? String ?: return@collect
                 _refreshingUrls.value = _refreshingUrls.value - url
-                // 数据可能已过期: 置脏标记 + 可见时经空闲窗口聚合重查 (发射方注释仍承诺
+                // 数据可能已过期: 置脏标记 + 重查 (发射方注释仍承诺
                 // "UP_BOOKSHELF → 重启分组流强制重查", 旧实现删除后此兜底缺失, 见
                 // ReadBookViewModelShared.uploadProgressAwait / AudioPlayShared)
                 bookDataDirty = true
-                scheduleRecheckIfVisible()
+                if (isAndroidPlatform) {
+                    // Android: Room 失效推送正常 (2026-08 Android 12/16 双设备最小实验
+                    // 5/5 全触发), 维持原可见时兜底即可, 不额外后台重查
+                    scheduleRecheckIfVisible()
+                } else {
+                    // 桌面/iOS/鸿蒙: 桌面 Room 失效推送对 UPDATE 不可靠 (实证), 激活期间即重查
+                    scheduleRecheckIfActive()
+                }
             }
         }
     }
@@ -233,6 +241,10 @@ class BookshelfViewModel {
             // 恢复订阅: 当前分组 + 组合中的相邻分组页
             ensureGroupFlow(_currentGroupId.value)
             composedGroupIds.forEach { ensureGroupFlow(it) }
+            // 激活时消费脏标记 (覆盖书架不可用期间到达的 UP_BOOKSHELF 事件):
+            // 仅非 Android 需要 (桌面 Room 失效不可靠/iOS·鸿蒙未验证);
+            // Android 维持原可见时兜底 (Room 失效推送正常, 2026-08 双设备实证)
+            if (!isAndroidPlatform) recheckIfDirty()
         } else {
             bookGroupsJob?.cancel()
             bookGroupsJob = null
@@ -260,6 +272,24 @@ class BookshelfViewModel {
     /** 书架可见时 UP_BOOKSHELF 事件驱动重查: 500ms 空闲窗口聚合批量刷新的连续事件 */
     private fun scheduleRecheckIfVisible() {
         if (!visible) return
+        recheckDebounceJob?.cancel()
+        recheckDebounceJob = scope.launch {
+            delay(500)
+            recheckIfDirty()
+        }
+    }
+
+    /**
+     * 书架激活(组合)期间 UP_BOOKSHELF 事件驱动重查: 500ms 空闲窗口聚合。
+     *
+     * 区别于 [scheduleRecheckIfVisible]: 不要求书架可见。桌面端 Room KMP 失效推送对
+     * UPDATE 类写操作不可靠 (2026-08 实测: @Query UPDATE/@Update 不触发 flow 重发,
+     * 仅 INSERT/DELETE 触发; 手工复刻同 SQL 同连接却正常, 定位为 Room 3.0.1 生成代码
+     * 执行路径的内部行为), 书架页在导航栈中保持组合期间 (active 恒 true), 阅读/音频/
+     * 目录更新落库后立即重查, 返回书架必见最新, 不再依赖可见时机翻转。
+     */
+    private fun scheduleRecheckIfActive() {
+        if (!active) return
         recheckDebounceJob?.cancel()
         recheckDebounceJob = scope.launch {
             delay(500)

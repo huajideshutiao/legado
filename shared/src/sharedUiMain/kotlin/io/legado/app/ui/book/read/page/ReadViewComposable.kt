@@ -504,9 +504,27 @@ fun ReadViewComposable(
                         // 再等下一个 DOWN），净效果一致
                         if (downY > latestMandatoryGestureBoundPx) return@awaitEachGesture
                         val slop = viewConfiguration.touchSlop
+                        // 第二道 slop 阈值（平方）：自定义 pageTouchSlop，0 = 未自定义 → 回退
+                        // 平台 slop（对照原版 ReadView.upPageSlopSquare 的
+                        // pageTouchSlop == 0 ? slopSquare : pageTouchSlop，slopSquare =
+                        // ViewConfiguration.scaledTouchSlop）。每手势读一次（idiom 同
+                        // HorizontalPageDelegateCompose.onDown / ReadViewComposable 内
+                        // previewImageByClick 的 PreferenceProviders 读法），阈值在手势内恒定
+                        val pageTouchSlop = runCatching { PreferenceProviders.get() }
+                            .getOrNull()?.getInt(PreferKey.pageTouchSlop, 0) ?: 0
+                        val slopSquare = if (pageTouchSlop == 0) slop else pageTouchSlop.toFloat()
+                        val slopSquare2 = slopSquare * slopSquare
                         // 对照原版 ReadView.onTouchEvent 的状态机：
                         // pressDown（本层 awaitFirstDown 后恒真，省略）/ isMove / longPressed /
-                        // pressOnTextSelected 四布尔位 + 长按定时
+                        // pressOnTextSelected 四布尔位 + 长按定时。
+                        // 两道 slop 判定各自独立（对照原版 ReadView.isMove 与
+                        // ScrollPageDelegate.isMoved 双标志）：
+                        // - firstSlopPassed = 第一道：平台 1-D slop（absX>slop || absY>slop），
+                        //   只置 true 不回退（原版 isMove 语义）；决定"进入 MOVE 处理/取消长按"；
+                        // - isMove = 第二道：欧氏距离平方（dx²+dy² > 自定义slop²，0 回退平台），
+                        //   决定"真的翻页/滚动"（原版 delegate.isMoved 语义）。
+                        // UP 单击要求两道都没过（原版 if (!isMoved && !isMove)）。
+                        var firstSlopPassed = false
                         var isMove = false
                         var longPressed = false
                         var pressOnTextSelected = false
@@ -603,9 +621,31 @@ fun ReadViewComposable(
                             if (change.position.y > latestMandatoryGestureBoundPx) continue
                             lastX = change.position.x
                             lastY = change.position.y
-                            if (!isMove) {
-                                isMove = abs(change.position.x - downX) > slop ||
-                                    abs(change.position.y - downY) > slop
+                            if (!firstSlopPassed) {
+                                // 第一道：平台 1-D slop（对照原版 ReadView.onTouchEvent
+                                // ACTION_MOVE 的 absX > slopSquare || absY > slopSquare），
+                                // 只置 true 不回退。原版第一道过即取消长按定时
+                                // （removeCallbacks(longPressRunnable)）并进入 MOVE 处理；
+                                // 迁移版把"取消长按"也挂在这里（下方 isMove 分支不再重复），
+                                // 保证与点击判定同源：第一道过 → 不再可能走单击
+                                val dx = change.position.x - downX
+                                val dy = change.position.y - downY
+                                if (abs(dx) > slop || abs(dy) > slop) {
+                                    firstSlopPassed = true
+                                    longPressJob.cancel()
+                                    longPressed = false
+                                }
+                            }
+                            if (firstSlopPassed && !isMove) {
+                                // 第二道：欧氏距离平方判定，dx/dy 取从按下点累计的总位移
+                                // （对照原版 ScrollPageDelegate.onScroll 的
+                                // distance = dx²+dy² > pageSlopSquare2；scroll 与横向
+                                // delegate 共用本判定，横向 delegate 不再重复计算），
+                                // 越过阈值才首次调 delegate.onScroll（首次调用即携带
+                                // 从按下点起的完整位移，delegate 内据此定方向/重置起点）
+                                val dx = change.position.x - downX
+                                val dy = change.position.y - downY
+                                isMove = dx * dx + dy * dy > slopSquare2
                             }
                             if (grabbingLeftHandle || grabbingRightHandle) {
                                 // 手柄拖动：无 slop 直接生效（对照原版手柄 OnTouchListener
@@ -646,9 +686,9 @@ fun ReadViewComposable(
                                     }
                                 }
                             } else if (isMove) {
-                                // 越过 slop：取消长按定时（对照原版 removeCallbacks）
-                                longPressJob.cancel()
-                                longPressed = false
+                                // 第二道已过：消费并进入翻页/滚动（对照原版 isMove 后
+                                // pageDelegate.onTouch；长按定时已在第一道过时取消，
+                                // 这里不重复）
                                 change.consume()
                                 if (selection.isActive) {
                                     // 长按选中后拖动扩选（对照原版 selectText）
@@ -690,7 +730,10 @@ fun ReadViewComposable(
                             // 长按选词后不拖动抬手（longPressed==true 时点击路径被跳过）
                             // 必须能落到下方 showTextActionMenu 对应物，不能互斥截断。
                             var handledAsTap = false
-                            if (!latestDelegate.isMoved && !isMove) {
+                            // 单击要求两道都没过（对照原版 UP 分支的
+                            // if (!pageDelegate.isMoved && !isMove)：isMove 是第一道、
+                            // isMoved 是第二道；迁移版 firstSlopPassed/isMove 与之对应）
+                            if (!latestDelegate.isMoved && !isMove && !firstSlopPassed) {
                                 // 未移动的抬手：长按/选择抑制后先走页内列级命中，未消费
                                 // 回落九宫格（对照原版 if (!curPage.onClick(startX, startY))
                                 // onSingleTapUp()；onTapAt 已封装列命中 + 九宫格分发）

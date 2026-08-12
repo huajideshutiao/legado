@@ -30,7 +30,6 @@ import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.LocalReadConfigProviders
-import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadBookConfigShared
 import io.legado.app.help.coroutine.IoDispatcher
@@ -410,13 +409,12 @@ fun ReaderRoute(
             }
         }
     }
-    // 音量键翻页 (对照原版 ReadBookKeyHandler VOLUME_UP/DOWN 分支, 默认开启;
-    // 开关走平台配置 AppConfig.volumeKeyPage, 关闭时不拦截让系统调音量)
-    // 2026-08-04: 用户决策——音量键翻页功能保留恒生效, 仅删 volumeKeyPageOnPlay 配置项。
+    // 音量键翻页 (对照原版 ReadBookKeyHandler VOLUME_UP/DOWN 分支; 2026-08 用户拍板:
+    // 恒生效不提供开关, 已移除 AppConfig.volumeKeyPage 配置读取, 始终拦截音量键翻页)
     // 长按策略 (2026-08 用户拍板): 与漫画页一致——TRIGGER 连翻 + 200ms 节流,
     // 接线收敛在共享 VolumeKeyPageTurnHandler (单击翻页 / 长按连翻节流 / 抬起消费)
     VolumeKeyPageTurnHandler(
-        enabled = { isTopEntry && !screenModel.menuState.isVisible && provider.volumeKeyPage },
+        enabled = { isTopEntry && !screenModel.menuState.isVisible },
     ) { volumeUp ->
         screenModel.viewModel.turnPage(
             if (volumeUp) PageDirectionShared.PREV else PageDirectionShared.NEXT
@@ -425,10 +423,9 @@ fun ReaderRoute(
     // endregion
 
     // Ctrl+滚轮调字号 (用户拍板: 替代 Ctrl+=/-= 快捷键, 更直观, 每格 ±2, 范围 5..50);
-    // 非 Ctrl 滚轮在滚动翻页模式 (isScrollPageAnim) 下按 mouseWheelPage 开关消费为滚动翻页
-    // (滚过页底自动折算切页, 与拖拽滚动同一套 applyScrollDelta 折算, 互不干扰);
-    // 左右翻页模式非 Ctrl 滚轮不消费 (保持现状: 拖拽翻页, 滚轮不干扰)。
-    // 菜单可见时不消费滚轮, 让位菜单内列表滚动 (对照原版 onMouseWheel 的 menuLayoutIsVisible 守卫)。
+    // 非 Ctrl 滚轮不消费 (滚轮翻页已彻底禁用 2026-08 用户拍板, 与 mouseWheelPage 设置项一并移除),
+    // 交还原链路; 菜单可见时也不消费滚轮, 让位菜单内列表滚动 (对照原版 onMouseWheel 的
+    // menuLayoutIsVisible 守卫)。
     ReaderScreen(
         state = state,
         actions = actions,
@@ -456,29 +453,6 @@ fun ReaderRoute(
                                 ReadConfigChange.LOAD_CONTENT,
                             )
                         }
-                        change.consume()
-                        continue
-                    }
-                    // 非 Ctrl 滚轮: 仅滚动翻页模式 + 开关开启 + 菜单隐藏时消费为滚动翻页
-                    // (开关分发时现取, 改配置立即生效; 对照 MoreConfigScreen 的 mouseWheelPage 开关)
-                    val wheelPageEnabled = runCatching {
-                        PreferenceProviders.get().getBoolean(PreferKey.mouseWheelPage, true)
-                    }.getOrDefault(true)
-                    val scrollDelegate =
-                        screenModel.viewModel.pageDelegate as? ScrollPageDelegateCompose
-                    if (wheelPageEnabled && scrollDelegate != null &&
-                        !screenModel.menuState.isVisible
-                    ) {
-                        // 滚轮滚动: CMP 的 scrollDelta 是格数 (preciseWheelRotation 直接透传,
-                        // Windows 一格 = 1.0, 非像素!) —— 之前按像素假设倍率全部失效;
-                        // 一格 = 视口 1/4 (4 格翻一页, 用户实测要求的速度);
-                        // 高精度滚轮 (preciseWheelRotation 小数) 自然细分;
-                        // 方向保持 -delta (用户实测确认)
-                        val viewportH =
-                            (screenModel.viewModel.curTextPage.value?.visibleHeight ?: 0).toFloat()
-                        scrollDelegate.scrollBy(
-                            if (viewportH > 0f) -delta * viewportH / 4f else -delta * 300f
-                        )
                         change.consume()
                     }
                 }

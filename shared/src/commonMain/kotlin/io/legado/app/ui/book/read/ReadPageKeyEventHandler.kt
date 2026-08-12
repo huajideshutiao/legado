@@ -106,16 +106,7 @@ class ReadPageKeyEventHandler(
         return false
     }
 
-    /** 鼠标滚轮翻页（对照 app 端 `mouseWheelPage`，去抖 trailing 模式） */
-    fun onMouseWheel(down: Boolean, mouseWheelPageEnabled: Boolean) {
-        if (menuLayoutIsVisible() || !mouseWheelPageEnabled) return
-        keyPageDebouncer?.let { debouncer ->
-            // 滚轮去抖：trailing 模式（与原 app 端 mouseWheel=true 一致）
-            debouncer.dispatch(prev = !down, leading = false, trailing = true)
-            return
-        }
-        dispatchPage(prev = !down)
-    }
+    /** 鼠标滚轮翻页 (已彻底禁用 2026-08 用户拍板, 与 mouseWheelPage 设置项一并移除; 本方法无调用者, 删除) */
 
     private fun dispatchPage(prev: Boolean) {
         val debouncer = keyPageDebouncer

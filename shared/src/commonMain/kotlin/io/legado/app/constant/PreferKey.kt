@@ -150,9 +150,6 @@ object PreferKey {
     const val bookshelfShowGroupCount = "bookshelfShowGroupCount"
     const val importKeepEnable = "importKeepEnable"
     const val previewImageByClick = "previewImageByClick"
-    const val volumeKeyPage = "volumeKeyPage"
-    const val volumeKeyPageOnPlay = "volumeKeyPageOnPlay"
-    const val mouseWheelPage = "mouseWheelPage"
     const val recordHeapDump = "recordHeapDump"
     const val updateToVariant = "updateToVariant"
 

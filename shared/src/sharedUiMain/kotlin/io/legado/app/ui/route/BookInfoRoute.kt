@@ -561,18 +561,20 @@ fun BookInfoRoute(
             launch {
                 navigator.resultsFor(entry.id).collect { result ->
                     when (result.key) {
-                        // 书籍信息编辑返回: 重新加载 book info (对照 app 端 viewModel.upEditBook, 仅 Ok 触发)
+                        // 书籍信息编辑返回: 接收编辑后的 Book 替换内存对象 (对照 app 端
+                        // viewModel.upEditBook → bookData.postValue(IntentData.book as? Book)):
+                        // 只驱动 UI 更新, 不网络重拉不写 DB (网络重拉会把刚保存的
+                        // customCoverUrl 顶回旧值)
                         RouteResults.BOOK_INFO_EDIT -> {
-                            if (result.payload !is RouteResultPayload.Ok) return@collect
-                            val b = screenModel.state.value.book ?: book
-                            // 编辑可能改封面/书名, 驱动封面与模糊背景重载
-                            screenModel.dispatch(BookInfoUiEvent.BumpCoverTick)
-                            screenModel.refresh(
-                                b,
-                                bookSource,
-                                errorLoadTocLabel,
-                                isSearchBook = isSearchBook
+                            val edited = (result.payload as? RouteResultPayload.BookEdited)?.book
+                                ?: return@collect
+                            screenModel.dispatch(
+                                BookInfoUiEvent.ShowBook(
+                                    edited,
+                                    screenModel.lastedTitleOf(edited),
+                                )
                             )
+                            screenModel.dispatch(BookInfoUiEvent.BumpCoverTick)
                         }
 
                         // 书源编辑返回: 按回传 origin 重新加载 bookSource

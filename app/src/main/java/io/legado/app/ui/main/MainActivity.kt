@@ -67,6 +67,8 @@ import io.legado.app.ui.association.LegadoDeepLink
 import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.book.audio.AndroidAudioPlayPlatformProvider
 import io.legado.app.ui.book.audio.AudioPlayPlatformProviders
+import io.legado.app.ui.book.changecover.AndroidCoverStorageService
+import io.legado.app.ui.book.changecover.CoverStorageServiceProviders
 import io.legado.app.ui.book.info.BookInfoBlurCoverBg
 import io.legado.app.ui.book.info.BookInfoCover
 import io.legado.app.ui.book.info.BookInfoIntroImage
@@ -644,6 +646,8 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
         )
         PlatformCapabilityProviders.register(capabilities)
         PlatformServiceProviders.register(services)
+        // 封面选图持久化 (对齐原版 externalFiles/covers/<md5>.<ext>)
+        CoverStorageServiceProviders.register(AndroidCoverStorageService())
         ReaderPlatformProviders.register(AndroidReaderPlatformProvider(this))
         AudioPlayPlatformProviders.register(AndroidAudioPlayPlatformProvider())
         MangaReaderScreenModel.Providers.register(AndroidMangaReaderPlatform)

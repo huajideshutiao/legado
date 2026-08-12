@@ -138,7 +138,6 @@
     <string name="replace_to">替換為</string>
     <string name="img_cover">封面</string>
     <string name="book">書</string>
-    <string name="mouse_wheel_page">滑鼠滾輪翻頁</string>
     <string name="page_anim">翻頁動畫</string>
     <string name="book_page_anim">翻頁動畫(本書)</string>
     <string name="keep_light">屏幕超時</string>

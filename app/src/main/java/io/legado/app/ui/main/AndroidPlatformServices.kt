@@ -196,6 +196,10 @@ private class AndroidFilePickerService(
         if (mimeTypes.isNotEmpty()) mimeTypes.toTypedArray() else arrayOf("*/*")
 
     private fun FileFilter.matchesUri(uriString: String): Boolean {
+        // 已按 mime 过滤时不再用扩展名二次过滤: 原版选封面是 selectCover.launch { mode =
+        // HandleFileContract.IMAGE }, 只给 mime 不带 allowExtensions —— 扩展名白名单是迁移期
+        // 自加的限制, 会把 heic/avif 等新格式静默拒掉 (表现为"选本地图片作封面无效")
+        if (mimeTypes.isNotEmpty()) return true
         if (extensions.isEmpty()) return true
         val path = Uri.parse(uriString).lastPathSegment ?: return true
         val name = path.substringAfterLast(':').substringAfterLast('/')

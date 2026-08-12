@@ -62,7 +62,6 @@
     <string name="use_zh_layout">Custom Chinese line feed</string>
     <string name="text_full_justify">Text justified</string>
     <string name="text_bottom_justify">Text align bottom</string>
-    <string name="mouse_wheel_page">Mouse wheel to turn page</string>
     <string name="volume_key_page_on_play">Volume keys to turn page when reading</string>
     <string name="page_touch_slop_title">Sliding Page Threshold</string>
     <string name="auto_change_source">Change source automatically</string>

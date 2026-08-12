@@ -505,11 +505,13 @@ class ScrollPageDelegateCompose(
             decaySpec = splineBasedDecay(LocalDensity.current)
         }
 
-        // 与 viewModel.scrollOffset 同步: 切章/重排重置归零时本 delegate 跟随
-        // (applyScrollDelta 已双写, 此处只消费外部重置, 同值写入不触发重绘)
+        // 与 viewModel.scrollOffset 同步: 只消费外部重置 (切章/重排归零), 不回灌自己的写入。
+        // 比较必须在 Int 空间做: 本 delegate 的偏移是 Float, 双写时 updateScrollOffset 截断成
+        // Int, 若按 Float 比较则平滑滚动的每一帧都"不等"→ 每帧把小数抹掉并回写, 与正在进行的
+        // 手势/惯性互相打架, 表现为滚动抖动/闪现几行
         LaunchedEffect(viewModel) {
             viewModel.scrollOffset.collect { offset ->
-                if (_currentOffset != offset.toFloat()) {
+                if (_currentOffset.toInt() != offset) {
                     _currentOffset = offset.toFloat()
                 }
             }

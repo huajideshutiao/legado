@@ -13,7 +13,6 @@ import legado.shared.generated.resources.auto_change_source
 import legado.shared.generated.resources.click_regional_config
 import legado.shared.generated.resources.double_page_horizontal
 import legado.shared.generated.resources.keep_light
-import legado.shared.generated.resources.mouse_wheel_page
 import legado.shared.generated.resources.page_touch_slop_title
 import legado.shared.generated.resources.preview_image_by_click
 import legado.shared.generated.resources.progress_bar_behavior
@@ -78,7 +77,6 @@ fun MoreConfigScreen(
     val titleUseZhLayout = stringResource(Res.string.use_zh_layout)
     val titleTextFullJustify = stringResource(Res.string.text_full_justify)
     val titleTextBottomJustify = stringResource(Res.string.text_bottom_justify)
-    val titleMouseWheelPage = stringResource(Res.string.mouse_wheel_page)
     val titlePageTouchSlop = stringResource(Res.string.page_touch_slop_title)
     val titleAutoChangeSource = stringResource(Res.string.auto_change_source)
     val titlePreviewImageByClick = stringResource(Res.string.preview_image_by_click)
@@ -162,13 +160,7 @@ fun MoreConfigScreen(
                 isBottomBackground = true,
                 onCheckedChange = { onPrefChange(PreferKey.textBottomJustify) },
             )
-            switchPreference(
-                prefKey = PreferKey.mouseWheelPage,
-                title = titleMouseWheelPage,
-                defaultValue = true,
-                isBottomBackground = true,
-            )
-            // 移除 volumeKeyPageOnPlay 开关: 按 project_memory 规则, 音量键始终用于翻页
+            // 音量键翻页恒生效 (2026-08 用户拍板), 无开关条目; 滚轮翻页已彻底禁用 (2026-08 用户拍板), 无开关条目
             preference(
                 title = titlePageTouchSlop,
                 summary = pageTouchSlopSummary,

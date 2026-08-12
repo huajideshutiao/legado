@@ -5,8 +5,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import io.legado.app.constant.PreferKey
-import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
 import kotlinx.coroutines.CoroutineScope
@@ -50,18 +48,9 @@ abstract class HorizontalPageDelegateCompose(
     animationSpeed: Int = DEFAULT_ANIMATION_SPEED,
 ) : PageDelegateCompose(viewModel, scope, animationSpeed) {
 
-    // 第二道手势阈值（与 app 端 ReadView.pageSlopSquare2 对应）：
-    // pageTouchSlop 自定义值的平方，onDown 时读 pref 刷新；0 = 未自定义
-    private var pageSlopSquare2: Int = 0
-
     // region PageDelegateShared 接口实现（横向翻页共用逻辑）
 
     override fun onDown(x: Float, y: Float) {
-        // 与 app 端 upPageSlopSquare 对应：手势按下时读自定义 pageTouchSlop（0=未自定义），
-        // 平方后作第二道阈值（idiom 同 ReadClickAction 的 PreferenceProviders.get()）
-        val prefs = runCatching { PreferenceProviders.get() }.getOrNull()
-        val pageTouchSlop = prefs?.getInt(PreferKey.pageTouchSlop, 0) ?: 0
-        pageSlopSquare2 = pageTouchSlop * pageTouchSlop
         // 与 app 端 PageDelegate.onTouch ACTION_DOWN 分支先 abortAnim() 对应:
         // 动画进行中按下立即中断(并补页), 否则旧动画协程会继续写 _currentOffset 与新手势冲突
         abortAnim()
@@ -85,10 +74,12 @@ abstract class HorizontalPageDelegateCompose(
         if (!isMoved) {
             val deltaX = x - startX
             val deltaY = y - startY
-            // 第二道阈值（app 端 distance > pageSlopSquare2 的欧氏距离平方判定）；
-            // pageSlopSquare = pageTouchSlop == 0 ? 平台 slop : pageTouchSlop，平台 slop
-            // 已由上游 ReadViewComposable 首道判定消费，0 = 未自定义 → 阈值 0 恒过
-            isMoved = deltaX * deltaX + deltaY * deltaY > pageSlopSquare2
+            // 第二道欧氏 slop 判定已由上游 ReadViewComposable 统一分发层完成（对照原版
+            // ScrollPageDelegate.onScroll 的 distance > pageSlopSquare2，含 pageTouchSlop
+            // 0 → 平台 slop 回退）：触摸路径首次进入本分支时位移必然已越过阈值，不再重复
+            // 计算自定义阈值。这里只保留零位移守卫——鼠标路径（ReaderMouseGestures 经自身
+            // 1-D slop 后调 onDown 重置起点）首帧 delta 可能为 0，避免零位移误定方向
+            isMoved = deltaX * deltaX + deltaY * deltaY > 0f
             if (isMoved) {
                 if (deltaX > 0) {
                     // 向右滑 → PREV，校验是否有上一页 / 上一章
