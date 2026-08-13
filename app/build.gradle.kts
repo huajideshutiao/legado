@@ -158,6 +158,9 @@ android {
         }
     }
 
+    // 产物命名: 见 androidComponents 块 CopyRenamedApks (原版 outputFileName 语义的 KMP 化实现,
+    // 共存版 _releaseA 后缀 + 分目录输出, 避免两次构建互相覆盖)。
+
     ksp {
         arg("jsapi.extraClasses", "io.legado.app.data.entities.BaseSource,io.legado.app.help.CacheManager")
     }
@@ -218,10 +221,15 @@ tasks.matching {
 androidComponents {
     onVariants { variant ->
         val taskName = "copyRenamedApksFor${variant.name.replaceFirstChar(Char::uppercaseChar)}"
+        // 共存构建 (CI 传 -PcoexistBuild=true) 时产物名带 _releaseA 后缀 (原版 outputFileName 语义),
+        // 且按 suffix 分目录输出, 避免两次构建 (原包名/共存) 产物互相覆盖。
+        // 用 gradle property 判定而非 variant.buildType (新 API 不暴露), 由 CI 显式声明。
+        val suffix =
+            if (providers.gradleProperty("coexistBuild").orNull == "true") "_releaseA" else ""
         val copyTask = tasks.register<CopyRenamedApks>(taskName) {
-            outputDirectory.set(layout.buildDirectory.dir("outputs/renamed-apks/${variant.name}"))
+            outputDirectory.set(layout.buildDirectory.dir("outputs/renamed-apks/${variant.name}${suffix}"))
             builtArtifactsLoader.set(variant.artifacts.getBuiltArtifactsLoader())
-            releaseSuffix.set("")
+            releaseSuffix.set(suffix)
         }
         variant.artifacts.use(copyTask)
             .wiredWith(CopyRenamedApks::inputDirectory)

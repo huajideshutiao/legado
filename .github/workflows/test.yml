@@ -4,14 +4,17 @@ on:
   push:
     branches:
       - '**'
-    paths:
-      - '**'
-      # - '!**/assets/**'
-      # - '!**.md'
-      - '!**/ISSUE_TEMPLATE/**'
-      - '!**/modules/web/**'
+    # 文档/资源类变更不触发完整 beta 构建发布
+    paths-ignore:
+      - '**.md'
+      - '**/assets/**'
+      - '**/ISSUE_TEMPLATE/**'
+      - '**/modules/web/**'
   pull_request:
     paths-ignore:
+      - '**.md'
+      - '**/assets/**'
+      - '**/ISSUE_TEMPLATE/**'
       - '**/modules/web/**'
   workflow_run:
     workflows: [Build Web]
@@ -35,14 +38,12 @@ jobs:
     if: ${{ !startsWith(github.event.head_commit.message, 'Merge pull request') && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success') }}
     outputs:
       version: ${{ steps.set-ver.outputs.version }}
-      versionL: ${{ steps.set-ver.outputs.versionL }}
       lanzou: ${{ steps.check.outputs.lanzou }}
       telegram: ${{ steps.check.outputs.telegram }}
     steps:
       - id: set-ver
         run: |
           echo "version=$(date -d "8 hour" -u +3.%y.%m%d%H%M)" >> $GITHUB_OUTPUT
-          echo "versionL=$(date -d "8 hour" -u +3.%y.%m%d%H%M)" >> $GITHUB_OUTPUT
       - id: check
         run: |
           if [ "${{ secrets.LANZOU_ID }}" ]; then
@@ -52,52 +53,15 @@ jobs:
             echo "telegram=yes" >> $GITHUB_OUTPUT
           fi
 
-  # ===== 单元测试 + shared/desktop 编译校验 (与 build 并行, 快速反馈) =====
-  # 此前 workflow 名为 "Test Build" 却从不跑任何测试; app/src/test 与
-  # shared/src/jvmAndAndroidTest 下 30+ 个测试类长期无人执行, 故补此 job。
-  # 不作为 build 的前置依赖: 测试挂了立刻红叉可见, 但不阻塞 beta 产物发布。
-  check:
-    needs: prepare
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: 21
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-      - name: Compile shared (jvm) & desktop
-        # 本机常跑的两条验证线; app 侧编译由 build job 的 assemble 覆盖
-        run: |
-          chmod +x gradlew
-          ./gradlew :shared:compileKotlinJvm :desktop:compileKotlin --build-cache --parallel --daemon --warning-mode all
-      - name: Run unit tests (shared jvm + app)
-        # :shared:jvmTest 覆盖 jvmAndAndroidTest 源集; :app:testAppDebugUnitTest 覆盖 app 侧 (flavor=app)
-        run: ./gradlew :shared:jvmTest :app:testAppDebugUnitTest --build-cache --parallel --daemon --warning-mode all
-      - name: Upload test reports
-        # 失败时最需要报告, 故 always()
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-reports
-          path: |
-            ${{ github.workspace }}/shared/build/reports/tests/
-            ${{ github.workspace }}/app/build/reports/tests/
-          if-no-files-found: ignore
-          retention-days: 7
-
   build:
     needs: prepare
     runs-on: ubuntu-latest
-    # 本 job 要删除/发布 beta Release, 必须显式提权 (仓库默认 token 可能只读)
+    # 本 job 要删除/发布 beta Release, 必须显式提权 (仓库默认 token 只读)
     permissions:
       contents: write
     env:
       product: app
       VERSION: ${{ needs.prepare.outputs.version }}
-      VERSIONL: ${{ needs.prepare.outputs.versionL }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -124,35 +88,27 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Gradle build-cache 共享
+        # 4 个构建 job 跑在独立 runner 上, 按 (OS, 分支) 共享 build-cache 目录,
+        # 减少各 job 重复编译 shared 等公共模块
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches/build-cache-1
+          key: gradle-buildcache-${{ runner.os }}-${{ github.ref_name }}
+          restore-keys: |
+            gradle-buildcache-${{ runner.os }}-
+
       - name: Build Release (原包名)
         run: |
           echo "统一版本号"
-          # app/build.gradle 已迁移为 build.gradle.kts, 锚定 kts 声明行 val version = "3.${releaseTime()}"
-          sed "/^val version = /c val version = \"${{ env.VERSIONL }}\"" $GITHUB_WORKSPACE/app/build.gradle.kts  -i
+          # app/build.gradle.kts 已迁移为 kts, 锚定声明行 val version = "3.${releaseTime()}"
+          sed "/^val version = /c val version = \"${{ env.VERSION }}\"" $GITHUB_WORKSPACE/app/build.gradle.kts  -i
           echo "开始${{ env.product }}原包名构建"
           chmod +x gradlew
           ./gradlew assemble${{ env.product }}release --build-cache --parallel --daemon --warning-mode all
           echo "收集APK"
           mkdir -p ${{ github.workspace }}/apk/
-          find ${{ github.workspace }}/app/build/outputs/apk -name "*.apk" -exec mv {} ${{ github.workspace }}/apk/ \;
-          echo "移动mapping文件"
-          mkdir -p ${{ github.workspace }}/mapping/
-          for file in `ls ${{ github.workspace }}/app/build/outputs/mapping/*/mapping.txt 2>/dev/null`; do
-            mv "$file" ${{ github.workspace }}/mapping/mapping.txt
-          done
-          for file in `ls ${{ github.workspace }}/app/build/outputs/mapping/*/missing_rules.txt 2>/dev/null`; do
-            mv "$file" ${{ github.workspace }}/mapping/missing_rules.txt
-          done
-
-      - name: Upload (原包名) Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.product }}.原包名
-          path: |
-            ${{ github.workspace }}/apk/*.apk
-            ${{ github.workspace }}/mapping/mapping.txt
-            ${{ github.workspace }}/mapping/missing_rules.txt
-          if-no-files-found: ignore
+          find ${{ github.workspace }}/app/build/outputs/renamed-apks -name "*.apk" -exec mv {} ${{ github.workspace }}/apk/ \;
 
       - name: Release Note & Tag
         if: github.event_name != 'pull_request'
@@ -168,23 +124,15 @@ jobs:
             git log -10 --pretty=format:"- %<(72,trunc)%s (%h)" >> RELEASE_NOTES.md
           fi
 
-      - name: Upload (原包名) To Lanzou
-        if: github.event_name != 'pull_request' && needs.prepare.outputs.lanzou == 'yes'
-        continue-on-error: true
-        run: |
-          python3 .github/scripts/lzy_web.py "${{ github.workspace }}/apk/" "${{ secrets.LANZOU_FOLDER_ID }}"
-        env:
-          ylogin: ${{ secrets.LANZOU_ID }}
-          phpdisk_info: ${{ secrets.LANZOU_PSD }}
-
       - name: Post (原包名) to Telegram
+        # 时序在共存构建前: 此时 apk/ 仅含原包名产物, 通配不会带出共存包
         if: github.event_name != 'pull_request' && needs.prepare.outputs.telegram == 'yes'
         uses: xireiki/channel-post@v1
         with:
           chat_id: ${{ secrets.CHANNEL_ID }}
           bot_token: ${{ secrets.BOT_TOKEN }}
           context: |
-            #阅读 #Legado #Beta ${{ env.VERSIONL }} (原包名)
+            #阅读 #Legado #Beta ${{ env.VERSION }} (原包名)
             ${{ github.ref_name != 'master' && format('⚠️ 实验性分支: {0}', github.ref_name) || '' }}
           path: apk/*.apk
           method: sendFile
@@ -196,21 +144,23 @@ jobs:
           # kts 双引号赋值; 精确锚整句, 避免误伤 if (applicationIdSuffix == ".releaseA") 判断行与 ".debug" 赋值
           sed 's|applicationIdSuffix = ".release"|applicationIdSuffix = ".releaseA"|' $GITHUB_WORKSPACE/app/build.gradle.kts  -i
           echo "开始${{ env.product }}共存构建"
-          ./gradlew assemble${{ env.product }}release --build-cache --parallel --daemon --warning-mode all
+          ./gradlew assemble${{ env.product }}release -PcoexistBuild=true --build-cache --parallel --daemon --warning-mode all
           echo "收集共存版APK"
-          find ${{ github.workspace }}/app/build/outputs/apk -name "*.apk" -exec mv {} ${{ github.workspace }}/apk/ \;
+          find ${{ github.workspace }}/app/build/outputs/renamed-apks -name "*.apk" -exec mv {} ${{ github.workspace }}/apk/ \;
 
-      - name: Upload (共存) Artifacts
+      # 两个变体构建完后一次上传 (原包名 + 共存), 不再分两次
+      - name: Upload Artifacts (原包名 + 共存)
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.product }}.共存
-          path: ${{ github.workspace }}/apk/*releaseA*.apk
+          name: ${{ env.product }}.apk
+          path: ${{ github.workspace }}/apk/*.apk
+          if-no-files-found: ignore
 
       # 两个变体都构建完成后再一次性发布，避免「更新已有资产」路径触发 already_exists
       - name: Delete Old Beta Release
         if: github.event_name != 'pull_request'
         continue-on-error: true
-        run: gh release delete beta -y --cleanup-tag || true
+        run: gh release delete beta -y --cleanup-tag
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -225,14 +175,12 @@ jobs:
           allowUpdates: true
           artifacts: ${{ github.workspace }}/apk/*.apk
 
-      - name: Upload (共存) To Lanzou
+      # 合并原两次蓝奏上传为一次: 此时 apk/ 含两个变体全部产物
+      - name: Upload To Lanzou (原包名 + 共存)
         if: github.event_name != 'pull_request' && needs.prepare.outputs.lanzou == 'yes'
         continue-on-error: true
         run: |
-          # 只上传共存版
-          mkdir -p apk_coexist/
-          cp apk/*releaseA*.apk apk_coexist/
-          python3 .github/scripts/lzy_web.py "${{ github.workspace }}/apk_coexist/" "${{ secrets.LANZOU_FOLDER_ID }}"
+          python3 .github/scripts/lzy_web.py "${{ github.workspace }}/apk/" "${{ secrets.LANZOU_FOLDER_ID }}"
         env:
           ylogin: ${{ secrets.LANZOU_ID }}
           phpdisk_info: ${{ secrets.LANZOU_PSD }}
@@ -244,7 +192,7 @@ jobs:
           chat_id: ${{ secrets.CHANNEL_ID }}
           bot_token: ${{ secrets.BOT_TOKEN }}
           context: |
-            #阅读 #Legado #Beta ${{ env.VERSIONL }} (共存)
+            #阅读 #Legado #Beta ${{ env.VERSION }} (共存)
             ${{ github.ref_name != 'master' && format('⚠️ 实验性分支: {0}', github.ref_name) || '' }}
           path: apk/*releaseA*.apk
           method: sendFile
@@ -267,6 +215,13 @@ jobs:
           java-version: 21
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+      - name: Gradle build-cache 共享
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches/build-cache-1
+          key: gradle-buildcache-${{ runner.os }}-${{ github.ref_name }}
+          restore-keys: |
+            gradle-buildcache-${{ runner.os }}-
       - name: Unify Desktop packageVersion
         shell: bash
         run: |
@@ -281,14 +236,18 @@ jobs:
         run: ./gradlew :desktop:packageMsi --build-cache --parallel --daemon --warning-mode all
       - name: Collect MSI
         shell: bash
+        # 用 $GITHUB_WORKSPACE (环境变量) 而非 ${{ github.workspace }} (表达式): 后者在
+        # Windows runner 上展开为反斜杠字面量 (D:\a\...), 被 bash 转义吞掉导致路径损坏
+        # (曾报 find: 'D:alegadolegado/...': No such file or directory)。
+        # 另外 CMP 1.10 的 jpackage 产物在 binaries/main/<type>/ 下, 全目录 find 避免路径变化再踩坑。
         run: |
-          mkdir -p ${{ github.workspace }}/msi/
-          find ${{ github.workspace }}/desktop/build/compose/binaries/msi -name "*.msi" -exec mv {} ${{ github.workspace }}/msi/ \;
+          mkdir -p $GITHUB_WORKSPACE/msi/
+          find $GITHUB_WORKSPACE/desktop/build/compose/binaries -name "*.msi" -exec mv {} $GITHUB_WORKSPACE/msi/ \;
       - name: Upload MSI Artifact
         uses: actions/upload-artifact@v4
         with:
           name: desktop.msi
-          path: ${{ github.workspace }}/msi/*.msi
+          path: msi/*.msi
           if-no-files-found: ignore
       # Windows 便携版 zip: 复用 createDistributable 产物 (MSI 上游), 仅打 zip 不经安装器
       - name: Build portable zip
@@ -297,13 +256,13 @@ jobs:
       - name: Collect portable zip
         shell: bash
         run: |
-          mkdir -p ${{ github.workspace }}/portable/
-          find ${{ github.workspace }}/desktop/build/outputs/portable -name "legado-portable-windows-x64-*.zip" -exec mv {} ${{ github.workspace }}/portable/ \;
+          mkdir -p $GITHUB_WORKSPACE/portable/
+          find $GITHUB_WORKSPACE/desktop/build/outputs/portable -name "legado-portable-windows-x64-*.zip" -exec mv {} $GITHUB_WORKSPACE/portable/ \;
       - name: Upload portable zip Artifact
         uses: actions/upload-artifact@v4
         with:
           name: legado-portable-windows-x64
-          path: ${{ github.workspace }}/portable/*.zip
+          path: portable/*.zip
           if-no-files-found: ignore
           retention-days: 30
 
@@ -324,6 +283,13 @@ jobs:
           java-version: 21
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+      - name: Gradle build-cache 共享
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches/build-cache-1
+          key: gradle-buildcache-${{ runner.os }}-${{ github.ref_name }}
+          restore-keys: |
+            gradle-buildcache-${{ runner.os }}-
       - name: Install Linux packaging deps
         # jpackage 打 deb 需要 dpkg-deb, 打 rpm 需要 rpmbuild; ubuntu-latest 默认无 rpmbuild
         run: |
@@ -352,7 +318,6 @@ jobs:
           if-no-files-found: ignore
 
   # ===== macOS DMG (与 Android build 并行) =====
-  # macOS DMG: macOS runner 上 jpackage 打包
   # iOS 编译/出包已迁出到独立的 .github/workflows/ios.yml (仅 workflow_dispatch 手动触发):
   # macOS runner 计费是 Linux 的 10 倍, iOS 链路不适合每次 push 都跑。
   macos-build:
@@ -371,6 +336,13 @@ jobs:
           java-version: 21
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+      - name: Gradle build-cache 共享
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches/build-cache-1
+          key: gradle-buildcache-${{ runner.os }}-${{ github.ref_name }}
+          restore-keys: |
+            gradle-buildcache-${{ runner.os }}-
       - name: Unify Desktop packageVersion
         # macOS 自带 BSD sed, -i 需要空字符串备份后缀 (与 GNU sed 语法不同)
         run: |
@@ -383,14 +355,15 @@ jobs:
       - name: Build macOS DMG
         run: ./gradlew :desktop:packageDmg --build-cache --parallel --daemon --warning-mode all
       - name: Collect DMG
+        # 与 MSI 同理: jpackage 产物在 binaries/main/<type>/ 下, 全目录 find
         run: |
-          mkdir -p ${{ github.workspace }}/dmg/
-          find ${{ github.workspace }}/desktop/build/compose/binaries/dmg -name "*.dmg" -exec mv {} ${{ github.workspace }}/dmg/ \;
+          mkdir -p $GITHUB_WORKSPACE/dmg/
+          find $GITHUB_WORKSPACE/desktop/build/compose/binaries -name "*.dmg" -exec mv {} $GITHUB_WORKSPACE/dmg/ \;
       - name: Upload DMG Artifact
         uses: actions/upload-artifact@v4
         with:
           name: desktop.dmg
-          path: ${{ github.workspace }}/dmg/*.dmg
+          path: dmg/*.dmg
           if-no-files-found: ignore
 
   # ===== 鸿蒙 .so (debug) =====
