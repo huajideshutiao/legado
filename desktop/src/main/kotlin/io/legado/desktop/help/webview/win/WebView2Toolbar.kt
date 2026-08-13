@@ -106,6 +106,8 @@ internal class WebView2Toolbar(
                 buttons[id] = h
                 // WM_SETFONT 的 wParam 是 HFONT 指针 (x64 下 64 位, 勿截断 toInt)
                 iconFont?.let { send(h, WM_SETFONT, Pointer.nativeValue(it), 1L) }
+                // 深色主题下标准 BUTTON 控件切 DarkMode_Explorer (与原生标题栏观感统一)
+                WebView2WindowTheme.applyDarkControls(h, WebView2WindowTheme.isDarkTheme())
             }
         }
         io.legado.app.constant.AppLog.put("工具栏: 按钮创建 ${buttons.size}/${buttonIds().size}")
@@ -135,7 +137,8 @@ internal class WebView2Toolbar(
         iconFont = null
     }
 
-    /** 布局: 左组按钮靠左顺序排列, 菜单按钮右对齐窗口右缘 (2026-08-07 用户拍板)。 */
+    /** 布局: 左组按钮靠左顺序排列, 菜单按钮右对齐窗口右缘 (标准标题栏形态,
+     * 系统三键在原生标题栏客户区外, 无需让位; 2026-08-13 用户拍板去 Chrome 式标题栏)。 */
     private fun layout() {
         var x = MARGIN
         leftButtonIds().forEach { id ->
@@ -144,7 +147,10 @@ internal class WebView2Toolbar(
             x += BTN_W + GAP
         }
         buttons[ID_MENU]?.let {
-            User32.INSTANCE.MoveWindow(it, width - MARGIN - BTN_W, BTN_TOP, BTN_W, BTN_H, true)
+            // 标准标题栏形态: 系统三键在原生标题栏 (客户区外), 菜单按钮直接贴窗口右缘
+            User32.INSTANCE.MoveWindow(
+                it, width - MARGIN - BTN_W, BTN_TOP, BTN_W, BTN_H, true
+            )
         }
         progressHwnd?.let {
             User32.INSTANCE.MoveWindow(it, 0, HEIGHT - PROGRESS_H, width, PROGRESS_H, true)

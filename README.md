@@ -10,15 +10,35 @@
   
 Legado / 开源阅读
 <br>
-Legado is a free and open source novel reader for Android.
+Legado is a free and open source novel reader built with Kotlin Multiplatform, running on Android,
+Desktop (Windows / macOS / Linux), iOS and HarmonyOS.
 </div>
 
-[![](https://img.shields.io/badge/-Contents:-696969.svg)](#contents) [![](https://img.shields.io/badge/-Function-F5F5F5.svg)](#Function-主要功能-) [![](https://img.shields.io/badge/-Community-F5F5F5.svg)](#Community-交流社区-) [![](https://img.shields.io/badge/-API-F5F5F5.svg)](#API-) [![](https://img.shields.io/badge/-Other-F5F5F5.svg)](#Other-其他-) [![](https://img.shields.io/badge/-Grateful-F5F5F5.svg)](#Grateful-感谢-) [![](https://img.shields.io/badge/-Interface-F5F5F5.svg)](#Interface-界面-)
+[![](https://img.shields.io/badge/-Contents:-696969.svg)](#contents) [![](https://img.shields.io/badge/-Platform-F5F5F5.svg)](#Platform-支持平台-) [![](https://img.shields.io/badge/-Function-F5F5F5.svg)](#Function-主要功能-) [![](https://img.shields.io/badge/-Community-F5F5F5.svg)](#Community-交流社区-) [![](https://img.shields.io/badge/-API-F5F5F5.svg)](#API-) [![](https://img.shields.io/badge/-Other-F5F5F5.svg)](#Other-其他-) [![](https://img.shields.io/badge/-Grateful-F5F5F5.svg)](#Grateful-感谢-) [![](https://img.shields.io/badge/-Interface-F5F5F5.svg)](#Interface-界面-)
 
 >新用户？
 >
 >软件不提供内容，需要您自己手动添加，例如导入书源等。
 >看看 [官方帮助文档](https://www.yuque.com/legado/wiki)，也许里面就有你要的答案。
+
+# Platform-支持平台 [![](https://img.shields.io/badge/-Platform-F5F5F5.svg)](#Platform-支持平台-)
+
+<details><summary>中文</summary>
+Legado 已基于 Kotlin Multiplatform (KMP) 重构，同一套代码覆盖以下平台：
+
+| 平台                           | 状态                                   |
+|------------------------------|--------------------------------------|
+| Android                      | ✅ 主力平台，功能完整                          |
+| 桌面端（Windows / macOS / Linux） | ✅ Compose Multiplatform 桌面版          |
+| iOS                          | 🚧 理论可用（iosApp）                      |
+| 鸿蒙（HarmonyOS / OpenHarmony）  | 🚧 理论可用，构建时需开启 `enableOhosTarget` 开关 |
+
+> 注：除 Android 外，其余平台目前处于开发/理论支持阶段，功能以 Android 版为准。
+</details>
+
+<a href="#readme">
+    <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
+</a>
 
 # Function-主要功能 [![](https://img.shields.io/badge/-Function-F5F5F5.svg)](#Function-主要功能-)
 [English](English.md)

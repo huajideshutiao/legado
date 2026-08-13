@@ -69,6 +69,19 @@ internal object WebView2Loop {
         }
     }
 
+    /** gdi32 补充: CreateSolidBrush (窗口背景画刷)。 */
+    private interface WebView2Gdi32Ex : com.sun.jna.win32.StdCallLibrary {
+        fun CreateSolidBrush(crColor: Int): Pointer
+    }
+
+    private val webview2Gdi32Ex: WebView2Gdi32Ex by lazy {
+        Native.load(
+            "gdi32",
+            WebView2Gdi32Ex::class.java,
+            com.sun.jna.win32.W32APIOptions.DEFAULT_OPTIONS
+        )
+    }
+
     /** 启动线程 (幂等); 返回是否可用。 */
     @Synchronized
     fun ensureStarted(): Boolean {
@@ -147,6 +160,11 @@ internal object WebView2Loop {
         wndClass.lpfnWndProc = windowProc
         // HMODULE 继承自 HINSTANCE, 直接给
         wndClass.hInstance = Kernel32.INSTANCE.GetModuleHandle(null)
+        // 工具栏区背景由窗口背景画刷承担 (深色主题下默认白底会露馅);
+        // 主题背景色跟随创建时主题 (短生命周期窗口, 不追动态切换)
+        wndClass.hbrBackground = WinDef.HBRUSH(
+            webview2Gdi32Ex.CreateSolidBrush(WebView2WindowTheme.themeBgColorRef())
+        )
         // 重复注册返回 0 (ERROR_CLASS_ALREADY_EXISTS), 无害
         User32.INSTANCE.RegisterClassEx(wndClass)
     }
@@ -186,6 +204,8 @@ internal object WebView2Loop {
                 WinUser.SWP_NOMOVE or WinUser.SWP_NOSIZE or WinUser.SWP_SHOWWINDOW
             )
             User32.INSTANCE.SetForegroundWindow(hwnd)
+            // 原生标题栏跟随应用主题 (与主窗口原生控制栏观感统一, 用户拍板 2026-08)
+            WebView2WindowTheme.apply(hwnd)
         }
         return hwnd
     }

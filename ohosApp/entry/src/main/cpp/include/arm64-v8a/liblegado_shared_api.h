@@ -242,6 +242,93 @@ typedef struct {
 } liblegado_shared_kref_com_github_jershell_rjpath_Location_Root;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_Connection;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_kotlin_collections_Map;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_utils_InputStream;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_kotlin_collections_Collection;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_kotlin_Array;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_Connection_Response;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_Connection_Method;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_Connection_Request;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_utils_URL;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_Connection_Method_GET;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_Connection_Method_POST;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_Connection_Method_PUT;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_Connection_Method_DELETE;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_Connection_Method_PATCH;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_Connection_Method_HEAD;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_Connection_Method_OPTIONS;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_Connection_Method_TRACE;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_Connection_KeyVal;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_kotlin_ByteArray;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_com_fleeksoft_ksoup_nodes_Document;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_Connection_Companion;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_internal_HttpConnection;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_internal_HttpConnection_Companion;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_internal_HttpKeyVal;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest_Companion;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_internal_HttpKeyVal_Companion;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_internal_HttpResponse;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_help_http_KmpResponse;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_com_fleeksoft_ksoup_nodes_Element;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
@@ -272,19 +359,22 @@ typedef struct {
 } liblegado_shared_kref_org_jsoup_select_PathPart_TagWithPredicate;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_HttpStatusException;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_org_jsoup_Jsoup;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_kotlin_Function0;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_api_ReturnData;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_api_controller_BookController;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_kotlin_collections_Map;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_api_controller_ImageControllerProvider;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_kotlin_ByteArray;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_api_controller_ImageControllerProviders;
@@ -513,9 +603,6 @@ typedef struct {
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_kotlinx_serialization_descriptors_SerialDescriptor;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_kotlin_Array;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_kotlinx_serialization_encoding_Decoder;
@@ -887,9 +974,6 @@ typedef struct {
 } liblegado_shared_kref_io_legado_app_data_entities_SourceFilterRule_Companion;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_kotlin_collections_Collection;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_data_entities_SourceFilterRule_$serializer;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
@@ -1169,9 +1253,6 @@ typedef struct {
 } liblegado_shared_kref_io_legado_app_help_config_PreferenceProvider;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_kotlin_Function0;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_help_config_PreferenceProviders;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
@@ -1337,19 +1418,16 @@ typedef struct {
 } liblegado_shared_kref_io_legado_app_help_http_KmpHeaders;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_help_http_KmpResponseBody;
+} liblegado_shared_kref_io_legado_app_help_http_KmpMediaType;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_help_http_KmpMediaType;
+} liblegado_shared_kref_io_legado_app_help_http_KmpResponseBody;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_help_http_KmpFormBodyBuilder;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_help_http_KmpRequestBody;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_help_http_KmpResponse;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_help_http_BackstageWebViewProviders;
@@ -1493,9 +1571,6 @@ typedef struct {
 } liblegado_shared_kref_io_legado_app_help_http_KmpProtocol;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_utils_InputStream;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_help_http_KmpResponseBody_Companion;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
@@ -1611,6 +1686,12 @@ typedef struct {
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_help_i18n_AppStringKey_update_toc;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_help_i18n_AppStringKey_no_prev_page;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_help_i18n_AppStringKey_no_next_page;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_androidx_compose_ui_graphics_ImageBitmap;
@@ -2318,9 +2399,6 @@ typedef struct {
 } liblegado_shared_kref_io_legado_app_model_analyzeRule_RuleDataInterface;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_utils_URL;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_model_analyzeRule_AnalyzeRuleCore_SourceRule;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
@@ -2553,6 +2631,9 @@ typedef struct {
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_kotlinx_cinterop_CValue;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_model_script_NativeJsPropertyBridge;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_model_script_NativeQuickJsSharedJsScopeProvider;
@@ -3248,6 +3329,12 @@ typedef struct {
 } liblegado_shared_kref_kotlinx_coroutines_flow_MutableStateFlow;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_book_changecover_CoverStorageService;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_book_changecover_CoverStorageServiceProviders;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_book_changesource_ChangeBookSourcePlatformProviders;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
@@ -3905,7 +3992,7 @@ typedef struct {
 } liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose_Companion;
+} liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextPage;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_SimulationPageDelegateCompose;
@@ -3941,10 +4028,10 @@ typedef struct {
 } liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_PageDirectionShared_NEXT;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextPage;
+} liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextChapterRef;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextChapterRef;
+} liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextLayoutCacheHandle;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextLine_Companion;
@@ -4056,6 +4143,12 @@ typedef struct {
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_androidx_compose_ui_text_TextStyle;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_book_read_page_SplineFling;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_book_read_page_SplineFling_Companion;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_book_read_review_ReviewListUiState;
@@ -4289,6 +4382,9 @@ typedef struct {
 } liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuState;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiActions;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
@@ -4299,6 +4395,9 @@ typedef struct {
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_book_read_ReaderPlatformProviders;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_book_read_ReaderDialogEvent;
@@ -4340,6 +4439,9 @@ typedef struct {
 } liblegado_shared_kref_io_legado_app_ui_book_read_ReaderDialogEvent_ChapterPay;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_book_read_ReaderDialogEvent_RestoreProcessConfirm;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_book_read_ReaderDialogEvent_AddToShelfConfirm;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
@@ -4368,9 +4470,6 @@ typedef struct {
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModelRegistry;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuState;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_book_read_SharedUiReviewPlatform;
@@ -4724,6 +4823,15 @@ typedef struct {
 } liblegado_shared_kref_io_legado_app_ui_book_source_LoginUiEvent_DismissAppLogDialog;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_book_source_SourceLoginFormState;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_androidx_compose_runtime_snapshots_SnapshotStateMap;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_androidx_compose_runtime_snapshots_SnapshotStateList;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_book_toc_TocViewModelShared;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
@@ -5024,7 +5132,13 @@ typedef struct {
 } liblegado_shared_kref_androidx_compose_ui_text_input_TextFieldValue;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_compose_component_code_CodeEditorSearchTarget;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_compose_component_code_CodeEditorState;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_compose_component_code_CodeSearchHighlightState;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_compose_component_code_CodeSyntaxRule;
@@ -5037,9 +5151,6 @@ typedef struct {
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_compose_component_code_CodePatterns;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_compose_component_code_CodeSearchHighlightState;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_compose_component_code_KeyboardToolbarTarget;
@@ -5342,9 +5453,6 @@ typedef struct {
 } liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateFontScaleSummary;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateSourceEditMaxLineSummary;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_BookshelfLayout;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
@@ -5364,9 +5472,6 @@ typedef struct {
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_FontScale;
-typedef struct {
-  liblegado_shared_KNativePtr pinned;
-} liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_SourceEditMaxLine;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigScreenModel;
@@ -6278,6 +6383,15 @@ typedef struct {
 } liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_ChangeSource_Companion;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited_$serializer;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
+} liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited_Companion;
+typedef struct {
+  liblegado_shared_KNativePtr pinned;
 } liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_ChangeChapterContent;
 typedef struct {
   liblegado_shared_KNativePtr pinned;
@@ -6649,6 +6763,7 @@ extern void* legado_load_chapter(liblegado_shared_kref_io_legado_app_napi_Legado
 extern void* legado_load_manga_chapter(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* bookUrl, liblegado_shared_KInt chapterIndex);
 extern void* legado_md5_encode(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* input);
 extern void legado_media_event(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* event);
+extern void legado_network_callback(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
 extern void legado_open_explore(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* sourceUrl, void* exploreUrl);
 extern void legado_pasteboard_callback(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
 extern void legado_permission_callback(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
@@ -6662,6 +6777,7 @@ extern void legado_register_http_fn(liblegado_shared_kref_io_legado_app_napi_Leg
 extern void legado_register_image_fn(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
 extern void legado_register_keyboard_fn(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
 extern void legado_register_media_fn(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
+extern void legado_register_network_fn(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
 extern void legado_register_notification_fn(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
 extern void legado_register_open_url_fn(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
 extern void legado_register_pasteboard_fn(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
@@ -7154,6 +7270,261 @@ typedef struct {
           struct {
             struct {
               struct {
+                liblegado_shared_kref_org_jsoup_Connection_Method (*get)(); /* enum entry for GET. */
+              } GET;
+              struct {
+                liblegado_shared_kref_org_jsoup_Connection_Method (*get)(); /* enum entry for POST. */
+              } POST;
+              struct {
+                liblegado_shared_kref_org_jsoup_Connection_Method (*get)(); /* enum entry for PUT. */
+              } PUT;
+              struct {
+                liblegado_shared_kref_org_jsoup_Connection_Method (*get)(); /* enum entry for DELETE. */
+              } DELETE;
+              struct {
+                liblegado_shared_kref_org_jsoup_Connection_Method (*get)(); /* enum entry for PATCH. */
+              } PATCH;
+              struct {
+                liblegado_shared_kref_org_jsoup_Connection_Method (*get)(); /* enum entry for HEAD. */
+              } HEAD;
+              struct {
+                liblegado_shared_kref_org_jsoup_Connection_Method (*get)(); /* enum entry for OPTIONS. */
+              } OPTIONS;
+              struct {
+                liblegado_shared_kref_org_jsoup_Connection_Method (*get)(); /* enum entry for TRACE. */
+              } TRACE;
+              liblegado_shared_KType* (*_type)(void);
+              liblegado_shared_KBoolean (*get_hasBody)(liblegado_shared_kref_org_jsoup_Connection_Method thiz);
+            } Method;
+            struct {
+              liblegado_shared_KType* (*_type)(void);
+              liblegado_shared_kref_kotlin_collections_Collection (*data)(liblegado_shared_kref_org_jsoup_Connection_Request thiz);
+              liblegado_shared_kref_org_jsoup_Connection_Request (*data_)(liblegado_shared_kref_org_jsoup_Connection_Request thiz, liblegado_shared_kref_org_jsoup_Connection_KeyVal keyval);
+              liblegado_shared_KBoolean (*followRedirects)(liblegado_shared_kref_org_jsoup_Connection_Request thiz);
+              liblegado_shared_kref_org_jsoup_Connection_Request (*followRedirects_)(liblegado_shared_kref_org_jsoup_Connection_Request thiz, liblegado_shared_KBoolean followRedirects);
+              liblegado_shared_KBoolean (*ignoreContentType)(liblegado_shared_kref_org_jsoup_Connection_Request thiz);
+              liblegado_shared_kref_org_jsoup_Connection_Request (*ignoreContentType_)(liblegado_shared_kref_org_jsoup_Connection_Request thiz, liblegado_shared_KBoolean ignoreContentType);
+              liblegado_shared_KBoolean (*ignoreHttpErrors)(liblegado_shared_kref_org_jsoup_Connection_Request thiz);
+              liblegado_shared_kref_org_jsoup_Connection_Request (*ignoreHttpErrors_)(liblegado_shared_kref_org_jsoup_Connection_Request thiz, liblegado_shared_KBoolean ignoreHttpErrors);
+              liblegado_shared_KInt (*maxBodySize)(liblegado_shared_kref_org_jsoup_Connection_Request thiz);
+              liblegado_shared_kref_org_jsoup_Connection_Request (*maxBodySize_)(liblegado_shared_kref_org_jsoup_Connection_Request thiz, liblegado_shared_KInt bytes);
+              liblegado_shared_kref_org_jsoup_Connection_Request (*method)(liblegado_shared_kref_org_jsoup_Connection_Request thiz, liblegado_shared_kref_org_jsoup_Connection_Method method);
+              const char* (*requestBody)(liblegado_shared_kref_org_jsoup_Connection_Request thiz);
+              liblegado_shared_kref_org_jsoup_Connection_Request (*requestBody_)(liblegado_shared_kref_org_jsoup_Connection_Request thiz, const char* body);
+              liblegado_shared_kref_kotlin_Any (*sslContext)(liblegado_shared_kref_org_jsoup_Connection_Request thiz);
+              liblegado_shared_kref_org_jsoup_Connection_Request (*sslContext_)(liblegado_shared_kref_org_jsoup_Connection_Request thiz, liblegado_shared_kref_kotlin_Any sslContext);
+              liblegado_shared_kref_kotlin_Any (*sslSocketFactory)(liblegado_shared_kref_org_jsoup_Connection_Request thiz);
+              liblegado_shared_kref_org_jsoup_Connection_Request (*sslSocketFactory_)(liblegado_shared_kref_org_jsoup_Connection_Request thiz, liblegado_shared_kref_kotlin_Any sslSocketFactory);
+              liblegado_shared_KInt (*timeout)(liblegado_shared_kref_org_jsoup_Connection_Request thiz);
+              liblegado_shared_kref_org_jsoup_Connection_Request (*timeout_)(liblegado_shared_kref_org_jsoup_Connection_Request thiz, liblegado_shared_KInt millis);
+            } Request;
+            struct {
+              liblegado_shared_KType* (*_type)(void);
+              const char* (*body)(liblegado_shared_kref_org_jsoup_Connection_Response thiz);
+              liblegado_shared_kref_kotlin_ByteArray (*bodyAsBytes)(liblegado_shared_kref_org_jsoup_Connection_Response thiz);
+              liblegado_shared_kref_io_legado_app_utils_InputStream (*bodyStream)(liblegado_shared_kref_org_jsoup_Connection_Response thiz);
+              liblegado_shared_kref_org_jsoup_Connection_Response (*bufferUp)(liblegado_shared_kref_org_jsoup_Connection_Response thiz);
+              const char* (*charset)(liblegado_shared_kref_org_jsoup_Connection_Response thiz);
+              liblegado_shared_kref_org_jsoup_Connection_Response (*charset_)(liblegado_shared_kref_org_jsoup_Connection_Response thiz, const char* charset);
+              const char* (*contentType)(liblegado_shared_kref_org_jsoup_Connection_Response thiz);
+              liblegado_shared_kref_com_fleeksoft_ksoup_nodes_Document (*parse)(liblegado_shared_kref_org_jsoup_Connection_Response thiz);
+              liblegado_shared_kref_org_jsoup_Connection_Response (*readFully)(liblegado_shared_kref_org_jsoup_Connection_Response thiz);
+              liblegado_shared_KInt (*statusCode)(liblegado_shared_kref_org_jsoup_Connection_Response thiz);
+              const char* (*statusMessage)(liblegado_shared_kref_org_jsoup_Connection_Response thiz);
+            } Response;
+            struct {
+              liblegado_shared_KType* (*_type)(void);
+              liblegado_shared_kref_org_jsoup_Connection_KeyVal (*contentType)(liblegado_shared_kref_org_jsoup_Connection_KeyVal thiz, const char* contentType);
+              const char* (*contentType_)(liblegado_shared_kref_org_jsoup_Connection_KeyVal thiz);
+              liblegado_shared_KBoolean (*hasInputStream)(liblegado_shared_kref_org_jsoup_Connection_KeyVal thiz);
+              liblegado_shared_kref_io_legado_app_utils_InputStream (*inputStream)(liblegado_shared_kref_org_jsoup_Connection_KeyVal thiz);
+              liblegado_shared_kref_org_jsoup_Connection_KeyVal (*inputStream_)(liblegado_shared_kref_org_jsoup_Connection_KeyVal thiz, liblegado_shared_kref_io_legado_app_utils_InputStream inputStream);
+              const char* (*key)(liblegado_shared_kref_org_jsoup_Connection_KeyVal thiz);
+              liblegado_shared_kref_org_jsoup_Connection_KeyVal (*key_)(liblegado_shared_kref_org_jsoup_Connection_KeyVal thiz, const char* key);
+              const char* (*value)(liblegado_shared_kref_org_jsoup_Connection_KeyVal thiz);
+              liblegado_shared_kref_org_jsoup_Connection_KeyVal (*value_)(liblegado_shared_kref_org_jsoup_Connection_KeyVal thiz, const char* value);
+            } KeyVal;
+            struct {
+              liblegado_shared_KType* (*_type)(void);
+              liblegado_shared_kref_org_jsoup_Connection_Companion (*_instance)();
+              liblegado_shared_kref_org_jsoup_Connection (*connect)(liblegado_shared_kref_org_jsoup_Connection_Companion thiz, const char* url);
+              liblegado_shared_kref_org_jsoup_Connection (*connect_)(liblegado_shared_kref_org_jsoup_Connection_Companion thiz, liblegado_shared_kref_io_legado_app_utils_URL url);
+              liblegado_shared_kref_org_jsoup_Connection (*newSession)(liblegado_shared_kref_org_jsoup_Connection_Companion thiz);
+            } Companion;
+            liblegado_shared_KType* (*_type)(void);
+            liblegado_shared_kref_org_jsoup_Connection (*cookie)(liblegado_shared_kref_org_jsoup_Connection thiz, const char* name, const char* value);
+            liblegado_shared_kref_org_jsoup_Connection (*cookies)(liblegado_shared_kref_org_jsoup_Connection thiz, liblegado_shared_kref_kotlin_collections_Map cookies);
+            liblegado_shared_kref_org_jsoup_Connection (*data)(liblegado_shared_kref_org_jsoup_Connection thiz, const char* key, const char* value);
+            liblegado_shared_kref_org_jsoup_Connection (*data_)(liblegado_shared_kref_org_jsoup_Connection thiz, const char* key, const char* filename, liblegado_shared_kref_io_legado_app_utils_InputStream inputStream);
+            liblegado_shared_kref_org_jsoup_Connection (*data__)(liblegado_shared_kref_org_jsoup_Connection thiz, const char* key, const char* filename, liblegado_shared_kref_io_legado_app_utils_InputStream inputStream, const char* contentType);
+            liblegado_shared_kref_org_jsoup_Connection (*data___)(liblegado_shared_kref_org_jsoup_Connection thiz, liblegado_shared_kref_kotlin_collections_Collection data);
+            liblegado_shared_kref_org_jsoup_Connection (*data____)(liblegado_shared_kref_org_jsoup_Connection thiz, liblegado_shared_kref_kotlin_collections_Map data);
+            liblegado_shared_kref_org_jsoup_Connection (*data_____)(liblegado_shared_kref_org_jsoup_Connection thiz, liblegado_shared_kref_kotlin_Array keyvals);
+            liblegado_shared_kref_org_jsoup_Connection_Response (*execute)(liblegado_shared_kref_org_jsoup_Connection thiz);
+            liblegado_shared_kref_org_jsoup_Connection (*followRedirects)(liblegado_shared_kref_org_jsoup_Connection thiz, liblegado_shared_KBoolean followRedirects);
+            liblegado_shared_kref_org_jsoup_Connection (*header)(liblegado_shared_kref_org_jsoup_Connection thiz, const char* name, const char* value);
+            liblegado_shared_kref_org_jsoup_Connection (*headers)(liblegado_shared_kref_org_jsoup_Connection thiz, liblegado_shared_kref_kotlin_collections_Map headers);
+            liblegado_shared_kref_org_jsoup_Connection (*ignoreContentType)(liblegado_shared_kref_org_jsoup_Connection thiz, liblegado_shared_KBoolean ignoreContentType);
+            liblegado_shared_kref_org_jsoup_Connection (*ignoreHttpErrors)(liblegado_shared_kref_org_jsoup_Connection thiz, liblegado_shared_KBoolean ignoreHttpErrors);
+            liblegado_shared_kref_org_jsoup_Connection (*maxBodySize)(liblegado_shared_kref_org_jsoup_Connection thiz, liblegado_shared_KInt bytes);
+            liblegado_shared_kref_org_jsoup_Connection (*method)(liblegado_shared_kref_org_jsoup_Connection thiz, liblegado_shared_kref_org_jsoup_Connection_Method method);
+            liblegado_shared_kref_org_jsoup_Connection (*postDataCharset)(liblegado_shared_kref_org_jsoup_Connection thiz, const char* charset);
+            liblegado_shared_kref_org_jsoup_Connection (*referrer)(liblegado_shared_kref_org_jsoup_Connection thiz, const char* referrer);
+            liblegado_shared_kref_org_jsoup_Connection_Request (*request)(liblegado_shared_kref_org_jsoup_Connection thiz);
+            liblegado_shared_kref_org_jsoup_Connection (*requestBody)(liblegado_shared_kref_org_jsoup_Connection thiz, const char* body);
+            liblegado_shared_kref_org_jsoup_Connection_Response (*response)(liblegado_shared_kref_org_jsoup_Connection thiz);
+            liblegado_shared_kref_org_jsoup_Connection (*sslContext)(liblegado_shared_kref_org_jsoup_Connection thiz, liblegado_shared_kref_kotlin_Any sslContext);
+            liblegado_shared_kref_org_jsoup_Connection (*sslSocketFactory)(liblegado_shared_kref_org_jsoup_Connection thiz, liblegado_shared_kref_kotlin_Any sslSocketFactory);
+            liblegado_shared_kref_org_jsoup_Connection (*timeout)(liblegado_shared_kref_org_jsoup_Connection thiz, liblegado_shared_KInt millis);
+            liblegado_shared_kref_org_jsoup_Connection (*url)(liblegado_shared_kref_org_jsoup_Connection thiz, liblegado_shared_kref_io_legado_app_utils_URL url);
+            liblegado_shared_kref_org_jsoup_Connection (*url_)(liblegado_shared_kref_org_jsoup_Connection thiz, const char* url);
+            liblegado_shared_kref_org_jsoup_Connection (*userAgent)(liblegado_shared_kref_org_jsoup_Connection thiz, const char* userAgent);
+          } Connection;
+          struct {
+            struct {
+              struct {
+                liblegado_shared_KType* (*_type)(void);
+                liblegado_shared_kref_org_jsoup_internal_HttpConnection_Companion (*_instance)();
+                liblegado_shared_kref_org_jsoup_Connection (*connect)(liblegado_shared_kref_org_jsoup_internal_HttpConnection_Companion thiz, const char* url);
+                liblegado_shared_kref_org_jsoup_Connection (*connect_)(liblegado_shared_kref_org_jsoup_internal_HttpConnection_Companion thiz, liblegado_shared_kref_io_legado_app_utils_URL url);
+              } Companion;
+              liblegado_shared_KType* (*_type)(void);
+              liblegado_shared_kref_org_jsoup_internal_HttpConnection (*HttpConnection)();
+              liblegado_shared_kref_org_jsoup_Connection (*cookie)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, const char* name, const char* value);
+              liblegado_shared_kref_org_jsoup_Connection (*cookies)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, liblegado_shared_kref_kotlin_collections_Map cookies);
+              liblegado_shared_kref_org_jsoup_Connection (*data)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, const char* key, const char* value);
+              liblegado_shared_kref_org_jsoup_Connection (*data_)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, const char* key, const char* filename, liblegado_shared_kref_io_legado_app_utils_InputStream inputStream);
+              liblegado_shared_kref_org_jsoup_Connection (*data__)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, const char* key, const char* filename, liblegado_shared_kref_io_legado_app_utils_InputStream inputStream, const char* contentType);
+              liblegado_shared_kref_org_jsoup_Connection (*data___)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, liblegado_shared_kref_kotlin_collections_Collection data);
+              liblegado_shared_kref_org_jsoup_Connection (*data____)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, liblegado_shared_kref_kotlin_collections_Map data);
+              liblegado_shared_kref_org_jsoup_Connection (*data_____)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, liblegado_shared_kref_kotlin_Array keyvals);
+              liblegado_shared_kref_org_jsoup_Connection_Response (*execute)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz);
+              liblegado_shared_kref_org_jsoup_Connection (*followRedirects)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, liblegado_shared_KBoolean followRedirects);
+              liblegado_shared_kref_org_jsoup_Connection (*header)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, const char* name, const char* value);
+              liblegado_shared_kref_org_jsoup_Connection (*headers)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, liblegado_shared_kref_kotlin_collections_Map headers);
+              liblegado_shared_kref_org_jsoup_Connection (*ignoreContentType)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, liblegado_shared_KBoolean ignoreContentType);
+              liblegado_shared_kref_org_jsoup_Connection (*ignoreHttpErrors)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, liblegado_shared_KBoolean ignoreHttpErrors);
+              liblegado_shared_kref_org_jsoup_Connection (*maxBodySize)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, liblegado_shared_KInt bytes);
+              liblegado_shared_kref_org_jsoup_Connection (*method)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, liblegado_shared_kref_org_jsoup_Connection_Method method);
+              liblegado_shared_kref_org_jsoup_Connection (*postDataCharset)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, const char* charset);
+              liblegado_shared_kref_org_jsoup_Connection (*referrer)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, const char* referrer);
+              liblegado_shared_kref_org_jsoup_Connection_Request (*request)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz);
+              liblegado_shared_kref_org_jsoup_Connection (*requestBody)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, const char* body);
+              liblegado_shared_kref_org_jsoup_Connection_Response (*response)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz);
+              liblegado_shared_kref_org_jsoup_Connection (*sslContext)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, liblegado_shared_kref_kotlin_Any sslContext);
+              liblegado_shared_kref_org_jsoup_Connection (*sslSocketFactory)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, liblegado_shared_kref_kotlin_Any sslSocketFactory);
+              liblegado_shared_kref_org_jsoup_Connection (*timeout)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, liblegado_shared_KInt millis);
+              liblegado_shared_kref_org_jsoup_Connection (*url)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, liblegado_shared_kref_io_legado_app_utils_URL url);
+              liblegado_shared_kref_org_jsoup_Connection (*url_)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, const char* url);
+              liblegado_shared_kref_org_jsoup_Connection (*userAgent)(liblegado_shared_kref_org_jsoup_internal_HttpConnection thiz, const char* userAgent);
+            } HttpConnection;
+            struct {
+              struct {
+                liblegado_shared_KType* (*_type)(void);
+                liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest_Companion (*_instance)();
+              } Companion;
+              liblegado_shared_KType* (*_type)(void);
+              liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest (*HttpConnectionRequest)();
+              const char* (*get_postDataCharset)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz);
+              void (*set_postDataCharset)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, const char* set);
+              liblegado_shared_kref_org_jsoup_Connection_Response (*get_response)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz);
+              void (*set_response)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, liblegado_shared_kref_org_jsoup_Connection_Response set);
+              liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest (*addHeader)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, const char* name, const char* value);
+              const char* (*cookie)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, const char* name);
+              liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest (*cookie_)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, const char* name, const char* value);
+              liblegado_shared_kref_kotlin_collections_Map (*cookies)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz);
+              liblegado_shared_kref_kotlin_collections_Collection (*data)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest (*data_)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, liblegado_shared_kref_org_jsoup_Connection_KeyVal keyval);
+              void (*data__)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, liblegado_shared_kref_org_jsoup_internal_HttpKeyVal keyval);
+              liblegado_shared_KBoolean (*followRedirects)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest (*followRedirects_)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, liblegado_shared_KBoolean followRedirects);
+              liblegado_shared_KBoolean (*hasCookie)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, const char* name);
+              liblegado_shared_KBoolean (*hasHeader)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, const char* name);
+              liblegado_shared_KBoolean (*hasHeaderWithValue)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, const char* name, const char* value);
+              const char* (*header)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, const char* name);
+              liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest (*header_)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, const char* name, const char* value);
+              liblegado_shared_kref_kotlin_collections_List (*headers)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, const char* name);
+              liblegado_shared_kref_kotlin_collections_Map (*headers_)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz);
+              liblegado_shared_KBoolean (*ignoreContentType)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest (*ignoreContentType_)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, liblegado_shared_KBoolean ignoreContentType);
+              liblegado_shared_KBoolean (*ignoreHttpErrors)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest (*ignoreHttpErrors_)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, liblegado_shared_KBoolean ignoreHttpErrors);
+              liblegado_shared_KInt (*maxBodySize)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest (*maxBodySize_)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, liblegado_shared_KInt bytes);
+              liblegado_shared_kref_org_jsoup_Connection_Method (*method)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest (*method_)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, liblegado_shared_kref_org_jsoup_Connection_Method method);
+              liblegado_shared_kref_kotlin_collections_Map (*multiHeaders)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest (*removeCookie)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, const char* name);
+              liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest (*removeHeader)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, const char* name);
+              const char* (*requestBody)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest (*requestBody_)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, const char* body);
+              liblegado_shared_kref_kotlin_Any (*sslContext)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest (*sslContext_)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, liblegado_shared_kref_kotlin_Any sslContext);
+              liblegado_shared_kref_kotlin_Any (*sslSocketFactory)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest (*sslSocketFactory_)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, liblegado_shared_kref_kotlin_Any sslSocketFactory);
+              liblegado_shared_KInt (*timeout)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest (*timeout_)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, liblegado_shared_KInt millis);
+              liblegado_shared_kref_io_legado_app_utils_URL (*url)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest (*url_)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, liblegado_shared_kref_io_legado_app_utils_URL url);
+              liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest (*url__)(liblegado_shared_kref_org_jsoup_internal_HttpConnectionRequest thiz, const char* url);
+            } HttpConnectionRequest;
+            struct {
+              struct {
+                liblegado_shared_KType* (*_type)(void);
+                liblegado_shared_kref_org_jsoup_internal_HttpKeyVal_Companion (*_instance)();
+                liblegado_shared_kref_org_jsoup_internal_HttpKeyVal (*create)(liblegado_shared_kref_org_jsoup_internal_HttpKeyVal_Companion thiz, const char* key, const char* value);
+                liblegado_shared_kref_org_jsoup_internal_HttpKeyVal (*create_)(liblegado_shared_kref_org_jsoup_internal_HttpKeyVal_Companion thiz, const char* key, const char* filename, liblegado_shared_kref_io_legado_app_utils_InputStream inputStream);
+                liblegado_shared_kref_org_jsoup_internal_HttpKeyVal (*create__)(liblegado_shared_kref_org_jsoup_internal_HttpKeyVal_Companion thiz, const char* key, const char* filename, liblegado_shared_kref_io_legado_app_utils_InputStream inputStream, const char* contentType);
+              } Companion;
+              liblegado_shared_KType* (*_type)(void);
+              liblegado_shared_kref_org_jsoup_internal_HttpKeyVal (*contentType)(liblegado_shared_kref_org_jsoup_internal_HttpKeyVal thiz, const char* contentType);
+              const char* (*contentType_)(liblegado_shared_kref_org_jsoup_internal_HttpKeyVal thiz);
+              const char* (*filename)(liblegado_shared_kref_org_jsoup_internal_HttpKeyVal thiz);
+              liblegado_shared_KBoolean (*hasInputStream)(liblegado_shared_kref_org_jsoup_internal_HttpKeyVal thiz);
+              liblegado_shared_kref_io_legado_app_utils_InputStream (*inputStream)(liblegado_shared_kref_org_jsoup_internal_HttpKeyVal thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpKeyVal (*inputStream_)(liblegado_shared_kref_org_jsoup_internal_HttpKeyVal thiz, liblegado_shared_kref_io_legado_app_utils_InputStream inputStream);
+              const char* (*key)(liblegado_shared_kref_org_jsoup_internal_HttpKeyVal thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpKeyVal (*key_)(liblegado_shared_kref_org_jsoup_internal_HttpKeyVal thiz, const char* key);
+              const char* (*value)(liblegado_shared_kref_org_jsoup_internal_HttpKeyVal thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpKeyVal (*value_)(liblegado_shared_kref_org_jsoup_internal_HttpKeyVal thiz, const char* value);
+            } HttpKeyVal;
+            struct {
+              liblegado_shared_KType* (*_type)(void);
+              liblegado_shared_kref_org_jsoup_internal_HttpResponse (*HttpResponse)(liblegado_shared_kref_io_legado_app_help_http_KmpResponse raw, liblegado_shared_kref_org_jsoup_Connection_Request request);
+              liblegado_shared_kref_org_jsoup_internal_HttpResponse (*addHeader)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz, const char* name, const char* value);
+              const char* (*body)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz);
+              liblegado_shared_kref_kotlin_ByteArray (*bodyAsBytes)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz);
+              liblegado_shared_kref_io_legado_app_utils_InputStream (*bodyStream)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpResponse (*bufferUp)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz);
+              const char* (*charset)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpResponse (*charset_)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz, const char* charset);
+              const char* (*contentType)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz);
+              const char* (*cookie)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz, const char* name);
+              liblegado_shared_kref_org_jsoup_internal_HttpResponse (*cookie_)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz, const char* name, const char* value);
+              liblegado_shared_kref_kotlin_collections_Map (*cookies)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz);
+              liblegado_shared_KBoolean (*hasCookie)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz, const char* name);
+              liblegado_shared_KBoolean (*hasHeader)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz, const char* name);
+              liblegado_shared_KBoolean (*hasHeaderWithValue)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz, const char* name, const char* value);
+              const char* (*header)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz, const char* name);
+              liblegado_shared_kref_org_jsoup_internal_HttpResponse (*header_)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz, const char* name, const char* value);
+              liblegado_shared_kref_kotlin_collections_List (*headers)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz, const char* name);
+              liblegado_shared_kref_kotlin_collections_Map (*headers_)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz);
+              liblegado_shared_kref_org_jsoup_Connection_Method (*method)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz);
+              liblegado_shared_kref_kotlin_collections_Map (*multiHeaders)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz);
+              liblegado_shared_kref_com_fleeksoft_ksoup_nodes_Document (*parse)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpResponse (*readFully)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpResponse (*removeCookie)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz, const char* name);
+              liblegado_shared_kref_org_jsoup_internal_HttpResponse (*removeHeader)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz, const char* name);
+              liblegado_shared_KInt (*statusCode)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz);
+              const char* (*statusMessage)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz);
+              liblegado_shared_kref_io_legado_app_utils_URL (*url)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz);
+              liblegado_shared_kref_org_jsoup_internal_HttpResponse (*url_)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz, liblegado_shared_kref_io_legado_app_utils_URL url);
+              liblegado_shared_kref_org_jsoup_internal_HttpResponse (*url__)(liblegado_shared_kref_org_jsoup_internal_HttpResponse thiz, const char* url);
+            } HttpResponse;
+          } internal;
+          struct {
+            struct {
+              struct {
                 liblegado_shared_KType* (*_type)(void);
                 liblegado_shared_kref_org_jsoup_select_XPathEvaluator_Companion (*_instance)();
                 liblegado_shared_kref_kotlin_collections_List (*evaluate)(liblegado_shared_kref_org_jsoup_select_XPathEvaluator_Companion thiz, const char* xpath, liblegado_shared_kref_com_fleeksoft_ksoup_nodes_Element element);
@@ -7203,6 +7574,25 @@ typedef struct {
             } PathPart;
             liblegado_shared_kref_com_fleeksoft_ksoup_select_Elements (*selectXpath)(liblegado_shared_kref_com_fleeksoft_ksoup_nodes_Element thiz, const char* xpath);
           } select;
+          struct {
+            liblegado_shared_KType* (*_type)(void);
+            liblegado_shared_kref_org_jsoup_HttpStatusException (*HttpStatusException)(const char* message, liblegado_shared_KInt statusCode, const char* url);
+            liblegado_shared_KInt (*get_statusCode)(liblegado_shared_kref_org_jsoup_HttpStatusException thiz);
+            const char* (*get_url)(liblegado_shared_kref_org_jsoup_HttpStatusException thiz);
+          } HttpStatusException;
+          struct {
+            liblegado_shared_KType* (*_type)(void);
+            liblegado_shared_kref_org_jsoup_Jsoup (*_instance)();
+            liblegado_shared_kref_kotlin_Function0 (*get_clientFactory)(liblegado_shared_kref_org_jsoup_Jsoup thiz);
+            void (*set_clientFactory)(liblegado_shared_kref_org_jsoup_Jsoup thiz, liblegado_shared_kref_kotlin_Function0 set);
+            liblegado_shared_kref_org_jsoup_Connection (*connect)(liblegado_shared_kref_org_jsoup_Jsoup thiz, const char* url);
+            liblegado_shared_kref_org_jsoup_Connection (*connect_)(liblegado_shared_kref_org_jsoup_Jsoup thiz, liblegado_shared_kref_io_legado_app_utils_URL url);
+            liblegado_shared_kref_org_jsoup_Connection (*newSession)(liblegado_shared_kref_org_jsoup_Jsoup thiz);
+            liblegado_shared_kref_com_fleeksoft_ksoup_nodes_Document (*parse)(liblegado_shared_kref_org_jsoup_Jsoup thiz, const char* html);
+            liblegado_shared_kref_com_fleeksoft_ksoup_nodes_Document (*parse_)(liblegado_shared_kref_org_jsoup_Jsoup thiz, const char* html, const char* baseUri);
+            liblegado_shared_kref_com_fleeksoft_ksoup_nodes_Document (*parseBodyFragment)(liblegado_shared_kref_org_jsoup_Jsoup thiz, const char* bodyHtml);
+            liblegado_shared_kref_com_fleeksoft_ksoup_nodes_Document (*parseBodyFragment_)(liblegado_shared_kref_org_jsoup_Jsoup thiz, const char* bodyHtml, const char* baseUri);
+          } Jsoup;
         } jsoup;
       } org;
       struct {
@@ -7476,6 +7866,10 @@ typedef struct {
               struct {
                 liblegado_shared_KType* (*_type)(void);
                 liblegado_shared_kref_io_legado_app_constant_IntentAction (*_instance)();
+                const char* (*get_activityAudioPlay)(liblegado_shared_kref_io_legado_app_constant_IntentAction thiz);
+                const char* (*get_activityBookshelfManage)(liblegado_shared_kref_io_legado_app_constant_IntentAction thiz);
+                const char* (*get_activityCheckSource)(liblegado_shared_kref_io_legado_app_constant_IntentAction thiz);
+                const char* (*get_activityReadAloud)(liblegado_shared_kref_io_legado_app_constant_IntentAction thiz);
                 const char* (*get_addTimer)(liblegado_shared_kref_io_legado_app_constant_IntentAction thiz);
                 const char* (*get_adjustProgress)(liblegado_shared_kref_io_legado_app_constant_IntentAction thiz);
                 const char* (*get_adjustSpeed)(liblegado_shared_kref_io_legado_app_constant_IntentAction thiz);
@@ -7625,7 +8019,6 @@ typedef struct {
                 const char* (*get_mangaColorFilter)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
                 const char* (*get_mangaFooterConfig)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
                 const char* (*get_mangaPreDownloadNum)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
-                const char* (*get_mouseWheelPage)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
                 const char* (*get_nextKeys)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
                 const char* (*get_onlyLatestBackup)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
                 const char* (*get_pageTouchSlop)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
@@ -7682,8 +8075,6 @@ typedef struct {
                 const char* (*get_useDefaultCover)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
                 const char* (*get_useZhLayout)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
                 const char* (*get_userAgent)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
-                const char* (*get_volumeKeyPage)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
-                const char* (*get_volumeKeyPageOnPlay)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
                 const char* (*get_webDavAccount)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
                 const char* (*get_webDavDeviceName)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
                 const char* (*get_webDavDir)(liblegado_shared_kref_io_legado_app_constant_PreferKey thiz);
@@ -10728,6 +11119,7 @@ typedef struct {
                   void (*set_importKeepName)(liblegado_shared_kref_io_legado_app_help_config_AppConfigAccessor thiz, liblegado_shared_KBoolean set);
                   liblegado_shared_KBoolean (*get_isEInkMode)(liblegado_shared_kref_io_legado_app_help_config_AppConfigAccessor thiz);
                   liblegado_shared_KBoolean (*get_isNightTheme)(liblegado_shared_kref_io_legado_app_help_config_AppConfigAccessor thiz);
+                  liblegado_shared_KBoolean (*get_loadCoverOnlyWifi)(liblegado_shared_kref_io_legado_app_help_config_AppConfigAccessor thiz);
                   liblegado_shared_KInt (*get_localBookImportSort)(liblegado_shared_kref_io_legado_app_help_config_AppConfigAccessor thiz);
                   liblegado_shared_KInt (*get_preDownloadNum)(liblegado_shared_kref_io_legado_app_help_config_AppConfigAccessor thiz);
                   liblegado_shared_KBoolean (*get_precisionSearch)(liblegado_shared_kref_io_legado_app_help_config_AppConfigAccessor thiz);
@@ -11426,6 +11818,7 @@ typedef struct {
                   void (*set_importKeepName)(liblegado_shared_kref_io_legado_app_help_config_NativeAppConfigAccessor thiz, liblegado_shared_KBoolean value);
                   liblegado_shared_KBoolean (*get_isEInkMode)(liblegado_shared_kref_io_legado_app_help_config_NativeAppConfigAccessor thiz);
                   liblegado_shared_KBoolean (*get_isNightTheme)(liblegado_shared_kref_io_legado_app_help_config_NativeAppConfigAccessor thiz);
+                  liblegado_shared_KBoolean (*get_loadCoverOnlyWifi)(liblegado_shared_kref_io_legado_app_help_config_NativeAppConfigAccessor thiz);
                   liblegado_shared_KInt (*get_localBookImportSort)(liblegado_shared_kref_io_legado_app_help_config_NativeAppConfigAccessor thiz);
                   liblegado_shared_KInt (*get_preDownloadNum)(liblegado_shared_kref_io_legado_app_help_config_NativeAppConfigAccessor thiz);
                   liblegado_shared_KBoolean (*get_precisionSearch)(liblegado_shared_kref_io_legado_app_help_config_NativeAppConfigAccessor thiz);
@@ -12032,6 +12425,7 @@ typedef struct {
                   liblegado_shared_kref_io_legado_app_help_http_KmpRequest (*get_request)(liblegado_shared_kref_io_legado_app_help_http_KmpResponse thiz);
                   void (*close)(liblegado_shared_kref_io_legado_app_help_http_KmpResponse thiz);
                   liblegado_shared_kref_io_legado_app_help_http_KmpHeaders (*headers)(liblegado_shared_kref_io_legado_app_help_http_KmpResponse thiz);
+                  liblegado_shared_kref_kotlin_collections_List (*headers_)(liblegado_shared_kref_io_legado_app_help_http_KmpResponse thiz, const char* name);
                   liblegado_shared_kref_io_legado_app_help_http_KmpResponseBuilder (*newBuilder)(liblegado_shared_kref_io_legado_app_help_http_KmpResponse thiz);
                 } KmpResponse;
                 struct {
@@ -12147,6 +12541,7 @@ typedef struct {
                 void (*registerSharedCookieJarBridge)();
                 void (*registerDefaultOhosCookieStoreProvider)();
                 liblegado_shared_kref_kotlin_collections_List (*parseResponseCookies)(liblegado_shared_kref_io_legado_app_help_http_KmpHttpUrl url, liblegado_shared_kref_io_legado_app_help_http_KmpHeaders headers);
+                const char* (*charsetName)(liblegado_shared_kref_io_legado_app_help_http_KmpMediaType thiz);
                 liblegado_shared_kref_io_legado_app_help_http_KmpResponseBody (*decompressed)(liblegado_shared_kref_io_legado_app_help_http_KmpResponseBody thiz);
                 void (*postMultipart)(liblegado_shared_kref_io_legado_app_help_http_KmpRequestBuilder thiz, const char* type, liblegado_shared_kref_kotlin_collections_Map form);
                 const char* (*text)(liblegado_shared_kref_io_legado_app_help_http_KmpResponseBody thiz, const char* encode);
@@ -12240,6 +12635,12 @@ typedef struct {
                   struct {
                     liblegado_shared_kref_io_legado_app_help_i18n_AppStringKey (*get)(); /* enum entry for update_toc. */
                   } update_toc;
+                  struct {
+                    liblegado_shared_kref_io_legado_app_help_i18n_AppStringKey (*get)(); /* enum entry for no_prev_page. */
+                  } no_prev_page;
+                  struct {
+                    liblegado_shared_kref_io_legado_app_help_i18n_AppStringKey (*get)(); /* enum entry for no_next_page. */
+                  } no_next_page;
                   liblegado_shared_KType* (*_type)(void);
                 } AppStringKey;
                 struct {
@@ -13720,6 +14121,7 @@ typedef struct {
                 const char* (*downloadFile_)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* content, const char* url);
                 const char* (*encodeURI)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* str);
                 const char* (*encodeURI_)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* str, const char* enc);
+                liblegado_shared_kref_org_jsoup_Connection_Response (*get)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* urlStr, liblegado_shared_kref_kotlin_collections_Map headers);
                 liblegado_shared_kref_kotlin_ByteArray (*get7zByteArrayContent)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* url, const char* path);
                 const char* (*get7zStringContent)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* url, const char* path);
                 const char* (*get7zStringContent_)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* url, const char* path, const char* charsetName);
@@ -13736,6 +14138,7 @@ typedef struct {
                 liblegado_shared_kref_kotlin_ByteArray (*getZipByteArrayContent)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* url, const char* path);
                 const char* (*getZipStringContent)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* url, const char* path);
                 const char* (*getZipStringContent_)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* url, const char* path, const char* charsetName);
+                liblegado_shared_kref_org_jsoup_Connection_Response (*head)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* urlStr, liblegado_shared_kref_kotlin_collections_Map headers);
                 liblegado_shared_kref_kotlin_ByteArray (*hexDecodeToByteArray)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* hex);
                 const char* (*hexDecodeToString)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* hex);
                 const char* (*hexEncodeToString)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* utf8);
@@ -13746,6 +14149,7 @@ typedef struct {
                 void (*longToast)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, liblegado_shared_kref_kotlin_Any msg);
                 void (*openUrl)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* url, const char* mimeType);
                 void (*openUrl_)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* url);
+                liblegado_shared_kref_org_jsoup_Connection_Response (*post)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* urlStr, const char* body, liblegado_shared_kref_kotlin_collections_Map headers);
                 liblegado_shared_kref_io_legado_app_model_analyzeRule_QueryTTF (*queryBase64TTF)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, const char* data);
                 liblegado_shared_kref_io_legado_app_model_analyzeRule_QueryTTF (*queryTTF)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, liblegado_shared_kref_kotlin_Any data, liblegado_shared_KBoolean useCache);
                 liblegado_shared_kref_io_legado_app_model_analyzeRule_QueryTTF (*queryTTF_)(liblegado_shared_kref_io_legado_app_help_JsExtensionsCommon thiz, liblegado_shared_kref_kotlin_Any data);
@@ -14843,7 +15247,7 @@ typedef struct {
                 } NativeJsScope;
                 struct {
                   liblegado_shared_KType* (*_type)(void);
-                  liblegado_shared_kref_io_legado_app_model_script_NativeJsCompiledScript (*NativeJsCompiledScript)(const char* source);
+                  liblegado_shared_kref_io_legado_app_model_script_NativeJsCompiledScript (*NativeJsCompiledScript)(const char* source, liblegado_shared_kref_kotlin_ByteArray bytecode);
                   liblegado_shared_kref_kotlin_ByteArray (*get_bytecode)(liblegado_shared_kref_io_legado_app_model_script_NativeJsCompiledScript thiz);
                   const char* (*get_source)(liblegado_shared_kref_io_legado_app_model_script_NativeJsCompiledScript thiz);
                   liblegado_shared_kref_kotlin_Any (*eval)(liblegado_shared_kref_io_legado_app_model_script_NativeJsCompiledScript thiz, liblegado_shared_kref_io_legado_app_model_script_JsScope scope, liblegado_shared_kref_kotlin_coroutines_CoroutineContext coroutineContext);
@@ -14895,6 +15299,13 @@ typedef struct {
                   liblegado_shared_KLong (*registerObject)(liblegado_shared_kref_io_legado_app_model_script_NativeJsExtensionsBridge thiz, liblegado_shared_kref_kotlin_Any obj);
                   void (*unregisterObject)(liblegado_shared_kref_io_legado_app_model_script_NativeJsExtensionsBridge thiz, liblegado_shared_KLong handle);
                 } NativeJsExtensionsBridge;
+                struct {
+                  liblegado_shared_KType* (*_type)(void);
+                  liblegado_shared_kref_io_legado_app_model_script_NativeJsPropertyBridge (*_instance)();
+                  const char* (*get_JS_PROPERTY_FACTORY_CODE)(liblegado_shared_kref_io_legado_app_model_script_NativeJsPropertyBridge thiz);
+                  liblegado_shared_kref_kotlinx_cinterop_CValue (*dispatch)(liblegado_shared_kref_io_legado_app_model_script_NativeJsPropertyBridge thiz, void* ctx, liblegado_shared_kref_kotlin_Any obj, liblegado_shared_KInt propId);
+                  liblegado_shared_kref_kotlinx_cinterop_CValue (*dispatchWithArgs)(liblegado_shared_kref_io_legado_app_model_script_NativeJsPropertyBridge thiz, void* ctx, liblegado_shared_kref_kotlin_Any obj, liblegado_shared_KInt methodId, liblegado_shared_kref_kotlin_collections_List args);
+                } NativeJsPropertyBridge;
                 struct {
                   liblegado_shared_KType* (*_type)(void);
                   liblegado_shared_kref_io_legado_app_model_script_NativeQuickJsSharedJsScopeProvider (*_instance)();
@@ -15007,6 +15418,8 @@ typedef struct {
                   void (*remove)(liblegado_shared_kref_io_legado_app_model_script_SharedJsScopeProvider thiz, const char* jsLib);
                 } SharedJsScopeProvider;
                 void (*registerNativeJsEngineProvider)();
+                liblegado_shared_KInt (*get_PROPERTY_ID_BASE)();
+                liblegado_shared_KInt (*get_PROPERTY_WRITE_BASE)();
                 void (*registerNativeJsEngines)(liblegado_shared_kref_io_legado_app_help_image_ImageOps imageOps);
                 liblegado_shared_kref_io_legado_app_model_script_JsBindings (*buildScriptBindings)(liblegado_shared_kref_kotlin_Function1 block);
                 liblegado_shared_kref_io_legado_app_model_script_JsScope (*get_jsContext)();
@@ -15662,6 +16075,7 @@ typedef struct {
                 void* (*loadMangaChapter)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* bookUrl, liblegado_shared_KInt chapterIndex);
                 void* (*md5Encode)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* input);
                 void (*mediaEvent)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* event);
+                void (*networkCallback)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
                 void (*openExplore)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* sourceUrl, void* exploreUrl);
                 void (*pasteboardCallback)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
                 void (*permissionCallback)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, liblegado_shared_KLong requestId, void* result);
@@ -15675,6 +16089,7 @@ typedef struct {
                 void (*registerImageFn)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
                 void (*registerKeyboardFn)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
                 void (*registerMediaFn)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
+                void (*registerNetworkFn)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
                 void (*registerNotificationFn)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
                 void (*registerOpenUrlFn)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
                 void (*registerPasteboardFn)(liblegado_shared_kref_io_legado_app_napi_LegadoNativeExports thiz, void* dispatch);
@@ -15866,6 +16281,7 @@ typedef struct {
                 const char* (*invokeFilePickerSync)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, const char* action, const char* payloadJson, liblegado_shared_KLong timeoutMs);
                 liblegado_shared_kref_io_legado_app_napi_OhosBinaryBridgeResponse (*invokeHttpSync)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, const char* action, const char* payloadJson, liblegado_shared_kref_kotlin_ByteArray bodyBytes, liblegado_shared_KLong timeoutMs);
                 liblegado_shared_kref_io_legado_app_napi_OhosBinaryBridgeResponse (*invokeImageSync)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, const char* action, const char* payloadJson, liblegado_shared_kref_kotlin_ByteArray bytes, liblegado_shared_KLong timeoutMs);
+                const char* (*invokeNetworkSync)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, const char* action, const char* payloadJson, liblegado_shared_KLong timeoutMs);
                 const char* (*invokePasteboardSync)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, const char* action, const char* payloadJson, liblegado_shared_KLong timeoutMs);
                 const char* (*invokePermissionSync)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, const char* action, const char* payloadJson, liblegado_shared_KLong timeoutMs);
                 const char* (*invokeTextCodecSync)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, const char* action, const char* payloadJson, liblegado_shared_KLong timeoutMs);
@@ -15877,6 +16293,7 @@ typedef struct {
                 liblegado_shared_KBoolean (*isImageBridgeReady)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz);
                 liblegado_shared_KBoolean (*isKeyboardBridgeReady)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz);
                 liblegado_shared_KBoolean (*isMediaBridgeReady)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz);
+                liblegado_shared_KBoolean (*isNetworkBridgeReady)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz);
                 liblegado_shared_KBoolean (*isOpenUrlBridgeReady)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz);
                 liblegado_shared_KBoolean (*isPasteboardBridgeReady)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz);
                 liblegado_shared_KBoolean (*isPermissionBridgeReady)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz);
@@ -15891,6 +16308,7 @@ typedef struct {
                 void (*onHttpResult)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_KLong requestId, const char* resultJson, liblegado_shared_kref_kotlin_ByteArray bodyBytes);
                 void (*onImageResult)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_KLong requestId, const char* resultJson, liblegado_shared_kref_kotlin_ByteArray bodyBytes);
                 void (*onMediaEvent)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, const char* eventJson);
+                void (*onNetworkResult)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_KLong requestId, const char* resultJson);
                 void (*onPasteboardResult)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_KLong requestId, const char* resultJson);
                 void (*onPermissionResult)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_KLong requestId, const char* resultJson);
                 void (*onTextActionResult)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, const char* action, const char* text, const char* src);
@@ -15907,6 +16325,7 @@ typedef struct {
                 void (*registerImageFn)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_kotlin_Function2 tsfn);
                 void (*registerKeyboardFn)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_kotlin_Function1 tsfn);
                 void (*registerMediaFn)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_kotlin_Function1 tsfn);
+                void (*registerNetworkFn)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_kotlin_Function1 tsfn);
                 void (*registerNotificationFn)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_kotlin_Function1 tsfn);
                 void (*registerOpenUrlFn)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_kotlin_Function1 tsfn);
                 void (*registerPasteboardFn)(liblegado_shared_kref_io_legado_app_napi_OhosNativeBridge thiz, liblegado_shared_kref_kotlin_Function1 tsfn);
@@ -16910,6 +17329,7 @@ typedef struct {
                     liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_state)(liblegado_shared_kref_io_legado_app_ui_book_audio_AudioPlayScreenModel thiz);
                     void (*dispatch)(liblegado_shared_kref_io_legado_app_ui_book_audio_AudioPlayScreenModel thiz, liblegado_shared_kref_io_legado_app_ui_book_audio_AudioPlayUiEvent event);
                     void (*onCleared)(liblegado_shared_kref_io_legado_app_ui_book_audio_AudioPlayScreenModel thiz);
+                    void (*onPreRemoved)(liblegado_shared_kref_io_legado_app_ui_book_audio_AudioPlayScreenModel thiz);
                   } AudioPlayScreenModel;
                   struct {
                     liblegado_shared_KType* (*_type)(void);
@@ -17196,6 +17616,17 @@ typedef struct {
                     void (*startSearch)(liblegado_shared_kref_io_legado_app_ui_book_changecover_ChangeCoverViewModelShared thiz);
                     void (*stopSearch)(liblegado_shared_kref_io_legado_app_ui_book_changecover_ChangeCoverViewModelShared thiz);
                   } ChangeCoverViewModelShared;
+                  struct {
+                    liblegado_shared_KType* (*_type)(void);
+                    const char* (*persistCover)(liblegado_shared_kref_io_legado_app_ui_book_changecover_CoverStorageService thiz, const char* srcPath, const char* displayName);
+                  } CoverStorageService;
+                  struct {
+                    liblegado_shared_KType* (*_type)(void);
+                    liblegado_shared_kref_io_legado_app_ui_book_changecover_CoverStorageServiceProviders (*_instance)();
+                    liblegado_shared_kref_io_legado_app_ui_book_changecover_CoverStorageService (*get)(liblegado_shared_kref_io_legado_app_ui_book_changecover_CoverStorageServiceProviders thiz);
+                    void (*register_)(liblegado_shared_kref_io_legado_app_ui_book_changecover_CoverStorageServiceProviders thiz, liblegado_shared_kref_io_legado_app_ui_book_changecover_CoverStorageService impl);
+                    void (*reset)(liblegado_shared_kref_io_legado_app_ui_book_changecover_CoverStorageServiceProviders thiz);
+                  } CoverStorageServiceProviders;
                 } changecover;
                 struct {
                   struct {
@@ -18596,39 +19027,33 @@ typedef struct {
                   } OhosBookshelfManagePlatform;
                   struct {
                     liblegado_shared_KType* (*_type)(void);
-                    liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState (*BookshelfManageState)(liblegado_shared_kref_kotlin_collections_List books, liblegado_shared_kref_kotlin_collections_Set selected, const char* searchKey, const char* searchHint, liblegado_shared_KInt bookshelfTypeFilter, liblegado_shared_KBoolean canDrag, liblegado_shared_kref_kotlin_collections_List groups, liblegado_shared_KBoolean downloadRunning, liblegado_shared_KInt refreshTick, liblegado_shared_KBoolean exportUseReplace, liblegado_shared_KBoolean enableCustomExportChecked, liblegado_shared_KBoolean exportToWebDav);
+                    liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState (*BookshelfManageState)(liblegado_shared_kref_kotlin_collections_List books, const char* searchKey, const char* searchHint, liblegado_shared_KInt bookshelfTypeFilter, liblegado_shared_KBoolean canDrag, liblegado_shared_kref_kotlin_collections_List groups, liblegado_shared_KBoolean exportUseReplace, liblegado_shared_KBoolean enableCustomExportChecked, liblegado_shared_KBoolean exportToWebDav);
                     liblegado_shared_kref_kotlin_collections_List (*get_books)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
                     liblegado_shared_KInt (*get_bookshelfTypeFilter)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
                     liblegado_shared_KBoolean (*get_canDrag)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
-                    liblegado_shared_KBoolean (*get_downloadRunning)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
                     liblegado_shared_KBoolean (*get_enableCustomExportChecked)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
                     liblegado_shared_KBoolean (*get_exportToWebDav)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
                     liblegado_shared_KBoolean (*get_exportUseReplace)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
                     liblegado_shared_kref_kotlin_collections_List (*get_groups)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
-                    liblegado_shared_KInt (*get_refreshTick)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
                     const char* (*get_searchHint)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
                     const char* (*get_searchKey)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
-                    liblegado_shared_kref_kotlin_collections_Set (*get_selected)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
                     liblegado_shared_kref_kotlin_collections_List (*component1)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
-                    liblegado_shared_KBoolean (*component10)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
-                    liblegado_shared_KBoolean (*component11)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
-                    liblegado_shared_KBoolean (*component12)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
-                    liblegado_shared_kref_kotlin_collections_Set (*component2)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
+                    const char* (*component2)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
                     const char* (*component3)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
-                    const char* (*component4)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
-                    liblegado_shared_KInt (*component5)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
-                    liblegado_shared_KBoolean (*component6)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
-                    liblegado_shared_kref_kotlin_collections_List (*component7)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
+                    liblegado_shared_KInt (*component4)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
+                    liblegado_shared_KBoolean (*component5)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
+                    liblegado_shared_kref_kotlin_collections_List (*component6)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
+                    liblegado_shared_KBoolean (*component7)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
                     liblegado_shared_KBoolean (*component8)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
-                    liblegado_shared_KInt (*component9)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
-                    liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState (*copy)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz, liblegado_shared_kref_kotlin_collections_List books, liblegado_shared_kref_kotlin_collections_Set selected, const char* searchKey, const char* searchHint, liblegado_shared_KInt bookshelfTypeFilter, liblegado_shared_KBoolean canDrag, liblegado_shared_kref_kotlin_collections_List groups, liblegado_shared_KBoolean downloadRunning, liblegado_shared_KInt refreshTick, liblegado_shared_KBoolean exportUseReplace, liblegado_shared_KBoolean enableCustomExportChecked, liblegado_shared_KBoolean exportToWebDav);
+                    liblegado_shared_KBoolean (*component9)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
+                    liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState (*copy)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz, liblegado_shared_kref_kotlin_collections_List books, const char* searchKey, const char* searchHint, liblegado_shared_KInt bookshelfTypeFilter, liblegado_shared_KBoolean canDrag, liblegado_shared_kref_kotlin_collections_List groups, liblegado_shared_KBoolean exportUseReplace, liblegado_shared_KBoolean enableCustomExportChecked, liblegado_shared_KBoolean exportToWebDav);
                     liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz, liblegado_shared_kref_kotlin_Any other);
                     liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
                     const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageState thiz);
                   } BookshelfManageState;
                   struct {
                     liblegado_shared_KType* (*_type)(void);
-                    liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks (*BookshelfManageCallbacks)(liblegado_shared_kref_kotlin_Function0 onBack, liblegado_shared_kref_kotlin_Function1 onQueryChange, liblegado_shared_kref_kotlin_Function2 onMove, liblegado_shared_kref_kotlin_Function0 onPersistOrder, liblegado_shared_kref_kotlin_Function1 onSelectAll, liblegado_shared_kref_kotlin_Function0 onRevertSelection, liblegado_shared_kref_kotlin_Function0 onMainAction, liblegado_shared_kref_kotlin_Function0 onSelectActions, liblegado_shared_kref_kotlin_Function2 onToggle, liblegado_shared_kref_kotlin_Function1 onOpenBook, liblegado_shared_kref_kotlin_Function1 onToggleDownload, liblegado_shared_kref_kotlin_Function1 isItemDownloading, liblegado_shared_kref_kotlin_Function1 onOriginText, liblegado_shared_kref_kotlin_Function1 onGroupName, liblegado_shared_kref_kotlin_Function1 onCacheInfo, liblegado_shared_kref_kotlin_Function1 onDeleteBook, liblegado_shared_kref_kotlin_Function1 onEditGroup, liblegado_shared_kref_kotlin_Function0 onDownloadAfter, liblegado_shared_kref_kotlin_Function0 onDownloadAll, liblegado_shared_kref_kotlin_Function0 onShowGroupManage, liblegado_shared_kref_kotlin_Function1 onSelectGroupFromMenu, liblegado_shared_kref_kotlin_Function0 onExportAllUseBookSource, liblegado_shared_kref_kotlin_Function0 onToggleEnableReplace, liblegado_shared_kref_kotlin_Function0 onToggleCustomExport, liblegado_shared_kref_kotlin_Function0 onToggleExportWebDav, liblegado_shared_kref_kotlin_Function0 onSelectExportFolderMenu, liblegado_shared_kref_kotlin_Function0 onShowExportConfig, liblegado_shared_kref_kotlin_Function0 onShowLog, liblegado_shared_kref_kotlin_Function1 onSetBookTypeFilter);
+                    liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks (*BookshelfManageCallbacks)(liblegado_shared_kref_kotlin_Function0 onBack, liblegado_shared_kref_kotlin_Function1 onQueryChange, liblegado_shared_kref_kotlin_Function2 onMove, liblegado_shared_kref_kotlin_Function0 onPersistOrder, liblegado_shared_kref_kotlin_Function1 onSelectAll, liblegado_shared_kref_kotlin_Function0 onRevertSelection, liblegado_shared_kref_kotlin_Function0 onMainAction, liblegado_shared_kref_kotlin_Function0 onSelectActions, liblegado_shared_kref_kotlin_Function2 onToggle, liblegado_shared_kref_kotlin_Function1 onOpenBook, liblegado_shared_kref_kotlin_Function1 onToggleDownload, liblegado_shared_kref_kotlin_Function1 isItemDownloading, liblegado_shared_kref_kotlin_Function1 onOriginText, liblegado_shared_kref_kotlin_Function1 onCacheInfo, liblegado_shared_kref_kotlin_Function1 onDeleteBook, liblegado_shared_kref_kotlin_Function1 onEditGroup, liblegado_shared_kref_kotlin_Function0 onDownloadAfter, liblegado_shared_kref_kotlin_Function0 onDownloadAll, liblegado_shared_kref_kotlin_Function0 onShowGroupManage, liblegado_shared_kref_kotlin_Function1 onSelectGroupFromMenu, liblegado_shared_kref_kotlin_Function0 onExportAllUseBookSource, liblegado_shared_kref_kotlin_Function0 onToggleEnableReplace, liblegado_shared_kref_kotlin_Function0 onToggleCustomExport, liblegado_shared_kref_kotlin_Function0 onToggleExportWebDav, liblegado_shared_kref_kotlin_Function0 onSelectExportFolderMenu, liblegado_shared_kref_kotlin_Function0 onShowExportConfig, liblegado_shared_kref_kotlin_Function0 onShowLog, liblegado_shared_kref_kotlin_Function1 onSetBookTypeFilter);
                     liblegado_shared_kref_kotlin_Function1 (*get_isItemDownloading)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function0 (*get_onBack)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function1 (*get_onCacheInfo)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
@@ -18637,7 +19062,6 @@ typedef struct {
                     liblegado_shared_kref_kotlin_Function0 (*get_onDownloadAll)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function1 (*get_onEditGroup)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function0 (*get_onExportAllUseBookSource)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
-                    liblegado_shared_kref_kotlin_Function1 (*get_onGroupName)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function0 (*get_onMainAction)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function2 (*get_onMove)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function1 (*get_onOpenBook)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
@@ -18666,20 +19090,19 @@ typedef struct {
                     liblegado_shared_kref_kotlin_Function1 (*component14)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function1 (*component15)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function1 (*component16)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
-                    liblegado_shared_kref_kotlin_Function1 (*component17)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
+                    liblegado_shared_kref_kotlin_Function0 (*component17)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function0 (*component18)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function0 (*component19)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function1 (*component2)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
-                    liblegado_shared_kref_kotlin_Function0 (*component20)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
-                    liblegado_shared_kref_kotlin_Function1 (*component21)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
+                    liblegado_shared_kref_kotlin_Function1 (*component20)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
+                    liblegado_shared_kref_kotlin_Function0 (*component21)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function0 (*component22)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function0 (*component23)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function0 (*component24)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function0 (*component25)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function0 (*component26)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function0 (*component27)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
-                    liblegado_shared_kref_kotlin_Function0 (*component28)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
-                    liblegado_shared_kref_kotlin_Function1 (*component29)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
+                    liblegado_shared_kref_kotlin_Function1 (*component28)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function2 (*component3)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function0 (*component4)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function1 (*component5)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
@@ -18687,7 +19110,7 @@ typedef struct {
                     liblegado_shared_kref_kotlin_Function0 (*component7)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function0 (*component8)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     liblegado_shared_kref_kotlin_Function2 (*component9)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
-                    liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks (*copy)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz, liblegado_shared_kref_kotlin_Function0 onBack, liblegado_shared_kref_kotlin_Function1 onQueryChange, liblegado_shared_kref_kotlin_Function2 onMove, liblegado_shared_kref_kotlin_Function0 onPersistOrder, liblegado_shared_kref_kotlin_Function1 onSelectAll, liblegado_shared_kref_kotlin_Function0 onRevertSelection, liblegado_shared_kref_kotlin_Function0 onMainAction, liblegado_shared_kref_kotlin_Function0 onSelectActions, liblegado_shared_kref_kotlin_Function2 onToggle, liblegado_shared_kref_kotlin_Function1 onOpenBook, liblegado_shared_kref_kotlin_Function1 onToggleDownload, liblegado_shared_kref_kotlin_Function1 isItemDownloading, liblegado_shared_kref_kotlin_Function1 onOriginText, liblegado_shared_kref_kotlin_Function1 onGroupName, liblegado_shared_kref_kotlin_Function1 onCacheInfo, liblegado_shared_kref_kotlin_Function1 onDeleteBook, liblegado_shared_kref_kotlin_Function1 onEditGroup, liblegado_shared_kref_kotlin_Function0 onDownloadAfter, liblegado_shared_kref_kotlin_Function0 onDownloadAll, liblegado_shared_kref_kotlin_Function0 onShowGroupManage, liblegado_shared_kref_kotlin_Function1 onSelectGroupFromMenu, liblegado_shared_kref_kotlin_Function0 onExportAllUseBookSource, liblegado_shared_kref_kotlin_Function0 onToggleEnableReplace, liblegado_shared_kref_kotlin_Function0 onToggleCustomExport, liblegado_shared_kref_kotlin_Function0 onToggleExportWebDav, liblegado_shared_kref_kotlin_Function0 onSelectExportFolderMenu, liblegado_shared_kref_kotlin_Function0 onShowExportConfig, liblegado_shared_kref_kotlin_Function0 onShowLog, liblegado_shared_kref_kotlin_Function1 onSetBookTypeFilter);
+                    liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks (*copy)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz, liblegado_shared_kref_kotlin_Function0 onBack, liblegado_shared_kref_kotlin_Function1 onQueryChange, liblegado_shared_kref_kotlin_Function2 onMove, liblegado_shared_kref_kotlin_Function0 onPersistOrder, liblegado_shared_kref_kotlin_Function1 onSelectAll, liblegado_shared_kref_kotlin_Function0 onRevertSelection, liblegado_shared_kref_kotlin_Function0 onMainAction, liblegado_shared_kref_kotlin_Function0 onSelectActions, liblegado_shared_kref_kotlin_Function2 onToggle, liblegado_shared_kref_kotlin_Function1 onOpenBook, liblegado_shared_kref_kotlin_Function1 onToggleDownload, liblegado_shared_kref_kotlin_Function1 isItemDownloading, liblegado_shared_kref_kotlin_Function1 onOriginText, liblegado_shared_kref_kotlin_Function1 onCacheInfo, liblegado_shared_kref_kotlin_Function1 onDeleteBook, liblegado_shared_kref_kotlin_Function1 onEditGroup, liblegado_shared_kref_kotlin_Function0 onDownloadAfter, liblegado_shared_kref_kotlin_Function0 onDownloadAll, liblegado_shared_kref_kotlin_Function0 onShowGroupManage, liblegado_shared_kref_kotlin_Function1 onSelectGroupFromMenu, liblegado_shared_kref_kotlin_Function0 onExportAllUseBookSource, liblegado_shared_kref_kotlin_Function0 onToggleEnableReplace, liblegado_shared_kref_kotlin_Function0 onToggleCustomExport, liblegado_shared_kref_kotlin_Function0 onToggleExportWebDav, liblegado_shared_kref_kotlin_Function0 onSelectExportFolderMenu, liblegado_shared_kref_kotlin_Function0 onShowExportConfig, liblegado_shared_kref_kotlin_Function0 onShowLog, liblegado_shared_kref_kotlin_Function1 onSetBookTypeFilter);
                     liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz, liblegado_shared_kref_kotlin_Any other);
                     liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
                     const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageCallbacks thiz);
@@ -18695,6 +19118,7 @@ typedef struct {
                   struct {
                     liblegado_shared_KType* (*_type)(void);
                     liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageScreenModel (*BookshelfManageScreenModel)(const char* screenLabel, const char* noGroupLabel, liblegado_shared_kref_kotlin_coroutines_SuspendFunction1 resolveBookSort, liblegado_shared_kref_kotlin_Function1 loadCacheFiles);
+                    liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_selected)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageScreenModel thiz);
                     liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_state)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageScreenModel thiz);
                     void (*dispatch)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageScreenModel thiz, liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiEvent event);
                     const char* (*groupName)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageScreenModel thiz, liblegado_shared_KLong groupId);
@@ -18703,7 +19127,7 @@ typedef struct {
                   } BookshelfManageScreenModel;
                   struct {
                     liblegado_shared_KType* (*_type)(void);
-                    liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState (*BookshelfManageUiState)(liblegado_shared_KLong groupId, const char* groupName, liblegado_shared_kref_kotlin_collections_List books, liblegado_shared_kref_kotlin_collections_Set selected, liblegado_shared_kref_kotlin_collections_List groups, const char* searchKey, const char* searchHint, liblegado_shared_KInt bookshelfTypeFilter, liblegado_shared_KBoolean canDrag);
+                    liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState (*BookshelfManageUiState)(liblegado_shared_KLong groupId, const char* groupName, liblegado_shared_kref_kotlin_collections_List books, liblegado_shared_kref_kotlin_collections_List groups, const char* searchKey, const char* searchHint, liblegado_shared_KInt bookshelfTypeFilter, liblegado_shared_KBoolean canDrag);
                     liblegado_shared_kref_kotlin_collections_List (*get_books)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
                     liblegado_shared_KInt (*get_bookshelfTypeFilter)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
                     liblegado_shared_KBoolean (*get_canDrag)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
@@ -18712,17 +19136,15 @@ typedef struct {
                     liblegado_shared_kref_kotlin_collections_List (*get_groups)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
                     const char* (*get_searchHint)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
                     const char* (*get_searchKey)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
-                    liblegado_shared_kref_kotlin_collections_Set (*get_selected)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
                     liblegado_shared_KLong (*component1)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
                     const char* (*component2)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
                     liblegado_shared_kref_kotlin_collections_List (*component3)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
-                    liblegado_shared_kref_kotlin_collections_Set (*component4)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
-                    liblegado_shared_kref_kotlin_collections_List (*component5)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
+                    liblegado_shared_kref_kotlin_collections_List (*component4)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
+                    const char* (*component5)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
                     const char* (*component6)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
-                    const char* (*component7)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
-                    liblegado_shared_KInt (*component8)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
-                    liblegado_shared_KBoolean (*component9)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
-                    liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState (*copy)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz, liblegado_shared_KLong groupId, const char* groupName, liblegado_shared_kref_kotlin_collections_List books, liblegado_shared_kref_kotlin_collections_Set selected, liblegado_shared_kref_kotlin_collections_List groups, const char* searchKey, const char* searchHint, liblegado_shared_KInt bookshelfTypeFilter, liblegado_shared_KBoolean canDrag);
+                    liblegado_shared_KInt (*component7)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
+                    liblegado_shared_KBoolean (*component8)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
+                    liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState (*copy)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz, liblegado_shared_KLong groupId, const char* groupName, liblegado_shared_kref_kotlin_collections_List books, liblegado_shared_kref_kotlin_collections_List groups, const char* searchKey, const char* searchHint, liblegado_shared_KInt bookshelfTypeFilter, liblegado_shared_KBoolean canDrag);
                     liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz, liblegado_shared_kref_kotlin_Any other);
                     liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
                     const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_book_manage_BookshelfManageUiState thiz);
@@ -19212,6 +19634,7 @@ typedef struct {
                     void (*onCleared)(liblegado_shared_kref_io_legado_app_ui_book_manga_MangaReaderScreenModel thiz);
                     void (*onEnter)(liblegado_shared_kref_io_legado_app_ui_book_manga_MangaReaderScreenModel thiz);
                     void (*onLeave)(liblegado_shared_kref_io_legado_app_ui_book_manga_MangaReaderScreenModel thiz);
+                    void (*onPreRemoved)(liblegado_shared_kref_io_legado_app_ui_book_manga_MangaReaderScreenModel thiz);
                     void (*refreshBattery)(liblegado_shared_kref_io_legado_app_ui_book_manga_MangaReaderScreenModel thiz);
                     void (*seekToPage)(liblegado_shared_kref_io_legado_app_ui_book_manga_MangaReaderScreenModel thiz, liblegado_shared_KInt index);
                     void (*setAutoPageSpeed)(liblegado_shared_kref_io_legado_app_ui_book_manga_MangaReaderScreenModel thiz, liblegado_shared_KInt speed);
@@ -19655,6 +20078,8 @@ typedef struct {
                         void (*set_autoPager)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz, liblegado_shared_kref_io_legado_app_ui_book_read_page_AutoPagerCompose set);
                         liblegado_shared_KInt (*get_autoScrollHeight)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz);
                         liblegado_shared_KFloat (*get_currentOffset)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz);
+                        liblegado_shared_KBoolean (*get_isAbortAnim)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz);
+                        void (*set_isAbortAnim)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz, liblegado_shared_KBoolean set);
                         liblegado_shared_KBoolean (*get_isCancel)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz);
                         void (*set_isCancel)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz, liblegado_shared_KBoolean set);
                         liblegado_shared_KBoolean (*get_isMoved)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz);
@@ -19665,6 +20090,8 @@ typedef struct {
                         void (*set_isStarted)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz, liblegado_shared_KBoolean set);
                         liblegado_shared_KFloat (*get_lastX)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz);
                         void (*set_lastX)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz, liblegado_shared_KFloat set);
+                        liblegado_shared_KFloat (*get_lastY)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz);
+                        void (*set_lastY)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz, liblegado_shared_KFloat set);
                         liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_PageDirectionShared (*get_mDirection)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz);
                         void (*set_mDirection)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz, liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_PageDirectionShared value);
                         liblegado_shared_KBoolean (*get_noNext)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz);
@@ -19689,34 +20116,41 @@ typedef struct {
                         liblegado_shared_KBoolean (*hasNext)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz);
                         liblegado_shared_KBoolean (*hasPrev)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz);
                         void (*keyTurnPage)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz, liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_PageDirectionShared direction);
+                        void (*onAnimOffsetChanged)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz, liblegado_shared_KFloat offset);
                         liblegado_shared_KBoolean (*onAutoScrollBy)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz, liblegado_shared_KFloat deltaPx);
                         void (*onAutoScrollEnd)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz);
                         void (*onDestroy)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz);
+                        void (*onTouchUp)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz, liblegado_shared_KFloat x, liblegado_shared_KFloat y, liblegado_shared_KFloat velocityY);
                         void (*resetState)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz);
                         void (*setDirection)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz, liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_PageDirectionShared direction);
+                        void (*setStartPoint)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz, liblegado_shared_KFloat x, liblegado_shared_KFloat y);
                         void (*setViewSize)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz, liblegado_shared_KInt width, liblegado_shared_KInt height);
                         void (*drawShadow)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_PageDelegateCompose thiz, liblegado_shared_kref_androidx_compose_ui_graphics_drawscope_DrawScope thiz1, liblegado_shared_KFloat currentOffset, liblegado_shared_KInt viewWidth);
                       } PageDelegateCompose;
                       struct {
-                        struct {
-                          liblegado_shared_KType* (*_type)(void);
-                          liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose_Companion (*_instance)();
-                        } Companion;
                         liblegado_shared_KType* (*_type)(void);
                         liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose (*ScrollPageDelegateCompose)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared viewModel, liblegado_shared_kref_kotlinx_coroutines_CoroutineScope scope, liblegado_shared_KInt animationSpeed);
                         liblegado_shared_KFloat (*get_contentOffset)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz);
-                        liblegado_shared_KFloat (*get_nextContentOffset)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz);
+                        liblegado_shared_KInt (*get_renderVersion)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz);
                         void (*abortAnim)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz);
+                        liblegado_shared_KBoolean (*hasNext)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz);
+                        liblegado_shared_KBoolean (*hasPrev)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz);
                         void (*nextPageByAnim)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz, liblegado_shared_KInt animDurationMs);
+                        void (*onAnimOffsetChanged)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz, liblegado_shared_KFloat offset);
                         void (*onAnimStart)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz, liblegado_shared_KInt animationSpeed);
                         void (*onAnimStop)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz);
                         liblegado_shared_KBoolean (*onAutoScrollBy)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz, liblegado_shared_KFloat deltaPx);
                         void (*onDown)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz, liblegado_shared_KFloat x, liblegado_shared_KFloat y);
+                        void (*onExternalScrollOffset)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz, liblegado_shared_KInt offset);
                         void (*onScroll)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz, liblegado_shared_KFloat x, liblegado_shared_KFloat y);
                         liblegado_shared_KBoolean (*onTap)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz, liblegado_shared_KFloat x, liblegado_shared_KFloat y);
+                        void (*onTouchUp)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz, liblegado_shared_KFloat x, liblegado_shared_KFloat y, liblegado_shared_KFloat velocityY);
                         void (*prevPageByAnim)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz, liblegado_shared_KInt animDurationMs);
+                        void (*provideDensity)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz, liblegado_shared_KFloat density);
+                        liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextPage (*renderPage)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz, liblegado_shared_KInt index);
                         liblegado_shared_KBoolean (*scrollBy)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz, liblegado_shared_KFloat deltaPx);
                         liblegado_shared_KBoolean (*scrollByAnimated)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz, liblegado_shared_KFloat deltaPx, liblegado_shared_KInt animDurationMs);
+                        void (*syncRenderPages)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz);
                         void (*drawShadow)(liblegado_shared_kref_io_legado_app_ui_book_read_page_delegate_ScrollPageDelegateCompose thiz, liblegado_shared_kref_androidx_compose_ui_graphics_drawscope_DrawScope thiz1, liblegado_shared_KFloat currentOffset, liblegado_shared_KInt viewWidth);
                       } ScrollPageDelegateCompose;
                       struct {
@@ -19874,6 +20308,11 @@ typedef struct {
                         liblegado_shared_KBoolean (*isLastIndex)(liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextChapterShared thiz, liblegado_shared_KInt index);
                       } TextChapterShared;
                       struct {
+                        liblegado_shared_KType* (*_type)(void);
+                        void (*invalidate)(liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextLayoutCacheHandle thiz);
+                        void (*recycle)(liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextLayoutCacheHandle thiz);
+                      } TextLayoutCacheHandle;
+                      struct {
                         struct {
                           liblegado_shared_KType* (*_type)(void);
                           liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextLine_Companion (*_instance)();
@@ -20016,6 +20455,8 @@ typedef struct {
                         void (*set_textBottomJustify)(liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextPage thiz, liblegado_shared_KBoolean set);
                         liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextChapterRef (*get_textChapter)(liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextPage thiz);
                         void (*set_textChapter)(liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextPage thiz, liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextChapterRef set);
+                        liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextLayoutCacheHandle (*get_textLayoutCache)(liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextPage thiz);
+                        void (*set_textLayoutCache)(liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextPage thiz, liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextLayoutCacheHandle set);
                         const char* (*get_title)(liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextPage thiz);
                         void (*set_title)(liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextPage thiz, const char* set);
                         liblegado_shared_KInt (*get_visibleBottom)(liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextPage thiz);
@@ -20289,16 +20730,24 @@ typedef struct {
                     struct {
                       liblegado_shared_KType* (*_type)(void);
                       liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState (*PageSelectionState)();
+                      liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextPage (*get_currentPage)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz);
                       liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelPos (*get_end)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz);
                       liblegado_shared_KBoolean (*get_isActive)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz);
+                      liblegado_shared_KBoolean (*get_reverseEndCursor)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz);
+                      liblegado_shared_KBoolean (*get_reverseStartCursor)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz);
                       liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelPos (*get_start)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz);
                       liblegado_shared_KInt (*get_tick)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz);
                       void (*cancel)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz);
-                      liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_column_BaseColumn (*columnAt)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz, liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextPage page, liblegado_shared_KFloat x, liblegado_shared_KFloat y, liblegado_shared_KFloat contentOffsetY);
+                      liblegado_shared_kref_androidx_compose_ui_geometry_Offset (*endHandleOffset)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz);
                       void (*extendTo)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz, liblegado_shared_KFloat x, liblegado_shared_KFloat y, liblegado_shared_KFloat contentOffsetY, liblegado_shared_KFloat viewWidth);
                       liblegado_shared_KBoolean (*longPressStart)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz, liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextPage page, liblegado_shared_KFloat x, liblegado_shared_KFloat y, liblegado_shared_KFloat contentOffsetY, liblegado_shared_KFloat viewWidth);
+                      void (*moveEndTo)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz, liblegado_shared_KFloat x, liblegado_shared_KFloat y, liblegado_shared_KFloat handleWidthPx, liblegado_shared_KFloat contentOffsetY, liblegado_shared_KFloat viewWidth);
+                      void (*moveStartTo)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz, liblegado_shared_KFloat x, liblegado_shared_KFloat y, liblegado_shared_KFloat handleWidthPx, liblegado_shared_KFloat contentOffsetY, liblegado_shared_KFloat viewWidth);
+                      void (*resetReverseCursor)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz);
+                      void (*selectRange)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz, liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_TextPage page, liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelPos startPos, liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelPos endPos, liblegado_shared_KBoolean markSearchResult);
                       const char* (*selectedText)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz);
                       liblegado_shared_kref_androidx_compose_ui_geometry_Offset (*selectionAnchor)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz);
+                      liblegado_shared_kref_androidx_compose_ui_geometry_Offset (*startHandleOffset)(liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState thiz);
                     } PageSelectionState;
                     struct {
                       liblegado_shared_KType* (*_type)(void);
@@ -20347,7 +20796,26 @@ typedef struct {
                       liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_book_read_page_ReaderDrawStyle thiz);
                       const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_book_read_page_ReaderDrawStyle thiz);
                     } ReaderDrawStyle;
+                    struct {
+                      struct {
+                        liblegado_shared_KType* (*_type)(void);
+                        liblegado_shared_kref_io_legado_app_ui_book_read_page_SplineFling_Companion (*_instance)();
+                        liblegado_shared_KFloat (*get_DEFAULT_FRICTION)(liblegado_shared_kref_io_legado_app_ui_book_read_page_SplineFling_Companion thiz);
+                        liblegado_shared_KFloat (*minimumFlingVelocity)(liblegado_shared_kref_io_legado_app_ui_book_read_page_SplineFling_Companion thiz, liblegado_shared_KFloat density);
+                      } Companion;
+                      liblegado_shared_KType* (*_type)(void);
+                      liblegado_shared_kref_io_legado_app_ui_book_read_page_SplineFling (*SplineFling)(liblegado_shared_KFloat initialVelocity, liblegado_shared_KFloat density, liblegado_shared_KFloat friction);
+                      liblegado_shared_KInt (*get_durationMs)(liblegado_shared_kref_io_legado_app_ui_book_read_page_SplineFling thiz);
+                      liblegado_shared_KFloat (*get_friction)(liblegado_shared_kref_io_legado_app_ui_book_read_page_SplineFling thiz);
+                      liblegado_shared_KFloat (*get_initialVelocity)(liblegado_shared_kref_io_legado_app_ui_book_read_page_SplineFling thiz);
+                      liblegado_shared_KBoolean (*get_isStarted)(liblegado_shared_kref_io_legado_app_ui_book_read_page_SplineFling thiz);
+                      liblegado_shared_KFloat (*get_totalDistance)(liblegado_shared_kref_io_legado_app_ui_book_read_page_SplineFling thiz);
+                      liblegado_shared_KBoolean (*isFinished)(liblegado_shared_kref_io_legado_app_ui_book_read_page_SplineFling thiz, liblegado_shared_KLong elapsedMs);
+                      liblegado_shared_KFloat (*positionAt)(liblegado_shared_kref_io_legado_app_ui_book_read_page_SplineFling thiz, liblegado_shared_KLong elapsedMs);
+                      liblegado_shared_KFloat (*velocityAt)(liblegado_shared_kref_io_legado_app_ui_book_read_page_SplineFling thiz, liblegado_shared_KLong elapsedMs);
+                    } SplineFling;
                     liblegado_shared_kref_androidx_compose_ui_text_font_FontFamily (*loadReaderFontFamily)(const char* path);
+                    liblegado_shared_kref_androidx_compose_runtime_ProvidableCompositionLocal (*get_LocalReaderTextMeasurer)();
                     liblegado_shared_KInt (*get_READ_TIP_TEXT_SIZE_SP)();
                     liblegado_shared_KBoolean (*headerTipVisible)(liblegado_shared_KInt headerMode, liblegado_shared_KBoolean hideStatusBar);
                   } page;
@@ -20412,7 +20880,6 @@ typedef struct {
                     } ReviewListScreenModel;
                     struct {
                       liblegado_shared_KType* (*_type)(void);
-                      void (*onBack)(liblegado_shared_kref_io_legado_app_ui_book_read_review_ReviewPostUiActions thiz);
                       void (*onContentChange)(liblegado_shared_kref_io_legado_app_ui_book_read_review_ReviewPostUiActions thiz, const char* content);
                       void (*onSubmit)(liblegado_shared_kref_io_legado_app_ui_book_read_review_ReviewPostUiActions thiz);
                     } ReviewPostUiActions;
@@ -20540,6 +21007,7 @@ typedef struct {
                     liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_isInitFinishFlow)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz);
                     liblegado_shared_KBoolean (*get_isScrollPageAnim)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz);
                     liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_layoutConfig)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz);
+                    liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_nextPlusTextPage)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz);
                     liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_nextTextPage)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz);
                     liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_pageContentVersion)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz);
                     liblegado_shared_kref_io_legado_app_ui_book_read_page_PageDelegateShared (*get_pageDelegate)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz);
@@ -20564,11 +21032,13 @@ typedef struct {
                     void (*cancelPreDownloadTask)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz);
                     void (*clearAloudSpanForCurrentPage)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz);
                     void (*confirmSyncProgress)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz, liblegado_shared_kref_io_legado_app_data_entities_BookProgress progress);
+                    liblegado_shared_KBoolean (*consumeScrollCrossingPending)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz);
                     void (*disableSource)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz);
                     void (*dismissSyncProgress)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz);
                     liblegado_shared_kref_kotlin_Pair (*getReadAloudPos)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz);
-                    void (*loadChapter)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz, liblegado_shared_KInt index);
+                    void (*loadChapter)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz, liblegado_shared_KInt index, liblegado_shared_KBoolean keepScrollOffset);
                     void (*loadChapterList)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz, liblegado_shared_kref_io_legado_app_data_entities_Book book);
+                    void (*markScrollCrossingPending)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz);
                     liblegado_shared_KBoolean (*moveToNextChapter)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz, liblegado_shared_KBoolean resetOffset);
                     liblegado_shared_KBoolean (*moveToPrevChapter)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz, liblegado_shared_KBoolean toLast, liblegado_shared_KBoolean resetOffset);
                     liblegado_shared_KBoolean (*nextPage)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared thiz);
@@ -20667,7 +21137,6 @@ typedef struct {
                     liblegado_shared_kref_io_legado_app_ui_book_read_ReadPageKeyEventHandler (*ReadPageKeyEventHandler)(liblegado_shared_kref_kotlin_Function0 menuLayoutIsVisible, liblegado_shared_kref_kotlin_Function1 isPrevKey, liblegado_shared_kref_kotlin_Function1 isNextKey, liblegado_shared_kref_kotlin_Function0 onPrevPage, liblegado_shared_kref_kotlin_Function0 onNextPage, liblegado_shared_kref_kotlin_Function0 onPrevChapter, liblegado_shared_kref_kotlin_Function0 onNextChapter, liblegado_shared_kref_io_legado_app_ui_book_read_ReadKeyPageDebouncer keyPageDebouncer);
                     liblegado_shared_KBoolean (*onKeyDown)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadPageKeyEventHandler thiz, liblegado_shared_KInt keyCode, liblegado_shared_KInt repeatCount);
                     liblegado_shared_KBoolean (*onKeyUp)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadPageKeyEventHandler thiz, liblegado_shared_KInt keyCode);
-                    void (*onMouseWheel)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadPageKeyEventHandler thiz, liblegado_shared_KBoolean down, liblegado_shared_KBoolean mouseWheelPageEnabled);
                   } ReadPageKeyEventHandler;
                   struct {
                     liblegado_shared_KType* (*_type)(void);
@@ -20745,6 +21214,7 @@ typedef struct {
                     liblegado_shared_kref_io_legado_app_ui_book_read_OhosReaderPlatformProvider (*_instance)();
                     void (*autoPageStop)(liblegado_shared_kref_io_legado_app_ui_book_read_OhosReaderPlatformProvider thiz, liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel screenModel);
                     liblegado_shared_kref_io_legado_app_ui_book_read_ReadMenuController (*createMenuController)(liblegado_shared_kref_io_legado_app_ui_book_read_OhosReaderPlatformProvider thiz, liblegado_shared_kref_io_legado_app_ui_root_AppNavigator navigator, liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel screenModel);
+                    void (*dismissTextActionMenu)(liblegado_shared_kref_io_legado_app_ui_book_read_OhosReaderPlatformProvider thiz, liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel screenModel);
                     liblegado_shared_KInt (*getBatteryLevel)(liblegado_shared_kref_io_legado_app_ui_book_read_OhosReaderPlatformProvider thiz);
                     void (*onExit)(liblegado_shared_kref_io_legado_app_ui_book_read_OhosReaderPlatformProvider thiz, liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel screenModel);
                     void (*onImageLongPress)(liblegado_shared_kref_io_legado_app_ui_book_read_OhosReaderPlatformProvider thiz, liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel screenModel, const char* src, liblegado_shared_KFloat x, liblegado_shared_KFloat y);
@@ -20972,16 +21442,20 @@ typedef struct {
                   } ReadMenuColors;
                   struct {
                     liblegado_shared_KType* (*_type)(void);
-                    liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState (*ReaderUiState)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared viewModel, liblegado_shared_kref_io_legado_app_ui_book_read_ReadMenuState menuState, liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow batteryLevel, liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow clockText);
+                    liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState (*ReaderUiState)(liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared viewModel, liblegado_shared_kref_io_legado_app_ui_book_read_ReadMenuState menuState, liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuState searchMenuState, liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState selection, liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow batteryLevel, liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow clockText);
                     liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_batteryLevel)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState thiz);
                     liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_clockText)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState thiz);
                     liblegado_shared_kref_io_legado_app_ui_book_read_ReadMenuState (*get_menuState)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState thiz);
+                    liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuState (*get_searchMenuState)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState thiz);
+                    liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState (*get_selection)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState thiz);
                     liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared (*get_viewModel)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState thiz);
                     liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared (*component1)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState thiz);
                     liblegado_shared_kref_io_legado_app_ui_book_read_ReadMenuState (*component2)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState thiz);
-                    liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*component3)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState thiz);
-                    liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*component4)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState thiz);
-                    liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState (*copy)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState thiz, liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared viewModel, liblegado_shared_kref_io_legado_app_ui_book_read_ReadMenuState menuState, liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow batteryLevel, liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow clockText);
+                    liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuState (*component3)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState thiz);
+                    liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState (*component4)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState thiz);
+                    liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*component5)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState thiz);
+                    liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*component6)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState thiz);
+                    liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState (*copy)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState thiz, liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared viewModel, liblegado_shared_kref_io_legado_app_ui_book_read_ReadMenuState menuState, liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuState searchMenuState, liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState selection, liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow batteryLevel, liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow clockText);
                     liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState thiz, liblegado_shared_kref_kotlin_Any other);
                     liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState thiz);
                     const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiState thiz);
@@ -20989,6 +21463,7 @@ typedef struct {
                   struct {
                     liblegado_shared_KType* (*_type)(void);
                     void (*onBack)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiActions thiz);
+                    void (*onDismissTextActionMenu)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiActions thiz);
                     void (*onImageLongPress)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiActions thiz, const char* src, liblegado_shared_KFloat x, liblegado_shared_KFloat y);
                     void (*onPageAction)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiActions thiz, liblegado_shared_KInt action);
                     void (*onPageClick)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderUiActions thiz, liblegado_shared_kref_io_legado_app_ui_book_read_page_entities_column_TextColumn column);
@@ -20997,9 +21472,9 @@ typedef struct {
                   } ReaderUiActions;
                   struct {
                     liblegado_shared_KType* (*_type)(void);
-                    liblegado_shared_KBoolean (*get_volumeKeyPage)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderPlatformProvider thiz);
                     void (*autoPageStop)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderPlatformProvider thiz, liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel screenModel);
                     liblegado_shared_kref_io_legado_app_ui_book_read_ReadMenuController (*createMenuController)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderPlatformProvider thiz, liblegado_shared_kref_io_legado_app_ui_root_AppNavigator navigator, liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel screenModel);
+                    void (*dismissTextActionMenu)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderPlatformProvider thiz, liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel screenModel);
                     liblegado_shared_KInt (*getBatteryLevel)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderPlatformProvider thiz);
                     void (*onEnter)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderPlatformProvider thiz, liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel screenModel);
                     void (*onExit)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderPlatformProvider thiz, liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel screenModel);
@@ -21047,35 +21522,54 @@ typedef struct {
                   } ReaderPlatformProviders;
                   struct {
                     liblegado_shared_KType* (*_type)(void);
-                    liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel (*ReaderScreenModel)(liblegado_shared_kref_kotlin_Function1 menuControllerFactory, liblegado_shared_kref_kotlin_Function0 getBatteryLevel, liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared_LayoutConfig layoutConfig);
+                    liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel (*ReaderScreenModel)(liblegado_shared_kref_kotlin_Function1 menuControllerFactory, liblegado_shared_kref_kotlin_Function0 getBatteryLevel, liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared_LayoutConfig layoutConfig, liblegado_shared_kref_kotlin_Function3 onOpenSearch);
                     liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_batteryLevel)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_clockText)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
+                    liblegado_shared_kref_kotlin_Boolean (*get_confirmRestoreProcess)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
+                    void (*set_confirmRestoreProcess)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz, liblegado_shared_kref_kotlin_Boolean set);
                     liblegado_shared_kref_io_legado_app_data_entities_Book (*get_currentBook)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     liblegado_shared_kref_io_legado_app_data_entities_BookChapter (*get_currentChapter)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
-                    const char* (*get_currentChapterText)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_dialogEvent)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
+                    liblegado_shared_KBoolean (*get_isSelectingSearchResult)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
+                    void (*set_isSelectingSearchResult)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz, liblegado_shared_KBoolean value);
+                    liblegado_shared_KBoolean (*get_isShowingSearchResult)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
+                    void (*set_isShowingSearchResult)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz, liblegado_shared_KBoolean set);
+                    liblegado_shared_kref_io_legado_app_data_entities_BookProgress (*get_lastBookProgress)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     liblegado_shared_kref_io_legado_app_ui_book_read_ReadMenuController (*get_menuController)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     liblegado_shared_kref_io_legado_app_ui_book_read_ReadMenuState (*get_menuState)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     const char* (*get_searchContentQuery)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     void (*set_searchContentQuery)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz, const char* set);
+                    liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl (*get_searchMenuState)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     liblegado_shared_KInt (*get_searchResultIndex)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     void (*set_searchResultIndex)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz, liblegado_shared_KInt set);
                     liblegado_shared_kref_kotlin_collections_List (*get_searchResultList)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     void (*set_searchResultList)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz, liblegado_shared_kref_kotlin_collections_List set);
+                    liblegado_shared_kref_io_legado_app_ui_book_read_page_PageSelectionState (*get_selection)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     liblegado_shared_kref_io_legado_app_ui_book_read_ReadBookViewModelShared (*get_viewModel)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     void (*changeTo)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz, liblegado_shared_kref_io_legado_app_data_entities_BookSource source, liblegado_shared_kref_io_legado_app_data_entities_Book newBook, liblegado_shared_kref_kotlin_collections_List toc);
                     void (*clearDialogEvent)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
+                    void (*clearLastBookProgress)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
+                    void (*clearSearchResult)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
+                    void (*exitSearchMenu)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     void (*initBook)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz, liblegado_shared_kref_io_legado_app_data_entities_Book book, liblegado_shared_kref_kotlin_Int chapterIndex, liblegado_shared_kref_kotlin_Int chapterPos);
                     void (*onCleared)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     void (*onPause)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
+                    void (*onPreRemoved)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     void (*onResume)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
+                    void (*onSearchContentResult)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz, liblegado_shared_kref_io_legado_app_ui_book_searchContent_SearchResult searchResult);
                     void (*openChapter)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz, liblegado_shared_KInt index, liblegado_shared_kref_kotlin_Int pos);
+                    void (*openSearchActivity)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz, const char* searchWord);
                     void (*payChapter)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz, liblegado_shared_kref_kotlin_Function1 onOpenUrl);
                     void (*postDialogEvent)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz, liblegado_shared_kref_io_legado_app_ui_book_read_ReaderDialogEvent event);
                     void (*refreshBattery)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
+                    void (*restoreLastBookProcess)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
+                    void (*restoreLastBookProgress)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
+                    void (*saveCurrentBookProgress)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
+                    void (*showActionMenu)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     void (*showBookVariableDialog)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     void (*showMenu)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     void (*showSourceVariableDialog)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
+                    void (*skipToSearch)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz, liblegado_shared_kref_io_legado_app_ui_book_searchContent_SearchResult searchResult);
                     liblegado_shared_KBoolean (*sourceLoginVisible)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     liblegado_shared_KBoolean (*sourcePayVisible)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
                     void (*updateSourceMenu)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel thiz);
@@ -21147,6 +21641,13 @@ typedef struct {
                       liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderDialogEvent_ChapterPay thiz);
                       const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderDialogEvent_ChapterPay thiz);
                     } ChapterPay;
+                    struct {
+                      liblegado_shared_KType* (*_type)(void);
+                      liblegado_shared_kref_io_legado_app_ui_book_read_ReaderDialogEvent_RestoreProcessConfirm (*_instance)();
+                      liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderDialogEvent_RestoreProcessConfirm thiz, liblegado_shared_kref_kotlin_Any other);
+                      liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderDialogEvent_RestoreProcessConfirm thiz);
+                      const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderDialogEvent_RestoreProcessConfirm thiz);
+                    } RestoreProcessConfirm;
                     struct {
                       liblegado_shared_KType* (*_type)(void);
                       liblegado_shared_kref_io_legado_app_ui_book_read_ReaderDialogEvent_AddToShelfConfirm (*_instance)();
@@ -21221,6 +21722,31 @@ typedef struct {
                     void (*onBgClick)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuState thiz);
                     void (*onTransitionIdle)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuState thiz, liblegado_shared_KBoolean shown);
                   } SearchMenuState;
+                  struct {
+                    liblegado_shared_KType* (*_type)(void);
+                    liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl (*SearchMenuStateImpl)(liblegado_shared_kref_io_legado_app_ui_book_read_ReaderScreenModel model);
+                    liblegado_shared_KBoolean (*get_bgVisible)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz);
+                    void (*set_bgVisible)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz, liblegado_shared_KBoolean set);
+                    liblegado_shared_kref_androidx_compose_animation_core_MutableTransitionState (*get_bottomVisibleState)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz);
+                    liblegado_shared_KBoolean (*get_fabsVisible)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz);
+                    void (*set_fabsVisible)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz, liblegado_shared_KBoolean set);
+                    liblegado_shared_KBoolean (*get_rootVisible)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz);
+                    void (*set_rootVisible)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz, liblegado_shared_KBoolean set);
+                    const char* (*get_searchInfo)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz);
+                    void (*set_searchInfo)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz, const char* set);
+                    void (*clickExit)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz);
+                    void (*clickMainMenu)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz);
+                    void (*clickResults)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz);
+                    void (*hideRoot)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz);
+                    void (*navigate)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz, liblegado_shared_KInt delta);
+                    void (*onBgClick)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz);
+                    void (*onTransitionIdle)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz, liblegado_shared_KBoolean shown);
+                    void (*runMenuIn)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz);
+                    void (*runMenuOut)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz, liblegado_shared_kref_kotlin_Function0 onMenuOutEnd);
+                    void (*upSearchResultList)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz, liblegado_shared_kref_kotlin_collections_List results);
+                    void (*updateSearchInfo)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz);
+                    void (*updateSearchResultIndex)(liblegado_shared_kref_io_legado_app_ui_book_read_SearchMenuStateImpl thiz, liblegado_shared_KInt index);
+                  } SearchMenuStateImpl;
                   struct {
                     liblegado_shared_KType* (*_type)(void);
                     liblegado_shared_kref_io_legado_app_ui_book_read_SharedUiReviewPlatform (*_instance)();
@@ -22421,6 +22947,14 @@ typedef struct {
                     } DismissAppLogDialog;
                     liblegado_shared_KType* (*_type)(void);
                   } LoginUiEvent;
+                  struct {
+                    liblegado_shared_KType* (*_type)(void);
+                    liblegado_shared_kref_io_legado_app_ui_book_source_SourceLoginFormState (*SourceLoginFormState)();
+                    liblegado_shared_kref_androidx_compose_runtime_snapshots_SnapshotStateMap (*get_loginData)(liblegado_shared_kref_io_legado_app_ui_book_source_SourceLoginFormState thiz);
+                    liblegado_shared_kref_kotlin_collections_List (*get_loginUi)(liblegado_shared_kref_io_legado_app_ui_book_source_SourceLoginFormState thiz);
+                    void (*set_loginUi)(liblegado_shared_kref_io_legado_app_ui_book_source_SourceLoginFormState thiz, liblegado_shared_kref_kotlin_collections_List set);
+                    liblegado_shared_kref_androidx_compose_runtime_snapshots_SnapshotStateList (*get_rows)(liblegado_shared_kref_io_legado_app_ui_book_source_SourceLoginFormState thiz);
+                  } SourceLoginFormState;
                 } source;
                 struct {
                   struct {
@@ -22979,6 +23513,7 @@ typedef struct {
                     liblegado_shared_KType* (*_type)(void);
                     liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayScreenModel (*VideoPlayScreenModel)(liblegado_shared_kref_io_legado_app_ui_compose_platform_PreferenceStoreProvider prefStore);
                     liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayerController (*get_controller)(liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayScreenModel thiz);
+                    liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_gestureText)(liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayScreenModel thiz);
                     liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayPlatformProvider (*get_platform)(liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayScreenModel thiz);
                     liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayViewModelShared (*get_shared)(liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayScreenModel thiz);
                     liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_state)(liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayScreenModel thiz);
@@ -22989,11 +23524,13 @@ typedef struct {
                     void (*onCopyPlayUrl)(liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayScreenModel thiz);
                     void (*onEditSource)(liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayScreenModel thiz);
                     void (*onExit)(liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayScreenModel thiz);
+                    void (*onGestureText)(liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayScreenModel thiz, const char* text);
                     void (*onNextChapter)(liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayScreenModel thiz);
                     void (*onOpenChapter)(liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayScreenModel thiz, liblegado_shared_KInt index);
                     void (*onOpenReview)(liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayScreenModel thiz);
                     void (*onPlayPause)(liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayScreenModel thiz);
                     void (*onPlayerState)(liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayScreenModel thiz, liblegado_shared_kref_kotlin_Boolean isPlaying, liblegado_shared_kref_kotlin_Boolean playWhenReady, liblegado_shared_kref_kotlin_Int playbackState, liblegado_shared_kref_kotlin_Float playbackSpeed);
+                    void (*onPreRemoved)(liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayScreenModel thiz);
                     void (*onPrevChapter)(liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayScreenModel thiz);
                     void (*onRefreshChapter)(liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayScreenModel thiz);
                     void (*onSeekBack)(liblegado_shared_kref_io_legado_app_ui_book_video_VideoPlayScreenModel thiz);
@@ -23392,6 +23929,7 @@ typedef struct {
                   liblegado_shared_KType* (*_type)(void);
                   liblegado_shared_KBoolean (*canGoBack)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewHost thiz);
                   void (*evaluateJavascript)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewHost thiz, const char* script, liblegado_shared_kref_kotlin_Function1 onResult);
+                  void (*exitFullScreen)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewHost thiz);
                   const char* (*getUrl)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewHost thiz);
                   void (*goBack)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewHost thiz);
                   void (*reload)(liblegado_shared_kref_io_legado_app_ui_browser_WebViewHost thiz);
@@ -23436,7 +23974,17 @@ typedef struct {
                   struct {
                     struct {
                       liblegado_shared_KType* (*_type)(void);
+                      liblegado_shared_kref_io_legado_app_ui_compose_component_code_CodeEditorSearchTarget (*CodeEditorSearchTarget)(liblegado_shared_kref_io_legado_app_ui_compose_component_code_CodeEditorState editor, liblegado_shared_kref_io_legado_app_ui_compose_component_code_CodeSearchHighlightState searchHighlight, liblegado_shared_kref_kotlin_Function0 onClearFocus);
+                      void (*clearFocus)(liblegado_shared_kref_io_legado_app_ui_compose_component_code_CodeEditorSearchTarget thiz);
+                      void (*find)(liblegado_shared_kref_io_legado_app_ui_compose_component_code_CodeEditorSearchTarget thiz, const char* keyword, liblegado_shared_KBoolean useRegex, liblegado_shared_KBoolean matchCase, liblegado_shared_KBoolean wholeWord, liblegado_shared_kref_kotlin_Boolean forward);
+                      void (*replace)(liblegado_shared_kref_io_legado_app_ui_compose_component_code_CodeEditorSearchTarget thiz, const char* keyword, liblegado_shared_KBoolean useRegex, liblegado_shared_KBoolean matchCase, liblegado_shared_KBoolean wholeWord, const char* replacement);
+                      void (*replaceAll)(liblegado_shared_kref_io_legado_app_ui_compose_component_code_CodeEditorSearchTarget thiz, const char* replacement);
+                    } CodeEditorSearchTarget;
+                    struct {
+                      liblegado_shared_KType* (*_type)(void);
                       liblegado_shared_kref_io_legado_app_ui_compose_component_code_CodeEditorState (*CodeEditorState)(const char* initial);
+                      liblegado_shared_kref_kotlin_Function1 (*get_onChanged)(liblegado_shared_kref_io_legado_app_ui_compose_component_code_CodeEditorState thiz);
+                      void (*set_onChanged)(liblegado_shared_kref_io_legado_app_ui_compose_component_code_CodeEditorState thiz, liblegado_shared_kref_kotlin_Function1 set);
                       liblegado_shared_kref_androidx_compose_ui_text_input_TextFieldValue (*get_value)(liblegado_shared_kref_io_legado_app_ui_compose_component_code_CodeEditorState thiz);
                       void (*insertAtCursor)(liblegado_shared_kref_io_legado_app_ui_compose_component_code_CodeEditorState thiz, const char* insert);
                       void (*onValueChange)(liblegado_shared_kref_io_legado_app_ui_compose_component_code_CodeEditorState thiz, liblegado_shared_kref_androidx_compose_ui_text_input_TextFieldValue new_);
@@ -23537,7 +24085,7 @@ typedef struct {
                   struct {
                     liblegado_shared_KType* (*_type)(void);
                     liblegado_shared_kref_io_legado_app_ui_compose_component_AppDialogSizes (*_instance)();
-                    liblegado_shared_kref_androidx_compose_ui_window_DialogProperties (*properties)(liblegado_shared_kref_io_legado_app_ui_compose_component_AppDialogSizes thiz, liblegado_shared_KBoolean dismissOnBackPress, liblegado_shared_KBoolean dismissOnClickOutside);
+                    liblegado_shared_kref_androidx_compose_ui_window_DialogProperties (*properties)(liblegado_shared_kref_io_legado_app_ui_compose_component_AppDialogSizes thiz, liblegado_shared_KBoolean dismissOnBackPress, liblegado_shared_KBoolean dismissOnClickOutside, liblegado_shared_KBoolean decorFitsSystemWindows);
                   } AppDialogSizes;
                   struct {
                     liblegado_shared_KType* (*_type)(void);
@@ -23702,6 +24250,7 @@ typedef struct {
                   liblegado_shared_kref_org_jetbrains_compose_resources_StringArrayResource (*findStringArrayResource)(const char* key);
                   liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*findStringResource)(const char* key);
                   liblegado_shared_kref_kotlin_collections_Map (*get_sharedStringTable)();
+                  liblegado_shared_kref_androidx_compose_ui_window_DialogProperties (*platformDialogProperties)(liblegado_shared_KBoolean dismissOnBackPress, liblegado_shared_KBoolean dismissOnClickOutside, liblegado_shared_KBoolean decorFitsSystemWindows);
                   liblegado_shared_kref_androidx_compose_ui_text_PlatformTextStyle (*platformTextStyleNoFontPadding)();
                   liblegado_shared_kref_androidx_compose_ui_Modifier (*platformStatusBarPadding)(liblegado_shared_kref_androidx_compose_ui_Modifier thiz);
                   const char* (*get_commandKeyLabel)();
@@ -23813,6 +24362,8 @@ typedef struct {
                   struct {
                     liblegado_shared_KType* (*_type)(void);
                     liblegado_shared_kref_io_legado_app_ui_compose_theme_ComposeTextToolbar (*ComposeTextToolbar)();
+                    liblegado_shared_kref_kotlin_Function0 (*get_findReplaceAction)(liblegado_shared_kref_io_legado_app_ui_compose_theme_ComposeTextToolbar thiz);
+                    void (*set_findReplaceAction)(liblegado_shared_kref_io_legado_app_ui_compose_theme_ComposeTextToolbar thiz, liblegado_shared_kref_kotlin_Function0 set);
                     liblegado_shared_kref_androidx_compose_ui_platform_TextToolbarStatus (*get_status)(liblegado_shared_kref_io_legado_app_ui_compose_theme_ComposeTextToolbar thiz);
                     void (*hide)(liblegado_shared_kref_io_legado_app_ui_compose_theme_ComposeTextToolbar thiz);
                     void (*showMenu)(liblegado_shared_kref_io_legado_app_ui_compose_theme_ComposeTextToolbar thiz, liblegado_shared_kref_androidx_compose_ui_geometry_Rect rect, liblegado_shared_kref_kotlin_Function0 onCopyRequested, liblegado_shared_kref_kotlin_Function0 onPasteRequested, liblegado_shared_kref_kotlin_Function0 onCutRequested, liblegado_shared_kref_kotlin_Function0 onSelectAllRequested, liblegado_shared_kref_kotlin_Function0 onAutofillRequested);
@@ -24259,12 +24810,10 @@ typedef struct {
                 } OtherConfigScreenModel;
                 struct {
                   liblegado_shared_KType* (*_type)(void);
-                  liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState (*ThemeConfigUiState)(const char* fontScaleSummary, const char* sourceEditMaxLineSummary);
+                  liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState (*ThemeConfigUiState)(const char* fontScaleSummary);
                   const char* (*get_fontScaleSummary)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState thiz);
-                  const char* (*get_sourceEditMaxLineSummary)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState thiz);
                   const char* (*component1)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState thiz);
-                  const char* (*component2)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState thiz);
-                  liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState (*copy)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState thiz, const char* fontScaleSummary, const char* sourceEditMaxLineSummary);
+                  liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState (*copy)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState thiz, const char* fontScaleSummary);
                   liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState thiz, liblegado_shared_kref_kotlin_Any other);
                   liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState thiz);
                   const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiState thiz);
@@ -24280,16 +24829,6 @@ typedef struct {
                     liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateFontScaleSummary thiz);
                     const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateFontScaleSummary thiz);
                   } UpdateFontScaleSummary;
-                  struct {
-                    liblegado_shared_KType* (*_type)(void);
-                    liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateSourceEditMaxLineSummary (*UpdateSourceEditMaxLineSummary)(const char* value);
-                    const char* (*get_value)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateSourceEditMaxLineSummary thiz);
-                    const char* (*component1)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateSourceEditMaxLineSummary thiz);
-                    liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateSourceEditMaxLineSummary (*copy)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateSourceEditMaxLineSummary thiz, const char* value);
-                    liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateSourceEditMaxLineSummary thiz, liblegado_shared_kref_kotlin_Any other);
-                    liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateSourceEditMaxLineSummary thiz);
-                    const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_UpdateSourceEditMaxLineSummary thiz);
-                  } UpdateSourceEditMaxLineSummary;
                   struct {
                     liblegado_shared_KType* (*_type)(void);
                     liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_BookshelfLayout (*_instance)();
@@ -24318,15 +24857,11 @@ typedef struct {
                     liblegado_shared_KType* (*_type)(void);
                     liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_FontScale (*_instance)();
                   } FontScale;
-                  struct {
-                    liblegado_shared_KType* (*_type)(void);
-                    liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent_SourceEditMaxLine (*_instance)();
-                  } SourceEditMaxLine;
                   liblegado_shared_KType* (*_type)(void);
                 } ThemeConfigUiEvent;
                 struct {
                   liblegado_shared_KType* (*_type)(void);
-                  liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigScreenModel (*ThemeConfigScreenModel)(liblegado_shared_kref_kotlin_Function0 onBookshelfLayout, liblegado_shared_kref_kotlin_Function0 onSearchLayout, liblegado_shared_kref_kotlin_Function0 onBottomNavConfig, liblegado_shared_kref_kotlin_Function0 onThemeList, liblegado_shared_kref_kotlin_Function0 onCustomizeDayTheme, liblegado_shared_kref_kotlin_Function0 onCustomizeNightTheme, liblegado_shared_kref_kotlin_Function0 onFontScale, liblegado_shared_kref_kotlin_Function0 onSourceEditMaxLine);
+                  liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigScreenModel (*ThemeConfigScreenModel)(liblegado_shared_kref_kotlin_Function0 onBookshelfLayout, liblegado_shared_kref_kotlin_Function0 onSearchLayout, liblegado_shared_kref_kotlin_Function0 onBottomNavConfig, liblegado_shared_kref_kotlin_Function0 onThemeList, liblegado_shared_kref_kotlin_Function0 onCustomizeDayTheme, liblegado_shared_kref_kotlin_Function0 onCustomizeNightTheme, liblegado_shared_kref_kotlin_Function0 onFontScale);
                   liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_state)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigScreenModel thiz);
                   void (*dispatch)(liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigScreenModel thiz, liblegado_shared_kref_io_legado_app_ui_config_ThemeConfigUiEvent event);
                 } ThemeConfigScreenModel;
@@ -25282,8 +25817,9 @@ typedef struct {
                       liblegado_shared_kref_kotlinx_serialization_KSerializer (*serializer)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog_Companion thiz);
                     } Companion;
                     liblegado_shared_KType* (*_type)(void);
-                    liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog (*Dialog)(const char* key, const char* payload, liblegado_shared_KBoolean dismissOnBack, liblegado_shared_KBoolean stacked, const char* sourceOrigin);
+                    liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog (*Dialog)(const char* key, const char* payload, liblegado_shared_KBoolean dismissOnBack, liblegado_shared_KBoolean stacked, liblegado_shared_KBoolean keepOnPush, const char* sourceOrigin);
                     liblegado_shared_KBoolean (*get_dismissOnBack)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog thiz);
+                    liblegado_shared_KBoolean (*get_keepOnPush)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog thiz);
                     const char* (*get_key)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog thiz);
                     const char* (*get_payload)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog thiz);
                     const char* (*get_sourceOrigin)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog thiz);
@@ -25292,8 +25828,9 @@ typedef struct {
                     const char* (*component2)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog thiz);
                     liblegado_shared_KBoolean (*component3)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog thiz);
                     liblegado_shared_KBoolean (*component4)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog thiz);
-                    const char* (*component5)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog thiz);
-                    liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog (*copy)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog thiz, const char* key, const char* payload, liblegado_shared_KBoolean dismissOnBack, liblegado_shared_KBoolean stacked, const char* sourceOrigin);
+                    liblegado_shared_KBoolean (*component5)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog thiz);
+                    const char* (*component6)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog thiz);
+                    liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog (*copy)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog thiz, const char* key, const char* payload, liblegado_shared_KBoolean dismissOnBack, liblegado_shared_KBoolean stacked, liblegado_shared_KBoolean keepOnPush, const char* sourceOrigin);
                     liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog thiz, liblegado_shared_kref_kotlin_Any other);
                     liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog thiz);
                     const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_root_AppOverlay_Dialog thiz);
@@ -25400,10 +25937,14 @@ typedef struct {
                   liblegado_shared_kref_kotlinx_coroutines_flow_SharedFlow (*get_overlayResults)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz);
                   liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_overlays)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz);
                   liblegado_shared_kref_kotlinx_coroutines_flow_SharedFlow (*get_results)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz);
+                  liblegado_shared_kref_kotlinx_coroutines_flow_StateFlow (*get_suspendedOverlayKeys)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz);
                   liblegado_shared_KBoolean (*dismissOverlay)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz, const char* key);
                   liblegado_shared_KBoolean (*dismissOverlay_)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz, const char* key, liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload payload);
                   liblegado_shared_KBoolean (*dismissTopOverlay)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz);
+                  liblegado_shared_KBoolean (*dismissTopOverlaySkipSuspended)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz);
                   const char* (*encodeSnapshot)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz, liblegado_shared_kref_kotlinx_serialization_json_Json json);
+                  liblegado_shared_KBoolean (*isTopOverlayDismissibleOnBack)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz);
+                  liblegado_shared_KBoolean (*isTopOverlaySuspended)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz);
                   liblegado_shared_KBoolean (*pop)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz, liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload payload);
                   liblegado_shared_KBoolean (*popTo)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz, liblegado_shared_KLong entryId, liblegado_shared_KBoolean inclusive);
                   liblegado_shared_KLong (*push)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz, liblegado_shared_kref_io_legado_app_ui_root_AppRoute route, const char* resultKey);
@@ -25412,6 +25953,7 @@ typedef struct {
                   liblegado_shared_KLong (*replace)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz, liblegado_shared_kref_io_legado_app_ui_root_AppRoute route);
                   void (*resetRoot)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz, liblegado_shared_kref_io_legado_app_ui_root_AppRoute_Main route);
                   liblegado_shared_kref_kotlinx_coroutines_flow_Flow (*resultsFor)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz, liblegado_shared_KLong entryId);
+                  void (*setOverlaySuspended)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz, const char* key, liblegado_shared_KBoolean suspended);
                   void (*showOverlay)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz, liblegado_shared_kref_io_legado_app_ui_root_AppOverlay overlay);
                   liblegado_shared_kref_io_legado_app_ui_root_NavigationSnapshot (*snapshot)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz);
                   void (*unregisterRefreshHandler)(liblegado_shared_kref_io_legado_app_ui_root_AppNavigator thiz, liblegado_shared_KLong entryId);
@@ -26468,10 +27010,12 @@ typedef struct {
                       liblegado_shared_kref_kotlinx_serialization_KSerializer (*serializer)(liblegado_shared_kref_io_legado_app_ui_root_LaunchRequest_NavigateTo_Companion thiz);
                     } Companion;
                     liblegado_shared_KType* (*_type)(void);
-                    liblegado_shared_kref_io_legado_app_ui_root_LaunchRequest_NavigateTo (*NavigateTo)(const char* routeName);
+                    liblegado_shared_kref_io_legado_app_ui_root_LaunchRequest_NavigateTo (*NavigateTo)(const char* routeName, const char* bookUrl);
+                    const char* (*get_bookUrl)(liblegado_shared_kref_io_legado_app_ui_root_LaunchRequest_NavigateTo thiz);
                     const char* (*get_routeName)(liblegado_shared_kref_io_legado_app_ui_root_LaunchRequest_NavigateTo thiz);
                     const char* (*component1)(liblegado_shared_kref_io_legado_app_ui_root_LaunchRequest_NavigateTo thiz);
-                    liblegado_shared_kref_io_legado_app_ui_root_LaunchRequest_NavigateTo (*copy)(liblegado_shared_kref_io_legado_app_ui_root_LaunchRequest_NavigateTo thiz, const char* routeName);
+                    const char* (*component2)(liblegado_shared_kref_io_legado_app_ui_root_LaunchRequest_NavigateTo thiz);
+                    liblegado_shared_kref_io_legado_app_ui_root_LaunchRequest_NavigateTo (*copy)(liblegado_shared_kref_io_legado_app_ui_root_LaunchRequest_NavigateTo thiz, const char* routeName, const char* bookUrl);
                     liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_root_LaunchRequest_NavigateTo thiz, liblegado_shared_kref_kotlin_Any other);
                     liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_root_LaunchRequest_NavigateTo thiz);
                     const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_root_LaunchRequest_NavigateTo thiz);
@@ -26522,6 +27066,7 @@ typedef struct {
                   void (*clear)(liblegado_shared_kref_io_legado_app_ui_root_OverlayBackStack thiz);
                   liblegado_shared_KBoolean (*dismiss)(liblegado_shared_kref_io_legado_app_ui_root_OverlayBackStack thiz, const char* key);
                   liblegado_shared_KBoolean (*dismissTop)(liblegado_shared_kref_io_legado_app_ui_root_OverlayBackStack thiz);
+                  liblegado_shared_KBoolean (*isTopDismissibleOnBack)(liblegado_shared_kref_io_legado_app_ui_root_OverlayBackStack thiz);
                   liblegado_shared_kref_io_legado_app_ui_root_AppOverlay (*peek)(liblegado_shared_kref_io_legado_app_ui_root_OverlayBackStack thiz);
                   void (*show)(liblegado_shared_kref_io_legado_app_ui_root_OverlayBackStack thiz, liblegado_shared_kref_io_legado_app_ui_root_AppOverlay overlay);
                 } OverlayBackStack;
@@ -26619,12 +27164,13 @@ typedef struct {
                   void (*showExportConfig)(liblegado_shared_kref_io_legado_app_ui_root_PlatformCapabilities thiz);
                   void (*showExportSectionConfig)(liblegado_shared_kref_io_legado_app_ui_root_PlatformCapabilities thiz, const char* path, liblegado_shared_kref_kotlin_collections_List books);
                   void (*showHttpTtsEditDialog)(liblegado_shared_kref_io_legado_app_ui_root_PlatformCapabilities thiz, liblegado_shared_kref_io_legado_app_data_entities_HttpTTS engine);
-                  void (*showImagePreview)(liblegado_shared_kref_io_legado_app_ui_root_PlatformCapabilities thiz, const char* url);
+                  void (*showImagePreview)(liblegado_shared_kref_io_legado_app_ui_root_PlatformCapabilities thiz, const char* url, liblegado_shared_KInt chapterIndex);
                   void (*showMdFile)(liblegado_shared_kref_io_legado_app_ui_root_PlatformCapabilities thiz, const char* title, const char* fileName);
                   liblegado_shared_KBoolean (*showReviewListDialog)(liblegado_shared_kref_io_legado_app_ui_root_PlatformCapabilities thiz, liblegado_shared_kref_io_legado_app_data_entities_Book book, liblegado_shared_kref_io_legado_app_data_entities_BookChapter chapter, liblegado_shared_KInt paragraphIndex, liblegado_shared_kref_io_legado_app_data_entities_Review parentReview);
                   void (*showSourceVariableDialog)(liblegado_shared_kref_io_legado_app_ui_root_PlatformCapabilities thiz, liblegado_shared_kref_io_legado_app_data_entities_Book book);
                   void (*showThemeCustomizeDialog)(liblegado_shared_kref_io_legado_app_ui_root_PlatformCapabilities thiz, liblegado_shared_kref_kotlin_Int configIndex, liblegado_shared_KBoolean isNight);
                   void (*showThemeListDialog)(liblegado_shared_kref_io_legado_app_ui_root_PlatformCapabilities thiz);
+                  void (*startReadRemoteArchive)(liblegado_shared_kref_io_legado_app_ui_root_PlatformCapabilities thiz, const char* fileName, liblegado_shared_kref_kotlin_Function0 onNeedDownload);
                   void (*testDirectLinkUpload)(liblegado_shared_kref_io_legado_app_ui_root_PlatformCapabilities thiz, liblegado_shared_kref_io_legado_app_help_DirectLinkUploadRule rule, liblegado_shared_kref_kotlin_Function1 onSuccess, liblegado_shared_kref_kotlin_Function1 onError);
                   void (*toggleBookshelf)(liblegado_shared_kref_io_legado_app_ui_root_PlatformCapabilities thiz, liblegado_shared_kref_io_legado_app_data_entities_Book book, liblegado_shared_KBoolean inBookshelf, liblegado_shared_kref_kotlin_Function1 onComplete, liblegado_shared_kref_kotlin_Function1 onWaitDialog, liblegado_shared_kref_kotlin_Function1 onAction);
                   void (*toggleCustomExport)(liblegado_shared_kref_io_legado_app_ui_root_PlatformCapabilities thiz);
@@ -26967,6 +27513,29 @@ typedef struct {
                   struct {
                     struct {
                       liblegado_shared_KType* (*_type)(void);
+                      liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited_$serializer (*_instance)();
+                      liblegado_shared_kref_kotlinx_serialization_descriptors_SerialDescriptor (*get_descriptor)(liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited_$serializer thiz);
+                      liblegado_shared_kref_kotlin_Array (*childSerializers)(liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited_$serializer thiz);
+                      liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited (*deserialize)(liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited_$serializer thiz, liblegado_shared_kref_kotlinx_serialization_encoding_Decoder decoder);
+                      void (*serialize)(liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited_$serializer thiz, liblegado_shared_kref_kotlinx_serialization_encoding_Encoder encoder, liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited value);
+                    } $serializer;
+                    struct {
+                      liblegado_shared_KType* (*_type)(void);
+                      liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited_Companion (*_instance)();
+                      liblegado_shared_kref_kotlinx_serialization_KSerializer (*serializer)(liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited_Companion thiz);
+                    } Companion;
+                    liblegado_shared_KType* (*_type)(void);
+                    liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited (*BookEdited)(liblegado_shared_kref_io_legado_app_data_entities_Book book);
+                    liblegado_shared_kref_io_legado_app_data_entities_Book (*get_book)(liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited thiz);
+                    liblegado_shared_kref_io_legado_app_data_entities_Book (*component1)(liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited thiz);
+                    liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited (*copy)(liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited thiz, liblegado_shared_kref_io_legado_app_data_entities_Book book);
+                    liblegado_shared_KBoolean (*equals)(liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited thiz, liblegado_shared_kref_kotlin_Any other);
+                    liblegado_shared_KInt (*hashCode)(liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited thiz);
+                    const char* (*toString)(liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_BookEdited thiz);
+                  } BookEdited;
+                  struct {
+                    struct {
+                      liblegado_shared_KType* (*_type)(void);
                       liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_ChangeChapterContent_$serializer (*_instance)();
                       liblegado_shared_kref_kotlinx_serialization_descriptors_SerialDescriptor (*get_descriptor)(liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_ChangeChapterContent_$serializer thiz);
                       liblegado_shared_kref_kotlin_Array (*childSerializers)(liblegado_shared_kref_io_legado_app_ui_root_RouteResultPayload_ChangeChapterContent_$serializer thiz);
@@ -27067,6 +27636,7 @@ typedef struct {
                 struct {
                   liblegado_shared_KType* (*_type)(void);
                   void (*onCleared)(liblegado_shared_kref_io_legado_app_ui_root_ScreenModel thiz);
+                  void (*onPreRemoved)(liblegado_shared_kref_io_legado_app_ui_root_ScreenModel thiz);
                 } ScreenModel;
                 struct {
                   liblegado_shared_KType* (*_type)(void);
@@ -27078,6 +27648,7 @@ typedef struct {
                   liblegado_shared_KInt (*get_size)(liblegado_shared_kref_io_legado_app_ui_root_ScreenModelStore thiz);
                   void (*clear)(liblegado_shared_kref_io_legado_app_ui_root_ScreenModelStore thiz);
                   liblegado_shared_kref_io_legado_app_ui_root_ScreenModel (*getOrCreate)(liblegado_shared_kref_io_legado_app_ui_root_ScreenModelStore thiz, liblegado_shared_kref_io_legado_app_ui_root_RouteEntry entry, liblegado_shared_kref_kotlin_Function0 factory);
+                  void (*notifyPreRemoved)(liblegado_shared_kref_io_legado_app_ui_root_ScreenModelStore thiz, liblegado_shared_kref_kotlin_collections_List entries);
                   void (*retain)(liblegado_shared_kref_io_legado_app_ui_root_ScreenModelStore thiz, liblegado_shared_kref_kotlin_collections_List entries);
                 } ScreenModelStore;
                 struct {
@@ -27425,6 +27996,8 @@ typedef struct {
                     } TEXT;
                     liblegado_shared_KType* (*_type)(void);
                   } TextDialogMode;
+                  liblegado_shared_kref_kotlin_Pair (*decodePhotoOverlayPayload)(const char* payload);
+                  const char* (*encodePhotoOverlayPayload)(const char* src, liblegado_shared_KInt chapterIndex);
                 } dialog;
                 struct {
                   struct {
@@ -27724,6 +28297,7 @@ typedef struct {
                 liblegado_shared_KType* (*_type)(void);
                 liblegado_shared_kref_io_legado_app_utils_URL (*URL)(const char* url);
                 const char* (*get_url)(liblegado_shared_kref_io_legado_app_utils_URL thiz);
+                const char* (*toExternalForm)(liblegado_shared_kref_io_legado_app_utils_URL thiz);
                 const char* (*toString)(liblegado_shared_kref_io_legado_app_utils_URL thiz);
               } URL;
               struct {
@@ -27870,8 +28444,6 @@ typedef struct {
               const char* (*replaceReservedChar)(const char* text);
               liblegado_shared_KBoolean (*isSecurityException)(liblegado_shared_kref_kotlin_Throwable thiz);
               const char* (*platformIntern)(const char* thiz);
-              liblegado_shared_KBoolean (*isNetworkAvailable)();
-              liblegado_shared_KBoolean (*isWifiConnect)();
               liblegado_shared_KBoolean (*isRetryableNetworkError)(liblegado_shared_kref_kotlin_Throwable e);
               const char* (*formatPercentUs)(liblegado_shared_KDouble value);
               const char* (*formatDoubleNoDecimal)(liblegado_shared_KDouble value);
@@ -27885,6 +28457,8 @@ typedef struct {
               liblegado_shared_KLong (*systemNanoTime)();
               liblegado_shared_kref_kotlin_Triple (*yearMonthDayFromMillis)(liblegado_shared_KLong epochMillis);
               const char* (*randomUUIDString)();
+              liblegado_shared_KBoolean (*isNetworkAvailable)();
+              liblegado_shared_KBoolean (*isWifiConnect)();
               void (*registerOhosScreenInfoProvider)();
             } utils;
             struct {
@@ -29671,7 +30245,6 @@ typedef struct {
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_more)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_more_config)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_more_menu)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
-              liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_mouse_wheel_page)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_move_to_group)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_mpv_auto_download)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_mpv_detached_playing)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
@@ -29713,6 +30286,7 @@ typedef struct {
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_no_books_dir)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_no_group)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_no_lyrics)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
+              liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_no_more_chapter)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_no_next_page)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_no_prev_page)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);
               liblegado_shared_kref_org_jetbrains_compose_resources_StringResource (*get_no_source_code)(liblegado_shared_kref_legado_shared_generated_resources_Res_string thiz);

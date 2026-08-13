@@ -15,7 +15,12 @@ sealed interface LaunchRequest {
     data class DeepLink(val url: String) : LaunchRequest
 
     @Serializable
-    data class SearchBook(val key: String, val submit: Boolean = false) : LaunchRequest
+    data class SearchBook(
+        val key: String,
+        /** 搜索范围 (格式 "名称::书源URL", 对齐 AppRoute.Search.searchScope) */
+        val searchScope: String? = null,
+        val submit: Boolean = false,
+    ) : LaunchRequest
 
     @Serializable
     data class OpenBook(val bookUrl: String, val chapterIndex: Int? = null) : LaunchRequest

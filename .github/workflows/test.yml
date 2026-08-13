@@ -393,47 +393,18 @@ jobs:
           path: ${{ github.workspace }}/dmg/*.dmg
           if-no-files-found: ignore
 
-  # ===== 鸿蒙 .so (debug) (与 Android build 并行) =====
-  # 鸿蒙 HAP 需自托管 runner (见下面注释块 ohos-hap), 这里只编译 shared ohosArm64 .so
-  # 鸿蒙 target 已从 linuxArm64 切换为 ohosArm64 (支付宝 fork Kotlin 2.3.0.1-alipay 工具链);
-  # fork 构件从 settings.gradle.kts 内嵌凭证的阿里云云效公网 maven 解析, CI 无需额外 secret
-  # 产物 liblegado_shared.so 供鸿蒙 DevEco Studio 本地打包 HAP 时链接
-  ohos-build:
-    needs: prepare
-    runs-on: ubuntu-latest
-    env:
-      VERSION: ${{ needs.prepare.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: 21
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-      - name: Build HarmonyOS .so (debug)
-        # 鸿蒙 target 默认禁用, 必须加 -PenableOhosTarget=true
-        # sharedLib binary (baseName legado_shared, 无 namePrefix) → link 任务名 linkDebugSharedOhosArm64
-        run: ./gradlew :shared:linkDebugSharedOhosArm64 -PenableOhosTarget=true --warning-mode all
-      - name: Collect HarmonyOS .so
-        # 输出目录规则 build/bin/<target>/<binaryName>: ohosArm64 sharedLib debug → debugShared
-        run: |
-          mkdir -p ${{ github.workspace }}/ohos/
-          find ${{ github.workspace }}/shared/build/bin/ohosArm64/debugShared -name "*.so" -exec mv {} ${{ github.workspace }}/ohos/ \;
-      - name: Upload HarmonyOS .so Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ohos.so.debug
-          path: ${{ github.workspace }}/ohos/*.so
-          if-no-files-found: ignore
+  # ===== 鸿蒙 .so (debug) =====
+  # 已移除 (2026-08): CPF 工具链构件仅发布在 maven.eazytec-cloud.com (中国私有 Nexus),
+  # GitHub-hosted runner 无法访问, 该 job 必然失败。
+  # .so 改本地构建: ./gradlew :shared:linkDebugSharedOhosArm64 -PenableOhosTarget=true
+  # 产物 shared/build/bin/ohosArm64/debugShared/liblegado_shared.so,
+  # 供鸿蒙 DevEco Studio 本地打包 HAP 时链接。
 
   # ===== 鸿蒙 HAP 构建说明 (CI 上无法运行, 仅本地) =====
   # 原因: 鸿蒙 DevEco Studio / hvigor / HarmonyOS SDK (API 12+) 无官方公开 Docker 镜像,
   #        GitHub-hosted runner 不预装, 需自托管 runner 或私有 action 注入 SDK, 故 CI 不构建 HAP.
-  #        test.yml 仅编译 .so (见上方 ohos-build); HAP 完整构建见 release.yml 的 ohos-build job.
+  #        test.yml 的 .so 编译 job 也已移除 (eazytec 私有源 GitHub runner 不可达), 见上方说明.
+  #        本地构建 .so: ./gradlew :shared:linkDebugSharedOhosArm64 -PenableOhosTarget=true
   #
   # 用户本地构建 HAP 步骤:
   #   1. 安装 DevEco Studio: https://developer.huawei.com/consumer/cn/deveco-studio/

@@ -71,17 +71,21 @@ object EncoderUtils {
     fun base64DecodeToByteArray(str: String): ByteArray = base64DecodeToByteArray(str, 0)
 
     fun base64DecodeToByteArray(str: String, flags: Int = 0): ByteArray {
-        // android 解码跳过字母表外字符(含换行): 标准表 MIME 解码器同款宽松;
-        // kotlin.io.encoding.Base64 解码对非字母表字符抛异常, 手动 filter 复刻原 skip 语义;
-        // URL_SAFE 原 jvm 实现已过滤字母表外字符(原 java getUrlDecoder 无宽松版), 沿用同一 filter 思路
-        return if (flags and URL_SAFE != 0) {
-            Base64.UrlSafe.decode(str.filter {
+        // android 解码跳过字母表外字符(含换行)且容忍缺失 padding (DEFAULT 宽松语义);
+        // kotlin.io.encoding.Base64 对非字母表字符和缺 padding 均抛异常:
+        // 先 filter 复刻 skip 语义, 再按 4 的余数补 '=' 复刻 android 自动补 padding
+        val filtered = str.filter {
+            if (flags and URL_SAFE != 0) {
                 it in 'A'..'Z' || it in 'a'..'z' || it in '0'..'9' || it == '-' || it == '_' || it == '='
-            })
-        } else {
-            Base64.Default.decode(str.filter {
+            } else {
                 it in 'A'..'Z' || it in 'a'..'z' || it in '0'..'9' || it == '+' || it == '/' || it == '='
-            })
+            }
+        }
+        val padded = filtered + "=".repeat((4 - filtered.length % 4) % 4)
+        return if (flags and URL_SAFE != 0) {
+            Base64.UrlSafe.decode(padded)
+        } else {
+            Base64.Default.decode(padded)
         }
     }
 

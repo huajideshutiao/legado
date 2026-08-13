@@ -136,6 +136,7 @@ import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.BookRef
 import io.legado.app.ui.root.DialogTransitionSpec
 import io.legado.app.ui.root.PlatformCapabilities
+import io.legado.app.ui.root.RouteTransitionSampler
 import io.legado.app.ui.root.RouteTransitionSpec
 import io.legado.app.ui.root.TransitionEasing
 import io.legado.app.ui.root.encodeBookVariableOverlayPayload
@@ -266,6 +267,21 @@ class AndroidPlatformCapabilities(
         }.getOrDefault(1f)
     }
 
+    /**
+     * 复用系统窗口转场动画的采样器 (读运行设备主题, ROM 定制自动生效); lazy 缓存动画实例,
+     * 时长缩放每次动态读; 系统资源缺失时返回 null 回退参数化 spec。
+     */
+    private val systemRouteTransitionSampler: RouteTransitionSampler? by lazy {
+        SystemRouteTransitionSampler.create(activity) { systemAnimationScale() }
+    }
+
+    override val routeTransitionSampler: RouteTransitionSampler?
+        get() = systemRouteTransitionSampler
+
+    /**
+     * 参数化 spec: 仅在系统转场动画资源缺失 (routeTransitionSampler 为 null) 时作回退;
+     * 正常路径由 [systemRouteTransitionSampler] 复用运行设备的系统动画 (含 ROM 定制)。
+     */
     override val routeTransitionSpec: RouteTransitionSpec
         get() {
             val scale = systemAnimationScale()
@@ -679,6 +695,8 @@ class AndroidPlatformCapabilities(
     }
 
     // 对照 AboutActivity.onCheckUpdate / AppUpdate.check
+    override val checkUpdateSupported: Boolean get() = true
+
     override fun checkUpdate() {
         AppUpdate.check(activity.lifecycleScope, activity)
     }

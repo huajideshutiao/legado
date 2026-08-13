@@ -76,8 +76,10 @@ fun AboutRoute(
                 updateLogSummary = if (versionName.isEmpty()) "" else "$strVersion $versionName",
                 contributorsUrl = strContributorsUrl,
                 telegramGroupUrl = strTelegramGroupUrl,
-                // 未注册 AppUpdateEnvironment 的端 (未接更新能力) 隐藏入口
-                showCheckUpdate = AppUpdateManager.isAvailable(),
+                // 入口 gate: 平台声明能力 (app 端 = 原版 AppUpdate.check 链路) 或
+                // 已注册 AppUpdateEnvironment 的端 (desktop 走 shared AppUpdateManager 链路)
+                showCheckUpdate = AppUpdateManager.isAvailable() ||
+                    PlatformCapabilityProviders.getOrNull()?.checkUpdateSupported == true,
             )
         )
     }
@@ -94,9 +96,15 @@ fun AboutRoute(
             PlatformServiceProviders.getOrNull()?.sharing?.shareText(strAppShareDescription)
         }
 
-        // 检查更新: 检测走 shared (AppUpdateManager + UpdateStrategies), 执行由平台执行器分派
+        // 检查更新: 优先平台能力 (app 端 = 原版 AppUpdate.check 链路 WaitDialog/UpdateDialog/toast);
+        // 未声明能力的端 (desktop) 回落 shared AppUpdateManager 检测链路, 弹 UpdateAvailableDialog
         override fun onCheckUpdate() {
-            scope.launch { screenModel.checkUpdate(strLatestVersion, strCheckFailed) }
+            val capabilities = PlatformCapabilityProviders.getOrNull()
+            if (capabilities?.checkUpdateSupported == true) {
+                capabilities.checkUpdate()
+            } else {
+                scope.launch { screenModel.checkUpdate(strLatestVersion, strCheckFailed) }
+            }
         }
 
         // 显示崩溃日志: 委托平台能力 (app: CrashLogsDialog Fragment; desktop: 共享 CrashLogsDialog)

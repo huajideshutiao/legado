@@ -1,5 +1,6 @@
 import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import java.time.LocalDate
 import java.util.Properties
 
 plugins {
@@ -145,8 +146,13 @@ dependencies {
 
     // 测试: WebView2 消息泵/环境/窗口创建闭环验证 (修复"startBrowser 首次调用打不开")
     testImplementation(libs.junit)
-    // Compose UI 测试 (官方: compose.desktop.uiTestJUnit4, runComposeUiTest)
-    testImplementation(compose.desktop.uiTestJUnit4)
+    // Compose UI 测试 (compose.desktop.uiTestJUnit4 已弃用转 error, 直接声明同版本坐标;
+    // 版本跟 composeMultiplatform 走, 与插件展开值一致)
+    testImplementation("org.jetbrains.compose.ui:ui-test-junit4:${ohosVersion("composeMultiplatform")}")
+    // JBR 客户端 API (WindowDecorations/CustomTitleBar, Windows 原生标题栏自定义):
+    // 官方制品 org.jetbrains.runtime:jbr-api (Apache 2.0, github.com/JetBrains/JetBrainsRuntimeApi),
+    // 与 ab-download-manager/jewel 同款; JBR 侧实现在 JBR 21 运行时内置, 非 JBR 时 getWindowDecorations() 返回 null
+    implementation("org.jetbrains.runtime:jbr-api:1.10.1")
 }
 
 // Compose Desktop 统一配置入口 (mainClass + nativeDistributions)
@@ -364,6 +370,21 @@ val copySmtcNativeToResources by tasks.registering(Copy::class) {
     include("*.dll", "*.so", "*.dylib")
 }
 
+// CI 用 sed 把 packageVersion 注入为 "3.YY.MMDDHHMM" (如 3.26.08131506)。
+// Windows MSI 只接受 MAJOR.MINOR.BUILD 且 BUILD ≤ 65535, 8 位时间戳直接配置期报错;
+// deb/rpm 支持 4 段版本不受影响。此处仅给 MSI 单独映射为 "3.YY.YYDDD":
+// 年内随日期递增、跨年 YY 进位, 保证 MSI 升级版本号单调不减 (YY≥66 时超 65535, 届时换算法)。
+private fun msiSafeVersion(pkgVer: String): String {
+    val m = Regex("""^(\d+)\.(\d+)\.(\d{4})\d{4}$""").find(pkgVer) ?: return pkgVer
+    val major = m.groupValues[1]
+    val yy = m.groupValues[2].toInt()
+    val mmdd = m.groupValues[3]
+    val dayOfYear = LocalDate
+        .of(2000 + yy, mmdd.substring(0, 2).toInt(), mmdd.substring(2, 4).toInt())
+        .dayOfYear
+    return "$major.$yy.${yy * 1000 + dayOfYear}"
+}
+
 compose.desktop {
     application {
         mainClass = "io.legado.desktop.MainKt"
@@ -439,6 +460,12 @@ compose.desktop {
                 // (当前 Compose 版本无显式 perMachine setter, 默认行为即为 per-user)
                 // 升级时由 MSI 自身 UUID 识别, packageVersion 必须递增
                 upgradeUuid = "7F5C4E2A-3B6D-4F8A-9C1E-1A2B3C4D5E6F"
+                // MSI 版本号上限 MAJOR.MINOR.BUILD 且 BUILD ≤ 65535, 而 CI sed 注入的
+                // packageVersion 是 "3.YY.MMDDHHMM" (BUILD 段 8 位非法, 配置期直接报错);
+                // 这里单独映射为合法且单调递增的 "3.YY.YYDDD" (deb/rpm 不受影响)
+                msiPackageVersion = msiSafeVersion(
+                    compose.desktop.application.nativeDistributions.packageVersion ?: "1.0.0"
+                )
             }
             // Linux deb/rpm 专属配置
             linux {

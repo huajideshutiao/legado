@@ -2,7 +2,6 @@ package io.legado.app.utils
 
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
-import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.descriptors.SerialDescriptor
@@ -21,7 +20,6 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.longOrNull
 import kotlin.math.ceil
 
 // 宽松 JSON 解析（对应原 GSON，容错降级用）
@@ -135,16 +133,16 @@ object AnyMapSerializer : KSerializer<Map<String, Any?>> {
                 p.isString -> p.content
                 p.booleanOrNull != null -> p.booleanOrNull!!
                 p.contentOrNull != null -> {
-                    // 复刻原 MapDeserializer: 数字策略 LONG_OR_DOUBLE,
-                    // 若 ceil(toDouble) == toLong 则取 Long, 否则取 Double
-                    val long = p.longOrNull
+                    // 复刻原 MapDeserializerDoubleAsIntFix: 数字统一先取 double,
+                    // toLong 截断后若 ceil(double) == long 视为整值 → Long, 否则保留 Double
+                    // (3.0 → 3L, 3.5 → 3.5, 10 → 10L)。longOrNull 对 "3.0" 解析不出 Long,
+                    // 不能作为整值判据
                     val double = p.doubleOrNull
-                    when {
-                        long != null && double != null ->
-                            if (ceil(double) == long.toDouble()) long else double
-                        long != null -> long
-                        double != null -> double
-                        else -> p.content
+                    if (double != null) {
+                        val long = double.toLong()
+                        if (ceil(double) == long.toDouble()) long else double
+                    } else {
+                        p.content
                     }
                 }
                 else -> null

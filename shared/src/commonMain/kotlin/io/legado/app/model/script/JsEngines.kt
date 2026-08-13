@@ -98,7 +98,9 @@ object JsEngines {
      * 避免直接依赖某个引擎的 NativeObject 类型。判定逻辑下放到 [JsEngine] 实例。
      */
     fun isJsObject(obj: Any?): Boolean {
-        if (obj == null) return false
+        // 无 provider (纯 JVM 单测/规则解析环境) 时不存在 JS 对象,
+        // 直接判 false, 避免 getString 等纯规则路径强依赖宿主注册 JS 引擎
+        if (obj == null || provider == null) return false
         return current.isJsObject(obj)
     }
 
@@ -109,7 +111,8 @@ object JsEngines {
      * 非 JS Object 返回 null。
      */
     fun asJsObject(obj: Any?): JsObject? {
-        if (obj == null) return null
+        // 同 isJsObject: 无 provider 时按非 JS 对象处理 (返回 null)
+        if (obj == null || provider == null) return null
         return current.asJsObject(obj)
     }
 

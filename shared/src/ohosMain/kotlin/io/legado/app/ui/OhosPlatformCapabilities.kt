@@ -46,8 +46,10 @@ import kotlinx.coroutines.withContext
  * 鸿蒙端 [PlatformCapabilities]: 内核已下沉的能力直接复用 shared 实现 (对照 desktop),
  * 依赖弹窗宿主 (分组管理/文本输入/主题列表/导入书籍浏览) 的能力保持 unsupported —
  * 鸿蒙端尚无命令式对话框宿主, 需先补 Compose 对话框层。
- * 转场动画 spec 不 override, 随 shared 默认 (iOS 式 300ms); 鸿蒙系统动画参数
- * (如动画时长缩放) 后续按平台能力接入时再动态提供。
+ * 转场动画 spec 不 override, 随 shared 默认 (iOS 式 300ms): 鸿蒙系统默认页面转场
+ * 使用弹簧曲线 (spring curve), 时长与物理参数相关且不同设备默认动画不同
+ * (查证 OpenHarmony 官方文档 arkts-navigation-animation.md: "默认转场动画使用弹簧曲线,
+ * 时长不可控"), 无公开参数可读也无可复刻的稳定值, 鸿蒙端待平台能力接入后再定。
  */
 object OhosPlatformCapabilities : PlatformCapabilities {
     private val scope = CoroutineScope(SupervisorJob() + IoDispatcher)

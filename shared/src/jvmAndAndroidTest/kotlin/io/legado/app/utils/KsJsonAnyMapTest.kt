@@ -2,9 +2,9 @@ package io.legado.app.utils
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.test.assertNotNull
 
 /**
  * [AnyMapSerializer] 行为锁: 复刻原 Gson MapDeserializerDoubleAsIntFix 语义,
@@ -12,28 +12,26 @@ import kotlin.test.assertNotNull
  *
  * 加字段不更新 serializer 的守护经 [decodeAnyMapOrNull] 路径全覆盖:
  * - null / Boolean / Number(Long/Double) / String / Map / List 全类型往返
- * - 数字策略: 整值 Double→Long (复刻 MapDeserializerDoubleAsIntFix)
+ * - 数字策略: 整值 Double→Long (复刻 MapDeserializerDoubleAsIntFix: ceil(toDouble)==toLong 即归 Long,
+ *   故 "0.0"/"1.0"/"3.0" 等小数格式的整值同样归 Long)
  * - 保序 (LinkedHashMap)
  * - 容错降级: 非法 JSON 返回 null
  */
 class KsJsonAnyMapTest {
 
     @Test
-    fun `数字策略 整数格式归 Long 小数格式归 Double`() {
-        // 当前实现策略 (kotlinx.serialization longOrNull 行为):
-        // - 整数格式 ("3"/"10") → longOrNull 非 null → Long
-        // - 小数格式 ("3.0"/"0.0"/"3.5") → longOrNull 为 null → Double
-        // 注意: 这与 AnyMapSerializer 注释描述的 "整值 Double 修正为 Long" 略有差异
-        // (注释意图是 3.0 也归 Long, 但 longOrNull 对 "3.0" 返回 null), 属已知行为
+    fun `数字策略 整值归 Long 小数归 Double`() {
+        // 对齐原版 MapDeserializerDoubleAsIntFix: 数字先取 double, toLong 截断后
+        // ceil(double) == long 视为整值 → Long, 否则 Double;
+        // 故整数格式 ("3"/"10") 与小数格式的整值 ("3.0"/"0.0") 都归 Long, 3.5 归 Double
         val json = """{"int":3,"double":3.5,"longNum":10,"zero":0.0}"""
         val map = decodeAnyMapOrNull(json)!!
         assertEquals(3L, map["int"])
         assertTrue(map["double"] is Double, "3.5 保留 Double")
         assertEquals(3.5, map["double"])
         assertEquals(10L, map["longNum"])
-        // "0.0" 小数格式 → longOrNull 为 null → Double(0.0)
-        assertTrue(map["zero"] is Double, "0.0 小数格式归 Double")
-        assertEquals(0.0, map["zero"])
+        // "0.0" 小数格式但为整值 → 归 Long (对齐原版 MapDeserializerDoubleAsIntFix)
+        assertEquals(0L, map["zero"])
     }
 
     @Test
@@ -90,13 +88,12 @@ class KsJsonAnyMapTest {
         val map = decodeAnyMapOrNull(json)!!
         @Suppress("UNCHECKED_CAST")
         val outer = map["outer"] as Map<String, Any?>
-        // "1.0" 小数格式 → longOrNull 为 null → Double(1.0) (当前实现策略)
-        assertTrue(outer["inner"] is Double, "1.0 小数格式归 Double")
-        assertEquals(1.0, outer["inner"])
+        // "1.0" 小数格式但为整值 → 归 Long (对齐原版 MapDeserializerDoubleAsIntFix)
+        assertEquals(1L, outer["inner"])
         @Suppress("UNCHECKED_CAST")
         val list = outer["list"] as List<Any?>
-        // 1.0 → Double, 2.5 → Double, 10 → Long (整数格式)
-        assertEquals(listOf(1.0, 2.5, 10L), list)
+        // 1.0 → Long, 2.5 → Double, 10 → Long
+        assertEquals(listOf(1L, 2.5, 10L), list)
     }
 
     @Test

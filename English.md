@@ -9,15 +9,35 @@
   
 Legado / 开源阅读
 <br>
-Legado is a free and open source novel reader for Android.
+Legado is a free and open source novel reader built with Kotlin Multiplatform, running on Android,
+Desktop (Windows / macOS / Linux), iOS and HarmonyOS.
 </div>
 
-[![](https://img.shields.io/badge/-Contents:-696969.svg)](#contents) [![](https://img.shields.io/badge/-Function-F5F5F5.svg)](#Function-) [![](https://img.shields.io/badge/-Download-F5F5F5.svg)](#Download-) [![](https://img.shields.io/badge/-Community-F5F5F5.svg)](#Community-) [![](https://img.shields.io/badge/-API-F5F5F5.svg)](#API-) [![](https://img.shields.io/badge/-Other-F5F5F5.svg)](#Other-) [![](https://img.shields.io/badge/-Grateful-F5F5F5.svg)](#Grateful-) [![](https://img.shields.io/badge/-Interface-F5F5F5.svg)](#Interface-)
+[![](https://img.shields.io/badge/-Contents:-696969.svg)](#contents) [![](https://img.shields.io/badge/-Platform-F5F5F5.svg)](#Platform-) [![](https://img.shields.io/badge/-Function-F5F5F5.svg)](#Function-) [![](https://img.shields.io/badge/-Download-F5F5F5.svg)](#Download-) [![](https://img.shields.io/badge/-Community-F5F5F5.svg)](#Community-) [![](https://img.shields.io/badge/-API-F5F5F5.svg)](#API-) [![](https://img.shields.io/badge/-Other-F5F5F5.svg)](#Other-) [![](https://img.shields.io/badge/-Grateful-F5F5F5.svg)](#Grateful-) [![](https://img.shields.io/badge/-Interface-F5F5F5.svg)](#Interface-)
 
 >New user?
 >
 >The software does not provide content, you need to add it manually, such as importing book sources, etc. 
 >Take a look at [official help documentation](https://www.yuque.com/legado/wiki)，Maybe there's an answer you need inside.
+
+# Platform [![](https://img.shields.io/badge/-Platform-F5F5F5.svg)](#Platform-)
+
+Legado has been rewritten with Kotlin Multiplatform (KMP), sharing one codebase across the following
+platforms:
+
+| Platform                          | Status                                                                 |
+|-----------------------------------|------------------------------------------------------------------------|
+| Android                           | ✅ Primary platform, full features                                      |
+| Desktop (Windows / macOS / Linux) | ✅ Compose Multiplatform desktop app                                    |
+| iOS                               | 🚧 Theoretically available (iosApp)                                    |
+| HarmonyOS (OpenHarmony)           | 🚧 Theoretically available, requires the `enableOhosTarget` build flag |
+
+> Note: except for Android, the other platforms are currently under development / theoretical
+> support; features are subject to the Android version.
+
+<a href="#readme">
+    <img src="https://img.shields.io/badge/-Top-orange.svg" alt="#" align="right">
+</a>
 
 # Function [![](https://img.shields.io/badge/-Function-F5F5F5.svg)](#Function-)
 

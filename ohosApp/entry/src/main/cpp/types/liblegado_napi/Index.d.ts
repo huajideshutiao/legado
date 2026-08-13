@@ -477,6 +477,36 @@ export interface LegadoNativeBridge {
    */
   pasteboardCallback(requestId: number, result: string): void;
 
+  // ===== Network tsfn 回调注册 + ArkTS → Kotlin 回调 (同 Pasteboard 模式, 网络状态查询) =====
+
+  /**
+   * 注册 Network 回调 (KMP → ArkTS 跨线程 dispatch, 网络状态查询请求)。
+   *
+   * C++ 侧创建 napi_threadsafe_function 包装 [callback], 并通过 @CName legado_register_network_fn
+   * 把 dispatch 函数指针注入 Kotlin OhosNativeBridge.networkTsfn。此后 KMP 调用
+   * OhosNativeBridge.invokeNetworkSync 时, JSON 请求跨线程 dispatch 到此 [callback],
+   * 由 ArkTS 调 @ohos.net.connection getDefaultNetSync + getNetCapabilitiesSync
+   * (需 ohos.permission.GET_NETWORK_INFO, normal + system_grant) 查询网络可用性与是否 WiFi,
+   * 完成后通过 [networkCallback] 回送结果给 Kotlin。未注册时 KMP 侧降级 true (不拦截)。
+   *
+   * @param callback 接收 JSON 请求 `{ requestId, action, payload }`:
+   *   - action='query': payload=`{}` → 回送 `{ ok, network, wifi }`
+   */
+  registerNetworkCallback(callback: (json: string) => void): void;
+
+  /**
+   * Network 操作结果回调 (ArkTS → Kotlin)。
+   *
+   * ArkTS 侧处理完网络状态查询后, 通过此方法把结果 JSON
+   * 回送给 Kotlin, 唤醒 OhosNativeBridge.invokeNetworkSync 中阻塞的 CompletableDeferred。
+   *
+   * @param requestId 请求 ID (与 invokeNetworkSync 生成的 requestId 对应)
+   * @param result 结果 JSON:
+   *   - 成功:  `{ ok: true, network: <boolean>, wifi: <boolean> }`
+   *   - 失败:  `{ ok: false, error: '<string>' }` (Kotlin 侧降级 true 不拦截)
+   */
+  networkCallback(requestId: number, result: string): void;
+
   // ===== TextCodec tsfn 回调注册 + ArkTS → Kotlin 回调 (同 Pasteboard 模式, decode/encode) =====
 
   /**

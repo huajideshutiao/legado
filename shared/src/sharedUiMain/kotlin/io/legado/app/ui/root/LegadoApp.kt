@@ -1,6 +1,7 @@
 package io.legado.app.ui.root
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -146,6 +147,14 @@ fun LegadoApp(
         val lastSettled = remember { mutableStateOf(entries) }
         // 转场动画平台 spec: 随导航事件读取 (Android 端每次动态读系统动画时长缩放, 即时生效)
         val transitionSpec = remember(entries, capabilities) { capabilities.routeTransitionSpec }
+        // 转场采样器: 平台提供系统动画采样 (Android 复用系统窗口转场动画, 定制 ROM 的动画
+        // 资源/插值器自动生效) 时用系统实现, 否则用 spec 参数推导; 推进曲线跟随采样器类型:
+        // spec 采样器由动画层 tween(spec.easing) 提供曲线 (progress 为曲线值), 系统采样器
+        // 用线性时钟 (曲线由系统动画内部处理)
+        val transitionSampler = remember(entries, capabilities) {
+            capabilities.routeTransitionSampler ?: RouteTransitionSpecSampler(transitionSpec)
+        }
+        val useSystemTransition = capabilities.routeTransitionSampler != null
         if (entries.size != lastSettled.value.size || entries != lastSettled.value) {
             val forward = entries.size > lastSettled.value.size
             val sameSizeDiff = entries.size == lastSettled.value.size && entries != lastSettled.value
@@ -288,9 +297,10 @@ fun LegadoApp(
                         transition.animateTo(
                             1f,
                             tween(
-                                durationMillis = (transitionSpec.popDurationMillis * remaining)
+                                durationMillis = (transitionSampler.popDurationMillis * remaining)
                                     .toInt().coerceAtLeast(1),
-                                easing = transitionSpec.popEasing.toComposeEasing(),
+                                easing = if (useSystemTransition) LinearEasing
+                                else transitionSpec.popEasing.toComposeEasing(),
                             )
                         )
                         // 消化返回段: 移除出栈页后与 entries 的交集 (连按 pop 时可能不足一项)
@@ -307,8 +317,9 @@ fun LegadoApp(
                             transition.animateTo(
                                 1f,
                                 tween(
-                                    durationMillis = transitionSpec.pushDurationMillis,
-                                    easing = transitionSpec.pushEasing.toComposeEasing(),
+                                    durationMillis = transitionSampler.pushDurationMillis,
+                                    easing = if (useSystemTransition) LinearEasing
+                                    else transitionSpec.pushEasing.toComposeEasing(),
                                 )
                             )
                             lastSettled.value = entries
@@ -320,14 +331,16 @@ fun LegadoApp(
                             1f,
                             tween(
                                 durationMillis = if (navigatingForward) {
-                                    transitionSpec.pushDurationMillis
+                                    transitionSampler.pushDurationMillis
                                 } else {
-                                    transitionSpec.popDurationMillis
+                                    transitionSampler.popDurationMillis
                                 },
                                 easing = if (navigatingForward) {
-                                    transitionSpec.pushEasing.toComposeEasing()
+                                    if (useSystemTransition) LinearEasing
+                                    else transitionSpec.pushEasing.toComposeEasing()
                                 } else {
-                                    transitionSpec.popEasing.toComposeEasing()
+                                    if (useSystemTransition) LinearEasing
+                                    else transitionSpec.popEasing.toComposeEasing()
                                 },
                             )
                         )
@@ -385,85 +398,64 @@ fun LegadoApp(
                             val progress = transition.value
                             val running = transition.isRunning
                             // 动画尚未启动的首帧 (组合先于 effect 的 snapTo): 按起始位渲染,
-                            // 与 snapTo(0) 后的动画首帧位置一致, 避免先闪终态再动画
+                            // 与 snapTo(0) 后的动画首帧位置一致, 避免先闪终态再动画;
+                            // 起始位 = progress=0 采样 (spec 公式与系统动画 from 值一致)
                             val idleFrame = animating && !running && progress == 1f
-                            val topFade = if (navigatingForward) {
-                                transitionSpec.newPageFadeIn
-                            } else {
-                                transitionSpec.targetPageFadeIn
-                            }
-                            val topScaleFrom = if (navigatingForward) {
-                                transitionSpec.newPageScaleFrom
-                            } else {
-                                transitionSpec.targetPageScaleFrom
-                            }
-                            val slideFade = if (navigatingForward) {
-                                transitionSpec.oldPageFadeOut
-                            } else {
-                                transitionSpec.outgoingFadeOut
-                            }
-                            when {
-                                isPendingNew -> {
-                                    // 返回段: 新页停在右侧屏幕外 (对齐其前进起始位), 返回段播完后由前进段滑入
-                                    alpha = if (transitionSpec.newPageFadeIn) 0f else 1f
-                                    scaleX = transitionSpec.newPageScaleFrom
-                                    scaleY = transitionSpec.newPageScaleFrom
-                                    translationX = size.width * transitionSpec.newPageSlideFraction
-                                }
+                            val effectiveProgress = if (idleFrame) 0f else progress
+                            // 变换统一由采样器提供: spec 采样器消费动画层曲线进度 (公式与原
+                            // graphicsLayer 逐字一致), 系统动画采样器消费线性时钟 (曲线由系统
+                            // 动画内部处理, 含 startOffset/fillBefore/fillAfter 语义)
+                            val transform = when {
+                                isPendingNew -> transitionSampler.sample(
+                                    // 连播返回段中待入的新页: 固定起始位采样 (spec=屏外右侧待入;
+                                    // 系统动画=原位透明缩放待入, 即系统新窗口动画开始前的状态)
+                                    TransitionRole.PendingNew, 0f, size.width, size.height
+                                )
 
-                                isTarget -> {
-                                    alpha = when {
-                                        !topFade -> 1f
-                                        idleFrame -> 0f
-                                        else -> progress
-                                    }
-                                    scaleX = if (idleFrame) {
-                                        topScaleFrom
+                                isTarget -> transitionSampler.sample(
+                                    if (navigatingForward) {
+                                        TransitionRole.NewPage
                                     } else {
-                                        topScaleFrom + (1f - topScaleFrom) * progress
-                                    }
-                                    scaleY = scaleX
-                                    translationX = when {
-                                        idleFrame && navigatingForward ->
-                                            size.width * transitionSpec.newPageSlideFraction
-                                        idleFrame -> -size.width * transitionSpec.targetPageSlideFraction
-                                        navigatingForward ->
-                                            size.width * transitionSpec.newPageSlideFraction * (1f - progress)
-                                        else -> -size.width * transitionSpec.targetPageSlideFraction * (1f - progress)
-                                    }
-                                }
+                                        TransitionRole.TargetPage
+                                    },
+                                    effectiveProgress, size.width, size.height
+                                )
 
-                                isSliding -> {
-                                    // 前进: 旧页向左滑出; 返回: 出栈页向右滑出
-                                    alpha = when {
-                                        !slideFade -> 1f
-                                        idleFrame -> 1f
-                                        else -> 1f - progress
-                                    }
-                                    scaleX = 1f
-                                    scaleY = 1f
-                                    translationX = when {
-                                        idleFrame -> 0f
-                                        animating && navigatingForward ->
-                                            -size.width * transitionSpec.oldPageShiftFraction * progress
-                                        animating ->
-                                            size.width * transitionSpec.outgoingSlideFraction * progress
-                                        else -> -size.width
-                                    }
-                                }
+                                // 动画结束后 (animating=false) 的滑出页归入隐藏分支: 原公式
+                                // 该态为半透明离屏 (alpha=1-progress, translationX=-width), 与
+                                // effect 末尾同步移除仅差同帧, 直接隐藏行为更干净且不可见差异
+                                isSliding && animating -> transitionSampler.sample(
+                                    if (navigatingForward) {
+                                        TransitionRole.OldPage
+                                    } else {
+                                        TransitionRole.OutgoingPage
+                                    },
+                                    effectiveProgress, size.width, size.height
+                                )
 
-                                else -> {
-                                    // 移出屏幕而非 scale=0: 零缩放图层的逆矩阵是退化矩阵, 命中测试产生
-                                    // NaN/Inf 坐标会腐蚀指针分发 (手势进行中导航离开时尤其明显, 表现为
-                                    // 返回后整个界面触摸无响应但系统事件仍到达窗口)。平移到屏幕外坐标有限,
-                                    // 命中测试干净 miss, 且不参与可见绘制 (alpha=0 + clip)。
-                                    alpha = 0f
-                                    scaleX = 1f
-                                    scaleY = 1f
-                                    translationX = -size.width
-                                }
+                                else -> null
                             }
-                            transformOrigin = TransformOrigin(0f, 0f)
+                            if (transform != null) {
+                                alpha = transform.alpha
+                                scaleX = transform.scaleX
+                                scaleY = transform.scaleY
+                                translationX = transform.translationX
+                                translationY = transform.translationY
+                                transformOrigin = TransformOrigin(
+                                    transform.scalePivotFractionX,
+                                    transform.scalePivotFractionY,
+                                )
+                            } else {
+                                // 移出屏幕而非 scale=0: 零缩放图层的逆矩阵是退化矩阵, 命中测试产生
+                                // NaN/Inf 坐标会腐蚀指针分发 (手势进行中导航离开时尤其明显, 表现为
+                                // 返回后整个界面触摸无响应但系统事件仍到达窗口)。平移到屏幕外坐标有限,
+                                // 命中测试干净 miss, 且不参与可见绘制 (alpha=0 + clip)。
+                                alpha = 0f
+                                scaleX = 1f
+                                scaleY = 1f
+                                translationX = -size.width
+                                transformOrigin = TransformOrigin(0f, 0f)
+                            }
                             clip = true
                         }
                         .background(AppTheme.colors.background),
@@ -549,7 +541,11 @@ private suspend fun handleLaunchRequest(
         // 2026-08-06: 深链网页打开走平台 openWebView (桌面端=独立窗口, 移动端=原路由)
         is LaunchRequest.DeepLink -> capabilities.openWebView(request.url)
         is LaunchRequest.SearchBook -> navigator.push(
-            AppRoute.Search(key = request.key, submit = request.submit)
+            AppRoute.Search(
+                key = request.key,
+                searchScope = request.searchScope,
+                submit = request.submit,
+            )
         )
         // 书籍类请求需 BookRef: shared 无 DB 能力, 委托平台能力按 bookUrl 解析后导航
         // (bookUrl 在各子类独立声明, 未上提到 LaunchRequest, 故分支独立处理以正确 smart-cast)

@@ -439,6 +439,14 @@ fun Intent.toLaunchRequest(): LaunchRequest? {
             bookUrl = getStringExtra("bookUrl"),
         )
     }
+    // 外部搜索入口 (对齐原版 SearchActivity.receiptIntent): key/searchScope extra → SearchBook
+    getStringExtra("key")?.takeIf { it.isNotBlank() }?.let { key ->
+        return LaunchRequest.SearchBook(
+            key = key,
+            searchScope = getStringExtra("searchScope"),
+            submit = getBooleanExtra("submit", true),
+        )
+    }
     // startActivityForBook 兜底: bookUrl extra → OpenReader (chapterIndex/chapterPos 可选)
     getStringExtra("bookUrl")?.takeIf { it.isNotEmpty() }?.let { url ->
         // 同步消费 IntentData.book, 避免残留数据污染后续无关 Intent 解析

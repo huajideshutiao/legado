@@ -78,6 +78,100 @@ data class RouteTransitionSpec(
 )
 
 /**
+ * 页面转场单帧变换 (alpha/缩放/位移)。
+ *
+ * [scalePivotFractionX/Y] 为缩放轴心 (0=左上角, 0.5=中心): 参数化 spec 以左上角为轴,
+ * 系统 Activity 转场动画 scale 段以中心为轴 (pivot 50%), 由采样器自带轴心描述,
+ * 动画层据此设置 graphicsLayer transformOrigin。
+ */
+data class PageTransform(
+    val alpha: Float = 1f,
+    val scaleX: Float = 1f,
+    val scaleY: Float = 1f,
+    val translationX: Float = 0f,
+    val translationY: Float = 0f,
+    val scalePivotFractionX: Float = 0f,
+    val scalePivotFractionY: Float = 0f,
+)
+
+/**
+ * 转场角色: 前进新页/前进旧页/返回目标页/返回出栈页/连播返回段中待入的新页 (保持起始位)。
+ */
+enum class TransitionRole {
+    NewPage, OldPage, TargetPage, OutgoingPage, PendingNew
+}
+
+/**
+ * 路由转场采样器: 动画层按角色+进度+页宽采样单帧变换。
+ *
+ * - 默认实现 [RouteTransitionSpecSampler] 由 [RouteTransitionSpec] 参数推导;
+ * - 平台可提供系统动画采样实现 (如 Android 直接复用系统窗口转场 Animation,
+ *   定制 ROM 的系统动画资源/插值器自动生效, 零参数复刻), 经 [io.legado.app.ui.root.PlatformCapabilities.routeTransitionSampler] 注入。
+ *
+ * progress 语义随实现: spec 采样器消费动画层曲线进度 (与 tween(spec.easing) 匹配),
+ * 系统动画采样器消费线性时钟 (曲线由系统动画内部处理)。两者都是单调递增。
+ */
+interface RouteTransitionSampler {
+    val pushDurationMillis: Int
+    val popDurationMillis: Int
+
+    /**
+     * @param width 页面宽度 (系统动画 RELATIVE_TO_SELF 百分比轴心/尺寸解析用)
+     * @param height 页面高度
+     */
+    fun sample(role: TransitionRole, progress: Float, width: Float, height: Float): PageTransform
+}
+
+/**
+ * 由 [RouteTransitionSpec] 参数推导变换的采样器 (原 LegadoApp graphicsLayer 公式逐字搬移,
+ * spec 路径视觉零变化)。progress 为动画层推进值 (已含 spec 曲线)。
+ */
+class RouteTransitionSpecSampler(private val spec: RouteTransitionSpec) : RouteTransitionSampler {
+    override val pushDurationMillis: Int get() = spec.pushDurationMillis
+    override val popDurationMillis: Int get() = spec.popDurationMillis
+
+    override fun sample(
+        role: TransitionRole,
+        progress: Float,
+        width: Float,
+        height: Float,
+    ): PageTransform {
+        return when (role) {
+            TransitionRole.NewPage -> PageTransform(
+                alpha = if (spec.newPageFadeIn) progress else 1f,
+                scaleX = spec.newPageScaleFrom + (1f - spec.newPageScaleFrom) * progress,
+                scaleY = spec.newPageScaleFrom + (1f - spec.newPageScaleFrom) * progress,
+                translationX = width * spec.newPageSlideFraction * (1f - progress),
+            )
+
+            TransitionRole.OldPage -> PageTransform(
+                alpha = if (spec.oldPageFadeOut) 1f - progress else 1f,
+                translationX = -width * spec.oldPageShiftFraction * progress,
+            )
+
+            TransitionRole.TargetPage -> PageTransform(
+                alpha = if (spec.targetPageFadeIn) progress else 1f,
+                scaleX = spec.targetPageScaleFrom + (1f - spec.targetPageScaleFrom) * progress,
+                scaleY = spec.targetPageScaleFrom + (1f - spec.targetPageScaleFrom) * progress,
+                translationX = -width * spec.targetPageSlideFraction * (1f - progress),
+            )
+
+            TransitionRole.OutgoingPage -> PageTransform(
+                alpha = if (spec.outgoingFadeOut) 1f - progress else 1f,
+                translationX = width * spec.outgoingSlideFraction * progress,
+            )
+
+            TransitionRole.PendingNew -> PageTransform(
+                alpha = if (spec.newPageFadeIn) 0f else 1f,
+                scaleX = spec.newPageScaleFrom,
+                scaleY = spec.newPageScaleFrom,
+                translationX = width * spec.newPageSlideFraction,
+            )
+        }
+    }
+}
+
+/**
  * 对话框/底部弹层动画平台 spec。
  * 进入/退出时长与插值器按平台对话框转场语义提供 (Android 系统 dialog_enter.xml 200ms
  * decelerate_quad 中心缩放 0.96→1+淡入 / dialog_exit.xml 150ms accelerate_quad 淡出,

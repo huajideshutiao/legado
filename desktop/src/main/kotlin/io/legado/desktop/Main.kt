@@ -18,6 +18,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.window.LocalWindowExceptionHandlerFactory
@@ -27,6 +28,7 @@ import androidx.compose.ui.window.WindowExceptionHandler
 import androidx.compose.ui.window.WindowExceptionHandlerFactory
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.jetbrains.JBR
 import com.sun.jna.Platform
 import io.legado.app.constant.AppLog
 import io.legado.app.data.AppDatabaseProviders
@@ -557,16 +559,23 @@ private fun runDesktopApp() = application {
         title = appName,
         icon = iconPainter,
         state = windowState,
-        // 回归原版自绘控制栏 (用户拍板 2026-08 终版): Windows/Linux 去掉系统装饰,
-        // 自绘标题栏 (DesktopTitleBar); macOS 保留原生红绿灯标题栏 (SystemDefault)。
+        // 控制栏方案 (用户拍板 2026-08 终版):
+        // - Windows: 保持系统装饰 (decorated) + JBR CustomTitleBar —— 客户区顶到窗口顶端,
+        //   标题栏整条 Compose 绘制 (深浅色/⋯菜单保留), 系统三键由 JBR 原生画在右上角
+        //   (controls.dark 跟随), 拖拽/双击最大化/贴靠/Snap Layouts 全部原生。
+        //   (探针实证: 纯 Win32 拦截无法实现同效果, JBR 原生机制是唯一可行路径,
+        //   对照 JetBrains IDE/jewel/ab-download-manager 同款方案)
+        // - Linux: undecorated 自绘控制栏 (保持原有实现不动)
+        // - macOS: 原生红绿灯标题栏 (SystemDefault)
         // 真全屏 (无边框) 由 DesktopFullscreenController 在 Win32 层临时去 WS_CAPTION,
-        // 与窗口是否装饰无关, 退出全屏自动还原。
+        // 与窗口是否装饰无关, 退出全屏自动还原; Windows 下同步解除/恢复 JBR 自定义标题栏
+        // (见下方 LaunchedEffect)。
         // 置顶开关 (控制栏菜单切换, DesktopWindowChrome 单一状态源); SwingWindow
         // updater 同步 AWT setAlwaysOnTop
-        decoration = if (Platform.isMac()) {
-            WindowDecoration.SystemDefault
-        } else {
+        decoration = if (Platform.isLinux()) {
             WindowDecoration.Undecorated()
+        } else {
+            WindowDecoration.SystemDefault
         },
         alwaysOnTop = DesktopWindowChrome.alwaysOnTop,
     ) {
@@ -574,7 +583,15 @@ private fun runDesktopApp() = application {
         // DisposableEffect 保证窗口销毁后解绑, 不让守卫持有已 dispose 的 AWT Window
         // 同步注入 AWT 窗口句柄到 DesktopWindowHandle, 供 DesktopWindowController 切换全屏;
         // 同时注入任务栏媒体 (缩略图按钮/进度条) 的 HWND (窗口重建时自动重挂)
+        val windowDensity = LocalDensity.current.density
         DisposableEffect(window) {
+            // 主窗口最小尺寸 (用户拍板 2026-08-13): 极窄窗口曾致 JBR 客户区布局锁死
+            // (拉窄再拉宽后内容区不复原), 直接限制最小宽 300dp/高 600dp 从根上规避;
+            // AWT minimumSize 为物理像素, 乘 density 换算逻辑 dp
+            window.minimumSize = java.awt.Dimension(
+                (300 * windowDensity).toInt(),
+                (600 * windowDensity).toInt(),
+            )
             windowHandle.window = window
             SingleInstanceGuard.bindWindow(window)
             DesktopTaskbarMedia.attach(window)
@@ -582,6 +599,33 @@ private fun runDesktopApp() = application {
                 windowHandle.window = null
                 SingleInstanceGuard.bindWindow(null)
             }
+        }
+        // ==================== Windows JBR 自定义标题栏 (阶段2.5) ====================
+        // JBR API 客户端侧由 org.jetbrains.runtime:jbr-api 提供, JBR 侧实现内置在
+        // JBR 21 运行时; 非 JBR 运行时 getWindowDecorations() 返回 null → 标题栏
+        // 退化为纯系统标题栏 (深浅色/⋯菜单按钮缺失, 可接受: 本项目 run/打包固定 JBR)。
+        val jbrDecorations = remember {
+            if (Platform.isWindows()) JBR.getWindowDecorations() else null
+        }
+        val customTitleBar = remember { jbrDecorations?.createCustomTitleBar() }
+        // 全屏联动: 真全屏时系统装饰被 Win32 层移除, 必须同步解除自定义标题栏,
+        // 退出全屏恢复; JBR 坑 (ab-download-manager 实证): setCustomTitleBar 会把
+        // placement 重置为 Floating, 恢复前后保存/回写 placement 防丢最大化态
+        LaunchedEffect(customTitleBar, jbrDecorations, DesktopWindowChrome.fullscreen) {
+            val d = jbrDecorations ?: return@LaunchedEffect
+            val bar = customTitleBar ?: return@LaunchedEffect
+            val placementBefore = windowState.placement
+            if (DesktopWindowChrome.fullscreen) {
+                d.setCustomTitleBar(window, null)
+            } else {
+                d.setCustomTitleBar(window, bar)
+            }
+            if (windowState.placement != placementBefore) {
+                windowState.placement = placementBefore
+            }
+            // set 生效后同步系统按钮区宽度到全局状态 (首帧 0 → 自绘按钮与系统三键重叠;
+            // 2026-08-13 用户实测, 由本状态写触发重组修复)
+            DesktopWindowChrome.titleBarRightInset = bar.rightInset
         }
         // ==================== 阶段3: 后台异步注册非首屏 provider ====================
         // 用 LaunchedEffect 在窗口显示后立即启动协程注册, 不阻塞首屏渲染
@@ -671,7 +715,9 @@ private fun runDesktopApp() = application {
                             )
                         }
                     } else {
-                        // Windows/Linux: 自绘控制栏 (顶部 40dp 标题栏 + 内容区)
+                        // Windows/Linux: 顶部 40dp 控制栏 + 内容区
+                        // (Windows: JBR 原生三键/拖拽 + Compose 内容共存;
+                        //  Linux: 自绘全功能控制栏)
                         Column(m.fillMaxSize()) {
                             if (!DesktopWindowChrome.fullscreen) {
                                 DesktopTitleBar(
@@ -682,6 +728,8 @@ private fun runDesktopApp() = application {
                                     themeStore = themeStoreProvider,
                                     navigator = navigator,
                                     onCloseRequest = ::exitApplication,
+                                    nativeSystemButtons = Platform.isWindows(),
+                                    customTitleBar = if (Platform.isWindows()) customTitleBar else null,
                                 )
                             }
                             Box(Modifier.weight(1f).fillMaxWidth()) {

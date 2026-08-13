@@ -180,6 +180,12 @@ interface PlatformCapabilities {
 
     // 关于页平台能力 (各端按需 override, 未实现端统一给出明确提示)
     // 对照 app 端 AboutActivity 同名方法
+    /**
+     * 是否提供检查更新能力 (关于页"检查更新"入口 gate)。
+     * 实现 [checkUpdate] 的端必须返回 true, 否则关于页隐藏入口。
+     */
+    val checkUpdateSupported: Boolean get() = false
+
     /** 检查更新 (对照 onCheckUpdate / AppUpdate.check) */
     fun checkUpdate() = unsupported("检查更新")
 
@@ -502,6 +508,12 @@ interface PlatformCapabilities {
     // (Android 时长运行时动态读系统动画缩放), 未 override 端 (ohos) 用 shared 默认值 (iOS 式 300ms)。
     /** 路由转场动画参数 (push/pop 几何 + 时长 + 插值器), 平台可运行时动态提供 */
     val routeTransitionSpec: RouteTransitionSpec get() = DefaultRouteTransitionSpec
+
+    /**
+     * 路由转场采样器 (复用系统动画的端 override, 如 Android 直接复用系统窗口转场动画;
+     * null=动画层用 [routeTransitionSpec] 参数推导)。
+     */
+    val routeTransitionSampler: RouteTransitionSampler? get() = null
 
     /** 对话框/底部弹层动画参数 (进入/退出时长 + 插值器) */
     val dialogTransitionSpec: DialogTransitionSpec get() = DefaultDialogTransitionSpec
