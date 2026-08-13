@@ -9,7 +9,8 @@ android {
     defaultConfig {
         minSdk = 24
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+            // 与 app splits 对齐: 只编 arm64-v8a + armeabi-v7a, x86 系不再编译
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
         externalNativeBuild {
             cmake {

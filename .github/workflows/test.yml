@@ -56,9 +56,7 @@ jobs:
   build:
     needs: prepare
     runs-on: ubuntu-latest
-    # 本 job 要删除/发布 beta Release, 必须显式提权 (仓库默认 token 只读)
-    permissions:
-      contents: write
+    # 发布已移入 publish-release job, 本 job 只需只读权限 (默认)
     env:
       product: app
       VERSION: ${{ needs.prepare.outputs.version }}
@@ -124,6 +122,15 @@ jobs:
             git log -10 --pretty=format:"- %<(72,trunc)%s (%h)" >> RELEASE_NOTES.md
           fi
 
+      # 发布逻辑已移入 publish-release job (等所有构建完成统一发布), 这里只把更新日志传上去
+      - name: Upload Release Notes
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: RELEASE_NOTES.md
+          if-no-files-found: ignore
+
       - name: Post (原包名) to Telegram
         # 时序在共存构建前: 此时 apk/ 仅含原包名产物, 通配不会带出共存包
         if: github.event_name != 'pull_request' && needs.prepare.outputs.telegram == 'yes'
@@ -156,25 +163,7 @@ jobs:
           path: ${{ github.workspace }}/apk/*.apk
           if-no-files-found: ignore
 
-      # 两个变体都构建完成后再一次性发布，避免「更新已有资产」路径触发 already_exists
-      - name: Delete Old Beta Release
-        if: github.event_name != 'pull_request'
-        continue-on-error: true
-        run: gh release delete beta -y --cleanup-tag
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: Publish Pre-Release (原包名 + 共存)
-        if: github.event_name != 'pull_request'
-        uses: ncipollo/release-action@v1
-        with:
-          name: ${{ env.VERSION }}
-          tag: "beta"
-          bodyFile: RELEASE_NOTES.md
-          prerelease: true
-          allowUpdates: true
-          artifacts: ${{ github.workspace }}/apk/*.apk
-
+      # beta release 的删除/发布已移入 publish-release job (等所有构建完成统一发布, 挂全部产物)
       # 合并原两次蓝奏上传为一次: 此时 apk/ 含两个变体全部产物
       - name: Upload To Lanzou (原包名 + 共存)
         if: github.event_name != 'pull_request' && needs.prepare.outputs.lanzou == 'yes'
@@ -409,3 +398,34 @@ jobs:
   #       with:
   #         name: ohos.hap
   #         path: ohosApp/entry/build/default/outputs/default/*.hap
+
+  # ===== 统一发布 beta release (全部产物) =====
+  # 等 Android + 三端 desktop 全部构建完成后一次性发布, 把 APK/MSI/portable zip/DEB/RPM/DMG
+  # 全部挂到 beta release 附件。单发布者避免了多 job 并发写同一 release 的竞态 (already_exists)。
+  publish-release:
+    needs: [prepare, build, desktop-build, linux-build, macos-build]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # 本 job 要删除/重建 beta Release, 必须显式提权 (仓库默认 token 只读)
+    permissions:
+      contents: write
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Delete Old Beta Release
+        continue-on-error: true
+        run: gh release delete beta -y --cleanup-tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Publish Pre-Release (全产物)
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ needs.prepare.outputs.version }}
+          tag: "beta"
+          bodyFile: artifacts/RELEASE_NOTES.md
+          prerelease: true
+          allowUpdates: true
+          artifacts: "artifacts/*.apk,artifacts/*.msi,artifacts/*.zip,artifacts/*.deb,artifacts/*.rpm,artifacts/*.dmg"

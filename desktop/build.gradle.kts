@@ -114,12 +114,20 @@ dependencies {
     //   (Windows: D3D11→Skia D3D12 共享; Linux: GLX share group; macOS: Metal), 视频区是普通
     //   Compose 层, 控制层/弹层自由叠加, 无 airspace 问题, 也不再有 Skia GL 状态缓存污染
     // - mpv runtime: mediamp-mpv 的 POM 只把 runtime 工件列在 dependencyManagement (版本锁
-    //   定), 并不传递引入, 必须显式 runtimeOnly 声明 mediamp-mpv-runtime (聚合工件, 单一 JVM
-    //   variant 无 OS/arch 属性, 带全部平台 natives, loader 运行时按当前 OS/arch 解包加载,
-    //   无需用户安装 mpv); 想省体积可换 per-platform 工件 mediamp-mpv-runtime-windows-x64 等
+    //   定), 并不传递引入, 必须显式 runtimeOnly 声明; 下方按构建平台固定单工件,
+    //   loader 运行时按当前 OS/arch 解包加载, 无需用户安装 mpv
     // - 防盗链: UriMediaData(uri, headers) 原生透传 User-Agent/Referer/http-header-fields
     implementation(libs.mediamp.mpv)
-    runtimeOnly(libs.mediamp.mpv.runtime)
+    // mpv runtime 按构建平台固定: win/linux 恒 x64 (x86 系), mac 恒 arm64 (M 芯片),
+    // 避免聚合工件把全部平台 natives 塞进每个安装包; 未知平台兜底聚合工件。
+    // 注意: macos-latest 若未来换 x64 runner, 需同步改回 macos-x64
+    val mpvRuntime = when {
+        OperatingSystem.current().isWindows -> libs.mediamp.mpv.runtime.windows.x64
+        OperatingSystem.current().isLinux -> libs.mediamp.mpv.runtime.linux.x64
+        OperatingSystem.current().isMacOsX -> libs.mediamp.mpv.runtime.macos.arm64
+        else -> libs.mediamp.mpv.runtime
+    }
+    runtimeOnly(mpvRuntime)
     // jna 保留: WindowsFileDialogs (jna-platform) / DesktopAppConfigAccessor / DesktopBattery /
     // DesktopWebViewEngines 直调 Win32; 视频侧 JNA 绑定已随自研渲染器删除。
     implementation("net.java.dev.jna:jna:5.17.0")

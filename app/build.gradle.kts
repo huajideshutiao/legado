@@ -46,8 +46,6 @@ abstract class CopyRenamedApks : DefaultTask() {
         val abiShortNames = mapOf(
             "arm64-v8a" to "arm64",
             "armeabi-v7a" to "armv7",
-            "x86_64" to "x64",
-            "x86" to "x86",
         )
 
         builtArtifacts.elements.forEach { artifact ->
@@ -153,7 +151,9 @@ android {
         abi {
             isEnable = true
             reset()
-            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            // 只保留 arm 系 ABI (arm64-v8a + armeabi-v7a); x86/x86_64 不再出包。
+            // universal 仍出, 且只含已编译 ABI
+            include("armeabi-v7a", "arm64-v8a")
             isUniversalApk = true
         }
     }

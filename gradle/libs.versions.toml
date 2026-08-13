@@ -83,12 +83,15 @@ multiplatformMarkdown = { module = "com.mikepenz:multiplatform-markdown-renderer
 multiplatformMarkdown-coil3 = { module = "com.mikepenz:multiplatform-markdown-renderer-coil3", version.ref = "multiplatformMarkdown" }
 # 桌面视频: mediamp-mpv 后端 (KMP 自动选 desktop 变体)
 mediamp-mpv = { module = "org.openani.mediamp:mediamp-mpv", version.ref = "mediamp" }
-# mpv native runtime: 不随 mediamp-mpv 传递, 需显式 runtimeOnly。此聚合工件是单一 JVM
-# runtime variant (无 OS/arch 属性), 依赖全部平台 runtime jar (windows-x64/arm64、linux-x64、
-# macos-arm64/x64), 普通 JVM 消费端可无歧义解析; 运行时 loader 按当前 OS/arch 取自己的
-# 清单 (mpv-natives-<os>-<arch>.txt) 解包加载, 其余平台 jar 只是躺在 classpath 上。
-# 在意分发体积可按平台改声明 mediamp-mpv-runtime-<os>-<arch>。
+# mpv native runtime: 不随 mediamp-mpv 传递, 需显式 runtimeOnly。聚合工件 (mediamp-mpv-runtime)
+# 是单一 JVM variant, 依赖全部平台 runtime jar; desktop 已按构建平台改用下方 per-platform
+# 工件 (见 desktop/build.gradle.kts), 聚合工件仅作未知平台兜底。运行时 loader 按当前 OS/arch
+# 解包加载 (mpv-natives-<os>-<arch>.txt)。
 mediamp-mpv-runtime = { module = "org.openani.mediamp:mediamp-mpv-runtime", version.ref = "mediamp" }
+# 单平台 runtime 工件 (desktop 按构建平台固定一个: win/linux=x64, mac=arm64)
+mediamp-mpv-runtime-windows-x64 = { module = "org.openani.mediamp:mediamp-mpv-runtime-windows-x64", version.ref = "mediamp" }
+mediamp-mpv-runtime-linux-x64 = { module = "org.openani.mediamp:mediamp-mpv-runtime-linux-x64", version.ref = "mediamp" }
+mediamp-mpv-runtime-macos-arm64 = { module = "org.openani.mediamp:mediamp-mpv-runtime-macos-arm64", version.ref = "mediamp" }
 skiko = { module = "org.jetbrains.skiko:skiko", version.ref = "skiko" }
 compose-multiplatform-export = { module = "org.jetbrains.compose.export:export", version.ref = "composeMultiplatform" }
 activity-ktx = { module = "androidx.activity:activity-ktx", version.ref = "activity" }

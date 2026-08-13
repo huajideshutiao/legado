@@ -25,6 +25,9 @@ permissions:
 jobs:
   ios:
     runs-on: macos-latest
+    # 发布 ipa 到 beta release 需要写权限 (仅 stage=ipa 时用到)
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -203,6 +206,20 @@ jobs:
           path: ${{ github.workspace }}/iosApp/build/ipa/*.ipa
           if-no-files-found: ignore
 
+      # ipa 追加到 test.yml 维护的 beta release (只 upload 不删不建, 避免动到其他产物)
+      # 注意: test.yml 每次 push 会删除并重建 beta release, 重建后需重跑本 workflow 才能恢复 ipa 附件
+      - name: Publish IPA to beta release
+        id: publish
+        if: inputs.stage == 'ipa'
+        continue-on-error: true
+        run: |
+          gh release view beta >/dev/null 2>&1 || \
+            gh release create beta --prerelease --title "${{ steps.ver.outputs.version }}" \
+              --notes "iOS 未签名 ipa (SideStore/AltStore 自签侧载)"
+          gh release upload beta $GITHUB_WORKSPACE/iosApp/build/ipa/*.ipa --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       # 失败时最需要日志, 故 always()
       - name: Collect logs
         if: always()
@@ -239,6 +256,7 @@ jobs:
           report "link framework" "${{ steps.link.outcome || 'skipped' }}"
           report "xcodebuild archive" "${{ steps.archive.outcome || 'skipped' }}"
           report "package ipa" "${{ steps.ipa.outcome || 'skipped' }}"
+          report "publish ipa" "${{ steps.publish.outcome || 'skipped' }}"
           if [ "$FAILED" = "1" ]; then
             echo "有步骤失败, 详见 ios-build-logs artifact"
             exit 1
