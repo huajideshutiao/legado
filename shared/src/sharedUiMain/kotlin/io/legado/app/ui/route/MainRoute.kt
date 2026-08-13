@@ -1177,7 +1177,6 @@ private fun BookshelfTabContent(
     }
     BookshelfScreen(
         viewModel = viewModel,
-        active = active,
         onBookClick = { book -> navigator.push(book.toReadRoute()) },
         onBookLongClick = { book -> navigator.push(AppRoute.BookInfo(book.toRouteRef())) },
         onSearchClick = { navigator.push(AppRoute.Search()) },

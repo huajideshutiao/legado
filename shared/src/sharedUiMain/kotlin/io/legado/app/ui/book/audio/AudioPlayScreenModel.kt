@@ -364,6 +364,15 @@ class AudioPlayScreenModel : ScreenModel {
         }
     }
 
+    override fun onPreRemoved() {
+        // 导航 pop 动画开始前先落库音频进度 (对照原版返回键按下即保存): 不等动画播完后的
+        // retain → onCleared; 音频后台继续播时此处存的是退出界面瞬间进度, onCleared 的
+        // saveRead 幂等再存一次无害, 书架 150ms 兜底重查读到的已是新进度
+        if (AudioPlayShared.inBookshelf) {
+            AudioPlayShared.book?.let { AudioPlayShared.saveRead() }
+        }
+    }
+
     override fun onCleared() {
         // status != PLAY 即停止 (含 LOADING, 否则后台继续加载可能自动开播)
         val status = AudioPlayShared.status

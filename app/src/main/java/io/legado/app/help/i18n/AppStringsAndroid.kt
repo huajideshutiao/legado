@@ -111,6 +111,7 @@ private val warmKeys = listOf(
     "app_folder_picker", "app_file_picker", "manual_input", "enter_directory_path",
     "empty_directory_input", "invalid_directory", "path", "select_book_folder",
     "add_to_bookshelf", "chinese_converter", "loading", "help", "share",
+    "no_prev_page", "no_next_page",
     "restore", "webdav_after_local_restore_confirm", "privacy_policy", "agree", "refuse",
     "set_local_password", "set_local_password_summary",
     // ---- 快捷方式 / 书架 ----

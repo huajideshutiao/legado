@@ -387,7 +387,7 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
         )
         imageActionMenu.onActionClick = { action ->
             when (action) {
-                "show" -> capabilities.showImagePreview(src)
+                "show" -> capabilities.showImagePreview(src, -1)
                 "refresh" -> refreshImage(src)
                 "save" -> {
                     val path = ACache.get().getAsString(AppConst.imagePathKey)

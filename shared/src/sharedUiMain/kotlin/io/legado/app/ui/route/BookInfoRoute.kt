@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalWindowInfo
+import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
@@ -593,38 +594,27 @@ fun BookInfoRoute(
                             val payload = result.payload as? RouteResultPayload.Toc
                             val b = screenModel.state.value.book ?: book
                             if (payload != null) {
-                                // 异步落库保留 (进度持久化), 但跳转章节不再依赖落库后 toRouteRef() 快照——
-                                // push 发生在异步写之前, 快照拿到的是旧进度, 阅读页 chapterIndex ?: durChapterIndex
-                                // 会落回旧章节 (对齐原版: await 落库后 startReadActivity 传同一已改对象)
-                                scope.launch(IoDispatcher) {
-                                    b.durChapterIndex = payload.chapterIndex
-                                    b.durChapterPos = payload.chapterPos
-                                    AppDbProviders.get().bookDao.update(b)
-                                }
+                                // 对照原版 tocActivityResult: 先把 book.durChapterIndex/durChapterPos
+                                // 改为选中章节, await 落库完成后再打开阅读 (只带 chapterChanged, 不带
+                                // chapterIndex/chapterPos 定位 extra) —— 阅读页属正常打开而非跳转,
+                                // 不触发 lastBookProgress 快照机制 (返回不弹"恢复进度"对话框);
+                                // await 落库避免异步整行 update 与阅读退出时 updateProgress(PATCH)
+                                // 竞态: 晚到的整行写会用旧 dur 覆盖最新进度 → 书架显示旧进度
+                                b.durChapterIndex = payload.chapterIndex
+                                b.durChapterPos = payload.chapterPos
                                 val target = when {
-                                    b.isAudio -> AppRoute.AudioPlay(
-                                        b.toRouteRef(),
-                                        chapterIndex = payload.chapterIndex,
-                                        chapterPos = payload.chapterPos,
-                                    )
-                                    b.isVideo -> AppRoute.VideoPlay(
-                                        b.toRouteRef(),
-                                        chapterIndex = payload.chapterIndex,
-                                        chapterPos = payload.chapterPos,
-                                    )
-                                    b.isImage -> AppRoute.MangaReader(
-                                        b.toRouteRef(),
-                                        chapterIndex = payload.chapterIndex,
-                                        chapterPos = payload.chapterPos,
-                                    )
+                                    b.isAudio -> AppRoute.AudioPlay(b.toRouteRef())
+                                    b.isVideo -> AppRoute.VideoPlay(b.toRouteRef())
+                                    b.isImage -> AppRoute.MangaReader(b.toRouteRef())
                                     b.isRss -> AppRoute.ReadRss(b.toRouteRef())
-                                    else -> AppRoute.Reader(
-                                        b.toRouteRef(),
-                                        chapterIndex = payload.chapterIndex,
-                                        chapterPos = payload.chapterPos,
-                                    )
+                                    else -> AppRoute.Reader(b.toRouteRef())
                                 }
-                                navigator.push(target, RouteResults.READER)
+                                scope.launch {
+                                    withContext(IoDispatcher) {
+                                        AppDbProviders.get().bookDao.update(b)
+                                    }
+                                    navigator.push(target, RouteResults.READER)
+                                }
                             } else if (!screenModel.state.value.inBookshelf) {
                                 // 未选章节且不在书架: 删书 (对照 app 端 viewModel.delBook)
                                 PlatformCapabilityProviders.getOrNull()

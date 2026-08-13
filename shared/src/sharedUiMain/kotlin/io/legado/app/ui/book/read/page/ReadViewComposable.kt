@@ -5,10 +5,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -47,7 +44,11 @@ import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
+import io.legado.app.ui.compose.platform.rememberFixedNavigationBarHeightPx
+import io.legado.app.ui.compose.platform.rememberFixedStatusBarHeightPx
 import io.legado.app.ui.compose.platform.rememberMandatoryGestureBottomPx
+import io.legado.app.ui.compose.platform.rememberNavigationBarHidden
+import io.legado.app.ui.compose.platform.rememberStatusBarHidden
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.systemCurrentTimeMillis
@@ -132,6 +133,10 @@ private const val LONG_PRESS_TIMEOUT = 600L
  * @param onSelectionMenu 页内文字选择完成回调（选中文本 + 选区起点锚点（窗口坐标：页内坐标 +
  *   滚动折算 + 状态栏高度，平台浮动菜单按窗口定位）；
  *   对照旧 ReadView.CallBack.showTextActionMenu → 平台浮动菜单跟随选区）
+ * @param onDismissSelectionMenu 同步关闭浮动文本操作菜单回调（点按取消选择等手势分支在
+ *   选区清除的同帧同步直调，对照原版 ACTION_DOWN → textActionMenu.dismiss() 同步语义，
+ *   避免事件链异步延迟造成的菜单"闪一下再消失"；平台 dismiss 幂等，事件链异步兜底
+ *   重复调用安全）
  * @param menuVisible 阅读菜单是否可见（桌面端鼠标手势层让位用；菜单可见时点击由菜单 bg 收起）
  * @param onTextAreaMeasured 正文区实测尺寸上报（px，来自正文区布局占位子节点
  *   onSizeChanged）：排版视口的单一来源，透传 ReaderRoute（对照原版
@@ -150,6 +155,7 @@ fun ReadViewComposable(
     onImageLongPress: (String, Float, Float) -> Unit = { _, _, _ -> },
     onAction: (Int) -> Unit = {},
     onSelectionMenu: (String, Offset?) -> Unit = { _, _ -> },
+    onDismissSelectionMenu: () -> Unit = {},
     menuVisible: () -> Boolean = { false },
     onTextAreaMeasured: ((IntSize) -> Unit)? = null,
     externalSelection: PageSelectionState? = null,
@@ -174,9 +180,7 @@ fun ReadViewComposable(
 
     // 页眉/页脚实际测量高度（px，来自页面布局占位子节点 onSizeChanged 上报）。
     // 本层两处消费：
-    // 1. 滚动模式下一页（showChrome=false）正文区顶部占位（headerPlaceholderPx）——
-    //    连排坐标基准与当前页一致（正文区顶 = 页眉底）
-    // 2. 命中/选择坐标折算（窗口 y → 页内坐标需减状态栏 + 页眉，对照原版
+    // 1. 命中/选择坐标折算（窗口 y → 页内坐标需减状态栏 + 页眉，对照原版
     //    contentTextView.click(x, y - headerHeight) 的 headerHeight 含 vwStatusBar + llHeader）
     // （排版视口不再由页眉/页脚差值推导：ReaderRoute 直接消费正文区实测尺寸，见
     //   onTextAreaMeasured —— 对照原版 ContentTextView.onSizeChanged 单一来源。）
@@ -187,7 +191,8 @@ fun ReadViewComposable(
     // 全文搜索跳转时由外部（ReaderScreenModel）注入同一实例，程序化选区与手势选择共用
     val selection = externalSelection ?: remember { PageSelectionState() }
     // 滚动模式正文平移量（仅 ScrollPageDelegateCompose 写入, 非滚动模式恒 0）:
-    // 选择命中坐标折算回页内坐标用（选中高亮随内容层平移, 见 PageViewComposable contentTranslationY）。
+    // 选择命中坐标折算回页内坐标用（选中高亮随内容层平移, 见 ScrollPageView 的
+    // graphicsLayer translationY）。
     // 不订阅 collectAsState：滚动每帧 updateScrollOffset 会触发整棵阅读树每帧重组（三页全部
     // 重建 contentTranslationY lambda → 整页重绘），改为在事件回调（长按/弹菜单/扩选）内直接读
     // StateFlow.value 取最新值，滚动热路径只走 graphicsLayer 绘制期订阅（只失效图层）。
@@ -234,12 +239,14 @@ fun ReadViewComposable(
         val pageWidthInt = pageWidthPx.roundToInt()
         val pageHeightPx = with(LocalDensity.current) { maxHeight.toPx() }
         val pageHeightInt = pageHeightPx.roundToInt()
-        // 系统栏 inset：正文内容层已整体避让（PageViewComposable 内 platformStatusBarPadding
-        // + 导航栏 bottom inset），但九宫格/长按分区仍按全窗坐标判定，须排除系统栏区域
-        // （对照原版 contentTextView 被 vwStatusBar/vwNavigationBar 占位挤小后的 bounds）
+        // 系统栏 inset：正文内容层已整体避让（PageViewComposable 内 statusBarFixedPadding
+        // + navigationBarFixedPadding），但九宫格/长按分区仍按全窗坐标判定，须排除系统栏区域
+        // （对照原版 contentTextView 被 vwStatusBar/vwNavigationBar 占位挤小后的 bounds）。
+        // 事件化取值 (hidden 翻转时重组一次, 显隐动画期间恒定, 不逐帧跟随)
         val density = LocalDensity.current
-        val systemBarTopPx = WindowInsets.statusBars.getTop(density)
-        val systemBarBottomPx = WindowInsets.navigationBars.getBottom(density)
+        val systemBarTopPx = if (rememberStatusBarHidden()) 0 else rememberFixedStatusBarHeightPx()
+        val systemBarBottomPx =
+            if (rememberNavigationBarHidden()) 0 else rememberFixedNavigationBarHeightPx()
         // 选区手柄尺寸（px，对照原版 cursorWidth = 24.dpToPx：手柄 24dp 方形）
         val handleSizePx = with(density) { 24.dp.toPx() }
         // 内容区高度（全窗高 - 状态栏 - 导航栏）：九宫格分区与命中判定统一按内容区坐标
@@ -262,6 +269,10 @@ fun ReadViewComposable(
         // 页眉实测高（rememberUpdatedState：手势长驻协程不随重组重启，经 State 间接读）
         val latestHeaderTipPx by rememberUpdatedState(headerTipMeasured)
 
+        // 手势长驻协程（pointerInput）不随重组重启，经 rememberUpdatedState 间接读保证
+        // 取到最新 delegate/回调/落点（delegate 在翻页动画配置变更时重建）
+        val latestDelegate by rememberUpdatedState(composeDelegate)
+
         // 九宫格点击动作分发（对照 app 端 ReadView.onSingleTapUp → click(action)）。
         // 先做页内列级点击分发（对照原版 ACTION_UP 先 curPage.onClick 再 onSingleTapUp），
         // 列命中并消费（图片/段评）后不再走九宫格动作。
@@ -273,7 +284,14 @@ fun ReadViewComposable(
             // 列级命中与九宫格分区共用同一坐标系（对照原版 contentTextView 被
             // vwStatusBar/vwNavigationBar/llHeader/llFooter 挤小后的 bounds）
             val contentY = y - latestSystemBarTopPx - latestHeaderTipPx
-            if (dispatchColumnClick(viewModel, curTextPage, tapScope, x, contentY)) {
+            if (dispatchColumnClick(viewModel, tapScope, x, contentY)) {
+                return@onTapAt
+            }
+            // 动画被打断后点击中心格忽略（对照原版 onSingleTapUp 的
+            // clickArea.isCenter && isAbortAnim → return）
+            if (isClickCenter(x, contentY, pageWidthInt, contentHeightPx.roundToInt()) &&
+                latestDelegate.isAbortAnim
+            ) {
                 return@onTapAt
             }
             when (val action = readClickActionConfig().actionAt(
@@ -291,25 +309,14 @@ fun ReadViewComposable(
 
         // 点击分区由本层决定，delegate 只负责动画（对照原版 ReadView 持有 ClickArea）
         composeDelegate.onTapAt = onTapAt
-        // 滚动模式行级平移提供者（对照旧 drawPage 的 translate + clipRect；
-        // 非滚动模式为 null，PageViewComposable 走零开销原样渲染路径）
+        // 滚动 delegate（滚动模式渲染由 ScrollPageView 接管；非滚动模式为 null）
         val scrollDelegate = composeDelegate as? ScrollPageDelegateCompose
-        // 下一页是否带完整页面装饰（背景/页眉/页脚）：仅滚动模式连排时由固定层提供背景
-        // （showChrome=false, 对照旧 drawPage 只画 TextPage 内容）；横向翻页模式（覆盖/滑动/
-        // 仿真/无动画）下一页是完整页面, 必须自带不透明背景, 否则翻到下一页时翻起区
-        // 透出窗口背景（2026-08-04 用户反馈: 向后翻页背景透明）
-        val nextPageShowChrome = scrollDelegate == null
-
-        // 手势长驻协程（pointerInput）不随重组重启，经 rememberUpdatedState 间接读保证
-        // 取到最新 delegate/回调/落点（delegate 在翻页动画配置变更时重建）
-        val latestDelegate by rememberUpdatedState(composeDelegate)
 
         // 长按落点回调（分发器长按定时触发）: 命中文字列 → 词级选中（对照旧
         // ReadView.onLongPress → ContentTextView.longPress + BreakIterator 词边界）;
         // 命中图片列 → onImageLongPress（对照旧 ImageColumn 分支 → 图片长按菜单）;
         // 空白 → onLongClick(null)（原版空白长按无动作，桌面端回落整章选择对话框）。
         // pointerInput(Unit) 不随重组重启, 用 rememberUpdatedState 取最新页/宽度/回调。
-        val latestCurPage by rememberUpdatedState(curTextPage)
         val latestPageWidth by rememberUpdatedState(pageWidthPx)
         val latestOnLongClick by rememberUpdatedState(onLongClick)
         val latestOnImageLongPress by rememberUpdatedState(onImageLongPress)
@@ -318,34 +325,73 @@ fun ReadViewComposable(
             if (y < systemBarTopPx || y >= systemBarTopPx + contentHeightPx) return@onPageLongPress
             // 命中坐标折算为内容区坐标（同 onTapAt；选词/图片列命中共用同一坐标系）
             val contentY = y - latestSystemBarTopPx - latestHeaderTipPx
-            if (selection.longPressStart(
-                    latestCurPage, x, contentY, viewModel.scrollOffset.value.toFloat(), latestPageWidth
-                )
-            ) {
-                // 选择激活期间暂停自动翻页（对照旧手势按下 → autoPager.pause），
-                // 避免翻页打断选择；选择取消时在分发器/页切换处恢复
-                latestDelegate.autoPager?.pause()
-            } else {
-                // 未命中文字列: 图片列 → 图片长按; 其余空白 → 回落
-                val column = selection.columnAt(
-                    latestCurPage, x, contentY, viewModel.scrollOffset.value.toFloat()
-                )
-                if (column is ImageColumn) {
-                    // 菜单定位坐标保持窗口坐标（平台浮动菜单按窗口定位）
-                    latestOnImageLongPress(column.src, x, y)
+            // 三页相对命中（对照原版 ContentTextView.longPress → touch 遍历三页）：
+            // 滚动模式视口内可能显示下一页的行，长按命中同样按三页连排坐标系折算
+            val hit = hitColumn(viewModel, x, contentY)
+            if (hit != null && hit.column is TextColumn) {
+                if (selection.longPressStart(
+                        hit.page, x, contentY, hit.relativeOffset, latestPageWidth
+                    )
+                ) {
+                    // 选择激活期间暂停自动翻页（对照旧手势按下 → autoPager.pause），
+                    // 避免翻页打断选择；选择取消时在分发器/页切换处恢复
+                    latestDelegate.autoPager?.pause()
                 } else {
+                    // 词展开失败（异常路径）：回落空白长按
                     latestOnLongClick(null)
                 }
+            } else if (hit?.column is ImageColumn) {
+                // 菜单定位坐标保持窗口坐标（平台浮动菜单按窗口定位）
+                latestOnImageLongPress(hit.column.src, x, y)
+            } else {
+                latestOnLongClick(null)
             }
         }
 
-        composeDelegate.renderPageAnimation(
-            pageWidthPx = pageWidthInt,
-            pageHeightPx = pageHeightInt,
-            prevContent = {
-                prevTextPage?.let { page ->
+        if (scrollDelegate != null) {
+            // 滚动模式：单画布三页连排渲染（见 ScrollPageView 注释——跨页错帧闪烁根治）
+            scrollDelegate.setViewSize(pageWidthInt, pageHeightInt)
+            ScrollPageView(
+                scrollDelegate = scrollDelegate,
+                viewModel = viewModel,
+                textPage = curTextPage,
+                modifier = Modifier.fillMaxSize(),
+                batteryLevel = batteryLevel,
+                clockText = clockText,
+                drawTick = pageDrawTick,
+                selection = selection,
+                onHeaderMeasured = { headerTipMeasured = it },
+                onFooterMeasured = { footerTipMeasured = it },
+                onTextAreaMeasured = onTextAreaMeasured,
+            )
+        } else {
+            composeDelegate.renderPageAnimation(
+                pageWidthPx = pageWidthInt,
+                pageHeightPx = pageHeightInt,
+                prevContent = {
+                    prevTextPage?.let { page ->
+                        PageViewComposable(
+                            textPage = page,
+                            modifier = Modifier.fillMaxSize(),
+                            batteryLevel = batteryLevel,
+                            clockText = clockText,
+                            onClick = onClick,
+                            onLongClick = onLongClick,
+                            drawTick = pageDrawTick,
+                            selection = selection,
+                            // 页眉/页脚实测高度上报（布局占位子节点 onSizeChanged）：
+                            // 滚动连排占位与坐标折算共用；排版视口走 onTextAreaMeasured 单一来源
+                            onHeaderMeasured = { headerTipMeasured = it },
+                            onFooterMeasured = { footerTipMeasured = it },
+                            onTextAreaMeasured = onTextAreaMeasured,
+                        )
+                    }
+                },
+                curContent = {
+                    // 当前页恒组合（textPage 可空）：正文区 Box 在无页首帧也参与测量，排版视口
+                    // （onTextAreaMeasured）才有第一个稳定值——initBook 依赖它启动，见 ReaderRoute
                     PageViewComposable(
-                        textPage = page,
+                        textPage = curTextPage,
                         modifier = Modifier.fillMaxSize(),
                         batteryLevel = batteryLevel,
                         clockText = clockText,
@@ -353,75 +399,30 @@ fun ReadViewComposable(
                         onLongClick = onLongClick,
                         drawTick = pageDrawTick,
                         selection = selection,
-                        // 页眉/页脚实测高度上报（布局占位子节点 onSizeChanged）：
-                        // 滚动连排占位与坐标折算共用；排版视口走 onTextAreaMeasured 单一来源
                         onHeaderMeasured = { headerTipMeasured = it },
                         onFooterMeasured = { footerTipMeasured = it },
                         onTextAreaMeasured = onTextAreaMeasured,
                     )
-                }
-            },
-            curContent = {
-                // 当前页恒组合（textPage 可空）：正文区 Box 在无页首帧也参与测量，排版视口
-                // （onTextAreaMeasured）才有第一个稳定值——initBook 依赖它启动，见 ReaderRoute
-                PageViewComposable(
-                    textPage = curTextPage,
-                    modifier = Modifier.fillMaxSize(),
-                    batteryLevel = batteryLevel,
-                    clockText = clockText,
-                    onClick = onClick,
-                    onLongClick = onLongClick,
-                    drawTick = pageDrawTick,
-                    // 滚动模式：正文随行级偏移平移（绘制阶段读取，不触发重组）
-                    contentTranslationY = scrollDelegate?.let { sd -> { sd.contentOffset } },
-                    selection = selection,
-                    onHeaderMeasured = { headerTipMeasured = it },
-                    onFooterMeasured = { footerTipMeasured = it },
-                    onTextAreaMeasured = onTextAreaMeasured,
-                )
-            },
-            nextContent = {
-                nextTextPage?.let { page ->
-                    PageViewComposable(
-                        textPage = page,
-                        modifier = Modifier.fillMaxSize(),
-                        batteryLevel = batteryLevel,
-                        clockText = clockText,
-                        onClick = onClick,
-                        onLongClick = onLongClick,
-                        drawTick = pageDrawTick,
-                        // 滚动模式：下一页连排在当前页内容之后（旧 relativeOffset(1)），纯正文无装饰；
-                        // 横向翻页模式：下一页是完整页面，需自带不透明背景（见 nextPageShowChrome）
-                        contentTranslationY = scrollDelegate?.let { sd -> { sd.nextContentOffset } },
-                        showChrome = nextPageShowChrome,
-                        selection = selection,
-                        // 滚动模式下一页 showChrome=false：顶部保留页眉同高占位，
-                        // 连排正文区起点与当前页一致（正文区顶 = 页眉底）
-                        headerPlaceholderPx = headerTipMeasured,
-                    )
-                }
-            },
-            // 第 3 页：仅滚动模式连排使用（横向翻页模式各页自带完整背景，由 delegate 忽略）。
-            // 章末短页 + 新章短页时视口下方需本页补位（对照旧 drawPage 的 relativePage(2)），
-            // 否则出现"滑到一定程度下一章内容变空白"
-            nextPlusContent = {
-                nextPlusTextPage?.let { page ->
-                    PageViewComposable(
-                        textPage = page,
-                        modifier = Modifier.fillMaxSize(),
-                        batteryLevel = batteryLevel,
-                        clockText = clockText,
-                        onClick = onClick,
-                        onLongClick = onLongClick,
-                        drawTick = pageDrawTick,
-                        contentTranslationY = scrollDelegate?.let { sd -> { sd.nextPlusContentOffset } },
-                        showChrome = false,
-                        selection = selection,
-                        headerPlaceholderPx = headerTipMeasured,
-                    )
-                }
-            },
-        )
+                },
+                nextContent = {
+                    nextTextPage?.let { page ->
+                        PageViewComposable(
+                            textPage = page,
+                            modifier = Modifier.fillMaxSize(),
+                            batteryLevel = batteryLevel,
+                            clockText = clockText,
+                            onClick = onClick,
+                            onLongClick = onLongClick,
+                            drawTick = pageDrawTick,
+                            selection = selection,
+                        )
+                    }
+                },
+                // 横向翻页模式各页自带完整背景，第 3 页连排仅滚动模式使用（由
+                // ScrollPageView 承担），本 lambda 不再被任何路径调用
+                nextPlusContent = {},
+            )
+        }
 
         // 自动翻页揭示动画覆盖层（对照原版 AutoPager.onDraw 的非 E-Ink 分支）
         composeDelegate.autoPager?.let { autoPager ->
@@ -449,7 +450,7 @@ fun ReadViewComposable(
         SelectionHandleOverlay(
             selection = selection,
             handleSizePx = handleSizePx,
-            scrollOffsetY = { viewModel.scrollOffset.value.toFloat() },
+            scrollOffsetY = { relativeOffsetOf(viewModel, selection.currentPage) },
             headerTipPx = latestHeaderTipPx.toFloat(),
             systemBarTopPx = latestSystemBarTopPx.toFloat(),
         )
@@ -464,7 +465,11 @@ fun ReadViewComposable(
         // 直接读最新值不订阅：避免滚动每帧触发重组（同上方 scrollOffset 说明）
         val selectionMenuAnchor: () -> Offset? = {
             selection.selectionAnchor()?.let {
-                Offset(it.x, it.y + viewModel.scrollOffset.value + latestHeaderTipPx + latestSystemBarTopPx)
+                Offset(
+                    it.x,
+                    it.y + relativeOffsetOf(viewModel, selection.currentPage) +
+                        latestHeaderTipPx + latestSystemBarTopPx
+                )
             }
         }
         // 抬手弹选择菜单：空选区时取消而非弹空菜单（有意的 UX 修正，保留）
@@ -481,6 +486,9 @@ fun ReadViewComposable(
         val latestOnTapAt by rememberUpdatedState(onTapAt)
         val latestOnPageLongPress by rememberUpdatedState(onPageLongPress)
         val latestShowSelectionMenu by rememberUpdatedState(showSelectionMenu)
+        // 同步关菜单回调（rememberUpdatedState：pointerInput(Unit) 长驻协程不随重组重启，
+        // 经 State 间接读保证取到最新回调）
+        val latestOnDismissSelectionMenu by rememberUpdatedState(onDismissSelectionMenu)
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -493,9 +501,15 @@ fun ReadViewComposable(
                         )
                         // 鼠标手势由 readerMouseGestures 全权接管，本层对鼠标零消费让位
                         if (down.type == PointerType.Mouse) return@awaitEachGesture
-                        val downId = down.id
                         val downX = down.position.x
                         val downY = down.position.y
+                        // 手势起点（多指切换时更新，对照原版 ReadView.startX/startY 的
+                        // setStartPoint 语义：slop/长按/单击落点都随最新起点）
+                        var startX = down.position.x
+                        var startY = down.position.y
+                        // 当前跟踪的手指 id（多指切换：对照原版 POINTER_DOWN 切到
+                        // 最后按下的手指、POINTER_UP 切回最早按下的手指）
+                        var trackedId = down.id
                         // 底部强制系统手势带子内按下 → 本次手势整体放弃（对照原版
                         // onTouchEvent 开头 API>=R 的 mandatorySystemGestures 判据）。
                         // 等价性：原版吞掉 DOWN 后 pressDown=false，后续 MOVE 首行
@@ -533,10 +547,12 @@ fun ReadViewComposable(
                         // PointerInputScope/AwaitPointerEventScope 均非 CoroutineScope
                         // （官方声明 interface PointerInputScope : Density），launch 只能
                         // 挂组合层 scope；长按协程与下方 MOVE 事件循环并行，互不阻塞
+                        // 长按落点读最新手势起点（对照原版 longPressRunnable 读
+                        // setStartPoint 后的 startX/startY，多指切换时随最新手指）
                         val longPressJob = tapScope.launch {
                             delay(LONG_PRESS_TIMEOUT)
                             longPressed = true
-                            latestOnPageLongPress(downX, downY)
+                            latestOnPageLongPress(startX, startY)
                         }
                         // 手柄抓取标志（对照原版 cursor_left/cursor_right ImageView 的
                         // OnTouchListener：手柄消费 DOWN 后 ReadView 收不到事件，不触发
@@ -549,7 +565,7 @@ fun ReadViewComposable(
                         if (selection.isActive) {
                             // 手柄锚点窗口坐标折算同 selectionMenuAnchor（页内坐标 +
                             // 滚动折算 + 页眉 + 状态栏）
-                            val handleOffsetY = viewModel.scrollOffset.value.toFloat() +
+                            val handleOffsetY = relativeOffsetOf(viewModel, selection.currentPage) +
                                 latestHeaderTipPx.toFloat() + latestSystemBarTopPx.toFloat()
                             val startHandle = selection.startHandleOffset()?.let {
                                 // 左手柄右缘对齐起点锚点（对照原版 cursorLeft.x = x - width）
@@ -571,15 +587,20 @@ fun ReadViewComposable(
                             }
                             if (grabbingLeftHandle || grabbingRightHandle) {
                                 // 手柄按下：关菜单但保留选区（对照原版手柄 DOWN →
-                                // textActionMenu.dismiss；KMP 菜单与选区解耦，
-                                // postSelectionDismissed 只关平台菜单）；取消长按定时
-                                // （对照原版手柄 DOWN 不启动长按定时）
-                                ReadBookEvents.postSelectionDismissed()
+                                // textActionMenu.dismiss，同步直调平台关菜单；
+                                // 手柄不改变选区激活态，事件链不会触发，必须走同步通道）；
+                                // 取消长按定时（对照原版手柄 DOWN 不启动长按定时）
+                                latestOnDismissSelectionMenu()
                                 longPressJob.cancel()
                                 longPressed = false
                                 pressOnTextSelected = true
                             } else {
                                 selection.cancel()
+                                // 点按取消选择：同步直调平台关菜单（对照原版 ACTION_DOWN →
+                                // textActionMenu.dismiss() 同步语义，避免事件链异步延迟
+                                // 2~5 帧的"菜单完整闪一下再消失"；事件链兜底仍会再触发一次，
+                                // 平台 dismiss 幂等，重复调用安全）
+                                latestOnDismissSelectionMenu()
                                 latestDelegate.autoPager?.resume()
                                 pressOnTextSelected = true
                             }
@@ -592,7 +613,8 @@ fun ReadViewComposable(
                             latestDelegate.onDown(downX, downY)
                         }
                         val tracker = VelocityTracker()
-                        tracker.addPointerInputChange(down)
+                        // 对照原版 ScrollPageDelegate.onTouch ACTION_DOWN: mVelocity.clear()
+                        // (DOWN 事件不入速度追踪)
                         // UP/CANCEL 传给 onTouchUp 的坐标取最后一次事件位置
                         // （对照原版 UP 分支 pageDelegate?.onTouch(event) 传 UP 事件坐标）
                         var lastX = downX
@@ -602,7 +624,24 @@ fun ReadViewComposable(
                         // （选择激活 → 扩选；否则 → delegate 翻页/滚动拖动）
                         while (true) {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
-                            val change = event.changes.firstOrNull { it.id == downId } ?: break
+                            val tracked = event.changes.firstOrNull { it.id == trackedId } ?: break
+                            // 多指触控（对照原版 ACTION_POINTER_DOWN 分支）：新手指按下时
+                            // 切换跟踪到最后按下的手指并重置起点（旧 setStartPoint 语义，
+                            // 只更新起点不打断动画），本次事件不滚动
+                            val pressedNow = event.changes.filter { it.pressed }
+                            if (pressedNow.size > 1) {
+                                val newest = pressedNow.last()
+                                if (newest.id != trackedId) {
+                                    trackedId = newest.id
+                                    startX = newest.position.x
+                                    startY = newest.position.y
+                                    latestDelegate.setStartPoint(
+                                        newest.position.x, newest.position.y
+                                    )
+                                    continue
+                                }
+                            }
+                            val change = tracked
                             // 取消检测（对照官方 awaitDragOrCancellation / awaitTouchSlopOrCancellation
                             // 的 change.isConsumed 惯例）：Android ACTION_CANCEL 不生成 PointerEvent
                             // —— MotionEventAdapter 对 ACTION_CANCEL 返回 null，AndroidComposeView
@@ -613,7 +652,23 @@ fun ReadViewComposable(
                                 gestureCancelled = true
                                 break
                             }
-                            if (!change.pressed) break
+                            if (!change.pressed) {
+                                // 跟踪手指抬起（对照原版 ACTION_POINTER_UP 分支）：
+                                // 其余手指继续时切回最早按下的手指并重置起点，
+                                // 本次事件不滚动（旧 POINTER_UP → setStartPoint + return）
+                                val remaining = pressedNow.filter { it.id != trackedId }
+                                if (remaining.isNotEmpty()) {
+                                    val first = remaining.first()
+                                    trackedId = first.id
+                                    startX = first.position.x
+                                    startY = first.position.y
+                                    latestDelegate.setStartPoint(
+                                        first.position.x, first.position.y
+                                    )
+                                    continue
+                                }
+                                break
+                            }
                             // 原版逐事件判据：MOVE 滑进底部强制手势带子 → 吞掉（状态机不动、
                             // 不消费、速度不更新），移出带子恢复；UP/CANCEL 不受此判据限制
                             // （break 后走收尾分支，原版同样放行）。不能只判 DOWN：从正文区
@@ -628,12 +683,21 @@ fun ReadViewComposable(
                                 // （removeCallbacks(longPressRunnable)）并进入 MOVE 处理；
                                 // 迁移版把"取消长按"也挂在这里（下方 isMove 分支不再重复），
                                 // 保证与点击判定同源：第一道过 → 不再可能走单击
-                                val dx = change.position.x - downX
-                                val dy = change.position.y - downY
+                                val dx = change.position.x - startX
+                                val dy = change.position.y - startY
                                 if (abs(dx) > slop || abs(dy) > slop) {
                                     firstSlopPassed = true
                                     longPressJob.cancel()
                                     longPressed = false
+                                }
+                            }
+                            if (firstSlopPassed) {
+                                // 对照原版 ScrollPageDelegate.onScroll: mVelocity.addMovement(event)
+                                // 在每次 MOVE 都执行（第一道过即进 delegate.onTouch，与第二道
+                                // isMoved 无关）——速度窗口含 slop 后全部移动；扩选/手柄
+                                // 拖动不走 delegate.onTouch，原版不追踪速度，此处同样排除
+                                if (!selection.isActive && !grabbingLeftHandle && !grabbingRightHandle) {
+                                    tracker.addPointerInputChange(change)
                                 }
                             }
                             if (firstSlopPassed && !isMove) {
@@ -643,8 +707,8 @@ fun ReadViewComposable(
                                 // delegate 共用本判定，横向 delegate 不再重复计算），
                                 // 越过阈值才首次调 delegate.onScroll（首次调用即携带
                                 // 从按下点起的完整位移，delegate 内据此定方向/重置起点）
-                                val dx = change.position.x - downX
-                                val dy = change.position.y - downY
+                                val dx = change.position.x - startX
+                                val dy = change.position.y - startY
                                 isMove = dx * dx + dy * dy > slopSquare2
                             }
                             if (grabbingLeftHandle || grabbingRightHandle) {
@@ -657,7 +721,7 @@ fun ReadViewComposable(
                                 // Activity 折算补手柄宽（rawX ± width / rawY - height）
                                 val handleY = change.position.y - handleSizePx -
                                     latestSystemBarTopPx.toFloat() - latestHeaderTipPx.toFloat()
-                                val scrollOffset = viewModel.scrollOffset.value.toFloat()
+                                val scrollOffset = relativeOffsetOf(viewModel, selection.currentPage)
                                 if (grabbingLeftHandle) {
                                     // 反转后左手柄改驱动终点（对照原版 getReverseStartCursor 分流）
                                     if (selection.reverseStartCursor) {
@@ -695,12 +759,11 @@ fun ReadViewComposable(
                                     selection.extendTo(
                                         change.position.x,
                                         change.position.y - latestSystemBarTopPx - latestHeaderTipPx,
-                                        viewModel.scrollOffset.value.toFloat(),
+                                        relativeOffsetOf(viewModel, selection.currentPage),
                                         latestPageWidth,
                                     )
                                 } else {
                                     latestDelegate.onScroll(change.position.x, change.position.y)
-                                    tracker.addPointerInputChange(change)
                                 }
                             }
                         }
@@ -738,7 +801,7 @@ fun ReadViewComposable(
                                 // 回落九宫格（对照原版 if (!curPage.onClick(startX, startY))
                                 // onSingleTapUp()；onTapAt 已封装列命中 + 九宫格分发）
                                 if (!longPressed && !pressOnTextSelected) {
-                                    latestOnTapAt(downX, downY)
+                                    latestOnTapAt(startX, startY)
                                     handledAsTap = true
                                 }
                             }
@@ -778,7 +841,7 @@ fun ReadViewComposable(
                             selection.extendTo(
                                 x,
                                 y - latestSystemBarTopPx - latestHeaderTipPx,
-                                viewModel.scrollOffset.value.toFloat(),
+                                relativeOffsetOf(viewModel, selection.currentPage),
                                 latestPageWidth,
                             )
                         },
@@ -798,8 +861,8 @@ fun ReadViewComposable(
 /**
  * 页内列级点击分发（对照原版 ContentTextView.click → touch 命中 + 列类型分发）。
  *
- * 命中规则与 ContentTextView.touch 一致：行内 `isTouch(x, y, 0)`（当前页无相对偏移），
- * 列内 `isTouch(x)`；第一个命中的列生效。
+ * 命中规则与 ContentTextView.touch 一致：三页相对遍历（[hitColumn]），第一个命中的
+ * 列生效；[ReviewColumn] → 段评对话框，[ImageColumn] → 书源点击规则/图片预览。
  *
  * @param x/y 正文区坐标（调用方已减状态栏 + 页眉折算，对照原版
  *        contentTextView.click(x, y - headerHeight)）
@@ -808,66 +871,119 @@ fun ReadViewComposable(
  */
 private fun dispatchColumnClick(
     viewModel: ReadBookViewModelShared,
-    page: TextPage?,
     scope: kotlinx.coroutines.CoroutineScope,
     x: Float,
     y: Float,
 ): Boolean {
-    if (page == null) return false
-    // 滚动模式行级偏移: 行几何随 offset 平移 (对照旧 ContentTextView.touch 的 relativeOffset;
-    // 非滚动模式 offset 恒 0, 不影响其他翻页模式)
-    val relativeOffset = viewModel.scrollOffset.value.toFloat()
-    for (textLine in page.lines) {
-        if (!textLine.isTouch(x, y, relativeOffset)) continue
-        for (column in textLine.columns) {
-            if (!column.isTouch(x)) continue
-            when (column) {
-                is ReviewColumn -> {
-                    // 对照原版 onReviewClick: chapterList[textPage.chapterIndex] + ReviewListDialog
-                    val book = viewModel.book.value ?: return false
-                    val chapter =
-                        viewModel.chapterList.value.getOrNull(page.chapterIndex) ?: return false
-                    PlatformCapabilityProviders.getOrNull()
-                        ?.showReviewListDialog(book, chapter, column.paragraphIndex)
-                    return true
-                }
-
-                is ImageColumn -> {
-                    if (column.onClick.isNotEmpty()) {
-                        // 对照原版 onImageClick: AnalyzeRule.evalJS(onClick) 执行书源点击规则
-                        val book = viewModel.book.value ?: return false
-                        val chapter =
-                            viewModel.chapterList.value.getOrNull(page.chapterIndex) ?: return false
-                        val source = viewModel.bookSource.value ?: return false
-                        scope.launch {
-                            runCatching {
-                                val rule = AnalyzeRuleFactories.create(book, source)
-                                rule.setBaseUrl(chapter.url)
-                                rule.chapter = chapter
-                                rule.evalJS(column.onClick)
-                            }
-                        }
-                        return true
-                    }
-                    // 未配置点击规则：按 previewImageByClick 配置走平台图片预览（对照原版 PhotoDialog）
-                    val preview = runCatching {
-                        PreferenceProviders.get().getBoolean(PreferKey.previewImageByClick, false)
-                    }.getOrDefault(false)
-                    if (preview) {
-                        PlatformCapabilityProviders.getOrNull()?.showImagePreview(column.src)
-                        return true
-                    }
-                    return false
-                }
-
-                // TextColumn 及未下沉列不消费（对照原版 TextColumn 无 click 分支，
-                // ButtonColumn 由 app 端旧排版产生，shared ColumnFactory 不产出）
-                is TextColumn -> return false
-                else -> return false
-            }
+    val hit = hitColumn(viewModel, x, y) ?: return false
+    val column = hit.column
+    when (column) {
+        is ReviewColumn -> {
+            // 对照原版 onReviewClick: chapterList[textPage.chapterIndex] + ReviewListDialog
+            val book = viewModel.book.value ?: return false
+            val chapter =
+                viewModel.chapterList.value.getOrNull(hit.page.chapterIndex) ?: return false
+            PlatformCapabilityProviders.getOrNull()
+                ?.showReviewListDialog(book, chapter, column.paragraphIndex)
+            return true
         }
+
+        is ImageColumn -> {
+            if (column.onClick.isNotEmpty()) {
+                // 对照原版 onImageClick: AnalyzeRule.evalJS(onClick) 执行书源点击规则
+                val book = viewModel.book.value ?: return false
+                val chapter =
+                    viewModel.chapterList.value.getOrNull(hit.page.chapterIndex) ?: return false
+                val source = viewModel.bookSource.value ?: return false
+                scope.launch {
+                    runCatching {
+                        val rule = AnalyzeRuleFactories.create(book, source)
+                        rule.setBaseUrl(chapter.url)
+                        rule.chapter = chapter
+                        rule.evalJS(column.onClick)
+                    }
+                }
+                return true
+            }
+            // 未配置点击规则：按 previewImageByClick 配置走平台图片预览（对照原版 PhotoDialog）
+            val preview = runCatching {
+                PreferenceProviders.get().getBoolean(PreferKey.previewImageByClick, false)
+            }.getOrDefault(false)
+            if (preview) {
+                // 携带命中页章节索引：实现端据此优先查阅读时已落盘的章节图片缓存
+                // （BookImageStorage，对照原版 PhotoDialog.loadPhoto 的章节缓存文件分支）
+                PlatformCapabilityProviders.getOrNull()
+                    ?.showImagePreview(column.src, hit.page.chapterIndex)
+                return true
+            }
+            return false
+        }
+
+        // TextColumn 及未下沉列不消费（对照原版 TextColumn 无 click 分支，
+        // ButtonColumn 由 app 端旧排版产生，shared ColumnFactory 不产出）
+        else -> return false
     }
-    return false
+}
+
+/** 三页相对命中结果（复刻原版 ContentTextView.touch 的 relativePos 0..2 遍历） */
+private class ColumnHit(
+    val page: TextPage,
+    val column: BaseColumn,
+    val relativeOffset: Float,
+)
+
+/**
+ * 三页相对命中（复刻原版 ContentTextView.touch：滚动模式视口内可能显示下一页/下下页
+ * 的行，点击/长按/列命中共用本遍历——relativePos 0..2，第 i 页相对视口偏移 = 滚动
+ * 偏移 + 前面页高之和；下一页顶已到视口底之下即止（旧
+ * `relativeOffset >= visibleHeight` return）。行命中但列未命中即止（旧 touch 语义）。
+ *
+ * @param x/y 正文区坐标（调用方已减状态栏 + 页眉折算）
+ */
+private fun hitColumn(
+    viewModel: ReadBookViewModelShared,
+    x: Float,
+    y: Float,
+): ColumnHit? {
+    val pages = arrayOf(
+        viewModel.curTextPage.value,
+        viewModel.nextTextPage.value,
+        viewModel.nextPlusTextPage.value,
+    )
+    val visibleHeight = pages[0]?.visibleHeight ?: 0
+    val offset = viewModel.scrollOffset.value.toFloat()
+    var rel = offset
+    for (i in pages.indices) {
+        val page = pages[i] ?: continue
+        if (i > 0 && rel >= visibleHeight) return null
+        for (line in page.lines) {
+            if (!line.isTouch(x, y, rel)) continue
+            for (column in line.columns) {
+                if (column.isTouch(x)) return ColumnHit(page, column, rel)
+            }
+            // 行命中但列未命中：不消费（对照旧 touch 行内未命中即 return）
+            return null
+        }
+        rel += page.height
+    }
+    return null
+}
+
+/**
+ * 页相对视口偏移（复刻原版 ContentTextView.relativeOffset）：选择相关坐标折算
+ * （扩选/手柄/菜单锚点）按选区所在页折算——滚动模式选区可落在下一页，
+ * 相对偏移 = 滚动偏移 + 前面页高之和。
+ */
+private fun relativeOffsetOf(viewModel: ReadBookViewModelShared, page: TextPage?): Float {
+    val offset = viewModel.scrollOffset.value.toFloat()
+    return when (page) {
+        null -> offset
+        viewModel.curTextPage.value -> offset
+        viewModel.nextTextPage.value -> offset + (viewModel.curTextPage.value?.height ?: 0f)
+        viewModel.nextPlusTextPage.value -> offset + (viewModel.curTextPage.value?.height ?: 0f) +
+            (viewModel.nextTextPage.value?.height ?: 0f)
+        else -> offset
+    }
 }
 
 /**

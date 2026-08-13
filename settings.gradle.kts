@@ -47,6 +47,8 @@ private fun tomlVersionOf(toml: String, key: String): String {
 rootProject.name = "legado"
 
 include(":app")
+// Android Baseline Profile 生成模块 (com.android.test + androidx.baselineprofile, 仅 Android)
+include(":benchmark")
 include(":modules:js-api")
 include(":modules:quickjs")
 include(":modules:quickjs-android-native")

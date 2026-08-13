@@ -120,6 +120,18 @@ interface ReaderPlatformProvider {
     fun onTextSelectionDismissed(screenModel: ReaderScreenModel) {}
 
     /**
+     * 同步立即关闭浮动文本操作菜单（对照原版 ReadView ACTION_DOWN → textActionMenu.dismiss()
+     * 的同步语义）：点按取消选择等手势分支在选区清除的同一帧同步直调，避免事件链异步延迟
+     * （snapshotFlow 下降沿 → SharedFlow → LaunchedEffect 收集，约 2~5 帧）造成
+     * FloatingActionMode enter 动画未播完就被 finish() 快进、菜单"完整闪一下再消失"的视觉问题。
+     *
+     * 与 [onTextSelectionDismissed]（异步事件链，覆盖翻页/重排等非手势路径的兜底）互补：
+     * 手势路径同步关闭后事件链仍会再触发一次，平台 dismiss 实现必须幂等（菜单未显示时
+     * 无操作），重复调用安全。默认空实现（无浮动菜单的平台如 desktop 对话框形态无需处理）。
+     */
+    fun dismissTextActionMenu(screenModel: ReaderScreenModel) {}
+
+    /**
      * 图片长按（命中图片列，携带长按点坐标）：平台弹图片操作菜单（对照旧
      * ContentTextView.longPress 的 ImageColumn 分支 → ReadBookActivity.onImageLongPress：
      * 查看/刷新/保存/选择目录）
@@ -814,6 +826,14 @@ class ReaderScreenModel(
         if (pos != null) {
             readBook.updateDurChapterPos(pos)
         }
+    }
+
+    override fun onPreRemoved() {
+        // 导航 pop 动画开始前先落库 (对照原版返回键按下即 onPause → ReadBook.saveRead):
+        // 不等动画播完后的 retain → onCleared, 退出阅读回书架立即可见最新进度。
+        // 只落库不 WebDav 上传: 上传由 onCleared 的 uploadProgress 触发一次, 避免双上传;
+        // 落库幂等, onCleared 再落一次无害
+        viewModel.saveProgress()
     }
 
     override fun onCleared() {

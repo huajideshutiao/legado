@@ -7,11 +7,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -38,6 +36,7 @@ import io.legado.app.ui.compose.component.AppOutlinedButton
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.platform.bringIntoViewOnIme
 import io.legado.app.ui.compose.platform.imeDismissPadding
+import io.legado.app.ui.compose.platform.rememberImeVisible
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
@@ -153,9 +152,10 @@ fun BookInfoEditScreen(
     coverSlot: @Composable (Book?, Modifier) -> Unit,
 ) {
     // 导航条避让走滚动区末尾 Spacer (对齐原版 scrollView clipToPadding=false), ime 留在根
-    // 减去 ime (对齐原版 navigationBarHeight 的 coerceAtLeast(0))
-    val navBottom = WindowInsets.navigationBars
-        .exclude(WindowInsets.ime)
+    // 减去 ime (对齐原版 navigationBarHeight 的 coerceAtLeast(0))。事件化: imeVisible 为
+    // 事件性布尔 (翻转时重组一次), 键盘弹出期间不再逐帧读 ime 数值
+    val imeVisible = rememberImeVisible()
+    val navBottom = if (imeVisible) 0.dp else WindowInsets.navigationBars
         .asPaddingValues()
         .calculateBottomPadding()
     Column(

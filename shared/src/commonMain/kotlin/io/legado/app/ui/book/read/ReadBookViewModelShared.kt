@@ -972,6 +972,9 @@ class ReadBookViewModelShared(
                 launchChapterLoad(curIndex + 1) { loadContent(curIndex + 1) }
             }
             launchChapterLoad(curIndex + 2) { loadContent(curIndex + 2) }
+            // 对齐原版 ReadBook.moveToNextChapter 末尾的 saveRead(): 翻章即回写内存
+            // book 实体 (详情页 IntentData 传递依赖内存实时性) + 落库 (书架靠失效推送刷新)
+            readBook.saveRead()
             return true
         }
         return false
@@ -1037,6 +1040,8 @@ class ReadBookViewModelShared(
                 launchChapterLoad(curIndex - 1) { loadContent(curIndex - 1) }
             }
             launchChapterLoad(curIndex - 2) { loadContent(curIndex - 2) }
+            // 对齐原版 ReadBook.moveToPrevChapter 末尾的 saveRead()
+            readBook.saveRead()
             return true
         }
         return false
@@ -1077,11 +1082,18 @@ class ReadBookViewModelShared(
                     )
                 }.getOrDefault(c.title)
             } ?: book.durChapterTitle
+            val durChapterTime = systemCurrentTimeMillis()
+            // 对齐原版 ReadBook.saveRead: 落库同时回写内存 book 实体 (详情页 IntentData
+            // 传递依赖内存实时性, 无需 push 前额外落库桥接)
+            book.durChapterIndex = durChapterIndex
+            book.durChapterPos = durChapterPos
+            book.durChapterTitle = durChapterTitle
+            book.durChapterTime = durChapterTime
             AppDbProviders.get().bookDao.updateProgress(
                 bookUrl = book.bookUrl,
                 durChapterIndex = durChapterIndex,
                 durChapterPos = durChapterPos,
-                durChapterTime = systemCurrentTimeMillis(),
+                durChapterTime = durChapterTime,
                 durChapterTitle = durChapterTitle,
             )
         }.onFailure {
@@ -1187,7 +1199,7 @@ class ReadBookViewModelShared(
         saveProgressAwait()
         // 进度落库后通知书架重查 (对齐原版: 退出阅读返回书架时, 书架在 Activity onResume
         // 重订阅 Room 流拿到最新进度/排序)。单页架构下书架 DB 流全程驻留, 阅读期间不摘订阅,
-        // 退出只靠 Room 连续失效推送; 显式 postEvent 让书架重启当前分组流, 保证立即刷新。
+        // Room 连续失效推送为主, 显式 postEvent 作双保险, 保证立即刷新。
         postEvent(EventBus.UP_BOOKSHELF, bookUrl)
         if (!runCatching { AppConfigProviders.get().syncBookProgress }.getOrDefault(false)) return
         runCatching {

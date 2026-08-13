@@ -1,13 +1,16 @@
 package io.legado.app.ui.book.read.page.delegate
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import io.legado.app.help.i18n.AppStringKey
+import io.legado.app.help.i18n.appString
+import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.page.AutoPagerCompose
 import io.legado.app.ui.book.read.page.MouseDragDelegate
@@ -85,16 +88,25 @@ abstract class PageDelegateCompose(
     override var isCancel: Boolean = false
     override var isRunning: Boolean = false
     override var isStarted: Boolean = false
+
+    /**
+     * 动画被打断标志（对照旧 ReadView.isAbortAnim）：abortAnim 打断进行中的动画时置位，
+     * nextPageByAnim/prevPageByAnim 首次调用吞一次（动画中点击只打断不翻页）；
+     * 九宫格中心格点击由分发层按本标志忽略（对照旧 onSingleTapUp 的
+     * clickArea.isCenter && isAbortAnim → return）。
+     */
+    var isAbortAnim: Boolean = false
     // endregion
 
     // 视图尺寸（由 setViewSize 注入）
     protected var viewWidth: Int = 0
     protected var viewHeight: Int = 0
 
-    // 触摸点状态（与 app 端 PageDelegate.startX/startY/lastX/touchX/touchY 字段对应）
+    // 触摸点状态（与 app 端 PageDelegate.startX/startY/lastX/lastY/touchX/touchY 字段对应）
     protected var startX: Float = 0f
     protected var startY: Float = 0f
     protected var lastX: Float = 0f
+    protected var lastY: Float = 0f
     protected var touchX: Float = 0f
     protected var touchY: Float = 0f
 
@@ -146,14 +158,39 @@ abstract class PageDelegateCompose(
         }
     }
 
+    /**
+     * 更新手势起点（对照旧 ReadView.setStartPoint：只更新 start/last/touch 坐标，
+     * 不打断动画、不清偏移）。多指触控切换跟踪手指用（对照旧 ACTION_POINTER_DOWN/UP
+     * 分支的 setStartPoint）。
+     */
+    open fun setStartPoint(x: Float, y: Float) {
+        startX = x
+        startY = y
+        lastX = x
+        lastY = y
+        touchX = x
+        touchY = y
+    }
+
     override fun hasPrev(): Boolean {
         // 本章节有上一页 或 有上一章可切（由 viewModel.canMoveToPrevChapter 兜底）
-        return viewModel.prevTextPage.value != null || viewModel.canMoveToPrevChapter()
+        val hasPrev = viewModel.prevTextPage.value != null || viewModel.canMoveToPrevChapter()
+        // 对照原版 PageDelegate.hasPrev: 无上一页时长 toast 提示
+        if (!hasPrev) {
+            Toasters.get().toastLong(appString(AppStringKey.no_prev_page))
+        }
+        return hasPrev
     }
 
     override fun hasNext(): Boolean {
         // 本章节有下一页 或 有下一章可切（由 viewModel.canMoveToNextChapter 兜底）
-        return viewModel.nextTextPage.value != null || viewModel.canMoveToNextChapter()
+        val hasNext = viewModel.nextTextPage.value != null || viewModel.canMoveToNextChapter()
+        // 对照原版 PageDelegate.hasNext: 无下一页时长 toast 提示 (原版顺带 autoPageStop,
+        // KMP 版自动翻页走 AutoPagerCompose.turnPage 不经本方法, 无需重复停止)
+        if (!hasNext) {
+            Toasters.get().toastLong(appString(AppStringKey.no_next_page))
+        }
+        return hasNext
     }
 
     override fun onDestroy() {
@@ -180,7 +217,11 @@ abstract class PageDelegateCompose(
         val anim = Animatable(start)
         anim.animateTo(
             targetValue = target,
-            animationSpec = tween(durationMillis = duration, easing = FastOutSlowInEasing),
+            // 线性缓动：对照原版 PageDelegate.scroller = Scroller(context, LinearInterpolator()),
+            // startScroll 的 SCROLL_MODE 用构造传入 interpolator（AOSP Scroller.java
+            // computeScrollOffset 非 FLING 分支），翻页动画即匀速；fling 的样条曲线
+            // 由 SplineFling 承担，与缓动无关
+            animationSpec = tween(durationMillis = duration, easing = LinearEasing),
         ) {
             _currentOffset = value
             onAnimOffsetChanged(value)

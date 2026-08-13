@@ -4,8 +4,10 @@ import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.rememberScrollableState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -72,7 +74,7 @@ import kotlin.math.roundToInt
  * | 点击: touchY=scrollYOffset+y-h/2, 二分 offset 区间, 回调 time | 同 (touchSlop 判定 tap/drag) |
  * | 拖动: scrollYOffset+dY (GestureDetector dY=下滑为负, 内容跟手) | scrollY-dy (dy=手指位移下滑为正, 取负) |
  * | 滚轮: AXIS_VSCROLL*lineMargin*3, 上滚看前(减) | 同 (Scroll 事件跨平台, 方向语义等价) |
- * | fling: OverScroller 物理衰减 | 近似: 按松手速度估算终点 + 400ms 减速 (物理曲线跨平台无法逐字复刻) |
+ * | fling: OverScroller 物理衰减 | ScrollableDefaults.flingBehavior() (spline 衰减, 与 Android OverScroller 同源物理) |
  * | 手动滚动 5s 后 autoScroll=true + 回中当前行 | 同 (manualTick 重置计时, 切行取消) |
  * | setLrcData: 重置 + 滚到第一行中心 | 数据变化时同 |
  * | onSizeChanged: 重排 + autoScroll 时回中当前行 | 同 (宽度变化保留 currentIndex) |
@@ -229,6 +231,19 @@ fun LrcViewShared(
         colorProgress = 1f
     }
 
+    // 惯性滑动状态: flingBehavior 的驱动目标 (ScrollableState 薄封装 scrollY)。
+    // consumeScrollDelta 返回实际消费量; 边界处未消费部分 >0.5f 会让默认
+    // FlingBehavior 提前终止动画 (复刻 OverScroller 到达 min/max 即停)。
+    val flingScrollState = rememberScrollableState { delta ->
+        val old = scrollY
+        val max = maxScrollY()
+        val new = (old + delta).coerceIn(0f, max)
+        scrollY = new
+        delta - (new - old)
+    }
+    // 平台默认惯性曲线 (spline 衰减; Android 与 OverScroller 同源物理, 密度经 LocalDensity 解析)
+    val flingBehavior = ScrollableDefaults.flingBehavior()
+
     Canvas(
         modifier
             .onSizeChanged {
@@ -239,6 +254,9 @@ fun LrcViewShared(
             .pointerInput(lrcData) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
+                    // 复刻原版 onDown 的 forceFinished: 触摸立即停掉进行中的 fling (spline 惯性时长 1~3s,
+                    // 不中断会残留滑动)
+                    scrollJob?.cancel()
                     val velocityTracker = VelocityTracker()
                     velocityTracker.addPosition(down.uptimeMillis, down.position)
                     var dragged = false
@@ -258,26 +276,33 @@ fun LrcViewShared(
                                 // 内容跟手); 此处 dy 为手指位移 (下滑为正), 取负对齐
                                 val dy = change.position.y - change.previousPosition.y
                                 scrollY = (scrollY - dy).coerceIn(0f, maxScrollY())
+                                // 复刻原版 onScroll 的 removeCallbacks(autoResetRunnable):
+                                // 每次拖动事件重启 5s 自动回中计时, 长拖 (>5s) 不会中途触发
+                                manualTick++
                                 velocityTracker.addPosition(change.uptimeMillis, change.position)
                                 change.consume()
                             }
                         }
                         when (event.type) {
                             PointerEventType.Release -> {
+                                // 复刻原版 onTouchEvent ACTION_UP: 重置 5s 自动回中计时
+                                // (postDelayed(autoResetRunnable, 5000); autoScroll 时无操作)
+                                manualTick++
                                 if (dragged) {
-                                    // 松手 fling: OverScroller 物理衰减的跨平台近似
-                                    // (按松手速度估算终点 + 400ms 减速; 原版 spline 曲线无法逐字复刻)
+                                    // 松手 fling: ScrollableDefaults.flingBehavior() 平台默认
+                                    // spline 衰减 (与 Android OverScroller 同源物理), 替代原
+                                    // "按速度估终点 + 固定 400ms tween + 200f 阈值" 手写近似;
+                                    // 不设手写阈值: 默认实现内部对 |v|<=1 直接返回, 低速度下
+                                    // spline 位移本身可忽略 (对应原版 GestureDetector 最小
+                                    // fling 速度以下即停的手感)。速度反号: 拖动中 scrollY 与
+                                    // 手指位移反号 (下滑 scrollY 减小), 喂 scrollY 方向速度
                                     val velocity = velocityTracker.calculateVelocity().y
-                                    if (abs(velocity) > 200f) {
-                                        val target = (scrollY - velocity / 2000f)
-                                            .coerceIn(0f, maxScrollY())
-                                        scrollJob?.cancel()
-                                        scrollJob = scope.launch {
-                                            animate(
-                                                scrollY,
-                                                target,
-                                                animationSpec = tween(400, easing = DECELERATE),
-                                            ) { v, _ -> scrollY = v }
+                                    scrollJob?.cancel()
+                                    scrollJob = scope.launch {
+                                        flingScrollState.scroll {
+                                            // with() 显式 dispatch receiver (同 MangaRenderState.flingAfterMouseDrag
+                                            // 已验证模式: 成员扩展 performFling 需要外层 ScrollScope + FlingBehavior receiver)
+                                            with(flingBehavior) { performFling(-velocity) }
                                         }
                                     }
                                 } else {
@@ -309,6 +334,9 @@ fun LrcViewShared(
                                 break
                             }
 
+                            // CMP PointerEventType 无 Cancel 成员 (javap 证实 1.10.1 仅
+                            // Press/Release/Move/Enter/Exit/Scroll/Key/DragStart/DragStop);
+                            // 手势取消由 awaitEachGesture 协程取消自然结束循环
                             else -> Unit
                         }
                     }

@@ -10,12 +10,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -51,7 +49,6 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,17 +56,17 @@ import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.component.OverflowMenu
+import io.legado.app.ui.compose.component.code.CodeEditorSearchTarget
 import io.legado.app.ui.compose.component.code.CodeEditorState
 import io.legado.app.ui.compose.component.code.CodeSearchHighlightState
 import io.legado.app.ui.compose.component.code.CodeSyntaxScheme
 import io.legado.app.ui.compose.component.code.CodeTextField
 import io.legado.app.ui.compose.component.code.KeyboardToolbar
 import io.legado.app.ui.compose.component.code.KeyboardToolbarState
-import io.legado.app.ui.compose.component.code.KeyboardToolbarTarget
-import io.legado.app.ui.compose.component.code.buildSearchRanges
 import io.legado.app.ui.compose.component.code.insertAtCursor
 import io.legado.app.ui.compose.component.code.rememberFullCodeSyntax
 import io.legado.app.ui.compose.platform.rememberColor
+import io.legado.app.ui.compose.platform.rememberImeVisible
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -536,12 +533,16 @@ private fun EditFields(
     val tab = state.currentTab
     val version = state.sourceVersion
     // 底部导航条避让走列表 contentPadding (对齐原版 clipToPadding=false): padding 在滚动区
-    // 内参与滚动, 最后一条能滚到屏幕底边; 键盘弹起时 ime 由根容器 padding 承担
-    // 减去 ime (对齐原版 navigationBarHeight 的 coerceAtLeast(0))
-    val navBottom = WindowInsets.navigationBars
-        .exclude(WindowInsets.ime)
-        .asPaddingValues()
-        .calculateBottomPadding()
+    // 内参与滚动, 最后一条能滚到屏幕底边; 键盘弹起时 ime 由根容器 padding 承担, 键盘覆盖
+    // 导航条 → 本 padding 归 0 (对齐原版 navigationBarHeight 的 coerceAtLeast(0) 稳态语义)。
+    // 组合期不读 ime 数值 (键盘动画每帧更新 inset → 逐帧重组), 只订阅"可见/不可见"翻转
+    // (事件性): 可见 → 0, 不可见 → 导航条高度。导航条 inset 本身不随键盘动画变化, 常读无妨。
+    val imeVisible = rememberImeVisible()
+    val navBottom = if (imeVisible) {
+        0.dp
+    } else {
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    }
     // 原版 BookSourceEditAdapter 对每个字段三连 addLegado/addJs/addJsonPattern, 不分组
     val syntax = rememberFullCodeSyntax()
     // 回调/取数 lambda 引用稳定化 (State 捕获模式): 宿主重组传新 lambda 时,
@@ -614,17 +615,21 @@ private fun CodeField(
     val latestOnFieldFocus by rememberUpdatedState(onFieldFocus)
     // 键盘弹出时滚到光标行由 CodeTextField 内部统一处理 (精确光标行 rect + ime insets,
     // 对齐原版 adjustResize + bringPointIntoView), 此处只登记辅助键目标/自动缩进目标
+    // 统一同步点 (对齐原版 CodeView 的 TextWatcher): 输入/undo/redo/辅助键插入/查找替换/
+    // 格式化等一切修改路径都经 editor.onChanged 回调, 此处单向同步 entity.value 与查找高亮
+    // 刷新, 不存在绕过路径 (旧实现只在 BasicTextField 输入回调里写 entity.value,
+    // undo/替换等直改 editor 的路径分叉 → 保存丢修改 + editorOf 回滚光标跳末尾)。
+    editor.onChanged = { newValue ->
+        entity.value = newValue.text
+        // 查找面板开着且本字段激活时, 防抖刷新匹配高亮 (对齐原版 afterTextChanged 的
+        // updateSearchHighlightIncremental; 替换等由面板触发的编辑走 target 内部重算)
+        if (isActive && searchHighlight.keyword.isNotEmpty()) {
+            searchHighlight.refreshDebounced(newValue.text, searchRefreshScope)
+        }
+    }
     CodeTextField(
         value = editor.value,
-        onValueChange = {
-            editor.onValueChange(it)
-            entity.value = it.text
-            // 查找面板开着且本字段聚焦时, 防抖刷新匹配高亮 (对齐原版 afterTextChanged 的
-            // updateSearchHighlightIncremental; 替换等由面板触发的编辑走 target 内部重算)
-            if (isActive && searchHighlight.keyword.isNotEmpty()) {
-                searchHighlight.refreshDebounced(it.text, searchRefreshScope)
-            }
-        },
+        onValueChange = { editor.onValueChange(it) },
         syntax = syntax,
         label = rememberString(entity.hint),
         // 对照原版 CodeView: 书源编辑条目开行号 (isLineNumberEnabled=true)
@@ -651,6 +656,11 @@ private fun CodeField(
  * (容器由宿主按 sourceVersion 重建: 粘贴源/重新加载后旧编辑器与撤销历史一并丢弃, 对齐原版
  * upSourceView 重建实体; tab 切换不重建容器, 切回时编辑器状态保留, 对齐原版 View 回收复用)。
  * 容器为普通 map 不参与重组, 编辑器内部 value 是 Compose State, 单字段写入只重组该字段。
+ *
+ * 编辑器是唯一真源: entity.value 只经 editor.onChanged 单向同步 (见 CodeField), 本函数
+ * 不再组合期回写 setText —— 旧实现以 entity.value 为准做 `text != value → setText` 回滚,
+ * 与 adjustInput/undo/替换等调整路径分叉, 是"回车光标跳末尾/undo 被吞"的根因; 外部整体
+ * 改写 (粘贴源/重载) 由 sourceVersion → fieldEditors 容器重建覆盖, 无需此回滚。
  */
 @Composable
 private fun editorOf(
@@ -658,135 +668,13 @@ private fun editorOf(
     entity: EditEntity,
     fieldEditors: MutableMap<String, CodeEditorState>,
 ): CodeEditorState {
-    val editor = fieldEditors.getOrPut(fieldId) { CodeEditorState(entity.value.orEmpty()) }
-    // 外部整体改写 (自动缩进/粘贴源) 后值可能变化, 同步回编辑器
-    val value = entity.value.orEmpty()
-    if (editor.value.text != value) editor.setText(value)
-    return editor
+    return fieldEditors.getOrPut(fieldId) { CodeEditorState(entity.value.orEmpty()) }
 }
 
 /**
- * 把 [CodeEditorState] 适配成辅助键条的查找替换目标 (对齐原 CodeView 的 find/replace/replaceAll)。
- * 匹配区间写入 [searchHighlight], 由聚焦字段的 CodeTextField 叠加渲染
- * (全量黄底 + 当前命中强调色, 对齐原版 BackgroundColorSpan 高亮); 同时移动选区定位。
+ * 书源编辑字段的查找替换目标 (共享件, 见 code/CodeEditorSearchTarget.kt;
+ * 原版 CodeView 自带 find/replace/replaceAll, 下沉后 BookSourceEdit/CodeDialog/JsEdit 共用)。
  */
-private class CodeEditorSearchTarget(
-    private val editor: CodeEditorState,
-    private val searchHighlight: CodeSearchHighlightState,
-    private val onClearFocus: () -> Unit,
-) : KeyboardToolbarTarget {
-
-    override fun clearFocus() = onClearFocus()
-
-    override fun find(
-        keyword: String,
-        useRegex: Boolean,
-        matchCase: Boolean,
-        wholeWord: Boolean,
-        forward: Boolean?,
-    ) {
-        if (keyword.isEmpty()) {
-            // 对齐原版 find("") → clearSearch
-            searchHighlight.clear()
-            return
-        }
-        // 对齐原版 needRecompute: 参数没变且已有匹配时按 currentMatchIndex 顺延, 否则从光标定位
-        val needRecompute = searchHighlight.keyword != keyword ||
-            searchHighlight.useRegex != useRegex ||
-            searchHighlight.matchCase != matchCase ||
-            searchHighlight.wholeWord != wholeWord ||
-            searchHighlight.ranges.isEmpty() ||
-            searchHighlight.currentIndex !in searchHighlight.ranges.indices
-        val index: Int
-        if (needRecompute) {
-            val ranges =
-                buildSearchRanges(keyword, useRegex, matchCase, wholeWord, editor.value.text)
-            if (ranges.isEmpty()) {
-                searchHighlight.update(keyword, useRegex, matchCase, wholeWord, emptyList(), -1)
-                return
-            }
-            val cursor = editor.value.selection.min
-            index = if (forward == true) {
-                // forward=null (输入防抖触发) 按原版当作向上定位: 光标前最后一个匹配
-                ranges.indexOfFirst { it.first >= cursor }.let { if (it == -1) 0 else it }
-            } else {
-                ranges.indexOfLast { it.last <= cursor }
-                    .let { if (it == -1) ranges.size - 1 else it }
-            }
-            searchHighlight.update(keyword, useRegex, matchCase, wholeWord, ranges, index)
-        } else {
-            val size = searchHighlight.ranges.size
-            index = if (forward == true) {
-                (searchHighlight.currentIndex + 1) % size
-            } else {
-                (searchHighlight.currentIndex - 1 + size) % size
-            }
-            searchHighlight.update(
-                keyword, useRegex, matchCase, wholeWord, searchHighlight.ranges, index
-            )
-        }
-        val range = searchHighlight.ranges[index]
-        editor.onValueChange(
-            editor.value.copy(selection = TextRange(range.first, range.last + 1))
-        )
-    }
-
-    override fun replace(
-        keyword: String,
-        useRegex: Boolean,
-        matchCase: Boolean,
-        wholeWord: Boolean,
-        replacement: String,
-    ) {
-        val selection = editor.value.selection
-        val ranges = buildSearchRanges(keyword, useRegex, matchCase, wholeWord, editor.value.text)
-        // 当前选区正好落在某个匹配上才替换, 否则先定位 (对齐原版 needFind 分支)
-        val hit = ranges.any { it.first == selection.min && it.last + 1 == selection.max }
-        if (!hit || selection.collapsed) {
-            find(keyword, useRegex, matchCase, wholeWord, forward = true)
-            return
-        }
-        editor.onValueChange(editor.value.insertAtCursor(replacement))
-        // 文本已变, 强制重算匹配区间再定位下一个 (对齐原版 replace 后 find(forward=true))
-        val fresh = buildSearchRanges(keyword, useRegex, matchCase, wholeWord, editor.value.text)
-        searchHighlight.update(keyword, useRegex, matchCase, wholeWord, fresh, -1)
-        find(keyword, useRegex, matchCase, wholeWord, forward = true)
-    }
-
-    override fun replaceAll(replacement: String) {
-        if (searchHighlight.keyword.isEmpty()) return
-        val text = editor.value.text
-        val ranges = buildSearchRanges(
-            searchHighlight.keyword, searchHighlight.useRegex,
-            searchHighlight.matchCase, searchHighlight.wholeWord, text
-        )
-        if (ranges.isEmpty()) return
-        // 倒序替换避免坐标错位 (对齐原版 replaceAll), 替换内容按字面量使用 (不解释 $1)
-        var replaced = text
-        for (i in ranges.indices.reversed()) {
-            replaced = replaced.replaceRange(ranges[i].first, ranges[i].last + 1, replacement)
-        }
-        if (replaced != text) {
-            editor.onValueChange(
-                editor.value.copy(
-                    text = replaced,
-                    selection = TextRange(
-                        editor.value.selection.min.coerceAtMost(replaced.length)
-                    ),
-                )
-            )
-        }
-        // 对齐原版 replaceAll 末尾的 reHighlightSearch: 当前命中态清空, 匹配区间重算
-        val fresh = buildSearchRanges(
-            searchHighlight.keyword, searchHighlight.useRegex,
-            searchHighlight.matchCase, searchHighlight.wholeWord, replaced
-        )
-        searchHighlight.update(
-            searchHighlight.keyword, searchHighlight.useRegex,
-            searchHighlight.matchCase, searchHighlight.wholeWord, fresh, -1
-        )
-    }
-}
 
 @Composable
 private fun SpinnerField(entity: EditEntity) {

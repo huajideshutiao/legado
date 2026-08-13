@@ -316,7 +316,7 @@ object AudioPlayShared {
             }
             AudioPlayBookBridges.get().saveRead(book)
             // 落库后通知书架重查 (对齐阅读器 uploadProgress 行为): 书架 DB 流驻留订阅,
-            // Room KMP 失效推送对桌面端不可靠, 需 UP_BOOKSHELF 重启当前分组流强制重查
+            // UP_BOOKSHELF 让书架重查 (双保险; Room 失效推送实证正常, 见 Book.kt equals 定案)
             // durChapterTime, 否则书架停在旧快照不刷到第一位 (回归 2026-08)。
             postEvent(EventBus.UP_BOOKSHELF, book.bookUrl)
         }

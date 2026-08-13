@@ -7,7 +7,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.BaseColumn
-import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 
 /**
@@ -426,20 +425,7 @@ class PageSelectionState {
     }
 
     /**
-     * 命中当前位置的列（长按回落分发用，页实例由调用方传入——长按未命中文字时
-     * [pageRef] 尚未建立）：命中图片列返回 [ImageColumn]（供平台弹图片长按菜单，
-     * 对照旧 ContentTextView.longPress 的 ImageColumn 分支）；未命中任何列返回 null。
-     */
-    fun columnAt(page: TextPage?, x: Float, y: Float, contentOffsetY: Float): BaseColumn? {
-        val p = page ?: return null
-        for (line in p.lines) {
-            if (!line.isTouch(x, y - contentOffsetY, 0f)) continue
-            return line.columns.firstOrNull { it.isTouch(x) }
-        }
-        return null
-    }
-
-    /** 选中文本（对照旧 getSelectedText：含跨行/段尾换行拼接，与旧版逐列判断完全一致） */
+     * 选中文本（对照旧 getSelectedText：含跨行/段尾换行拼接，与旧版逐列判断完全一致） */
     fun selectedText(): String {
         val page = pageRef ?: return ""
         val s = start

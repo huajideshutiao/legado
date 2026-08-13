@@ -181,8 +181,11 @@ fun TocContent(
     // TXT 目录规则对话框显隐 (对照原版 TxtTocRuleDialog: 全高底部弹窗, 基于当前生效规则)
     var showTocRegexDialog by remember { mutableStateOf(false) }
 
-    // 初始化书籍数据 (进入目录前先把音频播放器的实时章节状态同步到快照, 见 syncDurChapterFromAudioPlay)
-    LaunchedEffect(book) {
+    // 初始化书籍数据: 只按 bookUrl 重启——弹窗形态下 book 参数随阅读页书籍状态变化产生新
+    // 实例 (如目录选章节后 dur 更新), 若按实例重启会反复触发 setBook 全量刷新 → 列表重置/
+    // 滚动/闪烁; 对照原版目录 Activity 打开期间书籍数据变化不重置目录列表。进入目录前先把
+    // 音频播放器的实时章节状态同步到快照, 见 syncDurChapterFromAudioPlay
+    LaunchedEffect(book.bookUrl) {
         screenModel.dispatch(TocUiEvent.SetBook(book.syncDurChapterFromAudioPlay()))
     }
 

@@ -58,6 +58,11 @@ enum class AppStringKey {
     // UpdateBook 更新进度通知标题 (与 app 端 R.string 一一对应)
     force_refresh_book,
     update_toc,
+
+    // 阅读页翻页边界提示 (对照原版 R.string.no_prev_page / no_next_page,
+    // PageDelegate 无上一页/下一页时弹长 toast)
+    no_prev_page,
+    no_next_page,
 }
 
 /**

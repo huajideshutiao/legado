@@ -1,7 +1,7 @@
 package io.legado.app.ui.book.read.page.delegate
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
@@ -411,7 +411,7 @@ class SimulationPageDelegateCompose(
         val duration = if (animationSpeed <= 0) this.animationSpeed else animationSpeed
         animJob?.cancel()
         animJob = scope.launch {
-            Animatable(0f).animateTo(1f, tween(duration, easing = FastOutSlowInEasing)) {
+            Animatable(0f).animateTo(1f, tween(duration, easing = LinearEasing)) {
                 touchX = fromX + dx * value
                 touchY = fromY + dy * value
                 _currentOffset = fromOffset + (toOffset - fromOffset) * value

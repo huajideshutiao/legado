@@ -155,6 +155,9 @@ abstract class HorizontalPageDelegateCompose(
         isMoved = false
         isRunning = false
         _currentOffset = 0f
+        // 对照旧 abortAnim: 动画被打断 (scroller 未完成) → isAbortAnim=true, 吞一次后续
+        // nextPageByAnim/prevPageByAnim; 静止按下 → false 正常翻页
+        isAbortAnim = wasRunning
         if (wasRunning && dir != PageDirectionShared.NONE && !isCancel) {
             // 对照 app 端 readView.fillPage(mDirection): 中断时立即完成翻页
             when (dir) {
@@ -224,6 +227,13 @@ abstract class HorizontalPageDelegateCompose(
         // 与 app 端 HorizontalPageDelegate.nextPageByAnim 对应：
         // abortAnim → setDirection → setStartPoint → onAnimStart
         // 必须经 onAnimStart 而非直接起动画，否则 NoAnim 的"松手即翻"覆写被绕过。
+        // 吞一次 (对照旧 isAbortAnim): 动画中点击只打断不翻页; 吞后恢复自动翻页
+        // (abortAnim 的 pause 配对)
+        if (isAbortAnim) {
+            isAbortAnim = false
+            autoPager?.resume()
+            return
+        }
         // 不做 isRunning 拦截：动画中按键由 abortAnim 打断补页后重翻（对齐原版语义），
         // 快速连按的合法按键不静默丢弃；拖拽中按键由 abortAnim 的 isMoved 复位重新起算。
         if (!hasNext()) return
@@ -243,7 +253,13 @@ abstract class HorizontalPageDelegateCompose(
     }
 
     override fun prevPageByAnim(animDurationMs: Int) {
-        // 与 app 端 HorizontalPageDelegate.prevPageByAnim 对应；isRunning 拦截理由同 [nextPageByAnim]
+        // 与 app 端 HorizontalPageDelegate.prevPageByAnim 对应；吞一次（对照旧 isAbortAnim）
+        // 与 isRunning 拦截理由同 [nextPageByAnim]
+        if (isAbortAnim) {
+            isAbortAnim = false
+            autoPager?.resume()
+            return
+        }
         if (!hasPrev()) return
         abortAnim()
         setDirection(PageDirectionShared.PREV)

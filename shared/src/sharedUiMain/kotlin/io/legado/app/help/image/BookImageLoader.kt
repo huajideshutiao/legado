@@ -85,6 +85,25 @@ interface BookImageLoader {
         heightPx: Int = 0,
         loadOnlyWifi: Boolean = false,
     ): ImageBitmap? = loadImageOrNull(url, sourceOrigin, widthPx, heightPx, loadOnlyWifi)
+
+    /**
+     * 仅读 Coil3 磁盘缓存字节（不触发网络/解码/写缓存）：供大图查看等自下载链路在下载前
+     * 复用书架封面/列表图缓存（双链路架构下 Coil3 磁盘缓存与 [ImageBitmapLoader] 自下载链路
+     * 不共享，封面刚显示过大图仍会重新下载——先经本方法命中即零网络）。
+     *
+     * key 规则（与 Coil3 fetcher 写盘一致）：先查封面解密字节 key（"coverDecode:$url"，
+     * 带 coverDecodeJs 书源由 CoverDecodeFetcher 自管写盘），再查网络 fetcher 默认 key
+     * （裸 url，无解密规则书源由 NetworkFetcher 自管写盘）；临时区/covers 持久区双区
+     * 由各端 DiskCache 实现（jvmAndAndroid MultiDiskCache）自动兜底。
+     *
+     * @param url 图片 URL
+     * @param sourceOrigin 书源 bookUrl (可为 null), 未参与缓存 key 但保留签名对称性
+     * @return 磁盘缓存原始字节（编码图像，未解码）；未命中 / 未实现（ohos 无 Coil3）返回 null
+     */
+    suspend fun loadDiskCachedBytes(
+        url: String,
+        sourceOrigin: String?,
+    ): ByteArray? = null
 }
 
 /**

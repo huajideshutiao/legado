@@ -85,6 +85,15 @@ object OhosReaderPlatformProvider : ReaderPlatformProvider {
         OhosNativeBridge.hideTextActionMenu()
     }
 
+    /**
+     * 同步立即关闭浮动菜单（点按取消选择等手势分支同帧同步直调，对照原版 ACTION_DOWN →
+     * textActionMenu.dismiss() 同步语义，避免事件链异步延迟的菜单"闪一下再消失"）。
+     * hide 幂等（ArkTS 侧空 payload 隐藏已隐藏的菜单无操作），事件链兜底重复调用安全。
+     */
+    override fun dismissTextActionMenu(screenModel: ReaderScreenModel) {
+        OhosNativeBridge.hideTextActionMenu()
+    }
+
     /** 阅读页退出: 收起浮动菜单, 避免残留 (对照原版 onDestroy → textActionMenu.dismiss)。 */
     override fun onExit(screenModel: ReaderScreenModel) {
         OhosNativeBridge.hideTextActionMenu()
@@ -249,26 +258,37 @@ private class OhosReadMenuState(
 
     override val hasBgImage: Boolean = false
 
-    // 顶栏: 书名/章节名/章节 URL/书源按钮
-    override val title: String? get() = screenModel.currentBook?.name
-    override val chapterName: String? get() = screenModel.currentChapter?.title
-    override val chapterUrl: String? get() = screenModel.currentChapter?.url
-    override val chapterNameVisible: Boolean get() = !chapterName.isNullOrEmpty()
-    override val chapterUrlVisible: Boolean
-        get() = !chapterUrl.isNullOrEmpty() && screenModel.currentBook?.isLocal == false
+    // 顶栏 (快照状态, 由 refresh()/reset() 更新: 普通 getter 读 StateFlow.value 在组合期
+    // 不追踪, 切章后书名/章节名会冻结; 对照原版 upBookView/upMenuView 显式刷新)
+    override var title: String? by mutableStateOf(null)
+        private set
+    override var chapterName: String? by mutableStateOf(null)
+        private set
+    override var chapterUrl: String? by mutableStateOf(null)
+        private set
+    override var chapterNameVisible by mutableStateOf(false)
+        private set
+    override var chapterUrlVisible by mutableStateOf(false)
+        private set
     override var sourceActionText by mutableStateOf("")
         private set
     override var sourceActionVisible by mutableStateOf(false)
         private set
-    override val titleBarAdditionVisible: Boolean get() = false
+    override var titleBarAdditionVisible by mutableStateOf(false)
+        private set
     override val topMenu = TopMenuState()
 
-    // 底栏: 进度条 + 上/下章 + 自动翻页 + 夜间主题
-    override val seekMax: Int
-        get() = (screenModel.viewModel.simulatedChapterSize - 1).coerceAtLeast(0)
-    override val seekValue: Int get() = screenModel.viewModel.durChapterIndex.value
-    override val prevEnabled: Boolean get() = screenModel.viewModel.canMoveToPrevChapter()
-    override val nextEnabled: Boolean get() = screenModel.viewModel.canMoveToNextChapter()
+    // 底栏进度条 (快照状态, 由 upSeekBar()/refresh() 更新: 普通 getter 读 StateFlow.value
+    // 在组合期不追踪, 翻页/切章后进度条与上下章可用状态会冻结;
+    // 对照原版 ReadMenu.upSeekBar/upMenuView 实时刷新)
+    override var seekMax: Int by mutableStateOf(0)
+        private set
+    override var seekValue: Int by mutableStateOf(0)
+        private set
+    override var prevEnabled by mutableStateOf(false)
+        private set
+    override var nextEnabled by mutableStateOf(false)
+        private set
     override var autoPage by mutableStateOf(false)
     override var isNightTheme by mutableStateOf(AppConfigProviders.get().isNightTheme)
         private set
@@ -276,7 +296,7 @@ private class OhosReadMenuState(
     fun show() {
         animate = !AppConfigProviders.get().isEInkMode
         upSourceAction()
-        upTopMenu()
+        refresh()
         isNightTheme = AppConfigProviders.get().isNightTheme
         visibleState.targetState = true
     }
@@ -563,5 +583,36 @@ private class OhosReadMenuState(
 
     override fun onRefresh() {
         screenModel.viewModel.refreshCurrentChapter()
+    }
+
+    /** 顶栏/底栏展示数据 (对照原版 upBookView: 书名/章节名/章节链接/上下章可用性) */
+    private fun upMenuView() {
+        val book = screenModel.viewModel.book.value
+        title = book?.name
+        val curChapter = screenModel.currentChapter
+        chapterName = curChapter?.title
+        chapterUrl = curChapter?.url
+        chapterNameVisible = !chapterName.isNullOrEmpty()
+        chapterUrlVisible = !chapterUrl.isNullOrEmpty() && book?.isLocal == false
+        prevEnabled = screenModel.viewModel.canMoveToPrevChapter()
+        nextEnabled = screenModel.viewModel.canMoveToNextChapter()
+    }
+
+    // 菜单数据刷新事件 → 重算顶栏/底栏展示状态 (对照原版 menuRefresh → upMenuView())
+    override fun refresh() {
+        upTopMenu()
+        upMenuView()
+    }
+
+    // 进度条刷新 (对照原版 seekBarChange → readMenu.upSeekBar)
+    override fun upSeekBar() {
+        seekMax = (screenModel.viewModel.simulatedChapterSize - 1).coerceAtLeast(0)
+        seekValue = screenModel.viewModel.durChapterIndex.value
+    }
+
+    // 菜单/顶栏重建 (对照原版 actionBarChange → readMenu.reset)
+    override fun reset() {
+        upTopMenu()
+        upMenuView()
     }
 }

@@ -188,7 +188,8 @@ fun ChangeSourceContent(
     // region LaunchedEffect: 初始化 + 桥接 Flow
 
     // 对照 Dialog.onViewCreated 第 102-109 行: initData + curBookUrl + durText + 4 开关 + searchGroup
-    LaunchedEffect(book) {
+    // 键用 bookUrl (Book.equals 已改全字段语义, 整对象键会在进度等字段变化时误重跑 initData)
+    LaunchedEffect(book.bookUrl) {
         viewModel.initData(book.name, book.author, fromReadBookActivity = false, oldBook = book)
         screenModel.dispatch(ChangeSourceUiEvent.BookInitialized(book))
         screenModel.dispatch(ChangeSourceUiEvent.CurBookUrlChanged(book.bookUrl))

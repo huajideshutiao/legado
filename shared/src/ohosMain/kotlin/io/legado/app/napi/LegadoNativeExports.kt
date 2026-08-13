@@ -233,7 +233,7 @@ object LegadoNativeExports {
     /**
      * 获取书架书籍列表 (返回 JSON 数组字符串)。
      *
-     * 调用链: `AppDbProviders.get().bookDao.getBooksByGroup(BookGroup.IdAll)` 取所有书架书籍,
+     * 调用链: `AppDbProviders.get().bookDao.flowByGroup(BookGroup.IdAll).first()` 取所有书架书籍,
      * 用 [KS_JSON] + [ListSerializer] 序列化为 JSON 数组字符串返回。
      *
      * 同步语义: 内部 [runBlocking] 把 suspend DAO 调用转同步, napi 层应在 worker 线程调用
@@ -247,7 +247,8 @@ object LegadoNativeExports {
     fun bookshelfList(): CPointer<ByteVar> {
         val json = runCatching {
             runBlocking {
-                val books = AppDbProviders.get().bookDao.getBooksByGroup(BookGroup.IdAll)
+                // 走 flowByGroup 正确分流 (getBooksByGroup 对负数特殊 id 位掩码会漏未分组书)
+                val books = AppDbProviders.get().bookDao.flowByGroup(BookGroup.IdAll).first()
                 KS_JSON.encodeToString(ListSerializer(Book.serializer()), books)
             }
         }.getOrNull() ?: "[]"

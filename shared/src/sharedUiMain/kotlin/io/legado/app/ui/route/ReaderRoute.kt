@@ -243,6 +243,13 @@ fun ReaderRoute(
                 provider.onTextSelected(screenModel, text, anchorX, anchorY)
             }
 
+            // 点按取消选择等手势分支：同步关平台浮动菜单（对照原版 ACTION_DOWN →
+            // textActionMenu.dismiss 同步语义；事件链异步兜底仍保留，见下方
+            // selectionDismissed 收集）
+            override fun onDismissTextActionMenu() {
+                provider.dismissTextActionMenu(screenModel)
+            }
+
             // 非翻页类点击动作，对照 app 端 ReadView.click 走 callBack 的分支
             // 5/6 朗读上下段，已通过 provider 接入（对照 app 端 ReadAloud.prevParagraph/nextParagraph）
             override fun onPageAction(action: Int) {

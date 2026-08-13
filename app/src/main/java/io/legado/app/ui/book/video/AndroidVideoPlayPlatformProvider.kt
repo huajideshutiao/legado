@@ -128,11 +128,17 @@ class AndroidVideoPlayPlatformProvider(
                 screenModel.onToggleControls()
             }
         }
+        // 播放器层错误 (重试后仍失败): 显示错误占位 + 重试 (对齐 desktop playError/MediampFailedHint)
+        var playError by remember { mutableStateOf<String?>(null) }
+        DisposableEffect(androidController) {
+            androidController.onError = { playError = it }
+            onDispose { androidController.onError = null }
+        }
         val error = uiState.error
         // 加载中 (章节内容拉取/解析): 整层 LoadingOverlay, 控制层不叠
-        val showLoading = error == null && uiState.loading
+        val showLoading = error == null && playError == null && uiState.loading
         // 播放缓冲中 (URL 就绪后): 小缓冲圈 (原 show_buffering=when_playing), 控制层可叠
-        val showBuffering = error == null && !showLoading &&
+        val showBuffering = error == null && playError == null && !showLoading &&
             uiState.playWhenReady && uiState.playbackState == Player.STATE_BUFFERING
         // 手势处理(对照 app VideoGestureHandler): 单击切控制层/双击播放暂停/长按 2x 倍速/
         // 左半竖滑亮度/右半竖滑音量/横滑进度
@@ -167,6 +173,16 @@ class AndroidVideoPlayPlatformProvider(
             // 加载/错误占位: 播放器是否就绪只有平台层知道, 由本方法自出 (对照 provider 契约)
             if (error != null) {
                 ErrorOverlay(error = error, onRetry = screenModel::onRefreshChapter)
+            } else if (playError != null) {
+                ErrorOverlay(
+                    error = playError ?: "",
+                    onRetry = {
+                        playError = null
+                        screenModel.shared.videoUrl.value?.let {
+                            androidController.updateSource(it)
+                        }
+                    },
+                )
             } else if (showLoading) {
                 LoadingOverlay()
             }
@@ -535,6 +551,9 @@ private class AndroidVideoPlayerController(
     val player: ExoPlayer = ExoPlayerHelper.createHttpExoPlayer(activity)
     private var bound = false
 
+    /** 播放器层错误回调 (重试后仍失败时上报 UI, 对齐 desktop MediampVideoPlayerController.onError) */
+    var onError: ((String) -> Unit)? = null
+
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             screenModel.onPlayerState(isPlaying = isPlaying)
@@ -562,6 +581,8 @@ private class AndroidVideoPlayerController(
                     else -> "视频播放出错"
                 }
                 AppLog.put(message, error, true)
+                // 重试后仍失败: 上报 UI 显示错误 (原版只写日志, 用户要求"及时表现出来")
+                onError?.invoke(message)
             }
         }
     }

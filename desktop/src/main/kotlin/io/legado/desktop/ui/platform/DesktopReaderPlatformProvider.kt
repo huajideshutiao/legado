@@ -60,6 +60,7 @@ import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.toRouteRef
+import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
 import io.legado.app.utils.FileUtilsBase
 import io.legado.desktop.help.DesktopBattery
 import io.legado.desktop.help.tts.DesktopReadAloudHost
@@ -240,13 +241,17 @@ class DesktopReaderPlatformProvider : ReaderPlatformProvider {
     }
 
     /** 查看大图: 弹共享全屏大图 Overlay (key="photo" → PhotoViewOverlayDialog, 全屏黑底+缩放;
-     *  带书源身份走防盗链 header + coverDecodeJs 封面解密, 与列表封面同款身份, 本地书不传)。 */
+     *  带书源身份走防盗链 header + coverDecodeJs 封面解密, 与列表封面同款身份, 本地书不传)。
+     *  payload 携带当前章节索引: 对话框优先查阅读时已落盘的章节图片缓存
+     *  (BookImageStorage, 对照原版 PhotoDialog.loadPhoto 的章节缓存文件分支)。 */
     private fun viewImage(screenModel: ReaderScreenModel, src: String) {
         val book = screenModel.currentBook
         AppNavigatorProviders.getOrNull()?.showOverlay(
             AppOverlay.Dialog(
                 key = "photo",
-                payload = src,
+                payload = encodePhotoOverlayPayload(
+                    src, screenModel.viewModel.durChapterIndex.value
+                ),
                 sourceOrigin = book?.origin?.takeIf { !book.isLocal && it.isNotBlank() },
             )
         )
@@ -586,14 +591,18 @@ private class DesktopReadMenuState(
 
     override val hasBgImage: Boolean = false
 
-    // 顶栏: 书名/章节名/章节 URL/书源按钮
-    override val title: String? get() = screenModel.currentBook?.name
-    override val chapterName: String? get() = screenModel.currentChapter?.title
-    override val chapterUrl: String? get() = screenModel.currentChapter?.url
-    override val chapterNameVisible: Boolean get() = !chapterName.isNullOrEmpty()
-    override val chapterUrlVisible: Boolean
-        get() = !chapterUrl.isNullOrEmpty() &&
-            screenModel.currentBook?.isLocal == false
+    // 顶栏 (快照状态, 由 refresh()/reset() 更新: 普通 getter 读 StateFlow.value 在组合期
+    // 不追踪, 切章后书名/章节名会冻结; 对照原版 upBookView/upMenuView 显式刷新)
+    override var title: String? by mutableStateOf(null)
+        private set
+    override var chapterName: String? by mutableStateOf(null)
+        private set
+    override var chapterUrl: String? by mutableStateOf(null)
+        private set
+    override var chapterNameVisible by mutableStateOf(false)
+        private set
+    override var chapterUrlVisible by mutableStateOf(false)
+        private set
     override var sourceActionText by mutableStateOf("")
         private set
     override var sourceActionVisible by mutableStateOf(false)
@@ -602,20 +611,25 @@ private class DesktopReadMenuState(
     // 顶栏下方的章节名/章节链接行 (对照 app 端 AndroidReaderMenuState:
     // titleBarAdditionVisible = AppConfig.showReadTitleBarAddition, 默认 true;
     // 桌面端无对应设置页入口, 读同一 pref, 缺失回落 true 恢复显示)
-    override val titleBarAdditionVisible: Boolean
-        get() = runCatching {
+    override var titleBarAdditionVisible by mutableStateOf(
+        runCatching {
             PreferenceProviders.get().getBoolean(PreferKey.showReadTitleAddition, true)
         }.getOrDefault(true)
+    )
+        private set
     override val topMenu = TopMenuState()
 
-    // 底栏: 进度条 + 上/下章 + 自动翻页 + 夜间主题
-    override val seekMax: Int
-        get() = (screenModel.viewModel.simulatedChapterSize - 1).coerceAtLeast(
-            0
-        )
-    override val seekValue: Int get() = screenModel.viewModel.durChapterIndex.value
-    override val prevEnabled: Boolean get() = screenModel.viewModel.canMoveToPrevChapter()
-    override val nextEnabled: Boolean get() = screenModel.viewModel.canMoveToNextChapter()
+    // 底栏进度条 (快照状态, 由 upSeekBar()/refresh() 更新: 普通 getter 读 StateFlow.value
+    // 在组合期不追踪, 翻页/切章后进度条与上下章可用状态会冻结;
+    // 对照原版 ReadMenu.upSeekBar/upMenuView 实时刷新)
+    override var seekMax: Int by mutableStateOf(0)
+        private set
+    override var seekValue: Int by mutableStateOf(0)
+        private set
+    override var prevEnabled by mutableStateOf(false)
+        private set
+    override var nextEnabled by mutableStateOf(false)
+        private set
     override var autoPage by mutableStateOf(false)
     override var isNightTheme by mutableStateOf(AppConfigProviders.get().isNightTheme)
         private set
@@ -623,7 +637,7 @@ private class DesktopReadMenuState(
     fun show() {
         animate = !AppConfigProviders.get().isEInkMode
         upSourceAction()
-        upTopMenu()
+        refresh()
         isNightTheme = AppConfigProviders.get().isNightTheme
         visibleState.targetState = true
     }
@@ -910,5 +924,39 @@ private class DesktopReadMenuState(
     // 刷新当前章节 (顶栏刷新图标短按)
     override fun onRefresh() {
         screenModel.viewModel.refreshCurrentChapter()
+    }
+
+    /** 顶栏/底栏展示数据 (对照原版 upBookView: 书名/章节名/章节链接/上下章可用性) */
+    private fun upMenuView() {
+        val book = screenModel.viewModel.book.value
+        title = book?.name
+        val curChapter = screenModel.currentChapter
+        chapterName = curChapter?.title
+        chapterUrl = curChapter?.url
+        chapterNameVisible = !chapterName.isNullOrEmpty()
+        chapterUrlVisible = !chapterUrl.isNullOrEmpty() && book?.isLocal == false
+        titleBarAdditionVisible = runCatching {
+            PreferenceProviders.get().getBoolean(PreferKey.showReadTitleAddition, true)
+        }.getOrDefault(true)
+        prevEnabled = screenModel.viewModel.canMoveToPrevChapter()
+        nextEnabled = screenModel.viewModel.canMoveToNextChapter()
+    }
+
+    // 菜单数据刷新事件 → 重算顶栏/底栏展示状态 (对照原版 menuRefresh → upMenuView())
+    override fun refresh() {
+        upTopMenu()
+        upMenuView()
+    }
+
+    // 进度条刷新 (对照原版 seekBarChange → readMenu.upSeekBar)
+    override fun upSeekBar() {
+        seekMax = (screenModel.viewModel.simulatedChapterSize - 1).coerceAtLeast(0)
+        seekValue = screenModel.viewModel.durChapterIndex.value
+    }
+
+    // 菜单/顶栏重建 (对照原版 actionBarChange → readMenu.reset)
+    override fun reset() {
+        upTopMenu()
+        upMenuView()
     }
 }

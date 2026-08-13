@@ -77,6 +77,9 @@ fun GroupSelectDialog(
                     items = displayGroups,
                     itemKey = { it.groupId },
                     fillMaxHeight = false,
+                    // 列表高度自适应内容: 分组少时对话框随内容收缩, 多时由 appDialogSize 的
+                    // heightIn(max=0.8×锚点高) 封顶且列表可滚动 (复刻原版 AutoShrinkLinearLayout 语义)
+                    wrapContentHeight = true,
                     onMove = { from, to ->
                         displayGroups = displayGroups.toMutableList().apply {
                             add(to, removeAt(from))
@@ -155,7 +158,9 @@ private fun RuleItemScope.GroupItem(
             .fillMaxWidth()
             .longPressDraggableHandle(onDragStopped = onPersistOrder)
             .clickable { onCheckedChange(!checked) }
-            .padding(8.dp),
+            // 垂直 padding 去掉: 行高由 M2 Checkbox 48dp 交互区决定 (原版 Material CheckBox
+            // 40dp 触摸区 + 8×2 padding ≈ 56dp; 此处去 padding 后 48dp 视觉密度相当)
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AppCheckbox(

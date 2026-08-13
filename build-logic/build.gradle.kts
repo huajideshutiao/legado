@@ -32,6 +32,8 @@ dependencies {
     // composeCompiler {} DSL (稳定性配置/metrics) 需要编译期可见。
     implementation("org.jetbrains.kotlin:compose-compiler-gradle-plugin:$kotlinVersion")
     implementation("com.android.tools.build:gradle:${version("agp")}")
+    // :benchmark 约定插件需要 androidx.baselineprofile 的插件 id 可无版本 apply
+    implementation("androidx.benchmark:benchmark-baseline-profile-gradle-plugin:${version("macrobenchmark")}")
     implementation("org.jetbrains.compose:compose-gradle-plugin:$composeVersion")
 }
 
@@ -47,6 +49,10 @@ gradlePlugin {
         register("androidApplication") {
             id = "legado.android.application"
             implementationClass = "io.legado.buildlogic.AndroidApplicationConventionPlugin"
+        }
+        register("androidBenchmark") {
+            id = "legado.android.benchmark"
+            implementationClass = "io.legado.buildlogic.AndroidBenchmarkConventionPlugin"
         }
         register("kmpLibrary") {
             id = "legado.kmp.library"

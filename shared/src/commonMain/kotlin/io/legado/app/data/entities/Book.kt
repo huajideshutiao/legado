@@ -122,16 +122,12 @@ data class Book(
     var syncTime: Long = 0L
 ) : BaseBook {
 
-    override fun equals(other: Any?): Boolean {
-        if (other is Book) {
-            return other.bookUrl == bookUrl
-        }
-        return false
-    }
-
-    override fun hashCode(): Int {
-        return bookUrl.hashCode()
-    }
+    // 2026-08 定案: 不用原版"仅 bookUrl 相等"语义, 改用 data class 默认全字段 equals。
+    // 根因: 书架/搜索命中等状态用 StateFlow 去重 + distinctUntilChanged 过滤, Book.equals
+    // 只比 bookUrl 会把"同一本书的进度/章节/最新章更新"判为相同, 发射被吞, 书架永不刷新
+    // (实测 Room 失效重查正常, 全被 equals 去重层滤掉)。
+    // 依赖"同书"语义的调用点全仓已核实: 集合操作均是字段谓词/bookUrl 显式比较, 无整
+    // Book equals 依赖 (核对日期同上)。hashCode 随 data class 自动生成, 与 equals 一致。
 
     @Transient
     @delegate:Ignore

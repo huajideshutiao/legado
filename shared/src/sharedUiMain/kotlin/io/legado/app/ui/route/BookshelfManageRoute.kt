@@ -11,6 +11,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -23,6 +25,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.BookStorageProviders
@@ -132,25 +135,67 @@ fun BookshelfManageRoute(
     }
     val uiState by screenModel.state.collectAsState()
 
-    // 平台专属状态: downloadRunning / refreshTick (订阅 FlowBus 事件, 对照 app 端 observeLiveBus)
+    // 平台专属状态: downloadRunning (顶栏下载图标, 值变化才写去重)
     var downloadRunning by remember { mutableStateOf(CacheBookShared.isRun) }
-    var refreshTick by remember { mutableStateOf(0) }
+
+    // 任务1: 事件按 bookUrl 细化为 per-key 滴答 (SnapshotStateMap)。
+    // item 内只读自己 bookUrl 的 key, 单书事件仅使该书 item 失效重组,
+    // 不再像旧 refreshTick 那样每滴答重建整个 state 导致整页重组。
+    val bookTicks = remember { mutableStateMapOf<String, Int>() }
+
+    // 任务3: 勾选集合独立于主 state 桥接为 per-key 勾选映射。
+    // 单次勾选只写变化的 key, 仅对应行的勾选框区域重组。
+    val checkedMap = remember { mutableStateMapOf<String, Boolean>() }
+    var selectedCount by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
-        FlowBus.with(EventBus.UP_DOWNLOAD).collect {
-            downloadRunning = CacheBookShared.isRun
-            refreshTick++
+        FlowBus.with(EventBus.UP_DOWNLOAD).collect { payload ->
+            // 下载状态值变化才写, 避免服务级秒滴答 (payload="") 每帧触发顶栏重组
+            val running = CacheBookShared.isRun
+            if (running != downloadRunning) downloadRunning = running
+            // 秒级服务滴答 payload 为空串, 无对应行, 丢弃 (节流/去重)
+            val bookUrl = payload as? String
+            if (!bookUrl.isNullOrEmpty()) {
+                // 合并同书事件: 同 key 滴答递增
+                bookTicks[bookUrl] = (bookTicks[bookUrl] ?: 0) + 1
+            }
         }
     }
     LaunchedEffect(Unit) {
-        FlowBus.with(EventBus.EXPORT_BOOK).collect { refreshTick++ }
+        FlowBus.with(EventBus.EXPORT_BOOK).collect { payload ->
+            val bookUrl = payload as? String
+            if (!bookUrl.isNullOrEmpty()) {
+                bookTicks[bookUrl] = (bookTicks[bookUrl] ?: 0) + 1
+            }
+        }
     }
+    // 对照原版 SAVE_CONTENT: 同步追加缓存章节到 cacheChapters, 并刷新该书行
     LaunchedEffect(Unit) {
-        FlowBus.with(EventBus.SAVE_CONTENT).collect { refreshTick++ }
+        FlowBus.with(EventBus.SAVE_CONTENT).collect { payload ->
+            val pair = payload as? Pair<*, *> ?: return@collect
+            val book = pair.first as? Book ?: return@collect
+            val chapter = pair.second as? BookChapter ?: return@collect
+            manageVm.cacheChapters[book.bookUrl]?.add(chapter.url)
+            bookTicks[book.bookUrl] = (bookTicks[book.bookUrl] ?: 0) + 1
+        }
     }
     // 单本书缓存扫描完成 (对照 app 端 upAdapterLiveData.observe → notifyItemChanged)
     LaunchedEffect(Unit) {
-        manageVm.upAdapter.collect { refreshTick++ }
+        manageVm.upAdapter.collect { urls ->
+            urls.forEach { url ->
+                bookTicks[url] = (bookTicks[url] ?: 0) + 1
+            }
+        }
+    }
+    // 勾选集合 diff 同步: 只写变化的 key (任务3), 全选/反选同样逐 key 写
+    LaunchedEffect(Unit) {
+        var lastSelected = emptySet<String>()
+        screenModel.selected.collect { newSet ->
+            newSet.forEach { url -> if (checkedMap[url] != true) checkedMap[url] = true }
+            lastSelected.forEach { url -> if (!newSet.contains(url)) checkedMap.remove(url) }
+            lastSelected = newSet
+            if (newSet.size != selectedCount) selectedCount = newSet.size
+        }
     }
 
     // 用路由 groupId 初始化分组 (对照 app 端 intent.getLongExtra("groupId", -1))
@@ -195,18 +240,22 @@ fun BookshelfManageRoute(
 
     val listState = rememberLazyListState()
 
-    // UiState + 平台状态 → BookshelfManageState
-    val state = remember(uiState, downloadRunning, refreshTick) {
+    // 任务5: 分组名预计算 Map<groupId, String> (过滤 groupId>0, 对照原 groupName 语义),
+    // 仅 groups 变化时重建; item 内 O(1) 直查/按位掩码过滤, 不再每 item 每次重组 O(分组数) 计算
+    val groupNameMap = remember(uiState.groups) {
+        uiState.groups.filter { it.groupId > 0 }.associate { it.groupId to it.groupName }
+    }
+
+    // UiState → BookshelfManageState (不含 refreshTick/selected/downloadRunning:
+    // 三者均已拆为独立状态, 事件/勾选不再重建本 state 实例, 不再整页重组)
+    val state = remember(uiState) {
         BookshelfManageState(
             books = uiState.books,
-            selected = uiState.selected,
             searchKey = uiState.searchKey,
             searchHint = uiState.searchHint,
             bookshelfTypeFilter = uiState.bookshelfTypeFilter,
             canDrag = uiState.canDrag,
             groups = uiState.groups,
-            downloadRunning = downloadRunning,
-            refreshTick = refreshTick,
             // 导出开关读取平台持久化值 (对照 AppConfig.exportUseReplace 等)
             exportUseReplace = platform.exportUseReplace(),
             enableCustomExportChecked = platform.enableCustomExport(),
@@ -262,7 +311,6 @@ fun BookshelfManageRoute(
             onOriginText = { book ->
                 if (book.isLocal) labels.localBook else book.originName
             },
-            onGroupName = { groupId -> screenModel.groupName(groupId) },
             // 缓存进度文案: 读 VM.cacheChapters (对照 app 端 cacheInfo)
             onCacheInfo = { book -> cacheInfo(book, manageVm, labels) },
             // 单项删除: 弹确认对话框
@@ -310,6 +358,11 @@ fun BookshelfManageRoute(
         listState = listState,
         listModifier = Modifier,
         coverSlot = { book, modifier -> bookCoverSlot(book, modifier, false, 0) },
+        downloadRunning = downloadRunning,
+        selectedCount = selectedCount,
+        checkedMap = checkedMap,
+        bookTicks = bookTicks,
+        groupNameMap = groupNameMap,
     )
 
     // 日志对话框

@@ -487,8 +487,9 @@ class AndroidPlatformCapabilities(
         return true
     }
 
-    // 图片预览 (对照原版 ContentTextView.click 的 PhotoDialog 分支)
-    override fun showImagePreview(url: String) {
+    // 图片预览 (对照原版 ContentTextView.click 的 PhotoDialog 分支;
+    // chapterIndex 不消费: app 端 PhotoDialog 已保留原版章节缓存优先链路)
+    override fun showImagePreview(url: String, chapterIndex: Int) {
         activity.showDialogFragment(PhotoDialog(url))
     }
 

@@ -11,6 +11,16 @@ import kotlin.coroutines.CoroutineContext
 /** 共享页面状态持有者；不允许持有 Activity、View 或平台控制器。 */
 interface ScreenModel {
     fun onCleared() = Unit
+
+    /**
+     * 将被移除前的通知（导航动画开始前触发，见 [ScreenModelStore.notifyPreRemoved]）。
+     *
+     * 与 [onCleared] 的区别：本方法在页面仍留在组合中（返回动画播放期间）即被调用，
+     * 用于把「退出即保存」的耗时操作（如阅读页落库）提前到动画窗口内执行——
+     * 对照原版返回键按下即 onPause → saveRead 落库的即时性，避免落库等到动画播完后
+     * retain → onCleared 才发生。默认空实现；需要提前保存的 ScreenModel 覆写。
+     */
+    fun onPreRemoved() = Unit
 }
 
 /**
@@ -68,6 +78,24 @@ class ScreenModelStore {
         val activeIds = entries.mapTo(mutableSetOf()) { it.id }
         val removed = models.keys.filterNot { it in activeIds }
         removed.forEach { id -> models.remove(id)?.let(::clearSafely) }
+    }
+
+    /**
+     * 通知即将被 [retain] 移除的 ScreenModel 执行预清理（默认空，见 [ScreenModel.onPreRemoved]）。
+     *
+     * 由 LegadoApp 在导航动画开始前调用，把落库等耗时操作提前到动画窗口；
+     * 不删除 model（页面仍在组合中播返回动画，提前 retain 会让页面重建 ViewModel 重载数据），
+     * 动画结束后的 [retain] 仍会正常触发 [ScreenModel.onCleared]（幂等落库 + 仅一次的上传）。
+     * 异常隔离与 [clearSafely] 一致，不影响 Recomposer。
+     */
+    fun notifyPreRemoved(entries: List<RouteEntry>) {
+        val activeIds = entries.mapTo(mutableSetOf()) { it.id }
+        models.forEach { (id, model) ->
+            if (id !in activeIds) {
+                runCatching { model.onPreRemoved() }
+                    .onFailure { AppLog.put("ScreenModel.onPreRemoved 异常: ${model::class.simpleName}", it) }
+            }
+        }
     }
 
     fun clear() {

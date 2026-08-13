@@ -7,28 +7,25 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
@@ -42,19 +39,29 @@ import androidx.compose.ui.unit.sp
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.config.ReadTipConfigShared
+import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.ui.book.read.ReadBookEvents
+import io.legado.app.ui.book.read.ReadBookViewModelShared
 import io.legado.app.ui.book.read.ReadConfigChange
+import io.legado.app.ui.book.read.page.delegate.ScrollPageDelegateCompose
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
-import io.legado.app.ui.compose.platform.platformStatusBarPadding
+import io.legado.app.ui.compose.platform.navigationBarFixedPadding
 import io.legado.app.ui.compose.platform.rememberColor
+import io.legado.app.ui.compose.platform.statusBarFixedPadding
 import io.legado.app.ui.preview.LegadoThemePreview
 import io.legado.app.utils.formatTimeOfDay
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.coroutines.flow.combine
+import legado.shared.generated.resources.Res
+import org.jetbrains.compose.resources.decodeToImageBitmap
 
 /**
  * KMP 版阅读页面视图：用 Compose 替代 app 端 `PageView` (FrameLayout + ViewBookPageBinding)。
+ *
+ * 供横向翻页模式（覆盖/滑动/仿真/无动画）使用；滚动翻页模式由 [ScrollPageView]
+ * 单画布三页连排承担（2026-08 重构）。
  *
  * 布局结构与 app 端 view_book_page.xml 对齐（按原版布局约束机制重构 2026-08）：
  * ```
@@ -84,27 +91,12 @@ import io.legado.app.utils.systemCurrentTimeMillis
  * @param batteryLevel 电池电量 0-100，传 -1 表示不显示
  * @param clockText 当前系统时间 HH:mm，随 timeChanged 刷新
  * @param drawTick 页内容原地变更版本号（朗读高亮等），透传给 [PageContentCanvas] 强制重绘
- * @param contentTranslationY 正文内容垂直平移提供者 (滚动模式行级滚动用, px)。
- *   在 graphicsLayer 绘制阶段调用, 只失效图层不触发重组; null = 不平移 (其他翻页模式零开销)。
- *   平移时正文固定裁剪在 [paddingTop, visibleBottom] 视口区 (对照旧
- *   ContentTextView.onDraw 的 canvas.clipRect(visibleRect)), 页眉/页脚 tip 不随内容滚动。
- *   正文区即布局占位子节点之间的剩余空间, 排版视口与其同帧同源, 正文天然不会画进
- *   页脚区, 渲染侧无需任何底边裁剪 (对照原版 contentTextView 与 llHeader/llFooter 的
- *   View 层级隔离)。
- * @param showChrome 是否渲染页面装饰 (背景/页眉/页脚/分割线)。false = 纯正文内容渲染,
- *   供滚动模式下一页连排使用 (对照旧 drawPage 只画 TextPage 内容, 背景由固定层提供)。
- *   此时页眉不渲染, 顶部保留 [headerPlaceholderPx] 同高占位, 保证连排正文区起点与
- *   当前页一致 (正文区顶 = 页眉底, 滚动偏移折算基于同一坐标基准)。
  * @param selection 页内文字选择状态, 透传给 [PageContentCanvas] (绘制块内订阅 tick 重绘)
- * @param onHeaderMeasured 页眉实际测量高度回调 (px, 布局占位子节点 onSizeChanged):
- *   单一来源——滚动连排占位与坐标折算读它, 无独立预留公式
+ * @param onHeaderMeasured 页眉实际测量高度回调 (px, 布局占位子节点 onSizeChanged)
  * @param onFooterMeasured 页脚实际测量高度回调 (px), 同上
  * @param onTextAreaMeasured 正文区实测尺寸回调 (px, 布局占位子节点 onSizeChanged):
  *   排版视口单一来源——正文区已被系统栏 inset + 页眉/页脚约束, 尺寸即原版
- *   contentTextView.onSizeChanged 的实测值; 仅 [showChrome]=true 的完整页上报
- *   (滚动模式下一页 showChrome=false, 页眉为占位、无页脚, 尺寸与当前页不一致)
- * @param headerPlaceholderPx 页眉高度占位 (px, 来自同一测量单一来源): 仅 [showChrome]=false
- *   时生效, 滚动模式下一页连排用
+ *   contentTextView.onSizeChanged 的实测值
  */
 @Composable
 fun PageViewComposable(
@@ -115,13 +107,10 @@ fun PageViewComposable(
     onClick: (TextColumn?) -> Unit = {},
     onLongClick: (TextColumn?) -> Unit = {},
     drawTick: Int = 0,
-    contentTranslationY: (() -> Float)? = null,
-    showChrome: Boolean = true,
     selection: PageSelectionState? = null,
     onHeaderMeasured: ((Int) -> Unit)? = null,
     onFooterMeasured: ((Int) -> Unit)? = null,
     onTextAreaMeasured: ((IntSize) -> Unit)? = null,
-    headerPlaceholderPx: Int = 0,
 ) {
     val providers = LocalReadConfigProviders.current
     val readTipConfig = providers.readTipConfig
@@ -146,10 +135,8 @@ fun PageViewComposable(
     // tipRefreshTick 作为重组驱动：tip 配置事件（STYLE/UP_CONTENT/SYSTEM_UI）到达时
     // 本层顶层重组并重新读 prefs（无 Compose 快照，靠版本号强制重读），显隐/边距变化
     // 后布局系统重新测量子节点，实测高度经 onSizeChanged 上报反哺排版。
-    val density = LocalDensity.current
-    val headerVisible = showChrome &&
-        headerTipVisible(readTipConfig.headerMode, readBookConfig.hideStatusBar)
-    val footerVisible = showChrome && readTipConfig.footerMode != 1
+    val headerVisible = headerTipVisible(readTipConfig.headerMode, readBookConfig.hideStatusBar)
+    val footerVisible = readTipConfig.footerMode != 1
     // 分割线颜色：对照 app 端 PageView.upStyle 的 tipDividerColor 解析
     // (-1 主题 divider 色 / 0 正文色 / 其他 自定义色)
     val tipDividerColor = when (readTipConfig.tipDividerColor) {
@@ -164,21 +151,14 @@ fun PageViewComposable(
             // PageView 的底色必须保持不透明：旧 Android PageView 用不透明的 bgMeanColor
             // 作为底层，再叠加带 bgAlpha 的背景 Drawable；若直接把带 alpha 的颜色作为
             // Compose 背景，向后翻页时上一页会透出当前页/窗口背景。
-            // 滚动模式下一页 (showChrome=false) 不画背景：背景由固定层（当前页）提供，
-            // 避免整屏纯色覆盖当前页内容 (对照旧 drawPage 只画 TextPage 内容)
-            .then(
-                if (showChrome) Modifier.background(style.bgColor.copy(alpha = 1f))
-                else Modifier
-            )
+            .background(style.bgColor.copy(alpha = 1f))
             .fillMaxSize()
     ) {
-        if (showChrome) {
-            ReaderBackgroundImage(
-                source = style.backgroundImageSource,
-                alpha = style.backgroundImageAlpha,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
+        ReaderBackgroundImage(
+            source = style.backgroundImageSource,
+            alpha = style.backgroundImageAlpha,
+            modifier = Modifier.fillMaxSize(),
+        )
 
         // 状态栏/导航栏避让层（对照原版 PageView 的 vwStatusBar/vwNavigationBar 占位 View：
         // 背景由外层 Box 铺满（含系统栏区域，显示阅读背景色），本层正文/页眉/页脚整体
@@ -190,10 +170,10 @@ fun PageViewComposable(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .platformStatusBarPadding()
-                .windowInsetsPadding(
-                    WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)
-                )
+                // 事件化系统栏 padding (对齐原版 vwStatusBar/vwNavigationBar 配置驱动占位:
+                // 菜单显隐动画期间恒定, 仅显隐翻转时重排一次, 不逐帧跟随)
+                .statusBarFixedPadding()
+                .navigationBarFixedPadding()
         ) {
             // 页眉：wrap 高度布局子节点（对照原版 llHeader，含页眉分割线）
             if (headerVisible) {
@@ -214,15 +194,6 @@ fun PageViewComposable(
                         .fillMaxWidth()
                         .onSizeChanged { onHeaderMeasured?.invoke(it.height) },
                 )
-            } else {
-                // 滚动连排下一页（showChrome=false）：页眉由固定层（当前页）显示，本页
-                // 仅保留同高占位，保证连排正文区起点与当前页一致（正文区顶 = 页眉底，
-                // 滚动偏移折算基于同一坐标基准）。占位高度取页眉实测值（同一测量单一来源）。
-                Spacer(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(with(density) { headerPlaceholderPx.toDp() }),
-                )
             }
 
             // 正文区：剩余空间（weight 1f）。页眉/页脚是布局占位子节点，正文实际高度
@@ -231,77 +202,28 @@ fun PageViewComposable(
             // buildLayoutConfig 的 viewWidth/viewHeight（对照原版
             // ContentTextView.onSizeChanged → ChapterProvider.upViewSize）——同一布局系统
             // 同帧适配，正文末行与页脚顶边间隔恒为 paddingBottom 配置，永不重叠。
-            // 仅完整页（showChrome=true）上报：滚动模式下一页 showChrome=false，页眉为
-            // 占位、无页脚，尺寸与当前页不一致。
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .onSizeChanged { if (showChrome) onTextAreaMeasured?.invoke(it) }
+                    .onSizeChanged { onTextAreaMeasured?.invoke(it) }
             ) {
-                if (contentTranslationY != null) {
-                    // 滚动模式: 正文固定视口裁剪 + 行级平移 (对照旧 canvas.clipRect(visibleRect) +
-                    // withTranslation(0f, pageOffset))。裁剪在平移外层, 视口边界不随内容移动。
-                    // 视口底边取排版产物 visibleBottom (正文末行底 + paddingBottom): 排版视口
-                    // 与正文区同帧同源 (页眉/页脚实测扣除), 正文天然不会画进页脚区, 无需叠加
-                    // 页脚裁剪。裁剪坐标基准 = 正文区 (页眉底起), 与排版坐标一致。
-                    val clipTop = textPage?.paddingTop?.toFloat() ?: 0f
-                    val clipBottom = textPage?.visibleBottom?.toFloat() ?: Float.MAX_VALUE
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .drawWithContent {
-                                // clipRect 块内 receiver 为 DrawScope, drawContent 需显式指定外层
-                                // ContentDrawScope receiver (K2 不隐式回退到外层接收者)
-                                clipRect(
-                                    left = 0f,
-                                    top = clipTop,
-                                    right = size.width,
-                                    bottom = clipBottom,
-                                ) {
-                                    this@drawWithContent.drawContent()
-                                }
-                            }
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                // 绘制阶段读取偏移: 滚动热路径只失效图层, 不触发重组
-                                .graphicsLayer {
-                                    translationY = contentTranslationY()
-                                }
-                        ) {
-                            textPage?.let {
-                                PageContentCanvas(
-                                    textPage = it,
-                                    modifier = Modifier.fillMaxSize(),
-                                    style = style,
-                                    onClick = onClick,
-                                    onLongClick = onLongClick,
-                                    drawTick = drawTick,
-                                    selection = selection,
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    // 非滚动模式: 正文直接绘制。正文区即布局占位子节点之间的剩余空间, 排版
-                    // 视口与其同帧同源 (页眉/页脚实测扣除), 正文天然不会画进页脚区, 渲染侧
-                    // 无需裁剪 (对照原版 contentTextView 与 llFooter 的 View 层级隔离)。
-                    Box(
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        textPage?.let {
-                            PageContentCanvas(
-                                textPage = it,
-                                modifier = Modifier.fillMaxSize(),
-                                style = style,
-                                onClick = onClick,
-                                onLongClick = onLongClick,
-                                drawTick = drawTick,
-                                selection = selection,
-                            )
-                        }
+                // 正文直接绘制。正文区即布局占位子节点之间的剩余空间, 排版
+                // 视口与其同帧同源 (页眉/页脚实测扣除), 正文天然不会画进页脚区, 渲染侧
+                // 无需裁剪 (对照原版 contentTextView 与 llFooter 的 View 层级隔离)。
+                Box(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    textPage?.let {
+                        PageContentCanvas(
+                            textPage = it,
+                            modifier = Modifier.fillMaxSize(),
+                            style = style,
+                            onClick = onClick,
+                            onLongClick = onLongClick,
+                            drawTick = drawTick,
+                            selection = selection,
+                        )
                     }
                 }
             }
@@ -693,6 +615,230 @@ private fun BatteryIndicator(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+/**
+ * 滚动翻页模式专用视图：单画布三页连排（复刻原版 `ContentTextView.onDraw` 的
+ * `drawPage(0/1/2)` 单 View 模型）。
+ *
+ * # 2026-08 重构背景（跨页错帧闪烁根治）
+ *
+ * 原三槽位结构（三个 [PageViewComposable]）中：页数据经 StateFlow →
+ * collectAsState → **下一帧重组生效**；滚动偏移经 graphicsLayer **绘制期当帧生效**。
+ * 跨页折算时两者分裂 → 渲染帧里"旧页 + 新偏移"错位一整页高 → 单帧闪烁。
+ * 原版无此窗口：单 View 单 onDraw，textPage 与 pageOffset 同帧自洽。
+ *
+ * 本组件把三页数据 + 偏移收进 [ScrollPageDelegateCompose] 的渲染快照（普通字段，
+ * 手势/外部路径在**同一同步块**内更新页数据与偏移），绘制期原子读取：
+ * - 页数据：Canvas draw 块内绘制期直读 `scrollDelegate.renderPage(i)`，
+ *   页切换由 [ScrollPageDelegateCompose.renderVersion]（snapshot state）驱动
+ *   同帧重绘（draw 阶段快照读订阅，对照 ReaderImageCache.version 同款机制）；
+ * - 偏移：graphicsLayer translationY 绘制期读 contentOffset，滚动热路径零重绘；
+ * - 任意事件时序下，draw 帧读到的 (页, 偏移) 都是同一批更新后的自洽组合，
+ *   跨页无错帧窗口（原版同款原子性）。
+ *
+ * # 结构（对照原版 view_book_page.xml + ContentTextView）
+ *
+ * 固定层（背景/背景图 + 页眉/页脚 tip 布局占位子节点）与 [PageViewComposable]
+ * 完全一致；正文区为单个 Canvas：视口裁剪（clipRect(paddingTop, visibleBottom)）+
+ * graphicsLayer 平移 + 三页按 relativeOffset 累加 y 连排绘制（对照原版 drawPage 的
+ * relativeOffset(0/1/2)，章末短页 + 新章短页时第 3 页补位）。
+ *
+ * # 逐列 layout 缓存
+ *
+ * 组合期对快照三页 ensure 缓存（预热窗口命中零开销）；draw 期 miss 时同步构建兜底
+ * （仅章装载完成与预热的竞态间隙触发，保正确性不出现缺字帧）。
+ *
+ * @param scrollDelegate 滚动翻页委托（渲染快照持有者）
+ * @param textPage 当前页（tip 槽位/排版参数来源，随 StateFlow 重组）
+ * 其余参数语义同 [PageViewComposable]。
+ */
+@Composable
+fun ScrollPageView(
+    scrollDelegate: ScrollPageDelegateCompose,
+    viewModel: ReadBookViewModelShared,
+    textPage: TextPage?,
+    modifier: Modifier = Modifier,
+    batteryLevel: Int = -1,
+    clockText: String = formatTimeOfDay(systemCurrentTimeMillis()),
+    drawTick: Int = 0,
+    selection: PageSelectionState? = null,
+    onHeaderMeasured: ((Int) -> Unit)? = null,
+    onFooterMeasured: ((Int) -> Unit)? = null,
+    onTextAreaMeasured: ((IntSize) -> Unit)? = null,
+) {
+    // 外部路径页变化同步（切章/重排/跳页/初始装载）：四页流任一变化 → delegate 同步快照。
+    // 手势路径跨页已在 applyScrollDelta 同一同步块内同步，流收集到的引用相等 → 无操作。
+    LaunchedEffect(scrollDelegate) {
+        combine(
+            viewModel.curTextPage,
+            viewModel.prevTextPage,
+            viewModel.nextTextPage,
+            viewModel.nextPlusTextPage,
+        ) { _, _, _, _ -> }
+            .collect { scrollDelegate.syncRenderPages() }
+    }
+    // 外部滚动偏移重置（切章/重排归零）同步（自原 renderPageAnimation 迁移）
+    LaunchedEffect(scrollDelegate) {
+        viewModel.scrollOffset.collect { offset ->
+            scrollDelegate.onExternalScrollOffset(offset)
+        }
+    }
+
+    val providers = LocalReadConfigProviders.current
+    val readTipConfig = providers.readTipConfig
+    val readBookConfig = providers.readBookConfig
+    // 颜色/字号/字体统一走 ReaderDrawStyle（内部订阅 ReadBookEvents.configChange 重建）
+    val style = rememberReaderDrawStyle()
+    // tip 层刷新版本号（同 PageViewComposable 的 tipRefreshTick）
+    var tipRefreshTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        ReadBookEvents.configChange.collect { changes ->
+            if (changes.any { it in tipRefreshChanges }) tipRefreshTick++
+        }
+    }
+    val density = LocalDensity.current
+    val headerVisible = headerTipVisible(readTipConfig.headerMode, readBookConfig.hideStatusBar)
+    val footerVisible = readTipConfig.footerMode != 1
+    // 分割线颜色：对照 app 端 PageView.upStyle 的 tipDividerColor 解析
+    val tipDividerColor = when (readTipConfig.tipDividerColor) {
+        -1 -> rememberColor("divider")
+        0 -> style.textColor
+        else -> Color(readTipConfig.tipDividerColor)
+    }
+    // 惯性物理密度组合期注入（依赖 density；onFling 的 SplineFling 消费）
+    scrollDelegate.provideDensity(density.density)
+    // 组合期确保三页 layout 缓存就绪（预热窗口内命中零开销；miss 时同步构建兜底）
+    val measurer = rememberReaderTextMeasurer()
+    for (i in 0..2) {
+        val page = scrollDelegate.renderPage(i) ?: continue
+        ensureTextLayoutCache(page, measurer, style, density)
+    }
+    // 正文图失败占位（同 PageContentCanvas 语义）
+    val failedImage by produceState<ImageBitmap?>(null) {
+        value = runCatching {
+            Res.readBytes("drawable/image_loading_error.png").decodeToImageBitmap()
+        }.getOrNull()
+    }
+
+    Box(
+        modifier = modifier
+            // 底色必须不透明（同 PageViewComposable 约束）
+            .background(style.bgColor.copy(alpha = 1f))
+            .fillMaxSize()
+    ) {
+        ReaderBackgroundImage(
+            source = style.backgroundImageSource,
+            alpha = style.backgroundImageAlpha,
+            modifier = Modifier.fillMaxSize(),
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarFixedPadding()
+                .navigationBarFixedPadding()
+        ) {
+            // 页眉：wrap 高度布局子节点（同 PageViewComposable）
+            if (headerVisible) {
+                HeaderTip(
+                    textPage = textPage,
+                    readTipConfig = readTipConfig,
+                    textColor = style.tipColor,
+                    batteryLevel = batteryLevel,
+                    clockText = clockText,
+                    startPaddingDp = readBookConfig.headerPaddingLeft,
+                    endPaddingDp = readBookConfig.headerPaddingRight,
+                    topPaddingDp = readBookConfig.headerPaddingTop,
+                    bottomPaddingDp = readBookConfig.headerPaddingBottom,
+                    showDivider = readBookConfig.showHeaderLine,
+                    dividerColor = tipDividerColor,
+                    refreshTick = tipRefreshTick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onSizeChanged { onHeaderMeasured?.invoke(it.height) },
+                )
+            }
+
+            // 正文区：剩余空间（weight 1f）。单一 Canvas 三页连排（对照原版 ContentTextView）。
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .onSizeChanged { onTextAreaMeasured?.invoke(it) }
+            ) {
+                // 视口裁剪（对照原版 canvas.clipRect(visibleRect)）：正文区与排版视口
+                // 同帧同源，裁剪边界取排版产物 paddingTop/visibleBottom
+                val clipTop = textPage?.paddingTop?.toFloat() ?: 0f
+                val clipBottom = textPage?.visibleBottom?.toFloat() ?: Float.MAX_VALUE
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .drawWithContent {
+                            clipRect(
+                                left = 0f,
+                                top = clipTop,
+                                right = size.width,
+                                bottom = clipBottom,
+                            ) {
+                                this@drawWithContent.drawContent()
+                            }
+                        }
+                ) {
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            // 绘制阶段读取偏移：滚动热路径只失效图层，不触发重组
+                            .graphicsLayer {
+                                translationY = scrollDelegate.contentOffset
+                            }
+                    ) {
+                        // draw 期快照读：renderVersion（页切换）/drawTick（朗读高亮）/
+                        // selection.tick（选区）/ReaderImageCache.version（图片）任一
+                        // 变化都只重绘不重组；页数据绘制期直读 → 与偏移同帧自洽
+                        if (scrollDelegate.renderVersion < 0) return@Canvas
+                        if (drawTick < 0) return@Canvas
+                        if (selection != null && selection.tick < 0) return@Canvas
+                        if (ReaderImageCache.version < 0) return@Canvas
+                        // 三页连排（对照原版 drawPage 的 relativeOffset(0/1/2)）：
+                        // 第 i 页绘制 y = 前面页高之和，整画布随 graphicsLayer 平移偏移
+                        var offsetY = 0f
+                        for (i in 0..2) {
+                            val page = scrollDelegate.renderPage(i) ?: continue
+                            var cache = page.textLayoutCache as? TextLayoutCache
+                            if (cache == null || !cache.matches(style, density)) {
+                                // 预热竞态间隙兜底：绘制期同步构建，保正确性不出现缺字帧
+                                cache = TextLayoutCache.build(page, measurer, style, density)
+                                page.textLayoutCache = cache
+                            }
+                            drawPageContent(page, style, cache, failedImage, offsetY)
+                            offsetY += page.height
+                        }
+                    }
+                }
+            }
+
+            // 页脚：wrap 高度布局子节点（同 PageViewComposable）
+            if (footerVisible) {
+                FooterTip(
+                    textPage = textPage,
+                    readTipConfig = readTipConfig,
+                    textColor = style.tipColor,
+                    batteryLevel = batteryLevel,
+                    clockText = clockText,
+                    startPaddingDp = readBookConfig.footerPaddingLeft,
+                    endPaddingDp = readBookConfig.footerPaddingRight,
+                    topPaddingDp = readBookConfig.footerPaddingTop,
+                    bottomPaddingDp = readBookConfig.footerPaddingBottom,
+                    showDivider = readBookConfig.showFooterLine,
+                    dividerColor = tipDividerColor,
+                    refreshTick = tipRefreshTick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onSizeChanged { onFooterMeasured?.invoke(it.height) },
+                )
+            }
+        }
     }
 }
 

@@ -49,6 +49,14 @@ class BookshelfManageScreenModel(
     private val _state = MutableStateFlow(BookshelfManageUiState())
     val state: StateFlow<BookshelfManageUiState> = _state.asStateFlow()
 
+    /**
+     * 勾选集合独立于主 state (任务3): 勾选/全选只变更本流,
+     * 不产生新的 [BookshelfManageUiState] 实例, 从而不触发整页重组;
+     * 宿主端按 bookUrl 增量 diff 同步到 per-key 勾选映射, 单行勾选只重组该行勾选框区域。
+     */
+    private val _selected = MutableStateFlow<Set<String>>(emptySet())
+    val selected: StateFlow<Set<String>> = _selected.asStateFlow()
+
     private val incrementalFilter = BookFilter.IncrementalFilter<Book>()
     private var allBooks: List<Book>? = null
     private var booksFlowJob: Job? = null
@@ -72,7 +80,11 @@ class BookshelfManageScreenModel(
         }
     }
 
-    /** 由 groupId 查分组名(本地内存, 同步) */
+    /** 由 groupId 查分组名(本地内存, 同步)。
+     *
+     * 注: 管理页列表已改用宿主预计算的 groupNameMap (任务5, item 内 O(1) 查表),
+     * 本方法保留供其它调用方使用。
+     */
     fun groupName(groupId: Long): String {
         val names = _state.value.groups
             .filter { it.groupId > 0 && it.groupId and groupId > 0 }
@@ -109,10 +121,15 @@ class BookshelfManageScreenModel(
                 }
             }.catch {
                 AppLog.put("书架管理界面获取书籍列表失败\n${it.message}", it)
-            }.flowOn(IoDispatcher).conflate().collect {
-                allBooks = it
-                upBookData()
-                loadCacheFiles(it)
+            }.flowOn(IoDispatcher).conflate().collect { list ->
+                // 任务4: upBookData/loadCacheFiles 与 collect 解耦 — 仅当列表数据真正变化
+                // (书籍集合/内容/顺序, data class equals 含顺序) 才重算过滤结果并重启缓存扫描;
+                // 下载/进度等不改变集合的 DB 流量不再触发整页重组与扫描协程重启。
+                if (allBooks != list) {
+                    allBooks = list
+                    upBookData()
+                    loadCacheFiles(list)
+                }
                 _state.value = _state.value.copy(canDrag = bookSort == 3)
             }
         }
@@ -128,8 +145,10 @@ class BookshelfManageScreenModel(
             else -> all
         }
         val books = incrementalFilter.filter(typeFiltered, _state.value.searchKey)
-        val selected = _state.value.selected.intersect(books.map { it.bookUrl }.toSet())
-        _state.value = _state.value.copy(books = books, selected = selected)
+        _state.value = _state.value.copy(books = books)
+        // 勾选集合独立维护 (任务3): 搜索/筛选后仅剔除已不可见的书,
+        // StateFlow 值相等自动去重, 不产生无谓发射
+        _selected.value = _selected.value.intersect(books.map { it.bookUrl }.toSet())
     }
 
     private fun selectGroupFromMenu(group: BookGroup) {
@@ -147,7 +166,7 @@ class BookshelfManageScreenModel(
     // ===== 多选 =====
 
     fun selection(): List<Book> =
-        _state.value.books.filter { _state.value.selected.contains(it.bookUrl) }
+        _state.value.books.filter { _selected.value.contains(it.bookUrl) }
 
     // ===== dispatch =====
 
@@ -167,36 +186,31 @@ class BookshelfManageScreenModel(
             }
 
             is BookshelfManageUiEvent.Toggle -> {
-                val cur = _state.value.selected
-                _state.value = _state.value.copy(
-                    selected = if (event.checked) cur + event.book.bookUrl
-                    else cur - event.book.bookUrl
-                )
+                // 勾选集合原地更新 (任务3): 不再 copy 整个主 state, 单次勾选不触发整页重组
+                val cur = _selected.value
+                _selected.value = if (event.checked) cur + event.book.bookUrl
+                else cur - event.book.bookUrl
             }
 
             is BookshelfManageUiEvent.SelectAll -> {
-                _state.value = _state.value.copy(
-                    selected = if (event.all) {
-                        _state.value.books.map { it.bookUrl }.toSet()
-                    } else emptySet()
-                )
+                _selected.value = if (event.all) {
+                    _state.value.books.map { it.bookUrl }.toSet()
+                } else emptySet()
             }
 
             BookshelfManageUiEvent.RevertSelection -> {
                 val all = _state.value.books.map { it.bookUrl }.toSet()
-                _state.value = _state.value.copy(selected = all - _state.value.selected)
+                _selected.value = all - _selected.value
             }
 
             BookshelfManageUiEvent.CheckSelectedInterval -> {
                 val books = _state.value.books
                 val positions = books.mapIndexedNotNull { index, book ->
-                    index.takeIf { _state.value.selected.contains(book.bookUrl) }
+                    index.takeIf { _selected.value.contains(book.bookUrl) }
                 }
                 if (positions.isNotEmpty()) {
                     val range = positions.min()..positions.max()
-                    _state.value = _state.value.copy(
-                        selected = _state.value.selected + range.map { books[it].bookUrl }
-                    )
+                    _selected.value = _selected.value + range.map { books[it].bookUrl }
                 }
             }
 
@@ -224,15 +238,15 @@ class BookshelfManageScreenModel(
 }
 
 /**
- * 下沉的 UI 状态: books/selected/groups/searchKey/searchHint/bookshelfTypeFilter/canDrag。
- * 平台专属状态 (downloadRunning/refreshTick/export 开关) 由宿主 Activity 持有,
+ * 下沉的 UI 状态: books/groups/searchKey/searchHint/bookshelfTypeFilter/canDrag。
+ * 勾选集合 ([BookshelfManageScreenModel.selected]) 独立于本状态 (任务3): 勾选变化不产生
+ * 新的 UiState 实例, 避免整页重组。平台专属状态 (downloadRunning/export 开关) 由宿主持有,
  * 在 Composition 时合并入 BookshelfManageState 传给 Screen。
  */
 data class BookshelfManageUiState(
     val groupId: Long = -1L,
     val groupName: String? = null,
     val books: List<Book> = emptyList(),
-    val selected: Set<String> = emptySet(),
     val groups: List<BookGroup> = emptyList(),
     val searchKey: String = "",
     val searchHint: String = "",

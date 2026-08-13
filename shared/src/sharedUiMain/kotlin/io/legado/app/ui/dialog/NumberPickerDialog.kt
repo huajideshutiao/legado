@@ -92,8 +92,8 @@ import io.legado.app.ui.preview.LegadoThemePreview
  *
  * # 大范围精度说明
  *
- * Slider valueRange 用 Float 表示。对于 [range] 跨度极大 (如 10..Int.MAX_VALUE,
- * sourceEditMaxLine 场景) 的极端情况, Float 精度约 7 位有效数字, 拖动定位到大致范围后
+ * Slider valueRange 用 Float 表示。对于 [range] 跨度极大的极端情况 (如 1024..60000
+ * 端口场景), Float 精度约 7 位有效数字, 拖动定位到大致范围后
  * 可用 -/+ 按钮精确调整。所有用例下, 最终 [onConfirm] 返回的值均为 Int 整数 (无精度损失)。
  *
  * @param title 对话框标题

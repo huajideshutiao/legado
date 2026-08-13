@@ -6,12 +6,10 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -97,6 +95,8 @@ import io.legado.app.ui.compose.component.TextFieldBottomInset
 import io.legado.app.ui.compose.component.TextFieldHorizontalPadding
 import io.legado.app.ui.compose.component.TextFieldLabelToText
 import io.legado.app.ui.compose.component.appFieldDefaultMinHeight
+import io.legado.app.ui.compose.platform.rememberImeAnimating
+import io.legado.app.ui.compose.platform.rememberImeVisible
 import io.legado.app.ui.compose.theme.AppTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -258,6 +258,12 @@ fun CodeTextField(
     // 万行文件下 span 从数千降到数十, 文本布局的样式处理成本随之线性下降。
     // 默认全区间: layout 未就绪的首帧与短文本行为与裁剪前一致。
     var renderRange by remember { mutableStateOf(0..Int.MAX_VALUE) }
+    // 键盘动画期间冻结挂载窗口更新 (见 onGloballyPositioned): IME 动画中视口逐帧收缩/
+    // 扩张, 若跟随会触发数次全量 buildAnnotatedString —— 动画期 (rememberImeAnimating,
+    // 事件性, 只在动画边界翻转) 内跳过窗口重算, 动画结束后按最终视口重算一次。
+    // 不影响手动滚动 (滚动由宿主滚动容器驱动), 只延迟高亮/行号窗口的校正;
+    // 短文本 (renderRange 默认全区间) 无感知。
+    val imeAnimating = rememberImeAnimating()
     val transformation = rememberCodeHighlightTransformation(syntax, searchHighlight, renderRange)
     val colors = AppFieldColors
     val themeColors = AppTheme.colors
@@ -336,13 +342,26 @@ fun CodeTextField(
         )
     }
     // 轻量自动补全: 聚焦且光标处 token 非空时, 按词表 + 行内词 fuzzy 匹配出候选
-    // (对齐原版 AutoCompleteAdapter/performFiltering; 行号可不上, 自动补全保留)
+    // (对齐原版 AutoCompleteAdapter/performFiltering; 行号可不上, 自动补全保留)。
+    // 对齐原版触发语义: AutoCompleteTextView 只在**文本变化**后过滤弹出, 点击已有文本
+    // 聚焦不弹 (聚焦快照 focusSnapshotText == 当前文本时不弹); 聚焦后未输入时也不弹,
+    // 避免点进字段就被候选列表糊脸。
     val isFocused by interactionSource.collectIsFocusedAsState()
+    // 聚焦快照: 本字段本次聚焦时的文本。组合期写入, null → 文本 只写一次 (收敛, 不循环重组)
+    var focusSnapshotText by remember { mutableStateOf<String?>(null) }
+    if (isFocused) {
+        if (focusSnapshotText == null) focusSnapshotText = value.text
+    } else {
+        focusSnapshotText = null
+    }
     // (token, 行文本) → 候选快照: 输入快照未变 (光标在 token 内移动/焦点翻转/撤销回退) 时
     // 复用上次 fuzzy 评分结果, 跳过 ~100 词表评分与行内词扫描
     val completionCache = remember { CompletionSnapshotCache() }
     val autoMatches = remember(value.text, value.selection, isFocused, autoComplete, readOnly) {
         if (!autoComplete || !isFocused || readOnly || !value.selection.collapsed) {
+            emptyList()
+        } else if (focusSnapshotText == value.text) {
+            // 聚焦后文本未变: 不弹 (对齐原版仅文本变化触发过滤; 移动光标/纯聚焦不弹)
             emptyList()
         } else {
             val text = value.text
@@ -460,6 +479,10 @@ fun CodeTextField(
         val pos = coords.positionInWindow()
         val offset = IntOffset(pos.x.roundToInt(), pos.y.roundToInt())
         if (offset != fieldWindowOffset) fieldWindowOffset = offset
+        // IME 动画期间冻结窗口重算: 视口逐帧变化会反复触发下方全量 buildAnnotatedString
+        // (见 imeAnimating 声明处); 动画结束后按最终视口重算一次。
+        // fieldWindowOffset 更新保留在冻结前: 补全弹层锚点仍需跟随滚动/位置变化。
+        if (imeAnimating) return@onGloballyPositioned
         // 可见区间 → 着色挂载窗口 (对照原版 updateVisibleSpans: getLocalVisibleRect +
         // getLineForVertical ±10 行判定 / ±20 行挂载, 窗口仍被覆盖时提前返回不重挂)
         val layout = textLayout ?: return@onGloballyPositioned
@@ -508,21 +531,37 @@ fun CodeTextField(
     }
     val cursorLineRectState = rememberUpdatedState(cursorLineRect)
     // IME 弹出期间按精确光标行持续请求 bringIntoView (对齐原版 adjustResize +
-    // EditText bringPointIntoView: 光标行完全可见则不滚, 不可见才滚到可见);
-    // 点击获焦 (键盘已开) 时的聚焦请求由 cursorLineBringIntoView 拦截为同一光标行,
-    // 可见则不滚 —— 不再出现旧实现 (调用方 ±3 行容错 rect + 无 label 偏移) 的
-    // "点击内容上跑/滚不到位被键盘挡"。非 Android 平台 ime 恒 0, 为 no-op。
+    // EditText bringPointIntoView: 光标行完全可见则不滚, 不可见才滚到可见)。
+    // 与旧实现 (只在 imeVisible 翻转时滚一次) 的差异: 订阅文本/选区/焦点/键盘可见/查找激活
+    // 全部变化 —— 键盘已开时继续输入、光标下移出可视区、查找命中定位到屏幕外等场景
+    // 都会重新请求, 恢复原版"光标始终可见"契约; bringIntoView 幂等语义保证可见时不滚,
+    // 连续输入时实际滚动只发生在光标行越界那一刻。
+    // 查找定位场景: 面板输入框持焦后字段失焦 (isFocused=false) 但 searchHighlight 仍激活,
+    // 需放宽焦点条件, 否则"下一个/上一个"命中屏幕外时选区变了不滚 (原版 focusCurrentMatch
+    // 会 bringPointIntoView)。
     val imeRequester = remember { BringIntoViewRequester() }
     // 只按"键盘是否可见"翻转触发, 不跟 inset 数值: 键盘弹出是一段动画, imeBottom 每帧都在变,
-    // 若作为 key 会逐帧发起 bringIntoView, 滚动请求互相打断 —— 表现为弹键盘时明显卡顿
-    val imeVisible = WindowInsets.ime.getBottom(density) > 0
-    LaunchedEffect(isFocused, imeVisible) {
-        if (isFocused && imeVisible) {
-            // 等布局稳定 (键盘动画期间视口在收缩) 再请求一次, 避免用动画中间态的视口算目标
+    // 若作为 key 会逐帧发起 bringIntoView, 滚动请求互相打断 —— 表现为弹键盘时明显卡顿。
+    // 组合期不读 ime 数值 (逐帧重组), 由 rememberImeVisible 在副作用侧订阅翻转 (事件性);
+    // 翻转即键盘弹出/收起的边界, 此时根容器 padding 已按最终键盘高就位, 视口即最终视口。
+    val imeVisible = rememberImeVisible()
+    val searchActive = searchHighlight != null && searchHighlight.keyword.isNotEmpty()
+    LaunchedEffect(value.text, value.selection, isFocused, imeVisible, searchActive) {
+        if (!imeVisible) return@LaunchedEffect
+        // 查找定位场景: 字段失焦 (面板持焦) 时仅查找激活才滚
+        if (!isFocused && !searchActive) return@LaunchedEffect
+        // 等布局与当前文本同步后再取光标行几何: 输入后 onTextLayout 回传滞后一帧,
+        // cursorLineRect 在布局过期帧返回 null (旧布局按新偏移取行会越界崩溃);
+        // 循环重取最多 3 帧, 仍不同步则放弃本次 (下一次文本/选区变化会再触发)
+        var rect: Rect? = null
+        var frames = 0
+        while (frames < 3) {
+            rect = cursorLineRectState.value.invoke()
+            if (rect != null) break
             withFrameNanos { }
-            val rect = cursorLineRectState.value.invoke()
-            if (rect != null) imeRequester.bringIntoView(rect)
+            frames++
         }
+        if (rect != null) imeRequester.bringIntoView(rect)
     }
     // 行号列宽 (px, 未显示行号时 null): 5dp 左距 + 号宽 + 11dp 右距 (对齐原版
     // mLineNumberPadding = measureText + 16f*density), 分隔线与补全弹层共用同一实测值。
@@ -951,7 +990,7 @@ private fun AutoCompletePopup(
             color = colors.fillet,
             shape = AppTheme.DesignTokens.shapeDefault,
             elevation = 4.dp,
-            modifier = Modifier.width(220.dp),
+            modifier = Modifier.width(150.dp),
         ) {
             LazyColumn(Modifier.heightIn(max = 200.dp), state = listState) {
                 itemsIndexed(matches) { index, item ->
@@ -983,6 +1022,10 @@ private fun AutoCompletePopup(
  * 忽略其按整个字段 bounds 发起的目标, 统一以光标所在行 (本节点局部坐标, 宽 = 节点宽)
  * 向上传播。长字段 (高 > 视口) 点击获焦时只滚光标行可见, 不再整体跳到底部;
  * 输入时光标自身的滚动请求同样收窄为光标行, 行为一致。
+ * 光标行 rect 依赖与当前文本同步的布局 (onTextLayout 滞后一帧): 取不到时挂起等帧重取
+ * (最多 [WaitFrames] 帧), 仍取不到则**丢弃本次请求** —— 不再退回整个字段 bounds
+ * (超高字段的整字段 bounds 无法全部可见, bringIntoView 会把容器滚到字段底部, 即
+ * "点输入框界面跳到最底"的根因; 布局就绪后的可见性由 CodeTextField 的滚动订阅补足)。
  */
 private class CursorLineBringIntoViewNode(
     internal var cursorLineRect: State<() -> Rect?>,
@@ -992,16 +1035,28 @@ private class CursorLineBringIntoViewNode(
         childCoordinates: LayoutCoordinates,
         boundsProvider: () -> Rect?,
     ) {
-        // 光标行无法计算 (如未布局) 时退回子请求原始 bounds
-        val rectProvider: () -> Rect? = cursorLineRect.value
-        val cursorRect: Rect = rectProvider() ?: boundsProvider() ?: return
+        // 光标行无法计算 (布局未就绪/与文本不同步) 时等帧重取, 不退回子请求原始 bounds
+        var cursorRect: Rect? = null
+        var frames = 0
+        while (frames < WaitFrames) {
+            cursorRect = cursorLineRect.value.invoke()
+            if (cursorRect != null) break
+            withFrameNanos { }
+            frames++
+        }
+        val rect = cursorRect ?: return
         val target = if (isAttached) {
             val width = requireLayoutCoordinates().size.width.toFloat()
-            Rect(0f, cursorRect.top, width, cursorRect.bottom)
+            Rect(0f, rect.top, width, rect.bottom)
         } else {
-            cursorRect
+            rect
         }
         bringIntoView { target }
+    }
+
+    private companion object {
+        /** 布局同步等待上限 (帧数): 超出后丢弃, 由文本/选区变化的滚动订阅补滚 */
+        const val WaitFrames = 5
     }
 }
 

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -392,7 +393,8 @@ private fun ChapterItem(
     Row(
         Modifier
             .fillMaxWidth()
-            .wrapContentHeight()
+            // 基准 48dp, 双行(标题+字数/标签)或大字下内容超高时自动增高不裁剪
+            .heightIn(min = DesignTokens.viewHeightXl)
             .then(
                 // 卷名突出显示，普通章节保持 ripple
                 if (item.isVolume) Modifier.background(rememberColor("btn_bg")) else Modifier
@@ -402,7 +404,7 @@ private fun ChapterItem(
                     if (item.isVolume) actions.toggleVolume(item) else actions.openChapter(item)
                 },
             )
-            .padding(8.dp),
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (item.isVip && !item.isPay) {
@@ -823,7 +825,8 @@ private fun TocDrawerItem(
     Row(
         modifier = rowModifier
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .height(DesignTokens.viewHeightXl)
+            .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 章节标题 + 卷名加粗

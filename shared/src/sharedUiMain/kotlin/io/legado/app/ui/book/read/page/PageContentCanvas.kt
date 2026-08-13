@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
@@ -92,14 +93,7 @@ fun PageContentCanvas(
     // 重新 measure (~300 列/页)。
     val density = LocalDensity.current
     val layoutCache = remember(textPage, style, density) {
-        val cached = textPage.textLayoutCache
-        if (cached is TextLayoutCache && cached.matches(style, density)) {
-            cached
-        } else {
-            TextLayoutCache.build(textPage, textMeasurer, style, density).also {
-                textPage.textLayoutCache = it
-            }
-        }
+        ensureTextLayoutCache(textPage, textMeasurer, style, density)
     }
 
     // 正文图失败占位: 对齐原版 ImageProvider.errorBitmap (image_loading_error 资源图)。
@@ -322,9 +316,54 @@ internal class ColumnLayout(
 )
 
 /**
- * 单页内容绘制主体：与 app 端 `TextPageRender.drawPage` → `TextLine.draw` 对应。
+ * 取或建页的逐列 TextLayoutResult 缓存（组合期调用；与 [PageContentCanvas] 的
+ * remember 挂载同一挂载点 [TextPage.textLayoutCache]）。
+ *
+ * 滚动模式单画布三页连排（[ScrollPageView]）在组合期对快照三页调用本函数：
+ * 预热窗口内页直接命中，窗口外 miss 时同步全量构建兜底（正常路径由
+ * PageLayoutPrewarmEffect 覆盖，仅章装载完成与预热之间的竞态间隙触发）。
  */
-private fun DrawScope.drawPageContent(
+internal fun ensureTextLayoutCache(
+    textPage: TextPage,
+    textMeasurer: TextMeasurer,
+    style: ReaderDrawStyle,
+    density: Density,
+): TextLayoutCache {
+    val cached = textPage.textLayoutCache
+    if (cached is TextLayoutCache && cached.matches(style, density)) {
+        return cached
+    }
+    return TextLayoutCache.build(textPage, textMeasurer, style, density).also {
+        textPage.textLayoutCache = it
+    }
+}
+
+/**
+ * 单页内容绘制主体：与 app 端 `TextPageRender.drawPage` → `TextLine.draw` 对应。
+ *
+ * @param offsetY 整页垂直平移量（px）：滚动模式单画布三页连排用，对照原版
+ *   `drawPage(canvas, relativeOffset)` 的页间偏移；0 时不套 translate 零开销
+ */
+internal fun DrawScope.drawPageContent(
+    textPage: TextPage,
+    style: ReaderDrawStyle,
+    layoutCache: TextLayoutCache,
+    failedImage: ImageBitmap?,
+    offsetY: Float = 0f,
+) {
+    if (offsetY == 0f) {
+        drawPageContentInner(textPage, style, layoutCache, failedImage)
+    } else {
+        translate(left = 0f, top = offsetY) {
+            drawPageContentInner(textPage, style, layoutCache, failedImage)
+        }
+    }
+}
+
+/**
+ * [drawPageContent] 的零平移主体。
+ */
+private fun DrawScope.drawPageContentInner(
     textPage: TextPage,
     style: ReaderDrawStyle,
     layoutCache: TextLayoutCache,

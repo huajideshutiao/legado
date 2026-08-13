@@ -607,7 +607,7 @@ class VideoPlayViewModelShared(
         val index = _curChapterIndex.value
         progressSyncScope.launch { saveRead(index, bookPos) }
         // 通知书架刷新: 视频退出落库后 books 表 durChapterTime 已更新,
-        // 书架 flow 可能因 Room 失效未推送而停在旧快照, 经 UP_BOOKSHELF 重启分组流强制重查
+        // UP_BOOKSHELF 让书架重查 (双保险; Room 失效推送实证正常, 见 Book.kt equals 定案)
         // (对齐阅读器 uploadProgress 行为, 回归 2026-08)。
         curBook?.let { postEvent(EventBus.UP_BOOKSHELF, it.bookUrl) }
         // WebDav 上传

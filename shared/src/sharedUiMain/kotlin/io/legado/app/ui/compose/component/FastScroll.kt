@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
@@ -77,6 +78,9 @@ private data class FastScrollMetrics(
  *
  * @param fastScrollEnabled 是否启用快速滚动条 (对照原版 FastScrollRecyclerView.setFastScrollEnabled)。
  * 关闭时仅隐藏滚动条, 列表本身不受影响。
+ * @param wrapContentHeight true 时 LazyColumn 不自适应内容高度 (不加 fillMaxSize), 供内容自适应
+ * 对话框 (如分组选择) 使用: 项少时列表随内容收缩, 超出父容器约束时封顶并可滚动;
+ * false (默认) 时保持 fillMaxSize 撑满, 行为与既有调用方完全一致。
  */
 @Composable
 fun FastScrollLazyColumn(
@@ -87,12 +91,13 @@ fun FastScrollLazyColumn(
     horizontalAlignment: Alignment.Horizontal = Alignment.Start,
     userScrollEnabled: Boolean = true,
     fastScrollEnabled: Boolean = true,
+    wrapContentHeight: Boolean = false,
     content: LazyListScope.() -> Unit,
 ) {
     Box(modifier) {
         LazyColumn(
             state = state,
-            modifier = Modifier.fillMaxSize(),
+            modifier = if (wrapContentHeight) Modifier.fillMaxWidth() else Modifier.fillMaxSize(),
             contentPadding = contentPadding,
             verticalArrangement = verticalArrangement,
             horizontalAlignment = horizontalAlignment,
@@ -103,7 +108,12 @@ fun FastScrollLazyColumn(
     }
 }
 
-/** 带快速滚动条的 LazyVerticalGrid。 */
+/**
+ * 带快速滚动条的 LazyVerticalGrid。
+ *
+ * @param wrapContentHeight 语义同 [FastScrollLazyColumn]: true 时网格高度自适应内容 (不加 fillMaxSize),
+ * false (默认) 时撑满, 行为与既有调用方完全一致。
+ */
 @Composable
 fun FastScrollLazyVerticalGrid(
     columns: GridCells,
@@ -114,13 +124,14 @@ fun FastScrollLazyVerticalGrid(
     horizontalArrangement: Arrangement.Horizontal = Arrangement.Start,
     userScrollEnabled: Boolean = true,
     fastScrollEnabled: Boolean = true,
+    wrapContentHeight: Boolean = false,
     content: LazyGridScope.() -> Unit,
 ) {
     Box(modifier) {
         LazyVerticalGrid(
             columns = columns,
             state = state,
-            modifier = Modifier.fillMaxSize(),
+            modifier = if (wrapContentHeight) Modifier.fillMaxWidth() else Modifier.fillMaxSize(),
             contentPadding = contentPadding,
             verticalArrangement = verticalArrangement,
             horizontalArrangement = horizontalArrangement,

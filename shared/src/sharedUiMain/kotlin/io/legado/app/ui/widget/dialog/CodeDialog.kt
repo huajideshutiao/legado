@@ -17,6 +17,14 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -24,6 +32,8 @@ import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
+import io.legado.app.ui.compose.component.code.CodeEditorSearchTarget
+import io.legado.app.ui.compose.component.code.CodeSearchHighlightState
 import io.legado.app.ui.compose.component.code.CodeTextField
 import io.legado.app.ui.compose.component.code.KeyboardToolbar
 import io.legado.app.ui.compose.component.code.KeyboardToolbarState
@@ -80,8 +90,40 @@ fun CodeDialogContent(
     // 语法高亮: legado + json + js 三组全开, 对齐 app 端 CodeDialog 的三连 addXxxPattern
     val syntax = rememberFullCodeSyntax()
     val editor = rememberCodeEditorState(code, key = code)
+    // 查找高亮状态: CodeTextField 叠加全量黄底 + 当前命中强调色 (对齐原版 CodeView 查找高亮)
+    val searchHighlight = remember { CodeSearchHighlightState() }
+    val focusManager = LocalFocusManager.current
 
-    Column(Modifier.fillMaxWidth()) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            // 桌面端键盘监听: Ctrl+Z 撤销 / Ctrl+Shift+Z、Ctrl+Y 重做 (对照 BookSourceEditScreen
+            // 根 Column); 消费 Ctrl+Z 压住桌面 BasicTextField 内置撤销栈, 避免与 CodeEditorState
+            // 手写撤销栈双重撤销
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown || !event.isCtrlPressed) {
+                    return@onPreviewKeyEvent false
+                }
+                when (event.key) {
+                    Key.Z if event.isShiftPressed -> {
+                        editor.redo()
+                        true
+                    }
+
+                    Key.Z -> {
+                        editor.undo()
+                        true
+                    }
+
+                    Key.Y -> {
+                        editor.redo()
+                        true
+                    }
+
+                    else -> false
+                }
+            },
+    ) {
         DialogTitleBar(
             title = title,
             onBack = onDismiss,
@@ -118,6 +160,7 @@ fun CodeDialogContent(
                 syntax = syntax,
                 showIndicator = false,
                 fontSize = 13.sp,
+                searchHighlight = searchHighlight,
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 480.dp)
@@ -130,6 +173,7 @@ fun CodeDialogContent(
                 onUndo = { editor.undo() },
                 onRedo = { editor.redo() },
                 onShowConfig = onShowKeyboardConfig,
+                target = { CodeEditorSearchTarget(editor, searchHighlight) { focusManager.clearFocus() } },
             )
         }
     }

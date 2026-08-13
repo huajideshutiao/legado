@@ -8,6 +8,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.platform.LocalClipboardManager
 import io.legado.app.constant.BookSourceType
 import io.legado.app.data.entities.BookSource
@@ -226,14 +228,25 @@ fun BookSourceEditRoute(
             },
             onAutoIndent = {
                 // 对照 app 端 autoIndent: getActiveCodeView()?.reFormat(), 作用于最后获得焦点的字段
-                activeField.value?.let { (fieldId, entity) ->
+                activeField.value?.let { (fieldId, _) ->
                     val editor = fieldEditors[fieldId] ?: return@let
-                    val old = editor.value.text
-                    val formatted = CodeFormatter.reFormat(old)
-                    if (formatted != old) {
-                        // 直接写编辑器 (内部 State 驱动对应字段重组), 不再经文本快照中转
-                        editor.setText(formatted)
-                        entity.value = formatted
+                    val old = editor.value
+                    val formatted = CodeFormatter.reFormat(old.text)
+                    if (formatted != old.text) {
+                        // 对齐原版 reFormat: editableText.replace(0, len, formatted) (可撤销,
+                        // 入 undo 栈) + setSelection(minOf(start, len), minOf(end, len))
+                        // (保留光标位置); 旧实现用 setText → 光标跳末尾且撤销历史清空。
+                        // entity.value 经 editor.onChanged 单向同步, 这里不再单独写。
+                        val len = formatted.length
+                        editor.onValueChange(
+                            TextFieldValue(
+                                formatted,
+                                TextRange(
+                                    old.selection.min.coerceAtMost(len),
+                                    old.selection.max.coerceAtMost(len),
+                                ),
+                            )
+                        )
                     }
                 }
             },

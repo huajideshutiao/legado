@@ -46,6 +46,7 @@ import io.legado.app.ui.root.encodeBookVariableOverlayPayload
 import io.legado.app.ui.root.encodeSourceVariableOverlayPayload
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
+import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
 import io.legado.app.ui.route.encodeReviewListDialogPayload
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
@@ -359,9 +360,11 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
     override val webServiceState: StateFlow<Boolean>? get() = webServiceRunningState
 
     // 图片预览: 与 app 端 PhotoDialog 同一份 shared 实现, 经 "photo" overlay 弹出
-    // (阅读页点击正文图片; payload = 图片 src)
-    override fun showImagePreview(url: String) {
-        AppNavigatorProviders.getOrNull()?.showOverlay(AppOverlay.Dialog("photo", payload = url))
+    // (阅读页点击正文图片; payload = 图片 src + 章节索引, 供对话框优先查章节图片缓存)
+    override fun showImagePreview(url: String, chapterIndex: Int) {
+        AppNavigatorProviders.getOrNull()?.showOverlay(
+            AppOverlay.Dialog("photo", payload = encodePhotoOverlayPayload(url, chapterIndex))
+        )
     }
 
     // 换封面源: 对照 app 端同名方法, 走 "change_cover" overlay (payload="name\nauthor"),

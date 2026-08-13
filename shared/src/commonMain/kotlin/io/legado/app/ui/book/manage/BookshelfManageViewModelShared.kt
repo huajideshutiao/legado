@@ -95,15 +95,16 @@ class BookshelfManageViewModelShared(
     /**
      * 章节缓存列表更新通知流 (对照原 `upAdapterLiveData: MutableLiveData<String>`)。
      *
-     * [loadCacheFiles] 完成单本书缓存扫描后推送 bookUrl, 对应原版 notifyItemChanged。
-     * 用 SharedFlow: 同一本书重复扫描推同一个 bookUrl, StateFlow 会去重导致该行不再刷新。
+     * [loadCacheFiles] 完成扫描后按批推送本批已扫描完成的 bookUrl 列表 (任务2: 批量发射,
+     * 每批 20 本合并一次, 避免海量书籍逐本发射事件), 对应原版 notifyItemChanged。
+     * 用 SharedFlow: 同一批重复推送相同 bookUrl, StateFlow 会去重导致该行不再刷新。
      */
-    private val _upAdapter = MutableSharedFlow<String>(
+    private val _upAdapter = MutableSharedFlow<List<String>>(
         replay = 1,
         extraBufferCapacity = 8,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
-    val upAdapter: SharedFlow<String> = _upAdapter.asSharedFlow()
+    val upAdapter: SharedFlow<List<String>> = _upAdapter.asSharedFlow()
 
     /**
      * 当前缓存加载协程 (对照原 `private var loadChapterCoroutine: Coroutine<Unit>?`)。
@@ -291,7 +292,8 @@ class BookshelfManageViewModelShared(
      * 1. 先 cancel 旧 [loadChapterCoroutine];
      * 2. 串行遍历 books:
      *    - 本地书跳过 (无章节缓存文件);
-     *    - 已缓存过 (cacheChapters.contains) 跳过, 避免重复扫描;
+     *    - 已缓存过 (cacheChapters.contains) 跳过, 避免重复扫描 (diff: 仅结果集合
+     *      变化时发射, 已扫描过的书不会重复推送事件);
      *    - 否则取 [BookshelfManagePlatform.getChapterFiles] (替代原
      *      `BookHelp.getChapterFiles(book)`, 返回已缓存的章节文件名集合);
      *    - 若缓存文件名非空, 取 `appDb.bookChapterDao.getChapterList(bookUrl)` 同步
@@ -301,8 +303,9 @@ class BookshelfManageViewModelShared(
      *    - 把 chapterCaches 存入 [cacheChapters];
      *    - 调 [BookshelfManagePlatform.getCacheSize] 取缓存总字节存入 [cacheSizes]
      *      (任务要求"缓存统计:展示每本书缓存大小");
-     *    - 推送 [_upAdapter] (对照原 `upAdapterLiveData.sendValue(book.bookUrl)`,
-     *      app 端桥接 LiveData 后 Activity observe 触发 refreshTick++ 重组);
+     *    - 每扫描完成 20 本合并推送一次 [_upAdapter] (任务2: 批量发射, 对照原
+     *      `upAdapterLiveData.sendValue(book.bookUrl)` 逐本通知, 由宿主端按 bookUrl
+     *      per-key 聚合, 单书事件仅触发该书行局部刷新, 不再整页重组);
      *    - `ensureActive()` 检查协程取消 (与原一致)。
      *
      * 业务在 IO 跑。
@@ -312,6 +315,8 @@ class BookshelfManageViewModelShared(
     fun loadCacheFiles(books: List<Book>) {
         loadChapterCoroutine?.cancel()
         loadChapterCoroutine = Coroutine.async(scope = scope) {
+            // 批量发射窗口: 每批 20 本合并 emit 一次, 降低事件量 (任务2)
+            val batch = ArrayList<String>(20)
             books.forEach { book ->
                 if (!book.isLocal && !cacheChapters.contains(book.bookUrl)) {
                     val chapterCaches = hashSetOf<String>()
@@ -328,9 +333,16 @@ class BookshelfManageViewModelShared(
                     cacheChapters[book.bookUrl] = chapterCaches
                     // 缓存大小统计: 平台遍历缓存目录求和 (任务要求"展示每本书缓存大小")
                     cacheSizes[book.bookUrl] = platform.getCacheSize(book)
-                    _upAdapter.tryEmit(book.bookUrl)
+                    batch.add(book.bookUrl)
+                    if (batch.size >= 20) {
+                        _upAdapter.tryEmit(batch.toList())
+                        batch.clear()
+                    }
                 }
                 ensureActive()
+            }
+            if (batch.isNotEmpty()) {
+                _upAdapter.tryEmit(batch.toList())
             }
         }
     }

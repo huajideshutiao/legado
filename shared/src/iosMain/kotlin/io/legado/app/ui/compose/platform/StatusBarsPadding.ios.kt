@@ -4,9 +4,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 
 /**
  * [platformStatusBarPadding] 的 iOS actual: 接入 Compose Multiplatform WindowInsets
@@ -29,3 +31,23 @@ actual fun Modifier.platformStatusBarPadding(): Modifier = this.statusBarsPaddin
 @Composable
 actual fun rememberNavigationBarPaddingValues(): PaddingValues =
     WindowInsets.navigationBars.asPaddingValues()
+
+// iOS 无状态栏/导航栏显隐动画 (安全区域静态): 恒不隐藏; 固定高度 = 首次组合采样
+// (不订阅 insets 流, 与 Android 事件化语义一致——动画期间无逐帧跟随需求)
+@Composable
+actual fun rememberStatusBarHidden(): Boolean = false
+
+@Composable
+actual fun rememberNavigationBarHidden(): Boolean = false
+
+@Composable
+actual fun rememberFixedStatusBarHeightPx(): Int {
+    val density = LocalDensity.current
+    return WindowInsets.statusBars.getTop(density)
+}
+
+@Composable
+actual fun rememberFixedNavigationBarHeightPx(): Int {
+    val density = LocalDensity.current
+    return WindowInsets.navigationBars.getBottom(density)
+}

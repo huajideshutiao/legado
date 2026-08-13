@@ -480,6 +480,13 @@ class VideoPlayScreenModel(
         shared.onExit(pos, dur)
     }
 
+    override fun onPreRemoved() {
+        // 导航 pop 动画开始前先保存视频进度: onExit 幂等 (exited 标志保证 onCleared 跳过),
+        // 此处提前取 controller 真实位置保存 (对照原版返回键按下即 onPause 保存),
+        // 书架返回立即可见最新进度
+        onExit()
+    }
+
     override fun onCleared() {
         // 先保存进度 (controller 释放前取真实位置; onExit 已执行则跳过)
         runCatching { onExit() }

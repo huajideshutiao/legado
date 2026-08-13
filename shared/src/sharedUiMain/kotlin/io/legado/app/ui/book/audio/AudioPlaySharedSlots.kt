@@ -1,6 +1,6 @@
 package io.legado.app.ui.book.audio
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -18,13 +18,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -46,9 +46,11 @@ import kotlin.math.roundToInt
 /**
  * 音频播放页全端共享平台 slot (对照原版 AudioPlayActivity 的平台渲染):
  *
- * - [SharedAudioCoverSlot]: 圆形封面 (原版 ivCover; 经 BookImageLoaders 加载, 未注册平台走占位)
+ * - [SharedAudioCoverSlot]: 圆形封面 (原版 ivCover; 经 BookImageLoaders 加载, 未注册平台走占位;
+ *   keep-previous 旧图保留 + 新图就绪后 Crossfade 300ms 交叉淡化, 对照原版 Glide placeholder(旧图)
+ *   + TransitionDrawable.startTransition(300))
  * - [SharedAudioBlurBgSlot]: 模糊背景 (原版 iv_bg: loadBlur 整图 + 300ms TransitionDrawable 淡入;
- *   均匀遮罩 #3A000000 由 AudioPlayScreenContent 统一叠加, 此处不重复)
+ *   同上 keep-previous 旧图→新图交叉淡化; 均匀遮罩 #3A000000 由 AudioPlayScreenContent 统一叠加, 此处不重复)
  * - [AudioPlayTimerDialog] / [AudioPlaySpeedDialog]: 定时/倍速弹窗 (原版 Popup+SliderPopupCard 的
  *   AlertDialog 等价, 四端共用)
  * - [SharedAudioPlayScreenContent]: 四端 Provider 的统一 Content 组装 (对照原版 AudioPlayActivity);
@@ -156,38 +158,65 @@ fun SharedAudioPlayScreenContent(
 
 // ---- 圆形封面 slot (原版 ivCover; 加载链对照原版 BookCover.load: 失败回落默认图集) ----
 
+/**
+ * 封面无图占位底色: 中性灰 (对齐项目内 BookInfoScreen 占位惯例)。
+ * 原实现用纯主题蓝 Color(0xFF165DFF), 切歌瞬间会闪一片蓝, 改中性色弱化。
+ */
+private val CoverPlaceholderColor = Color(0xFF888888)
+
 @Composable
 private fun SharedAudioCoverSlot(coverUrl: String?, modifier: Modifier) {
     val loader = remember { BookImageLoaders.getOrNull() }
-    var bitmap by remember(coverUrl) { mutableStateOf<ImageBitmap?>(null) }
-    var showBuiltIn by remember(coverUrl) { mutableStateOf(false) }
+    // keep-previous: 不随 coverUrl 变化重置, 切歌瞬间旧图保留直到新图就绪
+    // (对照原版 Glide placeholder=当前旧图, 新图就绪后 Crossfade 交叉淡化替换)
+    var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    var showBuiltIn by remember { mutableStateOf(false) }
+    // rememberUpdatedState: LaunchedEffect 内读到最新 coverUrl, 用于比对丢弃过期回调
+    val currentUrl by rememberUpdatedState(coverUrl)
     LaunchedEffect(coverUrl, loader) {
-        bitmap = null
-        showBuiltIn = false
         if (loader == null) return@LaunchedEffect
         val bmp = loadAudioCover(loader, coverUrl)
-        if (bmp != null) bitmap = bmp else showBuiltIn = true
+        // 仅当本次请求仍是当前 URL 才落值 (防旧 URL 的异步回调覆盖新图;
+        // 协程取消后一般到不了这里, 比对是双保险)
+        if (coverUrl == currentUrl) {
+            if (bmp != null) {
+                bitmap = bmp
+                showBuiltIn = false
+            } else if (bitmap == null) {
+                // 无旧图且加载失败: 内置默认封面 (对照原版 newDefaultDrawable 的内置回落)
+                showBuiltIn = true
+            }
+            // 有旧图且新图加载失败: 保留旧图 (原版 Glide placeholder 语义, 不闪占位)
+        }
     }
     Box(
-        modifier.clip(androidx.compose.foundation.shape.CircleShape).background(Color(0xFF165DFF))
+        modifier.clip(androidx.compose.foundation.shape.CircleShape).background(CoverPlaceholderColor)
     ) {
-        val bmp = bitmap
-        when {
-            bmp != null -> Image(
-                bitmap = bmp,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize()
-                    .clip(androidx.compose.foundation.shape.CircleShape),
-                contentScale = ContentScale.Crop,
-            )
-            // 默认图集也为空: 内置默认封面 (对照原版 newDefaultDrawable 的内置回落)
-            showBuiltIn -> Image(
-                painter = painterResource(Res.drawable.image_cover_default),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize()
-                    .clip(androidx.compose.foundation.shape.CircleShape),
-                contentScale = ContentScale.Crop,
-            )
+        // 交叉淡化: targetState=当前显示的 bitmap; 切歌时旧图保持显示, 新图就绪后
+        // 300ms 旧图淡出/新图淡入 (对照原版 TransitionDrawable.startTransition(300))
+        Crossfade(
+            targetState = bitmap,
+            modifier = Modifier.fillMaxSize(),
+            animationSpec = tween(durationMillis = 300),
+            label = "audioCoverCrossfade",
+        ) { bmp ->
+            when {
+                bmp != null -> Image(
+                    bitmap = bmp,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize()
+                        .clip(androidx.compose.foundation.shape.CircleShape),
+                    contentScale = ContentScale.Crop,
+                )
+                // 默认图集也为空: 内置默认封面 (对照原版 newDefaultDrawable 的内置回落)
+                showBuiltIn -> Image(
+                    painter = painterResource(Res.drawable.image_cover_default),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize()
+                        .clip(androidx.compose.foundation.shape.CircleShape),
+                    contentScale = ContentScale.Crop,
+                )
+            }
         }
     }
 }
@@ -212,45 +241,53 @@ private suspend fun loadAudioCover(loader: BookImageLoader, coverUrl: String?): 
 @Composable
 private fun SharedAudioBlurBgSlot(coverUrl: String?, modifier: Modifier) {
     val loader = remember { BookImageLoaders.getOrNull() }
-    var bitmap by remember(coverUrl) { mutableStateOf<ImageBitmap?>(null) }
-    var showBuiltIn by remember(coverUrl) { mutableStateOf(false) }
+    // keep-previous: 不随 coverUrl 变化重置, 切歌瞬间旧背景保留直到新图就绪
+    var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    var showBuiltIn by remember { mutableStateOf(false) }
+    val currentUrl by rememberUpdatedState(coverUrl)
     LaunchedEffect(coverUrl, loader) {
-        bitmap = null
-        showBuiltIn = false
         if (loader == null) return@LaunchedEffect
         // 加载链对照原版 BookCover.loadBlur (与前景同 seed, 失败回落同一张默认图)
         val bmp = loadAudioCover(loader, coverUrl)
-        if (bmp != null) bitmap = bmp else showBuiltIn = true
+        // 仅当本次请求仍是当前 URL 才落值 (防旧 URL 回调覆盖新背景)
+        if (coverUrl == currentUrl) {
+            if (bmp != null) {
+                bitmap = bmp
+                showBuiltIn = false
+            } else if (bitmap == null) {
+                // 无旧图且加载失败: 内置默认封面 (对照原版 loadBlur 的内置回落)
+                showBuiltIn = true
+            }
+            // 有旧图且新图加载失败: 保留旧背景
+        }
     }
-    val success = bitmap != null || showBuiltIn
-    // 300ms 淡入 (对照原版 TransitionDrawable.startTransition(300); 切封面时重新淡入)
-    val alpha by animateFloatAsState(
-        targetValue = if (success) 1f else 0f,
-        animationSpec = tween(durationMillis = 300),
-    )
     Box(modifier) {
-        val bmp = bitmap
-        if (bmp != null) {
-            Image(
-                bitmap = bmp,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize().blur(24.dp)
-                    .graphicsLayer { this.alpha = alpha },
-                contentScale = ContentScale.Crop,
-            )
-        } else if (showBuiltIn) {
-            // 默认图集也为空: 内置默认封面 (对照原版 loadBlur 的内置回落, 同样模糊)
-            Image(
-                painter = painterResource(Res.drawable.image_cover_default),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize().blur(24.dp)
-                    .graphicsLayer { this.alpha = alpha },
-                contentScale = ContentScale.Crop,
-            )
-        } else {
-            // 加载中占位: accent 半透明 (原版露 Activity 深色背景; 浅色主题下避免闪白,
-            // 成功淡入后即被覆盖)
-            Box(Modifier.fillMaxSize().background(Color(0xFF165DFF).copy(alpha = 0.15f)))
+        // 旧图→新图 300ms 交叉淡化 (对照原版 TransitionDrawable.startTransition(300);
+        // 切歌瞬间旧背景保留, 新图就绪后旧图淡出/新图淡入)
+        Crossfade(
+            targetState = bitmap,
+            modifier = Modifier.fillMaxSize(),
+            animationSpec = tween(durationMillis = 300),
+            label = "audioBlurBgCrossfade",
+        ) { bmp ->
+            when {
+                bmp != null -> Image(
+                    bitmap = bmp,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize().blur(24.dp),
+                    contentScale = ContentScale.Crop,
+                )
+                // 默认图集也为空: 内置默认封面 (对照原版 loadBlur 的内置回落, 同样模糊)
+                showBuiltIn -> Image(
+                    painter = painterResource(Res.drawable.image_cover_default),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize().blur(24.dp),
+                    contentScale = ContentScale.Crop,
+                )
+                // 加载中占位: 页面默认背景色 (原版露 Activity 深色背景; 原实现闪主题蓝
+                // 0x165DFF 半透明, 改默认背景色不再突兀)
+                else -> Box(Modifier.fillMaxSize().background(AppTheme.colors.background))
+            }
         }
     }
 }

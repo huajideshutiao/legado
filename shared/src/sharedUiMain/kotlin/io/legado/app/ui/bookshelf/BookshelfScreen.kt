@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -118,8 +119,7 @@ import org.jetbrains.compose.resources.stringResource
  * - [actions]: 顶栏右侧溢出菜单槽 (添加书/书架管理/分组管理等, 由宿主端注入)
  *
  * @param viewModel 书架 VM (持有 groups/books/currentGroupId state)
- * @param active 书架 tab 是否激活 (MainRoute 按当前页推导); 与 [isRootTop] 共同构成
- *   "书架可见"信号 (setBookshelfVisible): 切回书架 tab / 从阅读器返回时触发数据重查
+ * @param isRootTop 主界面是否栈顶 (分组返回拦截只在主界面可见时生效)
  * @param onBookClick 书籍点击回调
  * @param onBookLongClick 书籍长按回调 (默认空)
  * @param onSearchClick 搜索图标点击回调 (默认空)
@@ -139,7 +139,6 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun BookshelfScreen(
     viewModel: BookshelfViewModel,
-    active: Boolean,
     onBookClick: (Book) -> Unit,
     onBookLongClick: (Book) -> Unit = {},
     onSearchClick: () -> Unit = {},
@@ -172,11 +171,6 @@ fun BookshelfScreen(
         } finally {
             viewModel.setBookshelfActive(false)
         }
-    }
-    // 书架可见信号 (tab 激活 && 主界面栈顶): 切回书架 / 从阅读器返回时 VM 重查一次
-    // (后台阅读/批量刷新落库后 Room 失效推送桌面端不可靠, 需显式兜底, 见 setBookshelfVisible)
-    LaunchedEffect(active, isRootTop) {
-        viewModel.setBookshelfVisible(active && isRootTop)
     }
     val appConfig = remember { AppConfigProviders.get() }
     // 配置项每次变更后重读 (对照原版: 分组样式变更走 NOTIFY_MAIN 重建 Fragment,
@@ -640,7 +634,7 @@ internal fun DefaultBookshelfActions(
 fun DefaultBookCoverPlaceholder(book: Book, modifier: Modifier = Modifier) {
     val colors = AppTheme.colors
     val accent = colors.accent
-    val textColor = if (accent.red * 0.299f + accent.green * 0.587f + accent.blue * 0.114f >= 0.5f) Color(0xDE000000) else Color(0xFFFFFFFF)
+    val textColor = if (accent.luminance() >= 0.5f) Color(0xDE000000) else Color(0xFFFFFFFF)
     val firstChar = book.name.firstOrNull() ?: '?'
     Box(
         modifier

@@ -210,7 +210,6 @@ class MangaReaderScreenModel : ScreenModel {
                 items = mangaContent?.items?.filterIsInstance<BaseMangaPage>() ?: emptyList(),
                 contentPos = mangaContent?.pos ?: 0,
                 curFinish = mangaContent?.curFinish == true,
-                hasNextChapter = shared.hasNextChapter,
                 curChapterIndex = durChapterIndex,
                 chapterSize = shared.chapterSize,
                 currentPage = shared.durChapterPos.value.coerceIn(
@@ -578,6 +577,12 @@ class MangaReaderScreenModel : ScreenModel {
     /** 用户取消同步云端进度 (对照 app 端 noButton) */
     fun dismissSyncProgress() = shared.dismissSyncProgress()
 
+    override fun onPreRemoved() {
+        // 导航 pop 动画开始前先落库 (对照原版返回键按下即 onPause → saveRead):
+        // 不等动画播完后的 retain → onCleared, 退出漫画阅读回书架立即可见最新进度
+        shared.saveRead()
+    }
+
     override fun onCleared() {
         shared.onCleared()
         scope.cancel()
@@ -591,8 +596,6 @@ data class MangaReaderUiState(
     val items: List<BaseMangaPage> = emptyList(),
     val contentPos: Int = 0,
     val curFinish: Boolean = false,
-    /** 是否有下一章 (对照原版 ReadMangaViewModel.hasNextChapter, 无下一章时列表尾部提示"暂无章节了") */
-    val hasNextChapter: Boolean = true,
     val curChapterIndex: Int = 0,
     val chapterSize: Int = 0,
     val horizontal: Boolean = false,

@@ -186,7 +186,8 @@ fun ChangeChapterSourceContent(
     var showEmptyGroupAlert by remember { mutableStateOf(false) }
 
     // 1. 初始化数据 (对照 Dialog.onViewCreated 第 111-128 行)
-    LaunchedEffect(book) {
+    // 键用 bookUrl (Book.equals 已改全字段语义, 整对象键会在进度等字段变化时误重跑 initData)
+    LaunchedEffect(book.bookUrl) {
         viewModel.initData(
             name = book.name,
             author = book.author,

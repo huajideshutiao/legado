@@ -40,6 +40,9 @@ import org.jetbrains.compose.resources.stringResource
  * @param emptyText      列表为空时的占位文案
  * @param listModifier   施加于 LazyColumn 的 modifier，供 Activity 型接入 dragSelectable 边缘拖选
  * @param fillMaxHeight  列表区是否吃满可用高度；非全高 Dialog 传 false 以让内容自适应收缩(复刻 AutoShrinkLinearLayout)
+ * @param wrapContentHeight true 时列表 LazyColumn 高度自适应内容 (透传 [FastScrollLazyColumn], 需配合
+ * fillMaxHeight=false 使用): 项少时随内容收缩, 多时由外部 heightIn 封顶并可滚动;
+ * false (默认) 时列表仍 fillMaxSize 吃满, 行为与既有调用方完全一致
  * @param itemContent    单项内容槽，携带 RuleItemScope 以便 item 内部用 draggableHandle 绑定把手
  */
 @Composable
@@ -54,6 +57,7 @@ fun <T> RuleManageScaffold(
     listState: LazyListState = rememberLazyListState(),
     listModifier: Modifier = Modifier,
     fillMaxHeight: Boolean = true,
+    wrapContentHeight: Boolean = false,
     /** 底部内容回避 padding: 全屏独立页/全高对话框传 rememberNavigationBarPaddingValues() (Android 15+ 强制
      * edge-to-edge 时列表末尾不被导航栏遮挡); Dialog 型/有底栏兑底的使用方保持默认 0 不受影响 */
     bottomPadding: PaddingValues = PaddingValues(0.dp),
@@ -76,6 +80,7 @@ fun <T> RuleManageScaffold(
                 FastScrollLazyColumn(
                     state = listState,
                     modifier = fillMod.then(listModifier),
+                    wrapContentHeight = wrapContentHeight,
                 ) {
                     items(items, key = itemKey) { item ->
                         RuleReorderableItem(reorderState, key = itemKey(item)) {

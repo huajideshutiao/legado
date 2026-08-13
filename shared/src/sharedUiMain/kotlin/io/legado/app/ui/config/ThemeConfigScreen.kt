@@ -23,7 +23,6 @@ import legado.shared.generated.resources.customize_day_theme
 import legado.shared.generated.resources.customize_night_theme
 import legado.shared.generated.resources.font_scale
 import legado.shared.generated.resources.search_layout
-import legado.shared.generated.resources.source_edit_text_max_line
 import legado.shared.generated.resources.theme_list
 import legado.shared.generated.resources.theme_list_summary
 import legado.shared.generated.resources.welcome_style
@@ -38,7 +37,7 @@ import io.legado.app.ui.preview.LegadoThemePreview
 /**
  * 主题设置页（迁 pref_config_theme.xml）。逐条对齐原条目顺序/key/默认值。
  * 换图标 launcherIcon 写 prefs 后仍走宿主的 OnSharedPreferenceChangeListener 触发 LauncherIconHelp；
- * 动态 summary（字体缩放/源编辑行数）与点击型交互（布局/搜索/底栏/主题弹窗/NumberPicker/跳转）由宿主传入。
+ * 动态 summary（字体缩放）与点击型交互（布局/搜索/底栏/主题弹窗/NumberPicker/跳转）由宿主传入。
  *
  * 下沉 shared/sharedUiMain:
  * - stringResource(R.string.xxx) → stringResource(Res.string.xxx) (key-based, 跨平台)
@@ -51,7 +50,6 @@ import io.legado.app.ui.preview.LegadoThemePreview
 @Composable
 fun ThemeConfigScreen(
     fontScaleSummary: String,
-    sourceEditMaxLineSummary: String,
     onBookshelfLayout: () -> Unit,
     onSearchLayout: () -> Unit,
     onCoverConfig: () -> Unit,
@@ -61,7 +59,6 @@ fun ThemeConfigScreen(
     onCustomizeDayTheme: () -> Unit,
     onCustomizeNightTheme: () -> Unit,
     onFontScale: () -> Unit,
-    onSourceEditMaxLine: () -> Unit,
 ) {
     val iconNames = stringArrayResource(Res.array.icon_names)
     val icons = stringArrayResource(Res.array.icons)
@@ -86,7 +83,6 @@ fun ThemeConfigScreen(
     val titleCustomizeDay = stringResource(Res.string.customize_day_theme)
     val titleCustomizeNight = stringResource(Res.string.customize_night_theme)
     val titleFontScale = stringResource(Res.string.font_scale)
-    val titleSourceEditMaxLine = stringResource(Res.string.source_edit_text_max_line)
 
     AppTheme {
         PreferenceScreen {
@@ -146,11 +142,6 @@ fun ThemeConfigScreen(
                 summary = fontScaleSummary,
                 onClick = onFontScale,
             )
-            preference(
-                title = titleSourceEditMaxLine,
-                summary = sourceEditMaxLineSummary,
-                onClick = onSourceEditMaxLine,
-            )
         }
     }
 }
@@ -170,7 +161,6 @@ fun ThemeConfigScreen(
 fun ThemeConfigScreenPreview() = LegadoThemePreview {
     ThemeConfigScreen(
         fontScaleSummary = "1.0 倍",
-        sourceEditMaxLineSummary = "10 行",
         onBookshelfLayout = {},
         onSearchLayout = {},
         onCoverConfig = {},
@@ -180,7 +170,6 @@ fun ThemeConfigScreenPreview() = LegadoThemePreview {
         onCustomizeDayTheme = {},
         onCustomizeNightTheme = {},
         onFontScale = {},
-        onSourceEditMaxLine = {},
     )
 }
 
@@ -189,7 +178,6 @@ fun ThemeConfigScreenPreview() = LegadoThemePreview {
 fun ThemeConfigScreenDarkPreview() = LegadoThemePreview(dark = true) {
     ThemeConfigScreen(
         fontScaleSummary = "1.0 倍",
-        sourceEditMaxLineSummary = "10 行",
         onBookshelfLayout = {},
         onSearchLayout = {},
         onCoverConfig = {},
@@ -199,7 +187,6 @@ fun ThemeConfigScreenDarkPreview() = LegadoThemePreview(dark = true) {
         onCustomizeDayTheme = {},
         onCustomizeNightTheme = {},
         onFontScale = {},
-        onSourceEditMaxLine = {},
     )
 }
 
@@ -209,7 +196,6 @@ fun ThemeConfigScreenLargeFontPreview() = LegadoThemePreview {
     // 大字体 + 多行的态
     ThemeConfigScreen(
         fontScaleSummary = "1.3 倍",
-        sourceEditMaxLineSummary = "20 行",
         onBookshelfLayout = {},
         onSearchLayout = {},
         onCoverConfig = {},
@@ -219,6 +205,5 @@ fun ThemeConfigScreenLargeFontPreview() = LegadoThemePreview {
         onCustomizeDayTheme = {},
         onCustomizeNightTheme = {},
         onFontScale = {},
-        onSourceEditMaxLine = {},
     )
 }

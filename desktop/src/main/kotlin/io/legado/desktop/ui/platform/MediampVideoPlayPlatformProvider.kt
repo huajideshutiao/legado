@@ -374,7 +374,9 @@ private fun MediampRender(
     }
 
     val error = uiState.error
-    val showLoading = error == null && uiState.loading
+    val showLoading = error == null && playError == null &&
+        // 章节内容加载中 或 播放器起播前 (引擎初始化 CREATED 态, 首次加载转圈)
+        (uiState.loading || (url != null && playbackState == PlaybackState.CREATED))
     // 缓冲圈 (PAUSED_BUFFERING 驱动, 叠于控制层之上)
     val showBuffering = error == null && !showLoading && playError == null &&
         isBuffering && uiState.playWhenReady

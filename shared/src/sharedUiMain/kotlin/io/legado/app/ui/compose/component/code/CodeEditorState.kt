@@ -27,6 +27,14 @@ class CodeEditorState(initial: String) {
     var value by mutableStateOf(TextFieldValue(initial, TextRange(initial.length)))
         private set
 
+    /**
+     * 统一变更通知 (对齐原版 CodeView 的 TextWatcher 单一同步点):
+     * 输入/undo/redo/辅助键插入/查找替换/格式化等**一切**修改路径在 value 更新后回调,
+     * 外部 (entity.value 同步/查找高亮刷新) 只挂这里, 不存在绕过路径。
+     * 组合期赋值 lambda (捕获最新外围状态), 编辑器只被单一场合持有。
+     */
+    var onChanged: ((TextFieldValue) -> Unit)? = null
+
     private val undoStack = ArrayDeque<TextFieldValue>()
     private val redoStack = ArrayDeque<TextFieldValue>()
 
@@ -39,6 +47,7 @@ class CodeEditorState(initial: String) {
             redoStack.clear()
         }
         value = adjusted
+        onChanged?.invoke(adjusted)
     }
 
     /**
@@ -135,6 +144,7 @@ class CodeEditorState(initial: String) {
         undoStack.clear()
         redoStack.clear()
         value = TextFieldValue(text, TextRange(text.length))
+        onChanged?.invoke(value)
     }
 
     fun insertAtCursor(insert: String) = onValueChange(value.insertAtCursor(insert))
@@ -143,12 +153,14 @@ class CodeEditorState(initial: String) {
         val prev = undoStack.removeLastOrNull() ?: return
         redoStack.addLast(value)
         value = prev
+        onChanged?.invoke(prev)
     }
 
     fun redo() {
         val next = redoStack.removeLastOrNull() ?: return
         undoStack.addLast(value)
         value = next
+        onChanged?.invoke(next)
     }
 }
 

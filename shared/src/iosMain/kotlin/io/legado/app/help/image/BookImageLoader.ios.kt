@@ -21,6 +21,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import okio.Path.Companion.toPath
+import okio.FileSystem
+import okio.buffer
 
 /**
  * [BookImageLoader] 的 iOS Coil3 实现 (对照 androidMain BookImageLoader.android.kt /
@@ -89,6 +91,28 @@ class IosBookImageLoader : BookImageLoader {
             val result = iosCoilImageLoader.execute(request)
             val bitmap = (result as? SuccessResult)?.image?.toBitmap() ?: return@singleFlight null
             bitmap.asComposeImageBitmap()
+        }
+
+    /**
+     * 仅读 Coil3 磁盘缓存字节（不触发网络/解码）：先查封面解密 key（"coverDecode:$url"），
+     * 再查网络 fetcher 默认 key（裸 url）。iOS 单区 diskCache（无 #covers 持久区）。
+     */
+    override suspend fun loadDiskCachedBytes(
+        url: String,
+        sourceOrigin: String?,
+    ): ByteArray? =
+        BookImageLoadDedup.singleFlight("diskCached\u0000$url\u0000${sourceOrigin ?: ""}") {
+            val diskCache = iosCoilImageLoader.diskCache ?: return@singleFlight null
+            for (key in listOf("coverDecode:$url", url)) {
+                val snapshot = diskCache.openSnapshot(key) ?: continue
+                try {
+                    val bytes = FileSystem.SYSTEM.source(snapshot.data).buffer().readByteArray()
+                    if (bytes.isNotEmpty()) return@singleFlight bytes
+                } finally {
+                    snapshot.close()
+                }
+            }
+            null
         }
 }
 

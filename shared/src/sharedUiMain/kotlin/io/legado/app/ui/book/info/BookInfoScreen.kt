@@ -787,7 +787,8 @@ private fun ActionCell(
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
 ) {
-    val summary = AppTheme.colors.secondaryText
+    // 对齐原版 tv_text_summary #909090 固定淡灰 (不随主题); secondaryText 偏深
+    val summary = AppTheme.colors.summaryText
     // 两行最小高度, 复刻原 XML lines=2 + gravity=center 的文本垂直居中
     val twoLineHeight = with(LocalDensity.current) { (14.sp * 1.5f * 2).toDp() }
     Column(

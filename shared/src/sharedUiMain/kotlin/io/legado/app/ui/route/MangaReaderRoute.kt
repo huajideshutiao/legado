@@ -56,11 +56,11 @@ import org.jetbrains.compose.resources.stringResource
  *
  * 对照 app 端 [io.legado.app.ui.book.manga.ReadMangaActivity]:
  * - onActivityCreated viewModel.initData → Init 事件
- * - Content LaunchedEffect 监听 RouteResults.TOC → OpenChapter 事件
+ * - Content LaunchedEffect 监听换源回填
  * - MangaMenuAction.ADD_BOOKMARK → buildBookmark + BookmarkDialog
  * - onLongTap → saveImage (平台文件选择器 + 平台 saveImage)
  * - MangaMenuAction.HORIZONTAL_SCROLL → toggleHorizontal
- * - 目录/换源 push 带 resultKey, 回填章节/源
+ * - 目录: 窄屏 TocDialogHost 弹窗 (对照原版 push Toc 带 resultKey → OpenChapter 事件); 换源 push 带 resultKey 回填源
  */
 @Composable
 fun MangaReaderRoute(
@@ -91,15 +91,6 @@ fun MangaReaderRoute(
     LaunchedEffect(Unit) {
         navigator.resultsFor(entry.id).collect { result ->
             when (result.key) {
-                RouteResults.TOC -> {
-                    // 目录回传章节定位 (对照 app 端 viewModel.openChapter)
-                    (result.payload as? RouteResultPayload.Toc)?.let { toc ->
-                        screenModel.dispatch(
-                            MangaReaderUiEvent.OpenChapter(toc.chapterIndex, toc.chapterPos)
-                        )
-                    }
-                }
-
                 RouteResults.CHANGE_SOURCE -> {
                     // 换源回传新 source + book + toc: 必须走 changeTo 完成迁移+落库,
                     // 只 initMangaData 会丢目录并在书架残留旧书
@@ -148,13 +139,17 @@ fun MangaReaderRoute(
 
     // 返回栈由导航器统一管理; 目录派发独立 BookRef 快照 + resultKey
     val onBack: () -> Unit = { navigator.pop() }
+    // 目录弹窗显示开关 (窄屏目录入口, 对照阅读页 ReaderDialogEvent.Toc → TocDialogHost)
+    var showTocDialog by remember { mutableStateOf(false) }
     val onOpenToc: () -> Unit = {
         // 对照原版 MangaMenuAction.CATALOG: 迁移时漏传 IntentData (book + chapterList),
         // Toc 界面章节来源 = IntentData.chapterList → 活动阅读注册表 → DB 兜底,
         // 漫画章节未落库时只传 BookRef 会导致目录页空白
         IntentData.book = screenModel.currentBook
         IntentData.chapterList = screenModel.chapterList
-        navigator.push(AppRoute.Toc(book.toRouteRef()), resultKey = RouteResults.TOC)
+        // 目录弹窗 (对照阅读页 ReaderDialogEvent.Toc → TocDialogHost; 原 push Toc 全屏路由,
+        // 迁移后选章经 onOpenChapter 直接处理, 不再走 RouteResults.TOC 回传)
+        showTocDialog = true
     }
     // 顶栏标题点击进书籍详情 (对照 app 端 MangaMenu toolbar click → openBookInfoActivity)
     val onOpenBookInfo: () -> Unit = { navigator.push(AppRoute.BookInfo(book.toRouteRef())) }
@@ -179,7 +174,6 @@ fun MangaReaderRoute(
         items = state.items,
         contentPos = state.contentPos,
         curFinish = state.curFinish,
-        hasNextChapter = state.hasNextChapter,
         book = screenModel.currentBook,
         bookSource = screenModel.currentSource,
         curChapterIndex = state.curChapterIndex,
@@ -356,6 +350,20 @@ fun MangaReaderRoute(
             // 原 push ReviewPost 无 resultKey/结果处理, 内容不提交, 保持等价
             onPosted = { },
             onDismiss = { showPostDialog = false },
+        )
+    }
+
+    // 目录弹窗 (对照阅读页 ReaderDialogEvent.Toc → TocDialogHost 全高底部弹窗;
+    // 选章跳转对齐原 RouteResults.TOC 回传消费 → OpenChapter 事件, 关闭由宿主回调处理)
+    if (showTocDialog) {
+        TocDialogHost(
+            book = book,
+            navigator = navigator,
+            onOpenChapter = { index, pos ->
+                showTocDialog = false
+                screenModel.dispatch(MangaReaderUiEvent.OpenChapter(index, pos))
+            },
+            onDismiss = { showTocDialog = false },
         )
     }
 }

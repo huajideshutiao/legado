@@ -2,17 +2,20 @@ package io.legado.app.ui.compose.platform
 
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalDensity
+import kotlinx.coroutines.delay
 
 /**
  * 软键盘弹出时把聚焦字段重新滚进视口。
@@ -40,12 +43,19 @@ fun Modifier.bringIntoViewOnIme(
     rectProvider: (() -> Rect?)? = null,
 ): Modifier {
     val requester = remember { BringIntoViewRequester() }
-    val density = LocalDensity.current
-    // ime 弹出动画期间高度逐帧变化, 每帧重启请求直至稳定; 键盘收起后不请求
-    val imeBottom = WindowInsets.ime.getBottom(density)
     val latestRectProvider by rememberUpdatedState(rectProvider)
-    LaunchedEffect(focused, imeBottom) {
-        if (focused && imeBottom > 0) {
+    // 事件性信号 (非逐帧数值, 见 rememberImeVisible/rememberImeAnimating):
+    // 键盘弹出动画期间视口逐帧收缩 (宿主 windowInsetsPadding 逐帧跟随时), 持续请求
+    // 直至动画结束; 动画结束后请求一次收尾。宿主已事件化 (imeDismissPadding) 时视口
+    // 在动画第一帧即稳定, 循环请求幂等无副作用。键盘收起后不请求。
+    val imeVisible = rememberImeVisible()
+    val imeAnimating = rememberImeAnimating()
+    LaunchedEffect(focused, imeVisible, imeAnimating) {
+        if (focused && imeVisible) {
+            while (imeAnimating) {
+                requester.bringIntoView(latestRectProvider?.invoke())
+                delay(16)
+            }
             requester.bringIntoView(latestRectProvider?.invoke())
         }
     }
@@ -63,20 +73,60 @@ fun Modifier.bringIntoViewOnIme(
 expect fun rememberImeHiding(): Boolean
 
 /**
- * ime 避让 padding: 键盘弹出动画期间跟随 ime (工具栏随键盘升起, 时机不变),
- * 收起动画期间立即归零 (对齐原版 KeyboardToolPop.onGlobalLayout 键盘收起时 rootView
- * padding 立刻归 0 不等动画)。
+ * 软键盘是否可见 (事件性布尔, 非逐帧数值)。
+ *
+ * 键盘弹出/收起动画期间 `WindowInsets.ime` 每帧更新 (androidx InsetsListener.onProgress
+ * 逐帧写动画插值): 组合期直接读取会把读取者拖进逐帧重组。Android actual 经
+ * ViewTreeObserver 布局监听 + ViewCompat 只读 ime 可见性布尔 (动画期间布尔不变),
+ * 只在"可见/不可见"翻转时写回状态 —— 作为事件信号 (LaunchedEffect key / 布局分支判定) 使用。
+ * 非 Android 平台无软键盘概念, 恒 false。
+ */
+@Composable
+expect fun rememberImeVisible(): Boolean
+
+/**
+ * 是否处于 IME 动画期间 (事件性)。
+ *
+ * Android actual 经 imeAnimationSource != imeAnimationTarget 判定 (见 foundation
+ * WindowInsets.android.kt 的 InsetsListener): 动画期间 source 冻结为动画前值, target
+ * 在动画第一帧即置为最终目标值, 两者不相等; 动画结束两者收敛 —— 该状态只在动画边界
+ * 翻转, 不随逐帧插值变化。供键盘动画期间冻结高亮挂载窗口等场景使用。
+ * 非 Android 平台无 IME 动画概念, 恒 false。
+ */
+@Composable
+expect fun rememberImeAnimating(): Boolean
+
+/**
+ * IME 目标高度 (px, 事件性): 键盘弹出动画第一帧即确定最终键盘高, 动画期间恒定;
+ * 无动画时 = 当前 ime 高度。供 [imeDismissPadding] 做固定高度 padding (只在动画边界
+ * 重算), 避免逐帧跟随动画插值导致整屏每帧重测。非 Android 平台 ime 恒 0。
+ */
+@Composable
+expect fun rememberImeTargetBottomPx(): Int
+
+/**
+ * ime 避让 padding: 键盘弹出时立即垫上最终键盘高 (动画第一帧 target 即确定, 动画期间
+ * 恒定), 收起动画期间立即归零 (对齐原版 KeyboardToolPop.onGlobalLayout 键盘收起时
+ * rootView padding 立刻归 0 不等动画)。
  *
  * 消除收起动画期间的底部空隙: ime insets 动画与键盘视觉动画存在不同步窗口 (键盘视觉
  * 已滑出屏幕而 insets 尚未归零) 时, 内容区底 = 屏幕底 - ime, 工具栏底边下方暴露
  * ime 高度的一段窗口背景空白; padding 提前归零后内容区立即拉满, 工具栏贴屏幕底,
  * 空隙不再出现。非 Android 平台 ime 恒 0, 天然 no-op。
+ *
+ * 与旧实现 (windowInsetsPadding 逐帧跟随动画插值) 的差异: IME 动画期间 insets 每帧
+ * 变化, 旧实现整屏每帧重测; 本实现 padding 只在动画边界 (事件性) 重算一次 ——
+ * 键盘弹出: imeAnimationTarget 在动画第一帧即置为最终键盘高 → 立即垫满;
+ * 键盘收起: source > target (rememberImeHiding) → 立即归零。
  */
 @Composable
 fun Modifier.imeDismissPadding(): Modifier {
+    val density = LocalDensity.current
     val hiding = rememberImeHiding()
+    // 动画目标高度: 弹出动画期间恒定 (= 最终键盘高), 无动画时 = 当前 ime 高度
+    val imeHeight = rememberImeTargetBottomPx()
     // hiding 时 ime 归零动作已在系统动画第一帧生效 (source > target), 返回原 modifier;
-    // 否则与 windowInsetsPadding(WindowInsets.ime) 同语义 (insets 值变化由该 modifier
-    // 的 measure 机制驱动重测, 无需组合期读取)
-    return if (hiding) this else this.windowInsetsPadding(WindowInsets.ime)
+    // 否则以固定高度 padding (只在动画边界重算, 动画期间不再逐帧重测整屏)
+    return if (hiding || imeHeight <= 0) this
+    else this.padding(bottom = with(density) { imeHeight.toDp() })
 }

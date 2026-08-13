@@ -38,6 +38,19 @@ internal fun ClickActionConfig.actionAt(x: Float, y: Float, width: Int, height: 
 }
 
 /**
+ * 落点是否在九宫格中心格（对照原版 ClickArea.isCenter 的 mcRect.contains：
+ * 3x3 等分中间区域，与动作配置无关的几何判定）。
+ *
+ * 原版 onSingleTapUp: `clickArea.isCenter(startX, startY) && isAbortAnim → return`
+ * （动画被打断后点击中心区域忽略），供 ReadViewComposable 单击分发复用。
+ */
+internal fun isClickCenter(x: Float, y: Float, width: Int, height: Int): Boolean {
+    if (width <= 0 || height <= 0) return false
+    return x >= width * 0.33f && x < width * 0.66f &&
+        y >= height * 0.33f && y < height * 0.66f
+}
+
+/**
  * 读回 9 个区域动作配置, 与 MoreConfigDialog 的 ClickActionDialog 写同一批 PreferKey。
  * 原版 AppConfig.clickActionXX 是 cachedIntPref, 每次点击现取, 故这里也不做组合期缓存。
  */

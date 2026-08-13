@@ -83,12 +83,17 @@ import org.jetbrains.compose.resources.stringResource
  * - RuleManageScaffold / SelectActionBar / AppTitleBar / AppSearchField /
  *   AppDropdownMenu / OverflowMenu 等组件已在 shared, 直接复用
  *
- * @param state      列表状态 (数据/选中/查询/筛选/分组/下载状态/导出开关等)
+ * @param state      列表状态 (数据/查询/筛选/分组/导出开关等; 勾选/下载态已拆为独立参数)
  * @param callbacks  事件回调 (查询/选中/拖拽/单项操作/批量操作/导航)
  * @param listState  外部传入的 LazyListState, 供 dragSelectable 边缘拖选复用
  * @param listModifier 施加于 LazyColumn 的 modifier (如 dragSelectable)
  * @param coverSlot  封面渲染槽: 由调用方注入 (app 端经 LocalBookCoverSlot 绑定 ShelfCover, desktop 端自定义);
  *   接收 Book 与 Modifier, 内部应将 Modifier 应用到封面根节点以承袭父级尺寸约束
+ * @param downloadRunning 下载服务运行中 (独立状态: 仅顶栏下载图标区域重组)
+ * @param selectedCount 勾选计数 (独立状态: 仅批量栏计数区域重组)
+ * @param checkedMap  勾选态 per-key 映射 (任务3): item 只读自己 bookUrl 的 key, 单次勾选仅该行重组
+ * @param bookTicks   事件滴答 per-key 映射 (任务1): item 只读自己 bookUrl 的 key, 单书事件仅该书行重组
+ * @param groupNameMap 分组名预计算表 Map<groupId, String> (任务5), item 内查表代替逐 item 计算
  */
 @Composable
 fun BookshelfManageScreen(
@@ -97,10 +102,19 @@ fun BookshelfManageScreen(
     listState: LazyListState,
     listModifier: Modifier,
     coverSlot: @Composable (Book, Modifier) -> Unit,
+    // 平台下载运行中 (独立于 state: 仅顶栏下载图标区域重组, 不整页)
+    downloadRunning: Boolean,
+    // 勾选计数 (独立于 state: 仅批量栏计数区域重组)
+    selectedCount: Int,
+    // 勾选态 per-key 映射 (任务3): item 内只读自己 bookUrl 的 key,
+    // 单次勾选仅该行勾选框区域重组, 不整页重组
+    checkedMap: Map<String, Boolean>,
+    // 事件滴答 per-key 映射 (任务1): item 内读自己 bookUrl 的 key,
+    // 单书下载/缓存事件仅该书 item 失效重组
+    bookTicks: Map<String, Int>,
+    // 分组名预计算表 (任务5): Map<groupId, String>, item 内 O(1) 查表
+    groupNameMap: Map<Long, String>,
 ) {
-    val selectedSet = state.selected
-    // 读取 refreshTick 触发列表随下载/缓存事件重组
-    state.refreshTick
     RuleManageScaffold(
         items = state.books,
         itemKey = { it.bookUrl },
@@ -120,12 +134,12 @@ fun BookshelfManageScreen(
                         hint = state.searchHint,
                     )
                 },
-                actions = { BookshelfManageActions(state, callbacks) },
+                actions = { BookshelfManageActions(state, callbacks, downloadRunning) },
             )
         },
         actionBar = {
             SelectActionBar(
-                selectCount = selectedSet.size,
+                selectCount = selectedCount,
                 allCount = state.books.size,
                 onSelectAll = callbacks.onSelectAll,
                 onRevertSelection = callbacks.onRevertSelection,
@@ -135,24 +149,32 @@ fun BookshelfManageScreen(
             )
         },
     ) { item ->
-        BookItem(state, callbacks, item, selectedSet.contains(item.bookUrl), coverSlot)
+        BookItem(
+            state = state,
+            callbacks = callbacks,
+            book = item,
+            checked = checkedMap[item.bookUrl] == true,
+            bookTicks = bookTicks,
+            groupNameMap = groupNameMap,
+            coverSlot = coverSlot,
+        )
     }
 }
 
 /**
  * 列表状态 (immutable)。host 端持有 mutableStateOf<BookshelfManageState>, 修改时 copy 出新实例。
+ *
+ * 性能拆分 (任务1/3): 下载事件滴答 (bookTicks)、勾选态 (checkedMap) 与下载运行态
+ * (downloadRunning) 均不在此状态内, 而是作为独立参数传入 Screen——
+ * 它们的变化不重建本状态实例, 从而不触发整页重组。
  */
 data class BookshelfManageState(
     val books: List<Book> = emptyList(),
-    val selected: Set<String> = emptySet(),
     val searchKey: String = "",
     val searchHint: String = "",
     val bookshelfTypeFilter: Int = 0,
     val canDrag: Boolean = false,
     val groups: List<BookGroup> = emptyList(),
-    val downloadRunning: Boolean = false,
-    // 下载/缓存/封面刷新事件桥接为重组滴答
-    val refreshTick: Int = 0,
     val exportUseReplace: Boolean = false,
     val enableCustomExportChecked: Boolean = false,
     val exportToWebDav: Boolean = false,
@@ -162,9 +184,9 @@ data class BookshelfManageState(
  * 事件回调集合。host 端用 `remember { BookshelfManageCallbacks(...) }` 持有稳定实例,
  * 避免 lambda 重组; 不用的回调用默认空实现。
  *
- * 文案类查询 (originText/groupName/cacheInfo/isItemDownloading) 由 host 端按需返回,
+ * 文案类查询 (originText/cacheInfo/isItemDownloading) 由 host 端按需返回,
  * 因这些数据依赖 Activity 持有的 groupList / cacheChapters / CacheBook 等运行时状态,
- * 不下沉到 shared。
+ * 不下沉到 shared。分组名不再经回调逐 item 计算 (任务5), 改由预计算表 groupNameMap 传入。
  */
 data class BookshelfManageCallbacks(
     val onBack: () -> Unit = {},
@@ -180,7 +202,6 @@ data class BookshelfManageCallbacks(
     val onToggleDownload: (Book) -> Unit = {},
     val isItemDownloading: (Book) -> Boolean = { false },
     val onOriginText: (Book) -> String = { "" },
-    val onGroupName: (Long) -> String = { "" },
     val onCacheInfo: (Book) -> String? = { null },
     val onDeleteBook: (Book) -> Unit = {},
     val onEditGroup: (Book) -> Unit = {},
@@ -199,7 +220,11 @@ data class BookshelfManageCallbacks(
 )
 
 @Composable
-private fun BookshelfManageActions(state: BookshelfManageState, callbacks: BookshelfManageCallbacks) {
+private fun BookshelfManageActions(
+    state: BookshelfManageState,
+    callbacks: BookshelfManageCallbacks,
+    downloadRunning: Boolean,
+) {
     val colors = AppTheme.colors
     var showDownload by remember { mutableStateOf(false) }
     var showGroup by remember { mutableStateOf(false) }
@@ -218,7 +243,7 @@ private fun BookshelfManageActions(state: BookshelfManageState, callbacks: Books
         ) {
             Icon(
                 painter = rememberPainter(
-                    if (state.downloadRunning) "ic_stop_black_24dp" else "ic_play_24dp"
+                    if (downloadRunning) "ic_stop_black_24dp" else "ic_play_24dp"
                 ),
                 contentDescription = stringResource(Res.string.action_download),
                 tint = colors.primaryText,
@@ -331,9 +356,27 @@ private fun RuleItemScope.BookItem(
     callbacks: BookshelfManageCallbacks,
     book: Book,
     checked: Boolean,
+    bookTicks: Map<String, Int>,
+    groupNameMap: Map<Long, String>,
     coverSlot: @Composable (Book, Modifier) -> Unit,
 ) {
     val colors = AppTheme.colors
+    // 任务1: 本书事件滴答 — per-key snapshot 读, 只有本 bookUrl 的事件才使本 item 失效;
+    // 其它书/秒级服务滴答不触发本 item 重组
+    val tick = bookTicks[book.bookUrl] ?: 0
+    // 派生值 item 级缓存: onCacheInfo/isItemDownloading 依赖 VM 普通 map (非 snapshot),
+    // 由 tick 驱动重算; 其它 item 重组/勾选/滚动不重算这些开销。
+    // remember key 用 book 引用: 换源等 Book 内容变化 (新实例) 时也能重算, 不滞留旧值
+    val cacheInfoText = remember(book, tick) { callbacks.onCacheInfo(book) }
+    val downloading = remember(book, tick) { callbacks.isItemDownloading(book) }
+    val originText = remember(book) { callbacks.onOriginText(book) }
+    // 任务5: 分组名预计算表查表 (常见单分组 O(1) 直查; 多分组位掩码回退过滤),
+    // 仅 book.group 或分组表变化时重算, item 重组不重算
+    val groupName = remember(book.group, groupNameMap) {
+        val direct = groupNameMap[book.group]
+        if (direct != null) direct
+        else groupNameMap.filterKeys { it and book.group > 0 }.values.joinToString(",")
+    }
     // 长按=拖拽排序(仅手动排序);点按 root=切换选中;点封面=打开详情(避让长按拖拽,不再 combinedClickable)
     // 复刻原 ConstraintLayout: 文本随封面顶端对齐(tv_name top_toTopOf iv_cover)而非整列垂直居中
     Row(
@@ -388,13 +431,12 @@ private fun RuleItemScope.BookItem(
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = callbacks.onOriginText(book),
+                    text = originText,
                     color = colors.secondaryText,
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                val groupName = callbacks.onGroupName(book.group)
                 if (groupName.isNotEmpty()) {
                     Text(
                         text = groupName,
@@ -406,7 +448,7 @@ private fun RuleItemScope.BookItem(
                     )
                 }
             }
-            callbacks.onCacheInfo(book)?.let { info ->
+            cacheInfoText?.let { info ->
                 Text(
                     text = info,
                     color = colors.secondaryText,
@@ -424,7 +466,7 @@ private fun RuleItemScope.BookItem(
             ) {
                 Icon(
                     painter = rememberPainter(
-                        if (callbacks.isItemDownloading(book)) "ic_stop_black_24dp" else "ic_play_24dp"
+                        if (downloading) "ic_stop_black_24dp" else "ic_play_24dp"
                     ),
                     contentDescription = stringResource(Res.string.start),
                     tint = colors.primaryText,

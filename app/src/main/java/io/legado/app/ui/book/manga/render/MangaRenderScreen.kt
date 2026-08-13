@@ -68,7 +68,8 @@ fun MangaRenderState.installCoilPreloader(context: Context) {
 @Composable
 fun LazyItemScope.MangaPageCell(state: MangaRenderState, item: MangaPage, index: Int) {
     var load by remember { mutableStateOf(MangaCellState.LOADING) }
-    var progress by remember { mutableStateOf("") }
+    // 初始即显示 0% (原版布局 item_book_manga_page.xml 初始文本 "0%")
+    var progress by remember { mutableStateOf("0%") }
     val viewRef = remember { Ref<MangaPageImageView>() }
     val horizontal = state.horizontal
     val isLastImage = item.imageCount > 0 && item.index == item.imageCount - 1

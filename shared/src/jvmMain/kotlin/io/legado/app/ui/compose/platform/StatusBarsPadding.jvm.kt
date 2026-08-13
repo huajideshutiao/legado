@@ -16,3 +16,16 @@ actual fun Modifier.platformStatusBarPadding(): Modifier = this
  */
 @Composable
 actual fun rememberNavigationBarPaddingValues(): PaddingValues = PaddingValues(0.dp)
+
+// 桌面端无系统状态栏/导航栏显隐概念: 恒不隐藏、恒 0 高
+@Composable
+actual fun rememberStatusBarHidden(): Boolean = false
+
+@Composable
+actual fun rememberNavigationBarHidden(): Boolean = false
+
+@Composable
+actual fun rememberFixedStatusBarHeightPx(): Int = 0
+
+@Composable
+actual fun rememberFixedNavigationBarHeightPx(): Int = 0

@@ -48,16 +48,15 @@ class ProgressResponseBody(
         return object : ForwardingSource(source) {
             var totalBytesRead: Long = 0
             var lastTotalBytesRead: Long = 0
-            var lastPostTime: Long = 0
 
             @Throws(IOException::class)
             override fun read(sink: Buffer, byteCount: Long): Long {
                 val bytesRead = super.read(sink, byteCount)
                 totalBytesRead += if (bytesRead == -1L) 0 else bytesRead
-                val currentTime = System.currentTimeMillis()
-                if (bytesRead == -1L || (currentTime - lastPostTime > 100 && lastTotalBytesRead != totalBytesRead)) {
+                // 每次 read 都汇报 (仅字节前进去重), 颗粒度≈OkHttp 读块; 原版 d0c42f3242 的
+                // 100ms 时间节流由 perf 提交 f8a97ffd15 引入, 用户决定去掉恢复细颗粒度
+                if (lastTotalBytesRead != totalBytesRead || bytesRead == -1L) {
                     lastTotalBytesRead = totalBytesRead
-                    lastPostTime = currentTime
                     scope.launch {
                         internalProgressListener.onProgress(
                             url, totalBytesRead, contentLength(), bytesRead == -1L

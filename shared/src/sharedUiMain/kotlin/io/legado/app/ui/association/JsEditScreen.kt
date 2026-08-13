@@ -41,12 +41,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.AppTextField
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.component.code.CodeEditorSearchTarget
+import io.legado.app.ui.compose.component.code.CodeSearchHighlightState
 import io.legado.app.ui.compose.component.code.CodeTextField
 import io.legado.app.ui.compose.component.code.KeyboardToolbar
 import io.legado.app.ui.compose.component.code.KeyboardToolbarState
@@ -110,12 +120,54 @@ fun JsEditScreen(
     onShowKeyboardConfig: () -> Unit = {},
 ) {
     val colors = AppTheme.colors
+    val editor = rememberCodeEditorState(state.code)
+    // 只在外部重新载入 (打开文件) 时同步; 记录自己回写的文本, 避免 state 异步滞后时被回卷
+    var lastEmitted by remember { mutableStateOf(state.code) }
+    LaunchedEffect(state.code) {
+        if (state.code != lastEmitted) {
+            editor.setText(state.code)
+            lastEmitted = state.code
+        }
+    }
+    val emit: (String) -> Unit = { lastEmitted = it; onCodeChange(it) }
+    // 查找高亮状态: CodeTextField 叠加全量黄底 + 当前命中强调色 (对齐原版 CodeView 查找高亮)
+    val searchHighlight = remember { CodeSearchHighlightState() }
+    val focusManager = LocalFocusManager.current
     Column(
         Modifier
             .fillMaxSize()
             // ime 避让在根 (对齐原版 Activity adjustResize): 键盘弹出时编辑区/工具栏
             // 不被键盘覆盖, 收起动画期间提前归零 (imeDismissPadding)
             .imeDismissPadding()
+            // 桌面端键盘监听: Ctrl+Z 撤销 / Ctrl+Shift+Z、Ctrl+Y 重做 (对照 BookSourceEditScreen
+            // 根 Column); undo/redo 后回写 emit, 否则外部保存丢数据; 消费 Ctrl+Z 压住桌面
+            // BasicTextField 内置撤销栈, 避免与 CodeEditorState 手写撤销栈双重撤销
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown || !event.isCtrlPressed) {
+                    return@onPreviewKeyEvent false
+                }
+                when (event.key) {
+                    Key.Z if event.isShiftPressed -> {
+                        editor.redo()
+                        emit(editor.value.text)
+                        true
+                    }
+
+                    Key.Z -> {
+                        editor.undo()
+                        emit(editor.value.text)
+                        true
+                    }
+
+                    Key.Y -> {
+                        editor.redo()
+                        emit(editor.value.text)
+                        true
+                    }
+
+                    else -> false
+                }
+            }
     ) {
         AppTitleBar(
             title = stringResource(Res.string.js_edit),
@@ -144,16 +196,6 @@ fun JsEditScreen(
         // bringIntoView 请求须可达滚动容器 —— 字段自身有界内滚时外部请求无法到达
         // CoreTextField 内部滚动, 光标会被键盘挡住; 滚动与光标可见均由 CodeTextField
         // 内部按精确光标行发起 (对齐原版 EditText 内部滚动 + bringPointIntoView)
-        val editor = rememberCodeEditorState(state.code)
-        // 只在外部重新载入 (打开文件) 时同步; 记录自己回写的文本, 避免 state 异步滞后时被回卷
-        var lastEmitted by remember { mutableStateOf(state.code) }
-        LaunchedEffect(state.code) {
-            if (state.code != lastEmitted) {
-                editor.setText(state.code)
-                lastEmitted = state.code
-            }
-        }
-        val emit: (String) -> Unit = { lastEmitted = it; onCodeChange(it) }
         Box(
             Modifier
                 .fillMaxWidth()
@@ -162,10 +204,17 @@ fun JsEditScreen(
         ) {
             CodeTextField(
                 value = editor.value,
-                onValueChange = { editor.onValueChange(it); emit(it.text) },
+                onValueChange = {
+                    // emit 必须取调整后的 editor.value (回车自动缩进/退格整段删会改写文本),
+                    // 旧实现 emit(it.text) 写调整前值 → 保存的代码缺缩进 (与书源编辑 entity
+                    // 分叉同源问题)
+                    editor.onValueChange(it)
+                    emit(editor.value.text)
+                },
                 syntax = rememberCodeSyntax(js = true),
                 label = stringResource(Res.string.code),
                 fontSize = 14.sp,
+                searchHighlight = searchHighlight,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 4.dp),
@@ -206,6 +255,7 @@ fun JsEditScreen(
             onUndo = { editor.undo(); emit(editor.value.text) },
             onRedo = { editor.redo(); emit(editor.value.text) },
             onShowConfig = onShowKeyboardConfig,
+            target = { CodeEditorSearchTarget(editor, searchHighlight) { focusManager.clearFocus() } },
         )
     }
 }

@@ -51,7 +51,6 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.Icon
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -68,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.platform.navigationBarFixedPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ColorUtils
@@ -186,9 +186,7 @@ fun SearchMenuOverlay(state: SearchMenuState) {
                 Modifier
                     .fillMaxWidth()
                     .background(bg)
-                    .windowInsetsPadding(
-                        WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)
-                    ),
+                    .navigationBarFixedPadding(),
             ) {
                 // 搜索信息行(原 ll_search_base_info)
                 Row(

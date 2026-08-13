@@ -165,6 +165,16 @@ class AndroidReaderPlatformProvider(
     }
 
     /**
+     * 同步立即关闭浮动文本操作菜单（点按取消选择等手势分支在选区清除的同帧同步直调，
+     * 对照原版 ACTION_DOWN → textActionMenu.dismiss() 同步语义，避免事件链异步延迟
+     * 造成的 FloatingActionMode"完整闪一下再消失"）。dismiss 幂等
+     * （TextActionMenu.dismissByApp 防重入），事件链兜底重复调用安全。
+     */
+    override fun dismissTextActionMenu(screenModel: ReaderScreenModel) {
+        activity.dismissReaderTextActionMenu()
+    }
+
+    /**
      * 图片长按（命中图片列）：弹图片操作菜单（对照原版 ReadBookActivity.onImageLongPress：
      * 查看/刷新/保存/选择目录，PopupAction 承载）。
      */
@@ -424,19 +434,24 @@ private class AndroidReaderMenuState(
     override var hasBgImage by mutableStateOf(false)
         private set
 
-    // 顶栏
-    override val title: String? get() = screenModel.currentBook?.name
-    override val chapterName: String? get() = screenModel.currentChapter?.title
-    override val chapterUrl: String? get() = screenModel.currentChapter?.url
-    override val chapterNameVisible: Boolean get() = !chapterName.isNullOrEmpty()
-    override val chapterUrlVisible: Boolean
-        get() = !chapterUrl.isNullOrEmpty() &&
-            screenModel.currentBook?.isLocal == false
+    // 顶栏 (快照状态, 由 refresh()/reset() 更新: 普通 getter 读 StateFlow.value 在组合期
+    // 不追踪, 切章后书名/章节名会冻结; 对照原版 upBookView/upMenuView 显式刷新)
+    override var title: String? by mutableStateOf(null)
+        private set
+    override var chapterName: String? by mutableStateOf(null)
+        private set
+    override var chapterUrl: String? by mutableStateOf(null)
+        private set
+    override var chapterNameVisible by mutableStateOf(false)
+        private set
+    override var chapterUrlVisible by mutableStateOf(false)
+        private set
     override var sourceActionText by mutableStateOf("")
         private set
     override var sourceActionVisible by mutableStateOf(false)
         private set
-    override val titleBarAdditionVisible: Boolean get() = AppConfig.showReadTitleBarAddition
+    override var titleBarAdditionVisible by mutableStateOf(AppConfig.showReadTitleBarAddition)
+        private set
     override val topMenu = TopMenuState()
 
     // 自动翻页控制器 (对照 app 端 ReadView.autoPager 的 AutoPager; 由 shared AutoPagerCompose 承载)
@@ -454,23 +469,17 @@ private class AndroidReaderMenuState(
         }
     }
 
-    // 底栏进度条 (对照原版 ReadMenu.upSeekBar: page 模式 max=章内页数-1/progress=durPageIndex,
-    // chapter 模式 max=模拟章数-1/progress=durChapterIndex)
-    override val seekMax: Int
-        get() = if (AppConfig.progressBarBehavior == "page") {
-            (screenModel.viewModel.curTextChapter.value?.pageSize?.minus(1) ?: -1)
-                .coerceAtLeast(0)
-        } else {
-            (screenModel.viewModel.simulatedChapterSize - 1).coerceAtLeast(0)
-        }
-    override val seekValue: Int
-        get() = if (AppConfig.progressBarBehavior == "page") {
-            screenModel.viewModel.durPageIndex.value
-        } else {
-            screenModel.viewModel.durChapterIndex.value
-        }
-    override val prevEnabled: Boolean get() = screenModel.viewModel.canMoveToPrevChapter()
-    override val nextEnabled: Boolean get() = screenModel.viewModel.canMoveToNextChapter()
+    // 底栏进度条 (快照状态, 由 upSeekBar()/refresh() 更新: 普通 getter 读 StateFlow.value/
+    // 普通 var 在组合期不追踪, 翻页/切章后进度条与上下章可用状态会冻结;
+    // 对照原版 ReadMenu.upSeekBar/upMenuView 实时刷新)
+    override var seekMax: Int by mutableIntStateOf(0)
+        private set
+    override var seekValue: Int by mutableIntStateOf(0)
+        private set
+    override var prevEnabled by mutableStateOf(false)
+        private set
+    override var nextEnabled by mutableStateOf(false)
+        private set
     override var autoPage by mutableStateOf(false)
     override var isNightTheme by mutableStateOf(AppConfig.isNightTheme)
         private set
@@ -486,7 +495,7 @@ private class AndroidReaderMenuState(
         animate = !AppConfig.isEInkMode
         upColorConfig()
         upSourceAction()
-        upTopMenu()
+        refresh()
         isNightTheme = AppConfig.isNightTheme
         visibleState.targetState = true
         // 菜单显示时状态栏/导航栏恢复显示 (对照原版 runMenuIn → upSystemUiVisibility)
@@ -1106,9 +1115,45 @@ private class AndroidReaderMenuState(
         screenModel.viewModel.refreshCurrentChapter()
     }
 
-    // 菜单数据刷新事件 → 重算顶栏可见/勾选状态 (含云进度同步可见性)
+    /** 顶栏/底栏展示数据 (对照原版 upBookView: 书名/章节名/章节链接/上下章可用性) */
+    private fun upMenuView() {
+        val book = screenModel.viewModel.book.value
+        title = book?.name
+        val curChapter = screenModel.currentChapter
+        chapterName = curChapter?.title
+        chapterUrl = curChapter?.url
+        chapterNameVisible = !chapterName.isNullOrEmpty()
+        chapterUrlVisible = !chapterUrl.isNullOrEmpty() && book?.isLocal == false
+        titleBarAdditionVisible = AppConfig.showReadTitleBarAddition
+        prevEnabled = screenModel.viewModel.canMoveToPrevChapter()
+        nextEnabled = screenModel.viewModel.canMoveToNextChapter()
+    }
+
+    // 菜单数据刷新事件 → 重算顶栏/底栏展示状态 (对照原版 menuRefresh → upMenuView())
     override fun refresh() {
         upTopMenu()
+        upMenuView()
+    }
+
+    // 进度条刷新 (对照原版 seekBarChange → readMenu.upSeekBar)
+    override fun upSeekBar() {
+        seekMax = if (AppConfig.progressBarBehavior == "page") {
+            (screenModel.viewModel.curTextChapter.value?.pageSize?.minus(1) ?: -1)
+                .coerceAtLeast(0)
+        } else {
+            (screenModel.viewModel.simulatedChapterSize - 1).coerceAtLeast(0)
+        }
+        seekValue = if (AppConfig.progressBarBehavior == "page") {
+            screenModel.viewModel.durPageIndex.value
+        } else {
+            screenModel.viewModel.durChapterIndex.value
+        }
+    }
+
+    // 菜单/顶栏重建 (对照原版 actionBarChange → readMenu.reset)
+    override fun reset() {
+        upTopMenu()
+        upMenuView()
     }
 
     // 翻页动画选择器 (原 PAGE_ANIM 分支提取, AutoReadPanel 设置按钮复用)

@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.CircularProgressIndicator
@@ -61,6 +60,8 @@ import io.legado.app.ui.compose.platform.AppShortcut
 import io.legado.app.ui.compose.platform.AppShortcutHandler
 import io.legado.app.ui.compose.platform.PageTurnThrottle
 import io.legado.app.ui.compose.platform.VolumeKeyPageTurnHandler
+import io.legado.app.ui.compose.platform.navigationBarFixedPadding
+import io.legado.app.ui.compose.platform.statusBarFixedPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
@@ -87,7 +88,6 @@ import legado.shared.generated.resources.manga_footer_config
 import legado.shared.generated.resources.manga_gif_auto_next
 import legado.shared.generated.resources.more_menu
 import legado.shared.generated.resources.next_chapter
-import legado.shared.generated.resources.no_more_chapter
 import legado.shared.generated.resources.pre_download_m
 import legado.shared.generated.resources.previous_chapter
 import legado.shared.generated.resources.refresh
@@ -164,8 +164,6 @@ fun MangaReaderScreenContent(
     items: List<BaseMangaPage>,
     contentPos: Int,
     curFinish: Boolean,
-    /** 是否有下一章 (对照原版 ReadMangaViewModel.hasNextChapter, 无下一章时列表尾部显示"暂无章节了") */
-    hasNextChapter: Boolean = true,
     book: Book?,
     bookSource: BookSource?,
     curChapterIndex: Int,
@@ -426,12 +424,6 @@ fun MangaReaderScreenContent(
     ) {
         MangaRenderLayer(
             renderState,
-            // 原版 LoadMoreView noMore 态: 当前章加载完成且无下一章时, 列表底部显示"暂无章节了！"
-            footer = if (curFinish && !hasNextChapter) {
-                { NoMoreFooter() }
-            } else {
-                null
-            },
             // pageCell 在签名里位于 footer 之前, 不能用尾随 lambda (会绑到 footer)
             pageCell = { item, _ ->
                 MangaPageCell(
@@ -766,8 +758,8 @@ private fun MangaMenuTopBar(
             .fillMaxWidth()
             .background(colors.background)
             // 对照原版 TitleBar fitStatusBar=true: 系统栏恢复时顶栏避开状态栏,
-            // 沉浸式全屏时 inset=0 无多余空白
-            .statusBarsPadding()
+            // 沉浸式全屏时 inset=0 无多余空白 (事件化, 显隐动画期间不逐帧跟随)
+            .statusBarFixedPadding()
             .padding(horizontal = 8.dp),
     ) {
         // 整行点击打开书籍详情 (对照 app 端 toolbar click → openBookInfoActivity)
@@ -945,8 +937,8 @@ private fun MangaMenuBottomBar(
             .fillMaxWidth()
             .background(colors.bottomBackground)
             // 对照原版 MangaMenu.initView: bottomMenu.applyNavigationBarPadding()
-            // (沉浸式全屏时 inset=0 无多余空白)
-            .navigationBarsPadding(),
+            // (沉浸式全屏时 inset=0 无多余空白; 事件化, 显隐动画期间不逐帧跟随)
+            .navigationBarFixedPadding(),
     ) {
         Row(
             Modifier
@@ -991,24 +983,6 @@ private fun ChapterNavText(text: String, color: Color, onClick: () -> Unit) {
     )
 }
 
-/** 列表底部"暂无章节了"footer (对照原版 LoadMoreView noMore 态: 黑底白字 14sp 居中) */
-@Composable
-private fun LazyItemScope.NoMoreFooter() {
-    Box(
-        Modifier
-            .fillParentMaxWidth()
-            .background(MangaReaderBackground)
-            .padding(vertical = 12.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = stringResource(Res.string.no_more_chapter),
-            color = Color.White,
-            fontSize = 14.sp,
-        )
-    }
-}
-
 // ---- 渲染区图片单元格 (列表/手势/转场页均在 shared MangaRenderLayer) ----
 
 @Composable
@@ -1027,8 +1001,9 @@ private fun LazyItemScope.MangaPageCell(
     // 不设 onSizeChanged 兜底 —— 兜底会在 LOADING 时把占位高度误判为出图, 与平台上报互相
     // 覆写导致"转圈闪现/ERROR 被盖/高度 H↔内容 抖动" (桌面端"一直加载中"观感)
     var load by remember(url) { mutableStateOf(MangaCellState.LOADING) }
-    // 下载进度文本 (对照 app 端 MangaPageImageView.onProgress → MangaRenderScreen 转圈内百分比)
-    var progress by remember(url) { mutableStateOf("") }
+    // 下载进度文本 (对照原版 MangaPageImageView.onProgress → 转圈内百分比; 原版布局初始文本为 "0%")。
+    // 初始即显示 0% (加载开始就有进度字, 不等到第一个进度回调)
+    var progress by remember(url) { mutableStateOf("0%") }
     // 重试计数: "重新加载"点击自增, 平台图片槽据此重试 (Android 直接调 MangaPageImageView.retry())
     var retryTick by remember(url) { mutableStateOf(0) }
     val cellModifier = when {

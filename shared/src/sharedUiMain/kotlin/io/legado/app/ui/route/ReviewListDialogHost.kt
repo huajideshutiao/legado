@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -15,7 +16,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.Review
@@ -295,7 +298,10 @@ fun ReviewListDialogHost(
                 color = AppTheme.colors.background,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(sheetHeight),
+                    .height(sheetHeight)
+                    // 外层同色背景矩形会填掉内层 Column 裁剪掉的顶角, 这里同样裁圆角 (graphicsLayer 级,
+                    // 子孙同裁; 与内层 ReviewListDialog Column 的 clip 叠加无冲突)
+                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
             ) {
                 ReviewListContent(
                     book = book,

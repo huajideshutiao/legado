@@ -78,10 +78,8 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
@@ -113,6 +111,8 @@ import io.legado.app.ui.compose.platform.BackLayerHandler
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.platform.navigationBarFixedPadding
+import io.legado.app.ui.compose.platform.statusBarFixedPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -345,7 +345,7 @@ private fun ReadMenuTopBar(state: ReadMenuState) {
             .fillMaxWidth()
             .shadow(4.dp)
             .background(topBg)
-            .statusBarsPadding()
+            .statusBarFixedPadding()
     ) {
         // toolbar 行：点击空白处打开书籍详情(原 toolbar click)
         Row(
@@ -717,9 +717,7 @@ private fun ReadMenuBottom(state: ReadMenuState) {
                 .shadow(4.dp)
                 .graphicsLayer { rotationX = 180f }
                 .background(if (eInk) Color.White else bg)
-                .windowInsetsPadding(
-                    WindowInsets.navigationBars.only(WindowInsetsSides.Bottom)
-                ),
+                .navigationBarFixedPadding(),
         ) {
             if (eInk) {
                 Box(

@@ -53,8 +53,6 @@ import legado.shared.generated.resources.font_scale_summary
 import legado.shared.generated.resources.ic_arrow_drop_down
 import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.search_layout
-import legado.shared.generated.resources.source_edit_max_line_summary
-import legado.shared.generated.resources.source_edit_text_max_line
 import legado.shared.generated.resources.theme_setting
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringArrayResource
@@ -65,7 +63,7 @@ import org.jetbrains.compose.resources.stringResource
  * 通过 [ScreenModelStore] 复用 [ThemeConfigScreenModel], 渲染 [ThemeConfigScreen]。
  *
  * 导航类回调 (onCoverConfig/onWelcomeStyle) 用 [AppNavigator.push];
- * fontScale/sourceEditMaxLine 用 [NumberPickerDialog] 实现 (对照 app 端 showNumberPicker);
+ * fontScale 用 [NumberPickerDialog] 实现 (对照 app 端 showNumberPicker);
  * onSearchLayout 已在 shared 用 [SearchLayoutConfigDialog] 重建 (对照 ThemeConfigHost.configSearch);
  * onBookshelfLayout/onBottomNavConfig/onThemeList/onCustomizeDayTheme/onCustomizeNightTheme
  * 通过 [PlatformCapabilityProviders] 注入各端实现 (app 端 ThemeConfigHost 已实现, 其他端按需 override)。
@@ -81,13 +79,11 @@ fun ThemeConfigRoute(
     val appConfig = remember { AppConfigProviders.get() }
 
     val fontScaleFormat = stringResource(Res.string.font_scale_summary)
-    val sourceEditMaxLineFormat = stringResource(Res.string.source_edit_max_line_summary)
     val defaultStr = stringResource(Res.string.btn_default_s)
     // 顶栏标题 (对照 app 端 R.string.theme_setting)
     val titleStr = stringResource(Res.string.theme_setting)
 
     var showFontScalePicker by remember { mutableStateOf(false) }
-    var showSourceEditMaxLinePicker by remember { mutableStateOf(false) }
     var showSearchLayoutPicker by remember { mutableStateOf(false) }
 
     val screenModel = screenModelStore.getOrCreateTyped(entry) {
@@ -109,7 +105,6 @@ fun ThemeConfigRoute(
                 PlatformCapabilityProviders.getOrNull()?.showCustomizeNightThemeDialog()
             },
             onFontScale = { showFontScalePicker = true },
-            onSourceEditMaxLine = { showSourceEditMaxLinePicker = true },
         )
     }
     val state by screenModel.state.collectAsState()
@@ -130,14 +125,6 @@ fun ThemeConfigRoute(
                 )
             }
         }
-        if (state.sourceEditMaxLineSummary.isEmpty()) {
-            // 对照 app 端 sourceEditMaxLineSummary: getString(R.string.source_edit_max_line_summary, sourceEditMaxLine)
-            screenModel.dispatch(
-                ThemeConfigUiEvent.UpdateSourceEditMaxLineSummary(
-                    sourceEditMaxLineFormat.replace("%s", appConfig.sourceEditMaxLine.toString())
-                )
-            )
-        }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -147,7 +134,6 @@ fun ThemeConfigRoute(
         )
         ThemeConfigScreen(
             fontScaleSummary = state.fontScaleSummary,
-            sourceEditMaxLineSummary = state.sourceEditMaxLineSummary,
             onBookshelfLayout = { screenModel.dispatch(ThemeConfigUiEvent.BookshelfLayout) },
             onSearchLayout = { screenModel.dispatch(ThemeConfigUiEvent.SearchLayout) },
             onCoverConfig = { navigator.push(AppRoute.CoverConfig) },
@@ -157,7 +143,6 @@ fun ThemeConfigRoute(
             onCustomizeDayTheme = { screenModel.dispatch(ThemeConfigUiEvent.CustomizeDayTheme) },
             onCustomizeNightTheme = { screenModel.dispatch(ThemeConfigUiEvent.CustomizeNightTheme) },
             onFontScale = { screenModel.dispatch(ThemeConfigUiEvent.FontScale) },
-            onSourceEditMaxLine = { screenModel.dispatch(ThemeConfigUiEvent.SourceEditMaxLine) },
         )
     }
 
@@ -203,25 +188,6 @@ fun ThemeConfigRoute(
                 // 对照 app 端 onSharedPreferenceChanged: fontScale 变更后 recreateActivities()
                 eventBus.emitRecreate()
             },
-        )
-    }
-
-    // 源编辑最大行数 NumberPicker (对照 app 端 onSourceEditMaxLine: 10..MAX_VALUE)
-    if (showSourceEditMaxLinePicker) {
-        NumberPickerDialog(
-            title = stringResource(Res.string.source_edit_text_max_line),
-            value = appConfig.sourceEditMaxLine,
-            range = 10..Int.MAX_VALUE,
-            onConfirm = {
-                pref.putInt(PreferKey.sourceEditMaxLine, it)
-                // 对照 app 端 onSharedPreferenceChanged: sourceEditMaxLineSummary
-                screenModel.dispatch(
-                    ThemeConfigUiEvent.UpdateSourceEditMaxLineSummary(
-                        sourceEditMaxLineFormat.replace("%s", it.toString())
-                    )
-                )
-            },
-            onDismiss = { showSourceEditMaxLinePicker = false },
         )
     }
 

@@ -24,6 +24,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -94,6 +95,7 @@ import io.legado.app.ui.config.ThemeListDialog
 import io.legado.app.ui.route.ReviewListOverlayDialogContent
 import io.legado.app.ui.widget.dialog.PhotoViewOverlayDialog
 import io.legado.app.ui.widget.dialog.PlatformPhotoOverlayDialog
+import io.legado.app.ui.widget.dialog.decodePhotoOverlayPayload
 import io.legado.app.ui.widget.keyboard.KeyboardAssistsConfigOverlayContent
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
@@ -273,6 +275,10 @@ fun LegadoApp(
             // 动画驱动 + 动画结束后的清理: 出栈页的 ScreenModel/SaveableState 要撑到动画
             // 播完, 提前 retain/removeState 会让返回动画中的页面重建 ViewModel 重载数据
             LaunchedEffect(entries) {
+                // 动画开始前先通知将被移除的 ScreenModel 预保存 (如阅读页落库), 对照原版
+                // 返回键按下即 onPause → saveRead 落库的即时性: 落库不再等 300ms pop 动画
+                // 播完后的 retain → onCleared, 退出阅读回书架立即可见最新进度
+                screenModelStore.notifyPreRemoved(entries)
                 if (entries.size != lastSettled.value.size || entries != lastSettled.value) {
                     if (pendingForward) {
                         // 连播第一段 (返回): 出栈页滑出。动画进行中则从当前值续播 (不
@@ -356,7 +362,13 @@ fun LegadoApp(
                     outgoingEntries.mapTo(mutableSetOf()) { it.id }
                 }
             }
+            // 每个 entry 用 key(entry.id) 固定组合身份: 前进/返回/连播 (pendingForward) 时
+            // displayEntries 顺序会变化 (pop+push 同帧时出栈页被追加到新栈尾), 无 key 时
+            // Compose 按组合位置匹配, 页面 remember 状态 (LazyGridState/remember(route)/
+            // pagerState 等) 全部丢失 → 重建+重新查询+滚动回开头+闪烁; key 后状态随 entry
+            // 存活, 对齐原版单例 Activity 复用语义 (返回页面不重建)
             displayEntries.forEach { entry ->
+                key(entry.id) {
                 val isTop = entry.id == topEntry?.id
                 // 返回段期间: 新页已入栈但停在屏幕外右侧待入, 不参与返回动画
                 val isPendingNew = pendingForward && !navigatingForward && isTop
@@ -460,11 +472,15 @@ fun LegadoApp(
                         RouteContent(entry, navigator, screenModelStore)
                     }
                 }
+                } // key(entry.id)
             }
 
             // 渲染 Overlay 栈: 由 shared OverlayContentHost 统一分流 Dialog/Sheet
+            // Overlay 栈同样按 key 固定组合身份 (pop/挂起恢复时栈序变化不丢状态)
             overlays.forEach { overlay ->
+                key(overlay.key) {
                 OverlayContentHost(overlay)
+                }
             }
         }
 
@@ -739,10 +755,13 @@ private fun DialogOverlayContent(overlay: AppOverlay.Dialog, navigator: AppNavig
 // 书源登录 Overlay (key="sourceLogin", payload=sourceLoginOverlayPayload 编码的 {url, dataKey}),
 // 实现在 SourceLoginOverlayDialog.kt (表单/URL 两分支统一分发, 对照原版 BaseSource.showLoginDialog)。
 
-// 全屏大图查看 (key="photo", payload=图片 src; sourceOrigin=书源 URL 身份, 可空)
+// 全屏大图查看 (key="photo", payload=encodePhotoOverlayPayload 编码的 {src, chapterIndex};
+// sourceOrigin=书源 URL 身份, 可空)
 @Composable
 private fun PhotoOverlayDialogContent(overlay: AppOverlay.Dialog, navigator: AppNavigator) {
-    val src = overlay.payload ?: return
+    val payload = overlay.payload ?: return
+    // 解析 src + 章节索引（兼容旧调用方裸 src payload，章节索引 -1）
+    val (src, chapterIndex) = decodePhotoOverlayPayload(payload)
     // 书源身份优先取 overlay.sourceOrigin (调用方随 payload 传入, 与全局当前阅读书解耦,
     // 列表封面 SharedBookCover 同款身份); 无身份时回退全局当前阅读书
     // (对齐原版 PhotoDialog 内部语义 ReadBook.book, 段评图片等无书源场景保持原样)。
@@ -768,9 +787,18 @@ private fun PhotoOverlayDialogContent(overlay: AppOverlay.Dialog, navigator: App
         }
     }
     val readBook = ActiveReadBookRegistry.current
-    // 带书源身份时 book 实体不随 payload 传递, 传 null (列表封面链路 Coil fetcher 亦只
-    // 传 origin 无 book; PhotoDialogContent 的 isLocal 判断在 bookSource 非空时不短路, 不受影响)
-    val book = overlay.sourceOrigin?.let { null } ?: readBook?.book?.value
+    // 带书源身份时 book 实体不随 payload 传递：若当前阅读书与 sourceOrigin 同源，复用其
+    // 实体（章节磁盘缓存 BookImageStorage 优先链路需要 book 定位缓存目录；不同源/无阅读书
+    // 时传 null——列表封面链路 Coil fetcher 亦只传 origin 无 book，缓存查不到自然回退网络）
+    val book = overlay.sourceOrigin?.let { origin ->
+        readBook?.book?.value?.takeIf { it.origin == origin }
+    } ?: readBook?.book?.value
+    // 章节缓存优先链路需要 BookChapter 标识（网络书已读过的图按 book+url 落盘,
+    // chapter 参与 BookImageStorage 接口签名）：调用方显式传章节索引时从当前阅读目录取章;
+    // 未知（-1，旧 payload/非阅读页调用）回退当前阅读章索引
+    val chapter = readBook?.chapterList?.value?.getOrNull(
+        if (chapterIndex >= 0) chapterIndex else readBook.durChapterIndexValue
+    )
     val bookSource = (sourceState as? PhotoSourceState.Resolved)?.source
     if (sourceState is PhotoSourceState.Querying) {
         // 书源查询中: 黑色占位 + loading (毫秒级; 点击可关, 防查询慢时无响应)
@@ -794,6 +822,7 @@ private fun PhotoOverlayDialogContent(overlay: AppOverlay.Dialog, navigator: App
         onDismiss = { navigator.dismissOverlay(overlay.key) },
         book = book,
         bookSource = bookSource,
+        chapter = chapter,
     )
 }
 

@@ -40,6 +40,7 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -93,7 +94,8 @@ import io.legado.app.ui.preview.LegadoThemePreview
  *   - `LocalConfiguration.current.screenWidthDp` → 由调用方传入 `screenWidthDp: Int` 参数
  *   - `AppConfig.xxx` → `AppConfigProviders.get().xxx` (provider 间接访问)
  *   - `ThemeConfig.curBgImagePath` → `LocalThemeStoreProvider.current.bgImagePath`
- *   - `ColorUtils.isColorLight` → 内联 `isColorLight` 私有函数 (亮度公式与 ColorUtils 一致)
+ *   - `ColorUtils.isColorLight` → 用 `Color.luminance()` (WCAG 相对亮度, 与原版
+ *     androidx ColorUtils.calculateLuminance 同公式, AppTheme 同款写法)
  *   - `AndroidView + CoverImageView` (ShelfCover) → 用 `coverSlot: @Composable (Book, Modifier, isVideoCover: Boolean, coverReloadTick: Int) -> Unit`
  *     参数注入; app 端用 ShelfCover 包装, 桌面端用 DesktopBookCover 等自定义实现;
  *     isVideoCover 由条目按 tier 决定 (对照原 adapter coverRatio 赋值), coverReloadTick
@@ -501,7 +503,8 @@ private fun ShelfMenuItem(textKey: String, onClick: () -> Unit) {
 
 // ---- 条目 ----
 
-/** 复刻 BadgeView: 11sp 白字/最小 16dp/8dp 圆角, 高亮 accent 否则 darker_gray, 0 隐藏 */
+/** 复刻 BadgeView: 11sp/最小 16dp/8dp 圆角, 高亮 accent 否则 darker_gray(#AAAAAA), 0 隐藏.
+ * 文字色按底色亮度判黑白 (对齐原版 BadgeView.setTextColor(isColorLight(badgeColor))). */
 @Composable
 fun UnreadBadge(count: Int, highlight: Boolean, modifier: Modifier = Modifier) {
     if (count <= 0) return
@@ -514,15 +517,20 @@ fun UnreadBadge(count: Int, highlight: Boolean, modifier: Modifier = Modifier) {
             .padding(horizontal = 5.dp, vertical = 1.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text("$count", color = Color.White, fontSize = 11.sp)
+        Text(
+            "$count",
+            color = if (bg.luminance() >= 0.5f) Color.Black else Color.White,
+            fontSize = 11.sp,
+        )
     }
 }
 
-/** 复刻 LabelsBar/AccentBgTextView: accent 底 2dp 圆角标签 */
+/** 复刻 LabelsBar/AccentBgTextView: accent 底 2dp 圆角标签, 文字按底色亮度判黑白
+ * (对齐原版 setTextColor(isColorLight(accentColor))) */
 @Composable
 fun KindLabels(kinds: List<String>) {
     val colors = AppTheme.colors
-    val textColor = if (isColorLight(colors.accent.toArgb())) Color.Black else Color.White
+    val textColor = if (colors.accent.luminance() >= 0.5f) Color.Black else Color.White
     Row {
         kinds.forEach { kind ->
             Text(
@@ -905,20 +913,6 @@ fun GroupVideoItem(
             modifier = Modifier.padding(top = 8.dp),
         )
     }
-}
-
-// ---- 辅助: 亮度计算 (替代 app 端 ColorUtils.isColorLight) ----
-
-/**
- * 简化版亮度判断: 与 `io.legado.app.utils.ColorUtils.isColorLight` 行为一致。
- *
- * 公式: `0.299R + 0.587G + 0.114B >= 0.5` (NTSC luminance, 与 ColorUtils 一致)
- */
-private fun isColorLight(color: Int): Boolean {
-    val r = (color shr 16 and 0xFF) / 255f
-    val g = (color shr 8 and 0xFF) / 255f
-    val b = (color and 0xFF) / 255f
-    return (0.299f * r + 0.587f * g + 0.114f * b) >= 0.5f
 }
 
 // ===== @Preview 合并自 androidMain 的 bookshelf/BookshelfComposablesSharedPreviews.kt =====

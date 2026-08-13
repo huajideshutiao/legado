@@ -52,7 +52,6 @@ import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.root.asBook
 import io.legado.app.ui.root.toReadRoute
-import io.legado.app.ui.root.toRouteRef
 import io.legado.app.utils.toDurationTime
 import kotlinx.coroutines.launch
 import legado.shared.generated.resources.Res
@@ -71,7 +70,7 @@ import org.jetbrains.compose.resources.stringResource
  * 对照 app 端 [io.legado.app.ui.book.audio.AudioPlayActivity]:
  * - onActivityCreated viewModel.initData → Init 事件
  * - showChangeSource → ChangeSourceDialogHost 全高底部弹窗 (原版 ChangeBookSourceDialog);
- *   openChapterList → push Toc (带 resultKey)
+ *   openChapterList → 宽屏右侧面板 / 窄屏 TocDialogHost 全高底部弹窗 (对照原版 push Toc 带 resultKey)
  * - showLogin / copyAudioUrl / showSourceVariable / showBookVariable / editSource / addBookmark / showAppLog →
  *   构造 [AudioPlayOverflowActions] 交由 shared [io.legado.app.ui.book.audio.AudioPlayScreenContent] 渲染溢出菜单
  * - finish: !inBookshelf 时弹加书架确认 (对照 Activity.finish alert)
@@ -111,24 +110,6 @@ fun AudioPlayRoute(
     LaunchedEffect(Unit) {
         navigator.resultsFor(entry.id).collect { result ->
             when (result.key) {
-                RouteResults.TOC -> {
-                    // 目录回传章节定位: 三态分支对齐 app 端 tocActivityResult
-                    // (章节变 → skipTo; 同章不同 pos>0 → adjustProgress; pos=0 → skipTo 重开)
-                    (result.payload as? RouteResultPayload.Toc)?.let { toc ->
-                        val targetIndex = toc.chapterIndex
-                        val targetPos = toc.chapterPos
-                        when {
-                            targetIndex != AudioPlayShared.durChapterIndex ->
-                                AudioPlayShared.skipTo(targetIndex, targetPos)
-
-                            targetPos > 0 && targetPos != AudioPlayShared.durChapterPos ->
-                                AudioPlayShared.adjustProgress(targetPos)
-
-                            targetPos == 0 -> AudioPlayShared.skipTo(targetIndex)
-                        }
-                    }
-                }
-
                 RouteResults.BOOK_SOURCE_EDIT -> {
                     // 书源编辑后重拉并刷新评论入口显隐
                     AudioPlayShared.book?.let { b ->
@@ -159,6 +140,8 @@ fun AudioPlayRoute(
     var showPostDialog by remember { mutableStateOf(false) }
     // 整书换源弹窗显示开关 (对照原版 menu_change_source → showDialogFragment(ChangeBookSourceDialog))
     var showChangeSourceDialog by remember { mutableStateOf(false) }
+    // 目录弹窗显示开关 (窄屏目录入口, 对照阅读页 ReaderDialogEvent.Toc → TocDialogHost)
+    var showTocDialog by remember { mutableStateOf(false) }
 
     // 退出加书架确认弹窗 (对照 Activity.finish: !inBookshelf 时弹确认)
     var showAddToShelfDialog by remember { mutableStateOf(false) }
@@ -276,14 +259,16 @@ fun AudioPlayRoute(
         },
         onOpenToc = {
             // 对照 app 端 AudioPlayActivity.openChapterList: 未加书架的书目录不落库, 走内存传递。
-            // 宽屏面板与窄屏 push 共用同一数据源 (IntentData.chapterList), 两个分支都要传,
+            // 宽屏面板与窄屏弹窗共用同一数据源 (IntentData.chapterList), 两个分支都要传,
             // 否则 TocScreenModel 只能读 DB (未加书架书目录不在 DB) → 目录空白。
             IntentData.chapterList = AudioPlayShared.chapterList
             if (sidePanelWidth > 0.dp) {
                 // 宽屏: 右侧面板 (互斥: 直接覆盖评论面板)
                 panelKind = AudioPlaySidePanelKind.TOC
             } else {
-                navigator.push(AppRoute.Toc(book.toRouteRef()), resultKey = RouteResults.TOC)
+                // 窄屏: 全高底部弹窗 (对照阅读页 ReaderDialogEvent.Toc → TocDialogHost;
+                // 原 push Toc 全屏路由, 迁移后选章经 onOpenChapter 直接处理, 不再走 RouteResults.TOC 回传)
+                showTocDialog = true
             }
         },
         onOpenBookSourceEdit = { sourceUrl ->
@@ -408,6 +393,29 @@ fun AudioPlayRoute(
                     navigator.pop()
                 }
             },
+        )
+    }
+
+    // 目录弹窗 (对照阅读页 ReaderDialogEvent.Toc → TocDialogHost 全高底部弹窗;
+    // 选章三态跳转对齐原 RouteResults.TOC 回传消费 (章节变 → skipTo; 同章不同 pos>0 →
+    // adjustProgress; pos=0 → skipTo 重开), 关闭由宿主回调处理)
+    if (showTocDialog) {
+        TocDialogHost(
+            book = book,
+            navigator = navigator,
+            onOpenChapter = { index, pos ->
+                showTocDialog = false
+                when {
+                    index != AudioPlayShared.durChapterIndex ->
+                        AudioPlayShared.skipTo(index, pos)
+
+                    pos > 0 && pos != AudioPlayShared.durChapterPos ->
+                        AudioPlayShared.adjustProgress(pos)
+
+                    pos == 0 -> AudioPlayShared.skipTo(index)
+                }
+            },
+            onDismiss = { showTocDialog = false },
         )
     }
 

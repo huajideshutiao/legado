@@ -70,6 +70,15 @@ interface ReaderUiActions {
     fun onTextSelection(text: String, anchorX: Float, anchorY: Float) {}
 
     /**
+     * 同步关闭浮动文本操作菜单（对照原版 ReadView ACTION_DOWN → textActionMenu.dismiss()
+     * 同步语义）：点按取消选择等手势分支在选区清除的同帧同步直调，避免事件链异步延迟
+     * （约 2~5 帧）造成的菜单"闪一下再消失"。由 ReadViewComposable DOWN 分支同步调用；
+     * 事件链异步兜底仍保留（[ReadBookEvents.selectionDismissed] → provider.onTextSelectionDismissed，
+     * 覆盖翻页/重排等非手势路径）。默认空实现，未接入的平台忽略。
+     */
+    fun onDismissTextActionMenu() {}
+
+    /**
      * 九宫格点击的非翻页动作（对照 app 端 ReadView.click 里走 callBack 的分支）：
      * 7=添加书签 / 9=替换状态 / 10=目录 / 11=全文搜索 / 13=朗读暂停继续。
      */
@@ -130,6 +139,9 @@ fun ReaderScreen(
                         anchor?.y ?: 0f,
                     )
                 },
+                // 点按取消选择等手势分支：同步关平台浮动菜单（对照原版 ACTION_DOWN →
+                // textActionMenu.dismiss 同步语义，避免事件链异步延迟的"闪一下再消失"）
+                onDismissSelectionMenu = { actions.onDismissTextActionMenu() },
                 // 菜单可见让位判定含搜索菜单（对照原版 menuLayoutIsVisible =
                 // readMenu.isVisible || searchMenu.isVisible）
                 menuVisible = { state.menuState.isVisible || state.searchMenuState.rootVisible },

@@ -6,11 +6,9 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
@@ -33,7 +31,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
@@ -47,6 +44,7 @@ import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppFilletTextButton
 import io.legado.app.ui.compose.component.AppMenuCheckbox
 import io.legado.app.ui.compose.platform.rememberColor
+import io.legado.app.ui.compose.platform.rememberImeVisible
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
 import kotlinx.coroutines.delay
@@ -154,9 +152,9 @@ fun KeyboardToolbar(
     target: () -> KeyboardToolbarTarget? = { null },
 ) {
     val colors = AppTheme.colors
-    // isImeVisible 非 CMP 公共 API, 用 ime inset 底部高度等价判断
-    val density = LocalDensity.current
-    val imeVisible = WindowInsets.ime.getBottom(density) > 0
+    // isImeVisible 非 CMP 公共 API, 用 ime inset 底部高度等价判断;
+    // 组合期不读 ime 数值 (键盘动画每帧更新 → 逐帧重组), 只订阅"可见/不可见"翻转 (事件性)
+    val imeVisible = rememberImeVisible()
     SideEffect { state.imeVisible = imeVisible }
     // 键盘收起且面板未开时清空查找态（对齐 View 版 dismissRunnable）
     LaunchedEffect(imeVisible) {

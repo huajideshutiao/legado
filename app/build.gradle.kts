@@ -7,6 +7,9 @@ import java.time.format.DateTimeFormatter
 
 plugins {
     id("legado.android.application")
+    // Baseline Profile app target/consumer: 为 :app 创建 nonMinifiedRelease/benchmarkRelease
+    // 扩展变体 (复制 release 配置, 关闭混淆), 并消费 app/src/main/baseline-prof.txt
+    alias(libs.plugins.androidx.baselineprofile)
     alias(libs.plugins.kotlin.serialization)
     id("legado.compose")
     alias(libs.plugins.ksp)
@@ -234,6 +237,9 @@ dependencies {
     implementation(libs.kotlin.stdlib)
     implementation(libs.bundles.coroutines)
     implementation(libs.kotlinx.atomicfu)
+
+    // Baseline Profile: 安装时由 profileinstaller 读取打包的 baseline-prof.txt 做 ART 预编译
+    implementation(libs.androidx.profileinstaller)
 
     implementation(libs.core.ktx)
     implementation(libs.appcompat.appcompat)

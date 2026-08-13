@@ -125,7 +125,9 @@ interface PlatformCapabilities {
     ): Boolean = false
 
     // 图片预览对话框 (对照 app 端 PhotoDialog, 阅读页点图预览), 未实现端提示不支持
-    fun showImagePreview(url: String) = unsupported("图片预览")
+    // chapterIndex = 阅读页当前章节索引 (供实现端优先查阅读时已落盘的章节图片缓存;
+    // -1 = 未知/非阅读页调用, 实现端可忽略或回退当前阅读章节)
+    fun showImagePreview(url: String, chapterIndex: Int = -1) = unsupported("图片预览")
 
     // 默认封面画廊弹窗 (对照 app 端 DefaultCoverGalleryDialog)
     fun showDefaultCoverGallery(isNight: Boolean) = unsupported("选择默认封面")

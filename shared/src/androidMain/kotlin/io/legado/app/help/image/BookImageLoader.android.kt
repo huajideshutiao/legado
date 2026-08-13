@@ -22,6 +22,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
+import okio.FileSystem
+import okio.buffer
 import java.io.File
 
 /**
@@ -75,6 +77,28 @@ class AndroidBookImageLoader(
         heightPx: Int,
         loadOnlyWifi: Boolean,
     ): ImageBitmap? = execute(url, sourceOrigin, widthPx, heightPx, persistent = true, loadOnlyWifi = loadOnlyWifi)
+
+    /**
+     * 仅读 Coil3 磁盘缓存字节（不触发网络/解码）：先查封面解密 key（"coverDecode:$url"），
+     * 再查网络 fetcher 默认 key（裸 url）；MultiDiskCache 临时/covers 双区自动兜底。
+     */
+    override suspend fun loadDiskCachedBytes(
+        url: String,
+        sourceOrigin: String?,
+    ): ByteArray? =
+        BookImageLoadDedup.singleFlight("diskCached\u0000$url\u0000${sourceOrigin ?: ""}") {
+            val diskCache = imageLoader.diskCache ?: return@singleFlight null
+            for (key in listOf("coverDecode:$url", url)) {
+                val snapshot = diskCache.openSnapshot(key) ?: continue
+                try {
+                    val bytes = FileSystem.SYSTEM.source(snapshot.data).buffer().readByteArray()
+                    if (bytes.isNotEmpty()) return@singleFlight bytes
+                } finally {
+                    snapshot.close()
+                }
+            }
+            null
+        }
 
     /** [persistent] 为 true 时改写 diskCacheKey, 由 [MultiDiskCache] 分流到封面持久区。
      * 同 URL 并发请求经 [BookImageLoadDedup] 单飞去重 (I6)。 */

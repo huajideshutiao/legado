@@ -92,8 +92,21 @@ class TocScreenModel(
     // ===== 书籍初始化 =====
 
     private fun setBook(book: Book) {
-        if (_state.value.book?.bookUrl != book.bookUrl) memoryChapterList = null
-        _state.value = _state.value.copy(
+        val cur = _state.value
+        if (cur.book?.bookUrl == book.bookUrl) {
+            // 同书: 仅同步展示信息 (底部当前章信息/高亮), 不重置列表/滚动/卷折叠——
+            // 弹窗形态下 book 实例随阅读页书籍状态变化 (如目录选章节后 dur 更新) 会产生
+            // 新实例, 若走全量刷新会重置列表并滚动定位, 正是"选章节后列表跳位+闪烁"来源;
+            // 对照原版: 目录 Activity 打开期间书籍数据变化不重置目录列表
+            _state.value = cur.copy(
+                book = book,
+                durChapterIndex = book.durChapterIndex,
+                isLocalBook = book.isLocal,
+            )
+            return
+        }
+        memoryChapterList = null
+        _state.value = cur.copy(
             book = book,
             durChapterIndex = book.durChapterIndex,
             isLocalBook = book.isLocal,
