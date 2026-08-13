@@ -565,6 +565,12 @@ private class AndroidVideoPlayerController(
 
         override fun onPlaybackStateChanged(playbackState: Int) {
             screenModel.onPlayerState(playbackState = playbackState)
+            // 播放真正成功 (READY) 才重置错误重试标记 (对齐原版 VideoPlayActivity
+            // onPlaybackStateChanged: STATE_READY → hasRefreshedOnPlayError = false;
+            // 链接不可用时永不 READY, 同章节只自动重试一次, 不再无限循环)
+            if (playbackState == Player.STATE_READY) {
+                screenModel.shared.resetRetryOnPlayError()
+            }
             if (playbackState == Player.STATE_ENDED) onPlaybackEnded()
         }
 

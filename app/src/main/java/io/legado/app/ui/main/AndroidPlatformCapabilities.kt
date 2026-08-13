@@ -1459,9 +1459,7 @@ class AndroidPlatformCapabilities(
                         label = androidAppString("file_contains_number"),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         textStyle = TextStyle(textAlign = TextAlign.Start),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     // 章节范围 (对照 lyEtInputScope/etInputScope, 占位提示 "1-5,8,10-18")
                     AppTextField(
@@ -1476,9 +1474,7 @@ class AndroidPlatformCapabilities(
                         placeholder = "1-5,8,10-18",
                         isError = scopeError.value != null,
                         textStyle = TextStyle(textAlign = TextAlign.Start),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     scopeError.value?.let {
                         Text(
@@ -2541,9 +2537,7 @@ private fun BookshelfLayoutConfigContent(
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     textStyle = TextStyle(textAlign = TextAlign.Center),
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 8.dp),
+                    modifier = Modifier.weight(1f),
                 )
                 Text("dp", color = colors.primaryText)
             }

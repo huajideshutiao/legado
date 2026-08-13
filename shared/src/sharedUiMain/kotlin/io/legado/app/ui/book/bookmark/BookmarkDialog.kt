@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.Bookmark
@@ -31,6 +32,8 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
+import io.legado.app.ui.preview.previewBookmarks
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.bookmark
 import legado.shared.generated.resources.bookmark_content
@@ -39,9 +42,6 @@ import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.delete
 import legado.shared.generated.resources.ok
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
-import io.legado.app.ui.preview.previewBookmarks
 
 /**
  * 书签编辑对话框 (KMP 共享, app + desktop 复用)。
@@ -109,17 +109,13 @@ fun BookmarkDialog(
                         value = bookText,
                         onValueChange = { bookText = it },
                         label = contentLabel,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 3.dp),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     AppOutlinedTextField(
                         value = content,
                         onValueChange = { content = it },
                         label = noteLabel,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 3.dp),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
 

@@ -15,9 +15,9 @@ package io.legado.app.ui.widget.dialog
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -26,13 +26,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.theme.AppTheme
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.ok
@@ -40,8 +41,6 @@ import legado.shared.generated.resources.set_book_variable
 import legado.shared.generated.resources.set_source_variable
 import legado.shared.generated.resources.variable_comment
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 书源变量对话框 (对照原版 VariableDialog.show + dialog_variable.xml):
@@ -121,34 +120,38 @@ private fun VariableEditDialogContent(
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 8.dp),
+                // 对齐 dialog_variable.xml: root LinearLayout 仅水平 padding 16dp (arco_spacing_lg), 无垂直 padding
+                .padding(horizontal = 16.dp),
         ) {
-            // 变量原文编辑框 (对照 tv_variable, hint "variable"; 多行, 原文原样填入)
+            // 变量原文编辑框 (对照 TextInputLayout + tv_variable: hint "variable" 浮动 label,
+            // 初始单行贴合高度, 多行输入随内容增高 —— 对齐 wrap_content 语义)
             AppOutlinedTextField(
                 value = text,
                 onValueChange = onTextChange,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 120.dp, max = 240.dp),
+                modifier = Modifier.fillMaxWidth(),
                 singleLine = false,
-                placeholder = "variable",
+                label = "variable",
             )
-            // 注释区 (对照 dialog_variable.xml: AccentTextView @string/variable_comment + tv_comment)
+            // 注释标题 (对照 AccentTextView: accent 色跟随主题 + 4dp 四周 padding = arco_spacing_xs)
             Text(
                 text = stringResource(Res.string.variable_comment),
-                color = DesignTokens.arcoBlue6,
+                color = AppTheme.colors.accent,
                 fontSize = 14.sp,
-                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                modifier = Modifier.padding(4.dp),
             )
-            Text(
-                text = comment.orEmpty(),
-                color = AppTheme.colors.secondaryText,
-                fontSize = 12.sp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 120.dp)
-                    .verticalScroll(rememberScrollState()),
-            )
+            // 注释正文 (对照 tv_comment: secondaryText + 默认 14sp + 4dp 四周 padding + textIsSelectable)
+            // 去掉固定 120dp 限高: 原版 NestedScrollView wrap_content, 超高才在剩余空间内滚动
+            SelectionContainer {
+                Text(
+                    text = comment.orEmpty(),
+                    color = AppTheme.colors.secondaryText,
+                    fontSize = 14.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(4.dp),
+                )
+            }
         }
     }
 }

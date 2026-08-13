@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
@@ -34,13 +35,15 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
-import io.legado.app.ui.compose.platform.platformStatusBarPadding
+import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
+import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.clear
 import legado.shared.generated.resources.ic_arrow_back
@@ -50,9 +53,6 @@ import legado.shared.generated.resources.ic_search
 import legado.shared.generated.resources.more_menu
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.material.DropdownMenuItem
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * Compose 版顶部标题栏，复刻 View TitleBar 视觉：
@@ -85,7 +85,7 @@ fun AppTitleBar(
     val insetsModifier = if (eInk) {
         Modifier.windowInsetsPadding(WindowInsets(0))
     } else {
-        Modifier.platformStatusBarPadding()
+        Modifier.transitionStatusBarPadding()
     }
     Box(
         modifier

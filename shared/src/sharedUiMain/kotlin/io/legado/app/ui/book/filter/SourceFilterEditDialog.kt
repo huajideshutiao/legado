@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.data.entities.SourceFilterRule
@@ -37,6 +38,8 @@ import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
+import io.legado.app.ui.preview.previewFilterRules
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.add
 import legado.shared.generated.resources.cancel
@@ -58,9 +61,6 @@ import legado.shared.generated.resources.source_filter_rule_scope_label
 import legado.shared.generated.resources.source_filter_rule_scope_summary_all
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
-import io.legado.app.ui.preview.previewFilterRules
 
 /** 五个作用字段与标签，顺序对齐 app 端 fieldLabels。 */
 private val fieldLabels = listOf(
@@ -181,9 +181,7 @@ fun SourceFilterEditDialog(
                     value = pattern,
                     onValueChange = { pattern = it },
                     label = patternLabel,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
+                    modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
                     text = fieldsLabel,

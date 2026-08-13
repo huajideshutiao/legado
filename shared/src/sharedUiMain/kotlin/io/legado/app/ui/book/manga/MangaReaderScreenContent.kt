@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyItemScope
@@ -601,7 +600,8 @@ private fun InfoBarText(
     outline: Color,
     modifier: Modifier = Modifier,
 ) {
-    val style = LocalTextStyle.current.copy(fontSize = 11.sp)
+    // 有意偏离原版自适应的 ~7dp：12sp 在 20dp 信息条内更清晰可读
+    val style = LocalTextStyle.current.copy(fontSize = 12.sp)
     Box(modifier) {
         Text(
             text = text,

@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsTopHeight
@@ -79,6 +78,7 @@ import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.preview.LegadoThemePreview
@@ -445,7 +445,7 @@ private fun InfoTitleBar(
     Row(
         modifier
             .fillMaxWidth()
-            .statusBarsPadding()
+            .transitionStatusBarPadding()
             .height(DesignTokens.viewHeightMax),
         verticalAlignment = Alignment.CenterVertically,
     ) {

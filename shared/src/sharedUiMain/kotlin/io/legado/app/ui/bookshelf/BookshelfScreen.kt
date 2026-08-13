@@ -38,8 +38,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -68,7 +68,7 @@ import io.legado.app.model.BookCoverShared
 import io.legado.app.model.BookCoverShared.CoverRatio
 import io.legado.app.ui.compose.component.AppScrollTabRow
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
-import io.legado.app.ui.compose.platform.platformStatusBarPadding
+import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -542,7 +542,7 @@ internal fun BookshelfTopBarContainer(
     val insetsModifier = if (eInk) {
         Modifier.windowInsetsPadding(WindowInsets(0))
     } else {
-        Modifier.platformStatusBarPadding()
+        Modifier.transitionStatusBarPadding()
     }
     Box(
         Modifier

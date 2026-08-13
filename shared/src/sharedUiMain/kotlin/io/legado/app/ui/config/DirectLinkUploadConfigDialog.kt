@@ -160,17 +160,13 @@ fun DirectLinkUploadConfigDialog(
                 value = downloadUrlRule,
                 onValueChange = { downloadUrlRule = it },
                 label = stringResource(Res.string.download_url_rule),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp),
+                modifier = Modifier.fillMaxWidth(),
             )
             AppOutlinedTextField(
                 value = summary,
                 onValueChange = { summary = it },
                 label = stringResource(Res.string.summary),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp),
+                modifier = Modifier.fillMaxWidth(),
             )
             Row(
                 Modifier

@@ -1,7 +1,6 @@
 package io.legado.app.ui.compose.preference
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -22,8 +21,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.Icon
 import androidx.compose.material.RadioButton
 import androidx.compose.material.RadioButtonDefaults
@@ -45,6 +44,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AlertButton
@@ -55,17 +55,16 @@ import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
 import io.legado.app.utils.ColorUtils
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
-import legado.shared.generated.resources.ok
-import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.ic_check
 import legado.shared.generated.resources.ic_more_vert
 import legado.shared.generated.resources.ic_search
+import legado.shared.generated.resources.ok
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Compose 设置 DSL（对齐 androidx.preference + lib/prefs 视觉/行为）。
@@ -224,9 +223,7 @@ fun LazyListScope.editTextPreference(
                 } else {
                     VisualTransformation.None
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }

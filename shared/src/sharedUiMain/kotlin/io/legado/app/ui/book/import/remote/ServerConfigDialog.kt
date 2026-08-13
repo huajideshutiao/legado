@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.Server
 import io.legado.app.ui.compose.component.AppDialog
@@ -33,6 +34,8 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
+import io.legado.app.ui.preview.previewServers
 import io.legado.app.utils.KS_JSON
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.action_save
@@ -40,9 +43,6 @@ import legado.shared.generated.resources.ic_save
 import legado.shared.generated.resources.name
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
-import io.legado.app.ui.preview.previewServers
 
 /**
  * 服务器配置编辑对话框 (KMP 共享, app/desktop/iOS 复用)。
@@ -157,18 +157,14 @@ fun ServerConfigDialog(
                         onValueChange = { url = it },
                         label = "url",
                         singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     AppOutlinedTextField(
                         value = username,
                         onValueChange = { username = it },
                         label = "username",
                         singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     AppOutlinedTextField(
                         value = password,
@@ -176,9 +172,7 @@ fun ServerConfigDialog(
                         label = "password",
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp, bottom = 8.dp),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }

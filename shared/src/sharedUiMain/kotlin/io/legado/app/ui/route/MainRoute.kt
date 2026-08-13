@@ -1,8 +1,8 @@
 package io.legado.app.ui.route
 
 import androidx.compose.animation.core.Easing
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.MutatePriority
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyListState
@@ -46,8 +45,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,6 +74,7 @@ import io.legado.app.help.config.AppConfigAccessor
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.showSourceLogin
+import io.legado.app.help.storage.BackupFileOps
 import io.legado.app.help.toast.Toasters
 import io.legado.app.model.webBook.ExploreOption
 import io.legado.app.ui.about.AppLogDialog
@@ -98,6 +98,7 @@ import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.AppBackHandler
 import io.legado.app.ui.compose.platform.LocalEventBusProvider
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
+import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.ui.dialog.TextInputDialog
@@ -115,10 +116,12 @@ import io.legado.app.ui.main.home.homeSectionKey
 import io.legado.app.ui.main.my.MyConfigScreen
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.FileFilter
 import io.legado.app.ui.root.LocalPlatformCapabilities
 import io.legado.app.ui.root.MainTab
 import io.legado.app.ui.root.MainTabSwitcher
 import io.legado.app.ui.root.PlatformCapabilityProviders
+import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.RouteEntry
 import io.legado.app.ui.root.RouteResults
 import io.legado.app.ui.root.ScreenModel
@@ -130,9 +133,6 @@ import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.systemCurrentTimeMillis
-import kotlin.math.abs
-import kotlin.math.floor
-import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -148,20 +148,24 @@ import legado.shared.generated.resources.copy_url
 import legado.shared.generated.resources.draw
 import legado.shared.generated.resources.empty
 import legado.shared.generated.resources.error
-import legado.shared.generated.resources.home_source_invalid
 import legado.shared.generated.resources.help
 import legado.shared.generated.resources.home_more
+import legado.shared.generated.resources.home_source_invalid
 import legado.shared.generated.resources.ic_arrow_right
 import legado.shared.generated.resources.ic_help
 import legado.shared.generated.resources.import_bookshelf
 import legado.shared.generated.resources.my
 import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.open_in_browser
+import legado.shared.generated.resources.select_file
 import legado.shared.generated.resources.sure_del
 import legado.shared.generated.resources.web_service
 import legado.shared.generated.resources.web_service_desc
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.abs
+import kotlin.math.floor
+import kotlin.math.roundToInt
 
 /**
  * 主界面 shared 路由入口。
@@ -1162,13 +1166,15 @@ private fun BookshelfTabContent(
     val addVm = remember(scope) { BookshelfAddViewModelShared(scope) }
     val currentGroupId by viewModel.currentGroupId.collectAsState()
 
-    val callbacks = remember(navigator) {
+    val callbacks = remember(navigator, currentGroupId) {
         BookshelfActionsCallbacks(
             onRefresh = { viewModel.upToc() },
             onAddLocalBook = { navigator.push(AppRoute.ImportBook()) },
             onAddRemoteBook = { navigator.push(AppRoute.RemoteBook) },
             onShowAddBookByUrlAlert = { showAddByUrl = true },
-            onOpenBookshelfManage = { navigator.push(AppRoute.BookshelfManage()) },
+            // 对照原版 BaseBookshelfFragment: startActivity<BookshelfManageActivity> {
+            //   putExtra("groupId", groupId) } — 管理页只显示书架当前选中分组的书
+            onOpenBookshelfManage = { navigator.push(AppRoute.BookshelfManage(currentGroupId)) },
             onShowGroupManage = { showGroupManage = true },
             onImportBookshelf = { showImportShelf = true },
             onShowAppLog = { showAppLog = true },
@@ -1213,11 +1219,31 @@ private fun BookshelfTabContent(
         )
     }
     // "导入书架" (对照 BaseBookshelfFragment.importBookshelfAlert: 输入 url/json;
-    // 原版 neutralButton 选文件走 HandleFileContract, 属平台文件选择器, shared 端不提供)
+    // neutralButton 选文件走平台文件选择器 txt/json, 读文本后走同一 importBookshelf 入口;
+    // 取消选择不动作, 对话框保持打开, 与原版 HandleFileContract 取消行为一致)
     if (showImportShelf) {
         TextInputDialog(
             title = stringResource(Res.string.import_bookshelf),
             hint = "url/json",
+            neutralButton = AlertButton(
+                text = stringResource(Res.string.select_file),
+                dismissOnClick = false,
+                onClick = {
+                    scope.launch {
+                        val services = PlatformServiceProviders.getOrNull()
+                        val path = services?.let {
+                            withContext(IoDispatcher) {
+                                it.files.pickFile(FileFilter(extensions = listOf("txt", "json")))
+                            }
+                        }
+                        if (path != null) {
+                            val text = withContext(IoDispatcher) { BackupFileOps.readText(path) }
+                            showImportShelf = false
+                            addVm.importBookshelf(text, currentGroupId)
+                        }
+                    }
+                },
+            ),
             onConfirm = {
                 showImportShelf = false
                 if (it.isNotBlank()) addVm.importBookshelf(it, currentGroupId)
@@ -1535,7 +1561,7 @@ private fun MyTabTitleBar(onHelp: () -> Unit) {
     val insetsModifier = if (eInk) {
         Modifier.windowInsetsPadding(WindowInsets(0))
     } else {
-        Modifier.statusBarsPadding()
+        Modifier.transitionStatusBarPadding()
     }
     Box(Modifier.fillMaxWidth().background(bg).then(insetsModifier)) {
         Row(

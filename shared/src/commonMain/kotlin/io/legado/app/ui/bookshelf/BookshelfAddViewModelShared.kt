@@ -146,7 +146,10 @@ class BookshelfAddViewModelShared(private val scope: CoroutineScope) {
         onBookAdded: () -> Unit,
     ) = coroutineScope {
         val semaphore = Semaphore(AppConfigProviders.get().threadCount)
-        GSON.fromJsonArray<Map<String, String>>(json).getOrThrow().forEach { bookInfo ->
+        // Map<String, String?> : 书单 JSON 字段可能为 null (如 origin/bookUrl/intro 等), 对齐原版
+        // Gson 宽容语义 (null 存进 map 不报错); kotlinx-serialization 的 Map<String, String>
+        // 遇 null 抛 JsonDecodingException 导致整个导入失败, 故用可空 String 值类型
+        GSON.fromJsonArray<Map<String, String?>>(json).getOrThrow().forEach { bookInfo ->
             val name = bookInfo["name"].orEmpty()
             val author = bookInfo["author"].orEmpty()
             val origin = bookInfo["origin"]
@@ -156,19 +159,21 @@ class BookshelfAddViewModelShared(private val scope: CoroutineScope) {
                 (if (origin != null && bookUrl != null) {
                     val book = Book(bookUrl)
                     bookInfo.forEach { (key, value) ->
+                        // null 字段跳过不赋值, 对齐原版 `if (value is String)` 语义
+                        val v = value ?: return@forEach
                         when (key) {
-                            "name" -> book.name = value
-                            "author" -> book.author = value
-                            "kind" -> book.kind = value
-                            "coverUrl" -> book.coverUrl = value
-                            "customCoverUrl" -> book.customCoverUrl = value
-                            "intro" -> book.intro = value
-                            "customIntro" -> book.customIntro = value
-                            "origin" -> book.origin = value
-                            "originName" -> book.originName = value
-                            "wordCount" -> book.wordCount = value
-                            "tocUrl" -> book.tocUrl = value
-                            "type" -> value.toIntOrNull()?.let { book.type = it }
+                            "name" -> book.name = v
+                            "author" -> book.author = v
+                            "kind" -> book.kind = v
+                            "coverUrl" -> book.coverUrl = v
+                            "customCoverUrl" -> book.customCoverUrl = v
+                            "intro" -> book.intro = v
+                            "customIntro" -> book.customIntro = v
+                            "origin" -> book.origin = v
+                            "originName" -> book.originName = v
+                            "wordCount" -> book.wordCount = v
+                            "tocUrl" -> book.tocUrl = v
+                            "type" -> v.toIntOrNull()?.let { book.type = it }
                         }
                     }
                     val bookSource = appDb.bookSourceDao.getBookSource(origin) ?: return@withPermit

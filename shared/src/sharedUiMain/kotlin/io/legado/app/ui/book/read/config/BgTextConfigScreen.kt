@@ -438,7 +438,7 @@ fun BgTextConfigScreen(
                 value = editName,
                 onValueChange = { editName = it },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }

@@ -37,7 +37,8 @@ atomicfu = "0.33.0"
 # 必须与 composeMultiplatform 基线匹配, 独立追新会编译通过但运行时崩
 skiko = "0.9.37.4"
 # 必须与 composeMultiplatform 基线匹配: 0.41.0 起对 CMP 1.10 编译, 在 1.9.2 上运行时 NoSuchMethodError
-multiplatformMarkdown = "0.41.0"
+# 0.43.0 含 inlineCode 字号/TextUnit 崩溃修复与同步 parseMarkdown API
+multiplatformMarkdown = "0.43.0"
 material = "1.14.0"
 media = "1.8.0"
 # 桌面视频播放引擎: open-ani/mediamp (Compose Multiplatform 播放抽象, 替代自研 libmpv 直通渲染)。

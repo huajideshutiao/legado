@@ -454,9 +454,7 @@ private fun ExportSectionConfigDialog(
                 singleLine = true,
                 label = jvmGetString("file_contains_number"),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp),
+                modifier = Modifier.fillMaxWidth(),
             )
             // 章节范围 (对照 ly_et_input_scope / et_input_scope, 占位 "1-5,8,10-18")
             AppTextField(
@@ -471,9 +469,7 @@ private fun ExportSectionConfigDialog(
                 placeholder = "1-5,8,10-18",
                 isError = scopeError != null,
                 errorMessage = scopeError,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }

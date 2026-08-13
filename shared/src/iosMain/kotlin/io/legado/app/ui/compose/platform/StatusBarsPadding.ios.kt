@@ -46,6 +46,13 @@ actual fun rememberFixedStatusBarHeightPx(): Int {
     return WindowInsets.statusBars.getTop(density)
 }
 
+// iOS 状态栏高度静态 (无显隐动画), 直接取当前值即可
+@Composable
+actual fun rememberVisibleStatusBarHeightPx(): Int {
+    val density = LocalDensity.current
+    return WindowInsets.statusBars.getTop(density)
+}
+
 @Composable
 actual fun rememberFixedNavigationBarHeightPx(): Int {
     val density = LocalDensity.current

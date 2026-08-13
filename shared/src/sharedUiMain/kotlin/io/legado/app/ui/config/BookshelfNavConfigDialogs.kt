@@ -317,9 +317,7 @@ fun BookshelfLayoutConfigDialog(onDismiss: () -> Unit) {
                                     gridWidthText.value = it.filter { c -> c.isDigit() }
                                 },
                                 singleLine = true,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .padding(horizontal = 8.dp),
+                                modifier = Modifier.weight(1f),
                             )
                             Text("dp", color = colors.primaryText)
                         }

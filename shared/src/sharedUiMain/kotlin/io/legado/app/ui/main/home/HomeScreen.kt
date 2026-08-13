@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -47,6 +46,7 @@ import io.legado.app.ui.compose.component.PullToRefreshDefaults
 import io.legado.app.ui.compose.component.pullToRefresh
 import io.legado.app.ui.compose.component.rememberPullToRefreshState
 import io.legado.app.ui.compose.component.rememberResponsiveColumns
+import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import kotlinx.coroutines.launch
@@ -275,7 +275,7 @@ private fun HomeTopBar(
     val insetsModifier = if (eInk) {
         Modifier.windowInsetsPadding(WindowInsets(0))
     } else {
-        Modifier.statusBarsPadding()
+        Modifier.transitionStatusBarPadding()
     }
     Box(Modifier.fillMaxWidth().background(bg).then(insetsModifier)) {
         Row(

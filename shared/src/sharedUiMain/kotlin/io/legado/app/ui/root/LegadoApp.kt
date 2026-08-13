@@ -81,9 +81,11 @@ import io.legado.app.ui.browser.WebViewCallbacks
 import io.legado.app.ui.browser.WebViewConfig
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.AppTitleBar
+import io.legado.app.ui.compose.platform.LocalTransitionFrozenStatusBarHeightPx
 import io.legado.app.ui.compose.platform.PlatformBackHandler
 import io.legado.app.ui.compose.platform.handleBackKey
 import io.legado.app.ui.compose.platform.performBack
+import io.legado.app.ui.compose.platform.rememberVisibleStatusBarHeightPx
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.config.BookshelfLayoutConfigDialog
 import io.legado.app.ui.config.BottomNavConfigDialog
@@ -95,7 +97,6 @@ import io.legado.app.ui.config.ThemeCustomizeDialog
 import io.legado.app.ui.config.ThemeListDialog
 import io.legado.app.ui.route.ReviewListOverlayDialogContent
 import io.legado.app.ui.widget.dialog.PhotoViewOverlayDialog
-import io.legado.app.ui.widget.dialog.PlatformPhotoOverlayDialog
 import io.legado.app.ui.widget.dialog.decodePhotoOverlayPayload
 import io.legado.app.ui.widget.keyboard.KeyboardAssistsConfigOverlayContent
 import kotlinx.coroutines.flow.catch
@@ -213,6 +214,12 @@ fun LegadoApp(
                     .onFailure { AppLog.put("应用窗口策略失败", it) }
             }
         }
+        // 转场动画期间冻结状态栏可见高度, 供页面顶栏 transitionStatusBarPadding 消费:
+        // 系统栏显隐动画与页面转场并行播放 (进入阅读页立即隐藏状态栏, 对齐原版独立窗口
+        // 进入即隐藏的观感), 内容区不跟随 insets 逐帧重排; 动画结束解除冻结 (push 方向
+        // 旧页已销毁, pop 方向系统栏动画已播完, 实时值即可见高度, 无跳变)
+        val visibleStatusBarHeightPx = rememberVisibleStatusBarHeightPx()
+        val frozenStatusBarHeightPx = if (animating) visibleStatusBarHeightPx else null
         // 阅读页隐藏状态栏/导航栏开关在对话框里切换后重应用系统栏策略 (原版 SharedPreference
         // 监听 → upSystemUiVisibility); 用 rememberUpdatedState 取最新路由
         val currentRouteState = rememberUpdatedState(currentRoute)
@@ -253,6 +260,9 @@ fun LegadoApp(
         val rootFocusRequester = remember { FocusRequester() }
         var rootFocusOwner by remember { mutableStateOf("none") } // none|root|descendant
         LaunchedEffect(Unit) { runCatching { rootFocusRequester.requestFocus() } }
+        CompositionLocalProvider(
+            LocalTransitionFrozenStatusBarHeightPx provides frozenStatusBarHeightPx
+        ) {
         Box(
             Modifier
                 .fillMaxSize()
@@ -474,6 +484,7 @@ fun LegadoApp(
                 OverlayContentHost(overlay)
                 }
             }
+        }
         }
 
         // 系统返回键: Overlay 存在时关闭顶层 Overlay (Android 走 BackHandler;
@@ -796,29 +807,32 @@ private fun PhotoOverlayDialogContent(overlay: AppOverlay.Dialog, navigator: App
         if (chapterIndex >= 0) chapterIndex else readBook.durChapterIndexValue
     )
     val bookSource = (sourceState as? PhotoSourceState.Resolved)?.source
-    if (sourceState is PhotoSourceState.Querying) {
-        // 书源查询中: 黑色占位 + loading (毫秒级; 点击可关, 防查询慢时无响应)
-        PlatformPhotoOverlayDialog(onDismissRequest = { navigator.dismissOverlay(overlay.key) }) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.55f))
-                    .pointerInput(Unit) {
-                        detectTapGestures(onTap = { navigator.dismissOverlay(overlay.key) })
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(stringResource(Res.string.loading), color = Color.White)
-            }
-        }
-        return
-    }
+    // 书源查询中/就绪共用同一个对话框实例: 占位与图片内容在 Dialog 内部切换, 不重建
+    // 窗口 (AppDialog 进入动画只播一次, 修复查询完成后对话框二次闪烁)
     PhotoViewOverlayDialog(
         src = src,
         onDismiss = { navigator.dismissOverlay(overlay.key) },
         book = book,
         bookSource = bookSource,
         chapter = chapter,
+        // 书源查询中: 黑色占位 + loading (毫秒级; 点击可关, 防查询慢时无响应)
+        placeholder = if (sourceState is PhotoSourceState.Querying) {
+            {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .pointerInput(Unit) {
+                            detectTapGestures(onTap = { navigator.dismissOverlay(overlay.key) })
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(stringResource(Res.string.loading), color = Color.White)
+                }
+            }
+        } else {
+            null
+        },
     )
 }
 

@@ -28,4 +28,7 @@ actual fun rememberNavigationBarHidden(): Boolean = false
 actual fun rememberFixedStatusBarHeightPx(): Int = 0
 
 @Composable
+actual fun rememberVisibleStatusBarHeightPx(): Int = 0
+
+@Composable
 actual fun rememberFixedNavigationBarHeightPx(): Int = 0

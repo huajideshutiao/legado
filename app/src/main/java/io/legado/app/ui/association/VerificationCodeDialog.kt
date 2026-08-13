@@ -10,43 +10,38 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.help.i18n.androidAppString
-import io.legado.app.ui.compose.component.AppDropdownMenu
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil3.load
 import coil3.request.CachePolicy
-import coil3.request.ImageRequest
-import coil3.request.crossfade
 import coil3.toBitmap
 import io.legado.app.R
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.image.sourceOrigin
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceVerificationHelp
 import io.legado.app.model.ImageProvider
+import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.dialogs.alert
 import io.legado.app.ui.compose.platform.rememberPainter
+import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.widget.dialog.PhotoDialog
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
-import org.jetbrains.compose.resources.stringResource
 import splitties.init.appCtx
 
 /**
@@ -152,9 +147,7 @@ object VerificationCodeDialog {
                         onValueChange = { code = it },
                         label = rememberString("verification_code"),
                         singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }

@@ -366,13 +366,13 @@ private fun LoginRow(
 ) {
     val colors = AppTheme.colors
     when (rowUi.type) {
-        // 原 createSourceEditView: setPadding(0, xs, 0, 0)；文本框另加左右下各 4dp 输入边距
+        // 外围间距由 AppTextField 组件统一 (左右下各 4dp), 调用点不再叠加
         RowUi.Type.text -> AppOutlinedTextField(
             value = loginData[rowUi.name] ?: "",
             onValueChange = { loginData[rowUi.name] = it },
             label = rowUi.name,
             singleLine = false,
-            modifier = modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp)
+            modifier = modifier
         )
 
         RowUi.Type.password -> AppOutlinedTextField(
@@ -381,7 +381,7 @@ private fun LoginRow(
             label = rowUi.name,
             visualTransformation = PasswordVisualTransformation(),
             singleLine = true,
-            modifier = modifier.padding(top = 4.dp)
+            modifier = modifier
         )
 
         // 原 select/toggle 行: setPadding(space.default)=8dp

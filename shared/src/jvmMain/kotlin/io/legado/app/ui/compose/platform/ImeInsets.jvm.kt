@@ -1,9 +1,6 @@
 package io.legado.app.ui.compose.platform
 
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.ime
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalDensity
 
 /**
  * [rememberImeHiding] 的桌面 JVM actual:
@@ -20,14 +17,10 @@ actual fun rememberImeHiding(): Boolean = false
 actual fun rememberImeAnimating(): Boolean = false
 
 /**
- * [rememberImeTargetBottomPx] 的桌面 JVM actual: 无软键盘 inset, 恒 0
+ * [shouldConsumeImeInsets] 的桌面 JVM actual: 无软键盘/窗口收缩概念, 恒 false
  * (imeDismissPadding 退化为 no-op)。
  */
-@Composable
-actual fun rememberImeTargetBottomPx(): Int {
-    val density = LocalDensity.current
-    return WindowInsets.ime.getBottom(density)
-}
+actual fun shouldConsumeImeInsets(): Boolean = false
 
 
 /**

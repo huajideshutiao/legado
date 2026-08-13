@@ -423,7 +423,8 @@ private fun RuleItemScope.BookItem(
             if (book.author.isNotEmpty()) {
                 Text(
                     text = book.getRealAuthor(),
-                    color = colors.secondaryText,
+                    // 对照原版 tv_author 用 tv_text_summary(arco_text_3), 非 secondaryText
+                    color = colors.summaryText,
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -432,7 +433,8 @@ private fun RuleItemScope.BookItem(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = originText,
-                    color = colors.secondaryText,
+                    // 对照原版 tv_origin 用 tv_text_summary(arco_text_3)
+                    color = colors.summaryText,
                     fontSize = 12.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -444,6 +446,7 @@ private fun RuleItemScope.BookItem(
                         fontSize = 12.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        // 分组名与书源间保留 8dp 间距(有意偏离原版紧贴, 便于视觉区分)
                         modifier = Modifier.padding(start = 8.dp),
                     )
                 }
@@ -458,39 +461,43 @@ private fun RuleItemScope.BookItem(
                 )
             }
         }
-        // 下载图标:本地书籍隐藏(对照 upDownloadIv)；右侧动作簇原约束 bottom_toBottomOf parent
-        if (!book.isLocal) {
+        // 右侧动作簇: 下载/分组/删除同心垂直居中(对照原版 iv_download top/bottom 对齐 tv_group,
+        // tv_group/iv_delete 约束于「作者底~item底」区间居中), 本地书隐藏下载图标(对照 upDownloadIv)
+        Row(
+            modifier = Modifier.align(Alignment.Bottom),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (!book.isLocal) {
+                IconButton(
+                    onClick = { callbacks.onToggleDownload(book) },
+                ) {
+                    Icon(
+                        painter = rememberPainter(
+                            if (downloading) "ic_stop_black_24dp" else "ic_play_24dp"
+                        ),
+                        contentDescription = stringResource(Res.string.start),
+                        // 对照原版 iv_download 容器 28dp 内 24dp 图标
+                        tint = colors.primaryText,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+            }
+            Text(
+                text = stringResource(Res.string.group),
+                color = colors.secondaryText,
+                modifier = Modifier
+                    .clickable { callbacks.onEditGroup(book) }
+                    .padding(8.dp),
+            )
             IconButton(
-                onClick = { callbacks.onToggleDownload(book) },
-                modifier = Modifier.align(Alignment.Bottom),
+                onClick = { callbacks.onDeleteBook(book) },
             ) {
                 Icon(
-                    painter = rememberPainter(
-                        if (downloading) "ic_stop_black_24dp" else "ic_play_24dp"
-                    ),
-                    contentDescription = stringResource(Res.string.start),
+                    painter = painterResource(Res.drawable.ic_clear_all),
+                    contentDescription = stringResource(Res.string.delete),
                     tint = colors.primaryText,
-                    modifier = Modifier.size(20.dp),
                 )
             }
-        }
-        Text(
-            text = stringResource(Res.string.group),
-            color = colors.secondaryText,
-            modifier = Modifier
-                .align(Alignment.Bottom)
-                .clickable { callbacks.onEditGroup(book) }
-                .padding(8.dp),
-        )
-        IconButton(
-            onClick = { callbacks.onDeleteBook(book) },
-            modifier = Modifier.align(Alignment.Bottom),
-        ) {
-            Icon(
-                painter = painterResource(Res.drawable.ic_clear_all),
-                contentDescription = stringResource(Res.string.delete),
-                tint = colors.primaryText,
-            )
         }
     }
 }

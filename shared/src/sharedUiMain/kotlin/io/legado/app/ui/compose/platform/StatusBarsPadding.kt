@@ -3,9 +3,9 @@ package io.legado.app.ui.compose.platform
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.dp
 
 /**
  * 跨平台状态栏沉浸 padding。
@@ -52,6 +52,36 @@ expect fun rememberFixedStatusBarHeightPx(): Int
 /** 导航栏固定高度 px (首次组合采样, 配置变化时重采, 非 Android 恒 0) */
 @Composable
 expect fun rememberFixedNavigationBarHeightPx(): Int
+
+/**
+ * 转场动画期间冻结的状态栏高度 px (非空=冻结中, null=实时/事件化)。
+ * 由 [io.legado.app.ui.root.LegadoApp] 在转场动画期间提供: 系统栏显隐动画与页面
+ * 转场并行播放时, 内容区不跟随 insets 逐帧重排 (对齐原版各页独立窗口的 insets 隔离)。
+ */
+val LocalTransitionFrozenStatusBarHeightPx = staticCompositionLocalOf<Int?> { null }
+
+/**
+ * 转场安全的状态栏 padding: 转场动画期间读 [LocalTransitionFrozenStatusBarHeightPx]
+ * 冻结值 (恒定, 动画期间内容区零重排); 非转场时退化为事件化 [statusBarFixedPadding]
+ * (显隐翻转时重排一次, 动画期间恒定)。
+ */
+@Composable
+fun Modifier.transitionStatusBarPadding(): Modifier {
+    val frozenPx = LocalTransitionFrozenStatusBarHeightPx.current
+    if (frozenPx != null) {
+        if (frozenPx <= 0) return this
+        val density = LocalDensity.current
+        return this.padding(top = with(density) { frozenPx.toDp() })
+    }
+    return statusBarFixedPadding()
+}
+
+/**
+ * 状态栏可见时的固定高度 px: 只在状态栏可见时更新记录, 隐藏/显隐动画期间保留最近
+ * 可见值 (供转场冻结: pop 回书架时动画开始前高度已为 0, 冻结值须取可见高度)。
+ */
+@Composable
+expect fun rememberVisibleStatusBarHeightPx(): Int
 
 /**
  * 事件化状态栏 padding: 隐藏时 0, 显示时固定状态栏高; 显隐动画期间恒定,

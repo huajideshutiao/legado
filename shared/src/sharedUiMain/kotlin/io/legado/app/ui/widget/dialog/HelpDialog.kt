@@ -7,8 +7,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
@@ -80,6 +78,8 @@ fun HelpDialog(fileName: String, onDismiss: () -> Unit) {
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
                 )
                 // 正文区: weight 占对话框剩余空间 (视口恒定), 超长滚动, 按钮恒可见
+                // 滚动职责由 LazyMarkdown 的 LazyColumn 承担, 不再套 verticalScroll
+                // (嵌套滚动会让 LazyColumn 在无限高约束下失去虚拟化)
                 Box(
                     Modifier
                         .weight(1f, fill = false)
@@ -88,8 +88,7 @@ fun HelpDialog(fileName: String, onDismiss: () -> Unit) {
                     Column(
                         Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 80.dp)
-                            .verticalScroll(rememberScrollState()),
+                            .heightIn(min = 80.dp),
                     ) {
                         MarkdownContentSelectable(content)
                     }

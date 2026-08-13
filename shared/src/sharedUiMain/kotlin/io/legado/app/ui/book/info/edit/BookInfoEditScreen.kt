@@ -1,5 +1,6 @@
 package io.legado.app.ui.book.info.edit
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,24 +23,35 @@ import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.ui.compose.component.AppDropdownMenu
 import io.legado.app.ui.compose.component.AppOutlinedButton
 import io.legado.app.ui.compose.component.AppOutlinedTextField
+import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.bringIntoViewOnIme
 import io.legado.app.ui.compose.platform.imeDismissPadding
+import io.legado.app.ui.compose.platform.imeFollowVisibleOnIme
+import io.legado.app.ui.compose.platform.imeScrollNowFor
 import io.legado.app.ui.compose.platform.rememberImeVisible
-import io.legado.app.ui.compose.component.AppTitleBar
-import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.action_save
 import legado.shared.generated.resources.author
@@ -57,12 +69,7 @@ import legado.shared.generated.resources.select_local_image
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringArrayResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.foundation.background
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.constant.BookType
-import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
-import io.legado.app.ui.preview.LegadoThemePreview
+import kotlin.math.roundToInt
 
 // ===== state / actions =====
 
@@ -200,9 +207,20 @@ fun BookInfoEditScreen(
                 TypeSelector(state, actions)
             }
         }
+        // 键盘弹出动画期间的瞬移滚动器 (见 ImeInsets): 视口逐帧收缩时把聚焦字段无动画滚到
+        // 可见 —— 字段始终可见且不打断; 滚动区顶部窗口 Y 由 onGloballyPositioned 记录
+        val scrollState = rememberScrollState()
+        val scope = rememberCoroutineScope()
+        val density = LocalDensity.current
+        val imeMarginPx = with(density) { 12.dp.toPx() }.roundToInt()
+        var editWindowY by remember { mutableIntStateOf(0) }
+        val imeScrollNow = remember(scrollState, scope) {
+            imeScrollNowFor(scrollState, { editWindowY }, imeMarginPx, scope)
+        }
         Column(
             Modifier
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
+                .onGloballyPositioned { editWindowY = it.positionInWindow().y.roundToInt() }
                 .padding(horizontal = 4.dp),
         ) {
             var coverUrlFocused by remember { mutableStateOf(false) }
@@ -212,8 +230,10 @@ fun BookInfoEditScreen(
                 label = stringResource(Res.string.cover_path),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 4.dp)
                     .onFocusChanged { coverUrlFocused = it.isFocused }
+                    // 键盘弹出动画期间瞬移跟随视口收缩 (光标始终可见, 无动画不打断);
+                    // 动画结束兜底由 bringIntoViewOnIme 承担 (幂等, 已可见则不滚)
+                    .imeFollowVisibleOnIme(coverUrlFocused, imeScrollNow)
                     // 键盘弹出/窗口收缩后聚焦字段可能再次滚出视口, 重新滚到可见 (见 ImeInsets KDoc)
                     .bringIntoViewOnIme(coverUrlFocused),
             )
@@ -238,8 +258,8 @@ fun BookInfoEditScreen(
                 label = stringResource(Res.string.book_intro),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 4.dp)
                     .onFocusChanged { introFocused = it.isFocused }
+                    .imeFollowVisibleOnIme(introFocused, imeScrollNow)
                     .bringIntoViewOnIme(introFocused),
             )
             var bookUrlFocused by remember { mutableStateOf(false) }
@@ -250,6 +270,7 @@ fun BookInfoEditScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .onFocusChanged { bookUrlFocused = it.isFocused }
+                    .imeFollowVisibleOnIme(bookUrlFocused, imeScrollNow)
                     .bringIntoViewOnIme(bookUrlFocused),
             )
             Spacer(Modifier.height(navBottom))

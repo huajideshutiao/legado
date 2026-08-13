@@ -21,7 +21,9 @@ import io.legado.app.ui.root.TransitionRole
  * - 百分比轴心/尺寸 (如 pivot 50%) 经 initialize(width, height, ...) 解析 (AOSP
  *   ScaleAnimation.initialize 验证, 动画未挂 View 不会自动触发, 须显式调用)
  * - 采样时间 = 线性进度 × 时长, startTime 固定为 0, 进度单调推进即可
- * - progress=0 → fillBefore 输出 from 值 (起始位), progress=1 → fillAfter 输出 to 值 (终态)
+ * - progress=0 → fillBefore 输出 from 值 (起始位); progress=1 时动画 expired
+ *   (mMore=false) 不再输出变换 (AOSP getTransformation 验证), 采样会得到新建单位矩阵,
+ *   故进度 clamp 到 0.9999, 末帧输出近似终态 (fillAfter 语义由系统实现处理)
  * - 动画时长 = computeDurationHint (含 startOffset) × 系统动画时长缩放 (Settings.Global,
  *   与窗口系统行为一致), scale=0 时动画层 duration=0 直接瞬切
  *
@@ -64,11 +66,14 @@ class SystemRouteTransitionSampler private constructor(
         // 系统动画的百分比轴心/尺寸 (如 pivot 50%) 只在 initialize(width, height, ...) 中
         // 经 resolveSize 解析 (AOSP ScaleAnimation 验证), 动画未挂 View 不会自动触发,
         // 每帧显式 initialize (内部 reset, 状态由采样时间驱动) + startTime 固定 0:
-        // 采样时间 = 线性进度 × 时长, 动画层保证单调递增 (段与段之间切换动画实例, 各自从 0 重新采样)
-        anim.initialize(width, height, width, height)
-        anim.setStartTime(0L)
+        // 采样时间 = 线性进度 × 时长, 动画层保证单调递增 (段与段之间切换动画实例, 各自从 0 重新采样);
+        // progress=1 时系统动画 expired (mMore=false) 不再输出变换, 采样结果会是新建的单位矩阵,
+        // 旧页/出栈页 (openExit/closeExit) 末帧跳回起始态闪一帧, 故进度 clamp 到 0.9999 让末帧输出近似终态
+        val time = ((progress.coerceIn(0f, 0.9999f)) * duration).toLong()
+        anim.initialize(width.toInt(), height.toInt(), width.toInt(), height.toInt())
+        anim.startTime = 0L
         val out = Transformation()
-        anim.getTransformation((progress * duration).toLong(), out)
+        anim.getTransformation(time, out)
         val values = FloatArray(9)
         out.matrix.getValues(values)
         // 矩阵已烘焙缩放轴心补偿, 动画层 transformOrigin 取左上角即逐点等价

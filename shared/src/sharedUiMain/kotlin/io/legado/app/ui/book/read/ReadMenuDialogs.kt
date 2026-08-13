@@ -99,9 +99,7 @@ fun SimulatedReadingDialog(
                 value = dateText,
                 onValueChange = { dateText = it },
                 singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth(),
             )
             Row(
                 Modifier

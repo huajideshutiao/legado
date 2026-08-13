@@ -27,7 +27,7 @@ class AndroidBenchmarkConventionPlugin : Plugin<Project> {
         }
 
         extensions.configure<TestExtension> {
-            compileSdk = 36
+            compileSdk = 37
             defaultConfig {
                 // BaselineProfileRule 设备要求: Android 13 (API 33)+ 或已 root 的 Android 9 (API 28)+
                 minSdk = 28

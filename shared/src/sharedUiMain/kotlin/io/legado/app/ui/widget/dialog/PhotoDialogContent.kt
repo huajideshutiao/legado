@@ -30,8 +30,8 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.help.FileUtilsCommon
 import io.legado.app.help.book.BookImageStorageProviders
 import io.legado.app.help.book.isLocal
-import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.help.image.BookImageLoaders
+import io.legado.app.help.image.ImageBitmapLoader
 import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.help.image.decodeBytesSampled
 import io.legado.app.help.image.decodeSvgFallback
@@ -312,11 +312,16 @@ internal expect fun PlatformPhotoOverlayDialog(
 /**
  * 大图查看 Overlay: 全屏铺满 + 黑色半透明底色, 图片加载和缩放复用 [PhotoDialogContent]。
  *
+ * 内容区支持前置占位 [placeholder]: 占位与图片内容共用同一对话框实例, 状态就绪后
+ * 只换内容不重建窗口, 对话框进入动画只播一次 (书源身份查询完成时若销毁重建对话框
+ * 会重播 AppDialog 进入动画, 表现为二次闪烁)。
+ *
  * @param src 图片路径 (http(s):// / file:// / 绝对路径 / data URI)
  * @param onDismiss 关闭回调 (返回键 / 单击)
  * @param book 当前书籍, 可空 (透传 [PhotoDialogContent])
  * @param bookSource 书源 (网络图防盗链), 可空 (透传 [PhotoDialogContent])
  * @param chapter 当前章节, 可空 (网络书阅读页点图时透传, 磁盘章节缓存优先链路使用)
+ * @param placeholder 图片内容就绪前的占位内容 (如书源查询中), 传 null 直接显示图片
  */
 @Composable
 fun PhotoViewOverlayDialog(
@@ -325,20 +330,25 @@ fun PhotoViewOverlayDialog(
     book: Book? = null,
     bookSource: BookSource? = null,
     chapter: BookChapter? = null,
+    placeholder: (@Composable () -> Unit)? = null,
 ) {
     PlatformPhotoOverlayDialog(onDismissRequest = onDismiss) {
-        PhotoDialogContent(
-            src = src,
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.55f)),
-            imageModifier = Modifier.fillMaxSize(),
-            book = book,
-            bookSource = bookSource,
-            chapter = chapter,
-            onLongPress = null,
-            onTap = onDismiss,
-            loadingContent = { Text(stringResource(Res.string.loading), color = Color.White) },
-        )
+        if (placeholder != null) {
+            placeholder()
+        } else {
+            PhotoDialogContent(
+                src = src,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.55f)),
+                imageModifier = Modifier.fillMaxSize(),
+                book = book,
+                bookSource = bookSource,
+                chapter = chapter,
+                onLongPress = null,
+                onTap = onDismiss,
+                loadingContent = { Text(stringResource(Res.string.loading), color = Color.White) },
+            )
+        }
     }
 }

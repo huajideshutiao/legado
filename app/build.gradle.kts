@@ -68,7 +68,7 @@ val gitCommits = providers.exec {
 
 android {
     namespace = "io.legado.app"
-    compileSdk = 36
+    compileSdk = 37
 
     signingConfigs {
         if (project.hasProperty("RELEASE_STORE_FILE")) {

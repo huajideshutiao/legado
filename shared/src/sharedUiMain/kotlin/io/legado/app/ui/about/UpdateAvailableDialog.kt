@@ -3,8 +3,6 @@ package io.legado.app.ui.about
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.AlertDialog
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
@@ -51,11 +49,11 @@ fun UpdateAvailableDialog(
             )
         },
         text = {
+            // LazyMarkdown 自带滚动, 不套 verticalScroll (嵌套滚动会失效虚拟化)
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(max = AppDialogSizes.textAreaMaxHeight())
-                    .verticalScroll(rememberScrollState()),
+                    .heightIn(max = AppDialogSizes.textAreaMaxHeight()),
             ) {
                 MarkdownContentSelectable(info.releaseNote)
             }

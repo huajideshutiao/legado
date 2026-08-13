@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -68,6 +67,7 @@ import io.legado.app.ui.compose.component.estimateGridHeight
 import io.legado.app.ui.compose.component.toGridPackSpec
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.rememberNavigationBarPaddingValues
+import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -645,7 +645,7 @@ private fun ExploreTitleBar(
     val insetsModifier = if (eInk) {
         Modifier.windowInsetsPadding(WindowInsets(0))
     } else {
-        Modifier.statusBarsPadding()
+        Modifier.transitionStatusBarPadding()
     }
     Box(Modifier.fillMaxWidth().background(bg).then(insetsModifier)) {
         Row(

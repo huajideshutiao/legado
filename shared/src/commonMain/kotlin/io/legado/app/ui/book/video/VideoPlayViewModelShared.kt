@@ -311,8 +311,6 @@ class VideoPlayViewModelShared(
                     if (persistProgress) {
                         saveRead(clampedIndex)
                     }
-                    // 新章节加载成功, 重置错误重试标记
-                    hasRetriedOnError = false
                 }
             } catch (e: CancellationException) {
                 // 取消不是错误: 对照原版 Coroutine.dispatchCallback 的 !scope.isActive 早退,
@@ -422,7 +420,10 @@ class VideoPlayViewModelShared(
      *
      * 供 app 端 onPlayerError / desktop 端 mpv 播放失败事件复用, 消除两端重复实现。
      * 未重试过则置标记并刷新章节 (重新拉取章节内容), 已重试过返回 false 由调用方自行处理。
-     * 新章节加载成功后由 [loadChapter] 重置标记, 允许下次出错再次重试。
+     *
+     * 标记重置时机对齐原版 (VideoPlayActivity listener): 播放器真正进入 STATE_READY
+     * (播放成功) 才由调用方经 [resetRetryOnPlayError] 重置; 链接不可用时播放器永不
+     * READY, 标记不再被重置, 同一章节只自动重试一次, 避免无限重试循环 (双重进度条闪烁)。
      *
      * @return true 已触发重试, false 已重试过需调用方自行处理
      */
@@ -431,6 +432,16 @@ class VideoPlayViewModelShared(
         hasRetriedOnError = true
         refreshChapter(persistProgress = false)
         return true
+    }
+
+    /**
+     * 重置播放错误重试标记 (对齐原版 VideoPlayActivity: STATE_READY 时置回 false)。
+     *
+     * 播放器真正开始播放 (READY) 后调用, 允许后续再次出错时再自动重试一次;
+     * 由平台层播放器监听 STATE_READY 回调驱动, 内容解析成功不重置 (见 [retryOnPlayError])。
+     */
+    fun resetRetryOnPlayError() {
+        hasRetriedOnError = false
     }
 
     /**

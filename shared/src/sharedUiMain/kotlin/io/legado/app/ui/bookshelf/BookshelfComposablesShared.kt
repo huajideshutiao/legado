@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,7 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -33,7 +34,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.listSaver
@@ -41,12 +41,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
@@ -62,9 +63,11 @@ import io.legado.app.ui.compose.component.rememberResponsiveColumns
 import io.legado.app.ui.compose.platform.LocalThemeStoreProvider
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
+import io.legado.app.ui.compose.platform.transitionStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
+import io.legado.app.ui.preview.LegadoThemePreview
 import io.legado.app.utils.toTimeAgo
 import kotlinx.coroutines.delay
 import legado.shared.generated.resources.Res
@@ -73,11 +76,6 @@ import legado.shared.generated.resources.ic_search
 import legado.shared.generated.resources.search
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.width
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.constant.BookType
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 书架共享组件 (KMP 版, 替代 app 端 `BookshelfComposables.kt` 中除 ShelfCover 外的所有组件)。
@@ -426,7 +424,7 @@ fun BookshelfTopBar(content: @Composable RowScope.() -> Unit) {
     val insetsModifier = if (eInk) {
         Modifier.windowInsetsPadding(WindowInsets(0))
     } else {
-        Modifier.statusBarsPadding()
+        Modifier.transitionStatusBarPadding()
     }
     Box(Modifier.fillMaxWidth().background(bg).then(insetsModifier)) {
         Row(

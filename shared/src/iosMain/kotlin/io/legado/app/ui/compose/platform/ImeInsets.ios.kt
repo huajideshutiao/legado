@@ -1,9 +1,6 @@
 package io.legado.app.ui.compose.platform
 
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.ime
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalDensity
 
 /**
  * [rememberImeHiding] 的 iOS actual:
@@ -19,14 +16,10 @@ actual fun rememberImeHiding(): Boolean = false
 actual fun rememberImeAnimating(): Boolean = false
 
 /**
- * [rememberImeTargetBottomPx] 的 iOS actual: 无软键盘 inset, 恒 0
- * (imeDismissPadding 退化为 no-op)。
+ * [shouldConsumeImeInsets] 的 iOS actual: 无软键盘/窗口收缩概念, 恒 false
+ * (imeDismissPadding 天然 no-op)。
  */
-@Composable
-actual fun rememberImeTargetBottomPx(): Int {
-    val density = LocalDensity.current
-    return WindowInsets.ime.getBottom(density)
-}
+actual fun shouldConsumeImeInsets(): Boolean = false
 
 
 /**

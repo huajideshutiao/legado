@@ -36,8 +36,10 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,6 +50,9 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -63,6 +68,7 @@ import io.legado.app.ui.compose.component.code.KeyboardToolbarState
 import io.legado.app.ui.compose.component.code.rememberCodeEditorState
 import io.legado.app.ui.compose.component.code.rememberCodeSyntax
 import io.legado.app.ui.compose.platform.imeDismissPadding
+import io.legado.app.ui.compose.platform.imeScrollNowFor
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import legado.shared.generated.resources.Res
@@ -75,6 +81,7 @@ import legado.shared.generated.resources.result
 import legado.shared.generated.resources.run
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.roundToInt
 
 /**
  * JS 编辑页用户交互回调。
@@ -188,10 +195,18 @@ fun JsEditScreen(
             onValueChange = onFileNameChange,
             label = stringResource(Res.string.file_name),
             singleLine = true,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 4.dp),
+            modifier = Modifier.fillMaxWidth(),
         )
+        // 键盘弹出动画期间的瞬移滚动器 (见 ImeInsets): 视口逐帧收缩时把光标行无动画滚到
+        // 可见 —— 光标始终可见且不打断; 编辑区顶部窗口 Y 由 onGloballyPositioned 记录
+        val scrollState = rememberScrollState()
+        val scope = rememberCoroutineScope()
+        val density = LocalDensity.current
+        val imeMarginPx = with(density) { 12.dp.toPx() }.roundToInt()
+        var editWindowY by remember { mutableIntStateOf(0) }
+        val imeScrollNow = remember(scrollState, scope) {
+            imeScrollNowFor(scrollState, { editWindowY }, imeMarginPx, scope)
+        }
         // 代码编辑区: 外部滚动容器 + wrap 高字段。键盘弹出后 (ime 避让收缩视口) 光标行
         // bringIntoView 请求须可达滚动容器 —— 字段自身有界内滚时外部请求无法到达
         // CoreTextField 内部滚动, 光标会被键盘挡住; 滚动与光标可见均由 CodeTextField
@@ -200,7 +215,8 @@ fun JsEditScreen(
             Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(scrollState)
+                .onGloballyPositioned { editWindowY = it.positionInWindow().y.roundToInt() },
         ) {
             CodeTextField(
                 value = editor.value,
@@ -215,9 +231,8 @@ fun JsEditScreen(
                 label = stringResource(Res.string.code),
                 fontSize = 14.sp,
                 searchHighlight = searchHighlight,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                imeScrollNow = imeScrollNow,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
         // 运行结果区 (有结果或错误时显示, 可滚动)

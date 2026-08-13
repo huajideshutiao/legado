@@ -23,9 +23,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialogContent
@@ -51,6 +52,7 @@ import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.platform.LocalPreferenceStoreProvider
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
 import io.legado.app.utils.ColorUtils
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
@@ -58,8 +60,6 @@ import legado.shared.generated.resources.ic_check
 import legado.shared.generated.resources.ok
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 取色项：行尾颜色格子（复刻 cpv 预览方块），点击进自绘取色盘。复刻 ColorPreference。
@@ -270,7 +270,7 @@ fun ColorPickerDialogContent(
                     },
                     singleLine = true,
                     label = "Hex",
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    modifier = Modifier.fillMaxWidth(),
                 )
                 // 预设色格：选中色属色板时补黑色第 20 格
                 // （对照 colorpicker 1.1.0 loadPresets：isMaterialColors && presets.length == 19

@@ -1,5 +1,6 @@
 package io.legado.app.ui.compose.platform
 
+import android.view.ViewTreeObserver
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -12,12 +13,11 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import android.view.ViewTreeObserver
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 /**
  * [platformStatusBarPadding] 的 Android actual: 直接委托 `Modifier.statusBarsPadding()`。
@@ -69,6 +69,30 @@ actual fun rememberNavigationBarHidden(): Boolean {
         onDispose { view.viewTreeObserver.removeOnGlobalLayoutListener(listener) }
     }
     return hidden
+}
+
+// 状态栏可见高度进程级缓存: 设备使用期间状态栏高度恒定, 无需布局监听逐帧重读;
+// 仅在配置变化 (横竖屏/多窗口等) 时经组合重采, 状态栏隐藏期间采样为 0 时
+// 保留最近可见值 (供转场冻结: pop 回书架时动画开始前高度已为 0)
+private var cachedVisibleStatusBarHeightPx = 0
+
+/**
+ * 状态栏可见时的高度 px: 全局缓存, 配置变化时重采; 隐藏期间返回最近可见值。
+ */
+@Composable
+actual fun rememberVisibleStatusBarHeightPx(): Int {
+    val view = LocalView.current
+    val config = LocalConfiguration.current
+    return remember(config) {
+        val h = ViewCompat.getRootWindowInsets(view)
+            ?.getInsets(WindowInsetsCompat.Type.statusBars())?.top ?: 0
+        if (h > 0) {
+            cachedVisibleStatusBarHeightPx = h
+            h
+        } else {
+            cachedVisibleStatusBarHeightPx
+        }
+    }
 }
 
 /**

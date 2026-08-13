@@ -9,8 +9,6 @@ package io.legado.app.ui.about
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -85,10 +83,10 @@ internal fun UpdateDialogOverlayContent(overlay: AppOverlay.Dialog, navigator: A
                 )
                 MarkdownContentSelectable(
                     content = updateInfo.updateLog,
+                    // LazyMarkdown 自带滚动, 不套 verticalScroll (嵌套滚动会失效虚拟化)
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f, fill = false)
-                        .verticalScroll(rememberScrollState())
                         // 对照 app 端 space.md 的 16dp 内边距
                         .padding(16.dp)
                 )

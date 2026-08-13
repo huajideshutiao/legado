@@ -311,9 +311,7 @@ fun ContentEditDialog(
                     AppTextField(
                         value = titleEditState,
                         onValueChange = { titleEditState = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     Row(
                         Modifier

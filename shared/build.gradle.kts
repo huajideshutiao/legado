@@ -96,7 +96,7 @@ kotlin {
 
     androidLibrary {
         namespace = "io.legado.shared"
-        compileSdk = 36
+        compileSdk = 37
         minSdk = 24
         // 新版 AGP KMP library 插件默认不处理 Android assets/resources, compose.resources
         // 的 copy*ComposeResourcesToAndroidAssets 任务因此拿不到 outputDirectory (配置校验失败,

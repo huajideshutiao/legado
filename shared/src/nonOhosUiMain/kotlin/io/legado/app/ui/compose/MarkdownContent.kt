@@ -12,10 +12,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.sp
 import com.mikepenz.markdown.coil3.Coil3ImageTransformerImpl
+import com.mikepenz.markdown.compose.LazyMarkdownSuccess
 import com.mikepenz.markdown.compose.Markdown
+import com.mikepenz.markdown.compose.MarkdownSuccess
 import com.mikepenz.markdown.model.DefaultMarkdownColors
 import com.mikepenz.markdown.model.DefaultMarkdownTypography
+import com.mikepenz.markdown.model.rememberMarkdownState
 import io.legado.app.ui.compose.theme.AppTheme
+
+/** 超过该长度 (字符) 的文档改用 LazyMarkdown 虚拟化渲染。 */
+private const val MarkdownLazyThreshold = 16 * 1024
 
 /**
  * 走 mikepenz 核心库而非 -m3 变体: m3 的 markdownTypography() 读 MaterialTheme.typography,
@@ -54,8 +60,11 @@ actual fun MarkdownContent(content: String, modifier: Modifier) {
             ),
         )
     }
+    // 长文档 (帮助页/更新日志可达数十 KB) 走 LazyMarkdown 虚拟化渲染, 避免整篇组合卡顿;
+    // 短文档走 Column 全量渲染, 保持内容紧凑 (LazyColumn 会撑满可用高度, 不适合短内容)
+    val markdownState = rememberMarkdownState(content = content)
     Markdown(
-        content = content,
+        markdownState = markdownState,
         colors = DefaultMarkdownColors(
             // 正文色对齐原版 TextView 的 android:textColor="@color/secondaryText"
             text = colors.secondaryText,
@@ -67,5 +76,12 @@ actual fun MarkdownContent(content: String, modifier: Modifier) {
         typography = typography,
         modifier = modifier,
         imageTransformer = Coil3ImageTransformerImpl,
+        success = { state, components, m ->
+            if (content.length > MarkdownLazyThreshold) {
+                LazyMarkdownSuccess(state, components, m)
+            } else {
+                MarkdownSuccess(state, components, m)
+            }
+        },
     )
 }

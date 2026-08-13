@@ -1,14 +1,12 @@
 package io.legado.app.ui.main.home
 
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import io.legado.app.constant.EventBus
 import io.legado.app.help.HomeTabHelpShared
 import io.legado.app.help.toast.Toasters
@@ -121,9 +119,7 @@ fun HomeTabEditDialog(
                 onValueChange = { title = it },
                 label = stringResource(Res.string.home_tab_title),
                 singleLine = true,
-                modifier = Modifier
-                    .padding(horizontal = 24.dp)
-                    .fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }

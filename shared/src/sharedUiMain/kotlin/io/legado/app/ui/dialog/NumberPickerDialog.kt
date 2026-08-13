@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.component.AppDialogSizes
@@ -42,6 +43,7 @@ import io.legado.app.ui.compose.component.AppTextButton
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.ic_add
@@ -51,8 +53,6 @@ import legado.shared.generated.resources.plus
 import legado.shared.generated.resources.reduce
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * 数字选择对话框 (Compose Multiplatform / sharedUiMain)。
@@ -169,7 +169,8 @@ fun NumberPickerDialog(
                         ),
                         keyboardActions = KeyboardActions(onDone = { commitEdit() }),
                         textStyle = TextStyle(
-                            fontSize = 28.sp,
+                            // 与显示态 Text 字号一致 (32sp), 点击编辑不跳变
+                            fontSize = 32.sp,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center,
                             color = colors.accent,

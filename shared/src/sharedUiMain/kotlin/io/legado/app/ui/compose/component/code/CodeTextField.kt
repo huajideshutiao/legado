@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -28,10 +30,10 @@ import androidx.compose.material.TextFieldDefaults.indicatorLine
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.State
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -58,8 +60,6 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.requireLayoutCoordinates
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.ui.relocation.BringIntoViewModifierNode
 import androidx.compose.ui.relocation.bringIntoView
 import androidx.compose.ui.text.AnnotatedString
@@ -84,7 +84,6 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.unit.takeOrElse
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
@@ -95,6 +94,7 @@ import io.legado.app.ui.compose.component.TextFieldBottomInset
 import io.legado.app.ui.compose.component.TextFieldHorizontalPadding
 import io.legado.app.ui.compose.component.TextFieldLabelToText
 import io.legado.app.ui.compose.component.appFieldDefaultMinHeight
+import io.legado.app.ui.compose.component.code.CursorLineBringIntoViewNode.Companion.WaitFrames
 import io.legado.app.ui.compose.platform.rememberImeAnimating
 import io.legado.app.ui.compose.platform.rememberImeVisible
 import io.legado.app.ui.compose.theme.AppTheme
@@ -252,6 +252,14 @@ fun CodeTextField(
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     searchHighlight: CodeSearchHighlightState? = null,
     autoComplete: Boolean = true,
+    /**
+     * 键盘弹出动画期间的瞬移滚动器 (可选): 收到光标行**窗口坐标** rect, 滚动容器应以
+     * 无动画滚动 (scrollToItem/scrollBy 瞬时) 把该行保持在视口底部上方 —— 视口逐帧收缩
+     * 时光标始终可见且无动画滚动互相打断。未提供时动画期间不滚动, 动画结束后一次
+     * bringIntoView 收尾。长字段容器接线见各编辑页 (LazyColumn/verticalScroll 的
+     * imeScrollNowFor)。
+     */
+    imeScrollNow: ((Rect) -> Unit)? = null,
 ) {
     // 着色挂载窗口 (字符偏移区间, 对照原版 activeSyntaxSpans 的渲染窗口 ±20 行):
     // 全文 span 基线照旧维护, 但只有落在本窗口内的 span 会进 AnnotatedString ——
@@ -530,29 +538,57 @@ fun CodeTextField(
         }
     }
     val cursorLineRectState = rememberUpdatedState(cursorLineRect)
-    // IME 弹出期间按精确光标行持续请求 bringIntoView (对齐原版 adjustResize +
-    // EditText bringPointIntoView: 光标行完全可见则不滚, 不可见才滚到可见)。
-    // 与旧实现 (只在 imeVisible 翻转时滚一次) 的差异: 订阅文本/选区/焦点/键盘可见/查找激活
-    // 全部变化 —— 键盘已开时继续输入、光标下移出可视区、查找命中定位到屏幕外等场景
-    // 都会重新请求, 恢复原版"光标始终可见"契约; bringIntoView 幂等语义保证可见时不滚,
-    // 连续输入时实际滚动只发生在光标行越界那一刻。
+    // 光标行窗口 rect (瞬移滚动器输入): 字段局部光标行 + 字段窗口位置 (fieldWindowOffset)。
+    // 动画期间字段窗口位置恒定 (视口收缩只改容器高度, 内容坐标不动), 无需逐帧换算;
+    // 布局过期帧 (文本刚变) 返回 null, 由调用方跳过本帧
+    val cursorLineWindowRect: () -> Rect? = {
+        cursorLineRectState.value.invoke()?.let { local ->
+            val off = fieldWindowOffset
+            Rect(
+                off.x + local.left,
+                off.y + local.top,
+                off.x + local.right,
+                off.y + local.bottom,
+            )
+        }
+    }
+    // IME 弹出期间把光标行保持可见 (对齐原版 adjustResize + EditText bringPointIntoView:
+    // 光标行完全可见则不滚, 不可见才滚到可见)。与旧实现 (只在 imeVisible 翻转时滚一次)
+    // 的差异: 订阅文本/选区/焦点/键盘可见/查找激活全部变化 —— 键盘已开时继续输入、光标
+    // 下移出可视区、查找命中定位到屏幕外等场景都会重新请求, 恢复原版"光标始终可见"
+    // 契约; 滚动幂等语义保证可见时不滚, 连续输入时实际滚动只发生在光标行越界那一刻。
     // 查找定位场景: 面板输入框持焦后字段失焦 (isFocused=false) 但 searchHighlight 仍激活,
     // 需放宽焦点条件, 否则"下一个/上一个"命中屏幕外时选区变了不滚 (原版 focusCurrentMatch
     // 会 bringPointIntoView)。
     val imeRequester = remember { BringIntoViewRequester() }
-    // 只按"键盘是否可见"翻转触发, 不跟 inset 数值: 键盘弹出是一段动画, imeBottom 每帧都在变,
-    // 若作为 key 会逐帧发起 bringIntoView, 滚动请求互相打断 —— 表现为弹键盘时明显卡顿。
-    // 组合期不读 ime 数值 (逐帧重组), 由 rememberImeVisible 在副作用侧订阅翻转 (事件性);
-    // 翻转即键盘弹出/收起的边界, 此时根容器 padding 已按最终键盘高就位, 视口即最终视口。
+    // 只按"键盘是否可见/动画边界"翻转触发, 不跟 inset 数值: 键盘弹出是一段动画,
+    // imeBottom 每帧都在变, 若作为 key 会逐帧发起 bringIntoView, 滚动请求互相打断
+    // —— 表现为弹键盘时明显卡顿。组合期不读 ime 数值 (逐帧重组), 由 rememberImeVisible
+    // 在副作用侧订阅翻转 (事件性)。
+    // 滚动时机: 键盘弹出动画期间视口逐帧收缩 (宿主 imeDismissPadding 逐帧跟随), 已注册
+    // 瞬移滚动器时逐帧无动画跟随 (光标始终可见, 不打断); 动画结束 (imeAnimating
+    // true→false, 视口已稳定) 后一次 bringIntoView 收尾 (幂等, 已可见则不滚)。
     val imeVisible = rememberImeVisible()
     val searchActive = searchHighlight != null && searchHighlight.keyword.isNotEmpty()
-    LaunchedEffect(value.text, value.selection, isFocused, imeVisible, searchActive) {
+    LaunchedEffect(value.text, value.selection, isFocused, imeVisible, imeAnimating, searchActive) {
         if (!imeVisible) return@LaunchedEffect
         // 查找定位场景: 字段失焦 (面板持焦) 时仅查找激活才滚
         if (!isFocused && !searchActive) return@LaunchedEffect
-        // 等布局与当前文本同步后再取光标行几何: 输入后 onTextLayout 回传滞后一帧,
-        // cursorLineRect 在布局过期帧返回 null (旧布局按新偏移取行会越界崩溃);
-        // 循环重取最多 3 帧, 仍不同步则放弃本次 (下一次文本/选区变化会再触发)
+        // 键盘弹出动画期间: 视口逐帧收缩, 容器注册了瞬移滚动器时逐帧跟随 —— 光标行始终
+        // 可见且无动画滚动打断 (scrollToItem/scrollBy 瞬时, 见 imeScrollNowFor); 未注册时
+        // 动画期间不请求 (视口未稳定, 动画滚动互相打断, 见 bringIntoViewOnIme KDoc)
+        val scrollNow = imeScrollNow
+        if (scrollNow != null && imeAnimating) {
+            while (imeAnimating) {
+                cursorLineWindowRect()?.let(scrollNow)
+                delay(16)
+            }
+        }
+        // 动画结束 (或未注册瞬移滚动器): 一次 bringIntoView 收尾 (幂等, 已可见则不滚;
+        // 瞬移路径下光标已可见, 本请求 no-op 兜底)。等布局与当前文本同步后再取光标行
+        // 几何: 输入后 onTextLayout 回传滞后一帧, cursorLineRect 在布局过期帧返回 null
+        // (旧布局按新偏移取行会越界崩溃); 循环重取最多 3 帧, 仍不同步则放弃本次
+        // (下一次文本/选区变化会再触发)
         var rect: Rect? = null
         var frames = 0
         while (frames < 3) {
@@ -673,7 +709,15 @@ fun CodeTextField(
         }
     }
     AppTextFieldImpl(
-        modifier = modifier,
+        // 下划线形态统一外围间距 (对齐 AppTextField): 左右下各 4dp;
+        // showIndicator=false 内嵌形态 (无下划线) 不加, 由宿主容器自行排版
+        modifier = modifier.then(
+            if (showIndicator) {
+                Modifier.padding(start = 4.dp, end = 4.dp, bottom = 4.dp)
+            } else {
+                Modifier
+            }
+        ),
         isError = isError,
         errorMessage = errorMessage,
     ) {

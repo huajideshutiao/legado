@@ -56,6 +56,7 @@ import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.SelectAction
+import io.legado.app.ui.compose.component.dragSelectable
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppRoute
@@ -356,7 +357,21 @@ fun BookshelfManageRoute(
         state = state,
         callbacks = callbacks,
         listState = listState,
-        listModifier = Modifier,
+        // 边缘滑动多选(对照原版 DragSelectTouchHelper setSlideArea(16,50) + activeSlideSelect):
+        // 起手于左侧复选框列(56dp)进入拖选, ToggleAndReverse 语义;
+        // 与长按拖拽排序按起手位置区分, 二者互不抢占
+        listModifier = Modifier.dragSelectable(
+            listState = listState,
+            autoScrollScope = scope,
+            isSelected = { index ->
+                uiState.books.getOrNull(index)?.let { checkedMap[it.bookUrl] == true } ?: false
+            },
+            onSelectedChanged = { index, sel ->
+                uiState.books.getOrNull(index)?.let {
+                    screenModel.dispatch(BookshelfManageUiEvent.Toggle(it, sel))
+                }
+            },
+        ),
         coverSlot = { book, modifier -> bookCoverSlot(book, modifier, false, 0) },
         downloadRunning = downloadRunning,
         selectedCount = selectedCount,
