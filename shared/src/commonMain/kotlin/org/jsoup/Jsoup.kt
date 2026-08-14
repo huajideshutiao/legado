@@ -33,20 +33,29 @@ object Jsoup {
     var clientFactory: (() -> KmpHttpClient)? = null
 
     /** 创建一个 [Connection] */
+    // @JvmStatic: JS 桥接按静态方法反射调用 (对齐原版 Java jsoup 的静态 connect), 缺了会报
+    // Cannot find static method 'connect' (Kotlin object 方法默认是 INSTANCE 实例方法)
+    @JvmStatic
     fun connect(url: String): Connection = HttpConnection().url(url)
 
     /** 创建一个 [Connection] */
+    @JvmStatic
     fun connect(url: URL): Connection = HttpConnection().url(url)
 
     /** 创建一个新的会话 [Connection] */
+    @JvmStatic
     fun newSession(): Connection = HttpConnection()
 
+    @JvmStatic
     fun parse(html: String): Document = Ksoup.parse(html)
 
+    @JvmStatic
     fun parse(html: String, baseUri: String): Document = Ksoup.parse(html, baseUri)
 
+    @JvmStatic
     fun parseBodyFragment(bodyHtml: String): Document = Ksoup.parseBodyFragment(bodyHtml)
 
+    @JvmStatic
     fun parseBodyFragment(bodyHtml: String, baseUri: String): Document =
         Ksoup.parseBodyFragment(bodyHtml, baseUri)
 }

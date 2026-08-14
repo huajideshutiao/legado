@@ -35,6 +35,10 @@ namespace {
     jclass g_bindingHandlerCls = nullptr;
     jmethodID g_bindingCall = nullptr;
     jclass g_objectCls = nullptr;            // jsArgsToJavaArray 的 NewObjectArray 用
+    jclass g_throwableCls = nullptr;         // 异常穿桥转 Error 用 (toString 取文本)
+    jmethodID g_throwableToStringMid = nullptr;
+    jclass g_iteCls = nullptr;               // InvocationTargetException (反射包装, 剥壳取 cause)
+    jmethodID g_throwableGetCauseMid = nullptr;
 
     // 双检锁 + __atomic 屏障 (替代 std::call_once, 免 libc++ 依赖; pthread_once 无法传 env)。
     // RELEASE/ACQUIRE 保证初始化写入 happen-before fast path 的读取。
@@ -111,6 +115,27 @@ namespace {
                                                    "(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/Object;");
             if (!g_bindingCall) {
                 LOGE("BindingHandler.call not found");
+                env->ExceptionClear();
+            }
+
+            // Throwable.toString 缓存 (异常穿桥转 Error 用)
+            jclass thrCls = env->FindClass("java/lang/Throwable");
+            if (thrCls) {
+                g_throwableCls = (jclass) env->NewGlobalRef(thrCls);
+                g_throwableToStringMid = env->GetMethodID(thrCls, "toString", "()Ljava/lang/String;");
+                g_throwableGetCauseMid = env->GetMethodID(thrCls, "getCause", "()Ljava/lang/Throwable;");
+                env->DeleteLocalRef(thrCls);
+            } else {
+                LOGE("java.lang.Throwable class not found");
+                env->ExceptionClear();
+            }
+            // InvocationTargetException (反射 method.invoke 的包装, 异常文本要剥壳)
+            jclass iteCls = env->FindClass("java/lang/reflect/InvocationTargetException");
+            if (iteCls) {
+                g_iteCls = (jclass) env->NewGlobalRef(iteCls);
+                env->DeleteLocalRef(iteCls);
+            } else {
+                LOGE("InvocationTargetException class not found");
                 env->ExceptionClear();
             }
         } while (0);
@@ -247,26 +272,23 @@ static JSValue jsMethodCallable(JSContext *ctx, JSValueConst this_val,
     }
 
     jstring jMethodName = env->NewStringUTF(methodName);
+
     jobject result = env->CallStaticObjectMethod(
             g_bridgeNativeCls, g_callMethodByObj,
             javaObj, jMethodName, javaArgs, dangerousApi ? JNI_TRUE : JNI_FALSE);
+
     env->DeleteLocalRef(jMethodName);
     if (javaArgs) env->DeleteLocalRef(javaArgs);
 
     if (env->ExceptionCheck()) {
-        // 对齐 rhino WrappedException: 把原始 Throwable wrap 成 JavaObject 后 JS_Throw,
-        // 让 JS catch(e) 能拿回原始异常, e 传回 Java 时 isInstance 还原。
+        // 异常穿桥根因修复: 不再 wrap JavaObject (Android 实证 trap 嵌套崩溃),
+        // 改标准 Error (对齐 quickjs-kt 老正式版行为), 见 throwJavaExceptionAsJsError
         jthrowable thr = env->ExceptionOccurred();
         env->ExceptionClear();
         if (result) env->DeleteLocalRef(result);
         if (thr) {
-            JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
-            env->DeleteLocalRef(thr);
             JS_FreeCString(ctx, methodName);
-            if (JS_IsException(errObj)) return JS_EXCEPTION;
-            // JS_Throw 偷走引用, 不能再 FreeValue, 否则 current_exception 悬空 → UAF。
-            JS_Throw(ctx, errObj);
-            return JS_EXCEPTION;
+            return throwJavaExceptionAsJsError(ctx, env, thr, "Java method threw");
         }
         JSValue exc = JS_ThrowInternalError(ctx, "Java method '%s' threw (no throwable)",
                                             methodName);
@@ -341,11 +363,13 @@ JSValue getOrCreateMethodCallable(JSContext *ctx, JSAtom atom) {
     }
 
     const char *methodName = JS_AtomToCString(ctx, atom);
+
     if (!methodName) return JS_EXCEPTION;
     JSValue data[1];
     data[0] = JS_NewString(ctx, methodName);
     JS_FreeCString(ctx, methodName);
     JSValue fn = JS_NewCFunctionData(ctx, jsMethodCallable, 0, 0, 1, data);
+
     JS_FreeValue(ctx, data[0]);
 
     if (opq && !JS_IsException(fn)) {
@@ -419,17 +443,13 @@ static JSValue jsBindingCall(JSContext *ctx, JSValueConst this_val,
     if (javaArgs) env->DeleteLocalRef(javaArgs);
 
     if (env->ExceptionCheck()) {
-        // 对齐 rhino WrappedException, 详见 jsMethodCallable。
+        // 异常穿桥根因修复: 不再 wrap JavaObject, 改标准 Error (见 jni_callbacks.h)
         jthrowable thr = env->ExceptionOccurred();
         env->ExceptionClear();
         if (result) env->DeleteLocalRef(result);
         if (thr) {
-            JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
-            env->DeleteLocalRef(thr);
             JS_FreeCString(ctx, name);
-            if (JS_IsException(errObj)) return JS_EXCEPTION;
-            JS_Throw(ctx, errObj);
-            return JS_EXCEPTION;
+            return throwJavaExceptionAsJsError(ctx, env, thr, "Java binding threw");
         }
         JSValue exc = JS_ThrowInternalError(ctx, "Java binding '%s' threw (no throwable)", name);
         JS_FreeCString(ctx, name);
@@ -474,4 +494,92 @@ bool defineBinding(JSContext *ctx, const char *name) {
     JS_FreeValue(ctx, global);
 
     return ret >= 0;
+}
+
+// ============ 异常穿桥根因修复: Throwable → 标准 JS Error ============
+
+JSValue throwJavaExceptionAsJsError(JSContext *ctx, JNIEnv *env, jthrowable thr,
+        const char *fallbackMsg) {
+    // 异常穿桥对标 rhino WrappedException 语义:
+    // - 异常对象本身不能是 JavaObject (带 exotic trap, JS 引擎 unwind/GC/toString 处理异常
+    //   对象时反向调 Java, 嵌套 JNI 破坏引擎状态 → SIGABRT/SIGSEGV/heap corruption);
+    //   实证: Error 上挂 JavaObject 属性 (javaException) 在 JVM 即触发 0xC0000374 堆损坏,
+    //   与 Android 崩溃同源。故只保留文本: name=JavaException → toString() = "JavaException: <msg>"
+    //   (对齐 rhino WrappedException 文本), message = Throwable.toString() 文本。
+    jstring msgJstr = nullptr;
+    if (thr && g_throwableToStringMid) {
+        // 反射 method.invoke 抛 InvocationTargetException 包装原始异常, 剥壳取根 cause 文本
+        jobject cur = env->NewLocalRef(thr);
+        for (int i = 0; i < 8 && cur; i++) {
+            if (g_iteCls && env->IsInstanceOf(cur, g_iteCls)) {
+                jobject cause = env->CallObjectMethod(cur, g_throwableGetCauseMid);
+                env->DeleteLocalRef(cur);
+                if (env->ExceptionCheck()) {
+                    env->ExceptionClear();
+                    cur = nullptr;
+                    break;
+                }
+                cur = cause;
+            } else {
+                break;
+            }
+        }
+        if (cur) {
+            msgJstr = (jstring) env->CallObjectMethod(cur, g_throwableToStringMid);
+            env->DeleteLocalRef(cur);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                msgJstr = nullptr;
+            }
+        }
+    }
+    const char *msg = msgJstr ? env->GetStringUTFChars(msgJstr, nullptr) : nullptr;
+    const char *msgSafe = (msg && msg[0] != '\0')
+            ? msg
+            : (fallbackMsg ? fallbackMsg : "Java method threw");
+
+    // 对齐 JS_MakeError2: Error 类 + DefinePropertyValue。
+    // 注意: JS_DefinePropertyValue/JS_SetProperty 内部会 FreeValue(val) (见 quickjs.c
+    // JS_DefinePropertyValue 实现), 调用方绝不能再次 FreeValue, 否则 double free →
+    // heap corruption (JVM 0xC0000374) / atom 表损坏 (Android FreeAtomStruct 断言)。
+    JSValue errObj = JS_NewError(ctx);
+    if (JS_IsException(errObj)) {
+        // OOM: 已设 current_exception, 直接返回
+        if (msg) env->ReleaseStringUTFChars(msgJstr, msg);
+        if (msgJstr) env->DeleteLocalRef(msgJstr);
+        if (thr) env->DeleteLocalRef(thr);
+        return JS_EXCEPTION;
+    }
+    JSValue nameVal = JS_NewString(ctx, "JavaException");
+    JSValue msgVal = JS_NewString(ctx, msgSafe);
+    if (!JS_IsException(nameVal) && !JS_IsException(msgVal)) {
+        JSAtom nameAtom = JS_NewAtom(ctx, "name");
+        JSAtom msgAtom = JS_NewAtom(ctx, "message");
+        if (nameAtom != JS_ATOM_NULL) {
+            // nameVal 被内部 FreeValue, 此处不再 free
+            JS_DefinePropertyValue(ctx, errObj, nameAtom, nameVal,
+                    JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+            JS_FreeAtom(ctx, nameAtom);
+        } else {
+            JS_FreeValue(ctx, nameVal);
+        }
+        if (msgAtom != JS_ATOM_NULL) {
+            // msgVal 被内部 FreeValue, 此处不再 free
+            JS_DefinePropertyValue(ctx, errObj, msgAtom, msgVal,
+                    JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE);
+            JS_FreeAtom(ctx, msgAtom);
+        } else {
+            JS_FreeValue(ctx, msgVal);
+        }
+    } else {
+        // JS_NewString 失败 (OOM): 清理未使用的值
+        if (!JS_IsException(nameVal)) JS_FreeValue(ctx, nameVal);
+        if (!JS_IsException(msgVal)) JS_FreeValue(ctx, msgVal);
+    }
+    if (msg) env->ReleaseStringUTFChars(msgJstr, msg);
+    if (msgJstr) env->DeleteLocalRef(msgJstr);
+    if (thr) env->DeleteLocalRef(thr);
+    // JS_Throw 偷走 errObj 引用 (不 FreeValue)
+    JS_Throw(ctx, errObj);
+    return JS_EXCEPTION;
 }

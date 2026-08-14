@@ -28,6 +28,12 @@ data class WebViewConfig(
     val saveResult: Boolean = false,
     val refetchAfterSuccess: Boolean = true,
     val sourceKey: String = "",
+    /**
+     * 关闭滚动到边界时的 overscroll 光晕 (仅 Android 生效):
+     * 半屏 WebView Sheet 场景置 true, 网页滚到顶后下拉事件不再被 WebView 消费,
+     * 落到外层 BottomSheet 的拖拽路径 (sheet 跟随下拉关闭)。
+     */
+    val overScrollNever: Boolean = false,
 )
 
 /**

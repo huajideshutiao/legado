@@ -2128,7 +2128,8 @@ class AndroidPlatformCapabilities(
         if (mdText != null) {
             activity.showDialogFragment(TextDialog(title, mdText, TextDialog.Mode.MD))
         } else {
-            val path = if (fileName == "LICENSE.md") "LICENSE" else "app/src/main/assets/$fileName"
+            val path =
+                if (fileName == "LICENSE.md") "LICENSE" else "shared/src/commonMain/resources/$fileName"
             activity.openUrl("https://github.com/huajideshutiao/legado/blob/master/$path")
         }
     }

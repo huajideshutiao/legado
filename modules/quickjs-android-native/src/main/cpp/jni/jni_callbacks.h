@@ -5,6 +5,14 @@
 #include <jni.h>
 #include <cstdint>
 
+// 把 Java Throwable 异常转为标准 JS Error 抛给 JS (异常穿桥根因修复)。
+// 不再包装 JavaObject: JavaObject 带 exotic trap, JS 引擎在 unwind/GC/toString 异常对象时
+// 会反向调 Java 反射, 在异常处理路径中嵌套 JNI 调用会破坏引擎状态 (SIGSEGV/SIGABRT)。
+// 标准 Error 对象生命周期完全由 quickjs 管理, 无 trap 无 JNI 嵌套, 彻底消除该风险。
+// 返回 JS_EXCEPTION (current_exception 已设置), 调用方直接 return。
+JSValue throwJavaExceptionAsJsError(JSContext *ctx, JNIEnv *env, jthrowable thr,
+        const char *fallbackMsg);
+
 /**
  * JS 回调函数管理 (method callable + binding 注册)。
  *

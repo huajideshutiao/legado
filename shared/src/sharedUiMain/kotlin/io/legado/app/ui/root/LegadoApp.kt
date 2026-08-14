@@ -12,12 +12,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.LinearProgressIndicator
-import androidx.compose.material.ModalBottomSheetLayout
-import androidx.compose.material.ModalBottomSheetValue
+import androidx.compose.material.Surface
 import androidx.compose.material.Text
-import androidx.compose.material.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -36,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -79,6 +78,7 @@ import io.legado.app.ui.bookshelf.toCoverBook
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.browser.WebViewCallbacks
 import io.legado.app.ui.browser.WebViewConfig
+import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppSelectorDialog
 import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.LocalTransitionFrozenStatusBarHeightPx
@@ -1214,101 +1214,86 @@ private fun DirectLinkUploadConfigOverlayDialogContent(
     }
 }
 
-// 通用 Sheet: ModalBottomSheetLayout 承载, 下滑收起后移除该 Overlay
+// 通用 Sheet: AppBottomSheetDialog 承载 (项目统一底部弹层: 高度 0.8 锚点高, Dialog 窗口
+// 无状态栏 padding, 下拉拖拽/外部点击/返回键关闭), 关闭后移除该 Overlay
 // key 路由: "web_view" 渲染平台 WebView slot (对照 app 端 startBrowser asBottomSheet=true);
 // 其他特殊 sheet key 由 OverlayDialogs 子代理按 key 接入具体内容
-@OptIn(ExperimentalMaterialApi::class)
 @Composable
 private fun SheetOverlayContent(overlay: AppOverlay.Sheet, navigator: AppNavigator) {
-    // E-Ink 直接以 Expanded 起步 = 无进场动画 (对齐 app 版无动画);
-    // 其余以 Hidden 起步, 由下方 show() 滑入展开
-    val sheetState = rememberModalBottomSheetState(
-        if (AppConfigProviders.get().isEInkMode) ModalBottomSheetValue.Expanded
-        else ModalBottomSheetValue.Hidden
-    )
-    var hasShown by remember { mutableStateOf(false) }
-    ModalBottomSheetLayout(
-        sheetState = sheetState,
-        sheetContent = {
-            when (overlay.key) {
-                "web_view" -> {
-                    val url = overlay.payload ?: return@ModalBottomSheetLayout
-                    // 顶栏 + 进度条 + 内容区 (对齐 WebViewRoute 的路由页形态, 修复 Sheet 白屏无顶栏):
-                    // 原版 activity_web_view.xml TitleBar 静态常显 + RefreshProgressBar 1dp 加载即常驻
-                    var pageTitle by remember { mutableStateOf("") }
-                    var loadProgress by remember { mutableStateOf<Int?>(null) }
-                    // 收到首个进度回调前 indeterminate 常驻 (原版加载即常驻, 100 隐藏)
-                    var progressStarted by remember { mutableStateOf(false) }
-                    val webCallbacks = remember { WebViewCallbacks() }
-                    // 网页 title/进度接线 (对齐 WebViewRoute: title 非空且非 url 才更新; 100 隐藏进度)
-                    SideEffect {
-                        webCallbacks.onReceivedTitle = { title ->
-                            if (!title.isNullOrBlank() && !title.startsWith("http")) {
-                                pageTitle = title
+    AppBottomSheetDialog(
+        onDismissRequest = { navigator.dismissOverlay(overlay.key) },
+    ) {
+        AppTheme {
+            Surface(
+                color = AppTheme.colors.background,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // 顶部圆角 20dp (对照原版 JsActivity BottomSheetDialog 的 GradientDrawable
+                    // 20dp 顶部圆角); 外层同色背景矩形会填掉内层 Column 裁剪掉的顶角, 这里同样裁圆角
+                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
+            ) {
+                when (overlay.key) {
+                    "web_view" -> {
+                        val url = overlay.payload ?: return@Surface
+                        // 顶栏 + 进度条 + 内容区 (对齐 WebViewRoute 的路由页形态, 修复 Sheet 白屏无顶栏):
+                        // 原版 activity_web_view.xml TitleBar 静态常显 + RefreshProgressBar 1dp 加载即常驻
+                        var pageTitle by remember { mutableStateOf("") }
+                        var loadProgress by remember { mutableStateOf<Int?>(null) }
+                        // 收到首个进度回调前 indeterminate 常驻 (原版加载即常驻, 100 隐藏)
+                        var progressStarted by remember { mutableStateOf(false) }
+                        val webCallbacks = remember { WebViewCallbacks() }
+                        // 网页 title/进度接线 (对齐 WebViewRoute: title 非空且非 url 才更新; 100 隐藏进度)
+                        SideEffect {
+                            webCallbacks.onReceivedTitle = { title ->
+                                if (!title.isNullOrBlank() && !title.startsWith("http")) {
+                                    pageTitle = title
+                                }
+                            }
+                            webCallbacks.onProgressChanged = { progress ->
+                                progressStarted = true
+                                loadProgress = if (progress >= 100) null else progress
                             }
                         }
-                        webCallbacks.onProgressChanged = { progress ->
-                            progressStarted = true
-                            loadProgress = if (progress >= 100) null else progress
-                        }
-                    }
-                    Column(Modifier.fillMaxSize()) {
-                        AppTitleBar(
-                            title = pageTitle.ifBlank { stringResource(Res.string.loading) },
-                            onBack = { navigator.dismissOverlay(overlay.key) },
-                        )
-                        if (!progressStarted) {
-                            LinearProgressIndicator(
-                                modifier = Modifier.fillMaxWidth().height(1.dp),
-                                color = AppTheme.colors.accent,
+                        Column(Modifier.fillMaxSize()) {
+                            AppTitleBar(
+                                title = pageTitle.ifBlank { stringResource(Res.string.loading) },
+                                onBack = { navigator.dismissOverlay(overlay.key) },
                             )
-                        } else {
-                            val progress = loadProgress
-                            if (progress != null) {
-                                val animatedProgress by animateFloatAsState(progress / 100f)
+                            if (!progressStarted) {
                                 LinearProgressIndicator(
-                                    progress = animatedProgress,
                                     modifier = Modifier.fillMaxWidth().height(1.dp),
                                     color = AppTheme.colors.accent,
                                 )
+                            } else {
+                                val progress = loadProgress
+                                if (progress != null) {
+                                    val animatedProgress by animateFloatAsState(progress / 100f)
+                                    LinearProgressIndicator(
+                                        progress = animatedProgress,
+                                        modifier = Modifier.fillMaxWidth().height(1.dp),
+                                        color = AppTheme.colors.accent,
+                                    )
+                                }
+                            }
+                            // 内容区: 主题底色占位 (WebView 组合/加载完成前不白屏) + 平台 WebView slot
+                            Box(
+                                Modifier.fillMaxWidth().weight(1f)
+                                    .background(AppTheme.colors.background)
+                            ) {
+                                LocalWebViewSlot.current(
+                                    // overScrollNever: 网页滚到边界后下拉事件不被 WebView 消费,
+                                    // 交还外层 BottomSheet 拖拽路径 (sheet 跟随下拉关闭)
+                                    WebViewConfig(url = url, overScrollNever = true),
+                                    Modifier.fillMaxSize(),
+                                    webCallbacks,
+                                )
                             }
                         }
-                        // 内容区: 主题底色占位 (WebView 组合/加载完成前不白屏) + 平台 WebView slot
-                        Box(
-                            Modifier.fillMaxWidth().weight(1f)
-                                .background(AppTheme.colors.background)
-                        ) {
-                            LocalWebViewSlot.current(
-                                WebViewConfig(url = url),
-                                Modifier.fillMaxSize(),
-                                webCallbacks,
-                            )
-                        }
                     }
+                    // 其他 sheet key 由 OverlayDialogs 子代理接入
+                    else -> overlay.payload?.let { Text(it) }
                 }
-                // 其他 sheet key 由 OverlayDialogs 子代理接入
-                else -> overlay.payload?.let { Text(it) }
             }
-        },
-        sheetElevation = 0.dp,
-        // 原版 BaseBottomDialogFragment 清 FLAG_DIM_BEHIND: 弹层不压暗底层。
-        // Transparent 而非 Unspecified: 保留 scrim 的点击收起 (下滑收起之外的外部点击路径)。
-        scrimColor = Color.Transparent,
-        content = { Box(Modifier.fillMaxSize()) },
-    )
-    // 初始 Hidden 再滑入展开: 对齐 app 版底部菜单滑入动画 (E-Ink 已起步 Expanded, 无动画)。
-    // 滑入/滑出动画由 ModalBottomSheetState 组件内部驱动 (平台组件语义, material API 不暴露
-    // 时长参数, 不强行参数化); sheet 类动画参数化集中点在 AppBottomSheetDialog (读平台 spec)。
-    LaunchedEffect(Unit) {
-        if (sheetState.currentValue != ModalBottomSheetValue.Expanded) {
-            sheetState.show()
-        }
-        hasShown = true
-    }
-    LaunchedEffect(sheetState.currentValue) {
-        // hasShown 排除初始 Hidden (滑入动画起点), 只在展开过之后响应下滑收起
-        if (hasShown && sheetState.currentValue == ModalBottomSheetValue.Hidden) {
-            navigator.dismissOverlay(overlay.key)
         }
     }
 }

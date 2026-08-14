@@ -69,13 +69,17 @@ android {
     compileSdk = 37
 
     signingConfigs {
+        // minSdk 24, v2/v3 签名已足够, 关闭 v1 省去 APK 内 JAR 签名清单 (CERT.SF+MANIFEST.MF ~220KB)
+        getByName("debug") {
+            enableV1Signing = false
+        }
         if (project.hasProperty("RELEASE_STORE_FILE")) {
             create("myConfig") {
                 storeFile = file(project.property("RELEASE_STORE_FILE") as String)
                 storePassword = project.property("RELEASE_STORE_PASSWORD") as String
                 keyAlias = project.property("RELEASE_KEY_ALIAS") as String
                 keyPassword = project.property("RELEASE_KEY_PASSWORD") as String
-                enableV1Signing = true
+                enableV1Signing = false
                 enableV2Signing = true
                 enableV3Signing = true
                 enableV4Signing = true
@@ -181,6 +185,13 @@ android {
         resources.excludes.add("META-INF/versions/**")
         // quick-transfer-core 的 tc 词典(1.2MB)运行时不读: 走 RemoteAssetsUtils 缓存/远程下载
         resources.excludes.add("tc/*")
+        // 依赖 jar 自带的运行时无用载荷: kotlinx-coroutines 调试探测文件 / Kotlin 工具元数据 /
+        // play-services 版本属性 (纯元数据, 运行时无消费方)
+        resources.excludes.add("DebugProbesKt.bin")
+        resources.excludes.add("kotlin-tooling-metadata.json")
+        resources.excludes.add("play-services-*.properties")
+        // LICENSE/disclaimer/privacyPolicy.md 统一在 shared/src/commonMain/resources (共享一份),
+        // Android 端经 classpath 读 APK 根级副本 (AboutScreen/MainActivity), 不可排除
         jniLibs.excludes.add("lib/*/libcronet*.so")
     }
 

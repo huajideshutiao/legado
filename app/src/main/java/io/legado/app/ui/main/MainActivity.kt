@@ -41,7 +41,6 @@ import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.config.LocalReadConfigProviders
 import io.legado.app.help.config.ReadBookConfig
@@ -49,6 +48,7 @@ import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.config.ReadConfigProviders
 import io.legado.app.help.config.ReadTipConfigShared
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.help.image.ReaderImageCache
 import io.legado.app.help.image.registerReaderImageResolver
 import io.legado.app.help.storage.Backup
@@ -89,7 +89,6 @@ import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.browser.AndroidWebView
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.compose.dialogs.alert
-import io.legado.app.ui.compose.platform.findStringResource
 import io.legado.app.ui.dict.DictDialogHost
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.file.registerHandleFile
@@ -104,25 +103,22 @@ import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.ScreenModelStore
 import io.legado.app.ui.widget.PopupAction
-import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.ACache
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.registerForActivityResult
-import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showExportSuccess
 import io.legado.app.utils.startService
 import io.legado.app.utils.sysScreenOffTime
 import io.legado.app.utils.toastOnUi
-import org.jetbrains.compose.resources.getString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
-import kotlinx.coroutines.flow.first
 
 /**
  * 主界面：零薄壳入口。Content 调用 shared [LegadoApp]，由 shared RouteContent 统一渲染。
@@ -768,7 +764,11 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
             block.resume(true)
             return@sc
         }
-        val privacyPolicy = String(assets.open("privacyPolicy.md").readBytes())
+        // privacyPolicy.md 统一存于 shared/src/commonMain/resources (共享一份), 经 classpath 读取
+        val privacyPolicy = javaClass.classLoader
+            ?.getResourceAsStream("privacyPolicy.md")
+            ?.bufferedReader()
+            ?.use { it.readText() }
         alert(androidAppString("privacy_policy"), privacyPolicy) {
             positiveButton(androidAppString("agree")) {
                 LocalConfig.privacyPolicyOk = true

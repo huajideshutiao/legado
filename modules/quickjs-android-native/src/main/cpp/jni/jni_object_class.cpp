@@ -395,10 +395,8 @@ namespace {
             jthrowable thr = env->ExceptionOccurred();
             env->ExceptionClear();
             if (thr) {
-                JSValue error = JavaObjectClass::wrap(ctx, env, thr);
-                env->DeleteLocalRef(thr);
-                if (JS_IsException(error)) return JS_EXCEPTION;
-                JS_Throw(ctx, error);
+                // 异常穿桥根因修复: 不再 wrap JavaObject, 改标准 Error (见 jni_callbacks.h)
+                throwJavaExceptionAsJsError(ctx, env, thr, "Creating Java array result failed");
                 return JS_EXCEPTION;
             }
             return JS_ThrowInternalError(ctx, "Creating Java array result failed");
@@ -608,6 +606,7 @@ namespace {
 }
 
 JSClassID JavaObjectClass::init(JSRuntime *rt, JavaVM *jvm) {
+
     // nativeCreateContext 可能并发调用, 整段加锁。
     pthread_mutex_lock(&registryMutex);
     cachedJvm = jvm;
@@ -639,6 +638,7 @@ JSClassID JavaObjectClass::init(JSRuntime *rt, JavaVM *jvm) {
         def.exotic = &exotic;
 
         int ret = JS_NewClass(rt, classId, &def);
+
         if (ret != 0) {
             LOGE("JS_NewClass failed for JavaObject: ret=%d", ret);
             pthread_mutex_unlock(&registryMutex);
@@ -745,6 +745,7 @@ const char *JavaObjectClass::atomToCString(JSContext *ctx, JSAtom atom) {
 // 所有 trap 从 ctx opaque 读取 dangerousApi, 传递给 Java 侧
 
 int JavaObjectClass::hasProperty(JSContext *ctx, JSValueConst obj, JSAtom prop) {
+
     JNIEnv *env = getJniEnv();
     if (!env) {
         JS_ThrowInternalError(ctx, "JNI env unavailable in hasProperty");
@@ -778,20 +779,11 @@ int JavaObjectClass::hasProperty(JSContext *ctx, JSValueConst obj, JSAtom prop) 
     env->DeleteLocalRef(jname);
 
     if (env->ExceptionCheck()) {
-        // 对齐 rhino WrappedException: 包装原始 Throwable 传给 JS catch
-        // (见 jni_callbacks.cpp jsMethodCallable 同类处理)
+        // 异常穿桥根因修复: 不再 wrap JavaObject, 改标准 Error (见 jni_callbacks.h)
         jthrowable thr = env->ExceptionOccurred();
         env->ExceptionClear();
         if (thr) {
-            JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
-            env->DeleteLocalRef(thr);
-            // wrap 失败(classId==0/OOM)返回 JS_EXCEPTION(JS_ThrowInternalError 已设 Error 到
-            // current_exception), 不再 JS_Throw 覆盖(JS_Throw 不检测 JS_EXCEPTION, 会清空已设 Error)
-            if (JS_IsException(errObj)) return -1;
-            // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue,
-            // 否则 refcount 归 0 立即释放, rt->current_exception 悬空,
-            // JS catch(e) 拿到已释放的 JavaObject → use-after-free → SIGSEGV fault addr 0x8
-            JS_Throw(ctx, errObj);
+            throwJavaExceptionAsJsError(ctx, env, thr, "Java hasProperty threw");
             return -1;
         }
         JS_ThrowInternalError(ctx, "Java hasProperty threw (no throwable)");
@@ -900,19 +892,15 @@ JSValue JavaObjectClass::getProperty(JSContext *ctx, JSValueConst obj, JSAtom at
     env->DeleteLocalRef(jname);
 
     if (env->ExceptionCheck()) {
-        // 对齐 rhino WrappedException: 包装原始 Throwable 传给 JS catch
-        // (见 jni_callbacks.cpp jsMethodCallable 同类处理)
+
+        // 异常穿桥根因修复: 不再 wrap JavaObject, 改标准 Error (见 jni_callbacks.h)
         jthrowable thr = env->ExceptionOccurred();
         env->ExceptionClear();
         if (info) env->DeleteLocalRef(info);
         if (thr) {
-            JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
-            env->DeleteLocalRef(thr);
-            // wrap 失败(classId==0/OOM)返回 JS_EXCEPTION(JS_ThrowInternalError 已设 Error 到
-            // current_exception), 不再 JS_Throw 覆盖(JS_Throw 不检测 JS_EXCEPTION, 会清空已设 Error)
-            if (JS_IsException(errObj)) return JS_EXCEPTION;
-            // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue (否则 UAF, 见 hasProperty 注释)
-            JS_Throw(ctx, errObj);
+
+            throwJavaExceptionAsJsError(ctx, env, thr, "Java getPropertyInfo threw");
+
             return JS_EXCEPTION;
         }
         return JS_ThrowInternalError(ctx, "Java getPropertyInfo threw (no throwable)");
@@ -1015,13 +1003,8 @@ int JavaObjectClass::setProperty(JSContext *ctx, JSValueConst obj, JSAtom atom,
         jthrowable thr = env->ExceptionOccurred();
         env->ExceptionClear();
         if (thr) {
-            JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
-            env->DeleteLocalRef(thr);
-            // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue (否则 UAF, 见 hasProperty 注释)
-            // wrap 失败(classId==0/OOM)返回 JS_EXCEPTION(JS_ThrowInternalError 已设 Error 到
-            // current_exception), 不再 JS_Throw 覆盖(JS_Throw 不检测 JS_EXCEPTION, 会清空已设 Error)
-            if (JS_IsException(errObj)) return -1;
-            JS_Throw(ctx, errObj);
+            // 异常穿桥根因修复: 不再 wrap JavaObject, 改标准 Error (见 jni_callbacks.h)
+            throwJavaExceptionAsJsError(ctx, env, thr, "Java setProperty threw");
             return -1;
         }
         JS_ThrowInternalError(ctx, "Java setProperty threw (no throwable)");
@@ -1078,13 +1061,8 @@ int JavaObjectClass::getOwnProperty(JSContext *ctx, JSPropertyDescriptor *desc,
         env->ExceptionClear();
         if (info) env->DeleteLocalRef(info);
         if (thr) {
-            JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
-            env->DeleteLocalRef(thr);
-            // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue (否则 UAF, 见 hasProperty 注释)
-            // wrap 失败(classId==0/OOM)返回 JS_EXCEPTION(JS_ThrowInternalError 已设 Error 到
-            // current_exception), 不再 JS_Throw 覆盖(JS_Throw 不检测 JS_EXCEPTION, 会清空已设 Error)
-            if (JS_IsException(errObj)) return -1;
-            JS_Throw(ctx, errObj);
+            // 异常穿桥根因修复: 不再 wrap JavaObject, 改标准 Error (见 jni_callbacks.h)
+            throwJavaExceptionAsJsError(ctx, env, thr, "Java getPropertyInfo threw");
             return -1;
         }
         JS_ThrowInternalError(ctx, "Java getPropertyInfo threw (no throwable)");
@@ -1158,21 +1136,14 @@ int JavaObjectClass::getOwnPropertyNames(JSContext *ctx, JSPropertyEnum **ptab,
                                                             dangerousApi ? JNI_TRUE
                                                                          : JNI_FALSE);
     if (env->ExceptionCheck()) {
-        // 对齐 rhino WrappedException: 包装原始 Throwable 传给 JS catch
-        // (见 jni_callbacks.cpp jsMethodCallable 同类处理)
+        // 异常穿桥根因修复: 不再 wrap JavaObject, 改标准 Error (见 jni_callbacks.h)
         jthrowable thr = env->ExceptionOccurred();
         env->ExceptionClear();
         if (names) env->DeleteLocalRef(names);
         *ptab = nullptr;
         *plen = 0;
         if (thr) {
-            JSValue errObj = JavaObjectClass::wrap(ctx, env, thr);
-            env->DeleteLocalRef(thr);
-            // JS_Throw 偷走 errObj 引用 (不 DupValue), 不再 JS_FreeValue (否则 UAF, 见 hasProperty 注释)
-            // wrap 失败(classId==0/OOM)返回 JS_EXCEPTION(JS_ThrowInternalError 已设 Error 到
-            // current_exception), 不再 JS_Throw 覆盖(JS_Throw 不检测 JS_EXCEPTION, 会清空已设 Error)
-            if (JS_IsException(errObj)) return -1;
-            JS_Throw(ctx, errObj);
+            throwJavaExceptionAsJsError(ctx, env, thr, "Java getPropertyNames threw");
             return -1;
         }
         JS_ThrowInternalError(ctx, "Java getPropertyNames threw (no throwable)");
@@ -1226,6 +1197,9 @@ int JavaObjectClass::getOwnPropertyNames(JSContext *ctx, JSPropertyEnum **ptab,
 void JavaObjectClass::finalizer(JSRuntime *rt, JSValueConst val) {
     auto globalRef = (jobject) JS_GetOpaque(val, classId);
     if (!globalRef || !cachedJvm) return;
+
+    // 插桩: 记录 JavaObject 被 JS 引擎释放(异常对象/Java 返回值生命周期)
+    LOGE("JavaObjectClass finalizer");
 
     JNIEnv *env = nullptr;
     jint ret = cachedJvm->GetEnv((void **) &env, JNI_VERSION_1_6);

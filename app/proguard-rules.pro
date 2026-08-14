@@ -97,12 +97,6 @@
 -dontwarn okhttp3.internal.**
 
 ############################
-# JsonPath
-############################
--keep class com.jayway.jsonpath.** { *; }
--dontwarn com.jayway.jsonpath.**
-
-############################
 # Markwon
 ############################
 -dontwarn org.commonmark.ext.gfm.**

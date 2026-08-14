@@ -1,5 +1,8 @@
 # js变量和函数
-> 阅读使用[QuickJS-ng v0.15.1](https://github.com/quickjs-ng/quickjs) 作为JavaScript引擎，支持ES2023绝大部分特性；
+
+> 阅读使用[QuickJS-ng](https://github.com/quickjs-ng/quickjs)（master 快照：位于 v0.15.1 之后、v0.16.0
+> 之前，pin commit `5f2fb55994413afcaeec2942021cc93bfafd0f81`，2026-06-27；quickjs.h 里的版本宏仍写
+> 0.15.1，不代表真实版本）作为JavaScript引擎，支持ES2023绝大部分特性；
 > 并内置Java桥接层（兼容Rhino LiveConnect写法）用于调用Java类和方法
 
 |构造函数|函数|对象|简要说明|
@@ -13,37 +16,39 @@
 > 在书源规则中使用`@js` `<js>` `{{}}`可使用JavaScript调用阅读部分内置的类和方法
 
 >
-注意为了安全，阅读会屏蔽部分java类调用，见[JsSecurityPolicy](https://github.com/huajideshutiao/legado/blob/master/modules/quickjs/src/main/java/com/script/quickjs/JsSecurityPolicy.kt)；源开启`enableDangerousApi`后放行（慎用）
+注意为了安全，阅读会屏蔽部分java类调用，见[JsSecurityPolicy](https://github.com/huajideshutiao/legado/blob/master/modules/quickjs/src/commonMain/kotlin/com/script/quickjs/JsSecurityPolicy.kt)
+；源开启`enableDangerousApi`后放行（慎用）
 
 > 不同的书源规则中支持的调用的Java类和方法可能有所不同
 
 > 规则JS每次执行都在独立子作用域中进行，支持顶层`return`；`let` `const`具备标准块级作用域，不会污染共享作用域
 
-| 变量名            | 调用类                                                                                                                          |
-|----------------|------------------------------------------------------------------------------------------------------------------------------|
-| java           | 当前类                                                                                                                          |
-| baseUrl        | 当前url,String                                                                                                                 |
-| result         | 上一步的结果                                                                                                                       |
-| book           | [书籍类](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/data/entities/Book.kt)            |
-| chapter        | [章节类](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/data/entities/BookChapter.kt)     |
-| source         | [基础书源类](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/data/entities/BaseSource.kt)    |
-| cookie         | [cookie操作类](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/help/http/CookieStore.kt)   | 
-| cache          | [缓存操作类](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/help/CacheManager.kt)           |
-| title          | 章节当前标题 String                                                                                                                |
-| src            | 当前解析的源码（图片解密规则中为图片地址）                                                                                                        |
-| nextChapterUrl | 下一章节url                                                                                                                      |
-| platform       | 运行平台名 String，取值 `android`/`ios`/`ohos`/`jvm`，见 platform 变量章节                                                                  |
-| image          | [图片解密操作类](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/help/image/ImageOps.kt)，见 image 对象章节 |
+| 变量名            | 调用类                                                                                                                                            |
+|----------------|------------------------------------------------------------------------------------------------------------------------------------------------|
+| java           | 当前类                                                                                                                                            |
+| baseUrl        | 当前url,String                                                                                                                                   |
+| result         | 上一步的结果                                                                                                                                         |
+| book           | [书籍类](https://github.com/huajideshutiao/legado/blob/master/shared/src/commonMain/kotlin/io/legado/app/data/entities/Book.kt)                   |
+| chapter        | [章节类](https://github.com/huajideshutiao/legado/blob/master/shared/src/commonMain/kotlin/io/legado/app/data/entities/BookChapter.kt)            |
+| source         | [基础书源类](https://github.com/huajideshutiao/legado/blob/master/shared/src/commonMain/kotlin/io/legado/app/data/entities/BaseSource.kt)           |
+| cookie         | [cookie操作类](https://github.com/huajideshutiao/legado/blob/master/shared/src/commonMain/kotlin/io/legado/app/help/http/CookieStoreBase.kt)      | 
+| cache          | [缓存操作类](https://github.com/huajideshutiao/legado/blob/master/shared/src/commonMain/kotlin/io/legado/app/help/CacheManager.kt)                  |
+| title          | 章节当前标题 String                                                                                                                                  |
+| src            | 当前解析的源码（图片解密规则中为图片地址）                                                                                                                          |
+| nextChapterUrl | 下一章节url                                                                                                                                        |
+| platform       | 运行平台名 String，取值 `android`/`ios`/`ohos`/`jvm`，见 platform 变量章节                                                                                   |
+| image          | [图片解密操作类](https://github.com/huajideshutiao/legado/blob/master/shared/src/commonMain/kotlin/io/legado/app/help/image/ImageOps.kt)，见 image 对象章节 |
 
 > 部分场景会额外注入局部变量：搜索/发现/字典规则中的 `key`（关键字）与 `page`（页数）、
 > httpTTS 规则中的 `speakText` `speakSpeed`（见网络朗读帮助）、段评规则中的 `paragraphIndex` `sort` `reviewId` `selected`
 
 ## 当前类对象的可使用的部分方法
 
-### [RssJsExtensions](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/ui/book/rss/RssJsExtensions.kt)
+### [RssJsApi](https://github.com/huajideshutiao/legado/blob/master/shared/src/commonMain/kotlin/io/legado/app/ui/rss/RssJsExtensions.kt)
 > 只能在书源正文规则的`shouldOverrideUrlLoading`规则中使用（订阅源已并入书源，本规则用于内置浏览器网页跳转拦截）  
 > js返回true拦截本次跳转, js变量`url`为将要跳转的地址  
-> url跳转拦截规则不能执行耗时操作
+> url跳转拦截规则不能执行耗时操作  
+> searchBook/addBook 仅 android/jvm 端绑定，ios/ohos 不可用  
 > 例子https://github.com/huajideshutiao/legado/discussions/3259
 
 * 调用阅读搜索
@@ -59,15 +64,21 @@ java.addBook(bookUrl: String)
 ```
 
 ### [AnalyzeUrl](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeUrl.kt) 部分函数
-> js中通过java.调用,只在`登录检查JS`规则中有效
+
+> js中通过java.调用,只在`登录检查JS`规则中有效  
+>
+核心实现已下沉 [AnalyzeUrlCore](https://github.com/huajideshutiao/legado/blob/master/shared/src/commonMain/kotlin/io/legado/app/model/analyzeRule/AnalyzeUrlCore.kt)
 ```js
 initUrl() //重新解析url,可以用于登录检测js登录后重新解析url重新访问
 getHeaderMap().putAll(source.getHeaderMap(true)) //重新设置登录头
 getStrResponse(jsStr: String? = null, sourceRegex: String? = null, allowWebView: Boolean = true) //返回访问结果,文本类型,书源内部重新登录后可调用此方法重新返回结果
-getResponse(): Response //返回访问结果,网络朗读引擎采用的是这个,调用登录后在调用这方法可以重新访问,参考阿里云登录检测
+getResponse(): KmpResponse //返回访问结果(KMP统一响应类型,成员:code/message/body/isSuccessful/headers()等),网络朗读引擎采用的是这个,调用登录后在调用这方法可以重新访问,参考阿里云登录检测
 ```
 
 ### [AnalyzeRule](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/model/analyzeRule/AnalyzeRule.kt) 部分函数
+
+>
+核心实现已下沉 [AnalyzeRuleCore](https://github.com/huajideshutiao/legado/blob/master/shared/src/commonMain/kotlin/io/legado/app/model/analyzeRule/AnalyzeRuleCore.kt)
 * 获取文本/文本列表
 > `mContent` 待解析源代码，默认为当前页面  
 > `isUrl` 链接标识，默认为`false`
@@ -104,10 +115,10 @@ java.get(key)
 java.put(key, value)
 ```
 
-### [js扩展类](https://github.com/huajideshutiao/legado/blob/master/shared/src/jvmAndAndroidMain/kotlin/io/legado/app/help/JsExtensionsJvm.kt) 部分函数
+### [js扩展类](https://github.com/huajideshutiao/legado/blob/master/shared/src/commonMain/kotlin/io/legado/app/help/JsExtensionsCommon.kt) 部分函数
 
 *
-链接解析[JsURL](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/utils/JsURL.kt)
+链接解析[JsURL](https://github.com/huajideshutiao/legado/blob/master/shared/src/commonMain/kotlin/io/legado/app/utils/JsURL.kt)
 ```js
 java.toURL(url): JsURL
 java.toURL(url, baseUrl): JsURL
@@ -118,18 +129,18 @@ java.getWebViewUA(): String
 ```
 * 网络请求
 ```js
-java.ajax(urlStr): String
+java.ajax(url): String
 java.ajaxAll(urlList: Array<String>): Array<StrResponse>
 //返回StrResponse 方法body() code() message() headers() raw() toString() 
 java.connect(urlStr): StrResponse
 //header为json字符串
 java.connect(urlStr, header: String?): StrResponse
 
-java.post(url: String, body: String, headerMap: Map<String, String>): Connection.Response
+java.post(url: String, body: String, headers: Map<String, String>): Connection.Response
 
-java.get(url: String, headerMap: Map<String, String>): Connection.Response
+java.get(url: String, headers: Map<String, String>): Connection.Response
 
-java.head(url: String, headerMap: Map<String, String>): Connection.Response
+java.head(url: String, headers: Map<String, String>): Connection.Response
 
 * 使用webView访问网络
 * @param html 直接用webView载入的html, 如果html为空直接访问url
@@ -149,11 +160,14 @@ java.webViewGetSource(html: String?, url: String?, js: String?, sourceRegex: Str
 * 使用内置浏览器打开链接，可用于获取验证码 手动验证网站防爬
 * @param url 要打开的链接
 * @param title 浏览器的标题
+* @param asBottomSheet 可选,为true时以BottomSheet半屏方式打开
 java.startBrowser(url: String, title: String)
+java.startBrowser(url: String, title: String, asBottomSheet: Boolean)
 
 * 使用内置浏览器打开链接，并等待网页结果 .body()获取网页内容
 * @param refetchAfterSuccess 可省略,默认false;为true时验证成功后自动重新请求url并返回其结果
 java.startBrowserAwait(url: String, title: String, refetchAfterSuccess: Boolean = false): StrResponse
+java.startBrowserAwait(url: String, title: String): StrResponse
 
 ```
 * 调试
@@ -200,12 +214,16 @@ cache.delete(java.md5Encode16(url))
 ```
 * 获取网络压缩文件里面指定路径的数据 *可替换Zip Rar 7Z
 ```js
-java.get*StringContent(url: String, path: String): String
+java.getZipStringContent(url: String, path: String): String
+java.getZipStringContent(url: String, path: String, charsetName: String): String
+java.getRarStringContent(url: String, path: String): String
+java.getRarStringContent(url: String, path: String, charsetName: String): String
+java.get7zStringContent(url: String, path: String): String
+java.get7zStringContent(url: String, path: String, charsetName: String): String
 
-java.get*StringContent(url: String, path: String, charsetName: String): String
-
-java.get*ByteArrayContent(url: String, path: String): ByteArray?
-
+java.getZipByteArrayContent(url: String, path: String): ByteArray?
+java.getRarByteArrayContent(url: String, path: String): ByteArray?
+java.get7zByteArrayContent(url: String, path: String): ByteArray?
 ```
 * URI编码
 ```js
@@ -274,8 +292,10 @@ unrarFile(zipPath: String): String
 un7zFile(zipPath: String): String
 //文件夹内所有文件读取(读取后删除文件夹)
 getTxtInFolder(unzipPath: String): String
-//获取文件File对象
-getFile(path: String): File
+//获取缓存文件绝对路径
+//注意:返回的是路径字符串,不是Java File对象(ios/ohos无Java反射,无法暴露File对象);
+//需要File对象方法(.exists()/.readBytes()等)的书源需适配为字符串+现有工具函数
+getFile(path: String): String
 //读取文件,返回ByteArray
 readFile(path: String): ByteArray?
 //读取文本文件,不传charsetName时自动识别编码
@@ -284,7 +304,9 @@ readTxtFile(path: String, charsetName: String): String
 //删除文件
 deleteFile(path: String): Boolean
 ```
-* 字体解析,返回[字体解析类](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/model/analyzeRule/QueryTTF.kt)
+
+*
+字体解析,返回[字体解析类](https://github.com/huajideshutiao/legado/blob/master/shared/src/commonMain/kotlin/io/legado/app/model/analyzeRule/QueryTTF.kt)
 > `data`支持url、本地文件相对路径、base64、ByteArray，自动判断并自动缓存；`useCache`可省略默认true  
 > `java.queryBase64TTF(data)`已过时，请改用`queryTTF`
 ```js
@@ -300,9 +322,11 @@ java.replaceFont(text: String, errorQueryTTF: QueryTTF?, correctQueryTTF: QueryT
 java.toNumChapter(s: String?): String? //如 第一千零三章 -> 第1003章
 ```
 
-### [js加解密类](https://github.com/huajideshutiao/legado/blob/master/app/src/main/java/io/legado/app/help/JsEncodeUtils.kt) 部分函数
+### [js加解密类](https://github.com/huajideshutiao/legado/blob/master/shared/src/commonMain/kotlin/io/legado/app/help/JsEncodeUtils.kt) 部分函数
 
-> 提供在JavaScript环境中快捷调用crypto算法的函数，android/jvm 由[hutool-crypto](https://www.hutool.cn/docs/#/crypto/概述)实现  
+> 提供在JavaScript环境中快捷调用crypto算法的函数，android/jvm
+> 由[hutool-crypto](https://www.hutool.cn/docs/#/crypto/概述)
+> 实现（[JsEncodeUtilsDefaults](https://github.com/huajideshutiao/legado/blob/master/shared/src/jvmAndAndroidMain/kotlin/io/legado/app/help/JsEncodeUtils.kt)）  
 > 由于兼容性问题，hutool-crypto当前版本为5.8.22  
 > ios/ohos 为各平台原生等价实现，支持算法为 hutool 的子集，明细见下方"platform 变量"一节的能力差异表  
 
@@ -439,15 +463,52 @@ syncTime // 进度同步时间
  ```
  
 ## source对象的部分可用函数
-* 获取书源url/名称
+
+* 获取书源url/名称/类型
 ```js
 source.getKey() //源URL
 source.getTag() //源名称
+source.getSourceType() //源类型
+```
+
+* 书源属性(与书源编辑界面对应)
+
+```js
+source.getConcurrentRate() //并发率
+source.setConcurrentRate(rate: String?)
+source.getLoginUrl() //登录地址
+source.setLoginUrl(url: String?)
+source.getLoginUi() //登录UI规则
+source.setLoginUi(ui: String?)
+source.getHeader() //请求头规则
+source.setHeader(header: String?)
+source.getEnabledCookieJar() //启用cookieJar
+source.setEnabledCookieJar(enabled: Boolean?)
+source.getEnableDangerousApi() //启用高危API
+source.setEnableDangerousApi(enabled: Boolean?)
+source.getJsLib() //js库
+source.setJsLib(jsLib: String?)
 ```
 * 书源变量存取
 ```js
 source.setVariable(variable: String?)
 source.getVariable()
+```
+
+* 数据存取(书源级,与java.get/java.put同一存储)
+
+```js
+source.put(key: String, value: String): String
+source.get(key: String): String
+```
+
+* 登录
+
+```js
+source.hasLogin() //是否配置了登录(loginUrl或loginUi非空)
+source.getLoginJs() //获取登录JS
+source.login() //执行登录JS(调用其中定义的login函数)
+source.loginUi() //解析登录UI规则,返回UI列表
 ```
 
 * 弹出对话框(需前台有界面, 无则忽略)
@@ -462,6 +523,8 @@ source.showSourceVariableDialog() //弹出源变量对话框
 source.getLoginHeader()
 获取登录头某一键值
 source.getLoginHeaderMap().get(key: String)
+获取请求头(解析请求头规则,含User-Agent;hasLoginHeader为true时附加登录头)
+source.getHeaderMap(hasLoginHeader: Boolean = false)
 保存登录头
 source.putLoginHeader(header: String)
 清除登录头
@@ -479,6 +542,13 @@ source.putLoginInfo(info: String)
 清除登录信息
 source.removeLoginInfo()
 ```
+
+* 执行JS
+
+```js
+source.evalJS(jsStr: String) //在书源共享作用域执行JS
+source.log(msg) //输出调试日志
+```
 ## cookie对象的部分可用函数
 ```js
 获取全部cookie
@@ -491,6 +561,8 @@ cookie.setCookie(url,cookie)
 cookie.replaceCookie(url,cookie)
 删除cookie
 cookie.removeCookie(url)
+清除全部cookie
+cookie.clear()
 cookie字符串与Map互转
 cookie.cookieToMap(cookie: String)
 cookie.mapToCookie(cookieMap: Map<String, String>)
@@ -597,7 +669,7 @@ if (platform == 'android' || platform == 'jvm') {
 // 解码：图片字节、base64 字符串（可带 data:image/...;base64, 前缀）或输入流 -> 句柄
 image.decode(bytes: ByteArray): ImageRef
 image.decode(base64: String): ImageRef
-image.decode(input: InputStream): ImageRef
+image.decode(input: InputStream): ImageRef // 仅 android/jvm 附加重载
 // 编码：句柄 -> 图片字节。format 支持 png/jpg/webp，quality 0-100（png 无损，忽略）
 image.encode(img: ImageRef, format: String, quality: Int): ByteArray
 // 均分切块：行优先（先左到右再上到下），除不尽的余数并入最后一行/列

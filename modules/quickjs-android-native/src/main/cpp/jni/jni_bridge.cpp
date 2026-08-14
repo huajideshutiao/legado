@@ -89,6 +89,7 @@ Java_com_script_quickjs_QuickJsNative_nativeCreateContext(JNIEnv *env, jobject c
     }
 
     // 初始化 JavaObject 自定义类 (每个 runtime 一次)
+
     JavaObjectClass::init(rt, g_jvm);
 
     // 初始化 ctx opaque (存储 dangerousApi 等运行时状态)
