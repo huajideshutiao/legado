@@ -49,7 +49,7 @@ fun UpdateAvailableDialog(
             )
         },
         text = {
-            // LazyMarkdown 自带滚动, 不套 verticalScroll (嵌套滚动会失效虚拟化)
+            // 滚动由 MarkdownContent 内部分支承担 (短文档 Column 自带 / 长文档 LazyColumn 虚拟化)
             Column(
                 Modifier
                     .fillMaxWidth()

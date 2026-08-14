@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -39,7 +41,8 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 actual fun MarkdownContent(content: String, modifier: Modifier) {
     val colors = AppTheme.colors
     val blocks = remember(content) { parseMarkdownBlocks(content) }
-    Column(modifier = modifier) {
+    // ohos 无 LazyMarkdown 分支, 所有内容走 Column, 必须自带 verticalScroll 才能滚动
+    Column(modifier = modifier.verticalScroll(rememberScrollState())) {
         blocks.forEach { block ->
             when (block) {
                 is MdBlock.Heading -> HeadingView(block, colors)

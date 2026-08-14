@@ -1,5 +1,7 @@
 package io.legado.app.ui.compose
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -80,7 +82,9 @@ actual fun MarkdownContent(content: String, modifier: Modifier) {
             if (content.length > MarkdownLazyThreshold) {
                 LazyMarkdownSuccess(state, components, m)
             } else {
-                MarkdownSuccess(state, components, m)
+                // 短文档走 Column (MarkdownSuccess) 无滚动能力, 此处补 verticalScroll;
+                // 长文档走 LazyColumn (LazyMarkdownSuccess) 自带滚动, 不在同一容器内嵌套
+                MarkdownSuccess(state, components, m.verticalScroll(rememberScrollState()))
             }
         },
     )

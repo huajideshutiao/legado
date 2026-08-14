@@ -21,7 +21,6 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.book.BookImageStorageProviders
-import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt

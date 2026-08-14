@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.MarkdownContentSelectable
@@ -26,14 +27,13 @@ import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.copy
 import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.text_too_large
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 private const val MAX_TEXT_LENGTH = 32 * 1024
 
@@ -85,7 +85,8 @@ fun TextDialog(
                     when (mode) {
                         TextDialogMode.MD -> MarkdownContentSelectable(
                             content = content,
-                            modifier = Modifier.verticalScroll(rememberScrollState()),
+                            // 滚动由 MarkdownContent 内部分支承担 (短文档 Column 自带 / 长文档 LazyColumn 虚拟化)
+                            modifier = Modifier,
                         )
 
                         TextDialogMode.HTML, TextDialogMode.TEXT -> {

@@ -78,8 +78,7 @@ fun HelpDialog(fileName: String, onDismiss: () -> Unit) {
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
                 )
                 // 正文区: weight 占对话框剩余空间 (视口恒定), 超长滚动, 按钮恒可见
-                // 滚动职责由 LazyMarkdown 的 LazyColumn 承担, 不再套 verticalScroll
-                // (嵌套滚动会让 LazyColumn 在无限高约束下失去虚拟化)
+                // 滚动由 MarkdownContent 内部分支承担 (短文档 Column 自带 / 长文档 LazyColumn 虚拟化)
                 Box(
                     Modifier
                         .weight(1f, fill = false)

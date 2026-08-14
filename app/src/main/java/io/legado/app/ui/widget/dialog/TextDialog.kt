@@ -56,8 +56,7 @@ class TextDialog() : BaseComposeDialogFragment() {
             when (mode) {
                 Mode.MD.name -> MarkdownContentSelectable(
                     content = content,
-                    // LazyMarkdown 自带 LazyColumn 滚动, 外层不再套 verticalScroll
-                    // (嵌套滚动会让 LazyColumn 在无限高约束下失去虚拟化)
+                    // 滚动由 MarkdownContent 内部分支承担 (短文档 Column 自带 / 长文档 LazyColumn 虚拟化)
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)

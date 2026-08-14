@@ -83,7 +83,7 @@ internal fun UpdateDialogOverlayContent(overlay: AppOverlay.Dialog, navigator: A
                 )
                 MarkdownContentSelectable(
                     content = updateInfo.updateLog,
-                    // LazyMarkdown 自带滚动, 不套 verticalScroll (嵌套滚动会失效虚拟化)
+                    // 滚动由 MarkdownContent 内部分支承担 (短文档 Column 自带 / 长文档 LazyColumn 虚拟化)
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f, fill = false)

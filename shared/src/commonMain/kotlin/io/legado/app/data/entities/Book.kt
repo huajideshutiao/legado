@@ -218,9 +218,9 @@ data class Book(
         removeType(BookType.notShelf)
         runBlocking {
             if (AppDbProviders.get().bookDao.has(bookUrl)) {
-                AppDbProviders.get().bookDao.update(this@save)
+                AppDbProviders.get().bookDao.update(this@Book)
             } else {
-                AppDbProviders.get().bookDao.insert(this@save)
+                AppDbProviders.get().bookDao.insert(this@Book)
             }
         }
     }
@@ -250,7 +250,7 @@ data class Book(
         if (readBookProvider != null && readBookProvider.currentBookUrl == bookUrl) {
             readBookProvider.clearCurrentBook()
         }
-        runBlocking { AppDbProviders.get().bookDao.delete(this@delete) }
+        runBlocking { AppDbProviders.get().bookDao.delete(this@Book) }
         addType(BookType.notShelf)
     }
 
