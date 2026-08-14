@@ -47,12 +47,20 @@ import legado.shared.generated.resources.retry
 import org.jetbrains.compose.resources.stringResource
 
 /**
- * AppRoute.ExploreShow shared 路由入口。
+ * AppRoute.ExploreShow / AppRoute.ExploreShowByUrl shared 路由入口。
  *
  * 复用 shared [ExploreShowScreen] + [ExploreShowScreenModel] + [ExploreShowViewModelShared];
- * 路由参数 source/title/exploreUrl 取自 [entry]。三 slot 均用 shared 默认实现:
+ * 路由参数取自 [entry]。三 slot 均用 shared 默认实现:
  * optionsRow 复用公共 [ExploreOptionsRow] (与主页展示项同一份 ExploreOptionView 复刻),
  * videoItem 复用 [ShelfVideoItem], cover 复用 [LocalBookCoverSlot] (宿主端可覆盖注入平台封面组件)。
+ *
+ * 双变体 (对照 master ExploreShowActivity):
+ * - [AppRoute.ExploreShow]: 应用内跳转, 已有 [BookSource] 对象直传, 不查源
+ *   (vm.initData(source, …) 重载, 用户要求: 发现→show 应用内跳转不做源查找)。
+ * - [AppRoute.ExploreShowByUrl]: 外部入口 (SearchActivity alias 同款), 只带
+ *   sourceUrl/exploreUrl/exploreName, 查源下沉到路由内
+ *   (vm.initData(exploreName, exploreUrl, sourceUrl), 对照 master initData(intent):
+ *   IntentData.source ?: DAO 查 sourceUrl), 查源期间页面直接渲染加载态, 书架不进导航栈。
  *
  * VM StateFlow → ScreenModel 事件桥接对照 app 端 Activity.observe(ViewModel LiveData)。
  */
@@ -62,7 +70,7 @@ fun ExploreShowRoute(
     navigator: AppNavigator,
     screenModelStore: ScreenModelStore,
 ) {
-    val route = entry.route as AppRoute.ExploreShow
+    val route = entry.route
     val screenModel = screenModelStore.getOrCreateTyped(entry) { ExploreShowScreenModel() }
 
     // VM 创建 (组合委托, 对照 app 端 ExploreShowViewModel)
@@ -79,15 +87,32 @@ fun ExploreShowRoute(
     val errorTitle = stringResource(Res.string.error)
     val retryText = stringResource(Res.string.retry)
 
-    // 标题初始化 (对照原 Activity intent exploreName / discovery)
-    LaunchedEffect(route.title) {
-        screenModel.dispatch(ExploreShowUiEvent.TitleChanged(route.title))
+    // 标题初始化 (对照原 Activity intent exploreName / discovery; ByUrl 变体 extra 可为空)
+    // route 由 RouteContent 保证只分派 ExploreShow 两变体, else 分支不可达 (穷尽性占位)
+    val title = when (route) {
+        is AppRoute.ExploreShow -> route.title
+        is AppRoute.ExploreShowByUrl -> route.title.orEmpty()
+        else -> ""
+    }
+    LaunchedEffect(title) {
+        screenModel.dispatch(ExploreShowUiEvent.TitleChanged(title))
     }
 
     // 首次加载 + 初始化数据 (对照 Activity.onActivityCreated: startLoad + initData)
-    LaunchedEffect(vm) {
+    LaunchedEffect(vm, route) {
         screenModel.dispatch(ExploreShowUiEvent.StartLoad)
-        vm.initData(route.source, route.title, route.exploreUrl)
+        when (route) {
+            // 应用内跳转: 已有 BookSource 直传, 不查源 (用户要求)
+            is AppRoute.ExploreShow -> vm.initData(route.source, route.title, route.exploreUrl)
+            // 外部入口: 查源下沉到路由内 (IntentData.source ?: DAO 查 sourceUrl)
+            is AppRoute.ExploreShowByUrl -> vm.initData(
+                route.title,
+                route.exploreUrl,
+                route.sourceUrl
+            )
+            // 不可达 (RouteContent 仅分派两变体); 占位保证 when 穷尽
+            else -> Unit
+        }
     }
 
     // VM 事件流 → ScreenModel 事件桥接 (对照 Activity.observe LiveData)

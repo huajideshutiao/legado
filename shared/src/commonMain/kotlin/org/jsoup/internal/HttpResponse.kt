@@ -118,9 +118,9 @@ class HttpResponse(
 
     override fun headers(name: String): List<String> = raw.headers(name)
 
-    override fun header(name: String, value: String): HttpResponse = this // 响应头不可变
+    override fun header(name: String, value: String?): HttpResponse = this // 响应头不可变
 
-    override fun addHeader(name: String, value: String): HttpResponse = this
+    override fun addHeader(name: String, value: String?): HttpResponse = this
 
     override fun hasHeader(name: String): Boolean = raw.header(name) != null
 

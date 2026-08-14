@@ -95,7 +95,9 @@ interface PlatformCapabilities {
         onError: (String) -> Unit,
     ) = unsupported("测试直链上传")
 
-    // 处理尚未下沉的 deep link 类型 (平台可保留原生兼容链)
+    // 保留 (无实现方, 无调用方): deep link 直通四型已统一走共享 runSchemeImport,
+    // 本方法仅因鸿蒙 napi 生成头文件 (liblegado_shared_api.h) 含此符号而保留,
+    // 待头文件随构建重新生成后可移除。默认 false 即"未接管"。
     fun handleDeepLinkImport(type: String, src: String): Boolean = false
 
     // Web 服务: 获取当前运行地址 (对照 app 端 WebService.hostAddress)
@@ -491,6 +493,15 @@ interface PlatformCapabilities {
 
     /** 显示自定义夜间主题对话框 (对照 ThemeCustomizeDialog.editPrefs(true)) */
     fun showCustomizeNightThemeDialog() = unsupported("自定义夜间主题")
+
+    // 换桌面图标平台能力 (对照 app 端 LauncherIconHelp.changeIcon: 多 LAUNCHER 组件运行时切换)。
+    // Android 端 setComponentEnabledSetting 实现; iOS 端 setAlternateIconName 实现;
+    // 桌面/鸿蒙无对应平台机制, 默认 unsupported + 设置项按 [launcherIconChangeSupported] 隐藏。
+    /** 切换到指定桌面图标 (icon 为图标值: ic_launcher/launcher1/launcher4/launcher5) */
+    fun changeLauncherIcon(icon: String) = unsupported("更换桌面图标")
+
+    /** 平台是否支持更换桌面图标 (决定主题设置页"换图标"项显隐, 对照 [hasSystemBars] 平台过滤) */
+    val launcherIconChangeSupported: Boolean get() = false
 
     // 其它设置平台能力 (各端按需 override, 未实现端统一给出明确提示)
     // 对照 app 端 OtherConfigHost 同名方法

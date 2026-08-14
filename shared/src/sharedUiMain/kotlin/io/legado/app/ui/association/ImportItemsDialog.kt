@@ -13,6 +13,7 @@ import androidx.compose.material.IconButton
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.DictRule
 import io.legado.app.data.entities.HttpTTS
@@ -30,11 +32,11 @@ import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.ThemeConfigData
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
+import io.legado.app.ui.compose.component.AppAutoCompleteField
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppDialog
 import io.legado.app.ui.compose.component.AppDialogSizes
 import io.legado.app.ui.compose.component.AppDropdownMenu
-import io.legado.app.ui.compose.component.AppOutlinedTextField
 import io.legado.app.ui.compose.component.appDialogSize
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
@@ -259,6 +261,7 @@ fun ImportBookSourceItemsDialog(
         ImportSourceGroupDialog(
             initialGroup = vm.groupName.orEmpty(),
             initialAddGroup = vm.isAddGroup,
+            groupsProvider = { AppDbProviders.get().bookSourceDao.allGroups() },
             onConfirm = { groupName, addGroup ->
                 vm.groupName = groupName.ifBlank { null }
                 vm.isAddGroup = addGroup
@@ -330,6 +333,7 @@ fun ImportReplaceRuleItemsDialog(
         ImportSourceGroupDialog(
             initialGroup = vm.groupName.orEmpty(),
             initialAddGroup = vm.isAddGroup,
+            groupsProvider = { AppDbProviders.get().replaceRuleDao.allGroups() },
             onConfirm = { groupName, addGroup ->
                 vm.groupName = groupName.ifBlank { null }
                 vm.isAddGroup = addGroup
@@ -344,11 +348,18 @@ fun ImportReplaceRuleItemsDialog(
 internal fun ImportSourceGroupDialog(
     initialGroup: String,
     initialAddGroup: Boolean,
+    groupsProvider: suspend () -> List<String>,
     onConfirm: (String, Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var groupName by remember(initialGroup) { mutableStateOf(initialGroup) }
     var addGroup by remember(initialAddGroup) { mutableStateOf(initialAddGroup) }
+    // 已有分组候选 (对照 master alertCustomGroup 的 setFilterValues(allGroups())):
+    // 书源取 bookSourceDao.allGroups(), 替换规则取 replaceRuleDao.allGroups(), 由调用方注入
+    var groups by remember { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        runCatching { groups = groupsProvider() }
+    }
     AppAlertDialog(
         onDismissRequest = onDismiss,
         title = stringResource(Res.string.diy_source_group),
@@ -361,11 +372,12 @@ internal fun ImportSourceGroupDialog(
         ),
         content = {
             Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
-                AppOutlinedTextField(
+                // 自动补全输入框: 聚焦/输入时弹已有分组候选下拉 (对照 master editView.setFilterValues)
+                AppAutoCompleteField(
                     value = groupName,
                     onValueChange = { groupName = it },
                     label = stringResource(Res.string.group_name),
-                    singleLine = true,
+                    values = groups,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Row(

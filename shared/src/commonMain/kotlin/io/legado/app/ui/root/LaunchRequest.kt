@@ -16,7 +16,8 @@ sealed interface LaunchRequest {
 
     @Serializable
     data class SearchBook(
-        val key: String,
+        /** 搜索词, 可空 (对照 master SearchActivity.receiptIntent: key 空则聚焦输入框) */
+        val key: String? = null,
         /** 搜索范围 (格式 "名称::书源URL", 对齐 AppRoute.Search.searchScope) */
         val searchScope: String? = null,
         val submit: Boolean = false,
@@ -30,6 +31,14 @@ sealed interface LaunchRequest {
 
     @Serializable
     data class OpenBookSource(val sourceUrl: String) : LaunchRequest
+
+    /** 发现show 入口 (对照 master ExploreShowActivity: exploreUrl/exploreName/sourceUrl extra) */
+    @Serializable
+    data class ExploreShow(
+        val sourceUrl: String,
+        val exploreName: String? = null,
+        val exploreUrl: String? = null,
+    ) : LaunchRequest
 
     @Serializable
     data class OpenReader(

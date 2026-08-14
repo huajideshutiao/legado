@@ -30,7 +30,11 @@ class SymmetricCryptoAndroid(
     // PKCS7Padding → PKCS5Padding 归一: 两者在块密码 (AES 16 字节/DES 8 字节) 下字节级等价,
     // hutool 内部 Cipher.getInstance("AES/CBC/PKCS7Padding") 在无该 provider 的平台
     // (桌面端 SunJCE / 个别 Android ROM) 会抛 NoSuchAlgorithmException; 归一后全平台可用,
-    // 密文与真 PKCS7 逐字节一致 (见 jvmTest Pkcs7PaddingCompatibilityTest)。
+    // 密文与真 PKCS7 逐字节一致。
+    //
+    // 2026-08-15 教训: 不要为了真 PKCS7 引入 bcprov (见 desktop/build.gradle.kts 注释)——
+    // BC 类在 classpath 会让 hutool 的 RSA Cipher 走 BC (getBlockSize=127 触发分段加密),
+    // 网易云 weapi encSecKey 错误全站 200 空体。归一化是唯一需要的 PKCS7 方案。
     algorithm.normalizePkcs7Padding(),
     key?.let { SecretKeySpec(it, algorithm.substringBefore('/')) }
 ), io.legado.app.help.crypto.SymmetricCrypto {

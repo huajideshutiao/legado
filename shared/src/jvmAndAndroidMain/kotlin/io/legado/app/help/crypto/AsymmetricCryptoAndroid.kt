@@ -1,9 +1,11 @@
 package io.legado.app.help.crypto
 
+import cn.hutool.crypto.CipherWrapper
 import cn.hutool.crypto.KeyUtil
 import cn.hutool.crypto.asymmetric.KeyType
 import io.legado.app.utils.EncoderUtils
 import java.io.InputStream
+import javax.crypto.Cipher
 
 
 // KMP 化: 原 `class AsymmetricCrypto` 改名为 `AsymmetricCryptoAndroid` (仿 SymmetricCryptoAndroid
@@ -18,6 +20,30 @@ import java.io.InputStream
 // @Keep 移除：shared 无 androidx.annotation 依赖，JS 桥反射保活改由 consumer-rules.pro -keep 登记（照 JsURL/StrResponse 先例）。
 @Suppress("unused")
 class AsymmetricCryptoAndroid(algorithm: String) : cn.hutool.crypto.asymmetric.AsymmetricCrypto(algorithm), AsymmetricCrypto {
+
+    /**
+     * 2026-08-15 教训: 非对称 Cipher 强制走 JCE 默认 provider (SunJCE), 防止 hutool 在
+     * classpath 出现 BC 类时 (GlobalBouncyCastleProvider 自动激活) 用 BC 的 RSA Cipher:
+     * BC 的 RSA getBlockSize()=127 (SunJCE=0), 而 AsymmetricCrypto.encrypt 以 getBlockSize
+     * 作分段大小, 128 字节输入 (>127) 触发 doFinalWithBlock 分段加密 (127+1 两段分别 RSA
+     * 再拼接), 产出错误的 encSecKey → 网易云 weapi 全部 200 空体 (07c2a5e5 引入 bcprov 后
+     * 网易云发现/目录无法加载, 根因见 desktop/build.gradle.kts 注释)。
+     *
+     * 当前 bcprov 已移除, 本 override 与 hutool 默认行为一致 (JCE 解析); 保留作为防御:
+     * 将来若重新引入 BC 类, 非对称加密仍走 SunJCE (getBlockSize=0 不分段, 结果正确),
+     * BC 仅用于对称/摘要等路径 (AES 输出与 SunJCE 逐字节一致, PKCS7Padding 由
+     * SymmetricCryptoAndroid 归一化解决, 无需 BC)。
+     *
+     * JCE 不支持的 BC 专属算法 (如 SM2) 回退 hutool 默认 (BC)。
+     */
+    override fun initCipher() {
+        try {
+            cipherWrapper = CipherWrapper(Cipher.getInstance(algorithm))
+        } catch (e: Exception) {
+            // JCE 不支持的算法 (BC 专属) 回退 hutool 默认
+            super.initCipher()
+        }
+    }
 
     @Suppress("MemberVisibilityCanBePrivate")
     override fun setPrivateKey(key: ByteArray): AsymmetricCryptoAndroid {

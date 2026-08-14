@@ -105,6 +105,26 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity> <!-- 主界面 -->
+        <!-- legado:// / yuedu:// deep link 透明壳 (对照 master AssociationActivity):
+             浮在其他应用之上只显示导入对话框, 主界面页面零渲染; 导入完成自动 finish -->
+        <activity
+            android:name=".ui.association.AssociationActivity"
+            android:configChanges="locale|keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout|uiMode"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:launchMode="singleTask"
+            android:theme="@style/AppTheme.Transparent">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="legado" />
+                <data android:scheme="yuedu" />
+            </intent-filter>
+        </activity>
         <activity
             android:name=".ui.main.MainActivity"
             android:alwaysRetainTaskState="true"
@@ -119,16 +139,8 @@
             <meta-data
                 android:name="com.samsung.android.support.REMOTE_ACTION"
                 android:resource="@xml/spen_remote_actions" />
-            <!-- DeepLink + 文件关联入口 (由 AssociationActivity 迁移, 在 onCreate/onNewIntent 解析后经 LaunchRequest 分发) -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <data android:scheme="legado" />
-                <data android:scheme="yuedu" />
-            </intent-filter>
+            <!-- 文件关联入口 (deep link 已回迁 AssociationActivity 透明壳;
+                 onCreate/onNewIntent 解析后经 LaunchRequest 分发) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
@@ -204,6 +216,21 @@
                 <data android:mimeType="*/*" />
             </intent-filter>
         </activity-alias>
+
+        <!-- 搜索界面 alias 到 MainActivity (对照 master SearchActivity 冷启动直开搜索页,
+             书架不进导航栈; extra: key/searchScope/submit, key 空聚焦输入框) -->
+        <activity-alias
+            android:name=".ui.book.search.SearchActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:targetActivity=".ui.main.MainActivity" />
+        <!-- 发现show 入口 alias 到 MainActivity (对照 master ExploreShowActivity 冷启动直开,
+             查源下沉到路由内显示加载态; extra: exploreName/exploreUrl/sourceUrl) -->
+        <activity-alias
+            android:name=".ui.book.explore.ExploreShowActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:targetActivity=".ui.main.MainActivity" />
 
         <!-- 打开文件 -->
 

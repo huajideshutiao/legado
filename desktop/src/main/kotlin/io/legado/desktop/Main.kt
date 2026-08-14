@@ -121,8 +121,8 @@ import io.legado.desktop.config.registerDesktopConfig
 import io.legado.desktop.data.DesktopAppDbAccessor
 import io.legado.desktop.help.DesktopCrashHandler
 import io.legado.desktop.help.DesktopDefaultDataResourceProvider
+import io.legado.desktop.help.DesktopUrlProtocol
 import io.legado.desktop.help.SingleInstanceGuard
-import io.legado.desktop.help.ensureJvmCryptoProviders
 import io.legado.desktop.help.book.DesktopBitmapProvider
 import io.legado.desktop.help.book.DesktopBookHelpAccessor
 import io.legado.desktop.help.book.DesktopZipFileWrapperFactory
@@ -226,10 +226,10 @@ fun main(args: Array<String>) {
     // 打栈开关: 对齐 Android BuildConfig.DEBUG 语义, 仅 debug 打栈。
     // build.gradle.kts 的 run 任务注入 -Dlegado.debug=true, 打包产物不注入 = 静默。
     registerJvmDebugState(System.getProperty("legado.debug")?.toBoolean() == true)
-    // JCE 补丁 provider (BouncyCastle): 桌面端 SunJCE 无 PKCS7Padding, 书源
-    // createSymmetricCrypto('AES/CBC/PKCS7Padding') 会抛 "Cannot find any provider...";
-    // 必须在任何书源 JS 执行之前注册 (幂等, 见 DesktopCryptoProvider KDoc)。
-    ensureJvmCryptoProviders()
+    // 2026-08-15 教训: bcprov 已移除 (见 desktop/build.gradle.kts 注释) —— BC 类在 classpath
+    // 会让 hutool 的 RSA Cipher 走 BC (getBlockSize=127 触发分段加密), 网易云 weapi
+    // encSecKey 错误全站 200 空体。PKCS7Padding 由 SymmetricCryptoAndroid 归一化解决,
+    // 不再需要 JCE 补丁 provider (DesktopCryptoProvider.kt 已删除)。
     // 视频渲染: open-ani/mediamp (mediamp-mpv) 后端。Windows 走 Skiko Direct3D 默认渲染
     // (mpv D3D11 → 共享纹理 → Skia D3D12), macOS 默认 Metal, Linux 默认 OpenGL —— 均
     // 为各自平台默认值, 无需 (也不应) 强制 skiko.renderApi。
@@ -256,7 +256,10 @@ fun main(args: Array<String>) {
     // provider/数据库初始化之前, 否则二次启动进程会先碰同一个 SQLite 库再退出。
     SingleInstanceGuard.ensureSingleInstance(effectiveArgs)
     // legado:// deep link 启动参数处理 (对照 app 端 AssociationActivity intent-filter):
-    // 系统级 URL protocol 注册 (注册表/.desktop/Info.plist) 属安装器配置, 见 handleDeepLinkArgs KDoc
+    // 系统级 URL protocol 注册: Windows/Linux 运行时幂等自注册 ([DesktopUrlProtocol]),
+    // macOS 打包期 Info.plist CFBundleURLTypes (见 build.gradle.kts
+    // nativeDistributions.macOS.infoPlist), 详见 handleDeepLinkArgs KDoc
+    DesktopUrlProtocol.ensureRegisteredAsync()
     handleDeepLinkArgs(args)
     // macOS: legado:// 经 Apple Event (OpenURIHandler) 送达而非 argv, 注册 handler 承接;
     // Windows/Linux 的 Desktop.Action.APP_OPEN_URI isSupported=false, 静默跳过
@@ -276,16 +279,16 @@ fun main(args: Array<String>) {
  * 解析启动参数中的 legado://`/`yuedu:// deep link, 经 [LegadoDeepLinkHandler] 记录,
  * 待 [DeepLinkImportHost] 在窗口内消费弹导入对话框。
  *
- * # 各 OS 系统级 URL protocol 注册方法 (安装器/打包配置, 本函数只管进程启动参数)
+ * # 各 OS 系统级 URL protocol 注册 (让浏览器点 `legado://` 链接能唤起本应用)
  *
- * - **Windows**: 注册表 `HKEY_CLASSES_ROOT\legado` 键下建空字符串值 `URL Protocol` +
- *   子键 `shell\open\command` 默认值 `"C:\path\legado.exe" "%1"`; jpackage 安装器可在
- *   post-install 脚本写入, MSIX 打包则用 manifest `uap:Protocol Name="legado"`。yuedu 同理。
- * - **Linux**: .desktop 文件加 `MimeType=x-scheme-handler/legado;x-scheme-handler/yuedu;`
- *   且 `Exec=legado %u`, 安装后执行
- *   `xdg-mime default legado.desktop x-scheme-handler/legado x-scheme-handler/yuedu`。
- * - **macOS**: app bundle Info.plist 加 `CFBundleURLTypes` (CFBundleURLSchemes=[legado,yuedu]),
- *   jpackage 17+ 可用 `--mac-url-scheme legado --mac-url-scheme yuedu` 生成;
+ * - **Windows**: 运行时注册 `HKCU\Software\Classes\<scheme>` (空字符串值 `URL Protocol` +
+ *   `shell\open\command` 默认值 `"<exe>" "%1"`), 见 [DesktopUrlProtocol];
+ *   jpackage MSI / 便携 zip 产物启动时自动完成, per-user 无需管理员权限。
+ * - **Linux**: 运行时写 `~/.local/share/applications/legado.desktop`
+ *   (`MimeType=x-scheme-handler/legado;x-scheme-handler/yuedu;` + `Exec="<launcher>" %u`)
+ *   并 `xdg-mime default` 设为默认 handler, 见 [DesktopUrlProtocol]。
+ * - **macOS**: 打包期把 `CFBundleURLTypes` (CFBundleURLSchemes=[legado,yuedu]) 注入
+ *   app bundle Info.plist (desktop/build.gradle.kts nativeDistributions.macOS.infoPlist);
  *   运行时回调走 Apple Event, 由 main() 里的 Desktop.setOpenURIHandler 承接 (非 argv)。
  */
 /**

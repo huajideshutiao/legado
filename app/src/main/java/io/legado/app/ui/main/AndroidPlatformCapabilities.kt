@@ -79,6 +79,7 @@ import io.legado.app.help.CrashHandler
 import io.legado.app.help.DirectLinkUpload
 import io.legado.app.help.IntentData
 import io.legado.app.help.IntentHelp
+import io.legado.app.help.LauncherIconHelp
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.getExportFileName
 import io.legado.app.help.book.getRemoteUrl
@@ -104,9 +105,6 @@ import io.legado.app.model.fileBook.importFromArchive
 import io.legado.app.model.fileBook.importLocalFile
 import io.legado.app.model.fileBook.saveBookFile
 import io.legado.app.service.WebService
-import io.legado.app.ui.association.AddToBookshelfHelper
-import io.legado.app.ui.association.DeepLinkImportType
-import io.legado.app.ui.association.FileAssociationViewModel
 import io.legado.app.ui.book.import.ImportFileItem
 import io.legado.app.ui.book.import.local.ImportBook
 import io.legado.app.ui.book.import.local.ImportBookViewModel
@@ -211,9 +209,6 @@ class AndroidPlatformCapabilities(
     // 经 ViewModelProvider 绑定 activity ViewModelStore, lifecycle 由 activity 管理
     private val importViewModel by lazy {
         ViewModelProvider(activity).get(ImportBookViewModel::class.java)
-    }
-    private val associationViewModel by lazy {
-        ViewModelProvider(activity).get(FileAssociationViewModel::class.java)
     }
     private var scanDocJob: Job? = null
 
@@ -397,43 +392,6 @@ class AndroidPlatformCapabilities(
                     onError(error.localizedMessage ?: error.toString())
                 }
             }
-        }
-    }
-
-    override fun handleDeepLinkImport(typeName: String, src: String): Boolean {
-        val type = runCatching { DeepLinkImportType.valueOf(typeName) }.getOrNull() ?: return false
-        val navigator = AppNavigatorProviders.getOrNull() ?: return false
-        return when (type) {
-            DeepLinkImportType.ADD_TO_BOOKSHELF -> {
-                AddToBookshelfHelper.add(navigator, activity, src)
-                true
-            }
-
-            DeepLinkImportType.READ_CONFIG -> {
-                associationViewModel.getBytes(src) { bytes ->
-                    associationViewModel.importReadConfig(bytes) { title, message ->
-                        activity.alert {
-                            setTitle(title)
-                            setMessage(message)
-                            okButton()
-                        }
-                    }
-                }
-                true
-            }
-
-            DeepLinkImportType.UNKNOWN -> {
-                associationViewModel.determineType(src) { title, message ->
-                    activity.alert {
-                        setTitle(title)
-                        setMessage(message)
-                        okButton()
-                    }
-                }
-                true
-            }
-
-            else -> false
         }
     }
 
@@ -1765,6 +1723,14 @@ class AndroidPlatformCapabilities(
     override fun showCustomizeNightThemeDialog() {
         activity.showDialogFragment(ThemeCustomizeDialog.editPrefs(true))
     }
+
+    // 换桌面图标 (对照 master ThemeConfigFragment: launcherIcon -> LauncherIconHelp.changeIcon):
+    // setComponentEnabledSetting 切换 WelcomeActivity / Launcher1/4/5 的启用态, 桌面图标即变
+    override fun changeLauncherIcon(icon: String) {
+        LauncherIconHelp.changeIcon(icon)
+    }
+
+    override val launcherIconChangeSupported: Boolean get() = true
 
     // 对照 ThemeConfigFragment.configBottomNav: dialog_bottom_nav_config.xml Compose 重建
     override fun showBottomNavConfigDialog() {

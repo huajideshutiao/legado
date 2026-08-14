@@ -42,8 +42,11 @@ interface Connection {
         fun method(): Method
         fun header(name: String): String?
         fun headers(name: String): List<String>
-        fun header(name: String, value: String): T
-        fun addHeader(name: String, value: String): T
+
+        // 对齐真 jsoup (HttpConnection.Base.addHeader): value 为 null 时静默存 "",
+        // 不抛异常 (原 Kotlin 非空声明会在 null 时抛 NPE, 与 jsoup 语义不一致)
+        fun header(name: String, value: String?): T
+        fun addHeader(name: String, value: String?): T
         fun hasHeader(name: String): Boolean
         fun hasHeaderWithValue(name: String, value: String): Boolean
         fun removeHeader(name: String): T
@@ -114,10 +117,10 @@ interface Connection {
     // --- 链式配置方法 ---
     fun url(url: URL): Connection
     fun url(url: String): Connection
-    fun userAgent(userAgent: String): Connection
+    fun userAgent(userAgent: String?): Connection
     fun timeout(millis: Int): Connection
     fun maxBodySize(bytes: Int): Connection
-    fun referrer(referrer: String): Connection
+    fun referrer(referrer: String?): Connection
     fun followRedirects(followRedirects: Boolean): Connection
     fun method(method: Method): Connection
     fun ignoreHttpErrors(ignoreHttpErrors: Boolean): Connection
@@ -136,8 +139,8 @@ interface Connection {
     fun data(data: Collection<KeyVal>): Connection
     fun data(data: Map<String, String>): Connection
     fun data(vararg keyvals: String): Connection
-    fun requestBody(body: String): Connection
-    fun header(name: String, value: String): Connection
+    fun requestBody(body: String?): Connection
+    fun header(name: String, value: String?): Connection
     fun headers(headers: Map<String, String>): Connection
     fun cookie(name: String, value: String): Connection
     fun cookies(cookies: Map<String, String>): Connection

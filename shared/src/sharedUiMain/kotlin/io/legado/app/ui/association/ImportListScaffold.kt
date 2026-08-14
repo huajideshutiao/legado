@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.component.AppCheckbox
 import io.legado.app.ui.compose.component.AppTextButton
@@ -23,13 +24,12 @@ import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.component.FastScrollLazyColumn
 import io.legado.app.ui.compose.platform.rememberString
 import io.legado.app.ui.compose.theme.AppTheme
+import io.legado.app.ui.preview.LegadoThemePreview
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.cancel
 import legado.shared.generated.resources.ok
 import legado.shared.generated.resources.open
 import org.jetbrains.compose.resources.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import io.legado.app.ui.preview.LegadoThemePreview
 
 /**
  * association 导入弹窗共享模板：标题栏(+菜单槽) + 加载/错误态 + 列表 + 底部(全选/取消/确定)。
@@ -79,6 +79,10 @@ fun ImportListScaffold(
                 FastScrollLazyColumn(
                     state = rememberLazyListState(),
                     modifier = Modifier.fillMaxWidth(),
+                    // 内容自适应高度: 项少随内容收缩, 超出父容器约束封顶滚动
+                    // (对照 master AutoShrinkLinearLayout 的 WRAP_CONTENT + maxHeight 语义;
+                    // 默认 fillMaxSize 会把对话框恒撑到 0.8 屏高, 与条目数无关)
+                    wrapContentHeight = true,
                 ) {
                     itemsIndexed((0 until itemCount).toList()) { _, index ->
                         ImportListItem(

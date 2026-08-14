@@ -81,14 +81,15 @@ class HttpConnectionRequest : Connection.Request {
         return findHeaderName(name)?.let { headers[it]?.toList() } ?: emptyList()
     }
 
-    override fun header(name: String, value: String): HttpConnectionRequest = apply {
+    override fun header(name: String, value: String?): HttpConnectionRequest = apply {
         removeHeader(name)
-        headers[name] = mutableListOf(value)
+        // 对齐真 jsoup addHeader: null value 静默转 "" (原非空声明会在 JS 传 null 时抛 NPE)
+        headers[name] = mutableListOf(value ?: "")
     }
 
-    override fun addHeader(name: String, value: String): HttpConnectionRequest = apply {
+    override fun addHeader(name: String, value: String?): HttpConnectionRequest = apply {
         val key = findHeaderName(name) ?: name
-        headers.getOrPut(key) { mutableListOf() }.add(value)
+        headers.getOrPut(key) { mutableListOf() }.add(value ?: "")
     }
 
     override fun hasHeader(name: String): Boolean =

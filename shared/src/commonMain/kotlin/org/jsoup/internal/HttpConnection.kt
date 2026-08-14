@@ -4,15 +4,15 @@ package org.jsoup.internal
 
 import io.legado.app.help.http.KmpHttpClient
 import io.legado.app.help.http.KmpRequest
-import io.legado.app.help.http.KmpRequestBuilder
 import io.legado.app.help.http.KmpRequestBody
+import io.legado.app.help.http.KmpRequestBuilder
 import io.legado.app.help.http.toKmpMediaType
 import io.legado.app.help.http.toKmpRequestBody
 import io.legado.app.utils.InputStream
 import io.legado.app.utils.URL
-import io.legado.app.utils.urlQuery
 import io.legado.app.utils.randomUUIDString
 import io.legado.app.utils.textCharsetCodec
+import io.legado.app.utils.urlQuery
 import org.jsoup.Connection
 import org.jsoup.Connection.Method
 import org.jsoup.HttpStatusException
@@ -43,13 +43,13 @@ class HttpConnection : Connection {
     override fun url(url: URL): Connection = apply { requestDelegate.url(url) }
     override fun url(url: String): Connection = apply { requestDelegate.url(url) }
 
-    override fun userAgent(userAgent: String): Connection = apply {
+    override fun userAgent(userAgent: String?): Connection = apply {
         requestDelegate.header("User-Agent", userAgent)
     }
 
     override fun timeout(millis: Int): Connection = apply { requestDelegate.timeout(millis) }
     override fun maxBodySize(bytes: Int): Connection = apply { requestDelegate.maxBodySize(bytes) }
-    override fun referrer(referrer: String): Connection = apply {
+    override fun referrer(referrer: String?): Connection = apply {
         requestDelegate.header("Referer", referrer)
     }
 
@@ -104,8 +104,9 @@ class HttpConnection : Connection {
         }
     }
 
-    override fun requestBody(body: String): Connection = apply { requestDelegate.requestBody(body) }
-    override fun header(name: String, value: String): Connection = apply {
+    override fun requestBody(body: String?): Connection =
+        apply { requestDelegate.requestBody(body) }
+    override fun header(name: String, value: String?): Connection = apply {
         requestDelegate.header(name, value)
     }
 

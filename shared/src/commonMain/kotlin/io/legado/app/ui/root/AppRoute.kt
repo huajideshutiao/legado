@@ -55,6 +55,21 @@ sealed interface AppRoute {
         val exploreUrl: String? = null,
     ) : AppRoute
 
+    /**
+     * 发现show 外部入口 (对照 master ExploreShowActivity 冷启动直开):
+     * 只带 sourceUrl/exploreUrl/exploreName extra, 书源对象未预取;
+     * 查源下沉到路由内 (对照 master initData(intent): IntentData.source ?: DAO 查 sourceUrl),
+     * 查源期间页面直接渲染加载态, 书架不进导航栈。
+     * 应用内跳转 (已有 BookSource 对象) 走 [ExploreShow], 不查源。
+     */
+    @Serializable
+    @SerialName("explore_show_by_url")
+    data class ExploreShowByUrl(
+        val sourceUrl: String,
+        val title: String? = null,
+        val exploreUrl: String? = null,
+    ) : AppRoute
+
     @Serializable
     @SerialName("my_config")
     data object MyConfig : AppRoute
@@ -260,8 +275,18 @@ sealed interface BookRef {
     }
 }
 
-fun Book.toRouteRef(): BookRef = BookRef.Stored(copy())
-fun SearchBook.toRouteRef(): BookRef = BookRef.Search(copy())
+/**
+ * Book → 路由可序列化快照。
+ *
+ * # 拷贝契约 (2026-08: 去掉内部 copy)
+ * `toRouteRef`/`asBook` 不再拷贝, 直接共享调用方对象:
+ * - **DB-flow 边界必须显式 `copy()`**: 书架列表/搜索页"书架"区块等来自
+ *   `bookDao.observeAll()` flow 的实体, 进入路由前需 `book.copy().toRouteRef()`
+ *   (否则路由与 flow 实体别名, DB 流无法正确捕捉修改)。
+ * - **瞬态书直接共享**: 搜索结果/发现/深链抓取等一次性对象无别名风险, 零拷贝。
+ */
+fun Book.toRouteRef(): BookRef = BookRef.Stored(this)
+fun SearchBook.toRouteRef(): BookRef = BookRef.Search(this)
 
 // 按 app 端 startActivityForBook 逻辑分流阅读类路由 (Audio/Video/Manga/Rss/Reader)
 fun Book.toReadRoute(): AppRoute = toRouteRef().toReadRoute()
@@ -279,6 +304,6 @@ fun BookRef.toReadRoute(chapterIndex: Int? = null, chapterPos: Int? = null): App
 }
 
 fun BookRef.asBook(): Book = when (this) {
-    is BookRef.Stored -> value.copy()
+    is BookRef.Stored -> value
     is BookRef.Search -> value.toBook()
 }

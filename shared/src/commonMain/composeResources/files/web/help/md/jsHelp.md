@@ -649,8 +649,9 @@ crypto 系列各算法明细（android 为 hutool/JCA 全量，ios/ohos 统一�
 > `PKCS7Padding` 与 `PKCS5Padding` 在块密码（AES 16 字节 / DES 8 字节）下填充字节完全一致，
 > 可互换。android/jvm 端 `java.createSymmetricCrypto` 自动把 `PKCS7Padding` 归一为
 > `PKCS5Padding`（桌面端 JVM SunJCE 无 PKCS7Padding provider，归一后无需额外依赖即可用）；
-> 桌面端书源直调 `cn.hutool.crypto`/`Cipher` 的 PKCS7Padding 由内置 BouncyCastle provider
-> 补齐（Android 内置 Conscrypt/BC 原生支持）。
+> 桌面端书源直调 `cn.hutool.crypto`/`Cipher` 的 PKCS7Padding 不再内置补齐：bcprov 已移除
+> （引入 BC 会让 hutool RSA Cipher 走 BC 分段加密，网易云 weapi encSecKey 错误，见 shared
+> `AsymmetricCryptoAndroid` 注释）；需自行归一为 PKCS5Padding（Android 内置 Conscrypt/BC 原生支持）。
 
 示例——算法超出 ios/ohos 支持面时降级：
 

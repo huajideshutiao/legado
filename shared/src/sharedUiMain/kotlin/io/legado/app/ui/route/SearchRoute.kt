@@ -130,7 +130,10 @@ fun SearchRoute(
                     return
                 }
                 val ref = when (book) {
-                    is Book -> book.toRouteRef()
+                    // Book: 可能是搜索页"书架"区块的 DB flow 实体 → 拷贝隔离;
+                    //      也可能是搜索源返回的瞬态 Book → 多一次浅拷贝, 无害
+                    is Book -> book.copy().toRouteRef()
+                    // SearchBook: 搜索结果, 瞬态, 直接共享 (toRouteRef 不再内部 copy)
                     is SearchBook -> book.toRouteRef()
                     else -> return
                 }

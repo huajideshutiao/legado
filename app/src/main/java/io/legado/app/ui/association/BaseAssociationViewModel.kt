@@ -8,7 +8,8 @@ import io.legado.app.utils.inputStream
 
 abstract class BaseAssociationViewModel(application: Application) : BaseViewModel(application) {
 
-    val successLive = MutableLiveData<Pair<String, String>>()
+    /** 导入成功信号: 已识别的导入类型 + 源 (Uri 或纯 JSON 文本)。 */
+    val successLive = MutableLiveData<Pair<DeepLinkImportType, Uri>>()
     val errorLive = MutableLiveData<String>()
 
     fun importJson(uri: Uri) {
@@ -17,21 +18,14 @@ abstract class BaseAssociationViewModel(application: Application) : BaseViewMode
             it.bufferedReader().readText()
         }
         //JSON 类型判断已下沉至 commonMain (JsonTypeDetector.kt 的 detectJsonType),
-        //此处仅做平台专属的 LiveData 推送, 逻辑未变。
-        val typeStr = when (detectJsonType(text)) {
-            JsonType.BOOK_SOURCE -> "bookSource"
-            JsonType.RSS_SOURCE -> "rssSource"
-            JsonType.REPLACE_RULE -> "replaceRule"
-            JsonType.THEME -> "theme"
-            JsonType.DICT_RULE -> "dictRule"
-            JsonType.TXT_RULE -> "txtRule"
-            JsonType.HTTP_TTS -> "httpTts"
-            null -> {
-                errorLive.postValue("格式不对")
-                return
-            }
+        //JsonType→DeepLinkImportType 映射同样复用 shared (SchemeImportOps.toDeepLinkImportType),
+        //不再在本端维护第二份 when 映射 (原 handleSuccess 的 String 映射一并删除)。
+        val type = detectJsonType(text)?.toDeepLinkImportType()
+        if (type == null) {
+            errorLive.postValue("格式不对")
+            return
         }
-        successLive.postValue(typeStr to uri.toString())
+        successLive.postValue(type to uri)
     }
 
 }

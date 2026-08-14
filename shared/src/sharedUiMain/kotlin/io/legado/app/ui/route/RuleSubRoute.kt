@@ -22,7 +22,7 @@ import io.legado.app.data.entities.RuleSub
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.association.DeepLinkImportTarget
 import io.legado.app.ui.association.DeepLinkImportType
-import io.legado.app.ui.association.ImportItemsDialog
+import io.legado.app.ui.association.ImportTargetDialog
 import io.legado.app.ui.association.RuleSubScreen
 import io.legado.app.ui.association.RuleSubScreenModel
 import io.legado.app.ui.association.RuleSubUiActions
@@ -61,8 +61,8 @@ import org.jetbrains.compose.resources.stringResource
  *
  * 新增/编辑用 [AppAlertDialog] + customView (类型下拉 + 名称/URL 输入) 实现, 确认后 dispatch Save;
  * 删除用 [AppAlertDialog] 确认后 dispatch Delete;
- * 打开订阅按 [RuleSub.type] 映射到 [DeepLinkImportType], 经 [DeepLinkImportTarget] 触发
- * 下载解析后渲染 [ImportItemsDialog] (对照 app 端 showDialogFragment(ImportXxxDialog))。
+ * 打开订阅按 [RuleSub.type] 映射到 [DeepLinkImportType], 经 [DeepLinkImportTarget] +
+ * [ImportTargetDialog] 触发下载解析并渲染勾选导入对话框 (对照 app 端 showDialogFragment(ImportXxxDialog))。
  */
 @Composable
 fun RuleSubRoute(
@@ -178,28 +178,6 @@ fun RuleSubRoute(
             onDismiss = { importTarget.value = null },
         )
     }
-}
-
-/**
- * 订阅打开导入对话框渲染: 在独立 Composable 内 collectAsState error/success,
- * 避免 importTarget 为 null 时丢失 subscription (Compose hooks 稳定性)。
- */
-@Composable
-private fun ImportTargetDialog(
-    target: DeepLinkImportTarget,
-    onDismiss: () -> Unit,
-) {
-    // SharedFlow 无初始值, 用 null 表示"还没收到解析结果"(原 StateFlow 初始 null 的等价物)
-    val error by target.errorState.collectAsState(initial = null)
-    val success by target.successState.collectAsState(initial = null)
-    ImportItemsDialog(
-        title = rememberString(target.titleKey),
-        vm = target.items,
-        onDismiss = onDismiss,
-        // 解析进行中 (success/error 均 null) 显示 loading; 解析完成或失败后由 ImportItemsDialog 自身渲染列表/错误
-        loading = success == null && error == null,
-        errorText = error,
-    )
 }
 
 /**

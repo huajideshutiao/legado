@@ -143,6 +143,11 @@ fun ThemeConfigRoute(
             onCustomizeDayTheme = { screenModel.dispatch(ThemeConfigUiEvent.CustomizeDayTheme) },
             onCustomizeNightTheme = { screenModel.dispatch(ThemeConfigUiEvent.CustomizeNightTheme) },
             onFontScale = { screenModel.dispatch(ThemeConfigUiEvent.FontScale) },
+            // 换桌面图标: 平台能力注入 (Android setComponentEnabledSetting / iOS
+            // setAlternateIconName 实现; 桌面/鸿蒙无平台机制 → 该行隐藏)
+            iconChangeSupported =
+                PlatformCapabilityProviders.getOrNull()?.launcherIconChangeSupported == true,
+            onIconChange = { PlatformCapabilityProviders.getOrNull()?.changeLauncherIcon(it) },
         )
     }
 

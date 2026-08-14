@@ -2,8 +2,10 @@
 
 package io.legado.app.help.storage
 
+import io.legado.app.constant.PreferKey
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.help.toast.Toasters
+import io.legado.app.ui.IosPlatformCapabilities
 import kotlin.time.Clock
 
 /**
@@ -28,9 +30,14 @@ private object IosBackupRestoreHook : BackupRestoreHook {
 
     override fun onRestoreFromZipFinished() = markBackupTime()
 
-    // app 端此处还有换图标/日夜间刷新; iOS 无动态图标, 主题由 AppTheme 订阅配置自动重组
+    // app 端此处还有换图标/日夜间刷新; iOS 恢复 launcherIcon 偏好后经 setAlternateIconName
+    // 同步切换桌面图标 (对照 app 端 Restore.kt), 主题由 AppTheme 订阅配置自动重组
     override suspend fun onRestoreFinished() {
         runCatching { Toasters.get().toast("恢复完成") }
+        runCatching {
+            val icon = PreferenceProviders.get().getString(PreferKey.launcherIcon, "ic_launcher")
+            IosPlatformCapabilities.changeLauncherIcon(icon)
+        }
     }
 }
 

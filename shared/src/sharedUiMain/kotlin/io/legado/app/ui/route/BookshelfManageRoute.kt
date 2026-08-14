@@ -294,9 +294,13 @@ fun BookshelfManageRoute(
             onToggle = { book, checked ->
                 screenModel.dispatch(BookshelfManageUiEvent.Toggle(book, checked))
             },
-            // 打开书籍详情页 (带 resultKey 以接收删除结果)
+            // 打开书籍详情页 (带 resultKey 以接收删除结果; 书架管理条目是 DB flow 实体,
+            // 进入路由前拷贝隔离, toRouteRef 不再内部 copy)
             onOpenBook = { book ->
-                navigator.push(AppRoute.BookInfo(book.toRouteRef()), RouteResults.BOOK_INFO)
+                navigator.push(
+                    AppRoute.BookInfo(book.copy().toRouteRef()),
+                    RouteResults.BOOK_INFO
+                )
             },
             // 单项下载图标: 已全部缓存则跳过, 否则运行中停止/未运行开始 (对照 app 端 toggleDownload)
             onToggleDownload = { book ->

@@ -144,7 +144,7 @@ object WebBook {
                 AppDbProviders.get().bookSourceDao.getBookSource(it)
             }
         }else AppDbProviders.get().bookSourceDao.getBookSourceAddBook(baseUrl)
-            ?: AppDbProviders.get().bookSourceDao.hasBookUrlPattern().first { source ->
+            ?: AppDbProviders.get().bookSourceDao.hasBookUrlPattern().find { source ->
             bookUrl.matches(source.bookUrlPattern!!.toRegex())
         }
         try {

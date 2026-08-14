@@ -20,8 +20,9 @@ data class ThemeConfigUiState(
 /**
  * 主题设置页交互事件。
  *
- * prefs 变更回调 (fontScale) 由宿主 OnSharedPreferenceChangeListener
- * 承接原副作用 (LauncherIconHelp/recreate), summary 文案更新通过 dispatch 推入本类。
+ * prefs 变更回调 (fontScale) 由宿主 OnSharedPreferenceChangeListener 承接原副作用 (recreate),
+ * summary 文案更新通过 dispatch 推入本类; 换图标 (launcherIcon) 副作用经 ThemeConfigRoute 的
+ * onIconChange 直接委托 PlatformCapabilities.changeLauncherIcon, 不走 prefs 监听。
  */
 sealed interface ThemeConfigUiEvent {
     /** 字体缩放 summary 变化。 */

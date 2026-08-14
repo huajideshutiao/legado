@@ -2,6 +2,7 @@ package io.legado.app.ui.association
 
 import io.legado.app.constant.AppConst
 import io.legado.app.constant.BookType
+import io.legado.app.data.AppDbProviders
 import io.legado.app.help.book.addType
 import io.legado.app.help.config.ReadBookConfigProviders
 import io.legado.app.help.http.OkHttpClientProviders
@@ -12,6 +13,7 @@ import io.legado.app.ui.association.SchemeImportOps.determineType
 import io.legado.app.ui.association.SchemeImportOps.importReadConfig
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppRoute
+import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
 
 /**
@@ -114,7 +116,7 @@ fun JsonType.toDeepLinkImportType(): DeepLinkImportType = when (this) {
 }
 
 /**
- * "添加到书架" (对照 app 端 `AddToBookshelfHelper.add`): 按 bookUrl 抓详情, 成功后跳
+ * "添加到书架" (对照 app 端原 `AddToBookshelfHelper.add`): 按 bookUrl 抓详情, 成功后跳
  * [AppRoute.BookInfo] (未上架, 供用户在详情页决定是否收藏), 失败上抛异常交调用方 toast。
  */
 object AddToBookshelfShared {
@@ -124,5 +126,23 @@ object AddToBookshelfShared {
         val book = getBookInfoByUrlAwait(bookUrl)
         book.addType(BookType.notShelf)
         AppNavigatorProviders.getOrNull()?.push(AppRoute.BookInfo(book.toRouteRef()))
+    }
+}
+
+/**
+ * "书架直读" (legado://import/read?src=... 落地实现, 对照 app 端原 `ReadBookHelper.open`):
+ * - src 已在书架 (DB 存在) → 直接进阅读界面 ([AppRoute.Reader] 等阅读类路由);
+ * - 不在书架 → 等同 [AddToBookshelfShared.add]: 抓详情后跳详情界面, 供用户决定是否收藏。
+ */
+object ReadBookShared {
+
+    suspend fun read(bookUrl: String) {
+        if (bookUrl.isBlank()) error("url不能为空")
+        val book = AppDbProviders.get().bookDao.getBook(bookUrl)
+        if (book != null) {
+            AppNavigatorProviders.getOrNull()?.push(book.toReadRoute())
+        } else {
+            AddToBookshelfShared.add(bookUrl)
+        }
     }
 }

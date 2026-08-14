@@ -45,7 +45,8 @@ object ShortCuts {
     }
 
     private fun buildReadAloudShortCutInfo(context: Context): ShortcutInfoCompat {
-        // AssociationActivity 的 intent-filter 已迁移到 MainActivity
+        // 显式启动 MainActivity + action extra (不经过 deep link intent-filter;
+        // legado/yuedu scheme 过滤器在 AssociationActivity 透明壳上)
         val readAloudIntent = buildIntent<MainActivity>(context)
         readAloudIntent.putExtra("action", "readAloud")
         return ShortcutInfoCompat.Builder(context, "readAloud")

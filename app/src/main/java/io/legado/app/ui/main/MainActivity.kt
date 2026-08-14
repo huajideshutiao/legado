@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,7 +26,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.BuildConfig
 import io.legado.app.R
@@ -36,6 +41,7 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.constant.appInfo
 import io.legado.app.data.entities.Book
 import io.legado.app.help.AppWebDav
+import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
@@ -96,12 +102,15 @@ import io.legado.app.ui.main.bookshelf.ShelfCover
 import io.legado.app.ui.root.AppNavigator
 import io.legado.app.ui.root.AppNavigatorProviders
 import io.legado.app.ui.root.AppOverlay
+import io.legado.app.ui.root.AppRoute
 import io.legado.app.ui.root.LaunchRequest
 import io.legado.app.ui.root.LaunchRequestBus
 import io.legado.app.ui.root.LegadoApp
 import io.legado.app.ui.root.PlatformCapabilityProviders
 import io.legado.app.ui.root.PlatformServiceProviders
 import io.legado.app.ui.root.ScreenModelStore
+import io.legado.app.ui.root.toReadRoute
+import io.legado.app.ui.root.toRouteRef
 import io.legado.app.ui.widget.PopupAction
 import io.legado.app.utils.ACache
 import io.legado.app.utils.FileUtils
@@ -132,6 +141,10 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
     private var exitTime: Long = 0
     private val EXIT_INTERVAL = 2000L
     private val exportBookPathKey = "exportBookPath"
+
+    /** 外部入口直达请求暂存 (冷启动, 导航器未就绪): Content 组合后决定消费为初始路由
+     *  或补发, 避免静默丢失 (book_info/read_book 壳转发 + search/explore-show 等 alias 入口)。 */
+    private var pendingDirectRequest: LaunchRequest? = null
 
     /** 换封面源回调暂存: 由 [AndroidPlatformCapabilities.showChangeCoverDialog] 写入,
      *  ChangeCoverDialog 触发 [coverChangeTo] 时消费。 */
@@ -527,7 +540,23 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
         // rememberSaveable + AppNavigatorSaver: recreate()/进程重建后恢复导航栈
         // (对照原版 FragmentManager 经 savedInstanceState 恢复 Fragment 栈,
         // RECREATE 事件重建 Activity 后用户仍停在原页, 不会弹回主界面)
-        val navigator = rememberSaveable(saver = AppNavigatorSaver) { AppNavigator() }
+        // 冷启动直达 (透明壳 book_info/read_book 转发): 初始路由直接是详情/阅读页,
+        // 书架不进导航栈 (对照 master BookInfoActivity 直开); 恢复栈时 initialRoute 被忽略。
+        // directRoute 只算一次 (remember), 作为"直达是否消费成功"的唯一事实
+        val directRoute = remember { directRouteFromIntent(intent) }
+        val navigator = rememberSaveable(saver = AppNavigatorSaver) {
+            AppNavigator(initialRoute = directRoute ?: AppRoute.Main())
+        }
+        // 直达请求收尾: 初始路由真消费成功 (栈顶 == 目标路由) → 不补发;
+        // 消费失败 (IntentData.book 缺失 / 恢复栈覆盖) → 补发到 LaunchRequestBus, 不静默丢失
+        LaunchedEffect(Unit) {
+            pendingDirectRequest?.let { req ->
+                val consumed = directRoute != null &&
+                    navigator.backStack.value.singleOrNull()?.route == directRoute
+                if (!consumed) LaunchRequestBus.dispatch(req)
+                pendingDirectRequest = null
+            }
+        }
         val screenModelStore = remember { ScreenModelStore() }
         val context = LocalContext.current
 
@@ -585,8 +614,30 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
                     platformServices = services,
                 )
             }
-            // legado:// deep link 导入对话框宿主 (对照 iOS/鸿蒙 MainViewController 末尾挂载)
-            DeepLinkImportHost()
+            // legado:// deep link 导入对话框宿主 (对照 iOS/鸿蒙 MainViewController 末尾挂载)。
+            // 仅前台 (RESUMED) 挂载: 透明壳 AssociationActivity 在前台时挂它自己的一份,
+            // MainActivity 若同时消费共享 pending 会双弹窗 (后台 Activity 的 Compose Dialog
+            // 窗口仍会显示); 壳 finish 后 MainActivity 回到前台, 宿主自然恢复。
+            val lifecycleOwner = LocalLifecycleOwner.current
+            var hostVisible by remember {
+                mutableStateOf(
+                    lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+                )
+            }
+            DisposableEffect(lifecycleOwner) {
+                val observer = LifecycleEventObserver { _, event ->
+                    hostVisible = when (event) {
+                        Lifecycle.Event.ON_RESUME -> true
+                        Lifecycle.Event.ON_PAUSE -> false
+                        else -> hostVisible
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+            }
+            if (hostVisible) {
+                DeepLinkImportHost()
+            }
             // 查词对话框 (选中词 → 词典查询, 本地/在线词典规则; 对照原版 menu_dict → DictDialog)
             dictWord?.let { word ->
                 DictDialogHost(
@@ -705,10 +756,12 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
     }
 
     /**
-     * 解析外部 Intent (DeepLink / 文件关联 / PROCESS_TEXT) 并投递到 shared:
+     * 解析外部 Intent (DeepLink / 文件关联 / PROCESS_TEXT / 直达入口) 并投递到 shared:
      * - legado:// / yuedu:// → [LegadoDeepLinkHandler] → DeepLinkImportHost 弹导入对话框
      * - file:// / content:// / app:// → [LaunchRequest.ImportFile] → 导入书籍
      * - PROCESS_TEXT / SEND → [LaunchRequest.ProcessText] → 搜索
+     * - book_info/read_book 壳转发 + search/explore-show alias → 直达初始路由
+     *   (对照 master 各独立 Activity 冷启动直开, 书架不进导航栈)
      */
     private fun handleExternalIntent(intent: Intent?) {
         if (intent?.getStringExtra("action") == "readAloud") {
@@ -716,6 +769,15 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
             return
         }
         val request = intent?.toLaunchRequest() ?: return
+        // 直达入口 (book_info/read_book/search/explore-show/文件/PROCESS_TEXT):
+        // 导航器已就绪 (热启动/恢复栈) 正常分发 push 到现有栈顶 (push 去重防双份);
+        // 未就绪 (冷启动, Content 尚未组合) 暂存, 由 Content 决定消费为初始路由
+        // 或补发 (判定统一收敛到"初始路由是否真消费成功", 不再依赖冷启动猜测, 不静默丢失)。
+        // DeepLink 例外: 不走暂存, 保持直接进导入宿主 (legado 系) / LaunchRequestBus (非 legado 系)
+        if (request !is LaunchRequest.DeepLink && AppNavigatorProviders.getOrNull() == null) {
+            pendingDirectRequest = request
+            return
+        }
         when (request) {
             is LaunchRequest.DeepLink -> {
                 // legado 系: 走 shared 导入宿主; 缺 src 等非法格式静默丢弃 (对齐 app 端 finish)
@@ -728,6 +790,71 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
             }
 
             else -> LaunchRequestBus.dispatch(request)
+        }
+    }
+
+    /**
+     * 冷启动直达路由: 初始路由直接是目标页, 书架不进导航栈
+     * (对照 master 每屏独立 Activity 冷启动直开本页, back 即退)。
+     * 覆盖:
+     * - 透明壳转发 book_info/read_book (IntentData.book 直传, 不落库)
+     * - SearchActivity alias (key/searchScope/submit extra)
+     * - ExploreShowActivity alias (exploreName/exploreUrl/sourceUrl extra, 查源下沉路由内)
+     * - 文件关联 / PROCESS_TEXT / SEND
+     * 恢复栈时被 rememberSaveable 忽略; 直达参数缺失 (进程被杀) 回落默认书架。
+     */
+    private fun directRouteFromIntent(intent: Intent?): AppRoute? {
+        // 透明壳 (AssociationActivity) book_info/read_book 转发: route extra 定位
+        intent?.getStringExtra("route")?.let { routeName ->
+            val book = IntentData.book as? Book ?: return null
+            return when (routeName) {
+                "book_info" -> AppRoute.BookInfo(book.toRouteRef())
+                "read_book" -> book.toReadRoute()
+                else -> null
+            }
+        }
+        // 搜索 alias: 对照 master SearchActivity.receiptIntent (key 空聚焦输入框)
+        if (intent?.component?.className == SEARCH_ALIAS) {
+            return AppRoute.Search(
+                key = intent.getStringExtra("key"),
+                searchScope = intent.getStringExtra("searchScope"),
+                submit = intent.getBooleanExtra("submit", true),
+            )
+        }
+        // 发现show alias: 对照 master ExploreShowActivity 冷启动直开; 查源下沉到路由内
+        if (intent?.component?.className == EXPLORE_SHOW_ALIAS) {
+            val sourceUrl = intent.getStringExtra("sourceUrl")
+                ?.takeIf { it.isNotBlank() } ?: return null
+            return AppRoute.ExploreShowByUrl(
+                sourceUrl = sourceUrl,
+                title = intent.getStringExtra("exploreName"),
+                exploreUrl = intent.getStringExtra("exploreUrl"),
+            )
+        }
+        // 文件关联 / PROCESS_TEXT / SEND (对齐 toLaunchRequest 分支)
+        return when (intent?.action) {
+            Intent.ACTION_VIEW -> intent.dataString?.let { url ->
+                when (intent.data?.scheme) {
+                    "content", "file", "app" -> AppRoute.ImportBook(url)
+                    else -> null
+                }
+            }
+
+            Intent.ACTION_PROCESS_TEXT ->
+                intent.getStringExtra(Intent.EXTRA_PROCESS_TEXT)?.let {
+                    AppRoute.Search(key = it, submit = true)
+                }
+
+            Intent.ACTION_SEND -> {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)?.let {
+                    AppRoute.ImportBook(it.toString())
+                } ?: intent.getStringExtra(Intent.EXTRA_TEXT)?.let {
+                    AppRoute.Search(key = it, submit = true)
+                }
+            }
+
+            else -> null
         }
     }
 

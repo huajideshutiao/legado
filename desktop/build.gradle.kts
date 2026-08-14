@@ -198,12 +198,15 @@ dependencies {
     // jna-platform 提供 Win32 COM 基础设施 (Ole32/Guid/HRESULT), 供 WindowsFileDialogs 直调
     // IFileDialog 取现代文件对话框 (AWT FileDialog 在 Windows 上是 comdlg32 旧版样式)。
     implementation("net.java.dev.jna:jna-platform:5.17.0")
-    // JCE 补丁 provider: SunJCE 不支持 AES/CBC/PKCS7Padding (桌面端书源登录/解密脚本
-    // java.createSymmetricCrypto('AES/CBC/PKCS7Padding', ...) 曾报 NoSuchAlgorithmException);
-    // bcprov 由 Oracle JCE Code Signing CA 签名, 可通过 JCE provider 认证, 注册见
-    // DesktopCryptoProvider.ensureJvmCryptoProviders (Main.kt 启动早期调用)。
-    // 仅桌面端引入: Android 内置 Conscrypt/BC 已覆盖 PKCS7Padding, 不增 APK 体积。
-    implementation(libs.bcprov)
+    // 2026-08-15 教训: 不要重新启用 bcprov! 一旦 BC 类进入运行时 classpath, hutool
+    // SecureUtil.createCipher 会经 GlobalBouncyCastleProvider 用 BC 的 RSA Cipher:
+    // BC 的 RSA getBlockSize()=127 (SunJCE=0), 触发 AsymmetricCrypto.encrypt 的分段加密
+    // (128 字节输入被切成 127+1 两段分别 RSA 再拼接), 产出错误的 encSecKey →
+    // 网易 weapi 全部 200 空体, 网易云发现/目录/歌单无法加载 (07c2a5e5 引入, 根因排查见
+    // shared AsymmetricCryptoAndroid.initCipher 注释)。如需 PKCS7Padding, 请恢复
+    // SymmetricCryptoAndroid 的 normalizePkcs7Padding (PKCS7→PKCS5 字节级等价, 无需 BC),
+    // 不要再加回 bcprov。
+    // implementation(libs.bcprov)
     // webp 编码: ImageIO SPI 插件 (jar 内置 win/linux/mac native writer; TwelveMonkeys 只读不写)
     implementation("com.github.gotson:webp-imageio:0.2.2")
     // 本地书格式: PDF 渲染 (对照 app 端 PdfRenderer 语义)
@@ -587,6 +590,31 @@ compose.desktop {
                 // RPM Release 字段 (deb 包版本由 packageVersion 控制)
                 appRelease = "1"
                 // 不强制 root 安装 (deb 默认 /usr/bin, /usr/share)
+            }
+            // macOS dmg 专属配置
+            macOS {
+                // legado:// / yuedu:// deep link: 把 CFBundleURLTypes 注入 .app Info.plist
+                // (对照 iosApp/project.yml 的 CFBundleURLTypes 与 app 端 intent-filter)。
+                // CMP DSL 无 jpackage --mac-url-scheme 等价项, 用 infoPlist.extraKeysRawXml
+                // 在 </dict> 前追加原始 XML; LaunchServices 安装/启动 .app 后即把两 scheme
+                // 关联到本应用。运行时回调由 Main.kt setOpenURIHandler (Apple Event) 承接,
+                // 无需运行时注册 (Windows/Linux 的运行时注册见 DesktopUrlProtocol)。
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>CFBundleURLTypes</key>
+                        <array>
+                            <dict>
+                                <key>CFBundleURLName</key>
+                                <string>io.legado.deeplink</string>
+                                <key>CFBundleURLSchemes</key>
+                                <array>
+                                    <string>legado</string>
+                                    <string>yuedu</string>
+                                </array>
+                            </dict>
+                        </array>
+                    """.trimIndent()
+                }
             }
         }
     }

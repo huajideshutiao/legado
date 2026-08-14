@@ -2,34 +2,31 @@ package io.legado.app.ui.association
 
 import android.app.Application
 import android.net.Uri
-import androidx.core.net.toUri
 import androidx.lifecycle.MutableLiveData
-import io.legado.app.help.i18n.androidAppString
-import io.legado.app.constant.AppConst
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.AppPattern
 import io.legado.app.constant.AppPattern.bookFileRegex
 import io.legado.app.data.entities.Book
-import io.legado.app.help.config.ReadBookConfig
-import io.legado.app.help.http.newCallResponseBody
-import io.legado.app.help.http.okHttpClient
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.model.fileBook.importLocalFile
 import io.legado.app.utils.ArchiveUtils
 import io.legado.app.utils.FileDoc
-import io.legado.app.utils.FileUtils
-import io.legado.app.utils.externalCache
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.isFileScheme
 import io.legado.app.utils.isJson
 import io.legado.app.utils.openInputStream
 import io.legado.app.utils.printOnDebug
-import okhttp3.MediaType.Companion.toMediaType
-import splitties.init.appCtx
 
+/**
+ * 文件关联导入 (txt/epub/zip/json 书源文件等)。
+ *
+ * 深链 (legado:// / yuedu://) 已统一走 shared [LegadoDeepLinkHandler] (见
+ * [FileAssociationFragment] onCreate 与 MainActivity.handleExternalIntent), 本类不再承担
+ * 在线导入/下载嗅探; 原 `getBytes`/`importReadConfig`/`determineType` 已删除, 其逻辑由
+ * commonMain [SchemeImportOps] 承担 (deep link 宿主统一走共享实现)。
+ */
 class FileAssociationViewModel(application: Application) : BaseAssociationViewModel(application) {
     val importBookLiveData = MutableLiveData<Uri>()
-    val onLineImportLive = MutableLiveData<Uri>()
     val openBookLiveData = MutableLiveData<Book>()
     val notSupportedLiveData = MutableLiveData<Pair<Uri, String>>()
 
@@ -49,7 +46,9 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
                     dispatch(fileDoc)
                 }
             } else {
-                onLineImportLive.postValue(uri)
+                // 非文件 scheme (legado/yuedu 深链等): 统一交 shared 解析器,
+                // 非法格式静默丢弃 (对照 MainActivity.handleExternalIntent)
+                LegadoDeepLinkHandler.handle(uri.toString())
             }
         }.onError {
             it.printOnDebug()
@@ -79,79 +78,5 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
     fun importBook(uri: Uri) {
         val book = FileBook.importLocalFile(uri)
         openBookLiveData.postValue(book)
-    }
-
-    fun getBytes(url: String, success: (bytes: ByteArray) -> Unit) {
-        execute {
-            okHttpClient.newCallResponseBody {
-                if (url.endsWith("#requestWithoutUA")) {
-                    url(url.substringBeforeLast("#requestWithoutUA"))
-                    header(AppConst.UA_NAME, "null")
-                } else {
-                    url(url)
-                }
-            }.bytes()
-        }.onSuccess {
-            success.invoke(it)
-        }.onError {
-            errorLive.postValue(
-                it.localizedMessage ?: androidAppString("unknown_error")
-            )
-        }
-    }
-
-    fun importReadConfig(bytes: ByteArray, finally: (title: String, msg: String) -> Unit) {
-        execute {
-            val config = ReadBookConfig.import(bytes)
-            ReadBookConfig.configList.forEachIndexed { index, c ->
-                if (c.name == config.name) {
-                    ReadBookConfig.configList[index] = config
-                    return@execute config.name
-                }
-            }
-            ReadBookConfig.configList.add(config)
-            config.name
-        }.onSuccess {
-            finally.invoke(androidAppString("success"), "导入排版成功")
-        }.onError {
-            finally.invoke(
-                androidAppString("error"),
-                it.localizedMessage ?: androidAppString("unknown_error")
-            )
-        }
-    }
-
-    fun determineType(url: String, finally: (title: String, msg: String) -> Unit) {
-        execute {
-            val rs = okHttpClient.newCallResponseBody {
-                if (url.endsWith("#requestWithoutUA")) {
-                    url(url.substringBeforeLast("#requestWithoutUA"))
-                    header(AppConst.UA_NAME, "null")
-                } else {
-                    url(url)
-                }
-            }
-            when (rs.contentType()) {
-                "application/zip".toMediaType(),
-                "application/octet-stream".toMediaType() -> {
-                    importReadConfig(rs.bytes(), finally)
-                }
-
-                else -> {
-                    val inputStream = rs.byteStream()
-                    val file = FileUtils.createFileIfNotExist(
-                        appCtx.externalCache,
-                        "download",
-                        "scheme_import_cache.json"
-                    )
-                    file.outputStream().use { out ->
-                        inputStream.use {
-                            it.copyTo(out)
-                        }
-                    }
-                    importJson(file.toUri())
-                }
-            }
-        }
     }
 }

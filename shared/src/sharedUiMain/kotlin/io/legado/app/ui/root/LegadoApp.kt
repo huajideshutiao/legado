@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
+import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
@@ -605,6 +606,17 @@ private suspend fun handleLaunchRequest(
             RouteResults.BOOK_SOURCE_EDIT
         )
 
+        // 发现show 入口 (对照 master ExploreShowActivity 冷启动直开: initData(intent)
+        // 内部 IntentData.source ?: DAO 查 sourceUrl; 查源下沉到路由内, 页面直接渲染加载态,
+        // 不再在此预查 (应用内跳转走 AppRoute.ExploreShow(source=...) 不查源)
+        is LaunchRequest.ExploreShow -> navigator.push(
+            AppRoute.ExploreShowByUrl(
+                sourceUrl = request.sourceUrl,
+                title = request.exploreName,
+                exploreUrl = request.exploreUrl,
+            )
+        )
+
         is LaunchRequest.ProcessText -> navigator.push(
             AppRoute.Search(key = request.text, submit = true)
         )
@@ -650,6 +662,27 @@ private suspend fun handleLaunchRequest(
                     } else {
                         navigator.push(AppRoute.Main(MainTab.BOOKSHELF))
                     }
+                } else {
+                    navigator.push(AppRoute.Main(MainTab.BOOKSHELF))
+                }
+            }
+
+            // 透明壳 (AssociationActivity) addToBookshelf/read 转发: IntentData 直传内存书
+            // (壳里 getBookInfoByUrlAwait/bookDao.getBook 返回的都是 Book, 必为 Book);
+            // 对照 master BookInfoActivity/ReadBookActivity 读 IntentData.book; 兜底主界面
+            "book_info" -> {
+                val book = IntentData.book as? Book
+                if (book != null) {
+                    navigator.push(AppRoute.BookInfo(book.toRouteRef()))
+                } else {
+                    navigator.push(AppRoute.Main(MainTab.BOOKSHELF))
+                }
+            }
+
+            "read_book" -> {
+                val book = IntentData.book as? Book
+                if (book != null) {
+                    navigator.push(book.toReadRoute())
                 } else {
                     navigator.push(AppRoute.Main(MainTab.BOOKSHELF))
                 }

@@ -7,15 +7,15 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
-import io.legado.app.help.i18n.androidAppString
 import io.legado.app.constant.AppLog
-import io.legado.app.help.IntentData
 import io.legado.app.exception.InvalidBooksDirException
+import io.legado.app.help.IntentData
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isRss
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.i18n.androidAppString
 import io.legado.app.lib.permission.Permissions
 import io.legado.app.lib.permission.PermissionsCompat
 import io.legado.app.ui.compose.dialogs.alert
@@ -37,7 +37,6 @@ import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import splitties.init.appCtx
 import java.io.File
 import java.io.FileOutputStream
 
@@ -89,9 +88,6 @@ class FileAssociationFragment() : Fragment() {
             navigator.push(target)
             finishActivity()
         }
-        viewModel.onLineImportLive.observe(this) {
-            handleOnLineImport(it)
-        }
         viewModel.notSupportedLiveData.observe(this) { data ->
             alert(
                 title = androidAppString("draw"),
@@ -112,7 +108,12 @@ class FileAssociationFragment() : Fragment() {
         if (uri.isContentScheme() && uri.canRead()) {
             viewModel.dispatchIntent(uri)
         } else if (uri.scheme == "legado" || uri.scheme == "yuedu") {
-            viewModel.dispatchIntent(uri)
+            // 深链统一走 shared 解析链 (LegadoDeepLinkHandler → DeepLinkImportHost),
+            // 与 MainActivity.handleExternalIntent / 共享 WebViewRoute.interceptUrl 同一条链。
+            // 原 handleOnLineImport 的 when(uri.path) 手写分发已删除, path→类型映射由
+            // commonMain LegadoDeepLink.parse 承担 (缺 src 等非法格式静默丢弃)。
+            LegadoDeepLinkHandler.handle(uri.toString())
+            finishActivity()
         } else {
             PermissionsCompat.Builder()
                 .addPermissions(*Permissions.Group.STORAGE)
@@ -128,60 +129,13 @@ class FileAssociationFragment() : Fragment() {
         }
     }
 
-    private fun handleOnLineImport(uri: Uri) {
-        val url = uri.getQueryParameter("src")
-        if (url.isNullOrEmpty()) {
-            finishActivity()
-            return
-        }
-        when (uri.path) {
-            "/bookSource", "/rssSource" -> showImportDialog(DeepLinkImportType.BOOK_SOURCE, url)
-            "/replaceRule" -> showImportDialog(DeepLinkImportType.REPLACE_RULE, url)
-            "/textTocRule" -> showImportDialog(DeepLinkImportType.TXT_TOC_RULE, url)
-            "/httpTTS" -> showImportDialog(DeepLinkImportType.HTTP_TTS, url)
-            "/dictRule" -> showImportDialog(DeepLinkImportType.DICT_RULE, url)
-            "/theme" -> showImportDialog(DeepLinkImportType.THEME, url)
-            "/addToBookshelf" -> {
-                AddToBookshelfHelper.add(
-                    AppNavigatorProviders.get(),
-                    requireActivity(),
-                    url,
-                    isShell
-                )
-                removeSelf()
-            }
-
-            "/readConfig" -> viewModel.getBytes(url) { bytes ->
-                viewModel.importReadConfig(bytes) { title, msg ->
-                    finallyDialog(title, msg)
-                }
-            }
-
-            "/importonline" -> when (uri.host) {
-                "booksource", "rsssource" ->
-                    showImportDialog(DeepLinkImportType.BOOK_SOURCE, url)
-
-                "replace" -> showImportDialog(DeepLinkImportType.REPLACE_RULE, url)
-                else -> viewModel.determineType(url) { title, msg ->
-                    finallyDialog(title, msg)
-                }
-            }
-
-            else -> viewModel.determineType(url) { title, msg ->
-                finallyDialog(title, msg)
-            }
-        }
-    }
-
-    private fun handleSuccess(it: Pair<String, String>) {
-        when (it.first) {
-            "bookSource", "rssSource" -> showImportDialog(DeepLinkImportType.BOOK_SOURCE, it.second)
-            "replaceRule" -> showImportDialog(DeepLinkImportType.REPLACE_RULE, it.second)
-            "httpTts" -> showImportDialog(DeepLinkImportType.HTTP_TTS, it.second)
-            "theme" -> showImportDialog(DeepLinkImportType.THEME, it.second)
-            "txtRule" -> showImportDialog(DeepLinkImportType.TXT_TOC_RULE, it.second)
-            "dictRule" -> showImportDialog(DeepLinkImportType.DICT_RULE, it.second)
-        }
+    /**
+     * 文件 JSON 导入成功 (深链在线导入已统一走 shared [LegadoDeepLinkHandler],
+     * 此处仅剩 importJson 的文件导入分支; 类型映射在 BaseAssociationViewModel 复用
+     * shared JsonType.toDeepLinkImportType, 不再有第二份 when)。
+     */
+    private fun handleSuccess(it: Pair<DeepLinkImportType, Uri>) {
+        showImportDialog(it.first, it.second.toString())
     }
 
     /**
@@ -205,15 +159,6 @@ class FileAssociationFragment() : Fragment() {
             }
         }
         removeSelf()
-    }
-
-    private fun finallyDialog(title: String, msg: String) {
-        alert(title, msg) {
-            okButton()
-            onDismiss {
-                finishActivity()
-            }
-        }
     }
 
     private fun finishActivity() {

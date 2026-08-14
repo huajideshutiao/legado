@@ -29,6 +29,11 @@ enum class DeepLinkImportType {
     ADD_TO_BOOKSHELF,
     /** /readConfig (app 端 getBytes + importReadConfig) */
     READ_CONFIG,
+    /**
+     * /read (书架直读): 传 src (书源书籍地址), 书已在书架 → 直接进阅读界面;
+     * 不在书架 → 等同 addToBookshelf (抓详情进详情界面)。
+     */
+    READ_BOOK,
     /** 未识别 path (app 端 else 分支 determineType: 下载内容嗅探类型) */
     UNKNOWN,
 }
@@ -53,6 +58,8 @@ data class DeepLinkImportRequest(
  * - `legado://import/bookSource?src=<URL>` → host=import, path=/bookSource
  * - `legado://booksource/importonline?src=<URL>` → host=booksource, path=/importonline
  *   (老格式, 按 host 分流 booksource/rsssource→书源, replace→替换规则, 其余→UNKNOWN)
+ * - `legado://import/read?src=<URL>` → [DeepLinkImportType.READ_BOOK]
+ *   (书架直读: 已在书架直接阅读, 否则抓详情进详情页)
  *
  * # 与 app 端语义对照
  *
@@ -105,6 +112,7 @@ object LegadoDeepLink {
             "/theme" -> DeepLinkImportType.THEME
             "/addToBookshelf" -> DeepLinkImportType.ADD_TO_BOOKSHELF
             "/readConfig" -> DeepLinkImportType.READ_CONFIG
+            "/read" -> DeepLinkImportType.READ_BOOK
             "/importonline" -> when (host) {
                 "booksource", "rsssource" -> DeepLinkImportType.BOOK_SOURCE
                 "replace" -> DeepLinkImportType.REPLACE_RULE

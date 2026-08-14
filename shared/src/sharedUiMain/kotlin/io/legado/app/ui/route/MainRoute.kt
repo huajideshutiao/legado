@@ -1183,8 +1183,10 @@ private fun BookshelfTabContent(
     }
     BookshelfScreen(
         viewModel = viewModel,
-        onBookClick = { book -> navigator.push(book.toReadRoute()) },
-        onBookLongClick = { book -> navigator.push(AppRoute.BookInfo(book.toRouteRef())) },
+        // 书架条目是 bookDao.observeAll() flow 实体: 进入路由前拷贝隔离
+        // (toRouteRef 不再内部 copy, DB-flow 边界显式 copy 防别名串扰)
+        onBookClick = { book -> navigator.push(book.copy().toReadRoute()) },
+        onBookLongClick = { book -> navigator.push(AppRoute.BookInfo(book.copy().toRouteRef())) },
         onSearchClick = { navigator.push(AppRoute.Search()) },
         onGroupLongClick = { group -> editingGroup = group },
         bookshelfActionsCallbacks = callbacks,

@@ -10,7 +10,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalWindowInfo
-import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
@@ -27,7 +26,6 @@ import io.legado.app.help.book.isWebFile
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
-import io.legado.app.help.coroutine.mainDispatcher
 import io.legado.app.help.showSourceLogin
 import io.legado.app.help.toast.Toasters
 import io.legado.app.ui.book.info.BookInfoMenuState
@@ -78,7 +76,8 @@ fun BookInfoRoute(
     screenModelStore: ScreenModelStore,
 ) {
     val route = entry.route as AppRoute.BookInfo
-    // BookRef -> Book, 导航时再 toRouteRef() 转回 (防御性拷贝, 避免与路由持有对象别名)
+    // BookRef -> Book (toRouteRef/asBook 不再内部拷贝: DB-flow 边界已在书架/搜索书架区块
+    // 显式 copy, 此处直接共享路由快照; 页面改动走 bookDao.update 落库, 快照随 DB 一致)
     val book = route.book.asBook()
 
     val screenModel = screenModelStore.getOrCreateTyped(entry) { BookInfoScreenModel() }
@@ -424,18 +423,13 @@ fun BookInfoRoute(
                 )
         }
 
-        // 搜索作者: :: 探索需 BookSource, 加载后跳 ExploreShow; 普通搜索跳 Search
+        // 搜索作者: :: 探索直接用内存 bookSource (对照 master search(): IntentData.source =
+        // curBookSource 不查库, ExploreShow 变体 source 直传); 普通搜索跳 Search
         override fun onSearchAuthor(author: String, submit: Boolean) {
             val tmp = author.split("::", limit = 2)
             if (tmp.size > 1) {
-                val b = state.book ?: book
-                scope.launch(IoDispatcher) {
-                    val source =
-                        AppDbProviders.get().bookSourceDao.getBookSource(b.origin) ?: return@launch
-                    withContext(mainDispatcher) {
-                        navigator.push(AppRoute.ExploreShow(source, tmp[0], tmp[1]))
-                    }
-                }
+                val source = bookSource ?: return
+                navigator.push(AppRoute.ExploreShow(source, tmp[0], tmp[1]))
             } else {
                 navigator.push(
                     AppRoute.Search(

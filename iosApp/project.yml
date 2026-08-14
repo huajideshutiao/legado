@@ -88,6 +88,38 @@ targets:
             CFBundleURLSchemes:
               - legado
               - yuedu
+        # 应用图标与交替图标 (换桌面图标, 对照 Android Launcher1/4/5):
+        # 主图标 AppIcon.png (默认), 交替图标 Icon1/Icon4/Icon5.png, 经
+        # UIApplication.setAlternateIconName 切换 (见 shared IosPlatformCapabilities.changeLauncherIcon)。
+        # ⚠️ 本段与 Info.plist 双写 (xcodegen generate 用本段重写 Info.plist)
+        CFBundleIcons:
+          CFBundlePrimaryIcon:
+            CFBundleIconFiles:
+              - AppIcon
+          CFBundleAlternateIcons:
+            Icon1:
+              CFBundleIconFiles:
+                - Icon1
+            Icon4:
+              CFBundleIconFiles:
+                - Icon4
+            Icon5:
+              CFBundleIconFiles:
+                - Icon5
+        CFBundleIcons~ipad:
+          CFBundlePrimaryIcon:
+            CFBundleIconFiles:
+              - AppIcon
+          CFBundleAlternateIcons:
+            Icon1:
+              CFBundleIconFiles:
+                - Icon1
+            Icon4:
+              CFBundleIconFiles:
+                - Icon4
+            Icon5:
+              CFBundleIconFiles:
+                - Icon5
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.legado.app.ios

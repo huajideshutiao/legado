@@ -432,6 +432,13 @@ private class AndroidExternalRequestService : ExternalRequestService {
  * 内部 startActivityForBook 兜底入口: bookUrl extra → [LaunchRequest.OpenReader],
  * 由 MainActivity 透传到 shared ReaderRoute 分发 (替代原 ReadBookActivity 直启)。
  */
+
+/** 搜索界面入口别名: manifest activity-alias 指向 MainActivity (对照 master SearchActivity.receiptIntent)。 */
+internal const val SEARCH_ALIAS = "io.legado.app.ui.book.search.SearchActivity"
+
+/** 发现show 入口别名: manifest activity-alias 指向 MainActivity (对照 master ExploreShowActivity)。 */
+internal const val EXPLORE_SHOW_ALIAS = "io.legado.app.ui.book.explore.ExploreShowActivity"
+
 fun Intent.toLaunchRequest(): LaunchRequest? {
     // 通知/外部入口携带 route extra: 转为 NavigateTo 请求 (bookUrl 一并携带供冷启动兜底)
     getStringExtra("route")?.let {
@@ -440,13 +447,29 @@ fun Intent.toLaunchRequest(): LaunchRequest? {
             bookUrl = getStringExtra("bookUrl"),
         )
     }
-    // 外部搜索入口 (对齐原版 SearchActivity.receiptIntent): key/searchScope extra → SearchBook
-    getStringExtra("key")?.takeIf { it.isNotBlank() }?.let { key ->
+    // 搜索界面 alias 入口 (对照 master SearchActivity.receiptIntent: key/searchScope/submit extra;
+    // manifest activity-alias .ui.book.search.SearchActivity 指向本 Activity; 仅 alias 组件名命中
+    // 才进入 —— 带 key extra 的普通 VIEW Intent 不再隐式视为搜索, 避免误吞无关 Intent;
+    // key 为空也直达搜索页聚焦输入框, 对齐 master receiptIntent 的 isNullOrBlank 分支)
+    if (component?.className == SEARCH_ALIAS) {
         return LaunchRequest.SearchBook(
-            key = key,
+            key = getStringExtra("key"),
             searchScope = getStringExtra("searchScope"),
             submit = getBooleanExtra("submit", true),
         )
+    }
+    // 发现show 入口 (对照 master ExploreShowActivity: exploreUrl/exploreName/sourceUrl extra;
+    // manifest activity-alias .ui.book.explore.ExploreShowActivity 指向本 Activity)
+    val isExploreShowAlias = component?.className == EXPLORE_SHOW_ALIAS
+    val exploreUrl = getStringExtra("exploreUrl")?.takeIf { it.isNotBlank() }
+    if (isExploreShowAlias || exploreUrl != null) {
+        getStringExtra("sourceUrl")?.takeIf { it.isNotBlank() }?.let { sourceUrl ->
+            return LaunchRequest.ExploreShow(
+                sourceUrl = sourceUrl,
+                exploreName = getStringExtra("exploreName"),
+                exploreUrl = exploreUrl,
+            )
+        }
     }
     // startActivityForBook 兜底: bookUrl extra → OpenReader (chapterIndex/chapterPos 可选)
     getStringExtra("bookUrl")?.takeIf { it.isNotEmpty() }?.let { url ->
