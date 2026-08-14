@@ -14,7 +14,7 @@ import image from '@ohos.multimedia.image';
  * handleImageRequest(requestJson, bytesArrayBuffer)
  * {
  *   "requestId": <number>,
- *   "action": "decode" | "encode" | "size" | "crop" | "split" | "stitch" | "release",
+ *   "action": "decode" | "encode" | "size" | "crop" | "split" | "stitch" | "rotate" | "flip" | "release",
  *   "payload": "<JSON string, action-specific>"
  * }
  * ```
@@ -66,6 +66,8 @@ interface SizePayload { pixelMapId: number; }
 interface CropPayload { pixelMapId: number; x: number; y: number; w: number; h: number; }
 interface SplitPayload { pixelMapId: number; rows: number; cols: number; }
 interface StitchPayload { pixelMapIds: number[]; direction: string; }
+interface RotatePayload { pixelMapId: number; degrees: number; }
+interface FlipPayload { pixelMapId: number; isH: boolean; isV: boolean; }
 interface ReleasePayload { pixelMapId: number; }
 
 // action 处理结果: 控制面 ImageResponse + 可选数据面裸字节 (仅 encode 携带 packed 图片)
@@ -116,6 +118,8 @@ async function handleAction(req: ImageBridgeRequest, bytes: ArrayBuffer | undefi
     case 'crop': return { resp: await handleCrop(req.payload) };
     case 'split': return { resp: await handleSplit(req.payload) };
     case 'stitch': return { resp: await handleStitch(req.payload) };
+    case 'rotate': return { resp: await handleRotate(req.payload) };
+    case 'flip': return { resp: await handleFlip(req.payload) };
     case 'release': return { resp: await handleRelease(req.payload) };
     default: return { resp: { ok: false, error: 'unknown action: ' + req.action } };
   }
@@ -297,6 +301,46 @@ async function handleStitch(payload: string): Promise<ImageResponse> {
   return { ok: true, pixelMapId: id };
 }
 
+// ===== rotate: PixelMap 旋转 (in-place, 先复制再旋转), 返回新 PixelMap =====
+async function handleRotate(payload: string): Promise<ImageResponse> {
+  const p = JSON.parse(payload) as RotatePayload;
+  const srcMap = pixelMaps.get(p.pixelMapId);
+  if (srcMap == null) {
+    return { ok: false, error: 'pixelMap not found: ' + p.pixelMapId };
+  }
+  // rotate 是 in-place 操作, 先做可编辑副本再旋转, 不动原图
+  const copy = await createEditableCopy(srcMap);
+  try {
+    // PixelMap.rotate(angle): 正值为顺时针 (Kotlin 侧已归一化到 [0,360))
+    await copy.rotate(p.degrees);
+  } catch (e) {
+    copy.release();
+    return { ok: false, error: 'rotate failed: ' + String((e as Error).message ?? e) };
+  }
+  const id = nextPixelMapId++;
+  pixelMaps.set(id, copy);
+  return { ok: true, pixelMapId: id };
+}
+
+// ===== flip: PixelMap 翻转/镜像 (in-place, 先复制再翻转), 返回新 PixelMap =====
+async function handleFlip(payload: string): Promise<ImageResponse> {
+  const p = JSON.parse(payload) as FlipPayload;
+  const srcMap = pixelMaps.get(p.pixelMapId);
+  if (srcMap == null) {
+    return { ok: false, error: 'pixelMap not found: ' + p.pixelMapId };
+  }
+  const copy = await createEditableCopy(srcMap);
+  try {
+    await copy.flip(p.isH, p.isV);
+  } catch (e) {
+    copy.release();
+    return { ok: false, error: 'flip failed: ' + String((e as Error).message ?? e) };
+  }
+  const id = nextPixelMapId++;
+  pixelMaps.set(id, copy);
+  return { ok: true, pixelMapId: id };
+}
+
 // ===== release: 释放指定 PixelMap =====
 async function handleRelease(payload: string): Promise<ImageResponse> {
   const p = JSON.parse(payload) as ReleasePayload;
@@ -324,6 +368,24 @@ async function createCroppedCopy(
   const srcBuffer = new ArrayBuffer(srcW * srcH * 4);
   await srcMap.readPixelsToBuffer(srcBuffer);
   return await createPixelMapFromSubRegion(srcBuffer, srcW, srcH, x, y, w, h);
+}
+
+/**
+ * 创建源 PixelMap 的可编辑独立副本 (供 rotate/flip 等 in-place 操作使用)。
+ * 读像素到 buffer → 以同尺寸 RGBA_8888 editable 重建, 与原图完全隔离。
+ */
+async function createEditableCopy(srcMap: image.PixelMap): Promise<image.PixelMap> {
+  const info = srcMap.getImageInfoSync();
+  const w = info.size.width;
+  const h = info.size.height;
+  const buf = new ArrayBuffer(w * h * 4);
+  await srcMap.readPixelsToBuffer(buf);
+  return await image.createPixelMap(buf, {
+    size: { width: w, height: h },
+    pixelFormat: image.PixelMapFormat.RGBA_8888,
+    editable: true,
+    alphaType: image.AlphaType.PREMUL,
+  });
 }
 
 /**

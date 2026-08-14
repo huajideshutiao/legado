@@ -94,6 +94,8 @@ private fun MoreConfigBody(
                 }
 
                 PreferKey.keepLight -> ReadBookEvents.postKeepLightChange()
+                // 屏幕方向: 重应用窗口策略 (LegadoApp 收集后按新 pref 重建阅读页策略)
+                PreferKey.screenOrientation -> ReadBookEvents.postOrientationChange()
                 PreferKey.textFullJustify,
                 PreferKey.textBottomJustify,
                 PreferKey.useZhLayout -> {
@@ -108,17 +110,17 @@ private fun MoreConfigBody(
 
                 PreferKey.showReadTitleAddition -> ReadBookEvents.postActionBarChange()
                 PreferKey.progressBarBehavior -> ReadBookEvents.postSeekBarChange()
-                // screenOrientation 需 ReadBookActivity.setOrientation, 平台专属, 此处不处理
             }
         },
     )
 
-    // 翻页触发距离 NumberPicker (对齐 app 端 pickPageTouchSlop)
+    // 翻页触发距离 NumberPicker (对齐 app 端 pickPageTouchSlop; 0=跟随系统默认 slop,
+    // 上下界收紧到实际可用范围 0..300px, 避免滑条全行程 9999 不可用)
     if (showPageTouchSlop) {
         NumberPickerDialog(
             title = stringResource(Res.string.page_touch_slop_dialog_title),
             value = pref.getInt(PreferKey.pageTouchSlop, 0),
-            range = 0..9999,
+            range = 0..300,
             onConfirm = {
                 pref.putInt(PreferKey.pageTouchSlop, it)
                 ReadBookEvents.postConfig(listOf(ReadConfigChange.PAGE_SLOP))

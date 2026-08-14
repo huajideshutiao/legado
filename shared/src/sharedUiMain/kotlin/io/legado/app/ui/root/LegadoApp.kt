@@ -95,6 +95,7 @@ import io.legado.app.ui.widget.keyboard.KeyboardAssistsConfigOverlayContent
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import legado.shared.generated.resources.Res
@@ -186,10 +187,17 @@ fun LegadoApp(
         // 应用当前路由对应的窗口策略。只在策略真变了才下发: 桌面端 setFullscreen 会调
         // AWT GraphicsDevice.setFullScreenWindow, 每次重组都下发等于持续折腾窗口本体
         // 阅读页系统栏跟随 hideStatusBar/hideNavigationBar 配置 (对照原版 upSystemUiVisibility),
-        // 默认(关闭隐藏)时状态栏须可见
+        // 默认(关闭隐藏)时状态栏须可见; 屏幕方向/常亮跟随 screenOrientation/keepLight 配置
+        // (对照原版 ReadBookActivity.setOrientation / upScreenTimeOut)。
         val windowPolicy = currentRoute?.let { route ->
             if (route is AppRoute.Reader) {
-                WindowPolicies.Reader.copy(systemBars = readerSystemBarsPolicy(menuVisible = false))
+                WindowPolicies.Reader.copy(
+                    systemBars = readerSystemBarsPolicy(menuVisible = false),
+                    orientation = readerOrientationPolicy(),
+                    // Android 阅读页不直接作用（MainActivity.applyWindowKeepScreenOn 改走
+                    // keepLight 计时管理），桌面/移动端按 keepLight 直接驱动平台常亮
+                    keepScreenOn = readerKeepScreenOnPolicy(),
+                )
             } else {
                 WindowPolicies.forRoute(route)
             }
@@ -216,21 +224,32 @@ fun LegadoApp(
         // 阅读页隐藏状态栏/导航栏开关在对话框里切换后重应用系统栏策略 (原版 SharedPreference
         // 监听 → upSystemUiVisibility); 用 rememberUpdatedState 取最新路由
         val currentRouteState = rememberUpdatedState(currentRoute)
+        val applyCurrentPolicy = {
+            val route = currentRouteState.value
+            val policy = if (route is AppRoute.Reader) {
+                WindowPolicies.Reader.copy(
+                    systemBars = readerSystemBarsPolicy(menuVisible = false),
+                    orientation = readerOrientationPolicy(),
+                    keepScreenOn = readerKeepScreenOnPolicy(),
+                )
+            } else {
+                route?.let { WindowPolicies.forRoute(it) } ?: WindowPolicies.Default
+            }
+            runCatching { applyWindowPolicy(policy) }
+                .onFailure { AppLog.put("应用窗口策略失败", it) }
+        }
         LaunchedEffect(Unit) {
             ReadBookEvents.configChange.collect { changes ->
                 if (changes.any { it == ReadConfigChange.SYSTEM_UI }) {
-                    val route = currentRouteState.value
-                    val policy = if (route is AppRoute.Reader) {
-                        WindowPolicies.Reader.copy(
-                            systemBars = readerSystemBarsPolicy(menuVisible = false)
-                        )
-                    } else {
-                        route?.let { WindowPolicies.forRoute(it) } ?: WindowPolicies.Default
-                    }
-                    runCatching { applyWindowPolicy(policy) }
-                        .onFailure { AppLog.put("应用窗口策略失败", it) }
+                    applyCurrentPolicy()
                 }
             }
+        }
+        // 屏幕方向/屏幕超时设置变更 → 重应用窗口策略 (对照原版 SharedPreference 监听 →
+        // ReadBookActivity.setOrientation / upScreenTimeOut)
+        LaunchedEffect(Unit) {
+            merge(ReadBookEvents.orientationChange, ReadBookEvents.keepLightChange)
+                .collect { applyCurrentPolicy() }
         }
 
         DisposableEffect(screenModelStore) {
@@ -422,7 +441,14 @@ fun LegadoApp(
                                         TransitionRole.TargetPage
                                     },
                                     effectiveProgress, size.width, size.height
-                                )
+                                ).let { transform ->
+                                    // 返回转场目标页不做淡入: 目标页在出栈页之下本就完整渲染,
+                                    // 淡入只会在中间帧产生"两层都半透明"的空白窗口, 且部分 ROM 的
+                                    // closeEnter 淡入不随进度推进 (目标页全程 alpha≈0 不可见,
+                                    // 动画收敛后才突然闪现, 无透明度渐变)。固定 alpha=1, 由出栈页
+                                    // 滑开直接露出完整目标页; 位移/缩放仍随采样器保留。
+                                    if (navigatingForward) transform else transform.copy(alpha = 1f)
+                                }
 
                                 // 动画结束后 (animating=false) 的滑出页归入隐藏分支: 原公式
                                 // 该态为半透明离屏 (alpha=1-progress, translationX=-width), 与

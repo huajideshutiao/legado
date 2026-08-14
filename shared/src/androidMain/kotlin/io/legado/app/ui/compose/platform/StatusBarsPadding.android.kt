@@ -5,11 +5,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -25,6 +25,12 @@ import androidx.core.view.WindowInsetsCompat
 actual fun Modifier.platformStatusBarPadding(): Modifier = this.statusBarsPadding()
 
 /**
+ * [platformNavigationBarPadding] 的 Android actual: 委托 `Modifier.navigationBarsPadding()`
+ * (逐帧跟随, 供菜单底栏等浮层避让手势导航栏)。
+ */
+actual fun Modifier.platformNavigationBarPadding(): Modifier = this.navigationBarsPadding()
+
+/**
  * [rememberNavigationBarPaddingValues] 的 Android actual:
  * 走 `WindowInsets.navigationBars.asPaddingValues()`, 避让手势导航栏。
  */
@@ -33,13 +39,14 @@ actual fun rememberNavigationBarPaddingValues(): PaddingValues =
     WindowInsets.navigationBars.asPaddingValues()
 
 // ---- 状态栏/导航栏显隐事件化 actual ----
-// 显隐动画期间 insets 每帧变化: 读取移到副作用侧 (snapshotFlow 协程内读 snapshot state),
-// 只在"可见/不可见"翻转时写回, 动画期间布尔恒定 (同 rememberImeVisible 模式)。
+// 显隐动画期间 insets 每帧变化: 读取移到布局监听侧, 只在"可见/不可见"翻转时写回布尔,
+// 动画期间布尔恒定 (同 rememberImeVisible 模式)。
 
 // 注意: 不用 Compose 的 WindowInsets.statusBars (@Composable getter, 非组合上下文不可调用,
-// 且组合期读取订阅 insets 流), 改用 Android 平台 API ViewCompat —— 非 @Composable 可调用,
-// remember 初始化即取首帧值, 布局事件 (显隐动画期间频繁触发但布尔/高度不翻倍变化) 时重读,
-// 相等值写 state 不触发重组 —— 只在显隐翻转时更新一次 (事件化语义, 对齐原版占位 View 配置驱动)。
+// 且组合期读取订阅 insets 流), 改用 Android 平台 API ViewCompat —— 非 @Composable 可调用;
+// 高度走 getInsetsIgnoringVisibility 缓存采样 (见 rememberVisibleStatusBarHeightPx),
+// 不随布局事件逐帧重采 —— 显隐动画期间高度恒定, 只有布尔在翻转时更新一次
+// (事件化语义, 对齐原版占位 View 配置驱动)。
 
 @Composable
 actual fun rememberStatusBarHidden(): Boolean {
@@ -71,13 +78,15 @@ actual fun rememberNavigationBarHidden(): Boolean {
     return hidden
 }
 
-// 状态栏可见高度进程级缓存: 设备使用期间状态栏高度恒定, 无需布局监听逐帧重读;
-// 仅在配置变化 (横竖屏/多窗口等) 时经组合重采, 状态栏隐藏期间采样为 0 时
-// 保留最近可见值 (供转场冻结: pop 回书架时动画开始前高度已为 0)
+// 状态栏/导航栏可见高度进程级缓存: 采样走 getInsetsIgnoringVisibility —— 隐藏/显隐动画
+// 期间也能取到真实高度, 消除"冷启动直达沉浸式页 → 缓存为 0"与"沉浸式内旋转 → 缓存陈旧"
+// 两个问题; 仅在配置变化 (横竖屏/多窗口等) 时经组合重采, 不订阅 insets 流 (非逐帧)。
 private var cachedVisibleStatusBarHeightPx = 0
+private var cachedVisibleNavigationBarHeightPx = 0
 
 /**
- * 状态栏可见时的高度 px: 全局缓存, 配置变化时重采; 隐藏期间返回最近可见值。
+ * 状态栏可见时的高度 px: 走 getInsetsIgnoringVisibility 采样真实状态栏高度
+ * (隐藏/显隐动画期间同样有效), 配置变化时重采; 供事件化 padding 翻转时一次取高。
  */
 @Composable
 actual fun rememberVisibleStatusBarHeightPx(): Int {
@@ -85,7 +94,7 @@ actual fun rememberVisibleStatusBarHeightPx(): Int {
     val config = LocalConfiguration.current
     return remember(config) {
         val h = ViewCompat.getRootWindowInsets(view)
-            ?.getInsets(WindowInsetsCompat.Type.statusBars())?.top ?: 0
+            ?.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.statusBars())?.top ?: 0
         if (h > 0) {
             cachedVisibleStatusBarHeightPx = h
             h
@@ -96,49 +105,20 @@ actual fun rememberVisibleStatusBarHeightPx(): Int {
 }
 
 /**
- * 固定高度采样: remember 初始化取首帧值 (非 @Composable API, 无订阅); 布局事件重读,
- * 横竖屏/导航模式切换等配置变化时经 DisposableEffect key 重启重采 (配置变化非动画期)。
+ * 导航栏可见时的高度 px: 同 [rememberVisibleStatusBarHeightPx] 语义 (bottom)。
  */
 @Composable
-actual fun rememberFixedStatusBarHeightPx(): Int {
+actual fun rememberVisibleNavigationBarHeightPx(): Int {
     val view = LocalView.current
     val config = LocalConfiguration.current
-    fun sample(): Int =
-        ViewCompat.getRootWindowInsets(view)
-            ?.getInsets(WindowInsetsCompat.Type.statusBars())?.top ?: 0
-    var heightPx by remember {
-        mutableIntStateOf(
-            ViewCompat.getRootWindowInsets(view)
-                ?.getInsets(WindowInsetsCompat.Type.statusBars())?.top ?: 0
-        )
+    return remember(config) {
+        val h = ViewCompat.getRootWindowInsets(view)
+            ?.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
+        if (h > 0) {
+            cachedVisibleNavigationBarHeightPx = h
+            h
+        } else {
+            cachedVisibleNavigationBarHeightPx
+        }
     }
-    DisposableEffect(view, config.orientation) {
-        heightPx = sample()
-        val listener = ViewTreeObserver.OnGlobalLayoutListener { heightPx = sample() }
-        view.viewTreeObserver.addOnGlobalLayoutListener(listener)
-        onDispose { view.viewTreeObserver.removeOnGlobalLayoutListener(listener) }
-    }
-    return heightPx
-}
-
-@Composable
-actual fun rememberFixedNavigationBarHeightPx(): Int {
-    val view = LocalView.current
-    val config = LocalConfiguration.current
-    fun sample(): Int =
-        ViewCompat.getRootWindowInsets(view)
-            ?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
-    var heightPx by remember {
-        mutableIntStateOf(
-            ViewCompat.getRootWindowInsets(view)
-                ?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
-        )
-    }
-    DisposableEffect(view, config.orientation) {
-        heightPx = sample()
-        val listener = ViewTreeObserver.OnGlobalLayoutListener { heightPx = sample() }
-        view.viewTreeObserver.addOnGlobalLayoutListener(listener)
-        onDispose { view.viewTreeObserver.removeOnGlobalLayoutListener(listener) }
-    }
-    return heightPx
 }

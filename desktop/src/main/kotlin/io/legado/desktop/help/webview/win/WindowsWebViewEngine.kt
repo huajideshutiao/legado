@@ -249,7 +249,6 @@ private class WebView2WindowHandle(
         val created = WebView2Instance.create(
             visible = true,
             title = request.title,
-            bottomSheet = request.bottomSheet,
             toolbarSpec = WebView2ToolbarSpec(
                 request.title,
                 request.isLogin,

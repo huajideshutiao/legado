@@ -68,13 +68,14 @@ object DesktopVerificationUiProvider : VerificationUiProvider {
         // WebViewActivity; 桌面端"内置浏览器"= 系统引擎窗口 (WebView2/webkit2gtk/WKWebView)。
         // saveResult != true (java.startBrowser 纯打开) 仅开窗浏览 + cookie 回写,
         // 不接验证回传逻辑; saveResult == true 时窗口关闭后按 refetch 语义回传结果。
+        // asBottomSheet 桌面端忽略 (2026-08-11 用户拍板): 一律开普通居中窗口,
+        // 不做 app 端 BottomSheetDialog 的贴底半屏长条形态。
         openBrowserWindow(
             source = source,
             url = url,
             title = title,
             verification = saveResult == true,
             refetchAfterSuccess = refetchAfterSuccess != false,
-            asBottomSheet = asBottomSheet,
         )
     }
 
@@ -85,6 +86,9 @@ object DesktopVerificationUiProvider : VerificationUiProvider {
      * 成功后重拉复用同一份 headerMap, 避免重复 eval 且与原版传参一致;
      * [verification] 为 true 时窗口带"确定"按钮 (回传后关窗), 关窗同样触发验证结果回传,
      * 否则仅浏览 (窗口工具栏仅 返回/前进/刷新/关闭/标题/进度)。
+     *
+     * 注意: 接口传入的 [startBrowser] asBottomSheet 在桌面端被忽略 (2026-08-11 用户拍板):
+     * 一律开普通居中窗口, 不做 app 端 BottomSheetDialog 的贴底半屏长条形态。
      */
     private fun openBrowserWindow(
         source: BaseSource,
@@ -92,7 +96,6 @@ object DesktopVerificationUiProvider : VerificationUiProvider {
         title: String,
         verification: Boolean,
         refetchAfterSuccess: Boolean,
-        asBottomSheet: Boolean,
     ) {
         val sourceKey = source.getKey()
         val analyzeUrl = runCatching {
@@ -163,8 +166,9 @@ object DesktopVerificationUiProvider : VerificationUiProvider {
                 // 书源菜单 (2026-08-08): 真实源类型/源名, 禁用/删除源动作与确认弹窗用
                 sourceType = source.getSourceType(),
                 sourceName = source.getTag(),
-                // 置底半屏语义 (对照 app 端 JsActivity 的 BottomSheetDialog)
-                bottomSheet = asBottomSheet,
+                // 2026-08-11 用户拍板: 桌面端忽略 asBottomSheet (app 端 startBrowser
+                // 第三参 true 的 BottomSheetDialog 半屏语义), 一律普通居中窗口,
+                // 避免出现"全屏宽 × 半屏高贴底"的长条形窗口
                 // 窗口带 CustomTab 式工具栏; startBrowser 无 isLogin 语义 (登录走
                 // SourceLoginOverlayDialog → DesktopWebViewSlot), 仅验证窗显示"确定"按钮
                 isLogin = false,

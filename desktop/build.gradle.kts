@@ -11,6 +11,70 @@ plugins {
     id("legado.compose")
 }
 
+// ProGuard 瘦身 (可选, 默认开启): 离线/沙箱构建用 `-PdisableDesktopProguard=true` 关闭
+// (规则文件 desktop/proguard-rules.pro 始终保留, 任务与依赖只在开启时声明)。
+// 实现不引 Gradle 插件: 插件 marker 在部分镜像缺失且 Kotlin DSL 脚本插件对
+// buildscript 类路径支持不佳, 改用 JavaExec 直跑 proguard.ProGuard 主类,
+// 依赖经项目仓库 (central/aliyun) 解析, 见下方 proguardDesktop 任务。
+if (providers.gradleProperty("disableDesktopProguard").orNull != "true") {
+    // ============================================================
+    // ProGuard 瘦身 (方案 C 落地: 危险区全 keep, 只裁死代码, 不混淆)
+    // ============================================================
+    // 规则见 proguard-rules.pro (移植 app 端 R8 配置): 反射/序列化/Room/JNI/
+    // JS 桥/分派表全部 keep, -dontobfuscate (书源按类名反射加载), 只移除死代码。
+    // 产物: build/libs/legado-desktop-shrunk.jar + build/proguard/{seeds,usage,mapping}.txt。
+    // 独立任务, 暂不接线到 jpackage —— 先跑一次看 usage.txt 报表与体积, 确认无风险再接。
+    val proguardConfig by configurations.creating
+    dependencies {
+        // exclude org.jetbrains:annotations: 纯编译期注解 (CLASS retention), 运行时用不到,
+        // 也避免离线环境缺该传递产物导致任务无法执行
+        add("proguardConfig", "com.guardsquare:proguard-gradle:7.9.1") {
+            exclude(group = "org.jetbrains", module = "annotations")
+        }
+    }
+    tasks.register<JavaExec>("proguardDesktop") {
+        group = "build"
+        description = "ProGuard 死代码裁剪: 桌面端 jar + 全部依赖 → 单 jar (危险区 keep)"
+        dependsOn(tasks.jar)
+        classpath = proguardConfig
+        mainClass.set("proguard.ProGuard")
+
+        // ProGuard 的 printseeds/usage/mapping 不会自建目录, 先建好避免 Unexpected error
+        doFirst {
+            layout.buildDirectory.get().file("proguard").asFile.mkdirs()
+            layout.buildDirectory.get().file("libs").asFile.mkdirs()
+        }
+
+        val runtimeClasspath = project.configurations.getByName("runtimeClasspath")
+        // bcprov 必须排除在 injars 外, 保持独立签名 jar 分发:
+        // 1) 它带 Oracle JCE Code Signing CA 签名, 合并进 fat jar 后 ProGuard 重写类导致
+        //    摘要失效, 类加载抛 SecurityException: Invalid signature file digest;
+        // 2) 更关键: JCE provider 认证要求 provider 类来自该签名 jar 的 code source,
+        //    fat jar 内无法通过认证 → Cipher.getInstance("AES/CBC/PKCS7Padding") 会失败。
+        //    打包时 shrunk jar 与 bcprov.jar 并列进 classpath 即可。
+        val bcprovJar = runtimeClasspath.files.firstOrNull { it.name.startsWith("bcprov-jdk18on") }
+        val injarJars = runtimeClasspath.filter { it.name != bcprovJar?.name }
+
+        args("-include", "proguard-rules.pro")
+        // 输入: 桌面端 jar + 全部运行时依赖 (除 bcprov) (ProGuard classpath 支持 OS 路径分隔符)
+        args("-injars", tasks.jar.flatMap { it.archiveFile }.get().asFile.absolutePath)
+        args("-injars", injarJars.joinToString(File.pathSeparator) { it.absolutePath })
+        args("-outjars", layout.buildDirectory.get().file("libs/legado-desktop-shrunk.jar").asFile.absolutePath)
+        // JDK 运行时作为 library jars (ProGuard 7.2+ 支持 jmod; 桌面端跑在 Java 21 工具链上)
+        File(desktopJavaHome.get(), "jmods").listFiles()
+            ?.sortedBy { it.name }
+            ?.forEach { args("-libraryjars", it.absolutePath) }
+        // bcprov 也作为 library jar (代码引用它做 JCE 注册, 但不并入产物)
+        if (bcprovJar != null) {
+            args("-libraryjars", bcprovJar.absolutePath)
+        }
+        // 调参报表: seeds=keep 命中清单, usage=删除清单, mapping=映射
+        args("-printseeds", layout.buildDirectory.get().file("proguard/seeds.txt").asFile.absolutePath)
+        args("-printusage", layout.buildDirectory.get().file("proguard/usage.txt").asFile.absolutePath)
+        args("-printmapping", layout.buildDirectory.get().file("proguard/mapping.txt").asFile.absolutePath)
+    }
+}
+
 // CPF 的 root metadata 只发布 Android/iOS/OHOS 变体，Desktop JVM 继续使用同基线的
 // JetBrains 平台制品 (与 shared/build.gradle.kts 同款 resolutionStrategy 对齐);
 // 版本从 catalog 读取 (显式索引避免点分歧义), 禁止硬编码
@@ -134,6 +198,12 @@ dependencies {
     // jna-platform 提供 Win32 COM 基础设施 (Ole32/Guid/HRESULT), 供 WindowsFileDialogs 直调
     // IFileDialog 取现代文件对话框 (AWT FileDialog 在 Windows 上是 comdlg32 旧版样式)。
     implementation("net.java.dev.jna:jna-platform:5.17.0")
+    // JCE 补丁 provider: SunJCE 不支持 AES/CBC/PKCS7Padding (桌面端书源登录/解密脚本
+    // java.createSymmetricCrypto('AES/CBC/PKCS7Padding', ...) 曾报 NoSuchAlgorithmException);
+    // bcprov 由 Oracle JCE Code Signing CA 签名, 可通过 JCE provider 认证, 注册见
+    // DesktopCryptoProvider.ensureJvmCryptoProviders (Main.kt 启动早期调用)。
+    // 仅桌面端引入: Android 内置 Conscrypt/BC 已覆盖 PKCS7Padding, 不增 APK 体积。
+    implementation(libs.bcprov)
     // webp 编码: ImageIO SPI 插件 (jar 内置 win/linux/mac native writer; TwelveMonkeys 只读不写)
     implementation("com.github.gotson:webp-imageio:0.2.2")
     // 本地书格式: PDF 渲染 (对照 app 端 PdfRenderer 语义)
@@ -174,6 +244,34 @@ dependencies {
 val desktopJavaHome = javaToolchains.launcherFor {
     languageVersion.set(JavaLanguageVersion.of(21))
 }.map { it.metadata.installationPath.asFile.absolutePath }
+
+// ============================================================
+// jlink 运行时精简补充
+// ============================================================// Compose 插件 AbstractJLinkTask 已默认开启 --strip-debug / --no-header-files /
+// --no-man-pages / --strip-native-commands (internal 属性默认 true), 无需重复设置。
+// 唯一还能压的是 --compress=2 (zip): 插件 1.10.x 里 compressionLevel 是 internal 且
+// DSL 未公开 (源码标注 "todo: public DSL"), 用反射设置; 插件升级字段变动时静默降级。
+// 注: 必须用 tasks.matching (惰性) —— compose 的 createRuntimeImage 在
+// compose.desktop.application{} 求值后才注册, tasks.named() 在此处会抛 Task not found。
+tasks.matching { it.name == "createRuntimeImage" }.configureEach {
+    runCatching {
+        val taskClass = javaClass
+        // Kotlin internal 属性 getter 带模块名后缀 ($compose), 用前缀匹配兼容
+        val getter = taskClass.methods.firstOrNull { it.name.startsWith("getCompressionLevel") }
+            ?: error("getCompressionLevel not found")
+        val prop = getter.invoke(this) as org.gradle.api.provider.Property<Any?>
+        val zip = Class.forName(
+            "org.jetbrains.compose.desktop.application.internal.RuntimeCompressionLevel",
+            true,
+            taskClass.classLoader,
+        ).enumConstants?.firstOrNull { it.toString() == "ZIP" }
+            ?: error("RuntimeCompressionLevel.ZIP not found")
+        prop.set(zip)
+        logger.lifecycle("[legado-desktop] jlink --compress=2 (zip) 已启用")
+    }.onFailure {
+        logger.warn("[legado-desktop] jlink --compress 设置失败(插件版本差异), 跳过: ${it.message}")
+    }
+}
 
 // KP6: 把 legado_quickjs native 库纳入 jpackage 产物 (便携版 / MSI 安装版)
 // 背景: jpackage 默认只把 classpath jar 打进 app 目录, 不会纳入 -Djava.library.path 指向的
@@ -529,16 +627,18 @@ afterEvaluate {
 }
 
 // ============================================================
-// ProGuard/R8 优化说明 (方案 C: 未实施, 风险大于收益)
+// ProGuard/R8 优化说明 (方案 C: 已落地, 见上方 proguardDesktop 任务)
 // ============================================================
-// Compose Multiplatform 桌面端不走 R8 (R8 是 Android 专属, 桌面端无 Android 编译插件)。
-// ProGuard 可用于 JVM 应用, 但 Compose Multiplatform 大量依赖反射:
+// R8 是 Android 专属, 桌面端无 Android 编译插件; 桌面端瘦身走 ProGuard。
+// Compose Multiplatform 大量依赖反射:
 // - @Composable 函数通过 Compose 编译器插件生成 synthetic 方法, ProGuard 难以正确保留
 // - kotlinx.serialization 用反射实例化数据类 (Book/BookSource 等)
 // - Room KMP 生成的 DAO 实现类通过反射访问
 // - quickjs JNI 桥通过反射查找 native 方法
-// 配置 ProGuard 需要逐一保留上述反射类, 漏配置会导致运行时崩溃, 风险大于减小体积的收益。
-// 故本方案不实施 ProGuard, 体积优化依赖 jlink 精简 JRE (方案 A) + 7z 压缩 (方案 B)。
+// 因此规则文件 (proguard-rules.pro) 对这些危险区全部 keep + 关闭混淆 (-dontobfuscate,
+// 书源按类名反射加载), 只做死代码删除。体积优化组合: ProGuard 裁死代码 (本方案) +
+// jlink 精简 JRE (strip-debug/compress 等, 见 createRuntimeImage 配置) + 7z 压缩打包。
+// 接线到 jpackage 前先跑 `.\gradlew :desktop:proguardDesktop` 看 usage.txt 报表。
 
 // ============================================================
 // Windows 便携版 zip 打包 task

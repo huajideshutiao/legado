@@ -304,6 +304,12 @@ interface PlatformCapabilities {
     /** 是否支持锁定屏幕方向 (决定 MoreConfig 的屏幕方向选项显隐) */
     fun hasScreenOrientation(): Boolean = true
 
+    /**
+     * 是否平板设备（决定"平板/横屏双页" auto 分支是否启用双页，对照 app 端
+     * `Context.isPad`；桌面默认 false，宽屏下由宽>高分支兜底）。
+     */
+    fun isTablet(): Boolean = false
+
     /** 获取 app 版本名 (对照 app 端 AppConst.appInfo.versionName), 供 AboutRoute 初始化 state */
     fun getAppVersionName(): String? = null
 

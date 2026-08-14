@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.util.Base64
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -14,6 +15,11 @@ import org.junit.runner.RunWith
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * `image` 别名端到端测试。
@@ -106,6 +112,40 @@ class ImageOpsAliasTest {
 
         fun crop(img: Ref, x: Int, y: Int, w: Int, h: Int): Ref {
             return Ref(Bitmap.createBitmap(img.bitmap, x, y, w, h))
+        }
+
+        /** 旋转: deg 正值顺时针、负值逆时针, 输出外接矩形 (对齐 BitmapImageOps.rotate)。 */
+        fun rotate(img: Ref, deg: Int): Ref {
+            val bitmap = img.bitmap
+            val angle = deg % 360
+            if (angle == 0) return Ref(bitmap)
+            val rad = angle * PI / 180.0
+            val cos = abs(cos(rad))
+            val sin = abs(sin(rad))
+            val newW = ceil(bitmap.width * cos + bitmap.height * sin).toInt()
+            val newH = ceil(bitmap.width * sin + bitmap.height * cos).toInt()
+            val matrix = Matrix()
+            matrix.postRotate(angle.toFloat(), bitmap.width / 2f, bitmap.height / 2f)
+            matrix.postTranslate((newW - bitmap.width) / 2f, (newH - bitmap.height) / 2f)
+            return Ref(Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true))
+        }
+
+        /** 翻转: 'h' 水平镜像 / 'v' 垂直镜像 (对齐 BitmapImageOps.flip)。 */
+        fun flip(img: Ref, direction: String): Ref {
+            val bitmap = img.bitmap
+            val matrix = Matrix()
+            when (direction.lowercase()) {
+                "h" -> {
+                    matrix.postScale(-1f, 1f)
+                    matrix.postTranslate(bitmap.width.toFloat(), 0f)
+                }
+                "v" -> {
+                    matrix.postScale(1f, -1f)
+                    matrix.postTranslate(0f, bitmap.height.toFloat())
+                }
+                else -> throw IllegalArgumentException("direction $direction")
+            }
+            return Ref(Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true))
         }
 
         fun size(img: Ref): Map<String, Int> {
@@ -263,6 +303,78 @@ class ImageOpsAliasTest {
         assertEquals(20, cropped.width)
         assertEquals(20, cropped.height)
         assertEquals(Color.GREEN, cropped.getPixel(10, 10))
+    }
+
+    /** rotate 90° 顺时针: 左下蓝 → 左上 (象限图: 左上红/右上绿/左下蓝/右下黄)。 */
+    @Test
+    fun testRotateQuadrant() {
+        val encoded = evalWithImageAlias(
+            """
+            var img = image.decode(result);
+            image.encode(image.rotate(img, 90), 'png', 100);
+            """.trimIndent(),
+            result = quadrantPngBytes()
+        )
+        val rotated = BitmapFactory.decodeByteArray(
+            encoded as ByteArray, 0, encoded.size
+        )
+        assertEquals(40, rotated.width)
+        assertEquals(40, rotated.height)
+        assertEquals(Color.BLUE, rotated.getPixel(10, 10))
+        assertEquals(Color.RED, rotated.getPixel(30, 10))
+        assertEquals(Color.YELLOW, rotated.getPixel(30, 30))
+        assertEquals(Color.GREEN, rotated.getPixel(10, 30))
+    }
+
+    /** rotate 负值度数: -90° 等价 270° 顺时针, 右上绿 → 左上。 */
+    @Test
+    fun testRotateNegativeDegrees() {
+        val encoded = evalWithImageAlias(
+            """
+            var img = image.decode(result);
+            image.encode(image.rotate(img, -90), 'png', 100);
+            """.trimIndent(),
+            result = quadrantPngBytes()
+        )
+        val rotated = BitmapFactory.decodeByteArray(
+            encoded as ByteArray, 0, encoded.size
+        )
+        assertEquals(Color.GREEN, rotated.getPixel(10, 10))
+        assertEquals(Color.YELLOW, rotated.getPixel(30, 10))
+    }
+
+    /** flip 'h': 左右镜像, 左上 = 原右上绿。 */
+    @Test
+    fun testFlipHorizontal() {
+        val encoded = evalWithImageAlias(
+            """
+            var img = image.decode(result);
+            image.encode(image.flip(img, 'h'), 'png', 100);
+            """.trimIndent(),
+            result = quadrantPngBytes()
+        )
+        val flipped = BitmapFactory.decodeByteArray(
+            encoded as ByteArray, 0, encoded.size
+        )
+        assertEquals(Color.GREEN, flipped.getPixel(10, 10))
+        assertEquals(Color.RED, flipped.getPixel(30, 10))
+    }
+
+    /** flip 'v': 上下镜像, 左上 = 原左下蓝。 */
+    @Test
+    fun testFlipVertical() {
+        val encoded = evalWithImageAlias(
+            """
+            var img = image.decode(result);
+            image.encode(image.flip(img, 'v'), 'png', 100);
+            """.trimIndent(),
+            result = quadrantPngBytes()
+        )
+        val flipped = BitmapFactory.decodeByteArray(
+            encoded as ByteArray, 0, encoded.size
+        )
+        assertEquals(Color.BLUE, flipped.getPixel(10, 10))
+        assertEquals(Color.YELLOW, flipped.getPixel(10, 30))
     }
 
     /** platform 注入为纯 String, 值 android。 */

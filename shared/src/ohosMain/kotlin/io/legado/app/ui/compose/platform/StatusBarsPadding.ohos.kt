@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
@@ -27,6 +28,14 @@ import androidx.compose.ui.platform.LocalDensity
 actual fun Modifier.platformStatusBarPadding(): Modifier = this.statusBarsPadding()
 
 /**
+ * [platformNavigationBarPadding] 的鸿蒙 actual: 接入 WindowInsets.navigationBars,
+ * 底栏让位系统导航栏 (手势导航条)。
+ *
+ * 与 iOS 端实现对齐。若 fork 版未桥接真实值, 退化为 0 padding。
+ */
+actual fun Modifier.platformNavigationBarPadding(): Modifier = this.navigationBarsPadding()
+
+/**
  * [rememberNavigationBarPaddingValues] 的鸿蒙 actual: 接入 WindowInsets.navigationBars,
  * 底栏让位系统导航栏 (手势导航条)。
  *
@@ -36,18 +45,12 @@ actual fun Modifier.platformStatusBarPadding(): Modifier = this.statusBarsPaddin
 actual fun rememberNavigationBarPaddingValues(): PaddingValues =
     WindowInsets.navigationBars.asPaddingValues()
 
-// 鸿蒙无状态栏/导航栏显隐动画 (安全区域静态): 恒不隐藏; 固定高度 = 首次组合采样
+// 鸿蒙无状态栏/导航栏显隐动画 (安全区域静态): 恒不隐藏; 高度静态, 直接取当前值
 @Composable
 actual fun rememberStatusBarHidden(): Boolean = false
 
 @Composable
 actual fun rememberNavigationBarHidden(): Boolean = false
-
-@Composable
-actual fun rememberFixedStatusBarHeightPx(): Int {
-    val density = LocalDensity.current
-    return WindowInsets.statusBars.getTop(density)
-}
 
 // 鸿蒙状态栏高度静态 (无显隐动画), 直接取当前值即可
 @Composable
@@ -57,7 +60,7 @@ actual fun rememberVisibleStatusBarHeightPx(): Int {
 }
 
 @Composable
-actual fun rememberFixedNavigationBarHeightPx(): Int {
+actual fun rememberVisibleNavigationBarHeightPx(): Int {
     val density = LocalDensity.current
     return WindowInsets.navigationBars.getBottom(density)
 }

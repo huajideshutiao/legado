@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import io.legado.app.ui.compose.theme.AppTheme
@@ -57,8 +58,17 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-private val FastScrollTouchWidth = 15.dp
-private val FastScrollThumbWidth = 5.dp
+/**
+ * 快速滚动条触摸区(命中区)宽度。
+ *
+ * 移动端保持细触摸条即可(手指命中面积由触摸本身保证, 15dp 不挡内容);
+ * 桌面端鼠标命中面积小、容易点不到, 故桌面端(JVM) actual 加宽到 24dp。
+ */
+internal expect val fastScrollTouchWidth: Dp
+
+/** 快速滚动条滑块可见宽度(移动端 5dp, 桌面端 8dp)。 */
+internal expect val fastScrollThumbWidth: Dp
+
 private val FastScrollThumbHeight = 100.dp
 private const val FastScrollHideDelayMillis = 1_000L
 private const val FastScrollShowAnimationMillis = 300
@@ -319,7 +329,7 @@ private fun BoxScope.FastScrollbar(
         Box(
             Modifier
                 .fillMaxHeight()
-                .width(FastScrollTouchWidth)
+                .width(fastScrollTouchWidth)
                 .onSizeChanged { trackHeightPx = it.height }
                 .pointerInput(metrics.itemCount, trackHeightPx, thumbHeightPx) {
                     detectVerticalDragGestures(
@@ -341,7 +351,7 @@ private fun BoxScope.FastScrollbar(
                         scaleX = selectedScale
                         transformOrigin = TransformOrigin(1f, 0.5f)
                     }
-                    .width(FastScrollThumbWidth)
+                    .width(fastScrollThumbWidth)
                     .height(with(density) { thumbHeightPx.toDp() })
                     .background(
                         if (dragFraction != null) {

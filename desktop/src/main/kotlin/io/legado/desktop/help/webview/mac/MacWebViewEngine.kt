@@ -297,7 +297,6 @@ internal class MacSession private constructor(
         fun create(
             visible: Boolean,
             title: String = "legado",
-            bottomSheet: Boolean = false,
             toolbar: MacToolbar? = null,
             sniff: Boolean = false,
         ): MacSession? {
@@ -320,7 +319,7 @@ internal class MacSession private constructor(
 
                 val window: Pointer?
                 if (visible) {
-                    // 弹窗语义: 非 bottomSheet 默认屏幕居中 (与 Windows 引擎行为一致);
+                    // 弹窗语义: 默认屏幕居中 (与 Windows 引擎行为一致);
                     // Cocoa 坐标原点在左下, 居中 origin 需按屏幕尺寸计算
                     val screen = Toolkit.getDefaultToolkit().screenSize
                     val winW =
@@ -344,15 +343,6 @@ internal class MacSession private constructor(
                         0L,
                     )!!
                     void(window, "setTitle:", ns(title))
-                    if (bottomSheet) {
-                        // 置底半屏语义: Cocoa 坐标原点在左下, 贴底 = y=0
-                        val height = (screen.height / 2).coerceAtLeast(400)
-                        void(window, "setFrameOrigin:", ObjC.point(0.0, 0.0))
-                        void(
-                            window, "setFrameSize:",
-                            ObjC.size(screen.width.toDouble(), height.toDouble()),
-                        )
-                    }
                     void(window, "setContentView:", webView)
                     void(window, "makeKeyAndOrderFront:", null)
                 } else {
@@ -613,7 +603,6 @@ private class MacWindowHandle(
         val created = MacSession.create(
             visible = true,
             title = request.title,
-            bottomSheet = request.bottomSheet,
             toolbar = MacToolbar(
                 onAction = { action -> onToolbarAction(action) },
                 rssActions = request.rssActions,

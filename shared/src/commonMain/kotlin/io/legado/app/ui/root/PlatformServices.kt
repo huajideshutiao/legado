@@ -152,7 +152,7 @@ data class FileFilter(
     }
 }
 
-enum class OrientationPolicy { Unspecified, Portrait, Landscape, Sensor }
+enum class OrientationPolicy { Unspecified, Portrait, Landscape, Sensor, ReversePortrait }
 
 enum class SystemBarsPolicy {
     Default, Hidden, Visible, Immersive,

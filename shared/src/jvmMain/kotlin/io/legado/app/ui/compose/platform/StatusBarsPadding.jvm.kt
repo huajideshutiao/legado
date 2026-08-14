@@ -11,6 +11,11 @@ import androidx.compose.ui.unit.dp
 actual fun Modifier.platformStatusBarPadding(): Modifier = this
 
 /**
+ * [platformNavigationBarPadding] 的桌面 JVM actual: 桌面端无系统导航栏, 返回 this。
+ */
+actual fun Modifier.platformNavigationBarPadding(): Modifier = this
+
+/**
  * [rememberNavigationBarPaddingValues] 的桌面 JVM actual:
  * 桌面端无系统导航栏, 返回 `PaddingValues(0)`。
  */
@@ -25,10 +30,7 @@ actual fun rememberStatusBarHidden(): Boolean = false
 actual fun rememberNavigationBarHidden(): Boolean = false
 
 @Composable
-actual fun rememberFixedStatusBarHeightPx(): Int = 0
-
-@Composable
 actual fun rememberVisibleStatusBarHeightPx(): Int = 0
 
 @Composable
-actual fun rememberFixedNavigationBarHeightPx(): Int = 0
+actual fun rememberVisibleNavigationBarHeightPx(): Int = 0

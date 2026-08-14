@@ -75,26 +75,36 @@ fun ReadStyleDialogHost(
     // 子弹窗（背景文字）叠层形态下配置变更的版本号：改名/换背景/换色后自增，
     // 让本弹窗的样式列表（名称/缩略图）实时刷新（对照原版弹窗形态 dismiss 后重进自然读新值）
     var styleRefresh by remember { mutableIntStateOf(0) }
-    AppBottomSheetDialog(
-        onDismissRequest = onDismiss,
-        properties = AppDialogSizes.properties(),
-    ) {
-        AppTheme {
-            // 原版 BaseBottomDialogFragment: 窗口 MATCH_PARENT 全宽贴底 + Gravity.BOTTOM + WRAP_CONTENT,
-            // 背景 filletBackground (bottomBackground 色 + radius.default 8dp 圆角);
-            // 内容横向 16dp 间距由 ReadStyleScreen 内部 padding(horizontal=16.dp) 提供
-            // (对齐 XML root paddingHorizontal=arco_spacing_lg)。
-            Surface(
-                shape = DesignTokens.shapeDefault,
-                color = AppTheme.colors.bottomBackground,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                ReadStyleContent(
-                    onShowPaddingConfig = { subConfig = ReadStyleSubConfig.PADDING },
-                    onShowTipConfig = { subConfig = ReadStyleSubConfig.TIP },
-                    onShowBgTextConfig = { subConfig = ReadStyleSubConfig.BG_TEXT },
-                    bgTextConfigTick = styleRefresh,
-                )
+    // 信息设置弹窗打开即关闭界面设置弹窗（在信息弹窗动画播放前移除，对照原版
+    // ReadStyleDialog dismiss 后再 showDialogFragment<TipConfigDialog>）：半透明信息弹窗下
+    // 露出阅读页，页眉/页脚隐约可见。边距/背景文字仍走叠层形态
+    // （背景文字依赖本弹窗样式列表实时刷新，见 styleRefresh）。
+    var readStyleVisible by remember { mutableStateOf(true) }
+    if (readStyleVisible) {
+        AppBottomSheetDialog(
+            onDismissRequest = onDismiss,
+            properties = AppDialogSizes.properties(),
+        ) {
+            AppTheme {
+                // 原版 BaseBottomDialogFragment: 窗口 MATCH_PARENT 全宽贴底 + Gravity.BOTTOM + WRAP_CONTENT,
+                // 背景 filletBackground (bottomBackground 色 + radius.default 8dp 圆角);
+                // 内容横向 16dp 间距由 ReadStyleScreen 内部 padding(horizontal=16.dp) 提供
+                // (对齐 XML root paddingHorizontal=arco_spacing_lg)。
+                Surface(
+                    shape = DesignTokens.shapeDefault,
+                    color = AppTheme.colors.bottomBackground,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    ReadStyleContent(
+                        onShowPaddingConfig = { subConfig = ReadStyleSubConfig.PADDING },
+                        onShowTipConfig = {
+                            subConfig = ReadStyleSubConfig.TIP
+                            readStyleVisible = false
+                        },
+                        onShowBgTextConfig = { subConfig = ReadStyleSubConfig.BG_TEXT },
+                        bgTextConfigTick = styleRefresh,
+                    )
+                }
             }
         }
     }
@@ -113,6 +123,7 @@ fun ReadStyleDialogHost(
 
         ReadStyleSubConfig.NONE -> Unit
     }
+    // 信息弹窗关闭后不再恢复界面设置弹窗（对照原版 TipConfigDialog 为独立弹窗，关掉即回到阅读页）。
 }
 
 /** 界面设置弹窗内可叠层的子配置 (对照原版 边距/提示/背景文字 三个对话框)。 */

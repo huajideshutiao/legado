@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.legado.app.constant.PageAnim
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.BookProgress
@@ -67,6 +68,7 @@ import io.legado.app.ui.book.read.config.HttpTtsEditViewModelShared
 import io.legado.app.ui.book.read.config.PageKeyDialog
 import io.legado.app.ui.book.read.config.ReadAloudDialog
 import io.legado.app.ui.book.read.config.SpeakEngineDialog
+import io.legado.app.ui.book.read.page.TITLE_SIZE_EXTRA_SP
 import io.legado.app.ui.book.read.page.delegate.ScrollPageDelegateCompose
 import io.legado.app.ui.book.read.page.entities.PageDirectionShared
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
@@ -1172,11 +1174,22 @@ private fun buildLayoutConfig(
     config: ReadBookConfigShared,
 ): ReadBookViewModelShared.LayoutConfig = with(density) {
     val textSizePx = config.textSize.sp.toPx()
+    // 平板/横屏双页（对照原版 ChapterProvider.upLayout 的 doublePageHorizontal 分支）：
+    // "0"=全域单页 "1"=全域双页 "2"=横向双页(宽>高, 滚动动画除外) "3"=平板/横屏双页(宽>高或平板)
+    val doublePage = when (AppConfigProviders.get().doublePageHorizontal) {
+        "1" -> true
+        "2" -> textArea.width > textArea.height && config.pageAnim != PageAnim.scrollPageAnim
+        "3" -> (textArea.width > textArea.height ||
+            PlatformCapabilityProviders.get().isTablet()) &&
+            config.pageAnim != PageAnim.scrollPageAnim
+        else -> false
+    }
     ReadBookViewModelShared.LayoutConfig(
         // 正文区实测宽高：即原版 contentTextView.onSizeChanged 的 w/h（系统栏避让与
         // 页眉/页脚扣除已由布局系统完成，排版视口与渲染严格同源）
         viewWidth = textArea.width,
         viewHeight = textArea.height,
+        doublePage = doublePage,
         paddingLeft = config.paddingLeft.dp.roundToPx(),
         // 正文区顶部即页眉底边（布局占位子节点把正文约束在页眉/页脚之间），
         // paddingTop 只含正文自身内边距，不含页眉高度
@@ -1184,7 +1197,8 @@ private fun buildLayoutConfig(
         paddingRight = config.paddingRight.dp.roundToPx(),
         paddingBottom = config.paddingBottom.dp.roundToPx(),
         textSizePx = textSizePx,
-        titleSizePx = (config.textSize + config.titleSize).sp.toPx(),
+        // 标题字号 = 正文 + titleSize + 固定"略大"增量（与绘制侧 ReaderDrawStyle.titleStyle 同口径）
+        titleSizePx = (config.textSize + config.titleSize + TITLE_SIZE_EXTRA_SP).sp.toPx(),
         // 原版 Paint.letterSpacing 是字号倍数，排版面按 px 消费
         letterSpacingPx = config.letterSpacing * textSizePx,
         lineSpacingExtra = config.lineSpacingExtra / 10f,

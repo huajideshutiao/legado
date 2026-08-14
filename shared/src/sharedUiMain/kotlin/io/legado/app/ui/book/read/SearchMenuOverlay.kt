@@ -67,7 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.platform.navigationBarFixedPadding
+import io.legado.app.ui.compose.platform.platformNavigationBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.LocalEInk
 import io.legado.app.utils.ColorUtils
@@ -186,7 +186,8 @@ fun SearchMenuOverlay(state: SearchMenuState) {
                 Modifier
                     .fillMaxWidth()
                     .background(bg)
-                    .navigationBarFixedPadding(),
+                    // 浮层底栏逐帧跟随导航栏 insets (与 ReadMenu 底栏同理)
+                    .platformNavigationBarPadding(),
             ) {
                 // 搜索信息行(原 ll_search_base_info)
                 Row(

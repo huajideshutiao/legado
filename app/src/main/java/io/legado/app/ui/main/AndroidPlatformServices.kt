@@ -42,7 +42,6 @@ import io.legado.app.utils.FileUtils
 import io.legado.app.utils.delete
 import io.legado.app.utils.find
 import io.legado.app.utils.getFile
-import io.legado.app.utils.keepScreenOn
 import io.legado.app.utils.list
 import io.legado.app.utils.openUrl
 import io.legado.app.utils.share
@@ -275,7 +274,8 @@ private class AndroidWindowController(
     }
 
     override fun setKeepScreenOn(enabled: Boolean) {
-        activity.keepScreenOn(enabled)
+        // 阅读页活动时交由 keepLight 超时逻辑 (upScreenTimeOut) 管理, 见 MainActivity.applyWindowKeepScreenOn
+        activity.applyWindowKeepScreenOn(enabled)
     }
 
     override fun setOrientation(policy: OrientationPolicy) {
@@ -284,6 +284,7 @@ private class AndroidWindowController(
             OrientationPolicy.Portrait -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             OrientationPolicy.Landscape -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             OrientationPolicy.Sensor -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
+            OrientationPolicy.ReversePortrait -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
         }
     }
 

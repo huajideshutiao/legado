@@ -1,5 +1,6 @@
 package io.legado.app.ui.root
 
+import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.ReadBookConfigProviders
 
 /**
@@ -106,3 +107,26 @@ fun readerSystemBarsPolicy(menuVisible: Boolean): SystemBarsPolicy {
         else -> SystemBarsPolicy.Default
     }
 }
+
+/**
+ * 阅读页屏幕方向策略：读 screenOrientation pref 映射 [OrientationPolicy]
+ * (对照原版 `ReadBookActivity.setOrientation` 的 "0"~"4" 分支)：
+ * "0"=跟随系统 "1"=竖向 "2"=横向 "3"=跟随传感器 "4"=反向竖屏。
+ * 桌面端 setOrientation 为 no-op，策略值无副作用（设置项按 hasScreenOrientation 隐藏）。
+ */
+fun readerOrientationPolicy(): OrientationPolicy = when (AppConfigProviders.get().screenOrientation) {
+    "1" -> OrientationPolicy.Portrait
+    "2" -> OrientationPolicy.Landscape
+    "3" -> OrientationPolicy.Sensor
+    "4" -> OrientationPolicy.ReversePortrait
+    else -> OrientationPolicy.Unspecified
+}
+
+/**
+ * 阅读页常亮策略：由 keepLight pref 决定（对照原版 upScreenTimeOut 语义）——
+ * "0"=跟随系统（不强制常亮，交还系统息屏）、"-1"=永不熄屏、"N"=常亮 N 秒。
+ * Android 阅读页的窗口策略值不直接作用（MainActivity.applyWindowKeepScreenOn 在
+ * 阅读页活动时改走 upScreenTimeOut 计时管理，避免 SYSTEM_UI 重应用互相覆盖）；
+ * 桌面/移动端按策略直接驱动平台常亮（best-effort，无计时器则常亮到退出阅读页）。
+ */
+fun readerKeepScreenOnPolicy(): Boolean = AppConfigProviders.get().keepLight != "0"

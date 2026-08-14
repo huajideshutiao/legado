@@ -111,7 +111,11 @@ private fun buildReaderDrawStyle(
     }
     val letterSpacing = readBookConfig.letterSpacing
     val contentSize = readBookConfig.textSize.sp
-    val titleSize = (readBookConfig.textSize + readBookConfig.titleSize).sp
+    // 标题字号 = 正文 + titleSize 配置 + 固定"略大"增量（用户需求：正文标题比正文略大；
+    // 与排版侧 ReaderRoute.titleSizePx / app 端 TextStyleProvider 同一口径，见 TITLE_SIZE_EXTRA_SP）
+    val titleSize = (readBookConfig.textSize + readBookConfig.titleSize + TITLE_SIZE_EXTRA_SP).sp
+    // 页眉/页脚 tip 主题色（tipColor=0 时跟随正文色），正文标题同用此色
+    val tipColor = Color(if (readTipConfig.tipColor == 0) readBookConfig.textColor else readTipConfig.tipColor)
     val contentStyle = TextStyle(
         color = textColor,
         fontSize = contentSize,
@@ -122,7 +126,12 @@ private fun buildReaderDrawStyle(
     )
     return ReaderDrawStyle(
         contentStyle = contentStyle,
-        titleStyle = contentStyle.copy(fontSize = titleSize, fontWeight = titleWeight),
+        // 正文标题与页眉/页脚同主题色（tipColor），字号略大（用户需求）
+        titleStyle = contentStyle.copy(
+            fontSize = titleSize,
+            fontWeight = titleWeight,
+            color = tipColor,
+        ),
         letterSpacingEm = letterSpacing,
         textColor = textColor,
         accentColor = accentColor,
@@ -139,7 +148,7 @@ private fun buildReaderDrawStyle(
         bgColor = Color(readBookConfig.config.curBgColor()).copy(alpha = 1f),
         backgroundImageSource = readBookConfig.config.curBgImageSource(),
         backgroundImageAlpha = (readBookConfig.bgAlpha / 100f).coerceIn(0f, 1f),
-        tipColor = Color(if (readTipConfig.tipColor == 0) readBookConfig.textColor else readTipConfig.tipColor),
+        tipColor = tipColor,
         underline = readBookConfig.underline,
         isEInk = isEInk,
     )
@@ -173,3 +182,14 @@ fun headerTipVisible(headerMode: Int, hideStatusBar: Boolean): Boolean = when (h
 
 /** 页眉/页脚 tip 文本字号（sp），与 PageViewComposable 的 TipSlot 渲染字号一致。 */
 const val READ_TIP_TEXT_SIZE_SP = 12
+
+/**
+ * 正文标题相对正文的固定"略大"字号增量（sp），叠加在 `textSize + titleSize` 配置之上
+ * （用户需求：正文标题字号略大，且与页眉/页脚同主题色）。
+ *
+ * 排版侧必须与绘制侧同一字号口径，否则行盒与字形错位：
+ * - 绘制: [ReaderDrawStyle.titleStyle]（本文件）
+ * - 共享排版度量: [io.legado.app.ui.route.ReaderRoute] 的 titleSizePx
+ * - app 端排版度量: `TextStyleProvider.titlePaint`
+ */
+const val TITLE_SIZE_EXTRA_SP = 2

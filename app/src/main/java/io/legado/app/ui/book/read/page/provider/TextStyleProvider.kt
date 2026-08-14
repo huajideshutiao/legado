@@ -7,6 +7,7 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
+import io.legado.app.ui.book.read.page.TITLE_SIZE_EXTRA_SP
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.isContentScheme
@@ -157,10 +158,15 @@ object TextStyleProvider {
 
         //标题
         val tPaint = TextPaint()
-        tPaint.color = ReadBookConfig.textColor
+        // 正文标题与页眉/页脚同主题色（tipColor=0 跟随正文色），字号略大（用户需求，
+        // 与 shared ReaderDrawStyle.titleStyle 同口径：textSize + titleSize + TITLE_SIZE_EXTRA_SP）
+        val tipColor = ReadBookConfig.config.tipColor
+        tPaint.color = if (tipColor == 0) ReadBookConfig.textColor else tipColor
         tPaint.letterSpacing = ReadBookConfig.letterSpacing
         tPaint.typeface = titleFont
-        tPaint.textSize = with(ReadBookConfig) { textSize + titleSize }.toFloat().spToPx()
+        tPaint.textSize = with(ReadBookConfig) {
+            textSize + titleSize + TITLE_SIZE_EXTRA_SP
+        }.toFloat().spToPx()
         tPaint.isAntiAlias = true
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q && AppConfig.optimizeRender) {
             tPaint.isLinearText = true

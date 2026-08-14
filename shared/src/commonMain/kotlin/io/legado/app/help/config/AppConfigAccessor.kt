@@ -281,6 +281,28 @@ interface AppConfigAccessor {
      */
     val bookInfoHorizontalLayout: Boolean
         get() = PreferenceProviders.get().getBoolean(PreferKey.bookInfoHorizontalLayout, false)
+
+    /**
+     * 阅读页屏幕方向 (原 AppConfig.screenOrientation): "0"=跟随系统 "1"=竖向 "2"=横向
+     * "3"=跟随传感器 "4"=反向竖屏。默认 "0"。
+     * 默认实现直读 pref, 各端无需覆写。
+     */
+    val screenOrientation: String
+        get() = PreferenceProviders.get().getString(PreferKey.screenOrientation, "0")
+
+    /**
+     * 阅读页屏幕超时 (原 AppConfig.keepLight): "0"=跟随系统 "N"=常亮 N 秒 "-1"=永不熄屏。
+     * 默认 "0"。默认实现直读 pref, 各端无需覆写。
+     */
+    val keepLight: String
+        get() = PreferenceProviders.get().getString(PreferKey.keepLight, "0")
+
+    /**
+     * 平板/横屏双页 (原 AppConfig.doublePageHorizontal): "0"=全域单页 "1"=全域双页
+     * "2"=横向双页 "3"=平板/横屏双页。默认 "0"。默认实现直读 pref, 各端无需覆写。
+     */
+    val doublePageHorizontal: String
+        get() = PreferenceProviders.get().getString(PreferKey.doublePageHorizontal, "0")
 }
 
 /**

@@ -344,6 +344,11 @@ kotlin {
         }
         jvmTest {
             dependsOn(jvmAndAndroidTest)
+            dependencies {
+                // Pkcs7PaddingCompatibilityTest: 桌面端 JCE 补丁 (BouncyCastle) 路径守护,
+                // 见 io.legado.desktop.help.DesktopCryptoProvider (仅测试类路径引入, 不进产物)
+                implementation(libs.bcprov)
+            }
         }
     }
 }

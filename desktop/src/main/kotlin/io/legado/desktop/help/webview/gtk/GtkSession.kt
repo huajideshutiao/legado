@@ -145,7 +145,6 @@ internal class GtkSession private constructor(
         fun create(
             visible: Boolean,
             title: String = "legado",
-            bottomSheet: Boolean = false,
             toolbar: GtkToolbar? = null,
         ): GtkSession? {
             if (!GtkLibs.ensureLoaded()) return null
@@ -154,15 +153,7 @@ internal class GtkSession private constructor(
             val window = gtk.gtk_window_new(GTK_WINDOW_TOPLEVEL)
             gtk.gtk_window_set_title(window, title)
             if (visible) {
-                if (bottomSheet) {
-                    // 置底半屏语义 (对照 app 端 BottomSheetDialog): 高取屏幕一半, 贴屏幕底部
-                    val screen = gtk.gtk_window_get_screen(window)
-                    val height = (GtkLibs.gdk.gdk_screen_get_height(screen) / 2).coerceAtLeast(400)
-                    gtk.gtk_window_set_default_size(window, -1, height)
-                    gtk.gtk_window_move(window, 0, height)
-                } else {
-                    gtk.gtk_window_set_default_size(window, 1000, 700)
-                }
+                gtk.gtk_window_set_default_size(window, 1000, 700)
             } else {
                 gtk.gtk_window_set_default_size(window, 1, 1)
             }

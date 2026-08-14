@@ -107,11 +107,13 @@ object OhosPlatformServices : PlatformServices {
 
         override fun setOrientation(policy: OrientationPolicy) {
             // window.setPreferredOrientation, 映射到 OHOS Orientation 枚举值
+            // (0=UNSPECIFIED 1=PORTRAIT 2=LANDSCAPE 3=PORTRAIT_INVERTED 4=LANDSCAPE_INVERTED 5=AUTO_ROTATION)
             val orientation = when (policy) {
                 OrientationPolicy.Unspecified -> 0 // UNSPECIFIED
                 OrientationPolicy.Portrait -> 1    // PORTRAIT
                 OrientationPolicy.Landscape -> 2   // LANDSCAPE
                 OrientationPolicy.Sensor -> 5      // AUTO_ROTATION
+                OrientationPolicy.ReversePortrait -> 3 // PORTRAIT_INVERTED
             }
             OhosNativeBridge.setWindowPreferredOrientation(orientation)
         }

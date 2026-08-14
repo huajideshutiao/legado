@@ -25,12 +25,10 @@ import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.compose.component.AppDetailSeekBar
 import io.legado.app.ui.compose.component.AppRadioButton
 import io.legado.app.ui.compose.component.AppSelectorDialog
-import io.legado.app.ui.compose.component.DialogTitleBar
 import io.legado.app.ui.compose.preference.ColorPickerDialog
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.utils.hexString
 import legado.shared.generated.resources.Res
-import legado.shared.generated.resources.body_title
 import legado.shared.generated.resources.footer
 import legado.shared.generated.resources.header
 import legado.shared.generated.resources.header_footer
@@ -84,7 +82,6 @@ interface TipConfigController {
  *
  * 下沉自 app 端 `TipConfigDialog`，原 DialogFragment 宿主由 app 端 thin wrapper 保留：
  * - `BaseComposeDialogFragment` 提供窗口/圆角/Provider 注入
- * - `dismissAllowingStateLoss` 通过 [onBack] 回调由 wrapper 桥接
  * - `ReadBookEvents.postConfig(...)` 通过 [onPostConfig] 回调由 wrapper 桥接
  * - `ReadBookConfig` / `ReadTipConfig` 读写通过 [controller] 桥接
  *
@@ -98,14 +95,14 @@ interface TipConfigController {
  * 行为对齐原 TipConfigDialog：选新值前把重复占用同值的其它信息位重置为"无"，
  * 即时写配置并 postConfig 刷新渲染。
  *
+ * 无顶栏（用户需求）：弹窗外点按 / 返回键关闭，透过半透明弹窗隐约看到阅读页页眉/页脚。
+ *
  * @param controller 配置读写桥接
- * @param onBack 关闭回调（对应 `dismissAllowingStateLoss`）
  * @param onPostConfig 配置变更通知（对应 `ReadBookEvents.postConfig(changes)`）
  */
 @Composable
 fun TipConfigScreen(
     controller: TipConfigController,
-    onBack: () -> Unit,
     onPostConfig: (List<ReadConfigChange>) -> Unit,
 ) {
     val colors = AppTheme.colors
@@ -219,172 +216,167 @@ fun TipConfigScreen(
         onPostConfig(listOf(ReadConfigChange.LOAD_CONTENT))
     }
 
-    Column(Modifier.fillMaxWidth()) {
-        DialogTitleBar(
-            title = stringResource(Res.string.body_title),
-            onBack = onBack,
-        )
-        Column(
-            Modifier
-                .weight(1f, fill = false)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 16.dp)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp)
+            .padding(top = 16.dp)
+            .padding(bottom = 16.dp)
+    ) {
+        // 标题模式：左/居中/隐藏
+        Row(
+            Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            // 标题模式：左/居中/隐藏
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                listOf(
-                    stringResource(Res.string.title_left),
-                    stringResource(Res.string.title_center),
-                    stringResource(Res.string.title_hide),
-                ).forEachIndexed { index, label ->
-                    Row(
-                        Modifier.clickable { selectTitleMode(index) },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        AppRadioButton(
-                            selected = titleMode == index,
-                            onClick = { selectTitleMode(index) },
-                        )
-                        Text(label, color = colors.primaryText)
+            listOf(
+                stringResource(Res.string.title_left),
+                stringResource(Res.string.title_center),
+                stringResource(Res.string.title_hide),
+            ).forEachIndexed { index, label ->
+                Row(
+                    Modifier.clickable { selectTitleMode(index) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AppRadioButton(
+                        selected = titleMode == index,
+                        onClick = { selectTitleMode(index) },
+                    )
+                    Text(label, color = colors.primaryText)
+                }
+                Spacer(Modifier.width(8.dp))
+            }
+        }
+
+        val styleAndLoad =
+            listOf(ReadConfigChange.CHAPTER_STYLE, ReadConfigChange.LOAD_CONTENT)
+        AppDetailSeekBar(
+            title = stringResource(Res.string.title_font_size),
+            value = titleSize,
+            max = 10,
+            onChanged = {
+                titleSize = it
+                controller.titleSize = it
+                onPostConfig(styleAndLoad)
+            },
+        )
+        AppDetailSeekBar(
+            title = stringResource(Res.string.title_margin_top),
+            value = titleTop,
+            max = 100,
+            onChanged = {
+                titleTop = it
+                controller.titleTop = it
+                onPostConfig(styleAndLoad)
+            },
+        )
+        AppDetailSeekBar(
+            title = stringResource(Res.string.title_margin_bottom),
+            value = titleBottom,
+            max = 100,
+            onChanged = {
+                titleBottom = it
+                controller.titleBottom = it
+                onPostConfig(styleAndLoad)
+            },
+        )
+
+        SectionHeader(stringResource(Res.string.header))
+        TipRow(stringResource(Res.string.show_hide), headerShowText) {
+            showSelector(headerModes.values.toList()) { i ->
+                controller.headerMode = headerModes.keys.toList()[i]
+                headerShowText = headerModes[controller.headerMode] ?: ""
+                onPostConfig(listOf(ReadConfigChange.STYLE))
+            }
+        }
+        TipRow(stringResource(Res.string.left), headerLeftText) {
+            showSelector(tipNames) { i ->
+                val tipValue = ReadTipConfigShared.tipValues[i]
+                clearRepeat(tipValue)
+                controller.tipHeaderLeft = tipValue
+                headerLeftText = tipNames[i]
+                onPostConfig(listOf(ReadConfigChange.STYLE, ReadConfigChange.UP_CONTENT))
+            }
+        }
+        TipRow(stringResource(Res.string.middle), headerMiddleText) {
+            showSelector(tipNames) { i ->
+                val tipValue = ReadTipConfigShared.tipValues[i]
+                clearRepeat(tipValue)
+                controller.tipHeaderMiddle = tipValue
+                headerMiddleText = tipNames[i]
+                onPostConfig(listOf(ReadConfigChange.STYLE, ReadConfigChange.UP_CONTENT))
+            }
+        }
+        TipRow(stringResource(Res.string.right), headerRightText) {
+            showSelector(tipNames) { i ->
+                val tipValue = ReadTipConfigShared.tipValues[i]
+                clearRepeat(tipValue)
+                controller.tipHeaderRight = tipValue
+                headerRightText = tipNames[i]
+                onPostConfig(listOf(ReadConfigChange.STYLE, ReadConfigChange.UP_CONTENT))
+            }
+        }
+
+        SectionHeader(stringResource(Res.string.footer))
+        TipRow(stringResource(Res.string.show_hide), footerShowText) {
+            showSelector(footerModes.values.toList()) { i ->
+                controller.footerMode = footerModes.keys.toList()[i]
+                footerShowText = footerModes[controller.footerMode] ?: ""
+                onPostConfig(listOf(ReadConfigChange.STYLE))
+            }
+        }
+        TipRow(stringResource(Res.string.left), footerLeftText) {
+            showSelector(tipNames) { i ->
+                val tipValue = ReadTipConfigShared.tipValues[i]
+                clearRepeat(tipValue)
+                controller.tipFooterLeft = tipValue
+                footerLeftText = tipNames[i]
+                onPostConfig(listOf(ReadConfigChange.STYLE, ReadConfigChange.UP_CONTENT))
+            }
+        }
+        TipRow(stringResource(Res.string.middle), footerMiddleText) {
+            showSelector(tipNames) { i ->
+                val tipValue = ReadTipConfigShared.tipValues[i]
+                clearRepeat(tipValue)
+                controller.tipFooterMiddle = tipValue
+                footerMiddleText = tipNames[i]
+                onPostConfig(listOf(ReadConfigChange.STYLE, ReadConfigChange.UP_CONTENT))
+            }
+        }
+        TipRow(stringResource(Res.string.right), footerRightText) {
+            showSelector(tipNames) { i ->
+                val tipValue = ReadTipConfigShared.tipValues[i]
+                clearRepeat(tipValue)
+                controller.tipFooterRight = tipValue
+                footerRightText = tipNames[i]
+                onPostConfig(listOf(ReadConfigChange.STYLE, ReadConfigChange.UP_CONTENT))
+            }
+        }
+
+        SectionHeader(stringResource(Res.string.header_footer))
+        TipRow(stringResource(Res.string.text_color), tipColorLabel) {
+            showSelector(tipColorNames) { i ->
+                when (i) {
+                    0 -> {
+                        controller.tipColor = 0
+                        tipColorLabel = tipColorText()
+                        onPostConfig(listOf(ReadConfigChange.STYLE))
                     }
-                    Spacer(Modifier.width(8.dp))
-                }
-            }
 
-            val styleAndLoad =
-                listOf(ReadConfigChange.CHAPTER_STYLE, ReadConfigChange.LOAD_CONTENT)
-            AppDetailSeekBar(
-                title = stringResource(Res.string.title_font_size),
-                value = titleSize,
-                max = 10,
-                onChanged = {
-                    titleSize = it
-                    controller.titleSize = it
-                    onPostConfig(styleAndLoad)
-                },
-            )
-            AppDetailSeekBar(
-                title = stringResource(Res.string.title_margin_top),
-                value = titleTop,
-                max = 100,
-                onChanged = {
-                    titleTop = it
-                    controller.titleTop = it
-                    onPostConfig(styleAndLoad)
-                },
-            )
-            AppDetailSeekBar(
-                title = stringResource(Res.string.title_margin_bottom),
-                value = titleBottom,
-                max = 100,
-                onChanged = {
-                    titleBottom = it
-                    controller.titleBottom = it
-                    onPostConfig(styleAndLoad)
-                },
-            )
-
-            SectionHeader(stringResource(Res.string.header))
-            TipRow(stringResource(Res.string.show_hide), headerShowText) {
-                showSelector(headerModes.values.toList()) { i ->
-                    controller.headerMode = headerModes.keys.toList()[i]
-                    headerShowText = headerModes[controller.headerMode] ?: ""
-                    onPostConfig(listOf(ReadConfigChange.STYLE))
+                    1 -> showTipColorPicker = true
                 }
             }
-            TipRow(stringResource(Res.string.left), headerLeftText) {
-                showSelector(tipNames) { i ->
-                    val tipValue = ReadTipConfigShared.tipValues[i]
-                    clearRepeat(tipValue)
-                    controller.tipHeaderLeft = tipValue
-                    headerLeftText = tipNames[i]
-                    onPostConfig(listOf(ReadConfigChange.STYLE, ReadConfigChange.UP_CONTENT))
-                }
-            }
-            TipRow(stringResource(Res.string.middle), headerMiddleText) {
-                showSelector(tipNames) { i ->
-                    val tipValue = ReadTipConfigShared.tipValues[i]
-                    clearRepeat(tipValue)
-                    controller.tipHeaderMiddle = tipValue
-                    headerMiddleText = tipNames[i]
-                    onPostConfig(listOf(ReadConfigChange.STYLE, ReadConfigChange.UP_CONTENT))
-                }
-            }
-            TipRow(stringResource(Res.string.right), headerRightText) {
-                showSelector(tipNames) { i ->
-                    val tipValue = ReadTipConfigShared.tipValues[i]
-                    clearRepeat(tipValue)
-                    controller.tipHeaderRight = tipValue
-                    headerRightText = tipNames[i]
-                    onPostConfig(listOf(ReadConfigChange.STYLE, ReadConfigChange.UP_CONTENT))
-                }
-            }
-
-            SectionHeader(stringResource(Res.string.footer))
-            TipRow(stringResource(Res.string.show_hide), footerShowText) {
-                showSelector(footerModes.values.toList()) { i ->
-                    controller.footerMode = footerModes.keys.toList()[i]
-                    footerShowText = footerModes[controller.footerMode] ?: ""
-                    onPostConfig(listOf(ReadConfigChange.STYLE))
-                }
-            }
-            TipRow(stringResource(Res.string.left), footerLeftText) {
-                showSelector(tipNames) { i ->
-                    val tipValue = ReadTipConfigShared.tipValues[i]
-                    clearRepeat(tipValue)
-                    controller.tipFooterLeft = tipValue
-                    footerLeftText = tipNames[i]
-                    onPostConfig(listOf(ReadConfigChange.STYLE, ReadConfigChange.UP_CONTENT))
-                }
-            }
-            TipRow(stringResource(Res.string.middle), footerMiddleText) {
-                showSelector(tipNames) { i ->
-                    val tipValue = ReadTipConfigShared.tipValues[i]
-                    clearRepeat(tipValue)
-                    controller.tipFooterMiddle = tipValue
-                    footerMiddleText = tipNames[i]
-                    onPostConfig(listOf(ReadConfigChange.STYLE, ReadConfigChange.UP_CONTENT))
-                }
-            }
-            TipRow(stringResource(Res.string.right), footerRightText) {
-                showSelector(tipNames) { i ->
-                    val tipValue = ReadTipConfigShared.tipValues[i]
-                    clearRepeat(tipValue)
-                    controller.tipFooterRight = tipValue
-                    footerRightText = tipNames[i]
-                    onPostConfig(listOf(ReadConfigChange.STYLE, ReadConfigChange.UP_CONTENT))
-                }
-            }
-
-            SectionHeader(stringResource(Res.string.header_footer))
-            TipRow(stringResource(Res.string.text_color), tipColorLabel) {
-                showSelector(tipColorNames) { i ->
-                    when (i) {
-                        0 -> {
-                            controller.tipColor = 0
-                            tipColorLabel = tipColorText()
-                            onPostConfig(listOf(ReadConfigChange.STYLE))
-                        }
-
-                        1 -> showTipColorPicker = true
+        }
+        TipRow(stringResource(Res.string.tip_divider_color), tipDividerLabel) {
+            showSelector(tipDividerColorNames) { i ->
+                when (i) {
+                    0, 1 -> {
+                        controller.tipDividerColor = i - 1
+                        tipDividerLabel = tipDividerText()
+                        onPostConfig(listOf(ReadConfigChange.STYLE))
                     }
-                }
-            }
-            TipRow(stringResource(Res.string.tip_divider_color), tipDividerLabel) {
-                showSelector(tipDividerColorNames) { i ->
-                    when (i) {
-                        0, 1 -> {
-                            controller.tipDividerColor = i - 1
-                            tipDividerLabel = tipDividerText()
-                            onPostConfig(listOf(ReadConfigChange.STYLE))
-                        }
 
-                        2 -> showDividerColorPicker = true
-                    }
+                    2 -> showDividerColorPicker = true
                 }
             }
         }
@@ -499,7 +491,6 @@ private class PreviewTipConfigController : TipConfigController {
 fun TipConfigScreenPreview() = LegadoThemePreview {
     TipConfigScreen(
         controller = PreviewTipConfigController(),
-        onBack = {},
         onPostConfig = noopPostConfig,
     )
 }
@@ -509,7 +500,6 @@ fun TipConfigScreenPreview() = LegadoThemePreview {
 fun TipConfigScreenDarkPreview() = LegadoThemePreview(dark = true) {
     TipConfigScreen(
         controller = PreviewTipConfigController(),
-        onBack = {},
         onPostConfig = noopPostConfig,
     )
 }

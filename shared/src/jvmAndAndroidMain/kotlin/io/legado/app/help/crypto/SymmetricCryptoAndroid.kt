@@ -27,7 +27,11 @@ class SymmetricCryptoAndroid(
     algorithm: String,
     key: ByteArray?,
 ) : SymmetricCrypto(
-    algorithm,
+    // PKCS7Padding → PKCS5Padding 归一: 两者在块密码 (AES 16 字节/DES 8 字节) 下字节级等价,
+    // hutool 内部 Cipher.getInstance("AES/CBC/PKCS7Padding") 在无该 provider 的平台
+    // (桌面端 SunJCE / 个别 Android ROM) 会抛 NoSuchAlgorithmException; 归一后全平台可用,
+    // 密文与真 PKCS7 逐字节一致 (见 jvmTest Pkcs7PaddingCompatibilityTest)。
+    algorithm.normalizePkcs7Padding(),
     key?.let { SecretKeySpec(it, algorithm.substringBefore('/')) }
 ), io.legado.app.help.crypto.SymmetricCrypto {
 
@@ -71,3 +75,18 @@ class SymmetricCryptoAndroid(
     }
 
 }
+
+/**
+ * 把 transformation 里的 PKCS7Padding 归一为 PKCS5Padding (大小写不敏感)。
+ *
+ * 依据: JCE 的 "PKCS5Padding" 实现按 cipher 实际块大小填充 (AES 16 字节/DES 8 字节),
+ * 与 PKCS7Padding (RFC 5652) 的填充字节逐字节一致; 对 hutool 支持的块密码 (AES/DES/
+ * DESede/SM4) 两者可互换, 不影响密文与解密兼容性。仅 Android/iOS/ohos 的 mbedTLS
+ * 原生后端无需此归一 (原生实现直接支持 PKCS7Padding)。
+ */
+internal fun String.normalizePkcs7Padding(): String =
+    if (contains("PKCS7Padding", ignoreCase = true)) {
+        Regex("(?i)PKCS7Padding").replace(this, "PKCS5Padding")
+    } else {
+        this
+    }

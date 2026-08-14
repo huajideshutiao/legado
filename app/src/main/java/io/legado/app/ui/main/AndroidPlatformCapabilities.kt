@@ -163,6 +163,7 @@ import io.legado.app.utils.externalFiles
 import io.legado.app.utils.find
 import io.legado.app.utils.getClipText
 import io.legado.app.utils.isContentScheme
+import io.legado.app.utils.isPad
 import io.legado.app.utils.isUri
 import io.legado.app.utils.list
 import io.legado.app.utils.openFileUri
@@ -247,7 +248,10 @@ class AndroidPlatformCapabilities(
     // ===== 全局转场动画平台 spec (方案 A: 动画单一注入点参数化) =====
     // Android: 系统 Activity 转场语义 (API 28+ 默认转场: 新页 slide_in_right 全宽滑入 +
     // fade_in, 旧页 fade_out 不位移, 300ms, @android:interpolator/fast_out_slow_in);
-    // 返回: 出栈页 slide_out_right 全宽滑出+淡出, 目标页按系统 fade 转场语义淡入不位移。
+    // 返回: 出栈页 slide_out_right 全宽滑出+淡出, 目标页不位移且不做淡入——目标页在
+    // 出栈页之下本就完整渲染, 由出栈页滑开直接露出 (动画层 LegadoApp 对 pop 目标页强制
+    // alpha=1, 见 TransitionRole.TargetPage 消费点; 部分 ROM 的 closeEnter 淡入不随进度
+    // 推进会导致目标页全程不可见、动画收敛后突然闪现, 故不再依赖淡入)。
     // 时长运行时动态读系统动画时长缩放 (Settings.Global ANIMATOR_DURATION_SCALE ×
     // TRANSITION_ANIMATION_SCALE 取小值: 任一关闭即关闭转场动画, 尊重用户"动画时长缩放"
     // 设置, >1 时与系统一致放慢), 读取失败回退系统规范值 (300ms/200ms/150ms)。
@@ -1176,6 +1180,9 @@ class AndroidPlatformCapabilities(
     // 对照 BookInfoActivity.Content 内 LocalConfiguration.current.orientation == ORIENTATION_LANDSCAPE
     override fun isLandscape(): Boolean =
         activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    // 对照 ChapterProvider.upLayout 的 appCtx.isPad（"平板/横屏双页" auto 分支）
+    override fun isTablet(): Boolean = activity.isPad
 
     // 对照 BookInfoActivity.Content 内 setLightStatusBar(if (useDevFeat) isDarkTheme else false)
     override fun setLightStatusBarForBookInfo(useDevFeat: Boolean, isDarkTheme: Boolean) {

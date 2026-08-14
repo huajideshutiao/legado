@@ -1,8 +1,12 @@
 package io.legado.app.ui.book.manga
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -29,6 +33,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,10 +64,11 @@ import io.legado.app.ui.compose.platform.AppShortcut
 import io.legado.app.ui.compose.platform.AppShortcutHandler
 import io.legado.app.ui.compose.platform.PageTurnThrottle
 import io.legado.app.ui.compose.platform.VolumeKeyPageTurnHandler
-import io.legado.app.ui.compose.platform.navigationBarFixedPadding
-import io.legado.app.ui.compose.platform.statusBarFixedPadding
+import io.legado.app.ui.compose.platform.platformNavigationBarPadding
+import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
+import kotlinx.coroutines.flow.first
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.back
 import legado.shared.generated.resources.bookmark_add
@@ -139,7 +145,9 @@ private val mangaMenuKey = listOf(AppShortcut(Key.Menu))
  * @param grayEnabled 灰度滤镜开关
  * @param onBack 返回回调
  * @param onMenuVisibleChange 菜单(操作界面)显隐回调 (对照原版 ReadMangaActivity.upSystemUiVisibility:
- *   菜单显示 → 宿主恢复系统栏, 菜单隐藏 → 沉浸式全屏; 各平台经 WindowController.setSystemBars 执行)
+ *   菜单显示 → 宿主恢复系统栏, 菜单隐藏 → 沉浸式全屏; 各平台经 WindowController.setSystemBars 执行)。
+ *   时序对齐原版 MangaMenu menuIn/OutListener: 显示在菜单入场动画开始时 (onAnimationStart),
+ *   隐藏等出场动画播完后 (onAnimationEnd), 滑出期间系统栏保持可见、顶/底栏 padding 不抽走。
  * @param onPrevChapter 上一章
  * @param onNextChapter 下一章
  * @param onPrevPage 上一页（提供后键盘上翻键优先调用，否则整屏回滚）
@@ -221,9 +229,25 @@ fun MangaReaderScreenContent(
 ) {
     // 菜单 Overlay 显隐 (点击区域动作 0 呼出, 对照 app 端 click action 0)
     var menuVisible by remember { mutableStateOf(false) }
+    // 菜单显隐转场状态 (对照原版 runMenuIn/runMenuOut 的 200ms 位移动画):
+    // 菜单 Overlay 常驻组合, 由本转场驱动顶/底栏滑入滑出; 系统栏隐藏等
+    // currentState 落到 false (出场动画播完, 对齐原版 onAnimationEnd 语义)
+    val menuTransition = remember { MutableTransitionState(menuVisible) }
+    LaunchedEffect(menuVisible) { menuTransition.targetState = menuVisible }
     // 系统栏随菜单显隐 (对照原版 ReadMangaActivity.upSystemUiVisibility(menuIsVisible) →
-    // toggleSystemBar: 菜单显示恢复状态栏/导航栏, 菜单隐藏沉浸式全屏; 由宿主平台执行)
-    LaunchedEffect(menuVisible) { onMenuVisibleChange(menuVisible) }
+    // toggleSystemBar, 由宿主平台执行; 时序对齐原版 MangaMenu 的 menuIn/OutListener):
+    // - 显示: 与菜单入场动画开始同帧 (onAnimationStart 语义), 系统栏动画与菜单滑入并行,
+    //   顶/底栏 padding 逐帧跟随 insets (platformStatusBarPadding), 无离散跳变;
+    // - 隐藏: 出场动画播完后 (onAnimationEnd 语义), 滑出期间系统栏保持可见、
+    //   padding 不抽走, 播完后再隐藏系统栏。
+    LaunchedEffect(menuVisible) {
+        if (menuVisible) {
+            onMenuVisibleChange(true)
+        } else {
+            snapshotFlow { menuTransition.currentState }.first { !it }
+            onMenuVisibleChange(false)
+        }
+    }
     // 翻页/切章 200ms 去抖 (对照原版 prevPageThrottle/nextPageThrottle, 防长按连翻/连切章)
     val pageTurnThrottle = remember { PageTurnThrottle() }
     val chapterTurnThrottle = remember { PageTurnThrottle() }
@@ -458,51 +482,53 @@ fun MangaReaderScreenContent(
             )
         }
 
-        // 菜单 Overlay: 顶部标题栏 + 底部控制栏(SeekBar) (对照 app 端 MangaMenuOverlay)
-        if (menuVisible) {
-            MangaMenuOverlay(
-                bookName = bookName,
-                currentPage = currentPage,
-                pageCount = pageCount,
-                horizontal = horizontal,
-                hideMangaTitle = hideMangaTitle,
-                disablePageAnim = disablePageAnim,
-                gifAutoNext = gifAutoNext,
-                autoPageEnabled = autoPageEnabled,
-                preDownloadNum = preDownloadNum,
-                autoPageSpeed = autoPageSpeed,
-                hasReview = hasReview,
-                onToggleAutoPage = { autoPageEnabled = !autoPageEnabled },
-                onBack = onBack,
-                onRefresh = onRefresh,
-                onOpenToc = onOpenToc,
-                onOpenBookInfo = onOpenBookInfo,
-                onAddBookmark = onAddBookmark,
-                onToggleHorizontal = onToggleHorizontal,
-                onToggleHideTitle = onToggleHideTitle,
-                onToggleDisablePageAnim = onToggleDisablePageAnim,
-                onToggleGifAutoNext = onToggleGifAutoNext,
-                onOpenColorFilter = onOpenColorFilter,
-                onOpenFooterConfig = onOpenFooterConfig,
-                onOpenPreDownloadNum = onOpenPreDownloadNum,
-                onOpenAutoPageSpeed = onOpenAutoPageSpeed,
-                onOpenClickRegionConfig = onOpenClickRegionConfig,
-                onOpenReview = onOpenReview,
-                onPrevChapter = onPrevChapter,
-                onNextChapter = onNextChapter,
-                // 对照 app 端 MangaSeekBar + skipToPage: 拖动中即定位到本章该页
-                onSeekPage = { index ->
-                    val itemPos = items.indexOfFirst {
-                        it.chapterIndex == curChapterIndex && it.index == index
-                    }
-                    if (itemPos > -1) {
-                        renderState.scrollToPosition(itemPos)
-                        onSeekToPage(index)
-                    }
-                },
-                onDismiss = { menuVisible = false },
-            )
-        }
+        // 菜单 Overlay: 顶部标题栏 + 底部控制栏(SeekBar) (对照 app 端 MangaMenuOverlay)。
+        // 常驻组合: 由 menuTransition 驱动滑入/滑出 (对照原版 anim_readbook_top_in/out),
+        // 退出动画期间系统栏保持可见 (时序见 menuTransition 与系统栏 LaunchedEffect),
+        // 对齐原版 runMenuIn/runMenuOut 的 onAnimationStart/onAnimationEnd。
+        MangaMenuOverlay(
+            transitionState = menuTransition,
+            bookName = bookName,
+            currentPage = currentPage,
+            pageCount = pageCount,
+            horizontal = horizontal,
+            hideMangaTitle = hideMangaTitle,
+            disablePageAnim = disablePageAnim,
+            gifAutoNext = gifAutoNext,
+            autoPageEnabled = autoPageEnabled,
+            preDownloadNum = preDownloadNum,
+            autoPageSpeed = autoPageSpeed,
+            hasReview = hasReview,
+            onToggleAutoPage = { autoPageEnabled = !autoPageEnabled },
+            onBack = onBack,
+            onRefresh = onRefresh,
+            onOpenToc = onOpenToc,
+            onOpenBookInfo = onOpenBookInfo,
+            onAddBookmark = onAddBookmark,
+            onToggleHorizontal = onToggleHorizontal,
+            onToggleHideTitle = onToggleHideTitle,
+            onToggleDisablePageAnim = onToggleDisablePageAnim,
+            onToggleGifAutoNext = onToggleGifAutoNext,
+            onOpenColorFilter = onOpenColorFilter,
+            onOpenFooterConfig = onOpenFooterConfig,
+            onOpenPreDownloadNum = onOpenPreDownloadNum,
+            onOpenAutoPageSpeed = onOpenAutoPageSpeed,
+            onOpenClickRegionConfig = onOpenClickRegionConfig,
+            onOpenReview = onOpenReview,
+            onPrevChapter = onPrevChapter,
+            onNextChapter = onNextChapter,
+            // 对照 app 端 MangaSeekBar + skipToPage: 拖动中即定位到本章该页
+            onSeekPage = { index ->
+                val itemPos = items.indexOfFirst {
+                    it.chapterIndex == curChapterIndex && it.index == index
+                }
+                if (itemPos > -1) {
+                    renderState.scrollToPosition(itemPos)
+                    onSeekToPage(index)
+                }
+            },
+            onDismiss = { menuVisible = false },
+        )
     }
 }
 
@@ -624,6 +650,7 @@ private fun InfoBarText(
 
 @Composable
 private fun MangaMenuOverlay(
+    transitionState: MutableTransitionState<Boolean>,
     bookName: String,
     currentPage: Int,
     pageCount: Int,
@@ -656,24 +683,32 @@ private fun MangaMenuOverlay(
     onSeekPage: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // targetState 由屏幕层 (MangaReaderScreenContent) 随 menuVisible 同步, 此处只消费:
+    // 三处 AnimatedVisibility 共用同一转场, 顶/底栏同时滑入滑出 (对照原版
+    // anim_readbook_top_in/out + bottom_in/out, 200ms), 拦截层随转场淡入淡出。
+    // 菜单滑入动画与系统栏动画彼此独立 (对齐原版: 原版两者完全无关——
+    // 菜单动画是纯位移, padding 由 insets 流单独逐帧驱动), 无任何时序协调。
     Box(Modifier.fillMaxSize()) {
-        // 全屏拦截触摸, 点击空白收起菜单
-        Box(
-            Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                    indication = null,
-                ) { onDismiss() }
-        )
+        // 全屏拦截触摸, 点击空白收起菜单 (对照原版 vwMenuBg; 仅菜单可见/进出场期间拦截)
         AnimatedVisibility(
-            visibleState = remember {
-                androidx.compose.animation.core.MutableTransitionState(true)
-                    .apply { targetState = true }
-            },
+            visibleState = transitionState,
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null,
+                    ) { onDismiss() }
+            )
+        }
+        AnimatedVisibility(
+            visibleState = transitionState,
             modifier = Modifier.align(Alignment.TopCenter),
-            enter = slideInVertically { -it },
-            exit = slideOutVertically { -it },
+            enter = slideInVertically(tween(200)) { -it },
+            exit = slideOutVertically(tween(200)) { -it },
         ) {
             MangaMenuTopBar(
                 bookName = bookName,
@@ -704,13 +739,10 @@ private fun MangaMenuOverlay(
             )
         }
         AnimatedVisibility(
-            visibleState = remember {
-                androidx.compose.animation.core.MutableTransitionState(true)
-                    .apply { targetState = true }
-            },
+            visibleState = transitionState,
             modifier = Modifier.align(Alignment.BottomCenter),
-            enter = slideInVertically { it },
-            exit = slideOutVertically { it },
+            enter = slideInVertically(tween(200)) { it },
+            exit = slideOutVertically(tween(200)) { it },
         ) {
             MangaMenuBottomBar(
                 currentPage = currentPage,
@@ -753,13 +785,17 @@ private fun MangaMenuTopBar(
 ) {
     // 对照 TitleBar: 背景走 ThemeStore backgroundColor, 文字 primaryText
     val colors = AppTheme.colors
+    // 对照原版 TitleBar fitStatusBar=true: 系统栏恢复时顶栏避开状态栏,
+    // 沉浸式全屏时 inset=0 无多余空白。逐帧跟随 insets (对齐原版 TitleBar 的
+    // setOnApplyWindowInsetsListenerCompat → topPadding = insets.top):
+    // 系统栏显隐动画期间 padding 平滑增长, 不会对静止顶栏产生离散跳变。
+    // 注意: 这里不用事件化 statusBarFixedPadding —— 那是内容区"占位避让"语义
+    // (动画期间零重排), 原版菜单栏 TitleBar 恰恰是逐帧跟随的。
     Column(
         Modifier
             .fillMaxWidth()
             .background(colors.background)
-            // 对照原版 TitleBar fitStatusBar=true: 系统栏恢复时顶栏避开状态栏,
-            // 沉浸式全屏时 inset=0 无多余空白 (事件化, 显隐动画期间不逐帧跟随)
-            .statusBarFixedPadding()
+            .platformStatusBarPadding()
             .padding(horizontal = 8.dp),
     ) {
         // 整行点击打开书籍详情 (对照 app 端 toolbar click → openBookInfoActivity)
@@ -937,8 +973,10 @@ private fun MangaMenuBottomBar(
             .fillMaxWidth()
             .background(colors.bottomBackground)
             // 对照原版 MangaMenu.initView: bottomMenu.applyNavigationBarPadding()
-            // (沉浸式全屏时 inset=0 无多余空白; 事件化, 显隐动画期间不逐帧跟随)
-            .navigationBarFixedPadding(),
+            // (沉浸式全屏时 inset=0 无多余空白)。逐帧跟随 insets, 与顶栏
+            // platformStatusBarPadding 同理 (对齐原版 insets listener 语义),
+            // 导航栏显隐动画期间 padding 平滑变化, 无离散跳变。
+            .platformNavigationBarPadding(),
     ) {
         Row(
             Modifier

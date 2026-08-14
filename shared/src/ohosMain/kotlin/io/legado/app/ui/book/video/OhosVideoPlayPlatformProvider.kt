@@ -2,17 +2,27 @@ package io.legado.app.ui.book.video
 
 import kotlin.concurrent.Volatile
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.interop.ArkUIView2
 import androidx.compose.ui.napi.js
 import io.legado.app.napi.OhosNativeBridge
 import io.legado.app.utils.KS_JSON
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 
 /**
@@ -47,17 +57,41 @@ object OhosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
     ) {
         // 必须以 State 订阅: 直读 StateFlow.value 不会随链接就绪重组, 会一直停在等待态 (对照 desktop 64711ebf22)
         val videoUrl by screenModel.shared.videoUrl.collectAsState()
+        val uiState by screenModel.state.collectAsState()
         val url = videoUrl?.url
+        // 缓冲状态 (事件驱动: ArkTS 事件回推 StateFlow, 无轮询)
+        val isBuffering by (controller as? OhosVideoPlayerController)
+            ?.isBufferingFlow
+            ?.collectAsState() ?: remember { mutableStateOf(false) }
         LaunchedEffect(url) {
             if (url != null) (controller as? OhosVideoPlayerController)?.loadUrl(url)
         }
-        ArkUIView2(
-            name = ARKUI_BUILDER_VIDEO_SURFACE,
-            modifier = modifier.fillMaxSize(),
-            parameter = js { "playerId"(OhosNativeBridge.PLAYER_ID_VIDEO_BOOK) },
-            background = Color.Black,
-            interactive = false,
-        )
+        // 加载/错误: 章节内容加载中整层转圈; 失败显示错误占位 (对齐 desktop/app)
+        val error = uiState.error
+        val showLoading = error == null && uiState.loading
+        Box(modifier.fillMaxSize()) {
+            ArkUIView2(
+                name = ARKUI_BUILDER_VIDEO_SURFACE,
+                modifier = Modifier.fillMaxSize(),
+                parameter = js { "playerId"(OhosNativeBridge.PLAYER_ID_VIDEO_BOOK) },
+                background = Color.Black,
+                interactive = false,
+            )
+            // 加载/错误占位 + 缓冲圈 (加载中整层转圈, 缓冲中央小圈; 对齐 desktop/app)
+            when {
+                error != null -> ErrorOverlay(error = error, onRetry = screenModel::onRefreshChapter)
+                showLoading -> LoadingOverlay()
+                isBuffering -> Box(
+                    Modifier.matchParentSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        modifier = Modifier.size(48.dp),
+                    )
+                }
+            }
+        }
     }
 
     /** ArkTS 侧 `registerComposeInteropBuilder` 的注册 key (需与 ets 端字面量一致)。 */
@@ -94,13 +128,34 @@ class OhosVideoPlayerController(
     private var loadedUrl: String? = null
     @Volatile
     private var listenerRegistered = false
+    /** AVPlayer prepare 完成 (onReady) 前视为加载中 */
+    @Volatile
+    private var ready = false
+    /** 缓冲百分比 (ArkTS onBufferingUpdate 推送, 0-100) */
+    @Volatile
+    private var bufferingPercent = 100
+
+    /** 缓冲中: 链接就绪后 AVPlayer 未 prepare 完成 (onReady 前), 或缓冲百分比 < 100 (起播/卡顿/seek)。 */
+    val isBuffering: Boolean
+        get() = !ready || bufferingPercent < 100
+
+    private val _isBuffering = MutableStateFlow(false)
+    /** 缓冲状态 (事件驱动: ArkTS 事件回推 StateFlow, 无轮询)。 */
+    val isBufferingFlow: StateFlow<Boolean> = _isBuffering.asStateFlow()
+
+    private fun syncBuffering() {
+        _isBuffering.value = isBuffering
+    }
 
     // 加载 URL: 经 tsfn 发 setSourceUrl 命令, ArkTS 创建 AVPlayer 设源 prepare
     fun loadUrl(url: String) {
         if (url == loadedUrl) return
         loadedUrl = url
+        ready = false
+        bufferingPercent = 0
         ensureListener()
         sendCommand(MediaCommand(action = "setSourceUrl", url = url))
+        syncBuffering()
     }
 
     private fun ensureListener() {
@@ -145,9 +200,12 @@ class OhosVideoPlayerController(
             listenerRegistered = false
         }
         playing = false
+        ready = false
+        bufferingPercent = 100
         cachedDuration = 0L
         cachedPosition = 0L
         loadedUrl = null
+        syncBuffering()
     }
 
     // ArkTS AVPlayer 事件回调 (同 OhosAvAudioPlayController.onMediaEvent 模式)
@@ -156,25 +214,37 @@ class OhosVideoPlayerController(
             KS_JSON.decodeFromString(MediaEvent.serializer(), eventJson)
         }.getOrNull() ?: return
         when (event.event) {
-            "onReady" -> {}
+            "onReady" -> {
+                ready = true
+                bufferingPercent = 100
+            }
+
+            "onBufferingUpdate" -> event.percent?.let { bufferingPercent = it.toInt() }
+
             "onEndOfMedia" -> {
-                playing = false; onPlaybackEnded()
+                playing = false
+                bufferingPercent = 100
+                onPlaybackEnded()
             }
 
             "onError" -> {
                 playing = false
+                bufferingPercent = 100
             }
 
             "onDuration" -> event.duration?.let { cachedDuration = it }
             "onPosition" -> event.position?.let { cachedPosition = it }
             "onPlaying" -> {
                 playing = true
+                bufferingPercent = 100
             }
 
             "onPaused" -> {
                 playing = false
+                bufferingPercent = 100
             }
         }
+        syncBuffering()
     }
 
     private fun sendCommand(cmd: MediaCommand) {
@@ -200,6 +270,7 @@ class OhosVideoPlayerController(
     private data class MediaEvent(
         val event: String,
         val message: String? = null,
+        val percent: Long? = null,
         val duration: Long? = null,
         val position: Long? = null,
     )

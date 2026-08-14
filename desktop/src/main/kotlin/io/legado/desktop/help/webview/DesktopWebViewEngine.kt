@@ -79,8 +79,6 @@ class WebViewFetchResult(
  *   由调用方先抓取解码后传入; 非空时引擎渲染 html 而非 [url]。两个引擎 (WebView2
  *   `NavigateToString` / JavaFX `loadContent`) 都无 base URL 参数, 页面相对资源按
  *   about:blank 根解析, 与原版 `loadDataWithBaseURL` 存在此语义差异 (实现时评估)。
- * @param bottomSheet 置底半屏语义 (对照 app 端 startBrowser asBottomSheet=true 的
- *   BottomSheetDialog): 窗口高度取屏幕一半并贴屏幕底部; 默认普通居中窗口
  * @param isLogin 登录页语义 (对照 WebViewActivity isLogin): "确定"按钮走 check_host_cookie
  * @param saveResult 验证语义 (对照 WebViewActivity sourceVerificationEnable): "确定"按钮
  *   抓 html 回传 [onSaveResult]
@@ -106,7 +104,6 @@ data class WebViewWindowRequest(
     val cookieTag: String? = null,
     val sourceType: Int = SourceType.book,
     val sourceName: String = "",
-    val bottomSheet: Boolean = false,
     val isLogin: Boolean = false,
     val saveResult: Boolean = false,
     val onSaveResult: ((String?) -> Unit)? = null,

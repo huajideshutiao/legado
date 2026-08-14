@@ -45,6 +45,10 @@ object ReadBookEvents {
     private val _keepLightChange = eventFlow<Unit>()
     val keepLightChange: SharedFlow<Unit> get() = _keepLightChange
 
+    /** 屏幕方向设置变更（原 PreferKey.screenOrientation → ReadBookActivity.setOrientation） */
+    private val _orientationChange = eventFlow<Unit>()
+    val orientationChange: SharedFlow<Unit> get() = _orientationChange
+
     /** 菜单数据刷新（原 ReadBook.CallBack.upMenuView，replay=1 兜底重建期漏发） */
     private val _menuRefresh = eventFlow<Unit>(replay = 1)
     val menuRefresh: SharedFlow<Unit> get() = _menuRefresh
@@ -120,6 +124,10 @@ object ReadBookEvents {
 
     fun postKeepLightChange() {
         _keepLightChange.tryEmit(Unit)
+    }
+
+    fun postOrientationChange() {
+        _orientationChange.tryEmit(Unit)
     }
 
     fun postSelectionCancel() {

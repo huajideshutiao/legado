@@ -111,8 +111,8 @@ import io.legado.app.ui.compose.platform.BackLayerHandler
 import io.legado.app.ui.compose.platform.rememberColor
 import io.legado.app.ui.compose.platform.rememberPainter
 import io.legado.app.ui.compose.platform.rememberString
-import io.legado.app.ui.compose.platform.navigationBarFixedPadding
-import io.legado.app.ui.compose.platform.statusBarFixedPadding
+import io.legado.app.ui.compose.platform.platformNavigationBarPadding
+import io.legado.app.ui.compose.platform.platformStatusBarPadding
 import io.legado.app.ui.compose.theme.AppTheme
 import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 import io.legado.app.ui.compose.theme.LocalEInk
@@ -345,7 +345,10 @@ private fun ReadMenuTopBar(state: ReadMenuState) {
             .fillMaxWidth()
             .shadow(4.dp)
             .background(topBg)
-            .statusBarFixedPadding()
+            // 浮层顶栏逐帧跟随状态栏 insets (对齐原版 TitleBar insets listener 语义):
+            // 菜单滑入与系统栏显隐动画并行时 padding 平滑增长, 无离散跳变;
+            // 不逐帧跟随的事件化变体仅用于正文内容区 (占位避让, 动画期间零重排)。
+            .platformStatusBarPadding()
     ) {
         // toolbar 行：点击空白处打开书籍详情(原 toolbar click)
         Row(
@@ -717,7 +720,8 @@ private fun ReadMenuBottom(state: ReadMenuState) {
                 .shadow(4.dp)
                 .graphicsLayer { rotationX = 180f }
                 .background(if (eInk) Color.White else bg)
-                .navigationBarFixedPadding(),
+                // 浮层底栏逐帧跟随导航栏 insets (与顶栏 platformStatusBarPadding 同理)
+                .platformNavigationBarPadding(),
         ) {
             if (eInk) {
                 Box(

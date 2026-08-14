@@ -19,6 +19,18 @@ import androidx.compose.ui.platform.LocalDensity
 expect fun Modifier.platformStatusBarPadding(): Modifier
 
 /**
+ * 跨平台导航栏 padding (底部)。
+ *
+ * - Android: 走 [androidx.compose.foundation.layout.navigationBarsPadding]
+ * - iOS / 鸿蒙: 走 `Modifier.navigationBarsPadding()` (CMP 映射到安全区域/home 指示条)
+ * - 桌面 JVM: 无系统导航栏概念, 返回 this (无 padding)
+ *
+ * 供菜单底栏等浮层逐帧跟随导航栏 inset (对齐原版 TitleBar/Menu 的 insets listener 语义);
+ * 内容区的"事件化避让"仍走 [navigationBarFixedPadding] (占位语义, 动画期间零重排)。
+ */
+expect fun Modifier.platformNavigationBarPadding(): Modifier
+
+/**
  * 跨平台导航栏 padding (返回 PaddingValues, 用于 LazyColumn contentPadding 等)。
  *
  * - Android: 走 `WindowInsets.navigationBars.asPaddingValues()` (避让手势导航栏)
@@ -37,7 +49,8 @@ expect fun rememberNavigationBarPaddingValues(): PaddingValues
 // 由配置驱动 isGone, 动画期间布局零变化)。以下 API 只在"显隐翻转"边界写回状态,
 // 动画期间布尔与高度恒定, 仅翻转时重排一次。
 
-/** 状态栏当前是否隐藏 (事件性布尔, 动画期间不变, 非 Android 恒 false) */
+/**
+ * 状态栏当前是否隐藏 (事件性布尔, 动画期间不变, 非 Android 恒 false) */
 @Composable
 expect fun rememberStatusBarHidden(): Boolean
 
@@ -45,13 +58,17 @@ expect fun rememberStatusBarHidden(): Boolean
 @Composable
 expect fun rememberNavigationBarHidden(): Boolean
 
-/** 状态栏固定高度 px (首次组合采样, 配置变化时重采, 非 Android 恒 0) */
+/**
+ * 状态栏可见时的高度 px: 缓存"忽略可见性"采样 (android actual 走
+ * getInsetsIgnoringVisibility, 隐藏/显隐动画期间也返回真实状态栏高度), 供事件化
+ * padding 在显隐翻转时一次取到正确高度 (不逐帧跟随)。
+ */
 @Composable
-expect fun rememberFixedStatusBarHeightPx(): Int
+expect fun rememberVisibleStatusBarHeightPx(): Int
 
-/** 导航栏固定高度 px (首次组合采样, 配置变化时重采, 非 Android 恒 0) */
+/** 导航栏可见时的高度 px (同 [rememberVisibleStatusBarHeightPx] 语义) */
 @Composable
-expect fun rememberFixedNavigationBarHeightPx(): Int
+expect fun rememberVisibleNavigationBarHeightPx(): Int
 
 /**
  * 转场动画期间冻结的状态栏高度 px (非空=冻结中, null=实时/事件化)。
@@ -77,32 +94,29 @@ fun Modifier.transitionStatusBarPadding(): Modifier {
 }
 
 /**
- * 状态栏可见时的固定高度 px: 只在状态栏可见时更新记录, 隐藏/显隐动画期间保留最近
- * 可见值 (供转场冻结: pop 回书架时动画开始前高度已为 0, 冻结值须取可见高度)。
- */
-@Composable
-expect fun rememberVisibleStatusBarHeightPx(): Int
-
-/**
- * 事件化状态栏 padding: 隐藏时 0, 显示时固定状态栏高; 显隐动画期间恒定,
- * 仅翻转时重排一次 (替换逐帧跟随的 platformStatusBarPadding, 对齐原版语义)。
+ * 事件化状态栏 padding: 隐藏时 0, 显示时固定状态栏高 (高度取 [rememberVisibleStatusBarHeightPx]
+ * 缓存值, 显隐动画期间恒定); 仅显隐翻转时重排一次, 不逐帧跟随。
+ *
+ * 注意: 高度通道必须用缓存可见高度而非布局事件逐帧重采的值 —— 后者在系统栏显隐动画期间
+ * 会把逐帧 inset 泄漏进 padding, 叠加布尔翻转造成"两次抖动" (修复前的事件化实际是伪事件化)。
  */
 @Composable
 fun Modifier.statusBarFixedPadding(): Modifier {
     val hidden = rememberStatusBarHidden()
-    val heightPx = rememberFixedStatusBarHeightPx()
+    val heightPx = rememberVisibleStatusBarHeightPx()
     val density = LocalDensity.current
     return if (hidden || heightPx <= 0) this
     else this.padding(top = with(density) { heightPx.toDp() })
 }
 
 /**
- * 事件化导航栏 padding (bottom): 隐藏时 0, 显示时固定导航栏高; 显隐动画期间恒定。
+ * 事件化导航栏 padding (bottom): 隐藏时 0, 显示时固定导航栏高 (高度取
+ * [rememberVisibleNavigationBarHeightPx] 缓存值); 显隐动画期间恒定, 仅翻转时重排一次。
  */
 @Composable
 fun Modifier.navigationBarFixedPadding(): Modifier {
     val hidden = rememberNavigationBarHidden()
-    val heightPx = rememberFixedNavigationBarHeightPx()
+    val heightPx = rememberVisibleNavigationBarHeightPx()
     val density = LocalDensity.current
     return if (hidden || heightPx <= 0) this
     else this.padding(bottom = with(density) { heightPx.toDp() })

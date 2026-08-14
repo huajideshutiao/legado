@@ -646,6 +646,12 @@ crypto 系列各算法明细（android 为 hutool/JCA 全量，ios/ohos 统一�
 > 对称加密 key 为 null 时各端均使用随机密钥（AES 128 位/DES 8 字节/DESede 24 字节，对齐 hutool KeyUtil）；
 > 不支持的算法/模式会抛出点名异常，便于书源降级判断。
 
+> `PKCS7Padding` 与 `PKCS5Padding` 在块密码（AES 16 字节 / DES 8 字节）下填充字节完全一致，
+> 可互换。android/jvm 端 `java.createSymmetricCrypto` 自动把 `PKCS7Padding` 归一为
+> `PKCS5Padding`（桌面端 JVM SunJCE 无 PKCS7Padding provider，归一后无需额外依赖即可用）；
+> 桌面端书源直调 `cn.hutool.crypto`/`Cipher` 的 PKCS7Padding 由内置 BouncyCastle provider
+> 补齐（Android 内置 Conscrypt/BC 原生支持）。
+
 示例——算法超出 ios/ohos 支持面时降级：
 
 ```js
@@ -661,8 +667,8 @@ if (platform == 'android' || platform == 'jvm') {
 ## image 对象（图片解密）
 
 > 所有 JS 作用域都注入了 `image` 变量，提供跨端一致的图片解密 API，
-> 用于漫画/封面的切块重排、裁剪等反爬解密场景（不是通用图片库）。
-> `ImageRef` 是不透明句柄（android 下内持 Bitmap），split/stitch/crop 直接操作原生图，
+> 用于漫画/封面的切块重排、裁剪、旋转、翻转等反爬解密场景（不是通用图片库）。
+> `ImageRef` 是不透明句柄（android 下内持 Bitmap），split/stitch/crop/rotate/flip 直接操作原生图，
 > 不经过中间编解码，最后 `encode` 才输出字节；句柄随 JS 引用由 GC 回收。
 
 ```js
@@ -670,7 +676,8 @@ if (platform == 'android' || platform == 'jvm') {
 image.decode(bytes: ByteArray): ImageRef
 image.decode(base64: String): ImageRef
 image.decode(input: InputStream): ImageRef // 仅 android/jvm 附加重载
-// 编码：句柄 -> 图片字节。format 支持 png/jpg/webp，quality 0-100（png 无损，忽略）
+// 编码：句柄 -> 图片字节。format 支持 png/jpg/webp，quality 0-100（png 无损，忽略）；
+// jpg 无透明通道，透明区域按黑底处理（各端一致，与漫画阅读界面底色相同）
 image.encode(img: ImageRef, format: String, quality: Int): ByteArray
 // 均分切块：行优先（先左到右再上到下），除不尽的余数并入最后一行/列
 image.split(img: ImageRef, rows: Int, cols: Int): List<ImageRef>
@@ -678,6 +685,12 @@ image.split(img: ImageRef, rows: Int, cols: Int): List<ImageRef>
 image.stitch(imgs: List<ImageRef>, direction: String): ImageRef
 // 裁剪：以 (x,y) 为起点裁出 w×h，越界抛异常
 image.crop(img: ImageRef, x: Int, y: Int, w: Int, h: Int): ImageRef
+// 旋转：deg 为度数，支持任意正负值，正值顺时针、负值逆时针
+// （image.rotate(img, -90) 等价 image.rotate(img, 270)）；
+// 输出尺寸为旋转后外接矩形：90/180/270 度精确无损，任意角度四角为背景色
+image.rotate(img: ImageRef, deg: Int): ImageRef
+// 翻转（镜像）：'h' 水平左右翻转 / 'v' 垂直上下翻转
+image.flip(img: ImageRef, direction: String): ImageRef
 // 尺寸：返回 {w,h}，用 .w .h 取值
 image.size(img: ImageRef)
 ```
@@ -696,6 +709,14 @@ for (var i = 0; i < order.length; i++) {
     restored.push(parts.get(order[i]));
 }
 image.encode(image.stitch(restored, 'v'), 'jpg', 90);
+```
+
+旋转/翻转示例——服务端把图顺时针旋转 90° 后左右镜像，规则里先水平翻转再逆时针转回：
+
+```js
+var img = image.decode(result);
+var restored = image.rotate(image.flip(img, 'h'), -90); // 负值=逆时针
+image.encode(restored, 'png', 100);
 ```
 
 ## 跳转外部链接/应用函数

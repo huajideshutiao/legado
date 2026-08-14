@@ -53,6 +53,10 @@ splitties = "3.0.0"
 desugar = "2.1.5"
 collection = "1.6.0"
 hutool = "5.8.22"
+# 桌面端 JVM 用: SunJCE 无 PKCS7Padding, 书源 java.createSymmetricCrypto('AES/CBC/PKCS7Padding')
+# 在桌面端报 "Cannot find any provider supporting AES/CBC/PKCS7Padding"; bcprov (Oracle 签名,
+# 通过 JCE provider 认证) 补齐 PKCS7Padding/SM4/RC4 等算法。版本与本地 gradle 缓存一致。
+bouncycastle = "1.79"
 rhino = "1.9.1"
 media3 = "1.10.1"
 webkit = "1.16.0"
@@ -116,6 +120,8 @@ krypto = { module = "com.soywiz.korlibs.krypto:krypto", version.ref = "krypto" }
 ksoup = { module = "com.fleeksoft.ksoup:ksoup", version.ref = "ksoup" }
 play-services-cronet = { module = "com.google.android.gms:play-services-cronet", version.ref = "playServicesCronet" }
 hutool-crypto = { module = "cn.hutool:hutool-crypto", version.ref = "hutool" }
+# 桌面端 JCE 补丁 provider (见 bouncycastle version 注释); 仅 desktop jvm 依赖, 不进 Android APK
+bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 libarchive = { module = "me.zhanghai.android.libarchive:library", version.ref = "libarchive" }
 lifecycle-service = { module = "androidx.lifecycle:lifecycle-service", version.ref = "lifecycle" }
 media-media = { module = "androidx.media:media", version.ref = "media" }

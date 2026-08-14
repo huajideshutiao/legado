@@ -3,11 +3,17 @@ package io.legado.app.help.image
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.Matrix
 import android.os.Build
 import android.util.Base64
 import com.script.jsdispatch.JsApi
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * [ImageOps] 的 Android 实现，[ImageRef] 内持 [Bitmap]。
@@ -98,6 +104,40 @@ object BitmapImageOps : ImageOps {
 
     override fun crop(img: ImageRef, x: Int, y: Int, w: Int, h: Int): ImageRef {
         return BitmapRef(Bitmap.createBitmap(bitmapOf(img), x, y, w, h))
+    }
+
+    override fun rotate(img: ImageRef, deg: Int): ImageRef {
+        val bitmap = bitmapOf(img)
+        val angle = deg % 360
+        if (angle == 0) return BitmapRef(bitmap)
+        // 旋转后外接矩形尺寸 (任意角度; 90/180/270 时精确)
+        val rad = angle * PI / 180.0
+        val cos = abs(cos(rad))
+        val sin = abs(sin(rad))
+        val newW = ceil(bitmap.width * cos + bitmap.height * sin).toInt()
+        val newH = ceil(bitmap.width * sin + bitmap.height * cos).toInt()
+        val matrix = Matrix()
+        // 绕中心旋转 + 平移进外接矩形; Matrix 正值顺时针 (与 desktop AWT / ios UIKit 视觉一致)
+        matrix.postRotate(angle.toFloat(), bitmap.width / 2f, bitmap.height / 2f)
+        matrix.postTranslate((newW - bitmap.width) / 2f, (newH - bitmap.height) / 2f)
+        return BitmapRef(Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true))
+    }
+
+    override fun flip(img: ImageRef, direction: String): ImageRef {
+        val bitmap = bitmapOf(img)
+        val matrix = Matrix()
+        when (direction.lowercase()) {
+            "h" -> {
+                matrix.postScale(-1f, 1f)
+                matrix.postTranslate(bitmap.width.toFloat(), 0f)
+            }
+            "v" -> {
+                matrix.postScale(1f, -1f)
+                matrix.postTranslate(0f, bitmap.height.toFloat())
+            }
+            else -> throw IllegalArgumentException("image.flip: direction 仅支持 h/v，收到 $direction")
+        }
+        return BitmapRef(Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true))
     }
 
     override fun size(img: ImageRef): Map<String, Int> {

@@ -236,7 +236,6 @@ internal object WebView2Loop {
 
     /**
      * 屏幕居中窗口矩形 (弹窗语义): 独立浏览器窗口默认居中打开, 尺寸自适应屏幕。
-     * 置底半屏 (bottomSheet) 由调用方显式传 [WindowBounds]。
      */
     fun centeredBounds(): WindowBounds {
         val screen = Toolkit.getDefaultToolkit().screenSize

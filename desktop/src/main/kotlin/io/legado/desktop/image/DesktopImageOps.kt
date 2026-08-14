@@ -5,6 +5,7 @@ import io.legado.app.help.image.ImageRef
 import io.legado.app.ui.compose.platform.jvmGetString
 import java.awt.Color
 import java.awt.Graphics
+import java.awt.geom.AffineTransform
 import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -12,6 +13,11 @@ import java.util.Base64
 import javax.imageio.IIOImage
 import javax.imageio.ImageIO
 import javax.imageio.ImageWriteParam
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * 桌面 JVM 端 [ImageOps] 实现。
@@ -28,6 +34,7 @@ import javax.imageio.ImageWriteParam
  * 内持 `java.awt.image.BufferedImage`, 用 `javax.imageio.ImageIO` 编解码。
  * webp 编解码靠 `com.github.gotson:webp-imageio` 的 ImageIO SPI (classpath 即生效)。
  * 对应 app 端 `BitmapImageOps` 内持 `android.graphics.Bitmap`。
+ * jpg 编码时透明区铺黑底 (与 app 端 Bitmap.compress(JPEG) 的透明转黑行为一致)。
  *
  * # 覆盖范围
  * 仅做基础解码/编码/split/stitch/crop/size, 满足 JS `image.*` API 契约即可。
@@ -108,8 +115,9 @@ object DesktopImageOps : ImageOps {
         val g = copy.createGraphics()
         try {
             if (target == BufferedImage.TYPE_INT_RGB) {
-                // jpg 无 alpha 通道, 透明区先铺白底再绘制, 否则会变黑块
-                g.color = Color.WHITE
+                // jpg 无 alpha 通道, 透明区先铺黑底再绘制
+                // (与 app 端 Bitmap.compress(JPEG) 的透明转黑行为、漫画阅读界面黑底一致)
+                g.color = Color.BLACK
                 g.fillRect(0, 0, image.width, image.height)
             }
             g.drawImage(image, 0, 0, null)
@@ -170,6 +178,54 @@ object DesktopImageOps : ImageOps {
     override fun crop(img: ImageRef, x: Int, y: Int, w: Int, h: Int): ImageRef {
         val image = bufferedImageOf(img)
         return BufferedImageRef(image.getSubimage(x, y, w, h))
+    }
+
+    override fun rotate(img: ImageRef, deg: Int): ImageRef {
+        val image = bufferedImageOf(img)
+        val angle = deg % 360
+        if (angle == 0) return BufferedImageRef(image)
+        // 旋转后外接矩形尺寸 (任意角度; 90/180/270 时精确)
+        val rad = angle * PI / 180.0
+        val cos = abs(cos(rad))
+        val sin = abs(sin(rad))
+        val w = ceil(image.width * cos + image.height * sin).toInt()
+        val h = ceil(image.width * sin + image.height * cos).toInt()
+        val out = BufferedImage(w, h, image.type)
+        val g = out.createGraphics()
+        try {
+            // Graphics2D 正值顺时针 (y 向下, 与 app 端 Matrix / ios UIKit 视觉一致):
+            // 平移至新画布中心 → 旋转 → 用 AffineTransform 平移到原图左上角 → 绘制
+            g.translate(w / 2.0, h / 2.0)
+            g.rotate(rad)
+            g.drawImage(
+                image,
+                AffineTransform.getTranslateInstance(-image.width / 2.0, -image.height / 2.0),
+                null,
+            )
+        } finally {
+            g.dispose()
+        }
+        return BufferedImageRef(out)
+    }
+
+    override fun flip(img: ImageRef, direction: String): ImageRef {
+        val image = bufferedImageOf(img)
+        val out = BufferedImage(image.width, image.height, image.type)
+        val g = out.createGraphics()
+        try {
+            // 以中心为轴镜像: 平移到中心 → 负缩放 → 平移回左上角 → 绘制
+            g.translate(image.width / 2.0, image.height / 2.0)
+            when (direction.lowercase()) {
+                "h" -> g.scale(-1.0, 1.0)
+                "v" -> g.scale(1.0, -1.0)
+                else -> throw IllegalArgumentException("image.flip: direction 仅支持 h/v，收到 $direction")
+            }
+            g.translate(-image.width / 2.0, -image.height / 2.0)
+            g.drawImage(image, 0, 0, null)
+        } finally {
+            g.dispose()
+        }
+        return BufferedImageRef(out)
     }
 
     override fun size(img: ImageRef): Map<String, Int> {

@@ -17,7 +17,11 @@ import io.legado.app.ui.compose.theme.AppTheme.DesignTokens
 
 /**
  * 提示信息配置弹窗形态 (对照原版 TipConfigDialog: BaseDialogFragment 居中对话框)。
- * 由界面设置弹窗"提示"入口弹起。
+ * 由界面设置弹窗"提示"入口弹起；界面设置弹窗在信息弹窗打开动画完成后关闭
+ * (见 [io.legado.app.ui.route.ReadStyleDialogHost])。
+ *
+ * 半透明形态：不压暗阅读页 + 背景半透明，让阅读页的页眉/页脚透过弹窗隐约可见
+ * (用户需求)。顶栏已移除，点弹窗外区域 / 返回键关闭。
  */
 @Composable
 fun TipConfigDialogHost(
@@ -26,20 +30,27 @@ fun TipConfigDialogHost(
     AppDialog(
         onDismissRequest = onDismiss,
         properties = AppDialogSizes.properties(),
+        // 半透明弹窗：不压暗阅读页，页眉/页脚透过弹窗隐约可见
+        // (对照原版 BaseDialogFragment 保留 dim；桌面/iOS/鸿蒙 CMP Dialog 自带 0.6
+        // scrim 无法关闭，属平台限制)
+        dim = false,
     ) {
         AppTheme {
             // 原版 BaseDialogFragment: 0.9 宽居中 + filletBackground 8dp 圆角;
-            // 标题栏由 TipConfigScreen 内部 DialogTitleBar 渲染 (原版 setupTitleBar("正文标题"))
+            // 顶栏已移除（用户需求），背景按 [TipConfigDialogTranslucency] 半透明
             Surface(
                 shape = DesignTokens.shapeDefault,
-                color = AppTheme.colors.background,
+                color = AppTheme.colors.background.copy(alpha = TipConfigDialogTranslucency),
                 modifier = Modifier.appDialogSize(),
             ) {
-                TipConfigContent(onBack = onDismiss)
+                TipConfigContent()
             }
         }
     }
 }
+
+/** 信息设置弹窗背景不透明度（<1 时阅读页透过弹窗隐约可见，可调）。 */
+private const val TipConfigDialogTranslucency = 0.8f
 
 /**
  * 提示配置正文 (路由/弹窗两形态共用)。
@@ -51,9 +62,7 @@ fun TipConfigDialogHost(
  * 对齐 app 端 TipConfigDialog dismiss -> ReadBookConfig.save()。
  */
 @Composable
-fun TipConfigContent(
-    onBack: () -> Unit,
-) {
+fun TipConfigContent() {
     val readBookConfig = ReadBookConfigProviders.get()
     val controller = remember {
         object : TipConfigController {
@@ -150,7 +159,6 @@ fun TipConfigContent(
 
     TipConfigScreen(
         controller = controller,
-        onBack = onBack,
         onPostConfig = { changes -> ReadBookEvents.postConfig(changes) },
     )
 }

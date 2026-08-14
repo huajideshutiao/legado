@@ -10,6 +10,7 @@ import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.help.AppWebDavShared
+import io.legado.app.help.IntentData
 import io.legado.app.help.book.BookHelpShared
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.ContentProcessorProviders
@@ -607,6 +608,14 @@ class ReadBookViewModelShared(
         if (dbList.firstOrNull()?.bookUrl == book.bookUrl) {
             readBook.updateChapterList(dbList)
             return dbList
+        }
+        // 未入架书的目录只在内存: 详情页/目录页已把内存目录写入 IntentData.chapterList
+        // (对照原版 upBook 的 IntentData 交接, 此处直接接管, 免去回源重拉目录的加载空白)。
+        // 顺序在库查询之后: 在架书优先 DB (目录页反转等操作已持久化, DB 是最新权威),
+        // IntentData 只兜底未落库书 (在架书即使 IntentData 残留也不消费, 防止旧实例污染)。
+        IntentData.chapterList?.takeIf { it.firstOrNull()?.bookUrl == book.bookUrl }?.let {
+            readBook.updateChapterList(it)
+            return it
         }
         // 内存和库都没有目录：单飞回源重解析（对照 app 端 upBook 的
         // `!inBookshelf || totalChapterNum == 0 || 库里查空` → loadChapterList 分支）
@@ -1644,6 +1653,7 @@ class ReadBookViewModelShared(
             useZhLayout = cfg.useZhLayout,
             viewWidth = cfg.viewWidth,
             textBottomJustify = cfg.textBottomJustify,
+            doublePage = cfg.doublePage,
             // 几何缩进宽度：对应 app 端 indentCharWidth = getDesiredWidth(paragraphIndent) / 长度
             indentCharWidth = cfg.paragraphIndent.takeIf { it.isNotEmpty() }?.let {
                 measurer.measureWidth(it) / it.length
@@ -2282,9 +2292,16 @@ class ReadBookViewModelShared(
         val useZhLayout: Boolean = false,
         val titleMode: Int = 0,
         val textFontPath: String = "",
+        /** 双页排版（对照 app 端 ChapterProvider.doublePage；true 时按半宽分栏排版） */
+        val doublePage: Boolean = false,
     ) {
-        /** 可视区宽度（px，扣除左右内边距） */
-        val visibleWidth: Int get() = viewWidth - paddingLeft - paddingRight
+        /** 可视区宽度（px，扣除左右内边距；双页模式为单栏宽 = 全宽/2 - 左右内边距） */
+        val visibleWidth: Int
+            get() = if (doublePage) {
+                viewWidth / 2 - paddingLeft - paddingRight
+            } else {
+                viewWidth - paddingLeft - paddingRight
+            }
 
         /** 可视区高度（px，扣除上下内边距） */
         val visibleHeight: Int get() = viewHeight - paddingTop - paddingBottom

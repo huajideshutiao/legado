@@ -8,6 +8,7 @@ import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
+import io.legado.app.utils.findLinkifyMatches
 
 /**
  * 复刻 Linkify.WEB_URLS：用 LinkAnnotation.Url 标注纯文本中的网址片段。
@@ -15,24 +16,25 @@ import androidx.compose.ui.text.withLink
  * Text / ClickableText 组件内置处理 LinkAnnotation.Url 的点击打开（LocalUriHandler），
  * 逐项 SelectionContainer 负责长按选择，与短按链接不冲突（手势时长不同）。
  *
+ * URL 查找与清洗逻辑在 [findLinkifyMatches] (commonMain, 可单测)：
+ * 不吞书源 `,{...}` 请求规格、HTML 尖括号/引号包裹、尾部标点等噪声。
+ *
  * @param text 原始文本（可能包含 URL）
  * @param linkColor 链接视觉颜色
  * @return 带 LinkAnnotation.Url 的 AnnotatedString
  */
 fun linkifyText(text: String, linkColor: Color): AnnotatedString {
-    val urlRegex = Regex("https?://[^\\s]+")
     return buildAnnotatedString {
         var last = 0
-        urlRegex.findAll(text).forEach { match ->
+        findLinkifyMatches(text).forEach { match ->
             append(text.substring(last, match.range.first))
-            val url = match.value
             withLink(
                 LinkAnnotation.Url(
-                    url,
+                    match.url,
                     TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)),
                 )
             ) {
-                append(url)
+                append(match.url)
             }
             last = match.range.last + 1
         }

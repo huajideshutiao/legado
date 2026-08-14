@@ -240,7 +240,6 @@ private class GtkWindowHandle(
         val created = GtkSession.create(
             visible = true,
             title = request.title,
-            bottomSheet = request.bottomSheet,
             toolbar = GtkToolbar(
                 onAction = { action -> onToolbarAction(action) },
                 rssActions = request.rssActions,

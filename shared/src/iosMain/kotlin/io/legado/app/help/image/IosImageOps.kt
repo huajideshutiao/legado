@@ -9,6 +9,11 @@ import kotlinx.cinterop.useContents
 import kotlinx.cinterop.usePinned
 import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGSizeMake
+import platform.CoreGraphics.CGContextRestoreGState
+import platform.CoreGraphics.CGContextRotateCTM
+import platform.CoreGraphics.CGContextSaveGState
+import platform.CoreGraphics.CGContextScaleCTM
+import platform.CoreGraphics.CGContextTranslateCTM
 import platform.Foundation.NSData
 import platform.Foundation.NSLog
 import platform.Foundation.create
@@ -17,7 +22,13 @@ import platform.UIKit.UIImageJPEGRepresentation
 import platform.UIKit.UIImagePNGRepresentation
 import platform.UIKit.UIGraphicsBeginImageContextWithOptions
 import platform.UIKit.UIGraphicsEndImageContext
+import platform.UIKit.UIGraphicsGetCurrentContext
 import platform.UIKit.UIGraphicsGetImageFromCurrentImageContext
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.ceil
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * iOS 端 [ImageOps] 真实实现 (基于 UIKit `UIImage` + `UIGraphics` 图形上下文)。
@@ -28,7 +39,8 @@ import platform.UIKit.UIGraphicsGetImageFromCurrentImageContext
  * 内部句柄 [IosImageRef] 持有 [UIImage]: decode 走 UIImage(data:) (JPEG/PNG/WebP/HEIC,
  * 失败抛 IllegalArgumentException); encode 用 PNG/JPEGRepresentation (webp 不支持编码,
  * 与 desktop ImageIO 一致); split 按行优先 + 余数并入末行/列; stitch 用大尺寸 UIGraphics
- * 上下文 drawInRect 平铺; crop 用 renderSubImage 裁剪; size 读 UIImage.size。
+ * 上下文 drawInRect 平铺; crop 用 renderSubImage 裁剪; rotate/flip 用 UIGraphics 上下文 +
+ * CGContextRotateCTM/CGContextScaleCTM 变换; size 读 UIImage.size。
  *
  * UIGraphics 裁剪技巧: renderSubImage 创建 w×h 上下文后把原图按原尺寸画到偏移 (-x,-y),
  * 等价裁剪 (x,y,w,h); 比 CGImageCreateWithImageInRect 更高层 (不依赖 CGImageRef C 指针,
@@ -147,6 +159,65 @@ object IosImageOps : ImageOps {
         // 用 renderSubImage 裁剪 (x,y) 起点的 w×h 区域
         val image = uiImageOf(img)
         return IosImageRef(renderSubImage(image, x.toDouble(), y.toDouble(), w.toDouble(), h.toDouble()))
+    }
+
+    override fun rotate(img: ImageRef, deg: Int): ImageRef {
+        val image = uiImageOf(img)
+        val angle = deg % 360
+        if (angle == 0) return IosImageRef(image)
+        val (w, h) = image.size.useContents { width.toInt() to height.toInt() }
+        // 旋转后外接矩形尺寸 (任意角度; 90/180/270 时精确)
+        val rad = angle * PI / 180.0
+        val cos = abs(cos(rad))
+        val sin = abs(sin(rad))
+        val newW = ceil(w * cos + h * sin).toInt()
+        val newH = ceil(w * sin + h * cos).toInt()
+        UIGraphicsBeginImageContextWithOptions(CGSizeMake(newW.toDouble(), newH.toDouble()), false, 1.0)
+        return try {
+            val ctx = UIGraphicsGetCurrentContext()
+                ?: throw IllegalStateException("image.rotate: UIGraphicsGetCurrentContext 返回 null")
+            // UIKit 图片上下文 y 向下, CGContextRotateCTM 正值顺时针
+            // (与 android Matrix / desktop AWT 视觉一致): 平移至中心 → 旋转 → 平移回原图左上角 → 绘制
+            CGContextSaveGState(ctx)
+            CGContextTranslateCTM(ctx, newW / 2.0, newH / 2.0)
+            CGContextRotateCTM(ctx, rad)
+            CGContextTranslateCTM(ctx, -w / 2.0, -h / 2.0)
+            image.drawInRect(CGRectMake(0.0, 0.0, w.toDouble(), h.toDouble()))
+            CGContextRestoreGState(ctx)
+            IosImageRef(
+                UIGraphicsGetImageFromCurrentImageContext()
+                    ?: throw IllegalStateException("image.rotate: UIGraphicsGetImageFromCurrentImageContext 返回 nil")
+            )
+        } finally {
+            UIGraphicsEndImageContext()
+        }
+    }
+
+    override fun flip(img: ImageRef, direction: String): ImageRef {
+        val image = uiImageOf(img)
+        val (w, h) = image.size.useContents { width.toInt() to height.toInt() }
+        UIGraphicsBeginImageContextWithOptions(CGSizeMake(w.toDouble(), h.toDouble()), false, 1.0)
+        return try {
+            val ctx = UIGraphicsGetCurrentContext()
+                ?: throw IllegalStateException("image.flip: UIGraphicsGetCurrentContext 返回 null")
+            // 以中心为轴镜像: 平移到中心 → 负缩放 → 平移回左上角 → 绘制
+            CGContextSaveGState(ctx)
+            CGContextTranslateCTM(ctx, w / 2.0, h / 2.0)
+            when (direction.lowercase()) {
+                "h" -> CGContextScaleCTM(ctx, -1.0, 1.0)
+                "v" -> CGContextScaleCTM(ctx, 1.0, -1.0)
+                else -> throw IllegalArgumentException("image.flip: direction 仅支持 h/v，收到 $direction")
+            }
+            CGContextTranslateCTM(ctx, -w / 2.0, -h / 2.0)
+            image.drawInRect(CGRectMake(0.0, 0.0, w.toDouble(), h.toDouble()))
+            CGContextRestoreGState(ctx)
+            IosImageRef(
+                UIGraphicsGetImageFromCurrentImageContext()
+                    ?: throw IllegalStateException("image.flip: UIGraphicsGetImageFromCurrentImageContext 返回 nil")
+            )
+        } finally {
+            UIGraphicsEndImageContext()
+        }
     }
 
     override fun size(img: ImageRef): Map<String, Int> {

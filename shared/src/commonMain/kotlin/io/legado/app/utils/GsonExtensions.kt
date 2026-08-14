@@ -1,5 +1,6 @@
 package io.legado.app.utils
 
+import io.legado.app.constant.AppLog
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerializationException
@@ -56,7 +57,7 @@ inline fun <reified T> Json.fromJsonArray(json: String?): Result<List<T>> = runC
  * - ByteArray: Base64 编码字符串 (对齐 Gson 默认行为)
  * - List/Map: 递归处理元素
  * - @Serializable 类: 用运行时 [KClass.serializer] 查找编译器生成的 serializer
- * - 其他: 降级为 toString()
+ * - 其他: 降级为 toString() 并记 [AppLog] (降级产物是不可反序列化的垃圾 JSON, 必须可见)
  *
  * Base64 编码: 原 android.util.Base64.encodeToString(this, NO_WRAP) 为标准字母表+padding+不换行,
  * 复用 shared 模块 [EncoderUtils.base64Encode] (默认 NO_WRAP flags, 内部走 kotlin.io.encoding.Base64.Default)。
@@ -75,7 +76,14 @@ fun Any?.toJsonElement(): JsonElement = when (this) {
     else -> try {
         val serializer = this::class.serializer() as KSerializer<Any>
         KS_JSON.encodeToJsonElement(serializer, this)
-    } catch (_: SerializationException) {
+    } catch (e: SerializationException) {
+        // 非 @Serializable 类型: 降级为 toString() 字符串写进 JSON。该降级会产出
+        // ["Entity(toString)..."] 这类不可反序列化的垃圾 (如 ReadRecord 曾导致的
+        // 备份恢复 JsonDecodingException), 必须显式记日志, 不能再静默吞掉。
+        AppLog.put(
+            "Gson 兼容层: 非 @Serializable 类型 ${this::class.simpleName} " +
+                "降级为 toString() 序列化, 生成的 JSON 可能无法反序列化", e
+        )
         JsonPrimitive(this.toString())
     }
 }

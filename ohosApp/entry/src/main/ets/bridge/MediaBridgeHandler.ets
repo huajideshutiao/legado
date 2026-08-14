@@ -396,10 +396,15 @@ function registerPlayerEvents(id: string, player: media.AVPlayer): void {
 
   // 缓冲更新 → 发 onBufferingUpdate
   // 回调签名为 (infoType, value): BufferingInfoType 是枚举, 百分比在 value 中,
-  // 仅 BUFFERING_PERCENT 档携带 0-100 百分比 (其余档是起止标记/缓存时长, 不转发)
+  // BUFFERING_PERCENT 档携带 0-100 百分比; BUFFERING_START/END 是起止标记, 显式映射
+  // 为 0/100, 避免 Kotlin 侧停在上一轮的旧百分比 (转圈常亮/常灭)
   player.on('bufferingUpdate', (infoType: media.BufferingInfoType, value: number) => {
     if (infoType === media.BufferingInfoType.BUFFERING_PERCENT) {
       emitEvent(id, { event: 'onBufferingUpdate', percent: value });
+    } else if (infoType === media.BufferingInfoType.BUFFERING_START) {
+      emitEvent(id, { event: 'onBufferingUpdate', percent: 0 });
+    } else if (infoType === media.BufferingInfoType.BUFFERING_END) {
+      emitEvent(id, { event: 'onBufferingUpdate', percent: 100 });
     }
   });
 }

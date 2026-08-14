@@ -122,6 +122,7 @@ import io.legado.desktop.data.DesktopAppDbAccessor
 import io.legado.desktop.help.DesktopCrashHandler
 import io.legado.desktop.help.DesktopDefaultDataResourceProvider
 import io.legado.desktop.help.SingleInstanceGuard
+import io.legado.desktop.help.ensureJvmCryptoProviders
 import io.legado.desktop.help.book.DesktopBitmapProvider
 import io.legado.desktop.help.book.DesktopBookHelpAccessor
 import io.legado.desktop.help.book.DesktopZipFileWrapperFactory
@@ -225,6 +226,10 @@ fun main(args: Array<String>) {
     // 打栈开关: 对齐 Android BuildConfig.DEBUG 语义, 仅 debug 打栈。
     // build.gradle.kts 的 run 任务注入 -Dlegado.debug=true, 打包产物不注入 = 静默。
     registerJvmDebugState(System.getProperty("legado.debug")?.toBoolean() == true)
+    // JCE 补丁 provider (BouncyCastle): 桌面端 SunJCE 无 PKCS7Padding, 书源
+    // createSymmetricCrypto('AES/CBC/PKCS7Padding') 会抛 "Cannot find any provider...";
+    // 必须在任何书源 JS 执行之前注册 (幂等, 见 DesktopCryptoProvider KDoc)。
+    ensureJvmCryptoProviders()
     // 视频渲染: open-ani/mediamp (mediamp-mpv) 后端。Windows 走 Skiko Direct3D 默认渲染
     // (mpv D3D11 → 共享纹理 → Skia D3D12), macOS 默认 Metal, Linux 默认 OpenGL —— 均
     // 为各自平台默认值, 无需 (也不应) 强制 skiko.renderApi。

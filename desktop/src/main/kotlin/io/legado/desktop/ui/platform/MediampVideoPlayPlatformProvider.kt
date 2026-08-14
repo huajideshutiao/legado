@@ -68,10 +68,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.openani.mediamp.ExperimentalMediampApi
 import org.openani.mediamp.MediampPlayer
 import org.openani.mediamp.PlaybackState
 import org.openani.mediamp.compose.MediampPlayerSurface
 import org.openani.mediamp.features.AudioLevelController
+import org.openani.mediamp.features.Buffering
 import org.openani.mediamp.features.PlaybackSpeed
 import org.openani.mediamp.source.UriMediaData
 import org.openani.mediamp.togglePause
@@ -296,6 +298,7 @@ class FailedMediampController(
  * mediamp 渲染 + 控制层: [MediampPlayerSurface] 渲染视频区, 控制层/占位全部
  * Compose 叠加 (mediamp 零拷贝纹理环, 无原生子窗口)。
  */
+@OptIn(ExperimentalMediampApi::class)
 @Composable
 private fun MediampRender(
     controller: MediampVideoPlayerController,
@@ -317,6 +320,12 @@ private fun MediampRender(
     val playbackState by controller.player.playbackState.collectAsState()
     val isPlaying = playbackState == PlaybackState.PLAYING
     val isBuffering = playbackState == PlaybackState.PAUSED_BUFFERING
+    // 缓冲进度 (mpv cache-buffering-state, 0-100): <100 表示播放器在等数据。mediamp 在
+    // loadfile 后乐观置 PLAYING, 起播首帧前的网络缓冲抓不到 PAUSED_BUFFERING, 靠它兜底
+    val bufferingFeature = controller.player.features[Buffering.Key]
+    val bufferedPercent by bufferingFeature
+        ?.bufferedPercentage
+        ?.collectAsState(initial = 100) ?: remember { mutableIntStateOf(100) }
 
     // 播放/初始化失败回传 → 错误占位 (回调在任意线程, 经 scope 切回 composition 调度器)。
     // 播放器不在这里 close: player 寿命跟 ScreenModel 走 (渲染槽会反复进出组合),
@@ -377,9 +386,11 @@ private fun MediampRender(
     val showLoading = error == null && playError == null &&
         // 章节内容加载中 或 播放器起播前 (引擎初始化 CREATED 态, 首次加载转圈)
         (uiState.loading || (url != null && playbackState == PlaybackState.CREATED))
-    // 缓冲圈 (PAUSED_BUFFERING 驱动, 叠于控制层之上)
+    // 缓冲圈: 播放器在等数据 (cache-buffering-state < 100, 覆盖"链接就绪→首帧"的起播缓冲窗口)
+    // 或 paused-for-cache (PAUSED_BUFFERING, 播放中卡顿); 用户暂停/结束/错误态不叠
     val showBuffering = error == null && !showLoading && playError == null &&
-        isBuffering && uiState.playWhenReady
+        (playbackState == PlaybackState.PLAYING || playbackState == PlaybackState.PAUSED_BUFFERING) &&
+        (bufferedPercent < 100 || isBuffering)
 
     // 手势反馈文字 (键盘长按倍速与鼠标手势共用 ScreenModel 级 flow, null 时隐藏)
     val gestureText by screenModel.gestureText.collectAsState()

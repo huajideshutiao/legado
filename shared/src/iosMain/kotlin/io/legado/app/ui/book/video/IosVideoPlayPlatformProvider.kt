@@ -5,6 +5,8 @@ package io.legado.app.ui.book.video
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -13,11 +15,17 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.interop.UIKitView
+import io.legado.app.help.media.AvPlayerBufferingObserver
 import io.legado.app.help.media.AvPlayerItemStatusObserver
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemDidPlayToEndTimeNotification
@@ -76,6 +84,12 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
             }
         }
 
+        // 缓冲状态 (事件驱动: KVO 观察 item.status / player.timeControlStatus, 无轮询)
+        val isBuffering by iosController.isBufferingFlow.collectAsState()
+        // 加载/错误: 章节内容加载中整层转圈; 失败显示错误占位 (对齐 desktop/app)
+        val error = uiState.error
+        val showLoading = error == null && uiState.loading
+
         Box(modifier) {
             UIKitView(
                 factory = {
@@ -89,6 +103,20 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
                 },
                 modifier = Modifier.fillMaxSize(),
             )
+            // 加载/错误占位 + 缓冲圈 (加载中整层转圈, 缓冲中央小圈; 对齐 desktop/app)
+            when {
+                error != null -> ErrorOverlay(error = error, onRetry = screenModel::onRefreshChapter)
+                showLoading -> LoadingOverlay()
+                isBuffering -> Box(
+                    Modifier.matchParentSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        modifier = Modifier.size(48.dp),
+                    )
+                }
+            }
             // 透明触摸层: UIKit 视图不参与 Compose 触摸测试, 盖一层透明 clickable
             // 让"点击视频区切换控制层"落到 Compose (控制层可见时它在其下, 不抢按钮事件)
             Box(
@@ -97,7 +125,7 @@ object IosVideoPlayPlatformProvider : VideoPlayPlatformProvider {
                     .clickable { screenModel.onToggleControls() }
             )
             // 控制层: iOS 无 airspace, Compose 可直接叠在 UIKit 视图之上 (对照桌面窗口级 Popup)
-            if (uiState.controlsVisible) {
+            if (uiState.controlsVisible && error == null && !showLoading) {
                 Box(
                     Modifier
                         .matchParentSize()
@@ -134,7 +162,11 @@ class IosVideoPlayerController(
     private var item: AVPlayerItem? = null
     private var endObserver: Any? = null
     private var statusObserver: AvPlayerItemStatusObserver? = null
+    private var bufferingObserver: AvPlayerBufferingObserver? = null
     private var loadedUrl: String? = null
+    private val _isBuffering = MutableStateFlow(false)
+    /** 缓冲状态 (事件驱动: KVO 观察 item.status / player.timeControlStatus, 无轮询)。 */
+    val isBufferingFlow: StateFlow<Boolean> = _isBuffering.asStateFlow()
 
     // 加载 URL: 创建 AVPlayerItem + AVPlayer, 注册播放结束监听
     fun loadUrl(url: String) {
@@ -146,6 +178,7 @@ class IosVideoPlayerController(
         item = newItem
         player = AVPlayer(playerItem = newItem)
         registerEndObserver(newItem)
+        registerBufferingObserver(newItem)
     }
 
     override val positionMs: Long
@@ -188,6 +221,18 @@ class IosVideoPlayerController(
         loadedUrl = null
     }
 
+    // 缓冲状态 KVO 观察 (事件驱动: item.status 加载中 / player.timeControlStatus 等待起播)
+    private fun registerBufferingObserver(target: AVPlayerItem) {
+        val pl = player ?: return
+        val observer = AvPlayerBufferingObserver(
+            player = pl,
+            item = target,
+            onBufferingChange = { _isBuffering.value = it },
+        )
+        bufferingObserver = observer
+        observer.start()
+    }
+
     // 注册播放结束监听 (AVPlayerItemDidPlayToEndTimeNotification)
     private fun registerEndObserver(target: AVPlayerItem) {
         endObserver = NSNotificationCenter.defaultCenter.addObserverForName(
@@ -200,6 +245,9 @@ class IosVideoPlayerController(
     private fun releasePlayer() {
         statusObserver?.dispose()
         statusObserver = null
+        bufferingObserver?.dispose()
+        bufferingObserver = null
+        _isBuffering.value = false
         endObserver?.let { NSNotificationCenter.defaultCenter.removeObserver(it) }
         endObserver = null
         player?.pause()

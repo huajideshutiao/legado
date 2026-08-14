@@ -30,6 +30,8 @@ import kotlinx.serialization.encodeToString
  * - [crop]: 通过桥接调新 PixelMap + `crop({x, y, size:{w, h}})`, 返回新 pixelMapId
  * - [split]: 通过桥接循环 crop, 返回新 pixelMapId 列表
  * - [stitch]: 通过桥接创建大 PixelMap + 逐个 writePixels, 返回新 pixelMapId
+ * - [rotate]: 通过桥接复制 PixelMap 后调 `pixelMap.rotate(degrees)` (in-place), 返回新 pixelMapId
+ * - [flip]: 通过桥接复制 PixelMap 后调 `pixelMap.flip(isH, isV)` (in-place), 返回新 pixelMapId
  *
  * ## 混合协议 (KP9+, 与 WebView 桥同思路)
  * 大字节面 (decode 入参图片字节 / encode 出参 packed 字节) 走 napi 裸参数 (ArrayBuffer),
@@ -190,6 +192,54 @@ object OhosImageOps : ImageOps {
         return OhosImageRef(ref.bytes, resp.pixelMapId)
     }
 
+    override fun rotate(img: ImageRef, deg: Int): ImageRef {
+        val ref = img as? OhosImageRef ?: return img
+        val pixelMapId = ref.pixelMapId ?: return img // 降级
+        // PixelMap.rotate 正值为顺时针; 归一化到 [0,360) (负值旋转等价于 360+deg)
+        val degrees = ((deg % 360) + 360) % 360
+        val payload = KS_JSON.encodeToString(
+            RotatePayload(pixelMapId = pixelMapId, degrees = degrees)
+        )
+        val reply = OhosNativeBridge.invokeImageSync("rotate", payload)
+        if (reply == null) return img // 降级
+        val resp = runCatching {
+            KS_JSON.decodeFromString(
+                BridgeResponse.serializer(),
+                reply.json
+            )
+        }.getOrNull()
+        if (resp == null || !resp.ok || resp.pixelMapId == null) {
+            return img // 降级
+        }
+        return OhosImageRef(ref.bytes, resp.pixelMapId)
+    }
+
+    override fun flip(img: ImageRef, direction: String): ImageRef {
+        val ref = img as? OhosImageRef ?: return img
+        val pixelMapId = ref.pixelMapId ?: return img // 降级
+        val isH = direction.lowercase() == "h"
+        val isV = direction.lowercase() == "v"
+        if (!isH && !isV) {
+            // 与其余端一致: 非法方向抛异常
+            throw IllegalArgumentException("image.flip: direction 仅支持 h/v，收到 $direction")
+        }
+        val payload = KS_JSON.encodeToString(
+            FlipPayload(pixelMapId = pixelMapId, isH = isH, isV = isV)
+        )
+        val reply = OhosNativeBridge.invokeImageSync("flip", payload)
+        if (reply == null) return img // 降级
+        val resp = runCatching {
+            KS_JSON.decodeFromString(
+                BridgeResponse.serializer(),
+                reply.json
+            )
+        }.getOrNull()
+        if (resp == null || !resp.ok || resp.pixelMapId == null) {
+            return img // 降级
+        }
+        return OhosImageRef(ref.bytes, resp.pixelMapId)
+    }
+
     override fun size(img: ImageRef): Map<String, Int> {
         val ref = img as? OhosImageRef ?: return emptyMap()
         val pixelMapId = ref.pixelMapId ?: return emptyMap() // 降级
@@ -231,10 +281,18 @@ object OhosImageOps : ImageOps {
     @Serializable
     private data class StitchPayload(val pixelMapIds: List<Long>, val direction: String)
 
+    /** rotate 请求: pixelMapId + 角度 (归一化到 [0,360), 正值顺时针)。 */
+    @Serializable
+    private data class RotatePayload(val pixelMapId: Long, val degrees: Int)
+
+    /** flip 请求: pixelMapId + 翻转轴 (isH 水平镜像 / isV 垂直镜像)。 */
+    @Serializable
+    private data class FlipPayload(val pixelMapId: Long, val isH: Boolean, val isV: Boolean)
+
     /**
      * 桥接统一响应 (ArkTS → Kotlin, 混合协议: 控制面 JSON + 数据面裸字节)。
      * 所有操作的响应都走此结构, 不同的操作读取不同字段:
-     * - decode/crop/stitch: 读 [pixelMapId]
+     * - decode/crop/stitch/rotate/flip: 读 [pixelMapId]
      * - split: 读 [pixelMapIds]
      * - encode: [ok]=true, packed 字节走 [OhosNativeBridge.OhosBinaryBridgeResponse.bytes] 裸字节
      * - size: 读 [width]/[height]

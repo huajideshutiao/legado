@@ -609,6 +609,15 @@ fun BookInfoRoute(
                                     b.isRss -> AppRoute.ReadRss(b.toRouteRef())
                                     else -> AppRoute.Reader(b.toRouteRef())
                                 }
+                                // 目录内存交接 (对照原版 startReadActivity: IntentData.chapterList
+                                // = chapterListData.value)。onTocClick 写入的 IntentData.chapterList
+                                // 已被目录页消费 (取一次即失效), 阅读页打开前重新写入内存目录;
+                                // 未加书架的书目录不落库, 不交接则阅读页读库落空后回源重拉目录
+                                // (表现为打开阅读页的加载空白/卡顿)。在架书优先 DB (目录页反转等
+                                // 已持久化, DB 为最新权威), 不做交接避免残留旧实例
+                                if (!screenModel.state.value.inBookshelf) {
+                                    IntentData.chapterList = screenModel.loadedChapterList
+                                }
                                 scope.launch {
                                     withContext(IoDispatcher) {
                                         AppDbProviders.get().bookDao.update(b)

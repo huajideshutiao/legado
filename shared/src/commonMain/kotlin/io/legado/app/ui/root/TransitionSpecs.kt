@@ -67,7 +67,12 @@ data class RouteTransitionSpec(
     val targetPageSlideFraction: Float,
     /** 出栈页向右滑出比例 (1f=全宽, Android 系统 slide_out_right 语义) */
     val outgoingSlideFraction: Float,
-    /** 目标页淡入 (Android 系统返回转场 fade_in) */
+    /**
+     * 目标页淡入 (Android 系统返回转场 fade_in)。
+     * 注: 动画层 (LegadoApp) 对 pop 目标页强制 alpha=1 覆盖本字段——目标页在出栈页之下
+     * 本就完整渲染, 淡入只产生半透明空白窗口且部分 ROM 的 closeEnter 淡入不推进,
+     * 故返回转场目标页实际不做淡入 (保留字段仅为采样器/规格兼容)。
+     */
     val targetPageFadeIn: Boolean,
     /** 出栈页淡出 (Android 系统返回转场 fade_out) */
     val outgoingFadeOut: Boolean,

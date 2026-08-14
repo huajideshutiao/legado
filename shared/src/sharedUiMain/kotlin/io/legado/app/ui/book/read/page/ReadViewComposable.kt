@@ -44,8 +44,8 @@ import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.ReviewColumn
 import io.legado.app.ui.book.read.page.entities.column.TextColumn
-import io.legado.app.ui.compose.platform.rememberFixedNavigationBarHeightPx
-import io.legado.app.ui.compose.platform.rememberFixedStatusBarHeightPx
+import io.legado.app.ui.compose.platform.rememberVisibleNavigationBarHeightPx
+import io.legado.app.ui.compose.platform.rememberVisibleStatusBarHeightPx
 import io.legado.app.ui.compose.platform.rememberMandatoryGestureBottomPx
 import io.legado.app.ui.compose.platform.rememberNavigationBarHidden
 import io.legado.app.ui.compose.platform.rememberStatusBarHidden
@@ -242,11 +242,11 @@ fun ReadViewComposable(
         // 系统栏 inset：正文内容层已整体避让（PageViewComposable 内 statusBarFixedPadding
         // + navigationBarFixedPadding），但九宫格/长按分区仍按全窗坐标判定，须排除系统栏区域
         // （对照原版 contentTextView 被 vwStatusBar/vwNavigationBar 占位挤小后的 bounds）。
-        // 事件化取值 (hidden 翻转时重组一次, 显隐动画期间恒定, 不逐帧跟随)
+        // 与正文避让同源取值: 隐藏时 0, 显示时缓存可见高度 (事件化, 不逐帧跟随)
         val density = LocalDensity.current
-        val systemBarTopPx = if (rememberStatusBarHidden()) 0 else rememberFixedStatusBarHeightPx()
+        val systemBarTopPx = if (rememberStatusBarHidden()) 0 else rememberVisibleStatusBarHeightPx()
         val systemBarBottomPx =
-            if (rememberNavigationBarHidden()) 0 else rememberFixedNavigationBarHeightPx()
+            if (rememberNavigationBarHidden()) 0 else rememberVisibleNavigationBarHeightPx()
         // 选区手柄尺寸（px，对照原版 cursorWidth = 24.dpToPx：手柄 24dp 方形）
         val handleSizePx = with(density) { 24.dp.toPx() }
         // 内容区高度（全窗高 - 状态栏 - 导航栏）：九宫格分区与命中判定统一按内容区坐标

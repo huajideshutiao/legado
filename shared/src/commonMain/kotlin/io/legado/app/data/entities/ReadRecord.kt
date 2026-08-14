@@ -3,12 +3,18 @@ package io.legado.app.data.entities
 import androidx.room3.Entity
 import io.legado.app.utils.systemCurrentTimeMillis
 import io.legado.app.utils.yearMonthDayFromMillis
+import kotlinx.serialization.Serializable
 
 /**
  * 阅读记录：每次阅读会话一行，主键 (bookName, day, startSec)，day 形如 20260525。
  * 时长由 endSec - startSec 计算，秒级精度。
+ *
+ * @Serializable: 备份恢复依赖 (BackupShared.writeListToJson 写出 readRecord.json 供
+ * RestoreShared.restoreReadRecord 反序列化)。缺少本注解时 Gson 兼容层 toJsonElement
+ * 会降级为 toString() 字符串数组, 恢复时抛 JsonDecodingException 导致阅读记录丢失。
  */
 @Entity(tableName = "readRecord", primaryKeys = ["bookName", "day", "startSec"])
+@Serializable
 data class ReadRecord(
     var bookName: String = "",
     var day: Int = 0,

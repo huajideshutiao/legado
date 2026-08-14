@@ -106,6 +106,7 @@ import io.legado.app.ui.widget.PopupAction
 import io.legado.app.utils.ACache
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.isContentScheme
+import io.legado.app.utils.keepScreenOn
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.registerForActivityResult
 import io.legado.app.utils.showExportSuccess
@@ -469,6 +470,19 @@ class MainActivity : BaseComposeActivity(), TextActionMenu.CallBack {
         val keepLightPrefer = runCatching { (AppConfig.keepLight ?: "0").toInt() }.getOrDefault(0)
         readerScreenTimeOut = keepLightPrefer * 1000L
         screenOffTimerStart()
+    }
+
+    /**
+     * 窗口策略下发常亮的最终落点：阅读页活动时常亮由 [upScreenTimeOut] / [screenOffTimerStart]
+     * 全权管理（keepLight 计时），窗口策略值不再直接作用——避免 SYSTEM_UI 等策略重应用把
+     * 超时逻辑已清除/待清除的 FLAG_KEEP_SCREEN_ON 重新加回且不再计时（对照原版单一管理）。
+     */
+    fun applyWindowKeepScreenOn(enabled: Boolean) {
+        if (readerWindowActive) {
+            upScreenTimeOut()
+        } else {
+            keepScreenOn(enabled)
+        }
     }
 
     /**

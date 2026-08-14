@@ -8,10 +8,12 @@ import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.help.coroutine.mainDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * 书内全文搜索 ViewModel 共享核心 (commonMain)。
@@ -65,7 +67,8 @@ class SearchContentViewModelShared(
      * 否则回落 [IntentData.book] (对照原 SearchContentViewModel.initBook)。
      *
      * @param book 路由传入的当前书籍 (可为 null, 回落 IntentData.book)
-     * @param success 初始化成功回调 (对应原 execute.onSuccess, 在 [scope] 上下文回调)
+     * @param success 初始化成功回调 (对应原 execute.onSuccess, 切到 [mainDispatcher] 回调,
+     *   与原 executeContext=Main 一致; 宿主回调内会 touch Compose/View, 必须在主线程)
      */
     fun initBook(success: () -> Unit, book: Book? = null) {
         scope.launch {
@@ -80,10 +83,11 @@ class SearchContentViewModelShared(
                     bookUrl = it.bookUrl
                 }
             }
-            // onSuccess 回调: BaseViewModel.execute 在协程完成后切主线程回调,
-            // shared 端在 scope 上下文回调 (Android=viewModelScope 默认 Main 调度器),
-            // 与原行为等价。
-            success.invoke()
+            // onSuccess 回调: 原 BaseViewModel.execute 的 executeContext 默认 Main,
+            // onSuccess 在主线程回调; 此处显式切 mainDispatcher (scope 由宿主注入,
+            // SearchContentScreenModel 用 IoDispatcher, 直接回调会在线程池线程 touch
+            // Compose 视图 → CalledFromWrongThreadException, 2026-08-14)
+            withContext(mainDispatcher) { success.invoke() }
         }
     }
 
