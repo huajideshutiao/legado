@@ -46,8 +46,8 @@ import io.legado.app.ui.root.encodeBookVariableOverlayPayload
 import io.legado.app.ui.root.encodeSourceVariableOverlayPayload
 import io.legado.app.ui.root.toReadRoute
 import io.legado.app.ui.root.toRouteRef
-import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
 import io.legado.app.ui.route.encodeReviewListDialogPayload
+import io.legado.app.ui.widget.dialog.encodePhotoOverlayPayload
 import io.legado.app.utils.FlowBus
 import io.legado.app.utils.GSON
 import io.legado.app.utils.RemoteAssetsUtils
@@ -64,6 +64,7 @@ import io.legado.desktop.help.webview.WebViewWindowHandle
 import io.legado.desktop.help.webview.WebViewWindowRequest
 import io.legado.desktop.model.fileBook.DesktopImportBook
 import io.legado.desktop.model.fileBook.DesktopImportFile
+import io.legado.desktop.ui.DesktopPlatformCapabilities.saveLog
 import io.legado.desktop.ui.component.FileDialogs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -775,7 +776,8 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
         }
     }
 
-    // 桌面端无系统分享面板, 与 shareText 一致落剪贴板 (对照 DesktopShareService.shareText)
+    // 对照 app 端 menu_share_source: saveToFile + share(file)。桌面端无系统分享面板,
+    // shareFile 用系统文件管理器定位文件 (Windows: explorer /select; macOS: open -R; Linux: xdg-open)
     override fun shareBookSourceSelection(
         selection: List<BookSourcePart>,
         allCount: Int,
@@ -783,8 +785,15 @@ object DesktopPlatformCapabilities : PlatformCapabilities {
     ) {
         scope.launch {
             val json = selectedSourcesJson(selection) ?: return@launch
-            shareText(json)
-            Toasters.get().toast("已复制到剪贴板")
+            val dir = File(DataStorageProviders.get().userExportDir).apply { mkdirs() }
+            val file = File(dir, "shareBookSource.json")
+            runCatching { file.writeText(json, Charsets.UTF_8) }
+                .onSuccess {
+                    PlatformServiceProviders.getOrNull()?.sharing
+                        ?.shareFile(file.absolutePath, "application/json")
+                    Toasters.get().toast("已导出到 ${file.absolutePath}")
+                }
+                .onFailure { Toasters.get().toast("导出失败\n${it.message}") }
         }
     }
 

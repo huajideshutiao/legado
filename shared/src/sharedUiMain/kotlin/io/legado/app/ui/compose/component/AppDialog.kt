@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -145,6 +146,10 @@ fun AppDialog(
  * 位移带 ×0.6 阻力, 向上拖回弹 (不越位); 松手时位移达阈值 (max(120dp, 面板高/4))
  * 或向下 fling 超 800dp/s → 走现有滑出动画关闭 (从当前位移续播, 无跳变);
  * 否则弹簧动画回弹复位。E-Ink 分支无动画无手势, 保持禁用。
+ *
+ * 拖拽只在"无可滚动内容消费位移"的区域生效 (顶栏/空白区): 内部滚动组件
+ * (LazyColumn/平台 WebView 等) 会自己消费竖直手势, 面板不跟随 —— 半屏 WebView
+ * Sheet 借此让顶栏可下拉关闭、内容区归 WebView 滚动, 互不打架。
  */
 @Composable
 fun AppBottomSheetDialog(
@@ -279,12 +284,22 @@ fun AppBottomSheetDialog(
                 }
                 // 非滚动内容面板的拖拽路径: 内部无滚动消费位移时赢得竖直 slop,
                 // 面板跟随手指; 内部滚动消费了位移则本检测自动让位 (awaitVerticalTouchSlopOrCancellation
-                // 遇已消费的位置变化返回 null), 由上方 nestedScroll 连接接手
+                // 遇已消费的位置变化返回 null), 由上方 nestedScroll 连接接手。
+                // 半屏 WebView Sheet 中 WebView 恒消费自身手势, 拖拽只在顶栏区生效
                 .pointerInput(Unit) {
                     awaitEachGesture {
-                        // 已进入退出流程后忽略后续手势
-                        if (dismissing) return@awaitEachGesture
+                        // 先挂起等待 down (保证无事件时挂起而非空转)
                         val down = awaitFirstDown(requireUnconsumed = false)
+                        // 已进入退出流程: 忽略后续手势, 等待本次 pointer up 后结束本轮
+                        // (若在 awaitFirstDown 之前 return, 无 pressed 时 awaitEachGesture 的
+                        // awaitAllPointersUp 不挂起, 会形成 busy loop 占死 EDT → 桌面端卡死)
+                        if (dismissing) {
+                            var upEvent = awaitPointerEvent(PointerEventPass.Final)
+                            while (upEvent.changes.any { it.pressed }) {
+                                upEvent = awaitPointerEvent(PointerEventPass.Final)
+                            }
+                            return@awaitEachGesture
+                        }
                         var overSlop = 0f
                         val dragChange =
                             awaitVerticalTouchSlopOrCancellation(down.id) { change, over ->

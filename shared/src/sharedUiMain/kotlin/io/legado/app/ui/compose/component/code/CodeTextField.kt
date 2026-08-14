@@ -531,7 +531,9 @@ fun CodeTextField(
             val line = layout.getLineForOffset(cursor)
             Rect(
                 left = 0f,
-                top = textTopPx + layout.getLineTop(line),
+                // coerceAtLeast(0f): 桌面端 skia 空行度量不自洽 (bug 11321 家族),
+                // getLineTop 对空行可能返回负值, 行顶不可能在段落顶之上, 钳回 0
+                top = textTopPx + layout.getLineTop(line).coerceAtLeast(0f),
                 right = 0f, // 宽度由 responder 节点在请求时以自身实际宽度补齐
                 bottom = textTopPx + layout.getLineBottom(line),
             )
@@ -647,7 +649,9 @@ fun CodeTextField(
                         value.text, layout, from, to,
                         logicalLineBefore(value.text, layout, from),
                     ),
-                    layout.getLineTop(from),
+                    // 空行行度量不自洽 (skia bug 11321 家族), getLineTop 可能为负
+                    // (行顶不可能在段落顶之上), 钳回 0 防 padding 负值崩溃
+                    layout.getLineTop(from).coerceAtLeast(0f),
                     from,
                 )
             }.also { lastGutterWindow = it }

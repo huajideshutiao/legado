@@ -233,10 +233,6 @@ fun AndroidWebView(
     LaunchedEffect(Unit) {
         val web = VisibleWebView(context).apply {
             setBackgroundColor(webViewBgColor)
-            if (config.overScrollNever) {
-                // 滚动到边界后事件交还外层 (BottomSheet 拖拽路径), 不做 overscroll 光晕
-                overScrollMode = View.OVER_SCROLL_NEVER
-            }
             applyCommonSettings(settings)
             webViewClient = AndroidWebViewClient(callbacksRef)
             webChromeClient = object : WebChromeClient() {

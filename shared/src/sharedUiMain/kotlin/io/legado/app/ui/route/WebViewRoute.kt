@@ -1,16 +1,13 @@
 package io.legado.app.ui.route
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.material.CircularProgressIndicator
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
-import androidx.compose.material.LinearProgressIndicator
 import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
@@ -25,7 +22,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import io.legado.app.constant.AppPattern
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.source.SourceHelp
@@ -36,6 +32,7 @@ import io.legado.app.ui.association.LegadoDeepLinkHandler
 import io.legado.app.ui.browser.LocalWebViewSlot
 import io.legado.app.ui.browser.WebViewCallbacks
 import io.legado.app.ui.browser.WebViewConfig
+import io.legado.app.ui.browser.WebViewLoadingBar
 import io.legado.app.ui.compose.component.AlertButton
 import io.legado.app.ui.compose.component.AppAlertDialog
 import io.legado.app.ui.compose.component.AppTitleBar
@@ -378,26 +375,11 @@ fun WebViewRoute(
                 },
             )
         }
-        // 加载进度条 (原 RefreshProgressBar: 1dp, 100 隐藏, menu_refresh 时先置 0;
+        // 加载进度条 (原 RefreshProgressBar: 1dp, 预取中 indeterminate, 100 隐藏;
         // 预取阶段 loadState==null 时 WebView 尚未组合, 无进度回调 → indeterminate 常驻,
-        // 对齐原版“加载即常驻” (修复: 原先 loadProgress==null 不显示, 预取期间无任何加载反馈)
+        // 对齐原版"加载即常驻" (修复: 原先 loadProgress==null 不显示, 预取期间无任何加载反馈)
         if (!isFullScreen && loadError == null) {
-            if (loadState == null) {
-                LinearProgressIndicator(
-                    modifier = Modifier.fillMaxWidth().height(1.dp),
-                    color = AppTheme.colors.accent,
-                )
-            } else {
-                val progress = loadProgress
-                if (progress != null) {
-                    val animatedProgress by animateFloatAsState(progress / 100f)
-                    LinearProgressIndicator(
-                        progress = animatedProgress,
-                        modifier = Modifier.fillMaxWidth().height(1.dp),
-                        color = AppTheme.colors.accent,
-                    )
-                }
-            }
+            WebViewLoadingBar(indeterminate = loadState == null, progress = loadProgress)
         }
         Box(Modifier.fillMaxWidth().weight(1f)) {
             val state = loadState

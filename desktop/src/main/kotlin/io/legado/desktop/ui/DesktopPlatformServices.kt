@@ -105,22 +105,27 @@ private class DesktopShareService : ShareService {
             AppLog.put("DesktopShareService.shareFile: 文件不存在: " + filePath)
             return
         }
-        runCatching {
-            val absolutePath = file.absolutePath
-            val osName = System.getProperty("os.name").lowercase()
-            when {
-                osName.contains("win") ->
-                    Runtime.getRuntime().exec(arrayOf("explorer", "/select,", absolutePath))
+        revealInFileManager(file)
+    }
+}
 
-                osName.contains("mac") ->
-                    Runtime.getRuntime().exec(arrayOf("open", "-R", absolutePath))
+/** 跨平台打开文件管理器并选中文件 (Windows: explorer /select; macOS: open -R; Linux: xdg-open)。 */
+internal fun revealInFileManager(file: File) {
+    runCatching {
+        val absolutePath = file.absolutePath
+        val osName = System.getProperty("os.name").lowercase()
+        when {
+            osName.contains("win") ->
+                Runtime.getRuntime().exec(arrayOf("explorer", "/select,", absolutePath))
 
-                else ->
-                    Runtime.getRuntime().exec(arrayOf("xdg-open", file.parentFile.absolutePath))
-            }
-        }.onFailure {
-            AppLog.put("DesktopShareService.shareFile: 打开文件位置失败: " + it.localizedMessage)
+            osName.contains("mac") ->
+                Runtime.getRuntime().exec(arrayOf("open", "-R", absolutePath))
+
+            else ->
+                Runtime.getRuntime().exec(arrayOf("xdg-open", file.parentFile.absolutePath))
         }
+    }.onFailure {
+        AppLog.put("revealInFileManager: 打开文件位置失败: " + it.localizedMessage)
     }
 }
 
@@ -242,29 +247,6 @@ private class DesktopCrashLogProvider : CrashLogProvider {
 
     override fun shareCrashLog(name: String) {
         // desktop 无系统分享面板, 改为打开文件所在目录并选中
-        val file = findFile(name)
-        if (file != null) {
-            kotlin.runCatching {
-                // 跨平台打开文件管理器并选中文件 (Windows: explorer /select; macOS: open -R; Linux: xdg-open)
-                val osName = System.getProperty("os.name").lowercase()
-                when {
-                    osName.contains("win") -> {
-                        Runtime.getRuntime()
-                            .exec(arrayOf("explorer", "/select,", file.absolutePath))
-                    }
-
-                    osName.contains("mac") -> {
-                        Runtime.getRuntime().exec(arrayOf("open", "-R", file.absolutePath))
-                    }
-
-                    else -> {
-                        // Linux: 打开文件所在目录
-                        Runtime.getRuntime().exec(arrayOf("xdg-open", file.parent))
-                    }
-                }
-            }.onFailure {
-                AppLog.put("DesktopCrashLogProvider.shareCrashLog: 打开文件失败: ${it.localizedMessage}")
-            }
-        }
+        findFile(name)?.let { revealInFileManager(it) }
     }
 }

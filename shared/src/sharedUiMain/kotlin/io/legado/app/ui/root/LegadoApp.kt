@@ -2,18 +2,14 @@ package io.legado.app.ui.root
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.LinearProgressIndicator
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
@@ -75,12 +71,9 @@ import io.legado.app.ui.book.read.ReadBookEvents
 import io.legado.app.ui.book.read.ReadConfigChange
 import io.legado.app.ui.bookshelf.LocalBookCoverSlot
 import io.legado.app.ui.bookshelf.toCoverBook
-import io.legado.app.ui.browser.LocalWebViewSlot
-import io.legado.app.ui.browser.WebViewCallbacks
-import io.legado.app.ui.browser.WebViewConfig
+import io.legado.app.ui.browser.WebViewSheetContent
 import io.legado.app.ui.compose.component.AppBottomSheetDialog
 import io.legado.app.ui.compose.component.AppSelectorDialog
-import io.legado.app.ui.compose.component.AppTitleBar
 import io.legado.app.ui.compose.platform.LocalTransitionFrozenStatusBarHeightPx
 import io.legado.app.ui.compose.platform.PlatformBackHandler
 import io.legado.app.ui.compose.platform.handleBackKey
@@ -1214,10 +1207,11 @@ private fun DirectLinkUploadConfigOverlayDialogContent(
     }
 }
 
-// 通用 Sheet: AppBottomSheetDialog 承载 (项目统一底部弹层: 高度 0.8 锚点高, Dialog 窗口
-// 无状态栏 padding, 下拉拖拽/外部点击/返回键关闭), 关闭后移除该 Overlay
-// key 路由: "web_view" 渲染平台 WebView slot (对照 app 端 startBrowser asBottomSheet=true);
-// 其他特殊 sheet key 由 OverlayDialogs 子代理按 key 接入具体内容
+// 通用 Sheet: AppBottomSheetDialog 承载 (项目统一底部弹层: 0.8 锚点高, 顶栏等
+// 无可滚动区可下拉拖拽关闭), 关闭后移除该 Overlay。
+// 当前仅 "web_view" (startBrowser asBottomSheet=true 半屏模式): 内容与菜单见
+// WebViewSheetContent, 高度/圆角/拖拽协调由 AppBottomSheetDialog 统一承载。
+// 新增 sheet key 时在此接入。
 @Composable
 private fun SheetOverlayContent(overlay: AppOverlay.Sheet, navigator: AppNavigator) {
     AppBottomSheetDialog(
@@ -1232,66 +1226,11 @@ private fun SheetOverlayContent(overlay: AppOverlay.Sheet, navigator: AppNavigat
                     // 20dp 顶部圆角); 外层同色背景矩形会填掉内层 Column 裁剪掉的顶角, 这里同样裁圆角
                     .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)),
             ) {
-                when (overlay.key) {
-                    "web_view" -> {
-                        val url = overlay.payload ?: return@Surface
-                        // 顶栏 + 进度条 + 内容区 (对齐 WebViewRoute 的路由页形态, 修复 Sheet 白屏无顶栏):
-                        // 原版 activity_web_view.xml TitleBar 静态常显 + RefreshProgressBar 1dp 加载即常驻
-                        var pageTitle by remember { mutableStateOf("") }
-                        var loadProgress by remember { mutableStateOf<Int?>(null) }
-                        // 收到首个进度回调前 indeterminate 常驻 (原版加载即常驻, 100 隐藏)
-                        var progressStarted by remember { mutableStateOf(false) }
-                        val webCallbacks = remember { WebViewCallbacks() }
-                        // 网页 title/进度接线 (对齐 WebViewRoute: title 非空且非 url 才更新; 100 隐藏进度)
-                        SideEffect {
-                            webCallbacks.onReceivedTitle = { title ->
-                                if (!title.isNullOrBlank() && !title.startsWith("http")) {
-                                    pageTitle = title
-                                }
-                            }
-                            webCallbacks.onProgressChanged = { progress ->
-                                progressStarted = true
-                                loadProgress = if (progress >= 100) null else progress
-                            }
-                        }
-                        Column(Modifier.fillMaxSize()) {
-                            AppTitleBar(
-                                title = pageTitle.ifBlank { stringResource(Res.string.loading) },
-                                onBack = { navigator.dismissOverlay(overlay.key) },
-                            )
-                            if (!progressStarted) {
-                                LinearProgressIndicator(
-                                    modifier = Modifier.fillMaxWidth().height(1.dp),
-                                    color = AppTheme.colors.accent,
-                                )
-                            } else {
-                                val progress = loadProgress
-                                if (progress != null) {
-                                    val animatedProgress by animateFloatAsState(progress / 100f)
-                                    LinearProgressIndicator(
-                                        progress = animatedProgress,
-                                        modifier = Modifier.fillMaxWidth().height(1.dp),
-                                        color = AppTheme.colors.accent,
-                                    )
-                                }
-                            }
-                            // 内容区: 主题底色占位 (WebView 组合/加载完成前不白屏) + 平台 WebView slot
-                            Box(
-                                Modifier.fillMaxWidth().weight(1f)
-                                    .background(AppTheme.colors.background)
-                            ) {
-                                LocalWebViewSlot.current(
-                                    // overScrollNever: 网页滚到边界后下拉事件不被 WebView 消费,
-                                    // 交还外层 BottomSheet 拖拽路径 (sheet 跟随下拉关闭)
-                                    WebViewConfig(url = url, overScrollNever = true),
-                                    Modifier.fillMaxSize(),
-                                    webCallbacks,
-                                )
-                            }
-                        }
-                    }
-                    // 其他 sheet key 由 OverlayDialogs 子代理接入
-                    else -> overlay.payload?.let { Text(it) }
+                if (overlay.key == "web_view") {
+                    WebViewSheetContent(
+                        url = overlay.payload ?: return@Surface,
+                        onBack = { navigator.dismissOverlay(overlay.key) },
+                    )
                 }
             }
         }
