@@ -66,6 +66,11 @@ abstract class PageDelegateCompose(
         // 与 app 端 ReadView.defaultAnimationSpeed=300 对应
         const val DEFAULT_ANIMATION_SPEED = 300
 
+        // 按键翻页动画速度 (对照原版 PageDelegate.keyTurnPage → nextPageByAnim(100)):
+        // 音量键/方向键等按键翻页用快速动画, 点击翻页走 DEFAULT_ANIMATION_SPEED (300ms)。
+        // 与 200ms 翻页节流配合, 动画在下次按键前完成, 长按连翻不吞页。
+        const val KEY_TURN_ANIMATION_SPEED = 100
+
         // 与 app 端 CoverPageDelegate shadowDrawableR setBounds(0,0,30,viewHeight) 对应
         const val SHADOW_WIDTH_PX = 30
     }
@@ -151,6 +156,22 @@ abstract class PageDelegateCompose(
         // 不做 isRunning 拦截: 动画进行中的按键由子类 nextPageByAnim/prevPageByAnim 内部的
         // abortAnim 打断重翻 (对照原版 keyTurnPage → nextPageByAnim → abortAnim 语义), 否则
         // 快速连按时动画未结束的合法按键会被静默丢弃 (表现为"只能按一下")。
+        // 按键翻页用快速动画 (对照原版 keyTurnPage → nextPageByAnim(100)): 与 200ms
+        // 翻页节流 (VolumeKeyPageTurnHandler 的 PageTurnThrottle) 配合, 动画在下次按键前
+        // 完成, 长按连翻不掉拍; 若用常规 300ms, 动画未结束即被下一次按键 abortAnim 打断,
+        // isAbortAnim 置位会让再下一次按键被吞, 连翻速度减半。
+        when (direction) {
+            PageDirectionShared.NEXT -> nextPageByAnim(KEY_TURN_ANIMATION_SPEED)
+            PageDirectionShared.PREV -> prevPageByAnim(KEY_TURN_ANIMATION_SPEED)
+            else -> Unit
+        }
+    }
+
+    /**
+     * 点击翻页 (对照原版 ReadView.click → nextPageByAnim(defaultAnimationSpeed)):
+     * 用常规动画速度 [animationSpeed], 与按键翻页的快速动画区分。
+     */
+    override fun clickTurnPage(direction: PageDirectionShared) {
         when (direction) {
             PageDirectionShared.NEXT -> nextPageByAnim(animationSpeed)
             PageDirectionShared.PREV -> prevPageByAnim(animationSpeed)

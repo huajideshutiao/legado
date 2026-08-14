@@ -56,12 +56,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
-import kotlin.math.abs
-import kotlin.math.roundToInt
 import legado.shared.generated.resources.Res
 import legado.shared.generated.resources.ic_cursor_left
 import legado.shared.generated.resources.ic_cursor_right
 import org.jetbrains.compose.resources.painterResource
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 // 长按触发时间（对照原版 ReadView.longPressTimeout = 600，postDelayed(longPressRunnable, 600)）
 private const val LONG_PRESS_TIMEOUT = 600L
@@ -298,8 +298,8 @@ fun ReadViewComposable(
                     x, contentY, pageWidthInt, contentHeightPx.roundToInt()
                 )) {
                 0 -> onClick(null)
-                1 -> viewModel.turnPage(PageDirectionShared.NEXT)
-                2 -> viewModel.turnPage(PageDirectionShared.PREV)
+                1 -> viewModel.turnPageByClick(PageDirectionShared.NEXT)
+                2 -> viewModel.turnPageByClick(PageDirectionShared.PREV)
                 3 -> viewModel.moveToNextChapter()
                 // 原版 moveToPrevChapter(toLast = false)：切上一章后落到章首而非章末
                 4 -> viewModel.moveToPrevChapter(toLast = false)

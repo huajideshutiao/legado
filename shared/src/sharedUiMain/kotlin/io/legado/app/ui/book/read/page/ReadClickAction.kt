@@ -94,15 +94,35 @@ internal fun detectClickArea() {
 }
 
 /**
- * 统一翻页入口 (点击区域 / 快捷键共用)。
+ * 统一翻页入口 (快捷键共用)。
  *
- * 注入了 [io.legado.app.ui.book.read.page.delegate.PageDelegateCompose] 时走动画委托;
+ * 注入了 [io.legado.app.ui.book.read.page.delegate.PageDelegateCompose] 时走按键快速动画
+ * (对照原版 keyHandler → keyPage → keyTurnPage → nextPageByAnim(100));
  * 未注入时直接位移页码, 章节边界再切章 (对照 app 端 ReadView.click 的 1/2 分支 + fillPage)。
  */
 internal fun ReadBookViewModelShared.turnPage(direction: PageDirectionShared) {
     val delegate = pageDelegate
     if (delegate != null) {
         delegate.keyTurnPage(direction)
+        return
+    }
+    when (direction) {
+        PageDirectionShared.NEXT -> if (!nextPage()) moveToNextChapter()
+        PageDirectionShared.PREV -> if (!prevPage()) moveToPrevChapter()
+        else -> Unit
+    }
+}
+
+/**
+ * 点击翻页入口 (九宫格动作 1/2 共用)。
+ *
+ * 对照原版 ReadView.click → nextPageByAnim(defaultAnimationSpeed): 点击翻页走常规动画速度
+ * (300ms), 与快捷键翻页 (turnPage → keyTurnPage 的 100ms 快速动画) 区分。
+ */
+internal fun ReadBookViewModelShared.turnPageByClick(direction: PageDirectionShared) {
+    val delegate = pageDelegate
+    if (delegate != null) {
+        delegate.clickTurnPage(direction)
         return
     }
     when (direction) {

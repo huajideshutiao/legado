@@ -171,6 +171,16 @@ interface PageDelegateShared {
      * @param direction [PageDirectionShared.NEXT] 或 [PageDirectionShared.PREV]
      */
     fun keyTurnPage(direction: PageDirectionShared)
+
+    /**
+     * 点击翻页（对应 app 端 `ReadView.click` → `nextPageByAnim(defaultAnimationSpeed)`）。
+     *
+     * 与 [keyTurnPage] 的按键快速动画区分：点击翻页走常规动画速度
+     * （对照原版 ReadView.click → nextPageByAnim(defaultAnimationSpeed)=300ms）。
+     *
+     * @param direction [PageDirectionShared.NEXT] 或 [PageDirectionShared.PREV]
+     */
+    fun clickTurnPage(direction: PageDirectionShared)
     // endregion
 
     // region 章节边界判定（对应 app 端 PageDelegate.hasPrev / hasNext）

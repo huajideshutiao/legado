@@ -286,14 +286,14 @@ class AndroidPlatformCapabilities(
             val scale = systemAnimationScale()
             return RouteTransitionSpec(
                 // 系统转场 300ms × 动画时长缩放 (关闭动画时 scale=0 → 0ms 瞬切, 对齐系统行为)
-                pushDurationMillis = (300 * scale).toInt(),
+                pushDurationMillis = (500 * scale).toInt(),
                 pushEasing = TransitionEasing.FastOutSlowIn,
                 newPageSlideFraction = 1f, // 系统 slide_in_right 全宽
                 oldPageShiftFraction = 0f, // 系统 fade_out 旧页不位移
                 newPageFadeIn = true, // 系统 fade_in
                 oldPageFadeOut = true, // 系统 fade_out
                 newPageScaleFrom = 1f,
-                popDurationMillis = (300 * scale).toInt(),
+                popDurationMillis = (500 * scale).toInt(),
                 popEasing = TransitionEasing.FastOutSlowIn,
                 targetPageSlideFraction = 0f, // 系统返回转场 fade 语义, 目标页不位移
                 outgoingSlideFraction = 1f, // 系统 slide_out_right 全宽
