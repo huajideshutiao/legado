@@ -8,10 +8,22 @@ import androidx.room3.Index
 import androidx.room3.PrimaryKey
 import androidx.room3.TypeConverter
 import androidx.room3.TypeConverters
+import io.legado.app.api.controller.ReadBookStateProviders
 import io.legado.app.constant.BookType
+import io.legado.app.data.AppDbProviders
+import io.legado.app.help.book.BookHelpChapterLocator
+import io.legado.app.help.book.ContentProcessorProviders
+import io.legado.app.help.book.addType
 import io.legado.app.help.book.getFolderNameNoCache
+import io.legado.app.help.book.isEpub
+import io.legado.app.help.book.isImage
+import io.legado.app.help.book.removeType
+import io.legado.app.help.book.simulatedTotalChapterNum
+import io.legado.app.help.config.AppConfigProviders
+import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.utils.decodeStringMapOrNull
 import io.legado.app.utils.systemCurrentTimeMillis
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
@@ -200,6 +212,74 @@ data class Book(
     ).apply {
         this.infoHtml = this@Book.infoHtml
         this.tocHtml = this@Book.tocHtml
+    }
+
+    fun save() {
+        removeType(BookType.notShelf)
+        runBlocking {
+            if (AppDbProviders.get().bookDao.has(bookUrl)) {
+                AppDbProviders.get().bookDao.update(this@save)
+            } else {
+                AppDbProviders.get().bookDao.insert(this@save)
+            }
+        }
+    }
+
+    /**
+     * 仅 PATCH 进度字段; 避免阅读/播放界面退出时整行 update 冲掉
+     * 后台 updateToc/refreshBookInfo 写入的最新元数据 (name/intro/cover/totalChapterNum 等)。
+     */
+    fun saveRead() {
+        lastCheckCount = 0
+        durChapterTime = systemCurrentTimeMillis()
+        runBlocking {
+            AppDbProviders.get().bookDao.updateProgress(
+                bookUrl,
+                durChapterIndex,
+                durChapterPos,
+                durChapterTime,
+                durChapterTitle
+            )
+        }
+        ReadTimeRecorder.flushAll()
+    }
+
+    fun delete() {
+        // ReadBook.book 单例经 provider 解耦, 删除当前阅读书时清空阅读状态
+        val readBookProvider = ReadBookStateProviders.getOrNull()
+        if (readBookProvider != null && readBookProvider.currentBookUrl == bookUrl) {
+            readBookProvider.clearCurrentBook()
+        }
+        runBlocking { AppDbProviders.get().bookDao.delete(this@delete) }
+        addType(BookType.notShelf)
+    }
+
+    fun getUseReplaceRule(): Boolean {
+        return config.useReplaceRule
+            ?: (!isImage && !isEpub && AppConfigProviders.get().replaceEnableDefault)
+    }
+
+    fun getUnreadChapterNum(): Int =
+        (simulatedTotalChapterNum() - durChapterIndex + if (durChapterPos < 0) -1 else 0)
+            .coerceAtLeast(0)
+
+    fun migrateTo(newBook: Book, toc: List<BookChapter>): Book {
+        newBook.durChapterIndex = BookHelpChapterLocator
+            .getDurChapter(durChapterIndex, durChapterTitle, toc, totalChapterNum)
+        newBook.durChapterTitle = toc[newBook.durChapterIndex].getDisplayTitle(
+            ContentProcessorProviders.get().getTitleReplaceRules(newBook),
+            getUseReplaceRule()
+        )
+        newBook.durChapterPos = durChapterPos
+        newBook.durChapterTime = durChapterTime
+        newBook.group = group
+        newBook.order = order
+        newBook.customCoverUrl = customCoverUrl
+        newBook.customIntro = customIntro
+        newBook.customTag = customTag
+        newBook.canUpdate = canUpdate
+        newBook.readConfig = readConfig
+        return newBook
     }
 
     @Suppress("ConstPropertyName")

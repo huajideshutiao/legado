@@ -8,8 +8,6 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.ContentProcessorProviders
-import io.legado.app.help.book.getDisplayTitle
-import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.book.isNotShelf
 import io.legado.app.help.book.readSimulating
 import io.legado.app.help.book.simulatedTotalChapterNum

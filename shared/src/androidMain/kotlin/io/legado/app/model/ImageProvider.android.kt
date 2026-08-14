@@ -15,14 +15,12 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelpProviders
-import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.coroutine.IoDispatcher
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.help.toast.Toasters
-import io.legado.app.model.SvgDecode.getSize
 import io.legado.app.model.fileBook.FileBook
 import io.legado.app.ui.platform.sharedAppContext
 import io.legado.app.utils.File

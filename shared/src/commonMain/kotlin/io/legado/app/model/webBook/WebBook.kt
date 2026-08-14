@@ -11,7 +11,6 @@ import io.legado.app.data.entities.ReviewPage
 import io.legado.app.data.entities.rule.ReviewRule
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.IntentDataProviders
-import io.legado.app.help.book.getAbsoluteURL
 import io.legado.app.help.http.StrResponse
 import io.legado.app.help.source.SourceDebugLoggers
 import io.legado.app.model.analyzeRule.AnalyzeRuleFactories

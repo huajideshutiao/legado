@@ -10,7 +10,6 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.AppWebDavShared
-import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.showSourceLogin
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal

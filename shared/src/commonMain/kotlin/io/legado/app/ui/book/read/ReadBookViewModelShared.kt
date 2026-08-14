@@ -14,8 +14,6 @@ import io.legado.app.help.book.BookHelpShared
 import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.addType
-import io.legado.app.help.book.getDisplayTitle
-import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.book.isEpub
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf

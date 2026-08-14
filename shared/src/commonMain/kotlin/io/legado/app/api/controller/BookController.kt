@@ -28,20 +28,9 @@ import io.legado.app.utils.systemCurrentTimeMillis
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.collections.List
-import kotlin.collections.Map
-import kotlin.collections.firstOrNull
 import kotlin.collections.getOrNull
-import kotlin.collections.sortedBy
-import kotlin.collections.sortedByDescending
-import kotlin.collections.sortedWith
-import kotlin.collections.toTypedArray
 import kotlin.concurrent.Volatile
 import kotlin.text.getOrNull
-import kotlin.text.isBlank
-import kotlin.text.isNullOrEmpty
-import kotlin.text.toInt
-import kotlin.text.toLong
 
 /**
  * 书籍 Web 接口 (shared commonMain 下沉版)。
@@ -277,8 +266,7 @@ object BookController {
     suspend fun deleteBook(postData: String?): ReturnData {
         val returnData = ReturnData()
         GSON.fromJsonObject<Book>(postData).getOrNull()?.let { book ->
-            // 内联 book.delete() 扩展 (app 端 BookExtensions.kt, 依赖 ReadBook 单例未下沉):
-            // 删除当前阅读书时清空 ReadBook.book, 再 delete + addType(notShelf)
+            // 删除当前阅读书时清空 ReadBook.book (单例经 provider 解耦), 再 delete + addType(notShelf)
             val readBookProvider = ReadBookStateProviders.getOrNull()
             if (readBookProvider != null && readBookProvider.currentBookUrl == book.bookUrl) {
                 readBookProvider.clearCurrentBook()

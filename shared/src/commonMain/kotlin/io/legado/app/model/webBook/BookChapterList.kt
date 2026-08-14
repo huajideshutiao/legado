@@ -8,8 +8,6 @@ import io.legado.app.data.entities.rule.TocRule
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.exception.TocEmptyException
 import io.legado.app.help.book.ContentProcessorProviders
-import io.legado.app.help.book.getDisplayTitle
-import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.i18n.AppStringKey

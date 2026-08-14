@@ -51,7 +51,6 @@ import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.data.entities.BookSource
-import io.legado.app.help.book.getUnreadChapterNum
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.compose.component.FastScrollLazyVerticalGrid

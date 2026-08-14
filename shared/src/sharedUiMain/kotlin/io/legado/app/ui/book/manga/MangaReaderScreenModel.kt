@@ -14,7 +14,6 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.isNotShelf
-import io.legado.app.help.book.migrateTo
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.PreferenceProviders
 import io.legado.app.ui.book.manga.config.MangaColorFilterConfig

@@ -7,8 +7,6 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.VideoResolution
 import io.legado.app.help.book.ContentProcessorProviders
-import io.legado.app.help.book.getDisplayTitle
-import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.ui.compose.platform.PreferenceStoreProvider
 import io.legado.app.ui.root.PlatformCapabilityProviders

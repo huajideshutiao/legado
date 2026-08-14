@@ -4,14 +4,11 @@ package io.legado.app.help.book
 
 import android.net.Uri
 import androidx.core.net.toUri
-import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.config.AppConfig
-import io.legado.app.model.ReadBook
-import io.legado.app.model.ReadTimeRecorder
 import io.legado.app.utils.FileDoc
 import io.legado.app.utils.exists
 import io.legado.app.utils.find
@@ -150,54 +147,6 @@ fun Book.update() {
     runBlocking { appDb.bookDao.update(this@update) }
 }
 
-// BaseBook.primaryStr() 已下沉到 shared/commonMain BookExtensionsShared.kt
-// (供 ChangeBookSourceViewModelShared 等 KMP 模块使用), 此处删除避免重复定义。
-// Book.updateTo / hasVariable / isSameNameAuthor / getExportFileName(×2) / tryParesExportFileName
-// 亦已下沉到 BookExtensionsShared.kt (纯逻辑, AppConfig → AppConfigProviders), 此处删除避免重复定义。
-
 fun Book.getBookSource(): BookSource? {
     return runBlocking { appDb.bookSourceDao.getBookSource(origin) }
-}
-
-// 注: Book.getUnreadChapterNum 已下沉到 shared BookDisplayExtensionsShared.kt
-// (同包名 io.legado.app.help.book, 跨模块同名同签名扩展由 Kotlin 自动解析, 无需 import)
-
-// 注: Book.migrateTo 已下沉到 shared BookExtensionsShared.kt
-// (BookHelp.getDurChapter → BookHelpChapterLocator, ContentProcessor → ContentProcessorProviders),
-// 同包名同签名扩展跨模块自动合并, 此处删除避免重复定义。
-
-fun Book.save() {
-    removeType(BookType.notShelf)
-    runBlocking {
-        if (appDb.bookDao.has(bookUrl)) {
-            appDb.bookDao.update(this@save)
-        } else {
-            appDb.bookDao.insert(this@save)
-        }
-    }
-}
-
-fun Book.saveRead() {
-    lastCheckCount = 0
-    durChapterTime = System.currentTimeMillis()
-    // 仅 PATCH 进度字段; 避免阅读/播放界面退出时整行 update 冲掉
-    // 后台 updateToc/refreshBookInfo 写入的最新元数据 (name/intro/cover/totalChapterNum 等)
-    runBlocking {
-        appDb.bookDao.updateProgress(
-            bookUrl,
-            durChapterIndex,
-            durChapterPos,
-            durChapterTime,
-            durChapterTitle
-        )
-    }
-    ReadTimeRecorder.flushAll()
-}
-
-fun Book.delete() {
-    if (ReadBook.book?.bookUrl == bookUrl) {
-        ReadBook.book = null
-    }
-    runBlocking { appDb.bookDao.delete(this@delete) }
-    addType(BookType.notShelf)
 }

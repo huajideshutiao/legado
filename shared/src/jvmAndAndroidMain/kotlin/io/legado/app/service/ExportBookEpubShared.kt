@@ -9,8 +9,6 @@ import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelpLogic
 import io.legado.app.help.book.BookHelpProviders
 import io.legado.app.help.book.BookImageStorageProviders
-import io.legado.app.help.book.getDisplayTitle
-import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.lib.epublib.domain.EpubBook
 import io.legado.app.lib.epublib.domain.FileResourceProvider
 import io.legado.app.lib.epublib.domain.LazyResource

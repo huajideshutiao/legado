@@ -5,11 +5,8 @@ import io.legado.app.constant.EventBus
 import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
-import io.legado.app.data.entities.Bookmark
 import io.legado.app.help.IntentData
 import io.legado.app.help.book.ContentProcessorProviders
-import io.legado.app.help.book.getDisplayTitle
-import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.simulatedTotalChapterNum
 import io.legado.app.help.config.AppConfigProviders

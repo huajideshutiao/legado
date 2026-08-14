@@ -17,7 +17,6 @@ import io.legado.app.help.book.BookStorageProviders
 import io.legado.app.help.book.ContentProcessorProviders
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isNotShelf
-import io.legado.app.help.book.migrateTo
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfigProviders
 import io.legado.app.help.config.PreferenceProviders

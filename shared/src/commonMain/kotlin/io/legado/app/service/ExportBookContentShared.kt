@@ -5,7 +5,6 @@ import io.legado.app.data.AppDbProviders
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelpProviders
-import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.utils.HtmlFormatter
 import io.legado.app.utils.mapAsync
 import kotlinx.coroutines.coroutineScope

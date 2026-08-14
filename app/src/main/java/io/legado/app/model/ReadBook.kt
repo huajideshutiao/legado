@@ -5,8 +5,6 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.book.ContentProcessor
-import io.legado.app.help.book.getDisplayTitle
-import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.globalExecutor
 import io.legado.app.model.fileBook.TextFile

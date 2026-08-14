@@ -22,7 +22,6 @@ import io.legado.app.help.book.isImage
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isPdf
 import io.legado.app.help.book.removeLocalUriCache
-import io.legado.app.help.book.save
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.androidAppString

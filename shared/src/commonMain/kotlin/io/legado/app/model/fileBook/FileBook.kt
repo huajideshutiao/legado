@@ -6,12 +6,22 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.exception.TocEmptyException
 import io.legado.app.help.book.ContentProcessorProviders
-import io.legado.app.help.book.getDisplayTitle
-import io.legado.app.help.book.getUseReplaceRule
 import io.legado.app.help.i18n.AppStringKey
 import io.legado.app.help.i18n.appString
 import io.legado.app.lib.webdav.WebDav
-import io.legado.app.utils.InputStream
+import io.legado.app.model.fileBook.FileBook.analyzeNameAuthor
+import io.legado.app.model.fileBook.FileBook.deleteBook
+import io.legado.app.model.fileBook.FileBook.downloadRemoteBook
+import io.legado.app.model.fileBook.FileBook.getChapterList
+import io.legado.app.model.fileBook.FileBook.getContent
+import io.legado.app.model.fileBook.FileBook.getCoverPath
+import io.legado.app.model.fileBook.FileBook.getHandler
+import io.legado.app.model.fileBook.FileBook.getImage
+import io.legado.app.model.fileBook.FileBook.importFromArchive
+import io.legado.app.model.fileBook.FileBook.importLocalFile
+import io.legado.app.model.fileBook.FileBook.isBookFile
+import io.legado.app.model.fileBook.FileBook.mergeBook
+import io.legado.app.model.fileBook.FileBook.upBookInfo
 import io.legado.app.utils.systemCurrentTimeMillis
 
 /**
